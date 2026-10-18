@@ -15,6 +15,8 @@ AnalysisOptions options_from_project(const document::Project& project) {
     options.min_stitch = f.min_stitch_length;
     options.max_stitch = f.max_stitch_length;
     options.trim_threshold = f.trim_threshold;
+    // Les finitions posent des points d'arrêt : leur absence sur un objet est anormale.
+    options.check_lock_stitches = true;
     return options;
 }
 

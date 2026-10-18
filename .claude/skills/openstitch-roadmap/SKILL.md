@@ -65,7 +65,9 @@ les amender dans le fichier en expliquant pourquoi — ne pas les ignorer.
 
 ## 4. Mettre à jour la roadmap (obligatoire)
 
-Dans le même commit que le code :
+Cette obligation vaut **pour tout travail qui aboutit à un commit**, piloté
+ou sur consigne explicite (elle est aussi vérifiée par `openstitch-commit`
+et rappelée par le hook de session). Dans le même commit que le code :
 
 - Statut de l'entrée : `☑ Fait (AAAA-MM-JJ, <hash court>)` + ligne
   « Livré : … » (ce qui existe maintenant, limites restantes). Ne jamais

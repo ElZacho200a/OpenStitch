@@ -99,6 +99,43 @@ TEST_CASE("kerning shrinks AV and can be disabled") {
     CHECK(kerned <= plain);
 }
 
+TEST_CASE("font kerning moves the second letter by exactly the table value") {
+    const double kern_units = vera().kerning(U'A', U'V');
+    auto t = make_text("AV");
+    t.kerning = false;
+    const double plain = layout(t).glyphs[1].pen.x.value;
+    t.kerning = true;
+    const double kerned = layout(t).glyphs[1].pen.x.value;
+    const double scale = 12'000.0 / vera().cap_height_units();
+    CHECK(kerned - plain == Approx(kern_units * scale).margin(1.0));
+    CHECK(kern_units < 0.0); // Vera porte une paire A-V
+}
+
+TEST_CASE("manual pair kerning replaces the font value and works with kerning off") {
+    auto t = make_text("AV");
+    t.kerning = false;
+    const double plain = layout(t).glyphs[1].pen.x.value;
+
+    lettering::LayoutOptions options;
+    options.kerning_overrides.push_back({U'A', U'V', Micrometers{-1'500}});
+    auto manual = lettering::layout_text(vera(), t, options);
+    REQUIRE(manual.has_value());
+    CHECK(manual->glyphs[1].pen.x.value - plain == Approx(-1'500.0).margin(1.0));
+
+    // Crénage de la police actif : l'écart manuel le REMPLACE (pas de cumul).
+    t.kerning = true;
+    auto replaced = lettering::layout_text(vera(), t, options);
+    REQUIRE(replaced.has_value());
+    CHECK(replaced->glyphs[1].pen.x.value == manual->glyphs[1].pen.x.value);
+
+    // Une autre paire n'est pas touchée.
+    auto other = make_text("AB");
+    other.kerning = false;
+    auto untouched = lettering::layout_text(vera(), other, options);
+    REQUIRE(untouched.has_value());
+    CHECK(untouched->glyphs[1].pen.x.value == layout(other).glyphs[1].pen.x.value);
+}
+
 TEST_CASE("alignment: center and right place the line around the origin") {
     auto t = make_text("HELLO");
     t.origin = {Micrometers{50'000}, Micrometers{0}};
@@ -138,6 +175,29 @@ TEST_CASE("justify stretches inner spaces up to the target width") {
     }
     CHECK(first_right == Approx(80'000.0).margin(1'500.0));
     CHECK(last_right < 40'000.0);
+}
+
+TEST_CASE("every line is aligned independently and blank lines keep their slot") {
+    auto t = make_text("HHHH\n\nH", 10'000);
+    t.align = document::TextAlign::Right;
+    t.line_spacing = 2.0;
+    const auto l = layout(t);
+    REQUIRE(l.glyphs.size() == 5);
+    CHECK(l.line_count == 3);
+    CHECK(l.glyphs[4].line == 2); // la ligne vide occupe un rang d'interligne
+    CHECK(bounds(l.glyphs[0]).y0 - bounds(l.glyphs[4]).y0 == Approx(40'000.0).margin(30.0));
+    // Alignées à droite : les deux lignes finissent à la même abscisse (à ±1 mm près).
+    CHECK(bounds(l.glyphs[3]).x1 == Approx(bounds(l.glyphs[4]).x1).margin(1'200.0));
+}
+
+TEST_CASE("tabs are four spaces and carriage returns are ignored") {
+    const auto a = layout(make_text("A\tB"));
+    const auto b = layout(make_text("A    B"));
+    REQUIRE(a.glyphs.size() == 2);
+    CHECK(a.glyphs[1].pen == b.glyphs[1].pen);
+    const auto crlf = layout(make_text("A\r\nB"));
+    CHECK(crlf.line_count == 2);
+    CHECK(crlf.glyphs.size() == 2);
 }
 
 TEST_CASE("rotation by 90 degrees turns the baseline vertical") {

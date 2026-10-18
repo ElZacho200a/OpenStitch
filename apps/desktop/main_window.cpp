@@ -435,6 +435,16 @@ MainWindow::MainWindow() {
     buildFilterPanel();
     buildHistoryPanel();
     buildThreadPanel();
+    // [cablage-A:debut]
+    // [cablage-A:fin]
+    // [cablage-B:debut]
+    // [cablage-B:fin]
+    // [cablage-C:debut]
+    // [cablage-C:fin]
+    // [cablage-D:debut]
+    // [cablage-D:fin]
+    // [cablage-E:debut]
+    // [cablage-E:fin]
     panelsMenu_->addAction(historyDock_->toggleViewAction());
     for (auto* d :
          {documentDock_, propertiesDock_, workflowDock_, orderDock_, filterDock_, analysisDock_}) {
