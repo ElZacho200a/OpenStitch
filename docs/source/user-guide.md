@@ -1062,6 +1062,10 @@ la liste complète et filtrable est dans **Aide ▸ Gestes souris et clavier** (
 | Ctrl+N | Nouveau projet (garde des modifications non enregistrées) |
 | Ctrl+O / Ctrl+S | Ouvrir (projet, fichier de broderie, SVG ou image) / Enregistrer le projet (sans redemander le chemin) |
 | Ctrl+Maj+I | Importer une image ou un SVG |
+| 1 / 2 / 3 / 4 | Afficher ou masquer l'image / les régions / les vecteurs / les points |
+| Z / Maj+Z / Ctrl+1 | Zoom sur la sélection / zoom précédent / taille réelle |
+| Ctrl+A | Tout sélectionner dans la couche affichée (objets si les vecteurs sont visibles, sinon régions) |
+| Clic répété au même point | Sélectionne l'objet suivant dessous |
 | Ctrl+Maj+S | Enregistrer le projet sous… |
 | Ctrl+Z | Annuler |
 | Ctrl+Y ou Ctrl+Maj+Z | Rétablir |

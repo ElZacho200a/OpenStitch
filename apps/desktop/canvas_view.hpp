@@ -37,6 +37,11 @@ public:
     void zoomIn();
     void zoomOut();
     void fitCanvas();
+    // Cadre la vue sur un rectangle de scène (mm) ; mémorise la vue précédente (HP-UX-023).
+    void zoomToRectMm(const QRectF& sceneRectMm);
+    void zoomToPreviousView();
+    // 100 % réel : 1 mm affiché = 1 mm à l'écran (selon la densité logique de l'écran).
+    void zoomActualSize();
     // Zoom ancré : le point de la scène situé sous `viewportPos` (coordonnées du
     // viewport) y reste après le zoom. Ancrage manuel (NoAnchor) : indépendant
     // de QCursor::pos(), donc valable avec des évènements synthétiques et un
@@ -180,6 +185,10 @@ protected:
     void drawForeground(QPainter* painter, const QRectF& rect) override;
 
 private:
+    void rememberView();
+    QTransform previousTransform_;
+    QPointF previousCenterMm_;
+    bool hasPreviousView_{false};
     friend class SpaceKeyFilter;
 
     void applyCenterZoom(double factor);

@@ -91,14 +91,38 @@ QPainterPath objectScenePath(const document::VectorObject& object) {
     return buildPath(object, Part::All);
 }
 
-std::vector<ObjectId> objectsAtPointMm(const document::Project& project, QPointF posMm) {
-    std::vector<ObjectId> hits;
+std::vector<ObjectId> objectsAtPointMm(const document::Project& project, QPointF posMm,
+                                       double toleranceMm, const ObjectAcceptor& accept) {
+    std::vector<ObjectId> contained;
+    std::vector<ObjectId> candidates; // objets acceptés, pour le repli par tolérance
     for (auto it = project.vector_objects.rbegin(); it != project.vector_objects.rend(); ++it) {
-        if (it->visible && objectScenePath(*it).contains(posMm)) {
-            hits.push_back(it->id);
+        if (!it->visible || (accept && !accept(*it))) {
+            continue;
+        }
+        if (objectScenePath(*it).contains(posMm)) {
+            contained.push_back(it->id);
+        } else {
+            candidates.push_back(it->id);
         }
     }
-    return hits;
+    if (!contained.empty() || !(toleranceMm > 0.0)) {
+        return contained; // un objet touché exactement l'emporte : la tolérance n'ajoute rien
+    }
+    // Repli : rien ne contient le point. Trait fictif centré sur le contour, pour qu'un tracé
+    // ouvert (aire nulle) ou un petit détail reste cliquable sans viser le pixel exact.
+    std::vector<ObjectId> near;
+    for (const ObjectId id : candidates) {
+        const QPainterPath path = objectScenePath(*project.findObject(id));
+        if (path.isEmpty()) {
+            continue;
+        }
+        QPainterPathStroker stroker;
+        stroker.setWidth(2.0 * toleranceMm);
+        if (stroker.createStroke(path).contains(posMm)) {
+            near.push_back(id);
+        }
+    }
+    return near;
 }
 
 std::vector<ObjectId> objectsInRectangleMm(const document::Project& project, const QRectF& rectMm,

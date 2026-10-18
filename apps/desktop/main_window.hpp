@@ -788,6 +788,13 @@ private:
     // de `ids` devient l'active. Rafraîchit l'affichage, les actions et le message d'état.
     void selectRegions(const std::vector<RegionId>& ids, SelectMode mode);
     void selectAllRegions();
+    // Ctrl+A : tous les objets visibles si la couche Vecteurs est affichée, sinon les régions.
+    void selectAllInActiveLayer();
+    // Objets sélectionnables sous le point (mêmes règles pour clic, Maj/Ctrl+clic et « dessous »).
+    [[nodiscard]] std::vector<ObjectId> selectableObjectsAt(QPointF posMm) const;
+    // Cyclage par re-clic au même point (HP-UX-020) : renvoie l'objet à sélectionner.
+    [[nodiscard]] ObjectId cycleTarget(const std::vector<ObjectId>& under, QPointF posMm);
+    void zoomToSelection();
     void selectRegionsWithSameColor();
     void selectNeighbourRegions();
     // Fusionne toutes les régions sélectionnées dans l'active (elle garde sa couleur) : un seul
@@ -1227,6 +1234,12 @@ private:
     QPointer<GesturesDialog> gesturesDialog_;
     QPointer<QuickStartDialog> quickStartDialog_;
     QPointer<QMenu> selectBelowMenu_;
+    QPointF cycleAnchorMm_;
+    std::vector<ObjectId> cycleIds_;
+    int cycleIndex_{0};
+    QAction* zoomSelectionAct_{nullptr};
+    QAction* zoomPreviousAct_{nullptr};
+    QAction* zoomActualAct_{nullptr};
     QActionGroup* navigationGroup_{nullptr};
     QAction* navOpenStitchAct_{nullptr};
     QAction* navTouchpadAct_{nullptr};
