@@ -8451,9 +8451,10 @@ void MainWindow::exportDst() {
     options.design_name = QFileInfo(file).completeBaseName().toStdString();
     const auto optimizations = dialog.optimizations();
     stitch_generation::TrimReport trimReport;
-    const auto written = project_io::export_machine_file(project_, format->id,
-                                                         std::filesystem::path(file.toStdWString()),
-                                                         options, optimizations, &trimReport);
+    auto companion = dialog.companion(); // HP-FMT-009 : fichier de couleurs voisin (DST, EXP)
+    const auto written = project_io::export_machine_file(
+        project_, format->id, std::filesystem::path(file.toStdWString()), options, optimizations,
+        &trimReport, &companion);
     if (!written) {
         showFriendlyError(
             this, tr("Export impossible"),
@@ -8477,6 +8478,13 @@ void MainWindow::exportDst() {
             .arg(writtenStitches);
     if (optimizations.reduce_trims) {
         message += tr(" Coupes supprimées : %1.").arg(trimReport.trims_removed);
+    }
+    if (!companion.written.empty()) {
+        message += tr(" Fichier de couleurs : %1.")
+                       .arg(QString::fromStdWString(companion.written.filename().wstring()));
+    } else if (!companion.error.empty()) {
+        message += tr(" Attention : le fichier de couleurs n'a pas pu être écrit (%1).")
+                       .arg(QString::fromStdString(companion.error));
     }
     offerRevealInFolder(file, message);
 }

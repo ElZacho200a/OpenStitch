@@ -22,6 +22,8 @@ constexpr const char* kSettingsFormat = "export/format";
 constexpr const char* kSettingsTrims = "export/trims";
 constexpr const char* kSettingsStops = "export/stops";
 constexpr const char* kSettingsColors = "export/colorChanges";
+constexpr const char* kSettingsCompanion = "export/colorCompanion";
+constexpr const char* kSettingsCompanionKind = "export/colorCompanionKind";
 constexpr const char* kSettingsReduceTrims = "export/reduceTrims";
 constexpr const char* kSettingsSameColour = "export/reduceTrimsSameColour";
 constexpr const char* kSettingsMaxBridge = "export/reduceTrimsMaxMm";
@@ -71,6 +73,24 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
     form->addRow(QString(), trims_);
     form->addRow(tr("Arrêts machine :"), stops_);
     form->addRow(QString(), colorChanges_);
+
+    // Le DST n'emporte que des arrêts couleur et l'EXP aucune couleur : un fichier compagnon voisin
+    // (même nom, extension .inf ou .csv) les conserve pour la réimportation et l'atelier.
+    companion_ = new QCheckBox(tr("Écrire aussi le fichier de couleurs à côté"), this);
+    companion_->setObjectName(QStringLiteral("check_exportColorCompanion"));
+    companion_->setToolTip(
+        tr("Écrit la liste des couleurs de fil (un fil par bloc de couleur) dans un second "
+           "fichier, même nom, à côté du motif. OpenStitch le relit à l'import du DST ou de "
+           "l'EXP. Le .csv s'ouvre dans un tableur ; la structure du .inf n'est pas validée "
+           "par un logiciel tiers."));
+    companionKind_ = new QComboBox(this);
+    companionKind_->setObjectName(QStringLiteral("combo_exportColorCompanionKind"));
+    companionKind_->addItem(tr("Tableur lisible (.csv)"),
+                            static_cast<int>(formats::CompanionKind::Csv));
+    companionKind_->addItem(tr("Binaire compact (.inf)"),
+                            static_cast<int>(formats::CompanionKind::Inf));
+    form->addRow(QString(), companion_);
+    form->addRow(tr("Format du fichier de couleurs :"), companionKind_);
 
     // Point de départ de la machine : ne change que le saut d'approche initial, jamais l'ordre
     // des régions (utile pour broder en plusieurs étapes, en repositionnant le cadre).
@@ -174,6 +194,13 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
     if (const int idx = formatBox_->findData(wanted); idx >= 0) {
         formatBox_->setCurrentIndex(idx);
     }
+    companion_->setChecked(settings.value(kSettingsCompanion, false).toBool());
+    if (const int idx = companionKind_->findData(
+            settings.value(kSettingsCompanionKind, static_cast<int>(formats::CompanionKind::Csv))
+                .toInt());
+        idx >= 0) {
+        companionKind_->setCurrentIndex(idx);
+    }
     trims_->setChecked(settings.value(kSettingsTrims, true).toBool());
     colorChanges_->setChecked(settings.value(kSettingsColors, true).toBool());
     if (const int idx = stops_->findData(settings.value(kSettingsStops, 0).toInt()); idx >= 0) {
@@ -190,6 +217,7 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
 
     const auto onChange = [this] { refresh(); };
     connect(formatBox_, &QComboBox::currentIndexChanged, this, onChange);
+    connect(companion_, &QCheckBox::toggled, this, onChange);
     connect(trims_, &QCheckBox::toggled, this, onChange);
     connect(colorChanges_, &QCheckBox::toggled, this, onChange);
     connect(stops_, &QComboBox::currentIndexChanged, this, onChange);
@@ -206,6 +234,8 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
     connect(this, &QDialog::accepted, this, [this] {
         QSettings s;
         s.setValue(kSettingsFormat, formatBox_->currentData().toString());
+        s.setValue(kSettingsCompanion, companion_->isChecked());
+        s.setValue(kSettingsCompanionKind, companionKind_->currentData().toInt());
         s.setValue(kSettingsTrims, trims_->isChecked());
         s.setValue(kSettingsColors, colorChanges_->isChecked());
         s.setValue(kSettingsStops, stops_->currentData().toInt());
@@ -237,6 +267,14 @@ formats::MachineExportOptions MachineExportDialog::options() const {
     return o;
 }
 
+project_io::ColorCompanionExport MachineExportDialog::companion() const {
+    project_io::ColorCompanionExport c;
+    const auto* f = format();
+    c.write = companion_->isChecked() && f != nullptr && !f->carries_colors;
+    c.kind = static_cast<formats::CompanionKind>(companionKind_->currentData().toInt());
+    return c;
+}
+
 project_io::ExportOptimizations MachineExportDialog::optimizations() const {
     project_io::ExportOptimizations o;
     o.reduce_trims = reduceTrims_->isChecked();
@@ -261,6 +299,9 @@ void MachineExportDialog::refresh() {
     trims_->setEnabled(!dst);
     stops_->setEnabled(!dst);
     colorChanges_->setEnabled(!dst);
+    // Réservé aux formats qui n'emportent pas de vraies couleurs (DST, EXP).
+    companion_->setEnabled(!f->carries_colors);
+    companionKind_->setEnabled(!f->carries_colors && companion_->isChecked());
     const bool customStart = static_cast<formats::StartMode>(startMode_->currentData().toInt()) ==
                              formats::StartMode::Custom;
     startX_->setEnabled(customStart);

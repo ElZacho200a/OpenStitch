@@ -989,7 +989,8 @@ int run_digitize(const DigitizeArgs& a) {
 // permet d'inspecter les coupes et la fin du fichier sans passer par l'interface.
 int run_osp2dst(const std::string& ospPath, const std::string& outDst, bool noClobber,
                 const openstitch::formats::MachineExportOptions& machineOptions,
-                const openstitch::project_io::ExportOptimizations& optimizations) {
+                const openstitch::project_io::ExportOptimizations& optimizations,
+                const std::string& colorFile) {
     using namespace openstitch;
     if (const auto refused = check_output_path("osp2dst", outDst, noClobber)) {
         return *refused;
@@ -1011,12 +1012,26 @@ int run_osp2dst(const std::string& ospPath, const std::string& outDst, bool noCl
         }
     }
     stitch_generation::TrimReport report;
-    const auto written = project_io::export_machine_file(
-        *project, formatId, std::filesystem::path(outDst), machineOptions, optimizations, &report);
+    // HP-FMT-009 / HP-FMT-005 : fichier compagnon de couleurs (DST, EXP), même nom, à côté.
+    project_io::ColorCompanionExport companion;
+    companion.write = !colorFile.empty();
+    companion.kind = colorFile == "inf" ? formats::CompanionKind::Inf : formats::CompanionKind::Csv;
+    const auto written =
+        project_io::export_machine_file(*project, formatId, std::filesystem::path(outDst),
+                                        machineOptions, optimizations, &report, &companion);
     if (!written) {
         return cli_error("osp2dst", written.error().message);
     }
     fmt::print("{} écrit : {}\n", formats::find_format(formatId)->display_name, outDst);
+    if (!companion.written.empty()) {
+        fmt::print("Fichier de couleurs écrit : {}\n", companion.written.string());
+    } else if (!companion.error.empty()) {
+        return cli_error("osp2dst",
+                         "le motif est écrit mais pas le fichier de couleurs : " + companion.error);
+    } else if (companion.write) {
+        fmt::print("Fichier de couleurs non écrit : le format {} porte déjà ses couleurs\n",
+                   formats::find_format(formatId)->display_name);
+    }
     if (optimizations.reduce_trims) {
         fmt::print("Coupes : {} supprimée(s) sur {} écart(s) candidat(s) ({} saut(s) recouvert(s), "
                    "{} pont(s) cousu(s), {:.1f} mm de fil ajouté)\n",
@@ -1753,6 +1768,12 @@ int main(int argc, char** argv) {
     od_cmd->add_flag("--no-color-changes", od_no_color_changes,
                      "Supprime les changements de couleur (motif monochrome)");
     std::string od_start = "first";
+    std::string od_color_file;
+    od_cmd
+        ->add_option("--color-file", od_color_file,
+                     "Écrit aussi le fichier de couleurs à côté d'un DST ou d'un EXP : csv "
+                     "(tableur) ou inf (binaire) ; même nom, extension remplacée")
+        ->check(CLI::IsMember({"csv", "inf"}));
     od_cmd->add_option("--start", od_start,
                        "Point de départ machine : first (premier point, défaut), center (centre "
                        "de la broderie) ou X,Y en mm dans le repère du document ; l'ordre des "
@@ -1881,7 +1902,8 @@ int main(int argc, char** argv) {
         }
         optimizations.hidden_travel.max_bridge_length = openstitch::Micrometers{
             static_cast<std::int32_t>(std::lround(od_reduce_max_mm * 1000.0))};
-        return run_osp2dst(od_in, od_out, od_noclobber, machineOptions, optimizations);
+        return run_osp2dst(od_in, od_out, od_noclobber, machineOptions, optimizations,
+                           od_color_file);
     }
     if (os_cmd->parsed()) {
         return run_osp2svg(os_in, os_out, os_outlines, os_only, os_noclobber);

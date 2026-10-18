@@ -64,7 +64,8 @@ Result<void> export_machine_file(const document::Project& project, const std::st
                                  const std::filesystem::path& path,
                                  const formats::MachineExportOptions& options,
                                  const ExportOptimizations& optimizations,
-                                 stitch_generation::TrimReport* report) {
+                                 stitch_generation::TrimReport* report,
+                                 ColorCompanionExport* companion) {
     const auto* info = formats::find_format(format_id);
     if (info == nullptr || !info->can_write || info->encode == nullptr) {
         return fail(ErrorCategory::UnsupportedFormat,
@@ -79,6 +80,12 @@ Result<void> export_machine_file(const document::Project& project, const std::st
     }
     auto sequence = std::move(finished->sequence);
     formats::MachineExportOptions effective = options;
+    std::vector<formats::ThreadColor> companionColors;
+    if (companion != nullptr && companion->write && !info->carries_colors) {
+        for (const auto& block : stitch_analysis::color_blocks(project, sequence)) {
+            companionColors.push_back(block.rgb);
+        }
+    }
     if (effective.block_colors.empty() && info->carries_colors) {
         for (const auto& block : stitch_analysis::color_blocks(project, sequence)) {
             effective.block_colors.push_back(block.rgb);
@@ -124,6 +131,19 @@ Result<void> export_machine_file(const document::Project& project, const std::st
                         detail::path_utf8(tmp),
                     ec.message());
     }
+    if (companion != nullptr) {
+        companion->written.clear();
+        companion->error.clear();
+        if (!companionColors.empty()) {
+            const auto wroteCompanion =
+                formats::write_color_companion_file(path, companionColors, companion->kind);
+            if (wroteCompanion) {
+                companion->written = formats::companion_path(path, companion->kind);
+            } else {
+                companion->error = wroteCompanion.error().message;
+            }
+        }
+    }
     return {};
 }
 
@@ -162,6 +182,17 @@ Result<document::ImportedDesign> import_machine_file(const std::filesystem::path
     document::ImportedDesign imported;
     imported.source_format = info->id;
     imported.color_blocks = stitch_analysis::color_blocks(document::Project{}, design.sequence);
+    // Fichier compagnon de couleurs (HP-FMT-009) : DST/EXP ne portent pas de couleurs de fil.
+    // Un compagnon absent ou illisible n'empêche jamais l'import (couleurs par défaut).
+    if (!info->carries_colors && design.block_colors.empty()) {
+        if (const auto companion = formats::read_color_companion_for(path);
+            companion && companion->has_value()) {
+            const auto& colors = **companion;
+            for (std::size_t i = 0; i < imported.color_blocks.size() && i < colors.size(); ++i) {
+                imported.color_blocks[i].rgb = colors[i];
+            }
+        }
+    }
     // Couleurs lues dans le fichier (PES, JEF) : le bloc dont la première commande suit k
     // changements de couleur/arrêts reçoit la couleur du k-ième segment.
     if (!design.block_colors.empty()) {
