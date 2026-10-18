@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <map>
 
+#include "openstitch/stitch_analysis/density_map.hpp"
+
 namespace openstitch::stitch_analysis {
 
 namespace {
@@ -328,6 +330,82 @@ AnalysisReport analyze_detailed(const stitch::StitchSequence& sequence,
                 hot.location, hot.object,
                 "Réduisez le chevauchement des objets, retirez une sous-couche ou supprimez "
                 "le remplissage caché sous un autre objet.");
+        }
+    }
+
+    // --- HP-PROD-007 : règles par objet ---------------------------------------
+    {
+        struct ObjectInfo {
+            bool hasBox{false};
+            Vec2um min{};
+            Vec2um max{};
+            Vec2um first{};
+            std::size_t stitches{0};
+            std::size_t locks{0};
+        };
+        std::map<std::uint64_t, ObjectInfo> objects; // ordre d'identifiant : déterministe
+        for (const auto& cmd : sequence.commands) {
+            if (cmd.type != stitch::CommandType::Stitch || cmd.source.value == 0) {
+                continue;
+            }
+            ObjectInfo& o = objects[cmd.source.value];
+            if (o.stitches == 0) {
+                o.first = cmd.pos;
+            }
+            ++o.stitches;
+            if (cmd.pass == stitch::StitchPass::Lock) {
+                ++o.locks;
+                continue;
+            }
+            if (!o.hasBox) {
+                o.min = o.max = cmd.pos;
+                o.hasBox = true;
+            } else {
+                o.min.x = std::min(o.min.x, cmd.pos.x);
+                o.min.y = std::min(o.min.y, cmd.pos.y);
+                o.max.x = std::max(o.max.x, cmd.pos.x);
+                o.max.y = std::max(o.max.y, cmd.pos.y);
+            }
+        }
+        for (const auto& [id, o] : objects) {
+            if (options.min_object_size.value > 0 && o.hasBox &&
+                (o.max.x - o.min.x).value < options.min_object_size.value &&
+                (o.max.y - o.min.y).value < options.min_object_size.value) {
+                add(Severity::Info, "detail-trop-petit",
+                    "Objet de " + format_mm_fr(static_cast<double>((o.max.x - o.min.x).value)) +
+                        " x " + format_mm_fr(static_cast<double>((o.max.y - o.min.y).value)) +
+                        " mm : moins de " +
+                        format_mm_fr(static_cast<double>(options.min_object_size.value)) +
+                        " mm, le détail risque de se perdre dans l'épaisseur du fil.",
+                    o.first, ObjectId{id},
+                    "Agrandissez l'objet ou supprimez-le s'il n'apporte rien au dessin.");
+            }
+            if (options.check_lock_stitches && o.locks == 0) {
+                add(Severity::Info, "objet-sans-arret",
+                    "Objet sans point d'arrêt : les fils du début et de la fin peuvent se défaire.",
+                    o.first, ObjectId{id}, "Activez les points d'arrêt dans les finitions.");
+            }
+        }
+    }
+
+    if (options.max_trims > 0 && stats.trims > options.max_trims) {
+        add(Severity::Warning, "trop-de-coupes",
+            "Le motif compte " + std::to_string(stats.trims) + " coupes (plus de " +
+                std::to_string(options.max_trims) + ") : temps de broderie et fils à rentrer.",
+            {}, {},
+            "Regroupez les objets de même couleur ou rapprochez-les pour limiter les coupes.");
+    }
+
+    if (options.max_penetrations_per_mm2 > 0.0) {
+        DensityOptions density;
+        density.max_penetrations_per_mm2 = options.max_penetrations_per_mm2;
+        for (const auto& hot : find_density_hotspots(sequence, density)) {
+            add(Severity::Warning, "densite-excessive",
+                "Zone trop dense : jusqu'à " + format_mm_fr(hot.max_penetrations_per_mm2 * 1000.0) +
+                    " pénétrations/mm² sur environ " + std::to_string(std::lround(hot.area_mm2)) +
+                    " mm² : risque de casse du fil.",
+                hot.center, hot.object,
+                "Augmentez l'espacement des rangées, retirez une sous-couche ou un recouvrement.");
         }
     }
 

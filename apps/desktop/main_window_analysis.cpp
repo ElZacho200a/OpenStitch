@@ -23,6 +23,7 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <type_traits>
@@ -31,6 +32,7 @@
 #include "app_theme.hpp"
 #include "busy_indicator.hpp"
 #include "canvas_view.hpp"
+#include "density_overlay.hpp"
 #include "document_panel.hpp"
 #include "font_catalog.hpp"
 #include "main_window.hpp"
@@ -42,6 +44,7 @@
 #include "openstitch/stitch_analysis/analyze.hpp"
 #include "openstitch/stitch_analysis/text_rules.hpp"
 #include "properties_panel.hpp"
+#include "text_dialog.hpp"
 
 namespace openstitch::desktop {
 
@@ -75,6 +78,39 @@ QString severityWord(int rank) {
     return rank == 2   ? QObject::tr("Erreur")
            : rank == 1 ? QObject::tr("Avertissement")
                        : QObject::tr("Information");
+}
+
+// HP-PROD-007 : `trop-de-coupes` et `densite-excessive` sont désactivées par défaut dans le cœur
+// (`analyze_project` n'a pas d'options). Quand l'utilisateur les active dans le panneau, on les
+// évalue avec `analyze_detailed` (mêmes options de projet + les deux seuils) et on ne reprend
+// que leurs constats, ajoutés au rapport.
+void addOptionalRuleFindings(const document::Project& project, const stitch::StitchSequence& seq,
+                             stitch_analysis::AnalysisReport& report) {
+    const ExtraRuleSettings extra = ExtraRuleSettings::load();
+    if (!extra.trimsEnabled && !extra.densityEnabled) {
+        return;
+    }
+    stitch_analysis::AnalysisOptions options = stitch_analysis::options_from_project(project);
+    options.max_trims = extra.trimsEnabled ? static_cast<std::size_t>(extra.maxTrims) : 0;
+    options.max_penetrations_per_mm2 = extra.densityEnabled ? extra.maxDensity : 0.0;
+    const auto wanted = [](const std::string& category) {
+        return category == "trop-de-coupes" || category == "densite-excessive";
+    };
+    auto detailed = stitch_analysis::analyze_detailed(seq, options);
+    for (auto& f : detailed.findings) {
+        if (wanted(f.category)) {
+            report.findings.push_back(std::move(f));
+        }
+    }
+    for (const auto& [category, hidden] : detailed.suppressed) {
+        if (wanted(category)) {
+            report.suppressed[category] = hidden;
+        }
+    }
+    std::stable_sort(report.findings.begin(), report.findings.end(),
+                     [](const stitch_analysis::Finding& a, const stitch_analysis::Finding& b) {
+                         return a.severity > b.severity;
+                     });
 }
 
 QString severityGlyph(int rank) {
@@ -208,7 +244,8 @@ void MainWindow::buildAnalysisPanel() {
             // Comme l'édition du texte : repartir de la position visible des lettres.
             QString ignored;
             if (const auto font = FontCatalog::instance().load(text.font, &ignored)) {
-                if (const auto moved = lettering::text_displacement(project_, text, *font)) {
+                if (const auto moved = lettering::text_displacement(project_, text, *font,
+                                                                    layoutOptionsFor(text))) {
                     text.origin = text.origin + *moved;
                 }
             }
@@ -470,7 +507,8 @@ void MainWindow::runAnalysisInternal(bool explicitRequest) {
         return;
     }
     // Point d'entrée unique : options du projet, cadre, règles de texte, réglages hors limites.
-    const auto report = stitch_analysis::analyze_project(project_, *sequence_);
+    auto report = stitch_analysis::analyze_project(project_, *sequence_);
+    addOptionalRuleFindings(project_, *sequence_, report);
 
     analysisList_->clear();
     if (auto* fix = analysisDock_->findChild<QPushButton*>(QStringLiteral("analysisFixButton"))) {

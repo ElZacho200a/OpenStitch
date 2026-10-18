@@ -21,7 +21,20 @@ Ne committer / pousser que sur demande explicite de l'utilisateur. Sur
    changé : `powershell -File docs/scripts/build-docs.ps1` (met à jour
    `docs/build/OpenStitch-Studio-Documentation.pdf` et
    `documentation-report.md`, à committer avec).
-5. `git status` : ne pas embarquer les artefacts locaux (`out.svg`,
+5. **Roadmap à jour (bloquant, tout travail, pas seulement en mode piloté)** :
+   `docs/roadmap-parite-hatch.md` fait partie du même commit. Statut de
+   l'entrée `HP-XXX-NNN` touchée (`☑ Fait (date, hash)` ou `◐ Partiel` +
+   « Livré : … / Reste : … »), entrée ajoutée pour tout manque découvert face
+   à Hatch, ligne au journal (§28), et `docs/source/limitations.md` /
+   `roadmap.md` si le tableau des fonctionnalités change. Un correctif ou un
+   refactor sans entrée concernée l'écrit dans le message de commit
+   (« roadmap : aucune entrée concernée »). Pas de commit sans l'un des deux.
+6. **Câblage bureau (bloquant sauf demande explicite)** : toute fonctionnalité ajoutée
+   dans le cœur ou le CLI doit aussi être accessible dans `apps/desktop` (action,
+   dialogue ou outil + `ICommand` + test QTest). Sinon le commit le dit
+   (« bureau : non câblé, demandé par l'utilisateur » ou entrée laissée `◐` avec
+   « Reste : câblage bureau » dans la roadmap).
+7. `git status` : ne pas embarquer les artefacts locaux (`out.svg`,
    `*-debug.svg` à la racine, `aqtinstall.log`, `sample/` non suivi,
    `.venv*`, fichiers utilisateur type GISTRE). Stager fichier par fichier,
    jamais `git add -A` aveugle.

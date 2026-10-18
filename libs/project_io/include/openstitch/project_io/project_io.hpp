@@ -36,8 +36,14 @@ inline constexpr int kSchemaVersion = 6;
 // le squelette ; sinon il reste en v6 et lisible par les versions précédentes.
 inline constexpr int kSchemaVersionAutoSatinStrategy = 7;
 
+// v7 -> v8 : typographie fine d'un texte (`kerningPairs` : crénage manuel par paire, HP-TXT-007 ;
+// `ligatures`, HP-TXT-012). Un lecteur v7 ignorerait ces clés et recomposerait le texte AUTREMENT
+// à l'édition : le fichier n'est écrit en v8 QUE si un texte porte l'un de ces réglages ; sinon
+// il garde sa version antérieure, octet pour octet.
+inline constexpr int kSchemaVersionTextTypography = 8;
+
 // Plus récente version que cette version sait lire.
-inline constexpr int kMaxReadableSchemaVersion = kSchemaVersionAutoSatinStrategy;
+inline constexpr int kMaxReadableSchemaVersion = kSchemaVersionTextTypography;
 
 // Enregistre le projet dans une archive .osp (ZIP : project.json + image
 // originale PNG + carte de segmentation binaire). Écriture atomique :

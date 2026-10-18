@@ -435,6 +435,20 @@ MainWindow::MainWindow() {
     buildFilterPanel();
     buildHistoryPanel();
     buildThreadPanel();
+    // [cablage-A:debut]
+    // [cablage-A:fin]
+    // [cablage-B:debut]
+    buildVectorToolsMenu();
+    // [cablage-B:fin]
+    // [cablage-C:debut]
+    buildMeasureTool();
+    buildEyedropperTool();
+    // [cablage-C:fin]
+    // [cablage-D:debut]
+    // [cablage-D:fin]
+    // [cablage-E:debut]
+    buildDensityFeature();
+    // [cablage-E:fin]
     panelsMenu_->addAction(historyDock_->toggleViewAction());
     for (auto* d :
          {documentDock_, propertiesDock_, workflowDock_, orderDock_, filterDock_, analysisDock_}) {
@@ -4048,6 +4062,7 @@ void MainWindow::renderStitches() {
     stitchItems_.clear();
     simMarker_ = nullptr;
     simWalkValid_ = false;
+    refreshDensityOverlay(); // HP-VIEW-005 (main_window_density.cpp)
 
     if (showStitchesAct_ == nullptr || !showStitchesAct_->isChecked() || !sequence_) {
         return;
@@ -6417,6 +6432,7 @@ void MainWindow::buildToolPalette() {
     if (shapeMenu_ != nullptr) {
         shapeMenu_->addAction(toolCutAct_);
     }
+    attachMeasureEyedropperTools();
     toolSelectAct_->setChecked(true);
 
     toolPalette_->addSeparator();
@@ -6670,6 +6686,7 @@ void MainWindow::setTool(Tool tool) {
             tr("Cliquez les points de la ligne de rupture, d'un bord de la forme à l'autre — "
                "Entrée/double-clic pour terminer, Échap pour annuler."));
     }
+    syncMeasureEyedropperTool(tool);
     updateDrawActionsState();
     updateInteractionContext();
     hideHoverHighlight();
@@ -8441,9 +8458,10 @@ void MainWindow::exportDst() {
     options.design_name = QFileInfo(file).completeBaseName().toStdString();
     const auto optimizations = dialog.optimizations();
     stitch_generation::TrimReport trimReport;
-    const auto written = project_io::export_machine_file(project_, format->id,
-                                                         std::filesystem::path(file.toStdWString()),
-                                                         options, optimizations, &trimReport);
+    auto companion = dialog.companion(); // HP-FMT-009 : fichier de couleurs voisin (DST, EXP)
+    const auto written = project_io::export_machine_file(
+        project_, format->id, std::filesystem::path(file.toStdWString()), options, optimizations,
+        &trimReport, &companion);
     if (!written) {
         showFriendlyError(
             this, tr("Export impossible"),
@@ -8467,6 +8485,13 @@ void MainWindow::exportDst() {
             .arg(writtenStitches);
     if (optimizations.reduce_trims) {
         message += tr(" Coupes supprimées : %1.").arg(trimReport.trims_removed);
+    }
+    if (!companion.written.empty()) {
+        message += tr(" Fichier de couleurs : %1.")
+                       .arg(QString::fromStdWString(companion.written.filename().wstring()));
+    } else if (!companion.error.empty()) {
+        message += tr(" Attention : le fichier de couleurs n'a pas pu être écrit (%1).")
+                       .arg(QString::fromStdString(companion.error));
     }
     offerRevealInFolder(file, message);
 }
@@ -8625,6 +8650,13 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
     }
     if (currentTool_ == Tool::Text) {
         placeTextAt(posMm);
+        return;
+    }
+    if (currentTool_ == Tool::Measure) {
+        return; // la règle passe par measureDragMm/measureFinishedMm, jamais par un clic
+    }
+    if (currentTool_ == Tool::Eyedropper) {
+        eyedropperAt(posMm);
         return;
     }
     if (drawingDirectionGuide()) {

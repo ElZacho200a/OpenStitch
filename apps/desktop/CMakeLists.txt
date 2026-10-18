@@ -31,6 +31,27 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_analysis.cpp
     main_window_realistic.cpp
     main_window_production.cpp
+    # [cablage-A:debut]
+    main_window_export_image.cpp
+    export_image.cpp
+    export_image.hpp
+    export_image_dialog.cpp
+    export_image_dialog.hpp
+    # [cablage-A:fin]
+    # [cablage-B:debut]
+    main_window_vector_tools.cpp
+    # [cablage-B:fin]
+    # [cablage-C:debut]
+    main_window_measure.cpp
+    main_window_eyedropper.cpp
+    # [cablage-C:fin]
+    # [cablage-D:debut]
+    # [cablage-D:fin]
+    # [cablage-E:debut]
+    density_overlay.cpp
+    density_overlay.hpp
+    main_window_density.cpp
+    # [cablage-E:fin]
     production_dialog.cpp
     production_dialog.hpp
     realistic_preferences.cpp

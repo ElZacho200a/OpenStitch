@@ -919,6 +919,20 @@ json text_to_json(const document::TextObject& t) {
     j["fill"] = static_cast<int>(t.fill);
     j["maxSatinWidth"] = t.max_satin_width.value;
     j["density"] = t.density.value;
+    // Typographie fine (schéma v8) : écrite SEULEMENT si elle sort des valeurs par défaut,
+    // pour que les textes existants se réécrivent à l'identique.
+    if (!t.kerning_pairs.empty()) {
+        json pairs = json::array();
+        for (const auto& p : t.kerning_pairs) {
+            pairs.push_back({{"left", static_cast<std::uint32_t>(p.left)},
+                             {"right", static_cast<std::uint32_t>(p.right)},
+                             {"adjust", p.adjust.value}});
+        }
+        j["kerningPairs"] = std::move(pairs);
+    }
+    if (t.ligatures) {
+        j["ligatures"] = true;
+    }
     return j;
 }
 
@@ -948,6 +962,18 @@ document::TextObject text_from_json(const json& j) {
     t.fill = static_cast<document::TextFill>(std::clamp(j.value("fill", 0), 0, 3));
     t.max_satin_width = Micrometers{j.value("maxSatinWidth", d.max_satin_width.value)};
     t.density = Micrometers{j.value("density", d.density.value)};
+    if (const auto it = j.find("kerningPairs"); it != j.end() && it->is_array()) {
+        for (const auto& pj : *it) {
+            document::KerningPair pair;
+            pair.left = static_cast<char32_t>(pj.value("left", 0U));
+            pair.right = static_cast<char32_t>(pj.value("right", 0U));
+            pair.adjust = Micrometers{pj.value("adjust", 0)};
+            if (pair.left != 0 && pair.right != 0) {
+                t.kerning_pairs.push_back(pair);
+            }
+        }
+    }
+    t.ligatures = j.value("ligatures", d.ligatures);
     return t;
 }
 

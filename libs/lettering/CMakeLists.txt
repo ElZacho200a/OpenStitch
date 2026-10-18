@@ -3,6 +3,7 @@ find_package(Freetype REQUIRED)
 add_library(openstitch_lettering
     src/font.cpp
     src/layout.cpp
+    src/unicode.cpp
     src/build.cpp
 )
 add_library(openstitch::lettering ALIAS openstitch_lettering)

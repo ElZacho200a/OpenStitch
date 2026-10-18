@@ -51,6 +51,14 @@ Le fichier a été écrit le 2026-09-22 ; le code a pu bouger depuis.
 
 ## 3. Réaliser avec les autres skills
 
+**Câblage bureau obligatoire.** Sauf demande explicite contraire de l'utilisateur,
+une fonctionnalité n'est livrée que si elle est **câblée dans le bureau**
+(`apps/desktop` : menu ou outil, dialogue, panneau, annulation par `ICommand`,
+test QTest headless) en plus du cœur et du CLI. Une entrée dont seul le cœur
+existe reste `◐ Partiel` avec « Reste : câblage bureau » : ne jamais la marquer
+`☑ Fait`, et ne pas choisir une autre entrée tant que celle-ci n'est pas câblée,
+sauf si le câblage dépend d'un travail humain ou d'une autre entrée (le noter).
+
 - Doc d'un sous-système : `openstitch-docs` (toujours via `search_docs`).
 - Nouveau paramètre / type de point / champ persistant : `openstitch-stitch-param`.
 - Défaut trouvé en route : `openstitch-bugfix`.
@@ -65,7 +73,9 @@ les amender dans le fichier en expliquant pourquoi — ne pas les ignorer.
 
 ## 4. Mettre à jour la roadmap (obligatoire)
 
-Dans le même commit que le code :
+Cette obligation vaut **pour tout travail qui aboutit à un commit**, piloté
+ou sur consigne explicite (elle est aussi vérifiée par `openstitch-commit`
+et rappelée par le hook de session). Dans le même commit que le code :
 
 - Statut de l'entrée : `☑ Fait (AAAA-MM-JJ, <hash court>)` + ligne
   « Livré : … » (ce qui existe maintenant, limites restantes). Ne jamais

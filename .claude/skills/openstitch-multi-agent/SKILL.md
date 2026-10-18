@@ -44,6 +44,12 @@ jetons et rafraîchie sur `AppTheme::changed`).
   worktree reconfigure son propre `build/` (la configuration est rapide grâce au
   cache vcpkg, la première compilation est longue : prévoir le temps).
 
+**Câblage bureau.** Sauf demande contraire, chaque unité confiée à un agent inclut le
+câblage dans `apps/desktop` (pas seulement le cœur). Si le périmètre de fichiers
+interdit `main_window.*`, poser d'abord des zones balisées `[cablage-X:debut/fin]`
+(hpp, constructeur, CMake, tests), les commiter, et demander à chaque agent de
+`git merge --ff-only <commit>` avant de commencer (un worktree part de `main`).
+
 ## 3. Pendant que les agents travaillent
 
 Le chef de lot traite les fichiers de convergence et ce que personne d'autre ne

@@ -161,7 +161,26 @@ entre les deux marqueurs.
 | N2 | Édition de nœuds | Maj + glisser | Verrouiller l'axe |
 | N2b | Édition de nœuds | Ctrl + glisser | Suspendre l'accroche |
 | N4 | Édition de nœuds | Suppr | Supprimer les nœuds sélectionnés |
+| V1 | Règle | Glisser | Mesurer une distance (règle temporaire) |
+| V2 | Pipette | Clic | Échantillonner la couleur et choisir un fil |
 <!-- GESTURES:END -->
+
+### Outils Règle et Pipette
+
+- **Règle (Q)** : cliquez-glissez sur le canevas ; une règle temporaire affiche la
+  distance en mm, les écarts Δx / Δy et l'angle (0° = est, sens antihoraire). Le
+  résultat est repris dans la barre d'état et copiable (bouton **Copier la mesure**
+  de la palette d'outils). La mesure est purement visuelle : aucune commande n'est
+  créée, rien n'entre dans l'historique d'annulation, et la règle disparaît quand
+  on change d'outil (Échap interrompt une mesure en cours). Le calcul vient de
+  `geometry::measure_segment`.
+- **Pipette (I)** : cliquez sur l'image affichée ; la couleur est moyennée sur
+  5 × 5 pixels (`thread_palette::pick_thread`) et un petit menu propose les cinq fils
+  les plus proches du nuancier choisi dans le panneau Fils (écart CIEDE2000). Choisir
+  un fil l'assigne aux objets de broderie sélectionnés par la commande annulable
+  `SetObjectThreadCommand` ; le menu propose aussi la couleur échantillonnée en
+  couleur libre et, si le clic tombe sur une forme déjà brodée, de reprendre le fil de
+  cet objet. Sans objet de broderie sélectionné, les entrées sont grisées.
 
 Précisions sur les gestes du tableau :
 
@@ -205,8 +224,9 @@ Précisions sur les gestes du tableau :
 | Ouvrir un projet… | — | Recharge un `.osp` |
 | Récents | — | Sous-menu des 10 derniers projets ouverts ou enregistrés (voir ci-dessous) |
 | Vider la liste des récents | — | Efface la liste |
-| Exporter une broderie machine… | Ctrl+E | Dialogue : format (DST, PES, JEF, EXP), options (coupes, arrêts, changements de couleur) et résumé pré-export (dimensions, points, analyse, limites du format) ; puis le fichier, avec l'extension du format (points uniquement) |
-| Importer une broderie machine… | — | Relit un `.dst`, `.pes`, `.jef` ou `.exp` comme séquence de points, avec les couleurs de fil pour PES et JEF (propose d'enregistrer le projet en cours) ; le glisser-déposer accepte les mêmes extensions |
+| Exporter une broderie machine… | Ctrl+E | Dialogue : format (DST, PES, JEF, EXP), options (coupes, arrêts, changements de couleur) et résumé pré-export (dimensions, points, analyse, limites du format) ; puis le fichier, avec l'extension du format (points uniquement). Pour un **DST** ou un **EXP**, la case « Écrire aussi le fichier de couleurs à côté » écrit un second fichier de même nom (`.csv` lisible dans un tableur, ou `.inf` binaire) qui liste les fils, un par bloc de couleur |
+| Importer une broderie machine… | — | Relit un `.dst`, `.pes`, `.jef` ou `.exp` comme séquence de points, avec les couleurs de fil pour PES et JEF, ou pour DST et EXP celles d'un fichier de couleurs voisin (`.inf` puis `.csv`, même nom) s'il existe ; un fichier de couleurs absent ou invalide n'empêche jamais l'import (propose d'enregistrer le projet en cours) ; le glisser-déposer accepte les mêmes extensions |
+| Exporter l'image (PNG, JPEG)… | — | Image du motif brodé pour un devis ou un client (HP-FMT-011). Dialogue : résolution (px/mm), marge, fond de tissu opaque ou transparent (PNG), qualité Rapide ou Haute, format PNG ou JPEG (qualité réglable) ; la taille de l'image en pixels est annoncée et la résolution est abaissée si l'image serait trop grande. Le rendu est celui du rendu réaliste (fils texturés) de la séquence effective, avec la couleur des objets ; un gros motif est calculé derrière une fenêtre d'attente. L'écriture est atomique |
 | Fiche de production… | — | Aperçu, impression ou export PDF A4 d'une fiche (dimensions, points, temps estimé, blocs de couleur, avertissements, notes) ; voir [fiche de production](production-sheet.md) |
 | Importer un DXF… / Exporter en DXF… | — | Échange de contours vectoriels avec un logiciel de dessin (les points ne sont pas concernés) |
 | Quitter | Ctrl+Q | Ferme l'application |
@@ -233,6 +253,13 @@ de hauteur indépendante était ignoré). Le dossier du dernier import est mémo
 **Export DST** : un **résumé** (dimensions, points, sauts,
 coupes, changements de couleur, fil estimé, cadre, dépassement éventuel) est
 présenté avant écriture, avec un rappel que le DST ne conserve pas les objets.
+**Fichier de couleurs** (HP-FMT-009, HP-FMT-005) : le DST n'emporte que des arrêts
+couleur et l'EXP aucune couleur ; le fichier compagnon écrit à côté conserve les RVB des fils
+dans l'ordre des blocs. Il n'est écrit que sur demande, jamais pour PES/JEF (qui portent leurs
+couleurs), et un échec d'écriture du compagnon est signalé sans invalider le motif déjà écrit.
+En ligne de commande : `openstitch-cli osp2dst projet.osp motif.dst --color-file csv|inf`.
+La structure du `.inf` n'est pas validée par un logiciel tiers (voir
+[formats PES, JEF, EXP](formats-pes-jef-exp.md)) ; le `.csv` est le choix prudent.
 
 **Enregistrer** : le document retient le fichier `.osp` auquel il est rattaché
 (celui qu'on vient d'ouvrir ou d'enregistrer). Ctrl+S réécrit ce fichier
@@ -502,6 +529,17 @@ d'annulation** et garde les objets de broderie de la forme conservée.
   broderie** (tatami, directionnel, auto-satin ; les satins à rails et les retouches manuelles
   point par point ne sont pas copiés). La coupe retire une bande de 0,02 mm, sans effet sur la
   couture.
+- **Lisser…** — pour les formes sélectionnées, réduit le nombre de nœuds et remplace les parties
+  arrondies par des courbes de Bézier, sans s'écarter du tracé d'origine de plus de la tolérance
+  demandée (0,2 mm par défaut ; coins francs et extrémités des tracés ouverts conservés). Une
+  forme déjà lisse ou trop simple est laissée telle quelle ; si rien ne change, un message le dit.
+- **Convertir en courbes** — arrondit les sommets doux des polygones sélectionnés en courbes qui
+  passent par les mêmes points ; les coins francs (angle de plus de 60°) restent des coins.
+  Lisser comme Convertir s'appliquent à toute la sélection en **un seul pas d'annulation**.
+- **Formes prédéfinies** — sous-menu qui insère, au centre de la vue, une **étoile** (nombre de
+  branches au choix), un **cœur**, une **flèche**, un **rectangle arrondi**, un **arc** ou une
+  **spirale**. La taille (40 mm par défaut) est demandée ; la forme créée est un objet vectoriel
+  ordinaire, sélectionné et annulable, que l'on convertit ensuite en broderie comme les autres.
 
 ## Menu Texte (lettrage)
 
@@ -518,7 +556,9 @@ Voir [Lettrage](lettering.md) pour le fonctionnement détaillé.
 Dans le dialogue : police (deux polices intégrées, puis polices installées), hauteur de
 capitale, couleur, type de point (**Automatique** : satin pour les traits fins, tatami pour les
 gros ; **Satin**, **Tatami**, **Contour**), alignement, espaces entre lettres et mots,
-interligne, crénage, position, rotation. L'aperçu montre les contours ; les avertissements
+interligne, crénage de la police, **crénage manuel** (une paire par ligne, par exemple
+`AV: -0,3 mm` : l'écart remplace celui de la police pour cette paire), **ligatures** (ff, fi,
+fl… quand la police les contient), position, rotation. L'aperçu montre les contours ; les avertissements
 (texte sous 5 mm, trait trop fin, lettre cousue en tatami faute de satin possible, caractère
 absent de la police) s'affichent sous l'aperçu et dans le panneau Analyse.
 
@@ -673,6 +713,7 @@ Le sous-menu **Calques** regroupe des interrupteurs indépendants :
 | Ajuster au canevas | Ctrl+0 ou F | Cadre la vue sur le canevas |
 | Rendu réaliste ▸ Activer | Ctrl+Maj+R | Dessine chaque point comme un fil texturé (voir ci-dessous) |
 | Rendu réaliste ▸ Réglages… | — | Épaisseur du fil, relief, brillance, torsion, ombre, tissu, qualité |
+| Carte de densité | — | Surimpression colorée de la densité de points (voir ci-dessous) |
 | Taille du cadre… | — | Définit la zone physique de broderie (voir ci-dessous) |
 | Thème | — | Clair / Sombre |
 | Densité | — | Confortable / Compact |
@@ -734,6 +775,28 @@ moins de ~1,6 pixel d'épaisseur, l'ombrage n'est plus lisible) et la
 **simulation** de couture. Les objets masqués par les filtres d'affichage ne
 sont pas dessinés. Le tissu est peint autour du motif (zone englobante), pas
 sur tout le cadre.
+
+### Carte de densité
+
+**Affichage ▸ Carte de densité** (case à cocher, mémorisée entre deux sessions comme
+les autres préférences d'affichage) pose sur le canevas une **surimpression colorée** :
+la grille de cases de 1 mm compte, pour chaque case, les pénétrations d'aiguille par
+mm² de la séquence réellement cousue (retouches manuelles incluses). La palette va du
+**bleu** (peu de points) au **rouge** (très dense) en passant par le vert et le jaune ;
+les cases au-delà du seuil sont plus opaques. Une **légende** (dégradé, valeur maximale
+et repère du seuil, en pén./mm²) s'affiche en bas à gauche de la vue.
+
+Le calcul se fait hors du fil d'interface (fenêtre « Veuillez patienter ») et son
+résultat est mis en cache : l'image n'est recalculée que si les points ou le seuil
+changent ; tant que le motif vient de changer, l'ancienne image n'est jamais montrée.
+La carte est un simple affichage : elle ne modifie jamais le document et n'entre pas
+dans l'historique d'annulation. Elle est masquée pendant la simulation de couture et
+quand le calque *Broderie (points)* est masqué.
+
+Dans le panneau **Analyse**, la section *Carte de densité* règle le **seuil de zone
+sur-dense** (4,0 pén./mm² par défaut, une heuristique d'ingénierie non mesurée sur un
+corpus ; mémorisé) et liste les **zones sur-denses** : un clic (ou Entrée) sur une
+zone **centre la vue** dessus.
 
 ## Menu contextuel (clic droit)
 
@@ -871,6 +934,13 @@ détectés, triés par gravité.
   problème(s) » dit combien n'ont pas été listés.
 - Quand le motif change, le résultat est marqué **périmé** puis recalculé après
   300 ms si le panneau est visible (sinon à sa prochaine ouverture).
+- Règles ajoutées par HP-PROD-007 : *détail trop petit* (objet de moins de 1 mm sur les
+  deux axes), *objet sans point d'arrêt* (quand les finitions sont actives) — listées
+  comme les autres, avec l'objet nommé et le centrage au clic. Deux règles sont
+  **désactivées par défaut** et s'activent dans la section *Règles optionnelles* du
+  panneau : *trop de coupes* (au-delà d'un nombre de coupes, 50 proposé) et *densité
+  excessive* (au-delà d'un nombre de pénétrations par mm², 4,0 proposé). Les réglages sont
+  mémorisés ; en modifier un marque le résultat périmé puis relance l'analyse.
 
 ## Panneau Ordre de couture
 
@@ -906,7 +976,15 @@ motif aux fils réels. Il a trois onglets ; une ligne en tête rappelle la séle
   nuanciers importés sont conservés d'une session à l'autre et peuvent être retirés. Le
   nuancier **Générique** (couleurs usuelles sans marque) est toujours disponible ; les
   nuanciers de marques intégrés sont des **données de démonstration fictives**, signalées
-  comme telles : importez vos propres cartes de fils.
+  comme telles : importez vos propres cartes de fils. La case **Je possède ce fil** ajoute le
+  fil sélectionné à *Mes fils*.
+- **Mes fils** — votre stock de bobines : les fils cochés « Je possède ce fil » et ceux de votre
+  nuancier personnel (*Ajouter un fil personnel…* : référence, nom, couleur ; *Retirer de mes
+  fils*). La case *Limiter la recherche du fil le plus proche à mes fils* restreint *Fils les
+  plus proches de la sélection* et *Couleurs libres → fil le plus proche* aux fils que vous
+  possédez. Le stock est une préférence personnelle (fichier `my_threads.json` à côté du
+  fichier de réglages), pas une donnée du projet : il n'entre pas dans l'historique d'annulation
+  et n'est pas enregistré dans le `.osp`.
 - **Film couleur** — les blocs de couleur dans l'ordre de couture. Glissez un bloc (ou
   *Monter*/*Descendre*) pour réordonner les couleurs ; les objets dont l'ordre est figé ne
   bougent pas. *Fusionner les blocs de même fil* regroupe les passages d'un même fil pour
@@ -1007,6 +1085,8 @@ la liste complète et filtrable est dans **Aide ▸ Gestes souris et clavier** (
 | D | Guides de direction d'un remplissage directionnel (bascule) |
 | Flèches / Maj + flèches | Déplacer l'objet de 0,1 mm / 1 mm |
 | K | Outil Couteau |
+| Q | Outil Règle : mesurer une distance au canevas (sans modifier le document) |
+| I | Outil Pipette : échantillonner une couleur de l'image et choisir un fil |
 | U | Option « Tracé ouvert » (polygone et courbe non fermés) |
 | F1 | Ouvrir « Gestes souris et clavier » |
 | Ctrl+Shift+P | Masquer / afficher les panneaux |

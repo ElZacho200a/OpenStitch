@@ -129,9 +129,29 @@ refuse le fichier v7. Une méthode **inconnue** (fichier d'une version plus réc
 refusée au chargement avec un message nommé : elle n'est jamais remplacée par le squelette.
 Le presse-papiers d'objets transporte la méthode comme le fichier.
 
+### Typographie fine d'un texte (schéma v8, conditionnel)
+
+Un objet texte (`textObjects`) peut porter deux réglages de lettrage (HP-TXT-007, HP-TXT-012) :
+
+- `kerningPairs` : tableau de `{left, right, adjust}` — `left`/`right` sont des **points de
+  code Unicode** (entiers), `adjust` un écart en µm entiers (négatif = rapproche) qui
+  **remplace** le crénage de la police pour la paire. Clé **absente** = aucun crénage manuel ;
+  une entrée dont `left` ou `right` vaut 0 est ignorée à la lecture ;
+- `ligatures` : booléen (ff, fi, fl, ffi, ffl quand la police les porte). Clé **absente** =
+  `false`.
+
+Ces clés ne sont écrites **que si elles sortent du défaut** (tableau non vide, `ligatures`
+vrai). **Règle de version** (même principe que la méthode d'auto-satin) : le fichier n'est
+écrit en `schemaVersion` **8** (`kSchemaVersionTextTypography`) que si au moins un texte
+porte l'un de ces réglages ; sinon il garde sa version antérieure (6 ou 7), **octet pour
+octet**. Raison : un lecteur v7 ignorerait ces clés et recomposerait le texte autrement à
+la prochaine édition ; mieux vaut qu'il refuse le fichier v8. Les points ne sont toujours pas
+stockés : les mêmes champs vides redonnent exactement les mêmes points qu'avant
+(`tests/unit/lettering/test_text_typography.cpp`).
+
 ## Versionnement et validation
 
-`schemaVersion` vaut **6**, ou **7** si un auto-satin utilise une méthode autre que le squelette (v6 → v7 : clé `strategy` et `sweepAngle` de l'auto-satin, voir plus haut ; v5 → v6 : fil de nuancier `thread` des objets de broderie (`{chart, code}`, voir *Palettes et fils*) ; objets texte du lettrage, clé `textObjects`
+`schemaVersion` vaut **6**, **7** si un auto-satin utilise une méthode autre que le squelette, ou **8** si un texte porte un crénage manuel ou des ligatures (v7 → v8 : `kerningPairs` et `ligatures` d'un texte, voir plus haut ; v6 → v7 : clé `strategy` et `sweepAngle` de l'auto-satin, voir plus haut ; v5 → v6 : fil de nuancier `thread` des objets de broderie (`{chart, code}`, voir *Palettes et fils*) ; objets texte du lettrage, clé `textObjects`
 (id, text, fontFamily/fontFile/fontBuiltin/faceIndex, capHeight, letterSpacing, wordSpacing,
 lineSpacing, kerning, align, justifyWidth, origin, rotation, rgb, fill, maxSatinWidth, density ;
 µm entiers, rotation en radians) et `textOwner` sur les objets vectoriels, voir `lettering.md` ;
@@ -152,6 +172,32 @@ effective, des métadonnées `editedFingerprint`/`editedPointCount` manquantes
 pour un tableau non vide, ou une carte de labels incohérente renvoie une
 erreur utile (`InvalidFile`), jamais une troncature silencieuse.
 
+### Migrations de schéma (HP-FMT-021)
+
+`libs/project_io/src/migrations.cpp` tient une **table d'étapes versionnées** `vN → vN+1`
+(`migration_steps()`), contiguë de v1 à `kMaxReadableSchemaVersion - 1` (garde
+`static_assert`). `load_project` appelle `migrate_project_json` après les contrôles de
+version : le JSON d'un fichier de version N subit, dans l'ordre, les étapes N, N+1, … jusqu'à
+la version lisible la plus récente, puis seulement `project_from_json` le lit. Un fichier
+déjà à jour ne subit aucune étape (idempotent) ; la sortie est déterministe.
+
+| Étape | Transformation explicite |
+|---|---|
+| v1 → v2 | satin sans `rungs` → `rungs: []` ; document sans `canvas` → 100×100 mm |
+| v2 → v3 | aucune réécriture (absence de `overrides` = objet `Clean`) |
+| v3 → v4 | satin sans `maxWidthHard` → 48 000 µm |
+| v4 → v5 | aucune (finitions optionnelles, défauts du lecteur) |
+| v5 → v6 | aucune (absence de `thread` / `textObjects` = aucun) |
+| v6 → v7 | aucune (absence de `strategy` = squelette) |
+| v7 → v8 | aucune (absence de `kerningPairs` / `ligatures` = pas de crénage manuel, pas de ligatures) |
+
+Les étapes « aucune » existent quand même : la table reste sans trou et une future version
+n'a qu'à ajouter une ligne. Un fichier d'une version **future** (> `kMaxReadableSchemaVersion`)
+est refusé en `UnsupportedFormat` avec un message nommant les deux versions. Tests :
+`tests/unit/project_io/test_schema_migrations.cpp` construit un `project.json` par version
+(v1 à v8) et le relit. `tests/fixtures/osp/` n'existe pas : les anciens fichiers sont forgés
+en test, plus lisibles qu'un binaire figé.
+
 ## Sauvegarde atomique
 
 `save_project` écrit d'abord un fichier temporaire `.osp.tmp` puis le **renomme** :
@@ -163,8 +209,8 @@ Le test d'intégration vérifie que `save` puis `load` restitue exactement l'ima
 (PNG sans perte), les opérations, les labels de segmentation, les tangentes de
 nœuds et les paramètres des trois types de points.
 
-Limitation : la **sauvegarde automatique**, la **récupération après crash** et
-les **migrations** entre versions de schéma sont **prévues**, non implémentées.
+Limitation : la **sauvegarde automatique** et la **récupération après crash** sont
+**prévues**, non implémentées.
 Le cache des points générés n'est pas stocké (il est recalculé au chargement).
 
 ## Implémentation associée
@@ -174,6 +220,8 @@ Le cache des points générés n'est pas stocké (il est recalculé au chargemen
 - `libs/project_io/src/json_serialize.cpp` — sérialisation du document.
 - `libs/project_io/src/archive.cpp` — lecture/écriture ZIP (minizip-ng encapsulé).
 - `libs/project_io/src/project_io.cpp` — orchestration, écriture atomique.
+- `libs/project_io/include/openstitch/project_io/migrations.hpp`, `src/migrations.cpp` —
+  table de migrations versionnées.
 - Tests : `tests/unit/project_io/test_roundtrip.cpp`,
   `tests/unit/project_io/test_overrides_persistence.cpp` (retouches v3,
   migration v1/v2, topologie satin optionnelle/rétrocompatible, validation

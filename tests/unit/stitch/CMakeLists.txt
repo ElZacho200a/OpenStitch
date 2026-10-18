@@ -13,6 +13,7 @@ add_executable(test_stitch
     test_routing.cpp
     test_overrides.cpp
     test_engine_points.cpp
+    test_chunk_cache.cpp
 )
 target_link_libraries(test_stitch
     PRIVATE openstitch::stitch openstitch::stitch_generation Catch2::Catch2WithMain

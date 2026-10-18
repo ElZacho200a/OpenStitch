@@ -118,8 +118,9 @@ TEST_CASE("auto-satin : un angle de balayage invalide est refuse") {
     REQUIRE_FALSE(loaded.has_value());
 }
 
-TEST_CASE("auto-satin : une version de schema plus recente que v7 est refusee") {
-    const auto loaded = load_json(8, R"({"type":"autoSatin"})");
+TEST_CASE("auto-satin : une version de schema plus recente que la version lisible est refusee") {
+    const auto loaded =
+        load_json(project_io::kMaxReadableSchemaVersion + 1, R"({"type":"autoSatin"})");
     REQUIRE_FALSE(loaded.has_value());
     CHECK(loaded.error().category == ErrorCategory::UnsupportedFormat);
 }

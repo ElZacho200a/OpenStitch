@@ -1,9 +1,11 @@
 add_executable(test_lettering
     test_font.cpp
     test_layout.cpp
+    test_unicode.cpp
     test_build.cpp
     test_text_commands.cpp
     test_alphabet.cpp
+    test_text_typography.cpp
 )
 target_link_libraries(test_lettering
     PRIVATE openstitch::lettering openstitch::commands openstitch::project_io

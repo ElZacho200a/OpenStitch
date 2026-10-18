@@ -3,11 +3,13 @@
 #include <fmt/core.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <ctime>
 #include <filesystem>
 #include <functional>
 #include <iterator>
+#include <map>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -53,6 +55,7 @@
 #include "openstitch/stitch_generation/running_stitch.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
+#include "openstitch/stitch_render/presentation.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 #include "project_cmd.hpp"
 
@@ -370,6 +373,95 @@ int run_dst2svg(const std::string& input, const std::string& output, bool noClob
         return cli_error("dst2svg", written.error().message);
     }
     fmt::print("SVG écrit : {}\n", output);
+    return kExitOk;
+}
+
+// Export PNG du rendu brodé réaliste (HP-FMT-011) : un fichier machine (couleurs de repli par
+// bloc de fil) ou un projet .osp (couleurs des objets, séquence effective).
+struct RenderArgs {
+    std::string input;
+    std::string output;
+    double pxPerMm{10.0};
+    double marginMm{3.0};
+    bool transparent{false};
+    bool fast{false};
+    bool noClobber{false};
+    bool json{false};
+};
+
+int run_render(const RenderArgs& a) {
+    using namespace openstitch;
+    if (const auto refused = check_output_path("render", a.output, a.noClobber)) {
+        return *refused;
+    }
+    stitch_render::PresentationOptions options;
+    options.px_per_mm = a.pxPerMm;
+    options.margin_mm = a.marginMm;
+    options.params.fabric_opaque = !a.transparent;
+    options.params.quality = a.fast ? stitch_render::Quality::Fast : stitch_render::Quality::High;
+
+    stitch_render::RasterImage raster;
+    std::string ext = std::filesystem::path(a.input).extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (ext == ".osp") {
+        const auto project = project_io::load_project(std::filesystem::path(a.input));
+        if (!project) {
+            return cli_error("render", project.error().message);
+        }
+        const auto seq = stitch_generation::effective_sequence(*project);
+        if (!seq) {
+            return cli_error("render", seq.error().message);
+        }
+        std::map<std::uint64_t, std::array<std::uint8_t, 3>> colors;
+        for (const auto& emb : project->embroidery_objects) {
+            colors[emb.id.value] = emb.rgb;
+        }
+        raster = stitch_render::render_sequence(
+            *seq,
+            [&](ObjectId id) -> std::optional<std::array<std::uint8_t, 3>> {
+                const auto it = colors.find(id.value);
+                if (it == colors.end()) {
+                    return std::nullopt;
+                }
+                return it->second;
+            },
+            options);
+    } else {
+        const auto seq = read_machine_sequence(a.input);
+        if (!seq) {
+            return cli_error("render", seq.error().message, kDstHint);
+        }
+        raster = stitch_render::render_machine_sequence(*seq, options);
+    }
+    if (raster.width <= 0 || raster.height <= 0) {
+        return cli_error("render", "Aucun point cousu : rien à dessiner");
+    }
+    image::Image img;
+    img.width = raster.width;
+    img.height = raster.height;
+    img.source_had_alpha = a.transparent;
+    img.rgba = stitch_render::to_straight_rgba(raster);
+    const auto png = image::encode_png(img);
+    if (!png) {
+        return cli_error("render", png.error().message);
+    }
+    std::ofstream file(std::filesystem::path(a.output), std::ios::binary);
+    if (!file) {
+        return cli_error("render", "Écriture impossible : " + a.output);
+    }
+    file.write(reinterpret_cast<const char*>(png->data()),
+               static_cast<std::streamsize>(png->size()));
+    file.close();
+    if (!file) {
+        return cli_error("render", "Écriture impossible : " + a.output);
+    }
+    if (a.json) {
+        fmt::print("{{\"file\":{},\"width_px\":{},\"height_px\":{},\"bytes\":{}}}\n",
+                   json_str(a.output), raster.width, raster.height, png->size());
+    } else {
+        fmt::print("Image écrite : {} ({} x {} px)\n", a.output, raster.width, raster.height);
+    }
     return kExitOk;
 }
 
@@ -897,7 +989,8 @@ int run_digitize(const DigitizeArgs& a) {
 // permet d'inspecter les coupes et la fin du fichier sans passer par l'interface.
 int run_osp2dst(const std::string& ospPath, const std::string& outDst, bool noClobber,
                 const openstitch::formats::MachineExportOptions& machineOptions,
-                const openstitch::project_io::ExportOptimizations& optimizations) {
+                const openstitch::project_io::ExportOptimizations& optimizations,
+                const std::string& colorFile) {
     using namespace openstitch;
     if (const auto refused = check_output_path("osp2dst", outDst, noClobber)) {
         return *refused;
@@ -919,12 +1012,26 @@ int run_osp2dst(const std::string& ospPath, const std::string& outDst, bool noCl
         }
     }
     stitch_generation::TrimReport report;
-    const auto written = project_io::export_machine_file(
-        *project, formatId, std::filesystem::path(outDst), machineOptions, optimizations, &report);
+    // HP-FMT-009 / HP-FMT-005 : fichier compagnon de couleurs (DST, EXP), même nom, à côté.
+    project_io::ColorCompanionExport companion;
+    companion.write = !colorFile.empty();
+    companion.kind = colorFile == "inf" ? formats::CompanionKind::Inf : formats::CompanionKind::Csv;
+    const auto written =
+        project_io::export_machine_file(*project, formatId, std::filesystem::path(outDst),
+                                        machineOptions, optimizations, &report, &companion);
     if (!written) {
         return cli_error("osp2dst", written.error().message);
     }
     fmt::print("{} écrit : {}\n", formats::find_format(formatId)->display_name, outDst);
+    if (!companion.written.empty()) {
+        fmt::print("Fichier de couleurs écrit : {}\n", companion.written.string());
+    } else if (!companion.error.empty()) {
+        return cli_error("osp2dst",
+                         "le motif est écrit mais pas le fichier de couleurs : " + companion.error);
+    } else if (companion.write) {
+        fmt::print("Fichier de couleurs non écrit : le format {} porte déjà ses couleurs\n",
+                   formats::find_format(formatId)->display_name);
+    }
     if (optimizations.reduce_trims) {
         fmt::print("Coupes : {} supprimée(s) sur {} écart(s) candidat(s) ({} saut(s) recouvert(s), "
                    "{} pont(s) cousu(s), {:.1f} mm de fil ajouté)\n",
@@ -1531,6 +1638,22 @@ int main(int argc, char** argv) {
     svg_cmd->add_flag("--force", svg_force, "Écrase la sortie existante (comportement par défaut)")
         ->excludes(svg_nc);
 
+    RenderArgs rnd;
+    auto* render_cmd = app.add_subcommand(
+        "render", "Exporte le rendu brodé réaliste (PNG) d'un fichier de broderie ou d'un .osp");
+    render_cmd->group(kMain);
+    render_cmd->add_option("entree", rnd.input, "Fichier .dst/.pes/.jef/.exp ou projet .osp")
+        ->required();
+    render_cmd->add_option("sortie,--output", rnd.output, "Fichier .png à produire")->required();
+    render_cmd->add_option("--px-per-mm", rnd.pxPerMm, "Résolution (pixels par mm, défaut 10)")
+        ->check(CLI::Range(1.0, 60.0));
+    render_cmd->add_option("--margin-mm", rnd.marginMm, "Marge autour du design (mm, défaut 3)")
+        ->check(CLI::Range(0.0, 50.0));
+    render_cmd->add_flag("--transparent", rnd.transparent, "Fond transparent (sans tissu)");
+    render_cmd->add_flag("--fast", rnd.fast, "Rendu rapide (sans torsion ni ombre portée)");
+    render_cmd->add_flag("--json", rnd.json, "JSON stable sur stdout");
+    render_cmd->add_flag("--no-clobber", rnd.noClobber, "Refuse d'écraser un fichier existant");
+
     DigitizeArgs dz;
     bool dz_force = false;
     auto* dz_cmd = app.add_subcommand(
@@ -1645,6 +1768,12 @@ int main(int argc, char** argv) {
     od_cmd->add_flag("--no-color-changes", od_no_color_changes,
                      "Supprime les changements de couleur (motif monochrome)");
     std::string od_start = "first";
+    std::string od_color_file;
+    od_cmd
+        ->add_option("--color-file", od_color_file,
+                     "Écrit aussi le fichier de couleurs à côté d'un DST ou d'un EXP : csv "
+                     "(tableur) ou inf (binaire) ; même nom, extension remplacée")
+        ->check(CLI::IsMember({"csv", "inf"}));
     od_cmd->add_option("--start", od_start,
                        "Point de départ machine : first (premier point, défaut), center (centre "
                        "de la broderie) ou X,Y en mm dans le repère du document ; l'ordre des "
@@ -1716,6 +1845,9 @@ int main(int argc, char** argv) {
         pr.json = json_out;
         return run_production(pr);
     }
+    if (render_cmd->parsed()) {
+        return run_render(rnd);
+    }
     if (svg_cmd->parsed()) {
         return run_dst2svg(svg_in, svg_out, svg_noclobber);
     }
@@ -1770,7 +1902,8 @@ int main(int argc, char** argv) {
         }
         optimizations.hidden_travel.max_bridge_length = openstitch::Micrometers{
             static_cast<std::int32_t>(std::lround(od_reduce_max_mm * 1000.0))};
-        return run_osp2dst(od_in, od_out, od_noclobber, machineOptions, optimizations);
+        return run_osp2dst(od_in, od_out, od_noclobber, machineOptions, optimizations,
+                           od_color_file);
     }
     if (os_cmd->parsed()) {
         return run_osp2svg(os_in, os_out, os_outlines, os_only, os_noclobber);

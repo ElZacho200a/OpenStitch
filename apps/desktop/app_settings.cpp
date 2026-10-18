@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "app_settings.hpp"
 
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QObject>
+#include <QSaveFile>
 #include <QSettings>
 
 #include <algorithm>
 #include <cmath>
+#include <string>
 
 namespace openstitch::desktop {
 
@@ -16,6 +22,7 @@ constexpr auto kKnifeMinLength = "edit/knifeMinLengthMm";
 constexpr auto kSnapNodes = "edit/snapNodesOnDrag";
 constexpr auto kRegionOpacity = "ui/regionMapOpacity";
 constexpr auto kLongPress = "navigation/longPressMs";
+constexpr auto kLimitToStock = "threads/limitToStock";
 
 // Même couple organisation/application que app_theme.cpp et interaction_map.cpp.
 const QString kOrganization = QStringLiteral("OpenStitch");
@@ -90,6 +97,67 @@ void configureSettingsStorage() {
 
 QString settingsFilePath() {
     return userSettings().fileName();
+}
+
+QString threadStockFilePath() {
+    return QFileInfo(settingsFilePath()).absolutePath() + QStringLiteral("/my_threads.json");
+}
+
+thread_palette::ThreadStock loadThreadStock(const QString& path, QString* error) {
+    QFile file(path);
+    if (!file.exists()) {
+        return {};
+    }
+    if (!file.open(QIODevice::ReadOnly)) {
+        if (error != nullptr) {
+            *error = QObject::tr("Impossible de lire « Mes fils » (%1).").arg(path);
+        }
+        return {};
+    }
+    const QByteArray bytes = file.readAll();
+    file.close();
+    auto stock = thread_palette::stock_from_json(
+        std::string_view(bytes.constData(), static_cast<std::size_t>(bytes.size())));
+    if (stock) {
+        return *stock;
+    }
+    // Conserve le fichier fautif pour que la prochaine sauvegarde ne l'écrase pas.
+    const QString kept = path + QStringLiteral(".invalide");
+    QFile::remove(kept);
+    QFile::rename(path, kept);
+    if (error != nullptr) {
+        *error = QObject::tr("Le fichier « Mes fils » est illisible (%1) ; il est conservé sous "
+                             "%2.")
+                     .arg(QString::fromStdString(stock.error().message), kept);
+    }
+    return {};
+}
+
+bool saveThreadStock(const thread_palette::ThreadStock& stock, const QString& path,
+                     QString* error) {
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QSaveFile file(path);
+    const std::string json = thread_palette::stock_to_json(stock);
+    if (!file.open(QIODevice::WriteOnly) ||
+        file.write(json.data(), static_cast<qint64>(json.size())) !=
+            static_cast<qint64>(json.size()) ||
+        !file.commit()) {
+        if (error != nullptr) {
+            *error = QObject::tr("Impossible d'enregistrer « Mes fils » (%1).").arg(path);
+        }
+        return false;
+    }
+    return true;
+}
+
+bool loadLimitToThreadStock() {
+    return userSettings().value(QLatin1String(kLimitToStock), false).toBool();
+}
+
+void saveLimitToThreadStock(bool limit) {
+    QSettings s = userSettings();
+    s.setValue(QLatin1String(kLimitToStock), limit);
+    s.sync();
 }
 
 } // namespace openstitch::desktop

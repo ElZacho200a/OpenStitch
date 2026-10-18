@@ -24,7 +24,7 @@ prochaine entrée de ce fichier.
 
 ---
 
-## État d'avancement (revu le 2026-10-13)
+## État d'avancement (revu le 2026-10-18 : tableau recalculé ; statuts hors vague 1 non revérifiés)
 
 > **Source de vérité des statuts : ce fichier.** `specs/implementation-roadmap.md`
 > décrit l'*ordre de livraison* (vagues, scopes S1…S15, plans) et `docs/source/roadmap.md`
@@ -37,16 +37,17 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
-| P0 | 12 | 25 | 7 | 44 |
-| P1 | 4 | 45 | 78 | 127 |
-| P2 | 0 | 16 | 66 | 82 |
+| P0 | 12 | 26 | 6 | 44 |
+| P1 | 10 | 48 | 70 | 128 |
+| P2 | 3 | 17 | 62 | 82 |
 | P3 | 0 | 0 | 12 | 12 |
-| **Total** | **16** | **86** | **163** | **265** |
+| **Total** | **25** | **91** | **150** | **266** |
 
-**Fait (16)** : FILE-001/002/003/004 (nouveau projet, enregistrer, récents, autosave),
+**Fait (25)** : FILE-001/002/003/004 (nouveau projet, enregistrer, récents, autosave),
 THR-001/003/004 (bibliothèque de fils, fil le plus proche, fil assigné à chaque objet),
 FMT-001 (normalisation machine), TXT-001 et TXT-009 (lettrage), STI-004 (satin de bordure),
 PERF-005 (génération parallèle), OBJ-003 (déplacement au clavier), VEC-004 (couteau), OBJ-014 (design entier), PERF-003 (auto-numérisation rapide).
+Ajoutés le 2026-10-18 (cœur + bureau + tests) : VEC-007 (lisser), VEC-008 (courbes), VEC-010 (règle), VEC-014 (formes prédéfinies), FMT-009 (compagnon de couleurs), FMT-011 (export d'image), PROD-005 (consommation de fil), THR-007 (Mes fils), TXT-007 (crénage manuel).
 
 **Fusionné le 2026-10-13** : #25 (fondu, fusion de zones, filtres vectoriels, cadre), #26 (performance), #27 (objets : OBJ-002/004/006/012/014/018). **En PR** : second lot (OBJ-004 poignée, OBJ-018 pastille, VEC-002, VEC-003, VEC-005).
 S3 sélection/presse-papiers (PR #3, documentation seulement, **aucun code**).
@@ -268,7 +269,7 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
   pré-export (`check_export_limits`), tests Catch2 (octets calculés à la main, aller-retour,
   déterminisme, fuzz). **Reste** : validation par visualiseurs tiers et machine réelle
   (non faite, aucun fichier de référence réel). Voir `docs/source/formats-pes-jef-exp.md`.
-### HP-FMT-005 — EXP (Melco / Bernina) lecture + écriture [P0] — ◐ Partiel
+### HP-FMT-005 — EXP (Melco / Bernina) lecture + écriture [P0] — ◐ Partiel (2026-10-18, `492754e`)
 - **Attend (humain)** : ouverture dans deux visualiseurs tiers et essai sur une machine réelle ; aucun travail de code restant identifié au 2026-10-13.
 - État OpenStitch : absent.
 - Hatch : oui. Format simple, très répandu chez Bernina et en industriel.
@@ -281,6 +282,10 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
   pré-export (`check_export_limits`), tests Catch2 (octets calculés à la main, aller-retour,
   déterminisme, fuzz). **Reste** : validation par visualiseurs tiers et machine réelle
   (non faite, aucun fichier de référence réel). Voir `docs/source/formats-pes-jef-exp.md`.
+- Livré (2026-10-18) : le `.inf` d'EXP est écrit et relu par le module compagnon de HP-FMT-009 (`265e4b8`).
+- Livré (câblage bureau, 2026-10-18) : `.inf` d'EXP écrit et relu, branché au dialogue d'export, à l'import et au CLI.
+- Reste : validation par un lecteur tiers et sur machine réelle (humain).
+
 ### HP-FMT-006 — VP3 / VIP / HUS (Husqvarna Viking, Pfaff) [P1] — ☐ À faire
 - État OpenStitch : absent.
 - Hatch : oui.
@@ -307,7 +312,7 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
   une documentation d'interopérabilité légitime existe. Sinon marquer
   `✗ Abandonné (format fermé)`.
 
-### HP-FMT-009 — Couleurs à côté du DST (fichier compagnon, en-tête étendu) [P1] — ☐ À faire
+### HP-FMT-009 — Couleurs à côté du DST (fichier compagnon, en-tête étendu) [P1] — ☑ Fait (2026-10-18, `492754e`)
 - État OpenStitch : le DST n'emporte que des arrêts couleur ; les couleurs
   réelles sont perdues à l'export.
 - Hatch : peut écrire l'ordre des couleurs dans des fichiers d'accompagnement
@@ -317,6 +322,9 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
   l'import d'un DST s'il est présent à côté.
 - Modules : `libs/formats`.
 - Dépend de : HP-THR-001.
+- Livré (2026-10-18) : `libs/formats/color_companion.*` : fichier compagnon `.inf` (binaire) ou `.csv` (lisible) des fils par bloc de couleur, écriture déterministe, relecture à détection automatique (`read_color_companion_for` cherche `.inf` puis `.csv` à côté du motif), refus propre des contenus invalides ; `test_color_companion` (`265e4b8`).
+- Livré (câblage bureau, 2026-10-18) : option « écrire aussi le fichier de couleurs » (`.csv` par défaut ou `.inf`) du dialogue d'export machine et de `osp2dst --color-file`, relue à l'import d'un DST/EXP (un compagnon invalide n'empêche pas l'import) ; tests.
+- Reste : validation du `.inf` par un lecteur tiers (humain).
 
 ### HP-FMT-010 — Reconnaissance d'un fichier de points en objets (« stitch to object ») [P2] — ☐ À faire
 - État OpenStitch : un DST importé reste une séquence brute non régénérable ;
@@ -332,7 +340,7 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
 - Acceptation : un design OpenStitch exporté en DST puis réimporté est
   reconnu avec ≥ 90 % des points dans des objets du bon type (corpus de test).
 
-### HP-FMT-011 — Export image (PNG/JPG) du rendu brodé [P1] — ☐ À faire
+### HP-FMT-011 — Export image (PNG/JPG) du rendu brodé [P1] — ☑ Fait (2026-10-18, `033692a`)
 - État OpenStitch : pas d'export image ; seul le SVG diagnostic existe (trait
   noir, pas de couleurs de fil).
 - Hatch : export d'une image réaliste pour montrer au client.
@@ -341,6 +349,9 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
 - Modules : `apps/desktop` (le rendu Qt), éventuellement un rendu cœur
   simplifié dans `formats` pour la CLI.
 - Dépend de : HP-VIEW-001.
+- Livré (2026-10-18) : rendu « présentation » Qt-free (`libs/stitch_render/presentation.*` : séquence entière, marge, résolution bornée par un plafond de pixels, fond tissu opaque ou transparent, alpha droit pour le PNG) et commande `openstitch-cli render <dst|pes|jef|exp|osp> <png>` (`--px-per-mm`, `--transparent`, `--fast`, `--json`). Un `.osp` utilise la séquence effective et les couleurs des objets ; un fichier machine, des couleurs de repli par bloc de fil. Tests : 6 cas `presentation :`, cas CLI `cli_render_png` ; rendu de `tentabrode` vérifié à l'écran.
+- Livré (câblage bureau, 2026-10-18) : Fichier › « Exporter l'image (PNG, JPEG)… » : résolution, marge, fond tissu opaque ou transparent, qualité, JPEG ; rendu sur la séquence effective hors du fil UI si lourd, écriture atomique ; `test_export_image` ; le CLI `render` reste disponible.
+- Reste : aucun.
 
 ### HP-FMT-012 — Export SVG « présentation » (couleurs de fil, épaisseur) [P2] — ☐ À faire
 - État OpenStitch : `to_diagnostic_svg` seulement (noir + sauts orange).
@@ -410,7 +421,7 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
   bibliothèque), métadonnées (auteur, client, notes, date, tissu, cadre).
 - Modules : `libs/project_io`, `libs/document`.
 
-### HP-FMT-021 — Migrations de schéma `.osp` systématiques [P1] — ◐ Partiel
+### HP-FMT-021 — Migrations de schéma `.osp` systématiques [P1] — ◐ Partiel (2026-10-18)
 - État OpenStitch : lecture tolérante `value(clé, défaut)` ; refus clair d'un fichier de
   version future (`schemaVersion > kSchemaVersion`, `project_io.cpp`) ; toujours pas de table
   de migrations ni de corpus `tests/fixtures/osp/`.
@@ -427,6 +438,8 @@ Aujourd'hui : un **RGB par objet**, plus un catalogue de fils autonome
 (`libs/thread_palette`, HP-THR-001/002/003) pas encore relié au document
 (`palettes-and-threads.md`, section *Catalogue*). Hatch est construit autour
 des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
+- Livré (2026-10-18) : `libs/project_io/migrations.*` : table de migrations versionnées v1→v7 contiguë (`static_assert`), appliquée par `load_project` avant la désérialisation ; refus `UnsupportedFormat` d'une version future ; un `project.json` forgé par version v1..v7 relu, déterminisme et idempotence (`97004b9`).
+- Reste : corpus d'anciens `.osp` réels figés dans `tests/fixtures/osp/` (les anciens fichiers sont forgés en test).
 
 ### HP-THR-001 — Bibliothèque `thread_palette` [P0] — ☑ Fait (2026-10-05)
 - À faire : lib cœur sans Qt : `Thread { brand, range, code, name, rgb,
@@ -571,12 +584,15 @@ des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
 - Modules : `libs/document`, `libs/project_io`, `apps/desktop`.
 - Dépend de : HP-THR-004.
 
-### HP-THR-007 — Mes fils (stock possédé) et nuancier personnel [P1] — ☐ À faire
+### HP-THR-007 — Mes fils (stock possédé) et nuancier personnel [P1] — ☑ Fait (2026-10-18, `cc4db8a`)
 - À faire : l'utilisateur coche les bobines qu'il possède ; le « plus proche »
   peut se limiter à son stock ; nuancier personnel éditable ; import/export
   CSV et formats courants de nuanciers (`.thr`, `.rgb`, `.edr`, `.gpl`) si
   documentés.
 - Modules : `libs/thread_palette`, préférences `apps/desktop`.
+- Livré (2026-10-18) : `thread_palette/thread_stock.*` : `ThreadStock` (fils possédés, nuancier personnel éditable), plus proche restreint au stock, JSON déterministe à relecture stricte ; 8 tests (`a5d2ccb`).
+- Livré (câblage bureau, 2026-10-18) : onglet « Mes fils » du panneau Fils (cases « je possède », bascule « limiter la recherche du fil le plus proche à mes fils », nuancier personnel éditable), stock en JSON dans les préférences (hors `.osp`, hors annulation) ; la pipette respecte la bascule ; `test_thread_stock_ui`.
+- Reste : import/export `.thr`/`.rgb`/`.edr`/`.gpl` ; édition d'un fil personnel existant (le ré-ajouter le remplace).
 
 ### HP-THR-008 — Couleur / texture du tissu de fond [P1] — ☐ À faire
 - Hatch : couleur de fond réglable (et produits en arrière-plan, HP-VIEW-004).
@@ -612,7 +628,7 @@ des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
   annulable.
 - Modules : `libs/thread_palette`, `libs/commands`.
 
-### HP-THR-012 — Pipette (couleur depuis l'image ou un objet) [P1] — ☐ À faire
+### HP-THR-012 — Pipette (couleur depuis l'image ou un objet) [P1] — ◐ Partiel (2026-10-18, `f38da87`)
 - À faire : outil pipette : clic sur l'image → fil le plus proche proposé ;
   clic sur un objet → reprendre son fil.
 - Modules : `apps/desktop`.
@@ -625,6 +641,9 @@ des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
 Aujourd'hui : **aucun objet texte**. Le lettrage est une des premières raisons
 d'acheter Hatch (même le niveau Personalizer), avec des dizaines de polices
 prénumérisées et la conversion des polices TrueType.
+- Livré (2026-10-18) : `thread_palette/eyedropper.*` : `sample_color` / `sample_region` (moyenne entière déterministe sur RGB brut), `pick_thread` (plus proche dans un nuancier, la bibliothèque ou Mes fils) ; 8 tests (`a6b594e`).
+- Livré (câblage bureau, 2026-10-18) : outil Pipette (touche I) : échantillonnage 5×5 de l'image affichée, menu des 5 fils les plus proches du nuancier courant ou de Mes fils, couleur libre, reprise du fil d'un objet brodé, assignation annulable par `SetObjectThreadCommand` ; `test_eyedropper_tool`.
+- Reste : échantillonnage du rendu des points (seule l'image source est échantillonnée).
 
 ### HP-TXT-001 — Objet texte dans le modèle [P0] — ☑ Fait (2026-10-10)
 - Fait : `document::TextObject`, lettres dérivées annotées `text_owner`, commandes
@@ -690,13 +709,16 @@ prénumérisées et la conversion des polices TrueType.
   génération.
 - Modules : `libs/lettering`, `libs/geometry`.
 
-### HP-TXT-007 — Espacement, crénage, alignement, interligne [P1] — ◐ Partiel (2026-10-10)
+### HP-TXT-007 — Espacement, crénage, alignement, interligne [P1] — ☑ Fait (2026-10-18, `164dcf5`)
 - Fait : espacements lettres/mots, interligne, gauche/centre/droite/justifié, multilignes,
   crénage `kern`. Reste : crénage manuel par paire.
 - À faire : espacement des lettres / des mots, interligne, alignement
   gauche/centre/droite/justifié, texte multilignes, crénage automatique
   (police) + manuel par paire.
 - Modules : `libs/lettering`, inspecteur.
+- Livré (2026-10-18) : crénage manuel par paire dans le cœur (`LayoutOptions::kerning_overrides`, remplace le crénage de la police) ; tests de crénage exact, remplacement, lignes vides alignées, tabulation et CRLF (`aaffb09`).
+- Livré (câblage bureau, 2026-10-18) : crénage manuel par paire dans `document::TextObject` (`kerning_pairs`), saisi dans le dialogue texte (« AV: -0,3 mm »), persistant (`.osp` v8 écrit seulement si utilisé, migration v7→v8, anciens fichiers réécrits à l'identique) ; « agrandir le texte » et l'import CLI en tiennent compte (`lettering::layout_options_for`) ; tests.
+- Reste : crénage GPOS (seule la table `kern` est lue).
 
 ### HP-TXT-008 — Édition individuelle d'une lettre [P1] — ☐ À faire
 - Hatch : sélectionner une lettre d'un texte pour la déplacer, tourner,
@@ -726,19 +748,24 @@ prénumérisées et la conversion des polices TrueType.
   d'un fichier machine par ligne.
 - Modules : `libs/lettering`, `apps/cli`, `apps/desktop`.
 
-### HP-TXT-012 — Unicode complet et langues [P1] — ☐ À faire
+### HP-TXT-012 — Unicode complet et langues [P1] — ◐ Partiel (2026-10-18, `164dcf5`)
 - À faire : accents, ligatures, écritures non latines (cyrillique, grec),
   RTL (arabe, hébreu) via HarfBuzz ; gestion des glyphes absents (repli et
   avertissement, jamais un carré silencieux).
 - Modules : `libs/lettering`.
+- Livré (2026-10-18) : `libs/lettering/unicode.*` (sans HarfBuzz) : caractères sans rendu ignorés, recomposition/décomposition d'accents latin, grec et cyrillique, marques combinantes, repli des glyphes absents (`glyphe-remplace`), ligatures f optionnelles, ordre visuel hébreu, arabe signalé non façonné (`ecriture-non-supportee`), UTF-8 invalide sans crash ; `test_unicode` (`aaffb09`).
+- Livré (câblage bureau, 2026-10-18) : case « Ligatures » du dialogue texte (champ `TextObject::ligatures`, persistant) en plus du cœur Unicode (accents, repli, hébreu).
+- Reste : façonnage arabe et écritures indiennes (HarfBuzz, nouvelle dépendance à valider en licence), ligatures propres à la police, GPOS.
 
-### HP-TXT-013 — Réglages adaptés aux petites lettres [P1] — ◐ Partiel (2026-10-10)
+### HP-TXT-013 — Réglages adaptés aux petites lettres [P1] — ◐ Partiel (2026-10-18)
 - Fait : sous 8 mm, sans compensation ni bord, sous-couche centrale selon le trait, satin →
   contour sous 1 mm (règles dans `lettering.md`). Reste : densité ajustée, tests de rendu.
 - À faire : sous la hauteur X : pas de sous-couche ou sous-couche centrale
   seulement, densité ajustée, compensation réduite, satin → contour sous le
   seuil de largeur ; règles documentées et testées.
 - Modules : `libs/lettering`, `libs/stitch_generation`.
+- Livré (2026-10-18) : densité satin et tatami +0 % à 8 mm jusqu'à +15 % à 4 mm et moins (jamais plus serrée que le réglage utilisateur), point de tatami = hauteur/3 borné 1,5–3 mm ; tests de paramètres, de séquence cousue à 6 mm, sans `saut-long`, déterministe (`ec80a25`).
+- Reste : validation sur broderie réelle (la courbe +15 % est une heuristique de prudence) ; cas des générateurs de `libs/stitch_generation`.
 
 ### HP-TXT-014 — Connecteurs entre lettres [P1] — ☐ À faire
 - À faire : ordre de gauche à droite, fin d'une lettre près du début de la
@@ -1477,13 +1504,19 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
   (running, triple ou satin de bordure) avec l'écart choisi.
 - Dépend de : HP-STI-004, HP-OBJ-001.
 
-### HP-VEC-007 — Lisser / simplifier un tracé à la demande [P2] — ☐ À faire
+### HP-VEC-007 — Lisser / simplifier un tracé à la demande [P2] — ☑ Fait (2026-10-18, `89a3e2d`)
 - À faire : commande « lisser » (réduction des nœuds + ajustement de courbes)
   sur un objet existant.
 - Dépend de : HP-AUTO-004.
+- Livré (2026-10-18) : `libs/geometry/smooth.*` : `smooth_path` / `smooth_path_set` (aplatit puis ajuste des courbes à une tolérance en µm, extrémités des tracés ouverts conservées, déterministe) ; 5 tests (`061b4f3`).
+- Livré (câblage bureau, 2026-10-18) : menu Forme › « Lisser… » (tolérance en mm, 0,2 par défaut) sur la sélection, `SmoothVectorPathsCommand` (un seul pas d'annulation, refus si rien ne change) ; tests Catch2 et QTest.
+- Reste : aucun.
 
-### HP-VEC-008 — Convertir un polygone en courbes [P2] — ☐ À faire
+### HP-VEC-008 — Convertir un polygone en courbes [P2] — ☑ Fait (2026-10-18, `89a3e2d`)
 - Dépend de : HP-AUTO-004.
+- Livré (2026-10-18) : `libs/geometry/to_curves.*` : `convert_to_curves` (tangentes colinéaires aux sommets peu anguleux, coins francs et extrémités inchangés, courbe passant exactement par les sommets) ; 4 tests (`ac1599a`).
+- Livré (câblage bureau, 2026-10-18) : menu Forme › « Convertir en courbes » sur la sélection, `ConvertToCurvesCommand` (un pas d'annulation) ; tests Catch2 et QTest.
+- Reste : aucun.
 
 ### HP-VEC-009 — Magnétisme (grille, nœuds, guides) [P1] — ◐ Partiel (2026-10-06)
 - État OpenStitch : accrochage aux sommets, milieux de segment et centres de forme
@@ -1493,9 +1526,12 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
   (touche + bouton), tolérance en pixels écran.
 - Modules : `apps/desktop/canvas_view`.
 
-### HP-VEC-010 — Outil de mesure [P1] — ☐ À faire
+### HP-VEC-010 — Outil de mesure [P1] — ☑ Fait (2026-10-18, `f38da87`)
 - Hatch : mesurer une distance/un angle sur le canevas.
 - À faire : outil règle : glisser → distance en mm, angle, affiché et copié.
+- Livré (2026-10-18) : `libs/geometry/measure.*` : distance, longueur de chemin, angle, aire (µm, mm, mm²) ; 5 tests (`0bec0f8`).
+- Livré (câblage bureau, 2026-10-18) : outil Règle (touche Q) : clic-glisser, règle temporaire (distance mm, Δx/Δy, angle), résultat dans la barre d'état et copiable, sans mutation du document ; gestes documentés ; `test_measure_tool`.
+- Reste : accroche (snap) sur la règle.
 
 ### HP-VEC-011 — Guides tirés des règles [P2] — ☐ À faire
 - À faire : glisser depuis une règle crée un guide horizontal/vertical
@@ -1510,7 +1546,7 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
   l'inverse plusieurs objets se combinent en un seul.
 - Dépend de : HP-OBJ-001.
 
-### HP-VEC-014 — Formes prédéfinies supplémentaires [P2] — ☐ À faire
+### HP-VEC-014 — Formes prédéfinies supplémentaires [P2] — ☑ Fait (2026-10-18, `89a3e2d`)
 - À faire : étoile, cœur, flèche, rectangle arrondi, arc, spirale — outils
   paramétriques (poignées) ou bibliothèque (HP-LIB-002).
 
@@ -1523,6 +1559,9 @@ redimensionnement à la souris, alignement, dupliquer / décaler, supprimer, ord
 Sur `main` depuis le 2026-10-13 : copier/coller, rotation, miroir, transformation du design entier. Manquent encore les
 poignées de rotation sur le canevas, les groupes et la barre X/Y/L/H. C'est le **deuxième mur** après les formats :
 tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
+- Livré (2026-10-18) : `libs/geometry/shapes.*` : étoile, cœur, flèche, rectangle arrondi, arc, spirale (cadre exact, aire, symétrie, cas dégénérés) ; 10 tests (`d3b1575`).
+- Livré (câblage bureau, 2026-10-18) : menu Forme › « Formes prédéfinies » (étoile à branches réglables, cœur, flèche, rectangle arrondi, arc, spirale), taille demandée par un dialogue paramétrique, insertion annulable au centre de la vue ; `test_vector_tools`.
+- Reste : poignées sur le canevas et entrée dans la palette d'outils ; intégration à la bibliothèque HP-LIB-002.
 
 ### HP-OBJ-001 — Sélection multiple [P0] — ◐ Partiel (2026-10-13)
 - Constaté sur `main` (`1ab521a` et suivants) : Ctrl/Maj+clic, rectangle de sélection (fenêtre ou croisement), sélection multi-lignes depuis la liste Document, inspecteur de groupe ; tests `rectangleLeftToRightIsWindow…`, `shiftRectangleAddsToTheSelection`, `documentListMultiSelectionDrivesRegionSelection`. Les critères d'acceptation sont remplis.
@@ -1989,12 +2028,15 @@ calques image/régions/vecteurs/broderie, filtres d'affichage, thème clair/somb
 - À faire : couleur de tissu (HP-THR-008), texture, images de produits avec
   zone brodable, cadre montré dessus.
 
-### HP-VIEW-005 — Carte de densité [P1] — ☐ À faire
+### HP-VIEW-005 — Carte de densité [P1] — ◐ Partiel (2026-10-18, `c046aa4`)
 - État OpenStitch : `limitations.md` : « pas de carte de densité ».
 - À faire : cœur : grille de densité (pénétrations/mm², épaisseur cumulée)
   calculée par `stitch_analysis` ; UI : surimpression colorée (échelle
   séquentielle) + règle d'analyse « zone trop dense ».
 - Modules : `libs/stitch_analysis`, `apps/desktop`.
+- Livré (2026-10-18) : `libs/stitch_analysis/density_map.*` : grille de densité (pénétrations/mm², longueur de fil, épaisseur en couches) bornée par `max_cells`, zones sur-denses 4-connexes à seuil configurable avec objet dominant ; 7 tests (`1679296`). Seuil de 4,0 /mm² heuristique, non mesuré sur corpus.
+- Livré (câblage bureau, 2026-10-18) : Affichage › « Carte de densité » (case mémorisée) : surimpression bleu→rouge avec légende pén./mm², calcul sur la séquence effective hors du fil UI et mis en cache ; zones sur-denses listées dans le panneau Analyse (clic = centrer, seuil réglable 4,0 par défaut) ; ne modifie jamais le document ; `test_density_map_ui` (12 cas).
+- Reste : vérification visuelle dans l'application réelle (palette, légende, centrage au clic non vérifiés en headless) ; calibrage du seuil sur corpus.
 
 ### HP-VIEW-006 — Vue d'ensemble (mini-carte) [P2] — ☐ À faire
 
@@ -2100,18 +2142,24 @@ hors cadre, déplacement sans coupe), résumé avant export DST.
 
 ### HP-PROD-004 — Aperçu avant impression général [P1] — ☐ À faire
 
-### HP-PROD-005 — Consommation de fil par couleur et canette [P1] — ◐ Partiel
+### HP-PROD-005 — Consommation de fil par couleur et canette [P1] — ☑ Fait (2026-10-18, `6f8fe96`)
 - État OpenStitch : longueur de fil totale.
 - À faire : par couleur, estimation fil de canette, en mètres.
+- Livré (2026-10-18) : `thread_consumption` : fil cousu / dessus / canette par couleur (m), nombre de canettes (capacité réglable, 100 m par défaut), coefficients réglables non mesurés ; 4 tests (`8385ada`).
+- Livré (câblage bureau, 2026-10-18) : consommation de fil par couleur, totaux et canettes dans la fiche de production (section HTML, clé JSON additive `consumption`, capacité de canette réglable dans le dialogue) ; tests.
+- Reste : affichage dans le panneau Fils et les statistiques ; calibrage des coefficients sur machine.
 
 ### HP-PROD-006 — Devis (prix par 1 000 points) [P3] — ☐ À faire
 
-### HP-PROD-007 — Règles d'analyse supplémentaires [P1] — ◐ Partiel
+### HP-PROD-007 — Règles d'analyse supplémentaires [P1] — ◐ Partiel (2026-10-18, `c046aa4`)
 - À faire : zone trop dense / recouvrements empilés (HP-VIEW-005), détails
   < 1 mm, texte trop petit (HP-TXT-009), satin trop large, objet sans point
   d'arrêt, fil trop proche de la couleur du tissu, dépassement de la zone
   cousable de la machine, nombre de couleurs > aiguilles de la machine.
 - Modules : `libs/stitch_analysis`.
+- Livré (2026-10-18) : règles `detail-trop-petit`, `objet-sans-arret`, `trop-de-coupes`, `densite-excessive` dans `stitch_analysis` (les deux dernières désactivées par défaut, seuils non mesurés) ; 6 tests (`ecb1e08`).
+- Livré (câblage bureau, 2026-10-18) : les règles `detail-trop-petit` et `objet-sans-arret` s'affichent dans le panneau Analyse ; `trop-de-coupes` et `densite-excessive` s'activent avec leurs seuils (50 coupes, 4,0 pén./mm²) dans « Règles optionnelles » ; tests.
+- Reste : satin trop large, fil trop proche de la couleur du tissu (HP-THR-008), nombre de couleurs supérieur aux aiguilles et zone cousable (HP-HOOP-002) ; seuils non mesurés sur corpus.
 
 ### HP-PROD-008 — Corrections automatiques depuis l'analyse [P2] — ◐ Partiel (2026-10-17)
 - État OpenStitch : **fait** : `Finding::fix` (donnée pure, `libs/stitch_analysis`) et bouton
@@ -2568,7 +2616,7 @@ de référence. Restent : progression et annulation, régénération de toute la
   auto-numérisation) ; annuler ne modifie pas le document ; déterminisme
   inchangé (même résultat en tâche de fond qu'en synchrone).
 
-### HP-PERF-002 — Régénération incrémentale par objet [P0] — ☐ À faire
+### HP-PERF-002 — Régénération incrémentale par objet [P0] — ◐ Partiel (2026-10-18)
 - À faire : cache de la séquence générée par objet, clé = empreinte (paramètres
   + géométrie source + contexte de routage) ; modifier un objet ne régénère
   que lui et ses liaisons ; `effective_sequence` assemble les tranches.
@@ -2577,6 +2625,8 @@ de référence. Restent : progression et annulation, régénération de toute la
 - Acceptation : séquence octet pour octet identique avec et sans cache
   (test d'équivalence comme `test_skeleton_equivalence.cpp`) ; modification
   d'un objet sur `tentabrode` < 50 ms.
+- Livré (2026-10-18) : cache à clé exacte de la séquence des objets droits, tatami et directionnels (`libs/stitch_generation/src/chunk_cache.*`, copie des paramètres et de la géométrie comparée par `operator==`, budget 64 Mio, mutex, éviction LRU) ; `generate_sequence` ne régénère que les objets modifiés. Tests `chunk cache : …` (équivalence octet pour octet avec/sans cache, invalidation paramètres/géométrie/identifiant, 1 fil contre 8). `tentabrode.png` Release : `effective_sequence` 63 → 7 ms (rien ne change), 63 → 8 ms (objet médian modifié), empreinte inchangée. Voir `docs/performance-audit.md` §9.
+- Reste : le plus gros objet (fond) reste régénéré en entier (67 ms) — cache par région ; satins routés et auto-satin hors cache (entrée dépendante de l'objet précédent).
 
 ### HP-PERF-003 — Auto-numérisation plus rapide [P1] — ☑ Fait (2026-10-13, `ba54c07`)
 - Livré (PR #26, fusionnée le 2026-10-13 (`ba54c07`)) : régions vectorisées et essayées en satin en parallèle, résultat réassemblé dans l'ordre. `tentabrode.png` : 77 ms (922 ms avec « Satin automatique »), cible < 5 s atteinte. Voir `docs/performance-audit.md` §7.
@@ -2623,9 +2673,11 @@ de référence. Restent : progression et annulation, régénération de toute la
   minidump en cas de crash (Windows `MiniDumpWriteDump`), « envoyer le rapport »
   (lien vers un ticket prérempli, jamais d'envoi silencieux).
 
-### HP-QA-003 — Fuzzing des décodeurs [P1] — ☐ À faire
+### HP-QA-003 — Fuzzing des décodeurs [P1] — ◐ Partiel (2026-10-18)
 - À faire : cibles libFuzzer (clang-cl ou job Linux) pour DST, PES, JEF, EXP,
   SVG, DXF, `.osp` ; corpus minimal commité.
+- Livré (2026-10-18) : `test_fuzz_decoders` : DST, PES, JEF, EXP, SVG, DXF et compagnon, graines fixes, toutes les troncatures, octets altérés ou aléatoires, en-têtes saturés, reproductibilité ; un vrai défaut corrigé : boucle infinie de l'import SVG sur un caractère non alphabétique après `Z` (`svg_import.cpp`), avec test de non-régression (`265e4b8`).
+- Reste : cibles libFuzzer/ASan en CI ; `.osp` (`libs/project_io`).
 
 ### HP-QA-004 — Tests bout en bout desktop [P2] — ◐ Partiel
 - À faire : scénarios complets en QTest offscreen (image → numériser → éditer
@@ -2790,3 +2842,12 @@ ci-dessus doit les respecter :
 | 2026-10-13 | Claude (session pilotée) | **Second lot** (en PR) : OBJ-018 pastille de couleur dans l'inspecteur, OBJ-004 poignée de rotation sur le canevas, VEC-002 tracé ouvert, VEC-003 Exclure, VEC-005 trous. Constaté sur `main` : OBJ-003 ☑, VEC-004 ☑ (statuts en retard). Tableau recalculé. |
 | 2026-10-13 | Claude (session pilotée) | PR #25, #26 et #27 fusionnées : mentions « en PR » retirées du premier lot ; OBJ-014 ☑ et PERF-003 ☑ (critères remplis sur `main`). |
 | 2026-10-15 | Claude (session CLI agent) | **HP-QA-007** ajoutée (◐, PR #46) : interface programmatique `.osp` en ligne de commande (`project …`, lots transactionnels, import SVG, lettrage, export, contrôle qualité). Total 264 → 265. |
+| 2026-10-18 | Claude (session autonome) | HP-PERF-002 ◐ : cache de régénération par objet (`chunk_cache`), `effective_sequence` 63 → 7/8 ms sur `tentabrode` ; reste le gros objet unique et les satins routés. |
+| 2026-10-18 | Claude (session autonome) | HP-FMT-011 ◐ : `stitch_render::render_sequence` + commande `openstitch-cli render` (PNG réaliste, fond transparent, résolution choisie) ; reste JPEG et dialogue du bureau. |
+| 2026-10-18 | Claude (session autonome, agents) | HP-VEC-007/008/010/014 ◐ : cœur géométrie (`smooth_path`, `convert_to_curves`, mesure, six formes prédéfinies) ; commandes et outils du bureau restent à câbler. |
+| 2026-10-18 | Claude (session autonome, agents) | HP-VIEW-005 ◐, HP-PROD-005 ◐, HP-PROD-007 ◐ : `density_map`, `thread_consumption` et quatre règles d'analyse dans `stitch_analysis` ; affichage à faire. |
+| 2026-10-18 | Claude (session autonome, agents) | HP-FMT-021 ◐ (migrations versionnées v1→v7), HP-THR-007 ◐ (stock de fils), HP-THR-012 ◐ (pipette) : cœur livré, IHM à faire. |
+| 2026-10-18 | Claude (session autonome, agents) | HP-TXT-007 ◐ (crénage manuel par paire), HP-TXT-012 ◐ (Unicode sans HarfBuzz : accents, repli, RTL hébreu), HP-TXT-013 ◐ (densité et points des petites lettres) ; champs `TextObject` et inspecteur restent à faire. |
+| 2026-10-18 | Claude (session autonome, agents) | HP-FMT-009 ◐ et HP-FMT-005 ◐ (compagnon de couleurs `.inf`/`.csv`, codec), HP-QA-003 ◐ (fuzzing déterministe des décodeurs, boucle infinie SVG corrigée) ; câblage bureau/CLI à faire. |
+| 2026-10-18 | Claude (session autonome, agents) | Câblage bureau (5 lots, agents) : HP-VEC-007/008/010/014 ☑ (menu Forme, outil Règle), HP-FMT-011 ☑ (Exporter l'image), HP-FMT-009 ☑ et HP-FMT-005 ◐ (compagnon de couleurs à l'export et à l'import, `osp2dst --color-file`), HP-PROD-005 ☑ (consommation sur la fiche), HP-THR-007 ☑ (Mes fils), HP-TXT-007 ☑ (crénage manuel, `.osp` v8 conditionnel), HP-TXT-012 ◐ (ligatures), HP-VIEW-005 ◐ (carte de densité), HP-PROD-007 ◐ (règles optionnelles), HP-THR-012 ◐ (outil Pipette). |
+| 2026-10-18 | Claude (session autonome, agents) | Règle ajoutée : sauf demande explicite, toute fonctionnalité est câblée dans le bureau (hook, skills, `CLAUDE.md`). |

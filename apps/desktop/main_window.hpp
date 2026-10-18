@@ -1115,6 +1115,73 @@ private:
     void buildProductionMenu(QMenu* fileMenu);
     void showProductionSheet();
     QAction* productionAct_{nullptr};
+    // Zones réservées au câblage des entrées livrées en cœur (une zone par lot, ne pas mélanger).
+    // [cablage-A:debut]
+    // Exporter l'image (HP-FMT-011, main_window_export_image.cpp).
+    void buildExportImageAction(QMenu* fileMenu);
+    void exportImage();
+    QAction* exportImageAct_{nullptr};
+    // [cablage-A:fin]
+    // [cablage-B:debut]
+    // Outils de tracé : Lisser, Convertir en courbes, formes prédéfinies
+    // (main_window_vector_tools.cpp, HP-VEC-007 / 008 / 014).
+    enum class PresetShape { Star, Heart, Arrow, RoundedRectangle, Arc, Spiral };
+    void buildVectorToolsMenu();
+    void updateVectorToolActions();
+    void smoothSelection(Micrometers tolerance);
+    void convertSelectionToCurves();
+    // `sizeMm` : dimension principale de la forme ; `starPoints` : branches de l'étoile.
+    void insertPresetShape(PresetShape shape, double sizeMm, int starPoints = 5);
+    void promptPresetShape(PresetShape shape);
+    QAction* smoothAct_{nullptr};
+    QAction* convertToCurvesAct_{nullptr};
+    QMenu* presetShapesMenu_{nullptr};
+    // [cablage-B:fin]
+    // [cablage-C:debut]
+    // Outil Règle (HP-VEC-010, main_window_measure.cpp) : mesure purement visuelle, aucune
+    // commande. Outil Pipette (HP-THR-012, main_window_eyedropper.cpp) : l'assignation passe par
+    // SetObjectThreadCommand sur undoStack_.
+    void buildMeasureTool();
+    void buildEyedropperTool();
+    // Ajoute Règle / Copier la mesure / Pipette à la palette d'outils (appelé par
+    // buildToolPalette).
+    void attachMeasureEyedropperTools();
+    // Appelé par setTool() : coche, curseur, libellé et message d'état des outils Règle/Pipette.
+    void syncMeasureEyedropperTool(Tool tool);
+    void showMeasureRuler(QPointF startMm, QPointF endMm, bool finished);
+    void clearMeasureRuler();
+    void copyLastMeasure();
+    // Échantillonne l'image affichée sous `posMm` (scène, mm) et ouvre le menu des fils proches.
+    void eyedropperAt(QPointF posMm);
+    void assignEyedropperChoice(const std::optional<thread_palette::ThreadKey>& key,
+                                std::array<std::uint8_t, 3> rgb, const QString& label);
+    QAction* toolMeasureAct_{nullptr};
+    QAction* copyMeasureAct_{nullptr};
+    QAction* toolEyedropperAct_{nullptr};
+    QGraphicsItem* measureRuler_{nullptr}; // règle temporaire (jamais dans le document)
+    QString lastMeasureText_;
+    QPointer<QMenu> eyedropperMenu_; // menu des fils proches (non bloquant : popup)
+    std::array<std::uint8_t, 3> eyedropperRgb_{};
+    // [cablage-C:fin]
+    // [cablage-D:debut]
+    // [cablage-D:fin]
+    // [cablage-E:debut]
+    // HP-VIEW-005 : carte de densité (main_window_density.cpp). Image mise en cache sous une
+    // clé (séquence effective + seuil), recalculée hors du fil UI quand la clé change.
+    void buildDensityFeature();
+    void refreshDensityOverlay(); // appelée par renderStitches() (pose le cache ou planifie)
+    void recomputeDensity();
+    void setDensityMapEnabled(bool on);
+    [[nodiscard]] double densityThresholdValue() const;
+    QAction* densityMapAct_{nullptr};
+    QTimer* densityTimer_{nullptr};
+    QPixmap densityPixmap_;
+    QRectF densityRect_; // zone couverte par l'image, mm (repère scène)
+    std::uint64_t densityKey_{0};
+    bool densityValid_{false};
+    double densityScaleMax_{1.0};
+    int densityComputeCount_{0}; // calculs réellement faits (tests)
+    // [cablage-E:fin]
     void applyNavigationPreset(Preset preset);
     // Duplique `ids` (copies exactes, même position) puis translate les COPIES de
     // `delta`, en un seul pas d'annulation (CompositeCommand) ; les copies deviennent

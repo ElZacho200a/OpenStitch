@@ -12,6 +12,7 @@ add_library(openstitch_stitch_generation
     src/underlay_order.cpp
     src/region_order.cpp
     src/generate.cpp
+    src/chunk_cache.cpp
     src/overrides.cpp
     src/underlay_auto.cpp
     src/join.cpp

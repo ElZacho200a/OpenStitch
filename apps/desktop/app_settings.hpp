@@ -3,6 +3,8 @@
 
 #include <QString>
 
+#include "openstitch/thread_palette/thread_stock.hpp"
+
 class QSettings;
 
 namespace openstitch::desktop {
@@ -40,5 +42,20 @@ void configureSettingsStorage();
 
 // Chemin du fichier de réglages (pour l'afficher à l'utilisateur).
 [[nodiscard]] QString settingsFilePath();
+
+// « Mes fils » (HP-THR-007) : le stock de bobines est une préférence utilisateur, JSON à côté
+// du fichier de réglages (jamais dans le .osp).
+[[nodiscard]] QString threadStockFilePath();
+// Relit le stock. Fichier absent : stock vide, sans erreur. Fichier illisible : stock vide,
+// `error` renseigné, et le fichier fautif est conservé sous `<nom>.invalide` (jamais écrasé
+// en silence par la sauvegarde suivante).
+[[nodiscard]] thread_palette::ThreadStock loadThreadStock(const QString& path,
+                                                          QString* error = nullptr);
+// Écriture atomique (QSaveFile). Faux + `error` si le disque refuse.
+bool saveThreadStock(const thread_palette::ThreadStock& stock, const QString& path,
+                     QString* error = nullptr);
+// Bascule « limiter la recherche du fil le plus proche à mes fils » (préférence).
+[[nodiscard]] bool loadLimitToThreadStock();
+void saveLimitToThreadStock(bool limit);
 
 } // namespace openstitch::desktop

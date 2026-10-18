@@ -203,3 +203,33 @@ TEST_CASE("fiche de production : sequence vide") {
     CHECK(sheet.estimated_minutes == Approx(0.0));
     CHECK(production_to_html(sheet).find("Aucun bloc") != std::string::npos);
 }
+
+TEST_CASE("fiche de production : consommation de fil et canettes") {
+    const auto project = twoObjectProject();
+    ProductionOptions opts;
+    opts.consumption.bobbin_capacity_m = 0.01; // capacite minuscule : plusieurs canettes
+    const auto sheet = make_production_sheet(project, twoBlockSequence(), opts);
+    REQUIRE(sheet.consumption.size() == 2);
+    CHECK(sheet.consumption[0].rgb == std::array<std::uint8_t, 3>{200, 10, 10});
+    CHECK(sheet.consumption[0].sewn_m == Approx(0.02));
+    CHECK(sheet.consumption[0].top_m > sheet.consumption[0].sewn_m);
+    CHECK(sheet.total_top_m == Approx(sheet.consumption[0].top_m + sheet.consumption[1].top_m));
+    CHECK(sheet.bobbins_needed >= 1);
+    CHECK(sheet.bobbin_capacity_m == Approx(0.01));
+
+    const auto json = production_to_json(sheet);
+    CHECK(json.find("\"consumption\":{\"total_top_m\":") != std::string::npos);
+    CHECK(json.find("\"bobbins_needed\":") != std::string::npos);
+    // Cles historiques inchangees.
+    CHECK(json.find("\"totals\":{\"stitches\":5") != std::string::npos);
+    const auto html = production_to_html(sheet);
+    CHECK(html.find("Consommation de fil") != std::string::npos);
+    CHECK(html.find("Canettes n") != std::string::npos);
+    CHECK(production_to_json(sheet) ==
+          production_to_json(make_production_sheet(project, twoBlockSequence(), opts)));
+
+    const auto empty = make_production_sheet(document::Project{}, stitch::StitchSequence{}, {});
+    CHECK(empty.consumption.empty());
+    CHECK(empty.bobbins_needed == 0);
+    CHECK(production_to_html(empty).find("Consommation de fil") == std::string::npos);
+}
