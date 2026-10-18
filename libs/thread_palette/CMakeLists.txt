@@ -5,6 +5,7 @@ add_library(openstitch_thread_palette
     src/chart_import.cpp
     src/thread_library.cpp
     src/thread_stock.cpp
+    src/eyedropper.cpp
     data/madeira_polyneon.cpp
     data/isacord_40.cpp
 )

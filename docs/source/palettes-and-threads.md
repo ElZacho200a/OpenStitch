@@ -227,6 +227,21 @@ est un mini-parseur interne. Le fichier est destiné aux préférences utilisate
 fichier dans les préférences ; import/export de formats tiers (`.thr`, `.rgb`, `.edr`, `.gpl`)
 non fait (le CSV existant couvre `parse_chart_csv`).
 
+## Pipette : échantillon de couleur vers fil (HP-THR-012, cœur)
+
+`thread_palette/eyedropper.hpp` : `sample_color(image, x, y, radius)` et
+`sample_region(image, x, y, w, h)` échantillonnent un tableau RGB brut entrelacé
+(`RgbImageView{span, largeur, hauteur}`, origine en haut à gauche — aucune dépendance à
+`libs/image`) : moyenne **entière** des valeurs sRGB sur le carré (ou rectangle) rogné aux
+bords, arrondie au plus proche, donc déterministe. Point hors image, rayon négatif, zone
+vide ou vue incohérente → `UserInput`. `pick_thread(...)` enchaîne l'échantillon et la
+recherche du fil le plus proche : dans un nuancier, dans toute la bibliothèque (`chart_id`
+vide) ou, si un `ThreadStock*` est fourni, uniquement dans *Mes fils*.
+
+**Reste** (IHM, `apps/desktop`) : l'outil lui-même (curseur, clic sur l'image → conversion
+pixel du widget → pixel image, affichage des propositions) et « clic sur un objet → reprendre
+son fil » (l'identité du fil d'un objet est déjà dans le document, HP-THR-004).
+
 ## Panneau Fils
 
 `apps/desktop/thread_panel.*` (présentation seule) + `main_window_threads.cpp`
@@ -265,6 +280,8 @@ des arrêts « changement de fil ». L'ordre des couleurs est porté par le docu
   placeholder, voir avertissement ci-dessus).
 - `libs/thread_palette/include/openstitch/thread_palette/thread_stock.hpp` et
   `src/thread_stock.cpp` — Mes fils (stock, nuancier personnel, JSON).
+- `libs/thread_palette/include/openstitch/thread_palette/eyedropper.hpp` et
+  `src/eyedropper.cpp` — pipette (échantillonnage + fil le plus proche).
 - `libs/thread_palette/.../thread_library.hpp`, `chart_import.hpp`,
   `color_reduction.hpp` — bibliothèque active, import CSV, réduction de palette.
 - `libs/project_io/.../thread_chart_io.hpp` — import de fichiers CSV/JSON.
