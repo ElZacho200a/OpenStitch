@@ -77,6 +77,10 @@ ImportDialog::ImportDialog(int widthPx, int heightPx, const QImage& preview, QSi
     keepRatio_->setToolTip(tr("Import raster proportionnel uniquement : le projet utilise une "
                               "résolution unique. Modifier la largeur ou la hauteur ajuste "
                               "automatiquement l'autre dimension."));
+    // HP-UX-044 : pas d'import anisotrope. La hauteur n'est jamais appliquée seule : la modifier
+    // règle la taille uniforme de l'image (la largeur suit), comme la largeur règle la hauteur.
+    heightMm_->setToolTip(tr("Dimension liée à la largeur (proportions conservées) : la modifier "
+                             "redimensionne l'image entière, elle n'est jamais étirée."));
     applyRatioRanges();
 
     // Valeur par défaut : 96 dpi (métier : libs/document), mais jamais plus grande que le cadre
