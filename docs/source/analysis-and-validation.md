@@ -128,8 +128,22 @@ aire, densité maximale et objet dominant, dans l'ordre de balayage de la grille
 cases est borné (`max_cells`, 1 000 000) : au-delà, le côté de case est doublé. Le seuil de 4,0 est
 une heuristique (un remplissage dense fait ~0,8 /mm², deux couches avec sous-couches ~2,5), **non
 mesurée sur un corpus** : la règle `densite-excessive` est donc désactivée par défaut
-(`AnalysisOptions::max_penetrations_per_mm2 = 0`). L'affichage de la surimpression colorée reste à
-faire dans l'interface.
+(`AnalysisOptions::max_penetrations_per_mm2 = 0`).
+
+**Câblage bureau** (`apps/desktop/main_window_density.cpp`, `density_overlay.*`) : *Affichage ▸
+Carte de densité* pose une image (une case de la grille = un pixel, palette bleu -> rouge,
+légende en pén./mm²) au-dessus de la couche points. Le calcul porte sur un **instantané de la
+séquence effective** (`sequence_`, jamais `generate_sequence`), exécuté dans `BusyIndicator::run`
+hors du fil d'interface. Le résultat est mis en cache sous une clé (condensat de la séquence +
+seuil) comme le rendu réaliste : un redessin le réutilise, un changement de motif ou de seuil
+l'invalide (l'image périmée n'est jamais affichée) et replanifie le calcul après 150 ms. Les
+zones de `find_density_hotspots` sont listées dans le panneau Analyse (clic = centrer la vue sur
+la boîte de la zone) ; le seuil de la carte est réglable et mémorisé (4,0 par défaut, valeur du
+cœur). La carte ne touche pas au document. `analyze_project` n'acceptant pas d'options, les deux
+règles désactivées par défaut (`trop-de-coupes`, `densite-excessive`) sont activables dans le
+panneau (*Règles optionnelles*, seuils mémorisés) : le bureau les évalue avec `analyze_detailed`
+et ajoute leurs seuls constats au rapport. Limites : la carte est recalculée en entier à chaque
+changement de motif (pas d'incrémental) ; le seuil n'est toujours pas mesuré sur un corpus.
 
 Les autres règles ajoutées (`detail-trop-petit`, `objet-sans-arret`, `trop-de-coupes`) sont
 décrites dans le tableau ci-dessus. Seul `detail-trop-petit` (1 mm) est actif par défaut ; il n'a
