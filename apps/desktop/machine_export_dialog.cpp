@@ -8,8 +8,10 @@
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSettings>
+#include <QTimer>
 #include <QVBoxLayout>
 
 #include <cmath>
@@ -60,8 +62,12 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
     }
     form->addRow(tr("Format :"), formatBox_);
 
-    trims_ = new QCheckBox(tr("Écrire les coupes de fil"), this);
+    trims_ = new QCheckBox(tr("Écrire les coupes de fil (réglage de ce fichier)"), this);
     trims_->setObjectName(QStringLiteral("check_exportTrims"));
+    trims_->setToolTip(
+        tr("Réglage de CE fichier d'export. Le seuil de coupe automatique est un réglage du "
+           "projet (Broderie ▸ Options de génération) : il décide où une coupe existe, cette "
+           "case décide si elle est écrite dans le fichier."));
     stops_ = new QComboBox(this);
     stops_->setObjectName(QStringLiteral("combo_exportStops"));
     stops_->addItem(tr("Natif du format"), static_cast<int>(formats::StopMode::Native));
@@ -126,7 +132,8 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
 
     // HP-SEQ-006 : optimisation des coupes demandée pour CET export, indépendante du format
     // (le DST en profite aussi). Appliquée à la toute fin, le projet n'est pas modifié.
-    reduceTrims_ = new QCheckBox(tr("Optimiser les trajets (moins de coupes et de sauts)"), this);
+    reduceTrims_ = new QCheckBox(
+        tr("Optimiser les trajets (réglage de ce fichier : moins de coupes et de sauts)"), this);
     reduceTrims_->setObjectName(QStringLiteral("check_exportReduceTrims"));
     reduceTrims_->setToolTip(
         tr("Appliqué à l'export seulement, tout à la fin : le projet n'est pas modifié et le "
@@ -172,19 +179,48 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
     summary_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     layout->addWidget(summary_);
 
+    // Problèmes détectés : montrés ici, sans fermer le dialogue (HP-UX-032).
+    problemsView_ = new QPlainTextEdit(this);
+    problemsView_->setObjectName(QStringLiteral("text_exportProblems"));
+    problemsView_->setReadOnly(true);
+    problemsView_->setAccessibleName(tr("Problèmes détectés avant l'export"));
+    problemsView_->setMaximumHeight(140);
+    problemsView_->hide();
+    layout->addWidget(problemsView_);
+
     auto* buttons = new QDialogButtonBox(this);
     chooseBtn_ = buttons->addButton(tr("Choisir le fichier…"), QDialogButtonBox::AcceptRole);
-    chooseBtn_->setDefault(true);
+    chooseBtn_->setObjectName(QStringLiteral("action_exportChoose"));
+    saveBtn_ =
+        buttons->addButton(tr("Enregistrer le projet d'abord"), QDialogButtonBox::ActionRole);
+    saveBtn_->setObjectName(QStringLiteral("action_exportSaveProject"));
+    saveBtn_->setToolTip(tr("Enregistre le projet (.osp) sans quitter cette fenêtre : le format "
+                            "machine ne conserve pas les objets éditables."));
     problemsBtn_ = buttons->addButton(tr("Voir les problèmes"), QDialogButtonBox::ActionRole);
     problemsBtn_->setObjectName(QStringLiteral("action_exportViewProblems"));
-    buttons->addButton(tr("Annuler"), QDialogButtonBox::RejectRole);
+    openAnalysisBtn_ = buttons->addButton(tr("Ouvrir l'analyse"), QDialogButtonBox::ActionRole);
+    openAnalysisBtn_->setObjectName(QStringLiteral("action_exportOpenAnalysis"));
+    openAnalysisBtn_->setToolTip(
+        tr("Ferme cette fenêtre et ouvre le panneau Analyse pour corriger les problèmes."));
+    cancelBtn_ = buttons->addButton(tr("Annuler"), QDialogButtonBox::RejectRole);
     layout->addWidget(buttons);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    connect(saveBtn_, &QPushButton::clicked, this, &MachineExportDialog::saveProjectRequested);
     connect(problemsBtn_, &QPushButton::clicked, this, [this] {
+        const bool show = problemsView_->isHidden();
+        problemsView_->setVisible(show);
+        problemsBtn_->setText(show ? tr("Masquer les problèmes") : tr("Voir les problèmes"));
+    });
+    connect(openAnalysisBtn_, &QPushButton::clicked, this, [this] {
         viewProblems_ = true;
         reject();
     });
+
+    refreshTimer_ = new QTimer(this);
+    refreshTimer_->setSingleShot(true);
+    refreshTimer_->setInterval(kPreviewDelayMs);
+    connect(refreshTimer_, &QTimer::timeout, this, [this] { refresh(); });
 
     // Réglages mémorisés (par poste).
     QSettings settings;
@@ -215,7 +251,7 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
     underlay_->setChecked(settings.value(kSettingsUnderlay, true).toBool());
     regions_->setChecked(settings.value(kSettingsRegions, false).toBool());
 
-    const auto onChange = [this] { refresh(); };
+    const auto onChange = [this] { scheduleRefresh(); };
     connect(formatBox_, &QComboBox::currentIndexChanged, this, onChange);
     connect(companion_, &QCheckBox::toggled, this, onChange);
     connect(trims_, &QCheckBox::toggled, this, onChange);
@@ -248,6 +284,55 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
         s.setValue(kSettingsRegions, regions_->isChecked());
     });
     refresh();
+}
+
+MachineExportDialog::SavedExport MachineExportDialog::loadSavedExport() {
+    QSettings settings;
+    SavedExport saved;
+    saved.formatId = settings.value(kSettingsFormat, "dst").toString();
+    saved.options.trims = settings.value(kSettingsTrims, true).toBool() ? formats::TrimMode::Native
+                                                                        : formats::TrimMode::Drop;
+    saved.options.color_changes = settings.value(kSettingsColors, true).toBool()
+                                      ? formats::ColorChangeMode::Emit
+                                      : formats::ColorChangeMode::Drop;
+    saved.options.stops = static_cast<formats::StopMode>(settings.value(kSettingsStops, 0).toInt());
+    // Le point de départ n'est pas mémorisé (toujours « premier point du motif » à l'ouverture).
+    const bool reduce = settings.value(kSettingsReduceTrims, false).toBool();
+    saved.optimizations.reduce_trims = reduce;
+    saved.optimizations.hidden_travel.allow_same_color_surface =
+        reduce && settings.value(kSettingsSameColour, false).toBool();
+    saved.optimizations.hidden_travel.max_bridge_length = Micrometers{static_cast<std::int32_t>(
+        std::lround(settings.value(kSettingsMaxBridge, 15.0).toDouble() * 1000.0))};
+    saved.optimizations.hidden_travel.between_objects =
+        settings.value(kSettingsBetween, true).toBool();
+    saved.optimizations.hidden_travel.within_object =
+        settings.value(kSettingsWithin, true).toBool();
+    saved.optimizations.hidden_travel.reorder_underlay =
+        settings.value(kSettingsUnderlay, true).toBool();
+    saved.optimizations.hidden_travel.reorder_regions =
+        settings.value(kSettingsRegions, false).toBool();
+    const auto* f = formats::find_format(saved.formatId.toStdString());
+    saved.companion.write =
+        settings.value(kSettingsCompanion, false).toBool() && f != nullptr && !f->carries_colors;
+    saved.companion.kind = static_cast<formats::CompanionKind>(
+        settings.value(kSettingsCompanionKind, static_cast<int>(formats::CompanionKind::Csv))
+            .toInt());
+    return saved;
+}
+
+void MachineExportDialog::flushPendingRefresh() {
+    if (refreshTimer_ != nullptr && refreshTimer_->isActive()) {
+        refreshTimer_->stop();
+        refresh();
+    }
+}
+
+void MachineExportDialog::accept() {
+    flushPendingRefresh(); // le résumé affiché (limites du format) est celui des réglages validés
+    if (blocking_) {
+        return;
+    }
+    QDialog::accept();
 }
 
 const formats::FormatInfo* MachineExportDialog::format() const {
@@ -289,7 +374,13 @@ project_io::ExportOptimizations MachineExportDialog::optimizations() const {
     return o;
 }
 
-void MachineExportDialog::refresh() {
+void MachineExportDialog::scheduleRefresh() {
+    updateEnabledStates();
+    summary_->setEnabled(false); // aperçu en attente de recalcul
+    refreshTimer_->start();
+}
+
+void MachineExportDialog::updateEnabledStates() {
     const auto* f = format();
     if (f == nullptr) {
         return;
@@ -313,10 +404,42 @@ void MachineExportDialog::refresh() {
     within_->setEnabled(reduceTrims_->isChecked());
     underlay_->setEnabled(reduceTrims_->isChecked());
     regions_->setEnabled(reduceTrims_->isChecked());
+}
+
+void MachineExportDialog::refresh() {
+    const auto* f = format();
+    if (f == nullptr) {
+        return;
+    }
+    refreshTimer_->stop();
+    updateEnabledStates();
     const auto summary = summarize_(*f, options(), optimizations());
     summary_->setText(summary.text);
-    problemsBtn_->setVisible(summary.has_analysis_errors);
+    summary_->setEnabled(true);
+    blocking_ = summary.blocking;
+    const bool hasProblems = summary.has_analysis_errors || summary.has_warnings;
+    problemsView_->setPlainText(summary.problems);
+    problemsBtn_->setVisible(hasProblems);
+    openAnalysisBtn_->setVisible(hasProblems);
+    if (!hasProblems) {
+        problemsView_->hide();
+        problemsBtn_->setText(tr("Voir les problèmes"));
+    }
     chooseBtn_->setEnabled(!summary.blocking);
+    updateDefaultButton(summary.blocking || hasProblems, hasProblems);
+}
+
+// Bouton par défaut (Entrée) : « Choisir le fichier… » seulement quand rien ne s'oppose à l'export
+// ; sinon une action sans effet sur les fichiers (voir les problèmes, ou annuler si rien à voir).
+void MachineExportDialog::updateDefaultButton(bool risky, bool hasProblems) {
+    QPushButton* target = chooseBtn_;
+    if (risky) {
+        target = hasProblems ? problemsBtn_ : cancelBtn_;
+    }
+    for (QPushButton* b : {chooseBtn_, saveBtn_, problemsBtn_, openAnalysisBtn_, cancelBtn_}) {
+        b->setAutoDefault(b == target);
+        b->setDefault(b == target);
+    }
 }
 
 } // namespace openstitch::desktop

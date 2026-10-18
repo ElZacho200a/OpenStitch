@@ -1080,6 +1080,7 @@ private:
     // `sequenceImported_`, §17).
     std::optional<stitch::StitchSequence> sequence_;
     QAction* exportDstAct_{nullptr};
+    QAction* exportDstQuickAct_{nullptr};
 
     // Actions partagées entre menus et barre principale (une seule action : état,
     // raccourci et info-bulle identiques aux deux endroits).

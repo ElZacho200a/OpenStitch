@@ -753,6 +753,13 @@ void MainWindow::buildMenus() {
     exportDstAct_ = fileMenu->addAction(tr("&Exporter une broderie machine…"));
     exportDstAct_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_E));
     connect(exportDstAct_, &QAction::triggered, this, &MainWindow::exportDst);
+    exportDstQuickAct_ = fileMenu->addAction(tr("Exporter &avec les derniers réglages"));
+    exportDstQuickAct_->setObjectName(QStringLiteral("action_exportQuick"));
+    exportDstQuickAct_->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_E));
+    exportDstQuickAct_->setToolTip(
+        tr("Exporte tout de suite avec le format et les options du dernier export, sans "
+           "résumé : seul le nom du fichier est demandé."));
+    connect(exportDstQuickAct_, &QAction::triggered, this, &MainWindow::exportDstQuick);
     buildProductionMenu(fileMenu);
     auto* importDstAct = fileMenu->addAction(tr("&Importer une broderie machine…"));
     connect(importDstAct, &QAction::triggered, this, &MainWindow::importDst);
@@ -8478,10 +8485,30 @@ void MainWindow::exportDst() {
         const auto findings = stitch_analysis::analyze_project(project_, shown).findings;
         std::size_t errors = 0;
         std::size_t warnings = 0;
+        QStringList problemLines;
+        constexpr int kMaxProblemLines = 40;
         for (const auto& f : findings) {
             errors += f.severity == stitch_analysis::Severity::Error ? 1 : 0;
             warnings += f.severity == stitch_analysis::Severity::Warning ? 1 : 0;
+            if (f.severity == stitch_analysis::Severity::Info ||
+                problemLines.size() >= kMaxProblemLines) {
+                continue;
+            }
+            const auto* emb = project_.findEmbroidery(f.object);
+            const QString where = (emb != nullptr && !emb->name.empty())
+                                      ? tr("« %1 » : ").arg(QString::fromStdString(emb->name))
+                                      : QString();
+            problemLines << (f.severity == stitch_analysis::Severity::Error
+                                 ? tr("Erreur : ")
+                                 : tr("Avertissement : ")) +
+                                where + QString::fromStdString(f.message);
         }
+        if (errors + warnings > static_cast<std::size_t>(problemLines.size())) {
+            problemLines << tr("… et %1 de plus (panneau Analyse).")
+                                .arg(errors + warnings -
+                                     static_cast<std::size_t>(problemLines.size()));
+        }
+        result.has_warnings = warnings > 0;
         summary += errors + warnings == 0
                        ? tr("\n\nAnalyse : aucun problème détecté.")
                        : tr("\n\nAnalyse : %1 erreur(s), %2 avertissement(s) — voir Analyse ▸ "
@@ -8491,6 +8518,8 @@ void MainWindow::exportDst() {
         result.has_analysis_errors = errors > 0;
         if (overflow) {
             summary += tr("\n\nAttention : le motif dépasse le cadre.");
+            result.has_warnings = true;
+            problemLines << tr("Avertissement : le motif dépasse le cadre.");
         }
         // Limites du format cible (couleurs, étendue, cadres de la marque, déplacements découpés).
         QString limits;
@@ -8502,9 +8531,12 @@ void MainWindow::exportDst() {
             case formats::ExportIssueSeverity::Error:
                 limits += tr("\nImpossible : %1").arg(text);
                 result.blocking = true;
+                problemLines << tr("Impossible : %1").arg(text);
                 break;
             case formats::ExportIssueSeverity::Warning:
                 limits += tr("\nAttention : %1").arg(text);
+                result.has_warnings = true;
+                problemLines << tr("Avertissement : %1").arg(text);
                 break;
             case formats::ExportIssueSeverity::Info:
                 limits += tr("\nÀ noter : %1").arg(text);
@@ -8523,10 +8555,13 @@ void MainWindow::exportDst() {
             summary += tr(" Pensez à enregistrer aussi le projet (.osp).");
         }
         result.text = summary;
+        result.problems = problemLines.join(QLatin1Char('\n'));
         return result;
     };
 
     MachineExportDialog dialog(summarize, QString(), this);
+    // « Enregistrer le projet d'abord » : sans fermer le dialogue d'export.
+    connect(&dialog, &MachineExportDialog::saveProjectRequested, this, [this] { saveProject(); });
     dialog.exec();
     if (dialog.viewProblemsRequested()) {
         runAnalysis();
@@ -8535,17 +8570,36 @@ void MainWindow::exportDst() {
     if (dialog.result() != QDialog::Accepted) {
         return;
     }
-    const formats::FormatInfo* format = dialog.format();
+    MachineExportRequest request;
+    request.format = dialog.format();
+    request.options = dialog.options();
+    request.optimizations = dialog.optimizations();
+    request.companion = dialog.companion(); // HP-FMT-009 : fichier de couleurs voisin (DST, EXP)
+    // Nombre de points du fichier réellement écrit : celui de la séquence optimisée si demandée.
+    const auto* exportedSeq =
+        cache->valid && cache->key == request.optimizations && request.optimizations.reduce_trims
+            ? &cache->value.sequence
+            : nullptr;
+    request.writtenStitches =
+        exportedSeq ? stitch::compute_stats(*exportedSeq).stitches : stats.stitches;
+    runMachineExport(request);
+}
+
+bool MainWindow::runMachineExport(const MachineExportRequest& request) {
+    const formats::FormatInfo* format = request.format;
     if (format == nullptr || format->extensions.empty()) {
-        return;
+        return false;
     }
     const QString ext = QString::fromStdString(format->extensions.front());
-    QString file = QFileDialog::getSaveFileName(
-        this, tr("Exporter en %1").arg(QString::fromStdString(format->display_name)),
-        suggestedFilePath(ext),
-        tr("%1 (*.%2)").arg(QString::fromStdString(format->display_name), ext));
+    QString file = request.file;
     if (file.isEmpty()) {
-        return;
+        file = QFileDialog::getSaveFileName(
+            this, tr("Exporter en %1").arg(QString::fromStdString(format->display_name)),
+            suggestedFilePath(ext),
+            tr("%1 (*.%2)").arg(QString::fromStdString(format->display_name), ext));
+        if (file.isEmpty()) {
+            return false;
+        }
     }
     // Extension forcée : sans elle la machine ne reconnaît pas le fichier.
     if (QFileInfo(file).suffix().compare(ext, Qt::CaseInsensitive) != 0) {
@@ -8554,11 +8608,11 @@ void MainWindow::exportDst() {
 
     // AD-03 : composition projet -> fichier machine générique (AI-03b), partagée avec la CLI --
     // recalcule sa propre `effective_sequence`, garantie identique à `*sequence_`.
-    auto options = dialog.options();
+    auto options = request.options;
     options.design_name = QFileInfo(file).completeBaseName().toStdString();
-    const auto optimizations = dialog.optimizations();
+    const auto& optimizations = request.optimizations;
     stitch_generation::TrimReport trimReport;
-    auto companion = dialog.companion(); // HP-FMT-009 : fichier de couleurs voisin (DST, EXP)
+    auto companion = request.companion;
     const auto written = project_io::export_machine_file(
         project_, format->id, std::filesystem::path(file.toStdWString()), options, optimizations,
         &trimReport, &companion);
@@ -8569,20 +8623,16 @@ void MainWindow::exportDst() {
                "s'il existait, est intact.")
                 .arg(QString::fromStdString(format->display_name), QFileInfo(file).fileName()),
             written.error().message);
-        return;
+        return false;
     }
     rememberLastDirectory(file);
-    // Nombre de points du fichier réellement écrit : celui de la séquence optimisée si demandée.
-    const auto* exportedSeq =
-        cache->valid && cache->key == optimizations && optimizations.reduce_trims
-            ? &cache->value.sequence
-            : nullptr;
-    const auto writtenStitches =
-        exportedSeq ? stitch::compute_stats(*exportedSeq).stitches : stats.stitches;
     QString message =
-        tr("%1 exporté : %2 (%3 points).")
-            .arg(QString::fromStdString(format->display_name), QFileInfo(file).fileName())
-            .arg(writtenStitches);
+        tr("%1 exporté : %2")
+            .arg(QString::fromStdString(format->display_name), QFileInfo(file).fileName());
+    if (request.writtenStitches) {
+        message += tr(" (%1 points)").arg(*request.writtenStitches);
+    }
+    message += QLatin1Char('.');
     if (optimizations.reduce_trims) {
         message += tr(" Coupes supprimées : %1.").arg(trimReport.trims_removed);
     }
@@ -8594,6 +8644,46 @@ void MainWindow::exportDst() {
                        .arg(QString::fromStdString(companion.error));
     }
     offerRevealInFolder(file, message);
+    return true;
+}
+
+// Ctrl+Maj+E : refait l'export avec le format et les options du dernier export (mémorisés par
+// poste), sans résumé ni choix : seul le nom du fichier est demandé, dans le dernier dossier.
+// Si les réglages mémorisés sont refusés par le format, on rouvre le dialogue complet plutôt que
+// d'écrire un fichier que la machine refuserait.
+void MainWindow::exportDstQuick() {
+    if (!sequence_) {
+        return;
+    }
+    const auto saved = MachineExportDialog::loadSavedExport();
+    MachineExportRequest request;
+    request.format = formats::find_format(saved.formatId.toStdString());
+    if (request.format == nullptr) {
+        request.format = formats::find_format("dst");
+    }
+    request.options = saved.options;
+    request.optimizations = saved.optimizations;
+    request.companion = saved.companion;
+    if (request.format == nullptr || !request.format->can_write) {
+        exportDst();
+        return;
+    }
+    const auto exported = project_io::with_start_point(*sequence_, request.options.start);
+    for (const auto& issue :
+         formats::check_export_limits(exported, *request.format, request.options)) {
+        if (issue.severity == formats::ExportIssueSeverity::Error) {
+            statusBar()->showMessage(
+                tr("Export rapide impossible avec les derniers réglages (%1) : résumé ouvert.")
+                    .arg(QString::fromStdString(issue.message)),
+                8000);
+            exportDst();
+            return;
+        }
+    }
+    if (!request.optimizations.reduce_trims) {
+        request.writtenStitches = stitch::compute_stats(*sequence_).stitches;
+    }
+    runMachineExport(request);
 }
 
 void MainWindow::importDst() {
@@ -9537,6 +9627,7 @@ void MainWindow::updateActions() {
         tr("Aucun point généré : créez d'abord un objet de broderie (tatami, satin…).");
     setEnabledWithReason(statsAct_, sequence_.has_value(), needStitches);
     setEnabledWithReason(exportDstAct_, sequence_.has_value(), needStitches);
+    setEnabledWithReason(exportDstQuickAct_, sequence_.has_value(), needStitches);
     setEnabledWithReason(productionAct_, sequence_.has_value(), needStitches);
     // Actions « document requis » : mêmes gardes que leurs slots (qui restent en place).
     // Même critère que l'accueil, l'autosave et les slots, import machine inclus.
