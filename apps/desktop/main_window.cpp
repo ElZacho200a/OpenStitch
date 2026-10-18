@@ -62,6 +62,7 @@
 #include "ai_segmentation_dialog.hpp"
 #include "app_settings.hpp"
 #include "app_theme.hpp"
+#include "autodigitize_presets.hpp"
 #include "autosave.hpp"
 #include "brightness_dialog.hpp"
 #include "busy_indicator.hpp"
@@ -4375,7 +4376,9 @@ void MainWindow::autoDigitize() {
         hasSegmentation ? (!project_.embroidery_objects.empty() || !project_.vector_objects.empty())
                         : !project_.embroidery_objects.empty();
     bool replacePrevious = false;
-    if (alreadyDigitized) {
+    // Chemin segmentation : la question Ajouter / Remplacer est posée DANS le dialogue d'options
+    // (une seule fenêtre, HP-UX-030). Le chemin SVG n'a pas de dialogue d'options : question seule.
+    if (alreadyDigitized && !hasSegmentation) {
         QMessageBox box(
             QMessageBox::Question, tr("Numérisation automatique"),
             tr("Des objets existent déjà. Ajouter les nouveaux objets à côté des existants, ou "
@@ -4427,6 +4430,23 @@ void MainWindow::autoDigitize() {
         QDialog optsDialog(this);
         optsDialog.setWindowTitle(tr("Numérisation automatique"));
         auto* optsLayout = new QVBoxLayout(&optsDialog);
+        // Préréglages (HP-UX-030) : remplissent les champs ci-dessous, rien de plus.
+        auto* presetRow = new QHBoxLayout;
+        auto* presetCombo = new QComboBox(&optsDialog);
+        presetCombo->setObjectName("autoDigitizePresetCombo");
+        presetCombo->setAccessibleName(tr("Préréglage de numérisation"));
+        presetCombo->addItem(tr("Personnalisé"), static_cast<int>(DigitizePreset::Custom));
+        presetCombo->addItem(tr("Logo / aplats"), static_cast<int>(DigitizePreset::Logo));
+        presetCombo->addItem(tr("Dessin au trait"), static_cast<int>(DigitizePreset::LineArt));
+        presetCombo->addItem(tr("Photo / pointillé"), static_cast<int>(DigitizePreset::Photo));
+        presetCombo->setToolTip(tr(
+            "Un préréglage remplit les réglages de ce dialogue ; vous pouvez ensuite les "
+            "ajuster dans « Réglages avancés » (le préréglage passe alors à « Personnalisé »)."));
+        auto* presetLabel = new QLabel(tr("Type d'image :"), &optsDialog);
+        presetLabel->setBuddy(presetCombo);
+        presetRow->addWidget(presetLabel);
+        presetRow->addWidget(presetCombo, 1);
+        optsLayout->addLayout(presetRow);
         auto* skipBgCheck =
             new QCheckBox(tr("Ignorer la plus grande région (probablement le fond)"), &optsDialog);
         skipBgCheck->setObjectName("skipBackgroundCheck");
@@ -4502,6 +4522,28 @@ void MainWindow::autoDigitize() {
         optsLayout->addWidget(shapesRadio);
         optsLayout->addWidget(contoursRadio);
         optsLayout->addWidget(stippleRadio);
+
+        // Section « Réglages avancés », repliée par défaut ; son état est mémorisé.
+        auto* advancedToggle = new QToolButton(&optsDialog);
+        advancedToggle->setObjectName("autoDigitizeAdvancedToggle");
+        advancedToggle->setText(tr("Réglages avancés"));
+        advancedToggle->setCheckable(true);
+        advancedToggle->setAutoRaise(true);
+        advancedToggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        auto* advancedBox = new QWidget(&optsDialog);
+        advancedBox->setObjectName("autoDigitizeAdvanced");
+        auto* advancedLayout = new QVBoxLayout(advancedBox);
+        advancedLayout->setContentsMargins(0, 0, 0, 0);
+        const auto setAdvancedOpen = [advancedToggle, advancedBox](bool open) {
+            advancedToggle->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
+            advancedBox->setVisible(open);
+        };
+        connect(advancedToggle, &QToolButton::toggled, &optsDialog, setAdvancedOpen);
+        advancedToggle->setChecked(
+            ui_memory::boolValue(QStringLiteral("autoDigitize/advancedOpen"), false));
+        setAdvancedOpen(advancedToggle->isChecked());
+        optsLayout->addWidget(advancedToggle);
+        optsLayout->addWidget(advancedBox);
 
         auto* shapesPanel = new QWidget(&optsDialog);
         shapesPanel->setObjectName("shapesPanel");
@@ -4749,7 +4791,7 @@ void MainWindow::autoDigitize() {
                "suggèrent le mouvement. La couleur la plus sombre reste en tatami."));
         shapesPanelLayout->addWidget(flowFillCheck);
         connect(shapesRadio, &QRadioButton::toggled, shapesPanel, &QWidget::setEnabled);
-        optsLayout->addWidget(shapesPanel);
+        advancedLayout->addWidget(shapesPanel);
 
         auto* contoursPanel = new QWidget(&optsDialog);
         contoursPanel->setObjectName("contoursPanel");
@@ -4785,7 +4827,7 @@ void MainWindow::autoDigitize() {
         panelLayout->addLayout(techRow);
         contoursPanel->setEnabled(false);
         connect(contoursRadio, &QRadioButton::toggled, contoursPanel, &QWidget::setEnabled);
-        optsLayout->addWidget(contoursPanel);
+        advancedLayout->addWidget(contoursPanel);
 
         auto* stipplePanel = new QWidget(&optsDialog);
         stipplePanel->setObjectName("stipplePanel");
@@ -4816,16 +4858,140 @@ void MainWindow::autoDigitize() {
         stippleLayout->addStretch(1);
         stipplePanel->setEnabled(false);
         connect(stippleRadio, &QRadioButton::toggled, stipplePanel, &QWidget::setEnabled);
-        optsLayout->addWidget(stipplePanel);
+        advancedLayout->addWidget(stipplePanel);
 
-        auto* optsButtons =
-            new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &optsDialog);
+        // Valeurs du dialogue <-> structure de préréglage (autodigitize_presets.hpp).
+        DigitizeDialogValues builtinDefaults;
+        builtinDefaults.minFeatureWidthUm =
+            static_cast<int>(std::lround(opts.min_feature_width_mm * 1000.0));
+        builtinDefaults.minRegionAreaCmm2 =
+            static_cast<int>(std::lround(opts.min_region_area_mm2 * 100.0));
+        const auto collectValues = [&]() {
+            DigitizeDialogValues v;
+            v.satinBands = satinBandsCheck->isChecked();
+            v.maxThreads = maxThreadsSpin->value();
+            v.strategy = contoursRadio->isChecked()  ? DigitizeStrategy::Contours
+                         : stippleRadio->isChecked() ? DigitizeStrategy::Stipple
+                                                     : DigitizeStrategy::Shapes;
+            v.shapeDetail = shapeDetailSlider->value();
+            v.fillOverlapUm = static_cast<int>(std::lround(overlapSpin->value() * 1000.0));
+            v.minFeatureWidthUm = static_cast<int>(std::lround(featureSpin->value() * 1000.0));
+            v.minRegionAreaCmm2 = static_cast<int>(std::lround(minAreaSpin->value() * 100.0));
+            v.islandAreaCmm2 = static_cast<int>(std::lround(islandSpin->value() * 100.0));
+            v.islandMaxDeltaE = static_cast<int>(std::lround(islandDeSpin->value()));
+            v.curveToleranceUm = static_cast<int>(std::lround(curveSpin->value() * 1000.0));
+            v.solidBlock = solidBlockCheck->isChecked();
+            v.flowFill = flowFillCheck->isChecked();
+            v.darkLines = darkLinesCheck->isChecked();
+            v.darkLinesWidthUm = static_cast<int>(std::lround(darkWidthSpin->value() * 1000.0));
+            v.darkLinesLightness = static_cast<int>(std::lround(darkLightSpin->value()));
+            v.darkLinesMinLenUm = static_cast<int>(std::lround(darkMinLenSpin->value() * 1000.0));
+            v.darkLinesObjectsOnly = darkObjectsOnlyCheck->isChecked();
+            v.ringsSatin = ringsSatinCheck->isChecked();
+            v.contourDetail = detailSlider->value();
+            v.techniqueRunning = techRunningRadio->isChecked();
+            v.stipplePoints = stipplePointsSpin->value();
+            v.stippleSeed = stippleSeedSpin->value();
+            v.stippleInvert = stippleInvertCheck->isChecked();
+            return v;
+        };
+        bool applyingPreset = false;
+        const auto syncPresetCombo = [&] {
+            if (applyingPreset) {
+                return;
+            }
+            const auto match = matchingDigitizePreset(collectValues(), builtinDefaults);
+            QSignalBlocker block(presetCombo);
+            presetCombo->setCurrentIndex(presetCombo->findData(static_cast<int>(match)));
+        };
+        const auto applyValues = [&](const DigitizeDialogValues& v) {
+            applyingPreset = true;
+            satinBandsCheck->setChecked(v.satinBands);
+            // La palette (nombre de fils) n'appartient à aucun préréglage : maxThreadsSpin reste.
+            shapesRadio->setChecked(v.strategy == DigitizeStrategy::Shapes);
+            contoursRadio->setChecked(v.strategy == DigitizeStrategy::Contours);
+            stippleRadio->setChecked(v.strategy == DigitizeStrategy::Stipple);
+            shapeDetailSlider->setValue(v.shapeDetail);
+            overlapSpin->setValue(v.fillOverlapUm / 1000.0);
+            featureSpin->setValue(v.minFeatureWidthUm / 1000.0);
+            minAreaSpin->setValue(v.minRegionAreaCmm2 / 100.0);
+            islandSpin->setValue(v.islandAreaCmm2 / 100.0);
+            islandDeSpin->setValue(v.islandMaxDeltaE);
+            curveSpin->setValue(v.curveToleranceUm / 1000.0);
+            solidBlockCheck->setChecked(v.solidBlock);
+            flowFillCheck->setChecked(v.flowFill);
+            darkLinesCheck->setChecked(v.darkLines);
+            darkWidthSpin->setValue(v.darkLinesWidthUm / 1000.0);
+            darkLightSpin->setValue(v.darkLinesLightness);
+            darkMinLenSpin->setValue(v.darkLinesMinLenUm / 1000.0);
+            darkObjectsOnlyCheck->setChecked(v.darkLinesObjectsOnly);
+            ringsSatinCheck->setChecked(v.ringsSatin);
+            detailSlider->setValue(v.contourDetail);
+            techRunningRadio->setChecked(v.techniqueRunning);
+            techAutoRadio->setChecked(!v.techniqueRunning);
+            stipplePointsSpin->setValue(v.stipplePoints);
+            stippleSeedSpin->setValue(v.stippleSeed);
+            stippleInvertCheck->setChecked(v.stippleInvert);
+            applyingPreset = false;
+        };
+        connect(presetCombo, &QComboBox::currentIndexChanged, &optsDialog, [&](int index) {
+            const auto preset = static_cast<DigitizePreset>(presetCombo->itemData(index).toInt());
+            if (preset != DigitizePreset::Custom) {
+                applyValues(digitizePresetValues(preset, builtinDefaults));
+                syncPresetCombo(); // une valeur écrêtée par un champ ne doit pas passer pour exacte
+            }
+        });
+        // Toute retouche d'un réglage ramène le préréglage affiché à « Personnalisé » (ou à celui
+        // dont les valeurs sont exactement celles-ci).
+        for (auto* w : optsDialog.findChildren<QDoubleSpinBox*>()) {
+            connect(w, &QDoubleSpinBox::valueChanged, &optsDialog, syncPresetCombo);
+        }
+        for (auto* w : optsDialog.findChildren<QSpinBox*>()) {
+            connect(w, &QSpinBox::valueChanged, &optsDialog, syncPresetCombo);
+        }
+        for (auto* w : optsDialog.findChildren<QSlider*>()) {
+            connect(w, &QSlider::valueChanged, &optsDialog, syncPresetCombo);
+        }
+        for (auto* w : optsDialog.findChildren<QCheckBox*>()) {
+            connect(w, &QCheckBox::toggled, &optsDialog, syncPresetCombo);
+        }
+        for (auto* w : optsDialog.findChildren<QRadioButton*>()) {
+            connect(w, &QRadioButton::toggled, &optsDialog, syncPresetCombo);
+        }
+        syncPresetCombo(); // valeurs relues de la mémoire : affiche le préréglage correspondant
+
+        // Boutons : « Numériser » seul, ou « Ajouter » / « Remplacer » quand des objets existent
+        // déjà (la question n'est plus une seconde fenêtre).
+        auto* optsButtons = new QDialogButtonBox(&optsDialog);
+        if (alreadyDigitized) {
+            auto* addBtn = optsButtons->addButton(tr("Ajouter"), QDialogButtonBox::AcceptRole);
+            addBtn->setToolTip(tr("Ajoute les nouveaux objets à côté des objets existants."));
+            auto* replaceBtn =
+                optsButtons->addButton(tr("Remplacer"), QDialogButtonBox::ActionRole);
+            replaceBtn->setToolTip(
+                tr("Supprime les objets de broderie à choix automatique et les formes issues de "
+                   "la segmentation qui leur servent de source ; les objets verrouillés, "
+                   "retouchés à la main ou dessinés par vous sont conservés. Un seul Ctrl+Z "
+                   "annule le remplacement."));
+            replaceBtn->setAutoDefault(false);
+            connect(replaceBtn, &QPushButton::clicked, &optsDialog, [&] {
+                replacePrevious = true;
+                optsDialog.accept();
+            });
+            addBtn->setDefault(true);
+        } else {
+            auto* goBtn = optsButtons->addButton(tr("Numériser"), QDialogButtonBox::AcceptRole);
+            goBtn->setDefault(true);
+        }
+        optsButtons->addButton(tr("Annuler"), QDialogButtonBox::RejectRole);
         connect(optsButtons, &QDialogButtonBox::accepted, &optsDialog, &QDialog::accept);
         connect(optsButtons, &QDialogButtonBox::rejected, &optsDialog, &QDialog::reject);
         optsLayout->addWidget(optsButtons);
         if (optsDialog.exec() != QDialog::Accepted) {
             return;
         }
+        ui_memory::setBoolValue(QStringLiteral("autoDigitize/advancedOpen"),
+                                advancedToggle->isChecked());
         ui_memory::setIntValue(QStringLiteral("autoDigitize/shapeDetail"),
                                shapeDetailSlider->value());
         ui_memory::setIntValue(QStringLiteral("autoDigitize/contourDetail"), detailSlider->value());
@@ -4960,7 +5126,7 @@ void MainWindow::autoDigitize() {
     if (contoursMode && contourMetrics) {
         // Metriques et avertissements viennent tels quels de la lib (aucune
         // logique metier ici) : resume en barre d'etat, details en dialogue.
-        statusBar()->showMessage(
+        announceAutoDigitizeResult(
             tr("Contours : %1 objet(s), %2 segment(s), %3 jonction(s) — point droit %4 mm, "
                "%5 repli(s), %6 rejet(s)")
                 .arg(embCount)
@@ -4992,7 +5158,7 @@ void MainWindow::autoDigitize() {
     if (flowFillCount > 0) {
         summary += tr(" (%1 forme(s) en remplissage directionnel)").arg(flowFillCount);
     }
-    statusBar()->showMessage(summary);
+    announceAutoDigitizeResult(summary);
     warnAboutSkippedAutoSatinBranches(warnings);
 }
 
