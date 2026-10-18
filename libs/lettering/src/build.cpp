@@ -114,7 +114,7 @@ bool satin_covers(const std::vector<geometry::PathSet>& shapes, Micrometers spac
 
 Result<TextBuild> build_text_objects(const Font& font, const document::TextObject& text,
                                      IdGenerator<ObjectId>& ids, const BuildOptions& options) {
-    auto layout = layout_text(font, text);
+    auto layout = layout_text(font, text, options.layout);
     if (!layout) {
         return std::unexpected(layout.error());
     }
@@ -170,7 +170,8 @@ Result<TextBuild> build_text_objects(const Font& font, const document::TextObjec
                 } else {
                     kind = Kind::Satin;
                     if (options.verify_satin &&
-                        !satin_covers(one, text.density, options.min_satin_coverage, nullptr)) {
+                        !satin_covers(one, text.density, options.min_satin_coverage,
+                                      nullptr)) {
                         kind = Kind::Tatami;
                         note(skeleton_letters, letter);
                     }
@@ -241,8 +242,9 @@ Result<TextBuild> build_text_objects(const Font& font, const document::TextObjec
 }
 
 std::optional<Vec2um> text_displacement(const document::Project& project,
-                                        const document::TextObject& text, const Font& font) {
-    const auto layout = layout_text(font, text);
+                                        const document::TextObject& text, const Font& font,
+                                        const LayoutOptions& options) {
+    const auto layout = layout_text(font, text, options);
     if (!layout) {
         return std::nullopt;
     }

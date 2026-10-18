@@ -2,8 +2,8 @@
 
 Le lettrage transforme un texte tapé par l'utilisateur en objets vectoriels (contours des
 glyphes) et en objets de broderie **éditables**, régénérés comme les autres objets. Il couvre
-les fiches HP-TXT-001, 003, 004 (en partie), 007 (en partie), 009 et 013 (en partie) de la
-feuille de route (`docs/roadmap-parite-hatch.md`).
+les fiches HP-TXT-001, 003, 004 (en partie), 007 (cœur), 009, 012 (cœur, partiel) et 013
+(en partie) de la feuille de route (`docs/roadmap-parite-hatch.md`).
 
 ## Architecture et justification (ADR lettrage)
 
@@ -50,7 +50,28 @@ v1..v5 se charge, marqué migré (`LoadInfo::migrated`). Voir `project-format.md
   alignement gauche/centre/droite/justifié, lignes multiples, rotation). Les contours sont
   unis par la règle non nulle (`geometry::union_nonzero`) : trous des glyphes (A, O, e…) et
   composants qui se chevauchent (accents composés) sont corrects. Caractère absent de la police :
-  omis et signalé (`glyphe-absent`), jamais un carré silencieux. UTF-8 invalide : U+FFFD.
+  omis et signalé (`glyphe-absent`, un seul avertissement groupé), jamais un carré silencieux.
+  UTF-8 invalide : U+FFFD.
+- `LayoutOptions` (HP-TXT-007 / 012) : réglages de mise en page qui ne sont pas (encore) dans
+  `document::TextObject`, passés à `layout_text` et `BuildOptions::layout` :
+  `kerning_overrides` (crénage manuel par paire : l'écart en µm **remplace** celui de la police
+  pour la paire, même si le crénage automatique est coupé), `compose_marks`, `ligatures`
+  (désactivées par défaut), `bidi`, `fallback_glyphs`.
+- Unicode (HP-TXT-012, `unicode.hpp`, sans HarfBuzz) :
+  - UTF-8 : séquences invalides, surcodées, substituts, tronquées ou hors plage donnent U+FFFD ;
+    caractères sans rendu (largeur nulle, sélecteurs de variante, contrôles, U+FEFF) ignorés sans
+    avertissement ; plans supplémentaires acceptés.
+  - Accents : base + marque combinante (U+0300…) est **composée** en un glyphe précomposé quand la
+    police l'a (table latine, grecque tonos, cyrillique й/ё) ; un précomposé absent est
+    **décomposé** en base + marque si la police a les deux ; une marque libre se superpose à la
+    lettre précédente sans chasse propre.
+  - Repli : guillemets typographiques, tirets, espaces fines, « … » remplacés par un équivalent
+    ASCII quand la police n'a pas le glyphe, avec l'avertissement `glyphe-remplace`.
+  - Ligatures f (ff, fi, fl, ffi, ffl) sur demande, seulement si la police porte U+FB00…FB04.
+  - Droite à gauche : `visual_order` (UAX #9 réduit : niveau de paragraphe, neutres, nombres qui
+    gardent leur sens, parenthèses miroirées, marques attachées) réordonne hébreu et arabe ligne
+    par ligne. L'arabe n'est **pas façonné** (formes isolées) : avertissement
+    `ecriture-non-supportee`.
 - `build_text_objects` : choix du point **par morceau de glyphe** (un « ä » = corps satin +
   deux points tatami) :
 
@@ -85,11 +106,12 @@ polices du système, énumérés par Qt, fichier passé à la bibliothèque).
 ## Limites connues
 
 - Texte sur ligne droite seulement (bases arc/cercle/chemin : HP-TXT-005, enveloppes : 006).
-- Pas de HarfBuzz : crénage `kern` seulement (pas GPOS), pas de ligatures ni d'écritures
-  complexes/RTL (HP-TXT-012 non traité). Les glyphes absents sont signalés.
-- Pas d'édition d'une lettre isolée conservée à la régénération (HP-TXT-008), pas de crénage
-  manuel par paire, pas de connecteurs optimisés entre lettres (HP-TXT-014) : l'ordre est celui
-  de la lecture, le routage est celui des objets ordinaires.
+- Pas de HarfBuzz : crénage `kern` seulement (pas GPOS), pas de façonnage contextuel (arabe,
+  écritures indiennes), pas de ligatures de la police autres que f. Les glyphes absents sont
+  signalés. Le crénage manuel par paire et les ligatures existent dans le cœur
+  (`LayoutOptions`) mais ne sont pas stockés dans `TextObject` ni exposés dans l'interface.
+- Pas d'édition d'une lettre isolée conservée à la régénération (HP-TXT-008), pas de connecteurs
+  optimisés entre lettres (HP-TXT-014) : l'ordre est celui de la lecture, le routage est celui des objets ordinaires.
 - Pas de polices de broderie prénumérisées (HP-TXT-002).
 - Auto-satin : les lettres à boucle fermée avec jonction (4, 6, 9, R en Vera) retombent en
   tatami avec avertissement.
@@ -97,7 +119,7 @@ polices du système, énumérés par Qt, fichier passé à la bibliothèque).
 
 ## Tests
 
-`tests/unit/lettering/` (police, mise en page, construction, commandes, alphabet complet A–Z,
+`tests/unit/lettering/` (police, mise en page, Unicode, construction, commandes, alphabet complet A–Z,
 a–z, 0–9, accents français : 100 % des lettres cousues, points dans la boîte du glyphe,
 déterminisme), `tests/unit/project_io/test_text_persistence.cpp` (v5 → v6),
 `tests/unit/stitch_analysis/test_text_rules.cpp`, `tests/unit/desktop/test_lettering_ui.cpp`

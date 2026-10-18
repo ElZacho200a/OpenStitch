@@ -123,6 +123,20 @@ TEST_CASE("small letters drop pull compensation and the centre underlay when thi
     CHECK(sat2->center_underlay);
 }
 
+TEST_CASE("manual kerning flows through the build options") {
+    IdGenerator<ObjectId> ids;
+    auto t = make_text("AV", 12'000);
+    t.kerning = false;
+    lettering::BuildOptions options;
+    options.verify_satin = false;
+    const auto plain = lettering::build_text_objects(vera_bold(), t, ids, options);
+    options.layout.kerning_overrides.push_back({U'A', U'V', Micrometers{-2'000}});
+    const auto tight = lettering::build_text_objects(vera_bold(), t, ids, options);
+    REQUIRE(plain.has_value());
+    REQUIRE(tight.has_value());
+    CHECK(tight->layout.glyphs[1].pen.x.value - plain->layout.glyphs[1].pen.x.value == -2'000);
+}
+
 TEST_CASE("generated text sews: points exist, stay near the letters and are deterministic") {
     IdGenerator<ObjectId> ids;
     ids.reset(1);
