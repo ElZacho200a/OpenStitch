@@ -78,6 +78,7 @@ class ThreadPanel;
 class ThreadStrip;
 class WorkflowPanel;
 class EmptyStateWidget;
+struct MachineExportRequest;
 // Seam de test unique (déclaré ici pour le friend ci-dessous) : donne à
 // MainWindowTest (tests/unit/desktop/test_main_window.cpp) accès à
 // applyLoadedProject() sans exposer de méthode de chargement dans l'API
@@ -190,6 +191,12 @@ private slots:
     void showStatistics();
     void setHoopSize();
     void exportDst();
+    void exportDstQuick(); // Ctrl+Maj+E : derniers réglages, nom de fichier seulement
+    bool runMachineExport(const MachineExportRequest& request); // choix du fichier puis écriture
+    // Résumé chiffré de fin de numérisation (points, durée, fils, problèmes) en barre d'état avec
+    // un bouton « Voir », puis dock Analyse ouvert (HP-UX-030/031) : aucune fenêtre modale.
+    void announceAutoDigitizeResult(const QString& baseMessage);
+    void openQualityDock(); // dock Analyse ouvert sur une analyse à jour (HP-UX-031, étape 1)
     void importDst();
     // Interopérabilité esquisses avec la CAO tierce (ex. Fusion 360, cf.
     // openstitch/formats/dxf.hpp) : import AJOUTE des objets vectoriels au

@@ -8387,6 +8387,7 @@ void MainWindow::exportDst() {
     if (!sequence_) {
         return;
     }
+    openQualityDock(); // HP-UX-031 : l'état de qualité est visible avant de décider d'exporter
     const auto stats = stitch::compute_stats(*sequence_);
     const double wMm = to_millimeters(stats.bounds.max.x - stats.bounds.min.x).value;
     const double hMm = to_millimeters(stats.bounds.max.y - stats.bounds.min.y).value;
