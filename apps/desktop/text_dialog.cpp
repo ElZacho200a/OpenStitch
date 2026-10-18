@@ -23,6 +23,7 @@
 
 #include "font_catalog.hpp"
 #include "openstitch/lettering/lettering.hpp"
+#include "responsive.hpp"
 #include "wheel_guard.hpp"
 
 namespace openstitch::desktop {
@@ -327,6 +328,9 @@ TextDialog::TextDialog(const document::TextObject& initial, bool isNew, QWidget*
     auto* root = new QVBoxLayout(this);
     root->addLayout(columns, 1);
     root->addWidget(buttons_);
+    // Le formulaire défile sur un petit écran, les boutons restent visibles (HP-UX-025).
+    scrollDialogBody(this, buttons_);
+    fitDialogToScreen(this);
 
     refreshTimer_ = new QTimer(this);
     refreshTimer_->setSingleShot(true);

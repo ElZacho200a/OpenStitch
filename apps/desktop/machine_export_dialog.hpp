@@ -15,6 +15,7 @@ class QComboBox;
 class QDoubleSpinBox;
 class QLabel;
 class QPushButton;
+class QToolButton;
 
 namespace openstitch::desktop {
 
@@ -61,6 +62,7 @@ private:
     QComboBox* startMode_{nullptr};
     QDoubleSpinBox* startX_{nullptr};
     QDoubleSpinBox* startY_{nullptr};
+    QToolButton* optimizationsToggle_{nullptr};
     QCheckBox* reduceTrims_{nullptr};
     QCheckBox* between_{nullptr};
     QCheckBox* within_{nullptr};

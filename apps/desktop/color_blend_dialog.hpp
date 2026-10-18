@@ -8,11 +8,13 @@
 #include "openstitch/document/embroidery_object.hpp"
 #include "openstitch/stitch/sequence.hpp"
 
+class QBoxLayout;
 class QComboBox;
 class QDoubleSpinBox;
 class QLineEdit;
 class QLabel;
 class QPushButton;
+class QResizeEvent;
 class QShowEvent;
 class QTimer;
 
@@ -55,6 +57,8 @@ signals:
 
 protected:
     void showEvent(QShowEvent* event) override;
+    // Réglages et aperçu côte à côte si la largeur le permet, empilés sinon (HP-UX-025).
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
     [[nodiscard]] bool validSettings() const;
@@ -81,6 +85,7 @@ private:
     QPushButton* refresh_;
     QPushButton* accept_;
     QTimer* previewTimer_;
+    QBoxLayout* contentLayout_{nullptr};
     bool mergesZones_;
     bool editing_{false};
     bool shown_{false};
