@@ -1863,6 +1863,16 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
   `finish_sequence`, dernière passe d'`effective_sequence`), sans réordonner les
   objets ni régénérer quoi que ce soit en amont.
 
+- Livré 2026-10-18 (audit `Possible.osp`, branche `fix/tatami-liaisons-bord`) : les liaisons
+  entre rangées voisines du tatami tolèrent 0,15 mm de sortie au bord d'une fente ou d'un coin
+  rentrant (`connector_invalid`, `kLinkEdgeTol`) au lieu de devenir un saut : 973 des 1 459 sauts
+  de tatami du projet étaient de ce type. Mesure : sauts 2 862 → 1 525, coupes 928 → 792 ; soleil
+  141 → 4 sauts. **Reste** (manques constatés) : parcours des rangées glouton sans retour par le
+  fil déjà cousu (au-delà de `underpathCap`, 16 mm, on coupe) ; moteur directionnel : même test
+  strict à assouplir ; satins auto (741 sauts) à analyser ; entrée de chaque tatami non chaînée à
+  la sortie du précédent (voir HP-ENG-010) ; `hidden_travel` désactivé par défaut (928 → 531
+  coupes avec les réglages les plus larges sur ce projet). Détail : `docs/source/tatami.md`.
+
 ### HP-SEQ-006.a — Pont caché entre objets en passe finale [P1] — ◐ Partiel (2026-10-13, en PR)
 - Livré (cœur, en PR, non fusionné) : `HiddenTravel` dans `SequenceFinishing`
   (désactivé par défaut, persisté dans le `.osp`), `hidden_travel.{hpp,cpp}`
@@ -3191,3 +3201,4 @@ ci-dessus doit les respecter :
 | 2026-10-18 | Claude (lot C édition, agent) | HP-UX-002, 028, 029, 038 et HP-PERF-009 ◐ (branche `ux-lot-c1-pr`) : création directe sans modale, quatre boutons de type pour 1 ou N formes, bandeau de retouches, valeurs mixtes, régénération différée hors fil UI. Tests : `test_creation_flow` (19 cas). Total ◐ 115 → 120, ☐ 156 → 151. |
 | 2026-10-18 | Claude (HP-VEC-015, comblement de bloc) | HP-VEC-015 ◐ (branche `claude/embroidery-block-hole-fill-7c00ac`) : vides d'un bloc détectés depuis les points cousus, rattachés au plus grand remplissage voisin ; cœur, op CLI `fill_block_holes`, menu Forme et tests. |
 | 2026-10-18 | Claude (lot D, partie 2) | HP-UX-035 ◐ (copier/coller le style). **HP-UX-040 (contrat IA) retiré** à la demande du mainteneur (l'IA n'est pas une priorité) ; total 296 → 295, ◐ 120 → 121, ☐ 151 → 149. |
+| 2026-10-18 | Claude (audit coupes remplissage) | HP-SEQ-006 ◐ : liaisons de rangées du tatami tolérantes au bord (0,15 mm) ; `Possible.osp` sauts 2 862 → 1 525, coupes 928 → 792 ; manques consignés dans l'entrée (retour par le fil cousu, directionnel, satins auto, chaînage des entrées). |
