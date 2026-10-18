@@ -34,7 +34,7 @@ associée** listant les fichiers, classes, fonctions et tests réels.
   [Guide de prise en main](getting-started.md), puis
   [Guide utilisateur détaillé](user-guide.md). En cas de souci :
   [Dépannage](troubleshooting.md) et [Glossaire](glossary.md).
-- Vous voulez **automatiser** ou diagnostiquer : [Ligne de commande](cli.md).
+- Vous voulez **automatiser** ou diagnostiquer : [Ligne de commande](cli.md) et [projets .osp pilotables](cli-project.md).
 - Vous voulez **comprendre la broderie** telle qu'implémentée : lisez *Concepts*
   ([point droit](stitch-generation.md), [satin](satin-squelette.md),
   [tatami](tatami.md)) et [Numérisation automatique](auto-numerisation.md).
@@ -55,6 +55,7 @@ associée** listant les fichiers, classes, fonctions et tests réels.
 - [Installation et premier démarrage](installation.md)
 - [Guide utilisateur détaillé](user-guide.md)
 - [Ligne de commande (openstitch-cli)](cli.md)
+- [Projets .osp en ligne de commande, lots et agents](cli-project.md)
 - [Dépannage](troubleshooting.md)
 - [Glossaire](glossary.md)
 

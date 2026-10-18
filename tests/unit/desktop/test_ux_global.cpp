@@ -23,12 +23,15 @@
 #include <QTest>
 #include <QUrl>
 
+#include <algorithm>
 #include <cmath>
+#include <variant>
 
 #include "canvas_view.hpp"
 #include "design_tokens.hpp"
 #include "main_window.hpp"
 #include "openstitch/document/project.hpp"
+#include "openstitch/project_io/project_io.hpp"
 #include "openstitch/stitch/sequence.hpp"
 
 using openstitch::Micrometers;
@@ -489,6 +492,349 @@ private slots:
         QVERIFY2(window.simObjectLabel_->text().contains(QStringLiteral("Carre")),
                  qPrintable(window.simObjectLabel_->text()));
         QVERIFY(!window.simSwatch_->pixmap(Qt::ReturnByValue).isNull());
+    }
+
+    // ---- HP-UX-017 : Ctrl+O ouvre tout ------------------------------------------------------
+
+    void ctrlOIsTheUniversalOpenAndImportHasItsOwnShortcut() {
+        MainWindow window;
+        QCOMPARE(window.openAnyAct_->shortcut(), QKeySequence(QKeySequence::Open));
+        QCOMPARE(window.openImageAct_->shortcut(), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_I));
+        // Aucun autre raccourci d'action ne réutilise Ctrl+O.
+        int uses = 0;
+        for (const QAction* action : window.findChildren<QAction*>()) {
+            for (const QKeySequence& sequence : action->shortcuts()) {
+                uses += sequence == QKeySequence(QKeySequence::Open) ? 1 : 0;
+            }
+        }
+        QCOMPARE(uses, 1);
+    }
+
+    // ---- HP-UX-018 : Échap remonte d'un niveau -----------------------------------------------
+
+    void escapeDropsToolThenObjectSelection() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        const ObjectId emb = addEmbroidery(project, addSquareVector(project));
+        window.applyLoadedProject(project);
+        window.show();
+        window.activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&window));
+
+        window.setSelection({.region = std::nullopt, .embroidery = emb, .objects = {}});
+        window.updateActions();
+        window.setTool(Tool::DrawPolygon);
+
+        // 1er Échap : quitte l'outil, la sélection est conservée.
+        QTest::keyClick(&window, Qt::Key_Escape);
+        QCOMPARE(window.currentTool_, Tool::Select);
+        QVERIFY(window.currentSelection().embroidery.has_value());
+        // 2e Échap : plus rien à relâcher, les objets sont désélectionnés.
+        QTest::keyClick(&window, Qt::Key_Escape);
+        QVERIFY(!window.currentSelection().embroidery.has_value());
+        QVERIFY(window.currentSelection().objects.empty());
+        // 3e Échap sur une sélection vide : sans effet ni erreur.
+        QTest::keyClick(&window, Qt::Key_Escape);
+        QCOMPARE(window.currentTool_, Tool::Select);
+    }
+
+    // ---- HP-UX-022 : sortie de simulation ----------------------------------------------------
+
+    void simulationExitButtonAndEndOfSliderLeaveSimulationMode() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        addEmbroidery(project, addSquareVector(project));
+        window.applyLoadedProject(project);
+        QVERIFY(window.sequence_.has_value());
+        const int last = window.simSlider_->maximum();
+        QVERIFY(last > 3);
+
+        window.simSlider_->setValue(3); // simulation en cours : le rendu réaliste est coupé
+        QVERIFY(window.simulating());
+        window.simExitAct_->trigger();
+        QVERIFY(!window.simulating());
+        QCOMPARE(window.simSlider_->value(), last);
+
+        window.simSlider_->setValue(3);
+        QVERIFY(window.simulating());
+        window.simSlider_->setValue(last); // curseur tout à droite = couture complète
+        QVERIFY(!window.simulating());
+    }
+
+    void endOfPlaybackLeavesSimulationMode() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        addEmbroidery(project, addSquareVector(project));
+        window.applyLoadedProject(project);
+        QVERIFY(window.sequence_.has_value());
+        window.simSlider_->setValue(2);
+        QVERIFY(window.simulating());
+        window.simStep_ = static_cast<int>(window.sequence_->commands.size()) - 2;
+        window.simSpeedCombo_->setCurrentIndex(3); // ×16 : le tick suivant atteint la fin
+        window.simPlayAct_->setChecked(true);
+        for (int i = 0; i < 4000 && window.simulating(); ++i) {
+            window.onSimTick();
+        }
+        QVERIFY(!window.simulating());
+        QVERIFY(!window.simPlayAct_->isChecked());
+    }
+
+    // ---- HP-UX-020 : cyclage de sélection par re-clic ----------------------------------------
+
+    void clickingTheSameSpotCyclesThroughOverlappingObjects() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        const ObjectId a = addSquareVector(project); // dessous
+        const ObjectId b = addSquareVector(project); // dessus
+        const ObjectId c = addSquareVector(project); // tout dessus
+        window.applyLoadedProject(project);
+        window.setTool(Tool::Select);
+        window.view_->setTransform(QTransform::fromScale(10.0, 10.0)); // 10 px/mm : rayon 0,2 mm
+        const QPointF inside(5.0, -5.0);                               // scène : Y vers le bas
+        window.onCanvasClicked(inside);
+        QCOMPARE(window.currentSelection().objects, std::vector<ObjectId>{c});
+        window.onCanvasClicked(inside);
+        QCOMPARE(window.currentSelection().objects, std::vector<ObjectId>{b});
+        window.onCanvasClicked(inside);
+        QCOMPARE(window.currentSelection().objects, std::vector<ObjectId>{a});
+        window.onCanvasClicked(inside); // retour en haut
+        QCOMPARE(window.currentSelection().objects, std::vector<ObjectId>{c});
+        // Un clic ailleurs (hors rayon) remet le cycle à zéro : à nouveau l'objet du dessus.
+        window.onCanvasClicked(QPointF(9.0, -9.0));
+        QCOMPARE(window.currentSelection().objects, std::vector<ObjectId>{c});
+    }
+
+    // ---- HP-UX-023 : Ctrl+A suit la couche, touches de couches, zoom sur la sélection ---------
+
+    void selectAllFollowsTheActiveLayer() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        const ObjectId a = addSquareVector(project);
+        const ObjectId b = addSquareVector(project);
+        window.applyLoadedProject(project);
+        window.updateActions();
+        QVERIFY(window.selectAllRegionsAct_->isEnabled()); // pas de segmentation, mais des formes
+        window.selectAllRegionsAct_->trigger();
+        auto ids = window.currentSelection().objects;
+        std::sort(ids.begin(), ids.end());
+        QCOMPARE(ids, (std::vector<ObjectId>{a, b}));
+    }
+
+    void layerKeysAndZoomShortcutsAreUnique() {
+        MainWindow window;
+        QCOMPARE(window.showImageAct_->shortcut(), QKeySequence(Qt::Key_1));
+        QVERIFY(window.showSegAct_->shortcuts().contains(QKeySequence(Qt::Key_2)));
+        QVERIFY(window.showSegAct_->shortcuts().contains(QKeySequence(Qt::Key_W)));
+        QCOMPARE(window.showVectorsAct_->shortcut(), QKeySequence(Qt::Key_3));
+        QCOMPARE(window.showStitchesAct_->shortcut(), QKeySequence(Qt::Key_4));
+        for (const QKeySequence& key :
+             {QKeySequence(Qt::Key_Z), QKeySequence(Qt::SHIFT | Qt::Key_Z),
+              QKeySequence(Qt::CTRL | Qt::Key_1), QKeySequence(Qt::Key_1),
+              QKeySequence(Qt::Key_3)}) {
+            int uses = 0;
+            for (const QAction* action : window.findChildren<QAction*>()) {
+                uses += action->shortcuts().contains(key) ? 1 : 0;
+            }
+            QVERIFY2(uses == 1, qPrintable(key.toString()));
+        }
+    }
+
+    void zoomToSelectionFramesTheObjectAndPreviousRestoresTheView() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        const ObjectId a = addSquareVector(project);
+        window.applyLoadedProject(project);
+        window.resize(900, 700);
+        window.show();
+        QCoreApplication::processEvents();
+        window.view_->fitCanvas();
+        const double before = window.view_->pixelsPerMm();
+        window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a}});
+        window.zoomSelectionAct_->trigger();
+        QVERIFY(window.view_->pixelsPerMm() > before); // carré de 10 mm : zoom avant
+        const QPointF centre = window.view_->mapFromScene(QPointF(5.0, -5.0));
+        QVERIFY(window.view_->viewport()->rect().contains(centre.toPoint()));
+        window.zoomPreviousAct_->trigger();
+        QVERIFY(std::abs(window.view_->pixelsPerMm() - before) < 1e-6);
+    }
+
+    // ---- HP-UX-034 : mode Isoler (état de session, rien dans le projet) -----------------------
+
+    void isolationHidesAndExcludesOthersWithoutTouchingTheProject() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        const ObjectId a = addSquareVector(project);
+        const ObjectId b = addSquareVector(project);
+        window.applyLoadedProject(project);
+        window.view_->setTransform(QTransform::fromScale(10.0, 10.0));
+        window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a}});
+        window.updateActions();
+        QVERIFY(window.isolateAct_->isEnabled());
+
+        // Octets du projet avant et pendant l'isolation : identiques (rien n'est persisté).
+        QTemporaryDir dir;
+        const auto before = (dir.path() + "/before.osp").toStdString();
+        const auto during = (dir.path() + "/during.osp").toStdString();
+        QVERIFY(openstitch::project_io::save_project(before, window.project_).has_value());
+        window.isolateAct_->trigger();
+        QVERIFY(window.isolating());
+        QVERIFY(openstitch::project_io::save_project(during, window.project_).has_value());
+        QFile f1(QString::fromStdString(before));
+        QFile f2(QString::fromStdString(during));
+        QVERIFY(f1.open(QIODevice::ReadOnly) && f2.open(QIODevice::ReadOnly));
+        QCOMPARE(f1.readAll(), f2.readAll());
+
+        // `b` est au-dessus de `a` au même endroit : isolé, seul `a` est saisissable.
+        const QPointF inside(5.0, -5.0);
+        QCOMPARE(window.selectableObjectsAt(inside), std::vector<ObjectId>{a});
+        window.setSelection({});
+        window.onCanvasClicked(inside);
+        QCOMPARE(window.currentSelection().objects, std::vector<ObjectId>{a});
+
+        // Fin de l'isolation : `b` redevient saisissable ; un nouveau document la remet à zéro.
+        window.isolateAct_->trigger();
+        QVERIFY(!window.isolating());
+        QCOMPARE(window.selectableObjectsAt(inside).front(), b);
+        window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a}});
+        window.updateActions();
+        window.isolateAct_->trigger();
+        QVERIFY(window.isolating());
+        window.applyLoadedProject(imageOnlyProject());
+        QVERIFY(!window.isolating());
+        QVERIFY(!window.isolateAct_->isChecked());
+    }
+
+    // ---- HP-UX-036 : sauts de couleur dans la simulation, message de couche masquée -----------
+
+    void simulationColorJumpsLandOnColorBlocks() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        const ObjectId v1 = addSquareVector(project);
+        const ObjectId v2 = addSquareVector(project);
+        doc::EmbroideryObject first;
+        first.id = project.object_ids.next();
+        first.name = "A";
+        first.source_vector = v1;
+        first.rgb = {200, 0, 0};
+        first.params = doc::RunningStitchParams{};
+        project.embroidery_objects.push_back(first);
+        doc::EmbroideryObject second;
+        second.id = project.object_ids.next();
+        second.name = "B";
+        second.source_vector = v2;
+        second.rgb = {0, 0, 200};
+        second.params = doc::RunningStitchParams{};
+        project.embroidery_objects.push_back(second);
+        window.applyLoadedProject(project);
+        QVERIFY(window.sequence_.has_value());
+        const std::vector<int> starts = window.colorBlockStarts();
+        QVERIFY2(starts.size() >= 2, "deux fils différents : deux blocs de couleur");
+        const int last = static_cast<int>(window.sequence_->commands.size()) - 1;
+
+        window.simSlider_->setValue(1); // simulation au début du premier bloc
+        QVERIFY(window.simulating());
+        window.simNextColorAct_->trigger();
+        QCOMPARE(window.simStep_, starts[1]); // début du bloc suivant
+        QVERIFY(window.simObjectLabel_->toolTip().contains(QStringLiteral("fil 2/")));
+        window.simPrevColorAct_->trigger();
+        QCOMPARE(window.simStep_, starts[0]);
+        // Après le dernier bloc, « suivant » va à la fin : on sort de la simulation.
+        window.simSlider_->setValue(starts.back());
+        window.simNextColorAct_->trigger();
+        QVERIFY(!window.simulating());
+        QCOMPARE(window.simSlider_->value(), last);
+    }
+
+    void hiddenVectorLayerExplainsAClickOnAShape() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        addSquareVector(project);
+        window.applyLoadedProject(project);
+        window.setTool(Tool::Select);
+        window.showVectorsAct_->setChecked(false);
+        window.statusBar()->clearMessage();
+        window.onCanvasClicked(QPointF(5.0, -5.0));
+        QVERIFY2(window.statusBar()->currentMessage().contains(QStringLiteral("masquée")),
+                 qPrintable(window.statusBar()->currentMessage()));
+    }
+
+    // ---- HP-UX-039 (UX-32) : l'heure d'enregistrement est celle de la sauvegarde --------------
+
+    void savedIndicatorShowsTheSaveTimeNotTheRefreshTime() {
+        MainWindow window;
+        window.applyLoadedProject(imageOnlyProject());
+        window.currentProjectPath_ = QStringLiteral("projet.osp");
+        window.savedAt_ = QTime(10, 30);
+        window.setWindowModified(false);
+        window.updateSavedIndicator();
+        QVERIFY2(window.savedLabel_->text().contains(QStringLiteral("10:30")),
+                 qPrintable(window.savedLabel_->text()));
+        // Modifié puis revenu propre (undo) : toujours l'heure de la sauvegarde, pas l'heure
+        // courante.
+        window.setWindowModified(true);
+        QCOMPARE(window.savedLabel_->text(), tr("Non enregistré"));
+        window.setWindowModified(false);
+        window.updateSavedIndicator();
+        QVERIFY(window.savedLabel_->text().contains(QStringLiteral("10:30")));
+    }
+
+    // ---- HP-UX-035 : copier / coller le style --------------------------------------------------
+
+    void pasteStyleCopiesParamsInOneUndoableStepAndSkipsOtherTypes() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        const ObjectId v1 = addSquareVector(project);
+        const ObjectId v2 = addSquareVector(project);
+        const ObjectId v3 = addSquareVector(project);
+        doc::EmbroideryObject a;
+        a.id = project.object_ids.next();
+        a.name = "A";
+        a.source_vector = v1;
+        doc::TatamiParams tuned;
+        tuned.row_spacing = Micrometers{250};
+        tuned.angle = openstitch::Angle{0.5};
+        a.params = tuned;
+        project.embroidery_objects.push_back(a);
+        doc::EmbroideryObject b = a;
+        b.id = project.object_ids.next();
+        b.name = "B";
+        b.source_vector = v2;
+        b.params = doc::TatamiParams{};
+        project.embroidery_objects.push_back(b);
+        doc::EmbroideryObject c = a;
+        c.id = project.object_ids.next();
+        c.name = "C";
+        c.source_vector = v3;
+        c.params = doc::RunningStitchParams{};
+        project.embroidery_objects.push_back(c);
+        window.applyLoadedProject(project);
+        const ObjectId idA = project.embroidery_objects[0].id;
+        const ObjectId idB = project.embroidery_objects[1].id;
+        const ObjectId idC = project.embroidery_objects[2].id;
+
+        window.setSelection({.region = std::nullopt, .embroidery = idA, .objects = {}});
+        window.updateActions();
+        QVERIFY(window.copyStyleAct_->isEnabled());
+        window.copyStyleAct_->trigger();
+        QVERIFY(window.pasteStyleAct_->isEnabled());
+
+        // Colle sur B (même type) : paramètres identiques, un pas d'annulation.
+        window.setSelection({.region = std::nullopt, .embroidery = idB, .objects = {}});
+        window.updateActions();
+        window.pasteStyleAct_->trigger();
+        QCOMPARE(std::get<doc::TatamiParams>(window.project_.findEmbroidery(idB)->params), tuned);
+        window.undo();
+        QCOMPARE(std::get<doc::TatamiParams>(window.project_.findEmbroidery(idB)->params),
+                 doc::TatamiParams{});
+        window.redo();
+        QCOMPARE(std::get<doc::TatamiParams>(window.project_.findEmbroidery(idB)->params), tuned);
+
+        // Sur C (point droit) : autre type, ignoré, aucun changement.
+        window.setSelection({.region = std::nullopt, .embroidery = idC, .objects = {}});
+        window.updateActions();
+        window.pasteStyleAct_->trigger();
+        QVERIFY(std::holds_alternative<doc::RunningStitchParams>(
+            window.project_.findEmbroidery(idC)->params));
     }
 
 private:

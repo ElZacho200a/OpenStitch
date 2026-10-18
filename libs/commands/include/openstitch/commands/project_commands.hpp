@@ -15,6 +15,7 @@
 #include "openstitch/commands/command.hpp"
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/image/ops.hpp"
+#include "openstitch/segmentation/color_merge.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
 
 namespace openstitch::commands {
@@ -134,6 +135,97 @@ private:
     segmentation::Region removedRegion_;
 };
 
+// Nettoyage des îlots : chaque région de moins de `min_px` pixels est fusionnée dans la voisine
+// de couleur la plus proche (`segmentation::merge_small_regions`, `ClosestColour`). L'annulation
+// restaure les étiquettes modifiées et les régions fusionnées (copie des emplacements de régions,
+// peu volumineuse ; les étiquettes ne sont retenues que pour les pixels réaffectés).
+class CleanIslandsCommand final : public ICommand {
+public:
+    CleanIslandsCommand(std::size_t min_px, std::optional<std::array<std::uint8_t, 3>> excluded,
+                        double max_delta_e, double boundary_weight = 0.0)
+        : minPx_(min_px), excluded_(excluded), maxDeltaE_(max_delta_e),
+          boundaryWeight_(boundary_weight) {}
+
+    void apply(document::Project& project) override {
+        auto& seg = *project.segmentation;
+        const std::vector<std::uint32_t> before = seg.labels;
+        slots_ = seg.region_slots;
+        merges_ =
+            segmentation::merge_small_regions(seg, minPx_, excluded_, boundaryWeight_,
+                                              segmentation::MergeTarget::ClosestColour, maxDeltaE_);
+        changed_.clear();
+        oldLabels_.clear();
+        for (std::size_t i = 0; i < before.size(); ++i) {
+            if (before[i] != seg.labels[i]) {
+                changed_.push_back(static_cast<std::uint32_t>(i));
+                oldLabels_.push_back(before[i]);
+            }
+        }
+    }
+    void revert(document::Project& project) override {
+        auto& seg = *project.segmentation;
+        for (std::size_t k = 0; k < changed_.size(); ++k) {
+            seg.labels[changed_[k]] = oldLabels_[k];
+        }
+        seg.region_slots = slots_;
+    }
+    [[nodiscard]] std::string name() const override { return "Nettoyer les îlots"; }
+    // Nombre de régions fusionnées par le dernier `apply`.
+    [[nodiscard]] std::size_t merges() const { return merges_; }
+
+private:
+    std::size_t minPx_;
+    std::optional<std::array<std::uint8_t, 3>> excluded_;
+    double maxDeltaE_;
+    double boundaryWeight_;
+    std::size_t merges_{0};
+    std::vector<std::uint32_t> changed_;
+    std::vector<std::uint32_t> oldLabels_;
+    std::vector<std::optional<segmentation::Region>> slots_;
+};
+
+// Fusion de COULEURS : applique un plan (`segmentation::plan_reduce_colors` /
+// `plan_merge_colors`) -- recolorations puis fusion des régions voisines devenues de même couleur
+// -- en UN pas d'annulation. Comme pour `CleanIslandsCommand`, l'annulation restaure les étiquettes
+// modifiées et les emplacements de régions (copie des seuls emplacements, peu volumineuse).
+class MergeColorsCommand final : public ICommand {
+public:
+    explicit MergeColorsCommand(segmentation::ColorMergePlan plan) : plan_(std::move(plan)) {}
+
+    void apply(document::Project& project) override {
+        auto& seg = *project.segmentation;
+        const std::vector<std::uint32_t> before = seg.labels;
+        slots_ = seg.region_slots;
+        applied_ = segmentation::apply_color_merge(seg, plan_).has_value();
+        changed_.clear();
+        oldLabels_.clear();
+        for (std::size_t i = 0; i < before.size(); ++i) {
+            if (before[i] != seg.labels[i]) {
+                changed_.push_back(static_cast<std::uint32_t>(i));
+                oldLabels_.push_back(before[i]);
+            }
+        }
+    }
+    void revert(document::Project& project) override {
+        auto& seg = *project.segmentation;
+        for (std::size_t k = 0; k < changed_.size(); ++k) {
+            seg.labels[changed_[k]] = oldLabels_[k];
+        }
+        seg.region_slots = slots_;
+    }
+    [[nodiscard]] std::string name() const override { return "Fusionner des couleurs"; }
+    // Faux si le plan ne correspondait pas à la segmentation (région introuvable) au dernier
+    // `apply`.
+    [[nodiscard]] bool applied() const { return applied_; }
+
+private:
+    segmentation::ColorMergePlan plan_;
+    bool applied_{false};
+    std::vector<std::uint32_t> changed_;
+    std::vector<std::uint32_t> oldLabels_;
+    std::vector<std::optional<segmentation::Region>> slots_;
+};
+
 // Change la couleur représentative d'une région.
 class RecolorRegionCommand final : public ICommand {
 public:
@@ -222,6 +314,48 @@ private:
     ObjectId id_;
     std::size_t index_{};
     document::EmbroideryObject removed_{};
+    bool applied_{false};
+};
+
+// Empile une « couche » : insère `layer` juste APRÈS l'objet de base `base_id`
+// dans project.embroidery_objects (donc cousu juste après lui, par-dessus).
+// layer.source_vector est forcé à celui de la base. Undo retire la couche.
+// No-op (revert sans effet) si base_id est introuvable.
+class AddLayerCommand final : public ICommand {
+public:
+    AddLayerCommand(ObjectId base_id, document::EmbroideryObject layer)
+        : base_id_(base_id), layer_(std::move(layer)) {}
+
+    void apply(document::Project& project) override {
+        applied_ = false;
+        auto& objs = project.embroidery_objects;
+        for (std::size_t i = 0; i < objs.size(); ++i) {
+            if (objs[i].id == base_id_) {
+                layer_.source_vector = objs[i].source_vector;
+                objs.insert(objs.begin() + static_cast<std::ptrdiff_t>(i + 1), layer_);
+                applied_ = true;
+                return;
+            }
+        }
+    }
+    void revert(document::Project& project) override {
+        if (!applied_) {
+            return;
+        }
+        auto& objs = project.embroidery_objects;
+        for (std::size_t i = 0; i < objs.size(); ++i) {
+            if (objs[i].id == layer_.id) {
+                objs.erase(objs.begin() + static_cast<std::ptrdiff_t>(i));
+                break;
+            }
+        }
+        applied_ = false;
+    }
+    [[nodiscard]] std::string name() const override { return "Ajouter une couche"; }
+
+private:
+    ObjectId base_id_;
+    document::EmbroideryObject layer_;
     bool applied_{false};
 };
 

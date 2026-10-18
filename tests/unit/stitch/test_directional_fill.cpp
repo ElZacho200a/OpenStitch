@@ -2,14 +2,18 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <numbers>
 #include <optional>
 #include <vector>
 
+#include "blend_region_fixture.hpp"
+#include "openstitch/stitch_generation/color_blend.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
 
 using namespace openstitch;
@@ -355,7 +359,10 @@ TEST_CASE("directional: stitches stay inside the region and avoid holes") {
         if (fill[i].jump) {
             continue;
         }
-        CHECK(segment_stays_in_region(region, fill[i - 1].pos, fill[i].pos));
+        // Exception documentée : une liaison de 1,5 mm au plus peut franchir un vide
+        // étroit (marche, fente) au lieu de devenir un saut.
+        CHECK((length_um(fill[i].pos - fill[i - 1].pos) <= 1'500.0 ||
+               segment_stays_in_region(region, fill[i - 1].pos, fill[i].pos)));
     }
 }
 
@@ -817,6 +824,103 @@ TEST_CASE("density_gradient_between runs from zone A to zone B over both zones")
     CHECK_FALSE(density_gradient_between({}, b, Micrometers{4'000}, Micrometers{400}));
 }
 
+TEST_CASE("narrow_gradient_zone shrinks the axis and keeps the other fields") {
+    auto g = vertical_gradient(Micrometers{400}, Micrometers{1'600});
+    g.interpolate_density = true;
+    const auto narrowed = narrow_gradient_zone(g, 0.25, 0.75);
+    REQUIRE(narrowed.has_value());
+    CHECK(narrowed->from == um(15, 5));
+    CHECK(narrowed->to == um(15, 15));
+    CHECK(narrowed->spacing_from == g.spacing_from);
+    CHECK(narrowed->spacing_to == g.spacing_to);
+    CHECK(narrowed->interpolate_density);
+
+    // 0 -> 1 : identité exacte.
+    CHECK(narrow_gradient_zone(g, 0.0, 1.0) == g);
+    // Axe orienté en sens inverse : les fractions suivent from -> to.
+    auto reversed = g;
+    std::swap(reversed.from, reversed.to);
+    const auto back = narrow_gradient_zone(reversed, 0.0, 0.5);
+    REQUIRE(back.has_value());
+    CHECK(back->from == um(15, 20));
+    CHECK(back->to == um(15, 10));
+
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    CHECK_FALSE(narrow_gradient_zone(g, 0.5, 0.5));
+    CHECK_FALSE(narrow_gradient_zone(g, 0.7, 0.3));
+    CHECK_FALSE(narrow_gradient_zone(g, -0.1, 0.5));
+    CHECK_FALSE(narrow_gradient_zone(g, 0.5, 1.1));
+    CHECK_FALSE(narrow_gradient_zone(g, nan, 0.5));
+    CHECK_FALSE(narrow_gradient_zone(g, 0.5, nan));
+}
+
+TEST_CASE("narrowed gradient zone gives constant spacing on both plateaus") {
+    const auto region = rect_mm(0, 0, 30, 20);
+    auto dp = base_params();
+    dp.guides.push_back(line_mm(0, 10, 30, 10)); // champ horizontal
+    const auto full = vertical_gradient(Micrometers{400}, Micrometers{1'600});
+    dp.density_gradient = narrow_gradient_zone(full, 0.3, 0.7);
+    REQUIRE(dp.density_gradient.has_value());
+
+    const auto ys = crossings_at_x(trace_directional_streamlines(region, dp), 15.0);
+    REQUIRE(ys.size() > 15);
+    // Plateau de début (0-6 mm) : écart constant de 0,4 mm ; plateau de fin (14-20 mm) : 1,6 mm.
+    const double startPlateau = mean_gap_mm(ys, 0.0, 5.5);
+    const double endPlateau = mean_gap_mm(ys, 14.5, 20.0);
+    CHECK(startPlateau > 0.38);
+    CHECK(startPlateau < 0.5);
+    CHECK(endPlateau > 1.4);
+    CHECK(endPlateau < 1.8);
+    // La rampe reste monotone entre les deux.
+    CHECK(mean_gap_mm(ys, 6.0, 10.0) < mean_gap_mm(ys, 10.0, 14.0));
+
+    // Déterminisme : deux générations identiques.
+    CHECK(fill_directional(region, dp) == fill_directional(region, dp));
+}
+
+TEST_CASE("density curve reshapes the ramp without moving its midpoint") {
+    const auto region = rect_mm(0, 0, 30, 20);
+    const auto gaps = [&](document::DensityCurve curve) {
+        auto dp = base_params();
+        dp.guides.push_back(line_mm(0, 10, 30, 10)); // champ horizontal
+        auto gradient = vertical_gradient(Micrometers{400}, Micrometers{1'600});
+        gradient.curve = curve;
+        dp.density_gradient = gradient;
+        const auto ys = crossings_at_x(trace_directional_streamlines(region, dp), 15.0);
+        REQUIRE(ys.size() > 15);
+        return std::array<double, 3>{mean_gap_mm(ys, 0.0, 5.0), mean_gap_mm(ys, 7.5, 12.5),
+                                     mean_gap_mm(ys, 15.0, 20.0)};
+    };
+    const auto linear = gaps(document::DensityCurve::Linear);
+    const auto smooth = gaps(document::DensityCurve::Smooth);
+    const auto steep = gaps(document::DensityCurve::Steep);
+    // Début serré plus longtemps, fin lâche plus longtemps, d'autant plus que la courbe est
+    // marquée.
+    CHECK(smooth[0] < linear[0]);
+    CHECK(steep[0] < smooth[0]);
+    CHECK(smooth[2] > linear[2]);
+    CHECK(steep[2] > smooth[2]);
+    // Les trois courbes valent 0,5 en t = 0,5 : même écart au milieu (10 % près).
+    CHECK(std::abs(smooth[1] - linear[1]) < 0.1 * linear[1]);
+    CHECK(std::abs(steep[1] - linear[1]) < 0.1 * linear[1]);
+    // Jamais en dehors de [spacing_from ; spacing_to].
+    for (const auto& g : {linear, smooth, steep}) {
+        CHECK(g[0] > 0.38);
+        CHECK(g[2] < 1.65);
+    }
+
+    // Linéaire explicite = comportement historique ; déterminisme de chaque courbe.
+    auto legacy = base_params();
+    legacy.guides.push_back(line_mm(0, 10, 30, 10));
+    legacy.density_gradient = vertical_gradient(Micrometers{400}, Micrometers{1'600});
+    auto explicit_linear = legacy;
+    explicit_linear.density_gradient->curve = document::DensityCurve::Linear;
+    CHECK(fill_directional(region, legacy) == fill_directional(region, explicit_linear));
+    auto steepParams = legacy;
+    steepParams.density_gradient->curve = document::DensityCurve::Steep;
+    CHECK(fill_directional(region, steepParams) == fill_directional(region, steepParams));
+}
+
 // --- Régularité de l'espacement ------------------------------------------------
 
 namespace {
@@ -1058,4 +1162,384 @@ TEST_CASE("directional gradient clamps absurd spacings instead of stalling") {
     CHECK(!lines.empty());
     // Plancher de 0,1 mm : jamais plus de 41 lignes sur 4 mm de large.
     CHECK(lines.size() <= 41);
+}
+
+TEST_CASE("blend core: opposite density ramps keep the total density constant", "[blend_core]") {
+    const auto region = rect_mm(0, 0, 30, 20);
+    auto top = base_params();
+    top.guides = {line_mm(0, 10, 30, 10)};
+    top.density_gradient = vertical_gradient(Micrometers{400}, Micrometers{1'600});
+    top.density_gradient->interpolate_density = true;
+    auto bottom = top;
+    std::swap(bottom.density_gradient->spacing_from, bottom.density_gradient->spacing_to);
+    const auto topYs = crossings_at_x(trace_directional_streamlines(region, top), 15.0);
+    const auto bottomYs = crossings_at_x(trace_directional_streamlines(region, bottom), 15.0);
+    // Intégrale de la densité linéaire : 20 mm * (1/0,4 + 1/1,6)/2 = 31,25.
+    CHECK(std::abs(static_cast<double>(topYs.size()) - 31.25) < 3.2);
+    CHECK(std::abs(static_cast<double>(bottomYs.size()) - 31.25) < 3.2);
+    for (const auto [lo, hi] : {std::pair{0.0, 6.0}, std::pair{6.0, 14.0}, std::pair{14.0, 20.0}}) {
+        const double topGap = mean_gap_mm(topYs, lo, hi);
+        const double bottomGap = mean_gap_mm(bottomYs, lo, hi);
+        REQUIRE(topGap > 0.0);
+        REQUIRE(bottomGap > 0.0);
+        CHECK(std::abs(1.0 / topGap + 1.0 / bottomGap - 3.125) < 0.45);
+    }
+    CHECK(fill_directional(region, top) == fill_directional(region, top));
+    CHECK(fill_directional(region, bottom) == fill_directional(region, bottom));
+}
+
+TEST_CASE("blend core: density interpolation clamps endpoints and preserves uniform cases",
+          "[blend_core]") {
+    const auto region = rect_mm(0, 0, 6, 4);
+    auto params = base_params();
+    params.guides = {line_mm(0, 2, 6, 2)};
+    params.density_gradient = vertical_gradient(Micrometers{-1}, Micrometers{100'000});
+    params.density_gradient->to = um(3, 4);
+    params.density_gradient->interpolate_density = true;
+    auto bounded = params;
+    bounded.density_gradient->spacing_from = Micrometers{100};
+    bounded.density_gradient->spacing_to = Micrometers{4'000};
+    const auto fill = fill_directional(region, params);
+    REQUIRE_FALSE(fill.empty());
+    CHECK(fill == fill_directional(region, bounded));
+    for (const auto& stitch : fill) {
+        CHECK(stitch.pos.x.value >= 0);
+        CHECK(stitch.pos.x.value <= 6'000);
+        CHECK(stitch.pos.y.value >= 0);
+        CHECK(stitch.pos.y.value <= 4'000);
+    }
+    for (const bool density : {false, true}) {
+        auto uniform = base_params();
+        uniform.guides = params.guides;
+        auto graded = uniform;
+        graded.density_gradient = vertical_gradient(Micrometers{400}, Micrometers{400});
+        graded.density_gradient->interpolate_density = density;
+        CHECK(fill_directional(region, uniform) == fill_directional(region, graded));
+        graded.density_gradient->to = graded.density_gradient->from;
+        graded.density_gradient->spacing_to = Micrometers{1'600};
+        CHECK(fill_directional(region, uniform) == fill_directional(region, graded));
+    }
+}
+
+namespace {
+
+document::EmbroideryObject blend_layer(ObjectId id) {
+    document::EmbroideryObject object;
+    object.id = id;
+    object.source_vector = ObjectId{1};
+    object.name = "Couche " + std::to_string(id.value);
+    object.rgb = {static_cast<std::uint8_t>(id.value), 20, 30};
+    object.params = document::TatamiParams{};
+    object.visible = false;
+    object.locked = true;
+    object.intent = document::EmbroideryIntent::ForcedUserChoice;
+    object.join = document::JoinMode::Off;
+    object.connector = document::ConnectorMode::AlwaysTrim;
+    object.thread = thread_palette::ThreadKey{"test", "42"};
+    object.color_blend = document::ColorBlendLink{ObjectId{5 - id.value}, id.value == 3};
+    object.overrides = {{7, um(1, 2), document::StitchPointType::Jump, true}};
+    object.edited_fingerprint = 123;
+    object.edited_point_count = 45;
+    return object;
+}
+
+void check_blend_metadata(const document::EmbroideryObject& result,
+                          const document::EmbroideryObject& original) {
+    CHECK(result.id == original.id);
+    CHECK(result.source_vector == original.source_vector);
+    CHECK(result.name == original.name);
+    CHECK(result.rgb == original.rgb);
+    CHECK(result.visible == original.visible);
+    CHECK(result.locked == original.locked);
+    CHECK(result.intent == original.intent);
+    CHECK(result.join == original.join);
+    CHECK(result.connector == original.connector);
+    CHECK(result.thread == original.thread);
+    CHECK(result.color_blend == original.color_blend);
+    CHECK(result.overrides == original.overrides);
+    CHECK(result.edited_fingerprint == original.edited_fingerprint);
+    CHECK(result.edited_point_count == original.edited_point_count);
+}
+
+} // namespace
+
+TEST_CASE("blend core: complementary helper preserves metadata and removes both underlays",
+          "[blend_core]") {
+    const auto background = blend_layer(ObjectId{2});
+    auto foreground = blend_layer(ObjectId{3});
+    auto params = base_params();
+    params.underlay_mode = document::UnderlayMode::Auto;
+    params.underlay_edge = params.underlay_parallel = true;
+    params.break_lines = {line_mm(0, 10, 30, 10)};
+    params.handmade = true;
+    params.spacing_regularity = 0.5;
+    foreground.params = params;
+    const std::vector<geometry::PathSet> shape{rect_mm(0, 0, 30, 20)};
+    auto gradient = vertical_gradient(Micrometers{1'600}, Micrometers{400});
+    const auto result = make_color_blend_layers(background, foreground, shape, gradient, true);
+    REQUIRE(result);
+    check_blend_metadata(result->first, background);
+    check_blend_metadata(result->second, foreground);
+    gradient.interpolate_density = true;
+    auto expectedTop = params;
+    expectedTop.row_spacing = gradient.spacing_from;
+    expectedTop.density_gradient = gradient;
+    expectedTop.underlay_mode = document::UnderlayMode::Manual;
+    expectedTop.underlay_edge = expectedTop.underlay_parallel = false;
+    align_guides_across_density_gradient(expectedTop, shape);
+    CHECK(result->second.params == document::StitchParams{expectedTop});
+    auto expectedBase =
+        directional_from_tatami(std::get<document::TatamiParams>(background.params), shape, 2);
+    std::swap(gradient.spacing_from, gradient.spacing_to);
+    expectedBase.row_spacing = gradient.spacing_from;
+    expectedBase.density_gradient = gradient;
+    expectedBase.underlay_mode = document::UnderlayMode::Manual;
+    expectedBase.underlay_edge = expectedBase.underlay_parallel = false;
+    align_guides_across_density_gradient(expectedBase, shape);
+    CHECK(result->first.params == document::StitchParams{expectedBase});
+    CHECK(
+        make_color_blend_layers(background, foreground, shape, *expectedTop.density_gradient, true)
+            ->second.params == result->second.params);
+    CHECK(background.params == document::StitchParams{document::TatamiParams{}});
+    CHECK(foreground.params == document::StitchParams{params});
+}
+
+TEST_CASE("blend core: the transition curve reaches both layers", "[blend_core]") {
+    const auto background = blend_layer(ObjectId{2});
+    const auto foreground = blend_layer(ObjectId{3});
+    const std::vector<geometry::PathSet> shape{rect_mm(0, 0, 30, 20)};
+    auto gradient = vertical_gradient(Micrometers{1'600}, Micrometers{400});
+    gradient.curve = document::DensityCurve::Steep;
+    const auto curveOf = [](const document::EmbroideryObject& layer) {
+        const auto* params = std::get_if<document::DirectionalFillParams>(&layer.params);
+        REQUIRE(params != nullptr);
+        REQUIRE(params->density_gradient.has_value());
+        return params->density_gradient->curve;
+    };
+    // Complémentaire : les deux rampes opposées partagent la même courbe, donc la somme
+    // des densités reste constante.
+    const auto complementary =
+        make_color_blend_layers(background, foreground, shape, gradient, true);
+    REQUIRE(complementary);
+    CHECK(curveOf(complementary->first) == document::DensityCurve::Steep);
+    CHECK(curveOf(complementary->second) == document::DensityCurve::Steep);
+    // Fond uniforme : seul le dessus porte la rampe, avec sa courbe.
+    const auto uniform = make_color_blend_layers(background, foreground, shape, gradient, false);
+    REQUIRE(uniform);
+    CHECK(curveOf(uniform->second) == document::DensityCurve::Steep);
+}
+
+TEST_CASE("blend core: legacy helper clears only the base gradient and keeps requested mode",
+          "[blend_core]") {
+    auto background = blend_layer(ObjectId{2});
+    auto base = base_params();
+    base.density_gradient = vertical_gradient(Micrometers{400}, Micrometers{800});
+    base.underlay_mode = document::UnderlayMode::Auto;
+    base.underlay_edge = true;
+    background.params = base;
+    const auto foreground = blend_layer(ObjectId{3});
+    const std::vector<geometry::PathSet> shape{rect_mm(0, 0, 30, 20)};
+    for (const bool density : {false, true}) {
+        auto gradient = vertical_gradient(Micrometers{1'600}, Micrometers{400});
+        gradient.interpolate_density = density;
+        const auto result = make_color_blend_layers(background, foreground, shape, gradient, false);
+        REQUIRE(result);
+        auto expectedBase = base;
+        expectedBase.density_gradient.reset();
+        CHECK(result->first.params == document::StitchParams{expectedBase});
+        const auto& top = std::get<document::DirectionalFillParams>(result->second.params);
+        CHECK(top.density_gradient == gradient);
+        CHECK(top.row_spacing == gradient.spacing_from);
+        CHECK(top.underlay_mode == document::UnderlayMode::Manual);
+        CHECK_FALSE(top.underlay_edge);
+        CHECK_FALSE(top.underlay_parallel);
+        REQUIRE(top.guides.size() == 1);
+        CHECK(top.guides[0].nodes[0].pos.y == top.guides[0].nodes[1].pos.y);
+        check_blend_metadata(result->first, background);
+        check_blend_metadata(result->second, foreground);
+    }
+    // Un fond tatami garde rigoureusement ses réglages, y compris sa sous-couche.
+    background.params = document::TatamiParams{};
+    const auto result =
+        make_color_blend_layers(background, foreground, shape, *base.density_gradient, false);
+    REQUIRE(result);
+    CHECK(result->first.params == background.params);
+}
+
+TEST_CASE("blend core: helper rejects empty shapes and invalid fill parameters", "[blend_core]") {
+    auto background = blend_layer(ObjectId{2});
+    auto foreground = blend_layer(ObjectId{3});
+    const auto gradient = vertical_gradient(Micrometers{400}, Micrometers{1'600});
+    const std::vector<geometry::PathSet> shape{rect_mm(0, 0, 30, 20)};
+    CHECK_FALSE(make_color_blend_layers(background, foreground, {}, gradient, true));
+    CHECK_FALSE(
+        make_color_blend_layers(background, foreground, {rect_mm(0, 0, 0, 0)}, gradient, true));
+    auto open = shape;
+    open[0].outer.closed = false;
+    CHECK_FALSE(make_color_blend_layers(background, foreground, open, gradient, true));
+    auto badGradient = gradient;
+    badGradient.spacing_from = Micrometers{0};
+    CHECK_FALSE(make_color_blend_layers(background, foreground, shape, badGradient, true));
+    foreground.params = document::RunningStitchParams{};
+    CHECK_FALSE(make_color_blend_layers(background, foreground, shape, gradient, true));
+    foreground.params = document::TatamiParams{};
+    background.params = document::SatinParams{};
+    CHECK_FALSE(make_color_blend_layers(background, foreground, shape, gradient, false));
+    background.params = document::TatamiParams{};
+    std::get<document::TatamiParams>(background.params).angle.radians =
+        std::numeric_limits<double>::quiet_NaN();
+    CHECK_FALSE(make_color_blend_layers(background, foreground, shape, gradient, true));
+}
+
+TEST_CASE("blend core: uniform ramps still align guides and degenerate ramps remain valid",
+          "[blend_core]") {
+    const auto background = blend_layer(ObjectId{2});
+    const auto foreground = blend_layer(ObjectId{3});
+    const std::vector<geometry::PathSet> shape{rect_mm(0, 0, 30, 20)};
+    auto gradient = vertical_gradient(Micrometers{800}, Micrometers{800});
+    const auto result = make_color_blend_layers(background, foreground, shape, gradient, true);
+    REQUIRE(result);
+    for (const auto* layer : {&result->first, &result->second}) {
+        const auto& params = std::get<document::DirectionalFillParams>(layer->params);
+        REQUIRE(params.guides.size() == 1);
+        CHECK(params.guides[0].nodes[0].pos.y == params.guides[0].nodes[1].pos.y);
+        CHECK(params.density_gradient->interpolate_density);
+    }
+    gradient.to = gradient.from;
+    CHECK(make_color_blend_layers(background, foreground, shape, gradient, true));
+}
+
+TEST_CASE("blend core: relation metadata never changes generation and underlays stay off",
+          "[blend_core]") {
+    document::Project project;
+    document::VectorObject vector;
+    vector.id = ObjectId{1};
+    vector.paths = {rect_mm(0, 0, 30, 20)};
+    project.vector_objects.push_back(vector);
+    auto background = blend_layer(ObjectId{2});
+    auto foreground = blend_layer(ObjectId{3});
+    for (auto* layer : {&background, &foreground}) {
+        layer->visible = true;
+        layer->overrides.clear();
+        auto& params = std::get<document::TatamiParams>(layer->params);
+        params.underlay_mode = document::UnderlayMode::Auto;
+        params.underlay_edge = params.underlay_parallel = true;
+    }
+    const auto result =
+        make_color_blend_layers(background, foreground, vector.paths,
+                                vertical_gradient(Micrometers{400}, Micrometers{1'600}), true);
+    REQUIRE(result);
+    project.embroidery_objects = {result->first, result->second};
+    const auto linked = effective_sequence(project);
+    REQUIRE(linked);
+    CHECK(std::none_of(linked->commands.begin(), linked->commands.end(), [](const auto& command) {
+        return command.pass == stitch::StitchPass::Underlay;
+    }));
+    project.embroidery_objects[0].color_blend.reset();
+    project.embroidery_objects[1].color_blend.reset();
+    const auto unlinked = effective_sequence(project);
+    REQUIRE(unlinked);
+    CHECK(linked->commands == unlinked->commands);
+    project.embroidery_objects[0].color_blend = document::ColorBlendLink{ObjectId{42}, true};
+    const auto orphaned = effective_sequence(project);
+    REQUIRE(orphaned);
+    CHECK(orphaned->commands == unlinked->commands);
+}
+
+TEST_CASE("blend core: helper retains overrides and pipeline invalidates changed parameters",
+          "[blend_core]") {
+    document::Project project;
+    document::VectorObject vector;
+    vector.id = ObjectId{1};
+    vector.paths = {rect_mm(0, 0, 30, 20)};
+    project.vector_objects.push_back(vector);
+    auto background = blend_layer(ObjectId{2});
+    auto foreground = blend_layer(ObjectId{3});
+    background.visible = foreground.visible = true;
+    background.overrides.clear();
+    foreground.overrides.clear();
+    project.embroidery_objects = {background, foreground};
+    const auto before = edit_view(project, foreground.id);
+    REQUIRE(before);
+    const auto point = std::find_if(before->raw.begin(), before->raw.end(), is_movable_point);
+    REQUIRE(point != before->raw.end());
+    foreground.overrides = {
+        {static_cast<std::size_t>(point - before->raw.begin()), um(3, 4), {}, false}};
+    foreground.edited_fingerprint = before->fingerprint;
+    foreground.edited_point_count = before->point_count;
+    project.embroidery_objects[1] = foreground;
+    REQUIRE(edit_view(project, foreground.id)->state == ObjectEditState::ManuallyEdited);
+    const auto result =
+        make_color_blend_layers(background, foreground, vector.paths,
+                                vertical_gradient(Micrometers{400}, Micrometers{1'600}), true);
+    REQUIRE(result);
+    CHECK(result->second.overrides == foreground.overrides);
+    project.embroidery_objects = {result->first, result->second};
+    const auto after = edit_view(project, foreground.id);
+    REQUIRE(after);
+    CHECK(after->state == ObjectEditState::Dirty);
+    CHECK(after->fingerprint != before->fingerprint);
+    const auto dirty = effective_sequence(project);
+    REQUIRE(dirty);
+    project.embroidery_objects[1].overrides.clear();
+    const auto clean = effective_sequence(project);
+    REQUIRE(clean);
+    CHECK(dirty->commands == clean->commands);
+}
+
+TEST_CASE("directional density gradient ignores guides running along its axis", "[blend_core]") {
+    // Cas du projet TheyAskedForIT.osp : le dessus du fondu garde des guides
+    // courbes qui longent l'axe (vertical) du dégradé. Les rangées couraient
+    // alors le long de l'axe, l'écart ne variait pas et le fondu était écrasé.
+    const auto region = rect_mm(0, 0, 30, 20);
+    auto params = base_params();
+    params.inset = Micrometers{0};
+    params.density_gradient = vertical_gradient(Micrometers{4'000}, Micrometers{400});
+    params.guides = {line_mm(15, 1, 15, 19)};
+    auto curved = params;
+    curved.guides = {polygon({um(8, 1), um(11, 7), um(7, 13), um(10, 19)}, false)};
+
+    auto aligned = params;
+    align_guides_across_density_gradient(aligned, {region});
+    auto uniform = params;
+    uniform.density_gradient.reset();
+
+    const auto expected = trace_directional_streamlines(region, aligned);
+    const auto dense = trace_directional_streamlines(region, uniform);
+    REQUIRE(!expected.empty());
+    CHECK(expected.size() * 10 < dense.size() * 7); // le dégradé espace bien les rangées
+    CHECK(trace_directional_streamlines(region, params).size() == expected.size());
+    CHECK(trace_directional_streamlines(region, curved).size() == expected.size());
+}
+
+TEST_CASE("directional fill does not jump between neighbouring rows across a stair-step contour",
+          "[blend_core]") {
+    // Région de TheyAskedForIT.osp (contour pixelisé) : le lien entre deux fins
+    // de rangées voisines mord sur une marche ou une fente étroite ; refusé, il
+    // devenait un saut (260 sauts < 1 mm sur 410 pour le fond du fondu).
+    geometry::PathSet region;
+    region.outer.closed = true;
+    for (const auto& p : blend_fixture::kOuter) {
+        region.outer.nodes.push_back(
+            {um(p[0] / 1000.0, p[1] / 1000.0), geometry::NodeType::Corner, {}, {}});
+    }
+    geometry::Path hole;
+    hole.closed = true;
+    for (const auto& p : blend_fixture::kHole) {
+        hole.nodes.push_back(
+            {um(p[0] / 1000.0, p[1] / 1000.0), geometry::NodeType::Corner, {}, {}});
+    }
+    region.holes.push_back(std::move(hole));
+    auto params = base_params();
+    params.row_spacing = Micrometers{400};
+    params.guides = {};
+    const auto stitches = fill_directional(region, params);
+    REQUIRE(stitches.size() > 500);
+    std::size_t shortJumps = 0;
+    for (std::size_t i = 1; i < stitches.size(); ++i) {
+        if (stitches[i].jump && length_um(stitches[i].pos - stitches[i - 1].pos) < 1'500.0) {
+            ++shortJumps;
+        }
+    }
+    CHECK(shortJumps <= 2);
 }

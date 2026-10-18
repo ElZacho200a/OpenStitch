@@ -2,6 +2,7 @@ add_library(openstitch_stitch_generation
     src/running_stitch.cpp
     src/tatami.cpp
     src/directional_fill.cpp
+    src/color_blend.cpp
     src/satin.cpp
     src/satin_guides.cpp
     src/lock.cpp
@@ -11,6 +12,7 @@ add_library(openstitch_stitch_generation
     src/underlay_order.cpp
     src/region_order.cpp
     src/generate.cpp
+    src/chunk_cache.cpp
     src/overrides.cpp
     src/underlay_auto.cpp
     src/join.cpp

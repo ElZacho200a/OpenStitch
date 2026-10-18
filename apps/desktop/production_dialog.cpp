@@ -34,6 +34,7 @@
 
 #include "openstitch/stitch_render/raster.hpp"
 #include "openstitch/stitch_render/segments.hpp"
+#include "responsive.hpp"
 
 namespace openstitch::desktop {
 
@@ -53,7 +54,8 @@ ProductionDialog::ProductionDialog(const document::Project& project,
     : QDialog(parent), project_(project), sequence_(sequence), renderParams_(renderParams) {
     setObjectName(QStringLiteral("productionDialog"));
     setWindowTitle(tr("Fiche de production"));
-    resize(1000, 720);
+    resize(920, 600);
+    fitDialogToScreen(this);
 
     name_ = new QLineEdit(suggestedName, this);
     name_->setObjectName(QStringLiteral("production_name"));
@@ -73,6 +75,16 @@ ProductionDialog::ProductionDialog(const document::Project& project,
     speed_->setAccessibleName(tr("Vitesse de broderie supposée, en points par minute"));
     speed_->setToolTip(tr("Hypothèse pour le temps estimé : 600 à 800 points/min pour une machine "
                           "courante. La vitesse réelle dépend de la machine et du motif."));
+    bobbin_ = new QDoubleSpinBox(this);
+    bobbin_->setObjectName(QStringLiteral("production_bobbin"));
+    bobbin_->setRange(10.0, 1000.0);
+    bobbin_->setDecimals(0);
+    bobbin_->setSingleStep(10.0);
+    bobbin_->setValue(100.0);
+    bobbin_->setSuffix(tr(" m"));
+    bobbin_->setAccessibleName(tr("Capacité utile d'une canette, en mètres"));
+    bobbin_->setToolTip(tr("Hypothèse pour le nombre de canettes (HP-PROD-005) : une canette "
+                           "préremplie courante contient environ 100 m de fil."));
     notes_ = new QPlainTextEdit(this);
     notes_->setObjectName(QStringLiteral("production_notes"));
     notes_->setAccessibleName(tr("Notes libres de la fiche"));
@@ -83,6 +95,7 @@ ProductionDialog::ProductionDialog(const document::Project& project,
     form->addRow(tr("&Nom du projet"), name_);
     form->addRow(tr("&Date"), date_);
     form->addRow(tr("&Vitesse supposée"), speed_);
+    form->addRow(tr("&Capacité d'une canette"), bobbin_);
     auto* notesLabel = new QLabel(tr("N&otes"), this);
     notesLabel->setBuddy(notes_);
 
@@ -124,7 +137,8 @@ ProductionDialog::ProductionDialog(const document::Project& project,
     // Ordre de tabulation logique : champs, notes, aperçu, boutons.
     setTabOrder(name_, date_);
     setTabOrder(date_, speed_);
-    setTabOrder(speed_, notes_);
+    setTabOrder(speed_, bobbin_);
+    setTabOrder(bobbin_, notes_);
     setTabOrder(notes_, view_);
     setTabOrder(view_, previewBtn);
     setTabOrder(previewBtn, printBtn);
@@ -139,6 +153,7 @@ ProductionDialog::ProductionDialog(const document::Project& project,
     connect(name_, &QLineEdit::textChanged, this, schedule);
     connect(date_, &QDateEdit::dateChanged, this, schedule);
     connect(speed_, &QDoubleSpinBox::valueChanged, this, schedule);
+    connect(bobbin_, &QDoubleSpinBox::valueChanged, this, schedule);
     connect(notes_, &QPlainTextEdit::textChanged, this, schedule);
 
     // Premier calcul : sert aussi à fournir les traits pour l'aperçu en lignes.
@@ -230,8 +245,13 @@ void ProductionDialog::refreshNow() {
     opts.date = date_->date().toString(Qt::ISODate).toStdString();
     opts.notes = notes_->toPlainText().toStdString();
     opts.stitches_per_minute = speed_->value();
+    opts.consumption.bobbin_capacity_m = bobbin_->value();
     sheet_ = stitch_analysis::make_production_sheet(project_, sequence_, opts);
     buildDocument(*view_->document());
+}
+
+QString ProductionDialog::viewPlainText() const {
+    return view_->document()->toPlainText();
 }
 
 void ProductionDialog::configurePrinter(QPrinter& printer) const {

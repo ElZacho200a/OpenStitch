@@ -40,6 +40,11 @@ namespace openstitch::desktop::icons {
 [[nodiscard]] QIcon exportDst();
 [[nodiscard]] QIcon editPoints();
 
+// Pictogrammes de type de point pour la liste Document (HP-UX-042) : un glyphe distinct par
+// famille, recoloré à l'affichage selon le thème et l'état du widget (net en HiDPI).
+enum class StitchGlyph { Tatami, Satin, Contour, Directional, Text, Vector };
+[[nodiscard]] QIcon stitchGlyph(StitchGlyph glyph);
+
 // Icône de l'application (aiguille et fil), nette de 16 à 256 px.
 [[nodiscard]] QIcon appIcon();
 

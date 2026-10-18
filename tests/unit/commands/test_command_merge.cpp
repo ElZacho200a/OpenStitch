@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <chrono>
 #include <memory>
+#include <span>
 #include <variant>
 
 #include "openstitch/commands/composite_command.hpp"
@@ -163,4 +165,85 @@ TEST_CASE("historique : undoNames et redoNames ordonnent les pas") {
     CHECK(stack.undoNames().size() == 1);
     REQUIRE(stack.redoNames().size() == 1);
     CHECK(stack.redoNames().front() == stack.redoName());
+}
+
+TEST_CASE(
+    "nettoyer les ilots : fusion dans la voisine de couleur proche, annulable a l'identique") {
+    document::Project project;
+    segmentation::Segmentation seg;
+    seg.width = 12;
+    seg.height = 6;
+    seg.labels.assign(72, 0);
+    for (int y = 0; y < 6; ++y) {
+        for (int x = 0; x < 12; ++x) {
+            seg.labels[static_cast<std::size_t>(y * 12 + x)] = x < 6 ? 1U : 2U;
+        }
+    }
+    for (int y = 0; y < 2; ++y) {
+        for (int x = 4; x < 6; ++x) {
+            seg.labels[static_cast<std::size_t>(y * 12 + x)] = 3U;
+        }
+    }
+    seg.region_slots.resize(3);
+    seg.region_slots[0] = segmentation::Region{RegionId{1}, {200, 30, 30}, 32};
+    seg.region_slots[1] = segmentation::Region{RegionId{2}, {15, 101, 186}, 36};
+    seg.region_slots[2] = segmentation::Region{RegionId{3}, {20, 90, 200}, 4};
+    project.segmentation = seg;
+    const auto original = *project.segmentation;
+
+    UndoStack stack;
+    stack.execute(std::make_unique<CleanIslandsCommand>(10, std::nullopt, 0.0), project);
+    CHECK(project.segmentation->labels[4] == 2U);
+    CHECK_FALSE(project.segmentation->region_slots[2].has_value());
+    CHECK(project.segmentation->region_slots[1]->pixel_count == 40);
+
+    stack.undo(project);
+    CHECK(project.segmentation->labels == original.labels);
+    REQUIRE(project.segmentation->region_slots[2].has_value());
+    CHECK(project.segmentation->region_slots[2]->pixel_count == 4);
+    CHECK(project.segmentation->region_slots[1]->pixel_count == 36);
+
+    stack.redo(project);
+    CHECK(project.segmentation->labels[4] == 2U);
+}
+
+TEST_CASE("fusion de couleurs : un seul pas d'annulation, undo et redo exacts") {
+    document::Project project;
+    segmentation::Segmentation seg;
+    seg.width = 9;
+    seg.height = 4;
+    seg.labels.assign(36, 0);
+    for (int y = 0; y < 4; ++y) {
+        for (int x = 0; x < 9; ++x) {
+            seg.labels[static_cast<std::size_t>(y * 9 + x)] = static_cast<std::uint32_t>(x / 3 + 1);
+        }
+    }
+    seg.region_slots.resize(3);
+    seg.region_slots[0] = segmentation::Region{RegionId{1}, {220, 30, 30}, 12};
+    seg.region_slots[1] = segmentation::Region{RegionId{2}, {210, 40, 35}, 12};
+    seg.region_slots[2] = segmentation::Region{RegionId{3}, {30, 30, 220}, 12};
+    project.segmentation = seg;
+    const auto original = *project.segmentation;
+
+    const std::array<std::uint8_t, 3> source{210, 40, 35};
+    const auto plan = segmentation::plan_merge_colors(
+        original, std::span<const std::array<std::uint8_t, 3>>(&source, 1), {220, 30, 30}, true);
+    REQUIRE_FALSE(plan.empty());
+
+    UndoStack stack;
+    stack.execute(std::make_unique<MergeColorsCommand>(plan), project);
+    CHECK(project.segmentation->region_count() == 2);
+    CHECK(project.segmentation->find(RegionId{1})->pixel_count == 24);
+    CHECK(project.segmentation->labels[4] == 1U); // la bande 2 est devenue la region 1
+
+    stack.undo(project);
+    CHECK(project.segmentation->labels == original.labels);
+    REQUIRE(project.segmentation->region_slots[1].has_value());
+    CHECK(project.segmentation->region_slots[1]->rgb == std::array<std::uint8_t, 3>{210, 40, 35});
+    CHECK(project.segmentation->region_slots[0]->pixel_count == 12);
+    CHECK(project.segmentation->region_count() == 3);
+
+    stack.redo(project);
+    CHECK(project.segmentation->region_count() == 2);
+    CHECK(project.segmentation->labels[4] == 1U);
 }

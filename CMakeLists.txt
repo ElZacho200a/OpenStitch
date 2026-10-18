@@ -48,6 +48,7 @@ add_subdirectory(libs/stipple)
 add_subdirectory(libs/autodigitize)
 add_subdirectory(libs/project_io)
 add_subdirectory(libs/commands)
+add_subdirectory(libs/project_ops)
 add_subdirectory(apps/cli)
 
 if(OPENSTITCH_BUILD_DESKTOP)

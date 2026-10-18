@@ -17,8 +17,11 @@
 #include <QToolBar>
 
 #include <algorithm>
+#include <array>
 #include <map>
+#include <optional>
 
+#include "app_settings.hpp"
 #include "main_window.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
@@ -27,6 +30,7 @@
 #include "openstitch/stitch_analysis/thread_usage.hpp"
 #include "openstitch/thread_palette/chart_import.hpp"
 #include "openstitch/thread_palette/color_reduction.hpp"
+#include "responsive.hpp"
 #include "thread_panel.hpp"
 #include "thread_strip.hpp"
 
@@ -37,6 +41,32 @@ namespace {
 QString userChartsDir() {
     return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) +
            QStringLiteral("/thread_charts");
+}
+
+// Fils les plus proches de `rgb` : dans tout le nuancier `chartId`, ou, quand « limiter à mes
+// fils » est coché, parmi les seuls fils possédés (le nuancier choisi est alors ignoré).
+std::vector<thread_palette::ThreadMatch>
+nearestThreadsFor(const ThreadPanel& panel, const thread_palette::ThreadLibrary& library,
+                  std::array<std::uint8_t, 3> rgb, const std::string& chartId, std::size_t count) {
+    if (panel.limitToStock()) {
+        return panel.stock().nearest(library, rgb, count);
+    }
+    return library.nearest(rgb, chartId, count);
+}
+
+// Fil d'une clé : bibliothèque, sinon nuancier personnel du stock.
+std::optional<thread_palette::Thread> findThreadFor(const ThreadPanel& panel,
+                                                    const thread_palette::ThreadLibrary& library,
+                                                    const thread_palette::ThreadKey& key) {
+    if (auto t = library.find(key)) {
+        return t;
+    }
+    for (const auto& t : panel.stock().personal_threads()) {
+        if (t.key == key) {
+            return t;
+        }
+    }
+    return std::nullopt;
 }
 
 } // namespace
@@ -68,7 +98,7 @@ void MainWindow::buildThreadPanel() {
     threadDock_->setAllowedAreas(Qt::RightDockWidgetArea | Qt::LeftDockWidgetArea);
     threadPanel_ = new ThreadPanel(threadDock_);
     threadPanel_->setObjectName(QStringLiteral("threadPanel"));
-    threadDock_->setWidget(threadPanel_);
+    threadDock_->setWidget(scrollableDockContent(threadPanel_, threadDock_));
     threadDock_->setAccessibleName(threadDock_->windowTitle());
     addDockWidget(Qt::RightDockWidgetArea, threadDock_);
     threadDock_->hide();
@@ -86,6 +116,62 @@ void MainWindow::buildThreadPanel() {
         }
     }
     threadPanel_->setLibrary(&threadLibrary_);
+
+    // « Mes fils » (HP-THR-007) : préférence utilisateur relue au lancement. Ce n'est PAS une
+    // donnée du document : aucune commande d'annulation pour le stock lui-même.
+    {
+        QString stockError;
+        threadPanel_->setStock(loadThreadStock(threadStockFilePath(), &stockError));
+        threadPanel_->setLimitToStock(loadLimitToThreadStock());
+        if (!stockError.isEmpty()) {
+            statusBar()->showMessage(stockError, 12000);
+        }
+    }
+    const auto commitStock = [this](thread_palette::ThreadStock stock) {
+        QString error;
+        if (!saveThreadStock(stock, threadStockFilePath(), &error)) {
+            statusBar()->showMessage(error, 10000);
+        }
+        threadPanel_->setStock(std::move(stock));
+    };
+    connect(threadPanel_, &ThreadPanel::stockOwnedToggled, this,
+            [this, commitStock](const thread_palette::ThreadKey& key, bool owned) {
+                auto stock = threadPanel_->stock();
+                if (owned ? stock.own(key) : stock.disown(key)) {
+                    commitStock(std::move(stock));
+                    statusBar()->showMessage(
+                        (owned ? tr("Fil %1 ajouté à Mes fils.") : tr("Fil %1 retiré de Mes fils."))
+                            .arg(QString::fromStdString(key.code)),
+                        4000);
+                }
+            });
+    connect(threadPanel_, &ThreadPanel::personalThreadAddRequested, this,
+            [this, commitStock](const thread_palette::Thread& thread) {
+                auto stock = threadPanel_->stock();
+                if (auto added = stock.add_personal(thread); !added) {
+                    QMessageBox::warning(this, tr("Mes fils"),
+                                         QString::fromStdString(added.error().message));
+                    return;
+                }
+                commitStock(std::move(stock));
+                statusBar()->showMessage(
+                    tr("Fil personnel %1 ajouté.").arg(QString::fromStdString(thread.key.code)),
+                    4000);
+            });
+    connect(threadPanel_, &ThreadPanel::personalThreadRemoveRequested, this,
+            [this, commitStock](const thread_palette::ThreadKey& key) {
+                auto stock = threadPanel_->stock();
+                if (stock.disown(key)) {
+                    commitStock(std::move(stock));
+                }
+            });
+    connect(threadPanel_, &ThreadPanel::limitToStockToggled, this, [this](bool limit) {
+        saveLimitToThreadStock(limit);
+        statusBar()->showMessage(
+            limit ? tr("Recherche du fil le plus proche limitée à Mes fils.")
+                  : tr("Recherche du fil le plus proche dans tout le catalogue."),
+            4000);
+    });
 
     auto* menu = menuBar()->addMenu(tr("Fi&ls"));
     menu->addAction(threadDock_->toggleViewAction());
@@ -188,17 +274,26 @@ void MainWindow::buildThreadPanel() {
                     ids.push_back(obj.id);
                 }
             }
+            if (threadPanel_->limitToStock() &&
+                threadPanel_->stock().resolve(threadLibrary_).empty()) {
+                statusBar()->showMessage(
+                    tr("« Mes fils » est vide : possédez des fils ou décochez la limitation."),
+                    6000);
+                return;
+            }
             std::vector<commands::ObjectThreadAssignment> plan;
             for (const ObjectId id : ids) {
                 const auto* obj = project_.findEmbroidery(id);
                 if (obj == nullptr || obj->thread) {
                     continue;
                 }
-                const auto match = threadLibrary_.nearest(obj->rgb, chartId.toStdString(), 1);
+                const auto match = nearestThreadsFor(*threadPanel_, threadLibrary_, obj->rgb,
+                                                     chartId.toStdString(), 1);
                 if (match.empty()) {
                     continue;
                 }
-                if (const auto t = threadLibrary_.find(match.front().key)) {
+                if (const auto t =
+                        findThreadFor(*threadPanel_, threadLibrary_, match.front().key)) {
                     plan.push_back({id, t->key, t->rgb});
                 }
             }
@@ -289,14 +384,21 @@ void MainWindow::buildThreadPanel() {
             return;
         }
         std::vector<thread_palette::Thread> found;
-        for (const auto& m : threadLibrary_.nearest(rgb, chartId.toStdString(), 8)) {
-            if (const auto t = threadLibrary_.find(m.key)) {
+        for (const auto& m :
+             nearestThreadsFor(*threadPanel_, threadLibrary_, rgb, chartId.toStdString(), 8)) {
+            if (const auto t = findThreadFor(*threadPanel_, threadLibrary_, m.key)) {
                 found.push_back(*t);
             }
         }
-        threadPanel_->showMatches(
-            found, tr("Fils les plus proches de %1 (distance CIEDE2000)")
-                       .arg(QString::fromStdString(thread_palette::to_hex_color(rgb))));
+        QString title = tr("Fils les plus proches de %1 (distance CIEDE2000)")
+                            .arg(QString::fromStdString(thread_palette::to_hex_color(rgb)));
+        if (threadPanel_->limitToStock()) {
+            title = found.empty()
+                        ? tr("« Mes fils » est vide : possédez des fils ou décochez la limitation.")
+                        : tr("Parmi Mes fils, les plus proches de %1 (CIEDE2000)")
+                              .arg(QString::fromStdString(thread_palette::to_hex_color(rgb)));
+        }
+        threadPanel_->showMatches(found, title);
     });
 
     connect(threadPanel_, &ThreadPanel::importChartRequested, this, [this] {
@@ -443,6 +545,9 @@ void MainWindow::buildThreadStrip() {
     threadStripBar_->setMovable(false);
     threadStripBar_->setAllowedAreas(Qt::BottomToolBarArea);
     threadStrip_ = new ThreadStrip(threadStripBar_);
+    // Partageant la rangée du bas avec la simulation, la bande garde de quoi afficher quelques
+    // pastilles et son résumé (HP-UX-026) ; c'est la simulation qui déborde dans « » avant elle.
+    threadStrip_->setMinimumWidth(480);
     threadStripBar_->addWidget(threadStrip_);
     addToolBar(Qt::BottomToolBarArea, threadStripBar_);
     // Un clic sur une pastille sélectionne les objets cousus avec ce fil (même chemin que le
@@ -505,6 +610,13 @@ void MainWindow::refreshThreadStrip() {
         summary = tr("%1 fil(s) · %2 points").arg(usage.size()).arg(stitches);
     }
     threadStrip_->setThreads(std::move(swatches), summary);
+    // Rangée du bas (simulation + fils) visible seulement quand une séquence existe
+    // (HP-UX-026), sauf si l'utilisateur a masqué la barre lui-même.
+    for (QToolBar* bar : {simToolbar_, threadStripBar_}) {
+        if (bar != nullptr) {
+            bar->setVisible(sequence_.has_value() && !bar->property("userHidden").toBool());
+        }
+    }
 }
 
 void MainWindow::refreshThreadPanel() {

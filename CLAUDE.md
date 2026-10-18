@@ -44,7 +44,8 @@ build\msvc\tests\unit\stitch\Debug\test_stitch.exe "some name"   # run one Catch
 build\msvc\tests\unit\stitch\Debug\test_stitch.exe "[tag]"       # or by Catch2 tag
 ```
 
-`linux-core` preset builds the core libs + CLI **without Qt** — a portability
+`linux-core` preset builds the core libs + CLI **without Qt** (without vcpkg, e.g. in a sandbox that
+blocks GitHub archives: `scripts/linux-core-setup.sh` — apt + git clones + a Boost.Polygon shim) — a portability
 guard, not a full app build; there is no desktop build on Linux yet.
 
 Format check (matches CI, does not modify files):
@@ -92,10 +93,16 @@ watcher hangs on its `.venv-wsl/`).
 - `openstitch-stitch-param` — end-to-end checklist for a new stitch parameter or stitch type.
 - `openstitch-cli-debug` — reproduce generation issues with `openstitch-cli`, regenerate goldens.
 - `openstitch-bugfix` — root-cause workflow (failing test first, rejected hypotheses documented).
-- `openstitch-commit` — pre-commit checks and commit message conventions.
+- `openstitch-commit` — pre-commit checks and commit message conventions. **Every
+  commit must update `docs/roadmap-parite-hatch.md`** (entry status, new gaps, journal §28)
+  or state "roadmap : aucune entrée concernée" in the message. **Unless the user explicitly
+  says otherwise, every feature must also be wired into the desktop app** (`apps/desktop`:
+  menu/tool/dialog/panel + `ICommand` undo + headless QTest), not just core and CLI.
 - `openstitch-performance` — measure with the bench, parallelise with `parallel_for`
   (independent tasks, sequential assembly), keep heavy work off the UI thread, exact-key
   caches; byte-identical output is the acceptance criterion.
+- `openstitch-digitize` — numériser une image en broderie : inspecter l'image, `digitize` + `stats`
+  + rendu, fond, couleurs, `--dark-lines`, satin des bandes, diagnostic des échecs courants.
 - `openstitch-multi-agent` — work split across sub-agents in isolated worktrees
   (disjoint file scopes, lead integrates sequentially and re-runs the tests itself).
   The user prefers this whenever a task splits cleanly.
@@ -136,6 +143,7 @@ table and "where do I change X" shortcuts):
 | `commands` | undo/redo (Command pattern) |
 | `formats` | DST codec, diagnostic SVG export |
 | `project_io` | `.osp` project format (JSON + ZIP) |
+| `project_ops` | Programmatic API behind `openstitch-cli project …`: project factory, JSON inspection, transactional operations/batches, quality report, auto-satin service (see `docs/source/cli-project.md`) |
 
 **No coordinate is ever a raw `double`.** Internal geometry is `Micrometers`
 (`int32`) / `Vec2um`, Y axis pointing up. Convert at boundaries only: px→µm on

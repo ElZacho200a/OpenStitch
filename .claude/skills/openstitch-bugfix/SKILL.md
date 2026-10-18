@@ -40,7 +40,7 @@ symptôme sans cause identifiée n'est pas acceptable ici.
   enregistre l'index post-retrait au lieu de l'index d'origine dès que 2+
   objets consécutifs partagent le même `source_vector` »).
 - Instrumenter plutôt que deviner : `INFO`/`CAPTURE` dans le test, sortie
-  texte de `sgsd-debug`, SVG de diagnostic.
+  texte de `satin-auto-debug`, SVG de diagnostic.
 - Chercher les **jumeaux** : le même motif fautif ailleurs (même pattern de
   boucle, même conversion µm↔px qui tronque, même commande voisine). Les
   corriger dans le même lot avec leur propre test.

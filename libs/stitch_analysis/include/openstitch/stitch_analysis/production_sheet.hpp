@@ -14,6 +14,7 @@
 #include "openstitch/document/project.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
+#include "openstitch/stitch_analysis/thread_consumption.hpp"
 
 namespace openstitch::stitch_analysis {
 
@@ -40,6 +41,8 @@ struct ProductionOptions {
     // (« hors cadre »). Faux (DST relu, aucun cadre connu) : pas de cadre.
     bool use_project_canvas{true};
     AnalysisOptions analysis{};
+    // HP-PROD-005 : coefficients d'estimation de la consommation de fil et capacité de canette.
+    ThreadConsumptionOptions consumption{};
 };
 
 struct ProductionObjectRef {
@@ -60,6 +63,16 @@ struct ProductionBlock {
     double thread_length_mm{0.0};
     double minutes{0.0}; // durée estimée du bloc (changement de fil du bloc inclus)
     std::vector<ProductionObjectRef> objects; // ordre de première apparition
+};
+
+// HP-PROD-005 : consommation estimée d'un fil du design (un fil = une ligne, tous ses blocs
+// confondus), dans l'ordre de première utilisation.
+struct ProductionThreadConsumption {
+    std::array<std::uint8_t, 3> rgb{};
+    std::string thread_label; // vide : couleur libre ou nuancier inconnu
+    double sewn_m{0.0};       // longueur cousue à plat
+    double top_m{0.0};        // fil du dessus estimé
+    double bobbin_m{0.0};     // fil de canette estimé
 };
 
 struct ProductionFinding {
@@ -99,6 +112,13 @@ struct ProductionSheet {
     double estimated_minutes{0.0};
 
     std::vector<ProductionBlock> blocks;
+    // HP-PROD-005 : consommation de fil (ordres de grandeur, cf. ThreadConsumptionOptions).
+    std::vector<ProductionThreadConsumption> consumption;
+    double total_top_m{0.0};
+    double total_bobbin_m{0.0};
+    std::size_t bobbins_needed{0};
+    double last_bobbin_fill{0.0};
+    double bobbin_capacity_m{100.0};
     std::vector<ProductionFinding> findings;
     std::map<std::string, std::size_t> suppressed; // problèmes masqués par catégorie
     std::vector<ProductionStroke> preview;         // exclu du JSON

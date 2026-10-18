@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -55,8 +56,15 @@ struct TatamiParams {
     bool operator==(const TatamiParams&) const = default;
 };
 
+// Profil de la rampe d'un `DensityGradient` : remappe la position t ∈ [0 ; 1] sur
+// l'axe avant l'interpolation des écarts. `Linear` (défaut, comportement
+// historique) : t. `Smooth` : 3t² − 2t³ (départ et arrivée adoucis). `Steep` :
+// 6t⁵ − 15t⁴ + 10t³ (aplats plus longs, transition plus resserrée au milieu).
+// Les trois valent 0, 0,5 et 1 en t = 0, 0,5 et 1. Valeurs persistées : ne pas réordonner.
+enum class DensityCurve : std::uint8_t { Linear = 0, Smooth = 1, Steep = 2 };
+
 // Dégradé de densité d'un remplissage directionnel : l'écart entre lignes de
-// couture varie linéairement le long de l'axe `from` → `to` (repère du modèle,
+// couture varie le long de l'axe `from` → `to` (repère du modèle,
 // comme les guides), de `spacing_from` à `spacing_to`, et reste constant de
 // part et d'autre des extrémités. `from == to` : axe dégénéré, espacement
 // uniforme `spacing_from`. Écart borné à la génération (cf. directional_fill).
@@ -65,6 +73,10 @@ struct DensityGradient {
     Vec2um to{};
     Micrometers spacing_from{400}; // 0,4 mm
     Micrometers spacing_to{400};   // 0,4 mm
+    // Faux : interpolation linéaire de l'écart (historique). Vrai : interpolation
+    // linéaire de son inverse (densité), pour des rampes de couleurs complémentaires.
+    bool interpolate_density{false};
+    DensityCurve curve{DensityCurve::Linear};
 
     bool operator==(const DensityGradient&) const = default;
 };
@@ -229,7 +241,51 @@ struct AutoSatinGuide {
 // specs/plans/satin-squelette-traversees.md). Comme le tatami et le directionnel,
 // l'objet suit la région de son objet vectoriel source : les traversées sont
 // recalculées à la demande (ADR-014), jamais stockées. Aucun rail ni barreau.
+// Méthode de calcul des traversées d'un auto-satin (docs/auto-satin-research.md). Les valeurs
+// sont persistées par NOM dans le `.osp` (jamais par entier) ; le squelette est le défaut.
+enum class AutoSatinStrategy : std::uint8_t {
+    Skeleton = 0,      // squelette raster Zhang-Suen (moteur historique)
+    ParallelSweep = 1, // balayage parallèle à angle constant
+    MedialAxis = 2,    // axe médian vectoriel (Voronoï des segments du contour)
+};
+
+// Identifiant stable (fichier `.osp`, CLI, API programmatique) et lecture inverse. `nullopt` pour
+// un nom inconnu : l'appelant refuse explicitement, il ne substitue jamais une autre méthode.
+[[nodiscard]] constexpr std::string_view auto_satin_strategy_id(AutoSatinStrategy strategy) {
+    switch (strategy) {
+    case AutoSatinStrategy::Skeleton:
+        return "skeleton";
+    case AutoSatinStrategy::ParallelSweep:
+        return "parallel_sweep";
+    case AutoSatinStrategy::MedialAxis:
+        return "medial_axis";
+    }
+    return "skeleton";
+}
+
+[[nodiscard]] constexpr std::optional<AutoSatinStrategy>
+parse_auto_satin_strategy(std::string_view id) {
+    for (const auto s : {AutoSatinStrategy::Skeleton, AutoSatinStrategy::ParallelSweep,
+                         AutoSatinStrategy::MedialAxis}) {
+        if (id == auto_satin_strategy_id(s)) {
+            return s;
+        }
+    }
+    return std::nullopt;
+}
+
+// Méthode proposée aux NOUVEAUX auto-satins créés par l'utilisateur (bureau, CLI, API). Ce n'est
+// pas le défaut d'`AutoSatinParams{}` : le squelette y reste (anciens `.osp` sans clé `strategy`,
+// lettrage, auto-numérisation), pour que rien d'existant ne change de méthode à l'insu de
+// l'utilisateur.
+inline constexpr AutoSatinStrategy kDefaultAutoSatinStrategy = AutoSatinStrategy::ParallelSweep;
+
 struct AutoSatinParams {
+    // Choix de l'utilisateur pour cette région. Un changement régénère le satin : annulable.
+    AutoSatinStrategy strategy{AutoSatinStrategy::Skeleton};
+    // Balayage parallèle seulement : angle des traversées (modèle, Y vers le haut). Absent :
+    // automatique (perpendiculaire à l'axe principal de la forme).
+    std::optional<Angle> sweep_angle;
     std::vector<AutoSatinGuide> guides;
     Micrometers spacing{400}; // espacement cible entre traversées (au bord le plus écarté)
     // Fractionnement des traversées longues : au-delà de `split_threshold` (Lmax),
@@ -318,6 +374,15 @@ enum class JoinMode : std::uint8_t { Inherit, Auto, Off };
 // avant un changement de fil, un arrêt ou une coupe posée à la main.
 enum class ConnectorMode : std::uint8_t { Inherit, AlwaysTrim, NeverTrim };
 
+// Relation explicite entre les deux couches d'un fondu rééditable. Pure métadonnée :
+// seule la génération depuis `params` détermine les points, jamais ce lien.
+struct ColorBlendLink {
+    ObjectId partner;
+    bool foreground{false};
+
+    bool operator==(const ColorBlendLink&) const = default;
+};
+
 struct EmbroideryObject {
     ObjectId id;
     std::string name;
@@ -345,6 +410,7 @@ struct EmbroideryObject {
     // bibliothèque courante (nuancier utilisateur non chargé) n'altère pas
     // l'affichage. Écrit/lu dans le .osp (schéma v6, champ `thread`).
     std::optional<thread_palette::ThreadKey> thread;
+    std::optional<ColorBlendLink> color_blend;
 
     [[nodiscard]] bool is_tatami() const { return std::holds_alternative<TatamiParams>(params); }
     [[nodiscard]] bool is_satin() const { return std::holds_alternative<SatinParams>(params); }

@@ -33,11 +33,6 @@ struct AutoOptions {
     // image carrée). Particulièrement utile sur une image SANS canal alpha :
     // sans transparence, le fond devient une région opaque comme les autres.
     bool skip_largest_region{false};
-    // Deprecated/ignore : l'auto-broderie ne cree plus de satin automatiquement.
-    // Ces champs restent pour ne pas casser les vieux appels/options, mais la
-    // classification force maintenant tatami (zones) ou contour (petites zones).
-    bool use_auto_satin{false};
-    bool use_naive_satin{false};
 
     // --- Satin sur les bandes (anneaux, rubans, traits épais) ---
     // Vrai : une région ÉTROITE et allongée (largeur moyenne >= 0,8 mm, largeur
@@ -92,6 +87,11 @@ struct AutoOptions {
     // une valeur > 0 réactive le comportement historique (le paramètre `inset` des
     // tatamis voisins passe alors à 0).
     Micrometers fill_overlap{0};
+    // Retrait du bord de chaque tatami créé (`TatamiParams::inset`). 0,2 mm par défaut, comme
+    // `TatamiParams` : deux zones voisines laissent alors ~0,4 mm de vide (filet clair visible).
+    // 0 ferme ces interstices (mesuré sur le navire : non-couvert 0,366 -> 0,325, +16 % de
+    // points, coupes inchangées) ; sans effet sur les objets existants ni manuels.
+    Micrometers fill_inset{200};
     // Ordre de couture du résultat en « couches » (`optimization::
     // OrderStrategy::LayeredColorThenProximity`) : grandes zones de fond
     // d'abord, détails posés dessus ensuite, couleurs toujours regroupées.
@@ -114,6 +114,13 @@ struct AutoOptions {
     // (demi-pixel perdu le long des frontières, cf. merge_small_regions).
     // 0 = désactivé.
     double min_region_area_mm2{3.0};
+    // Nettoyage des îlots : les régions plus petites que cette aire (mm²) sont fusionnées dans la
+    // voisine de COULEUR la plus proche (CIELAB), et non de plus longue frontière -- les petits
+    // morceaux collés à un grand aplat y retournent au lieu de former des enclaves. Passe faite
+    // AVANT `min_region_area_mm2`. `island_max_delta_e` > 0 refuse une voisine plus éloignée que
+    // cet écart (ΔE76) ; 0 = pas de limite. 0 mm² = désactivé (défaut : sortie inchangée).
+    double island_area_mm2{0.0};
+    double island_max_delta_e{0.0};
 
     // --- Palette de fils (HP-THR-011) ---
     // Limite du nombre de COULEURS (donc de fils) du résultat : les couleurs de
@@ -122,6 +129,17 @@ struct AutoOptions {
     // compte pas. 0 = pas de limite (comportement historique).
     std::size_t max_threads{0};
 };
+
+// Mode « bloc uni » : le résultat doit former une seule pièce où seules les couleurs changent,
+// sans jamais laisser voir le tissu entre deux zones voisines. Règle `fill_overlap` à au moins
+// `overlap_mm` (les tatami débordent sous leurs voisins brodés ; le bord extérieur et le fond
+// ignoré gardent le retrait) et relève `min_region_area_mm2` à au moins `min_fill_area_mm2` :
+// une région fusionnée dans sa voisine ne laisse pas de trou, alors qu'un petit contour oui.
+// Jamais de réglage à la baisse : une valeur déjà plus grande est conservée.
+// 0,5 mm par défaut : en dessous d'environ un pixel d'image (0,3 mm sur une illustration de 300
+// mm), le débord fragmente les remplissages (mesuré : 0,15 mm -> 25 000 sauts, 0,3 mm -> 8 500, 0,5
+// mm -> 1 100 pour 1 900 sans l'option).
+void apply_solid_block(AutoOptions& options, double overlap_mm = 0.5);
 
 // Objets produits par l'autonumérisation : toujours EDITABLES (§13). Le type
 // de chaque objet est choisi par la taille de sa region : tatami pour les zones

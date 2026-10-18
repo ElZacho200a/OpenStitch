@@ -8,6 +8,7 @@
 #include <QColorDialog>
 #include <QGuiApplication>
 #include <QInputDialog>
+#include <QLineF>
 #include <QMenu>
 #include <QMimeData>
 #include <QStatusBar>
@@ -16,6 +17,7 @@
 #include <cmath>
 #include <numbers>
 
+#include "canvas_view.hpp"
 #include "main_window.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
@@ -23,6 +25,7 @@
 #include "openstitch/commands/transform_ops.hpp"
 #include "openstitch/commands/vector_ops.hpp"
 #include "openstitch/project_io/project_io.hpp"
+#include "selection_hit_test.hpp"
 
 namespace openstitch::desktop {
 
@@ -88,6 +91,22 @@ void MainWindow::buildObjectEditActions(QMenu* editMenu) {
     add(editMenu, selectAllObjectsAct_, tr("Sélectionner &tous les objets"),
         QStringLiteral("action_selectAllObjects"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_A),
         tr("Sélectionne toutes les formes visibles du design."), [this] { selectAllObjects(); });
+    add(editMenu, copyStyleAct_, tr("Copier le style"), QStringLiteral("action_copyStyle"),
+        QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_C),
+        tr("Mémorise les réglages de couture de la forme brodée active (espacement, angle, "
+           "sous-couche…). Évite de recopier les mêmes valeurs d'un objet à l'autre."),
+        [this] { copyStyle(); });
+    add(editMenu, pasteStyleAct_, tr("Coller le style"), QStringLiteral("action_pasteStyle"),
+        QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Y),
+        tr("Applique le style copié aux formes brodées sélectionnées de même type de point, en un "
+           "seul pas d'annulation."),
+        [this] { pasteStyle(); });
+    add(editMenu, isolateAct_, tr("Isoler la sélection"), QStringLiteral("action_isolate"),
+        QKeySequence(Qt::SHIFT | Qt::Key_I),
+        tr("Masque les autres formes et les exclut du clic : protège le reste du design pendant "
+           "que vous travaillez. État de session, non enregistré dans le projet (Maj+I)."),
+        [this] { toggleIsolation(isolateAct_->isChecked()); });
+    isolateAct_->setCheckable(true);
     add(editMenu, selectSameColorObjectsAct_, tr("Sélectionner les objets de &même couleur"),
         QStringLiteral("action_selectSameColorObjects"), QKeySequence(),
         tr("Sélectionne toutes les formes brodées de la même couleur que la forme active."),
@@ -103,8 +122,7 @@ void MainWindow::buildObjectEditActions(QMenu* editMenu) {
             const QColor initial = first != nullptr
                                        ? QColor(first->rgb[0], first->rgb[1], first->rgb[2])
                                        : QColor(Qt::black);
-            const QColor chosen =
-                QColorDialog::getColor(initial, this, tr("Couleur de la broderie"));
+            const QColor chosen = pickThreadColor(initial, tr("Couleur de la broderie"));
             if (chosen.isValid()) {
                 setEmbroideryColorForSelection({static_cast<std::uint8_t>(chosen.red()),
                                                 static_cast<std::uint8_t>(chosen.green()),
@@ -198,6 +216,14 @@ void MainWindow::updateObjectEditActions() {
                          tr("Copiez d'abord des formes (Édition ▸ Copier)."));
     setEnabledWithReason(selectAllObjectsAct_, anyObject, needDesign);
     setEnabledWithReason(selectSameColorObjectsAct_, anyTarget, needShapes);
+    setEnabledWithReason(copyStyleAct_, !targetEmbroideryIds().empty(),
+                         tr("Sélectionnez d'abord une forme brodée."));
+    setEnabledWithReason(pasteStyleAct_,
+                         styleClipboard_.has_value() && !targetEmbroideryIds().empty(),
+                         tr("Copiez d'abord un style (Édition ▸ Copier le style), puis "
+                            "sélectionnez les formes brodées à modifier."));
+    setEnabledWithReason(isolateAct_, anyTarget || isolating(),
+                         tr("Sélectionnez d'abord la ou les formes à isoler."));
     setEnabledWithReason(embroideryColorAct_, !targetEmbroideryIds().empty(),
                          tr("Sélectionnez d'abord une forme brodée."));
     for (QAction* act : {designCenterAct_, designFitAct_, designScaleAct_, designRotateAct_,
@@ -307,6 +333,142 @@ void MainWindow::applyPastedFragment(const document::ObjectFragment& fragment, V
     refreshImage();
     updateActions();
     statusBar()->showMessage(done.arg(pasted.pasted.size()), 6000);
+}
+
+std::vector<ObjectId> MainWindow::selectableObjectsAt(QPointF posMm) const {
+    // Tolérance : 0,4 mm ou 4 px écran, le plus grand (un tracé ouvert reste cliquable).
+    const double pxPerMm = std::max(view_->pixelsPerMm(), 1e-6);
+    const double toleranceMm = std::max(0.4, 4.0 / pxPerMm);
+    return objectsAtPointMm(
+        project_, posMm, toleranceMm,
+        [this](const document::VectorObject& object) { return vectorPassesFilter(object); });
+}
+
+ObjectId MainWindow::cycleTarget(const std::vector<ObjectId>& under, QPointF posMm) {
+    const double radiusMm = 2.0 / std::max(view_->pixelsPerMm(), 1e-6);
+    const Selection current = currentSelection();
+    const bool sameSpot = under.size() > 1 && cycleIds_ == under &&
+                          QLineF(cycleAnchorMm_, posMm).length() <= radiusMm &&
+                          current.objects.size() == 1 && cycleIndex_ >= 0 &&
+                          static_cast<std::size_t>(cycleIndex_) < under.size() &&
+                          current.objects.front() == under[static_cast<std::size_t>(cycleIndex_)];
+    cycleIndex_ =
+        sameSpot ? static_cast<int>((static_cast<std::size_t>(cycleIndex_) + 1) % under.size()) : 0;
+    cycleIds_ = under;
+    cycleAnchorMm_ = posMm;
+    return under[static_cast<std::size_t>(cycleIndex_)];
+}
+
+void MainWindow::selectAllInActiveLayer() {
+    const bool anyVisibleObject =
+        std::any_of(project_.vector_objects.begin(), project_.vector_objects.end(),
+                    [](const document::VectorObject& o) { return o.visible; });
+    if (showVectorsAct_->isChecked() && anyVisibleObject) {
+        selectAllObjects();
+    } else {
+        selectAllRegions();
+    }
+}
+
+void MainWindow::copyStyle() {
+    const std::vector<ObjectId> targets = targetEmbroideryIds();
+    const auto* source = targets.empty() ? nullptr : project_.findEmbroidery(targets.back());
+    if (source == nullptr) {
+        statusBar()->showMessage(tr("Sélectionnez d'abord une forme brodée."), 5000);
+        return;
+    }
+    styleClipboard_ = source->params;
+    updateActions();
+    statusBar()->showMessage(
+        tr("Style de « %1 » copié : sélectionnez d'autres formes puis Coller le style.")
+            .arg(QString::fromStdString(source->name)),
+        6000);
+}
+
+void MainWindow::pasteStyle() {
+    if (!styleClipboard_) {
+        statusBar()->showMessage(tr("Aucun style copié."), 5000);
+        return;
+    }
+    auto group = std::make_unique<commands::CompositeCommand>(tr("Coller le style").toStdString());
+    int applied = 0;
+    int skipped = 0;
+    for (const ObjectId id : targetEmbroideryIds()) {
+        const auto* object = project_.findEmbroidery(id);
+        if (object == nullptr) {
+            continue;
+        }
+        if (object->params.index() != styleClipboard_->index()) {
+            ++skipped; // autre type de point : le style ne s'y applique pas
+            continue;
+        }
+        if (object->params == *styleClipboard_) {
+            continue; // déjà identique : aucune commande parasite
+        }
+        group->add(std::make_unique<commands::SetStitchParamsCommand>(id, *styleClipboard_,
+                                                                      tr("Style").toStdString()));
+        ++applied;
+    }
+    if (applied == 0) {
+        statusBar()->showMessage(skipped > 0 ? tr("Style non collé : aucun objet sélectionné n'a "
+                                                  "le même type de point.")
+                                             : tr("Rien à changer : style déjà identique."),
+                                 6000);
+        return;
+    }
+    undoStack_.execute(std::move(group), project_);
+    refreshImage();
+    updateActions();
+    updateInspector();
+    QString message = tr("Style collé sur %1 objet(s).").arg(applied);
+    if (skipped > 0) {
+        message += tr(" %1 ignoré(s) (autre type de point).").arg(skipped);
+    }
+    statusBar()->showMessage(message, 6000);
+}
+
+void MainWindow::toggleIsolation(bool on) {
+    if (!on) {
+        isolatedIds_.clear();
+        statusBar()->showMessage(tr("Isolation terminée : toutes les formes sont à nouveau "
+                                    "visibles."),
+                                 5000);
+    } else {
+        const std::vector<ObjectId> targets = transformTargets();
+        if (targets.empty()) {
+            QSignalBlocker block(isolateAct_);
+            isolateAct_->setChecked(false);
+            statusBar()->showMessage(tr("Sélectionnez d'abord la ou les formes à isoler."), 5000);
+            return;
+        }
+        isolatedIds_ = targets;
+        statusBar()->showMessage(
+            tr("%1 forme(s) isolée(s) — Maj+I pour quitter l'isolation.").arg(isolatedIds_.size()),
+            8000);
+    }
+    displayImage(processed_);
+    updateActions();
+}
+
+void MainWindow::zoomToSelection() {
+    const Selection current = currentSelection();
+    std::vector<ObjectId> sources = current.objects;
+    if (current.embroidery) {
+        if (const auto* emb = project_.findEmbroidery(*current.embroidery)) {
+            sources.push_back(emb->source_vector);
+        }
+    }
+    QRectF box;
+    for (const ObjectId id : sources) {
+        if (const auto* object = project_.findObject(id)) {
+            box = box.united(objectScenePath(*object).boundingRect());
+        }
+    }
+    if (!box.isValid() || box.isNull()) {
+        statusBar()->showMessage(tr("Rien à cadrer : sélectionnez un objet (Z)."), 5000);
+        return;
+    }
+    view_->zoomToRectMm(box);
 }
 
 void MainWindow::selectAllObjects() {

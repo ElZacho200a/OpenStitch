@@ -32,6 +32,7 @@
 #include "openstitch/geometry/primitives.hpp"
 #include "openstitch/image/ops.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
+#include "properties_panel.hpp"
 #include "thread_panel.hpp"
 
 namespace openstitch::desktop {
@@ -120,10 +121,29 @@ void MainWindow::setDensityGradient(ObjectId embroideryId, bool enabled, double 
     }
     auto next = *params;
     if (enabled) {
-        const auto gradient = stitch_generation::density_gradient_across(
-            source->paths, Angle{angleDeg * std::numbers::pi / 180.0},
-            next.density_gradient ? next.density_gradient->spacing_from : next.row_spacing,
-            to_micrometers(Millimeters{endSpacingMm}));
+        const auto endSpacing = to_micrometers(Millimeters{endSpacingMm});
+        // Tant que l'angle affiché (0,1° près) est celui de l'axe existant, seul
+        // l'écart de fin change : l'axe, donc la zone de transition d'un fondu, est conservé.
+        const auto keepsAxis = [angleDeg](const document::DensityGradient& g) {
+            const double axis = std::atan2(static_cast<double>(g.to.y.value - g.from.y.value),
+                                           static_cast<double>(g.to.x.value - g.from.x.value)) *
+                                180.0 / std::numbers::pi;
+            const double diff = std::fmod(std::abs(axis - angleDeg), 360.0);
+            return std::min(diff, 360.0 - diff) <= 0.051;
+        };
+        std::optional<document::DensityGradient> gradient;
+        if (next.density_gradient && keepsAxis(*next.density_gradient)) {
+            gradient = *next.density_gradient;
+            gradient->spacing_to = endSpacing;
+        } else {
+            gradient = stitch_generation::density_gradient_across(
+                source->paths, Angle{angleDeg * std::numbers::pi / 180.0},
+                next.density_gradient ? next.density_gradient->spacing_from : next.row_spacing,
+                endSpacing);
+            if (gradient && next.density_gradient) {
+                gradient->curve = next.density_gradient->curve; // seul l'axe est recalculé
+            }
+        }
         if (!gradient) {
             statusBar()->showMessage(tr("Dégradé impossible : la forme n'a pas d'étendue."));
             return;
@@ -135,7 +155,18 @@ void MainWindow::setDensityGradient(ObjectId embroideryId, bool enabled, double 
     if (next == *params) {
         return;
     }
-    applyDirectionalEdit(embroideryId, std::move(next), tr("Dégradé de densité"));
+    undoStack_.execute(std::make_unique<commands::EditDirectionalFillCommand>(
+                           embroideryId, std::move(next), tr("Dégradé de densité").toStdString()),
+                       project_);
+    // Appelé depuis un widget de l'inspecteur (écart de fin, angle, case) : le
+    // formulaire montre déjà ces valeurs. S'il passait pour périmé, updateInspector()
+    // le reconstruirait en supprimant le widget émetteur pendant son propre signal
+    // (crash dans Qt6Widgets).
+    if (const auto* now = project_.findEmbroidery(embroideryId)) {
+        propertiesPanel_->adoptParams(embroideryId, now->params);
+    }
+    refreshImage();
+    updateActions();
 }
 
 void MainWindow::buildDirectionalActions(QMenu* embMenu) {

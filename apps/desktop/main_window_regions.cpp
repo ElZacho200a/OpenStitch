@@ -7,6 +7,10 @@
 #include <QAbstractButton>
 #include <QColor>
 #include <QColorDialog>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QDoubleSpinBox>
+#include <QFormLayout>
 #include <QGraphicsPixmapItem>
 #include <QGraphicsScene>
 #include <QHBoxLayout>
@@ -175,6 +179,27 @@ void MainWindow::selectNeighbourRegions() {
     selectRegions(ordered, SelectMode::Add);
 }
 
+void MainWindow::selectAdjacentRegion(int step) {
+    if (!project_.segmentation || (step != 1 && step != -1)) {
+        return;
+    }
+    const std::vector<RegionId> all = segmentation::all_regions(*project_.segmentation);
+    if (all.empty()) {
+        return;
+    }
+    const auto count = static_cast<std::ptrdiff_t>(all.size());
+    // Sans région active : on part de la fin (+1 -> la première) ou du début (-1 -> la dernière).
+    std::ptrdiff_t index = step > 0 ? count - 1 : 0;
+    if (selectedRegion_) {
+        const auto it = std::find(all.begin(), all.end(), *selectedRegion_);
+        if (it != all.end()) {
+            index = it - all.begin();
+        }
+    }
+    index = (index + step + count) % count;
+    selectRegions({all[static_cast<std::size_t>(index)]}, SelectMode::Replace);
+}
+
 void MainWindow::mergeSelectedRegions() {
     if (!project_.segmentation) {
         return;
@@ -230,6 +255,87 @@ bool MainWindow::mergeRegions(const std::vector<RegionId>& sources, RegionId kee
     }
     statusBar()->showMessage(message);
     return true;
+}
+
+void MainWindow::cleanIslands() {
+    if (!project_.segmentation || project_.segmentation->region_count() < 2) {
+        return;
+    }
+    QSettings settings;
+    QDialog dialog(this);
+    dialog.setObjectName(QStringLiteral("cleanIslandsDialog"));
+    dialog.setWindowTitle(tr("Nettoyer les petits îlots"));
+    auto* form = new QFormLayout(&dialog);
+    auto* intro = new QLabel(tr("Chaque région plus petite que l'aire indiquée est fusionnée dans "
+                                "la région voisine dont la couleur est la plus proche."),
+                             &dialog);
+    intro->setWordWrap(true);
+    form->addRow(intro);
+    auto* areaSpin = new QDoubleSpinBox(&dialog);
+    areaSpin->setObjectName(QStringLiteral("islandAreaSpin"));
+    areaSpin->setRange(0.1, 2000.0);
+    areaSpin->setDecimals(1);
+    areaSpin->setSuffix(tr(" mm²"));
+    areaSpin->setValue(settings.value(QStringLiteral("cleanIslands/areaMm2"), 10.0).toDouble());
+    form->addRow(tr("Aire maximale d'un îlot"), areaSpin);
+    auto* deltaSpin = new QDoubleSpinBox(&dialog);
+    deltaSpin->setObjectName(QStringLiteral("islandDeltaSpin"));
+    deltaSpin->setRange(0.0, 200.0);
+    deltaSpin->setDecimals(0);
+    deltaSpin->setSpecialValueText(tr("sans limite"));
+    deltaSpin->setValue(settings.value(QStringLiteral("cleanIslands/maxDeltaE"), 0.0).toDouble());
+    deltaSpin->setToolTip(tr("Écart de couleur maximal (CIELAB ΔE) : un îlot dont aucune voisine "
+                             "n'est assez proche reste tel quel. 0 = sans limite."));
+    form->addRow(tr("Écart de couleur maximal"), deltaSpin);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    form->addRow(buttons);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    const double areaMm2 = areaSpin->value();
+    const double maxDeltaE = deltaSpin->value();
+    settings.setValue(QStringLiteral("cleanIslands/areaMm2"), areaMm2);
+    settings.setValue(QStringLiteral("cleanIslands/maxDeltaE"), maxDeltaE);
+
+    const double mmPerPx = project_.mm_per_px.value;
+    if (mmPerPx <= 0.0) {
+        return;
+    }
+    const auto minPx = static_cast<std::size_t>(std::ceil(areaMm2 / (mmPerPx * mmPerPx)));
+    // Essai sur une copie : quelles régions disparaissent ? (objets vectoriels déjà créés à
+    // propos, jamais d'orphelin silencieux.)
+    segmentation::Segmentation trial = *project_.segmentation;
+    const std::size_t merges = segmentation::merge_small_regions(
+        trial, minPx, std::nullopt, 0.0, segmentation::MergeTarget::ClosestColour, maxDeltaE);
+    if (merges == 0) {
+        statusBar()->showMessage(tr("Aucun îlot à fusionner avec ces réglages."), 4000);
+        return;
+    }
+    std::vector<RegionId> absorbed;
+    for (std::size_t s = 0; s < trial.region_slots.size(); ++s) {
+        if (project_.segmentation->region_slots[s] && !trial.region_slots[s]) {
+            absorbed.push_back(project_.segmentation->region_slots[s]->id);
+        }
+    }
+    std::vector<ObjectId> toRemove;
+    if (!resolveLinkedVectorObjects(absorbed, tr("fusionnées"), toRemove)) {
+        return;
+    }
+    auto group =
+        std::make_unique<commands::CompositeCommand>(tr("Nettoyer les petits îlots").toStdString());
+    for (const ObjectId object : toRemove) {
+        group->add(std::make_unique<commands::RemoveVectorObjectCommand>(object));
+    }
+    group->add(std::make_unique<commands::CleanIslandsCommand>(minPx, std::nullopt, maxDeltaE));
+    undoStack_.execute(std::move(group), project_);
+    setSelection(
+        {.region = std::nullopt, .embroidery = std::nullopt, .objects = {}, .extraRegions = {}});
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(tr("%n îlot(s) fusionné(s) dans la voisine de couleur la plus proche.",
+                                "", static_cast<int>(merges)));
 }
 
 bool MainWindow::resolveLinkedVectorObjects(const std::vector<RegionId>& regions,
@@ -412,6 +518,9 @@ void MainWindow::showRegionContextMenu(RegionId clicked, QPoint globalPos) {
                         [this, n, source] { mergeRegions({source}, n); });
             }
         }
+    }
+    if (ids.size() == 1) {
+        menu.addAction(absorbAct_); // fusion dans la voisine principale (A, Ctrl+Maj+M)
     }
     auto* recolor = menu.addAction(tr("&Recolorer…"));
     connect(recolor, &QAction::triggered, this, &MainWindow::recolorSelectedRegion);

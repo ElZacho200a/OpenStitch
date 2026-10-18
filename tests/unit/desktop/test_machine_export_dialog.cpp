@@ -5,6 +5,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QScrollArea>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTest>
@@ -25,6 +26,44 @@ private slots:
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir_.path());
         QSettings().clear();
+    }
+
+    void startPointDefaultsToFirstPointAndReachesTheCaller() {
+        using openstitch::formats::StartMode;
+        MachineExportDialog dialog(summarizeNothing(), QStringLiteral("dst"), nullptr);
+        auto* mode = dialog.findChild<QComboBox*>(QStringLiteral("combo_exportStartMode"));
+        auto* x = dialog.findChild<QDoubleSpinBox*>(QStringLiteral("spin_exportStartX"));
+        auto* y = dialog.findChild<QDoubleSpinBox*>(QStringLiteral("spin_exportStartY"));
+        QVERIFY(mode != nullptr && x != nullptr && y != nullptr);
+        QCOMPARE(dialog.options().start.mode, StartMode::FirstPoint);
+        QVERIFY(!x->isEnabled() && !y->isEnabled());
+
+        mode->setCurrentIndex(mode->findData(static_cast<int>(StartMode::Center)));
+        QCOMPARE(dialog.options().start.mode, StartMode::Center);
+        QVERIFY(!x->isEnabled());
+
+        mode->setCurrentIndex(mode->findData(static_cast<int>(StartMode::Custom)));
+        QVERIFY(x->isEnabled() && y->isEnabled());
+        x->setValue(-12.5);
+        y->setValue(30.0);
+        const auto options = dialog.options();
+        QCOMPARE(options.start.mode, StartMode::Custom);
+        QCOMPARE(options.start.point.x.value, -12'500);
+        QCOMPARE(options.start.point.y.value, 30'000);
+    }
+
+    // Régression : scrollDialogBody déplaçait les items sans reparenter les widgets ; le formulaire
+    // restait enfant du dialogue, recouvert par le viewport de la zone défilante (dialogue vide).
+    void formWidgetsLiveInsideTheScrollBody() {
+        MachineExportDialog dialog(summarizeNothing(), QStringLiteral("dst"), nullptr);
+        auto* scroll = dialog.findChild<QScrollArea*>(QStringLiteral("dialogScrollBody"));
+        QVERIFY(scroll != nullptr);
+        for (const char* name : {"combo_exportFormat", "check_exportTrims", "combo_exportStops",
+                                 "label_exportSummary"}) {
+            auto* w = dialog.findChild<QWidget*>(QString::fromLatin1(name));
+            QVERIFY2(w != nullptr, name);
+            QVERIFY2(scroll->widget()->isAncestorOf(w), name);
+        }
     }
 
     void reductionIsOffByDefault() {
@@ -64,12 +103,16 @@ private slots:
         QVERIFY(reduce != nullptr && same != nullptr && maxBridge != nullptr);
 
         reduce->setChecked(true);
+        // HP-UX-032 : le résumé (et l'analyse) est recalculé après 300 ms d'inactivité ; l'état
+        // des cases, lui, suit tout de suite.
+        QVERIFY(same->isEnabled());
+        dialog.flushPendingRefresh();
         QVERIFY(calls > before); // résumé recalculé
         QVERIFY(seen.reduce_trims);
-        QVERIFY(same->isEnabled());
         same->setChecked(true);
         maxBridge->setValue(22.5);
         maxBridge->editingFinished();
+        dialog.flushPendingRefresh();
 
         const auto opt = dialog.optimizations();
         QVERIFY(opt.reduce_trims);
@@ -124,6 +167,35 @@ private slots:
         QVERIFY(trims != nullptr && reduce != nullptr);
         QVERIFY(!trims->isEnabled());
         QVERIFY(reduce->isEnabled());
+    }
+
+    void colorCompanionIsOfferedForDstAndExpOnly() {
+        // HP-FMT-009 / HP-FMT-005 : le fichier de couleurs n'a de sens que pour les formats sans
+        // vraies couleurs ; la demande n'atteint l'appelant que dans ce cas.
+        MachineExportDialog dialog(summarizeNothing(), QStringLiteral("dst"), nullptr);
+        auto* companion =
+            dialog.findChild<QCheckBox*>(QStringLiteral("check_exportColorCompanion"));
+        auto* kind = dialog.findChild<QComboBox*>(QStringLiteral("combo_exportColorCompanionKind"));
+        auto* format = dialog.findChild<QComboBox*>(QStringLiteral("combo_exportFormat"));
+        QVERIFY(companion != nullptr && kind != nullptr && format != nullptr);
+        QVERIFY(!companion->isChecked()); // jamais sans demande
+        QVERIFY(!dialog.companion().write);
+        QVERIFY(companion->isEnabled());
+
+        companion->setChecked(true);
+        QVERIFY(dialog.companion().write);
+        QCOMPARE(dialog.companion().kind, openstitch::formats::CompanionKind::Csv);
+        kind->setCurrentIndex(
+            kind->findData(static_cast<int>(openstitch::formats::CompanionKind::Inf)));
+        QCOMPARE(dialog.companion().kind, openstitch::formats::CompanionKind::Inf);
+
+        format->setCurrentIndex(format->findData(QStringLiteral("exp")));
+        QVERIFY(companion->isEnabled());
+        QVERIFY(dialog.companion().write);
+
+        format->setCurrentIndex(format->findData(QStringLiteral("pes")));
+        QVERIFY(!companion->isEnabled());
+        QVERIFY(!dialog.companion().write); // PES emporte ses couleurs
     }
 
 private:

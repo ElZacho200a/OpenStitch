@@ -123,6 +123,100 @@ TEST_CASE("small letters drop pull compensation and the centre underlay when thi
     CHECK(sat2->center_underlay);
 }
 
+TEST_CASE("small letters get a looser density, capped at plus 15 percent") {
+    IdGenerator<ObjectId> ids;
+    const auto spacing_at = [&](std::int32_t cap_um) {
+        const auto b = build(vera_bold(), make_text("H", cap_um), ids);
+        const auto* sat = std::get_if<document::AutoSatinParams>(&b.embroideries[0].params);
+        REQUIRE(sat != nullptr);
+        return sat->spacing.value;
+    };
+    CHECK(spacing_at(12'000) == 400); // au-dessus de 8 mm : réglage inchangé
+    CHECK(spacing_at(8'000) == 400);  // seuil exclu
+    CHECK(spacing_at(6'000) == 430);  // mi-parcours : +7,5 %
+    // Plein effet (+15 %) à 4 mm et en dessous, plafonné : vérifié en tatami, car le trait
+    // d'une capitale de 4 mm est déjà sous 1 mm (cousue en contour).
+    for (const std::int32_t cap : {4'000, 3'500}) {
+        auto t = make_text("H", cap);
+        t.fill = document::TextFill::Tatami;
+        const auto b = build(vera_bold(), t, ids);
+        const auto* tat = std::get_if<document::TatamiParams>(&b.embroideries[0].params);
+        REQUIRE(tat != nullptr);
+        CHECK(tat->row_spacing.value == 460);
+    }
+    // Le réglage de l'utilisateur est le plancher : jamais plus serré que demandé.
+    auto t = make_text("H", 7'000);
+    t.density = Micrometers{500};
+    const auto b = build(vera_bold(), t, ids);
+    const auto* sat = std::get_if<document::AutoSatinParams>(&b.embroideries[0].params);
+    REQUIRE(sat != nullptr);
+    CHECK(sat->spacing.value >= 500);
+}
+
+TEST_CASE("small tatami letters use shorter stitches and the adjusted row spacing") {
+    IdGenerator<ObjectId> ids;
+    auto t = make_text("H", 6'000);
+    t.fill = document::TextFill::Tatami;
+    const auto small = build(vera_bold(), t, ids);
+    const auto* tat = std::get_if<document::TatamiParams>(&small.embroideries[0].params);
+    REQUIRE(tat != nullptr);
+    CHECK(tat->stitch_length.value == 2'000);
+    CHECK(tat->row_spacing.value == 430);
+    CHECK(tat->inset.value == 0);
+    CHECK_FALSE(tat->underlay_edge);
+
+    t.cap_height = Micrometers{12'000};
+    const auto big = build(vera_bold(), t, ids);
+    const auto* tat2 = std::get_if<document::TatamiParams>(&big.embroideries[0].params);
+    REQUIRE(tat2 != nullptr);
+    CHECK(tat2->stitch_length.value == 3'000);
+    CHECK(tat2->row_spacing.value == 400);
+
+    // Très petit : la longueur de point ne descend pas sous 1,5 mm.
+    t.cap_height = Micrometers{3'000};
+    const auto tiny = build(vera_bold(), t, ids);
+    const auto* tat3 = std::get_if<document::TatamiParams>(&tiny.embroideries[0].params);
+    REQUIRE(tat3 != nullptr);
+    CHECK(tat3->stitch_length.value == 1'500);
+}
+
+TEST_CASE("small text renders: stitches exist, stay in the text box and are deterministic") {
+    IdGenerator<ObjectId> ids;
+    ids.reset(1);
+    auto t = make_text("Hi 7", 6'000);
+    const auto b = build(vera_bold(), t, ids);
+    auto project = project_of(t, b);
+    const auto seq1 = stitch_generation::effective_sequence(project);
+    const auto seq2 = stitch_generation::effective_sequence(project);
+    REQUIRE(seq1.has_value());
+    REQUIRE(seq2.has_value());
+    CHECK(seq1->commands == seq2->commands);
+    CHECK(seq1->commands.size() > 40);
+    for (const auto& c : seq1->commands) {
+        CHECK(c.pos.x.value > -1'500);
+        CHECK(c.pos.x.value < b.layout.width.value + 1'500);
+        CHECK(c.pos.y.value > -1'500);
+        CHECK(c.pos.y.value < 6'000 + 1'500);
+    }
+    for (const auto& f : stitch_analysis::analyze(*seq1)) {
+        CHECK(f.category != "saut-long");
+    }
+}
+
+TEST_CASE("manual kerning flows through the build options") {
+    IdGenerator<ObjectId> ids;
+    auto t = make_text("AV", 12'000);
+    t.kerning = false;
+    lettering::BuildOptions options;
+    options.verify_satin = false;
+    const auto plain = lettering::build_text_objects(vera_bold(), t, ids, options);
+    options.layout.kerning_overrides.push_back({U'A', U'V', Micrometers{-2'000}});
+    const auto tight = lettering::build_text_objects(vera_bold(), t, ids, options);
+    REQUIRE(plain.has_value());
+    REQUIRE(tight.has_value());
+    CHECK(tight->layout.glyphs[1].pen.x.value - plain->layout.glyphs[1].pen.x.value == -2'000);
+}
+
 TEST_CASE("generated text sews: points exist, stay near the letters and are deterministic") {
     IdGenerator<ObjectId> ids;
     ids.reset(1);

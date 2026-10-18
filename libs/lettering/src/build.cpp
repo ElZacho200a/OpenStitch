@@ -46,13 +46,30 @@ std::string mm_fr(double um) {
     return s;
 }
 
+// Écart de densité d'un texte (HP-TXT-013) : sous kTextSmallLetterHeight, l'écart
+// grandit linéairement jusqu'à +15 % à 4 mm de capitale (et en dessous), pour limiter
+// l'accumulation de fil et la perforation du tissu dans des colonnes très étroites.
+// Arrondi à 10 µm, jamais plus serré que le réglage demandé.
+Micrometers small_letter_density(const document::TextObject& text) {
+    const double h = static_cast<double>(text.cap_height.value);
+    const double top = static_cast<double>(document::kTextSmallLetterHeight.value);
+    constexpr double kFullAt = 4'000.0;
+    if (h >= top) {
+        return text.density;
+    }
+    const double t = std::clamp((top - h) / (top - kFullAt), 0.0, 1.0);
+    const double adjusted = static_cast<double>(text.density.value) * (1.0 + 0.15 * t);
+    const auto rounded = static_cast<std::int32_t>(std::lround(adjusted / 10.0) * 10);
+    return Micrometers{std::max(rounded, text.density.value)};
+}
+
 // Réglages « petites lettres » (HP-TXT-013) : sous kTextSmallLetterHeight, la
 // sous-couche centrale n'est gardée que si le trait est assez large pour la
 // porter, et la compensation de tirage est supprimée (elle élargirait le trait
 // jusqu'à boucher les contre-formes).
 document::AutoSatinParams make_satin(const document::TextObject& text, double stroke_um) {
     document::AutoSatinParams p;
-    p.spacing = text.density;
+    p.spacing = small_letter_density(text);
     p.center_underlay = stroke_um >= 1'600.0;
     const bool small = text.cap_height < document::kTextSmallLetterHeight;
     p.pull_compensation = (small || stroke_um < 2'000.0) ? Micrometers{0} : Micrometers{150};
@@ -62,9 +79,11 @@ document::AutoSatinParams make_satin(const document::TextObject& text, double st
 document::TatamiParams make_tatami(const document::TextObject& text, double stroke_um) {
     document::TatamiParams p;
     p.angle = Angle{std::numbers::pi / 4.0};
-    p.row_spacing = text.density;
-    p.stitch_length = Micrometers{3'000};
+    p.row_spacing = small_letter_density(text);
     const bool small = text.cap_height < document::kTextSmallLetterHeight;
+    // Petites lettres : points plus courts, sinon un point de 3 mm enjambe la lettre.
+    p.stitch_length = small ? Micrometers{std::clamp(text.cap_height.value / 3, 1'500, 3'000)}
+                            : Micrometers{3'000};
     p.inset = small ? Micrometers{0} : Micrometers{200};
     p.underlay_edge = stroke_um >= 3'000.0 && !small; // sous-couche de bord : gros traits
     return p;
@@ -114,7 +133,7 @@ bool satin_covers(const std::vector<geometry::PathSet>& shapes, Micrometers spac
 
 Result<TextBuild> build_text_objects(const Font& font, const document::TextObject& text,
                                      IdGenerator<ObjectId>& ids, const BuildOptions& options) {
-    auto layout = layout_text(font, text);
+    auto layout = layout_text(font, text, options.layout);
     if (!layout) {
         return std::unexpected(layout.error());
     }
@@ -170,7 +189,8 @@ Result<TextBuild> build_text_objects(const Font& font, const document::TextObjec
                 } else {
                     kind = Kind::Satin;
                     if (options.verify_satin &&
-                        !satin_covers(one, text.density, options.min_satin_coverage, nullptr)) {
+                        !satin_covers(one, small_letter_density(text), options.min_satin_coverage,
+                                      nullptr)) {
                         kind = Kind::Tatami;
                         note(skeleton_letters, letter);
                     }
@@ -241,8 +261,9 @@ Result<TextBuild> build_text_objects(const Font& font, const document::TextObjec
 }
 
 std::optional<Vec2um> text_displacement(const document::Project& project,
-                                        const document::TextObject& text, const Font& font) {
-    const auto layout = layout_text(font, text);
+                                        const document::TextObject& text, const Font& font,
+                                        const LayoutOptions& options) {
+    const auto layout = layout_text(font, text, options);
     if (!layout) {
         return std::nullopt;
     }

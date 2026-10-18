@@ -16,6 +16,7 @@
 #include "openstitch/document/vector_object.hpp"
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/lettering/font.hpp"
+#include "openstitch/lettering/unicode.hpp"
 
 namespace openstitch::lettering {
 
@@ -49,15 +50,45 @@ struct TextLayout {
 // Décode de l'UTF-8 ; une séquence invalide devient U+FFFD (jamais d'exception).
 [[nodiscard]] std::vector<char32_t> decode_utf8(const std::string& text);
 
+// Crénage manuel d'une paire (HP-TXT-007) : `adjust` REMPLACE le crénage de la police
+// pour cette paire (µm, signé ; négatif = rapproche) et s'applique même si le crénage
+// automatique est désactivé. Les caractères sont ceux affichés (après composition).
+struct KerningOverride {
+    char32_t left{0};
+    char32_t right{0};
+    Micrometers adjust{};
+};
+
+// Options de mise en page ne figurant pas (encore) dans document::TextObject.
+struct LayoutOptions {
+    std::vector<KerningOverride> kerning_overrides;
+    // base + marque combinante -> précomposé quand la police l'a ; précomposé absent ->
+    // base + marque quand la police les a (HP-TXT-012).
+    bool compose_marks{true};
+    // Ligatures f (ff, fi, fl, ffi, ffl) si la police porte les glyphes U+FB00..FB04.
+    bool ligatures{false};
+    // Ordre visuel des passages de droite à gauche (hébreu, arabe) -- sans façonnage.
+    bool bidi{true};
+    // Remplace les caractères absents par un repli courant (guillemets, tirets...).
+    bool fallback_glyphs{true};
+};
+
+// Options de mise en page portées par l'objet texte lui-même (crénage manuel par paire,
+// ligatures) : seule source de vérité pour le bureau et pour les appelants du cœur
+// (CLI, project_ops). Champs vides = options par défaut (aucun changement de rendu).
+[[nodiscard]] LayoutOptions layout_options_for(const document::TextObject& text);
+
 // Positionne les glyphes du texte : crénage, espacements, alignement, lignes,
 // rotation. Les caractères absents de la police sont omis et signalés.
-[[nodiscard]] Result<TextLayout> layout_text(const Font& font, const document::TextObject& text);
+[[nodiscard]] Result<TextLayout> layout_text(const Font& font, const document::TextObject& text,
+                                             const LayoutOptions& options = {});
 
 struct BuildOptions {
     // Vérifie chaque lettre satin par l'auto-satin (couverture) et la bascule en
     // tatami si le squelette ne la couvre pas. Désactivable pour les aperçus rapides.
     bool verify_satin{true};
     double min_satin_coverage{0.92};
+    LayoutOptions layout; // transmis à layout_text
 };
 
 // Objets dérivés d'un texte, prêts à être insérés par une commande (ids alloués
@@ -87,7 +118,8 @@ struct TextBuild {
 // origine mémorisée. nullopt si le texte n'a plus de lettres ou n'en produit pas.
 [[nodiscard]] std::optional<Vec2um> text_displacement(const document::Project& project,
                                                       const document::TextObject& text,
-                                                      const Font& font);
+                                                      const Font& font,
+                                                      const LayoutOptions& options = {});
 
 // Avertissements ne dépendant que des réglages (taille minimale brodable) : permet
 // d'avertir dans le dialogue avant même de charger la police.

@@ -205,18 +205,67 @@ automatique : les régions sont recolorées avant la création des objets, la g�
 est inchangée, le fond ignoré ne compte pas) et le bouton *Limiter à N fils* du
 panneau Fils sur un motif existant (un pas d'annulation).
 
+## Mes fils : stock possédé et nuancier personnel (HP-THR-007, cœur)
+
+`thread_palette::ThreadStock` (`thread_stock.hpp`) est le stock de bobines de l'utilisateur :
+des références `ThreadKey` cochées « possédées » (`own`/`disown`/`owns`, triées par
+(nuancier, code), sans doublon) et un **nuancier personnel** éditable de fils définis à la
+main (`add_personal`, `chart_id` toujours `personal`, triés par code ; un code existant est
+remplacé). `nearest(library, rgb, n)` cherche en CIEDE2000 **uniquement dans le stock**
+(références résolues dans la `ThreadLibrary` — une référence vers un nuancier retiré est
+ignorée —, puis fils personnels ; égalités départagées par cet ordre).
+
+Persistance : `stock_to_json` / `stock_from_json`, JSON indenté UTF-8 déterministe
+(`{"version":1,"owned":[{"chart","code"}],"personal":[{"code","name","brand","range","rgb":[r,g,b]}]}`),
+indépendant de l'ordre d'insertion, octet pour octet. La relecture est stricte (champ
+manquant, `rgb` hors 0..255 ou non entier, doublon → `InvalidFile` ; `version` future →
+`UnsupportedFormat`). `thread_palette` ne lie aucune bibliothèque tierce : le lecteur JSON
+est un mini-parseur interne. Le fichier est destiné aux préférences utilisateur, pas au `.osp`.
+
+**IHM** (`apps/desktop`) : onglet **Mes fils** du panneau Fils (liste des fils possédés et
+personnels, bascule *Limiter la recherche du fil le plus proche à mes fils*, *Ajouter un fil
+personnel…* — référence, nom, couleur —, *Retirer de mes fils*) et case **Je possède ce fil**
+sous la liste des catalogues. Le stock est une **préférence utilisateur**, jamais dans le
+`.osp` : fichier `my_threads.json` dans le dossier du fichier de réglages
+(`threadStockFilePath()`, `app_settings.*`), écriture atomique à chaque modification, relu au
+lancement ; un fichier illisible est conservé sous `my_threads.json.invalide` (jamais écrasé
+en silence) et signalé dans la barre d'état. La bascule est mémorisée (`threads/limitToStock`).
+Éditer le stock ne passe pas par l'annulation (aucune donnée du document) ; l'assignation d'un
+fil à un objet reste `SetObjectThreadCommand`. Avec la bascule cochée, « Fils les plus proches de
+la sélection » et « Couleurs libres → fil le plus proche » ne proposent que des fils du stock
+(le nuancier choisi est alors ignoré) ; un stock vide l'indique au lieu de ne rien faire.
+
+**Reste** : import/export de formats tiers (`.thr`, `.rgb`, `.edr`, `.gpl`) non fait (le CSV
+existant couvre `parse_chart_csv`) ; pas d'édition d'un fil personnel existant (le ré-ajouter
+avec le même code le remplace).
+
+## Pipette : échantillon de couleur vers fil (HP-THR-012, cœur)
+
+`thread_palette/eyedropper.hpp` : `sample_color(image, x, y, radius)` et
+`sample_region(image, x, y, w, h)` échantillonnent un tableau RGB brut entrelacé
+(`RgbImageView{span, largeur, hauteur}`, origine en haut à gauche — aucune dépendance à
+`libs/image`) : moyenne **entière** des valeurs sRGB sur le carré (ou rectangle) rogné aux
+bords, arrondie au plus proche, donc déterministe. Point hors image, rayon négatif, zone
+vide ou vue incohérente → `UserInput`. `pick_thread(...)` enchaîne l'échantillon et la
+recherche du fil le plus proche : dans un nuancier, dans toute la bibliothèque (`chart_id`
+vide) ou, si un `ThreadStock*` est fourni, uniquement dans *Mes fils*.
+
+**Reste** (IHM, `apps/desktop`) : l'outil lui-même (curseur, clic sur l'image → conversion
+pixel du widget → pixel image, affichage des propositions) et « clic sur un objet → reprendre
+son fil » (l'identité du fil d'un objet est déjà dans le document, HP-THR-004).
+
 ## Panneau Fils
 
 `apps/desktop/thread_panel.*` (présentation seule) + `main_window_threads.cpp`
-(câblage, aucune règle métier) : onglets *Projet*, *Catalogues* et *Film couleur*, menu
+(câblage, aucune règle métier) : onglets *Projet*, *Catalogues*, *Mes fils* et *Film couleur*, menu
 *Fils* (voir le *Guide utilisateur*). Clic sur un fil du catalogue = assigner à la
 sélection (objets de broderie sélectionnés, ou ceux des formes sélectionnées).
 
 ## Ce qui n'existe pas encore
 
-- Pas de filtrage par gamme possédée / nuancier personnel éditable (HP-THR-007) ;
-- pas de coloris multiples (HP-THR-006), de poids/type de fil (HP-THR-009) ni de
-  pipette (HP-THR-012) ;
+- Pas d'import de formats de stock tiers dans « Mes fils » (voir section dédiée ; HP-THR-007) ;
+- pas de coloris multiples (HP-THR-006), de poids/type de fil (HP-THR-009) ni d'outil
+  pipette dans l'IHM (cœur livré, HP-THR-012) ;
 - les noms/références de fils sont portés par le `.osp`, la liste CSV et la future fiche
   de production ; **aucun format machine implémenté (DST) ne les porte** ;
 - aucune carte de marque réelle n'est livrée (licences) : seuls le nuancier Générique
@@ -241,6 +290,10 @@ des arrêts « changement de fil ». L'ordre des couleurs est porté par le docu
 - `libs/thread_palette/data/madeira_polyneon.cpp`,
   `libs/thread_palette/data/isacord_40.cpp` — nuanciers compilés (données
   placeholder, voir avertissement ci-dessus).
+- `libs/thread_palette/include/openstitch/thread_palette/thread_stock.hpp` et
+  `src/thread_stock.cpp` — Mes fils (stock, nuancier personnel, JSON).
+- `libs/thread_palette/include/openstitch/thread_palette/eyedropper.hpp` et
+  `src/eyedropper.cpp` — pipette (échantillonnage + fil le plus proche).
 - `libs/thread_palette/.../thread_library.hpp`, `chart_import.hpp`,
   `color_reduction.hpp` — bibliothèque active, import CSV, réduction de palette.
 - `libs/project_io/.../thread_chart_io.hpp` — import de fichiers CSV/JSON.

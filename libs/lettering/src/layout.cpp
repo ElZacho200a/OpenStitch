@@ -22,8 +22,115 @@ struct Item {
     char32_t cp{0};
     GlyphOutline outline;
     bool space{false};
-    double pen{0.0}; // abscisse de la ligne de base du glyphe, en µm (avant alignement)
+    bool mark{false}; // marque combinante : se superpose à la lettre précédente
+    double pen{0.0};  // abscisse de la ligne de base du glyphe, en µm (avant alignement)
 };
+
+std::string hex_code(char32_t cp) {
+    char buf[16];
+    std::snprintf(buf, sizeof buf, "U+%04X", static_cast<unsigned>(cp));
+    return buf;
+}
+
+// Normalisation d'une ligne avant mise en page : caractères sans rendu retirés,
+// composition/décomposition des accents, repli des caractères absents, ligatures,
+// puis ordre visuel des passages de droite à gauche.
+struct Prepared {
+    std::vector<char32_t> cps;
+    std::vector<std::string> replaced; // « A par B » (une fois chacun)
+    bool arabic{false};
+};
+
+void note_replacement(Prepared& out, char32_t from, const std::u32string& to) {
+    std::string text = "« " + encode_utf8(from) + " » par « ";
+    for (char32_t c : to) {
+        text += encode_utf8(c);
+    }
+    text += " »";
+    if (std::find(out.replaced.begin(), out.replaced.end(), text) == out.replaced.end()) {
+        out.replaced.push_back(std::move(text));
+    }
+}
+
+struct Ligature {
+    std::size_t len;
+    char32_t code;
+    char32_t a, b, c;
+};
+constexpr Ligature kLigatures[] = {{3, 0xFB03, U'f', U'f', U'i'},
+                                   {3, 0xFB04, U'f', U'f', U'l'},
+                                   {2, 0xFB00, U'f', U'f', 0},
+                                   {2, 0xFB01, U'f', U'i', 0},
+                                   {2, 0xFB02, U'f', U'l', 0}};
+
+Prepared prepare_line(const Font& font, const std::vector<char32_t>& line,
+                      const LayoutOptions& options) {
+    Prepared out;
+    for (char32_t cp : line) {
+        if (is_ignorable(cp)) {
+            continue;
+        }
+        if (is_arabic_script(cp)) {
+            out.arabic = true;
+        }
+        if (options.compose_marks && is_combining_mark(cp) && !out.cps.empty() &&
+            !is_combining_mark(out.cps.back()) && out.cps.back() != U' ') {
+            const char32_t composed = compose_pair(out.cps.back(), cp);
+            if (composed != 0 && font.has_glyph(composed)) {
+                out.cps.back() = composed;
+                continue;
+            }
+            out.cps.push_back(cp);
+            continue;
+        }
+        if (!font.has_glyph(cp)) {
+            char32_t base = 0;
+            char32_t mark = 0;
+            if (options.compose_marks && decompose_char(cp, base, mark) && font.has_glyph(base) &&
+                font.has_glyph(mark)) {
+                out.cps.push_back(base);
+                out.cps.push_back(mark);
+                continue;
+            }
+            if (options.fallback_glyphs) {
+                const std::u32string seq = fallback_sequence(cp);
+                if (!seq.empty() && std::all_of(seq.begin(), seq.end(),
+                                                [&](char32_t c) { return font.has_glyph(c); })) {
+                    out.cps.insert(out.cps.end(), seq.begin(), seq.end());
+                    note_replacement(out, cp, seq);
+                    continue;
+                }
+            }
+        }
+        out.cps.push_back(cp);
+    }
+    if (options.ligatures) {
+        std::vector<char32_t> merged;
+        for (std::size_t i = 0; i < out.cps.size(); ++i) {
+            const auto at = [&](std::size_t k) {
+                return i + k < out.cps.size() ? out.cps[i + k] : char32_t{0};
+            };
+            bool done = false;
+            for (const Ligature& l : kLigatures) {
+                if (at(0) == l.a && at(1) == l.b && (l.len == 2 || at(2) == l.c) &&
+                    font.has_glyph(l.code)) {
+                    merged.push_back(l.code);
+                    i += l.len - 1;
+                    done = true;
+                    break;
+                }
+            }
+            if (!done) {
+                merged.push_back(out.cps[i]);
+            }
+        }
+        out.cps = std::move(merged);
+    }
+    if (options.bidi) {
+        out.cps = visual_order(out.cps);
+    }
+    return out;
+}
 
 } // namespace
 
@@ -138,7 +245,18 @@ double mean_stroke_width_um(const std::vector<geometry::PathSet>& shapes) {
     return perimeter > 0.0 ? 2.0 * area / perimeter : 0.0;
 }
 
-Result<TextLayout> layout_text(const Font& font, const document::TextObject& text) {
+LayoutOptions layout_options_for(const document::TextObject& text) {
+    LayoutOptions options;
+    options.kerning_overrides.reserve(text.kerning_pairs.size());
+    for (const auto& pair : text.kerning_pairs) {
+        options.kerning_overrides.push_back({pair.left, pair.right, pair.adjust});
+    }
+    options.ligatures = text.ligatures;
+    return options;
+}
+
+Result<TextLayout> layout_text(const Font& font, const document::TextObject& text,
+                               const LayoutOptions& options) {
     TextLayout layout;
     if (text.cap_height.value <= 0) {
         return fail(ErrorCategory::UserInput, "La hauteur du texte doit être positive.");
@@ -164,6 +282,8 @@ Result<TextLayout> layout_text(const Font& font, const document::TextObject& tex
     layout.line_count = static_cast<int>(lines.size());
 
     std::vector<char32_t> missing;
+    std::vector<std::string> replaced;
+    bool arabic = false;
     const double line_pitch = cap_um * text.line_spacing;
     const double cos_r = std::cos(text.rotation.radians);
     const double sin_r = std::sin(text.rotation.radians);
@@ -181,28 +301,51 @@ Result<TextLayout> layout_text(const Font& font, const document::TextObject& tex
         double pen = 0.0;
         double end = 0.0; // bord droit du dernier caractère non blanc
         char32_t prev = 0;
+        double prev_pen = 0.0; // abscisse de la dernière lettre (hors marques)
         bool first = true;
-        for (char32_t cp : lines[li]) {
+        const Prepared prepared = prepare_line(font, lines[li], options);
+        arabic = arabic || prepared.arabic;
+        for (const std::string& r : prepared.replaced) {
+            if (std::find(replaced.begin(), replaced.end(), r) == replaced.end()) {
+                replaced.push_back(r);
+            }
+        }
+        for (char32_t cp : prepared.cps) {
             Item item;
             item.cp = cp;
             item.outline = font.outline(cp, tol_units);
             item.space = (cp == U' ' || cp == 0x00A0);
+            item.mark = is_combining_mark(cp) && !first && prev != 0;
             if (!item.outline.present) {
                 if (std::find(missing.begin(), missing.end(), cp) == missing.end()) {
                     missing.push_back(cp);
                 }
                 // Caractère absent : jamais un carré silencieux -- omis, avec une
                 // chasse d'espace pour garder la mise en page lisible.
-                item.space = true;
-                item.outline.advance = 0.5 * font.cap_height_units();
+                item.space = !item.mark;
+                item.outline.advance = item.mark ? 0.0 : 0.5 * font.cap_height_units();
+            }
+            if (item.mark) {
+                // Marque combinante : sur la lettre précédente, sans chasse propre.
+                item.pen = prev_pen;
+                line.items.push_back(std::move(item));
+                continue;
             }
             if (!first) {
                 pen += text.letter_spacing.value;
-                if (text.kerning && prev != 0) {
-                    pen += font.kerning(prev, cp) * scale;
+                if (prev != 0) {
+                    const auto manual = std::find_if(
+                        options.kerning_overrides.begin(), options.kerning_overrides.end(),
+                        [&](const KerningOverride& k) { return k.left == prev && k.right == cp; });
+                    if (manual != options.kerning_overrides.end()) {
+                        pen += static_cast<double>(manual->adjust.value);
+                    } else if (text.kerning) {
+                        pen += font.kerning(prev, cp) * scale;
+                    }
                 }
             }
             item.pen = pen;
+            prev_pen = pen;
             pen += item.outline.advance * scale;
             if (item.space) {
                 pen += text.word_spacing.value;
@@ -310,10 +453,33 @@ Result<TextLayout> layout_text(const Font& font, const document::TextObject& tex
     layout.width = Micrometers{round_um(max_width)};
     layout.height =
         Micrometers{round_um(cap_um + line_pitch * static_cast<double>(lines.size() - 1))};
-    for (char32_t cp : missing) {
+    if (missing.size() == 1) {
         layout.warnings.push_back(
-            {"glyphe-absent", "Le caractère « " + encode_utf8(cp) +
-                                  " » n'existe pas dans cette police : il est omis."});
+            {"glyphe-absent", "Le caractère « " + encode_utf8(missing[0]) + " » (" +
+                                  hex_code(missing[0]) +
+                                  ") n'existe pas dans cette police : il est omis."});
+    } else if (missing.size() > 1) {
+        std::string list;
+        for (char32_t cp : missing) {
+            list += (list.empty() ? "" : " ") + encode_utf8(cp);
+        }
+        layout.warnings.push_back({"glyphe-absent", "Les caractères « " + list +
+                                                        " » n'existent pas dans cette police : "
+                                                        "ils sont omis."});
+    }
+    if (!replaced.empty()) {
+        std::string list;
+        for (const std::string& r : replaced) {
+            list += (list.empty() ? "" : ", ") + r;
+        }
+        layout.warnings.push_back(
+            {"glyphe-remplace", "Caractères absents de la police, remplacés : " + list + "."});
+    }
+    if (arabic) {
+        layout.warnings.push_back(
+            {"ecriture-non-supportee",
+             "Écriture arabe : les lettres ne sont pas liées entre elles (façonnage contextuel "
+             "non pris en charge) ; les formes isolées sont utilisées."});
     }
     return layout;
 }

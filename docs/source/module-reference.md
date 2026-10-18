@@ -10,12 +10,12 @@ fonctionnalité. Chaque module est une cible `openstitch::<nom>` sous `libs/`.
 | `core` | unités fortes, ids, `Result`, logging | — | `tests/unit/core` |
 | `geometry` | chemins, simplification, booléens/offsets, longueur d'arc | core (+Clipper2) | `tests/unit/geometry` |
 | `image` | chargement, prétraitement non destructif | core (+OpenCV) | `tests/unit/image` |
-| `segmentation` | quantification CIELAB, régions connexes | core, image (+OpenCV) | `tests/unit/segmentation` |
+| `segmentation` | quantification CIELAB, régions connexes, fusion de couleurs | core, image, thread_palette (+OpenCV) | `tests/unit/segmentation` |
 | `vectorization` | régions → contours vectoriels | core, geometry, segmentation | `tests/unit/vectorization` |
 | `document` | modèle métier (projet, objets) | core, geometry, image, segmentation | via commands/project_io |
 | `stitch` | commandes machine, statistiques | core | `tests/unit/stitch` |
 | `stitch_generation` | running / tatami / satin / directionnel | core, geometry, stitch, document | `tests/unit/stitch` |
-| `stitch_analysis` | règles de validation, fiche de production (`production_sheet`) | core, stitch | `tests/unit/stitch_analysis` |
+| `stitch_analysis` | règles de validation, rapport unique `analyze_project`, corrections proposées `Finding::fix`, fiche de production (`production_sheet`) | core, stitch, stitch_generation (simulation des finitions, privé) | `tests/unit/stitch_analysis` |
 | `stitch_render` | rendu réaliste des points (brins de fil, ombrage, tissu, image RGBA ; sans Qt) | core, stitch | `tests/unit/stitch_render` |
 | `optimization` | ordre de couture | core | `tests/unit/optimization` |
 | `autodigitize` | image → objets éditables | vectorization, stitch_generation, stipple | `tests/unit/autodigitize` |
@@ -24,6 +24,7 @@ fonctionnalité. Chaque module est une cible `openstitch::<nom>` sous `libs/`.
 | `auto_satin` | squelette → satinabilité → auto-satin par traversées orientées (axe, chord, guides) | core, geometry (+OpenCV) | `tests/unit/auto_satin` |
 | `commands` | undo/redo | document | `tests/unit/commands` |
 | `formats` | codec DST, import DXF/SVG, export DXF/SVG diagnostic | core, geometry, stitch (+pugixml) | `tests/unit/formats` |
+| `project_ops` | API programmatique de la CLI (`project …`) : fabrique de projets, inspection JSON, opérations et lots transactionnels, contrôle qualité, service auto-satin, **outils d'analyse** (rendu réaliste `project render`, fidélité, épaisseurs de fil, localisation, diagnostic, balayage d'options) ; voir cli-project.md | core, document, commands, project_io, autodigitize, stitch_analysis, auto_satin | `tests/unit/project_ops` |
 | `project_io` | format `.osp` | core, document, image | `tests/unit/project_io` |
 
 ## Points d'extension

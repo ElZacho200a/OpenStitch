@@ -41,7 +41,25 @@ inline AutoSatinParameters stable_skeleton_analysis() {
     return p;
 }
 
+// Méthode de génération des traversées d'une région (docs/auto-satin-research.md).
+// Le squelette est la référence et le défaut ; une méthode n'est ajoutée ici que
+// lorsqu'elle est réellement livrée.
+enum class SatinStrategy {
+    Skeleton,      // Zhang-Suen, axes, traversées orientées (moteur actuel)
+    ParallelSweep, // balayage parallèle : droites à angle constant, bandes continues
+    MedialAxis,    // axe médian vectoriel (Voronoï des segments du contour)
+};
+
 struct SkeletonSatinParameters {
+    // Méthode utilisée par `generate_satin` (façade). `generate_skeleton_satin` l'ignore.
+    SatinStrategy strategy{SatinStrategy::Skeleton};
+
+    // Balayage parallèle seulement : angle global des traversées. Auto (défaut) : perpendiculaire
+    // à l'axe principal d'inertie de la région (les fils traversent la largeur de la forme) ;
+    // horizontal si la forme est quasi isotrope. Sinon `sweep_angle_rad` (radians, repère modèle).
+    bool sweep_auto_angle{true};
+    double sweep_angle_rad{0.0};
+
     AutoSatinParameters analysis{stable_skeleton_analysis()}; // rasterisation, élagage du graphe
 
     Micrometers spacing{400};           // ρ : espacement cible au bord le plus écarté
@@ -94,6 +112,12 @@ struct SkeletonSatinDiagnostics {
     double coverage_ratio{0.0};
     double overlap_ratio{0.0};
     double uncovered_area_mm2{0.0};
+    // Densité et localisation, aussi sur demande : nombre maximal de triangles de fil sur un
+    // même pixel de 100 µm (pic de densité), et boîte englobante des pixels non couverts
+    // (`uncovered_min` / `uncovered_max`, repère modèle, valides si `uncovered_area_mm2 > 0`).
+    int overlap_peak{0};
+    Vec2um uncovered_min{};
+    Vec2um uncovered_max{};
 };
 
 struct SkeletonSatinResult {
@@ -110,6 +134,16 @@ struct SkeletonSatinResult {
 // dans `diagnostics.messages` et la colonne correspondante est omise.
 [[nodiscard]] Result<SkeletonSatinResult>
 generate_skeleton_satin(const geometry::PathSet& region, const SkeletonSatinParameters& params);
+
+// État de la mémoire des résultats de `generate_skeleton_satin` (partagée par tout le processus,
+// bornée en octets) : pour les tests et le banc, jamais pour décider d'un résultat.
+struct SkeletonResultCacheStats {
+    std::size_t entries{0};
+    std::size_t bytes{0};
+    std::size_t hits{0};
+    std::size_t misses{0};
+};
+[[nodiscard]] SkeletonResultCacheStats skeleton_result_cache_stats();
 
 // SVG de diagnostic (mm, Y vers le bas) : contour de la région, axes de référence
 // (tirets), traversées (trait fin) et zigzag de chaque colonne. Pour inspecter

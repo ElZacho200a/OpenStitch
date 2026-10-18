@@ -5,10 +5,14 @@ add_executable(test_geometry
     test_curve_fit.cpp
     test_cut.cpp
     test_offset.cpp
+    test_measure.cpp
     test_moments.cpp
     test_path.cpp
     test_polyline.cpp
     test_primitives.cpp
+    test_shapes.cpp
+    test_smooth.cpp
+    test_to_curves.cpp
 )
 target_link_libraries(test_geometry PRIVATE openstitch::geometry Catch2::Catch2WithMain openstitch::warnings)
 catch_discover_tests(test_geometry)

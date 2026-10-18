@@ -31,8 +31,10 @@ enum class Context : std::uint8_t {
     DrawClicks, // DrawPolygon, DrawSatinColumn, DrawDirectionGuide, DrawBreakLine
     DrawBezier,
     DrawFreeform,
-    NodeEdit,  // poignées de nœuds / rails
-    StitchEdit // édition des points de couture
+    NodeEdit,   // poignées de nœuds / rails
+    StitchEdit, // édition des points de couture
+    Measure,    // outil Règle (HP-VEC-010) : glisser = mesure temporaire
+    Eyedropper  // outil Pipette (HP-THR-012) : clic = échantillonner
 };
 
 enum class GestureKind : std::uint8_t {
@@ -89,7 +91,9 @@ enum class Intent : std::uint8_t {
     ContextMenu,
     SelectModeWindow,
     SelectModeFree,
-    SelectModeBrush
+    SelectModeBrush,
+    MeasureDistance,
+    PickColor
 };
 
 enum class Origin : std::uint8_t { Fusion, Proposal, Existing };

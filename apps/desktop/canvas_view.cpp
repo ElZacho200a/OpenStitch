@@ -212,6 +212,9 @@ Context CanvasView::currentContext() const {
     if (bezierDrawMode_) {
         return Context::DrawBezier;
     }
+    if (measureMode_) {
+        return Context::Measure;
+    }
     if (polygonDrawMode_ || satinPairDrawMode_) {
         return Context::DrawClicks;
     }
@@ -262,7 +265,8 @@ void CanvasView::applyModeCursor(Qt::CursorShape shape) {
 void CanvasView::updateDragMode() {
     if (cropMode_ || boxDrawMode_) {
         setDragMode(QGraphicsView::RubberBandDrag);
-    } else if (polygonDrawMode_ || freeformDrawMode_ || satinPairDrawMode_ || bezierDrawMode_) {
+    } else if (polygonDrawMode_ || freeformDrawMode_ || satinPairDrawMode_ || bezierDrawMode_ ||
+               measureMode_) {
         setDragMode(QGraphicsView::NoDrag);
     } else {
         // Vue isolée (aucun setBaseContext) : comportement historique.
@@ -316,6 +320,16 @@ void CanvasView::setBezierDrawMode(bool enabled) {
     applyModeCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
 }
 
+void CanvasView::setMeasureMode(bool enabled) {
+    if (measureActive_) {
+        measureActive_ = false;
+        emit measureCancelled();
+    }
+    measureMode_ = enabled;
+    updateDragMode();
+    applyModeCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
+}
+
 void CanvasView::updateSceneRect() {
     // Marge de travail autour du canevas : la moitié de sa taille de chaque côté.
     const QSizeF sizeMm = canvasMm_;
@@ -358,6 +372,48 @@ void CanvasView::fitCanvas() {
                         canvasMm_.height());
     fitInView(canvas.adjusted(-5, -5, 5, 5), Qt::KeepAspectRatio);
     emit viewChanged();
+}
+
+void CanvasView::rememberView() {
+    previousTransform_ = transform();
+    previousCenterMm_ = mapToScene(viewport()->rect().center());
+    hasPreviousView_ = true;
+}
+
+void CanvasView::zoomToRectMm(const QRectF& sceneRectMm) {
+    if (!sceneRectMm.isValid()) {
+        return;
+    }
+    rememberView();
+    constexpr double kMarginMm = 3.0;
+    fitInView(sceneRectMm.adjusted(-kMarginMm, -kMarginMm, kMarginMm, kMarginMm),
+              Qt::KeepAspectRatio);
+    if (pixelsPerMm() > kMaxPxPerMm) {
+        applyCenterZoom(kMaxPxPerMm / pixelsPerMm());
+    }
+    emit viewChanged();
+}
+
+void CanvasView::zoomToPreviousView() {
+    if (!hasPreviousView_) {
+        return;
+    }
+    const QTransform target = previousTransform_;
+    const QPointF center = previousCenterMm_;
+    rememberView(); // un second appel revient à la vue d'avant (aller-retour)
+    setTransform(target);
+    centerOn(center);
+    emit viewChanged();
+}
+
+void CanvasView::zoomActualSize() {
+    const double current = pixelsPerMm();
+    const double target = logicalDpiX() / 25.4;
+    if (!(current > 0.0) || !(target > 0.0)) {
+        return;
+    }
+    rememberView();
+    applyCenterZoom(target / current);
 }
 
 void CanvasView::applyCenterZoom(double factor) {
@@ -582,6 +638,10 @@ void CanvasView::resetTransientInput(bool cursorLeft) {
     spaceConsumed_ = false;
     setSpaceHeld(false);
     cancelSelectionPress();
+    if (measureActive_) {
+        measureActive_ = false;
+        emit measureCancelled();
+    }
     if (panning_ || zoomDragging_) {
         endGesture();
     }
@@ -788,6 +848,15 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
         QGraphicsView::mousePressEvent(event);
         return;
     }
+    if (event->button() == Qt::LeftButton && measureMode_) {
+        // Règle : le geste n'appartient qu'à la vue (pas de transmission à la scène : une
+        // poignée ou un objet sous le curseur ne doit ni bouger ni être sélectionné).
+        measureActive_ = true;
+        measureStartMm_ = mapToScene(viewportPos);
+        emit measureDragMm(measureStartMm_, measureStartMm_);
+        event->accept();
+        return;
+    }
     if (event->button() == Qt::LeftButton && bezierDrawMode_) {
         bezierPressActive_ = true;
         bezierAnchorMm_ = mapToScene(viewportPos);
@@ -914,6 +983,9 @@ void CanvasView::mouseMoveEvent(QMouseEvent* event) {
     if (freeformActive_) {
         emit freeformPointMm(scenePos);
     }
+    if (measureActive_) {
+        emit measureDragMm(measureStartMm_, scenePos);
+    }
     if (bezierPressActive_) {
         emit bezierPointDraggingMm(bezierAnchorMm_, scenePos);
     }
@@ -989,6 +1061,10 @@ void CanvasView::mouseReleaseEvent(QMouseEvent* event) {
     // offscreen, cf. Maj = cercle).
     const Qt::KeyboardModifiers modifiers = event->modifiers();
     QGraphicsView::mouseReleaseEvent(event);
+    if (measureActive_ && event->button() == Qt::LeftButton) {
+        measureActive_ = false;
+        emit measureFinishedMm(measureStartMm_, mapToScene(event->position().toPoint()));
+    }
     if (freeformActive_ && event->button() == Qt::LeftButton) {
         freeformActive_ = false;
         emit freeformStrokeFinished();
@@ -1015,6 +1091,12 @@ void CanvasView::keyPressEvent(QKeyEvent* event) {
         if (!event->isAutoRepeat()) {
             setSpaceHeld(true);
         }
+        event->accept();
+        return;
+    }
+    if (event->key() == Qt::Key_Escape && measureActive_) {
+        measureActive_ = false; // Échap interrompt la règle en cours
+        emit measureCancelled();
         event->accept();
         return;
     }

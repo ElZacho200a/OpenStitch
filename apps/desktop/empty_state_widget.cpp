@@ -5,6 +5,7 @@
 #include <QLabel>
 #include <QLayoutItem>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QVBoxLayout>
 
 #include "app_theme.hpp"
@@ -24,7 +25,22 @@ EmptyStateWidget::EmptyStateWidget(QWidget* parent) : QFrame(parent) {
     applyFrameStyle();
     connect(&AppTheme::instance(), &AppTheme::changed, this, applyFrameStyle);
 
-    auto* layout = new QVBoxLayout(this);
+    // Contenu dans une zone défilante transparente (HP-UX-025) : dans un canevas bas, toutes les
+    // actions restent atteignables au lieu d'être tronquées par le cadre.
+    auto* outer = new QVBoxLayout(this);
+    outer->setContentsMargins(0, 0, 0, 0);
+    auto* scroll = new QScrollArea(this);
+    scroll->setObjectName(QStringLiteral("emptyStateScroll"));
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->viewport()->setAutoFillBackground(false);
+    auto* content = new QWidget(scroll);
+    content->setObjectName(QStringLiteral("emptyStateContent"));
+    content->setAutoFillBackground(false);
+    scroll->setWidget(content);
+    outer->addWidget(scroll);
+
+    auto* layout = new QVBoxLayout(content);
     layout->setContentsMargins(32, 28, 32, 28);
     layout->setSpacing(12);
 

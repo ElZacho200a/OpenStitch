@@ -11,6 +11,7 @@
 
 class QDoubleSpinBox;
 class QCheckBox;
+class QComboBox;
 class QLabel;
 class QPushButton;
 
@@ -33,6 +34,11 @@ public:
     // Placement choisi, ou nullopt si le dialogue a été annulé.
     [[nodiscard]] std::optional<document::ImagePlacement> placement() const;
 
+    // Cadre choisi dans le dialogue (mm). hoopChanged() : l'utilisateur a pris un autre cadre
+    // que celui du projet (à n'appliquer qu'une fois le dialogue accepté).
+    [[nodiscard]] QSizeF hoopMm() const { return hoopMm_; }
+    [[nodiscard]] bool hoopChanged() const;
+
 private:
     void syncFromWidth();
     void syncFromHeight();
@@ -49,6 +55,7 @@ private:
     QDoubleSpinBox* heightMm_{nullptr};
     QCheckBox* keepRatio_{nullptr};
     QPushButton* fitButton_{nullptr};
+    QComboBox* hoopCombo_{nullptr};
     QLabel* resolutionLabel_{nullptr};
     QLabel* warningLabel_{nullptr};
     QLabel* ratioLabel_{nullptr};

@@ -8,6 +8,7 @@
 #include <QPainter>
 #include <QPalette>
 #include <QPixmap>
+#include <QScreen>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QStyle>
@@ -19,7 +20,8 @@ namespace openstitch::desktop {
 namespace {
 
 QSettings settings() {
-    return QSettings(QStringLiteral("OpenStitch"), QStringLiteral("OpenStitch Studio"));
+    return QSettings(QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("OpenStitch"),
+                     QStringLiteral("OpenStitch Studio"));
 }
 
 QPalette build_palette(const Tokens& t) {
@@ -430,10 +432,21 @@ void AppTheme::load() {
     } else {
         mode_ = systemMode;
     }
-    density_ = s.value(QStringLiteral("ui/density"), QStringLiteral("comfortable")).toString() ==
-                       QStringLiteral("compact")
-                   ? Density::Compact
-                   : Density::Comfortable;
+    if (s.contains(QStringLiteral("ui/density"))) {
+        density_ = s.value(QStringLiteral("ui/density")).toString() == QStringLiteral("compact")
+                       ? Density::Compact
+                       : Density::Comfortable;
+    } else {
+        // Premier lancement : la densité suit la hauteur utile de l'écran principal.
+        const QScreen* screen = QGuiApplication::primaryScreen();
+        density_ =
+            densityForScreenHeight(screen != nullptr ? screen->availableGeometry().height() : 1080);
+    }
+}
+
+Density AppTheme::densityForScreenHeight(int availableHeightPx) {
+    constexpr int kCompactBelowPx = 800;
+    return availableHeightPx < kCompactBelowPx ? Density::Compact : Density::Comfortable;
 }
 
 void AppTheme::save() const {

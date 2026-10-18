@@ -12,14 +12,37 @@
 #include <filesystem>
 #include <string>
 #include <system_error>
+#include <variant>
+#include <vector>
 
 #include "archive.hpp"
 #include "json_serialize.hpp"
 #include "openstitch/image/image.hpp"
+#include "openstitch/project_io/migrations.hpp"
 
 namespace openstitch::project_io {
 
 namespace {
+
+// Version écrite : v7 seulement si un auto-satin utilise une méthode autre que le squelette
+// (un lecteur v6 la régénérerait en silence avec le squelette).
+int schema_version_for(const std::vector<document::EmbroideryObject>& objects,
+                       const std::vector<document::TextObject>& texts = {}) {
+    // v8 : un texte porte un crénage manuel ou des ligatures (jamais pour les fichiers existants).
+    for (const auto& text : texts) {
+        if (!text.kerning_pairs.empty() || text.ligatures) {
+            return kSchemaVersionTextTypography;
+        }
+    }
+    for (const auto& object : objects) {
+        if (const auto* satin = std::get_if<document::AutoSatinParams>(&object.params)) {
+            if (satin->strategy != document::AutoSatinStrategy::Skeleton) {
+                return kSchemaVersionAutoSatinStrategy;
+            }
+        }
+    }
+    return kSchemaVersion;
+}
 
 constexpr const char* kJsonEntry = "project.json";
 constexpr const char* kImageEntry = "original.png";
@@ -101,7 +124,8 @@ Result<void> save_project(const std::filesystem::path& path, const document::Pro
     parallel_for(3, [&](std::size_t task) {
         if (task == 0) {
             nlohmann::json root;
-            root["schemaVersion"] = kSchemaVersion;
+            root["schemaVersion"] =
+                schema_version_for(project.embroidery_objects, project.text_objects);
             root["document"] = detail::project_to_json(project);
             jsonText = root.dump(2);
         } else if (task == 1) {
@@ -209,13 +233,13 @@ Result<document::Project> load_project_impl(const std::filesystem::path& path, L
     }
 
     const int version = root.is_object() ? root.value("schemaVersion", 0) : 0;
-    if (version <= 0 || version > kSchemaVersion) {
-        if (version > kSchemaVersion) {
+    if (version <= 0 || version > kMaxReadableSchemaVersion) {
+        if (version > kMaxReadableSchemaVersion) {
             return fail(ErrorCategory::UnsupportedFormat,
                         "Ce projet a été créé par une version plus récente d'OpenStitch "
                         "(format v" +
                             std::to_string(version) + ", cette version lit jusqu'à v" +
-                            std::to_string(kSchemaVersion) +
+                            std::to_string(kMaxReadableSchemaVersion) +
                             "). Mettez à jour OpenStitch pour l'ouvrir.");
         }
         return fail(ErrorCategory::InvalidFile,
@@ -224,6 +248,16 @@ Result<document::Project> load_project_impl(const std::filesystem::path& path, L
     if (info != nullptr) {
         info->fileVersion = version;
         info->migrated = version < kSchemaVersion;
+    }
+
+    // Migrations versionnées v(n) -> v(n+1) (HP-FMT-021) avant la lecture du document.
+    {
+        auto migrated = migrate_project_json(std::string_view(
+            reinterpret_cast<const char*>(jsonIt->second.data()), jsonIt->second.size()));
+        if (!migrated) {
+            return std::unexpected(migrated.error());
+        }
+        root = nlohmann::json::parse(*migrated);
     }
 
     if (!root.contains("document")) {
@@ -284,7 +318,7 @@ std::string fragment_to_json(const document::ObjectFragment& fragment) {
     carrier.embroidery_objects = fragment.embroideries;
     nlohmann::json root;
     root["openstitchFragment"] = 1;
-    root["schemaVersion"] = kSchemaVersion;
+    root["schemaVersion"] = schema_version_for(carrier.embroidery_objects);
     root["document"] = detail::project_to_json(carrier);
     return root.dump();
 }
@@ -297,7 +331,7 @@ Result<document::ObjectFragment> fragment_from_json(std::string_view text) {
             return fail(ErrorCategory::InvalidFile,
                         "Le presse-papiers ne contient pas d'objets OpenStitch");
         }
-        if (root.value("schemaVersion", 0) > kSchemaVersion) {
+        if (root.value("schemaVersion", 0) > kMaxReadableSchemaVersion) {
             return fail(ErrorCategory::InvalidFile,
                         "Objets copiés depuis une version plus récente d'OpenStitch");
         }

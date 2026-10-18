@@ -13,6 +13,7 @@
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -22,6 +23,7 @@
 
 #include "font_catalog.hpp"
 #include "openstitch/lettering/lettering.hpp"
+#include "responsive.hpp"
 #include "wheel_guard.hpp"
 
 namespace openstitch::desktop {
@@ -53,7 +55,73 @@ QColor toQColor(const std::array<std::uint8_t, 3>& rgb) {
     return QColor(rgb[0], rgb[1], rgb[2]);
 }
 
+constexpr double kMaxKerningMm = 20.0;
+
 } // namespace
+
+lettering::LayoutOptions layoutOptionsFor(const document::TextObject& text) {
+    return lettering::layout_options_for(text);
+}
+
+KerningParse parseKerningPairs(const QString& text) {
+    static const QRegularExpression lineRe(
+        QStringLiteral(R"(^(\S+?)\s*:\s*([+-]?\d+(?:[.,]\d+)?)\s*(?:mm)?$)"),
+        QRegularExpression::CaseInsensitiveOption);
+    KerningParse out;
+    const QStringList lines = text.split(QLatin1Char('\n'));
+    for (int i = 0; i < lines.size(); ++i) {
+        const QString line = lines[i].trimmed();
+        if (line.isEmpty()) {
+            continue;
+        }
+        const auto match = lineRe.match(line);
+        const QList<uint> chars = match.hasMatch() ? match.captured(1).toUcs4() : QList<uint>{};
+        if (chars.size() != 2) {
+            out.errors << QObject::tr("Ligne %1 ignorée : écrivez « AV: -0,3 mm » (deux lettres, "
+                                      "deux-points, valeur en mm).")
+                              .arg(i + 1);
+            continue;
+        }
+        QString number = match.captured(2);
+        number.replace(QLatin1Char(','), QLatin1Char('.'));
+        const double mm = number.toDouble();
+        if (std::abs(mm) > kMaxKerningMm) {
+            out.errors << QObject::tr("Ligne %1 ignorée : le crénage est limité à ±%2 mm.")
+                              .arg(i + 1)
+                              .arg(kMaxKerningMm, 0, 'f', 0);
+            continue;
+        }
+        const document::KerningPair pair{static_cast<char32_t>(chars[0]),
+                                         static_cast<char32_t>(chars[1]), fromMm(mm)};
+        const auto same = std::find_if(out.pairs.begin(), out.pairs.end(), [&](const auto& p) {
+            return p.left == pair.left && p.right == pair.right;
+        });
+        if (same != out.pairs.end()) {
+            same->adjust = pair.adjust;
+        } else {
+            out.pairs.push_back(pair);
+        }
+    }
+    return out;
+}
+
+QString formatKerningPairs(const std::vector<document::KerningPair>& pairs) {
+    QStringList lines;
+    for (const auto& pair : pairs) {
+        const QString chars = QString::fromUcs4(&pair.left, 1) + QString::fromUcs4(&pair.right, 1);
+        QString number = QString::number(toMm(pair.adjust), 'f', 3);
+        if (number.contains(QLatin1Char('.'))) {
+            while (number.endsWith(QLatin1Char('0'))) {
+                number.chop(1);
+            }
+            if (number.endsWith(QLatin1Char('.'))) {
+                number.chop(1);
+            }
+        }
+        lines << chars + QStringLiteral(": ") + number + QStringLiteral(" mm");
+    }
+    return lines.join(QLatin1Char('\n'));
+}
 
 TextPreview::TextPreview(QWidget* parent) : QWidget(parent) {
     setMinimumSize(320, 160);
@@ -175,6 +243,18 @@ TextDialog::TextDialog(const document::TextObject& initial, bool isNew, QWidget*
     kerning_ = new QCheckBox(tr("Crénage de la police"), this);
     kerning_->setObjectName(QStringLiteral("kerning_check"));
     kerning_->setChecked(initial.kerning);
+    ligatures_ = new QCheckBox(tr("Ligatures (ff, fi, fl, ffi, ffl)"), this);
+    ligatures_->setObjectName(QStringLiteral("ligatures_check"));
+    ligatures_->setChecked(initial.ligatures);
+    ligatures_->setToolTip(tr("Utilise les glyphes de ligature quand la police les contient."));
+    kerningPairs_ = new QPlainTextEdit(this);
+    kerningPairs_->setObjectName(QStringLiteral("kerning_pairs_edit"));
+    kerningPairs_->setAccessibleName(tr("Crénage manuel"));
+    kerningPairs_->setMaximumHeight(64);
+    kerningPairs_->setPlaceholderText(tr("Une paire par ligne, ex. AV: -0,3 mm"));
+    kerningPairs_->setToolTip(tr("Crénage manuel : remplace le crénage de la police pour la paire "
+                                 "(valeur négative = lettres plus proches)."));
+    kerningPairs_->setPlainText(formatKerningPairs(initial.kerning_pairs));
 
     posX_ = mmSpin(this, QStringLiteral("pos_x_spin"), -2000.0, 2000.0, 1.0);
     posX_->setValue(toMm(initial.origin.x));
@@ -217,6 +297,8 @@ TextDialog::TextDialog(const document::TextObject& initial, bool isNew, QWidget*
     form->addRow(tr("Espace entre mots"), wordSpacing_);
     form->addRow(tr("Interligne"), lineSpacing_);
     form->addRow(QString(), kerning_);
+    form->addRow(tr("Crénage manuel"), kerningPairs_);
+    form->addRow(QString(), ligatures_);
     form->addRow(tr("Satin jusqu'à"), maxSatin_);
     form->addRow(tr("Densité"), density_);
     form->addRow(tr("Position X"), posX_);
@@ -246,6 +328,9 @@ TextDialog::TextDialog(const document::TextObject& initial, bool isNew, QWidget*
     auto* root = new QVBoxLayout(this);
     root->addLayout(columns, 1);
     root->addWidget(buttons_);
+    // Le formulaire défile sur un petit écran, les boutons restent visibles (HP-UX-025).
+    scrollDialogBody(this, buttons_);
+    fitDialogToScreen(this);
 
     refreshTimer_ = new QTimer(this);
     refreshTimer_->setSingleShot(true);
@@ -257,6 +342,8 @@ TextDialog::TextDialog(const document::TextObject& initial, bool isNew, QWidget*
     connect(align_, &QComboBox::currentIndexChanged, this, &TextDialog::scheduleRefresh);
     connect(fill_, &QComboBox::currentIndexChanged, this, &TextDialog::scheduleRefresh);
     connect(kerning_, &QCheckBox::toggled, this, &TextDialog::scheduleRefresh);
+    connect(ligatures_, &QCheckBox::toggled, this, &TextDialog::scheduleRefresh);
+    connect(kerningPairs_, &QPlainTextEdit::textChanged, this, &TextDialog::scheduleRefresh);
     for (QDoubleSpinBox* s : {height_, letterSpacing_, wordSpacing_, lineSpacing_, justifyWidth_,
                               maxSatin_, density_, posX_, posY_, rotation_}) {
         connect(s, &QDoubleSpinBox::valueChanged, this, &TextDialog::scheduleRefresh);
@@ -317,6 +404,8 @@ document::TextObject TextDialog::textObject() const {
     t.word_spacing = fromMm(wordSpacing_->value());
     t.line_spacing = lineSpacing_->value();
     t.kerning = kerning_->isChecked();
+    t.kerning_pairs = parseKerningPairs(kerningPairs_->toPlainText()).pairs;
+    t.ligatures = ligatures_->isChecked();
     t.align = static_cast<document::TextAlign>(align_->currentData().toInt());
     t.justify_width = fromMm(justifyWidth_->value());
     t.origin = Vec2um{fromMm(posX_->value()), fromMm(posY_->value())};
@@ -340,6 +429,7 @@ void TextDialog::refresh() {
     maxSatin_->setEnabled(needsSatin);
 
     warnings_.clear();
+    warnings_ << parseKerningPairs(kerningPairs_->toPlainText()).errors;
     QPainterPath shape;
     QString summary;
     bool ok = false;
@@ -354,6 +444,7 @@ void TextDialog::refresh() {
         IdGenerator<ObjectId> ids;
         lettering::BuildOptions options;
         options.verify_satin = false;
+        options.layout = layoutOptionsFor(t);
         const auto built = lettering::build_text_objects(*font_, t, ids, options);
         if (!built) {
             warnings_ << QString::fromStdString(built.error().message);

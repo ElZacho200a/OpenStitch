@@ -114,3 +114,21 @@ Contrôles que la CI fera de toute façon :
 Indiquer ce qui a été lancé et le résultat chiffré, p. ex. « test_stitch :
 212 cas / 3 104 assertions OK ; ctest Debug complet : 38/38 ». Si une étape
 n'a pas été faite (Release, desktop, format), le dire.
+
+## 6. Compiler le CLI dans le conteneur cloud Linux (sans vcpkg)
+
+Le preset `linux-core` suppose `VCPKG_ROOT`, mais dans l'environnement cloud le proxy répond
+**403 sur `github.com/.../archive/*.tar.gz`** (utilisé par vcpkg) : `cmake --preset linux-core` échoue
+au téléchargement de CLI11. Ne pas réessayer ni contourner. Un script reproductible fait le travail
+(vérifié de zéro le 2026-10-16) :
+
+```bash
+scripts/linux-core-setup.sh --prefix $SCRATCH/deps --build $SCRATCH/build --jobs 4
+# -> $SCRATCH/build/apps/cli/openstitch-cli ; --tests pour construire et lancer ctest
+```
+
+Il installe les paquets apt, clone Clipper2 (2.0.1) et minizip-ng (4.1.0) depuis git (autorisé),
+les installe dans le préfixe, crée la cale `boost_polygon` (apt fournit les en-têtes mais pas le fichier
+de configuration CMake par composant de vcpkg) puis configure et compile le CLI. Idempotent. Versions
+d'apt (OpenCV 4.6, fmt 9, CLI11 2.4) différentes de vcpkg : les mesures sont identiques, mais le test
+`cli_help` échoue (CLI11 écrit « Positionals », attendu « POSITIONALS »). Lancer `ctest` **sans `-j`**.

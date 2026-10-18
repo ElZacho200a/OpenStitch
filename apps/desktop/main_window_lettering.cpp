@@ -161,7 +161,8 @@ void MainWindow::editSelectedText() {
     // Les lettres ont pu être déplacées au canevas : l'édition repart de leur position visible.
     QString ignored;
     if (const auto font = FontCatalog::instance().load(initial.font, &ignored)) {
-        if (const auto moved = lettering::text_displacement(project_, initial, *font)) {
+        if (const auto moved =
+                lettering::text_displacement(project_, initial, *font, layoutOptionsFor(initial))) {
             initial.origin = initial.origin + *moved;
         }
     }
@@ -181,7 +182,9 @@ bool MainWindow::applyText(document::TextObject text, bool isNew) {
         statusBar()->showMessage(tr("Ce texte n'existe plus."), 6000);
         return false;
     }
-    auto built = lettering::build_text_objects(*font, text, project_.object_ids);
+    lettering::BuildOptions buildOptions;
+    buildOptions.layout = layoutOptionsFor(text); // crénage manuel et ligatures du texte
+    auto built = lettering::build_text_objects(*font, text, project_.object_ids, buildOptions);
     if (!built) {
         QMessageBox::warning(this, tr("Texte"), QString::fromStdString(built.error().message));
         return false;

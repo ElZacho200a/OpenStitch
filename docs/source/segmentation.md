@@ -20,6 +20,28 @@ Réduire l'image de travail en **régions de couleur connexes**, sélectionnable
 6. les régions plus petites que la taille minimale sont **absorbées** par leur
    voisine majoritaire (nettoyage).
 
+## Aperçu avant de segmenter (bureau)
+
+Le dialogue *Segmentation → Segmenter l'image…* (F6) est **non modal** et affiche un **aperçu en
+direct** : chaque changement de réglage (nombre de couleurs, taille minimale, lissage) relance
+`segmentation::segment` après un court délai (250 ms), et la carte des régions résultante s'affiche
+sur le canevas avec le nombre de régions, de couleurs et de régions plus petites que le seuil de
+remplissage de l'auto-numérisation (`AutoOptions::min_fill_area_mm2`, qui ne seront cousues qu'en
+contour).
+
+- **Le document n'est pas touché** : le calcul tourne dans un fil, sur une **copie** de l'image de
+  travail prise à l'ouverture du dialogue, et l'aperçu s'affiche à la place de la segmentation du
+  document (`previewSegmentation_`) sans aucune commande ni pas d'annulation. Fermer le dialogue
+  abandonne l'aperçu.
+- **Un seul calcul à la fois** : les changements faits pendant un calcul sont coalescés en un seul
+  calcul suivant ; seul le résultat correspondant aux réglages courants est affiché.
+- **« Segmenter » valide** : confirmation d'écrasement (si la segmentation a été éditée) puis
+  `SetSegmentationCommand`, en un seul pas d'annulation. Si l'aperçu correspond aux réglages et à
+  l'image, il est **réutilisé** (pas de second calcul) ; sinon la segmentation est recalculée.
+- **Coût mesuré** : `segment` sur l'illustration du voilier (1254 × 1254 px, 8 couleurs, lissage 3)
+  prend **0,09 à 0,22 s** en Debug (0,6 s au premier appel), de sorte que l'aperçu se fait sur
+  l'image entière, sans version réduite.
+
 ## Identifiants stables
 
 Chaque région a un `RegionId` = index de slot + 1. Les slots ne sont **jamais**
@@ -44,7 +66,41 @@ fusionne pas avec une voisine — corrigé après un retour utilisateur (voir
 *Limitations*). Pour transférer des pixels à une autre région, utilisez la
 **fusion** explicite.
 
+## Fusion de couleurs
+
+Une « région » est une composante connexe : plusieurs régions peuvent porter la **même teinte**.
+Fusionner des couleurs recolore donc toutes les régions d'une teinte avec une autre, puis (option)
+fusionne les régions **voisines** devenues de même couleur, pour éviter une frontière et un objet de
+broderie inutiles. Deux régions de même couleur mais séparées ne sont jamais fusionnées (une région
+reste connexe).
+
+Tout passe par un **plan** (`segmentation/color_merge.hpp`), calculé sans écrire puis appliqué :
+
+| Fonction | Rôle |
+|---|---|
+| `color_classes(seg)` | Teintes distinctes, de la plus étendue à la plus petite, avec leurs régions |
+| `plan_reduce_colors(seg, max_colors, max_distance, merge_adjacent, excluded)` | Réduit la palette à N teintes et/ou fusionne les teintes distantes d'au plus `max_distance` (CIEDE2000) ; le plus gros aplat garde sa teinte exacte (`thread_palette::reduce_colors`, étendu d'un seuil de distance optionnel) |
+| `plan_merge_colors(seg, sources, target, merge_adjacent)` | Fusion manuelle : les teintes `sources` prennent la couleur `target` |
+| `apply_color_merge(seg, plan)` | Applique les recolorations puis les fusions |
+
+Le calcul est déterministe (aucun parallélisme, égalités départagées par l'ordre d'entrée).
+
+**Bureau** : menu *Segmentation → Fusionner les couleurs…* ouvre le panneau **Couleurs** : liste des
+teintes (pastille, part de l'image, nombre de régions) ; cliquer une teinte sélectionne toutes ses
+régions ; *Fusionner dans la teinte active* fusionne les teintes sélectionnées ; les réglages *Réduire
+à N* et *Fusionner si écart ≤ x* affichent un **aperçu** de la carte des régions sur le canevas
+(calculé sur une **copie** de la segmentation : le document n'est pas touché, aucun pas d'annulation)
+jusqu'à *Appliquer* ou *Annuler l'aperçu*. Un aperçu devient caduc dès que le document change.
+Les objets vectoriels déjà créés depuis une région absorbée suivent le même choix que *Fusionner*
+(conserver, supprimer, annuler).
+
+**Limite** : fusionner des couleurs fait perdre du détail de teinte (un détail dont la teinte est
+proche d'un aplat prend la couleur de l'aplat) ; l'aperçu sert à le voir avant d'appliquer.
+
 ## Undo/redo
+
+`MergeColorsCommand` applique un plan en **un seul pas** d'annulation (copie des seuls emplacements de
+régions et des étiquettes modifiées, comme `CleanIslandsCommand`).
 
 Les commandes `SetSegmentationCommand`, `MergeRegionsCommand`, `RemoveRegionCommand`
 et `RecolorRegionCommand` mémorisent les **indices de pixels** réétiquetés (pas
@@ -60,6 +116,15 @@ une copie de la carte entière), ce qui rend l'annulation exacte et peu coûteus
 - `libs/segmentation/include/openstitch/segmentation/segmentation.hpp`
 - `libs/segmentation/src/segmentation.cpp` — `segment`, `merge_regions`,
   `remove_region`, `recolor_region`, `render_map`.
-- `libs/commands/.../project_commands.hpp` — commandes de segmentation.
+- `libs/segmentation/src/color_merge.cpp` — fusion de couleurs (plans et application).
+- `libs/commands/.../project_commands.hpp` — commandes de segmentation (dont `MergeColorsCommand`).
+- `apps/desktop/segmentation_colors_panel.*`, `apps/desktop/main_window_colors.cpp` — panneau
+  « Couleurs » et aperçu.
+- `apps/desktop/segmentation_dialog.*`, `apps/desktop/main_window_segment_preview.cpp` — dialogue
+  « Segmenter » non modal et aperçu en direct.
 - Tests : `tests/unit/segmentation/test_segmentation.cpp`,
-  `tests/unit/commands/test_undo_stack.cpp`.
+  `tests/unit/segmentation/test_color_merge.cpp`,
+  `tests/unit/commands/test_undo_stack.cpp`, `tests/unit/commands/test_command_merge.cpp`,
+  `tests/unit/desktop/test_segmentation_colors_panel.cpp`,
+  `tests/unit/desktop/test_segmentation_dialog.cpp`,
+  `tests/unit/desktop/test_segmentation_workflow.cpp`.

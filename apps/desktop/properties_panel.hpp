@@ -8,6 +8,7 @@
 
 #include <functional>
 #include <optional>
+#include <vector>
 
 #include "openstitch/document/project.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
@@ -65,9 +66,18 @@ public:
     // type, un exemplaire représentatif ; le formulaire de ce type s'ajoute sous le bloc « type de
     // points » et chaque champ modifié est appliqué à `groupCount` objets (champ par champ : les
     // autres valeurs de chaque objet restent intactes).
+    // `groupMembers` (HP-UX-038) : paramètres de CHAQUE couture du groupe, représentant en tête ;
+    // un champ dont les valeurs diffèrent s'affiche « — » (indéterminé) et seul le champ édité
+    // est uniformisé.
     void showMultiSelection(int objectCount, int embroideryCount,
                             const document::EmbroideryObject* groupRep = nullptr,
-                            int groupCount = 0);
+                            int groupCount = 0,
+                            const std::vector<document::StitchParams>& groupMembers = {});
+    // Vrai si le formulaire de groupe montre exactement ces paramètres membre par membre (valeurs
+    // mixtes à jour ; sinon MainWindow le reconstruit).
+    [[nodiscard]] bool showsGroupMembers(const std::vector<document::StitchParams>& members) const {
+        return groupCount_ > 1 && groupMembers_ == members;
+    }
     // Vrai si le formulaire montre un groupe dont le représentant a ces paramètres.
     [[nodiscard]] bool showsGroupParams(const document::StitchParams& params) const {
         return groupCount_ > 1 && showsParams(params);
@@ -81,7 +91,14 @@ public:
     // `id` doit correspondre à l'objet actuellement montré par `showEmbroidery`
     // (nullopt si aucune broderie n'est inspectée) : un id différent est
     // ignoré (retard d'affichage évité plutôt qu'un mauvais bouton affiché).
-    void setEditState(std::optional<ObjectId> id, stitch_generation::ObjectEditState state);
+    // `overrideCount` : nombre de retouches de l'objet, repris dans l'info-bulle de « ⚠ »
+    // (HP-UX-029).
+    void setEditState(std::optional<ObjectId> id, stitch_generation::ObjectEditState state,
+                      int overrideCount = 0);
+    // HP-UX-029 : bandeau non modal « Cette modification désactive N retouches (Ctrl+Z pour
+    // annuler) » et bouton « Réappliquer les retouches ». `id` nul ou `count` <= 0 : masqué.
+    void setOverrideWarning(std::optional<ObjectId> id, int count);
+    [[nodiscard]] bool overrideWarningVisible() const;
     // Auto-satin (spec specs/plans/satin-squelette-traversees.md) : met à jour la
     // liste des guides et le résumé de diagnostic de l'objet inspecté. Comme
     // `setEditState`, appelé à CHAQUE rafraîchissement sans reconstruire le
@@ -119,6 +136,11 @@ public:
     void setBlendActions(QAction* single, QAction* zones, bool singleContext, bool zonesContext);
 
 signals:
+    // HP-UX-028 : un des quatre boutons « Type de points » (0 contour, 1 tatami, 2 satin,
+    // 3 directionnel), identique pour une forme neuve, une couture ou N formes.
+    void stitchTypeRequested(int type);
+    // HP-UX-029 : « Réappliquer les retouches » (rétablit les paramètres d'avant l'édition).
+    void reapplyOverridesRequested(ObjectId id);
     void fillLayerSelected(ObjectId id);
     void fillColorRequested(ObjectId id);
     // Bouton « Modifier le texte… » du bandeau lettrage (cf. setTextInfo) : MainWindow rouvre
@@ -167,6 +189,10 @@ signals:
     void editSatinGuidesRequested(ObjectId id);
     void satinGuideChangeRequested(ObjectId id, int index, double angleDeg, bool absolute);
     void satinGuideRemoveRequested(ObjectId id, int index);
+    // Bouton « Comparer les méthodes… » d'un auto-satin : MainWindow calcule le tableau hors du
+    // fil d'interface puis, si l'utilisateur désigne une autre méthode, exécute UNE commande
+    // annulable.
+    void compareSatinMethodsRequested(ObjectId id);
     // HP-ENG-010 : mode d'entrée/sortie automatiques d'un objet (0 = hérite du projet,
     // 1 = automatique, 2 = désactivé) ; MainWindow exécute SetEmbroideryJoinModeCommand.
     void joinModeEdited(ObjectId id, int mode);
@@ -182,6 +208,8 @@ signals:
 
 private:
     void clearBody();
+    // Rangée de quatre boutons « Type de points » ; `current` = -1 si indéterminé ou aucun.
+    void addStitchTypeRow(int current);
     // Feuille de style locale (depuis les jetons), rafraîchie sur AppTheme::changed.
     void applyTheme();
     // Corps du formulaire d'une couture (champs du type), sans effacer ni titrer.
@@ -197,6 +225,10 @@ private:
     QLabel* typePill_{nullptr};
     QLabel* editStateLabel_{nullptr};
     QPushButton* discardButton_{nullptr};
+    QLabel* overrideWarningLabel_{nullptr};
+    QPushButton* reapplyButton_{nullptr};
+    std::optional<ObjectId> overrideWarningId_;
+    std::vector<document::StitchParams> groupMembers_; // HP-UX-038 : valeurs mixtes
     QLabel* textInfoLabel_{nullptr};
     QPushButton* textEditButton_{nullptr};
     QWidget* layerRow_{nullptr};

@@ -18,6 +18,7 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QMouseEvent>
+#include <QPointer>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QScopeGuard>
@@ -606,6 +607,7 @@ class MainWindowTest : public QObject {
 
 private slots:
     void initTestCase();
+    void qualityReportActionsExistAndNeedEmbroidery();
 
     void clickingVectorObjectSyncsDocumentPanelAndInspector();
     void regionAndVectorSelectionToggleContextActionsOppositely();
@@ -623,6 +625,7 @@ private slots:
     void shapeUnionActionIsOneUndoStep();
     void blendZonesActionMakesBaseAndGradedTopInOneUndoStep();
     void displayFiltersApplyToVectorShapes();
+    void displayFilterShortcutsIsolateAndRestore();
     void hoopMarginReachesTheCanvasView();
     void sidebarToolButtonsActivateTheirTool();
     void sidebarDrawRectangleRealGesture();
@@ -652,6 +655,7 @@ private slots:
     void openPathOptionLeavesPolygonAndBezierOpen();
     void rotationHandleTurnsTheSelectedShape();
     void shapeExcludeAndRemoveHolesActions();
+    void fillBlockHolesFillsTheGapBetweenTwoZones();
     void groupedStitchTypeCoversEverySelectedShapeInOneStep();
     void groupInspectorEditsOneFieldOnEveryObjectInOneStep();
     void groupGuideAngleIsPlacedOnEveryAutoSatin();
@@ -719,6 +723,8 @@ private slots:
     // Remplissage directionnel : conversion, outil de guides, undo/redo.
     void convertingTatamiToDirectionalIsUndoable();
     void densityGradientIsUndoableAndSpansTheShape();
+    void editingGradientEndSpacingKeepsTheInspectorAlive();
+    void gradientEndSpacingKeepsNarrowedZoneUntilTheAngleChanges();
     void twoColorBlendCreatesBackgroundAndTopInOneUndoStep();
     void inspectorRebuildsAfterUndoOfAParameterEdit();
     void inspectorRebuildsAfterTypeChangeKeepingTheSameId();
@@ -826,6 +832,8 @@ private slots:
     // un fond quasi blanc qui encadre le motif ; pastille + pourcentage
     // affichés dans les deux cas.
     void autoDigitizeDialogDoesNotSkipColoredFullFrameRegion();
+    void autoDigitizeDialogOffersDarkLinesAndIslandCleanup();
+    void autoDigitizeDialogSkipsBeigeFramingBackground();
     void autoDigitizeDialogSkipsNearWhiteFramingBackground();
     // Strategie « Contours » : choix de strategie, curseur de detail (defaut
     // 50) et techniques point droit presentes dans le dialogue.
@@ -1004,6 +1012,14 @@ void MainWindowTest::initTestCase() {
     // d'évènements du premier test venu.
     QStandardPaths::setTestModeEnabled(true);
     clearAutosaveDir();
+}
+
+void MainWindowTest::qualityReportActionsExistAndNeedEmbroidery() {
+    MainWindow window;
+    for (const char* name : {"action_fidelityReport", "action_densityReport",
+                             "action_diagnoseReport", "action_exportRealisticPng"}) {
+        QVERIFY2(window.findChild<QAction*>(QString::fromLatin1(name)) != nullptr, name);
+    }
 }
 
 void MainWindowTest::clickingVectorObjectSyncsDocumentPanelAndInspector() {
@@ -1318,8 +1334,12 @@ void MainWindowTest::inspectorShowsNObjets() {
 
     window.applySelectionClick(fx.b, SelectMode::Add);
     QVERIFY(hasText(QStringLiteral("2 objets")));
-    // Bloc « type de points » pour toute la sélection.
-    QVERIFY(propsPanel->findChild<QComboBox*>(QStringLiteral("combo_multiType")) != nullptr);
+    // Bloc « type de points » pour toute la sélection : les quatre mêmes boutons que pour une
+    // forme seule (HP-UX-028, remplace l'ancienne liste « Appliquer à N »).
+    for (int type = 0; type < 4; ++type) {
+        QVERIFY(propsPanel->findChild<QToolButton*>(
+                    QStringLiteral("button_stitchType%1").arg(type)) != nullptr);
+    }
 
     window.applySelectionClick(fx.c, SelectMode::Add);
     QVERIFY(hasText(QStringLiteral("3 objets")));
@@ -2710,14 +2730,18 @@ void MainWindowTest::createSatinObjectOnSuitableRectangleProducesOneSatinWithSti
 
     const std::size_t embroideryCountBefore = window.project_.embroidery_objects.size();
 
-    // createSatinObject() ouvre une QDialog modale (espacement/compensation/
-    // sous-couche) : programmée avant l'appel, exec() pompe la boucle d'événements.
-    QTimer::singleShot(0, &window, [] {
+    // HP-UX-002 : createSatinObject() crée tout de suite, au dernier réglage, sans AUCUN
+    // dialogue (le dialogue de réglages n'existe plus que pour « Créer avec réglages… »).
+    bool modalOpened = false;
+    QTimer::singleShot(0, &window, [&modalOpened] {
         if (auto* dlg = qobject_cast<QDialog*>(QApplication::activeModalWidget())) {
-            dlg->accept();
+            modalOpened = true;
+            dlg->reject();
         }
     });
     window.createSatinObject();
+    QCoreApplication::processEvents();
+    QVERIFY(!modalOpened);
 
     QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore + 1);
     const auto& emb = window.project_.embroidery_objects.back();
@@ -2749,11 +2773,20 @@ void MainWindowTest::createSatinObjectOnBranchedShapeProducesMultipleSatinSectio
 
     const std::size_t embroideryCountBefore = window.project_.embroidery_objects.size();
 
-    autoDismissModalDialogs(&window);
+    // Création directe (HP-UX-002) : aucun dialogue ; s'il en apparaissait un, il serait refermé
+    // ici pour ne pas bloquer le test, et la vérification ci-dessous le signalerait.
+    bool modalOpened = false;
+    QTimer::singleShot(0, &window, [&modalOpened] {
+        if (auto* dlg = qobject_cast<QDialog*>(QApplication::activeModalWidget())) {
+            modalOpened = true;
+            dlg->reject();
+        }
+    });
     window.createSatinObject();
+    QCoreApplication::processEvents();
+    QVERIFY(!modalOpened);
 
-    // Forme branchée : UN seul objet auto-satin couvre toute la forme (le moteur
-    // produit une colonne par branche à l'intérieur de l'objet, plus de sections
+    // Forme branchée : UN seul objet auto-satin couvre toute la forme (plus de sections
     // séparées à ordonner et à convertir une à une).
     QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore + 1);
     const auto& emb = window.project_.embroidery_objects.back();
@@ -2762,14 +2795,31 @@ void MainWindowTest::createSatinObjectOnBranchedShapeProducesMultipleSatinSectio
 
     const auto* vec = window.project_.findObject(fx.vectorId);
     QVERIFY(vec != nullptr);
-    const auto preview =
-        window.previewAutoSatin(*vec, std::get<openstitch::document::AutoSatinParams>(emb.params));
-    QVERIFY2(
-        preview.columns >= 3,
-        qPrintable(
-            QStringLiteral("attendu >= 3 colonnes (3 branches), obtenu %1").arg(preview.columns)));
+    // L'objet créé suit la méthode proposée aux nouveaux auto-satins (balayage parallèle
+    // depuis #67). Sur une forme branchée il couvre toute la forme en UNE grande colonne
+    // (docs/source/satin-squelette.md : « une seule grande colonne » sur les formes branchées).
+    const auto& params = std::get<openstitch::document::AutoSatinParams>(emb.params);
+    QCOMPARE(params.strategy, openstitch::document::kDefaultAutoSatinStrategy);
+    const auto preview = window.previewAutoSatin(*vec, params);
+    QVERIFY(preview.columns >= 1);
     QVERIFY(preview.measured);
     QVERIFY(preview.coverage > 0.85);
+
+    // Une colonne par branche reste la propriété des méthodes à squelette : le squelette
+    // et l'axe médian donnent 3 colonnes sur cette forme (3 branches).
+    for (const auto strategy : {openstitch::document::AutoSatinStrategy::Skeleton,
+                                openstitch::document::AutoSatinStrategy::MedialAxis}) {
+        auto perBranch = params;
+        perBranch.strategy = strategy;
+        const auto branches = window.previewAutoSatin(*vec, perBranch);
+        QVERIFY2(branches.columns >= 3,
+                 qPrintable(QStringLiteral("stratégie %1 : attendu >= 3 colonnes (3 branches), "
+                                           "obtenu %2")
+                                .arg(QString::fromUtf8(
+                                    openstitch::document::auto_satin_strategy_id(strategy)))
+                                .arg(branches.columns)));
+        QVERIFY(branches.coverage > 0.85);
+    }
 
     window.refreshImage();
     QVERIFY(window.sequence_.has_value());
@@ -2900,6 +2950,52 @@ void MainWindowTest::autoDigitizeDialogDoesNotSkipColoredFullFrameRegion() {
     QVERIFY(!state.checked);
     QVERIFY(state.info.contains('%'));
     QVERIFY(window.project_.embroidery_objects.empty()); // dialogue annulé
+}
+
+void MainWindowTest::autoDigitizeDialogSkipsBeigeFramingBackground() {
+    // Fond crème (L* ~ 86, sous le seuil « quasi blanc ») qui occupe tout le pourtour.
+    MainWindow window;
+    window.applyLoadedProject(
+        opaqueSegmentedProject({227, 212, 187}, {15, 101, 186}, 10, 8, 30, 22));
+    const auto state = inspectBackgroundDialog(window, [&] { window.autoDigitize(); });
+    QVERIFY(state.seen);
+    QVERIFY(state.checked);
+}
+
+void MainWindowTest::autoDigitizeDialogOffersDarkLinesAndIslandCleanup() {
+    MainWindow window;
+    window.applyLoadedProject(
+        opaqueSegmentedProject({250, 250, 250}, {200, 30, 30}, 10, 8, 30, 22));
+    bool seen = false;
+    bool linesUnchecked = false;
+    bool optionsDisabledBefore = false;
+    bool optionsEnabledAfter = false;
+    bool islandOffByDefault = false;
+    QTimer::singleShot(0, &window, [&] {
+        auto* dlg = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+        if (dlg == nullptr) {
+            return;
+        }
+        auto* lines = dlg->findChild<QCheckBox*>("darkLinesCheck");
+        auto* width = dlg->findChild<QDoubleSpinBox*>("darkLinesWidthSpin");
+        auto* light = dlg->findChild<QDoubleSpinBox*>("darkLinesLightnessSpin");
+        auto* island = dlg->findChild<QDoubleSpinBox*>("islandAreaSpin");
+        seen = lines != nullptr && width != nullptr && light != nullptr && island != nullptr;
+        if (seen) {
+            linesUnchecked = !lines->isChecked();
+            optionsDisabledBefore = !width->isEnabled() && !light->isEnabled();
+            islandOffByDefault = island->value() == 0.0;
+            lines->setChecked(true);
+            optionsEnabledAfter = width->isEnabled() && light->isEnabled();
+        }
+        dlg->reject();
+    });
+    window.autoDigitize();
+    QVERIFY(seen);
+    QVERIFY(linesUnchecked);
+    QVERIFY(optionsDisabledBefore);
+    QVERIFY(optionsEnabledAfter);
+    QVERIFY(islandOffByDefault);
 }
 
 void MainWindowTest::autoDigitizeDialogSkipsNearWhiteFramingBackground() {
@@ -3159,13 +3255,13 @@ void MainWindowTest::createSatinObjectCancelLeavesDocumentUnchanged() {
     const std::size_t vectorCountBefore = window.project_.vector_objects.size();
     const bool couldUndoBefore = window.undoStack_.canUndo();
 
-    // La boîte de dialogue des réglages est refusée : rien ne doit être créé.
+    // « Créer avec réglages… » garde le dialogue (HP-UX-002) : refusé, rien ne doit être créé.
     QTimer::singleShot(0, &window, [] {
         if (auto* dlg = qobject_cast<QDialog*>(QApplication::activeModalWidget())) {
             dlg->reject();
         }
     });
-    window.createSatinObject();
+    window.createSatinObjectWithSettings();
 
     QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore);
     QCOMPARE(window.project_.vector_objects.size(), vectorCountBefore);
@@ -4710,6 +4806,80 @@ void MainWindowTest::densityGradientIsUndoableAndSpansTheShape() {
     QVERIFY(!gradientOf().has_value());
 }
 
+void MainWindowTest::editingGradientEndSpacingKeepsTheInspectorAlive() {
+    // Régression : modifier « Écart de fin » reconstruisait l'inspecteur (formulaire
+    // périmé) pendant le signal du spinbox : le widget émetteur était supprimé en
+    // pleine émission, d'où un crash dans Qt6Widgets.
+    MainWindow window;
+    const Fixture fx = buildTatamiSquareFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    window.convertToDirectional(fx.embroideryId);
+    auto* panel = window.propertiesPanel_;
+    auto* on = panel->findChild<QCheckBox*>(QStringLiteral("check_densityGradient"));
+    QPointer<QDoubleSpinBox> end =
+        panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_gradientEndSpacing"));
+    QVERIFY(on != nullptr);
+    QVERIFY(end);
+    on->setChecked(true); // active le dégradé depuis l'inspecteur
+    QVERIFY(end);
+    end->setValue(2.5);
+    QVERIFY(end); // le spinbox émetteur n'a pas été supprimé pendant son signal
+    const auto* emb = window.project_.findEmbroidery(fx.embroideryId);
+    const auto gradient =
+        std::get<openstitch::document::DirectionalFillParams>(emb->params).density_gradient;
+    QVERIFY(gradient.has_value());
+    QCOMPARE(gradient->spacing_to.value, 2'500);
+    // Le formulaire montre toujours les paramètres du document : pas de reconstruction.
+    QVERIFY(panel->showsParams(emb->params));
+}
+
+void MainWindowTest::gradientEndSpacingKeepsNarrowedZoneUntilTheAngleChanges() {
+    MainWindow window;
+    const Fixture fx = buildTatamiSquareFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    window.convertToDirectional(fx.embroideryId);
+    const auto gradientOf = [&] {
+        const auto* emb = window.project_.findEmbroidery(fx.embroideryId);
+        return std::get<openstitch::document::DirectionalFillParams>(emb->params).density_gradient;
+    };
+    window.setDensityGradient(fx.embroideryId, true, 90.0, 1.2);
+    const auto full = gradientOf();
+    QVERIFY(full.has_value());
+
+    // Zone de transition réduite (comme un fondu à 30 % - 70 %).
+    auto params = std::get<openstitch::document::DirectionalFillParams>(
+        window.project_.findEmbroidery(fx.embroideryId)->params);
+    auto narrowed = *full;
+    narrowed.from.y.value = full->from.y.value + (full->to.y.value - full->from.y.value) * 3 / 10;
+    narrowed.to.y.value = full->from.y.value + (full->to.y.value - full->from.y.value) * 7 / 10;
+    narrowed.curve = openstitch::document::DensityCurve::Smooth;
+    params.density_gradient = narrowed;
+    window.undoStack_.execute(std::make_unique<openstitch::commands::EditDirectionalFillCommand>(
+                                  fx.embroideryId, params, "zone"),
+                              window.project_);
+
+    // Même angle : seul l'écart de fin change, l'axe réduit est conservé.
+    window.setDensityGradient(fx.embroideryId, true, 90.0, 2.0);
+    const auto kept = gradientOf();
+    QVERIFY(kept.has_value());
+    QCOMPARE(kept->from, narrowed.from);
+    QCOMPARE(kept->to, narrowed.to);
+    QCOMPARE(kept->spacing_to.value, 2'000);
+    QCOMPARE(kept->curve, openstitch::document::DensityCurve::Smooth);
+
+    // Angle différent : l'axe est recalculé sur toute la forme, la courbe reste.
+    window.setDensityGradient(fx.embroideryId, true, 0.0, 2.0);
+    const auto turned = gradientOf();
+    QVERIFY(turned.has_value());
+    QCOMPARE(turned->curve, openstitch::document::DensityCurve::Smooth);
+    QVERIFY(turned->from.x.value != turned->to.x.value);
+    QCOMPARE(turned->from.y.value, turned->to.y.value);
+}
+
 void MainWindowTest::twoColorBlendCreatesBackgroundAndTopInOneUndoStep() {
     MainWindow window;
     Fixture fx = buildTatamiSquareFixture();
@@ -4741,6 +4911,7 @@ void MainWindowTest::twoColorBlendCreatesBackgroundAndTopInOneUndoStep() {
         auto* dialog =
             qobject_cast<openstitch::desktop::ColorBlendDialog*>(QApplication::activeModalWidget());
         QVERIFY(dialog != nullptr);
+        dialog->setComplementary(false); // profil « fond uniforme » : le fond reste tatami
         dialog->findChild<QPushButton*>(QStringLiteral("button_blendAnalyze"))->click();
         dialog->accept();
     });
@@ -6948,6 +7119,7 @@ void MainWindowTest::blendZonesActionMakesBaseAndGradedTopInOneUndoStep() {
         auto* dialog =
             qobject_cast<openstitch::desktop::ColorBlendDialog*>(QApplication::activeModalWidget());
         QVERIFY(dialog != nullptr);
+        dialog->setComplementary(false); // profil « fond uniforme » : le fond reste tatami
         dialog->findChild<QLineEdit*>(QStringLiteral("edit_blendForeground"))->setText("#2244cc");
         dialog->findChild<QDialogButtonBox*>()->button(QDialogButtonBox::Ok)->click();
     });
@@ -7010,6 +7182,45 @@ void MainWindowTest::displayFiltersApplyToVectorShapes() {
     window.minAreaMm2_ = 150.0;
     QVERIFY(!window.vectorPassesFilter(withFill));
     QVERIFY(!window.vectorPassesFilter(bare));
+}
+
+void MainWindowTest::displayFilterShortcutsIsolateAndRestore() {
+    MainWindow window;
+    window.applyLoadedProject(twoOverlappingRectangles());
+    const ObjectId a = window.project_.vector_objects[0].id;
+    const ObjectId b = window.project_.vector_objects[1].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a}});
+    window.setStitchTypeForSelection(1);
+    window.setEmbroideryColorForSelection({200, 10, 10});
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {b}});
+    window.setStitchTypeForSelection(2);
+    window.setEmbroideryColorForSelection({10, 10, 200});
+    window.setSelection({});
+    const auto& embA = *window.embroideryForVector(a);
+    const auto& embB = *window.embroideryForVector(b);
+
+    // Couleur : n'afficher que celle de A cache B (et seulement B).
+    window.isolateFilterColor(0xC80A0A);
+    QVERIFY(window.objectPassesFilter(embA));
+    QVERIFY(!window.objectPassesFilter(embB));
+
+    // Tout afficher rétablit couleurs, types et taille minimale.
+    window.minAreaMm2_ = 50.0;
+    window.showAllFilters();
+    QVERIFY(window.hiddenColors_.empty());
+    QCOMPARE(window.minAreaMm2_, 0.0);
+    QVERIFY(window.objectPassesFilter(embA));
+    QVERIFY(window.objectPassesFilter(embB));
+
+    // Type : n'afficher que le satin (index 2) cache le tatami de A.
+    window.isolateFilterType(2);
+    QVERIFY(!window.objectPassesFilter(embA));
+    QVERIFY(window.objectPassesFilter(embB));
+    window.showAllFilters();
+    QVERIFY(window.objectPassesFilter(embA));
+
+    // Les couleurs de l'image sont proposées au sélecteur de fil.
+    QVERIFY(!window.imageColors().empty());
 }
 
 void MainWindowTest::hoopMarginReachesTheCanvasView() {
@@ -7759,6 +7970,52 @@ void MainWindowTest::shapeExcludeAndRemoveHolesActions() {
     QCOMPARE(window.project_.vector_objects[0].paths[0].holes.size(), std::size_t{1});
 }
 
+void MainWindowTest::fillBlockHolesFillsTheGapBetweenTwoZones() {
+    // Deux zones tatami de 10 x 10 mm séparées par 1,2 mm : un jour sans fil entre elles.
+    auto project = twoOverlappingRectangles();
+    for (auto& node : project.vector_objects[1].paths[0].outer.nodes) {
+        node.pos.x.value += 6'200; // 5..15 mm -> 11,2..21,2 mm
+    }
+    MainWindow window;
+    window.applyLoadedProject(project);
+    const ObjectId a = window.project_.vector_objects[0].id;
+    const ObjectId b = window.project_.vector_objects[1].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a, b}});
+    window.setStitchTypeForSelection(1);
+    QVERIFY(window.sequence_.has_value());
+    window.updateActions();
+    QVERIFY(window.fillBlockHolesAct_->isEnabled());
+
+    const std::string before = window.undoStack_.undoName();
+    const std::size_t embBefore = window.project_.embroidery_objects.size();
+    const auto vectorSignature = [&] {
+        std::size_t nodes = 0;
+        for (const auto& v : window.project_.vector_objects) {
+            for (const auto& set : v.paths) {
+                nodes += set.outer.nodes.size();
+            }
+        }
+        return std::pair{window.project_.vector_objects.size(), nodes};
+    };
+    const auto signatureBefore = vectorSignature();
+
+    window.fillBlockHolesWith(2.0, 0.0);
+    QVERIFY(window.project_.embroidery_objects.size() > embBefore ||
+            vectorSignature() != signatureBefore);
+    QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
+             QStringLiteral("Combler les vides du bloc"));
+
+    window.undo(); // un seul pas d'annulation
+    QCOMPARE(window.project_.embroidery_objects.size(), embBefore);
+    QVERIFY(vectorSignature() == signatureBefore);
+    QVERIFY(window.undoStack_.undoName() == before);
+
+    // Sans sélection : aucun effet, message dans la barre d'état.
+    window.setSelection({});
+    window.fillBlockHolesWith(2.0, 0.0);
+    QCOMPARE(window.project_.embroidery_objects.size(), embBefore);
+}
+
 void MainWindowTest::knifeToolSplitsSelectedShape() {
     MainWindow window;
     window.applyLoadedProject(twoOverlappingRectangles());
@@ -7915,27 +8172,26 @@ void MainWindowTest::multiSelectionBlockAppliesSettingsToAllObjectsInOneStep() {
     auto* panel = window.findChild<PropertiesPanel*>();
     QVERIFY(panel != nullptr);
 
-    auto* useSpacing = panel->findChild<QCheckBox*>(QStringLiteral("check_multiSpacing"));
-    auto* spacing = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_multiSpacing"));
-    auto* useAngle = panel->findChild<QCheckBox*>(QStringLiteral("check_multiAngle"));
-    auto* angle = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_multiAngle"));
-    auto* apply = panel->findChild<QPushButton*>(QStringLiteral("button_multiApply"));
-    QVERIFY(useSpacing && spacing && useAngle && angle && apply);
-    QVERIFY(!spacing->isEnabled()); // grisé tant que la case est décochée
-    useSpacing->setChecked(true);
-    spacing->setValue(0.7);
-    useAngle->setChecked(true);
-    angle->setValue(30.0);
+    // HP-UX-038 : un seul modèle d'édition (en direct, une commande composite par édition) ; les
+    // champs du formulaire de groupe remplacent l'ancien bloc « Appliquer à N objets ».
+    auto* spacing = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_rowSpacing"));
+    auto* angle = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_tatamiAngle"));
+    QVERIFY(spacing && angle);
+    QCOMPARE(spacing->value(), 0.4); // valeurs identiques : valeur commune, pas « — »
 
     const auto stepsBefore = window.undoStack_.undoNames().size();
-    apply->click();
+    spacing->setValue(0.7);
     QCOMPARE(window.undoStack_.undoNames().size(), stepsBefore + 1); // un seul pas
+    angle->setValue(30.0);
+    QCOMPARE(window.undoStack_.undoNames().size(), stepsBefore + 2); // un pas par édition
+    window.flushPendingRefresh();
     for (const ObjectId id : {embA, embB}) {
         const auto& t = std::get<openstitch::document::TatamiParams>(
             window.project_.findEmbroidery(id)->params);
         QCOMPARE(t.row_spacing.value, 700);
         QVERIFY(std::abs(t.angle.radians - 30.0 * std::numbers::pi / 180.0) < 1e-9);
     }
+    window.undo();
     window.undo();
     for (const ObjectId id : {embA, embB}) {
         const auto& t = std::get<openstitch::document::TatamiParams>(
@@ -7954,11 +8210,10 @@ void MainWindowTest::multiSelectionBlockCanConvertEveryObjectToContourInOneStep(
     window.applySelectionClick(fx.a, SelectMode::Replace);
     window.applySelectionClick(fx.b, SelectMode::Add);
     auto* panel = window.findChild<PropertiesPanel*>();
-    auto* type = panel->findChild<QComboBox*>(QStringLiteral("combo_multiType"));
-    auto* apply = panel->findChild<QPushButton*>(QStringLiteral("button_multiApply"));
-    QVERIFY(type && apply);
-    type->setCurrentIndex(1); // contour cousu
-    apply->click();
+    auto* contour = panel->findChild<QToolButton*>(QStringLiteral("button_stitchType0"));
+    QVERIFY(contour != nullptr);
+    contour
+        ->click(); // HP-UX-028 : un clic, la couture est convertie (remplace liste + « Appliquer »)
     QVERIFY(!window.project_.findEmbroidery(embA)->is_tatami());
     QVERIFY(!window.project_.findEmbroidery(embB)->is_tatami());
     window.undo();
@@ -8069,7 +8324,8 @@ void MainWindowTest::documentPanelCheckBoxesAndRenameAreUndoableCommands() {
     const TrianglesFixture fx = buildTwoTatamiTriangles(embA, embB);
     window.applyLoadedProject(fx.project);
     auto* tree = window.documentPanel_->findChild<QTreeWidget*>();
-    QVERIFY(tree != nullptr && tree->topLevelItemCount() == 2);
+    // 2 objets cousus + la forme « C » non cousue, désormais ligne indépendante (HP-UX-037).
+    QVERIFY(tree != nullptr && tree->topLevelItemCount() == 3);
 
     tree->topLevelItem(0)->setCheckState(1, Qt::Unchecked); // Visible
     QTRY_VERIFY(!window.project_.findEmbroidery(embA)->visible);

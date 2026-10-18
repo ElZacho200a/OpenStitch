@@ -65,7 +65,7 @@ Le **mode d'interaction** vient de la palette d'outils (à gauche) :
 - **Tracé ouvert** (`U`) : option, pas un outil. Cochée, le **Polygone** devient une ligne brisée ouverte (2 points suffisent) et la **Courbe de Bézier** une courbe ouverte : rien ne relie le dernier point au premier. À utiliser pour un point de contour ou un satin de bordure le long d'une ligne.
 - **Couteau** (`K`) : trace une ligne qui découpe les formes traversées (voir *Menu Forme*).
 - **Zoom** : molette (ancrée sous le curseur) ou barre d'outils / menu Affichage.
-- **Échap** : revient à la Sélection et annule le mode fusion en cours.
+- **Échap** : revient à la Sélection et annule le mode fusion en cours. Quand il n'y a plus rien à annuler, Échap désélectionne les objets.
 
 ### Sélection multiple
 
@@ -161,7 +161,26 @@ entre les deux marqueurs.
 | N2 | Édition de nœuds | Maj + glisser | Verrouiller l'axe |
 | N2b | Édition de nœuds | Ctrl + glisser | Suspendre l'accroche |
 | N4 | Édition de nœuds | Suppr | Supprimer les nœuds sélectionnés |
+| V1 | Règle | Glisser | Mesurer une distance (règle temporaire) |
+| V2 | Pipette | Clic | Échantillonner la couleur et choisir un fil |
 <!-- GESTURES:END -->
+
+### Outils Règle et Pipette
+
+- **Règle (Q)** : cliquez-glissez sur le canevas ; une règle temporaire affiche la
+  distance en mm, les écarts Δx / Δy et l'angle (0° = est, sens antihoraire). Le
+  résultat est repris dans la barre d'état et copiable (bouton **Copier la mesure**
+  de la palette d'outils). La mesure est purement visuelle : aucune commande n'est
+  créée, rien n'entre dans l'historique d'annulation, et la règle disparaît quand
+  on change d'outil (Échap interrompt une mesure en cours). Le calcul vient de
+  `geometry::measure_segment`.
+- **Pipette (I)** : cliquez sur l'image affichée ; la couleur est moyennée sur
+  5 × 5 pixels (`thread_palette::pick_thread`) et un petit menu propose les cinq fils
+  les plus proches du nuancier choisi dans le panneau Fils (écart CIEDE2000). Choisir
+  un fil l'assigne aux objets de broderie sélectionnés par la commande annulable
+  `SetObjectThreadCommand` ; le menu propose aussi la couleur échantillonnée en
+  couleur libre et, si le clic tombe sur une forme déjà brodée, de reprendre le fil de
+  cet objet. Sans objet de broderie sélectionné, les entrées sont grisées.
 
 Précisions sur les gestes du tableau :
 
@@ -199,14 +218,16 @@ Précisions sur les gestes du tableau :
 | Action | Raccourci | Effet |
 |---|---|---|
 | Nouveau projet | Ctrl+N | Repart d'un document vierge (voir ci-dessous) |
-| Ouvrir une image… | Ctrl+O | Charge PNG/JPEG/BMP/TIFF ou SVG puis demande la taille physique ; propose d'enregistrer le projet en cours |
+| Ouvrir… | Ctrl+O | Ouvre un projet `.osp`, un fichier de broderie (DST/PES/JEF/EXP), un SVG ou une image selon l'extension ; propose d'enregistrer le projet en cours |
+| Importer une image ou un SVG… | Ctrl+Maj+I | Charge PNG/JPEG/BMP/TIFF ou SVG puis demande la taille physique ; propose d'enregistrer le projet en cours |
 | Enregistrer le projet | Ctrl+S | Réécrit le `.osp` courant (demande où enregistrer la première fois) |
 | Enregistrer le projet sous… | Ctrl+Maj+S | Écrit le document dans un nouveau `.osp`, qui devient le fichier courant |
 | Ouvrir un projet… | — | Recharge un `.osp` |
 | Récents | — | Sous-menu des 10 derniers projets ouverts ou enregistrés (voir ci-dessous) |
 | Vider la liste des récents | — | Efface la liste |
-| Exporter une broderie machine… | Ctrl+E | Dialogue : format (DST, PES, JEF, EXP), options (coupes, arrêts, changements de couleur) et résumé pré-export (dimensions, points, analyse, limites du format) ; puis le fichier, avec l'extension du format (points uniquement) |
-| Importer une broderie machine… | — | Relit un `.dst`, `.pes`, `.jef` ou `.exp` comme séquence de points, avec les couleurs de fil pour PES et JEF (propose d'enregistrer le projet en cours) ; le glisser-déposer accepte les mêmes extensions |
+| Exporter une broderie machine… | Ctrl+E | Dialogue : format (DST, PES, JEF, EXP), options (coupes, arrêts, changements de couleur) et résumé pré-export (dimensions, points, analyse, limites du format) ; puis le fichier, avec l'extension du format (points uniquement). Pour un **DST** ou un **EXP**, la case « Écrire aussi le fichier de couleurs à côté » écrit un second fichier de même nom (`.csv` lisible dans un tableur, ou `.inf` binaire) qui liste les fils, un par bloc de couleur |
+| Importer une broderie machine… | — | Relit un `.dst`, `.pes`, `.jef` ou `.exp` comme séquence de points, avec les couleurs de fil pour PES et JEF, ou pour DST et EXP celles d'un fichier de couleurs voisin (`.inf` puis `.csv`, même nom) s'il existe ; un fichier de couleurs absent ou invalide n'empêche jamais l'import (propose d'enregistrer le projet en cours) ; le glisser-déposer accepte les mêmes extensions |
+| Exporter l'image (PNG, JPEG)… | — | Image du motif brodé pour un devis ou un client (HP-FMT-011). Dialogue : résolution (px/mm), marge, fond de tissu opaque ou transparent (PNG), qualité Rapide ou Haute, format PNG ou JPEG (qualité réglable) ; la taille de l'image en pixels est annoncée et la résolution est abaissée si l'image serait trop grande. Le rendu est celui du rendu réaliste (fils texturés) de la séquence effective, avec la couleur des objets ; un gros motif est calculé derrière une fenêtre d'attente. L'écriture est atomique |
 | Fiche de production… | — | Aperçu, impression ou export PDF A4 d'une fiche (dimensions, points, temps estimé, blocs de couleur, avertissements, notes) ; voir [fiche de production](production-sheet.md) |
 | Importer un DXF… / Exporter en DXF… | — | Échange de contours vectoriels avec un logiciel de dessin (les points ne sont pas concernés) |
 | Quitter | Ctrl+Q | Ferme l'application |
@@ -233,6 +254,13 @@ de hauteur indépendante était ignoré). Le dossier du dernier import est mémo
 **Export DST** : un **résumé** (dimensions, points, sauts,
 coupes, changements de couleur, fil estimé, cadre, dépassement éventuel) est
 présenté avant écriture, avec un rappel que le DST ne conserve pas les objets.
+**Fichier de couleurs** (HP-FMT-009, HP-FMT-005) : le DST n'emporte que des arrêts
+couleur et l'EXP aucune couleur ; le fichier compagnon écrit à côté conserve les RVB des fils
+dans l'ordre des blocs. Il n'est écrit que sur demande, jamais pour PES/JEF (qui portent leurs
+couleurs), et un échec d'écriture du compagnon est signalé sans invalider le motif déjà écrit.
+En ligne de commande : `openstitch-cli osp2dst projet.osp motif.dst --color-file csv|inf`.
+La structure du `.inf` n'est pas validée par un logiciel tiers (voir
+[formats PES, JEF, EXP](formats-pes-jef-exp.md)) ; le `.csv` est le choix prudent.
 
 **Enregistrer** : le document retient le fichier `.osp` auquel il est rattaché
 (celui qu'on vient d'ouvrir ou d'enregistrer). Ctrl+S réécrit ce fichier
@@ -287,7 +315,24 @@ en `.osp` ; s'il est modifié, il entre aussi dans la sauvegarde automatique.
 | Dupliquer la forme | — | Duplique la forme sélectionnée |
 | Décaler la forme… | — | Décale ou rétrécit la forme sélectionnée |
 | Préférences — Intelligence artificielle… | — | Configure la segmentation par IA (voir *Menu Segmentation*) |
+| Paramètres… | Ctrl+, | Ouvre l'onglet **Paramètres** (réglages d'interface et d'édition, voir ci-dessous) |
 | Aligner la sélection | — | À gauche, centrés, à droite, en haut, centrés verticalement, en bas : range les formes sélectionnées (au moins deux) sur la boîte de la sélection, en un seul pas d'annulation |
+
+### Paramètres et fichier de réglages
+
+**Édition ▸ Paramètres…** (Ctrl+,) regroupe les réglages d'interface et de gestes d'édition :
+opacité de la carte des régions, délai de l'appui long, accrochage des nœuds au glisser, écart
+soudé par **Unir** (0,05 mm par défaut), largeur de la coupe du **Couteau** (0,02 mm) et longueur
+minimale de son trait (0,5 mm). **Rétablir les défauts** remet les valeurs d'origine ; chaque
+valeur est bornée. Ces réglages ne changent pas les points de broderie générés.
+
+Tous les réglages de l'application (ceux-ci, la disposition des panneaux et la taille de la
+fenêtre, le thème, les fichiers récents, les préférences IA) sont conservés dans un fichier INI,
+`OpenStitch Studio.ini`, dans le dossier de configuration de l'utilisateur
+(`%APPDATA%\OpenStitch` sous Windows ; le chemin exact est affiché en bas du dialogue). La
+fenêtre retrouve donc son dernier cadre d'une session à l'autre. Au premier lancement, les
+anciennes valeurs enregistrées dans le registre sont importées une fois dans ce fichier, qui n'est
+jamais écrasé ensuite.
 
 L'annulation couvre les opérations d'image, la segmentation (segmenter, fusionner,
 supprimer, recolorer), la création et le déplacement de nœuds vectoriels, la
@@ -321,25 +366,37 @@ l'original) :
 ## Menu Segmentation
 
 - Segmenter l'image… (**F6** ; nombre de couleurs, taille min de région avec son équivalent en
-  mm², lissage — les derniers réglages sont mémorisés) ;
+  mm², lissage — les derniers réglages sont mémorisés). Le dialogue reste **ouvert pendant que vous
+  travaillez** : chaque changement de réglage affiche, après un court délai, un **aperçu** de la
+  carte des régions sur l'image, avec le nombre de régions et de couleurs et celles trop petites
+  pour un remplissage. Rien n'est modifié tant que vous ne cliquez pas **Segmenter** ; fermer le
+  dialogue abandonne l'aperçu. La case *Aperçu sur l'image* le masque ;
+- **Fusionner les couleurs…** — panneau des couleurs de la segmentation (voir la page
+  *Segmentation*) : fusionne des teintes ou réduit la palette à N couleurs, avec aperçu ;
 - Segmenter avec l'IA… (régions proposées par un modèle ; grisée tant qu'aucune image n'est
   ouverte) ;
-- Afficher la carte des régions (bascule) et **Opacité de la carte** (glissière 20–100 %,
+- Afficher la carte des régions (bascule, **W**) et **Opacité de la carte** (glissière 20–100 %,
   mémorisée) : baissez-la pour juger les régions d'après la photo dessous ;
-- **Fusionner la sélection** (Ctrl+M) — fusionne toutes les régions sélectionnées dans la
+- **Fusionner la sélection** (Ctrl+M ou **J**) — fusionne toutes les régions sélectionnées dans la
   dernière cliquée (la **région active**, qui garde sa couleur), en un seul pas d'annulation ;
-- **Fusionner dans la voisine principale** (Ctrl+Maj+M) — la région rejoint la voisine avec
-  laquelle elle partage la plus longue frontière ;
+- **Fusionner dans la voisine principale** (Ctrl+Maj+M ou **A**) — la région rejoint la voisine
+  avec laquelle elle partage la plus longue frontière (aussi dans le menu contextuel d'une
+  région) ;
 - Fusionner avec… (puis clic sur la région cible) — absorbe toute la sélection dans la région
   cliquée. Le mode s'annonce dans la barre d'état et par un curseur « main » ; un clic sur une
   région déjà sélectionnée ou dans le vide n'annule pas le mode mais explique quoi cliquer
   (Échap annule) ;
-- **Sélectionner la même couleur**, **Sélectionner les voisines**, **Tout sélectionner** (Ctrl+A) ;
+- **Sélectionner la même couleur** (**C**), **Sélectionner les voisines** (**N**), **Tout
+  sélectionner** (Ctrl+A) ;
+- **Région suivante** / **Région précédente** (**Alt+→** / **Alt+←**) — parcourent les régions
+  dans l'ordre de leurs numéros, avec retour au début, et sélectionnent chacune à son tour (ses
+  infos s'affichent dans la barre d'état). Ni `Tab` (il sert à passer d'un panneau à l'autre) ni
+  `Entrée` (valide un champ, termine un tracé) ne sont pris ;
 - **Recolorer la sélection…** — un sélecteur de couleur, appliqué à toutes les régions
   sélectionnées (un pas d'annulation) ;
 - **Rétablir la couleur d'origine** — rend à chaque région sa couleur moyenne dans l'image ;
 - Supprimer : voir le menu Édition (Suppr) — les régions supprimées redeviennent du fond ;
-- **Vectoriser la sélection** (**F7**) — convertit **toutes** les régions sélectionnées en objets
+- **Vectoriser la sélection** (**F7** : dernier détail utilisé, sans dialogue ; **Maj+F7** ou le menu : règle le détail) — convertit **toutes** les régions sélectionnées en objets
   vectoriels, en un seul pas d'annulation (le niveau de détail demandé s'applique à toutes et
   est mémorisé). Une région déjà vectorisée n'est jamais dupliquée : la boîte propose de
   **remplacer** son objet, de l'**ignorer** (ou de sélectionner l'objet existant) ou d'annuler.
@@ -456,19 +513,34 @@ d'annulation** et garde les objets de broderie de la forme conservée.
   sélectionnées, ou seulement ceux sous une aire donnée en mm² ;
 - **Unir** (Ctrl+Maj+U) — fusionne au moins deux formes sélectionnées (Maj + clic) en une seule ;
   la dernière sélectionnée garde son identité, ses réglages de point et son nom. Les autres formes
-  (et leurs broderies) disparaissent.
+  (et leurs broderies) disparaissent. Deux formes juxtaposées séparées par un écart d'au plus
+  0,05 mm (par exemple deux morceaux issus du Couteau) sont soudées en un seul contour ; les trous
+  plus étroits que 0,05 mm sont comblés au passage.
 - **Soustraire** (Ctrl+Alt+S) — retire de la forme la plus **basse** du document toutes les autres
   formes sélectionnées, qui sont supprimées. Un résultat vide est refusé.
 - **Intersecter** (Ctrl+Alt+I) — ne garde que la partie commune à toutes les formes.
 - **Séparer les morceaux** (Ctrl+Maj+B) — une forme composée de plusieurs morceaux disjoints
   devient autant d'objets.
 - **Couteau** (touche **K**) — cliquez-glissez une ligne à travers une ou plusieurs formes pour
-  les découper. Sans sélection, toutes les formes visibles traversées sont coupées ; avec une
+  les découper. Seul le segment tracé coupe : une forme n'est découpée que si le trait la
+  traverse de part en part (il doit dépasser de chaque côté) ; un trait qui s'arrête dans la forme
+  ou qui passe à côté ne fait rien. Sans sélection, toutes les formes visibles traversées sont coupées ; avec une
   sélection, seules les formes sélectionnées le sont. Le plus grand morceau garde l'identité de la
   forme d'origine ; chaque autre morceau devient un nouvel objet, avec une **copie des réglages de
   broderie** (tatami, directionnel, auto-satin ; les satins à rails et les retouches manuelles
   point par point ne sont pas copiés). La coupe retire une bande de 0,02 mm, sans effet sur la
   couture.
+- **Lisser…** — pour les formes sélectionnées, réduit le nombre de nœuds et remplace les parties
+  arrondies par des courbes de Bézier, sans s'écarter du tracé d'origine de plus de la tolérance
+  demandée (0,2 mm par défaut ; coins francs et extrémités des tracés ouverts conservés). Une
+  forme déjà lisse ou trop simple est laissée telle quelle ; si rien ne change, un message le dit.
+- **Convertir en courbes** — arrondit les sommets doux des polygones sélectionnés en courbes qui
+  passent par les mêmes points ; les coins francs (angle de plus de 60°) restent des coins.
+  Lisser comme Convertir s'appliquent à toute la sélection en **un seul pas d'annulation**.
+- **Formes prédéfinies** — sous-menu qui insère, au centre de la vue, une **étoile** (nombre de
+  branches au choix), un **cœur**, une **flèche**, un **rectangle arrondi**, un **arc** ou une
+  **spirale**. La taille (40 mm par défaut) est demandée ; la forme créée est un objet vectoriel
+  ordinaire, sélectionné et annulable, que l'on convertit ensuite en broderie comme les autres.
 
 ## Menu Texte (lettrage)
 
@@ -485,7 +557,9 @@ Voir [Lettrage](lettering.md) pour le fonctionnement détaillé.
 Dans le dialogue : police (deux polices intégrées, puis polices installées), hauteur de
 capitale, couleur, type de point (**Automatique** : satin pour les traits fins, tatami pour les
 gros ; **Satin**, **Tatami**, **Contour**), alignement, espaces entre lettres et mots,
-interligne, crénage, position, rotation. L'aperçu montre les contours ; les avertissements
+interligne, crénage de la police, **crénage manuel** (une paire par ligne, par exemple
+`AV: -0,3 mm` : l'écart remplace celui de la police pour cette paire), **ligatures** (ff, fi,
+fl… quand la police les contient), position, rotation. L'aperçu montre les contours ; les avertissements
 (texte sous 5 mm, trait trop fin, lettre cousue en tatami faute de satin possible, caractère
 absent de la police) s'affichent sous l'aperçu et dans le panneau Analyse.
 
@@ -640,6 +714,7 @@ Le sous-menu **Calques** regroupe des interrupteurs indépendants :
 | Ajuster au canevas | Ctrl+0 ou F | Cadre la vue sur le canevas |
 | Rendu réaliste ▸ Activer | Ctrl+Maj+R | Dessine chaque point comme un fil texturé (voir ci-dessous) |
 | Rendu réaliste ▸ Réglages… | — | Épaisseur du fil, relief, brillance, torsion, ombre, tissu, qualité |
+| Carte de densité | — | Surimpression colorée de la densité de points (voir ci-dessous) |
 | Taille du cadre… | — | Définit la zone physique de broderie (voir ci-dessous) |
 | Thème | — | Clair / Sombre |
 | Densité | — | Confortable / Compact |
@@ -702,6 +777,28 @@ moins de ~1,6 pixel d'épaisseur, l'ombrage n'est plus lisible) et la
 sont pas dessinés. Le tissu est peint autour du motif (zone englobante), pas
 sur tout le cadre.
 
+### Carte de densité
+
+**Affichage ▸ Carte de densité** (case à cocher, mémorisée entre deux sessions comme
+les autres préférences d'affichage) pose sur le canevas une **surimpression colorée** :
+la grille de cases de 1 mm compte, pour chaque case, les pénétrations d'aiguille par
+mm² de la séquence réellement cousue (retouches manuelles incluses). La palette va du
+**bleu** (peu de points) au **rouge** (très dense) en passant par le vert et le jaune ;
+les cases au-delà du seuil sont plus opaques. Une **légende** (dégradé, valeur maximale
+et repère du seuil, en pén./mm²) s'affiche en bas à gauche de la vue.
+
+Le calcul se fait hors du fil d'interface (fenêtre « Veuillez patienter ») et son
+résultat est mis en cache : l'image n'est recalculée que si les points ou le seuil
+changent ; tant que le motif vient de changer, l'ancienne image n'est jamais montrée.
+La carte est un simple affichage : elle ne modifie jamais le document et n'entre pas
+dans l'historique d'annulation. Elle est masquée pendant la simulation de couture et
+quand le calque *Broderie (points)* est masqué.
+
+Dans le panneau **Analyse**, la section *Carte de densité* règle le **seuil de zone
+sur-dense** (4,0 pén./mm² par défaut, une heuristique d'ingénierie non mesurée sur un
+corpus ; mémorisé) et liste les **zones sur-denses** : un clic (ou Entrée) sur une
+zone **centre la vue** dessus.
+
 ## Menu contextuel (clic droit)
 
 Un **clic droit** sur une forme ouvre un menu :
@@ -727,6 +824,13 @@ Dock (à droite, dès qu'il existe des objets) pour **isoler** ce qu'on regarde 
   seuil (mm²) — utile pour cacher les micro-régions ;
 - **Couleurs de fil** : une case par couleur distincte, pour n'afficher que
   certains fils.
+
+**Raccourcis** : un clic droit sur un type ou une couleur du panneau (ou sur une
+broderie du canvas) propose *Afficher uniquement ce type / cette couleur* ; le
+bouton **Tout afficher** (ou l'entrée *Tout afficher (filtres)* du menu du canvas,
+présente dès qu'un filtre est actif) réinitialise types, couleurs et taille min.
+Les sélecteurs de couleur de fil (*Couleur de la broderie…*, *Couleur de la
+couche*) proposent les couleurs de l'image dans leurs « Custom colors ».
 
 Ces filtres n'affectent que **l'affichage** (pas l'export ni les points générés).
 Ils s'appliquent aussi aux **formes vectorielles** : une forme est masquée si
@@ -823,10 +927,21 @@ détectés, triés par gravité.
   vue sur lui (y compris quand le problème se trouve à l'origine du canevas). Le clic
   droit propose « Sélectionner l'objet » et « Centrer la vue sur le problème ».
 - Sous la liste, une **piste de correction** accompagne le problème sélectionné.
+- Le bouton **Corriger** applique la correction proposée quand il y en a une (ramener
+  un objet dans le cadre, agrandir un texte à 5 mm, ramener une longueur de point dans
+  la plage du projet, découper les points trop longs, activer les finitions). C'est une
+  commande ordinaire : **Ctrl+Z** l'annule. Il est grisé quand le résultat est périmé.
 - Chaque catégorie est plafonnée à 50 problèmes ; une ligne « … et N autre(s)
   problème(s) » dit combien n'ont pas été listés.
 - Quand le motif change, le résultat est marqué **périmé** puis recalculé après
   300 ms si le panneau est visible (sinon à sa prochaine ouverture).
+- Règles ajoutées par HP-PROD-007 : *détail trop petit* (objet de moins de 1 mm sur les
+  deux axes), *objet sans point d'arrêt* (quand les finitions sont actives) — listées
+  comme les autres, avec l'objet nommé et le centrage au clic. Deux règles sont
+  **désactivées par défaut** et s'activent dans la section *Règles optionnelles* du
+  panneau : *trop de coupes* (au-delà d'un nombre de coupes, 50 proposé) et *densité
+  excessive* (au-delà d'un nombre de pénétrations par mm², 4,0 proposé). Les réglages sont
+  mémorisés ; en modifier un marque le résultat périmé puis relance l'analyse.
 
 ## Panneau Ordre de couture
 
@@ -862,7 +977,15 @@ motif aux fils réels. Il a trois onglets ; une ligne en tête rappelle la séle
   nuanciers importés sont conservés d'une session à l'autre et peuvent être retirés. Le
   nuancier **Générique** (couleurs usuelles sans marque) est toujours disponible ; les
   nuanciers de marques intégrés sont des **données de démonstration fictives**, signalées
-  comme telles : importez vos propres cartes de fils.
+  comme telles : importez vos propres cartes de fils. La case **Je possède ce fil** ajoute le
+  fil sélectionné à *Mes fils*.
+- **Mes fils** — votre stock de bobines : les fils cochés « Je possède ce fil » et ceux de votre
+  nuancier personnel (*Ajouter un fil personnel…* : référence, nom, couleur ; *Retirer de mes
+  fils*). La case *Limiter la recherche du fil le plus proche à mes fils* restreint *Fils les
+  plus proches de la sélection* et *Couleurs libres → fil le plus proche* aux fils que vous
+  possédez. Le stock est une préférence personnelle (fichier `my_threads.json` à côté du
+  fichier de réglages), pas une donnée du projet : il n'entre pas dans l'historique d'annulation
+  et n'est pas enregistré dans le `.osp`.
 - **Film couleur** — les blocs de couleur dans l'ordre de couture. Glissez un bloc (ou
   *Monter*/*Descendre*) pour réordonner les couleurs ; les objets dont l'ordre est figé ne
   bougent pas. *Fusionner les blocs de même fil* regroupe les passages d'un même fil pour
@@ -937,7 +1060,12 @@ la liste complète et filtrable est dans **Aide ▸ Gestes souris et clavier** (
 | Raccourci | Action |
 |---|---|
 | Ctrl+N | Nouveau projet (garde des modifications non enregistrées) |
-| Ctrl+O / Ctrl+S | Ouvrir une image / Enregistrer le projet (sans redemander le chemin) |
+| Ctrl+O / Ctrl+S | Ouvrir (projet, fichier de broderie, SVG ou image) / Enregistrer le projet (sans redemander le chemin) |
+| Ctrl+Maj+I | Importer une image ou un SVG |
+| 1 / 2 / 3 / 4 | Afficher ou masquer l'image / les régions / les vecteurs / les points |
+| Z / Maj+Z / Ctrl+1 | Zoom sur la sélection / zoom précédent / taille réelle |
+| Ctrl+A | Tout sélectionner dans la couche affichée (objets si les vecteurs sont visibles, sinon régions) |
+| Clic répété au même point | Sélectionne l'objet suivant dessous |
 | Ctrl+Maj+S | Enregistrer le projet sous… |
 | Ctrl+Z | Annuler |
 | Ctrl+Y ou Ctrl+Maj+Z | Rétablir |
@@ -946,10 +1074,14 @@ la liste complète et filtrable est dans **Aide ▸ Gestes souris et clavier** (
 | Ctrl++ / Ctrl+- / Ctrl+0 | Zoom avant / arrière / ajuster |
 | F | Ajuster au canevas |
 | F5 | Analyser le motif |
-| F6 / F7 / F8 | Segmenter l'image / Vectoriser la sélection / Numérisation automatique |
+| F6 / F7 / F8 | Segmenter l'image / Vectoriser la sélection (Maj+F7 : régler le détail) / Numérisation automatique |
 | F9 | Statistiques de broderie |
 | V / H / M | Outils : Sélection / Déplacer la vue / Recadrer l'image |
-| Échap | Revenir à la Sélection (annule la fusion, le tracé ou le geste en cours) |
+| Échap | Revenir à la Sélection (annule la fusion, le tracé ou le geste en cours) ; s'il n'y a rien à annuler, **désélectionne les régions** |
+| W | Afficher / masquer la carte des régions |
+| J / A | Régions : fusionner la sélection / fusionner dans la voisine principale (aussi Ctrl+M / Ctrl+Maj+M) |
+| C / N | Régions : sélectionner la même couleur / les voisines |
+| Alt+→ / Alt+← | Région suivante / précédente |
 | Entrée / Retour arrière | Terminer le tracé en cours / retirer le dernier point (actifs seulement pendant un tracé ; sinon ils servent aux champs et aux listes) |
 | R / O / P / G / B / L | Dessin : rectangle / ellipse / polygone / polygone régulier / Bézier / main levée |
 | S | Outil Colonne satin (rails manuels) |
@@ -959,6 +1091,8 @@ la liste complète et filtrable est dans **Aide ▸ Gestes souris et clavier** (
 | D | Guides de direction d'un remplissage directionnel (bascule) |
 | Flèches / Maj + flèches | Déplacer l'objet de 0,1 mm / 1 mm |
 | K | Outil Couteau |
+| Q | Outil Règle : mesurer une distance au canevas (sans modifier le document) |
+| I | Outil Pipette : échantillonner une couleur de l'image et choisir un fil |
 | U | Option « Tracé ouvert » (polygone et courbe non fermés) |
 | F1 | Ouvrir « Gestes souris et clavier » |
 | Ctrl+Shift+P | Masquer / afficher les panneaux |

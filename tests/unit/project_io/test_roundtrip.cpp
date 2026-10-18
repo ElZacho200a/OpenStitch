@@ -4,7 +4,10 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 
+#include "json_serialize.hpp"
+#include "openstitch/document/color_blend.hpp"
 #include "openstitch/project_io/project_io.hpp"
 
 using namespace openstitch;
@@ -48,6 +51,9 @@ document::Project rich_project() {
     project.ops.push_back(image::QuantizeOp{4});
     project.ops.push_back(image::BrightnessContrastOp{10.0, -5.0});
     project.ops.push_back(image::BilateralDenoiseOp{3});
+    project.ops.push_back(image::FlattenOp{3});
+    project.ops.push_back(image::ClaheOp{3.5});
+    project.ops.push_back(image::SharpenOp{0.5});
     project.ops.push_back(image::CoherentLinesOp{1.5, 2.0, 0.99, 0.9, 2, 4});
 
     segmentation::Segmentation seg;
@@ -135,6 +141,140 @@ fs::path temp_osp() {
 
 } // namespace
 
+TEST_CASE("blend core: osp and clipboard roundtrip keep exact uint64 links and density mode",
+          "[blend_core]") {
+    document::Project project;
+    document::VectorObject vector;
+    vector.id = ObjectId{1};
+    vector.paths = {geometry::PathSet{square_path(), {}}};
+    project.vector_objects.push_back(vector);
+    document::EmbroideryObject background;
+    background.id = ObjectId{9'007'199'254'740'993ULL};
+    background.source_vector = vector.id;
+    background.params = document::TatamiParams{};
+    document::EmbroideryObject foreground = background;
+    foreground.id = ObjectId{std::numeric_limits<std::uint64_t>::max() - 1};
+    document::DirectionalFillParams params;
+    params.density_gradient = document::DensityGradient{um(0, 0), um(5'000, 0), Micrometers{400},
+                                                        Micrometers{1'600}, true};
+    foreground.params = params;
+    background.color_blend = document::ColorBlendLink{foreground.id, false};
+    foreground.color_blend = document::ColorBlendLink{background.id, true};
+    project.embroidery_objects = {background, foreground};
+    project.object_ids.reset(foreground.id.value);
+    const auto json = project_io::detail::project_to_json(project);
+    REQUIRE(json["embroideryObjects"][0].contains("colorBlend"));
+    CHECK(json["embroideryObjects"][0]["colorBlend"]["partner"].get<std::uint64_t>() ==
+          foreground.id.value);
+    const auto parsed = project_io::detail::project_from_json(nlohmann::json::parse(json.dump()));
+    REQUIRE(parsed);
+    REQUIRE(parsed->embroidery_objects.size() == 2);
+    CHECK(parsed->embroidery_objects[0].color_blend == background.color_blend);
+    CHECK(parsed->embroidery_objects[1].color_blend == foreground.color_blend);
+    CHECK(parsed->embroidery_objects[1].params == foreground.params);
+    CHECK(document::find_color_blend(*parsed, foreground.id) ==
+          document::ColorBlendLayers{background.id, foreground.id});
+    const auto path = temp_osp();
+    REQUIRE(project_io::save_project(path, project));
+    const auto loaded = project_io::load_project(path);
+    fs::remove(path);
+    REQUIRE(loaded);
+    CHECK(loaded->embroidery_objects[0].color_blend == background.color_blend);
+    CHECK(loaded->embroidery_objects[1].color_blend == foreground.color_blend);
+    CHECK(loaded->embroidery_objects[1].params == foreground.params);
+    const document::ObjectFragment fragment{project.vector_objects, project.embroidery_objects};
+    const auto clipboard = project_io::fragment_from_json(project_io::fragment_to_json(fragment));
+    REQUIRE(clipboard);
+    REQUIRE(clipboard->embroideries.size() == 2);
+    CHECK(clipboard->embroideries[0].color_blend == background.color_blend);
+    CHECK(clipboard->embroideries[1].color_blend == foreground.color_blend);
+}
+
+TEST_CASE("blend core: legacy JSON omits relation and keeps spacing interpolation",
+          "[blend_core]") {
+    auto project = rich_project();
+    document::DirectionalFillParams params;
+    params.density_gradient =
+        document::DensityGradient{um(0, 0), um(5'000, 0), Micrometers{400}, Micrometers{1'600}};
+    project.embroidery_objects[1].params = params;
+    const auto json = project_io::detail::project_to_json(project);
+    CHECK_FALSE(json["embroideryObjects"][1].contains("colorBlend"));
+    CHECK_FALSE(
+        json["embroideryObjects"][1]["params"]["densityGradient"].contains("interpolateDensity"));
+    const auto loaded = project_io::detail::project_from_json(json);
+    REQUIRE(loaded);
+    for (const auto& object : loaded->embroidery_objects) {
+        CHECK_FALSE(object.color_blend);
+    }
+    const auto& gradient =
+        std::get<document::DirectionalFillParams>(loaded->embroidery_objects[1].params)
+            .density_gradient;
+    REQUIRE(gradient);
+    CHECK_FALSE(gradient->interpolate_density);
+    CHECK(loaded->embroidery_objects[1].params == project.embroidery_objects[1].params);
+    CHECK(project_io::detail::project_to_json(*loaded) == json);
+}
+
+TEST_CASE("density curve is persisted only when not linear", "[blend_core]") {
+    auto project = rich_project();
+    document::DirectionalFillParams params;
+    params.density_gradient =
+        document::DensityGradient{um(0, 0),           um(5'000, 0), Micrometers{400},
+                                  Micrometers{1'600}, false,        document::DensityCurve::Steep};
+    project.embroidery_objects[1].params = params;
+    auto json = project_io::detail::project_to_json(project);
+    auto& stored = json["embroideryObjects"][1]["params"]["densityGradient"];
+    CHECK(stored["curve"] == 2);
+
+    const auto loaded = project_io::detail::project_from_json(json);
+    REQUIRE(loaded);
+    CHECK(loaded->embroidery_objects[1].params == project.embroidery_objects[1].params);
+    CHECK(project_io::detail::project_to_json(*loaded) == json);
+
+    // Valeur inconnue (fichier édité ou plus récent) : relue comme linéaire.
+    stored["curve"] = 9;
+    const auto unknown = project_io::detail::project_from_json(json);
+    REQUIRE(unknown);
+    const auto& gradient =
+        std::get<document::DirectionalFillParams>(unknown->embroidery_objects[1].params)
+            .density_gradient;
+    REQUIRE(gradient);
+    CHECK(gradient->curve == document::DensityCurve::Linear);
+
+    // Linéaire : la clé est absente, le fichier reste identique à l'ancien format.
+    std::get<document::DirectionalFillParams>(project.embroidery_objects[1].params)
+        .density_gradient->curve = document::DensityCurve::Linear;
+    const auto linear = project_io::detail::project_to_json(project);
+    CHECK_FALSE(linear["embroideryObjects"][1]["params"]["densityGradient"].contains("curve"));
+}
+
+TEST_CASE("blend core: malformed JSON links and non boolean interpolation are rejected",
+          "[blend_core]") {
+    const auto project = rich_project();
+    for (const auto& bad :
+         {nlohmann::json(nullptr), nlohmann::json(3), nlohmann::json::array(),
+          nlohmann::json{{"partner", 2}}, nlohmann::json{{"partner", -1}, {"foreground", false}},
+          nlohmann::json{{"partner", 2.5}, {"foreground", false}},
+          nlohmann::json{{"partner", "2"}, {"foreground", false}},
+          nlohmann::json{{"partner", 2}, {"foreground", 1}},
+          nlohmann::json{{"partner", 2}, {"foreground", "true"}},
+          nlohmann::json{{"partner", 1e30}, {"foreground", false}}}) {
+        auto json = project_io::detail::project_to_json(project);
+        json["embroideryObjects"][0]["colorBlend"] = bad;
+        const auto parsed = project_io::detail::project_from_json(json);
+        CHECK_FALSE(parsed);
+        if (!parsed) {
+            CHECK(parsed.error().category == ErrorCategory::InvalidFile);
+        }
+    }
+    for (const auto& bad : {nlohmann::json(1), nlohmann::json("true"), nlohmann::json(nullptr)}) {
+        auto json = project_io::detail::project_to_json(project);
+        json["embroideryObjects"][0]["params"] = {
+            {"type", "directional"}, {"densityGradient", {{"interpolateDensity", bad}}}};
+        CHECK_FALSE(project_io::detail::project_from_json(json));
+    }
+}
+
 TEST_CASE("projet complet : save puis load = memes donnees") {
     const auto original = rich_project();
     const auto path = temp_osp();
@@ -155,13 +295,16 @@ TEST_CASE("projet complet : save puis load = memes donnees") {
     CHECK(loaded->original.rgba == original.original.rgba);
 
     // Ops.
-    REQUIRE(loaded->ops.size() == 5);
+    REQUIRE(loaded->ops.size() == 8);
     CHECK(std::holds_alternative<image::GrayscaleOp>(loaded->ops[0]));
     CHECK(std::holds_alternative<image::QuantizeOp>(loaded->ops[1]));
     REQUIRE(std::holds_alternative<image::BilateralDenoiseOp>(loaded->ops[3]));
     CHECK(std::get<image::BilateralDenoiseOp>(loaded->ops[3]).strength == 3);
-    REQUIRE(std::holds_alternative<image::CoherentLinesOp>(loaded->ops[4]));
-    CHECK(std::get<image::CoherentLinesOp>(loaded->ops[4]) ==
+    CHECK(std::get<image::FlattenOp>(loaded->ops[4]).strength == 3);
+    CHECK(std::get<image::ClaheOp>(loaded->ops[5]).clip_limit == 3.5);
+    CHECK(std::get<image::SharpenOp>(loaded->ops[6]).amount == 0.5);
+    REQUIRE(std::holds_alternative<image::CoherentLinesOp>(loaded->ops[7]));
+    CHECK(std::get<image::CoherentLinesOp>(loaded->ops[7]) ==
           image::CoherentLinesOp{1.5, 2.0, 0.99, 0.9, 2, 4});
 
     // Segmentation.

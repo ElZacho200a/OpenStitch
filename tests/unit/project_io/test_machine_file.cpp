@@ -75,6 +75,68 @@ TEST_CASE("export_machine_file('dst') : memes octets que encode_dst(effective_se
     fs::remove(path);
 }
 
+TEST_CASE("with_start_point : FirstPoint est l'identite, sinon deux sauts de tete seulement") {
+    const auto effective = stitch_generation::effective_sequence(square_project());
+    REQUIRE(effective.has_value());
+
+    CHECK(project_io::with_start_point(*effective, {}).commands == effective->commands);
+
+    formats::ExportStart start;
+    start.mode = formats::StartMode::Custom;
+    start.point = um(-40'000, 25'000);
+    const auto moved = project_io::with_start_point(*effective, start);
+    REQUIRE(moved.commands.size() == effective->commands.size() + 2);
+    CHECK(moved.commands[0].pos == start.point);
+    CHECK(moved.commands[0].type == stitch::CommandType::Jump);
+    CHECK(moved.commands[1].pos == effective->commands.front().pos);
+    CHECK(moved.commands[1].type == stitch::CommandType::Jump);
+    // Ordre et positions du motif intacts.
+    CHECK(std::equal(effective->commands.begin(), effective->commands.end(),
+                     moved.commands.begin() + 2));
+
+    start.mode = formats::StartMode::Center;
+    const auto centered = project_io::with_start_point(*effective, start);
+    const auto bounds = stitch::compute_stats(*effective).bounds;
+    CHECK(centered.commands[0].pos.x.value == (bounds.min.x.value + bounds.max.x.value) / 2);
+    CHECK(centered.commands[0].pos.y.value == (bounds.min.y.value + bounds.max.y.value) / 2);
+}
+
+TEST_CASE("export_machine_file('dst') : point de depart relu, points inchanges, deterministe") {
+    const document::Project project = square_project();
+    const auto path = fs::temp_directory_path() / "openstitch_export_start.dst";
+    formats::MachineExportOptions options;
+    options.start.mode = formats::StartMode::Custom;
+    options.start.point = um(-20'000, 15'000);
+
+    REQUIRE(project_io::export_machine_file(project, "dst", path, options).has_value());
+    const auto first = formats::read_dst_file(path);
+    REQUIRE(project_io::export_machine_file(project, "dst", path, options).has_value());
+    const auto second = formats::read_dst_file(path);
+    REQUIRE(first.has_value());
+    REQUIRE(second.has_value());
+    CHECK(first->commands == second->commands);
+
+    // Le DST relu est relatif à l'origine machine = le point de départ choisi (au pas de 0,1 mm).
+    const auto effective = stitch_generation::effective_sequence(project);
+    REQUIRE(effective.has_value());
+    REQUIRE(first->commands.size() >= 2);
+    // Le saut d'approche (> 12,1 mm) est découpé : on cherche le point d'arrivée parmi les
+    // premières commandes relues.
+    CHECK(first->commands[0].pos == um(0, 0));
+    const Vec2um expectedFirst =
+        um(effective->commands.front().pos.x.value - options.start.point.x.value,
+           effective->commands.front().pos.y.value - options.start.point.y.value);
+    const bool reached =
+        std::any_of(first->commands.begin(),
+                    first->commands.begin() + std::min<std::size_t>(5, first->commands.size()),
+                    [&](const stitch::StitchCommand& c) {
+                        return std::abs(c.pos.x.value - expectedFirst.x.value) <= 50 &&
+                               std::abs(c.pos.y.value - expectedFirst.y.value) <= 50;
+                    });
+    CHECK(reached);
+    fs::remove(path);
+}
+
 TEST_CASE("import_machine_file : format inconnu (extension) refuse proprement") {
     const auto path = fs::temp_directory_path() / "openstitch_import_unknown.xyz";
     {
@@ -218,4 +280,75 @@ TEST_CASE("export_machine_file : optimisation des coupes a la demande, projet in
     CHECK(trims_of(imported->sequence) <= trims_of(importedPlain->sequence));
     fs::remove(path);
     fs::remove(plainPath);
+}
+
+TEST_CASE("export_machine_file : fichier compagnon de couleurs ecrit puis relu a l'import") {
+    const document::Project project = square_project();
+    for (const auto kind : {formats::CompanionKind::Csv, formats::CompanionKind::Inf}) {
+        for (const char* id : {"dst", "exp"}) {
+            const auto path =
+                fs::temp_directory_path() / (std::string("openstitch_companion_roundtrip.") + id);
+            const auto companionFile = formats::companion_path(path, kind);
+            fs::remove(companionFile);
+            project_io::ColorCompanionExport companion;
+            companion.write = true;
+            companion.kind = kind;
+            REQUIRE(project_io::export_machine_file(project, id, path, {}, {}, nullptr, &companion)
+                        .has_value());
+            CHECK(companion.error.empty());
+            CHECK(companion.written == companionFile);
+            REQUIRE(fs::exists(companionFile));
+
+            const auto imported = project_io::import_machine_file(path);
+            REQUIRE(imported.has_value());
+            REQUIRE_FALSE(imported->color_blocks.empty());
+            CHECK(imported->color_blocks.front().rgb == std::array<std::uint8_t, 3>{10, 20, 30});
+            fs::remove(path);
+            fs::remove(companionFile);
+        }
+    }
+}
+
+TEST_CASE("export_machine_file : sans option ou format colore, aucun compagnon") {
+    const document::Project project = square_project();
+    const auto dst = fs::temp_directory_path() / "openstitch_companion_none.dst";
+    const auto csv = formats::companion_path(dst, formats::CompanionKind::Csv);
+    fs::remove(csv);
+    REQUIRE(project_io::export_machine_file(project, "dst", dst).has_value());
+    CHECK_FALSE(fs::exists(csv));
+    project_io::ColorCompanionExport off; // write = false
+    REQUIRE(
+        project_io::export_machine_file(project, "dst", dst, {}, {}, nullptr, &off).has_value());
+    CHECK_FALSE(fs::exists(csv));
+    CHECK(off.written.empty());
+
+    // PES porte ses couleurs : le compagnon demande est ignore.
+    const auto pes = fs::temp_directory_path() / "openstitch_companion_none.pes";
+    const auto pesCsv = formats::companion_path(pes, formats::CompanionKind::Csv);
+    project_io::ColorCompanionExport wanted;
+    wanted.write = true;
+    REQUIRE(
+        project_io::export_machine_file(project, "pes", pes, {}, {}, nullptr, &wanted).has_value());
+    CHECK_FALSE(fs::exists(pesCsv));
+    CHECK(wanted.written.empty());
+    CHECK(wanted.error.empty());
+    fs::remove(dst);
+    fs::remove(pes);
+}
+
+TEST_CASE("import_machine_file : compagnon invalide ignore, import reussi en noir") {
+    const document::Project project = square_project();
+    const auto path = fs::temp_directory_path() / "openstitch_companion_bad.dst";
+    REQUIRE(project_io::export_machine_file(project, "dst", path).has_value());
+    const auto csv = formats::companion_path(path, formats::CompanionKind::Csv);
+    {
+        std::ofstream bad(csv, std::ios::binary);
+        bad << "ceci n'est pas un fichier de couleurs";
+    }
+    const auto imported = project_io::import_machine_file(path);
+    REQUIRE(imported.has_value());
+    REQUIRE_FALSE(imported->color_blocks.empty());
+    CHECK(imported->color_blocks.front().rgb == std::array<std::uint8_t, 3>{0, 0, 0});
+    fs::remove(path);
+    fs::remove(csv);
 }

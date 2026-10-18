@@ -31,6 +31,27 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_analysis.cpp
     main_window_realistic.cpp
     main_window_production.cpp
+    # [cablage-A:debut]
+    main_window_export_image.cpp
+    export_image.cpp
+    export_image.hpp
+    export_image_dialog.cpp
+    export_image_dialog.hpp
+    # [cablage-A:fin]
+    # [cablage-B:debut]
+    main_window_vector_tools.cpp
+    # [cablage-B:fin]
+    # [cablage-C:debut]
+    main_window_measure.cpp
+    main_window_eyedropper.cpp
+    # [cablage-C:fin]
+    # [cablage-D:debut]
+    # [cablage-D:fin]
+    # [cablage-E:debut]
+    density_overlay.cpp
+    density_overlay.hpp
+    main_window_density.cpp
+    # [cablage-E:fin]
     production_dialog.cpp
     production_dialog.hpp
     realistic_preferences.cpp
@@ -51,6 +72,10 @@ add_library(openstitch_desktop_widgets STATIC
     text_dialog.hpp
     lettering_fonts.qrc
     main_window.hpp
+    app_settings.cpp
+    app_settings.hpp
+    settings_dialog.cpp
+    settings_dialog.hpp
     app_theme.cpp
     app_theme.hpp
     design_tokens.cpp
@@ -61,6 +86,12 @@ add_library(openstitch_desktop_widgets STATIC
     properties_panel.hpp
     document_panel.cpp
     document_panel.hpp
+    segmentation_colors_panel.cpp
+    segmentation_colors_panel.hpp
+    main_window_colors.cpp
+    main_window_segment_preview.cpp
+    segmentation_dialog.cpp
+    segmentation_dialog.hpp
     workflow_panel.cpp
     workflow_panel.hpp
     empty_state_widget.cpp
@@ -94,8 +125,6 @@ machine_export_dialog.hpp
     wsl_path_converter.hpp
     sam_worker_client.cpp
     sam_worker_client.hpp
-    sam_model_manager.cpp
-    sam_model_manager.hpp
     ai_preferences.cpp
     ai_preferences.hpp
     ai_preferences_dialog.cpp
@@ -111,7 +140,7 @@ target_link_libraries(openstitch_desktop_widgets
            openstitch::stitch_generation openstitch::formats openstitch::project_io
            openstitch::stitch_analysis openstitch::optimization openstitch::autodigitize
            openstitch::auto_satin openstitch::segmentation openstitch::lettering
-           openstitch::ai_segmentation
+           openstitch::ai_segmentation openstitch::project_ops
     PRIVATE openstitch::warnings
 )
 

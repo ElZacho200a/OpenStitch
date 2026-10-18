@@ -116,8 +116,7 @@ TEST_CASE("bande fine -> tatami par defaut") {
     CHECK(result->embroideries.front().is_tatami());
 }
 
-TEST_CASE("bande fine -> tatami meme quand use_naive_satin est active") {
-    // Option legacy ignoree : un vieux appel ne doit plus recreer de satin auto.
+TEST_CASE("bande fine -> tatami par defaut (satin_bands desactive)") {
     image::Image img = blank(44, 8);
     for (int y = 2; y < 5; ++y) {
         for (int x = 2; x < 42; ++x) {
@@ -128,30 +127,6 @@ TEST_CASE("bande fine -> tatami meme quand use_naive_satin est active") {
     REQUIRE(seg.has_value());
     IdGenerator<ObjectId> ids;
     AutoOptions o = opts();
-    o.use_auto_satin = false;
-    o.use_naive_satin = true;
-    const auto result = auto_digitize(*seg, ids, o);
-    REQUIRE(result.has_value());
-    REQUIRE(result->embroideries.size() == 1);
-    for (const auto& e : result->embroideries) {
-        CHECK_FALSE(e.is_satin());
-    }
-    CHECK(result->embroideries.front().is_tatami());
-}
-
-TEST_CASE("bande fine -> tatami si les deux moteurs satin sont desactives") {
-    image::Image img = blank(44, 8);
-    for (int y = 2; y < 5; ++y) {
-        for (int x = 2; x < 42; ++x) {
-            set_px(img, x, y, 30, 30, 220);
-        }
-    }
-    const auto seg = segmentation::segment(img, {.max_colors = 2, .min_region_px = 1});
-    REQUIRE(seg.has_value());
-    IdGenerator<ObjectId> ids;
-    AutoOptions o = opts();
-    o.use_auto_satin = false;
-    o.use_naive_satin = false;
     const auto result = auto_digitize(*seg, ids, o);
     REQUIRE(result.has_value());
     REQUIRE(result->embroideries.size() == 1);
@@ -517,7 +492,6 @@ image::Image paint(int w, int h, const std::vector<Rect>& rects) {
 
 AutoOptions tatami_only_opts() {
     AutoOptions o = opts();
-    o.use_auto_satin = false; // formes de test « tatami » quelle que soit leur largeur
     o.min_fill_area_mm2 = 4.0;
     return o;
 }
@@ -792,6 +766,31 @@ TEST_CASE("Par defaut aucun recouvrement : le contour vectoriel reste celui de l
     REQUIRE(red != nullptr);
     CHECK(bounds_mm(*red).x1 == -0.5); // demi-pixel en retrait de la frontiere, pas de debord
     CHECK(redParams->inset.value == 200);
+}
+
+TEST_CASE("Bloc uni : debord sous les voisins, reglages plus forts conserves") {
+    const auto seg =
+        segmentation::segment(paint(50, 30, {{5, 5, 25, 25, kRed}, {25, 5, 45, 25, kBlue}}),
+                              {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    AutoOptions solid = tatami_only_opts();
+    apply_solid_block(solid);
+    CHECK(solid.fill_overlap.value == 500);
+    CHECK(solid.min_region_area_mm2 >= solid.min_fill_area_mm2);
+    IdGenerator<ObjectId> ids;
+    const auto r = auto_digitize(*seg, ids, solid);
+    REQUIRE(r.has_value());
+    const auto* red = tatami_vector(*r, kRed);
+    REQUIRE(red != nullptr);
+    CHECK(bounds_mm(*red).x1 >= 0.25);   // deborde sous le bleu
+    CHECK(bounds_mm(*red).x0 >= -19.35); // bord exterieur : retrait conserve
+
+    AutoOptions stronger = tatami_only_opts();
+    stronger.fill_overlap = Micrometers{800};
+    stronger.min_region_area_mm2 = 9.0;
+    apply_solid_block(stronger);
+    CHECK(stronger.fill_overlap.value == 800);
+    CHECK(stronger.min_region_area_mm2 == 9.0);
 }
 
 TEST_CASE("Lot C : pas de debord vers le fond ignore") {
@@ -1168,4 +1167,48 @@ TEST_CASE("auto_digitize : meme resultat avec un seul fil et avec plusieurs") {
             CHECK(single->embroideries[i].params == many->embroideries[i].params);
         }
     }
+}
+
+TEST_CASE("nettoyage des ilots : fusion par couleur proche, desactive par defaut") {
+    // Rouge à gauche, bleu à droite, un îlot 8x8 (64 mm² à 1 mm/px) de teinte proche du bleu mais
+    // collé au rouge par la plus longue frontière.
+    segmentation::Segmentation seg;
+    seg.width = 40;
+    seg.height = 20;
+    seg.labels.assign(800, 0);
+    for (int y = 0; y < 20; ++y) {
+        for (int x = 0; x < 40; ++x) {
+            seg.labels[static_cast<std::size_t>(y * 40 + x)] = x < 20 ? 1U : 2U;
+        }
+    }
+    for (int y = 0; y < 8; ++y) {
+        for (int x = 12; x < 20; ++x) {
+            seg.labels[static_cast<std::size_t>(y * 40 + x)] = 3U;
+        }
+    }
+    seg.region_slots.resize(3);
+    seg.region_slots[0] = segmentation::Region{RegionId{1}, {200, 30, 30}, 400 - 64};
+    seg.region_slots[1] = segmentation::Region{RegionId{2}, {15, 101, 186}, 400};
+    seg.region_slots[2] = segmentation::Region{RegionId{3}, {20, 90, 200}, 64};
+
+    AutoOptions base = opts();
+    base.mm_per_px = Millimeters{1.0};
+    base.min_region_area_mm2 = 3.0;
+    IdGenerator<ObjectId> idsA;
+    const auto before = auto_digitize(seg, idsA, base);
+    REQUIRE(before.has_value());
+    CHECK(before->embroideries.size() == 3);
+
+    AutoOptions cleaned = base;
+    cleaned.island_area_mm2 = 100.0;
+    IdGenerator<ObjectId> idsB;
+    const auto after = auto_digitize(seg, idsB, cleaned);
+    REQUIRE(after.has_value());
+    CHECK(after->embroideries.size() == 2);
+
+    // Déterminisme.
+    IdGenerator<ObjectId> idsC;
+    const auto again = auto_digitize(seg, idsC, cleaned);
+    REQUIRE(again.has_value());
+    CHECK(again->embroideries.size() == after->embroideries.size());
 }

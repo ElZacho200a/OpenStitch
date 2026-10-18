@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <utility>
 #include <vector>
 
+#include "openstitch/commands/color_blend_commands.hpp"
+#include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/undo_stack.hpp"
 #include "openstitch/commands/vector_ops.hpp"
+#include "openstitch/document/color_blend.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/boolean.hpp"
 
@@ -53,7 +57,245 @@ double area_mm2(const document::VectorObject& object) {
     return total / 1.0e6;
 }
 
+document::Project linked_blend_project() {
+    document::Project project;
+    const ObjectId source = add_object(project, rect(0, 0, 20'000, 10'000), true);
+    auto top = project.embroidery_objects.front();
+    top.id = project.object_ids.next();
+    top.params = document::DirectionalFillParams{};
+    project.embroidery_objects.push_back(top);
+    SetColorBlendLinkCommand(project.embroidery_objects[0].id, top.id).apply(project);
+    REQUIRE(project.findObject(source));
+    return project;
+}
+
 } // namespace
+
+TEST_CASE("blend core: reciprocal roles resolve independently of sewing order", "[blend_core]") {
+    auto project = linked_blend_project();
+    const document::ColorBlendLayers expected{project.embroidery_objects[0].id,
+                                              project.embroidery_objects[1].id};
+    CHECK(document::find_color_blend(project, expected.background) == expected);
+    CHECK(document::find_color_blend(project, expected.foreground) == expected);
+    std::reverse(project.embroidery_objects.begin(), project.embroidery_objects.end());
+    CHECK(document::find_color_blend(project, expected.background) == expected);
+    CHECK(document::find_color_blend(project, expected.foreground) == expected);
+}
+
+TEST_CASE("blend core: invalid orphaned crossed and converted links never resolve",
+          "[blend_core]") {
+    auto project = linked_blend_project();
+    const ObjectId background = project.embroidery_objects[0].id;
+    const ObjectId foreground = project.embroidery_objects[1].id;
+    SECTION("missing partner") {
+        project.embroidery_objects.pop_back();
+    }
+    SECTION("non reciprocal") {
+        project.embroidery_objects[1].color_blend.reset();
+    }
+    SECTION("crossed") {
+        project.embroidery_objects[1].color_blend->partner = ObjectId{42};
+    }
+    SECTION("same role") {
+        project.embroidery_objects[1].color_blend->foreground = false;
+    }
+    SECTION("self link") {
+        project.embroidery_objects[0].color_blend->partner = background;
+    }
+    SECTION("missing vector") {
+        project.vector_objects.clear();
+    }
+    SECTION("different vector") {
+        project.embroidery_objects[1].source_vector = ObjectId{42};
+    }
+    SECTION("converted foreground") {
+        project.embroidery_objects[1].params = document::RunningStitchParams{};
+    }
+    SECTION("converted background") {
+        project.embroidery_objects[0].params = document::AutoSatinParams{};
+    }
+    CHECK_FALSE(document::find_color_blend(project, background));
+    CHECK_FALSE(document::find_color_blend(project, foreground));
+    CHECK_FALSE(document::find_color_blend(project, ObjectId{}));
+}
+
+TEST_CASE("blend core: command restores exact previous links and invalid inputs are no ops",
+          "[blend_core]") {
+    auto project = linked_blend_project();
+    const ObjectId background = project.embroidery_objects[0].id;
+    const ObjectId foreground = project.embroidery_objects[1].id;
+    const auto oldBackground = document::ColorBlendLink{ObjectId{40}, true};
+    const auto oldForeground = document::ColorBlendLink{ObjectId{41}, false};
+    project.embroidery_objects[0].color_blend = oldBackground;
+    project.embroidery_objects[1].color_blend = oldForeground;
+    UndoStack stack;
+    stack.execute(std::make_unique<SetColorBlendLinkCommand>(background, foreground), project);
+    CHECK(document::find_color_blend(project, background));
+    REQUIRE(stack.undo(project));
+    CHECK(project.findEmbroidery(background)->color_blend == oldBackground);
+    CHECK(project.findEmbroidery(foreground)->color_blend == oldForeground);
+    REQUIRE(stack.redo(project));
+    CHECK(document::find_color_blend(project, foreground));
+    REQUIRE(stack.undo(project));
+    for (const auto [a, b] :
+         {std::pair{background, background}, std::pair{background, ObjectId{42}},
+          std::pair{ObjectId{}, foreground}}) {
+        SetColorBlendLinkCommand command(a, b);
+        command.apply(project);
+        command.revert(project);
+        CHECK(project.findEmbroidery(background)->color_blend == oldBackground);
+        CHECK(project.findEmbroidery(foreground)->color_blend == oldForeground);
+    }
+    project.findEmbroidery(foreground)->params = document::RunningStitchParams{};
+    SetColorBlendLinkCommand invalid(background, foreground);
+    invalid.apply(project);
+    invalid.revert(project);
+    CHECK(project.findEmbroidery(background)->color_blend == oldBackground);
+    CHECK(project.findEmbroidery(foreground)->color_blend == oldForeground);
+}
+
+TEST_CASE("blend core: delete and conversion suspend the relation and undo restores it",
+          "[blend_core]") {
+    auto project = linked_blend_project();
+    const ObjectId background = project.embroidery_objects[0].id;
+    const ObjectId foreground = project.embroidery_objects[1].id;
+    UndoStack stack;
+    SECTION("delete one layer") {
+        stack.execute(std::make_unique<RemoveEmbroideryObjectCommand>(foreground), project);
+    }
+    SECTION("delete vector") {
+        stack.execute(std::make_unique<RemoveVectorObjectCommand>(project.vector_objects[0].id),
+                      project);
+    }
+    SECTION("convert a layer") {
+        stack.execute(
+            std::make_unique<SetStitchParamsCommand>(foreground, document::RunningStitchParams{}),
+            project);
+    }
+    CHECK_FALSE(document::find_color_blend(project, background));
+    REQUIRE(stack.undo(project));
+    CHECK(document::find_color_blend(project, background) ==
+          document::ColorBlendLayers{background, foreground});
+}
+
+TEST_CASE("blend core: paste split and break apart remap both cloned partners", "[blend_core]") {
+    auto project = linked_blend_project();
+    const ObjectId source = project.vector_objects[0].id;
+    const auto originalBackground = project.embroidery_objects[0];
+    const auto originalForeground = project.embroidery_objects[1];
+    UndoStack stack;
+    SECTION("duplicate in place") {
+        auto paste = make_paste_command(project, collect_fragment(project, {source}), pt(0, 0));
+        REQUIRE(paste.command);
+        stack.execute(std::move(paste.command), project);
+    }
+    SECTION("paste moved") {
+        auto paste =
+            make_paste_command(project, collect_fragment(project, {source}), pt(30'000, 0));
+        REQUIRE(paste.command);
+        stack.execute(std::move(paste.command), project);
+    }
+    SECTION("split") {
+        auto split = make_split_command(project, {source}, pt(10'000, -5'000), pt(10'000, 15'000));
+        REQUIRE(split.command);
+        stack.execute(std::move(split.command), project);
+    }
+    SECTION("break apart") {
+        project.vector_objects[0].paths.push_back(rect(30'000, 0, 40'000, 10'000));
+        auto separate = make_break_apart_command(project, source);
+        REQUIRE(separate.command);
+        stack.execute(std::move(separate.command), project);
+    }
+    REQUIRE(project.embroidery_objects.size() == 4);
+    const ObjectId newBackground = project.embroidery_objects[2].id;
+    const ObjectId newForeground = project.embroidery_objects[3].id;
+    REQUIRE(project.embroidery_objects[2].color_blend);
+    REQUIRE(project.embroidery_objects[3].color_blend);
+    CHECK(project.embroidery_objects[2].color_blend->partner == newForeground);
+    CHECK(project.embroidery_objects[3].color_blend->partner == newBackground);
+    CHECK(document::find_color_blend(project, newBackground) ==
+          document::ColorBlendLayers{newBackground, newForeground});
+    CHECK(project.findEmbroidery(originalBackground.id)->color_blend ==
+          originalBackground.color_blend);
+    CHECK(project.findEmbroidery(originalForeground.id)->color_blend ==
+          originalForeground.color_blend);
+    REQUIRE(stack.undo(project));
+    CHECK(project.embroidery_objects.size() == 2);
+    REQUIRE(stack.redo(project));
+    CHECK(document::find_color_blend(project, newForeground) ==
+          document::ColorBlendLayers{newBackground, newForeground});
+}
+
+TEST_CASE("blend core: pasted partial or malformed pairs cannot link to originals",
+          "[blend_core]") {
+    auto project = linked_blend_project();
+    auto fragment = collect_fragment(project, {project.vector_objects[0].id});
+    SECTION("partner omitted") {
+        fragment.embroideries.pop_back();
+    }
+    SECTION("crossed pair") {
+        fragment.embroideries[1].color_blend->partner = ObjectId{42};
+    }
+    SECTION("same roles") {
+        fragment.embroideries[1].color_blend->foreground = false;
+    }
+    auto paste = make_paste_command(project, fragment, pt(0, 0));
+    REQUIRE(paste.command);
+    paste.command->apply(project);
+    for (std::size_t i = 2; i < project.embroidery_objects.size(); ++i) {
+        CHECK_FALSE(project.embroidery_objects[i].color_blend);
+        CHECK_FALSE(document::find_color_blend(project, project.embroidery_objects[i].id));
+    }
+    CHECK(document::find_color_blend(project, project.embroidery_objects[0].id));
+}
+
+TEST_CASE("blend core: linking validates a shared existing source and undo restores absence",
+          "[blend_core]") {
+    auto project = linked_blend_project();
+    const ObjectId background = project.embroidery_objects[0].id;
+    const ObjectId foreground = project.embroidery_objects[1].id;
+    project.embroidery_objects[0].color_blend.reset();
+    project.embroidery_objects[1].color_blend.reset();
+    bool valid = false;
+    SECTION("fresh links") {
+        valid = true;
+    }
+    SECTION("different existing sources") {
+        const ObjectId other = add_object(project, rect(30'000, 0, 40'000, 10'000), false);
+        project.findEmbroidery(foreground)->source_vector = other;
+    }
+    SECTION("missing common source") {
+        project.vector_objects.clear();
+    }
+    SECTION("background is not a fill") {
+        project.findEmbroidery(background)->params = document::RunningStitchParams{};
+    }
+    SetColorBlendLinkCommand command(background, foreground);
+    command.apply(project);
+    CHECK(document::find_color_blend(project, foreground).has_value() == valid);
+    CHECK(project.findEmbroidery(background)->color_blend.has_value() == valid);
+    CHECK(project.findEmbroidery(foreground)->color_blend.has_value() == valid);
+    command.revert(project);
+    CHECK_FALSE(project.findEmbroidery(background)->color_blend);
+    CHECK_FALSE(project.findEmbroidery(foreground)->color_blend);
+}
+
+TEST_CASE("blend core: paste into another document remaps colliding source ids", "[blend_core]") {
+    const auto source = linked_blend_project();
+    auto destination = linked_blend_project();
+    const auto fragment = collect_fragment(source, {source.vector_objects[0].id});
+    auto paste = make_paste_command(destination, fragment, pt(30'000, 0));
+    REQUIRE(paste.command);
+    paste.command->apply(destination);
+    REQUIRE(destination.embroidery_objects.size() == 4);
+    CHECK(document::find_color_blend(destination, destination.embroidery_objects[2].id) ==
+          document::ColorBlendLayers{destination.embroidery_objects[2].id,
+                                     destination.embroidery_objects[3].id});
+    CHECK(document::find_color_blend(destination, destination.embroidery_objects[0].id) ==
+          document::ColorBlendLayers{destination.embroidery_objects[0].id,
+                                     destination.embroidery_objects[1].id});
+    CHECK(destination.embroidery_objects[2].source_vector == paste.pasted.front());
+}
 
 TEST_CASE("vector ops: union merges shapes into the active one and drops the others",
           "[vector_ops]") {
@@ -112,6 +354,65 @@ TEST_CASE("vector ops: intersect keeps the common part and refuses disjoint shap
     CHECK_FALSE(empty.error.empty());
 }
 
+TEST_CASE("vector ops: union welds juxtaposed shapes separated by a knife-width gap",
+          "[vector_ops]") {
+    document::Project project;
+    const ObjectId a = add_object(project, rect(0, 0, 10'000, 10'000), true);
+    const ObjectId b = add_object(project, rect(10'020, 0, 20'000, 10'000), true);
+
+    auto result = make_boolean_command(project, BooleanOp::Union, {a, b});
+    REQUIRE(result.command);
+    UndoStack stack;
+    stack.execute(std::move(result.command), project);
+
+    REQUIRE(project.vector_objects.size() == 1);
+    CHECK(project.vector_objects[0].paths.size() == 1);
+    CHECK(project.embroidery_objects.size() == 1);
+    const double area = area_mm2(project.vector_objects[0]);
+    CHECK(area > 199.9);
+    CHECK(area < 200.1);
+}
+
+TEST_CASE("vector ops: union gap parameter 0 keeps knife-width neighbours apart", "[vector_ops]") {
+    document::Project project;
+    const ObjectId a = add_object(project, rect(0, 0, 10'000, 10'000), false);
+    const ObjectId b = add_object(project, rect(10'020, 0, 20'000, 10'000), false);
+
+    auto result = make_boolean_command(project, BooleanOp::Union, {a, b}, Micrometers{0});
+    REQUIRE(result.command);
+    UndoStack stack;
+    stack.execute(std::move(result.command), project);
+    CHECK(project.vector_objects[0].paths.size() == 2);
+}
+
+TEST_CASE("vector ops: split honours the cut width parameter", "[vector_ops]") {
+    document::Project project;
+    const ObjectId id = add_object(project, rect(0, 0, 20'000, 10'000), false);
+    auto result = make_split_command(project, {id}, pt(10'000, -5'000), pt(10'000, 15'000),
+                                     Micrometers{1'000});
+    REQUIRE(result.command);
+    UndoStack stack;
+    stack.execute(std::move(result.command), project);
+    REQUIRE(project.vector_objects.size() == 2);
+    const double total = area_mm2(project.vector_objects[0]) + area_mm2(project.vector_objects[1]);
+    CHECK(total < 191.0); // bande de 1 mm retirée (~10 mm2), non plus 0,02 mm
+}
+
+TEST_CASE("vector ops: union keeps distant shapes as separate pieces", "[vector_ops]") {
+    document::Project project;
+    const ObjectId a = add_object(project, rect(0, 0, 10'000, 10'000), false);
+    const ObjectId b = add_object(project, rect(11'000, 0, 21'000, 10'000), false);
+
+    auto result = make_boolean_command(project, BooleanOp::Union, {a, b});
+    REQUIRE(result.command);
+    UndoStack stack;
+    stack.execute(std::move(result.command), project);
+
+    REQUIRE(project.vector_objects.size() == 1);
+    CHECK(project.vector_objects[0].paths.size() == 2);
+    CHECK(area_mm2(project.vector_objects[0]) == 200.0);
+}
+
 TEST_CASE("vector ops: boolean needs two shapes", "[vector_ops]") {
     document::Project project;
     const ObjectId a = add_object(project, rect(0, 0, 10'000, 10'000), false);
@@ -149,6 +450,27 @@ TEST_CASE("vector ops: split refuses a line that misses the shape", "[vector_ops
     CHECK_FALSE(result.command);
     auto degenerate = make_split_command(project, {id}, pt(1, 1), pt(1, 1));
     CHECK_FALSE(degenerate.command);
+}
+
+TEST_CASE("vector ops: split only cuts shapes the drawn segment crosses", "[vector_ops]") {
+    document::Project project;
+    const ObjectId near = add_object(project, rect(0, 0, 20'000, 10'000), false);
+    // Alignee avec le trait (meme x) mais loin de lui : ne doit pas etre coupee.
+    const ObjectId far = add_object(project, rect(0, 100'000, 20'000, 110'000), false);
+
+    auto result = make_split_command(project, {near, far}, pt(10'000, -5'000), pt(10'000, 15'000));
+    REQUIRE(result.command);
+    UndoStack stack;
+    stack.execute(std::move(result.command), project);
+    CHECK(project.vector_objects.size() == 3);
+    CHECK(area_mm2(*project.findObject(far)) == 200.0);
+}
+
+TEST_CASE("vector ops: split ignores a segment that stops inside the shape", "[vector_ops]") {
+    document::Project project;
+    const ObjectId id = add_object(project, rect(0, 0, 20'000, 10'000), false);
+    auto result = make_split_command(project, {id}, pt(10'000, -5'000), pt(10'000, 5'000));
+    CHECK_FALSE(result.command);
 }
 
 TEST_CASE("vector ops: break apart separates disjoint pieces", "[vector_ops]") {
@@ -290,4 +612,80 @@ TEST_CASE("vector ops: holes are removed, all or only the small ones") {
     stack.undo(project);
     stack.undo(project);
     CHECK(project.vector_objects[0].paths[0].holes.size() == 2);
+}
+
+TEST_CASE("vector ops: pockets are merged into the largest adjacent fill, undo restores") {
+    document::Project project;
+    const ObjectId big = add_object(project, rect(0, 0, 20'000, 10'000), true);
+    const ObjectId small = add_object(project, rect(21'000, 0, 26'000, 10'000), true);
+    // Fente de 1 mm entre les deux, debordant de 0,3 mm sur chacune.
+    const std::vector<geometry::PathSet> pockets{rect(19'700, 0, 21'300, 10'000)};
+
+    UndoStack stack;
+    auto result = make_fill_pockets_command(project, {big, small}, pockets);
+    REQUIRE(result.command != nullptr);
+    CHECK(result.resulting_objects == 1);
+    const std::size_t objectsBefore = project.vector_objects.size();
+    stack.execute(std::move(result.command), project);
+
+    // Le plus grand tatami absorbe la poche (une seule zone), rien n'est cree.
+    CHECK(project.vector_objects.size() == objectsBefore);
+    CHECK(project.embroidery_objects.size() == 2);
+    const auto* bigVec = project.findObject(big);
+    REQUIRE(bigVec != nullptr);
+    CHECK(std::abs(area_mm2(*bigVec) - 213.0) < 0.5); // 200 mm2 + poche hors de lui (1,3 x 10 mm)
+    CHECK(std::abs(area_mm2(*project.findObject(small)) - 50.0) < 0.5);
+
+    stack.undo(project);
+    CHECK(std::abs(area_mm2(*project.findObject(big)) - 200.0) < 0.5);
+}
+
+TEST_CASE("vector ops: pockets next to a shared or edited fill become a new tatami object") {
+    document::Project project;
+    const ObjectId big = add_object(project, rect(0, 0, 20'000, 10'000), true);
+    // Second remplissage sur le MEME vecteur : agrandir le vecteur le deformerait aussi.
+    document::EmbroideryObject twin = project.embroidery_objects.front();
+    twin.id = project.object_ids.next();
+    project.embroidery_objects.push_back(twin);
+    project.embroidery_objects.front().rgb = {10, 20, 30};
+
+    const std::vector<geometry::PathSet> pockets{rect(19'700, 0, 21'300, 10'000)};
+    UndoStack stack;
+    auto result = make_fill_pockets_command(project, {big}, pockets);
+    REQUIRE(result.command != nullptr);
+    stack.execute(std::move(result.command), project);
+
+    CHECK(std::abs(area_mm2(*project.findObject(big)) - 200.0) < 0.5); // inchange
+    REQUIRE(project.vector_objects.size() == 2);
+    REQUIRE(project.embroidery_objects.size() == 3);
+    const auto& created = project.embroidery_objects.back();
+    CHECK(created.is_tatami());
+    CHECK(created.source_vector == project.vector_objects.back().id);
+    CHECK(created.rgb == project.embroidery_objects.front().rgb);
+
+    stack.undo(project);
+    CHECK(project.vector_objects.size() == 1);
+    CHECK(project.embroidery_objects.size() == 2);
+}
+
+TEST_CASE("vector ops: a pocket already inside its neighbour's vector gets its own object") {
+    document::Project project;
+    const ObjectId big = add_object(project, rect(0, 0, 20'000, 10'000), true);
+    UndoStack stack;
+    auto result = make_fill_pockets_command(project, {big}, {rect(5'000, 3'000, 9'000, 7'000)});
+    REQUIRE(result.command != nullptr);
+    stack.execute(std::move(result.command), project);
+    CHECK(project.vector_objects.size() == 2);
+    CHECK(project.embroidery_objects.size() == 2);
+}
+
+TEST_CASE("vector ops: pockets are refused without pockets or without a neighbour") {
+    document::Project project;
+    const ObjectId big = add_object(project, rect(0, 0, 20'000, 10'000), true);
+    CHECK(make_fill_pockets_command(project, {big}, {}).command == nullptr);
+    const auto far = make_fill_pockets_command(project, {big}, {rect(90'000, 0, 91'000, 1'000)});
+    CHECK(far.command == nullptr);
+    CHECK_FALSE(far.error.empty());
+    const auto none = make_fill_pockets_command(project, {}, {rect(0, 0, 1'000, 1'000)});
+    CHECK(none.command == nullptr);
 }

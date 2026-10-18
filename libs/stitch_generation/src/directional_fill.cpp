@@ -611,7 +611,7 @@ double clamp_spacing(const document::DirectionalFillParams& p) {
 }
 
 // Écart entre lignes de couture en tout point : constant, ou interpolé
-// linéairement le long de l'axe d'un `DensityGradient` (constant au-delà des
+// le long de l'axe d'un `DensityGradient` (écart ou densité linéaire, constant au-delà des
 // extrémités). Le cas uniforme redonne exactement l'ancien `clamp_spacing`.
 struct SpacingField {
     static constexpr double kGradientMin = 100.0;
@@ -624,14 +624,36 @@ struct SpacingField {
     double invLen2{0.0};
     double from{400.0};
     double to{400.0};
+    bool interpolateDensity{false};
+    document::DensityCurve curve{document::DensityCurve::Linear};
+    double densityFrom{1.0 / 400.0};
+    double densityTo{1.0 / 400.0};
 
     [[nodiscard]] bool uniform() const { return invLen2 == 0.0 || from == to; }
+
+    // Remappe t ∈ [0 ; 1] ; monotone, 0 → 0 et 1 → 1 : les écarts restent entre
+    // `lo` et `hi`, donc la grille et la fenêtre d'auto-proximité restent valides.
+    [[nodiscard]] static double shaped(document::DensityCurve curve, double t) {
+        switch (curve) {
+        case document::DensityCurve::Smooth:
+            return t * t * (3.0 - 2.0 * t);
+        case document::DensityCurve::Steep:
+            return t * t * t * (t * (6.0 * t - 15.0) + 10.0);
+        case document::DensityCurve::Linear:
+            break;
+        }
+        return t;
+    }
 
     [[nodiscard]] double at(P2 p) const {
         if (uniform()) {
             return lo;
         }
-        const double t = std::clamp(dot(p - origin, axis) * invLen2, 0.0, 1.0);
+        const double t = shaped(curve, std::clamp(dot(p - origin, axis) * invLen2, 0.0, 1.0));
+        if (interpolateDensity) {
+            // Rampes opposées : rho_A(t) + rho_B(t) = rho_from + rho_to.
+            return 1.0 / (densityFrom + (densityTo - densityFrom) * t);
+        }
         return from + (to - from) * t;
     }
 
@@ -653,6 +675,10 @@ SpacingField make_spacing_field(const document::DirectionalFillParams& p) {
     };
     f.from = bound(g.spacing_from);
     f.to = bound(g.spacing_to);
+    f.interpolateDensity = g.interpolate_density;
+    f.curve = g.curve;
+    f.densityFrom = 1.0 / f.from;
+    f.densityTo = 1.0 / f.to;
     f.lo = std::min(f.from, f.to);
     f.hi = std::max(f.from, f.to);
     f.origin = to_p2(g.from);
@@ -791,7 +817,13 @@ void bounds(const std::vector<Poly>& polys, P2& lo, P2& hi) {
 
 // Construit les secteurs de `region` et leur champ.
 std::vector<Sector> build_sectors(const geometry::PathSet& region,
-                                  const document::DirectionalFillParams& params) {
+                                  const document::DirectionalFillParams& declared) {
+    // Un dégradé de densité ne module l'écart que perpendiculairement aux
+    // lignes : des guides courbes qui longent l'axe de couleur écrasent le
+    // fondu (lignes parasites). Les guides déclarés sont donc remplacés par un
+    // guide droit perpendiculaire à l'axe (sans effet sans dégradé utile).
+    auto params = declared;
+    align_guides_across_density_gradient(params, {region});
     std::vector<Sector> sectors;
     const double spacing = clamp_spacing(params);
     const double indexCell = std::clamp(spacing, 250.0, 1'000.0);
@@ -1763,11 +1795,21 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
     // Liaison cousue « normale » (comme la liaison de rangée du tatami) si
     // courte et intérieure ; trajet caché jusqu'au plafond du tatami ; au-delà,
     // saut.
-    const double sewMax = std::max(4.0 * spacing, 1'500.0);
-    const double underpathCap = std::max(6.0 * spacing, 8'000.0);
+    // L'écart est local sous un dégradé de densité : une liaison cousue de
+    // 4 × l'écart MAXIMAL traverserait la zone dense (long fil parasite).
+    const SpacingField field = make_spacing_field(params);
+    const auto sewLimit = [&](P2 p) { return std::max(4.0 * field.at(p), 1'500.0); };
+    const auto underpathLimit = [&](P2 p) { return std::max(6.0 * field.at(p), 8'000.0); };
 
     const auto polys = region_polys(region);
     const RegionIndex whole(polys, std::clamp(spacing, 250.0, 1'000.0));
+    // Liaison intérieure : le segment reste dans la région, ou il est assez court
+    // (≤ 1,5 mm) pour être cousu par-dessus un vide étroit — marche d'un contour
+    // en escalier, fente de moins de 1,5 mm. Un saut y laissait un fil coupé et
+    // un déplacement parasite entre deux rangées voisines.
+    const auto linkInside = [&](P2 a, P2 b) {
+        return dist(a, b) <= 3.0 * kMinStitch || whole.segment_inside(a, b);
+    };
 
     // Autoroute d'underpath : contour extérieur rentré (comme le tatami).
     std::vector<P2> highway;
@@ -1798,7 +1840,7 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
         const int ia = nearest(a);
         const int ib = nearest(b);
         std::vector<P2> bestPath;
-        double bestLen = underpathCap;
+        double bestLen = underpathLimit(b);
         for (const bool fwd : {true, false}) {
             std::vector<P2> v{a};
             int i = ia;
@@ -1882,13 +1924,13 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
         // Voisinage : deux lignes sont voisines si une extrémité de l'une est
         // à portée de liaison cousue d'une extrémité de l'autre.
         std::vector<std::vector<std::size_t>> neighbors(n);
-        const double sew2 = sewMax * sewMax;
         for (std::size_t a = 0; a < n; ++a) {
             for (std::size_t b = a + 1; b < n; ++b) {
                 bool close = false;
                 for (const P2 ea : {stitched[a].front(), stitched[a].back()}) {
                     for (const P2 eb : {stitched[b].front(), stitched[b].back()}) {
-                        close = close || dist2(ea, eb) <= sew2;
+                        const double sew = sewLimit(ea);
+                        close = close || dist2(ea, eb) <= sew * sew;
                     }
                 }
                 if (close) {
@@ -1937,7 +1979,8 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
                         continue;
                     }
                     const double d = dist2(cur, e);
-                    const bool sewable = d <= sew2 && whole.segment_inside(cur, e);
+                    const double sew = sewLimit(e);
+                    const bool sewable = d <= sew * sew && linkInside(cur, e);
                     const std::ptrdiff_t degree = sewable ? freeDegree(li) : 0;
                     bool better = false;
                     if (sewable != bestSewable) {
@@ -1969,14 +2012,14 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
                         jump = true;
                     } else {
                         const double d = dist(cur, rp);
-                        const bool direct = whole.segment_inside(cur, rp);
+                        const bool direct = linkInside(cur, rp);
                         if (d < 1.0) {
                             continue; // même position : rien à émettre
                         }
-                        if (!(direct && d <= sewMax)) {
+                        if (!(direct && d <= sewLimit(rp))) {
                             jump = true;
                             if (params.hidden_underpath) {
-                                if (direct && d <= underpathCap) {
+                                if (direct && d <= underpathLimit(rp)) {
                                     emitTravel({cur, rp});
                                     jump = false;
                                 } else if (auto route = routeHighway(cur, rp); !route.empty()) {
@@ -2158,6 +2201,19 @@ density_gradient_between(const std::vector<geometry::PathSet>& zone_a,
     std::vector<geometry::PathSet> both = zone_a;
     both.insert(both.end(), zone_b.begin(), zone_b.end());
     return density_gradient_across(both, Angle{std::atan2(d.y, d.x)}, spacing_a, spacing_b);
+}
+
+std::optional<document::DensityGradient>
+narrow_gradient_zone(const document::DensityGradient& gradient, double start, double end) {
+    if (!std::isfinite(start) || !std::isfinite(end) || start < 0.0 || end > 1.0 || start >= end) {
+        return std::nullopt;
+    }
+    const P2 from = to_p2(gradient.from);
+    const P2 axis = to_p2(gradient.to) - from;
+    auto narrowed = gradient;
+    narrowed.from = to_um(from + axis * start);
+    narrowed.to = to_um(from + axis * end);
+    return narrowed;
 }
 
 void align_guides_across_density_gradient(document::DirectionalFillParams& params,

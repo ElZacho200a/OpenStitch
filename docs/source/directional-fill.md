@@ -56,7 +56,8 @@ trajet caché), non du tracé.
 **Format `.osp`** : type `"directional"`, toutes les clés sauf `type` sont
 optionnelles (défauts du modèle) ; le dégradé est l'objet optionnel
 `densityGradient` (`fromX`, `fromY`, `toX`, `toY`, `spacingFrom`, `spacingTo`,
-µm entiers). `schemaVersion` n'a pas changé : un projet
+µm entiers ; `curve` entier 0 linéaire / 1 douce / 2 marquée, absent = 0, valeur
+inconnue relue comme 0). `schemaVersion` n'a pas changé : un projet
 ancien se relit à l'identique. Un projet contenant un remplissage directionnel
 n'est pas lisible par une version antérieure (« Type de point inconnu »).
 
@@ -278,8 +279,12 @@ analyse, puis choisit la paire de fils dans le nuancier fourni.
 **Action de l'interface** (`MainWindow::applyTwoColorBlend`, menu Broderie,
 barre contextuelle et inspecteur d'un objet tatami ou directionnel) : le dialogue
 **Fondu de couleurs · deux fils** propose les couleurs du fond et du dessus,
-l'angle, les écarts au début/à la fin (0,1 à 4 mm), l'inversion et un **aperçu
-schématique** (pas une simulation des points ni du tissu). Il fonctionne **sans
+l'angle, les écarts au début/à la fin (0,1 à 4 mm), l'inversion, le profil (**complémentaire** par défaut : rampes opposées sur les deux
+couches ; ou fond uniforme) et un **aperçu des points** : séquence effective d'un
+instantané du projet (`MainWindow::createColorBlend`, `blendLayersFor`), jamais le
+document, avec les mêmes couches que celles qui seront créées (pas une simulation du
+tissu). Création et aperçu partagent `make_color_blend_layers` ; les deux couches
+sont liées (`SetColorBlendLinkCommand`). Il fonctionne **sans
 image**, avec des couleurs manuelles. Avec une image, **Proposer les couleurs
 depuis l'image** lance l'analyse hors du fil d'interface, avec le nuancier actif
 du panneau Fils. La proposition reste modifiable et l'analyse ne crée rien.
@@ -299,9 +304,58 @@ trouvé 2026-10 : sur une rampe horizontale avec un guide horizontal, il restait
 plus de 80 % des lignes d'un remplissage uniforme). L'action remplace donc les
 guides du dessus par un guide droit perpendiculaire à l'axe
 (`stitch_generation::align_guides_across_density_gradient`, test
-`blend: rows are turned across the colour axis…`). Déterministe : aucune
-graine, itération dans l'ordre d'entrée. Limites : un seul plan (un dégradé
-linéaire par région, pas de courbe), deux couleurs maximum par région.
+`blend: rows are turned across the colour axis…`). Le même alignement est
+appliqué **à la génération** (`build_sectors`) pour tout remplissage portant un
+`density_gradient` utile : des guides courbes conservés ou ajoutés après coup
+(cas `TheyAskedForIT.osp`, 14 guides longeant l'axe vertical, rangées non
+espacées et « fils parasites » sombres sur le fond) sont ignorés au profit du
+guide perpendiculaire à l'axe (test `directional density gradient ignores guides
+running along its axis`). Conséquence : un remplissage à dégradé ne suit plus
+ses guides manuels. Les liaisons cousues entre
+lignes (`sewMax`, 4 × l'écart) suivent l'écart **local** du dégradé et non son
+maximum : avec 4 mm → 0,4 mm, une liaison de 16 mm traversait la zone dense
+(`TheyAskedForIT.osp` : 50 → 11 avertissements « point long », au prix de plus
+de sauts, donc de coupes, invisibles une fois le fil coupé).
+Cause racine des petits sauts parasites : une liaison entre deux fins de rangées
+voisines était refusée dès que son segment sortait de la région, or un contour
+en escalier (vectorisation pixel) ou une fente de moins de 1,5 mm le fait sortir
+d'un cheveu ; elle devenait un saut. Une liaison de 1,5 mm au plus est désormais
+cousue (`linkInside`). `TheyAskedForIT.osp` : 811 → 360 sauts (fond 410 → 57,
+dessus 150 → 52).
+
+**Zone de transition** : par défaut la rampe d'écart couvre toute l'étendue de
+la forme le long de l'axe. Les champs **Début / Fin de la transition** (en % de
+l'axe, 0 → 100 %, au moins 5 % d'étendue) la restreignent à une portion :
+`stitch_generation::narrow_gradient_zone` rapproche `from` et `to` le long de
+l'axe, et le générateur bornant la position sur l'axe (`SpacingField::at`), l'écart
+reste égal à `spacing_from` avant la zone et à `spacing_to` après : deux **aplats
+nets** aux extrémités, sans champ de plus dans le document ni dans le `.osp`. La
+zone s'applique dans `blendLayersFor`, donc à l'aperçu comme à la création, y
+compris à la proposition issue de l'image. Valeurs par défaut (0 % et 100 %) :
+sortie identique à l'ancienne. Dans l'inspecteur, modifier l'écart de fin d'un
+dégradé existant **conserve son axe** (donc sa zone) tant que l'angle affiché ne
+change pas ; changer l'angle recalcule l'axe sur toute la forme.
+
+**Courbe de transition** : par défaut l'écart varie linéairement entre `spacing_from`
+et `spacing_to`. Le menu **Courbe de transition** du dialogue choisit un profil
+(`document::DensityCurve`, champ `DensityGradient::curve`) qui remappe la position
+`t` sur l'axe avant l'interpolation (`SpacingField::shaped`) : **Linéaire** (`t`,
+comportement historique), **Douce** (`3t² − 2t³` : départ et arrivée adoucis) et
+**Marquée** (`6t⁵ − 15t⁴ + 10t³` : aplats plus longs, changement plus rapide au
+milieu). Les trois valent 0, 0,5 et 1 en t = 0, 0,5 et 1 et sont monotones : les
+écarts restent entre `spacing_from` et `spacing_to`, donc la grille et la fenêtre
+d'auto-proximité du générateur sont inchangées. En profil complémentaire
+(`interpolate_density`), le fond reçoit la même courbe avec les écarts échangés :
+la somme des densités des deux couches reste constante quelle que soit la courbe
+(`make_color_blend_layers`). La clé `.osp` n'est écrite que hors linéaire : un
+fichier sans courbe est identique octet pour octet. Dans l'inspecteur, la courbe
+d'un dégradé existant est conservée quand on modifie l'écart de fin ou l'angle (il
+n'y expose pas encore de réglage de courbe) ; `set_params` et `inspect` la
+nomment `curve` (`linear | smooth | steep`).
+
+Déterministe : aucune graine, itération dans l'ordre d'entrée. Limites : un seul
+plan (un dégradé par région, trois courbes prédéfinies, pas de points de contrôle),
+deux couleurs maximum par région.
 
 ### Fondre deux zones voisines
 
@@ -318,8 +372,8 @@ zones**, sans analyse de l'image. Les couleurs, l'angle et les écarts sont
 modifiables avant l'union ; Annuler préserve les deux zones. Les couleurs doivent
 être distinctes. Chaque forme doit avoir un seul remplissage compatible ; une
 forme non remplie ou un couple de couches déjà créé désactive l'action.
-Une seule annulation défait l'ensemble. Limite : rampe linéaire sur
-toute l'étendue (pas de zone de transition réglable).
+Une seule annulation défait l'ensemble. La zone de transition (début / fin en %
+de l'axe) et la courbe de transition se règlent dans le même dialogue.
 
 ### Éditer les couches et preuve des correctifs UI (2026-10-13)
 

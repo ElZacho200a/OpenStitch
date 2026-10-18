@@ -3,12 +3,16 @@
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <variant>
 
+#include "chunk_cache.hpp"
+#include "openstitch/auto_satin/satin_strategy.hpp"
 #include "openstitch/auto_satin/skeleton_satin.hpp"
 #include "openstitch/core/parallel.hpp"
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/geometry/polyline.hpp"
+#include "openstitch/stitch_generation/auto_satin_engine.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 #include "openstitch/stitch_generation/join.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
@@ -95,8 +99,10 @@ public:
     // de sortie et d'entrée : la liaison reste gagnante bien au-delà du seuil de coupe.
     static constexpr double kMaxLinkUm = 60'000.0;
 
+    // `region` doit survivre au linker. Le routeur (index des arêtes) n'est construit qu'à la
+    // première liaison tentée : une région sans saut interne ne paie rien.
     FillLinker(const geometry::PathSet& region, Micrometers stitch_length, Micrometers inset)
-        : router_(region, inset, kMaxLinkUm),
+        : region_(&region), inset_(inset),
           stitch_length_(std::max(1.0, double(stitch_length.value))) {}
 
     // Dernière position cousue dans cette région (début d'une liaison).
@@ -108,7 +114,10 @@ public:
         if (!tail_) {
             return false;
         }
-        const std::vector<Vec2um> route = router_.route(*tail_, target);
+        if (!router_) {
+            router_.emplace(*region_, inset_, kMaxLinkUm);
+        }
+        const std::vector<Vec2um> route = router_->route(*tail_, target);
         if (route.size() < 2) {
             return false;
         }
@@ -137,7 +146,9 @@ public:
     }
 
 private:
-    HiddenRouter router_;
+    const geometry::PathSet* region_;
+    Micrometers inset_;
+    std::optional<HiddenRouter> router_;
     double stitch_length_;
     std::optional<Vec2um> tail_;
 };
@@ -167,7 +178,13 @@ void emit_underlay_pass(stitch::StitchSequence& sequence, const std::vector<Vec2
 // pénétration cachée (Stitch, passe Travel), les autres la couche supérieure
 // (Stitch, TopStitch). Garantit qu'aucune couture ne traverse un trou.
 // Avec `linker`, le premier point est atteint par une liaison cousue cachée depuis la
-// sous-couche quand le trajet reste dans la région (au lieu d'un saut).
+// sous-couche quand le trajet reste dans la région (au lieu d'un saut) ; de même un saut
+// INTERNE plus long que `kMinLinkedJumpUm` (que `fill_tatami` n'a pas su relier : au-delà de
+// son plafond de 16 mm, ou sans trajet par le contour rentré) est recousu par le routeur
+// plutôt que de devenir une coupe. Les sauts plus courts restent des sauts : sous le seuil de
+// coupe ils ne coûtent ni verrou ni arrêt.
+constexpr double kMinLinkedJumpUm = 3'000.0;
+
 void emit_fill(stitch::StitchSequence& sequence, const std::vector<FillStitch>& fill,
                ObjectId source, FillLinker* linker = nullptr) {
     bool started = false;
@@ -175,6 +192,18 @@ void emit_fill(stitch::StitchSequence& sequence, const std::vector<FillStitch>& 
         if (!started && linker != nullptr && linker->link_to(sequence, fs.pos, source)) {
             started = true;
             continue;
+        }
+        if (started && fs.jump && linker != nullptr && !sequence.commands.empty() &&
+            sequence.commands.back().type == stitch::CommandType::Stitch) {
+            const Vec2um tail = sequence.commands.back().pos;
+            const double jump = std::hypot(double(fs.pos.x.value) - double(tail.x.value),
+                                           double(fs.pos.y.value) - double(tail.y.value));
+            if (jump > kMinLinkedJumpUm) {
+                linker->set_tail(tail);
+                if (linker->link_to(sequence, fs.pos, source)) {
+                    continue;
+                }
+            }
         }
         if (!started || fs.jump) {
             sequence.commands.push_back(
@@ -306,15 +335,6 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
 // (`finish_satin_stations`) ; les colonnes sont enchaînées au plus proche.
 // Paramètres du moteur de squelette pour un auto-satin (partagés entre la génération et le
 // préchauffage parallèle du cache : mêmes entrées exactes, donc mêmes entrées de cache).
-auto_satin::SkeletonSatinParameters auto_satin_engine(const document::AutoSatinParams& params) {
-    auto_satin::SkeletonSatinParameters engine;
-    engine.spacing = params.spacing;
-    engine.compact_axis = params.compact_axis;
-    for (const auto& g : params.guides) {
-        engine.guides.push_back({g.anchor, g.angle.radians, g.absolute});
-    }
-    return engine;
-}
 
 void generate_auto_satin(stitch::StitchSequence& sequence, const document::VectorObject& source,
                          const document::EmbroideryObject& object,
@@ -359,7 +379,7 @@ void generate_auto_satin(stitch::StitchSequence& sequence, const document::Vecto
     std::vector<std::vector<SatinStation>> columns;
     for (const geometry::PathSet& rawSet : source.paths) {
         const geometry::PathSet set = geometry::flatten_to_polygon(rawSet, kFillFlattenTolerance);
-        const auto result = auto_satin::generate_skeleton_satin(set, engine);
+        const auto result = auto_satin::generate_satin(set, engine);
         if (!result) {
             continue; // région non analysable : aucun point pour ce morceau
         }
@@ -677,7 +697,7 @@ void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObj
         // tracés de sous-couche et le remplissage s'enchaînent sans saut (donc sans coupe).
         const auto underlay = tatami_underlay(region, resolve_underlay(params, region));
         std::optional<FillLinker> linker;
-        if (params.hidden_underpath && !underlay.empty()) {
+        if (params.hidden_underpath) {
             linker.emplace(region, params.stitch_length, params.underlay_inset);
         }
         for (const auto& up : underlay) {
@@ -697,7 +717,7 @@ void generate_directional(stitch::StitchSequence& sequence, const document::Vect
          fill_regions_in_sewing_order(sequence, source, params.inset)) {
         const auto underlay = directional_underlay(region, resolve_underlay(params, region));
         std::optional<FillLinker> linker;
-        if (params.hidden_underpath && !underlay.empty()) {
+        if (params.hidden_underpath) {
             linker.emplace(region, params.stitch_length, params.underlay_inset);
         }
         for (const auto& up : underlay) {
@@ -810,14 +830,23 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
         const document::EmbroideryObject& object = objects[unit.first];
         if (unit.kind == Kind::AutoSatin) {
             const auto& params = std::get<document::AutoSatinParams>(object.params);
+            if (params.strategy != document::AutoSatinStrategy::Skeleton) {
+                return; // seul le squelette a un cache de résultats à préchauffer
+            }
             const auto engine = auto_satin_engine(params);
             for (const geometry::PathSet& rawSet : unit.source->paths) {
-                (void)auto_satin::generate_skeleton_satin(
+                (void)auto_satin::generate_satin(
                     geometry::flatten_to_polygon(rawSet, kFillFlattenTolerance), engine);
             }
             return;
         }
         stitch::StitchSequence& chunk = chunks[u];
+        // HP-PERF-002 : séquence inchangée depuis le dernier calcul -> servie du cache (clé
+        // exacte : identifiant, paramètres, géométrie source).
+        if (const auto hit = chunk_cache_find(object.id, object.params, unit.source->paths)) {
+            chunk = *hit;
+            return;
+        }
         std::visit(
             [&](const auto& params) {
                 using T = std::decay_t<decltype(params)>;
@@ -830,6 +859,8 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                 }
             },
             object.params);
+        chunk_cache_store(object.id, object.params, unit.source->paths,
+                          std::make_shared<const stitch::StitchSequence>(chunk));
     });
 
     // Phase 3 -- assemblage séquentiel, dans l'ordre de couture.
@@ -918,6 +949,31 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
     sequence.commands.push_back(
         {sequence.commands.back().pos, stitch::CommandType::End, ObjectId{}});
     return sequence;
+}
+
+auto_satin::SkeletonSatinParameters auto_satin_engine(const document::AutoSatinParams& params) {
+    auto_satin::SkeletonSatinParameters engine;
+    engine.spacing = params.spacing;
+    engine.compact_axis = params.compact_axis;
+    switch (params.strategy) {
+    case document::AutoSatinStrategy::Skeleton:
+        engine.strategy = auto_satin::SatinStrategy::Skeleton;
+        break;
+    case document::AutoSatinStrategy::ParallelSweep:
+        engine.strategy = auto_satin::SatinStrategy::ParallelSweep;
+        break;
+    case document::AutoSatinStrategy::MedialAxis:
+        engine.strategy = auto_satin::SatinStrategy::MedialAxis;
+        break;
+    }
+    if (params.sweep_angle) {
+        engine.sweep_auto_angle = false;
+        engine.sweep_angle_rad = params.sweep_angle->radians;
+    }
+    for (const auto& g : params.guides) {
+        engine.guides.push_back({g.anchor, g.angle.radians, g.absolute});
+    }
+    return engine;
 }
 
 } // namespace openstitch::stitch_generation

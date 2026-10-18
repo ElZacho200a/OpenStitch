@@ -216,3 +216,39 @@ TEST_CASE("pipeline : une erreur au milieu est propagee") {
     const std::vector<ImageOp> ops{CropOp{0, 0, 2, 2}, CropOp{5, 5, 2, 2}};
     CHECK_FALSE(apply_pipeline(make_test_image(), ops).has_value());
 }
+
+TEST_CASE("aplat des zones : bruit reduit, contour conserve, alpha intact, deterministe") {
+    const Image img = make_noisy_two_tone();
+    const auto a = apply_op(img, FlattenOp{2});
+    REQUIRE(a.has_value());
+    CHECK(red_spread(*a, 2, 12) < 0.5 * red_spread(img, 2, 12));
+    CHECK(pixel(*a, 14, 8)[0] > 150);
+    CHECK(pixel(*a, 17, 8)[2] > 150);
+    for (int x = 0; x < 32; ++x) {
+        CHECK(pixel(*a, x, 5)[3] == 100 + x);
+    }
+    const auto b = apply_op(img, FlattenOp{2});
+    REQUIRE(b.has_value());
+    CHECK(a->rgba == b->rgba);
+    CHECK_FALSE(apply_op(img, FlattenOp{0}).has_value());
+    CHECK_FALSE(apply_op(img, FlattenOp{4}).has_value());
+    CHECK(op_name(FlattenOp{}) == "Aplat des zones");
+}
+
+TEST_CASE("contraste local et nettete : changent l'image, alpha intact, parametres bornes") {
+    const Image img = make_noisy_two_tone();
+    const auto c = apply_op(img, ClaheOp{4.0});
+    REQUIRE(c.has_value());
+    CHECK(c->rgba != img.rgba);
+    const auto s = apply_op(img, SharpenOp{2.0});
+    REQUIRE(s.has_value());
+    CHECK(s->rgba != img.rgba);
+    for (int x = 0; x < 32; ++x) {
+        CHECK(pixel(*c, x, 5)[3] == 100 + x);
+        CHECK(pixel(*s, x, 5)[3] == 100 + x);
+    }
+    CHECK(apply_op(img, ClaheOp{4.0})->rgba == c->rgba);
+    CHECK(apply_op(img, SharpenOp{0.0})->rgba == img.rgba);
+    CHECK_FALSE(apply_op(img, ClaheOp{0.5}).has_value());
+    CHECK_FALSE(apply_op(img, SharpenOp{3.5}).has_value());
+}

@@ -26,6 +26,7 @@
 #include "openstitch/commands/thread_commands.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 #include "properties_panel.hpp"
+#include "ui_memory.hpp"
 
 namespace openstitch::desktop {
 
@@ -94,14 +95,12 @@ void MainWindow::connectInspectorEditing() {
         if (emb == nullptr) {
             return;
         }
-        QColorDialog dialog(QColor(emb->rgb[0], emb->rgb[1], emb->rgb[2]), this);
-        dialog.setObjectName(QStringLiteral("fillColorDialog"));
-        dialog.setWindowTitle(tr("Couleur de la couche"));
         const auto generation = documentGeneration_;
-        if (dialog.exec() != QDialog::Accepted || generation != documentGeneration_) {
+        const QColor chosen = pickThreadColor(QColor(emb->rgb[0], emb->rgb[1], emb->rgb[2]),
+                                              tr("Couleur de la couche"));
+        if (!chosen.isValid() || generation != documentGeneration_) {
             return;
         }
-        const QColor chosen = dialog.selectedColor();
         const std::array<std::uint8_t, 3> rgb{static_cast<std::uint8_t>(chosen.red()),
                                               static_cast<std::uint8_t>(chosen.green()),
                                               static_cast<std::uint8_t>(chosen.blue())};
@@ -118,6 +117,23 @@ void MainWindow::connectInspectorEditing() {
     });
     connect(propertiesPanel_, &PropertiesPanel::vectorBoxEdited, this,
             [this](ObjectId id, QRectF want) { applyVectorBox(id, want); });
+    connect(propertiesPanel_, &PropertiesPanel::stitchTypeRequested, this,
+            [this](int type) { setStitchTypeForSelection(type); });
+    connect(propertiesPanel_, &PropertiesPanel::reapplyOverridesRequested, this,
+            [this](ObjectId id) {
+                // HP-UX-029 : rétablit les paramètres d'avant l'édition (nouveau pas annulable) ;
+                // les retouches, dont l'empreinte redevient valide, sont de nouveau appliquées.
+                if (!overrideWarning_ || overrideWarning_->id != id ||
+                    project_.findEmbroidery(id) == nullptr) {
+                    return;
+                }
+                undoStack_.execute(std::make_unique<commands::SetStitchParamsCommand>(
+                                       id, overrideWarning_->before,
+                                       tr("Réappliquer les retouches").toStdString()),
+                                   project_);
+                scheduleParamsRefresh();
+                refreshOverrideWarning();
+            });
     connect(propertiesPanel_, &PropertiesPanel::applyToSelectionRequested, this,
             &MainWindow::applyToSelection);
     connect(propertiesPanel_, &PropertiesPanel::groupParamsEdited, this,
@@ -126,6 +142,48 @@ void MainWindow::connectInspectorEditing() {
             &MainWindow::applyGroupAction);
     connect(propertiesPanel_, &PropertiesPanel::groupGuideAngleRequested, this,
             &MainWindow::applyGroupGuideAngle);
+}
+
+void MainWindow::noteOverridesInvalidated(ObjectId id, const document::StitchParams& before) {
+    // Seule la PREMIÈRE modification d'un objet « ✎ » (retouches encore appliquées) compte : un
+    // objet propre n'a rien à avertir, et des retouches déjà obsolètes (⚠) ne sont plus
+    // désactivées une seconde fois.
+    const auto* emb = project_.findEmbroidery(id);
+    if (emb == nullptr || emb->overrides.empty()) {
+        return;
+    }
+    if (overrideWarning_ && overrideWarning_->id == id) {
+        return; // bandeau déjà posé pour cet objet
+    }
+    if (editStateOf(id) != stitch_generation::ObjectEditState::ManuallyEdited) {
+        return;
+    }
+    overrideWarning_ = OverrideWarning{id, static_cast<int>(emb->overrides.size()),
+                                       document::StitchParams{before}};
+}
+
+void MainWindow::refreshOverrideWarning() {
+    if (propertiesPanel_ == nullptr) {
+        return;
+    }
+    std::optional<ObjectId> shownId;
+    int count = 0;
+    if (overrideWarning_) {
+        const auto* emb = project_.findEmbroidery(overrideWarning_->id);
+        if (emb == nullptr || emb->overrides.empty()) {
+            overrideWarning_.reset(); // objet supprimé ou retouches abandonnées
+        } else {
+            const auto* selected = resolveSelectedEmbroidery();
+            // Visible tant que les paramètres diffèrent de ceux d'avant l'édition : annuler
+            // (Ctrl+Z) ou « Réappliquer » les rétablit et retire le bandeau.
+            if (selected != nullptr && selected->id == emb->id &&
+                !(emb->params == overrideWarning_->before)) {
+                shownId = emb->id;
+                count = overrideWarning_->count;
+            }
+        }
+    }
+    propertiesPanel_->setOverrideWarning(shownId, count);
 }
 
 MainWindow::EmbroideryGroup MainWindow::selectedEmbroideryGroup() const {
@@ -175,10 +233,16 @@ void MainWindow::applyGroupParams(const QString& field,
     if (composite->empty()) {
         return;
     }
+    // Une rafale (flèches, molette) sur le même champ du même groupe = un seul pas d'annulation.
+    std::string mergeKey = "groupparams:" + field.toStdString();
+    for (const ObjectId id : group.ids) {
+        mergeKey += ":" + std::to_string(id.value);
+    }
+    composite->setMergeKey(std::move(mergeKey));
     undoStack_.execute(std::move(composite), project_);
-    // Le formulaire montre le représentant : il reste cohérent sans reconstruction.
-    refreshImage();
-    updateActions();
+    // Le formulaire montre le représentant : il reste cohérent sans reconstruction. La
+    // régénération des points est différée de 150 ms (HP-PERF-009), comme pour un seul objet.
+    scheduleParamsRefresh();
 }
 
 void MainWindow::applyGroupGuideAngle(double angleDeg, bool absolute) {
@@ -387,6 +451,9 @@ void MainWindow::setStitchTypeForSelection(
             }
             continue;
         }
+        if (existing == nullptr) {
+            ui_memory::creation::apply(params); // HP-UX-002 : forme neuve = dernier réglage
+        }
         if (tweak) {
             tweak(params);
         }
@@ -510,9 +577,14 @@ void MainWindow::applyToSelection(int stitchType, bool setSpacing, double spacin
                                     "appliqués ou ne concernent pas ces objets."));
         return;
     }
+    std::string mergeKey =
+        std::string("applysel:") + (setSpacing ? "s" : "-") + (setAngle ? "a" : "-");
+    for (const ObjectId id : ids) {
+        mergeKey += ":" + std::to_string(id.value);
+    }
+    composite->setMergeKey(std::move(mergeKey)); // rafale = un seul pas d'annulation
     undoStack_.execute(std::move(composite), project_);
-    refreshImage();
-    updateActions();
+    scheduleParamsRefresh(); // champs en direct : une rafale = une régénération (HP-PERF-009)
     statusBar()->showMessage(
         tr("Réglages appliqués à %1 objets (une seule étape annulable).").arg(ids.size()));
 }

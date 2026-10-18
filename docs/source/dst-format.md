@@ -79,6 +79,23 @@ machine s'arrête fil attaché au dernier point. Le fichier finit donc par la co
 pas été essayée sur votre machine ; le seuil de trois sauts (`trim_jumps`) peut devoir être
 augmenté selon le modèle.
 
+## Point de départ de la machine
+
+Un DST ne contient que des déplacements relatifs : l'origine (0, 0) est l'endroit où
+l'aiguille se trouve au lancement. Par défaut c'est le **premier point cousu**. L'option
+d'export `MachineExportOptions::start` (`formats::ExportStart`) permet de choisir à la place le
+**centre de la broderie** (centre de la boîte englobante des points cousus) ou un **point choisi**
+(X / Y en mm, repère du document) — utile pour broder en plusieurs étapes en repositionnant le
+cadre.
+
+Implémentation : `project_io::with_start_point` insère deux sauts de tête (origine, puis premier
+point) devant la séquence effective, dans `export_machine_file`, après le calcul des couleurs de
+blocs. Les codecs ne changent pas, et les commandes d'origine ne sont ni réordonnées ni
+modifiées : seul le déplacement d'approche initial diffère. Valable pour tous les formats machine
+du registre. Désactivé (`FirstPoint`), la sortie est octet-identique à l'ancienne. CLI :
+`osp2dst --start first|center|X,Y`. Un point éloigné de plus de 12,1 mm est découpé en sauts
+comme tout autre déplacement.
+
 ## Décodage (tolérant)
 
 `decode_dst` lit l'en-tête de façon **laxiste** (la vérité est le corps),
@@ -104,6 +121,8 @@ Avertissement : Un DST **ne conserve pas** les objets éditables de haut niveau
 les **couleurs réelles** (seulement des arrêts). Après un export DST, seul le
 **projet `.osp`** permet de retrouver la géométrie et les paramètres.
 
+Les couleurs peuvent être conservées dans un **fichier compagnon** (`.inf` ou `.csv`) écrit à côté du DST et relu à l'ouverture : voir docs/source/formats-pes-jef-exp.md, section « Fichier compagnon de couleurs » (HP-FMT-009).
+
 ## Tests
 
 - **Aller-retour** : séquence → encode → decode → séquence' (mêmes types,
@@ -111,6 +130,7 @@ les **couleurs réelles** (seulement des arrêts). Après un export DST, seul le
 - **Subdivision** d'un déplacement > 12,1 mm.
 - **Fichiers invalides** (vide, tronqué, sans fin) refusés proprement.
 - **Déterminisme** octet à octet.
+- **Fuzzing** déterministe du décodeur (troncatures, octets altérés/aléatoires).
 
 ## Implémentation associée
 
@@ -118,4 +138,4 @@ les **couleurs réelles** (seulement des arrêts). Après un export DST, seul le
 - `libs/formats/src/dst.cpp` — `encode_dst`, `decode_dst`, `write_dst_file`,
   `read_dst_file`.
 - `apps/cli/main.cpp` — `stats`, `dst2svg`.
-- Tests : `tests/unit/formats/test_dst.cpp`.
+- Tests : `tests/unit/formats/test_dst.cpp`, `test_color_companion.cpp` (compagnon de couleurs), `test_fuzz_decoders.cpp` (fuzzing déterministe).

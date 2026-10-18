@@ -2,6 +2,7 @@
 #include "import_dialog.hpp"
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
@@ -14,6 +15,8 @@
 #include <cmath>
 
 #include "app_theme.hpp"
+#include "openstitch/document/hoop_presets.hpp"
+#include "responsive.hpp"
 
 namespace openstitch::desktop {
 
@@ -28,6 +31,7 @@ ImportDialog::ImportDialog(int widthPx, int heightPx, const QImage& preview, QSi
                            QWidget* parent)
     : QDialog(parent), widthPx_(widthPx), heightPx_(heightPx), hoopMm_(hoopMm) {
     setWindowTitle(tr("Importer une image"));
+    fitDialogToScreen(this);
 
     auto* root = new QVBoxLayout(this);
 
@@ -35,8 +39,13 @@ ImportDialog::ImportDialog(int widthPx, int heightPx, const QImage& preview, QSi
     auto* preview_label = new QLabel(this);
     preview_label->setAlignment(Qt::AlignCenter);
     if (!preview.isNull()) {
-        preview_label->setPixmap(QPixmap::fromImage(preview).scaled(220, 160, Qt::KeepAspectRatio,
-                                                                    Qt::SmoothTransformation));
+        // HP-UX-043 : aperçu à la taille physique (rapport de pixels de l'écran), net en HiDPI.
+        const qreal dpr = devicePixelRatioF();
+        QPixmap thumb = QPixmap::fromImage(preview).scaled(
+            QSize(static_cast<int>(220 * dpr), static_cast<int>(160 * dpr)), Qt::KeepAspectRatio,
+            Qt::SmoothTransformation);
+        thumb.setDevicePixelRatio(dpr);
+        preview_label->setPixmap(thumb);
     }
     root->addWidget(preview_label);
 
@@ -70,6 +79,10 @@ ImportDialog::ImportDialog(int widthPx, int heightPx, const QImage& preview, QSi
     keepRatio_->setToolTip(tr("Import raster proportionnel uniquement : le projet utilise une "
                               "résolution unique. Modifier la largeur ou la hauteur ajuste "
                               "automatiquement l'autre dimension."));
+    // HP-UX-044 : pas d'import anisotrope. La hauteur n'est jamais appliquée seule : la modifier
+    // règle la taille uniforme de l'image (la largeur suit), comme la largeur règle la hauteur.
+    heightMm_->setToolTip(tr("Dimension liée à la largeur (proportions conservées) : la modifier "
+                             "redimensionne l'image entière, elle n'est jamais étirée."));
     applyRatioRanges();
 
     // Valeur par défaut : 96 dpi (métier : libs/document), mais jamais plus grande que le cadre
@@ -86,6 +99,23 @@ ImportDialog::ImportDialog(int widthPx, int heightPx, const QImage& preview, QSi
     form->addRow(tr("Largeur :"), widthMm_);
     form->addRow(tr("Hauteur :"), heightMm_);
     form->addRow(keepRatio_);
+
+    // Sélecteur de cadre (HP-UX-033) : mêmes modèles que « Taille du cadre… ». Le choix
+    // n'est appliqué au projet qu'à la validation (Annuler garde l'ancien cadre).
+    hoopCombo_ = new QComboBox(this);
+    hoopCombo_->setObjectName(QStringLiteral("importHoopCombo"));
+    hoopCombo_->setToolTip(tr("Cadre de broderie du projet. Le choix est appliqué à la "
+                              "validation de l'import."));
+    hoopCombo_->addItem(tr("Cadre du projet (%1 × %2 mm)")
+                            .arg(hoopMm_.width(), 0, 'f', 0)
+                            .arg(hoopMm_.height(), 0, 'f', 0),
+                        hoopMm_);
+    for (const auto& preset : document::kHoopPresets) {
+        hoopCombo_->addItem(
+            QString::fromUtf8(preset.name.data(), static_cast<qsizetype>(preset.name.size())),
+            QSizeF(static_cast<double>(preset.width_mm), static_cast<double>(preset.height_mm)));
+    }
+    form->addRow(tr("Cadre :"), hoopCombo_);
     root->addLayout(form);
 
     fitButton_ = new QPushButton(tr("Ajuster au cadre"), this);
@@ -117,6 +147,10 @@ ImportDialog::ImportDialog(int widthPx, int heightPx, const QImage& preview, QSi
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     root->addWidget(buttons);
 
+    connect(hoopCombo_, &QComboBox::currentIndexChanged, this, [this](int index) {
+        hoopMm_ = hoopCombo_->itemData(index).toSizeF();
+        recompute();
+    });
     connect(widthMm_, &QDoubleSpinBox::valueChanged, this, &ImportDialog::syncFromWidth);
     connect(heightMm_, &QDoubleSpinBox::valueChanged, this, &ImportDialog::syncFromHeight);
     connect(keepRatio_, &QCheckBox::toggled, this, [this] {
@@ -236,6 +270,10 @@ void ImportDialog::recompute() {
         ratioLabel_->clear();
         ratioLabel_->hide();
     }
+}
+
+bool ImportDialog::hoopChanged() const {
+    return hoopCombo_ != nullptr && hoopCombo_->currentIndex() > 0;
 }
 
 std::optional<document::ImagePlacement> ImportDialog::placement() const {

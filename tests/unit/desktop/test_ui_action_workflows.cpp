@@ -670,7 +670,10 @@ private slots:
         QVERIFY(!window.simTimer_->isActive());
 
         QTest::keyClick(window.simSlider_, Qt::Key_End);
-        QCOMPARE(window.simStep_, window.simSlider_->maximum());
+        // Curseur tout à droite = couture complète : on sort de la simulation (HP-UX-022), ce qui
+        // réactive le rendu réaliste ; le curseur reste à la fin et toute la couture est tracée.
+        QVERIFY(!window.simulating());
+        QCOMPARE(window.simSlider_->value(), window.simSlider_->maximum());
         QVERIFY(std::abs(sewnPathLength(window.scene_) - fullLength) < 0.001);
         QTest::keyClick(window.simSlider_, Qt::Key_Home);
         QCOMPARE(window.simStep_, 0);

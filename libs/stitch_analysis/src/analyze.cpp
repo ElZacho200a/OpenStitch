@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <map>
 
+#include "openstitch/stitch_analysis/density_map.hpp"
+
 namespace openstitch::stitch_analysis {
 
 namespace {
@@ -187,9 +189,41 @@ AnalysisReport analyze_detailed(const stitch::StitchSequence& sequence,
     bool inMove = false;
     bool trimmed = false;
 
+    // Points courts entre `near_zero_stitch` et `min_stitch` : un constat d'information par
+    // objet (clé = id d'objet, ordre croissant donc déterministe) au lieu d'un par point.
+    struct ShortGroup {
+        std::size_t count{0};
+        double shortest{0.0};
+        Vec2um first{};
+    };
+    std::map<std::uint64_t, ShortGroup> shortGroups;
+    const double nearZero =
+        static_cast<double>(std::min(options.near_zero_stitch.value, options.min_stitch.value));
+
+    // Sauts longs du déplacement en cours : signalés seulement si le déplacement s'achève sans
+    // coupe (une coupe avant OU après le saut rend le message « envisagez une coupe » faux).
+    struct PendingJump {
+        double len;
+        Vec2um pos;
+        ObjectId object;
+    };
+    std::vector<PendingJump> pendingJumps;
+    const auto flushJumps = [&](bool hadTrim) {
+        if (!hadTrim) {
+            for (const PendingJump& j : pendingJumps) {
+                add(Severity::Warning, "saut-long",
+                    "Saut long (" + format_mm_fr(j.len) + " mm) : envisagez une coupe.", j.pos,
+                    j.object,
+                    "Réordonnez les objets pour réduire les sauts, ou ajoutez une coupe.");
+            }
+        }
+        pendingJumps.clear();
+    };
+
     for (const auto& cmd : sequence.commands) {
         switch (cmd.type) {
         case stitch::CommandType::Stitch: {
+            flushJumps(trimmed); // le déplacement s'achève ici
             if (inMove && hasLastStitch && !trimmed) {
                 const double moved = length_um(cmd.pos - lastStitch);
                 if (moved > static_cast<double>(options.trim_threshold.value)) {
@@ -207,12 +241,20 @@ AnalysisReport analyze_detailed(const stitch::StitchSequence& sequence,
             // Les points d'arrêt sont courts par construction : jamais signalés.
             if (hasPrevStitch && cmd.pass != stitch::StitchPass::Lock) {
                 const double len = length_um(cmd.pos - prevStitch);
-                if (len < static_cast<double>(options.min_stitch.value)) {
+                if (len < nearZero) {
                     add(Severity::Warning, "point-court",
-                        "Point très court (" + format_mm_fr(len) +
-                            " mm) : risque de casse du fil et de sur-densité.",
+                        "Point quasi nul (moins de " + format_mm_fr(nearZero) +
+                            " mm) : probable doublon, risque de casse du fil.",
                         cmd.pos, cmd.source,
                         "Augmentez l'espacement ou simplifiez le contour de l'objet.");
+                } else if (len < static_cast<double>(options.min_stitch.value)) {
+                    ShortGroup& g = shortGroups[cmd.source.value];
+                    if (g.count == 0) {
+                        g.first = cmd.pos;
+                        g.shortest = len;
+                    }
+                    g.shortest = std::min(g.shortest, len);
+                    ++g.count;
                 } else if (len > static_cast<double>(options.max_stitch.value)) {
                     add(Severity::Warning, "point-long",
                         "Point long (" + format_mm_fr(len) + " mm) : risque d'accrochage.", cmd.pos,
@@ -232,10 +274,7 @@ AnalysisReport analyze_detailed(const stitch::StitchSequence& sequence,
             if (hasPrevPos) {
                 const double len = length_um(cmd.pos - prevPos);
                 if (len > static_cast<double>(options.max_jump.value)) {
-                    add(Severity::Warning, "saut-long",
-                        "Saut long (" + format_mm_fr(len) + " mm) : envisagez une coupe.", cmd.pos,
-                        cmd.source,
-                        "Réordonnez les objets pour réduire les sauts, ou ajoutez une coupe.");
+                    pendingJumps.push_back({len, cmd.pos, cmd.source});
                 }
             }
             // Un saut lève l'aiguille : le fil n'est plus continu. Sans ce
@@ -259,6 +298,17 @@ AnalysisReport analyze_detailed(const stitch::StitchSequence& sequence,
         prevPos = cmd.pos;
         hasPrevPos = true;
     }
+    flushJumps(trimmed); // déplacement non terminé en fin de séquence
+
+    for (const auto& [object, g] : shortGroups) {
+        add(Severity::Info, "points-courts",
+            std::to_string(g.count) + " point(s) de " + format_mm_fr(nearZero) + " à " +
+                format_mm_fr(static_cast<double>(options.min_stitch.value)) +
+                " mm (le plus court : " + format_mm_fr(g.shortest) + " mm).",
+            g.first, ObjectId{object},
+            "Les finitions fusionnent les points courts quand elles le peuvent ; augmentez "
+            "l'espacement de l'objet si la densité est excessive.");
+    }
 
     if (stats.stitches > options.max_stitches) {
         add(Severity::Warning, "trop-de-points",
@@ -280,6 +330,82 @@ AnalysisReport analyze_detailed(const stitch::StitchSequence& sequence,
                 hot.location, hot.object,
                 "Réduisez le chevauchement des objets, retirez une sous-couche ou supprimez "
                 "le remplissage caché sous un autre objet.");
+        }
+    }
+
+    // --- HP-PROD-007 : règles par objet ---------------------------------------
+    {
+        struct ObjectInfo {
+            bool hasBox{false};
+            Vec2um min{};
+            Vec2um max{};
+            Vec2um first{};
+            std::size_t stitches{0};
+            std::size_t locks{0};
+        };
+        std::map<std::uint64_t, ObjectInfo> objects; // ordre d'identifiant : déterministe
+        for (const auto& cmd : sequence.commands) {
+            if (cmd.type != stitch::CommandType::Stitch || cmd.source.value == 0) {
+                continue;
+            }
+            ObjectInfo& o = objects[cmd.source.value];
+            if (o.stitches == 0) {
+                o.first = cmd.pos;
+            }
+            ++o.stitches;
+            if (cmd.pass == stitch::StitchPass::Lock) {
+                ++o.locks;
+                continue;
+            }
+            if (!o.hasBox) {
+                o.min = o.max = cmd.pos;
+                o.hasBox = true;
+            } else {
+                o.min.x = std::min(o.min.x, cmd.pos.x);
+                o.min.y = std::min(o.min.y, cmd.pos.y);
+                o.max.x = std::max(o.max.x, cmd.pos.x);
+                o.max.y = std::max(o.max.y, cmd.pos.y);
+            }
+        }
+        for (const auto& [id, o] : objects) {
+            if (options.min_object_size.value > 0 && o.hasBox &&
+                (o.max.x - o.min.x).value < options.min_object_size.value &&
+                (o.max.y - o.min.y).value < options.min_object_size.value) {
+                add(Severity::Info, "detail-trop-petit",
+                    "Objet de " + format_mm_fr(static_cast<double>((o.max.x - o.min.x).value)) +
+                        " x " + format_mm_fr(static_cast<double>((o.max.y - o.min.y).value)) +
+                        " mm : moins de " +
+                        format_mm_fr(static_cast<double>(options.min_object_size.value)) +
+                        " mm, le détail risque de se perdre dans l'épaisseur du fil.",
+                    o.first, ObjectId{id},
+                    "Agrandissez l'objet ou supprimez-le s'il n'apporte rien au dessin.");
+            }
+            if (options.check_lock_stitches && o.locks == 0) {
+                add(Severity::Info, "objet-sans-arret",
+                    "Objet sans point d'arrêt : les fils du début et de la fin peuvent se défaire.",
+                    o.first, ObjectId{id}, "Activez les points d'arrêt dans les finitions.");
+            }
+        }
+    }
+
+    if (options.max_trims > 0 && stats.trims > options.max_trims) {
+        add(Severity::Warning, "trop-de-coupes",
+            "Le motif compte " + std::to_string(stats.trims) + " coupes (plus de " +
+                std::to_string(options.max_trims) + ") : temps de broderie et fils à rentrer.",
+            {}, {},
+            "Regroupez les objets de même couleur ou rapprochez-les pour limiter les coupes.");
+    }
+
+    if (options.max_penetrations_per_mm2 > 0.0) {
+        DensityOptions density;
+        density.max_penetrations_per_mm2 = options.max_penetrations_per_mm2;
+        for (const auto& hot : find_density_hotspots(sequence, density)) {
+            add(Severity::Warning, "densite-excessive",
+                "Zone trop dense : jusqu'à " + format_mm_fr(hot.max_penetrations_per_mm2 * 1000.0) +
+                    " pénétrations/mm² sur environ " + std::to_string(std::lround(hot.area_mm2)) +
+                    " mm² : risque de casse du fil.",
+                hot.center, hot.object,
+                "Augmentez l'espacement des rangées, retirez une sous-couche ou un recouvrement.");
         }
     }
 

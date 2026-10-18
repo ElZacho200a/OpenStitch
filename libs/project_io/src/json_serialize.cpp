@@ -131,6 +131,12 @@ json op_to_json(const image::ImageOp& op) {
                      {"tau", o.tau},
                      {"etfIterations", o.etf_iterations},
                      {"etfRadius", o.etf_radius}};
+            } else if constexpr (std::is_same_v<T, image::FlattenOp>) {
+                j = {{"type", "flatten"}, {"strength", o.strength}};
+            } else if constexpr (std::is_same_v<T, image::ClaheOp>) {
+                j = {{"type", "clahe"}, {"clipLimit", o.clip_limit}};
+            } else if constexpr (std::is_same_v<T, image::SharpenOp>) {
+                j = {{"type", "sharpen"}, {"amount", o.amount}};
             }
             return j;
         },
@@ -171,6 +177,15 @@ Result<image::ImageOp> op_from_json(const json& j) {
                                       j.value("tau", d.tau),
                                       j.value("etfIterations", d.etf_iterations),
                                       j.value("etfRadius", d.etf_radius)};
+    }
+    if (type == "flatten") {
+        return image::FlattenOp{j.value("strength", 2)};
+    }
+    if (type == "clahe") {
+        return image::ClaheOp{j.value("clipLimit", 2.0)};
+    }
+    if (type == "sharpen") {
+        return image::SharpenOp{j.value("amount", 1.0)};
     }
     return fail(ErrorCategory::InvalidFile, "Opération d'image inconnue : " + type);
 }
@@ -314,6 +329,13 @@ json params_to_json(const document::StitchParams& params) {
                                             {"toY", g.to.y.value},
                                             {"spacingFrom", g.spacing_from.value},
                                             {"spacingTo", g.spacing_to.value}};
+                    if (g.interpolate_density) {
+                        j["densityGradient"]["interpolateDensity"] = true;
+                    }
+                    // Absent = linéaire : un .osp sans courbe reste identique octet pour octet.
+                    if (g.curve != document::DensityCurve::Linear) {
+                        j["densityGradient"]["curve"] = static_cast<int>(g.curve);
+                    }
                 }
             } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
                 json guides = json::array();
@@ -349,6 +371,14 @@ json params_to_json(const document::StitchParams& params) {
                 }
                 if (p.compact_axis) {
                     j["compactAxis"] = true;
+                }
+                // Méthode : par nom, seulement si elle n'est pas le défaut (le fichier reste
+                // lisible par une version antérieure tant que le squelette est utilisé).
+                if (p.strategy != document::AutoSatinStrategy::Skeleton) {
+                    j["strategy"] = std::string(document::auto_satin_strategy_id(p.strategy));
+                }
+                if (p.sweep_angle) {
+                    j["sweepAngle"] = p.sweep_angle->radians;
                 }
                 if (p.entry_point) {
                     j["entryPoint"] = {{"x", p.entry_point->x.value},
@@ -532,6 +562,14 @@ Result<document::StitchParams> params_from_json(const json& j) {
             grad.to = Vec2um{Micrometers{g.value("toX", 0)}, Micrometers{g.value("toY", 0)}};
             grad.spacing_from = Micrometers{g.value("spacingFrom", 400)};
             grad.spacing_to = Micrometers{g.value("spacingTo", 400)};
+            grad.interpolate_density = g.value("interpolateDensity", false);
+            // Valeur inconnue (fichier édité à la main ou plus récent) : linéaire.
+            const int curve = g.value("curve", 0);
+            grad.curve = curve == static_cast<int>(document::DensityCurve::Smooth)
+                             ? document::DensityCurve::Smooth
+                         : curve == static_cast<int>(document::DensityCurve::Steep)
+                             ? document::DensityCurve::Steep
+                             : document::DensityCurve::Linear;
             p.density_gradient = grad;
         }
         if (j.contains("seed")) {
@@ -631,6 +669,30 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.lock_passes = j.value("lockPasses", 2);
         p.underlay_mode = static_cast<document::UnderlayMode>(j.value("underlayMode", 0));
         p.compact_axis = j.value("compactAxis", false);
+        if (j.contains("strategy")) {
+            // Une méthode inconnue (fichier d'une version plus récente) est REFUSÉE : la
+            // remplacer par le squelette ferait changer le satin à l'insu de l'utilisateur.
+            const auto id = j.at("strategy");
+            const auto parsed = id.is_string()
+                                    ? document::parse_auto_satin_strategy(id.get<std::string>())
+                                    : std::nullopt;
+            if (!parsed) {
+                return fail(ErrorCategory::UnsupportedFormat,
+                            "Méthode d'auto-satin inconnue dans le projet (" +
+                                (id.is_string() ? "« " + id.get<std::string>() + " »"
+                                                : std::string("valeur invalide")) +
+                                "). Ce projet vient peut-être d'une version plus récente "
+                                "d'OpenStitch.");
+            }
+            p.strategy = *parsed;
+        }
+        if (j.contains("sweepAngle")) {
+            const auto& a = j.at("sweepAngle");
+            if (!a.is_number() || !std::isfinite(a.get<double>())) {
+                return fail(ErrorCategory::InvalidFile, "sweepAngle : angle invalide");
+            }
+            p.sweep_angle = Angle{a.get<double>()};
+        }
         if (j.contains("entryPoint")) {
             p.entry_point = Vec2um{Micrometers{j.at("entryPoint").at("x")},
                                    Micrometers{j.at("entryPoint").at("y")}};
@@ -857,6 +919,20 @@ json text_to_json(const document::TextObject& t) {
     j["fill"] = static_cast<int>(t.fill);
     j["maxSatinWidth"] = t.max_satin_width.value;
     j["density"] = t.density.value;
+    // Typographie fine (schéma v8) : écrite SEULEMENT si elle sort des valeurs par défaut,
+    // pour que les textes existants se réécrivent à l'identique.
+    if (!t.kerning_pairs.empty()) {
+        json pairs = json::array();
+        for (const auto& p : t.kerning_pairs) {
+            pairs.push_back({{"left", static_cast<std::uint32_t>(p.left)},
+                             {"right", static_cast<std::uint32_t>(p.right)},
+                             {"adjust", p.adjust.value}});
+        }
+        j["kerningPairs"] = std::move(pairs);
+    }
+    if (t.ligatures) {
+        j["ligatures"] = true;
+    }
     return j;
 }
 
@@ -886,6 +962,18 @@ document::TextObject text_from_json(const json& j) {
     t.fill = static_cast<document::TextFill>(std::clamp(j.value("fill", 0), 0, 3));
     t.max_satin_width = Micrometers{j.value("maxSatinWidth", d.max_satin_width.value)};
     t.density = Micrometers{j.value("density", d.density.value)};
+    if (const auto it = j.find("kerningPairs"); it != j.end() && it->is_array()) {
+        for (const auto& pj : *it) {
+            document::KerningPair pair;
+            pair.left = static_cast<char32_t>(pj.value("left", 0U));
+            pair.right = static_cast<char32_t>(pj.value("right", 0U));
+            pair.adjust = Micrometers{pj.value("adjust", 0)};
+            if (pair.left != 0 && pair.right != 0) {
+                t.kerning_pairs.push_back(pair);
+            }
+        }
+    }
+    t.ligatures = j.value("ligatures", d.ligatures);
     return t;
 }
 
@@ -973,6 +1061,10 @@ json project_to_json(const document::Project& project) {
         // Schéma v6 (HP-THR-004) : fil de nuancier assigné, écrit seulement s'il existe.
         if (e.thread) {
             eo["thread"] = {{"chart", e.thread->chart_id}, {"code", e.thread->code}};
+        }
+        if (e.color_blend) {
+            eo["colorBlend"] = {{"partner", e.color_blend->partner.value},
+                                {"foreground", e.color_blend->foreground}};
         }
         if (!e.overrides.empty()) {
             eo["overrides"] = json::array();
@@ -1125,6 +1217,23 @@ Result<document::Project> project_from_json(const json& j) {
                 return std::unexpected(params.error());
             }
             e.params = std::move(*params);
+
+            // Métadonnée facultative : entier uint64 exact (jamais via double) et rôle
+            // strictement booléen. Les liens orphelins restent lisibles mais ne se résolvent pas.
+            if (eo.contains("colorBlend")) {
+                const auto& link = eo.at("colorBlend");
+                if (!link.is_object() || !link.contains("partner") ||
+                    !link.contains("foreground") || !link.at("foreground").is_boolean()) {
+                    return fail(ErrorCategory::InvalidFile,
+                                "Fondu invalide : colorBlend doit porter partner et foreground");
+                }
+                auto partner = strict_uint64(link.at("partner"), "colorBlend.partner");
+                if (!partner) {
+                    return std::unexpected(partner.error());
+                }
+                e.color_blend =
+                    document::ColorBlendLink{ObjectId{*partner}, link.at("foreground").get<bool>()};
+            }
 
             // Fil de nuancier (schéma v6) : absent dans un projet v1..v5 -> couleur libre.
             if (eo.contains("thread")) {

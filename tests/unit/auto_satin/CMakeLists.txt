@@ -4,6 +4,9 @@ add_executable(test_auto_satin
     test_skeleton_equivalence.cpp
     test_skeleton_satin.cpp
     test_skeleton_satin_generation.cpp
+    test_satin_strategy.cpp
+    test_parallel_sweep.cpp
+    test_medial_axis.cpp
 )
 target_link_libraries(test_auto_satin
     PRIVATE openstitch::auto_satin openstitch::stitch_generation

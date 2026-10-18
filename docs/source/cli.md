@@ -22,6 +22,7 @@ openstitch-cli <sous-commande> --help
 | Commandes | `production` | Fiche de production d'un `.osp` ou d'un DST (texte, JSON, HTML) |
 | Commandes | `dst2svg` | Aperçu SVG d'un DST |
 | Commandes | `osp2dst` | Exporte un projet `.osp` en DST par le même chemin que le bureau |
+| Commandes | `render` | Exporte le rendu brodé réaliste (PNG) d'un fichier de broderie ou d'un `.osp` |
 | Diagnostic | `osp2svg` | `[diagnostic]` Séquence effective d'un `.osp` en SVG (contours des vecteurs, un seul objet) |
 | Diagnostic | `stitchdebug` | `[diagnostic]` Moteur de points sur une forme de référence |
 | Diagnostic | `engine-debug` | `[diagnostic]` Tirage du tatami (`--pull`), sous-couche auto (`--underlay-auto`), satin de bordure (`--border`) et sauts avec/sans entrée/sortie auto sur une scène de référence |
@@ -31,6 +32,9 @@ Les sous-commandes **`[diagnostic]`** inspectent le moteur : leur sortie texte
 n'est **pas un contrat stable** (elle peut changer d'une version à l'autre).
 `info`, `stats`, `digitize` (avec `--json`), `dst2svg` et `osp2dst` sont les
 interfaces destinées à être scriptées.
+
+| Projets | `project …` | Interface programmatique `.osp` : `new`, `digitize`, `inspect`, `apply`, `op`, `set`, `operations`, `check`, `select`, `diff`, `validate`, `digitize-batch` (voir [Projets .osp en ligne de commande](cli-project.md)) |
+| Projets | `commands` | Liste machine-lisible des commandes et options (JSON) |
 
 ## Options communes
 
@@ -104,6 +108,9 @@ Mêmes valeurs par défaut que le dialogue **Numérisation automatique** du bure
 | `--smoothing-px N` | 3 | Lissage des formes |
 | `--curve-tolerance MM` | 0 (polygones) | Mode formes : contours en courbes de Bézier avec cet écart maximal ; prendre ~1,5 px ou plus (ex. 0.4) |
 | `--satin-bands` | désactivé | Mode formes : bandes étroites (anneaux, rubans, arcs) en auto-satin au lieu du tatami, repli tatami si la couverture est insuffisante |
+| `--dark-lines` | désactivé | Mode formes : les traits sombres fins (contours noirs, mâts, haubans) sont séparés des remplissages et cousus par-dessus, en dernier, en point droit (parcours eulérien) |
+| `--dark-lines-width MM` | 1.6 | Avec `--dark-lines` : largeur maximale d'un trait |
+| `--dark-lines-lightness L` | 25 | Avec `--dark-lines` : clarté CIELAB L* maximale d'un pixel de trait |
 | `--coherent-lines` | désactivé | Mode contours : extrait d'abord des traits de la photo (lignes cohérentes, FDoG) |
 | `--stipple-points N` | 2000 | Mode stipple (`--mode stipple`) : nombre de points du semis (1..200000) |
 | `--stipple-seed S` | 1 | Mode stipple : graine du tirage initial |
@@ -137,6 +144,22 @@ Note : `digitize` n'invoque **pas** l'auto-satin par squelette ; les zones
 remplissables deviennent des tatamis. L'auto-satin se demande région par région
 dans l'application (voir *Guide utilisateur détaillé*).
 
+## render : image du rendu brodé
+
+```
+openstitch-cli render <entree.dst|pes|jef|exp|osp> <sortie.png> [--px-per-mm 10] [--margin-mm 3]
+                      [--transparent] [--fast] [--json] [--no-clobber]
+```
+
+Produit une image PNG du rendu réaliste (fils texturés, ombre portée, tissu) pour montrer
+un design à un client (HP-FMT-011). Avec un projet `.osp`, la séquence est la séquence
+**effective** et les fils prennent la couleur des objets ; avec un fichier machine, qui ne
+porte pas de couleurs, chaque bloc de fil reçoit une couleur de repli d'une palette fixe
+(le fichier ne dit pas la teinte réelle). `--transparent` supprime le tissu de fond ;
+`--fast` coupe la torsion et l'ombre portée ; la résolution est abaissée si l'image dépasse
+50 millions de pixels. Le rendu est déterministe (mêmes entrées, mêmes octets).
+L'export JPEG et la boîte de dialogue du bureau restent à faire.
+
 ## dst2svg et osp2dst
 
 ```
@@ -147,6 +170,8 @@ openstitch-cli osp2dst <projet.osp> <sortie.dst>
 `osp2dst` passe par la fonction d'export du bureau : on y voit exactement les
 coupes et la fin de fichier que la machine recevra (voir *Format DST*). Pour
 `dst2svg`, la sortie peut aussi s'écrire `--output-svg`/`--output`.
+
+`osp2dst --color-file csv|inf` écrit à côté du DST (ou de l'EXP) un fichier compagnon des couleurs de fil (`.csv` lisible, ou `.inf` binaire dont la structure n'est validée par aucun lecteur tiers) ; l'import d'un DST/EXP relit ce compagnon voisin s'il existe (un compagnon invalide n'empêche pas l'import).
 
 `osp2dst --reduce-trims [--reduce-trims-levels between,within,underlay,regions] [--reduce-trims-same-colour] [--reduce-trims-max MM]`
 demande, **pour cet export seulement**, de remplacer des coupes par des sauts ou
@@ -180,6 +205,20 @@ Point droit sur une forme de référence ; `--repeats` : 1 simple, 2 aller-retou
 3 triple. `--shape ring` génère un anneau tatami (avec `--underlay` : 1 contour,
 2 parallèle ; `--underpath` : liaisons cousues cachées) et **compte les coutures
 qui traversent le trou** : il sort avec le code **2** si ce nombre n'est pas 0.
+
+### satin-compare
+
+```powershell
+openstitch-cli satin-compare [--shape NOM ...] [--spacing MM] [--format md|csv]
+                             [--svg-dir DOSSIER] [--timing]
+```
+
+Compare **toutes les méthodes d'auto-satin livrées** (squelette, balayage parallèle, axe
+médian vectoriel) sur le corpus de formes ou sur les formes demandées : colonnes, traversées,
+croisements, plus long fil, couverture, fil en double, pic de densité, aire et zone des
+manques. `--svg-dir` écrit un SVG par forme et par méthode. Sans `--timing` la sortie est
+déterministe (diffusable avant/après un changement du moteur). Mesures **géométriques, avant
+finitions** : elles ne remplacent pas un essai sur machine.
 
 ### satin-auto-debug
 

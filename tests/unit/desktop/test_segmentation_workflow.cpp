@@ -3,6 +3,7 @@
 // sélection, régions déjà vectorisées, mode « Fusionner avec… », survol des régions, actions
 // grisées avec raison, aperçu de quantification, dialogues d'import et IA.
 #include <QAbstractButton>
+#include <QAction>
 #include <QApplication>
 #include <QCheckBox>
 #include <QDialog>
@@ -15,10 +16,12 @@
 #include <QItemSelectionModel>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMessageBox>
 #include <QPainter>
 #include <QPushButton>
 #include <QSettings>
+#include <QShortcut>
 #include <QSignalSpy>
 #include <QSlider>
 #include <QSpinBox>
@@ -42,7 +45,10 @@
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/image/ops.hpp"
+#include "openstitch/segmentation/color_merge.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
+#include "segmentation_colors_panel.hpp"
+#include "segmentation_dialog.hpp"
 
 using openstitch::RegionId;
 using openstitch::desktop::AiPreferences;
@@ -298,6 +304,44 @@ private slots:
         QCOMPARE(seen, 80);
     }
 
+    // HP-UX-021 : F7 réutilise le dernier détail sans dialogue ; Maj+F7 / le menu règlent.
+    void quickVectorizeOpensNoDialogAndMenuStillAsks() {
+        MainWindow window;
+        window.applyLoadedProject(threeBandProject());
+        window.selectRegions({regionAt(window, 5, 5)}, SelectMode::Replace);
+
+        bool dialogSeen = false;
+        QTimer guard; // referme un éventuel dialogue pour ne jamais bloquer le test
+        guard.setSingleShot(true);
+        connect(&guard, &QTimer::timeout, &window, [&dialogSeen] {
+            // Seul le dialogue de réglage du détail compte (l'indicateur de travail est modal
+            // aussi).
+            auto* modal = QApplication::activeModalWidget();
+            if (modal != nullptr && modal->findChild<QSlider*>("vectorizeDetailSlider")) {
+                dialogSeen = true;
+                static_cast<QDialog*>(modal)->reject();
+            }
+        });
+        guard.start(0);
+        window.vectorizeSelectedRegion(false);
+        guard.stop();
+        QVERIFY(!dialogSeen);
+        QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
+        window.undo();
+        QCOMPARE(window.project_.vector_objects.size(), std::size_t{0});
+
+        // F7 est un raccourci sans dialogue ; l'action (menu, Maj+F7) garde le réglage du détail.
+        QCOMPARE(window.vectorizeRegionAct_->shortcut(), QKeySequence(Qt::SHIFT | Qt::Key_F7));
+        bool hasF7 = false;
+        for (const auto* shortcut : window.findChildren<QShortcut*>()) {
+            hasF7 = hasF7 || shortcut->key() == QKeySequence(Qt::Key_F7);
+        }
+        QVERIFY(hasF7);
+        runModalScript(&window, {acceptDialog()});
+        window.vectorizeRegionAct_->trigger();
+        QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
+    }
+
     void vectorizingAnAlreadyVectorizedRegionDoesNotDuplicate() {
         MainWindow window;
         window.applyLoadedProject(threeBandProject());
@@ -529,17 +573,15 @@ private slots:
         QVERIFY(window.statusBar()->currentMessage().contains(
             QStringLiteral("Exporter une broderie machine")));
 
-        // Étape « Régions » avec une image : lance « Segmenter l'image… » (dialogue refusé ici).
+        // Étape « Régions » avec une image : ouvre « Segmenter l'image… » (dialogue non modal).
         window.applyLoadedProject(threeBandProject());
         window.project_.segmentation.reset();
         window.updateActions();
-        bool dialogSeen = false;
-        runModalScript(&window, {[&dialogSeen](QWidget* modal) {
-            dialogSeen = modal->windowTitle() == QStringLiteral("Segmenter l'image");
-            static_cast<QDialog*>(modal)->reject();
-        }});
         window.onWorkflowStepClicked(1);
-        QVERIFY(dialogSeen);
+        QVERIFY(!window.segmentDialog_.isNull());
+        QCOMPARE(window.segmentDialog_->windowTitle(), QStringLiteral("Segmenter l'image"));
+        QVERIFY(!window.segmentDialog_->isModal());
+        window.segmentDialog_->close();
     }
 
     void segmentationDialogRemembersItsSettingsAndShowsMmSquared() {
@@ -547,23 +589,95 @@ private slots:
         auto project = threeBandProject();
         project.segmentation.reset();
         window.applyLoadedProject(project);
-        QString mmText;
-        runModalScript(&window, {[&mmText](QWidget* modal) {
-            modal->findChild<QSpinBox*>()->setValue(5);
-            mmText = modal->findChild<QLabel*>("segmentMinSizeMm")->text();
-            static_cast<QDialog*>(modal)->accept();
-        }});
         window.segmentImage();
+        QVERIFY(!window.segmentDialog_.isNull());
+        window.segmentDialog_->findChild<QSpinBox*>()->setValue(5);
+        const QString mmText =
+            window.segmentDialog_->findChild<QLabel*>("segmentMinSizeMm")->text();
         QVERIFY(mmText.contains(QStringLiteral("mm²")));
+        window.segmentDialog_->findChild<QPushButton*>("segmentApplyButton")->click();
         QVERIFY(window.project_.segmentation.has_value());
+        QTRY_VERIFY(window.segmentDialog_.isNull()); // valider ferme le dialogue
 
-        int remembered = -1;
-        runModalScript(&window, {[&remembered](QWidget* modal) {
-            remembered = modal->findChild<QSpinBox*>()->value();
-            static_cast<QDialog*>(modal)->reject();
-        }});
         window.segmentImage();
-        QCOMPARE(remembered, 5);
+        QVERIFY(!window.segmentDialog_.isNull());
+        QCOMPARE(window.segmentDialog_->findChild<QSpinBox*>()->value(), 5);
+        window.segmentDialog_->close();
+    }
+
+    // ---- aperçu de la segmentation (dialogue non modal) --------------------------------------
+
+    void segmentationPreviewNeverTouchesTheDocument() {
+        MainWindow window;
+        auto project = threeBandProject();
+        project.segmentation.reset();
+        window.applyLoadedProject(project);
+        window.segmentImage();
+        QVERIFY(!window.segmentDialog_.isNull());
+        QTRY_VERIFY_WITH_TIMEOUT(window.previewSegmentation_.has_value(), 20000);
+        QVERIFY(!window.project_.segmentation.has_value()); // rien dans le document
+        QVERIFY(window.undoStack_.isClean());
+        QVERIFY(!window.segmentDialog_->findChild<QLabel*>("segmentStatsLabel")->text().isEmpty());
+        window.segmentDialog_->close();
+        QTRY_VERIFY(!window.previewSegmentation_.has_value()); // fermer abandonne l'aperçu
+        QVERIFY(!window.project_.segmentation.has_value());
+    }
+
+    void changingASettingRecomputesThePreview() {
+        MainWindow window;
+        auto project = threeBandProject();
+        project.segmentation.reset();
+        window.applyLoadedProject(project);
+        window.segmentImage();
+        QTRY_VERIFY_WITH_TIMEOUT(window.previewSegmentation_.has_value(), 20000);
+        const std::size_t before =
+            openstitch::segmentation::color_classes(*window.previewSegmentation_).size();
+        QVERIFY(before >= 3);
+
+        window.segmentDialog_->findChild<QSpinBox*>("segmentColorsSpin")->setValue(2);
+        // Le nouvel aperçu (au plus 2 teintes) remplace le précédent, après le délai de saisie.
+        QTRY_VERIFY_WITH_TIMEOUT(
+            window.previewSegmentation_.has_value() &&
+                openstitch::segmentation::color_classes(*window.previewSegmentation_).size() <= 2,
+            20000);
+        QVERIFY(!window.project_.segmentation.has_value());
+        window.segmentDialog_->close();
+    }
+
+    void applyingTheDialogReusesThePreviewInOneUndoStep() {
+        MainWindow window;
+        auto project = threeBandProject();
+        project.segmentation.reset();
+        window.applyLoadedProject(project);
+        window.segmentImage();
+        QTRY_VERIFY_WITH_TIMEOUT(window.previewSegmentation_.has_value(), 20000);
+        const std::size_t previewRegions = window.previewSegmentation_->region_count();
+
+        window.segmentDialog_->findChild<QPushButton*>("segmentApplyButton")->click();
+        QVERIFY(window.project_.segmentation.has_value());
+        QCOMPARE(window.project_.segmentation->region_count(), previewRegions); // c'est l'aperçu
+        QVERIFY(!window.previewSegmentation_.has_value());
+        QVERIFY(window.showSegAct_->isChecked()); // la carte reste affichée : c'est le résultat
+
+        window.undo(); // UN seul pas
+        QVERIFY(!window.project_.segmentation.has_value());
+        window.redo();
+        QVERIFY(window.project_.segmentation.has_value());
+    }
+
+    void switchingThePreviewOffHidesTheMap() {
+        MainWindow window;
+        auto project = threeBandProject();
+        project.segmentation.reset();
+        window.applyLoadedProject(project);
+        window.segmentImage();
+        QTRY_VERIFY_WITH_TIMEOUT(window.previewSegmentation_.has_value(), 20000);
+        window.segmentDialog_->findChild<QCheckBox*>("segmentPreviewCheck")->setChecked(false);
+        QVERIFY(!window.previewSegmentation_.has_value());
+        QVERIFY(!window.showSegAct_->isChecked()); // la carte affichée par l'aperçu est retirée
+        window.segmentDialog_->findChild<QCheckBox*>("segmentPreviewCheck")->setChecked(true);
+        QTRY_VERIFY_WITH_TIMEOUT(window.previewSegmentation_.has_value(), 20000);
+        window.segmentDialog_->close();
     }
 
     // ---- recadrage, quantification (audit A9/A21) -----------------------------------------
@@ -910,6 +1024,188 @@ private slots:
             QVERIFY(!dialog.hasResult());
             QVERIFY(validate->isEnabled());
         }
+    }
+
+    // ---- raccourcis clavier de la segmentation --------------------------------------------
+
+    void segmentationActionsCarryTheirShortcuts() {
+        MainWindow window;
+        window.applyLoadedProject(threeBandProject());
+        const auto has = [](const QAction* action, const QKeySequence& key) {
+            return action->shortcuts().contains(key);
+        };
+        QVERIFY(has(window.showSegAct_, QKeySequence(Qt::Key_W)));
+        QVERIFY(has(window.mergeSelectionAct_, QKeySequence(Qt::CTRL | Qt::Key_M))); // inchangé
+        QVERIFY(has(window.mergeSelectionAct_, QKeySequence(Qt::Key_J)));
+        QVERIFY(has(window.absorbAct_, QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_M)));
+        QVERIFY(has(window.absorbAct_, QKeySequence(Qt::Key_A)));
+        QVERIFY(has(window.selectSameColorAct_, QKeySequence(Qt::Key_C)));
+        QVERIFY(has(window.selectNeighboursAct_, QKeySequence(Qt::Key_N)));
+        QVERIFY(has(window.nextRegionAct_, QKeySequence(Qt::ALT | Qt::Key_Right)));
+        QVERIFY(has(window.previousRegionAct_, QKeySequence(Qt::ALT | Qt::Key_Left)));
+    }
+
+    void regionNavigationCyclesThroughAllRegionsAndWraps() {
+        MainWindow window;
+        window.applyLoadedProject(threeBandProject());
+        const auto all = openstitch::segmentation::all_regions(*window.project_.segmentation);
+        QCOMPARE(all.size(), std::size_t{3});
+        QVERIFY(window.selectedRegionIds().empty());
+
+        window.selectAdjacentRegion(+1); // sans sélection : la première
+        QCOMPARE(window.selectedRegion_->value, all[0].value);
+        window.selectAdjacentRegion(+1);
+        QCOMPARE(window.selectedRegion_->value, all[1].value);
+        window.selectAdjacentRegion(+1);
+        window.selectAdjacentRegion(+1); // retour au début
+        QCOMPARE(window.selectedRegion_->value, all[0].value);
+        window.selectAdjacentRegion(-1); // depuis la première : la dernière
+        QCOMPARE(window.selectedRegion_->value, all[2].value);
+        QCOMPARE(window.selectedRegionIds().size(), std::size_t{1}); // toujours une seule région
+
+        window.selectRegions({}, SelectMode::Replace);
+        window.selectAdjacentRegion(-1); // sans sélection : la dernière
+        QCOMPARE(window.selectedRegion_->value, all[2].value);
+
+        window.project_.segmentation.reset();
+        window.selectAdjacentRegion(+1); // sans segmentation : sans effet, sans plantage
+    }
+
+    void realKeyPressesDriveTheSegmentationShortcuts() {
+        MainWindow window;
+        window.applyLoadedProject(threeBandProject());
+        window.resize(1400, 900);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        window.activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&window));
+        const auto all = openstitch::segmentation::all_regions(*window.project_.segmentation);
+
+        // W : la carte des régions s'affiche et se masque.
+        const bool shown = window.showSegAct_->isChecked();
+        QTest::keyClick(&window, Qt::Key_W);
+        QCOMPARE(window.showSegAct_->isChecked(), !shown);
+        QTest::keyClick(&window, Qt::Key_W);
+        QCOMPARE(window.showSegAct_->isChecked(), shown);
+
+        // Alt+→ / Alt+← : parcours des régions.
+        QTest::keyClick(&window, Qt::Key_Right, Qt::AltModifier);
+        QCOMPARE(window.selectedRegion_->value, all[0].value);
+        QTest::keyClick(&window, Qt::Key_Right, Qt::AltModifier);
+        QCOMPARE(window.selectedRegion_->value, all[1].value);
+        QTest::keyClick(&window, Qt::Key_Left, Qt::AltModifier);
+        QCOMPARE(window.selectedRegion_->value, all[0].value);
+
+        // N : les voisines s'ajoutent ; C : la même couleur (ici chaque teinte est unique).
+        QTest::keyClick(&window, Qt::Key_N);
+        QVERIFY(window.selectedRegionIds().size() >= 2);
+        window.selectRegions({all[0]}, SelectMode::Replace);
+        QTest::keyClick(&window, Qt::Key_C);
+        QCOMPARE(window.selectedRegionIds().size(), std::size_t{1});
+
+        // J : fusionne les régions sélectionnées (comme Ctrl+M).
+        window.selectRegions({all[0], all[1]}, SelectMode::Replace);
+        QTest::keyClick(&window, Qt::Key_J);
+        QCOMPARE(window.project_.segmentation->region_count(), std::size_t{2});
+        window.undo();
+        QCOMPARE(window.project_.segmentation->region_count(), std::size_t{3});
+
+        // A : la région rejoint sa voisine principale (comme Ctrl+Maj+M).
+        window.selectRegions({all[0]}, SelectMode::Replace);
+        QTest::keyClick(&window, Qt::Key_A);
+        QCOMPARE(window.project_.segmentation->region_count(), std::size_t{2});
+        window.undo();
+        QCOMPARE(window.project_.segmentation->region_count(), std::size_t{3});
+    }
+
+    void escapeClearsTheRegionSelectionOnlyWhenNothingElseIsActive() {
+        MainWindow window;
+        window.applyLoadedProject(threeBandProject());
+        window.resize(1400, 900);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        window.activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&window));
+        const auto all = openstitch::segmentation::all_regions(*window.project_.segmentation);
+
+        // Mode « Fusionner avec… » actif : Échap l'annule et GARDE la sélection.
+        window.selectRegions({all[0]}, SelectMode::Replace);
+        window.mergeAct_->setChecked(true);
+        QTest::keyClick(&window, Qt::Key_Escape);
+        QVERIFY(!window.mergeAct_->isChecked());
+        QCOMPARE(window.selectedRegionIds().size(), std::size_t{1});
+
+        // Rien à annuler : Échap désélectionne.
+        QTest::keyClick(&window, Qt::Key_Escape);
+        QVERIFY(window.selectedRegionIds().empty());
+        QCOMPARE(window.currentTool_, openstitch::desktop::Tool::Select);
+    }
+
+    // ---- fusion de couleurs (panneau « Couleurs ») ------------------------------------------
+
+    void colorMergePreviewNeverTouchesTheDocument() {
+        MainWindow window;
+        window.applyLoadedProject(threeBandProject());
+        const auto labels = window.project_.segmentation->labels;
+        const auto plan = openstitch::segmentation::plan_reduce_colors(
+            *window.project_.segmentation, 2, 0.0, true);
+        QVERIFY(!plan.empty());
+
+        window.previewColorMerge(plan);
+        QVERIFY(window.previewSegmentation_.has_value());
+        // L'aperçu n'a plus que deux teintes ; le document garde ses trois : c'est une copie.
+        QCOMPARE(openstitch::segmentation::color_classes(*window.previewSegmentation_).size(),
+                 std::size_t{2});
+        QCOMPARE(openstitch::segmentation::color_classes(*window.project_.segmentation).size(),
+                 std::size_t{3});
+        QCOMPARE(window.project_.segmentation->labels, labels);
+        QVERIFY(window.undoStack_.isClean());
+
+        window.clearSegmentationPreview(true);
+        QVERIFY(!window.previewSegmentation_.has_value());
+        QCOMPARE(window.project_.segmentation->labels, labels);
+    }
+
+    void colorMergeApplyIsOneUndoStepAndRefreshesThePanel() {
+        MainWindow window;
+        window.applyLoadedProject(threeBandProject());
+        const auto labels = window.project_.segmentation->labels;
+        auto* open = window.findChild<QAction*>(QStringLiteral("action_mergeColors"));
+        QVERIFY(open != nullptr);
+        open->trigger();
+        QVERIFY(window.colorsPanel_ != nullptr);
+        auto* list = window.colorsPanel_->findChild<QListWidget*>(QStringLiteral("segColorsList"));
+        QVERIFY(list != nullptr);
+        QCOMPARE(list->count(), 3);
+
+        const auto plan = openstitch::segmentation::plan_reduce_colors(
+            *window.project_.segmentation, 2, 0.0, true);
+        window.previewColorMerge(plan);
+        window.applyColorMergePlan(plan);
+        QVERIFY(!window.previewSegmentation_.has_value()); // l'aperçu cède la place au résultat
+        const auto distinctColors = [&window] {
+            return openstitch::segmentation::color_classes(*window.project_.segmentation).size();
+        };
+        QCOMPARE(distinctColors(), std::size_t{2});
+        QCOMPARE(list->count(), 2); // la liste suit le document
+
+        window.undo(); // UN seul pas pour toute la fusion
+        QCOMPARE(distinctColors(), std::size_t{3});
+        QCOMPARE(window.project_.segmentation->region_count(), std::size_t{3});
+        QCOMPARE(window.project_.segmentation->labels, labels);
+        QCOMPARE(list->count(), 3);
+        window.redo();
+        QCOMPARE(distinctColors(), std::size_t{2});
+    }
+
+    void selectingAColorSelectsAllItsRegions() {
+        MainWindow window;
+        window.applyLoadedProject(threeBandProject());
+        const auto classes = openstitch::segmentation::color_classes(*window.project_.segmentation);
+        window.selectRegionsOfColors({classes.front().rgb});
+        QCOMPARE(window.selectedRegionIds().size(), classes.front().regions.size());
+        window.selectRegionsOfColors({});
+        QVERIFY(window.selectedRegionIds().empty());
     }
 
 private:

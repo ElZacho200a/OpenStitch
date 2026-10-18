@@ -5,14 +5,18 @@
 // commande annulable.
 #include <QMessageBox>
 #include <QStatusBar>
+#include <QTimer>
 
 #include <algorithm>
+#include <chrono>
+#include <future>
 
 #include "main_window.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/stitch_generation/border_satin.hpp"
 #include "properties_panel.hpp"
+#include "ui_memory.hpp"
 
 namespace openstitch::desktop {
 
@@ -109,6 +113,107 @@ void MainWindow::setConnectorMode(ObjectId id, int mode) {
                            id, static_cast<document::ConnectorMode>(std::clamp(mode, 0, 2))),
                        project_);
     refreshImage();
+    updateActions();
+}
+
+// --- HP-PERF-009 : régénération différée -----------------------------------------------------
+
+// Calcul en cours sur un instantané du projet. L'instantané est tenu par la tâche elle-même (pas
+// de cycle avec cette structure) ; `serial` date la demande : toute édition ou tout
+// rafraîchissement ultérieur la rend périmée.
+struct MainWindow::AsyncRefresh {
+    std::future<Result<stitch_generation::RefreshContext>> future;
+    std::uint64_t serial{0};
+    std::optional<ObjectId> target;
+};
+
+void MainWindow::commitCreationMemory() {
+    if (pendingCreationMemory_) {
+        ui_memory::creation::remember(*pendingCreationMemory_);
+        pendingCreationMemory_.reset();
+    }
+}
+
+void MainWindow::scheduleParamsRefresh() {
+    if (paramsRefreshTimer_ == nullptr) {
+        paramsRefreshTimer_ = new QTimer(this);
+        paramsRefreshTimer_->setSingleShot(true);
+        paramsRefreshTimer_->setInterval(kParamsRefreshDelayMs);
+        connect(paramsRefreshTimer_, &QTimer::timeout, this, [this] {
+            commitCreationMemory();
+            startAsyncRefresh();
+        });
+        asyncPollTimer_ = new QTimer(this);
+        asyncPollTimer_->setInterval(20);
+        connect(asyncPollTimer_, &QTimer::timeout, this, &MainWindow::pollAsyncRefresh);
+    }
+    // Ce qui ne dépend pas des points se met à jour tout de suite : marqueur « modifié »,
+    // annuler/rétablir, indicateurs.
+    setWindowModified(!undoStack_.isClean());
+    updateActions();
+    ++refreshSerial_; // tout résultat déjà en route est périmé
+    paramsRefreshPending_ = true;
+    paramsRefreshTimer_->start(); // réarme : une rafale d'éditions = une seule régénération
+}
+
+void MainWindow::flushPendingRefresh() {
+    if (!paramsRefreshPending_) {
+        return;
+    }
+    if (paramsRefreshTimer_ != nullptr) {
+        paramsRefreshTimer_->stop();
+    }
+    commitCreationMemory();
+    // refreshImage() incrémente la série : un calcul encore en route sera rejeté à son retour.
+    refreshImage();
+    updateActions();
+}
+
+void MainWindow::startAsyncRefresh() {
+    if (!paramsRefreshPending_ || asyncRefresh_ != nullptr) {
+        return; // rien à faire, ou calcul déjà en cours : pollAsyncRefresh relancera au besoin
+    }
+    auto state = std::make_shared<AsyncRefresh>();
+    state->serial = refreshSerial_;
+    state->target = stitchEditTarget_;
+    auto snapshot = std::make_shared<const document::Project>(project_);
+    auto hook = refreshWorkerHook_;
+    const auto target = state->target;
+    state->future = std::async(std::launch::async, [snapshot, target, hook] {
+        if (hook) {
+            hook();
+        }
+        return stitch_generation::refresh_context(*snapshot, target);
+    });
+    asyncRefresh_ = std::move(state);
+    asyncPollTimer_->start();
+}
+
+void MainWindow::pollAsyncRefresh() {
+    if (asyncRefresh_ == nullptr) {
+        asyncPollTimer_->stop();
+        return;
+    }
+    if (asyncRefresh_->future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        return;
+    }
+    const std::shared_ptr<AsyncRefresh> state = std::move(asyncRefresh_);
+    asyncRefresh_.reset();
+    asyncPollTimer_->stop();
+    auto result = state->future.get();
+    if (state->serial != refreshSerial_) {
+        // Périmé (nouvelle édition, annulation, autre mutation) : rejeté. Si des éditions
+        // attendent encore et que le débounce n'est pas armé, on repart sur le document actuel.
+        if (paramsRefreshPending_ && !paramsRefreshTimer_->isActive()) {
+            startAsyncRefresh();
+        }
+        return;
+    }
+    if (result && state->target == stitchEditTarget_) {
+        precomputedContext_ = std::move(*result);
+    }
+    refreshImage();
+    precomputedContext_.reset();
     updateActions();
 }
 

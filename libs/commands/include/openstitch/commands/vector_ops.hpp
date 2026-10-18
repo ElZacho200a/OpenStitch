@@ -36,16 +36,20 @@ struct VectorOpResult {
 // (et donc les objets de broderie) de l'objet RETENU : le dernier de `ids` (le principal) pour
 // l'union et l'intersection, la forme la plus basse du document pour la soustraction. Les autres
 // objets, et leurs broderies, sont supprimés. Résultat vide : refusé.
+// `union_gap` (Union seulement) : écart maximal soudé entre deux formes juxtaposées ; 0 = union
+// stricte. Les trous plus étroits que cet écart sont comblés.
 [[nodiscard]] VectorOpResult make_boolean_command(document::Project& project, BooleanOp op,
-                                                  const std::vector<ObjectId>& ids);
+                                                  const std::vector<ObjectId>& ids,
+                                                  Micrometers union_gap = Micrometers{50});
 
-// Découpe chaque objet de `ids` le long de la droite (a, b) (prolongée au-delà des formes).
+// Découpe chaque objet de `ids` le long du segment (a, b) : seules les formes que le segment
+// traverse de part en part sont coupées. `cut_width` : largeur de la bande retirée.
 // Chaque morceau devient un objet : le plus grand garde l'identité d'origine, les autres sont
 // de nouveaux objets, et leurs broderies de remplissage sont clonées (réglages identiques,
 // retouches manuelles non copiées). Refusé si aucune forme n'est réellement traversée.
 [[nodiscard]] VectorOpResult make_split_command(document::Project& project,
                                                 const std::vector<ObjectId>& ids, Vec2um a,
-                                                Vec2um b);
+                                                Vec2um b, Micrometers cut_width = Micrometers{20});
 
 // Retire les trous des objets `ids` (HP-VEC-005) : tous si `max_area_um2` <= 0, sinon
 // seulement ceux dont l'aire ne dépasse pas ce seuil (« combler les petits trous »). Une seule
@@ -53,6 +57,19 @@ struct VectorOpResult {
 [[nodiscard]] VectorOpResult make_remove_holes_command(const document::Project& project,
                                                        const std::vector<ObjectId>& ids,
                                                        double max_area_um2 = 0.0);
+
+// Comble les poches sans fil d'un bloc (`stitch_analysis::find_uncovered_pockets`) : chaque poche
+// est rattachée au plus grand remplissage (tatami ou directionnel) de `ids` qui la touche, à
+// défaut au plus grand objet voisin, tout type confondu. Un remplissage voisin qui est seul sur
+// son vecteur, sans retouche manuelle ni lettrage, voit ce vecteur agrandi des poches qu'il
+// absorbe (une seule zone de remplissage) ; sinon -- vecteur partagé, retouches à préserver, voisin
+// non remplissant, poche déjà dans son vecteur -- les poches deviennent un NOUVEL objet vectoriel
+// suivi d'un tatami (réglages du voisin si c'est un remplissage, tatami par défaut sinon), de la
+// couleur du voisin. Une seule commande ; refusée si aucune poche n'est rattachable.
+// `resulting_objects` = nombre de poches comblées.
+[[nodiscard]] VectorOpResult
+make_fill_pockets_command(document::Project& project, const std::vector<ObjectId>& ids,
+                          const std::vector<geometry::PathSet>& pockets);
 
 // Sépare les morceaux disjoints d'un objet en objets distincts (mêmes règles de clonage).
 // Refusé si l'objet n'a qu'un morceau.

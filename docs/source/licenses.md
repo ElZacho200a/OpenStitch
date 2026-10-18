@@ -33,6 +33,7 @@ l'objet d'une vérification de licence spécifique.** Voir
 | OpenCV (core/imgproc/imgcodecs) | via vcpkg | image | Apache-2.0 | vcpkg | opencv.org |
 | libpng / libjpeg-turbo / libtiff / zlib | transitives | codecs | zlib / IJG / libtiff / zlib | via OpenCV | — |
 | Clipper2 | via vcpkg | booléens/offsets | BSL-1.0 | vcpkg (encapsulée) | github.com/AngusJohnson/Clipper2 |
+| Boost.Polygon | via vcpkg | Voronoï de segments (axe médian vectoriel) | BSL-1.0 | vcpkg (encapsulée) | boost.org/doc/libs/latest/libs/polygon |
 | nlohmann/json | via vcpkg | JSON projet | MIT | vcpkg (encapsulée) | github.com/nlohmann/json |
 | minizip-ng | via vcpkg | ZIP projet | zlib | vcpkg (encapsulée) | github.com/zlib-ng/minizip-ng |
 | Catch2 v3 | via vcpkg | tests | BSL-1.0 | vcpkg (dev) | github.com/catchorg/Catch2 |

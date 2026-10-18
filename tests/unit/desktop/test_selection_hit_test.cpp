@@ -53,6 +53,44 @@ private slots:
         QCOMPARE(bb, QRectF(0.0, -10.0, 10.0, 10.0));
     }
 
+    // HP-UX-019 : tolérance de clic, tracé ouvert et prédicat commun.
+    void toleranceMakesAnOpenPathClickableButStaysLocal() {
+        openstitch::document::Project project;
+        openstitch::document::VectorObject line;
+        line.id = project.object_ids.next();
+        line.name = "ligne";
+        openstitch::geometry::Path path;
+        path.closed = false;
+        path.nodes = {corner(0, 0), corner(10'000, 0)}; // segment horizontal de 10 mm
+        line.paths.push_back(openstitch::geometry::PathSet{path, {}});
+        const ObjectId id = line.id;
+        project.vector_objects.push_back(line);
+        // Sans tolérance : aire nulle, jamais touché.
+        QVERIFY(objectsAtPointMm(project, QPointF(5.0, -0.3)).empty());
+        // Avec 0,4 mm de tolérance : touché à 0,3 mm, pas à 5 mm.
+        QCOMPARE(objectsAtPointMm(project, QPointF(5.0, -0.3), 0.4).size(), std::size_t{1});
+        QCOMPARE(objectsAtPointMm(project, QPointF(5.0, -0.3), 0.4).front(), id);
+        QVERIFY(objectsAtPointMm(project, QPointF(5.0, -5.0), 0.4).empty());
+    }
+
+    void toleranceIsAFallbackAndPredicateFilters() {
+        openstitch::document::Project project;
+        const ObjectId near = addSquare(project, 10, 0, 10);  // x de 10 à 20 mm
+        const ObjectId inside = addSquare(project, 0, 0, 10); // contient le point (9,9 ; -5)
+        const QPointF p(9.9, -5.0);                           // à 0,1 mm du bord gauche de `near`
+        // Un objet touche exactement le point : la tolérance n'ajoute pas ses voisins.
+        const auto exact = objectsAtPointMm(project, p, 0.4);
+        QCOMPARE(exact.size(), std::size_t{1});
+        QCOMPARE(exact.front(), inside);
+        // Le prédicat écarte `inside` : plus rien ne contient le point, le repli retient `near`.
+        const auto onlyNear =
+            objectsAtPointMm(project, p, 0.4, [near](const openstitch::document::VectorObject& o) {
+                return o.id == near;
+            });
+        QCOMPARE(onlyNear.size(), std::size_t{1});
+        QCOMPARE(onlyNear.front(), near);
+    }
+
     void pointHitReturnsTopmostFirstAndSkipsHidden() {
         openstitch::document::Project project;
         const ObjectId below = addSquare(project, 0, 0, 10);

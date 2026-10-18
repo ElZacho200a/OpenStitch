@@ -21,12 +21,16 @@
 #include <QScreen>
 #include <QSettings>
 #include <QShortcut>
+#include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStatusBar>
 #include <QTextEdit>
 #include <QTime>
 #include <QTimer>
+#include <QToolBar>
 #include <QUrl>
+
+#include <algorithm>
 
 #include "canvas_view.hpp"
 #include "document_panel.hpp"
@@ -40,8 +44,9 @@ namespace {
 
 // Version du format de `ui/windowState` : à incrémenter quand un dock ou une barre est
 // ajouté/retiré, pour qu'un état enregistré par une version antérieure ne laisse pas le
-// nouvel élément caché (restoreState refuse un état de version différente).
-constexpr int kUiLayoutVersion = 1;
+// nouvel élément caché (restoreState refuse un état de version différente). v2 : docks en
+// onglets (HP-UX-024) : un état v1 pouvait laisser un dock (Filtres) flottant hors du cadre.
+constexpr int kUiLayoutVersion = 2;
 
 [[nodiscard]] bool isImageSuffix(const QString& suffix) {
     static const QStringList kImages{QStringLiteral("png"),  QStringLiteral("jpg"),
@@ -133,7 +138,81 @@ void MainWindow::dropEvent(QDropEvent* event) {
 // Touches : ShortcutOverride et raccourcis contextuels
 // ---------------------------------------------------------------------------
 
+namespace {
+
+// Hauteur de fenêtre (px) en deçà de laquelle la palette d'outils passe sur deux colonnes.
+constexpr int kTwoColumnPaletteMaxHeightPx = 520;
+// Largeur de fenêtre (px) en deçà de laquelle le mode portable est proposé une fois.
+constexpr int kPortableModeProposalMaxWidthPx = 1000;
+
+// Répartit les actions de la palette sur une ou deux colonnes (HP-UX-026). Les actions sont
+// déplacées (jamais copiées) : l'ordre est conservé, la coupure tombe de préférence sur un
+// séparateur proche du milieu. La seconde barre est créée à la première demande.
+void setPaletteColumns(QMainWindow* window, QToolBar* first, bool twoColumns) {
+    auto* second = window->findChild<QToolBar*>(QStringLiteral("toolPalette2"));
+    const bool split = first->property("paletteSplit").toBool();
+    if (twoColumns == split) {
+        return;
+    }
+    first->setProperty("paletteSplit", twoColumns);
+    if (twoColumns) {
+        if (second == nullptr) {
+            second = new QToolBar(first->windowTitle(), window);
+            second->setObjectName(QStringLiteral("toolPalette2"));
+            second->setMovable(false);
+            second->setIconSize(first->iconSize());
+            window->addToolBarBreak(Qt::LeftToolBarArea);
+            window->addToolBar(Qt::LeftToolBarArea, second);
+        }
+        const QList<QAction*> actions = first->actions();
+        int cut = static_cast<int>(actions.size() + 1) / 2;
+        for (int offset = 0; offset <= 3; ++offset) {
+            const int below = cut - offset;
+            const int above = cut + offset;
+            if (below > 0 && actions.at(below)->isSeparator()) {
+                cut = below + 1;
+                break;
+            }
+            if (above < actions.size() && actions.at(above)->isSeparator()) {
+                cut = above + 1;
+                break;
+            }
+        }
+        for (int i = cut; i < actions.size(); ++i) {
+            first->removeAction(actions.at(i));
+            second->addAction(actions.at(i));
+        }
+        second->show();
+    } else if (second != nullptr) {
+        const QList<QAction*> moved = second->actions();
+        for (QAction* action : moved) {
+            second->removeAction(action);
+            first->addAction(action);
+        }
+        second->hide();
+    }
+}
+
+} // namespace
+
 bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
+    if (watched == this && event->type() == QEvent::Resize) {
+        if (toolPalette_ != nullptr) {
+            setPaletteColumns(this, toolPalette_, height() <= kTwoColumnPaletteMaxHeightPx);
+        }
+        // Petite fenêtre : le mode portable est proposé une seule fois (préférence mémorisée).
+        auto* portable = findChild<QAction*>(QStringLiteral("action_portableMode"));
+        if (isVisible() && portable != nullptr && !portable->isChecked() &&
+            width() < kPortableModeProposalMaxWidthPx) {
+            QSettings settings;
+            if (!settings.value(QStringLiteral("ui/portableHintShown"), false).toBool()) {
+                settings.setValue(QStringLiteral("ui/portableHintShown"), true);
+                statusBar()->showMessage(tr("Fenêtre étroite : le menu Affichage ▸ Panneaux ▸ "
+                                            "« Mode portable » rend de la place au canevas."),
+                                         12000);
+            }
+        }
+    }
     if (event->type() == QEvent::ShortcutOverride) {
         auto* keyEvent = static_cast<QKeyEvent*>(event);
         auto* widget = qobject_cast<QWidget*>(watched);
@@ -211,6 +290,9 @@ void MainWindow::saveUiLayout() {
     QSettings s;
     s.setValue(QStringLiteral("ui/geometry"), saveGeometry());
     s.setValue(QStringLiteral("ui/windowState"), saveState(kUiLayoutVersion));
+    if (const auto* portable = findChild<QAction*>(QStringLiteral("action_portableMode"))) {
+        s.setValue(QStringLiteral("ui/portableMode"), portable->isChecked());
+    }
 }
 
 void MainWindow::restoreUiLayout() {
@@ -226,8 +308,34 @@ void MainWindow::restoreUiLayout() {
         if (!ok && !defaultWindowState_.isEmpty()) {
             restoreState(defaultWindowState_);
         }
+        // L'état restauré fixe déjà la place des panneaux : seule la case du menu est mise à
+        // jour, sans rejouer le déplacement.
+        if (auto* portable = findChild<QAction*>(QStringLiteral("action_portableMode"))) {
+            const QSignalBlocker blocker(portable);
+            portable->setChecked(ok && s.value(QStringLiteral("ui/portableMode")).toBool());
+        }
     }
     fitWindowToScreen();
+    // Un dock flottant mémorisé sur un écran débranché ou plus petit (dock Fils ouvert, par
+    // exemple) ne doit jamais démarrer hors de vue ni plus grand que l'écran (HP-UX-024).
+    const QScreen* sc = screen() != nullptr ? screen() : QGuiApplication::primaryScreen();
+    if (sc != nullptr) {
+        const QRect avail = sc->availableGeometry();
+        for (QDockWidget* dock : findChildren<QDockWidget*>(Qt::FindDirectChildrenOnly)) {
+            if (!dock->isFloating()) {
+                continue;
+            }
+            QRect frame = dock->frameGeometry();
+            frame.setSize(frame.size().boundedTo(avail.size()));
+            if (!avail.contains(frame)) {
+                const int maxLeft = avail.left() + avail.width() - frame.width();
+                const int maxTop = avail.top() + avail.height() - frame.height();
+                frame.moveTopLeft(QPoint(std::clamp(frame.left(), avail.left(), maxLeft),
+                                         std::clamp(frame.top(), avail.top(), maxTop)));
+            }
+            dock->setGeometry(frame);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -266,8 +374,8 @@ void MainWindow::updateSavedIndicator() {
     } else if (currentProjectPath_.isEmpty()) {
         savedLabel_->setText(tr("Nouveau document"));
     } else {
-        savedLabel_->setText(
-            tr("Enregistré à %1").arg(QTime::currentTime().toString(QStringLiteral("HH:mm"))));
+        const QTime at = savedAt_.isValid() ? savedAt_ : QTime::currentTime();
+        savedLabel_->setText(tr("Enregistré à %1").arg(at.toString(QStringLiteral("HH:mm"))));
     }
 }
 

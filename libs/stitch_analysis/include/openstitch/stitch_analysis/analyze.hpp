@@ -15,6 +15,25 @@ namespace openstitch::stitch_analysis {
 
 enum class Severity { Info, Warning, Error };
 
+// Correction proposée pour un constat. Donnée pure : le moteur ne modifie jamais le
+// document ; le bureau la traduit en ICommand. `None` = pas de correction automatique.
+enum class FixKind {
+    None,
+    MoveIntoHoop,      // `delta` : translation de l'objet pour rentrer dans le cadre
+    EnlargeText,       // `text` : texte concerné ; `value` : hauteur de capitale visée
+    ClampStitchLength, // `value` : longueur ramenée dans la plage du projet
+    SplitLongStitches, // finishing.split_long_stitches = true (projet entier)
+    EnableFinishing,   // finishing.enabled = true (projet entier)
+};
+
+struct Fix {
+    FixKind kind{FixKind::None};
+    Vec2um delta{};
+    Micrometers value{};
+    ObjectId text{};   // TextObject::id
+    std::string label; // libellé du bouton, ex. « Ramener dans le cadre »
+};
+
 struct Finding {
     Severity severity{Severity::Warning};
     std::string category; // slug court, ex. "point-court"
@@ -22,12 +41,16 @@ struct Finding {
     Vec2um location{};    // où, sur le canevas
     ObjectId object{};    // objet concerné (0 = global)
     std::string hint;     // piste de correction (vide = aucune)
+    Fix fix;              // correction applicable en un clic (vide = aucune)
 };
 
 struct AnalysisOptions {
     Micrometers min_stitch{500};   // en dessous : point trop court (0,5 mm)
     Micrometers max_stitch{7'000}; // au-dessus : point trop long (7 mm)
     Micrometers max_jump{30'000};  // saut trop long (30 mm)
+    // En dessous : point quasi nul (probable doublon), avertissement par point. Entre ce seuil
+    // et `min_stitch` : un seul constat d'information par objet (`points-courts`).
+    Micrometers near_zero_stitch{100};
     // Déplacement plus long que ce seuil sans coupe (Lot G) : le fil traîne
     // sur le tissu. Même seuil par défaut que les coupes automatiques.
     Micrometers trim_threshold{3'000};
@@ -46,6 +69,19 @@ struct AnalysisOptions {
     // bloc de 2 x 2 cases (5 mm) en excès : ni le bord d'un objet, ni des objets
     // simplement voisins ne comptent.
     Micrometers layer_cell{2'500};
+    // HP-PROD-007. `detail-trop-petit` : objet dont la boîte englobante (hors points
+    // d'arrêt) tient dans moins de ce côté sur les DEUX axes (1 mm : en dessous, le
+    // détail se perd dans l'épaisseur du fil). 0 = règle désactivée.
+    Micrometers min_object_size{1'000};
+    // `densite-excessive` : pénétrations/mm² au-delà desquelles une zone (grille de 1 mm,
+    // voir `density_map.hpp`) est signalée. 0 = désactivée (défaut : seuil non mesuré sur
+    // un corpus, donc non imposé aux projets existants).
+    double max_penetrations_per_mm2{0.0};
+    // `objet-sans-arret` : objet cousu sans aucun point d'arrêt (passe `Lock`). Utile
+    // quand les finitions sont actives ; `options_from_project` l'active dans ce cas.
+    bool check_lock_stitches{false};
+    // `trop-de-coupes` : plus de coupes que ce nombre. 0 = désactivée.
+    std::size_t max_trims{0};
 };
 
 // Analyse une séquence et renvoie les problèmes détectés, du plus grave au
@@ -74,6 +110,16 @@ struct AnalysisReport {
 // réglé à 9 mm produira des points trop longs, ce que l'on peut dire d'avance.
 // Catégorie « parametre-hors-limites », objet concerné renseigné, ordre du document.
 [[nodiscard]] std::vector<Finding> check_stitch_limits(const document::Project& project);
+
+// Cadre brodable du canevas : repère centre / Y vers le haut, zone utile (canevas moins la
+// marge). Source unique du cadre pour le panneau, `project quality` et `analyze_project`.
+[[nodiscard]] stitch::BoundsUm canvas_hoop(const document::Canvas& canvas);
+
+// Analyse complète d'un projet : options_from_project + cadre du canevas, analyze_detailed,
+// règles de texte et réglages hors limites. Point d'entrée UNIQUE du panneau, du pré-export,
+// du dump debug et de `project quality`.
+[[nodiscard]] AnalysisReport analyze_project(const document::Project& project,
+                                             const stitch::StitchSequence& sequence);
 
 // Nombre de millimètres formaté à la française, une décimale, sans dépendre
 // de la locale : 3500 µm -> « 3,5 ». Troncature vers zéro comme avant.

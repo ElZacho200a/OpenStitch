@@ -4,8 +4,10 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <functional>
+#include <iterator>
 #include <limits>
 #include <list>
 #include <map>
@@ -13,13 +15,19 @@
 #include <numbers>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 
 #include "axis.hpp"
 #include "axis_sampler.hpp"
 #include "chord.hpp"
+#include "coverage.hpp"
 #include "geometry_detail.hpp"
+#include "medial_axis.hpp"
+#include "openstitch/auto_satin/graph_cleanup.hpp"
+#include "openstitch/auto_satin/medial_axis_satin.hpp"
 #include "openstitch/geometry/moments.hpp"
+#include "openstitch/geometry/polyline.hpp"
 #include "orientation.hpp"
 
 namespace openstitch::auto_satin {
@@ -753,87 +761,6 @@ std::pair<double, double> project_on_axis(const Axis& axis, P2 q) {
     return {bestS, bestDist};
 }
 
-// Couverture estimée : rasterise les triangles balayés par deux traversées
-// consécutives d'une même colonne (rendu des fils) sur le masque de la région.
-void measure_coverage(const geometry::PathSet& region, SkeletonSatinResult& result) {
-    SkeletonRasterParameters raster;
-    raster.pixel_size = Micrometers{100};
-    const auto mask = rasterize(region, raster);
-    if (!mask || mask->width <= 0 || mask->height <= 0) {
-        return;
-    }
-    const RasterMask& m = *mask;
-    std::vector<std::uint8_t> count(m.pixels.size(), 0);
-    const double pix = m.transform.pixel_size_um;
-    const auto fill = [&](P2 a, P2 b, P2 c) {
-        const auto toCol = [&](double x) { return (x - m.transform.min_x_um) / pix; };
-        const auto toRow = [&](double y) { return (m.transform.max_y_um - y) / pix; };
-        const double ax = toCol(a.x), ay = toRow(a.y);
-        const double bx = toCol(b.x), by = toRow(b.y);
-        const double cx = toCol(c.x), cy = toRow(c.y);
-        const double det = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
-        if (std::abs(det) < 1e-9) {
-            return;
-        }
-        const int x0 = std::max(0, static_cast<int>(std::floor(std::min({ax, bx, cx}))));
-        const int x1 = std::min(m.width - 1, static_cast<int>(std::ceil(std::max({ax, bx, cx}))));
-        const int y0 = std::max(0, static_cast<int>(std::floor(std::min({ay, by, cy}))));
-        const int y1 = std::min(m.height - 1, static_cast<int>(std::ceil(std::max({ay, by, cy}))));
-        for (int y = y0; y <= y1; ++y) {
-            for (int x = x0; x <= x1; ++x) {
-                const double l1 = ((by - cy) * (x - cx) + (cx - bx) * (y - cy)) / det;
-                const double l2 = ((cy - ay) * (x - cx) + (ax - cx) * (y - cy)) / det;
-                const double l3 = 1.0 - l1 - l2;
-                if (l1 >= 0.0 && l2 >= 0.0 && l3 >= 0.0) {
-                    auto& v =
-                        count[static_cast<std::size_t>(y) * static_cast<std::size_t>(m.width) +
-                              static_cast<std::size_t>(x)];
-                    if (v < 255) {
-                        ++v;
-                    }
-                }
-            }
-        }
-    };
-    for (const auto& column : result.columns) {
-        for (std::size_t i = 0; i + 1 < column.crossings.size(); ++i) {
-            const P2 a0 = to_p2(column.crossings[i].a);
-            const P2 b0 = to_p2(column.crossings[i].b);
-            const P2 a1 = to_p2(column.crossings[i + 1].a);
-            const P2 b1 = to_p2(column.crossings[i + 1].b);
-            fill(a0, b0, b1);
-            fill(a0, b1, a1);
-        }
-    }
-    // Mesure sur le masque ÉRODÉ d'un pixel : les pixels du contour sont à moitié
-    // couverts par construction (les cordes s'arrêtent sur le bord), ce qui
-    // sous-estimerait la couverture d'autant plus que le périmètre est grand.
-    std::size_t inside = 0;
-    std::size_t covered = 0;
-    std::size_t total = 0;
-    for (int y = 0; y < m.height; ++y) {
-        for (int x = 0; x < m.width; ++x) {
-            if (!m.at(x, y) || !m.at(x - 1, y) || !m.at(x + 1, y) || !m.at(x, y - 1) ||
-                !m.at(x, y + 1)) {
-                continue;
-            }
-            const auto v = count[static_cast<std::size_t>(y) * static_cast<std::size_t>(m.width) +
-                                 static_cast<std::size_t>(x)];
-            ++inside;
-            covered += v > 0 ? 1 : 0;
-            total += v;
-        }
-    }
-    auto& d = result.diagnostics;
-    if (inside == 0) {
-        return;
-    }
-    d.coverage_measured = true;
-    d.coverage_ratio = static_cast<double>(covered) / static_cast<double>(inside);
-    d.overlap_ratio = static_cast<double>(total) / static_cast<double>(inside);
-    d.uncovered_area_mm2 = static_cast<double>(inside - covered) * pix * pix / 1e6;
-}
-
 } // namespace
 
 Result<SkeletonSatinResult> generate_skeleton_satin_uncached(const geometry::PathSet& region,
@@ -887,17 +814,71 @@ CacheKey make_key(const geometry::PathSet& region, const SkeletonSatinParameters
     return key;
 }
 
+// Empreinte 64 bits (FNV-1a) de la clé : sert SEULEMENT à trouver les candidats ; l'égalité est
+// toujours confirmée sur la clé entière (aucune collision possible sur le résultat).
+std::uint64_t key_hash(const CacheKey& key) {
+    std::uint64_t h = 1469598103934665603ULL;
+    for (const std::int64_t v : key) {
+        h ^= static_cast<std::uint64_t>(v);
+        h *= 1099511628211ULL;
+    }
+    return h;
+}
+
+// Taille approximative (octets) d'un résultat mémorisé : sert au budget du cache.
+std::size_t result_bytes(const SkeletonSatinResult& r) {
+    std::size_t bytes = sizeof(SkeletonSatinResult);
+    for (const auto& c : r.columns) {
+        bytes += sizeof(c) + c.crossings.capacity() * sizeof(SkeletonSatinCrossing);
+    }
+    for (const auto& a : r.axes) {
+        bytes += sizeof(a) + a.capacity() * sizeof(Vec2um);
+    }
+    for (const auto& m : r.diagnostics.messages) {
+        bytes += sizeof(m) + m.capacity();
+    }
+    return bytes;
+}
+
 // Mémoire bornée (LRU) partagée par la génération de points, l'aperçu, le résumé de
 // l'inspecteur et la couche de guides : une modification qui ne change pas la forme ou ses
-// paramètres ne relance plus le squelette (~100-300 ms par objet).
+// paramètres ne relance plus le squelette (~7 ms par objet en Release, jusqu'à 100-300 ms sur
+// une forme complexe).
+//
+// Borne en OCTETS, pas en nombre d'entrées : avec 128 entrées, un projet de plus de 128 auto-satin
+// parcourait ses objets dans l'ordre et chaque objet évincait celui qu'on relirait 128 pas plus
+// tard (balayage séquentiel d'un LRU trop petit : 0 succès, 1,9 s à chaque modification sur un
+// projet de 275 auto-satin). Les entrées sont retrouvées par empreinte, pas par balayage.
 struct ResultCache {
     struct Entry {
         CacheKey key;
+        std::uint64_t hash{0};
+        std::size_t bytes{0};
         SkeletonSatinResult value; // couverture mesurée ou non selon `value.diagnostics`
     };
+    using List = std::list<Entry>;
     std::mutex mutex;
-    std::list<Entry> entries; // le plus récent en tête
-    static constexpr std::size_t kCapacity = 128;
+    List entries; // le plus récent en tête
+    std::unordered_multimap<std::uint64_t, List::iterator> index;
+    std::size_t total_bytes{0};
+    std::size_t hits{0};
+    std::size_t misses{0};
+    static constexpr std::size_t kCapacityBytes = 192U * 1024U * 1024U;
+    // Une entrée seule plus grosse que la moitié du budget n'est pas mémorisée.
+    static constexpr std::size_t kMaxEntryBytes = kCapacityBytes / 2U;
+
+    void erase_back() {
+        auto last = std::prev(entries.end());
+        auto range = index.equal_range(last->hash);
+        for (auto it = range.first; it != range.second; ++it) {
+            if (it->second == last) {
+                index.erase(it);
+                break;
+            }
+        }
+        total_bytes -= last->bytes;
+        entries.pop_back();
+    }
 };
 
 ResultCache& result_cache() {
@@ -907,23 +888,33 @@ ResultCache& result_cache() {
 
 } // namespace
 
+SkeletonResultCacheStats skeleton_result_cache_stats() {
+    auto& cache = result_cache();
+    const std::lock_guard<std::mutex> lock(cache.mutex);
+    return {cache.entries.size(), cache.total_bytes, cache.hits, cache.misses};
+}
+
 Result<SkeletonSatinResult> generate_skeleton_satin(const geometry::PathSet& region,
                                                     const SkeletonSatinParameters& params) {
     CacheKey key = make_key(region, params);
     auto& cache = result_cache();
     {
         const std::lock_guard<std::mutex> lock(cache.mutex);
-        for (auto it = cache.entries.begin(); it != cache.entries.end(); ++it) {
+        const std::uint64_t hash = key_hash(key);
+        const auto range = cache.index.equal_range(hash);
+        for (auto found = range.first; found != range.second; ++found) {
+            const auto it = found->second;
             if (it->key != key) {
                 continue;
             }
+            ++cache.hits;
             cache.entries.splice(cache.entries.begin(), cache.entries, it);
             auto& entry = cache.entries.front().value;
             // La couverture est un diagnostic ajouté À LA DEMANDE : une entrée sans
             // couverture est complétée (puis conservée), une entrée avec couverture est
             // rendue sans elle à qui n'en veut pas (même résultat qu'un calcul à neuf).
             if (params.measure_coverage && !entry.diagnostics.coverage_measured) {
-                measure_coverage(region, entry);
+                detail::measure_coverage(region, entry);
             }
             SkeletonSatinResult out = entry;
             if (!params.measure_coverage) {
@@ -931,45 +922,46 @@ Result<SkeletonSatinResult> generate_skeleton_satin(const geometry::PathSet& reg
                 out.diagnostics.coverage_ratio = 0.0;
                 out.diagnostics.overlap_ratio = 0.0;
                 out.diagnostics.uncovered_area_mm2 = 0.0;
+                out.diagnostics.overlap_peak = 0;
+                out.diagnostics.uncovered_min = Vec2um{};
+                out.diagnostics.uncovered_max = Vec2um{};
             }
             return out;
         }
     }
+    {
+        const std::lock_guard<std::mutex> lock(cache.mutex);
+        ++cache.misses;
+    }
     auto computed = generate_skeleton_satin_uncached(region, params);
     if (computed) {
-        const std::lock_guard<std::mutex> lock(cache.mutex);
-        cache.entries.push_front({std::move(key), *computed});
-        while (cache.entries.size() > ResultCache::kCapacity) {
-            cache.entries.pop_back();
+        const std::size_t bytes = result_bytes(*computed) + key.capacity() * sizeof(std::int64_t);
+        if (bytes <= ResultCache::kMaxEntryBytes) {
+            const std::uint64_t hash = key_hash(key);
+            const std::lock_guard<std::mutex> lock(cache.mutex);
+            cache.entries.push_front({std::move(key), hash, bytes, *computed});
+            cache.index.emplace(hash, cache.entries.begin());
+            cache.total_bytes += bytes;
+            while (cache.total_bytes > ResultCache::kCapacityBytes && cache.entries.size() > 1) {
+                cache.erase_back();
+            }
         }
     }
     return computed;
 }
 
-Result<SkeletonSatinResult>
-generate_skeleton_satin_uncached(const geometry::PathSet& region,
-                                 const SkeletonSatinParameters& params) {
-    SkeletonSatinResult result;
+namespace {
+
+// Fin commune des méthodes à axe : à partir des chaînes d'axe (squelette raster ou axe médian
+// vectoriel), coupe aux coudes, guides, échantillonnage des traversées, cellules, éventails,
+// croisements et couverture. Les chaînes décrivent seulement l'axe et son rayon ; tout le reste
+// est identique d'une méthode à l'autre.
+Result<SkeletonSatinResult> finish_from_chains(const geometry::PathSet& region,
+                                               const SkeletonSatinParameters& params,
+                                               std::vector<Chain> chains,
+                                               SkeletonSatinResult result) {
     auto& diag = result.diagnostics;
-    if (params.spacing.value < 50) {
-        return std::unexpected(
-            Error{ErrorCategory::UserInput, "auto-satin : espacement inférieur à 0,05 mm"});
-    }
-
-    const auto analysis = analyze_region(region, params.analysis);
-    if (!analysis) {
-        return std::unexpected(analysis.error());
-    }
-    const SkeletonGraph& graph = analysis->debug.graph;
     const std::vector<Poly> polys = detail::region_polys(region);
-    if (polys.empty()) {
-        return result;
-    }
-
-    std::vector<Chain> chains = build_chains(graph, diag);
-    for (auto& c : recover_cycles(analysis->debug, graph, chains)) {
-        chains.push_back(std::move(c));
-    }
     if (chains.empty() && params.compact_axis) {
         if (auto synthetic = synthetic_compact_chain(region, polys)) {
             chains.push_back(std::move(*synthetic));
@@ -1152,9 +1144,71 @@ generate_skeleton_satin_uncached(const geometry::PathSet& region,
         }
     }
     if (params.measure_coverage) {
-        measure_coverage(region, result);
+        detail::measure_coverage(region, result);
     }
     return result;
+}
+
+} // namespace
+
+Result<SkeletonSatinResult>
+generate_skeleton_satin_uncached(const geometry::PathSet& region,
+                                 const SkeletonSatinParameters& params) {
+    SkeletonSatinResult result;
+    auto& diag = result.diagnostics;
+    if (params.spacing.value < 50) {
+        return std::unexpected(
+            Error{ErrorCategory::UserInput, "auto-satin : espacement inférieur à 0,05 mm"});
+    }
+
+    const auto analysis = analyze_region(region, params.analysis);
+    if (!analysis) {
+        return std::unexpected(analysis.error());
+    }
+    const SkeletonGraph& graph = analysis->debug.graph;
+    const std::vector<Poly> polys = detail::region_polys(region);
+    if (polys.empty()) {
+        return result;
+    }
+
+    std::vector<Chain> chains = build_chains(graph, diag);
+    for (auto& c : recover_cycles(analysis->debug, graph, chains)) {
+        chains.push_back(std::move(c));
+    }
+    return finish_from_chains(region, params, std::move(chains), std::move(result));
+}
+
+Result<SkeletonSatinResult> generate_medial_axis_satin(const geometry::PathSet& curved,
+                                                       const SkeletonSatinParameters& params) {
+    // Les courbes sont aplaties (50 µm, comme la génération de points) : le diagramme de
+    // Voronoï ne traite que des segments.
+    const geometry::PathSet region = geometry::flatten_to_polygon(curved, Micrometers{50});
+    SkeletonSatinResult result;
+    if (params.spacing.value < 50) {
+        return std::unexpected(
+            Error{ErrorCategory::UserInput, "auto-satin : espacement inférieur à 0,05 mm"});
+    }
+    if (detail::region_polys(region).empty()) {
+        return result;
+    }
+    auto medial = detail::build_medial_axis_graph(region);
+    if (!medial) {
+        return std::unexpected(medial.error());
+    }
+    // Même élagage à erreur bornée que le squelette raster : l'axe médian du polygone est exact
+    // mais sensible au bruit du contour (chaque sommet convexe y porte un rameau).
+    const GraphCleanupResult cleaned = prune_graph(medial->graph, params.analysis.cleanup);
+    std::vector<Chain> chains = build_chains(cleaned.graph, result.diagnostics);
+    for (const auto& loop : medial->loops) {
+        Chain chain;
+        chain.closed = true;
+        for (std::size_t i = 0; i < loop.points.size(); ++i) {
+            chain.points.push_back(to_p2(loop.points[i]));
+            chain.radii.push_back(loop.radii[i]);
+        }
+        chains.push_back(std::move(chain));
+    }
+    return finish_from_chains(region, params, std::move(chains), std::move(result));
 }
 
 std::string skeleton_satin_to_svg(const geometry::PathSet& region,

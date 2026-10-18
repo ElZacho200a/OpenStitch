@@ -4,15 +4,21 @@
 #include "thread_panel.hpp"
 
 #include <QAbstractItemModel>
+#include <QCheckBox>
 #include <QColor>
+#include <QColorDialog>
 #include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QFontMetrics>
+#include <QFormLayout>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPainter>
+#include <QPixmap>
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSpinBox>
@@ -173,6 +179,63 @@ QFrame* wrapInCard(QLabel* label, QWidget* parent) {
     return card;
 }
 
+// Saisie d'un fil du nuancier personnel : référence, nom, couleur. Valide seulement avec une
+// référence non vide (la règle « code unique » est celle de ThreadStock::add_personal).
+std::optional<thread_palette::Thread> askPersonalThread(QWidget* parent) {
+    QDialog dialog(parent);
+    dialog.setObjectName(QStringLiteral("personalThreadDialog"));
+    dialog.setWindowTitle(QObject::tr("Ajouter un fil personnel"));
+    auto* code = new QLineEdit(&dialog);
+    code->setObjectName(QStringLiteral("personalThreadCode"));
+    code->setPlaceholderText(QObject::tr("Référence (ex. M-042)"));
+    auto* name = new QLineEdit(&dialog);
+    name->setObjectName(QStringLiteral("personalThreadName"));
+    name->setPlaceholderText(QObject::tr("Nom (ex. Rouge cerise)"));
+    QColor color(200, 16, 46);
+    auto* colorBtn = new QPushButton(&dialog);
+    colorBtn->setObjectName(QStringLiteral("personalThreadColor"));
+    const auto showColor = [&] {
+        QPixmap swatch(40, 16);
+        swatch.fill(color);
+        colorBtn->setIcon(QIcon(swatch));
+        colorBtn->setText(color.name().toUpper());
+    };
+    showColor();
+    QObject::connect(colorBtn, &QPushButton::clicked, &dialog, [&] {
+        const QColor chosen = QColorDialog::getColor(color, &dialog, QObject::tr("Couleur du fil"));
+        if (chosen.isValid()) {
+            color = chosen;
+            showColor();
+        }
+    });
+    auto* form = new QFormLayout;
+    form->addRow(QObject::tr("Référence"), code);
+    form->addRow(QObject::tr("Nom"), name);
+    form->addRow(QObject::tr("Couleur"), colorBtn);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    buttons->button(QDialogButtonBox::Ok)->setText(QObject::tr("Ajouter"));
+    buttons->button(QDialogButtonBox::Cancel)->setText(QObject::tr("Annuler"));
+    buttons->button(QDialogButtonBox::Ok)->setEnabled(false);
+    QObject::connect(code, &QLineEdit::textChanged, &dialog, [&] {
+        buttons->button(QDialogButtonBox::Ok)->setEnabled(!code->text().trimmed().isEmpty());
+    });
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    auto* root = new QVBoxLayout(&dialog);
+    root->addLayout(form);
+    root->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted) {
+        return std::nullopt;
+    }
+    thread_palette::Thread thread;
+    thread.key = {thread_palette::kPersonalChartId, code->text().trimmed().toStdString()};
+    thread.name = name->text().trimmed().toStdString();
+    thread.brand = QObject::tr("Perso").toStdString();
+    thread.rgb = {static_cast<std::uint8_t>(color.red()), static_cast<std::uint8_t>(color.green()),
+                  static_cast<std::uint8_t>(color.blue())};
+    return thread;
+}
+
 } // namespace
 
 ThreadPanel::ThreadPanel(QWidget* parent) : QWidget(parent) {
@@ -299,10 +362,47 @@ ThreadPanel::ThreadPanel(QWidget* parent) : QWidget(parent) {
     importBtn_->setObjectName(QStringLiteral("threadImportBtn"));
     removeChartBtn_ = new QPushButton(tr("Retirer ce nuancier importé"), catalogTab);
     removeChartBtn_->setObjectName(QStringLiteral("threadRemoveChartBtn"));
+    ownCheck_ = new QCheckBox(tr("Je possède ce fil"), catalogTab);
+    ownCheck_->setObjectName(QStringLiteral("threadOwnCheck"));
+    ownCheck_->setToolTip(tr("Ajoute le fil sélectionné à « Mes fils » (préférence personnelle, "
+                             "hors du projet)."));
+    cl->addWidget(ownCheck_);
     cl->addWidget(nearestBtn_);
     cl->addWidget(importBtn_);
     cl->addWidget(removeChartBtn_);
     tabs_->addTab(catalogTab, tr("Catalogues"));
+
+    // ---- Onglet « Mes fils » (HP-THR-007) ---------------------------------------------------
+    auto* stockTab = new QWidget(tabs_);
+    auto* sl = new QVBoxLayout(stockTab);
+    sl->setContentsMargins(8, 8, 8, 8);
+    sl->setSpacing(8);
+    stockSummary_ = new QLabel(stockTab);
+    stockSummary_->setWordWrap(true);
+    stockSummary_->setObjectName(QStringLiteral("threadStockSummary"));
+    cards_.push_back(wrapInCard(stockSummary_, stockTab));
+    sl->addWidget(cards_.back());
+    limitCheck_ =
+        new QCheckBox(tr("Limiter la recherche du fil le plus proche à mes fils"), stockTab);
+    limitCheck_->setObjectName(QStringLiteral("threadLimitStockCheck"));
+    limitCheck_->setToolTip(tr("Les recherches « fil le plus proche » ne proposent alors que des "
+                               "fils que vous possédez."));
+    sl->addWidget(limitCheck_);
+    stockList_ = new QListWidget(stockTab);
+    stockList_->setObjectName(QStringLiteral("threadStockList"));
+    stockList_->setAccessibleName(tr("Mes fils"));
+    stockList_->setItemDelegate(new ThreadRowDelegate(false, stockList_));
+    stockList_->setMouseTracking(true);
+    sl->addWidget(stockList_, 1);
+    addPersonalBtn_ = new QPushButton(tr("Ajouter un fil personnel…"), stockTab);
+    addPersonalBtn_->setObjectName(QStringLiteral("threadAddPersonalBtn"));
+    addPersonalBtn_->setToolTip(tr("Ajoute à votre nuancier personnel un fil absent des "
+                                   "catalogues (nom, référence et couleur)."));
+    removeStockBtn_ = new QPushButton(tr("Retirer de mes fils"), stockTab);
+    removeStockBtn_->setObjectName(QStringLiteral("threadRemoveStockBtn"));
+    sl->addWidget(addPersonalBtn_);
+    sl->addWidget(removeStockBtn_);
+    tabs_->addTab(stockTab, tr("Mes fils"));
 
     // ---- Onglet « Film couleur » ----------------------------------------------------------
     auto* filmTab = new QWidget(tabs_);
@@ -389,6 +489,24 @@ ThreadPanel::ThreadPanel(QWidget* parent) : QWidget(parent) {
         }
     });
 
+    connect(ownCheck_, &QCheckBox::clicked, this, [this](bool checked) {
+        if (const auto t = currentCatalogThread()) {
+            emit stockOwnedToggled(t->key, checked);
+        }
+    });
+    connect(limitCheck_, &QCheckBox::toggled, this, &ThreadPanel::limitToStockToggled);
+    connect(stockList_, &QListWidget::currentRowChanged, this, [this] { updateButtons(); });
+    connect(addPersonalBtn_, &QPushButton::clicked, this, [this] {
+        if (auto thread = askPersonalThread(this)) {
+            emit personalThreadAddRequested(*thread);
+        }
+    });
+    connect(removeStockBtn_, &QPushButton::clicked, this, [this] {
+        if (const auto key = currentStockKey()) {
+            emit personalThreadRemoveRequested(*key);
+        }
+    });
+
     connect(usageList_->model(), &QAbstractItemModel::rowsMoved, this,
             [this](const QModelIndex&, int start, int, const QModelIndex&, int destRow) {
                 const int to = destRow > start ? destRow - 1 : destRow;
@@ -451,7 +569,7 @@ void ThreadPanel::applyTheme() {
     for (QFrame* card : cards_) {
         card->setStyleSheet(css);
     }
-    for (QListWidget* list : {usageList_, catalogList_, filmList_}) {
+    for (QListWidget* list : {usageList_, catalogList_, filmList_, stockList_}) {
         list->doItemsLayout();
         list->viewport()->update();
     }
@@ -520,6 +638,68 @@ void ThreadPanel::rebuildCatalog() {
     }
     chartNote_->setText(note);
     updateButtons();
+}
+
+void ThreadPanel::setStock(thread_palette::ThreadStock stock) {
+    stock_ = std::move(stock);
+    rebuildStock();
+    updateButtons();
+}
+
+void ThreadPanel::setLimitToStock(bool limit) {
+    const QSignalBlocker block(limitCheck_);
+    limitCheck_->setChecked(limit);
+}
+
+bool ThreadPanel::limitToStock() const {
+    return limitCheck_->isChecked();
+}
+
+void ThreadPanel::rebuildStock() {
+    const auto previous = currentStockKey();
+    stockRows_.clear();
+    if (library_ != nullptr) {
+        stockRows_ = stock_.resolve(*library_);
+    } else {
+        for (const auto& t : stock_.personal_threads()) {
+            stockRows_.push_back(t);
+        }
+    }
+    const QSignalBlocker block(stockList_);
+    stockList_->clear();
+    int row = -1;
+    for (std::size_t i = 0; i < stockRows_.size(); ++i) {
+        const auto& t = stockRows_[i];
+        const bool personal = t.key.chart_id == thread_palette::kPersonalChartId;
+        const QString label = tr("%1 %2 — %3")
+                                  .arg(personal ? tr("Perso") : fromStd(t.brand),
+                                       fromStd(t.key.code), fromStd(t.name));
+        auto* item = new QListWidgetItem(label);
+        item->setIcon(icons::colorSwatch(toColor(t.rgb), 16));
+        setThreadRow(item, toColor(t.rgb), label, fromStd(thread_palette::to_hex_color(t.rgb)));
+        stockList_->addItem(item);
+        if (previous && *previous == t.key) {
+            row = static_cast<int>(i);
+        }
+    }
+    if (row >= 0) {
+        stockList_->setCurrentRow(row);
+    }
+    stockSummary_->setText(
+        stock_.empty()
+            ? tr("Aucun fil possédé : cochez « Je possède ce fil » dans les catalogues ou "
+                 "ajoutez un fil personnel.")
+            : tr("%1 fil(s) possédé(s) dont %2 personnel(s).")
+                  .arg(stock_.size())
+                  .arg(stock_.personal_threads().size()));
+}
+
+std::optional<thread_palette::ThreadKey> ThreadPanel::currentStockKey() const {
+    const int row = stockList_ != nullptr ? stockList_->currentRow() : -1;
+    if (row < 0 || static_cast<std::size_t>(row) >= stockRows_.size()) {
+        return std::nullopt;
+    }
+    return stockRows_[static_cast<std::size_t>(row)].key;
 }
 
 void ThreadPanel::showMatches(const std::vector<thread_palette::Thread>& matches,
@@ -678,6 +858,16 @@ void ThreadPanel::updateButtons() {
                            !library_->is_builtin(currentChartId().toStdString());
     removeChartBtn_->setEnabled(userChart);
     nearestBtn_->setEnabled(library_ != nullptr);
+    if (const auto t = currentCatalogThread()) {
+        const QSignalBlocker block(ownCheck_);
+        ownCheck_->setChecked(stock_.owns(t->key));
+        ownCheck_->setEnabled(t->key.chart_id != thread_palette::kPersonalChartId);
+    } else {
+        const QSignalBlocker block(ownCheck_);
+        ownCheck_->setChecked(false);
+        ownCheck_->setEnabled(false);
+    }
+    removeStockBtn_->setEnabled(currentStockKey().has_value());
 
     const int row = filmList_->currentRow();
     filmUpBtn_->setEnabled(row > 0);

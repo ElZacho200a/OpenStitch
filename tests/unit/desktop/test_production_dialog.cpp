@@ -53,6 +53,36 @@ private slots:
         QVERIFY(file.open(QIODevice::ReadOnly));
         QCOMPARE(file.read(4), QByteArray("%PDF"));
     }
+
+    void threadConsumptionAndBobbinsAreShown() {
+        // HP-PROD-005 : lignes de consommation par couleur et nombre de canettes.
+        using T = stitch::CommandType;
+        document::Project project;
+        document::EmbroideryObject a;
+        a.id = ObjectId{1};
+        a.name = "Rond";
+        a.rgb = {200, 10, 10};
+        project.embroidery_objects.push_back(a);
+        stitch::StitchSequence seq;
+        seq.commands = {{um(0, 0), T::Stitch, ObjectId{1}},
+                        {um(100'000, 0), T::Stitch, ObjectId{1}},
+                        {um(100'000, 100'000), T::Stitch, ObjectId{1}},
+                        {um(100'000, 100'000), T::End, ObjectId{}}};
+
+        desktop::ProductionDialog dialog(project, seq, QStringLiteral("Conso"),
+                                         stitch_render::RenderParams{});
+        QVERIFY(!dialog.sheet().consumption.empty());
+        QVERIFY(dialog.sheet().total_top_m > 0.2); // 0,2 m cousus, facteur > 1
+        QCOMPARE(dialog.sheet().bobbins_needed, std::size_t{1});
+        QVERIFY(dialog.viewPlainText().contains(QStringLiteral("Consommation de fil")));
+        QVERIFY(dialog.viewPlainText().contains(QStringLiteral("Canettes nécessaires")));
+
+        // La fiche suit le champ « capacité d'une canette ».
+        dialog.bobbinSpin()->setValue(40.0);
+        dialog.refreshNow();
+        QCOMPARE(dialog.sheet().bobbin_capacity_m, 40.0);
+        QVERIFY(dialog.viewPlainText().contains(QStringLiteral("40 m")));
+    }
 };
 
 QTEST_MAIN(TestProductionDialog)

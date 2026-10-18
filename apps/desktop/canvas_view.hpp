@@ -37,6 +37,11 @@ public:
     void zoomIn();
     void zoomOut();
     void fitCanvas();
+    // Cadre la vue sur un rectangle de scène (mm) ; mémorise la vue précédente (HP-UX-023).
+    void zoomToRectMm(const QRectF& sceneRectMm);
+    void zoomToPreviousView();
+    // 100 % réel : 1 mm affiché = 1 mm à l'écran (selon la densité logique de l'écran).
+    void zoomActualSize();
     // Zoom ancré : le point de la scène situé sous `viewportPos` (coordonnées du
     // viewport) y reste après le zoom. Ancrage manuel (NoAnchor) : indépendant
     // de QCursor::pos(), donc valable avec des évènements synthétiques et un
@@ -98,7 +103,18 @@ public:
     void setBezierDrawMode(bool enabled);
     [[nodiscard]] bool bezierDrawMode() const { return bezierDrawMode_; }
 
+    // Mode règle (outil Mesure, HP-VEC-010) : un glisser gauche émet `measureDragMm` puis
+    // `measureFinishedMm`. Aucune sélection ni déplacement de vue ; le canevas ne mesure rien
+    // lui-même (le calcul est dans libs/geometry, l'affichage dans MainWindow).
+    void setMeasureMode(bool enabled);
+    [[nodiscard]] bool measureMode() const { return measureMode_; }
+
 signals:
+    // Règle : glisser en cours (début fixe, position courante), puis fin au relâchement ;
+    // `measureCancelled` si Échap interrompt le geste. Coordonnées scène (mm).
+    void measureDragMm(QPointF startMm, QPointF currentMm);
+    void measureFinishedMm(QPointF startMm, QPointF endMm);
+    void measureCancelled();
     // Zoom ou défilement : les règles doivent se redessiner.
     void viewChanged();
     // Position du curseur en mm, repère physique (Y vers le haut).
@@ -169,6 +185,10 @@ protected:
     void drawForeground(QPainter* painter, const QRectF& rect) override;
 
 private:
+    void rememberView();
+    QTransform previousTransform_;
+    QPointF previousCenterMm_;
+    bool hasPreviousView_{false};
     friend class SpaceKeyFilter;
 
     void applyCenterZoom(double factor);
@@ -210,6 +230,9 @@ private:
     bool freeformDrawMode_{false};
     bool satinPairDrawMode_{false};
     bool bezierDrawMode_{false};
+    bool measureMode_{false};
+    bool measureActive_{false};
+    QPointF measureStartMm_;
     bool freeformActive_{false};
     bool bezierPressActive_{false};
     QPointF bezierAnchorMm_;

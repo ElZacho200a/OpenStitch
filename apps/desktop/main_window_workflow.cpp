@@ -30,6 +30,8 @@
 
 #include "ai_preferences.hpp"
 #include "ai_segmentation_dialog.hpp"
+#include "busy_indicator.hpp"
+#include "canvas_view.hpp"
 #include "main_window.hpp"
 #include "ui_memory.hpp"
 
@@ -38,6 +40,7 @@
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/image/image.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
+#include "openstitch/stitch_analysis/production_sheet.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 
 namespace openstitch::desktop {
@@ -94,7 +97,43 @@ void setActionEnabledWithReason(QAction* act, bool enabled, const QString& whyDi
 
 } // namespace
 
-void MainWindow::vectorizeSelectedRegion() {
+std::optional<int> MainWindow::askVectorizeDetail(qsizetype regionCount) {
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Vectorisation"));
+    auto* layout = new QFormLayout(&dialog);
+    if (regionCount > 1) {
+        layout->addRow(new QLabel(
+            tr("%1 régions seront vectorisées avec ce réglage.").arg(regionCount), &dialog));
+    }
+    auto* detailSlider = new QSlider(Qt::Horizontal, &dialog);
+    detailSlider->setObjectName("vectorizeDetailSlider");
+    detailSlider->setRange(0, 100);
+    detailSlider->setValue(ui_memory::intValue(QStringLiteral("vectorize/detail"), 50, 0, 100));
+    detailSlider->setToolTip(tr("Niveau de détail conservé dans le contour vectoriel."));
+    auto* detailValue = new QLabel(QString::number(detailSlider->value()), &dialog);
+    detailValue->setObjectName("vectorizeDetailValue");
+    connect(detailSlider, &QSlider::valueChanged, detailValue,
+            [detailValue](int value) { detailValue->setText(QString::number(value)); });
+    auto* detailRow = new QWidget(&dialog);
+    auto* detailLayout = new QHBoxLayout(detailRow);
+    detailLayout->setContentsMargins(0, 0, 0, 0);
+    detailLayout->addWidget(new QLabel(tr("Faible"), detailRow));
+    detailLayout->addWidget(detailSlider, 1);
+    detailLayout->addWidget(new QLabel(tr("Élevé"), detailRow));
+    detailLayout->addWidget(detailValue);
+    layout->addRow(tr("Détail :"), detailRow);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addRow(buttons);
+    if (dialog.exec() != QDialog::Accepted) {
+        return std::nullopt;
+    }
+    ui_memory::setIntValue(QStringLiteral("vectorize/detail"), detailSlider->value());
+    return detailSlider->value();
+}
+
+void MainWindow::vectorizeSelectedRegion(bool askDetail) {
     if (!selectedRegion_ || !project_.segmentation) {
         return;
     }
@@ -172,40 +211,18 @@ void MainWindow::vectorizeSelectedRegion() {
         return;
     }
 
-    QDialog dialog(this);
-    dialog.setWindowTitle(tr("Vectorisation"));
-    auto* layout = new QFormLayout(&dialog);
-    if (todo.size() > 1) {
-        layout->addRow(new QLabel(
-            tr("%1 régions seront vectorisées avec ce réglage.").arg(todo.size()), &dialog));
+    // F7 applique le dernier détail mémorisé, sans dialogue (HP-UX-021) ; Maj+F7 et l'entrée de
+    // menu ouvrent le réglage.
+    int detail = ui_memory::intValue(QStringLiteral("vectorize/detail"), 50, 0, 100);
+    if (askDetail) {
+        const std::optional<int> chosen = askVectorizeDetail(todo.size());
+        if (!chosen) {
+            return;
+        }
+        detail = *chosen;
     }
-    auto* detailSlider = new QSlider(Qt::Horizontal, &dialog);
-    detailSlider->setObjectName("vectorizeDetailSlider");
-    detailSlider->setRange(0, 100);
-    detailSlider->setValue(ui_memory::intValue(QStringLiteral("vectorize/detail"), 50, 0, 100));
-    detailSlider->setToolTip(tr("Niveau de détail conservé dans le contour vectoriel."));
-    auto* detailValue = new QLabel(QString::number(detailSlider->value()), &dialog);
-    detailValue->setObjectName("vectorizeDetailValue");
-    connect(detailSlider, &QSlider::valueChanged, detailValue,
-            [detailValue](int value) { detailValue->setText(QString::number(value)); });
-    auto* detailRow = new QWidget(&dialog);
-    auto* detailLayout = new QHBoxLayout(detailRow);
-    detailLayout->setContentsMargins(0, 0, 0, 0);
-    detailLayout->addWidget(new QLabel(tr("Faible"), detailRow));
-    detailLayout->addWidget(detailSlider, 1);
-    detailLayout->addWidget(new QLabel(tr("Élevé"), detailRow));
-    detailLayout->addWidget(detailValue);
-    layout->addRow(tr("Détail :"), detailRow);
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    layout->addRow(buttons);
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
-    ui_memory::setIntValue(QStringLiteral("vectorize/detail"), detailSlider->value());
 
-    const Micrometers simplifyTolerance = vectorize_tolerance_from_detail(detailSlider->value());
+    const Micrometers simplifyTolerance = vectorize_tolerance_from_detail(detail);
 
     std::vector<document::VectorObject> objects;
     QStringList failures;
@@ -526,6 +543,48 @@ void MainWindow::onWorkflowStepClicked(int step) {
     const QString reason = entry.action != nullptr ? entry.action->statusTip() : QString();
     statusBar()->showMessage(
         reason.isEmpty() ? entry.hint : reason + QStringLiteral(" — ") + entry.hint, 6000);
+}
+
+void MainWindow::announceAutoDigitizeResult(const QString& baseMessage) {
+    QString message = baseMessage;
+    if (sequence_) {
+        // Fiche de production = mêmes nombres que « Fichier ▸ Fiche de production » (durée
+        // estimée, fils, problèmes) : calculée hors du fil d'interface sur un instantané.
+        const document::Project snapshot = project_;
+        const stitch::StitchSequence sequence = *sequence_;
+        BusyIndicator busy(this, tr("Évaluation du résultat…"), {autosaveTimer_, simTimer_});
+        const auto sheet =
+            busy.run([&] { return stitch_analysis::make_production_sheet(snapshot, sequence); });
+        std::size_t problems = 0;
+        for (const auto& finding : sheet.findings) {
+            problems += finding.severity == stitch_analysis::Severity::Info ? 0 : 1;
+        }
+        message += tr(" — %1 points, durée estimée %2, %3 fil(s), %4 problème(s)")
+                       .arg(sheet.stitches)
+                       .arg(QString::fromStdString(
+                           stitch_analysis::format_duration_fr(sheet.estimated_minutes)))
+                       .arg(sheet.consumption.size())
+                       .arg(problems);
+    }
+    statusBar()->showMessage(message);
+    // Bouton « Voir » (comme « Ouvrir le dossier » après un export) : cadre le motif et ramène
+    // le panneau Analyse au premier plan.
+    auto* button = new QPushButton(tr("Voir"), this);
+    button->setFlat(true);
+    button->setCursor(Qt::PointingHandCursor);
+    button->setObjectName(QStringLiteral("action_autoDigitizeSeeResult"));
+    statusBar()->addWidget(button);
+    const auto remove = [this, button] {
+        statusBar()->removeWidget(button);
+        button->deleteLater();
+    };
+    connect(button, &QPushButton::clicked, this, [this, remove] {
+        view_->fitCanvas();
+        openQualityDock();
+        remove();
+    });
+    QTimer::singleShot(30000, button, remove);
+    openQualityDock(); // HP-UX-031 : le dock Analyse s'ouvre seul après la numérisation
 }
 
 } // namespace openstitch::desktop

@@ -15,6 +15,8 @@ AnalysisOptions options_from_project(const document::Project& project) {
     options.min_stitch = f.min_stitch_length;
     options.max_stitch = f.max_stitch_length;
     options.trim_threshold = f.trim_threshold;
+    // Les finitions posent des points d'arrêt : leur absence sur un objet est anormale.
+    options.check_lock_stitches = true;
     return options;
 }
 
@@ -45,7 +47,14 @@ std::vector<Finding> check_stitch_limits(const document::Project& project) {
              tooLong ? "Réduisez cette longueur ou activez le découpage des points trop longs "
                        "dans les options de génération."
                      : "Augmentez cette longueur : les points trop courts sont fusionnés ou "
-                       "risquent de casser le fil."});
+                       "risquent de casser le fil.",
+             Fix{FixKind::ClampStitchLength,
+                 {},
+                 tooLong ? limits.max_stitch : limits.min_stitch,
+                 {},
+                 "Ramener à " +
+                     format_mm_fr(tooLong ? limits.max_stitch.value : limits.min_stitch.value) +
+                     " mm"}});
     };
 
     for (const document::EmbroideryObject& object : project.embroidery_objects) {

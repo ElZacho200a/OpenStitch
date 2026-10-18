@@ -24,7 +24,7 @@ prochaine entrée de ce fichier.
 
 ---
 
-## État d'avancement (revu le 2026-10-13)
+## État d'avancement (revu le 2026-10-18 : tableau recalculé ; statuts hors vague 1 non revérifiés)
 
 > **Source de vérité des statuts : ce fichier.** `specs/implementation-roadmap.md`
 > décrit l'*ordre de livraison* (vagues, scopes S1…S15, plans) et `docs/source/roadmap.md`
@@ -37,16 +37,21 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
-| P0 | 12 | 25 | 7 | 44 |
-| P1 | 4 | 44 | 78 | 126 |
-| P2 | 0 | 16 | 66 | 82 |
-| P3 | 0 | 0 | 12 | 12 |
-| **Total** | **16** | **85** | **163** | **264** |
+| P0 | 12 | 26 | 6 | 44 |
+| P1 | 10 | 62 | 69 | 141 |
+| P2 | 3 | 31 | 62 | 96 |
+| P3 | 0 | 3 | 12 | 15 |
+| **Total** | **25** | **122** | **149** | **296** |
 
-**Fait (16)** : FILE-001/002/003/004 (nouveau projet, enregistrer, récents, autosave),
+Ajoutés le 2026-10-18 (audit UX/UI, `docs/ux/`) : **+29 entrées ☐** (12 P1, 14 P2, 3 P3 ; HP-UX-040 retiré le jour même) :
+HP-UX-017 à HP-UX-044, HP-PERF-009 et HP-QA-008 (§20, §22, §23). Aucun statut existant n'a été
+modifié ; HP-UX-001/002/003/004/009/012/016 sont seulement précisés. Quatre entrées passent ◐ dans la foulée (HP-UX-017, 018, 021, 022 : voir le journal §28) ; puis HP-UX-019, 020 et 023.
+
+**Fait (25)** : FILE-001/002/003/004 (nouveau projet, enregistrer, récents, autosave),
 THR-001/003/004 (bibliothèque de fils, fil le plus proche, fil assigné à chaque objet),
 FMT-001 (normalisation machine), TXT-001 et TXT-009 (lettrage), STI-004 (satin de bordure),
 PERF-005 (génération parallèle), OBJ-003 (déplacement au clavier), VEC-004 (couteau), OBJ-014 (design entier), PERF-003 (auto-numérisation rapide).
+Ajoutés le 2026-10-18 (cœur + bureau + tests) : VEC-007 (lisser), VEC-008 (courbes), VEC-010 (règle), VEC-014 (formes prédéfinies), FMT-009 (compagnon de couleurs), FMT-011 (export d'image), PROD-005 (consommation de fil), THR-007 (Mes fils), TXT-007 (crénage manuel).
 
 **Fusionné le 2026-10-13** : #25 (fondu, fusion de zones, filtres vectoriels, cadre), #26 (performance), #27 (objets : OBJ-002/004/006/012/014/018). **En PR** : second lot (OBJ-004 poignée, OBJ-018 pastille, VEC-002, VEC-003, VEC-005).
 S3 sélection/presse-papiers (PR #3, documentation seulement, **aucun code**).
@@ -156,6 +161,14 @@ bibliothèques.
 ### Vague 4 — Finitions
 
 Les P3.
+
+### Chantier transverse — Ergonomie (audit du 2026-10-18)
+
+Les lots A à E de §20 (HP-UX-017…044, HP-PERF-009, HP-QA-008) ne forment pas une vague : ils se
+**glissent dans les vagues 1 à 3** selon les fichiers touchés. Ordre recommandé (voir
+`docs/ux/strategie-interface.md` §4) : HP-QA-008 → lot A en parallèle du lot B → lot C
+(après HP-PERF-001 et, pour les fichiers communs, HP-QA-001) → lot D → lot E. En mode piloté,
+un lot A ou B est un bon choix quand la vague en cours est bloquée par une preuve humaine.
 
 ---
 
@@ -268,7 +281,7 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
   pré-export (`check_export_limits`), tests Catch2 (octets calculés à la main, aller-retour,
   déterminisme, fuzz). **Reste** : validation par visualiseurs tiers et machine réelle
   (non faite, aucun fichier de référence réel). Voir `docs/source/formats-pes-jef-exp.md`.
-### HP-FMT-005 — EXP (Melco / Bernina) lecture + écriture [P0] — ◐ Partiel
+### HP-FMT-005 — EXP (Melco / Bernina) lecture + écriture [P0] — ◐ Partiel (2026-10-18, `492754e`)
 - **Attend (humain)** : ouverture dans deux visualiseurs tiers et essai sur une machine réelle ; aucun travail de code restant identifié au 2026-10-13.
 - État OpenStitch : absent.
 - Hatch : oui. Format simple, très répandu chez Bernina et en industriel.
@@ -281,6 +294,10 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
   pré-export (`check_export_limits`), tests Catch2 (octets calculés à la main, aller-retour,
   déterminisme, fuzz). **Reste** : validation par visualiseurs tiers et machine réelle
   (non faite, aucun fichier de référence réel). Voir `docs/source/formats-pes-jef-exp.md`.
+- Livré (2026-10-18) : le `.inf` d'EXP est écrit et relu par le module compagnon de HP-FMT-009 (`265e4b8`).
+- Livré (câblage bureau, 2026-10-18) : `.inf` d'EXP écrit et relu, branché au dialogue d'export, à l'import et au CLI.
+- Reste : validation par un lecteur tiers et sur machine réelle (humain).
+
 ### HP-FMT-006 — VP3 / VIP / HUS (Husqvarna Viking, Pfaff) [P1] — ☐ À faire
 - État OpenStitch : absent.
 - Hatch : oui.
@@ -307,7 +324,7 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
   une documentation d'interopérabilité légitime existe. Sinon marquer
   `✗ Abandonné (format fermé)`.
 
-### HP-FMT-009 — Couleurs à côté du DST (fichier compagnon, en-tête étendu) [P1] — ☐ À faire
+### HP-FMT-009 — Couleurs à côté du DST (fichier compagnon, en-tête étendu) [P1] — ☑ Fait (2026-10-18, `492754e`)
 - État OpenStitch : le DST n'emporte que des arrêts couleur ; les couleurs
   réelles sont perdues à l'export.
 - Hatch : peut écrire l'ordre des couleurs dans des fichiers d'accompagnement
@@ -317,6 +334,9 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
   l'import d'un DST s'il est présent à côté.
 - Modules : `libs/formats`.
 - Dépend de : HP-THR-001.
+- Livré (2026-10-18) : `libs/formats/color_companion.*` : fichier compagnon `.inf` (binaire) ou `.csv` (lisible) des fils par bloc de couleur, écriture déterministe, relecture à détection automatique (`read_color_companion_for` cherche `.inf` puis `.csv` à côté du motif), refus propre des contenus invalides ; `test_color_companion` (`265e4b8`).
+- Livré (câblage bureau, 2026-10-18) : option « écrire aussi le fichier de couleurs » (`.csv` par défaut ou `.inf`) du dialogue d'export machine et de `osp2dst --color-file`, relue à l'import d'un DST/EXP (un compagnon invalide n'empêche pas l'import) ; tests.
+- Reste : validation du `.inf` par un lecteur tiers (humain).
 
 ### HP-FMT-010 — Reconnaissance d'un fichier de points en objets (« stitch to object ») [P2] — ☐ À faire
 - État OpenStitch : un DST importé reste une séquence brute non régénérable ;
@@ -332,7 +352,7 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
 - Acceptation : un design OpenStitch exporté en DST puis réimporté est
   reconnu avec ≥ 90 % des points dans des objets du bon type (corpus de test).
 
-### HP-FMT-011 — Export image (PNG/JPG) du rendu brodé [P1] — ☐ À faire
+### HP-FMT-011 — Export image (PNG/JPG) du rendu brodé [P1] — ☑ Fait (2026-10-18, `033692a`)
 - État OpenStitch : pas d'export image ; seul le SVG diagnostic existe (trait
   noir, pas de couleurs de fil).
 - Hatch : export d'une image réaliste pour montrer au client.
@@ -341,6 +361,9 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
 - Modules : `apps/desktop` (le rendu Qt), éventuellement un rendu cœur
   simplifié dans `formats` pour la CLI.
 - Dépend de : HP-VIEW-001.
+- Livré (2026-10-18) : rendu « présentation » Qt-free (`libs/stitch_render/presentation.*` : séquence entière, marge, résolution bornée par un plafond de pixels, fond tissu opaque ou transparent, alpha droit pour le PNG) et commande `openstitch-cli render <dst|pes|jef|exp|osp> <png>` (`--px-per-mm`, `--transparent`, `--fast`, `--json`). Un `.osp` utilise la séquence effective et les couleurs des objets ; un fichier machine, des couleurs de repli par bloc de fil. Tests : 6 cas `presentation :`, cas CLI `cli_render_png` ; rendu de `tentabrode` vérifié à l'écran.
+- Livré (câblage bureau, 2026-10-18) : Fichier › « Exporter l'image (PNG, JPEG)… » : résolution, marge, fond tissu opaque ou transparent, qualité, JPEG ; rendu sur la séquence effective hors du fil UI si lourd, écriture atomique ; `test_export_image` ; le CLI `render` reste disponible.
+- Reste : aucun.
 
 ### HP-FMT-012 — Export SVG « présentation » (couleurs de fil, épaisseur) [P2] — ☐ À faire
 - État OpenStitch : `to_diagnostic_svg` seulement (noir + sauts orange).
@@ -410,7 +433,7 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
   bibliothèque), métadonnées (auteur, client, notes, date, tissu, cadre).
 - Modules : `libs/project_io`, `libs/document`.
 
-### HP-FMT-021 — Migrations de schéma `.osp` systématiques [P1] — ◐ Partiel
+### HP-FMT-021 — Migrations de schéma `.osp` systématiques [P1] — ◐ Partiel (2026-10-18)
 - État OpenStitch : lecture tolérante `value(clé, défaut)` ; refus clair d'un fichier de
   version future (`schemaVersion > kSchemaVersion`, `project_io.cpp`) ; toujours pas de table
   de migrations ni de corpus `tests/fixtures/osp/`.
@@ -427,6 +450,8 @@ Aujourd'hui : un **RGB par objet**, plus un catalogue de fils autonome
 (`libs/thread_palette`, HP-THR-001/002/003) pas encore relié au document
 (`palettes-and-threads.md`, section *Catalogue*). Hatch est construit autour
 des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
+- Livré (2026-10-18) : `libs/project_io/migrations.*` : table de migrations versionnées v1→v7 contiguë (`static_assert`), appliquée par `load_project` avant la désérialisation ; refus `UnsupportedFormat` d'une version future ; un `project.json` forgé par version v1..v7 relu, déterminisme et idempotence (`97004b9`).
+- Reste : corpus d'anciens `.osp` réels figés dans `tests/fixtures/osp/` (les anciens fichiers sont forgés en test).
 
 ### HP-THR-001 — Bibliothèque `thread_palette` [P0] — ☑ Fait (2026-10-05)
 - À faire : lib cœur sans Qt : `Thread { brand, range, code, name, rgb,
@@ -571,12 +596,15 @@ des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
 - Modules : `libs/document`, `libs/project_io`, `apps/desktop`.
 - Dépend de : HP-THR-004.
 
-### HP-THR-007 — Mes fils (stock possédé) et nuancier personnel [P1] — ☐ À faire
+### HP-THR-007 — Mes fils (stock possédé) et nuancier personnel [P1] — ☑ Fait (2026-10-18, `cc4db8a`)
 - À faire : l'utilisateur coche les bobines qu'il possède ; le « plus proche »
   peut se limiter à son stock ; nuancier personnel éditable ; import/export
   CSV et formats courants de nuanciers (`.thr`, `.rgb`, `.edr`, `.gpl`) si
   documentés.
 - Modules : `libs/thread_palette`, préférences `apps/desktop`.
+- Livré (2026-10-18) : `thread_palette/thread_stock.*` : `ThreadStock` (fils possédés, nuancier personnel éditable), plus proche restreint au stock, JSON déterministe à relecture stricte ; 8 tests (`a5d2ccb`).
+- Livré (câblage bureau, 2026-10-18) : onglet « Mes fils » du panneau Fils (cases « je possède », bascule « limiter la recherche du fil le plus proche à mes fils », nuancier personnel éditable), stock en JSON dans les préférences (hors `.osp`, hors annulation) ; la pipette respecte la bascule ; `test_thread_stock_ui`.
+- Reste : import/export `.thr`/`.rgb`/`.edr`/`.gpl` ; édition d'un fil personnel existant (le ré-ajouter le remplace).
 
 ### HP-THR-008 — Couleur / texture du tissu de fond [P1] — ☐ À faire
 - Hatch : couleur de fond réglable (et produits en arrière-plan, HP-VIEW-004).
@@ -612,7 +640,7 @@ des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
   annulable.
 - Modules : `libs/thread_palette`, `libs/commands`.
 
-### HP-THR-012 — Pipette (couleur depuis l'image ou un objet) [P1] — ☐ À faire
+### HP-THR-012 — Pipette (couleur depuis l'image ou un objet) [P1] — ◐ Partiel (2026-10-18, `f38da87`)
 - À faire : outil pipette : clic sur l'image → fil le plus proche proposé ;
   clic sur un objet → reprendre son fil.
 - Modules : `apps/desktop`.
@@ -625,6 +653,9 @@ des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
 Aujourd'hui : **aucun objet texte**. Le lettrage est une des premières raisons
 d'acheter Hatch (même le niveau Personalizer), avec des dizaines de polices
 prénumérisées et la conversion des polices TrueType.
+- Livré (2026-10-18) : `thread_palette/eyedropper.*` : `sample_color` / `sample_region` (moyenne entière déterministe sur RGB brut), `pick_thread` (plus proche dans un nuancier, la bibliothèque ou Mes fils) ; 8 tests (`a6b594e`).
+- Livré (câblage bureau, 2026-10-18) : outil Pipette (touche I) : échantillonnage 5×5 de l'image affichée, menu des 5 fils les plus proches du nuancier courant ou de Mes fils, couleur libre, reprise du fil d'un objet brodé, assignation annulable par `SetObjectThreadCommand` ; `test_eyedropper_tool`.
+- Reste : échantillonnage du rendu des points (seule l'image source est échantillonnée).
 
 ### HP-TXT-001 — Objet texte dans le modèle [P0] — ☑ Fait (2026-10-10)
 - Fait : `document::TextObject`, lettres dérivées annotées `text_owner`, commandes
@@ -690,13 +721,16 @@ prénumérisées et la conversion des polices TrueType.
   génération.
 - Modules : `libs/lettering`, `libs/geometry`.
 
-### HP-TXT-007 — Espacement, crénage, alignement, interligne [P1] — ◐ Partiel (2026-10-10)
+### HP-TXT-007 — Espacement, crénage, alignement, interligne [P1] — ☑ Fait (2026-10-18, `164dcf5`)
 - Fait : espacements lettres/mots, interligne, gauche/centre/droite/justifié, multilignes,
   crénage `kern`. Reste : crénage manuel par paire.
 - À faire : espacement des lettres / des mots, interligne, alignement
   gauche/centre/droite/justifié, texte multilignes, crénage automatique
   (police) + manuel par paire.
 - Modules : `libs/lettering`, inspecteur.
+- Livré (2026-10-18) : crénage manuel par paire dans le cœur (`LayoutOptions::kerning_overrides`, remplace le crénage de la police) ; tests de crénage exact, remplacement, lignes vides alignées, tabulation et CRLF (`aaffb09`).
+- Livré (câblage bureau, 2026-10-18) : crénage manuel par paire dans `document::TextObject` (`kerning_pairs`), saisi dans le dialogue texte (« AV: -0,3 mm »), persistant (`.osp` v8 écrit seulement si utilisé, migration v7→v8, anciens fichiers réécrits à l'identique) ; « agrandir le texte » et l'import CLI en tiennent compte (`lettering::layout_options_for`) ; tests.
+- Reste : crénage GPOS (seule la table `kern` est lue).
 
 ### HP-TXT-008 — Édition individuelle d'une lettre [P1] — ☐ À faire
 - Hatch : sélectionner une lettre d'un texte pour la déplacer, tourner,
@@ -726,19 +760,24 @@ prénumérisées et la conversion des polices TrueType.
   d'un fichier machine par ligne.
 - Modules : `libs/lettering`, `apps/cli`, `apps/desktop`.
 
-### HP-TXT-012 — Unicode complet et langues [P1] — ☐ À faire
+### HP-TXT-012 — Unicode complet et langues [P1] — ◐ Partiel (2026-10-18, `164dcf5`)
 - À faire : accents, ligatures, écritures non latines (cyrillique, grec),
   RTL (arabe, hébreu) via HarfBuzz ; gestion des glyphes absents (repli et
   avertissement, jamais un carré silencieux).
 - Modules : `libs/lettering`.
+- Livré (2026-10-18) : `libs/lettering/unicode.*` (sans HarfBuzz) : caractères sans rendu ignorés, recomposition/décomposition d'accents latin, grec et cyrillique, marques combinantes, repli des glyphes absents (`glyphe-remplace`), ligatures f optionnelles, ordre visuel hébreu, arabe signalé non façonné (`ecriture-non-supportee`), UTF-8 invalide sans crash ; `test_unicode` (`aaffb09`).
+- Livré (câblage bureau, 2026-10-18) : case « Ligatures » du dialogue texte (champ `TextObject::ligatures`, persistant) en plus du cœur Unicode (accents, repli, hébreu).
+- Reste : façonnage arabe et écritures indiennes (HarfBuzz, nouvelle dépendance à valider en licence), ligatures propres à la police, GPOS.
 
-### HP-TXT-013 — Réglages adaptés aux petites lettres [P1] — ◐ Partiel (2026-10-10)
+### HP-TXT-013 — Réglages adaptés aux petites lettres [P1] — ◐ Partiel (2026-10-18)
 - Fait : sous 8 mm, sans compensation ni bord, sous-couche centrale selon le trait, satin →
   contour sous 1 mm (règles dans `lettering.md`). Reste : densité ajustée, tests de rendu.
 - À faire : sous la hauteur X : pas de sous-couche ou sous-couche centrale
   seulement, densité ajustée, compensation réduite, satin → contour sous le
   seuil de largeur ; règles documentées et testées.
 - Modules : `libs/lettering`, `libs/stitch_generation`.
+- Livré (2026-10-18) : densité satin et tatami +0 % à 8 mm jusqu'à +15 % à 4 mm et moins (jamais plus serrée que le réglage utilisateur), point de tatami = hauteur/3 borné 1,5–3 mm ; tests de paramètres, de séquence cousue à 6 mm, sans `saut-long`, déterministe (`ec80a25`).
+- Reste : validation sur broderie réelle (la courbe +15 % est une heuristique de prudence) ; cas des générateurs de `libs/stitch_generation`.
 
 ### HP-TXT-014 — Connecteurs entre lettres [P1] — ☐ À faire
 - À faire : ordre de gauche à droite, fin d'une lettre près du début de la
@@ -861,6 +900,19 @@ plus.
   angle/écarts/inversion ; dessus inséré après le fond ; choix et édition des
   couches dans Propriétés. Tests des gestes, conversion et round-trip `.osp`.
   Le couple à dégradés complémentaires liés reste à faire.
+- 2026-10-17 : **zone de transition réglable** (début / fin en % de l'axe, aplats
+  aux extrémités ; `narrow_gradient_zone`, dialogue du fondu ; l'inspecteur
+  conserve l'axe quand seul l'écart de fin change). Aucun changement du `.osp`.
+  Critère : sur un rectangle, avec une zone 30 % – 70 %, écarts constants
+  (début puis fin) hors de la zone (test `narrowed gradient zone gives constant
+  spacing on both plateaus`).
+- 2026-10-18 : **courbe de transition** (linéaire / douce / marquée ;
+  `DensityGradient::curve`, clé `.osp` `curve` écrite hors linéaire, `set_params`
+  et `inspect` ; la même courbe sur les deux couches du profil complémentaire).
+  Critère : début plus serré et fin plus lâche plus longtemps, écart identique au
+  milieu (test `density curve reshapes the ramp without moving its midpoint`).
+  Reste : points de contrôle, réglage de la largeur de fil, courbe dans
+  l'inspecteur.
 - 2026-10-13 (PR #25, fusionnée le 2026-10-13) : correction du fondu écrasé (lignes du dessus orientées perpendiculairement à l'axe de couleur) et nouvelle action **Forme ▸ Fondre deux zones**.
 - Fait : `autodigitize::analyze_two_color_blend` (ACP en CMY → deux couleurs,
   plan de proportion → `DensityGradient`), `thread_palette::best_thread_pair`
@@ -1314,6 +1366,21 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
   (FDoG, Kang/Lee/Chui 2007) — `image::CoherentLinesOp`, menu Image et
   `digitize --coherent-lines`. Alimente le mode Contours ; la pose par-dessus
   des remplissages reste à faire.
+- **Livré le 2026-10-14 (en PR) : couche de traits sombres par-dessus les remplissages**
+  (`digitize --dark-lines`, `autodigitize::auto_digitize_with_lines`). Les parties plus
+  étroites que `--dark-lines-width` (1,6 mm) de l'ensemble des **pixels sombres de l'image**
+  (L* <= `--dark-lines-lightness`, 25) sont lues sur l'image et non sur les régions quantifiées
+  (où un trait fin anti-crénelé est découpé), retirées de la segmentation des remplissages
+  (rendues aux régions voisines, puis les aplats que le trait coupait sont refusionnés : une seule
+  pièce, sans trou) et cousues **en dernier** comme lignes médianes en point droit, parcours
+  eulérien (mêmes analyse et garde-fous que le mode contours ; `--detail` règle le nettoyage).
+  Mesure sur une illustration plate de navire (382 x 287 mm, 12 couleurs) : 55 000 px de traits
+  séparés, 163 objets de ligne, 4,3 m de point droit ; mâts, vergues et haubans lisibles alors
+  qu'ils fusionnaient avec les aplats sombres en un amas de blocs. **Coût** : +486 coupes
+  (1 181 -> 1 675) car chaque trait est un tracé séparé. **Reste** : satin à largeur constante
+  pour les traits d'environ 1 mm ou plus (point droit aujourd'hui), traits clairs (contours
+  crème), réglage dans la boîte de dialogue d'auto-numérisation du bureau, couleur de trait
+  unique (moyenne des pixels).
 
 ### HP-AUTO-006 — Suppression du fond [P1] — ◐ Partiel
 - État OpenStitch : option « ignorer le fond » et **détection automatique du fond**
@@ -1367,6 +1434,27 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
 - À faire : après import SVG, appliquer la classification satin/tatami/contour
   aux formes vectorielles (sans passer par l'image).
 - Modules : `libs/autodigitize`.
+
+### HP-AUTO-013 — Outils d'analyse de la qualité d'une numérisation [P1] — ◐ Partiel (2026-10-16)
+- État OpenStitch : **fait en CLI** (`libs/project_ops`, Qt-free, déterministe) : `project render`
+  (rendu réaliste sur fond vert), `project fidelity` (tissu visible, détails perdus), `project
+  density` (épaisseurs de fil, carte de chaleur), `project at` (quel objet a cousu un point),
+  `project diagnose` (7 détecteurs avec objets et option conseillée), `project sweep` (balayage
+  d'options, tableau objectif, variantes non dominées, planche de zooms), `digitize --debug-dir`
+  (masques de décision), script `scripts/linux-core-setup.sh`, corpus d'invariants en test.
+  Voir `docs/source/cli-project.md`, section *Outils d'analyse de la qualité*.
+- Hatch : contrôle de densité et de chevauchement, simulateur de points, avertissements de
+  conception ; pas d'équivalent de balayage automatique d'options.
+- À faire : (1) exposer fidélité, densité (carte de chaleur superposable) et diagnostic dans le
+  bureau, avec clic sur un défaut -> objet sélectionné (`project at`) ; (2) options de numérisation
+  `--dark-lines-bars`, `--no-underpath`, `--fill-overlap`, `--dark-lines-objects-only` dans la boîte
+  *Numérisation automatique* ; (3) sélecteur `--where` pour `project op` (changer un réglage sur tous
+  les objets d'un type) ; (4) animation de l'ordre de couture et carte des angles de fil.
+- Modules : `libs/project_ops` (fait), `apps/cli` (fait), `apps/desktop` (à faire).
+- Dépend de : HP-AUTO-005 (couche de traits sombres).
+- Acceptation : en CLI, chaque détecteur est validé sur un projet au défaut connu (tests
+  `[analysis]`), l'image de stress `[invariants]` échoue si les poignées de Bézier ne sont plus bornées ;
+  dans le bureau : un clic sur « tissu visible » centre la vue sur le plus gros trou.
 
 ---
 
@@ -1428,13 +1516,19 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
   (running, triple ou satin de bordure) avec l'écart choisi.
 - Dépend de : HP-STI-004, HP-OBJ-001.
 
-### HP-VEC-007 — Lisser / simplifier un tracé à la demande [P2] — ☐ À faire
+### HP-VEC-007 — Lisser / simplifier un tracé à la demande [P2] — ☑ Fait (2026-10-18, `89a3e2d`)
 - À faire : commande « lisser » (réduction des nœuds + ajustement de courbes)
   sur un objet existant.
 - Dépend de : HP-AUTO-004.
+- Livré (2026-10-18) : `libs/geometry/smooth.*` : `smooth_path` / `smooth_path_set` (aplatit puis ajuste des courbes à une tolérance en µm, extrémités des tracés ouverts conservées, déterministe) ; 5 tests (`061b4f3`).
+- Livré (câblage bureau, 2026-10-18) : menu Forme › « Lisser… » (tolérance en mm, 0,2 par défaut) sur la sélection, `SmoothVectorPathsCommand` (un seul pas d'annulation, refus si rien ne change) ; tests Catch2 et QTest.
+- Reste : aucun.
 
-### HP-VEC-008 — Convertir un polygone en courbes [P2] — ☐ À faire
+### HP-VEC-008 — Convertir un polygone en courbes [P2] — ☑ Fait (2026-10-18, `89a3e2d`)
 - Dépend de : HP-AUTO-004.
+- Livré (2026-10-18) : `libs/geometry/to_curves.*` : `convert_to_curves` (tangentes colinéaires aux sommets peu anguleux, coins francs et extrémités inchangés, courbe passant exactement par les sommets) ; 4 tests (`ac1599a`).
+- Livré (câblage bureau, 2026-10-18) : menu Forme › « Convertir en courbes » sur la sélection, `ConvertToCurvesCommand` (un pas d'annulation) ; tests Catch2 et QTest.
+- Reste : aucun.
 
 ### HP-VEC-009 — Magnétisme (grille, nœuds, guides) [P1] — ◐ Partiel (2026-10-06)
 - État OpenStitch : accrochage aux sommets, milieux de segment et centres de forme
@@ -1444,9 +1538,12 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
   (touche + bouton), tolérance en pixels écran.
 - Modules : `apps/desktop/canvas_view`.
 
-### HP-VEC-010 — Outil de mesure [P1] — ☐ À faire
+### HP-VEC-010 — Outil de mesure [P1] — ☑ Fait (2026-10-18, `f38da87`)
 - Hatch : mesurer une distance/un angle sur le canevas.
 - À faire : outil règle : glisser → distance en mm, angle, affiché et copié.
+- Livré (2026-10-18) : `libs/geometry/measure.*` : distance, longueur de chemin, angle, aire (µm, mm, mm²) ; 5 tests (`0bec0f8`).
+- Livré (câblage bureau, 2026-10-18) : outil Règle (touche Q) : clic-glisser, règle temporaire (distance mm, Δx/Δy, angle), résultat dans la barre d'état et copiable, sans mutation du document ; gestes documentés ; `test_measure_tool`.
+- Reste : accroche (snap) sur la règle.
 
 ### HP-VEC-011 — Guides tirés des règles [P2] — ☐ À faire
 - À faire : glisser depuis une règle crée un guide horizontal/vertical
@@ -1461,9 +1558,17 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
   l'inverse plusieurs objets se combinent en un seul.
 - Dépend de : HP-OBJ-001.
 
-### HP-VEC-014 — Formes prédéfinies supplémentaires [P2] — ☐ À faire
+### HP-VEC-014 — Formes prédéfinies supplémentaires [P2] — ☑ Fait (2026-10-18, `89a3e2d`)
 - À faire : étoile, cœur, flèche, rectangle arrondi, arc, spirale — outils
   paramétriques (poignées) ou bibliothèque (HP-LIB-002).
+
+### HP-VEC-015 — Combler les vides d'un bloc uni (par couverture réelle) [P1] — ◐ Partiel (2026-10-18, en PR)
+- Besoin (retour utilisateur) : dans un bloc uni dont les zones ne se distinguent que par la couleur ou le type de point, changer un satin ou un tatami laisse des jours sans fil où l'on voit le tissu.
+- Livré (2026-10-18) : `stitch_analysis::find_uncovered_pockets` (`libs/stitch_analysis/uncovered_pockets.*`) : les vides sont mesurés depuis les POINTS cousus de la séquence effective (masque de couverture fin, passes visibles seulement), pas depuis les contours vectoriels ; enveloppe du bloc fermée sur un écart réglable, ouverture morphologique (largeur minimale 0,3 mm), aire minimale/maximale. `commands::make_fill_pockets_command` rattache chaque poche au plus grand remplissage voisin (agrandit son vecteur s'il est seul et sans retouche, sinon crée un objet vectoriel + tatami de mêmes réglages et couleur) en UNE commande annulable. Emprise partagée `document::embroidery_footprint` (rails du satin inclus).
+- Livré (CLI) : `project apply` op `fill_block_holes` (`objects`, `closing_gap_mm`, `max_area_mm2`).
+- Livré (câblage bureau) : Forme › « Combler les vides du bloc… » (dialogue écart et aire maximale, sélection du bloc, annulation en un pas) ; test QTest `fillBlockHolesFillsTheGapBetweenTwoZones`.
+- Reste : retouche manuelle d'une poche avant application (aperçu, exclusion) ; pas de mesure sur corpus des seuils (largeur minimale, écart de fermeture : valeurs d'ingénierie) ; un liseré de tatami laissé par la génération elle-même (ex. première rangée raccourcie d'un rectangle par défaut) est lui aussi détecté et comblé par un petit objet : à confirmer côté moteur.
+- Dépend de : HP-VIEW-005 (carte de densité, même séquence effective).
 
 ---
 
@@ -1474,6 +1579,9 @@ redimensionnement à la souris, alignement, dupliquer / décaler, supprimer, ord
 Sur `main` depuis le 2026-10-13 : copier/coller, rotation, miroir, transformation du design entier. Manquent encore les
 poignées de rotation sur le canevas, les groupes et la barre X/Y/L/H. C'est le **deuxième mur** après les formats :
 tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
+- Livré (2026-10-18) : `libs/geometry/shapes.*` : étoile, cœur, flèche, rectangle arrondi, arc, spirale (cadre exact, aire, symétrie, cas dégénérés) ; 10 tests (`d3b1575`).
+- Livré (câblage bureau, 2026-10-18) : menu Forme › « Formes prédéfinies » (étoile à branches réglables, cœur, flèche, rectangle arrondi, arc, spirale), taille demandée par un dialogue paramétrique, insertion annulable au centre de la vue ; `test_vector_tools`.
+- Reste : poignées sur le canevas et entrée dans la palette d'outils ; intégration à la bibliothèque HP-LIB-002.
 
 ### HP-OBJ-001 — Sélection multiple [P0] — ◐ Partiel (2026-10-13)
 - Constaté sur `main` (`1ab521a` et suivants) : Ctrl/Maj+clic, rectangle de sélection (fenêtre ou croisement), sélection multi-lignes depuis la liste Document, inspecteur de groupe ; tests `rectangleLeftToRightIsWindow…`, `shiftRectangleAddsToTheSelection`, `documentListMultiSelectionDrivesRegionSelection`. Les critères d'acceptation sont remplis.
@@ -1940,12 +2048,15 @@ calques image/régions/vecteurs/broderie, filtres d'affichage, thème clair/somb
 - À faire : couleur de tissu (HP-THR-008), texture, images de produits avec
   zone brodable, cadre montré dessus.
 
-### HP-VIEW-005 — Carte de densité [P1] — ☐ À faire
+### HP-VIEW-005 — Carte de densité [P1] — ◐ Partiel (2026-10-18, `c046aa4`)
 - État OpenStitch : `limitations.md` : « pas de carte de densité ».
 - À faire : cœur : grille de densité (pénétrations/mm², épaisseur cumulée)
   calculée par `stitch_analysis` ; UI : surimpression colorée (échelle
   séquentielle) + règle d'analyse « zone trop dense ».
 - Modules : `libs/stitch_analysis`, `apps/desktop`.
+- Livré (2026-10-18) : `libs/stitch_analysis/density_map.*` : grille de densité (pénétrations/mm², longueur de fil, épaisseur en couches) bornée par `max_cells`, zones sur-denses 4-connexes à seuil configurable avec objet dominant ; 7 tests (`1679296`). Seuil de 4,0 /mm² heuristique, non mesuré sur corpus.
+- Livré (câblage bureau, 2026-10-18) : Affichage › « Carte de densité » (case mémorisée) : surimpression bleu→rouge avec légende pén./mm², calcul sur la séquence effective hors du fil UI et mis en cache ; zones sur-denses listées dans le panneau Analyse (clic = centrer, seuil réglable 4,0 par défaut) ; ne modifie jamais le document ; `test_density_map_ui` (12 cas).
+- Reste : vérification visuelle dans l'application réelle (palette, légende, centrage au clic non vérifiés en headless) ; calibrage du seuil sur corpus.
 
 ### HP-VIEW-006 — Vue d'ensemble (mini-carte) [P2] — ☐ À faire
 
@@ -2051,23 +2162,43 @@ hors cadre, déplacement sans coupe), résumé avant export DST.
 
 ### HP-PROD-004 — Aperçu avant impression général [P1] — ☐ À faire
 
-### HP-PROD-005 — Consommation de fil par couleur et canette [P1] — ◐ Partiel
+### HP-PROD-005 — Consommation de fil par couleur et canette [P1] — ☑ Fait (2026-10-18, `6f8fe96`)
 - État OpenStitch : longueur de fil totale.
 - À faire : par couleur, estimation fil de canette, en mètres.
+- Livré (2026-10-18) : `thread_consumption` : fil cousu / dessus / canette par couleur (m), nombre de canettes (capacité réglable, 100 m par défaut), coefficients réglables non mesurés ; 4 tests (`8385ada`).
+- Livré (câblage bureau, 2026-10-18) : consommation de fil par couleur, totaux et canettes dans la fiche de production (section HTML, clé JSON additive `consumption`, capacité de canette réglable dans le dialogue) ; tests.
+- Reste : affichage dans le panneau Fils et les statistiques ; calibrage des coefficients sur machine.
 
 ### HP-PROD-006 — Devis (prix par 1 000 points) [P3] — ☐ À faire
 
-### HP-PROD-007 — Règles d'analyse supplémentaires [P1] — ◐ Partiel
+### HP-PROD-007 — Règles d'analyse supplémentaires [P1] — ◐ Partiel (2026-10-18, `c046aa4`)
 - À faire : zone trop dense / recouvrements empilés (HP-VIEW-005), détails
   < 1 mm, texte trop petit (HP-TXT-009), satin trop large, objet sans point
   d'arrêt, fil trop proche de la couleur du tissu, dépassement de la zone
   cousable de la machine, nombre de couleurs > aiguilles de la machine.
 - Modules : `libs/stitch_analysis`.
+- Livré (2026-10-18) : règles `detail-trop-petit`, `objet-sans-arret`, `trop-de-coupes`, `densite-excessive` dans `stitch_analysis` (les deux dernières désactivées par défaut, seuils non mesurés) ; 6 tests (`ecb1e08`).
+- Livré (câblage bureau, 2026-10-18) : les règles `detail-trop-petit` et `objet-sans-arret` s'affichent dans le panneau Analyse ; `trop-de-coupes` et `densite-excessive` s'activent avec leurs seuils (50 coupes, 4,0 pén./mm²) dans « Règles optionnelles » ; tests.
+- Reste : satin trop large, fil trop proche de la couleur du tissu (HP-THR-008), nombre de couleurs supérieur aux aiguilles et zone cousable (HP-HOOP-002) ; seuils non mesurés sur corpus.
 
-### HP-PROD-008 — Corrections automatiques depuis l'analyse [P2] — ☐ À faire
-- À faire : bouton « Corriger » par problème quand une correction sûre existe
-  (ajouter une coupe, découper un point long, supprimer un point court),
-  appliqué par commande annulable.
+### HP-PROD-008 — Corrections automatiques depuis l'analyse [P2] — ◐ Partiel (2026-10-17)
+- État OpenStitch : **fait** : `Finding::fix` (donnée pure, `libs/stitch_analysis`) et bouton
+  « Corriger » du panneau Analyse, une commande annulable par clic : `hors-cadre` (ramener
+  dans le cadre), `texte-trop-petit` (5 mm), `parametre-hors-limites` (ramener dans la plage),
+  `point-long` (découper les points trop longs) et `saut-sans-coupe` (activer les finitions,
+  seulement si leur simulation supprime le constat). Rapport unique `analyze_project` pour le
+  panneau, le pré-export et `project quality`. Voir `docs/source/analysis-and-validation.md`.
+- À faire : `saut-long` (optimiser l'ordre), `couches-superposees` (retirer le remplissage
+  caché, voir RD-PAT-006), `trait-trop-fin` ; application des corrections en CLI
+  (`project op`) ; instruire les 414 points sous 0,1 mm mesurés (probables doublons de la
+  génération, cause non confirmée) ; mesurer sur de vrais motifs (le corpus du dépôt n'a ni
+  texte ni réglage manuel). Fait le 2026-10-17 après mesure : `saut-long` ne signale plus un
+  déplacement qui contient une coupe, `point-court` scindé (avertissement < 0,1 mm,
+  information par objet de 0,1 à 0,5 mm) ; `vide` et `trop-de-points` conservés.
+- Modules : `libs/stitch_analysis`, `apps/desktop`.
+- Acceptation : un clic sur « Corriger » applique une seule commande annulable (undo
+  rétablit l'état) et le constat disparaît à la ré-analyse (tests `test_analyze_project`,
+  `test_analysis_fix`).
 
 ---
 
@@ -2380,23 +2511,50 @@ les paramètres avant de créer) et par des **modes** distincts (édition satin,
   poignées de transformation ; double-clic (ou touche) passe en remodelage
   (nœuds, rails, guides, entrée/sortie selon le type) ; Échap remonte d'un
   niveau. Revoir `docs/ui-redesign-*.md`.
+- Audit 2026-10-18 (BRO-09, BRO-10) : constaté aujourd'hui, 4 modes d'édition + 15 outils à
+  activer par menu, pas d'entrée par double-clic, nom du mode actif absent de la barre d'état.
+  **Réalisation par étapes** : d'abord Échap d'un niveau (HP-UX-018) et double-clic pour entrer
+  dans l'édition (satin → `satinEditModeAct_`), puis indication permanente du mode ; la fusion
+  complète en un mode « Remodeler » n'est engagée que si ces gestes ne suffisent pas.
+  Acceptation ajoutée : double-clic sur un satin sélectionné active son mode d'édition, Échap le
+  quitte sans changer la sélection.
 - Modules : `apps/desktop`.
 
-### HP-UX-002 — Création directe sans dialogue [P1] — ☐ À faire
+### HP-UX-002 — Création directe sans dialogue [P1] — ◐ Partiel (2026-10-18, branche `ux-lot-c1-pr`)
 - À faire : « Créer un tatami » crée immédiatement avec les défauts (ou le
   dernier réglage) ; les paramètres se règlent ensuite dans l'inspecteur.
+- Audit 2026-10-18 (BRO-19, PAR-03) : **décision du 2026-10-18 : les dialogues de création
+  (`createTatamiObject`, contour, satin : `main_window.cpp:4161, 4221-4260`) sont supprimés** ;
+  une entrée « Créer avec réglages… » reste dans le sous-menu pour qui veut saisir les valeurs
+  avant création. Création immédiate au dernier réglage, sélection, une `ICommand`. Condition :
+  HP-PERF-009 (l'inspecteur règle en direct sans geler l'interface). Voir HP-UX-028.
+  Acceptation : `createTatamiAct_` ne laisse aucun `QDialog` ouvert et pousse un pas
+  d'annulation.
+- Livré : « Créer un contour / tatami / satin » créent tout de suite au dernier réglage mémorisé (`ui_memory::creation`, `QSettings`, aucun champ de document ni `.osp`), en une `ICommand` ; le sous-menu « Créer avec réglages » garde les dialogues, préremplis et mémorisés ; la question « satin impossible, utiliser un tatami ? » reste (refus honnête). Tests : `test_creation_flow` (aucune modale, un pas d'annulation, réutilisation du dernier réglage). Tests existants adaptés (`createSatinObject…`) : l'acceptation de dialogue est remplacée par la vérification qu'aucune modale ne s'ouvre.
 
 ### HP-UX-003 — Inspecteur homogène pour tous les types [P1] — ◐ Partiel
 - À faire : mêmes sections pour tous (Général : nom, fil, visible ; Points ;
   Sous-couche ; Compensation ; Entrée/sortie ; Avancé), unités affichées,
   info-bulle sur chaque champ, bouton « réinitialiser au défaut » par champ,
   valeurs par défaut documentées.
+- Audit 2026-10-18 (BRO-11, BRO-12, BRO-13, PAR-17) : constaté, tatami ≈ 13 champs dont la
+  sous-couche toujours déroulée, directionnel ≈ 25, satin ≈ 20, aucun bouton « défaut » ni
+  défauts mémorisés. **Précision** : en tête, les trois réglages d'usage (espacement, angle,
+  compensation) ; sections « Sous-couche » et « Avancé » repliées, ouverture mémorisée par
+  `ui_memory` ; icône ↺ à droite d'un champ qui diffère du défaut (info-bulle « Défaut : 0,40 mm »)
+  ; table unique (nom, plage, défaut, unité) pour info-bulles et ↺ (HP-UX-042).
+  Acceptation : par défaut `spin_underlaySpacing` n'est pas visible, déplier la section le rend
+  visible ; modifier `spin_rowSpacing` affiche ↺ qui restaure `TatamiParams{}.row_spacing`.
 - Modules : `apps/desktop/properties_panel`.
 
 ### HP-UX-004 — Palette d'outils organisée par tâches [P1] — ☐ À faire
 - Hatch : onglets / boîtes à outils : Numériser, Éditer, Lettrage, Disposer,
   Couleurs…
 - À faire : regroupement logique des outils, libellés et icônes cohérents.
+- Audit 2026-10-18 (QT-02) : **mesuré** : à 1024 × 640 la palette (≈ 17 actions) déborde dans `»`.
+  Le volet « petit écran » (deux colonnes, Terminer/Annuler dans la barre contextuelle) est porté
+  par HP-UX-026 ; le regroupement par tâche (formes en un bouton à menu, courbes, satin, couper)
+  reste ici.
 
 ### HP-UX-005 — Menu contextuel complet [P1] — ◐ Partiel
 - À faire : couper/copier/coller/dupliquer, ordre (avant/arrière), couleur/fil,
@@ -2422,6 +2580,11 @@ les paramètres avant de créer) et par des **modes** distincts (édition satin,
 - À faire : Espace+glisser et clic molette = déplacer la vue ; glisser dans le
   vide = rectangle de sélection (HP-OBJ-001) ; Ctrl+molette / molette
   configurable ; pavé tactile (pinch-zoom).
+- Audit 2026-10-18 (BRO-07) : **constaté dans le code, la description ci-dessus est périmée** :
+  molette = zoom au curseur, Espace+glisser, clic milieu, pinch et Ctrl+molette existent
+  (`interaction_map.cpp:65-80`) et le glisser dans le vide en Sélection fait un rectangle (S6).
+  Statut ◐ conservé (configurabilité et tests réels sur pavé tactile non vérifiés) ; ne pas
+  régresser. Reste : zoom sur la sélection et retour au zoom précédent (HP-UX-023).
 
 ### HP-UX-010 — Barre d'état informative [P1] — ◐ Partiel
 - À faire : taille de la sélection, nombre de points de la sélection et du
@@ -2434,6 +2597,11 @@ les paramètres avant de créer) et par des **modes** distincts (édition satin,
 - Hatch : assistants pas à pas pour les débutants.
 - À faire : assistant guidé (image → taille → couleurs → fond → numériser →
   vérifier → exporter pour ma machine).
+- Audit 2026-10-18 (PAR-09, PAR-06) : l'assistant reste **optionnel et non bloquant** (les
+  experts gardent leurs raccourcis, pas de profil Débutant/Expert). Briques planifiées :
+  accueil avec « Guide de 2 minutes », « Dessiner » et « Texte » (voir UX-43), préréglages de
+  numérisation (HP-UX-030), cadre dans l'import (HP-UX-033), panneau Qualité ouvert après F8
+  (HP-UX-031).
 
 ### HP-UX-013 — Messages d'erreur actionnables [P2] — ◐ Partiel
 - À faire : chaque refus dit quoi faire (« satin refusé : forme trop large,
@@ -2449,6 +2617,263 @@ les paramètres avant de créer) et par des **modes** distincts (édition satin,
 - À faire : relire tous les libellés (« Déboguer : afficher toutes les
   données… », « Remodelage satin (avancé) », « trajet caché ») ; masquer les
   outils de débogage derrière un mode développeur.
+- Audit 2026-10-18 (BRO-25, PAR-05) : le menu Déboguer est déjà masqué derrière
+  `debugMenuEnabled()` (`main_window.cpp:5363-5366`). Restent visibles : « Convertir
+  automatiquement en satin (expérimental)… », « Remodelage satin (avancé) », deux entrées pour la
+  même intention (« Créer un satin automatique » / « Convertir… »). Proposition : un menu
+  « Avancé » replié et une seule entrée de satin automatique ; le message d'échec du satin offre
+  un bouton « Utiliser un tatami ».
+
+### Audit UX/UI du 2026-10-18 : lots A à E (HP-UX-017 à HP-UX-044)
+
+Issus de l'audit [`docs/ux/audit-ux-ui-2026-10-18.md`](ux/audit-ux-ui-2026-10-18.md)
+(complète `docs/ui-ux-audit-2026-10-13.md`, registre `UX-xx`, que cette roadmap ne citait pas).
+Stratégie, arbitrages et ordre : [`docs/ux/strategie-interface.md`](ux/strategie-interface.md) ;
+synthèse : [`docs/ux/synthese.md`](ux/synthese.md). **Aucune de ces tâches ne modifie le moteur
+de points, les formats ni le schéma `.osp`** (une seule exception à confirmer : HP-UX-044). Toute
+mutation reste une `ICommand` ; tout nouveau texte passe par `tr()`. Chaque entrée est câblée dans
+`apps/desktop` avec un test QTest headless (sans pixel ni `sleep`, noms `TEST_CASE` ASCII).
+Constats : `PAR-`/`BRO-`/`QT-` = rapport d'audit ; `UX-` = audit du 2026-10-13.
+Tâches existantes enrichies plutôt que dupliquées : HP-UX-001/002/003/004/009/012/016.
+Prérequis commun des lots B et C : **HP-QA-008** (garde de taille minimale, §23).
+**HP-UX-040 (contrat de l'IA : repli couleur, annulation tardive) a été retiré le 2026-10-18 à la demande du mainteneur** : l'IA n'est pas une priorité. Les constats `UX-15`/`UX-16` de l'audit du 2026-10-13 restent consignés dans `docs/ui-ux-audit-2026-10-13.md` sans tâche.
+
+#### Lot A — Quick wins et gestes (P1/P2, complexité S)
+
+### HP-UX-017 — Ctrl+O ouvre tout (projet, image, SVG, fichier machine) [P1] — ◐ Partiel (2026-10-18, branche `claude/ux-lot-a-quickwins`)
+- Problème : Ctrl+O n'ouvre que des images (`main_window.cpp:699-701`) ; `openPath` sait déjà router `.osp/.dst/.svg/image` (`main_window_ux.cpp:83-89`). Constat PAR-01.
+- Comportement attendu : Ctrl+O = « Ouvrir… » universel (filtre « Tous les fichiers pris en charge ») ; « Importer une image… » garde Ctrl+Maj+I ; l'entrée « Ouvrir un projet… » reste. Le garde des modifications non enregistrées s'applique comme aujourd'hui.
+- Complexité : S. Composants : `apps/desktop/main_window.cpp`, `main_window_ux.cpp`.
+- Dépend de : —
+- Acceptation : un test QTest ouvre via l'action un `.osp`, un `.dst`, un `.svg` et un PNG et vérifie la bonne branche ; le raccourci Ctrl+O est unique (aucun conflit `QAction`). Décision utilisateur du 2026-10-18 : changement de raccourci accepté.
+- Non-régression : garde de remplacement (Enregistrer / Ne pas enregistrer / Annuler), récents, glisser-déposer.
+- Livré : action « Ouvrir… » (Ctrl+O, `openAnyAct_`) qui route par extension via `openPath` (`.osp`, fichier machine, SVG, image) ; « Importer une image ou un SVG… » passe sur Ctrl+Maj+I ; test `ctrlOIsTheUniversalOpenAndImportHasItsOwnShortcut` (Ctrl+O unique). Reste : test de routage par extension à travers le dialogue de fichier (non automatisable sans dialogue natif), filtre mémorisé, mention dans l'aide.
+
+### HP-UX-018 — Échap remonte d'un niveau, jusqu'à la sélection d'objets [P1] — ◐ Partiel (2026-10-18, branche `claude/ux-lot-a-quickwins`)
+- Problème : Échap ne désélectionne que les régions et ferme tous les modes d'un coup (`main_window.cpp:6479-6509`). Constat BRO-04. Voir HP-UX-001.
+- Comportement attendu : un appui remonte d'un niveau : mode d'édition → outil → sélection d'objets → sélection de régions. Quitter un mode conserve la sélection.
+- Complexité : S. Composants : `apps/desktop/main_window.cpp` (raccourci Échap).
+- Dépend de : —
+- Acceptation : objet sélectionné en outil Sélection, Échap vide `currentSelection()` ; dans un mode d'édition, un premier Échap quitte le mode et garde la sélection, un second la vide.
+- Non-régression : Échap pendant un tracé multi-clics, fusion de régions, champs de saisie (Échap y reste local).
+- Livré : quand il n'y a plus de mode ni d'outil à relâcher, Échap désélectionne la broderie ou les objets (après les régions, comme avant) ; test `escapeDropsToolThenObjectSelection`. Reste : niveaux « mode d'édition » puis « outil » encore relâchés ensemble par un seul Échap (comportement d'origine conservé pour ne pas casser les tests d'outils) ; aide des gestes.
+
+### HP-UX-019 — Un seul prédicat de sélection et tolérance de clic [P1] — ◐ Partiel (2026-10-18, branche `ux-lot-a2`)
+- Problème : trois règles pour le même geste (clic simple filtré ; Maj/Ctrl/Alt non ; rectangle filtré) et aucune tolérance de clic : un tracé ouvert ou un détail de 1 mm est presque inclicable (`selection_hit_test.cpp:16, 71-73, 94-100`, `main_window.cpp:8723-8727, 8879, 8918-8926, 8984`). Constats BRO-02, BRO-03.
+- Comportement attendu : une fonction `selectableAt(project, pos, filtre, tolérance)` utilisée par clic, Maj/Ctrl/Alt, rectangle, liste et flèches. Distance au trait ≤ max(0,4 mm ; 4 px écran) ; l'objet qui **contient** le point garde la priorité.
+- Complexité : M (tolérance exprimée en mm à travers le zoom). Composants : `apps/desktop/selection_hit_test.*`, `main_window.cpp`.
+- Dépend de : —
+- Acceptation : filtre de couleur actif → `objectsAtPointMm` et le clic simple renvoient le même ensemble ; un chemin ouvert de 0,1 mm est sélectionné à 0,3 mm, pas à 5 mm ; un objet masqué reste exclu.
+- Non-régression : `test_selection_hit_test`, performance du hit-test sur 500 objets.
+- Livré : `objectsAtPointMm(project, pos, toleranceMm, accept)` : un objet qui contient le point l'emporte, sinon repli sur le contour à ≤ max(0,4 mm ; 4 px) (trait fictif) ; `MainWindow::selectableObjectsAt` est le prédicat unique (visible, filtres d'affichage, tolérance) pour le clic simple, Maj/Ctrl+clic et « sélectionner dessous » ; tests `toleranceMakesAnOpenPathClickableButStaysLocal`, `toleranceIsAFallbackAndPredicateFilters`. Reste : le rectangle de sélection et les flèches n'utilisent pas encore `selectableObjectsAt` (le rectangle applique déjà le filtre) ; test de performance du hit-test sur 500 objets.
+
+### HP-UX-020 — Cyclage de sélection par re-clic et menu « dessous » enrichi [P2] — ◐ Partiel (2026-10-18, branche `ux-lot-a2`)
+- Problème : Alt+clic ouvre un menu de noms sans pastille ni type ; un nom en double reçoit « (#id) » (`interaction_map.cpp:90`, `main_window.cpp:8980-9023`). Constat BRO-01.
+- Comportement attendu : un clic répété au même point (rayon 2 px) sélectionne l'objet suivant dessous ; la barre d'état affiche « 2/4 sous le curseur » ; les entrées du menu portent pastille de couleur et type de point (survol = surbrillance).
+- Complexité : S. Composants : `apps/desktop/main_window.cpp`, `canvas_view.cpp`.
+- Dépend de : HP-UX-019.
+- Acceptation : trois formes superposées, trois clics identiques sélectionnent haut, milieu, bas, puis reviennent en haut ; un clic ailleurs remet le cycle à zéro.
+- Livré : re-clic au même point (rayon 2 px) sélectionne l'objet suivant dessous, message « n/N sous le curseur » dans la barre d'état ; le menu « dessous » affiche une pastille de couleur ; test `clickingTheSameSpotCyclesThroughOverlappingObjects`. Reste : type de point dans les entrées du menu, surbrillance de l'objet au survol d'une entrée.
+
+### HP-UX-021 — Vectorisation (F7) sans modale [P2] — ◐ Partiel (2026-10-18, branche `claude/ux-lot-a-quickwins`)
+- Problème : chaque F7 ouvre une modale « Détail » pour un curseur déjà mémorisé (`main_window_workflow.cpp:175-206`). Constat PAR-07.
+- Comportement attendu : F7 applique la dernière valeur (`ui_memory`) ; Maj+F7 ouvre le réglage.
+- Complexité : S. Composants : `apps/desktop/main_window_workflow.cpp`.
+- Dépend de : —
+- Acceptation : F7 n'ouvre aucun `QDialog` ; Maj+F7 en ouvre un et mémorise la valeur ; sortie identique à l'actuelle pour une même valeur.
+- Livré : F7 réutilise le dernier détail (`ui_memory`) sans dialogue ; l'entrée de menu et Maj+F7 ouvrent le réglage ; `askVectorizeDetail` extrait ; test `quickVectorizeOpensNoDialogAndMenuStillAsks`. Reste : afficher le détail utilisé dans la barre d'état.
+
+### HP-UX-022 — Sortir de la simulation ; rendu réaliste après lecture [P1] — ◐ Partiel (2026-10-18, branche `claude/ux-lot-a-quickwins`)
+- Problème : `simStep_ >= 0` désactive le rendu réaliste (`main_window_realistic.cpp:140`) et ne revient à −1 qu'à la régénération (`main_window.cpp:1229, 7790, 7796`) ; aucun bouton de sortie. Constat PAR-10 (chemin lu, effet non exécuté).
+- Comportement attendu : bouton « Quitter la simulation » et sortie automatique en fin de lecture ; Ctrl+Maj+R affiche alors le rendu complet. Alternative : tracer les segments réalistes jusqu'à `simStep_`.
+- Complexité : S (sortie) / M (réaliste progressif). Composants : `apps/desktop/main_window.cpp`, `main_window_realistic.cpp`.
+- Dépend de : —
+- Acceptation : lecture jusqu'au bout puis activation du rendu réaliste → rendu complet affiché ; le bouton remet `simStep_ = -1` sans régénérer.
+- Livré : bouton « ⏹ Fin » (`simExitAct_`), sortie automatique en fin de lecture et quand le curseur atteint la fin (`exitSimulation()` : `simStep_ = -1` puis `renderStitches()`) ; tests `simulationExitButtonAndEndOfSliderLeaveSimulationMode`, `endOfPlaybackLeavesSimulationMode` ; l'assertion de `simulationPlayPauseResumeAndSeekChangesRenderedPoints` est adaptée (fin de curseur = hors simulation, couture complète toujours vérifiée). Reste : rendu réaliste progressif jusqu'à `simStep_` (variante M), test du rendu réaliste réellement affiché après lecture.
+
+### HP-UX-023 — Ctrl+A selon la couche, touches de couches, zoom sur la sélection [P2] — ◐ Partiel (2026-10-18, branche `ux-lot-a2`)
+- Problème : Ctrl+A sélectionne des régions (objets sur Ctrl+Maj+A, `main_window.cpp:895-898`) ; aucun raccourci de couche ; aucun zoom sur la sélection. Constats BRO-05, BRO-08, BRO-22.
+- Comportement attendu : Ctrl+A suit la couche affichée ; 1 à 4 = Image/Régions/Vecteurs/Points ; Z = zoom sur la sélection, Maj+Z = zoom précédent, Ctrl+1 = 100 %.
+- Complexité : S. Composants : `apps/desktop/main_window*.cpp`, `canvas_view.cpp`, `interaction_map.cpp` (aide).
+- Dépend de : —
+- Acceptation : projet vectoriel sans segmentation → Ctrl+A sélectionne tous les objets visibles ; après Z la vue contient la boîte de la sélection ; l'aide des gestes liste les nouvelles touches.
+- Non-régression : Espace/focus (UX-40), touches dans les champs de saisie.
+
+#### Lot B — Responsive et panneaux (P1/P2)
+- Livré : Ctrl+A suit la couche (objets visibles si Vecteurs est affiché, sinon régions ; l'action est active dès qu'il y a des formes) ; touches 1/2/3/4 = Image/Régions (W conservé)/Vecteurs/Points ; Z = zoom sur la sélection, Maj+Z = zoom précédent (aller-retour), Ctrl+1 = taille réelle ; tests `selectAllFollowsTheActiveLayer`, `layerKeysAndZoomShortcutsAreUnique`, `zoomToSelectionFramesTheObjectAndPreviousRestoresTheView`. Reste : mention dans l'aide des gestes (`interaction_map`).
+
+### HP-UX-024 — Docks en onglets, docks Fils et Couleurs défilants [P1] — ◐ Partiel (2026-10-18, branche `ux-lot-d2`)
+- Problème : Analyse, Historique, Fils, Couleurs sont empilés à droite (`main_window_analysis.cpp:176`, `main_window_editing.cpp:637`, `main_window_threads.cpp:102`, `main_window_colors.cpp:25`) ; `ThreadPanel` (≈ 450 px minimum) n'a pas de zone défilante ; `colorsDock_` est créé paresseusement et sa place est perdue (`main_window_colors.cpp:19-25`). Constats QT-03, QT-04, QT-15 (tailles estimées, classe B).
+- Comportement attendu : `tabifyDockWidget` des quatre docks ; `QScrollArea` (`setWidgetResizable(true)`) pour Fils et `SegmentationColorsPanel` ; `colorsDock_` créé caché au constructeur ; disposition restaurée bornée à l'écran.
+- Complexité : M. Composants : `apps/desktop/main_window_*.cpp`, `thread_panel.*`, `segmentation_colors_panel.*`, `main_window_ux.cpp`.
+- Dépend de : HP-QA-008.
+- Acceptation : tous docks actifs, `window.minimumSizeHint().height() <= 480` ; `threadDock_->minimumSizeHint().height() <= 200` ; aller-retour `saveUiLayout`/`restoreUiLayout` incluant `colorsDock_`.
+- Non-régression : tests qui supposent plusieurs docks visibles ensemble ; « Réinitialiser la disposition ».
+- Livré : docks Analyse, Fils, Couleurs, Ordre, Workflow dans des zones défilantes (`scrollableDockContent`), Analyse/Historique/Fils/Couleurs en onglets, `colorsDock_` créé caché au constructeur, docks flottants bornés à l'écran. Mesuré : minimum de fenêtre tous docks ouverts 1291 × 1443 → 701 × 373, dock Fils 697 × 393 → 68 × 84. Reste : validation visuelle manuelle.
+
+### HP-UX-025 — Dialogues bornés à l'écran et dialogues longs repensés [P1] — ◐ Partiel (2026-10-18, branche `ux-lot-d2`)
+- Problème : aucun `QScrollArea`/`QSplitter` dans les dialogues ; tailles initiales jusqu'à 1000 × 720 ; Texte ≈ 750-800 px, Export machine ≈ 690, Segmentation IA ≈ 900 de haut ; Mélange de couleurs `setMinimumWidth(970)` ; accueil ≈ 440 px (`production_dialog.cpp:56`, `ai_segmentation_dialog.cpp:135`, `text_dialog.cpp:285-357`, `machine_export_dialog.cpp:43-181`, `color_blend_dialog.cpp:195`, `empty_state_widget.cpp:27-86`). Constats QT-07 à QT-12 (classe B pour les tailles ; `970` est constaté).
+- Comportement attendu : utilitaire `fitDialogToScreen(QDialog*)` au `showEvent` (92 % de `availableGeometry`, contenu long dans un `QScrollArea` transparent, boutons OK/Annuler hors zone défilante) ; Texte en colonne défilante ou onglets Texte/Avancé ; Export machine avec « Optimisations » repliable ; Mélange de couleurs empilé sous un seuil ; Segmentation IA en `QSplitter` ; accueil défilant.
+- Complexité : M (plusieurs fichiers disjoints, parallélisables). Composants : `apps/desktop/*_dialog.cpp`, `text_dialog.cpp`, `empty_state_widget.cpp`.
+- Dépend de : HP-QA-008.
+- Acceptation : pour chaque dialogue, `d.resize(10000,10000); show();` → taille ≤ 92 % de la zone utile ; `minimumSizeHint()` ≤ 880 × 440 (Mélange, Texte, Export, IA) ; accueil avec 5 noms de récents longs : toutes les actions atteignables.
+- Non-régression : valeurs mémorisées, `test_help_dialogs` (aide Gestes 460 × 320), focus initial des dialogues.
+- Livré : `responsive.hpp` (`scrollDialogBody`, `fitDialogToScreen` à 92 %, `ElidedTextLabel`) appliqué à Texte, Export machine (section « Optimisations » repliable), Mélange (`setMinimumWidth(970)` retiré), Segmentation IA, Production, Import, aides et accueil. Minimums avant → après : Texte 1152 × 658 → 296 × 116, Export 1265 × 448 → 356 × 116, Mélange 970 × 515 → 296 × 122, IA 1172 × 866 → 200 × 116. Reste : splitter de la Segmentation IA (remplacé par une zone défilante), Préférences IA hors périmètre.
+
+### HP-UX-026 — Barres du bas fusionnées, palette sur deux colonnes, densité automatique [P1] — ◐ Partiel (2026-10-18, branche `ux-lot-d2`)
+- Problème : quatre rangées de barres + bande des fils ≈ 255 px ; palette ≈ 17 actions qui déborde dans `»` (Terminer/Annuler la forme inclus) ; « Confortable » par défaut même sur 768 px ; barre d'état ≈ 450 px figés (`main_window.cpp:470-476, 507-556, 6234-6344, 6355-6477`, `main_window_threads.cpp:541-548`, `app_theme.cpp:434-444`). Constats QT-01, QT-02, QT-14, QT-16, QT-17, BRO-24. **Mesuré** : canevas 360 × 421 à 1024 × 640.
+- Comportement attendu : simulation + bande des fils en une rangée visible seulement si une séquence existe ; barre contextuelle dans la principale ; palette en deux colonnes sous 480 px de haut, Terminer/Annuler dans la barre contextuelle pendant un tracé ; densité « Compacte » au premier lancement si la hauteur utile < 800 ; libellés sans espaces de fin ; `cursorLabel_` élidable.
+- Complexité : M. Composants : `apps/desktop/main_window.cpp`, `main_window_threads.cpp`, `app_theme.cpp`, `design_tokens.cpp` (fichiers de convergence : un seul propriétaire).
+- Dépend de : HP-QA-008 ; voir HP-UX-004 (regroupement par tâche).
+- Acceptation : à 911 × 480 avec séquence chargée, `view_->height() >= 260` et `view_->width() >= 450` ; `finishDrawAct_` visible pendant un tracé ; sans `QSettings` et écran simulé de 480 px de haut, `AppTheme::density() == Compact` ; `statusBar()->minimumSizeHint().width() <= 450`.
+- Non-régression : tests qui retrouvent les barres par `objectName`, `hintsWidgetNeverForcesWindowWidth`.
+- Livré : simulation et bande des fils sur une rangée visible seulement avec une séquence, palette sur deux colonnes sous 520 px de haut, densité « Compacte » au premier lancement sous 800 px de hauteur utile, barre d'état 754 → 250 px, barre contextuelle élidable (921 → 45), bouton de cadre de la barre d'état à minimum explicite. Reste : fusion de la barre contextuelle avec la principale (tronquerait la principale à 911 px), Terminer/Annuler la forme dans la barre contextuelle ; **mesuré** : à 911 × 480 avec Document et Propriétés ouverts le canevas ne fait que ~205 × 305 (≥ 450 de large impossible sans le mode portable : 471 × 305).
+
+### HP-UX-027 — Mode « portable » à une colonne et inspecteur étroit [P2] — ◐ Partiel (2026-10-18, branche `ux-lot-d2`)
+- Problème : deux colonnes ouvertes à 911 px laissent ≈ 250 px au canevas ; l'inspecteur ne rétrécit pas sous ses libellés (`main_window.cpp:499`, `properties_panel.cpp:163-170`) ; aucun `QSplitter`. Constats QT-05, QT-06 (classe B).
+- Comportement attendu : action « Panneaux : mode portable » (proposée automatiquement sous 1000 px) qui tabifie Document et Propriétés dans une seule colonne ; `QFormLayout::WrapLongRows` dans l'inspecteur.
+- Complexité : M. Composants : `apps/desktop/main_window*.cpp`, `properties_panel.cpp`.
+- Dépend de : HP-UX-024.
+- Acceptation : à 911 × 480 après l'action, `view_->width() >= 450` ; `propertiesDock_->minimumSizeHint().width() <= 260`.
+
+#### Lot C — Workflows de broderie (P1/P2)
+- Livré : action « Mode portable » (menu Panneaux) : Document, Ordre, Workflow et Propriétés en une colonne d'onglets, persistée, proposée une fois sous 1000 px de large, annulée par « Réinitialiser la disposition » ; `WrapLongRows` dans l'inspecteur.
+
+### HP-UX-028 — Type de point identique pour une ou N formes, aussi au clic droit [P1] — ◐ Partiel (2026-10-18, branche `ux-lot-c1-pr`)
+- Problème : une forme sans couture n'a aucun choix de type dans l'inspecteur ; 2 formes ou plus ont un combo + « Appliquer » ; le menu contextuel n'offre pas le type ; « Directionnel » absent pour une forme neuve (`properties_panel.cpp:452-550, 597-634`, `main_window.cpp:5317-5328, 5374-5386, 6232-6301`). Constats PAR-02, PAR-03, PAR-04.
+- Comportement attendu : mêmes quatre boutons (Contour, Tatami, Satin, Directionnel) pour toute sélection de formes, en tête de l'inspecteur, dans la barre contextuelle et le clic droit ; un clic crée la couture avec le dernier réglage, en **une** `ICommand` annulable (réutiliser `setStitchTypeForSelection`).
+- Complexité : M. Composants : `apps/desktop/properties_panel.cpp`, `main_window*.cpp`.
+- Dépend de : HP-UX-002 ; HP-OBJ-019.
+- Acceptation : forme neuve, un clic sur chacun des quatre types → couture créée, zéro modale, un pas d'annulation ; clic droit sur forme non cousue → sous-menu à quatre entrées.
+- Non-régression : retouches manuelles (ADR-014), conversion de groupe, `check_no_raw_sequence_bypass`.
+- Livré : les quatre boutons Contour / Tatami / Satin / Directionnel (signal `stitchTypeRequested` vers `setStitchTypeForSelection`) en tête de l'inspecteur (forme neuve, couture, N formes), dans la barre contextuelle (1 ou N formes) et dans un sous-menu « Type de points » du clic droit sur une forme non cousue. Test existant adapté : `inspectorShowsNObjets` (le combo `combo_multiType` n'existe plus).
+
+### HP-UX-029 — Avertir avant d'invalider des retouches manuelles [P1] — ◐ Partiel (2026-10-18, branche `ux-lot-c1-pr`)
+- Problème : `paramsEdited` s'exécute sans tester l'état de l'objet (`main_window.cpp:6931-6948`) : une modification de paramètre rend les retouches de points obsolètes (signalé après coup par ⚠, `document_panel.cpp:43-56`). Les retouches ne sont pas perdues (ADR-014) mais plus appliquées. Constat BRO-20.
+- Comportement attendu : à la première modification d'un objet « ✎ », bandeau non modal dans l'inspecteur « Cette modification désactive N retouches (Ctrl+Z pour annuler) » ; N dans l'info-bulle de ⚠ ; bouton « Réappliquer les retouches » quand c'est possible. Pas de confirmation bloquante.
+- Complexité : M (comptage en lecture seule via `classify_all_edit_states`, aucun changement de cœur). Composants : `apps/desktop/properties_panel.*`, `main_window.cpp`.
+- Dépend de : —
+- Acceptation : objet « ✎ » à 14 retouches → `paramsEdited` affiche l'étiquette avec « 14 » ; annuler restaure l'état « ✎ » ; objet propre → aucun bandeau.
+- Non-régression : `docs/lot8-manual-editing-design.md` (états Clean/ManuallyEdited/Dirty), fusion de commandes scalaires.
+- Livré : bandeau non modal `label_overridesWarning` « Cette modification désactive N retouches » avec bouton « Réappliquer les retouches », qui suit annulation, rétablissement et abandon ; N repris dans l'info-bulle de ⚠ de l'inspecteur. Reste : bandeau pour un groupe d'objets retouchés (limité à l'objet unique), ⚠ du panneau Document inchangé.
+
+### HP-UX-030 — Préréglages de numérisation automatique et résumé chiffré [P2] — ◐ Partiel (2026-10-18, branche `ux-lot-d2`)
+- Problème : F8 ouvre deux modales puis ~25 réglages d'expert ; le résumé final ne donne que le nombre d'objets (`main_window.cpp:4320-4342, 4369-4768, 4929-4937`). Constat PAR-06. Voir HP-UX-012.
+- Comportement attendu : trois préréglages (« Logo / aplats », « Dessin au trait », « Photo / pointillé ») ; section « Avancé » repliée et mémorisée ; question Ajouter/Remplacer intégrée au dialogue ; résumé final : points, durée estimée, fils, nombre de problèmes, bouton « Voir ». **Aucun changement de moteur** : seuls les paramètres existants sont regroupés.
+- Complexité : M. Composants : `apps/desktop/main_window.cpp` (ou `main_window_workflow.cpp`), `ui_memory.hpp`.
+- Dépend de : HP-QA-001 (conflits de fusion).
+- Acceptation : F8 sur segmentation neuve = une modale ; chaque préréglage produit les mêmes paramètres que les valeurs équivalentes saisies à la main (test d'égalité des options) ; valeurs rechargées au lancement suivant.
+- Livré : préréglages « Logo / aplats », « Dessin au trait », « Photo / pointillé » (`autodigitize_presets.hpp`, remplissent les options existantes, aucun changement de moteur), réglages avancés repliés et mémorisés, Ajouter/Remplacer intégré (une modale), résumé final « N points, durée, K fils, P problèmes » en barre d'état avec bouton « Voir » ; tests d'égalité préréglage = options. Reste : le chemin SVG garde sa question Ajouter/Remplacer.
+
+### HP-UX-031 — Panneau « Qualité » unique [P2] — ◐ Partiel (2026-10-18, branche `ux-lot-d2`)
+- Problème : dock Analyse masqué au démarrage, statistiques en `QMessageBox`, trois dialogues texte (fidélité, épaisseurs, diagnostic), corrections une à une (`main_window_analysis.cpp:177, 211-311, 338-393`, `main_window.cpp:7892`). Constat PAR-13.
+- Comportement attendu : étape 1 : ouverture automatique du dock Analyse après F8 et avant l'export ; étape 2 : onglets Problèmes / Statistiques / Fidélité / Épaisseur ; « Corriger tout ce qui est sûr » (déplacer dans le cadre, allonger, scinder), annulable en un pas. Règles existantes de `stitch_analysis` uniquement.
+- Complexité : L (étape 2). Composants : `apps/desktop/main_window_analysis.cpp`, `libs/stitch_analysis` (lecture seule).
+- Dépend de : HP-PROD-007/008 ; HP-UX-024.
+- Acceptation : après F8 le dock s'ouvre seul ; « Corriger tout » = une entrée d'annulation et un re-calcul sans nouveau problème sûr ; mêmes diagnostics que `project quality` (CLI).
+- Livré (étape 1) : le dock Analyse s'ouvre seul après F8 et avant l'export, onglets Fidélité / Épaisseur / Diagnostic dans le dock, « Corriger tout ce qui est sûr » en une `CompositeCommand` (un seul Ctrl+Z, aucune nouvelle règle d'analyse). Reste : onglets Problèmes / Statistiques dans le même contrôle, agrandissement de texte encore individuel.
+
+### HP-UX-032 — Export rapide et décision explicite avant export [P2] — ◐ Partiel (2026-10-18, branche `ux-lot-d2`)
+- Problème : Ctrl+E ouvre ~15 contrôles puis « Choisir le fichier… » (bouton par défaut) puis la boîte système ; « Voir les problèmes » ferme le dialogue et n'apparaît qu'en cas d'erreur ; aucun enregistrement `.osp` proposé ; l'analyse est recalculée à chaque case ; coupes réglées à deux endroits (`machine_export_dialog.cpp:63-187, 318`, `main_window.cpp:8316, 8378, 8422-8443`, `generation_options_dialog.cpp:43-60`). Constats PAR-12, PAR-18, UX-10 (partie ouverte).
+- Comportement attendu : Ctrl+Maj+E « Exporter avec les derniers réglages » vers le dernier dossier ; « Enregistrer le projet d'abord » et « Voir les problèmes » (sans fermer) dès qu'il y a un avertissement ; bouton par défaut non destructif tant que des risques existent ; aperçu recalculé après 300 ms d'inactivité ; vocabulaire « réglage du projet / de ce fichier » commun aux deux écrans de coupes.
+- Complexité : M. Composants : `apps/desktop/machine_export_dialog.*`, `main_window.cpp`.
+- Dépend de : —
+- Acceptation : export rapide = raccourci + nom de fichier ; le bouton par défaut n'est pas « Choisir le fichier… » quand `blocking` ou des avertissements existent ; cocher 5 options en < 300 ms ne déclenche qu'une analyse.
+- Non-régression : octets DST/PES/JEF/EXP inchangés (SHA-256 sur un projet de référence).
+- Livré : Ctrl+Maj+E « Exporter avec les derniers réglages » (`runMachineExport` commun, repli sur le dialogue si le format refuse) ; dialogue : « Enregistrer le projet d'abord », « Voir les problèmes » sans fermer, bouton par défaut non destructif en présence de risques, aperçu recalculé après 300 ms, vocabulaire « réglage du projet / de ce fichier » ; test d'égalité d'octets (DST, PES, JEF, EXP) export rapide contre dialogue. Test existant adapté : `optionReachesTheSummaryAndTheCaller` (délai de 300 ms voulu).
+
+### HP-UX-033 — Cadre accessible depuis l'import et la barre d'état [P2] — ◐ Partiel (2026-10-18, branche `ux-lot-d2`)
+- Problème : l'import constate un dépassement mais le cadre ne se règle que par menu ou barre contextuelle (`import_dialog.cpp:211-218`, `main_window.cpp:1095, 6347`). Constats PAR-08, PAR-20.
+- Comportement attendu : sélecteur de cadre (préréglages existants) dans `ImportDialog` ; taille du cadre cliquable dans la barre d'état.
+- Complexité : S/M. Composants : `apps/desktop/import_dialog.*`, `main_window.cpp`.
+- Dépend de : —
+- Acceptation : le cadre choisi dans l'import est celui du projet ; Annuler restaure l'ancien cadre.
+- Livré : sélecteur de cadre dans `ImportDialog` (le cadre ne devient celui du projet qu'à la validation), bouton « Cadre L × H mm » dans la barre d'état. Reste : validation visuelle.
+
+### HP-UX-038 — Valeurs mixtes et portées honnêtes en multi-sélection [P1] — ◐ Partiel (2026-10-18, branche `ux-lot-c1-pr`)
+- Problème : le formulaire de groupe affiche la valeur d'un représentant comme commune ; deux modèles coexistent (« Appliquer à N objets » et champs en direct) ; entrée/sortie, dégradé et bordure n'agissent que sur un objet (`properties_panel.cpp:597-643, 836, 1206, 1304`). Constats BRO-17, UX-33, UX-34.
+- Comportement attendu : « — » par champ quand les valeurs diffèrent ; éditer un champ n'uniformise que ce champ ; un seul modèle (édition en direct, commande composite) ; contrôles à portée individuelle isolés dans « Objet actif seulement ».
+- Complexité : M. Composants : `apps/desktop/properties_panel.*`, `main_window_editing.cpp`.
+- Dépend de : HP-OBJ-019.
+- Acceptation : deux tatamis à 0,3 et 0,5 mm affichent un champ indéterminé ; changer l'angle ne modifie pas la densité ; une seule entrée d'annulation par édition.
+
+Le lot C comprend aussi **HP-PERF-009** (régénération différée à l'édition de paramètres, §22).
+
+#### Lot D — Cohérence et productivité (P2)
+- Livré : « — » pour les champs de contenu mixte (nombres, cases tri-état, listes sans choix courant), éditer un champ n'uniformise que ce champ, plus de bouton « Appliquer à N », rafales d'édition de groupe fusionnées en un pas d'annulation, contrôles à portée individuelle isolés sous « Objet actif seulement » (entrée/sortie, connecteur, dégradé, bordure). Tests existants adaptés : `multiSelectionBlockAppliesSettingsToAllObjectsInOneStep`, `multiSelectionBlockCanConvertEveryObjectToContourInOneStep` (l'ancien bloc « Appliquer » est remplacé par les champs en direct et les boutons de type).
+
+### HP-UX-034 — Mode « Isoler » (protection de session) [P2] — ◐ Partiel (2026-10-18, branche `ux-lot-d2`)
+- Problème : `EmbroideryObject::locked` fige l'ordre de couture, il ne protège pas l'objet (`embroidery_object.hpp:393`, `selection_hit_test.cpp:97`) ; un glisser accidentel de 3 mm sur un fond fini casse l'alignement. Constat BRO-15.
+- Comportement attendu : « Isoler la sélection » masque/atténue les autres objets et les exclut du hit-test, du rectangle et des flèches **pendant la session** ; « Quitter l'isolation » les restaure. **Décision du 2026-10-18 : aucun champ persistant, aucun changement de `.osp`.** Un verrou d'édition persistant reste hors périmètre (nécessiterait un champ et une migration).
+- Complexité : M. Composants : `apps/desktop/selection_hit_test.*`, `canvas_view.cpp`, `document_panel.*`.
+- Dépend de : HP-UX-019 (prédicat unique).
+- Acceptation : en isolation, un clic sur un objet non isolé ne le sélectionne pas et le glisser du fond ne le déplace pas ; l'état n'est pas écrit dans le `.osp` (SHA-256 identique avant/après sauvegarde).
+- Livré : action « Isoler la sélection » (Maj+I, case à cocher) : les formes non isolées sont masquées et exclues du clic, de Maj/Ctrl/Alt+clic et du rectangle (via `vectorPassesFilter`) ; état de session (`isolatedIds_`) remis à zéro à chaque nouveau document ; test `isolationHidesAndExcludesOthersWithoutTouchingTheProject` (octets du `.osp` identiques avant/pendant l'isolation, aucun champ ajouté). Reste : atténuation (au lieu de masquage) des autres formes, exclusion des flèches clavier, entrée dans le menu contextuel et la liste Document.
+
+### HP-UX-035 — Copier/coller le style et défauts de points [P2] — ◐ Partiel (2026-10-18, branche `ux-lot-d3`)
+- Problème : pas de « copier le style » ; défauts de création en dur (0,4 / 3 / 0°, `main_window.cpp:4232-4244`) ; `ui_memory` ne couvre pas les paramètres de couture. Constat BRO-21. Voir HP-UX-007.
+- Comportement attendu : Ctrl+Alt+C / Ctrl+Alt+V sur la sélection (une `ICommand`) ; « Utiliser ces réglages comme défaut pour les nouveaux objets » (stocké par `QSettings`, jamais dans le projet).
+- Complexité : M. Composants : `apps/desktop/properties_panel.*`, `ui_memory.hpp`, `main_window_editing.cpp`.
+- Dépend de : HP-UX-003.
+- Acceptation : coller le style de A sur B donne `B.params == A.params` en une commande annulable ; un nouvel objet reprend le défaut enregistré.
+- Livré : « Copier le style » (Ctrl+Maj+C) et « Coller le style » (Ctrl+Maj+Y ; Ctrl+Alt écarté car c'est AltGr sur clavier AZERTY) : les paramètres de couture de l'objet actif sont appliqués, en **une** `CompositeCommand` annulable, aux objets sélectionnés de même type de point ; les autres types sont ignorés avec un message ; test `pasteStyleCopiesParamsInOneUndoableStepAndSkipsOtherTypes`. Les défauts de création sont couverts par HP-UX-002 (dernier réglage mémorisé en `QSettings`). Reste : « Utiliser ces réglages comme défaut » explicite, copie de la couleur de fil.
+
+### HP-UX-036 — Bascule de vue à quatre états et barre de simulation informative [P2] — ◐ Partiel (2026-10-18, branche `ux-lot-d2`)
+- Problème : quatre couches dans Affichage ▸ Calques, une seule en barre ; une couche masquée rend le clic muet sans explication ; compteur de simulation = indice de commande, pas de saut par couleur ni de durée (`main_window.cpp:1060-1075, 6114, 7699-7735, 7807, 8721`). Constats BRO-23, PAR-11, UX-29.
+- Comportement attendu : bascule Dessin / Points / Réaliste / Simulation dans la barre (le menu Calques reste) ; message « Vecteurs masqués » quand un clic tombe sur une couche cachée ; simulation : « point n/N · mm:ss · fil 3/7 », couleur précédente/suivante.
+- Complexité : M. Composants : `apps/desktop/main_window*.cpp`. Voir HP-SIM-002/004.
+- Dépend de : HP-UX-022.
+- Acceptation : activer « Points » masque `showVectorsAct_` ; un clic en mode Points affiche un message d'état précis ; le saut par couleur positionne `simStep_` au début du bloc.
+- Livré : boutons « ⏮ Couleur » / « Couleur ⏭ » (saut au début du bloc de couleur précédent/suivant, sortie de la simulation après le dernier), « fil k/m » dans l'info de simulation, message d'état explicite quand un clic tombe sur une forme alors que la couche Vecteurs est masquée (touche 3) ; tests `simulationColorJumpsLandOnColorBlocks`, `hiddenVectorLayerExplainsAClickOnAShape`. Reste : bascule Dessin / Points / Réaliste / Simulation dans la barre, durée estimée « mm:ss » (dépend d'une vitesse machine).
+
+### HP-UX-037 — Liste Document : sélection étendue, vecteurs, ordre par glisser-déposer [P2] — ◐ Partiel (2026-10-18, branche `ux-lot-d2`)
+- Problème : sélection simple pour les objets, vecteurs non cousus absents, repli et défilement perdus à chaque rafraîchissement, Document et Ordre de couture dupliqués (`document_panel.cpp:237, 276, 349-402, 523-563`, `main_window.cpp:6745-6747, 7224-7295`). Constats BRO-06, PAR-14, UX-13, UX-45.
+- Comportement attendu : `ExtendedSelection` synchronisée avec `currentSelection()` ; lignes vectorielles indépendantes des coutures ; repli/sélection/défilement restaurés par identité ; ordre de couture par glisser-déposer dans la même liste ; menu de ligne (Masquer, Isoler, Figer, Supprimer).
+- Complexité : L. Composants : `apps/desktop/document_panel.*`, `main_window.cpp`.
+- Dépend de : HP-OBJ-001, HP-OBJ-010, HP-OBJ-011 ; HP-QA-001.
+- Acceptation : Ctrl+clic sur 3 lignes → 3 identifiants dans la sélection et « 3 objets » dans l'inspecteur ; SVG de plusieurs formes entièrement navigable avant création des points ; fermer un groupe puis rafraîchir ne change ni son repli ni la position de lecture.
+- Livré : liste Objets en sélection étendue synchronisée avec la fenêtre, formes vectorielles non cousues comme lignes indépendantes, repli/sélection/défilement restaurés par identité après rafraîchissement, glisser-déposer qui émet `orderChangeRequested` (commande de réordonnancement existante), menu de ligne (Masquer, Figer, Supprimer) ; 8 tests. Reste : le glisser-déposer à la souris réelle n'est pas exercé en test (`handleDrop` appelé directement), fusion visuelle avec le dock « Ordre de couture » (laissé en place). Test existant adapté : `documentPanelCheckBoxesAndRenameAreUndoableCommands` (une 3ᵉ ligne vectorielle voulue).
+
+### HP-UX-039 — Contrat d'état de l'interface (workflow, enregistrement, erreurs) [P2] — ◐ Partiel (2026-10-18, branche `ux-lot-d2`)
+- Problème : le workflow est un lanceur (Vérification/Export « disponible » dès qu'une séquence existe) ; l'heure d'enregistrement est celle du rafraîchissement ; erreurs de génération/autosave uniquement en barre d'état éphémère (`main_window.cpp:6730-6734, 526-536`, `main_window_ux.cpp:260-278`). Constats UX-14, UX-32, UX-26.
+- Comportement attendu : états d'étape liés à la révision du document (vérifié, exporté, périmé après modification) ; instant de sauvegarde mémorisé ; notification d'erreur persistante avec reprise. **En mémoire seulement** : aucun champ `.osp`.
+- Complexité : M. Composants : `apps/desktop/main_window_workflow.cpp`, `main_window_ux.cpp`, `workflow_panel.*`.
+- Dépend de : HP-QA-001 (partiel).
+- Acceptation : sauver à T1, éditer, annuler à T2 → T1 affiché ; export réussi visible puis invalidé par une modification ; un SVG ne réclame pas d'étape Régions.
+- Livré : l'instant « Enregistré à HH:mm » est mémorisé à la sauvegarde/ouverture (`savedAt_`) et n'est plus l'heure du dernier rafraîchissement (UX-32) ; test `savedIndicatorShowsTheSaveTimeNotTheRefreshTime`. Reste : états d'étape du workflow liés à la révision du document (UX-14), notifications d'erreur persistantes (UX-26).
+
+#### Lot E — Finitions (P2/P3)
+
+### HP-UX-041 — Barre Fils accessible au clavier [P2] — ◐ Partiel (2026-10-18, branche `ux-lot-d2`)
+- Problème : pastilles peintes, activées à la souris ; « +N » non actionnable (`thread_strip.cpp:25-31, 55-71, 111-157`). Constat UX-46. Voir HP-THR-005, HP-I18N-004.
+- Comportement attendu : focus et activation clavier des pastilles (boutons natifs ou `QAccessible`), « +N » ouvre la liste complète, nom et code annoncés.
+- Complexité : S. Composants : `apps/desktop/thread_strip.*`.
+- Dépend de : —
+- Acceptation : tous les fils sélectionnables au clavier au-delà de la largeur disponible ; test de focus/activation `ThreadStrip` (aucun n'existe aujourd'hui).
+- Livré : un seul arrêt de tabulation avec focus visible, flèches/Début/Fin/Entrée/Espace/Ctrl+flèches, case « +N » réelle (menu de tous les fils avec icône, nom et code), annonce du fil focalisé ; `test_thread_strip` (7 cas).
+
+### HP-UX-042 — Icône de type de point et info-bulles complètes [P3] — ◐ Partiel (2026-10-18, branche `ux-lot-d2`)
+- Problème : le type se lit (préfixe texte) mais ne se voit pas ; info-bulles partielles (`document_panel.cpp:209-217`, `properties_panel.cpp:801, 901-958`). Constats BRO-13, BRO-14.
+- Comportement attendu : icône de type (tatami = hachures, satin = colonne, contour = pointillé) dans la liste ; filtre par type ; table unique (nom, plage, défaut, unité) alimentant info-bulles et bouton ↺ (HP-UX-003).
+- Complexité : S. Composants : `apps/desktop/document_panel.*`, `properties_panel.*`, `ui_icons.*`.
+- Dépend de : HP-UX-003.
+- Acceptation : `item->icon(0)` diffère selon le type ; chaque champ d'inspecteur a une info-bulle avec plage et défaut.
+- Livré (icône et filtre) : `icons::stitchGlyph()` (tatami, satin, contour, directionnel, texte, vecteur) dans la liste Document, combo de filtre par type compact à côté de la recherche. Reste : table unique plage/défaut/unité pour les info-bulles de l'inspecteur et le bouton ↺ (dépend de HP-UX-003).
+
+### HP-UX-043 — Pastilles et règles adaptées au DPI et à la taille de police [P3] — ◐ Partiel (2026-10-18, branche `ux-lot-d2`)
+- Problème : pastilles `QPixmap` non adaptées au DPR, règles à 7,5 pt et boîtes de 12 px fixes (`import_dialog.cpp:38`, `text_dialog.cpp:356`, `thread_panel.cpp:198`, `ruler.cpp:37, 90`, `app_theme.cpp:352`). Constats QT-13, UX-28.
+- Comportement attendu : fabrique `makeSwatch(couleur, tailleLogique, dpr)` ; métriques des règles dérivées de la police.
+- Complexité : S. Composants : `apps/desktop/ruler.cpp`, `app_theme.cpp` (convergence), dialogues.
+- Dépend de : —
+- Acceptation : avec `QT_SCALE_FACTOR=1.5`, `swatch.devicePixelRatio() == qApp->devicePixelRatio()` ; police agrandie : `sizeHint` des règles cohérent.
+- Livré : `makeSwatch(couleur, taille, dpr)` (`ui_swatch.hpp`), règles dont la police et les boîtes suivent les métriques et réagissent au changement de police, aperçu d'import net en HiDPI. Reste : `text_dialog.cpp`, `thread_panel.cpp`, `app_theme.cpp` à basculer sur `makeSwatch`.
+
+### HP-UX-044 — Import non proportionnel : appliquer ou retirer la hauteur [P3] — ◐ Partiel (2026-10-18, branche `ux-lot-d2`)
+- Problème : `placement()` renvoie largeur et hauteur mais `mm_per_pixel` n'utilise que la largeur (`libs/document/src/image_placement.cpp:67-71`) ; le champ hauteur est déjà grisé honnêtement (`import_dialog.cpp:64-72`). Constat UX-07.
+- Comportement attendu : soit retirer définitivement le champ hauteur modifiable (état actuel documenté), soit appliquer les deux axes partout. **Toute option qui touche le placement est à valider sans casser les `.osp` existants.**
+- Complexité : S (retrait) / L (anisotrope). Composants : `apps/desktop/import_dialog.*`, `libs/document` (si anisotrope).
+- Dépend de : —
+- Acceptation : taille saisie, canevas, segmentation et sortie machine coïncident, ou le champ n'est plus modifiable ; projets existants rechargés à l'identique.
 
 ---
 
@@ -2456,6 +2881,7 @@ les paramètres avant de créer) et par des **modes** distincts (édition satin,
 
 Aujourd'hui : textes en **français** dans `tr()`, aucun `QTranslator`, aucun
 fichier `.ts`. Hatch est disponible en une dizaine de langues.
+- Livré (option sûre) : aucun import anisotrope, `libs/document` et `.osp` intacts ; la hauteur reste liée à la largeur (la modifier redimensionne l'image entière) avec une info-bulle explicite ; « Conserver les proportions » reste verrouillée. Écart avec l'énoncé : la hauteur n'est pas grisée dans le code actuel.
 
 ### HP-I18N-001 — Infrastructure de traduction [P0] — ☐ À faire
 - À faire : `qt_add_translations` (CMake), fichiers `.ts`, chargement du
@@ -2505,7 +2931,7 @@ de référence. Restent : progression et annulation, régénération de toute la
   auto-numérisation) ; annuler ne modifie pas le document ; déterminisme
   inchangé (même résultat en tâche de fond qu'en synchrone).
 
-### HP-PERF-002 — Régénération incrémentale par objet [P0] — ☐ À faire
+### HP-PERF-002 — Régénération incrémentale par objet [P0] — ◐ Partiel (2026-10-18)
 - À faire : cache de la séquence générée par objet, clé = empreinte (paramètres
   + géométrie source + contexte de routage) ; modifier un objet ne régénère
   que lui et ses liaisons ; `effective_sequence` assemble les tranches.
@@ -2514,6 +2940,8 @@ de référence. Restent : progression et annulation, régénération de toute la
 - Acceptation : séquence octet pour octet identique avec et sans cache
   (test d'équivalence comme `test_skeleton_equivalence.cpp`) ; modification
   d'un objet sur `tentabrode` < 50 ms.
+- Livré (2026-10-18) : cache à clé exacte de la séquence des objets droits, tatami et directionnels (`libs/stitch_generation/src/chunk_cache.*`, copie des paramètres et de la géométrie comparée par `operator==`, budget 64 Mio, mutex, éviction LRU) ; `generate_sequence` ne régénère que les objets modifiés. Tests `chunk cache : …` (équivalence octet pour octet avec/sans cache, invalidation paramètres/géométrie/identifiant, 1 fil contre 8). `tentabrode.png` Release : `effective_sequence` 63 → 7 ms (rien ne change), 63 → 8 ms (objet médian modifié), empreinte inchangée. Voir `docs/performance-audit.md` §9.
+- Reste : le plus gros objet (fond) reste régénéré en entier (67 ms) — cache par région ; satins routés et auto-satin hors cache (entrée dépendante de l'objet précédent).
 
 ### HP-PERF-003 — Auto-numérisation plus rapide [P1] — ☑ Fait (2026-10-13, `ba54c07`)
 - Livré (PR #26, fusionnée le 2026-10-13 (`ba54c07`)) : régions vectorisées et essayées en satin en parallèle, résultat réassemblé dans l'ordre. `tentabrode.png` : 77 ms (922 ms avec « Satin automatique »), cible < 5 s atteinte. Voir `docs/performance-audit.md` §7.
@@ -2539,9 +2967,18 @@ de référence. Restent : progression et annulation, régénération de toute la
 - État OpenStitch : `openstitch-bench` hors CTest.
 - À faire : exécution périodique en CI (non bloquante), historique des mesures.
 
+### HP-PERF-009 — Régénération différée à l'édition de paramètres [P1] — ◐ Partiel (2026-10-18, branche `ux-lot-c1-pr`)
+- Problème : chaque pas d'un champ de l'inspecteur pousse une `SetStitchParamsCommand` (fusionnée en un pas d'annulation) puis régénère **sur le fil UI** (`main_window.cpp:6931-6948`) : un grand remplissage gèle l'interface à chaque pas de molette ou de flèche. Constat BRO-18 (UX-04, UX-11). Condition de la création directe (HP-UX-002).
+- Comportement attendu : la commande est appliquée immédiatement ; la régénération est différée de 150 ms d'inactivité et exécutée hors fil UI (`BusyIndicator::run` ou la tâche de `HP-PERF-001`) ; pendant le calcul l'aperçu précédent reste affiché ; un résultat périmé est rejeté. Option : aperçu basse résolution pendant le glisser.
+- Complexité : M. Composants : `apps/desktop/main_window.cpp`, `properties_panel.cpp`. **Aucun changement du moteur de points** : la sortie reste octet pour octet identique à la régénération synchrone.
+- Dépend de : HP-PERF-001 (infrastructure de tâches), HP-PERF-002 (cache par objet, déjà ◐).
+- Acceptation : cinq `valueChanged` en moins de 150 ms déclenchent une seule régénération ; un événement UI est traité pendant la régénération d'un gros objet ; séquence identique octet pour octet à la version synchrone ; annuler (Ctrl+Z) restaure paramètres et aperçu.
+- Tests de non-régression : fusion de commandes scalaires, `check_no_raw_sequence_bypass`, déterminisme (`OPENSTITCH_THREADS=1`).
+
 ---
 
 ## 23. Robustesse et qualité logicielle (QA)
+- Livré : `scheduleParamsRefresh()` (débounce 150 ms), régénération hors fil UI sur un instantané du projet (`std::async` + timer de scrutation ; `BusyIndicator::run` écarté car modal), résultat périmé rejeté par numéro de série (incrémenté à chaque édition et à chaque `refreshImage`), `flushPendingRefresh()` avant export, analyse, statistiques, simulation, image et fiche de production, éditions de groupe incluses. Tests : cinq éditions en moins de 150 ms = une régénération, séquence différée identique à `effective_sequence`, événement UI traité pendant le calcul, résultat périmé rejeté, undo restaure paramètres et aperçu. Reste : mesure de latence sur un très gros remplissage ; échec intermittent de `test_main_window` sous charge (watchdog 300 s) observé aussi sans ce lot.
 
 ### HP-QA-001 — Découper `main_window.cpp` [P1] — ☐ À faire
 - État OpenStitch : `apps/desktop/main_window.cpp` ≈ 324 Ko (2026-10-06), un seul fichier
@@ -2560,9 +2997,11 @@ de référence. Restent : progression et annulation, régénération de toute la
   minidump en cas de crash (Windows `MiniDumpWriteDump`), « envoyer le rapport »
   (lien vers un ticket prérempli, jamais d'envoi silencieux).
 
-### HP-QA-003 — Fuzzing des décodeurs [P1] — ☐ À faire
+### HP-QA-003 — Fuzzing des décodeurs [P1] — ◐ Partiel (2026-10-18)
 - À faire : cibles libFuzzer (clang-cl ou job Linux) pour DST, PES, JEF, EXP,
   SVG, DXF, `.osp` ; corpus minimal commité.
+- Livré (2026-10-18) : `test_fuzz_decoders` : DST, PES, JEF, EXP, SVG, DXF et compagnon, graines fixes, toutes les troncatures, octets altérés ou aléatoires, en-têtes saturés, reproductibilité ; un vrai défaut corrigé : boucle infinie de l'import SVG sur un caractère non alphabétique après `Z` (`svg_import.cpp`), avec test de non-régression (`265e4b8`).
+- Reste : cibles libFuzzer/ASan en CI ; `.osp` (`libs/project_io`).
 
 ### HP-QA-004 — Tests bout en bout desktop [P2] — ◐ Partiel
 - À faire : scénarios complets en QTest offscreen (image → numériser → éditer
@@ -2577,6 +3016,35 @@ de référence. Restent : progression et annulation, régénération de toute la
 - À faire : corpus de fichiers utilisateurs réels (DST/PES/SVG/images
   étranges : 16 bits, CMJN, énormes, transparents) ouverts en test.
 
+### HP-QA-007 — Interface programmatique `.osp` en ligne de commande (pilotable par un agent) [P1] — ◐ Partiel (en PR #46)
+- État OpenStitch : `openstitch-cli project …` (`libs/project_ops`, Qt-free) : `new`,
+  `digitize` (image → `.osp` natif éditable), `inspect` (JSON stable), `apply` / `op` /
+  `set` (lots d'opérations transactionnels, `--dry-run`, écriture atomique, codes d'erreur
+  stables), `operations`, `check` (couverture par objet `stitch_analysis::object_coverage`,
+  SVG de diagnostic), `export` (DST/PES/JEF/EXP/SVG, mêmes octets que `osp2dst`), `select`,
+  `diff`, `validate`, `digitize-batch`, `commands --json`. 30 opérations : style, paramètres
+  (dont guides, ruptures, dégradés, rails, barreaux), ordre, formes, transformations,
+  fusion/découpe, auto-satin (vrai pipeline), import SVG, lettrage (police fournie par
+  fichier). Documentation : `docs/source/cli-project.md`.
+- Hatch : pas d'équivalent (Hatch n'est pas scriptable) ; différenciant d'OpenStitch.
+- À faire : fusion de la PR #46 sur `main` ; polices intégrées accessibles sans fichier ;
+  édition en ligne de commande des courbes de Bézier des guides/rails (aujourd'hui
+  polylignes) ; couleurs du SVG reprises à l'import ; sélection par lot (`--where`) branchée
+  directement dans `apply` ; essai sur machine réelle d'un projet produit par un agent.
+- Modules : `libs/project_ops` (cœur), `apps/cli/project_cmd.cpp`, `libs/stitch_analysis`.
+- Dépend de : —
+- Acceptation : cycle image → `.osp` → inspection → lot → rechargement → DST testé sur
+  des images du dépôt (`tests/unit/project_ops/test_workflow.cpp`, `tests/cli/`) ; un lot
+  refusé laisse le fichier octet pour octet inchangé (SHA-256 vérifié) ; `project export`
+  == `osp2dst` (SHA-256).
+
+### HP-QA-008 — Garde de taille minimale et tests de parcours UX [P1] — ◐ Partiel (2026-10-18, branche `ux-lot-d2`)
+- Problème : aucun test ne plafonne `minimumSizeHint()` de la fenêtre (tous docks ouverts) ni des dialogues ; l'audit UX du 2026-10-18 a **mesuré** 523 × 441 de minimum (docks par défaut) et un canevas de 360 × 421 à 1024 × 640 (`openstitch-ui-shots`), mais les tailles de dialogues restent des estimations (classe B). Plus de dix trous de couverture recensés (`docs/ux/audit-ux-ui-2026-10-18.md` §5).
+- À faire : (1) mesurer les `minimumSizeHint` de tous les dialogues et les consigner ; (2) test « tous docks visibles → `window.minimumSizeHint() <= 911 × 480` » (objectif long terme 683 × 360) ; (3) `dialogsMinimumSizeFitsWorkArea` (≤ 880 × 440, aide ≤ 460 × 320) ; (4) tests ciblés sur les trous : `isClean`/heure d'enregistrement (UX-32), `setDefault` du dialogue d'export (UX-10), ordre de tabulation, `ThreadStrip`, `DocumentPanel` (repli, vecteurs), état mixte de groupe (UX-33/34), noms accessibles via `QAccessible`.
+- Modules : `tests/unit/desktop/` ; éventuellement `tests/bench/ui_shots.cpp` pour imprimer les tailles des dialogues. Noms `TEST_CASE`/fonctions QTest en ASCII, headless, sans pixel ni `sleep`.
+- Dépend de : — (préalable des lots B et C de HP-UX-017…044).
+- Acceptation : les tests existent, échouent sur les valeurs actuelles qui dépassent le budget (rouge d'abord) puis passent après les tâches B ; aucun test ne fige un comportement jugé défaut (ex. Entrée = export).
+
 ---
 
 ## 24. Distribution et plateformes (DIST)
@@ -2584,6 +3052,7 @@ de référence. Restent : progression et annulation, régénération de toute la
 Aujourd'hui : un script Inno Setup (`packaging/windows/installer.iss`), un build
 Windows MSVC, un workflow de release sur tag (`.github/workflows/release.yml`) et une
 release « latest » publiée par la CI (`ci.yml`) ; installateur non signé.
+- Livré : `test_ui_responsive` (21 cas) : plafonds de `minimumSizeHint` de la fenêtre tous docks ouverts et des dialogues, noms accessibles, palette sur deux colonnes, densité automatique ; mesures avant/après dans `docs/ux/mesures-dialogues.md` (rouge d'abord : 14 échecs sur 18, puis vert). Reste : `isClean`/heure (couvert par `savedIndicatorShowsTheSaveTimeNotTheRefreshTime`), ordre de tabulation, état mixte de groupe (couvert par HP-UX-038 quand fusionné) ; `setDefault` du dialogue d'export volontairement non figé ; Préférences IA (802 × 523) hors budget.
 
 ### HP-DIST-001 — Installateur Windows signé et publié [P0] — ◐ Partiel
 - État OpenStitch (2026-10-06) : `.github/workflows/release.yml` construit, teste et publie
@@ -2704,3 +3173,21 @@ ci-dessus doit les respecter :
 | 2026-10-13 | Claude (session pilotée) | **Manipulation d'objets** (en PR) : OBJ-002 copier/couper/coller, OBJ-004 rotation, OBJ-006 miroir, OBJ-012 dupliquer avec broderie, OBJ-014 design entier, OBJ-018 couleur libre, OBJ-001 tout sélectionner / même couleur ; HOOP-001/005/006 ◐ (PR #25) ; PERF-003 ◐ (PR #26) ; STI-011 corrigé. Tableau de bord recalculé. |
 | 2026-10-13 | Claude (session pilotée) | **Second lot** (en PR) : OBJ-018 pastille de couleur dans l'inspecteur, OBJ-004 poignée de rotation sur le canevas, VEC-002 tracé ouvert, VEC-003 Exclure, VEC-005 trous. Constaté sur `main` : OBJ-003 ☑, VEC-004 ☑ (statuts en retard). Tableau recalculé. |
 | 2026-10-13 | Claude (session pilotée) | PR #25, #26 et #27 fusionnées : mentions « en PR » retirées du premier lot ; OBJ-014 ☑ et PERF-003 ☑ (critères remplis sur `main`). |
+| 2026-10-15 | Claude (session CLI agent) | **HP-QA-007** ajoutée (◐, PR #46) : interface programmatique `.osp` en ligne de commande (`project …`, lots transactionnels, import SVG, lettrage, export, contrôle qualité). Total 264 → 265. |
+| 2026-10-18 | Claude (session autonome) | HP-PERF-002 ◐ : cache de régénération par objet (`chunk_cache`), `effective_sequence` 63 → 7/8 ms sur `tentabrode` ; reste le gros objet unique et les satins routés. |
+| 2026-10-18 | Claude (session autonome) | HP-FMT-011 ◐ : `stitch_render::render_sequence` + commande `openstitch-cli render` (PNG réaliste, fond transparent, résolution choisie) ; reste JPEG et dialogue du bureau. |
+| 2026-10-18 | Claude (session autonome, agents) | HP-VEC-007/008/010/014 ◐ : cœur géométrie (`smooth_path`, `convert_to_curves`, mesure, six formes prédéfinies) ; commandes et outils du bureau restent à câbler. |
+| 2026-10-18 | Claude (session autonome, agents) | HP-VIEW-005 ◐, HP-PROD-005 ◐, HP-PROD-007 ◐ : `density_map`, `thread_consumption` et quatre règles d'analyse dans `stitch_analysis` ; affichage à faire. |
+| 2026-10-18 | Claude (session autonome, agents) | HP-FMT-021 ◐ (migrations versionnées v1→v7), HP-THR-007 ◐ (stock de fils), HP-THR-012 ◐ (pipette) : cœur livré, IHM à faire. |
+| 2026-10-18 | Claude (session autonome, agents) | HP-TXT-007 ◐ (crénage manuel par paire), HP-TXT-012 ◐ (Unicode sans HarfBuzz : accents, repli, RTL hébreu), HP-TXT-013 ◐ (densité et points des petites lettres) ; champs `TextObject` et inspecteur restent à faire. |
+| 2026-10-18 | Claude (session autonome, agents) | HP-FMT-009 ◐ et HP-FMT-005 ◐ (compagnon de couleurs `.inf`/`.csv`, codec), HP-QA-003 ◐ (fuzzing déterministe des décodeurs, boucle infinie SVG corrigée) ; câblage bureau/CLI à faire. |
+| 2026-10-18 | Claude (session autonome, agents) | Câblage bureau (5 lots, agents) : HP-VEC-007/008/010/014 ☑ (menu Forme, outil Règle), HP-FMT-011 ☑ (Exporter l'image), HP-FMT-009 ☑ et HP-FMT-005 ◐ (compagnon de couleurs à l'export et à l'import, `osp2dst --color-file`), HP-PROD-005 ☑ (consommation sur la fiche), HP-THR-007 ☑ (Mes fils), HP-TXT-007 ☑ (crénage manuel, `.osp` v8 conditionnel), HP-TXT-012 ◐ (ligatures), HP-VIEW-005 ◐ (carte de densité), HP-PROD-007 ◐ (règles optionnelles), HP-THR-012 ◐ (outil Pipette). |
+| 2026-10-18 | Claude (session autonome, agents) | Règle ajoutée : sauf demande explicite, toute fonctionnalité est câblée dans le bureau (hook, skills, `CLAUDE.md`). |
+| 2026-10-18 | Claude (audit UX/UI, 4 analyses en lecture seule) | **Audit UX/UI** : `docs/ux/` (rapport, parcours, stratégie, synthèse). +30 entrées ☐ : HP-UX-017…044 (lots A à E, §20), HP-PERF-009 (§22), HP-QA-008 (§23) ; HP-UX-001/002/003/004/009/012/016 précisés ; les constats `UX-xx` de `docs/ui-ux-audit-2026-10-13.md` sont enfin reliés à des tâches. Décisions : verrou d'édition = mode Isoler de session (pas de champ `.osp`), Ctrl+O universel, dialogues de création supprimés (option « Créer avec réglages… »). Total 266 → 296. Aucun code modifié. |
+| 2026-10-18 | Claude (lot A, quick wins) | HP-UX-017, 018, 021, 022 ◐ (branche `claude/ux-lot-a-quickwins`, PR empilée sur #71) : Ctrl+O universel, Échap désélectionne les objets, F7 sans modale (Maj+F7 règle), sortie de simulation. Quatre tests QTest ajoutés + deux tests existants adaptés (mnémonique, fin de curseur) ; suite desktop Release 37/37. Total ◐ 91 → 95, ☐ 180 → 176. |
+| 2026-10-18 | Claude (lot A2, sélection) | HP-UX-019, 020, 023 ◐ (branche `ux-lot-a2`) : prédicat de sélection unique avec tolérance de clic en repli, cyclage au re-clic, Ctrl+A selon la couche, touches 1 à 4, zoom sur la sélection. Tests ajoutés dans `test_selection_hit_test` et `test_ux_global`. Total ◐ 95 → 98, ☐ 176 → 173. |
+| 2026-10-18 | Claude (lot D, partie 1) | HP-UX-034, 036, 039 ◐ (branche `ux-lot-d2`) : mode Isoler de session, sauts de couleur et « fil k/m » en simulation, message de couche masquée, heure d'enregistrement fixe. Tests dans `test_ux_global`. Total ◐ 98 → 101, ☐ 173 → 170. |
+| 2026-10-18 | Claude (lots B, C/E et liste Document, 4 agents) | HP-QA-008, HP-UX-024, 025, 026, 027, 030, 031, 032, 033, 037, 041, 042, 043, 044 ◐ (branche `ux-lot-d2`) : responsive (fenêtre 1291 × 1443 → 701 × 373 de minimum, dialogues bornés, mode portable), numérisation à préréglages, export rapide, dock Qualité, barre Fils au clavier, liste Document étendue. Tests : `test_ui_responsive`, `test_workflow_ux`, `test_thread_strip`, `test_document_panel`. Total ◐ 101 → 115, ☐ 170 → 156. |
+| 2026-10-18 | Claude (lot C édition, agent) | HP-UX-002, 028, 029, 038 et HP-PERF-009 ◐ (branche `ux-lot-c1-pr`) : création directe sans modale, quatre boutons de type pour 1 ou N formes, bandeau de retouches, valeurs mixtes, régénération différée hors fil UI. Tests : `test_creation_flow` (19 cas). Total ◐ 115 → 120, ☐ 156 → 151. |
+| 2026-10-18 | Claude (HP-VEC-015, comblement de bloc) | HP-VEC-015 ◐ (branche `claude/embroidery-block-hole-fill-7c00ac`) : vides d'un bloc détectés depuis les points cousus, rattachés au plus grand remplissage voisin ; cœur, op CLI `fill_block_holes`, menu Forme et tests. |
+| 2026-10-18 | Claude (lot D, partie 2) | HP-UX-035 ◐ (copier/coller le style). **HP-UX-040 (contrat IA) retiré** à la demande du mainteneur (l'IA n'est pas une priorité) ; total 296 → 295, ◐ 120 → 121, ☐ 151 → 149. |
