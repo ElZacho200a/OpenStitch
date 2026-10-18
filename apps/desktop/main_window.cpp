@@ -1039,13 +1039,30 @@ void MainWindow::buildMenus() {
            "puis vectoriser) ou directement les objets de broderie, au choix."));
     connect(aiSegmentAct_, &QAction::triggered, this, &MainWindow::segmentWithAi);
     embMenu->addSeparator();
-    createStitchAct_ = embMenu->addAction(tr("Créer un objet de &point de contour…"));
+    // HP-UX-002 : création immédiate au dernier réglage (pas de « … » : aucun dialogue) ; le
+    // sous-menu « Créer avec réglages » garde la saisie des valeurs avant création.
+    createStitchAct_ = embMenu->addAction(tr("Créer un objet de &point de contour"));
     createStitchAct_->setObjectName(QStringLiteral("action_createStitch"));
     connect(createStitchAct_, &QAction::triggered, this, &MainWindow::createRunningStitchObject);
-    createTatamiAct_ = embMenu->addAction(tr("Créer un remplissage &tatami…"));
+    createTatamiAct_ = embMenu->addAction(tr("Créer un remplissage &tatami"));
+    createTatamiAct_->setObjectName(QStringLiteral("action_createTatami"));
     connect(createTatamiAct_, &QAction::triggered, this, &MainWindow::createTatamiObject);
-    createSatinAct_ = embMenu->addAction(tr("Créer un &satin automatique…"));
+    createSatinAct_ = embMenu->addAction(tr("Créer un &satin automatique"));
+    createSatinAct_->setObjectName(QStringLiteral("action_createSatin"));
     connect(createSatinAct_, &QAction::triggered, this, &MainWindow::createSatinObject);
+    auto* createWithSettingsMenu = embMenu->addMenu(tr("Créer avec &réglages"));
+    createStitchWithSettingsAct_ = createWithSettingsMenu->addAction(tr("Point de contour…"));
+    createStitchWithSettingsAct_->setObjectName(QStringLiteral("action_createStitchWithSettings"));
+    connect(createStitchWithSettingsAct_, &QAction::triggered, this,
+            &MainWindow::createRunningStitchObjectWithSettings);
+    createTatamiWithSettingsAct_ = createWithSettingsMenu->addAction(tr("Remplissage tatami…"));
+    createTatamiWithSettingsAct_->setObjectName(QStringLiteral("action_createTatamiWithSettings"));
+    connect(createTatamiWithSettingsAct_, &QAction::triggered, this,
+            &MainWindow::createTatamiObjectWithSettings);
+    createSatinWithSettingsAct_ = createWithSettingsMenu->addAction(tr("Satin automatique…"));
+    createSatinWithSettingsAct_->setObjectName(QStringLiteral("action_createSatinWithSettings"));
+    connect(createSatinWithSettingsAct_, &QAction::triggered, this,
+            &MainWindow::createSatinObjectWithSettings);
     autoSatinAct_ = embMenu->addAction(tr("Convertir automatiquement en satin (expérimental)…"));
     autoSatinAct_->setToolTip(
         tr("Expérimental : construit le satin par squelette et traversées orientées (sans "
@@ -3121,6 +3138,15 @@ void MainWindow::addVectorPrimitive(geometry::Path path, const QString& name) {
 }
 
 void MainWindow::refreshImage() {
+    // HP-PERF-009 : ce rafraîchissement couvre toute édition différée en attente et rend caduc un
+    // calcul hors fil encore en route (sa série ne correspondra plus).
+    ++refreshSerial_;
+    ++refreshCount_;
+    paramsRefreshPending_ = false;
+    if (paramsRefreshTimer_ != nullptr) {
+        paramsRefreshTimer_->stop();
+    }
+    commitCreationMemory();
     applyCanvasToView(); // taille du cadre (peut avoir changé : réglage, undo, chargement)
     // Marqueur « modifié » dérivé de la pile d'annulation (et non forcé à true) :
     // un undo qui revient à l'état enregistré rend le document propre.
@@ -3186,13 +3212,21 @@ void MainWindow::refreshImage() {
         // rien calculer ici quand embroidery_objects est vide ou qu'une
         // séquence importée est affichée -- editStates_/stitchEditView_
         // resteraient de toute façon vides/absents dans ces cas.
-        if (auto ctx = stitch_generation::refresh_context(project_, stitchEditTarget_)) {
-            sequence_ = std::move(ctx->effective);
-            editStates_ = std::move(ctx->edit_states);
-            if (ctx->target_view &&
-                ctx->target_view->state != stitch_generation::ObjectEditState::Dirty) {
-                stitchEditView_ = std::move(*ctx->target_view);
+        const auto adopt = [this](stitch_generation::RefreshContext&& ctx) {
+            sequence_ = std::move(ctx.effective);
+            editStates_ = std::move(ctx.edit_states);
+            if (ctx.target_view &&
+                ctx.target_view->state != stitch_generation::ObjectEditState::Dirty) {
+                stitchEditView_ = std::move(*ctx.target_view);
             }
+        };
+        if (precomputedContext_) {
+            // Calculé hors du fil d'interface par la même fonction, sur le même document
+            // (HP-PERF-009) : sortie identique à la voie synchrone ci-dessous.
+            adopt(std::move(*precomputedContext_));
+            precomputedContext_.reset();
+        } else if (auto ctx = stitch_generation::refresh_context(project_, stitchEditTarget_)) {
+            adopt(std::move(*ctx));
         } else {
             statusBar()->showMessage(tr("Génération des points impossible : %1")
                                          .arg(QString::fromStdString(ctx.error().message)));
@@ -4292,37 +4326,51 @@ QPainterPath MainWindow::objectPainterPath(const document::VectorObject& object)
 }
 
 void MainWindow::createRunningStitchObject() {
-    // Une ou plusieurs formes : un seul dialogue, un objet de contour par forme.
+    createRunningStitchObjectImpl(false);
+}
+
+void MainWindow::createRunningStitchObjectWithSettings() {
+    createRunningStitchObjectImpl(true);
+}
+
+void MainWindow::createRunningStitchObjectImpl(bool askSettings) {
+    // Une ou plusieurs formes : un objet de contour par forme. HP-UX-002 : création immédiate au
+    // dernier réglage mémorisé ; le dialogue n'existe que pour « Créer avec réglages… ».
     const std::vector<ObjectId> sourceIds = selectedObjectIds();
     if (sourceIds.empty() || project_.findObject(sourceIds.front()) == nullptr) {
         return;
     }
 
-    QDialog dialog(this);
-    dialog.setWindowTitle(tr("Objet de point de contour"));
-    auto* layout = new QFormLayout(&dialog);
-    auto* lengthSpin = new QDoubleSpinBox(&dialog);
-    lengthSpin->setRange(0.5, 12.0);
-    lengthSpin->setValue(3.0);
-    lengthSpin->setDecimals(1);
-    lengthSpin->setSuffix(tr(" mm"));
-    auto* typeCombo = new QComboBox(&dialog);
-    typeCombo->addItem(tr("Point simple"), 1);
-    typeCombo->addItem(tr("Aller-retour (double)"), 2);
-    typeCombo->addItem(tr("Point triple"), 3);
-    layout->addRow(tr("Longueur de point :"), lengthSpin);
-    layout->addRow(tr("Type :"), typeCombo);
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    layout->addRow(buttons);
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
-
     document::RunningStitchParams params;
-    params.stitch_length = to_micrometers(Millimeters{lengthSpin->value()});
-    params.repeats = typeCombo->currentData().toInt();
+    ui_memory::creation::apply(params);
+    if (askSettings) {
+        QDialog dialog(this);
+        dialog.setWindowTitle(tr("Objet de point de contour"));
+        auto* layout = new QFormLayout(&dialog);
+        auto* lengthSpin = new QDoubleSpinBox(&dialog);
+        lengthSpin->setRange(0.5, 12.0);
+        lengthSpin->setValue(to_millimeters(params.stitch_length).value);
+        lengthSpin->setDecimals(1);
+        lengthSpin->setSuffix(tr(" mm"));
+        auto* typeCombo = new QComboBox(&dialog);
+        typeCombo->addItem(tr("Point simple"), 1);
+        typeCombo->addItem(tr("Aller-retour (double)"), 2);
+        typeCombo->addItem(tr("Point triple"), 3);
+        typeCombo->setCurrentIndex(std::clamp(params.repeats, 1, 3) - 1);
+        layout->addRow(tr("Longueur de point :"), lengthSpin);
+        layout->addRow(tr("Type :"), typeCombo);
+        auto* buttons =
+            new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+        connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+        layout->addRow(buttons);
+        if (dialog.exec() != QDialog::Accepted) {
+            return;
+        }
+        params.stitch_length = to_micrometers(Millimeters{lengthSpin->value()});
+        params.repeats = typeCombo->currentData().toInt();
+        ui_memory::creation::remember(document::StitchParams{params});
+    }
 
     auto group = std::make_unique<commands::CompositeCommand>(
         tr("Créer un contour pour %1 formes").arg(sourceIds.size()).toStdString());
@@ -4352,44 +4400,58 @@ void MainWindow::createRunningStitchObject() {
 }
 
 void MainWindow::createTatamiObject() {
-    // Une ou plusieurs formes : un seul dialogue, un remplissage par forme.
+    createTatamiObjectImpl(false);
+}
+
+void MainWindow::createTatamiObjectWithSettings() {
+    createTatamiObjectImpl(true);
+}
+
+void MainWindow::createTatamiObjectImpl(bool askSettings) {
+    // Une ou plusieurs formes : un remplissage par forme. HP-UX-002 : création immédiate au
+    // dernier réglage mémorisé ; le dialogue n'existe que pour « Créer avec réglages… ».
     const std::vector<ObjectId> sourceIds = selectedObjectIds();
     if (sourceIds.empty() || project_.findObject(sourceIds.front()) == nullptr) {
         return;
     }
 
-    QDialog dialog(this);
-    dialog.setWindowTitle(tr("Remplissage tatami"));
-    auto* layout = new QFormLayout(&dialog);
-    auto* densitySpin = new QDoubleSpinBox(&dialog);
-    densitySpin->setRange(0.1, 2.0);
-    densitySpin->setValue(0.4);
-    densitySpin->setDecimals(2);
-    densitySpin->setSuffix(tr(" mm"));
-    auto* lengthSpin = new QDoubleSpinBox(&dialog);
-    lengthSpin->setRange(1.0, 8.0);
-    lengthSpin->setValue(3.0);
-    lengthSpin->setDecimals(1);
-    lengthSpin->setSuffix(tr(" mm"));
-    auto* angleSpin = new QSpinBox(&dialog);
-    angleSpin->setRange(0, 179);
-    angleSpin->setValue(0);
-    angleSpin->setSuffix(tr(" °"));
-    layout->addRow(tr("Espacement des rangées :"), densitySpin);
-    layout->addRow(tr("Longueur de point :"), lengthSpin);
-    layout->addRow(tr("Angle :"), angleSpin);
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    layout->addRow(buttons);
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
-
     document::TatamiParams params;
-    params.row_spacing = to_micrometers(Millimeters{densitySpin->value()});
-    params.stitch_length = to_micrometers(Millimeters{lengthSpin->value()});
-    params.angle = Angle{angleSpin->value() * std::numbers::pi / 180.0};
+    ui_memory::creation::apply(params);
+    if (askSettings) {
+        QDialog dialog(this);
+        dialog.setWindowTitle(tr("Remplissage tatami"));
+        auto* layout = new QFormLayout(&dialog);
+        auto* densitySpin = new QDoubleSpinBox(&dialog);
+        densitySpin->setRange(0.1, 2.0);
+        densitySpin->setValue(to_millimeters(params.row_spacing).value);
+        densitySpin->setDecimals(2);
+        densitySpin->setSuffix(tr(" mm"));
+        auto* lengthSpin = new QDoubleSpinBox(&dialog);
+        lengthSpin->setRange(1.0, 8.0);
+        lengthSpin->setValue(to_millimeters(params.stitch_length).value);
+        lengthSpin->setDecimals(1);
+        lengthSpin->setSuffix(tr(" mm"));
+        auto* angleSpin = new QSpinBox(&dialog);
+        angleSpin->setRange(0, 179);
+        angleSpin->setValue(
+            static_cast<int>(std::lround(params.angle.radians * 180.0 / std::numbers::pi)) % 180);
+        angleSpin->setSuffix(tr(" °"));
+        layout->addRow(tr("Espacement des rangées :"), densitySpin);
+        layout->addRow(tr("Longueur de point :"), lengthSpin);
+        layout->addRow(tr("Angle :"), angleSpin);
+        auto* buttons =
+            new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+        connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+        layout->addRow(buttons);
+        if (dialog.exec() != QDialog::Accepted) {
+            return;
+        }
+        params.row_spacing = to_micrometers(Millimeters{densitySpin->value()});
+        params.stitch_length = to_micrometers(Millimeters{lengthSpin->value()});
+        params.angle = Angle{angleSpin->value() * std::numbers::pi / 180.0};
+        ui_memory::creation::remember(document::StitchParams{params});
+    }
 
     auto group = std::make_unique<commands::CompositeCommand>(
         tr("Créer un remplissage pour %1 formes").arg(sourceIds.size()).toStdString());
@@ -5300,7 +5362,12 @@ void MainWindow::openSettings() {
 }
 
 void MainWindow::createSatinObject() {
-    createAutoSatin(true);
+    // HP-UX-002 : ni dialogue de réglages ni question de confirmation (annulable en un pas).
+    createAutoSatin(/*askParameters=*/false, /*confirm=*/false);
+}
+
+void MainWindow::createSatinObjectWithSettings() {
+    createAutoSatin(/*askParameters=*/true);
 }
 
 document::EmbroideryObject* MainWindow::currentFillObject() {
@@ -5661,6 +5728,17 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
         if (debugMenuEnabled()) {
             auto* debugAct = menu.addAction(tr("&Déboguer : afficher toutes les données…"));
             connect(debugAct, &QAction::triggered, this, [this, embId] { showDebugDump(embId); });
+        }
+    } else if (hit && vecId) {
+        // HP-UX-028 : une forme sans couture propose les mêmes quatre types de points (création
+        // immédiate, un pas d'annulation, zéro dialogue).
+        auto* typeMenu = menu.addMenu(tr("Type de points"));
+        typeMenu->setObjectName(QStringLiteral("contextStitchTypeMenu"));
+        const char* labels[] = {"Contour cousu", "Remplissage tatami", "Colonne satin",
+                                "Remplissage directionnel"};
+        for (int t = 0; t < 4; ++t) {
+            auto* act = typeMenu->addAction(tr(labels[t]));
+            connect(act, &QAction::triggered, this, [this, t] { setStitchTypeForSelection(t); });
         }
     }
 
@@ -6583,19 +6661,26 @@ void MainWindow::updateContextToolbar() {
             auto* discard = contextToolbar_->addAction(tr("Abandonner les retouches"));
             connect(discard, &QAction::triggered, this, [this, id] { discardOverrides(id); });
         }
-    } else if (hasMulti) {
-        contextToolbar_->addWidget(new ElidedTextLabel(
-            tr("%1 objets sélectionnés").arg(multiSelection_.size()), contextToolbar_));
-    } else if (hasVec) {
-        contextToolbar_->addWidget(new ElidedTextLabel(
-            tr("Objet vectoriel · créer un objet de broderie :"), contextToolbar_));
-        const auto addCreate = [this](const QString& text, void (MainWindow::*slot)()) {
-            auto* act = contextToolbar_->addAction(text);
-            connect(act, &QAction::triggered, this, slot);
-        };
-        addCreate(tr("Contour"), &MainWindow::createRunningStitchObject);
-        addCreate(tr("Tatami"), &MainWindow::createTatamiObject);
-        addCreate(tr("Satin"), &MainWindow::createSatinObject);
+    } else if (hasMulti || hasVec) {
+        // HP-UX-028 : les mêmes quatre boutons « Type de points » pour une ou N formes ; un clic
+        // crée (ou convertit) la couture au dernier réglage, en un pas d'annulation, sans dialogue.
+        if (hasMulti) {
+            contextToolbar_->addWidget(new ElidedTextLabel(
+                tr("%1 objets sélectionnés · type de points :").arg(multiSelection_.size()),
+                contextToolbar_));
+        } else {
+            contextToolbar_->addWidget(
+                new ElidedTextLabel(tr("Objet vectoriel · type de points :"), contextToolbar_));
+        }
+        const QString names[] = {tr("Contour"), tr("Tatami"), tr("Satin"), tr("Directionnel")};
+        for (int t = 0; t < 4; ++t) {
+            auto* btn = new QToolButton(contextToolbar_);
+            btn->setText(names[t]);
+            btn->setObjectName(QStringLiteral("button_contextStitchType%1").arg(t));
+            btn->setAccessibleName(tr("Type de points : %1").arg(names[t]));
+            connect(btn, &QToolButton::clicked, this, [this, t] { setStitchTypeForSelection(t); });
+            contextToolbar_->addWidget(btn);
+        }
     } else if (hasReg) {
         const auto* region = project_.segmentation->find(*selectedRegion_);
         if (region != nullptr) {
@@ -7368,8 +7453,16 @@ void MainWindow::buildPropertiesPanel() {
                         }
                     }
                 }
+                // HP-UX-029 : une modification qui rend des retouches manuelles obsolètes est
+                // signalée AVANT d'être appliquée (bandeau non modal, annulable).
+                if (const auto* current = project_.findEmbroidery(id);
+                    current != nullptr && !(current->params == params)) {
+                    noteOverridesInvalidated(id, current->params);
+                }
                 // Le champ nomme le pas d'historique et sert de clé de fusion : une
                 // rafale (molette, flèches du spinbox) reste un seul pas d'annulation.
+                // La commande est appliquée TOUT DE SUITE ; seule la régénération des points
+                // est différée (HP-PERF-009).
                 undoStack_.execute(std::make_unique<commands::SetStitchParamsCommand>(
                                        id, std::move(params), field.toStdString()),
                                    project_);
@@ -7377,17 +7470,18 @@ void MainWindow::buildPropertiesPanel() {
                 // document pour l'auto-satin) : pas de reconstruction ni de perte de focus.
                 if (const auto* now = project_.findEmbroidery(id)) {
                     propertiesPanel_->adoptParams(id, now->params);
+                    pendingCreationMemory_ = now->params; // dernier réglage, mémorisé au débounce
                 }
-                refreshImage();
-                // updateActions() (pas updateInspector() seul) : un changement de
-                // paramètres peut faire passer un objet retouché à Dirty (Lot 8.2)
-                // -- undo/redo, mode d'édition des points et indicateurs doivent
-                // suivre. Ne reconstruit PAS le formulaire de paramètres (qui
-                // perdrait le focus en cours de frappe) : le garde-fou
-                // kind==inspectedKind_/id==inspectedId_ dans updateInspector()
-                // s'applique toujours, seul l'état Clean/ManuallyEdited/Dirty
-                // (mis à jour avant ce garde-fou) peut changer ici.
-                updateActions();
+                // scheduleParamsRefresh() appelle updateActions() (pas updateInspector() seul) :
+                // un changement de paramètres peut faire passer un objet retouché à Dirty
+                // (Lot 8.2) -- undo/redo, mode d'édition des points et indicateurs doivent
+                // suivre. Ne reconstruit PAS le formulaire de paramètres (qui perdrait le
+                // focus en cours de frappe) : le garde-fou kind==inspectedKind_/id==
+                // inspectedId_ dans updateInspector() s'applique toujours. La régénération
+                // des points (et donc l'état Clean/ManuallyEdited/Dirty) suit 150 ms après la
+                // dernière édition, hors du fil d'interface.
+                scheduleParamsRefresh();
+                refreshOverrideWarning();
             });
     connect(propertiesPanel_, &PropertiesPanel::discardOverridesRequested, this,
             &MainWindow::discardOverrides);
@@ -7513,7 +7607,9 @@ void MainWindow::updateInspector() {
     // ne jamais dépendre de lui.
     propertiesPanel_->setEditState(emb != nullptr ? std::optional<ObjectId>(emb->id) : std::nullopt,
                                    emb != nullptr ? editStateOf(emb->id)
-                                                  : stitch_generation::ObjectEditState::Clean);
+                                                  : stitch_generation::ObjectEditState::Clean,
+                                   emb != nullptr ? static_cast<int>(emb->overrides.size()) : 0);
+    refreshOverrideWarning(); // HP-UX-029 : suit annulation, rétablissement et abandon
     propertiesPanel_->setJoinMode(emb != nullptr ? std::optional<ObjectId>(emb->id) : std::nullopt,
                                   emb != nullptr ? emb->join : document::JoinMode::Inherit);
     propertiesPanel_->setConnectorMode(
@@ -7537,6 +7633,17 @@ void MainWindow::updateInspector() {
         const EmbroideryGroup group = selectedEmbroideryGroup();
         const auto* rep = group.sameType ? project_.findEmbroidery(group.ids.front()) : nullptr;
         formStale = rep != nullptr && !propertiesPanel_->showsGroupParams(rep->params);
+        // HP-UX-038 : une valeur d'un AUTRE objet du groupe (annulation, glisser…) change
+        // l'affichage « — » : le formulaire est reconstruit quand les valeurs mixtes ont changé.
+        if (!formStale && rep != nullptr) {
+            std::vector<document::StitchParams> members;
+            for (const ObjectId memberId : group.ids) {
+                if (const auto* m = project_.findEmbroidery(memberId)) {
+                    members.push_back(m->params);
+                }
+            }
+            formStale = !propertiesPanel_->showsGroupMembers(members);
+        }
     }
     if (kind == 1) {
         // Boîte X/Y/L/H : reconstruite si la forme a changé (annulation, glisser, flèches...).
@@ -7565,8 +7672,16 @@ void MainWindow::updateInspector() {
         }
         const EmbroideryGroup group = selectedEmbroideryGroup();
         const auto* rep = group.sameType ? project_.findEmbroidery(group.ids.front()) : nullptr;
+        std::vector<document::StitchParams> members;
+        if (rep != nullptr) {
+            for (const ObjectId memberId : group.ids) {
+                if (const auto* m = project_.findEmbroidery(memberId)) {
+                    members.push_back(m->params);
+                }
+            }
+        }
         propertiesPanel_->showMultiSelection(static_cast<int>(multiSelection_.size()), withStitches,
-                                             rep, static_cast<int>(group.ids.size()));
+                                             rep, static_cast<int>(group.ids.size()), members);
     } else if (kind == 1) {
         const auto* vec = project_.findObject(*selectedObject_);
         int nodes = 0;
@@ -8287,6 +8402,7 @@ void MainWindow::updateSimulationRange() {
 }
 
 void MainWindow::toggleSimulation(/* play */) {
+    flushPendingRefresh();
     if (!sequence_ || sequence_->commands.empty()) {
         simPlayAct_->setChecked(false);
         return;
@@ -8421,6 +8537,7 @@ QString statsSummaryText(const stitch::StitchStats& stats) {
 } // namespace
 
 void MainWindow::showStatistics() {
+    flushPendingRefresh();
     if (!sequence_) {
         statusBar()->showMessage(tr("Statistiques indisponibles : générez d'abord des points."),
                                  6000);
@@ -8823,6 +8940,7 @@ void MainWindow::applyLoadedProject(document::Project project) {
 }
 
 void MainWindow::exportDst() {
+    flushPendingRefresh(); // HP-PERF-009 : jamais d'export d'une séquence périmée
     if (!sequence_) {
         return;
     }
@@ -10066,6 +10184,9 @@ void MainWindow::updateActions() {
     setEnabledWithReason(createStitchAct_, anyObject, needShapes);
     setEnabledWithReason(createTatamiAct_, anyObject, needShapes);
     setEnabledWithReason(createSatinAct_, anyObject, needShapes);
+    setEnabledWithReason(createStitchWithSettingsAct_, anyObject, needShapes);
+    setEnabledWithReason(createTatamiWithSettingsAct_, anyObject, needShapes);
+    setEnabledWithReason(createSatinWithSettingsAct_, anyObject, needShapes);
     setEnabledWithReason(autoSatinAct_, anyObject, needShapes);
     setEnabledWithReason(duplicateSelectionAct_, singleObject, needOneShape);
     setEnabledWithReason(offsetSelectionAct_, singleObject, needOneShape);

@@ -27,6 +27,7 @@ void MainWindow::buildExportImageAction(QMenu* fileMenu) {
 }
 
 void MainWindow::exportImage() {
+    flushPendingRefresh(); // HP-PERF-009
     const QString title = tr("Exporter l'image");
     if (!sequence_ || stitch::compute_stats(*sequence_).stitches == 0) {
         QMessageBox::information(this, title, tr("Générez d'abord des points de broderie."));

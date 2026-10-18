@@ -1333,8 +1333,12 @@ void MainWindowTest::inspectorShowsNObjets() {
 
     window.applySelectionClick(fx.b, SelectMode::Add);
     QVERIFY(hasText(QStringLiteral("2 objets")));
-    // Bloc « type de points » pour toute la sélection.
-    QVERIFY(propsPanel->findChild<QComboBox*>(QStringLiteral("combo_multiType")) != nullptr);
+    // Bloc « type de points » pour toute la sélection : les quatre mêmes boutons que pour une
+    // forme seule (HP-UX-028, remplace l'ancienne liste « Appliquer à N »).
+    for (int type = 0; type < 4; ++type) {
+        QVERIFY(propsPanel->findChild<QToolButton*>(
+                    QStringLiteral("button_stitchType%1").arg(type)) != nullptr);
+    }
 
     window.applySelectionClick(fx.c, SelectMode::Add);
     QVERIFY(hasText(QStringLiteral("3 objets")));
@@ -2725,14 +2729,18 @@ void MainWindowTest::createSatinObjectOnSuitableRectangleProducesOneSatinWithSti
 
     const std::size_t embroideryCountBefore = window.project_.embroidery_objects.size();
 
-    // createSatinObject() ouvre une QDialog modale (espacement/compensation/
-    // sous-couche) : programmée avant l'appel, exec() pompe la boucle d'événements.
-    QTimer::singleShot(0, &window, [] {
+    // HP-UX-002 : createSatinObject() crée tout de suite, au dernier réglage, sans AUCUN
+    // dialogue (le dialogue de réglages n'existe plus que pour « Créer avec réglages… »).
+    bool modalOpened = false;
+    QTimer::singleShot(0, &window, [&modalOpened] {
         if (auto* dlg = qobject_cast<QDialog*>(QApplication::activeModalWidget())) {
-            dlg->accept();
+            modalOpened = true;
+            dlg->reject();
         }
     });
     window.createSatinObject();
+    QCoreApplication::processEvents();
+    QVERIFY(!modalOpened);
 
     QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore + 1);
     const auto& emb = window.project_.embroidery_objects.back();
@@ -2764,8 +2772,18 @@ void MainWindowTest::createSatinObjectOnBranchedShapeProducesMultipleSatinSectio
 
     const std::size_t embroideryCountBefore = window.project_.embroidery_objects.size();
 
-    autoDismissModalDialogs(&window);
+    // Création directe (HP-UX-002) : aucun dialogue ; s'il en apparaissait un, il serait refermé
+    // ici pour ne pas bloquer le test, et la vérification ci-dessous le signalerait.
+    bool modalOpened = false;
+    QTimer::singleShot(0, &window, [&modalOpened] {
+        if (auto* dlg = qobject_cast<QDialog*>(QApplication::activeModalWidget())) {
+            modalOpened = true;
+            dlg->reject();
+        }
+    });
     window.createSatinObject();
+    QCoreApplication::processEvents();
+    QVERIFY(!modalOpened);
 
     // Forme branchée : UN seul objet auto-satin couvre toute la forme (plus de sections
     // séparées à ordonner et à convertir une à une).
@@ -3236,13 +3254,13 @@ void MainWindowTest::createSatinObjectCancelLeavesDocumentUnchanged() {
     const std::size_t vectorCountBefore = window.project_.vector_objects.size();
     const bool couldUndoBefore = window.undoStack_.canUndo();
 
-    // La boîte de dialogue des réglages est refusée : rien ne doit être créé.
+    // « Créer avec réglages… » garde le dialogue (HP-UX-002) : refusé, rien ne doit être créé.
     QTimer::singleShot(0, &window, [] {
         if (auto* dlg = qobject_cast<QDialog*>(QApplication::activeModalWidget())) {
             dlg->reject();
         }
     });
-    window.createSatinObject();
+    window.createSatinObjectWithSettings();
 
     QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore);
     QCOMPARE(window.project_.vector_objects.size(), vectorCountBefore);
@@ -8107,27 +8125,26 @@ void MainWindowTest::multiSelectionBlockAppliesSettingsToAllObjectsInOneStep() {
     auto* panel = window.findChild<PropertiesPanel*>();
     QVERIFY(panel != nullptr);
 
-    auto* useSpacing = panel->findChild<QCheckBox*>(QStringLiteral("check_multiSpacing"));
-    auto* spacing = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_multiSpacing"));
-    auto* useAngle = panel->findChild<QCheckBox*>(QStringLiteral("check_multiAngle"));
-    auto* angle = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_multiAngle"));
-    auto* apply = panel->findChild<QPushButton*>(QStringLiteral("button_multiApply"));
-    QVERIFY(useSpacing && spacing && useAngle && angle && apply);
-    QVERIFY(!spacing->isEnabled()); // grisé tant que la case est décochée
-    useSpacing->setChecked(true);
-    spacing->setValue(0.7);
-    useAngle->setChecked(true);
-    angle->setValue(30.0);
+    // HP-UX-038 : un seul modèle d'édition (en direct, une commande composite par édition) ; les
+    // champs du formulaire de groupe remplacent l'ancien bloc « Appliquer à N objets ».
+    auto* spacing = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_rowSpacing"));
+    auto* angle = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_tatamiAngle"));
+    QVERIFY(spacing && angle);
+    QCOMPARE(spacing->value(), 0.4); // valeurs identiques : valeur commune, pas « — »
 
     const auto stepsBefore = window.undoStack_.undoNames().size();
-    apply->click();
+    spacing->setValue(0.7);
     QCOMPARE(window.undoStack_.undoNames().size(), stepsBefore + 1); // un seul pas
+    angle->setValue(30.0);
+    QCOMPARE(window.undoStack_.undoNames().size(), stepsBefore + 2); // un pas par édition
+    window.flushPendingRefresh();
     for (const ObjectId id : {embA, embB}) {
         const auto& t = std::get<openstitch::document::TatamiParams>(
             window.project_.findEmbroidery(id)->params);
         QCOMPARE(t.row_spacing.value, 700);
         QVERIFY(std::abs(t.angle.radians - 30.0 * std::numbers::pi / 180.0) < 1e-9);
     }
+    window.undo();
     window.undo();
     for (const ObjectId id : {embA, embB}) {
         const auto& t = std::get<openstitch::document::TatamiParams>(
@@ -8146,11 +8163,10 @@ void MainWindowTest::multiSelectionBlockCanConvertEveryObjectToContourInOneStep(
     window.applySelectionClick(fx.a, SelectMode::Replace);
     window.applySelectionClick(fx.b, SelectMode::Add);
     auto* panel = window.findChild<PropertiesPanel*>();
-    auto* type = panel->findChild<QComboBox*>(QStringLiteral("combo_multiType"));
-    auto* apply = panel->findChild<QPushButton*>(QStringLiteral("button_multiApply"));
-    QVERIFY(type && apply);
-    type->setCurrentIndex(1); // contour cousu
-    apply->click();
+    auto* contour = panel->findChild<QToolButton*>(QStringLiteral("button_stitchType0"));
+    QVERIFY(contour != nullptr);
+    contour
+        ->click(); // HP-UX-028 : un clic, la couture est convertie (remplace liste + « Appliquer »)
     QVERIFY(!window.project_.findEmbroidery(embA)->is_tatami());
     QVERIFY(!window.project_.findEmbroidery(embB)->is_tatami());
     window.undo();
