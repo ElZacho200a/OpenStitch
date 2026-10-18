@@ -11,6 +11,7 @@ add_library(openstitch_geometry
     src/path.cpp
     src/polyline.cpp
     src/primitives.cpp
+    src/smooth.cpp
 )
 add_library(openstitch::geometry ALIAS openstitch_geometry)
 
