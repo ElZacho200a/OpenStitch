@@ -307,6 +307,9 @@ DocumentPanel::DocumentPanel(QWidget* parent) : QWidget(parent) {
     typeFilter_->setObjectName(QStringLiteral("combo_documentTypeFilter"));
     typeFilter_->setAccessibleName(tr("Filtrer par type de point"));
     typeFilter_->setToolTip(tr("N'afficher que les objets d'un type de point."));
+    // Compact : ne doit pas élargir le dock (le canevas garde sa place sur petit écran).
+    typeFilter_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    typeFilter_->setMinimumContentsLength(5);
     typeFilter_->addItem(tr("Tous les types"), -1);
     const std::pair<StitchGlyph, QString> typeEntries[] = {
         {StitchGlyph::Tatami, tr("Tatami")},   {StitchGlyph::Satin, tr("Satin")},
