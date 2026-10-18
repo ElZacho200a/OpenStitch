@@ -139,7 +139,10 @@ private slots:
             }
         }
         QVERIFY(inViewMenu);
-        QVERIFY(window.densityMapAct_->text().contains(QStringLiteral("densité")));
+        // Le libellé porte un mnémonique (« densit&é ») : on compare sans le « & ».
+        QString label = window.densityMapAct_->text();
+        label.remove(QLatin1Char('&'));
+        QVERIFY(label.contains(QStringLiteral("densité")));
     }
 
     void toggleDrawsAndRemovesTheOverlayWithLegend() {
