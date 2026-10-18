@@ -38,10 +38,10 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
 | P0 | 12 | 26 | 6 | 44 |
-| P1 | 10 | 61 | 69 | 140 |
+| P1 | 10 | 62 | 69 | 141 |
 | P2 | 3 | 30 | 64 | 97 |
 | P3 | 0 | 3 | 12 | 15 |
-| **Total** | **25** | **120** | **151** | **296** |
+| **Total** | **25** | **121** | **151** | **297** |
 
 Ajoutés le 2026-10-18 (audit UX/UI, `docs/ux/`) : **+30 entrées ☐** (12 P1, 15 P2, 3 P3) :
 HP-UX-017 à HP-UX-044, HP-PERF-009 et HP-QA-008 (§20, §22, §23). Aucun statut existant n'a été
@@ -1561,6 +1561,14 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
 ### HP-VEC-014 — Formes prédéfinies supplémentaires [P2] — ☑ Fait (2026-10-18, `89a3e2d`)
 - À faire : étoile, cœur, flèche, rectangle arrondi, arc, spirale — outils
   paramétriques (poignées) ou bibliothèque (HP-LIB-002).
+
+### HP-VEC-015 — Combler les vides d'un bloc uni (par couverture réelle) [P1] — ◐ Partiel (2026-10-18, en PR)
+- Besoin (retour utilisateur) : dans un bloc uni dont les zones ne se distinguent que par la couleur ou le type de point, changer un satin ou un tatami laisse des jours sans fil où l'on voit le tissu.
+- Livré (2026-10-18) : `stitch_analysis::find_uncovered_pockets` (`libs/stitch_analysis/uncovered_pockets.*`) : les vides sont mesurés depuis les POINTS cousus de la séquence effective (masque de couverture fin, passes visibles seulement), pas depuis les contours vectoriels ; enveloppe du bloc fermée sur un écart réglable, ouverture morphologique (largeur minimale 0,3 mm), aire minimale/maximale. `commands::make_fill_pockets_command` rattache chaque poche au plus grand remplissage voisin (agrandit son vecteur s'il est seul et sans retouche, sinon crée un objet vectoriel + tatami de mêmes réglages et couleur) en UNE commande annulable. Emprise partagée `document::embroidery_footprint` (rails du satin inclus).
+- Livré (CLI) : `project apply` op `fill_block_holes` (`objects`, `closing_gap_mm`, `max_area_mm2`).
+- Livré (câblage bureau) : Forme › « Combler les vides du bloc… » (dialogue écart et aire maximale, sélection du bloc, annulation en un pas) ; test QTest `fillBlockHolesFillsTheGapBetweenTwoZones`.
+- Reste : retouche manuelle d'une poche avant application (aperçu, exclusion) ; pas de mesure sur corpus des seuils (largeur minimale, écart de fermeture : valeurs d'ingénierie) ; un liseré de tatami laissé par la génération elle-même (ex. première rangée raccourcie d'un rectangle par défaut) est lui aussi détecté et comblé par un petit objet : à confirmer côté moteur.
+- Dépend de : HP-VIEW-005 (carte de densité, même séquence effective).
 
 ---
 
@@ -3186,3 +3194,4 @@ ci-dessus doit les respecter :
 | 2026-10-18 | Claude (lot D, partie 1) | HP-UX-034, 036, 039 ◐ (branche `ux-lot-d2`) : mode Isoler de session, sauts de couleur et « fil k/m » en simulation, message de couche masquée, heure d'enregistrement fixe. Tests dans `test_ux_global`. Total ◐ 98 → 101, ☐ 173 → 170. |
 | 2026-10-18 | Claude (lots B, C/E et liste Document, 4 agents) | HP-QA-008, HP-UX-024, 025, 026, 027, 030, 031, 032, 033, 037, 041, 042, 043, 044 ◐ (branche `ux-lot-d2`) : responsive (fenêtre 1291 × 1443 → 701 × 373 de minimum, dialogues bornés, mode portable), numérisation à préréglages, export rapide, dock Qualité, barre Fils au clavier, liste Document étendue. Tests : `test_ui_responsive`, `test_workflow_ux`, `test_thread_strip`, `test_document_panel`. Total ◐ 101 → 115, ☐ 170 → 156. |
 | 2026-10-18 | Claude (lot C édition, agent) | HP-UX-002, 028, 029, 038 et HP-PERF-009 ◐ (branche `ux-lot-c1-pr`) : création directe sans modale, quatre boutons de type pour 1 ou N formes, bandeau de retouches, valeurs mixtes, régénération différée hors fil UI. Tests : `test_creation_flow` (19 cas). Total ◐ 115 → 120, ☐ 156 → 151. |
+| 2026-10-18 | Claude (HP-VEC-015, comblement de bloc) | HP-VEC-015 ◐ (branche `claude/embroidery-block-hole-fill-7c00ac`) : vides d'un bloc détectés depuis les points cousus, rattachés au plus grand remplissage voisin ; cœur, op CLI `fill_block_holes`, menu Forme et tests. |

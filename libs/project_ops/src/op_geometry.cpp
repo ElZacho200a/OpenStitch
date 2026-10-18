@@ -24,7 +24,9 @@
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/geometry/primitives.hpp"
 #include "openstitch/project_ops/auto_satin_service.hpp"
+#include "openstitch/stitch_analysis/uncovered_pockets.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
 
 namespace openstitch::project_ops::detail {
 
@@ -830,6 +832,78 @@ OpStatus op_remove_holes(OpContext& ctx) {
                                   {"holes_removed", removed}});
 }
 
+OpStatus op_fill_block_holes(OpContext& ctx) {
+    const auto it = ctx.args.find("objects");
+    if (it == ctx.args.end() || !it->is_array()) {
+        return usage(
+            "argument « objects » obligatoire : tableau d'identifiants d'objets de broderie");
+    }
+    if (it->empty() || it->size() > 1000) {
+        return usage("argument « objects » : entre 1 et 1000 objets (" +
+                     std::to_string(it->size()) + " donné(s))");
+    }
+    std::vector<ObjectId> vectors;
+    for (std::size_t i = 0; i < it->size(); ++i) {
+        const auto& item = (*it)[i];
+        if (!item.is_number_unsigned()) {
+            return usage("objects[" + std::to_string(i) + "] : identifiant entier attendu");
+        }
+        const std::uint64_t id = item.get<std::uint64_t>();
+        const auto* emb = ctx.project.findEmbroidery(ObjectId{id});
+        if (emb == nullptr) {
+            return OpStatus::failure(code::kUnknownObject,
+                                     "objet de broderie " + std::to_string(id) + " introuvable",
+                                     "voir `project inspect --json` pour les identifiants");
+        }
+        if (std::find(vectors.begin(), vectors.end(), emb->source_vector) == vectors.end()) {
+            vectors.push_back(emb->source_vector);
+        }
+    }
+    stitch_analysis::UncoveredPocketOptions options;
+    double gap_mm = 0.0;
+    bool present = false;
+    if (auto st = read_number(ctx, "closing_gap_mm", 0.0, 20.0, false, gap_mm, present); !st.ok) {
+        return st;
+    }
+    if (present) {
+        options.closing_gap = Micrometers{static_cast<std::int32_t>(std::lround(gap_mm * 1000.0))};
+    }
+    double max_area_mm2 = 0.0;
+    if (auto st = read_number(ctx, "max_area_mm2", 0.0001, 1.0e6, false, max_area_mm2, present);
+        !st.ok) {
+        return st;
+    }
+    if (present) {
+        options.max_area_um2 = max_area_mm2 * 1.0e6;
+    }
+
+    const auto sequence = stitch_generation::effective_sequence(ctx.project);
+    if (!sequence) {
+        return refused(sequence.error().message);
+    }
+    const auto pockets =
+        stitch_analysis::find_uncovered_pockets(ctx.project, *sequence, vectors, options);
+    if (!pockets) {
+        return refused(pockets.error().message);
+    }
+    const std::size_t found = pockets->size();
+    const auto before_emb = embroidery_ids(ctx.project);
+    auto made = commands::make_fill_pockets_command(ctx.project, vectors, *pockets);
+    if (!made.command) {
+        return refused(made.error.empty() ? "aucun vide à combler" : made.error);
+    }
+    const std::size_t filled = made.resulting_objects;
+    ctx.stack.execute(std::move(made.command), ctx.project);
+    std::vector<std::uint64_t> created;
+    for (const auto id : embroidery_ids(ctx.project)) {
+        if (std::find(before_emb.begin(), before_emb.end(), id) == before_emb.end()) {
+            created.push_back(id);
+        }
+    }
+    return OpStatus::success(
+        json{{"pockets_found", found}, {"pockets_filled", filled}, {"created", created}});
+}
+
 // --- Auto-satin -----------------------------------------------------------------------
 
 // Angle modulo pi ramené dans (-pi/2 ; pi/2], comme le bureau.
@@ -1087,6 +1161,19 @@ void register_geometry_ops(std::vector<OpSpec>& out) {
                  "seuil d'aire des trous à combler (défaut : tous)", false, "[0.0001 ; 1000000]"}},
                R"({"op":"remove_holes","object":1,"max_area_mm2":2.0})",
                op_remove_holes});
+
+    out.push_back(OpSpec{
+        "fill_block_holes",
+        "Comble les vides sans fil d'un bloc uni (zones voisines de couleurs ou de points "
+        "différents) : détectés depuis les points cousus, rattachés au plus grand remplissage "
+        "voisin.",
+        {{"objects", "array", "id", "objets de broderie du bloc (au moins un)", true, "[1 ; 1000]"},
+         {"closing_gap_mm", "number", "mm",
+          "écart maximal entre deux formes du bloc soudé en un vide (défaut 1)", false, "[0 ; 20]"},
+         {"max_area_mm2", "number", "mm2", "aire maximale d'un vide comblé (défaut : sans limite)",
+          false, "[0.0001 ; 1000000]"}},
+        R"({"op":"fill_block_holes","objects":[1,2,3],"closing_gap_mm":1.0})",
+        op_fill_block_holes});
 
     out.push_back(
         OpSpec{"set_geometry",

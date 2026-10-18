@@ -338,7 +338,7 @@ Un objet est désigné par `object` = **identifiant d'objet de broderie**.
 | Type et paramètres | `set_stitch_type` (running, tatami, directional), `directional_guides` (convertit en directionnel et pose des guides suivant l'axe médian de la forme, comme « Générer un guide depuis la forme » du bureau ; sans lui un objet converti n'a qu'un guide droit), `set_params` (mise à jour partielle : angle, densité, espacement, longueur de point, retrait, sous-couches, compensation du tirage… par type), `discard_overrides` |
 | Ordre | `set_order` (position, before, after, to_front, to_back), `optimize_order` (document, by_color, by_proximity, color_then_proximity, layered ; objets verrouillés immobiles) |
 | Création / suppression | `add_shape` (rect, ellipse, polygone), `duplicate_object`, `remove_object` |
-| Géométrie | `translate`, `rotate`, `scale`, `mirror`, `set_geometry`, `merge` (union, subtract, intersect, exclude), `split`, `break_apart`, `remove_holes` |
+| Géométrie | `translate`, `rotate`, `scale`, `mirror`, `set_geometry`, `merge` (union, subtract, intersect, exclude), `split`, `break_apart`, `remove_holes`, `fill_block_holes` (comble les vides sans fil d'un bloc, détectés depuis les points cousus) |
 | Import et texte | `import_svg` (path, rect, circle, ellipse, line, polyline, polygon), `add_text`, `set_text`, `remove_text` |
 | Auto-satin | `auto_satin` (espacement, `compact_axis`, `strategy` = `skeleton` \| `parallel_sweep` \| `medial_axis`, `sweep_angle_deg`, guides) : vrai pipeline, refus nommé si aucune colonne ; `strategy` et `sweep_angle_deg` se règlent ensuite par `set_params` |
 | Projet | `set_canvas`, `set_finishing` |

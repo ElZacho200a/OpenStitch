@@ -593,6 +593,12 @@ private:
     [[nodiscard]] const document::EmbroideryObject* blendFillFor(ObjectId vector) const;
     void createColorBlend(ObjectId baseId, std::optional<ObjectId> secondId);
     void removeHolesOfSelection(double maxAreaMm2); // 0 : tous les trous
+    // Combler les vides d'un bloc uni : demande l'écart et l'aire maximale, puis
+    // `fillBlockHolesWith`.
+    void fillBlockHoles();
+    // Détecte les poches sans fil depuis les points cousus de la sélection (écart de fermeture en
+    // mm ; aire maximale en mm², 0 = sans limite) et les comble en UN pas d'annulation.
+    void fillBlockHolesWith(double closingGapMm, double maxAreaMm2);
     void finishCut();
     // Exécute la commande (un pas d'annulation), sélectionne le premier de `keep` encore présent
     // et annonce `done` ; en cas d'échec, affiche la raison dans la barre d'état.
@@ -1034,6 +1040,7 @@ private:
     QAction* excludeAct_{nullptr};
     QAction* removeHolesAct_{nullptr};
     QAction* fillSmallHolesAct_{nullptr};
+    QAction* fillBlockHolesAct_{nullptr};
     QAction* cutAct_{nullptr};
     QAction* copyAct_{nullptr};
     QAction* pasteAct_{nullptr};

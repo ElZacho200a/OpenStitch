@@ -2,6 +2,7 @@ add_library(openstitch_commands
     src/undo_stack.cpp
     src/composite_command.cpp
     src/vector_ops.cpp
+    src/fill_pockets.cpp
     src/transform_ops.cpp
     src/text_commands.cpp
     src/vector_path_commands.cpp
