@@ -5,6 +5,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QScrollArea>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTest>
@@ -49,6 +50,20 @@ private slots:
         QCOMPARE(options.start.mode, StartMode::Custom);
         QCOMPARE(options.start.point.x.value, -12'500);
         QCOMPARE(options.start.point.y.value, 30'000);
+    }
+
+    // Régression : scrollDialogBody déplaçait les items sans reparenter les widgets ; le formulaire
+    // restait enfant du dialogue, recouvert par le viewport de la zone défilante (dialogue vide).
+    void formWidgetsLiveInsideTheScrollBody() {
+        MachineExportDialog dialog(summarizeNothing(), QStringLiteral("dst"), nullptr);
+        auto* scroll = dialog.findChild<QScrollArea*>(QStringLiteral("dialogScrollBody"));
+        QVERIFY(scroll != nullptr);
+        for (const char* name : {"combo_exportFormat", "check_exportTrims", "combo_exportStops",
+                                 "label_exportSummary"}) {
+            auto* w = dialog.findChild<QWidget*>(QString::fromLatin1(name));
+            QVERIFY2(w != nullptr, name);
+            QVERIFY2(scroll->widget()->isAncestorOf(w), name);
+        }
     }
 
     void reductionIsOffByDefault() {
