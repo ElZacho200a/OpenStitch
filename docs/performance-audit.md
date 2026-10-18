@@ -401,3 +401,41 @@ sur ce projet (120 ms par modification). Un clipping de fenêtre ne s'applique d
 la séquence : l'ordre, les changements de couleur, les coupes et les liaisons dépendent de tous les
 objets, et l'export doit rester identique. Il resterait utile pour le rendu (peindre les objets
 visibles) et pour calculer le froid en arrière-plan ; à décider après mesure sur un plus gros projet.
+
+## 9. Audit du 2026-10-18 : régénération incrémentale par objet (HP-PERF-002)
+
+**Constat.** `effective_sequence` régénérait tous les objets à chaque modification du document :
+63 ms à chaud sur `tentabrode.png` (158 objets, 16 fils), 116 ms avec `OPENSTITCH_THREADS=1`,
+alors qu'un seul objet avait changé.
+
+**Correctif.** `generate_sequence` mémorise la séquence de chaque objet **indépendant** (droit,
+tatami, directionnel) dans un cache (`libs/stitch_generation/src/chunk_cache.*`). Ces générateurs
+ne lisent que l'identifiant de l'objet, ses paramètres et la géométrie du vecteur source : leur
+résultat est une fonction pure de ces trois éléments, le lien avec l'objet précédent (entrée
+automatique, orientation du bloc, changement de couleur) se faisant à l'assemblage séquentiel de
+la phase 3, qui n'est pas modifié.
+
+- **Clé exacte.** L'entrée garde une copie des paramètres et de la géométrie et les compare
+  intégralement avec les `operator==` par défaut du document : aucune empreinte seule, donc aucune
+  collision possible, et un champ ajouté plus tard à un type de paramètres est comparé
+  automatiquement. Un identifiant réutilisé avec un autre contenu (autre projet, annulation)
+  provoque un recalcul, jamais un résultat périmé.
+- **Mémoire.** Une case par identifiant, budget de 64 Mio estimés, éviction du moins récemment
+  utilisé. Ici : 158 entrées, 2,2 Mo.
+- **Déterminisme.** Les tâches parallèles lisent le cache sous mutex et ne retiennent qu'une
+  copie ; l'assemblage reste séquentiel. Test : même séquence avec 1 et 8 fils, avec et sans cache.
+
+**Résultats** (Release, `tentabrode.png`, médianes à chaud, empreinte de la séquence effective
+identique : `cc5819a2746b6f37`) :
+
+| Scénario | Avant | Après |
+|---|---|---|
+| `effective_sequence`, rien ne change | 63 ms | **7 ms** |
+| un objet tatami médian modifié | 63 ms | **8 ms** |
+| le plus gros objet (fond) modifié | 63 ms | 67 ms |
+
+**Limites.** Un objet unique très gros reste régénéré en entier (67 ms ici) : le cache est par
+objet, pas par région. Les satins (colonnes routées, entrée dépendant de l'objet précédent) et
+l'auto-satin ne passent pas par ce cache ; leur squelette garde son propre cache (§8). Le banc
+désactive le cache pour ses étapes historiques afin de rester comparable aux relevés précédents et
+ajoute trois étapes « cache chaud », « objet médian modifié », « plus gros objet modifié ».

@@ -69,6 +69,19 @@ struct AnalysisOptions {
     // bloc de 2 x 2 cases (5 mm) en excès : ni le bord d'un objet, ni des objets
     // simplement voisins ne comptent.
     Micrometers layer_cell{2'500};
+    // HP-PROD-007. `detail-trop-petit` : objet dont la boîte englobante (hors points
+    // d'arrêt) tient dans moins de ce côté sur les DEUX axes (1 mm : en dessous, le
+    // détail se perd dans l'épaisseur du fil). 0 = règle désactivée.
+    Micrometers min_object_size{1'000};
+    // `densite-excessive` : pénétrations/mm² au-delà desquelles une zone (grille de 1 mm,
+    // voir `density_map.hpp`) est signalée. 0 = désactivée (défaut : seuil non mesuré sur
+    // un corpus, donc non imposé aux projets existants).
+    double max_penetrations_per_mm2{0.0};
+    // `objet-sans-arret` : objet cousu sans aucun point d'arrêt (passe `Lock`). Utile
+    // quand les finitions sont actives ; `options_from_project` l'active dans ce cas.
+    bool check_lock_stitches{false};
+    // `trop-de-coupes` : plus de coupes que ce nombre. 0 = désactivée.
+    std::size_t max_trims{0};
 };
 
 // Analyse une séquence et renvoie les problèmes détectés, du plus grave au

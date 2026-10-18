@@ -41,6 +41,33 @@ resample_run(points, cible):
   renvoyer points aux abscisses i*L/n, i=0..n
 ```
 
+## Lissage, conversion en courbes, formes et mesure (libs/geometry)
+
+Fonctions pures, Qt-free, en micromètres entiers, déterministes (HP-VEC-007,
+008, 010, 014). Le câblage IHM/commandes reste à faire (voir la roadmap).
+
+- **`smooth_path(path, tol)`** : `flatten_to_polygon(path, tol)` puis
+  `fit_curves` (Schneider) avec `tolerance = tol`. Les extrémités d'un tracé
+  ouvert sont réimposées à leurs positions d'origine. Moins de 4 nœuds ou
+  `tol <= 0` : tracé rendu inchangé. `smooth_path_set` traite extérieur et trous.
+- **`convert_to_curves(path, opts)`** : pour chaque sommet sans tangente dont
+  l'angle de braquage `atan2(|cross|, dot)` est ≤ `corner_angle_deg` (défaut
+  60°), tangentes colinéaires dirigées selon la corde `précédent → suivant`,
+  de longueur `handle_ratio` (défaut 1/3, borné à 1/2) fois le segment adjacent.
+  Contrairement à `smooth_path`, les sommets ne bougent pas : la courbe passe
+  par tous. Extrémités d'un tracé ouvert, coins francs, nœuds déjà courbes et
+  voisins confondus restent inchangés.
+- **Formes** (`shapes.hpp`) : étoile (2n coins), cœur (6 nœuds, 2 coins, Béziers
+  dans le cadre), flèche (7 coins), rectangle arrondi (8 nœuds, quarts de cercle
+  de constante κ = 0,5523, rayon borné à la moitié du petit côté), arc (un segment
+  par quart de tour, poignée `4/3·tan(θ/4)·r`) et spirale d'Archimède
+  (12 échantillons par tour, spline de Catmull-Rom via `smooth_open_path`).
+  Entrée dégénérée : chemin vide.
+- **Mesure** (`measure.hpp`) : distance et direction `atan2(dy, dx)`,
+  longueur de chemin sur le tracé aplati (fermeture incluse si fermé), angle
+  au sommet `atan2(|cross|, dot)` dans [0, π], aire par la formule des lacets
+  (valeur absolue), conversions mm / mm² à l'affichage seulement.
+
 ## Running stitch
 
 ```

@@ -231,7 +231,7 @@ if [[ -z "$agent_id_value" ]]; then
 fi
 context+=". Only after those reads, answer the user."
 if [[ -z "$agent_id_value" ]]; then
-  context+=" Workflow de ce dépôt (habitude de travail validée par l'utilisateur) : tout travail abouti se termine par un commit conventionnel en français sur la branche du worktree puis une pull request vers main (gh pr create), jamais un commit direct sur main."
+  context+=" Workflow de ce dépôt (habitude de travail validée par l'utilisateur) : tout travail abouti se termine par un commit conventionnel en français sur la branche du worktree puis une pull request vers main (gh pr create), jamais un commit direct sur main. Obligatoire avant ce commit : mettre à jour docs/roadmap-parite-hatch.md dans le même commit (statut de l'entrée HP-XXX-NNN concernée avec date et hash, ligne « Livré / Reste », nouvelles entrées pour tout manque découvert face à Hatch, ligne au journal §28) ; si le travail ne correspond à aucune entrée, créer l'entrée ou écrire explicitement « roadmap : aucune entrée concernée » dans le message de commit."
 fi
 
 hook_path=$(repo_brand_index_hook_path)
