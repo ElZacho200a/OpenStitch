@@ -46,7 +46,17 @@ inline QScrollArea* scrollDialogBody(QDialog* dialog, QWidget* footer = nullptr)
             footerItem = item;
             continue;
         }
-        inner->addItem(item);
+        // addItem ne reparente pas : un widget ou un sous-layout resterait enfant du dialogue
+        // (hors de la zone défilante, recouvert par son viewport). On passe par addWidget /
+        // addLayout, qui rattachent les widgets au corps défilant.
+        if (QWidget* widget = item->widget(); widget != nullptr) {
+            inner->addWidget(widget, 0, item->alignment());
+            delete item;
+        } else if (QLayout* childLayout = item->layout(); childLayout != nullptr) {
+            inner->addLayout(childLayout);
+        } else {
+            inner->addItem(item);
+        }
         inner->setStretch(inner->count() - 1, stretch);
     }
     auto* scroll = new QScrollArea(dialog);

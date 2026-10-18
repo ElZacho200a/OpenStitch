@@ -44,8 +44,9 @@ namespace {
 
 // Version du format de `ui/windowState` : à incrémenter quand un dock ou une barre est
 // ajouté/retiré, pour qu'un état enregistré par une version antérieure ne laisse pas le
-// nouvel élément caché (restoreState refuse un état de version différente).
-constexpr int kUiLayoutVersion = 1;
+// nouvel élément caché (restoreState refuse un état de version différente). v2 : docks en
+// onglets (HP-UX-024) : un état v1 pouvait laisser un dock (Filtres) flottant hors du cadre.
+constexpr int kUiLayoutVersion = 2;
 
 [[nodiscard]] bool isImageSuffix(const QString& suffix) {
     static const QStringList kImages{QStringLiteral("png"),  QStringLiteral("jpg"),
