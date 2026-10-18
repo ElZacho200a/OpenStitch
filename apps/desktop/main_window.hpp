@@ -43,6 +43,7 @@ class QGraphicsPixmapItem;
 class QGraphicsEllipseItem;
 class QGraphicsRectItem;
 class QLabel;
+class QToolButton;
 class QAction;
 class QListWidget;
 class QPushButton;
@@ -908,8 +909,9 @@ private:
     CanvasView* view_{nullptr};
     EmptyStateWidget* emptyState_{nullptr};
     QLabel* cursorLabel_{nullptr};
-    QList<QGraphicsItem*> baseItems_;   // couche image/vecteurs/régions
-    QList<QGraphicsItem*> stitchItems_; // couche points (reconstruite seule en simu)
+    QToolButton* hoopStatusButton_{nullptr}; // taille du cadre cliquable (HP-UX-033)
+    QList<QGraphicsItem*> baseItems_;        // couche image/vecteurs/régions
+    QList<QGraphicsItem*> stitchItems_;      // couche points (reconstruite seule en simu)
     QAction* undoAct_{nullptr};
     QAction* redoAct_{nullptr};
     QAction* cropAct_{nullptr};

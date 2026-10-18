@@ -538,6 +538,15 @@ MainWindow::MainWindow() {
     cursorLabel_ = new QLabel(this);
     cursorLabel_->setMinimumWidth(180);
     statusBar()->addPermanentWidget(cursorLabel_);
+    // Taille du cadre en permanence, cliquable : ouvre « Taille du cadre… » (HP-UX-033).
+    hoopStatusButton_ = new QToolButton(this);
+    hoopStatusButton_->setObjectName(QStringLiteral("button_hoopStatus"));
+    hoopStatusButton_->setAutoRaise(true);
+    hoopStatusButton_->setToolTip(tr("Taille du cadre de broderie : cliquer pour la modifier."));
+    hoopStatusButton_->setAccessibleName(tr("Taille du cadre"));
+    connect(hoopStatusButton_, &QToolButton::clicked, this, &MainWindow::setHoopSize);
+    statusBar()->addPermanentWidget(hoopStatusButton_);
+    applyCanvasToView(); // libellé initial
     // Bascule d'accroche des nœuds visible en permanence (même état que l'entrée du menu
     // Affichage) : sans elle, savoir si le glisser va s'accrocher exige d'ouvrir le menu.
     if (snapNodesAct_ != nullptr) {
@@ -1438,7 +1447,13 @@ void MainWindow::openImageFile(const QString& file) {
         return;
     }
 
-    const auto canvas = project_.canvas; // même cadre que celui proposé dans ImportDialog
+    auto canvas = project_.canvas; // même cadre que celui proposé dans ImportDialog
+    if (dialog.hoopChanged()) {
+        // HP-UX-033 : le cadre choisi dans l'import devient celui du projet (marge conservée).
+        canvas.width = to_micrometers(Millimeters{dialog.hoopMm().width()});
+        canvas.height = to_micrometers(Millimeters{dialog.hoopMm().height()});
+        rememberCanvas(canvas);
+    }
     project_ = document::Project{};
     project_.canvas = canvas;
     project_.mm_per_px = document::mm_per_pixel(*placement, loaded->width);
@@ -1831,6 +1846,10 @@ void MainWindow::applyCanvasToView() {
         view_->setCanvasSizeMm(want);
     }
     view_->setUsableMarginMm(to_millimeters(project_.canvas.margin).value);
+    if (hoopStatusButton_ != nullptr) {
+        hoopStatusButton_->setText(
+            tr("Cadre %1 × %2 mm").arg(want.width(), 0, 'f', 0).arg(want.height(), 0, 'f', 0));
+    }
 }
 
 void MainWindow::positionEmptyState() {
