@@ -81,6 +81,7 @@ openstitch_add_qt_test(test_machine_export_dialog test_machine_export_dialog.cpp
 # [cablage-C:debut]
 # [cablage-C:fin]
 # [cablage-D:debut]
+openstitch_add_qt_test(test_text_typography_ui test_text_typography_ui.cpp)
 # [cablage-D:fin]
 # [cablage-E:debut]
 # [cablage-E:fin]

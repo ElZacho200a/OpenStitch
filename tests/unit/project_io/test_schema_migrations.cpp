@@ -63,7 +63,20 @@ TEST_CASE("migrations : la table couvre v1 a la version lisible sans trou") {
     }
 }
 
-TEST_CASE("migrations : chaque version v1 a v7 se relit et reporte sa version") {
+TEST_CASE("migrations : v7 -> v8 est documentee et ne reecrit pas un document sans texte") {
+    const auto steps = project_io::migration_steps();
+    REQUIRE(steps.size() >= 7);
+    CHECK(steps[6].from == 7);
+    CHECK(steps[6].to == 8);
+    CHECK(project_io::kMaxReadableSchemaVersion == project_io::kSchemaVersionTextTypography);
+    const auto migrated = project_io::migrate_project_json(satin_document(7, ""));
+    REQUIRE(migrated.has_value());
+    const auto root = nlohmann::json::parse(*migrated);
+    CHECK(root.at("schemaVersion") == 8);
+    CHECK_FALSE(root.at("document").contains("textObjects"));
+}
+
+TEST_CASE("migrations : chaque version lisible se relit et reporte sa version") {
     for (int version = 1; version <= project_io::kMaxReadableSchemaVersion; ++version) {
         // maxWidthHard n'existe qu'a partir de v4 dans les fichiers reels.
         const std::string extra = version >= 4 ? R"(,"maxWidthHard":30000)" : "";

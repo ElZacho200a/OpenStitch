@@ -10,17 +10,32 @@
 
 #include "openstitch/document/text_object.hpp"
 #include "openstitch/lettering/font.hpp"
+#include "openstitch/lettering/lettering.hpp"
 
 class QComboBox;
 class QCheckBox;
+class QPlainTextEdit;
 class QDialogButtonBox;
 class QDoubleSpinBox;
 class QLabel;
-class QPlainTextEdit;
 class QPushButton;
 class QTimer;
 
 namespace openstitch::desktop {
+
+// Options de mise en page d'un texte (crénage manuel, ligatures) tirées de ses champs : à
+// passer à `lettering::BuildOptions::layout` et `text_displacement`. Champs par défaut =
+// options par défaut de la bibliothèque (comportement inchangé).
+[[nodiscard]] lettering::LayoutOptions layoutOptionsFor(const document::TextObject& text);
+
+// Saisie du crénage manuel : une paire par ligne, « AV: -0.3 mm » (millimètres, signe et
+// « mm » facultatifs, virgule décimale acceptée). Une paire répétée : la dernière ligne gagne.
+struct KerningParse {
+    std::vector<document::KerningPair> pairs;
+    QStringList errors; // une phrase par ligne rejetée (ligne ignorée, jamais d'échec muet)
+};
+[[nodiscard]] KerningParse parseKerningPairs(const QString& text);
+[[nodiscard]] QString formatKerningPairs(const std::vector<document::KerningPair>& pairs);
 
 // Aperçu des lettres (contours remplis) : ne fait que peindre un QPainterPath calculé
 // par la bibliothèque de lettrage.
@@ -78,6 +93,8 @@ private:
     QDoubleSpinBox* maxSatin_{nullptr};
     QDoubleSpinBox* density_{nullptr};
     QCheckBox* kerning_{nullptr};
+    QPlainTextEdit* kerningPairs_{nullptr};
+    QCheckBox* ligatures_{nullptr};
     QDoubleSpinBox* posX_{nullptr};
     QDoubleSpinBox* posY_{nullptr};
     QDoubleSpinBox* rotation_{nullptr};
