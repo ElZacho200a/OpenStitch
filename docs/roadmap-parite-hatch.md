@@ -1209,6 +1209,12 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 - À faire : éviter les pénétrations trop rapprochées en bord de zone
   (fusion/redistribution comme en satin).
 
+### HP-ENG-006.b — Décalage des pénétrations du tatami (aspect pointillé) [P1] — ◐ Partiel (2026-10-18)
+- Constaté : à `stagger` = 2 (ancien défaut), les pénétrations d'une rangée sur deux s'alignent en colonnes ; sur une pièce brodée le remplissage paraît « pointillé ».
+- Comportement attendu : décalage en briques par défaut, sans changer les projets existants (valeur persistée conservée).
+- Livré : défaut `TatamiParams::stagger` 2 → 3 (décalage de 1/3), test `test_main_window` adapté, `docs/source/tatami.md` et `moteur-de-points.md` mis à jour. Le remplissage directionnel garde 2.
+- Reste : validation sur tissu ; motifs de phase non uniformes (non implémentés).
+
 ### HP-ENG-007 — Densité en unités usuelles [P2] — ☐ À faire
 - À faire : afficher la densité aussi en « lignes/cm » ou « points/pouce »
   selon les préférences ; même valeur stockée en µm.
@@ -1752,8 +1758,15 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
   forme (contour extérieur), contour → satin de bordure, tatami → contour
   (bord), conserver fil et points d'entrée.
 
-### HP-OBJ-023 — Couches par zone [P1] — ▶ En cours (2026-10-18)
-- État OpenStitch : un objet vectoriel porte un seul objet de broderie ; deux
+### HP-OBJ-023 — Couches par zone [P1] — ◐ Partiel (2026-10-18)
+- Livré : `commands::AddLayerCommand` (4 tests dans `test_undo_stack.cpp`) et
+  l'action « Ajouter une couche… » (menu Broderie et menu contextuel : choix du
+  type, couleur complémentaire par défaut, annulable ; test
+  `addLayerInsertsAfterBaseAndUndoes` dans `test_color_blend.cpp`).
+  Reste : lien parent-enfant et regroupement visuel dans la liste Document ;
+  critères d'acceptation « ordre de couture » et « suppression » non testés à
+  part ; suite desktop complète non relancée.
+- État OpenStitch (avant) : un objet vectoriel porte un seul objet de broderie ; deux
   types de points sur une même zone exigent de dupliquer la forme à la main.
 - Hatch : objets empilés (ordre de couture modifiable) ; le détail exact du
   mécanisme est à vérifier dans le manuel Hatch avant d'implémenter.
@@ -3220,3 +3233,5 @@ ci-dessus doit les respecter :
 | 2026-10-18 | Claude (HP-VEC-015, comblement de bloc) | HP-VEC-015 ◐ (branche `claude/embroidery-block-hole-fill-7c00ac`) : vides d'un bloc détectés depuis les points cousus, rattachés au plus grand remplissage voisin ; cœur, op CLI `fill_block_holes`, menu Forme et tests. |
 | 2026-10-18 | Claude (lot D, partie 2) | HP-UX-035 ◐ (copier/coller le style). **HP-UX-040 (contrat IA) retiré** à la demande du mainteneur (l'IA n'est pas une priorité) ; total 296 → 295, ◐ 120 → 121, ☐ 151 → 149. |
 | 2026-10-18 | Claude (couches par zone) | **HP-OBJ-023 ▶ En cours** (« Couches par zone », P1) : empilement d'un objet de broderie supplémentaire sur la même zone via `AddLayerCommand`, sans nouveau champ de modèle. Section « Couches » ajoutée à `docs/source/embroidery-objects.md`. Le tableau de bord ne compte pas encore le statut ▶ ; total inchangé. |
+| 2026-10-18 | Claude (couches par zone, livraison) | **HP-OBJ-023 ▶ → ◐** : `AddLayerCommand` et action « Ajouter une couche… » livrées avec leurs tests ; reste le lien parent-enfant et le regroupement visuel. `test_color_blend_dialog` échoue aussi sur `main` seul (aperçu non peint hors écran), sans lien avec cette entrée. |
+| 2026-10-18 | Claude (tatami pointillé) | HP-ENG-006.b ◐ : défaut `stagger` du tatami 2 → 3 (aspect pointillé constaté en broderie réelle) ; non validé sur tissu. |
