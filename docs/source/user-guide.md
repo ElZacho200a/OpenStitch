@@ -161,7 +161,26 @@ entre les deux marqueurs.
 | N2 | Édition de nœuds | Maj + glisser | Verrouiller l'axe |
 | N2b | Édition de nœuds | Ctrl + glisser | Suspendre l'accroche |
 | N4 | Édition de nœuds | Suppr | Supprimer les nœuds sélectionnés |
+| V1 | Règle | Glisser | Mesurer une distance (règle temporaire) |
+| V2 | Pipette | Clic | Échantillonner la couleur et choisir un fil |
 <!-- GESTURES:END -->
+
+### Outils Règle et Pipette
+
+- **Règle (Q)** : cliquez-glissez sur le canevas ; une règle temporaire affiche la
+  distance en mm, les écarts Δx / Δy et l'angle (0° = est, sens antihoraire). Le
+  résultat est repris dans la barre d'état et copiable (bouton **Copier la mesure**
+  de la palette d'outils). La mesure est purement visuelle : aucune commande n'est
+  créée, rien n'entre dans l'historique d'annulation, et la règle disparaît quand
+  on change d'outil (Échap interrompt une mesure en cours). Le calcul vient de
+  `geometry::measure_segment`.
+- **Pipette (I)** : cliquez sur l'image affichée ; la couleur est moyennée sur
+  5 × 5 pixels (`thread_palette::pick_thread`) et un petit menu propose les cinq fils
+  les plus proches du nuancier choisi dans le panneau Fils (écart CIEDE2000). Choisir
+  un fil l'assigne aux objets de broderie sélectionnés par la commande annulable
+  `SetObjectThreadCommand` ; le menu propose aussi la couleur échantillonnée en
+  couleur libre et, si le clic tombe sur une forme déjà brodée, de reprendre le fil de
+  cet objet. Sans objet de broderie sélectionné, les entrées sont grisées.
 
 Précisions sur les gestes du tableau :
 
@@ -1007,6 +1026,8 @@ la liste complète et filtrable est dans **Aide ▸ Gestes souris et clavier** (
 | D | Guides de direction d'un remplissage directionnel (bascule) |
 | Flèches / Maj + flèches | Déplacer l'objet de 0,1 mm / 1 mm |
 | K | Outil Couteau |
+| Q | Outil Règle : mesurer une distance au canevas (sans modifier le document) |
+| I | Outil Pipette : échantillonner une couleur de l'image et choisir un fil |
 | U | Option « Tracé ouvert » (polygone et courbe non fermés) |
 | F1 | Ouvrir « Gestes souris et clavier » |
 | Ctrl+Shift+P | Masquer / afficher les panneaux |

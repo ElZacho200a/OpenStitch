@@ -35,6 +35,12 @@ enum class Tool {
     // Texte (T, lettrage HP-TXT-*) : un clic sur le canevas pose l'origine du texte et
     // ouvre le dialogue de texte. Contexte d'interaction = Sélection (clic simple).
     Text,
+    // Règle (HP-VEC-010) : clic-glisser = règle temporaire (distance, dx/dy, angle) ; purement
+    // visuelle, aucune commande, aucun changement du document.
+    Measure,
+    // Pipette (HP-THR-012) : un clic échantillonne la couleur de l'image et propose les fils
+    // les plus proches du nuancier courant.
+    Eyedropper,
 };
 
 } // namespace openstitch::desktop

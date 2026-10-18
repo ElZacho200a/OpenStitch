@@ -79,6 +79,8 @@ openstitch_add_qt_test(test_machine_export_dialog test_machine_export_dialog.cpp
 # [cablage-B:debut]
 # [cablage-B:fin]
 # [cablage-C:debut]
+openstitch_add_qt_test(test_measure_tool test_measure_tool.cpp)
+openstitch_add_qt_test(test_eyedropper_tool test_eyedropper_tool.cpp)
 # [cablage-C:fin]
 # [cablage-D:debut]
 # [cablage-D:fin]
