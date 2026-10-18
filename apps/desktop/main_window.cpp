@@ -114,6 +114,7 @@
 #include "settings_dialog.hpp"
 #include "ui_icons.hpp"
 #include "ui_memory.hpp"
+#include "ui_swatch.hpp"
 #include "workflow_panel.hpp"
 #include <QCheckBox>
 #include <QCloseEvent>
@@ -4472,12 +4473,11 @@ void MainWindow::autoDigitize() {
             auto* row = new QHBoxLayout;
             auto* swatch = new QLabel(&optsDialog);
             swatch->setObjectName("backgroundSwatch");
-            swatch->setFixedSize(24, 24);
-            swatch->setStyleSheet(QStringLiteral("background-color: rgb(%1,%2,%3); "
-                                                 "border: 1px solid palette(mid);")
-                                      .arg(candidate->rgb[0])
-                                      .arg(candidate->rgb[1])
-                                      .arg(candidate->rgb[2]));
+            // HP-UX-043 : pastille nette à tout DPI, taille déduite de la police.
+            const int swatchSide = optsDialog.fontMetrics().height() + 8;
+            swatch->setFixedSize(swatchSide, swatchSide);
+            swatch->setPixmap(makeSwatch(
+                QColor(candidate->rgb[0], candidate->rgb[1], candidate->rgb[2]), swatchSide));
             auto* info = new QLabel(
                 tr("Région candidate : %1 % de l'image, clarté L* %2, %3 bord(s) touché(s) sur 4")
                     .arg(QLocale().toString(candidate->area_ratio * 100.0, 'f', 1))

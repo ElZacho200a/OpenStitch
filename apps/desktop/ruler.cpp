@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "ruler.hpp"
 
+#include <QEvent>
+#include <QFontMetrics>
 #include <QPaintEvent>
 #include <QPainter>
 
+#include <algorithm>
 #include <cmath>
 
 #include "canvas_view.hpp"
@@ -11,7 +14,6 @@
 namespace openstitch::desktop {
 
 namespace {
-constexpr int kThickness = 26;
 
 double niceLabelStepMm(double pxPerMm) {
     static constexpr double steps[] = {0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500};
@@ -27,20 +29,41 @@ QString formatMm(double mm) {
     return (std::abs(mm - std::round(mm)) < 1e-9) ? QString::number(std::lround(mm))
                                                   : QString::number(mm, 'f', 1);
 }
+
 } // namespace
 
 Ruler::Ruler(Qt::Orientation orientation, CanvasView* view, QWidget* parent)
     : QWidget(parent), orientation_(orientation), view_(view) {
     connect(view_, &CanvasView::viewChanged, this, qOverload<>(&QWidget::update));
-    setFont([] {
-        QFont f;
-        f.setPointSizeF(7.5);
-        return f;
-    }());
+}
+
+// Environ 85 % de la police de l'interface (7,5 pt pour 9 pt auparavant) : la règle suit une
+// police agrandie au lieu de rester à une taille absolue.
+QFont Ruler::rulerFont() const {
+    QFont f = font();
+    if (f.pointSizeF() > 0.0) {
+        f.setPointSizeF(std::max(6.0, f.pointSizeF() * 0.85));
+    } else if (f.pixelSize() > 0) {
+        f.setPixelSize(std::max(8, static_cast<int>(std::lround(f.pixelSize() * 0.85))));
+    }
+    return f;
+}
+
+int Ruler::thickness() const {
+    return QFontMetrics(rulerFont()).height() + 12;
 }
 
 QSize Ruler::sizeHint() const {
-    return orientation_ == Qt::Horizontal ? QSize(0, kThickness) : QSize(kThickness, 0);
+    const int t = thickness();
+    return orientation_ == Qt::Horizontal ? QSize(0, t) : QSize(t, 0);
+}
+
+void Ruler::changeEvent(QEvent* event) {
+    QWidget::changeEvent(event);
+    if (event->type() == QEvent::FontChange || event->type() == QEvent::ApplicationFontChange) {
+        updateGeometry();
+        update();
+    }
 }
 
 void Ruler::paintEvent(QPaintEvent* /*event*/) {
@@ -51,6 +74,14 @@ void Ruler::paintEvent(QPaintEvent* /*event*/) {
     if (pxPerMm <= 0.0) {
         return;
     }
+    painter.setFont(rulerFont());
+    const QFontMetrics fm(painter.font());
+    const int thick = thickness();
+    const int labelHeight = fm.height();
+    const int labelWidth = fm.horizontalAdvance(QStringLiteral("-0000.0")) + 4;
+    const int majorTick = std::max(10, thick * 10 / 26);
+    const int minorTick = std::max(5, majorTick / 2);
+
     const double labelStep = niceLabelStepMm(pxPerMm);
     const double tickStep = labelStep / 5.0;
 
@@ -72,22 +103,23 @@ void Ruler::paintEvent(QPaintEvent* /*event*/) {
             continue;
         }
         const bool isLabel = std::abs(std::remainder(mm, labelStep)) < tickStep * 0.25;
-        const int tickLen = isLabel ? 10 : 5;
+        const int tickLen = isLabel ? majorTick : minorTick;
         if (horizontal) {
-            painter.drawLine(QPointF(px, kThickness), QPointF(px, kThickness - tickLen));
+            painter.drawLine(QPointF(px, thick), QPointF(px, thick - tickLen));
             if (isLabel) {
-                painter.drawText(QRectF(px + 2, 0, 60, kThickness - 8), Qt::AlignLeft,
+                painter.drawText(QRectF(px + 2, 0, labelWidth, thick - 8), Qt::AlignLeft,
                                  formatMm(mm));
             }
         } else {
-            painter.drawLine(QPointF(kThickness, px), QPointF(kThickness - tickLen, px));
+            painter.drawLine(QPointF(thick, px), QPointF(thick - tickLen, px));
             if (isLabel) {
                 painter.save();
-                painter.translate(kThickness - 12, px - 2);
+                painter.translate(thick - labelHeight, px - 2);
                 painter.rotate(-90);
                 // Repère physique : l'axe Y de la scène pointe vers le bas,
                 // la règle affiche donc -mm pour que « vers le haut » soit positif.
-                painter.drawText(QRectF(0, 0, 60, 12), Qt::AlignLeft, formatMm(-mm));
+                painter.drawText(QRectF(0, 0, labelWidth, labelHeight), Qt::AlignLeft,
+                                 formatMm(-mm));
                 painter.restore();
             }
         }

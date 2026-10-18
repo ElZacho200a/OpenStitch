@@ -37,8 +37,13 @@ ImportDialog::ImportDialog(int widthPx, int heightPx, const QImage& preview, QSi
     auto* preview_label = new QLabel(this);
     preview_label->setAlignment(Qt::AlignCenter);
     if (!preview.isNull()) {
-        preview_label->setPixmap(QPixmap::fromImage(preview).scaled(220, 160, Qt::KeepAspectRatio,
-                                                                    Qt::SmoothTransformation));
+        // HP-UX-043 : aperçu à la taille physique (rapport de pixels de l'écran), net en HiDPI.
+        const qreal dpr = devicePixelRatioF();
+        QPixmap thumb = QPixmap::fromImage(preview).scaled(
+            QSize(static_cast<int>(220 * dpr), static_cast<int>(160 * dpr)), Qt::KeepAspectRatio,
+            Qt::SmoothTransformation);
+        thumb.setDevicePixelRatio(dpr);
+        preview_label->setPixmap(thumb);
     }
     root->addWidget(preview_label);
 
