@@ -173,7 +173,7 @@ formulaire ≈ 34 px logiques en densité confortable, ≈ 28 en compacte.
 | UX-10 | Entrée poursuit l'export malgré des risques | HP-UX-032 |
 | UX-13, 45 | vecteurs absents de Document ; repli perdu au rafraîchissement | HP-UX-037 |
 | UX-14, 26, 32 | workflow = lanceur ; erreurs éphémères ; heure de sauvegarde | HP-UX-039 |
-| UX-15, 16 | repli couleur IA, annulation tardive | HP-UX-040 (dépend de HP-PERF-001) |
+| UX-15, 16 | repli couleur IA, annulation tardive | aucune (tâche IA retirée le 2026-10-18 à la demande du mainteneur) |
 | UX-33, 34 | valeurs mixtes, portées de groupe | HP-UX-038 |
 | UX-46 | barre Fils sans clavier | HP-UX-041 |
 
@@ -213,7 +213,7 @@ Constat A (absence vérifiée par recherche) dans `tests/unit/desktop/` (37 fich
 - **`HP-QA-001` (découper `main_window.cpp`, 9595 lignes + 22 fichiers `main_window_*.cpp`)** :
   les lots qui touchent le même fichier (HP-UX-026, 028, 029, 036, 039) gagnent à venir après, ou
   à se limiter à `main_window_workflow.cpp` / `main_window_ux.cpp`, déjà séparés.
-- **`HP-PERF-001`** : HP-PERF-009, HP-UX-040 et la fin d'UX-04. Ne pas coder de threads ad hoc.
+- **`HP-PERF-001`** : HP-PERF-009 et la fin d'UX-04. Ne pas coder de threads ad hoc.
 - **`app_theme.cpp`, `design_tokens.*`, `main_window.cpp`, `CMakeLists.txt`** : fichiers de
   convergence, un seul propriétaire par lot.
 - Parallélisables (fichiers disjoints) : thread_strip, empty_state_widget, text_dialog,
