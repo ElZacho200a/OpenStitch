@@ -10,6 +10,7 @@ add_library(openstitch_formats
     src/pes.cpp
     src/jef.cpp
     src/exp.cpp
+    src/color_companion.cpp
     src/export_limits.cpp
     src/dxf.cpp
     src/svg.cpp

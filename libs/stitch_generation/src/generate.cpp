@@ -3,8 +3,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <variant>
 
+#include "chunk_cache.hpp"
 #include "openstitch/auto_satin/satin_strategy.hpp"
 #include "openstitch/auto_satin/skeleton_satin.hpp"
 #include "openstitch/core/parallel.hpp"
@@ -839,6 +841,12 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
             return;
         }
         stitch::StitchSequence& chunk = chunks[u];
+        // HP-PERF-002 : séquence inchangée depuis le dernier calcul -> servie du cache (clé
+        // exacte : identifiant, paramètres, géométrie source).
+        if (const auto hit = chunk_cache_find(object.id, object.params, unit.source->paths)) {
+            chunk = *hit;
+            return;
+        }
         std::visit(
             [&](const auto& params) {
                 using T = std::decay_t<decltype(params)>;
@@ -851,6 +859,8 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                 }
             },
             object.params);
+        chunk_cache_store(object.id, object.params, unit.source->paths,
+                          std::make_shared<const stitch::StitchSequence>(chunk));
     });
 
     // Phase 3 -- assemblage séquentiel, dans l'ordre de couture.

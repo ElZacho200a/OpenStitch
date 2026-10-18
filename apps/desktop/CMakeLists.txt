@@ -31,6 +31,16 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_analysis.cpp
     main_window_realistic.cpp
     main_window_production.cpp
+    # [cablage-A:debut]
+    # [cablage-A:fin]
+    # [cablage-B:debut]
+    # [cablage-B:fin]
+    # [cablage-C:debut]
+    # [cablage-C:fin]
+    # [cablage-D:debut]
+    # [cablage-D:fin]
+    # [cablage-E:debut]
+    # [cablage-E:fin]
     production_dialog.cpp
     production_dialog.hpp
     realistic_preferences.cpp
