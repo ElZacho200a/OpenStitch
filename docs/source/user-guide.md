@@ -529,7 +529,9 @@ Voir [Lettrage](lettering.md) pour le fonctionnement détaillé.
 Dans le dialogue : police (deux polices intégrées, puis polices installées), hauteur de
 capitale, couleur, type de point (**Automatique** : satin pour les traits fins, tatami pour les
 gros ; **Satin**, **Tatami**, **Contour**), alignement, espaces entre lettres et mots,
-interligne, crénage, position, rotation. L'aperçu montre les contours ; les avertissements
+interligne, crénage de la police, **crénage manuel** (une paire par ligne, par exemple
+`AV: -0,3 mm` : l'écart remplace celui de la police pour cette paire), **ligatures** (ff, fi,
+fl… quand la police les contient), position, rotation. L'aperçu montre les contours ; les avertissements
 (texte sous 5 mm, trait trop fin, lettre cousue en tatami faute de satin possible, caractère
 absent de la police) s'affichent sous l'aperçu et dans le panneau Analyse.
 
@@ -947,7 +949,15 @@ motif aux fils réels. Il a trois onglets ; une ligne en tête rappelle la séle
   nuanciers importés sont conservés d'une session à l'autre et peuvent être retirés. Le
   nuancier **Générique** (couleurs usuelles sans marque) est toujours disponible ; les
   nuanciers de marques intégrés sont des **données de démonstration fictives**, signalées
-  comme telles : importez vos propres cartes de fils.
+  comme telles : importez vos propres cartes de fils. La case **Je possède ce fil** ajoute le
+  fil sélectionné à *Mes fils*.
+- **Mes fils** — votre stock de bobines : les fils cochés « Je possède ce fil » et ceux de votre
+  nuancier personnel (*Ajouter un fil personnel…* : référence, nom, couleur ; *Retirer de mes
+  fils*). La case *Limiter la recherche du fil le plus proche à mes fils* restreint *Fils les
+  plus proches de la sélection* et *Couleurs libres → fil le plus proche* aux fils que vous
+  possédez. Le stock est une préférence personnelle (fichier `my_threads.json` à côté du
+  fichier de réglages), pas une donnée du projet : il n'entre pas dans l'historique d'annulation
+  et n'est pas enregistré dans le `.osp`.
 - **Film couleur** — les blocs de couleur dans l'ordre de couture. Glissez un bloc (ou
   *Monter*/*Descendre*) pour réordonner les couleurs ; les objets dont l'ordre est figé ne
   bougent pas. *Fusionner les blocs de même fil* regroupe les passages d'un même fil pour

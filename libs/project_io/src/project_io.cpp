@@ -26,7 +26,14 @@ namespace {
 
 // Version écrite : v7 seulement si un auto-satin utilise une méthode autre que le squelette
 // (un lecteur v6 la régénérerait en silence avec le squelette).
-int schema_version_for(const std::vector<document::EmbroideryObject>& objects) {
+int schema_version_for(const std::vector<document::EmbroideryObject>& objects,
+                       const std::vector<document::TextObject>& texts = {}) {
+    // v8 : un texte porte un crénage manuel ou des ligatures (jamais pour les fichiers existants).
+    for (const auto& text : texts) {
+        if (!text.kerning_pairs.empty() || text.ligatures) {
+            return kSchemaVersionTextTypography;
+        }
+    }
     for (const auto& object : objects) {
         if (const auto* satin = std::get_if<document::AutoSatinParams>(&object.params)) {
             if (satin->strategy != document::AutoSatinStrategy::Skeleton) {
@@ -117,7 +124,8 @@ Result<void> save_project(const std::filesystem::path& path, const document::Pro
     parallel_for(3, [&](std::size_t task) {
         if (task == 0) {
             nlohmann::json root;
-            root["schemaVersion"] = schema_version_for(project.embroidery_objects);
+            root["schemaVersion"] =
+                schema_version_for(project.embroidery_objects, project.text_objects);
             root["document"] = detail::project_to_json(project);
             jsonText = root.dump(2);
         } else if (task == 1) {

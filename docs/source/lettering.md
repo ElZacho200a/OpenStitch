@@ -109,13 +109,28 @@ satin lettre par lettre. Polices : deux intégrées (Bitstream Vera Sans Gras et
 `resources/fonts/`, licence permissive du même dossier) et les polices installées (dossiers de
 polices du système, énumérés par Qt, fichier passé à la bibliothèque).
 
+### Crénage manuel et ligatures (HP-TXT-007, HP-TXT-012)
+
+Le dialogue porte une liste **Crénage manuel** (une paire par ligne, `AV: -0,3 mm` ; deux
+lettres, deux-points, valeur en millimètres, signe et « mm » facultatifs, virgule décimale
+acceptée, limite ±20 mm) et une case **Ligatures**. Une ligne illisible est **ignorée avec un
+avertissement** (« Ligne N ignorée… »), jamais en silence ; une paire répétée garde la dernière
+valeur. `TextObject::kerning_pairs` / `ligatures` sont convertis en `LayoutOptions`
+(`layoutOptionsFor`, `text_dialog.hpp`) pour l'aperçu, la création, l'édition et le calcul du
+déplacement des lettres ; tout passe par la commande de texte existante (un seul pas
+d'annulation). Persistance : schéma `.osp` v8, **conditionnel** (voir *Format de projet*) ;
+champs vides = comportement et points d'avant. Les appelants hors interface qui reconstruisent
+un texte (`project_ops`, correctif d'analyse « agrandir le texte ») doivent passer les mêmes
+options pour un texte qui porte un crénage manuel.
+
 ## Limites connues
 
 - Texte sur ligne droite seulement (bases arc/cercle/chemin : HP-TXT-005, enveloppes : 006).
 - Pas de HarfBuzz : crénage `kern` seulement (pas GPOS), pas de façonnage contextuel (arabe,
   écritures indiennes), pas de ligatures de la police autres que f. Les glyphes absents sont
-  signalés. Le crénage manuel par paire et les ligatures existent dans le cœur
-  (`LayoutOptions`) mais ne sont pas stockés dans `TextObject` ni exposés dans l'interface.
+  signalés. Le crénage manuel par paire et les ligatures sont stockés dans `TextObject`
+  (`kerning_pairs`, `ligatures`) et saisis dans le dialogue (voir *Crénage manuel et ligatures*) ;
+  seules les ligatures f sont gérées, et seulement si la police porte les glyphes U+FB00…FB04.
 - Pas d'édition d'une lettre isolée conservée à la régénération (HP-TXT-008), pas de connecteurs
   optimisés entre lettres (HP-TXT-014) : l'ordre est celui de la lecture, le routage est celui des objets ordinaires.
 - Pas de polices de broderie prénumérisées (HP-TXT-002).

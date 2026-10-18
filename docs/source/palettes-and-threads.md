@@ -222,10 +222,22 @@ manquant, `rgb` hors 0..255 ou non entier, doublon → `InvalidFile` ; `version`
 `UnsupportedFormat`). `thread_palette` ne lie aucune bibliothèque tierce : le lecteur JSON
 est un mini-parseur interne. Le fichier est destiné aux préférences utilisateur, pas au `.osp`.
 
-**Reste** (IHM, `apps/desktop`) : cases « je possède » dans le panneau Fils, bascule
-« limiter au stock » du fil le plus proche, éditeur du nuancier personnel, emplacement du
-fichier dans les préférences ; import/export de formats tiers (`.thr`, `.rgb`, `.edr`, `.gpl`)
-non fait (le CSV existant couvre `parse_chart_csv`).
+**IHM** (`apps/desktop`) : onglet **Mes fils** du panneau Fils (liste des fils possédés et
+personnels, bascule *Limiter la recherche du fil le plus proche à mes fils*, *Ajouter un fil
+personnel…* — référence, nom, couleur —, *Retirer de mes fils*) et case **Je possède ce fil**
+sous la liste des catalogues. Le stock est une **préférence utilisateur**, jamais dans le
+`.osp` : fichier `my_threads.json` dans le dossier du fichier de réglages
+(`threadStockFilePath()`, `app_settings.*`), écriture atomique à chaque modification, relu au
+lancement ; un fichier illisible est conservé sous `my_threads.json.invalide` (jamais écrasé
+en silence) et signalé dans la barre d'état. La bascule est mémorisée (`threads/limitToStock`).
+Éditer le stock ne passe pas par l'annulation (aucune donnée du document) ; l'assignation d'un
+fil à un objet reste `SetObjectThreadCommand`. Avec la bascule cochée, « Fils les plus proches de
+la sélection » et « Couleurs libres → fil le plus proche » ne proposent que des fils du stock
+(le nuancier choisi est alors ignoré) ; un stock vide l'indique au lieu de ne rien faire.
+
+**Reste** : import/export de formats tiers (`.thr`, `.rgb`, `.edr`, `.gpl`) non fait (le CSV
+existant couvre `parse_chart_csv`) ; pas d'édition d'un fil personnel existant (le ré-ajouter
+avec le même code le remplace).
 
 ## Pipette : échantillon de couleur vers fil (HP-THR-012, cœur)
 
@@ -245,13 +257,13 @@ son fil » (l'identité du fil d'un objet est déjà dans le document, HP-THR-00
 ## Panneau Fils
 
 `apps/desktop/thread_panel.*` (présentation seule) + `main_window_threads.cpp`
-(câblage, aucune règle métier) : onglets *Projet*, *Catalogues* et *Film couleur*, menu
+(câblage, aucune règle métier) : onglets *Projet*, *Catalogues*, *Mes fils* et *Film couleur*, menu
 *Fils* (voir le *Guide utilisateur*). Clic sur un fil du catalogue = assigner à la
 sélection (objets de broderie sélectionnés, ou ceux des formes sélectionnées).
 
 ## Ce qui n'existe pas encore
 
-- Pas de câblage IHM de « Mes fils » (cœur livré, voir section dédiée ; HP-THR-007) ;
+- Pas d'import de formats de stock tiers dans « Mes fils » (voir section dédiée ; HP-THR-007) ;
 - pas de coloris multiples (HP-THR-006), de poids/type de fil (HP-THR-009) ni d'outil
   pipette dans l'IHM (cœur livré, HP-THR-012) ;
 - les noms/références de fils sont portés par le `.osp`, la liste CSV et la future fiche

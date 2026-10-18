@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "openstitch/core/ids.hpp"
 #include "openstitch/core/units.hpp"
@@ -44,6 +45,16 @@ struct TextFontRef {
     bool operator==(const TextFontRef&) const = default;
 };
 
+// Crénage manuel d'une paire de caractères (HP-TXT-007). `adjust` REMPLACE le crénage de
+// la police pour la paire (µm, signé ; négatif = rapproche). Voir lettering::KerningOverride.
+struct KerningPair {
+    char32_t left{0};
+    char32_t right{0};
+    Micrometers adjust{};
+
+    bool operator==(const KerningPair&) const = default;
+};
+
 // Objet TEXTE (HP-TXT-001) : l'INTENTION de lettrage. Les contours des lettres
 // (objets vectoriels annotés `text_owner`) et leurs objets de broderie sont
 // des dérivés matérialisés dans le projet, remplacés en un seul pas
@@ -60,6 +71,11 @@ struct TextObject {
     Micrometers word_spacing{0};    // ajout à chaque espace
     double line_spacing{1.5};       // interligne, en multiple de la hauteur de capitale
     bool kerning{true};             // crénage de la police (table `kern`)
+    // Crénage manuel par paire (HP-TXT-007) : vide = comportement historique. Ordre conservé ;
+    // pour une paire répétée, la première entrée s'applique (le dialogue n'en produit pas).
+    std::vector<KerningPair> kerning_pairs;
+    // Ligatures f (ff, fi, fl, ffi, ffl) quand la police les porte (HP-TXT-012).
+    bool ligatures{false};
     TextAlign align{TextAlign::Left};
     Micrometers justify_width{0}; // largeur cible des lignes en mode Justify
 
