@@ -1328,6 +1328,45 @@ private:
     // pour lequel elle a été construite.
     std::uint64_t documentGeneration_{0};
 
+    // --- HP-PERF-009 : régénération différée à l'édition de paramètres -----------------------
+    // La commande d'annulation (fusionnée) est appliquée tout de suite ; la régénération des
+    // points attend 150 ms d'inactivité puis se calcule hors du fil d'interface, sur un instantané
+    // du projet (`stitch_generation::refresh_context`, la même fonction que la voie synchrone :
+    // sortie octet pour octet identique). L'aperçu précédent reste affiché pendant le calcul ;
+    // un résultat périmé (nouvelle édition, undo, autre mutation : tous passent par
+    // `refreshImage`) est rejeté.
+    static constexpr int kParamsRefreshDelayMs = 150;
+    struct AsyncRefresh;
+    // Après une édition appliquée au document : met à jour les indicateurs immédiats puis
+    // arme (ou réarme) le débounce. Remplace `refreshImage()` dans les chemins d'édition de
+    // paramètres.
+    void scheduleParamsRefresh();
+    // Exécute TOUT DE SUITE et de façon synchrone la régénération en attente (export, analyse,
+    // statistiques, simulation, tests...) ; sans effet si rien n'attend.
+    void flushPendingRefresh();
+    void startAsyncRefresh();
+    void pollAsyncRefresh();
+    void commitCreationMemory();
+    QTimer* paramsRefreshTimer_{nullptr};
+    QTimer* asyncPollTimer_{nullptr};
+    bool paramsRefreshPending_{false};
+    std::uint64_t refreshSerial_{0};
+    int refreshCount_{0}; // nombre de passages dans refreshImage (compteur de tests)
+    std::shared_ptr<AsyncRefresh> asyncRefresh_;
+    std::optional<stitch_generation::RefreshContext> precomputedContext_;
+    std::optional<document::StitchParams> pendingCreationMemory_;
+    std::function<void()> refreshWorkerHook_; // test seulement : exécuté dans le fil de calcul
+
+    // HP-UX-029 : retouches manuelles qu'une édition de paramètres vient de désactiver.
+    struct OverrideWarning {
+        ObjectId id;
+        int count{0};
+        document::StitchParams before; // paramètres d'avant l'édition (undo => bandeau retiré)
+    };
+    std::optional<OverrideWarning> overrideWarning_;
+    void noteOverridesInvalidated(ObjectId id, const document::StitchParams& before);
+    void refreshOverrideWarning();
+
     // Analyse.
     QDockWidget* analysisDock_{nullptr};
     QListWidget* analysisList_{nullptr};

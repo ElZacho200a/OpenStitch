@@ -491,6 +491,7 @@ void MainWindow::runAnalysis() {
 
 void MainWindow::runAnalysisInternal(bool explicitRequest) {
     analysisTimer_->stop();
+    flushPendingRefresh(); // HP-PERF-009 : l'analyse décrit le motif à jour, jamais un périmé
     if (!sequence_) {
         if (explicitRequest) {
             QMessageBox::information(this, tr("Analyse"),

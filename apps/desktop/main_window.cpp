@@ -3037,6 +3037,15 @@ void MainWindow::addVectorPrimitive(geometry::Path path, const QString& name) {
 }
 
 void MainWindow::refreshImage() {
+    // HP-PERF-009 : ce rafraîchissement couvre toute édition différée en attente et rend caduc un
+    // calcul hors fil encore en route (sa série ne correspondra plus).
+    ++refreshSerial_;
+    ++refreshCount_;
+    paramsRefreshPending_ = false;
+    if (paramsRefreshTimer_ != nullptr) {
+        paramsRefreshTimer_->stop();
+    }
+    commitCreationMemory();
     applyCanvasToView(); // taille du cadre (peut avoir changé : réglage, undo, chargement)
     // Marqueur « modifié » dérivé de la pile d'annulation (et non forcé à true) :
     // un undo qui revient à l'état enregistré rend le document propre.
@@ -3102,13 +3111,21 @@ void MainWindow::refreshImage() {
         // rien calculer ici quand embroidery_objects est vide ou qu'une
         // séquence importée est affichée -- editStates_/stitchEditView_
         // resteraient de toute façon vides/absents dans ces cas.
-        if (auto ctx = stitch_generation::refresh_context(project_, stitchEditTarget_)) {
-            sequence_ = std::move(ctx->effective);
-            editStates_ = std::move(ctx->edit_states);
-            if (ctx->target_view &&
-                ctx->target_view->state != stitch_generation::ObjectEditState::Dirty) {
-                stitchEditView_ = std::move(*ctx->target_view);
+        const auto adopt = [this](stitch_generation::RefreshContext&& ctx) {
+            sequence_ = std::move(ctx.effective);
+            editStates_ = std::move(ctx.edit_states);
+            if (ctx.target_view &&
+                ctx.target_view->state != stitch_generation::ObjectEditState::Dirty) {
+                stitchEditView_ = std::move(*ctx.target_view);
             }
+        };
+        if (precomputedContext_) {
+            // Calculé hors du fil d'interface par la même fonction, sur le même document
+            // (HP-PERF-009) : sortie identique à la voie synchrone ci-dessous.
+            adopt(std::move(*precomputedContext_));
+            precomputedContext_.reset();
+        } else if (auto ctx = stitch_generation::refresh_context(project_, stitchEditTarget_)) {
+            adopt(std::move(*ctx));
         } else {
             statusBar()->showMessage(tr("Génération des points impossible : %1")
                                          .arg(QString::fromStdString(ctx.error().message)));
@@ -7039,6 +7056,8 @@ void MainWindow::buildPropertiesPanel() {
                 }
                 // Le champ nomme le pas d'historique et sert de clé de fusion : une
                 // rafale (molette, flèches du spinbox) reste un seul pas d'annulation.
+                // La commande est appliquée TOUT DE SUITE ; seule la régénération des points
+                // est différée (HP-PERF-009).
                 undoStack_.execute(std::make_unique<commands::SetStitchParamsCommand>(
                                        id, std::move(params), field.toStdString()),
                                    project_);
@@ -7048,16 +7067,16 @@ void MainWindow::buildPropertiesPanel() {
                     propertiesPanel_->adoptParams(id, now->params);
                     pendingCreationMemory_ = now->params; // dernier réglage, mémorisé au débounce
                 }
-                refreshImage();
-                // updateActions() (pas updateInspector() seul) : un changement de
-                // paramètres peut faire passer un objet retouché à Dirty (Lot 8.2)
-                // -- undo/redo, mode d'édition des points et indicateurs doivent
-                // suivre. Ne reconstruit PAS le formulaire de paramètres (qui
-                // perdrait le focus en cours de frappe) : le garde-fou
-                // kind==inspectedKind_/id==inspectedId_ dans updateInspector()
-                // s'applique toujours, seul l'état Clean/ManuallyEdited/Dirty
-                // (mis à jour avant ce garde-fou) peut changer ici.
-                updateActions();
+                // scheduleParamsRefresh() appelle updateActions() (pas updateInspector() seul) :
+                // un changement de paramètres peut faire passer un objet retouché à Dirty
+                // (Lot 8.2) -- undo/redo, mode d'édition des points et indicateurs doivent
+                // suivre. Ne reconstruit PAS le formulaire de paramètres (qui perdrait le
+                // focus en cours de frappe) : le garde-fou kind==inspectedKind_/id==
+                // inspectedId_ dans updateInspector() s'applique toujours. La régénération
+                // des points (et donc l'état Clean/ManuallyEdited/Dirty) suit 150 ms après la
+                // dernière édition, hors du fil d'interface.
+                scheduleParamsRefresh();
+                refreshOverrideWarning();
             });
     connect(propertiesPanel_, &PropertiesPanel::discardOverridesRequested, this,
             &MainWindow::discardOverrides);
@@ -7930,6 +7949,7 @@ void MainWindow::updateSimulationRange() {
 }
 
 void MainWindow::toggleSimulation(/* play */) {
+    flushPendingRefresh();
     if (!sequence_ || sequence_->commands.empty()) {
         simPlayAct_->setChecked(false);
         return;
@@ -8033,6 +8053,7 @@ QString statsSummaryText(const stitch::StitchStats& stats) {
 } // namespace
 
 void MainWindow::showStatistics() {
+    flushPendingRefresh();
     if (!sequence_) {
         statusBar()->showMessage(tr("Statistiques indisponibles : générez d'abord des points."),
                                  6000);
@@ -8434,6 +8455,7 @@ void MainWindow::applyLoadedProject(document::Project project) {
 }
 
 void MainWindow::exportDst() {
+    flushPendingRefresh(); // HP-PERF-009 : jamais d'export d'une séquence périmée
     if (!sequence_) {
         return;
     }

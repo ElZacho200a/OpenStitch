@@ -192,9 +192,9 @@ void MainWindow::applyGroupParams(const QString& field,
         return;
     }
     undoStack_.execute(std::move(composite), project_);
-    // Le formulaire montre le représentant : il reste cohérent sans reconstruction.
-    refreshImage();
-    updateActions();
+    // Le formulaire montre le représentant : il reste cohérent sans reconstruction. La
+    // régénération des points est différée de 150 ms (HP-PERF-009), comme pour un seul objet.
+    scheduleParamsRefresh();
 }
 
 void MainWindow::applyGroupGuideAngle(double angleDeg, bool absolute) {
@@ -530,8 +530,7 @@ void MainWindow::applyToSelection(int stitchType, bool setSpacing, double spacin
         return;
     }
     undoStack_.execute(std::move(composite), project_);
-    refreshImage();
-    updateActions();
+    scheduleParamsRefresh(); // champs en direct : une rafale = une régénération (HP-PERF-009)
     statusBar()->showMessage(
         tr("Réglages appliqués à %1 objets (une seule étape annulable).").arg(ids.size()));
 }
