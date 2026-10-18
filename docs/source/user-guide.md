@@ -502,6 +502,17 @@ d'annulation** et garde les objets de broderie de la forme conservée.
   broderie** (tatami, directionnel, auto-satin ; les satins à rails et les retouches manuelles
   point par point ne sont pas copiés). La coupe retire une bande de 0,02 mm, sans effet sur la
   couture.
+- **Lisser…** — pour les formes sélectionnées, réduit le nombre de nœuds et remplace les parties
+  arrondies par des courbes de Bézier, sans s'écarter du tracé d'origine de plus de la tolérance
+  demandée (0,2 mm par défaut ; coins francs et extrémités des tracés ouverts conservés). Une
+  forme déjà lisse ou trop simple est laissée telle quelle ; si rien ne change, un message le dit.
+- **Convertir en courbes** — arrondit les sommets doux des polygones sélectionnés en courbes qui
+  passent par les mêmes points ; les coins francs (angle de plus de 60°) restent des coins.
+  Lisser comme Convertir s'appliquent à toute la sélection en **un seul pas d'annulation**.
+- **Formes prédéfinies** — sous-menu qui insère, au centre de la vue, une **étoile** (nombre de
+  branches au choix), un **cœur**, une **flèche**, un **rectangle arrondi**, un **arc** ou une
+  **spirale**. La taille (40 mm par défaut) est demandée ; la forme créée est un objet vectoriel
+  ordinaire, sélectionné et annulable, que l'on convertit ensuite en broderie comme les autres.
 
 ## Menu Texte (lettrage)
 

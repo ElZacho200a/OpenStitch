@@ -438,6 +438,7 @@ MainWindow::MainWindow() {
     // [cablage-A:debut]
     // [cablage-A:fin]
     // [cablage-B:debut]
+    buildVectorToolsMenu();
     // [cablage-B:fin]
     // [cablage-C:debut]
     // [cablage-C:fin]

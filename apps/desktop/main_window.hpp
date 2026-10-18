@@ -1119,6 +1119,19 @@ private:
     // [cablage-A:debut]
     // [cablage-A:fin]
     // [cablage-B:debut]
+    // Outils de tracé : Lisser, Convertir en courbes, formes prédéfinies
+    // (main_window_vector_tools.cpp, HP-VEC-007 / 008 / 014).
+    enum class PresetShape { Star, Heart, Arrow, RoundedRectangle, Arc, Spiral };
+    void buildVectorToolsMenu();
+    void updateVectorToolActions();
+    void smoothSelection(Micrometers tolerance);
+    void convertSelectionToCurves();
+    // `sizeMm` : dimension principale de la forme ; `starPoints` : branches de l'étoile.
+    void insertPresetShape(PresetShape shape, double sizeMm, int starPoints = 5);
+    void promptPresetShape(PresetShape shape);
+    QAction* smoothAct_{nullptr};
+    QAction* convertToCurvesAct_{nullptr};
+    QMenu* presetShapesMenu_{nullptr};
     // [cablage-B:fin]
     // [cablage-C:debut]
     // [cablage-C:fin]

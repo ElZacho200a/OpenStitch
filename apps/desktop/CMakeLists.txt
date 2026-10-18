@@ -34,6 +34,7 @@ add_library(openstitch_desktop_widgets STATIC
     # [cablage-A:debut]
     # [cablage-A:fin]
     # [cablage-B:debut]
+    main_window_vector_tools.cpp
     # [cablage-B:fin]
     # [cablage-C:debut]
     # [cablage-C:fin]
