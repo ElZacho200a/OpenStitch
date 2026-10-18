@@ -1,9 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "thread_strip.hpp"
 
+#include <QAccessible>
+#include <QAction>
 #include <QApplication>
+#include <QFocusEvent>
 #include <QFontMetrics>
 #include <QHelpEvent>
+#include <QIcon>
+#include <QKeyEvent>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QToolTip>
@@ -12,6 +18,7 @@
 #include <cmath>
 
 #include "app_theme.hpp"
+#include "ui_swatch.hpp"
 
 namespace openstitch::desktop {
 
@@ -27,6 +34,7 @@ constexpr int kLabelGap = 12; // espace entre « Fils » et la première pastill
 ThreadStrip::ThreadStrip(QWidget* parent) : QWidget(parent) {
     setObjectName(QStringLiteral("threadStrip"));
     setMouseTracking(true);
+    setFocusPolicy(Qt::StrongFocus);
     setAccessibleName(tr("Fils du motif"));
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     connect(&AppTheme::instance(), &AppTheme::changed, this, [this] { update(); });
@@ -37,6 +45,7 @@ void ThreadStrip::setThreads(std::vector<Swatch> swatches, const QString& summar
     summary_ = summary;
     hovered_ = -1;
     endDrag();
+    focus_ = std::clamp(focus_, 0, std::max(0, threadCount() - 1));
     update();
 }
 
@@ -63,9 +72,31 @@ int ThreadStrip::visibleCount() const {
     const QFontMetrics fm(font());
     const int summaryWidth = summary_.isEmpty() ? 0 : fm.horizontalAdvance(summary_) + kMargin * 2;
     const qreal first = swatchRect(0).left();
-    const qreal available = width() - summaryWidth - kMargin - first;
-    const int fit = std::max(0, int((available + kGap) / (kDot + kGap)));
+    qreal available = width() - summaryWidth - kMargin - first;
+    int fit = std::max(0, int((available + kGap) / (kDot + kGap)));
+    if (fit < threadCount()) {
+        // Tout ne tient pas : la case « +N » prend sa place à la suite des pastilles.
+        const int chip = fm.horizontalAdvance(QStringLiteral("+%1").arg(threadCount())) + 16;
+        available -= chip + kGap;
+        fit = std::max(0, int((available + kGap) / (kDot + kGap)));
+    }
     return std::min(fit, threadCount());
+}
+
+int ThreadStrip::hiddenCount() const {
+    return threadCount() - visibleCount();
+}
+
+QRectF ThreadStrip::moreRect() const {
+    const QFontMetrics fm(font());
+    const int shown = visibleCount();
+    const qreal width = fm.horizontalAdvance(QStringLiteral("+%1").arg(hiddenCount())) + 16;
+    const qreal x = swatchRect(0).left() + shown * (kDot + kGap);
+    return {x, (height() - kDot) / 2.0, width, double(kDot)};
+}
+
+bool ThreadStrip::moreAt(const QPointF& pos) const {
+    return hiddenCount() > 0 && moreRect().adjusted(-kGap / 2.0, -4, kGap / 2.0, 4).contains(pos);
 }
 
 int ThreadStrip::indexAt(const QPointF& pos) const {
@@ -134,6 +165,11 @@ void ThreadStrip::paintEvent(QPaintEvent*) {
         p.setPen(QPen(t.borderStrong, 1));
         p.drawEllipse(r.adjusted(0.5, 0.5, -0.5, -0.5));
         p.setOpacity(1.0);
+        if (hasFocus() && i == focus_) {
+            p.setBrush(Qt::NoBrush);
+            p.setPen(QPen(t.accent, 2, Qt::DashLine));
+            p.drawEllipse(r.adjusted(-4, -4, 4, 4));
+        }
     }
     if (dragging_ && pressed_ >= 0 && pressed_ < shown && dropSlot_ >= 0) {
         // Repère d'insertion : du côté où la pastille arrive, puis la pastille suit le curseur.
@@ -152,12 +188,19 @@ void ThreadStrip::paintEvent(QPaintEvent*) {
         p.setOpacity(1.0);
     }
     const int hidden = threadCount() - shown;
-    QString right = summary_;
     if (hidden > 0) {
-        right = tr("+%1 · %2").arg(hidden).arg(summary_);
+        // Case « +N » : ouvre la liste complète des fils (clic, Entrée ou Espace).
+        const QRectF chip = moreRect();
+        p.setPen(QPen(hasFocus() && focus_ == shown ? t.accent : t.borderStrong,
+                      hasFocus() && focus_ == shown ? 2 : 1));
+        p.setBrush(Qt::NoBrush);
+        p.drawRoundedRect(chip, kDot / 2.0, kDot / 2.0);
+        p.setPen(t.textSecondary);
+        p.drawText(chip, Qt::AlignCenter, QStringLiteral("+%1").arg(hidden));
     }
     p.setPen(t.textSecondary);
-    p.drawText(QRectF(0, 0, width() - kMargin, height()), Qt::AlignVCenter | Qt::AlignRight, right);
+    p.drawText(QRectF(0, 0, width() - kMargin, height()), Qt::AlignVCenter | Qt::AlignRight,
+               summary_);
 }
 
 void ThreadStrip::mouseMoveEvent(QMouseEvent* event) {
@@ -184,13 +227,23 @@ void ThreadStrip::mouseMoveEvent(QMouseEvent* event) {
 
 void ThreadStrip::mousePressEvent(QMouseEvent* event) {
     if (event->button() == Qt::LeftButton) {
-        pressed_ = indexAt(event->position());
+        pressedMore_ = moreAt(event->position());
+        pressed_ = pressedMore_ ? -1 : indexAt(event->position());
         pressPos_ = event->position();
         dragging_ = false;
     }
 }
 
 void ThreadStrip::mouseReleaseEvent(QMouseEvent* event) {
+    if (event->button() == Qt::LeftButton && pressedMore_) {
+        pressedMore_ = false;
+        if (moreAt(event->position())) {
+            focus_ = visibleCount();
+            announceFocus();
+            showOverflowMenu();
+        }
+        return;
+    }
     if (event->button() != Qt::LeftButton || pressed_ < 0) {
         return;
     }
@@ -216,6 +269,100 @@ void ThreadStrip::leaveEvent(QEvent*) {
         unsetCursor();
     }
     update();
+}
+
+QMenu* ThreadStrip::showOverflowMenu() {
+    if (overflowMenu_ == nullptr) {
+        overflowMenu_ = new QMenu(this);
+        overflowMenu_->setObjectName(QStringLiteral("threadStripOverflowMenu"));
+    }
+    overflowMenu_->clear();
+    for (int i = 0; i < threadCount(); ++i) {
+        const auto& swatch = swatches_[std::size_t(i)];
+        const QString label = swatch.tooltip.section(QLatin1Char('\n'), 0, 0);
+        auto* action = overflowMenu_->addAction(
+            QIcon(makeSwatch(swatch.color, 16)),
+            tr("%1. %2").arg(i + 1).arg(label.isEmpty() ? tr("Fil") : label));
+        connect(action, &QAction::triggered, this, [this, i] { emit threadClicked(i); });
+    }
+    overflowMenu_->popup(mapToGlobal(QPoint(int(moreRect().left()), height())));
+    return overflowMenu_;
+}
+
+void ThreadStrip::keyPressEvent(QKeyEvent* event) {
+    const int shown = visibleCount();
+    const bool hasMore = hiddenCount() > 0;
+    const int lastSlot =
+        shown + (hasMore ? 1 : 0) - 1; // dernier arrêt : la case « +N » si elle existe
+    if (threadCount() == 0 || lastSlot < 0) {
+        QWidget::keyPressEvent(event);
+        return;
+    }
+    focus_ = std::clamp(focus_, 0, lastSlot);
+    const bool ctrl = event->modifiers().testFlag(Qt::ControlModifier);
+    switch (event->key()) {
+    case Qt::Key_Left:
+    case Qt::Key_Right: {
+        const int step = event->key() == Qt::Key_Left ? -1 : 1;
+        const int target = std::clamp(focus_ + step, 0, lastSlot);
+        if (ctrl && focus_ < shown && target < shown && target != focus_) {
+            // Réordonner au clavier : même signal qu'un glisser-déposer.
+            const int from = focus_;
+            focus_ = target;
+            emit threadMoved(from, target);
+        } else if (!ctrl) {
+            focus_ = target;
+        }
+        break;
+    }
+    case Qt::Key_Home:
+        focus_ = 0;
+        break;
+    case Qt::Key_End:
+        focus_ = lastSlot;
+        break;
+    case Qt::Key_Return:
+    case Qt::Key_Enter:
+    case Qt::Key_Space:
+        if (focus_ >= shown) {
+            showOverflowMenu();
+        } else {
+            emit threadClicked(focus_);
+        }
+        break;
+    default:
+        QWidget::keyPressEvent(event);
+        return;
+    }
+    announceFocus();
+    update();
+}
+
+void ThreadStrip::focusInEvent(QFocusEvent* event) {
+    QWidget::focusInEvent(event);
+    announceFocus();
+    update();
+}
+
+void ThreadStrip::focusOutEvent(QFocusEvent* event) {
+    QWidget::focusOutEvent(event);
+    update();
+}
+
+// Nom et code du fil focalisé (première ligne de l'info-bulle) dans la description accessible.
+void ThreadStrip::announceFocus() {
+    QString description;
+    if (threadCount() > 0 && focus_ < visibleCount()) {
+        const QString label =
+            swatches_[std::size_t(focus_)].tooltip.section(QLatin1Char('\n'), 0, 0);
+        description = tr("Fil %1 sur %2 : %3").arg(focus_ + 1).arg(threadCount()).arg(label);
+    } else if (hiddenCount() > 0) {
+        description = tr("Plus de fils : %1 autres. Entrée pour afficher la liste complète.")
+                          .arg(hiddenCount());
+    }
+    setAccessibleDescription(description);
+    QAccessibleEvent changed(this, QAccessible::DescriptionChanged);
+    QAccessible::updateAccessibility(&changed);
 }
 
 bool ThreadStrip::event(QEvent* e) {

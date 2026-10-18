@@ -64,6 +64,7 @@
 #include "ai_segmentation_dialog.hpp"
 #include "app_settings.hpp"
 #include "app_theme.hpp"
+#include "autodigitize_presets.hpp"
 #include "autosave.hpp"
 #include "brightness_dialog.hpp"
 #include "busy_indicator.hpp"
@@ -116,6 +117,7 @@
 #include "settings_dialog.hpp"
 #include "ui_icons.hpp"
 #include "ui_memory.hpp"
+#include "ui_swatch.hpp"
 #include "workflow_panel.hpp"
 #include <QCheckBox>
 #include <QCloseEvent>
@@ -586,6 +588,15 @@ MainWindow::MainWindow() {
     // la largeur minimale de la fenêtre.
     cursorLabel_ = new ElidedTextLabel(this);
     statusBar()->addPermanentWidget(cursorLabel_);
+    // Taille du cadre en permanence, cliquable : ouvre « Taille du cadre… » (HP-UX-033).
+    hoopStatusButton_ = new QToolButton(this);
+    hoopStatusButton_->setObjectName(QStringLiteral("button_hoopStatus"));
+    hoopStatusButton_->setAutoRaise(true);
+    hoopStatusButton_->setToolTip(tr("Taille du cadre de broderie : cliquer pour la modifier."));
+    hoopStatusButton_->setAccessibleName(tr("Taille du cadre"));
+    connect(hoopStatusButton_, &QToolButton::clicked, this, &MainWindow::setHoopSize);
+    statusBar()->addPermanentWidget(hoopStatusButton_);
+    applyCanvasToView(); // libellé initial
     // Bascule d'accroche des nœuds visible en permanence (même état que l'entrée du menu
     // Affichage) : sans elle, savoir si le glisser va s'accrocher exige d'ouvrir le menu.
     if (snapNodesAct_ != nullptr) {
@@ -792,6 +803,13 @@ void MainWindow::buildMenus() {
     exportDstAct_ = fileMenu->addAction(tr("&Exporter une broderie machine…"));
     exportDstAct_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_E));
     connect(exportDstAct_, &QAction::triggered, this, &MainWindow::exportDst);
+    exportDstQuickAct_ = fileMenu->addAction(tr("Exporter &avec les derniers réglages"));
+    exportDstQuickAct_->setObjectName(QStringLiteral("action_exportQuick"));
+    exportDstQuickAct_->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_E));
+    exportDstQuickAct_->setToolTip(
+        tr("Exporte tout de suite avec le format et les options du dernier export, sans "
+           "résumé : seul le nom du fichier est demandé."));
+    connect(exportDstQuickAct_, &QAction::triggered, this, &MainWindow::exportDstQuick);
     buildProductionMenu(fileMenu);
     auto* importDstAct = fileMenu->addAction(tr("&Importer une broderie machine…"));
     connect(importDstAct, &QAction::triggered, this, &MainWindow::importDst);
@@ -1508,7 +1526,13 @@ void MainWindow::openImageFile(const QString& file) {
         return;
     }
 
-    const auto canvas = project_.canvas; // même cadre que celui proposé dans ImportDialog
+    auto canvas = project_.canvas; // même cadre que celui proposé dans ImportDialog
+    if (dialog.hoopChanged()) {
+        // HP-UX-033 : le cadre choisi dans l'import devient celui du projet (marge conservée).
+        canvas.width = to_micrometers(Millimeters{dialog.hoopMm().width()});
+        canvas.height = to_micrometers(Millimeters{dialog.hoopMm().height()});
+        rememberCanvas(canvas);
+    }
     project_ = document::Project{};
     project_.canvas = canvas;
     project_.mm_per_px = document::mm_per_pixel(*placement, loaded->width);
@@ -1901,6 +1925,10 @@ void MainWindow::applyCanvasToView() {
         view_->setCanvasSizeMm(want);
     }
     view_->setUsableMarginMm(to_millimeters(project_.canvas.margin).value);
+    if (hoopStatusButton_ != nullptr) {
+        hoopStatusButton_->setText(
+            tr("Cadre %1 × %2 mm").arg(want.width(), 0, 'f', 0).arg(want.height(), 0, 'f', 0));
+    }
 }
 
 void MainWindow::positionEmptyState() {
@@ -4419,7 +4447,9 @@ void MainWindow::autoDigitize() {
         hasSegmentation ? (!project_.embroidery_objects.empty() || !project_.vector_objects.empty())
                         : !project_.embroidery_objects.empty();
     bool replacePrevious = false;
-    if (alreadyDigitized) {
+    // Chemin segmentation : la question Ajouter / Remplacer est posée DANS le dialogue d'options
+    // (une seule fenêtre, HP-UX-030). Le chemin SVG n'a pas de dialogue d'options : question seule.
+    if (alreadyDigitized && !hasSegmentation) {
         QMessageBox box(
             QMessageBox::Question, tr("Numérisation automatique"),
             tr("Des objets existent déjà. Ajouter les nouveaux objets à côté des existants, ou "
@@ -4471,6 +4501,23 @@ void MainWindow::autoDigitize() {
         QDialog optsDialog(this);
         optsDialog.setWindowTitle(tr("Numérisation automatique"));
         auto* optsLayout = new QVBoxLayout(&optsDialog);
+        // Préréglages (HP-UX-030) : remplissent les champs ci-dessous, rien de plus.
+        auto* presetRow = new QHBoxLayout;
+        auto* presetCombo = new QComboBox(&optsDialog);
+        presetCombo->setObjectName("autoDigitizePresetCombo");
+        presetCombo->setAccessibleName(tr("Préréglage de numérisation"));
+        presetCombo->addItem(tr("Personnalisé"), static_cast<int>(DigitizePreset::Custom));
+        presetCombo->addItem(tr("Logo / aplats"), static_cast<int>(DigitizePreset::Logo));
+        presetCombo->addItem(tr("Dessin au trait"), static_cast<int>(DigitizePreset::LineArt));
+        presetCombo->addItem(tr("Photo / pointillé"), static_cast<int>(DigitizePreset::Photo));
+        presetCombo->setToolTip(tr(
+            "Un préréglage remplit les réglages de ce dialogue ; vous pouvez ensuite les "
+            "ajuster dans « Réglages avancés » (le préréglage passe alors à « Personnalisé »)."));
+        auto* presetLabel = new QLabel(tr("Type d'image :"), &optsDialog);
+        presetLabel->setBuddy(presetCombo);
+        presetRow->addWidget(presetLabel);
+        presetRow->addWidget(presetCombo, 1);
+        optsLayout->addLayout(presetRow);
         auto* skipBgCheck =
             new QCheckBox(tr("Ignorer la plus grande région (probablement le fond)"), &optsDialog);
         skipBgCheck->setObjectName("skipBackgroundCheck");
@@ -4496,12 +4543,11 @@ void MainWindow::autoDigitize() {
             auto* row = new QHBoxLayout;
             auto* swatch = new QLabel(&optsDialog);
             swatch->setObjectName("backgroundSwatch");
-            swatch->setFixedSize(24, 24);
-            swatch->setStyleSheet(QStringLiteral("background-color: rgb(%1,%2,%3); "
-                                                 "border: 1px solid palette(mid);")
-                                      .arg(candidate->rgb[0])
-                                      .arg(candidate->rgb[1])
-                                      .arg(candidate->rgb[2]));
+            // HP-UX-043 : pastille nette à tout DPI, taille déduite de la police.
+            const int swatchSide = optsDialog.fontMetrics().height() + 8;
+            swatch->setFixedSize(swatchSide, swatchSide);
+            swatch->setPixmap(makeSwatch(
+                QColor(candidate->rgb[0], candidate->rgb[1], candidate->rgb[2]), swatchSide));
             auto* info = new QLabel(
                 tr("Région candidate : %1 % de l'image, clarté L* %2, %3 bord(s) touché(s) sur 4")
                     .arg(QLocale().toString(candidate->area_ratio * 100.0, 'f', 1))
@@ -4546,6 +4592,28 @@ void MainWindow::autoDigitize() {
         optsLayout->addWidget(shapesRadio);
         optsLayout->addWidget(contoursRadio);
         optsLayout->addWidget(stippleRadio);
+
+        // Section « Réglages avancés », repliée par défaut ; son état est mémorisé.
+        auto* advancedToggle = new QToolButton(&optsDialog);
+        advancedToggle->setObjectName("autoDigitizeAdvancedToggle");
+        advancedToggle->setText(tr("Réglages avancés"));
+        advancedToggle->setCheckable(true);
+        advancedToggle->setAutoRaise(true);
+        advancedToggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        auto* advancedBox = new QWidget(&optsDialog);
+        advancedBox->setObjectName("autoDigitizeAdvanced");
+        auto* advancedLayout = new QVBoxLayout(advancedBox);
+        advancedLayout->setContentsMargins(0, 0, 0, 0);
+        const auto setAdvancedOpen = [advancedToggle, advancedBox](bool open) {
+            advancedToggle->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
+            advancedBox->setVisible(open);
+        };
+        connect(advancedToggle, &QToolButton::toggled, &optsDialog, setAdvancedOpen);
+        advancedToggle->setChecked(
+            ui_memory::boolValue(QStringLiteral("autoDigitize/advancedOpen"), false));
+        setAdvancedOpen(advancedToggle->isChecked());
+        optsLayout->addWidget(advancedToggle);
+        optsLayout->addWidget(advancedBox);
 
         auto* shapesPanel = new QWidget(&optsDialog);
         shapesPanel->setObjectName("shapesPanel");
@@ -4793,7 +4861,7 @@ void MainWindow::autoDigitize() {
                "suggèrent le mouvement. La couleur la plus sombre reste en tatami."));
         shapesPanelLayout->addWidget(flowFillCheck);
         connect(shapesRadio, &QRadioButton::toggled, shapesPanel, &QWidget::setEnabled);
-        optsLayout->addWidget(shapesPanel);
+        advancedLayout->addWidget(shapesPanel);
 
         auto* contoursPanel = new QWidget(&optsDialog);
         contoursPanel->setObjectName("contoursPanel");
@@ -4829,7 +4897,7 @@ void MainWindow::autoDigitize() {
         panelLayout->addLayout(techRow);
         contoursPanel->setEnabled(false);
         connect(contoursRadio, &QRadioButton::toggled, contoursPanel, &QWidget::setEnabled);
-        optsLayout->addWidget(contoursPanel);
+        advancedLayout->addWidget(contoursPanel);
 
         auto* stipplePanel = new QWidget(&optsDialog);
         stipplePanel->setObjectName("stipplePanel");
@@ -4860,16 +4928,140 @@ void MainWindow::autoDigitize() {
         stippleLayout->addStretch(1);
         stipplePanel->setEnabled(false);
         connect(stippleRadio, &QRadioButton::toggled, stipplePanel, &QWidget::setEnabled);
-        optsLayout->addWidget(stipplePanel);
+        advancedLayout->addWidget(stipplePanel);
 
-        auto* optsButtons =
-            new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &optsDialog);
+        // Valeurs du dialogue <-> structure de préréglage (autodigitize_presets.hpp).
+        DigitizeDialogValues builtinDefaults;
+        builtinDefaults.minFeatureWidthUm =
+            static_cast<int>(std::lround(opts.min_feature_width_mm * 1000.0));
+        builtinDefaults.minRegionAreaCmm2 =
+            static_cast<int>(std::lround(opts.min_region_area_mm2 * 100.0));
+        const auto collectValues = [&]() {
+            DigitizeDialogValues v;
+            v.satinBands = satinBandsCheck->isChecked();
+            v.maxThreads = maxThreadsSpin->value();
+            v.strategy = contoursRadio->isChecked()  ? DigitizeStrategy::Contours
+                         : stippleRadio->isChecked() ? DigitizeStrategy::Stipple
+                                                     : DigitizeStrategy::Shapes;
+            v.shapeDetail = shapeDetailSlider->value();
+            v.fillOverlapUm = static_cast<int>(std::lround(overlapSpin->value() * 1000.0));
+            v.minFeatureWidthUm = static_cast<int>(std::lround(featureSpin->value() * 1000.0));
+            v.minRegionAreaCmm2 = static_cast<int>(std::lround(minAreaSpin->value() * 100.0));
+            v.islandAreaCmm2 = static_cast<int>(std::lround(islandSpin->value() * 100.0));
+            v.islandMaxDeltaE = static_cast<int>(std::lround(islandDeSpin->value()));
+            v.curveToleranceUm = static_cast<int>(std::lround(curveSpin->value() * 1000.0));
+            v.solidBlock = solidBlockCheck->isChecked();
+            v.flowFill = flowFillCheck->isChecked();
+            v.darkLines = darkLinesCheck->isChecked();
+            v.darkLinesWidthUm = static_cast<int>(std::lround(darkWidthSpin->value() * 1000.0));
+            v.darkLinesLightness = static_cast<int>(std::lround(darkLightSpin->value()));
+            v.darkLinesMinLenUm = static_cast<int>(std::lround(darkMinLenSpin->value() * 1000.0));
+            v.darkLinesObjectsOnly = darkObjectsOnlyCheck->isChecked();
+            v.ringsSatin = ringsSatinCheck->isChecked();
+            v.contourDetail = detailSlider->value();
+            v.techniqueRunning = techRunningRadio->isChecked();
+            v.stipplePoints = stipplePointsSpin->value();
+            v.stippleSeed = stippleSeedSpin->value();
+            v.stippleInvert = stippleInvertCheck->isChecked();
+            return v;
+        };
+        bool applyingPreset = false;
+        const auto syncPresetCombo = [&] {
+            if (applyingPreset) {
+                return;
+            }
+            const auto match = matchingDigitizePreset(collectValues(), builtinDefaults);
+            QSignalBlocker block(presetCombo);
+            presetCombo->setCurrentIndex(presetCombo->findData(static_cast<int>(match)));
+        };
+        const auto applyValues = [&](const DigitizeDialogValues& v) {
+            applyingPreset = true;
+            satinBandsCheck->setChecked(v.satinBands);
+            // La palette (nombre de fils) n'appartient à aucun préréglage : maxThreadsSpin reste.
+            shapesRadio->setChecked(v.strategy == DigitizeStrategy::Shapes);
+            contoursRadio->setChecked(v.strategy == DigitizeStrategy::Contours);
+            stippleRadio->setChecked(v.strategy == DigitizeStrategy::Stipple);
+            shapeDetailSlider->setValue(v.shapeDetail);
+            overlapSpin->setValue(v.fillOverlapUm / 1000.0);
+            featureSpin->setValue(v.minFeatureWidthUm / 1000.0);
+            minAreaSpin->setValue(v.minRegionAreaCmm2 / 100.0);
+            islandSpin->setValue(v.islandAreaCmm2 / 100.0);
+            islandDeSpin->setValue(v.islandMaxDeltaE);
+            curveSpin->setValue(v.curveToleranceUm / 1000.0);
+            solidBlockCheck->setChecked(v.solidBlock);
+            flowFillCheck->setChecked(v.flowFill);
+            darkLinesCheck->setChecked(v.darkLines);
+            darkWidthSpin->setValue(v.darkLinesWidthUm / 1000.0);
+            darkLightSpin->setValue(v.darkLinesLightness);
+            darkMinLenSpin->setValue(v.darkLinesMinLenUm / 1000.0);
+            darkObjectsOnlyCheck->setChecked(v.darkLinesObjectsOnly);
+            ringsSatinCheck->setChecked(v.ringsSatin);
+            detailSlider->setValue(v.contourDetail);
+            techRunningRadio->setChecked(v.techniqueRunning);
+            techAutoRadio->setChecked(!v.techniqueRunning);
+            stipplePointsSpin->setValue(v.stipplePoints);
+            stippleSeedSpin->setValue(v.stippleSeed);
+            stippleInvertCheck->setChecked(v.stippleInvert);
+            applyingPreset = false;
+        };
+        connect(presetCombo, &QComboBox::currentIndexChanged, &optsDialog, [&](int index) {
+            const auto preset = static_cast<DigitizePreset>(presetCombo->itemData(index).toInt());
+            if (preset != DigitizePreset::Custom) {
+                applyValues(digitizePresetValues(preset, builtinDefaults));
+                syncPresetCombo(); // une valeur écrêtée par un champ ne doit pas passer pour exacte
+            }
+        });
+        // Toute retouche d'un réglage ramène le préréglage affiché à « Personnalisé » (ou à celui
+        // dont les valeurs sont exactement celles-ci).
+        for (auto* w : optsDialog.findChildren<QDoubleSpinBox*>()) {
+            connect(w, &QDoubleSpinBox::valueChanged, &optsDialog, syncPresetCombo);
+        }
+        for (auto* w : optsDialog.findChildren<QSpinBox*>()) {
+            connect(w, &QSpinBox::valueChanged, &optsDialog, syncPresetCombo);
+        }
+        for (auto* w : optsDialog.findChildren<QSlider*>()) {
+            connect(w, &QSlider::valueChanged, &optsDialog, syncPresetCombo);
+        }
+        for (auto* w : optsDialog.findChildren<QCheckBox*>()) {
+            connect(w, &QCheckBox::toggled, &optsDialog, syncPresetCombo);
+        }
+        for (auto* w : optsDialog.findChildren<QRadioButton*>()) {
+            connect(w, &QRadioButton::toggled, &optsDialog, syncPresetCombo);
+        }
+        syncPresetCombo(); // valeurs relues de la mémoire : affiche le préréglage correspondant
+
+        // Boutons : « Numériser » seul, ou « Ajouter » / « Remplacer » quand des objets existent
+        // déjà (la question n'est plus une seconde fenêtre).
+        auto* optsButtons = new QDialogButtonBox(&optsDialog);
+        if (alreadyDigitized) {
+            auto* addBtn = optsButtons->addButton(tr("Ajouter"), QDialogButtonBox::AcceptRole);
+            addBtn->setToolTip(tr("Ajoute les nouveaux objets à côté des objets existants."));
+            auto* replaceBtn =
+                optsButtons->addButton(tr("Remplacer"), QDialogButtonBox::ActionRole);
+            replaceBtn->setToolTip(
+                tr("Supprime les objets de broderie à choix automatique et les formes issues de "
+                   "la segmentation qui leur servent de source ; les objets verrouillés, "
+                   "retouchés à la main ou dessinés par vous sont conservés. Un seul Ctrl+Z "
+                   "annule le remplacement."));
+            replaceBtn->setAutoDefault(false);
+            connect(replaceBtn, &QPushButton::clicked, &optsDialog, [&] {
+                replacePrevious = true;
+                optsDialog.accept();
+            });
+            addBtn->setDefault(true);
+        } else {
+            auto* goBtn = optsButtons->addButton(tr("Numériser"), QDialogButtonBox::AcceptRole);
+            goBtn->setDefault(true);
+        }
+        optsButtons->addButton(tr("Annuler"), QDialogButtonBox::RejectRole);
         connect(optsButtons, &QDialogButtonBox::accepted, &optsDialog, &QDialog::accept);
         connect(optsButtons, &QDialogButtonBox::rejected, &optsDialog, &QDialog::reject);
         optsLayout->addWidget(optsButtons);
         if (optsDialog.exec() != QDialog::Accepted) {
             return;
         }
+        ui_memory::setBoolValue(QStringLiteral("autoDigitize/advancedOpen"),
+                                advancedToggle->isChecked());
         ui_memory::setIntValue(QStringLiteral("autoDigitize/shapeDetail"),
                                shapeDetailSlider->value());
         ui_memory::setIntValue(QStringLiteral("autoDigitize/contourDetail"), detailSlider->value());
@@ -5004,7 +5196,7 @@ void MainWindow::autoDigitize() {
     if (contoursMode && contourMetrics) {
         // Metriques et avertissements viennent tels quels de la lib (aucune
         // logique metier ici) : resume en barre d'etat, details en dialogue.
-        statusBar()->showMessage(
+        announceAutoDigitizeResult(
             tr("Contours : %1 objet(s), %2 segment(s), %3 jonction(s) — point droit %4 mm, "
                "%5 repli(s), %6 rejet(s)")
                 .arg(embCount)
@@ -5036,7 +5228,7 @@ void MainWindow::autoDigitize() {
     if (flowFillCount > 0) {
         summary += tr(" (%1 forme(s) en remplissage directionnel)").arg(flowFillCount);
     }
-    statusBar()->showMessage(summary);
+    announceAutoDigitizeResult(summary);
     warnAboutSkippedAutoSatinBranches(warnings);
 }
 
@@ -8631,6 +8823,7 @@ void MainWindow::exportDst() {
     if (!sequence_) {
         return;
     }
+    openQualityDock(); // HP-UX-031 : l'état de qualité est visible avant de décider d'exporter
     const auto stats = stitch::compute_stats(*sequence_);
     const double wMm = to_millimeters(stats.bounds.max.x - stats.bounds.min.x).value;
     const double hMm = to_millimeters(stats.bounds.max.y - stats.bounds.min.y).value;
@@ -8721,10 +8914,30 @@ void MainWindow::exportDst() {
         const auto findings = stitch_analysis::analyze_project(project_, shown).findings;
         std::size_t errors = 0;
         std::size_t warnings = 0;
+        QStringList problemLines;
+        constexpr int kMaxProblemLines = 40;
         for (const auto& f : findings) {
             errors += f.severity == stitch_analysis::Severity::Error ? 1 : 0;
             warnings += f.severity == stitch_analysis::Severity::Warning ? 1 : 0;
+            if (f.severity == stitch_analysis::Severity::Info ||
+                problemLines.size() >= kMaxProblemLines) {
+                continue;
+            }
+            const auto* emb = project_.findEmbroidery(f.object);
+            const QString where = (emb != nullptr && !emb->name.empty())
+                                      ? tr("« %1 » : ").arg(QString::fromStdString(emb->name))
+                                      : QString();
+            problemLines << (f.severity == stitch_analysis::Severity::Error
+                                 ? tr("Erreur : ")
+                                 : tr("Avertissement : ")) +
+                                where + QString::fromStdString(f.message);
         }
+        if (errors + warnings > static_cast<std::size_t>(problemLines.size())) {
+            problemLines << tr("… et %1 de plus (panneau Analyse).")
+                                .arg(errors + warnings -
+                                     static_cast<std::size_t>(problemLines.size()));
+        }
+        result.has_warnings = warnings > 0;
         summary += errors + warnings == 0
                        ? tr("\n\nAnalyse : aucun problème détecté.")
                        : tr("\n\nAnalyse : %1 erreur(s), %2 avertissement(s) — voir Analyse ▸ "
@@ -8734,6 +8947,8 @@ void MainWindow::exportDst() {
         result.has_analysis_errors = errors > 0;
         if (overflow) {
             summary += tr("\n\nAttention : le motif dépasse le cadre.");
+            result.has_warnings = true;
+            problemLines << tr("Avertissement : le motif dépasse le cadre.");
         }
         // Limites du format cible (couleurs, étendue, cadres de la marque, déplacements découpés).
         QString limits;
@@ -8745,9 +8960,12 @@ void MainWindow::exportDst() {
             case formats::ExportIssueSeverity::Error:
                 limits += tr("\nImpossible : %1").arg(text);
                 result.blocking = true;
+                problemLines << tr("Impossible : %1").arg(text);
                 break;
             case formats::ExportIssueSeverity::Warning:
                 limits += tr("\nAttention : %1").arg(text);
+                result.has_warnings = true;
+                problemLines << tr("Avertissement : %1").arg(text);
                 break;
             case formats::ExportIssueSeverity::Info:
                 limits += tr("\nÀ noter : %1").arg(text);
@@ -8766,10 +8984,13 @@ void MainWindow::exportDst() {
             summary += tr(" Pensez à enregistrer aussi le projet (.osp).");
         }
         result.text = summary;
+        result.problems = problemLines.join(QLatin1Char('\n'));
         return result;
     };
 
     MachineExportDialog dialog(summarize, QString(), this);
+    // « Enregistrer le projet d'abord » : sans fermer le dialogue d'export.
+    connect(&dialog, &MachineExportDialog::saveProjectRequested, this, [this] { saveProject(); });
     dialog.exec();
     if (dialog.viewProblemsRequested()) {
         runAnalysis();
@@ -8778,17 +8999,36 @@ void MainWindow::exportDst() {
     if (dialog.result() != QDialog::Accepted) {
         return;
     }
-    const formats::FormatInfo* format = dialog.format();
+    MachineExportRequest request;
+    request.format = dialog.format();
+    request.options = dialog.options();
+    request.optimizations = dialog.optimizations();
+    request.companion = dialog.companion(); // HP-FMT-009 : fichier de couleurs voisin (DST, EXP)
+    // Nombre de points du fichier réellement écrit : celui de la séquence optimisée si demandée.
+    const auto* exportedSeq =
+        cache->valid && cache->key == request.optimizations && request.optimizations.reduce_trims
+            ? &cache->value.sequence
+            : nullptr;
+    request.writtenStitches =
+        exportedSeq ? stitch::compute_stats(*exportedSeq).stitches : stats.stitches;
+    runMachineExport(request);
+}
+
+bool MainWindow::runMachineExport(const MachineExportRequest& request) {
+    const formats::FormatInfo* format = request.format;
     if (format == nullptr || format->extensions.empty()) {
-        return;
+        return false;
     }
     const QString ext = QString::fromStdString(format->extensions.front());
-    QString file = QFileDialog::getSaveFileName(
-        this, tr("Exporter en %1").arg(QString::fromStdString(format->display_name)),
-        suggestedFilePath(ext),
-        tr("%1 (*.%2)").arg(QString::fromStdString(format->display_name), ext));
+    QString file = request.file;
     if (file.isEmpty()) {
-        return;
+        file = QFileDialog::getSaveFileName(
+            this, tr("Exporter en %1").arg(QString::fromStdString(format->display_name)),
+            suggestedFilePath(ext),
+            tr("%1 (*.%2)").arg(QString::fromStdString(format->display_name), ext));
+        if (file.isEmpty()) {
+            return false;
+        }
     }
     // Extension forcée : sans elle la machine ne reconnaît pas le fichier.
     if (QFileInfo(file).suffix().compare(ext, Qt::CaseInsensitive) != 0) {
@@ -8797,11 +9037,11 @@ void MainWindow::exportDst() {
 
     // AD-03 : composition projet -> fichier machine générique (AI-03b), partagée avec la CLI --
     // recalcule sa propre `effective_sequence`, garantie identique à `*sequence_`.
-    auto options = dialog.options();
+    auto options = request.options;
     options.design_name = QFileInfo(file).completeBaseName().toStdString();
-    const auto optimizations = dialog.optimizations();
+    const auto& optimizations = request.optimizations;
     stitch_generation::TrimReport trimReport;
-    auto companion = dialog.companion(); // HP-FMT-009 : fichier de couleurs voisin (DST, EXP)
+    auto companion = request.companion;
     const auto written = project_io::export_machine_file(
         project_, format->id, std::filesystem::path(file.toStdWString()), options, optimizations,
         &trimReport, &companion);
@@ -8812,20 +9052,16 @@ void MainWindow::exportDst() {
                "s'il existait, est intact.")
                 .arg(QString::fromStdString(format->display_name), QFileInfo(file).fileName()),
             written.error().message);
-        return;
+        return false;
     }
     rememberLastDirectory(file);
-    // Nombre de points du fichier réellement écrit : celui de la séquence optimisée si demandée.
-    const auto* exportedSeq =
-        cache->valid && cache->key == optimizations && optimizations.reduce_trims
-            ? &cache->value.sequence
-            : nullptr;
-    const auto writtenStitches =
-        exportedSeq ? stitch::compute_stats(*exportedSeq).stitches : stats.stitches;
     QString message =
-        tr("%1 exporté : %2 (%3 points).")
-            .arg(QString::fromStdString(format->display_name), QFileInfo(file).fileName())
-            .arg(writtenStitches);
+        tr("%1 exporté : %2")
+            .arg(QString::fromStdString(format->display_name), QFileInfo(file).fileName());
+    if (request.writtenStitches) {
+        message += tr(" (%1 points)").arg(*request.writtenStitches);
+    }
+    message += QLatin1Char('.');
     if (optimizations.reduce_trims) {
         message += tr(" Coupes supprimées : %1.").arg(trimReport.trims_removed);
     }
@@ -8837,6 +9073,46 @@ void MainWindow::exportDst() {
                        .arg(QString::fromStdString(companion.error));
     }
     offerRevealInFolder(file, message);
+    return true;
+}
+
+// Ctrl+Maj+E : refait l'export avec le format et les options du dernier export (mémorisés par
+// poste), sans résumé ni choix : seul le nom du fichier est demandé, dans le dernier dossier.
+// Si les réglages mémorisés sont refusés par le format, on rouvre le dialogue complet plutôt que
+// d'écrire un fichier que la machine refuserait.
+void MainWindow::exportDstQuick() {
+    if (!sequence_) {
+        return;
+    }
+    const auto saved = MachineExportDialog::loadSavedExport();
+    MachineExportRequest request;
+    request.format = formats::find_format(saved.formatId.toStdString());
+    if (request.format == nullptr) {
+        request.format = formats::find_format("dst");
+    }
+    request.options = saved.options;
+    request.optimizations = saved.optimizations;
+    request.companion = saved.companion;
+    if (request.format == nullptr || !request.format->can_write) {
+        exportDst();
+        return;
+    }
+    const auto exported = project_io::with_start_point(*sequence_, request.options.start);
+    for (const auto& issue :
+         formats::check_export_limits(exported, *request.format, request.options)) {
+        if (issue.severity == formats::ExportIssueSeverity::Error) {
+            statusBar()->showMessage(
+                tr("Export rapide impossible avec les derniers réglages (%1) : résumé ouvert.")
+                    .arg(QString::fromStdString(issue.message)),
+                8000);
+            exportDst();
+            return;
+        }
+    }
+    if (!request.optimizations.reduce_trims) {
+        request.writtenStitches = stitch::compute_stats(*sequence_).stitches;
+    }
+    runMachineExport(request);
 }
 
 void MainWindow::importDst() {
@@ -9804,6 +10080,7 @@ void MainWindow::updateActions() {
         tr("Aucun point généré : créez d'abord un objet de broderie (tatami, satin…).");
     setEnabledWithReason(statsAct_, sequence_.has_value(), needStitches);
     setEnabledWithReason(exportDstAct_, sequence_.has_value(), needStitches);
+    setEnabledWithReason(exportDstQuickAct_, sequence_.has_value(), needStitches);
     setEnabledWithReason(productionAct_, sequence_.has_value(), needStitches);
     // Actions « document requis » : mêmes gardes que leurs slots (qui restent en place).
     // Même critère que l'accueil, l'autosave et les slots, import machine inclus.

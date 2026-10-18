@@ -30,6 +30,8 @@
 
 #include "ai_preferences.hpp"
 #include "ai_segmentation_dialog.hpp"
+#include "busy_indicator.hpp"
+#include "canvas_view.hpp"
 #include "main_window.hpp"
 #include "ui_memory.hpp"
 
@@ -38,6 +40,7 @@
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/image/image.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
+#include "openstitch/stitch_analysis/production_sheet.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 
 namespace openstitch::desktop {
@@ -540,6 +543,48 @@ void MainWindow::onWorkflowStepClicked(int step) {
     const QString reason = entry.action != nullptr ? entry.action->statusTip() : QString();
     statusBar()->showMessage(
         reason.isEmpty() ? entry.hint : reason + QStringLiteral(" — ") + entry.hint, 6000);
+}
+
+void MainWindow::announceAutoDigitizeResult(const QString& baseMessage) {
+    QString message = baseMessage;
+    if (sequence_) {
+        // Fiche de production = mêmes nombres que « Fichier ▸ Fiche de production » (durée
+        // estimée, fils, problèmes) : calculée hors du fil d'interface sur un instantané.
+        const document::Project snapshot = project_;
+        const stitch::StitchSequence sequence = *sequence_;
+        BusyIndicator busy(this, tr("Évaluation du résultat…"), {autosaveTimer_, simTimer_});
+        const auto sheet =
+            busy.run([&] { return stitch_analysis::make_production_sheet(snapshot, sequence); });
+        std::size_t problems = 0;
+        for (const auto& finding : sheet.findings) {
+            problems += finding.severity == stitch_analysis::Severity::Info ? 0 : 1;
+        }
+        message += tr(" — %1 points, durée estimée %2, %3 fil(s), %4 problème(s)")
+                       .arg(sheet.stitches)
+                       .arg(QString::fromStdString(
+                           stitch_analysis::format_duration_fr(sheet.estimated_minutes)))
+                       .arg(sheet.consumption.size())
+                       .arg(problems);
+    }
+    statusBar()->showMessage(message);
+    // Bouton « Voir » (comme « Ouvrir le dossier » après un export) : cadre le motif et ramène
+    // le panneau Analyse au premier plan.
+    auto* button = new QPushButton(tr("Voir"), this);
+    button->setFlat(true);
+    button->setCursor(Qt::PointingHandCursor);
+    button->setObjectName(QStringLiteral("action_autoDigitizeSeeResult"));
+    statusBar()->addWidget(button);
+    const auto remove = [this, button] {
+        statusBar()->removeWidget(button);
+        button->deleteLater();
+    };
+    connect(button, &QPushButton::clicked, this, [this, remove] {
+        view_->fitCanvas();
+        openQualityDock();
+        remove();
+    });
+    QTimer::singleShot(30000, button, remove);
+    openQualityDock(); // HP-UX-031 : le dock Analyse s'ouvre seul après la numérisation
 }
 
 } // namespace openstitch::desktop

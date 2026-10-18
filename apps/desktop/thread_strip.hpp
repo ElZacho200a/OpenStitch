@@ -7,6 +7,8 @@
 
 #include <vector>
 
+class QMenu;
+
 namespace openstitch::desktop {
 
 // Barre des fils (bas de la fenêtre) : une pastille ronde par fil utilisé par le motif,
@@ -28,6 +30,15 @@ public:
     // Centre de la pastille `index` (coordonnées du widget) : pour les tests et l'accessibilité.
     [[nodiscard]] QPointF swatchCenter(int index) const;
 
+    // Clavier (HP-UX-041) : la barre est un seul arrêt de tabulation ; ←/→ (Début/Fin) déplacent le
+    // focus d'une pastille à l'autre, Entrée ou Espace sélectionne, Ctrl+←/→ change l'ordre. Quand
+    // toutes les pastilles ne tiennent pas, la dernière case « +N » ouvre la liste COMPLÈTE.
+    [[nodiscard]] int focusedIndex() const { return focus_; }
+    [[nodiscard]] int hiddenCount() const;
+    // Ouvre (sans bloquer) la liste de tous les fils ; choisir une entrée émet threadClicked.
+    QMenu* showOverflowMenu();
+    [[nodiscard]] QMenu* overflowMenu() const { return overflowMenu_; }
+
     [[nodiscard]] QSize sizeHint() const override;
     [[nodiscard]] QSize minimumSizeHint() const override;
 
@@ -45,8 +56,14 @@ protected:
     void mouseReleaseEvent(QMouseEvent* event) override;
     void leaveEvent(QEvent* event) override;
     bool event(QEvent* event) override;
+    void keyPressEvent(QKeyEvent* event) override;
+    void focusInEvent(QFocusEvent* event) override;
+    void focusOutEvent(QFocusEvent* event) override;
 
 private:
+    [[nodiscard]] QRectF moreRect() const;
+    [[nodiscard]] bool moreAt(const QPointF& pos) const;
+    void announceFocus(); // nom et code du fil focalisé, pour les technologies d'assistance
     [[nodiscard]] QRectF swatchRect(int index) const;
     [[nodiscard]] int visibleCount() const;
     [[nodiscard]] int indexAt(const QPointF& pos) const;
@@ -62,6 +79,9 @@ private:
     bool dragging_{false}; // le seuil de glissement est dépassé
     qreal dragX_{0.0};     // abscisse du curseur pendant le glissement
     int dropSlot_{-1};     // position d'arrivée courante pendant le glissement
+    int focus_{0};         // pastille focalisée ; == nombre de pastilles visibles : case « +N »
+    bool pressedMore_{false};
+    QMenu* overflowMenu_{nullptr};
 };
 
 } // namespace openstitch::desktop

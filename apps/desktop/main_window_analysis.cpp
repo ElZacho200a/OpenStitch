@@ -20,12 +20,15 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QStatusBar>
+#include <QTabWidget>
 #include <QTimer>
 #include <QVBoxLayout>
 
 #include <algorithm>
 #include <map>
 #include <memory>
+#include <optional>
+#include <set>
 #include <type_traits>
 #include <variant>
 
@@ -36,6 +39,7 @@
 #include "document_panel.hpp"
 #include "font_catalog.hpp"
 #include "main_window.hpp"
+#include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/finishing_commands.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/lettering/lettering.hpp"
@@ -114,6 +118,36 @@ void addOptionalRuleFindings(const document::Project& project, const stitch::Sti
                      });
 }
 
+// Longueur de point plafonnée selon le type de l'objet (même correction que « Corriger »).
+document::StitchParams clampedStitchParams(const document::StitchParams& source,
+                                           Micrometers value) {
+    document::StitchParams params = source;
+    std::visit(
+        [&](auto& p) {
+            using T = std::decay_t<decltype(p)>;
+            if constexpr (std::is_same_v<T, document::RunningStitchParams> ||
+                          std::is_same_v<T, document::TatamiParams> ||
+                          std::is_same_v<T, document::DirectionalFillParams>) {
+                p.stitch_length = value;
+            } else if constexpr (std::is_same_v<T, document::SatinParams>) {
+                p.max_stitch_length = value;
+            } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
+                p.split_threshold = value;
+            }
+        },
+        params);
+    return params;
+}
+
+// Corrections « sûres » (déjà proposées une à une par le bouton « Corriger ») : déplacer dans le
+// cadre, plafonner une longueur de point, scinder les points longs / activer les finitions. Le
+// texte à agrandir passe par l'éditeur de texte : il reste une correction individuelle.
+bool isSafeBatchFix(stitch_analysis::FixKind kind) {
+    using stitch_analysis::FixKind;
+    return kind == FixKind::MoveIntoHoop || kind == FixKind::ClampStitchLength ||
+           kind == FixKind::SplitLongStitches || kind == FixKind::EnableFinishing;
+}
+
 QString severityGlyph(int rank) {
     return rank == 2   ? QStringLiteral("⛔ ")
            : rank == 1 ? QStringLiteral("⚠ ")
@@ -172,6 +206,78 @@ void MainWindow::buildAnalysisPanel() {
     fixButton->setAccessibleName(tr("Corriger le problème sélectionné"));
     fixButton->setEnabled(false);
     layout->addWidget(fixButton);
+
+    // « Corriger tout ce qui est sûr » (HP-UX-031) : mêmes corrections que le bouton ci-dessus,
+    // enchaînées en UNE commande composite (un seul Ctrl+Z). Aucune nouvelle règle d'analyse.
+    auto* fixAllButton = new QPushButton(tr("Corriger tout ce qui est sûr"), container);
+    fixAllButton->setObjectName(QStringLiteral("analysisFixAllButton"));
+    fixAllButton->setAccessibleName(tr("Corriger tous les problèmes sûrs en une seule fois"));
+    fixAllButton->setToolTip(tr("Déplace dans le cadre, plafonne les longueurs de point et "
+                                "scinde les points longs, en une seule étape annulable."));
+    fixAllButton->setEnabled(false);
+    layout->addWidget(fixAllButton);
+
+    // Rapports (HP-UX-031) : fidélité, épaisseurs et diagnostic regroupés en onglets du dock au
+    // lieu de trois fenêtres de texte. Mêmes mesures que les entrées du menu Analyse
+    // (libs/project_ops) ; le menu garde la version avec carte PNG enregistrable.
+    auto* reportTabs = new QTabWidget(container);
+    reportTabs->setObjectName(QStringLiteral("analysisReportTabs"));
+    reportTabs->setMaximumHeight(240);
+    reportTabs->setDocumentMode(true);
+    const auto addReportTab = [this, reportTabs](const QString& title, const QString& name,
+                                                 int kind) {
+        auto* page = new QWidget(reportTabs);
+        auto* box = new QVBoxLayout(page);
+        box->setContentsMargins(4, 4, 4, 4);
+        auto* run = new QPushButton(tr("Calculer"), page);
+        run->setObjectName(name + QStringLiteral("Run"));
+        auto* text = new QPlainTextEdit(page);
+        text->setObjectName(name + QStringLiteral("Text"));
+        text->setReadOnly(true);
+        text->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+        text->setAccessibleName(title);
+        text->setPlaceholderText(tr("Cliquez sur « Calculer » pour mesurer le motif actuel."));
+        box->addWidget(run);
+        box->addWidget(text, 1);
+        connect(run, &QPushButton::clicked, this, [this, kind, text] {
+            if (project_.embroidery_objects.empty()) {
+                text->setPlainText(tr("Le projet ne contient aucun objet de broderie."));
+                return;
+            }
+            BusyIndicator busy(this, tr("Mesure en cours…"), {autosaveTimer_, simTimer_});
+            const document::Project snapshot = project_;
+            QString out;
+            if (kind == 0) {
+                project_ops::FidelityOptions options;
+                options.error_map = false;
+                const auto report =
+                    busy.run([&] { return project_ops::measure_fidelity(snapshot, options); });
+                out = report ? QString::fromStdString(report->text)
+                             : tr("La mesure n'a pas pu être faite : %1")
+                                   .arg(QString::fromStdString(report.error().message));
+            } else if (kind == 1) {
+                project_ops::DensityOptions options;
+                options.heatmap = false;
+                const auto report =
+                    busy.run([&] { return project_ops::measure_density(snapshot, options); });
+                out = report ? QString::fromStdString(report->text)
+                             : tr("La mesure n'a pas pu être faite : %1")
+                                   .arg(QString::fromStdString(report.error().message));
+            } else {
+                const auto report =
+                    busy.run([&] { return project_ops::diagnose_project(snapshot); });
+                out = report ? QString::fromStdString(report->text)
+                             : tr("Le diagnostic n'a pas pu être fait : %1")
+                                   .arg(QString::fromStdString(report.error().message));
+            }
+            text->setPlainText(out);
+        });
+        reportTabs->addTab(page, title);
+    };
+    addReportTab(tr("Fidélité"), QStringLiteral("reportFidelity"), 0);
+    addReportTab(tr("Épaisseur"), QStringLiteral("reportDensity"), 1);
+    addReportTab(tr("Diagnostic"), QStringLiteral("reportDiagnose"), 2);
+    layout->addWidget(reportTabs);
 
     // Contenu défilant (HP-UX-024) : le dock rétrécit sous la taille de son contenu.
     analysisDock_->setWidget(scrollableDockContent(container, analysisDock_));
@@ -264,21 +370,7 @@ void MainWindow::buildAnalysisPanel() {
             if (emb == nullptr) {
                 break;
             }
-            document::StitchParams params = emb->params;
-            std::visit(
-                [&](auto& p) {
-                    using T = std::decay_t<decltype(p)>;
-                    if constexpr (std::is_same_v<T, document::RunningStitchParams> ||
-                                  std::is_same_v<T, document::TatamiParams> ||
-                                  std::is_same_v<T, document::DirectionalFillParams>) {
-                        p.stitch_length = value;
-                    } else if constexpr (std::is_same_v<T, document::SatinParams>) {
-                        p.max_stitch_length = value;
-                    } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
-                        p.split_threshold = value;
-                    }
-                },
-                params);
+            const document::StitchParams params = clampedStitchParams(emb->params, value);
             undoStack_.execute(std::make_unique<commands::SetStitchParamsCommand>(
                                    object, params, tr("Longueur de point").toStdString()),
                                project_);
@@ -310,6 +402,72 @@ void MainWindow::buildAnalysisPanel() {
         refreshImage();
         updateActions();
         statusBar()->showMessage(tr("Correction appliquée. Ctrl+Z pour annuler."), 8000);
+    });
+    connect(fixAllButton, &QPushButton::clicked, this, [this, fixAllButton] {
+        if (analysisIsStale_) {
+            return;
+        }
+        using stitch_analysis::FixKind;
+        auto group = std::make_unique<commands::CompositeCommand>(
+            tr("Corriger tout ce qui est sûr").toStdString());
+        std::set<std::uint64_t> movedSources;
+        std::set<std::uint64_t> clamped;
+        std::optional<document::SequenceFinishing> finishing;
+        std::size_t count = 0;
+        for (int i = 0; i < analysisList_->count(); ++i) {
+            QListWidgetItem* item = analysisList_->item(i);
+            const auto kind = static_cast<FixKind>(item->data(kFixKindRole).toInt());
+            if (item->data(kSeverityRole).toInt() < 0 || !isSafeBatchFix(kind)) {
+                continue;
+            }
+            const ObjectId object{item->data(kObjectRole).toULongLong()};
+            const Micrometers value{item->data(kFixValueRole).toInt()};
+            if (kind == FixKind::MoveIntoHoop) {
+                const auto* emb = project_.findEmbroidery(object);
+                if (emb == nullptr || project_.findObject(emb->source_vector) == nullptr ||
+                    !movedSources.insert(emb->source_vector.value).second) {
+                    continue;
+                }
+                const Vec2um delta{Micrometers{item->data(kFixDxRole).toInt()},
+                                   Micrometers{item->data(kFixDyRole).toInt()}};
+                group->add(std::make_unique<commands::TranslateVectorObjectCommand>(
+                    emb->source_vector, delta));
+                ++count;
+            } else if (kind == FixKind::ClampStitchLength) {
+                const auto* emb = project_.findEmbroidery(object);
+                if (emb == nullptr || !clamped.insert(object.value).second) {
+                    continue;
+                }
+                group->add(std::make_unique<commands::SetStitchParamsCommand>(
+                    object, clampedStitchParams(emb->params, value),
+                    tr("Longueur de point").toStdString()));
+                ++count;
+            } else {
+                if (!finishing) {
+                    finishing = project_.finishing;
+                }
+                if (kind == FixKind::SplitLongStitches) {
+                    finishing->split_long_stitches = true;
+                } else {
+                    finishing->enabled = true;
+                }
+            }
+        }
+        if (finishing && !(*finishing == project_.finishing)) {
+            group->add(std::make_unique<commands::SetFinishingCommand>(*finishing));
+            ++count;
+        }
+        if (count == 0) {
+            statusBar()->showMessage(tr("Aucune correction sûre à appliquer."), 6000);
+            return;
+        }
+        undoStack_.execute(std::move(group), project_);
+        fixAllButton->setEnabled(false); // le résultat devient périmé et sera recalculé
+        refreshImage();
+        updateActions();
+        statusBar()->showMessage(
+            tr("%1 correction(s) appliquée(s) en une étape. Ctrl+Z pour annuler.").arg(count),
+            8000);
     });
     connect(analysisList_, &QListWidget::customContextMenuRequested, this, [this](QPoint pos) {
         QListWidgetItem* item = analysisList_->itemAt(pos);
@@ -568,6 +726,17 @@ void MainWindow::runAnalysisInternal(bool explicitRequest) {
     analysisIsStale_ = false;
     analysisStale_->hide();
     rebuildAnalysisList();
+    if (auto* fixAll =
+            analysisDock_->findChild<QPushButton*>(QStringLiteral("analysisFixAllButton"))) {
+        bool anySafe = false;
+        for (int i = 0; i < analysisList_->count() && !anySafe; ++i) {
+            const auto* item = analysisList_->item(i);
+            anySafe = item->data(kSeverityRole).toInt() >= 0 &&
+                      isSafeBatchFix(
+                          static_cast<stitch_analysis::FixKind>(item->data(kFixKindRole).toInt()));
+        }
+        fixAll->setEnabled(anySafe);
+    }
 
     if (explicitRequest) {
         // Résultat d'une demande explicite (F5) : affiché d'office, sauf en mode canevas seul
@@ -579,6 +748,20 @@ void MainWindow::runAnalysisInternal(bool explicitRequest) {
         }
         statusBar()->showMessage(
             tr("Analyse : %1 problème(s) détecté(s)").arg(report.findings.size()), 8000);
+    }
+}
+
+// Ouvre le dock Analyse sur une analyse à jour, sans fenêtre modale (HP-UX-031, étape 1) : appelé
+// après la numérisation automatique et avant l'export, pour que l'état de qualité soit visible
+// sans avoir à penser à F5.
+void MainWindow::openQualityDock() {
+    if (analysisDock_ == nullptr || !sequence_) {
+        return;
+    }
+    runAnalysisInternal(false);
+    setDockAutoVisible(analysisDock_, true, /*force=*/true);
+    if (!hidePanelsMode_) {
+        analysisDock_->raise();
     }
 }
 
@@ -623,6 +806,10 @@ void MainWindow::markAnalysisStale() {
     // Les corrections portent sur l'ancien motif : plus applicables avant la ré-analyse.
     if (auto* fix = analysisDock_->findChild<QPushButton*>(QStringLiteral("analysisFixButton"))) {
         fix->setEnabled(false);
+    }
+    if (auto* fixAll =
+            analysisDock_->findChild<QPushButton*>(QStringLiteral("analysisFixAllButton"))) {
+        fixAll->setEnabled(false);
     }
     // Dock visible : ré-analyse différée de 300 ms (regroupe les rafales de modifications) ;
     // sinon le résultat reste marqué périmé et sera recalculé à l'ouverture du dock.

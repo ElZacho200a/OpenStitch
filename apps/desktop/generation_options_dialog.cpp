@@ -7,6 +7,7 @@
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
+#include <QLabel>
 #include <QSpinBox>
 #include <QVBoxLayout>
 
@@ -37,8 +38,19 @@ Micrometers toUm(const QDoubleSpinBox* spin) {
 std::optional<document::SequenceFinishing>
 editSequenceFinishing(QWidget* parent, const document::SequenceFinishing& current) {
     QDialog dialog(parent);
-    dialog.setWindowTitle(QObject::tr("Options de génération"));
+    dialog.setWindowTitle(QObject::tr("Options de génération (réglages du projet)"));
     auto* layout = new QVBoxLayout(&dialog);
+
+    // Vocabulaire commun avec le dialogue d'export (HP-UX-032) : ici le réglage du PROJET (il
+    // décide où les coupes existent), là celui de CE FICHIER (il décide de ce qui est écrit).
+    auto* scope = new QLabel(
+        QObject::tr("Ces réglages font partie du projet et valent pour tous ses exports. "
+                    "Dans la fenêtre d'export, les options « réglage de ce fichier » ne "
+                    "concernent que le fichier écrit."),
+        &dialog);
+    scope->setObjectName(QStringLiteral("finishingScopeLabel"));
+    scope->setWordWrap(true);
+    layout->addWidget(scope);
 
     auto* enabled = new QCheckBox(
         QObject::tr("Finitions automatiques (coupes, points d'arrêt, points courts)"), &dialog);
@@ -53,7 +65,7 @@ editSequenceFinishing(QWidget* parent, const document::SequenceFinishing& curren
     trim->setToolTip(QObject::tr(
         "Un déplacement plus long devient : point d'arrêt, coupe, déplacement, point d'arrêt. "
         "Plus court : simple saut."));
-    form->addRow(QObject::tr("Couper au-delà de"), trim);
+    form->addRow(QObject::tr("Couper au-delà de (réglage du projet)"), trim);
     auto* trimColor = new QCheckBox(QObject::tr("Couper avant chaque changement de fil"), &dialog);
     trimColor->setObjectName(QStringLiteral("trimBeforeColorChange"));
     trimColor->setChecked(current.trim_before_color_change);
