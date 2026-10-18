@@ -1115,6 +1115,17 @@ private:
     void buildProductionMenu(QMenu* fileMenu);
     void showProductionSheet();
     QAction* productionAct_{nullptr};
+    // Zones réservées au câblage des entrées livrées en cœur (une zone par lot, ne pas mélanger).
+    // [cablage-A:debut]
+    // [cablage-A:fin]
+    // [cablage-B:debut]
+    // [cablage-B:fin]
+    // [cablage-C:debut]
+    // [cablage-C:fin]
+    // [cablage-D:debut]
+    // [cablage-D:fin]
+    // [cablage-E:debut]
+    // [cablage-E:fin]
     void applyNavigationPreset(Preset preset);
     // Duplique `ids` (copies exactes, même position) puis translate les COPIES de
     // `delta`, en un seul pas d'annulation (CompositeCommand) ; les copies deviennent
