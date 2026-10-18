@@ -73,6 +73,11 @@ struct LayoutOptions {
     bool fallback_glyphs{true};
 };
 
+// Options de mise en page portées par l'objet texte lui-même (crénage manuel par paire,
+// ligatures) : seule source de vérité pour le bureau et pour les appelants du cœur
+// (CLI, project_ops). Champs vides = options par défaut (aucun changement de rendu).
+[[nodiscard]] LayoutOptions layout_options_for(const document::TextObject& text);
+
 // Positionne les glyphes du texte : crénage, espacements, alignement, lignes,
 // rotation. Les caractères absents de la police sont omis et signalés.
 [[nodiscard]] Result<TextLayout> layout_text(const Font& font, const document::TextObject& text,

@@ -59,13 +59,7 @@ constexpr double kMaxKerningMm = 20.0;
 } // namespace
 
 lettering::LayoutOptions layoutOptionsFor(const document::TextObject& text) {
-    lettering::LayoutOptions options;
-    options.kerning_overrides.reserve(text.kerning_pairs.size());
-    for (const auto& pair : text.kerning_pairs) {
-        options.kerning_overrides.push_back({pair.left, pair.right, pair.adjust});
-    }
-    options.ligatures = text.ligatures;
-    return options;
+    return lettering::layout_options_for(text);
 }
 
 KerningParse parseKerningPairs(const QString& text) {

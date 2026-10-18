@@ -16,14 +16,8 @@ namespace fs = std::filesystem;
 
 namespace {
 
-// Meme conversion que apps/desktop `layoutOptionsFor` (champs du texte -> options de mise en page).
 lettering::LayoutOptions options_from(const document::TextObject& t) {
-    lettering::LayoutOptions options;
-    for (const auto& p : t.kerning_pairs) {
-        options.kerning_overrides.push_back({p.left, p.right, p.adjust});
-    }
-    options.ligatures = t.ligatures;
-    return options;
+    return lettering::layout_options_for(t);
 }
 
 document::Project project_for(const document::TextObject& t, const lettering::BuildOptions& o) {
@@ -128,4 +122,16 @@ TEST_CASE("an existing text without typography is written without new keys") {
     CHECK(info.fileVersion == project_io::kSchemaVersion);
     CHECK(loaded->text_objects[0].kerning_pairs.empty());
     CHECK_FALSE(loaded->text_objects[0].ligatures);
+}
+
+TEST_CASE("layout_options_for copies the kerning pairs and the ligature flag") {
+    document::TextObject t = make_text("AV", 10'000);
+    CHECK(lettering::layout_options_for(t).kerning_overrides.empty());
+    CHECK_FALSE(lettering::layout_options_for(t).ligatures);
+    t.kerning_pairs.push_back({U'A', U'V', Micrometers{-300}});
+    t.ligatures = true;
+    const auto options = lettering::layout_options_for(t);
+    REQUIRE(options.kerning_overrides.size() == 1);
+    CHECK(options.kerning_overrides[0].adjust == Micrometers{-300});
+    CHECK(options.ligatures);
 }

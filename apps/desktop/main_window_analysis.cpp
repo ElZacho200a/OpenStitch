@@ -44,6 +44,7 @@
 #include "openstitch/stitch_analysis/analyze.hpp"
 #include "openstitch/stitch_analysis/text_rules.hpp"
 #include "properties_panel.hpp"
+#include "text_dialog.hpp"
 
 namespace openstitch::desktop {
 
@@ -243,7 +244,8 @@ void MainWindow::buildAnalysisPanel() {
             // Comme l'édition du texte : repartir de la position visible des lettres.
             QString ignored;
             if (const auto font = FontCatalog::instance().load(text.font, &ignored)) {
-                if (const auto moved = lettering::text_displacement(project_, text, *font)) {
+                if (const auto moved = lettering::text_displacement(project_, text, *font,
+                                                                    layoutOptionsFor(text))) {
                     text.origin = text.origin + *moved;
                 }
             }

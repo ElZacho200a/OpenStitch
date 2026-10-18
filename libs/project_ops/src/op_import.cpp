@@ -324,7 +324,9 @@ json warnings_json(const std::vector<lettering::TextWarning>& warnings) {
 // Construit les lettres et applique le texte (création ou remplacement).
 OpStatus apply_text(OpContext& ctx, document::TextObject text, const lettering::Font& font,
                     bool isNew) {
-    auto built = lettering::build_text_objects(font, text, ctx.project.object_ids);
+    lettering::BuildOptions buildOptions;
+    buildOptions.layout = lettering::layout_options_for(text);
+    auto built = lettering::build_text_objects(font, text, ctx.project.object_ids, buildOptions);
     if (!built) {
         return OpStatus::failure(code::kRefused, "lettrage impossible : " + built.error().message);
     }
@@ -470,7 +472,8 @@ OpSpec op_set_text() {
         }
         if (!originGiven) {
             // Les lettres ont pu être déplacées : on repart de leur position visible.
-            if (const auto moved = lettering::text_displacement(ctx.project, before, *font)) {
+            if (const auto moved = lettering::text_displacement(
+                    ctx.project, before, *font, lettering::layout_options_for(before))) {
                 text.origin = text.origin + *moved;
             }
         }

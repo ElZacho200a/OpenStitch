@@ -171,6 +171,8 @@ openstitch-cli osp2dst <projet.osp> <sortie.dst>
 coupes et la fin de fichier que la machine recevra (voir *Format DST*). Pour
 `dst2svg`, la sortie peut aussi s'écrire `--output-svg`/`--output`.
 
+`osp2dst --color-file csv|inf` écrit à côté du DST (ou de l'EXP) un fichier compagnon des couleurs de fil (`.csv` lisible, ou `.inf` binaire dont la structure n'est validée par aucun lecteur tiers) ; l'import d'un DST/EXP relit ce compagnon voisin s'il existe (un compagnon invalide n'empêche pas l'import).
+
 `osp2dst --reduce-trims [--reduce-trims-levels between,within,underlay,regions] [--reduce-trims-same-colour] [--reduce-trims-max MM]`
 demande, **pour cet export seulement**, de remplacer des coupes par des sauts ou
 des ponts cousus prouvés cachés sous des points cousus plus tard (voir *Moteur de

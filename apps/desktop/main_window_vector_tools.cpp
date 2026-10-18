@@ -66,7 +66,7 @@ void MainWindow::buildVectorToolsMenu() {
            "par les mêmes points ; les coins francs sont conservés."));
     connect(convertToCurvesAct_, &QAction::triggered, this, [this] { convertSelectionToCurves(); });
 
-    presetShapesMenu_ = shapeMenu_->addMenu(tr("Formes &prédéfinies"));
+    presetShapesMenu_ = shapeMenu_->addMenu(tr("Formes préd&éfinies"));
     presetShapesMenu_->setObjectName(QStringLiteral("menu_presetShapes"));
     const auto addPreset = [this](PresetShape shape, const QString& text, const QString& name) {
         QAction* act = presetShapesMenu_->addAction(text);

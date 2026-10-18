@@ -47,7 +47,7 @@ const QString kEnabledKey = QStringLiteral("view/densityMap");
 
 void MainWindow::buildDensityFeature() {
     // --- Action « Affichage > Carte de densité » -------------------------------------------
-    densityMapAct_ = new QAction(tr("Carte de &densité"), this);
+    densityMapAct_ = new QAction(tr("Carte de densit&é"), this);
     densityMapAct_->setObjectName(QStringLiteral("action_densityMap"));
     densityMapAct_->setCheckable(true);
     densityMapAct_->setToolTip(tr("Surimpression colorée de la densité de points (pénétrations "

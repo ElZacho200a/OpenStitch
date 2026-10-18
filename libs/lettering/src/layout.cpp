@@ -245,6 +245,16 @@ double mean_stroke_width_um(const std::vector<geometry::PathSet>& shapes) {
     return perimeter > 0.0 ? 2.0 * area / perimeter : 0.0;
 }
 
+LayoutOptions layout_options_for(const document::TextObject& text) {
+    LayoutOptions options;
+    options.kerning_overrides.reserve(text.kerning_pairs.size());
+    for (const auto& pair : text.kerning_pairs) {
+        options.kerning_overrides.push_back({pair.left, pair.right, pair.adjust});
+    }
+    options.ligatures = text.ligatures;
+    return options;
+}
+
 Result<TextLayout> layout_text(const Font& font, const document::TextObject& text,
                                const LayoutOptions& options) {
     TextLayout layout;

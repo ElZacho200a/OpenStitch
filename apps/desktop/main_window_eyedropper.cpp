@@ -144,9 +144,13 @@ void MainWindow::eyedropperAt(QPointF posMm) {
     const thread_palette::RgbImageView view{std::span<const std::uint8_t>(rgb), w, h};
     const std::string chart =
         threadPanel_ != nullptr ? threadPanel_->currentChartId().toStdString() : std::string{};
-    // Pas de « Mes fils » côté bureau pour l'instant : recherche dans le nuancier courant.
+    // « Limiter à mes fils » (HP-THR-007) : recherche dans le stock possédé ; sinon dans le
+    // nuancier courant.
+    const thread_palette::ThreadStock* stock =
+        (threadPanel_ != nullptr && threadPanel_->limitToStock()) ? &threadPanel_->stock()
+                                                                  : nullptr;
     const auto picked = thread_palette::pick_thread(view, px - x0, py - y0, kSampleRadiusPx,
-                                                    threadLibrary_, chart, nullptr, kTopThreads);
+                                                    threadLibrary_, chart, stock, kTopThreads);
     if (!picked) {
         statusBar()->showMessage(tr("Pipette : échantillonnage impossible (%1).")
                                      .arg(QString::fromStdString(picked.error().message)),
