@@ -38,10 +38,14 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
 | P0 | 12 | 26 | 6 | 44 |
-| P1 | 10 | 48 | 70 | 128 |
-| P2 | 3 | 17 | 62 | 82 |
-| P3 | 0 | 0 | 12 | 12 |
-| **Total** | **25** | **91** | **150** | **266** |
+| P1 | 10 | 48 | 82 | 140 |
+| P2 | 3 | 17 | 77 | 97 |
+| P3 | 0 | 0 | 15 | 15 |
+| **Total** | **25** | **91** | **180** | **296** |
+
+Ajoutés le 2026-10-18 (audit UX/UI, `docs/ux/`) : **+30 entrées ☐** (12 P1, 15 P2, 3 P3) :
+HP-UX-017 à HP-UX-044, HP-PERF-009 et HP-QA-008 (§20, §22, §23). Aucun statut existant n'a été
+modifié ; HP-UX-001/002/003/004/009/012/016 sont seulement précisés.
 
 **Fait (25)** : FILE-001/002/003/004 (nouveau projet, enregistrer, récents, autosave),
 THR-001/003/004 (bibliothèque de fils, fil le plus proche, fil assigné à chaque objet),
@@ -157,6 +161,14 @@ bibliothèques.
 ### Vague 4 — Finitions
 
 Les P3.
+
+### Chantier transverse — Ergonomie (audit du 2026-10-18)
+
+Les lots A à E de §20 (HP-UX-017…044, HP-PERF-009, HP-QA-008) ne forment pas une vague : ils se
+**glissent dans les vagues 1 à 3** selon les fichiers touchés. Ordre recommandé (voir
+`docs/ux/strategie-interface.md` §4) : HP-QA-008 → lot A en parallèle du lot B → lot C
+(après HP-PERF-001 et, pour les fichiers communs, HP-QA-001) → lot D → lot E. En mode piloté,
+un lot A ou B est un bon choix quand la vague en cours est bloquée par une preuve humaine.
 
 ---
 
@@ -2491,23 +2503,49 @@ les paramètres avant de créer) et par des **modes** distincts (édition satin,
   poignées de transformation ; double-clic (ou touche) passe en remodelage
   (nœuds, rails, guides, entrée/sortie selon le type) ; Échap remonte d'un
   niveau. Revoir `docs/ui-redesign-*.md`.
+- Audit 2026-10-18 (BRO-09, BRO-10) : constaté aujourd'hui, 4 modes d'édition + 15 outils à
+  activer par menu, pas d'entrée par double-clic, nom du mode actif absent de la barre d'état.
+  **Réalisation par étapes** : d'abord Échap d'un niveau (HP-UX-018) et double-clic pour entrer
+  dans l'édition (satin → `satinEditModeAct_`), puis indication permanente du mode ; la fusion
+  complète en un mode « Remodeler » n'est engagée que si ces gestes ne suffisent pas.
+  Acceptation ajoutée : double-clic sur un satin sélectionné active son mode d'édition, Échap le
+  quitte sans changer la sélection.
 - Modules : `apps/desktop`.
 
 ### HP-UX-002 — Création directe sans dialogue [P1] — ☐ À faire
 - À faire : « Créer un tatami » crée immédiatement avec les défauts (ou le
   dernier réglage) ; les paramètres se règlent ensuite dans l'inspecteur.
+- Audit 2026-10-18 (BRO-19, PAR-03) : **décision du 2026-10-18 : les dialogues de création
+  (`createTatamiObject`, contour, satin : `main_window.cpp:4161, 4221-4260`) sont supprimés** ;
+  une entrée « Créer avec réglages… » reste dans le sous-menu pour qui veut saisir les valeurs
+  avant création. Création immédiate au dernier réglage, sélection, une `ICommand`. Condition :
+  HP-PERF-009 (l'inspecteur règle en direct sans geler l'interface). Voir HP-UX-028.
+  Acceptation : `createTatamiAct_` ne laisse aucun `QDialog` ouvert et pousse un pas
+  d'annulation.
 
 ### HP-UX-003 — Inspecteur homogène pour tous les types [P1] — ◐ Partiel
 - À faire : mêmes sections pour tous (Général : nom, fil, visible ; Points ;
   Sous-couche ; Compensation ; Entrée/sortie ; Avancé), unités affichées,
   info-bulle sur chaque champ, bouton « réinitialiser au défaut » par champ,
   valeurs par défaut documentées.
+- Audit 2026-10-18 (BRO-11, BRO-12, BRO-13, PAR-17) : constaté, tatami ≈ 13 champs dont la
+  sous-couche toujours déroulée, directionnel ≈ 25, satin ≈ 20, aucun bouton « défaut » ni
+  défauts mémorisés. **Précision** : en tête, les trois réglages d'usage (espacement, angle,
+  compensation) ; sections « Sous-couche » et « Avancé » repliées, ouverture mémorisée par
+  `ui_memory` ; icône ↺ à droite d'un champ qui diffère du défaut (info-bulle « Défaut : 0,40 mm »)
+  ; table unique (nom, plage, défaut, unité) pour info-bulles et ↺ (HP-UX-042).
+  Acceptation : par défaut `spin_underlaySpacing` n'est pas visible, déplier la section le rend
+  visible ; modifier `spin_rowSpacing` affiche ↺ qui restaure `TatamiParams{}.row_spacing`.
 - Modules : `apps/desktop/properties_panel`.
 
 ### HP-UX-004 — Palette d'outils organisée par tâches [P1] — ☐ À faire
 - Hatch : onglets / boîtes à outils : Numériser, Éditer, Lettrage, Disposer,
   Couleurs…
 - À faire : regroupement logique des outils, libellés et icônes cohérents.
+- Audit 2026-10-18 (QT-02) : **mesuré** : à 1024 × 640 la palette (≈ 17 actions) déborde dans `»`.
+  Le volet « petit écran » (deux colonnes, Terminer/Annuler dans la barre contextuelle) est porté
+  par HP-UX-026 ; le regroupement par tâche (formes en un bouton à menu, courbes, satin, couper)
+  reste ici.
 
 ### HP-UX-005 — Menu contextuel complet [P1] — ◐ Partiel
 - À faire : couper/copier/coller/dupliquer, ordre (avant/arrière), couleur/fil,
@@ -2533,6 +2571,11 @@ les paramètres avant de créer) et par des **modes** distincts (édition satin,
 - À faire : Espace+glisser et clic molette = déplacer la vue ; glisser dans le
   vide = rectangle de sélection (HP-OBJ-001) ; Ctrl+molette / molette
   configurable ; pavé tactile (pinch-zoom).
+- Audit 2026-10-18 (BRO-07) : **constaté dans le code, la description ci-dessus est périmée** :
+  molette = zoom au curseur, Espace+glisser, clic milieu, pinch et Ctrl+molette existent
+  (`interaction_map.cpp:65-80`) et le glisser dans le vide en Sélection fait un rectangle (S6).
+  Statut ◐ conservé (configurabilité et tests réels sur pavé tactile non vérifiés) ; ne pas
+  régresser. Reste : zoom sur la sélection et retour au zoom précédent (HP-UX-023).
 
 ### HP-UX-010 — Barre d'état informative [P1] — ◐ Partiel
 - À faire : taille de la sélection, nombre de points de la sélection et du
@@ -2545,6 +2588,11 @@ les paramètres avant de créer) et par des **modes** distincts (édition satin,
 - Hatch : assistants pas à pas pour les débutants.
 - À faire : assistant guidé (image → taille → couleurs → fond → numériser →
   vérifier → exporter pour ma machine).
+- Audit 2026-10-18 (PAR-09, PAR-06) : l'assistant reste **optionnel et non bloquant** (les
+  experts gardent leurs raccourcis, pas de profil Débutant/Expert). Briques planifiées :
+  accueil avec « Guide de 2 minutes », « Dessiner » et « Texte » (voir UX-43), préréglages de
+  numérisation (HP-UX-030), cadre dans l'import (HP-UX-033), panneau Qualité ouvert après F8
+  (HP-UX-031).
 
 ### HP-UX-013 — Messages d'erreur actionnables [P2] — ◐ Partiel
 - À faire : chaque refus dit quoi faire (« satin refusé : forme trop large,
@@ -2560,6 +2608,243 @@ les paramètres avant de créer) et par des **modes** distincts (édition satin,
 - À faire : relire tous les libellés (« Déboguer : afficher toutes les
   données… », « Remodelage satin (avancé) », « trajet caché ») ; masquer les
   outils de débogage derrière un mode développeur.
+- Audit 2026-10-18 (BRO-25, PAR-05) : le menu Déboguer est déjà masqué derrière
+  `debugMenuEnabled()` (`main_window.cpp:5363-5366`). Restent visibles : « Convertir
+  automatiquement en satin (expérimental)… », « Remodelage satin (avancé) », deux entrées pour la
+  même intention (« Créer un satin automatique » / « Convertir… »). Proposition : un menu
+  « Avancé » replié et une seule entrée de satin automatique ; le message d'échec du satin offre
+  un bouton « Utiliser un tatami ».
+
+### Audit UX/UI du 2026-10-18 : lots A à E (HP-UX-017 à HP-UX-044)
+
+Issus de l'audit [`docs/ux/audit-ux-ui-2026-10-18.md`](ux/audit-ux-ui-2026-10-18.md)
+(complète `docs/ui-ux-audit-2026-10-13.md`, registre `UX-xx`, que cette roadmap ne citait pas).
+Stratégie, arbitrages et ordre : [`docs/ux/strategie-interface.md`](ux/strategie-interface.md) ;
+synthèse : [`docs/ux/synthese.md`](ux/synthese.md). **Aucune de ces tâches ne modifie le moteur
+de points, les formats ni le schéma `.osp`** (une seule exception à confirmer : HP-UX-044). Toute
+mutation reste une `ICommand` ; tout nouveau texte passe par `tr()`. Chaque entrée est câblée dans
+`apps/desktop` avec un test QTest headless (sans pixel ni `sleep`, noms `TEST_CASE` ASCII).
+Constats : `PAR-`/`BRO-`/`QT-` = rapport d'audit ; `UX-` = audit du 2026-10-13.
+Tâches existantes enrichies plutôt que dupliquées : HP-UX-001/002/003/004/009/012/016.
+Prérequis commun des lots B et C : **HP-QA-008** (garde de taille minimale, §23).
+
+#### Lot A — Quick wins et gestes (P1/P2, complexité S)
+
+### HP-UX-017 — Ctrl+O ouvre tout (projet, image, SVG, fichier machine) [P1] — ☐ À faire
+- Problème : Ctrl+O n'ouvre que des images (`main_window.cpp:699-701`) ; `openPath` sait déjà router `.osp/.dst/.svg/image` (`main_window_ux.cpp:83-89`). Constat PAR-01.
+- Comportement attendu : Ctrl+O = « Ouvrir… » universel (filtre « Tous les fichiers pris en charge ») ; « Importer une image… » garde Ctrl+Maj+I ; l'entrée « Ouvrir un projet… » reste. Le garde des modifications non enregistrées s'applique comme aujourd'hui.
+- Complexité : S. Composants : `apps/desktop/main_window.cpp`, `main_window_ux.cpp`.
+- Dépend de : —
+- Acceptation : un test QTest ouvre via l'action un `.osp`, un `.dst`, un `.svg` et un PNG et vérifie la bonne branche ; le raccourci Ctrl+O est unique (aucun conflit `QAction`). Décision utilisateur du 2026-10-18 : changement de raccourci accepté.
+- Non-régression : garde de remplacement (Enregistrer / Ne pas enregistrer / Annuler), récents, glisser-déposer.
+
+### HP-UX-018 — Échap remonte d'un niveau, jusqu'à la sélection d'objets [P1] — ☐ À faire
+- Problème : Échap ne désélectionne que les régions et ferme tous les modes d'un coup (`main_window.cpp:6479-6509`). Constat BRO-04. Voir HP-UX-001.
+- Comportement attendu : un appui remonte d'un niveau : mode d'édition → outil → sélection d'objets → sélection de régions. Quitter un mode conserve la sélection.
+- Complexité : S. Composants : `apps/desktop/main_window.cpp` (raccourci Échap).
+- Dépend de : —
+- Acceptation : objet sélectionné en outil Sélection, Échap vide `currentSelection()` ; dans un mode d'édition, un premier Échap quitte le mode et garde la sélection, un second la vide.
+- Non-régression : Échap pendant un tracé multi-clics, fusion de régions, champs de saisie (Échap y reste local).
+
+### HP-UX-019 — Un seul prédicat de sélection et tolérance de clic [P1] — ☐ À faire
+- Problème : trois règles pour le même geste (clic simple filtré ; Maj/Ctrl/Alt non ; rectangle filtré) et aucune tolérance de clic : un tracé ouvert ou un détail de 1 mm est presque inclicable (`selection_hit_test.cpp:16, 71-73, 94-100`, `main_window.cpp:8723-8727, 8879, 8918-8926, 8984`). Constats BRO-02, BRO-03.
+- Comportement attendu : une fonction `selectableAt(project, pos, filtre, tolérance)` utilisée par clic, Maj/Ctrl/Alt, rectangle, liste et flèches. Distance au trait ≤ max(0,4 mm ; 4 px écran) ; l'objet qui **contient** le point garde la priorité.
+- Complexité : M (tolérance exprimée en mm à travers le zoom). Composants : `apps/desktop/selection_hit_test.*`, `main_window.cpp`.
+- Dépend de : —
+- Acceptation : filtre de couleur actif → `objectsAtPointMm` et le clic simple renvoient le même ensemble ; un chemin ouvert de 0,1 mm est sélectionné à 0,3 mm, pas à 5 mm ; un objet masqué reste exclu.
+- Non-régression : `test_selection_hit_test`, performance du hit-test sur 500 objets.
+
+### HP-UX-020 — Cyclage de sélection par re-clic et menu « dessous » enrichi [P2] — ☐ À faire
+- Problème : Alt+clic ouvre un menu de noms sans pastille ni type ; un nom en double reçoit « (#id) » (`interaction_map.cpp:90`, `main_window.cpp:8980-9023`). Constat BRO-01.
+- Comportement attendu : un clic répété au même point (rayon 2 px) sélectionne l'objet suivant dessous ; la barre d'état affiche « 2/4 sous le curseur » ; les entrées du menu portent pastille de couleur et type de point (survol = surbrillance).
+- Complexité : S. Composants : `apps/desktop/main_window.cpp`, `canvas_view.cpp`.
+- Dépend de : HP-UX-019.
+- Acceptation : trois formes superposées, trois clics identiques sélectionnent haut, milieu, bas, puis reviennent en haut ; un clic ailleurs remet le cycle à zéro.
+
+### HP-UX-021 — Vectorisation (F7) sans modale [P2] — ☐ À faire
+- Problème : chaque F7 ouvre une modale « Détail » pour un curseur déjà mémorisé (`main_window_workflow.cpp:175-206`). Constat PAR-07.
+- Comportement attendu : F7 applique la dernière valeur (`ui_memory`) ; Maj+F7 ouvre le réglage.
+- Complexité : S. Composants : `apps/desktop/main_window_workflow.cpp`.
+- Dépend de : —
+- Acceptation : F7 n'ouvre aucun `QDialog` ; Maj+F7 en ouvre un et mémorise la valeur ; sortie identique à l'actuelle pour une même valeur.
+
+### HP-UX-022 — Sortir de la simulation ; rendu réaliste après lecture [P1] — ☐ À faire
+- Problème : `simStep_ >= 0` désactive le rendu réaliste (`main_window_realistic.cpp:140`) et ne revient à −1 qu'à la régénération (`main_window.cpp:1229, 7790, 7796`) ; aucun bouton de sortie. Constat PAR-10 (chemin lu, effet non exécuté).
+- Comportement attendu : bouton « Quitter la simulation » et sortie automatique en fin de lecture ; Ctrl+Maj+R affiche alors le rendu complet. Alternative : tracer les segments réalistes jusqu'à `simStep_`.
+- Complexité : S (sortie) / M (réaliste progressif). Composants : `apps/desktop/main_window.cpp`, `main_window_realistic.cpp`.
+- Dépend de : —
+- Acceptation : lecture jusqu'au bout puis activation du rendu réaliste → rendu complet affiché ; le bouton remet `simStep_ = -1` sans régénérer.
+
+### HP-UX-023 — Ctrl+A selon la couche, touches de couches, zoom sur la sélection [P2] — ☐ À faire
+- Problème : Ctrl+A sélectionne des régions (objets sur Ctrl+Maj+A, `main_window.cpp:895-898`) ; aucun raccourci de couche ; aucun zoom sur la sélection. Constats BRO-05, BRO-08, BRO-22.
+- Comportement attendu : Ctrl+A suit la couche affichée ; 1 à 4 = Image/Régions/Vecteurs/Points ; Z = zoom sur la sélection, Maj+Z = zoom précédent, Ctrl+1 = 100 %.
+- Complexité : S. Composants : `apps/desktop/main_window*.cpp`, `canvas_view.cpp`, `interaction_map.cpp` (aide).
+- Dépend de : —
+- Acceptation : projet vectoriel sans segmentation → Ctrl+A sélectionne tous les objets visibles ; après Z la vue contient la boîte de la sélection ; l'aide des gestes liste les nouvelles touches.
+- Non-régression : Espace/focus (UX-40), touches dans les champs de saisie.
+
+#### Lot B — Responsive et panneaux (P1/P2)
+
+### HP-UX-024 — Docks en onglets, docks Fils et Couleurs défilants [P1] — ☐ À faire
+- Problème : Analyse, Historique, Fils, Couleurs sont empilés à droite (`main_window_analysis.cpp:176`, `main_window_editing.cpp:637`, `main_window_threads.cpp:102`, `main_window_colors.cpp:25`) ; `ThreadPanel` (≈ 450 px minimum) n'a pas de zone défilante ; `colorsDock_` est créé paresseusement et sa place est perdue (`main_window_colors.cpp:19-25`). Constats QT-03, QT-04, QT-15 (tailles estimées, classe B).
+- Comportement attendu : `tabifyDockWidget` des quatre docks ; `QScrollArea` (`setWidgetResizable(true)`) pour Fils et `SegmentationColorsPanel` ; `colorsDock_` créé caché au constructeur ; disposition restaurée bornée à l'écran.
+- Complexité : M. Composants : `apps/desktop/main_window_*.cpp`, `thread_panel.*`, `segmentation_colors_panel.*`, `main_window_ux.cpp`.
+- Dépend de : HP-QA-008.
+- Acceptation : tous docks actifs, `window.minimumSizeHint().height() <= 480` ; `threadDock_->minimumSizeHint().height() <= 200` ; aller-retour `saveUiLayout`/`restoreUiLayout` incluant `colorsDock_`.
+- Non-régression : tests qui supposent plusieurs docks visibles ensemble ; « Réinitialiser la disposition ».
+
+### HP-UX-025 — Dialogues bornés à l'écran et dialogues longs repensés [P1] — ☐ À faire
+- Problème : aucun `QScrollArea`/`QSplitter` dans les dialogues ; tailles initiales jusqu'à 1000 × 720 ; Texte ≈ 750-800 px, Export machine ≈ 690, Segmentation IA ≈ 900 de haut ; Mélange de couleurs `setMinimumWidth(970)` ; accueil ≈ 440 px (`production_dialog.cpp:56`, `ai_segmentation_dialog.cpp:135`, `text_dialog.cpp:285-357`, `machine_export_dialog.cpp:43-181`, `color_blend_dialog.cpp:195`, `empty_state_widget.cpp:27-86`). Constats QT-07 à QT-12 (classe B pour les tailles ; `970` est constaté).
+- Comportement attendu : utilitaire `fitDialogToScreen(QDialog*)` au `showEvent` (92 % de `availableGeometry`, contenu long dans un `QScrollArea` transparent, boutons OK/Annuler hors zone défilante) ; Texte en colonne défilante ou onglets Texte/Avancé ; Export machine avec « Optimisations » repliable ; Mélange de couleurs empilé sous un seuil ; Segmentation IA en `QSplitter` ; accueil défilant.
+- Complexité : M (plusieurs fichiers disjoints, parallélisables). Composants : `apps/desktop/*_dialog.cpp`, `text_dialog.cpp`, `empty_state_widget.cpp`.
+- Dépend de : HP-QA-008.
+- Acceptation : pour chaque dialogue, `d.resize(10000,10000); show();` → taille ≤ 92 % de la zone utile ; `minimumSizeHint()` ≤ 880 × 440 (Mélange, Texte, Export, IA) ; accueil avec 5 noms de récents longs : toutes les actions atteignables.
+- Non-régression : valeurs mémorisées, `test_help_dialogs` (aide Gestes 460 × 320), focus initial des dialogues.
+
+### HP-UX-026 — Barres du bas fusionnées, palette sur deux colonnes, densité automatique [P1] — ☐ À faire
+- Problème : quatre rangées de barres + bande des fils ≈ 255 px ; palette ≈ 17 actions qui déborde dans `»` (Terminer/Annuler la forme inclus) ; « Confortable » par défaut même sur 768 px ; barre d'état ≈ 450 px figés (`main_window.cpp:470-476, 507-556, 6234-6344, 6355-6477`, `main_window_threads.cpp:541-548`, `app_theme.cpp:434-444`). Constats QT-01, QT-02, QT-14, QT-16, QT-17, BRO-24. **Mesuré** : canevas 360 × 421 à 1024 × 640.
+- Comportement attendu : simulation + bande des fils en une rangée visible seulement si une séquence existe ; barre contextuelle dans la principale ; palette en deux colonnes sous 480 px de haut, Terminer/Annuler dans la barre contextuelle pendant un tracé ; densité « Compacte » au premier lancement si la hauteur utile < 800 ; libellés sans espaces de fin ; `cursorLabel_` élidable.
+- Complexité : M. Composants : `apps/desktop/main_window.cpp`, `main_window_threads.cpp`, `app_theme.cpp`, `design_tokens.cpp` (fichiers de convergence : un seul propriétaire).
+- Dépend de : HP-QA-008 ; voir HP-UX-004 (regroupement par tâche).
+- Acceptation : à 911 × 480 avec séquence chargée, `view_->height() >= 260` et `view_->width() >= 450` ; `finishDrawAct_` visible pendant un tracé ; sans `QSettings` et écran simulé de 480 px de haut, `AppTheme::density() == Compact` ; `statusBar()->minimumSizeHint().width() <= 450`.
+- Non-régression : tests qui retrouvent les barres par `objectName`, `hintsWidgetNeverForcesWindowWidth`.
+
+### HP-UX-027 — Mode « portable » à une colonne et inspecteur étroit [P2] — ☐ À faire
+- Problème : deux colonnes ouvertes à 911 px laissent ≈ 250 px au canevas ; l'inspecteur ne rétrécit pas sous ses libellés (`main_window.cpp:499`, `properties_panel.cpp:163-170`) ; aucun `QSplitter`. Constats QT-05, QT-06 (classe B).
+- Comportement attendu : action « Panneaux : mode portable » (proposée automatiquement sous 1000 px) qui tabifie Document et Propriétés dans une seule colonne ; `QFormLayout::WrapLongRows` dans l'inspecteur.
+- Complexité : M. Composants : `apps/desktop/main_window*.cpp`, `properties_panel.cpp`.
+- Dépend de : HP-UX-024.
+- Acceptation : à 911 × 480 après l'action, `view_->width() >= 450` ; `propertiesDock_->minimumSizeHint().width() <= 260`.
+
+#### Lot C — Workflows de broderie (P1/P2)
+
+### HP-UX-028 — Type de point identique pour une ou N formes, aussi au clic droit [P1] — ☐ À faire
+- Problème : une forme sans couture n'a aucun choix de type dans l'inspecteur ; 2 formes ou plus ont un combo + « Appliquer » ; le menu contextuel n'offre pas le type ; « Directionnel » absent pour une forme neuve (`properties_panel.cpp:452-550, 597-634`, `main_window.cpp:5317-5328, 5374-5386, 6232-6301`). Constats PAR-02, PAR-03, PAR-04.
+- Comportement attendu : mêmes quatre boutons (Contour, Tatami, Satin, Directionnel) pour toute sélection de formes, en tête de l'inspecteur, dans la barre contextuelle et le clic droit ; un clic crée la couture avec le dernier réglage, en **une** `ICommand` annulable (réutiliser `setStitchTypeForSelection`).
+- Complexité : M. Composants : `apps/desktop/properties_panel.cpp`, `main_window*.cpp`.
+- Dépend de : HP-UX-002 ; HP-OBJ-019.
+- Acceptation : forme neuve, un clic sur chacun des quatre types → couture créée, zéro modale, un pas d'annulation ; clic droit sur forme non cousue → sous-menu à quatre entrées.
+- Non-régression : retouches manuelles (ADR-014), conversion de groupe, `check_no_raw_sequence_bypass`.
+
+### HP-UX-029 — Avertir avant d'invalider des retouches manuelles [P1] — ☐ À faire
+- Problème : `paramsEdited` s'exécute sans tester l'état de l'objet (`main_window.cpp:6931-6948`) : une modification de paramètre rend les retouches de points obsolètes (signalé après coup par ⚠, `document_panel.cpp:43-56`). Les retouches ne sont pas perdues (ADR-014) mais plus appliquées. Constat BRO-20.
+- Comportement attendu : à la première modification d'un objet « ✎ », bandeau non modal dans l'inspecteur « Cette modification désactive N retouches (Ctrl+Z pour annuler) » ; N dans l'info-bulle de ⚠ ; bouton « Réappliquer les retouches » quand c'est possible. Pas de confirmation bloquante.
+- Complexité : M (comptage en lecture seule via `classify_all_edit_states`, aucun changement de cœur). Composants : `apps/desktop/properties_panel.*`, `main_window.cpp`.
+- Dépend de : —
+- Acceptation : objet « ✎ » à 14 retouches → `paramsEdited` affiche l'étiquette avec « 14 » ; annuler restaure l'état « ✎ » ; objet propre → aucun bandeau.
+- Non-régression : `docs/lot8-manual-editing-design.md` (états Clean/ManuallyEdited/Dirty), fusion de commandes scalaires.
+
+### HP-UX-030 — Préréglages de numérisation automatique et résumé chiffré [P2] — ☐ À faire
+- Problème : F8 ouvre deux modales puis ~25 réglages d'expert ; le résumé final ne donne que le nombre d'objets (`main_window.cpp:4320-4342, 4369-4768, 4929-4937`). Constat PAR-06. Voir HP-UX-012.
+- Comportement attendu : trois préréglages (« Logo / aplats », « Dessin au trait », « Photo / pointillé ») ; section « Avancé » repliée et mémorisée ; question Ajouter/Remplacer intégrée au dialogue ; résumé final : points, durée estimée, fils, nombre de problèmes, bouton « Voir ». **Aucun changement de moteur** : seuls les paramètres existants sont regroupés.
+- Complexité : M. Composants : `apps/desktop/main_window.cpp` (ou `main_window_workflow.cpp`), `ui_memory.hpp`.
+- Dépend de : HP-QA-001 (conflits de fusion).
+- Acceptation : F8 sur segmentation neuve = une modale ; chaque préréglage produit les mêmes paramètres que les valeurs équivalentes saisies à la main (test d'égalité des options) ; valeurs rechargées au lancement suivant.
+
+### HP-UX-031 — Panneau « Qualité » unique [P2] — ☐ À faire
+- Problème : dock Analyse masqué au démarrage, statistiques en `QMessageBox`, trois dialogues texte (fidélité, épaisseurs, diagnostic), corrections une à une (`main_window_analysis.cpp:177, 211-311, 338-393`, `main_window.cpp:7892`). Constat PAR-13.
+- Comportement attendu : étape 1 : ouverture automatique du dock Analyse après F8 et avant l'export ; étape 2 : onglets Problèmes / Statistiques / Fidélité / Épaisseur ; « Corriger tout ce qui est sûr » (déplacer dans le cadre, allonger, scinder), annulable en un pas. Règles existantes de `stitch_analysis` uniquement.
+- Complexité : L (étape 2). Composants : `apps/desktop/main_window_analysis.cpp`, `libs/stitch_analysis` (lecture seule).
+- Dépend de : HP-PROD-007/008 ; HP-UX-024.
+- Acceptation : après F8 le dock s'ouvre seul ; « Corriger tout » = une entrée d'annulation et un re-calcul sans nouveau problème sûr ; mêmes diagnostics que `project quality` (CLI).
+
+### HP-UX-032 — Export rapide et décision explicite avant export [P2] — ☐ À faire
+- Problème : Ctrl+E ouvre ~15 contrôles puis « Choisir le fichier… » (bouton par défaut) puis la boîte système ; « Voir les problèmes » ferme le dialogue et n'apparaît qu'en cas d'erreur ; aucun enregistrement `.osp` proposé ; l'analyse est recalculée à chaque case ; coupes réglées à deux endroits (`machine_export_dialog.cpp:63-187, 318`, `main_window.cpp:8316, 8378, 8422-8443`, `generation_options_dialog.cpp:43-60`). Constats PAR-12, PAR-18, UX-10 (partie ouverte).
+- Comportement attendu : Ctrl+Maj+E « Exporter avec les derniers réglages » vers le dernier dossier ; « Enregistrer le projet d'abord » et « Voir les problèmes » (sans fermer) dès qu'il y a un avertissement ; bouton par défaut non destructif tant que des risques existent ; aperçu recalculé après 300 ms d'inactivité ; vocabulaire « réglage du projet / de ce fichier » commun aux deux écrans de coupes.
+- Complexité : M. Composants : `apps/desktop/machine_export_dialog.*`, `main_window.cpp`.
+- Dépend de : —
+- Acceptation : export rapide = raccourci + nom de fichier ; le bouton par défaut n'est pas « Choisir le fichier… » quand `blocking` ou des avertissements existent ; cocher 5 options en < 300 ms ne déclenche qu'une analyse.
+- Non-régression : octets DST/PES/JEF/EXP inchangés (SHA-256 sur un projet de référence).
+
+### HP-UX-033 — Cadre accessible depuis l'import et la barre d'état [P2] — ☐ À faire
+- Problème : l'import constate un dépassement mais le cadre ne se règle que par menu ou barre contextuelle (`import_dialog.cpp:211-218`, `main_window.cpp:1095, 6347`). Constats PAR-08, PAR-20.
+- Comportement attendu : sélecteur de cadre (préréglages existants) dans `ImportDialog` ; taille du cadre cliquable dans la barre d'état.
+- Complexité : S/M. Composants : `apps/desktop/import_dialog.*`, `main_window.cpp`.
+- Dépend de : —
+- Acceptation : le cadre choisi dans l'import est celui du projet ; Annuler restaure l'ancien cadre.
+
+### HP-UX-038 — Valeurs mixtes et portées honnêtes en multi-sélection [P1] — ☐ À faire
+- Problème : le formulaire de groupe affiche la valeur d'un représentant comme commune ; deux modèles coexistent (« Appliquer à N objets » et champs en direct) ; entrée/sortie, dégradé et bordure n'agissent que sur un objet (`properties_panel.cpp:597-643, 836, 1206, 1304`). Constats BRO-17, UX-33, UX-34.
+- Comportement attendu : « — » par champ quand les valeurs diffèrent ; éditer un champ n'uniformise que ce champ ; un seul modèle (édition en direct, commande composite) ; contrôles à portée individuelle isolés dans « Objet actif seulement ».
+- Complexité : M. Composants : `apps/desktop/properties_panel.*`, `main_window_editing.cpp`.
+- Dépend de : HP-OBJ-019.
+- Acceptation : deux tatamis à 0,3 et 0,5 mm affichent un champ indéterminé ; changer l'angle ne modifie pas la densité ; une seule entrée d'annulation par édition.
+
+Le lot C comprend aussi **HP-PERF-009** (régénération différée à l'édition de paramètres, §22).
+
+#### Lot D — Cohérence et productivité (P2)
+
+### HP-UX-034 — Mode « Isoler » (protection de session) [P2] — ☐ À faire
+- Problème : `EmbroideryObject::locked` fige l'ordre de couture, il ne protège pas l'objet (`embroidery_object.hpp:393`, `selection_hit_test.cpp:97`) ; un glisser accidentel de 3 mm sur un fond fini casse l'alignement. Constat BRO-15.
+- Comportement attendu : « Isoler la sélection » masque/atténue les autres objets et les exclut du hit-test, du rectangle et des flèches **pendant la session** ; « Quitter l'isolation » les restaure. **Décision du 2026-10-18 : aucun champ persistant, aucun changement de `.osp`.** Un verrou d'édition persistant reste hors périmètre (nécessiterait un champ et une migration).
+- Complexité : M. Composants : `apps/desktop/selection_hit_test.*`, `canvas_view.cpp`, `document_panel.*`.
+- Dépend de : HP-UX-019 (prédicat unique).
+- Acceptation : en isolation, un clic sur un objet non isolé ne le sélectionne pas et le glisser du fond ne le déplace pas ; l'état n'est pas écrit dans le `.osp` (SHA-256 identique avant/après sauvegarde).
+
+### HP-UX-035 — Copier/coller le style et défauts de points [P2] — ☐ À faire
+- Problème : pas de « copier le style » ; défauts de création en dur (0,4 / 3 / 0°, `main_window.cpp:4232-4244`) ; `ui_memory` ne couvre pas les paramètres de couture. Constat BRO-21. Voir HP-UX-007.
+- Comportement attendu : Ctrl+Alt+C / Ctrl+Alt+V sur la sélection (une `ICommand`) ; « Utiliser ces réglages comme défaut pour les nouveaux objets » (stocké par `QSettings`, jamais dans le projet).
+- Complexité : M. Composants : `apps/desktop/properties_panel.*`, `ui_memory.hpp`, `main_window_editing.cpp`.
+- Dépend de : HP-UX-003.
+- Acceptation : coller le style de A sur B donne `B.params == A.params` en une commande annulable ; un nouvel objet reprend le défaut enregistré.
+
+### HP-UX-036 — Bascule de vue à quatre états et barre de simulation informative [P2] — ☐ À faire
+- Problème : quatre couches dans Affichage ▸ Calques, une seule en barre ; une couche masquée rend le clic muet sans explication ; compteur de simulation = indice de commande, pas de saut par couleur ni de durée (`main_window.cpp:1060-1075, 6114, 7699-7735, 7807, 8721`). Constats BRO-23, PAR-11, UX-29.
+- Comportement attendu : bascule Dessin / Points / Réaliste / Simulation dans la barre (le menu Calques reste) ; message « Vecteurs masqués » quand un clic tombe sur une couche cachée ; simulation : « point n/N · mm:ss · fil 3/7 », couleur précédente/suivante.
+- Complexité : M. Composants : `apps/desktop/main_window*.cpp`. Voir HP-SIM-002/004.
+- Dépend de : HP-UX-022.
+- Acceptation : activer « Points » masque `showVectorsAct_` ; un clic en mode Points affiche un message d'état précis ; le saut par couleur positionne `simStep_` au début du bloc.
+
+### HP-UX-037 — Liste Document : sélection étendue, vecteurs, ordre par glisser-déposer [P2] — ☐ À faire
+- Problème : sélection simple pour les objets, vecteurs non cousus absents, repli et défilement perdus à chaque rafraîchissement, Document et Ordre de couture dupliqués (`document_panel.cpp:237, 276, 349-402, 523-563`, `main_window.cpp:6745-6747, 7224-7295`). Constats BRO-06, PAR-14, UX-13, UX-45.
+- Comportement attendu : `ExtendedSelection` synchronisée avec `currentSelection()` ; lignes vectorielles indépendantes des coutures ; repli/sélection/défilement restaurés par identité ; ordre de couture par glisser-déposer dans la même liste ; menu de ligne (Masquer, Isoler, Figer, Supprimer).
+- Complexité : L. Composants : `apps/desktop/document_panel.*`, `main_window.cpp`.
+- Dépend de : HP-OBJ-001, HP-OBJ-010, HP-OBJ-011 ; HP-QA-001.
+- Acceptation : Ctrl+clic sur 3 lignes → 3 identifiants dans la sélection et « 3 objets » dans l'inspecteur ; SVG de plusieurs formes entièrement navigable avant création des points ; fermer un groupe puis rafraîchir ne change ni son repli ni la position de lecture.
+
+### HP-UX-039 — Contrat d'état de l'interface (workflow, enregistrement, erreurs) [P2] — ☐ À faire
+- Problème : le workflow est un lanceur (Vérification/Export « disponible » dès qu'une séquence existe) ; l'heure d'enregistrement est celle du rafraîchissement ; erreurs de génération/autosave uniquement en barre d'état éphémère (`main_window.cpp:6730-6734, 526-536`, `main_window_ux.cpp:260-278`). Constats UX-14, UX-32, UX-26.
+- Comportement attendu : états d'étape liés à la révision du document (vérifié, exporté, périmé après modification) ; instant de sauvegarde mémorisé ; notification d'erreur persistante avec reprise. **En mémoire seulement** : aucun champ `.osp`.
+- Complexité : M. Composants : `apps/desktop/main_window_workflow.cpp`, `main_window_ux.cpp`, `workflow_panel.*`.
+- Dépend de : HP-QA-001 (partiel).
+- Acceptation : sauver à T1, éditer, annuler à T2 → T1 affiché ; export réussi visible puis invalidé par une modification ; un SVG ne réclame pas d'étape Régions.
+
+### HP-UX-040 — Contrat IA : repli couleur et annulation tardive [P2] — ☐ À faire
+- Problème : l'échec du raffinement couleur n'est pas conservé après `accept()` ; l'annulation tardive n'a pas d'état dédié et plusieurs handlers ignorent `requestId` (`ai_segmentation_dialog.cpp:510-517, 563-566, 599-624, 981-986`). Constats UX-15, UX-16.
+- Comportement attendu : avertissement acquitté avant fermeture ou résultat structuré ; état `Cancelling`, filtrage par requête, paramètres figés au lancement.
+- Complexité : M. Composants : `apps/desktop/ai_segmentation_dialog.*`, `sam_worker_client.*`.
+- Dépend de : HP-PERF-001.
+- Acceptation : annulation pendant le chargement → aucun événement tardif ne relance de segmentation ; changer les réglages pendant l'attente ne modifie pas la requête en cours ; un échec couleur reste consultable après validation.
+
+#### Lot E — Finitions (P2/P3)
+
+### HP-UX-041 — Barre Fils accessible au clavier [P2] — ☐ À faire
+- Problème : pastilles peintes, activées à la souris ; « +N » non actionnable (`thread_strip.cpp:25-31, 55-71, 111-157`). Constat UX-46. Voir HP-THR-005, HP-I18N-004.
+- Comportement attendu : focus et activation clavier des pastilles (boutons natifs ou `QAccessible`), « +N » ouvre la liste complète, nom et code annoncés.
+- Complexité : S. Composants : `apps/desktop/thread_strip.*`.
+- Dépend de : —
+- Acceptation : tous les fils sélectionnables au clavier au-delà de la largeur disponible ; test de focus/activation `ThreadStrip` (aucun n'existe aujourd'hui).
+
+### HP-UX-042 — Icône de type de point et info-bulles complètes [P3] — ☐ À faire
+- Problème : le type se lit (préfixe texte) mais ne se voit pas ; info-bulles partielles (`document_panel.cpp:209-217`, `properties_panel.cpp:801, 901-958`). Constats BRO-13, BRO-14.
+- Comportement attendu : icône de type (tatami = hachures, satin = colonne, contour = pointillé) dans la liste ; filtre par type ; table unique (nom, plage, défaut, unité) alimentant info-bulles et bouton ↺ (HP-UX-003).
+- Complexité : S. Composants : `apps/desktop/document_panel.*`, `properties_panel.*`, `ui_icons.*`.
+- Dépend de : HP-UX-003.
+- Acceptation : `item->icon(0)` diffère selon le type ; chaque champ d'inspecteur a une info-bulle avec plage et défaut.
+
+### HP-UX-043 — Pastilles et règles adaptées au DPI et à la taille de police [P3] — ☐ À faire
+- Problème : pastilles `QPixmap` non adaptées au DPR, règles à 7,5 pt et boîtes de 12 px fixes (`import_dialog.cpp:38`, `text_dialog.cpp:356`, `thread_panel.cpp:198`, `ruler.cpp:37, 90`, `app_theme.cpp:352`). Constats QT-13, UX-28.
+- Comportement attendu : fabrique `makeSwatch(couleur, tailleLogique, dpr)` ; métriques des règles dérivées de la police.
+- Complexité : S. Composants : `apps/desktop/ruler.cpp`, `app_theme.cpp` (convergence), dialogues.
+- Dépend de : —
+- Acceptation : avec `QT_SCALE_FACTOR=1.5`, `swatch.devicePixelRatio() == qApp->devicePixelRatio()` ; police agrandie : `sizeHint` des règles cohérent.
+
+### HP-UX-044 — Import non proportionnel : appliquer ou retirer la hauteur [P3] — ☐ À faire
+- Problème : `placement()` renvoie largeur et hauteur mais `mm_per_pixel` n'utilise que la largeur (`libs/document/src/image_placement.cpp:67-71`) ; le champ hauteur est déjà grisé honnêtement (`import_dialog.cpp:64-72`). Constat UX-07.
+- Comportement attendu : soit retirer définitivement le champ hauteur modifiable (état actuel documenté), soit appliquer les deux axes partout. **Toute option qui touche le placement est à valider sans casser les `.osp` existants.**
+- Complexité : S (retrait) / L (anisotrope). Composants : `apps/desktop/import_dialog.*`, `libs/document` (si anisotrope).
+- Dépend de : —
+- Acceptation : taille saisie, canevas, segmentation et sortie machine coïncident, ou le champ n'est plus modifiable ; projets existants rechargés à l'identique.
 
 ---
 
@@ -2652,6 +2937,14 @@ de référence. Restent : progression et annulation, régénération de toute la
 - État OpenStitch : `openstitch-bench` hors CTest.
 - À faire : exécution périodique en CI (non bloquante), historique des mesures.
 
+### HP-PERF-009 — Régénération différée à l'édition de paramètres [P1] — ☐ À faire
+- Problème : chaque pas d'un champ de l'inspecteur pousse une `SetStitchParamsCommand` (fusionnée en un pas d'annulation) puis régénère **sur le fil UI** (`main_window.cpp:6931-6948`) : un grand remplissage gèle l'interface à chaque pas de molette ou de flèche. Constat BRO-18 (UX-04, UX-11). Condition de la création directe (HP-UX-002).
+- Comportement attendu : la commande est appliquée immédiatement ; la régénération est différée de 150 ms d'inactivité et exécutée hors fil UI (`BusyIndicator::run` ou la tâche de `HP-PERF-001`) ; pendant le calcul l'aperçu précédent reste affiché ; un résultat périmé est rejeté. Option : aperçu basse résolution pendant le glisser.
+- Complexité : M. Composants : `apps/desktop/main_window.cpp`, `properties_panel.cpp`. **Aucun changement du moteur de points** : la sortie reste octet pour octet identique à la régénération synchrone.
+- Dépend de : HP-PERF-001 (infrastructure de tâches), HP-PERF-002 (cache par objet, déjà ◐).
+- Acceptation : cinq `valueChanged` en moins de 150 ms déclenchent une seule régénération ; un événement UI est traité pendant la régénération d'un gros objet ; séquence identique octet pour octet à la version synchrone ; annuler (Ctrl+Z) restaure paramètres et aperçu.
+- Tests de non-régression : fusion de commandes scalaires, `check_no_raw_sequence_bypass`, déterminisme (`OPENSTITCH_THREADS=1`).
+
 ---
 
 ## 23. Robustesse et qualité logicielle (QA)
@@ -2713,6 +3006,13 @@ de référence. Restent : progression et annulation, régénération de toute la
   des images du dépôt (`tests/unit/project_ops/test_workflow.cpp`, `tests/cli/`) ; un lot
   refusé laisse le fichier octet pour octet inchangé (SHA-256 vérifié) ; `project export`
   == `osp2dst` (SHA-256).
+
+### HP-QA-008 — Garde de taille minimale et tests de parcours UX [P1] — ☐ À faire
+- Problème : aucun test ne plafonne `minimumSizeHint()` de la fenêtre (tous docks ouverts) ni des dialogues ; l'audit UX du 2026-10-18 a **mesuré** 523 × 441 de minimum (docks par défaut) et un canevas de 360 × 421 à 1024 × 640 (`openstitch-ui-shots`), mais les tailles de dialogues restent des estimations (classe B). Plus de dix trous de couverture recensés (`docs/ux/audit-ux-ui-2026-10-18.md` §5).
+- À faire : (1) mesurer les `minimumSizeHint` de tous les dialogues et les consigner ; (2) test « tous docks visibles → `window.minimumSizeHint() <= 911 × 480` » (objectif long terme 683 × 360) ; (3) `dialogsMinimumSizeFitsWorkArea` (≤ 880 × 440, aide ≤ 460 × 320) ; (4) tests ciblés sur les trous : `isClean`/heure d'enregistrement (UX-32), `setDefault` du dialogue d'export (UX-10), ordre de tabulation, `ThreadStrip`, `DocumentPanel` (repli, vecteurs), état mixte de groupe (UX-33/34), noms accessibles via `QAccessible`.
+- Modules : `tests/unit/desktop/` ; éventuellement `tests/bench/ui_shots.cpp` pour imprimer les tailles des dialogues. Noms `TEST_CASE`/fonctions QTest en ASCII, headless, sans pixel ni `sleep`.
+- Dépend de : — (préalable des lots B et C de HP-UX-017…044).
+- Acceptation : les tests existent, échouent sur les valeurs actuelles qui dépassent le budget (rouge d'abord) puis passent après les tâches B ; aucun test ne fige un comportement jugé défaut (ex. Entrée = export).
 
 ---
 
@@ -2851,3 +3151,4 @@ ci-dessus doit les respecter :
 | 2026-10-18 | Claude (session autonome, agents) | HP-FMT-009 ◐ et HP-FMT-005 ◐ (compagnon de couleurs `.inf`/`.csv`, codec), HP-QA-003 ◐ (fuzzing déterministe des décodeurs, boucle infinie SVG corrigée) ; câblage bureau/CLI à faire. |
 | 2026-10-18 | Claude (session autonome, agents) | Câblage bureau (5 lots, agents) : HP-VEC-007/008/010/014 ☑ (menu Forme, outil Règle), HP-FMT-011 ☑ (Exporter l'image), HP-FMT-009 ☑ et HP-FMT-005 ◐ (compagnon de couleurs à l'export et à l'import, `osp2dst --color-file`), HP-PROD-005 ☑ (consommation sur la fiche), HP-THR-007 ☑ (Mes fils), HP-TXT-007 ☑ (crénage manuel, `.osp` v8 conditionnel), HP-TXT-012 ◐ (ligatures), HP-VIEW-005 ◐ (carte de densité), HP-PROD-007 ◐ (règles optionnelles), HP-THR-012 ◐ (outil Pipette). |
 | 2026-10-18 | Claude (session autonome, agents) | Règle ajoutée : sauf demande explicite, toute fonctionnalité est câblée dans le bureau (hook, skills, `CLAUDE.md`). |
+| 2026-10-18 | Claude (audit UX/UI, 4 analyses en lecture seule) | **Audit UX/UI** : `docs/ux/` (rapport, parcours, stratégie, synthèse). +30 entrées ☐ : HP-UX-017…044 (lots A à E, §20), HP-PERF-009 (§22), HP-QA-008 (§23) ; HP-UX-001/002/003/004/009/012/016 précisés ; les constats `UX-xx` de `docs/ui-ux-audit-2026-10-13.md` sont enfin reliés à des tâches. Décisions : verrou d'édition = mode Isoler de session (pas de champ `.osp`), Ctrl+O universel, dialogues de création supprimés (option « Créer avec réglages… »). Total 266 → 296. Aucun code modifié. |
