@@ -151,6 +151,31 @@ effective, des métadonnées `editedFingerprint`/`editedPointCount` manquantes
 pour un tableau non vide, ou une carte de labels incohérente renvoie une
 erreur utile (`InvalidFile`), jamais une troncature silencieuse.
 
+### Migrations de schéma (HP-FMT-021)
+
+`libs/project_io/src/migrations.cpp` tient une **table d'étapes versionnées** `vN → vN+1`
+(`migration_steps()`), contiguë de v1 à `kMaxReadableSchemaVersion - 1` (garde
+`static_assert`). `load_project` appelle `migrate_project_json` après les contrôles de
+version : le JSON d'un fichier de version N subit, dans l'ordre, les étapes N, N+1, … jusqu'à
+la version lisible la plus récente, puis seulement `project_from_json` le lit. Un fichier
+déjà à jour ne subit aucune étape (idempotent) ; la sortie est déterministe.
+
+| Étape | Transformation explicite |
+|---|---|
+| v1 → v2 | satin sans `rungs` → `rungs: []` ; document sans `canvas` → 100×100 mm |
+| v2 → v3 | aucune réécriture (absence de `overrides` = objet `Clean`) |
+| v3 → v4 | satin sans `maxWidthHard` → 48 000 µm |
+| v4 → v5 | aucune (finitions optionnelles, défauts du lecteur) |
+| v5 → v6 | aucune (absence de `thread` / `textObjects` = aucun) |
+| v6 → v7 | aucune (absence de `strategy` = squelette) |
+
+Les étapes « aucune » existent quand même : la table reste sans trou et une future version
+n'a qu'à ajouter une ligne. Un fichier d'une version **future** (> `kMaxReadableSchemaVersion`)
+est refusé en `UnsupportedFormat` avec un message nommant les deux versions. Tests :
+`tests/unit/project_io/test_schema_migrations.cpp` construit un `project.json` par version
+(v1 à v7) et le relit. `tests/fixtures/osp/` n'existe pas : les anciens fichiers sont forgés
+en test, plus lisibles qu'un binaire figé.
+
 ## Sauvegarde atomique
 
 `save_project` écrit d'abord un fichier temporaire `.osp.tmp` puis le **renomme** :
@@ -162,8 +187,8 @@ Le test d'intégration vérifie que `save` puis `load` restitue exactement l'ima
 (PNG sans perte), les opérations, les labels de segmentation, les tangentes de
 nœuds et les paramètres des trois types de points.
 
-Limitation : la **sauvegarde automatique**, la **récupération après crash** et
-les **migrations** entre versions de schéma sont **prévues**, non implémentées.
+Limitation : la **sauvegarde automatique** et la **récupération après crash** sont
+**prévues**, non implémentées.
 Le cache des points générés n'est pas stocké (il est recalculé au chargement).
 
 ## Implémentation associée
@@ -173,6 +198,8 @@ Le cache des points générés n'est pas stocké (il est recalculé au chargemen
 - `libs/project_io/src/json_serialize.cpp` — sérialisation du document.
 - `libs/project_io/src/archive.cpp` — lecture/écriture ZIP (minizip-ng encapsulé).
 - `libs/project_io/src/project_io.cpp` — orchestration, écriture atomique.
+- `libs/project_io/include/openstitch/project_io/migrations.hpp`, `src/migrations.cpp` —
+  table de migrations versionnées.
 - Tests : `tests/unit/project_io/test_roundtrip.cpp`,
   `tests/unit/project_io/test_overrides_persistence.cpp` (retouches v3,
   migration v1/v2, topologie satin optionnelle/rétrocompatible, validation

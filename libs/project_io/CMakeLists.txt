@@ -5,6 +5,7 @@ add_library(openstitch_project_io
     src/json_serialize.cpp
     src/archive.cpp
     src/project_io.cpp
+    src/migrations.cpp
     src/machine_file.cpp
     src/thread_chart_io.cpp
 )
