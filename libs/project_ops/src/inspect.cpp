@@ -57,6 +57,17 @@ json rgb_json(const std::array<std::uint8_t, 3>& rgb) {
 const char* underlay_mode_name(document::UnderlayMode m) {
     return m == document::UnderlayMode::Auto ? "auto" : "manual";
 }
+const char* density_curve_name(document::DensityCurve c) {
+    switch (c) {
+    case document::DensityCurve::Smooth:
+        return "smooth";
+    case document::DensityCurve::Steep:
+        return "steep";
+    case document::DensityCurve::Linear:
+        break;
+    }
+    return "linear";
+}
 const char* short_stitch_name(document::SatinShortStitch v) {
     switch (v) {
     case document::SatinShortStitch::Disabled:
@@ -243,7 +254,8 @@ json params_json(const document::StitchParams& params, bool full) {
                                                  {"to_mm", point_mm(g.to)},
                                                  {"spacing_from_mm", mm(g.spacing_from)},
                                                  {"spacing_to_mm", mm(g.spacing_to)},
-                                                 {"interpolate_density", g.interpolate_density}};
+                                                 {"interpolate_density", g.interpolate_density},
+                                                 {"curve", density_curve_name(g.curve)}};
                 } else {
                     j["density_gradient"] = nullptr;
                 }

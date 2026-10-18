@@ -84,6 +84,40 @@ TEST_CASE("set_params edits directional guides, break lines and density gradient
     CHECK(d->guides.empty());
 }
 
+TEST_CASE("set_params accepts a density curve and inspect publishes it", "[project_ops][params]") {
+    auto project = square_project(document::DirectionalFillParams{});
+    const auto report =
+        run(project, R"({"op":"set_params","object":2,"params":{)"
+                     R"("density_gradient":{"from_mm":[-8,0],"to_mm":[8,0],)"
+                     R"("spacing_from_mm":0.4,"spacing_to_mm":0.8,"curve":"smooth"}}})");
+    INFO(report.to_json());
+    REQUIRE(report.ok);
+    const auto curveOf = [&] {
+        return std::get<document::DirectionalFillParams>(project.embroidery_objects[0].params)
+            .density_gradient->curve;
+    };
+    CHECK(curveOf() == document::DensityCurve::Smooth);
+    const auto text = po::inspect_object_json(project, ObjectId{2});
+    REQUIRE(text);
+    CHECK(json::parse(*text)["object"]["params"]["density_gradient"]["curve"] == "smooth");
+
+    // Sans « curve » : linéaire. Valeur inconnue : refusée, le document ne change pas.
+    REQUIRE(run(project, R"({"op":"set_params","object":2,"params":{)"
+                         R"("density_gradient":{"from_mm":[-8,0],"to_mm":[8,0],)"
+                         R"("spacing_from_mm":0.4,"spacing_to_mm":0.8}}})")
+                .ok);
+    CHECK(curveOf() == document::DensityCurve::Linear);
+    REQUIRE(run(project, R"({"op":"set_params","object":2,"params":{)"
+                         R"("density_gradient":{"from_mm":[-8,0],"to_mm":[8,0],)"
+                         R"("spacing_from_mm":0.4,"spacing_to_mm":0.8,"curve":"steep"}}})")
+                .ok);
+    const auto bad = run(project, R"({"op":"set_params","object":2,"params":{)"
+                                  R"("density_gradient":{"from_mm":[-8,0],"to_mm":[8,0],)"
+                                  R"("spacing_from_mm":0.4,"spacing_to_mm":0.8,"curve":"wavy"}}})");
+    CHECK_FALSE(bad.ok);
+    CHECK(curveOf() == document::DensityCurve::Steep);
+}
+
 TEST_CASE("set_params keeps a curved guide untouched when its vertices are unchanged",
           "[project_ops][params]") {
     document::DirectionalFillParams params;

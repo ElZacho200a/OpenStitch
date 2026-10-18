@@ -73,6 +73,8 @@ private slots:
     void editingAndProfile();
     void initialPreviewIsDeferredAndSettingsAreDebounced();
     void proposalIsGroupedAndKeepsAnalyzedExtent();
+    void transitionZoneDefaultsAndMinimumExtent();
+    void transitionCurveDefaultsToLinearAndFollowsProposals();
     void stitchPreviewAndLayerFilter();
     void changesInvalidatePreviewAndInvalidColorsStopRequests();
     void previewMessageClearsCurrentDisplay();
@@ -208,6 +210,53 @@ void ColorBlendDialogTest::proposalIsGroupedAndKeepsAnalyzedExtent() {
     QCOMPARE(dialog.proposedGradient()->spacing_to, Micrometers{3'000});
     dialog.findChild<QDoubleSpinBox*>("spin_blendAngle")->setValue(91.0);
     QVERIFY(!dialog.proposedGradient().has_value());
+}
+
+void ColorBlendDialogTest::transitionZoneDefaultsAndMinimumExtent() {
+    ColorBlendDialog dialog(backgroundRgb, foregroundRgb, false, false);
+    auto* start = dialog.findChild<QDoubleSpinBox*>("spin_blendZoneStart");
+    auto* end = dialog.findChild<QDoubleSpinBox*>("spin_blendZoneEnd");
+    QVERIFY(start != nullptr && end != nullptr);
+    // Par défaut : toute la forme, comme avant l'ajout de la zone.
+    QCOMPARE(dialog.transitionStart(), 0.0);
+    QCOMPARE(dialog.transitionEnd(), 1.0);
+
+    start->setValue(30.0);
+    end->setValue(70.0);
+    QCOMPARE(dialog.transitionStart(), 0.3);
+    QCOMPARE(dialog.transitionEnd(), 0.7);
+
+    // Les bornes se resserrent : jamais moins de 5 % d'étendue.
+    start->setValue(100.0);
+    QCOMPARE(dialog.transitionStart(), 65.0 / 100.0);
+    end->setValue(0.0);
+    QVERIFY(dialog.transitionEnd() - dialog.transitionStart() >= 0.05 - 1e-9);
+}
+
+void ColorBlendDialogTest::transitionCurveDefaultsToLinearAndFollowsProposals() {
+    ColorBlendDialog dialog(backgroundRgb, foregroundRgb, false, false);
+    auto* curve = dialog.findChild<QComboBox*>("combo_blendCurve");
+    QVERIFY(curve != nullptr);
+    QCOMPARE(curve->count(), 3);
+    QCOMPARE(dialog.curve(), document::DensityCurve::Linear);
+
+    curve->setCurrentIndex(2);
+    QCOMPARE(dialog.curve(), document::DensityCurve::Steep);
+    curve->setCurrentIndex(1);
+    QCOMPARE(dialog.curve(), document::DensityCurve::Smooth);
+
+    // Une proposition (analyse, fondre deux zones) impose sa courbe.
+    document::DensityGradient gradient{
+        .from = {Micrometers{0}, Micrometers{0}},
+        .to = {Micrometers{0}, Micrometers{10'000}},
+        .spacing_from = Micrometers{3'000},
+        .spacing_to = Micrometers{500},
+    };
+    dialog.setProposal({11, 22, 33}, {100, 110, 120}, gradient);
+    QCOMPARE(dialog.curve(), document::DensityCurve::Linear);
+    gradient.curve = document::DensityCurve::Steep;
+    dialog.setProposal({11, 22, 33}, {100, 110, 120}, gradient);
+    QCOMPARE(dialog.curve(), document::DensityCurve::Steep);
 }
 
 void ColorBlendDialogTest::stitchPreviewAndLayerFilter() {

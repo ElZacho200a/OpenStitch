@@ -56,6 +56,13 @@ struct TatamiParams {
     bool operator==(const TatamiParams&) const = default;
 };
 
+// Profil de la rampe d'un `DensityGradient` : remappe la position t ∈ [0 ; 1] sur
+// l'axe avant l'interpolation des écarts. `Linear` (défaut, comportement
+// historique) : t. `Smooth` : 3t² − 2t³ (départ et arrivée adoucis). `Steep` :
+// 6t⁵ − 15t⁴ + 10t³ (aplats plus longs, transition plus resserrée au milieu).
+// Les trois valent 0, 0,5 et 1 en t = 0, 0,5 et 1. Valeurs persistées : ne pas réordonner.
+enum class DensityCurve : std::uint8_t { Linear = 0, Smooth = 1, Steep = 2 };
+
 // Dégradé de densité d'un remplissage directionnel : l'écart entre lignes de
 // couture varie le long de l'axe `from` → `to` (repère du modèle,
 // comme les guides), de `spacing_from` à `spacing_to`, et reste constant de
@@ -69,6 +76,7 @@ struct DensityGradient {
     // Faux : interpolation linéaire de l'écart (historique). Vrai : interpolation
     // linéaire de son inverse (densité), pour des rampes de couleurs complémentaires.
     bool interpolate_density{false};
+    DensityCurve curve{DensityCurve::Linear};
 
     bool operator==(const DensityGradient&) const = default;
 };
