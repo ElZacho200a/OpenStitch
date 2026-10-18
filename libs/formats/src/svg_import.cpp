@@ -524,6 +524,10 @@ std::vector<DPath> parse_path_data(std::string_view d, std::vector<std::string>&
             end_open_subpath(result, subpath);
             cursor.lastCubicControl.reset();
             cursor.lastQuadControl.reset();
+            // Z n'a pas d'argument : sans cette remise à zéro, un caractère non alphabétique
+            // après Z (« Z; », « Z1 ») ne consommerait rien et la boucle tournerait sans fin
+            // (trouvé par HP-QA-003). Pas de répétition implicite pour Z (spec SVG §9.3.3).
+            haveCommand = false;
             break;
         }
         default:

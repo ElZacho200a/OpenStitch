@@ -22,6 +22,7 @@ openstitch-cli <sous-commande> --help
 | Commandes | `production` | Fiche de production d'un `.osp` ou d'un DST (texte, JSON, HTML) |
 | Commandes | `dst2svg` | Aperçu SVG d'un DST |
 | Commandes | `osp2dst` | Exporte un projet `.osp` en DST par le même chemin que le bureau |
+| Commandes | `render` | Exporte le rendu brodé réaliste (PNG) d'un fichier de broderie ou d'un `.osp` |
 | Diagnostic | `osp2svg` | `[diagnostic]` Séquence effective d'un `.osp` en SVG (contours des vecteurs, un seul objet) |
 | Diagnostic | `stitchdebug` | `[diagnostic]` Moteur de points sur une forme de référence |
 | Diagnostic | `engine-debug` | `[diagnostic]` Tirage du tatami (`--pull`), sous-couche auto (`--underlay-auto`), satin de bordure (`--border`) et sauts avec/sans entrée/sortie auto sur une scène de référence |
@@ -142,6 +143,22 @@ JSON : `image`, `dst`, `svg`, `image_width_px`, `image_height_px`, `regions`,
 Note : `digitize` n'invoque **pas** l'auto-satin par squelette ; les zones
 remplissables deviennent des tatamis. L'auto-satin se demande région par région
 dans l'application (voir *Guide utilisateur détaillé*).
+
+## render : image du rendu brodé
+
+```
+openstitch-cli render <entree.dst|pes|jef|exp|osp> <sortie.png> [--px-per-mm 10] [--margin-mm 3]
+                      [--transparent] [--fast] [--json] [--no-clobber]
+```
+
+Produit une image PNG du rendu réaliste (fils texturés, ombre portée, tissu) pour montrer
+un design à un client (HP-FMT-011). Avec un projet `.osp`, la séquence est la séquence
+**effective** et les fils prennent la couleur des objets ; avec un fichier machine, qui ne
+porte pas de couleurs, chaque bloc de fil reçoit une couleur de repli d'une palette fixe
+(le fichier ne dit pas la teinte réelle). `--transparent` supprime le tissu de fond ;
+`--fast` coupe la torsion et l'ombre portée ; la résolution est abaissée si l'image dépasse
+50 millions de pixels. Le rendu est déterministe (mêmes entrées, mêmes octets).
+L'export JPEG et la boîte de dialogue du bureau restent à faire.
 
 ## dst2svg et osp2dst
 

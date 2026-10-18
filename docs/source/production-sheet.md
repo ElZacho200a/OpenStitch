@@ -65,7 +65,9 @@ remplira sans changement de format dès que les blocs porteront leur clé de fil
   intégré), imprimable depuis un navigateur.
 - Pas de champ « client » dédié : à écrire dans les notes.
 - Un design importé (DST) n'a ni couleur ni référence de fil : tous les blocs sont noirs.
-- Gabarit 1:1 (HP-PROD-003), consommation par couleur et canette (HP-PROD-005) : non faits.
+- Gabarit 1:1 (HP-PROD-003) : non fait. Consommation de fil par couleur et nombre de canettes
+  (HP-PROD-005) : le calcul existe (`thread_consumption.hpp`, voir
+  [analyse et validation](analysis-and-validation.md)) mais n'est pas encore sur la fiche.
 
 ## Tests
 

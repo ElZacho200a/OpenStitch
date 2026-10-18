@@ -72,3 +72,15 @@ openstitch_add_qt_test(test_sam_worker_client test_sam_worker_client.cpp)
 target_compile_definitions(test_sam_worker_client PRIVATE
     OPENSTITCH_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures")
 openstitch_add_qt_test(test_machine_export_dialog test_machine_export_dialog.cpp)
+
+# Tests du câblage des entrées livrées en cœur (une zone par lot).
+# [cablage-A:debut]
+# [cablage-A:fin]
+# [cablage-B:debut]
+# [cablage-B:fin]
+# [cablage-C:debut]
+# [cablage-C:fin]
+# [cablage-D:debut]
+# [cablage-D:fin]
+# [cablage-E:debut]
+# [cablage-E:fin]

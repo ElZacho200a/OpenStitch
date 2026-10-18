@@ -22,6 +22,10 @@ appliquer de correction automatique silencieuse.
 | `hors-cadre` | point hors du cadre (si fourni) | Erreur |
 | `trop-de-points` | > 100 000 points | Avertissement |
 | `couches-superposees` | épaisseur de fil > `max_layer_thickness` (3,0 couches de remplissage dense) sur un bloc d'au moins 2 × 2 cases de 2,5 mm | Avertissement |
+| `detail-trop-petit` | objet (hors points d'arrêt) dont la boîte englobante fait moins de `min_object_size` (1 mm) sur **les deux** axes ; un constat par objet ; 0 = désactivée | Information |
+| `objet-sans-arret` | objet cousu sans aucun point d'arrêt (passe `Lock`) ; actif seulement si `check_lock_stitches` (posé par `options_from_project` quand les finitions sont activées) | Information |
+| `trop-de-coupes` | plus de `max_trims` coupes ; 0 (défaut) = désactivée | Avertissement |
+| `densite-excessive` | zone (grille de 1 mm) à plus de `max_penetrations_per_mm2` pénétrations/mm² ; 0 (défaut) = désactivée | Avertissement |
 
 **Épaisseur de fil** (`couches-superposees`). Grille de `layer_cell` (2,5 mm) ;
 dans chaque case, épaisseur = longueur de fil × `thread_width` (0,4 mm) /
@@ -112,6 +116,36 @@ Reste ouvert : les 414 points sous 0,1 mm ne sont pas expliqués. Ils pourraient
 des doublons de la génération (cause non confirmée) ; à instruire avant toute
 décision sur cette règle. Le seuil de 0,1 mm vient de cette mesure, pas d'une limite
 physique.
+
+### Carte de densité et règles supplémentaires (HP-VIEW-005, HP-PROD-007)
+
+`density_map.hpp` calcule une **carte de densité** sur la séquence effective : grille de
+`DensityOptions::cell` (1 mm), alignée sur des multiples de la case, qui compte par case les
+**pénétrations** (commandes `Stitch`, toutes passes) et la **longueur de fil** (épaisseur en
+couches de remplissage dense, même unité que `couches-superposees`). `find_density_hotspots`
+renvoie les zones 4-connexes au-dessus de `max_penetrations_per_mm2` (4,0 par défaut), avec boîte,
+aire, densité maximale et objet dominant, dans l'ordre de balayage de la grille. Le nombre de
+cases est borné (`max_cells`, 1 000 000) : au-delà, le côté de case est doublé. Le seuil de 4,0 est
+une heuristique (un remplissage dense fait ~0,8 /mm², deux couches avec sous-couches ~2,5), **non
+mesurée sur un corpus** : la règle `densite-excessive` est donc désactivée par défaut
+(`AnalysisOptions::max_penetrations_per_mm2 = 0`). L'affichage de la surimpression colorée reste à
+faire dans l'interface.
+
+Les autres règles ajoutées (`detail-trop-petit`, `objet-sans-arret`, `trop-de-coupes`) sont
+décrites dans le tableau ci-dessus. Seul `detail-trop-petit` (1 mm) est actif par défaut ; il n'a
+pas été mesuré sur le corpus du dépôt. Restent non faites : satin trop large, fil trop proche de la
+couleur du tissu, nombre de couleurs supérieur au nombre d'aiguilles (il manque le profil machine,
+HP-HOOP-002, et la couleur du tissu, HP-THR-008).
+
+### Consommation de fil et canettes (HP-PROD-005)
+
+`thread_consumption.hpp` dérive de `thread_usage` (longueur cousue par fil) la consommation **par
+couleur**, en mètres : `top_m = cousu × top_path_factor (1,15) + passages × waste_per_block_mm
+(50 mm)`, `bobbin_m = top_m × bobbin_per_top_ratio (0,35)`. Le rapport donne les totaux et le
+nombre de canettes (`ceil(total canette / bobbin_capacity_m)`, 100 m par défaut) avec le
+remplissage de la dernière. Ce sont des **ordres de grandeur réglables**, jamais des mesures : la
+consommation réelle dépend du fil, de la tension et du tissu. Non affiché dans la fiche de
+production ni dans l'interface pour l'instant.
 
 ## Mesures de qualité (Lot G, audit marine plein cadre)
 
