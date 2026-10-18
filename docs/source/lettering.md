@@ -88,6 +88,12 @@ v1..v5 se charge, marqué migré (`LoadInfo::migrated`). Voir `project-format.md
 - Petites lettres (HP-TXT-013, partiel) : sous 8 mm de hauteur, pas de compensation de tirage,
   pas de retrait de bord ni de sous-couche de bord en tatami ; sous-couche centrale du satin
   seulement si le trait fait au moins 1,6 mm ; contour avec des points de 1,5 mm.
+  **Densité** : sous 8 mm l'écart des traversées satin et des rangées tatami grandit
+  linéairement jusqu'à +15 % à 4 mm de capitale (plafonné en dessous), arrondi à 10 µm et jamais
+  plus serré que le réglage de l'utilisateur ; le point de tatami raccourcit à un tiers de la
+  hauteur (entre 1,5 et 3 mm). Heuristique de prudence (moins de fil et de perforations dans des
+  colonnes de 1 à 2 mm), à ajuster après essais de broderie réels. Tests de rendu :
+  `test_build.cpp` (paramètres par hauteur, séquence cousue, bornes, déterminisme).
 - Taille minimale (HP-TXT-009) : `check_text_size` et la règle d'analyse
   `stitch_analysis::analyze_text_objects` (< 5 mm : satin fragile ; < 3 mm : illisible ;
   lettres de trait < 1 mm cousues en contour), affichée dans le panneau Analyse.
