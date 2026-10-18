@@ -1125,6 +1125,21 @@ private:
     // [cablage-D:debut]
     // [cablage-D:fin]
     // [cablage-E:debut]
+    // HP-VIEW-005 : carte de densité (main_window_density.cpp). Image mise en cache sous une
+    // clé (séquence effective + seuil), recalculée hors du fil UI quand la clé change.
+    void buildDensityFeature();
+    void refreshDensityOverlay(); // appelée par renderStitches() (pose le cache ou planifie)
+    void recomputeDensity();
+    void setDensityMapEnabled(bool on);
+    [[nodiscard]] double densityThresholdValue() const;
+    QAction* densityMapAct_{nullptr};
+    QTimer* densityTimer_{nullptr};
+    QPixmap densityPixmap_;
+    QRectF densityRect_; // zone couverte par l'image, mm (repère scène)
+    std::uint64_t densityKey_{0};
+    bool densityValid_{false};
+    double densityScaleMax_{1.0};
+    int densityComputeCount_{0}; // calculs réellement faits (tests)
     // [cablage-E:fin]
     void applyNavigationPreset(Preset preset);
     // Duplique `ids` (copies exactes, même position) puis translate les COPIES de

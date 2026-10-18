@@ -40,6 +40,9 @@ add_library(openstitch_desktop_widgets STATIC
     # [cablage-D:debut]
     # [cablage-D:fin]
     # [cablage-E:debut]
+    density_overlay.cpp
+    density_overlay.hpp
+    main_window_density.cpp
     # [cablage-E:fin]
     production_dialog.cpp
     production_dialog.hpp

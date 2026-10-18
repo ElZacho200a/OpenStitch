@@ -673,6 +673,7 @@ Le sous-menu **Calques** regroupe des interrupteurs indépendants :
 | Ajuster au canevas | Ctrl+0 ou F | Cadre la vue sur le canevas |
 | Rendu réaliste ▸ Activer | Ctrl+Maj+R | Dessine chaque point comme un fil texturé (voir ci-dessous) |
 | Rendu réaliste ▸ Réglages… | — | Épaisseur du fil, relief, brillance, torsion, ombre, tissu, qualité |
+| Carte de densité | — | Surimpression colorée de la densité de points (voir ci-dessous) |
 | Taille du cadre… | — | Définit la zone physique de broderie (voir ci-dessous) |
 | Thème | — | Clair / Sombre |
 | Densité | — | Confortable / Compact |
@@ -734,6 +735,28 @@ moins de ~1,6 pixel d'épaisseur, l'ombrage n'est plus lisible) et la
 **simulation** de couture. Les objets masqués par les filtres d'affichage ne
 sont pas dessinés. Le tissu est peint autour du motif (zone englobante), pas
 sur tout le cadre.
+
+### Carte de densité
+
+**Affichage ▸ Carte de densité** (case à cocher, mémorisée entre deux sessions comme
+les autres préférences d'affichage) pose sur le canevas une **surimpression colorée** :
+la grille de cases de 1 mm compte, pour chaque case, les pénétrations d'aiguille par
+mm² de la séquence réellement cousue (retouches manuelles incluses). La palette va du
+**bleu** (peu de points) au **rouge** (très dense) en passant par le vert et le jaune ;
+les cases au-delà du seuil sont plus opaques. Une **légende** (dégradé, valeur maximale
+et repère du seuil, en pén./mm²) s'affiche en bas à gauche de la vue.
+
+Le calcul se fait hors du fil d'interface (fenêtre « Veuillez patienter ») et son
+résultat est mis en cache : l'image n'est recalculée que si les points ou le seuil
+changent ; tant que le motif vient de changer, l'ancienne image n'est jamais montrée.
+La carte est un simple affichage : elle ne modifie jamais le document et n'entre pas
+dans l'historique d'annulation. Elle est masquée pendant la simulation de couture et
+quand le calque *Broderie (points)* est masqué.
+
+Dans le panneau **Analyse**, la section *Carte de densité* règle le **seuil de zone
+sur-dense** (4,0 pén./mm² par défaut, une heuristique d'ingénierie non mesurée sur un
+corpus ; mémorisé) et liste les **zones sur-denses** : un clic (ou Entrée) sur une
+zone **centre la vue** dessus.
 
 ## Menu contextuel (clic droit)
 
@@ -871,6 +894,13 @@ détectés, triés par gravité.
   problème(s) » dit combien n'ont pas été listés.
 - Quand le motif change, le résultat est marqué **périmé** puis recalculé après
   300 ms si le panneau est visible (sinon à sa prochaine ouverture).
+- Règles ajoutées par HP-PROD-007 : *détail trop petit* (objet de moins de 1 mm sur les
+  deux axes), *objet sans point d'arrêt* (quand les finitions sont actives) — listées
+  comme les autres, avec l'objet nommé et le centrage au clic. Deux règles sont
+  **désactivées par défaut** et s'activent dans la section *Règles optionnelles* du
+  panneau : *trop de coupes* (au-delà d'un nombre de coupes, 50 proposé) et *densité
+  excessive* (au-delà d'un nombre de pénétrations par mm², 4,0 proposé). Les réglages sont
+  mémorisés ; en modifier un marque le résultat périmé puis relance l'analyse.
 
 ## Panneau Ordre de couture
 

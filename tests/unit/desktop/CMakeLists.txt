@@ -83,4 +83,5 @@ openstitch_add_qt_test(test_machine_export_dialog test_machine_export_dialog.cpp
 # [cablage-D:debut]
 # [cablage-D:fin]
 # [cablage-E:debut]
+openstitch_add_qt_test(test_density_map_ui test_density_map_ui.cpp)
 # [cablage-E:fin]

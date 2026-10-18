@@ -444,6 +444,7 @@ MainWindow::MainWindow() {
     // [cablage-D:debut]
     // [cablage-D:fin]
     // [cablage-E:debut]
+    buildDensityFeature();
     // [cablage-E:fin]
     panelsMenu_->addAction(historyDock_->toggleViewAction());
     for (auto* d :
@@ -4058,6 +4059,7 @@ void MainWindow::renderStitches() {
     stitchItems_.clear();
     simMarker_ = nullptr;
     simWalkValid_ = false;
+    refreshDensityOverlay(); // HP-VIEW-005 (main_window_density.cpp)
 
     if (showStitchesAct_ == nullptr || !showStitchesAct_->isChecked() || !sequence_) {
         return;
