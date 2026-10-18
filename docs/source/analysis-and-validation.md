@@ -151,6 +151,34 @@ pas été mesuré sur le corpus du dépôt. Restent non faites : satin trop larg
 couleur du tissu, nombre de couleurs supérieur au nombre d'aiguilles (il manque le profil machine,
 HP-HOOP-002, et la couleur du tissu, HP-THR-008).
 
+### Vides d'un bloc uni (HP-VEC-015)
+
+`find_uncovered_pockets` (`uncovered_pockets.hpp`) répond à « où voit-on le tissu dans ce
+bloc ? ». La vérité vient des **points cousus** de la séquence effective, pas des contours
+vectoriels : un remplissage ne couvre pas toujours toute sa région (retrait de contour, satin
+plus étroit que son vecteur, retouches). Méthode :
+
+1. enveloppe du bloc = union des emprises nominales (`document::embroidery_footprint` : vecteur,
+   ou polygone des rails pour un satin), fermée sur `closing_gap` (fentes entre formes
+   voisines, 1 mm par défaut) puis sans trous ;
+2. masque des cellules (100 µm) à moins de `coverage_width / 2` d'un segment `TopStitch` ou
+   `Manual`, TOUS objets confondus (un objet hors bloc peut couvrir la poche) ; sous-couche,
+   déplacements et fixations ne comptent pas (même règle que `object_coverage`) ;
+3. poches = cellules de l'enveloppe non couvertes, unies en polygones ;
+4. ouverture morphologique de largeur `min_width` (300 µm) : écarte les liserés le long des
+   bords et les interstices entre rangées espacées ; filtre d'aire (0,25 mm² mini, plafond
+   optionnel) ;
+5. débordement de 300 µm sur les voisines pour que le retrait de contour du comblement recouvre le
+   bord des points existants ; tri déterministe (aire décroissante, puis position).
+
+`commands::make_fill_pockets_command` applique le résultat : chaque poche va au plus grand
+remplissage (tatami ou directionnel) qu'elle touche, à défaut au plus grand objet voisin. Un
+remplissage seul sur son vecteur, sans retouche manuelle ni lettrage, voit ce vecteur agrandi (une
+seule zone de remplissage) ; sinon -- vecteur partagé, voisin non remplissant, poche déjà dans son
+vecteur -- un objet vectoriel et un tatami de mêmes réglages et couleur sont créés. Une seule
+commande annulable. Accès : menu Forme › « Combler les vides du bloc… » et op CLI
+`fill_block_holes`. Seuils d'ingénierie, non mesurés sur corpus.
+
 ### Consommation de fil et canettes (HP-PROD-005)
 
 `thread_consumption.hpp` dérive de `thread_usage` (longueur cousue par fil) la consommation **par

@@ -58,6 +58,19 @@ struct VectorOpResult {
                                                        const std::vector<ObjectId>& ids,
                                                        double max_area_um2 = 0.0);
 
+// Comble les poches sans fil d'un bloc (`stitch_analysis::find_uncovered_pockets`) : chaque poche
+// est rattachée au plus grand remplissage (tatami ou directionnel) de `ids` qui la touche, à
+// défaut au plus grand objet voisin, tout type confondu. Un remplissage voisin qui est seul sur
+// son vecteur, sans retouche manuelle ni lettrage, voit ce vecteur agrandi des poches qu'il
+// absorbe (une seule zone de remplissage) ; sinon -- vecteur partagé, retouches à préserver, voisin
+// non remplissant, poche déjà dans son vecteur -- les poches deviennent un NOUVEL objet vectoriel
+// suivi d'un tatami (réglages du voisin si c'est un remplissage, tatami par défaut sinon), de la
+// couleur du voisin. Une seule commande ; refusée si aucune poche n'est rattachable.
+// `resulting_objects` = nombre de poches comblées.
+[[nodiscard]] VectorOpResult
+make_fill_pockets_command(document::Project& project, const std::vector<ObjectId>& ids,
+                          const std::vector<geometry::PathSet>& pockets);
+
 // Sépare les morceaux disjoints d'un objet en objets distincts (mêmes règles de clonage).
 // Refusé si l'objet n'a qu'un morceau.
 [[nodiscard]] VectorOpResult make_break_apart_command(document::Project& project, ObjectId id);

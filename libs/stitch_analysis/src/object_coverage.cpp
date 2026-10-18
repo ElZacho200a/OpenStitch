@@ -7,6 +7,7 @@
 #include <utility>
 #include <variant>
 
+#include "openstitch/document/footprint.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/polyline.hpp"
 #include "raster_coverage.hpp"
@@ -15,77 +16,9 @@ namespace openstitch::stitch_analysis {
 
 namespace {
 
-using Ring = std::vector<std::pair<double, double>>;
-
 struct Segment {
     double ax, ay, bx, by;
 };
-
-// Anneaux d'un PathSet aplati (extérieur puis trous).
-std::vector<Ring> rings_of(const geometry::PathSet& flat) {
-    std::vector<Ring> rings;
-    const auto add = [&](const geometry::Path& path) {
-        Ring r;
-        r.reserve(path.nodes.size());
-        for (const auto& n : path.nodes) {
-            r.emplace_back(static_cast<double>(n.pos.x.value), static_cast<double>(n.pos.y.value));
-        }
-        if (r.size() >= 3) {
-            rings.push_back(std::move(r));
-        }
-    };
-    add(flat.outer);
-    for (const auto& h : flat.holes) {
-        add(h);
-    }
-    return rings;
-}
-
-// Remplit `mask` (OU) avec l'intérieur d'un PathSet : balayage par ligne au centre des cellules,
-// règle pair-impair sur l'ensemble des anneaux (extérieur + trous).
-void fill_region(const raster::Grid& g, std::vector<char>& mask, const std::vector<Ring>& rings) {
-    std::vector<double> xs;
-    for (int iy = 0; iy < g.h; ++iy) {
-        const double y = g.center_y(iy);
-        xs.clear();
-        for (const Ring& r : rings) {
-            for (std::size_t i = 0; i < r.size(); ++i) {
-                const auto [px, py] = r[i];
-                const auto [qx, qy] = r[(i + 1) % r.size()];
-                if ((py <= y) == (qy <= y)) {
-                    continue;
-                }
-                xs.push_back(px + (y - py) * (qx - px) / (qy - py));
-            }
-        }
-        std::sort(xs.begin(), xs.end());
-        for (std::size_t k = 0; k + 1 < xs.size(); k += 2) {
-            // Cellules dont le centre x est dans [xs[k], xs[k+1]).
-            const int a = std::max(0, static_cast<int>(std::ceil((xs[k] - g.x0) / g.cell - 0.5)));
-            const int b = std::min(
-                g.w - 1, static_cast<int>(std::ceil((xs[k + 1] - g.x0) / g.cell - 0.5)) - 1);
-            for (int ix = a; ix <= b; ++ix) {
-                mask[g.index(ix, iy)] = 1;
-            }
-        }
-    }
-}
-
-// Polygone d'un satin à rails : rail A puis rail B parcouru à l'envers.
-geometry::PathSet satin_polygon(const document::SatinParams& p, Micrometers tolerance) {
-    geometry::PathSet set;
-    const auto a = geometry::flatten(p.rail_a, tolerance).points;
-    auto b = geometry::flatten(p.rail_b, tolerance).points;
-    std::reverse(b.begin(), b.end());
-    for (const auto& pt : a) {
-        set.outer.nodes.push_back({pt, geometry::NodeType::Corner, {}, {}});
-    }
-    for (const auto& pt : b) {
-        set.outer.nodes.push_back({pt, geometry::NodeType::Corner, {}, {}});
-    }
-    set.outer.closed = true;
-    return set;
-}
 
 } // namespace
 
@@ -132,7 +65,7 @@ std::vector<ObjectCoverage> object_coverage(const document::Project& project,
             continue;
         }
         if (const auto* satin = std::get_if<document::SatinParams>(&obj.params)) {
-            sets.push_back(satin_polygon(*satin, options.flatten_tolerance));
+            sets.push_back(document::satin_polygon(*satin, options.flatten_tolerance));
         } else {
             const auto* vec = project.findObject(obj.source_vector);
             if (vec == nullptr) {
@@ -166,9 +99,9 @@ std::vector<ObjectCoverage> object_coverage(const document::Project& project,
             minY = std::min(minY, y);
             maxY = std::max(maxY, y);
         };
-        std::vector<std::vector<Ring>> ringsPerSet;
+        std::vector<std::vector<raster::Ring>> ringsPerSet;
         for (const auto& s : sets) {
-            ringsPerSet.push_back(rings_of(s));
+            ringsPerSet.push_back(raster::rings_of(s));
             for (const auto& ring : ringsPerSet.back()) {
                 for (const auto& [x, y] : ring) {
                     grow(x, y);
@@ -198,7 +131,7 @@ std::vector<ObjectCoverage> object_coverage(const document::Project& project,
 
         std::vector<char> region(g.size(), 0);
         for (const auto& rings : ringsPerSet) {
-            fill_region(g, region, rings);
+            raster::fill_region(g, region, rings);
         }
         std::vector<char> swept(g.size(), 0);
         for (const auto& s : segIt->second) {

@@ -655,6 +655,7 @@ private slots:
     void openPathOptionLeavesPolygonAndBezierOpen();
     void rotationHandleTurnsTheSelectedShape();
     void shapeExcludeAndRemoveHolesActions();
+    void fillBlockHolesFillsTheGapBetweenTwoZones();
     void groupedStitchTypeCoversEverySelectedShapeInOneStep();
     void groupInspectorEditsOneFieldOnEveryObjectInOneStep();
     void groupGuideAngleIsPlacedOnEveryAutoSatin();
@@ -7967,6 +7968,52 @@ void MainWindowTest::shapeExcludeAndRemoveHolesActions() {
     QVERIFY(window.project_.vector_objects[0].paths[0].holes.empty());
     window.undo();
     QCOMPARE(window.project_.vector_objects[0].paths[0].holes.size(), std::size_t{1});
+}
+
+void MainWindowTest::fillBlockHolesFillsTheGapBetweenTwoZones() {
+    // Deux zones tatami de 10 x 10 mm séparées par 1,2 mm : un jour sans fil entre elles.
+    auto project = twoOverlappingRectangles();
+    for (auto& node : project.vector_objects[1].paths[0].outer.nodes) {
+        node.pos.x.value += 6'200; // 5..15 mm -> 11,2..21,2 mm
+    }
+    MainWindow window;
+    window.applyLoadedProject(project);
+    const ObjectId a = window.project_.vector_objects[0].id;
+    const ObjectId b = window.project_.vector_objects[1].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a, b}});
+    window.setStitchTypeForSelection(1);
+    QVERIFY(window.sequence_.has_value());
+    window.updateActions();
+    QVERIFY(window.fillBlockHolesAct_->isEnabled());
+
+    const std::string before = window.undoStack_.undoName();
+    const std::size_t embBefore = window.project_.embroidery_objects.size();
+    const auto vectorSignature = [&] {
+        std::size_t nodes = 0;
+        for (const auto& v : window.project_.vector_objects) {
+            for (const auto& set : v.paths) {
+                nodes += set.outer.nodes.size();
+            }
+        }
+        return std::pair{window.project_.vector_objects.size(), nodes};
+    };
+    const auto signatureBefore = vectorSignature();
+
+    window.fillBlockHolesWith(2.0, 0.0);
+    QVERIFY(window.project_.embroidery_objects.size() > embBefore ||
+            vectorSignature() != signatureBefore);
+    QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
+             QStringLiteral("Combler les vides du bloc"));
+
+    window.undo(); // un seul pas d'annulation
+    QCOMPARE(window.project_.embroidery_objects.size(), embBefore);
+    QVERIFY(vectorSignature() == signatureBefore);
+    QVERIFY(window.undoStack_.undoName() == before);
+
+    // Sans sélection : aucun effet, message dans la barre d'état.
+    window.setSelection({});
+    window.fillBlockHolesWith(2.0, 0.0);
+    QCOMPARE(window.project_.embroidery_objects.size(), embBefore);
 }
 
 void MainWindowTest::knifeToolSplitsSelectedShape() {

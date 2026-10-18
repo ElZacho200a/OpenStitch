@@ -105,10 +105,19 @@ double mm(Micrometers v) {
 } // namespace
 
 TEST_CASE("geometry_ops catalogue complet et exemples valides", "[project_ops][geometry]") {
-    const std::vector<std::string> expected{
-        "add_shape",   "duplicate_object", "translate",    "rotate",
-        "scale",       "mirror",           "merge",        "split",
-        "break_apart", "remove_holes",     "set_geometry", "auto_satin"};
+    const std::vector<std::string> expected{"add_shape",
+                                            "duplicate_object",
+                                            "translate",
+                                            "rotate",
+                                            "scale",
+                                            "mirror",
+                                            "merge",
+                                            "split",
+                                            "break_apart",
+                                            "remove_holes",
+                                            "fill_block_holes",
+                                            "set_geometry",
+                                            "auto_satin"};
     REQUIRE(registry().size() == expected.size());
     for (const auto& name : expected) {
         const OpSpec* found = nullptr;
@@ -619,4 +628,33 @@ TEST_CASE("auto_satin accepte une methode et la pose sur l'objet",
     REQUIRE(again.ok);
     CHECK(std::get<document::AutoSatinParams>(env.project.findEmbroidery(ObjectId{id})->params)
               .strategy == document::AutoSatinStrategy::MedialAxis);
+}
+
+TEST_CASE("fill_block_holes comble la fente entre deux zones d'un bloc",
+          "[project_ops][geometry]") {
+    Env env;
+    // Deux tatamis de 10 x 10 mm separes par 1,2 mm : le retrait de contour et la largeur de trace
+    // laissent un jour visible entre eux.
+    const ObjectId left = add_rect(env, 0, 0, 10, 10);
+    const ObjectId right = add_rect(env, 11.2, 0, 10, 10);
+    const std::string original = signature(env.project);
+
+    const auto ok =
+        env.run("fill_block_holes",
+                json{{"objects", json::array({left.value, right.value})}, {"closing_gap_mm", 2.0}});
+    REQUIRE(ok.ok);
+    CHECK(ok.result["pockets_found"].get<std::size_t>() >= 1);
+    CHECK(ok.result["pockets_filled"].get<std::size_t>() >= 1);
+    CHECK(signature(env.project) != original);
+    REQUIRE(env.stack.undo(env.project));
+    CHECK(signature(env.project) == original);
+
+    // Identifiant inconnu : echec nomme, projet inchange.
+    CHECK_FALSE(env.run("fill_block_holes", json{{"objects", json::array({9999})}}).ok);
+    CHECK(signature(env.project) == original);
+
+    CHECK(env.run("fill_block_holes", json{{"objects", json::array()}}).error.code != "");
+    CHECK(env.run("fill_block_holes",
+                  json{{"objects", json::array({left.value})}, {"closing_gap_mm", -1.0}})
+              .error.code == "E_OUT_OF_RANGE");
 }

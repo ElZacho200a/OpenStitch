@@ -3,6 +3,10 @@
 // (découpe le long d'une ligne). Aucune géométrie ici : tout est calculé par
 // commands/vector_ops.hpp (Clipper2 dans libs/geometry) et appliqué en UN pas d'annulation.
 #include <QAction>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QDoubleSpinBox>
+#include <QFormLayout>
 #include <QInputDialog>
 #include <QMenu>
 #include <QMenuBar>
@@ -14,8 +18,10 @@
 #include <memory>
 
 #include "app_settings.hpp"
+#include "busy_indicator.hpp"
 #include "main_window.hpp"
 #include "openstitch/commands/vector_ops.hpp"
+#include "openstitch/stitch_analysis/uncovered_pockets.hpp"
 
 namespace openstitch::desktop {
 
@@ -93,6 +99,11 @@ void MainWindow::buildShapeMenu() {
                 removeHolesOfSelection(mm2);
             }
         });
+    add(fillBlockHolesAct_, tr("Combler les &vides du bloc…"),
+        QStringLiteral("action_shapeFillBlockHoles"), QKeySequence(),
+        tr("Repère les zones sans fil d'un bloc uni (d'après les points cousus, pas les contours) "
+           "et les rattache au plus grand remplissage voisin, ou les couvre d'un tatami."),
+        [this] { fillBlockHoles(); });
     shapeMenu_->addSeparator();
     if (toolCutAct_ != nullptr) {
         shapeMenu_->addAction(toolCutAct_);
@@ -117,6 +128,9 @@ void MainWindow::updateShapeActions() {
     const QString needHole = tr("Sélectionnez une forme qui a au moins un trou.");
     setShapeActionEnabled(removeHolesAct_, anyHole, needHole);
     setShapeActionEnabled(fillSmallHolesAct_, anyHole, needHole);
+    setShapeActionEnabled(
+        fillBlockHolesAct_, count >= 1 && sequence_.has_value(),
+        tr("Sélectionnez les formes du bloc : les points doivent être calculés."));
     const auto blendIds = selectedObjectIds();
     const bool canBlend =
         count == 2 && blendFillFor(blendIds[0]) != nullptr && blendFillFor(blendIds[1]) != nullptr;
@@ -180,6 +194,71 @@ void MainWindow::removeHolesOfSelection(double maxAreaMm2) {
     const std::size_t removed = result.resulting_objects;
     applyShapeCommand(std::move(result),
                       tr("%1 trou(s) supprimé(s). Ctrl+Z pour annuler.").arg(removed),
+                      std::vector<ObjectId>(ids.rbegin(), ids.rend()));
+}
+
+void MainWindow::fillBlockHoles() {
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Combler les vides du bloc"));
+    auto* form = new QFormLayout(&dialog);
+    auto* gap = new QDoubleSpinBox(&dialog);
+    gap->setRange(0.0, 20.0);
+    gap->setDecimals(1);
+    gap->setSingleStep(0.5);
+    gap->setValue(1.0);
+    gap->setSuffix(tr(" mm"));
+    gap->setToolTip(tr("Écart maximal entre deux formes du bloc : une fente plus étroite est "
+                       "considérée comme un vide à combler."));
+    auto* area = new QDoubleSpinBox(&dialog);
+    area->setRange(0.0, 100'000.0);
+    area->setDecimals(1);
+    area->setValue(0.0);
+    area->setSuffix(tr(" mm²"));
+    area->setSpecialValueText(tr("Sans limite"));
+    area->setToolTip(tr("Aire maximale d'un vide comblé : un vide plus grand est conservé "
+                        "(fenêtre voulue)."));
+    form->addRow(tr("Écart maximal entre formes :"), gap);
+    form->addRow(tr("Aire maximale d'un vide :"), area);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    form->addRow(buttons);
+    if (dialog.exec() == QDialog::Accepted) {
+        fillBlockHolesWith(gap->value(), area->value());
+    }
+}
+
+void MainWindow::fillBlockHolesWith(double closingGapMm, double maxAreaMm2) {
+    const std::vector<ObjectId> ids = selectedObjectIds();
+    if (ids.empty() || !sequence_.has_value()) {
+        statusBar()->showMessage(tr("Sélectionnez les formes du bloc à combler."), 6000);
+        return;
+    }
+    stitch_analysis::UncoveredPocketOptions options;
+    options.closing_gap = mmToUm(closingGapMm);
+    options.max_area_um2 = maxAreaMm2 * 1e6;
+    // Instantané immuable des points ; le projet n'est que lu pendant l'attente (les minuteurs
+    // d'enregistrement automatique et de simulation sont suspendus par l'indicateur).
+    const stitch::StitchSequence snapshot = *sequence_;
+    auto pockets = [&] {
+        BusyIndicator busy(this, tr("Recherche des vides du bloc…"),
+                           {autosaveTimer_, simTimer_, analysisTimer_});
+        return busy.run([&] {
+            return stitch_analysis::find_uncovered_pockets(project_, snapshot, ids, options);
+        });
+    }();
+    if (!pockets) {
+        statusBar()->showMessage(QString::fromStdString(pockets.error().message), 8000);
+        return;
+    }
+    if (pockets->empty()) {
+        statusBar()->showMessage(tr("Aucun vide détecté dans le bloc."), 8000);
+        return;
+    }
+    auto result = commands::make_fill_pockets_command(project_, ids, *pockets);
+    const std::size_t filled = result.resulting_objects;
+    applyShapeCommand(std::move(result),
+                      tr("%1 vide(s) comblé(s). Ctrl+Z pour annuler.").arg(filled),
                       std::vector<ObjectId>(ids.rbegin(), ids.rend()));
 }
 

@@ -613,3 +613,79 @@ TEST_CASE("vector ops: holes are removed, all or only the small ones") {
     stack.undo(project);
     CHECK(project.vector_objects[0].paths[0].holes.size() == 2);
 }
+
+TEST_CASE("vector ops: pockets are merged into the largest adjacent fill, undo restores") {
+    document::Project project;
+    const ObjectId big = add_object(project, rect(0, 0, 20'000, 10'000), true);
+    const ObjectId small = add_object(project, rect(21'000, 0, 26'000, 10'000), true);
+    // Fente de 1 mm entre les deux, debordant de 0,3 mm sur chacune.
+    const std::vector<geometry::PathSet> pockets{rect(19'700, 0, 21'300, 10'000)};
+
+    UndoStack stack;
+    auto result = make_fill_pockets_command(project, {big, small}, pockets);
+    REQUIRE(result.command != nullptr);
+    CHECK(result.resulting_objects == 1);
+    const std::size_t objectsBefore = project.vector_objects.size();
+    stack.execute(std::move(result.command), project);
+
+    // Le plus grand tatami absorbe la poche (une seule zone), rien n'est cree.
+    CHECK(project.vector_objects.size() == objectsBefore);
+    CHECK(project.embroidery_objects.size() == 2);
+    const auto* bigVec = project.findObject(big);
+    REQUIRE(bigVec != nullptr);
+    CHECK(std::abs(area_mm2(*bigVec) - 213.0) < 0.5); // 200 mm2 + poche hors de lui (1,3 x 10 mm)
+    CHECK(std::abs(area_mm2(*project.findObject(small)) - 50.0) < 0.5);
+
+    stack.undo(project);
+    CHECK(std::abs(area_mm2(*project.findObject(big)) - 200.0) < 0.5);
+}
+
+TEST_CASE("vector ops: pockets next to a shared or edited fill become a new tatami object") {
+    document::Project project;
+    const ObjectId big = add_object(project, rect(0, 0, 20'000, 10'000), true);
+    // Second remplissage sur le MEME vecteur : agrandir le vecteur le deformerait aussi.
+    document::EmbroideryObject twin = project.embroidery_objects.front();
+    twin.id = project.object_ids.next();
+    project.embroidery_objects.push_back(twin);
+    project.embroidery_objects.front().rgb = {10, 20, 30};
+
+    const std::vector<geometry::PathSet> pockets{rect(19'700, 0, 21'300, 10'000)};
+    UndoStack stack;
+    auto result = make_fill_pockets_command(project, {big}, pockets);
+    REQUIRE(result.command != nullptr);
+    stack.execute(std::move(result.command), project);
+
+    CHECK(std::abs(area_mm2(*project.findObject(big)) - 200.0) < 0.5); // inchange
+    REQUIRE(project.vector_objects.size() == 2);
+    REQUIRE(project.embroidery_objects.size() == 3);
+    const auto& created = project.embroidery_objects.back();
+    CHECK(created.is_tatami());
+    CHECK(created.source_vector == project.vector_objects.back().id);
+    CHECK(created.rgb == project.embroidery_objects.front().rgb);
+
+    stack.undo(project);
+    CHECK(project.vector_objects.size() == 1);
+    CHECK(project.embroidery_objects.size() == 2);
+}
+
+TEST_CASE("vector ops: a pocket already inside its neighbour's vector gets its own object") {
+    document::Project project;
+    const ObjectId big = add_object(project, rect(0, 0, 20'000, 10'000), true);
+    UndoStack stack;
+    auto result = make_fill_pockets_command(project, {big}, {rect(5'000, 3'000, 9'000, 7'000)});
+    REQUIRE(result.command != nullptr);
+    stack.execute(std::move(result.command), project);
+    CHECK(project.vector_objects.size() == 2);
+    CHECK(project.embroidery_objects.size() == 2);
+}
+
+TEST_CASE("vector ops: pockets are refused without pockets or without a neighbour") {
+    document::Project project;
+    const ObjectId big = add_object(project, rect(0, 0, 20'000, 10'000), true);
+    CHECK(make_fill_pockets_command(project, {big}, {}).command == nullptr);
+    const auto far = make_fill_pockets_command(project, {big}, {rect(90'000, 0, 91'000, 1'000)});
+    CHECK(far.command == nullptr);
+    CHECK_FALSE(far.error.empty());
+    const auto none = make_fill_pockets_command(project, {}, {rect(0, 0, 1'000, 1'000)});
+    CHECK(none.command == nullptr);
+}
