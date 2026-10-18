@@ -27,6 +27,7 @@ void MainWindow::buildProductionMenu(QMenu* fileMenu) {
 }
 
 void MainWindow::showProductionSheet() {
+    flushPendingRefresh(); // HP-PERF-009
     if (!sequence_) {
         QMessageBox::information(this, tr("Fiche de production"),
                                  tr("Générez d'abord des points de broderie."));
