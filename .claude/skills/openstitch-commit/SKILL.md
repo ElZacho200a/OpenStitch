@@ -29,7 +29,12 @@ Ne committer / pousser que sur demande explicite de l'utilisateur. Sur
    `roadmap.md` si le tableau des fonctionnalités change. Un correctif ou un
    refactor sans entrée concernée l'écrit dans le message de commit
    (« roadmap : aucune entrée concernée »). Pas de commit sans l'un des deux.
-6. `git status` : ne pas embarquer les artefacts locaux (`out.svg`,
+6. **Câblage bureau (bloquant sauf demande explicite)** : toute fonctionnalité ajoutée
+   dans le cœur ou le CLI doit aussi être accessible dans `apps/desktop` (action,
+   dialogue ou outil + `ICommand` + test QTest). Sinon le commit le dit
+   (« bureau : non câblé, demandé par l'utilisateur » ou entrée laissée `◐` avec
+   « Reste : câblage bureau » dans la roadmap).
+7. `git status` : ne pas embarquer les artefacts locaux (`out.svg`,
    `*-debug.svg` à la racine, `aqtinstall.log`, `sample/` non suivi,
    `.venv*`, fichiers utilisateur type GISTRE). Stager fichier par fichier,
    jamais `git add -A` aveugle.

@@ -95,7 +95,9 @@ watcher hangs on its `.venv-wsl/`).
 - `openstitch-bugfix` — root-cause workflow (failing test first, rejected hypotheses documented).
 - `openstitch-commit` — pre-commit checks and commit message conventions. **Every
   commit must update `docs/roadmap-parite-hatch.md`** (entry status, new gaps, journal §28)
-  or state "roadmap : aucune entrée concernée" in the message.
+  or state "roadmap : aucune entrée concernée" in the message. **Unless the user explicitly
+  says otherwise, every feature must also be wired into the desktop app** (`apps/desktop`:
+  menu/tool/dialog/panel + `ICommand` undo + headless QTest), not just core and CLI.
 - `openstitch-performance` — measure with the bench, parallelise with `parallel_for`
   (independent tasks, sequential assembly), keep heavy work off the UI thread, exact-key
   caches; byte-identical output is the acceptance criterion.

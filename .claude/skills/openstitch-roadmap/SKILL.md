@@ -51,6 +51,14 @@ Le fichier a été écrit le 2026-09-22 ; le code a pu bouger depuis.
 
 ## 3. Réaliser avec les autres skills
 
+**Câblage bureau obligatoire.** Sauf demande explicite contraire de l'utilisateur,
+une fonctionnalité n'est livrée que si elle est **câblée dans le bureau**
+(`apps/desktop` : menu ou outil, dialogue, panneau, annulation par `ICommand`,
+test QTest headless) en plus du cœur et du CLI. Une entrée dont seul le cœur
+existe reste `◐ Partiel` avec « Reste : câblage bureau » : ne jamais la marquer
+`☑ Fait`, et ne pas choisir une autre entrée tant que celle-ci n'est pas câblée,
+sauf si le câblage dépend d'un travail humain ou d'une autre entrée (le noter).
+
 - Doc d'un sous-système : `openstitch-docs` (toujours via `search_docs`).
 - Nouveau paramètre / type de point / champ persistant : `openstitch-stitch-param`.
 - Défaut trouvé en route : `openstitch-bugfix`.
