@@ -820,6 +820,10 @@ private:
     // Cyclage par re-clic au même point (HP-UX-020) : renvoie l'objet à sélectionner.
     [[nodiscard]] ObjectId cycleTarget(const std::vector<ObjectId>& under, QPointF posMm);
     void zoomToSelection();
+    // Copier / coller le style (HP-UX-035) : les paramètres de couture de l'objet actif sont
+    // appliqués, en UNE commande annulable, aux objets sélectionnés de même type de point.
+    void copyStyle();
+    void pasteStyle();
     // Mode « Isoler » (HP-UX-034) : protection de SESSION, jamais écrite dans le projet. Les
     // formes non isolées sont masquées et exclues du clic, du rectangle et des flèches.
     void toggleIsolation(bool on);
@@ -1269,6 +1273,9 @@ private:
     QPointer<QuickStartDialog> quickStartDialog_;
     QPointer<QMenu> selectBelowMenu_;
     std::vector<ObjectId> isolatedIds_;
+    std::optional<document::StitchParams> styleClipboard_;
+    QAction* copyStyleAct_{nullptr};
+    QAction* pasteStyleAct_{nullptr};
     QAction* isolateAct_{nullptr};
     QPointF cycleAnchorMm_;
     std::vector<ObjectId> cycleIds_;
