@@ -39,9 +39,9 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 |---|---|---|---|---|
 | P0 | 12 | 26 | 6 | 44 |
 | P1 | 10 | 52 | 78 | 140 |
-| P2 | 3 | 20 | 74 | 97 |
+| P2 | 3 | 23 | 71 | 97 |
 | P3 | 0 | 0 | 15 | 15 |
-| **Total** | **25** | **98** | **173** | **296** |
+| **Total** | **25** | **101** | **170** | **296** |
 
 Ajoutés le 2026-10-18 (audit UX/UI, `docs/ux/`) : **+30 entrées ☐** (12 P1, 15 P2, 3 P3) :
 HP-UX-017 à HP-UX-044, HP-PERF-009 et HP-QA-008 (§20, §22, §23). Aucun statut existant n'a été
@@ -2781,12 +2781,13 @@ Le lot C comprend aussi **HP-PERF-009** (régénération différée à l'éditio
 
 #### Lot D — Cohérence et productivité (P2)
 
-### HP-UX-034 — Mode « Isoler » (protection de session) [P2] — ☐ À faire
+### HP-UX-034 — Mode « Isoler » (protection de session) [P2] — ◐ Partiel (2026-10-18, branche `ux-lot-d2`)
 - Problème : `EmbroideryObject::locked` fige l'ordre de couture, il ne protège pas l'objet (`embroidery_object.hpp:393`, `selection_hit_test.cpp:97`) ; un glisser accidentel de 3 mm sur un fond fini casse l'alignement. Constat BRO-15.
 - Comportement attendu : « Isoler la sélection » masque/atténue les autres objets et les exclut du hit-test, du rectangle et des flèches **pendant la session** ; « Quitter l'isolation » les restaure. **Décision du 2026-10-18 : aucun champ persistant, aucun changement de `.osp`.** Un verrou d'édition persistant reste hors périmètre (nécessiterait un champ et une migration).
 - Complexité : M. Composants : `apps/desktop/selection_hit_test.*`, `canvas_view.cpp`, `document_panel.*`.
 - Dépend de : HP-UX-019 (prédicat unique).
 - Acceptation : en isolation, un clic sur un objet non isolé ne le sélectionne pas et le glisser du fond ne le déplace pas ; l'état n'est pas écrit dans le `.osp` (SHA-256 identique avant/après sauvegarde).
+- Livré : action « Isoler la sélection » (Maj+I, case à cocher) : les formes non isolées sont masquées et exclues du clic, de Maj/Ctrl/Alt+clic et du rectangle (via `vectorPassesFilter`) ; état de session (`isolatedIds_`) remis à zéro à chaque nouveau document ; test `isolationHidesAndExcludesOthersWithoutTouchingTheProject` (octets du `.osp` identiques avant/pendant l'isolation, aucun champ ajouté). Reste : atténuation (au lieu de masquage) des autres formes, exclusion des flèches clavier, entrée dans le menu contextuel et la liste Document.
 
 ### HP-UX-035 — Copier/coller le style et défauts de points [P2] — ☐ À faire
 - Problème : pas de « copier le style » ; défauts de création en dur (0,4 / 3 / 0°, `main_window.cpp:4232-4244`) ; `ui_memory` ne couvre pas les paramètres de couture. Constat BRO-21. Voir HP-UX-007.
@@ -2795,12 +2796,13 @@ Le lot C comprend aussi **HP-PERF-009** (régénération différée à l'éditio
 - Dépend de : HP-UX-003.
 - Acceptation : coller le style de A sur B donne `B.params == A.params` en une commande annulable ; un nouvel objet reprend le défaut enregistré.
 
-### HP-UX-036 — Bascule de vue à quatre états et barre de simulation informative [P2] — ☐ À faire
+### HP-UX-036 — Bascule de vue à quatre états et barre de simulation informative [P2] — ◐ Partiel (2026-10-18, branche `ux-lot-d2`)
 - Problème : quatre couches dans Affichage ▸ Calques, une seule en barre ; une couche masquée rend le clic muet sans explication ; compteur de simulation = indice de commande, pas de saut par couleur ni de durée (`main_window.cpp:1060-1075, 6114, 7699-7735, 7807, 8721`). Constats BRO-23, PAR-11, UX-29.
 - Comportement attendu : bascule Dessin / Points / Réaliste / Simulation dans la barre (le menu Calques reste) ; message « Vecteurs masqués » quand un clic tombe sur une couche cachée ; simulation : « point n/N · mm:ss · fil 3/7 », couleur précédente/suivante.
 - Complexité : M. Composants : `apps/desktop/main_window*.cpp`. Voir HP-SIM-002/004.
 - Dépend de : HP-UX-022.
 - Acceptation : activer « Points » masque `showVectorsAct_` ; un clic en mode Points affiche un message d'état précis ; le saut par couleur positionne `simStep_` au début du bloc.
+- Livré : boutons « ⏮ Couleur » / « Couleur ⏭ » (saut au début du bloc de couleur précédent/suivant, sortie de la simulation après le dernier), « fil k/m » dans l'info de simulation, message d'état explicite quand un clic tombe sur une forme alors que la couche Vecteurs est masquée (touche 3) ; tests `simulationColorJumpsLandOnColorBlocks`, `hiddenVectorLayerExplainsAClickOnAShape`. Reste : bascule Dessin / Points / Réaliste / Simulation dans la barre, durée estimée « mm:ss » (dépend d'une vitesse machine).
 
 ### HP-UX-037 — Liste Document : sélection étendue, vecteurs, ordre par glisser-déposer [P2] — ☐ À faire
 - Problème : sélection simple pour les objets, vecteurs non cousus absents, repli et défilement perdus à chaque rafraîchissement, Document et Ordre de couture dupliqués (`document_panel.cpp:237, 276, 349-402, 523-563`, `main_window.cpp:6745-6747, 7224-7295`). Constats BRO-06, PAR-14, UX-13, UX-45.
@@ -2809,12 +2811,13 @@ Le lot C comprend aussi **HP-PERF-009** (régénération différée à l'éditio
 - Dépend de : HP-OBJ-001, HP-OBJ-010, HP-OBJ-011 ; HP-QA-001.
 - Acceptation : Ctrl+clic sur 3 lignes → 3 identifiants dans la sélection et « 3 objets » dans l'inspecteur ; SVG de plusieurs formes entièrement navigable avant création des points ; fermer un groupe puis rafraîchir ne change ni son repli ni la position de lecture.
 
-### HP-UX-039 — Contrat d'état de l'interface (workflow, enregistrement, erreurs) [P2] — ☐ À faire
+### HP-UX-039 — Contrat d'état de l'interface (workflow, enregistrement, erreurs) [P2] — ◐ Partiel (2026-10-18, branche `ux-lot-d2`)
 - Problème : le workflow est un lanceur (Vérification/Export « disponible » dès qu'une séquence existe) ; l'heure d'enregistrement est celle du rafraîchissement ; erreurs de génération/autosave uniquement en barre d'état éphémère (`main_window.cpp:6730-6734, 526-536`, `main_window_ux.cpp:260-278`). Constats UX-14, UX-32, UX-26.
 - Comportement attendu : états d'étape liés à la révision du document (vérifié, exporté, périmé après modification) ; instant de sauvegarde mémorisé ; notification d'erreur persistante avec reprise. **En mémoire seulement** : aucun champ `.osp`.
 - Complexité : M. Composants : `apps/desktop/main_window_workflow.cpp`, `main_window_ux.cpp`, `workflow_panel.*`.
 - Dépend de : HP-QA-001 (partiel).
 - Acceptation : sauver à T1, éditer, annuler à T2 → T1 affiché ; export réussi visible puis invalidé par une modification ; un SVG ne réclame pas d'étape Régions.
+- Livré : l'instant « Enregistré à HH:mm » est mémorisé à la sauvegarde/ouverture (`savedAt_`) et n'est plus l'heure du dernier rafraîchissement (UX-32) ; test `savedIndicatorShowsTheSaveTimeNotTheRefreshTime`. Reste : états d'étape du workflow liés à la révision du document (UX-14), notifications d'erreur persistantes (UX-26).
 
 ### HP-UX-040 — Contrat IA : repli couleur et annulation tardive [P2] — ☐ À faire
 - Problème : l'échec du raffinement couleur n'est pas conservé après `accept()` ; l'annulation tardive n'a pas d'état dédié et plusieurs handlers ignorent `requestId` (`ai_segmentation_dialog.cpp:510-517, 563-566, 599-624, 981-986`). Constats UX-15, UX-16.
@@ -3161,3 +3164,4 @@ ci-dessus doit les respecter :
 | 2026-10-18 | Claude (audit UX/UI, 4 analyses en lecture seule) | **Audit UX/UI** : `docs/ux/` (rapport, parcours, stratégie, synthèse). +30 entrées ☐ : HP-UX-017…044 (lots A à E, §20), HP-PERF-009 (§22), HP-QA-008 (§23) ; HP-UX-001/002/003/004/009/012/016 précisés ; les constats `UX-xx` de `docs/ui-ux-audit-2026-10-13.md` sont enfin reliés à des tâches. Décisions : verrou d'édition = mode Isoler de session (pas de champ `.osp`), Ctrl+O universel, dialogues de création supprimés (option « Créer avec réglages… »). Total 266 → 296. Aucun code modifié. |
 | 2026-10-18 | Claude (lot A, quick wins) | HP-UX-017, 018, 021, 022 ◐ (branche `claude/ux-lot-a-quickwins`, PR empilée sur #71) : Ctrl+O universel, Échap désélectionne les objets, F7 sans modale (Maj+F7 règle), sortie de simulation. Quatre tests QTest ajoutés + deux tests existants adaptés (mnémonique, fin de curseur) ; suite desktop Release 37/37. Total ◐ 91 → 95, ☐ 180 → 176. |
 | 2026-10-18 | Claude (lot A2, sélection) | HP-UX-019, 020, 023 ◐ (branche `ux-lot-a2`) : prédicat de sélection unique avec tolérance de clic en repli, cyclage au re-clic, Ctrl+A selon la couche, touches 1 à 4, zoom sur la sélection. Tests ajoutés dans `test_selection_hit_test` et `test_ux_global`. Total ◐ 95 → 98, ☐ 176 → 173. |
+| 2026-10-18 | Claude (lot D, partie 1) | HP-UX-034, 036, 039 ◐ (branche `ux-lot-d2`) : mode Isoler de session, sauts de couleur et « fil k/m » en simulation, message de couche masquée, heure d'enregistrement fixe. Tests dans `test_ux_global`. Total ◐ 98 → 101, ☐ 173 → 170. |

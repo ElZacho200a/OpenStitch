@@ -266,8 +266,8 @@ void MainWindow::updateSavedIndicator() {
     } else if (currentProjectPath_.isEmpty()) {
         savedLabel_->setText(tr("Nouveau document"));
     } else {
-        savedLabel_->setText(
-            tr("Enregistré à %1").arg(QTime::currentTime().toString(QStringLiteral("HH:mm"))));
+        const QTime at = savedAt_.isValid() ? savedAt_ : QTime::currentTime();
+        savedLabel_->setText(tr("Enregistré à %1").arg(at.toString(QStringLiteral("HH:mm"))));
     }
 }
 

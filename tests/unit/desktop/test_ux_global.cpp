@@ -30,6 +30,7 @@
 #include "design_tokens.hpp"
 #include "main_window.hpp"
 #include "openstitch/document/project.hpp"
+#include "openstitch/project_io/project_io.hpp"
 #include "openstitch/stitch/sequence.hpp"
 
 using openstitch::Micrometers;
@@ -654,6 +655,126 @@ private slots:
         QVERIFY(window.view_->viewport()->rect().contains(centre.toPoint()));
         window.zoomPreviousAct_->trigger();
         QVERIFY(std::abs(window.view_->pixelsPerMm() - before) < 1e-6);
+    }
+
+    // ---- HP-UX-034 : mode Isoler (état de session, rien dans le projet) -----------------------
+
+    void isolationHidesAndExcludesOthersWithoutTouchingTheProject() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        const ObjectId a = addSquareVector(project);
+        const ObjectId b = addSquareVector(project);
+        window.applyLoadedProject(project);
+        window.view_->setTransform(QTransform::fromScale(10.0, 10.0));
+        window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a}});
+        window.updateActions();
+        QVERIFY(window.isolateAct_->isEnabled());
+
+        // Octets du projet avant et pendant l'isolation : identiques (rien n'est persisté).
+        QTemporaryDir dir;
+        const auto before = (dir.path() + "/before.osp").toStdString();
+        const auto during = (dir.path() + "/during.osp").toStdString();
+        QVERIFY(openstitch::project_io::save_project(before, window.project_).has_value());
+        window.isolateAct_->trigger();
+        QVERIFY(window.isolating());
+        QVERIFY(openstitch::project_io::save_project(during, window.project_).has_value());
+        QFile f1(QString::fromStdString(before));
+        QFile f2(QString::fromStdString(during));
+        QVERIFY(f1.open(QIODevice::ReadOnly) && f2.open(QIODevice::ReadOnly));
+        QCOMPARE(f1.readAll(), f2.readAll());
+
+        // `b` est au-dessus de `a` au même endroit : isolé, seul `a` est saisissable.
+        const QPointF inside(5.0, -5.0);
+        QCOMPARE(window.selectableObjectsAt(inside), std::vector<ObjectId>{a});
+        window.setSelection({});
+        window.onCanvasClicked(inside);
+        QCOMPARE(window.currentSelection().objects, std::vector<ObjectId>{a});
+
+        // Fin de l'isolation : `b` redevient saisissable ; un nouveau document la remet à zéro.
+        window.isolateAct_->trigger();
+        QVERIFY(!window.isolating());
+        QCOMPARE(window.selectableObjectsAt(inside).front(), b);
+        window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a}});
+        window.updateActions();
+        window.isolateAct_->trigger();
+        QVERIFY(window.isolating());
+        window.applyLoadedProject(imageOnlyProject());
+        QVERIFY(!window.isolating());
+        QVERIFY(!window.isolateAct_->isChecked());
+    }
+
+    // ---- HP-UX-036 : sauts de couleur dans la simulation, message de couche masquée -----------
+
+    void simulationColorJumpsLandOnColorBlocks() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        const ObjectId v1 = addSquareVector(project);
+        const ObjectId v2 = addSquareVector(project);
+        doc::EmbroideryObject first;
+        first.id = project.object_ids.next();
+        first.name = "A";
+        first.source_vector = v1;
+        first.rgb = {200, 0, 0};
+        first.params = doc::RunningStitchParams{};
+        project.embroidery_objects.push_back(first);
+        doc::EmbroideryObject second;
+        second.id = project.object_ids.next();
+        second.name = "B";
+        second.source_vector = v2;
+        second.rgb = {0, 0, 200};
+        second.params = doc::RunningStitchParams{};
+        project.embroidery_objects.push_back(second);
+        window.applyLoadedProject(project);
+        QVERIFY(window.sequence_.has_value());
+        const std::vector<int> starts = window.colorBlockStarts();
+        QVERIFY2(starts.size() >= 2, "deux fils différents : deux blocs de couleur");
+        const int last = static_cast<int>(window.sequence_->commands.size()) - 1;
+
+        window.simSlider_->setValue(1); // simulation au début du premier bloc
+        QVERIFY(window.simulating());
+        window.simNextColorAct_->trigger();
+        QCOMPARE(window.simStep_, starts[1]); // début du bloc suivant
+        QVERIFY(window.simObjectLabel_->toolTip().contains(QStringLiteral("fil 2/")));
+        window.simPrevColorAct_->trigger();
+        QCOMPARE(window.simStep_, starts[0]);
+        // Après le dernier bloc, « suivant » va à la fin : on sort de la simulation.
+        window.simSlider_->setValue(starts.back());
+        window.simNextColorAct_->trigger();
+        QVERIFY(!window.simulating());
+        QCOMPARE(window.simSlider_->value(), last);
+    }
+
+    void hiddenVectorLayerExplainsAClickOnAShape() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        addSquareVector(project);
+        window.applyLoadedProject(project);
+        window.setTool(Tool::Select);
+        window.showVectorsAct_->setChecked(false);
+        window.statusBar()->clearMessage();
+        window.onCanvasClicked(QPointF(5.0, -5.0));
+        QVERIFY2(window.statusBar()->currentMessage().contains(QStringLiteral("masquée")),
+                 qPrintable(window.statusBar()->currentMessage()));
+    }
+
+    // ---- HP-UX-039 (UX-32) : l'heure d'enregistrement est celle de la sauvegarde --------------
+
+    void savedIndicatorShowsTheSaveTimeNotTheRefreshTime() {
+        MainWindow window;
+        window.applyLoadedProject(imageOnlyProject());
+        window.currentProjectPath_ = QStringLiteral("projet.osp");
+        window.savedAt_ = QTime(10, 30);
+        window.setWindowModified(false);
+        window.updateSavedIndicator();
+        QVERIFY2(window.savedLabel_->text().contains(QStringLiteral("10:30")),
+                 qPrintable(window.savedLabel_->text()));
+        // Modifié puis revenu propre (undo) : toujours l'heure de la sauvegarde, pas l'heure
+        // courante.
+        window.setWindowModified(true);
+        QCOMPARE(window.savedLabel_->text(), tr("Non enregistré"));
+        window.setWindowModified(false);
+        window.updateSavedIndicator();
+        QVERIFY(window.savedLabel_->text().contains(QStringLiteral("10:30")));
     }
 
 private:

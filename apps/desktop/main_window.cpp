@@ -1212,6 +1212,12 @@ void MainWindow::resetDocumentState() {
     sequence_.reset();
     editStates_.clear();
     setSelection({});
+    isolatedIds_
+        .clear(); // l'isolation est un état de session : jamais reportée sur un autre document
+    if (isolateAct_ != nullptr && isolateAct_->isChecked()) {
+        QSignalBlocker block(isolateAct_);
+        isolateAct_->setChecked(false);
+    }
     if (mergeAct_ != nullptr) {
         mergeAct_->setChecked(false); // remet aussi mergeMode_ à false (cf. buildMenus)
     }
@@ -7447,6 +7453,10 @@ double MainWindow::vectorAreaMm2(const document::VectorObject& vec) {
 }
 
 bool MainWindow::vectorPassesFilter(const document::VectorObject& object) const {
+    if (!isolatedIds_.empty() &&
+        std::find(isolatedIds_.begin(), isolatedIds_.end(), object.id) == isolatedIds_.end()) {
+        return false; // mode Isoler : seules les formes isolées sont visibles et saisissables
+    }
     if (minAreaMm2_ > 0.0 && vectorAreaMm2(object) < minAreaMm2_) {
         return false;
     }
@@ -7767,6 +7777,14 @@ void MainWindow::buildSimulationToolbar() {
         tr("Quitte la simulation et affiche la couture complète (le rendu réaliste redevient "
            "disponible)."));
     connect(simExitAct_, &QAction::triggered, this, &MainWindow::exitSimulation);
+    simPrevColorAct_ = simToolbar_->addAction(tr("⏮ Couleur"));
+    simPrevColorAct_->setObjectName(QStringLiteral("action_simPrevColor"));
+    simPrevColorAct_->setToolTip(tr("Saute au début du bloc de couleur précédent."));
+    connect(simPrevColorAct_, &QAction::triggered, this, [this] { jumpSimulationColor(-1); });
+    simNextColorAct_ = simToolbar_->addAction(tr("Couleur ⏭"));
+    simNextColorAct_->setObjectName(QStringLiteral("action_simNextColor"));
+    simNextColorAct_->setToolTip(tr("Saute au début du bloc de couleur suivant."));
+    connect(simNextColorAct_, &QAction::triggered, this, [this] { jumpSimulationColor(+1); });
 
     simSlider_ = new QSlider(Qt::Horizontal, simToolbar_);
     simSlider_->setMinimum(0);
@@ -7834,15 +7852,22 @@ void MainWindow::updateSimulationInfo(int step) {
     }
     simSwatch_->setPixmap(
         icons::colorSwatch(QColor(rgb[0], rgb[1], rgb[2]), 12).pixmap(QSize(12, 12)));
+    // « fil k/m » : rang du bloc de couleur courant parmi les blocs de la séquence.
+    const std::vector<int> starts = colorBlockStarts();
+    const auto block = std::upper_bound(starts.begin(), starts.end(), step) - starts.begin();
+    const QString thread =
+        tr("fil %1/%2").arg(std::max<std::ptrdiff_t>(block, 1)).arg(starts.size());
     simObjectLabel_->setText(simObjectLabel_->fontMetrics().elidedText(
-        tr("« %1 »").arg(name), Qt::ElideRight, simObjectLabel_->minimumWidth()));
-    simObjectLabel_->setToolTip(name);
+        tr("« %1 » · %2").arg(name, thread), Qt::ElideRight, simObjectLabel_->minimumWidth()));
+    simObjectLabel_->setToolTip(tr("%1 — %2").arg(name, thread));
 }
 
 void MainWindow::updateSimulationRange() {
     const bool hasSeq = sequence_ && !sequence_->commands.empty();
     simPlayAct_->setEnabled(hasSeq);
     simExitAct_->setEnabled(hasSeq);
+    simPrevColorAct_->setEnabled(hasSeq);
+    simNextColorAct_->setEnabled(hasSeq);
     simSlider_->setEnabled(hasSeq);
     simSpeedCombo_->setEnabled(hasSeq);
     // Le document a changé (cette fonction suit chaque régénération de la séquence) : une
@@ -7922,6 +7947,37 @@ void MainWindow::onSimTick() {
         // Fin de lecture : on sort de la simulation (couture complète, rendu réaliste possible).
         exitSimulation();
     }
+}
+
+std::vector<int> MainWindow::colorBlockStarts() const {
+    std::vector<int> starts{0};
+    if (!sequence_) {
+        return starts;
+    }
+    for (std::size_t i = 0; i < sequence_->commands.size(); ++i) {
+        if (sequence_->commands[i].type == stitch::CommandType::ColorChange) {
+            starts.push_back(static_cast<int>(i));
+        }
+    }
+    return starts;
+}
+
+void MainWindow::jumpSimulationColor(int direction) {
+    if (!sequence_ || sequence_->commands.empty()) {
+        return;
+    }
+    const int last = static_cast<int>(sequence_->commands.size()) - 1;
+    const int current = simulating() ? simStep_ : last;
+    const std::vector<int> starts = colorBlockStarts();
+    int target = direction > 0 ? last : 0;
+    if (direction > 0) {
+        const auto it = std::upper_bound(starts.begin(), starts.end(), current);
+        target = it == starts.end() ? last : *it;
+    } else {
+        const auto it = std::lower_bound(starts.begin(), starts.end(), current);
+        target = it == starts.begin() ? 0 : *(it - 1);
+    }
+    simSlider_->setValue(target); // onSimSliderMoved : quitte la simulation si on atteint la fin
 }
 
 void MainWindow::exitSimulation() {
@@ -8101,6 +8157,7 @@ bool MainWindow::saveProjectToPath(const QString& file) {
     setCurrentProjectPath(file);
     rememberLastDirectory(file);
     undoStack_.markClean();
+    savedAt_ = QTime::currentTime();
     // Les données sont désormais dans le fichier : la sauvegarde automatique
     // issue d'une récupération (conservée jusqu'ici) n'a plus de raison d'être.
     discardPendingRecoverySlot();
@@ -8655,6 +8712,7 @@ void MainWindow::importDstFile(const QString& file) {
     updateActions();
     // Le design importé EST l'état de départ du document : propre, comme un projet ouvert.
     undoStack_.markClean();
+    savedAt_ = QTime::currentTime();
     setWindowModified(false);
 
     if (sequence_) {
@@ -8812,6 +8870,13 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
                              "arrière : retirer le dernier point")
                               .arg(pairs));
         return;
+    }
+    // Couche Vecteurs masquée : un clic « sans effet » sur une forme se dit au lieu de se taire.
+    if (!showVectorsAct_->isChecked() && currentTool_ == Tool::Select && !mergeMode_ &&
+        !objectsAtPointMm(project_, posMm).empty()) {
+        statusBar()->showMessage(tr("Une forme vectorielle est sous le curseur, mais la couche "
+                                    "Vecteurs est masquée (touche 3 pour l'afficher)."),
+                                 6000);
     }
     // Priorité aux objets vectoriels lorsqu'ils sont affichés (hors fusion).
     if (showVectorsAct_->isChecked() && !mergeMode_) {
@@ -9081,6 +9146,12 @@ void MainWindow::onSelectionRectangle(QRectF rectMm, SelectMode mode, bool cross
 }
 
 void MainWindow::onSelectBelow(QPointF posMm, QPoint globalPos, SelectMode mode) {
+    if (currentTool_ == Tool::Select && !showVectorsAct_->isChecked() && !mergeMode_) {
+        statusBar()->showMessage(
+            tr("La couche Vecteurs est masquée (touche 3 pour l'afficher) : rien à sélectionner."),
+            6000);
+        return;
+    }
     if (currentTool_ != Tool::Select || !showVectorsAct_->isChecked() || mergeMode_) {
         return;
     }

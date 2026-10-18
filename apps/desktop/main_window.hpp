@@ -12,6 +12,7 @@
 #include <QString>
 #include <QStringList>
 
+#include <QTime>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -209,6 +210,9 @@ private slots:
     void onSimSliderMoved(int value);
     void onSimTick();
     void exitSimulation();
+    // Saut au début du bloc de couleur suivant (+1) ou précédent (-1) (HP-UX-036).
+    void jumpSimulationColor(int direction);
+    [[nodiscard]] std::vector<int> colorBlockStarts() const;
     void moveObjectUp();
     void moveObjectDown();
     void toggleObjectLock();
@@ -795,6 +799,10 @@ private:
     // Cyclage par re-clic au même point (HP-UX-020) : renvoie l'objet à sélectionner.
     [[nodiscard]] ObjectId cycleTarget(const std::vector<ObjectId>& under, QPointF posMm);
     void zoomToSelection();
+    // Mode « Isoler » (HP-UX-034) : protection de SESSION, jamais écrite dans le projet. Les
+    // formes non isolées sont masquées et exclues du clic, du rectangle et des flèches.
+    void toggleIsolation(bool on);
+    [[nodiscard]] bool isolating() const { return !isolatedIds_.empty(); }
     void selectRegionsWithSameColor();
     void selectNeighbourRegions();
     // Fusionne toutes les régions sélectionnées dans l'active (elle garde sa couleur) : un seul
@@ -1234,6 +1242,8 @@ private:
     QPointer<GesturesDialog> gesturesDialog_;
     QPointer<QuickStartDialog> quickStartDialog_;
     QPointer<QMenu> selectBelowMenu_;
+    std::vector<ObjectId> isolatedIds_;
+    QAction* isolateAct_{nullptr};
     QPointF cycleAnchorMm_;
     std::vector<ObjectId> cycleIds_;
     int cycleIndex_{0};
@@ -1353,6 +1363,9 @@ private:
     QShortcut* drawBackspaceShortcut_{nullptr};
     QAction* hidePanelsAct_{nullptr};
     QLabel* savedLabel_{nullptr};
+    // Instant de la dernière sauvegarde (ou ouverture) : « Enregistré à HH:mm » ne doit pas
+    // changer quand un undo ramène le document à l'état enregistré (UX-32).
+    QTime savedAt_;
     QTimer* statusClearTimer_{nullptr};
 
     // Structure du document (Objets / Régions).
@@ -1402,6 +1415,8 @@ private:
     QGraphicsItem* simMarker_{nullptr};
     QAction* simPlayAct_{nullptr};
     QAction* simExitAct_{nullptr};
+    QAction* simPrevColorAct_{nullptr};
+    QAction* simNextColorAct_{nullptr};
     QTimer* simTimer_{nullptr};
     int simStep_{-1}; // -1 = simulation inactive (tout affiché)
 
