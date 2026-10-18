@@ -130,6 +130,15 @@ density_gradient_between(const std::vector<geometry::PathSet>& zone_a,
                          const std::vector<geometry::PathSet>& zone_b, Micrometers spacing_a,
                          Micrometers spacing_b);
 
+// Restreint la rampe d'un dégradé à la portion [start ; end] de son axe
+// (fractions de from→to, 0 = from, 1 = to). Avant `start` l'écart reste
+// `spacing_from`, après `end` il reste `spacing_to` : le générateur borne la
+// position sur l'axe, donc les extrémités deviennent des aplats. Les autres
+// champs sont conservés. nullopt si une fraction est non finie ou hors de
+// [0 ; 1], ou si start >= end.
+[[nodiscard]] std::optional<document::DensityGradient>
+narrow_gradient_zone(const document::DensityGradient& gradient, double start, double end);
+
 // Fondu de couleurs : les lignes ne peuvent espacer leur écart que
 // perpendiculairement à elles-mêmes. Si `params.density_gradient` a un axe non
 // nul, remplace les guides par UN guide droit perpendiculaire à cet axe

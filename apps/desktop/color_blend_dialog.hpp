@@ -41,6 +41,10 @@ public:
     [[nodiscard]] double angleDegrees() const;
     [[nodiscard]] Micrometers startSpacing() const;
     [[nodiscard]] Micrometers endSpacing() const;
+    // Portion de l'axe (fractions de 0 à 1) où l'écart varie ; aplats en dehors.
+    [[nodiscard]] document::DensityCurve curve() const;
+    [[nodiscard]] double transitionStart() const;
+    [[nodiscard]] double transitionEnd() const;
     // Préserve l'étendue de l'analyse tant que son angle n'est pas modifié.
     [[nodiscard]] std::optional<document::DensityGradient> proposedGradient() const;
 
@@ -63,6 +67,9 @@ private:
     QDoubleSpinBox* start_;
     QDoubleSpinBox* end_;
     QDoubleSpinBox* angle_;
+    QDoubleSpinBox* zoneStart_;
+    QDoubleSpinBox* zoneEnd_;
+    QComboBox* curve_;
     QComboBox* profile_;
     QComboBox* previewLayer_;
     BlendStitchPreview* preview_;

@@ -45,6 +45,7 @@ openstitch_add_qt_test(test_segmentation_colors_panel test_segmentation_colors_p
 openstitch_add_qt_test(test_segmentation_dialog test_segmentation_dialog.cpp)
 openstitch_add_qt_test(test_main_window test_main_window.cpp)
 openstitch_add_qt_test(test_color_blend test_color_blend.cpp)
+openstitch_add_qt_test(test_color_blend_dialog test_color_blend_dialog.cpp)
 openstitch_add_qt_test(test_tool_workflows test_tool_workflows.cpp)
 openstitch_add_qt_test(test_ui_action_workflows test_ui_action_workflows.cpp)
 openstitch_add_qt_test(test_ui_invariants test_ui_invariants.cpp)
@@ -76,6 +77,7 @@ openstitch_add_qt_test(test_machine_export_dialog test_machine_export_dialog.cpp
 # [cablage-A:debut]
 # [cablage-A:fin]
 # [cablage-B:debut]
+openstitch_add_qt_test(test_vector_tools test_vector_tools.cpp)
 # [cablage-B:fin]
 # [cablage-C:debut]
 # [cablage-C:fin]

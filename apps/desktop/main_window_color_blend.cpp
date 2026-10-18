@@ -39,9 +39,14 @@ std::optional<BlendLayers> blendLayersFor(const ColorBlendDialog& dialog,
             shape, Angle{dialog.angleDegrees() * std::numbers::pi / 180.0}, dialog.startSpacing(),
             dialog.endSpacing());
     }
+    if (gradient) {
+        gradient = stitch_generation::narrow_gradient_zone(*gradient, dialog.transitionStart(),
+                                                           dialog.transitionEnd());
+    }
     if (!gradient) {
         return std::nullopt;
     }
+    gradient->curve = dialog.curve();
     auto layers = stitch_generation::make_color_blend_layers(baseBefore, secondBefore, shape,
                                                              *gradient, dialog.complementary());
     if (!layers) {

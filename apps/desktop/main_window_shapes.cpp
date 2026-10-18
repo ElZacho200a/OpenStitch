@@ -132,6 +132,7 @@ void MainWindow::updateShapeActions() {
                           tr("Sélectionnez une forme composée de plusieurs morceaux."));
     setShapeActionEnabled(toolCutAct_, !project_.vector_objects.empty(),
                           tr("Aucune forme vectorielle à découper."));
+    updateVectorToolActions();
 }
 
 void MainWindow::applyShapeCommand(commands::VectorOpResult result, const QString& done,

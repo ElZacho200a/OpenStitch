@@ -4,6 +4,7 @@ add_library(openstitch_commands
     src/vector_ops.cpp
     src/transform_ops.cpp
     src/text_commands.cpp
+    src/vector_path_commands.cpp
 )
 add_library(openstitch::commands ALIAS openstitch_commands)
 
