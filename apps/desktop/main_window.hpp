@@ -262,6 +262,15 @@ private slots:
     void setDensityGradient(ObjectId embroideryId, bool enabled, double angleDeg,
                             double endSpacingMm);
     void applyTwoColorBlend();
+    // « Ajouter une couche… » : demande le type (contour, tatami, satin, directionnel) puis la
+    // couleur de fil, et empile une nouvelle couche sur la forme de l'objet de broderie `baseId`.
+    void addLayerInteractive(ObjectId baseId);
+    // Construit la couche (paramètres par défaut du type, nom « <base> – couche N », même forme
+    // source, fil `rgb`) et la pousse via AddLayerCommand, juste après la base. Faux si impossible.
+    bool addLayer(ObjectId baseId, int type, const std::array<std::uint8_t, 3>& rgb);
+    // Couleur proposée pour une couche : distincte de celle de la base.
+    [[nodiscard]] static std::array<std::uint8_t, 3>
+    defaultLayerColor(const std::array<std::uint8_t, 3>& base);
     // Mode « Guides de direction » : affiche l'aperçu du champ, les guides et
     // les lignes de rupture de l'objet ciblé, avec poignées déplaçables.
     void onDirectionGuideModeToggled(bool on);
@@ -1354,6 +1363,7 @@ private:
     QAction* directionGuideModeAct_{nullptr};
     QAction* autoDirectionGuideAct_{nullptr};
     QAction* twoColorBlendAct_{nullptr};
+    QAction* addLayerAct_{nullptr};
     QAction* drawDirectionGuideAct_{nullptr};
     QAction* drawBreakLineAct_{nullptr};
     std::optional<ObjectId> directionGuideTarget_;

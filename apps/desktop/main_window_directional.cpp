@@ -193,6 +193,16 @@ void MainWindow::buildDirectionalActions(QMenu* embMenu) {
            "Sans image : couleurs manuelles. Avec image : analyse facultative et nuancier actif "
            "du panneau Fils. Annulable en une fois."));
     connect(twoColorBlendAct_, &QAction::triggered, this, &MainWindow::applyTwoColorBlend);
+    addLayerAct_ = embMenu->addAction(tr("Ajouter une couche…"));
+    addLayerAct_->setObjectName(QStringLiteral("action_addLayer"));
+    addLayerAct_->setToolTip(
+        tr("Empile une nouvelle couche (type et couleur de fil au choix) sur la forme de "
+           "l'objet de broderie sélectionné. Annulable en une fois."));
+    connect(addLayerAct_, &QAction::triggered, this, [this] {
+        if (const auto* emb = resolveSelectedEmbroidery()) {
+            addLayerInteractive(emb->id);
+        }
+    });
     const auto startDrawing = [this](Tool tool) {
         if (!directionGuideModeAct_->isChecked()) {
             directionGuideModeAct_->setChecked(true);
@@ -463,6 +473,10 @@ void MainWindow::updateDirectionGuideActions() {
     }
     drawDirectionGuideAct_->setEnabled(context);
     drawBreakLineAct_->setEnabled(context && emb->is_directional());
+    if (addLayerAct_ != nullptr) {
+        addLayerAct_->setEnabled(emb != nullptr &&
+                                 project_.findObject(emb->source_vector) != nullptr);
+    }
     if (twoColorBlendAct_ != nullptr) {
         const bool canBlend = emb != nullptr && blendFillFor(emb->source_vector) == emb &&
                               project_.findObject(emb->source_vector) != nullptr;
