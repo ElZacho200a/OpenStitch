@@ -24,7 +24,7 @@ prochaine entrée de ce fichier.
 
 ---
 
-## État d'avancement (revu le 2026-10-13)
+## État d'avancement (revu le 2026-10-18 : tableau recalculé ; statuts hors vague 1 non revérifiés)
 
 > **Source de vérité des statuts : ce fichier.** `specs/implementation-roadmap.md`
 > décrit l'*ordre de livraison* (vagues, scopes S1…S15, plans) et `docs/source/roadmap.md`
@@ -37,11 +37,11 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
-| P0 | 12 | 25 | 7 | 44 |
-| P1 | 4 | 45 | 78 | 127 |
-| P2 | 0 | 16 | 66 | 82 |
+| P0 | 12 | 26 | 6 | 44 |
+| P1 | 4 | 54 | 70 | 128 |
+| P2 | 0 | 20 | 62 | 82 |
 | P3 | 0 | 0 | 12 | 12 |
-| **Total** | **16** | **86** | **163** | **265** |
+| **Total** | **16** | **100** | **150** | **266** |
 
 **Fait (16)** : FILE-001/002/003/004 (nouveau projet, enregistrer, récents, autosave),
 THR-001/003/004 (bibliothèque de fils, fil le plus proche, fil assigné à chaque objet),

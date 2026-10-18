@@ -26,10 +26,14 @@ fonctionnalité, vérifié dans le code.
 | Classification auto des régions | **Expérimental** | Segmentation | autodigitize | oui | bandes fines → moteur topologique par défaut (`use_auto_satin`) ; refus → tatami ; moteur naïf désactivé |
 | Filtres d'affichage / calques | Implémenté | Affichage | desktop | (vue) | affichage seulement (couleur, type, taille ; image/régions/vecteurs/broderie) |
 | Ordre de couture | Implémenté | dock | optimization | oui | 2-opt entre objets non implémenté (il existe dans le routage interne d'un objet) |
-| Analyse | Implémenté | Analyse | stitch_analysis | oui | pas de carte de densité |
+| Analyse | Implémenté | Analyse | stitch_analysis | oui | carte de densité, consommation de fil et canettes, règles `detail-trop-petit`/`objet-sans-arret`/`trop-de-coupes`/`densite-excessive` : **cœur seulement**, pas encore affichés dans le bureau (HP-VIEW-005, HP-PROD-005/007) |
 | Simulation | Implémenté | barre | desktop | — | pas de réglage de vitesse |
 | Export/Import DST | Implémenté | Fichier/CLI | formats | oui | limites du format |
 | Export SVG diagnostic | Implémenté | CLI | formats | oui | — |
+| Export image du rendu brodé (PNG) | Présent · testé | CLI `render` | stitch_render/cli | Catch2 + CLI | pas de JPEG ni de dialogue dans le bureau ; fichier machine : couleurs de repli par bloc de fil (HP-FMT-011) |
+| Régénération incrémentale par objet | Partiel | (transparent) | stitch_generation | Catch2 + banc | objets droits, tatami et directionnels seulement ; satins et auto-satin régénérés à chaque fois ; un très gros objet reste lent (HP-PERF-002) |
+| Migrations `.osp` versionnées | Présent · testé | Fichier | project_io | Catch2 | pas de corpus d'anciens `.osp` réels figés (HP-FMT-021) |
+| Fichier compagnon de couleurs `.inf`/`.csv` | Codec seul | — | formats | Catch2 + fuzz | pas branché au bureau ni au CLI ; `.inf` non validé par un lecteur tiers (HP-FMT-009) |
 | Format projet `.osp` | Implémenté | Fichier | project_io | oui | suivi « modifié » + garde partagée (fermeture et **Nouveau projet**, Ctrl+N) ; chemin mémorisé (Ctrl+S réécrit le fichier, Ctrl+Maj+S = Enregistrer sous), écriture atomique ; pas de fichiers récents ni d'autosave |
 | Cadre de broderie | Implémenté | Affichage | document | oui | taille réglable et persistée ; rectangle simple (pas de profils/formes) |
 | Palette de fils | Partiellement implémenté | — | thread_palette | oui | fil assigné par objet, panneau Fils, film couleur, « limiter à N fils », import CSV/JSON (HP-THR-001/003/004, partiel 005/011) ; nuanciers de marques à importer par l'utilisateur, intégrés = démo (HP-THR-002) ; aucun format machine (DST) ne porte les noms de fils |
