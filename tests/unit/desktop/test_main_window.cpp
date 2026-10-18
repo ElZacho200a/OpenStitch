@@ -2767,8 +2767,7 @@ void MainWindowTest::createSatinObjectOnBranchedShapeProducesMultipleSatinSectio
     autoDismissModalDialogs(&window);
     window.createSatinObject();
 
-    // Forme branchée : UN seul objet auto-satin couvre toute la forme (le moteur
-    // produit une colonne par branche à l'intérieur de l'objet, plus de sections
+    // Forme branchée : UN seul objet auto-satin couvre toute la forme (plus de sections
     // séparées à ordonner et à convertir une à une).
     QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore + 1);
     const auto& emb = window.project_.embroidery_objects.back();
@@ -2777,14 +2776,31 @@ void MainWindowTest::createSatinObjectOnBranchedShapeProducesMultipleSatinSectio
 
     const auto* vec = window.project_.findObject(fx.vectorId);
     QVERIFY(vec != nullptr);
-    const auto preview =
-        window.previewAutoSatin(*vec, std::get<openstitch::document::AutoSatinParams>(emb.params));
-    QVERIFY2(
-        preview.columns >= 3,
-        qPrintable(
-            QStringLiteral("attendu >= 3 colonnes (3 branches), obtenu %1").arg(preview.columns)));
+    // L'objet créé suit la méthode proposée aux nouveaux auto-satins (balayage parallèle
+    // depuis #67). Sur une forme branchée il couvre toute la forme en UNE grande colonne
+    // (docs/source/satin-squelette.md : « une seule grande colonne » sur les formes branchées).
+    const auto& params = std::get<openstitch::document::AutoSatinParams>(emb.params);
+    QCOMPARE(params.strategy, openstitch::document::kDefaultAutoSatinStrategy);
+    const auto preview = window.previewAutoSatin(*vec, params);
+    QVERIFY(preview.columns >= 1);
     QVERIFY(preview.measured);
     QVERIFY(preview.coverage > 0.85);
+
+    // Une colonne par branche reste la propriété des méthodes à squelette : le squelette
+    // et l'axe médian donnent 3 colonnes sur cette forme (3 branches).
+    for (const auto strategy : {openstitch::document::AutoSatinStrategy::Skeleton,
+                                openstitch::document::AutoSatinStrategy::MedialAxis}) {
+        auto perBranch = params;
+        perBranch.strategy = strategy;
+        const auto branches = window.previewAutoSatin(*vec, perBranch);
+        QVERIFY2(branches.columns >= 3,
+                 qPrintable(QStringLiteral("stratégie %1 : attendu >= 3 colonnes (3 branches), "
+                                           "obtenu %2")
+                                .arg(QString::fromUtf8(
+                                    openstitch::document::auto_satin_strategy_id(strategy)))
+                                .arg(branches.columns)));
+        QVERIFY(branches.coverage > 0.85);
+    }
 
     window.refreshImage();
     QVERIFY(window.sequence_.has_value());
