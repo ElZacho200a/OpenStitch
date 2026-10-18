@@ -12,8 +12,8 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSettings>
-#include <QToolButton>
 #include <QTimer>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 #include <initializer_list>

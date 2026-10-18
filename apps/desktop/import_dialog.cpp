@@ -15,8 +15,8 @@
 #include <cmath>
 
 #include "app_theme.hpp"
-#include "responsive.hpp"
 #include "openstitch/document/hoop_presets.hpp"
+#include "responsive.hpp"
 
 namespace openstitch::desktop {
 

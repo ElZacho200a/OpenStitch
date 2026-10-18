@@ -592,6 +592,9 @@ MainWindow::MainWindow() {
     hoopStatusButton_ = new QToolButton(this);
     hoopStatusButton_->setObjectName(QStringLiteral("button_hoopStatus"));
     hoopStatusButton_->setAutoRaise(true);
+    // Minimum explicite : le texte complet garde sa place quand la fenêtre est large, mais ce
+    // bouton ne doit jamais forcer la largeur minimale de la barre d'état (HP-QA-008).
+    hoopStatusButton_->setMinimumWidth(60);
     hoopStatusButton_->setToolTip(tr("Taille du cadre de broderie : cliquer pour la modifier."));
     hoopStatusButton_->setAccessibleName(tr("Taille du cadre"));
     connect(hoopStatusButton_, &QToolButton::clicked, this, &MainWindow::setHoopSize);
