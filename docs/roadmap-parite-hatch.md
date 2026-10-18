@@ -698,13 +698,15 @@ prénumérisées et la conversion des polices TrueType.
   génération.
 - Modules : `libs/lettering`, `libs/geometry`.
 
-### HP-TXT-007 — Espacement, crénage, alignement, interligne [P1] — ◐ Partiel (2026-10-10)
+### HP-TXT-007 — Espacement, crénage, alignement, interligne [P1] — ◐ Partiel (2026-10-18)
 - Fait : espacements lettres/mots, interligne, gauche/centre/droite/justifié, multilignes,
   crénage `kern`. Reste : crénage manuel par paire.
 - À faire : espacement des lettres / des mots, interligne, alignement
   gauche/centre/droite/justifié, texte multilignes, crénage automatique
   (police) + manuel par paire.
 - Modules : `libs/lettering`, inspecteur.
+- Livré (2026-10-18) : crénage manuel par paire dans le cœur (`LayoutOptions::kerning_overrides`, remplace le crénage de la police) ; tests de crénage exact, remplacement, lignes vides alignées, tabulation et CRLF (`aaffb09`).
+- Reste : champ `kerning_pairs` dans `document::TextObject` (persistance `.osp`) et inspecteur ; seule la table `kern` est lue, pas GPOS.
 
 ### HP-TXT-008 — Édition individuelle d'une lettre [P1] — ☐ À faire
 - Hatch : sélectionner une lettre d'un texte pour la déplacer, tourner,
@@ -734,19 +736,23 @@ prénumérisées et la conversion des polices TrueType.
   d'un fichier machine par ligne.
 - Modules : `libs/lettering`, `apps/cli`, `apps/desktop`.
 
-### HP-TXT-012 — Unicode complet et langues [P1] — ☐ À faire
+### HP-TXT-012 — Unicode complet et langues [P1] — ◐ Partiel (2026-10-18)
 - À faire : accents, ligatures, écritures non latines (cyrillique, grec),
   RTL (arabe, hébreu) via HarfBuzz ; gestion des glyphes absents (repli et
   avertissement, jamais un carré silencieux).
 - Modules : `libs/lettering`.
+- Livré (2026-10-18) : `libs/lettering/unicode.*` (sans HarfBuzz) : caractères sans rendu ignorés, recomposition/décomposition d'accents latin, grec et cyrillique, marques combinantes, repli des glyphes absents (`glyphe-remplace`), ligatures f optionnelles, ordre visuel hébreu, arabe signalé non façonné (`ecriture-non-supportee`), UTF-8 invalide sans crash ; `test_unicode` (`aaffb09`).
+- Reste : façonnage arabe et écritures indiennes (HarfBuzz, nouvelle dépendance à valider en licence), ligatures propres à la police, GPOS, option ligatures dans `TextObject` et l'interface ; aucune police de test avec grec/cyrillique/hébreu (ordre bidirectionnel testé sur des points de code).
 
-### HP-TXT-013 — Réglages adaptés aux petites lettres [P1] — ◐ Partiel (2026-10-10)
+### HP-TXT-013 — Réglages adaptés aux petites lettres [P1] — ◐ Partiel (2026-10-18)
 - Fait : sous 8 mm, sans compensation ni bord, sous-couche centrale selon le trait, satin →
   contour sous 1 mm (règles dans `lettering.md`). Reste : densité ajustée, tests de rendu.
 - À faire : sous la hauteur X : pas de sous-couche ou sous-couche centrale
   seulement, densité ajustée, compensation réduite, satin → contour sous le
   seuil de largeur ; règles documentées et testées.
 - Modules : `libs/lettering`, `libs/stitch_generation`.
+- Livré (2026-10-18) : densité satin et tatami +0 % à 8 mm jusqu'à +15 % à 4 mm et moins (jamais plus serrée que le réglage utilisateur), point de tatami = hauteur/3 borné 1,5–3 mm ; tests de paramètres, de séquence cousue à 6 mm, sans `saut-long`, déterministe (`ec80a25`).
+- Reste : validation sur broderie réelle (la courbe +15 % est une heuristique de prudence) ; cas des générateurs de `libs/stitch_generation`.
 
 ### HP-TXT-014 — Connecteurs entre lettres [P1] — ☐ À faire
 - À faire : ordre de gauche à droite, fin d'une lettre près du début de la
@@ -2806,3 +2812,4 @@ ci-dessus doit les respecter :
 | 2026-10-18 | Claude (session autonome, agents) | HP-VEC-007/008/010/014 ◐ : cœur géométrie (`smooth_path`, `convert_to_curves`, mesure, six formes prédéfinies) ; commandes et outils du bureau restent à câbler. |
 | 2026-10-18 | Claude (session autonome, agents) | HP-VIEW-005 ◐, HP-PROD-005 ◐, HP-PROD-007 ◐ : `density_map`, `thread_consumption` et quatre règles d'analyse dans `stitch_analysis` ; affichage à faire. |
 | 2026-10-18 | Claude (session autonome, agents) | HP-FMT-021 ◐ (migrations versionnées v1→v7), HP-THR-007 ◐ (stock de fils), HP-THR-012 ◐ (pipette) : cœur livré, IHM à faire. |
+| 2026-10-18 | Claude (session autonome, agents) | HP-TXT-007 ◐ (crénage manuel par paire), HP-TXT-012 ◐ (Unicode sans HarfBuzz : accents, repli, RTL hébreu), HP-TXT-013 ◐ (densité et points des petites lettres) ; champs `TextObject` et inspecteur restent à faire. |
