@@ -107,6 +107,8 @@ const Expected kExpected[] = {
     {"N2b", Context::NodeEdit, Intent::SuspendSnap, false, false, false},
     {"N3", Context::NodeEdit, Intent::InsertNode, false, true, false},
     {"N4", Context::NodeEdit, Intent::DeleteNodes, false, false, true},
+    {"V1", Context::Measure, Intent::MeasureDistance, false, false, false},
+    {"V2", Context::Eyedropper, Intent::PickColor, false, false, false},
 };
 
 QStringList gestures(const QList<Hint>& hints) {

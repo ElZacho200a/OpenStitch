@@ -1134,6 +1134,30 @@ private:
     QMenu* presetShapesMenu_{nullptr};
     // [cablage-B:fin]
     // [cablage-C:debut]
+    // Outil Règle (HP-VEC-010, main_window_measure.cpp) : mesure purement visuelle, aucune
+    // commande. Outil Pipette (HP-THR-012, main_window_eyedropper.cpp) : l'assignation passe par
+    // SetObjectThreadCommand sur undoStack_.
+    void buildMeasureTool();
+    void buildEyedropperTool();
+    // Ajoute Règle / Copier la mesure / Pipette à la palette d'outils (appelé par
+    // buildToolPalette).
+    void attachMeasureEyedropperTools();
+    // Appelé par setTool() : coche, curseur, libellé et message d'état des outils Règle/Pipette.
+    void syncMeasureEyedropperTool(Tool tool);
+    void showMeasureRuler(QPointF startMm, QPointF endMm, bool finished);
+    void clearMeasureRuler();
+    void copyLastMeasure();
+    // Échantillonne l'image affichée sous `posMm` (scène, mm) et ouvre le menu des fils proches.
+    void eyedropperAt(QPointF posMm);
+    void assignEyedropperChoice(const std::optional<thread_palette::ThreadKey>& key,
+                                std::array<std::uint8_t, 3> rgb, const QString& label);
+    QAction* toolMeasureAct_{nullptr};
+    QAction* copyMeasureAct_{nullptr};
+    QAction* toolEyedropperAct_{nullptr};
+    QGraphicsItem* measureRuler_{nullptr}; // règle temporaire (jamais dans le document)
+    QString lastMeasureText_;
+    QPointer<QMenu> eyedropperMenu_; // menu des fils proches (non bloquant : popup)
+    std::array<std::uint8_t, 3> eyedropperRgb_{};
     // [cablage-C:fin]
     // [cablage-D:debut]
     // [cablage-D:fin]

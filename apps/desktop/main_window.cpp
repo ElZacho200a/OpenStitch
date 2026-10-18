@@ -441,6 +441,8 @@ MainWindow::MainWindow() {
     buildVectorToolsMenu();
     // [cablage-B:fin]
     // [cablage-C:debut]
+    buildMeasureTool();
+    buildEyedropperTool();
     // [cablage-C:fin]
     // [cablage-D:debut]
     // [cablage-D:fin]
@@ -6430,6 +6432,7 @@ void MainWindow::buildToolPalette() {
     if (shapeMenu_ != nullptr) {
         shapeMenu_->addAction(toolCutAct_);
     }
+    attachMeasureEyedropperTools();
     toolSelectAct_->setChecked(true);
 
     toolPalette_->addSeparator();
@@ -6683,6 +6686,7 @@ void MainWindow::setTool(Tool tool) {
             tr("Cliquez les points de la ligne de rupture, d'un bord de la forme à l'autre — "
                "Entrée/double-clic pour terminer, Échap pour annuler."));
     }
+    syncMeasureEyedropperTool(tool);
     updateDrawActionsState();
     updateInteractionContext();
     hideHoverHighlight();
@@ -8638,6 +8642,13 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
     }
     if (currentTool_ == Tool::Text) {
         placeTextAt(posMm);
+        return;
+    }
+    if (currentTool_ == Tool::Measure) {
+        return; // la règle passe par measureDragMm/measureFinishedMm, jamais par un clic
+    }
+    if (currentTool_ == Tool::Eyedropper) {
+        eyedropperAt(posMm);
         return;
     }
     if (drawingDirectionGuide()) {
