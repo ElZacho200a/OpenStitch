@@ -5,6 +5,7 @@ add_library(openstitch_geometry
     src/boolean.cpp
     src/clean.cpp
     src/curve_fit.cpp
+    src/measure.cpp
     src/moments.cpp
     src/cut.cpp
     src/offset.cpp

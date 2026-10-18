@@ -5,6 +5,7 @@ add_executable(test_geometry
     test_curve_fit.cpp
     test_cut.cpp
     test_offset.cpp
+    test_measure.cpp
     test_moments.cpp
     test_path.cpp
     test_polyline.cpp
