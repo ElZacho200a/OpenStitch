@@ -38,14 +38,14 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
 | P0 | 12 | 26 | 6 | 44 |
-| P1 | 10 | 51 | 79 | 140 |
-| P2 | 3 | 18 | 76 | 97 |
+| P1 | 10 | 52 | 78 | 140 |
+| P2 | 3 | 20 | 74 | 97 |
 | P3 | 0 | 0 | 15 | 15 |
-| **Total** | **25** | **95** | **176** | **296** |
+| **Total** | **25** | **98** | **173** | **296** |
 
 Ajoutés le 2026-10-18 (audit UX/UI, `docs/ux/`) : **+30 entrées ☐** (12 P1, 15 P2, 3 P3) :
 HP-UX-017 à HP-UX-044, HP-PERF-009 et HP-QA-008 (§20, §22, §23). Aucun statut existant n'a été
-modifié ; HP-UX-001/002/003/004/009/012/016 sont seulement précisés. Quatre entrées passent ◐ dans la foulée (HP-UX-017, 018, 021, 022 : voir le journal §28).
+modifié ; HP-UX-001/002/003/004/009/012/016 sont seulement précisés. Quatre entrées passent ◐ dans la foulée (HP-UX-017, 018, 021, 022 : voir le journal §28) ; puis HP-UX-019, 020 et 023.
 
 **Fait (25)** : FILE-001/002/003/004 (nouveau projet, enregistrer, récents, autosave),
 THR-001/003/004 (bibliothèque de fils, fil le plus proche, fil assigné à chaque objet),
@@ -2648,20 +2648,22 @@ Prérequis commun des lots B et C : **HP-QA-008** (garde de taille minimale, §2
 - Non-régression : Échap pendant un tracé multi-clics, fusion de régions, champs de saisie (Échap y reste local).
 - Livré : quand il n'y a plus de mode ni d'outil à relâcher, Échap désélectionne la broderie ou les objets (après les régions, comme avant) ; test `escapeDropsToolThenObjectSelection`. Reste : niveaux « mode d'édition » puis « outil » encore relâchés ensemble par un seul Échap (comportement d'origine conservé pour ne pas casser les tests d'outils) ; aide des gestes.
 
-### HP-UX-019 — Un seul prédicat de sélection et tolérance de clic [P1] — ☐ À faire
+### HP-UX-019 — Un seul prédicat de sélection et tolérance de clic [P1] — ◐ Partiel (2026-10-18, branche `ux-lot-a2`)
 - Problème : trois règles pour le même geste (clic simple filtré ; Maj/Ctrl/Alt non ; rectangle filtré) et aucune tolérance de clic : un tracé ouvert ou un détail de 1 mm est presque inclicable (`selection_hit_test.cpp:16, 71-73, 94-100`, `main_window.cpp:8723-8727, 8879, 8918-8926, 8984`). Constats BRO-02, BRO-03.
 - Comportement attendu : une fonction `selectableAt(project, pos, filtre, tolérance)` utilisée par clic, Maj/Ctrl/Alt, rectangle, liste et flèches. Distance au trait ≤ max(0,4 mm ; 4 px écran) ; l'objet qui **contient** le point garde la priorité.
 - Complexité : M (tolérance exprimée en mm à travers le zoom). Composants : `apps/desktop/selection_hit_test.*`, `main_window.cpp`.
 - Dépend de : —
 - Acceptation : filtre de couleur actif → `objectsAtPointMm` et le clic simple renvoient le même ensemble ; un chemin ouvert de 0,1 mm est sélectionné à 0,3 mm, pas à 5 mm ; un objet masqué reste exclu.
 - Non-régression : `test_selection_hit_test`, performance du hit-test sur 500 objets.
+- Livré : `objectsAtPointMm(project, pos, toleranceMm, accept)` : un objet qui contient le point l'emporte, sinon repli sur le contour à ≤ max(0,4 mm ; 4 px) (trait fictif) ; `MainWindow::selectableObjectsAt` est le prédicat unique (visible, filtres d'affichage, tolérance) pour le clic simple, Maj/Ctrl+clic et « sélectionner dessous » ; tests `toleranceMakesAnOpenPathClickableButStaysLocal`, `toleranceIsAFallbackAndPredicateFilters`. Reste : le rectangle de sélection et les flèches n'utilisent pas encore `selectableObjectsAt` (le rectangle applique déjà le filtre) ; test de performance du hit-test sur 500 objets.
 
-### HP-UX-020 — Cyclage de sélection par re-clic et menu « dessous » enrichi [P2] — ☐ À faire
+### HP-UX-020 — Cyclage de sélection par re-clic et menu « dessous » enrichi [P2] — ◐ Partiel (2026-10-18, branche `ux-lot-a2`)
 - Problème : Alt+clic ouvre un menu de noms sans pastille ni type ; un nom en double reçoit « (#id) » (`interaction_map.cpp:90`, `main_window.cpp:8980-9023`). Constat BRO-01.
 - Comportement attendu : un clic répété au même point (rayon 2 px) sélectionne l'objet suivant dessous ; la barre d'état affiche « 2/4 sous le curseur » ; les entrées du menu portent pastille de couleur et type de point (survol = surbrillance).
 - Complexité : S. Composants : `apps/desktop/main_window.cpp`, `canvas_view.cpp`.
 - Dépend de : HP-UX-019.
 - Acceptation : trois formes superposées, trois clics identiques sélectionnent haut, milieu, bas, puis reviennent en haut ; un clic ailleurs remet le cycle à zéro.
+- Livré : re-clic au même point (rayon 2 px) sélectionne l'objet suivant dessous, message « n/N sous le curseur » dans la barre d'état ; le menu « dessous » affiche une pastille de couleur ; test `clickingTheSameSpotCyclesThroughOverlappingObjects`. Reste : type de point dans les entrées du menu, surbrillance de l'objet au survol d'une entrée.
 
 ### HP-UX-021 — Vectorisation (F7) sans modale [P2] — ◐ Partiel (2026-10-18, branche `claude/ux-lot-a-quickwins`)
 - Problème : chaque F7 ouvre une modale « Détail » pour un curseur déjà mémorisé (`main_window_workflow.cpp:175-206`). Constat PAR-07.
@@ -2679,7 +2681,7 @@ Prérequis commun des lots B et C : **HP-QA-008** (garde de taille minimale, §2
 - Acceptation : lecture jusqu'au bout puis activation du rendu réaliste → rendu complet affiché ; le bouton remet `simStep_ = -1` sans régénérer.
 - Livré : bouton « ⏹ Fin » (`simExitAct_`), sortie automatique en fin de lecture et quand le curseur atteint la fin (`exitSimulation()` : `simStep_ = -1` puis `renderStitches()`) ; tests `simulationExitButtonAndEndOfSliderLeaveSimulationMode`, `endOfPlaybackLeavesSimulationMode` ; l'assertion de `simulationPlayPauseResumeAndSeekChangesRenderedPoints` est adaptée (fin de curseur = hors simulation, couture complète toujours vérifiée). Reste : rendu réaliste progressif jusqu'à `simStep_` (variante M), test du rendu réaliste réellement affiché après lecture.
 
-### HP-UX-023 — Ctrl+A selon la couche, touches de couches, zoom sur la sélection [P2] — ☐ À faire
+### HP-UX-023 — Ctrl+A selon la couche, touches de couches, zoom sur la sélection [P2] — ◐ Partiel (2026-10-18, branche `ux-lot-a2`)
 - Problème : Ctrl+A sélectionne des régions (objets sur Ctrl+Maj+A, `main_window.cpp:895-898`) ; aucun raccourci de couche ; aucun zoom sur la sélection. Constats BRO-05, BRO-08, BRO-22.
 - Comportement attendu : Ctrl+A suit la couche affichée ; 1 à 4 = Image/Régions/Vecteurs/Points ; Z = zoom sur la sélection, Maj+Z = zoom précédent, Ctrl+1 = 100 %.
 - Complexité : S. Composants : `apps/desktop/main_window*.cpp`, `canvas_view.cpp`, `interaction_map.cpp` (aide).
@@ -2688,6 +2690,7 @@ Prérequis commun des lots B et C : **HP-QA-008** (garde de taille minimale, §2
 - Non-régression : Espace/focus (UX-40), touches dans les champs de saisie.
 
 #### Lot B — Responsive et panneaux (P1/P2)
+- Livré : Ctrl+A suit la couche (objets visibles si Vecteurs est affiché, sinon régions ; l'action est active dès qu'il y a des formes) ; touches 1/2/3/4 = Image/Régions (W conservé)/Vecteurs/Points ; Z = zoom sur la sélection, Maj+Z = zoom précédent (aller-retour), Ctrl+1 = taille réelle ; tests `selectAllFollowsTheActiveLayer`, `layerKeysAndZoomShortcutsAreUnique`, `zoomToSelectionFramesTheObjectAndPreviousRestoresTheView`. Reste : mention dans l'aide des gestes (`interaction_map`).
 
 ### HP-UX-024 — Docks en onglets, docks Fils et Couleurs défilants [P1] — ☐ À faire
 - Problème : Analyse, Historique, Fils, Couleurs sont empilés à droite (`main_window_analysis.cpp:176`, `main_window_editing.cpp:637`, `main_window_threads.cpp:102`, `main_window_colors.cpp:25`) ; `ThreadPanel` (≈ 450 px minimum) n'a pas de zone défilante ; `colorsDock_` est créé paresseusement et sa place est perdue (`main_window_colors.cpp:19-25`). Constats QT-03, QT-04, QT-15 (tailles estimées, classe B).
@@ -3157,3 +3160,4 @@ ci-dessus doit les respecter :
 | 2026-10-18 | Claude (session autonome, agents) | Règle ajoutée : sauf demande explicite, toute fonctionnalité est câblée dans le bureau (hook, skills, `CLAUDE.md`). |
 | 2026-10-18 | Claude (audit UX/UI, 4 analyses en lecture seule) | **Audit UX/UI** : `docs/ux/` (rapport, parcours, stratégie, synthèse). +30 entrées ☐ : HP-UX-017…044 (lots A à E, §20), HP-PERF-009 (§22), HP-QA-008 (§23) ; HP-UX-001/002/003/004/009/012/016 précisés ; les constats `UX-xx` de `docs/ui-ux-audit-2026-10-13.md` sont enfin reliés à des tâches. Décisions : verrou d'édition = mode Isoler de session (pas de champ `.osp`), Ctrl+O universel, dialogues de création supprimés (option « Créer avec réglages… »). Total 266 → 296. Aucun code modifié. |
 | 2026-10-18 | Claude (lot A, quick wins) | HP-UX-017, 018, 021, 022 ◐ (branche `claude/ux-lot-a-quickwins`, PR empilée sur #71) : Ctrl+O universel, Échap désélectionne les objets, F7 sans modale (Maj+F7 règle), sortie de simulation. Quatre tests QTest ajoutés + deux tests existants adaptés (mnémonique, fin de curseur) ; suite desktop Release 37/37. Total ◐ 91 → 95, ☐ 180 → 176. |
+| 2026-10-18 | Claude (lot A2, sélection) | HP-UX-019, 020, 023 ◐ (branche `ux-lot-a2`) : prédicat de sélection unique avec tolérance de clic en repli, cyclage au re-clic, Ctrl+A selon la couche, touches 1 à 4, zoom sur la sélection. Tests ajoutés dans `test_selection_hit_test` et `test_ux_global`. Total ◐ 95 → 98, ☐ 176 → 173. |

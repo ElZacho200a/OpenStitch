@@ -901,7 +901,7 @@ void MainWindow::buildMenus() {
     selectAllRegionsAct_ = segMenu->addAction(tr("&Tout sélectionner"));
     selectAllRegionsAct_->setObjectName(QStringLiteral("action_selectAllRegions"));
     selectAllRegionsAct_->setShortcut(QKeySequence::SelectAll);
-    connect(selectAllRegionsAct_, &QAction::triggered, this, &MainWindow::selectAllRegions);
+    connect(selectAllRegionsAct_, &QAction::triggered, this, &MainWindow::selectAllInActiveLayer);
     // Parcours des régions au clavier (ordre des identifiants, avec retour au début). Ni Tab (il
     // sert à la navigation entre les panneaux) ni Entrée (réservée à la validation d'un champ et
     // à la fin d'un tracé) : Alt + flèches gauche / droite.
@@ -1075,16 +1075,20 @@ void MainWindow::buildMenus() {
     showImageAct_ = layersMenu->addAction(tr("&Image"));
     showImageAct_->setCheckable(true);
     showImageAct_->setChecked(true);
+    showImageAct_->setShortcut(QKeySequence(Qt::Key_1));
     connect(showImageAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
     // La carte des régions (segmentation) : action partagée avec le menu Segmentation.
+    showSegAct_->setShortcuts({QKeySequence(Qt::Key_W), QKeySequence(Qt::Key_2)});
     layersMenu->addAction(showSegAct_);
     showVectorsAct_ = layersMenu->addAction(tr("&Vecteurs"));
     showVectorsAct_->setCheckable(true);
     showVectorsAct_->setChecked(true);
+    showVectorsAct_->setShortcut(QKeySequence(Qt::Key_3));
     connect(showVectorsAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
     showStitchesAct_ = layersMenu->addAction(tr("&Broderie (points)"));
     showStitchesAct_->setCheckable(true);
     showStitchesAct_->setChecked(true);
+    showStitchesAct_->setShortcut(QKeySequence(Qt::Key_4));
     connect(showStitchesAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
     buildRealisticMenu(viewMenu);
     viewMenu->addSeparator();
@@ -1103,6 +1107,18 @@ void MainWindow::buildMenus() {
     // Ctrl+0 et F sur la MÊME action : les deux sont alors affichés dans le menu.
     fitAct->setShortcuts({QKeySequence(Qt::CTRL | Qt::Key_0), QKeySequence(Qt::Key_F)});
     connect(fitAct, &QAction::triggered, view_, &CanvasView::fitCanvas);
+    zoomSelectionAct_ = viewMenu->addAction(tr("Zoom sur la &sélection"));
+    zoomSelectionAct_->setObjectName(QStringLiteral("action_zoomSelection"));
+    zoomSelectionAct_->setShortcut(QKeySequence(Qt::Key_Z));
+    connect(zoomSelectionAct_, &QAction::triggered, this, &MainWindow::zoomToSelection);
+    zoomPreviousAct_ = viewMenu->addAction(tr("Zoom précéd&ent"));
+    zoomPreviousAct_->setObjectName(QStringLiteral("action_zoomPrevious"));
+    zoomPreviousAct_->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_Z));
+    connect(zoomPreviousAct_, &QAction::triggered, view_, &CanvasView::zoomToPreviousView);
+    zoomActualAct_ = viewMenu->addAction(tr("&100 % (taille réelle)"));
+    zoomActualAct_->setObjectName(QStringLiteral("action_zoomActual"));
+    zoomActualAct_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_1));
+    connect(zoomActualAct_, &QAction::triggered, view_, &CanvasView::zoomActualSize);
 
     viewMenu->addSeparator();
     auto* hoopAct = viewMenu->addAction(tr("Tai&lle du cadre…"));
@@ -8799,21 +8815,28 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
     }
     // Priorité aux objets vectoriels lorsqu'ils sont affichés (hors fusion).
     if (showVectorsAct_->isChecked() && !mergeMode_) {
+        // Même prédicat que Maj/Ctrl+clic et « sélectionner dessous » : visible, filtres
+        // d'affichage, tolérance de clic (HP-UX-019). Le plus haut gagne ; un re-clic au même
+        // point passe à l'objet suivant dessous (HP-UX-020).
+        const std::vector<ObjectId> under = selectableObjectsAt(posMm);
         std::optional<ObjectId> hit;
-        for (const auto& object : project_.vector_objects) {
-            if (object.visible && vectorPassesFilter(object) &&
-                objectPainterPath(object).contains(posMm)) {
-                hit = object.id; // le dernier dessiné (au-dessus) gagne
-            }
+        if (!under.empty()) {
+            hit = cycleTarget(under, posMm);
         }
         if (hit) {
             // la sélection au canevas prime (Replace : T4b route Maj/Ctrl vers
             // applySelectionClick)
             setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {*hit}});
             const auto* object = project_.findObject(*hit);
-            statusBar()->showMessage(tr("Objet « %1 » — %2 morceau(x), nœuds déplaçables")
-                                         .arg(QString::fromStdString(object->name))
-                                         .arg(object->paths.size()));
+            QString message = tr("Objet « %1 » — %2 morceau(x), nœuds déplaçables")
+                                  .arg(QString::fromStdString(object->name))
+                                  .arg(object->paths.size());
+            if (under.size() > 1) {
+                message += tr(" — %1/%2 sous le curseur (cliquez à nouveau pour le suivant)")
+                               .arg(cycleIndex_ + 1)
+                               .arg(under.size());
+            }
+            statusBar()->showMessage(message);
             displayImage(processed_);
             updateActions();
             return;
@@ -8956,7 +8979,7 @@ void MainWindow::onSelectionClicked(QPointF posMm, SelectMode mode) {
     // Régions : Maj/Ctrl + clic = sélection multiple de régions (cf. plus bas) ; broderies en
     // mono-sélection (Maj/Ctrl = Replace, documenté).
     if (showVectorsAct_->isChecked() && !mergeMode_) {
-        const std::vector<ObjectId> under = objectsAtPointMm(project_, posMm);
+        const std::vector<ObjectId> under = selectableObjectsAt(posMm);
         if (!under.empty()) {
             applySelectionClick(under.front(), mode);
             return;
@@ -9061,7 +9084,7 @@ void MainWindow::onSelectBelow(QPointF posMm, QPoint globalPos, SelectMode mode)
     if (currentTool_ != Tool::Select || !showVectorsAct_->isChecked() || mergeMode_) {
         return;
     }
-    const std::vector<ObjectId> under = objectsAtPointMm(project_, posMm);
+    const std::vector<ObjectId> under = selectableObjectsAt(posMm);
     if (under.empty()) {
         statusBar()->showMessage(tr("Aucun objet sous le curseur."));
         return;
@@ -9095,6 +9118,9 @@ void MainWindow::onSelectBelow(QPointF posMm, QPoint globalPos, SelectMode mode)
             label += QStringLiteral(" (#%1)").arg(id.value);
         }
         auto* act = menu->addAction(label);
+        QPixmap swatch(12, 12);
+        swatch.fill(QColor(object->rgb[0], object->rgb[1], object->rgb[2]));
+        act->setIcon(QIcon(swatch));
         connect(act, &QAction::triggered, this,
                 [this, id, mode] { applySelectionClick(id, mode); });
     }
@@ -9544,10 +9570,11 @@ void MainWindow::updateActions() {
                          project_.segmentation.has_value() &&
                              project_.segmentation->region_count() > 1,
                          tr("Segmentez d'abord l'image (menu Segmentation)."));
-    setEnabledWithReason(selectAllRegionsAct_,
-                         project_.segmentation.has_value() &&
-                             project_.segmentation->region_count() > 0,
-                         tr("Segmentez d'abord l'image (menu Segmentation)."));
+    setEnabledWithReason(
+        selectAllRegionsAct_,
+        (project_.segmentation.has_value() && project_.segmentation->region_count() > 0) ||
+            !project_.vector_objects.empty(),
+        tr("Rien à sélectionner : segmentez l'image ou créez des formes."));
     // Suppr universel : région, objet(s) vectoriel(s) ou objet de broderie.
     setEnabledWithReason(deleteSelectionAct_,
                          hasSelection || selectedObject_.has_value() ||

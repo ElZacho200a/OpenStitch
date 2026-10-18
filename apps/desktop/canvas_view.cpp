@@ -374,6 +374,48 @@ void CanvasView::fitCanvas() {
     emit viewChanged();
 }
 
+void CanvasView::rememberView() {
+    previousTransform_ = transform();
+    previousCenterMm_ = mapToScene(viewport()->rect().center());
+    hasPreviousView_ = true;
+}
+
+void CanvasView::zoomToRectMm(const QRectF& sceneRectMm) {
+    if (!sceneRectMm.isValid()) {
+        return;
+    }
+    rememberView();
+    constexpr double kMarginMm = 3.0;
+    fitInView(sceneRectMm.adjusted(-kMarginMm, -kMarginMm, kMarginMm, kMarginMm),
+              Qt::KeepAspectRatio);
+    if (pixelsPerMm() > kMaxPxPerMm) {
+        applyCenterZoom(kMaxPxPerMm / pixelsPerMm());
+    }
+    emit viewChanged();
+}
+
+void CanvasView::zoomToPreviousView() {
+    if (!hasPreviousView_) {
+        return;
+    }
+    const QTransform target = previousTransform_;
+    const QPointF center = previousCenterMm_;
+    rememberView(); // un second appel revient à la vue d'avant (aller-retour)
+    setTransform(target);
+    centerOn(center);
+    emit viewChanged();
+}
+
+void CanvasView::zoomActualSize() {
+    const double current = pixelsPerMm();
+    const double target = logicalDpiX() / 25.4;
+    if (!(current > 0.0) || !(target > 0.0)) {
+        return;
+    }
+    rememberView();
+    applyCenterZoom(target / current);
+}
+
 void CanvasView::applyCenterZoom(double factor) {
     const double current = pixelsPerMm();
     const double target = std::clamp(current * factor, kMinPxPerMm, kMaxPxPerMm);

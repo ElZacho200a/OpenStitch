@@ -8,6 +8,7 @@
 #include <QColorDialog>
 #include <QGuiApplication>
 #include <QInputDialog>
+#include <QLineF>
 #include <QMenu>
 #include <QMimeData>
 #include <QStatusBar>
@@ -16,6 +17,7 @@
 #include <cmath>
 #include <numbers>
 
+#include "canvas_view.hpp"
 #include "main_window.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
@@ -23,6 +25,7 @@
 #include "openstitch/commands/transform_ops.hpp"
 #include "openstitch/commands/vector_ops.hpp"
 #include "openstitch/project_io/project_io.hpp"
+#include "selection_hit_test.hpp"
 
 namespace openstitch::desktop {
 
@@ -306,6 +309,62 @@ void MainWindow::applyPastedFragment(const document::ObjectFragment& fragment, V
     refreshImage();
     updateActions();
     statusBar()->showMessage(done.arg(pasted.pasted.size()), 6000);
+}
+
+std::vector<ObjectId> MainWindow::selectableObjectsAt(QPointF posMm) const {
+    // Tolérance : 0,4 mm ou 4 px écran, le plus grand (un tracé ouvert reste cliquable).
+    const double pxPerMm = std::max(view_->pixelsPerMm(), 1e-6);
+    const double toleranceMm = std::max(0.4, 4.0 / pxPerMm);
+    return objectsAtPointMm(
+        project_, posMm, toleranceMm,
+        [this](const document::VectorObject& object) { return vectorPassesFilter(object); });
+}
+
+ObjectId MainWindow::cycleTarget(const std::vector<ObjectId>& under, QPointF posMm) {
+    const double radiusMm = 2.0 / std::max(view_->pixelsPerMm(), 1e-6);
+    const Selection current = currentSelection();
+    const bool sameSpot = under.size() > 1 && cycleIds_ == under &&
+                          QLineF(cycleAnchorMm_, posMm).length() <= radiusMm &&
+                          current.objects.size() == 1 && cycleIndex_ >= 0 &&
+                          static_cast<std::size_t>(cycleIndex_) < under.size() &&
+                          current.objects.front() == under[static_cast<std::size_t>(cycleIndex_)];
+    cycleIndex_ =
+        sameSpot ? static_cast<int>((static_cast<std::size_t>(cycleIndex_) + 1) % under.size()) : 0;
+    cycleIds_ = under;
+    cycleAnchorMm_ = posMm;
+    return under[static_cast<std::size_t>(cycleIndex_)];
+}
+
+void MainWindow::selectAllInActiveLayer() {
+    const bool anyVisibleObject =
+        std::any_of(project_.vector_objects.begin(), project_.vector_objects.end(),
+                    [](const document::VectorObject& o) { return o.visible; });
+    if (showVectorsAct_->isChecked() && anyVisibleObject) {
+        selectAllObjects();
+    } else {
+        selectAllRegions();
+    }
+}
+
+void MainWindow::zoomToSelection() {
+    const Selection current = currentSelection();
+    std::vector<ObjectId> sources = current.objects;
+    if (current.embroidery) {
+        if (const auto* emb = project_.findEmbroidery(*current.embroidery)) {
+            sources.push_back(emb->source_vector);
+        }
+    }
+    QRectF box;
+    for (const ObjectId id : sources) {
+        if (const auto* object = project_.findObject(id)) {
+            box = box.united(objectScenePath(*object).boundingRect());
+        }
+    }
+    if (!box.isValid() || box.isNull()) {
+        statusBar()->showMessage(tr("Rien à cadrer : sélectionnez un objet (Z)."), 5000);
+        return;
+    }
+    view_->zoomToRectMm(box);
 }
 
 void MainWindow::selectAllObjects() {

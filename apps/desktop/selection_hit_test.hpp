@@ -10,6 +10,7 @@
 #include <QPointF>
 #include <QRectF>
 
+#include <functional>
 #include <vector>
 
 #include "openstitch/core/ids.hpp"
@@ -22,10 +23,16 @@ namespace openstitch::desktop {
 // et pour toute détection.
 [[nodiscard]] QPainterPath objectScenePath(const document::VectorObject& object);
 
-// Objets vectoriels VISIBLES sous le point, du plus haut (dessiné en dernier) au
-// plus bas. Ordre déterministe (celui du document, inversé).
+// Prédicat supplémentaire (filtres d'affichage, isolation…) appliqué EN PLUS de la visibilité.
+using ObjectAcceptor = std::function<bool(const document::VectorObject&)>;
+
+// Objets vectoriels VISIBLES (et acceptés par `accept` s'il est fourni) sous le point, du plus
+// haut (dessiné en dernier) au plus bas. Ordre déterministe (celui du document, inversé).
+// `toleranceMm` > 0 : un objet dont le CONTOUR passe à moins de cette distance du point est
+// aussi retenu (tracé ouvert, petit détail), mais SEULEMENT si aucun objet ne contient le point.
 [[nodiscard]] std::vector<ObjectId> objectsAtPointMm(const document::Project& project,
-                                                     QPointF posMm);
+                                                     QPointF posMm, double toleranceMm = 0.0,
+                                                     const ObjectAcceptor& accept = {});
 
 // Objets vectoriels VISIBLES retenus par un rectangle (scène, mm). Fenêtre
 // (crossing == false) : la boîte englobante de l'objet est entièrement dans le

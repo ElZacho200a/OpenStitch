@@ -23,6 +23,7 @@
 #include <QTest>
 #include <QUrl>
 
+#include <algorithm>
 #include <cmath>
 
 #include "canvas_view.hpp"
@@ -574,6 +575,85 @@ private slots:
         }
         QVERIFY(!window.simulating());
         QVERIFY(!window.simPlayAct_->isChecked());
+    }
+
+    // ---- HP-UX-020 : cyclage de sélection par re-clic ----------------------------------------
+
+    void clickingTheSameSpotCyclesThroughOverlappingObjects() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        const ObjectId a = addSquareVector(project); // dessous
+        const ObjectId b = addSquareVector(project); // dessus
+        const ObjectId c = addSquareVector(project); // tout dessus
+        window.applyLoadedProject(project);
+        window.setTool(Tool::Select);
+        window.view_->setTransform(QTransform::fromScale(10.0, 10.0)); // 10 px/mm : rayon 0,2 mm
+        const QPointF inside(5.0, -5.0);                               // scène : Y vers le bas
+        window.onCanvasClicked(inside);
+        QCOMPARE(window.currentSelection().objects, std::vector<ObjectId>{c});
+        window.onCanvasClicked(inside);
+        QCOMPARE(window.currentSelection().objects, std::vector<ObjectId>{b});
+        window.onCanvasClicked(inside);
+        QCOMPARE(window.currentSelection().objects, std::vector<ObjectId>{a});
+        window.onCanvasClicked(inside); // retour en haut
+        QCOMPARE(window.currentSelection().objects, std::vector<ObjectId>{c});
+        // Un clic ailleurs (hors rayon) remet le cycle à zéro : à nouveau l'objet du dessus.
+        window.onCanvasClicked(QPointF(9.0, -9.0));
+        QCOMPARE(window.currentSelection().objects, std::vector<ObjectId>{c});
+    }
+
+    // ---- HP-UX-023 : Ctrl+A suit la couche, touches de couches, zoom sur la sélection ---------
+
+    void selectAllFollowsTheActiveLayer() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        const ObjectId a = addSquareVector(project);
+        const ObjectId b = addSquareVector(project);
+        window.applyLoadedProject(project);
+        window.updateActions();
+        QVERIFY(window.selectAllRegionsAct_->isEnabled()); // pas de segmentation, mais des formes
+        window.selectAllRegionsAct_->trigger();
+        auto ids = window.currentSelection().objects;
+        std::sort(ids.begin(), ids.end());
+        QCOMPARE(ids, (std::vector<ObjectId>{a, b}));
+    }
+
+    void layerKeysAndZoomShortcutsAreUnique() {
+        MainWindow window;
+        QCOMPARE(window.showImageAct_->shortcut(), QKeySequence(Qt::Key_1));
+        QVERIFY(window.showSegAct_->shortcuts().contains(QKeySequence(Qt::Key_2)));
+        QVERIFY(window.showSegAct_->shortcuts().contains(QKeySequence(Qt::Key_W)));
+        QCOMPARE(window.showVectorsAct_->shortcut(), QKeySequence(Qt::Key_3));
+        QCOMPARE(window.showStitchesAct_->shortcut(), QKeySequence(Qt::Key_4));
+        for (const QKeySequence& key :
+             {QKeySequence(Qt::Key_Z), QKeySequence(Qt::SHIFT | Qt::Key_Z),
+              QKeySequence(Qt::CTRL | Qt::Key_1), QKeySequence(Qt::Key_1),
+              QKeySequence(Qt::Key_3)}) {
+            int uses = 0;
+            for (const QAction* action : window.findChildren<QAction*>()) {
+                uses += action->shortcuts().contains(key) ? 1 : 0;
+            }
+            QVERIFY2(uses == 1, qPrintable(key.toString()));
+        }
+    }
+
+    void zoomToSelectionFramesTheObjectAndPreviousRestoresTheView() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        const ObjectId a = addSquareVector(project);
+        window.applyLoadedProject(project);
+        window.resize(900, 700);
+        window.show();
+        QCoreApplication::processEvents();
+        window.view_->fitCanvas();
+        const double before = window.view_->pixelsPerMm();
+        window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a}});
+        window.zoomSelectionAct_->trigger();
+        QVERIFY(window.view_->pixelsPerMm() > before); // carré de 10 mm : zoom avant
+        const QPointF centre = window.view_->mapFromScene(QPointF(5.0, -5.0));
+        QVERIFY(window.view_->viewport()->rect().contains(centre.toPoint()));
+        window.zoomPreviousAct_->trigger();
+        QVERIFY(std::abs(window.view_->pixelsPerMm() - before) < 1e-6);
     }
 
 private:
