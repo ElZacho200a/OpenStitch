@@ -12,6 +12,7 @@
 #include "main_window.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
+#include "responsive.hpp"
 #include "segmentation_colors_panel.hpp"
 
 namespace openstitch::desktop {
@@ -20,8 +21,9 @@ void MainWindow::showColorsPanel() {
     if (colorsDock_ == nullptr) {
         colorsDock_ = new QDockWidget(tr("Couleurs"), this);
         colorsDock_->setObjectName(QStringLiteral("colorsDock"));
+        colorsDock_->setAccessibleName(colorsDock_->windowTitle());
         colorsPanel_ = new SegmentationColorsPanel(colorsDock_);
-        colorsDock_->setWidget(colorsPanel_);
+        colorsDock_->setWidget(scrollableDockContent(colorsPanel_, colorsDock_));
         addDockWidget(Qt::RightDockWidgetArea, colorsDock_);
 
         connect(colorsPanel_, &SegmentationColorsPanel::colorsSelected, this,

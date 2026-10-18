@@ -164,6 +164,9 @@ void styleForm(QFormLayout* form) {
     form->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     form->setFormAlignment(Qt::AlignTop);
     form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+    // Étiquette au-dessus du champ quand la colonne est étroite (HP-UX-027) : la largeur
+    // minimale de l'inspecteur ne dépend plus de ses libellés.
+    form->setRowWrapPolicy(QFormLayout::WrapLongRows);
     form->setHorizontalSpacing(8);
     form->setVerticalSpacing(8);
     form->setContentsMargins(0, 0, 0, 0);

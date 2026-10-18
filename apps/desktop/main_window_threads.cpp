@@ -30,6 +30,7 @@
 #include "openstitch/stitch_analysis/thread_usage.hpp"
 #include "openstitch/thread_palette/chart_import.hpp"
 #include "openstitch/thread_palette/color_reduction.hpp"
+#include "responsive.hpp"
 #include "thread_panel.hpp"
 #include "thread_strip.hpp"
 
@@ -97,7 +98,7 @@ void MainWindow::buildThreadPanel() {
     threadDock_->setAllowedAreas(Qt::RightDockWidgetArea | Qt::LeftDockWidgetArea);
     threadPanel_ = new ThreadPanel(threadDock_);
     threadPanel_->setObjectName(QStringLiteral("threadPanel"));
-    threadDock_->setWidget(threadPanel_);
+    threadDock_->setWidget(scrollableDockContent(threadPanel_, threadDock_));
     threadDock_->setAccessibleName(threadDock_->windowTitle());
     addDockWidget(Qt::RightDockWidgetArea, threadDock_);
     threadDock_->hide();
@@ -544,6 +545,9 @@ void MainWindow::buildThreadStrip() {
     threadStripBar_->setMovable(false);
     threadStripBar_->setAllowedAreas(Qt::BottomToolBarArea);
     threadStrip_ = new ThreadStrip(threadStripBar_);
+    // Partageant la rangée du bas avec la simulation, la bande garde de quoi afficher quelques
+    // pastilles et son résumé (HP-UX-026) ; c'est la simulation qui déborde dans « » avant elle.
+    threadStrip_->setMinimumWidth(480);
     threadStripBar_->addWidget(threadStrip_);
     addToolBar(Qt::BottomToolBarArea, threadStripBar_);
     // Un clic sur une pastille sélectionne les objets cousus avec ce fil (même chemin que le
@@ -606,6 +610,13 @@ void MainWindow::refreshThreadStrip() {
         summary = tr("%1 fil(s) · %2 points").arg(usage.size()).arg(stitches);
     }
     threadStrip_->setThreads(std::move(swatches), summary);
+    // Rangée du bas (simulation + fils) visible seulement quand une séquence existe
+    // (HP-UX-026), sauf si l'utilisateur a masqué la barre lui-même.
+    for (QToolBar* bar : {simToolbar_, threadStripBar_}) {
+        if (bar != nullptr) {
+            bar->setVisible(sequence_.has_value() && !bar->property("userHidden").toBool());
+        }
+    }
 }
 
 void MainWindow::refreshThreadPanel() {
