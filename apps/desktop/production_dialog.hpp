@@ -49,6 +49,9 @@ public:
     [[nodiscard]] QPlainTextEdit* notesEdit() const { return notes_; }
     [[nodiscard]] QDoubleSpinBox* speedSpin() const { return speed_; }
     [[nodiscard]] QLineEdit* nameEdit() const { return name_; }
+    [[nodiscard]] QDoubleSpinBox* bobbinSpin() const { return bobbin_; }
+    // Texte brut de la fiche affichée (pour les tests).
+    [[nodiscard]] QString viewPlainText() const;
 
 private:
     void buildDocument(QTextDocument& doc) const;
@@ -68,6 +71,7 @@ private:
     QLineEdit* name_{nullptr};
     QDateEdit* date_{nullptr};
     QDoubleSpinBox* speed_{nullptr};
+    QDoubleSpinBox* bobbin_{nullptr};
     QPlainTextEdit* notes_{nullptr};
     QTextBrowser* view_{nullptr};
     QTimer* timer_{nullptr};
