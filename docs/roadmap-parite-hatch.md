@@ -2552,7 +2552,7 @@ de référence. Restent : progression et annulation, régénération de toute la
   auto-numérisation) ; annuler ne modifie pas le document ; déterminisme
   inchangé (même résultat en tâche de fond qu'en synchrone).
 
-### HP-PERF-002 — Régénération incrémentale par objet [P0] — ☐ À faire
+### HP-PERF-002 — Régénération incrémentale par objet [P0] — ◐ Partiel (2026-10-18)
 - À faire : cache de la séquence générée par objet, clé = empreinte (paramètres
   + géométrie source + contexte de routage) ; modifier un objet ne régénère
   que lui et ses liaisons ; `effective_sequence` assemble les tranches.
@@ -2561,6 +2561,8 @@ de référence. Restent : progression et annulation, régénération de toute la
 - Acceptation : séquence octet pour octet identique avec et sans cache
   (test d'équivalence comme `test_skeleton_equivalence.cpp`) ; modification
   d'un objet sur `tentabrode` < 50 ms.
+- Livré (2026-10-18) : cache à clé exacte de la séquence des objets droits, tatami et directionnels (`libs/stitch_generation/src/chunk_cache.*`, copie des paramètres et de la géométrie comparée par `operator==`, budget 64 Mio, mutex, éviction LRU) ; `generate_sequence` ne régénère que les objets modifiés. Tests `chunk cache : …` (équivalence octet pour octet avec/sans cache, invalidation paramètres/géométrie/identifiant, 1 fil contre 8). `tentabrode.png` Release : `effective_sequence` 63 → 7 ms (rien ne change), 63 → 8 ms (objet médian modifié), empreinte inchangée. Voir `docs/performance-audit.md` §9.
+- Reste : le plus gros objet (fond) reste régénéré en entier (67 ms) — cache par région ; satins routés et auto-satin hors cache (entrée dépendante de l'objet précédent).
 
 ### HP-PERF-003 — Auto-numérisation plus rapide [P1] — ☑ Fait (2026-10-13, `ba54c07`)
 - Livré (PR #26, fusionnée le 2026-10-13 (`ba54c07`)) : régions vectorisées et essayées en satin en parallèle, résultat réassemblé dans l'ordre. `tentabrode.png` : 77 ms (922 ms avec « Satin automatique »), cible < 5 s atteinte. Voir `docs/performance-audit.md` §7.
@@ -2774,3 +2776,4 @@ ci-dessus doit les respecter :
 | 2026-10-13 | Claude (session pilotée) | **Second lot** (en PR) : OBJ-018 pastille de couleur dans l'inspecteur, OBJ-004 poignée de rotation sur le canevas, VEC-002 tracé ouvert, VEC-003 Exclure, VEC-005 trous. Constaté sur `main` : OBJ-003 ☑, VEC-004 ☑ (statuts en retard). Tableau recalculé. |
 | 2026-10-13 | Claude (session pilotée) | PR #25, #26 et #27 fusionnées : mentions « en PR » retirées du premier lot ; OBJ-014 ☑ et PERF-003 ☑ (critères remplis sur `main`). |
 | 2026-10-15 | Claude (session CLI agent) | **HP-QA-007** ajoutée (◐, PR #46) : interface programmatique `.osp` en ligne de commande (`project …`, lots transactionnels, import SVG, lettrage, export, contrôle qualité). Total 264 → 265. |
+| 2026-10-18 | Claude (session autonome) | HP-PERF-002 ◐ : cache de régénération par objet (`chunk_cache`), `effective_sequence` 63 → 7/8 ms sur `tentabrode` ; reste le gros objet unique et les satins routés. |

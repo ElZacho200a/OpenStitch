@@ -22,6 +22,8 @@
 #include <functional>
 #include <random>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include "openstitch/autodigitize/autodigitize.hpp"
@@ -332,18 +334,63 @@ int main(int argc, char** argv) {
         }
     } // fin du pipeline image -> projet
 
+    // Cache de régénération par objet (HP-PERF-002) désactivé pour ces deux étapes : elles
+    // mesurent le coût complet, comparable aux relevés antérieurs de docs/performance-audit.md.
+    stitch_generation::set_chunk_cache_enabled(false);
     stitch::StitchSequence raw;
     measure("generate_sequence (brut)", reps,
             [&] { raw = *stitch_generation::generate_sequence(project); });
     stitch::StitchSequence eff;
     measure("effective_sequence", reps,
             [&] { eff = *stitch_generation::effective_sequence(project); });
+    stitch_generation::set_chunk_cache_enabled(true);
     const auto st = stitch::compute_stats(eff);
     std::printf("  commandes %zu | points %zu | sauts %zu | coupes %zu\n", eff.commands.size(),
                 st.stitches, st.jumps, st.trims);
     report_travel(project, eff);
     std::printf("  empreinte séquence effective %016llx\n",
                 static_cast<unsigned long long>(stitch_generation::fingerprint(eff.commands)));
+
+    // HP-PERF-002 : ce que l'utilisateur vit après une modification d'un seul objet. Le cache
+    // chaud sert tous les objets inchangés ; seul l'objet touché est régénéré (le paramètre
+    // alterne entre deux valeurs pour que chaque répétition soit un vrai changement).
+    {
+        stitch_generation::clear_chunk_cache();
+        measure("effective_sequence (cache chaud)", reps,
+                [&] { (void)stitch_generation::effective_sequence(project); });
+        // Objets tatami triés par nombre de commandes : on touche le médian (cas courant) puis
+        // le plus gros (pire cas : un fond).
+        std::vector<std::pair<std::size_t, std::size_t>> bySize; // (commandes, index objet)
+        for (std::size_t i = 0; i < project.embroidery_objects.size(); ++i) {
+            const auto& obj = project.embroidery_objects[i];
+            if (std::holds_alternative<document::TatamiParams>(obj.params)) {
+                bySize.emplace_back(stitch_generation::raw_slice(raw, obj.id).size(), i);
+            }
+        }
+        std::sort(bySize.begin(), bySize.end());
+        const auto touchOne = [&](const char* label, std::size_t objectIndex) {
+            document::Project one = project;
+            auto& tatami =
+                std::get<document::TatamiParams>(one.embroidery_objects[objectIndex].params);
+            const Micrometers base = tatami.row_spacing;
+            bool flip = false;
+            measure(label, reps, [&] {
+                flip = !flip;
+                tatami.row_spacing = Micrometers{base.value + (flip ? 50 : 0)};
+                (void)stitch_generation::effective_sequence(one);
+            });
+        };
+        if (!bySize.empty()) {
+            touchOne("effective_sequence (1 objet médian modifié)",
+                     bySize[bySize.size() / 2].second);
+            touchOne("effective_sequence (le plus gros objet modifié)", bySize.back().second);
+        }
+        const auto cs = stitch_generation::chunk_cache_stats();
+        std::printf("  cache : %zu objets, %.1f Mo | %zu succès, %zu échecs\n", cs.entries,
+                    static_cast<double>(cs.bytes) / (1024.0 * 1024.0), cs.hits, cs.misses);
+    }
+    // Les étapes suivantes restent sans cache : elles se comparent aux relevés antérieurs.
+    stitch_generation::set_chunk_cache_enabled(false);
 
     // Projet avec retouches manuelles : un point déplacé dans les trois
     // premiers objets qui ont des points TopStitch.
