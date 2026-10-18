@@ -1209,6 +1209,12 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 - À faire : éviter les pénétrations trop rapprochées en bord de zone
   (fusion/redistribution comme en satin).
 
+### HP-ENG-006.b — Décalage des pénétrations du tatami (aspect pointillé) [P1] — ◐ Partiel (2026-10-18)
+- Constaté : à `stagger` = 2 (ancien défaut), les pénétrations d'une rangée sur deux s'alignent en colonnes ; sur une pièce brodée le remplissage paraît « pointillé ».
+- Comportement attendu : décalage en briques par défaut, sans changer les projets existants (valeur persistée conservée).
+- Livré : défaut `TatamiParams::stagger` 2 → 3 (décalage de 1/3), test `test_main_window` adapté, `docs/source/tatami.md` et `moteur-de-points.md` mis à jour. Le remplissage directionnel garde 2.
+- Reste : validation sur tissu ; motifs de phase non uniformes (non implémentés).
+
 ### HP-ENG-007 — Densité en unités usuelles [P2] — ☐ À faire
 - À faire : afficher la densité aussi en « lignes/cm » ou « points/pouce »
   selon les préférences ; même valeur stockée en µm.
@@ -3191,3 +3197,4 @@ ci-dessus doit les respecter :
 | 2026-10-18 | Claude (lot C édition, agent) | HP-UX-002, 028, 029, 038 et HP-PERF-009 ◐ (branche `ux-lot-c1-pr`) : création directe sans modale, quatre boutons de type pour 1 ou N formes, bandeau de retouches, valeurs mixtes, régénération différée hors fil UI. Tests : `test_creation_flow` (19 cas). Total ◐ 115 → 120, ☐ 156 → 151. |
 | 2026-10-18 | Claude (HP-VEC-015, comblement de bloc) | HP-VEC-015 ◐ (branche `claude/embroidery-block-hole-fill-7c00ac`) : vides d'un bloc détectés depuis les points cousus, rattachés au plus grand remplissage voisin ; cœur, op CLI `fill_block_holes`, menu Forme et tests. |
 | 2026-10-18 | Claude (lot D, partie 2) | HP-UX-035 ◐ (copier/coller le style). **HP-UX-040 (contrat IA) retiré** à la demande du mainteneur (l'IA n'est pas une priorité) ; total 296 → 295, ◐ 120 → 121, ☐ 151 → 149. |
+| 2026-10-18 | Claude (tatami pointillé) | HP-ENG-006.b ◐ : défaut `stagger` du tatami 2 → 3 (aspect pointillé constaté en broderie réelle) ; non validé sur tissu. |

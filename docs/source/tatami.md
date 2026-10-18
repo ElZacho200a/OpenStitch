@@ -260,7 +260,7 @@ Valeurs par défaut lues dans `TatamiParams`
 | `stitch_length` | mm | 3,0 | points plus longs le long des rangées | points plus courts, plus de pénétrations |
 | `angle` | ° (rad interne) | 0 | oriente les rangées | — |
 | `inset` (retrait de bord) | mm | 0,2 | remplissage plus rentré | remplissage plus au bord (risque de débord) |
-| `stagger` | rangées | 2 | pénétrations décalées sur plus de rangées | sillon plus visible |
+| `stagger` | rangées | 3 | pénétrations décalées sur plus de rangées | sillon plus visible (à 2, les trous s’alignent : aspect « pointillé » une fois brodé) |
 | `underlay_edge` | bool | off | sous-couche de contour (Lot 7) | — |
 | `underlay_inset` | mm | 0,6 | contour de sous-couche plus rentré (échec/disparition → aucune sous-couche émise, jamais le bord brut ; 0 = bord brut voulu) | contour plus proche du bord final |
 | `underlay_parallel` | bool | off | sous-couche perpendiculaire espacée (Lot 7) | — |
