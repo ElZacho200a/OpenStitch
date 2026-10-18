@@ -42,6 +42,7 @@
 #include "openstitch/ai_segmentation/color_refine.hpp"
 #include "openstitch/ai_segmentation/label_map.hpp"
 #include "openstitch/ai_segmentation/topology_cleanup.hpp"
+#include "responsive.hpp"
 
 namespace openstitch::desktop {
 
@@ -341,6 +342,12 @@ void AiSegmentationDialog::setupUi() {
     validateButton_->setEnabled(false);
     connect(validateButton_, &QPushButton::clicked, this, &AiSegmentationDialog::onValidateClicked);
     mainLayout->addWidget(buttons_);
+    // Tout le contenu défile sur un petit écran, « Valider » / « Fermer » restent visibles
+    // (HP-UX-025) ; aperçus plus bas pour que la rangée tienne dans un écran de 768 px.
+    previewLabel_->setMinimumSize(200, 120);
+    selectionPreviewLabel_->setMinimumSize(200, 120);
+    scrollDialogBody(this, buttons_);
+    fitDialogToScreen(this);
 
     restoreChoices();
 }

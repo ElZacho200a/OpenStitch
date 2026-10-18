@@ -258,6 +258,61 @@ QIcon satinColumn() {
     });
 }
 
+QIcon stitchGlyph(StitchGlyph glyph) {
+    switch (glyph) {
+    case StitchGlyph::Tatami:
+        // Remplissage : hachures diagonales parallèles dans un cadre arrondi.
+        return make([](QPainter& p) {
+            p.drawRoundedRect(QRectF(5, 5, 22, 22), 3, 3);
+            QPainterPath inside;
+            inside.addRoundedRect(QRectF(5, 5, 22, 22), 3, 3);
+            p.setClipPath(inside);
+            QPen thin = p.pen();
+            thin.setWidthF(1.6);
+            p.setPen(thin);
+            for (const double off : {-10.0, -3.5, 3.0, 9.5}) {
+                p.drawLine(QPointF(8.5 + off + 6, 24.5), QPointF(8.5 + off + 15, 7.5));
+            }
+        });
+    case StitchGlyph::Satin:
+        return satinColumn();
+    case StitchGlyph::Contour:
+        // Point de piqûre : trait en pointillé, légèrement ondulé.
+        return make([](QPainter& p) {
+            QPen dashed = p.pen();
+            dashed.setStyle(Qt::CustomDashLine);
+            dashed.setDashPattern({1.2, 2.2});
+            dashed.setCapStyle(Qt::FlatCap);
+            p.setPen(dashed);
+            QPainterPath path;
+            path.moveTo(4, 22);
+            path.cubicTo(10, 6, 20, 28, 28, 10);
+            p.drawPath(path);
+        });
+    case StitchGlyph::Directional:
+        // Remplissage directionnel : flèche de sens traversant des hachures.
+        return make([](QPainter& p) {
+            QPen thin = p.pen();
+            thin.setWidthF(1.4);
+            p.setPen(thin);
+            for (const double x : {9.0, 16.0, 23.0}) {
+                p.drawLine(QPointF(x - 2, 25), QPointF(x + 2, 7));
+            }
+            QPen bold = p.pen();
+            bold.setWidthF(2.4);
+            p.setPen(bold);
+            p.drawLine(QPointF(4, 16), QPointF(28, 16));
+            p.drawLine(QPointF(28, 16), QPointF(23, 11.5));
+            p.drawLine(QPointF(28, 16), QPointF(23, 20.5));
+        });
+    case StitchGlyph::Text:
+        return text();
+    case StitchGlyph::Vector:
+        return polygon();
+    }
+    return {};
+}
+
 QIcon newProject() {
     return make([](QPainter& p) {
         // Feuille vierge à coin replié.

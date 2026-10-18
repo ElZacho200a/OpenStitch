@@ -88,12 +88,16 @@ private slots:
         QVERIFY(reduce != nullptr && same != nullptr && maxBridge != nullptr);
 
         reduce->setChecked(true);
+        // HP-UX-032 : le résumé (et l'analyse) est recalculé après 300 ms d'inactivité ; l'état
+        // des cases, lui, suit tout de suite.
+        QVERIFY(same->isEnabled());
+        dialog.flushPendingRefresh();
         QVERIFY(calls > before); // résumé recalculé
         QVERIFY(seen.reduce_trims);
-        QVERIFY(same->isEnabled());
         same->setChecked(true);
         maxBridge->setValue(22.5);
         maxBridge->editingFinished();
+        dialog.flushPendingRefresh();
 
         const auto opt = dialog.optimizations();
         QVERIFY(opt.reduce_trims);

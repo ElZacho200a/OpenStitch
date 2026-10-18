@@ -33,6 +33,7 @@
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QRadioButton>
+#include <QSignalBlocker>
 #include <QSizePolicy>
 #include <QSpinBox>
 #include <QStandardPaths>
@@ -43,6 +44,7 @@
 #include <QUrl>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -62,6 +64,7 @@
 #include "ai_segmentation_dialog.hpp"
 #include "app_settings.hpp"
 #include "app_theme.hpp"
+#include "autodigitize_presets.hpp"
 #include "autosave.hpp"
 #include "brightness_dialog.hpp"
 #include "busy_indicator.hpp"
@@ -73,6 +76,7 @@
 #include "import_dialog.hpp"
 #include "machine_export_dialog.hpp"
 #include "node_handle.hpp"
+#include "responsive.hpp"
 
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/autodigitize/contour_objects.hpp"
@@ -113,6 +117,7 @@
 #include "settings_dialog.hpp"
 #include "ui_icons.hpp"
 #include "ui_memory.hpp"
+#include "ui_swatch.hpp"
 #include "workflow_panel.hpp"
 #include <QCheckBox>
 #include <QCloseEvent>
@@ -435,6 +440,10 @@ MainWindow::MainWindow() {
     buildFilterPanel();
     buildHistoryPanel();
     buildThreadPanel();
+    // Le dock Couleurs existe dès le départ, caché : sa place dans la disposition enregistrée
+    // n'est plus perdue au redémarrage (HP-UX-024).
+    showColorsPanel();
+    colorsDock_->hide();
     // [cablage-A:debut]
     // [cablage-A:fin]
     // [cablage-B:debut]
@@ -458,22 +467,62 @@ MainWindow::MainWindow() {
     // hauteur de la colonne de droite au lieu de la partager à parts égales.
     tabifyDockWidget(propertiesDock_, filterDock_);
     propertiesDock_->raise();
+    // Analyse, Historique, Fils et Couleurs en onglets (HP-UX-024) : un seul de ces panneaux
+    // occupe la colonne de droite à la fois, au lieu de s'empiler sur toute la hauteur.
+    panelsMenu_->addAction(colorsDock_->toggleViewAction());
+    for (QDockWidget* secondary : {historyDock_, threadDock_, colorsDock_}) {
+        tabifyDockWidget(analysisDock_, secondary);
+    }
     panelsMenu_->addSeparator();
+    // Mode portable (HP-UX-027) : Document, Ordre, Workflow et Propriétés partagent une seule
+    // colonne en onglets, le canevas récupère toute la largeur de l'autre côté.
+    auto* portableAct = panelsMenu_->addAction(tr("Mode &portable (une seule colonne)"));
+    portableAct->setObjectName(QStringLiteral("action_portableMode"));
+    portableAct->setCheckable(true);
+    portableAct->setToolTip(tr("Regroupe les panneaux en onglets dans une colonne unique : "
+                               "utile sur un petit écran."));
+    connect(portableAct, &QAction::toggled, this, [this](bool on) {
+        const std::array<QDockWidget*, 3> leftDocks{documentDock_, orderDock_, workflowDock_};
+        std::array<bool, 3> hidden{};
+        for (std::size_t i = 0; i < leftDocks.size(); ++i) {
+            hidden[i] = leftDocks[i]->isHidden();
+        }
+        if (on) {
+            for (QDockWidget* dock : leftDocks) {
+                addDockWidget(Qt::RightDockWidgetArea, dock);
+                tabifyDockWidget(propertiesDock_, dock);
+            }
+            propertiesDock_->raise();
+        } else {
+            addDockWidget(Qt::LeftDockWidgetArea, documentDock_);
+            splitDockWidget(documentDock_, workflowDock_, Qt::Vertical);
+            tabifyDockWidget(documentDock_, orderDock_);
+            documentDock_->raise();
+        }
+        for (std::size_t i = 0; i < leftDocks.size(); ++i) {
+            leftDocks[i]->setVisible(!hidden[i]); // déplacer un panneau ne le rouvre pas
+        }
+    });
     auto* resetLayoutAct = panelsMenu_->addAction(tr("&Réinitialiser la disposition"));
     resetLayoutAct->setObjectName(QStringLiteral("action_resetLayout"));
     resetLayoutAct->setToolTip(tr("Remet les panneaux et les barres à leur place d'origine."));
-    connect(resetLayoutAct, &QAction::triggered, this, [this] {
+    connect(resetLayoutAct, &QAction::triggered, this, [this, portableAct] {
         if (!defaultWindowState_.isEmpty()) {
             restoreState(defaultWindowState_);
+            const QSignalBlocker blocker(
+                portableAct); // la disposition d'origine n'est pas portable
+            portableAct->setChecked(false);
         }
     });
     buildMainToolbar();
     addToolBarBreak(); // la barre contextuelle sur sa propre rangée
     buildContextToolbar();
     buildToolPalette();
-    addToolBarBreak(); // la barre de simulation occupe sa propre rangée
-    buildSimulationToolbar();
+    // Simulation et bande des fils partagent la rangée du bas (HP-UX-026), visibles seulement
+    // quand une séquence existe (cf. refreshThreadStrip). La bande est posée en premier : elle
+    // garde la largeur de ses pastilles, la simulation prend le reste (débordement « » sinon).
     buildThreadStrip();
+    buildSimulationToolbar();
     // Une barre masquée doit pouvoir se rouvrir depuis un menu, comme les panneaux.
     panelsMenu_->insertSeparator(resetLayoutAct);
     for (auto* bar : {mainToolbar_, contextToolbar_, toolPalette_, simToolbar_, threadStripBar_}) {
@@ -513,9 +562,9 @@ MainWindow::MainWindow() {
     hintsLabel_->setMinimumWidth(0);
     hintsLabel_->setAccessibleName(tr("Indications de geste"));
     statusBar()->addPermanentWidget(hintsLabel_, 1);
-    toolLabel_ = new QLabel(this);
+    toolLabel_ = new ElidedTextLabel(this);
     statusBar()->addPermanentWidget(toolLabel_);
-    savedLabel_ = new QLabel(this);
+    savedLabel_ = new ElidedTextLabel(this);
     savedLabel_->setObjectName(QStringLiteral("savedLabel"));
     savedLabel_->setAccessibleName(tr("État d'enregistrement"));
     statusBar()->addPermanentWidget(savedLabel_);
@@ -535,9 +584,22 @@ MainWindow::MainWindow() {
         }
     });
     qApp->installEventFilter(this); // ShortcutOverride, cf. main_window_ux.cpp
-    cursorLabel_ = new QLabel(this);
-    cursorLabel_->setMinimumWidth(180);
+    // Étiquette élidable, sans largeur minimale propre (HP-UX-026) : la barre d'état ne fixe plus
+    // la largeur minimale de la fenêtre.
+    cursorLabel_ = new ElidedTextLabel(this);
     statusBar()->addPermanentWidget(cursorLabel_);
+    // Taille du cadre en permanence, cliquable : ouvre « Taille du cadre… » (HP-UX-033).
+    hoopStatusButton_ = new QToolButton(this);
+    hoopStatusButton_->setObjectName(QStringLiteral("button_hoopStatus"));
+    hoopStatusButton_->setAutoRaise(true);
+    // Minimum explicite : le texte complet garde sa place quand la fenêtre est large, mais ce
+    // bouton ne doit jamais forcer la largeur minimale de la barre d'état (HP-QA-008).
+    hoopStatusButton_->setMinimumWidth(60);
+    hoopStatusButton_->setToolTip(tr("Taille du cadre de broderie : cliquer pour la modifier."));
+    hoopStatusButton_->setAccessibleName(tr("Taille du cadre"));
+    connect(hoopStatusButton_, &QToolButton::clicked, this, &MainWindow::setHoopSize);
+    statusBar()->addPermanentWidget(hoopStatusButton_);
+    applyCanvasToView(); // libellé initial
     // Bascule d'accroche des nœuds visible en permanence (même état que l'entrée du menu
     // Affichage) : sans elle, savoir si le glisser va s'accrocher exige d'ouvrir le menu.
     if (snapNodesAct_ != nullptr) {
@@ -744,6 +806,13 @@ void MainWindow::buildMenus() {
     exportDstAct_ = fileMenu->addAction(tr("&Exporter une broderie machine…"));
     exportDstAct_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_E));
     connect(exportDstAct_, &QAction::triggered, this, &MainWindow::exportDst);
+    exportDstQuickAct_ = fileMenu->addAction(tr("Exporter &avec les derniers réglages"));
+    exportDstQuickAct_->setObjectName(QStringLiteral("action_exportQuick"));
+    exportDstQuickAct_->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_E));
+    exportDstQuickAct_->setToolTip(
+        tr("Exporte tout de suite avec le format et les options du dernier export, sans "
+           "résumé : seul le nom du fichier est demandé."));
+    connect(exportDstQuickAct_, &QAction::triggered, this, &MainWindow::exportDstQuick);
     buildProductionMenu(fileMenu);
     auto* importDstAct = fileMenu->addAction(tr("&Importer une broderie machine…"));
     connect(importDstAct, &QAction::triggered, this, &MainWindow::importDst);
@@ -1212,6 +1281,12 @@ void MainWindow::resetDocumentState() {
     sequence_.reset();
     editStates_.clear();
     setSelection({});
+    isolatedIds_
+        .clear(); // l'isolation est un état de session : jamais reportée sur un autre document
+    if (isolateAct_ != nullptr && isolateAct_->isChecked()) {
+        QSignalBlocker block(isolateAct_);
+        isolateAct_->setChecked(false);
+    }
     if (mergeAct_ != nullptr) {
         mergeAct_->setChecked(false); // remet aussi mergeMode_ à false (cf. buildMenus)
     }
@@ -1454,7 +1529,13 @@ void MainWindow::openImageFile(const QString& file) {
         return;
     }
 
-    const auto canvas = project_.canvas; // même cadre que celui proposé dans ImportDialog
+    auto canvas = project_.canvas; // même cadre que celui proposé dans ImportDialog
+    if (dialog.hoopChanged()) {
+        // HP-UX-033 : le cadre choisi dans l'import devient celui du projet (marge conservée).
+        canvas.width = to_micrometers(Millimeters{dialog.hoopMm().width()});
+        canvas.height = to_micrometers(Millimeters{dialog.hoopMm().height()});
+        rememberCanvas(canvas);
+    }
     project_ = document::Project{};
     project_.canvas = canvas;
     project_.mm_per_px = document::mm_per_pixel(*placement, loaded->width);
@@ -1847,6 +1928,10 @@ void MainWindow::applyCanvasToView() {
         view_->setCanvasSizeMm(want);
     }
     view_->setUsableMarginMm(to_millimeters(project_.canvas.margin).value);
+    if (hoopStatusButton_ != nullptr) {
+        hoopStatusButton_->setText(
+            tr("Cadre %1 × %2 mm").arg(want.width(), 0, 'f', 0).arg(want.height(), 0, 'f', 0));
+    }
 }
 
 void MainWindow::positionEmptyState() {
@@ -4365,7 +4450,9 @@ void MainWindow::autoDigitize() {
         hasSegmentation ? (!project_.embroidery_objects.empty() || !project_.vector_objects.empty())
                         : !project_.embroidery_objects.empty();
     bool replacePrevious = false;
-    if (alreadyDigitized) {
+    // Chemin segmentation : la question Ajouter / Remplacer est posée DANS le dialogue d'options
+    // (une seule fenêtre, HP-UX-030). Le chemin SVG n'a pas de dialogue d'options : question seule.
+    if (alreadyDigitized && !hasSegmentation) {
         QMessageBox box(
             QMessageBox::Question, tr("Numérisation automatique"),
             tr("Des objets existent déjà. Ajouter les nouveaux objets à côté des existants, ou "
@@ -4417,6 +4504,23 @@ void MainWindow::autoDigitize() {
         QDialog optsDialog(this);
         optsDialog.setWindowTitle(tr("Numérisation automatique"));
         auto* optsLayout = new QVBoxLayout(&optsDialog);
+        // Préréglages (HP-UX-030) : remplissent les champs ci-dessous, rien de plus.
+        auto* presetRow = new QHBoxLayout;
+        auto* presetCombo = new QComboBox(&optsDialog);
+        presetCombo->setObjectName("autoDigitizePresetCombo");
+        presetCombo->setAccessibleName(tr("Préréglage de numérisation"));
+        presetCombo->addItem(tr("Personnalisé"), static_cast<int>(DigitizePreset::Custom));
+        presetCombo->addItem(tr("Logo / aplats"), static_cast<int>(DigitizePreset::Logo));
+        presetCombo->addItem(tr("Dessin au trait"), static_cast<int>(DigitizePreset::LineArt));
+        presetCombo->addItem(tr("Photo / pointillé"), static_cast<int>(DigitizePreset::Photo));
+        presetCombo->setToolTip(tr(
+            "Un préréglage remplit les réglages de ce dialogue ; vous pouvez ensuite les "
+            "ajuster dans « Réglages avancés » (le préréglage passe alors à « Personnalisé »)."));
+        auto* presetLabel = new QLabel(tr("Type d'image :"), &optsDialog);
+        presetLabel->setBuddy(presetCombo);
+        presetRow->addWidget(presetLabel);
+        presetRow->addWidget(presetCombo, 1);
+        optsLayout->addLayout(presetRow);
         auto* skipBgCheck =
             new QCheckBox(tr("Ignorer la plus grande région (probablement le fond)"), &optsDialog);
         skipBgCheck->setObjectName("skipBackgroundCheck");
@@ -4442,12 +4546,11 @@ void MainWindow::autoDigitize() {
             auto* row = new QHBoxLayout;
             auto* swatch = new QLabel(&optsDialog);
             swatch->setObjectName("backgroundSwatch");
-            swatch->setFixedSize(24, 24);
-            swatch->setStyleSheet(QStringLiteral("background-color: rgb(%1,%2,%3); "
-                                                 "border: 1px solid palette(mid);")
-                                      .arg(candidate->rgb[0])
-                                      .arg(candidate->rgb[1])
-                                      .arg(candidate->rgb[2]));
+            // HP-UX-043 : pastille nette à tout DPI, taille déduite de la police.
+            const int swatchSide = optsDialog.fontMetrics().height() + 8;
+            swatch->setFixedSize(swatchSide, swatchSide);
+            swatch->setPixmap(makeSwatch(
+                QColor(candidate->rgb[0], candidate->rgb[1], candidate->rgb[2]), swatchSide));
             auto* info = new QLabel(
                 tr("Région candidate : %1 % de l'image, clarté L* %2, %3 bord(s) touché(s) sur 4")
                     .arg(QLocale().toString(candidate->area_ratio * 100.0, 'f', 1))
@@ -4492,6 +4595,28 @@ void MainWindow::autoDigitize() {
         optsLayout->addWidget(shapesRadio);
         optsLayout->addWidget(contoursRadio);
         optsLayout->addWidget(stippleRadio);
+
+        // Section « Réglages avancés », repliée par défaut ; son état est mémorisé.
+        auto* advancedToggle = new QToolButton(&optsDialog);
+        advancedToggle->setObjectName("autoDigitizeAdvancedToggle");
+        advancedToggle->setText(tr("Réglages avancés"));
+        advancedToggle->setCheckable(true);
+        advancedToggle->setAutoRaise(true);
+        advancedToggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        auto* advancedBox = new QWidget(&optsDialog);
+        advancedBox->setObjectName("autoDigitizeAdvanced");
+        auto* advancedLayout = new QVBoxLayout(advancedBox);
+        advancedLayout->setContentsMargins(0, 0, 0, 0);
+        const auto setAdvancedOpen = [advancedToggle, advancedBox](bool open) {
+            advancedToggle->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
+            advancedBox->setVisible(open);
+        };
+        connect(advancedToggle, &QToolButton::toggled, &optsDialog, setAdvancedOpen);
+        advancedToggle->setChecked(
+            ui_memory::boolValue(QStringLiteral("autoDigitize/advancedOpen"), false));
+        setAdvancedOpen(advancedToggle->isChecked());
+        optsLayout->addWidget(advancedToggle);
+        optsLayout->addWidget(advancedBox);
 
         auto* shapesPanel = new QWidget(&optsDialog);
         shapesPanel->setObjectName("shapesPanel");
@@ -4739,7 +4864,7 @@ void MainWindow::autoDigitize() {
                "suggèrent le mouvement. La couleur la plus sombre reste en tatami."));
         shapesPanelLayout->addWidget(flowFillCheck);
         connect(shapesRadio, &QRadioButton::toggled, shapesPanel, &QWidget::setEnabled);
-        optsLayout->addWidget(shapesPanel);
+        advancedLayout->addWidget(shapesPanel);
 
         auto* contoursPanel = new QWidget(&optsDialog);
         contoursPanel->setObjectName("contoursPanel");
@@ -4775,7 +4900,7 @@ void MainWindow::autoDigitize() {
         panelLayout->addLayout(techRow);
         contoursPanel->setEnabled(false);
         connect(contoursRadio, &QRadioButton::toggled, contoursPanel, &QWidget::setEnabled);
-        optsLayout->addWidget(contoursPanel);
+        advancedLayout->addWidget(contoursPanel);
 
         auto* stipplePanel = new QWidget(&optsDialog);
         stipplePanel->setObjectName("stipplePanel");
@@ -4806,16 +4931,140 @@ void MainWindow::autoDigitize() {
         stippleLayout->addStretch(1);
         stipplePanel->setEnabled(false);
         connect(stippleRadio, &QRadioButton::toggled, stipplePanel, &QWidget::setEnabled);
-        optsLayout->addWidget(stipplePanel);
+        advancedLayout->addWidget(stipplePanel);
 
-        auto* optsButtons =
-            new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &optsDialog);
+        // Valeurs du dialogue <-> structure de préréglage (autodigitize_presets.hpp).
+        DigitizeDialogValues builtinDefaults;
+        builtinDefaults.minFeatureWidthUm =
+            static_cast<int>(std::lround(opts.min_feature_width_mm * 1000.0));
+        builtinDefaults.minRegionAreaCmm2 =
+            static_cast<int>(std::lround(opts.min_region_area_mm2 * 100.0));
+        const auto collectValues = [&]() {
+            DigitizeDialogValues v;
+            v.satinBands = satinBandsCheck->isChecked();
+            v.maxThreads = maxThreadsSpin->value();
+            v.strategy = contoursRadio->isChecked()  ? DigitizeStrategy::Contours
+                         : stippleRadio->isChecked() ? DigitizeStrategy::Stipple
+                                                     : DigitizeStrategy::Shapes;
+            v.shapeDetail = shapeDetailSlider->value();
+            v.fillOverlapUm = static_cast<int>(std::lround(overlapSpin->value() * 1000.0));
+            v.minFeatureWidthUm = static_cast<int>(std::lround(featureSpin->value() * 1000.0));
+            v.minRegionAreaCmm2 = static_cast<int>(std::lround(minAreaSpin->value() * 100.0));
+            v.islandAreaCmm2 = static_cast<int>(std::lround(islandSpin->value() * 100.0));
+            v.islandMaxDeltaE = static_cast<int>(std::lround(islandDeSpin->value()));
+            v.curveToleranceUm = static_cast<int>(std::lround(curveSpin->value() * 1000.0));
+            v.solidBlock = solidBlockCheck->isChecked();
+            v.flowFill = flowFillCheck->isChecked();
+            v.darkLines = darkLinesCheck->isChecked();
+            v.darkLinesWidthUm = static_cast<int>(std::lround(darkWidthSpin->value() * 1000.0));
+            v.darkLinesLightness = static_cast<int>(std::lround(darkLightSpin->value()));
+            v.darkLinesMinLenUm = static_cast<int>(std::lround(darkMinLenSpin->value() * 1000.0));
+            v.darkLinesObjectsOnly = darkObjectsOnlyCheck->isChecked();
+            v.ringsSatin = ringsSatinCheck->isChecked();
+            v.contourDetail = detailSlider->value();
+            v.techniqueRunning = techRunningRadio->isChecked();
+            v.stipplePoints = stipplePointsSpin->value();
+            v.stippleSeed = stippleSeedSpin->value();
+            v.stippleInvert = stippleInvertCheck->isChecked();
+            return v;
+        };
+        bool applyingPreset = false;
+        const auto syncPresetCombo = [&] {
+            if (applyingPreset) {
+                return;
+            }
+            const auto match = matchingDigitizePreset(collectValues(), builtinDefaults);
+            QSignalBlocker block(presetCombo);
+            presetCombo->setCurrentIndex(presetCombo->findData(static_cast<int>(match)));
+        };
+        const auto applyValues = [&](const DigitizeDialogValues& v) {
+            applyingPreset = true;
+            satinBandsCheck->setChecked(v.satinBands);
+            // La palette (nombre de fils) n'appartient à aucun préréglage : maxThreadsSpin reste.
+            shapesRadio->setChecked(v.strategy == DigitizeStrategy::Shapes);
+            contoursRadio->setChecked(v.strategy == DigitizeStrategy::Contours);
+            stippleRadio->setChecked(v.strategy == DigitizeStrategy::Stipple);
+            shapeDetailSlider->setValue(v.shapeDetail);
+            overlapSpin->setValue(v.fillOverlapUm / 1000.0);
+            featureSpin->setValue(v.minFeatureWidthUm / 1000.0);
+            minAreaSpin->setValue(v.minRegionAreaCmm2 / 100.0);
+            islandSpin->setValue(v.islandAreaCmm2 / 100.0);
+            islandDeSpin->setValue(v.islandMaxDeltaE);
+            curveSpin->setValue(v.curveToleranceUm / 1000.0);
+            solidBlockCheck->setChecked(v.solidBlock);
+            flowFillCheck->setChecked(v.flowFill);
+            darkLinesCheck->setChecked(v.darkLines);
+            darkWidthSpin->setValue(v.darkLinesWidthUm / 1000.0);
+            darkLightSpin->setValue(v.darkLinesLightness);
+            darkMinLenSpin->setValue(v.darkLinesMinLenUm / 1000.0);
+            darkObjectsOnlyCheck->setChecked(v.darkLinesObjectsOnly);
+            ringsSatinCheck->setChecked(v.ringsSatin);
+            detailSlider->setValue(v.contourDetail);
+            techRunningRadio->setChecked(v.techniqueRunning);
+            techAutoRadio->setChecked(!v.techniqueRunning);
+            stipplePointsSpin->setValue(v.stipplePoints);
+            stippleSeedSpin->setValue(v.stippleSeed);
+            stippleInvertCheck->setChecked(v.stippleInvert);
+            applyingPreset = false;
+        };
+        connect(presetCombo, &QComboBox::currentIndexChanged, &optsDialog, [&](int index) {
+            const auto preset = static_cast<DigitizePreset>(presetCombo->itemData(index).toInt());
+            if (preset != DigitizePreset::Custom) {
+                applyValues(digitizePresetValues(preset, builtinDefaults));
+                syncPresetCombo(); // une valeur écrêtée par un champ ne doit pas passer pour exacte
+            }
+        });
+        // Toute retouche d'un réglage ramène le préréglage affiché à « Personnalisé » (ou à celui
+        // dont les valeurs sont exactement celles-ci).
+        for (auto* w : optsDialog.findChildren<QDoubleSpinBox*>()) {
+            connect(w, &QDoubleSpinBox::valueChanged, &optsDialog, syncPresetCombo);
+        }
+        for (auto* w : optsDialog.findChildren<QSpinBox*>()) {
+            connect(w, &QSpinBox::valueChanged, &optsDialog, syncPresetCombo);
+        }
+        for (auto* w : optsDialog.findChildren<QSlider*>()) {
+            connect(w, &QSlider::valueChanged, &optsDialog, syncPresetCombo);
+        }
+        for (auto* w : optsDialog.findChildren<QCheckBox*>()) {
+            connect(w, &QCheckBox::toggled, &optsDialog, syncPresetCombo);
+        }
+        for (auto* w : optsDialog.findChildren<QRadioButton*>()) {
+            connect(w, &QRadioButton::toggled, &optsDialog, syncPresetCombo);
+        }
+        syncPresetCombo(); // valeurs relues de la mémoire : affiche le préréglage correspondant
+
+        // Boutons : « Numériser » seul, ou « Ajouter » / « Remplacer » quand des objets existent
+        // déjà (la question n'est plus une seconde fenêtre).
+        auto* optsButtons = new QDialogButtonBox(&optsDialog);
+        if (alreadyDigitized) {
+            auto* addBtn = optsButtons->addButton(tr("Ajouter"), QDialogButtonBox::AcceptRole);
+            addBtn->setToolTip(tr("Ajoute les nouveaux objets à côté des objets existants."));
+            auto* replaceBtn =
+                optsButtons->addButton(tr("Remplacer"), QDialogButtonBox::ActionRole);
+            replaceBtn->setToolTip(
+                tr("Supprime les objets de broderie à choix automatique et les formes issues de "
+                   "la segmentation qui leur servent de source ; les objets verrouillés, "
+                   "retouchés à la main ou dessinés par vous sont conservés. Un seul Ctrl+Z "
+                   "annule le remplacement."));
+            replaceBtn->setAutoDefault(false);
+            connect(replaceBtn, &QPushButton::clicked, &optsDialog, [&] {
+                replacePrevious = true;
+                optsDialog.accept();
+            });
+            addBtn->setDefault(true);
+        } else {
+            auto* goBtn = optsButtons->addButton(tr("Numériser"), QDialogButtonBox::AcceptRole);
+            goBtn->setDefault(true);
+        }
+        optsButtons->addButton(tr("Annuler"), QDialogButtonBox::RejectRole);
         connect(optsButtons, &QDialogButtonBox::accepted, &optsDialog, &QDialog::accept);
         connect(optsButtons, &QDialogButtonBox::rejected, &optsDialog, &QDialog::reject);
         optsLayout->addWidget(optsButtons);
         if (optsDialog.exec() != QDialog::Accepted) {
             return;
         }
+        ui_memory::setBoolValue(QStringLiteral("autoDigitize/advancedOpen"),
+                                advancedToggle->isChecked());
         ui_memory::setIntValue(QStringLiteral("autoDigitize/shapeDetail"),
                                shapeDetailSlider->value());
         ui_memory::setIntValue(QStringLiteral("autoDigitize/contourDetail"), detailSlider->value());
@@ -4950,7 +5199,7 @@ void MainWindow::autoDigitize() {
     if (contoursMode && contourMetrics) {
         // Metriques et avertissements viennent tels quels de la lib (aucune
         // logique metier ici) : resume en barre d'etat, details en dialogue.
-        statusBar()->showMessage(
+        announceAutoDigitizeResult(
             tr("Contours : %1 objet(s), %2 segment(s), %3 jonction(s) — point droit %4 mm, "
                "%5 repli(s), %6 rejet(s)")
                 .arg(embCount)
@@ -4982,7 +5231,7 @@ void MainWindow::autoDigitize() {
     if (flowFillCount > 0) {
         summary += tr(" (%1 forme(s) en remplissage directionnel)").arg(flowFillCount);
     }
-    statusBar()->showMessage(summary);
+    announceAutoDigitizeResult(summary);
     warnAboutSkippedAutoSatinBranches(warnings);
 }
 
@@ -6279,7 +6528,7 @@ void MainWindow::updateContextToolbar() {
 
     if (emb != nullptr) {
         const ObjectId id = emb->id;
-        contextToolbar_->addWidget(new QLabel(tr("Type de points :  "), contextToolbar_));
+        contextToolbar_->addWidget(new ElidedTextLabel(tr("Type de points :"), contextToolbar_));
         const int current = stitchTypeIndex(*emb);
         const QString names[] = {tr("Contour"), tr("Tatami"), tr("Satin"), tr("Directionnel")};
         for (int t = 0; t < 4; ++t) {
@@ -6323,9 +6572,9 @@ void MainWindow::updateContextToolbar() {
         }
         const auto editState = editStateOf(id);
         if (editState == stitch_generation::ObjectEditState::ManuallyEdited) {
-            contextToolbar_->addWidget(new QLabel(tr("  ✎ retouché  "), contextToolbar_));
+            contextToolbar_->addWidget(new ElidedTextLabel(tr("✎ retouché"), contextToolbar_));
         } else if (editState == stitch_generation::ObjectEditState::Dirty) {
-            auto* warn = new QLabel(tr("  ⚠ retouches obsolètes  "), contextToolbar_);
+            auto* warn = new ElidedTextLabel(tr("⚠ retouches obsolètes"), contextToolbar_);
             warn->setToolTip(tr("La géométrie ou l'ordre de couture a changé depuis les dernières "
                                 "retouches : elles ne sont plus appliquées."));
             contextToolbar_->addWidget(warn);
@@ -6335,11 +6584,11 @@ void MainWindow::updateContextToolbar() {
             connect(discard, &QAction::triggered, this, [this, id] { discardOverrides(id); });
         }
     } else if (hasMulti) {
-        contextToolbar_->addWidget(
-            new QLabel(tr("%1 objets sélectionnés").arg(multiSelection_.size()), contextToolbar_));
+        contextToolbar_->addWidget(new ElidedTextLabel(
+            tr("%1 objets sélectionnés").arg(multiSelection_.size()), contextToolbar_));
     } else if (hasVec) {
-        contextToolbar_->addWidget(
-            new QLabel(tr("Objet vectoriel  ·  créer un objet de broderie :  "), contextToolbar_));
+        contextToolbar_->addWidget(new ElidedTextLabel(
+            tr("Objet vectoriel · créer un objet de broderie :"), contextToolbar_));
         const auto addCreate = [this](const QString& text, void (MainWindow::*slot)()) {
             auto* act = contextToolbar_->addAction(text);
             connect(act, &QAction::triggered, this, slot);
@@ -6353,8 +6602,7 @@ void MainWindow::updateContextToolbar() {
             const double mmPerPx = project_.mm_per_px.value;
             const double areaMm2 = region->pixel_count * mmPerPx * mmPerPx;
             const std::vector<RegionId> picked = selectedRegionIds();
-            QString label =
-                tr("Région %1  ·  %2 mm²    ").arg(region->id.value).arg(areaMm2, 0, 'f', 1);
+            QString label = tr("Région %1 · %2 mm²").arg(region->id.value).arg(areaMm2, 0, 'f', 1);
             if (picked.size() > 1) {
                 std::size_t pixels = 0;
                 for (const RegionId r : picked) {
@@ -6362,11 +6610,11 @@ void MainWindow::updateContextToolbar() {
                         pixels += rr->pixel_count;
                     }
                 }
-                label = tr("%1 régions  ·  %2 mm²    ")
+                label = tr("%1 régions · %2 mm²")
                             .arg(picked.size())
                             .arg(static_cast<double>(pixels) * mmPerPx * mmPerPx, 0, 'f', 1);
             }
-            contextToolbar_->addWidget(new QLabel(label, contextToolbar_));
+            contextToolbar_->addWidget(new ElidedTextLabel(label, contextToolbar_));
         }
         contextToolbar_->addAction(mergeSelectionAct_); // Fusionner la sélection (>= 2 régions)
         contextToolbar_->addAction(mergeAct_);          // Fusionner avec… (mode)
@@ -6380,17 +6628,16 @@ void MainWindow::updateContextToolbar() {
             const auto st = stitch::compute_stats(*sequence_);
             const double w = to_millimeters(st.bounds.max.x - st.bounds.min.x).value;
             const double h = to_millimeters(st.bounds.max.y - st.bounds.min.y).value;
-            contextToolbar_->addWidget(new QLabel(
-                tr("Motif : %1 × %2 mm   ·   %3 points   ·   %4 changement(s) de couleur    ")
+            contextToolbar_->addWidget(new ElidedTextLabel(
+                tr("Motif : %1 × %2 mm · %3 points · %4 changement(s) de couleur")
                     .arg(w, 0, 'f', 1)
                     .arg(h, 0, 'f', 1)
                     .arg(st.stitches)
                     .arg(st.color_changes),
                 contextToolbar_));
         } else {
-            contextToolbar_->addWidget(
-                new QLabel(tr("Ouvrez une image, ou sélectionnez une région ou un objet.    "),
-                           contextToolbar_));
+            contextToolbar_->addWidget(new ElidedTextLabel(
+                tr("Ouvrez une image, ou sélectionnez une région ou un objet."), contextToolbar_));
         }
         auto* hoop = contextToolbar_->addAction(
             tr("Cadre : %1 × %2 mm…")
@@ -6756,7 +7003,7 @@ void MainWindow::buildWorkflowPanel() {
     workflowDock_->setObjectName(QStringLiteral("workflowDock"));
     workflowDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
     workflowPanel_ = new WorkflowPanel(workflowDock_);
-    workflowDock_->setWidget(workflowPanel_);
+    workflowDock_->setWidget(scrollableDockContent(workflowPanel_, workflowDock_));
     if (documentDock_ != nullptr) {
         splitDockWidget(documentDock_, workflowDock_, Qt::Vertical); // sous Document
     } else {
@@ -6879,6 +7126,132 @@ void MainWindow::buildDocumentPanel() {
         displayImage(processed_);
         updateActions();
     });
+    // Forme vectorielle non cousue (ligne indépendante de la liste).
+    connect(documentPanel_, &DocumentPanel::vectorSelected, this, [this](ObjectId id) {
+        if (project_.findObject(id) == nullptr) {
+            return;
+        }
+        setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {id}});
+        displayImage(processed_);
+        updateActions();
+    });
+    // Ctrl/Maj + clic : plusieurs lignes = plusieurs formes dans la sélection (l'inspecteur
+    // affiche « N objets »). Une broderie sans forme source valide ne peut pas rejoindre un lot.
+    connect(documentPanel_, &DocumentPanel::objectsSelected, this,
+            [this](const std::vector<ObjectId>& embroidery, const std::vector<ObjectId>& vectors) {
+                std::vector<ObjectId> objects;
+                for (const ObjectId id : embroidery) {
+                    const auto* e = project_.findEmbroidery(id);
+                    if (e != nullptr && project_.findObject(e->source_vector) != nullptr) {
+                        objects.push_back(e->source_vector);
+                    }
+                }
+                for (const ObjectId id : vectors) {
+                    if (project_.findObject(id) != nullptr) {
+                        objects.push_back(id);
+                    }
+                }
+                if (objects.size() < 2 && !embroidery.empty()) {
+                    setSelection({.region = std::nullopt,
+                                  .embroidery = embroidery.back(),
+                                  .objects = objects});
+                } else {
+                    setSelection({.region = std::nullopt,
+                                  .embroidery = std::nullopt,
+                                  .objects = std::move(objects)});
+                }
+                displayImage(processed_);
+                updateActions();
+            });
+    connect(documentPanel_, &DocumentPanel::selectionCleared, this, [this] {
+        setSelection({});
+        displayImage(processed_);
+        updateActions();
+    });
+    // Menu de ligne : mêmes commandes annulables que les cases et les boutons de l'Ordre.
+    connect(documentPanel_, &DocumentPanel::visibilityChangeRequested, this,
+            [this](const std::vector<ObjectId>& ids, bool visible) {
+                auto composite = std::make_unique<commands::CompositeCommand>(
+                    (visible ? tr("Afficher %1 objets") : tr("Masquer %1 objets"))
+                        .arg(ids.size())
+                        .toStdString());
+                for (const ObjectId id : ids) {
+                    composite->add(
+                        std::make_unique<commands::SetEmbroideryVisibleCommand>(id, visible));
+                }
+                undoStack_.execute(std::move(composite), project_);
+                refreshImage();
+                updateActions();
+            });
+    connect(documentPanel_, &DocumentPanel::orderLockChangeRequested, this,
+            [this](const std::vector<ObjectId>& ids, bool locked) {
+                auto composite = std::make_unique<commands::CompositeCommand>(
+                    (locked ? tr("Figer l'ordre de %1 objets") : tr("Libérer l'ordre de %1 objets"))
+                        .arg(ids.size())
+                        .toStdString());
+                for (const ObjectId id : ids) {
+                    composite->add(
+                        std::make_unique<commands::SetEmbroideryLockCommand>(id, locked));
+                }
+                undoStack_.execute(std::move(composite), project_);
+                refreshOrderPanel();
+                refreshImage();
+                updateActions();
+            });
+    connect(documentPanel_, &DocumentPanel::deleteRequested, this,
+            [this](const std::vector<ObjectId>& embroidery, const std::vector<ObjectId>& vectors) {
+                // Même règle que la suppression d'une broderie choisie : la broderie seule, sauf
+                // proxy invisible (colonne satin manuelle) dont la suppression emporte la source.
+                std::vector<ObjectId> removeVectors = vectors;
+                std::vector<ObjectId> removeEmbroideries;
+                for (const ObjectId id : embroidery) {
+                    const auto* e = project_.findEmbroidery(id);
+                    if (e == nullptr) {
+                        continue;
+                    }
+                    const auto* source = project_.findObject(e->source_vector);
+                    if (source != nullptr && !source->visible) {
+                        removeVectors.push_back(source->id);
+                    } else {
+                        removeEmbroideries.push_back(id);
+                    }
+                }
+                const std::size_t total = removeVectors.size() + removeEmbroideries.size();
+                if (total == 0) {
+                    return;
+                }
+                auto composite = std::make_unique<commands::CompositeCommand>(
+                    tr("Supprimer %1 objets").arg(total).toStdString());
+                for (const ObjectId id : removeEmbroideries) {
+                    composite->add(std::make_unique<commands::RemoveEmbroideryObjectCommand>(id));
+                }
+                for (std::size_t i = 0; i < removeVectors.size(); ++i) {
+                    if (std::find(removeVectors.begin(),
+                                  removeVectors.begin() + static_cast<std::ptrdiff_t>(i),
+                                  removeVectors[i]) ==
+                        removeVectors.begin() + static_cast<std::ptrdiff_t>(i)) {
+                        composite->add(std::make_unique<commands::RemoveVectorObjectCommand>(
+                            removeVectors[i]));
+                    }
+                }
+                undoStack_.execute(std::move(composite), project_);
+                setSelection({});
+                refreshImage();
+                updateActions();
+                statusBar()->showMessage(tr("%1 objet(s) supprimé(s).").arg(total));
+            });
+    // Glisser-déposer : nouvel ordre complet via la commande des boutons Monter/Descendre.
+    connect(documentPanel_, &DocumentPanel::orderChangeRequested, this,
+            [this](const std::vector<ObjectId>& order) {
+                if (order.size() != project_.embroidery_objects.size()) {
+                    return; // liste périmée : le document fait foi
+                }
+                undoStack_.execute(std::make_unique<commands::ReorderEmbroideryCommand>(order),
+                                   project_);
+                refreshImage();
+                refreshOrderPanel();
+                updateActions();
+            });
 }
 
 bool MainWindow::debugMenuEnabled() {
@@ -6936,6 +7309,16 @@ void MainWindow::syncDocumentSelection() {
             ids.push_back(r.value);
         }
         documentPanel_->syncRegions(ids, selectedRegion_->value);
+    } else if (hasMultiSelection()) {
+        std::vector<std::uint64_t> ids;
+        for (const ObjectId id : selectedObjectIds()) {
+            ids.push_back(id.value);
+        }
+        documentPanel_->syncObjects(ids);
+    } else if (selectedObject_) {
+        // Forme sans broderie : ligne indépendante de la liste (vide si l'objet est masqué
+        // ailleurs).
+        documentPanel_->syncSelection(DocumentPanel::Kind::Vector, selectedObject_->value);
     } else {
         documentPanel_->syncSelection(DocumentPanel::Kind::None, 0);
     }
@@ -7348,7 +7731,7 @@ void MainWindow::buildOrderPanel() {
     layout->addWidget(orderCostLabel_);
     updateOrderButtons();
 
-    orderDock_->setWidget(panel);
+    orderDock_->setWidget(scrollableDockContent(panel, orderDock_));
     addDockWidget(Qt::LeftDockWidgetArea, orderDock_);
     orderDock_->hide();
 }
@@ -7447,6 +7830,10 @@ double MainWindow::vectorAreaMm2(const document::VectorObject& vec) {
 }
 
 bool MainWindow::vectorPassesFilter(const document::VectorObject& object) const {
+    if (!isolatedIds_.empty() &&
+        std::find(isolatedIds_.begin(), isolatedIds_.end(), object.id) == isolatedIds_.end()) {
+        return false; // mode Isoler : seules les formes isolées sont visibles et saisissables
+    }
     if (minAreaMm2_ > 0.0 && vectorAreaMm2(object) < minAreaMm2_) {
         return false;
     }
@@ -7751,9 +8138,10 @@ void MainWindow::applyOrderStrategy() {
 }
 
 void MainWindow::buildSimulationToolbar() {
-    simToolbar_ = addToolBar(tr("Simulation"));
+    simToolbar_ = new QToolBar(tr("Simulation"), this);
     simToolbar_->setObjectName(QStringLiteral("simToolbar"));
     simToolbar_->setMovable(false);
+    addToolBar(Qt::BottomToolBarArea, simToolbar_);
 
     simPlayAct_ = simToolbar_->addAction(tr("▶ Lecture"));
     simPlayAct_->setCheckable(true);
@@ -7767,6 +8155,14 @@ void MainWindow::buildSimulationToolbar() {
         tr("Quitte la simulation et affiche la couture complète (le rendu réaliste redevient "
            "disponible)."));
     connect(simExitAct_, &QAction::triggered, this, &MainWindow::exitSimulation);
+    simPrevColorAct_ = simToolbar_->addAction(tr("⏮ Couleur"));
+    simPrevColorAct_->setObjectName(QStringLiteral("action_simPrevColor"));
+    simPrevColorAct_->setToolTip(tr("Saute au début du bloc de couleur précédent."));
+    connect(simPrevColorAct_, &QAction::triggered, this, [this] { jumpSimulationColor(-1); });
+    simNextColorAct_ = simToolbar_->addAction(tr("Couleur ⏭"));
+    simNextColorAct_->setObjectName(QStringLiteral("action_simNextColor"));
+    simNextColorAct_->setToolTip(tr("Saute au début du bloc de couleur suivant."));
+    connect(simNextColorAct_, &QAction::triggered, this, [this] { jumpSimulationColor(+1); });
 
     simSlider_ = new QSlider(Qt::Horizontal, simToolbar_);
     simSlider_->setMinimum(0);
@@ -7776,7 +8172,7 @@ void MainWindow::buildSimulationToolbar() {
     simToolbar_->addWidget(simSlider_);
 
     simLabel_ = new QLabel(tr("— / —"), simToolbar_);
-    simLabel_->setMinimumWidth(120);
+    simLabel_->setMinimumWidth(96);
     simLabel_->setAccessibleName(tr("Progression de la simulation"));
     simToolbar_->addWidget(simLabel_);
 
@@ -7805,9 +8201,16 @@ void MainWindow::buildSimulationToolbar() {
     simTimer_->setInterval(16); // ~60 pas/seconde
     connect(simTimer_, &QTimer::timeout, this, &MainWindow::onSimTick);
 
-    // Zone réservée : la barre reste visible (contrôles grisés sans séquence)
-    // pour ne pas faire sauter la mise en page à l'apparition des points.
+    // Un masquage demandé par l'utilisateur (menu Panneaux) l'emporte sur l'affichage
+    // automatique de la rangée du bas (cf. refreshThreadStrip) : retenu dans une propriété.
+    for (QToolBar* bar : {simToolbar_, threadStripBar_}) {
+        connect(bar->toggleViewAction(), &QAction::triggered, bar,
+                [bar](bool shown) { bar->setProperty("userHidden", !shown); });
+    }
+
+    // Les contrôles sont grisés sans séquence ; la rangée n'apparaît qu'avec elle.
     updateSimulationRange();
+    refreshThreadStrip();
 }
 
 void MainWindow::updateSimulationInfo(int step) {
@@ -7834,15 +8237,22 @@ void MainWindow::updateSimulationInfo(int step) {
     }
     simSwatch_->setPixmap(
         icons::colorSwatch(QColor(rgb[0], rgb[1], rgb[2]), 12).pixmap(QSize(12, 12)));
+    // « fil k/m » : rang du bloc de couleur courant parmi les blocs de la séquence.
+    const std::vector<int> starts = colorBlockStarts();
+    const auto block = std::upper_bound(starts.begin(), starts.end(), step) - starts.begin();
+    const QString thread =
+        tr("fil %1/%2").arg(std::max<std::ptrdiff_t>(block, 1)).arg(starts.size());
     simObjectLabel_->setText(simObjectLabel_->fontMetrics().elidedText(
-        tr("« %1 »").arg(name), Qt::ElideRight, simObjectLabel_->minimumWidth()));
-    simObjectLabel_->setToolTip(name);
+        tr("« %1 » · %2").arg(name, thread), Qt::ElideRight, simObjectLabel_->minimumWidth()));
+    simObjectLabel_->setToolTip(tr("%1 — %2").arg(name, thread));
 }
 
 void MainWindow::updateSimulationRange() {
     const bool hasSeq = sequence_ && !sequence_->commands.empty();
     simPlayAct_->setEnabled(hasSeq);
     simExitAct_->setEnabled(hasSeq);
+    simPrevColorAct_->setEnabled(hasSeq);
+    simNextColorAct_->setEnabled(hasSeq);
     simSlider_->setEnabled(hasSeq);
     simSpeedCombo_->setEnabled(hasSeq);
     // Le document a changé (cette fonction suit chaque régénération de la séquence) : une
@@ -7922,6 +8332,37 @@ void MainWindow::onSimTick() {
         // Fin de lecture : on sort de la simulation (couture complète, rendu réaliste possible).
         exitSimulation();
     }
+}
+
+std::vector<int> MainWindow::colorBlockStarts() const {
+    std::vector<int> starts{0};
+    if (!sequence_) {
+        return starts;
+    }
+    for (std::size_t i = 0; i < sequence_->commands.size(); ++i) {
+        if (sequence_->commands[i].type == stitch::CommandType::ColorChange) {
+            starts.push_back(static_cast<int>(i));
+        }
+    }
+    return starts;
+}
+
+void MainWindow::jumpSimulationColor(int direction) {
+    if (!sequence_ || sequence_->commands.empty()) {
+        return;
+    }
+    const int last = static_cast<int>(sequence_->commands.size()) - 1;
+    const int current = simulating() ? simStep_ : last;
+    const std::vector<int> starts = colorBlockStarts();
+    int target = direction > 0 ? last : 0;
+    if (direction > 0) {
+        const auto it = std::upper_bound(starts.begin(), starts.end(), current);
+        target = it == starts.end() ? last : *it;
+    } else {
+        const auto it = std::lower_bound(starts.begin(), starts.end(), current);
+        target = it == starts.begin() ? 0 : *(it - 1);
+    }
+    simSlider_->setValue(target); // onSimSliderMoved : quitte la simulation si on atteint la fin
 }
 
 void MainWindow::exitSimulation() {
@@ -8101,6 +8542,7 @@ bool MainWindow::saveProjectToPath(const QString& file) {
     setCurrentProjectPath(file);
     rememberLastDirectory(file);
     undoStack_.markClean();
+    savedAt_ = QTime::currentTime();
     // Les données sont désormais dans le fichier : la sauvegarde automatique
     // issue d'une récupération (conservée jusqu'ici) n'a plus de raison d'être.
     discardPendingRecoverySlot();
@@ -8384,6 +8826,7 @@ void MainWindow::exportDst() {
     if (!sequence_) {
         return;
     }
+    openQualityDock(); // HP-UX-031 : l'état de qualité est visible avant de décider d'exporter
     const auto stats = stitch::compute_stats(*sequence_);
     const double wMm = to_millimeters(stats.bounds.max.x - stats.bounds.min.x).value;
     const double hMm = to_millimeters(stats.bounds.max.y - stats.bounds.min.y).value;
@@ -8474,10 +8917,30 @@ void MainWindow::exportDst() {
         const auto findings = stitch_analysis::analyze_project(project_, shown).findings;
         std::size_t errors = 0;
         std::size_t warnings = 0;
+        QStringList problemLines;
+        constexpr int kMaxProblemLines = 40;
         for (const auto& f : findings) {
             errors += f.severity == stitch_analysis::Severity::Error ? 1 : 0;
             warnings += f.severity == stitch_analysis::Severity::Warning ? 1 : 0;
+            if (f.severity == stitch_analysis::Severity::Info ||
+                problemLines.size() >= kMaxProblemLines) {
+                continue;
+            }
+            const auto* emb = project_.findEmbroidery(f.object);
+            const QString where = (emb != nullptr && !emb->name.empty())
+                                      ? tr("« %1 » : ").arg(QString::fromStdString(emb->name))
+                                      : QString();
+            problemLines << (f.severity == stitch_analysis::Severity::Error
+                                 ? tr("Erreur : ")
+                                 : tr("Avertissement : ")) +
+                                where + QString::fromStdString(f.message);
         }
+        if (errors + warnings > static_cast<std::size_t>(problemLines.size())) {
+            problemLines << tr("… et %1 de plus (panneau Analyse).")
+                                .arg(errors + warnings -
+                                     static_cast<std::size_t>(problemLines.size()));
+        }
+        result.has_warnings = warnings > 0;
         summary += errors + warnings == 0
                        ? tr("\n\nAnalyse : aucun problème détecté.")
                        : tr("\n\nAnalyse : %1 erreur(s), %2 avertissement(s) — voir Analyse ▸ "
@@ -8487,6 +8950,8 @@ void MainWindow::exportDst() {
         result.has_analysis_errors = errors > 0;
         if (overflow) {
             summary += tr("\n\nAttention : le motif dépasse le cadre.");
+            result.has_warnings = true;
+            problemLines << tr("Avertissement : le motif dépasse le cadre.");
         }
         // Limites du format cible (couleurs, étendue, cadres de la marque, déplacements découpés).
         QString limits;
@@ -8498,9 +8963,12 @@ void MainWindow::exportDst() {
             case formats::ExportIssueSeverity::Error:
                 limits += tr("\nImpossible : %1").arg(text);
                 result.blocking = true;
+                problemLines << tr("Impossible : %1").arg(text);
                 break;
             case formats::ExportIssueSeverity::Warning:
                 limits += tr("\nAttention : %1").arg(text);
+                result.has_warnings = true;
+                problemLines << tr("Avertissement : %1").arg(text);
                 break;
             case formats::ExportIssueSeverity::Info:
                 limits += tr("\nÀ noter : %1").arg(text);
@@ -8519,10 +8987,13 @@ void MainWindow::exportDst() {
             summary += tr(" Pensez à enregistrer aussi le projet (.osp).");
         }
         result.text = summary;
+        result.problems = problemLines.join(QLatin1Char('\n'));
         return result;
     };
 
     MachineExportDialog dialog(summarize, QString(), this);
+    // « Enregistrer le projet d'abord » : sans fermer le dialogue d'export.
+    connect(&dialog, &MachineExportDialog::saveProjectRequested, this, [this] { saveProject(); });
     dialog.exec();
     if (dialog.viewProblemsRequested()) {
         runAnalysis();
@@ -8531,17 +9002,36 @@ void MainWindow::exportDst() {
     if (dialog.result() != QDialog::Accepted) {
         return;
     }
-    const formats::FormatInfo* format = dialog.format();
+    MachineExportRequest request;
+    request.format = dialog.format();
+    request.options = dialog.options();
+    request.optimizations = dialog.optimizations();
+    request.companion = dialog.companion(); // HP-FMT-009 : fichier de couleurs voisin (DST, EXP)
+    // Nombre de points du fichier réellement écrit : celui de la séquence optimisée si demandée.
+    const auto* exportedSeq =
+        cache->valid && cache->key == request.optimizations && request.optimizations.reduce_trims
+            ? &cache->value.sequence
+            : nullptr;
+    request.writtenStitches =
+        exportedSeq ? stitch::compute_stats(*exportedSeq).stitches : stats.stitches;
+    runMachineExport(request);
+}
+
+bool MainWindow::runMachineExport(const MachineExportRequest& request) {
+    const formats::FormatInfo* format = request.format;
     if (format == nullptr || format->extensions.empty()) {
-        return;
+        return false;
     }
     const QString ext = QString::fromStdString(format->extensions.front());
-    QString file = QFileDialog::getSaveFileName(
-        this, tr("Exporter en %1").arg(QString::fromStdString(format->display_name)),
-        suggestedFilePath(ext),
-        tr("%1 (*.%2)").arg(QString::fromStdString(format->display_name), ext));
+    QString file = request.file;
     if (file.isEmpty()) {
-        return;
+        file = QFileDialog::getSaveFileName(
+            this, tr("Exporter en %1").arg(QString::fromStdString(format->display_name)),
+            suggestedFilePath(ext),
+            tr("%1 (*.%2)").arg(QString::fromStdString(format->display_name), ext));
+        if (file.isEmpty()) {
+            return false;
+        }
     }
     // Extension forcée : sans elle la machine ne reconnaît pas le fichier.
     if (QFileInfo(file).suffix().compare(ext, Qt::CaseInsensitive) != 0) {
@@ -8550,11 +9040,11 @@ void MainWindow::exportDst() {
 
     // AD-03 : composition projet -> fichier machine générique (AI-03b), partagée avec la CLI --
     // recalcule sa propre `effective_sequence`, garantie identique à `*sequence_`.
-    auto options = dialog.options();
+    auto options = request.options;
     options.design_name = QFileInfo(file).completeBaseName().toStdString();
-    const auto optimizations = dialog.optimizations();
+    const auto& optimizations = request.optimizations;
     stitch_generation::TrimReport trimReport;
-    auto companion = dialog.companion(); // HP-FMT-009 : fichier de couleurs voisin (DST, EXP)
+    auto companion = request.companion;
     const auto written = project_io::export_machine_file(
         project_, format->id, std::filesystem::path(file.toStdWString()), options, optimizations,
         &trimReport, &companion);
@@ -8565,20 +9055,16 @@ void MainWindow::exportDst() {
                "s'il existait, est intact.")
                 .arg(QString::fromStdString(format->display_name), QFileInfo(file).fileName()),
             written.error().message);
-        return;
+        return false;
     }
     rememberLastDirectory(file);
-    // Nombre de points du fichier réellement écrit : celui de la séquence optimisée si demandée.
-    const auto* exportedSeq =
-        cache->valid && cache->key == optimizations && optimizations.reduce_trims
-            ? &cache->value.sequence
-            : nullptr;
-    const auto writtenStitches =
-        exportedSeq ? stitch::compute_stats(*exportedSeq).stitches : stats.stitches;
     QString message =
-        tr("%1 exporté : %2 (%3 points).")
-            .arg(QString::fromStdString(format->display_name), QFileInfo(file).fileName())
-            .arg(writtenStitches);
+        tr("%1 exporté : %2")
+            .arg(QString::fromStdString(format->display_name), QFileInfo(file).fileName());
+    if (request.writtenStitches) {
+        message += tr(" (%1 points)").arg(*request.writtenStitches);
+    }
+    message += QLatin1Char('.');
     if (optimizations.reduce_trims) {
         message += tr(" Coupes supprimées : %1.").arg(trimReport.trims_removed);
     }
@@ -8590,6 +9076,46 @@ void MainWindow::exportDst() {
                        .arg(QString::fromStdString(companion.error));
     }
     offerRevealInFolder(file, message);
+    return true;
+}
+
+// Ctrl+Maj+E : refait l'export avec le format et les options du dernier export (mémorisés par
+// poste), sans résumé ni choix : seul le nom du fichier est demandé, dans le dernier dossier.
+// Si les réglages mémorisés sont refusés par le format, on rouvre le dialogue complet plutôt que
+// d'écrire un fichier que la machine refuserait.
+void MainWindow::exportDstQuick() {
+    if (!sequence_) {
+        return;
+    }
+    const auto saved = MachineExportDialog::loadSavedExport();
+    MachineExportRequest request;
+    request.format = formats::find_format(saved.formatId.toStdString());
+    if (request.format == nullptr) {
+        request.format = formats::find_format("dst");
+    }
+    request.options = saved.options;
+    request.optimizations = saved.optimizations;
+    request.companion = saved.companion;
+    if (request.format == nullptr || !request.format->can_write) {
+        exportDst();
+        return;
+    }
+    const auto exported = project_io::with_start_point(*sequence_, request.options.start);
+    for (const auto& issue :
+         formats::check_export_limits(exported, *request.format, request.options)) {
+        if (issue.severity == formats::ExportIssueSeverity::Error) {
+            statusBar()->showMessage(
+                tr("Export rapide impossible avec les derniers réglages (%1) : résumé ouvert.")
+                    .arg(QString::fromStdString(issue.message)),
+                8000);
+            exportDst();
+            return;
+        }
+    }
+    if (!request.optimizations.reduce_trims) {
+        request.writtenStitches = stitch::compute_stats(*sequence_).stitches;
+    }
+    runMachineExport(request);
 }
 
 void MainWindow::importDst() {
@@ -8655,6 +9181,7 @@ void MainWindow::importDstFile(const QString& file) {
     updateActions();
     // Le design importé EST l'état de départ du document : propre, comme un projet ouvert.
     undoStack_.markClean();
+    savedAt_ = QTime::currentTime();
     setWindowModified(false);
 
     if (sequence_) {
@@ -8812,6 +9339,13 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
                              "arrière : retirer le dernier point")
                               .arg(pairs));
         return;
+    }
+    // Couche Vecteurs masquée : un clic « sans effet » sur une forme se dit au lieu de se taire.
+    if (!showVectorsAct_->isChecked() && currentTool_ == Tool::Select && !mergeMode_ &&
+        !objectsAtPointMm(project_, posMm).empty()) {
+        statusBar()->showMessage(tr("Une forme vectorielle est sous le curseur, mais la couche "
+                                    "Vecteurs est masquée (touche 3 pour l'afficher)."),
+                                 6000);
     }
     // Priorité aux objets vectoriels lorsqu'ils sont affichés (hors fusion).
     if (showVectorsAct_->isChecked() && !mergeMode_) {
@@ -9081,6 +9615,12 @@ void MainWindow::onSelectionRectangle(QRectF rectMm, SelectMode mode, bool cross
 }
 
 void MainWindow::onSelectBelow(QPointF posMm, QPoint globalPos, SelectMode mode) {
+    if (currentTool_ == Tool::Select && !showVectorsAct_->isChecked() && !mergeMode_) {
+        statusBar()->showMessage(
+            tr("La couche Vecteurs est masquée (touche 3 pour l'afficher) : rien à sélectionner."),
+            6000);
+        return;
+    }
     if (currentTool_ != Tool::Select || !showVectorsAct_->isChecked() || mergeMode_) {
         return;
     }
@@ -9543,6 +10083,7 @@ void MainWindow::updateActions() {
         tr("Aucun point généré : créez d'abord un objet de broderie (tatami, satin…).");
     setEnabledWithReason(statsAct_, sequence_.has_value(), needStitches);
     setEnabledWithReason(exportDstAct_, sequence_.has_value(), needStitches);
+    setEnabledWithReason(exportDstQuickAct_, sequence_.has_value(), needStitches);
     setEnabledWithReason(productionAct_, sequence_.has_value(), needStitches);
     // Actions « document requis » : mêmes gardes que leurs slots (qui restent en place).
     // Même critère que l'accueil, l'autosave et les slots, import machine inclus.

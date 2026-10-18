@@ -31,6 +31,11 @@ public:
     void setMode(ThemeMode mode);     // ré-applique + persiste
     void setDensity(Density density); // ré-applique + persiste
 
+    // Densité proposée au premier lancement (aucun choix enregistré) : « Compacte » sous
+    // 800 px de hauteur utile d'écran (portables 768 px, fenêtre à 125-150 %), sinon
+    // « Confortable ». Fonction pure : testable sans écran particulier.
+    [[nodiscard]] static Density densityForScreenHeight(int availableHeightPx);
+
 signals:
     // Émis après un changement de thème/densité : les vues à dessin personnalisé
     // (canevas) doivent se redessiner.

@@ -22,6 +22,7 @@
 
 #include "app_theme.hpp"
 #include "openstitch/core/app_info.hpp"
+#include "responsive.hpp"
 
 #include <algorithm>
 
@@ -136,6 +137,7 @@ GesturesDialog::GesturesDialog(QObject* actionRoot, QWidget* parent)
     setSizeGripEnabled(true);
     resize(760, 540);
     setMinimumSize(460, 320);
+    fitDialogToScreen(this);
 
     auto* root = new QVBoxLayout(this);
     applyLayoutMetrics(root);
@@ -354,6 +356,7 @@ QuickStartDialog::QuickStartDialog(QObject* actionRoot, std::vector<QuickStartSt
     setSizeGripEnabled(true);
     resize(560, 560);
     setMinimumSize(380, 300);
+    fitDialogToScreen(this);
     build(actionRoot);
 }
 

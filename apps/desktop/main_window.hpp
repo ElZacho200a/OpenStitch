@@ -12,6 +12,7 @@
 #include <QString>
 #include <QStringList>
 
+#include <QTime>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -43,6 +44,7 @@ class QGraphicsPixmapItem;
 class QGraphicsEllipseItem;
 class QGraphicsRectItem;
 class QLabel;
+class QToolButton;
 class QAction;
 class QListWidget;
 class QPushButton;
@@ -77,6 +79,7 @@ class ThreadPanel;
 class ThreadStrip;
 class WorkflowPanel;
 class EmptyStateWidget;
+struct MachineExportRequest;
 // Seam de test unique (déclaré ici pour le friend ci-dessous) : donne à
 // MainWindowTest (tests/unit/desktop/test_main_window.cpp) accès à
 // applyLoadedProject() sans exposer de méthode de chargement dans l'API
@@ -189,6 +192,12 @@ private slots:
     void showStatistics();
     void setHoopSize();
     void exportDst();
+    void exportDstQuick(); // Ctrl+Maj+E : derniers réglages, nom de fichier seulement
+    bool runMachineExport(const MachineExportRequest& request); // choix du fichier puis écriture
+    // Résumé chiffré de fin de numérisation (points, durée, fils, problèmes) en barre d'état avec
+    // un bouton « Voir », puis dock Analyse ouvert (HP-UX-030/031) : aucune fenêtre modale.
+    void announceAutoDigitizeResult(const QString& baseMessage);
+    void openQualityDock(); // dock Analyse ouvert sur une analyse à jour (HP-UX-031, étape 1)
     void importDst();
     // Interopérabilité esquisses avec la CAO tierce (ex. Fusion 360, cf.
     // openstitch/formats/dxf.hpp) : import AJOUTE des objets vectoriels au
@@ -209,6 +218,9 @@ private slots:
     void onSimSliderMoved(int value);
     void onSimTick();
     void exitSimulation();
+    // Saut au début du bloc de couleur suivant (+1) ou précédent (-1) (HP-UX-036).
+    void jumpSimulationColor(int direction);
+    [[nodiscard]] std::vector<int> colorBlockStarts() const;
     void moveObjectUp();
     void moveObjectDown();
     void toggleObjectLock();
@@ -795,6 +807,10 @@ private:
     // Cyclage par re-clic au même point (HP-UX-020) : renvoie l'objet à sélectionner.
     [[nodiscard]] ObjectId cycleTarget(const std::vector<ObjectId>& under, QPointF posMm);
     void zoomToSelection();
+    // Mode « Isoler » (HP-UX-034) : protection de SESSION, jamais écrite dans le projet. Les
+    // formes non isolées sont masquées et exclues du clic, du rectangle et des flèches.
+    void toggleIsolation(bool on);
+    [[nodiscard]] bool isolating() const { return !isolatedIds_.empty(); }
     void selectRegionsWithSameColor();
     void selectNeighbourRegions();
     // Fusionne toutes les régions sélectionnées dans l'active (elle garde sa couleur) : un seul
@@ -915,8 +931,9 @@ private:
     CanvasView* view_{nullptr};
     EmptyStateWidget* emptyState_{nullptr};
     QLabel* cursorLabel_{nullptr};
-    QList<QGraphicsItem*> baseItems_;   // couche image/vecteurs/régions
-    QList<QGraphicsItem*> stitchItems_; // couche points (reconstruite seule en simu)
+    QToolButton* hoopStatusButton_{nullptr}; // taille du cadre cliquable (HP-UX-033)
+    QList<QGraphicsItem*> baseItems_;        // couche image/vecteurs/régions
+    QList<QGraphicsItem*> stitchItems_;      // couche points (reconstruite seule en simu)
     QAction* undoAct_{nullptr};
     QAction* redoAct_{nullptr};
     QAction* cropAct_{nullptr};
@@ -1078,6 +1095,7 @@ private:
     // `sequenceImported_`, §17).
     std::optional<stitch::StitchSequence> sequence_;
     QAction* exportDstAct_{nullptr};
+    QAction* exportDstQuickAct_{nullptr};
 
     // Actions partagées entre menus et barre principale (une seule action : état,
     // raccourci et info-bulle identiques aux deux endroits).
@@ -1234,6 +1252,8 @@ private:
     QPointer<GesturesDialog> gesturesDialog_;
     QPointer<QuickStartDialog> quickStartDialog_;
     QPointer<QMenu> selectBelowMenu_;
+    std::vector<ObjectId> isolatedIds_;
+    QAction* isolateAct_{nullptr};
     QPointF cycleAnchorMm_;
     std::vector<ObjectId> cycleIds_;
     int cycleIndex_{0};
@@ -1353,6 +1373,9 @@ private:
     QShortcut* drawBackspaceShortcut_{nullptr};
     QAction* hidePanelsAct_{nullptr};
     QLabel* savedLabel_{nullptr};
+    // Instant de la dernière sauvegarde (ou ouverture) : « Enregistré à HH:mm » ne doit pas
+    // changer quand un undo ramène le document à l'état enregistré (UX-32).
+    QTime savedAt_;
     QTimer* statusClearTimer_{nullptr};
 
     // Structure du document (Objets / Régions).
@@ -1402,6 +1425,8 @@ private:
     QGraphicsItem* simMarker_{nullptr};
     QAction* simPlayAct_{nullptr};
     QAction* simExitAct_{nullptr};
+    QAction* simPrevColorAct_{nullptr};
+    QAction* simNextColorAct_{nullptr};
     QTimer* simTimer_{nullptr};
     int simStep_{-1}; // -1 = simulation inactive (tout affiché)
 

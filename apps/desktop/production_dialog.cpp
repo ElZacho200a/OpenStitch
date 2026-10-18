@@ -34,6 +34,7 @@
 
 #include "openstitch/stitch_render/raster.hpp"
 #include "openstitch/stitch_render/segments.hpp"
+#include "responsive.hpp"
 
 namespace openstitch::desktop {
 
@@ -53,7 +54,8 @@ ProductionDialog::ProductionDialog(const document::Project& project,
     : QDialog(parent), project_(project), sequence_(sequence), renderParams_(renderParams) {
     setObjectName(QStringLiteral("productionDialog"));
     setWindowTitle(tr("Fiche de production"));
-    resize(1000, 720);
+    resize(920, 600);
+    fitDialogToScreen(this);
 
     name_ = new QLineEdit(suggestedName, this);
     name_->setObjectName(QStringLiteral("production_name"));

@@ -91,6 +91,12 @@ void MainWindow::buildObjectEditActions(QMenu* editMenu) {
     add(editMenu, selectAllObjectsAct_, tr("Sélectionner &tous les objets"),
         QStringLiteral("action_selectAllObjects"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_A),
         tr("Sélectionne toutes les formes visibles du design."), [this] { selectAllObjects(); });
+    add(editMenu, isolateAct_, tr("Isoler la sélection"), QStringLiteral("action_isolate"),
+        QKeySequence(Qt::SHIFT | Qt::Key_I),
+        tr("Masque les autres formes et les exclut du clic : protège le reste du design pendant "
+           "que vous travaillez. État de session, non enregistré dans le projet (Maj+I)."),
+        [this] { toggleIsolation(isolateAct_->isChecked()); });
+    isolateAct_->setCheckable(true);
     add(editMenu, selectSameColorObjectsAct_, tr("Sélectionner les objets de &même couleur"),
         QStringLiteral("action_selectSameColorObjects"), QKeySequence(),
         tr("Sélectionne toutes les formes brodées de la même couleur que la forme active."),
@@ -200,6 +206,8 @@ void MainWindow::updateObjectEditActions() {
                          tr("Copiez d'abord des formes (Édition ▸ Copier)."));
     setEnabledWithReason(selectAllObjectsAct_, anyObject, needDesign);
     setEnabledWithReason(selectSameColorObjectsAct_, anyTarget, needShapes);
+    setEnabledWithReason(isolateAct_, anyTarget || isolating(),
+                         tr("Sélectionnez d'abord la ou les formes à isoler."));
     setEnabledWithReason(embroideryColorAct_, !targetEmbroideryIds().empty(),
                          tr("Sélectionnez d'abord une forme brodée."));
     for (QAction* act : {designCenterAct_, designFitAct_, designScaleAct_, designRotateAct_,
@@ -344,6 +352,29 @@ void MainWindow::selectAllInActiveLayer() {
     } else {
         selectAllRegions();
     }
+}
+
+void MainWindow::toggleIsolation(bool on) {
+    if (!on) {
+        isolatedIds_.clear();
+        statusBar()->showMessage(tr("Isolation terminée : toutes les formes sont à nouveau "
+                                    "visibles."),
+                                 5000);
+    } else {
+        const std::vector<ObjectId> targets = transformTargets();
+        if (targets.empty()) {
+            QSignalBlocker block(isolateAct_);
+            isolateAct_->setChecked(false);
+            statusBar()->showMessage(tr("Sélectionnez d'abord la ou les formes à isoler."), 5000);
+            return;
+        }
+        isolatedIds_ = targets;
+        statusBar()->showMessage(
+            tr("%1 forme(s) isolée(s) — Maj+I pour quitter l'isolation.").arg(isolatedIds_.size()),
+            8000);
+    }
+    displayImage(processed_);
+    updateActions();
 }
 
 void MainWindow::zoomToSelection() {

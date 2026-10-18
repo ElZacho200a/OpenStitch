@@ -4,12 +4,17 @@
 #include <QAbstractItemDelegate>
 #include <QAbstractItemView>
 #include <QAction>
+#include <QComboBox>
+#include <QDropEvent>
+#include <QHBoxLayout>
 #include <QHeaderView>
 #include <QIcon>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMenu>
 #include <QPainter>
 #include <QPixmap>
+#include <QScrollBar>
 #include <QStyle>
 #include <QStyledItemDelegate>
 #include <QTabWidget>
@@ -18,7 +23,10 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <array>
+#include <functional>
 #include <map>
+#include <set>
 
 #include "app_theme.hpp"
 #include "ui_icons.hpp"
@@ -36,6 +44,29 @@ QString type_label(const document::EmbroideryObject& e) {
            : e.is_directional()                ? QObject::tr("Directionnel")
            : e.is_satin() || e.is_auto_satin() ? QObject::tr("Satin")
                                                : QObject::tr("Contour");
+}
+
+using icons::StitchGlyph;
+
+// Famille de point d'un objet de broderie (glyphe, pastille et filtre par type).
+StitchGlyph glyph_of(const document::EmbroideryObject& e) {
+    return e.is_tatami()                       ? StitchGlyph::Tatami
+           : e.is_directional()                ? StitchGlyph::Directional
+           : e.is_satin() || e.is_auto_satin() ? StitchGlyph::Satin
+                                               : StitchGlyph::Contour;
+}
+
+const QIcon& glyph_icon(StitchGlyph g) {
+    // Une icône par famille, construite une fois : le moteur d'icône relit le thème à chaque
+    // peinture (teinte claire/sombre, état du widget) et dessine à la densité réelle de l'écran.
+    static const std::array<QIcon, 6> cache = [] {
+        std::array<QIcon, 6> a;
+        for (int i = 0; i < 6; ++i) {
+            a[static_cast<std::size_t>(i)] = icons::stitchGlyph(static_cast<StitchGlyph>(i));
+        }
+        return a;
+    }();
+    return cache[static_cast<std::size_t>(g)];
 }
 
 // Suffixe + infobulle d'état (Lot 8.2) : "" / tooltip vide pour Clean, l'état
@@ -78,16 +109,21 @@ QString display_name(const document::EmbroideryObject& e) {
     return name;
 }
 
-constexpr int kRawNameRole = Qt::UserRole + 1;     // nom brut (édition)
-constexpr int kShownTextRole = Qt::UserRole + 2;   // libellé formaté (restauré après édition)
-constexpr int kGroupSourceRole = Qt::UserRole + 3; // objet vectoriel source d'un groupe
-constexpr int kSwatchRole = Qt::UserRole + 4;      // QColor du fil (pastille)
-constexpr int kTypeRole = Qt::UserRole + 5;        // libellé de type (pastille à droite)
+constexpr int kRawNameRole = Qt::UserRole + 1;      // nom brut (édition)
+constexpr int kShownTextRole = Qt::UserRole + 2;    // libellé formaté (restauré après édition)
+constexpr int kGroupSourceRole = Qt::UserRole + 3;  // objet vectoriel source d'un groupe
+constexpr int kSwatchRole = Qt::UserRole + 4;       // QColor du fil (pastille)
+constexpr int kTypeRole = Qt::UserRole + 5;         // libellé de type (pastille à droite)
+constexpr int kGlyphRole = Qt::UserRole + 6;        // StitchGlyph (filtre par type)
+constexpr int kTextFlagRole = Qt::UserRole + 7;     // objet issu du lettrage
+constexpr int kSourceVectorRole = Qt::UserRole + 8; // forme source d'une ligne de broderie
+constexpr int kVectorIdRole = Qt::UserRole + 9;     // ligne de forme vectorielle non cousue
 constexpr int kVisibleCol = 1;
 constexpr int kLockCol = 2;
 
 constexpr int kSwatchSize = 14;
 constexpr int kSwatchGap = 6;
+constexpr int kGlyphSize = 16;
 
 // Teinte d'accent douce (fond de la ligne sélectionnée) : jeton du thème.
 QColor soft_accent(const Tokens& t) {
@@ -127,6 +163,7 @@ public:
         }
         const QVariant swatchData = index.data(kSwatchRole);
         const QString type = index.data(kTypeRole).toString();
+        const QIcon glyph = opt.icon; // pictogramme de type, peint ici à côté du libellé
         opt.features &= ~QStyleOptionViewItem::HasDecoration;
         opt.icon = QIcon();
         const QRect cell = opt.rect;
@@ -138,9 +175,15 @@ public:
             pillWidth = pfm.horizontalAdvance(type) + 2 * t.space3;
             textRect.setRight(cell.right() - pillWidth - t.space2);
         }
+        int labelLeft = cell.left() + t.space2;
         if (swatchData.isValid()) {
-            textRect.setLeft(cell.left() + t.space2 + kSwatchSize + kSwatchGap);
+            labelLeft += kSwatchSize + kSwatchGap;
         }
+        const int glyphLeft = labelLeft;
+        if (!glyph.isNull()) {
+            labelLeft += kGlyphSize + kSwatchGap;
+        }
+        textRect.setLeft(labelLeft);
         // Texte dessiné ici (et non par la peinture de base, qui redessinerait aussi l'icône
         // d'origine) : le type est retiré du libellé, la pastille de droite le porte déjà.
         QString text = opt.text;
@@ -154,6 +197,13 @@ public:
         painter->drawText(labelRect, Qt::AlignVCenter | Qt::AlignLeft,
                           opt.fontMetrics.elidedText(text, Qt::ElideRight, labelRect.width()));
         painter->restore();
+
+        if (!glyph.isNull()) {
+            glyph.paint(
+                painter,
+                QRect(glyphLeft, cell.center().y() - kGlyphSize / 2 + 1, kGlyphSize, kGlyphSize),
+                Qt::AlignCenter, QIcon::Normal, QIcon::Off);
+        }
 
         painter->save();
         painter->setRenderHint(QPainter::Antialiasing, true);
@@ -183,6 +233,33 @@ public:
         QSize s = QStyledItemDelegate::sizeHint(option, index);
         s.setHeight(std::max(s.height(), AppTheme::instance().tokens().controlHeight));
         return s;
+    }
+};
+
+// Liste des objets : le glisser-déposer ne déplace JAMAIS les lignes lui-même (le document fait
+// foi) -- le dépôt est remis au panneau, qui demande la commande de réordonnancement.
+class ObjectTree final : public QTreeWidget {
+public:
+    using QTreeWidget::QTreeWidget;
+    std::function<void(const QPoint&)> onDrop;
+
+protected:
+    bool viewportEvent(QEvent* event) override {
+        // Les dépôts arrivent par le viewport : on les prend ici, avant le traitement de base.
+        if (event->type() == QEvent::Drop) {
+            dropEvent(static_cast<QDropEvent*>(event));
+            return true;
+        }
+        return QTreeWidget::viewportEvent(event);
+    }
+
+    void dropEvent(QDropEvent* event) override {
+        if (onDrop) {
+            onDrop(event->position().toPoint());
+        }
+        // Action « copie » : la source ne supprime pas ses lignes en fin de glissement.
+        event->setDropAction(Qt::CopyAction);
+        event->accept();
     }
 };
 
@@ -225,12 +302,35 @@ DocumentPanel::DocumentPanel(QWidget* parent) : QWidget(parent) {
     filterEdit_->setClearButtonEnabled(true);
     filterEdit_->setAccessibleName(tr("Rechercher dans le document"));
     searchAction_ = filterEdit_->addAction(QIcon(), QLineEdit::LeadingPosition);
-    layout->addWidget(filterEdit_);
+    // Filtre par type de point (HP-UX-042) à côté de la recherche texte ; les deux se cumulent.
+    typeFilter_ = new QComboBox(this);
+    typeFilter_->setObjectName(QStringLiteral("combo_documentTypeFilter"));
+    typeFilter_->setAccessibleName(tr("Filtrer par type de point"));
+    typeFilter_->setToolTip(tr("N'afficher que les objets d'un type de point."));
+    // Compact : ne doit pas élargir le dock (le canevas garde sa place sur petit écran).
+    typeFilter_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    typeFilter_->setMinimumContentsLength(5);
+    typeFilter_->addItem(tr("Tous les types"), -1);
+    const std::pair<StitchGlyph, QString> typeEntries[] = {
+        {StitchGlyph::Tatami, tr("Tatami")},   {StitchGlyph::Satin, tr("Satin")},
+        {StitchGlyph::Contour, tr("Contour")}, {StitchGlyph::Directional, tr("Directionnel")},
+        {StitchGlyph::Text, tr("Texte")},      {StitchGlyph::Vector, tr("Vecteur")}};
+    for (const auto& [glyph, label] : typeEntries) {
+        typeFilter_->addItem(glyph_icon(glyph), label, static_cast<int>(glyph));
+    }
+    auto* filterRow = new QHBoxLayout;
+    filterRow->setContentsMargins(0, 0, 0, 0);
+    filterRow->addWidget(filterEdit_, 1);
+    filterRow->addWidget(typeFilter_);
+    layout->addLayout(filterRow);
+    connect(typeFilter_, &QComboBox::currentIndexChanged, this, [this] { applyFilter(); });
     tabs_ = new QTabWidget(this);
     layout->addWidget(tabs_);
     connect(filterEdit_, &QLineEdit::textChanged, this, [this] { applyFilter(); });
 
-    objectsList_ = new QTreeWidget(tabs_);
+    auto* tree = new ObjectTree(tabs_);
+    tree->onDrop = [this](const QPoint& pos) { handleDrop(pos); };
+    objectsList_ = tree;
     objectsList_->setObjectName(QStringLiteral("tree_documentObjects"));
     objectsList_->setAccessibleName(tr("Objets de broderie"));
     objectsList_->setColumnCount(3);
@@ -247,6 +347,20 @@ DocumentPanel::DocumentPanel(QWidget* parent) : QWidget(parent) {
     objectsList_->setIndentation(12);
     objectsList_->setRootIsDecorated(true);
     objectsList_->setItemDelegate(new ObjectRowDelegate(objectsList_));
+    // Ctrl/Maj + clic : sélection étendue, synchronisée avec celle de MainWindow dans les deux
+    // sens.
+    objectsList_->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    // Ordre de couture par glisser-déposer (via ReorderEmbroideryCommand côté MainWindow).
+    objectsList_->setDragDropMode(QAbstractItemView::DragDrop);
+    objectsList_->setDefaultDropAction(Qt::MoveAction);
+    objectsList_->setDropIndicatorShown(true);
+    objectsList_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(objectsList_, &QWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
+        if (QMenu* menu = createContextMenu(pos)) {
+            menu->exec(objectsList_->viewport()->mapToGlobal(pos));
+            delete menu;
+        }
+    });
     regionsList_ = new QListWidget(tabs_);
     regionsList_->setAccessibleName(tr("Régions de segmentation"));
     tabs_->addTab(objectsList_, tr("Objets"));
@@ -255,23 +369,8 @@ DocumentPanel::DocumentPanel(QWidget* parent) : QWidget(parent) {
     applyTheme();
     connect(&AppTheme::instance(), &AppTheme::changed, this, [this] { applyTheme(); });
 
-    connect(objectsList_, &QTreeWidget::currentItemChanged, this,
-            [this](QTreeWidgetItem* item, QTreeWidgetItem*) {
-                if (syncing_ || item == nullptr)
-                    return;
-                // Un nœud de groupe (plan satin multi-sections) ne porte pas
-                // d'ObjectId propre -- rien à sélectionner côté document.
-                const QVariant data = item->data(0, Qt::UserRole);
-                if (!data.isValid()) {
-                    // Nœud de groupe : sélectionne la forme source, donc toutes ses sections.
-                    const QVariant source = item->data(0, kGroupSourceRole);
-                    if (source.isValid()) {
-                        emit groupSelected(ObjectId{source.toULongLong()}, item->childCount());
-                    }
-                    return;
-                }
-                emit embroiderySelected(ObjectId{data.toULongLong()});
-            });
+    connect(objectsList_, &QTreeWidget::itemSelectionChanged, this,
+            [this] { onObjectSelectionChanged(); });
     // Ctrl/Maj + clic : sélection multiple de régions (comme sur le canevas).
     regionsList_->setSelectionMode(QAbstractItemView::ExtendedSelection);
     connect(regionsList_, &QListWidget::itemSelectionChanged, this, [this] {
@@ -347,7 +446,48 @@ void DocumentPanel::refresh(
     syncing_ = true;
 
     renamingItem_ = nullptr; // les lignes sont reconstruites
+
+    // État de l'utilisateur à restaurer par IDENTITÉ (jamais par position) : repli des groupes,
+    // lignes sélectionnée / courante, défilement (HP-UX-037).
+    using RowKey = std::pair<char, std::uint64_t>; // 'e' broderie, 'v' forme non cousue, 'g' groupe
+    const auto keyOf = [](const QTreeWidgetItem* item) -> RowKey {
+        if (item->data(0, Qt::UserRole).isValid()) {
+            return {'e', item->data(0, Qt::UserRole).toULongLong()};
+        }
+        if (item->data(0, kVectorIdRole).isValid()) {
+            return {'v', item->data(0, kVectorIdRole).toULongLong()};
+        }
+        if (item->data(0, kGroupSourceRole).isValid()) {
+            return {'g', item->data(0, kGroupSourceRole).toULongLong()};
+        }
+        return {0, 0};
+    };
+    std::set<std::uint64_t> collapsedGroups;
+    std::set<RowKey> selectedKeys;
+    RowKey currentKey{0, 0};
+    {
+        const std::function<void(QTreeWidgetItem*)> visit = [&](QTreeWidgetItem* item) {
+            const RowKey key = keyOf(item);
+            if (key.first == 'g' && !item->isExpanded()) {
+                collapsedGroups.insert(key.second);
+            }
+            if (item->isSelected()) {
+                selectedKeys.insert(key);
+            }
+            if (item == objectsList_->currentItem()) {
+                currentKey = key;
+            }
+            for (int c = 0; c < item->childCount(); ++c) {
+                visit(item->child(c));
+            }
+        };
+        for (int i = 0; i < objectsList_->topLevelItemCount(); ++i) {
+            visit(objectsList_->topLevelItem(i));
+        }
+    }
+    const int scrollValue = objectsList_->verticalScrollBar()->value();
     objectsList_->clear();
+    order_.clear();
 
     // §21 : regroupe les sections d'un même plan satin (même `source_vector`,
     // cf. `satin_planning::create_satin_plan`) sous un nœud parent -- compte
@@ -366,6 +506,10 @@ void DocumentPanel::refresh(
         }
     }
     std::map<std::uint64_t, QTreeWidgetItem*> groupBySourceVector;
+    std::map<std::uint64_t, const document::VectorObject*> vectorById;
+    for (const auto& v : project.vector_objects) {
+        vectorById[v.id.value] = &v;
+    }
 
     const auto find_vector_name = [&project](ObjectId id) -> QString {
         for (const auto& v : project.vector_objects) {
@@ -378,6 +522,7 @@ void DocumentPanel::refresh(
     int order = 0;
     for (const auto& e : project.embroidery_objects) {
         ++order;
+        order_.push_back(e.id);
         stitch_generation::ObjectEditState state = stitch_generation::ObjectEditState::Clean;
         for (const auto& [id, s] : editStates) {
             if (id == e.id) {
@@ -401,6 +546,7 @@ void DocumentPanel::refresh(
                 group->setExpanded(true);
                 group->setData(0, kGroupSourceRole, static_cast<qulonglong>(e.source_vector.value));
                 group->setToolTip(0, tr("Cliquer sélectionne toutes les sections de cette forme."));
+                group->setFlags(group->flags() & ~Qt::ItemIsDragEnabled);
                 // Pas de Qt::UserRole ici (isValid() == false) : un clic sur
                 // le groupe lui-même ne sélectionne rien côté document.
             }
@@ -408,7 +554,13 @@ void DocumentPanel::refresh(
         } else {
             item = new QTreeWidgetItem(objectsList_, {itemText(e, order, suffix)});
         }
-        item->setIcon(0, swatch(e.rgb));
+        const auto sourceIt = vectorById.find(e.source_vector.value);
+        const bool fromText = sourceIt != vectorById.end() && sourceIt->second->text_owner;
+        const StitchGlyph glyph = fromText ? StitchGlyph::Text : glyph_of(e);
+        item->setIcon(0, glyph_icon(glyph)); // pictogramme de type ; la pastille de fil est peinte
+        item->setData(0, kGlyphRole, static_cast<int>(glyph_of(e)));
+        item->setData(0, kTextFlagRole, fromText);
+        item->setData(0, kSourceVectorRole, static_cast<qulonglong>(e.source_vector.value));
         item->setData(0, kSwatchRole, QColor(e.rgb[0], e.rgb[1], e.rgb[2]));
         item->setData(0, kTypeRole, type_label(e));
         item->setData(0, Qt::UserRole, static_cast<qulonglong>(e.id.value));
@@ -420,6 +572,53 @@ void DocumentPanel::refresh(
         item->setToolTip(kVisibleCol, tr("Visible : décocher masque l'objet (annulable)."));
         item->setToolTip(kLockCol, tr("Ordre figé : l'optimisation ne déplace pas cet objet."));
     }
+
+    // Formes vectorielles non cousues : lignes indépendantes (navigables avant toute couture).
+    std::set<std::uint64_t> sewnSources;
+    for (const auto& e : project.embroidery_objects) {
+        sewnSources.insert(e.source_vector.value);
+    }
+    for (const auto& v : project.vector_objects) {
+        if (sewnSources.count(v.id.value) != 0) {
+            continue;
+        }
+        const QString name = QString::fromStdString(v.name);
+        const QString vis = v.visible ? QString() : tr("  (masqué)");
+        const QString label = tr("Vecteur — %1%2").arg(name, vis);
+        auto* item = new QTreeWidgetItem(objectsList_, {label});
+        item->setFlags(item->flags() & ~(Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled));
+        item->setIcon(0, glyph_icon(StitchGlyph::Vector));
+        item->setData(0, kSwatchRole, QColor(v.rgb[0], v.rgb[1], v.rgb[2]));
+        item->setData(0, kTypeRole, tr("Vecteur"));
+        item->setData(0, kGlyphRole, static_cast<int>(StitchGlyph::Vector));
+        item->setData(0, kVectorIdRole, static_cast<qulonglong>(v.id.value));
+        item->setData(0, kShownTextRole, label);
+        item->setToolTip(0, tr("Forme non cousue : aucun objet de broderie ne la remplit encore."));
+    }
+
+    // Restauration par identité (repli, sélection, ligne courante) puis du défilement.
+    for (const auto& [source, group] : groupBySourceVector) {
+        group->setExpanded(collapsedGroups.count(source) == 0);
+    }
+    {
+        const std::function<void(QTreeWidgetItem*)> restore = [&](QTreeWidgetItem* item) {
+            const RowKey key = keyOf(item);
+            if (selectedKeys.count(key) != 0) {
+                item->setSelected(true);
+            }
+            if (key == currentKey && key.first != 0) {
+                objectsList_->setCurrentItem(item, 0, QItemSelectionModel::NoUpdate);
+            }
+            for (int c = 0; c < item->childCount(); ++c) {
+                restore(item->child(c));
+            }
+        };
+        for (int i = 0; i < objectsList_->topLevelItemCount(); ++i) {
+            restore(objectsList_->topLevelItem(i));
+        }
+    }
+    objectsList_->doItemsLayout();
+    objectsList_->verticalScrollBar()->setValue(scrollValue);
 
     regionsList_->clear();
     if (project.segmentation) {
@@ -445,9 +644,10 @@ void DocumentPanel::applyTheme() {
     const auto css = [](const QColor& c) { return c.name(QColor::HexRgb); };
     const QString sheet =
         QStringLiteral(
-            "QLineEdit { background: %1; color: %2; border: 1px solid %3; border-radius: %4px;"
+            "QLineEdit, QComboBox { background: %1; color: %2; border: 1px solid %3; "
+            "border-radius: %4px;"
             " padding: %5px %6px; }"
-            "QLineEdit:focus { border-color: %7; }"
+            "QLineEdit:focus, QComboBox:focus { border-color: %7; }"
             "QTabWidget::pane { border: none; border-top: 1px solid %3; }"
             "QTabBar::tab { background: transparent; color: %8; border: none;"
             " border-bottom: 2px solid transparent; padding: %5px %9px; margin-right: %5px; }"
@@ -486,17 +686,35 @@ void DocumentPanel::restoreRenamedText() {
 
 void DocumentPanel::applyFilter() {
     const QString needle = filterEdit_ != nullptr ? filterEdit_->text().trimmed() : QString();
+    const int typeWanted = typeFilter_ != nullptr ? typeFilter_->currentData().toInt() : -1;
     const auto matches = [&needle](const QString& text) {
         return needle.isEmpty() || text.contains(needle, Qt::CaseInsensitive);
     };
+    // Type : la famille de point, « Texte » (objets issus du lettrage) ou « Vecteur » (formes non
+    // cousues). Une ligne de groupe n'a pas de type propre : elle suit ses sections.
+    const auto typeMatches = [typeWanted](const QTreeWidgetItem* item) {
+        if (typeWanted < 0) {
+            return true;
+        }
+        if (typeWanted == static_cast<int>(StitchGlyph::Text)) {
+            return item->data(0, kTextFlagRole).toBool();
+        }
+        return item->data(0, kGlyphRole).isValid() &&
+               item->data(0, kGlyphRole).toInt() == typeWanted;
+    };
     for (int i = 0; i < objectsList_->topLevelItemCount(); ++i) {
         QTreeWidgetItem* top = objectsList_->topLevelItem(i);
-        bool any = matches(top->text(0));
+        if (top->childCount() == 0) {
+            top->setHidden(!(matches(top->text(0)) && typeMatches(top)));
+            continue;
+        }
+        bool any = typeWanted < 0 && matches(top->text(0));
         for (int c = 0; c < top->childCount(); ++c) {
             QTreeWidgetItem* child = top->child(c);
-            const bool childMatches = matches(child->text(0)) || matches(top->text(0));
-            child->setHidden(!childMatches);
-            any = any || childMatches;
+            const bool childShown =
+                (matches(child->text(0)) || matches(top->text(0))) && typeMatches(child);
+            child->setHidden(!childShown);
+            any = any || childShown;
         }
         top->setHidden(!any);
     }
@@ -522,30 +740,39 @@ void DocumentPanel::syncRegions(const std::vector<std::uint64_t>& ids, std::uint
 
 void DocumentPanel::syncSelection(Kind kind, std::uint64_t id) {
     syncing_ = true;
-    if (kind == Kind::Embroidery) {
+    // Sélection EXPLICITE de la ligne (et non setCurrentItem seul : son effet sur la sélection
+    // dépend du mode), toujours sans signal.
+    const auto selectOnly = [this](QTreeWidgetItem* item) {
         objectsList_->clearSelection();
-        objectsList_->setCurrentItem(nullptr);
-        // Parcourt les items de premier niveau ET leurs enfants (sections
-        // groupées, §21) -- la sélection peut cibler n'importe quel niveau.
+        if (item != nullptr) {
+            item->setSelected(true);
+            objectsList_->setCurrentItem(item, 0, QItemSelectionModel::NoUpdate);
+        } else {
+            objectsList_->setCurrentItem(nullptr);
+        }
+    };
+    // Cherche une ligne (premier niveau ET sections groupées, §21) par rôle d'identité.
+    const auto find = [this](int role, std::uint64_t wanted) -> QTreeWidgetItem* {
         for (int i = 0; i < objectsList_->topLevelItemCount(); ++i) {
             QTreeWidgetItem* top = objectsList_->topLevelItem(i);
-            if (top->data(0, Qt::UserRole).isValid() &&
-                top->data(0, Qt::UserRole).toULongLong() == id) {
-                objectsList_->setCurrentItem(top);
-                break;
+            if (top->data(0, role).isValid() && top->data(0, role).toULongLong() == wanted) {
+                return top;
             }
-            bool found = false;
             for (int c = 0; c < top->childCount(); ++c) {
                 QTreeWidgetItem* child = top->child(c);
-                if (child->data(0, Qt::UserRole).toULongLong() == id) {
-                    objectsList_->setCurrentItem(child);
-                    found = true;
-                    break;
+                if (child->data(0, role).isValid() &&
+                    child->data(0, role).toULongLong() == wanted) {
+                    return child;
                 }
             }
-            if (found)
-                break;
         }
+        return nullptr;
+    };
+    if (kind == Kind::Embroidery) {
+        selectOnly(find(Qt::UserRole, id));
+        regionsList_->setCurrentItem(nullptr);
+    } else if (kind == Kind::Vector) {
+        selectOnly(find(kVectorIdRole, id));
         regionsList_->setCurrentItem(nullptr);
     } else if (kind == Kind::Region) {
         regionsList_->clearSelection();
@@ -556,12 +783,220 @@ void DocumentPanel::syncSelection(Kind kind, std::uint64_t id) {
                 break;
             }
         }
-        objectsList_->setCurrentItem(nullptr);
+        selectOnly(nullptr);
     } else {
-        objectsList_->setCurrentItem(nullptr);
+        selectOnly(nullptr);
         regionsList_->setCurrentItem(nullptr);
     }
     syncing_ = false;
+}
+
+void DocumentPanel::syncObjects(const std::vector<std::uint64_t>& vectorIds) {
+    // Forme représentée par une ligne : sa forme source (broderie, groupe) ou elle-même.
+    const auto vectorOf = [](const QTreeWidgetItem* item) -> std::uint64_t {
+        if (item->data(0, kVectorIdRole).isValid()) {
+            return item->data(0, kVectorIdRole).toULongLong();
+        }
+        if (item->data(0, kGroupSourceRole).isValid()) {
+            return item->data(0, kGroupSourceRole).toULongLong();
+        }
+        return item->data(0, kSourceVectorRole).toULongLong();
+    };
+    const std::set<std::uint64_t> wanted(vectorIds.begin(), vectorIds.end());
+    std::set<std::uint64_t> shown;
+    for (const QTreeWidgetItem* item : objectsList_->selectedItems()) {
+        shown.insert(vectorOf(item));
+    }
+    if (shown == wanted) {
+        return; // la liste reflète déjà cet ensemble : on garde l'ancre de l'utilisateur
+    }
+    syncing_ = true;
+    objectsList_->clearSelection();
+    QTreeWidgetItem* last = nullptr;
+    const std::function<void(QTreeWidgetItem*)> visit = [&](QTreeWidgetItem* item) {
+        const bool leaf =
+            item->data(0, Qt::UserRole).isValid() || item->data(0, kVectorIdRole).isValid();
+        if (leaf && wanted.count(vectorOf(item)) != 0) {
+            item->setSelected(true);
+            last = item;
+        }
+        for (int c = 0; c < item->childCount(); ++c) {
+            visit(item->child(c));
+        }
+    };
+    for (int i = 0; i < objectsList_->topLevelItemCount(); ++i) {
+        visit(objectsList_->topLevelItem(i));
+    }
+    objectsList_->setCurrentItem(last, 0, QItemSelectionModel::NoUpdate);
+    regionsList_->setCurrentItem(nullptr);
+    syncing_ = false;
+}
+
+void DocumentPanel::collectSelection(std::vector<ObjectId>& embroidery,
+                                     std::vector<ObjectId>& vectors) const {
+    // Dans l'ordre d'affichage de la liste, pas dans l'ordre de clic ; un groupe sélectionné
+    // compte toutes ses sections.
+    const std::function<void(QTreeWidgetItem*, bool)> visit = [&](QTreeWidgetItem* item,
+                                                                  bool inheritedSelection) {
+        const bool selected = item->isSelected() || inheritedSelection;
+        if (selected && item->data(0, Qt::UserRole).isValid()) {
+            const ObjectId id{item->data(0, Qt::UserRole).toULongLong()};
+            if (std::find(embroidery.begin(), embroidery.end(), id) == embroidery.end()) {
+                embroidery.push_back(id);
+            }
+        } else if (selected && item->data(0, kVectorIdRole).isValid()) {
+            vectors.push_back(ObjectId{item->data(0, kVectorIdRole).toULongLong()});
+        }
+        const bool isGroup = item->data(0, kGroupSourceRole).isValid();
+        for (int c = 0; c < item->childCount(); ++c) {
+            visit(item->child(c), selected && isGroup);
+        }
+    };
+    for (int i = 0; i < objectsList_->topLevelItemCount(); ++i) {
+        visit(objectsList_->topLevelItem(i), false);
+    }
+}
+
+void DocumentPanel::onObjectSelectionChanged() {
+    if (syncing_) {
+        return;
+    }
+    const QList<QTreeWidgetItem*> items = objectsList_->selectedItems();
+    if (items.isEmpty()) {
+        emit selectionCleared();
+        return;
+    }
+    if (items.size() == 1) {
+        const QTreeWidgetItem* item = items.front();
+        const QVariant data = item->data(0, Qt::UserRole);
+        if (data.isValid()) {
+            emit embroiderySelected(ObjectId{data.toULongLong()});
+        } else if (item->data(0, kVectorIdRole).isValid()) {
+            emit vectorSelected(ObjectId{item->data(0, kVectorIdRole).toULongLong()});
+        } else if (item->data(0, kGroupSourceRole).isValid()) {
+            // Nœud de groupe (plan satin multi-sections) : sélectionne la forme source, donc
+            // toutes ses sections.
+            emit groupSelected(ObjectId{item->data(0, kGroupSourceRole).toULongLong()},
+                               item->childCount());
+        }
+        return;
+    }
+    std::vector<ObjectId> embroidery;
+    std::vector<ObjectId> vectors;
+    collectSelection(embroidery, vectors);
+    emit objectsSelected(embroidery, vectors);
+}
+
+std::vector<ObjectId> DocumentPanel::reorderedAfterDrop(const std::vector<ObjectId>& order,
+                                                        const std::vector<ObjectId>& moved,
+                                                        ObjectId target, bool after) {
+    const auto isMoved = [&moved](ObjectId id) {
+        return std::find(moved.begin(), moved.end(), id) != moved.end();
+    };
+    if (moved.empty() || (target.valid() && isMoved(target))) {
+        return order;
+    }
+    std::vector<ObjectId> block; // ordre relatif d'origine conservé
+    std::vector<ObjectId> rest;
+    for (const ObjectId id : order) {
+        (isMoved(id) ? block : rest).push_back(id);
+    }
+    auto at = rest.end();
+    if (target.valid()) {
+        const auto it = std::find(rest.begin(), rest.end(), target);
+        if (it == rest.end()) {
+            return order; // cible inconnue : ne rien faire plutôt que deviner
+        }
+        at = after ? it + 1 : it;
+    }
+    rest.insert(at, block.begin(), block.end());
+    return rest;
+}
+
+void DocumentPanel::handleDrop(const QPoint& viewportPos) {
+    std::vector<ObjectId> moved;
+    std::vector<ObjectId> vectors;
+    collectSelection(moved, vectors);
+    if (moved.empty()) {
+        return;
+    }
+    ObjectId target{};
+    bool after = false;
+    if (const QTreeWidgetItem* item = objectsList_->itemAt(viewportPos)) {
+        if (item->data(0, Qt::UserRole).isValid()) {
+            target = ObjectId{item->data(0, Qt::UserRole).toULongLong()};
+            after = viewportPos.y() >= objectsList_->visualItemRect(item).center().y();
+        } else if (item->data(0, kGroupSourceRole).isValid() && item->childCount() > 0) {
+            // Déposer sur l'en-tête d'un groupe : juste avant sa première section.
+            target = ObjectId{item->child(0)->data(0, Qt::UserRole).toULongLong()};
+        } else {
+            return; // forme non cousue : pas de rang de couture
+        }
+    }
+    const std::vector<ObjectId> next = reorderedAfterDrop(order_, moved, target, after);
+    if (next == order_) {
+        return;
+    }
+    // Émission différée : la commande reconstruit la liste (refresh) pendant le glissement.
+    QTimer::singleShot(0, this, [this, next] { emit orderChangeRequested(next); });
+}
+
+QMenu* DocumentPanel::createContextMenu(const QPoint& viewportPos) {
+    QTreeWidgetItem* item = objectsList_->itemAt(viewportPos);
+    if (item == nullptr) {
+        return nullptr;
+    }
+    if (!item->isSelected()) {
+        // Clic droit sur une ligne hors sélection : elle devient la sélection (signaux émis).
+        objectsList_->clearSelection();
+        item->setSelected(true);
+        objectsList_->setCurrentItem(item, 0, QItemSelectionModel::NoUpdate);
+    }
+    std::vector<ObjectId> embroidery;
+    std::vector<ObjectId> vectors;
+    collectSelection(embroidery, vectors);
+    if (embroidery.empty() && vectors.empty()) {
+        return nullptr;
+    }
+    bool allVisible = true;
+    bool allLocked = true;
+    const std::function<void(QTreeWidgetItem*)> scan = [&](QTreeWidgetItem* it) {
+        if (it->data(0, Qt::UserRole).isValid()) {
+            const ObjectId id{it->data(0, Qt::UserRole).toULongLong()};
+            if (std::find(embroidery.begin(), embroidery.end(), id) != embroidery.end()) {
+                allVisible = allVisible && it->checkState(kVisibleCol) == Qt::Checked;
+                allLocked = allLocked && it->checkState(kLockCol) == Qt::Checked;
+            }
+        }
+        for (int c = 0; c < it->childCount(); ++c) {
+            scan(it->child(c));
+        }
+    };
+    for (int i = 0; i < objectsList_->topLevelItemCount(); ++i) {
+        scan(objectsList_->topLevelItem(i));
+    }
+
+    auto* menu = new QMenu(this);
+    menu->setObjectName(QStringLiteral("menu_documentRow"));
+    if (!embroidery.empty()) {
+        QAction* vis = menu->addAction(allVisible ? tr("&Masquer") : tr("&Afficher"));
+        vis->setObjectName(QStringLiteral("action_docRowVisibility"));
+        connect(vis, &QAction::triggered, this, [this, embroidery, allVisible] {
+            emit visibilityChangeRequested(embroidery, !allVisible);
+        });
+        QAction* lock = menu->addAction(allLocked ? tr("&Libérer l'ordre") : tr("&Figer l'ordre"));
+        lock->setObjectName(QStringLiteral("action_docRowLock"));
+        lock->setToolTip(tr("Un ordre figé n'est pas déplacé par l'optimisation de l'ordre."));
+        connect(lock, &QAction::triggered, this, [this, embroidery, allLocked] {
+            emit orderLockChangeRequested(embroidery, !allLocked);
+        });
+        menu->addSeparator();
+    }
+    QAction* del = menu->addAction(tr("&Supprimer"));
+    del->setObjectName(QStringLiteral("action_docRowDelete"));
+    connect(del, &QAction::triggered, this,
+            [this, embroidery, vectors] { emit deleteRequested(embroidery, vectors); });
+    return menu;
 }
 
 } // namespace openstitch::desktop
