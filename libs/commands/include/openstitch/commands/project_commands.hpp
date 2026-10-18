@@ -280,33 +280,6 @@ private:
     document::EmbroideryObject object_;
 };
 
-// STUB PROVISOIRE (remplacé par la vraie version du chef de lot) : insère `layer`
-// juste après l'objet de broderie `base_id` (fin de liste si introuvable).
-class AddLayerCommand final : public ICommand {
-public:
-    AddLayerCommand(ObjectId base_id, document::EmbroideryObject layer)
-        : base_id_(base_id), layer_(std::move(layer)) {}
-
-    void apply(document::Project& project) override {
-        auto& objs = project.embroidery_objects;
-        auto it = std::find_if(objs.begin(), objs.end(),
-                               [this](const auto& e) { return e.id == base_id_; });
-        if (it != objs.end()) {
-            ++it;
-        }
-        objs.insert(it, layer_);
-    }
-    void revert(document::Project& project) override {
-        std::erase_if(project.embroidery_objects,
-                      [this](const auto& e) { return e.id == layer_.id; });
-    }
-    [[nodiscard]] std::string name() const override { return "Ajouter une couche"; }
-
-private:
-    ObjectId base_id_;
-    document::EmbroideryObject layer_;
-};
-
 // Supprime un objet de broderie seul (garde l'objet vectoriel source, qui
 // reste convertible en un autre type). Undo réinsère à l'index d'origine.
 class RemoveEmbroideryObjectCommand final : public ICommand {
