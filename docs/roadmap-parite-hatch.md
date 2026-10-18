@@ -39,11 +39,11 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 |---|---|---|---|---|
 | P0 | 12 | 26 | 6 | 44 |
 | P1 | 10 | 62 | 69 | 141 |
-| P2 | 3 | 30 | 64 | 97 |
+| P2 | 3 | 31 | 62 | 96 |
 | P3 | 0 | 3 | 12 | 15 |
-| **Total** | **25** | **121** | **151** | **297** |
+| **Total** | **25** | **122** | **149** | **296** |
 
-Ajoutés le 2026-10-18 (audit UX/UI, `docs/ux/`) : **+30 entrées ☐** (12 P1, 15 P2, 3 P3) :
+Ajoutés le 2026-10-18 (audit UX/UI, `docs/ux/`) : **+29 entrées ☐** (12 P1, 14 P2, 3 P3 ; HP-UX-040 retiré le jour même) :
 HP-UX-017 à HP-UX-044, HP-PERF-009 et HP-QA-008 (§20, §22, §23). Aucun statut existant n'a été
 modifié ; HP-UX-001/002/003/004/009/012/016 sont seulement précisés. Quatre entrées passent ◐ dans la foulée (HP-UX-017, 018, 021, 022 : voir le journal §28) ; puis HP-UX-019, 020 et 023.
 
@@ -2636,6 +2636,7 @@ mutation reste une `ICommand` ; tout nouveau texte passe par `tr()`. Chaque entr
 Constats : `PAR-`/`BRO-`/`QT-` = rapport d'audit ; `UX-` = audit du 2026-10-13.
 Tâches existantes enrichies plutôt que dupliquées : HP-UX-001/002/003/004/009/012/016.
 Prérequis commun des lots B et C : **HP-QA-008** (garde de taille minimale, §23).
+**HP-UX-040 (contrat de l'IA : repli couleur, annulation tardive) a été retiré le 2026-10-18 à la demande du mainteneur** : l'IA n'est pas une priorité. Les constats `UX-15`/`UX-16` de l'audit du 2026-10-13 restent consignés dans `docs/ui-ux-audit-2026-10-13.md` sans tâche.
 
 #### Lot A — Quick wins et gestes (P1/P2, complexité S)
 
@@ -2809,12 +2810,13 @@ Le lot C comprend aussi **HP-PERF-009** (régénération différée à l'éditio
 - Acceptation : en isolation, un clic sur un objet non isolé ne le sélectionne pas et le glisser du fond ne le déplace pas ; l'état n'est pas écrit dans le `.osp` (SHA-256 identique avant/après sauvegarde).
 - Livré : action « Isoler la sélection » (Maj+I, case à cocher) : les formes non isolées sont masquées et exclues du clic, de Maj/Ctrl/Alt+clic et du rectangle (via `vectorPassesFilter`) ; état de session (`isolatedIds_`) remis à zéro à chaque nouveau document ; test `isolationHidesAndExcludesOthersWithoutTouchingTheProject` (octets du `.osp` identiques avant/pendant l'isolation, aucun champ ajouté). Reste : atténuation (au lieu de masquage) des autres formes, exclusion des flèches clavier, entrée dans le menu contextuel et la liste Document.
 
-### HP-UX-035 — Copier/coller le style et défauts de points [P2] — ☐ À faire
+### HP-UX-035 — Copier/coller le style et défauts de points [P2] — ◐ Partiel (2026-10-18, branche `ux-lot-d3`)
 - Problème : pas de « copier le style » ; défauts de création en dur (0,4 / 3 / 0°, `main_window.cpp:4232-4244`) ; `ui_memory` ne couvre pas les paramètres de couture. Constat BRO-21. Voir HP-UX-007.
 - Comportement attendu : Ctrl+Alt+C / Ctrl+Alt+V sur la sélection (une `ICommand`) ; « Utiliser ces réglages comme défaut pour les nouveaux objets » (stocké par `QSettings`, jamais dans le projet).
 - Complexité : M. Composants : `apps/desktop/properties_panel.*`, `ui_memory.hpp`, `main_window_editing.cpp`.
 - Dépend de : HP-UX-003.
 - Acceptation : coller le style de A sur B donne `B.params == A.params` en une commande annulable ; un nouvel objet reprend le défaut enregistré.
+- Livré : « Copier le style » (Ctrl+Maj+C) et « Coller le style » (Ctrl+Maj+Y ; Ctrl+Alt écarté car c'est AltGr sur clavier AZERTY) : les paramètres de couture de l'objet actif sont appliqués, en **une** `CompositeCommand` annulable, aux objets sélectionnés de même type de point ; les autres types sont ignorés avec un message ; test `pasteStyleCopiesParamsInOneUndoableStepAndSkipsOtherTypes`. Les défauts de création sont couverts par HP-UX-002 (dernier réglage mémorisé en `QSettings`). Reste : « Utiliser ces réglages comme défaut » explicite, copie de la couleur de fil.
 
 ### HP-UX-036 — Bascule de vue à quatre états et barre de simulation informative [P2] — ◐ Partiel (2026-10-18, branche `ux-lot-d2`)
 - Problème : quatre couches dans Affichage ▸ Calques, une seule en barre ; une couche masquée rend le clic muet sans explication ; compteur de simulation = indice de commande, pas de saut par couleur ni de durée (`main_window.cpp:1060-1075, 6114, 7699-7735, 7807, 8721`). Constats BRO-23, PAR-11, UX-29.
@@ -2839,13 +2841,6 @@ Le lot C comprend aussi **HP-PERF-009** (régénération différée à l'éditio
 - Dépend de : HP-QA-001 (partiel).
 - Acceptation : sauver à T1, éditer, annuler à T2 → T1 affiché ; export réussi visible puis invalidé par une modification ; un SVG ne réclame pas d'étape Régions.
 - Livré : l'instant « Enregistré à HH:mm » est mémorisé à la sauvegarde/ouverture (`savedAt_`) et n'est plus l'heure du dernier rafraîchissement (UX-32) ; test `savedIndicatorShowsTheSaveTimeNotTheRefreshTime`. Reste : états d'étape du workflow liés à la révision du document (UX-14), notifications d'erreur persistantes (UX-26).
-
-### HP-UX-040 — Contrat IA : repli couleur et annulation tardive [P2] — ☐ À faire
-- Problème : l'échec du raffinement couleur n'est pas conservé après `accept()` ; l'annulation tardive n'a pas d'état dédié et plusieurs handlers ignorent `requestId` (`ai_segmentation_dialog.cpp:510-517, 563-566, 599-624, 981-986`). Constats UX-15, UX-16.
-- Comportement attendu : avertissement acquitté avant fermeture ou résultat structuré ; état `Cancelling`, filtrage par requête, paramètres figés au lancement.
-- Complexité : M. Composants : `apps/desktop/ai_segmentation_dialog.*`, `sam_worker_client.*`.
-- Dépend de : HP-PERF-001.
-- Acceptation : annulation pendant le chargement → aucun événement tardif ne relance de segmentation ; changer les réglages pendant l'attente ne modifie pas la requête en cours ; un échec couleur reste consultable après validation.
 
 #### Lot E — Finitions (P2/P3)
 
@@ -3195,3 +3190,4 @@ ci-dessus doit les respecter :
 | 2026-10-18 | Claude (lots B, C/E et liste Document, 4 agents) | HP-QA-008, HP-UX-024, 025, 026, 027, 030, 031, 032, 033, 037, 041, 042, 043, 044 ◐ (branche `ux-lot-d2`) : responsive (fenêtre 1291 × 1443 → 701 × 373 de minimum, dialogues bornés, mode portable), numérisation à préréglages, export rapide, dock Qualité, barre Fils au clavier, liste Document étendue. Tests : `test_ui_responsive`, `test_workflow_ux`, `test_thread_strip`, `test_document_panel`. Total ◐ 101 → 115, ☐ 170 → 156. |
 | 2026-10-18 | Claude (lot C édition, agent) | HP-UX-002, 028, 029, 038 et HP-PERF-009 ◐ (branche `ux-lot-c1-pr`) : création directe sans modale, quatre boutons de type pour 1 ou N formes, bandeau de retouches, valeurs mixtes, régénération différée hors fil UI. Tests : `test_creation_flow` (19 cas). Total ◐ 115 → 120, ☐ 156 → 151. |
 | 2026-10-18 | Claude (HP-VEC-015, comblement de bloc) | HP-VEC-015 ◐ (branche `claude/embroidery-block-hole-fill-7c00ac`) : vides d'un bloc détectés depuis les points cousus, rattachés au plus grand remplissage voisin ; cœur, op CLI `fill_block_holes`, menu Forme et tests. |
+| 2026-10-18 | Claude (lot D, partie 2) | HP-UX-035 ◐ (copier/coller le style). **HP-UX-040 (contrat IA) retiré** à la demande du mainteneur (l'IA n'est pas une priorité) ; total 296 → 295, ◐ 120 → 121, ☐ 151 → 149. |

@@ -91,6 +91,16 @@ void MainWindow::buildObjectEditActions(QMenu* editMenu) {
     add(editMenu, selectAllObjectsAct_, tr("Sélectionner &tous les objets"),
         QStringLiteral("action_selectAllObjects"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_A),
         tr("Sélectionne toutes les formes visibles du design."), [this] { selectAllObjects(); });
+    add(editMenu, copyStyleAct_, tr("Copier le style"), QStringLiteral("action_copyStyle"),
+        QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_C),
+        tr("Mémorise les réglages de couture de la forme brodée active (espacement, angle, "
+           "sous-couche…). Évite de recopier les mêmes valeurs d'un objet à l'autre."),
+        [this] { copyStyle(); });
+    add(editMenu, pasteStyleAct_, tr("Coller le style"), QStringLiteral("action_pasteStyle"),
+        QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Y),
+        tr("Applique le style copié aux formes brodées sélectionnées de même type de point, en un "
+           "seul pas d'annulation."),
+        [this] { pasteStyle(); });
     add(editMenu, isolateAct_, tr("Isoler la sélection"), QStringLiteral("action_isolate"),
         QKeySequence(Qt::SHIFT | Qt::Key_I),
         tr("Masque les autres formes et les exclut du clic : protège le reste du design pendant "
@@ -206,6 +216,12 @@ void MainWindow::updateObjectEditActions() {
                          tr("Copiez d'abord des formes (Édition ▸ Copier)."));
     setEnabledWithReason(selectAllObjectsAct_, anyObject, needDesign);
     setEnabledWithReason(selectSameColorObjectsAct_, anyTarget, needShapes);
+    setEnabledWithReason(copyStyleAct_, !targetEmbroideryIds().empty(),
+                         tr("Sélectionnez d'abord une forme brodée."));
+    setEnabledWithReason(pasteStyleAct_,
+                         styleClipboard_.has_value() && !targetEmbroideryIds().empty(),
+                         tr("Copiez d'abord un style (Édition ▸ Copier le style), puis "
+                            "sélectionnez les formes brodées à modifier."));
     setEnabledWithReason(isolateAct_, anyTarget || isolating(),
                          tr("Sélectionnez d'abord la ou les formes à isoler."));
     setEnabledWithReason(embroideryColorAct_, !targetEmbroideryIds().empty(),
@@ -352,6 +368,63 @@ void MainWindow::selectAllInActiveLayer() {
     } else {
         selectAllRegions();
     }
+}
+
+void MainWindow::copyStyle() {
+    const std::vector<ObjectId> targets = targetEmbroideryIds();
+    const auto* source = targets.empty() ? nullptr : project_.findEmbroidery(targets.back());
+    if (source == nullptr) {
+        statusBar()->showMessage(tr("Sélectionnez d'abord une forme brodée."), 5000);
+        return;
+    }
+    styleClipboard_ = source->params;
+    updateActions();
+    statusBar()->showMessage(
+        tr("Style de « %1 » copié : sélectionnez d'autres formes puis Coller le style.")
+            .arg(QString::fromStdString(source->name)),
+        6000);
+}
+
+void MainWindow::pasteStyle() {
+    if (!styleClipboard_) {
+        statusBar()->showMessage(tr("Aucun style copié."), 5000);
+        return;
+    }
+    auto group = std::make_unique<commands::CompositeCommand>(tr("Coller le style").toStdString());
+    int applied = 0;
+    int skipped = 0;
+    for (const ObjectId id : targetEmbroideryIds()) {
+        const auto* object = project_.findEmbroidery(id);
+        if (object == nullptr) {
+            continue;
+        }
+        if (object->params.index() != styleClipboard_->index()) {
+            ++skipped; // autre type de point : le style ne s'y applique pas
+            continue;
+        }
+        if (object->params == *styleClipboard_) {
+            continue; // déjà identique : aucune commande parasite
+        }
+        group->add(std::make_unique<commands::SetStitchParamsCommand>(id, *styleClipboard_,
+                                                                      tr("Style").toStdString()));
+        ++applied;
+    }
+    if (applied == 0) {
+        statusBar()->showMessage(skipped > 0 ? tr("Style non collé : aucun objet sélectionné n'a "
+                                                  "le même type de point.")
+                                             : tr("Rien à changer : style déjà identique."),
+                                 6000);
+        return;
+    }
+    undoStack_.execute(std::move(group), project_);
+    refreshImage();
+    updateActions();
+    updateInspector();
+    QString message = tr("Style collé sur %1 objet(s).").arg(applied);
+    if (skipped > 0) {
+        message += tr(" %1 ignoré(s) (autre type de point).").arg(skipped);
+    }
+    statusBar()->showMessage(message, 6000);
 }
 
 void MainWindow::toggleIsolation(bool on) {

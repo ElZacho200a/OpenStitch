@@ -98,7 +98,7 @@ décision.
 | **A — Quick wins et gestes** | Ctrl+O, Échap, sélection (prédicat + tolérance + cyclage), F7, sortie de simulation, raccourcis couches/zoom | HP-UX-017 à 023 | P1/P2, tailles S | — |
 | **B — Responsive et panneaux** | docks, dialogues bornés, barres, densité auto, mode portable | HP-UX-024 à 027 | P1/P2, M | HP-QA-008 |
 | **C — Workflows de broderie** | création directe, type 1/N formes, retouches, valeurs mixtes, régénération différée, numérisation, qualité, export, cadre | HP-UX-002, 003, 028 à 033, 038, HP-PERF-009 | P1/P2, M/L | HP-QA-001 (partiel), HP-PERF-001 |
-| **D — Cohérence et productivité** | Isoler, style copier/coller, bascule de vue, liste Document, contrat d'état, contrat IA | HP-UX-034 à 037, 039, 040 | P2, M/L | lot C, HP-OBJ-001 |
+| **D — Cohérence et productivité** | Isoler, style copier/coller, bascule de vue, liste Document, contrat d'état | HP-UX-034 à 037, 039 | P2, M/L | lot C, HP-OBJ-001 |
 | **E — Finitions** | barre Fils clavier, icônes de type, DPI des pastilles, import anisotrope | HP-UX-041 à 044 | P2/P3, S | — |
 
 **Ordre recommandé** : 0 → A en parallèle de B (fichiers disjoints) → C → D → E. Le lot A et

@@ -25,6 +25,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <variant>
 
 #include "canvas_view.hpp"
 #include "design_tokens.hpp"
@@ -775,6 +776,65 @@ private slots:
         window.setWindowModified(false);
         window.updateSavedIndicator();
         QVERIFY(window.savedLabel_->text().contains(QStringLiteral("10:30")));
+    }
+
+    // ---- HP-UX-035 : copier / coller le style --------------------------------------------------
+
+    void pasteStyleCopiesParamsInOneUndoableStepAndSkipsOtherTypes() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        const ObjectId v1 = addSquareVector(project);
+        const ObjectId v2 = addSquareVector(project);
+        const ObjectId v3 = addSquareVector(project);
+        doc::EmbroideryObject a;
+        a.id = project.object_ids.next();
+        a.name = "A";
+        a.source_vector = v1;
+        doc::TatamiParams tuned;
+        tuned.row_spacing = Micrometers{250};
+        tuned.angle = openstitch::Angle{0.5};
+        a.params = tuned;
+        project.embroidery_objects.push_back(a);
+        doc::EmbroideryObject b = a;
+        b.id = project.object_ids.next();
+        b.name = "B";
+        b.source_vector = v2;
+        b.params = doc::TatamiParams{};
+        project.embroidery_objects.push_back(b);
+        doc::EmbroideryObject c = a;
+        c.id = project.object_ids.next();
+        c.name = "C";
+        c.source_vector = v3;
+        c.params = doc::RunningStitchParams{};
+        project.embroidery_objects.push_back(c);
+        window.applyLoadedProject(project);
+        const ObjectId idA = project.embroidery_objects[0].id;
+        const ObjectId idB = project.embroidery_objects[1].id;
+        const ObjectId idC = project.embroidery_objects[2].id;
+
+        window.setSelection({.region = std::nullopt, .embroidery = idA, .objects = {}});
+        window.updateActions();
+        QVERIFY(window.copyStyleAct_->isEnabled());
+        window.copyStyleAct_->trigger();
+        QVERIFY(window.pasteStyleAct_->isEnabled());
+
+        // Colle sur B (même type) : paramètres identiques, un pas d'annulation.
+        window.setSelection({.region = std::nullopt, .embroidery = idB, .objects = {}});
+        window.updateActions();
+        window.pasteStyleAct_->trigger();
+        QCOMPARE(std::get<doc::TatamiParams>(window.project_.findEmbroidery(idB)->params), tuned);
+        window.undo();
+        QCOMPARE(std::get<doc::TatamiParams>(window.project_.findEmbroidery(idB)->params),
+                 doc::TatamiParams{});
+        window.redo();
+        QCOMPARE(std::get<doc::TatamiParams>(window.project_.findEmbroidery(idB)->params), tuned);
+
+        // Sur C (point droit) : autre type, ignoré, aucun changement.
+        window.setSelection({.region = std::nullopt, .embroidery = idC, .objects = {}});
+        window.updateActions();
+        window.pasteStyleAct_->trigger();
+        QVERIFY(std::holds_alternative<doc::RunningStitchParams>(
+            window.project_.findEmbroidery(idC)->params));
     }
 
 private:

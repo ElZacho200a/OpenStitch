@@ -68,7 +68,7 @@ nouveau : les P0 de l'audit du 13/10 sont corrigés (UX-02) ou portés par `HP-P
 3. **Lot C** : création directe, type 1/N formes, retouches, valeurs mixtes, numérisation, qualité,
    export. Après `HP-PERF-001/009` ; les fichiers communs (`main_window.cpp`) gagnent à passer
    après `HP-QA-001`.
-4. **Lot D** : Isoler, style, bascule de vue, liste Document, contrat d'état, contrat IA.
+4. **Lot D** : Isoler, style, bascule de vue, liste Document, contrat d'état (le contrat IA est retiré de la roadmap).
 5. **Lot E** : finitions.
 
 ## Posture critique sur ces propositions
