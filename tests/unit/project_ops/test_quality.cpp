@@ -163,6 +163,7 @@ TEST_CASE("quality svg : elements attendus et determinisme") {
     CHECK(has(*svg, "</svg>"));
     CHECK(has(*svg, "stroke=\"#888\""));    // contour d'origine
     CHECK(has(*svg, "stroke=\"#0066cc\"")); // fleche de direction
+    CHECK(has(*svg, "deg</title>"));        // titre propre aux flèches
     CHECK(has(*svg, "stroke=\"black\""));   // points cousus
     CHECK(*svg == *render_quality_svg(project, options));
 
@@ -172,7 +173,10 @@ TEST_CASE("quality svg : elements attendus et determinisme") {
     const auto only = render_quality_svg(project, options);
     REQUIRE(only.has_value());
     CHECK_FALSE(has(*only, "stroke=\"#888\""));
-    CHECK_FALSE(has(*only, "#0066cc"));
+    // Pas de flèche de direction. La couleur #0066cc ne suffit plus à l'établir : les marqueurs
+    // de constat de gravité « information » (ex. `points-courts`) l'utilisent aussi ; le titre
+    // « direction … deg » n'appartient qu'aux flèches.
+    CHECK_FALSE(has(*only, "deg</title>"));
 }
 
 TEST_CASE("quality svg : marqueur de constat hors cadre") {

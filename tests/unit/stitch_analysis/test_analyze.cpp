@@ -44,16 +44,91 @@ TEST_CASE("motif correct -> aucun probleme") {
     CHECK(analyze(seq).empty());
 }
 
-TEST_CASE("point trop court detecte") {
+TEST_CASE("point quasi nul detecte : avertissement par point sous 0,1 mm") {
     stitch::StitchSequence seq;
     seq.commands = {
         {um(0, 0), CommandType::Stitch, ObjectId{1}},
-        {um(200, 0), CommandType::Stitch, ObjectId{1}}, // 0,2 mm < 0,5 mm
-        {um(3'000, 0), CommandType::Stitch, ObjectId{1}},
+        {um(50, 0), CommandType::Stitch, ObjectId{1}}, // 0,05 mm < 0,1 mm
+        {um(3'050, 0), CommandType::Stitch, ObjectId{1}},
     };
     const auto f = analyze(seq);
     CHECK(has_category(f, "point-court"));
     CHECK(count_category(f, "point-court") == 1);
+    CHECK_FALSE(has_category(f, "points-courts"));
+    for (const auto& x : f) {
+        if (x.category == "point-court") {
+            CHECK(x.severity == Severity::Warning);
+        }
+    }
+}
+
+TEST_CASE("frontiere du point quasi nul : 99 um avertit, 100 um informe") {
+    stitch::StitchSequence below;
+    below.commands = {
+        {um(0, 0), CommandType::Stitch, ObjectId{1}},
+        {um(99, 0), CommandType::Stitch, ObjectId{1}},
+        {um(3'099, 0), CommandType::Stitch, ObjectId{1}},
+    };
+    const auto fb = analyze(below);
+    CHECK(count_category(fb, "point-court") == 1);
+    CHECK_FALSE(has_category(fb, "points-courts"));
+
+    stitch::StitchSequence atLimit;
+    atLimit.commands = {
+        {um(0, 0), CommandType::Stitch, ObjectId{1}},
+        {um(100, 0), CommandType::Stitch, ObjectId{1}},
+        {um(3'100, 0), CommandType::Stitch, ObjectId{1}},
+    };
+    const auto fa = analyze(atLimit);
+    CHECK_FALSE(has_category(fa, "point-court"));
+    CHECK(count_category(fa, "points-courts") == 1);
+}
+
+TEST_CASE("points courts de 0,1 a 0,5 mm : un constat d'information par objet") {
+    stitch::StitchSequence seq;
+    seq.commands = {
+        // Objet 1 : deux points courts (0,2 mm puis 0,1 mm), puis un point normal.
+        {um(0, 0), CommandType::Stitch, ObjectId{1}},
+        {um(200, 0), CommandType::Stitch, ObjectId{1}},
+        {um(300, 0), CommandType::Stitch, ObjectId{1}},
+        {um(3'300, 0), CommandType::Stitch, ObjectId{1}},
+        // Objet 2 : un point court (0,3 mm).
+        {um(20'000, 0), CommandType::Jump, ObjectId{2}},
+        {um(20'000, 0), CommandType::Stitch, ObjectId{2}},
+        {um(20'300, 0), CommandType::Stitch, ObjectId{2}},
+        {um(23'300, 0), CommandType::Stitch, ObjectId{2}},
+    };
+    const auto f = analyze(seq);
+    CHECK_FALSE(has_category(f, "point-court"));
+    std::vector<Finding> groups;
+    for (const auto& x : f) {
+        if (x.category == "points-courts") {
+            groups.push_back(x);
+        }
+    }
+    REQUIRE(groups.size() == 2);
+    // Ordre d'identifiant d'objet, gravité « information », premier point fautif localisé.
+    CHECK(groups[0].severity == Severity::Info);
+    CHECK(groups[0].object == ObjectId{1});
+    CHECK(groups[0].location == um(200, 0));
+    CHECK(groups[0].message.find("2 point(s)") != std::string::npos);
+    CHECK(groups[0].message.find("le plus court : 0,1 mm") != std::string::npos);
+    CHECK(groups[1].severity == Severity::Info);
+    CHECK(groups[1].object == ObjectId{2});
+    CHECK(groups[1].location == um(20'300, 0));
+    CHECK(groups[1].message.find("1 point(s)") != std::string::npos);
+}
+
+TEST_CASE("point de 0,5 mm ou plus : aucun constat de point court") {
+    stitch::StitchSequence seq;
+    seq.commands = {
+        {um(0, 0), CommandType::Stitch, ObjectId{1}},
+        {um(500, 0), CommandType::Stitch, ObjectId{1}}, // exactement 0,5 mm : pas trop court
+        {um(3'500, 0), CommandType::Stitch, ObjectId{1}},
+    };
+    const auto f = analyze(seq);
+    CHECK_FALSE(has_category(f, "point-court"));
+    CHECK_FALSE(has_category(f, "points-courts"));
 }
 
 TEST_CASE("point trop long detecte") {
@@ -81,6 +156,89 @@ TEST_CASE("saut trop long detecte") {
     // distance du saut lui-même comme si le fil n'avait jamais été levé.
     // `hasPrevStitch` doit être réinitialisé par le saut (§ analyze.cpp).
     CHECK_FALSE(has_category(f, "point-long"));
+}
+
+TEST_CASE("saut long sans coupe dans le deplacement : un constat par saut") {
+    stitch::StitchSequence one;
+    one.commands = {
+        {um(0, 0), CommandType::Stitch, ObjectId{1}},
+        {um(50'000, 0), CommandType::Jump, ObjectId{1}}, // 50 mm, aucune coupe
+        {um(50'000, 0), CommandType::Stitch, ObjectId{1}},
+    };
+    CHECK(count_category(analyze(one), "saut-long") == 1);
+
+    stitch::StitchSequence two;
+    two.commands = {
+        {um(0, 0), CommandType::Stitch, ObjectId{1}},
+        {um(40'000, 0), CommandType::Jump, ObjectId{1}},
+        {um(80'000, 0), CommandType::Jump, ObjectId{1}}, // deux sauts de 40 mm, aucune coupe
+        {um(80'000, 0), CommandType::Stitch, ObjectId{1}},
+    };
+    CHECK(count_category(analyze(two), "saut-long") == 2);
+}
+
+TEST_CASE("saut long precede d'une coupe : pas de constat (message faux sinon)") {
+    stitch::StitchSequence seq;
+    seq.commands = {
+        {um(0, 0), CommandType::Stitch, ObjectId{1}},
+        {um(0, 0), CommandType::Trim, ObjectId{1}},
+        {um(50'000, 0), CommandType::Jump, ObjectId{1}}, // 50 mm mais coupe avant le saut
+        {um(50'000, 0), CommandType::Stitch, ObjectId{1}},
+    };
+    CHECK_FALSE(has_category(analyze(seq), "saut-long"));
+}
+
+TEST_CASE("saut long suivi d'une coupe avant la reprise : pas de constat") {
+    stitch::StitchSequence seq;
+    seq.commands = {
+        {um(0, 0), CommandType::Stitch, ObjectId{1}},
+        {um(50'000, 0), CommandType::Jump, ObjectId{1}},
+        {um(50'000, 0), CommandType::Trim, ObjectId{1}}, // coupe apres le saut, meme deplacement
+        {um(50'000, 0), CommandType::Stitch, ObjectId{1}},
+    };
+    CHECK_FALSE(has_category(analyze(seq), "saut-long"));
+}
+
+TEST_CASE("deux sauts longs et une seule coupe dans le deplacement : aucun constat") {
+    stitch::StitchSequence seq;
+    seq.commands = {
+        {um(0, 0), CommandType::Stitch, ObjectId{1}},
+        {um(40'000, 0), CommandType::Jump, ObjectId{1}},
+        {um(40'000, 0), CommandType::Trim, ObjectId{1}},
+        {um(80'000, 0), CommandType::Jump, ObjectId{1}},
+        {um(80'000, 0), CommandType::Stitch, ObjectId{1}},
+    };
+    CHECK_FALSE(has_category(analyze(seq), "saut-long"));
+}
+
+TEST_CASE("une coupe d'un deplacement precedent n'excuse pas un saut long sans coupe") {
+    stitch::StitchSequence seq;
+    seq.commands = {
+        {um(0, 0), CommandType::Stitch, ObjectId{1}},
+        {um(0, 0), CommandType::Trim, ObjectId{1}},
+        {um(1'000, 0), CommandType::Jump, ObjectId{1}}, // premier deplacement : court, coupe
+        {um(1'000, 0), CommandType::Stitch, ObjectId{1}},
+        {um(60'000, 0), CommandType::Jump, ObjectId{1}}, // second deplacement : 59 mm, aucune coupe
+        {um(60'000, 0), CommandType::Stitch, ObjectId{1}},
+    };
+    CHECK(count_category(analyze(seq), "saut-long") == 1);
+}
+
+TEST_CASE("saut long en fin de sequence : signale sans coupe, silencieux avec coupe") {
+    stitch::StitchSequence bare;
+    bare.commands = {
+        {um(0, 0), CommandType::Stitch, ObjectId{1}},
+        {um(50'000, 0), CommandType::Jump, ObjectId{1}}, // aucun point cousu apres
+    };
+    CHECK(count_category(analyze(bare), "saut-long") == 1);
+
+    stitch::StitchSequence trimmed;
+    trimmed.commands = {
+        {um(0, 0), CommandType::Stitch, ObjectId{1}},
+        {um(0, 0), CommandType::Trim, ObjectId{1}},
+        {um(50'000, 0), CommandType::Jump, ObjectId{1}},
+    };
+    CHECK_FALSE(has_category(analyze(trimmed), "saut-long"));
 }
 
 TEST_CASE("saut suivi d'une reprise a distance nulle -> aucun point-court ni point-long fantome") {
@@ -120,9 +278,9 @@ TEST_CASE("point hors cadre detecte") {
 
 TEST_CASE("plafond par categorie respecte") {
     stitch::StitchSequence seq;
-    // 200 points tres courts d'affilee.
+    // 200 points quasi nuls d'affilee (0,05 mm : sous le seuil d'avertissement par point).
     for (int i = 0; i < 200; ++i) {
-        seq.commands.push_back({um(i * 100, 0), CommandType::Stitch, ObjectId{1}});
+        seq.commands.push_back({um(i * 50, 0), CommandType::Stitch, ObjectId{1}});
     }
     AnalysisOptions opts;
     opts.max_findings_per_category = 10;
