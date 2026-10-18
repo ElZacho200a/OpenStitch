@@ -7054,6 +7054,12 @@ void MainWindow::buildPropertiesPanel() {
                         }
                     }
                 }
+                // HP-UX-029 : une modification qui rend des retouches manuelles obsolètes est
+                // signalée AVANT d'être appliquée (bandeau non modal, annulable).
+                if (const auto* current = project_.findEmbroidery(id);
+                    current != nullptr && !(current->params == params)) {
+                    noteOverridesInvalidated(id, current->params);
+                }
                 // Le champ nomme le pas d'historique et sert de clé de fusion : une
                 // rafale (molette, flèches du spinbox) reste un seul pas d'annulation.
                 // La commande est appliquée TOUT DE SUITE ; seule la régénération des points
@@ -7202,7 +7208,9 @@ void MainWindow::updateInspector() {
     // ne jamais dépendre de lui.
     propertiesPanel_->setEditState(emb != nullptr ? std::optional<ObjectId>(emb->id) : std::nullopt,
                                    emb != nullptr ? editStateOf(emb->id)
-                                                  : stitch_generation::ObjectEditState::Clean);
+                                                  : stitch_generation::ObjectEditState::Clean,
+                                   emb != nullptr ? static_cast<int>(emb->overrides.size()) : 0);
+    refreshOverrideWarning(); // HP-UX-029 : suit annulation, rétablissement et abandon
     propertiesPanel_->setJoinMode(emb != nullptr ? std::optional<ObjectId>(emb->id) : std::nullopt,
                                   emb != nullptr ? emb->join : document::JoinMode::Inherit);
     propertiesPanel_->setConnectorMode(

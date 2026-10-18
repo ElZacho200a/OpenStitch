@@ -144,6 +144,48 @@ void MainWindow::connectInspectorEditing() {
             &MainWindow::applyGroupGuideAngle);
 }
 
+void MainWindow::noteOverridesInvalidated(ObjectId id, const document::StitchParams& before) {
+    // Seule la PREMIÈRE modification d'un objet « ✎ » (retouches encore appliquées) compte : un
+    // objet propre n'a rien à avertir, et des retouches déjà obsolètes (⚠) ne sont plus
+    // désactivées une seconde fois.
+    const auto* emb = project_.findEmbroidery(id);
+    if (emb == nullptr || emb->overrides.empty()) {
+        return;
+    }
+    if (overrideWarning_ && overrideWarning_->id == id) {
+        return; // bandeau déjà posé pour cet objet
+    }
+    if (editStateOf(id) != stitch_generation::ObjectEditState::ManuallyEdited) {
+        return;
+    }
+    overrideWarning_ = OverrideWarning{id, static_cast<int>(emb->overrides.size()),
+                                       document::StitchParams{before}};
+}
+
+void MainWindow::refreshOverrideWarning() {
+    if (propertiesPanel_ == nullptr) {
+        return;
+    }
+    std::optional<ObjectId> shownId;
+    int count = 0;
+    if (overrideWarning_) {
+        const auto* emb = project_.findEmbroidery(overrideWarning_->id);
+        if (emb == nullptr || emb->overrides.empty()) {
+            overrideWarning_.reset(); // objet supprimé ou retouches abandonnées
+        } else {
+            const auto* selected = resolveSelectedEmbroidery();
+            // Visible tant que les paramètres diffèrent de ceux d'avant l'édition : annuler
+            // (Ctrl+Z) ou « Réappliquer » les rétablit et retire le bandeau.
+            if (selected != nullptr && selected->id == emb->id &&
+                !(emb->params == overrideWarning_->before)) {
+                shownId = emb->id;
+                count = overrideWarning_->count;
+            }
+        }
+    }
+    propertiesPanel_->setOverrideWarning(shownId, count);
+}
+
 MainWindow::EmbroideryGroup MainWindow::selectedEmbroideryGroup() const {
     EmbroideryGroup group;
     std::optional<std::size_t> kind;

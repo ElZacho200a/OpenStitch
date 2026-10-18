@@ -81,7 +81,14 @@ public:
     // `id` doit correspondre à l'objet actuellement montré par `showEmbroidery`
     // (nullopt si aucune broderie n'est inspectée) : un id différent est
     // ignoré (retard d'affichage évité plutôt qu'un mauvais bouton affiché).
-    void setEditState(std::optional<ObjectId> id, stitch_generation::ObjectEditState state);
+    // `overrideCount` : nombre de retouches de l'objet, repris dans l'info-bulle de « ⚠ »
+    // (HP-UX-029).
+    void setEditState(std::optional<ObjectId> id, stitch_generation::ObjectEditState state,
+                      int overrideCount = 0);
+    // HP-UX-029 : bandeau non modal « Cette modification désactive N retouches (Ctrl+Z pour
+    // annuler) » et bouton « Réappliquer les retouches ». `id` nul ou `count` <= 0 : masqué.
+    void setOverrideWarning(std::optional<ObjectId> id, int count);
+    [[nodiscard]] bool overrideWarningVisible() const;
     // Auto-satin (spec specs/plans/satin-squelette-traversees.md) : met à jour la
     // liste des guides et le résumé de diagnostic de l'objet inspecté. Comme
     // `setEditState`, appelé à CHAQUE rafraîchissement sans reconstruire le
@@ -208,6 +215,10 @@ private:
     QLabel* typePill_{nullptr};
     QLabel* editStateLabel_{nullptr};
     QPushButton* discardButton_{nullptr};
+    QLabel* overrideWarningLabel_{nullptr};
+    QPushButton* reapplyButton_{nullptr};
+    std::optional<ObjectId> overrideWarningId_;
+    std::vector<document::StitchParams> groupMembers_; // HP-UX-038 : valeurs mixtes
     QLabel* textInfoLabel_{nullptr};
     QPushButton* textEditButton_{nullptr};
     QWidget* layerRow_{nullptr};

@@ -248,6 +248,25 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
     });
     root_->addWidget(discardButton_);
 
+    // HP-UX-029 : bandeau non modal, jamais une confirmation bloquante.
+    overrideWarningLabel_ = new QLabel(this);
+    overrideWarningLabel_->setObjectName(QStringLiteral("label_overridesWarning"));
+    overrideWarningLabel_->setWordWrap(true);
+    overrideWarningLabel_->setVisible(false);
+    root_->addWidget(overrideWarningLabel_);
+    reapplyButton_ = new QPushButton(tr("Réappliquer les retouches"), this);
+    reapplyButton_->setObjectName(QStringLiteral("button_reapplyOverrides"));
+    reapplyButton_->setToolTip(
+        tr("Rétablit les paramètres d'avant la modification : les retouches manuelles "
+           "redeviennent appliquées (annulable, Ctrl+Z)."));
+    reapplyButton_->setVisible(false);
+    connect(reapplyButton_, &QPushButton::clicked, this, [this] {
+        if (overrideWarningId_) {
+            emit reapplyOverridesRequested(*overrideWarningId_);
+        }
+    });
+    root_->addWidget(reapplyButton_);
+
     // Lettrage : bandeau persistant, masqué hors d'une lettre de texte (cf. setTextInfo).
     textInfoLabel_ = new QLabel(this);
     textInfoLabel_->setObjectName(QStringLiteral("text_info_label"));
@@ -680,7 +699,7 @@ void PropertiesPanel::showInfo(const QString& title, const QString& details) {
 }
 
 void PropertiesPanel::setEditState(std::optional<ObjectId> id,
-                                   stitch_generation::ObjectEditState state) {
+                                   stitch_generation::ObjectEditState state, int overrideCount) {
     editStateId_ = id;
     if (!id) {
         editStateLabel_->setVisible(false);
@@ -708,7 +727,9 @@ void PropertiesPanel::setEditState(std::optional<ObjectId> id,
             tr("La géométrie ou l'ordre de couture de cet objet a changé depuis les "
                "dernières retouches manuelles : elles ne sont plus appliquées "
                "(la couture générée est utilisée telle quelle). Abandonnez les "
-               "retouches pour ré-éditer sur la forme actuelle."));
+               "retouches pour ré-éditer sur la forme actuelle.") +
+            (overrideCount > 0 ? tr("\n%1 retouche(s) désactivée(s).").arg(overrideCount)
+                               : QString()));
         editStateLabel_->setVisible(true);
         discardButton_->setVisible(true);
         break;
