@@ -10,7 +10,9 @@
 #include "openstitch/stitch_analysis/thread_usage.hpp"
 #include "openstitch/thread_palette/thread.hpp"
 #include "openstitch/thread_palette/thread_library.hpp"
+#include "openstitch/thread_palette/thread_stock.hpp"
 
+class QCheckBox;
 class QComboBox;
 class QFrame;
 class QLabel;
@@ -44,6 +46,15 @@ public:
     // Texte d'état de la sélection courante (« 3 objets sélectionnés »).
     void setSelectionInfo(const QString& text);
 
+    // « Mes fils » (HP-THR-007) : préférence utilisateur affichée par le panneau. Le panneau
+    // n'édite jamais le stock lui-même : il émet des demandes que MainWindow applique, persiste
+    // puis renvoie par `setStock`. Aucune mutation du document.
+    void setStock(thread_palette::ThreadStock stock);
+    [[nodiscard]] const thread_palette::ThreadStock& stock() const { return stock_; }
+    // Bascule « limiter la recherche du fil le plus proche à mes fils » (sans signal).
+    void setLimitToStock(bool limit);
+    [[nodiscard]] bool limitToStock() const;
+
     [[nodiscard]] QString currentChartId() const; // vide = tous les nuanciers
     [[nodiscard]] std::optional<thread_palette::Thread> currentCatalogThread() const;
     [[nodiscard]] std::optional<stitch_analysis::ThreadIdentity> currentUsage() const;
@@ -66,9 +77,16 @@ signals:
     void filmBlockMoved(int from, int to);
     void filmBlockSelected(int row);
     void mergeFilmBlocksRequested();
+    // Case « je possède ce fil » (catalogue ou liste Mes fils) cochée / décochée.
+    void stockOwnedToggled(const thread_palette::ThreadKey& key, bool owned);
+    void personalThreadAddRequested(const thread_palette::Thread& thread);
+    void personalThreadRemoveRequested(const thread_palette::ThreadKey& key);
+    void limitToStockToggled(bool limit);
 
 private:
     void rebuildCatalog();
+    void rebuildStock();
+    [[nodiscard]] std::optional<thread_palette::ThreadKey> currentStockKey() const;
     void updateButtons();
     void applyTheme();
     [[nodiscard]] QString labelOf(const stitch_analysis::ThreadIdentity& id) const;
@@ -101,6 +119,15 @@ private:
     QPushButton* nearestBtn_{nullptr};
     QPushButton* importBtn_{nullptr};
     QPushButton* removeChartBtn_{nullptr};
+    QCheckBox* ownCheck_{nullptr};
+    // Mes fils.
+    thread_palette::ThreadStock stock_;
+    std::vector<thread_palette::Thread> stockRows_;
+    QCheckBox* limitCheck_{nullptr};
+    QLabel* stockSummary_{nullptr};
+    QListWidget* stockList_{nullptr};
+    QPushButton* addPersonalBtn_{nullptr};
+    QPushButton* removeStockBtn_{nullptr};
     // Film couleur.
     QListWidget* filmList_{nullptr};
     QLabel* filmSummary_{nullptr};
