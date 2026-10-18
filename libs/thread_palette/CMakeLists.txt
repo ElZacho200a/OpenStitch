@@ -4,6 +4,7 @@ add_library(openstitch_thread_palette
     src/color_reduction.cpp
     src/chart_import.cpp
     src/thread_library.cpp
+    src/thread_stock.cpp
     data/madeira_polyneon.cpp
     data/isacord_40.cpp
 )
