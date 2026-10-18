@@ -19,6 +19,7 @@
 #include <QListWidget>
 #include <QMenu>
 #include <QMenuBar>
+#include <QScrollArea>
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStatusBar>
@@ -83,6 +84,9 @@ void MainWindow::buildDensityFeature() {
 
     // --- Section du panneau Analyse ----------------------------------------------------------
     QWidget* container = analysisDock_ != nullptr ? analysisDock_->widget() : nullptr;
+    if (auto* scroll = qobject_cast<QScrollArea*>(container)) {
+        container = scroll->widget(); // le contenu du dock Analyse défile (HP-UX-024)
+    }
     auto* layout = container != nullptr ? qobject_cast<QVBoxLayout*>(container->layout()) : nullptr;
     if (layout != nullptr) {
         auto* group = new QGroupBox(tr("Carte de densité"), container);

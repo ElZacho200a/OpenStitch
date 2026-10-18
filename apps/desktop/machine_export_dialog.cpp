@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "machine_export_dialog.hpp"
+#include "responsive.hpp"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -10,7 +11,10 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QSettings>
+#include <QToolButton>
 #include <QVBoxLayout>
+
+#include <initializer_list>
 
 #include <cmath>
 
@@ -74,8 +78,8 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
     form->addRow(tr("Arrêts machine :"), stops_);
     form->addRow(QString(), colorChanges_);
 
-    // Le DST n'emporte que des arrêts couleur et l'EXP aucune couleur : un fichier compagnon voisin
-    // (même nom, extension .inf ou .csv) les conserve pour la réimportation et l'atelier.
+    // Le DST n'emporte que des arrêts couleur et l'EXP aucune couleur : un fichier compagnon
+    // voisin (même nom, extension .inf ou .csv) les conserve pour la réimportation et l'atelier.
     companion_ = new QCheckBox(tr("Écrire aussi le fichier de couleurs à côté"), this);
     companion_->setObjectName(QStringLiteral("check_exportColorCompanion"));
     companion_->setToolTip(
@@ -146,7 +150,8 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
         tr("Change l'ordre de couture des objets d'une même couleur pour raccourcir les "
            "déplacements. L'ordre de deux objets qui se touchent ou se recouvrent est conservé "
            "(c'est lui qui décide de ce qui est cousu par-dessus), les objets verrouillés restent "
-           "en place et aucun objet n'est modifié ni retourné. À vérifier à l'aperçu : l'ordre de "
+           "en place et aucun objet n'est modifié ni retourné. À vérifier à l'aperçu : l'ordre "
+           "de "
            "couture influe aussi sur le tirage du tissu."));
     sameColour_ = new QCheckBox(tr("Accepter aussi une surface déjà cousue du même fil"), this);
     sameColour_->setObjectName(QStringLiteral("check_exportReduceTrimsSameColour"));
@@ -158,6 +163,17 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
     maxBridge_->setDecimals(1);
     maxBridge_->setSingleStep(1.0);
     maxBridge_->setSuffix(tr(" mm"));
+    // Section repliable (HP-UX-025) : les optimisations restent à une ligne tant qu'on n'y touche
+    // pas ; elle s'ouvre d'office si l'optimisation est active (réglage mémorisé).
+    optimizationsToggle_ = new QToolButton(this);
+    optimizationsToggle_->setObjectName(QStringLiteral("button_exportOptimizations"));
+    optimizationsToggle_->setText(tr("Optimisations des trajets"));
+    optimizationsToggle_->setCheckable(true);
+    optimizationsToggle_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    optimizationsToggle_->setAutoRaise(true);
+    optimizationsToggle_->setToolTip(
+        tr("Affiche ou masque les réglages d'optimisation de l'export (coupes, sauts, ponts)."));
+    form->addRow(QString(), optimizationsToggle_);
     form->addRow(QString(), reduceTrims_);
     form->addRow(QString(), between_);
     form->addRow(QString(), within_);
@@ -179,6 +195,9 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
     problemsBtn_->setObjectName(QStringLiteral("action_exportViewProblems"));
     buttons->addButton(tr("Annuler"), QDialogButtonBox::RejectRole);
     layout->addWidget(buttons);
+    // Le formulaire défile sur un petit écran, les boutons restent visibles (HP-UX-025).
+    scrollDialogBody(this, buttons);
+    fitDialogToScreen(this);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     connect(problemsBtn_, &QPushButton::clicked, this, [this] {
@@ -214,6 +233,17 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
     within_->setChecked(settings.value(kSettingsWithin, true).toBool());
     underlay_->setChecked(settings.value(kSettingsUnderlay, true).toBool());
     regions_->setChecked(settings.value(kSettingsRegions, false).toBool());
+
+    const auto showOptimizations = [this, form](bool shown) {
+        optimizationsToggle_->setArrowType(shown ? Qt::DownArrow : Qt::RightArrow);
+        for (QWidget* row : std::initializer_list<QWidget*>{
+                 reduceTrims_, between_, within_, underlay_, regions_, sameColour_, maxBridge_}) {
+            form->setRowVisible(row, shown);
+        }
+    };
+    connect(optimizationsToggle_, &QToolButton::toggled, this, showOptimizations);
+    optimizationsToggle_->setChecked(reduceTrims_->isChecked());
+    showOptimizations(optimizationsToggle_->isChecked());
 
     const auto onChange = [this] { refresh(); };
     connect(formatBox_, &QComboBox::currentIndexChanged, this, onChange);

@@ -14,6 +14,7 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
+#include <QResizeEvent>
 #include <QShowEvent>
 #include <QSignalBlocker>
 #include <QTimer>
@@ -26,12 +27,15 @@
 
 #include "app_theme.hpp"
 #include "openstitch/stitch_render/segments.hpp"
+#include "responsive.hpp"
 #include "wheel_guard.hpp"
 
 namespace openstitch::desktop {
 namespace {
 // Étendue minimale de la zone de transition, en % de l'axe.
 constexpr double kMinZonePercent = 5.0;
+// Largeur du dialogue (px) à partir de laquelle réglages et aperçu se placent côte à côte.
+constexpr int kSideBySideMinWidthPx = 900;
 
 QColor color(ColorBlendDialog::Rgb rgb) {
     return QColor(rgb[0], rgb[1], rgb[2]);
@@ -192,7 +196,6 @@ ColorBlendDialog::ColorBlendDialog(Rgb background, Rgb foreground, bool canAnaly
                                    bool mergesZones, QWidget* parent)
     : QDialog(parent), mergesZones_(mergesZones) {
     setObjectName(QStringLiteral("colorBlendDialog"));
-    setMinimumWidth(970);
     auto* layout = new QVBoxLayout(this);
     layout->setSpacing(12);
     explanation_ = new QLabel(this);
@@ -200,6 +203,7 @@ ColorBlendDialog::ColorBlendDialog(Rgb background, Rgb foreground, bool canAnaly
     explanation_->setWordWrap(true);
     layout->addWidget(explanation_);
     auto* content = new QHBoxLayout();
+    contentLayout_ = content;
     auto* settings = new QVBoxLayout();
     auto* layers = new QGroupBox(tr("1 · Choisir les deux couches"), this);
     auto* layersLayout = new QVBoxLayout(layers);
@@ -369,6 +373,10 @@ ColorBlendDialog::ColorBlendDialog(Rgb background, Rgb foreground, bool canAnaly
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     layout->addWidget(buttons);
+    // Le contenu défile sur un petit écran, OK / Annuler restent visibles (HP-UX-025).
+    scrollDialogBody(this, buttons);
+    resize(kSideBySideMinWidthPx + 40, 600);
+    fitDialogToScreen(this);
     previewTimer_ = new QTimer(this);
     previewTimer_->setObjectName(QStringLiteral("timer_blendPreview"));
     previewTimer_->setSingleShot(true);
@@ -431,6 +439,14 @@ void ColorBlendDialog::settingsChanged() {
         previewPending_ = true;
     } else if (shown_ && isVisible()) {
         previewTimer_->start();
+    }
+}
+
+void ColorBlendDialog::resizeEvent(QResizeEvent* event) {
+    QDialog::resizeEvent(event);
+    if (contentLayout_ != nullptr) {
+        contentLayout_->setDirection(width() >= kSideBySideMinWidthPx ? QBoxLayout::LeftToRight
+                                                                      : QBoxLayout::TopToBottom);
     }
 }
 

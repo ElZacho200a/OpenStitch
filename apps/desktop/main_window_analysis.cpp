@@ -44,6 +44,7 @@
 #include "openstitch/stitch_analysis/analyze.hpp"
 #include "openstitch/stitch_analysis/text_rules.hpp"
 #include "properties_panel.hpp"
+#include "responsive.hpp"
 #include "text_dialog.hpp"
 
 namespace openstitch::desktop {
@@ -172,7 +173,8 @@ void MainWindow::buildAnalysisPanel() {
     fixButton->setEnabled(false);
     layout->addWidget(fixButton);
 
-    analysisDock_->setWidget(container);
+    // Contenu défilant (HP-UX-024) : le dock rétrécit sous la taille de son contenu.
+    analysisDock_->setWidget(scrollableDockContent(container, analysisDock_));
     addDockWidget(Qt::RightDockWidgetArea, analysisDock_);
     analysisDock_->hide();
 

@@ -33,6 +33,7 @@
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QRadioButton>
+#include <QSignalBlocker>
 #include <QSizePolicy>
 #include <QSpinBox>
 #include <QStandardPaths>
@@ -43,6 +44,7 @@
 #include <QUrl>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -73,6 +75,7 @@
 #include "import_dialog.hpp"
 #include "machine_export_dialog.hpp"
 #include "node_handle.hpp"
+#include "responsive.hpp"
 
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/autodigitize/contour_objects.hpp"
@@ -435,6 +438,10 @@ MainWindow::MainWindow() {
     buildFilterPanel();
     buildHistoryPanel();
     buildThreadPanel();
+    // Le dock Couleurs existe dès le départ, caché : sa place dans la disposition enregistrée
+    // n'est plus perdue au redémarrage (HP-UX-024).
+    showColorsPanel();
+    colorsDock_->hide();
     // [cablage-A:debut]
     // [cablage-A:fin]
     // [cablage-B:debut]
@@ -458,22 +465,62 @@ MainWindow::MainWindow() {
     // hauteur de la colonne de droite au lieu de la partager à parts égales.
     tabifyDockWidget(propertiesDock_, filterDock_);
     propertiesDock_->raise();
+    // Analyse, Historique, Fils et Couleurs en onglets (HP-UX-024) : un seul de ces panneaux
+    // occupe la colonne de droite à la fois, au lieu de s'empiler sur toute la hauteur.
+    panelsMenu_->addAction(colorsDock_->toggleViewAction());
+    for (QDockWidget* secondary : {historyDock_, threadDock_, colorsDock_}) {
+        tabifyDockWidget(analysisDock_, secondary);
+    }
     panelsMenu_->addSeparator();
+    // Mode portable (HP-UX-027) : Document, Ordre, Workflow et Propriétés partagent une seule
+    // colonne en onglets, le canevas récupère toute la largeur de l'autre côté.
+    auto* portableAct = panelsMenu_->addAction(tr("Mode &portable (une seule colonne)"));
+    portableAct->setObjectName(QStringLiteral("action_portableMode"));
+    portableAct->setCheckable(true);
+    portableAct->setToolTip(tr("Regroupe les panneaux en onglets dans une colonne unique : "
+                               "utile sur un petit écran."));
+    connect(portableAct, &QAction::toggled, this, [this](bool on) {
+        const std::array<QDockWidget*, 3> leftDocks{documentDock_, orderDock_, workflowDock_};
+        std::array<bool, 3> hidden{};
+        for (std::size_t i = 0; i < leftDocks.size(); ++i) {
+            hidden[i] = leftDocks[i]->isHidden();
+        }
+        if (on) {
+            for (QDockWidget* dock : leftDocks) {
+                addDockWidget(Qt::RightDockWidgetArea, dock);
+                tabifyDockWidget(propertiesDock_, dock);
+            }
+            propertiesDock_->raise();
+        } else {
+            addDockWidget(Qt::LeftDockWidgetArea, documentDock_);
+            splitDockWidget(documentDock_, workflowDock_, Qt::Vertical);
+            tabifyDockWidget(documentDock_, orderDock_);
+            documentDock_->raise();
+        }
+        for (std::size_t i = 0; i < leftDocks.size(); ++i) {
+            leftDocks[i]->setVisible(!hidden[i]); // déplacer un panneau ne le rouvre pas
+        }
+    });
     auto* resetLayoutAct = panelsMenu_->addAction(tr("&Réinitialiser la disposition"));
     resetLayoutAct->setObjectName(QStringLiteral("action_resetLayout"));
     resetLayoutAct->setToolTip(tr("Remet les panneaux et les barres à leur place d'origine."));
-    connect(resetLayoutAct, &QAction::triggered, this, [this] {
+    connect(resetLayoutAct, &QAction::triggered, this, [this, portableAct] {
         if (!defaultWindowState_.isEmpty()) {
             restoreState(defaultWindowState_);
+            const QSignalBlocker blocker(
+                portableAct); // la disposition d'origine n'est pas portable
+            portableAct->setChecked(false);
         }
     });
     buildMainToolbar();
     addToolBarBreak(); // la barre contextuelle sur sa propre rangée
     buildContextToolbar();
     buildToolPalette();
-    addToolBarBreak(); // la barre de simulation occupe sa propre rangée
-    buildSimulationToolbar();
+    // Simulation et bande des fils partagent la rangée du bas (HP-UX-026), visibles seulement
+    // quand une séquence existe (cf. refreshThreadStrip). La bande est posée en premier : elle
+    // garde la largeur de ses pastilles, la simulation prend le reste (débordement « » sinon).
     buildThreadStrip();
+    buildSimulationToolbar();
     // Une barre masquée doit pouvoir se rouvrir depuis un menu, comme les panneaux.
     panelsMenu_->insertSeparator(resetLayoutAct);
     for (auto* bar : {mainToolbar_, contextToolbar_, toolPalette_, simToolbar_, threadStripBar_}) {
@@ -513,9 +560,9 @@ MainWindow::MainWindow() {
     hintsLabel_->setMinimumWidth(0);
     hintsLabel_->setAccessibleName(tr("Indications de geste"));
     statusBar()->addPermanentWidget(hintsLabel_, 1);
-    toolLabel_ = new QLabel(this);
+    toolLabel_ = new ElidedTextLabel(this);
     statusBar()->addPermanentWidget(toolLabel_);
-    savedLabel_ = new QLabel(this);
+    savedLabel_ = new ElidedTextLabel(this);
     savedLabel_->setObjectName(QStringLiteral("savedLabel"));
     savedLabel_->setAccessibleName(tr("État d'enregistrement"));
     statusBar()->addPermanentWidget(savedLabel_);
@@ -535,8 +582,9 @@ MainWindow::MainWindow() {
         }
     });
     qApp->installEventFilter(this); // ShortcutOverride, cf. main_window_ux.cpp
-    cursorLabel_ = new QLabel(this);
-    cursorLabel_->setMinimumWidth(180);
+    // Étiquette élidable, sans largeur minimale propre (HP-UX-026) : la barre d'état ne fixe plus
+    // la largeur minimale de la fenêtre.
+    cursorLabel_ = new ElidedTextLabel(this);
     statusBar()->addPermanentWidget(cursorLabel_);
     // Bascule d'accroche des nœuds visible en permanence (même état que l'entrée du menu
     // Affichage) : sans elle, savoir si le glisser va s'accrocher exige d'ouvrir le menu.
@@ -6285,7 +6333,7 @@ void MainWindow::updateContextToolbar() {
 
     if (emb != nullptr) {
         const ObjectId id = emb->id;
-        contextToolbar_->addWidget(new QLabel(tr("Type de points :  "), contextToolbar_));
+        contextToolbar_->addWidget(new ElidedTextLabel(tr("Type de points :"), contextToolbar_));
         const int current = stitchTypeIndex(*emb);
         const QString names[] = {tr("Contour"), tr("Tatami"), tr("Satin"), tr("Directionnel")};
         for (int t = 0; t < 4; ++t) {
@@ -6329,9 +6377,9 @@ void MainWindow::updateContextToolbar() {
         }
         const auto editState = editStateOf(id);
         if (editState == stitch_generation::ObjectEditState::ManuallyEdited) {
-            contextToolbar_->addWidget(new QLabel(tr("  ✎ retouché  "), contextToolbar_));
+            contextToolbar_->addWidget(new ElidedTextLabel(tr("✎ retouché"), contextToolbar_));
         } else if (editState == stitch_generation::ObjectEditState::Dirty) {
-            auto* warn = new QLabel(tr("  ⚠ retouches obsolètes  "), contextToolbar_);
+            auto* warn = new ElidedTextLabel(tr("⚠ retouches obsolètes"), contextToolbar_);
             warn->setToolTip(tr("La géométrie ou l'ordre de couture a changé depuis les dernières "
                                 "retouches : elles ne sont plus appliquées."));
             contextToolbar_->addWidget(warn);
@@ -6341,11 +6389,11 @@ void MainWindow::updateContextToolbar() {
             connect(discard, &QAction::triggered, this, [this, id] { discardOverrides(id); });
         }
     } else if (hasMulti) {
-        contextToolbar_->addWidget(
-            new QLabel(tr("%1 objets sélectionnés").arg(multiSelection_.size()), contextToolbar_));
+        contextToolbar_->addWidget(new ElidedTextLabel(
+            tr("%1 objets sélectionnés").arg(multiSelection_.size()), contextToolbar_));
     } else if (hasVec) {
-        contextToolbar_->addWidget(
-            new QLabel(tr("Objet vectoriel  ·  créer un objet de broderie :  "), contextToolbar_));
+        contextToolbar_->addWidget(new ElidedTextLabel(
+            tr("Objet vectoriel · créer un objet de broderie :"), contextToolbar_));
         const auto addCreate = [this](const QString& text, void (MainWindow::*slot)()) {
             auto* act = contextToolbar_->addAction(text);
             connect(act, &QAction::triggered, this, slot);
@@ -6359,8 +6407,7 @@ void MainWindow::updateContextToolbar() {
             const double mmPerPx = project_.mm_per_px.value;
             const double areaMm2 = region->pixel_count * mmPerPx * mmPerPx;
             const std::vector<RegionId> picked = selectedRegionIds();
-            QString label =
-                tr("Région %1  ·  %2 mm²    ").arg(region->id.value).arg(areaMm2, 0, 'f', 1);
+            QString label = tr("Région %1 · %2 mm²").arg(region->id.value).arg(areaMm2, 0, 'f', 1);
             if (picked.size() > 1) {
                 std::size_t pixels = 0;
                 for (const RegionId r : picked) {
@@ -6368,11 +6415,11 @@ void MainWindow::updateContextToolbar() {
                         pixels += rr->pixel_count;
                     }
                 }
-                label = tr("%1 régions  ·  %2 mm²    ")
+                label = tr("%1 régions · %2 mm²")
                             .arg(picked.size())
                             .arg(static_cast<double>(pixels) * mmPerPx * mmPerPx, 0, 'f', 1);
             }
-            contextToolbar_->addWidget(new QLabel(label, contextToolbar_));
+            contextToolbar_->addWidget(new ElidedTextLabel(label, contextToolbar_));
         }
         contextToolbar_->addAction(mergeSelectionAct_); // Fusionner la sélection (>= 2 régions)
         contextToolbar_->addAction(mergeAct_);          // Fusionner avec… (mode)
@@ -6386,17 +6433,16 @@ void MainWindow::updateContextToolbar() {
             const auto st = stitch::compute_stats(*sequence_);
             const double w = to_millimeters(st.bounds.max.x - st.bounds.min.x).value;
             const double h = to_millimeters(st.bounds.max.y - st.bounds.min.y).value;
-            contextToolbar_->addWidget(new QLabel(
-                tr("Motif : %1 × %2 mm   ·   %3 points   ·   %4 changement(s) de couleur    ")
+            contextToolbar_->addWidget(new ElidedTextLabel(
+                tr("Motif : %1 × %2 mm · %3 points · %4 changement(s) de couleur")
                     .arg(w, 0, 'f', 1)
                     .arg(h, 0, 'f', 1)
                     .arg(st.stitches)
                     .arg(st.color_changes),
                 contextToolbar_));
         } else {
-            contextToolbar_->addWidget(
-                new QLabel(tr("Ouvrez une image, ou sélectionnez une région ou un objet.    "),
-                           contextToolbar_));
+            contextToolbar_->addWidget(new ElidedTextLabel(
+                tr("Ouvrez une image, ou sélectionnez une région ou un objet."), contextToolbar_));
         }
         auto* hoop = contextToolbar_->addAction(
             tr("Cadre : %1 × %2 mm…")
@@ -6762,7 +6808,7 @@ void MainWindow::buildWorkflowPanel() {
     workflowDock_->setObjectName(QStringLiteral("workflowDock"));
     workflowDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
     workflowPanel_ = new WorkflowPanel(workflowDock_);
-    workflowDock_->setWidget(workflowPanel_);
+    workflowDock_->setWidget(scrollableDockContent(workflowPanel_, workflowDock_));
     if (documentDock_ != nullptr) {
         splitDockWidget(documentDock_, workflowDock_, Qt::Vertical); // sous Document
     } else {
@@ -7490,7 +7536,7 @@ void MainWindow::buildOrderPanel() {
     layout->addWidget(orderCostLabel_);
     updateOrderButtons();
 
-    orderDock_->setWidget(panel);
+    orderDock_->setWidget(scrollableDockContent(panel, orderDock_));
     addDockWidget(Qt::LeftDockWidgetArea, orderDock_);
     orderDock_->hide();
 }
@@ -7897,9 +7943,10 @@ void MainWindow::applyOrderStrategy() {
 }
 
 void MainWindow::buildSimulationToolbar() {
-    simToolbar_ = addToolBar(tr("Simulation"));
+    simToolbar_ = new QToolBar(tr("Simulation"), this);
     simToolbar_->setObjectName(QStringLiteral("simToolbar"));
     simToolbar_->setMovable(false);
+    addToolBar(Qt::BottomToolBarArea, simToolbar_);
 
     simPlayAct_ = simToolbar_->addAction(tr("▶ Lecture"));
     simPlayAct_->setCheckable(true);
@@ -7930,7 +7977,7 @@ void MainWindow::buildSimulationToolbar() {
     simToolbar_->addWidget(simSlider_);
 
     simLabel_ = new QLabel(tr("— / —"), simToolbar_);
-    simLabel_->setMinimumWidth(120);
+    simLabel_->setMinimumWidth(96);
     simLabel_->setAccessibleName(tr("Progression de la simulation"));
     simToolbar_->addWidget(simLabel_);
 
@@ -7959,9 +8006,16 @@ void MainWindow::buildSimulationToolbar() {
     simTimer_->setInterval(16); // ~60 pas/seconde
     connect(simTimer_, &QTimer::timeout, this, &MainWindow::onSimTick);
 
-    // Zone réservée : la barre reste visible (contrôles grisés sans séquence)
-    // pour ne pas faire sauter la mise en page à l'apparition des points.
+    // Un masquage demandé par l'utilisateur (menu Panneaux) l'emporte sur l'affichage
+    // automatique de la rangée du bas (cf. refreshThreadStrip) : retenu dans une propriété.
+    for (QToolBar* bar : {simToolbar_, threadStripBar_}) {
+        connect(bar->toggleViewAction(), &QAction::triggered, bar,
+                [bar](bool shown) { bar->setProperty("userHidden", !shown); });
+    }
+
+    // Les contrôles sont grisés sans séquence ; la rangée n'apparaît qu'avec elle.
     updateSimulationRange();
+    refreshThreadStrip();
 }
 
 void MainWindow::updateSimulationInfo(int step) {

@@ -14,6 +14,7 @@
 #include <cmath>
 
 #include "app_theme.hpp"
+#include "responsive.hpp"
 
 namespace openstitch::desktop {
 
@@ -28,6 +29,7 @@ ImportDialog::ImportDialog(int widthPx, int heightPx, const QImage& preview, QSi
                            QWidget* parent)
     : QDialog(parent), widthPx_(widthPx), heightPx_(heightPx), hoopMm_(hoopMm) {
     setWindowTitle(tr("Importer une image"));
+    fitDialogToScreen(this);
 
     auto* root = new QVBoxLayout(this);
 
