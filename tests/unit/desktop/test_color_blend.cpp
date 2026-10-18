@@ -99,7 +99,35 @@ private slots:
     void explicitLayerThreadSelectionDoesNotIncludeBackground();
     void dialogPreviewShowsTheStitchesOfBothLayers();
     void createdLayersFollowTheChosenProfile();
+    void addLayerInsertsAfterBaseAndUndoes();
 };
+
+void MainWindowTest::addLayerInsertsAfterBaseAndUndoes() {
+    MainWindow w;
+    w.applyLoadedProject(blendFixture(false, true)); // base puis « Dessus »
+    const auto base = w.project_.embroidery_objects.front();
+    const auto top = w.project_.embroidery_objects.back();
+    w.setSelection({.embroidery = base.id, .objects = {base.source_vector}});
+    w.updateActions();
+    QVERIFY(w.addLayerAct_ != nullptr);
+    QVERIFY(w.addLayerAct_->isEnabled());
+    const auto color = MainWindow::defaultLayerColor(base.rgb);
+    QVERIFY(color != base.rgb);
+    QVERIFY(w.addLayer(base.id, 1, color)); // tatami
+    QCOMPARE(w.project_.embroidery_objects.size(), std::size_t{3});
+    const auto& layer = w.project_.embroidery_objects[1];
+    QCOMPARE(w.project_.embroidery_objects[0].id, base.id);
+    QCOMPARE(w.project_.embroidery_objects[2].id, top.id);
+    QCOMPARE(layer.source_vector, base.source_vector);
+    QCOMPARE(layer.rgb, color);
+    QVERIFY(layer.is_tatami());
+    QVERIFY(layer.id != base.id && layer.id != top.id);
+    QVERIFY(QString::fromStdString(layer.name).contains(QStringLiteral("couche")));
+    w.undoAct_->trigger();
+    QCOMPARE(w.project_.embroidery_objects.size(), std::size_t{2});
+    QCOMPARE(w.project_.embroidery_objects[0].id, base.id);
+    QCOMPARE(w.project_.embroidery_objects[1].id, top.id);
+}
 
 void MainWindowTest::dialogPreviewShowsTheStitchesOfBothLayers() {
     // Régression : MainWindow ne répondait jamais à previewRequested ; l'aperçu
