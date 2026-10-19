@@ -9,7 +9,9 @@
 #include <algorithm>
 #include <cmath>
 
+#include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/clean.hpp"
+#include "openstitch/geometry/measure.hpp"
 #include "openstitch/geometry/curve_fit.hpp"
 #include "openstitch/geometry/simplify.hpp"
 
@@ -28,7 +30,37 @@ geometry::PathNode to_model(const cv::Point& px, int width, int height, double m
         geometry::NodeType::Corner, std::nullopt, std::nullopt};
 }
 
+double total_area_um2(const std::vector<geometry::PathSet>& sets) {
+    double area = 0.0;
+    for (const auto& set : sets) {
+        area += geometry::path_set_area_um2(set);
+    }
+    return area;
+}
+
 } // namespace
+
+bool is_overlap_grown_contour(const std::vector<geometry::PathSet>& current,
+                              const std::vector<geometry::PathSet>& raw, Micrometers max_band) {
+    const double rawArea = total_area_um2(raw);
+    if (rawArea <= 0.0 || total_area_um2(current) <= rawArea * 1.03) {
+        return false;
+    }
+    double perimeter = 0.0;
+    for (const auto& set : raw) {
+        perimeter += geometry::path_length_um(set.outer, Micrometers{100});
+        for (const auto& hole : set.holes) {
+            perimeter += geometry::path_length_um(hole, Micrometers{100});
+        }
+    }
+    const double budget = perimeter * static_cast<double>(max_band.value);
+    const auto grown = geometry::difference_polygons(current, raw);
+    const auto missing = geometry::difference_polygons(raw, current);
+    if (!grown || !missing) {
+        return false;
+    }
+    return total_area_um2(*grown) <= budget && total_area_um2(*missing) <= budget;
+}
 
 Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segmentation& seg,
                                                         RegionId id,
