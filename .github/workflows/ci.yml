@@ -34,14 +34,11 @@ jobs:
           & "$env:RUNNER_TEMP/vcpkg/bootstrap-vcpkg.bat" -disableMetrics
           "VCPKG_ROOT=$env:RUNNER_TEMP/vcpkg" | Out-File -Append -FilePath $env:GITHUB_ENV
 
-      - name: Configure
+      - name: Configure and build Release
         shell: pwsh
         run: |
           $env:QT_ROOT = $env:QT_ROOT_DIR
-          cmake --preset msvc
-
-      - name: Build Release
-        run: cmake --build --preset msvc-release
+          ./scripts/build.ps1 -SkipBootstrap -Configuration Release
 
       # Disponible des la compilation, meme si les tests suivants echouent (build Release seul).
       # La publication stable reste conditionnee au succes de tous les jobs.
