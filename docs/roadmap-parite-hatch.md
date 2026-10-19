@@ -1758,6 +1758,41 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
   forme (contour extérieur), contour → satin de bordure, tatami → contour
   (bord), conserver fil et points d'entrée.
 
+### HP-OBJ-023 — Couches par zone [P1] — ◐ Partiel (2026-10-18)
+- Livré : `commands::AddLayerCommand` (4 tests dans `test_undo_stack.cpp`) et
+  l'action « Ajouter une couche… » (menu Broderie et menu contextuel : choix du
+  type, couleur complémentaire par défaut, annulable ; test
+  `addLayerInsertsAfterBaseAndUndoes` dans `test_color_blend.cpp`).
+  Reste : lien parent-enfant et regroupement visuel dans la liste Document ;
+  critères d'acceptation « ordre de couture » et « suppression » non testés à
+  part ; suite desktop complète non relancée.
+- État OpenStitch (avant) : un objet vectoriel porte un seul objet de broderie ; deux
+  types de points sur une même zone exigent de dupliquer la forme à la main.
+- Hatch : objets empilés (ordre de couture modifiable) ; le détail exact du
+  mécanisme est à vérifier dans le manuel Hatch avant d'implémenter.
+- À faire : action « Ajouter une couche… » sur l'objet sélectionné, qui crée
+  un `EmbroideryObject` de même `source_vector`, inséré juste après la base
+  dans `project.embroidery_objects` (cousu par-dessus) via
+  `commands::AddLayerCommand(base_id, layer)`, annulable en un pas. Pas de
+  nouveau champ de modèle ; points toujours via `effective_sequence`.
+  Limites assumées : pas de lien parent-enfant (supprimer la base ne supprime
+  pas les couches), pas de regroupement visuel pour l'instant.
+- Modules : `libs/commands` (`AddLayerCommand`), `libs/document` (aucun champ
+  nouveau), `apps/desktop` (action et entrée de la liste Document), docs
+  `docs/source/embroidery-objects.md`.
+- Dépend de : HP-OBJ-012 (duplication avec broderie), HP-OBJ-001 (sélection depuis la liste Document).
+- Acceptation :
+  - Test commande : après `AddLayerCommand(base, layer)`, la couche est juste
+    après la base dans `embroidery_objects` et partage son `source_vector`.
+  - Test undo : un `undo()` retire la couche et restaure l'ordre initial ; un
+    `redo()` la remet à la même position.
+  - Test ordre de couture : `generate_sequence` coud les points de la base
+    avant ceux de la couche, sans régénérer les points stockés.
+  - Test suppression : supprimer la base laisse la couche dans le document
+    (comportement documenté, pas de suppression en cascade).
+  - QTest : l'action « Ajouter une couche… » est présente sur un objet
+    sélectionné et absente sans sélection.
+
 ---
 
 ## 10. Édition des points (EDIT)
@@ -1868,6 +1903,16 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
   mainteneur : l'optimisation s'applique **à la toute fin** du flux (dans
   `finish_sequence`, dernière passe d'`effective_sequence`), sans réordonner les
   objets ni régénérer quoi que ce soit en amont.
+
+- Livré 2026-10-18 (audit `Possible.osp`, branche `fix/tatami-liaisons-bord`) : les liaisons
+  entre rangées voisines du tatami tolèrent 0,15 mm de sortie au bord d'une fente ou d'un coin
+  rentrant (`connector_invalid`, `kLinkEdgeTol`) au lieu de devenir un saut : 973 des 1 459 sauts
+  de tatami du projet étaient de ce type. Mesure : sauts 2 862 → 1 525, coupes 928 → 792 ; soleil
+  141 → 4 sauts. **Reste** (manques constatés) : parcours des rangées glouton sans retour par le
+  fil déjà cousu (au-delà de `underpathCap`, 16 mm, on coupe) ; moteur directionnel : même test
+  strict à assouplir ; satins auto (741 sauts) à analyser ; entrée de chaque tatami non chaînée à
+  la sortie du précédent (voir HP-ENG-010) ; `hidden_travel` désactivé par défaut (928 → 531
+  coupes avec les réglages les plus larges sur ce projet). Détail : `docs/source/tatami.md`.
 
 ### HP-SEQ-006.a — Pont caché entre objets en passe finale [P1] — ◐ Partiel (2026-10-13, en PR)
 - Livré (cœur, en PR, non fusionné) : `HiddenTravel` dans `SequenceFinishing`
@@ -3197,4 +3242,7 @@ ci-dessus doit les respecter :
 | 2026-10-18 | Claude (lot C édition, agent) | HP-UX-002, 028, 029, 038 et HP-PERF-009 ◐ (branche `ux-lot-c1-pr`) : création directe sans modale, quatre boutons de type pour 1 ou N formes, bandeau de retouches, valeurs mixtes, régénération différée hors fil UI. Tests : `test_creation_flow` (19 cas). Total ◐ 115 → 120, ☐ 156 → 151. |
 | 2026-10-18 | Claude (HP-VEC-015, comblement de bloc) | HP-VEC-015 ◐ (branche `claude/embroidery-block-hole-fill-7c00ac`) : vides d'un bloc détectés depuis les points cousus, rattachés au plus grand remplissage voisin ; cœur, op CLI `fill_block_holes`, menu Forme et tests. |
 | 2026-10-18 | Claude (lot D, partie 2) | HP-UX-035 ◐ (copier/coller le style). **HP-UX-040 (contrat IA) retiré** à la demande du mainteneur (l'IA n'est pas une priorité) ; total 296 → 295, ◐ 120 → 121, ☐ 151 → 149. |
+| 2026-10-18 | Claude (audit coupes remplissage) | HP-SEQ-006 ◐ : liaisons de rangées du tatami tolérantes au bord (0,15 mm) ; `Possible.osp` sauts 2 862 → 1 525, coupes 928 → 792 ; manques consignés dans l'entrée (retour par le fil cousu, directionnel, satins auto, chaînage des entrées). |
+| 2026-10-18 | Claude (couches par zone) | **HP-OBJ-023 ▶ En cours** (« Couches par zone », P1) : empilement d'un objet de broderie supplémentaire sur la même zone via `AddLayerCommand`, sans nouveau champ de modèle. Section « Couches » ajoutée à `docs/source/embroidery-objects.md`. Le tableau de bord ne compte pas encore le statut ▶ ; total inchangé. |
+| 2026-10-18 | Claude (couches par zone, livraison) | **HP-OBJ-023 ▶ → ◐** : `AddLayerCommand` et action « Ajouter une couche… » livrées avec leurs tests ; reste le lien parent-enfant et le regroupement visuel. `test_color_blend_dialog` échoue aussi sur `main` seul (aperçu non peint hors écran), sans lien avec cette entrée. |
 | 2026-10-18 | Claude (tatami pointillé) | HP-ENG-006.b ◐ : défaut `stagger` du tatami 2 → 3 (aspect pointillé constaté en broderie réelle) ; non validé sur tissu. |

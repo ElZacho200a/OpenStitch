@@ -76,6 +76,30 @@ appelle le générateur adapté à chaque type via `std::visit`. Le résultat es
 s'en sert pour afficher la broderie **dans la couleur de chaque fil** et pour
 **filtrer** l'affichage (par type, couleur ou taille de zone).
 
+## Couches (empilement d'objets sur une même zone)
+
+État : **en cours de développement** (roadmap HP-OBJ-023). Une couche permet
+de coudre plusieurs objets de types différents sur une même zone vectorielle,
+à la manière des calques : par exemple un tatami puis un contour par-dessus.
+
+- **Principe.** Il n'y a pas de nouveau champ dans le modèle : une couche est
+  un `EmbroideryObject` ordinaire dont `source_vector` désigne le même objet
+  vectoriel que l'objet de base. Elle est insérée juste après la base dans
+  `project.embroidery_objects`.
+- **Ordre de couture.** Comme `generate_sequence` parcourt les objets dans
+  l'ordre du document, la couche est cousue **après** la base, donc par-dessus.
+  Les points restent dérivés à la demande (`effective_sequence`), jamais
+  stockés.
+- **Création.** Action « Ajouter une couche… » sur l'objet sélectionné, qui
+  pousse `commands::AddLayerCommand(base_id, layer)`.
+- **Annulation.** `AddLayerCommand` est un `ICommand` : un seul pas d'undo
+  retire la couche et rétablit l'ordre précédent, redo compris.
+- **Limites.**
+  - Pas de lien parent-enfant : supprimer la base **ne supprime pas** ses
+    couches, qui restent sur la zone et deviennent des objets indépendants.
+  - Pas de regroupement visuel : les couches apparaissent comme des objets
+    séparés dans la liste Document, sans indentation ni groupe.
+
 ## Implémentation associée
 
 - `libs/document/include/openstitch/document/embroidery_object.hpp` —
