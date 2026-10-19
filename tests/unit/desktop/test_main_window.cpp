@@ -7003,7 +7003,7 @@ void MainWindowTest::groupInspectorEditsOneFieldOnEveryObjectInOneStep() {
     window.setStitchTypeForSelection(1); // un tatami chacun
     // Réglages DIFFÉRENTS au départ : le champ commun ne doit pas écraser les autres.
     std::get<openstitch::document::TatamiParams>(window.project_.embroidery_objects[0].params)
-        .stagger = 3;
+        .stagger = 4;
     window.updateActions();
     window.updateInspector();
 
@@ -7020,7 +7020,7 @@ void MainWindowTest::groupInspectorEditsOneFieldOnEveryObjectInOneStep() {
     QCOMPARE(
         std::get<openstitch::document::TatamiParams>(window.project_.embroidery_objects[0].params)
             .stagger,
-        3);
+        4);
     QCOMPARE(
         std::get<openstitch::document::TatamiParams>(window.project_.embroidery_objects[1].params)
             .stagger,
