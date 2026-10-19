@@ -287,6 +287,9 @@ void ColorBlendDialogTest::stitchPreviewAndLayerFilter() {
     connect(&dialog, &ColorBlendDialog::previewRequested, &dialog, [&] { supplyPreview(dialog); });
     dialog.show();
     QTRY_COMPARE(requests.count(), 1);
+    // Sur un petit écran le dialogue passe sous le seuil côte à côte : l'aperçu est alors sous les
+    // réglages, dans la zone défilante, et n'est peint qu'une fois amené dans le viewport.
+    dialog.findChild<QScrollArea*>("dialogScrollBody")->ensureWidgetVisible(preview);
     QTRY_VERIFY(paints.paints > 0);
     QVERIFY(preview->property("hasStitchPreview").toBool());
     QCOMPARE(preview->property("stitchCount").toULongLong(), qulonglong{7});
