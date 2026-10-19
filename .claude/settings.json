@@ -5,15 +5,6 @@
       {
         "hooks": [
           {
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/enforce-init.sh\"",
-            "timeout": 5,
-            "type": "command"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/git-guard.sh\"",
             "timeout": 5,
             "type": "command"
@@ -81,27 +72,14 @@
         ],
         "matcher": "Write|Edit|MultiEdit"
       }
-    ],
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-context.sh\"",
-            "timeout": 5,
-            "type": "command"
-          }
-        ]
-      }
     ]
   },
   "permissions": {
     "additionalDirectories": [
-      "~/.liza",
       "/tmp"
     ],
     "allow": [
       "Read(~/.claude/**)",
-      "Read(~/.liza/**)",
       "Edit(//tmp/**)",
       "Monitor(*)",
       "Skill(adr-backfill)",
@@ -109,7 +87,6 @@
       "Skill(architecture-planning)",
       "Skill(bash-policy)",
       "Skill(black-box-red-testing)",
-      "Skill(check-liza-input-readiness)",
       "Skill(checkpoint-summary)",
       "Skill(clean-code)",
       "Skill(code-planning)",
@@ -125,8 +102,6 @@
       "Skill(goal-writing)",
       "Skill(have-you-considered)",
       "Skill(lesson-capture)",
-      "Skill(liza-logs)",
-      "Skill(liza-operator)",
       "Skill(software-architecture-review)",
       "Skill(spec-backfill)",
       "Skill(spec-review)",
@@ -164,7 +139,6 @@
       "mcp__morph-mcp__codebase_search",
       "mcp__morph-mcp__edit_file",
       "mcp__perplexity__perplexity_ask",
-      "Bash(liza:*)",
       "Bash(bash-policy:*)",
       "Bash(curl:*)",
       "Bash(wget:*)",
