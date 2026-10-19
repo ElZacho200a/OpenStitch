@@ -9,6 +9,7 @@ add_library(openstitch_geometry
     src/moments.cpp
     src/cut.cpp
     src/offset.cpp
+    src/node_transform.cpp
     src/path.cpp
     src/polyline.cpp
     src/primitives.cpp

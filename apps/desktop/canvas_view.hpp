@@ -155,6 +155,9 @@ signals:
     void nudgeRequestedMm(QPointF deltaMm);
     // Sélection (contexte Select, setSelectionRectangleEnabled(true)). Rectangle
     // en mm scène ; `crossing` = glissé vers la gauche (croise) sinon englobe.
+    // Alt + cadre (HP-VEC-017) : sélection de NŒUDS de la forme courante (Maj : ajouter,
+    // Ctrl : basculer, sinon remplacer).
+    void nodeRectangleMm(QRectF rectMm, openstitch::desktop::SelectMode mode);
     void selectionRectangleMm(QRectF rectMm, openstitch::desktop::SelectMode mode, bool crossing);
     // Clic avec Maj/Ctrl (mode != Replace) ; le clic simple reste canvasClickedMm.
     void selectionClickedMm(QPointF posMm, openstitch::desktop::SelectMode mode);

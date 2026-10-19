@@ -993,13 +993,9 @@ void CanvasView::mouseMoveEvent(QMouseEvent* event) {
         if (!rectActive_ && (viewportPos - pressViewportPos_).manhattanLength() >
                                 QApplication::startDragDistance()) {
             longPressTimer_.stop();
-            if ((pressMods_ & Qt::AltModifier) != 0) {
-                cancelSelectionPress(); // Alt + glisser : aucun geste défini
-            } else {
-                rectActive_ = true;
-                ensureRubberBand();
-                rubberBand_->show();
-            }
+            rectActive_ = true; // Alt + cadre : sélection de nœuds (relâchement)
+            ensureRubberBand();
+            rubberBand_->show();
         }
         if (rectActive_) {
             rubberBand_->setGeometry(QRect(pressViewportPos_, viewportPos).normalized());
@@ -1047,6 +1043,14 @@ void CanvasView::mouseReleaseEvent(QMouseEvent* event) {
         if (wasRect) {
             const QRectF rectMm =
                 mapToScene(QRect(pressPos, releasePos).normalized()).boundingRect();
+            if ((mods & Qt::AltModifier) != 0) {
+                emit nodeRectangleMm(rectMm,
+                                     (mods & Qt::ControlModifier) != 0
+                                         ? SelectMode::Toggle
+                                         : ((mods & Qt::ShiftModifier) != 0 ? SelectMode::Add
+                                                                            : SelectMode::Replace));
+                return;
+            }
             emit selectionRectangleMm(rectMm, InteractionMap::selectModeFor(mods),
                                       releasePos.x() < pressPos.x());
             return;

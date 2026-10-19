@@ -38,6 +38,7 @@
 #include "tools.hpp"
 
 class QGraphicsScene;
+class QAbstractGraphicsShapeItem;
 class QGraphicsItem;
 class QGraphicsPathItem;
 class QGraphicsPixmapItem;
@@ -764,6 +765,21 @@ private:
     void cancelSegmentReshape();
     [[nodiscard]] QPointF reshapeDragPoint(QPointF sceneMm, Qt::KeyboardModifiers mods) const;
     std::optional<ReshapeGesture> reshape_;
+    // Sélection de nœuds et déplacement groupé (HP-VEC-017, main_window_node_select.cpp). Tous
+    // les nœuds sélectionnés appartiennent au même chemin (set, path) de `nodeSelObject_`.
+    void buildNodeSelectionActions();
+    [[nodiscard]] bool isNodeSelected(const document::NodeRef& ref) const;
+    void selectNodes(ObjectId object, const std::vector<document::NodeRef>& nodes, SelectMode mode);
+    void clearNodeSelection();
+    void onNodeRectangle(QRectF rectMm, SelectMode mode);
+    void previewGroupMove(ObjectId object, Vec2um delta);
+    void hideGroupPreview();
+    void restyleNodeHandles();
+    void commitGroupMove(ObjectId object, Vec2um delta);
+    std::optional<ObjectId> nodeSelObject_;
+    std::vector<document::NodeRef> selectedNodes_;
+    QAction* softNodesAct_{nullptr};
+    std::vector<std::pair<document::NodeRef, QAbstractGraphicsShapeItem*>> nodeHandles_;
     QGraphicsPathItem* reshapePreview_{nullptr};
     void removeAutoSatinGuide(ObjectId id, int index);
     void renderAutoSatinOverlay(const document::EmbroideryObject& obj,

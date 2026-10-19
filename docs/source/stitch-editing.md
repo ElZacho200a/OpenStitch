@@ -64,6 +64,21 @@ sont régénérés depuis la géométrie source ; type de point et réglages inc
 Limite connue : sur un contour très dense en micro-segments, un seul segment est
 peu utile (voir le pinceau, HP-VEC-018).
 
+### Sélectionner et déplacer plusieurs nœuds (HP-VEC-017)
+
+Avec une forme sélectionnée : **Alt + cadre** (départ hors de la forme) sélectionne les
+nœuds contenus dans le cadre (Maj + Alt : ajouter, Ctrl + Alt : basculer) ; un **clic**
+sur une poignée la sélectionne (Maj : ajouter, Ctrl : basculer) ; les poignées
+sélectionnées sont pleines. Glisser l'une d'elles déplace **tout le groupe** (positions
+et relations entre nœuds conservées) en une seule `TransformNodesCommand`, avec aperçu du
+contour (rouge pointillé si le résultat se croiserait, le relâchement est alors refusé) ;
+Échap annule sans toucher au document. Menu Forme › *Transition douce des nœuds voisins* :
+les nœuds non sélectionnés à moins de 8 mm du groupe suivent avec une influence décroissante
+(lissage cubique `3u² − 2u³`, `u = 1 − d/rayon`) ; leurs tangentes ne changent pas. La
+sélection est limitée à un chemin (extérieur ou un trou). Le noyau
+(`geometry::transform_nodes`) sait aussi pivoter et mettre à l'échelle un groupe ; leur
+exposition dans l'interface reste à faire.
+
 Limitation : l'ajout/suppression de nœuds, la conversion anguleux/lisse et
 l'édition de tangentes ne sont pas exposés (voir *Vectorisation*).
 

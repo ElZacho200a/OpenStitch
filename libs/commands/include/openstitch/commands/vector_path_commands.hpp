@@ -11,6 +11,7 @@
 #include "openstitch/core/ids.hpp"
 #include "openstitch/core/units.hpp"
 #include "openstitch/document/project.hpp"
+#include "openstitch/geometry/node_transform.hpp"
 #include "openstitch/geometry/path.hpp"
 
 namespace openstitch::commands {
@@ -67,6 +68,14 @@ public:
     [[nodiscard]] std::string name() const override { return "Remodeler un segment"; }
 };
 
+// Déplacement / rotation / échelle d'un groupe de nœuds (HP-VEC-017) : un geste, un pas.
+class TransformNodesCommand final : public RewriteVectorPathsCommand {
+public:
+    explicit TransformNodesCommand(std::vector<Entry> entries)
+        : RewriteVectorPathsCommand(std::move(entries)) {}
+    [[nodiscard]] std::string name() const override { return "Transformer des nœuds"; }
+};
+
 // Tolérance de lissage par défaut : 0,2 mm.
 inline constexpr Micrometers kDefaultSmoothTolerance{200};
 
@@ -86,5 +95,14 @@ inline constexpr Micrometers kDefaultSmoothTolerance{200};
 [[nodiscard]] VectorOpResult
 make_reshape_segment_command(const document::Project& project, ObjectId id, std::size_t set_index,
                              std::size_t path_index, std::size_t segment, double t, Vec2um delta);
+
+// Transforme les nœuds `selected` du chemin `path_index` du morceau `set_index` de l'objet `id`
+// (`geometry::transform_path_set_nodes`, transition douce si `soft_radius_um` > 0). Commande
+// nulle (avec `error`) si la cible n'existe pas, si rien ne change ou si un croisement
+// apparaîtrait.
+[[nodiscard]] VectorOpResult
+make_transform_nodes_command(const document::Project& project, ObjectId id, std::size_t set_index,
+                             std::size_t path_index, const std::vector<std::size_t>& selected,
+                             const geometry::NodeTransform& transform, double soft_radius_um);
 
 } // namespace openstitch::commands

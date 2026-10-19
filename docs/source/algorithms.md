@@ -64,6 +64,12 @@ Fonctions pures, Qt-free, en micromètres entiers, déterministes (HP-VEC-007,
   [0,15 ; 0,85]. `nearest_segment` retrouve segment et `t` (échantillonnage puis
   recherche ternaire), `reshape_path_set_segment` refuse un résultat qui introduit un
   croisement (`path_set_has_crossings`).
+- **`transform_nodes(path, selected, T, rayon)`** (`node_transform.hpp`, HP-VEC-017) :
+  `p' = pivot + scale·R(θ)·(p − pivot) + translation` pour les nœuds sélectionnés
+  (tangentes : partie échelle/rotation seulement). Transition douce : chaque nœud non
+  sélectionné à `d < rayon` de son plus proche nœud sélectionné (égalité : plus petit
+  indice) suit son déplacement pondéré par `w = 3u² − 2u³`, `u = 1 − d/rayon`.
+  `transform_path_set_nodes` refuse un croisement que l'original n'avait pas.
 - **Formes** (`shapes.hpp`) : étoile (2n coins), cœur (6 nœuds, 2 coins, Béziers
   dans le cadre), flèche (7 coins), rectangle arrondi (8 nœuds, quarts de cercle
   de constante κ = 0,5523, rayon borné à la moitié du petit côté), arc (un segment

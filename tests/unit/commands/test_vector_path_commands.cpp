@@ -187,3 +187,30 @@ TEST_CASE("reshape segment command refuses no-ops, crossings and unknown targets
                                        Vec2um{Micrometers{1}, Micrometers{1}})
               .command == nullptr);
 }
+
+TEST_CASE("transform nodes command is one exact undo step", "[commands][nodes]") {
+    document::Project project;
+    const ObjectId a = addObject(project, square(10'000));
+    const ObjectId b = addObject(project, square(5'000));
+    const auto beforeA = project.findObject(a)->paths;
+    const auto beforeB = project.findObject(b)->paths;
+    geometry::NodeTransform t;
+    t.translation = Vec2um{Micrometers{500}, Micrometers{500}};
+    auto result = make_transform_nodes_command(project, a, 0, 0, {0, 1}, t, 0.0);
+    REQUIRE(result.command != nullptr);
+    CHECK(project.findObject(a)->paths == beforeA);
+    UndoStack stack;
+    stack.execute(std::move(result.command), project);
+    const auto afterA = project.findObject(a)->paths;
+    CHECK(afterA != beforeA);
+    CHECK(afterA.front().outer.nodes.size() == 4);
+    CHECK(project.findObject(b)->paths == beforeB);
+    REQUIRE(stack.undo(project));
+    CHECK(project.findObject(a)->paths == beforeA);
+    CHECK_FALSE(stack.canUndo());
+    REQUIRE(stack.redo(project));
+    CHECK(project.findObject(a)->paths == afterA);
+    CHECK(make_transform_nodes_command(project, a, 0, 0, {}, t, 0.0).command == nullptr);
+    CHECK(make_transform_nodes_command(project, ObjectId{999}, 0, 0, {0}, t, 0.0).command ==
+          nullptr);
+}
