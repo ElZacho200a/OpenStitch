@@ -55,6 +55,14 @@ struct TatamiParams {
     // rétrécit dans ce sens), 0 = aucune. Plage [0 ; 3] mm, 0,2 à 0,4 mm typique.
     Micrometers pull_compensation{0};
     UnderlayMode underlay_mode{UnderlayMode::Manual}; // HP-ENG-002
+    // Bords « effilochés » : sur un bord presque parallèle aux rangées, la fin de rangée saute
+    // d'une rangée à l'autre et des pointes isolées dépassent. `row_end_clip` > 0 rabat toute
+    // extrémité qui dépasse de plus de cette longueur les extrémités des deux rangées voisines
+    // (écrêtage, dans l'axe du fil). 0 = aucun (historique). Plage [0 ; 5] mm, ~1 mm typique.
+    Micrometers row_end_clip{0};
+    // Passe de contour cousue PAR-DESSUS le remplissage (point droit le long du bord et des
+    // trous) : masque les bouts de rangées. Faux = aucune (historique).
+    bool edge_outline{false};
 
     bool operator==(const TatamiParams&) const = default;
 };

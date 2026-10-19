@@ -760,6 +760,8 @@ template <> const std::vector<Field<document::TatamiParams>>& fields_of<document
         v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
         v.push_back(mm_field<P>("pull_compensation_mm", &P::pull_compensation, 0.0, 3.0));
         v.push_back(enum_field<P>("underlay_mode", &P::underlay_mode, underlay_mode_table()));
+        v.push_back(mm_field<P>("row_end_clip_mm", &P::row_end_clip, 0.0, 5.0));
+        v.push_back(bool_field<P>("edge_outline", &P::edge_outline));
         v.push_back(point_field<P>("entry_point_mm", &P::entry_point));
         return v;
     }();

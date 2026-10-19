@@ -260,3 +260,39 @@ TEST_CASE("vectorize_regions : meme resultat que la boucle sequentielle, dans l'
     CHECK_FALSE(batch[1].has_value());
     CHECK(vectorize_regions(*seg, {}, options).empty());
 }
+
+namespace {
+
+// Carre axis-aligned [x0,x1]x[y0,y1] en mm.
+geometry::PathSet square_mm(double x0, double y0, double x1, double y1) {
+    const auto node = [](double x, double y) {
+        return geometry::PathNode{
+            Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(x * 1000.0))},
+                   Micrometers{static_cast<std::int32_t>(std::lround(y * 1000.0))}},
+            geometry::NodeType::Corner, std::nullopt, std::nullopt};
+    };
+    geometry::PathSet set;
+    set.outer.closed = true;
+    set.outer.nodes = {node(x0, y0), node(x1, y0), node(x1, y1), node(x0, y1)};
+    return set;
+}
+
+} // namespace
+
+TEST_CASE("is_overlap_grown_contour : bande fine oui, fusion ou retouche non") {
+    const std::vector<geometry::PathSet> raw{square_mm(0, 0, 20, 20)};
+
+    // Identique ou quasi : rien a restaurer.
+    CHECK_FALSE(is_overlap_grown_contour(raw, raw));
+    // Recouvrement des voisins : 0,4 mm de plus tout autour -> contour brut a restaurer.
+    CHECK(is_overlap_grown_contour({square_mm(-0.4, -0.4, 20.4, 20.4)}, raw));
+    // Fusion de deux zones : la region d'origine + une zone voisine de meme taille. Le contour
+    // fusionne est voulu, il ne doit jamais redevenir la forme premiere.
+    CHECK_FALSE(is_overlap_grown_contour({square_mm(0, 0, 40, 20)}, raw));
+    // Meme chose avec une zone voisine plus petite (surface ajoutee > 3 %).
+    CHECK_FALSE(is_overlap_grown_contour({square_mm(0, 0, 26, 20)}, raw));
+    // Agrandissement homothetique par l'utilisateur.
+    CHECK_FALSE(is_overlap_grown_contour({square_mm(-5, -5, 25, 25)}, raw));
+    // Forme retouchee plus petite : jamais restauree.
+    CHECK_FALSE(is_overlap_grown_contour({square_mm(2, 2, 18, 18)}, raw));
+}

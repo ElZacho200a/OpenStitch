@@ -466,3 +466,24 @@ Garantie testée : sur tout le corpus, aucune paire de traversées d'une même c
 coupe (`crossing_pairs == 0`). Coût mesuré : `s` passe de 0,99 à 0,975 et `two_holes` de
 0,985 à 0,980 de couverture estimée (planchers abaissés en conséquence). Non validé sur
 machine.
+
+## Contour brut restauré à tort après fusion ou retouche (2026-10-19)
+
+**Symptôme.** Après avoir fusionné ou retouché des zones, convertir la zone en satin la
+ramenait à sa forme d'origine, comme si la fusion n'avait pas eu lieu.
+
+**Cause racine.** Avant de construire un satin, le bureau (`MainWindow::pristineSatinContour`)
+et la CLI (`pristine_contour`, `auto_satin_service.cpp`) remplacent le contour de l'objet par le
+contour brut de sa `source_region`, afin d'annuler le recouvrement ajouté par les tatamis voisins.
+Le critère était « aire courante > 103 % de l'aire brute ». Une fusion, une union ou un
+agrandissement le satisfont aussi, et `source_region` survit à ces opérations : la forme voulue
+par l'utilisateur était donc écrasée par celle de la région première.
+
+**Correctif.** `vectorization::is_overlap_grown_contour` ne rend le contour brut que si l'écart
+avec le contour courant tient dans une bande fine (périmètre × 1,25 mm), dans les deux sens.
+Le recouvrement reste restauré ; une fusion, une retouche ou un agrandissement sont conservés.
+Tests : `is_overlap_grown_contour : bande fine oui, fusion ou retouche non` et
+`auto_satin keeps an edited contour instead of restoring the raw region one`.
+
+**Hypothèse écartée.** Un défaut de `ConvertFillGroupCommand` (sections soeurs) : il ne change
+que le type de points, pas le contour.
