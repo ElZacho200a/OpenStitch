@@ -27,7 +27,12 @@ namespace {
 // Version écrite : v7 seulement si un auto-satin utilise une méthode autre que le squelette
 // (un lecteur v6 la régénérerait en silence avec le squelette).
 int schema_version_for(const std::vector<document::EmbroideryObject>& objects,
-                       const std::vector<document::TextObject>& texts = {}) {
+                       const std::vector<document::TextObject>& texts = {},
+                       bool usesCalques = false) {
+    // v9 : le document définit des calques (jamais pour les fichiers existants).
+    if (usesCalques) {
+        return kSchemaVersionCalques;
+    }
     // v8 : un texte porte un crénage manuel ou des ligatures (jamais pour les fichiers existants).
     for (const auto& text : texts) {
         if (!text.kerning_pairs.empty() || text.ligatures) {
@@ -124,8 +129,8 @@ Result<void> save_project(const std::filesystem::path& path, const document::Pro
     parallel_for(3, [&](std::size_t task) {
         if (task == 0) {
             nlohmann::json root;
-            root["schemaVersion"] =
-                schema_version_for(project.embroidery_objects, project.text_objects);
+            root["schemaVersion"] = schema_version_for(
+                project.embroidery_objects, project.text_objects, !project.calques.empty());
             root["document"] = detail::project_to_json(project);
             jsonText = root.dump(2);
         } else if (task == 1) {

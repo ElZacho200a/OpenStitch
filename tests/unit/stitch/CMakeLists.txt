@@ -14,6 +14,7 @@ add_executable(test_stitch
     test_overrides.cpp
     test_engine_points.cpp
     test_chunk_cache.cpp
+    test_calques_generation.cpp
 )
 target_link_libraries(test_stitch
     PRIVATE openstitch::stitch openstitch::stitch_generation Catch2::Catch2WithMain

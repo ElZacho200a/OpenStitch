@@ -68,11 +68,11 @@ TEST_CASE("migrations : v7 -> v8 est documentee et ne reecrit pas un document sa
     REQUIRE(steps.size() >= 7);
     CHECK(steps[6].from == 7);
     CHECK(steps[6].to == 8);
-    CHECK(project_io::kMaxReadableSchemaVersion == project_io::kSchemaVersionTextTypography);
+    CHECK(project_io::kSchemaVersionTextTypography == 8);
     const auto migrated = project_io::migrate_project_json(satin_document(7, ""));
     REQUIRE(migrated.has_value());
     const auto root = nlohmann::json::parse(*migrated);
-    CHECK(root.at("schemaVersion") == 8);
+    CHECK(root.at("schemaVersion") == project_io::kMaxReadableSchemaVersion);
     CHECK_FALSE(root.at("document").contains("textObjects"));
 }
 

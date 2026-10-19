@@ -24,6 +24,7 @@
 #include <QColorDialog>
 
 #include "main_window.hpp"
+#include "openstitch/commands/calque_commands.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/thread_commands.hpp"
@@ -833,6 +834,81 @@ bool MainWindow::duplicateLayer(ObjectId id) {
     updateActions();
     statusBar()->showMessage(tr("Couche dupliquée."));
     return true;
+}
+
+void MainWindow::addCalque() {
+    // Premier calque ajouté : le calque implicite du fond est matérialisé d'abord (« Calque 1 »),
+    // toutes les formes existantes y restent.
+    const ObjectId firstId = project_.calques.empty() ? project_.object_ids.next() : ObjectId{};
+    const ObjectId newId = project_.object_ids.next();
+    const auto number = static_cast<int>(std::max<std::size_t>(project_.calques.size(), 1)) + 1;
+    undoStack_.execute(std::make_unique<commands::AddCalqueCommand>(
+                           newId, tr("Calque %1").arg(number).toStdString(), firstId,
+                           tr("Calque 1").toStdString()),
+                       project_);
+    project_.active_calque = newId; // le nouveau calque reçoit les prochaines formes
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(tr("Calque ajouté : il reçoit les formes créées."));
+}
+
+void MainWindow::removeCalque(ObjectId id) {
+    const document::Calque* calque = project_.findCalque(id);
+    if (calque == nullptr || project_.calques.size() <= 1) {
+        return;
+    }
+    const QString name = QString::fromStdString(calque->name);
+    undoStack_.execute(std::make_unique<commands::RemoveCalqueCommand>(id), project_);
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(
+        tr("Calque « %1 » supprimé : ses formes sont passées dans le calque en dessous.")
+            .arg(name));
+}
+
+void MainWindow::renameCalqueInteractive(ObjectId id) {
+    const document::Calque* calque = project_.findCalque(id);
+    if (calque == nullptr) {
+        return;
+    }
+    bool ok = false;
+    const QString name =
+        QInputDialog::getText(this, tr("Renommer le calque"), tr("Nom du calque :"),
+                              QLineEdit::Normal, QString::fromStdString(calque->name), &ok)
+            .trimmed();
+    if (!ok || name.isEmpty() || project_.findCalque(id) == nullptr) {
+        return;
+    }
+    undoStack_.execute(std::make_unique<commands::RenameCalqueCommand>(id, name.toStdString()),
+                       project_);
+    refreshImage();
+    updateActions();
+}
+
+void MainWindow::moveSelectionToCalque(ObjectId id) {
+    if (project_.findCalque(id) == nullptr) {
+        return;
+    }
+    // Les formes sélectionnées au canevas, ou à défaut la forme de la couche choisie : dans les
+    // deux cas toutes leurs couches de couture suivent.
+    std::vector<ObjectId> shapes = selectedObjectIds();
+    if (shapes.empty() && selectedEmbroidery_) {
+        if (const auto* emb = project_.findEmbroidery(*selectedEmbroidery_)) {
+            shapes.push_back(emb->source_vector);
+        }
+    }
+    shapes.erase(std::remove_if(shapes.begin(), shapes.end(),
+                                [this](ObjectId s) { return project_.findObject(s) == nullptr; }),
+                 shapes.end());
+    if (shapes.empty()) {
+        statusBar()->showMessage(tr("Sélectionnez d'abord une forme à déplacer."));
+        return;
+    }
+    undoStack_.execute(std::make_unique<commands::SetShapesCalqueCommand>(shapes, id), project_);
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(
+        tr("%n forme(s) déplacée(s) dans le calque.", nullptr, static_cast<int>(shapes.size())));
 }
 
 bool MainWindow::moveLayer(ObjectId id, int direction) {

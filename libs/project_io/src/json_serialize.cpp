@@ -1034,6 +1034,18 @@ json project_to_json(const document::Project& project) {
         j["segmentation"] = s;
     }
 
+    if (!project.calques.empty()) {
+        j["calques"] = json::array();
+        for (const auto& calque : project.calques) {
+            json co;
+            co["id"] = calque.id.value;
+            co["name"] = calque.name;
+            co["visible"] = calque.visible;
+            co["locked"] = calque.locked;
+            j["calques"].push_back(std::move(co));
+        }
+    }
+
     j["vectorObjects"] = json::array();
     for (const auto& v : project.vector_objects) {
         json vo;
@@ -1046,6 +1058,9 @@ json project_to_json(const document::Project& project) {
         }
         if (v.text_owner) {
             vo["textOwner"] = v.text_owner->value;
+        }
+        if (v.calque.valid()) {
+            vo["calque"] = v.calque.value;
         }
         vo["paths"] = json::array();
         for (const auto& ps : v.paths) {
@@ -1198,6 +1213,17 @@ Result<document::Project> project_from_json(const json& j) {
             project.segmentation = std::move(seg);
         }
 
+        if (j.contains("calques")) {
+            for (const auto& co : j.at("calques")) {
+                document::Calque calque;
+                calque.id = ObjectId{co.at("id").get<std::uint64_t>()};
+                calque.name = co.value("name", std::string{});
+                calque.visible = co.value("visible", true);
+                calque.locked = co.value("locked", false);
+                project.calques.push_back(std::move(calque));
+            }
+        }
+
         for (const auto& vo : j.at("vectorObjects")) {
             document::VectorObject v;
             v.id = ObjectId{vo.at("id").get<std::uint64_t>()};
@@ -1209,6 +1235,9 @@ Result<document::Project> project_from_json(const json& j) {
             }
             if (vo.contains("textOwner")) {
                 v.text_owner = ObjectId{vo.at("textOwner").get<std::uint64_t>()};
+            }
+            if (vo.contains("calque")) {
+                v.calque = ObjectId{vo.at("calque").get<std::uint64_t>()};
             }
             for (const auto& ps : vo.at("paths")) {
                 v.paths.push_back(path_set_from_json(ps));
