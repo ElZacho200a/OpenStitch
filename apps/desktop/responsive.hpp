@@ -53,6 +53,10 @@ inline QScrollArea* scrollDialogBody(QDialog* dialog, QWidget* footer = nullptr)
             inner->addWidget(widget, 0, item->alignment());
             delete item;
         } else if (QLayout* childLayout = item->layout(); childLayout != nullptr) {
+            // takeAt laisse le layout racine comme parent : sans ce détachement, addLayout
+            // refuse le sous-layout (« already has a parent ») et ses widgets ne sont pas
+            // reparentés dans le corps défilant.
+            childLayout->setParent(nullptr);
             inner->addLayout(childLayout);
         } else {
             inner->addItem(item);
