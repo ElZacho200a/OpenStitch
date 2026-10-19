@@ -5,8 +5,13 @@ description: Finaliser un lot de travail OpenStitch et le committer selon les co
 
 # Finaliser et committer un lot
 
-Ne committer / pousser que sur demande explicite de l'utilisateur. Sur
-`main` sans consigne contraire, demander s'il veut une branche avant une PR.
+**Autonomie (consigne permanente de l'utilisateur, 2026-10-19)** : quand un lot est
+terminé et vérifié, enchaîner SANS demander : commit -> `git push -u origin <branche>`
+-> `gh pr create --base main` (titre = sujet du commit, corps = résumé, tests, limites,
+ligne d'attribution) -> annoncer le lien. Ne jamais pousser ni committer sur `main`
+(créer une branche d'abord) ; ne jamais fusionner (`gh pr merge`) ; ne pas ouvrir de PR si
+des tests du périmètre échouent. Un échec hors périmètre est signalé dans le corps de la
+PR. Enchaîner ensuite sur le lot suivant de la roadmap sans attendre de feu vert.
 
 ## 1. Vérifications avant commit
 
@@ -36,8 +41,8 @@ Ne committer / pousser que sur demande explicite de l'utilisateur. Sur
    « Reste : câblage bureau » dans la roadmap).
 7. `git status` : ne pas embarquer les artefacts locaux (`out.svg`,
    `*-debug.svg` à la racine, `aqtinstall.log`, `sample/` non suivi,
-   `.venv*`, fichiers utilisateur type GISTRE). Stager fichier par fichier,
-   jamais `git add -A` aveugle.
+   `.venv*`, fichiers utilisateur type GISTRE). Stager fichier par fichier
+   (ou `git add -A` seulement après un `git status` propre de tout artefact).
 
 ## 2. Découpage
 

@@ -93,7 +93,7 @@ watcher hangs on its `.venv-wsl/`).
 - `openstitch-stitch-param` — end-to-end checklist for a new stitch parameter or stitch type.
 - `openstitch-cli-debug` — reproduce generation issues with `openstitch-cli`, regenerate goldens.
 - `openstitch-bugfix` — root-cause workflow (failing test first, rejected hypotheses documented).
-- `openstitch-commit` — pre-commit checks and commit message conventions. **Every
+- `openstitch-commit` — pre-commit checks and commit message conventions; **autonomous: finished lot → commit, push, open PR (never merge, never on main), then continue with the next lot**. **Every
   commit must update `docs/roadmap-parite-hatch.md`** (entry status, new gaps, journal §28)
   or state "roadmap : aucune entrée concernée" in the message. **Unless the user explicitly
   says otherwise, every feature must also be wired into the desktop app** (`apps/desktop`:
