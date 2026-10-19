@@ -38,10 +38,10 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
 | P0 | 12 | 28 | 5 | 45 |
-| P1 | 10 | 62 | 72 | 144 |
+| P1 | 10 | 64 | 70 | 144 |
 | P2 | 3 | 31 | 63 | 97 |
 | P3 | 0 | 3 | 12 | 15 |
-| **Total** | **25** | **124** | **152** | **301** |
+| **Total** | **25** | **126** | **150** | **301** |
 
 Ajoutés le 2026-10-19 (remodelage interactif, HP-VEC-016 à 019) : **+4 entrées** (HP-VEC-016 P0 ◐ ; 017 et 018 P1 ☐ ; 019 P2 ☐), comptées dans le tableau ci-dessus.
 
@@ -1591,18 +1591,22 @@ Besoin (retour utilisateur) : le moteur d'auto-numérisation est bon ; ce qui co
 - Modules : `libs/geometry`, `libs/commands`, `apps/desktop`.
 - Acceptation : déformer une portion de courbe sans toucher à un nœud ; angle marqué et jonction lisse préservés ; Échap sans trace dans l'historique ; autres objets inchangés.
 
-### HP-VEC-017 — Sélection multiple et transformation groupée de nœuds [P1] — ☐ À faire
-- État OpenStitch : une poignée à la fois ; aucune sélection de nœuds (la multi-sélection OBJ-001 est une sélection d'OBJETS).
-- À faire : sélection de nœuds de l'objet courant par rectangle (puis lasso), Maj = ajouter/retirer ; déplacement groupé, mise à l'échelle et rotation autour du centre de la sélection ; option « transition douce » avec décroissance de l'influence sur les nœuds voisins non sélectionnés ; une commande par geste.
-- Modules : `libs/geometry` (transformation de nœuds avec leurs tangentes), `libs/commands`, `apps/desktop` (état de sélection de nœuds dans `renderBase`).
-- Dépend de : HP-VEC-016 (infrastructure de geste/aperçu).
-- Acceptation : corriger une zone de quinze nœuds en un geste ; undo/redo sans dérive.
-
-### HP-VEC-018 — Pinceau de déformation du contour [P1] — ☐ À faire
-- À faire : outil unique « Retoucher » : pousser/tirer avec un rayon et une intensité réglables (influence décroissante, noyau lisse), mode « lisser » local ; calcul sur le tracé source avec rééchantillonnage borné (pas de prolifération de nœuds : insertion seulement là où la courbure l'exige, fusion sinon) et refit de courbes local ; aperçu interactif ; une commande par coup de pinceau. Étudier un budget de nœuds et un test « 50 passages successifs » (pas de dégradation).
+### HP-VEC-017 — Sélection multiple et transformation groupée de nœuds [P1] — ◐ Partiel (2026-10-19)
+- État OpenStitch avant : une poignée à la fois ; aucune sélection de nœuds (la multi-sélection OBJ-001 est une sélection d'OBJETS).
+- Livré (2026-10-19) : `libs/geometry/node_transform.*` (`NodeTransform` = échelle + rotation autour d'un pivot + translation, `transform_nodes` avec tangentes, transition douce par lissage cubique des nœuds voisins, `transform_path_set_nodes` qui refuse un croisement nouveau, `nodes_in_rect`), `commands::TransformNodesCommand` + `make_transform_nodes_command` (un geste = un pas d'annulation). Bureau (`main_window_node_select.cpp`) : **Alt + cadre** sélectionne les nœuds de la forme courante (Maj : ajouter, Ctrl : basculer), un clic sur une poignée la sélectionne (Maj / Ctrl), glisser un nœud sélectionné déplace tout le groupe avec aperçu (rouge si le contour se croiserait), Échap annule, menu Forme › « Transition douce des nœuds voisins » (rayon 8 mm). La sélection se limite à un chemin (extérieur ou un trou). Tests : `test_node_transform` (8), `test_vector_path_commands` (+1), `test_node_selection` (6 vrais gestes souris).
+- Reste : rotation et échelle du groupe dans l'interface (le noyau les gère déjà : poignées de transformation autour de la sélection) ; lasso ; rayon de transition réglable ; sélection répartie sur plusieurs chemins.
 - Modules : `libs/geometry`, `libs/commands`, `apps/desktop`.
-- Dépend de : HP-VEC-016, HP-VEC-007 (refit local).
-- Acceptation : réactivité sur un contour de plusieurs milliers de points (mesure au banc) ; nombre de nœuds borné après répétitions.
+- Dépend de : HP-VEC-016.
+- Acceptation : corriger une zone de quinze nœuds en un geste ; undo/redo sans dérive ; autres objets inchangés.
+
+### HP-VEC-018 — Pinceau de déformation du contour [P1] — ◐ Partiel (2026-10-19)
+- État OpenStitch avant : aucune déformation locale d'un contour (seulement nœud par nœud, ou globale : Lisser / Convertir).
+- Choix d'algorithme (arbitrage structurant) : le pinceau agit sur les NŒUDS existants (poids lissage cubique décroissant avec la distance au curseur, tangentes inchangées), pas sur un contour rééchantillonné : un rééchantillonnage dégraderait les courbes à chaque coup. Les segments longs de la zone sont subdivisés EXACTEMENT (De Casteljau, borné à 64 nœuds par touche, segments > max(rayon/3 ; 0,3 mm)) pour avoir de quoi se déformer, et les nœuds droits devenus redondants (écart à la corde ≤ 30 µm) sont retirés : le nombre de nœuds ne dérive pas (test : 200 touches alternées sur 48 nœuds restent sous 88). Coût O(nœuds) par touche, touches espacées d'au moins rayon/8 (4 000 nœuds × 100 touches sous 4 s en Debug, test).
+- Livré (2026-10-19) : `libs/geometry/brush.*` (`brush_weight`, `apply_brush_dab` en modes Push et Smooth, `brush_result_is_valid`), `commands::BrushStrokeCommand` + `make_brush_stroke_command` (un coup de pinceau = une commande, refus si le contour se croiserait), outil **Pinceau** (Maj+B, palette + menu Forme) : glisser sur la forme sélectionnée, anneau de rayon, aperçu en direct, Maj = lisser, `[` / `]` = rayon, « Réglages du pinceau… » (rayon mm, intensité %, mémorisés), Échap abandonne le coup, ligne V3 de la table des gestes. Tests : `test_brush` (10), `test_vector_path_commands` (+1), `test_brush_tool` (9, vrais gestes souris), `test_interaction_map` (V3).
+- Reste : réglage du rayon/de l'intensité à la molette ou au curseur de la barre d'outils ; pression du stylet ; test sur contours auto-numérisés réels (mesure du coût et de la qualité) ; option « préserver les détails » (HP-VEC-019) ; refit local des courbes après un coup.
+- Modules : `libs/geometry`, `libs/commands`, `apps/desktop`.
+- Dépend de : HP-VEC-016.
+- Acceptation : pousser / tirer une portion de contour en un geste ; Échap sans trace ; nombre de nœuds borné après répétitions ; réactivité sur un contour de plusieurs milliers de points.
 
 ### HP-VEC-019 — Préservation des détails pendant le remodelage [P2] — ☐ À faire
 - À faire : option du pinceau (HP-VEC-018) et du déplacement groupé (HP-VEC-017), pas un outil de plus : décomposition lissage + détail, le détail local suit la déformation de la base (déformation « Laplacienne » à poids décroissants) ; à n'ajouter que si le test comparatif sur un contour auto-numérisé montre un gain visible.
@@ -3297,3 +3301,5 @@ ci-dessus doit les respecter :
 | 2026-10-19 | Claude (remodelage interactif, lot 1) | **HP-VEC-016 ◐** (branche `claude/openstitch-vector-reshape-0b07b1`) : déplacement direct d'un segment de contour (poignées de Bézier, extrémités et nombre de nœuds inchangés, refus des croisements, Échap, un pas d'annulation). **HP-VEC-017/018/019 ajoutées (☐)** : sélection de nœuds, pinceau, préservation des détails. Total +4 entrées. |
 | 2026-10-19 | Claude (HP-I18N-001) | HP-I18N-001 ◐ (infrastructure de traduction : français source, `openstitch_en.ts`, préférence de langue, `test_app_language`) ; +HP-I18N-001.a ☐ (messages du cœur). Chapitre `docs/source/i18n.md`. |
 | 2026-10-19 | Claude (guides en courbe) | Roadmap : aucune entrée concernée. Balayage parallèle : guides d'orientation en courbe (`AutoSatinGuide::path`, fils perpendiculaires à la tangente), clé JSON facultative `path`, tracé à 3 points ou plus dans le bureau. Couteau : tests de non-régression multi-couche et directionnel. |
+| 2026-10-19 | Claude (remodelage interactif, lot 2) | **HP-VEC-017 ◐** (branche `claude/vec-node-selection`, PR empilée sur HP-VEC-016) : sélection de nœuds (Alt + cadre, clic sur poignée), déplacement groupé en un pas, transition douce optionnelle ; rotation/échelle dans l'interface et lasso restent à faire. |
+| 2026-10-19 | Claude (remodelage interactif, lot 3) | **HP-VEC-018 ◐** (branche `claude/vec-brush`, PR empilée sur HP-VEC-017) : outil Pinceau (B) poussant / tirant le contour avec influence décroissante, Maj = lisser, un coup = une commande, nombre de nœuds borné ; refit local, molette et stylet restent à faire. |

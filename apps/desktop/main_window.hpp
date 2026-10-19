@@ -38,6 +38,8 @@
 #include "tools.hpp"
 
 class QGraphicsScene;
+class QAbstractGraphicsShapeItem;
+class QGraphicsEllipseItem;
 class QGraphicsItem;
 class QGraphicsPathItem;
 class QGraphicsPixmapItem;
@@ -770,6 +772,21 @@ private:
     void cancelSegmentReshape();
     [[nodiscard]] QPointF reshapeDragPoint(QPointF sceneMm, Qt::KeyboardModifiers mods) const;
     std::optional<ReshapeGesture> reshape_;
+    // Sélection de nœuds et déplacement groupé (HP-VEC-017, main_window_node_select.cpp). Tous
+    // les nœuds sélectionnés appartiennent au même chemin (set, path) de `nodeSelObject_`.
+    void buildNodeSelectionActions();
+    [[nodiscard]] bool isNodeSelected(const document::NodeRef& ref) const;
+    void selectNodes(ObjectId object, const std::vector<document::NodeRef>& nodes, SelectMode mode);
+    void clearNodeSelection();
+    void onNodeRectangle(QRectF rectMm, SelectMode mode);
+    void previewGroupMove(ObjectId object, Vec2um delta);
+    void hideGroupPreview();
+    void restyleNodeHandles();
+    void commitGroupMove(ObjectId object, Vec2um delta);
+    std::optional<ObjectId> nodeSelObject_;
+    std::vector<document::NodeRef> selectedNodes_;
+    QAction* softNodesAct_{nullptr};
+    std::vector<std::pair<document::NodeRef, QAbstractGraphicsShapeItem*>> nodeHandles_;
     QGraphicsPathItem* reshapePreview_{nullptr};
     void removeAutoSatinGuide(ObjectId id, int index);
     void renderAutoSatinOverlay(const document::EmbroideryObject& obj,
@@ -1244,6 +1261,28 @@ private:
     void eyedropperAt(QPointF posMm);
     void assignEyedropperChoice(const std::optional<thread_palette::ThreadKey>& key,
                                 std::array<std::uint8_t, 3> rgb, const QString& label);
+    // Pinceau de déformation (HP-VEC-018, main_window_brush.cpp).
+    struct BrushStroke {
+        ObjectId object;
+        std::vector<geometry::PathSet> working; // géométrie courante du coup de pinceau
+        QPointF lastSceneMm;
+    };
+    void buildBrushTool();
+    void attachBrushTool();
+    void syncBrushTool(Tool tool);
+    void setBrushSettings(double radiusMm, double strength);
+    void updateBrushRing(QPointF sceneMm);
+    void hideBrushRing();
+    void beginBrushStroke(QPointF sceneMm);
+    void moveBrushStroke(QPointF sceneMm, Qt::KeyboardModifiers mods);
+    void endBrushStroke(QPointF sceneMm);
+    void cancelBrushStroke();
+    QAction* toolBrushAct_{nullptr};
+    QAction* brushSettingsAct_{nullptr};
+    QGraphicsEllipseItem* brushRing_{nullptr};
+    std::optional<BrushStroke> brushStroke_;
+    double brushRadiusMm_{5.0};
+    double brushStrength_{0.6};
     QAction* toolMeasureAct_{nullptr};
     QAction* copyMeasureAct_{nullptr};
     QAction* toolEyedropperAct_{nullptr};

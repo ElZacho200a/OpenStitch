@@ -1,12 +1,14 @@
 add_executable(test_geometry
     test_simplify.cpp
     test_boolean.cpp
+    test_brush.cpp
     test_clean.cpp
     test_curve_fit.cpp
     test_cut.cpp
     test_offset.cpp
     test_measure.cpp
     test_moments.cpp
+    test_node_transform.cpp
     test_path.cpp
     test_polyline.cpp
     test_primitives.cpp

@@ -3,12 +3,14 @@ find_package(Clipper2 CONFIG REQUIRED)
 add_library(openstitch_geometry
     src/simplify.cpp
     src/boolean.cpp
+    src/brush.cpp
     src/clean.cpp
     src/curve_fit.cpp
     src/measure.cpp
     src/moments.cpp
     src/cut.cpp
     src/offset.cpp
+    src/node_transform.cpp
     src/path.cpp
     src/polyline.cpp
     src/primitives.cpp

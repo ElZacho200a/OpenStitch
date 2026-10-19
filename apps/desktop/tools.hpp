@@ -41,6 +41,9 @@ enum class Tool {
     // Pipette (HP-THR-012) : un clic échantillonne la couleur de l'image et propose les fils
     // les plus proches du nuancier courant.
     Eyedropper,
+    // Pinceau de déformation (HP-VEC-018) : glisser = pousser / tirer le contour de la forme
+    // sélectionnée ; un coup de pinceau = une commande.
+    Brush,
 };
 
 } // namespace openstitch::desktop
