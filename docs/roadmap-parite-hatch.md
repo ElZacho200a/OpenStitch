@@ -39,9 +39,9 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 |---|---|---|---|---|
 | P0 | 12 | 28 | 5 | 45 |
 | P1 | 10 | 64 | 70 | 144 |
-| P2 | 3 | 31 | 63 | 97 |
+| P2 | 4 | 31 | 62 | 97 |
 | P3 | 0 | 3 | 12 | 15 |
-| **Total** | **25** | **126** | **150** | **301** |
+| **Total** | **26** | **126** | **149** | **301** |
 
 Ajoutés le 2026-10-19 (remodelage interactif, HP-VEC-016 à 019) : **+4 entrées** (HP-VEC-016 P0 ◐ ; 017 et 018 P1 ☐ ; 019 P2 ☐), comptées dans le tableau ci-dessus.
 
@@ -1587,7 +1587,8 @@ Besoin (retour utilisateur) : le moteur d'auto-numérisation est bon ; ce qui co
 - État OpenStitch : voir ci-dessus ; un appui sur le contour d'une forme sélectionnée déplaçait la forme entière.
 - Choix d'algorithme (arbitrage structurant) : la poignée de Bézier est préférée à une déformation locale contrainte (qui ajoute des nœuds et dégrade les courbes à l'usage répété). Le point saisi (paramètre `t` de la cubique, borné à [0,15 ; 0,85]) suit le curseur ; seules les poignées des DEUX nœuds du segment bougent, pondérées par la base de Bernstein. Nœuds d'extrémité et nombre de nœuds inchangés ; nœud Lisse : la poignée opposée pivote (longueur conservée) ; nœud Coin : angle conservé ; un segment droit devient une cubique. Limite connue : sur un contour très dense en micro-segments, tirer un seul segment est peu utile (c'est le rôle du pinceau, HP-VEC-018).
 - Livré (2026-10-19) : `libs/geometry/reshape.*` (`nearest_segment`, `reshape_segment`, `path_self_intersects`, `path_set_has_crossings`, `reshape_path_set_segment`), `commands::ReshapeSegmentCommand` + `make_reshape_segment_command` (un pas d'annulation, restitution exacte), geste dans le bureau (`main_window_reshape.cpp`, `VectorObjectBodyItem::ReshapeHooks`) : glisser sur le CONTOUR (6 px) d'une forme seule sélectionnée en mode Sélection, aperçu en direct (rouge si le contour se croiserait), Maj = verrou d'axe, Échap = annulation, intérieur de la forme = déplacement comme avant ; trous pris en charge. Tests : `test_reshape` (10), `test_vector_path_commands` (+2), `test_segment_reshape` (5 vrais gestes souris).
-- Reste : curseur de survol sur le contour, déplacement d'un segment par ses deux extrémités (variante « translater l'arête » en Alt), tracés ouverts vérifiés dans l'interface, sauvegarde `.osp` rouverte dans un test bout en bout.
+- Livré (test bout en bout) : `test_reshape_persistence` : segment tiré + nœuds déplacés en groupe + coup de pinceau, sauvegarde `.osp`, réouverture à l'identique (tangentes comprises), points régénérés identiques, réglages de broderie inchangés, objet témoin intact, annulation complète sans dérive.
+- Reste : curseur de survol sur le contour, déplacement d'un segment par ses deux extrémités (variante « translater l'arête » en Alt), tracés ouverts vérifiés dans l'interface.
 - Modules : `libs/geometry`, `libs/commands`, `apps/desktop`.
 - Acceptation : déformer une portion de courbe sans toucher à un nœud ; angle marqué et jonction lisse préservés ; Échap sans trace dans l'historique ; autres objets inchangés.
 
@@ -1608,8 +1609,10 @@ Besoin (retour utilisateur) : le moteur d'auto-numérisation est bon ; ce qui co
 - Dépend de : HP-VEC-016.
 - Acceptation : pousser / tirer une portion de contour en un geste ; Échap sans trace ; nombre de nœuds borné après répétitions ; réactivité sur un contour de plusieurs milliers de points.
 
-### HP-VEC-019 — Préservation des détails pendant le remodelage [P2] — ☐ À faire
-- À faire : option du pinceau (HP-VEC-018) et du déplacement groupé (HP-VEC-017), pas un outil de plus : décomposition lissage + détail, le détail local suit la déformation de la base (déformation « Laplacienne » à poids décroissants) ; à n'ajouter que si le test comparatif sur un contour auto-numérisé montre un gain visible.
+### HP-VEC-019 — Préservation des détails pendant le remodelage [P2] — ☑ Fait (2026-10-19, par construction, mesuré)
+- Besoin : en élargissant une partie d'une silhouette, ses petites variations de contour suivent la déformation au lieu d'être écrasées.
+- Constat (audit critique) : les outils de remodelage (pinceau HP-VEC-018, déplacement groupé HP-VEC-017 avec transition douce, segment HP-VEC-016) déplacent les NŒUDS EXISTANTS par un champ de déplacement lisse, sans rééchantillonner ni ajuster de courbe : un détail (suite de nœuds voisins) est donc emporté avec sa zone, pas reconstruit. Mesure (`test_brush`, cas « small details… », dents de scie de ±0,2 mm au pas de 0,4 mm poussées de 2 mm) : la dérivée seconde, qui isole le détail de l'inclinaison légitime de la courbe, reste à moins de 10 % de l'originale sur toute la zone d'influence, et aucun nœud n'est ajouté ni perdu.
+- Décision (arbitrage structurant) : PAS d'option ni d'outil supplémentaire. Une décomposition base + détail (déformation laplacienne) aurait ajouté un réglage sans gain mesuré, contre l'objectif « trois outils simples ». Limite connue : le détail s'incline avec la courbe de base là où l'influence décroît (rotation d'ordre un, voulue). À rouvrir si un contour auto-numérisé réel montre un écrasement visible.
 - Dépend de : HP-VEC-017, HP-VEC-018.
 
 ---
@@ -3302,3 +3305,5 @@ ci-dessus doit les respecter :
 | 2026-10-19 | Claude (HP-I18N-001) | HP-I18N-001 ◐ (infrastructure de traduction : français source, `openstitch_en.ts`, préférence de langue, `test_app_language`) ; +HP-I18N-001.a ☐ (messages du cœur). Chapitre `docs/source/i18n.md`. |
 | 2026-10-19 | Claude (remodelage interactif, lot 2) | **HP-VEC-017 ◐** (branche `claude/vec-node-selection`, PR empilée sur HP-VEC-016) : sélection de nœuds (Alt + cadre, clic sur poignée), déplacement groupé en un pas, transition douce optionnelle ; rotation/échelle dans l'interface et lasso restent à faire. |
 | 2026-10-19 | Claude (remodelage interactif, lot 3) | **HP-VEC-018 ◐** (branche `claude/vec-brush`, PR empilée sur HP-VEC-017) : outil Pinceau (B) poussant / tirant le contour avec influence décroissante, Maj = lisser, un coup = une commande, nombre de nœuds borné ; refit local, molette et stylet restent à faire. |
+| 2026-10-19 | Claude (remodelage interactif, lot 4) | **HP-VEC-019 ☑** : préservation des détails vérifiée par un test (dérivée seconde à 10 % près) ; aucune option ajoutée, décision documentée. |
+| 2026-10-19 | Claude (remodelage interactif, lot 5) | HP-VEC-016/017/018 : test bout en bout `.osp` (remodelage + groupe + pinceau, sauvegarde, réouverture, points identiques, annulation sans dérive). |

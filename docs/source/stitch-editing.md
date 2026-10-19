@@ -95,6 +95,12 @@ et multiplie les nœuds après quelques coups. Un coup de pinceau (appui → rel
 UNE `BrushStrokeCommand` ; le relâchement est refusé si le contour se croiserait ; Échap
 l'abandonne sans toucher au document.
 
+**Détails préservés (HP-VEC-019).** Le pinceau et le déplacement groupé déplacent les
+nœuds existants par un champ de déplacement lisse ; ils ne rééchantillonnent pas. Les
+petites variations d'un contour suivent donc la déformation au lieu d'être écrasées
+(vérifié : la dérivée seconde d'une dent de scie reste à 10 % près, sans nœud ajouté).
+Aucune option supplémentaire n'est nécessaire.
+
 Limitation : l'ajout/suppression de nœuds, la conversion anguleux/lisse et
 l'édition de tangentes ne sont pas exposés (voir *Vectorisation*).
 

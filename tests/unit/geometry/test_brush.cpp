@@ -190,3 +190,36 @@ TEST_CASE("a stroke over a dense contour stays fast", "[geometry][brush]") {
     CHECK(ms < 4'000);
     CHECK(p.nodes.size() <= dense.nodes.size());
 }
+
+TEST_CASE("small details of the contour follow the deformation instead of being crushed",
+          "[geometry][brush][details]") {
+    // Ligne ouverte en dents de scie (amplitude +-200 um, pas de 400 um) : le « détail ».
+    Path p;
+    p.closed = false;
+    for (int i = 0; i <= 60; ++i) {
+        p.nodes.push_back(corner(i * 400.0, (i % 2 == 0) ? 200.0 : -200.0));
+    }
+    // Pousse fort (2 mm vers le haut) au milieu, rayon 6 mm.
+    const Path out = apply_brush_dab(p, push(pt(12'000, 0), 6'000.0, pt(0, 2'000)));
+    REQUIRE(out.nodes.size() == p.nodes.size()); // aucun nœud ajouté ni perdu
+    // La dent de scie se lit sur la dérivée seconde y[i-1] - 2 y[i] + y[i+1] (la dérivée
+    // première mêle le détail et l'inclinaison légitime de la courbe déformée).
+    const auto second = [](const Path& path, std::size_t i) {
+        return static_cast<double>(path.nodes[i - 1].pos.y.value) -
+               2.0 * static_cast<double>(path.nodes[i].pos.y.value) +
+               static_cast<double>(path.nodes[i + 1].pos.y.value);
+    };
+    int checked = 0;
+    for (std::size_t i = 1; i + 1 < out.nodes.size(); ++i) {
+        const double x = static_cast<double>(p.nodes[i].pos.x.value);
+        if (std::abs(x - 12'000.0) > 3'000.0) {
+            continue;
+        }
+        // Le détail garde son amplitude (à 10 % près) même là où l'influence décroît.
+        CHECK(std::abs(second(out, i) - second(p, i)) < 0.1 * std::abs(second(p, i)));
+        ++checked;
+    }
+    CHECK(checked > 10);
+    // La zone entière a bien été déplacée (le détail ne reste pas sur place).
+    CHECK(out.nodes[30].pos.y.value > 1'500);
+}
