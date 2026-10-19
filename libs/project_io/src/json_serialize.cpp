@@ -340,10 +340,19 @@ json params_to_json(const document::StitchParams& params) {
             } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
                 json guides = json::array();
                 for (const auto& g : p.guides) {
-                    guides.push_back({{"x", g.anchor.x.value},
-                                      {"y", g.anchor.y.value},
-                                      {"angle", g.angle.radians},
-                                      {"absolute", g.absolute}});
+                    json guide = {{"x", g.anchor.x.value},
+                                  {"y", g.anchor.y.value},
+                                  {"angle", g.angle.radians},
+                                  {"absolute", g.absolute}};
+                    // Absent = guide droit : un .osp sans courbe reste identique octet pour octet.
+                    if (!g.path.empty()) {
+                        json path = json::array();
+                        for (const Vec2um& point : g.path) {
+                            path.push_back(json::array({point.x.value, point.y.value}));
+                        }
+                        guide["path"] = std::move(path);
+                    }
+                    guides.push_back(std::move(guide));
                 }
                 j = {{"type", "autoSatin"},
                      {"guides", std::move(guides)},
@@ -643,6 +652,12 @@ Result<document::StitchParams> params_from_json(const json& j) {
                 guide.anchor = Vec2um{Micrometers{g.at("x")}, Micrometers{g.at("y")}};
                 guide.angle = Angle{g.value("angle", 0.0)};
                 guide.absolute = g.value("absolute", false);
+                if (g.contains("path")) {
+                    for (const auto& point : g.at("path")) {
+                        guide.path.push_back(
+                            Vec2um{Micrometers{point.at(0)}, Micrometers{point.at(1)}});
+                    }
+                }
                 p.guides.push_back(guide);
             }
         }

@@ -728,7 +728,13 @@ private:
     void createTatamiObjectImpl(bool askSettings);
     void applyAutoSatinEdit(ObjectId id, document::AutoSatinParams params, const QString& label,
                             const QString& mergeTag = {});
-    void addAutoSatinGuideFromStroke(ObjectId id, Vec2um from, Vec2um to);
+    // Tracé de >= 2 points : le premier fixe l'ancre, le dernier la direction (guide droit). À
+    // partir de 3 points le tracé est conservé comme guide en courbe (balayage parallèle :
+    // tangente).
+    void addAutoSatinGuideFromStroke(ObjectId id, const std::vector<Vec2um>& stroke);
+    void addAutoSatinGuideFromStroke(ObjectId id, Vec2um from, Vec2um to) {
+        addAutoSatinGuideFromStroke(id, std::vector<Vec2um>{from, to});
+    }
     void changeAutoSatinGuide(ObjectId id, int index, double angleDeg, bool absolute);
     // Clic sur un guide de la liste de l'inspecteur : cercle temporaire sur son ancre.
     void highlightAutoSatinGuide(ObjectId id, int index);

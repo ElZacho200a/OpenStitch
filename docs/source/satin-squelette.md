@@ -411,6 +411,21 @@ persistance par nom et la version v7 conditionnelle).
 - **Clés de cache** : le résumé de l'inspecteur inclut désormais la méthode, l'angle et
   `compact_axis` (ce dernier en était absent).
 
+**Guides en courbe (balayage parallèle, 2026-10-19).** Un guide d'orientation tracé avec **3 points
+ou plus** (outil « Guide de direction » sur un auto-satin) est conservé comme polyligne
+(`AutoSatinGuide::path`, clé JSON facultative `path` : un `.osp` sans courbe est inchangé octet
+pour octet, pas de nouvelle version de schéma). Contrairement au trait droit (2 points = direction
+des fils), la courbe est une **courbe de référence** : les fils lui sont *perpendiculaires* (comme
+sur une colonne satin). Le balayage en tire un arrêt par sommet (angle absolu = perpendiculaire à
+la tangente moyenne des deux segments voisins, modulo π), puis applique les mêmes bornes que pour les
+guides droits (±60°, taux de rotation limité). Un sommet hors de l'étendue de la forme est ignoré ;
+une courbe sans aucun sommet dans la forme compte pour un guide orphelin. Le squelette et l'axe
+médian ignorent la courbe (ils n'utilisent que l'ancre et l'angle premier→dernier point).
+Limite : l'angle reste fonction de la seule position le long de l'axe de balayage (champ 1D) ; une
+courbe qui revient sur elle-même selon cet axe n'est pas suivie fidèlement. Tests :
+`test_parallel_sweep` (courbe, orphelin, déterminisme), `test_auto_satin_strategy_persistence`
+(aller-retour), `test_main_window` (un pas d'annulation).
+
 Limites : l'auto-numérisation (`autodigitize::choose_satin`) et le lettrage continuent
 d'utiliser le squelette ; non validé sur machine.
 

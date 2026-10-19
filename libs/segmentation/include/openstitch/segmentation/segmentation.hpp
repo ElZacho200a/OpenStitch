@@ -212,6 +212,11 @@ background_candidate(const Segmentation& seg, const BackgroundCandidateOptions& 
 [[nodiscard]] std::vector<RegionId> regions_with_color(const Segmentation& seg,
                                                        std::array<std::uint8_t, 3> rgb);
 
+// Régions vivantes ayant au moins un pixel sur le pourtour de l'image, par identifiant croissant.
+// Sert à distinguer le fond EXTÉRIEUR (relié aux bords) d'une région de même couleur enfermée dans
+// le motif (nuage blanc, soleil).
+[[nodiscard]] std::vector<RegionId> border_touching_regions(const Segmentation& seg);
+
 // Voisines de `id` (4-connexité), de la frontière commune la plus longue à la plus courte
 // (égalité -> plus petit identifiant). Le fond n'est jamais une voisine.
 [[nodiscard]] std::vector<RegionId> neighbors_of(const Segmentation& seg, RegionId id);

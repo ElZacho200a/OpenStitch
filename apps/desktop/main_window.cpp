@@ -4662,6 +4662,16 @@ void MainWindow::autoDigitize() {
                "motif : sur une image plein cadre, la plus grande région (ciel, mer...) fait "
                "partie du dessin."));
         optsLayout->addWidget(skipBgCheck);
+        auto* skipBgOuterCheck = new QCheckBox(
+            tr("Seulement le fond extérieur (garder le blanc enfermé dans le motif)"), &optsDialog);
+        skipBgOuterCheck->setObjectName("skipBackgroundOuterCheck");
+        skipBgOuterCheck->setEnabled(skipBgCheck->isChecked());
+        skipBgOuterCheck->setToolTip(
+            tr("N'exclut que les régions de la couleur du fond qui touchent le pourtour de "
+               "l'image : un soleil ou un nuage blanc entouré de motif reste brodé. Un blanc "
+               "relié au fond par la quantification reste ignoré."));
+        QObject::connect(skipBgCheck, &QCheckBox::toggled, skipBgOuterCheck, &QWidget::setEnabled);
+        optsLayout->addWidget(skipBgOuterCheck);
         auto* satinBandsCheck =
             new QCheckBox(tr("Satin automatique (bandes étroites, petits disques)"), &optsDialog);
         satinBandsCheck->setObjectName("satinBandsCheck");
@@ -5204,6 +5214,7 @@ void MainWindow::autoDigitize() {
             ui_memory::setIntValue(QString::fromLatin1(key), value);
         };
         skipLargest = skipBgCheck->isChecked();
+        ds.skip_background = !skipLargest ? 0 : (skipBgOuterCheck->isChecked() ? 2 : 1);
         ds.max_threads = static_cast<std::size_t>(maxThreadsSpin->value());
         ds.satin_bands = satinBandsCheck->isChecked();
         remember("autoDigitize/satinBands", ds.satin_bands ? 1 : 0);
