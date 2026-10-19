@@ -107,9 +107,17 @@ public:
     // `measureFinishedMm`. Aucune sélection ni déplacement de vue ; le canevas ne mesure rien
     // lui-même (le calcul est dans libs/geometry, l'affichage dans MainWindow).
     void setMeasureMode(bool enabled);
+    // Mode pinceau (HP-VEC-018) : un glisser gauche émet appui / déplacements / relâchement ;
+    // aucune sélection ni déplacement de vue. Échap émet `brushCancelled`.
+    void setBrushMode(bool enabled);
+    [[nodiscard]] bool brushMode() const { return brushMode_; }
     [[nodiscard]] bool measureMode() const { return measureMode_; }
 
 signals:
+    void brushPressedMm(QPointF posMm);
+    void brushMovedMm(QPointF posMm, Qt::KeyboardModifiers modifiers);
+    void brushReleasedMm(QPointF posMm);
+    void brushCancelled();
     // Règle : glisser en cours (début fixe, position courante), puis fin au relâchement ;
     // `measureCancelled` si Échap interrompt le geste. Coordonnées scène (mm).
     void measureDragMm(QPointF startMm, QPointF currentMm);
@@ -155,6 +163,9 @@ signals:
     void nudgeRequestedMm(QPointF deltaMm);
     // Sélection (contexte Select, setSelectionRectangleEnabled(true)). Rectangle
     // en mm scène ; `crossing` = glissé vers la gauche (croise) sinon englobe.
+    // Alt + cadre (HP-VEC-017) : sélection de NŒUDS de la forme courante (Maj : ajouter,
+    // Ctrl : basculer, sinon remplacer).
+    void nodeRectangleMm(QRectF rectMm, openstitch::desktop::SelectMode mode);
     void selectionRectangleMm(QRectF rectMm, openstitch::desktop::SelectMode mode, bool crossing);
     // Clic avec Maj/Ctrl (mode != Replace) ; le clic simple reste canvasClickedMm.
     void selectionClickedMm(QPointF posMm, openstitch::desktop::SelectMode mode);
@@ -232,6 +243,8 @@ private:
     bool bezierDrawMode_{false};
     bool measureMode_{false};
     bool measureActive_{false};
+    bool brushMode_{false};
+    bool brushActive_{false};
     QPointF measureStartMm_;
     bool freeformActive_{false};
     bool bezierPressActive_{false};

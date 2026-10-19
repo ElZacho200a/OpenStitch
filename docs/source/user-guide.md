@@ -162,6 +162,7 @@ entre les deux marqueurs.
 | N2b | Édition de nœuds | Ctrl + glisser | Suspendre l'accroche |
 | N4 | Édition de nœuds | Suppr | Supprimer les nœuds sélectionnés |
 | V1 | Règle | Glisser | Mesurer une distance (règle temporaire) |
+| V3 | Pinceau | Glisser | Pousser / tirer le contour de la forme sélectionnée (Maj : lisser) |
 | V2 | Pipette | Clic | Échantillonner la couleur et choisir un fil |
 <!-- GESTURES:END -->
 
