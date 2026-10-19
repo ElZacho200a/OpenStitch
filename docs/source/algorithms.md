@@ -64,6 +64,18 @@ Fonctions pures, Qt-free, en micromètres entiers, déterministes (HP-VEC-007,
   [0,15 ; 0,85]. `nearest_segment` retrouve segment et `t` (échantillonnage puis
   recherche ternaire), `reshape_path_set_segment` refuse un résultat qui introduit un
   croisement (`path_set_has_crossings`).
+- **`transform_nodes(path, selected, T, rayon)`** (`node_transform.hpp`, HP-VEC-017) :
+  `p' = pivot + scale·R(θ)·(p − pivot) + translation` pour les nœuds sélectionnés
+  (tangentes : partie échelle/rotation seulement). Transition douce : chaque nœud non
+  sélectionné à `d < rayon` de son plus proche nœud sélectionné (égalité : plus petit
+  indice) suit son déplacement pondéré par `w = 3u² − 2u³`, `u = 1 − d/rayon`.
+  `transform_path_set_nodes` refuse un croisement que l'original n'avait pas.
+- **`apply_brush_dab(path, dab)`** (`brush.hpp`, HP-VEC-018) : (1) subdivision exacte
+  des segments de la zone plus longs que `max(R/3 ; 300 µm)` (budget 64 nœuds) ;
+  (2) Push : `p += delta·w(d)` ; Smooth : `p += (milieu(voisins) − p)·w(d)`,
+  `w(d) = force·(3u² − 2u³)`, `u = 1 − d/R` ; (3) retrait des nœuds droits de la zone
+  à moins de 30 µm de la corde de leurs voisins. Tangentes inchangées, extrémités
+  ouvertes fixes. `brush_result_is_valid` refuse un croisement nouveau.
 - **Formes** (`shapes.hpp`) : étoile (2n coins), cœur (6 nœuds, 2 coins, Béziers
   dans le cadre), flèche (7 coins), rectangle arrondi (8 nœuds, quarts de cercle
   de constante κ = 0,5523, rayon borné à la moitié du petit côté), arc (un segment

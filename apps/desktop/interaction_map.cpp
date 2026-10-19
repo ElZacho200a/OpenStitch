@@ -116,6 +116,7 @@ constexpr auto kRows = std::to_array<Row>({
     row("N3", Context::NodeEdit, dblclick(L), Intent::InsertNode, QT_TRANSLATE_NOOP("InteractionMap", "Insérer un nœud sur le segment"), P, Both, false, true, false, false),
     row("N4", Context::NodeEdit, key(Qt::Key_Delete), Intent::DeleteNodes, QT_TRANSLATE_NOOP("InteractionMap", "Supprimer les nœuds sélectionnés"), E, Both, false, false, true, true),
     row("V1", Context::Measure, drag(L), Intent::MeasureDistance, QT_TRANSLATE_NOOP("InteractionMap", "Mesurer une distance (règle temporaire)"), P, Both, false, false, false, true),
+    row("V3", Context::Brush, drag(L), Intent::BrushReshape, QT_TRANSLATE_NOOP("InteractionMap", "Pousser / tirer le contour de la forme sélectionnée (Maj : lisser)"), P, Both, false, false, false, true),
     row("V2", Context::Eyedropper, click(L), Intent::PickColor, QT_TRANSLATE_NOOP("InteractionMap", "Échantillonner la couleur et choisir un fil"), P, Both, false, false, false, true),
 });
 // clang-format on
@@ -366,6 +367,8 @@ QString InteractionMap::contextName(Context context) {
         return tr("Règle");
     case Context::Eyedropper:
         return tr("Pipette");
+    case Context::Brush:
+        return tr("Pinceau");
     }
     return {};
 }
@@ -404,6 +407,8 @@ Context InteractionMap::contextFor(Tool tool, bool nodeEditActive, bool stitchEd
         return Context::Measure;
     case Tool::Eyedropper:
         return Context::Eyedropper;
+    case Tool::Brush:
+        return Context::Brush;
     }
     return Context::Select;
 }
