@@ -214,7 +214,25 @@ bool in_region(const EdgeIndex& index, PointD p) {
 // l'Ã©cart en x â€” un connecteur parfaitement vertical qui traverse un trou de
 // part en part (mÃªme en touchant ses sommets, sans jamais le Â« croiser Â»
 // franchement) est donc dÃ©tectÃ©.
-bool connector_invalid(const EdgeIndex& index, PointD a, PointD b) {
+//
+// `edgeTol` (µm, 0 = strict) : tolérance au bord. Un sous-segment dont le milieu est
+// dehors reste admis si tous ses points d'échantillon sont à moins de `edgeTol` du
+// contour. C'est le cas d'une liaison entre deux fins de rangée voisines au bord d'un
+// coin rentrant ou d'une fente : la corde sort du polygone d'une fraction de
+// millimètre (audit Possible.osp : 973 sauts sur 1 459, presque tous < 1 mm, pour des
+// rangées voisines pourtant reliées par le graphe). Le fil y reste sous la bordure.
+bool near_boundary(const EdgeIndex& index, PointD p, double tol) {
+    const double tol2 = tol * tol;
+    bool near = false;
+    index.for_edges(p.y - tol, p.y + tol, [&](const EdgeIndex::Edge& e) {
+        if (!near && point_seg_dist2(p, e.c, e.d) <= tol2) {
+            near = true;
+        }
+    });
+    return near;
+}
+
+bool connector_invalid(const EdgeIndex& index, PointD a, PointD b, double edgeTol = 0.0) {
     const double abx = b.x - a.x;
     const double aby = b.y - a.y;
     const double abLen = std::sqrt(abx * abx + aby * aby);
@@ -242,12 +260,26 @@ bool connector_invalid(const EdgeIndex& index, PointD a, PointD b) {
     for (std::size_t i = 0; i + 1 < ts.size(); ++i) {
         const double tm = (ts[i] + ts[i + 1]) / 2.0;
         const PointD p{a.x + abx * tm, a.y + aby * tm};
-        if (!in_region(index, p)) {
+        if (in_region(index, p)) {
+            continue;
+        }
+        if (edgeTol <= 0.0) {
             return true;
+        }
+        // Dehors : toléré seulement si le sous-segment ne s'écarte jamais du contour de plus
+        // de `edgeTol` (échantillons au quart, milieu et trois quarts).
+        for (const double f : {0.25, 0.5, 0.75}) {
+            const double tf = ts[i] + (ts[i + 1] - ts[i]) * f;
+            if (!near_boundary(index, {a.x + abx * tf, a.y + aby * tf}, edgeTol)) {
+                return true;
+            }
         }
     }
     return false;
 }
+
+// Tolérance au bord des liaisons de rangées (µm) : bien sous l'écartement (0,4 mm).
+constexpr double kLinkEdgeTol = 150.0;
 
 } // namespace
 
@@ -561,7 +593,8 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
             // `jump` l'exige, et la branche underpath exige `jump`) : ne pas
             // payer ce test en O(arÃªtes) Ã  chaque pÃ©nÃ©tration (audit perf
             // 2026-09, docs/performance-audit.md).
-            const bool cross = (k == 0) && hasPrev && connector_invalid(edgeIndex, prevC, rpC);
+            const bool cross =
+                (k == 0) && hasPrev && connector_invalid(edgeIndex, prevC, rpC, kLinkEdgeTol);
             bool jump = (k == 0) && (jumpStart || !hasPrev || cross);
             // Liaison COUSUE vers une rangÃ©e voisine (arÃªte du graphe, trajet
             // validÃ© intÃ©rieur) : deux segments qui ne se chevauchent que sur

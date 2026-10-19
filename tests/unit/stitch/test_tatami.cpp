@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <set>
 #include <vector>
 
@@ -870,4 +871,53 @@ TEST_CASE("HiddenRouter : deterministe") {
     const HiddenRouter r2(region, Micrometers{600}, 100'000.0);
     CHECK(r1.route(a, b) == r2.route(a, b));
     CHECK(r1.route(a, b) == r1.route(a, b));
+}
+
+// --- LIAISONS AU BORD D'UN COIN RENTRANT COURBE (trop de coupes) --------------
+// Cas reel (soleil de Possible.osp, 141 sauts pour un disque de 30 mm) : au bord
+// d'une morsure concave (pointe de nuage), la corde entre deux fins de rangee
+// consecutives sort du polygone de quelques micrometres. Elle etait refusee et
+// devenait un saut, puis une coupe au-dela du seuil, alors que les deux rangees
+// sont voisines dans le graphe. Un carre mordu par un cercle le reproduit.
+namespace {
+geometry::PathSet bitten_square() {
+    geometry::Path p;
+    p.closed = true;
+    const auto c = [](double x, double y) {
+        return geometry::PathNode{Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(x))},
+                                         Micrometers{static_cast<std::int32_t>(std::lround(y))}},
+                                  geometry::NodeType::Corner,
+                                  {},
+                                  {}};
+    };
+    constexpr double kS = 20'000.0;
+    constexpr double kR = 6'000.0;
+    constexpr int kN = 120;
+    p.nodes.push_back(c(0, 0));
+    p.nodes.push_back(c(kS, 0));
+    // Morsure : arc de cercle centre sur le bord droit, parcouru de bas en haut.
+    const double a0 = -std::numbers::pi / 2.0;
+    for (int i = 0; i <= kN; ++i) {
+        const double a = a0 - std::numbers::pi * i / kN;
+        p.nodes.push_back(c(kS + kR * std::cos(a), kS / 2.0 + kR * std::sin(a)));
+    }
+    p.nodes.push_back(c(kS, kS));
+    p.nodes.push_back(c(0, kS));
+    return {p, {}};
+}
+
+std::ptrdiff_t count_jumps(const std::vector<FillStitch>& f) {
+    return std::count_if(f.begin(), f.end(), [](const FillStitch& s) { return s.jump; });
+}
+} // namespace
+
+TEST_CASE("tatami : carre mordu par un arc, liaisons de bord cousues (pas de sauts)") {
+    const auto region = bitten_square();
+    for (const double deg : {0.0, 30.0, 45.0, 100.0}) {
+        auto p = params(400, 3'000, deg * std::numbers::pi / 180.0);
+        p.hidden_underpath = false; // sans secours : seuls les sauts de liaison comptent
+        const auto fill = fill_tatami(region, p);
+        INFO("angle " << deg << " deg, sauts " << count_jumps(fill));
+        CHECK(count_jumps(fill) <= 2);
+    }
 }
