@@ -350,8 +350,6 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
             scan_polygon(poly, y, xs);
         }
         std::sort(xs.begin(), xs.end());
-        const double phase =
-            stitchLen * (static_cast<double>(rowIndex % stagger) / static_cast<double>(stagger));
         for (std::size_t i = 0; i + 1 < xs.size(); i += 2) {
             const double lo = xs[i];
             const double hi = xs[i + 1];
@@ -363,19 +361,6 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
             s.y = y;
             s.lo = lo;
             s.hi = hi;
-            s.pens.push_back(lo);
-            const double firstK = std::ceil((lo - phase) / stitchLen);
-            for (double x = phase + firstK * stitchLen; x < hi; x += stitchLen) {
-                if (x > lo) {
-                    s.pens.push_back(x);
-                }
-            }
-            s.pens.push_back(hi);
-            // Compensation du tirage : seules les pÃ©nÃ©trations d'extrÃ©mitÃ© dÃ©passent ; les
-            // bornes `lo`/`hi` du segment restent celles de la rÃ©gion (adjacence, validation
-            // des liaisons).
-            s.pens.front() = lo - pull;
-            s.pens.back() = hi + pull;
             byRow[rowIndex].push_back(static_cast<int>(segs.size()));
             segs.push_back(std::move(s));
         }
@@ -383,6 +368,79 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
     const int n = static_cast<int>(segs.size());
     if (n == 0) {
         return out;
+    }
+
+    // 1 bis) ECRETAGE des bouts de rangee (`row_end_clip`). Une extremite qui depasse de plus de
+    //    `clip` les extremites de TOUTES les rangees voisines (au-dessus ET au-dessous) est une
+    //    pointe isolee -- l'aspect "effiloche" d'un bord quasi parallele aux rangees -- et est
+    //    rabattue. Calcule sur les bornes d'origine (le resultat ne depend pas de l'ordre de
+    //    visite) ; une extremite qui n'a de voisin que d'un cote (pointe reelle de la forme)
+    //    n'est jamais touchee.
+    if (params.row_end_clip.value > 0) {
+        const double clip =
+            static_cast<double>(std::clamp<std::int32_t>(params.row_end_clip.value, 0, 5'000));
+        // Bornes extremes des segments de la rangee `row` qui chevauchent [lo, hi].
+        const auto neighbours = [&](int row, double lo, double hi, double& minLo,
+                                    double& maxHi) -> bool {
+            const auto it = byRow.find(row);
+            if (it == byRow.end()) {
+                return false;
+            }
+            bool found = false;
+            minLo = std::numeric_limits<double>::max();
+            maxHi = std::numeric_limits<double>::lowest();
+            for (const int j : it->second) {
+                const Segment& o = segs[static_cast<std::size_t>(j)];
+                if (std::min(hi, o.hi) - std::max(lo, o.lo) > 0.0) {
+                    minLo = std::min(minLo, o.lo);
+                    maxHi = std::max(maxHi, o.hi);
+                    found = true;
+                }
+            }
+            return found;
+        };
+        std::vector<std::pair<double, double>> clipped(static_cast<std::size_t>(n));
+        for (int i = 0; i < n; ++i) {
+            const Segment& s = segs[static_cast<std::size_t>(i)];
+            double newLo = s.lo;
+            double newHi = s.hi;
+            double aLo = 0.0;
+            double aHi = 0.0;
+            double bLo = 0.0;
+            double bHi = 0.0;
+            if (neighbours(s.row - 1, s.lo, s.hi, aLo, aHi) &&
+                neighbours(s.row + 1, s.lo, s.hi, bLo, bHi)) {
+                newHi = std::min(s.hi, std::max(aHi, bHi) + clip);
+                newLo = std::max(s.lo, std::min(aLo, bLo) - clip);
+                if (newHi <= newLo) { // rangee reduite a rien : on garde l'original
+                    newLo = s.lo;
+                    newHi = s.hi;
+                }
+            }
+            clipped[static_cast<std::size_t>(i)] = {newLo, newHi};
+        }
+        for (int i = 0; i < n; ++i) {
+            segs[static_cast<std::size_t>(i)].lo = clipped[static_cast<std::size_t>(i)].first;
+            segs[static_cast<std::size_t>(i)].hi = clipped[static_cast<std::size_t>(i)].second;
+        }
+    }
+
+    // 1 ter) Penetrations d'aiguille de chaque segment (bornes definitives).
+    for (Segment& s : segs) {
+        const double phase =
+            stitchLen * (static_cast<double>(s.row % stagger) / static_cast<double>(stagger));
+        s.pens.push_back(s.lo);
+        const double firstK = std::ceil((s.lo - phase) / stitchLen);
+        for (double x = phase + firstK * stitchLen; x < s.hi; x += stitchLen) {
+            if (x > s.lo) {
+                s.pens.push_back(x);
+            }
+        }
+        s.pens.push_back(s.hi);
+        // Compensation du tirage : seules les penetrations d'extremite depassent ; les bornes
+        // `lo`/`hi` du segment restent celles de la region (adjacence, validation des liaisons).
+        s.pens.front() = s.lo - pull;
+        s.pens.back() = s.hi + pull;
     }
 
     // 2) ADJACENCE : deux segments de rangÃ©es consÃ©cutives qui se chevauchent en

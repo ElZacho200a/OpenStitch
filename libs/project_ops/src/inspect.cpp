@@ -194,6 +194,8 @@ json params_json(const document::StitchParams& params, bool full) {
                 j["hidden_underpath"] = p.hidden_underpath;
                 j["pull_compensation_mm"] = mm(p.pull_compensation);
                 j["underlay_mode"] = underlay_mode_name(p.underlay_mode);
+                j["row_end_clip_mm"] = mm(p.row_end_clip);
+                j["edge_outline"] = p.edge_outline;
                 if (p.entry_point) {
                     j["entry_point_mm"] = point_mm(*p.entry_point);
                 }

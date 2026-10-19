@@ -1207,12 +1207,27 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                               "du fil : le fil tire dans sa direction et la forme cousue "
                               "rétrécit. 0,2 à 0,4 mm est courant ; 0 = aucune."));
                 pull->setObjectName(QStringLiteral("spin_tatamiPull"));
+                // Bords effilochés : écrêtage des bouts de rangée et passe de contour.
+                auto* rowClip =
+                    mmSpin(to_millimeters(p.row_end_clip).value, 5.0, 0.0,
+                           tr("Rabat les pointes : une fin de rangée qui dépasse de plus que "
+                              "cette longueur les rangées voisines est raccourcie (bords "
+                              "effilochés sur un bord presque parallèle aux rangées). 1 mm est "
+                              "courant ; 0 = aucun."));
+                rowClip->setObjectName(QStringLiteral("spin_tatamiRowEndClip"));
+                auto* outline = new QCheckBox(tr("Contour cousu par-dessus"), body_);
+                outline->setObjectName(QStringLiteral("check_tatamiEdgeOutline"));
+                outline->setToolTip(tr("Coud un point droit le long du bord (et des trous) après "
+                                       "le remplissage, pour masquer les bouts de rangées."));
+                outline->setChecked(p.edge_outline);
                 auto* uMode = makeUnderlayModeCombo(body_, p.underlay_mode);
                 form->addRow(tr("Espacement des rangées :"), spacing);
                 form->addRow(tr("Longueur de point :"), len);
                 form->addRow(tr("Angle (orientation) :"), angle);
                 form->addRow(tr("Retrait de bord :"), inset);
                 form->addRow(tr("Compensation du tirage :"), pull);
+                form->addRow(tr("Écrêtage des bouts :"), rowClip);
+                form->addRow(QString(), outline);
                 form->addRow(tr("Décalage (stagger) :"), stagger);
                 form->addRow(tr("Sous-couche :"), uMode);
                 form->addRow(QString(), uEdge);
@@ -1235,6 +1250,8 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                         [syncUnderlay](int) { syncUnderlay(); });
                 bindEnumField<T>(this, edit, uMode, tr("Sous-couche"), &T::underlay_mode, members);
                 bindMm(pull, tr("Compensation du tirage"), &T::pull_compensation);
+                bindMm(rowClip, tr("Écrêtage des bouts de rangée"), &T::row_end_clip);
+                bindBool(outline, tr("Contour cousu par-dessus"), &T::edge_outline);
                 bindMm(spacing, tr("Espacement des rangées"), &T::row_spacing);
                 bindMm(len, tr("Longueur de point"), &T::stitch_length);
                 connect(angle, &QDoubleSpinBox::valueChanged, this, [edit, angle](double v) {
