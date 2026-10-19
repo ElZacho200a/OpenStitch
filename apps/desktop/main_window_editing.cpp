@@ -7,6 +7,7 @@
 #include <QAction>
 #include <QDockWidget>
 #include <QFont>
+#include <QInputDialog>
 #include <QListWidget>
 #include <QMenu>
 #include <QMessageBox>
@@ -758,6 +759,98 @@ void MainWindow::jumpToHistory(int row) {
         refreshImage();
         updateActions();
     }
+}
+
+std::array<std::uint8_t, 3> MainWindow::defaultLayerColor(const std::array<std::uint8_t, 3>& base) {
+    // Complémentaire de la base (teinte opposée) ; les gris, sans teinte, prennent la
+    // luminosité opposée. Toujours distinct de la base.
+    const QColor src(base[0], base[1], base[2]);
+    QColor out = src;
+    if (src.hslHue() < 0 || src.hslSaturation() < 20) {
+        out = QColor::fromHsl(0, 0, src.lightness() < 128 ? 200 : 55);
+    } else {
+        out = QColor::fromHsl((src.hslHue() + 180) % 360, src.hslSaturation(), src.lightness());
+    }
+    std::array<std::uint8_t, 3> rgb{static_cast<std::uint8_t>(out.red()),
+                                    static_cast<std::uint8_t>(out.green()),
+                                    static_cast<std::uint8_t>(out.blue())};
+    if (rgb == base) {
+        rgb = {static_cast<std::uint8_t>(255 - base[0]), static_cast<std::uint8_t>(255 - base[1]),
+               static_cast<std::uint8_t>(255 - base[2])};
+        if (rgb == base) { // gris moyen exact
+            rgb = {static_cast<std::uint8_t>(base[0] ^ 0x40), base[1], base[2]};
+        }
+    }
+    return rgb;
+}
+
+bool MainWindow::addLayer(ObjectId baseId, int type, const std::array<std::uint8_t, 3>& rgb) {
+    const auto* base = project_.findEmbroidery(baseId);
+    if (base == nullptr) {
+        return false;
+    }
+    document::StitchParams params;
+    std::string label;
+    std::optional<std::vector<geometry::PathSet>> restoredContour; // satin : ignoré pour une couche
+    QString error;
+    if (!stitchParamsForType(*base, type, params, label, restoredContour, error)) {
+        QMessageBox::warning(this, tr("Couche impossible"), error);
+        return false;
+    }
+    ui_memory::creation::apply(params); // dernier réglage de création, comme une forme neuve
+    // Numéro : la base est la couche 1 de sa forme.
+    const auto sameShape =
+        std::count_if(project_.embroidery_objects.begin(), project_.embroidery_objects.end(),
+                      [&](const auto& e) { return e.source_vector == base->source_vector; });
+    document::EmbroideryObject layer;
+    layer.id = project_.object_ids.next();
+    layer.name = tr("%1 – couche %2")
+                     .arg(QString::fromStdString(base->name))
+                     .arg(sameShape + 1)
+                     .toStdString();
+    layer.source_vector = base->source_vector;
+    layer.rgb = rgb;
+    layer.params = std::move(params);
+    layer.intent = document::EmbroideryIntent::ForcedUserChoice;
+    const ObjectId layerId = layer.id;
+    const ObjectId sourceId = base->source_vector;
+    const QString baseName = QString::fromStdString(base->name);
+    undoStack_.execute(std::make_unique<commands::AddLayerCommand>(baseId, std::move(layer)),
+                       project_); // `base` est invalidé par l'insertion
+    setSelection({.embroidery = layerId, .objects = {sourceId}});
+    showStitchesAct_->setChecked(true);
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(tr("Couche ajoutée à « %1 ».").arg(baseName));
+    return true;
+}
+
+void MainWindow::addLayerInteractive(ObjectId baseId) {
+    const auto* base = project_.findEmbroidery(baseId);
+    if (base == nullptr) {
+        return;
+    }
+    const QStringList types{tr("Remplissage tatami"), tr("Remplissage directionnel"),
+                            tr("Contour cousu (running)"), tr("Colonne satin")};
+    constexpr int typeIndex[] = {1, 3, 0, 2}; // même numérotation que setStitchType
+    bool ok = false;
+    const QString chosen = QInputDialog::getItem(this, tr("Ajouter une couche"),
+                                                 tr("Type de la couche :"), types, 0, false, &ok);
+    if (!ok) {
+        return;
+    }
+    const auto def = defaultLayerColor(base->rgb);
+    const QColor color = pickThreadColor(QColor(def[0], def[1], def[2]), tr("Couleur du fil"));
+    if (!color.isValid()) {
+        return;
+    }
+    // `base` peut être invalidé par la boucle d'événements des dialogues : on le re-résout.
+    if (project_.findEmbroidery(baseId) == nullptr) {
+        return;
+    }
+    addLayer(baseId, typeIndex[std::max(0, static_cast<int>(types.indexOf(chosen)))],
+             {static_cast<std::uint8_t>(color.red()), static_cast<std::uint8_t>(color.green()),
+              static_cast<std::uint8_t>(color.blue())});
 }
 
 } // namespace openstitch::desktop

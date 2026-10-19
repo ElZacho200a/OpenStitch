@@ -5706,6 +5706,12 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
                 directionGuideModeAct_->setChecked(true);
             });
         }
+        if (hit) {
+            auto* addLayer = menu.addAction(tr("Ajouter une couche…"));
+            addLayer->setObjectName(QStringLiteral("contextAddLayer"));
+            connect(addLayer, &QAction::triggered, this,
+                    [this, embId] { addLayerInteractive(embId); });
+        }
         menu.addSeparator();
         const std::uint32_t embColorKey = colorKeyOf(emb->rgb);
         const int embFilterType = stitchTypeIndex(*emb) == 3 ? 1 : stitchTypeIndex(*emb);
