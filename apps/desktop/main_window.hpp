@@ -746,6 +746,25 @@ private:
     void hideResizePreview();
     QGraphicsItem* snapIndicator_{nullptr};
     QGraphicsRectItem* resizePreview_{nullptr};
+    // Remodelage direct d'un segment du contour (HP-VEC-016, main_window_reshape.cpp). Le geste
+    // vit dans `reshape_` jusqu'au relâchement (une commande) ou à Échap (aucune commande) ;
+    // l'aperçu est une copie du tracé recalculée par `geometry::reshape_path_set_segment`.
+    struct ReshapeGesture {
+        ObjectId object;
+        std::size_t set{0};
+        std::size_t path{0};
+        std::size_t segment{0};
+        double t{0.0};
+        QPointF startSceneMm;
+        geometry::PathSet base;
+    };
+    bool beginSegmentReshape(ObjectId object, QPointF sceneMm);
+    void updateSegmentReshape(QPointF sceneMm, Qt::KeyboardModifiers mods);
+    void commitSegmentReshape(QPointF sceneMm, Qt::KeyboardModifiers mods);
+    void cancelSegmentReshape();
+    [[nodiscard]] QPointF reshapeDragPoint(QPointF sceneMm, Qt::KeyboardModifiers mods) const;
+    std::optional<ReshapeGesture> reshape_;
+    QGraphicsPathItem* reshapePreview_{nullptr};
     void removeAutoSatinGuide(ObjectId id, int index);
     void renderAutoSatinOverlay(const document::EmbroideryObject& obj,
                                 const document::AutoSatinParams& params,

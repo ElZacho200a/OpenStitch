@@ -181,6 +181,7 @@ public:
         setPen(pen);
         setBrush(brush);
         setFlag(ItemIsMovable);
+        setFlag(ItemIsFocusable); // Échap annule un remodelage en cours
         setCursor(Qt::SizeAllCursor);
     }
 
@@ -191,15 +192,65 @@ public:
         onReleasedMods_ = std::move(callback);
     }
 
+    // Remodelage de segment (HP-VEC-016). `begin(scenePos)` est appelé à l'appui : s'il répond
+    // vrai (appui sur le contour), le geste ne déplace PAS la forme mais remodèle le contour :
+    // `update` suit la souris (après le seuil de glisser), `commit` valide au relâchement,
+    // `cancel` est appelé sur Échap ou sur un appui relâché sans glisser. Aucune commande n'est
+    // créée ici : l'appelant la construit dans `commit`.
+    struct ReshapeHooks {
+        std::function<bool(QPointF)> begin;
+        std::function<void(QPointF, Qt::KeyboardModifiers)> update;
+        std::function<void(QPointF, Qt::KeyboardModifiers)> commit;
+        std::function<void()> cancel;
+    };
+    void setReshapeHooks(ReshapeHooks hooks) { reshape_ = std::move(hooks); }
+
 protected:
     // Seuil de glisser : un clic dont la souris bouge de quelques pixels ne déplace rien (pas de
     // commande, pas de pas d'annulation) ; au-delà, le déplacement suit la souris sans saut.
     void mousePressEvent(QGraphicsSceneMouseEvent* event) override {
         pressScreenPos_ = event->screenPos();
         dragStarted_ = false;
+        reshaping_ = false;
+        reshapeCancelled_ = false;
+        if (event->button() == Qt::LeftButton && reshape_.begin &&
+            reshape_.begin(event->scenePos())) {
+            reshaping_ = true;
+            setFocus(); // reçoit Échap
+            event->accept();
+            return;
+        }
         QGraphicsPathItem::mousePressEvent(event);
     }
+    void keyPressEvent(QKeyEvent* event) override {
+        if (event->key() == Qt::Key_Escape && reshaping_ && !reshapeCancelled_) {
+            reshapeCancelled_ = true;
+            ungrabMouse();
+            if (reshape_.cancel) {
+                reshape_.cancel();
+            }
+            event->accept();
+            return;
+        }
+        QGraphicsPathItem::keyPressEvent(event);
+    }
     void mouseMoveEvent(QGraphicsSceneMouseEvent* event) override {
+        if (reshaping_) {
+            if (reshapeCancelled_) {
+                return;
+            }
+            if (!dragStarted_) {
+                if ((event->screenPos() - pressScreenPos_).manhattanLength() <=
+                    QApplication::startDragDistance()) {
+                    return;
+                }
+                dragStarted_ = true;
+            }
+            if (reshape_.update) {
+                reshape_.update(event->scenePos(), event->modifiers());
+            }
+            return;
+        }
         if (!dragStarted_) {
             if ((event->screenPos() - pressScreenPos_).manhattanLength() <=
                 QApplication::startDragDistance()) {
@@ -214,6 +265,19 @@ protected:
         }
     }
     void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override {
+        if (reshaping_) {
+            const bool commit = dragStarted_ && !reshapeCancelled_;
+            reshaping_ = false;
+            if (commit) {
+                if (reshape_.commit) {
+                    reshape_.commit(event->scenePos(), event->modifiers());
+                }
+            } else if (!reshapeCancelled_ && reshape_.cancel) {
+                reshape_.cancel(); // appui relâché sans glisser : rien à remodeler
+            }
+            event->accept();
+            return;
+        }
         QGraphicsPathItem::mouseReleaseEvent(event);
         if ((event->modifiers() & Qt::ShiftModifier) != 0) {
             setPos(axisLockedPos(QPointF(0.0, 0.0), pos()));
@@ -231,8 +295,11 @@ protected:
 private:
     std::function<void(QPointF)> onReleased_;
     std::function<void(QPointF, Qt::KeyboardModifiers)> onReleasedMods_;
+    ReshapeHooks reshape_;
     QPoint pressScreenPos_;
     bool dragStarted_{false};
+    bool reshaping_{false};
+    bool reshapeCancelled_{false};
 };
 
 // Contrainte du glisser d'une poignée de redimensionnement (pure, testable). `anchor` est

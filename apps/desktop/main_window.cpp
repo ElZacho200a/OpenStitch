@@ -3264,6 +3264,7 @@ void MainWindow::renderBase(const image::Image& img) {
     guideHighlight_ = nullptr;
     snapIndicator_ = nullptr;
     resizePreview_ = nullptr;
+    reshapePreview_ = nullptr;
     hoverCacheValid_ = false; // les contours ont pu changer
     hideHoverHighlight();     // la sélection/les objets ont pu changer
 
@@ -3366,6 +3367,23 @@ void MainWindow::renderBase(const image::Image& img) {
                                          delta);
                     });
                 });
+                // Remodelage direct d'un segment (HP-VEC-016) : un appui sur le CONTOUR d'une
+                // forme seule sélectionnée tire le segment ; un appui à l'intérieur déplace la
+                // forme comme avant.
+                if (!hasMultiSelection()) {
+                    VectorObjectBodyItem::ReshapeHooks hooks;
+                    hooks.begin = [this, objectId](QPointF sceneMm) {
+                        return beginSegmentReshape(objectId, sceneMm);
+                    };
+                    hooks.update = [this](QPointF sceneMm, Qt::KeyboardModifiers mods) {
+                        updateSegmentReshape(sceneMm, mods);
+                    };
+                    hooks.commit = [this](QPointF sceneMm, Qt::KeyboardModifiers mods) {
+                        commitSegmentReshape(sceneMm, mods);
+                    };
+                    hooks.cancel = [this] { cancelSegmentReshape(); };
+                    bodyItem->setReshapeHooks(std::move(hooks));
+                }
                 scene_->addItem(bodyItem);
                 pathItem = bodyItem;
             } else {

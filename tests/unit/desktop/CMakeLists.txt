@@ -39,6 +39,7 @@ endfunction()
 
 openstitch_add_qt_test(test_canvas_view test_canvas_view.cpp)
 openstitch_add_qt_test(test_node_handle test_node_handle.cpp)
+openstitch_add_qt_test(test_segment_reshape test_segment_reshape.cpp)
 openstitch_add_qt_test(test_document_panel test_document_panel.cpp)
 openstitch_add_qt_test(test_properties_panel test_properties_panel.cpp)
 openstitch_add_qt_test(test_segmentation_colors_panel test_segmentation_colors_panel.cpp)

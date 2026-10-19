@@ -40,6 +40,30 @@ Sélectionnez un objet vectoriel : ses nœuds s'affichent en poignées. Un
 déplacement passe par `MoveNodeCommand` (annulable) et **régénère** les points de
 tout objet de broderie qui suit cet objet.
 
+### Remodeler un segment (HP-VEC-016)
+
+Dans l'outil Sélection, avec **une seule** forme sélectionnée, glisser sur son
+**contour** (à moins de 6 px) tire le segment visé ; glisser à l'**intérieur**
+déplace la forme entière comme avant. Les deux nœuds d'extrémité et le nombre de
+nœuds ne changent pas : seules les poignées de Bézier des deux extrémités du
+segment bougent, pondérées par la base de Bernstein au paramètre `t` saisi (borné
+à [0,15 ; 0,85] pour éviter l'emballement près d'un nœud), de sorte que le point
+saisi suit le curseur. Un segment droit devient une cubique. Un nœud *Lisse* garde
+sa tangente continue (la poignée opposée pivote, longueur conservée) ; un nœud
+*Coin* garde son angle. Alternative écartée : une déformation locale contrainte qui
+insère des nœuds, plus souple mais qui multiplie les nœuds et dégrade les courbes
+après plusieurs usages.
+
+L'aperçu est calculé par la même fonction pure que la commande
+(`geometry::reshape_path_set_segment`) ; il est rouge pointillé quand le résultat
+se croiserait lui-même (ou croiserait un trou), et le relâchement est alors
+refusé sans modifier le document. Maj verrouille l'axe, Échap annule (aucune
+commande, aucune trace d'historique). Un geste = une `ReshapeSegmentCommand`
+(instantané avant/après de l'objet, restitution exacte). Les points de broderie
+sont régénérés depuis la géométrie source ; type de point et réglages inchangés.
+Limite connue : sur un contour très dense en micro-segments, un seul segment est
+peu utile (voir le pinceau, HP-VEC-018).
+
 Limitation : l'ajout/suppression de nœuds, la conversion anguleux/lisse et
 l'édition de tangentes ne sont pas exposés (voir *Vectorisation*).
 

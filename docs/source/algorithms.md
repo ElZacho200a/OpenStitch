@@ -57,6 +57,13 @@ Fonctions pures, Qt-free, en micromètres entiers, déterministes (HP-VEC-007,
   Contrairement à `smooth_path`, les sommets ne bougent pas : la courbe passe
   par tous. Extrémités d'un tracé ouvert, coins francs, nœuds déjà courbes et
   voisins confondus restent inchangés.
+- **`reshape_segment(path, seg, t, delta)`** (`reshape.hpp`, HP-VEC-016) : tire le
+  point `t` du segment `seg` de `delta` sans bouger les nœuds : poignées
+  `P1' = P1 + δ·w1/N`, `P2' = P2 + δ·w2/N` avec `w1 = 1-t`, `w2 = t`,
+  `N = b1·w1 + b2·w2` (Bernstein `b1 = 3(1-t)²t`, `b2 = 3(1-t)t²`), `t` borné à
+  [0,15 ; 0,85]. `nearest_segment` retrouve segment et `t` (échantillonnage puis
+  recherche ternaire), `reshape_path_set_segment` refuse un résultat qui introduit un
+  croisement (`path_set_has_crossings`).
 - **Formes** (`shapes.hpp`) : étoile (2n coins), cœur (6 nœuds, 2 coins, Béziers
   dans le cadre), flèche (7 coins), rectangle arrondi (8 nœuds, quarts de cercle
   de constante κ = 0,5523, rayon borné à la moitié du petit côté), arc (un segment

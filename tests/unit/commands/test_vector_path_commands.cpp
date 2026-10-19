@@ -143,3 +143,47 @@ TEST_CASE("convert to curves command is refused on sharp polygons", "[commands][
     CHECK(result.command == nullptr);
     CHECK_FALSE(result.error.empty());
 }
+
+TEST_CASE("reshape segment command is one exact undo step and touches only its object",
+          "[commands][reshape]") {
+    document::Project project;
+    const ObjectId a = addObject(project, square(10'000));
+    const ObjectId b = addObject(project, square(5'000));
+    const auto beforeA = project.findObject(a)->paths;
+    const auto beforeB = project.findObject(b)->paths;
+
+    auto result = make_reshape_segment_command(project, a, 0, 0, 0, 0.5,
+                                               Vec2um{Micrometers{0}, Micrometers{-2'000}});
+    REQUIRE(result.command != nullptr);
+    CHECK(result.command->name() == "Remodeler un segment");
+    CHECK(project.findObject(a)->paths == beforeA); // la fabrique ne touche pas au document
+
+    UndoStack stack;
+    stack.execute(std::move(result.command), project);
+    const auto afterA = project.findObject(a)->paths;
+    CHECK(afterA != beforeA);
+    CHECK(afterA.front().outer.nodes.size() == 4);
+    CHECK(project.findObject(b)->paths == beforeB);
+
+    REQUIRE(stack.undo(project));
+    CHECK(project.findObject(a)->paths == beforeA);
+    CHECK_FALSE(stack.canUndo());
+    REQUIRE(stack.redo(project));
+    CHECK(project.findObject(a)->paths == afterA);
+}
+
+TEST_CASE("reshape segment command refuses no-ops, crossings and unknown targets",
+          "[commands][reshape]") {
+    document::Project project;
+    const ObjectId a = addObject(project, square(10'000));
+    CHECK(make_reshape_segment_command(project, a, 0, 0, 0, 0.5, Vec2um{}).command == nullptr);
+    CHECK(make_reshape_segment_command(project, a, 0, 0, 0, 0.5,
+                                       Vec2um{Micrometers{0}, Micrometers{40'000}})
+              .command == nullptr);
+    CHECK(make_reshape_segment_command(project, ObjectId{999}, 0, 0, 0, 0.5,
+                                       Vec2um{Micrometers{1}, Micrometers{1}})
+              .command == nullptr);
+    CHECK(make_reshape_segment_command(project, a, 4, 0, 0, 0.5,
+                                       Vec2um{Micrometers{1}, Micrometers{1}})
+              .command == nullptr);
+}
