@@ -847,6 +847,7 @@ private slots:
     // Guides d'orientation de l'auto-satin : un trait tracé fixe l'ancre et l'angle
     // (absolu), tout geste est une commande annulable, un trait trop court est ignoré.
     void autoSatinGuideFromStrokeIsAbsoluteAndUndoable();
+    void autoSatinCurvedGuideStrokeKeepsItsPathAndIsUndoable();
     void autoSatinGuideTooShortStrokeIsIgnored();
     void autoSatinGuideChangeAndRemoveAreUndoable();
 
@@ -3348,6 +3349,45 @@ void MainWindowTest::autoSatinGuideFromStrokeIsAbsoluteAndUndoable() {
         std::get<openstitch::document::AutoSatinParams>(window.project_.findEmbroidery(id)->params)
             .guides.size(),
         std::size_t{1});
+}
+
+void MainWindowTest::autoSatinCurvedGuideStrokeKeepsItsPathAndIsUndoable() {
+    MainWindow window;
+    const Fixture fx = buildRunningRectangleFixture();
+    window.applyLoadedProject(fx.project);
+    window.setStitchType(fx.embroideryId, /*type=*/2);
+    const ObjectId id = fx.embroideryId;
+    const auto pt = [](int x, int y) { return Vec2um{Micrometers{x}, Micrometers{y}}; };
+    const std::vector<Vec2um> stroke{pt(5'000, 2'500), pt(12'000, 5'000), pt(20'000, 2'500)};
+
+    const std::size_t stepsBefore = window.undoStack_.undoNames().size();
+    window.addAutoSatinGuideFromStroke(id, stroke);
+    const auto& sat =
+        std::get<openstitch::document::AutoSatinParams>(window.project_.findEmbroidery(id)->params);
+    QCOMPARE(sat.guides.size(), std::size_t{1});
+    QVERIFY(sat.guides[0].absolute);
+    QCOMPARE(sat.guides[0].anchor.x.value, 5'000);
+    QCOMPARE(sat.guides[0].path.size(), std::size_t{3});
+    QCOMPARE(window.undoStack_.undoNames().size(), stepsBefore + 1); // un seul pas
+
+    // Un trait droit (2 points) ne stocke pas de courbe : comportement historique.
+    window.addAutoSatinGuideFromStroke(id, pt(10'000, 2'500), pt(15'000, 2'500));
+    const auto& after =
+        std::get<openstitch::document::AutoSatinParams>(window.project_.findEmbroidery(id)->params);
+    QCOMPARE(after.guides.size(), std::size_t{2});
+    QVERIFY(after.guides[1].path.empty());
+
+    window.undo();
+    window.undo();
+    QVERIFY(
+        std::get<openstitch::document::AutoSatinParams>(window.project_.findEmbroidery(id)->params)
+            .guides.empty());
+    window.redo();
+    QCOMPARE(
+        std::get<openstitch::document::AutoSatinParams>(window.project_.findEmbroidery(id)->params)
+            .guides[0]
+            .path.size(),
+        std::size_t{3});
 }
 
 void MainWindowTest::autoSatinGuideTooShortStrokeIsIgnored() {

@@ -36,6 +36,7 @@
 #include "font_catalog.hpp"
 #include "main_window.hpp"
 #include "node_handle.hpp"
+#include "openstitch/document/color_blend.hpp"
 #include "openstitch/geometry/primitives.hpp"
 #include "satin_guide_item.hpp"
 #include "text_dialog.hpp"
@@ -851,6 +852,112 @@ private slots:
         activate(window, Tool::Select);
         click(window, QPointF(-4, 0));
         QVERIFY(window.selectedObject_.has_value());
+    }
+
+    void knifeCutsMultiLayerBlendAndStackedShapes_data() {
+        QTest::addColumn<bool>("selectFirst");
+        QTest::addColumn<bool>("selectLayer");
+        QTest::newRow("selected-shape") << true << false;
+        QTest::newRow("selected-layer") << true << true;
+        QTest::newRow("no-selection-cuts-all-visible") << false << false;
+    }
+
+    // Non-regression : un bloc multi-couche (paire de fondu liée + forme empilée) doit être
+    // coupé d'un seul geste, chaque morceau gardant ses deux couches liées, et s'annuler d'un coup.
+    void knifeCutsMultiLayerBlendAndStackedShapes() {
+        QFETCH(bool, selectFirst);
+        QFETCH(bool, selectLayer);
+        MainWindow window;
+        document::Project project;
+        const ObjectId base = addRectangle(project);
+        const ObjectId stacked = addRectangle(project);
+        for (const ObjectId source : {base, stacked}) {
+            document::EmbroideryObject bottom;
+            bottom.id = project.object_ids.next();
+            bottom.name = "bottom";
+            bottom.source_vector = source;
+            bottom.params = document::TatamiParams{};
+            document::EmbroideryObject top = bottom;
+            top.id = project.object_ids.next();
+            top.name = "top";
+            top.params = document::DirectionalFillParams{};
+            bottom.color_blend = document::ColorBlendLink{top.id, false};
+            top.color_blend = document::ColorBlendLink{bottom.id, true};
+            project.embroidery_objects.push_back(bottom);
+            project.embroidery_objects.push_back(top);
+        }
+        window.applyLoadedProject(project);
+        expose(window);
+        QVERIFY(!QTest::currentTestFailed());
+        if (selectFirst) {
+            std::optional<ObjectId> layer;
+            if (selectLayer) {
+                layer = window.project_.embroidery_objects.front().id;
+            }
+            window.setSelection({.region = std::nullopt, .embroidery = layer, .objects = {base}});
+        }
+        activate(window, Tool::Cut);
+        QVERIFY(!QTest::currentTestFailed());
+        dragScene(window, QPointF(0, -9), QPointF(0, 9));
+        const std::size_t expectedVectors = selectFirst ? 3 : 4;
+        QCOMPARE(window.project_.vector_objects.size(), expectedVectors);
+        QCOMPARE(window.project_.embroidery_objects.size(), expectedVectors * 2);
+        for (const auto& emb : window.project_.embroidery_objects) {
+            QVERIFY(document::find_color_blend(window.project_, emb.id).has_value());
+        }
+        QCOMPARE(window.undoStack_.undoNames().size(), std::size_t{1});
+        window.undoAct_->trigger();
+        QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
+        QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{4});
+        window.redoAct_->trigger();
+        QCOMPARE(window.project_.vector_objects.size(), expectedVectors);
+        QVERIFY(window.checkSelectionInvariants());
+    }
+
+    void knifeCutsDirectionalFillWithGuidesAndBreakLines_data() {
+        QTest::addColumn<bool>("breakLine");
+        QTest::addColumn<bool>("selectEmbroideryLayer");
+        QTest::addColumn<bool>("editModeOn");
+        QTest::newRow("guide-shape-selected") << false << false << false;
+        QTest::newRow("guide-layer-selected") << false << true << false;
+        QTest::newRow("guide-edit-mode-on") << false << true << true;
+        QTest::newRow("break-shape-selected") << true << false << false;
+        QTest::newRow("break-layer-selected") << true << true << false;
+        QTest::newRow("break-edit-mode-on") << true << true << true;
+    }
+
+    // Non-regression : le couteau doit couper une forme remplie en directionnel (guides et
+    // lignes de rupture comprises), quelle que soit la sélection, et s'annuler en un pas.
+    void knifeCutsDirectionalFillWithGuidesAndBreakLines() {
+        QFETCH(bool, breakLine);
+        QFETCH(bool, selectEmbroideryLayer);
+        QFETCH(bool, editModeOn);
+        MainWindow window;
+        auto fx = editFixture(breakLine ? EditMode::BreakLine : EditMode::DirectionGuide);
+        window.applyLoadedProject(fx.project);
+        expose(window);
+        QVERIFY(!QTest::currentTestFailed());
+        if (selectEmbroideryLayer) {
+            selectEmbroidery(window, fx.embroidery);
+            if (editModeOn) {
+                editAction(window, breakLine ? EditMode::BreakLine : EditMode::DirectionGuide)
+                    ->trigger();
+            }
+        } else {
+            window.setSelection(
+                {.region = std::nullopt, .embroidery = std::nullopt, .objects = {fx.vector}});
+        }
+        activate(window, Tool::Cut);
+        QVERIFY(!QTest::currentTestFailed());
+        dragScene(window, QPointF(2, -9), QPointF(2, 9));
+        QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
+        QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{2});
+        QCOMPARE(window.undoStack_.undoNames().size(), std::size_t{1});
+        window.undoAct_->trigger();
+        QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
+        QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{1});
+        window.redoAct_->trigger();
+        QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
     }
 
     void directionToolsDrawEditCancelAndRoundTrip_data() {

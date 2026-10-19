@@ -81,6 +81,7 @@ void MainWindow::buildVectorToolsMenu() {
               QStringLiteral("action_presetRoundedRectangle"));
     addPreset(PresetShape::Arc, tr("&Arc…"), QStringLiteral("action_presetArc"));
     addPreset(PresetShape::Spiral, tr("&Spirale…"), QStringLiteral("action_presetSpiral"));
+    buildNodeSelectionActions();
     updateVectorToolActions();
 }
 

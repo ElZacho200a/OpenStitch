@@ -453,6 +453,7 @@ MainWindow::MainWindow() {
     // [cablage-C:debut]
     buildMeasureTool();
     buildEyedropperTool();
+    buildBrushTool();
     // [cablage-C:fin]
     // [cablage-D:debut]
     // [cablage-D:fin]
@@ -674,6 +675,7 @@ MainWindow::MainWindow() {
 
     connect(view_, &CanvasView::canvasClickedMm, this, &MainWindow::onCanvasClicked);
     connect(view_, &CanvasView::selectionClickedMm, this, &MainWindow::onSelectionClicked);
+    connect(view_, &CanvasView::nodeRectangleMm, this, &MainWindow::onNodeRectangle);
     connect(view_, &CanvasView::selectionRectangleMm, this, &MainWindow::onSelectionRectangle);
     connect(view_, &CanvasView::selectBelowRequested, this, &MainWindow::onSelectBelow);
     // Préréglage de navigation GLOBAL : toute fenêtre reflète un changement venu d'ailleurs.
@@ -3265,6 +3267,13 @@ void MainWindow::renderBase(const image::Image& img) {
     snapIndicator_ = nullptr;
     resizePreview_ = nullptr;
     reshapePreview_ = nullptr;
+    brushRing_ = nullptr;
+    nodeHandles_.clear();
+    if (nodeSelObject_ &&
+        (hasMultiSelection() || !selectedObject_ || *selectedObject_ != *nodeSelObject_ ||
+         project_.findObject(*nodeSelObject_) == nullptr)) {
+        clearNodeSelection(); // la sélection de nœuds suit la forme courante
+    }
     hoverCacheValid_ = false; // les contours ont pu changer
     hideHoverHighlight();     // la sélection/les objets ont pu changer
 
@@ -3425,6 +3434,35 @@ void MainWindow::renderBase(const image::Image& img) {
                                                          pos](QPointF releasedSceneMm,
                                                               Qt::KeyboardModifiers mods) {
                                 hideNodeDragFeedback();
+                                const bool inGroup =
+                                    selectedNodes_.size() >= 2 && isNodeSelected(ref);
+                                if (inGroup) {
+                                    // Glisser un nœud sélectionné déplace tout le groupe.
+                                    commitGroupMove(objectId,
+                                                    sceneMmToModel(releasedSceneMm) - pos);
+                                    if (sceneMmToModel(releasedSceneMm) == pos) {
+                                        // simple clic : bascule/remplace la sélection
+                                        selectNodes(objectId, {ref},
+                                                    (mods & Qt::ControlModifier) != 0
+                                                        ? SelectMode::Toggle
+                                                        : ((mods & Qt::ShiftModifier) != 0
+                                                               ? SelectMode::Add
+                                                               : SelectMode::Replace));
+                                        restyleNodeHandles(); // sans détruire la poignée
+                                    }
+                                    return;
+                                }
+                                if (sceneMmToModel(releasedSceneMm) == pos) {
+                                    // Simple clic sur une poignée : sélection du nœud.
+                                    selectNodes(objectId, {ref},
+                                                (mods & Qt::ControlModifier) != 0
+                                                    ? SelectMode::Toggle
+                                                    : ((mods & Qt::ShiftModifier) != 0
+                                                           ? SelectMode::Add
+                                                           : SelectMode::Replace));
+                                    restyleNodeHandles(); // sans détruire la poignée
+                                    return;
+                                }
                                 QPointF newSceneMm = releasedSceneMm;
                                 // Ctrl seul suspend l'accroche : Maj (verrou d'axe) la garde.
                                 if (snapNodesAct_ != nullptr && snapNodesAct_->isChecked() &&
@@ -3456,7 +3494,12 @@ void MainWindow::renderBase(const image::Image& img) {
                                 sceneMm, {},
                                 // Aperçu pendant le glisser : coordonnées en mm dans la barre
                                 // d'état et repère d'accroche si le nœud s'y colle.
-                                [this, objectId](QPointF movedSceneMm) {
+                                [this, objectId, ref, pos](QPointF movedSceneMm) {
+                                    if (selectedNodes_.size() >= 2 && isNodeSelected(ref)) {
+                                        previewGroupMove(objectId,
+                                                         sceneMmToModel(movedSceneMm) - pos);
+                                        return;
+                                    }
                                     showNodeDragFeedback(movedSceneMm, objectId);
                                 },
                                 // Clic droit sur un nœud : simplification manuelle d'une
@@ -3489,7 +3532,12 @@ void MainWindow::renderBase(const image::Image& img) {
                                     nodeMenu.exec(globalPos);
                                 });
                             handle->setReleasedWithModifiers(commitNodeMove);
+                            nodeHandles_.emplace_back(ref, handle);
+                            if (isNodeSelected(ref)) {
+                                handle->setBrush(QBrush(AppTheme::instance().tokens().accent));
+                            }
                             handle->setCancelled([this] {
+                                hideGroupPreview();
                                 hideNodeDragFeedback();
                                 statusBar()->showMessage(tr("Déplacement annulé."), 2000);
                             });
@@ -6856,6 +6904,7 @@ void MainWindow::buildToolPalette() {
         shapeMenu_->addAction(toolCutAct_);
     }
     attachMeasureEyedropperTools();
+    attachBrushTool();
     toolSelectAct_->setChecked(true);
 
     toolPalette_->addSeparator();
@@ -7121,6 +7170,7 @@ void MainWindow::setTool(Tool tool) {
                "Entrée/double-clic pour terminer, Échap pour annuler."));
     }
     syncMeasureEyedropperTool(tool);
+    syncBrushTool(tool);
     updateDrawActionsState();
     updateInteractionContext();
     hideHoverHighlight();
@@ -9435,6 +9485,9 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
     if (currentTool_ == Tool::Text) {
         placeTextAt(posMm);
         return;
+    }
+    if (currentTool_ == Tool::Brush) {
+        return; // le pinceau passe par brushPressedMm / brushMovedMm / brushReleasedMm
     }
     if (currentTool_ == Tool::Measure) {
         return; // la règle passe par measureDragMm/measureFinishedMm, jamais par un clic

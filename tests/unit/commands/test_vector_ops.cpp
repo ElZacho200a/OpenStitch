@@ -689,3 +689,70 @@ TEST_CASE("vector ops: pockets are refused without pockets or without a neighbou
     const auto none = make_fill_pockets_command(project, {}, {rect(0, 0, 1'000, 1'000)});
     CHECK(none.command == nullptr);
 }
+
+TEST_CASE("vector ops: split keeps colour blend layers linked on every piece",
+          "[vector_ops][blend_core]") {
+    auto project = linked_blend_project();
+    const ObjectId source = project.vector_objects.front().id;
+    UndoStack stack;
+    auto result = make_split_command(project, {source}, pt(10'000, -5'000), pt(10'000, 15'000));
+    REQUIRE(result.command);
+    stack.execute(std::move(result.command), project);
+
+    REQUIRE(project.vector_objects.size() == 2);
+    REQUIRE(project.embroidery_objects.size() == 4);
+    for (const auto& emb : project.embroidery_objects) {
+        const auto layers = document::find_color_blend(project, emb.id);
+        REQUIRE(layers);
+        CHECK(project.findEmbroidery(layers->background)->source_vector == emb.source_vector);
+        CHECK(project.findEmbroidery(layers->foreground)->source_vector == emb.source_vector);
+    }
+    REQUIRE(stack.undo(project));
+    CHECK(project.embroidery_objects.size() == 2);
+    CHECK(document::find_color_blend(project, project.embroidery_objects[0].id));
+}
+
+TEST_CASE("vector ops: split cuts every stacked layer crossed by the line", "[vector_ops]") {
+    document::Project project;
+    const ObjectId lower = add_object(project, rect(0, 0, 20'000, 10'000), true);
+    const ObjectId upper = add_object(project, rect(2'000, 2'000, 18'000, 8'000), true);
+    const ObjectId aside = add_object(project, rect(30'000, 0, 50'000, 10'000), true);
+    UndoStack stack;
+    auto result =
+        make_split_command(project, {lower, upper, aside}, pt(10'000, -5'000), pt(10'000, 15'000));
+    REQUIRE(result.command);
+    stack.execute(std::move(result.command), project);
+    CHECK(project.vector_objects.size() == 5);
+    CHECK(project.embroidery_objects.size() == 5);
+    CHECK(area_mm2(*project.findObject(aside)) == 200.0);
+    REQUIRE(stack.undo(project));
+    CHECK(project.vector_objects.size() == 3);
+    CHECK(project.embroidery_objects.size() == 3);
+}
+
+TEST_CASE("vector ops: split cuts a directional fill carrying guides and break lines",
+          "[vector_ops]") {
+    document::Project project;
+    const ObjectId id = add_object(project, rect(0, 0, 20'000, 10'000), false);
+    document::EmbroideryObject emb;
+    emb.id = project.object_ids.next();
+    emb.source_vector = id;
+    document::DirectionalFillParams params;
+    geometry::Path guide;
+    guide.nodes.push_back(geometry::PathNode{pt(1'000, 5'000), geometry::NodeType::Corner, {}, {}});
+    guide.nodes.push_back(
+        geometry::PathNode{pt(19'000, 5'000), geometry::NodeType::Corner, {}, {}});
+    params.guides.push_back(guide);
+    params.break_lines.push_back(guide);
+    emb.params = params;
+    project.embroidery_objects.push_back(emb);
+
+    UndoStack stack;
+    auto result = make_split_command(project, {id}, pt(10'000, -5'000), pt(10'000, 15'000));
+    REQUIRE(result.command);
+    stack.execute(std::move(result.command), project);
+    CHECK(project.vector_objects.size() == 2);
+    CHECK(project.embroidery_objects.size() == 2);
+    REQUIRE(stack.undo(project));
+    CHECK(project.embroidery_objects.size() == 1);
+}
