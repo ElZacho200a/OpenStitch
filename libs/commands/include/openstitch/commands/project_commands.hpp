@@ -317,6 +317,48 @@ private:
     bool applied_{false};
 };
 
+// Empile une « couche » : insère `layer` juste APRÈS l'objet de base `base_id`
+// dans project.embroidery_objects (donc cousu juste après lui, par-dessus).
+// layer.source_vector est forcé à celui de la base. Undo retire la couche.
+// No-op (revert sans effet) si base_id est introuvable.
+class AddLayerCommand final : public ICommand {
+public:
+    AddLayerCommand(ObjectId base_id, document::EmbroideryObject layer)
+        : base_id_(base_id), layer_(std::move(layer)) {}
+
+    void apply(document::Project& project) override {
+        applied_ = false;
+        auto& objs = project.embroidery_objects;
+        for (std::size_t i = 0; i < objs.size(); ++i) {
+            if (objs[i].id == base_id_) {
+                layer_.source_vector = objs[i].source_vector;
+                objs.insert(objs.begin() + static_cast<std::ptrdiff_t>(i + 1), layer_);
+                applied_ = true;
+                return;
+            }
+        }
+    }
+    void revert(document::Project& project) override {
+        if (!applied_) {
+            return;
+        }
+        auto& objs = project.embroidery_objects;
+        for (std::size_t i = 0; i < objs.size(); ++i) {
+            if (objs[i].id == layer_.id) {
+                objs.erase(objs.begin() + static_cast<std::ptrdiff_t>(i));
+                break;
+            }
+        }
+        applied_ = false;
+    }
+    [[nodiscard]] std::string name() const override { return "Ajouter une couche"; }
+
+private:
+    ObjectId base_id_;
+    document::EmbroideryObject layer_;
+    bool applied_{false};
+};
+
 // Supprime un objet vectoriel ET tout objet de broderie qui en dépend
 // (source_vector == id) en une seule transaction : sans cela, un objet de
 // broderie se retrouverait avec un source_vector orphelin, jamais un état

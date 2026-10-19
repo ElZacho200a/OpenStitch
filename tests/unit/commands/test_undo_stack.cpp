@@ -343,6 +343,87 @@ TEST_CASE("RemoveEmbroideryObjectCommand : id introuvable -- aucune mutation") {
     CHECK(stack.undo(project)); // no-op, jamais applique -> revert() sans effet
 }
 
+namespace {
+document::EmbroideryObject makeLayerTestObject(document::Project& project, const char* name,
+                                               ObjectId source) {
+    document::EmbroideryObject o;
+    o.id = project.object_ids.next();
+    o.name = name;
+    o.source_vector = source;
+    o.params = document::TatamiParams{};
+    return o;
+}
+} // namespace
+
+TEST_CASE("AddLayerCommand : insere juste apres la base et force source_vector") {
+    document::Project project;
+    UndoStack stack;
+    const ObjectId src = project.object_ids.next();
+    const auto base = makeLayerTestObject(project, "base", src);
+    const auto other = makeLayerTestObject(project, "autre", ObjectId{});
+    project.embroidery_objects = {base, other};
+
+    auto layer = makeLayerTestObject(project, "couche", ObjectId{12345});
+    layer.params = document::RunningStitchParams{};
+    stack.execute(std::make_unique<AddLayerCommand>(base.id, layer), project);
+
+    REQUIRE(project.embroidery_objects.size() == 3);
+    CHECK(project.embroidery_objects[0].id == base.id);
+    CHECK(project.embroidery_objects[1].id == layer.id);
+    CHECK(project.embroidery_objects[2].id == other.id);
+    CHECK(project.embroidery_objects[1].source_vector == src);
+    CHECK(stack.undoName() == "Ajouter une couche");
+}
+
+TEST_CASE("AddLayerCommand : undo retire la couche, redo la remet") {
+    document::Project project;
+    UndoStack stack;
+    const ObjectId src = project.object_ids.next();
+    const auto base = makeLayerTestObject(project, "base", src);
+    const auto other = makeLayerTestObject(project, "autre", ObjectId{});
+    project.embroidery_objects = {base, other};
+    const auto layer = makeLayerTestObject(project, "couche", src);
+
+    stack.execute(std::make_unique<AddLayerCommand>(base.id, layer), project);
+    CHECK(stack.undo(project));
+    REQUIRE(project.embroidery_objects.size() == 2);
+    CHECK(project.embroidery_objects[0].id == base.id);
+    CHECK(project.embroidery_objects[1].id == other.id);
+
+    CHECK(stack.redo(project));
+    REQUIRE(project.embroidery_objects.size() == 3);
+    CHECK(project.embroidery_objects[1].id == layer.id);
+    CHECK(project.embroidery_objects[1].source_vector == src);
+}
+
+TEST_CASE("AddLayerCommand : base introuvable -- aucune mutation") {
+    document::Project project;
+    UndoStack stack;
+    const auto layer = makeLayerTestObject(project, "couche", ObjectId{});
+    stack.execute(std::make_unique<AddLayerCommand>(ObjectId{999}, layer), project);
+    CHECK(project.embroidery_objects.empty());
+    CHECK(stack.undo(project)); // no-op
+    CHECK(project.embroidery_objects.empty());
+}
+
+TEST_CASE("AddLayerCommand : base en derniere position") {
+    document::Project project;
+    UndoStack stack;
+    const ObjectId src = project.object_ids.next();
+    const auto first = makeLayerTestObject(project, "premier", ObjectId{});
+    const auto base = makeLayerTestObject(project, "base", src);
+    project.embroidery_objects = {first, base};
+    const auto layer = makeLayerTestObject(project, "couche", ObjectId{});
+
+    stack.execute(std::make_unique<AddLayerCommand>(base.id, layer), project);
+    REQUIRE(project.embroidery_objects.size() == 3);
+    CHECK(project.embroidery_objects[2].id == layer.id);
+    CHECK(project.embroidery_objects[2].source_vector == src);
+    CHECK(stack.undo(project));
+    REQUIRE(project.embroidery_objects.size() == 2);
+    CHECK(project.embroidery_objects[1].id == base.id);
+}
+
 TEST_CASE("RemoveVectorObjectCommand : supprime l'objet ET les broderies qui en dependent") {
     document::Project project;
     UndoStack stack;
