@@ -58,6 +58,8 @@ TEST_CASE("moteur : round-trip des nouveaux reglages (tatami, directionnel, sati
     document::TatamiParams tatami;
     tatami.pull_compensation = Micrometers{350};
     tatami.underlay_mode = document::UnderlayMode::Auto;
+    tatami.row_end_clip = Micrometers{1'000};
+    tatami.edge_outline = true;
     document::DirectionalFillParams directional;
     directional.underlay_mode = document::UnderlayMode::Auto;
     document::SatinParams satin;
@@ -115,6 +117,8 @@ TEST_CASE("moteur : un .osp anterieur est relu avec les defauts (comportement in
     const auto& tatami = std::get<document::TatamiParams>(project.embroidery_objects[0].params);
     CHECK(tatami.pull_compensation.value == 0);
     CHECK(tatami.underlay_mode == document::UnderlayMode::Manual);
+    CHECK(tatami.row_end_clip.value == 0);
+    CHECK_FALSE(tatami.edge_outline);
     const auto& satin = std::get<document::SatinParams>(project.embroidery_objects[1].params);
     CHECK(satin.underlay_mode == document::UnderlayMode::Manual);
     CHECK_FALSE(satin.border.has_value());
@@ -141,10 +145,10 @@ TEST_CASE("moteur : valeurs aberrantes d'un fichier edite a la main sont bornees
     const auto project = load_from_json(
         R"({"id":2,"name":"t","sourceVector":1,"rgb":[1,2,3],"join":9,"params":{"type":"tatami",)"
         R"("angle":0,"rowSpacing":400,"stitchLength":3000,"inset":200,"stagger":2,)"
-        R"("pullCompensation":999999,"underlayMode":7}},)"
+        R"("pullCompensation":999999,"underlayMode":7,"rowEndClip":999999,"edgeOutline":true}},)"
         R"({"id":3,"name":"n","sourceVector":1,"rgb":[1,2,3],"params":{"type":"tatami",)"
         R"("angle":0,"rowSpacing":400,"stitchLength":3000,"inset":200,"stagger":2,)"
-        R"("pullCompensation":-50}},)"
+        R"("pullCompensation":-50,"rowEndClip":-7}},)"
         R"({"id":4,"name":"s","sourceVector":1,"rgb":[1,2,3],"params":{"type":"satin",)"
         R"("railA":{"closed":false,"nodes":[]},"railB":{"closed":false,"nodes":[]},)"
         R"("density":400,"pullCompensation":0,"centerUnderlay":true,"maxWidth":9000,)"
@@ -153,9 +157,12 @@ TEST_CASE("moteur : valeurs aberrantes d'un fichier edite a la main sont bornees
     const auto& big = std::get<document::TatamiParams>(project.embroidery_objects[0].params);
     CHECK(big.pull_compensation.value == 3'000);
     CHECK(big.underlay_mode == document::UnderlayMode::Auto);
+    CHECK(big.row_end_clip.value == 5'000);
+    CHECK(big.edge_outline);
     CHECK(project.embroidery_objects[0].join == document::JoinMode::Off);
     const auto& negative = std::get<document::TatamiParams>(project.embroidery_objects[1].params);
     CHECK(negative.pull_compensation.value == 0);
+    CHECK(negative.row_end_clip.value == 0);
     const auto& satin = std::get<document::SatinParams>(project.embroidery_objects[2].params);
     REQUIRE(satin.border.has_value());
     CHECK(satin.border->width.value == 500);

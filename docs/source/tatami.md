@@ -295,6 +295,8 @@ Valeurs par défaut lues dans `TatamiParams`
 | `entry_point` | µm | — | démarre le remplissage près de ce point (Lot 7) | — |
 | `pull_compensation` | mm | 0 | chaque rangée dépasse du contour de cette longueur, dans l'axe du fil (HP-ENG-001) ; plage [0 ; 3] mm | aucune compensation |
 | `underlay_mode` | Manuelle / Automatique | Manuelle | Automatique : le moteur choisit la sous-couche (voir *Moteur de génération de points*), les réglages `underlay_*` sont ignorés | réglages manuels appliqués tels quels |
+| `row_end_clip` | mm | 0 | rabat les pointes de fin de rangée qui dépassent de plus de cette longueur les deux rangées voisines (bords « effilochés »), plage [0 ; 5] mm, ~1 mm courant | aucun écrêtage |
+| `edge_outline` | bool | off | coud un point droit (2 mm) le long du bord et des trous, par-dessus le remplissage | aucun contour |
 
 ### Compensation du tirage (HP-ENG-001)
 
@@ -312,6 +314,33 @@ est bornée à 3 mm à la génération et à la lecture du .osp. Il n'existe pas
 notion de tissu dans le modèle : le réglage est manuel (0,2 à 0,4 mm est courant).
 Le remplissage directionnel n'a pas encore cette compensation (HP-ENG-001
 reste partiel). Tests : `tests/unit/stitch/test_engine_points.cpp` (« tirage : … »).
+
+### Bords effilochés : écrêtage et contour (2026-10-19)
+
+Sur un bord presque parallèle aux rangées, la fin de rangée saute d'une rangée à
+l'autre de `row_spacing / tan(θ)` et le moindre bruit du contour (nœuds
+vectorisés serrés) produit des pointes isolées : le bord ressemble à un peigne
+(« effiloché »). Deux remèdes, indépendants et sans effet par défaut :
+
+- **Écrêtage des bouts** (`row_end_clip`, étape 1 bis de `fill_tatami`) : une
+  extrémité de rangée qui dépasse de plus de `clip` les extrémités de **toutes**
+  les rangées voisines (au-dessus *et* au-dessous, segments se chevauchant en x)
+  est ramenée à `max(voisines) + clip` (idem côté gauche). Calcul sur les bornes
+  d'origine, donc indépendant de l'ordre de visite ; une extrémité qui n'a de
+  voisine que d'un côté (pointe réelle de la forme, première/dernière rangée) n'est
+  jamais touchée. Les pénétrations, l'adjacence et la compensation du tirage
+  partent des bornes écrêtées. Limite : une pointe aiguë dont le pas entre rangées
+  dépasse `clip` est raccourcie — activer alors le contour.
+- **Contour cousu par-dessus** (`edge_outline`, `emit_edge_outline` dans
+  `generate.cpp`) : après le remplissage de chaque région, point droit de 2 mm le
+  long du bord extérieur puis des trous (au retrait `inset` près), chaque boucle
+  démarrant au plus près de l'aiguille et reliée par un trajet caché dans la
+  région quand il existe (sinon saut).
+
+Clés `.osp` facultatives `rowEndClip` (µm, [0 ; 5000]) et `edgeOutline`, écrites
+hors défaut. Inspecteur : « Écrêtage des bouts » et « Contour cousu par-dessus ».
+CLI projet : `row_end_clip_mm`, `edge_outline`. Tests : `test_engine_points.cpp`
+(« bords : … »), `test_engine_persistence.cpp`, `test_properties_panel.cpp`.
 
 Le paramètre principal de **densité** est `row_spacing` (entre rangées) — à ne
 pas confondre avec `stitch_length` (le long d'une rangée). Le retrait de bord

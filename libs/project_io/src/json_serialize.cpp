@@ -221,6 +221,12 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.underlay_mode != document::UnderlayMode::Manual) {
                     j["underlayMode"] = static_cast<int>(p.underlay_mode);
                 }
+                if (p.row_end_clip.value != 0) {
+                    j["rowEndClip"] = p.row_end_clip.value;
+                }
+                if (p.edge_outline) {
+                    j["edgeOutline"] = true;
+                }
                 if (p.entry_point) {
                     j["entryPoint"] = {{"x", p.entry_point->x.value},
                                        {"y", p.entry_point->y.value}};
@@ -429,6 +435,8 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.pull_compensation = Micrometers{std::clamp(j.value("pullCompensation", 0), 0, 3'000)};
         p.underlay_mode =
             static_cast<document::UnderlayMode>(std::clamp(j.value("underlayMode", 0), 0, 1));
+        p.row_end_clip = Micrometers{std::clamp(j.value("rowEndClip", 0), 0, 5'000)};
+        p.edge_outline = j.value("edgeOutline", false);
         if (j.contains("entryPoint")) {
             p.entry_point = Vec2um{Micrometers{j.at("entryPoint").at("x")},
                                    Micrometers{j.at("entryPoint").at("y")}};
