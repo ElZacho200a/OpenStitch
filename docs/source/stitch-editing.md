@@ -79,6 +79,22 @@ sélection est limitée à un chemin (extérieur ou un trou). Le noyau
 (`geometry::transform_nodes`) sait aussi pivoter et mettre à l'échelle un groupe ; leur
 exposition dans l'interface reste à faire.
 
+### Pinceau de déformation (HP-VEC-018)
+
+Outil **Pinceau** (Maj+B, palette ; menu Forme › *Réglages du pinceau…* pour le
+rayon en mm et l'intensité, mémorisés ; `[` / `]` changent le rayon). Avec **une**
+forme sélectionnée, glisser pousse / tire son contour : chaque nœud à moins du rayon
+bouge du déplacement du curseur pondéré par `w = 3u² − 2u³` (`u = 1 − d/rayon`)
+multiplié par l'intensité ; **Maj** lisse (chaque nœud se rapproche du milieu de ses
+voisins). Les tangentes ne changent pas, les extrémités d'un tracé ouvert restent fixes.
+Pour que la zone ait de quoi se déformer sans que les nœuds prolifèrent, les segments
+trop longs de la zone sont subdivisés exactement (De Casteljau, 64 nœuds au plus par
+touche) et les nœuds droits devenus redondants sont retirés (écart à la corde ≤ 30 µm).
+Alternative écartée : rééchantillonner le contour à chaque touche, qui dégrade les courbes
+et multiplie les nœuds après quelques coups. Un coup de pinceau (appui → relâchement) est
+UNE `BrushStrokeCommand` ; le relâchement est refusé si le contour se croiserait ; Échap
+l'abandonne sans toucher au document.
+
 Limitation : l'ajout/suppression de nœuds, la conversion anguleux/lisse et
 l'édition de tangentes ne sont pas exposés (voir *Vectorisation*).
 

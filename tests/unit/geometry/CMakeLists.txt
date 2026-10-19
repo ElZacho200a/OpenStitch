@@ -1,6 +1,7 @@
 add_executable(test_geometry
     test_simplify.cpp
     test_boolean.cpp
+    test_brush.cpp
     test_clean.cpp
     test_curve_fit.cpp
     test_cut.cpp
