@@ -1398,8 +1398,8 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
   touchent le pourtour de l'image sont ignorées ; un blanc enfermé dans le motif (nuage,
   soleil) reste cousu. Constat : photo réelle d'un DST « vaisseau au coucher de soleil » où le
   blanc des nuages et de l'écume disparaissait avec le fond.
-- À faire : choix « ne pas broder cette couleur » par couleur ; option du mode dans le dialogue
-  d'import du bureau.
+- À faire : choix « ne pas broder cette couleur » par couleur. Dialogue « Numérisation automatique » du
+  bureau : case « Seulement le fond extérieur » (`test_main_window`).
 
 ### HP-AUTO-007 — Fusion automatique des couleurs proches [P1] — ☐ À faire
 - Voir HP-THR-011, déclenché à la fin de l'auto-numérisation.
