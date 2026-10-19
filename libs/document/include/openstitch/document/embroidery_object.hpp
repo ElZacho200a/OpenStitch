@@ -236,6 +236,11 @@ struct AutoSatinGuide {
     // perpendiculaire. Absolu : angle dans le repère du modèle.
     Angle angle{0.0};
     bool absolute{false};
+    // Guide en courbe (polyligne, `anchor` compris comme premier point) : courbe de référence
+    // le long de laquelle les fils sont PERPENDICULAIRES à la tangente (comme sur une colonne
+    // satin), pour le BALAYAGE PARALLÈLE. Vide = guide droit (comportement historique : le trait
+    // est la direction des fils) ; le squelette n'utilise que `anchor` et `angle`.
+    std::vector<Vec2um> path;
 
     bool operator==(const AutoSatinGuide&) const = default;
 };

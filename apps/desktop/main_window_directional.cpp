@@ -404,12 +404,12 @@ void MainWindow::finishDirectionGuide() {
     const auto* emb = project_.findEmbroidery(*directionGuideTarget_);
     if (emb != nullptr && emb->is_auto_satin()) {
         // Auto-satin : le trait tracé (premier -> dernier point) fixe l'ancre du
-        // guide et la direction des fils.
+        // guide et la direction des fils ; au-delà de 2 points, la courbe guide le balayage.
         if (pts.size() < 2) {
             statusBar()->showMessage(tr("Au moins 2 points sont nécessaires."));
             return;
         }
-        addAutoSatinGuideFromStroke(emb->id, pts.front(), pts.back());
+        addAutoSatinGuideFromStroke(emb->id, pts);
         return;
     }
     const auto* dir =
