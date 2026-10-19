@@ -1804,7 +1804,13 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
   l'action « Ajouter une couche… » (menu Broderie et menu contextuel : choix du
   type, couleur complémentaire par défaut, annulable ; test
   `addLayerInsertsAfterBaseAndUndoes` dans `test_color_blend.cpp`).
-  Reste : lien parent-enfant et regroupement visuel dans la liste Document ;
+  Ergonomie (2026-10-19) : regroupement « N couches » dans la liste Document avec cases
+  Visible/Figé agrégées, bouton « + Couche » en un geste, menu de ligne (ajouter, dupliquer,
+  supprimer une couche), duplication de forme avec ses couches, numérotation stable, menu
+  Affichage renommé « Plans d'affichage ».
+  Vague 2 : sélecteur de couches des Propriétés (monter/descendre, masquer, renommer), clic
+  canevas sur la couche du dessus, glisser-déposer contraint à la forme (Maj pour sortir).
+  Reste : lien parent-enfant dans le modèle ;
   critères d'acceptation « ordre de couture » et « suppression » non testés à
   part ; suite desktop complète non relancée.
 - État OpenStitch (avant) : un objet vectoriel porte un seul objet de broderie ; deux
@@ -3305,7 +3311,9 @@ ci-dessus doit les respecter :
 | 2026-10-18 | Claude (tatami pointillé) | HP-ENG-006.b ◐ : défaut `stagger` du tatami 2 → 3 (aspect pointillé constaté en broderie réelle) ; non validé sur tissu. |
 | 2026-10-19 | Claude (remodelage interactif, lot 1) | **HP-VEC-016 ◐** (branche `claude/openstitch-vector-reshape-0b07b1`) : déplacement direct d'un segment de contour (poignées de Bézier, extrémités et nombre de nœuds inchangés, refus des croisements, Échap, un pas d'annulation). **HP-VEC-017/018/019 ajoutées (☐)** : sélection de nœuds, pinceau, préservation des détails. Total +4 entrées. |
 | 2026-10-19 | Claude (HP-I18N-001) | HP-I18N-001 ◐ (infrastructure de traduction : français source, `openstitch_en.ts`, préférence de langue, `test_app_language`) ; +HP-I18N-001.a ☐ (messages du cœur). Chapitre `docs/source/i18n.md`. |
+| 2026-10-19 | Claude (ergonomie des couches) | **HP-OBJ-023 ◐** (vague 1 de l'audit d'ergonomie des couches) : groupe « N couches » avec cases agrégées, bouton « + Couche » sans dialogue, actions de couche dans le menu de ligne, duplication de forme avec ses couches, libellés de suppression explicites, numérotation stable, menu « Plans d'affichage ». Reste : sélecteur de couches des Propriétés, clic canevas sur la couche du dessus, glisser-déposer contraint à la forme. |
 | 2026-10-19 | Claude (guides en courbe) | Roadmap : aucune entrée concernée. Balayage parallèle : guides d'orientation en courbe (`AutoSatinGuide::path`, fils perpendiculaires à la tangente), clé JSON facultative `path`, tracé à 3 points ou plus dans le bureau. Couteau : tests de non-régression multi-couche et directionnel. |
 | 2026-10-19 | Claude (remodelage interactif, lot 2) | **HP-VEC-017 ◐** (branche `claude/vec-node-selection`, PR empilée sur HP-VEC-016) : sélection de nœuds (Alt + cadre, clic sur poignée), déplacement groupé en un pas, transition douce optionnelle ; rotation/échelle dans l'interface et lasso restent à faire. |
 | 2026-10-19 | Claude (remodelage interactif, lot 3) | **HP-VEC-018 ◐** (branche `claude/vec-brush`, PR empilée sur HP-VEC-017) : outil Pinceau (B) poussant / tirant le contour avec influence décroissante, Maj = lisser, un coup = une commande, nombre de nœuds borné ; refit local, molette et stylet restent à faire. |
 | 2026-10-19 | Claude (satin revenait à la forme première) | Roadmap : aucune entrée concernée. Correctif : après fusion/retouche de zones, la conversion en satin remettait le contour brut de la région d'origine (voir `docs/source/satin-squelette.md`, « Contour brut restauré à tort »). |
+| 2026-10-19 | Claude (ergonomie des couches, vague 2) | **HP-OBJ-023 ◐** : barre du sélecteur de couches (▲ ▼ masquer renommer, un pas d'annulation chacun), clic canevas = couche du dessus (`embroideryForVector`), glisser-déposer des couches contraint à la forme (Maj pour sortir). Reste : parent-enfant dans le modèle. |

@@ -7,6 +7,7 @@
 #include <QMenu>
 #include <QMimeData>
 #include <QPixmap>
+#include <QPushButton>
 #include <QScrollBar>
 #include <QTabWidget>
 #include <QTest>
@@ -104,6 +105,31 @@ Project projectWithGroupedSatinSections(openstitch::ObjectId& sourceVectorId,
     return project;
 }
 
+// Une forme avec deux couches de couture (tatami puis contour) : le groupe se lit « couches »,
+// pas « sections » (HP-OBJ-023).
+Project projectWithTwoStitchLayers(std::vector<openstitch::ObjectId>& layerIds) {
+    Project project;
+    openstitch::document::VectorObject vec;
+    vec.id = project.object_ids.next();
+    vec.name = "Fleur";
+    project.vector_objects.push_back(vec);
+    for (int i = 0; i < 2; ++i) {
+        openstitch::document::EmbroideryObject layer;
+        layer.id = project.object_ids.next();
+        layer.name = "Fleur couche " + std::to_string(i + 1);
+        layer.source_vector = vec.id;
+        layer.rgb = {static_cast<std::uint8_t>(40 * (i + 1)), 90, 160};
+        if (i == 0) {
+            layer.params = openstitch::document::TatamiParams{};
+        } else {
+            layer.params = openstitch::document::RunningStitchParams{};
+        }
+        layerIds.push_back(layer.id);
+        project.embroidery_objects.push_back(layer);
+    }
+    return project;
+}
+
 } // namespace
 
 class DocumentPanelTest : public QObject {
@@ -131,7 +157,171 @@ private slots:
     void droppingARowOnAnotherRequestsTheNewSewingOrder();
     void rowContextMenuOffersHideLockAndDeleteAndEmitsRequests();
     void typeIconDiffersPerStitchTypeAndTheTypeFilterHidesOthers();
+    void layerGroupRowCountsLayersAndAggregatesTheCheckBoxes();
+    void groupCheckBoxRequestsTheChangeForEveryLayer();
+    void addLayerButtonFollowsTheSelectionAndTargetsTheTopLayer();
+    void rowMenuOffersAddDuplicateAndDeleteOfASingleLayer();
+    void droppingALayerOutsideItsShapeStaysInsideItsStack();
 };
+
+void DocumentPanelTest::droppingALayerOutsideItsShapeStaysInsideItsStack() {
+    DocumentPanel panel;
+    std::vector<openstitch::ObjectId> ids;
+    Project project = projectWithTwoStitchLayers(ids); // [a1, a2] sur « Fleur »
+    openstitch::document::EmbroideryObject loose;      // objet autonome, sans forme source
+    loose.id = project.object_ids.next();
+    loose.name = "Libre";
+    loose.params = openstitch::document::RunningStitchParams{};
+    project.embroidery_objects.push_back(loose);
+    panel.refresh(project);
+    panel.resize(300, 300);
+    panel.show();
+    auto* objects = objectsList(panel);
+    objects->doItemsLayout();
+
+    std::vector<openstitch::ObjectId> requested;
+    QObject::connect(&panel, &DocumentPanel::orderChangeRequested, &panel,
+                     [&](const std::vector<openstitch::ObjectId>& order) { requested = order; });
+    QTreeWidgetItem* looseItem = objects->topLevelItem(1);
+    const QRect looseRect = objects->visualItemRect(looseItem);
+    const QPoint below = looseRect.center() + QPoint(0, looseRect.height() / 4);
+
+    // La couche du fond lâchée sous l'objet libre : elle reste dans sa pile, au-dessus de a2.
+    objects->clearSelection();
+    objects->topLevelItem(0)->child(0)->setSelected(true);
+    panel.handleDrop(below);
+    QTRY_VERIFY(!requested.empty());
+    QCOMPARE(requested, (std::vector<openstitch::ObjectId>{ids[1], ids[0], loose.id}));
+
+    // L'objet libre, lui, se déplace sans contrainte : avant la pile de la forme.
+    requested.clear();
+    objects->clearSelection();
+    looseItem->setSelected(true);
+    const QRect firstRect = objects->visualItemRect(objects->topLevelItem(0)->child(0));
+    panel.handleDrop(firstRect.center() - QPoint(0, firstRect.height() / 4));
+    QTRY_VERIFY(!requested.empty());
+    QCOMPARE(requested, (std::vector<openstitch::ObjectId>{loose.id, ids[0], ids[1]}));
+}
+
+void DocumentPanelTest::layerGroupRowCountsLayersAndAggregatesTheCheckBoxes() {
+    DocumentPanel panel;
+    std::vector<openstitch::ObjectId> ids;
+    Project project = projectWithTwoStitchLayers(ids);
+    panel.refresh(project);
+    auto* objects = objectsList(panel);
+    QCOMPARE(objects->topLevelItemCount(), 1);
+    QTreeWidgetItem* group = objects->topLevelItem(0);
+    QCOMPARE(group->childCount(), 2);
+    QVERIFY(group->text(0).contains(QStringLiteral("2 couches")));
+    QVERIFY(!group->text(0).contains(QStringLiteral("sections")));
+    QCOMPARE(group->checkState(1), Qt::Checked);         // toutes visibles
+    QCOMPARE(group->checkState(2), Qt::Unchecked);       // aucun ordre figé
+    QVERIFY(group->data(0, Qt::UserRole + 4).isValid()); // pastille du fil de la couche du dessus
+
+    project.embroidery_objects[0].visible = false;
+    project.embroidery_objects[1].locked = true;
+    panel.refresh(project);
+    group = objects->topLevelItem(0);
+    QCOMPARE(group->checkState(1), Qt::PartiallyChecked);
+    QCOMPARE(group->checkState(2), Qt::PartiallyChecked);
+}
+
+void DocumentPanelTest::groupCheckBoxRequestsTheChangeForEveryLayer() {
+    DocumentPanel panel;
+    std::vector<openstitch::ObjectId> ids;
+    Project project = projectWithTwoStitchLayers(ids);
+    panel.refresh(project);
+    std::optional<std::pair<std::size_t, bool>> hidden;
+    QObject::connect(
+        &panel, &DocumentPanel::visibilityChangeRequested, &panel,
+        [&](const std::vector<openstitch::ObjectId>& v, bool on) { hidden = {v.size(), on}; });
+    objectsList(panel)->topLevelItem(0)->setCheckState(1, Qt::Unchecked);
+    QTRY_VERIFY(hidden.has_value()); // émission différée
+    QCOMPARE(*hidden, (std::pair<std::size_t, bool>{2, false}));
+}
+
+void DocumentPanelTest::addLayerButtonFollowsTheSelectionAndTargetsTheTopLayer() {
+    DocumentPanel panel;
+    std::vector<openstitch::ObjectId> ids;
+    Project project = projectWithTwoStitchLayers(ids);
+    panel.refresh(project);
+    auto* button = panel.findChild<QPushButton*>(QStringLiteral("button_documentAddLayer"));
+    QVERIFY(button != nullptr);
+    QVERIFY(!button->isEnabled()); // rien de choisi
+    std::optional<std::pair<std::uint64_t, bool>> asked;
+    QObject::connect(
+        &panel, &DocumentPanel::addLayerRequested, &panel,
+        [&](openstitch::ObjectId id, bool interactive) { asked = {id.value, interactive}; });
+    auto* objects = objectsList(panel);
+    objects->topLevelItem(0)->child(0)->setSelected(true); // la couche du bas
+    QVERIFY(button->isEnabled());
+    button->click();
+    QVERIFY(asked.has_value());
+    QCOMPARE(asked->first, ids[0].value);
+    QVERIFY(!asked->second);
+
+    asked.reset();
+    objects->clearSelection();
+    objects->topLevelItem(0)->setSelected(true); // la ligne de groupe : on empile sur le dessus
+    QVERIFY(button->isEnabled());
+    button->click();
+    QVERIFY(asked.has_value());
+    QCOMPARE(asked->first, ids[1].value);
+
+    objects->topLevelItem(0)->child(0)->setSelected(true); // deux lignes : plus de cible unique
+    objects->topLevelItem(0)->child(1)->setSelected(true);
+    objects->topLevelItem(0)->setSelected(false);
+    QVERIFY(!button->isEnabled());
+}
+
+void DocumentPanelTest::rowMenuOffersAddDuplicateAndDeleteOfASingleLayer() {
+    DocumentPanel panel;
+    std::vector<openstitch::ObjectId> ids;
+    Project project = projectWithTwoStitchLayers(ids);
+    panel.refresh(project);
+    panel.resize(300, 300);
+    panel.show();
+    auto* objects = objectsList(panel);
+    objects->doItemsLayout();
+    std::optional<std::pair<std::uint64_t, bool>> added;
+    std::optional<std::uint64_t> duplicated;
+    QObject::connect(
+        &panel, &DocumentPanel::addLayerRequested, &panel,
+        [&](openstitch::ObjectId id, bool interactive) { added = {id.value, interactive}; });
+    QObject::connect(&panel, &DocumentPanel::duplicateLayerRequested, &panel,
+                     [&](openstitch::ObjectId id) { duplicated = id.value; });
+    QTreeWidgetItem* second = objects->topLevelItem(0)->child(1);
+    QMenu* menu = panel.createContextMenu(objects->visualItemRect(second).center());
+    QVERIFY(menu != nullptr);
+    auto* add = menu->findChild<QAction*>(QStringLiteral("action_docRowAddLayer"));
+    auto* ask = menu->findChild<QAction*>(QStringLiteral("action_docRowAddLayerAsk"));
+    auto* dup = menu->findChild<QAction*>(QStringLiteral("action_docRowDuplicateLayer"));
+    auto* del = menu->findChild<QAction*>(QStringLiteral("action_docRowDelete"));
+    QVERIFY(add != nullptr && ask != nullptr && dup != nullptr && del != nullptr);
+    QVERIFY(del->text().contains(QStringLiteral("cette couche")));
+    add->trigger();
+    ask->trigger();
+    dup->trigger();
+    delete menu;
+    QVERIFY(added.has_value() && duplicated.has_value());
+    QCOMPARE(added->first, ids[1].value);
+    QVERIFY(added->second); // la dernière activée est la version avec dialogues
+    QCOMPARE(*duplicated, ids[1].value);
+
+    // Une forme à couche unique : « Supprimer » garde son libellé simple.
+    std::vector<openstitch::ObjectId> single;
+    Project one = projectWithTwoStitchLayers(single);
+    one.embroidery_objects.pop_back();
+    panel.refresh(one);
+    objects->doItemsLayout();
+    QMenu* oneMenu =
+        panel.createContextMenu(objects->visualItemRect(objects->topLevelItem(0)).center());
+    QVERIFY(oneMenu != nullptr);
+    QVERIFY(!oneMenu->findChild<QAction*>(QStringLiteral("action_docRowDelete"))
+                 ->text()
+                 .contains(QStringLiteral("couche")));
+    delete oneMenu;
+}
 
 void DocumentPanelTest::refreshPopulatesObjectsAndRegionsLists() {
     DocumentPanel panel;

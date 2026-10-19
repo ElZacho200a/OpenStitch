@@ -1160,7 +1160,9 @@ void MainWindow::buildMenus() {
     connect(statsAct_, &QAction::triggered, this, &MainWindow::showStatistics);
 
     auto* viewMenu = menuBar()->addMenu(tr("&Affichage"));
-    auto* layersMenu = viewMenu->addMenu(tr("&Calques"));
+    // « Plans d'affichage » (et non « Calques ») : le mot « couches » est réservé aux couches de
+    // couture d'une forme (HP-OBJ-023) ; ce menu choisit seulement ce que le canevas montre.
+    auto* layersMenu = viewMenu->addMenu(tr("Plans d'affic&hage"));
     showImageAct_ = layersMenu->addAction(tr("&Image"));
     showImageAct_->setCheckable(true);
     showImageAct_->setChecked(true);
@@ -5511,12 +5513,16 @@ document::EmbroideryObject* MainWindow::satinEmbroideryAt(QPointF posMm) {
 }
 
 document::EmbroideryObject* MainWindow::embroideryForVector(ObjectId vectorId) {
+    // Une forme à plusieurs couches : un clic au canevas vise celle du DESSUS (la dernière
+    // cousue, donc la visible), comme un clic dans un éditeur de calques ; les autres se
+    // choisissent dans la liste Document ou le sélecteur des Propriétés.
+    document::EmbroideryObject* top = nullptr;
     for (auto& emb : project_.embroidery_objects) {
         if (emb.source_vector == vectorId) {
-            return &emb;
+            top = &emb;
         }
     }
-    return nullptr;
+    return top;
 }
 
 void MainWindow::autoConvertToSatin() {
@@ -5797,6 +5803,10 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
             connect(addLayer, &QAction::triggered, this,
                     [this, embId] { addLayerInteractive(embId); });
         }
+        // Nombre de couches de la forme : précise l'effet des entrées de suppression ci-dessous.
+        const auto layerCount =
+            std::count_if(project_.embroidery_objects.begin(), project_.embroidery_objects.end(),
+                          [&](const auto& e) { return e.source_vector == emb->source_vector; });
         menu.addSeparator();
         const std::uint32_t embColorKey = colorKeyOf(emb->rgb);
         const int embFilterType = stitchTypeIndex(*emb) == 3 ? 1 : stitchTypeIndex(*emb);
@@ -5810,7 +5820,10 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
         // convertible en un autre type) — pas pour le proxy caché du satin
         // manuel, où « Supprimer » plus bas fait déjà tout disparaître.
         if (hit) {
-            auto* removeStitchAct = menu.addAction(tr("Supprimer la broderie (garder la forme)"));
+            auto* removeStitchAct =
+                menu.addAction(layerCount > 1 ? tr("Supprimer la couche « %1 » (garder la forme)")
+                                                    .arg(QString::fromStdString(emb->name))
+                                              : tr("Supprimer la broderie (garder la forme)"));
             connect(removeStitchAct, &QAction::triggered, this,
                     [this, embId] { deleteEmbroideryObjectOnly(embId); });
         }
@@ -5847,7 +5860,12 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
         // Pas de raccourci Suppr ici : « Supprimer la sélection »
         // (action_deleteRegion, universelle) le porte déjà au niveau fenêtre — un
         // second raccourci identique créerait une ambiguïté Qt au lieu d'agir.
-        auto* deleteAct = menu.addAction(tr("&Supprimer"));
+        const auto shapeLayers =
+            std::count_if(project_.embroidery_objects.begin(), project_.embroidery_objects.end(),
+                          [&](const auto& e) { return e.source_vector == targetVecId; });
+        auto* deleteAct = menu.addAction(
+            shapeLayers > 1 ? tr("&Supprimer la forme et ses %1 couches").arg(shapeLayers)
+                            : tr("&Supprimer"));
         connect(deleteAct, &QAction::triggered, this,
                 [this, targetVecId] { deleteVectorObject(targetVecId); });
     }
@@ -5868,7 +5886,7 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
         menu.addSeparator();
     }
     // Calques accessibles partout (même sans objet sous le curseur).
-    auto* layers = menu.addMenu(tr("Calques"));
+    auto* layers = menu.addMenu(tr("Plans d'affichage"));
     for (QAction* act : {showImageAct_, showSegAct_, showVectorsAct_, showStitchesAct_}) {
         if (act != nullptr) {
             layers->addAction(act);
@@ -5915,26 +5933,41 @@ void MainWindow::duplicateVectorObject(ObjectId id) {
     document::VectorObject copy = *source;
     copy.id = project_.object_ids.next();
     copy.name = tr("%1 (copie)").arg(QString::fromStdString(source->name)).toStdString();
+    const ObjectId copyId = copy.id;
     // Léger décalage (2 mm) pour que la copie reste visible distinctement au
     // lieu de se superposer exactement à l'original.
     constexpr Micrometers kOffset{2'000};
-    const auto shift = [&](geometry::Path& path) {
-        for (auto& node : path.nodes) {
-            node.pos = node.pos + Vec2um{kOffset, -kOffset};
-        }
-    };
-    for (auto& set : copy.paths) {
-        shift(set.outer);
-        for (auto& hole : set.holes) {
-            shift(hole);
-        }
-    }
     const QString sourceName = QString::fromStdString(source->name);
-    undoStack_.execute(std::make_unique<commands::AddVectorObjectCommand>(copy), project_);
-    setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {copy.id}});
+    // La copie emporte TOUTES les couches de couture de la forme (mêmes réglages, même ordre) ;
+    // la translation déplace aussi leur géométrie propre (guides, rails). Un seul pas d'annulation.
+    auto composite = std::make_unique<commands::CompositeCommand>(tr("Dupliquer").toStdString());
+    composite->add(std::make_unique<commands::AddVectorObjectCommand>(std::move(copy)));
+    const int layers = addEmbroideryCopies(*composite, id, copyId);
+    composite->add(std::make_unique<commands::TranslateVectorObjectCommand>(
+        copyId, Vec2um{kOffset, -kOffset}));
+    undoStack_.execute(std::move(composite), project_);
+    setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {copyId}});
     refreshImage();
     updateActions();
-    statusBar()->showMessage(tr("« %1 » dupliqué.").arg(sourceName));
+    statusBar()->showMessage(
+        layers > 1 ? tr("« %1 » dupliqué avec ses %2 couches.").arg(sourceName).arg(layers)
+                   : tr("« %1 » dupliqué.").arg(sourceName));
+}
+
+int MainWindow::addEmbroideryCopies(commands::CompositeCommand& composite, ObjectId sourceId,
+                                    ObjectId copyId) {
+    int count = 0;
+    for (const auto& emb : project_.embroidery_objects) {
+        if (emb.source_vector != sourceId) {
+            continue;
+        }
+        document::EmbroideryObject copy = emb;
+        copy.id = project_.object_ids.next();
+        copy.source_vector = copyId;
+        composite.add(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(copy)));
+        ++count;
+    }
+    return count;
 }
 
 void MainWindow::duplicateAndTranslate(const std::vector<ObjectId>& ids, Vec2um delta) {
@@ -5952,6 +5985,7 @@ void MainWindow::duplicateAndTranslate(const std::vector<ObjectId>& ids, Vec2um 
         copy.name = tr("%1 (copie)").arg(QString::fromStdString(source->name)).toStdString();
         copies.push_back(copy.id);
         composite->add(std::make_unique<commands::AddVectorObjectCommand>(std::move(copy)));
+        addEmbroideryCopies(*composite, id, copies.back());
         composite->add(
             std::make_unique<commands::TranslateVectorObjectCommand>(copies.back(), delta));
     }
@@ -7299,6 +7333,17 @@ void MainWindow::buildDocumentPanel() {
                 refreshImage();
                 updateActions();
             });
+    // Couches de couture (HP-OBJ-023) : bouton « + Couche » et menu de ligne.
+    connect(documentPanel_, &DocumentPanel::addLayerRequested, this,
+            [this](ObjectId id, bool interactive) {
+                if (interactive) {
+                    addLayerInteractive(id);
+                } else {
+                    addLayerQuick(id);
+                }
+            });
+    connect(documentPanel_, &DocumentPanel::duplicateLayerRequested, this,
+            [this](ObjectId id) { duplicateLayer(id); });
     connect(documentPanel_, &DocumentPanel::regionSelected, this, [this](RegionId id) {
         setSelection({.region = id, .embroidery = std::nullopt, .objects = {}});
         displayImage(processed_);
@@ -7611,6 +7656,18 @@ void MainWindow::buildPropertiesPanel() {
             &MainWindow::removeAutoSatinGuide);
     connect(propertiesPanel_, &PropertiesPanel::compareSatinMethodsRequested, this,
             &MainWindow::compareAutoSatinMethods);
+    // Barre du sélecteur de couches : mêmes commandes annulables que la liste Document.
+    connect(propertiesPanel_, &PropertiesPanel::layerMoveRequested, this,
+            [this](ObjectId id, int direction) { moveLayer(id, direction); });
+    connect(propertiesPanel_, &PropertiesPanel::layerVisibilityRequested, this,
+            [this](ObjectId id, bool visible) {
+                undoStack_.execute(
+                    std::make_unique<commands::SetEmbroideryVisibleCommand>(id, visible), project_);
+                refreshImage();
+                updateActions();
+            });
+    connect(propertiesPanel_, &PropertiesPanel::layerRenameRequested, this,
+            &MainWindow::renameLayerInteractive);
     connect(propertiesPanel_, &PropertiesPanel::editDirectionGuidesRequested, this,
             [this](ObjectId id) {
                 if (auto* emb = project_.findEmbroidery(id);
@@ -7639,7 +7696,7 @@ void MainWindow::updateInspector() {
                 layers.push_back(
                     {layer.id,
                      tr("%1 · %2").arg(layers.size() + 1).arg(QString::fromStdString(layer.name)),
-                     QColor(layer.rgb[0], layer.rgb[1], layer.rgb[2])});
+                     QColor(layer.rgb[0], layer.rgb[1], layer.rgb[2]), layer.visible});
             }
         }
     }

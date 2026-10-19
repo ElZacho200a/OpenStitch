@@ -699,9 +699,11 @@ seuil plus bas ou signalez le modèle.
 
 ## Menu Affichage
 
-Le sous-menu **Calques** regroupe des interrupteurs indépendants :
+Le sous-menu **Plans d'affichage** (ex-« Calques ») regroupe des interrupteurs indépendants.
+Il choisit seulement ce que le canevas montre ; les *couches de couture* d'une forme
+se gèrent dans la liste Document (voir « Couches de couture » ci-dessous) :
 
-| Calque | Effet |
+| Plan | Effet |
 |---|---|
 | Image | Affiche/masque l'image de travail |
 | Carte des régions | Affiche/masque la segmentation |
@@ -807,7 +809,7 @@ Un **clic droit** sur une forme ouvre un menu :
 - **Type de points** ▸ Contour cousu / Remplissage tatami / Colonne satin (le
   type courant est coché) — bascule instantanée et annulable ;
 - **Orientation du remplissage…** (si la forme est un tatami) ;
-- **Calques** — les mêmes interrupteurs que le menu Affichage.
+- **Plans d'affichage** — les mêmes interrupteurs que le menu Affichage.
 
 ## Poignée de rotation (orientation à la souris)
 
