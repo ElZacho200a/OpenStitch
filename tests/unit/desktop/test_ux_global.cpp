@@ -316,8 +316,8 @@ private slots:
         // L'état enregistré est versionné et se restaure sans repli.
         const QByteArray state = QSettings().value(QStringLiteral("ui/windowState")).toByteArray();
         QVERIFY(!state.isEmpty());
-        QVERIFY(window.restoreState(state, 1));
-        QVERIFY(!window.restoreState(state, 2)); // version différente : refusée
+        QVERIFY(window.restoreState(state, 2));
+        QVERIFY(!window.restoreState(state, 3)); // version différente : refusée
     }
 
     void corruptedSavedLayoutFallsBackToDefault() {
