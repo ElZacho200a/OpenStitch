@@ -1384,7 +1384,9 @@ OpSpec op_optimize_order() {
         const auto items_before = order_items(ctx.project);
         const auto cost_before = optimization::compute_cost(items_before);
         const std::vector<ObjectId> before = current_order(ctx.project);
-        const std::vector<ObjectId> next = optimization::optimize_order(items_before, strategy);
+        // Calques (HP-OBJ-024) : l'optimisation ne franchit pas les calques.
+        const std::vector<ObjectId> next =
+            ctx.project.groupedByCalque(optimization::optimize_order(items_before, strategy));
         const bool changed = !next.empty() && next != before;
         if (changed) {
             ctx.stack.execute(std::make_unique<commands::ReorderEmbroideryCommand>(next),

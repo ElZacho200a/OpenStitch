@@ -21,6 +21,9 @@ struct VectorObject {
     std::array<std::uint8_t, 3> rgb{};
     std::vector<geometry::PathSet> paths; // plusieurs morceaux possibles
     bool visible{true};
+    // Calque du document (HP-OBJ-024) qui contient cette forme et donc toutes ses couches de
+    // couture. Invalide ou inconnu = calque du fond (cf. `Project::calques`).
+    ObjectId calque;
     // Lettrage (HP-TXT-001) : si renseigné, cet objet est une lettre dérivée de
     // l'objet texte `Project::text_objects[id]` ; il est régénéré quand le texte
     // est édité. Absent = objet vectoriel ordinaire.

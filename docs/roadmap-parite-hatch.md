@@ -1840,6 +1840,28 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
   - QTest : l'action « Ajouter une couche… » est présente sur un objet
     sélectionné et absente sans sélection.
 
+### HP-OBJ-024 — Calques du document (pile façon éditeur d'images) [P1] — ◐ Partiel (2026-10-19)
+- Besoin : travailler en calques — « calque 1 » = broderie principale, « calque 2 » = effets,
+  qui peuvent couvrir plusieurs formes — tout en gardant les **couches** d'une forme
+  (HP-OBJ-023) pour un effet en plus sur une zone précise. Deux niveaux : calque ⊃ forme ⊃ couches.
+- Livré : `document::Calque` (nom, visible, verrouillé), `Project::calques` (fond → dessus) et
+  `VectorObject::calque` ; liste vide = un calque implicite, donc aucun document existant n'est
+  modifié. **Le rang du calque est la clé principale de l'ordre de couture**
+  (`Project::sewingOrder`, utilisé par `generate_sequence`) ; un calque masqué n'est pas cousu.
+  `.osp` v9 (clé `calques`, `calque`), écrit **seulement** si le document a des calques.
+  Commandes annulables (`calque_commands.hpp`) : ajouter, supprimer (les formes passent dans le
+  calque dessous), renommer, masquer, verrouiller, monter/descendre, déplacer des formes.
+  Interface : panneau Calques au-dessus de la liste Document (œil, cadenas, calque actif en
+  gras, + − ▲ ▼, menu « Déplacer la sélection ici »), nouvelles formes dans le calque actif,
+  calque verrouillé non saisissable, panneau Ordre et liste Document suivant l'ordre réel,
+  optimisation de l'ordre confinée à chaque calque.
+- Reste : effets **liés** (une forme d'un calque supérieur qui suit/découpe ses cibles) ;
+  sélection d'un calque entier au canevas ; calques dans la CLI `project` (inspect, opérations) ;
+  glisser une forme d'un calque à l'autre dans la liste Document ; réordonner les calques par
+  glisser-déposer.
+- Tests : `test_calque_commands`, `test_calque_persistence`, `test_calques_generation`,
+  `test_calques` (QTest : panneau, calque actif, déplacement, ordre, calque masqué/verrouillé).
+
 ---
 
 ## 10. Édition des points (EDIT)
@@ -3316,3 +3338,4 @@ ci-dessus doit les respecter :
 | 2026-10-19 | Claude (remodelage interactif, lot 2) | **HP-VEC-017 ◐** (branche `claude/vec-node-selection`, PR empilée sur HP-VEC-016) : sélection de nœuds (Alt + cadre, clic sur poignée), déplacement groupé en un pas, transition douce optionnelle ; rotation/échelle dans l'interface et lasso restent à faire. |
 | 2026-10-19 | Claude (remodelage interactif, lot 3) | **HP-VEC-018 ◐** (branche `claude/vec-brush`, PR empilée sur HP-VEC-017) : outil Pinceau (B) poussant / tirant le contour avec influence décroissante, Maj = lisser, un coup = une commande, nombre de nœuds borné ; refit local, molette et stylet restent à faire. |
 | 2026-10-19 | Claude (ergonomie des couches, vague 2) | **HP-OBJ-023 ◐** : barre du sélecteur de couches (▲ ▼ masquer renommer, un pas d'annulation chacun), clic canevas = couche du dessus (`embroideryForVector`), glisser-déposer des couches contraint à la forme (Maj pour sortir). Reste : parent-enfant dans le modèle. |
+| 2026-10-19 | Claude (calques du document) | **HP-OBJ-024 ◐ créée et livrée en partie** : calques au-dessus des couches (calque ⊃ forme ⊃ couches), rang de calque = clé principale de l'ordre de couture, `.osp` v9 conditionnel, commandes annulables et panneau Calques. Reste : effets liés, CLI, glisser entre calques. Total +1 entrée. |

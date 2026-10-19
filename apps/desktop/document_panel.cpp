@@ -31,6 +31,7 @@
 #include <set>
 
 #include "app_theme.hpp"
+#include "calque_panel.hpp"
 #include "ui_icons.hpp"
 
 namespace openstitch::desktop {
@@ -328,6 +329,10 @@ DocumentPanel::DocumentPanel(QWidget* parent) : QWidget(parent) {
     connect(typeFilter_, &QComboBox::currentIndexChanged, this, [this] { applyFilter(); });
     tabs_ = new QTabWidget(this);
     layout->addWidget(tabs_);
+    // Créé APRÈS les onglets (ordre des enfants : les recherches `findChild<QTreeWidget*>()` des
+    // tests et de MainWindow trouvent l'arbre des objets d'abord) mais affiché au-dessus d'eux.
+    calquePanel_ = new CalquePanel(this);
+    layout->insertWidget(1, calquePanel_);
     // « + Couche » : empile une couche de couture sur la ligne choisie (HP-OBJ-023), comme le
     // bouton « nouveau calque » d'un éditeur d'images.
     addLayerBtn_ = new QPushButton(tr("+ Couche"), this);
@@ -556,7 +561,10 @@ void DocumentPanel::refresh(
     };
 
     int order = 0;
-    for (const auto& e : project.embroidery_objects) {
+    // Ordre de couture réel (calque d'abord, puis ordre du document) : le rang affiché est celui
+    // où l'objet est vraiment cousu.
+    for (const std::size_t sewnIndex : project.sewingOrder()) {
+        const auto& e = project.embroidery_objects[sewnIndex];
         ++order;
         order_.push_back(e.id);
         stitch_generation::ObjectEditState state = stitch_generation::ObjectEditState::Clean;
@@ -707,6 +715,7 @@ void DocumentPanel::refresh(
     }
 
     syncing_ = false;
+    calquePanel_->refresh(project);
     updateAddLayerButton();
     applyFilter();
 }

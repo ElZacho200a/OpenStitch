@@ -89,6 +89,8 @@ add_library(openstitch_desktop_widgets STATIC
     canvas_view.hpp
     properties_panel.cpp
     properties_panel.hpp
+    calque_panel.cpp
+    calque_panel.hpp
     document_panel.cpp
     document_panel.hpp
     segmentation_colors_panel.cpp

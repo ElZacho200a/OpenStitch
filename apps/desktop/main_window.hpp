@@ -277,6 +277,11 @@ private slots:
     // Copie la couche `id` (mêmes réglages, même forme) juste au-dessus d'elle. Un pas
     // d'annulation.
     bool duplicateLayer(ObjectId id);
+    // Calques du document (HP-OBJ-024) : chaque geste = une commande annulable.
+    void addCalque();
+    void removeCalque(ObjectId id);
+    void renameCalqueInteractive(ObjectId id);
+    void moveSelectionToCalque(ObjectId id);
     // Échange le rang de couture de la couche `id` avec sa voisine de la même forme (+1 = vers le
     // dessus). Faux au bout de la pile. Un pas d'annulation.
     bool moveLayer(ObjectId id, int direction);
@@ -507,6 +512,8 @@ private:
     [[nodiscard]] document::EmbroideryObject* currentFillObject();
     // Objet vectoriel visible sous un point (mm, scène). Le dernier dessiné gagne.
     [[nodiscard]] std::optional<ObjectId> objectAt(QPointF posMm) const;
+    // Le calque de la forme est affiché (HP-OBJ-024) ; faux = ni dessinée, ni saisissable.
+    [[nodiscard]] bool calqueShowsShape(const document::VectorObject& object) const;
     // Objet de broderie satin dont le RUBAN (rail_a + rail_b) contient le
     // point donné — repli utilisé quand `objectAt` ne trouve rien : un satin
     // manuel a un objet vectoriel source délibérément invisible (cf. §
@@ -1563,6 +1570,10 @@ private:
     QPushButton* orderUpBtn_{nullptr};
     QPushButton* orderDownBtn_{nullptr};
     QPushButton* orderLockBtn_{nullptr};
+    // Ligne du panneau Ordre -> indice dans `embroidery_objects` (ordre de couture réel, calques
+    // inclus : cf. `Project::sewingOrder`). Reconstruit par refreshOrderPanel.
+    std::vector<std::size_t> orderRows_;
+    [[nodiscard]] const document::EmbroideryObject* orderRowObject(int row) const;
     void updateOrderButtons();
     QLabel* orderCostLabel_{nullptr};
     QComboBox* orderStrategyCombo_{nullptr};

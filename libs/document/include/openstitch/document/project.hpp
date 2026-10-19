@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <algorithm>
+#include <cstddef>
+#include <numeric>
 #include <optional>
 #include <vector>
 
 #include "openstitch/core/ids.hpp"
 #include "openstitch/core/units.hpp"
+#include "openstitch/document/calque.hpp"
 #include "openstitch/document/canvas.hpp"
 #include "openstitch/document/embroidery_object.hpp"
 #include "openstitch/document/finishing.hpp"
@@ -44,6 +48,13 @@ struct Project {
     // objets vectoriels (`VectorObject::text_owner`) et de broderie dérivés.
     std::vector<TextObject> text_objects;
 
+    // Calques (HP-OBJ-024), du fond (cousu en premier) vers le dessus. Vide = un seul calque
+    // implicite : aucun document existant n'est modifié.
+    std::vector<Calque> calques;
+    // Calque qui reçoit les formes créées (état d'interface, ni annulable ni enregistré) ;
+    // invalide = le calque du fond.
+    ObjectId active_calque;
+
     IdGenerator<ObjectId> object_ids; // partagé par tous les types d'objets
 
     // Finitions de la séquence (coupes, points d'arrêt, points courts),
@@ -59,6 +70,78 @@ struct Project {
     std::optional<ImportedDesign> imported_design;
 
     [[nodiscard]] bool hasImage() const { return !original.empty(); }
+
+    // ---- Calques (HP-OBJ-024) ----------------------------------------------------------------
+    [[nodiscard]] const Calque* findCalque(ObjectId id) const {
+        for (const auto& calque : calques) {
+            if (calque.id == id) {
+                return &calque;
+            }
+        }
+        return nullptr;
+    }
+    // Rang (0 = fond) du calque `id` ; 0 pour un calque invalide ou inconnu.
+    [[nodiscard]] std::size_t calqueRank(ObjectId id) const {
+        for (std::size_t i = 0; i < calques.size(); ++i) {
+            if (calques[i].id == id) {
+                return i;
+            }
+        }
+        return 0;
+    }
+    // Calque effectif d'une forme : le sien, ou celui du fond si invalide/inconnu ; nullptr si le
+    // document n'a aucun calque (calque implicite visible et déverrouillé).
+    [[nodiscard]] const Calque* calqueOfShape(ObjectId vectorId) const {
+        if (calques.empty()) {
+            return nullptr;
+        }
+        const VectorObject* shape = findObject(vectorId);
+        const Calque* own = shape != nullptr ? findCalque(shape->calque) : nullptr;
+        return own != nullptr ? own : &calques.front();
+    }
+    // Rang de couture d'un objet de broderie : celui du calque de sa forme source.
+    [[nodiscard]] std::size_t calqueRankOf(const EmbroideryObject& object) const {
+        const Calque* calque = calqueOfShape(object.source_vector);
+        return calque != nullptr ? calqueRank(calque->id) : 0;
+    }
+    [[nodiscard]] bool calqueVisible(const EmbroideryObject& object) const {
+        const Calque* calque = calqueOfShape(object.source_vector);
+        return calque == nullptr || calque->visible;
+    }
+    [[nodiscard]] bool shapeLockedByCalque(ObjectId vectorId) const {
+        const Calque* calque = calqueOfShape(vectorId);
+        return calque != nullptr && calque->locked;
+    }
+    // `ids` (objets de broderie) regroupés par calque : tri STABLE sur le rang de calque, l'ordre
+    // relatif d'un même calque est conservé. Garde un ordre calculé (optimisation) compatible
+    // avec la clé principale de l'ordre de couture.
+    [[nodiscard]] std::vector<ObjectId> groupedByCalque(std::vector<ObjectId> ids) const {
+        if (calques.size() > 1) {
+            std::stable_sort(ids.begin(), ids.end(), [this](ObjectId a, ObjectId b) {
+                const EmbroideryObject* ea = findEmbroidery(a);
+                const EmbroideryObject* eb = findEmbroidery(b);
+                return (ea != nullptr ? calqueRankOf(*ea) : 0) <
+                       (eb != nullptr ? calqueRankOf(*eb) : 0);
+            });
+        }
+        return ids;
+    }
+    // Ordre de couture réel : les objets triés par rang de calque, l'ordre du document
+    // départageant ceux d'un même calque (tri stable). Indices dans `embroidery_objects`.
+    [[nodiscard]] std::vector<std::size_t> sewingOrder() const {
+        std::vector<std::size_t> order(embroidery_objects.size());
+        std::iota(order.begin(), order.end(), std::size_t{0});
+        if (calques.size() > 1) {
+            std::vector<std::size_t> rank(order.size());
+            for (std::size_t i = 0; i < order.size(); ++i) {
+                rank[i] = calqueRankOf(embroidery_objects[i]);
+            }
+            std::stable_sort(order.begin(), order.end(),
+                             [&](std::size_t a, std::size_t b) { return rank[a] < rank[b]; });
+        }
+        return order;
+    }
+
     [[nodiscard]] VectorObject* findObject(ObjectId id) {
         for (auto& object : vector_objects) {
             if (object.id == id) {

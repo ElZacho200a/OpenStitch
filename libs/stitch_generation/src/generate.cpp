@@ -758,7 +758,31 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
         return project.imported_design->sequence;
     }
     stitch::StitchSequence sequence;
-    const auto& objects = project.embroidery_objects;
+    // Calques (HP-OBJ-024) : le rang du calque de la forme est la clé principale de l'ordre de
+    // couture, l'ordre du document départage les objets d'un même calque ; un calque masqué n'est
+    // pas cousu. Le cas courant (aucun calque, ou déjà dans l'ordre et tous visibles) lit
+    // `embroidery_objects` tel quel, sans copie.
+    const std::vector<document::EmbroideryObject>* objectsSource = &project.embroidery_objects;
+    std::vector<document::EmbroideryObject> calqueOrdered;
+    if (!project.calques.empty()) {
+        const std::vector<std::size_t> order = project.sewingOrder();
+        bool needsCopy = false;
+        for (std::size_t i = 0; i < order.size(); ++i) {
+            needsCopy =
+                needsCopy || order[i] != i || !project.calqueVisible(project.embroidery_objects[i]);
+        }
+        if (needsCopy) {
+            calqueOrdered.reserve(order.size());
+            for (const std::size_t index : order) {
+                calqueOrdered.push_back(project.embroidery_objects[index]);
+                if (!project.calqueVisible(project.embroidery_objects[index])) {
+                    calqueOrdered.back().visible = false;
+                }
+            }
+            objectsSource = &calqueOrdered;
+        }
+    }
+    const auto& objects = *objectsSource;
 
     // Phase 1 -- plan : les « unités » de génération, dans l'ordre de couture. Une unité est un
     // objet seul, ou un groupe contigu de colonnes satin routées ensemble (§13).
