@@ -624,9 +624,19 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
     };
     const segmentation::Segmentation& constSeg = seg;
     std::vector<Vectorized> vectorized(regions.size());
+    const std::vector<RegionId> borderRegions =
+        options.skip_background_outer_only ? segmentation::border_touching_regions(constSeg)
+                                           : std::vector<RegionId>{};
+    const auto isSkippedBackground = [&](const segmentation::Region& r) {
+        if (!backgroundRgb || r.rgb != *backgroundRgb) {
+            return false;
+        }
+        return !options.skip_background_outer_only ||
+               std::binary_search(borderRegions.begin(), borderRegions.end(), r.id);
+    };
     parallel_for(regions.size(), [&](std::size_t i) {
         const auto* region = constSeg.find(regions[i]);
-        if (region == nullptr || (backgroundRgb && region->rgb == *backgroundRgb)) {
+        if (region == nullptr || isSkippedBackground(*region)) {
             return;
         }
         auto sets = vectorization::vectorize_region(constSeg, regions[i], vecOpts);

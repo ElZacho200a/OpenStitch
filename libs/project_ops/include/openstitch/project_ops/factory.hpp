@@ -53,7 +53,10 @@ struct DigitizeSettings {
     int max_colors{8};
     int min_region_px{16};
     int smoothing_px{3};
-    int skip_background{-1}; // -1 auto (segmentation::background_candidate), 0 non, 1 oui
+    // -1 auto (segmentation::background_candidate), 0 non, 1 oui (toute région de la couleur du
+    // fond), 2 extérieur seulement (les régions de cette couleur qui touchent le pourtour de
+    // l'image ; un blanc enfermé dans le motif reste cousu)
+    int skip_background{-1};
     std::optional<double> min_feature_mm;
     std::optional<double> min_region_mm2;
     double trim_threshold_mm{3.0};

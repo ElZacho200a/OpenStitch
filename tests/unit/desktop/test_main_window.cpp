@@ -833,6 +833,7 @@ private slots:
     // affichés dans les deux cas.
     void autoDigitizeDialogDoesNotSkipColoredFullFrameRegion();
     void autoDigitizeDialogOffersDarkLinesAndIslandCleanup();
+    void autoDigitizeDialogOuterBackgroundKeepsEnclosedWhite();
     void autoDigitizeDialogSkipsBeigeFramingBackground();
     void autoDigitizeDialogSkipsNearWhiteFramingBackground();
     // Strategie « Contours » : choix de strategie, curseur de detail (defaut
@@ -2997,6 +2998,56 @@ void MainWindowTest::autoDigitizeDialogOffersDarkLinesAndIslandCleanup() {
     QVERIFY(optionsDisabledBefore);
     QVERIFY(optionsEnabledAfter);
     QVERIFY(islandOffByDefault);
+}
+
+void MainWindowTest::autoDigitizeDialogOuterBackgroundKeepsEnclosedWhite() {
+    // Anneau rouge sur fond blanc : le centre blanc n'est pas relié au pourtour.
+    const auto makeProject = [] {
+        auto project = opaqueSegmentedProject({250, 250, 250}, {200, 30, 30}, 5, 4, 35, 26);
+        constexpr int kW = 40;
+        for (int y = 10; y < 20; ++y) {
+            for (int x = 14; x < 26; ++x) {
+                auto* px =
+                    project.original.rgba.data() + (std::size_t(y) * kW + std::size_t(x)) * 4;
+                px[0] = px[1] = px[2] = 250;
+            }
+        }
+        auto seg = openstitch::segmentation::segment(project.original,
+                                                     {.max_colors = 2, .min_region_px = 1});
+        project.segmentation = std::move(*seg);
+        return project;
+    };
+    const auto digitizedCount = [&](bool outer, bool& optionSeen, bool& enabledWhenSkipOff) {
+        MainWindow window;
+        window.applyLoadedProject(makeProject());
+        QTimer::singleShot(0, &window, [&] {
+            auto* dlg = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+            if (dlg == nullptr) {
+                return;
+            }
+            auto* skip = dlg->findChild<QCheckBox*>("skipBackgroundCheck");
+            auto* outerCheck = dlg->findChild<QCheckBox*>("skipBackgroundOuterCheck");
+            if (skip == nullptr || outerCheck == nullptr) {
+                dlg->reject();
+                return;
+            }
+            optionSeen = true;
+            skip->setChecked(false);
+            enabledWhenSkipOff = outerCheck->isEnabled();
+            skip->setChecked(true);
+            outerCheck->setChecked(outer);
+            dlg->accept();
+        });
+        window.autoDigitize();
+        return window.project_.embroidery_objects.size();
+    };
+    bool seen = false;
+    bool enabledWhenOff = true;
+    const std::size_t all = digitizedCount(false, seen, enabledWhenOff);
+    QVERIFY(seen);
+    QVERIFY(!enabledWhenOff); // sans « ignorer le fond », l'option n'a pas de sens
+    const std::size_t outer = digitizedCount(true, seen, enabledWhenOff);
+    QVERIFY(outer > all); // le centre blanc est cousu en plus de l'anneau
 }
 
 void MainWindowTest::autoDigitizeDialogSkipsNearWhiteFramingBackground() {
