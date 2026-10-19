@@ -453,6 +453,7 @@ MainWindow::MainWindow() {
     // [cablage-C:debut]
     buildMeasureTool();
     buildEyedropperTool();
+    buildBrushTool();
     // [cablage-C:fin]
     // [cablage-D:debut]
     // [cablage-D:fin]
@@ -3266,6 +3267,7 @@ void MainWindow::renderBase(const image::Image& img) {
     snapIndicator_ = nullptr;
     resizePreview_ = nullptr;
     reshapePreview_ = nullptr;
+    brushRing_ = nullptr;
     nodeHandles_.clear();
     if (nodeSelObject_ &&
         (hasMultiSelection() || !selectedObject_ || *selectedObject_ != *nodeSelObject_ ||
@@ -6891,6 +6893,7 @@ void MainWindow::buildToolPalette() {
         shapeMenu_->addAction(toolCutAct_);
     }
     attachMeasureEyedropperTools();
+    attachBrushTool();
     toolSelectAct_->setChecked(true);
 
     toolPalette_->addSeparator();
@@ -7156,6 +7159,7 @@ void MainWindow::setTool(Tool tool) {
                "Entrée/double-clic pour terminer, Échap pour annuler."));
     }
     syncMeasureEyedropperTool(tool);
+    syncBrushTool(tool);
     updateDrawActionsState();
     updateInteractionContext();
     hideHoverHighlight();
@@ -9470,6 +9474,9 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
     if (currentTool_ == Tool::Text) {
         placeTextAt(posMm);
         return;
+    }
+    if (currentTool_ == Tool::Brush) {
+        return; // le pinceau passe par brushPressedMm / brushMovedMm / brushReleasedMm
     }
     if (currentTool_ == Tool::Measure) {
         return; // la règle passe par measureDragMm/measureFinishedMm, jamais par un clic

@@ -147,4 +147,28 @@ VectorOpResult make_transform_nodes_command(const document::Project& project, Ob
     return result;
 }
 
+VectorOpResult make_brush_stroke_command(const document::Project& project, ObjectId id,
+                                         std::vector<geometry::PathSet> after) {
+    VectorOpResult result;
+    const auto* object = project.findObject(id);
+    if (object == nullptr || after.size() != object->paths.size()) {
+        result.error = "Objet introuvable ou géométrie incohérente.";
+        return result;
+    }
+    if (after == object->paths) {
+        result.error = "Rien à retoucher : la forme ne change pas.";
+        return result;
+    }
+    for (std::size_t i = 0; i < after.size(); ++i) {
+        if (!geometry::brush_result_is_valid(object->paths[i], after[i], Micrometers{50})) {
+            result.error = "Retouche refusée : le contour se croiserait.";
+            return result;
+        }
+    }
+    result.resulting_objects = 1;
+    result.command = std::make_unique<BrushStrokeCommand>(
+        std::vector<RewriteVectorPathsCommand::Entry>{{id, std::move(after)}});
+    return result;
+}
+
 } // namespace openstitch::commands

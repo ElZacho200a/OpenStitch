@@ -39,6 +39,7 @@
 
 class QGraphicsScene;
 class QAbstractGraphicsShapeItem;
+class QGraphicsEllipseItem;
 class QGraphicsItem;
 class QGraphicsPathItem;
 class QGraphicsPixmapItem;
@@ -1254,6 +1255,28 @@ private:
     void eyedropperAt(QPointF posMm);
     void assignEyedropperChoice(const std::optional<thread_palette::ThreadKey>& key,
                                 std::array<std::uint8_t, 3> rgb, const QString& label);
+    // Pinceau de déformation (HP-VEC-018, main_window_brush.cpp).
+    struct BrushStroke {
+        ObjectId object;
+        std::vector<geometry::PathSet> working; // géométrie courante du coup de pinceau
+        QPointF lastSceneMm;
+    };
+    void buildBrushTool();
+    void attachBrushTool();
+    void syncBrushTool(Tool tool);
+    void setBrushSettings(double radiusMm, double strength);
+    void updateBrushRing(QPointF sceneMm);
+    void hideBrushRing();
+    void beginBrushStroke(QPointF sceneMm);
+    void moveBrushStroke(QPointF sceneMm, Qt::KeyboardModifiers mods);
+    void endBrushStroke(QPointF sceneMm);
+    void cancelBrushStroke();
+    QAction* toolBrushAct_{nullptr};
+    QAction* brushSettingsAct_{nullptr};
+    QGraphicsEllipseItem* brushRing_{nullptr};
+    std::optional<BrushStroke> brushStroke_;
+    double brushRadiusMm_{5.0};
+    double brushStrength_{0.6};
     QAction* toolMeasureAct_{nullptr};
     QAction* copyMeasureAct_{nullptr};
     QAction* toolEyedropperAct_{nullptr};

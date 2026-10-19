@@ -1,4 +1,4 @@
-# Tests Qt (QTest) de la couche UI desktop. Ne se construisent que si
+﻿# Tests Qt (QTest) de la couche UI desktop. Ne se construisent que si
 # l'application desktop l'a été (Qt6 trouvé, cf. apps/desktop/CMakeLists.txt) ;
 # openstitch_desktop_widgets porte tous les widgets sauf main().
 if(NOT TARGET openstitch_desktop_widgets)
@@ -41,6 +41,7 @@ openstitch_add_qt_test(test_canvas_view test_canvas_view.cpp)
 openstitch_add_qt_test(test_node_handle test_node_handle.cpp)
 openstitch_add_qt_test(test_segment_reshape test_segment_reshape.cpp)
 openstitch_add_qt_test(test_node_selection test_node_selection.cpp)
+openstitch_add_qt_test(test_brush_tool test_brush_tool.cpp)
 openstitch_add_qt_test(test_document_panel test_document_panel.cpp)
 openstitch_add_qt_test(test_properties_panel test_properties_panel.cpp)
 openstitch_add_qt_test(test_segmentation_colors_panel test_segmentation_colors_panel.cpp)

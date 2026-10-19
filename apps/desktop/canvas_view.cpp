@@ -215,6 +215,9 @@ Context CanvasView::currentContext() const {
     if (measureMode_) {
         return Context::Measure;
     }
+    if (brushMode_) {
+        return Context::Brush;
+    }
     if (polygonDrawMode_ || satinPairDrawMode_) {
         return Context::DrawClicks;
     }
@@ -266,7 +269,7 @@ void CanvasView::updateDragMode() {
     if (cropMode_ || boxDrawMode_) {
         setDragMode(QGraphicsView::RubberBandDrag);
     } else if (polygonDrawMode_ || freeformDrawMode_ || satinPairDrawMode_ || bezierDrawMode_ ||
-               measureMode_) {
+               measureMode_ || brushMode_) {
         setDragMode(QGraphicsView::NoDrag);
     } else {
         // Vue isolée (aucun setBaseContext) : comportement historique.
@@ -326,6 +329,16 @@ void CanvasView::setMeasureMode(bool enabled) {
         emit measureCancelled();
     }
     measureMode_ = enabled;
+    updateDragMode();
+    applyModeCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
+}
+
+void CanvasView::setBrushMode(bool enabled) {
+    if (brushActive_) {
+        brushActive_ = false;
+        emit brushCancelled();
+    }
+    brushMode_ = enabled;
     updateDragMode();
     applyModeCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
 }
@@ -642,6 +655,10 @@ void CanvasView::resetTransientInput(bool cursorLeft) {
         measureActive_ = false;
         emit measureCancelled();
     }
+    if (brushActive_) {
+        brushActive_ = false;
+        emit brushCancelled();
+    }
     if (panning_ || zoomDragging_) {
         endGesture();
     }
@@ -848,6 +865,13 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
         QGraphicsView::mousePressEvent(event);
         return;
     }
+    if (event->button() == Qt::LeftButton && brushMode_) {
+        // Pinceau : le geste n'appartient qu'à la vue (pas de transmission à la scène).
+        brushActive_ = true;
+        emit brushPressedMm(mapToScene(viewportPos));
+        event->accept();
+        return;
+    }
     if (event->button() == Qt::LeftButton && measureMode_) {
         // Règle : le geste n'appartient qu'à la vue (pas de transmission à la scène : une
         // poignée ou un objet sous le curseur ne doit ni bouger ni être sélectionné).
@@ -986,6 +1010,9 @@ void CanvasView::mouseMoveEvent(QMouseEvent* event) {
     if (measureActive_) {
         emit measureDragMm(measureStartMm_, scenePos);
     }
+    if (brushActive_) {
+        emit brushMovedMm(scenePos, event->modifiers());
+    }
     if (bezierPressActive_) {
         emit bezierPointDraggingMm(bezierAnchorMm_, scenePos);
     }
@@ -1065,6 +1092,10 @@ void CanvasView::mouseReleaseEvent(QMouseEvent* event) {
     // offscreen, cf. Maj = cercle).
     const Qt::KeyboardModifiers modifiers = event->modifiers();
     QGraphicsView::mouseReleaseEvent(event);
+    if (brushActive_ && event->button() == Qt::LeftButton) {
+        brushActive_ = false;
+        emit brushReleasedMm(mapToScene(event->position().toPoint()));
+    }
     if (measureActive_ && event->button() == Qt::LeftButton) {
         measureActive_ = false;
         emit measureFinishedMm(measureStartMm_, mapToScene(event->position().toPoint()));
@@ -1095,6 +1126,12 @@ void CanvasView::keyPressEvent(QKeyEvent* event) {
         if (!event->isAutoRepeat()) {
             setSpaceHeld(true);
         }
+        event->accept();
+        return;
+    }
+    if (event->key() == Qt::Key_Escape && brushActive_) {
+        brushActive_ = false; // Échap abandonne le coup de pinceau en cours
+        emit brushCancelled();
         event->accept();
         return;
     }

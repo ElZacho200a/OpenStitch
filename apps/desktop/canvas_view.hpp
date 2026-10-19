@@ -107,9 +107,17 @@ public:
     // `measureFinishedMm`. Aucune sélection ni déplacement de vue ; le canevas ne mesure rien
     // lui-même (le calcul est dans libs/geometry, l'affichage dans MainWindow).
     void setMeasureMode(bool enabled);
+    // Mode pinceau (HP-VEC-018) : un glisser gauche émet appui / déplacements / relâchement ;
+    // aucune sélection ni déplacement de vue. Échap émet `brushCancelled`.
+    void setBrushMode(bool enabled);
+    [[nodiscard]] bool brushMode() const { return brushMode_; }
     [[nodiscard]] bool measureMode() const { return measureMode_; }
 
 signals:
+    void brushPressedMm(QPointF posMm);
+    void brushMovedMm(QPointF posMm, Qt::KeyboardModifiers modifiers);
+    void brushReleasedMm(QPointF posMm);
+    void brushCancelled();
     // Règle : glisser en cours (début fixe, position courante), puis fin au relâchement ;
     // `measureCancelled` si Échap interrompt le geste. Coordonnées scène (mm).
     void measureDragMm(QPointF startMm, QPointF currentMm);
@@ -235,6 +243,8 @@ private:
     bool bezierDrawMode_{false};
     bool measureMode_{false};
     bool measureActive_{false};
+    bool brushMode_{false};
+    bool brushActive_{false};
     QPointF measureStartMm_;
     bool freeformActive_{false};
     bool bezierPressActive_{false};
