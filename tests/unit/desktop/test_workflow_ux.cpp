@@ -18,6 +18,7 @@
 #include <QFileInfo>
 #include <QImage>
 #include <QLabel>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPlainTextEdit>
@@ -232,6 +233,11 @@ ModalStep fileChoice(const QString& path) {
         }
         file->setDirectory(QFileInfo(path).absolutePath());
         file->selectFile(QFileInfo(path).fileName());
+        // selectFile ne touche pas au champ de nom quand il a le focus (fenêtre active) : le nom
+        // dépendait du timing d'activation. On le fixe directement.
+        if (auto* name = file->findChild<QLineEdit*>(QStringLiteral("fileNameEdit"))) {
+            name->setText(QFileInfo(path).fileName());
+        }
         return clickDialogRole(file, QDialogButtonBox::AcceptRole);
     };
 }
