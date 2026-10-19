@@ -62,6 +62,7 @@
 #include "ai_preferences.hpp"
 #include "ai_preferences_dialog.hpp"
 #include "ai_segmentation_dialog.hpp"
+#include "app_language.hpp"
 #include "app_settings.hpp"
 #include "app_theme.hpp"
 #include "autodigitize_presets.hpp"
@@ -5350,11 +5351,18 @@ void MainWindow::openAiPreferences() {
 void MainWindow::openSettings() {
     SettingsDialog dialog(this);
     dialog.setSettings(loadEditSettings());
+    const QString previousLanguage = loadLanguagePreference();
+    dialog.setLanguage(previousLanguage);
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
     const EditSettings applied = dialog.settings();
     saveEditSettings(applied);
+    if (dialog.language() != previousLanguage) {
+        saveLanguagePreference(dialog.language());
+        QMessageBox::information(this, tr("Langue"),
+                                 tr("La nouvelle langue sera appliquée au prochain démarrage."));
+    }
     // Les réglages d'action (Unir, Couteau) sont relus à chaque geste ; ceux-ci sont portés par
     // l'état de la fenêtre.
     snapNodesAct_->setChecked(applied.snapNodesOnDrag);
