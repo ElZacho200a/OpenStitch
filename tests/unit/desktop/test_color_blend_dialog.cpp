@@ -7,6 +7,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSignalSpy>
 #include <QTest>
 #include <QTimer>
@@ -75,6 +76,7 @@ private slots:
     void proposalIsGroupedAndKeepsAnalyzedExtent();
     void transitionZoneDefaultsAndMinimumExtent();
     void transitionCurveDefaultsToLinearAndFollowsProposals();
+    void contentLivesInScrollBody();
     void stitchPreviewAndLayerFilter();
     void changesInvalidatePreviewAndInvalidColorsStopRequests();
     void previewMessageClearsCurrentDisplay();
@@ -257,6 +259,19 @@ void ColorBlendDialogTest::transitionCurveDefaultsToLinearAndFollowsProposals() 
     gradient.curve = document::DensityCurve::Steep;
     dialog.setProposal({11, 22, 33}, {100, 110, 120}, gradient);
     QCOMPARE(dialog.curve(), document::DensityCurve::Steep);
+}
+
+void ColorBlendDialogTest::contentLivesInScrollBody() {
+    ColorBlendDialog dialog(backgroundRgb, foregroundRgb, false, false);
+    auto* scroll = dialog.findChild<QScrollArea*>("dialogScrollBody");
+    QVERIFY(scroll != nullptr);
+    // Les widgets des sous-layouts (aperçu, listes...) doivent descendre du corps défilant, sinon
+    // le viewport les recouvre et ils ne sont jamais peints.
+    for (const char* name : {"blend_preview", "combo_blendPreviewLayer", "edit_blendBackground"}) {
+        auto* widget = dialog.findChild<QWidget*>(name);
+        QVERIFY2(widget != nullptr, name);
+        QVERIFY2(scroll->isAncestorOf(widget), name);
+    }
 }
 
 void ColorBlendDialogTest::stitchPreviewAndLayerFilter() {
