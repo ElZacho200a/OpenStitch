@@ -135,6 +135,9 @@ struct DirectionalFillParams {
     int handmade_intensity{50}; // 0 à 100 %
     std::uint32_t seed{0};
     UnderlayMode underlay_mode{UnderlayMode::Manual}; // HP-ENG-002
+    // Passe de contour cousue PAR-DESSUS le remplissage (comme `TatamiParams::edge_outline`) :
+    // masque les bouts de lignes de couture qui effilochent le bord. Faux = aucune (historique).
+    bool edge_outline{false};
 
     bool operator==(const DirectionalFillParams&) const = default;
 };

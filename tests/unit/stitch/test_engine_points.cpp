@@ -1105,3 +1105,38 @@ TEST_CASE("bords : contour cousu par-dessus le remplissage, trous compris") {
     // Déterminisme.
     CHECK(same_sequence(*seqOn, *generate_sequence(on)));
 }
+
+TEST_CASE("bords : le remplissage directionnel peut aussi coudre un contour par-dessus") {
+    const geometry::PathSet region{rect_at(0, 0, 20'000, 10'000), {}};
+    document::DirectionalFillParams base;
+    base.inset = Micrometers{0};
+    base.underlay_edge = false;
+    base.underlay_parallel = false;
+    document::Project off;
+    add_object(off, region, base);
+    auto withOutline = base;
+    withOutline.edge_outline = true;
+    document::Project on;
+    add_object(on, region, withOutline);
+
+    const auto seqOff = generate_sequence(off);
+    const auto seqOn = generate_sequence(on);
+    REQUIRE(seqOff.has_value());
+    REQUIRE(seqOn.has_value());
+    REQUIRE(seqOn->commands.size() > seqOff->commands.size());
+    const std::size_t fillEnd = seqOff->commands.size() - 1; // dernière commande : End
+    for (std::size_t i = 0; i < fillEnd; ++i) {
+        CHECK(seqOn->commands[i].pos == seqOff->commands[i].pos);
+    }
+    const std::vector<Vec2um> outer = {um(0, 0), um(20'000, 0), um(20'000, 10'000), um(0, 10'000)};
+    std::size_t onEdge = 0;
+    for (std::size_t i = fillEnd; i < seqOn->commands.size(); ++i) {
+        const auto& c = seqOn->commands[i];
+        if (c.type == CmdType::Stitch && c.pass == Pass::TopStitch) {
+            CHECK(dist_to_polyline(outer, true, c.pos) <= 1.0);
+            ++onEdge;
+        }
+    }
+    CHECK(onEdge >= 20);
+    CHECK(same_sequence(*seqOn, *generate_sequence(on)));
+}

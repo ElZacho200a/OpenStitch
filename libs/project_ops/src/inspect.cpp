@@ -248,6 +248,7 @@ json params_json(const document::StitchParams& params, bool full) {
                 j["handmade_intensity"] = p.handmade_intensity;
                 j["seed"] = p.seed;
                 j["underlay_mode"] = underlay_mode_name(p.underlay_mode);
+                j["edge_outline"] = p.edge_outline;
                 j["guides"] = paths_mm(p.guides);
                 j["break_lines"] = paths_mm(p.break_lines);
                 if (p.density_gradient) {
