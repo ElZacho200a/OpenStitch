@@ -971,7 +971,7 @@ auto_satin::SkeletonSatinParameters auto_satin_engine(const document::AutoSatinP
         engine.sweep_angle_rad = params.sweep_angle->radians;
     }
     for (const auto& g : params.guides) {
-        engine.guides.push_back({g.anchor, g.angle.radians, g.absolute});
+        engine.guides.push_back({g.anchor, g.angle.radians, g.absolute, g.path});
     }
     return engine;
 }
