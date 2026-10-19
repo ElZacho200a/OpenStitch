@@ -1,4 +1,4 @@
-find_package(Qt6 COMPONENTS Widgets PrintSupport QUIET)
+find_package(Qt6 COMPONENTS Widgets PrintSupport LinguistTools QUIET)
 if(NOT Qt6_FOUND)
     message(WARNING
         "Qt6 introuvable : l'application desktop ne sera pas construite. "
@@ -75,6 +75,8 @@ add_library(openstitch_desktop_widgets STATIC
     main_window.hpp
     app_settings.cpp
     app_settings.hpp
+    app_language.cpp
+    app_language.hpp
     settings_dialog.cpp
     settings_dialog.hpp
     app_theme.cpp
@@ -134,6 +136,16 @@ machine_export_dialog.hpp
     ai_segmentation_dialog.hpp
 )
 add_library(openstitch::desktop_widgets ALIAS openstitch_desktop_widgets)
+
+# Traductions (HP-I18N-001) : le français est la langue source (chaînes de `tr()`), donc seul
+# l'anglais a un fichier. `.ts` -> `.qm` embarqués sous `:/i18n/`. Mise à jour des `.ts` depuis
+# les sources : `cmake --build <dir> --target update_translations`.
+if(NOT Qt6LinguistTools_FOUND)
+    message(FATAL_ERROR "Qt6 LinguistTools introuvable (lrelease/lupdate) : requis pour les traductions.")
+endif()
+qt_add_translations(openstitch_desktop_widgets
+    TS_FILES i18n/openstitch_en.ts
+    RESOURCE_PREFIX /i18n)
 target_include_directories(openstitch_desktop_widgets PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(openstitch_desktop_widgets
     PUBLIC Qt6::Widgets Qt6::PrintSupport openstitch::core openstitch::image openstitch::document
@@ -152,7 +164,7 @@ target_link_libraries(openstitch PRIVATE openstitch_desktop_widgets openstitch::
 # (Les DLL vcpkg — OpenCV, etc. — sont déjà copiées par VCPKG_APPLOCAL_DEPS.)
 if(WIN32 AND TARGET Qt6::windeployqt)
     add_custom_command(TARGET openstitch POST_BUILD
-        COMMAND Qt6::windeployqt --translations fr --no-system-d3d-compiler
+        COMMAND Qt6::windeployqt --translations fr,en --no-system-d3d-compiler
                 "$<TARGET_FILE:openstitch>"
         COMMENT "Déploiement des DLL Qt (windeployqt)")
 endif()

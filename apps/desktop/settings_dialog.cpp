@@ -2,6 +2,7 @@
 #include "settings_dialog.hpp"
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
@@ -12,6 +13,8 @@
 #include <QVBoxLayout>
 
 #include <cmath>
+
+#include "app_language.hpp"
 
 namespace openstitch::desktop {
 
@@ -36,6 +39,12 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
 
     auto* interfacePage = new QWidget;
     auto* interfaceForm = new QFormLayout(interfacePage);
+    language_ = new QComboBox;
+    language_->addItem(tr("Langue du système"), QString::fromLatin1(kLanguageSystem));
+    language_->addItem(QStringLiteral("Français"), QStringLiteral("fr"));
+    language_->addItem(QStringLiteral("English"), QStringLiteral("en"));
+    language_->setToolTip(tr("Langue de l'interface. Prise en compte au prochain démarrage."));
+    interfaceForm->addRow(tr("Langue"), language_);
     regionOpacityPercent_ = new QSpinBox;
     regionOpacityPercent_->setRange(20, 100);
     regionOpacityPercent_->setSuffix(QStringLiteral(" %"));
@@ -96,6 +105,15 @@ void SettingsDialog::setSettings(const EditSettings& settings) {
     unionGapMm_->setValue(v.unionGapMm);
     knifeWidthMm_->setValue(v.knifeWidthMm);
     knifeMinLengthMm_->setValue(v.knifeMinLengthMm);
+}
+
+void SettingsDialog::setLanguage(const QString& preference) {
+    const int index = language_->findData(preference);
+    language_->setCurrentIndex(index >= 0 ? index : 0);
+}
+
+QString SettingsDialog::language() const {
+    return language_->currentData().toString();
 }
 
 EditSettings SettingsDialog::settings() const {
