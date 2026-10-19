@@ -48,16 +48,9 @@ std::optional<std::vector<geometry::PathSet>> pristine_contour(const document::P
     if (raw->empty()) {
         return std::nullopt;
     }
-    double current = 0.0;
-    for (const auto& set : vector.paths) {
-        current += geometry::path_set_area_um2(set);
-    }
-    double pristine = 0.0;
-    for (const auto& set : *raw) {
-        pristine += geometry::path_set_area_um2(set);
-    }
-    // Moins de 3 % de plus : le contour est déjà celui de la région (ou retouché à la main).
-    if (pristine <= 0.0 || current <= pristine * 1.03) {
+    // Seul un contour élargi par le recouvrement des tatamis (bande fine) est ramené à celui de
+    // la région ; une forme fusionnée ou retouchée est gardée telle quelle.
+    if (!vectorization::is_overlap_grown_contour(vector.paths, *raw)) {
         return std::nullopt;
     }
     return *raw;
