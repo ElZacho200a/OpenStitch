@@ -249,6 +249,32 @@ sont cousus du plus proche au plus loin (boîte englobante) et non dans l'ordre 
 stockage. Limite restante : au-delà de `underpathCap` on saute ; les coutures
 cachées jusqu'à 16 mm sont plus longues donc plus visibles que celles de 8 mm.
 
+### Liaisons de bord : tolérance de 0,15 mm (audit Possible.osp, 2026-10-18)
+
+Un projet réel (`Possible.osp`, 202 objets) produisait 928 coupes. Un compteur
+temporaire dans `fill_tatami` a donné la cause : **973 des 1 459 sauts de
+tatami** étaient des liaisons entre deux rangées voisines (arête du graphe) que
+`connector_invalid` refusait, presque toutes de moins de 1 mm. Au bord d'une
+fente ou d'un coin rentrant courbe, la corde qui relie deux fins de rangée
+consécutives sort du polygone de quelques micromètres ; le test strict la
+rejetait et la liaison devenait un saut, puis une coupe au-delà de
+`trim_threshold`. Exemple : le disque du soleil (30 x 22 mm, un seul contour,
+sans trou) faisait **141 sauts**.
+
+`connector_invalid` prend désormais une tolérance au bord `edgeTol` (µm) : un
+sous-segment dont le milieu est dehors reste admis si ses échantillons (quart,
+milieu, trois quarts) sont tous à moins de `edgeTol` du contour. Les liaisons de
+rangées l'utilisent avec `kLinkEdgeTol = 150 µm` (bien sous l'écartement de
+0,4 mm : le fil reste sous la bordure). Les liaisons qui traversent un trou
+restent refusées, et `segment_stays_in_region` (utilisé par la sous-couche, le
+satin…) garde le test strict. Mesure sur `Possible.osp` : soleil 141 → 4 sauts ;
+sauts 2 862 → 1 525, coupes 928 → 792. Test : `tatami : carre mordu par un arc`
+(échoue sans la tolérance : 16 sauts, passe à 0).
+
+Limites restantes : le parcours reste glouton (une branche laissée de côté coûte
+toujours un saut) et le moteur directionnel garde sa propre copie du test strict
+(`directional_fill.cpp`).
+
 ## Paramètres
 
 Valeurs par défaut lues dans `TatamiParams`
