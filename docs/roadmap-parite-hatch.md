@@ -37,11 +37,11 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
-| P0 | 12 | 26 | 6 | 44 |
-| P1 | 10 | 62 | 69 | 141 |
+| P0 | 12 | 27 | 5 | 44 |
+| P1 | 10 | 62 | 70 | 142 |
 | P2 | 3 | 31 | 62 | 96 |
 | P3 | 0 | 3 | 12 | 15 |
-| **Total** | **25** | **122** | **149** | **296** |
+| **Total** | **25** | **123** | **149** | **297** |
 
 Ajoutés le 2026-10-18 (audit UX/UI, `docs/ux/`) : **+29 entrées ☐** (12 P1, 14 P2, 3 P3 ; HP-UX-040 retiré le jour même) :
 HP-UX-017 à HP-UX-044, HP-PERF-009 et HP-QA-008 (§20, §22, §23). Aucun statut existant n'a été
@@ -2934,7 +2934,7 @@ Aujourd'hui : textes en **français** dans `tr()`, aucun `QTranslator`, aucun
 fichier `.ts`. Hatch est disponible en une dizaine de langues.
 - Livré (option sûre) : aucun import anisotrope, `libs/document` et `.osp` intacts ; la hauteur reste liée à la largeur (la modifier redimensionne l'image entière) avec une info-bulle explicite ; « Conserver les proportions » reste verrouillée. Écart avec l'énoncé : la hauteur n'est pas grisée dans le code actuel.
 
-### HP-I18N-001 — Infrastructure de traduction [P0] — ☐ À faire
+### HP-I18N-001 — Infrastructure de traduction [P0] — ◐ Partiel (2026-10-19)
 - À faire : `qt_add_translations` (CMake), fichiers `.ts`, chargement du
   `QTranslator` selon la langue système / la préférence ; décider la langue
   source (garder le français source est possible ; l'anglais source est
@@ -2942,6 +2942,22 @@ fichier `.ts`. Hatch est disponible en une dizaine de langues.
   (`Finding::message`, erreurs `Result`) traduisibles : identifiants +
   paramètres côté cœur, texte côté desktop.
 - Modules : `apps/desktop`, `libs/stitch_analysis`, `libs/core/error`.
+- Livré (2026-10-19) : le **français reste la langue source** (décision documentée dans
+  `docs/source/i18n.md`) ; `qt_add_translations` + `apps/desktop/i18n/openstitch_en.ts` (2260
+  chaînes extraites par `lupdate`, `.qm` embarqués sous `:/i18n/`) ; `app_language.*` (préférence
+  `ui/language` = système | fr | en, résolution, traducteurs Qt + application) ; sélecteur
+  *Paramètres ▸ Interface ▸ Langue* (prise en compte au prochain démarrage) ; le contexte
+  `SettingsDialog` est traduit en anglais ; test `test_app_language`.
+- Reste : messages du cœur (`Finding::message`, erreurs `Result`) → **HP-I18N-001.a** ; changement
+  de langue à chaud (non retenu).
+
+### HP-I18N-001.a — Messages du cœur traduisibles [P1] — ☐ À faire
+- À faire : identifiants stables + paramètres dans `Finding` et les erreurs `Result` (cœur), texte
+  traduit côté desktop ; aujourd'hui ces messages sont en français quelle que soit la langue.
+- Modules : `libs/stitch_analysis`, `libs/core/error`, `apps/desktop`.
+- Dépend de : HP-I18N-001.
+- Acceptation : en anglais, aucun message d'analyse ni d'erreur du cœur n'apparaît en français
+  (test sur un projet qui déclenche chaque règle) ; le cœur reste sans Qt.
 
 ### HP-I18N-002 — Anglais complet [P0] — ☐ À faire
 - Dépend de : HP-I18N-001.
@@ -3246,3 +3262,4 @@ ci-dessus doit les respecter :
 | 2026-10-18 | Claude (couches par zone) | **HP-OBJ-023 ▶ En cours** (« Couches par zone », P1) : empilement d'un objet de broderie supplémentaire sur la même zone via `AddLayerCommand`, sans nouveau champ de modèle. Section « Couches » ajoutée à `docs/source/embroidery-objects.md`. Le tableau de bord ne compte pas encore le statut ▶ ; total inchangé. |
 | 2026-10-18 | Claude (couches par zone, livraison) | **HP-OBJ-023 ▶ → ◐** : `AddLayerCommand` et action « Ajouter une couche… » livrées avec leurs tests ; reste le lien parent-enfant et le regroupement visuel. `test_color_blend_dialog` échoue aussi sur `main` seul (aperçu non peint hors écran), sans lien avec cette entrée. |
 | 2026-10-18 | Claude (tatami pointillé) | HP-ENG-006.b ◐ : défaut `stagger` du tatami 2 → 3 (aspect pointillé constaté en broderie réelle) ; non validé sur tissu. |
+| 2026-10-19 | Claude (HP-I18N-001) | HP-I18N-001 ◐ (infrastructure de traduction : français source, `openstitch_en.ts`, préférence de langue, `test_app_language`) ; +HP-I18N-001.a ☐ (messages du cœur). Chapitre `docs/source/i18n.md`. |
