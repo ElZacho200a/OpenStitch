@@ -5502,12 +5502,16 @@ document::EmbroideryObject* MainWindow::satinEmbroideryAt(QPointF posMm) {
 }
 
 document::EmbroideryObject* MainWindow::embroideryForVector(ObjectId vectorId) {
+    // Une forme à plusieurs couches : un clic au canevas vise celle du DESSUS (la dernière
+    // cousue, donc la visible), comme un clic dans un éditeur de calques ; les autres se
+    // choisissent dans la liste Document ou le sélecteur des Propriétés.
+    document::EmbroideryObject* top = nullptr;
     for (auto& emb : project_.embroidery_objects) {
         if (emb.source_vector == vectorId) {
-            return &emb;
+            top = &emb;
         }
     }
-    return nullptr;
+    return top;
 }
 
 void MainWindow::autoConvertToSatin() {
@@ -7641,6 +7645,18 @@ void MainWindow::buildPropertiesPanel() {
             &MainWindow::removeAutoSatinGuide);
     connect(propertiesPanel_, &PropertiesPanel::compareSatinMethodsRequested, this,
             &MainWindow::compareAutoSatinMethods);
+    // Barre du sélecteur de couches : mêmes commandes annulables que la liste Document.
+    connect(propertiesPanel_, &PropertiesPanel::layerMoveRequested, this,
+            [this](ObjectId id, int direction) { moveLayer(id, direction); });
+    connect(propertiesPanel_, &PropertiesPanel::layerVisibilityRequested, this,
+            [this](ObjectId id, bool visible) {
+                undoStack_.execute(
+                    std::make_unique<commands::SetEmbroideryVisibleCommand>(id, visible), project_);
+                refreshImage();
+                updateActions();
+            });
+    connect(propertiesPanel_, &PropertiesPanel::layerRenameRequested, this,
+            &MainWindow::renameLayerInteractive);
     connect(propertiesPanel_, &PropertiesPanel::editDirectionGuidesRequested, this,
             [this](ObjectId id) {
                 if (auto* emb = project_.findEmbroidery(id);
@@ -7669,7 +7685,7 @@ void MainWindow::updateInspector() {
                 layers.push_back(
                     {layer.id,
                      tr("%1 · %2").arg(layers.size() + 1).arg(QString::fromStdString(layer.name)),
-                     QColor(layer.rgb[0], layer.rgb[1], layer.rgb[2])});
+                     QColor(layer.rgb[0], layer.rgb[1], layer.rgb[2]), layer.visible});
             }
         }
     }

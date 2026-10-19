@@ -109,11 +109,22 @@ de coudre plusieurs objets de types différents sur une même zone vectorielle,
   « Supprimer cette couche » ne retire que la couche visée.
 - **Annulation.** `AddLayerCommand` est un `ICommand` : un seul pas d'undo
   retire la couche et rétablit l'ordre précédent, redo compris.
+- **Sélecteur de couches (Propriétés).** Dès qu'une forme a deux couches, un sélecteur apparaît
+  dans l'inspecteur (fond puis dessus) avec une barre : ▲ Monter / ▼ Descendre (échange le rang
+  de couture avec la voisine de la même forme, `ReorderEmbroideryCommand`), Masquer/Afficher
+  (`SetEmbroideryVisibleCommand`) et Renommer… (`RenameEmbroideryCommand`), chacun en un pas
+  d'annulation.
+- **Clic au canevas.** Choisir une forme visée au canevas sélectionne sa couche du **dessus**
+  (la dernière cousue) ; le menu contextuel du canevas agit donc sur elle et « Ajouter une
+  couche… » empile par-dessus. Les autres couches se choisissent dans la liste Document ou le
+  sélecteur.
+- **Glisser-déposer.** Déplacer une couche dans la liste Document réordonne la pile **dans sa
+  forme** : un dépôt hors de la forme est ramené au bord le plus proche de la pile. Maj enfoncé
+  pendant le dépôt libère la contrainte (coudre une couche à un autre rang du dessin). Une forme
+  à couche unique se déplace librement.
 - **Limites.**
   - Pas de lien parent-enfant dans le modèle : supprimer la base **ne supprime pas** ses
     couches, qui restent sur la zone et deviennent des objets indépendants.
-  - Un clic sur le canevas vise encore la forme (donc sa première couche pour le menu de type) ;
-    le choix d'une couche précise passe par la liste Document ou le sélecteur des Propriétés.
 
 ## Implémentation associée
 

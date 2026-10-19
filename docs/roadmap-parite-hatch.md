@@ -1803,6 +1803,8 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
   Visible/Figé agrégées, bouton « + Couche » en un geste, menu de ligne (ajouter, dupliquer,
   supprimer une couche), duplication de forme avec ses couches, numérotation stable, menu
   Affichage renommé « Plans d'affichage ».
+  Vague 2 : sélecteur de couches des Propriétés (monter/descendre, masquer, renommer), clic
+  canevas sur la couche du dessus, glisser-déposer contraint à la forme (Maj pour sortir).
   Reste : lien parent-enfant dans le modèle ;
   critères d'acceptation « ordre de couture » et « suppression » non testés à
   part ; suite desktop complète non relancée.
@@ -3307,3 +3309,4 @@ ci-dessus doit les respecter :
 | 2026-10-19 | Claude (ergonomie des couches) | **HP-OBJ-023 ◐** (vague 1 de l'audit d'ergonomie des couches) : groupe « N couches » avec cases agrégées, bouton « + Couche » sans dialogue, actions de couche dans le menu de ligne, duplication de forme avec ses couches, libellés de suppression explicites, numérotation stable, menu « Plans d'affichage ». Reste : sélecteur de couches des Propriétés, clic canevas sur la couche du dessus, glisser-déposer contraint à la forme. |
 | 2026-10-19 | Claude (remodelage interactif, lot 2) | **HP-VEC-017 ◐** (branche `claude/vec-node-selection`, PR empilée sur HP-VEC-016) : sélection de nœuds (Alt + cadre, clic sur poignée), déplacement groupé en un pas, transition douce optionnelle ; rotation/échelle dans l'interface et lasso restent à faire. |
 | 2026-10-19 | Claude (remodelage interactif, lot 3) | **HP-VEC-018 ◐** (branche `claude/vec-brush`, PR empilée sur HP-VEC-017) : outil Pinceau (B) poussant / tirant le contour avec influence décroissante, Maj = lisser, un coup = une commande, nombre de nœuds borné ; refit local, molette et stylet restent à faire. |
+| 2026-10-19 | Claude (ergonomie des couches, vague 2) | **HP-OBJ-023 ◐** : barre du sélecteur de couches (▲ ▼ masquer renommer, un pas d'annulation chacun), clic canevas = couche du dessus (`embroideryForVector`), glisser-déposer des couches contraint à la forme (Maj pour sortir). Reste : parent-enfant dans le modèle. |

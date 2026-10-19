@@ -107,7 +107,64 @@ private slots:
     void layerNamesStayUniqueAfterADeletionAndDoNotStackSuffixes();
     void duplicateLayerInsertsACopyAboveAndUndoes();
     void duplicatingAShapeCarriesAllItsLayersInOneStep();
+    void moveLayerSwapsWithTheNeighbourOfTheSameShapeAndUndoes();
+    void aShapeSelectedAtTheCanvasTargetsItsTopLayer();
+    void layerToolbarMovesHidesAndFollowsTheChosenLayer();
 };
+
+void MainWindowTest::moveLayerSwapsWithTheNeighbourOfTheSameShapeAndUndoes() {
+    MainWindow w;
+    w.applyLoadedProject(blendFixture(false, true)); // Fond puis Dessus
+    const ObjectId base = w.project_.embroidery_objects.front().id;
+    const ObjectId top = w.project_.embroidery_objects.back().id;
+    QVERIFY(!w.moveLayer(top, +1));  // déjà tout en haut
+    QVERIFY(!w.moveLayer(base, -1)); // déjà au fond
+    QVERIFY(w.moveLayer(base, +1));
+    QCOMPARE(w.project_.embroidery_objects.front().id, top);
+    QCOMPARE(w.project_.embroidery_objects.back().id, base);
+    w.undoAct_->trigger();
+    QCOMPARE(w.project_.embroidery_objects.front().id, base);
+    QCOMPARE(w.project_.embroidery_objects.back().id, top);
+}
+
+void MainWindowTest::aShapeSelectedAtTheCanvasTargetsItsTopLayer() {
+    MainWindow w;
+    w.applyLoadedProject(blendFixture(false, true));
+    const auto shape = w.project_.embroidery_objects.front().source_vector;
+    w.setSelection({.objects = {shape}});
+    const auto* target = w.resolveSelectedEmbroidery();
+    QVERIFY(target != nullptr);
+    QCOMPARE(target->id, w.project_.embroidery_objects.back().id); // « Dessus »
+}
+
+void MainWindowTest::layerToolbarMovesHidesAndFollowsTheChosenLayer() {
+    MainWindow w;
+    w.applyLoadedProject(blendFixture(false, true));
+    const ObjectId base = w.project_.embroidery_objects.front().id;
+    const ObjectId top = w.project_.embroidery_objects.back().id;
+    w.setSelection({.embroidery = base});
+    w.updateActions();
+    auto* up = w.propertiesPanel_->findChild<QPushButton*>(QStringLiteral("button_layerUp"));
+    auto* down = w.propertiesPanel_->findChild<QPushButton*>(QStringLiteral("button_layerDown"));
+    auto* vis = w.propertiesPanel_->findChild<QPushButton*>(QStringLiteral("button_layerVisible"));
+    QVERIFY(up != nullptr && down != nullptr && vis != nullptr);
+    QVERIFY(up->isEnabled());    // la couche du fond peut monter
+    QVERIFY(!down->isEnabled()); // mais pas descendre
+    QCOMPARE(vis->text(), QStringLiteral("Masquer"));
+
+    vis->click();
+    QVERIFY(!w.project_.findEmbroidery(base)->visible);
+    w.updateActions();
+    QCOMPARE(vis->text(), QStringLiteral("Afficher"));
+    w.undoAct_->trigger();
+    QVERIFY(w.project_.findEmbroidery(base)->visible);
+
+    up->click();
+    QCOMPARE(w.project_.embroidery_objects.front().id, top);
+    w.updateActions();
+    QVERIFY(!up->isEnabled()); // la couche choisie est maintenant tout en haut
+    QVERIFY(down->isEnabled());
+}
 
 void MainWindowTest::addLayerQuickIsOneUndoableStepWithoutDialog() {
     MainWindow w;
@@ -377,6 +434,9 @@ void MainWindowTest::inspectorOffersExplicitLayerSelection() {
     QVERIFY2(layers != nullptr, "Les deux couches doivent etre accessibles dans l'inspecteur.");
     QCOMPARE(layers->count(), 2);
     const auto original = w.project_.findEmbroidery(base)->params;
+    QCOMPARE(layers->currentIndex(), 1); // la forme choisie au canevas vise la couche du dessus
+    layers->setCurrentIndex(0);
+    QCOMPARE(w.selectedEmbroidery_.value_or(ObjectId{}), base);
     layers->setCurrentIndex(1);
     QCOMPARE(w.selectedEmbroidery_.value_or(ObjectId{}), top);
     auto* spacing =

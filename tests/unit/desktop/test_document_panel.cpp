@@ -161,7 +161,47 @@ private slots:
     void groupCheckBoxRequestsTheChangeForEveryLayer();
     void addLayerButtonFollowsTheSelectionAndTargetsTheTopLayer();
     void rowMenuOffersAddDuplicateAndDeleteOfASingleLayer();
+    void droppingALayerOutsideItsShapeStaysInsideItsStack();
 };
+
+void DocumentPanelTest::droppingALayerOutsideItsShapeStaysInsideItsStack() {
+    DocumentPanel panel;
+    std::vector<openstitch::ObjectId> ids;
+    Project project = projectWithTwoStitchLayers(ids); // [a1, a2] sur « Fleur »
+    openstitch::document::EmbroideryObject loose;      // objet autonome, sans forme source
+    loose.id = project.object_ids.next();
+    loose.name = "Libre";
+    loose.params = openstitch::document::RunningStitchParams{};
+    project.embroidery_objects.push_back(loose);
+    panel.refresh(project);
+    panel.resize(300, 300);
+    panel.show();
+    auto* objects = objectsList(panel);
+    objects->doItemsLayout();
+
+    std::vector<openstitch::ObjectId> requested;
+    QObject::connect(&panel, &DocumentPanel::orderChangeRequested, &panel,
+                     [&](const std::vector<openstitch::ObjectId>& order) { requested = order; });
+    QTreeWidgetItem* looseItem = objects->topLevelItem(1);
+    const QRect looseRect = objects->visualItemRect(looseItem);
+    const QPoint below = looseRect.center() + QPoint(0, looseRect.height() / 4);
+
+    // La couche du fond lâchée sous l'objet libre : elle reste dans sa pile, au-dessus de a2.
+    objects->clearSelection();
+    objects->topLevelItem(0)->child(0)->setSelected(true);
+    panel.handleDrop(below);
+    QTRY_VERIFY(!requested.empty());
+    QCOMPARE(requested, (std::vector<openstitch::ObjectId>{ids[1], ids[0], loose.id}));
+
+    // L'objet libre, lui, se déplace sans contrainte : avant la pile de la forme.
+    requested.clear();
+    objects->clearSelection();
+    looseItem->setSelected(true);
+    const QRect firstRect = objects->visualItemRect(objects->topLevelItem(0)->child(0));
+    panel.handleDrop(firstRect.center() - QPoint(0, firstRect.height() / 4));
+    QTRY_VERIFY(!requested.empty());
+    QCOMPARE(requested, (std::vector<openstitch::ObjectId>{loose.id, ids[0], ids[1]}));
+}
 
 void DocumentPanelTest::layerGroupRowCountsLayersAndAggregatesTheCheckBoxes() {
     DocumentPanel panel;

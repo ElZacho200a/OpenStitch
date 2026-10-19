@@ -130,6 +130,7 @@ public:
         ObjectId id;
         QString name;
         QColor color;
+        bool visible{true};
     };
     // Contexte transitoire des couches d'une même forme, non persistant.
     void setFillLayers(const QList<FillLayer>& layers, std::optional<ObjectId> selected);
@@ -143,6 +144,11 @@ signals:
     void reapplyOverridesRequested(ObjectId id);
     void fillLayerSelected(ObjectId id);
     void fillColorRequested(ObjectId id);
+    // Barre du sélecteur de couches (HP-OBJ-023) : `direction` +1 = vers le dessus de la pile
+    // (cousue plus tard), -1 = vers le fond. MainWindow exécute les commandes annulables.
+    void layerMoveRequested(ObjectId id, int direction);
+    void layerVisibilityRequested(ObjectId id, bool visible);
+    void layerRenameRequested(ObjectId id);
     // Bouton « Modifier le texte… » du bandeau lettrage (cf. setTextInfo) : MainWindow rouvre
     // le dialogue de texte (même chemin que le double-clic et F2).
     void editTextRequested();
@@ -233,6 +239,11 @@ private:
     QPushButton* textEditButton_{nullptr};
     QWidget* layerRow_{nullptr};
     QComboBox* fillLayers_{nullptr};
+    QPushButton* layerUp_{nullptr};
+    QPushButton* layerDown_{nullptr};
+    QPushButton* layerVisible_{nullptr};
+    QPushButton* layerRename_{nullptr};
+    void updateLayerTools(); // activation Monter/Descendre, libellé Masquer/Afficher
     QPushButton* fillColor_{nullptr};
     QToolButton* blendSingle_{nullptr};
     QToolButton* blendZones_{nullptr};

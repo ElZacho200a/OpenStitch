@@ -1023,6 +1023,50 @@ void DocumentPanel::handleDrop(const QPoint& viewportPos) {
             return; // forme non cousue : pas de rang de couture
         }
     }
+    // Couches d'une même forme : le glisser-déposer réordonne la pile DANS la forme. Un dépôt
+    // hors de celle-ci est ramené au bord le plus proche de sa pile (Maj le laisse sortir, pour
+    // coudre une couche à un autre rang du dessin).
+    if (!QGuiApplication::keyboardModifiers().testFlag(Qt::ShiftModifier)) {
+        std::map<std::uint64_t, std::uint64_t> sourceOf; // id de broderie -> forme source
+        const std::function<void(QTreeWidgetItem*)> scan = [&](QTreeWidgetItem* it) {
+            if (it->data(0, Qt::UserRole).isValid()) {
+                sourceOf[it->data(0, Qt::UserRole).toULongLong()] =
+                    it->data(0, kSourceVectorRole).toULongLong();
+            }
+            for (int c = 0; c < it->childCount(); ++c) {
+                scan(it->child(c));
+            }
+        };
+        for (int i = 0; i < objectsList_->topLevelItemCount(); ++i) {
+            scan(objectsList_->topLevelItem(i));
+        }
+        const std::uint64_t shape = sourceOf[moved.front().value];
+        const bool oneShape =
+            shape != 0 && std::all_of(moved.begin(), moved.end(),
+                                      [&](ObjectId id) { return sourceOf[id.value] == shape; });
+        if (oneShape) {
+            std::vector<ObjectId> stack; // la pile de la forme, hors couches déplacées
+            for (const ObjectId id : order_) {
+                if (sourceOf[id.value] == shape &&
+                    std::find(moved.begin(), moved.end(), id) == moved.end()) {
+                    stack.push_back(id);
+                }
+            }
+            const bool targetInStack = target.valid() && sourceOf[target.value] == shape;
+            // Une forme à couche unique (ou dont toutes les couches bougent) n'a pas de pile à
+            // préserver : le dépôt reste libre.
+            if (!stack.empty() && !targetInStack) {
+                const auto firstOfShape =
+                    std::find_if(order_.begin(), order_.end(),
+                                 [&](ObjectId id) { return sourceOf[id.value] == shape; });
+                const auto targetPos =
+                    target.valid() ? std::find(order_.begin(), order_.end(), target) : order_.end();
+                const bool beforeStack = target.valid() && targetPos < firstOfShape;
+                target = beforeStack ? stack.front() : stack.back();
+                after = !beforeStack;
+            }
+        }
+    }
     const std::vector<ObjectId> next = reorderedAfterDrop(order_, moved, target, after);
     if (next == order_) {
         return;

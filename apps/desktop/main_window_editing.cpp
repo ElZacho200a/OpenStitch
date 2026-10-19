@@ -835,6 +835,58 @@ bool MainWindow::duplicateLayer(ObjectId id) {
     return true;
 }
 
+bool MainWindow::moveLayer(ObjectId id, int direction) {
+    auto& all = project_.embroidery_objects;
+    const auto it = std::find_if(all.begin(), all.end(), [&](const auto& e) { return e.id == id; });
+    if (it == all.end() || direction == 0) {
+        return false;
+    }
+    // Voisin = la couche de la MÊME forme la plus proche dans le sens demandé : on échange leurs
+    // rangs de couture, les objets des autres formes ne bougent pas.
+    const auto index = static_cast<std::ptrdiff_t>(it - all.begin());
+    const auto step = direction > 0 ? 1 : -1;
+    auto j = index + step;
+    while (j >= 0 && j < static_cast<std::ptrdiff_t>(all.size()) &&
+           all[static_cast<std::size_t>(j)].source_vector != it->source_vector) {
+        j += step;
+    }
+    if (j < 0 || j >= static_cast<std::ptrdiff_t>(all.size())) {
+        return false; // déjà au bout de la pile
+    }
+    std::vector<ObjectId> order;
+    order.reserve(all.size());
+    for (const auto& e : all) {
+        order.push_back(e.id);
+    }
+    std::swap(order[static_cast<std::size_t>(index)], order[static_cast<std::size_t>(j)]);
+    undoStack_.execute(std::make_unique<commands::ReorderEmbroideryCommand>(order), project_);
+    refreshImage();
+    refreshOrderPanel();
+    updateActions();
+    statusBar()->showMessage(direction > 0 ? tr("Couche montée.") : tr("Couche descendue."));
+    return true;
+}
+
+void MainWindow::renameLayerInteractive(ObjectId id) {
+    const auto* layer = project_.findEmbroidery(id);
+    if (layer == nullptr) {
+        return;
+    }
+    bool ok = false;
+    const QString name =
+        QInputDialog::getText(this, tr("Renommer la couche"), tr("Nom de la couche :"),
+                              QLineEdit::Normal, QString::fromStdString(layer->name), &ok)
+            .trimmed();
+    // Les dialogues pompent la boucle d'événements : l'objet est re-résolu avant d'agir.
+    if (!ok || name.isEmpty() || project_.findEmbroidery(id) == nullptr) {
+        return;
+    }
+    undoStack_.execute(std::make_unique<commands::RenameEmbroideryCommand>(id, name.toStdString()),
+                       project_);
+    refreshImage();
+    updateActions();
+}
+
 bool MainWindow::addLayer(ObjectId baseId, int type, const std::array<std::uint8_t, 3>& rgb) {
     const auto* base = project_.findEmbroidery(baseId);
     if (base == nullptr) {

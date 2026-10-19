@@ -277,6 +277,11 @@ private slots:
     // Copie la couche `id` (mêmes réglages, même forme) juste au-dessus d'elle. Un pas
     // d'annulation.
     bool duplicateLayer(ObjectId id);
+    // Échange le rang de couture de la couche `id` avec sa voisine de la même forme (+1 = vers le
+    // dessus). Faux au bout de la pile. Un pas d'annulation.
+    bool moveLayer(ObjectId id, int direction);
+    // Dialogue de nom puis RenameEmbroideryCommand.
+    void renameLayerInteractive(ObjectId id);
     // Ajoute à `composite` une copie de chaque objet de broderie de `sourceId`, rattachée à la
     // forme `copyId` (nouveaux ids, ordre conservé). Renvoie le nombre de couches copiées.
     int addEmbroideryCopies(commands::CompositeCommand& composite, ObjectId sourceId,
@@ -513,7 +518,8 @@ private:
     [[nodiscard]] QString buildDebugDump(ObjectId embroideryId) const;
     // Affiche `buildDebugDump` dans une boîte de dialogue (copier/enregistrer).
     void showDebugDump(ObjectId embroideryId);
-    // Objet de broderie rattaché à un objet vectoriel (nullptr si aucun).
+    // Objet de broderie rattaché à un objet vectoriel : la couche du DESSUS s'il y en a plusieurs
+    // (nullptr si aucun).
     [[nodiscard]] document::EmbroideryObject* embroideryForVector(ObjectId vectorId);
     // Ouverture d'un SVG comme NOUVEAU document, directement en objets
     // vectoriels éditables -- saute entièrement image/segmentation/
