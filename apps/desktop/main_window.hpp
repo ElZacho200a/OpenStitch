@@ -66,6 +66,10 @@ class QDropEvent;
 class QListWidgetItem;
 class QUrl;
 
+namespace openstitch::commands {
+class CompositeCommand;
+}
+
 namespace openstitch::desktop {
 
 class CanvasView;
@@ -265,6 +269,18 @@ private slots:
     // « Ajouter une couche… » : demande le type (contour, tatami, satin, directionnel) puis la
     // couleur de fil, et empile une nouvelle couche sur la forme de l'objet de broderie `baseId`.
     void addLayerInteractive(ObjectId baseId);
+    // Ajout en un geste (bouton « + Couche », menu de ligne) : même famille de points que `baseId`,
+    // fil complémentaire, aucun dialogue. Un seul pas d'annulation.
+    bool addLayerQuick(ObjectId baseId);
+    // Copie la couche `id` (mêmes réglages, même forme) juste au-dessus d'elle. Un pas
+    // d'annulation.
+    bool duplicateLayer(ObjectId id);
+    // Ajoute à `composite` une copie de chaque objet de broderie de `sourceId`, rattachée à la
+    // forme `copyId` (nouveaux ids, ordre conservé). Renvoie le nombre de couches copiées.
+    int addEmbroideryCopies(commands::CompositeCommand& composite, ObjectId sourceId,
+                            ObjectId copyId);
+    // « <racine> – couche N » avec N = premier numéro libre parmi les couches de la même forme.
+    [[nodiscard]] QString nextLayerName(const document::EmbroideryObject& base) const;
     // Construit la couche (paramètres par défaut du type, nom « <base> – couche N », même forme
     // source, fil `rgb`) et la pousse via AddLayerCommand, juste après la base. Faux si impossible.
     bool addLayer(ObjectId baseId, int type, const std::array<std::uint8_t, 3>& rgb);

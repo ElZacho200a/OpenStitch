@@ -15,6 +15,7 @@ class QComboBox;
 class QLineEdit;
 class QListWidget;
 class QMenu;
+class QPushButton;
 class QTabWidget;
 class QTreeWidget;
 class QTreeWidgetItem;
@@ -104,8 +105,18 @@ signals:
     void visibilityToggled(ObjectId id, bool visible);
     void orderLockToggled(ObjectId id, bool locked);
     void renameRequested(ObjectId id, QString name);
+    // Calques de couture (HP-OBJ-023) : « Ajouter une couche » (bouton « + » ou menu de ligne)
+    // et « Dupliquer la couche » ; `id` = objet de broderie visé. MainWindow exécute les commandes.
+    // `interactive` : choisir le type et la couleur (Maj + clic) au lieu des valeurs par défaut.
+    void addLayerRequested(ObjectId id, bool interactive);
+    void duplicateLayerRequested(ObjectId id);
 
 private:
+    QPushButton* addLayerBtn_{nullptr}; // « + Couche » : actif si une seule broderie est choisie
+    // Ligne de broderie visée par « ajouter une couche » : la ligne unique sélectionnée, ou la
+    // dernière couche (celle du dessus) d'un groupe sélectionné. nullptr sinon.
+    [[nodiscard]] QTreeWidgetItem* layerTargetItem() const;
+    void updateAddLayerButton();
     QTabWidget* tabs_{nullptr};
     // Arbre plutôt que liste plate (§21 du plan de refonte satin,
     // 2026-08-14) : les EmbroideryObject partageant le même `source_vector`

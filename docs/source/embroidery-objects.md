@@ -90,15 +90,30 @@ de coudre plusieurs objets de types différents sur une même zone vectorielle,
   l'ordre du document, la couche est cousue **après** la base, donc par-dessus.
   Les points restent dérivés à la demande (`effective_sequence`), jamais
   stockés.
-- **Création.** Action « Ajouter une couche… » sur l'objet sélectionné, qui
-  pousse `commands::AddLayerCommand(base_id, layer)`.
+- **Création.** Le bouton **+ Couche** sous la liste Document (ou « Ajouter une couche » dans
+  le menu de la ligne) empile en un geste une couche de la même famille de points que la
+  ligne choisie, avec un fil complémentaire, sans dialogue. Maj + clic sur le bouton, ou
+  « Ajouter une couche… » (menus de ligne, de canevas et Broderie), demande le type et la
+  couleur. Sur une ligne de groupe, la couche est ajoutée au-dessus de la couche du dessus.
+  Chaque ajout pousse `commands::AddLayerCommand(base_id, layer)`.
+- **Liste Document.** Les couches d'une forme sont regroupées sous une ligne « Forme (N
+  couches) » (« N sections » pour un plan satin) qui porte la pastille du fil de la couche du
+  dessus et des cases Visible / Figé agrégées (partiellement cochées si les couches
+  divergent) ; cocher la ligne agit sur toutes les couches, en un pas d'annulation. Le menu de
+  ligne propose Ajouter une couche, Dupliquer la couche et « Supprimer cette couche ».
+- **Nommage.** `<forme> – couche N`, N étant le premier numéro libre parmi les couches de la
+  forme ; ajouter une couche depuis une couche n'empile pas les suffixes.
+- **Duplication.** Dupliquer une forme (menu contextuel, Alt + glisser) copie aussi toutes ses
+  couches, en un pas d'annulation.
+- **Suppression.** « Supprimer la forme et ses N couches » (canevas) supprime tout ;
+  « Supprimer cette couche » ne retire que la couche visée.
 - **Annulation.** `AddLayerCommand` est un `ICommand` : un seul pas d'undo
   retire la couche et rétablit l'ordre précédent, redo compris.
 - **Limites.**
-  - Pas de lien parent-enfant : supprimer la base **ne supprime pas** ses
+  - Pas de lien parent-enfant dans le modèle : supprimer la base **ne supprime pas** ses
     couches, qui restent sur la zone et deviennent des objets indépendants.
-  - Pas de regroupement visuel : les couches apparaissent comme des objets
-    séparés dans la liste Document, sans indentation ni groupe.
+  - Un clic sur le canevas vise encore la forme (donc sa première couche pour le menu de type) ;
+    le choix d'une couche précise passe par la liste Document ou le sélecteur des Propriétés.
 
 ## Implémentation associée
 
