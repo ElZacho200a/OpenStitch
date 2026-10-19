@@ -1108,6 +1108,30 @@ TEST_CASE("satin bandes : petit disque en satin a cordes paralleles, grand disqu
     CHECK_FALSE(any_auto_satin(*wide));
 }
 
+TEST_CASE("fond exterieur seulement : le blanc enferme dans le motif reste couso") {
+    // Anneau rouge sur fond blanc : le disque blanc du centre a la couleur du fond mais ne touche
+    // pas le pourtour de l'image.
+    const auto seg =
+        segmentation::segment(ring_image_px(40, 33), {.max_colors = 2, .min_region_px = 4});
+    REQUIRE(seg.has_value());
+    REQUIRE(segmentation::border_touching_regions(*seg).size() == 1);
+
+    const auto count = [&](bool outerOnly) {
+        IdGenerator<ObjectId> ids;
+        AutoOptions opt;
+        opt.mm_per_px = Millimeters{0.2};
+        opt.skip_largest_region = true;
+        opt.skip_background_outer_only = outerOnly;
+        const auto r = auto_digitize(*seg, ids, opt);
+        REQUIRE(r.has_value());
+        return r->embroideries.size();
+    };
+    const std::size_t all = count(false);
+    const std::size_t outer = count(true);
+    CHECK(outer > all);          // le disque central est cousu en plus de l'anneau
+    CHECK(count(true) == outer); // deterministe
+}
+
 namespace {
 
 // Force le nombre de fils de `parallel_for` le temps d'un bloc (OPENSTITCH_THREADS).

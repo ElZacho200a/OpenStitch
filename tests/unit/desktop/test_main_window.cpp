@@ -833,6 +833,7 @@ private slots:
     // affichés dans les deux cas.
     void autoDigitizeDialogDoesNotSkipColoredFullFrameRegion();
     void autoDigitizeDialogOffersDarkLinesAndIslandCleanup();
+    void autoDigitizeDialogOuterBackgroundKeepsEnclosedWhite();
     void autoDigitizeDialogSkipsBeigeFramingBackground();
     void autoDigitizeDialogSkipsNearWhiteFramingBackground();
     // Strategie « Contours » : choix de strategie, curseur de detail (defaut
@@ -846,6 +847,7 @@ private slots:
     // Guides d'orientation de l'auto-satin : un trait tracé fixe l'ancre et l'angle
     // (absolu), tout geste est une commande annulable, un trait trop court est ignoré.
     void autoSatinGuideFromStrokeIsAbsoluteAndUndoable();
+    void autoSatinCurvedGuideStrokeKeepsItsPathAndIsUndoable();
     void autoSatinGuideTooShortStrokeIsIgnored();
     void autoSatinGuideChangeAndRemoveAreUndoable();
 
@@ -2998,6 +3000,56 @@ void MainWindowTest::autoDigitizeDialogOffersDarkLinesAndIslandCleanup() {
     QVERIFY(islandOffByDefault);
 }
 
+void MainWindowTest::autoDigitizeDialogOuterBackgroundKeepsEnclosedWhite() {
+    // Anneau rouge sur fond blanc : le centre blanc n'est pas relié au pourtour.
+    const auto makeProject = [] {
+        auto project = opaqueSegmentedProject({250, 250, 250}, {200, 30, 30}, 5, 4, 35, 26);
+        constexpr int kW = 40;
+        for (int y = 10; y < 20; ++y) {
+            for (int x = 14; x < 26; ++x) {
+                auto* px =
+                    project.original.rgba.data() + (std::size_t(y) * kW + std::size_t(x)) * 4;
+                px[0] = px[1] = px[2] = 250;
+            }
+        }
+        auto seg = openstitch::segmentation::segment(project.original,
+                                                     {.max_colors = 2, .min_region_px = 1});
+        project.segmentation = std::move(*seg);
+        return project;
+    };
+    const auto digitizedCount = [&](bool outer, bool& optionSeen, bool& enabledWhenSkipOff) {
+        MainWindow window;
+        window.applyLoadedProject(makeProject());
+        QTimer::singleShot(0, &window, [&] {
+            auto* dlg = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+            if (dlg == nullptr) {
+                return;
+            }
+            auto* skip = dlg->findChild<QCheckBox*>("skipBackgroundCheck");
+            auto* outerCheck = dlg->findChild<QCheckBox*>("skipBackgroundOuterCheck");
+            if (skip == nullptr || outerCheck == nullptr) {
+                dlg->reject();
+                return;
+            }
+            optionSeen = true;
+            skip->setChecked(false);
+            enabledWhenSkipOff = outerCheck->isEnabled();
+            skip->setChecked(true);
+            outerCheck->setChecked(outer);
+            dlg->accept();
+        });
+        window.autoDigitize();
+        return window.project_.embroidery_objects.size();
+    };
+    bool seen = false;
+    bool enabledWhenOff = true;
+    const std::size_t all = digitizedCount(false, seen, enabledWhenOff);
+    QVERIFY(seen);
+    QVERIFY(!enabledWhenOff); // sans « ignorer le fond », l'option n'a pas de sens
+    const std::size_t outer = digitizedCount(true, seen, enabledWhenOff);
+    QVERIFY(outer > all); // le centre blanc est cousu en plus de l'anneau
+}
+
 void MainWindowTest::autoDigitizeDialogSkipsNearWhiteFramingBackground() {
     MainWindow window;
     window.applyLoadedProject(
@@ -3297,6 +3349,45 @@ void MainWindowTest::autoSatinGuideFromStrokeIsAbsoluteAndUndoable() {
         std::get<openstitch::document::AutoSatinParams>(window.project_.findEmbroidery(id)->params)
             .guides.size(),
         std::size_t{1});
+}
+
+void MainWindowTest::autoSatinCurvedGuideStrokeKeepsItsPathAndIsUndoable() {
+    MainWindow window;
+    const Fixture fx = buildRunningRectangleFixture();
+    window.applyLoadedProject(fx.project);
+    window.setStitchType(fx.embroideryId, /*type=*/2);
+    const ObjectId id = fx.embroideryId;
+    const auto pt = [](int x, int y) { return Vec2um{Micrometers{x}, Micrometers{y}}; };
+    const std::vector<Vec2um> stroke{pt(5'000, 2'500), pt(12'000, 5'000), pt(20'000, 2'500)};
+
+    const std::size_t stepsBefore = window.undoStack_.undoNames().size();
+    window.addAutoSatinGuideFromStroke(id, stroke);
+    const auto& sat =
+        std::get<openstitch::document::AutoSatinParams>(window.project_.findEmbroidery(id)->params);
+    QCOMPARE(sat.guides.size(), std::size_t{1});
+    QVERIFY(sat.guides[0].absolute);
+    QCOMPARE(sat.guides[0].anchor.x.value, 5'000);
+    QCOMPARE(sat.guides[0].path.size(), std::size_t{3});
+    QCOMPARE(window.undoStack_.undoNames().size(), stepsBefore + 1); // un seul pas
+
+    // Un trait droit (2 points) ne stocke pas de courbe : comportement historique.
+    window.addAutoSatinGuideFromStroke(id, pt(10'000, 2'500), pt(15'000, 2'500));
+    const auto& after =
+        std::get<openstitch::document::AutoSatinParams>(window.project_.findEmbroidery(id)->params);
+    QCOMPARE(after.guides.size(), std::size_t{2});
+    QVERIFY(after.guides[1].path.empty());
+
+    window.undo();
+    window.undo();
+    QVERIFY(
+        std::get<openstitch::document::AutoSatinParams>(window.project_.findEmbroidery(id)->params)
+            .guides.empty());
+    window.redo();
+    QCOMPARE(
+        std::get<openstitch::document::AutoSatinParams>(window.project_.findEmbroidery(id)->params)
+            .guides[0]
+            .path.size(),
+        std::size_t{3});
 }
 
 void MainWindowTest::autoSatinGuideTooShortStrokeIsIgnored() {

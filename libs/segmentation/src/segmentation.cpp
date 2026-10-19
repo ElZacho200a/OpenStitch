@@ -950,6 +950,31 @@ std::vector<RegionId> regions_with_color(const Segmentation& seg, std::array<std
     return out;
 }
 
+std::vector<RegionId> border_touching_regions(const Segmentation& seg) {
+    std::vector<char> touches(seg.region_slots.size() + 1, 0);
+    const auto mark = [&](int x, int y) {
+        const std::uint32_t label = seg.labels[static_cast<std::size_t>(y) * seg.width + x];
+        if (label != 0 && label < touches.size()) {
+            touches[label] = 1;
+        }
+    };
+    for (int x = 0; x < seg.width && seg.height > 0; ++x) {
+        mark(x, 0);
+        mark(x, seg.height - 1);
+    }
+    for (int y = 0; y < seg.height && seg.width > 0; ++y) {
+        mark(0, y);
+        mark(seg.width - 1, y);
+    }
+    std::vector<RegionId> out;
+    for (const auto& slot : seg.region_slots) {
+        if (slot && slot->id.value < touches.size() && touches[slot->id.value] != 0) {
+            out.push_back(slot->id);
+        }
+    }
+    return out;
+}
+
 std::vector<RegionId> neighbors_of(const Segmentation& seg, RegionId id) {
     std::vector<std::pair<std::size_t, RegionId>> found;
     for (const auto& border : region_adjacency(seg)) {

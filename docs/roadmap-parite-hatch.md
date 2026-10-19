@@ -1393,8 +1393,13 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
 ### HP-AUTO-006 — Suppression du fond [P1] — ◐ Partiel
 - État OpenStitch : option « ignorer le fond » et **détection automatique du fond**
   (`segmentation::background_candidate`, case cochée selon L* et bords touchés, Lot A) ;
-  transparence PNG respectée.
-- À faire : choix « ne pas broder cette couleur » par couleur.
+  transparence PNG respectée. **Fond extérieur seulement** (`--skip-background outer`,
+  `segmentation::border_touching_regions`) : seules les régions de la couleur du fond qui
+  touchent le pourtour de l'image sont ignorées ; un blanc enfermé dans le motif (nuage,
+  soleil) reste cousu. Constat : photo réelle d'un DST « vaisseau au coucher de soleil » où le
+  blanc des nuages et de l'écume disparaissait avec le fond.
+- À faire : choix « ne pas broder cette couleur » par couleur. Dialogue « Numérisation automatique » du
+  bureau : case « Seulement le fond extérieur » (`test_main_window`).
 
 ### HP-AUTO-007 — Fusion automatique des couleurs proches [P1] — ☐ À faire
 - Voir HP-THR-011, déclenché à la fin de l'auto-numérisation.
@@ -3307,6 +3312,7 @@ ci-dessus doit les respecter :
 | 2026-10-19 | Claude (remodelage interactif, lot 1) | **HP-VEC-016 ◐** (branche `claude/openstitch-vector-reshape-0b07b1`) : déplacement direct d'un segment de contour (poignées de Bézier, extrémités et nombre de nœuds inchangés, refus des croisements, Échap, un pas d'annulation). **HP-VEC-017/018/019 ajoutées (☐)** : sélection de nœuds, pinceau, préservation des détails. Total +4 entrées. |
 | 2026-10-19 | Claude (HP-I18N-001) | HP-I18N-001 ◐ (infrastructure de traduction : français source, `openstitch_en.ts`, préférence de langue, `test_app_language`) ; +HP-I18N-001.a ☐ (messages du cœur). Chapitre `docs/source/i18n.md`. |
 | 2026-10-19 | Claude (ergonomie des couches) | **HP-OBJ-023 ◐** (vague 1 de l'audit d'ergonomie des couches) : groupe « N couches » avec cases agrégées, bouton « + Couche » sans dialogue, actions de couche dans le menu de ligne, duplication de forme avec ses couches, libellés de suppression explicites, numérotation stable, menu « Plans d'affichage ». Reste : sélecteur de couches des Propriétés, clic canevas sur la couche du dessus, glisser-déposer contraint à la forme. |
+| 2026-10-19 | Claude (guides en courbe) | Roadmap : aucune entrée concernée. Balayage parallèle : guides d'orientation en courbe (`AutoSatinGuide::path`, fils perpendiculaires à la tangente), clé JSON facultative `path`, tracé à 3 points ou plus dans le bureau. Couteau : tests de non-régression multi-couche et directionnel. |
 | 2026-10-19 | Claude (remodelage interactif, lot 2) | **HP-VEC-017 ◐** (branche `claude/vec-node-selection`, PR empilée sur HP-VEC-016) : sélection de nœuds (Alt + cadre, clic sur poignée), déplacement groupé en un pas, transition douce optionnelle ; rotation/échelle dans l'interface et lasso restent à faire. |
 | 2026-10-19 | Claude (remodelage interactif, lot 3) | **HP-VEC-018 ◐** (branche `claude/vec-brush`, PR empilée sur HP-VEC-017) : outil Pinceau (B) poussant / tirant le contour avec influence décroissante, Maj = lisser, un coup = une commande, nombre de nœuds borné ; refit local, molette et stylet restent à faire. |
 | 2026-10-19 | Claude (ergonomie des couches, vague 2) | **HP-OBJ-023 ◐** : barre du sélecteur de couches (▲ ▼ masquer renommer, un pas d'annulation chacun), clic canevas = couche du dessus (`embroideryForVector`), glisser-déposer des couches contraint à la forme (Maj pour sortir). Reste : parent-enfant dans le modèle. |

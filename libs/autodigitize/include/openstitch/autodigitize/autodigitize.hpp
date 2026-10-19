@@ -33,6 +33,11 @@ struct AutoOptions {
     // image carrée). Particulièrement utile sur une image SANS canal alpha :
     // sans transparence, le fond devient une région opaque comme les autres.
     bool skip_largest_region{false};
+    // Avec `skip_largest_region` : n'ignore que les régions de la couleur de fond qui touchent le
+    // pourtour de l'image (le fond extérieur). Une région de même couleur enfermée dans le motif
+    // (nuage blanc, soleil) reste cousue. Un blanc relié au fond par la quantification fait partie
+    // du fond et reste ignoré.
+    bool skip_background_outer_only{false};
 
     // --- Satin sur les bandes (anneaux, rubans, traits épais) ---
     // Vrai : une région ÉTROITE et allongée (largeur moyenne >= 0,8 mm, largeur

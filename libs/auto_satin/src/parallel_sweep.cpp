@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <numbers>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "chord.hpp"
@@ -155,19 +156,62 @@ Result<SkeletonSatinResult> generate_parallel_sweep(const geometry::PathSet& cur
     }
     std::vector<GuideStop> stops;
     diag.orphan_guides = 0;
+    const auto project = [&](Vec2um pt) {
+        return detail::dot(P2{static_cast<double>(pt.x.value), static_cast<double>(pt.y.value)}, n);
+    };
     for (const auto& g : params.guides) {
-        const double s = detail::dot(
-            P2{static_cast<double>(g.anchor.x.value), static_cast<double>(g.anchor.y.value)}, n);
-        if (s < smin - spacing || s > smax + spacing) {
+        // Guide droit : un seul arrêt (ancre + angle). Guide en courbe : un arrêt par sommet, dont
+        // l'angle absolu des fils est perpendiculaire à la tangente du tracé en ce sommet (moyenne
+        // des deux segments voisins, modulo π) ; les sommets hors de l'étendue de la forme sont
+        // ignorés un à un.
+        std::vector<std::pair<Vec2um, double>> samples; // (position, angle en radians)
+        std::vector<Vec2um> pts;
+        for (const Vec2um& pt : g.path) {
+            if (pts.empty() || pts.back() != pt) {
+                pts.push_back(pt);
+            }
+        }
+        bool absolute = g.absolute;
+        if (pts.size() >= 2) {
+            absolute = true;
+            const auto seg = [&](std::size_t i) {
+                return std::atan2(static_cast<double>(pts[i + 1].y.value - pts[i].y.value),
+                                  static_cast<double>(pts[i + 1].x.value - pts[i].x.value));
+            };
+            for (std::size_t i = 0; i < pts.size(); ++i) {
+                double a = 0.0;
+                if (i == 0) {
+                    a = seg(0);
+                } else if (i + 1 == pts.size()) {
+                    a = seg(i - 1);
+                } else {
+                    const double a0 = seg(i - 1);
+                    const double a1 = seg(i);
+                    a = 0.5 * std::atan2(std::sin(2.0 * a0) + std::sin(2.0 * a1),
+                                         std::cos(2.0 * a0) + std::cos(2.0 * a1));
+                }
+                samples.emplace_back(pts[i], a + std::numbers::pi / 2.0);
+            }
+        } else {
+            samples.emplace_back(g.anchor, g.angle_rad);
+        }
+        int kept = 0;
+        for (const auto& [pt, rawAngle] : samples) {
+            const double sPos = project(pt);
+            if (sPos < smin - spacing || sPos > smax + spacing) {
+                continue;
+            }
+            ++kept;
+            const double raw = wrap_half_pi(absolute ? rawAngle - angle : rawAngle);
+            const double dev = std::clamp(raw, -kMaxDeviationRad, kMaxDeviationRad);
+            if (dev != raw) {
+                ++diag.clamped_angle;
+            }
+            stops.push_back({sPos, dev});
+        }
+        if (kept == 0) {
             ++diag.orphan_guides;
-            continue;
         }
-        const double raw = wrap_half_pi(g.absolute ? g.angle_rad - angle : g.angle_rad);
-        const double dev = std::clamp(raw, -kMaxDeviationRad, kMaxDeviationRad);
-        if (dev != raw) {
-            ++diag.clamped_angle;
-        }
-        stops.push_back({s, dev});
     }
     std::stable_sort(stops.begin(), stops.end(),
                      [](const GuideStop& a, const GuideStop& b) { return a.s < b.s; });
