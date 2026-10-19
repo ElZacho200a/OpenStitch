@@ -340,8 +340,11 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
         ->check(CLI::NonNegativeNumber);
     cmd->add_option("--skip-background", v.skipBackground,
                     "Ignorer la plus grande région (le fond) : auto (défaut : seulement si c'est "
-                    "un fond quasi blanc touchant au moins 3 bords) | yes | no")
-        ->check(CLI::IsMember({"auto", "yes", "no", "-1", "0", "1"}));
+                    "un fond quasi blanc touchant au moins 3 bords) | yes | no | outer (seulement "
+                    "les régions "
+                    "de cette couleur qui touchent le pourtour de l'image : un blanc enfermé dans "
+                    "le motif reste cousu)")
+        ->check(CLI::IsMember({"auto", "yes", "no", "outer", "-1", "0", "1", "2"}));
     cmd->add_option("--min-feature-mm", s.min_feature_mm,
                     "Mode formes : les détails plus étroits que cette largeur (mm) sont rendus à "
                     "leur voisin avant numérisation ; 0 = désactivé (défaut : 0)")
@@ -487,7 +490,10 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
 
 void finalize_digitize_options(DigitizeOptionValues& v) {
     const auto& b = v.skipBackground;
-    v.settings.skip_background = (b == "auto" || b == "-1") ? -1 : (b == "yes" || b == "1") ? 1 : 0;
+    v.settings.skip_background = (b == "auto" || b == "-1")   ? -1
+                                 : (b == "yes" || b == "1")   ? 1
+                                 : (b == "outer" || b == "2") ? 2
+                                                              : 0;
 }
 
 int project_exit_code() {

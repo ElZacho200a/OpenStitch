@@ -1393,8 +1393,13 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
 ### HP-AUTO-006 — Suppression du fond [P1] — ◐ Partiel
 - État OpenStitch : option « ignorer le fond » et **détection automatique du fond**
   (`segmentation::background_candidate`, case cochée selon L* et bords touchés, Lot A) ;
-  transparence PNG respectée.
-- À faire : choix « ne pas broder cette couleur » par couleur.
+  transparence PNG respectée. **Fond extérieur seulement** (`--skip-background outer`,
+  `segmentation::border_touching_regions`) : seules les régions de la couleur du fond qui
+  touchent le pourtour de l'image sont ignorées ; un blanc enfermé dans le motif (nuage,
+  soleil) reste cousu. Constat : photo réelle d'un DST « vaisseau au coucher de soleil » où le
+  blanc des nuages et de l'écume disparaissait avec le fond.
+- À faire : choix « ne pas broder cette couleur » par couleur ; option du mode dans le dialogue
+  d'import du bureau.
 
 ### HP-AUTO-007 — Fusion automatique des couleurs proches [P1] — ☐ À faire
 - Voir HP-THR-011, déclenché à la fin de l'auto-numérisation.
