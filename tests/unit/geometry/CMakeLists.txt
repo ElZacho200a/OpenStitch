@@ -10,6 +10,7 @@ add_executable(test_geometry
     test_path.cpp
     test_polyline.cpp
     test_primitives.cpp
+    test_reshape.cpp
     test_shapes.cpp
     test_smooth.cpp
     test_to_curves.cpp

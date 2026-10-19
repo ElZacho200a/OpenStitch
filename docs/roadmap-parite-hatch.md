@@ -37,11 +37,13 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
-| P0 | 12 | 26 | 6 | 44 |
-| P1 | 10 | 62 | 69 | 141 |
-| P2 | 3 | 31 | 62 | 96 |
+| P0 | 12 | 27 | 6 | 45 |
+| P1 | 10 | 62 | 71 | 143 |
+| P2 | 3 | 31 | 63 | 97 |
 | P3 | 0 | 3 | 12 | 15 |
-| **Total** | **25** | **122** | **149** | **296** |
+| **Total** | **25** | **123** | **151** | **300** |
+
+Ajoutés le 2026-10-19 (remodelage interactif, HP-VEC-016 à 019) : **+4 entrées** (HP-VEC-016 P0 ◐ ; 017 et 018 P1 ☐ ; 019 P2 ☐), comptées dans le tableau ci-dessus.
 
 Ajoutés le 2026-10-18 (audit UX/UI, `docs/ux/`) : **+29 entrées ☐** (12 P1, 14 P2, 3 P3 ; HP-UX-040 retiré le jour même) :
 HP-UX-017 à HP-UX-044, HP-PERF-009 et HP-QA-008 (§20, §22, §23). Aucun statut existant n'a été
@@ -1575,6 +1577,36 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
 - Livré (câblage bureau) : Forme › « Combler les vides du bloc… » (dialogue écart et aire maximale, sélection du bloc, annulation en un pas) ; test QTest `fillBlockHolesFillsTheGapBetweenTwoZones`.
 - Reste : retouche manuelle d'une poche avant application (aperçu, exclusion) ; pas de mesure sur corpus des seuils (largeur minimale, écart de fermeture : valeurs d'ingénierie) ; un liseré de tatami laissé par la génération elle-même (ex. première rangée raccourcie d'un rectangle par défaut) est lui aussi détecté et comblé par un petit objet : à confirmer côté moteur.
 - Dépend de : HP-VIEW-005 (carte de densité, même séquence effective).
+
+
+### Remodelage interactif des formes vectorielles (HP-VEC-016 à 019)
+
+Besoin (retour utilisateur) : le moteur d'auto-numérisation est bon ; ce qui coûte du temps est la retouche artistique d'un contour (silhouette, courbure, zone locale) nœud par nœud. Audit du 2026-10-19 : l'existant est `MoveNodeCommand`, `SetNodeHandleCommand`, `SetNodeTypeCommand`, `RemoveNodeCommand` (un nœud ou une poignée à la fois, `NodeHandleItem` dans `apps/desktop/node_handle.hpp`), plus `smooth_path` (HP-VEC-007), `convert_to_curves` (HP-VEC-008) et l'insertion de nœud par De Casteljau (HP-VEC-001, géométrie seulement). **Rien** n'agit sur un segment, une sélection de nœuds ou une zone ; les entrées 007/008 sont globales (toute la forme), pas un remodelage local. Les points de broderie sont dérivés (`effective_sequence`) : toute modification de `VectorObject::paths` les régénère, aucun changement de modèle ni de format `.osp` n'est nécessaire (les tangentes sont déjà persistées). Principe commun : une commande `RewriteVectorPathsCommand` (instantané avant/après de l'objet entier) par GESTE, aperçu calculé par une fonction pure de `libs/geometry`, Échap = aucun effet sur le document, refus des croisements que la forme d'origine n'avait pas.
+
+### HP-VEC-016 — Déplacement direct d'un segment de contour [P0] — ◐ Partiel (2026-10-19)
+- État OpenStitch : voir ci-dessus ; un appui sur le contour d'une forme sélectionnée déplaçait la forme entière.
+- Choix d'algorithme (arbitrage structurant) : la poignée de Bézier est préférée à une déformation locale contrainte (qui ajoute des nœuds et dégrade les courbes à l'usage répété). Le point saisi (paramètre `t` de la cubique, borné à [0,15 ; 0,85]) suit le curseur ; seules les poignées des DEUX nœuds du segment bougent, pondérées par la base de Bernstein. Nœuds d'extrémité et nombre de nœuds inchangés ; nœud Lisse : la poignée opposée pivote (longueur conservée) ; nœud Coin : angle conservé ; un segment droit devient une cubique. Limite connue : sur un contour très dense en micro-segments, tirer un seul segment est peu utile (c'est le rôle du pinceau, HP-VEC-018).
+- Livré (2026-10-19) : `libs/geometry/reshape.*` (`nearest_segment`, `reshape_segment`, `path_self_intersects`, `path_set_has_crossings`, `reshape_path_set_segment`), `commands::ReshapeSegmentCommand` + `make_reshape_segment_command` (un pas d'annulation, restitution exacte), geste dans le bureau (`main_window_reshape.cpp`, `VectorObjectBodyItem::ReshapeHooks`) : glisser sur le CONTOUR (6 px) d'une forme seule sélectionnée en mode Sélection, aperçu en direct (rouge si le contour se croiserait), Maj = verrou d'axe, Échap = annulation, intérieur de la forme = déplacement comme avant ; trous pris en charge. Tests : `test_reshape` (10), `test_vector_path_commands` (+2), `test_segment_reshape` (5 vrais gestes souris).
+- Reste : curseur de survol sur le contour, déplacement d'un segment par ses deux extrémités (variante « translater l'arête » en Alt), tracés ouverts vérifiés dans l'interface, sauvegarde `.osp` rouverte dans un test bout en bout.
+- Modules : `libs/geometry`, `libs/commands`, `apps/desktop`.
+- Acceptation : déformer une portion de courbe sans toucher à un nœud ; angle marqué et jonction lisse préservés ; Échap sans trace dans l'historique ; autres objets inchangés.
+
+### HP-VEC-017 — Sélection multiple et transformation groupée de nœuds [P1] — ☐ À faire
+- État OpenStitch : une poignée à la fois ; aucune sélection de nœuds (la multi-sélection OBJ-001 est une sélection d'OBJETS).
+- À faire : sélection de nœuds de l'objet courant par rectangle (puis lasso), Maj = ajouter/retirer ; déplacement groupé, mise à l'échelle et rotation autour du centre de la sélection ; option « transition douce » avec décroissance de l'influence sur les nœuds voisins non sélectionnés ; une commande par geste.
+- Modules : `libs/geometry` (transformation de nœuds avec leurs tangentes), `libs/commands`, `apps/desktop` (état de sélection de nœuds dans `renderBase`).
+- Dépend de : HP-VEC-016 (infrastructure de geste/aperçu).
+- Acceptation : corriger une zone de quinze nœuds en un geste ; undo/redo sans dérive.
+
+### HP-VEC-018 — Pinceau de déformation du contour [P1] — ☐ À faire
+- À faire : outil unique « Retoucher » : pousser/tirer avec un rayon et une intensité réglables (influence décroissante, noyau lisse), mode « lisser » local ; calcul sur le tracé source avec rééchantillonnage borné (pas de prolifération de nœuds : insertion seulement là où la courbure l'exige, fusion sinon) et refit de courbes local ; aperçu interactif ; une commande par coup de pinceau. Étudier un budget de nœuds et un test « 50 passages successifs » (pas de dégradation).
+- Modules : `libs/geometry`, `libs/commands`, `apps/desktop`.
+- Dépend de : HP-VEC-016, HP-VEC-007 (refit local).
+- Acceptation : réactivité sur un contour de plusieurs milliers de points (mesure au banc) ; nombre de nœuds borné après répétitions.
+
+### HP-VEC-019 — Préservation des détails pendant le remodelage [P2] — ☐ À faire
+- À faire : option du pinceau (HP-VEC-018) et du déplacement groupé (HP-VEC-017), pas un outil de plus : décomposition lissage + détail, le détail local suit la déformation de la base (déformation « Laplacienne » à poids décroissants) ; à n'ajouter que si le test comparatif sur un contour auto-numérisé montre un gain visible.
+- Dépend de : HP-VEC-017, HP-VEC-018.
 
 ---
 
@@ -3246,3 +3278,4 @@ ci-dessus doit les respecter :
 | 2026-10-18 | Claude (couches par zone) | **HP-OBJ-023 ▶ En cours** (« Couches par zone », P1) : empilement d'un objet de broderie supplémentaire sur la même zone via `AddLayerCommand`, sans nouveau champ de modèle. Section « Couches » ajoutée à `docs/source/embroidery-objects.md`. Le tableau de bord ne compte pas encore le statut ▶ ; total inchangé. |
 | 2026-10-18 | Claude (couches par zone, livraison) | **HP-OBJ-023 ▶ → ◐** : `AddLayerCommand` et action « Ajouter une couche… » livrées avec leurs tests ; reste le lien parent-enfant et le regroupement visuel. `test_color_blend_dialog` échoue aussi sur `main` seul (aperçu non peint hors écran), sans lien avec cette entrée. |
 | 2026-10-18 | Claude (tatami pointillé) | HP-ENG-006.b ◐ : défaut `stagger` du tatami 2 → 3 (aspect pointillé constaté en broderie réelle) ; non validé sur tissu. |
+| 2026-10-19 | Claude (remodelage interactif, lot 1) | **HP-VEC-016 ◐** (branche `claude/openstitch-vector-reshape-0b07b1`) : déplacement direct d'un segment de contour (poignées de Bézier, extrémités et nombre de nœuds inchangés, refus des croisements, Échap, un pas d'annulation). **HP-VEC-017/018/019 ajoutées (☐)** : sélection de nœuds, pinceau, préservation des détails. Total +4 entrées. |

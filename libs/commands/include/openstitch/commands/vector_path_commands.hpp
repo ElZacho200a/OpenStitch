@@ -58,6 +58,15 @@ public:
     [[nodiscard]] std::string name() const override { return "Convertir en courbes"; }
 };
 
+// Remodelage interactif d'un segment (HP-VEC-016) : le résultat est calculé au relâchement par
+// `geometry::reshape_path_set_segment` ; UN pas d'annulation par geste.
+class ReshapeSegmentCommand final : public RewriteVectorPathsCommand {
+public:
+    explicit ReshapeSegmentCommand(std::vector<Entry> entries)
+        : RewriteVectorPathsCommand(std::move(entries)) {}
+    [[nodiscard]] std::string name() const override { return "Remodeler un segment"; }
+};
+
 // Tolérance de lissage par défaut : 0,2 mm.
 inline constexpr Micrometers kDefaultSmoothTolerance{200};
 
@@ -69,5 +78,13 @@ inline constexpr Micrometers kDefaultSmoothTolerance{200};
                                                  Micrometers tolerance = kDefaultSmoothTolerance);
 [[nodiscard]] VectorOpResult make_convert_to_curves_command(const document::Project& project,
                                                             const std::vector<ObjectId>& ids);
+
+// Remodèle le segment `segment` (index du nœud de départ) du chemin `path_index` (0 = extérieur,
+// i+1 = trou i) du morceau `set_index` de l'objet `id`, en tirant son point `t` de `delta`
+// (µm, repère du document). Commande nulle (avec `error`) si l'objet/segment n'existe pas, si
+// rien ne change ou si le résultat introduirait un croisement.
+[[nodiscard]] VectorOpResult
+make_reshape_segment_command(const document::Project& project, ObjectId id, std::size_t set_index,
+                             std::size_t path_index, std::size_t segment, double t, Vec2um delta);
 
 } // namespace openstitch::commands

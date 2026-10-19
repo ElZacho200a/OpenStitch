@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <functional>
 
+#include "openstitch/geometry/reshape.hpp"
 #include "openstitch/geometry/smooth.hpp"
 #include "openstitch/geometry/to_curves.hpp"
 
@@ -87,6 +88,33 @@ VectorOpResult make_convert_to_curves_command(const document::Project& project,
     }
     result.resulting_objects = entries.size();
     result.command = std::make_unique<ConvertToCurvesCommand>(std::move(entries));
+    return result;
+}
+
+VectorOpResult make_reshape_segment_command(const document::Project& project, ObjectId id,
+                                            std::size_t set_index, std::size_t path_index,
+                                            std::size_t segment, double t, Vec2um delta) {
+    VectorOpResult result;
+    const auto* object = project.findObject(id);
+    if (object == nullptr || set_index >= object->paths.size()) {
+        result.error = "Objet ou morceau introuvable.";
+        return result;
+    }
+    auto reshaped = geometry::reshape_path_set_segment(object->paths[set_index], path_index,
+                                                       segment, t, delta, Micrometers{50});
+    if (!reshaped) {
+        result.error = "Remodelage refusé : segment introuvable ou contour qui se croiserait.";
+        return result;
+    }
+    if (*reshaped == object->paths[set_index]) {
+        result.error = "Rien à remodeler : la forme ne change pas.";
+        return result;
+    }
+    std::vector<geometry::PathSet> after = object->paths;
+    after[set_index] = std::move(*reshaped);
+    result.resulting_objects = 1;
+    result.command = std::make_unique<ReshapeSegmentCommand>(
+        std::vector<RewriteVectorPathsCommand::Entry>{{id, std::move(after)}});
     return result;
 }
 
