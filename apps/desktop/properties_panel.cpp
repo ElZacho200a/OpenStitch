@@ -431,7 +431,57 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
     fillLayers_->setToolTip(tr("Chaque couche garde sa couleur et ses réglages. "
                                "La liste suit l'ordre de couture, fond puis dessus."));
     layersLayout->addWidget(fillLayers_);
+    // Barre de la couche choisie : monter / descendre dans la pile, masquer, renommer.
+    auto* toolsRow = new QHBoxLayout;
+    toolsRow->setContentsMargins(0, 0, 0, 0);
+    const auto makeTool = [&](const QString& text, const QString& name, const QString& tip) {
+        auto* b = new QPushButton(text, layerRow_);
+        b->setObjectName(name);
+        b->setToolTip(tip);
+        b->setAccessibleName(tip);
+        toolsRow->addWidget(b);
+        return b;
+    };
+    layerUp_ = makeTool(tr("▲"), QStringLiteral("button_layerUp"),
+                        tr("Monter la couche : cousue plus tard, donc par-dessus."));
+    layerDown_ = makeTool(tr("▼"), QStringLiteral("button_layerDown"),
+                          tr("Descendre la couche vers le fond : cousue plus tôt."));
+    layerVisible_ =
+        makeTool(tr("Masquer"), QStringLiteral("button_layerVisible"),
+                 tr("Masquer ou afficher la couche (un objet masqué n'est pas cousu)."));
+    layerRename_ =
+        makeTool(tr("Renommer…"), QStringLiteral("button_layerRename"), tr("Renommer la couche."));
+    layersLayout->addLayout(toolsRow);
+    const auto currentLayerId = [this]() -> std::optional<ObjectId> {
+        const int index = fillLayers_->currentIndex();
+        if (index < 0) {
+            return std::nullopt;
+        }
+        return ObjectId{fillLayers_->itemData(index).toULongLong()};
+    };
+    connect(layerUp_, &QPushButton::clicked, this, [this, currentLayerId] {
+        if (const auto id = currentLayerId()) {
+            emit layerMoveRequested(*id, +1);
+        }
+    });
+    connect(layerDown_, &QPushButton::clicked, this, [this, currentLayerId] {
+        if (const auto id = currentLayerId()) {
+            emit layerMoveRequested(*id, -1);
+        }
+    });
+    connect(layerVisible_, &QPushButton::clicked, this, [this, currentLayerId] {
+        if (const auto id = currentLayerId()) {
+            const bool nowVisible = fillLayers_->currentData(Qt::UserRole + 1).toBool();
+            emit layerVisibilityRequested(*id, !nowVisible);
+        }
+    });
+    connect(layerRename_, &QPushButton::clicked, this, [this, currentLayerId] {
+        if (const auto id = currentLayerId()) {
+            emit layerRenameRequested(*id);
+        }
+    });
     connect(fillLayers_, &QComboBox::currentIndexChanged, this, [this](int index) {
+        updateLayerTools();
         if (index >= 0) {
             emit fillLayerSelected(ObjectId{fillLayers_->itemData(index).toULongLong()});
         }
@@ -485,13 +535,16 @@ void PropertiesPanel::setFillLayers(const QList<FillLayer>& layers,
         same = fillLayers_->itemData(static_cast<int>(i)).toULongLong() == layers[i].id.value &&
                fillLayers_->itemText(static_cast<int>(i)) == layers[i].name &&
                fillLayers_->itemData(static_cast<int>(i), Qt::DecorationRole).value<QColor>() ==
-                   layers[i].color;
+                   layers[i].color &&
+               fillLayers_->itemData(static_cast<int>(i), Qt::UserRole + 1).toBool() ==
+                   layers[i].visible;
     }
     if (!same) {
         fillLayers_->clear();
         for (const auto& layer : layers) {
             fillLayers_->addItem(layer.name, QVariant::fromValue<qulonglong>(layer.id.value));
             fillLayers_->setItemData(fillLayers_->count() - 1, layer.color, Qt::DecorationRole);
+            fillLayers_->setItemData(fillLayers_->count() - 1, layer.visible, Qt::UserRole + 1);
         }
     }
     if (selected) {
@@ -500,6 +553,17 @@ void PropertiesPanel::setFillLayers(const QList<FillLayer>& layers,
     }
     layerRow_->setVisible(layers.size() > 1);
     fillColor_->setVisible(!layers.empty());
+    updateLayerTools();
+}
+
+void PropertiesPanel::updateLayerTools() {
+    const int index = fillLayers_->currentIndex();
+    layerUp_->setEnabled(index >= 0 && index + 1 < fillLayers_->count());
+    layerDown_->setEnabled(index > 0);
+    layerVisible_->setEnabled(index >= 0);
+    layerRename_->setEnabled(index >= 0);
+    const bool visible = index < 0 || fillLayers_->currentData(Qt::UserRole + 1).toBool();
+    layerVisible_->setText(visible ? tr("Masquer") : tr("Afficher"));
 }
 
 void PropertiesPanel::setBlendActions(QAction* single, QAction* zones, bool singleContext,
