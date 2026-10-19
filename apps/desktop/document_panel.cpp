@@ -6,6 +6,7 @@
 #include <QAction>
 #include <QComboBox>
 #include <QDropEvent>
+#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QIcon>
@@ -14,6 +15,7 @@
 #include <QMenu>
 #include <QPainter>
 #include <QPixmap>
+#include <QPushButton>
 #include <QScrollBar>
 #include <QStyle>
 #include <QStyledItemDelegate>
@@ -326,6 +328,22 @@ DocumentPanel::DocumentPanel(QWidget* parent) : QWidget(parent) {
     connect(typeFilter_, &QComboBox::currentIndexChanged, this, [this] { applyFilter(); });
     tabs_ = new QTabWidget(this);
     layout->addWidget(tabs_);
+    // « + Couche » : empile une couche de couture sur la ligne choisie (HP-OBJ-023), comme le
+    // bouton « nouveau calque » d'un éditeur d'images.
+    addLayerBtn_ = new QPushButton(tr("+ Couche"), this);
+    addLayerBtn_->setObjectName(QStringLiteral("button_documentAddLayer"));
+    addLayerBtn_->setToolTip(tr("Ajouter une couche de couture sur la forme de la ligne choisie "
+                                "(Maj + clic : choisir le type et la couleur)."));
+    addLayerBtn_->setEnabled(false);
+    layout->addWidget(addLayerBtn_);
+    connect(addLayerBtn_, &QPushButton::clicked, this, [this] {
+        if (const QTreeWidgetItem* item = layerTargetItem()) {
+            const bool interactive =
+                QGuiApplication::keyboardModifiers().testFlag(Qt::ShiftModifier);
+            emit addLayerRequested(ObjectId{item->data(0, Qt::UserRole).toULongLong()},
+                                   interactive);
+        }
+    });
     connect(filterEdit_, &QLineEdit::textChanged, this, [this] { applyFilter(); });
 
     auto* tree = new ObjectTree(tabs_);
@@ -369,8 +387,10 @@ DocumentPanel::DocumentPanel(QWidget* parent) : QWidget(parent) {
     applyTheme();
     connect(&AppTheme::instance(), &AppTheme::changed, this, [this] { applyTheme(); });
 
-    connect(objectsList_, &QTreeWidget::itemSelectionChanged, this,
-            [this] { onObjectSelectionChanged(); });
+    connect(objectsList_, &QTreeWidget::itemSelectionChanged, this, [this] {
+        updateAddLayerButton(); // aussi pour une sélection venue du canevas (syncing_)
+        onObjectSelectionChanged();
+    });
     // Ctrl/Maj + clic : sélection multiple de régions (comme sur le canevas).
     regionsList_->setSelectionMode(QAbstractItemView::ExtendedSelection);
     connect(regionsList_, &QListWidget::itemSelectionChanged, this, [this] {
@@ -396,6 +416,22 @@ DocumentPanel::DocumentPanel(QWidget* parent) : QWidget(parent) {
         }
         const QVariant data = item->data(0, Qt::UserRole);
         if (!data.isValid()) {
+            // Ligne de groupe (couches d'une même forme) : ses cases visent toutes les couches.
+            if (item->data(0, kGroupSourceRole).isValid() &&
+                (col == kVisibleCol || col == kLockCol)) {
+                std::vector<ObjectId> ids;
+                for (int c = 0; c < item->childCount(); ++c) {
+                    ids.push_back(ObjectId{item->child(c)->data(0, Qt::UserRole).toULongLong()});
+                }
+                const bool on = item->checkState(col) == Qt::Checked;
+                if (col == kVisibleCol) {
+                    QTimer::singleShot(
+                        0, this, [this, ids, on] { emit visibilityChangeRequested(ids, on); });
+                } else {
+                    QTimer::singleShot(0, this,
+                                       [this, ids, on] { emit orderLockChangeRequested(ids, on); });
+                }
+            }
             return;
         }
         const ObjectId id{data.toULongLong()};
@@ -573,6 +609,41 @@ void DocumentPanel::refresh(
         item->setToolTip(kLockCol, tr("Ordre figé : l'optimisation ne déplace pas cet objet."));
     }
 
+    // Ligne de groupe : libellé « N couches » (ou « N sections » pour un plan satin), cases
+    // Visible / Figé agrégées (partiellement cochée si les couches divergent) et pastille du fil
+    // de la couche du dessus -- comme la ligne d'un dossier de calques.
+    for (const auto& [source, group] : groupBySourceVector) {
+        int visibleCount = 0;
+        int lockedCount = 0;
+        bool allSatin = true;
+        const int n = group->childCount();
+        for (int c = 0; c < n; ++c) {
+            const QTreeWidgetItem* child = group->child(c);
+            visibleCount += child->checkState(kVisibleCol) == Qt::Checked ? 1 : 0;
+            lockedCount += child->checkState(kLockCol) == Qt::Checked ? 1 : 0;
+            allSatin = allSatin &&
+                       child->data(0, kGlyphRole).toInt() == static_cast<int>(StitchGlyph::Satin);
+        }
+        const auto stateOf = [n](int count) {
+            return count == 0 ? Qt::Unchecked : count == n ? Qt::Checked : Qt::PartiallyChecked;
+        };
+        group->setText(0, (allSatin ? tr("%1 (%2 sections)") : tr("%1 (%2 couches)"))
+                              .arg(find_vector_name(ObjectId{source}))
+                              .arg(n));
+        group->setToolTip(0, allSatin
+                                 ? tr("Cliquer sélectionne toutes les sections de cette forme.")
+                                 : tr("Couches de couture de cette forme, de bas en haut "
+                                      "dans l'ordre de couture. Cliquer les sélectionne "
+                                      "toutes."));
+        group->setCheckState(kVisibleCol, stateOf(visibleCount));
+        group->setCheckState(kLockCol, stateOf(lockedCount));
+        group->setToolTip(kVisibleCol, tr("Afficher ou masquer toutes les couches de la forme."));
+        group->setToolTip(kLockCol, tr("Figer ou libérer l'ordre de toutes les couches."));
+        if (n > 0) {
+            group->setData(0, kSwatchRole, group->child(n - 1)->data(0, kSwatchRole));
+        }
+    }
+
     // Formes vectorielles non cousues : lignes indépendantes (navigables avant toute couture).
     std::set<std::uint64_t> sewnSources;
     for (const auto& e : project.embroidery_objects) {
@@ -636,7 +707,26 @@ void DocumentPanel::refresh(
     }
 
     syncing_ = false;
+    updateAddLayerButton();
     applyFilter();
+}
+
+QTreeWidgetItem* DocumentPanel::layerTargetItem() const {
+    const QList<QTreeWidgetItem*> items = objectsList_->selectedItems();
+    if (items.size() != 1) {
+        return nullptr;
+    }
+    QTreeWidgetItem* item = items.front();
+    if (item->data(0, kGroupSourceRole).isValid() && item->childCount() > 0) {
+        item = item->child(item->childCount() - 1); // la couche du dessus
+    }
+    return item->data(0, Qt::UserRole).isValid() ? item : nullptr;
+}
+
+void DocumentPanel::updateAddLayerButton() {
+    if (addLayerBtn_ != nullptr) {
+        addLayerBtn_->setEnabled(layerTargetItem() != nullptr);
+    }
 }
 
 void DocumentPanel::applyTheme() {
@@ -933,6 +1023,50 @@ void DocumentPanel::handleDrop(const QPoint& viewportPos) {
             return; // forme non cousue : pas de rang de couture
         }
     }
+    // Couches d'une même forme : le glisser-déposer réordonne la pile DANS la forme. Un dépôt
+    // hors de celle-ci est ramené au bord le plus proche de sa pile (Maj le laisse sortir, pour
+    // coudre une couche à un autre rang du dessin).
+    if (!QGuiApplication::keyboardModifiers().testFlag(Qt::ShiftModifier)) {
+        std::map<std::uint64_t, std::uint64_t> sourceOf; // id de broderie -> forme source
+        const std::function<void(QTreeWidgetItem*)> scan = [&](QTreeWidgetItem* it) {
+            if (it->data(0, Qt::UserRole).isValid()) {
+                sourceOf[it->data(0, Qt::UserRole).toULongLong()] =
+                    it->data(0, kSourceVectorRole).toULongLong();
+            }
+            for (int c = 0; c < it->childCount(); ++c) {
+                scan(it->child(c));
+            }
+        };
+        for (int i = 0; i < objectsList_->topLevelItemCount(); ++i) {
+            scan(objectsList_->topLevelItem(i));
+        }
+        const std::uint64_t shape = sourceOf[moved.front().value];
+        const bool oneShape =
+            shape != 0 && std::all_of(moved.begin(), moved.end(),
+                                      [&](ObjectId id) { return sourceOf[id.value] == shape; });
+        if (oneShape) {
+            std::vector<ObjectId> stack; // la pile de la forme, hors couches déplacées
+            for (const ObjectId id : order_) {
+                if (sourceOf[id.value] == shape &&
+                    std::find(moved.begin(), moved.end(), id) == moved.end()) {
+                    stack.push_back(id);
+                }
+            }
+            const bool targetInStack = target.valid() && sourceOf[target.value] == shape;
+            // Une forme à couche unique (ou dont toutes les couches bougent) n'a pas de pile à
+            // préserver : le dépôt reste libre.
+            if (!stack.empty() && !targetInStack) {
+                const auto firstOfShape =
+                    std::find_if(order_.begin(), order_.end(),
+                                 [&](ObjectId id) { return sourceOf[id.value] == shape; });
+                const auto targetPos =
+                    target.valid() ? std::find(order_.begin(), order_.end(), target) : order_.end();
+                const bool beforeStack = target.valid() && targetPos < firstOfShape;
+                target = beforeStack ? stack.front() : stack.back();
+                after = !beforeStack;
+            }
+        }
+    }
     const std::vector<ObjectId> next = reorderedAfterDrop(order_, moved, target, after);
     if (next == order_) {
         return;
@@ -992,7 +1126,31 @@ QMenu* DocumentPanel::createContextMenu(const QPoint& viewportPos) {
         });
         menu->addSeparator();
     }
-    QAction* del = menu->addAction(tr("&Supprimer"));
+    // Couches de couture : ajouter / dupliquer sur la ligne (ou sur la couche du dessus d'un
+    // groupe), supprimer une seule couche sans toucher aux autres.
+    bool oneLayerOfMany = false;
+    if (const QTreeWidgetItem* target = layerTargetItem()) {
+        const ObjectId targetId{target->data(0, Qt::UserRole).toULongLong()};
+        QAction* add = menu->addAction(tr("Ajouter une &couche"));
+        add->setObjectName(QStringLiteral("action_docRowAddLayer"));
+        connect(add, &QAction::triggered, this,
+                [this, targetId] { emit addLayerRequested(targetId, false); });
+        QAction* addAsk = menu->addAction(tr("Ajouter une couche…"));
+        addAsk->setObjectName(QStringLiteral("action_docRowAddLayerAsk"));
+        addAsk->setToolTip(tr("Choisir le type de points et la couleur du fil."));
+        connect(addAsk, &QAction::triggered, this,
+                [this, targetId] { emit addLayerRequested(targetId, true); });
+        if (objectsList_->selectedItems().front() == target) {
+            QAction* dup = menu->addAction(tr("&Dupliquer la couche"));
+            dup->setObjectName(QStringLiteral("action_docRowDuplicateLayer"));
+            connect(dup, &QAction::triggered, this,
+                    [this, targetId] { emit duplicateLayerRequested(targetId); });
+            oneLayerOfMany = target->parent() != nullptr && target->parent()->childCount() > 1;
+        }
+        menu->addSeparator();
+    }
+    QAction* del =
+        menu->addAction(oneLayerOfMany ? tr("&Supprimer cette couche") : tr("&Supprimer"));
     del->setObjectName(QStringLiteral("action_docRowDelete"));
     connect(del, &QAction::triggered, this,
             [this, embroidery, vectors] { emit deleteRequested(embroidery, vectors); });

@@ -11,6 +11,7 @@
 #include <QListWidget>
 #include <QMenu>
 #include <QMessageBox>
+#include <QRegularExpression>
 #include <QSignalBlocker>
 #include <QStatusBar>
 
@@ -18,6 +19,7 @@
 #include <cmath>
 #include <limits>
 #include <numbers>
+#include <set>
 
 #include <QColorDialog>
 
@@ -784,6 +786,107 @@ std::array<std::uint8_t, 3> MainWindow::defaultLayerColor(const std::array<std::
     return rgb;
 }
 
+QString MainWindow::nextLayerName(const document::EmbroideryObject& base) const {
+    // Racine = nom de la base sans son éventuel suffixe « – couche N » (ajouter une couche
+    // depuis une couche ne doit pas empiler les suffixes) ; N = premier numéro libre parmi les
+    // couches de la même forme, donc stable après une suppression.
+    const QRegularExpression suffix(QRegularExpression::escape(tr(" – couche ")) +
+                                    QStringLiteral("\\d+$"));
+    QString root = QString::fromStdString(base.name);
+    root.remove(suffix);
+    std::set<QString> used;
+    for (const auto& e : project_.embroidery_objects) {
+        if (e.source_vector == base.source_vector) {
+            used.insert(QString::fromStdString(e.name));
+        }
+    }
+    for (int n = 2;; ++n) {
+        const QString candidate = tr("%1 – couche %2").arg(root).arg(n);
+        if (used.count(candidate) == 0) {
+            return candidate;
+        }
+    }
+}
+
+bool MainWindow::addLayerQuick(ObjectId baseId) {
+    const auto* base = project_.findEmbroidery(baseId);
+    if (base == nullptr) {
+        return false;
+    }
+    // Un geste, aucun dialogue : même famille de points que la couche visée, fil complémentaire.
+    return addLayer(baseId, stitchTypeIndex(*base), defaultLayerColor(base->rgb));
+}
+
+bool MainWindow::duplicateLayer(ObjectId id) {
+    const auto* source = project_.findEmbroidery(id);
+    if (source == nullptr) {
+        return false;
+    }
+    document::EmbroideryObject copy = *source;
+    copy.id = project_.object_ids.next();
+    copy.name = nextLayerName(*source).toStdString();
+    const ObjectId copyId = copy.id;
+    const ObjectId sourceId = source->source_vector;
+    undoStack_.execute(std::make_unique<commands::AddLayerCommand>(id, std::move(copy)), project_);
+    setSelection({.embroidery = copyId, .objects = {sourceId}});
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(tr("Couche dupliquée."));
+    return true;
+}
+
+bool MainWindow::moveLayer(ObjectId id, int direction) {
+    auto& all = project_.embroidery_objects;
+    const auto it = std::find_if(all.begin(), all.end(), [&](const auto& e) { return e.id == id; });
+    if (it == all.end() || direction == 0) {
+        return false;
+    }
+    // Voisin = la couche de la MÊME forme la plus proche dans le sens demandé : on échange leurs
+    // rangs de couture, les objets des autres formes ne bougent pas.
+    const auto index = static_cast<std::ptrdiff_t>(it - all.begin());
+    const auto step = direction > 0 ? 1 : -1;
+    auto j = index + step;
+    while (j >= 0 && j < static_cast<std::ptrdiff_t>(all.size()) &&
+           all[static_cast<std::size_t>(j)].source_vector != it->source_vector) {
+        j += step;
+    }
+    if (j < 0 || j >= static_cast<std::ptrdiff_t>(all.size())) {
+        return false; // déjà au bout de la pile
+    }
+    std::vector<ObjectId> order;
+    order.reserve(all.size());
+    for (const auto& e : all) {
+        order.push_back(e.id);
+    }
+    std::swap(order[static_cast<std::size_t>(index)], order[static_cast<std::size_t>(j)]);
+    undoStack_.execute(std::make_unique<commands::ReorderEmbroideryCommand>(order), project_);
+    refreshImage();
+    refreshOrderPanel();
+    updateActions();
+    statusBar()->showMessage(direction > 0 ? tr("Couche montée.") : tr("Couche descendue."));
+    return true;
+}
+
+void MainWindow::renameLayerInteractive(ObjectId id) {
+    const auto* layer = project_.findEmbroidery(id);
+    if (layer == nullptr) {
+        return;
+    }
+    bool ok = false;
+    const QString name =
+        QInputDialog::getText(this, tr("Renommer la couche"), tr("Nom de la couche :"),
+                              QLineEdit::Normal, QString::fromStdString(layer->name), &ok)
+            .trimmed();
+    // Les dialogues pompent la boucle d'événements : l'objet est re-résolu avant d'agir.
+    if (!ok || name.isEmpty() || project_.findEmbroidery(id) == nullptr) {
+        return;
+    }
+    undoStack_.execute(std::make_unique<commands::RenameEmbroideryCommand>(id, name.toStdString()),
+                       project_);
+    refreshImage();
+    updateActions();
+}
+
 bool MainWindow::addLayer(ObjectId baseId, int type, const std::array<std::uint8_t, 3>& rgb) {
     const auto* base = project_.findEmbroidery(baseId);
     if (base == nullptr) {
@@ -798,16 +901,9 @@ bool MainWindow::addLayer(ObjectId baseId, int type, const std::array<std::uint8
         return false;
     }
     ui_memory::creation::apply(params); // dernier réglage de création, comme une forme neuve
-    // Numéro : la base est la couche 1 de sa forme.
-    const auto sameShape =
-        std::count_if(project_.embroidery_objects.begin(), project_.embroidery_objects.end(),
-                      [&](const auto& e) { return e.source_vector == base->source_vector; });
     document::EmbroideryObject layer;
     layer.id = project_.object_ids.next();
-    layer.name = tr("%1 – couche %2")
-                     .arg(QString::fromStdString(base->name))
-                     .arg(sameShape + 1)
-                     .toStdString();
+    layer.name = nextLayerName(*base).toStdString();
     layer.source_vector = base->source_vector;
     layer.rgb = rgb;
     layer.params = std::move(params);
