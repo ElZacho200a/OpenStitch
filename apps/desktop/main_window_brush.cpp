@@ -72,10 +72,10 @@ void MainWindow::buildBrushTool() {
     toolBrushAct_->setObjectName(QStringLiteral("tool_brush"));
     toolBrushAct_->setCheckable(true);
     toolBrushAct_->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_B));
-    toolBrushAct_->setToolTip(
-        tr("Pinceau de déformation (Maj+B)\nGlissez sur le contour de la forme sélectionnée pour le "
-           "pousser ou le tirer ; Maj : lisser. [ et ] changent le rayon, Échap annule le coup "
-           "de pinceau."));
+    toolBrushAct_->setToolTip(tr(
+        "Pinceau de déformation (Maj+B)\nGlissez sur le contour de la forme sélectionnée pour le "
+        "pousser ou le tirer ; Maj : lisser. [ et ] changent le rayon, Échap annule le coup "
+        "de pinceau."));
     connect(toolBrushAct_, &QAction::triggered, this, [this] { setTool(Tool::Brush); });
 
     brushSettingsAct_ = new QAction(tr("Ré&glages du pinceau…"), this);
