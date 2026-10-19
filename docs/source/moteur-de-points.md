@@ -268,7 +268,7 @@ divergence notable contre `libs/stitch_generation/src/tatami.cpp`.
 de rangées horizontales espacées de `row_spacing` (400 µm par défaut) →
 intersections pair-impair par rangée → pénétrations sur une grille de pas
 `stitch_length` (3 mm par défaut), déphasée d'une rangée à l'autre selon
-`stagger` (2 par défaut) → les segments de rangées voisines qui se chevauchent
+`stagger` (3 par défaut pour le tatami, 2 pour le remplissage directionnel) → les segments de rangées voisines qui se chevauchent
 en x sont les arêtes d'un graphe, parcouru par un algorithme glouton
 (`current` → voisin non visité le plus proche, sinon saut vers le segment non
 visité le plus proche) → rotation inverse. Chaque liaison cousue (dans une

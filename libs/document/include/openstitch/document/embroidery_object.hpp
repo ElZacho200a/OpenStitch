@@ -39,7 +39,10 @@ struct TatamiParams {
     Micrometers row_spacing{400};     // écart entre rangées (densité) — 0,4 mm
     Micrometers stitch_length{3'000}; // longueur de point le long d'une rangée
     Micrometers inset{200};           // retrait du bord (compensation de contour)
-    int stagger{2};                   // rangées avant répétition de la phase des pénétrations
+    // Rangées avant répétition de la phase des pénétrations. 3 (et non 2) : à 2, les
+    // pénétrations d'une rangée sur deux s'alignent en colonnes et la pièce brodée
+    // paraît « pointillée » ; 3 répartit les trous en briques (décalage de 1/3).
+    int stagger{3};
     // Tatami avancé (Lot 7) — désactivé par défaut, rétrocompatible.
     bool underlay_edge{false};           // sous-couche de contour (running rentré)
     bool underlay_parallel{false};       // sous-couche de rangées perpendiculaires espacées
