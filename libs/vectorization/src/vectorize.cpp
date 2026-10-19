@@ -11,8 +11,8 @@
 
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/clean.hpp"
-#include "openstitch/geometry/measure.hpp"
 #include "openstitch/geometry/curve_fit.hpp"
+#include "openstitch/geometry/measure.hpp"
 #include "openstitch/geometry/simplify.hpp"
 
 namespace openstitch::vectorization {
