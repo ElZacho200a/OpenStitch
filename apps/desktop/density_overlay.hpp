@@ -15,6 +15,7 @@
 #include "openstitch/core/units.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_analysis/density_map.hpp"
+#include "openstitch/stitch_analysis/thickness_map.hpp"
 
 namespace openstitch::desktop {
 
@@ -50,6 +51,37 @@ struct DensityResult {
 // Clé de cache : condensat de la séquence + seuil. Deux séquences identiques -> même clé.
 [[nodiscard]] std::uint64_t densityKey(const stitch::StitchSequence& sequence, double threshold);
 
+// Carte d'ÉPAISSEUR estimée (HP-VIEW-014) : même grille et même palette que la densité, mais
+// l'échelle est en millimètres (`raster.scale_max` en mm) et les cases au-delà de `max_layers` sont
+// plus opaques. Le calcul vient de stitch_analysis/thickness_map.hpp.
+struct ThicknessResult {
+    DensityRaster raster;
+    Vec2um origin{};
+    Micrometers cell{0};
+    stitch_analysis::ThicknessPeak peak;
+};
+
+[[nodiscard]] DensityRaster rasterizeThickness(const stitch_analysis::DensityMap& map,
+                                               const stitch_analysis::ThicknessOptions& options);
+// Calcul pur et déterministe (sans Qt-GUI), sûr hors du fil UI.
+[[nodiscard]] ThicknessResult computeThickness(const stitch::StitchSequence& sequence,
+                                               const stitch_analysis::ThicknessOptions& options);
+// Clé de cache : séquence + réglages d'épaisseur + côté de case (donc le zoom).
+[[nodiscard]] std::uint64_t thicknessKey(const stitch::StitchSequence& sequence,
+                                         const stitch_analysis::ThicknessOptions& options);
+
+// Réglages de la carte d'épaisseur, mémorisés d'une session à l'autre. Valeurs initiales : celles
+// du cœur (0,20 mm par couche, seuil 3 couches).
+struct ThicknessSettings {
+    double layerMm{0.2};
+    double maxLayers{stitch_analysis::ThicknessOptions{}.max_layers};
+
+    [[nodiscard]] static ThicknessSettings load();
+    void save() const;
+    // Options du cœur pour un côté de case donné.
+    [[nodiscard]] stitch_analysis::ThicknessOptions options(Micrometers cell) const;
+};
+
 // Réglages des deux règles d'analyse désactivées par défaut (HP-PROD-007), mémorisés d'une
 // session à l'autre. Valeurs initiales : seuil de densité du cœur ; coupes : 50.
 struct ExtraRuleSettings {
@@ -73,6 +105,9 @@ class DensityLegend : public QWidget {
 public:
     explicit DensityLegend(QWidget* parent);
     void setRange(double scaleMax, double threshold);
+    // Bascule la légende en mode « épaisseur estimée » (mm, 2 décimales) ou « densité ».
+    void setThicknessMode(bool thickness);
+    [[nodiscard]] bool thicknessMode() const { return thicknessMode_; }
     [[nodiscard]] double scaleMax() const { return scaleMax_; }
     [[nodiscard]] double threshold() const { return threshold_; }
 
@@ -84,6 +119,7 @@ private:
     void place();
     double scaleMax_{1.0};
     double threshold_{0.0};
+    bool thicknessMode_{false};
 };
 
 } // namespace openstitch::desktop

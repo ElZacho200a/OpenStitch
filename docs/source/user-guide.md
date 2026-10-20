@@ -718,6 +718,7 @@ se gèrent dans la liste Document (voir « Couches de couture » ci-dessous) :
 | Rendu réaliste ▸ Activer | Ctrl+Maj+R | Dessine chaque point comme un fil texturé (voir ci-dessous) |
 | Rendu réaliste ▸ Réglages… | — | Épaisseur du fil, relief, brillance, torsion, ombre, tissu, qualité |
 | Carte de densité | — | Surimpression colorée de la densité de points (voir ci-dessous) |
+| Carte d'épaisseur | — | Surimpression colorée de l'épaisseur estimée du fil, en mm (voir ci-dessous) |
 | Taille du cadre… | — | Définit la zone physique de broderie (voir ci-dessous) |
 | Thème | — | Clair / Sombre |
 | Densité | — | Confortable / Compact |
@@ -801,6 +802,30 @@ Dans le panneau **Analyse**, la section *Carte de densité* règle le **seuil de
 sur-dense** (4,0 pén./mm² par défaut, une heuristique d'ingénierie non mesurée sur un
 corpus ; mémorisé) et liste les **zones sur-denses** : un clic (ou Entrée) sur une
 zone **centre la vue** dessus.
+
+### Carte d'épaisseur
+
+**Affichage ▸ Carte d'épaisseur** (case à cocher, mémorisée, **exclusive** avec la carte de
+densité : une seule surimpression à la fois) colore chaque zone selon l'**épaisseur estimée du
+fil**, en millimètres, toutes passes comprises (sous-couche + dessus). Même palette que la
+densité, du **bleu** (mince) au **rouge** (épais) ; les zones au-delà du seuil sont plus opaques.
+La **légende** en bas à gauche donne l'échelle en mm et le repère du seuil.
+
+**C'est une estimation, pas une mesure.** OpenStitch connaît la longueur de fil déposée par zone ;
+il la convertit en millimètres avec une épaisseur supposée de **0,20 mm par couche dense** et
+suppose que les couches s'empilent linéairement (en réalité elles se tassent : l'estimation est
+plutôt optimiste). Ces valeurs viennent d'une veille documentaire et d'un calcul sur les données
+du fil, **pas d'un relevé sur machine** (`docs/veille-epaisseur-2026-10.md`).
+
+La carte **suit le zoom** : la case est plus fine en zoom avant (jusqu'à 0,5 mm), plus grossière
+et donc plus rapide en zoom arrière (jusqu'à 8 mm). Le recalcul se fait hors du fil d'interface,
+après un court délai qui regroupe une rafale de molette ; le résultat est mis en cache.
+
+Dans le panneau **Analyse**, la section *Carte de densité* règle aussi l'**épaisseur d'une couche**
+(0,20 mm par défaut) et le **seuil d'épaisseur** (3 couches par défaut, comme la règle
+`couches-superposees`), tous deux mémorisés. Quand la carte d'épaisseur est active, la liste montre
+la **zone la plus épaisse** (épaisseur, nombre de couches, objet) : un clic **centre la vue** dessus.
+La carte ne modifie jamais le document.
 
 ## Menu contextuel (clic droit)
 

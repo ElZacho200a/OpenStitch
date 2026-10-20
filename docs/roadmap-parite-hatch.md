@@ -39,9 +39,9 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 |---|---|---|---|---|
 | P0 | 12 | 28 | 5 | 45 |
 | P1 | 10 | 68 | 72 | 150 |
-| P2 | 3 | 31 | 66 | 100 |
+| P2 | 3 | 33 | 64 | 100 |
 | P3 | 0 | 3 | 13 | 16 |
-| **Total** | **25** | **130** | **156** | **311** |
+| **Total** | **25** | **132** | **154** | **311** |
 
 Ajoutés le 2026-10-20 (roadmap nocturne manuscrite, voir le journal §28) : **+7 entrées** (HP-VIEW-014, HP-STI-025, HP-STI-026, HP-VEC-020, HP-QA-009, HP-UX-045, HP-FMT-022) ; HP-VIEW-002 passe de P2 à P3 (facultatif). Le tableau est recalculé depuis les titres : il intègre aussi HP-OBJ-024 et corrige l'écart des lignes P1.
 
@@ -1134,7 +1134,7 @@ plus.
 - Acceptation : la fixture `two_holes` (`test_torture_corpus.cpp`) atteint
   une couverture significative sans refus total.
 
-### HP-STI-025 — Veille : points à épaisseurs différentes [P2] — ☐ À faire
+### HP-STI-025 — Veille : points à épaisseurs différentes [P2] — ◐ Partiel (2026-10-20, en PR)
 - Origine : roadmap nocturne du 2026-10-20 (« Veille point différente épaisseur »).
 - Nature : **étude, pas du code**. Livrable : `docs/veille-epaisseur-2026-10.md`.
 - À faire : relever comment les autres logiciels de broderie et les fabricants traitent
@@ -1143,6 +1143,13 @@ plus.
   type de point → épaisseur estimée utilisable par la carte d'épaisseur (HP-VIEW-014) et par le
   rendu 3D facultatif (HP-VIEW-002). Distinguer les valeurs sourcées des heuristiques non mesurées.
 - Modules : `docs/` (même gabarit que `veille-innovations-2026-10.md`).
+- Livré (2026-10-20) : `docs/veille-epaisseur-2026-10.md` — faits sourcés (fils 40 wt = 25 tex, mousse
+  « puff » 2 à 3 mm, consignes de numérisation), valeurs **calculées** (diamètre du fil 0,15 à 0,20 mm),
+  hypothèses retenues pour la carte, et ce que la veille n'a **pas** trouvé : aucun relevé en mm de
+  l'épaisseur d'un point. Conclusion : la mesure de fil par zone est déjà indépendante du type de point ;
+  il ne manque que la conversion en mm.
+- Reste : lire le texte intégral des deux études (KTU, JTATM), puis les mesures physiques du §7
+  (HP-PHYS-001) ; la table type de point -> épaisseur n'existe pas encore (aucune donnée pour la remplir).
 - Dépend de : rien. Débloque : HP-VIEW-014, HP-VIEW-002.
 - Acceptation : le document cite ses sources, sépare faits et hypothèses, et propose la table
   d'épaisseurs avec les mesures physiques à faire (HP-PHYS-001) pour la valider.
@@ -2273,7 +2280,7 @@ calques image/régions/vecteurs/broderie, filtres d'affichage, thème clair/somb
 ### HP-VIEW-013 — Info-bulle de survol d'un objet [P2] — ☐ À faire
 - À faire : type, fil, nombre de points, dimensions.
 
-### HP-VIEW-014 — Carte d'épaisseur réactive [P2] — ☐ À faire
+### HP-VIEW-014 — Carte d'épaisseur réactive [P2] — ◐ Partiel (2026-10-20, en PR)
 - Origine : roadmap nocturne du 2026-10-20 (« Épaisseur : carte d'épaisseur responsive »).
 - État OpenStitch : HP-VIEW-005 livre déjà la grille de densité (`stitch_analysis::density_map`) avec
   l'épaisseur cumulée en « couches de remplissage dense » et la surimpression Affichage › « Carte de
@@ -2285,6 +2292,16 @@ calques image/régions/vecteurs/broderie, filtres d'affichage, thème clair/somb
   « Responsive » est lu ici comme réactif et adapté à la taille d'écran ; à confirmer.
 - Modules : `libs/stitch_analysis` (mesure d'épaisseur par type de point, cf. HP-STI-025),
   `apps/desktop` (surimpression, cache, mise à l'échelle au zoom).
+- Livré (2026-10-20) : `stitch_analysis/thickness_map.*` (conversion couches -> mm, pic d'épaisseur avec
+  objet dominant, `adaptive_cell` : case de 0,5 à 8 mm selon le zoom) ; Affichage › « Carte d'épaisseur »
+  (exclusive avec la densité, légende en mm, zone la plus épaisse dans le panneau Analyse, réglages
+  « épaisseur d'une couche » et « seuil » mémorisés), recalcul hors du fil UI et suivi du zoom (150 ms).
+  Tests : `test_thickness_map` (6 cas), `test_density_map_ui` (+7).
+- **Estimation, pas mesure** : 0,20 mm par couche et empilement linéaire sont des hypothèses
+  (`docs/veille-epaisseur-2026-10.md`). Reste : validation sur machine (HP-PHYS-001) et loi de tassement ;
+  calcul **incrémental par objet** non fait (le coût dominant est la génération des points, déjà mise en
+  cache : à mesurer avant de s'y mettre) ; suivi d'un calque / objet choisi ; épaisseur par fil (HP-THR-009) ;
+  vérification visuelle dans l'application réelle (palette, légende : non vérifiées en headless).
 - Dépend de : HP-VIEW-005, HP-STI-025 (valeurs d'épaisseur par type de point).
 - Acceptation : le calcul ne bloque pas l'interface (`BusyIndicator`), deux calculs de la même
   séquence donnent la même carte octet pour octet, la résolution suit le zoom, tests headless.
@@ -3449,3 +3466,4 @@ ci-dessus doit les respecter :
 | 2026-10-19 | Claude (ergonomie des couches, vague 2) | **HP-OBJ-023 ◐** : barre du sélecteur de couches (▲ ▼ masquer renommer, un pas d'annulation chacun), clic canevas = couche du dessus (`embroideryForVector`), glisser-déposer des couches contraint à la forme (Maj pour sortir). Reste : parent-enfant dans le modèle. |
 | 2026-10-19 | Claude (calques du document) | **HP-OBJ-024 ◐ créée et livrée en partie** : calques au-dessus des couches (calque ⊃ forme ⊃ couches), rang de calque = clé principale de l'ordre de couture, `.osp` v9 conditionnel, commandes annulables et panneau Calques. Reste : effets liés, CLI, glisser entre calques. Total +1 entrée. |
 | 2026-10-20 | Claude (roadmap nocturne) | Entrées issues des notes manuscrites « Roadmap sup nocturne 20/10 » : **HP-VIEW-014** carte d'épaisseur réactive, **HP-STI-025** veille sur les épaisseurs par type de point (étude, `docs/veille-epaisseur-2026-10.md` à produire), **HP-STI-026** point paramétrique (périmètre à préciser), **HP-VEC-020** outils de lignes (périmètre à préciser), **HP-QA-009** audit de numérisation sur images de bateaux, **HP-UX-045** audit d'ergonomie multi-couche (◐ : vagues 1-2 fusionnées, calques en PR #95), **HP-FMT-022** panneau d'export avec ordre des couleurs. HP-VIEW-002 (rendu 3D) : P2 → P3, facultatif. Tableau de bord recalculé. |
+| 2026-10-20 | Claude (épaisseur) | **HP-VIEW-014 ◐ et HP-STI-025 ◐** (en PR) : carte d'épaisseur estimée (Affichage › Carte d'épaisseur, exclusive avec la densité, légende en mm, case adaptée au zoom, zone la plus épaisse dans l'Analyse) et veille `docs/veille-epaisseur-2026-10.md`. La veille n'a trouvé aucun relevé en mm : 0,20 mm par couche et l'empilement linéaire sont des hypothèses, à valider sur machine (HP-PHYS-001). HP-VIEW-002 (rendu 3D, facultatif) non commencé. Tableau de bord recalculé. |
