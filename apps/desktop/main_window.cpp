@@ -79,9 +79,11 @@
 #include "node_handle.hpp"
 #include "responsive.hpp"
 
+#include "calque_panel.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/autodigitize/contour_objects.hpp"
 #include "openstitch/autodigitize/line_layer.hpp"
+#include "openstitch/commands/calque_commands.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/finishing_commands.hpp"
 #include "openstitch/commands/import_machine_design_command.hpp"
@@ -2454,7 +2456,8 @@ std::optional<QPointF> MainWindow::findSnapPointMm(QPointF cursorSceneMm,
     // les nœuds Lisse : approximation suffisante, la même que l'aperçu élastique
     // des autres outils) et centre (boîte englobante) des morceaux fermés.
     for (const auto& object : project_.vector_objects) {
-        if (!object.visible || (excludeObject && object.id == *excludeObject)) {
+        if (!object.visible || !calqueShowsShape(object) ||
+            (excludeObject && object.id == *excludeObject)) {
             continue;
         }
         const auto considerPath = [&](const geometry::Path& path) {
@@ -2502,7 +2505,7 @@ std::optional<QPointF> MainWindow::findNodeSnapMm(QPointF cursorSceneMm, ObjectI
     double bestDistSq = radiusMm * radiusMm;
     std::optional<QPointF> best;
     for (const auto& object : project_.vector_objects) {
-        if (!object.visible || object.id == exclude) {
+        if (!object.visible || !calqueShowsShape(object) || object.id == exclude) {
             continue;
         }
         const auto consider = [&](const geometry::Path& path) {
@@ -3317,7 +3320,8 @@ void MainWindow::renderBase(const image::Image& img) {
             // Filtres d'affichage : une forme sélectionnée reste visible (sinon la
             // sélection deviendrait invisible et ses poignées orphelines).
             const bool selected = isObjectSelected(object.id);
-            if (!object.visible || (!selected && !vectorPassesFilter(object))) {
+            if (!object.visible || !calqueShowsShape(object) ||
+                (!selected && !vectorPassesFilter(object))) {
                 continue;
             }
             const QColor color(object.rgb[0], object.rgb[1], object.rgb[2]);
@@ -5477,7 +5481,8 @@ document::EmbroideryObject* MainWindow::currentFillObject() {
 std::optional<ObjectId> MainWindow::objectAt(QPointF posMm) const {
     std::optional<ObjectId> hit;
     for (const auto& object : project_.vector_objects) {
-        if (object.visible && objectPainterPath(object).contains(posMm)) {
+        if (object.visible && calqueShowsShape(object) &&
+            !project_.shapeLockedByCalque(object.id) && objectPainterPath(object).contains(posMm)) {
             hit = object.id; // le dernier dessiné (au-dessus) gagne
         }
     }
@@ -7333,6 +7338,44 @@ void MainWindow::buildDocumentPanel() {
                 refreshImage();
                 updateActions();
             });
+    // Calques du document (HP-OBJ-024) : pile au-dessus des onglets de la liste Document.
+    {
+        CalquePanel* calques = documentPanel_->calquePanel();
+        connect(calques, &CalquePanel::addCalqueRequested, this, &MainWindow::addCalque);
+        connect(calques, &CalquePanel::removeCalqueRequested, this, &MainWindow::removeCalque);
+        connect(calques, &CalquePanel::renameCalqueRequested, this,
+                &MainWindow::renameCalqueInteractive);
+        connect(calques, &CalquePanel::moveSelectionToCalqueRequested, this,
+                &MainWindow::moveSelectionToCalque);
+        connect(calques, &CalquePanel::calqueActivated, this, [this](ObjectId id) {
+            if (project_.findCalque(id) != nullptr) {
+                project_.active_calque = id; // état d'interface : ni annulable ni enregistré
+                refreshDocumentPanel();
+                statusBar()->showMessage(
+                    tr("Calque actif : « %1 ».")
+                        .arg(QString::fromStdString(project_.findCalque(id)->name)));
+            }
+        });
+        connect(calques, &CalquePanel::moveCalqueRequested, this, [this](ObjectId id, int dir) {
+            undoStack_.execute(std::make_unique<commands::MoveCalqueCommand>(id, dir), project_);
+            refreshImage();
+            updateActions();
+        });
+        connect(calques, &CalquePanel::calqueVisibilityToggled, this,
+                [this](ObjectId id, bool visible) {
+                    undoStack_.execute(
+                        std::make_unique<commands::SetCalqueVisibleCommand>(id, visible), project_);
+                    refreshImage();
+                    updateActions();
+                });
+        connect(calques, &CalquePanel::calqueLockToggled, this, [this](ObjectId id, bool locked) {
+            undoStack_.execute(std::make_unique<commands::SetCalqueLockedCommand>(id, locked),
+                               project_);
+            pruneSelection();
+            refreshImage();
+            updateActions();
+        });
+    }
     // Couches de couture (HP-OBJ-023) : bouton « + Couche » et menu de ligne.
     connect(documentPanel_, &DocumentPanel::addLayerRequested, this,
             [this](ObjectId id, bool interactive) {
@@ -7938,12 +7981,9 @@ void MainWindow::buildOrderPanel() {
     orderList_ = new QListWidget(panel);
     layout->addWidget(orderList_, 1);
     connect(orderList_, &QListWidget::currentRowChanged, this, [this](int row) {
-        if (row >= 0 && row < static_cast<int>(project_.embroidery_objects.size())) {
+        if (const auto* rowObject = orderRowObject(row)) {
             // sélection d'objet vectoriel distincte
-            setSelection(
-                {.region = selectedRegion_,
-                 .embroidery = project_.embroidery_objects[static_cast<std::size_t>(row)].id,
-                 .objects = {}});
+            setSelection({.region = selectedRegion_, .embroidery = rowObject->id, .objects = {}});
             updateActions();
             displayImage(processed_);
         } else {
@@ -8013,7 +8053,9 @@ void MainWindow::refreshOrderPanel() {
         const QSignalBlocker block(orderList_);
         orderList_->clear();
         int rank = 0;
-        for (const auto& obj : project_.embroidery_objects) {
+        orderRows_ = project_.sewingOrder(); // calque d'abord, puis ordre du document
+        for (const std::size_t index : orderRows_) {
+            const auto& obj = project_.embroidery_objects[index];
             // Même libellé que le panneau Document (rang, type, nom, masqué, ordre figé).
             auto* item = new QListWidgetItem(DocumentPanel::itemText(obj, ++rank));
             item->setIcon(icons::colorSwatch(QColor(obj.rgb[0], obj.rgb[1], obj.rgb[2])));
@@ -8023,8 +8065,8 @@ void MainWindow::refreshOrderPanel() {
         // La ligne courante suit la sélection de broderie si elle existe, sinon l'ancienne.
         int row = previousRow;
         if (selectedEmbroidery_) {
-            for (std::size_t i = 0; i < project_.embroidery_objects.size(); ++i) {
-                if (project_.embroidery_objects[i].id == *selectedEmbroidery_) {
+            for (std::size_t i = 0; i < orderRows_.size(); ++i) {
+                if (project_.embroidery_objects[orderRows_[i]].id == *selectedEmbroidery_) {
                     row = static_cast<int>(i);
                     break;
                 }
@@ -8051,13 +8093,26 @@ void MainWindow::updateOrderButtons() {
     }
     // Monter/Descendre grisés aux bornes ; le bouton Figer reflète l'objet de la ligne.
     const int row = orderList_->currentRow();
-    const int count = static_cast<int>(project_.embroidery_objects.size());
-    orderUpBtn_->setEnabled(row > 0);
-    orderDownBtn_->setEnabled(row >= 0 && row < count - 1);
-    orderLockBtn_->setEnabled(row >= 0 && row < count);
+    const auto* current = orderRowObject(row);
+    // Un objet ne change pas de calque en se déplaçant : Monter/Descendre s'arrêtent à la
+    // frontière de son calque (HP-OBJ-024).
+    const auto* above = orderRowObject(row - 1);
+    const auto* below = orderRowObject(row + 1);
+    orderUpBtn_->setEnabled(current != nullptr && above != nullptr &&
+                            project_.calqueRankOf(*above) == project_.calqueRankOf(*current));
+    orderDownBtn_->setEnabled(current != nullptr && below != nullptr &&
+                              project_.calqueRankOf(*below) == project_.calqueRankOf(*current));
+    orderLockBtn_->setEnabled(current != nullptr);
     const QSignalBlocker block(orderLockBtn_);
-    orderLockBtn_->setChecked(row >= 0 && row < count &&
-                              project_.embroidery_objects[static_cast<std::size_t>(row)].locked);
+    orderLockBtn_->setChecked(current != nullptr && current->locked);
+}
+
+const document::EmbroideryObject* MainWindow::orderRowObject(int row) const {
+    if (row < 0 || static_cast<std::size_t>(row) >= orderRows_.size() ||
+        orderRows_[static_cast<std::size_t>(row)] >= project_.embroidery_objects.size()) {
+        return nullptr;
+    }
+    return &project_.embroidery_objects[orderRows_[static_cast<std::size_t>(row)]];
 }
 
 int MainWindow::stitchTypeIndex(const document::EmbroideryObject& object) {
@@ -8094,7 +8149,15 @@ double MainWindow::vectorAreaMm2(const document::VectorObject& vec) {
     return std::max(0.0, area_um2) / 1e6;
 }
 
+bool MainWindow::calqueShowsShape(const document::VectorObject& object) const {
+    const document::Calque* calque = project_.calqueOfShape(object.id);
+    return calque == nullptr || calque->visible;
+}
+
 bool MainWindow::vectorPassesFilter(const document::VectorObject& object) const {
+    if (!calqueShowsShape(object)) {
+        return false; // calque masqué (HP-OBJ-024)
+    }
     if (!isolatedIds_.empty() &&
         std::find(isolatedIds_.begin(), isolatedIds_.end(), object.id) == isolatedIds_.end()) {
         return false; // mode Isoler : seules les formes isolées sont visibles et saisissables
@@ -8122,7 +8185,7 @@ bool MainWindow::vectorPassesFilter(const document::VectorObject& object) const 
 }
 
 bool MainWindow::objectPassesFilter(const document::EmbroideryObject& object) const {
-    if (!object.visible) {
+    if (!object.visible || !project_.calqueVisible(object)) {
         return false;
     }
     // Filtre « remplissage » : tatami et directionnel ensemble (index 1).
@@ -8327,12 +8390,12 @@ QColor MainWindow::pickThreadColor(const QColor& initial, const QString& title) 
 
 void MainWindow::moveObjectUp() {
     const int row = orderList_->currentRow();
-    if (row <= 0) {
+    if (row <= 0 || !orderUpBtn_->isEnabled()) {
         return;
     }
     std::vector<ObjectId> order;
-    for (const auto& obj : project_.embroidery_objects) {
-        order.push_back(obj.id);
+    for (const std::size_t index : orderRows_) {
+        order.push_back(project_.embroidery_objects[index].id);
     }
     std::swap(order[static_cast<std::size_t>(row)], order[static_cast<std::size_t>(row - 1)]);
     undoStack_.execute(std::make_unique<commands::ReorderEmbroideryCommand>(order), project_);
@@ -8344,12 +8407,12 @@ void MainWindow::moveObjectUp() {
 
 void MainWindow::moveObjectDown() {
     const int row = orderList_->currentRow();
-    if (row < 0 || row >= static_cast<int>(project_.embroidery_objects.size()) - 1) {
+    if (row < 0 || !orderDownBtn_->isEnabled()) {
         return;
     }
     std::vector<ObjectId> order;
-    for (const auto& obj : project_.embroidery_objects) {
-        order.push_back(obj.id);
+    for (const std::size_t index : orderRows_) {
+        order.push_back(project_.embroidery_objects[index].id);
     }
     std::swap(order[static_cast<std::size_t>(row)], order[static_cast<std::size_t>(row + 1)]);
     undoStack_.execute(std::make_unique<commands::ReorderEmbroideryCommand>(order), project_);
@@ -8360,11 +8423,11 @@ void MainWindow::moveObjectDown() {
 }
 
 void MainWindow::toggleObjectLock() {
-    const int row = orderList_->currentRow();
-    if (row < 0 || row >= static_cast<int>(project_.embroidery_objects.size())) {
+    const auto* rowObject = orderRowObject(orderList_->currentRow());
+    if (rowObject == nullptr) {
         return;
     }
-    const auto& obj = project_.embroidery_objects[static_cast<std::size_t>(row)];
+    const auto& obj = *rowObject;
     undoStack_.execute(std::make_unique<commands::SetEmbroideryLockCommand>(obj.id, !obj.locked),
                        project_);
     refreshOrderPanel();
@@ -8375,14 +8438,17 @@ void MainWindow::applyOrderStrategy() {
     if (project_.embroidery_objects.size() < 2) {
         return;
     }
+    // Calques (HP-OBJ-024) : on optimise l'ordre réel de couture, puis on regroupe par calque -- le
+    // rang du calque reste la clé principale, l'optimisation ne joue qu'à l'intérieur de chacun.
     std::vector<optimization::OrderItem> items;
-    for (const auto& obj : project_.embroidery_objects) {
+    for (const std::size_t index : project_.sewingOrder()) {
+        const auto& obj = project_.embroidery_objects[index];
         items.push_back({obj.id, obj.rgb, embroideryCentroid(obj), obj.locked});
     }
     const auto strategy =
         static_cast<optimization::OrderStrategy>(orderStrategyCombo_->currentData().toInt());
     const auto before = optimization::compute_cost(items);
-    const auto order = optimization::optimize_order(items, strategy);
+    const auto order = project_.groupedByCalque(optimization::optimize_order(items, strategy));
 
     undoStack_.execute(std::make_unique<commands::ReorderEmbroideryCommand>(order), project_);
     refreshImage();
@@ -9823,16 +9889,20 @@ void MainWindow::onSelectionRectangle(QRectF rectMm, SelectMode mode, bool cross
         // Même règle que le rendu : un objet masqué par les filtres d'affichage (type, couleur,
         // taille) n'est pas saisi par le cadre, sauf s'il est déjà sélectionné (donc affiché).
         const std::vector<ObjectId> selected = currentSelection().objects;
-        objectHits.erase(std::remove_if(objectHits.begin(), objectHits.end(),
-                                        [&](ObjectId id) {
-                                            const document::VectorObject* vec =
-                                                project_.findObject(id);
-                                            return vec != nullptr &&
-                                                   std::find(selected.begin(), selected.end(),
-                                                             id) == selected.end() &&
-                                                   !vectorPassesFilter(*vec);
-                                        }),
-                         objectHits.end());
+        objectHits.erase(
+            std::remove_if(objectHits.begin(), objectHits.end(),
+                           [&](ObjectId id) {
+                               const document::VectorObject* vec = project_.findObject(id);
+                               // Calque verrouillé (HP-OBJ-024) : jamais saisi par le cadre.
+                               if (vec != nullptr && project_.shapeLockedByCalque(id)) {
+                                   return true;
+                               }
+                               return vec != nullptr &&
+                                      std::find(selected.begin(), selected.end(), id) ==
+                                          selected.end() &&
+                                      !vectorPassesFilter(*vec);
+                           }),
+            objectHits.end());
     }
     const bool regionsUsable = currentTool_ == Tool::Select && !mergeMode_ &&
                                showSegAct_->isChecked() && project_.segmentation &&

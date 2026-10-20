@@ -12,6 +12,7 @@ add_executable(test_project_io
     test_auto_satin_strategy_persistence.cpp
     test_schema_migrations.cpp
     test_text_typography_persistence.cpp
+    test_calque_persistence.cpp
 )
 target_link_libraries(test_project_io
     PRIVATE openstitch::project_io openstitch::formats openstitch::stitch_generation

@@ -149,9 +149,22 @@ la prochaine édition ; mieux vaut qu'il refuse le fichier v8. Les points ne son
 stockés : les mêmes champs vides redonnent exactement les mêmes points qu'avant
 (`tests/unit/lettering/test_text_typography.cpp`).
 
+### Calques du document (schéma v9, conditionnel)
+
+Le document peut définir des calques (HP-OBJ-024) : une clé `calques` au niveau du document,
+tableau ordonné du **fond vers le dessus** de `{id, name, visible, locked}`, et une clé `calque`
+(identifiant) sur les objets vectoriels. Un objet sans `calque`, ou dont le calque est inconnu,
+appartient au calque du fond ; sans clé `calques`, le document a un seul calque implicite. Le rang
+du calque est la clé principale de l'ordre de couture, l'ordre des `embroideryObjects` ne
+départageant que les objets d'un même calque.
+
+Le fichier n'est écrit en **v9 que si le document définit des calques** ; sinon il garde sa
+version antérieure, octet pour octet. Raison : un lecteur v8 ignorerait les calques et coudrait
+dans un autre ordre (`tests/unit/project_io/test_calque_persistence.cpp`).
+
 ## Versionnement et validation
 
-`schemaVersion` vaut **6**, **7** si un auto-satin utilise une méthode autre que le squelette, ou **8** si un texte porte un crénage manuel ou des ligatures (v7 → v8 : `kerningPairs` et `ligatures` d'un texte, voir plus haut ; v6 → v7 : clé `strategy` et `sweepAngle` de l'auto-satin, voir plus haut ; v5 → v6 : fil de nuancier `thread` des objets de broderie (`{chart, code}`, voir *Palettes et fils*) ; objets texte du lettrage, clé `textObjects`
+`schemaVersion` vaut **6**, **7** si un auto-satin utilise une méthode autre que le squelette, ou **8** si un texte porte un crénage manuel ou des ligatures, ou **9** si le document définit des calques (v8 → v9 : clés `calques` et `calque`, voir plus haut ; v7 → v8 : `kerningPairs` et `ligatures` d'un texte, voir plus haut ; v6 → v7 : clé `strategy` et `sweepAngle` de l'auto-satin, voir plus haut ; v5 → v6 : fil de nuancier `thread` des objets de broderie (`{chart, code}`, voir *Palettes et fils*) ; objets texte du lettrage, clé `textObjects`
 (id, text, fontFamily/fontFile/fontBuiltin/faceIndex, capHeight, letterSpacing, wordSpacing,
 lineSpacing, kerning, align, justifyWidth, origin, rotation, rgb, fill, maxSatinWidth, density ;
 µm entiers, rotation en radians) et `textOwner` sur les objets vectoriels, voir `lettering.md` ;
@@ -190,12 +203,13 @@ déjà à jour ne subit aucune étape (idempotent) ; la sortie est déterministe
 | v5 → v6 | aucune (absence de `thread` / `textObjects` = aucun) |
 | v6 → v7 | aucune (absence de `strategy` = squelette) |
 | v7 → v8 | aucune (absence de `kerningPairs` / `ligatures` = pas de crénage manuel, pas de ligatures) |
+| v8 → v9 | aucune (absence de `calques` / `calque` = un seul calque implicite) |
 
 Les étapes « aucune » existent quand même : la table reste sans trou et une future version
 n'a qu'à ajouter une ligne. Un fichier d'une version **future** (> `kMaxReadableSchemaVersion`)
 est refusé en `UnsupportedFormat` avec un message nommant les deux versions. Tests :
 `tests/unit/project_io/test_schema_migrations.cpp` construit un `project.json` par version
-(v1 à v8) et le relit. `tests/fixtures/osp/` n'existe pas : les anciens fichiers sont forgés
+(v1 à v9) et le relit. `tests/fixtures/osp/` n'existe pas : les anciens fichiers sont forgés
 en test, plus lisibles qu'un binaire figé.
 
 ## Sauvegarde atomique

@@ -126,6 +126,29 @@ de coudre plusieurs objets de types différents sur une même zone vectorielle,
   - Pas de lien parent-enfant dans le modèle : supprimer la base **ne supprime pas** ses
     couches, qui restent sur la zone et deviennent des objets indépendants.
 
+## Calques du document
+
+État : **en cours de développement** (roadmap HP-OBJ-024). Les calques classent les **formes** au
+niveau du document, au-dessus des couches d'une forme : *calque ⊃ forme ⊃ couches*. Un calque
+« Broderie principale » peut recevoir la broderie, un calque « Effets » des formes posées par-dessus
+qui couvrent plusieurs zones ; un effet propre à une seule zone reste une couche de cette forme.
+
+- **Modèle.** `Project::calques` est ordonné du fond (cousu en premier) vers le dessus ; chaque
+  `VectorObject` porte `calque` (invalide = calque du fond). Une liste vide est un calque implicite :
+  les documents existants ne changent pas.
+- **Ordre de couture.** Le rang du calque est la clé principale ; l'ordre de
+  `embroidery_objects` ne départage que les objets d'un même calque (`Project::sewingOrder`).
+  Un calque masqué n'est ni dessiné ni cousu. L'optimisation de l'ordre ne franchit pas les calques.
+- **Panneau Calques** (au-dessus de la liste Document) : pile du dessus vers le fond, œil, cadenas
+  (un calque verrouillé n'est plus saisissable au canevas), calque actif en gras — il reçoit les
+  formes créées. Boutons + − ▲ ▼ ; double-clic pour renommer ; menu de ligne « Déplacer la sélection
+  ici ». Chaque geste est une commande annulable (`commands/calque_commands.hpp`).
+- **Suppression.** Supprimer un calque replie ses formes dans le calque en dessous.
+- **Persistance.** `.osp` v9 (clés `calques` et `calque`), écrit uniquement si le document a des
+  calques : un document sans calque garde sa version et reste lisible par les versions antérieures.
+- **Limites actuelles.** Pas d'effet lié à ses cibles (une forme d'un calque supérieur est
+  indépendante), calques absents de la CLI `project`, pas de glisser-déposer entre calques.
+
 ## Implémentation associée
 
 - `libs/document/include/openstitch/document/embroidery_object.hpp` —

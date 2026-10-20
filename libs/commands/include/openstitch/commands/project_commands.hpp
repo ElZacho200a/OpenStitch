@@ -255,12 +255,23 @@ class AddVectorObjectCommand final : public ICommand {
 public:
     explicit AddVectorObjectCommand(document::VectorObject object) : object_(std::move(object)) {}
 
-    void apply(document::Project& project) override { project.vector_objects.push_back(object_); }
+    void apply(document::Project& project) override {
+        // La forme neuve entre dans le calque actif (HP-OBJ-024), figé à la première application
+        // pour qu'un redo la remette dans le même calque.
+        if (!adopted_) {
+            if (!object_.calque.valid()) {
+                object_.calque = project.active_calque;
+            }
+            adopted_ = true;
+        }
+        project.vector_objects.push_back(object_);
+    }
     void revert(document::Project& project) override { project.vector_objects.pop_back(); }
     [[nodiscard]] std::string name() const override { return "Ajouter un objet vectoriel"; }
 
 private:
     document::VectorObject object_;
+    bool adopted_{false};
 };
 
 // Ajoute un objet de broderie (id généré par l'appelant, comme pour
@@ -866,6 +877,14 @@ public:
           label_(std::move(label)) {}
 
     void apply(document::Project& project) override {
+        if (!adopted_) {
+            for (auto& v : vectors_) {
+                if (!v.calque.valid()) {
+                    v.calque = project.active_calque; // calque actif (HP-OBJ-024)
+                }
+            }
+            adopted_ = true;
+        }
         for (const auto& v : vectors_) {
             project.vector_objects.push_back(v);
         }
@@ -883,6 +902,7 @@ private:
     std::vector<document::VectorObject> vectors_;
     std::vector<document::EmbroideryObject> embroideries_;
     std::string label_;
+    bool adopted_{false};
 };
 
 // Réordonne les objets de broderie selon une permutation d'ObjectId.

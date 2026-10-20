@@ -22,6 +22,8 @@ class QTreeWidgetItem;
 
 namespace openstitch::desktop {
 
+class CalquePanel;
+
 // Vue structurée du document : onglets Objets (broderie) et Régions
 // (segmentation). Sélectionner une ligne émet un signal ; MainWindow route la
 // sélection (source de vérité) et rappelle `syncSelection` pour refléter en
@@ -34,6 +36,9 @@ public:
     enum class Kind { None, Region, Vector, Embroidery };
 
     explicit DocumentPanel(QWidget* parent = nullptr);
+
+    // Pile des calques (HP-OBJ-024), affichée au-dessus des onglets ; MainWindow s'y connecte.
+    [[nodiscard]] CalquePanel* calquePanel() const { return calquePanel_; }
 
     // Reconstruit les listes depuis le document. `editStates` (Lot 8.2) :
     // état Clean/ManuallyEdited/Dirty des objets retouchés (absents = Clean,
@@ -112,6 +117,7 @@ signals:
     void duplicateLayerRequested(ObjectId id);
 
 private:
+    CalquePanel* calquePanel_{nullptr};
     QPushButton* addLayerBtn_{nullptr}; // « + Couche » : actif si une seule broderie est choisie
     // Ligne de broderie visée par « ajouter une couche » : la ligne unique sélectionnée, ou la
     // dernière couche (celle du dessus) d'un groupe sélectionné. nullptr sinon.
