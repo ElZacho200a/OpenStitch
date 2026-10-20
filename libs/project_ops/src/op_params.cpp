@@ -790,6 +790,7 @@ fields_of<document::DirectionalFillParams>() {
         v.push_back(int_field<P>("handmade_intensity", &P::handmade_intensity, 0, 100));
         v.push_back(int_field<P>("seed", &P::seed, 0, 4'294'967'295LL));
         v.push_back(enum_field<P>("underlay_mode", &P::underlay_mode, underlay_mode_table()));
+        v.push_back(bool_field<P>("edge_outline", &P::edge_outline));
         v.push_back(paths_field<P>("guides", &P::guides));
         v.push_back(paths_field<P>("break_lines", &P::break_lines));
         v.push_back(gradient_field<P>("density_gradient"));

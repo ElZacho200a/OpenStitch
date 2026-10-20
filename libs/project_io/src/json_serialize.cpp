@@ -324,6 +324,9 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.underlay_mode != document::UnderlayMode::Manual) {
                     j["underlayMode"] = static_cast<int>(p.underlay_mode);
                 }
+                if (p.edge_outline) {
+                    j["edgeOutline"] = true;
+                }
                 if (p.spacing_regularity != 0.0) {
                     j["spacingRegularity"] = p.spacing_regularity;
                 }
@@ -570,6 +573,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.handmade_intensity = j.value("handmadeIntensity", 50);
         p.underlay_mode =
             static_cast<document::UnderlayMode>(std::clamp(j.value("underlayMode", 0), 0, 1));
+        p.edge_outline = j.value("edgeOutline", false);
         // Valeur hors [0 ; 1] ou non finie : bornée (fichier édité à la main).
         p.spacing_regularity = std::clamp(j.value("spacingRegularity", 0.0), 0.0, 1.0);
         if (j.contains("densityGradient") && j.at("densityGradient").is_object()) {

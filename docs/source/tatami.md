@@ -339,7 +339,7 @@ vectorisés serrés) produit des pointes isolées : le bord ressemble à un peig
 
 Clés `.osp` facultatives `rowEndClip` (µm, [0 ; 5000]) et `edgeOutline`, écrites
 hors défaut. Inspecteur : « Écrêtage des bouts » et « Contour cousu par-dessus ».
-CLI projet : `row_end_clip_mm`, `edge_outline`. Tests : `test_engine_points.cpp`
+Le remplissage directionnel n'a que le contour (`edge_outline`, même `emit_edge_outline`) : ses lignes suivent un champ de directions, pas des rangées voisines, donc l'écrêtage n'y a pas de sens. CLI projet : `row_end_clip_mm`, `edge_outline`. Tests : `test_engine_points.cpp`
 (« bords : … »), `test_engine_persistence.cpp`, `test_properties_panel.cpp`.
 
 Le paramètre principal de **densité** est `row_spacing` (entre rangées) — à ne
