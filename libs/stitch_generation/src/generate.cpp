@@ -696,8 +696,8 @@ constexpr std::int32_t kEdgeOutlineStitchUm = 2'000;
 constexpr std::int32_t kEdgeOutlineMinUm = 500;
 
 void emit_edge_outline(stitch::StitchSequence& sequence, const geometry::PathSet& region,
-                       ObjectId source, const document::TatamiParams& params) {
-    FillLinker linker(region, Micrometers{kEdgeOutlineStitchUm}, params.underlay_inset);
+                       ObjectId source, Micrometers underlay_inset) {
+    FillLinker linker(region, Micrometers{kEdgeOutlineStitchUm}, underlay_inset);
     const auto outline = [&](const geometry::Path& path) {
         if (path.nodes.size() < 3) {
             return;
@@ -748,7 +748,7 @@ void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObj
         }
         emit_fill(sequence, fill_tatami(region, params), object.id, linker ? &*linker : nullptr);
         if (params.edge_outline) {
-            emit_edge_outline(sequence, region, object.id, params);
+            emit_edge_outline(sequence, region, object.id, params.underlay_inset);
         }
     }
 }
@@ -771,6 +771,9 @@ void generate_directional(stitch::StitchSequence& sequence, const document::Vect
         }
         emit_fill(sequence, fill_directional(region, params), object.id,
                   linker ? &*linker : nullptr);
+        if (params.edge_outline) {
+            emit_edge_outline(sequence, region, object.id, params.underlay_inset);
+        }
     }
 }
 

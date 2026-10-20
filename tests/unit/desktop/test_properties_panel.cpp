@@ -203,6 +203,15 @@ void PropertiesPanelTest::directionalEditKeepsGuidesAndSeed() {
     const auto& reseeded = std::get<openstitch::document::DirectionalFillParams>(*emitted);
     QVERIFY(reseeded.seed != 77U);
     QVERIFY(reseeded.handmade);
+
+    // Bords effilochés : contour cousu par-dessus, guides et graine conservés.
+    auto* outline = panel.findChild<QCheckBox*>(QStringLiteral("check_directionalEdgeOutline"));
+    QVERIFY(outline != nullptr);
+    QVERIFY(!outline->isChecked());
+    outline->setChecked(true);
+    const auto& outlined = std::get<openstitch::document::DirectionalFillParams>(*emitted);
+    QVERIFY(outlined.edge_outline);
+    QCOMPARE(outlined.guides.size(), std::size_t{1});
 }
 
 void PropertiesPanelTest::directionalGradientControlsRequestMainWindow() {

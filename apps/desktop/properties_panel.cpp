@@ -1404,6 +1404,12 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 uSpacing->setObjectName(QStringLiteral("spin_underlaySpacing"));
                 auto* underpath = new QCheckBox(tr("Liaisons cousues cachées"), body_);
                 underpath->setChecked(p.hidden_underpath);
+                auto* outline = new QCheckBox(tr("Contour cousu par-dessus"), body_);
+                outline->setObjectName(QStringLiteral("check_directionalEdgeOutline"));
+                outline->setToolTip(tr("Coud un point droit le long du bord (et des trous) après "
+                                       "le remplissage, pour masquer les bouts de lignes "
+                                       "(bords effilochés)."));
+                outline->setChecked(p.edge_outline);
                 auto* handmade = new QCheckBox(tr("Aspect fait main"), body_);
                 handmade->setObjectName(QStringLiteral("check_handmade"));
                 handmade->setChecked(p.handmade);
@@ -1524,6 +1530,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 form->addRow(QString(), uPar);
                 form->addRow(tr("Espacement de la sous-couche :"), uSpacing);
                 form->addRow(QString(), underpath);
+                form->addRow(QString(), outline);
                 form->addRow(QString(), handmade);
                 form->addRow(tr("Intensité :"), intensity);
                 form->addRow(QString(), reseed);
@@ -1594,6 +1601,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 bindBool(uPar, tr("Sous-couche perpendiculaire"), &T::underlay_parallel);
                 bindMm(uSpacing, tr("Espacement de la sous-couche"), &T::underlay_spacing);
                 bindBool(underpath, tr("Liaisons cousues cachées"), &T::hidden_underpath);
+                bindBool(outline, tr("Contour cousu par-dessus"), &T::edge_outline);
                 bindInt(intensity, tr("Intensité"), &T::handmade_intensity);
                 connect(handmade, &QCheckBox::toggled, this, [intensity, reseed](bool on) {
                     intensity->setEnabled(on);
