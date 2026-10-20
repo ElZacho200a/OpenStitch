@@ -1,210 +1,93 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+OpenStitch Studio : application Windows libre de numérisation de broderie machine
+(image → régions vectorielles → objets → points → DST). C++23, Qt 6 Widgets pour
+l'IHM seulement, Apache-2.0. Documentation : `docs/source/*.md` (un chapitre par
+sujet) ; garde-fous : `GUARDRAILS.md`.
 
-## Project overview
+## Invariants (violation = reset)
 
-OpenStitch Studio (temporary name — see `docs/phase0/` ADRs) is a free/open-source
-Windows desktop app for machine embroidery digitizing: raster image → editable
-vector regions → embroidery objects → stitch points → DST file. C++23, Qt 6
-Widgets for the desktop UI only, Apache-2.0. The core never depends on Qt or on
-any GPL code (verified by a Linux CI build of the core+CLI without Qt).
+- **Couches** strictes et acycliques : `apps/{desktop,cli} → libs/* → libs/core`. Seul
+  `apps/desktop` dépend de Qt ; le cœur et le CLI se compilent sans Qt (CI `linux-core`).
+  Aucun code GPL/AGPL (Ink/Stitch, Potrace, Poppler, Ghostscript, MuPDF exclus).
+  Les libs tierces restent derrière une interface interne (Clipper2 dans `geometry`,
+  OpenCV dans `image`/`segmentation`/`vectorization`, DST dans `formats`, JSON/minizip
+  dans `project_io`).
+- **Aucune coordonnée en `double` brut** : `Micrometers` (`int32`) / `Vec2um`, Y vers le
+  haut. Conversions aux frontières seulement (px→µm à l'import, µm→mm à l'affichage,
+  µm→0,1 mm pour le DST).
+- **Toute mutation du document passe par une `commands::ICommand`** poussée sur l'`UndoStack`.
+- **Les points ne sont jamais stockés** : tout consommateur appelle
+  `stitch_generation::effective_sequence(project)`, jamais `generate_sequence` (garde
+  CTest `check_no_raw_sequence_bypass`, exception annotée `raw-sequence-ok:`).
+- **`apps/desktop` sans logique métier** : câblage, rendu, déclenchement. Calculs longs
+  hors du fil d'interface via `BusyIndicator::run`.
+- **Déterminisme** : même entrée → sortie identique octet pour octet. Pas de conteneur
+  non ordonné dont l'ordre fuit ; parallélisme via `openstitch::parallel_for` (tâches qui
+  lisent des données constantes et écrivent leur propre case ; assemblage séquentiel).
+- Jamais de commit sur `main` ; jamais de merge de PR ; PR contre `main`.
 
-Full documentation lives in `docs/source/*.md` (one chapter per topic) and is
-compiled into a PDF via `docs/scripts/build-docs.ps1`. Read `docs/source/satin-squelette.md`
-(auto-satin) and `docs/source/satin.md` (manual two-rail satin, partly archived)
-before touching anything satin-related — they're the detailed technical reference
-for that subsystem (skeleton extraction, junction anchoring, routing, guides),
-including root-cause writeups for every non-trivial bug fixed there.
+## Build & tests
 
-## Build & test commands
+Prérequis : VS 2022+, CMake ≥ 3.27, vcpkg, Qt 6.8.3 ; variables `VCPKG_ROOT`, `QT_ROOT`.
+Presets : `msvc` (configure), `msvc-debug`, `msvc-release`. **Itération : cible + exécutable
+de test seulement ; suite complète avant livraison.** Commandes, table lib → exécutable,
+sorties compactes (`scripts/qrun.ps1`) : skill `openstitch-build-test`.
 
-Requires Visual Studio 2022+ (C++ workload), CMake ≥ 3.27, vcpkg, and Qt 6.8.3
-(official binaries, outside vcpkg). Set `VCPKG_ROOT` and `QT_ROOT` env vars first.
+Format : clang-format **18** exactement (la 23 locale fait échouer la CI) ; `-i` sur les
+fichiers modifiés seulement.
 
-```powershell
-cmake --preset msvc                       # configure (first run is slow: vcpkg builds OpenCV etc.)
-cmake --build --preset msvc-debug         # build Debug
-cmake --build --preset msvc-release       # build Release
-ctest --preset msvc-debug                 # run all tests (Debug)
-ctest --preset msvc-release               # run all tests (Release)
-```
+## Recherche et documentation (économiser le contexte)
 
-`scripts/build.ps1` wraps the above (configure + build Debug and/or Release,
-optional `-Test`): `.\scripts\build.ps1 -Test` builds everything and runs the
-full suite in one command.
+- Chercher avant de lire : Grep/Glob ou `mesh-mcp` (`search_docs` pour `docs/`,
+  `analyze_impact("<symbole>")` pour les appelants et CMake ; ses parseurs ne couvrent pas le
+  C++, donc Grep reste l'outil des `.cpp`/`.hpp`). `rg` n'est pas dans le PATH du shell Bash :
+  utiliser l'outil Grep.
+- Lire par plages (`offset`/`limit`). `satin.md` (~350 Ko), `satin-squelette.md`,
+  `moteur-de-points.md` : jamais en entier ; skill `openstitch-docs` pour la méthode et le repli.
+- Satin / auto-satin : lire la ou les sections concernées (jonctions, routage, guides,
+  squelette), pas les chapitres entiers ; l'audit global seul justifie une lecture complète.
 
-Build/test a single library or its test target directly (faster than a full
-build during iteration):
+## Skills du projet (`.claude/skills/`)
 
-```powershell
-cmake --build --preset msvc-debug --target openstitch_stitch_generation test_stitch
-ctest --preset msvc-debug -R tatami                              # filter CTest by name substring
-build\msvc\tests\unit\stitch\Debug\test_stitch.exe "some name"   # run one Catch2 TEST_CASE by name/substring
-build\msvc\tests\unit\stitch\Debug\test_stitch.exe "[tag]"       # or by Catch2 tag
-```
+Chargés à la demande selon leur description : `openstitch-docs`, `-build-test`,
+`-stitch-param`, `-cli-debug`, `-bugfix`, `-commit`, `-performance`, `-digitize`,
+`-multi-agent`, `-roadmap`, `-token-efficiency`. Règles qui s'appliquent même sans les charger :
 
-`linux-core` preset builds the core libs + CLI **without Qt** (without vcpkg, e.g. in a sandbox that
-blocks GitHub archives: `scripts/linux-core-setup.sh` — apt + git clones + a Boost.Polygon shim) — a portability
-guard, not a full app build; there is no desktop build on Linux yet.
+- **Chaque commit met à jour `docs/roadmap-parite-hatch.md`** (statut, nouveaux manques,
+  journal §28) ou écrit « roadmap : aucune entrée concernée » dans le message.
+- **Toute fonctionnalité est câblée dans `apps/desktop`** (menu/outil/dialogue/panneau,
+  `ICommand`, test QTest headless), sauf demande contraire explicite.
+- **Trois modes de session** (détail : `openstitch-commit`, `openstitch-roadmap`) :
+  *mission ciblée* (défaut : faire la demande, valider, commit, push, PR, s'arrêter),
+  *autonomie continue* (enchaîner les lots de la roadmap, uniquement si demandé : « continue »,
+  `/loop`), *audit* (examiner et corriger la configuration, sans partir sur une feature).
+- Sous-agents : la délégation doit être rentable (`openstitch-multi-agent` : agents
+  `os-explorer` haiku, `os-dev` sonnet, `os-architect` opus).
 
-Format check (matches CI, does not modify files):
-```bash
-git ls-files '*.cpp' '*.hpp' | xargs clang-format --dry-run --Werror
-```
+## Tests
 
-Regenerate the documentation PDF after editing anything in `docs/source/`:
-```powershell
-powershell -File docs/scripts/build-docs.ps1
-```
+Catch2 v3 (cœur/CLI, `tests/unit/<lib>/test_*.cpp`), QTest headless pour l'IHM
+(`QT_QPA_PLATFORM=offscreen`, ni pixels ni `sleep`). **Noms de `TEST_CASE` en ASCII pur.**
+SVG dorés de `tests/golden/` : jamais réécrits par un test (voir `openstitch-cli-debug`).
 
-## Code navigation tool: causalmesh (mesh-mcp) in WSL
+## Pièges connus
 
-Claude should use **causalmesh / MeshMCP** (https://github.com/VictorAgahi/causalmesh)
-from the local WSL `Ubuntu` distro for code search and dependency/impact analysis.
-It is already installed there (`~/.local/bin/mesh-mcp`, v2.9.0; `meshd` daemon alongside).
+- Header spdlog : `stdout_color_sinks.h`. Pas de membre nommé `slots` (macro Qt). Classes Qt
+  déclarées en avant au **scope global**. Pas de `M_PI` sous MSVC : `std::numbers::pi`.
+- Cibles vcpkg exactes : `Clipper2::Clipper2`, `MINIZIP::minizip-ng`.
+- `RasterTransform` et conversions µm↔pixel de `libs/auto_satin` tronquent vers zéro.
 
-```bash
-wsl -d Ubuntu -- bash -lc 'cd /mnt/c/Users/zache/Documents/EPITA/Assos/Atelier/Embrodeur && mesh-mcp doctor'
-# other subcommands: graph --format mermaid, run (MCP stdio server)
-```
+## Reprise de session
 
-It is wired as a project MCP server in `.mcp.json` (launched through `wsl -d Ubuntu`,
-config in `.agents/mesh-mcp.toml`). Tools: `smart_search`, `find_dependents`,
-`analyze_impact`, `search_docs` (indexes `docs/`), `analyze_grpc`, `visualize_mesh`.
+Contexte trop long ou changement de session : écrire un point de reprise de ≤ 15 lignes
+(objectif, décisions, branche/commit, tests passés, prochaine action) — voir
+`openstitch-token-efficiency` §4 — plutôt que de recopier l'historique.
 
-Caveat: its tree-sitter parsers cover Java/Go/Python/TS/Rust/Protobuf only, **not
-C++**, so on this codebase it adds little over grep/Glob for `.cpp`/`.hpp` files.
-Fall back to the normal search tools when it doesn't return anything useful.
-What does work on C++: regex patterns in `.agents/mesh-mcp.toml` feed
-`analyze_impact` — `analyze_impact("effective_sequence")` /
-`("generate_sequence")` list call sites, `analyze_impact("<lib>")` lists the
-CMake targets linking `openstitch::<lib>`, and `ICommand` subclasses are
-indexed. Results are file-level (line numbers are always `:1`).
-`search_docs` works well on `docs/` — **always look up documentation through
-it** (workflow in the `openstitch-docs` skill, `.claude/skills/openstitch-docs/`):
-locate with `search_docs`, then `Read` only the returned line ranges. `sam-worker/` is not in the roots (the
-watcher hangs on its `.venv-wsl/`).
+## Carte des modules
 
-## Project skills (`.claude/skills/`)
-
-- `openstitch-docs` — look up / edit documentation through `search_docs`.
-- `openstitch-build-test` — targeted build, lib → test executable map, final checks.
-- `openstitch-stitch-param` — end-to-end checklist for a new stitch parameter or stitch type.
-- `openstitch-cli-debug` — reproduce generation issues with `openstitch-cli`, regenerate goldens.
-- `openstitch-bugfix` — root-cause workflow (failing test first, rejected hypotheses documented).
-- `openstitch-commit` — pre-commit checks and commit message conventions; **autonomous: finished lot → commit, push, open PR (never merge, never on main), then continue with the next lot**. **Every
-  commit must update `docs/roadmap-parite-hatch.md`** (entry status, new gaps, journal §28)
-  or state "roadmap : aucune entrée concernée" in the message. **Unless the user explicitly
-  says otherwise, every feature must also be wired into the desktop app** (`apps/desktop`:
-  menu/tool/dialog/panel + `ICommand` undo + headless QTest), not just core and CLI.
-- `openstitch-performance` — measure with the bench, parallelise with `parallel_for`
-  (independent tasks, sequential assembly), keep heavy work off the UI thread, exact-key
-  caches; byte-identical output is the acceptance criterion.
-- `openstitch-digitize` — numériser une image en broderie : inspecter l'image, `digitize` + `stats`
-  + rendu, fond, couleurs, `--dark-lines`, satin des bandes, diagnostic des échecs courants.
-- `openstitch-multi-agent` — work split across sub-agents in isolated worktrees
-  (disjoint file scopes, lead integrates sequentially and re-runs the tests itself).
-  The user prefers this whenever a task splits cleanly.
-- `openstitch-roadmap` — **when driven without a precise instruction**
-  ("continue", "next task", `/loop`…), pick the next item of
-  `docs/roadmap-parite-hatch.md` (gap list vs Hatch Embroidery, P0→P3, delivery
-  waves) and update its status in the same commit.
-
-## Architecture
-
-**Layering is strict and acyclic**: `apps/{desktop,cli} → libs/* → libs/core`.
-Only `apps/desktop` depends on Qt; everything else must stay Qt-free (this is
-enforced by the `linux-core` CI job, which builds the core + CLI with no Qt at
-all). Each lib is one CMake target `openstitch::<name>` with its own test
-directory under `tests/unit/<name>/`. Third-party libraries are encapsulated
-behind an internal interface and never leak their types across a lib boundary:
-Clipper2 lives inside `geometry`, OpenCV inside `image`/`segmentation`/
-`vectorization`, the DST codec inside `formats`, JSON/minizip inside `project_io`.
-
-Module responsibilities (see `docs/source/module-reference.md` for the full
-table and "where do I change X" shortcuts):
-
-| Module | Responsibility |
-|---|---|
-| `core` | strong unit types (µm/mm/px), ids, `Result<T>`, logging |
-| `geometry` | paths, simplification, boolean ops/offsets, arc-length |
-| `image` | loading, non-destructive preprocessing |
-| `segmentation` | CIELAB quantization, connected regions |
-| `vectorization` | regions → clean vector contours |
-| `document` | project/object data model |
-| `stitch` | machine commands, stats |
-| `stitch_generation` | running/tatami/satin point generation, routing, manual overrides |
-| `stitch_render` | realistic thread view: sequence → thread segments → shaded RGBA image (Qt-free; painting stays in `apps/desktop`) |
-| `auto_satin` | skeleton primitives, satinability, skeleton-guided auto-satin (axis, oriented chords, guides) |
-| `stitch_analysis` | pre-export validation rules |
-| `optimization` | stitch order |
-| `autodigitize` | image → editable objects automatically |
-| `commands` | undo/redo (Command pattern) |
-| `formats` | DST codec, diagnostic SVG export |
-| `project_io` | `.osp` project format (JSON + ZIP) |
-| `project_ops` | Programmatic API behind `openstitch-cli project …`: project factory, JSON inspection, transactional operations/batches, quality report, auto-satin service (see `docs/source/cli-project.md`) |
-
-**No coordinate is ever a raw `double`.** Internal geometry is `Micrometers`
-(`int32`) / `Vec2um`, Y axis pointing up. Convert at boundaries only: px→µm on
-import (explicit resolution), µm→mm for display, µm→0.1mm for DST export.
-
-**All document mutation goes through a `commands::ICommand`** pushed onto an
-`UndoStack` (`apply`/`revert`/`name`) — never mutate `document::Project` directly
-from UI code.
-
-**Stitch points are never stored** — they're derived. `generate_sequence(project)`
-computes the raw sequence from the document; `apply_manual_overrides` then
-patches it with any manual edits (Lot 8, ADR-014). Every production consumer
-(preview, export, analysis, simulation) MUST call
-`stitch_generation::effective_sequence(project)` (which chains both steps), not
-`generate_sequence` directly. This is enforced by a structural CTest
-(`tests/check_no_raw_sequence_bypass.cmake`) that fails the build if a new
-production call site outside `libs/stitch_generation/` calls `generate_sequence`
-without an explicit `raw-sequence-ok:` annotation (the only legitimate exceptions
-today are synthetic CLI debug generators).
-
-**The desktop app has no business logic.** `apps/desktop` wires actions, renders,
-and triggers recomputation; everything else (image ops, segmentation,
-generation, analysis, order, formats) lives in the libs — this is directly
-checkable since the CLI exercises the same modules without Qt.
-
-**Parallelism is explicit and deterministic.** Independent work (per region, per
-object, per colour class, per image row) goes through `openstitch::parallel_for`
-(`libs/core/include/openstitch/core/parallel.hpp`, Qt-free): parallel tasks only
-read constant data and write their own slot; ids, document insertion and stitch
-order are assigned sequentially afterwards, so output never depends on the thread
-count (`OPENSTITCH_THREADS=1` forces sequential). In the desktop, long
-computations run off the UI thread through `BusyIndicator::run`; there is no
-general task queue. Write generation code as pure functions over immutable
-snapshots. See the `openstitch-performance` skill and `docs/performance-audit.md`.
-
-## Testing conventions
-
-- Catch2 v3 for core/CLI (`tests/unit/<lib>/test_*.cpp`, one executable per lib);
-  Qt6::Test (QTest/QSignalSpy) for desktop UI (`tests/unit/desktop/`), always run
-  **headless** (`QT_QPA_PLATFORM=offscreen`), no pixel comparisons, no `sleep`.
-- **Catch2 `TEST_CASE` names must be plain ASCII** — accented characters break
-  test discovery under the Windows console encoding, even though French prose
-  elsewhere in the codebase/docs uses accents freely.
-- Determinism is a hard requirement almost everywhere: same input → byte-identical
-  output across two runs (checked explicitly in many tests). Avoid unordered
-  containers where iteration order would leak into output; sort explicitly.
-  DST round-trip is checked byte-for-byte.
-- Golden SVGs under `tests/golden/` are diagnostic references, never rewritten by
-  tests — regenerate explicitly via `openstitch-cli stitchdebug` /
-  `satin-auto-debug --output-svg`.
-- To add a test: a `TEST_CASE` in the module's `test_*.cpp`, or a new file wired
-  into that test dir's `CMakeLists.txt`. For desktop: a function in an existing
-  QTest suite, or a new file + `openstitch_add_qt_test(...)`.
-
-## Known pitfalls in this codebase
-
-- spdlog header is `stdout_color_sinks.h`.
-- A member named `slots` is forbidden (Qt macro collision) — pick another name.
-- Forward-declare Qt classes at **global scope**, not inside `namespace
-  openstitch::...`.
-- No `M_PI` under MSVC — use `std::numbers::pi` (`<numbers>`).
-- Exact vcpkg target names: `Clipper2::Clipper2`, `MINIZIP::minizip-ng`.
-- `RasterTransform`/µm↔pixel conversions in `libs/auto_satin` truncate toward
-  zero, not round — matters at sub-pixel precision only.
+`core`, `geometry`, `image`, `segmentation`, `vectorization`, `document`, `stitch`,
+`stitch_generation`, `stitch_render`, `auto_satin`, `stitch_analysis`, `optimization`,
+`autodigitize`, `commands`, `formats`, `project_io`, `project_ops` (API de
+`openstitch-cli project …`). Responsabilités et « où changer X » :
+`docs/source/module-reference.md` (via `search_docs`).

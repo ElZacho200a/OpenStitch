@@ -31,9 +31,11 @@ foi.
 - `git ls-files '*.cpp' '*.hpp' | xargs clang-format --dry-run --Werror` doit
   passer avant tout commit (mêmes règles que le job CI `format`).
 - Toute modification du sous-système satin (skeleton extraction, ancrage des
-  jonctions, routage, guides) nécessite d'avoir lu
-  `docs/source/satin.md` au préalable — c'est la référence technique
-  détaillée, avec les root-cause writeups des bugs déjà corrigés.
+  jonctions, routage, guides) nécessite d'avoir lu les **sections pertinentes**
+  de `docs/source/satin.md` / `satin-squelette.md` (référence technique avec les
+  root-cause writeups des bugs déjà corrigés), localisées par `search_docs` ou
+  `Grep` puis lues par plages (`offset`/`limit`) — jamais le fichier entier
+  (~350 Ko). Lecture complète réservée à un audit global du sous-système.
 
 ## Tier 2 (Défauts forts — best-effort sous contrainte de temps)
 
