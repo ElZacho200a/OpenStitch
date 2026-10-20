@@ -41,8 +41,8 @@ fichiers modifiés seulement.
 
 - Chercher avant de lire : Grep/Glob ou `mesh-mcp` (`search_docs` pour `docs/`,
   `analyze_impact("<symbole>")` pour les appelants et CMake ; ses parseurs ne couvrent pas le
-  C++, donc Grep reste l'outil des `.cpp`/`.hpp`). `rg` n'est pas dans le PATH du shell Bash :
-  utiliser l'outil Grep.
+  C++, donc Grep reste l'outil des `.cpp`/`.hpp`). `rg` (ripgrep, installé via winget) est disponible après
+  redémarrage du shell ; l'outil Grep reste le défaut. `rtk proxy <cmd>` : sortie brute si un filtre cache l'erreur.
 - Lire par plages (`offset`/`limit`). `satin.md` (~350 Ko), `satin-squelette.md`,
   `moteur-de-points.md` : jamais en entier ; skill `openstitch-docs` pour la méthode et le repli.
 - Satin / auto-satin : lire la ou les sections concernées (jonctions, routage, guides,

@@ -38,7 +38,7 @@ digitize réellement chargée (il ne l'est qu'à l'invocation).
 | 4 | `openstitch-multi-agent` : « préférer au séquentiel dès que le découpage est propre » (réflexe) ; aucun choix de modèle | haute | matrice de décision bénéfice/coût, prompts minimaux, validation centralisée, agents `os-explorer` (haiku), `os-dev` (sonnet, worktree), `os-architect` (opus) |
 | 5 | Aucun modèle par défaut pour les sous-agents ; la session peut passer en Opus et les agents héritent | moyenne | `CLAUDE_CODE_SUBAGENT_MODEL=sonnet` dans `settings.json` (bloc `env`). Ordre officiel (v2.1.281) : paramètre d'appel > frontmatter > variable > session ; Opus/Haiku restent donc choisissables |
 | 6 | RTK : `rtk hook claude` ne s'applique qu'à l'outil Bash ; les builds passent par PowerShell ; RTK n'a pas de filtre cmake/ctest/MSBuild (`rtk --help`) | haute pour les builds | `scripts/qrun.ps1` : statut + bilan sur succès, erreurs dédupliquées + journal complet en fichier sur échec, code de sortie conservé (testé : succès, échec) |
-| 7 | `rg` absent du PATH Bash (message RTK « Binary 'rg' not found ») : les repli « rg » ne marchent pas | moyenne | instructions réécrites : outil Grep |
+| 7 | `rg` absent du PATH Bash (message RTK « Binary 'rg' not found ») | moyenne | ripgrep 15.2.0 installé via winget (2026-10-20, PATH après redémarrage du shell) ; instructions par défaut sur l'outil Grep |
 | 8 | `openstitch-commit` + `openstitch-roadmap` : « enchaîner sur le lot suivant sans attendre » = boucle illimitée par défaut | haute | trois modes (ciblée par défaut / autonomie continue sur demande / audit) ; trigger « tâche terminée → choisir la suivante » retiré de la description de la roadmap |
 | 9 | Pas de procédure de reprise ; sessions jusqu'à 613 k | haute | point de reprise ≤ 15 lignes dans le skill `token-efficiency` §4 ; compaction auto laissée active |
 
@@ -48,8 +48,7 @@ liste d'autorisations héritée de Liza (skills inexistants, inoffensifs, hors p
 `disable-model-invocation` (aucun skill n'est purement manuel ; les descriptions déjà ciblées
 suffisent — la liste de skills ne coûte que ses descriptions).
 
-Écart connu : `rtk-guard.sh` interdit `rtk proxy` et la lecture des tee RTK, alors que
-`~/.claude/RTK.md` recommande `rtk proxy`. Les journaux de `qrun.ps1` sont des fichiers propres
+Mise à jour : `rtk proxy` est désormais autorisé dans `rtk-guard.sh` (la lecture des tee RTK reste bloquée). Les journaux de `qrun.ps1` sont des fichiers propres
 (lisibles) et n'entrent pas dans ce conflit.
 
 ## 3. Compromis et revue critique

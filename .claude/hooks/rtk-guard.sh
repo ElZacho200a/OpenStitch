@@ -18,10 +18,9 @@ reason=""
 if echo "$command" | grep -qE '~?/?\.local/share/rtk/tee'; then
   blocked="read RTK tee file"
   reason="RTK compressed output is authoritative. Do not read tee files — diagnose from the summary. Do not try to work around RTK."
-elif echo "$command" | grep -qE '\brtk\s+proxy\b' && ! echo "$command" | grep -qE '(^|\s)--collect-only(\s|$)'; then  # https://github.com/rtk-ai/rtk/pull/925
-  blocked="rtk proxy"
-  reason="RTK compressed output is authoritative. In case of error, fix your command. Do not try to work around RTK."
 fi
+# `rtk proxy` (sortie brute, suivie par rtk gain) est autorisé depuis 2026-10-20 : à utiliser
+# quand un filtre RTK cache une information nécessaire au diagnostic.
 
 if [[ -n "$blocked" ]]; then
   cat <<EOF

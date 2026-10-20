@@ -54,7 +54,7 @@ plus d'~1 h. Sinon, faire soi-même. Politique complète : `openstitch-multi-age
 Builds et tests : `scripts/qrun.ps1` (statut + bilan, journal complet dans
 `build/qrun-logs/`). `git status -sb`, `git diff --stat` avant tout diff complet. Pas de
 `--verbose`, pas de `ctest -V` sans cible. Ne jamais relancer une commande pour « revoir » :
-lire le journal par plage. `rg` n'existe pas dans le shell Bash : outil Grep.
+lire le journal par plage. Recherche : outil Grep (ou `rg`, installé via winget le 2026-10-20 ; si « not found », rouvrir le shell). `rtk proxy <cmd>` donne la sortie brute quand un filtre RTK cache un détail utile au diagnostic.
 
 ## 6. Réutiliser le déjà-documenté
 
