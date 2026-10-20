@@ -688,6 +688,49 @@ std::vector<geometry::PathSet> fill_regions_in_sewing_order(const stitch::Stitch
     return ordered;
 }
 
+// Passe de contour d'un tatami (`edge_outline`) : point droit le long du bord de la région et de
+// ses trous, cousu PAR-DESSUS le remplissage pour masquer les bouts de rangées (bords
+// « effilochés »). Chaque boucle démarre au plus près de l'aiguille et lui est reliée par un
+// trajet caché dans la région quand il existe (sinon saut).
+constexpr std::int32_t kEdgeOutlineStitchUm = 2'000;
+constexpr std::int32_t kEdgeOutlineMinUm = 500;
+
+void emit_edge_outline(stitch::StitchSequence& sequence, const geometry::PathSet& region,
+                       ObjectId source, const document::TatamiParams& params) {
+    FillLinker linker(region, Micrometers{kEdgeOutlineStitchUm}, params.underlay_inset);
+    const auto outline = [&](const geometry::Path& path) {
+        if (path.nodes.size() < 3) {
+            return;
+        }
+        RunningConfig cfg;
+        cfg.target_length = Micrometers{kEdgeOutlineStitchUm};
+        cfg.min_length = Micrometers{kEdgeOutlineMinUm};
+        if (!sequence.commands.empty()) {
+            cfg.start = sequence.commands.back().pos;
+        }
+        const std::vector<Vec2um> points = run_stitch(path, cfg).points;
+        if (points.size() < 2) {
+            return;
+        }
+        if (!sequence.commands.empty() &&
+            sequence.commands.back().type == stitch::CommandType::Stitch) {
+            linker.set_tail(sequence.commands.back().pos);
+        }
+        if (linker.link_to(sequence, points.front(), source)) {
+            for (std::size_t i = 1; i < points.size(); ++i) {
+                sequence.commands.push_back({points[i], stitch::CommandType::Stitch, source,
+                                             stitch::StitchPass::TopStitch});
+            }
+        } else {
+            emit_polyline(sequence, points, source);
+        }
+    };
+    outline(region.outer);
+    for (const geometry::Path& hole : region.holes) {
+        outline(hole);
+    }
+}
+
 void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObject& source,
                      const document::EmbroideryObject& object,
                      const document::TatamiParams& params) {
@@ -704,6 +747,9 @@ void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObj
             emit_underlay_pass(sequence, up, object.id, linker ? &*linker : nullptr);
         }
         emit_fill(sequence, fill_tatami(region, params), object.id, linker ? &*linker : nullptr);
+        if (params.edge_outline) {
+            emit_edge_outline(sequence, region, object.id, params);
+        }
     }
 }
 

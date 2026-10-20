@@ -433,6 +433,18 @@ void PropertiesPanelTest::engineSettingsEmitDedicatedEdits() {
     QVERIFY(emitted.has_value());
     QCOMPARE(std::get<openstitch::document::TatamiParams>(*emitted).pull_compensation.value, 300);
 
+    // Bords effilochés : écrêtage des bouts de rangée et contour cousu par-dessus.
+    auto* clip = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_tatamiRowEndClip"));
+    QVERIFY(clip != nullptr);
+    QCOMPARE(clip->maximum(), 5.0);
+    clip->setValue(1.0);
+    QCOMPARE(std::get<openstitch::document::TatamiParams>(*emitted).row_end_clip.value, 1'000);
+    auto* outline = panel.findChild<QCheckBox*>(QStringLiteral("check_tatamiEdgeOutline"));
+    QVERIFY(outline != nullptr);
+    QVERIFY(!outline->isChecked());
+    outline->setChecked(true);
+    QVERIFY(std::get<openstitch::document::TatamiParams>(*emitted).edge_outline);
+
     auto* mode = panel.findChild<QComboBox*>(QStringLiteral("combo_underlayMode"));
     QVERIFY(mode != nullptr);
     mode->setCurrentIndex(1);

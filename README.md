@@ -66,7 +66,14 @@ utilisateur `VCPKG_ROOT` et `QT_ROOT` — puis configure et compile Debug **et**
 .\scripts\build.ps1 -Test                 # ... puis lancer les tests
 .\scripts\build.ps1 -Yes                  # confirme d'avance (aucune invite)
 .\scripts\build.ps1 -SkipBootstrap -Configuration Debug -Test   # poste déjà configuré : n'installe rien
+.\scripts\build.ps1 -SkipBootstrap -Configuration Release -Jobs 4  # limite la compilation à 4 tâches parallèles
 ```
+
+La compilation utilise par défaut tous les processeurs logiques disponibles,
+entre projets et entre fichiers C++ d'un même projet. `-Jobs N` règle le nombre
+maximal de tâches de compilation simultanées ; `-Jobs 1` permet de compiler en série.
+Les workflows Windows CI et Release utilisent le même script ; le build Linux
+utilise déjà `-j "$(nproc)"`.
 
 **Voie manuelle** (vous installez vous-même l'outillage) :
 
