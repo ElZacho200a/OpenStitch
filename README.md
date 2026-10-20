@@ -69,9 +69,9 @@ utilisateur `VCPKG_ROOT` et `QT_ROOT` — puis configure et compile Debug **et**
 .\scripts\build.ps1 -SkipBootstrap -Configuration Release -Jobs 4  # limite la compilation à 4 tâches parallèles
 ```
 
-La compilation utilise par défaut tous les processeurs logiques disponibles,
-entre projets et entre fichiers C++ d'un même projet. `-Jobs N` règle le nombre
-maximal de tâches de compilation simultanées ; `-Jobs 1` permet de compiler en série.
+La compilation utilise par défaut jusqu'à quatre processeurs logiques disponibles
+pour compiler plusieurs projets en parallèle. `-Jobs N` règle le nombre maximal
+de projets compilés simultanément ; `-Jobs 1` permet de compiler en série.
 Les workflows Windows CI et Release utilisent le même script ; le build Linux
 utilise déjà `-j "$(nproc)"`.
 

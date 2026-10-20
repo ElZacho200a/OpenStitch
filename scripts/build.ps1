@@ -16,8 +16,8 @@
 .PARAMETER Configuration
     Debug, Release, ou Both (defaut : Both).
 .PARAMETER Jobs
-    Nombre maximal de taches de compilation paralleles (defaut : nombre
-    de processeurs logiques disponibles). Utiliser -Jobs 1 pour serialiser.
+    Nombre maximal de projets compiles en parallele (defaut : au plus
+    quatre processeurs logiques). Utiliser -Jobs 1 pour serialiser.
 .PARAMETER Test
     Lance ctest apres la compilation, pour chaque configuration compilee.
 .PARAMETER Clean
@@ -49,7 +49,7 @@ param(
     [ValidateSet('Debug', 'Release', 'Both')]
     [string]$Configuration = 'Both',
     [ValidateRange(1, [int]::MaxValue)]
-    [int]$Jobs = [Environment]::ProcessorCount,
+    [int]$Jobs = [Math]::Min(4, [Environment]::ProcessorCount),
     [switch]$Test,
     [switch]$Clean,
     [switch]$SkipBootstrap,
@@ -273,12 +273,10 @@ foreach ($cfg in $configs) {
     # Sans --target : construit TOUT (cible par defaut du generateur), pas
     # seulement l'executable desktop -- comprend aussi CLI, libs et tests.
     Write-Host "== Compilation ($preset) : tout, $Jobs taches paralleles ==" -ForegroundColor Cyan
-    # --parallel repartit les projets entre les noeuds MSBuild. MultiToolTask
-    # repartit aussi les fichiers C++ d'un meme projet (notamment le desktop).
-    # Le budget partage evite de multiplier Jobs projets par Jobs compilateurs.
-    cmake --build --preset $preset --parallel $Jobs -- `
-        /p:UseMultiToolTask=true /p:EnforceProcessCountAcrossBuilds=true `
-        /p:MultiProcMaxCount=$Jobs /p:CL_MPCount=$Jobs
+    # Le parallelisme reste gere par CMake/MSBuild entre les projets.
+    # Des arrets CL.exe sans diagnostic ont ete observes avec MultiToolTask
+    # sur le build complet ; garder le mode de compilation standard.
+    cmake --build --preset $preset --parallel $Jobs
     if ($LASTEXITCODE -ne 0) { throw "La compilation ($preset) a echoue (code $LASTEXITCODE)." }
 
     if ($Test) {
