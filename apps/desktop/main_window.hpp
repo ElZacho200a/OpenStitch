@@ -75,6 +75,7 @@ class CompositeCommand;
 namespace openstitch::desktop {
 
 class CanvasView;
+struct DensityRaster; // density_overlay.hpp
 class GesturesDialog;
 class QuickStartDialog;
 class PropertiesPanel;
@@ -1331,6 +1332,18 @@ private:
     void setDensityMapEnabled(bool on);
     [[nodiscard]] double densityThresholdValue() const;
     QAction* densityMapAct_{nullptr};
+    // HP-VIEW-014 : carte d'épaisseur estimée, même surimpression que la densité (exclusives).
+    QAction* thicknessMapAct_{nullptr};
+    int densityCellUm_{0}; // côté de case du dernier calcul d'épaisseur (suit le zoom)
+    [[nodiscard]] bool thicknessMode() const {
+        return thicknessMapAct_ != nullptr && thicknessMapAct_->isChecked();
+    }
+    // Côté de case adapté au zoom courant de la vue (stitch_analysis::adaptive_cell).
+    [[nodiscard]] Micrometers thicknessCellForView() const;
+    void setThicknessMapEnabled(bool on);
+    void recomputeThickness();
+    // Pose le raster calculé comme image de surimpression (partagé densité / épaisseur).
+    void adoptOverlayRaster(const DensityRaster& raster, Vec2um origin, Micrometers cell);
     QTimer* densityTimer_{nullptr};
     QPixmap densityPixmap_;
     QRectF densityRect_; // zone couverte par l'image, mm (repère scène)

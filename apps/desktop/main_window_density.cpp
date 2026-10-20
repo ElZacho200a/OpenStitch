@@ -43,6 +43,7 @@ constexpr int kHotspotObjectRole = Qt::UserRole + 2; // id de l'objet dominant (
 constexpr int kHotspotDelayMs = 150;                 // regroupe une rafale de modifications
 
 const QString kEnabledKey = QStringLiteral("view/densityMap");
+const QString kThicknessKey = QStringLiteral("view/thicknessMap");
 
 } // namespace
 
@@ -55,6 +56,20 @@ void MainWindow::buildDensityFeature() {
                                   "par mm², du froid au chaud) ; les zones sur-denses sont "
                                   "listées dans le panneau Analyse."));
     densityMapAct_->setChecked(ui_memory::boolValue(kEnabledKey, false));
+
+    // --- Action « Affichage > Carte d'épaisseur » (HP-VIEW-014) ------------------------------
+    thicknessMapAct_ = new QAction(tr("Carte d'épaisseur"), this);
+    thicknessMapAct_->setObjectName(QStringLiteral("action_thicknessMap"));
+    thicknessMapAct_->setCheckable(true);
+    thicknessMapAct_->setToolTip(
+        tr("Surimpression colorée de l'épaisseur estimée du fil (en mm, du froid au chaud), "
+           "toutes passes comprises. C'est une estimation à partir de la longueur de fil, pas "
+           "une mesure ; la carte suit le zoom."));
+    // Exclusive avec la carte de densité : une seule surimpression à la fois.
+    thicknessMapAct_->setChecked(ui_memory::boolValue(kThicknessKey, false));
+    if (thicknessMapAct_->isChecked() && densityMapAct_->isChecked()) {
+        densityMapAct_->setChecked(false);
+    }
 
     QMenu* viewMenu = nullptr;
     QAction* insertBefore = nullptr;
@@ -70,6 +85,7 @@ void MainWindow::buildDensityFeature() {
     }
     if (viewMenu != nullptr) {
         viewMenu->insertAction(insertBefore, densityMapAct_);
+        viewMenu->insertAction(insertBefore, thicknessMapAct_);
     }
 
     // --- Légende sur la vue ------------------------------------------------------------------
@@ -113,6 +129,47 @@ void MainWindow::buildDensityFeature() {
         row->addWidget(thresholdLabel);
         row->addWidget(threshold, 1);
         box->addLayout(row);
+
+        // Réglages de la carte d'épaisseur : estimation, donc réglable (docs/veille-epaisseur).
+        const ThicknessSettings thickness = ThicknessSettings::load();
+        auto* layerRow = new QHBoxLayout();
+        auto* layerLabel = new QLabel(tr("Épaisseur d'une couche (mm)"), group);
+        auto* layerSpin = new QDoubleSpinBox(group);
+        layerSpin->setObjectName(QStringLiteral("thicknessLayerSpin"));
+        layerSpin->setAccessibleName(tr("Épaisseur estimée d'une couche dense, en millimètres"));
+        layerSpin->setRange(0.05, 0.6);
+        layerSpin->setSingleStep(0.01);
+        layerSpin->setDecimals(2);
+        layerSpin->setValue(thickness.layerMm);
+        layerLabel->setBuddy(layerSpin);
+        layerRow->addWidget(layerLabel);
+        layerRow->addWidget(layerSpin, 1);
+        box->addLayout(layerRow);
+        auto* maxLayersRow = new QHBoxLayout();
+        auto* maxLayersLabel = new QLabel(tr("Seuil d'épaisseur (couches)"), group);
+        auto* maxLayersSpin = new QDoubleSpinBox(group);
+        maxLayersSpin->setObjectName(QStringLiteral("thicknessMaxLayersSpin"));
+        maxLayersSpin->setAccessibleName(tr("Seuil d'épaisseur, en couches de remplissage dense"));
+        maxLayersSpin->setRange(0.5, 20.0);
+        maxLayersSpin->setSingleStep(0.5);
+        maxLayersSpin->setDecimals(1);
+        maxLayersSpin->setValue(thickness.maxLayers);
+        maxLayersLabel->setBuddy(maxLayersSpin);
+        maxLayersRow->addWidget(maxLayersLabel);
+        maxLayersRow->addWidget(maxLayersSpin, 1);
+        box->addLayout(maxLayersRow);
+        const auto storeThickness = [this, layerSpin, maxLayersSpin] {
+            ThicknessSettings s;
+            s.layerMm = layerSpin->value();
+            s.maxLayers = maxLayersSpin->value();
+            s.save();
+            densityValid_ = false; // la clé de cache porte ces réglages : recalcul
+            if (thicknessMode()) {
+                densityTimer_->start();
+            }
+        };
+        connect(layerSpin, &QDoubleSpinBox::valueChanged, this, storeThickness);
+        connect(maxLayersSpin, &QDoubleSpinBox::valueChanged, this, storeThickness);
 
         auto* list = new QListWidget(group);
         list->setObjectName(QStringLiteral("densityHotspotList"));
@@ -196,6 +253,75 @@ void MainWindow::buildDensityFeature() {
     }
 
     connect(densityMapAct_, &QAction::toggled, this, [this](bool on) { setDensityMapEnabled(on); });
+    connect(thicknessMapAct_, &QAction::toggled, this,
+            [this](bool on) { setThicknessMapEnabled(on); });
+    // Réactivité : la carte d'épaisseur suit le zoom (case plus fine en zoom avant, plus grossière
+    // et plus rapide en zoom arrière). Le recalcul est différé pour regrouper une rafale de
+    // molette.
+    connect(view_, &CanvasView::viewChanged, this, [this] {
+        if (thicknessMode() && sequence_.has_value() && densityValid_ &&
+            densityCellUm_ != thicknessCellForView().value) {
+            densityTimer_->start();
+        }
+    });
+}
+
+Micrometers MainWindow::thicknessCellForView() const {
+    const double pixelsPerMm = view_ != nullptr ? std::abs(view_->transform().m11()) : 0.0;
+    return stitch_analysis::adaptive_cell(pixelsPerMm);
+}
+
+void MainWindow::setThicknessMapEnabled(bool on) {
+    ui_memory::setBoolValue(kThicknessKey, on);
+    if (thicknessMapAct_ != nullptr && thicknessMapAct_->isChecked() != on) {
+        const QSignalBlocker blocker(thicknessMapAct_);
+        thicknessMapAct_->setChecked(on);
+    }
+    if (on && densityMapAct_ != nullptr && densityMapAct_->isChecked()) {
+        const QSignalBlocker blocker(densityMapAct_); // exclusives : la densité s'éteint
+        densityMapAct_->setChecked(false);
+        ui_memory::setBoolValue(kEnabledKey, false);
+    }
+    auto* summary = analysisDock_ != nullptr
+                        ? analysisDock_->findChild<QLabel*>(QStringLiteral("densitySummary"))
+                        : nullptr;
+    auto* list = analysisDock_ != nullptr
+                     ? analysisDock_->findChild<QListWidget*>(QStringLiteral("densityHotspotList"))
+                     : nullptr;
+    densityValid_ = false; // l'autre mode (ou plus aucun) : la clé ne correspond plus
+    if (!on) {
+        if (densityMapAct_ == nullptr || !densityMapAct_->isChecked()) {
+            densityTimer_->stop();
+            if (list != nullptr) {
+                list->clear();
+            }
+            if (summary != nullptr) {
+                summary->setText(tr("Carte désactivée (Affichage > Carte de densité)."));
+            }
+        }
+        renderStitches(); // retire la surimpression, ou planifie le calcul de la densité
+        return;
+    }
+    if (summary != nullptr) {
+        summary->setText(tr("Calcul de la carte d'épaisseur…"));
+    }
+    renderStitches(); // la clé ne correspond pas : planifie le calcul
+}
+
+void MainWindow::adoptOverlayRaster(const DensityRaster& raster, Vec2um origin, Micrometers cell) {
+    densityPixmap_ = QPixmap();
+    if (raster.width > 0) {
+        const QImage image(raster.rgba.data(), raster.width, raster.height, raster.width * 4,
+                           QImage::Format_RGBA8888);
+        densityPixmap_ = QPixmap::fromImage(image); // copie : `raster` est local à l'appelant
+        const double cellMm = to_millimeters(cell).value;
+        const double rows = raster.height;
+        // Repère scène : x = mm, y = -mm (Y du document vers le haut) ; coin haut-gauche.
+        densityRect_ = QRectF(to_millimeters(origin.x).value,
+                              -(to_millimeters(origin.y).value + rows * cellMm),
+                              raster.width * cellMm, rows * cellMm);
+    }
+    densityScaleMax_ = raster.scale_max;
 }
 
 void MainWindow::setDensityMapEnabled(bool on) {
@@ -204,6 +330,11 @@ void MainWindow::setDensityMapEnabled(bool on) {
         const QSignalBlocker blocker(densityMapAct_);
         densityMapAct_->setChecked(on);
     }
+    if (on && thicknessMapAct_ != nullptr && thicknessMapAct_->isChecked()) {
+        const QSignalBlocker blocker(thicknessMapAct_); // exclusives : l'épaisseur s'éteint
+        thicknessMapAct_->setChecked(false);
+        ui_memory::setBoolValue(kThicknessKey, false);
+    }
     auto* summary = analysisDock_ != nullptr
                         ? analysisDock_->findChild<QLabel*>(QStringLiteral("densitySummary"))
                         : nullptr;
@@ -211,14 +342,17 @@ void MainWindow::setDensityMapEnabled(bool on) {
                      ? analysisDock_->findChild<QListWidget*>(QStringLiteral("densityHotspotList"))
                      : nullptr;
     if (!on) {
-        densityTimer_->stop();
-        if (list != nullptr) {
-            list->clear();
+        if (!thicknessMode()) {
+            densityTimer_->stop();
+            if (list != nullptr) {
+                list->clear();
+            }
+            if (summary != nullptr) {
+                summary->setText(tr("Carte désactivée (Affichage > Carte de densité)."));
+            }
         }
-        if (summary != nullptr) {
-            summary->setText(tr("Carte désactivée (Affichage > Carte de densité)."));
-        }
-        renderStitches(); // retire la surimpression
+        densityValid_ = false;
+        renderStitches(); // retire la surimpression (ou planifie le calcul de l'épaisseur)
         return;
     }
     if (summary != nullptr) {
@@ -246,16 +380,24 @@ void MainWindow::refreshDensityOverlay() {
         return;
     }
     auto* legend = view_ != nullptr ? view_->viewport()->findChild<DensityLegend*>() : nullptr;
-    const bool wanted = densityMapAct_->isChecked() && sequence_.has_value() && !simulating() &&
-                        showStitchesAct_ != nullptr && showStitchesAct_->isChecked();
+    const bool thickness = thicknessMode();
+    const bool wanted = (densityMapAct_->isChecked() || thickness) && sequence_.has_value() &&
+                        !simulating() && showStitchesAct_ != nullptr &&
+                        showStitchesAct_->isChecked();
     if (legend != nullptr) {
         legend->setVisible(false);
     }
     if (!wanted) {
         return;
     }
-    const double threshold = densityThresholdValue();
-    if (!densityValid_ || densityKey_ != densityKey(*sequence_, threshold)) {
+    const ThicknessSettings thicknessSettings = ThicknessSettings::load();
+    const auto thicknessOptions = thicknessSettings.options(thicknessCellForView());
+    const double threshold =
+        thickness ? stitch_analysis::layers_to_mm(thicknessOptions.max_layers, thicknessOptions)
+                  : densityThresholdValue();
+    const std::uint64_t key =
+        thickness ? thicknessKey(*sequence_, thicknessOptions) : densityKey(*sequence_, threshold);
+    if (!densityValid_ || densityKey_ != key) {
         densityValid_ = false;
         densityTimer_->start();
         return;
@@ -272,15 +414,84 @@ void MainWindow::refreshDensityOverlay() {
     item->setData(0, QStringLiteral("densityOverlay"));
     stitchItems_.append(item);
     if (legend != nullptr) {
+        legend->setThicknessMode(thickness);
         legend->setRange(densityScaleMax_, threshold);
         legend->setVisible(true);
         legend->raise();
     }
 }
 
+void MainWindow::recomputeThickness() {
+    const stitch::StitchSequence snapshot = *sequence_; // instantané immuable
+    const Micrometers cell = thicknessCellForView();
+    const auto options = ThicknessSettings::load().options(cell);
+    const std::uint64_t key = thicknessKey(snapshot, options);
+
+    ThicknessResult result;
+    {
+        BusyIndicator busy(this, tr("Calcul de la carte d'épaisseur…"),
+                           {autosaveTimer_, simTimer_});
+        result = busy.run([&snapshot, &options] { return computeThickness(snapshot, options); });
+    }
+    // Pendant l'attente, le motif, les réglages ou le zoom ont pu changer : résultat périmé.
+    if (!sequence_.has_value() || !thicknessMode() ||
+        thicknessKey(*sequence_, ThicknessSettings::load().options(thicknessCellForView())) !=
+            key) {
+        densityTimer_->start();
+        return;
+    }
+    adoptOverlayRaster(result.raster, result.origin, result.cell);
+    densityKey_ = key;
+    densityCellUm_ = cell.value;
+    densityValid_ = true;
+    ++densityComputeCount_;
+
+    // Pic d'épaisseur dans le panneau Analyse : clic = centrer la vue dessus.
+    if (auto* list = analysisDock_->findChild<QListWidget*>(QStringLiteral("densityHotspotList"))) {
+        list->clear();
+        if (result.peak.found) {
+            const auto* emb = project_.findEmbroidery(result.peak.object);
+            const QString where = (emb != nullptr && !emb->name.empty())
+                                      ? tr(" · « %1 »").arg(QString::fromStdString(emb->name))
+                                      : QString();
+            auto* item = new QListWidgetItem(tr("Plus épais : %1 mm estimés (%2 couches)%3")
+                                                 .arg(result.peak.mm, 0, 'f', 2)
+                                                 .arg(result.peak.layers, 0, 'f', 1)
+                                                 .arg(where));
+            item->setData(kHotspotCenterRole,
+                          QPointF(to_millimeters(result.peak.position.x).value,
+                                  -to_millimeters(result.peak.position.y).value));
+            item->setData(kHotspotObjectRole, static_cast<qulonglong>(result.peak.object.value));
+            item->setToolTip(tr("Cliquer pour centrer la vue sur la zone la plus épaisse."));
+            list->addItem(item);
+        }
+    }
+    if (auto* summary = analysisDock_->findChild<QLabel*>(QStringLiteral("densitySummary"))) {
+        if (!result.peak.found) {
+            summary->setText(tr("Aucun fil cousu : pas d'épaisseur à estimer."));
+        } else {
+            summary->setText(
+                (result.peak.over_limit
+                     ? tr("Épaisseur estimée maximale : %1 mm (%2 couches), au-dessus du seuil de "
+                          "%3 couches.")
+                     : tr("Épaisseur estimée maximale : %1 mm (%2 couches), sous le seuil de %3 "
+                          "couches."))
+                    .arg(result.peak.mm, 0, 'f', 2)
+                    .arg(result.peak.layers, 0, 'f', 1)
+                    .arg(options.max_layers, 0, 'f', 1) +
+                tr(" Estimation à partir de la longueur de fil, non mesurée sur machine."));
+        }
+    }
+    renderStitches(); // la clé correspond maintenant : pose la surimpression
+}
+
 void MainWindow::recomputeDensity() {
     densityTimer_->stop();
-    if (!densityMapAct_->isChecked() || !sequence_.has_value()) {
+    if ((!densityMapAct_->isChecked() && !thicknessMode()) || !sequence_.has_value()) {
+        return;
+    }
+    if (thicknessMode()) {
+        recomputeThickness();
         return;
     }
     const stitch::StitchSequence snapshot = *sequence_; // instantané immuable
@@ -298,19 +509,7 @@ void MainWindow::recomputeDensity() {
         return;
     }
 
-    densityPixmap_ = QPixmap();
-    if (result.raster.width > 0) {
-        const QImage image(result.raster.rgba.data(), result.raster.width, result.raster.height,
-                           result.raster.width * 4, QImage::Format_RGBA8888);
-        densityPixmap_ = QPixmap::fromImage(image); // copie : `result` est local
-        const double cellMm = to_millimeters(result.cell).value;
-        const double rows = result.raster.height;
-        // Repère scène : x = mm, y = -mm (Y du document vers le haut) ; coin haut-gauche.
-        densityRect_ = QRectF(to_millimeters(result.origin.x).value,
-                              -(to_millimeters(result.origin.y).value + rows * cellMm),
-                              result.raster.width * cellMm, rows * cellMm);
-    }
-    densityScaleMax_ = result.raster.scale_max;
+    adoptOverlayRaster(result.raster, result.origin, result.cell);
     densityKey_ = key;
     densityValid_ = true;
     ++densityComputeCount_;

@@ -38,10 +38,12 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
 | P0 | 12 | 28 | 5 | 45 |
-| P1 | 10 | 64 | 70 | 144 |
-| P2 | 3 | 31 | 63 | 97 |
-| P3 | 0 | 3 | 12 | 15 |
-| **Total** | **25** | **126** | **150** | **301** |
+| P1 | 10 | 68 | 72 | 150 |
+| P2 | 3 | 33 | 64 | 100 |
+| P3 | 0 | 3 | 13 | 16 |
+| **Total** | **25** | **132** | **154** | **311** |
+
+Ajoutés le 2026-10-20 (roadmap nocturne manuscrite, voir le journal §28) : **+7 entrées** (HP-VIEW-014, HP-STI-025, HP-STI-026, HP-VEC-020, HP-QA-009, HP-UX-045, HP-FMT-022) ; HP-VIEW-002 passe de P2 à P3 (facultatif). Le tableau est recalculé depuis les titres : il intègre aussi HP-OBJ-024 et corrige l'écart des lignes P1.
 
 Ajoutés le 2026-10-19 (remodelage interactif, HP-VEC-016 à 019) : **+4 entrées** (HP-VEC-016 P0 ◐ ; 017 et 018 P1 ☐ ; 019 P2 ☐), comptées dans le tableau ci-dessus.
 
@@ -443,6 +445,24 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
   corpus d'anciens `.osp` figés dans `tests/fixtures/osp/` relus à chaque
   build ; refus clair d'un fichier d'une version *future*.
 - Modules : `libs/project_io`.
+
+### HP-FMT-022 — Panneau d'export avec ordre des couleurs [P1] — ☐ À faire
+- Origine : roadmap nocturne du 2026-10-20 (« Ergonomie : panneau d'export avec ordre des couleurs »).
+- État OpenStitch : le dialogue d'export (`MachineExportDialog`) choisit le format et les options
+  machine et montre un résumé pré-export (limites, avertissements) ; l'ordre des couleurs se voit
+  et se change ailleurs, dans le film couleur du panneau Fils (HP-THR-005 : blocs dans l'ordre de
+  couture, glisser pour réordonner, fusion des blocs de même fil).
+- À faire : montrer dans le dialogue d'export la liste des blocs de couleur **dans l'ordre où ils
+  seront cousus** (pastille, fil, nombre de points, durée), la changer avant d'exporter, et
+  prévenir quand l'ordre ou le nombre de changements de fil dépasse la limite de la machine ou du
+  format. Réutiliser `stitch_analysis::reorder_film_blocks` et `merge_same_thread_blocks`.
+- Interaction avec HP-OBJ-024 : le rang de calque est la clé principale de l'ordre de couture ; le
+  réordonnancement d'un bloc ne franchit pas les calques (sinon il serait annulé par le tri).
+  Prévoir l'affichage du calque sur chaque bloc.
+- Modules : `apps/desktop` (`machine_export_dialog`, `thread_panel`), `libs/stitch_analysis`.
+- Dépend de : HP-THR-005, HP-OBJ-024.
+- Acceptation : l'ordre montré est celui du fichier exporté (test : export, relecture, comparaison
+  des blocs de couleur), un pas d'annulation par réordonnancement, test headless du dialogue.
 
 ---
 
@@ -1114,6 +1134,39 @@ plus.
 - Acceptation : la fixture `two_holes` (`test_torture_corpus.cpp`) atteint
   une couverture significative sans refus total.
 
+### HP-STI-025 — Veille : points à épaisseurs différentes [P2] — ◐ Partiel (2026-10-20, en PR)
+- Origine : roadmap nocturne du 2026-10-20 (« Veille point différente épaisseur »).
+- Nature : **étude, pas du code**. Livrable : `docs/veille-epaisseur-2026-10.md`.
+- À faire : relever comment les autres logiciels de broderie et les fabricants traitent
+  l'épaisseur selon le type de point (tatami dense, satin, sous-couches, point « puff » / mousse,
+  remplissages à densité variable, fils de poids différents) ; en tirer une table
+  type de point → épaisseur estimée utilisable par la carte d'épaisseur (HP-VIEW-014) et par le
+  rendu 3D facultatif (HP-VIEW-002). Distinguer les valeurs sourcées des heuristiques non mesurées.
+- Modules : `docs/` (même gabarit que `veille-innovations-2026-10.md`).
+- Livré (2026-10-20) : `docs/veille-epaisseur-2026-10.md` — faits sourcés (fils 40 wt = 25 tex, mousse
+  « puff » 2 à 3 mm, consignes de numérisation), valeurs **calculées** (diamètre du fil 0,15 à 0,20 mm),
+  hypothèses retenues pour la carte, et ce que la veille n'a **pas** trouvé : aucun relevé en mm de
+  l'épaisseur d'un point. Conclusion : la mesure de fil par zone est déjà indépendante du type de point ;
+  il ne manque que la conversion en mm.
+- Reste : lire le texte intégral des deux études (KTU, JTATM), puis les mesures physiques du §7
+  (HP-PHYS-001) ; la table type de point -> épaisseur n'existe pas encore (aucune donnée pour la remplir).
+- Dépend de : rien. Débloque : HP-VIEW-014, HP-VIEW-002.
+- Acceptation : le document cite ses sources, sépare faits et hypothèses, et propose la table
+  d'épaisseurs avec les mesures physiques à faire (HP-PHYS-001) pour la valider.
+
+### HP-STI-026 — Point paramétrique [P2] — ☐ À faire
+- Origine : roadmap nocturne du 2026-10-20 (« Points supp : point paramétrique »).
+- **Périmètre à préciser avec l'auteur** : lu ici comme un type de point dont le motif d'un pas
+  (zigzag, vague, chaînette, motif décoratif…) est décrit par quelques paramètres (longueur,
+  amplitude, période, angle, répétition) et généré par le moteur, au lieu d'être codé en dur.
+- État OpenStitch : quatre familles (contour, tatami, satin, directionnel) avec leurs paramètres ;
+  motifs de tatami partiels (HP-STI-005) ; motif le long d'un chemin non fait (HP-STI-002).
+- À faire (après cadrage) : un objet de broderie à paramètres de motif, avec aperçu en direct
+  (HP-VIEW-012) ; si la lecture ci-dessus est bonne, HP-STI-002/006 en deviennent des cas particuliers.
+- Modules : `libs/document` (paramètres), `libs/stitch_generation`, `apps/desktop` (inspecteur) ;
+  suivre la checklist `openstitch-stitch-param`.
+- Dépend de : cadrage du périmètre ; HP-STI-002 (à relire ensemble).
+
 ---
 
 ## 6. Qualité du moteur et réglages textiles (ENG)
@@ -1616,6 +1669,18 @@ Besoin (retour utilisateur) : le moteur d'auto-numérisation est bon ; ce qui co
 ### HP-VEC-019 — Préservation des détails pendant le remodelage [P2] — ☐ À faire
 - À faire : option du pinceau (HP-VEC-018) et du déplacement groupé (HP-VEC-017), pas un outil de plus : décomposition lissage + détail, le détail local suit la déformation de la base (déformation « Laplacienne » à poids décroissants) ; à n'ajouter que si le test comparatif sur un contour auto-numérisé montre un gain visible.
 - Dépend de : HP-VEC-017, HP-VEC-018.
+
+### HP-VEC-020 — Outils de lignes supplémentaires [P2] — ☐ À faire
+- Origine : roadmap nocturne du 2026-10-20 (« Outil supp : outils lignes »).
+- **Périmètre à préciser avec l'auteur** : quels outils exactement ?
+- État OpenStitch : tracé ouvert, ligne et polyligne (HP-VEC-002, ◐), formes prédéfinies
+  (HP-VEC-014), règle (HP-VEC-010), mode Contours / Line Art à l'import (HP-AUTO-005).
+- Pistes à choisir : ligne contrainte (horizontale / verticale / angles fixes), arc et courbe
+  paramétrés, décalage d'une ligne en parallèle, conversion d'un contour en ligne médiane,
+  ligne à main levée lissée (HP-STI-019), épaississement d'une ligne en satin (HP-STI-004).
+- Modules : `libs/geometry`, `libs/commands` (commande annulable par geste), `apps/desktop` (outil
+  et barre d'outils contextuelle).
+- Dépend de : HP-VEC-002 ; cadrage.
 
 ---
 
@@ -2147,9 +2212,11 @@ calques image/régions/vecteurs/broderie, filtres d'affichage, thème clair/somb
 - Acceptation : 100 000 points rendus en < 100 ms après modification d'un
   objet (mesure dans `tests/bench/bench_main_window.cpp`).
 
-### HP-VIEW-002 — Rendu 3D [P2] — ☐ À faire
+### HP-VIEW-002 — Rendu 3D [P3] — ☐ À faire
 - À faire : mode relief (éclairage directionnel, épaisseur cumulée) pour la
   présentation.
+- Roadmap nocturne du 2026-10-20 : **facultatif** (P2 → P3). S'appuie sur la carte d'épaisseur
+  (HP-VIEW-014) et sur les épaisseurs par type de point de la veille HP-STI-025.
 
 ### HP-VIEW-003 — Affichage par passe (sous-couche, déplacements, verrous) [P1] — ☐ À faire
 - État OpenStitch : `StitchPass` existe dans chaque commande ; `limitations.md` :
@@ -2212,6 +2279,32 @@ calques image/régions/vecteurs/broderie, filtres d'affichage, thème clair/somb
 
 ### HP-VIEW-013 — Info-bulle de survol d'un objet [P2] — ☐ À faire
 - À faire : type, fil, nombre de points, dimensions.
+
+### HP-VIEW-014 — Carte d'épaisseur réactive [P2] — ◐ Partiel (2026-10-20, en PR)
+- Origine : roadmap nocturne du 2026-10-20 (« Épaisseur : carte d'épaisseur responsive »).
+- État OpenStitch : HP-VIEW-005 livre déjà la grille de densité (`stitch_analysis::density_map`) avec
+  l'épaisseur cumulée en « couches de remplissage dense » et la surimpression Affichage › « Carte de
+  densité ». Elle est calculée hors du fil UI et mise en cache, mais présentée comme une carte de
+  *densité* (pénétrations/mm²), pas comme une carte d'*épaisseur*.
+- À faire : une vue « Épaisseur » (échelle en couches / en mm estimés, légende) qui **réagit** : se
+  recalcule pendant l'édition sans geler l'interface (résolution de case adaptée au zoom et à la
+  taille de la fenêtre, calcul incrémental par objet modifié), et suit le calque / l'objet choisi.
+  « Responsive » est lu ici comme réactif et adapté à la taille d'écran ; à confirmer.
+- Modules : `libs/stitch_analysis` (mesure d'épaisseur par type de point, cf. HP-STI-025),
+  `apps/desktop` (surimpression, cache, mise à l'échelle au zoom).
+- Livré (2026-10-20) : `stitch_analysis/thickness_map.*` (conversion couches -> mm, pic d'épaisseur avec
+  objet dominant, `adaptive_cell` : case de 0,5 à 8 mm selon le zoom) ; Affichage › « Carte d'épaisseur »
+  (exclusive avec la densité, légende en mm, zone la plus épaisse dans le panneau Analyse, réglages
+  « épaisseur d'une couche » et « seuil » mémorisés), recalcul hors du fil UI et suivi du zoom (150 ms).
+  Tests : `test_thickness_map` (6 cas), `test_density_map_ui` (+7).
+- **Estimation, pas mesure** : 0,20 mm par couche et empilement linéaire sont des hypothèses
+  (`docs/veille-epaisseur-2026-10.md`). Reste : validation sur machine (HP-PHYS-001) et loi de tassement ;
+  calcul **incrémental par objet** non fait (le coût dominant est la génération des points, déjà mise en
+  cache : à mesurer avant de s'y mettre) ; suivi d'un calque / objet choisi ; épaisseur par fil (HP-THR-009) ;
+  vérification visuelle dans l'application réelle (palette, légende : non vérifiées en headless).
+- Dépend de : HP-VIEW-005, HP-STI-025 (valeurs d'épaisseur par type de point).
+- Acceptation : le calcul ne bloque pas l'interface (`BusyIndicator`), deux calculs de la même
+  séquence donnent la même carte octet pour octet, la résolution suit le zoom, tests headless.
 
 ---
 
@@ -2995,6 +3088,21 @@ Le lot C comprend aussi **HP-PERF-009** (régénération différée à l'éditio
 - Dépend de : —
 - Acceptation : taille saisie, canevas, segmentation et sortie machine coïncident, ou le champ n'est plus modifiable ; projets existants rechargés à l'identique.
 
+### HP-UX-045 — Audit d'ergonomie du parcours multi-couche [P1] — ◐ Partiel (2026-10-19)
+- Origine : roadmap nocturne du 2026-10-20 (« Ergonomie : audit ergonomie voyage multi-couche »),
+  lue comme l'audit du *parcours* de l'utilisateur dans un document à plusieurs couches / calques.
+- Livré : audit mené le 2026-10-19 sur les couches de couture et le panneau Document ; vagues 1 et
+  2 fusionnées (PR #92, `4a0ba16`) : groupe « N couches », bouton « + Couche », duplication de forme
+  avec ses couches, sélecteur de couches des Propriétés, clic canevas sur la couche du dessus,
+  glisser-déposer contraint à la forme ; calques du document en PR #95 (HP-OBJ-024).
+- Reste (vague 3) : raccourcis clavier (nouvelle couche, dupliquer, monter / descendre), mode solo
+  (Alt + clic sur l'œil), clic répété au canevas pour traverser les couches, liste de couches
+  complète dans les Propriétés à la place du menu déroulant.
+- Modules : `apps/desktop` (`document_panel`, `calque_panel`, `properties_panel`).
+- Dépend de : HP-OBJ-023, HP-OBJ-024.
+- Acceptation : chaque point de la vague 3 a son test QTest headless et son entrée dans le guide
+  utilisateur.
+
 ---
 
 ## 21. Internationalisation et accessibilité (I18N)
@@ -3181,6 +3289,22 @@ de référence. Restent : progression et annulation, régénération de toute la
 - Dépend de : — (préalable des lots B et C de HP-UX-017…044).
 - Acceptation : les tests existent, échouent sur les valeurs actuelles qui dépassent le budget (rouge d'abord) puis passent après les tâches B ; aucun test ne fige un comportement jugé défaut (ex. Entrée = export).
 
+### HP-QA-009 — Audit de numérisation sur un corpus d'images de bateaux [P1] — ☐ À faire
+- Origine : roadmap nocturne du 2026-10-20 (« Outil supp : audit basé sur des images de bateau »).
+- État OpenStitch : un premier cas réel existe, `BateauTempete.osp` (76 objets, `.osp` v7, une
+  forme à deux couches) : il se relit et `project check` donne 0 erreur et 60 avertissements
+  « point quasi nul » (< 0,1 mm). Il n'y a pas de corpus d'images de bateaux ni de mesure
+  systématique de la qualité de numérisation dessus.
+- À faire : constituer un petit corpus (voiliers, coques, vagues, ciels et mer : grandes zones,
+  petits détails, dégradés, traits fins) ; pour chaque image, numériser (`openstitch-digitize`),
+  relever `stats`, `project check`, sauts / coupes / changements de fil et défauts visibles ;
+  consigner les échecs récurrents et ouvrir une entrée par cause. Commencer par les 60 points
+  quasi nuls de `BateauTempete.osp` : doublons issus de la génération ou de l'optimisation ?
+- Modules : `tests/fixtures/` (images libres de droits uniquement), `docs/` (rapport d'audit).
+- Dépend de : HP-AUTO-001 (qualité comparable à Hatch).
+- Acceptation : rapport reproductible (commandes et versions notées), chaque défaut rattaché à une
+  entrée de la roadmap, aucune image sans licence claire dans le dépôt.
+
 ---
 
 ## 24. Distribution et plateformes (DIST)
@@ -3341,3 +3465,5 @@ ci-dessus doit les respecter :
 | 2026-10-19 | Claude (bords effilochés du tatami) | Roadmap : aucune entrée concernée. Tatami : `row_end_clip` (écrêtage des pointes de fin de rangée) et `edge_outline` (contour cousu par-dessus), inspecteur, `.osp`, CLI projet, tests. |
 | 2026-10-19 | Claude (ergonomie des couches, vague 2) | **HP-OBJ-023 ◐** : barre du sélecteur de couches (▲ ▼ masquer renommer, un pas d'annulation chacun), clic canevas = couche du dessus (`embroideryForVector`), glisser-déposer des couches contraint à la forme (Maj pour sortir). Reste : parent-enfant dans le modèle. |
 | 2026-10-19 | Claude (calques du document) | **HP-OBJ-024 ◐ créée et livrée en partie** : calques au-dessus des couches (calque ⊃ forme ⊃ couches), rang de calque = clé principale de l'ordre de couture, `.osp` v9 conditionnel, commandes annulables et panneau Calques. Reste : effets liés, CLI, glisser entre calques. Total +1 entrée. |
+| 2026-10-20 | Claude (roadmap nocturne) | Entrées issues des notes manuscrites « Roadmap sup nocturne 20/10 » : **HP-VIEW-014** carte d'épaisseur réactive, **HP-STI-025** veille sur les épaisseurs par type de point (étude, `docs/veille-epaisseur-2026-10.md` à produire), **HP-STI-026** point paramétrique (périmètre à préciser), **HP-VEC-020** outils de lignes (périmètre à préciser), **HP-QA-009** audit de numérisation sur images de bateaux, **HP-UX-045** audit d'ergonomie multi-couche (◐ : vagues 1-2 fusionnées, calques en PR #95), **HP-FMT-022** panneau d'export avec ordre des couleurs. HP-VIEW-002 (rendu 3D) : P2 → P3, facultatif. Tableau de bord recalculé. |
+| 2026-10-20 | Claude (épaisseur) | **HP-VIEW-014 ◐ et HP-STI-025 ◐** (en PR) : carte d'épaisseur estimée (Affichage › Carte d'épaisseur, exclusive avec la densité, légende en mm, case adaptée au zoom, zone la plus épaisse dans l'Analyse) et veille `docs/veille-epaisseur-2026-10.md`. La veille n'a trouvé aucun relevé en mm : 0,20 mm par couche et l'empilement linéaire sont des hypothèses, à valider sur machine (HP-PHYS-001). HP-VIEW-002 (rendu 3D, facultatif) non commencé. Tableau de bord recalculé. |

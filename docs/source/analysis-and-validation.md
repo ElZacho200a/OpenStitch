@@ -145,6 +145,28 @@ panneau (*Règles optionnelles*, seuils mémorisés) : le bureau les évalue ave
 et ajoute leurs seuls constats au rapport. Limites : la carte est recalculée en entier à chaque
 changement de motif (pas d'incrémental) ; le seuil n'est toujours pas mesuré sur un corpus.
 
+### Carte d'épaisseur estimée (HP-VIEW-014)
+
+`thickness_map.hpp` ajoute à la grille de densité la conversion en **millimètres** et une
+résolution adaptée au zoom. La mesure de fil par case est déjà indépendante du type de point
+(longueur de fil x largeur du fil / surface, toutes passes) ; `layers_to_mm` la multiplie par
+`ThicknessOptions::layer_thickness` (0,20 mm), en supposant un empilement **linéaire**.
+`find_thickness_peak` renvoie la case la plus épaisse (épaisseur, objet dominant, dépassement du
+seuil `max_layers` = 3 couches). `adaptive_cell` choisit le côté de case parmi {0,5 ; 1 ; 2 ; 4 ;
+8 mm} pour garder au moins 4 pixels d'écran par case.
+
+**Ce sont des estimations.** `layer_thickness` est une hypothèse bornée par un calcul sur les
+données du fil (40 wt = 25 tex, soit 0,15 à 0,20 mm), et aucun relevé en mm n'a été trouvé
+(`docs/veille-epaisseur-2026-10.md`). À valider sur machine réelle (HP-PHYS-001) ; la loi de
+tassement des couches reste à établir.
+
+**Câblage bureau** : *Affichage ▸ Carte d'épaisseur*, exclusive avec la densité, réutilise le
+pipeline de la carte de densité (instantané de la séquence effective, `BusyIndicator::run`, cache
+par clé). La clé inclut les réglages d'épaisseur et le **côté de case**, donc le zoom : un
+changement de zoom replanifie le calcul (150 ms) quand le côté idéal change. Limites : la carte
+est recalculée en entier (pas d'incrémental par objet : le coût dominant est la génération des
+points, déjà mise en cache) ; la hauteur d'une mousse (point « puff ») n'est pas modélisée.
+
 Les autres règles ajoutées (`detail-trop-petit`, `objet-sans-arret`, `trop-de-coupes`) sont
 décrites dans le tableau ci-dessus. Seul `detail-trop-petit` (1 mm) est actif par défaut ; il n'a
 pas été mesuré sur le corpus du dépôt. Restent non faites : satin trop large, fil trop proche de la
