@@ -1,4 +1,7 @@
 {
+  "env": {
+    "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet"
+  },
   "enableAllProjectMcpServers": true,
   "hooks": {
     "PreToolUse": [
@@ -223,6 +226,14 @@
       "Bash(rtk grep:*)",
       "Bash(rtk proxy:*)",
       "Read(~/.local/share/rtk/tee/**)"
+    ],
+    "deny": [
+      "Read(./aqtinstall.log)",
+      "Read(./out.svg)",
+      "Read(./*-debug.svg)",
+      "Read(./docs/build/*.pdf)",
+      "Read(./sam-worker/.venv*/**)",
+      "Read(./build/vcpkg_installed/**)"
     ]
   }
 }

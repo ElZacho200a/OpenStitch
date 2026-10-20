@@ -5,13 +5,22 @@ description: Finaliser un lot de travail OpenStitch et le committer selon les co
 
 # Finaliser et committer un lot
 
-**Autonomie (consigne permanente de l'utilisateur, 2026-10-19)** : quand un lot est
-terminé et vérifié, enchaîner SANS demander : commit -> `git push -u origin <branche>`
--> `gh pr create --base main` (titre = sujet du commit, corps = résumé, tests, limites,
-ligne d'attribution) -> annoncer le lien. Ne jamais pousser ni committer sur `main`
-(créer une branche d'abord) ; ne jamais fusionner (`gh pr merge`) ; ne pas ouvrir de PR si
-des tests du périmètre échouent. Un échec hors périmètre est signalé dans le corps de la
-PR. Enchaîner ensuite sur le lot suivant de la roadmap sans attendre de feu vert.
+**Livraison autonome (consigne permanente, 2026-10-19)** : quand un lot est terminé et
+vérifié, enchaîner SANS demander : commit -> `git push -u origin <branche>` ->
+`gh pr create --base main` (titre = sujet du commit, corps = résumé, tests, limites, ligne
+d'attribution) -> annoncer le lien. Ne jamais pousser ni committer sur `main` (créer une
+branche d'abord) ; ne jamais fusionner (`gh pr merge`) ; ne pas ouvrir de PR si des tests du
+périmètre échouent. Un échec hors périmètre est signalé dans le corps de la PR.
+
+**Modes de session** (le mode se déduit de la demande ; dans le doute, mission ciblée) :
+- *Mission ciblée* (défaut) : faire la demande, valider, commit, PR, **puis s'arrêter** en
+  proposant la suite en une ligne. Pas de nouveau lot de roadmap de sa propre initiative.
+- *Autonomie continue* : seulement sur demande explicite (« continue », « enchaîne »,
+  « travaille en autonomie », `/loop`) : après la PR, reprendre `openstitch-roadmap` §1.
+  Arrêt quand l'utilisateur le dit, quand un lot échoue deux fois, ou quand le contexte est
+  lourd (écrire alors un point de reprise, `openstitch-token-efficiency` §4).
+- *Audit* : examiner, documenter et corriger la configuration ou le code concerné ; ne pas
+  enchaîner sur une feature sans rapport.
 
 ## 1. Vérifications avant commit
 

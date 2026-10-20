@@ -15,6 +15,24 @@ Toutes les commandes se lancent depuis la racine du dépôt, via l'outil
 définis ; s'ils ne le sont pas, `.\scripts\build.ps1` bootstrap la chaîne
 d'outils.
 
+## 0. Sorties compactes : `scripts/qrun.ps1`
+
+Le hook RTK ne couvre que l'outil Bash ; RTK n'a pas de filtre cmake/ctest/MSBuild. Les builds
+passent par PowerShell : les envelopper dans `scripts/qrun.ps1 <étiquette> <commande…>`. Succès :
+une ligne de statut + les lignes de bilan. Échec : erreurs dédupliquées (≤ 60), 15 dernières
+lignes, chemin du journal complet `build/qrun-logs/<étiquette>.log` (lire ensuite *la plage utile*
+avec Grep -n puis Read offset/limit). Code de sortie conservé. Rien n'est supprimé : seul
+l'affichage est réduit.
+
+```powershell
+.\scripts\qrun.ps1 build-stitch cmake --build --preset msvc-debug --target openstitch_stitch_generation test_stitch
+.\scripts\qrun.ps1 test-stitch build\msvc\tests\unit\stitch\Debug\test_stitch.exe "tatami"
+.\scripts\qrun.ps1 ctest-all ctest --preset msvc-debug --output-on-failure
+```
+
+Les exemples ci-dessous omettent le préfixe pour la lisibilité ; l'utiliser par défaut. Ne pas
+relancer une commande pour « revoir » sa sortie : lire le journal.
+
 ## 1. Boucle courte (itération)
 
 Compiler uniquement la lib modifiée et son exécutable de test :
@@ -44,7 +62,14 @@ Correspondance lib → exécutable (dossier `build\msvc\tests\unit\<dossier>\Deb
   passer directement à la boucle complète.
 - `ctest --preset msvc-debug -R <sous-chaine>` filtre par nom de test CTest.
 
-## 2. Boucle complète (avant de conclure)
+## 2. Boucle complète (avant de conclure, proportionnée à l'impact)
+
+- Changement local à une lib feuille (`stitch_generation`, `auto_satin`, `commands`…) : build et
+  tests de cette lib **et de ses dépendants** (`analyze_impact("<lib>")` liste les cibles CMake qui
+  la linkent), puis la suite complète une fois, avant le commit.
+- `core`/`geometry`/`document`, CMake, en-tête très inclus, ou livraison finale : suite complète
+  Debug (Release selon le critère plus bas).
+- Jamais de reconstruction complète entre deux itérations : `--target` ciblé seulement.
 
 ```powershell
 cmake --build --preset msvc-debug

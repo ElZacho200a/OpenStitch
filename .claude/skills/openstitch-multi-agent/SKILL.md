@@ -1,97 +1,89 @@
 ---
 name: openstitch-multi-agent
-description: Travailler en multi-agents sur OpenStitch (sous-agents en worktrees isolés, périmètres de fichiers disjoints, intégration séquentielle par le chef de lot). À utiliser dès qu'un chantier se découpe en au moins deux unités indépendantes touchant des fichiers différents — refonte d'IHM panneau par panneau, plusieurs lots de la roadmap, audit ou revue en parallèle, exploration large du code — ou quand l'utilisateur dit « multi-agent », « en parallèle », « délègue », « lance des agents ». Préférer cette méthode au travail séquentiel dès que le découpage est propre.
+description: Décider s'il faut déléguer à des sous-agents sur OpenStitch, et comment (modèle, périmètre, worktree, intégration). À utiliser quand un chantier a au moins deux unités indépendantes et assez grosses pour amortir le coût de contextes séparés, quand une exploration large du code est nécessaire, ou quand l'utilisateur dit « multi-agent », « en parallèle », « délègue », « lance des agents ». Une tâche courte ou localisée se fait directement, sans agent.
 ---
 
-# Travail multi-agents OpenStitch
+# Délégation adaptative OpenStitch
 
-L'utilisateur préfère cette façon de travailler quand le chantier s'y prête :
-plusieurs agents en parallèle, un chef de lot (la session principale) qui cadre,
-intègre et vérifie. Ce n'est PAS une dispense de rigueur : un agent qui dit
-« fini » n'a rien prouvé tant que le chef de lot n'a pas relu et relancé les tests.
+Le multi-agents est un outil d'optimisation, pas un réflexe. Chaque sous-agent repart d'un
+contexte vide (CLAUDE.md, outils, skills, prompt) et fait ses propres lectures : il ne
+rapporte que s'il économise plus qu'il ne coûte, en temps (parallélisme) ou en contexte du
+chef de lot (sorties volumineuses gardées hors de sa session). Aucun plafond arbitraire
+sur le nombre d'agents : le nombre suit le nombre d'unités réellement indépendantes.
 
-## 1. Quand découper
+## 1. Décider (dans cet ordre)
 
-Découper seulement si **chaque unité** a :
-- un **périmètre de fichiers disjoint** (liste fermée, ex. `document_panel.*` +
-  son test) — deux agents ne modifient jamais le même fichier ;
-- un **critère de fin vérifiable** (cible de test précise qui passe) ;
-- aucune dépendance de résultat vers une autre unité en cours.
+| Situation | Décision |
+|---|---|
+| Tâche courte, un ou quelques fichiers, cause connue | **Direct**, pas d'agent |
+| Question de localisation isolée (« où est X », « qui appelle Y ») | `os-explorer` (haiku), ou un Grep direct si la première recherche suffit |
+| Sortie très volumineuse à digérer (journal de build, gros audit de lecture) | Agent économique, qui rend un résumé de ≤ 25 lignes |
+| Unité de dev indépendante : fichiers disjoints, critère de fin vérifiable, > ~1 h de travail | `os-dev` (sonnet, worktree) |
+| Deux unités ou plus remplissant la ligne précédente | Parallèle : un `os-dev` par unité, tous lancés dans un même message |
+| Décision d'architecture, bug non élucidé après 2 hypothèses, arbitrage délicat | `os-architect` (opus), lecture seule, une question précise |
+| Bug dont la cause est inconnue, ou changement qui traverse un point de convergence | **Direct** (séquentiel) : rien à découper tant que la cause n'est pas connue |
 
-Ne pas découper : un changement qui traverse `design_tokens` / `app_theme` /
-`main_window.cpp` (points de convergence), un bug dont la cause n'est pas connue,
-une tâche de moins d'une heure à un seul fichier.
+Choix du modèle : par invocation (`model:` de l'appel Agent) > frontmatter de l'agent >
+`CLAUDE_CODE_SUBAGENT_MODEL` (posé à `sonnet` dans `.claude/settings.json`) > modèle de la
+session. Haiku : recherche, résumé, tri. Sonnet : tout développement borné. Opus : seulement
+si le raisonnement fin change le résultat, et le dire dans le prompt.
+
+## 2. Découper
+
+Une unité a : une **liste fermée de fichiers** (deux agents ne touchent jamais le même
+fichier), un **critère de fin vérifiable** (cible de test qui passe), aucune dépendance de
+résultat vers une unité en cours.
 
 **Fichiers de convergence** (`app_theme.cpp`, `design_tokens.*`, `main_window.cpp`,
-`CMakeLists.txt`, `docs/roadmap-parite-hatch.md`) : un seul propriétaire, le chef
-de lot. Les agents n'y touchent pas ; ils demandent ce dont ils ont besoin dans
-leur rapport (ou utilisent une feuille de style locale au widget, bâtie depuis les
-jetons et rafraîchie sur `AppTheme::changed`).
+`CMakeLists.txt`, `docs/roadmap-parite-hatch.md`) : un seul propriétaire, le chef de lot.
+Les agents demandent ce dont ils ont besoin dans leur rapport. Pour le câblage bureau, poser
+d'abord des zones balisées `[cablage-X:debut/fin]` (hpp, constructeur, CMake, tests), les
+commiter ; l'agent fait `git merge --ff-only <commit>` avant de commencer.
 
-## 2. Lancer
+## 3. Le prompt d'un agent (autonome, court)
 
-- Un agent par unité, `isolation: "worktree"`, en arrière-plan, **tous dans un
-  même message** pour qu'ils tournent en parallèle.
-- **Committer d'abord** la base commune (jetons, icônes, QSS globaux) : un worktree
-  part du dernier commit, jamais de l'arbre de travail non committé.
-- Le prompt est autonome (l'agent n'a pas la conversation) : contexte, périmètre
-  STRICT de fichiers, ce qu'il ne doit pas toucher, contraintes du dépôt
-  (`CLAUDE.md`, `GUARDRAILS.md`), validation obligatoire avec les cibles exactes,
-  format de commit et de rapport. Toujours préciser : **clang-format 18.1.8**
-  (`%APPDATA%\Python\Python314\Scripts\clang-format.exe`, jamais celui de LLVM 23),
-  `QT_QPA_PLATFORM=offscreen`, noms de `TEST_CASE` en ASCII, **ne pas pousser**.
-- Les agents partagent les chemins vcpkg/Qt par variables d'environnement ; chaque
-  worktree reconfigure son propre `build/` (la configuration est rapide grâce au
-  cache vcpkg, la première compilation est longue : prévoir le temps).
+Il n'a pas la conversation. Donner, et seulement cela :
+- l'objectif en 2-3 phrases et les **critères d'acceptation** (cibles de test exactes) ;
+- le **périmètre STRICT** de fichiers, et ce qu'il ne doit pas toucher ;
+- les **points d'entrée** : symboles, fichiers, plages de doc (`fichier.md:début-fin`) — pas de
+  document en pièce jointe, pas de « lis tout le dépôt » ;
+- ce qui est déjà établi (ne pas le lui faire re-découvrir) ;
+- **validation limitée à ses cibles** : `scripts/qrun.ps1`, pas de suite complète ni de
+  rebuild global (le chef de lot valide l'ensemble) ;
+- contraintes d'environnement : clang-format 18.1.8
+  (`%APPDATA%\Python\Python314\Scripts\clang-format.exe`), `QT_QPA_PLATFORM=offscreen`,
+  `TEST_CASE` en ASCII, ne pas pousser ;
+- le format du rapport : ≤ 20 lignes (fichiers, tests lancés + résultat, écarts), puis **s'arrêter**.
 
-**Câblage bureau.** Sauf demande contraire, chaque unité confiée à un agent inclut le
-câblage dans `apps/desktop` (pas seulement le cœur). Si le périmètre de fichiers
-interdit `main_window.*`, poser d'abord des zones balisées `[cablage-X:debut/fin]`
-(hpp, constructeur, CMake, tests), les commiter, et demander à chaque agent de
-`git merge --ff-only <commit>` avant de commencer (un worktree part de `main`).
+Commiter d'abord la base commune : un worktree part du dernier commit de `main`, jamais de
+l'arbre non committé ni de la branche du chef de lot. Chaque worktree reconfigure son `build/`
+(première compilation longue : le dire).
 
-## 3. Pendant que les agents travaillent
+## 4. Pendant et après
 
-Le chef de lot traite les fichiers de convergence et ce que personne d'autre ne
-touche. Il ne refait pas le travail d'un agent et ne lit pas les journaux bruts
-des agents (ils saturent le contexte) : il attend la notification de fin.
+Le chef de lot traite les fichiers de convergence ; il ne relit pas les journaux bruts des
+agents et n'attend que la notification de fin. Intégration **séquentielle**, pour chaque agent :
+1. rapport + `git diff <base>..<branche> --stat` : rien hors périmètre ;
+2. `git merge --no-ff <branche>` ; un conflit n'est jamais résolu en silence ;
+3. recompiler et relancer **soi-même** les cibles de l'agent et celles qu'il peut casser (la
+   sortie de l'agent n'est pas une preuve) ;
+4. agent en échec ou en débordement : `SendMessage` avec un prompt plus précis, pas de rustine.
 
-## 4. Intégrer (séquentiel, jamais en parallèle)
-
-Pour chaque agent, dans l'ordre :
-1. Lire son rapport **et le diff** (`git diff <base>..<branche-agent> --stat`
-   puis les fichiers) : vérifier que rien n'est sorti du périmètre.
-2. `git merge --no-ff <branche-agent>` dans la branche d'intégration (ou
-   cherry-pick). Un conflit n'est jamais résolu automatiquement : le montrer.
-3. Recompiler et relancer les tests **soi-même** (cibles de l'agent + celles que
-   sa modification peut casser). La sortie de l'agent n'est pas une preuve.
-4. Si l'agent a échoué ou débordé : le corriger ou le relancer avec un prompt
-   plus précis (`SendMessage`), pas de rustine silencieuse.
-
-Après toutes les intégrations : suite desktop complète (`ctest --preset
-msvc-debug -R desktop`), `clang-format --dry-run --Werror` sur les fichiers
-touchés, contrôle visuel de l'application (capture des deux thèmes).
-
-## 5. Rapport à l'utilisateur
-
-Dire ce que chaque agent a livré, ce qui a été vérifié par le chef de lot (et
-comment), ce qui ne l'a pas été, et tout écart de périmètre constaté.
+Une fois tout intégré : une seule validation complète proportionnée à l'impact
+(`openstitch-build-test` §2), format sur les fichiers touchés, contrôle visuel si l'IHM change.
+Rapport à l'utilisateur : livré par chaque agent, vérifié par le chef de lot (comment), non
+vérifié, écarts de périmètre.
 
 ## Pièges connus
 
-- **Le worktree d'un agent part de `main`, pas de la branche du chef de lot** (constaté
-  lors de la refonte UI : l'agent ne voyait ni les nouveaux jetons ni les règles QSS).
-  Conséquence : un agent ne peut pas s'appuyer sur du travail non fusionné dans `main`.
-  Soit lui demander de n'utiliser que ce que `main` fournit (il dérive localement ce
-  qui manque, et le chef de lot remplace après fusion), soit fusionner d'abord la base
-  dans `main`. Les périmètres de fichiers disjoints gardent la fusion propre.
-- Sous `ctest`, un test peut bloquer 300 s sans cause liée au changement (vu une fois
-  sur `satinJunctionGuideIsLockedInUi`) : relancer avec `--timeout 400` avant de conclure.
-- Lancer un `.exe` de test directement sans le PATH de Qt sort en `0xC0000135` : passer
-  par `ctest` ou ajouter `%QT_ROOT%in` au PATH.
-
-- Les captures d'écran du bureau capturent la mauvaise fenêtre si l'appli n'est
-  pas au premier plan : utiliser `PrintWindow` sur le handle du processus.
-- Deux agents qui ajoutent chacun une règle au même fichier QSS global se
-  marchent dessus : feuilles de style locales par panneau, ou une seule main.
-- Un worktree d'agent sans `build/` doit se reconfigurer : l'indiquer dans le prompt.
+- Le worktree d'un agent part de `main` : il ne voit pas le travail non fusionné. Soit il n'utilise
+  que ce que `main` fournit, soit la base est fusionnée d'abord.
+- Sous `ctest`, un test peut bloquer 300 s sans lien avec le changement (vu sur
+  `satinJunctionGuideIsLockedInUi`) : relancer avec `--timeout 400` avant de conclure.
+- Un `.exe` de test lancé sans le PATH de Qt sort en `0xC0000135` : passer par `ctest` ou ajouter
+  `%QT_ROOT%\bin` au PATH.
+- Captures d'écran : utiliser `PrintWindow` sur le handle du processus (l'appli peut ne pas être
+  au premier plan).
+- Deux agents qui ajoutent chacun une règle au même fichier QSS global se marchent dessus :
+  feuilles de style locales par panneau, ou une seule main.
+- Câblage bureau : sauf demande contraire, chaque unité inclut le câblage `apps/desktop`.
