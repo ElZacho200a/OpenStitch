@@ -3336,7 +3336,8 @@ de référence. Restent : progression et annulation, régénération de toute la
 - À faire : cibles libFuzzer (clang-cl ou job Linux) pour DST, PES, JEF, EXP,
   SVG, DXF, `.osp` ; corpus minimal commité.
 - Livré (2026-10-18) : `test_fuzz_decoders` : DST, PES, JEF, EXP, SVG, DXF et compagnon, graines fixes, toutes les troncatures, octets altérés ou aléatoires, en-têtes saturés, reproductibilité ; un vrai défaut corrigé : boucle infinie de l'import SVG sur un caractère non alphabétique après `Z` (`svg_import.cpp`), avec test de non-régression (`265e4b8`).
-- Reste : cibles libFuzzer/ASan en CI ; `.osp` (`libs/project_io`).
+- Livré (2026-10-21, lot CLI) : 61 entrées `.osp` malformées générées de façon déterministe et rejetées par la CLI compilée dans le job `linux-core`, contrôles timeout/crash/écriture parasite, 5 tests Python.
+- Reste : cibles libFuzzer/ASan en CI, corpus `.osp` réel et fuzzing de fichiers projet **valides** mutés.
 
 ### HP-QA-004 — Tests bout en bout desktop [P2] — ◐ Partiel
 - À faire : scénarios complets en QTest offscreen (image → numériser → éditer
@@ -3532,6 +3533,7 @@ ci-dessus doit les respecter :
 | Date | Qui | Changement |
 |---|---|---|
 | 2026-09-22 | Claude (session d'audit) | Création : inventaire complet vérifié dans le code. |
+| 2026-10-21 | ChatGPT (robustesse OSP) | HP-QA-003 ◐ : tests de rejet de 61 projets invalides contre la CLI Linux compilée, sans validation sur machine. |
 | 2026-09-23 | Claude (session pilotée) | HP-FILE-001 ☑ : action « Nouveau projet » (Ctrl+N) avec garde des modifications non enregistrées et réinitialisation centralisée de tout l'état d'édition de la fenêtre. |
 | 2026-09-23 | Claude (session pilotée) | HP-FILE-002 ☑ : chemin `.osp` mémorisé (Ctrl+S réécrit sans dialogue, Ctrl+Maj+S = Enregistrer sous), nom du fichier dans le titre, cible oubliée à chaque changement de document ; écriture atomique déjà en place côté `project_io`. |
 | 2026-10-05 | Claude (session pilotée) | HP-THR-001 ☑, HP-THR-003 ☑ (bibliothèque `thread_palette`), HP-FILE-003 ☑, HP-FILE-004 ☑ ; HP-THR-002 ◐ (nuanciers placeholder). |
