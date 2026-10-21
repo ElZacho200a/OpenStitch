@@ -3301,6 +3301,7 @@ de référence. Restent : progression et annulation, régénération de toute la
 ### HP-PERF-008 — Suivi des performances dans le temps [P2] — ◐ Partiel
 - État OpenStitch : `openstitch-bench` hors CTest.
 - À faire : exécution périodique en CI (non bloquante), historique des mesures.
+- Livré (2026-10-21, PR) : workflow planifié chaque semaine, mesure Linux Qt-free sur `tentabrode`, rapport JSON/Markdown archivé 90 jours, parseur testé. **Reste** : tableau des tendances sur plusieurs runs et contrôle de la comparabilité des machines.
 
 ### HP-PERF-009 — Régénération différée à l'édition de paramètres [P1] — ◐ Partiel (2026-10-18, branche `ux-lot-c1-pr`)
 - Problème : chaque pas d'un champ de l'inspecteur pousse une `SetStitchParamsCommand` (fusionnée en un pas d'annulation) puis régénère **sur le fil UI** (`main_window.cpp:6931-6948`) : un grand remplissage gèle l'interface à chaque pas de molette ou de flèche. Constat BRO-18 (UX-04, UX-11). Condition de la création directe (HP-UX-002).
@@ -3532,6 +3533,7 @@ ci-dessus doit les respecter :
 | Date | Qui | Changement |
 |---|---|---|
 | 2026-09-22 | Claude (session d'audit) | Création : inventaire complet vérifié dans le code. |
+| 2026-10-21 | ChatGPT (performance) | HP-PERF-008 ◐ : workflow hebdomadaire de benchmark, artefacts JSON/Markdown, quatre tests de parsing. |
 | 2026-09-23 | Claude (session pilotée) | HP-FILE-001 ☑ : action « Nouveau projet » (Ctrl+N) avec garde des modifications non enregistrées et réinitialisation centralisée de tout l'état d'édition de la fenêtre. |
 | 2026-09-23 | Claude (session pilotée) | HP-FILE-002 ☑ : chemin `.osp` mémorisé (Ctrl+S réécrit sans dialogue, Ctrl+Maj+S = Enregistrer sous), nom du fichier dans le titre, cible oubliée à chaque changement de document ; écriture atomique déjà en place côté `project_io`. |
 | 2026-10-05 | Claude (session pilotée) | HP-THR-001 ☑, HP-THR-003 ☑ (bibliothèque `thread_palette`), HP-FILE-003 ☑, HP-FILE-004 ☑ ; HP-THR-002 ◐ (nuanciers placeholder). |
