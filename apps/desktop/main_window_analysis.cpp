@@ -502,6 +502,9 @@ void MainWindow::buildAnalysisPanel() {
     auto* densityAct = analyseMenu->addAction(tr("&Épaisseurs de fil (densité)…"));
     densityAct->setObjectName(QStringLiteral("action_densityReport"));
     connect(densityAct, &QAction::triggered, this, &MainWindow::showDensityReport);
+    auto* fabricRiskAct = analyseMenu->addAction(tr("Risque de tirage du &tissu…"));
+    fabricRiskAct->setObjectName(QStringLiteral("action_fabricRiskReport"));
+    connect(fabricRiskAct, &QAction::triggered, this, &MainWindow::showFabricRiskReport);
     auto* diagnoseAct = analyseMenu->addAction(tr("&Diagnostic des défauts connus…"));
     diagnoseAct->setObjectName(QStringLiteral("action_diagnoseReport"));
     connect(diagnoseAct, &QAction::triggered, this, &MainWindow::showDiagnoseReport);
