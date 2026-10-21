@@ -81,7 +81,8 @@ jobs:
   # Garde-fou de portabilité : le cœur et la CLI doivent compiler sans Qt
   # et sans dépendance Windows involontaire.
   linux-core:
-    runs-on: ubuntu-latest
+    # Pinned runner: avoids silently raising the glibc baseline of the binary.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -109,6 +110,26 @@ jobs:
 
       - name: Test
         run: ctest --preset linux-core
+
+      # Keep the Debug/test build intact; create a separate Release CLI.
+      # The archive is uploaded only after the Linux tests and smoke checks succeed.
+      - name: Build Linux CLI (Release)
+        run: |
+          cmake -S . -B build/linux-cli-release \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DOPENSTITCH_BUILD_DESKTOP=OFF \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          cmake --build build/linux-cli-release --target openstitch-cli -j "$(nproc)"
+          bash packaging/linux/package-cli.sh \
+            build/linux-cli-release/apps/cli/openstitch-cli dist/linux-cli
+
+      - name: Upload Linux CLI binary and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: openstitch-cli-linux-x86_64
+          if-no-files-found: error
+          retention-days: 30
+          path: dist/linux-cli/*
 
   format:
     runs-on: ubuntu-latest
@@ -139,6 +160,12 @@ jobs:
           name: openstitch-beta-windows-x64
           path: dist/openstitch-windows-x64
 
+      - name: Télécharger l'artefact Linux CLI
+        uses: actions/download-artifact@v4
+        with:
+          name: openstitch-cli-linux-x86_64
+          path: dist/linux-cli
+
       - name: Empaqueter
         run: |
           cd dist
@@ -149,7 +176,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
-          gh release create latest openstitch-windows-x64.zip \
+          gh release create latest \
+            openstitch-windows-x64.zip \
+            dist/linux-cli/openstitch-cli-linux-x86_64.tar.gz \
+            dist/linux-cli/openstitch-cli-linux-x86_64.tar.gz.sha256 \
             --repo "$GITHUB_REPOSITORY" \
             --title "Dernier build (main)" \
             --notes "Build automatique généré depuis le commit ${{ github.sha }}." \
