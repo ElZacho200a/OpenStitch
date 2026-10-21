@@ -1184,6 +1184,7 @@ void MainWindow::buildMenus() {
     showStitchesAct_->setShortcut(QKeySequence(Qt::Key_4));
     connect(showStitchesAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
     buildRealisticMenu(viewMenu);
+    buildImageOpacityControls(viewMenu);
     viewMenu->addSeparator();
     zoomInAct_ = viewMenu->addAction(tr("Zoom &avant"));
     auto* zoomInAct = zoomInAct_;
@@ -3306,6 +3307,8 @@ void MainWindow::renderBase(const image::Image& img) {
         }
         const QPixmap pixmap = basePixmapCache_;
         auto* item = scene_->addPixmap(pixmap);
+        item->setData(0, QStringLiteral("backgroundImage"));
+        item->setOpacity(imageOpacity_);
         const double mmPerPx = project_.mm_per_px.value;
         const double wMm = img.width * mmPerPx;
         const double hMm = img.height * mmPerPx;
