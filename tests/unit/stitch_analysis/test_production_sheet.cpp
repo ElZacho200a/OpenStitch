@@ -203,7 +203,7 @@ TEST_CASE("fiche de production : client independant des notes et echappe") {
     const auto sheet = make_production_sheet(project, twoBlockSequence(), options);
     CHECK(sheet.client == "Atelier <Martin> & fils");
     CHECK(sheet.notes == "Piquer sur jersey");
-    CHECK(production_to_json(sheet).find("\\"client\\":\\"Atelier <Martin> & fils\\"") !=
+    CHECK(production_to_json(sheet).find(R"("client":"Atelier <Martin> & fils")") !=
           std::string::npos);
     CHECK(production_to_html(sheet).find("Client :</b> Atelier &lt;Martin&gt; &amp; fils") !=
           std::string::npos);
