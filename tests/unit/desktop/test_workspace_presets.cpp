@@ -2,7 +2,6 @@
 #include <QAction>
 #include <QCoreApplication>
 #include <QSettings>
-#include <QStringList>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -27,16 +26,11 @@ private slots:
 
     void presetsAreAvailable() {
         MainWindow window;
-        const QStringList actionNames{
-            QStringLiteral("action_workspaceDigitize"),
-            QStringLiteral("action_workspaceRetouch"),
-            QStringLiteral("action_workspaceStitches"),
-            QStringLiteral("action_workspaceQuality"),
-            QStringLiteral("action_workspaceRestore")
-        };
-        for (const QString& name : actionNames) {
-            QVERIFY(window.findChild<QAction*>(name) != nullptr);
-        }
+        QVERIFY(window.findChild<QAction*>(QStringLiteral("action_workspaceDigitize")));
+        QVERIFY(window.findChild<QAction*>(QStringLiteral("action_workspaceRetouch")));
+        QVERIFY(window.findChild<QAction*>(QStringLiteral("action_workspaceStitches")));
+        QVERIFY(window.findChild<QAction*>(QStringLiteral("action_workspaceQuality")));
+        QVERIFY(window.findChild<QAction*>(QStringLiteral("action_workspaceRestore")));
     }
 
     void profilesAdaptPanelsAndRestorePreviousState() {
