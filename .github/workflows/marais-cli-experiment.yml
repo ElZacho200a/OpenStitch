@@ -1,0 +1,63 @@
+name: Marais digitization experiment
+on:
+  push:
+    branches: [experiments/marais-cli-20261021]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  digitize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@v4
+      - name: Export GitHub Actions cache environment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+      - name: Bootstrap vcpkg and dependencies
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/vcpkg"
+          "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+          sudo apt-get update
+          sudo apt-get install -y nasm
+      - name: Build actual OpenStitch CLI
+        run: |
+          cmake --preset linux-core
+          cmake --build --preset linux-core --target openstitch-cli -j 4
+      - name: Digitize user artwork with real engine
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/marais
+          export CLI="$GITHUB_WORKSPACE/build/linux-core/apps/cli/openstitch-cli"
+          test -x "$CLI"
+          python3 - <<'PY'
+          import base64, pathlib
+          source = pathlib.Path('experiments/marais/input.jpg.b64')
+          if not source.exists():
+              raise SystemExit('Input artwork missing: experiments/marais/input.jpg.b64')
+          pathlib.Path('/tmp/marais/source.jpg').write_bytes(base64.b64decode(source.read_text().strip()))
+          PY
+          "$CLI" project digitize /tmp/marais/source.jpg -o /tmp/marais/ruines.osp --dst /tmp/marais/ruines.dst --dpi 32 --max-colors 12 --skip-background yes --island-cleanup 3 --min-region-mm2 1 --fill-inset 0 --curve-tolerance 0.3 --no-underpath --hidden-travel --report /tmp/marais/rapport.json
+          "$CLI" project set /tmp/marais/ruines.osp --width-mm 220 --height-mm 220
+          "$CLI" stats /tmp/marais/ruines.dst > /tmp/marais/stats.txt
+          "$CLI" project check /tmp/marais/ruines.osp > /tmp/marais/check.txt 2>&1 || true
+          "$CLI" project diagnose /tmp/marais/ruines.osp > /tmp/marais/diagnose.txt 2>&1 || true
+          "$CLI" project fidelity /tmp/marais/ruines.osp --map /tmp/marais/fidelity.png > /tmp/marais/fidelity.txt 2>&1 || true
+          "$CLI" project density /tmp/marais/ruines.osp --heatmap /tmp/marais/density.png > /tmp/marais/density.txt 2>&1 || true
+          "$CLI" project render /tmp/marais/ruines.osp -o /tmp/marais/render.png --px-per-mm 4
+          cat /tmp/marais/stats.txt
+      - name: Upload project, DST, render and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: marais-openstitch-real-cli
+          path: /tmp/marais/
+          if-no-files-found: warn
+          retention-days: 7
