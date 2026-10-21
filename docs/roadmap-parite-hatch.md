@@ -3342,10 +3342,15 @@ de référence. Restent : progression et annulation, régénération de toute la
 - À faire : scénarios complets en QTest offscreen (image → numériser → éditer
   → exporter PES) pour chaque vague livrée.
 
-### HP-QA-005 — Vérification croisée avec un lecteur tiers [P1] — ☐ À faire
+### HP-QA-005 — Vérification croisée avec un lecteur tiers [P1] — ◐ Partiel (2026-10-21)
 - État OpenStitch : `limitations.md` : « Validé sur simulateur : non ».
 - À faire : script de test (hors build, optionnel) qui relit nos exports avec
   pyembroidery (MIT) et compare les points ; exécuté en CI.
+- Livré (2026-10-21, PR en attente) : comparateur optionnel en Python, OpenStitch
+  `stats --json` face à `pyembroidery` (MIT), rapports JSON de divergences,
+  six tests unitaires et CI de contrat. **Reste** : corpus multi-formats réels,
+  exécuter l'outil avec un binaire OpenStitch dans la CI et comparer les
+  séquences point par point ; aucun essai machine revendiqué.
 
 ### HP-QA-006 — Crash sur fichiers réels [P1] — ☐ À faire
 - À faire : corpus de fichiers utilisateurs réels (DST/PES/SVG/images
@@ -3532,6 +3537,7 @@ ci-dessus doit les respecter :
 | Date | Qui | Changement |
 |---|---|---|
 | 2026-09-22 | Claude (session d'audit) | Création : inventaire complet vérifié dans le code. |
+| 2026-10-21 | ChatGPT (interopérabilité) | HP-QA-005 ◐ : comparaison des compteurs avec pyembroidery, six tests et CI de contrat, en attente d'un corpus de fichiers réels. |
 | 2026-09-23 | Claude (session pilotée) | HP-FILE-001 ☑ : action « Nouveau projet » (Ctrl+N) avec garde des modifications non enregistrées et réinitialisation centralisée de tout l'état d'édition de la fenêtre. |
 | 2026-09-23 | Claude (session pilotée) | HP-FILE-002 ☑ : chemin `.osp` mémorisé (Ctrl+S réécrit sans dialogue, Ctrl+Maj+S = Enregistrer sous), nom du fichier dans le titre, cible oubliée à chaque changement de document ; écriture atomique déjà en place côté `project_io`. |
 | 2026-10-05 | Claude (session pilotée) | HP-THR-001 ☑, HP-THR-003 ☑ (bibliothèque `thread_palette`), HP-FILE-003 ☑, HP-FILE-004 ☑ ; HP-THR-002 ◐ (nuanciers placeholder). |
