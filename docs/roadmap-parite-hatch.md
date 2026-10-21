@@ -3347,9 +3347,10 @@ de référence. Restent : progression et annulation, régénération de toute la
 - À faire : script de test (hors build, optionnel) qui relit nos exports avec
   pyembroidery (MIT) et compare les points ; exécuté en CI.
 
-### HP-QA-006 — Crash sur fichiers réels [P1] — ☐ À faire
+### HP-QA-006 — Crash sur fichiers réels [P1] — ◐ Partiel (2026-10-21)
 - À faire : corpus de fichiers utilisateurs réels (DST/PES/SVG/images
   étranges : 16 bits, CMJN, énormes, transparents) ouverts en test.
+- Livré (2026-10-21, lot image) : générateur stdlib de sept PNG déterministes, dont palette, RVBA et 16 bits, import testable via la vraie CLI dans CTest ; cinq tests Python de contrat. **Reste** : corpus de fichiers utilisateurs réels sous licence vérifiée et cas CMJN/géants.
 
 ### HP-QA-007 — Interface programmatique `.osp` en ligne de commande (pilotable par un agent) [P1] — ◐ Partiel (en PR #46)
 - État OpenStitch : `openstitch-cli project …` (`libs/project_ops`, Qt-free) : `new`,
@@ -3532,6 +3533,7 @@ ci-dessus doit les respecter :
 | Date | Qui | Changement |
 |---|---|---|
 | 2026-09-22 | Claude (session d'audit) | Création : inventaire complet vérifié dans le code. |
+| 2026-10-21 | ChatGPT (corpus image) | HP-QA-006 ◐ : corpus image déterministe et tests CLI d'import/réjection, sans prétendre couvrir les cas réels. |
 | 2026-09-23 | Claude (session pilotée) | HP-FILE-001 ☑ : action « Nouveau projet » (Ctrl+N) avec garde des modifications non enregistrées et réinitialisation centralisée de tout l'état d'édition de la fenêtre. |
 | 2026-09-23 | Claude (session pilotée) | HP-FILE-002 ☑ : chemin `.osp` mémorisé (Ctrl+S réécrit sans dialogue, Ctrl+Maj+S = Enregistrer sous), nom du fichier dans le titre, cible oubliée à chaque changement de document ; écriture atomique déjà en place côté `project_io`. |
 | 2026-10-05 | Claude (session pilotée) | HP-THR-001 ☑, HP-THR-003 ☑ (bibliothèque `thread_palette`), HP-FILE-003 ☑, HP-FILE-004 ☑ ; HP-THR-002 ◐ (nuanciers placeholder). |
