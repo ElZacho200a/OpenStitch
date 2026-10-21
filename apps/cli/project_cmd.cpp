@@ -1038,8 +1038,7 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
     c->add_flag("--json", jsonOut, "Rapport JSON (openstitch.fabric-risk/1) sur stdout");
     c->callback([frArgs, &jsonOut, write_bytes] {
         for (const auto* p : {&frArgs->map, &frArgs->output}) {
-            if (const auto refused =
-                    check_output("fabric-risk", jsonOut, *p, frArgs->noClobber)) {
+            if (const auto refused = check_output("fabric-risk", jsonOut, *p, frArgs->noClobber)) {
                 g_exit = *refused;
                 return;
             }
@@ -1060,13 +1059,11 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
             return;
         }
         std::string err;
-        if (!frArgs->output.empty() &&
-            !write_text(fs::path(frArgs->output), report->json, err)) {
+        if (!frArgs->output.empty() && !write_text(fs::path(frArgs->output), report->json, err)) {
             g_exit = fail_with("fabric-risk", jsonOut, po::code::kIo, err);
             return;
         }
-        if (!frArgs->map.empty() &&
-            !write_bytes(frArgs->map, report->heatmap_png, err)) {
+        if (!frArgs->map.empty() && !write_bytes(frArgs->map, report->heatmap_png, err)) {
             g_exit = fail_with("fabric-risk", jsonOut, po::code::kIo, err);
             return;
         }

@@ -93,8 +93,8 @@ struct FabricRiskReport {
     double hotspot_area_mm2{0.0}; // score >= 70
 };
 
-[[nodiscard]] Result<FabricRiskReport> measure_fabric_risk(
-    const document::Project& project, const FabricRiskOptions& options = {});
+[[nodiscard]] Result<FabricRiskReport> measure_fabric_risk(const document::Project& project,
+                                                           const FabricRiskOptions& options = {});
 
 // Dimensions (px) de l'image de travail (source passée par `project.ops`) : le repère de la
 // segmentation et de tous les outils d'analyse. {0, 0} sans image.

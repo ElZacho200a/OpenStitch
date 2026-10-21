@@ -18,12 +18,12 @@ namespace openstitch::project_ops {
 
 Result<FabricRiskReport> measure_fabric_risk(const document::Project& project,
                                              const FabricRiskOptions& options) {
-    if (!std::isfinite(options.cell_mm) || options.cell_mm < 0.1 ||
-        options.cell_mm > 10.0 || !std::isfinite(options.reference_spacing_mm) ||
-        options.reference_spacing_mm <= 0.0 || !std::isfinite(options.heatmap_px_per_cell) ||
-        options.heatmap_px_per_cell < 1.0 || options.heatmap_px_per_cell > 16.0) {
-        return std::unexpected(Error{ErrorCategory::UserInput,
-                                     "risque tissu : parametres de grille invalides", {}});
+    if (!std::isfinite(options.cell_mm) || options.cell_mm < 0.1 || options.cell_mm > 10.0 ||
+        !std::isfinite(options.reference_spacing_mm) || options.reference_spacing_mm <= 0.0 ||
+        !std::isfinite(options.heatmap_px_per_cell) || options.heatmap_px_per_cell < 1.0 ||
+        options.heatmap_px_per_cell > 16.0) {
+        return std::unexpected(
+            Error{ErrorCategory::UserInput, "risque tissu : parametres de grille invalides", {}});
     }
 
     // Coefficients exploratoires, sans signification metrologique : a calibrer sur machine.
@@ -33,8 +33,8 @@ Result<FabricRiskReport> measure_fabric_risk(const document::Project& project,
     } else if (options.fabric == "felt") {
         susceptibility = 0.75;
     } else if (options.fabric != "woven") {
-        return std::unexpected(Error{ErrorCategory::UserInput,
-                                     "risque tissu : choisir woven, jersey ou felt", {}});
+        return std::unexpected(
+            Error{ErrorCategory::UserInput, "risque tissu : choisir woven, jersey ou felt", {}});
     }
 
     auto model = detail::build_thread_model(project);
@@ -43,23 +43,25 @@ Result<FabricRiskReport> measure_fabric_risk(const document::Project& project,
     }
     if (model->segs.empty()) {
         return std::unexpected(Error{ErrorCategory::OperationImpossible,
-                                     "risque tissu : aucun segment cousu a analyser", {}});
+                                     "risque tissu : aucun segment cousu a analyser",
+                                     {}});
     }
 
     const double cell = options.cell_mm;
     const double spanX = model->max_x - model->min_x;
     const double spanY = model->max_y - model->min_y;
-    if (!std::isfinite(spanX) || !std::isfinite(spanY) || spanX < 0.0 ||
-        spanY < 0.0 || spanX / cell > 2000.0 || spanY / cell > 2000.0) {
+    if (!std::isfinite(spanX) || !std::isfinite(spanY) || spanX < 0.0 || spanY < 0.0 ||
+        spanX / cell > 2000.0 || spanY / cell > 2000.0) {
         return std::unexpected(Error{ErrorCategory::OperationImpossible,
-                                     "risque tissu : dimensions du motif excessives", {}});
+                                     "risque tissu : dimensions du motif excessives",
+                                     {}});
     }
     const int cols = static_cast<int>(std::ceil(spanX / cell)) + 1;
     const int rows = static_cast<int>(std::ceil(spanY / cell)) + 1;
     const std::size_t count = static_cast<std::size_t>(cols) * rows;
     if (count > 2'000'000) {
-        return std::unexpected(Error{ErrorCategory::OperationImpossible,
-                                     "risque tissu : grille trop grande", {}});
+        return std::unexpected(
+            Error{ErrorCategory::OperationImpossible, "risque tissu : grille trop grande", {}});
     }
 
     struct Cell {
@@ -84,10 +86,10 @@ Result<FabricRiskReport> measure_fabric_risk(const document::Project& project,
         const double dl = length / steps;
         for (int i = 0; i < steps; ++i) {
             const double t = (static_cast<double>(i) + 0.5) / steps;
-            const int x = std::clamp(
-                static_cast<int>((s.ax + t * dx - model->min_x) / cell), 0, cols - 1);
-            const int y = std::clamp(
-                static_cast<int>((model->max_y - s.ay - t * dy) / cell), 0, rows - 1);
+            const int x =
+                std::clamp(static_cast<int>((s.ax + t * dx - model->min_x) / cell), 0, cols - 1);
+            const int y =
+                std::clamp(static_cast<int>((model->max_y - s.ay - t * dy) / cell), 0, rows - 1);
             Cell& c = cells[static_cast<std::size_t>(y) * cols + x];
             c.length += dl;
             c.xx += dl * ux * ux;
@@ -112,8 +114,7 @@ Result<FabricRiskReport> measure_fabric_risk(const document::Project& project,
         const double coherence =
             std::clamp(std::hypot(c.xx - c.yy, 2.0 * c.xy) / c.length, 0.0, 1.0);
         // Indice relatif et sature, aucun modele de force/retrait physique.
-        const double score = std::clamp(100.0 * susceptibility *
-                                            (1.0 - std::exp(-0.42 * layers)) *
+        const double score = std::clamp(100.0 * susceptibility * (1.0 - std::exp(-0.42 * layers)) *
                                             (0.7 + 0.3 * coherence),
                                         0.0, 100.0);
         scores[i] = score;
@@ -126,9 +127,8 @@ Result<FabricRiskReport> measure_fabric_risk(const document::Project& project,
     std::sort(occupied.begin(), occupied.end());
     FabricRiskReport report;
     report.max_score = maximum;
-    report.p99_score = occupied.empty()
-                           ? 0.0
-                           : occupied[static_cast<std::size_t>(0.99 * (occupied.size() - 1))];
+    report.p99_score =
+        occupied.empty() ? 0.0 : occupied[static_cast<std::size_t>(0.99 * (occupied.size() - 1))];
     report.hotspot_area_mm2 = hotspots;
 
     nlohmann::json doc = {
@@ -137,40 +137,37 @@ Result<FabricRiskReport> measure_fabric_risk(const document::Project& project,
         {"fabric", options.fabric},
         {"cell_mm", cell},
         {"reference_spacing_mm", options.reference_spacing_mm},
-        {"grid", {{"cols", cols}, {"rows", rows},
-                  {"min_x_mm", model->min_x}, {"max_y_mm", model->max_y}}},
+        {"grid",
+         {{"cols", cols}, {"rows", rows}, {"min_x_mm", model->min_x}, {"max_y_mm", model->max_y}}},
         {"max_score", report.max_score},
         {"p99_score", report.p99_score},
         {"area_score_ge_70_mm2", report.hotspot_area_mm2},
         {"warning", "Indice relatif NON valide comme tension en newtons, "
                     "deformation mesuree ou prediction de plis. "
-                    "Profils textiles non calibres sur machine."}
-    };
+                    "Profils textiles non calibres sur machine."}};
     report.json = doc.dump(2);
     report.text = "Risque relatif de tirage du tissu (heuristique NON calibree)\n"
-                  "  tissu : " + options.fabric + "\n" +
-                  "  indice max : " + std::to_string(report.max_score) + " / 100\n" +
-                  "  indice p99 : " + std::to_string(report.p99_score) + " / 100\n" +
+                  "  tissu : " +
+                  options.fabric + "\n" + "  indice max : " + std::to_string(report.max_score) +
+                  " / 100\n" + "  indice p99 : " + std::to_string(report.p99_score) + " / 100\n" +
                   "  surface indice >= 70 : " + std::to_string(hotspots) + " mm2\n" +
                   "  Attention : aucune mesure de tension ni de deformation physique.\n";
 
     if (options.heatmap) {
         const int scale = static_cast<int>(std::lround(options.heatmap_px_per_cell));
         if (count * static_cast<std::size_t>(scale) * scale > 32'000'000) {
-            return std::unexpected(Error{ErrorCategory::OperationImpossible,
-                                         "risque tissu : carte PNG trop grande", {}});
+            return std::unexpected(Error{
+                ErrorCategory::OperationImpossible, "risque tissu : carte PNG trop grande", {}});
         }
         image::Image map;
         map.width = cols * scale;
         map.height = rows * scale;
         map.rgba.assign(static_cast<std::size_t>(map.width) * map.height * 4, 255);
         // Fond gris, puis interpolation sur une palette fixe : bleu, vert, jaune, rouge.
-        constexpr std::array<std::array<double, 3>, 4> palette = {{
-            {{60.0, 135.0, 230.0}},
-            {{65.0, 195.0, 120.0}},
-            {{250.0, 215.0, 65.0}},
-            {{215.0, 45.0, 45.0}}
-        }};
+        constexpr std::array<std::array<double, 3>, 4> palette = {{{{60.0, 135.0, 230.0}},
+                                                                   {{65.0, 195.0, 120.0}},
+                                                                   {{250.0, 215.0, 65.0}},
+                                                                   {{215.0, 45.0, 45.0}}}};
         for (int y = 0; y < map.height; ++y) {
             for (int x = 0; x < map.width; ++x) {
                 const double v = scores[static_cast<std::size_t>(y / scale) * cols + x / scale];
@@ -184,7 +181,8 @@ Result<FabricRiskReport> measure_fabric_risk(const document::Project& project,
                             palette[static_cast<std::size_t>(lo)][static_cast<std::size_t>(ch)] *
                                 (1.0 - t) +
                             palette[static_cast<std::size_t>(lo + 1)]
-                                   [static_cast<std::size_t>(ch)] * t;
+                                   [static_cast<std::size_t>(ch)] *
+                                t;
                     }
                 }
                 std::uint8_t* dst =

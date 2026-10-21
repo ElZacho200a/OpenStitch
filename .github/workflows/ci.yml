@@ -138,10 +138,6 @@ jobs:
       - name: clang-format (vérification, sans modification)
         run: |
           sudo apt-get update && sudo apt-get install -y clang-format
-          clang-format -i apps/cli/project_cmd.cpp apps/desktop/main_window_analysis.cpp libs/project_ops/include/openstitch/project_ops/analysis.hpp libs/project_ops/src/fabric_risk.cpp tests/unit/desktop/test_main_window.cpp tests/unit/project_ops/test_analysis.cpp
-          echo 'BEGIN_OPENSTITCH_FORMAT_DIFF'
-          git diff --no-ext-diff -- apps/cli/project_cmd.cpp apps/desktop/main_window_analysis.cpp libs/project_ops/include/openstitch/project_ops/analysis.hpp libs/project_ops/src/fabric_risk.cpp tests/unit/desktop/test_main_window.cpp tests/unit/project_ops/test_analysis.cpp
-          echo 'END_OPENSTITCH_FORMAT_DIFF'
           git ls-files '*.cpp' '*.hpp' | xargs clang-format --dry-run --Werror
 
   # Publie l'exécutable Windows sur une release GitHub "latest", uniquement
