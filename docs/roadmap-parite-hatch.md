@@ -24,7 +24,7 @@ prochaine entrée de ce fichier.
 
 ---
 
-## État d'avancement (revu le 2026-10-18 : tableau recalculé ; statuts hors vague 1 non revérifiés)
+## État d'avancement (actualisé le 2026-10-21 : nouvelles entrées UX ; statuts existants non revérifiés)
 
 > **Source de vérité des statuts : ce fichier.** `specs/implementation-roadmap.md`
 > décrit l'*ordre de livraison* (vagues, scopes S1…S15, plans) et `docs/source/roadmap.md`
@@ -38,10 +38,12 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
 | P0 | 12 | 28 | 5 | 45 |
-| P1 | 10 | 68 | 72 | 150 |
-| P2 | 3 | 33 | 64 | 100 |
+| P1 | 10 | 68 | 74 | 152 |
+| P2 | 3 | 33 | 67 | 103 |
 | P3 | 0 | 3 | 13 | 16 |
-| **Total** | **25** | **132** | **154** | **311** |
+| **Total** | **25** | **132** | **159** | **316** |
+
+Complément UX/design du 2026-10-21 : **+5 entrées à faire** (HP-UX-046 à 049 et HP-QA-010 : deux P1, trois P2), et HP-UX-015 enrichi. Aucun statut existant n'a été revérifié, aucune fonctionnalité déclarée livrée.
 
 Ajoutés le 2026-10-20 (roadmap nocturne manuscrite, voir le journal §28) : **+7 entrées** (HP-VIEW-014, HP-STI-025, HP-STI-026, HP-VEC-020, HP-QA-009, HP-UX-045, HP-FMT-022) ; HP-VIEW-002 passe de P2 à P3 (facultatif). Le tableau est recalculé depuis les titres : il intègre aussi HP-OBJ-024 et corrige l'écart des lignes P1.
 
@@ -2825,6 +2827,15 @@ les paramètres avant de créer) et par des **modes** distincts (édition satin,
 
 ### HP-UX-015 — Icônes haute densité et cohérence visuelle [P2] — ◐ Partiel
 - À faire : jeu d'icônes complet (tous les outils/actions), rendu net en 150–200 %.
+- Complément audit design 2026-10-21 : inventorier les dimensions, espacements,
+  polices et couleurs codés hors de `design_tokens.*` / `app_theme.*` ;
+  harmoniser les états normal/survol/focus/sélection/désactivé/erreur,
+  la hiérarchie typographique, les icônes et les zones cliquables dans les
+  deux thèmes. Les états significatifs ne reposent jamais sur la teinte seule.
+- Acceptation complémentaire : matrice clair/sombre × confortable/compact ×
+  DPI 100/150/200 %, captures des principales vues/dialogues, contrôle du
+  contraste, focus visible et ordre de tabulation ; QTest et `QAccessible`,
+  sans imposer d'égalité pixel à pixel. Coordination HP-I18N-004 et HP-QA-008.
 
 ### HP-UX-016 — Libellés compréhensibles par un non-technicien [P1] — ☐ À faire
 - À faire : relire tous les libellés (« Déboguer : afficher toutes les
@@ -3105,6 +3116,86 @@ Le lot C comprend aussi **HP-PERF-009** (régénération différée à l'éditio
 
 ---
 
+### Complément de l'audit ergonomie/design du 2026-10-21 : nouveaux lots
+
+L'audit du 18 octobre (`docs/ux/`) a déjà inscrit les problèmes de sélection,
+de modes, de panneaux, de responsive et d'édition précise. Les entrées ci-dessous
+ciblent les lacunes **transversales**, sans dupliquer HP-UX-004/011/015/030,
+HP-THR-*, HP-VIEW-012 ni HP-QA-008. Une vérification du code actuel doit précéder
+chaque réalisation. Ne pas introduire de modification du moteur de broderie ou de
+migration `.osp` pour ces seuls besoins ; la segmentation IA reste hors périmètre.
+
+### HP-UX-046 — Palette de commandes et recherche d'actions [P2] — ☐ À faire
+- Besoin : l'accumulation de menus, outils et panneaux rend certaines fonctions
+  difficiles à retrouver, notamment pour les utilisateurs occasionnels.
+- À faire : palette de commandes avec recherche par nom, catégorie et synonymes
+  (Fichier, Numérisation, Formes, Points, Qualité). Proposer `Ctrl+K` sous
+  réserve de vérifier les raccourcis existants ; afficher le raccourci de
+  chaque action et, si indisponible, le motif précis. Réutiliser les `QAction`
+  existantes plutôt que créer des chemins de traitement parallèles.
+  Recherche navigable au clavier, Échap et restauration du focus.
+- Modules : `apps/desktop/main_window*.cpp`, `interaction_map.*`.
+- Dépend de : HP-UX-016 (libellés), coordination HP-UX-011 (raccourcis).
+- Acceptation : 20 actions couvrant image → DST se retrouvent par la recherche
+  et déclenchent exactement la même `QAction` que leur entrée de menu ;
+  aucune action indisponible ne s'exécute ; focus et raccourcis utilisables
+  dans les champs de saisie ; test QTest headless.
+
+### HP-UX-047 — Différencier couleurs de régions, d'objets et fils [P1] — ☐ À faire
+- Besoin : fausses couleurs de segmentation, couleurs d'objets et références
+  réelles des fils représentent trois informations distinctes. Les réglages
+  de réduction des couleurs se retrouvent à plusieurs endroits (PAR-16 du
+  rapport UX du 18/10). La portée des changements doit être explicite.
+- À faire : vocabulaire et légendes cohérents (« Couleur de région », « Couleur
+  d'objet », « Fil de broderie ») ; point d'entrée contextuel « Couleurs et
+  fils » montrant région → objet → fil, fabricant/référence si disponibles,
+  et impact **aperçu seulement / document / export machine**. Unifier la
+  découverte des options de palette sans supprimer les panneaux spécialisés
+  ni changer silencieusement les points ou les fils.
+- Modules : `segmentation_colors_panel.*`, `thread_panel.*`,
+  `properties_panel.*`, `main_window_colors.cpp` ; coordination HP-THR-*.
+- Dépend de : HP-THR-004/005, HP-UX-038.
+- Acceptation : l'inspection d'une région puis d'un objet affiche le bon rôle
+  de couleur ; une variation purement visuelle n'altère ni `.osp` ni DST ;
+  un changement de fil est annulable par une seule `ICommand` et apparaît
+  dans le récapitulatif d'export ; le rôle n'est pas signalé par la couleur
+  seule ; tests Qt.
+
+### HP-UX-048 — Comparer original et aperçu avant transformation [P2] — ☐ À faire
+- Besoin : HP-VIEW-012 couvre l'aperçu direct mais ne pose pas un comportement
+  homogène de comparaison pour les opérations à fort impact (quantification,
+  simplification, vectorisation, notamment).
+- À faire : commencer par trois opérations pilotes avec bascule « Original /
+  Aperçu » ou côte à côte sur écran large ; valeur et unité visibles,
+  Restaurer les valeurs, Appliquer et Annuler explicites. L'aperçu n'est
+  jamais une mutation du projet. Exécuter hors fil UI les calculs coûteux,
+  puis étendre seulement après validation de l'ergonomie.
+- Modules : `apps/desktop/` (dialogues de traitement et canevas).
+- Dépend de : HP-VIEW-012, HP-PERF-001/009.
+- Acceptation : avant application, basculer/annuler ne crée aucune commande
+  d'édition et conserve le document identique ; Appliquer = un pas undo/redo ;
+  disponible en mode portable 911 × 480 et pendant une opération longue
+  sans bloquer l'interface ; QTest.
+
+### HP-UX-049 — Espaces de travail par tâche, facultatifs [P2] — ☐ À faire
+- Besoin : numériser, retoucher une forme, régler des points et préparer
+  l'export demandent des dispositions de docks différentes.
+- À faire : quatre agencements au choix (« Numériser », « Retoucher »,
+  « Points », « Vérifier / Exporter »), sélectionnables au clavier ou menu.
+  Modifier uniquement les docks/panneaux visibles : aucune modification
+  du document, de la sélection, des calques ou des paramètres métier.
+  Restaurer l'agencement précédent, réinitialiser et mémoriser la préférence
+  via `QSettings` ; respecter le mode portable. Ne pas introduire de modes
+  débutant/expert incompatibles.
+- Modules : `main_window_ux.cpp`, docks Qt, préférences.
+- Dépend de : HP-UX-024/027 ; complète HP-UX-004.
+- Acceptation : les quatre agencements et leur réinitialisation sont
+  disponibles après redémarrage/changement d'écran ; canevas utilisable
+  (objectif ≥ 450 × 260 en 911 × 480 logique portable) ; SHA du `.osp`
+  inchangé ; tests QTest des transitions et de la persistance.
+
+---
+
 ## 21. Internationalisation et accessibilité (I18N)
 
 Aujourd'hui : textes en **français** dans `tr()`, aucun `QTranslator`, aucun
@@ -3307,6 +3398,25 @@ de référence. Restent : progression et annulation, régénération de toute la
 
 ---
 
+### HP-QA-010 — Valider l'ergonomie sur des parcours utilisateur réels [P1] — ☐ À faire
+- Besoin : les audits des 13 et 18 octobre sont avant tout statiques et/ou
+  mesurés hors écran ; ils ne prouvent pas la découvrabilité ni l'efficacité
+  avec des brodeurs en situation.
+- À faire : protocole de 5 à 8 sessions, novices et brodeurs expérimentés,
+  avec au moins six tâches : ouvrir une image/SVG, numériser, corriger une
+  forme, régler type/densité des points, gérer couches/fils, diagnostiquer
+  puis exporter. Relever réussite, durée, erreurs, hésitations, clics et
+  recours à l'aide ; faire une baseline et répéter après les lots UX.
+  Noter version, résolution et DPI. Résultats anonymisés : aucune
+  télémétrie applicative et aucune donnée personnelle dans le dépôt.
+- Modules : `docs/ux/` (protocole/résultats), `tests/unit/desktop/` et
+  `tests/bench/ui_shots.cpp` (régressions automatisables).
+- Dépend de : HP-QA-008 ; démarrable avant les refontes.
+- Acceptation : au moins cinq sessions documentées, matrice clavier seul
+  et DPI 125/150/200 %, comparaison avant/après sur tâches équivalentes ;
+  chaque blocage majeur relié à une entrée de roadmap avec un critère
+  de fermeture mesurable.
+
 ## 24. Distribution et plateformes (DIST)
 
 Aujourd'hui : un script Inno Setup (`packaging/windows/installer.iss`), un build
@@ -3467,3 +3577,4 @@ ci-dessus doit les respecter :
 | 2026-10-19 | Claude (calques du document) | **HP-OBJ-024 ◐ créée et livrée en partie** : calques au-dessus des couches (calque ⊃ forme ⊃ couches), rang de calque = clé principale de l'ordre de couture, `.osp` v9 conditionnel, commandes annulables et panneau Calques. Reste : effets liés, CLI, glisser entre calques. Total +1 entrée. |
 | 2026-10-20 | Claude (roadmap nocturne) | Entrées issues des notes manuscrites « Roadmap sup nocturne 20/10 » : **HP-VIEW-014** carte d'épaisseur réactive, **HP-STI-025** veille sur les épaisseurs par type de point (étude, `docs/veille-epaisseur-2026-10.md` à produire), **HP-STI-026** point paramétrique (périmètre à préciser), **HP-VEC-020** outils de lignes (périmètre à préciser), **HP-QA-009** audit de numérisation sur images de bateaux, **HP-UX-045** audit d'ergonomie multi-couche (◐ : vagues 1-2 fusionnées, calques en PR #95), **HP-FMT-022** panneau d'export avec ordre des couleurs. HP-VIEW-002 (rendu 3D) : P2 → P3, facultatif. Tableau de bord recalculé. |
 | 2026-10-20 | Claude (épaisseur) | **HP-VIEW-014 ◐ et HP-STI-025 ◐** (en PR) : carte d'épaisseur estimée (Affichage › Carte d'épaisseur, exclusive avec la densité, légende en mm, case adaptée au zoom, zone la plus épaisse dans l'Analyse) et veille `docs/veille-epaisseur-2026-10.md`. La veille n'a trouvé aucun relevé en mm : 0,20 mm par couche et l'empilement linéaire sont des hypothèses, à valider sur machine (HP-PHYS-001). HP-VIEW-002 (rendu 3D, facultatif) non commencé. Tableau de bord recalculé. |
+| 2026-10-21 | Audit UX/design (ChatGPT, demande du mainteneur) | **+5 entrées ☐** : HP-UX-046 (palette de commandes), 047 (couleurs/fils), 048 (avant/après), 049 (espaces de travail), HP-QA-010 (validation utilisateurs) ; HP-UX-015 enrichi (contrat visuel). Total 311 → 316 ; documentation uniquement. |
