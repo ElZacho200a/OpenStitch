@@ -39,8 +39,8 @@ private slots:
         search->setText(QStringLiteral("fichier ouvrir"));
         QCOMPARE(list->count(), 1);
         QVERIFY(list->currentItem()->text().contains(QStringLiteral("Ouvrir")));
-        QVERIFY(list->currentItem()->text().contains(open->shortcut().toString(
-            QKeySequence::NativeText)));
+        const QString shortcut = open->shortcut().toString(QKeySequence::NativeText);
+        QVERIFY(list->currentItem()->text().contains(shortcut));
 
         search->setText(QStringLiteral("charger"));
         QCOMPARE(list->count(), 1);

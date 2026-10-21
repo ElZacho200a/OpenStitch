@@ -2,7 +2,6 @@
 #include "main_window.hpp"
 
 #include <QAction>
-#include "command_palette_dialog.hpp"
 #include <QActionGroup>
 #include <QApplication>
 #include <QClipboard>
@@ -71,6 +70,7 @@
 #include "brightness_dialog.hpp"
 #include "busy_indicator.hpp"
 #include "canvas_view.hpp"
+#include "command_palette_dialog.hpp"
 #include "document_panel.hpp"
 #include "empty_state_widget.hpp"
 #include "generation_options_dialog.hpp"

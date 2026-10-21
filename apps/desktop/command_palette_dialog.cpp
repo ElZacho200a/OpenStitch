@@ -149,9 +149,12 @@ void CommandPaletteDialog::rebuildResults() {
         if (!entry.action) {
             continue;
         }
-        const QString searchable = (entry.path + QLatin1Char(' ') + entry.keywords +
-                                    QLatin1Char(' ') + entry.action->toolTip() +
-                                    QLatin1Char(' ') + entry.action->statusTip()).toCaseFolded();
+        QString searchable = entry.path + QLatin1Char(' ') + entry.keywords;
+        searchable += QLatin1Char(' ');
+        searchable += entry.action->toolTip();
+        searchable += QLatin1Char(' ');
+        searchable += entry.action->statusTip();
+        searchable = searchable.toCaseFolded();
         bool matches = true;
         for (const QString& term : terms) {
             if (!searchable.contains(term)) {
