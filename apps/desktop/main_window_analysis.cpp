@@ -12,6 +12,7 @@
 #include <QFileDialog>
 #include <QFontDatabase>
 #include <QHBoxLayout>
+#include <QInputDialog>
 #include <QLabel>
 #include <QListWidget>
 #include <QMenu>
