@@ -2,6 +2,7 @@
 #include <QAction>
 #include <QCoreApplication>
 #include <QSettings>
+#include <QStringList>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -26,10 +27,15 @@ private slots:
 
     void presetsAreAvailable() {
         MainWindow window;
-        for (const auto& id : {"action_workspaceDigitize", "action_workspaceRetouch",
-                               "action_workspaceStitches", "action_workspaceQuality",
-                               "action_workspaceRestore"}) {
-            QVERIFY2(window.findChild<QAction*>(QLatin1String(id)) != nullptr, id);
+        const QStringList actionNames{
+            QStringLiteral("action_workspaceDigitize"),
+            QStringLiteral("action_workspaceRetouch"),
+            QStringLiteral("action_workspaceStitches"),
+            QStringLiteral("action_workspaceQuality"),
+            QStringLiteral("action_workspaceRestore")
+        };
+        for (const QString& name : actionNames) {
+            QVERIFY(window.findChild<QAction*>(name) != nullptr);
         }
     }
 
@@ -40,12 +46,9 @@ private slots:
         const bool initialHistoryHidden = window.historyDock_->isHidden();
         const QByteArray previous = window.saveState(2);
 
-        QAction* retouch =
-            window.findChild<QAction*>(QStringLiteral("action_workspaceRetouch"));
-        QAction* verify =
-            window.findChild<QAction*>(QStringLiteral("action_workspaceQuality"));
-        QAction* restore =
-            window.findChild<QAction*>(QStringLiteral("action_workspaceRestore"));
+        QAction* retouch = window.findChild<QAction*>(QStringLiteral("action_workspaceRetouch"));
+        QAction* verify = window.findChild<QAction*>(QStringLiteral("action_workspaceQuality"));
+        QAction* restore = window.findChild<QAction*>(QStringLiteral("action_workspaceRestore"));
 
         retouch->trigger();
         QVERIFY(QSettings().contains(QStringLiteral("ui/workspaces/previous")));
@@ -69,8 +72,7 @@ private slots:
 
     void noPreviousLayoutIsHarmless() {
         MainWindow window;
-        auto* restore =
-            window.findChild<QAction*>(QStringLiteral("action_workspaceRestore"));
+        auto* restore = window.findChild<QAction*>(QStringLiteral("action_workspaceRestore"));
         const QByteArray before = window.saveState(2);
         restore->trigger();
         QCOMPARE(window.saveState(2), before);

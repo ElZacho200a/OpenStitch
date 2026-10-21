@@ -363,22 +363,27 @@ void MainWindow::buildWorkspacesMenu() {
                                         historyDock_,  threadDock_,     colorsDock_};
         QList<QDockWidget*> visible{documentDock_};
         QDockWidget* front = nullptr;
+        QString presetName;
         switch (mode) {
         case 0: // Numériser
-            visible.append({propertiesDock_, workflowDock_, colorsDock_});
+            visible << propertiesDock_ << workflowDock_ << colorsDock_;
             front = propertiesDock_;
+            presetName = tr("Numériser");
             break;
         case 1: // Retoucher
-            visible.append({propertiesDock_, historyDock_});
+            visible << propertiesDock_ << historyDock_;
             front = propertiesDock_;
+            presetName = tr("Retoucher");
             break;
         case 2: // Points
-            visible.append({propertiesDock_, orderDock_, threadDock_});
+            visible << propertiesDock_ << orderDock_ << threadDock_;
             front = propertiesDock_;
+            presetName = tr("Points");
             break;
         case 3: // Vérifier / Exporter
-            visible.append({orderDock_, analysisDock_, threadDock_});
+            visible << orderDock_ << analysisDock_ << threadDock_;
             front = analysisDock_;
+            presetName = tr("Vérifier / Exporter");
             break;
         default:
             return;
@@ -392,9 +397,7 @@ void MainWindow::buildWorkspacesMenu() {
             front->raise();
         }
         settings.setValue(QStringLiteral("ui/workspaces/active"), mode);
-        statusBar()->showMessage(tr("Espace de travail activé : %1").arg(
-            mode == 0 ? tr("Numériser") : mode == 1 ? tr("Retoucher") :
-            mode == 2 ? tr("Points") : tr("Vérifier / Exporter")), 4000);
+        statusBar()->showMessage(tr("Espace de travail activé : %1").arg(presetName), 4000);
     };
 
     const auto addPreset = [this, menu, &apply](const QString& name, const char* objectName,
@@ -430,7 +433,6 @@ void MainWindow::buildWorkspacesMenu() {
         statusBar()->showMessage(tr("Disposition précédente restaurée."), 4000);
     });
 }
-
 
 // ---------------------------------------------------------------------------
 // Accessibilité, ordre de tabulation, indicateur d'enregistrement
