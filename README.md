@@ -23,6 +23,16 @@ Détails, emplacement des préférences et de la sauvegarde automatique, désins
 tests échouent ensuite). Décompressez **tout** le ZIP et lancez `desktop/Release/openstitch.exe` (les DLL et plugins
 voisins sont nécessaires). Ces builds ne sont pas forcément validés par les tests.
 
+**CLI Linux x86-64 sans compilation** : la release [Dernier build (main)](https://github.com/ElZacho200a/OpenStitch/releases/tag/latest)
+contient `openstitch-cli-linux-x86_64.tar.gz` et son fichier `.sha256` dès que **tous** les jobs de CI
+sont verts. Le même tarball est disponible dans **Actions → CI → Artifacts**
+(`openstitch-cli-linux-x86_64`, conservé 30 jours après un run réussi).
+Il contient l'exécutable `openstitch-cli`, ses dépendances dynamiques listées dans
+`dependencies.txt`, les licences et les instructions. C'est la **CLI seule**, pas
+l'application graphique ; construit sur Ubuntu 24.04, il nécessite un Linux x86-64
+compatible (la compatibilité exacte, notamment glibc, se vérifie avec `ldd`).
+Voir [Installer le client Linux](docs/source/installation.md#client-cli-linux-x86-64).
+
 ## État du projet
 
 **Chaîne complète fonctionnelle, de l'image au fichier DST**, avec contrôle manuel à chaque étape :
