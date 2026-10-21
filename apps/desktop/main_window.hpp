@@ -343,6 +343,7 @@ private:
     bool requireEmbroideryForReport(const QString& title);
     void showFidelityReport();
     void showDensityReport();
+    void showFabricRiskReport();
     void showDiagnoseReport();
     void exportRealisticPng();
     void activateAnalysisItem(QListWidgetItem* item, bool selectObject);
