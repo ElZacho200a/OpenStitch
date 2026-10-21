@@ -32,6 +32,7 @@ struct ProductionOptions {
     // lit jamais l'horloge (sortie déterministe).
     std::string date;
     std::string notes; // notes libres de l'utilisateur, reprises telles quelles
+    std::string client; // destinataire facultatif, sans effet sur le design
 
     double stitches_per_minute{700.0}; // plage usuelle 600-800 points/min
     double color_change_seconds{30.0}; // temps d'un changement de fil
@@ -94,6 +95,7 @@ struct ProductionSheet {
     std::string project_name;
     std::string date;
     std::string notes;
+    std::string client;
 
     double width_mm{0.0}; // boîte englobante des points cousus
     double height_mm{0.0};

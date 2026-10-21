@@ -195,6 +195,23 @@ TEST_CASE("fiche de production : JSON et HTML deterministes et echappes") {
     CHECK(html2.find("<svg") == std::string::npos);
 }
 
+TEST_CASE("fiche de production : client independant des notes et echappe") {
+    const auto project = twoObjectProject();
+    ProductionOptions options;
+    options.client = "Atelier <Martin> & fils";
+    options.notes = "Piquer sur jersey";
+    const auto sheet = make_production_sheet(project, twoBlockSequence(), options);
+    CHECK(sheet.client == "Atelier <Martin> & fils");
+    CHECK(sheet.notes == "Piquer sur jersey");
+    CHECK(production_to_json(sheet).find("\\"client\\":\\"Atelier <Martin> & fils\\"") !=
+          std::string::npos);
+    CHECK(production_to_html(sheet).find("Client :</b> Atelier &lt;Martin&gt; &amp; fils") !=
+          std::string::npos);
+    const auto empty = make_production_sheet(project, twoBlockSequence(), {});
+    CHECK(empty.client.empty());
+    CHECK(production_to_html(empty).find("Client :</b>") == std::string::npos);
+}
+
 TEST_CASE("fiche de production : sequence vide") {
     document::Project project;
     const auto sheet = make_production_sheet(project, stitch::StitchSequence{}, {});
