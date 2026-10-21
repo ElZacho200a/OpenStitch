@@ -156,6 +156,10 @@ Result<FabricRiskReport> measure_fabric_risk(const document::Project& project,
 
     if (options.heatmap) {
         const int scale = static_cast<int>(std::lround(options.heatmap_px_per_cell));
+        if (count * static_cast<std::size_t>(scale) * scale > 32'000'000) {
+            return std::unexpected(Error{ErrorCategory::OperationImpossible,
+                                         "risque tissu : carte PNG trop grande", {}});
+        }
         image::Image map;
         map.width = cols * scale;
         map.height = rows * scale;
