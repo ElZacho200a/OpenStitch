@@ -77,6 +77,7 @@
 #include "import_dialog.hpp"
 #include "machine_export_dialog.hpp"
 #include "node_handle.hpp"
+#include "vector_tooltip.hpp"
 #include "responsive.hpp"
 
 #include "calque_panel.hpp"
@@ -3316,6 +3317,13 @@ void MainWindow::renderBase(const image::Image& img) {
 
     // Objets vectoriels (remplissage translucide + contour).
     if (showVectorsAct_ != nullptr && showVectorsAct_->isChecked()) {
+        // Préparer une correspondance sans rechercher linéairement chaque broderie pour chaque
+        // forme. Les info-bulles ne régénèrent jamais les points du projet.
+        std::unordered_map<std::uint64_t, const document::EmbroideryObject*> byVector;
+        byVector.reserve(project_.embroidery_objects.size());
+        for (const auto& embroidery : project_.embroidery_objects) {
+            byVector.try_emplace(embroidery.source_vector.value, &embroidery);
+        }
         for (const auto& object : project_.vector_objects) {
             // Filtres d'affichage : une forme sélectionnée reste visible (sinon la
             // sélection deviendrait invisible et ses poignées orphelines).
@@ -3412,6 +3420,10 @@ void MainWindow::renderBase(const image::Image& img) {
                     pathItem->setCursor(Qt::PointingHandCursor);
                 }
             }
+            const auto match = byVector.find(object.id.value);
+            pathItem->setToolTip(vectorTooltip(object, outline.boundingRect(),
+                match == byVector.end() ? nullptr : match->second));
+            pathItem->setData(0, QStringLiteral("vectorShape"));
             pathItem->setZValue(10);
             baseItems_.append(pathItem);
         }
