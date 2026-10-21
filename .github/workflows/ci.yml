@@ -111,6 +111,9 @@ jobs:
       - name: Test
         run: ctest --preset linux-core
 
+      - name: Test Linux CLI installer
+        run: bash tests/scripts/test-install-cli-linux.sh
+
       # Keep the Debug/test build intact; create a separate Release CLI.
       # The archive is uploaded only after the Linux tests and smoke checks succeed.
       - name: Build Linux CLI (Release)
@@ -149,6 +152,9 @@ jobs:
     needs: [windows-msvc, linux-core, format]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    concurrency:
+      group: openstitch-latest-release
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:
@@ -175,12 +181,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete latest --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
-          gh release create latest \
-            openstitch-windows-x64.zip \
-            dist/linux-cli/openstitch-cli-linux-x86_64.tar.gz \
-            dist/linux-cli/openstitch-cli-linux-x86_64.tar.gz.sha256 \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "Dernier build (main)" \
-            --notes "Build automatique généré depuis le commit ${{ github.sha }}." \
-            --target "${{ github.sha }}"
+          # Never delete the release: download URLs must remain stable.
+          if gh release view latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload latest \
+              openstitch-windows-x64.zip \
+              dist/linux-cli/openstitch-cli-linux-x86_64.tar.gz \
+              dist/linux-cli/openstitch-cli-linux-x86_64.tar.gz.sha256 \
+              --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create latest \
+              openstitch-windows-x64.zip \
+              dist/linux-cli/openstitch-cli-linux-x86_64.tar.gz \
+              dist/linux-cli/openstitch-cli-linux-x86_64.tar.gz.sha256 \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Dernier build (main)" \
+              --notes "Build automatique généré depuis le commit ${{ github.sha }}." \
+              --target "${{ github.sha }}"
+          fi
