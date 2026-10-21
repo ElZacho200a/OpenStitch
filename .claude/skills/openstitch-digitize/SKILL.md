@@ -23,6 +23,26 @@ automatique. Chaque règle porte la mesure qui la justifie. Documentation de ré
 
 ## 2. Lancer, mesurer, regarder
 
+**Bootstrap obligatoire pour un agent dans un environnement Linux vierge** : ne jamais
+supposer que le CLI est préinstallé, ni conclure qu'il n'existe pas après un 404
+sur la release. Le dépôt fournit
+[`scripts/install-cli-linux.sh`](../../../scripts/install-cli-linux.sh), qui récupère
+l'archive vérifiée depuis `releases/tag/latest` ou, avec `gh` authentifié,
+depuis une CI réussie sur `main` (éviter les artefacts de PR) :
+
+```bash
+# Depuis la racine du dépôt, ou récupérer le script via raw.githubusercontent.com :
+bash scripts/install-cli-linux.sh
+~/.local/bin/openstitch-cli --version
+~/.local/bin/openstitch-cli --help
+```
+
+Le workflow indépendant **Publish Linux CLI** répare la release de façon quotidienne
+et sur lancement manuel, même si un merge automatisé n'a pas déclenché de CI
+`push main`. Si le téléchargement reste impossible, compiler selon
+`openstitch-build-test`, puis vérifier l'exécution. Ne jamais simuler une sortie
+`.osp` ou `.dst` en prétendant avoir exécuté le moteur.
+
 Binaire : `openstitch-cli` (voir `openstitch-build-test` pour le build). Sorties dans le
 **scratchpad**, jamais à la racine du dépôt.
 
