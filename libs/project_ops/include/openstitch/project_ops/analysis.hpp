@@ -19,6 +19,7 @@ namespace openstitch::project_ops {
 
 inline constexpr const char* kFidelitySchema = "openstitch.fidelity/1";
 inline constexpr const char* kDensitySchema = "openstitch.density/1";
+inline constexpr const char* kFabricRiskSchema = "openstitch.fabric-risk/1";
 inline constexpr const char* kLocateSchema = "openstitch.locate/1";
 inline constexpr const char* kDiagnoseSchema = "openstitch.diagnose/1";
 
