@@ -534,6 +534,7 @@ MainWindow::MainWindow() {
     }
 
     buildHelpMenu();
+    buildWorkspacesMenu();
 
     // Noms accessibles (lecteurs d'écran) sur les grandes zones.
     view_->setAccessibleName(tr("Canevas"));

@@ -39,9 +39,9 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 |---|---|---|---|---|
 | P0 | 12 | 28 | 5 | 45 |
 | P1 | 10 | 68 | 74 | 152 |
-| P2 | 3 | 33 | 67 | 103 |
+| P2 | 3 | 34 | 66 | 103 |
 | P3 | 0 | 3 | 13 | 16 |
-| **Total** | **25** | **132** | **159** | **316** |
+| **Total** | **25** | **133** | **158** | **316** |
 
 Complément UX/design du 2026-10-21 : **+5 entrées à faire** (HP-UX-046 à 049 et HP-QA-010 : deux P1, trois P2), et HP-UX-015 enrichi. Aucun statut existant n'a été revérifié, aucune fonctionnalité déclarée livrée.
 
@@ -3177,7 +3177,7 @@ migration `.osp` pour ces seuls besoins ; la segmentation IA reste hors périmè
   disponible en mode portable 911 × 480 et pendant une opération longue
   sans bloquer l'interface ; QTest.
 
-### HP-UX-049 — Espaces de travail par tâche, facultatifs [P2] — ☐ À faire
+### HP-UX-049 — Espaces de travail par tâche, facultatifs [P2] — ◐ Partiel (2026-10-21, branche feat/ux-049-workspace-presets)
 - Besoin : numériser, retoucher une forme, régler des points et préparer
   l'export demandent des dispositions de docks différentes.
 - À faire : quatre agencements au choix (« Numériser », « Retoucher »,
@@ -3193,6 +3193,13 @@ migration `.osp` pour ces seuls besoins ; la segmentation IA reste hors périmè
   disponibles après redémarrage/changement d'écran ; canevas utilisable
   (objectif ≥ 450 × 260 en 911 × 480 logique portable) ; SHA du `.osp`
   inchangé ; tests QTest des transitions et de la persistance.
+
+- Livré en branche : menu Affichage > Panneaux > Espaces de travail, quatre
+  profils de visibilité de docks, mémorisation de la disposition initiale
+  dans QSettings (une fois par cycle), retour à la disposition précédente,
+  tests QTest non destructifs (`test_workspace_presets`).
+- Reste : validation CI, contrôle sur le portable à DPI variés,
+  vérification du choix de panneaux avec des brodeurs réels.
 
 ---
 
@@ -3578,3 +3585,4 @@ ci-dessus doit les respecter :
 | 2026-10-20 | Claude (roadmap nocturne) | Entrées issues des notes manuscrites « Roadmap sup nocturne 20/10 » : **HP-VIEW-014** carte d'épaisseur réactive, **HP-STI-025** veille sur les épaisseurs par type de point (étude, `docs/veille-epaisseur-2026-10.md` à produire), **HP-STI-026** point paramétrique (périmètre à préciser), **HP-VEC-020** outils de lignes (périmètre à préciser), **HP-QA-009** audit de numérisation sur images de bateaux, **HP-UX-045** audit d'ergonomie multi-couche (◐ : vagues 1-2 fusionnées, calques en PR #95), **HP-FMT-022** panneau d'export avec ordre des couleurs. HP-VIEW-002 (rendu 3D) : P2 → P3, facultatif. Tableau de bord recalculé. |
 | 2026-10-20 | Claude (épaisseur) | **HP-VIEW-014 ◐ et HP-STI-025 ◐** (en PR) : carte d'épaisseur estimée (Affichage › Carte d'épaisseur, exclusive avec la densité, légende en mm, case adaptée au zoom, zone la plus épaisse dans l'Analyse) et veille `docs/veille-epaisseur-2026-10.md`. La veille n'a trouvé aucun relevé en mm : 0,20 mm par couche et l'empilement linéaire sont des hypothèses, à valider sur machine (HP-PHYS-001). HP-VIEW-002 (rendu 3D, facultatif) non commencé. Tableau de bord recalculé. |
 | 2026-10-21 | Audit UX/design (ChatGPT, demande du mainteneur) | **+5 entrées ☐** : HP-UX-046 (palette de commandes), 047 (couleurs/fils), 048 (avant/après), 049 (espaces de travail), HP-QA-010 (validation utilisateurs) ; HP-UX-015 enrichi (contrat visuel). Total 311 → 316 ; documentation uniquement. |
+| 2026-10-21 | Implémentation UX (ChatGPT, PR HP-UX-049) | Menu des espaces de travail (4 profils), visibilité de docks, restauration non destructive QSettings, test Qt ; statut ◐ jusqu'à validation CI et essais petit écran. |

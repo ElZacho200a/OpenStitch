@@ -17,6 +17,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMenu>
 #include <QMimeData>
 #include <QScreen>
 #include <QSettings>
@@ -337,6 +338,99 @@ void MainWindow::restoreUiLayout() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Espaces de travail non destructifs (HP-UX-049)
+// ---------------------------------------------------------------------------
+
+void MainWindow::buildWorkspacesMenu() {
+    if (panelsMenu_ == nullptr) {
+        return;
+    }
+    QMenu* menu = panelsMenu_->addMenu(tr("Espaces de travail"));
+    menu->setObjectName(QStringLiteral("menu_workspaces"));
+
+    // Les presets agissent uniquement sur la disposition de l'IHM,
+    // jamais sur la sélection, les calques ou le contenu du projet.
+    const auto apply = [this](int mode) {
+        QSettings settings;
+        const QString previousKey = QStringLiteral("ui/workspaces/previous");
+        if (!settings.contains(previousKey)) {
+            settings.setValue(previousKey, saveState(kUiLayoutVersion));
+        }
+        const QList<QDockWidget*> docks{documentDock_, propertiesDock_, workflowDock_,
+                                        orderDock_,    filterDock_,     analysisDock_,
+                                        historyDock_,  threadDock_,     colorsDock_};
+        QList<QDockWidget*> visible{documentDock_};
+        QDockWidget* front = nullptr;
+        switch (mode) {
+        case 0: // Numériser
+            visible.append({propertiesDock_, workflowDock_, colorsDock_});
+            front = propertiesDock_;
+            break;
+        case 1: // Retoucher
+            visible.append({propertiesDock_, historyDock_});
+            front = propertiesDock_;
+            break;
+        case 2: // Points
+            visible.append({propertiesDock_, orderDock_, threadDock_});
+            front = propertiesDock_;
+            break;
+        case 3: // Vérifier / Exporter
+            visible.append({orderDock_, analysisDock_, threadDock_});
+            front = analysisDock_;
+            break;
+        default:
+            return;
+        }
+        for (QDockWidget* dock : docks) {
+            if (dock != nullptr) {
+                dock->setVisible(visible.contains(dock));
+            }
+        }
+        if (front != nullptr) {
+            front->raise();
+        }
+        settings.setValue(QStringLiteral("ui/workspaces/active"), mode);
+        statusBar()->showMessage(tr("Espace de travail activé : %1").arg(
+            mode == 0 ? tr("Numériser") : mode == 1 ? tr("Retoucher") :
+            mode == 2 ? tr("Points") : tr("Vérifier / Exporter")), 4000);
+    };
+
+    const auto addPreset = [this, menu, &apply](const QString& name, const char* objectName,
+                                                int mode) {
+        QAction* action = menu->addAction(name);
+        action->setObjectName(QLatin1String(objectName));
+        action->setStatusTip(tr("Adapte les panneaux au travail, sans modifier le motif."));
+        connect(action, &QAction::triggered, this, [apply, mode] { apply(mode); });
+    };
+    addPreset(tr("Numériser"), "action_workspaceDigitize", 0);
+    addPreset(tr("Retoucher"), "action_workspaceRetouch", 1);
+    addPreset(tr("Points"), "action_workspaceStitches", 2);
+    addPreset(tr("Vérifier / Exporter"), "action_workspaceQuality", 3);
+    menu->addSeparator();
+
+    QAction* restore = menu->addAction(tr("Restaurer la disposition précédente"));
+    restore->setObjectName(QStringLiteral("action_workspaceRestore"));
+    restore->setStatusTip(tr("Revient aux panneaux avant le premier changement d'espace."));
+    connect(restore, &QAction::triggered, this, [this] {
+        QSettings settings;
+        const QString key = QStringLiteral("ui/workspaces/previous");
+        const QByteArray previous = settings.value(key).toByteArray();
+        if (previous.isEmpty()) {
+            statusBar()->showMessage(tr("Aucune disposition précédente enregistrée."), 4000);
+            return;
+        }
+        if (!restoreState(previous, kUiLayoutVersion)) {
+            statusBar()->showMessage(tr("Disposition précédente incompatible."), 4000);
+            return;
+        }
+        settings.remove(key);
+        settings.remove(QStringLiteral("ui/workspaces/active"));
+        statusBar()->showMessage(tr("Disposition précédente restaurée."), 4000);
+    });
+}
+
 
 // ---------------------------------------------------------------------------
 // Accessibilité, ordre de tabulation, indicateur d'enregistrement
