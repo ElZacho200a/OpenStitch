@@ -2,6 +2,7 @@
 #include "main_window.hpp"
 
 #include <QAction>
+#include "command_palette_dialog.hpp"
 #include <QActionGroup>
 #include <QApplication>
 #include <QClipboard>
@@ -833,6 +834,23 @@ void MainWindow::buildMenus() {
     connect(quitAct, &QAction::triggered, this, &QWidget::close);
 
     auto* editMenu = menuBar()->addMenu(tr("&Édition"));
+    auto* searchAction = editMenu->addAction(tr("Rechercher une &commande…"));
+    searchAction->setObjectName(QStringLiteral("action_commandPalette"));
+    searchAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_K));
+    searchAction->setStatusTip(tr("Rechercher une commande des menus."));
+    connect(searchAction, &QAction::triggered, this, [this] {
+        if (auto* existing = findChild<QDialog*>(QStringLiteral("commandPaletteDialog"))) {
+            existing->raise();
+            existing->activateWindow();
+            return;
+        }
+        auto* palette = new CommandPaletteDialog(menuBar(), this);
+        palette->setAttribute(Qt::WA_DeleteOnClose);
+        palette->show();
+        palette->raise();
+        palette->activateWindow();
+    });
+    editMenu->addSeparator();
     undoAct_ = editMenu->addAction(tr("&Annuler"));
     undoAct_->setObjectName(QStringLiteral("action_undo"));
     undoAct_->setShortcut(QKeySequence::Undo);
