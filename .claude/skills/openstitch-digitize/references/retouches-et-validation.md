@@ -1,6 +1,6 @@
 # Retouches, contours, densité, routage, validation et livraison
 
-Cette référence décrit la **seconde moitié du workflow** : corriger un vrai projet .osp sans perdre les détails de l'image. La qualité visuelle et la vérification de brodabilité doivent être traitées **séparément**. Les opérations citées sont documentées dans [cli-project.md](../../../docs/source/cli-project.md) ; lire **project operations --json** de la version installée avant chaque lot.
+Cette référence décrit la **seconde moitié du workflow** : corriger un vrai projet .osp sans perdre les détails de l'image. La qualité visuelle et la vérification de brodabilité doivent être traitées **séparément**. Les opérations citées sont documentées dans [cli-project.md](../../../../docs/source/cli-project.md) ; lire **project operations --json** de la version installée avant chaque lot.
 
 ## 1. Diagnostic de départ — trois échelles
 
