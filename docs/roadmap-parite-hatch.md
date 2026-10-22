@@ -2271,7 +2271,8 @@ calques image/régions/vecteurs/broderie, filtres d'affichage, thème clair/somb
 ### HP-VIEW-010 — Grille et guides configurables [P1] — ☐ À faire
 - À faire : pas de grille réglable, grille majeure/mineure, couleur, masquage.
 
-### HP-VIEW-011 — Opacité de l'image de fond [P1] — ☐ À faire
+### HP-VIEW-011 — Opacité de l'image de fond [P1] — ◐ Partiel (2026-10-21)
+- Livré (2026-10-21, PR) : curseur Affichage (0-100 %) persisté dans QSettings, appliqué seulement au pixmap de fond et maintenu après rafraîchissement, QTest du comportement. Reste : validation visuelle et tests sous Windows avant statut Fait.
 - À faire : curseur d'opacité / estompage de l'image pendant la numérisation.
 
 ### HP-VIEW-012 — Aperçu en direct pendant le réglage [P1] — ☐ À faire
@@ -3567,6 +3568,7 @@ ci-dessus doit les respecter :
 |---|---|---|
 | 2026-10-21 | ChatGPT (PR risque textile) | HP-FAB-004 ◐ : première carte heuristique non calibrée, CLI/desktop, tests et protocole de limites ; solveur physique et validation machine restant à faire. |
 | 2026-09-22 | Claude (session d'audit) | Création : inventaire complet vérifié dans le code. |
+| 2026-10-21 | ChatGPT (affichage) | HP-VIEW-011 ◐ : réglage d'opacité de l'image (0-100 %) instantané, persisté et testé avec QTest. |
 | 2026-10-21 | ChatGPT (fiche de production) | HP-PROD-001 ◐ : champ Client indépendant des notes, sorties JSON/HTML/PDF et tests. |
 | 2026-10-21 | ChatGPT (robustesse OSP) | HP-QA-003 ◐ : tests de rejet de 61 projets invalides contre la CLI Linux compilée, sans validation sur machine. |
 | 2026-10-21 | ChatGPT (info-bulle) | HP-VIEW-013 ◐ : métadonnées au survol des formes, dimensions, type et couleur, QTest. |

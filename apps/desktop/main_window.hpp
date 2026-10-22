@@ -957,6 +957,8 @@ private:
     void hideRegionHover();
     // Opacité de la carte des régions (0,2 – 1,0) : réglable pour voir la photo dessous.
     void setRegionMapOpacity(double opacity);
+    void setImageOpacity(double opacity);
+    void buildImageOpacityControls(QMenu* viewMenu);
     void buildRegionViewControls(QMenu* segMenu);
     // Fusion de COULEURS (panneau « Couleurs », main_window_colors.cpp) : le panneau liste les
     // teintes de la segmentation ; les plans (`segmentation::plan_*`) sont prévisualisés sur une
@@ -1427,6 +1429,7 @@ private:
     QGraphicsPixmapItem* regionHoverItem_{nullptr};
     std::optional<RegionId> regionHoverId_;
     double regionMapOpacity_{0.9};
+    double imageOpacity_{1.0}; // opacité de l'image originale, réglage purement visuel
 
     std::optional<RegionId> selectedRegion_;
     // Régions sélectionnées EN PLUS de selectedRegion_ (sélection multiple). Écrit uniquement
