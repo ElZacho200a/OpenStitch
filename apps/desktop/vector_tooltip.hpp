@@ -12,10 +12,12 @@
 namespace openstitch::desktop {
 
 // Information purement visuelle : aucun calcul de points ni mutation au survol.
-[[nodiscard]] inline QString vectorTooltip(const document::VectorObject& vector, const QRectF& bounds,
+[[nodiscard]] inline QString vectorTooltip(const document::VectorObject& vector,
+                                           const QRectF& bounds,
                                            const document::EmbroideryObject* embroidery) {
     QString type = QStringLiteral("Aucune broderie associée");
-    QString color = QStringLiteral("RVB %1, %2, %3").arg(vector.rgb[0]).arg(vector.rgb[1]).arg(vector.rgb[2]);
+    QString color =
+        QStringLiteral("RVB %1, %2, %3").arg(vector.rgb[0]).arg(vector.rgb[1]).arg(vector.rgb[2]);
     if (embroidery != nullptr) {
         if (std::holds_alternative<document::RunningStitchParams>(embroidery->params)) {
             type = QStringLiteral("Point droit");
