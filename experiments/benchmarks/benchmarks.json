@@ -1,0 +1,20 @@
+{
+  "schema": "openstitch.benchmarks/1",
+  "note": "Jeu de demarrage uniquement : les hash et dimensions reelles doivent etre verifies a l'execution. Aucun essai n'est encore execute.",
+  "cases": [
+    {
+      "id": "fixture-tentabrode-01",
+      "source_repo": "ElZacho200a/OpenStitch",
+      "source_ref": "main",
+      "source_path": "tests/fixtures/tentabrode.png",
+      "target_height_mm": 240,
+      "keep_aspect_ratio": true,
+      "source_sha256": null,
+      "fabric": "unspecified",
+      "eligibility": "repository_fixture",
+      "split": "development",
+      "protected_details": [],
+      "note": "Le juge identifie les details proteges apres lecture effective de l'image. Ne pas les inventer."
+    }
+  ]
+}
