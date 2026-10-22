@@ -70,5 +70,13 @@ class SemanticValidationTest(unittest.TestCase):
         self.assertIn('E_MASK', self.errors(document(region('a', mask_path=None))))
 
 
+    def test_malformed_agent_fields_are_errors_not_exceptions(self):
+        broken = document(region('a', priority=[], level={}, stitch_intent=[],
+                                 decision=[], parent_id={}))
+        errors = self.errors(broken)
+        for code in ('E_PRIORITY', 'E_LEVEL', 'E_STITCH', 'E_DECISION', 'E_PARENT'):
+            self.assertIn(code, errors)
+
+
 if __name__ == '__main__':
     unittest.main()
