@@ -1,0 +1,144 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261022T230507Z-tentabrode-gh39869417861",
+  "created_utc": "2026-10-22T23:05:07Z",
+  "status": "incomplete",
+  "source": {
+    "repo_path": "tests/fixtures/tentabrode.png",
+    "sha256": "07bb7151fb3b2d7e12323da0100e1272c5f67983e7d76fa9ab8e3ec4d21f7f7d",
+    "size_mm": [
+      190.398,
+      240.0
+    ],
+    "target_height_mm": 240,
+    "size_px": [
+      1117,
+      1408
+    ]
+  },
+  "openstitch_commit": "5267d7ab107886054c6b50353255878ae5f5d2ed",
+  "cli_version": "0.1.0",
+  "semantic_gate": "not_verified_technical_proxy_only",
+  "visual_review": "not_run",
+  "reason": "Baseline native executee; segmentation technique non validee semantiquement. Aucun second juge visuel independant disponible sur ce runner : note /20 non attribuee.",
+  "score_before": null,
+  "score_after": null,
+  "evaluation": null,
+  "artifact": {
+    "kind": "github-actions-artifact",
+    "url": "https://github.com/ElZacho200a/OpenStitch/actions/runs/39869417861/artifacts/12465597404",
+    "artifact_id": "12465597404",
+    "retention_days": 14
+  },
+  "changes": [],
+  "lessons": [
+    "check: erreurs ou avertissements detectes par le moteur; examiner le rapport",
+    "Ne pas confondre la quantification de couleurs et la segmentation semantique d'instances."
+  ],
+  "parent_run_id": null,
+  "commands": [
+    {
+      "name": "main_sha",
+      "exit_code": 0,
+      "elapsed_s": 0.0,
+      "stdout_file": "main_sha.stdout.txt",
+      "stderr_file": "main_sha.stderr.txt"
+    },
+    {
+      "name": "cli_install",
+      "exit_code": 0,
+      "elapsed_s": 1.14,
+      "stdout_file": "cli_install.stdout.txt",
+      "stderr_file": "cli_install.stderr.txt"
+    },
+    {
+      "name": "cli_version",
+      "exit_code": 0,
+      "elapsed_s": 0.0,
+      "stdout_file": "cli_version.stdout.txt",
+      "stderr_file": "cli_version.stderr.txt"
+    },
+    {
+      "name": "digitize",
+      "exit_code": 0,
+      "elapsed_s": 0.56,
+      "stdout_file": "digitize.stdout.txt",
+      "stderr_file": "digitize.stderr.txt"
+    },
+    {
+      "name": "inspect",
+      "exit_code": 0,
+      "elapsed_s": 0.19,
+      "stdout_file": "inspect.stdout.txt",
+      "stderr_file": "inspect.stderr.txt"
+    },
+    {
+      "name": "check",
+      "exit_code": 2,
+      "elapsed_s": 0.23,
+      "stdout_file": "check.stdout.txt",
+      "stderr_file": "check.stderr.txt"
+    },
+    {
+      "name": "diagnose",
+      "exit_code": 0,
+      "elapsed_s": 0.28,
+      "stdout_file": "diagnose.stdout.txt",
+      "stderr_file": "diagnose.stderr.txt"
+    },
+    {
+      "name": "fidelity",
+      "exit_code": 0,
+      "elapsed_s": 0.26,
+      "stdout_file": "fidelity.stdout.txt",
+      "stderr_file": "fidelity.stderr.txt"
+    },
+    {
+      "name": "density",
+      "exit_code": 0,
+      "elapsed_s": 0.2,
+      "stdout_file": "density.stdout.txt",
+      "stderr_file": "density.stderr.txt"
+    },
+    {
+      "name": "render",
+      "exit_code": 0,
+      "elapsed_s": 0.25,
+      "stdout_file": "render.stdout.txt",
+      "stderr_file": "render.stderr.txt"
+    },
+    {
+      "name": "osp2dst",
+      "exit_code": 0,
+      "elapsed_s": 0.19,
+      "stdout_file": "osp2dst.stdout.txt",
+      "stderr_file": "osp2dst.stderr.txt"
+    },
+    {
+      "name": "stats",
+      "exit_code": 0,
+      "elapsed_s": 0.01,
+      "stdout_file": "stats.stdout.txt",
+      "stderr_file": "stats.stderr.txt"
+    }
+  ],
+  "machine_tested": false,
+  "expected": [
+    "OSP",
+    "DST",
+    "real-render",
+    "CLI JSON diagnostics"
+  ],
+  "produced": [
+    "technical-proxy.png",
+    "baseline.osp",
+    "preview.png",
+    "baseline.dst"
+  ],
+  "parameters": {
+    "dpi": 149.013333,
+    "max_colors": 10,
+    "skip_background": "auto",
+    "mode": "shapes"
+  }
+}
