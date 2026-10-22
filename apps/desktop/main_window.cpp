@@ -3387,6 +3387,9 @@ void MainWindow::renderBase(const image::Image& img) {
                 // forme comme avant.
                 if (!hasMultiSelection()) {
                     VectorObjectBodyItem::ReshapeHooks hooks;
+                    hooks.hover = [this, objectId](QPointF sceneMm) {
+                        return canBeginSegmentReshape(objectId, sceneMm);
+                    };
                     hooks.begin = [this, objectId](QPointF sceneMm) {
                         return beginSegmentReshape(objectId, sceneMm);
                     };
