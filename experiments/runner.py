@@ -129,6 +129,68 @@ def main() -> int:
                 result["produced"].append(fn)
         if dst.is_file():
             run("stats", [str(BIN), "stats", str(dst), "--json"], timeout=120)
+        # Controlled V2: correct the actual stitched height and the 100x100 mm
+        # default frame that the initial quality report correctly rejects.
+        try:
+            initial_quality = json.loads((WORK / "check.stdout.txt").read_text(encoding="utf-8"))
+            stitched_height = float(initial_quality["sequence"]["height_mm"])
+            initial_errors = int(initial_quality["summary"]["errors"])
+            if stitched_height > 0 and initial_errors >= 0:
+                refined_dpi = round(dpi * stitched_height / 240.0, 6)
+                refined_osp = WORK / "refined.osp"
+                refined_dst = WORK / "refined.dst"
+                refinement = run("refined_digitize", [
+                    str(BIN), "project", "digitize", str(prepared),
+                    "-o", str(refined_osp), "--dpi", str(refined_dpi),
+                    "--max-colors", "10", "--mode", "shapes",
+                    "--skip-background", "auto", "--json"], timeout=480)
+                if refinement["exit_code"] == 0 and refined_osp.is_file():
+                    new_frame = run("refined_frame", [
+                        str(BIN), "project", "set", str(refined_osp),
+                        "--width-mm", "225", "--height-mm", "270",
+                        "--margin-mm", "5"], timeout=90)
+                    if new_frame["exit_code"] == 0:
+                        result["produced"].append("refined.osp")
+                        for label, args in [
+                            ("refined_check", ["project", "check", str(refined_osp), "--json"]),
+                            ("refined_diagnose", ["project", "diagnose", str(refined_osp), "--json"]),
+                            ("refined_fidelity", ["project", "fidelity", str(refined_osp), "--json"]),
+                            ("refined_density", ["project", "density", str(refined_osp), "--json"]),
+                            ("refined_render", ["project", "render", str(refined_osp),
+                                                "-o", str(WORK / "refined-preview.png"),
+                                                "--px-per-mm", "4"]),
+                            ("refined_export", ["osp2dst", str(refined_osp), str(refined_dst)]),
+                        ]:
+                            run(label, [str(BIN), *args], timeout=480)
+                        if refined_dst.is_file():
+                            run("refined_stats", [str(BIN), "stats", str(refined_dst), "--json"])
+                            result["produced"].append("refined.dst")
+                        if (WORK / "refined-preview.png").is_file():
+                            result["produced"].append("refined-preview.png")
+                        quality2 = json.loads((WORK / "refined_check.stdout.txt").read_text(encoding="utf-8"))
+                        result["comparison"] = {
+                            "hypothesis": "Correct frame dimensions and target actual stitched height; no semantic edits",
+                            "baseline": {
+                                "check_errors": initial_errors,
+                                "height_mm": round(stitched_height, 3),
+                                "frame_mm": [100, 100]
+                            },
+                            "refined": {
+                                "check_errors": quality2.get("summary", {}).get("errors"),
+                                "height_mm": quality2.get("sequence", {}).get("height_mm"),
+                                "frame_mm": [225, 270],
+                                "dpi": refined_dpi
+                            },
+                            "preferred_for_geometry": "refined.osp"
+                                if quality2.get("summary", {}).get("errors", 999999) < initial_errors
+                                else None
+                        }
+                        result["changes"].append(
+                            "V2: ajustement DPI sur hauteur réellement cousue + cadre 225x270 mm, marge 5 mm")
+                        result["lessons"].append(
+                            "La taille image importe moins que la boite réelle des points; contrôler le cadre après digitize.")
+        except (ValueError, KeyError, TypeError, OSError, json.JSONDecodeError) as exc:
+            result["lessons"].append("V2 non achevée : " + str(exc))
         result["status"] = "incomplete"
         result["reason"] = (
             "Baseline native executee; segmentation technique non validee semantiquement. "
