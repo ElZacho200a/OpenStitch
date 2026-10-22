@@ -834,7 +834,7 @@ void MainWindow::buildMenus() {
     connect(quitAct, &QAction::triggered, this, &QWidget::close);
 
     auto* editMenu = menuBar()->addMenu(tr("&Édition"));
-    auto* searchAction = editMenu->addAction(tr("Rechercher une &commande…"));
+    auto* searchAction = editMenu->addAction(tr("Rec&hercher une commande…"));
     searchAction->setObjectName(QStringLiteral("action_commandPalette"));
     searchAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_K));
     searchAction->setStatusTip(tr("Rechercher une commande des menus."));
