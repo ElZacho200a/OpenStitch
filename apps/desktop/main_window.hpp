@@ -797,6 +797,7 @@ private:
         QPointF startSceneMm;
         geometry::PathSet base;
     };
+    [[nodiscard]] bool canBeginSegmentReshape(ObjectId object, QPointF sceneMm) const;
     bool beginSegmentReshape(ObjectId object, QPointF sceneMm);
     void updateSegmentReshape(QPointF sceneMm, Qt::KeyboardModifiers mods);
     void commitSegmentReshape(QPointF sceneMm, Qt::KeyboardModifiers mods);
