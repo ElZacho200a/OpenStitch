@@ -8,6 +8,7 @@
 #include <QGraphicsPathItem>
 #include <QGraphicsRectItem>
 #include <QGraphicsSceneContextMenuEvent>
+#include <QGraphicsSceneHoverEvent>
 #include <QGraphicsSceneMouseEvent>
 #include <QKeyEvent>
 #include <QPainterPath>
@@ -182,6 +183,7 @@ public:
         setBrush(brush);
         setFlag(ItemIsMovable);
         setFlag(ItemIsFocusable); // Échap annule un remodelage en cours
+        setAcceptHoverEvents(true);
         setCursor(Qt::SizeAllCursor);
     }
 
@@ -198,6 +200,7 @@ public:
     // `cancel` est appelé sur Échap ou sur un appui relâché sans glisser. Aucune commande n'est
     // créée ici : l'appelant la construit dans `commit`.
     struct ReshapeHooks {
+        std::function<bool(QPointF)> hover; // hit-test pur au survol (aucune commande)
         std::function<bool(QPointF)> begin;
         std::function<void(QPointF, Qt::KeyboardModifiers)> update;
         std::function<void(QPointF, Qt::KeyboardModifiers)> commit;
@@ -206,6 +209,17 @@ public:
     void setReshapeHooks(ReshapeHooks hooks) { reshape_ = std::move(hooks); }
 
 protected:
+    void hoverMoveEvent(QGraphicsSceneHoverEvent* event) override {
+        if (!reshaping_ && reshape_.hover) {
+            setCursor(reshape_.hover(event->scenePos()) ? Qt::CrossCursor : Qt::SizeAllCursor);
+        }
+        QGraphicsPathItem::hoverMoveEvent(event);
+    }
+    void hoverLeaveEvent(QGraphicsSceneHoverEvent* event) override {
+        setCursor(Qt::SizeAllCursor);
+        QGraphicsPathItem::hoverLeaveEvent(event);
+    }
+
     // Seuil de glisser : un clic dont la souris bouge de quelques pixels ne déplace rien (pas de
     // commande, pas de pas d'annulation) ; au-delà, le déplacement suit la souris sans saut.
     void mousePressEvent(QGraphicsSceneMouseEvent* event) override {

@@ -211,6 +211,29 @@ private slots:
         }
     }
 
+    void vectorHoverTooltipContainsSizeStitchTypeAndThreadColor() {
+        doc::Project project = imageOnlyProject();
+        const ObjectId vector = addSquareVector(project);
+        addEmbroidery(project, vector);
+        MainWindow window;
+        window.applyLoadedProject(project);
+        int tooltips = 0;
+        for (const QGraphicsItem* item : window.baseItems_) {
+            if (item->data(0).toString() != QStringLiteral("vectorShape")) {
+                continue;
+            }
+            const QString info = item->toolTip();
+            QVERIFY(info.contains(QStringLiteral("Square")));
+            QVERIFY(info.contains(QStringLiteral("10.0")));
+            QVERIFY(info.contains(QStringLiteral("mm")));
+            QVERIFY(info.contains(QStringLiteral("Point droit")));
+            QVERIFY(info.contains(QStringLiteral("RVB")));
+            ++tooltips;
+        }
+        QCOMPARE(tooltips, 1);
+        QVERIFY(!window.undoStack_.canUndo());
+    }
+
     // ---- raccourcis ---------------------------------------------------------------
 
     void redoHasTwoShortcutsAndNewShortcutsExist() {

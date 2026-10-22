@@ -60,6 +60,9 @@ ProductionDialog::ProductionDialog(const document::Project& project,
     name_ = new QLineEdit(suggestedName, this);
     name_->setObjectName(QStringLiteral("production_name"));
     name_->setAccessibleName(tr("Nom du projet"));
+    client_ = new QLineEdit(this);
+    client_->setObjectName(QStringLiteral("production_client"));
+    client_->setAccessibleName(tr("Nom du client (facultatif)"));
     date_ = new QDateEdit(QDate::currentDate(), this);
     date_->setObjectName(QStringLiteral("production_date"));
     date_->setCalendarPopup(true);
@@ -88,11 +91,12 @@ ProductionDialog::ProductionDialog(const document::Project& project,
     notes_ = new QPlainTextEdit(this);
     notes_->setObjectName(QStringLiteral("production_notes"));
     notes_->setAccessibleName(tr("Notes libres de la fiche"));
-    notes_->setPlaceholderText(tr("Client, tissu, entoilage, consignes de broderie…"));
+    notes_->setPlaceholderText(tr("Tissu, entoilage, consignes de broderie…"));
     notes_->setTabChangesFocus(true);
 
     auto* form = new QFormLayout();
     form->addRow(tr("&Nom du projet"), name_);
+    form->addRow(tr("&Client"), client_);
     form->addRow(tr("&Date"), date_);
     form->addRow(tr("&Vitesse supposée"), speed_);
     form->addRow(tr("&Capacité d'une canette"), bobbin_);
@@ -135,7 +139,8 @@ ProductionDialog::ProductionDialog(const document::Project& project,
     root->addWidget(buttons);
 
     // Ordre de tabulation logique : champs, notes, aperçu, boutons.
-    setTabOrder(name_, date_);
+    setTabOrder(name_, client_);
+    setTabOrder(client_, date_);
     setTabOrder(date_, speed_);
     setTabOrder(speed_, bobbin_);
     setTabOrder(bobbin_, notes_);
@@ -151,6 +156,7 @@ ProductionDialog::ProductionDialog(const document::Project& project,
     connect(timer_, &QTimer::timeout, this, &ProductionDialog::refreshNow);
     const auto schedule = [this] { timer_->start(); };
     connect(name_, &QLineEdit::textChanged, this, schedule);
+    connect(client_, &QLineEdit::textChanged, this, schedule);
     connect(date_, &QDateEdit::dateChanged, this, schedule);
     connect(speed_, &QDoubleSpinBox::valueChanged, this, schedule);
     connect(bobbin_, &QDoubleSpinBox::valueChanged, this, schedule);
@@ -159,6 +165,7 @@ ProductionDialog::ProductionDialog(const document::Project& project,
     // Premier calcul : sert aussi à fournir les traits pour l'aperçu en lignes.
     stitch_analysis::ProductionOptions opts;
     opts.project_name = name_->text().toStdString();
+    opts.client = client_->text().toStdString();
     opts.date = date_->date().toString(Qt::ISODate).toStdString();
     sheet_ = stitch_analysis::make_production_sheet(project_, sequence_, opts);
     previewImage_ = renderPreviewImage();
@@ -242,6 +249,7 @@ void ProductionDialog::refreshNow() {
     timer_->stop();
     stitch_analysis::ProductionOptions opts;
     opts.project_name = name_->text().toStdString();
+    opts.client = client_->text().toStdString();
     opts.date = date_->date().toString(Qt::ISODate).toStdString();
     opts.notes = notes_->toPlainText().toStdString();
     opts.stitches_per_minute = speed_->value();

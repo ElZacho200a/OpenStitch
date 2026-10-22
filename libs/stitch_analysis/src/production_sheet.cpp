@@ -140,6 +140,7 @@ ProductionSheet make_production_sheet(const document::Project& project,
     sheet.project_name = options.project_name;
     sheet.date = options.date;
     sheet.notes = options.notes;
+    sheet.client = options.client;
     sheet.stitches_per_minute =
         options.stitches_per_minute > 0.0 ? options.stitches_per_minute : 700.0;
     sheet.color_change_seconds = std::max(0.0, options.color_change_seconds);
@@ -303,8 +304,8 @@ std::string format_duration_fr(double minutes) {
 std::string production_to_json(const ProductionSheet& s) {
     std::string j;
     j += "{";
-    j += fmt::format("\"schema\":1,\"project\":{},\"date\":{},\"notes\":{},", jstr(s.project_name),
-                     jstr(s.date), jstr(s.notes));
+    j += fmt::format("\"schema\":1,\"project\":{},\"date\":{},\"notes\":{},\"client\":{},",
+                     jstr(s.project_name), jstr(s.date), jstr(s.notes), jstr(s.client));
     j +=
         fmt::format("\"size_mm\":{{\"width\":{:.2f},\"height\":{:.2f}}},", s.width_mm, s.height_mm);
     if (s.frame_mm) {
@@ -436,6 +437,9 @@ std::string production_to_html(const ProductionSheet& s, const ProductionHtmlOpt
         h += " &mdash; " + html_escape(s.date);
     }
     h += "</p>\n";
+    if (!s.client.empty()) {
+        h += "<p><b>Client :</b> " + html_escape(s.client) + "</p>\n";
+    }
 
     // Aperçu : texte alternatif complet pour les lecteurs d'écran.
     const std::string alt = "Aperçu du motif : " + fmt_fr(s.width_mm, 1) + " mm x " +

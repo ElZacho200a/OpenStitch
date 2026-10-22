@@ -1018,8 +1018,9 @@ void MainWindowTest::initTestCase() {
 
 void MainWindowTest::qualityReportActionsExistAndNeedEmbroidery() {
     MainWindow window;
-    for (const char* name : {"action_fidelityReport", "action_densityReport",
-                             "action_diagnoseReport", "action_exportRealisticPng"}) {
+    for (const char* name :
+         {"action_fidelityReport", "action_densityReport", "action_fabricRiskReport",
+          "action_diagnoseReport", "action_exportRealisticPng"}) {
         QVERIFY2(window.findChild<QAction*>(QString::fromLatin1(name)) != nullptr, name);
     }
 }
