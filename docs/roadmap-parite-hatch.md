@@ -1644,10 +1644,11 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
 Besoin (retour utilisateur) : le moteur d'auto-numérisation est bon ; ce qui coûte du temps est la retouche artistique d'un contour (silhouette, courbure, zone locale) nœud par nœud. Audit du 2026-10-19 : l'existant est `MoveNodeCommand`, `SetNodeHandleCommand`, `SetNodeTypeCommand`, `RemoveNodeCommand` (un nœud ou une poignée à la fois, `NodeHandleItem` dans `apps/desktop/node_handle.hpp`), plus `smooth_path` (HP-VEC-007), `convert_to_curves` (HP-VEC-008) et l'insertion de nœud par De Casteljau (HP-VEC-001, géométrie seulement). **Rien** n'agit sur un segment, une sélection de nœuds ou une zone ; les entrées 007/008 sont globales (toute la forme), pas un remodelage local. Les points de broderie sont dérivés (`effective_sequence`) : toute modification de `VectorObject::paths` les régénère, aucun changement de modèle ni de format `.osp` n'est nécessaire (les tangentes sont déjà persistées). Principe commun : une commande `RewriteVectorPathsCommand` (instantané avant/après de l'objet entier) par GESTE, aperçu calculé par une fonction pure de `libs/geometry`, Échap = aucun effet sur le document, refus des croisements que la forme d'origine n'avait pas.
 
 ### HP-VEC-016 — Déplacement direct d'un segment de contour [P0] — ◐ Partiel (2026-10-19)
+- Livré (2026-10-21, PR) : curseur précis au survol d'un segment remodelable, retour au curseur déplacement dans l'intérieur et à la sortie du contour ; test QTest sans mutation.
 - État OpenStitch : voir ci-dessus ; un appui sur le contour d'une forme sélectionnée déplaçait la forme entière.
 - Choix d'algorithme (arbitrage structurant) : la poignée de Bézier est préférée à une déformation locale contrainte (qui ajoute des nœuds et dégrade les courbes à l'usage répété). Le point saisi (paramètre `t` de la cubique, borné à [0,15 ; 0,85]) suit le curseur ; seules les poignées des DEUX nœuds du segment bougent, pondérées par la base de Bernstein. Nœuds d'extrémité et nombre de nœuds inchangés ; nœud Lisse : la poignée opposée pivote (longueur conservée) ; nœud Coin : angle conservé ; un segment droit devient une cubique. Limite connue : sur un contour très dense en micro-segments, tirer un seul segment est peu utile (c'est le rôle du pinceau, HP-VEC-018).
 - Livré (2026-10-19) : `libs/geometry/reshape.*` (`nearest_segment`, `reshape_segment`, `path_self_intersects`, `path_set_has_crossings`, `reshape_path_set_segment`), `commands::ReshapeSegmentCommand` + `make_reshape_segment_command` (un pas d'annulation, restitution exacte), geste dans le bureau (`main_window_reshape.cpp`, `VectorObjectBodyItem::ReshapeHooks`) : glisser sur le CONTOUR (6 px) d'une forme seule sélectionnée en mode Sélection, aperçu en direct (rouge si le contour se croiserait), Maj = verrou d'axe, Échap = annulation, intérieur de la forme = déplacement comme avant ; trous pris en charge. Tests : `test_reshape` (10), `test_vector_path_commands` (+2), `test_segment_reshape` (5 vrais gestes souris).
-- Reste : curseur de survol sur le contour, déplacement d'un segment par ses deux extrémités (variante « translater l'arête » en Alt), tracés ouverts vérifiés dans l'interface, sauvegarde `.osp` rouverte dans un test bout en bout.
+- Reste : déplacement d'un segment par ses deux extrémités (variante « translater l'arête » en Alt), tracés ouverts vérifiés dans l'interface, sauvegarde `.osp` rouverte dans un test bout en bout.
 - Modules : `libs/geometry`, `libs/commands`, `apps/desktop`.
 - Acceptation : déformer une portion de courbe sans toucher à un nœud ; angle marqué et jonction lisse préservés ; Échap sans trace dans l'historique ; autres objets inchangés.
 
@@ -2279,7 +2280,8 @@ calques image/régions/vecteurs/broderie, filtres d'affichage, thème clair/somb
   pour un objet isolé.
 - Dépend de : HP-PERF-002.
 
-### HP-VIEW-013 — Info-bulle de survol d'un objet [P2] — ☐ À faire
+### HP-VIEW-013 — Info-bulle de survol d'un objet [P2] — ◐ Partiel (2026-10-21)
+- Livré (2026-10-21, PR) : info-bulle sur la forme vectorielle affichant nom, dimensions, type de points lié et fil de nuancier ou RGB ; test Qt et aucune mutation. Reste : nombre réel de points sans pénaliser le rendu, plusieurs broderies associées et validation visuelle.
 - À faire : type, fil, nombre de points, dimensions.
 
 ### HP-VIEW-014 — Carte d'épaisseur réactive [P2] — ◐ Partiel (2026-10-20, en PR)
@@ -2504,6 +2506,22 @@ Aujourd'hui : un cadre **rectangulaire** de taille libre (10–500 mm), persist�
 ### HP-FAB-003 — Couche d'écrasement pour éponge (knockdown) [P2] — ☐ À faire
 - À faire : tatami très lâche automatique sous le design (couleur du tissu)
   pour les tissus à poils.
+
+### HP-FAB-004 — Carte du risque de tirage textile [P1] — ◐ Partiel (PR du 2026-10-21)
+- Objet : visualiser un risque relatif de tirage, distinct de la carte d'épaisseurs de fil.
+- Livré (sur branche de PR, non encore fusionnée) : `project_ops::measure_fabric_risk`
+  (séquence effective, grille et tenseur d'orientation local), export PNG/JSON via
+  `project fabric-risk`, action desktop Analyse, profils indicatifs coton tissé /
+  jersey / feutrine, tests de déterminisme et de superpositions.
+- IMPORTANT : score heuristique sans calibration, **pas** une mesure en newtons ni une
+  prédiction de déformation ou de plis. Voir `docs/fabric-risk-heuristic.md`.
+- Reste : validation physique multi-tissus et stabilisateurs, paramètres mesurés,
+  solveur 2D tenant compte du cadre, visualisation sur canevas, gestion des profils
+  fiables et comparaison de broderies d'essai. Aucun état « fait » avant ces essais.
+- Modules : `libs/project_ops`, `apps/cli`, `apps/desktop`.
+- Acceptation V1 : PNG et JSON déterministes, double superposition augmente l'indice
+  p99, sensibilité monotone pour les trois profils, erreur sur paramètres invalides,
+  accès bureau. Le résultat est étiqueté « estimation non calibrée ».
 
 ---
 
@@ -3538,7 +3556,10 @@ ci-dessus doit les respecter :
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-21 | ChatGPT (PR risque textile) | HP-FAB-004 ◐ : première carte heuristique non calibrée, CLI/desktop, tests et protocole de limites ; solveur physique et validation machine restant à faire. |
 | 2026-09-22 | Claude (session d'audit) | Création : inventaire complet vérifié dans le code. |
+| 2026-10-21 | ChatGPT (info-bulle) | HP-VIEW-013 ◐ : métadonnées au survol des formes, dimensions, type et couleur, QTest. |
+| 2026-10-21 | ChatGPT (édition vectorielle) | HP-VEC-016 ◐ : curseur de survol contextuel sur le segment remodelable, test Qt sans mutation. |
 | 2026-09-23 | Claude (session pilotée) | HP-FILE-001 ☑ : action « Nouveau projet » (Ctrl+N) avec garde des modifications non enregistrées et réinitialisation centralisée de tout l'état d'édition de la fenêtre. |
 | 2026-09-23 | Claude (session pilotée) | HP-FILE-002 ☑ : chemin `.osp` mémorisé (Ctrl+S réécrit sans dialogue, Ctrl+Maj+S = Enregistrer sous), nom du fichier dans le titre, cible oubliée à chaque changement de document ; écriture atomique déjà en place côté `project_io`. |
 | 2026-10-05 | Claude (session pilotée) | HP-THR-001 ☑, HP-THR-003 ☑ (bibliothèque `thread_palette`), HP-FILE-003 ☑, HP-FILE-004 ☑ ; HP-THR-002 ◐ (nuanciers placeholder). |
