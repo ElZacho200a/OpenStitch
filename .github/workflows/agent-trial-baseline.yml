@@ -1,0 +1,100 @@
+name: OpenStitch Agent Trials — one experimental baseline
+
+on:
+  push:
+    branches: [agent-trials]
+    paths:
+      - '.github/workflows/agent-trial-baseline.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-trials-baseline
+  cancel-in-progress: false
+
+jobs:
+  trial:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 28
+    steps:
+      - name: Checkout validated OpenStitch code
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: source
+      - name: Checkout isolated experiment journal
+        uses: actions/checkout@v4
+        with:
+          ref: agent-trials
+          path: trials
+      - name: Prepare Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Prepare Pillow for reversible baseline
+        run: python3 -m pip install 'Pillow>=10,<13'
+      - name: Run official CLI or document the blocker
+        env:
+          OPENSTITCH_SOURCE_ROOT: ${{ github.workspace }}/source
+          OPENSTITCH_WORK_ROOT: ${{ github.workspace }}/work
+          OPENSTITCH_CLI_INSTALL_DIR: ${{ runner.temp }}/openstitch-bin
+        run: python3 trials/experiments/runner.py
+      - name: Upload all real results and logs
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: openstitch-trial-${{ github.run_id }}
+          path: work/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Append immutable result to agent-trials (never main)
+        env:
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path("work/result.json")
+          result = json.loads(p.read_text(encoding="utf-8"))
+          result["artifact"] = {
+              "kind": "github-actions-artifact",
+              "url": os.environ["ARTIFACT_URL"],
+              "artifact_id": os.environ["ARTIFACT_ID"],
+              "retention_days": 14,
+          }
+          rel = Path("experiments/runs") / result["created_utc"][:10] / result["run_id"] / "result.json"
+          destination = Path("trials") / rel
+          if destination.exists():
+              raise RuntimeError("Immutable trial entry already exists")
+          destination.parent.mkdir(parents=True, exist_ok=True)
+          destination.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n",
+                                 encoding="utf-8")
+          Path("relative_result_path.txt").write_text(str(rel), encoding="utf-8")
+          print("EXPERIMENT_RECORD=" + str(rel))
+          PY
+          git -C trials config user.name 'OpenStitch Trial Runner'
+          git -C trials config user.email 'github-actions[bot]@users.noreply.github.com'
+          git -C trials add "$(cat relative_result_path.txt)"
+          git -C trials commit -m "test(trials): journaliser un essai reel ou bloque"
+          git -C trials fetch origin agent-trials
+          git -C trials rebase origin/agent-trials
+          git -C trials push origin HEAD:agent-trials
+      - name: Summarize
+        if: always()
+        run: |
+          if test -f work/result.json; then
+            echo '## OpenStitch trial' >> "$GITHUB_STEP_SUMMARY"
+            python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          with open("work/result.json") as f:
+              r = json.load(f)
+          print("- Run:", r["run_id"])
+          print("- Status:", r["status"])
+          print("- Score: no independent judge (null)")
+          print("- Reason:", r["reason"])
+          print("- Products:", ", ".join(r["produced"]) or "none")
+          PY
+          fi
