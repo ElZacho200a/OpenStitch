@@ -20,7 +20,7 @@ openstitch-cli project inspect projet.osp --json > inspect.json
 
 Remarque majeure : **set_stitch_type ne convertit pas en auto-satin**. Pour une région en point droit ou tatami, utiliser l'opération **auto_satin**, et contrôler ses diagnostics. La conversion peut refuser un objet ; dans ce cas elle ne doit pas être considérée comme un succès.
 
-Voir aussi la [documentation des stratégies](../../../docs/source/satin-squelette.md) et le [catalogue CLI](../../../docs/source/cli-project.md).
+Voir aussi la [documentation des stratégies](../../../../docs/source/satin-squelette.md) et le [catalogue CLI](../../../../docs/source/cli-project.md).
 
 ## 2. Constituer un corpus de candidats pertinent
 
