@@ -39,9 +39,9 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 |---|---|---|---|---|
 | P0 | 12 | 28 | 5 | 45 |
 | P1 | 10 | 68 | 74 | 152 |
-| P2 | 3 | 33 | 67 | 103 |
+| P2 | 3 | 34 | 66 | 103 |
 | P3 | 0 | 3 | 13 | 16 |
-| **Total** | **25** | **132** | **159** | **316** |
+| **Total** | **25** | **133** | **158** | **316** |
 
 Complément UX/design du 2026-10-21 : **+5 entrées à faire** (HP-UX-046 à 049 et HP-QA-010 : deux P1, trois P2), et HP-UX-015 enrichi. Aucun statut existant n'a été revérifié, aucune fonctionnalité déclarée livrée.
 
@@ -1644,10 +1644,11 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
 Besoin (retour utilisateur) : le moteur d'auto-numérisation est bon ; ce qui coûte du temps est la retouche artistique d'un contour (silhouette, courbure, zone locale) nœud par nœud. Audit du 2026-10-19 : l'existant est `MoveNodeCommand`, `SetNodeHandleCommand`, `SetNodeTypeCommand`, `RemoveNodeCommand` (un nœud ou une poignée à la fois, `NodeHandleItem` dans `apps/desktop/node_handle.hpp`), plus `smooth_path` (HP-VEC-007), `convert_to_curves` (HP-VEC-008) et l'insertion de nœud par De Casteljau (HP-VEC-001, géométrie seulement). **Rien** n'agit sur un segment, une sélection de nœuds ou une zone ; les entrées 007/008 sont globales (toute la forme), pas un remodelage local. Les points de broderie sont dérivés (`effective_sequence`) : toute modification de `VectorObject::paths` les régénère, aucun changement de modèle ni de format `.osp` n'est nécessaire (les tangentes sont déjà persistées). Principe commun : une commande `RewriteVectorPathsCommand` (instantané avant/après de l'objet entier) par GESTE, aperçu calculé par une fonction pure de `libs/geometry`, Échap = aucun effet sur le document, refus des croisements que la forme d'origine n'avait pas.
 
 ### HP-VEC-016 — Déplacement direct d'un segment de contour [P0] — ◐ Partiel (2026-10-19)
+- Livré (2026-10-21, PR) : curseur précis au survol d'un segment remodelable, retour au curseur déplacement dans l'intérieur et à la sortie du contour ; test QTest sans mutation.
 - État OpenStitch : voir ci-dessus ; un appui sur le contour d'une forme sélectionnée déplaçait la forme entière.
 - Choix d'algorithme (arbitrage structurant) : la poignée de Bézier est préférée à une déformation locale contrainte (qui ajoute des nœuds et dégrade les courbes à l'usage répété). Le point saisi (paramètre `t` de la cubique, borné à [0,15 ; 0,85]) suit le curseur ; seules les poignées des DEUX nœuds du segment bougent, pondérées par la base de Bernstein. Nœuds d'extrémité et nombre de nœuds inchangés ; nœud Lisse : la poignée opposée pivote (longueur conservée) ; nœud Coin : angle conservé ; un segment droit devient une cubique. Limite connue : sur un contour très dense en micro-segments, tirer un seul segment est peu utile (c'est le rôle du pinceau, HP-VEC-018).
 - Livré (2026-10-19) : `libs/geometry/reshape.*` (`nearest_segment`, `reshape_segment`, `path_self_intersects`, `path_set_has_crossings`, `reshape_path_set_segment`), `commands::ReshapeSegmentCommand` + `make_reshape_segment_command` (un pas d'annulation, restitution exacte), geste dans le bureau (`main_window_reshape.cpp`, `VectorObjectBodyItem::ReshapeHooks`) : glisser sur le CONTOUR (6 px) d'une forme seule sélectionnée en mode Sélection, aperçu en direct (rouge si le contour se croiserait), Maj = verrou d'axe, Échap = annulation, intérieur de la forme = déplacement comme avant ; trous pris en charge. Tests : `test_reshape` (10), `test_vector_path_commands` (+2), `test_segment_reshape` (5 vrais gestes souris).
-- Reste : curseur de survol sur le contour, déplacement d'un segment par ses deux extrémités (variante « translater l'arête » en Alt), tracés ouverts vérifiés dans l'interface, sauvegarde `.osp` rouverte dans un test bout en bout.
+- Reste : déplacement d'un segment par ses deux extrémités (variante « translater l'arête » en Alt), tracés ouverts vérifiés dans l'interface, sauvegarde `.osp` rouverte dans un test bout en bout.
 - Modules : `libs/geometry`, `libs/commands`, `apps/desktop`.
 - Acceptation : déformer une portion de courbe sans toucher à un nœud ; angle marqué et jonction lisse préservés ; Échap sans trace dans l'historique ; autres objets inchangés.
 
@@ -2270,7 +2271,8 @@ calques image/régions/vecteurs/broderie, filtres d'affichage, thème clair/somb
 ### HP-VIEW-010 — Grille et guides configurables [P1] — ☐ À faire
 - À faire : pas de grille réglable, grille majeure/mineure, couleur, masquage.
 
-### HP-VIEW-011 — Opacité de l'image de fond [P1] — ☐ À faire
+### HP-VIEW-011 — Opacité de l'image de fond [P1] — ◐ Partiel (2026-10-21)
+- Livré (2026-10-21, PR) : curseur Affichage (0-100 %) persisté dans QSettings, appliqué seulement au pixmap de fond et maintenu après rafraîchissement, QTest du comportement. Reste : validation visuelle et tests sous Windows avant statut Fait.
 - À faire : curseur d'opacité / estompage de l'image pendant la numérisation.
 
 ### HP-VIEW-012 — Aperçu en direct pendant le réglage [P1] — ☐ À faire
@@ -2279,7 +2281,8 @@ calques image/régions/vecteurs/broderie, filtres d'affichage, thème clair/somb
   pour un objet isolé.
 - Dépend de : HP-PERF-002.
 
-### HP-VIEW-013 — Info-bulle de survol d'un objet [P2] — ☐ À faire
+### HP-VIEW-013 — Info-bulle de survol d'un objet [P2] — ◐ Partiel (2026-10-21)
+- Livré (2026-10-21, PR) : info-bulle sur la forme vectorielle affichant nom, dimensions, type de points lié et fil de nuancier ou RGB ; test Qt et aucune mutation. Reste : nombre réel de points sans pénaliser le rendu, plusieurs broderies associées et validation visuelle.
 - À faire : type, fil, nombre de points, dimensions.
 
 ### HP-VIEW-014 — Carte d'épaisseur réactive [P2] — ◐ Partiel (2026-10-20, en PR)
@@ -2343,6 +2346,7 @@ fil), analyse par règles (points courts/longs, sauts longs, trop de points,
 hors cadre, déplacement sans coupe), résumé avant export DST.
 
 ### HP-PROD-001 — Fiche de production imprimable [P0] — ◐ Partiel
+- Livré (2026-10-21, PR) : champ Client distinct des notes dans le dialogue, HTML/PDF et JSON (clé additive), avec tests Catch2/QTest.
 - Hatch : Production worksheet : aperçu du design, dimensions, nombre de
   points, temps estimé, cadre, **liste des fils dans l'ordre** (marque, code,
   nom, pastille), notes, client.
@@ -2504,6 +2508,22 @@ Aujourd'hui : un cadre **rectangulaire** de taille libre (10–500 mm), persist�
 ### HP-FAB-003 — Couche d'écrasement pour éponge (knockdown) [P2] — ☐ À faire
 - À faire : tatami très lâche automatique sous le design (couleur du tissu)
   pour les tissus à poils.
+
+### HP-FAB-004 — Carte du risque de tirage textile [P1] — ◐ Partiel (PR du 2026-10-21)
+- Objet : visualiser un risque relatif de tirage, distinct de la carte d'épaisseurs de fil.
+- Livré (sur branche de PR, non encore fusionnée) : `project_ops::measure_fabric_risk`
+  (séquence effective, grille et tenseur d'orientation local), export PNG/JSON via
+  `project fabric-risk`, action desktop Analyse, profils indicatifs coton tissé /
+  jersey / feutrine, tests de déterminisme et de superpositions.
+- IMPORTANT : score heuristique sans calibration, **pas** une mesure en newtons ni une
+  prédiction de déformation ou de plis. Voir `docs/fabric-risk-heuristic.md`.
+- Reste : validation physique multi-tissus et stabilisateurs, paramètres mesurés,
+  solveur 2D tenant compte du cadre, visualisation sur canevas, gestion des profils
+  fiables et comparaison de broderies d'essai. Aucun état « fait » avant ces essais.
+- Modules : `libs/project_ops`, `apps/cli`, `apps/desktop`.
+- Acceptation V1 : PNG et JSON déterministes, double superposition augmente l'indice
+  p99, sensibilité monotone pour les trois profils, erreur sur paramètres invalides,
+  accès bureau. Le résultat est étiqueté « estimation non calibrée ».
 
 ---
 
@@ -3125,7 +3145,7 @@ HP-THR-*, HP-VIEW-012 ni HP-QA-008. Une vérification du code actuel doit préc�
 chaque réalisation. Ne pas introduire de modification du moteur de broderie ou de
 migration `.osp` pour ces seuls besoins ; la segmentation IA reste hors périmètre.
 
-### HP-UX-046 — Palette de commandes et recherche d'actions [P2] — ☐ À faire
+### HP-UX-046 — Palette de commandes et recherche d'actions [P2] — ◐ Partiel (2026-10-21, branche feat/ux-046-command-palette)
 - Besoin : l'accumulation de menus, outils et panneaux rend certaines fonctions
   difficiles à retrouver, notamment pour les utilisateurs occasionnels.
 - À faire : palette de commandes avec recherche par nom, catégorie et synonymes
@@ -3140,6 +3160,13 @@ migration `.osp` pour ces seuls besoins ; la segmentation IA reste hors périmè
   et déclenchent exactement la même `QAction` que leur entrée de menu ;
   aucune action indisponible ne s'exécute ; focus et raccourcis utilisables
   dans les champs de saisie ; test QTest headless.
+
+- Livré dans la branche : dialogue non modal recherchant toutes les QAction des
+  menus (sous-menus, catégories, alias simples), Ctrl+K, navigation haut/bas,
+  entrée et Échap, protection des actions désactivées avec raison si statusTip
+  et restauration du focus. Test QTest ajouté : test_command_palette.
+- Reste pour fermeture : CI Windows Qt et tests complets à valider, enrichir
+  les raisons de désactivation absentes des QAction et les alias métier.
 
 ### HP-UX-047 — Différencier couleurs de régions, d'objets et fils [P1] — ☐ À faire
 - Besoin : fausses couleurs de segmentation, couleurs d'objets et références
@@ -3177,7 +3204,7 @@ migration `.osp` pour ces seuls besoins ; la segmentation IA reste hors périmè
   disponible en mode portable 911 × 480 et pendant une opération longue
   sans bloquer l'interface ; QTest.
 
-### HP-UX-049 — Espaces de travail par tâche, facultatifs [P2] — ☐ À faire
+### HP-UX-049 — Espaces de travail par tâche, facultatifs [P2] — ◐ Partiel (2026-10-21, branche feat/ux-049-workspace-presets)
 - Besoin : numériser, retoucher une forme, régler des points et préparer
   l'export demandent des dispositions de docks différentes.
 - À faire : quatre agencements au choix (« Numériser », « Retoucher »,
@@ -3193,6 +3220,13 @@ migration `.osp` pour ces seuls besoins ; la segmentation IA reste hors périmè
   disponibles après redémarrage/changement d'écran ; canevas utilisable
   (objectif ≥ 450 × 260 en 911 × 480 logique portable) ; SHA du `.osp`
   inchangé ; tests QTest des transitions et de la persistance.
+
+- Livré en branche : menu Affichage > Panneaux > Espaces de travail, quatre
+  profils de visibilité de docks, mémorisation de la disposition initiale
+  dans QSettings (une fois par cycle), retour à la disposition précédente,
+  tests QTest non destructifs (`test_workspace_presets`).
+- Reste : validation CI, contrôle sur le portable à DPI variés,
+  vérification du choix de panneaux avec des brodeurs réels.
 
 ---
 
@@ -3336,7 +3370,8 @@ de référence. Restent : progression et annulation, régénération de toute la
 - À faire : cibles libFuzzer (clang-cl ou job Linux) pour DST, PES, JEF, EXP,
   SVG, DXF, `.osp` ; corpus minimal commité.
 - Livré (2026-10-18) : `test_fuzz_decoders` : DST, PES, JEF, EXP, SVG, DXF et compagnon, graines fixes, toutes les troncatures, octets altérés ou aléatoires, en-têtes saturés, reproductibilité ; un vrai défaut corrigé : boucle infinie de l'import SVG sur un caractère non alphabétique après `Z` (`svg_import.cpp`), avec test de non-régression (`265e4b8`).
-- Reste : cibles libFuzzer/ASan en CI ; `.osp` (`libs/project_io`).
+- Livré (2026-10-21, lot CLI) : 61 entrées `.osp` malformées générées de façon déterministe et rejetées par la CLI compilée dans le job `linux-core`, contrôles timeout/crash/écriture parasite, 5 tests Python.
+- Reste : cibles libFuzzer/ASan en CI, corpus `.osp` réel et fuzzing de fichiers projet **valides** mutés.
 
 ### HP-QA-004 — Tests bout en bout desktop [P2] — ◐ Partiel
 - À faire : scénarios complets en QTest offscreen (image → numériser → éditer
@@ -3532,8 +3567,14 @@ ci-dessus doit les respecter :
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-21 | ChatGPT (PR risque textile) | HP-FAB-004 ◐ : première carte heuristique non calibrée, CLI/desktop, tests et protocole de limites ; solveur physique et validation machine restant à faire. |
 | 2026-09-22 | Claude (session d'audit) | Création : inventaire complet vérifié dans le code. |
 | 2026-10-21 | ChatGPT (corpus image) | HP-QA-006 ◐ : corpus image déterministe et tests CLI d'import/réjection, sans prétendre couvrir les cas réels. |
+| 2026-10-21 | ChatGPT (affichage) | HP-VIEW-011 ◐ : réglage d'opacité de l'image (0-100 %) instantané, persisté et testé avec QTest. |
+| 2026-10-21 | ChatGPT (fiche de production) | HP-PROD-001 ◐ : champ Client indépendant des notes, sorties JSON/HTML/PDF et tests. |
+| 2026-10-21 | ChatGPT (robustesse OSP) | HP-QA-003 ◐ : tests de rejet de 61 projets invalides contre la CLI Linux compilée, sans validation sur machine. |
+| 2026-10-21 | ChatGPT (info-bulle) | HP-VIEW-013 ◐ : métadonnées au survol des formes, dimensions, type et couleur, QTest. |
+| 2026-10-21 | ChatGPT (édition vectorielle) | HP-VEC-016 ◐ : curseur de survol contextuel sur le segment remodelable, test Qt sans mutation. |
 | 2026-09-23 | Claude (session pilotée) | HP-FILE-001 ☑ : action « Nouveau projet » (Ctrl+N) avec garde des modifications non enregistrées et réinitialisation centralisée de tout l'état d'édition de la fenêtre. |
 | 2026-09-23 | Claude (session pilotée) | HP-FILE-002 ☑ : chemin `.osp` mémorisé (Ctrl+S réécrit sans dialogue, Ctrl+Maj+S = Enregistrer sous), nom du fichier dans le titre, cible oubliée à chaque changement de document ; écriture atomique déjà en place côté `project_io`. |
 | 2026-10-05 | Claude (session pilotée) | HP-THR-001 ☑, HP-THR-003 ☑ (bibliothèque `thread_palette`), HP-FILE-003 ☑, HP-FILE-004 ☑ ; HP-THR-002 ◐ (nuanciers placeholder). |
@@ -3580,3 +3621,5 @@ ci-dessus doit les respecter :
 | 2026-10-20 | Claude (roadmap nocturne) | Entrées issues des notes manuscrites « Roadmap sup nocturne 20/10 » : **HP-VIEW-014** carte d'épaisseur réactive, **HP-STI-025** veille sur les épaisseurs par type de point (étude, `docs/veille-epaisseur-2026-10.md` à produire), **HP-STI-026** point paramétrique (périmètre à préciser), **HP-VEC-020** outils de lignes (périmètre à préciser), **HP-QA-009** audit de numérisation sur images de bateaux, **HP-UX-045** audit d'ergonomie multi-couche (◐ : vagues 1-2 fusionnées, calques en PR #95), **HP-FMT-022** panneau d'export avec ordre des couleurs. HP-VIEW-002 (rendu 3D) : P2 → P3, facultatif. Tableau de bord recalculé. |
 | 2026-10-20 | Claude (épaisseur) | **HP-VIEW-014 ◐ et HP-STI-025 ◐** (en PR) : carte d'épaisseur estimée (Affichage › Carte d'épaisseur, exclusive avec la densité, légende en mm, case adaptée au zoom, zone la plus épaisse dans l'Analyse) et veille `docs/veille-epaisseur-2026-10.md`. La veille n'a trouvé aucun relevé en mm : 0,20 mm par couche et l'empilement linéaire sont des hypothèses, à valider sur machine (HP-PHYS-001). HP-VIEW-002 (rendu 3D, facultatif) non commencé. Tableau de bord recalculé. |
 | 2026-10-21 | Audit UX/design (ChatGPT, demande du mainteneur) | **+5 entrées ☐** : HP-UX-046 (palette de commandes), 047 (couleurs/fils), 048 (avant/après), 049 (espaces de travail), HP-QA-010 (validation utilisateurs) ; HP-UX-015 enrichi (contrat visuel). Total 311 → 316 ; documentation uniquement. |
+| 2026-10-21 | Implémentation UX (ChatGPT, PR HP-UX-049) | Menu des espaces de travail (4 profils), visibilité de docks, restauration non destructive QSettings, test Qt ; statut ◐ jusqu'à validation CI et essais petit écran. |
+| 2026-10-21 | Implémentation UX (ChatGPT, PR HP-UX-046) | Palette de commandes Qt branchée au menu Édition avec Ctrl+K, recherche et exécution de QAction existantes, test QTest ; état ◐ jusqu'à validation CI et couverture complète des raisons/alias. |
