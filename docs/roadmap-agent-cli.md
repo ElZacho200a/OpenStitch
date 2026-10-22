@@ -21,7 +21,7 @@ document doit passer par une `ICommand`.
 | B01 | P0 | Manifeste sémantique familles/instances/masques | ☐ |
 | B02 | P0 | Éditeur de segmentation sémantique | ☐ ; dépend de B01 |
 | B03 | P0 | Import d'objets sémantiques vers un OSP | ◐ Pont Python CLI ; import natif/desktop restant |
-| B04 | P0 | Re-numérisation locale sans perte d'identité | ☐ ; dépend de B03 |
+| B04 | P0 | Re-numérisation locale sans perte d'identité | ◐ Pont Python sur copie OSP ; ID sémantique stable, IDs natifs renouvelés |
 | C01 | P1 | Retouches collectives selon critères sémantiques | ☐ ; dépend de B03 |
 | C02 | P1 | Benchmark satin objectivé par objet | ☐ |
 | C03 | P1 | Diagnostics avec propositions réversibles | ☐ |
