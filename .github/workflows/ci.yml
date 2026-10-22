@@ -108,6 +108,11 @@ jobs:
       - name: Build
         run: cmake --build --preset linux-core -j "$(nproc)"
 
+      - name: Test malformed OSP with the compiled CLI
+        run: |
+          python3 -m unittest discover -s scripts/qa -p 'test_*.py' -v
+          python3 scripts/qa/fuzz_osp.py --cli build/linux-core/apps/cli/openstitch-cli
+
       - name: Test
         run: ctest --preset linux-core
 
