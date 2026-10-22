@@ -174,6 +174,22 @@ la liste exacte des problèmes.
 
 ## Boucle inter-sessions (tâche planifiée)
 
+**Destination imposée des résultats : branche `agent-trials`**, chemin
+`experiments/runs/YYYY-MM-DD/<run_id>/result.json`. Lire au préalable
+`experiments/README.md` dans cette branche. Ne **jamais** merger
+`agent-trials` dans `main` ; les améliorations de code/skill passent par
+une PR séparée. Enregistrer également les essais ratés ou bloqués, avec
+une raison précise. Un nouvel essai possède un identifiant unique,
+aucun force-push et aucune écriture sur un essai précédent.
+
+Conserver **sur la branche seulement les métadonnées légères** (scores,
+sources/hashes, versions CLI, blocages, hypothèses, rapports synthétiques,
+liens d'artefacts). Mettre les OSP/DST/PNG et logs détaillés dans
+des GitHub Actions artifacts si disponibles et noter leur date d'expiration ;
+une conservation pérenne des binaires nécessitera un support séparé.
+Si aucun artefact n'a été produit, inscrire `null`/unavailable — ne
+fabriquer ni URL ni résultat.
+
 - Utiliser un **lot de validation fixe et versionné** (benchmarks avec
   autorisation d'utilisation) ; répartir les images par familles de
   difficulté : personnages, plumes, bateaux/cordages, végétation, architecture.
