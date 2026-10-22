@@ -11,6 +11,7 @@
 
 #include "canvas_view.hpp"
 #include "main_window.hpp"
+#include "node_handle.hpp"
 #include "openstitch/document/project.hpp"
 
 using openstitch::Micrometers;
@@ -186,6 +187,22 @@ private slots:
         QCOMPARE(f.window.project_.findObject(f.a)->paths == before, true);
         QVERIFY(!f.window.undoStack_.canUndo());
         QVERIFY(f.window.reshapePreview_ == nullptr);
+    }
+
+    void hoverDistinguishesSegmentReshapeFromMovingTheWholeShape() {
+        Fixture f;
+        setup(f);
+        const QPoint inside = px(f.view, 0.0, 0.0);
+        const QPoint outline = px(f.view, 0.0, 15.0);
+        auto* body = dynamic_cast<VectorObjectBodyItem*>(f.view->itemAt(inside));
+        QVERIFY(body != nullptr);
+        QTest::mouseMove(f.view->viewport(), inside);
+        QCOMPARE(body->cursor().shape(), Qt::SizeAllCursor);
+        QTest::mouseMove(f.view->viewport(), outline);
+        QCOMPARE(body->cursor().shape(), Qt::CrossCursor);
+        QTest::mouseMove(f.view->viewport(), inside);
+        QCOMPARE(body->cursor().shape(), Qt::SizeAllCursor);
+        QVERIFY(!f.window.undoStack_.canUndo()); // le survol ne change pas le projet
     }
 
     void aPullThatWouldCrossTheContourIsRefused() {

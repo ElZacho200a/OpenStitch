@@ -234,7 +234,10 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
             // Une lettre seule dans une liste ou une liste déroulante sert à la recherche par
             // frappe : elle n'active pas l'outil du même nom (« S » = colonne satin...).
             // Entrée / Retour arrière dans un contrôle d'édition valident / effacent.
-            if (plain && ((letter && listLike) || (editKey && editorLike))) {
+            // Ctrl+K est un geste d'édition dans certains contrôles de texte :
+            // ne pas lancer la palette au milieu d'une saisie.
+            if ((mods == Qt::ControlModifier && key == Qt::Key_K && editorLike) ||
+                (plain && ((letter && listLike) || (editKey && editorLike)))) {
                 event->accept();
                 return false;
             }

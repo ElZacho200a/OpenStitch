@@ -343,6 +343,7 @@ private:
     bool requireEmbroideryForReport(const QString& title);
     void showFidelityReport();
     void showDensityReport();
+    void showFabricRiskReport();
     void showDiagnoseReport();
     void exportRealisticPng();
     void activateAnalysisItem(QListWidgetItem* item, bool selectObject);
@@ -797,6 +798,7 @@ private:
         QPointF startSceneMm;
         geometry::PathSet base;
     };
+    [[nodiscard]] bool canBeginSegmentReshape(ObjectId object, QPointF sceneMm) const;
     bool beginSegmentReshape(ObjectId object, QPointF sceneMm);
     void updateSegmentReshape(QPointF sceneMm, Qt::KeyboardModifiers mods);
     void commitSegmentReshape(QPointF sceneMm, Qt::KeyboardModifiers mods);
