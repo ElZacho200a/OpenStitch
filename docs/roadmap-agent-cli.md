@@ -20,7 +20,7 @@ document doit passer par une `ICommand`.
 | A03 | P0 | Inspection compacte, sélection, classement | ◐ Pont de lecture `scripts/openstitch_agent.py inspect` |
 | B01 | P0 | Manifeste sémantique familles/instances/masques | ☐ |
 | B02 | P0 | Éditeur de segmentation sémantique | ☐ ; dépend de B01 |
-| B03 | P0 | Import d'objets sémantiques vers un OSP | ☐ ; dépend de B01/B02 |
+| B03 | P0 | Import d'objets sémantiques vers un OSP | ◐ Pont Python CLI ; import natif/desktop restant |
 | B04 | P0 | Re-numérisation locale sans perte d'identité | ☐ ; dépend de B03 |
 | C01 | P1 | Retouches collectives selon critères sémantiques | ☐ ; dépend de B03 |
 | C02 | P1 | Benchmark satin objectivé par objet | ☐ |
