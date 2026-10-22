@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <QAction>
 #include <QCoreApplication>
+#include <QDockWidget>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTest>
