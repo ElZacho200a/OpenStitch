@@ -12,6 +12,7 @@ description: Numériser, analyser et améliorer une broderie OpenStitch de faço
 - [Segmentation sémantique et fusion raisonnée](references/segmentation-semantique.md) — masques, instances, structures porteuses, reconstructions et refus de fusion.
 - [Sélection expérimentale des trois satins](references/selection-satins.md) — squelette, balayage, axe médian, couverture et rendu.
 - [Planification textile, remplissages directionnels et portes de validation](references/directions-et-planification-textile.md) — rôle textile, guides, sous-couches/occlusions, protocole et retour d'expérience du navire.
+- [Prompt autonome pour une nouvelle session](references/prompt-session-autodigitize.md) — texte à fournir avec une image et des dimensions pour relancer ce workflow, sans prétendre aux étapes non exécutées.
 - [Audit des contours et retouches/validation](references/retouches-et-validation.md) — suppression, conversion, densité, coupes, tests et livrables.
 - [Cas chiffré des ruines V1 à V9](references/cas-ruines-v1-v9.md) — hypothèses, gains réels et échecs.
 - [Réglages](references/parametres.md), [diagnostic](references/diagnostic.md), [journal d'essais historiques](references/journal-essais.md).
