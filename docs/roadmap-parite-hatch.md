@@ -2506,6 +2506,22 @@ Aujourd'hui : un cadre **rectangulaire** de taille libre (10–500 mm), persist�
 - À faire : tatami très lâche automatique sous le design (couleur du tissu)
   pour les tissus à poils.
 
+### HP-FAB-004 — Carte du risque de tirage textile [P1] — ◐ Partiel (PR du 2026-10-21)
+- Objet : visualiser un risque relatif de tirage, distinct de la carte d'épaisseurs de fil.
+- Livré (sur branche de PR, non encore fusionnée) : `project_ops::measure_fabric_risk`
+  (séquence effective, grille et tenseur d'orientation local), export PNG/JSON via
+  `project fabric-risk`, action desktop Analyse, profils indicatifs coton tissé /
+  jersey / feutrine, tests de déterminisme et de superpositions.
+- IMPORTANT : score heuristique sans calibration, **pas** une mesure en newtons ni une
+  prédiction de déformation ou de plis. Voir `docs/fabric-risk-heuristic.md`.
+- Reste : validation physique multi-tissus et stabilisateurs, paramètres mesurés,
+  solveur 2D tenant compte du cadre, visualisation sur canevas, gestion des profils
+  fiables et comparaison de broderies d'essai. Aucun état « fait » avant ces essais.
+- Modules : `libs/project_ops`, `apps/cli`, `apps/desktop`.
+- Acceptation V1 : PNG et JSON déterministes, double superposition augmente l'indice
+  p99, sensibilité monotone pour les trois profils, erreur sur paramètres invalides,
+  accès bureau. Le résultat est étiqueté « estimation non calibrée ».
+
 ---
 
 ## 17. Appliqué et techniques spéciales (SPEC)
@@ -3532,6 +3548,7 @@ ci-dessus doit les respecter :
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-21 | ChatGPT (PR risque textile) | HP-FAB-004 ◐ : première carte heuristique non calibrée, CLI/desktop, tests et protocole de limites ; solveur physique et validation machine restant à faire. |
 | 2026-09-22 | Claude (session d'audit) | Création : inventaire complet vérifié dans le code. |
 | 2026-10-21 | ChatGPT (édition vectorielle) | HP-VEC-016 ◐ : curseur de survol contextuel sur le segment remodelable, test Qt sans mutation. |
 | 2026-09-23 | Claude (session pilotée) | HP-FILE-001 ☑ : action « Nouveau projet » (Ctrl+N) avec garde des modifications non enregistrées et réinitialisation centralisée de tout l'état d'édition de la fenêtre. |

@@ -19,6 +19,7 @@ namespace openstitch::project_ops {
 
 inline constexpr const char* kFidelitySchema = "openstitch.fidelity/1";
 inline constexpr const char* kDensitySchema = "openstitch.density/1";
+inline constexpr const char* kFabricRiskSchema = "openstitch.fabric-risk/1";
 inline constexpr const char* kLocateSchema = "openstitch.locate/1";
 inline constexpr const char* kDiagnoseSchema = "openstitch.diagnose/1";
 
@@ -72,6 +73,28 @@ struct DensityReport {
 
 [[nodiscard]] Result<DensityReport> measure_density(const document::Project& project,
                                                     const DensityOptions& options = {});
+
+// Estimation relative (0..100) : pas une tension en N, ni une simulation de deformations.
+struct FabricRiskOptions {
+    // Profils indicatifs non calibres ; aucun changement des reglages de couture.
+    std::string fabric{"woven"}; // woven | jersey | felt
+    double cell_mm{1.0};
+    double reference_spacing_mm{0.4};
+    double heatmap_px_per_cell{4.0};
+    bool heatmap{false};
+};
+
+struct FabricRiskReport {
+    std::string json; // openstitch.fabric-risk/1
+    std::string text;
+    std::vector<std::uint8_t> heatmap_png;
+    double max_score{0.0};
+    double p99_score{0.0};
+    double hotspot_area_mm2{0.0}; // score >= 70
+};
+
+[[nodiscard]] Result<FabricRiskReport> measure_fabric_risk(const document::Project& project,
+                                                           const FabricRiskOptions& options = {});
 
 // Dimensions (px) de l'image de travail (source passée par `project.ops`) : le repère de la
 // segmentation et de tous les outils d'analyse. {0, 0} sans image.

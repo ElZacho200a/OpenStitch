@@ -12,6 +12,7 @@
 #include <QFileDialog>
 #include <QFontDatabase>
 #include <QHBoxLayout>
+#include <QInputDialog>
 #include <QLabel>
 #include <QListWidget>
 #include <QMenu>
@@ -501,6 +502,9 @@ void MainWindow::buildAnalysisPanel() {
     auto* densityAct = analyseMenu->addAction(tr("&Épaisseurs de fil (densité)…"));
     densityAct->setObjectName(QStringLiteral("action_densityReport"));
     connect(densityAct, &QAction::triggered, this, &MainWindow::showDensityReport);
+    auto* fabricRiskAct = analyseMenu->addAction(tr("Risque de tirage du &tissu…"));
+    fabricRiskAct->setObjectName(QStringLiteral("action_fabricRiskReport"));
+    connect(fabricRiskAct, &QAction::triggered, this, &MainWindow::showFabricRiskReport);
     auto* diagnoseAct = analyseMenu->addAction(tr("&Diagnostic des défauts connus…"));
     diagnoseAct->setObjectName(QStringLiteral("action_diagnoseReport"));
     connect(diagnoseAct, &QAction::triggered, this, &MainWindow::showDiagnoseReport);
@@ -597,6 +601,34 @@ void MainWindow::showDensityReport() {
     }
     showReportDialog(this, title, QString::fromStdString(report->text), report->heatmap_png,
                      QStringLiteral("densite.png"));
+}
+
+void MainWindow::showFabricRiskReport() {
+    const QString title = tr("Risque de tirage du tissu (estimation)");
+    if (!requireEmbroideryForReport(title)) {
+        return;
+    }
+    const QStringList profiles{tr("Coton tissé"), tr("Jersey"), tr("Feutrine")};
+    bool accepted = false;
+    const QString selected = QInputDialog::getItem(
+        this, title, tr("Profil indicatif de tissu (sans calibration physique) :"), profiles, 0,
+        false, &accepted);
+    if (!accepted) {
+        return;
+    }
+    project_ops::FabricRiskOptions options;
+    const int index = profiles.indexOf(selected);
+    options.fabric = index == 1 ? "jersey" : index == 2 ? "felt" : "woven";
+    options.heatmap = true;
+    BusyIndicator busy(this, tr("Calcul de l'indice de tirage…"), {autosaveTimer_, simTimer_});
+    const document::Project snapshot = project_;
+    auto report = busy.run([&] { return project_ops::measure_fabric_risk(snapshot, options); });
+    if (!report) {
+        reportError(this, title, tr("L'estimation n'a pas pu être faite."), report.error().message);
+        return;
+    }
+    showReportDialog(this, title, QString::fromStdString(report->text), report->heatmap_png,
+                     QStringLiteral("risque_tissu.png"));
 }
 
 void MainWindow::showDiagnoseReport() {
