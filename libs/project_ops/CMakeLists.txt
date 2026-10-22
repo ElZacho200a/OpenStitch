@@ -20,6 +20,7 @@ add_library(openstitch_project_ops
     src/render.cpp
     src/thread_model.cpp
     src/analysis.cpp
+    src/fabric_risk.cpp
     src/sweep.cpp
     src/debug_dump.cpp
 )

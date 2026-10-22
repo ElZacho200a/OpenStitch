@@ -343,6 +343,7 @@ private:
     bool requireEmbroideryForReport(const QString& title);
     void showFidelityReport();
     void showDensityReport();
+    void showFabricRiskReport();
     void showDiagnoseReport();
     void exportRealisticPng();
     void activateAnalysisItem(QListWidgetItem* item, bool selectObject);
@@ -443,6 +444,7 @@ private:
     // seule d'un résultat déjà produit par le cœur.
     [[nodiscard]] stitch_generation::ObjectEditState editStateOf(ObjectId id) const;
     void buildMenus();
+    void buildWorkspacesMenu(); // HP-UX-049 : dispositions de panneaux non destructives
     void buildHelpMenu();
     void buildMainToolbar();
     void buildContextToolbar();
@@ -796,6 +798,7 @@ private:
         QPointF startSceneMm;
         geometry::PathSet base;
     };
+    [[nodiscard]] bool canBeginSegmentReshape(ObjectId object, QPointF sceneMm) const;
     bool beginSegmentReshape(ObjectId object, QPointF sceneMm);
     void updateSegmentReshape(QPointF sceneMm, Qt::KeyboardModifiers mods);
     void commitSegmentReshape(QPointF sceneMm, Qt::KeyboardModifiers mods);
