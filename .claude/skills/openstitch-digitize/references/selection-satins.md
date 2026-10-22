@@ -33,6 +33,10 @@ Voir aussi la [documentation des stratégies](../../../../docs/source/satin-sque
 
 La première décision reste toujours **satin ou pas satin**. Ne pas forcer un satin dans une forme sémantiquement plus pertinente en tatami ou en running.
 
+**Test de colonne avant les trois stratégies :** renseigner la largeur **locale** (et pas seulement `geometry_bounds`), la présence d'embranchements, les changements brusques d'épaisseur et les éventuels rails/traverses de direction. Préférer une ligne running si trop fine, ou plusieurs colonnes distinctes si la forme se divise ; le moteur ne doit pas être forcé à « inventer » une colonne sur un nuage entier. Si `auto_satin` renvoie `RequiresDecomposition`, enregistrer ce verdict puis re-segmenter au lieu d'accepter automatiquement parce que la couverture dépasse un seuil.
+
+**Retour du navire :** une passe heuristique fondée sur l'allongement de la boîte avait créé 23 auto-satins `skeleton` et **aucun guide explicite**. Les tests A/B/C n'avaient pas été effectués sur ce projet. Ce résultat prouve une conversion réelle, mais **pas** la qualité ni le choix optimal d'un satin. Voir [planification textile](directions-et-planification-textile.md).
+
 ## 3. Générer trois variantes contrôlées
 
 Pour chaque candidat, relever son ID dans **project inspect** (ou **project select** selon le type), puis dupliquer le projet OSP **avant** modification :

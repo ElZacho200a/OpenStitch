@@ -12,6 +12,8 @@ Analyser systématiquement :
 
 Ne pas réduire les détails en réponse à un problème de couture qui vient d'un **mauvais ordre**, d'une sous-couche ou d'un type de satin inadapté.
 
+**Ne pas masquer une erreur de conception avec les paramètres.** Si le bateau, un animal, un bâtiment ou un personnage a été avalé par les masques d'une même couleur, revenir à la porte **A** (objets) et refaire la géométrie. Si la forme est fidèle mais que ses rangées « cassent » les courbes, revenir à la porte **B** (intention/directions). La correction de sous-couche, d'espacement et de trims vient ensuite. Suivre les [quatre portes et l'expérience navire](directions-et-planification-textile.md).
+
 | Symptôme | Cause plausible | Intervention prioritaire |
 |---|---|---|
 | Arches lisses, feuilles effacées, eau monotone | reconstruction trop simplifiée | retour à l'original et re-segmentation fidèle |
@@ -19,6 +21,7 @@ Ne pas réduire les détails en réponse à un problème de couture qui vient d'
 | Trop d'îlots | fragmentation de structures dans la segmentation | reconstruire les branches/touffes AVANT les objets |
 | Beaucoup de running minuscules | petits remplissages déclassés en contours | audit running → satin/tatami/suppression |
 | Gros éventails / satin incomplet | stratégie inadaptée ou topologie ramifiée | comparer les 3 stratégies, sinon découper |
+| Vagues en tatami « plat » | grandes masses composées de plusieurs flux et angle de remplissage global | découper en bandes structurelles, comparer tatami et directional par objet |
 | Tissu trop dense | sous-couches, couches superposées, compensation | mesurer hotspots puis retouche locale |
 | Coupes élevées malgré fusions | objets encore disjoints et sauts | revoir continuité/routage ; une union n'est pas un parcours |
 | Interstices blancs entre tatami | retrait, vectorisation, chevauchement | test local du inset ; vérifier détails protégés |
@@ -130,6 +133,8 @@ Journal par variante :
 | Densité | surface ≥ 4 couches, maximum estimé, hotspots et contributeurs |
 | Opérations | IDs, commande CLI exacte, raison de la modification, fichiers source et résultant |
 | Risques | ce qui reste non mesuré, avertissements, état du test physique |
+
+**Comparaison du navire (cas local, pas règle universelle) :** 41 conversions en `directional` ont augmenté 107 362 → 122 695 points, 425 → 705 coupes et la zone hotspot 1 679 → 1 877 mm². Le mouvement des rangées paraissait plus lisible sur certaines vagues, mais ces chiffres interdisent de présenter la conversion massive comme une optimisation physique. Une étape à la fois, sur la **même source, la même taille et la même toile de fond**, puis rejeter les variantes visuellement ou physiquement moins bonnes.
 
 **Ne pas confondre :**
 - La fidélité à l'image *préparée* avec la fidélité artistique à l'original. Changer la source change les métriques.
