@@ -444,6 +444,7 @@ private:
     // seule d'un résultat déjà produit par le cœur.
     [[nodiscard]] stitch_generation::ObjectEditState editStateOf(ObjectId id) const;
     void buildMenus();
+    void buildWorkspacesMenu(); // HP-UX-049 : dispositions de panneaux non destructives
     void buildHelpMenu();
     void buildMainToolbar();
     void buildContextToolbar();
