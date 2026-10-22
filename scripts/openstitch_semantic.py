@@ -114,13 +114,13 @@ def validate(manifest: dict, base: Path, *, skip_files: bool = False) -> dict:
             fail('E_FAMILY', f'{where}.family', 'famille non vide requise')
         if not isinstance(item.get('role'), str) or not item['role']:
             fail('E_ROLE', f'{where}.role', 'role non vide requis')
-        if item.get('level', 'technical') not in LEVELS:
+        if not isinstance(item.get('level', 'technical'), str) or item.get('level', 'technical') not in LEVELS:
             fail('E_LEVEL', f'{where}.level', 'niveau famille/instance/composant/technique inconnu')
-        if item.get('priority') not in PRIORITIES:
+        if not isinstance(item.get('priority'), str) or item.get('priority') not in PRIORITIES:
             fail('E_PRIORITY', f'{where}.priority', 'priorite inconnue')
-        if item.get('stitch_intent') not in INTENTS:
+        if item.get('stitch_intent') is not None and (not isinstance(item.get('stitch_intent'), str) or item.get('stitch_intent') not in INTENTS):
             fail('E_STITCH', f'{where}.stitch_intent', 'type de point inconnu')
-        if item.get('decision', 'keep') not in DECISIONS:
+        if not isinstance(item.get('decision', 'keep'), str) or item.get('decision', 'keep') not in DECISIONS:
             fail('E_DECISION', f'{where}.decision', 'decision inconnue')
         color = item.get('thread_rgb')
         if color is not None and (not isinstance(color, str) or not COLOR.fullmatch(color)):
@@ -153,7 +153,7 @@ def validate(manifest: dict, base: Path, *, skip_files: bool = False) -> dict:
     for sid, item in indexed.items():
         parent = item.get('parent_id')
         if parent is not None:
-            if parent not in indexed:
+            if not isinstance(parent, str) or parent not in indexed:
                 fail('E_PARENT', sid, f'parent inconnu : {parent}')
             else:
                 hierarchy[sid].add(parent)
