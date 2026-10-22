@@ -5,6 +5,7 @@ on:
     branches: [agent-trials]
     paths:
       - '.github/workflows/agent-trial-baseline.yml'
+      - 'experiments/runner.py'
   workflow_dispatch:
 
 permissions:
