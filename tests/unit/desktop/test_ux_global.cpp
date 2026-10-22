@@ -12,7 +12,6 @@
 #include <QFile>
 #include <QGraphicsPathItem>
 #include <QGraphicsPixmapItem>
-#include <QSlider>
 #include <QGraphicsScene>
 #include <QKeyEvent>
 #include <QLabel>
@@ -20,6 +19,7 @@
 #include <QMimeData>
 #include <QSettings>
 #include <QShortcut>
+#include <QSlider>
 #include <QStatusBar>
 #include <QTemporaryDir>
 #include <QTest>

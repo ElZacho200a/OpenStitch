@@ -636,8 +636,8 @@ void MainWindow::setImageOpacity(double opacity) {
 }
 
 void MainWindow::buildImageOpacityControls(QMenu* viewMenu) {
-    imageOpacity_ = std::clamp(
-        QSettings().value(QStringLiteral("ui/imageOpacity"), 1.0).toDouble(), 0.0, 1.0);
+    imageOpacity_ =
+        std::clamp(QSettings().value(QStringLiteral("ui/imageOpacity"), 1.0).toDouble(), 0.0, 1.0);
     auto* holder = new QWidget(viewMenu);
     holder->setObjectName(QStringLiteral("imageOpacityControl"));
     auto* row = new QHBoxLayout(holder);
