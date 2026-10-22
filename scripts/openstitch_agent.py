@@ -136,10 +136,43 @@ def compact_inspect(executable: str, project: str, *, kind: str | None,
             "notice": "Tri d'inspection, pas un diagnostic de qualite textile. Utiliser project diagnose/check."}
 
 
+def contract() -> dict:
+    """Stable self-description, available even before the native CLI is installed."""
+    return {
+        "schema": SCHEMA,
+        "action": "contract",
+        "exit_codes": {"0": "success", "2": "validation_or_execution_error"},
+        "stdout": "exactly_one_json_object",
+        "stderr": "reserved_for_argparse",
+        "commands": [
+            {"name": "contract", "requires_cli": False, "arguments": []},
+            {"name": "doctor", "requires_cli": False, "arguments": [],
+             "description": "Probe native CLI version, command and operation schemas"},
+            {"name": "inspect", "requires_cli": True,
+             "arguments": [
+                 {"name": "project", "type": "path", "required": True},
+                 {"name": "--type", "type": "string", "required": False},
+                 {"name": "--color", "type": "string", "required": False},
+                 {"name": "--min-area-mm2", "type": "number", "minimum": 0, "default": 0},
+                 {"name": "--sort", "type": "enum",
+                  "values": ["order", "area", "stitches", "jumps"], "default": "jumps"},
+                 {"name": "--offset", "type": "integer", "minimum": 0, "default": 0},
+                 {"name": "--limit", "type": "integer", "minimum": 1, "maximum": 1000, "default": 30}
+             ],
+             "description": "Read-only filtered inspection; object IDs originate in the OSP"}
+        ],
+        "global_arguments": [{"name": "--cli", "type": "path", "required": False}],
+        "errors": {"ok": False, "error": "human-readable diagnostic"},
+        "examples": ["contract", "doctor", "inspect motif.osp --sort jumps --limit 20"],
+        "notes": ["No OSP mutation", "No installation/download", "Native CLI schemas are probed by doctor"]
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Commandes compactes pour agents OpenStitch (JSON stdout)")
     p.add_argument("--cli", help="Chemin du binaire OpenStitch (sinon PATH / OPENSTITCH_CLI)")
     sub = p.add_subparsers(dest="action", required=True)
+    sub.add_parser("contract", help="Decrire le contrat JSON stable sans client installe")
     sub.add_parser("doctor", help="Verifier executable et contrats de commandes")
     inspect = sub.add_parser("inspect", help="Resumer et filtrer un projet .osp")
     inspect.add_argument("project")
@@ -154,7 +187,9 @@ def main(argv: list[str] | None = None) -> int:
         p.error("limit 1..1000, offset >= 0 et min-area-mm2 >= 0 requis")
     cli = find_cli(args.cli)
     try:
-        if args.action == "doctor":
+        if args.action == "contract":
+            output, code = contract(), 0
+        elif args.action == "doctor":
             output, code = doctor(cli)
         elif not cli:
             raise RuntimeError("openstitch-cli introuvable : fournir --cli ou OPENSTITCH_CLI")

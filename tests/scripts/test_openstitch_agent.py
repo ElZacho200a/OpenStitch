@@ -30,6 +30,21 @@ class AgentCLITest(unittest.TestCase):
         cli.chmod(0o755)
         self.cli = str(cli)
 
+    def test_contract_without_native_cli(self):
+        result = subprocess.run([sys.executable, str(SCRIPT), "contract"],
+                                capture_output=True, text=True, check=False)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stderr, "")
+        output = json.loads(result.stdout)
+        self.assertEqual(output["schema"], agent.SCHEMA)
+        self.assertEqual(output["action"], "contract")
+        self.assertEqual([c["name"] for c in output["commands"]],
+                         ["contract", "doctor", "inspect"])
+        inspect = output["commands"][2]
+        self.assertTrue(inspect["requires_cli"])
+        self.assertEqual(next(a for a in inspect["arguments"]
+                              if a["name"] == "--limit")["maximum"], 1000)
+
     def test_doctor_contract(self):
         output, code = agent.doctor(self.cli)
         self.assertEqual(code, 0)
