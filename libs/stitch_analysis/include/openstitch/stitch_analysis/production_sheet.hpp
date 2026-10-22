@@ -31,7 +31,7 @@ struct ProductionOptions {
     // Date d'édition « AAAA-MM-JJ », fournie par l'appelant : la bibliothèque ne
     // lit jamais l'horloge (sortie déterministe).
     std::string date;
-    std::string notes; // notes libres de l'utilisateur, reprises telles quelles
+    std::string notes;  // notes libres de l'utilisateur, reprises telles quelles
     std::string client; // destinataire facultatif, sans effet sur le design
 
     double stitches_per_minute{700.0}; // plage usuelle 600-800 points/min
