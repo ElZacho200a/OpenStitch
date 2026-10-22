@@ -16,7 +16,7 @@ document doit passer par une `ICommand`.
 | ID | Priorité | Livrable | État |
 |---|---|---|---|
 | A01 | P0 | Installation / diagnostic d'environnement | ◐ Script agent `doctor` ; pas encore de commande native |
-| A02 | P0 | Schémas et erreurs contractuels pour agents | ◐ Le CLI expose déjà `commands --json` et `project operations --json` |
+| A02 | P0 | Schémas et erreurs contractuels pour agents | ◐ Pont Python : `contract` hors ligne, paramètres et erreurs stables ; contrat natif à compléter |
 | A03 | P0 | Inspection compacte, sélection, classement | ◐ Pont de lecture `scripts/openstitch_agent.py inspect` |
 | B01 | P0 | Manifeste sémantique familles/instances/masques | ☐ |
 | B02 | P0 | Éditeur de segmentation sémantique | ☐ ; dépend de B01 |
@@ -41,7 +41,7 @@ commande native. Les travaux du cœur/desktop sont distincts du pont de lecture.
 Sans dépendance Python supplémentaire :
 
 ```bash
-python3 scripts/openstitch_agent.py doctor
+python3 scripts/openstitch_agent.py contract\npython3 scripts/openstitch_agent.py doctor
 python3 scripts/openstitch_agent.py --cli /chemin/openstitch-cli doctor
 python3 scripts/openstitch_agent.py inspect motif.osp --sort jumps --limit 20
 python3 scripts/openstitch_agent.py inspect motif.osp --type auto_satin --min-area-mm2 2
@@ -73,7 +73,7 @@ la même géométrie ; absence de points et trous sont des motifs de rejet.
 **D03** : contrôles de cohérence OSP/DST, taille brodée, fichiers présents,
 rendu OpenStitch, erreurs bloquantes et rapport transparent.
 
-## Historique
+## Contrat de découverte du pont agent (A02 partiel)\n\n`python3 scripts/openstitch_agent.py contract` renvoie un objet JSON stable sans binaire installé. Il décrit `doctor` et `inspect`, leurs arguments et bornes, les codes de sortie, et les exemples. La sortie JSON est indépendante de la locale ; les erreurs d’exécution sont également des objets JSON avec `ok=false`. Les erreurs de syntaxe argparse restent sur stderr et conservent son code de sortie. Ce contrat décrit **le pont Python uniquement** : les capacités du client natif se découvrent avec `doctor` et ses schémas `commands --json` / `project operations --json`.\n\n## Historique
 
 - 2026-10-22 : création de la piste agent-first ; premier pont Python de
   diagnostic de capacités et d'inspection compacte. À poursuivre par B01.
