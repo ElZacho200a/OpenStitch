@@ -25,7 +25,7 @@ document doit passer par une `ICommand`.
 | C01 | P1 | Retouches collectives selon critères sémantiques | ◐ Pont Python par famille/ID ; interface native restante |
 | C02 | P1 | Benchmark satin objectivé par objet | ☐ |
 | C03 | P1 | Diagnostics avec propositions réversibles | ☐ |
-| C04 | P1 | Rendus annotés et comparaison régionale | ☐ |
+| C04 | P1 | Rendus annotés et comparaison régionale | ◐ Rapport JSON, SVG annoté et comparaison côte à côte via pont Python |
 | D01 | P1 | Gestion d'expériences, cache et reprise | ☐ |
 | D02 | P1 | Profils tissu/machine/cadre | ☐ |
 | D03 | P1 | Paquet de livraison validé et traçable | ☐ |
