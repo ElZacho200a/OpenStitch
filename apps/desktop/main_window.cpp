@@ -77,8 +77,8 @@
 #include "import_dialog.hpp"
 #include "machine_export_dialog.hpp"
 #include "node_handle.hpp"
-#include "vector_tooltip.hpp"
 #include "responsive.hpp"
+#include "vector_tooltip.hpp"
 
 #include "calque_panel.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
@@ -3421,8 +3421,8 @@ void MainWindow::renderBase(const image::Image& img) {
                 }
             }
             const auto match = byVector.find(object.id.value);
-            pathItem->setToolTip(vectorTooltip(object, outline.boundingRect(),
-                match == byVector.end() ? nullptr : match->second));
+            pathItem->setToolTip(vectorTooltip(
+                object, outline.boundingRect(), match == byVector.end() ? nullptr : match->second));
             pathItem->setData(0, QStringLiteral("vectorShape"));
             pathItem->setZValue(10);
             baseItems_.append(pathItem);
