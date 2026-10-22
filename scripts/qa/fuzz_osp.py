@@ -62,7 +62,7 @@ def check_one(cli: Path, filename: Path, *, runner=subprocess.run):
     try:
         result = runner(
             [str(cli), "project", "inspect", str(filename), "--no-stitches"],
-            timeout=TIMEOUT_SECONDS, capture_output=True, text=True, check=False,
+            timeout=TIMEOUT_SECONDS, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
         )
     except subprocess.TimeoutExpired:
         return "timeout"
