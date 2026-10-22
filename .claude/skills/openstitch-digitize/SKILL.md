@@ -196,6 +196,20 @@ travail/
 
 S'arrêter si les silhouettes et détails structurants sont fidèles, si la majorité des îlots restant a une fonction, si aucune erreur bloquante n'est détectée, si les problèmes de densité sont compris et si des variantes ultérieures n'apportent plus de gain significatif. Ne pas promettre qu'un pull sera brodable sans **échantillon réel**, stabilisateur et vérification des tensions.
 
+## Phase 10 — Critique indépendante (si un apprentissage autonome est demandé)
+
+Quand le projet est utilisé dans une boucle d'optimisation ou par une tâche
+planifiée, **après** la phase 9 lire
+[openstitch-evaluate](../openstitch-evaluate/SKILL.md). Confier la revue
+visuelle et la note /20 à un juge distinct de l'agent qui a produit la version.
+Joindre la source, carte sémantique, OSP, rendu réel et diagnostics natifs.
+L'absence de preuve donne un état `incomplete`, **jamais une note inventée**.
+En cas d'échec, corriger la phase responsable (A/B/C/D), mesurer avant/après,
+et conserver la meilleure version. Les résultats légers et les échecs
+sont journalisés sur la branche `agent-trials` et **pas sur `main`** ;
+les binaires sont archivés séparément. Ne pas assimiler réussite en simulation
+et validation sur machine.
+
 ## Frontières et sécurité de méthode
 
 - **Skill de workflow**, pas nouvelle commande OpenStitch : la segmentation sémantique et son graphe d'instances peuvent nécessiter OpenCV/Python/SVG.
