@@ -1,15 +1,15 @@
 {
   "schema": "openstitch.benchmarks/1",
-  "note": "Benchmark actif = tableau de Turner (phare et tempête), remplace le cas ruines. Original privé dans ChatGPT Library; jobs GitHub sans source transférée doivent consigner blocked, sans essai de substitution.",
+  "note": "Depuis le 2026-10-23, le Turner phare-tempête est le SEUL benchmark d'entraînement actif; les anciens restent archivés sans substitution. Image privée non accessible directement aux GitHub Actions.",
   "cases": [
     {
       "id": "turner-phare-tempete-20261023",
-      "active": true,
       "priority": 1,
+      "active": true,
       "source_kind": "chatgpt-library",
-      "source_library_path": "/OpenStitch/Benchmarks/turner-phare-tempete-20261023.jpg",
-      "source_library_file_id": "libfile_22ca9c43336c8191a02d12f3f3598a64",
-      "source_filename": "turner-phare-tempete-20261023.jpg",
+      "source_library_path": "/OpenStitch/Benchmarks/turner-phare-tempete-original-20261023.jpg",
+      "source_library_file_id": "libfile_b7f90c9fdad0819180be1b6029c78d86",
+      "source_filename": "turner-phare-tempete-original-20261023.jpg",
       "source_sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
       "source_size_px": [
         1536,
@@ -18,19 +18,18 @@
       "target_height_mm": 240,
       "expected_width_mm": 363.55,
       "keep_aspect_ratio": true,
-      "background": "full painting, background sky and ocean intentionally stitched or planned as fabric negative space",
       "fabric": "unspecified",
+      "eligibility": "user_provided_private_image",
       "split": "development",
       "available_to_github_actions": false,
       "protected_details": [
-        "forme et lanterne du phare",
-        "voilier à gauche avec coque, mât, voile triangulaire",
-        "grande vague creuse devant le phare",
-        "écume distincte du corps des vagues",
-        "nuages sombres et percée lumineuse dorée",
-        "avant-plan marin sombre avec direction des crêtes"
+        "phare et lanternon, les plateformes, les petites fenêtres",
+        "bateau, coque, gréement et voiles séparées",
+        "nuages tempétueux et percées de lumière",
+        "grandes crêtes des vagues et mouvements continus",
+        "écume blanche en masses lisibles, pas en îlots parasites"
       ],
-      "notes": "Nouveau benchmark demandé explicitement par l'utilisateur. Chaque tentative part de CE JPEG original : générer une nouvelle réinterprétation artistique (prompts + objets), puis seulement créer l'OSP/DST et comparer. Ne pas remplacer par les ruines ou une autre image."
+      "notes": "NOUVEAU benchmark exclusif demandé par l'utilisateur. Chaque tentative revient à l'image de base, crée une nouvelle interprétation artistique et des masques sémantiques, numérise réellement, inspecte et compare. Ne pas utiliser ruines ni tentabrode. Ne pas inventer note indépendante."
     },
     {
       "id": "ruines-marais-20261023",
