@@ -1,0 +1,126 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261023T150957Z-turner-fresh-6c1e9a",
+  "created_utc": "2026-10-23T15:09:57Z",
+  "status": "completed",
+  "accepted": false,
+  "source": {
+    "source_kind": "chatgpt-library",
+    "library_file_id": "libfile_b7f90c9fdad0819180be1b6029c78d86",
+    "library_path": "/OpenStitch/Benchmarks/turner-phare-tempete-original-20261023.jpg",
+    "sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+    "size_px": [
+      1536,
+      1014
+    ],
+    "size_mm": [
+      363.55,
+      240
+    ],
+    "verified": true
+  },
+  "benchmark_id": "turner-phare-tempete-20261023",
+  "openstitch_commit": "05058a163533a00220499671ad46e6cb0436cdb9",
+  "cli_version": "0.1.0",
+  "cli_archive_sha256": "2b7b129e237a25cbad1e0f378adc2b7f03b3665af7afbcb4b43dbc5eb2750c71",
+  "cli_origin": {
+    "workflow_run_id": 39962268278,
+    "artifact_id": 12507792053,
+    "manifest_sha256_verified": true
+  },
+  "target_canvas_mm": [
+    390,
+    265
+  ],
+  "fabric_assumption": "warm sand #B9A68F, not user-confirmed",
+  "attempts": [
+    {
+      "id": "engraving",
+      "hypothesis": "Authored separate cloud, sea, lighthouse, boat and foam instances with curved running stitches over flat masses",
+      "restarted_from_original": true,
+      "regions": 105,
+      "imported": 105,
+      "stitches": 58809,
+      "trims": 257,
+      "color_changes": 59,
+      "stitched_mm": [
+        363.1,
+        238.9
+      ],
+      "check_errors": 0,
+      "check_warnings": 11,
+      "density_area_ge_4_layers_mm2": 2,
+      "osp": "engraving/turner.osp",
+      "dst": "engraving/turner.dst",
+      "preview": "engraving/preview.png",
+      "semantic_map": "engraving/segmentation.png",
+      "artistic_status": "rejected",
+      "self_critique": "Lighthouse and boat legible, but foam becomes one huge flat slab, clouds too angular and sky too empty. Tatami looks mechanical."
+    },
+    {
+      "id": "flow",
+      "hypothesis": "Fresh original-based reconstruction with contour ridges instead of opaque foam fill",
+      "restarted_from_original": true,
+      "regions": 116,
+      "imported": 116,
+      "stitches": 58534,
+      "trims": 224,
+      "color_changes": 65,
+      "stitched_mm": [
+        363.1,
+        238.9
+      ],
+      "check_errors": 0,
+      "check_warnings": 10,
+      "density_area_ge_4_layers_mm2": 1,
+      "osp": "flow/turner.osp",
+      "dst": "flow/turner.dst",
+      "preview": "flow/preview.png",
+      "semantic_map": "flow/segmentation.png",
+      "artistic_status": "rejected",
+      "self_critique": "Ridges resemble a topographic map, not natural breakers. Sea remains too geometric; the image still lacks Turner movement and light."
+    }
+  ],
+  "fidelity": {
+    "status": "failed",
+    "reason": "SVG-imported OSP does not embed source image; project fidelity exits 1 on both"
+  },
+  "diagnose": "Executed for both; see archive",
+  "density": "Executed for both; see archive",
+  "inspect": "Executed for both; see archive",
+  "stats": "Executed for both; see archive",
+  "independent_score_20": null,
+  "independent_evaluator": null,
+  "score_before": null,
+  "score_after": null,
+  "machine_tested": false,
+  "best_relative": "flow",
+  "accepted_artistic_result": false,
+  "reason": "Stopped after two consecutive visual failures per evaluate skill. No valid textile candidate.",
+  "artifact": {
+    "kind": "chatgpt-private-library",
+    "library_path": "/OpenStitch/Experiments/20261023T150957Z-turner-fresh-6c1e9a.zip",
+    "library_file_id": "libfile_b353caf477c88191b07fd1350b97f3c5",
+    "archive_sha256": "c38a6b9fcabb5f9c7e33de5168a40a95b1225aab56e97bbe5941c195347bbecb",
+    "public_url": null,
+    "retention_days": null
+  },
+  "changes": [
+    "Fresh semantic reconstruction for two hypotheses; no reuse of old masks/OSP",
+    "Curved running linework as author-guided flow; source-luminance constrained within named wave instances"
+  ],
+  "lessons": [
+    "Technical reductions in density and trims do not rescue weak visual segmentation.",
+    "Large geometrically simple fills and parallel tatami flatten the painterly subject.",
+    "A source-embedding path is needed for CLI fidelity on imported semantic projects."
+  ],
+  "provenance": {
+    "source_sha_verified": true,
+    "cli_executed": true,
+    "osp_and_dst_from_same_project": true,
+    "previews_opened": true,
+    "visual_review": "self, not independent",
+    "main_modified": false
+  },
+  "parent_run_id": "20261023T140942Z-turner-322b100"
+}
