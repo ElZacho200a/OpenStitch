@@ -1,0 +1,146 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261023T080926Z-ruines-marais-semantic-audit-06817c0f",
+  "created_utc": "2026-10-23T08:09:26Z",
+  "status": "incomplete",
+  "source": {
+    "benchmark_id": "ruines-marais-20261023",
+    "kind": "private_chatgpt_library",
+    "library_path": "/OpenStitch/Benchmarks/ruines-marais-20261023.png",
+    "sha256": "06817c0f2aa7b2bedb2ab4db376a031771a25f7b6241b241d1b3bba01010c392",
+    "verified": true,
+    "image_px": [
+      1449,
+      968
+    ],
+    "size_mm": [
+      359.256,
+      240
+    ],
+    "canvas_mm": [
+      371.256,
+      252
+    ]
+  },
+  "openstitch_commit": "ef5a69034e2d212aa585176fcf84414d3813faaa",
+  "cli_version": "0.1.0",
+  "cli_provenance": {
+    "workflow_run_id": 39891206197,
+    "artifact_id": 12475966435,
+    "artifact_zip_sha256": "fccd92d38904309303965500bcef2028f9119bd7911f3f01100d880e6b5417f2",
+    "inner_archive_sha256": "27bdba3f22723622cba98e816f7a63a671c7860cec90496564a72e143acd57af",
+    "expires_utc": "2026-11-22T03:11:28Z"
+  },
+  "parent_run_id": "20261023T070301Z-ruines-marais-finishing-06817c0f",
+  "previous_best": "v0b_fidele",
+  "baseline": {
+    "id": "v1_semantique",
+    "stitches": 97730,
+    "trims": 4673,
+    "hotspot_4layers_mm2": 3,
+    "check_errors": 0
+  },
+  "attempts": [
+    {
+      "id": "v10_running",
+      "action": "Convert 97 thin elongated reed/reflection objects from tatami to running, preserve geometry",
+      "objects_changed": 97,
+      "stitches": 99247,
+      "trims": 4688,
+      "hotspot_4layers_mm2": 55,
+      "check_errors": 0,
+      "decision": "reject"
+    },
+    {
+      "id": "v11_skeleton",
+      "parent": "v10_running",
+      "action": "Auto-satin skeleton on reed object 1226",
+      "coverage_ratio": 0.9496855345911951,
+      "stitches": 99289,
+      "trims": 4688,
+      "hotspot_4layers_mm2": 55,
+      "check_errors": 0,
+      "decision": "not retained; inherits bad V10"
+    },
+    {
+      "id": "v12_parallel_sweep",
+      "parent": "v10_running",
+      "action": "Auto-satin parallel_sweep on reed object 1226",
+      "coverage_ratio": 0.9044025157232705,
+      "warning": "one single-thread band skipped",
+      "stitches": 99283,
+      "trims": 4689,
+      "hotspot_4layers_mm2": 55,
+      "check_errors": 0,
+      "decision": "not retained"
+    },
+    {
+      "id": "v13_medial_axis",
+      "parent": "v10_running",
+      "action": "Auto-satin medial_axis on reed object 1226",
+      "status": "refused",
+      "reason": "Self-intersecting contour, segments 2 and 25",
+      "osp_created": false,
+      "score": null
+    },
+    {
+      "id": "v14_isolated_skeleton",
+      "parent": "v1_semantique",
+      "action": "Auto-satin skeleton only on reed object 1226, no running conversions",
+      "stitches": 97772,
+      "trims": 4673,
+      "hotspot_4layers_mm2": 3,
+      "check_errors": 0,
+      "decision": "local technical success; artistic comparison incomplete"
+    }
+  ],
+  "semantic_audit": {
+    "baseline": "v0b_fidele",
+    "reference": "provisional semantic segmentation, not ground truth",
+    "semantic_instances": 43,
+    "source_opaque_pixels": 931106,
+    "source_mask_coverage_exact": true,
+    "vector_objects_sampled": 1827,
+    "objects_purity_at_least_95_percent": 536,
+    "objects_purity_at_least_90_percent": 925,
+    "objects_purity_at_least_80_percent": 1389,
+    "interpretation": "Large source-color vectors cross provisional semantic instance boundaries; do not auto-rename or merge without manual review."
+  },
+  "previous_visual_reference": {
+    "id": "v0b_fidele",
+    "stitches": 151481,
+    "trims": 2901,
+    "hotspot_4layers_mm2": 357,
+    "check_errors": 0,
+    "machine_tested": false
+  },
+  "evaluation": {
+    "status": "incomplete",
+    "score_before": null,
+    "score_after": null,
+    "independent_reviewer": false,
+    "machine_tested": false,
+    "cli_fidelity_semantic": "E_REFUSED because semantic OSP does not embed source image"
+  },
+  "artifact": {
+    "kind": "chatgpt-private-library",
+    "library_path": "/OpenStitch/Trials/OpenStitch-ruines-marais-20261023-essai03.zip",
+    "library_file_id": "libfile_3905d96facf481919cf5594febdd9dca",
+    "archive_sha256": "6afa6c36ecf4166aeeefdc9be7e014b34ddb7d6f3d63f266b7c46f76c3983f27",
+    "url": null,
+    "retention_days": null,
+    "public": false
+  },
+  "changes": [
+    "Real CLI tests on four OSP variants and one refused conversion; exported DST, native check/diagnose/density/render.",
+    "New semantic purity audit of 1827 baseline vectors against original-image masks; diagnostic overlay."
+  ],
+  "lessons": [
+    "97 narrow running conversions increased trims by 15 and simulated >=4-layer hotspot from 3 to 55 mm2; do not promote.",
+    "Skeleton satin on a single reed is locally feasible, but 3-strategy comparison does not validate the full scene.",
+    "The best visual baseline still contains mixed semantic color regions; review and split at instance boundaries before re-digitizing.",
+    "Native project fidelity cannot score imported semantic OSP without an embedded source image."
+  ],
+  "next_action": "Review largest mixed objects in private diagnostic overlay; repair confirmed semantic boundary crossings and reconstruct branches/reflections before vectorization; do not erase protected details.",
+  "write_scope": "agent-trials only"
+}
