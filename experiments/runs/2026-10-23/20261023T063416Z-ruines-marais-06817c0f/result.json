@@ -1,0 +1,229 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261023T063416Z-ruines-marais-06817c0f",
+  "created_utc": "2026-10-23T06:34:16Z",
+  "status": "incomplete",
+  "source": {
+    "benchmark_id": "ruines-marais-20261023",
+    "kind": "private_chatgpt_library",
+    "path": "/OpenStitch/Benchmarks/ruines-marais-20261023.png",
+    "sha256": "06817c0f2aa7b2bedb2ab4db376a031771a25f7b6241b241d1b3bba01010c392",
+    "verified": true,
+    "image_px": [
+      1449,
+      968
+    ],
+    "design_mm": [
+      359.256,
+      240
+    ],
+    "alpha": "preserved in source and semantic masks",
+    "publicly_accessible": false
+  },
+  "openstitch_commit": "ef5a69034e2d212aa585176fcf84414d3813faaa",
+  "cli_version": "0.1.0",
+  "cli_provenance": {
+    "kind": "trusted_main_push_ci_artifact",
+    "workflow_run_id": 39891206197,
+    "artifact_id": 12475966435,
+    "artifact_name": "openstitch-cli-linux-x86_64",
+    "archive_sha256": "27bdba3f22723622cba98e816f7a63a671c7860cec90496564a72e143acd57af",
+    "checksum_verified": true,
+    "artifact_expires_utc": "2026-11-22T03:11:28Z",
+    "url": "https://github.com/ElZacho200a/OpenStitch/actions/runs/39891206197"
+  },
+  "canvas_mm": [
+    371.3,
+    252
+  ],
+  "canvas_margin_mm": 5,
+  "segmentation": {
+    "method": "manually guided semantic ROIs + original color channels; not color quantization alone",
+    "semantic_instances": 43,
+    "technical_masks": 135,
+    "technical_masks_imported": 126,
+    "semantic_pixels_assigned": 931106,
+    "opaque_source_pixels": 931106,
+    "small_region_pixels_excluded_from_import": 432,
+    "description": "Independent masks for gothic masonry, ivy per pillar, moon vs cloud, separate reeds, water and reflections, and individual lily leaves.",
+    "source_immutable": true,
+    "semantic_qa": "provisional; some broad reed/bush boundaries need refinement"
+  },
+  "attempts": [
+    {
+      "id": "v0",
+      "kind": "image_digitize_control",
+      "actual_execution": true,
+      "cli_check": {
+        "errors": 50,
+        "warnings": 51,
+        "reason": "default 100x100 mm canvas too small"
+      },
+      "osp_created": true,
+      "quality": "repaired in v0b; not selected"
+    },
+    {
+      "id": "v0b",
+      "kind": "canvas_repair_same_stitches_as_v0",
+      "actual_execution": true,
+      "cli_check": {
+        "errors": 0,
+        "warnings": 51,
+        "passed": true
+      },
+      "diagnose": {
+        "errors": 0,
+        "warnings": 3
+      },
+      "fidelity": {
+        "interior_hole_percent": 0.813,
+        "lost_detail_percent": 0.138
+      },
+      "density": {
+        "hotspot_area_mm2": 357,
+        "layers_max": 6.54
+      },
+      "stitches": 151481,
+      "trims": 2901,
+      "color_changes": 8,
+      "motif_mm": [
+        354.2,
+        235.6
+      ],
+      "canvas_fits": true,
+      "osp_and_dst_same_project": true,
+      "visual_observation": "Closer to the original in the full preview, but many tiny islands and trims.",
+      "selected_as": "best_available_software_only_unvalidated"
+    },
+    {
+      "id": "v1",
+      "kind": "semantic_mask_svg_import",
+      "actual_execution": true,
+      "objects": 2790,
+      "cli_check": {
+        "errors": 0,
+        "warnings": 50,
+        "passed": true
+      },
+      "diagnose": {
+        "errors": 0,
+        "warnings": 0
+      },
+      "fidelity": {
+        "status": "not_available",
+        "reason": "SVG-only OSP has no embedded source image; native fidelity refuses"
+      },
+      "density": {
+        "hotspot_area_mm2": 3,
+        "layers_max": 4.72
+      },
+      "stitches": 97730,
+      "trims": 4673,
+      "color_changes": 8,
+      "motif_mm": [
+        353.1,
+        235
+      ],
+      "osp_and_dst_same_project": true,
+      "visual_observation": "Semantically labeled but less visually crisp; 1772 additional trims vs v0b; not selected."
+    },
+    {
+      "id": "v2_skeleton",
+      "kind": "single_object_satin_trial",
+      "actual_execution": true,
+      "parent": "v1",
+      "object_id": 4210,
+      "object_semantic_id": "reeds.right.front.light_green",
+      "strategy": "skeleton",
+      "coverage_ratio": 0.9913999044433827,
+      "object_stitches": 192,
+      "check_errors": 0,
+      "rendered_crop": true,
+      "conclusion": "Works on this one narrow reed, not evidence of whole-scene improvement."
+    },
+    {
+      "id": "v2_parallel_sweep",
+      "kind": "single_object_satin_trial",
+      "actual_execution": true,
+      "parent": "v1",
+      "object_id": 4210,
+      "object_semantic_id": "reeds.right.front.light_green",
+      "strategy": "parallel_sweep",
+      "coverage_ratio": 0.9904443382704252,
+      "object_stitches": 168,
+      "check_errors": 0,
+      "rendered_crop": true,
+      "conclusion": "Works; fewer object stitches than skeleton, coverage very similar; visual preference not independently judged."
+    },
+    {
+      "id": "v2_medial_axis",
+      "kind": "single_object_satin_trial_refused",
+      "actual_execution": true,
+      "parent": "v1",
+      "object_id": 4210,
+      "strategy": "medial_axis",
+      "operation_status": "refused",
+      "exit_code": 3,
+      "error_code": "E_REFUSED",
+      "reason": "Contour self-intersection at segments 22 and 23; no satin column constructed",
+      "osp_modified": false
+    }
+  ],
+  "best_version": "v0b",
+  "best_is_machine_validated": false,
+  "score_before": null,
+  "score_after": null,
+  "evaluation": {
+    "status": "incomplete",
+    "independent_reviewer_available": false,
+    "score_on_20": null,
+    "machine_tested": false,
+    "reason": "No independent visual reviewer. CLI diagnostics are not a 20-point artistic evaluation or textile proof."
+  },
+  "artifact": {
+    "kind": "private_chatgpt_library",
+    "path": "/OpenStitch/Trials/OpenStitch-ruines-marais-20261023-essai01.zip",
+    "sha256": "3f71fd01d8fbfbe556acf37f9656f3c711f08c505afe93790f86c75b2753b0cc",
+    "size_bytes": 13145902,
+    "file_count": 308,
+    "public_url": null,
+    "retention_days": null,
+    "contains": [
+      "immutable source",
+      "semantic and technical segmentation maps",
+      "region masks and SVGs",
+      "OSP and DST from same project",
+      "CLI native renders",
+      "inspect/check/diagnose/fidelity/density/stats reports",
+      "satin trial outputs"
+    ],
+    "private": true
+  },
+  "changes": [
+    "Verified private source SHA-256, 1449x968 RGBA.",
+    "Downloaded trusted CI main Linux CLI, checked archive SHA-256, executed real commands.",
+    "Produced v0b image-based control and v1 semantically segmented OSP/DST.",
+    "Tested three satin algorithms on object 4210 (one refused).",
+    "Archived all heavy outputs in private ChatGPT Library; only metadata committed to agent-trials."
+  ],
+  "lessons": [
+    "Source access from ChatGPT Library works inside the automation container; it does not grant GitHub Actions access.",
+    "Manually guided semantic segmentation preserves object identities, but per-fragment SVG import increases trims and cannot embed source for native fidelity; improve semantic reconstruction and merge within real instances before vectorization.",
+    "Do not optimize based only on absence of diagnose warnings: v1 has fewer hotspots yet worse visual clarity and many more trims.",
+    "Default CLI canvas on image digitize was 100x100 mm; explicitly set a frame large enough for the 359.256x240 design and safety margin.",
+    "Medial-axis satin can reject a plausible narrow reed because of self-intersecting vector contour; compare strategies rather than assume a universal satin."
+  ],
+  "blockers": [
+    "No independent visual judge for a valid /20 score.",
+    "No physical machine or fabric test; 359 mm motif width requires a compatible hoop and sufficient margins.",
+    "Semantic OSP built from SVG masks has no embedded image source, so native fidelity unavailable.",
+    "Public GitHub Actions runner cannot access the private source image without an authorized secure transfer."
+  ],
+  "next_actions": [
+    "Refine segmentation of reed/foliage instances, reconnect coherent branches before vectorization without merging separate lilies.",
+    "Explore attaching original source to semantic OSP or external matched-scale fidelity evaluation.",
+    "Reduce 4673 trims while preserving protected details and compare full-scale rendered zooms.",
+    "Arrange independent visual critique and physical stitch test before assigning score or recommending production."
+  ],
+  "parent_run_id": null
+}
