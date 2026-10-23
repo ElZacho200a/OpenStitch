@@ -1,0 +1,119 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261023T122322Z-turner-artistic-v2-49247372",
+  "created_utc": "2026-10-23T12:23:22Z",
+  "status": "incomplete",
+  "benchmark": "turner-phare-tempete-20261023",
+  "source": {
+    "kind": "private-library",
+    "library_path": "/OpenStitch/Benchmarks/turner-phare-tempete-20261023.jpg",
+    "sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+    "size_px": [
+      1536,
+      1014
+    ],
+    "requested_size_mm": [
+      363.55,
+      240
+    ],
+    "machine_tested": false
+  },
+  "openstitch_commit": "ef5a69034e2d212aa585176fcf84414d3813faaa",
+  "cli_version": "0.1.0",
+  "methods": [
+    "artistic reconstruction derived from original image",
+    "manual sky/cloud/light/ocean/foam semantic zone design",
+    "manual lighthouse and boat reconstruction",
+    "SLIC coarse region integration + local protected foams",
+    "native project digitize -> OSP -> project set -> native OSP renderer -> DST export",
+    "check, diagnose, density, fidelity, inspect, stats",
+    "compare 3 auto-satin strategies on boat narrow brown region (object ID 6)"
+  ],
+  "provenance_note": "Image-based concept references from source were visually generated. Technical maps use geometry drawn by agent, not only automated RGB quantization.",
+  "versions": [
+    {
+      "label": "prior_v1_direct",
+      "stitches": 200678,
+      "trims": 3584,
+      "jumps": 5286,
+      "errors": 0,
+      "warnings": 51
+    },
+    {
+      "label": "v2_A_structured",
+      "stitches": 116482,
+      "trims": 411,
+      "jumps": 455,
+      "errors": 0,
+      "warnings": 51
+    },
+    {
+      "label": "v2_E_organic_splashes",
+      "stitches": 118834,
+      "trims": 440,
+      "jumps": 482,
+      "errors": 0,
+      "warnings": 51
+    },
+    {
+      "label": "v2_E_foam_boat_satin_skeleton",
+      "stitches": 118833,
+      "trims": 440,
+      "jumps": 483,
+      "errors": 0,
+      "warnings": 51,
+      "embroidered_size_mm": [
+        363.162,
+        239.412
+      ],
+      "frame_mm": [
+        382,
+        252
+      ]
+    }
+  ],
+  "satin_tests": {
+    "object_id": 6,
+    "strategy_coverage": {
+      "skeleton": 0.9913,
+      "parallel_sweep": 0.9869,
+      "medial_axis": 0.9692
+    },
+    "outcome": "All accepted with warnings, skeleton provisionally best local coverage"
+  },
+  "score_before": null,
+  "score_after": null,
+  "evaluation": {
+    "status": "not_independently_graded",
+    "note": "Self critique only: loss of Turner dynamics, simplified waves, stylized lighthouse. No claim of independent 20-point grade."
+  },
+  "reason": "Technical checks pass, but the image interpretation is stylistically oversimplified; additional artistic redesign required. Do not certify as good embroidery.",
+  "lessons": [
+    "Object-oriented graphics reduce trims by ~88% versus direct source digitization, but this is not proof of artistic improvement",
+    "For a Turner painting, preserving wave gesture and foam spray is more important than maximal geometric simplification",
+    "Increases in wave/foam detail require controlled semantic vector regions with directional stitches",
+    "This prototype's OSP uses color-region segmentation, not full object-labelled semantic graph"
+  ],
+  "artifact": {
+    "kind": "private-chatgpt-library",
+    "library_path": "/OpenStitch/Trials/Turner-iteration-2.zip",
+    "library_file_id": "libfile_23a96e7b046081919adedb46fa3889b3",
+    "url": null,
+    "retention_days": null
+  },
+  "tests": {
+    "client_executed": true,
+    "osp_created": true,
+    "dst_exported": true,
+    "render_created": true,
+    "check_executed": true,
+    "diagnose_executed": true,
+    "density_executed": true,
+    "fidelity_executed": true,
+    "inspect_executed": true,
+    "stats_executed": true,
+    "machine_tested": false
+  },
+  "changes": [],
+  "parent_run_id": null
+}
