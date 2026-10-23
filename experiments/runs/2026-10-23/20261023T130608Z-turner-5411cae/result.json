@@ -1,0 +1,139 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261023T130608Z-turner-5411cae",
+  "created_utc": "2026-10-23T13:06:08Z",
+  "status": "incomplete",
+  "source": {
+    "source_kind": "chatgpt-library",
+    "library_path": "/OpenStitch/Benchmarks/turner-phare-tempete-original-20261023.jpg",
+    "library_file_id": "libfile_b7f90c9fdad0819180be1b6029c78d86",
+    "sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+    "size_px": [
+      1536,
+      1014
+    ],
+    "size_mm": [
+      363.5503,
+      240
+    ],
+    "sha256_verified": true
+  },
+  "openstitch_commit": "fb624f7f93e577a3079161fa99edc86d5ed1bc10",
+  "cli_version": "0.1.0",
+  "cli_binary": "official release linux-x86_64",
+  "frame_mm": [
+    390,
+    265
+  ],
+  "machine_tested": false,
+  "score_before": null,
+  "score_after": null,
+  "evaluation": null,
+  "independent_visual_judge": null,
+  "variants": [
+    {
+      "id": "A",
+      "regions": 51,
+      "stitches": 159307,
+      "trims": 159,
+      "jumps": 623,
+      "warnings": 10,
+      "area_ge4_layers_mm2": 3225,
+      "max_layers": 7.2,
+      "check_errors": 0,
+      "frame_fits": true,
+      "color_changes": 30,
+      "preview_inspected": true,
+      "visual_review": "refus: nuages et écume en triangles/montagnes, aucun mouvement pictural"
+    },
+    {
+      "id": "B",
+      "regions": 51,
+      "stitches": 157465,
+      "trims": 115,
+      "jumps": 597,
+      "warnings": 7,
+      "area_ge4_layers_mm2": 3528,
+      "max_layers": 7.53,
+      "check_errors": 0,
+      "frame_fits": true,
+      "color_changes": 30,
+      "preview_inspected": true,
+      "visual_review": "refus: lissage des nuages mais vagues réduites à des collines"
+    },
+    {
+      "id": "C",
+      "regions": 52,
+      "stitches": 165309,
+      "trims": 240,
+      "jumps": 802,
+      "warnings": 13,
+      "area_ge4_layers_mm2": 4323,
+      "max_layers": 8.07,
+      "check_errors": 0,
+      "frame_fits": true,
+      "color_changes": 30,
+      "preview_inspected": true,
+      "visual_review": "refus: écume plus organique depuis la luminance locale de l'original mais trop d'îlots et surcharge"
+    },
+    {
+      "id": "D",
+      "regions": 52,
+      "stitches": 157029,
+      "trims": 208,
+      "jumps": 768,
+      "warnings": 17,
+      "area_ge4_layers_mm2": 3825,
+      "max_layers": 7.48,
+      "check_errors": 0,
+      "frame_fits": true,
+      "color_changes": 30,
+      "preview_inspected": true,
+      "visual_review": "meilleure relative: directions de fil par famille, mais écume massive et ciel plat, non livrable"
+    }
+  ],
+  "best_relative_variant": "D",
+  "validated_for_embroidery": false,
+  "native_cli_commands": [
+    "project inspect",
+    "project check",
+    "project diagnose",
+    "project density",
+    "project render",
+    "osp2dst",
+    "stats"
+  ],
+  "fidelity": {
+    "status": "failed",
+    "reason": "project fidelity exit 1: semantic OSP lacks embedded original source image"
+  },
+  "satin_strategies_tested": false,
+  "artifact": {
+    "kind": "chatgpt-private-library",
+    "library_path": "/OpenStitch/Experiments/Turner/2026-10-23/20261023T130608Z-turner-5411cae/turner-trials.zip",
+    "library_file_id": "libfile_104464d018b481919c09d8f1518154ae",
+    "size_bytes": 26744308,
+    "url": null,
+    "retention_days": null,
+    "verified_listing": true
+  },
+  "changes": [
+    "A: 51 masks sémantiques séparés pour ciel, nuages, phare, bateau, vagues, écume, détails running",
+    "B: lissage géométrique depuis l'original",
+    "C: écume dérivée des luminances de l'original, restreinte aux zones sémantiques de vagues",
+    "D: nouveau masquage depuis l'original + 35 angles de tatami appliqués via project apply --dry-run puis apply"
+  ],
+  "blockers": [
+    "Les quatre previews ont été réellement examinées et rejetées artistiquement",
+    "Fidelity native impossible sans image source intégrée au projet",
+    "Aucun juge visuel indépendant: note sur 20 indisponible",
+    "Chevauchements >=4 couches: 3225 à 4323 mm²; risques textiles non validés"
+  ],
+  "lessons": [
+    "Ne jamais déclarer réussite sur project check seul",
+    "Préciser --fabric au rendu; défaut #00FF00 révèle les trous",
+    "Garder les objets identitaires mais reconstruire des courants d'eau continus avant nouvelles passes de points",
+    "Réduire les recouvrements géométriques et les 30 changements de couleur avant test machine"
+  ],
+  "parent_run_id": null
+}
