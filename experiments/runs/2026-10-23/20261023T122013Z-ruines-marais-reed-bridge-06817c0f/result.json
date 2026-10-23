@@ -1,0 +1,182 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261023T122013Z-ruines-marais-reed-bridge-06817c0f",
+  "created_utc": "2026-10-23T12:20:13Z",
+  "status": "incomplete",
+  "benchmark_id": "ruines-marais-20261023",
+  "parent_run_id": "20261023T111024Z-ruines-marais-reed-satin-06817c0f",
+  "source": {
+    "kind": "private-chatgpt-library",
+    "library_path": "/OpenStitch/Benchmarks/ruines-marais-20261023.png",
+    "library_file_id": "libfile_b55786e03b9c8191816dbb9f566226bb",
+    "sha256": "06817c0f2aa7b2bedb2ab4db376a031771a25f7b6241b241d1b3bba01010c392",
+    "pixels": [
+      1449,
+      968
+    ],
+    "rgba": true,
+    "alpha_intact": true,
+    "size_mm": [
+      359.256198,
+      240
+    ],
+    "source_pixel_changes": 0,
+    "available_to_github_actions": false
+  },
+  "openstitch_commit": "ef5a69034e2d212aa585176fcf84414d3813faaa",
+  "cli_version": "0.1.0",
+  "cli_origin": {
+    "kind": "previously_verified-main-ci-artifact",
+    "workflow_run_id": 39891206197,
+    "artifact_id": 12475966435,
+    "archive_sha256": "27bdba3f22723622cba98e816f7a63a671c7860cec90496564a72e143acd57af",
+    "archive_sha256_reverified_this_run": true,
+    "expires_at": "2026-11-22T03:11:28Z"
+  },
+  "semantic_reconstruction": {
+    "instance_id": "reeds.left.front",
+    "semantic_id": "reeds.left.front.olive",
+    "source_component_ids": [
+      88,
+      97
+    ],
+    "source_component_pixels": [
+      185,
+      197
+    ],
+    "object_ids": [
+      2883,
+      2878
+    ],
+    "bridge_added_pixels": 4,
+    "bridge_original_color_overlaid": "light_green",
+    "bridge_below_highlight": true,
+    "polygon_vertices": 30,
+    "polygon_area_mm2": 19.179,
+    "alpha_modified": false,
+    "source_modified": false,
+    "occlusion_note": "olive stripe continuous under light green, not merged with nearby shrub or lily"
+  },
+  "canvas": {
+    "width_mm": 371.256,
+    "height_mm": 252,
+    "margin_mm": 5
+  },
+  "baseline": {
+    "version": "v18",
+    "stitches": 97722,
+    "trims": 4672,
+    "embroidery_objects": 2787,
+    "check_errors": 0,
+    "check_warnings": 50
+  },
+  "variants": [
+    {
+      "version": "v20_reconnected_tatami",
+      "stitch_type": "tatami",
+      "stitches": 97710,
+      "trims": 4671,
+      "embroidery_objects": 2786,
+      "check_errors": 0,
+      "check_warnings": 50,
+      "diagnose_errors": 0,
+      "density_4_layers_mm2": 3,
+      "local_choice": true
+    },
+    {
+      "version": "v21_skeleton",
+      "stitch_type": "auto_satin",
+      "strategy": "skeleton",
+      "spacing_mm": 0.6,
+      "satinability": "RequiresDecomposition",
+      "coverage_ratio": 0.8510517339397385,
+      "stitches": 97749,
+      "trims": 4671,
+      "check_errors": 0,
+      "check_warnings": 50,
+      "diagnose_errors": 0,
+      "local_choice": false
+    },
+    {
+      "version": "v21_parallel_sweep",
+      "stitch_type": "auto_satin",
+      "strategy": "parallel_sweep",
+      "spacing_mm": 0.6,
+      "satinability": "RequiresDecomposition",
+      "coverage_ratio": 0.8180784536668562,
+      "stitches": 97727,
+      "trims": 4672,
+      "check_errors": 0,
+      "check_warnings": 50,
+      "diagnose_errors": 0,
+      "local_choice": false
+    },
+    {
+      "version": "v21_medial_axis",
+      "stitch_type": "auto_satin",
+      "strategy": "medial_axis",
+      "spacing_mm": 0.6,
+      "satinability": "RequiresDecomposition",
+      "coverage_ratio": 0.9499715747583855,
+      "stitches": 97736,
+      "trims": 4671,
+      "check_errors": 0,
+      "check_warnings": 50,
+      "diagnose_errors": 0,
+      "local_choice": false
+    }
+  ],
+  "tests": {
+    "cli_executed": true,
+    "source_sha256_verified": true,
+    "semantic_map_created": true,
+    "osp_variants_created": 4,
+    "dst_exports_from_matching_osp": 4,
+    "project_render_completed": 4,
+    "project_inspect_completed": 4,
+    "project_check_zero_errors": 4,
+    "project_diagnose_zero_errors": 4,
+    "project_density_completed": 4,
+    "project_fidelity_failed": 4,
+    "fidelity_error": "E_REFUSED: project has no embedded source image",
+    "machine_tested": false,
+    "independent_visual_review": false
+  },
+  "local_provisional_choice": "v20_reconnected_tatami",
+  "global_best_retained": "v0b historical visual reference, no promotion",
+  "score_before": null,
+  "score_after": null,
+  "evaluation": null,
+  "evaluation_status": "incomplete_no_independent_reviewer",
+  "artifact": {
+    "kind": "private-chatgpt-library",
+    "url": null,
+    "library_path": "/OpenStitch/Trials/2026-10-23/OpenStitch-ruines-marais-20261023-essai07.zip",
+    "library_file_id": "libfile_c780fd4a68948191accdd9e6f0cbea6d",
+    "size_bytes": 22411018,
+    "sha256": "61590c8f1ccf9349cfe0205572e81d673015d549a4912aaea9a6059b5e976fde",
+    "retention_days": null,
+    "publicly_accessible": false,
+    "contents": "4 variants plus baseline OSP/DST/render/inspect/check/diagnose/density/stats/fidelity-error, semantic map, masks, scripts, local comparison"
+  },
+  "changes": [
+    "Reconstructed one same-instance olive reed stripe across a four-pixel technical gap, retaining the original and top highlight.",
+    "Used real OpenStitch transactional set_geometry/remove_object after dry-run.",
+    "Tested three satin strategies against connected tatami with same geometry and CLI diagnostics."
+  ],
+  "lessons": [
+    "A one-pixel interruption can be bridged beneath an existing overlying highlight without altering the private source.",
+    "All three satin variants returned RequiresDecomposition and were not preferred visually, despite zero CLI check errors.",
+    "The tatami bridge reduced one object, 12 stitches and one trim; this is only a local technical improvement, not an independently established artistic gain.",
+    "OSP source image remains unembedded; fidelity command must be reported as failed rather than fabricated."
+  ],
+  "limitations": [
+    "No independent visual evaluator; scores remain null.",
+    "No machine stitchout, fabric/stabilizer unspecified.",
+    "Full original image is private and cannot be read by GitHub Actions without verified transfer.",
+    "Global best V0b remains unchallenged by independent comparison."
+  ],
+  "no_main_write": true,
+  "no_merge": true,
+  "no_force_push": true
+}
