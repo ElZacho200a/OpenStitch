@@ -1,0 +1,145 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261023T100246Z-ruines-marais-lily-tip-06817c0f",
+  "created_utc": "2026-10-23T10:02:46Z",
+  "status": "incomplete",
+  "experiment_executed": true,
+  "benchmark_id": "ruines-marais-20261023",
+  "source": {
+    "kind": "private_chatgpt_library",
+    "library_path": "/OpenStitch/Benchmarks/ruines-marais-20261023.png",
+    "library_file_id": "libfile_b55786e03b9c8191816dbb9f566226bb",
+    "sha256": "06817c0f2aa7b2bedb2ab4db376a031771a25f7b6241b241d1b3bba01010c392",
+    "verified": true,
+    "image_px": [
+      1449,
+      968
+    ],
+    "size_mm": [
+      359.256198,
+      240
+    ],
+    "canvas_mm": [
+      371.256,
+      252
+    ],
+    "margin_mm": 5,
+    "alpha_preserved": true
+  },
+  "openstitch_commit": "ef5a69034e2d212aa585176fcf84414d3813faaa",
+  "cli_version": "0.1.0",
+  "cli_provenance": {
+    "type": "successful_main_push_CI_artifact",
+    "workflow_run_id": 39891206197,
+    "artifact_id": 12475966435,
+    "archive_sha256": "27bdba3f22723622cba98e816f7a63a671c7860cec90496564a72e143acd57af",
+    "sha256_sidecar_verified": true,
+    "expires_utc": "2026-11-22T03:11:28Z"
+  },
+  "parent_run_id": "20261023T090603Z-ruines-marais-semantic-boundary-06817c0f",
+  "hypothesis": "A light-green 231-pixel tip of lily.left.04 was wrongly assigned to lily.center.02.light_green although the center.02 olive lily lies separately. Reassign the pixels to the actual leaf, reconstruct one connected tatami polygon and replace two OSP objects without touching any source RGBA pixel or adjacent lily pads.",
+  "semantic_repair": {
+    "from": "lily.center.02.light_green",
+    "to": "lily.left.04.light_green",
+    "reassigned_pixels": 231,
+    "original_rgba_changed_pixels": 0,
+    "source_alpha_changed_pixels": 0,
+    "semantic_regions_before": 134,
+    "semantic_regions_after": 133,
+    "source_component_pixels": 2931,
+    "vector_iou": 0.998635,
+    "old_embroidery_ids": [
+      3744,
+      3764
+    ],
+    "new_embroidery_id": 5584,
+    "stitch_type": "tatami",
+    "replaced_objects": 2,
+    "created_objects": 1,
+    "not_applied": "V16 water-reflection reclassification (previously rejected) is intentionally excluded from the V18 OSP and its applied semantic map.",
+    "satin": "No satin attempted on this broad lily leaf: tatami is topologically appropriate; previous trials already tested skeleton, parallel_sweep and medial_axis on a reed."
+  },
+  "baseline": {
+    "id": "v15_cloud",
+    "stitches": 97727,
+    "trims": 4672,
+    "jumps": 7898,
+    "color_changes": 8,
+    "objects": 2788,
+    "hotspot_4layers_mm2": 3,
+    "check_errors": 0,
+    "check_warnings": 50
+  },
+  "attempts": [
+    {
+      "id": "v18_lily_tip",
+      "description": "V15 cloud base + corrected semantic identity for one lily tip, replaced two tatami objects with one tatami object",
+      "osp_created": true,
+      "dst_created": true,
+      "preview_created": true,
+      "semantic_maps_created": true,
+      "stitches": 97722,
+      "trims": 4672,
+      "jumps": 7897,
+      "color_changes": 8,
+      "objects": 2787,
+      "hotspot_4layers_mm2": 3,
+      "check_errors": 0,
+      "check_warnings": 50,
+      "check_infos": 150,
+      "diagnose_errors": 0,
+      "diagnose_warnings": 0,
+      "frame_fits": true,
+      "exported_size_mm": [
+        353.1,
+        235
+      ],
+      "osp_sha256": "642ed799408d471513ccbf9ddaff6dec8fb331ec8754a30a58829717c861e656",
+      "dst_sha256": "3310fd1671f8dc8cf9f9bb9bdcdd934db59e9a10ef8aedd2a522c5be4598b2c6",
+      "decision": "retain as a local semantic improvement, not promoted over V0b global visual reference; no trim reduction"
+    }
+  ],
+  "previous_visual_reference": {
+    "id": "v0b_fidele",
+    "stitches": 151481,
+    "trims": 2901,
+    "independently_validated": false
+  },
+  "best_local": "v18_lily_tip (semantic correctness); V15 remains acceptable baseline",
+  "best_global_visual": "v0b_fidele (provisional from earlier trials)",
+  "evaluation": {
+    "status": "incomplete",
+    "score_before": null,
+    "score_after": null,
+    "independent_reviewer": false,
+    "machine_tested": false,
+    "project_fidelity": "not_available: CLI returned code 1, source image not embedded in imported OSP",
+    "visual_observation": "Manual side-by-side crop confirms 231 px belong to the same broad lily tip. Preview changed locally as expected; no independent critique, no numerical quality score."
+  },
+  "artifact": {
+    "kind": "chatgpt-private-library",
+    "library_path": "/OpenStitch/Trials/OpenStitch-ruines-marais-20261023-essai05.zip",
+    "library_file_id": "libfile_405eb0557b5481918d03f757d812b184",
+    "archive_sha256": "df6c8acf8a57a5676d8a01cf73121748acfbf48058d4962e4b93de0cef93f907",
+    "public": false,
+    "url": null,
+    "retention_days": null
+  },
+  "changes": [
+    "Retrieved exact private benchmark and verified SHA-256.",
+    "Read current main digitize and evaluate skills, semantic/satin references and agent-trials protocol.",
+    "Installed trusted official Linux CLI from successful main push CI, checked archive SHA-256, executed project apply dry-run and actual apply, check, diagnose, density, render, osp2dst and stats.",
+    "Corrected one false semantic instance assignment at a lily leaf tip without altering original image pixels.",
+    "Archived original, V15 baseline, V18 OSP/DST, maps, SVG, scripts and diagnostics in private Library."
+  ],
+  "lessons": [
+    "A 231-pixel label leak can split a single leaf into two technical objects, despite identical RGB and perfect source coverage.",
+    "Reassigning by actual leaf instance repaired the semantic identity and removed one object, but did not reduce cuts: object count alone is not a quality metric.",
+    "Do not merge nearby independent lily pads just because they share RGB or touch.",
+    "A source-less OSP cannot produce a valid native fidelity report; record the refusal, not a synthetic score."
+  ],
+  "next_action": "Audit remaining lily/reed boundaries with same-RGB connected components and visual confirmation; prioritize reconstruction of continuous reed stems without bridging different leaves, then test true CLI OSP variants and request independent review. Fix source-embedding/fidelity workflow before using that metric.",
+  "write_scope": "agent-trials only",
+  "pr_created": false,
+  "main_modified": false
+}
