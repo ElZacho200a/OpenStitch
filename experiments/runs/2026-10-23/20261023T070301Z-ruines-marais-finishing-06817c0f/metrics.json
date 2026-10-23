@@ -1,0 +1,20 @@
+{
+  "schema": "openstitch.trial-metrics/1",
+  "source_sha256": "06817c0f2aa7b2bedb2ab4db376a031771a25f7b6241b241d1b3bba01010c392",
+  "cli_version": "0.1.0",
+  "openstitch_commit": "ef5a69034e2d212aa585176fcf84414d3813faaa",
+  "baseline": {"stitches":151481,"trims":2901},
+  "variants": {
+    "v3_layered": {"stitches":151481,"trims":2901},
+    "v4_hidden12": {"stitches":151263,"trims":2868},
+    "v5_hidden20": {"stitches":151234,"trims":2857},
+    "v6_semantic_proximity": {"stitches":97730,"trims":4673},
+    "v7_export_only": {"trims":2869},
+    "v8_threshold5": {"stitches":149894,"trims":2677},
+    "v9_threshold4_hidden12": {"stitches":150452,"trims":2749}
+  },
+  "island_audit": {"instances":43,"masks":135,"components":5279,"under_100px":4218,"closing_added_px":24397,"closing_cross_instance_px":7631,"closing_cross_thread_px":12090,"closing_alpha_px":4676},
+  "best_version": "v0b",
+  "independent_score": null,
+  "machine_tested": false
+}
