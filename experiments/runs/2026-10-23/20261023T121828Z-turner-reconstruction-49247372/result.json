@@ -1,0 +1,102 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261023T121828Z-turner-reconstruction-49247372",
+  "created_utc": "2026-10-23T12:18:28Z",
+  "status": "incomplete",
+  "benchmark_id": "turner-phare-tempete-20261023",
+  "source": {
+    "kind": "chatgpt-library",
+    "repo_path": null,
+    "library_path": "/OpenStitch/Benchmarks/turner-phare-tempete-original-20261023.jpg",
+    "sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+    "size_mm": [
+      363.55,
+      240
+    ],
+    "source_px": [
+      1536,
+      1014
+    ]
+  },
+  "openstitch_commit": null,
+  "cli_version": "0.1.0",
+  "software_executed": true,
+  "cli_provenance": "verified linux-cli archive SHA-256; CLI 0.1.0",
+  "semantic_gate": "manual SVG semantic objects 64 base / 88 with accents; hybrid artistic interpretation with manual landmark masks",
+  "variants": [
+    {
+      "name": "v2a",
+      "stitches": 114641,
+      "trims": 248,
+      "jumps": 1397,
+      "check_errors": 0,
+      "decision": "technically lighter; overly simplified"
+    },
+    {
+      "name": "v2b",
+      "stitches": 118219,
+      "trims": 333,
+      "jumps": 1577,
+      "check_errors": 0,
+      "decision": "coherent semantic vector candidate"
+    },
+    {
+      "name": "v2c",
+      "stitches": 140421,
+      "trims": 830,
+      "check_errors": 0,
+      "decision": "better pictorial character but still fragmented"
+    },
+    {
+      "name": "v2d",
+      "stitches": 118226,
+      "trims": 332,
+      "check_errors": 0,
+      "local_satin": {
+        "target": "lighthouse lantern mullion",
+        "strategy": "skeleton",
+        "coverage_percent": 97.61
+      },
+      "decision": "working local satin"
+    },
+    {
+      "name": "v2e",
+      "stitches": 118208,
+      "trims": 332,
+      "check_errors": 0,
+      "local_satin": {
+        "target": "lighthouse lantern mullion",
+        "strategy": "parallel_sweep",
+        "coverage_percent": 98.64
+      },
+      "decision": "better tested satin coverage locally"
+    }
+  ],
+  "reason": "Machine testing and independent visual critique missing; technical pass not equivalent to excellent artistic stitchout.",
+  "score_before": null,
+  "score_after": null,
+  "evaluation": null,
+  "machine_tested": false,
+  "visual_review": "self_review_not_independent",
+  "artifact": {
+    "kind": "chatgpt-library",
+    "path": "/OpenStitch/Trials/Turner/OpenStitch-Turner-iteration-02.zip",
+    "library_file_id": "libfile_bb8a0f3e91008191831acc5284c9509e",
+    "url": null,
+    "retention_days": null
+  },
+  "reference_links": [],
+  "changes": [
+    "Fresh manual semantically named SVG reconstruction from immutable original",
+    "Two alternate raster preparation and digitization methods",
+    "Five OpenStitch OSP/DST variants including two auto-satin strategies on lantern mullion",
+    "Native project checks, diagnoses, fidelity/density reports, renders and export"
+  ],
+  "lessons": [
+    "Massive reduction of unnecessary trims is possible with manually structured regions",
+    "Raster project digitize does not preserve all authored semantic object IDs",
+    "Overly large smooth shapes harm expressive fidelity; richer segments raise trims",
+    "A high technical score without independent visual critique is not artistic success"
+  ],
+  "parent_run_id": null
+}
