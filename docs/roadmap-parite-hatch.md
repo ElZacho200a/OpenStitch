@@ -3530,13 +3530,17 @@ Aujourd'hui : **aucune validation sur machine réelle** (`limitations.md`).
 C'est la plus grande différence invisible : les défauts de Hatch ont été
 corrigés par des années de broderies réelles.
 
-### HP-PHYS-001 — Protocole de validation sur machine [P0] — ☐ À faire
+### HP-PHYS-001 — Protocole de validation sur machine [P0] — ◐ Partiel (2026-10-21)
 - À faire : grille d'essai (densités, compensations, sous-couches, longueurs,
   satin de largeurs croissantes, lettres de 3 à 20 mm) sur 3–4 tissus ;
   protocole écrit (machine, fil, aiguille, entoilage) ; photos et mesures
   archivées ; valeurs par défaut ajustées d'après les résultats ; chaque
   réglage par défaut documenté avec sa source (essai n°).
 - Modules : `docs/validation/`, `tests/fixtures/validation/`.
+- Livré (2026-10-21, PR de préparation) : protocole de 51 cas sur 3 tissus,
+  registre CSV non destructif, contrôles de complétude et provenance et 5 tests
+  Python. **Reste** : créer les projets de couture, les broder réellement,
+  photographier et mesurer les échantillons, régler les défauts constatés.
 - Note : demande l'intervention humaine de l'utilisateur (machine réelle) —
   l'agent prépare les fichiers d'essai et le protocole, puis attend les
   retours.
@@ -3576,6 +3580,7 @@ ci-dessus doit les respecter :
 |---|---|---|
 | 2026-10-21 | ChatGPT (PR risque textile) | HP-FAB-004 ◐ : première carte heuristique non calibrée, CLI/desktop, tests et protocole de limites ; solveur physique et validation machine restant à faire. |
 | 2026-09-22 | Claude (session d'audit) | Création : inventaire complet vérifié dans le code. |
+| 2026-10-21 | ChatGPT (validation machine) | HP-PHYS-001 ◐ : grille de 51 essais, protocole et registre CSV contrôlé avec cinq tests ; aucune mesure physique encore effectuée. |
 | 2026-10-21 | ChatGPT (contributions) | HP-DIST-005 ◐ : formulaires GitHub d'issues, modèle de PR, guide contributeur et quatre tests de contrat. |
 | 2026-10-21 | ChatGPT (interopérabilité) | HP-QA-005 ◐ : comparaison des compteurs avec pyembroidery, six tests et CI de contrat, en attente d'un corpus de fichiers réels. |
 | 2026-10-21 | ChatGPT (performance) | HP-PERF-008 ◐ : workflow hebdomadaire de benchmark, artefacts JSON/Markdown, quatre tests de parsing. |
