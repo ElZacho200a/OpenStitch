@@ -775,8 +775,10 @@ ToolResult tool_semantic_validate(Session&, const json& a) {
 
 ToolResult tool_semantic_import(Session& s, const json& a) {
     json op{{"op", "semantic_import"}, {"manifest", req_string(a, "manifest")}};
-    if (a.contains("auto_satin_strategy")) {
-        op["auto_satin_strategy"] = a.at("auto_satin_strategy");
+    for (const char* key : {"auto_satin_strategy", "satin_fallback"}) {
+        if (a.contains(key)) {
+            op[key] = a.at(key);
+        }
     }
     return run_session_op(s, op, opt_bool(a, "dry_run", false));
 }
@@ -785,7 +787,7 @@ ToolResult tool_semantic_replace(Session& s, const json& a) {
     json op{{"op", "semantic_replace"},
             {"manifest", req_string(a, "manifest")},
             {"semantic_id", req_string(a, "semantic_id")}};
-    for (const char* key : {"mask", "auto_satin_strategy"}) {
+    for (const char* key : {"mask", "auto_satin_strategy", "satin_fallback"}) {
         if (a.contains(key)) {
             op[key] = a.at(key);
         }
@@ -1373,7 +1375,8 @@ const std::vector<Tool> kTools = {
      "l'ordre d'occlusion. Tout ou rien : un refus laisse le projet inchangé. dry_run = "
      "simulation. Retourne la correspondance identifiant sémantique -> objets.",
      R"({"type":"object","properties":{"manifest":{"type":"string"},"dry_run":{"type":"boolean"},)"
-     R"("auto_satin_strategy":{"enum":["skeleton","parallel_sweep","medial_axis"]}},)"
+     R"("auto_satin_strategy":{"enum":["skeleton","parallel_sweep","medial_axis"]},)"
+     R"("satin_fallback":{"enum":["fail","tatami","running"]}},)"
      R"("required":["manifest"]})",
      tool_semantic_import},
     {"semantic_replace",
@@ -1382,7 +1385,8 @@ const std::vector<Tool> kTools = {
      "simulation ; refus nommés ; faites un project_checkpoint avant.",
      R"({"type":"object","properties":{"manifest":{"type":"string"},"semantic_id":{"type":"string"},)"
      R"("mask":{"type":"string"},"dry_run":{"type":"boolean"},)"
-     R"("auto_satin_strategy":{"enum":["skeleton","parallel_sweep","medial_axis"]}},)"
+     R"("auto_satin_strategy":{"enum":["skeleton","parallel_sweep","medial_axis"]},)"
+     R"("satin_fallback":{"enum":["fail","tatami","running"]}},)"
      R"("required":["manifest","semantic_id"]})",
      tool_semantic_replace},
     {"semantic_map",
