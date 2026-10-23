@@ -469,11 +469,18 @@ Result<std::vector<geometry::PathSet>> mask_to_paths(const fs::path& mask, int w
     seg.width = width_px;
     seg.height = height_px;
     seg.labels.assign(static_cast<std::size_t>(width_px) * static_cast<std::size_t>(height_px), 0U);
+    // Canal alpha utilisé seulement s'il porte une information (un PNG RGBA entièrement opaque
+    // est un masque en noir et blanc : on lit alors le gris, sinon tout serait « blanc »).
+    bool use_alpha = false;
+    if (img->source_had_alpha) {
+        for (std::size_t i = 0; i < seg.labels.size() && !use_alpha; ++i) {
+            use_alpha = img->rgba[4 * i + 3] != 255;
+        }
+    }
     std::size_t count = 0;
     for (std::size_t i = 0; i < seg.labels.size(); ++i) {
         const std::uint8_t* px = img->rgba.data() + 4 * i;
-        const int value =
-            img->source_had_alpha ? px[3] : (299 * px[0] + 587 * px[1] + 114 * px[2]) / 1000;
+        const int value = use_alpha ? px[3] : (299 * px[0] + 587 * px[1] + 114 * px[2]) / 1000;
         if (value > 127) {
             seg.labels[i] = 1U;
             ++count;

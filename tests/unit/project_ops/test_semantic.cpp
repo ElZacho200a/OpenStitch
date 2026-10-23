@@ -312,17 +312,14 @@ TEST_CASE("semantic_import: refus sans aucune modification du projet", "[project
         CHECK_FALSE(report.ok);
         CHECK(report.outcomes[0].code == "E_REFUSED");
     }
-    SECTION("auto_satin impossible apres un premier objet cree : retour arriere complet") {
-        // a.gauche (tatami) est créée AVANT que le carré compact refuse l'auto-satin.
-        auto doc = manifest_doc(two_regions());
-        doc["regions"][1]["stitch_intent"] = "auto_satin";
-        doc["regions"][1]["under"] = json::array({}); // ordre alphabétique : a.droite d'abord
-        doc["regions"][0]["over"] = json::array({"a.droite"});
-        write_text(w.dir / "carte.json", doc);
-        write_mask(w.dir / "masks" / "b.png", {{120, 20, 160, 60}}); // carré compact
+    SECTION("masque vide detecte apres un premier objet cree : retour arriere complet") {
+        // a.droite (alphabétique) est créée AVANT que le masque vide de a.gauche soit refusé.
+        write_mask(w.dir / "masks" / "a.png", {});
+        write_text(w.dir / "carte.json", manifest_doc(two_regions()));
         const auto report = run(project, import_op(w.dir / "carte.json"));
         CHECK_FALSE(report.ok);
         CHECK_FALSE(report.applied);
+        CHECK(report.outcomes[0].message.find("a.gauche") != std::string::npos);
     }
     SECTION("manifeste absent") {
         const auto report = run(project, import_op(w.dir / "absent.json"));
