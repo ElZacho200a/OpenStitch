@@ -1,0 +1,224 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261023T220800Z-turner-semantic-vector-4924737",
+  "created_utc": "2026-10-23T22:08:00Z",
+  "status": "incomplete",
+  "reason": "5 variantes OpenStitch réellement générées, mais porte artistique D non validée; juge indépendant absent et fidélité CLI impossible sans image source embarquée.",
+  "source": {
+    "benchmark_id": "turner-phare-tempete-20261023",
+    "source_kind": "chatgpt-library",
+    "library_path": "/OpenStitch/Benchmarks/turner-phare-tempete-original-20261023.jpg",
+    "library_file_id": "libfile_b7f90c9fdad0819180be1b6029c78d86",
+    "sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+    "size_px": [
+      1536,
+      1014
+    ],
+    "size_mm": [
+      363.55,
+      240
+    ],
+    "hash_verified": true
+  },
+  "canvas": {
+    "width_mm": 390,
+    "height_mm": 268,
+    "margin_mm": 8,
+    "stitched_dimensions_mm": [
+      363.2,
+      239.6
+    ]
+  },
+  "openstitch_commit": "faed4f93a0053b7b7eab7d1cd2112a8d485bb7bb",
+  "main_seen_commit": "30b6a8f63a84bd42ab8141df8b498436cdc63030",
+  "cli_version": "0.1.0",
+  "cli_provenance": {
+    "kind": "github-actions-successful-main",
+    "run_id": 40024140522,
+    "artifact_id": 12533533014,
+    "archive_checksum_verified": true
+  },
+  "mcp_executed": false,
+  "method": "manual semantic vector reconstruction traced anew from immutable original per variant; OpenStitch project new/apply/inspect/check/diagnose/density/fidelity/render/osp2dst/stats",
+  "semantic_identity": "sem:<id> object names, independent per-object PNG masks, separate family and stitch intention",
+  "attempts": [
+    {
+      "variant": "v1",
+      "objects": 62,
+      "stitches": 146879,
+      "trims": 132,
+      "color_changes": 48,
+      "check_errors": 0,
+      "check_warnings": 14,
+      "density_hotspot_area_mm2": 4362,
+      "visual": "Tatami horizontal uniforme; la mer ressemble à des montagnes; échec esthétique.",
+      "source_restart": "original_sha256_verified",
+      "real_cli": true,
+      "osp": "v1/design.osp",
+      "dst": "v1/design.dst",
+      "preview": "v1/preview.png",
+      "check": "pass",
+      "diagnose": "executed",
+      "density": "executed",
+      "inspect": "executed",
+      "stats": "executed",
+      "fidelity": {
+        "status": "unsupported",
+        "reason": "E_REFUSED: projet vectoriel sans image source embarquée"
+      },
+      "score": null
+    },
+    {
+      "variant": "v2",
+      "objects": 63,
+      "stitches": 147460,
+      "trims": 133,
+      "color_changes": 49,
+      "check_errors": 0,
+      "check_warnings": 13,
+      "density_hotspot_area_mm2": 4300,
+      "visual": "Reconstruction alternative des courbes et de la palette, toujours trop horizontale et artificielle.",
+      "source_restart": "original_sha256_verified",
+      "real_cli": true,
+      "osp": "v2/design.osp",
+      "dst": "v2/design.dst",
+      "preview": "v2/preview.png",
+      "check": "pass",
+      "diagnose": "executed",
+      "density": "executed",
+      "inspect": "executed",
+      "stats": "executed",
+      "fidelity": {
+        "status": "unsupported",
+        "reason": "E_REFUSED: projet vectoriel sans image source embarquée"
+      },
+      "score": null
+    },
+    {
+      "variant": "v3",
+      "objects": 67,
+      "stitches": 111405,
+      "trims": 107,
+      "color_changes": 52,
+      "check_errors": 0,
+      "check_warnings": 16,
+      "density_hotspot_area_mm2": 59,
+      "visual": "Angles tatami propres aux objets, meilleur relief, mais écume et crêtes trop anguleuses.",
+      "source_restart": "original_sha256_verified",
+      "real_cli": true,
+      "osp": "v3/design.osp",
+      "dst": "v3/design.dst",
+      "preview": "v3/preview.png",
+      "check": "pass",
+      "diagnose": "executed",
+      "density": "executed",
+      "inspect": "executed",
+      "stats": "executed",
+      "fidelity": {
+        "status": "unsupported",
+        "reason": "E_REFUSED: projet vectoriel sans image source embarquée"
+      },
+      "score": null
+    },
+    {
+      "variant": "v4",
+      "objects": 69,
+      "stitches": 111099,
+      "trims": 107,
+      "color_changes": 54,
+      "check_errors": 0,
+      "check_warnings": 15,
+      "density_hotspot_area_mm2": 66,
+      "visual": "Reconstruction des crêtes adoucies, nuages encore trop géométriques, mouvement insuffisant.",
+      "source_restart": "original_sha256_verified",
+      "real_cli": true,
+      "osp": "v4/design.osp",
+      "dst": "v4/design.dst",
+      "preview": "v4/preview.png",
+      "check": "pass",
+      "diagnose": "executed",
+      "density": "executed",
+      "inspect": "executed",
+      "stats": "executed",
+      "fidelity": {
+        "status": "unsupported",
+        "reason": "E_REFUSED: projet vectoriel sans image source embarquée"
+      },
+      "score": null
+    },
+    {
+      "variant": "v5",
+      "objects": 69,
+      "stitches": 111456,
+      "trims": 109,
+      "color_changes": 54,
+      "check_errors": 0,
+      "check_warnings": 13,
+      "density_hotspot_area_mm2": 72,
+      "visual": "3 objets de gréement convertis en auto-satin skeleton; petit gain de lisibilité, pas de validation artistique.",
+      "source_restart": "original_sha256_verified",
+      "real_cli": true,
+      "osp": "v5/design.osp",
+      "dst": "v5/design.dst",
+      "preview": "v5/preview.png",
+      "check": "pass",
+      "diagnose": "executed",
+      "density": "executed",
+      "inspect": "executed",
+      "stats": "executed",
+      "fidelity": {
+        "status": "unsupported",
+        "reason": "E_REFUSED: projet vectoriel sans image source embarquée"
+      },
+      "score": null
+    }
+  ],
+  "failed_intermediate_attempts": [
+    {
+      "variant": "v3-initial",
+      "stage": "project_apply",
+      "status": "failed",
+      "error": "E_REFUSED polygon self-intersection (swept-crest-stripe-2)",
+      "resolution": "Restarted from original and removed crossing geometry; v3 then applied successfully."
+    }
+  ],
+  "best_candidate": "v5",
+  "best_candidate_status": "software_only_not_artistically_validated",
+  "score_before": null,
+  "score_after": null,
+  "evaluation": null,
+  "independent_reviewer": null,
+  "machine_tested": false,
+  "artistic_self_critique": "Le phare et le petit voilier sont reconnaissables, mais l'écume et les vagues restent trop géométriques et évoquent des reliefs montagneux; la lumière et les textures picturales de Turner sont trop simplifiées. V5 n'est pas une broderie satisfaisante à livrer.",
+  "artifact": {
+    "kind": "chatgpt-private-library",
+    "library_path": "/OpenStitch/Experiments/20261023T220800Z-turner-semantic-vector-4924737.zip",
+    "library_file_id": "libfile_f9430c1ea764819197d95bb16f0399ec",
+    "sha256": "906b6e2718a4bd6b775d168fa3a4995bce523dd82a95ae369421b069663a674a",
+    "size_bytes": 16436465,
+    "verified_in_library_listing": true,
+    "url": null,
+    "retention_days": null,
+    "contains": [
+      "v1-v5 OSP/DST/preview/segmentation/semantic masks/diagnostics",
+      "comparison PNG",
+      "build script",
+      "report"
+    ]
+  },
+  "changes": [
+    "5 fresh reconstructions from the same verified original",
+    "semantic vector instances lighthouse/lantern/boat/sails/clouds/waves/foam",
+    "V3-V5 object-specific stitch angles",
+    "V5 skeleton auto-satin on 3 rigging objects"
+  ],
+  "lessons": [
+    "Do not accept a technically clean OSP as artistically successful.",
+    "Direction angles reduce large artificial horizontal fills but do not fix wrong semantic wave silhouettes.",
+    "For CLI fidelity on manually constructed vector projects, embed source image without destroying semantic object identity.",
+    "High overlap density in V1/V2 was substantially reduced by planned stitch orientation and spacing, not proof of artistic quality."
+  ],
+  "parent_run_id": null,
+  "main_modified": false,
+  "agent_trials_only": true
+}
