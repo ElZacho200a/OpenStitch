@@ -1312,6 +1312,13 @@ private:
     void moveBrushStroke(QPointF sceneMm, Qt::KeyboardModifiers mods);
     void endBrushStroke(QPointF sceneMm);
     void cancelBrushStroke();
+    // Pot de peinture (main_window_bucket.cpp) : le calcul est dans
+    // commands::make_fill_gap_command.
+    void buildBucketTool();
+    void attachBucketTool();
+    void syncBucketTool(Tool tool);
+    void bucketFillAt(QPointF posMm);
+    QAction* toolBucketAct_{nullptr};
     QAction* toolBrushAct_{nullptr};
     QAction* brushSettingsAct_{nullptr};
     QGraphicsEllipseItem* brushRing_{nullptr};
