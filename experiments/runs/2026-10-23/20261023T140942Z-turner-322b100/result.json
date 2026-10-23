@@ -1,0 +1,130 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261023T140942Z-turner-322b100",
+  "created_utc": "2026-10-23T14:09:42Z",
+  "status": "completed",
+  "decision": "all_variants_rejected",
+  "source": {
+    "source_kind": "chatgpt-library",
+    "library_path": "/OpenStitch/Benchmarks/turner-phare-tempete-original-20261023.jpg",
+    "library_file_id": "libfile_b7f90c9fdad0819180be1b6029c78d86",
+    "sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+    "size_px": [
+      1536,
+      1014
+    ],
+    "size_mm": [
+      363.5503,
+      240
+    ],
+    "private": true
+  },
+  "openstitch_commit": "ef5a69034e2d212aa585176fcf84414d3813faaa",
+  "main_commit_observed": "05058a163533a00220499671ad46e6cb0436cdb9",
+  "cli_version": "0.1.0",
+  "cli_source": {
+    "run_url": "https://github.com/ElZacho200a/OpenStitch/actions/runs/39926367999",
+    "artifact_id": 12491896108,
+    "tar_gz_sha256": "0a4feffe16d57c14e93d0adf1d8d7b7f887c13214d7dfb5fdeac22f300fa1b70"
+  },
+  "frame_mm": [
+    390,
+    265
+  ],
+  "machine_tested": false,
+  "score_before": null,
+  "score_after": null,
+  "evaluation": null,
+  "independent_reviewer": null,
+  "variants": [
+    {
+      "id": "light_current",
+      "status": "rejected_artistic",
+      "regions": 95,
+      "imported_regions": 95,
+      "embroidery_objects": 105,
+      "stitches": 181713,
+      "trims": 265,
+      "color_changes": 50,
+      "size_mm": [
+        363.3,
+        239.1
+      ],
+      "check": {
+        "errors": 0,
+        "warnings": 17
+      },
+      "diagnose": {
+        "errors": 0,
+        "warnings": 1
+      },
+      "hotspot_ge_4_layers_mm2": 8573,
+      "fidelity": {
+        "status": "unavailable",
+        "reason": "E_REFUSED: OSP imported from semantic SVG has no embedded source image"
+      },
+      "validate": "pass",
+      "score": null,
+      "personal_visual_critique": "Opened actual OpenStitch preview; artificial broad cloud ribbons, lighthouse and boat simplistic, white foam a huge geometric slab; unacceptable aesthetic and excessive overlap."
+    },
+    {
+      "id": "source_tonal",
+      "status": "rejected_artistic",
+      "regions": 62,
+      "imported_regions": 62,
+      "embroidery_objects": null,
+      "stitches": 87045,
+      "trims": 659,
+      "color_changes": 40,
+      "size_mm": [
+        363.1,
+        239.2
+      ],
+      "check": {
+        "errors": 0,
+        "warnings": 35
+      },
+      "diagnose": {
+        "errors": 0,
+        "warnings": 0
+      },
+      "hotspot_ge_4_layers_mm2": 2,
+      "fidelity": {
+        "status": "unavailable",
+        "reason": "E_REFUSED: OSP imported from semantic SVG has no embedded source image"
+      },
+      "validate": "pass",
+      "score": null,
+      "personal_visual_critique": "Opened actual OpenStitch preview and separate boat/tower zooms; cloud tonal contours improve depth relative to first variant, but wave remains a shapeless light block, rigging stiff and atmosphere of Turner lost. Not fit for machine."
+    }
+  ],
+  "best_relative": "source_tonal",
+  "best_accepted": null,
+  "artifact": {
+    "kind": "chatgpt-private-library",
+    "path": "/OpenStitch/Experiments/20261023T140942Z-turner-322b100.zip",
+    "library_file_id": "libfile_40286b1dbad8819188ee2052e71ac04e",
+    "archive_sha256": "914311babd178f1edd875ee9c212006182c8b29f5cd1634c9fd8e59e1fc5a751",
+    "url": null,
+    "retention_days": null,
+    "verified": true,
+    "contents": [
+      "source image",
+      "2 OSP",
+      "2 DST",
+      "2 real OpenStitch previews",
+      "semantic masks",
+      "check/diagnose/density/stats/validate",
+      "source scripts",
+      "comparison board"
+    ]
+  },
+  "parent_run_id": "20261023T130608Z-turner-5411cae",
+  "lessons": [
+    "Both new semantic reconstructions start from original SHA-256, not from prior segmentations or OSP.",
+    "Disjoint tatami clipping reduced hotspot from 8573 to 2 mm2 but increased trims; this is not artistic success.",
+    "The critical failure is loss of Turner wave dynamics and luminous atmospheric depth; no /20 score without independent reviewer.",
+    "CLI project fidelity refuses because source image is not embedded in semantic import OSP; no fabricated metric.",
+    "No modifications to main or PR; next experiment should test carefully authored curved flow and lighter localized fills."
+  ]
+}
