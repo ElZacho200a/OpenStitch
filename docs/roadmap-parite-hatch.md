@@ -3547,6 +3547,7 @@ ci-dessus doit les respecter :
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-23 | Claude (session pilotée) | **Serveur MCP `openstitch-mcp`** (`libs/mcp`, `apps/mcp`) : `project_ops` exposé en outils typés pour agents IA (numérisation, inspection, lots, qualité, rendu image, export), session à un projet, stdout protégé. Aucune entrée HP-* concernée (outillage agent, pas de parité Hatch) ; limites listées dans `docs/source/mcp.md`. |
 | 2026-10-21 | ChatGPT (PR risque textile) | HP-FAB-004 ◐ : première carte heuristique non calibrée, CLI/desktop, tests et protocole de limites ; solveur physique et validation machine restant à faire. |
 | 2026-09-22 | Claude (session d'audit) | Création : inventaire complet vérifié dans le code. |
 | 2026-09-23 | Claude (session pilotée) | HP-FILE-001 ☑ : action « Nouveau projet » (Ctrl+N) avec garde des modifications non enregistrées et réinitialisation centralisée de tout l'état d'édition de la fenêtre. |

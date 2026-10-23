@@ -1,6 +1,6 @@
 # Interface programmatique : projets `.osp` en ligne de commande
 
-Public : intégrateur, script, agent IA. Ce chapitre décrit le groupe de
+Public : intégrateur, script, agent IA (pour un agent, préférer le serveur MCP : `mcp.md`). Ce chapitre décrit le groupe de
 commandes `openstitch-cli project …` : numériser une image **directement en
 projet `.osp` natif et éditable**, l'inspecter, le modifier objet par objet ou
 par lots, contrôler sa qualité et l'exporter, sans interface graphique. Le DST
