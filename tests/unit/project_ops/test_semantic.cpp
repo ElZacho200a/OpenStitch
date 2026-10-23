@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -538,4 +539,30 @@ TEST_CASE("semantic_import: satin_fallback consigne les refus d'auto_satin au li
     const auto refused = run(p2, bad);
     CHECK_FALSE(refused.ok);
     CHECK(refused.outcomes[0].code == "E_USAGE");
+}
+
+TEST_CASE("semantic_import: l'angle des rangees suit la forme (pas de bandes uniformes)",
+          "[project_ops][semantic]") {
+    Workdir w("angles");
+    fs::create_directories(w.dir / "masks");
+    write_mask(w.dir / "masks" / "barre_h.png", {{10, 10, 160, 30}}); // 151 x 21 px, horizontale
+    write_mask(w.dir / "masks" / "barre_v.png", {{170, 5, 190, 90}}); // 21 x 86 px, verticale
+    write_text(
+        w.dir / "carte.json",
+        manifest_doc(json::array({region("barre.h", "masks/barre_h.png", "tatami", "#FF0000"),
+                                  region("barre.v", "masks/barre_v.png", "tatami", "#00FF00")})));
+    auto project = empty_project();
+    REQUIRE(run(project, import_op(w.dir / "carte.json")).ok);
+    const auto angle_of = [&](const char* sid) {
+        const auto ids = semantic_ids(project, sid);
+        REQUIRE(ids.size() == 1);
+        const auto* e = project.findEmbroidery(ObjectId{ids[0]});
+        REQUIRE(e != nullptr);
+        const auto* tatami = std::get_if<document::TatamiParams>(&e->params);
+        REQUIRE(tatami != nullptr);
+        return tatami->angle.radians * 180.0 / 3.14159265358979323846;
+    };
+    const double h = angle_of("barre.h");
+    const double v = angle_of("barre.v");
+    CHECK(std::abs(h - v) > 30.0); // perpendiculaires, pas deux fois le même angle par défaut
 }

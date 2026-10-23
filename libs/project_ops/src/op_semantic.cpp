@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "op_registry.hpp"
+#include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/project_ops/inspect.hpp"
 #include "openstitch/project_ops/semantic.hpp"
@@ -121,6 +122,7 @@ struct Created {
 struct Policy {
     std::string strategy{"skeleton"};
     std::string satin_fallback{"fail"}; // fail | tatami | running
+    double mm_per_px{25.4 / 96.0};      // échelle image -> mm du manifeste
 };
 
 // Crée les objets d'un identifiant sémantique (un par contour extérieur du masque) puis, pour
@@ -154,6 +156,25 @@ OpStatus create_objects(OpContext& ctx, const SemanticRegion& region,
         out.vector_ids.push_back(v.id.value);
         vectors.push_back(std::move(v));
         embroideries.push_back(std::move(e));
+    }
+    if (intent != "running") {
+        // Angle de rangée naturel (axe principal de la forme) et réglages de tatami du moteur,
+        // comme `digitize` : sans cela tous les remplissages auraient le même angle (bandes
+        // horizontales sur toute la scène).
+        autodigitize::AutoOptions options;
+        options.mm_per_px = Millimeters{policy.mm_per_px};
+        const auto built =
+            autodigitize::auto_digitize_vectors(vectors, ctx.project.object_ids, options);
+        if (built) {
+            for (auto& e : embroideries) {
+                for (const auto& b : built->embroideries) {
+                    if (b.source_vector == e.source_vector &&
+                        std::holds_alternative<document::TatamiParams>(b.params)) {
+                        e.params = b.params;
+                    }
+                }
+            }
+        }
     }
     ctx.stack.execute(std::make_unique<commands::AddObjectBatchCommand>(
                           std::move(vectors), std::move(embroideries),
@@ -247,6 +268,7 @@ OpStatus semantic_import(OpContext& ctx) {
     if (auto st = resolve_scale(manifest, mm_per_px); !st.ok) {
         return st;
     }
+    policy.mm_per_px = mm_per_px;
 
     const auto order = creation_order(manifest);
     for (const auto* region : order) { // tout est vérifié AVANT la première mutation
@@ -341,6 +363,7 @@ OpStatus semantic_replace(OpContext& ctx) {
     if (auto st = resolve_scale(manifest, mm_per_px); !st.ok) {
         return st;
     }
+    policy.mm_per_px = mm_per_px;
     const auto found = std::find_if(manifest.regions.begin(), manifest.regions.end(),
                                     [&](const SemanticRegion& r) { return r.semantic_id == sid; });
     if (found == manifest.regions.end()) {
