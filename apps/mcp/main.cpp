@@ -3,7 +3,9 @@
 // est une copie privée de stdout ; le descripteur 1 est redirigé vers stderr, de sorte qu'une
 // bibliothèque tierce (OpenCV journalise sur stdout) ne puisse jamais corrompre le flux JSON-RPC.
 #include <cstdio>
+#include <exception>
 #include <iostream>
+#include <optional>
 #include <string>
 
 #ifdef _WIN32
@@ -42,7 +44,16 @@ int main() {
         if (line.empty()) {
             continue;
         }
-        if (const auto response = server.handle(line)) {
+        std::optional<std::string> response;
+        try {
+            response = server.handle(line);
+        } catch (const std::exception& e) { // dernier rempart : le serveur ne doit pas mourir
+            response = std::string(R"({"jsonrpc":"2.0","id":null,"error":{"code":-32603,)"
+                                   R"("message":"erreur interne du serveur"}})");
+            std::fputs(e.what(), stderr);
+            std::fputc('\n', stderr);
+        }
+        if (response) {
             std::fwrite(response->data(), 1, response->size(), protocol);
             std::fputc('\n', protocol);
             std::fflush(protocol);

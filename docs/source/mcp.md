@@ -73,6 +73,15 @@ Un refus est un résultat d'outil `isError: true` dont le texte est le document
 `E_NO_PROJECT` (aucun projet ouvert dans la session) et `E_UNKNOWN_TOOL`. Les erreurs de protocole
 (JSON invalide, méthode inconnue) suivent les codes JSON-RPC standard.
 
+## Robustesse (audité)
+
+- Entrées invalides : JSON illisible, lot JSON-RPC (tableau), `arguments` non objet, identifiant
+  d'objet non entier ou ≤ 0, `crop` hors de [0,1], réglage inconnu → refus nommé, jamais de plantage ;
+  une exception inattendue renvoie l'erreur JSON-RPC -32603 et le serveur continue.
+- Chemins : UTF-8 sur toutes les plateformes (dossiers accentués inclus).
+- Rendu borné à 1,5 Mpx (PNG ~1,5 Mo) ; `skip_refused` borné à 500 opérations par appel.
+- Un échec n'altère jamais le projet de la session (numérisation, ouverture, lot refusé).
+
 ## Limites connues
 
 - Un seul projet par session ; pas d'annulation pas à pas (relire le `.osp` avec `project_open`

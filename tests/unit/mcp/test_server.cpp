@@ -2,7 +2,9 @@
 // Serveur MCP : protocole JSON-RPC et enchaînement d'outils sur une session (sans stdio).
 #include <catch2/catch_test_macros.hpp>
 
+#include <filesystem>
 #include <stdexcept>
+#include <string>
 
 #include <nlohmann/json.hpp>
 
@@ -242,4 +244,46 @@ TEST_CASE("mcp apply skip_refused ecarte les refus et applique le reste", "[mcp]
     CHECK(report.at("skipped")[0].at("index") == 1);
     CHECK(report.at("skipped")[0].at("code") == "E_UNKNOWN_OBJECT");
     CHECK(text_of(call(server, "project_inspect")).at("embroidery_objects") == 2);
+}
+
+TEST_CASE("mcp arguments non objet et identifiants invalides sont refuses", "[mcp]") {
+    Server server;
+    call(server, "project_new");
+    CHECK(text_of(call(server, "project_new", json::array({1}))).at("error").at("code") ==
+          "E_USAGE");
+    for (const json& bad : {json(-1), json(0), json(1.5), json("12")}) {
+        CAPTURE(bad.dump());
+        CHECK(text_of(call(server, "project_inspect", {{"object", bad}})).at("error").at("code") ==
+              "E_USAGE");
+    }
+    CHECK(text_of(call(server, "project_check", {{"object", 424242}})).at("error").at("code") ==
+          "E_UNKNOWN_OBJECT");
+}
+
+TEST_CASE("mcp rendu: zone de recadrage hors bornes refusee", "[mcp]") {
+    Server server;
+    call(server, "project_new");
+    for (const json& crop : {json::array({0.9, 0.9, 0.1, 0.1}), json::array({-1, 0, 1, 1}),
+                             json::array({0, 0, 2, 1}), json::array({0.5, 0, 0.5, 1})}) {
+        CAPTURE(crop.dump());
+        CHECK(text_of(call(server, "project_render", {{"crop", crop}})).at("error").at("code") ==
+              "E_USAGE");
+    }
+}
+
+TEST_CASE("mcp chemins UTF-8: enregistrer et rouvrir sous un dossier accentue", "[mcp]") {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / fs::path(u8"openstitch-mcp-tést-é");
+    fs::create_directories(dir);
+    const auto u8 = (dir / fs::path(u8"projet.osp")).generic_u8string();
+    const std::string path(reinterpret_cast<const char*>(u8.data()), u8.size());
+
+    Server server;
+    call(server, "project_new", {{"width_mm", 30}, {"height_mm", 30}});
+    const auto saved = call(server, "project_save", {{"path", path}});
+    CHECK(saved.at("result").at("isError") == false);
+    CHECK(text_of(saved).at("path") == path);
+    const auto opened = call(server, "project_open", {{"path", path}});
+    CHECK(opened.at("result").at("isError") == false);
+    fs::remove_all(dir);
 }

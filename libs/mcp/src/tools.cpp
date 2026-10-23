@@ -69,6 +69,27 @@ double opt_double(const json& a, const char* key, double fallback) {
     return a.contains(key) && !a.at(key).is_null() ? a.at(key).get<double>() : fallback;
 }
 
+// Les chaînes JSON sont en UTF-8 ; `fs::path(std::string)` les lirait en page de code ANSI sous
+// Windows (chemins accentués illisibles). On passe donc par `char8_t` dans les deux sens.
+fs::path to_path(const std::string& utf8) {
+    return fs::path(std::u8string(reinterpret_cast<const char8_t*>(utf8.data()), utf8.size()));
+}
+
+std::string path_text(const fs::path& path) {
+    const auto text = path.generic_u8string();
+    return std::string(reinterpret_cast<const char*>(text.data()), text.size());
+}
+
+// Identifiant d'objet : entier >= 1 (un flottant, un négatif ou 0 sont des erreurs d'usage).
+ObjectId object_arg(const json& a, const char* key) {
+    const auto& v = a.at(key);
+    if (!v.is_number_unsigned() || v.get<std::uint64_t>() == 0) {
+        throw UsageError{std::format("« {} » : identifiant entier >= 1 attendu", key),
+                         "listez les identifiants avec project_inspect"};
+    }
+    return ObjectId{v.get<std::uint64_t>()};
+}
+
 document::Project& need_project(Session& s) {
     if (!s.project) {
         throw UsageError{"aucun projet ouvert dans la session",
@@ -107,7 +128,7 @@ ToolResult session_state(Session& s, const std::string& tool, json extra = json:
     }
     json out{{"schema", "openstitch.mcp-session/1"},
              {"ok", true},
-             {"path", s.path.generic_string()},
+             {"path", path_text(s.path)},
              {"dirty", s.dirty},
              {"project", json::parse(*inspected)}};
     for (auto& [k, v] : extra.items()) {
@@ -192,7 +213,7 @@ ToolResult tool_new(Session& s, const json& a) {
         return error_result("project_new", po::code::kUsage, created.error().message,
                             "lock : none|backforth|triangle|zigzag ; dimensions > 0");
     }
-    const fs::path path = opt_string(a, "path");
+    const fs::path path = to_path(opt_string(a, "path"));
     if (!path.empty()) {
         if (auto w =
                 po::write_project(path, *created, nullptr, {}, opt_bool(a, "no_clobber", false));
@@ -208,7 +229,7 @@ ToolResult tool_new(Session& s, const json& a) {
 }
 
 ToolResult tool_open(Session& s, const json& a) {
-    const fs::path path = req_string(a, "path");
+    const fs::path path = to_path(req_string(a, "path"));
     auto opened = po::open_project(path);
     if (!opened) {
         return engine_error("project_open", po::code::kInvalidProject, opened.error());
@@ -335,15 +356,21 @@ ToolResult tool_digitize(Session& s, const json& a) {
         read_settings(a.at("settings"), settings);
     }
     const std::string out = opt_string(a, "out");
+    const fs::path out_path = to_path(out);
     const bool no_clobber = opt_bool(a, "no_clobber", false);
+    const bool fit = opt_bool(a, "fit_canvas", true);
+    const double margin_mm = opt_double(a, "margin_mm", 3.0);
+    if (!(margin_mm >= 0.0) || margin_mm > 100.0) { // avant la numérisation, qui peut être longue
+        throw UsageError{"« margin_mm » doit être dans [0, 100]", ""};
+    }
     if (!out.empty()) {
-        const fs::path parent = fs::path(out).parent_path();
+        const fs::path parent = out_path.parent_path();
         if (!parent.empty() && !fs::is_directory(parent)) {
             return error_result("project_digitize", po::code::kIo,
-                                std::format("dossier de sortie absent : {}", parent.string()),
+                                std::format("dossier de sortie absent : {}", path_text(parent)),
                                 "créez le dossier avant la numérisation");
         }
-        if (no_clobber && fs::exists(out)) {
+        if (no_clobber && fs::exists(out_path)) {
             return error_result("project_digitize", po::code::kIo,
                                 std::format("« {} » existe déjà (no_clobber)", out));
         }
@@ -353,7 +380,7 @@ ToolResult tool_digitize(Session& s, const json& a) {
         return engine_error("project_digitize", po::code::kInternal, created.error());
     }
     document::Project project = std::move(*created);
-    auto report = po::digitize_image_into(project, fs::path(image), settings);
+    auto report = po::digitize_image_into(project, to_path(image), settings);
     if (!report) {
         return engine_error("project_digitize", po::code::kRefused, report.error());
     }
@@ -373,8 +400,12 @@ ToolResult tool_digitize(Session& s, const json& a) {
         return error_result("project_digitize", po::code::kNothingToDo, "aucun point généré",
                             "modifiez min_region_px ou max_colors");
     }
+    json canvas_fit;
+    if (fit) { // avant l'écriture : le .osp porte directement le bon cadre
+        canvas_fit = fit_canvas(project, margin_mm);
+    }
     if (!out.empty()) {
-        if (auto w = po::write_project(fs::path(out), project, nullptr, {}, no_clobber); !w) {
+        if (auto w = po::write_project(out_path, project, nullptr, {}, no_clobber); !w) {
             return engine_error("project_digitize", po::code::kIo, w.error());
         }
     }
@@ -384,13 +415,8 @@ ToolResult tool_digitize(Session& s, const json& a) {
     }
     json result = json::parse(*doc);
     json notes = json::array();
-    if (opt_bool(a, "fit_canvas", true)) {
-        result["canvas_fit"] = fit_canvas(project, opt_double(a, "margin_mm", 3.0));
-        if (!out.empty()) { // le .osp écrit plus haut portait encore le cadre par défaut
-            if (auto w = po::write_project(fs::path(out), project, nullptr, {}, false); !w) {
-                return engine_error("project_digitize", po::code::kIo, w.error());
-            }
-        }
+    if (fit) {
+        result["canvas_fit"] = canvas_fit;
     } else {
         notes.push_back(
             "fit_canvas=false : le cadre reste à 100 x 100 mm ; si le motif est plus "
@@ -409,7 +435,7 @@ ToolResult tool_digitize(Session& s, const json& a) {
     }
     s.project = std::move(project);
     s.info.reset();
-    s.path = out;
+    s.path = out_path;
     s.dirty = out.empty();
     return text_result(result.dump(2));
 }
@@ -420,7 +446,7 @@ ToolResult tool_inspect(Session& s, const json& a) {
     options.with_stitches = opt_bool(a, "stitches", false);
     options.with_geometry = opt_bool(a, "geometry", false);
     if (a.contains("object") && !a.at("object").is_null()) {
-        const ObjectId id{a.at("object").get<std::uint64_t>()};
+        const ObjectId id = object_arg(a, "object");
         const auto doc = po::inspect_object_json(project, id, options);
         if (!doc) {
             return error_result("project_inspect", po::code::kUnknownObject, doc.error().message,
@@ -495,6 +521,10 @@ ToolResult tool_apply(Session& s, const json& a) {
     // skip_refused : le moteur s'arrête à la première opération refusée (tout ou rien). On
     // simule, on écarte l'opération fautive, on recommence, puis on applique le reste d'un coup.
     // Les écartées sont listées avec leur code, message et hint (rien n'est perdu en silence).
+    if (a.at("operations").size() > 500) {
+        throw UsageError{"skip_refused : 500 opérations au plus par appel",
+                         "découpez le lot (chaque refus coûte une simulation complète)"};
+    }
     json kept = a.at("operations");
     std::vector<std::size_t> origin(kept.size());
     for (std::size_t i = 0; i < origin.size(); ++i) {
@@ -538,7 +568,13 @@ ToolResult tool_check(Session& s, const json& a) {
     const auto& project = need_project(s);
     po::QualityOptions options;
     if (a.contains("object") && !a.at("object").is_null()) {
-        options.only_object = ObjectId{a.at("object").get<std::uint64_t>()};
+        options.only_object = object_arg(a, "object");
+        if (project.findEmbroidery(options.only_object) == nullptr) {
+            return error_result(
+                "project_check", po::code::kUnknownObject,
+                std::format("objet de broderie {} introuvable", options.only_object.value),
+                "listez les identifiants avec project_inspect");
+        }
     }
     const auto report = po::build_quality_report(project, options);
     if (!report) {
@@ -554,7 +590,7 @@ ToolResult tool_render(Session& s, const json& a) {
     if (!(options.px_per_mm > 0.0) || options.px_per_mm > 50.0) {
         throw UsageError{"« px_per_mm » doit être dans ]0, 50]", ""};
     }
-    options.max_pixels = 4'000'000;
+    options.max_pixels = 1'500'000; // PNG ~1,5 Mo : raisonnable pour un contexte d'agent
     if (a.contains("crop") && !a.at("crop").is_null()) {
         const auto& c = a.at("crop");
         if (!c.is_array() || c.size() != 4) {
@@ -562,6 +598,11 @@ ToolResult tool_render(Session& s, const json& a) {
         }
         for (std::size_t i = 0; i < 4; ++i) {
             options.crop[i] = c.at(i).get<double>();
+        }
+        const auto& k = options.crop;
+        if (!(k[0] >= 0.0 && k[1] >= 0.0 && k[2] <= 1.0 && k[3] <= 1.0 && k[0] < k[2] &&
+              k[1] < k[3])) {
+            throw UsageError{"« crop » : 0 <= x0 < x1 <= 1 et 0 <= y0 < y1 <= 1", ""};
         }
     }
     if (a.contains("fabric") && !a.at("fabric").is_null()) {
@@ -588,7 +629,7 @@ ToolResult tool_render(Session& s, const json& a) {
 
 ToolResult tool_save(Session& s, const json& a) {
     const auto& project = need_project(s);
-    const fs::path target = a.contains("path") ? fs::path(req_string(a, "path")) : s.path;
+    const fs::path target = a.contains("path") ? to_path(req_string(a, "path")) : s.path;
     if (target.empty()) {
         throw UsageError{"aucun chemin connu pour ce projet", "passez « path »"};
     }
@@ -601,18 +642,17 @@ ToolResult tool_save(Session& s, const json& a) {
     s.path = target;
     s.info.reset();
     s.dirty = false;
-    return text_result(json{{"ok", true}, {"path", target.generic_string()}}.dump());
+    return text_result(json{{"ok", true}, {"path", path_text(target)}}.dump());
 }
 
 ToolResult tool_export(Session& s, const json& a) {
     const auto& project = need_project(s);
-    const fs::path target = req_string(a, "path");
+    const fs::path target = to_path(req_string(a, "path"));
     const std::string format = opt_string(a, "format", "dst");
     if (auto w = project_io::export_machine_file(project, format, target); !w) {
         return engine_error("project_export", po::code::kIo, w.error());
     }
-    return text_result(
-        json{{"ok", true}, {"format", format}, {"path", target.generic_string()}}.dump());
+    return text_result(json{{"ok", true}, {"format", format}, {"path", path_text(target)}}.dump());
 }
 
 const std::vector<Tool> kTools = {
@@ -682,7 +722,7 @@ const std::vector<Tool> kTools = {
      R"({"type":"object","properties":{"object":{"type":"integer","minimum":1}}})", tool_check},
     {"project_render",
      "Rendu réaliste du projet (image PNG) pour VOIR le résultat. crop = [x0,y0,x1,y1] dans [0,1] "
-     "pour zoomer sur une zone ; px_per_mm (défaut 3) est abaissé si l'image dépasse 4 Mpx.",
+     "pour zoomer sur une zone ; px_per_mm (défaut 3) est abaissé si l'image dépasse 1,5 Mpx.",
      R"({"type":"object","properties":{"px_per_mm":{"type":"number"},"crop":{"type":"array",)"
      R"("items":{"type":"number"},"minItems":4,"maxItems":4},"fabric":{"type":"string",)"
      R"("description":"couleur du tissu #RRGGBB"}}})",
@@ -709,6 +749,10 @@ ToolResult call_tool(Session& session, const std::string& name, const json& args
             continue;
         }
         try {
+            if (!args.is_null() && !args.is_object()) {
+                throw UsageError{"« arguments » doit être un objet JSON",
+                                 "voir inputSchema de l'outil"};
+            }
             return tool.run(session, args.is_null() ? json::object() : args);
         } catch (const UsageError& e) {
             return error_result(name, e.code, e.message, e.hint);
