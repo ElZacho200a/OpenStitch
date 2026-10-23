@@ -3335,6 +3335,7 @@ de référence. Restent : progression et annulation, régénération de toute la
 ### HP-PERF-008 — Suivi des performances dans le temps [P2] — ◐ Partiel
 - État OpenStitch : `openstitch-bench` hors CTest.
 - À faire : exécution périodique en CI (non bloquante), historique des mesures.
+- Livré (2026-10-21, PR) : workflow planifié chaque semaine, mesure Linux Qt-free sur `tentabrode`, rapport JSON/Markdown archivé 90 jours, parseur testé. **Reste** : tableau des tendances sur plusieurs runs et contrôle de la comparabilité des machines.
 
 ### HP-PERF-009 — Régénération différée à l'édition de paramètres [P1] — ◐ Partiel (2026-10-18, branche `ux-lot-c1-pr`)
 - Problème : chaque pas d'un champ de l'inspecteur pousse une `SetStitchParamsCommand` (fusionnée en un pas d'annulation) puis régénère **sur le fil UI** (`main_window.cpp:6931-6948`) : un grand remplissage gèle l'interface à chaque pas de molette ou de flèche. Constat BRO-18 (UX-04, UX-11). Condition de la création directe (HP-UX-002).
@@ -3569,6 +3570,7 @@ ci-dessus doit les respecter :
 |---|---|---|
 | 2026-10-21 | ChatGPT (PR risque textile) | HP-FAB-004 ◐ : première carte heuristique non calibrée, CLI/desktop, tests et protocole de limites ; solveur physique et validation machine restant à faire. |
 | 2026-09-22 | Claude (session d'audit) | Création : inventaire complet vérifié dans le code. |
+| 2026-10-21 | ChatGPT (performance) | HP-PERF-008 ◐ : workflow hebdomadaire de benchmark, artefacts JSON/Markdown, quatre tests de parsing. |
 | 2026-10-21 | ChatGPT (corpus image) | HP-QA-006 ◐ : corpus image déterministe et tests CLI d'import/réjection, sans prétendre couvrir les cas réels. |
 | 2026-10-21 | ChatGPT (affichage) | HP-VIEW-011 ◐ : réglage d'opacité de l'image (0-100 %) instantané, persisté et testé avec QTest. |
 | 2026-10-21 | ChatGPT (fiche de production) | HP-PROD-001 ◐ : champ Client indépendant des notes, sorties JSON/HTML/PDF et tests. |
