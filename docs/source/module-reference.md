@@ -25,6 +25,7 @@ fonctionnalité. Chaque module est une cible `openstitch::<nom>` sous `libs/`.
 | `commands` | undo/redo | document | `tests/unit/commands` |
 | `formats` | codec DST, import DXF/SVG, export DXF/SVG diagnostic | core, geometry, stitch (+pugixml) | `tests/unit/formats` |
 | `project_ops` | API programmatique de la CLI (`project …`) : fabrique de projets, inspection JSON, opérations et lots transactionnels, contrôle qualité, service auto-satin, **outils d'analyse** (rendu réaliste `project render`, fidélité, épaisseurs de fil, localisation, diagnostic, balayage d'options) ; voir cli-project.md | core, document, commands, project_io, autodigitize, stitch_analysis, auto_satin | `tests/unit/project_ops` |
+| `mcp` | serveur MCP (outils pour agents IA) au-dessus de `project_ops` : protocole JSON-RPC, session à un projet, outils typés dont le rendu image ; exécutable `apps/mcp` (`openstitch-mcp`) ; voir mcp.md | core, project_ops (+nlohmann_json) | `tests/unit/mcp` |
 | `project_io` | format `.osp` | core, document, image | `tests/unit/project_io` |
 
 ## Points d'extension
