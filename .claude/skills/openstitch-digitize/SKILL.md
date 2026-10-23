@@ -16,6 +16,7 @@ description: Numériser, analyser et améliorer une broderie OpenStitch de faço
 - [Audit des contours et retouches/validation](references/retouches-et-validation.md) — suppression, conversion, densité, coupes, tests et livrables.
 - [Cas chiffré des ruines V1 à V9](references/cas-ruines-v1-v9.md) — hypothèses, gains réels et échecs.
 - [Réglages](references/parametres.md), [diagnostic](references/diagnostic.md), [journal d'essais historiques](references/journal-essais.md).
+- Hors Claude Code, ce même texte est servi par le serveur MCP `openstitch-mcp` (outil `digitize_guide`, ressources, prompt `digitize` ; voir [mcp.md](../../../docs/source/mcp.md)) : modifier ce skill suffit, le serveur l'embarque au build.
 - [CLI projet](../../../docs/source/cli-project.md), [auto-numérisation](../../../docs/source/auto-numerisation.md), [satin-squelette](../../../docs/source/satin-squelette.md), [segmentation](../../../docs/source/segmentation.md), [workflow.sh](scripts/workflow.sh).
 
 ## Principes de décision

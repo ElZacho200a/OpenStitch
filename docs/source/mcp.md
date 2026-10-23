@@ -43,6 +43,8 @@ libs/project_ops          fabrique, inspection, lots transactionnels, qualité, 
 | `project_inspect` | **résumé compact** par défaut (cadre, points, objets groupés par type puis couleur, ~1,5 Ko) ; `detail=full` (~100 Ko) ; `object` (+ `geometry`, `stitches`) pour un objet |
 | `project_select` | identifiants filtrés : `color=`, `type=`, `area_gt=` / `area_lt=` (mm²), `within=`, `name=`, `visible`, `locked` |
 | `project_apply` | lot d'opérations transactionnel ; `dry_run` ; alias `as` / `$alias` ; `skip_refused` : écarte les opérations refusées (listées dans `skipped`) et applique le reste |
+| `project_palette` | palette réellement cousue, dans l'ordre de couture (blocs), objets / aire / part de segmentation par couleur |
+| `digitize_guide` | guide de numérisation (voir ci-dessous) : à appeler avant de numériser |
 | `project_fit_canvas` | ajuste le cadre au motif (origine au centre) : supprime les erreurs « hors cadre » |
 | `project_check` | contrôle qualité (`openstitch.quality/1`), `object` pour un seul objet |
 | `project_render` | **image PNG** du rendu réaliste ; `crop` [x0,y0,x1,y1] pour zoomer, `px_per_mm` (défaut 3, plafonné à 4 Mpx) |
@@ -65,6 +67,24 @@ ce n'est pas un défaut du moteur mais le défaut `min_region_mm2=3`, qui fusion
 plus petite que 3 mm² avec sa voisine. `min_region_mm2=0.3` garde les trous (9 → 19 trous clairs,
 163 objets au lieu de 106, 11 953 points) ; ajouter `curve_tolerance_mm=0.05` lisse les contours. `rings_satin` ne s'applique pas à ce cas (anneaux **sombres** seulement,
 avec `dark_lines`).
+
+## Guide de numérisation embarqué (skill `openstitch-digitize`)
+
+Le skill `.claude/skills/openstitch-digitize/` (méthode sémantique en 10 phases + références) est
+**la** source de vérité : le build l'intègre à `openstitch-mcp` (génération à la configuration,
+aucune copie à maintenir ; un test compare l'embarqué aux fichiers). Un client MCP qui ne lit pas
+les skills de Claude Code y accède par quatre voies :
+
+| Voie | Automatique ? |
+|---|---|
+| `initialize.instructions` : principes en quelques lignes + « appelle `digitize_guide` avant de numériser » | oui, injecté par la plupart des clients |
+| outil `digitize_guide` (sans argument : sommaire ; `topic=workflow`, `mcp`, `selection-satins`, `parametres`…) | l'agent l'appelle sur la consigne des instructions |
+| ressources `openstitch://guide/<sujet>` | selon le client |
+| prompt `digitize` (`image`, `width_mm`) | lancé à la main (commande du client) |
+
+Le sujet `mcp` traduit les commandes du guide en outils (`project_palette` remplace
+`osp_palette.py`) et liste ce qui manque encore côté MCP (`sweep`, `diagnose`, `fidelity`,
+`density`, `at`, `diff`, `fabric-risk`).
 
 ## Erreurs
 

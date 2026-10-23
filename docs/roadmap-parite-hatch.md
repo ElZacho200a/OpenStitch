@@ -3586,6 +3586,7 @@ ci-dessus doit les respecter :
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-23 | Claude (session pilotée) | **Guide de numérisation dans le serveur MCP** : le skill `openstitch-digitize` est embarqué au build (source unique) et servi par `initialize.instructions`, l'outil `digitize_guide`, des ressources et un prompt ; outil `project_palette`. Aucune entrée HP-* concernée. |
 | 2026-10-23 | Claude (session pilotée) | **Serveur MCP `openstitch-mcp`** (`libs/mcp`, `apps/mcp`) : `project_ops` exposé en outils typés pour agents IA (numérisation, inspection, lots, qualité, rendu image, export), session à un projet, stdout protégé ; ergonomie agent (cadre ajusté au motif, inspection résumée, `project_select`, `skip_refused`) validée en essai réel. Aucune entrée HP-* concernée (outillage agent, pas de parité Hatch) ; limites listées dans `docs/source/mcp.md`. |
 | 2026-10-21 | ChatGPT (PR risque textile) | HP-FAB-004 ◐ : première carte heuristique non calibrée, CLI/desktop, tests et protocole de limites ; solveur physique et validation machine restant à faire. |
 | 2026-09-22 | Claude (session d'audit) | Création : inventaire complet vérifié dans le code. |
