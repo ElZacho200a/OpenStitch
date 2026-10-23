@@ -179,6 +179,48 @@ TEST_CASE("density : deux objets superposes epaississent le fil", "[project_ops]
     CHECK(hot->hotspot_area_mm2 > 100.0);
 }
 
+TEST_CASE("fabric risk : couches, profils, determinisme et parametres invalides",
+          "[project_ops][fabric-risk]") {
+    document::Project one;
+    add_square(one, 0, 0, 10'000, {200, 30, 30});
+    document::Project two;
+    add_square(two, 0, 0, 10'000, {200, 30, 30});
+    add_square(two, 0, 0, 10'000, {30, 30, 200});
+
+    FabricRiskOptions options;
+    options.heatmap = true;
+    const auto single = measure_fabric_risk(one, options);
+    const auto doubled = measure_fabric_risk(two, options);
+    REQUIRE(single.has_value());
+    REQUIRE(doubled.has_value());
+    CHECK(doubled->p99_score > single->p99_score);
+    CHECK_FALSE(doubled->heatmap_png.empty());
+    CHECK(has(doubled->json, kFabricRiskSchema));
+    const auto repeat = measure_fabric_risk(two, options);
+    REQUIRE(repeat.has_value());
+    CHECK(repeat->json == doubled->json);
+    CHECK(repeat->heatmap_png == doubled->heatmap_png);
+
+    options.fabric = "jersey";
+    const auto jersey = measure_fabric_risk(one, options);
+    REQUIRE(jersey.has_value());
+    CHECK(jersey->p99_score > single->p99_score);
+
+    options.fabric = "felt";
+    const auto felt = measure_fabric_risk(one, options);
+    REQUIRE(felt.has_value());
+    CHECK(felt->p99_score < single->p99_score);
+
+    options.fabric = "unknown";
+    CHECK_FALSE(measure_fabric_risk(one, options).has_value());
+    options.fabric = "woven";
+    options.cell_mm = 0.0;
+    CHECK_FALSE(measure_fabric_risk(one, options).has_value());
+
+    document::Project empty;
+    CHECK_FALSE(measure_fabric_risk(empty).has_value());
+}
+
 TEST_CASE("locate : le dernier objet cousu est celui qu'on voit", "[project_ops][analysis]") {
     document::Project project;
     const auto first = add_square(project, 0, 0, 10'000, {200, 30, 30});

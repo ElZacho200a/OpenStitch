@@ -36,6 +36,30 @@ constexpr Micrometers kReshapeCrossingTolerance{50};
 
 } // namespace
 
+bool MainWindow::canBeginSegmentReshape(ObjectId objectId, QPointF sceneMm) const {
+    if (currentTool_ != Tool::Select || hasMultiSelection() || !selectedObject_ ||
+        *selectedObject_ != objectId) {
+        return false;
+    }
+    const auto* object = project_.findObject(objectId);
+    if (object == nullptr) {
+        return false;
+    }
+    const double maxUm = kReshapeGrabPx / std::max(view_->pixelsPerMm(), 0.01) * 1000.0;
+    const Vec2um at = sceneToModel(sceneMm);
+    for (const auto& set : object->paths) {
+        if (geometry::nearest_segment(set.outer, at, maxUm)) {
+            return true;
+        }
+        for (const auto& hole : set.holes) {
+            if (geometry::nearest_segment(hole, at, maxUm)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 bool MainWindow::beginSegmentReshape(ObjectId objectId, QPointF sceneMm) {
     reshape_.reset();
     if (currentTool_ != Tool::Select || hasMultiSelection() || !selectedObject_ ||
