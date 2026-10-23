@@ -1,0 +1,131 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261023T200551Z-turner-semantic-ribbons-4924737",
+  "created_utc": "2026-10-23T20:05:51Z",
+  "status": "failed",
+  "source": {
+    "source_kind": "chatgpt-library",
+    "library_file_id": "libfile_b7f90c9fdad0819180be1b6029c78d86",
+    "path": "/OpenStitch/Benchmarks/turner-phare-tempete-original-20261023.jpg",
+    "sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+    "hash_verified": true,
+    "size_px": [
+      1536,
+      1014
+    ],
+    "size_mm": [
+      363.55,
+      240
+    ]
+  },
+  "canvas": {
+    "width_mm": 390,
+    "height_mm": 265,
+    "margin_mm": 8
+  },
+  "cli": {
+    "version": "0.1.0",
+    "binary_executed": true,
+    "source": "existing extracted OpenStitch Linux x86_64 CLI distribution"
+  },
+  "reconstruction": {
+    "method": "Independent manual, object-specific curved polygon reconstruction from immutable original, separate masks and stitch intentions. Not color quantization; no prior OSP used.",
+    "variants": 2,
+    "protected_details": [
+      "lighthouse and lantern",
+      "boat, sails and rigging",
+      "storm clouds",
+      "curving wave crests and foam"
+    ],
+    "artistic_gate": "failed",
+    "notes": "Lighthouse and ship identifiable, but original's storm motion and painterly turbulence largely lost."
+  },
+  "variants": [
+    {
+      "id": "A",
+      "regions": 99,
+      "stitches": 203621,
+      "trims": 169,
+      "color_changes": 91,
+      "size_mm": [
+        363.6,
+        240
+      ],
+      "check_errors": 0,
+      "check_warnings": 6,
+      "hotspot_4_layers_mm2": 9584,
+      "visual": "Flat horizontal stitching, angular waves, gaps visible on diagnostic green fabric; rejected."
+    },
+    {
+      "id": "B",
+      "regions": 102,
+      "stitches": 205463,
+      "trims": 174,
+      "color_changes": 94,
+      "size_mm": [
+        363.6,
+        240
+      ],
+      "check_errors": 0,
+      "check_warnings": 6,
+      "hotspot_4_layers_mm2": 9973,
+      "visual": "Extra tonal bands do not recover pictorial motion; rejected."
+    },
+    {
+      "id": "B_directional",
+      "parent_variant": "B",
+      "native_operations": 21,
+      "directional_guides": 8,
+      "stitches": 192598,
+      "trims": 252,
+      "color_changes": 94,
+      "size_mm": [
+        363.6,
+        240.2
+      ],
+      "check_errors": 0,
+      "check_warnings": 8,
+      "hotspot_4_layers_mm2": 7180,
+      "visual": "Improved some flow angles and lowered hotspots but produced repetitive directional artifacts and more trims; rejected."
+    }
+  ],
+  "commands": {
+    "inspect": "pass",
+    "check": "pass",
+    "diagnose": "pass",
+    "density": "pass",
+    "render": "pass",
+    "osp2dst": "pass",
+    "stats": "pass",
+    "fidelity": "failed_no_embedded_source_image"
+  },
+  "evaluation": {
+    "independent": false,
+    "score": null,
+    "out_of": 20,
+    "qualitative_self_review": "All previews inspected against original. Artistic fidelity insufficient; no machine test; no independent reviewer available."
+  },
+  "artifact": {
+    "kind": "chatgpt-library",
+    "library_file_id": "libfile_a67ea503093c8191a3ff841123a3ad82",
+    "path": "/OpenStitch/Experiments/2026-10-23/20261023T200551Z-turner-semantic-ribbons-4924737.zip",
+    "sha256": "fbe033d1504b9b1d1a9b9f04e75539dcbc22c116c961c2bdc05e2a3bb7dccd61",
+    "size_bytes": 10949830,
+    "url": null,
+    "retention_days": null,
+    "access": "private-user-library"
+  },
+  "machine_tested": false,
+  "changes": [
+    "Original-specific cloud and wave instances drawn from scratch",
+    "Real SVG semantic import to native OSP",
+    "21 native CLI operations in B_directional"
+  ],
+  "lessons": [
+    "Artistic gate A still fails despite object separation; avoid declaring progress from numeric reductions",
+    "Guided fill alone cannot reconstruct original wave energy",
+    "Reduce broad stacked layers and eliminate large empty diagnostic gaps",
+    "Need source embedding to run fidelity for imported semantic projects"
+  ],
+  "previous_best": null
+}
