@@ -1,0 +1,73 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261023T230435Z-turner-cli-blocked-4924737-9ad2",
+  "created_utc": "2026-10-23T23:04:35Z",
+  "status": "blocked",
+  "source": {
+    "id": "turner-phare-tempete-20261023",
+    "kind": "chatgpt-library",
+    "library_file_id": "libfile_b7f90c9fdad0819180be1b6029c78d86",
+    "library_path": "/OpenStitch/Benchmarks/turner-phare-tempete-original-20261023.jpg",
+    "sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+    "sha256_verified": true,
+    "size_px": [
+      1536,
+      1014
+    ],
+    "size_mm": [
+      363.5502958579882,
+      240
+    ]
+  },
+  "openstitch_commit": "30b6a8f63a84bd42ab8141df8b498436cdc63030",
+  "cli_version": null,
+  "mcp_version": null,
+  "protocol": {
+    "digitize_skill_ref": "main",
+    "evaluate_skill_ref": "main",
+    "trial_protocol_ref": "agent-trials",
+    "benchmark_manifest_ref": "agent-trials",
+    "benchmark_priority_correct": true
+  },
+  "reason": "No trusted executable openstitch-cli or openstitch-mcp is available in this isolated Linux x86_64 runtime. PATH and /usr/local/bin /usr/bin ~/.local/bin checked; archive attachments inspected and contain only prior OSP/DST, scripts and images, not the executable. Direct official GitHub release download failed DNS resolution (curl: (6) Could not resolve host: github.com). No untrusted PR artifact was executed. PR #136 for official Linux MCP distribution is not yet merged.",
+  "execution": {
+    "attempted_variants": 0,
+    "generated_variants": 0,
+    "semantic_segmentation": "not_run",
+    "digitize": "not_run",
+    "inspect": "not_run",
+    "check": "not_run",
+    "diagnose": "not_run",
+    "fidelity": "not_run",
+    "density": "not_run",
+    "render": "not_run",
+    "osp2dst": "not_run",
+    "stats": "not_run",
+    "machine_tested": false
+  },
+  "source_provenance": {
+    "verified_by": "sha256sum of materialized Library original",
+    "image_size_verified": true
+  },
+  "score_before": null,
+  "score_after": null,
+  "evaluation": null,
+  "independent_reviewer": null,
+  "artifact": {
+    "kind": "unavailable",
+    "url": null,
+    "retention_days": null
+  },
+  "changes": [],
+  "lessons": [
+    "The original and its benchmark metadata are available and verified, but OpenStitch cannot be executed in this session.",
+    "Wait for a verified main-branch Linux CLI/MCP release or provide the trusted binary archive directly; retry from the immutable original.",
+    "Do not use archived V5 previews as evidence of a new iteration."
+  ],
+  "parent_run_id": "20261023T220800Z-turner-semantic-vector-4924737",
+  "previous_best": {
+    "run_id": "20261023T220800Z-turner-semantic-vector-4924737",
+    "reused": false,
+    "validated_for_machine": false
+  }
+}
