@@ -39,9 +39,11 @@ libs/project_ops          fabrique, inspection, lots transactionnels, qualité, 
 | `project_operations` | catalogue des opérations (noms, arguments, unités, plages, exemple) |
 | `project_new` | projet vide (cadre, finitions) ; écrit si `path` |
 | `project_open` | ouvre un `.osp` |
-| `project_digitize` | image → projet ; `settings` = options de `project digitize` (tirets → `_`) ; réglage inconnu → refus qui liste les réglages valides |
-| `project_inspect` | structure (objets, types de points, couleurs) ; `object`, `geometry`, `stitches` |
-| `project_apply` | lot d'opérations transactionnel ; `dry_run` ; alias `as` / `$alias` |
+| `project_digitize` | image → projet ; `settings` = options de `project digitize` (tirets → `_`) ; réglage inconnu → refus qui liste les réglages valides ; **cadre ajusté au motif** (`fit_canvas`, `margin_mm`) ; `notes` si un réglage n'a pas pu agir |
+| `project_inspect` | **résumé compact** par défaut (cadre, points, objets groupés par type puis couleur, ~1,5 Ko) ; `detail=full` (~100 Ko) ; `object` (+ `geometry`, `stitches`) pour un objet |
+| `project_select` | identifiants filtrés : `color=`, `type=`, `area_gt=` / `area_lt=` (mm²), `within=`, `name=`, `visible`, `locked` |
+| `project_apply` | lot d'opérations transactionnel ; `dry_run` ; alias `as` / `$alias` ; `skip_refused` : écarte les opérations refusées (listées dans `skipped`) et applique le reste |
+| `project_fit_canvas` | ajuste le cadre au motif (origine au centre) : supprime les erreurs « hors cadre » |
 | `project_check` | contrôle qualité (`openstitch.quality/1`), `object` pour un seul objet |
 | `project_render` | **image PNG** du rendu réaliste ; `crop` [x0,y0,x1,y1] pour zoomer, `px_per_mm` (défaut 3, plafonné à 4 Mpx) |
 | `project_save` | écriture atomique du `.osp` (sans `path` : chemin d'ouverture) |
@@ -50,6 +52,16 @@ libs/project_ops          fabrique, inspection, lots transactionnels, qualité, 
 Boucle conseillée : `project_digitize` → `project_render` (voir) → `project_check` (mesurer) →
 `project_apply` (`dry_run` d'abord si doute) → `project_check` / `project_render` → `project_save`
 → `project_export`.
+
+### Recette : satin sur des formes claires allongées
+
+Mesurée sur `tests/fixtures/tentabrode.png` (`dpi` 284, soit ~100 mm de large) : après
+`project_digitize`, `project_select` `["color=#E8DBB0","type=tatami","area_gt=6"]` (anneaux) puis
+`project_apply` d'`auto_satin` (`medial_axis`) avec `skip_refused` ; idem `parallel_sweep` sur les
+brins d'algue. 3 anneaux sur 13 sont refusés (formes compactes) et restent en tatami ; 11 915
+points, 0 erreur qualité. Les objets de moins de ~6 mm² restent en tatami (rendu polygonal) : les
+exclure avec `area_gt`. `rings_satin` ne s'applique pas à ce cas (anneaux **sombres** seulement,
+avec `dark_lines`).
 
 ## Erreurs
 
@@ -64,5 +76,7 @@ Un refus est un résultat d'outil `isError: true` dont le texte est le document
   pour revenir à l'état sauvegardé ; `dirty` signale les modifications non enregistrées).
 - Pas de lots JSON-RPC, pas de notifications de progression : les numérisations longues bloquent
   l'appel jusqu'au résultat.
+- Les très petits objets (< ~6 mm²) sont mal rendus en satin comme en tatami : limite du moteur,
+  non traitée ici.
 - Outils d'analyse fine (`fabric-risk`, balayage d'options, localisation) pas encore exposés :
   à ajouter au besoin dans `libs/mcp/src/tools.cpp`.

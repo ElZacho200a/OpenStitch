@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "tools.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <exception>
 #include <format>
@@ -112,6 +114,64 @@ ToolResult session_state(Session& s, const std::string& tool, json extra = json:
         out[k] = v;
     }
     return text_result(out.dump(2));
+}
+
+// Cadre ajusté au motif : l'origine est au centre du cadre, donc la demi-largeur couvre
+// l'abscisse la plus éloignée ; `margin_mm` est la marge de sécurité du cadre, auquel s'ajoute
+// 1 mm de jeu. Passe par l'opération `set_canvas` (donc par une `ICommand`).
+json fit_canvas(document::Project& project, double margin_mm) {
+    if (!(margin_mm >= 0.0) || margin_mm > 100.0) {
+        throw UsageError{"« margin_mm » doit être dans [0, 100]", ""};
+    }
+    const auto seq = stitch_generation::effective_sequence(project);
+    if (!seq) {
+        throw UsageError{seq.error().message, "", po::code::kRefused};
+    }
+    const auto stats = stitch::compute_stats(*seq);
+    if (stats.stitches == 0) {
+        throw UsageError{"aucun point : rien à cadrer", "ajoutez des objets avant de cadrer",
+                         po::code::kNothingToDo};
+    }
+    const auto& b = stats.bounds;
+    const double half_w = std::max(std::abs(b.min.x.value), std::abs(b.max.x.value)) / 1000.0;
+    const double half_h = std::max(std::abs(b.min.y.value), std::abs(b.max.y.value)) / 1000.0;
+    const auto round_up = [](double v) { return std::ceil(v * 10.0) / 10.0; };
+    const double width = round_up(2.0 * (half_w + margin_mm + 1.0));
+    const double height = round_up(2.0 * (half_h + margin_mm + 1.0));
+    const json op{
+        {"op", "set_canvas"}, {"width_mm", width}, {"height_mm", height}, {"margin_mm", margin_mm}};
+    const auto report = po::apply_operation(project, op.dump());
+    if (!report.ok) {
+        throw UsageError{report.outcomes.empty() ? report.error_message
+                                                 : report.outcomes[0].message,
+                         "", po::code::kRefused};
+    }
+    return json{{"width_mm", width}, {"height_mm", height}, {"margin_mm", margin_mm}};
+}
+
+// Vue compacte de `project_inspect` : l'inspection complète pèse ~100 Ko pour un projet de
+// 100 objets (contours, paramètres, régions), trop pour le contexte d'un agent. On garde le
+// cadre, la séquence, les comptes et les objets groupés par type puis couleur (identifiants).
+json summarize_inspection(const json& full) {
+    json out = json::object();
+    for (const char* key :
+         {"schema", "canvas", "resolution", "image", "sequence", "counts", "warnings"}) {
+        if (full.contains(key)) {
+            out[key] = full.at(key);
+        }
+    }
+    json groups = json::object();
+    std::size_t objects = 0;
+    for (const auto& o : full.value("embroidery_objects", json::array())) {
+        groups[o.value("type", "?")][o.value("color", "?")].push_back(o.at("id"));
+        ++objects;
+    }
+    out["embroidery_objects"] = objects;
+    out["groups"] = groups;
+    out["detail"] = "summary";
+    out["hint"] = "detail=full : inspection complète (volumineuse) ; object=ID : un seul objet ; "
+                  "project_select : filtrer par couleur, type, aire, zone";
+    return out;
 }
 
 // ---- Outils ------------------------------------------------------------------------------
@@ -322,11 +382,36 @@ ToolResult tool_digitize(Session& s, const json& a) {
     if (!doc) {
         return engine_error("project_digitize", po::code::kInternal, doc.error());
     }
+    json result = json::parse(*doc);
+    json notes = json::array();
+    if (opt_bool(a, "fit_canvas", true)) {
+        result["canvas_fit"] = fit_canvas(project, opt_double(a, "margin_mm", 3.0));
+        if (!out.empty()) { // le .osp écrit plus haut portait encore le cadre par défaut
+            if (auto w = po::write_project(fs::path(out), project, nullptr, {}, false); !w) {
+                return engine_error("project_digitize", po::code::kIo, w.error());
+            }
+        }
+    } else {
+        notes.push_back(
+            "fit_canvas=false : le cadre reste à 100 x 100 mm ; si le motif est plus "
+            "grand, project_check signalera des points hors cadre (project_fit_canvas)");
+    }
+    if (settings.rings_satin && !settings.dark_lines) {
+        notes.push_back("rings_satin n'agit qu'avec dark_lines=true (anneaux SOMBRES reconnus sur "
+                        "le masque des pixels sombres)");
+    } else if (settings.rings_satin && report->rings_satin == 0) {
+        notes.push_back("rings_satin n'a produit aucun anneau : il ne couvre que les anneaux "
+                        "sombres ; pour des formes claires allongées, utilisez project_select "
+                        "puis project_apply auto_satin");
+    }
+    if (!notes.empty()) {
+        result["notes"] = notes;
+    }
     s.project = std::move(project);
     s.info.reset();
     s.path = out;
     s.dirty = out.empty();
-    return text_result(*doc);
+    return text_result(result.dump(2));
 }
 
 ToolResult tool_inspect(Session& s, const json& a) {
@@ -343,11 +428,49 @@ ToolResult tool_inspect(Session& s, const json& a) {
         }
         return text_result(*doc);
     }
+    const std::string detail = opt_string(a, "detail", "summary");
+    if (detail != "summary" && detail != "full") {
+        throw UsageError{"« detail » : summary|full", ""};
+    }
+    if (detail == "summary") {
+        options.with_stitches = true; // dimensions et nombre de points du résumé
+        options.full_params = false;
+    }
     const auto doc = po::inspect_project_json(project, options);
     if (!doc) {
         return engine_error("project_inspect", po::code::kInternal, doc.error());
     }
-    return text_result(*doc);
+    if (detail == "full") {
+        return text_result(*doc);
+    }
+    return text_result(summarize_inspection(json::parse(*doc)).dump(2));
+}
+
+ToolResult tool_select(Session& s, const json& a) {
+    const auto& project = need_project(s);
+    if (!a.contains("where") || !a.at("where").is_array()) {
+        throw UsageError{"argument « where » obligatoire (tableau de critères)",
+                         "ex. [\"color=#E8DBB0\", \"type=tatami\", \"area_gt=20\"]"};
+    }
+    const auto ids = po::select_objects(project, a.at("where").get<std::vector<std::string>>());
+    if (!ids) {
+        return error_result("project_select", po::code::kUsage, ids.error().message,
+                            "critères : id, color, type, visible, locked, name, area_gt, area_lt, "
+                            "within=x0,y0,x1,y1 (mm)");
+    }
+    json list = json::array();
+    for (const auto id : *ids) {
+        list.push_back(id.value);
+    }
+    return text_result(
+        json{{"schema", po::kSelectionSchema}, {"count", list.size()}, {"ids", list}}.dump());
+}
+
+ToolResult tool_fit_canvas(Session& s, const json& a) {
+    auto& project = need_project(s);
+    const json canvas = fit_canvas(project, opt_double(a, "margin_mm", 3.0));
+    s.dirty = true;
+    return text_result(json{{"ok", true}, {"canvas", canvas}}.dump());
 }
 
 ToolResult tool_apply(Session& s, const json& a) {
@@ -356,14 +479,59 @@ ToolResult tool_apply(Session& s, const json& a) {
         throw UsageError{"argument « operations » obligatoire (tableau)",
                          "chaque élément : {\"op\":\"...\", ...} ; catalogue : project_operations"};
     }
-    const json batch{{"schema", po::kBatchSchema}, {"operations", a.at("operations")}};
     po::BatchOptions options;
     options.dry_run = opt_bool(a, "dry_run", false);
-    const auto report = po::apply_batch(project, batch.dump(), options);
-    if (report.applied) {
-        s.dirty = true;
+    const auto make_batch = [](const json& ops) {
+        return json{{"schema", po::kBatchSchema}, {"operations", ops}}.dump();
+    };
+    if (!opt_bool(a, "skip_refused", false)) {
+        const auto report = po::apply_batch(project, make_batch(a.at("operations")), options);
+        if (report.applied) {
+            s.dirty = true;
+        }
+        return text_result(report.to_json(), !report.ok);
     }
-    return text_result(report.to_json(), !report.ok);
+
+    // skip_refused : le moteur s'arrête à la première opération refusée (tout ou rien). On
+    // simule, on écarte l'opération fautive, on recommence, puis on applique le reste d'un coup.
+    // Les écartées sont listées avec leur code, message et hint (rien n'est perdu en silence).
+    json kept = a.at("operations");
+    std::vector<std::size_t> origin(kept.size());
+    for (std::size_t i = 0; i < origin.size(); ++i) {
+        origin[i] = i;
+    }
+    json skipped = json::array();
+    po::BatchOptions dry;
+    dry.dry_run = true;
+    while (!kept.empty()) {
+        const auto probe = po::apply_batch(project, make_batch(kept), dry);
+        if (probe.ok) {
+            break;
+        }
+        const auto bad = std::find_if(probe.outcomes.begin(), probe.outcomes.end(),
+                                      [](const po::OperationOutcome& o) { return !o.ok; });
+        if (bad == probe.outcomes.end()) { // erreur globale (schéma…) : rien à écarter
+            return text_result(probe.to_json(), true);
+        }
+        skipped.push_back(json{{"index", origin[bad->index]},
+                               {"op", bad->op},
+                               {"code", bad->code},
+                               {"message", bad->message},
+                               {"hint", bad->hint}});
+        kept.erase(kept.begin() + static_cast<std::ptrdiff_t>(bad->index));
+        origin.erase(origin.begin() + static_cast<std::ptrdiff_t>(bad->index));
+    }
+    json out = json{{"ok", !kept.empty()}, {"applied", false}, {"dry_run", options.dry_run}};
+    if (!kept.empty()) {
+        const auto report = po::apply_batch(project, make_batch(kept), options);
+        out = json::parse(report.to_json());
+        if (report.applied) {
+            s.dirty = true;
+        }
+    }
+    out["skipped"] = skipped;
+    out["requested"] = a.at("operations").size();
+    return text_result(out.dump(2), !out.value("ok", false));
 }
 
 ToolResult tool_check(Session& s, const json& a) {
@@ -465,24 +633,45 @@ const std::vector<Tool> kTools = {
      "rapport de numérisation. « settings » : mode (shapes|contours|stipple), max_colors, "
      "min_region_px, smoothing_px, skip_background (auto|yes|no|outer), min_region_mm2, "
      "min_feature_mm, pre, dark_lines, rings_satin, flow_fill, fill_overlap_mm, dpi, lock… "
-     "(noms et défauts de la CLI, tirets remplacés par _).",
+     "(noms et défauts de la CLI, tirets remplacés par _). Le cadre est ajusté au motif par défaut "
+     "(fit_canvas=false pour l'éviter, margin_mm=3). rings_satin exige dark_lines et ne couvre "
+     "que les anneaux sombres ; pour du satin sur des formes claires allongées : project_select "
+     "puis project_apply auto_satin.",
      R"({"type":"object","properties":{"image":{"type":"string"},"out":{"type":"string",)"
      R"("description":"fichier .osp à écrire, dans un dossier existant"},)"
-     R"("settings":{"type":"object"},"no_clobber":{"type":"boolean"}},"required":["image"]})",
+     R"("settings":{"type":"object"},"no_clobber":{"type":"boolean"},)"
+     R"("fit_canvas":{"type":"boolean"},"margin_mm":{"type":"number"}},"required":["image"]})",
      tool_digitize},
     {"project_inspect",
-     "Structure du projet : objets, types de points, couleurs, dimensions (JSON). Sans « object » "
-     "= tout le projet ; « stitches » ajoute les points (volumineux).",
+     "Structure du projet. Par défaut un RÉSUMÉ compact : cadre, dimensions, nombre de points, "
+     "objets groupés par type puis couleur (identifiants). detail=full : inspection complète "
+     "(~100 Ko, à éviter) ; object=ID : un seul objet (geometry : contours en mm ; stitches : "
+     "points).",
      R"({"type":"object","properties":{"object":{"type":"integer","minimum":1},)"
-     R"("geometry":{"type":"boolean"},"stitches":{"type":"boolean"}}})",
+     R"("detail":{"enum":["summary","full"]},"geometry":{"type":"boolean"},)"
+     R"("stitches":{"type":"boolean"}}})",
      tool_inspect},
+    {"project_select",
+     "Identifiants d'objets filtrés (critères combinés en ET) : id, color=#RRGGBB, "
+     "type=running|tatami|satin|directional|auto_satin, visible, locked, name, area_gt / area_lt "
+     "(mm²), within=x0,y0,x1,y1 (mm). Sert à cibler un lot project_apply.",
+     R"({"type":"object","properties":{"where":{"type":"array","items":{"type":"string"}}},)"
+     R"("required":["where"]})",
+     tool_select},
+    {"project_fit_canvas",
+     "Ajuste le cadre au motif (origine au centre) avec une marge de sécurité ; supprime les "
+     "erreurs « hors-cadre » de project_check.",
+     R"({"type":"object","properties":{"margin_mm":{"type":"number"}}})", tool_fit_canvas},
     {"project_apply",
      "Applique un lot d'opérations de façon transactionnelle sur le projet de la session : tout ou "
      "rien, refus nommé (code, message, hint) et opération fautive désignée. dry_run = simulation. "
+     "skip_refused=true : écarte les opérations refusées (listées dans « skipped ») et applique le "
+     "reste. "
      "Les opérations peuvent porter « as »:\"alias\" et réutiliser « $alias » ensuite. Ne "
      "sauvegarde pas : utiliser project_save.",
      R"({"type":"object","properties":{"operations":{"type":"array","items":{"type":"object",)"
-     R"("properties":{"op":{"type":"string"}},"required":["op"]}},"dry_run":{"type":"boolean"}},)"
+     R"("properties":{"op":{"type":"string"}},"required":["op"]}},"dry_run":{"type":"boolean"},)"
+     R"("skip_refused":{"type":"boolean"}},)"
      R"("required":["operations"]})",
      tool_apply},
     {"project_check",

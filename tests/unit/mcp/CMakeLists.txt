@@ -5,3 +5,5 @@ target_link_libraries(test_mcp
     PRIVATE openstitch::mcp nlohmann_json::nlohmann_json Catch2::Catch2WithMain
             openstitch::warnings)
 catch_discover_tests(test_mcp)
+target_compile_definitions(test_mcp
+    PRIVATE OPENSTITCH_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/tests/fixtures")

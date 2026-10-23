@@ -124,7 +124,7 @@ TEST_CASE("mcp session: creer, modifier par lot, controler, rendre", "[mcp]") {
     CHECK(refused.at("result").at("isError") == true);
     CHECK(text_of(refused).at("applied") == false);
 
-    const auto inspected = text_of(call(server, "project_inspect"));
+    const auto inspected = text_of(call(server, "project_inspect", {{"detail", "full"}}));
     CHECK(inspected.dump().find("Carre") != std::string::npos);
 
     const auto checked = call(server, "project_check");
@@ -138,4 +138,108 @@ TEST_CASE("mcp session: creer, modifier par lot, controler, rendre", "[mcp]") {
     CHECK(blocks[0].at("mimeType") == "image/png");
     // Signature PNG en base64 : « iVBORw0KGgo ».
     CHECK(blocks[0].at("data").get<std::string>().rfind("iVBORw0KGgo", 0) == 0);
+}
+
+TEST_CASE("mcp inspect: resume compact par defaut, complet sur demande", "[mcp]") {
+    Server server;
+    call(server, "project_new", {{"width_mm", 60}, {"height_mm", 40}});
+    call(server, "project_apply",
+         {{"operations", json::array({{{"op", "add_shape"},
+                                       {"shape", "rect"},
+                                       {"width_mm", 20},
+                                       {"height_mm", 10},
+                                       {"center_mm", json::array({0, 0})},
+                                       {"stitch_type", "tatami"}},
+                                      {{"op", "add_shape"},
+                                       {"shape", "rect"},
+                                       {"width_mm", 5},
+                                       {"height_mm", 5},
+                                       {"center_mm", json::array({10, 10})},
+                                       {"stitch_type", "running"}}})}});
+    const auto summary = text_of(call(server, "project_inspect"));
+    CHECK(summary.at("detail") == "summary");
+    CHECK(summary.at("embroidery_objects") == 2);
+    CHECK(summary.at("groups").contains("tatami"));
+    CHECK(summary.at("groups").contains("running"));
+    CHECK_FALSE(summary.contains("vector_objects"));
+    const auto full = text_of(call(server, "project_inspect", {{"detail", "full"}}));
+    CHECK(full.contains("vector_objects"));
+    CHECK(full.dump().size() > summary.dump().size());
+    CHECK(text_of(call(server, "project_inspect", {{"detail", "zzz"}})).at("error").at("code") ==
+          "E_USAGE");
+}
+
+TEST_CASE("mcp select filtre par critere et refuse un critere inconnu", "[mcp]") {
+    Server server;
+    call(server, "project_new");
+    call(server, "project_apply",
+         {{"operations", json::array({{{"op", "add_shape"},
+                                       {"shape", "rect"},
+                                       {"width_mm", 20},
+                                       {"height_mm", 10},
+                                       {"center_mm", json::array({0, 0})},
+                                       {"stitch_type", "tatami"}}})}});
+    const auto all =
+        text_of(call(server, "project_select", {{"where", json::array({"type=tatami"})}}));
+    CHECK(all.at("count") == 1);
+    const auto none =
+        text_of(call(server, "project_select", {{"where", json::array({"type=running"})}}));
+    CHECK(none.at("count") == 0);
+    CHECK(text_of(call(server, "project_select", {{"where", json::array({"couleur=rouge"})}}))
+              .at("error")
+              .at("code") == "E_USAGE");
+}
+
+TEST_CASE("mcp fit_canvas agrandit le cadre et supprime les points hors cadre", "[mcp]") {
+    Server server;
+    call(server, "project_new", {{"width_mm", 20}, {"height_mm", 20}});
+    call(server, "project_apply",
+         {{"operations", json::array({{{"op", "add_shape"},
+                                       {"shape", "rect"},
+                                       {"width_mm", 60},
+                                       {"height_mm", 30},
+                                       {"center_mm", json::array({0, 0})},
+                                       {"stitch_type", "tatami"}}})}});
+    const auto before = text_of(call(server, "project_check")).at("summary").at("errors");
+    CHECK(before.get<int>() > 0);
+    const auto fitted = text_of(call(server, "project_fit_canvas", {{"margin_mm", 2}}));
+    CHECK(fitted.at("canvas").at("width_mm").get<double>() >= 60.0);
+    CHECK(text_of(call(server, "project_check")).at("summary").at("errors") == 0);
+}
+
+TEST_CASE("mcp numerisation reelle: cadre ajuste et notes sur rings_satin", "[mcp][slow]") {
+    Server server;
+    const std::string image = std::string(OPENSTITCH_FIXTURES_DIR) + "/tentabrode.png";
+    const auto r = call(server, "project_digitize",
+                        {{"image", image}, {"settings", {{"dpi", 284}, {"rings_satin", true}}}});
+    REQUIRE(r.at("result").at("isError") == false);
+    const auto report = text_of(r);
+    CHECK(report.contains("canvas_fit"));
+    CHECK(report.at("notes").dump().find("dark_lines") != std::string::npos);
+    CHECK(text_of(call(server, "project_check")).at("summary").at("errors") == 0);
+    const auto summary = call(server, "project_inspect");
+    CHECK(text_of(summary).dump().size() < 20000);
+}
+
+TEST_CASE("mcp apply skip_refused ecarte les refus et applique le reste", "[mcp]") {
+    Server server;
+    call(server, "project_new");
+    const json good = {{"op", "add_shape"}, {"shape", "rect"},     {"width_mm", 10},
+                       {"height_mm", 10},   {"center_mm", {0, 0}}, {"stitch_type", "tatami"}};
+    const json bad = {{"op", "rename"}, {"object", 999999}, {"name", "x"}};
+    const auto strict = call(server, "project_apply", {{"operations", json::array({bad, good})}});
+    CHECK(strict.at("result").at("isError") == true);
+    CHECK(text_of(strict).at("applied") == false);
+
+    const auto lenient =
+        call(server, "project_apply",
+             {{"operations", json::array({good, bad, good})}, {"skip_refused", true}});
+    REQUIRE(lenient.at("result").at("isError") == false);
+    const auto report = text_of(lenient);
+    CHECK(report.at("applied") == true);
+    CHECK(report.at("requested") == 3);
+    REQUIRE(report.at("skipped").size() == 1);
+    CHECK(report.at("skipped")[0].at("index") == 1);
+    CHECK(report.at("skipped")[0].at("code") == "E_UNKNOWN_OBJECT");
+    CHECK(text_of(call(server, "project_inspect")).at("embroidery_objects") == 2);
 }
