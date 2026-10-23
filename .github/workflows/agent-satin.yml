@@ -1,0 +1,28 @@
+name: Agent satin comparison
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/openstitch_satin_compare.py'
+      - 'tests/scripts/test_openstitch_satin_compare.py'
+      - '.github/workflows/agent-satin.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/openstitch_satin_compare.py'
+      - 'tests/scripts/test_openstitch_satin_compare.py'
+      - '.github/workflows/agent-satin.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  python-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test comparison contract without OpenStitch binary
+        run: python3 -m unittest discover -s tests/scripts -p 'test_openstitch_satin_compare.py' -v

@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -755,4 +756,46 @@ TEST_CASE("vector ops: split cuts a directional fill carrying guides and break l
     CHECK(project.embroidery_objects.size() == 2);
     REQUIRE(stack.undo(project));
     CHECK(project.embroidery_objects.size() == 1);
+}
+
+TEST_CASE("vector ops: fill gap creates one undoable object between shapes") {
+    document::Project project;
+    add_object(project, rect(0, 0, 10'000, 30'000), false);
+    add_object(project, rect(20'000, 0, 30'000, 30'000), false);
+    add_object(project, rect(10'000, 0, 20'000, 10'000), false);
+    add_object(project, rect(10'000, 20'000, 20'000, 30'000), false);
+    UndoStack stack;
+
+    auto fill = make_fill_gap_command(project, pt(15'000, 15'000));
+    REQUIRE(fill.command != nullptr);
+    CHECK(fill.resulting_objects == 1);
+    stack.execute(std::move(fill.command), project);
+    REQUIRE(project.vector_objects.size() == 5);
+    CHECK(project.vector_objects.back().name == "Vide rempli");
+    CHECK(std::abs(area_mm2(project.vector_objects.back()) - 100.0) < 0.5);
+
+    // Le nouvel objet est lui-même un obstacle : le même clic tombe maintenant sur une forme.
+    const auto again = make_fill_gap_command(project, pt(15'000, 15'000));
+    CHECK(again.command == nullptr);
+    CHECK_FALSE(again.error.empty());
+
+    stack.undo(project);
+    CHECK(project.vector_objects.size() == 4);
+}
+
+TEST_CASE("vector ops: fill gap ignores hidden shapes and refuses open areas") {
+    document::Project project;
+    add_object(project, rect(0, 0, 10'000, 30'000), false);
+    add_object(project, rect(20'000, 0, 30'000, 30'000), false);
+    add_object(project, rect(10'000, 0, 20'000, 10'000), false);
+    const ObjectId top = add_object(project, rect(10'000, 20'000, 20'000, 30'000), false);
+
+    const auto closed = make_fill_gap_command(project, pt(15'000, 15'000));
+    CHECK(closed.command != nullptr); // fermé par les quatre blocs
+
+    project.vector_objects.back().visible = false;
+    CHECK(project.vector_objects.back().id == top);
+    const auto leaking = make_fill_gap_command(project, pt(15'000, 15'000));
+    CHECK(leaking.command == nullptr);
+    CHECK(leaking.error.find("fermée") != std::string::npos);
 }

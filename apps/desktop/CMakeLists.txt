@@ -15,6 +15,8 @@ set(CMAKE_AUTORCC ON) # polices intégrées du lettrage (lettering_fonts.qrc)
 # les tests.
 add_library(openstitch_desktop_widgets STATIC
     main_window.cpp
+    command_palette_dialog.cpp
+    command_palette_dialog.hpp
     main_window_directional.cpp
     main_window_color_blend.cpp
     color_blend_dialog.cpp
@@ -46,6 +48,7 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_reshape.cpp
     main_window_brush.cpp
     main_window_node_select.cpp
+    main_window_bucket.cpp
     main_window_eyedropper.cpp
     # [cablage-C:fin]
     # [cablage-D:debut]

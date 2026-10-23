@@ -2,6 +2,7 @@
 // Dispatcher transactionnel : lots, validation, alias, dry-run, rapports, catalogue.
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -65,9 +66,13 @@ document::Project make_project() {
 
 // Sérialisation .osp (fichier temporaire) : comparaison stricte avant/après.
 std::string serialize(const document::Project& project) {
+    // `ctest -j` lance chaque cas dans son propre processus : le compteur seul donne le même nom
+    // à tous (collision sur le fichier). Le nonce horaire est propre au processus.
+    static const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
     static std::atomic<int> counter{0};
-    const auto path = std::filesystem::temp_directory_path() /
-                      ("openstitch_ops_test_" + std::to_string(counter++) + ".osp");
+    const auto path =
+        std::filesystem::temp_directory_path() /
+        ("openstitch_ops_test_" + std::to_string(nonce) + "_" + std::to_string(counter++) + ".osp");
     const auto saved = project_io::save_project(path, project);
     REQUIRE(saved.has_value());
     std::ifstream in(path, std::ios::binary);

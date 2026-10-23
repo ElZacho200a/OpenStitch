@@ -110,6 +110,7 @@ const Expected kExpected[] = {
     {"V1", Context::Measure, Intent::MeasureDistance, false, false, false},
     {"V2", Context::Eyedropper, Intent::PickColor, false, false, false},
     {"V3", Context::Brush, Intent::BrushReshape, false, false, false},
+    {"V4", Context::Bucket, Intent::FillGap, false, false, false},
 };
 
 QStringList gestures(const QList<Hint>& hints) {

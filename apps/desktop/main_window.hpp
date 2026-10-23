@@ -444,6 +444,7 @@ private:
     // seule d'un résultat déjà produit par le cœur.
     [[nodiscard]] stitch_generation::ObjectEditState editStateOf(ObjectId id) const;
     void buildMenus();
+    void buildWorkspacesMenu(); // HP-UX-049 : dispositions de panneaux non destructives
     void buildHelpMenu();
     void buildMainToolbar();
     void buildContextToolbar();
@@ -797,6 +798,7 @@ private:
         QPointF startSceneMm;
         geometry::PathSet base;
     };
+    [[nodiscard]] bool canBeginSegmentReshape(ObjectId object, QPointF sceneMm) const;
     bool beginSegmentReshape(ObjectId object, QPointF sceneMm);
     void updateSegmentReshape(QPointF sceneMm, Qt::KeyboardModifiers mods);
     void commitSegmentReshape(QPointF sceneMm, Qt::KeyboardModifiers mods);
@@ -955,6 +957,8 @@ private:
     void hideRegionHover();
     // Opacité de la carte des régions (0,2 – 1,0) : réglable pour voir la photo dessous.
     void setRegionMapOpacity(double opacity);
+    void setImageOpacity(double opacity);
+    void buildImageOpacityControls(QMenu* viewMenu);
     void buildRegionViewControls(QMenu* segMenu);
     // Fusion de COULEURS (panneau « Couleurs », main_window_colors.cpp) : le panneau liste les
     // teintes de la segmentation ; les plans (`segmentation::plan_*`) sont prévisualisés sur une
@@ -1308,6 +1312,13 @@ private:
     void moveBrushStroke(QPointF sceneMm, Qt::KeyboardModifiers mods);
     void endBrushStroke(QPointF sceneMm);
     void cancelBrushStroke();
+    // Pot de peinture (main_window_bucket.cpp) : le calcul est dans
+    // commands::make_fill_gap_command.
+    void buildBucketTool();
+    void attachBucketTool();
+    void syncBucketTool(Tool tool);
+    void bucketFillAt(QPointF posMm);
+    QAction* toolBucketAct_{nullptr};
     QAction* toolBrushAct_{nullptr};
     QAction* brushSettingsAct_{nullptr};
     QGraphicsEllipseItem* brushRing_{nullptr};
@@ -1425,6 +1436,7 @@ private:
     QGraphicsPixmapItem* regionHoverItem_{nullptr};
     std::optional<RegionId> regionHoverId_;
     double regionMapOpacity_{0.9};
+    double imageOpacity_{1.0}; // opacité de l'image originale, réglage purement visuel
 
     std::optional<RegionId> selectedRegion_;
     // Régions sélectionnées EN PLUS de selectedRegion_ (sélection multiple). Écrit uniquement

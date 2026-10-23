@@ -12,6 +12,7 @@
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/cut.hpp"
+#include "openstitch/geometry/fill_gap.hpp"
 #include "openstitch/geometry/offset.hpp"
 
 namespace openstitch::commands {
@@ -377,6 +378,31 @@ VectorOpResult make_remove_holes_command(const document::Project& project,
     }
     VectorOpResult out;
     out.resulting_objects = removed;
+    out.command = std::move(group);
+    return out;
+}
+
+VectorOpResult make_fill_gap_command(document::Project& project, Vec2um seed, Micrometers seal) {
+    std::vector<PathSet> obstacles;
+    for (const auto& object : project.vector_objects) {
+        if (object.visible) {
+            obstacles.insert(obstacles.end(), object.paths.begin(), object.paths.end());
+        }
+    }
+    auto gap = geometry::fill_gap_at(obstacles, seed, seal);
+    if (!gap) {
+        return failure(gap.error().message);
+    }
+    document::VectorObject object;
+    object.id = project.object_ids.next();
+    object.name = "Vide rempli";
+    object.rgb = {80, 120, 200};
+    object.paths.push_back(std::move(*gap));
+
+    auto group = std::make_unique<CompositeCommand>("Remplir un vide");
+    group->add(std::make_unique<AddVectorObjectCommand>(std::move(object)));
+    VectorOpResult out;
+    out.resulting_objects = 1;
     out.command = std::move(group);
     return out;
 }
