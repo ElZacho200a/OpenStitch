@@ -636,7 +636,8 @@ const std::vector<Tool> kTools = {
      "(noms et défauts de la CLI, tirets remplacés par _). Le cadre est ajusté au motif par défaut "
      "(fit_canvas=false pour l'éviter, margin_mm=3). rings_satin exige dark_lines et ne couvre "
      "que les anneaux sombres ; pour du satin sur des formes claires allongées : project_select "
-     "puis project_apply auto_satin.",
+     "puis project_apply auto_satin. Petits détails (trous d'anneaux, points < 3 mm²) : le défaut "
+     "min_region_mm2=3 les fusionne avec leur voisin ; abaisser à 0.3 pour les garder.",
      R"({"type":"object","properties":{"image":{"type":"string"},"out":{"type":"string",)"
      R"("description":"fichier .osp à écrire, dans un dossier existant"},)"
      R"("settings":{"type":"object"},"no_clobber":{"type":"boolean"},)"

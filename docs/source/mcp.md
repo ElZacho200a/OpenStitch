@@ -60,7 +60,10 @@ Mesurée sur `tests/fixtures/tentabrode.png` (`dpi` 284, soit ~100 mm de large) 
 `project_apply` d'`auto_satin` (`medial_axis`) avec `skip_refused` ; idem `parallel_sweep` sur les
 brins d'algue. 3 anneaux sur 13 sont refusés (formes compactes) et restent en tatami ; 11 915
 points, 0 erreur qualité. Les objets de moins de ~6 mm² restent en tatami (rendu polygonal) : les
-exclure avec `area_gt`. `rings_satin` ne s'applique pas à ce cas (anneaux **sombres** seulement,
+exclure avec `area_gt`. Sur ces anneaux le **trou central disparaissait** (cousus en disques) :
+ce n'est pas un défaut du moteur mais le défaut `min_region_mm2=3`, qui fusionne toute région
+plus petite que 3 mm² avec sa voisine. `min_region_mm2=0.3` garde les trous (9 → 19 trous clairs,
+163 objets au lieu de 106, 11 953 points) ; ajouter `curve_tolerance_mm=0.05` lisse les contours. `rings_satin` ne s'applique pas à ce cas (anneaux **sombres** seulement,
 avec `dark_lines`).
 
 ## Erreurs
