@@ -2,6 +2,7 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -21,6 +22,8 @@ struct Session {
     std::optional<project_io::LoadInfo> info; // version lue (sauvegarde `.bak` si migré)
     std::filesystem::path path;               // dernier chemin connu du projet
     bool dirty{false};                        // modifié depuis la dernière ouverture/sauvegarde
+    // Variantes nommées gardées en mémoire (project_checkpoint / project_restore).
+    std::map<std::string, document::Project> checkpoints;
 };
 
 // Résultat d'un outil : blocs `content` MCP (texte, image) et indicateur d'erreur.

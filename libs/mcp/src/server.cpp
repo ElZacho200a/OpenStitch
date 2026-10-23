@@ -158,13 +158,14 @@ std::optional<std::string> Server::handle(std::string_view message) {
                                                  params.at("protocolVersion").is_string()
                                              ? params.at("protocolVersion").get<std::string>()
                                              : kDefaultProtocol;
-            return ok_response(id, {{"protocolVersion", protocol},
-                                    {"capabilities",
-                                     {{"tools", {{"listChanged", false}}},
-                                      {"resources", {{"subscribe", false}, {"listChanged", false}}},
-                                      {"prompts", {{"listChanged", false}}}}},
-                                    {"serverInfo", {{"name", kServerName}, {"version", "1.0.0"}}},
-                                    {"instructions", kInstructions}})
+            return ok_response(
+                       id, {{"protocolVersion", protocol},
+                            {"capabilities",
+                             {{"tools", {{"listChanged", false}}},
+                              {"resources", {{"subscribe", false}, {"listChanged", false}}},
+                              {"prompts", {{"listChanged", false}}}}},
+                            {"serverInfo", {{"name", kServerName}, {"version", kServerVersion}}},
+                            {"instructions", kInstructions}})
                 .dump();
         }
         if (method == "ping") {
@@ -209,6 +210,72 @@ std::optional<std::string> Server::handle(std::string_view message) {
         return error_response(id, kInvalidParams, e.what()).dump();
     }
     return error_response(id, kMethodNotFound, "méthode inconnue : " + method).dump();
+}
+
+std::string self_test_json(bool& ok) {
+    Server server;
+    json checks = json::array();
+    ok = true;
+    int id = 0;
+    const auto step = [&](const char* name, bool pass, const std::string& detail) {
+        checks.push_back(json{{"name", name}, {"ok", pass}, {"detail", detail}});
+        ok = ok && pass;
+    };
+    const auto rpc = [&](const char* method, json params) {
+        const auto reply = server.handle(json{
+            {"jsonrpc", "2.0"},
+            {"id", ++id},
+            {"method", method},
+            {"params", std::move(params)}}.dump());
+        return reply ? json::parse(*reply) : json(nullptr);
+    };
+    const auto tool = [&](const char* name, json args) {
+        return rpc("tools/call", json{{"name", name}, {"arguments", std::move(args)}});
+    };
+    const auto succeeded = [](const json& r) {
+        return r.contains("result") && !r.at("result").value("isError", true);
+    };
+
+    const json init = rpc("initialize", {{"protocolVersion", kDefaultProtocol}});
+    step("initialize",
+         init.contains("result") && init.at("result").at("serverInfo").at("name") == kServerName,
+         init.contains("result") ? "serveur " + init.at("result").at("serverInfo").dump()
+                                 : "échec");
+    const json list = rpc("tools/list", json::object());
+    const std::size_t tools = list.contains("result") ? list.at("result").at("tools").size() : 0;
+    step("tools/list", tools >= 20, std::to_string(tools) + " outils");
+    step("project_new", succeeded(tool("project_new", {{"width_mm", 40}, {"height_mm", 30}})), "");
+    step("project_apply",
+         succeeded(
+             tool("project_apply", {{"operations", json::array({{{"op", "add_shape"},
+                                                                 {"shape", "rect"},
+                                                                 {"width_mm", 20},
+                                                                 {"height_mm", 10},
+                                                                 {"center_mm", {0, 0}},
+                                                                 {"stitch_type", "tatami"}}})}})),
+         "forme ajoutée par lot transactionnel");
+    step("project_check", succeeded(tool("project_check", json::object())), "");
+    const json render = tool("project_render", {{"px_per_mm", 2}});
+    bool png = false;
+    if (succeeded(render)) {
+        for (const auto& block : render.at("result").at("content")) {
+            png = png || (block.at("type") == "image" &&
+                          block.at("data").get<std::string>().starts_with("iVBOR"));
+        }
+    }
+    step("project_render", png, png ? "PNG valide" : "aucune image PNG");
+    const json guide = tool("digitize_guide", {{"topic", "workflow"}});
+    step("digitize_guide",
+         succeeded(guide) && guide.at("result").at("content")[0].at("text").get<std::string>().find(
+                                 "Phase") != std::string::npos,
+         "guide embarqué lisible");
+    return json{{"schema", "openstitch.mcp-doctor/1"},
+                {"ok", ok},
+                {"server", kServerName},
+                {"version", kServerVersion},
+                {"protocol", kDefaultProtocol},
+                {"checks", checks}}
+        .dump(2);
 }
 
 } // namespace openstitch::mcp
