@@ -11,6 +11,7 @@
 #include <QDropEvent>
 #include <QFile>
 #include <QGraphicsPathItem>
+#include <QGraphicsPixmapItem>
 #include <QGraphicsScene>
 #include <QKeyEvent>
 #include <QLabel>
@@ -18,6 +19,7 @@
 #include <QMimeData>
 #include <QSettings>
 #include <QShortcut>
+#include <QSlider>
 #include <QStatusBar>
 #include <QTemporaryDir>
 #include <QTest>
@@ -130,6 +132,35 @@ private slots:
 
     void init() { QSettings().clear(); }
 
+    void imageOpacitySliderUpdatesOnlyBackgroundAndPersistsAcrossRender() {
+        MainWindow window;
+        window.applyLoadedProject(imageOnlyProject());
+        auto* slider = window.findChild<QSlider*>(QStringLiteral("imageOpacitySlider"));
+        QVERIFY(slider != nullptr);
+        QCOMPARE(slider->value(), 100);
+        auto background = [&window]() -> QGraphicsItem* {
+            for (QGraphicsItem* item : window.baseItems_) {
+                if (item->data(0).toString() == QStringLiteral("backgroundImage")) {
+                    return item;
+                }
+            }
+            return nullptr;
+        };
+        QVERIFY(background() != nullptr);
+        QCOMPARE(background()->opacity(), 1.0);
+        slider->setValue(30);
+        QCOMPARE(background()->opacity(), 0.3);
+        QCOMPARE(QSettings().value(QStringLiteral("ui/imageOpacity")).toDouble(), 0.3);
+        window.refreshImage();
+        QVERIFY(background() != nullptr);
+        QCOMPARE(background()->opacity(), 0.3);
+        slider->setValue(0);
+        QCOMPARE(background()->opacity(), 0.0);
+        slider->setValue(100);
+        QCOMPARE(background()->opacity(), 1.0);
+        QVERIFY(!window.undoStack_.canUndo()); // réglage visuel, pas une mutation du projet
+    }
+
     // ---- contrastes ---------------------------------------------------------------
 
     void textTokensMeetContrastInBothThemes() {
@@ -178,6 +209,29 @@ private slots:
                                         .arg(contrast(composite, background))));
             }
         }
+    }
+
+    void vectorHoverTooltipContainsSizeStitchTypeAndThreadColor() {
+        doc::Project project = imageOnlyProject();
+        const ObjectId vector = addSquareVector(project);
+        addEmbroidery(project, vector);
+        MainWindow window;
+        window.applyLoadedProject(project);
+        int tooltips = 0;
+        for (const QGraphicsItem* item : window.baseItems_) {
+            if (item->data(0).toString() != QStringLiteral("vectorShape")) {
+                continue;
+            }
+            const QString info = item->toolTip();
+            QVERIFY(info.contains(QStringLiteral("Square")));
+            QVERIFY(info.contains(QStringLiteral("10.0")));
+            QVERIFY(info.contains(QStringLiteral("mm")));
+            QVERIFY(info.contains(QStringLiteral("Point droit")));
+            QVERIFY(info.contains(QStringLiteral("RVB")));
+            ++tooltips;
+        }
+        QCOMPARE(tooltips, 1);
+        QVERIFY(!window.undoStack_.canUndo());
     }
 
     // ---- raccourcis ---------------------------------------------------------------
