@@ -1,0 +1,58 @@
+name: Signaler un bug
+description: Décrire un problème reproductible dans OpenStitch.
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: "Merci de retirer les données personnelles, mots de passe et fichiers confidentiels des captures ou projets joints."
+  - type: dropdown
+    id: area
+    attributes:
+      label: Sous-système concerné
+      options:
+        - Interface et édition
+        - Numérisation et points
+        - Import, export et formats
+        - Installation et compilation
+        - Autre
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Étapes de reproduction
+      description: Indiquer le plus petit projet ou fichier permettant de reproduire le problème.
+      placeholder: "1. Ouvrir…\n2. Cliquer…\n3. Observer…"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Résultat attendu
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Résultat observé
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit OpenStitch
+      description: Version publiée ou SHA court du commit.
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Système et machine
+      placeholder: Windows 11, format DST, modèle de machine si pertinent
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Journaux et fichiers de reproduction (facultatif)
+      description: Ne pas publier de données personnelles ou de fichiers protégés sans autorisation.

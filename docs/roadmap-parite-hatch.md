@@ -3488,7 +3488,8 @@ release « latest » publiée par la CI (`ci.yml`) ; installateur non signé.
 - État OpenStitch : cœur + CLI compilent sous Linux ; pas de desktop.
 - À faire : build desktop Linux, AppImage/Flatpak.
 
-### HP-DIST-005 — Site web, téléchargement, communauté [P1] — ☐ À faire
+### HP-DIST-005 — Site web, téléchargement, communauté [P1] — ◐ Partiel (2026-10-21)
+- Livré (2026-10-21, PR) : fichiers GitHub dédiés aux contributions (guide à la racine, formulaire de bug et demande, modèle de PR) avec quatre tests automatisés des champs obligatoires. Reste : véritable site vitrine, forum/Discussions et captures de téléchargement.
 - À faire : page de présentation, captures, téléchargements, forum/Discussions,
   guide de contribution.
 
@@ -3575,6 +3576,7 @@ ci-dessus doit les respecter :
 |---|---|---|
 | 2026-10-21 | ChatGPT (PR risque textile) | HP-FAB-004 ◐ : première carte heuristique non calibrée, CLI/desktop, tests et protocole de limites ; solveur physique et validation machine restant à faire. |
 | 2026-09-22 | Claude (session d'audit) | Création : inventaire complet vérifié dans le code. |
+| 2026-10-21 | ChatGPT (contributions) | HP-DIST-005 ◐ : formulaires GitHub d'issues, modèle de PR, guide contributeur et quatre tests de contrat. |
 | 2026-10-21 | ChatGPT (interopérabilité) | HP-QA-005 ◐ : comparaison des compteurs avec pyembroidery, six tests et CI de contrat, en attente d'un corpus de fichiers réels. |
 | 2026-10-21 | ChatGPT (performance) | HP-PERF-008 ◐ : workflow hebdomadaire de benchmark, artefacts JSON/Markdown, quatre tests de parsing. |
 | 2026-10-21 | ChatGPT (corpus image) | HP-QA-006 ◐ : corpus image déterministe et tests CLI d'import/réjection, sans prétendre couvrir les cas réels. |
