@@ -21,7 +21,11 @@ REPO = "ElZacho200a/OpenStitch"
 ROOT = Path(os.environ["OPENSTITCH_SOURCE_ROOT"])
 WORK = Path(os.environ["OPENSTITCH_WORK_ROOT"])
 BIN = Path(os.environ["OPENSTITCH_CLI_INSTALL_DIR"]) / "openstitch-cli"
-SOURCE = ROOT / "tests/fixtures/tentabrode.png"
+MANIFEST_PATH = Path(__file__).resolve().parent / "benchmarks" / "benchmarks.json"
+MANIFEST = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+BENCHMARK = next(c for c in MANIFEST["cases"] if c["id"] == MANIFEST["preferred_case_id"])
+SOURCE_PATH = os.environ.get("OPENSTITCH_BENCHMARK_IMAGE")
+SOURCE = Path(SOURCE_PATH) if SOURCE_PATH else None
 COMMANDS = []
 
 
@@ -48,14 +52,16 @@ def main() -> int:
     WORK.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     rid = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    rid += "-tentabrode-gh" + os.environ.get("GITHUB_RUN_ID", "local")
+    rid += "-ruines-marais-gh" + os.environ.get("GITHUB_RUN_ID", "local")
     main_sha = run("main_sha", ["git", "-C", str(ROOT), "rev-parse", "HEAD"])
     commit = (WORK / "main_sha.stdout.txt").read_text().strip() if main_sha["exit_code"] == 0 else None
     result = {
         "schema": "openstitch.trial/1", "run_id": rid, "created_utc": timestamp,
         "status": "blocked", "source": {
-            "repo_path": "tests/fixtures/tentabrode.png", "sha256": None,
-            "size_mm": None, "target_height_mm": 240
+            "benchmark_id": BENCHMARK["id"],
+            "library_path": BENCHMARK.get("source_library_path"),
+            "sha256": None, "size_mm": None,
+            "target_height_mm": BENCHMARK["target_height_mm"]
         }, "openstitch_commit": commit, "cli_version": None,
         "semantic_gate": "not_run", "visual_review": "not_run",
         "reason": None, "score_before": None, "score_after": None,
@@ -69,19 +75,29 @@ def main() -> int:
         (WORK / "result.json").write_text(
             json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     try:
-        if not SOURCE.is_file():
-            result["reason"] = "Benchmark source absent du checkout main"
+        if SOURCE is None or not SOURCE.is_file():
+            result["reason"] = (
+                "Le benchmark prioritaire est dans ChatGPT Library privee, absent du runner "
+                "GitHub Actions. Fournir OPENSTITCH_BENCHMARK_IMAGE avec le vrai fichier "
+                "verifie (ne pas remplacer par tentabrode.png)."
+            )
+            result["lessons"] = ["L'image privée doit être transférée explicitement avant de lancer le moteur."]
             return 0
         raw = SOURCE.read_bytes()
-        result["source"]["sha256"] = hashlib.sha256(raw).hexdigest()
+        sha = hashlib.sha256(raw).hexdigest()
+        result["source"]["sha256"] = sha
+        if sha != BENCHMARK.get("source_sha256"):
+            result["reason"] = "SHA-256 du benchmark incompatible avec le manifeste: exécution refusée."
+            return 0
         im = Image.open(SOURCE).convert("RGBA")
         width, height = im.size
         if width <= 0 or height <= 0:
             result["reason"] = "Dimensions source invalides"
             return 0
-        target_w = round(240.0 * width / height, 3)
-        dpi = height * 25.4 / 240.0
-        result["source"]["size_mm"] = [target_w, 240.0]
+        target_height = float(BENCHMARK["target_height_mm"])
+        target_w = round(target_height * width / height, 3)
+        dpi = height * 25.4 / target_height
+        result["source"]["size_mm"] = [target_w, target_height]
         result["source"]["size_px"] = [width, height]
         result["parameters"] = {"dpi": round(dpi, 6), "max_colors": 10,
                                 "skip_background": "auto", "mode": "shapes"}
@@ -136,7 +152,7 @@ def main() -> int:
             stitched_height = float(initial_quality["sequence"]["height_mm"])
             initial_errors = int(initial_quality["summary"]["errors"])
             if stitched_height > 0 and initial_errors >= 0:
-                refined_dpi = round(dpi * stitched_height / 240.0, 6)
+                refined_dpi = round(dpi * stitched_height / target_height, 6)
                 refined_osp = WORK / "refined.osp"
                 refined_dst = WORK / "refined.dst"
                 refinement = run("refined_digitize", [
@@ -193,7 +209,7 @@ def main() -> int:
             result["lessons"].append("V2 non achevée : " + str(exc))
         result["status"] = "incomplete"
         result["reason"] = (
-            "Baseline native executee; segmentation technique non validee semantiquement. "
+            "Baseline native executee sur image validee; segmentation technique non validee semantiquement. "
             "Aucun second juge visuel independant disponible sur ce runner : note /20 non attribuee."
         )
         result["lessons"].append(
