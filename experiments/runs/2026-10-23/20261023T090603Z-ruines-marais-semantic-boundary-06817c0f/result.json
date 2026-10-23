@@ -1,0 +1,173 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261023T090603Z-ruines-marais-semantic-boundary-06817c0f",
+  "created_utc": "2026-10-23T09:06:03Z",
+  "status": "incomplete",
+  "experiment_executed": true,
+  "benchmark_id": "ruines-marais-20261023",
+  "source": {
+    "kind": "private_chatgpt_library",
+    "library_path": "/OpenStitch/Benchmarks/ruines-marais-20261023.png",
+    "library_file_id": "libfile_b55786e03b9c8191816dbb9f566226bb",
+    "sha256": "06817c0f2aa7b2bedb2ab4db376a031771a25f7b6241b241d1b3bba01010c392",
+    "verified": true,
+    "image_px": [
+      1449,
+      968
+    ],
+    "alpha": "original RGBA partition preserved exactly",
+    "size_mm": [
+      359.256198,
+      240
+    ],
+    "canvas_mm": [
+      371.256,
+      252
+    ],
+    "margin_mm": 5
+  },
+  "openstitch_commit": "ef5a69034e2d212aa585176fcf84414d3813faaa",
+  "cli_version": "0.1.0",
+  "cli_provenance": {
+    "trusted": "main CI push artifact, verified SHA-256",
+    "workflow_run_id": 39891206197,
+    "artifact_id": 12475966435,
+    "artifact_zip_sha256": "fccd92d38904309303965500bcef2028f9119bd7911f3f01100d880e6b5417f2",
+    "expires_utc": "2026-11-22T03:11:28Z"
+  },
+  "parent_run_id": "20261023T080926Z-ruines-marais-semantic-audit-06817c0f",
+  "hypothesis": "Two same-thread regions in V1 were split by artificial ROI semantic boundaries, although source pixels belong to one continuous cloud or moonlight reflection. Reassign pixels to correct semantic instance, reconstruct the exact connected source component and replace split OSP vectors with one editable tatami shape.",
+  "semantic_repair": {
+    "old_technical_regions": 135,
+    "new_technical_regions": 133,
+    "alpha_preserved_exactly": true,
+    "cloud": {
+      "from": "forest.right.blue",
+      "to": "sky.clouds.blue.blue",
+      "reassigned_pixels": 2452,
+      "connected_component_pixels": 6762,
+      "osp_objects_replaced": 3,
+      "osp_objects_created": 1,
+      "preimport_mask_polygon_iou": 1
+    },
+    "water": {
+      "from": "scene.pond.water.moon",
+      "to": "pond.reflections.gold.moon",
+      "reassigned_pixels": 586,
+      "connected_component_pixels": 1515,
+      "osp_objects_replaced": 2,
+      "osp_objects_created": 1,
+      "preimport_mask_polygon_iou": 1
+    },
+    "protected_details": "No original opaque pixel removed, moved, recolored or created; no source alpha modified. Imported shape vectorization can change local stitch coverage, hence inspected by rendered comparison.",
+    "satin": "Not applicable for these wide horizontal cloud/reflection bands; tatami retained. Three satin strategies were tested on a reed in previous run."
+  },
+  "baseline": {
+    "id": "v1_semantique",
+    "stitches": 97730,
+    "trims": 4673,
+    "jumps": 7897,
+    "color_changes": 8,
+    "hotspot_4layers_mm2": 3,
+    "check_errors": 0,
+    "check_warnings": 50,
+    "check_infos": 150
+  },
+  "attempts": [
+    {
+      "id": "v15_cloud",
+      "description": "Correct blue cloud semantic boundary and replace three separate vectors by one connected source-mask shape.",
+      "stitches": 97727,
+      "trims": 4672,
+      "jumps": 7898,
+      "color_changes": 8,
+      "hotspot_4layers_mm2": 3,
+      "check_errors": 0,
+      "check_warnings": 50,
+      "check_infos": 150,
+      "osp_created": true,
+      "dst_created": true,
+      "preview_created": true,
+      "diagnostics_created": true,
+      "decision": "retain as local semantic correction; not promoted over V0b"
+    },
+    {
+      "id": "v16_water",
+      "description": "Correct moonlight water-band semantic boundary and replace two vectors by one connected source-mask shape.",
+      "stitches": 97762,
+      "trims": 4675,
+      "jumps": 7898,
+      "color_changes": 8,
+      "hotspot_4layers_mm2": 3,
+      "check_errors": 0,
+      "check_warnings": 50,
+      "check_infos": 150,
+      "osp_created": true,
+      "dst_created": true,
+      "preview_created": true,
+      "diagnostics_created": true,
+      "decision": "reject; more stitches/trims and no convincing visual improvement"
+    },
+    {
+      "id": "v17_combined",
+      "description": "Apply both boundary corrections on the same V1 project.",
+      "stitches": 97759,
+      "trims": 4674,
+      "jumps": 7899,
+      "color_changes": 8,
+      "hotspot_4layers_mm2": 3,
+      "check_errors": 0,
+      "check_warnings": 50,
+      "check_infos": 150,
+      "osp_created": true,
+      "dst_created": true,
+      "preview_created": true,
+      "diagnostics_created": true,
+      "decision": "reject; water correction does not improve overall result"
+    }
+  ],
+  "previous_visual_reference": {
+    "id": "v0b_fidele",
+    "stitches": 151481,
+    "trims": 2901,
+    "check_errors": 0,
+    "independently_validated": false
+  },
+  "best_local": "v15_cloud",
+  "best_global_visual": "v0b_fidele (provisional, from earlier run)",
+  "evaluation": {
+    "status": "incomplete",
+    "score_before": null,
+    "score_after": null,
+    "independent_reviewer": false,
+    "machine_tested": false,
+    "project_fidelity": "E_REFUSED: semantic OSP imported via SVG does not embed source image; source preserved separately.",
+    "visual_observation": "Local side-by-side preview suggests cloud continuity improved at previous artificial boundary; no independent assessment."
+  },
+  "artifact": {
+    "kind": "chatgpt-private-library",
+    "library_path": "/OpenStitch/Trials/OpenStitch-ruines-marais-20261023-essai04.zip",
+    "library_file_id": "libfile_d9bfc30229dc8191ad9aa47c1923f403",
+    "archive_sha256": "890142367bcf8980473d0485e35e1b047f3b9908aafe8639da134c61b26c667a",
+    "public": false,
+    "url": null,
+    "retention_days": null
+  },
+  "changes": [
+    "Recovered original from private Library and verified SHA-256.",
+    "Read current main digitize/evaluate skills and semantic/satin references.",
+    "Verified official Linux CLI artifact from successful main CI; executed three real project apply/check/diagnose/density/render/osp2dst/stats variants.",
+    "Repaired two overbroad semantic ROI labels and replaced affected V1 OSP objects using original source-connected masks.",
+    "Archived original, corrected maps, reproducibility scripts, three editable OSP and DST pairs, real CLI diagnostics, visual comparison."
+  ],
+  "lessons": [
+    "Low semantic purity of V0b against provisional labels is not automatically a digitizing defect: V1 ROI labels themselves were wrong at the blue cloud/forest and moonlight/water boundary.",
+    "Reconstructing exact source-connected components fixes the cloud split and preserves original pixel topology, but yields only one fewer trim in V15.",
+    "Water fusion raised trims by two; do not optimize blindly by semantic merging.",
+    "Without an embedded source in semantic OSP, native project fidelity is unavailable; implement an official supported source-attachment path before relying on that metric."
+  ],
+  "next_action": "Audit remaining false ROI boundaries using actual source-connected components and vector geometry, especially foreground reeds and lily leaves; then build and compare a more faithful semantic OSP. Seek a real independent reviewer and textile test before scoring or PR.",
+  "write_scope": "agent-trials only",
+  "pr_created": false,
+  "main_modified": false
+}
