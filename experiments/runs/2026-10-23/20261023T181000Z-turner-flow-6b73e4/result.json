@@ -1,0 +1,150 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261023T181000Z-turner-flow-6b73e4",
+  "created_utc": "2026-10-23T18:10:01Z",
+  "status": "completed",
+  "outcome": "artistic_rejected",
+  "source": {
+    "kind": "chatgpt-library",
+    "library_file_id": "libfile_b7f90c9fdad0819180be1b6029c78d86",
+    "library_path": "/OpenStitch/Benchmarks/turner-phare-tempete-original-20261023.jpg",
+    "sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+    "source_size_px": [
+      1536,
+      1014
+    ],
+    "target_size_mm": [
+      363.55,
+      240
+    ],
+    "source_verified": true
+  },
+  "openstitch_commit": "05058a163533a00220499671ad46e6cb0436cdb9",
+  "cli_version": "0.1.0",
+  "cli_provenance": {
+    "kind": "github-actions",
+    "workflow_run_id": 39962268384,
+    "artifact_id": 12508310307,
+    "archive_sha256": "2b7b129e237a25cbad1e0f378adc2b7f03b3665af7afbcb4b43dbc5eb2750c71",
+    "verified_sha256": true,
+    "source_branch": "main"
+  },
+  "method": "Independent hand-drawn semantic geometry from immutable original for each variant; cloud masses, lighthouse architecture, individual sails and hull, wave crests and continuous foam ribbons; imported as native editable SVG-derived OSP objects.",
+  "design": {
+    "frame_mm": [
+      390,
+      265
+    ],
+    "margin_mm": 8,
+    "fabric": "unspecified; render simulated on #64616B"
+  },
+  "variants": [
+    {
+      "id": "A",
+      "semantic_objects": 93,
+      "stitches": 152988,
+      "trims": 158,
+      "color_changes": 51,
+      "size_mm": [
+        362.9,
+        238.8
+      ],
+      "area_4plus_layers_mm2": 2465,
+      "osp_sha256": "fa2ea9bd713dbc58dd7e2cc66572aeff9e6b9b41af1c95e6e18938b2aa53715f",
+      "dst_sha256": "835a5ea297f0a35b95063b25055224e9e92e5f277af87163d1f9ba47b11d6135",
+      "preview_sha256": "7acc4340ae27a4ec2156cb242d9a83a29dabb3ffcbb97beb91e99febe86679aa",
+      "check": {
+        "errors": 0,
+        "warnings": 10,
+        "passed": true
+      },
+      "artistic_acceptance": false,
+      "independent_score_20": null,
+      "critique": "Phare et voilier lisibles, mais nuages plats, écume géométrique, absence de clair-obscur et de mouvement.",
+      "fidelity": {
+        "status": "refused",
+        "reason": "No embedded source image in semantic-import OSP"
+      },
+      "files": {
+        "osp": "variant_A/turner.osp",
+        "dst": "variant_A/turner.dst",
+        "preview": "variant_A/preview.png",
+        "manifest": "variant_A/manifest.json",
+        "check": "variant_A/check.json",
+        "diagnose": "variant_A/diagnose.json",
+        "density": "variant_A/density.json",
+        "stats": "variant_A/stats.json",
+        "fabric_risk": "variant_A/fabric-risk.json"
+      }
+    },
+    {
+      "id": "B",
+      "semantic_objects": 89,
+      "stitches": 153922,
+      "trims": 154,
+      "color_changes": 52,
+      "size_mm": [
+        362.9,
+        238.8
+      ],
+      "area_4plus_layers_mm2": 2737,
+      "osp_sha256": "0b2c4040dc155568e773af9b84ae94c25ad53c84b72ef952078f112bbf8b493f",
+      "dst_sha256": "4db1cc7b03d5cffaca88d17021aea2d906d56730d31de8044b86620552717837",
+      "preview_sha256": "712deaf58360a7db221d3f456be523e174010191a35d94e59bf86ec4f2b29045",
+      "check": {
+        "errors": 0,
+        "warnings": 10,
+        "passed": true
+      },
+      "artistic_acceptance": false,
+      "independent_score_20": null,
+      "critique": "Rubans plus épais aggravent l'aplatissement et les surépaisseurs; pas de progrès visuel.",
+      "fidelity": {
+        "status": "refused",
+        "reason": "No embedded source image in semantic-import OSP"
+      },
+      "files": {
+        "osp": "variant_B/turner.osp",
+        "dst": "variant_B/turner.dst",
+        "preview": "variant_B/preview.png",
+        "manifest": "variant_B/manifest.json",
+        "check": "variant_B/check.json",
+        "diagnose": "variant_B/diagnose.json",
+        "density": "variant_B/density.json",
+        "stats": "variant_B/stats.json",
+        "fabric_risk": "variant_B/fabric-risk.json"
+      }
+    }
+  ],
+  "best_variant": "A (relative only; both rejected)",
+  "score_before": null,
+  "score_after": null,
+  "evaluation": null,
+  "machine_tested": false,
+  "artifact": {
+    "kind": "chatgpt-private-library",
+    "library_file_id": "libfile_d8f61fb0e4648191bb0aae02fbfbf384",
+    "library_path": "/OpenStitch/Experiments/20261023T181000Z-turner-flow-6b73e4.zip",
+    "retention_days": null
+  },
+  "commands": {
+    "inspect": "pass",
+    "check": "pass",
+    "diagnose": "pass_with_warning",
+    "density": "pass",
+    "fidelity": "refused_no_embedded_source",
+    "render": "pass",
+    "export_dst": "pass",
+    "stats": "pass",
+    "fabric_risk": "pass"
+  },
+  "lessons": [
+    "CLI obtained from verified successful main CI artifact, not from unverified binaries.",
+    "Aesthetic failure remains upstream in semantic artistic reconstruction despite successful native project generation.",
+    "Variant B has more 4-layer overlap (2737 vs 2465 mm2) and no artistic gain.",
+    "No independent reviewer available; no score on 20.",
+    "Neither version is approved for machine use."
+  ],
+  "main_modified": false,
+  "parent_run_id": null
+}
