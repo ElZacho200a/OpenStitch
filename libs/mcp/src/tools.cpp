@@ -6,8 +6,10 @@
 #include <cstdint>
 #include <exception>
 #include <format>
+#include <map>
 #include <string_view>
 
+#include "guide.hpp"
 #include "openstitch/project_io/machine_file.hpp"
 #include "openstitch/project_ops/errors.hpp"
 #include "openstitch/project_ops/factory.hpp"
@@ -492,6 +494,97 @@ ToolResult tool_select(Session& s, const json& a) {
         json{{"schema", po::kSelectionSchema}, {"count", list.size()}, {"ids", list}}.dump());
 }
 
+ToolResult tool_guide(Session&, const json& a) {
+    const std::string topic = opt_string(a, "topic");
+    if (topic.empty()) {
+        return text_result(guide_index_text());
+    }
+    const GuideTopic* found = find_topic(topic);
+    if (found == nullptr) {
+        std::string names;
+        for (const auto& t : guide_topics()) {
+            names += (names.empty() ? "" : ", ") + t.name;
+        }
+        return error_result("digitize_guide", po::code::kUsage,
+                            std::format("sujet inconnu : {}", topic), "sujets : " + names);
+    }
+    return text_result(found->text);
+}
+
+// Palette réellement cousue, dans l'ordre de couture (équivalent de `osp_palette.py --report`
+// du skill) : un « bloc » commence à chaque changement de couleur entre deux objets visibles
+// consécutifs. À consulter AVANT de juger un rendu.
+ToolResult tool_palette(Session& s, const json&) {
+    po::InspectOptions options;
+    options.with_stitches = false;
+    const auto inspected = po::inspect_project_json(need_project(s), options);
+    if (!inspected) {
+        return engine_error("project_palette", po::code::kInternal, inspected.error());
+    }
+    const json full = json::parse(*inspected);
+    std::map<std::uint64_t, double> area;
+    for (const auto& v : full.value("vector_objects", json::array())) {
+        area[v.at("id").get<std::uint64_t>()] = v.value("area_mm2", 0.0);
+    }
+    std::vector<const json*> visible;
+    // Références dans `full` (pas dans une copie temporaire : les pointeurs survivent à la boucle).
+    if (full.contains("embroidery_objects") && full.at("embroidery_objects").is_array()) {
+        for (const auto& e : full.at("embroidery_objects")) {
+            if (e.value("visible", true)) {
+                visible.push_back(&e);
+            }
+        }
+    }
+    std::stable_sort(visible.begin(), visible.end(), [](const json* x, const json* y) {
+        return x->value("order", 0) < y->value("order", 0);
+    });
+    json blocks = json::array();
+    std::map<std::string, std::pair<std::size_t, double>> per_color; // objets, aire
+    std::string last;
+    for (const json* e : visible) {
+        const std::string color = e->value("color", "?");
+        if (blocks.empty() || last != color) {
+            blocks.push_back(color);
+            last = color;
+        }
+        auto& [count, sum] = per_color[color];
+        ++count;
+        sum += area[e->value("source_vector", std::uint64_t{0})];
+    }
+    std::map<std::string, double> pixels;
+    double total_pixels = 0.0;
+    // Sans image source, `segmentation` n'est pas un objet : pas de parts, seulement les comptes.
+    if (full.contains("segmentation") && full.at("segmentation").is_object() &&
+        full.at("segmentation").contains("regions")) {
+        for (const auto& r : full.at("segmentation").at("regions")) {
+            pixels[r.value("color", "?")] += r.value("pixels", 0.0);
+            total_pixels += r.value("pixels", 0.0);
+        }
+    }
+    for (const auto& [color, ignored] : pixels) {
+        per_color.try_emplace(color, std::pair<std::size_t, double>{0, 0.0});
+    }
+    json colors = json::array();
+    for (const auto& [color, entry] : per_color) {
+        colors.push_back(json{
+            {"color", color},
+            {"objects", entry.first},
+            {"area_mm2", std::round(entry.second)},
+            {"segmentation_pct",
+             total_pixels > 0.0 ? std::round(1000.0 * pixels[color] / total_pixels) / 10.0 : 0.0}});
+    }
+    std::sort(colors.begin(), colors.end(), [](const json& x, const json& y) {
+        return x.at("segmentation_pct").get<double>() > y.at("segmentation_pct").get<double>();
+    });
+    return text_result(json{{"schema", "openstitch.mcp-palette/1"},
+                            {"block_count", blocks.size()},
+                            {"blocks_in_sewing_order", blocks},
+                            {"colors", colors},
+                            {"hint", "une couleur à 0 objet mais présente dans la segmentation "
+                                     "n'est pas cousue : fond ignoré, ou région fusionnée"}}
+                           .dump(2));
+}
+
 ToolResult tool_fit_canvas(Session& s, const json& a) {
     auto& project = need_project(s);
     const json canvas = fit_canvas(project, opt_double(a, "margin_mm", 3.0));
@@ -656,6 +749,12 @@ ToolResult tool_export(Session& s, const json& a) {
 }
 
 const std::vector<Tool> kTools = {
+    {"digitize_guide",
+     "Guide de numérisation textile OpenStitch (méthode éprouvée : lecture sémantique, choix "
+     "satin/tatami/contour, comparaison des trois satins, retouches, mesures, livrables). À "
+     "APPELER AVANT de numériser une image. Sans « topic » : le sommaire ; topic=workflow : la "
+     "méthode complète ; topic=mcp : correspondance avec les outils ; autres sujets au sommaire.",
+     R"({"type":"object","properties":{"topic":{"type":"string"}}})", tool_guide},
     {"project_operations",
      "Catalogue des opérations de modification (nom, arguments, unités, plages, exemple). À lire "
      "avant project_apply.",
@@ -699,6 +798,10 @@ const std::vector<Tool> kTools = {
      R"({"type":"object","properties":{"where":{"type":"array","items":{"type":"string"}}},)"
      R"("required":["where"]})",
      tool_select},
+    {"project_palette",
+     "Palette réellement cousue dans l'ordre de couture (blocs de couleur), avec par couleur le "
+     "nombre d'objets, l'aire et la part de la segmentation. À lire avant de juger un rendu.",
+     R"({"type":"object","properties":{}})", tool_palette},
     {"project_fit_canvas",
      "Ajuste le cadre au motif (origine au centre) avec une marge de sécurité ; supprime les "
      "erreurs « hors-cadre » de project_check.",

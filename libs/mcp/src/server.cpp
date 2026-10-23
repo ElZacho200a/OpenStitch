@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/mcp/server.hpp"
 
+#include "guide.hpp"
 #include "tools.hpp"
 
 namespace openstitch::mcp {
@@ -10,11 +11,19 @@ namespace {
 constexpr const char* kDefaultProtocol = "2025-06-18";
 constexpr const char* kInstructions =
     "OpenStitch : numérisation de broderie machine (image -> objets -> points -> DST). Une session "
-    "garde UN projet ouvert. Boucle conseillée : project_digitize (ou project_open) ; "
-    "project_inspect ; project_render pour voir ; project_check pour mesurer ; project_apply "
-    "(lire project_operations avant ; dry_run d'abord si doute) ; recontrôler et re-rendre ; "
-    "project_save ; project_export. Unités : mm et degrés. Chaque refus porte un code E_* stable "
-    "et un hint.";
+    "garde UN projet ouvert.\n"
+    "AVANT de numériser une image, appelle digitize_guide (topic=workflow) : c'est la méthode "
+    "éprouvée du projet, à suivre plutôt que d'improviser.\n"
+    "Principes : le rôle textile prime sur la couleur (deux zones de même fil ne se fusionnent "
+    "pas sur la seule teinte) ; préserver les détails structurants plutôt que réduire les "
+    "coupes ; comparer les trois satins (skeleton, parallel_sweep, medial_axis) avant de "
+    "choisir ; 0 erreur du contrôle qualité ne prouve pas la brodabilité (densités simulées, "
+    "essai physique nécessaire) ; ne jamais inventer une mesure.\n"
+    "Boucle : project_digitize (ou project_open) ; project_render pour voir ; project_check pour "
+    "mesurer ; project_palette ; project_select + project_apply (project_operations avant ; "
+    "dry_run d'abord si doute) ; recontrôler et re-rendre ; project_save ; project_export. "
+    "Unités : mm et degrés. Chaque refus porte un code E_* stable et un hint. Le guide est aussi "
+    "disponible en ressources (openstitch://guide/...) et en prompt « digitize ».";
 
 // Codes JSON-RPC standard.
 constexpr int kParseError = -32700;
@@ -43,6 +52,74 @@ struct Server::Impl {
                                 {"inputSchema", json::parse(tool.input_schema)}});
         }
         return json{{"tools", list}};
+    }
+
+    static json resources_list() {
+        json list = json::array();
+        for (const auto& t : guide_topics()) {
+            list.push_back(json{{"uri", "openstitch://guide/" + t.name},
+                                {"name", t.name},
+                                {"title", t.title},
+                                {"description", t.description},
+                                {"mimeType", "text/markdown"}});
+        }
+        return json{{"resources", list}};
+    }
+
+    // Résultat de `resources/read`, ou `null` si l'URI est inconnue.
+    static json resource_read(const std::string& uri) {
+        constexpr std::string_view kPrefix = "openstitch://guide/";
+        if (uri.starts_with(kPrefix)) {
+            if (const GuideTopic* t = find_topic(std::string_view(uri).substr(kPrefix.size()))) {
+                return json{{"contents", json::array({json{{"uri", uri},
+                                                           {"mimeType", "text/markdown"},
+                                                           {"text", t->text}}})}};
+            }
+        }
+        return nullptr;
+    }
+
+    static json prompts_list() {
+        return json{
+            {"prompts",
+             json::array({json{
+                 {"name", "digitize"},
+                 {"title", "Numériser une image en broderie"},
+                 {"description", "Numérise une image en projet .osp en suivant la méthode "
+                                 "du guide OpenStitch (sémantique, satins, retouches, "
+                                 "mesures)."},
+                 {"arguments", json::array({json{{"name", "image"},
+                                                 {"description", "chemin de l'image source"},
+                                                 {"required", true}},
+                                            json{{"name", "width_mm"},
+                                                 {"description", "largeur brodée souhaitée (mm)"},
+                                                 {"required", false}}})}}})}};
+    }
+
+    static json prompt_get(const json& params) {
+        const std::string name = params.value("name", "");
+        if (name != "digitize") {
+            return nullptr;
+        }
+        const json args = params.value("arguments", json::object());
+        std::string task =
+            "Numérise l'image « " + args.value("image", "<chemin à préciser>") + " »";
+        if (args.contains("width_mm")) {
+            task += ", largeur brodée " + args.at("width_mm").get<std::string>() + " mm";
+        }
+        task +=
+            ", en suivant la méthode ci-dessous avec les outils du serveur openstitch "
+            "(project_digitize, project_render, project_check, project_palette, "
+            "project_select, project_apply…). Si la largeur manque, ne demande que celle-là.\n\n";
+        const GuideTopic* workflow = find_topic("workflow");
+        const GuideTopic* mcp = find_topic("mcp");
+        const std::string guide = (workflow != nullptr ? workflow->text : std::string{}) +
+                                  "\n\n---\n\n" + (mcp != nullptr ? mcp->text : std::string{});
+        return json{
+            {"description", "Numérisation guidée OpenStitch"},
+            {"messages",
+             json::array({json{{"role", "user"},
+                               {"content", json{{"type", "text"}, {"text", task + guide}}}}})}};
     }
 
     json call(const json& params) {
@@ -82,7 +159,10 @@ std::optional<std::string> Server::handle(std::string_view message) {
                                              ? params.at("protocolVersion").get<std::string>()
                                              : kDefaultProtocol;
             return ok_response(id, {{"protocolVersion", protocol},
-                                    {"capabilities", {{"tools", {{"listChanged", false}}}}},
+                                    {"capabilities",
+                                     {{"tools", {{"listChanged", false}}},
+                                      {"resources", {{"subscribe", false}, {"listChanged", false}}},
+                                      {"prompts", {{"listChanged", false}}}}},
                                     {"serverInfo", {{"name", kServerName}, {"version", "1.0.0"}}},
                                     {"instructions", kInstructions}})
                 .dump();
@@ -92,6 +172,32 @@ std::optional<std::string> Server::handle(std::string_view message) {
         }
         if (method == "tools/list") {
             return ok_response(id, impl_->list_tools()).dump();
+        }
+        if (method == "resources/list") {
+            return ok_response(id, Impl::resources_list()).dump();
+        }
+        if (method == "resources/read") {
+            const json result =
+                params.is_object() && params.contains("uri") && params.at("uri").is_string()
+                    ? Impl::resource_read(params.at("uri").get<std::string>())
+                    : json(nullptr);
+            if (result.is_null()) {
+                return error_response(id, kInvalidParams,
+                                      "ressource inconnue (voir resources/list)")
+                    .dump();
+            }
+            return ok_response(id, result).dump();
+        }
+        if (method == "prompts/list") {
+            return ok_response(id, Impl::prompts_list()).dump();
+        }
+        if (method == "prompts/get") {
+            const json result = params.is_object() ? Impl::prompt_get(params) : json(nullptr);
+            if (result.is_null()) {
+                return error_response(id, kInvalidParams, "prompt inconnu (voir prompts/list)")
+                    .dump();
+            }
+            return ok_response(id, result).dump();
         }
         if (method == "tools/call") {
             if (!params.is_object() || !params.contains("name") || !params.at("name").is_string()) {
