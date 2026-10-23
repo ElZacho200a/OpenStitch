@@ -189,8 +189,10 @@ TEST_CASE("semantic validate: manifeste valide, defauts nommes", "[project_ops][
     const auto codes = [&](const json& doc, bool skip = false) {
         write_text(w.dir / "bad.json", doc);
         std::vector<std::string> out;
-        for (const auto& e :
-             json::parse(validate_semantic_manifest(w.dir / "bad.json", skip)).at("errors")) {
+        // Le document doit vivre pendant la boucle : itérer sur `json::parse(...).at(...)` laisse
+        // une référence pendante avant C++23 (GCC de la CI), invisible sous MSVC.
+        const json doc_out = json::parse(validate_semantic_manifest(w.dir / "bad.json", skip));
+        for (const auto& e : doc_out.at("errors")) {
             out.push_back(e.at("code").get<std::string>());
         }
         return out;
