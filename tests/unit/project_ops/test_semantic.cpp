@@ -472,3 +472,70 @@ TEST_CASE("semantic_replace: refus nommes, projet inchange", "[project_ops][sema
     }
     CHECK(serialized(project) == before);
 }
+
+namespace {
+
+// Disque blanc sur noir : forme compacte que l'auto-satin refuse (« disque, forme peu allongée »).
+void write_disc_mask(const fs::path& file, int cx, int cy, int radius) {
+    image::Image img;
+    img.width = kW;
+    img.height = kH;
+    img.rgba.assign(static_cast<std::size_t>(kW) * static_cast<std::size_t>(kH) * 4U, 0);
+    for (int y = 0; y < kH; ++y) {
+        for (int x = 0; x < kW; ++x) {
+            auto* px = img.rgba.data() + 4U * (static_cast<std::size_t>(y) * kW + x);
+            px[3] = 255;
+            if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= radius * radius) {
+                px[0] = px[1] = px[2] = 255;
+            }
+        }
+    }
+    const auto bytes = image::encode_png(img);
+    REQUIRE(bytes.has_value());
+    std::ofstream out(file, std::ios::binary);
+    out.write(reinterpret_cast<const char*>(bytes->data()),
+              static_cast<std::streamsize>(bytes->size()));
+}
+
+} // namespace
+
+TEST_CASE("semantic_import: satin_fallback consigne les refus d'auto_satin au lieu de tout annuler",
+          "[project_ops][semantic]") {
+    Workdir w("fallback");
+    fs::create_directories(w.dir / "masks");
+    write_disc_mask(w.dir / "masks" / "lune.png", 100, 50, 30);
+    auto doc =
+        manifest_doc(json::array({region("lune", "masks/lune.png", "auto_satin", "#E8DBB0")}));
+    write_text(w.dir / "carte.json", doc);
+
+    auto project = empty_project();
+    const std::string before = serialized(project);
+    // Par défaut le refus du moteur annule tout, avec le motif nommé.
+    const auto strict = run(project, import_op(w.dir / "carte.json"));
+    REQUIRE_FALSE(strict.ok);
+    CHECK(strict.outcomes[0].message.find("auto_satin refusé") != std::string::npos);
+    CHECK(serialized(project) == before);
+
+    for (const char* fallback : {"tatami", "running"}) {
+        CAPTURE(fallback);
+        auto p = empty_project();
+        json op = import_op(w.dir / "carte.json");
+        op["satin_fallback"] = fallback;
+        const auto report = run(p, op);
+        REQUIRE(report.ok);
+        REQUIRE(p.embroidery_objects.size() == 1);
+        CHECK(std::string(stitch_type_name(p.embroidery_objects[0])) ==
+              (std::string(fallback) == "running" ? "running" : "tatami"));
+        const auto result = json::parse(report.to_json()).at("outcomes")[0].at("result");
+        REQUIRE(result.at("fallbacks").size() == 1);
+        CHECK(result.at("fallbacks")[0].at("semantic_id") == "lune");
+        CHECK(result.at("fallbacks")[0].at("fallback") == fallback);
+    }
+
+    json bad = import_op(w.dir / "carte.json");
+    bad["satin_fallback"] = "satin";
+    auto p2 = empty_project();
+    const auto refused = run(p2, bad);
+    CHECK_FALSE(refused.ok);
+    CHECK(refused.outcomes[0].code == "E_USAGE");
+}
