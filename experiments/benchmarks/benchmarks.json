@@ -1,7 +1,39 @@
 {
   "schema": "openstitch.benchmarks/1",
-  "note": "Jeu de demarrage uniquement : les hash et dimensions reelles doivent etre verifies a l'execution. Aucun essai n'est encore execute.",
+  "note": "Cas prioritaire fourni par l'utilisateur le 23 octobre 2026. Source conservée dans la bibliothèque privée ChatGPT; les anciens essais tentabrode restent historiques. Un runner GitHub Actions ne peut pas télécharger directement la source privée.",
   "cases": [
+    {
+      "id": "ruines-marais-20261023",
+      "priority": 1,
+      "active": true,
+      "source_kind": "chatgpt-library",
+      "source_library_path": "/OpenStitch/Benchmarks/ruines-marais-20261023.png",
+      "source_library_file_id": "libfile_b55786e03b9c8191816dbb9f566226bb",
+      "source_filename": "ruines-marais-20261023.png",
+      "source_sha256": "06817c0f2aa7b2bedb2ab4db376a031771a25f7b6241b241d1b3bba01010c392",
+      "source_size_px": [
+        1449,
+        968
+      ],
+      "target_height_mm": 240,
+      "expected_width_mm": 359.256,
+      "keep_aspect_ratio": true,
+      "background": "transparent, laisser les zones alpha non brodées",
+      "fabric": "unspecified",
+      "permission": "image uploaded by user for OpenStitch future experiments; private Library file, not available as a public GitHub Actions checkout",
+      "available_to_github_actions": false,
+      "split": "development",
+      "protected_details": [
+        "silhouette et séparation des arches gothiques, y compris les petites arches à droite",
+        "pierres, montants et joints structurants des ruines",
+        "lierre retombant, végétation distincte de la pierre",
+        "lune et nuages partiellement superposés",
+        "reflet lunaire vertical et stries d'eau",
+        "roseaux, épis et feuilles fines du premier plan",
+        "nénuphars individuels et nervures principales"
+      ],
+      "notes": "Nouvelle source prioritaire. Ne pas écraser les détails pour réduire le nombre de coupes ; comparer les tailles du dessin réellement cousu et le cadre. Pour GitHub Actions, l'image est privée : ne pas prétendre l'avoir reçue sans transfert effectivement vérifié."
+    },
     {
       "id": "fixture-tentabrode-01",
       "source_repo": "ElZacho200a/OpenStitch",
@@ -14,7 +46,10 @@
       "eligibility": "repository_fixture",
       "split": "development",
       "protected_details": [],
-      "note": "Le juge identifie les details proteges apres lecture effective de l'image. Ne pas les inventer."
+      "note": "Le juge identifie les details proteges apres lecture effective de l'image. Ne pas les inventer.",
+      "active": false,
+      "priority": 10
     }
-  ]
+  ],
+  "preferred_case_id": "ruines-marais-20261023"
 }
