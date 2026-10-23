@@ -74,9 +74,17 @@ void register_param_ops(
 void register_import_ops(std::vector<OpSpec>& out); // op_import.cpp   : import SVG, lettrage
 void register_geometry_ops(
     std::vector<OpSpec>& out); // op_geometry.cpp : forme, transformation, fusion, auto-satin
+void register_semantic_ops(
+    std::vector<OpSpec>& out); // op_semantic.cpp : import / remplacement sémantique
 
 // Aides communes (implémentées dans json_common.cpp).
 // Lit un identifiant d'objet de broderie existant dans `ctx.args[key]` ; refus nommé sinon.
+// Exécute une autre opération du registre dans le même contexte (même projet, même pile) :
+// permet à une opération composée (ex. `semantic_replace`) de réutiliser `remove_object`,
+// `auto_satin`… sans rien réimplémenter. Nom inconnu : refus `E_UNKNOWN_OP`.
+[[nodiscard]] OpStatus run_nested_op(OpContext& parent, const std::string& name,
+                                     const nlohmann::json& args);
+
 [[nodiscard]] OpStatus require_embroidery(const OpContext& ctx, const char* key,
                                           const document::EmbroideryObject*& out);
 

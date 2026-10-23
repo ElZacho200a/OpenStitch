@@ -45,6 +45,11 @@ libs/project_ops          fabrique, inspection, lots transactionnels, qualité, 
 | `project_apply` | lot d'opérations transactionnel ; `dry_run` ; alias `as` / `$alias` ; `skip_refused` : écarte les opérations refusées (listées dans `skipped`) et applique le reste |
 | `project_palette` | palette réellement cousue, dans l'ordre de couture (blocs), objets / aire / part de segmentation par couleur |
 | `digitize_guide` | guide de numérisation (voir ci-dessous) : à appeler avant de numériser |
+| `semantic_validate` / `semantic_import` / `semantic_replace` / `semantic_map` | manifeste `openstitch.semantic/1` + masques PNG -> objets distincts qui gardent leur identité (voir *Sémantique native*) |
+| `project_report` | bilan en un appel : statut explicite par analyse, dimensions, points, coupes, défauts par objet |
+| `project_diagnose` / `project_density` / `project_fidelity` / `project_fabric_risk` / `project_locate` | analyses du moteur (mêmes fonctions que la CLI) |
+| `project_checkpoint` / `project_restore` / `project_checkpoints` / `project_compare` | variantes en mémoire, retour arrière sûr, comparaison à même échelle |
+| `project_satin_compare` | skeleton / parallel_sweep / medial_axis sur la même géométrie, copies isolées, aucun choix automatique |
 | `project_fit_canvas` | ajuste le cadre au motif (origine au centre) : supprime les erreurs « hors cadre » |
 | `project_check` | contrôle qualité (`openstitch.quality/1`), `object` pour un seul objet |
 | `project_render` | **image PNG** du rendu réaliste ; `crop` [x0,y0,x1,y1] pour zoomer, `px_per_mm` (défaut 3, plafonné à 4 Mpx) |
@@ -85,6 +90,62 @@ les skills de Claude Code y accède par quatre voies :
 Le sujet `mcp` traduit les commandes du guide en outils (`project_palette` remplace
 `osp_palette.py`) et liste ce qui manque encore côté MCP (`sweep`, `diagnose`, `fidelity`,
 `density`, `at`, `diff`, `fabric-risk`).
+
+## Sémantique native
+
+Le manifeste (`docs/agent-semantic-format.md`) décrit des régions : `semantic_id` stable, famille,
+parents, `under` / `over` (occlusion), `thread_rgb`, `stitch_intent` (`tatami`, `running`,
+`auto_satin`) et un masque PNG (blanc > 127 sur noir, mêmes dimensions que l'image source).
+
+- `semantic_validate` : mêmes codes d'erreur que `scripts/openstitch_semantic.py` (`E_SCHEMA`,
+  `E_MASK_SIZE`, `E_OCCLUSION_CYCLE`…) ; ne modifie rien.
+- `semantic_import` : un objet par contour, **même à couleur de fil identique** (l'identité n'est
+  jamais la couleur), nommé `sem:<id> <n>`, créé dans l'ordre d'occlusion. Tout est vérifié avant
+  la première mutation ; un refus (masque absent, proportions incohérentes, `auto_satin`
+  impossible) laisse le projet strictement inchangé. `dry_run` simule.
+- `semantic_map` : provenance identifiant sémantique -> objets et formes sources. Elle est portée par
+  le **nom** de l'objet : sauvegardée dans le `.osp` sans changement de format, compatible avec les
+  projets du pont Python.
+- `semantic_replace` : remplace un seul identifiant à partir d'un masque corrigé, **à la même place
+  dans l'ordre de couture** ; les autres objets restent identiques (testé). Les identifiants
+  numériques de l'objet remplacé changent, son identité sémantique reste.
+
+Ces opérations sont des opérations du registre : elles marchent aussi par `openstitch-cli project
+op|apply` (parité CLI/MCP, mêmes refus). Limites : `directional` et `satin` exigent des guides (poser
+ensuite par `project_apply`) ; les métadonnées (famille, parents, priorités) restent dans le
+manifeste, pas dans le `.osp`.
+
+## Diagnostics
+
+`project_report` classe chaque analyse en `pass`, `warning`, `error`, `not_run` (exclue par `only`)
+ou `unsupported` (prérequis absent : p. ex. `fidelity` sans image source embarquée, jamais de valeur
+inventée). Les seuils de `fidelity` (2 % de trous intérieurs ou de détail perdu) et les points chauds
+de densité / de risque textile sont **indicatifs** ; `fabric_risk` est une heuristique non calibrée.
+Les défauts de `project_diagnose` sont regroupés par objet (`findings_by_object`).
+
+## Variantes et comparaison
+
+`project_checkpoint` garde l'état courant sous un nom (12 au plus ; `path` l'écrit aussi en `.osp`,
+jamais par écrasement). `project_restore` garde l'état courant sous `_avant_restauration` avant de
+revenir en arrière. `project_compare` donne les statistiques côte à côte, le diff du moteur par objet
+et deux rendus à même échelle et même zone. `project_satin_compare` ne modifie jamais la session.
+
+## Installation portable et diagnostic
+
+```bash
+openstitch-mcp --version      # version du serveur
+openstitch-mcp --doctor       # auto-test en mémoire : handshake, outils, projet, rendu, guide (code 0 / 2)
+```
+
+Configuration de client **sans chemin propre à un développeur** (le binaire est dans le `PATH`) :
+
+```json
+{ "mcpServers": { "openstitch": { "command": "openstitch-mcp" } } }
+```
+
+Sous Windows, remplacer par le chemin du `.exe` (ou l'ajouter au `PATH`) ; sous WSL, lancer le binaire
+Linux ou `cmd.exe /c openstitch-mcp.exe`. Compilation : cible `openstitch-mcp` (voir `installation.md`
+et `build-system.md`). Transport stdio uniquement : aucun port réseau n'est ouvert.
 
 ## Erreurs
 

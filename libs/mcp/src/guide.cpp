@@ -24,10 +24,13 @@ passent par des outils (les liens `references/x.md` du guide désignent le sujet
 | `project check --json` | `project_check` |
 | `project render` | `project_render` : image PNG, `crop` pour zoomer sur une zone |
 | `osp_palette.py --report` | `project_palette` : palette réelle dans l'ordre de couture, aire et part par couleur |
+| `project diagnose` / `density` / `fidelity` / `fabric-risk` / `at` | `project_diagnose`, `project_density` (`heatmap`), `project_fidelity` (`unsupported` sans image source), `project_fabric_risk`, `project_locate` ; **`project_report` les réunit** avec un statut explicite par analyse |
+| `project diff`, copies de fichiers pour comparer | `project_checkpoint` / `project_restore` / `project_checkpoints`, `project_compare` (statistiques, diff par objet, deux rendus à même échelle) |
+| scripts `openstitch_satin_compare.py` | `project_satin_compare` : les trois satins sur la même géométrie, sans choix automatique |
+| ponts `openstitch_semantic_*.py` | `semantic_validate`, `semantic_import`, `semantic_replace`, `semantic_map` (natifs, transactionnels) |
 | enregistrer, `--dst` | `project_save`, `project_export` |
 
-**Pas encore d'outil MCP** : `project sweep`, `diagnose`, `fidelity`, `density`, `at`, `diff`,
-`fabric-risk`, `--debug-dir`, `stats` d'un DST. Si le client a un shell et `openstitch-cli`,
+**Pas encore d'outil MCP** : `project sweep`, `--debug-dir`, `stats` d'un DST. Si le client a un shell et `openstitch-cli`,
 enregistrer le projet (`project_save`) puis lancer la CLI dessus ; sinon le consigner comme limite
 dans le rapport plutôt que d'inventer une mesure.
 
@@ -47,6 +50,16 @@ native au moteur. L'agent prépare l'image (reconstruction fidèle, aplats nets)
 `project_digitize`, puis raisonne par instance avec `project_select` (couleur, aire, zone
 `within=x0,y0,x1,y1` en mm) et `project_palette`. Ne jamais fusionner deux zones sur la seule
 couleur.
+
+## Sémantique native
+
+Un manifeste `openstitch.semantic/1` + des masques PNG (blanc > 127 sur noir, mêmes dimensions que
+l'image source) donnent des objets distincts même à couleur de fil identique : `semantic_validate`
+(sans rien modifier) -> `semantic_import` (`dry_run` d'abord) -> `semantic_map` (provenance : identifiant
+sémantique -> objets, portée par le nom `sem:<id> <n>`). Pour corriger UN objet : `project_checkpoint`,
+`semantic_replace` (même place de couture, autres objets strictement inchangés), `project_compare`
+avec le checkpoint, `project_restore` si le résultat est pire. Intentions importables : `tatami`,
+`running`, `auto_satin` ; `directional`/`satin` demandent des guides (`project_apply`).
 
 ## Boucle conseillée
 

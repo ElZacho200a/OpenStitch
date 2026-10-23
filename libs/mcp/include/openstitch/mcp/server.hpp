@@ -9,6 +9,7 @@
 namespace openstitch::mcp {
 
 inline constexpr const char* kServerName = "openstitch-mcp";
+inline constexpr const char* kServerVersion = "1.1.0";
 
 // Serveur MCP (Model Context Protocol, JSON-RPC 2.0) qui expose `libs/project_ops` à un agent IA
 // sous forme d'outils typés. Une session garde UN projet ouvert en mémoire : l'agent enchaîne
@@ -30,5 +31,10 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
+
+// Auto-test de bout en bout, en mémoire (aucun fichier, aucun réseau) : poignée de main
+// `initialize`, `tools/list`, puis un petit projet (création, forme, contrôle qualité, rendu PNG,
+// guide). Retourne le rapport JSON `openstitch.mcp-doctor/1` ; `ok` dit si tout est passé.
+[[nodiscard]] std::string self_test_json(bool& ok);
 
 } // namespace openstitch::mcp
