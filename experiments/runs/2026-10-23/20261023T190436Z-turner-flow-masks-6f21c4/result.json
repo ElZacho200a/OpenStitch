@@ -1,0 +1,110 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261023T190436Z-turner-flow-masks-6f21c4",
+  "created_utc": "2026-10-23T19:04:36Z",
+  "status": "failed",
+  "source": {
+    "source_kind": "chatgpt-private-library",
+    "library_path": "/OpenStitch/Benchmarks/turner-phare-tempete-original-20261023.jpg",
+    "library_file_id": "libfile_b7f90c9fdad0819180be1b6029c78d86",
+    "sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+    "size_px": [
+      1536,
+      1014
+    ],
+    "size_mm": [
+      363.55,
+      240
+    ],
+    "verified_sha256": true
+  },
+  "openstitch_commit": null,
+  "main_head_observed": "05058a163533a00220499671ad46e6cb0436cdb9",
+  "cli_version": "0.1.0",
+  "frame_mm": [
+    390,
+    265
+  ],
+  "score_before": null,
+  "score_after": null,
+  "evaluation": null,
+  "independent_reviewer": false,
+  "machine_tested": false,
+  "attempts": [
+    {
+      "id": "v1",
+      "reconstruction": "independent manually authored semantic families with Catmull-Rom ribbons",
+      "regions": 93,
+      "stitches": 163367,
+      "trims": 149,
+      "color_changes": 70,
+      "jumps": 820,
+      "width_mm": 363.2,
+      "height_mm": 239.3,
+      "check_errors": 0,
+      "check_warnings": 20,
+      "overlap_4plus_mm2": 1476,
+      "max_layers": 7.99,
+      "commands": {
+        "new": "pass",
+        "apply": "pass",
+        "inspect": "pass",
+        "check": "pass",
+        "diagnose": "pass",
+        "density": "pass",
+        "render": "pass",
+        "osp2dst": "pass",
+        "stats": "pass",
+        "fidelity": "failed: original not embedded in OSP"
+      },
+      "score_20": null,
+      "independent": false,
+      "accepted": false,
+      "visual_critique": "Actual preview inspected: rigid repetitive foam spikes and cloud bands, green uncovered patches, Turner luminosity and movement lost."
+    },
+    {
+      "id": "v2",
+      "reconstruction": "independent original-guided semantic masks and localized luminance contours",
+      "regions": 48,
+      "stitches": 164439,
+      "trims": 335,
+      "color_changes": 32,
+      "jumps": 965,
+      "width_mm": 363.2,
+      "height_mm": 239.4,
+      "check_errors": 0,
+      "check_warnings": 21,
+      "overlap_4plus_mm2": 3333,
+      "max_layers": 7.75,
+      "commands": {
+        "new": "pass",
+        "apply": "pass",
+        "inspect": "pass",
+        "check": "pass",
+        "diagnose": "pass",
+        "density": "pass",
+        "render": "pass",
+        "osp2dst": "pass",
+        "stats": "pass",
+        "fidelity": "failed: original not embedded in OSP"
+      },
+      "score_20": null,
+      "independent": false,
+      "accepted": false,
+      "visual_critique": "Actual preview inspected: posterized contour-map effect, large shapeless foam, excessive overlap, green uncovered patches."
+    }
+  ],
+  "artifact": {
+    "kind": "chatgpt-private-library",
+    "library_path": "/OpenStitch/Experiments/20261023T190436Z-turner-flow-masks-6f21c4.zip",
+    "library_file_id": "libfile_ab8534f9b3b48191a087517dcd50518f",
+    "sha256": "0b5c8c91bbead9d9e2c444a42692b707306da03777f229a86a02cd914d58ebaa",
+    "public_url": null,
+    "retention_days": null
+  },
+  "lessons": [
+    "Two consecutive failures of artistic gate A: stop, do not optimize stitch count/density as proxy for artistic quality.",
+    "Semantic mask identity preserved but coarse segmentation still destroys wave volume and atmospheric light.",
+    "Both OSPs technically valid but not machine approved; no independent judge available."
+  ]
+}
