@@ -44,6 +44,8 @@ enum class Tool {
     // Pinceau de déformation (HP-VEC-018) : glisser = pousser / tirer le contour de la forme
     // sélectionnée ; un coup de pinceau = une commande.
     Brush,
+    // Pot de peinture : un clic dans un vide fermé entre des formes crée une forme qui le remplit.
+    Bucket,
 };
 
 } // namespace openstitch::desktop

@@ -1685,6 +1685,14 @@ Besoin (retour utilisateur) : le moteur d'auto-numérisation est bon ; ce qui co
   et barre d'outils contextuelle).
 - Dépend de : HP-VEC-002 ; cadrage.
 
+### HP-VEC-021 — Pot de peinture vectoriel (remplir un vide entre formes) [P1] — ◐ Partiel (2026-10-23)
+- Origine : demande du mainteneur (2026-10-23) : cliquer dans un trou fermé entre plusieurs zones vectorisées pour y créer une nouvelle forme, ensuite convertible en satin, tatami, etc.
+- Livré : `geometry::fill_gap_at` (face du complémentaire de l'union des formes contenant le clic ; îlots enfermés = trous ; refus clair si le clic est sur une forme ou si le vide n'est pas fermé ; tolérance `grow` qui referme les fentes fines), `commands::make_fill_gap_command` (une commande annulable, formes visibles seulement), outil « Pot de peinture » (Maj+F, palette d'outils, `Context::Bucket`), tests Catch2 (geometry, commands) et QTest.
+- Reste : tolérance de fente réglable par l'utilisateur (fixe à 0,1 mm), couleur de la forme reprise d'un voisin, aperçu au survol du vide qui serait rempli, remplissage d'un vide délimité aussi par les régions raster non vectorisées.
+- Modules : `libs/geometry`, `libs/commands`, `apps/desktop`.
+- Dépend de : HP-VEC-001.
+- Acceptation : clic dans un vide fermé = une forme exactement à la frontière des voisines, undo en un pas ; clic sur une forme ou dans un vide ouvert = message, document inchangé.
+
 ---
 
 ## 9. Manipulation d'objets (OBJ)
@@ -3580,6 +3588,7 @@ ci-dessus doit les respecter :
 |---|---|---|
 | 2026-10-21 | ChatGPT (PR risque textile) | HP-FAB-004 ◐ : première carte heuristique non calibrée, CLI/desktop, tests et protocole de limites ; solveur physique et validation machine restant à faire. |
 | 2026-09-22 | Claude (session d'audit) | Création : inventaire complet vérifié dans le code. |
+| 2026-10-23 | Claude (pot de peinture) | **HP-VEC-021 ◐** : outil Pot de peinture (Maj+F) qui remplit un vide fermé entre formes vectorielles, `fill_gap_at`, commande annulable, tests Catch2 et QTest. |
 | 2026-10-21 | ChatGPT (validation machine) | HP-PHYS-001 ◐ : grille de 51 essais, protocole et registre CSV contrôlé avec cinq tests ; aucune mesure physique encore effectuée. |
 | 2026-10-21 | ChatGPT (contributions) | HP-DIST-005 ◐ : formulaires GitHub d'issues, modèle de PR, guide contributeur et quatre tests de contrat. |
 | 2026-10-21 | ChatGPT (interopérabilité) | HP-QA-005 ◐ : comparaison des compteurs avec pyembroidery, six tests et CI de contrat, en attente d'un corpus de fichiers réels. |

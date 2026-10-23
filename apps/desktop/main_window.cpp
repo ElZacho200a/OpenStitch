@@ -458,6 +458,7 @@ MainWindow::MainWindow() {
     buildMeasureTool();
     buildEyedropperTool();
     buildBrushTool();
+    buildBucketTool();
     // [cablage-C:fin]
     // [cablage-D:debut]
     // [cablage-D:fin]
@@ -6981,6 +6982,7 @@ void MainWindow::buildToolPalette() {
     }
     attachMeasureEyedropperTools();
     attachBrushTool();
+    attachBucketTool();
     toolSelectAct_->setChecked(true);
 
     toolPalette_->addSeparator();
@@ -7247,6 +7249,7 @@ void MainWindow::setTool(Tool tool) {
     }
     syncMeasureEyedropperTool(tool);
     syncBrushTool(tool);
+    syncBucketTool(tool);
     updateDrawActionsState();
     updateInteractionContext();
     hideHoverHighlight();
@@ -9654,6 +9657,10 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
     }
     if (currentTool_ == Tool::Eyedropper) {
         eyedropperAt(posMm);
+        return;
+    }
+    if (currentTool_ == Tool::Bucket) {
+        bucketFillAt(posMm);
         return;
     }
     if (drawingDirectionGuide()) {
