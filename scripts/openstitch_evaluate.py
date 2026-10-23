@@ -118,8 +118,20 @@ def evaluate(data: dict, base: Path) -> dict:
             or any(isinstance(v, bool) or not isinstance(v, (int, float))
                    or not math.isfinite(v) or v <= 0 for v in size_mm)):
         errors.append("size_mm doit contenir [largeur, hauteur] positives")
-    if data.get("reviewer") == data.get("digitizer") or not data.get("reviewer"):
+    mode = data.get("evaluation_mode", "independent")
+    if mode not in ("independent", "self_review"):
+        errors.append("evaluation_mode invalide")
+    if not data.get("reviewer"):
+        errors.append("relecteur identifié requis")
+    elif mode == "independent" and data.get("reviewer") == data.get("digitizer"):
         errors.append("relecteur indépendant identifié requis")
+    elif mode == "self_review" and data.get("reviewer") != data.get("digitizer"):
+        errors.append("autoévaluation : relecteur doit être le numériseur")
+    if mode == "self_review":
+        if len(str(data.get("visual_review") or "").strip()) < 80:
+            errors.append("critique visuelle personnelle insuffisante (80 caractères)")
+        if len(str(data.get("comparison_method") or "").strip()) < 20:
+            errors.append("méthode de comparaison absente")
     if not isinstance(data.get("machine_tested"), bool):
         errors.append("machine_tested (booléen) obligatoire")
 
@@ -133,6 +145,9 @@ def evaluate(data: dict, base: Path) -> dict:
         "source_id": source_id,
         "size_mm": size_mm,
         "status": status,
+        "evaluation_mode": mode,
+        "independent": mode == "independent",
+        "score_kind": "indicative_self_review" if mode == "self_review" else "independent",
         "score": score,
         "raw_score": raw_score,
         "out_of": 20,
@@ -143,8 +158,9 @@ def evaluate(data: dict, base: Path) -> dict:
         "machine_tested": data.get("machine_tested"),
         "validation_level": "machine_tested" if data.get("machine_tested") else "software_only",
         "next_action": ("complete_evidence" if errors else "fix_blockers" if blockers else
+                        "request_independent_review" if score >= 17 and mode == "self_review" else
                         "deliver" if score >= 17 else "iterate"),
-        "note": "Une note logicielle n'est pas une validation textile sur machine.",
+        "note": ("Autoévaluation indicative non indépendante. " if mode == "self_review" else "") + "Une note logicielle n'est pas une validation textile sur machine.",
     }
 
 
