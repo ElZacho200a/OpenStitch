@@ -625,6 +625,39 @@ void MainWindow::setRegionMapOpacity(double opacity) {
     }
 }
 
+void MainWindow::setImageOpacity(double opacity) {
+    imageOpacity_ = std::clamp(opacity, 0.0, 1.0);
+    QSettings().setValue(QStringLiteral("ui/imageOpacity"), imageOpacity_);
+    for (QGraphicsItem* item : baseItems_) {
+        if (item->data(0).toString() == QLatin1String("backgroundImage")) {
+            item->setOpacity(imageOpacity_);
+        }
+    }
+}
+
+void MainWindow::buildImageOpacityControls(QMenu* viewMenu) {
+    imageOpacity_ =
+        std::clamp(QSettings().value(QStringLiteral("ui/imageOpacity"), 1.0).toDouble(), 0.0, 1.0);
+    auto* holder = new QWidget(viewMenu);
+    holder->setObjectName(QStringLiteral("imageOpacityControl"));
+    auto* row = new QHBoxLayout(holder);
+    row->setContentsMargins(24, 2, 12, 2);
+    row->addWidget(new QLabel(tr("Opacité de l'image"), holder));
+    auto* slider = new QSlider(Qt::Horizontal, holder);
+    slider->setObjectName(QStringLiteral("imageOpacitySlider"));
+    slider->setAccessibleName(tr("Opacité de l'image de fond"));
+    slider->setRange(0, 100);
+    slider->setValue(static_cast<int>(std::lround(imageOpacity_ * 100.0)));
+    slider->setMinimumWidth(120);
+    slider->setToolTip(tr("Estomper l'image pour mieux voir les formes et les points."));
+    row->addWidget(slider);
+    auto* action = new QWidgetAction(viewMenu);
+    action->setDefaultWidget(holder);
+    viewMenu->addAction(action);
+    connect(slider, &QSlider::valueChanged, this,
+            [this](int value) { setImageOpacity(value / 100.0); });
+}
+
 void MainWindow::buildRegionViewControls(QMenu* segMenu) {
     regionMapOpacity_ = std::clamp(
         QSettings().value(QStringLiteral("ui/regionMapOpacity"), 0.9).toDouble(), 0.2, 1.0);

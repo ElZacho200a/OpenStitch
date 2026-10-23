@@ -56,6 +56,8 @@ openstitch_add_qt_test(test_ui_invariants test_ui_invariants.cpp)
 openstitch_add_qt_test(test_ui_adversarial test_ui_adversarial.cpp)
 openstitch_add_qt_test(test_ui_characterization test_ui_characterization.cpp)
 openstitch_add_qt_test(test_ux_global test_ux_global.cpp)
+openstitch_add_qt_test(test_workspace_presets test_workspace_presets.cpp)
+openstitch_add_qt_test(test_command_palette test_command_palette.cpp)
 openstitch_add_qt_test(test_creation_flow test_creation_flow.cpp)
 openstitch_add_qt_test(test_canvas_input test_canvas_input.cpp)
 openstitch_add_qt_test(test_interaction_map test_interaction_map.cpp)
@@ -92,6 +94,7 @@ openstitch_add_qt_test(test_vector_tools test_vector_tools.cpp)
 # [cablage-C:debut]
 openstitch_add_qt_test(test_measure_tool test_measure_tool.cpp)
 openstitch_add_qt_test(test_eyedropper_tool test_eyedropper_tool.cpp)
+openstitch_add_qt_test(test_bucket_tool test_bucket_tool.cpp)
 # [cablage-C:fin]
 # [cablage-D:debut]
 openstitch_add_qt_test(test_thread_stock_ui test_thread_stock_ui.cpp)

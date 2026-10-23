@@ -35,7 +35,8 @@ enum class Context : std::uint8_t {
     StitchEdit, // édition des points de couture
     Measure,    // outil Règle (HP-VEC-010) : glisser = mesure temporaire
     Eyedropper, // outil Pipette (HP-THR-012) : clic = échantillonner
-    Brush       // outil Pinceau (HP-VEC-018) : glisser = pousser / tirer le contour
+    Brush,      // outil Pinceau (HP-VEC-018) : glisser = pousser / tirer le contour
+    Bucket      // outil Pot de peinture : clic = remplir le vide fermé sous le curseur
 };
 
 enum class GestureKind : std::uint8_t {
@@ -95,7 +96,8 @@ enum class Intent : std::uint8_t {
     SelectModeBrush,
     MeasureDistance,
     PickColor,
-    BrushReshape
+    BrushReshape,
+    FillGap
 };
 
 enum class Origin : std::uint8_t { Fusion, Proposal, Existing };

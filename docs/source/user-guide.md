@@ -164,6 +164,7 @@ entre les deux marqueurs.
 | V1 | Règle | Glisser | Mesurer une distance (règle temporaire) |
 | V3 | Pinceau | Glisser | Pousser / tirer le contour de la forme sélectionnée (Maj : lisser) |
 | V2 | Pipette | Clic | Échantillonner la couleur et choisir un fil |
+| V4 | Pot de peinture | Clic | Remplir le vide fermé entre les formes |
 <!-- GESTURES:END -->
 
 ### Outils Règle et Pipette

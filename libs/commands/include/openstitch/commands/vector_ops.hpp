@@ -71,6 +71,15 @@ struct VectorOpResult {
 make_fill_pockets_command(document::Project& project, const std::vector<ObjectId>& ids,
                           const std::vector<geometry::PathSet>& pockets);
 
+// Pot de peinture : crée un NOUVEL objet vectoriel qui remplit le vide fermé contenant `seed`,
+// délimité par les objets vectoriels visibles du document (`geometry::fill_gap_at`). Les îlots
+// enfermés restent des trous. Le nouvel objet (couleur neutre, nom « Vide rempli ») n'a pas
+// encore de couture : on y applique ensuite satin, tatami, etc. Une seule commande annulable ;
+// refusée (`error` montrable) si le point est sur une forme ou si le vide n'est pas fermé.
+// `seal` : largeur de fente refermée, cf. `fill_gap_at` (`grow`).
+[[nodiscard]] VectorOpResult make_fill_gap_command(document::Project& project, Vec2um seed,
+                                                   Micrometers seal = Micrometers{0});
+
 // Sépare les morceaux disjoints d'un objet en objets distincts (mêmes règles de clonage).
 // Refusé si l'objet n'a qu'un morceau.
 [[nodiscard]] VectorOpResult make_break_apart_command(document::Project& project, ObjectId id);
