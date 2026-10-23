@@ -1,0 +1,49 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261023T004252Z-ruines-marais-gh39879730242",
+  "created_utc": "2026-10-23T00:42:52Z",
+  "status": "blocked",
+  "source": {
+    "benchmark_id": "ruines-marais-20261023",
+    "library_path": "/OpenStitch/Benchmarks/ruines-marais-20261023.png",
+    "sha256": null,
+    "size_mm": null,
+    "target_height_mm": 240
+  },
+  "openstitch_commit": "684497af38659e8e648a4ba756f5b945f11745b3",
+  "cli_version": null,
+  "semantic_gate": "not_run",
+  "visual_review": "not_run",
+  "reason": "Le benchmark prioritaire est dans ChatGPT Library privee, absent du runner GitHub Actions. Fournir OPENSTITCH_BENCHMARK_IMAGE avec le vrai fichier verifie (ne pas remplacer par tentabrode.png).",
+  "score_before": null,
+  "score_after": null,
+  "evaluation": null,
+  "artifact": {
+    "kind": "github-actions-artifact",
+    "url": "https://github.com/ElZacho200a/OpenStitch/actions/runs/39879730242/artifacts/12469334592",
+    "artifact_id": "12469334592",
+    "retention_days": 14
+  },
+  "changes": [],
+  "lessons": [
+    "L'image privée doit être transférée explicitement avant de lancer le moteur."
+  ],
+  "parent_run_id": null,
+  "commands": [
+    {
+      "name": "main_sha",
+      "exit_code": 0,
+      "elapsed_s": 0.0,
+      "stdout_file": "main_sha.stdout.txt",
+      "stderr_file": "main_sha.stderr.txt"
+    }
+  ],
+  "machine_tested": false,
+  "expected": [
+    "OSP",
+    "DST",
+    "real-render",
+    "CLI JSON diagnostics"
+  ],
+  "produced": []
+}
