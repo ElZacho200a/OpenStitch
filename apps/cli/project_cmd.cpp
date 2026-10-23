@@ -1017,6 +1017,60 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
         g_exit = 0;
     });
 
+    // Carte de risque de tirage : heuristique et profils de tissus NON calibres.
+    struct FabricArgs {
+        std::string osp, output, map, fabric{"woven"};
+        double cellMm{1.0};
+        bool noClobber{false};
+    };
+    auto frArgs = std::make_shared<FabricArgs>();
+    c = project->add_subcommand("fabric-risk",
+                                "Indice relatif de risque de tirage du tissu (non calibre), "
+                                "orientation et concentration des points");
+    c->add_option("osp", frArgs->osp, "Projet .osp")->required();
+    c->add_option("--fabric", frArgs->fabric, "Profil indicatif : woven, jersey, felt")
+        ->check(CLI::IsMember({"woven", "jersey", "felt"}));
+    c->add_option("--cell-mm", frArgs->cellMm, "Cellule d'analyse en mm (defaut 1)")
+        ->check(CLI::Range(0.1, 10.0));
+    c->add_option("--heatmap", frArgs->map, "Carte PNG de l'indice relatif (0..100)");
+    c->add_option("--output,-o", frArgs->output, "Ecrit le rapport JSON");
+    c->add_flag("--no-clobber", frArgs->noClobber, "Refuse d'ecraser les fichiers de sortie");
+    c->add_flag("--json", jsonOut, "Rapport JSON (openstitch.fabric-risk/1) sur stdout");
+    c->callback([frArgs, &jsonOut, write_bytes] {
+        for (const auto* p : {&frArgs->map, &frArgs->output}) {
+            if (const auto refused = check_output("fabric-risk", jsonOut, *p, frArgs->noClobber)) {
+                g_exit = *refused;
+                return;
+            }
+        }
+        int rc = 0;
+        auto opened = load("fabric-risk", jsonOut, frArgs->osp, rc);
+        if (!opened) {
+            g_exit = rc;
+            return;
+        }
+        po::FabricRiskOptions opt;
+        opt.fabric = frArgs->fabric;
+        opt.cell_mm = frArgs->cellMm;
+        opt.heatmap = !frArgs->map.empty();
+        const auto report = po::measure_fabric_risk(opened->project, opt);
+        if (!report) {
+            g_exit = fail_err("fabric-risk", jsonOut, po::code::kRefused, report.error());
+            return;
+        }
+        std::string err;
+        if (!frArgs->output.empty() && !write_text(fs::path(frArgs->output), report->json, err)) {
+            g_exit = fail_with("fabric-risk", jsonOut, po::code::kIo, err);
+            return;
+        }
+        if (!frArgs->map.empty() && !write_bytes(frArgs->map, report->heatmap_png, err)) {
+            g_exit = fail_with("fabric-risk", jsonOut, po::code::kIo, err);
+            return;
+        }
+        fmt::print("{}", jsonOut ? report->json + "\n" : report->text);
+        g_exit = 0;
+    });
+
     auto atArgs = std::make_shared<AnalysisArgs>();
     atArgs->a = 0.4;
     c = project->add_subcommand("at",

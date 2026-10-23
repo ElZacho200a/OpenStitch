@@ -1,136 +1,221 @@
 ---
 name: openstitch-digitize
-description: Numériser une image en broderie avec OpenStitch (image → objets → points → DST) de façon à obtenir un résultat brodable et fidèle, et diagnostiquer une numérisation décevante. À utiliser quand l'utilisateur fournit une image (illustration, logo, photo, dessin au trait) à broder, demande « numérise ça », « pourquoi c'est moche / lourd / plein de coupes », compare une numérisation automatique à une version retouchée à la main (.osp), ou quand on règle `digitize`, `--dark-lines`, `--satin-bands`, `--skip-background`, `--max-colors`, `--min-region-mm2`.
+description: Numériser, analyser et améliorer une broderie OpenStitch de façon interprétative, de l'image initiale aux objets sémantiques, au choix satin/tatami/contour, au projet OSP et au DST. Pour une image, un OSP existant, un motif trop simplifié, trop d'îlots/coupes, des satins inadaptés ou une broderie à retravailler.
 ---
 
-# Bien numériser une image en broderie
+# Numérisation textile interprétative — OpenStitch
 
-La numérisation automatique donne un **point de départ**, pas un résultat fini. La méthode
-ci-dessous vient d'un cas réel : une illustration plate de navire (1448 × 1086 px, 300 mm), où
-une version retouchée à la main par l'utilisateur était nettement meilleure que la sortie
-automatique. Chaque règle porte la mesure qui la justifie. Documentation de référence :
-`docs/source/auto-numerisation.md` (à lire par `search_docs`, voir le skill `openstitch-docs`).
+**Mission.** Produire la meilleure broderie raisonnablement réalisable avec OpenStitch, et pas simplement convertir des pixels en DST. L'agent analyse, reconstruit, segmente, choisit les points, rend, critique, modifie et re-teste. Le **projet .osp éditable est la source de vérité** ; le DST n'est qu'un export. Un rendu logiciel ne valide jamais un essai physique sur machine.
 
-## 1. Regarder l'image avant de lancer quoi que ce soit
+## Documents à consulter selon le besoin
 
-| Question | Pourquoi |
-|---|---|
-| **Plate (aplats, contours nets) ou photo ?** | Plate : mode `shapes` (défaut). Dessin au trait : `contours`. Photo : `stipple`, ou la réduire à 6–10 couleurs avant (une photo en `shapes` donne des milliers de petites régions). |
-| **Y a-t-il un fond ?** | Un fond (papier, crème, blanc) ne se brode pas. Voir « Le fond » ci-dessous. |
-| **Taille réelle voulue (mm) ?** | `--dpi` fixe l'échelle : mm/px = 25,4 / dpi. 1448 px pour 300 mm → `--dpi 122.6`. Sans `--dpi`, 96 est supposé et la pièce sort 1,3 fois trop grande. Les détails fins se jugent en mm, pas en pixels. |
-| **Combien de vraies couleurs de fil ?** | `--max-colors` (défaut 8). Compter les teintes distinctes visibles ; mettre 1 à 2 de plus que ce compte, jamais 64 : deux quasi-doublons = un changement de fil de plus pour rien. |
-| **Contours noirs fins (mâts, haubans, bords) ?** | `--dark-lines`, voir `references/parametres.md`. |
+- [Segmentation sémantique et fusion raisonnée](references/segmentation-semantique.md) — masques, instances, structures porteuses, reconstructions et refus de fusion.
+- [Sélection expérimentale des trois satins](references/selection-satins.md) — squelette, balayage, axe médian, couverture et rendu.
+- [Planification textile, remplissages directionnels et portes de validation](references/directions-et-planification-textile.md) — rôle textile, guides, sous-couches/occlusions, protocole et retour d'expérience du navire.
+- [Prompt autonome pour une nouvelle session](references/prompt-session-autodigitize.md) — texte à fournir avec une image et des dimensions pour relancer ce workflow, sans prétendre aux étapes non exécutées.
+- [Audit des contours et retouches/validation](references/retouches-et-validation.md) — suppression, conversion, densité, coupes, tests et livrables.
+- [Cas chiffré des ruines V1 à V9](references/cas-ruines-v1-v9.md) — hypothèses, gains réels et échecs.
+- [Réglages](references/parametres.md), [diagnostic](references/diagnostic.md), [journal d'essais historiques](references/journal-essais.md).
+- [CLI projet](../../../docs/source/cli-project.md), [auto-numérisation](../../../docs/source/auto-numerisation.md), [satin-squelette](../../../docs/source/satin-squelette.md), [segmentation](../../../docs/source/segmentation.md), [workflow.sh](scripts/workflow.sh).
 
-## 2. Lancer, mesurer, regarder
+## Principes de décision
 
-Binaire : `openstitch-cli` (voir `openstitch-build-test` pour le build). Sorties dans le
-**scratchpad**, jamais à la racine du dépôt.
+1. **Rôle textile avant couleur et géométrie.** Une pierre, la lune et un reflet peuvent partager le même fil beige tout en étant trois objets totalement distincts. Deux zones de même teinte ne sont jamais fusionnées sur cette seule base.
+2. **Priorité à la lisibilité.** Préserver silhouettes, joints d'arches, nervures, épis, reflets, variation de feuillage. Ne pas réduire la complexité du dessin seulement pour faire baisser les coupes. Une simplification graphique trop forte est irréversible lors de la numérisation.
+3. **Séparer puis réunir intelligemment.** Identifier les familles, **instances** et structures porteuses avant de créer des régions brodables. Fusionner des fragments d'une même liane peut aider ; relier deux nénuphars indépendants serait une erreur.
+4. **Satin n'est pas un seul point.** Un objet admissible exige, si l'enjeu le justifie, une comparaison *skeleton / parallel_sweep / medial_axis*. Un satin techniquement produit peut rester laid, non couvert ou excessivement dense.
+5. **Zéro erreur OpenStitch n'est pas une preuve de brodabilité.** Les densités sont simulées ; la tension réelle et les déformations sur pull nécessitent des essais physiques. Une baisse du nombre de points ou de coupes ne suffit jamais à conclure.
+6. **Mesurer à échelle stable.** Les métriques de fidélité à la source ne sont directement comparables que si la source, la taille brodée, l'échelle et le fond considéré sont les mêmes ; le tissu non brodé intentionnel peut fausser un « manque de couverture » global.
+7. **Portes de validation obligatoires (A → B → C → D).** A : scène lisible et masques sémantiques distincts ; B : plan de points et directions par objet ; C : OSP généré par le vrai moteur et provenance vérifiée ; D : comparaison artistique, physique et technique. **Si A échoue, ne pas tenter de réparer en changeant la densité ou en ajoutant du satin.** Si D échoue, reprendre l'étape responsable, pas déclarer la livraison définitive.
 
-**Boucle de travail (tout est dans le CLI, déterministe, sans script maison) :**
+## Phase 0 — Entrées, sauvegardes, CLI
 
-1. **Comparer des réglages d'un coup** : `project sweep` (grille d'options → tableau objectif + planche de
-   zooms réalistes). C'est le point d'entrée, avant tout essai à la main.
-2. **Numériser la variante retenue** : `workflow.sh` (ci-dessous) ou `project digitize … --debug-dir`.
-3. **Chercher les défauts** : `project diagnose` (détecteurs avec objets et option conseillée), puis
-   `project fidelity --map`, `project density --heatmap`.
-4. **Voir comme l'utilisateur** : `project render` (réaliste, fond vert), zoom avec `--crop`.
-5. **Pourquoi cet endroit est-il ainsi ?** `project at --px X,Y` (quel objet, quel type, quels
-   paramètres) et `digitize --debug-dir` (`traits.png` : rouge = trait cousu, bleu = barre, vert =
-   séparation non cousue, orange = fragment trop court).
+L'utilisateur fournit l'image, éventuellement le projet existant, et la taille brodée. **Ne demander que la dimension si elle manque.** Si connues : tissu (extensible ou non), couleur du support, stabilisateur, palette, machine et cadre. Choisir et signaler les hypothèses restantes.
 
-```bash
-# 1. balayage : 8 variantes en ~40 s, tableau + planche
-openstitch-cli project sweep img.png --dpi 122.6 --max-colors 12 --dark-lines --dark-lines-bars 4 \
-    --min-region-mm2 1 --fill-inset 0 --satin-bands --vary island-cleanup=0,20 \
-    --vary curve-tolerance=0,0.4 --vary no-underpath=0,1 --sheet $SCRATCH/planche.png \
-    --sheet-crop 0.12,0.3,0.46,0.72 --journal docs/journal.md --title "Mon image"
-# 2. variante retenue, de bout en bout (cadre, contrôle, diagnostic, fidélité, densité, rendu)
-CLI=/chemin/openstitch-cli .claude/skills/openstitch-digitize/scripts/workflow.sh \
-    img.png $SCRATCH/v1 300 210 122.6 --max-colors 12 --dark-lines --dark-lines-bars 4 \
-    --dark-lines-min-length 6 --min-region-mm2 1 --fill-inset 0 --satin-bands \
-    --curve-tolerance 0.4 --no-underpath --hidden-travel
-```
+Conserver immuables original et projets témoins ; tous les essais dans un dossier temporaire **en dehors du dépôt**. Employer le binaire réel OpenStitch :
 
-`workflow.sh` : image, dossier de sortie, largeur et hauteur du cadre (mm), dpi, puis les options de
-`digitize`. Il écrit `p.osp`, `out.dst`, `debug/` (masques), `realiste.png`, `fidelite.png`,
-`densite.png` et imprime les chiffres. Une variante = un nouveau dossier.
+~~~bash
+command -v openstitch-cli || true
+# Si absent et sur Linux x86-64, depuis la racine du dépôt :
+bash scripts/install-cli-linux.sh
+~/.local/bin/openstitch-cli --version
+~/.local/bin/openstitch-cli --help
+~/.local/bin/openstitch-cli project --help
+~/.local/bin/openstitch-cli project operations --json
+~~~
 
-Commandes unitaires :
+L'installateur du dépôt vérifie SHA-256 et privilégie la release persistante ou une CI réussie de main. Ne pas exécuter d'artefacts inconnus issus d'une PR. Si indisponible, suivre la documentation d'installation ou compiler. Ne jamais prétendre avoir exécuté OpenStitch sans démarrer le binaire.
 
-```bash
-openstitch-cli stats sortie.dst        # points, sauts, coupes, changements de fil, dimensions
-openstitch-cli project digitize img.png -o p.osp --dst sortie.dst --dpi 122.6 --debug-dir dbg
-openstitch-cli project diagnose p.osp                # défauts connus
-openstitch-cli project fidelity p.osp --map err.png  # tissu visible, détails perdus
-openstitch-cli project density p.osp --heatmap d.png # épaisseurs de fil
-openstitch-cli project at p.osp --px 640,410         # qui a cousu ce point ?
-openstitch-cli project render p.osp -o r.png --px-per-mm 14 --crop 0.1,0.25,0.5,0.75
-```
+Calculer DPI = largeur_source_px × 25,4 / largeur_souhaitée_mm **si ces deux largeurs couvrent le même sujet**. Sinon mesurer la boîte englobante réellement brodée et recaler. Vérifier les dimensions du DST ; le cadre est plus grand que la dimension du motif et doit comporter une marge.
 
-**Ne jamais juger sur un rendu de script en lignes** (fausses alertes de l'essai 1 : crème « disparu »,
-trous invisibles) : `project render` est le moteur de l'aperçu de l'application.
+## Phase 1 — Lecture sémantique et reconstruction graphique
 
-Lire **dans cet ordre** :
+Avant toute quantification : inventorier les structures et leurs sous-structures, leurs recouvrements et leurs contours significatifs. Exemple des ruines :
 
-1. **Dimensions** : si elles dépassent la taille voulue, le fond a été brodé (« Le fond »).
-2. **Messages de `digitize`** : fond détecté ou non, `Surface non couverte`, nombre d'objets.
-3. **`stats`** : points, coupes, changements de fil. Repères observés sur une image de ~300 mm
-   à 12 couleurs : 80 000 à 120 000 points, 1 400 à 1 700 coupes. Au-delà de 3 000 coupes, un
-   nombre excessif d'objets séparés est en cause (voir `references/diagnostic.md`).
-4. **Le rendu**, en regardant la lisibilité des mâts, des contours et des petites zones, pas
-   seulement les chiffres.
+- Architecture : arches, intrados/extrados, piliers, blocs, joints, ombres, pierres derrière lierre.
+- Végétation : lierre accroché à telle arche, masses de feuillage, touffes de roseaux avec tiges individuelles.
+- Ciel : lune, nuages et ciel qui traversent visuellement le soleil.
+- Eau : eau de fond, reflets de lune, reflets verticaux, nénuphars **individuels**.
+- Tissu visible : grandes ombres et interstices intentionnels à ne pas remplir.
 
-Le rendu du script est **approximatif** (une couleur par bloc, tatami en lignes pointillées) ;
-ce n'est pas le rendu réaliste de l'application. Ne jamais le présenter comme tel, et le dire.
-Si une version retouchée existe (`.osp`), lui passer `--palette` (couleurs des objets par ordre
-de couture) car sa boîte englobante ne correspond plus à l'image.
+Produire une reconstruction contrôlée avec des **aplats nets, régions fermées, bords propres, sans halos ni bavures**. Garder la source intacte. Important : ne pas refaire une illustration simplifiée « jolie » qui efface les petits joints, roseaux et reflets de l'original. Comparer au besoin une préparation *fidèle* et une préparation *allégée* au même gabarit.
 
-## 3. Le fond : la première cause d'échec
+Affecter des **identifiants techniques indépendants des fils** et une arborescence : scène → famille → instance → composant → objet brodable. Documenter instances, parents, sous-couches/occlusions et détails protégés. Ne jamais utiliser seulement le RGB comme identité.
 
-Détection automatique (`segmentation::background_candidate`, même règle CLI et bureau) :
+**Validation A, avant de digitizer :** isoler et inspecter les objets structurants en aplat, notamment le sujet central. Pour un navire : coque et proue, voiles individuelles, vergues/mâts/cordages, vagues porteuses, écume, nuages et ouverture lumineuse. Indiquer les formes volontairement absentes et les interstices où le tissu doit rester visible. Refuser une carte qui montre les bonnes couleurs mais plus les bons objets. La reconstruction IA est **une source de référence intermédiaire**, pas automatiquement une segmentation exploitable.
 
-- fond **clair** (L\* > 90) qui touche au moins 3 bords ; **ou**
-- fond **coloré** (crème, beige, aplat) qui occupe au moins 85 % du pourtour et touche les 4 bords.
+## Phase 2 — Segmentation sémantique puis technique
 
-Un ciel ou une mer plein cadre n'est **jamais** ignoré (ils ne remplissent pas tout le pourtour).
-Le CLI imprime `Région candidate au fond` et `Ignorer la plus grande région : oui/non`. Si ce
-n'est pas le bon choix : `--skip-background yes|no`. Cas vécu : fond beige non détecté
-(L\* 86) → 299 × 224 mm et +22 % de points, alors que le motif fait 290 × 200 mm.
+Créer des masques / objets logiques distincts pour les familles et les **instances**. Les fausses couleurs techniques servent à différencier deux régions à broder même si elles utilisent le même fil final.
 
+Puis découper techniquement selon les limites des points : sous-diviser lierre ramifié aux jonctions ; séparer bande satin de masse tatami ; distinguer pierre, joint de pierre, liane qui la recouvre ; préserver des trous et la transparence du tissu. Mesurer aires et largeurs **en mm**. Conserver les informations dans **carte_semantique.png**, **segmentation_technique.png**, **regions.csv** et **palette.json** avec un identifiant stable par objet. S'assurer qu'aucune région ne fuit, ne crée de halo ou ne se mélange avec une instance voisine. **Conserver la boîte englobante, la largeur locale et les branches** : une forme de 6 mm de large dans sa boîte peut être ramifiée ou étranglée et donc impropre à un satin unique. Consigner la relation `under/over` et la priorité de chaque objet avant import.
 
-## 4. Réglages, diagnostic, historique : références à la demande
+La segmentation sémantique **n'est pas** une commande native promise par le CLI actuel : les masques peuvent être préparés en Python/OpenCV, SVG ou par un outil d'image, avec validation géométrique explicite.
 
-Ne pas tout charger. Lire le fichier utile, et seulement la plage nécessaire (`rg -n` d'abord).
+## Phase 3 — Fusion sémantique AVANT la vectorisation
 
-| Besoin | Fichier (dans `references/`) |
-|---|---|
-| Choisir ou régler une option (`--dark-lines`, `--island-cleanup`, `--fill-inset`, `--satin-bands`, `--min-region-mm2`, mode `contours`/`stipple`…), comprendre ce qu'apporte une retouche manuelle | `parametres.md` |
-| Symptôme précis (pièce trop grande, ciel en pointillés, > 3 000 coupes, interstices, trop de fils) | `diagnostic.md` |
-| Mesures et leçons des essais 1–14 (pré-traitements `--pre`, `--flow-fill`, `--rings-satin`, barres, fond vert…) | `journal-essais.md` |
+Créer un graphe de voisinage contenant : instance, famille, structure porteuse, distance en mm, continuité de direction, intersections/occlusions et rôle textile. Pour chaque fragment : conserver, rattacher, reconstruire une continuité, conserver comme trait, supprimer comme doublon, ou demander un réexamen.
 
-Règle d'or : **un réglage à la fois**, mesuré avant/après avec `stats` (même `--dpi`, même `--max-colors`).
-Options à connaître sans ouvrir le fichier : `--dark-lines` (mâts, haubans ; +40–60 % de coupes),
-`--island-cleanup 20` (îlots ; −49 % d'objets mesuré), `--fill-inset 0` (interstices ; +16 % de points),
-`--satin-bands` (désactivé par défaut : relecture brevet requise, voir `parametres.md`).
+**Fusionner seulement** avec preuve que les deux morceaux appartiennent à une **même structure visuelle** et que la nouvelle forme demeure brodable : pas de passage à travers un autre objet, pas de jonction trop large pour le satin, pas de disparition de contour significatif. Tester les raccords sur copies, comptabiliser leur aire ajoutée et comparer rendu/coupes/densité. L'outil de nettoyage des îlots par proximité colorimétrique ne remplace pas cette analyse : il peut effacer une branche ou un joint.
 
-## 5. Dans l'application
+Si on part d'un OSP existant, la fusion native peut réunir des polygones **disjoints** sans les faire coudre en une seule traversée : ne pas promettre des coupes en moins. Le cas V8 mesuré le démontre ; une reconstruction *avant* segmentation est prioritaire pour les grosses réductions d'îlots.
 
-La boîte *Numérisation automatique* reprend les mêmes réglages (fond, couleurs, satin des
-bandes, chevauchement). Ensuite, les retouches se font par commandes annulables : fusion de
-zones, étirement de tatami, ordre des couleurs. « Optimiser les trajets » se lance à la fin,
-juste avant l'export, jamais avant : il ne modifie ni l'ordre des couleurs ni la couche visible.
+## Phase 4 — Intention de point et palette finale
 
+Attribuer **par fonction visuelle**, jamais par simple taille de région :
 
-## 6. Ce qu'il ne faut pas faire
+| Intention | Candidats | Risques / réévaluation |
+|---|---|---|
+| Tissu visible | ombre, grande masse sombre | doit être compatible avec la couleur du support |
+| Tatami | ciel, eau, lune, surface de nénuphar, pierre large, grandes voiles | interstices, sous-couche et uniformité de direction |
+| Directionnel | vagues/nuages en mouvement, larges rubans de matière | directions absurdes si guides déduits d'une forme mal segmentée ; surcoût de points et coupes |
+| Auto-satin | branches, lianes, roseaux, bordures, rubans, reliefs de pierre | jonctions, largeurs, couvertures, éventails disgracieux |
+| Point droit | nervures, petites séparations, joints fins | faux « contours » issus de mini-régions de remplissage |
+| Supprimer | parasite ou doublon sans fonction propre | vérifier qu'aucun détail utile n'est perdu |
 
-- Présenter le rendu du script comme le rendu final de l'application.
-- Annoncer « plus propre » sans avoir comparé `stats` avant/après au même `--dpi`.
-- Activer `--satin-bands` par défaut dans le code sans la relecture brevet.
-- Contourner la règle d'or des modules : toute logique de numérisation va dans `libs/autodigitize`
-  ou `libs/segmentation` (Qt-free), pas dans `apps/desktop`.
-- Écrire des fichiers de travail dans le dépôt (les `.dst`, `.png` d'essai vont au scratchpad).
+Puis réduire la palette réelle de fils **sans écraser les identités techniques**. Une famille peut employer plusieurs fils, un fil peut servir dans plusieurs familles. Les « 5 fils » d'une illustration n'ont pas valeur universelle. Penser orientation locale, recouvrement, ordre de couture et zones protégées.
 
+**Validation B :** compléter pour chaque objet `semantic_id / famille / rôle / masque / point / direction souhaitée / guides envisagés / priorité / au-dessus-sous / sous-couche / tissu apparent / raison`. Les « guides envisagés » sont au départ des annotations de planification, **pas des paramètres automatiquement importés par le CLI**. Les larges masses restent a priori tatami, les vrais rubans étroits sont candidats satin, les traits fins running ; c'est la fonction visuelle et la topologie qui décident.
 
-## 7. Ce skill s'enrichit
+## Phase 5 — Première numérisation OpenStitch
 
-Une nouvelle image qui révèle un échec ou une règle : l'ajouter à `references/journal-essais.md` avec **la mesure qui la justifie** (avant/après, image de référence) et dans `docs/source/auto-numerisation.md`. Pas d'hypothèse non vérifiée ; toute erreur de méthode va dans le tableau d'erreurs.
+Pour des aplats, utiliser le mode **shapes** ; mode **contours** pour un dessin de traits ; **stipple** pour certaines sources tonales. Les réglages se découvrent sur le binaire installé (voir documentation). Un balayage de quelques paramètres est pertinent **après** nettoyage sémantique, jamais comme remplacement de celui-ci.
+
+~~~bash
+# Exemple seulement : DPI, cadre et fond doivent être recalculés !
+openstitch-cli project sweep image_preparee.png --dpi 140 --max-colors 12 \
+  --vary island-cleanup=0,3 --vary fill-inset=0,0.1 --sheet sweep.png
+openstitch-cli project digitize image_preparee.png -o essai_01.osp \
+  --dst essai_01.dst --dpi 140 --skip-background no \
+  --debug-dir debug_01 --report digitize_01.json
+openstitch-cli project set essai_01.osp --width-mm 260 --height-mm 200
+openstitch-cli project inspect essai_01.osp --json > inspect_01.json
+~~~
+
+**Préférer le chemin sémantique** si les masques et le manifeste sont disponibles : `scripts/openstitch_semantic.py` pour valider, `scripts/openstitch_semantic_import.py` pour importer les objets avec leur nom `sem:<id>` et un sidecar, puis opérations natives pour les guides et types non couverts. Le pont actuel accepte tatami/running/auto_satin (ce dernier initialisé à **skeleton**) ; il ne sait pas importer directement un objet `directional` avec ses guides ou un satin à rails/traverses. **Contrôler `project inspect` après import.** Le chemin `project digitize image` reste utile comme témoin ou secours mais, seul, il ne satisfait pas la porte A : ce n'est pas une segmentation d'instances.
+
+**Attention au fond :** l'option auto peut parfois ignorer la lune ou une grande surface utile ; à l'inverse il faut exclure les zones transparentes/papier sans les coudre. Observer les décisions réelles et la palette d'objets de l'OSP. Le script [workflow.sh](scripts/workflow.sh) permet une première passe technique mais ne fait **pas automatiquement** la reconstruction et le classement sémantique.
+
+## Phase 5 bis — Planification et test des directions
+
+Pour les grandes vagues, nuages ou surfaces qui **doivent** évoquer un mouvement, comparer tatami classique et `directional` **sur la même forme et la même taille**. `project op … directional_guides --arg object=ID` utilise l'axe médian de l'objet ; ce n'est **pas** automatiquement une courbe dessinée par un humain. Examiner les changements de direction, les raccords entre rubans et le surcoût en coupes/surépaisseurs. Si la forme fusionne plusieurs courants, redécouper sémantiquement en bandes continues avant d'insister sur un algorithme de guides. Voir [directions-et-planification-textile.md](references/directions-et-planification-textile.md). En particulier, ne pas transformer toutes les régions d'un seul coup : l'essai « navire » avec 41 remplissages directionnels augmentait aussi les points et coupes.
+
+## Phase 6 — Tester les trois satins sur les objets pertinents
+
+Chaque candidat identifié en auto-satin et important visuellement doit être essayé, sur **trois copies/versionnements**, dans la mesure des capacités du moteur :
+
+- **skeleton** : cohérent sur certaines ramifications mais parfois dense ;
+- **parallel_sweep** : parfois moins dense, peut laisser une forme incomplète et produire des éventails ;
+- **medial_axis** : intéressant ponctuellement, mais peut produire **zéro point** ou une couverture faible.
+
+Ne pas décider de la méthode sur la seule famille, la seule largeur de **boîte englobante** ou le nombre de points. Étudier largeur **locale**, changements de section, embranchements, rails et traverses/guides possibles. Un convertisseur sans guides qui réussit techniquement peut encore détruire la lecture d'une vague. Comparer **couverture par objet, absence de points, refus, pertes de bord, direction du fil, aspect du rendu OpenStitch, densité et coupes**. Si aucune stratégie ne convient : scinder la géométrie, revenir au tatami/point droit ou laisser vide suivant le rôle.
+
+OpenStitch expose les trois stratégies via l'opération **auto_satin** ou les paramètres **strategy** des objets existants. **set_stitch_type ne convertit pas en auto-satin** ; employer auto_satin et vérifier son résultat. Lire [selection-satins.md](references/selection-satins.md), notamment les 11 objets où medial_axis n'avait produit aucun point dans une expérience réelle.
+
+## Phase 7 — Retouches, îlots, « Région en contour », densités
+
+Sur **une copie du projet** :
+
+1. Auditer **tous les running**. Conserver un trait volontaire ; tester en satin une petite zone de repli réellement allongée ; retirer seulement les satellites redondants (attention aux joints de pierre et aux tiges). Une conversion est refusée si non couverte ou inadaptée à la topologie.
+2. Auditer les îlots satin/tatami, chercher des structures porteuses **en amont**. La fusion native sans continuité de géométrie ne garantit aucune économie de coupe.
+3. Lire le heatmap de densité : alléger des sous-couches inutiles, espacements, recouvrements et ordre ; ne pas supprimer arbitrairement des détails. Vérifier les sous-couches **cumulées**, la compensation push/pull et les objets masqués par l'occlusion ; expérimenter une soustraction géométrique du dessous sur copie, **sans** présenter la CLI comme un « remove hidden stitches » automatique.
+4. Tester ordre et trajets cachés **après** le travail géométrique, sans mélanger les couleurs ou inverser les occlusions.
+5. Examiner **vraiment** le rendu global et les zooms. Si défaut de segmentation : retour à l'image et **nouveau .osp** ; si défaut de paramètre/type : retouche du .osp. Ne jamais inventer une commande pour remplacer la source d'un OSP.
+
+Effectuer plusieurs cycles *mesure → diagnostic de cause → correction → nouveau rendu → comparaison* pour un motif complexe. Conserver la meilleure version connue, et des journaux de décisions/rejets. Les 52 contours convertis et 38 supprimés du cas V9 sont un exemple **non universel**, pas une recette à recopier.
+
+## Phase 8 — Analyse reproductible et contrôle
+
+~~~bash
+openstitch-cli project check essai_01.osp --json > check_01.json
+openstitch-cli project diagnose essai_01.osp --json > diagnose_01.json
+openstitch-cli project fidelity essai_01.osp --map fidelite_01.png --json > fidelite_01.json
+openstitch-cli project density essai_01.osp --heatmap densite_01.png --json > densite_01.json
+openstitch-cli project render essai_01.osp -o preview_01.png --px-per-mm 7
+openstitch-cli project select essai_01.osp --where type=running --json > running_01.json
+openstitch-cli project at essai_01.osp --px 500,320
+openstitch-cli stats essai_01.dst
+openstitch-cli project diff essai_01.osp essai_02.osp --json > diff.json
+~~~
+
+Lire **project operations --json** pour les noms et schémas effectifs des opérations. Pour une retouche en lot, employer **project apply** avec le schéma **openstitch.batch/1** ; exécuter d'abord **--dry-run**, vérifier ses résultats transactionnels et les IDs (toujours issus de inspect), puis appliquer vers un nouveau fichier avec **-o nouvelle_version.osp**. Les erreurs de batch laissent le projet inchangé. Voir [retouches-et-validation.md](references/retouches-et-validation.md).
+
+**Validation D :** visualiser le rendu OpenStitch en plein motif **et** en zoom du sujet prioritaire, sur le tissu prévu, face à la reconstruction et à l'original. Rejeter une version si voiles, coque, courbes principales ou reliefs deviennent illisibles, même avec des métriques meilleures.
+
+Faire figurer côte à côte, à source identique : dimensions, objets par type, points, coupes, sauts, changements de fil, zones ≥ 4 couches, manques intentionnels, défauts de couverture, rendu sur couleur de tissu choisie. Les mesures de densité sont **simulées** ; la fidélité à l'image intégrée ne juge pas automatiquement de la justesse artistique. Nombre d'avertissements imprimés potentiellement plafonné ; **0 erreur bloquante ≠ validé machine**.
+
+## Phase 9 — Livrables et critères d'arrêt
+
+~~~text
+travail/
+  source_originale.png
+  source_reference.osp                   # si fournie
+  semantique/
+    scene.json                            # si format de manifeste pris en charge
+    masques/                              # fichiers par objet identifie
+    reconstruction_fidele.png
+    carte_semantique.png
+    segmentation_technique.png
+    regions.csv
+    palette.json
+  essais/
+    01_initial/{projet.osp,preview.png,mesures.json,notes.md}
+    02_satins/{projet.osp,preview.png,selection_satins.csv}
+    02b_directions/{projet.osp,preview.png,decisions_directions.csv}
+    03_fusions/{projet.osp,preview.png,fusions_semantiques.csv}
+    04_contours/{projet.osp,preview.png,decisions_contours.csv}
+  final/
+    broderie.osp
+    broderie.dst
+    preview.png
+    rapport.md
+  broderie_complete.zip
+~~~
+
+**Obligatoires** si la mission est complète : OSP éditable, DST exporté de **ce même OSP**, rendu **project render**, carte sémantique, segmentation technique, table de fils et régions, rapport des essais et limites, archive ZIP. Indiquer quelles étapes du workflow ont **réellement été exécutées**, notamment si le pont sémantique, `directional_guides`, les trois stratégies satin et les retouches ont été utilisés ; ne pas confondre essai global de quantification et reconstruction sémantique. Vérifier dimensions finales, cadre, points/coupes/fil et cohérence des sorties.
+
+S'arrêter si les silhouettes et détails structurants sont fidèles, si la majorité des îlots restant a une fonction, si aucune erreur bloquante n'est détectée, si les problèmes de densité sont compris et si des variantes ultérieures n'apportent plus de gain significatif. Ne pas promettre qu'un pull sera brodable sans **échantillon réel**, stabilisateur et vérification des tensions.
+
+## Phase 10 — Critique indépendante (si un apprentissage autonome est demandé)
+
+Quand le projet est utilisé dans une boucle d'optimisation ou par une tâche
+planifiée, **après** la phase 9 lire
+[openstitch-evaluate](../openstitch-evaluate/SKILL.md). Confier la revue
+visuelle et la note /20 à un juge distinct de l'agent qui a produit la version.
+Joindre la source, carte sémantique, OSP, rendu réel et diagnostics natifs.
+L'absence de preuve donne un état `incomplete`, **jamais une note inventée**.
+En cas d'échec, corriger la phase responsable (A/B/C/D), mesurer avant/après,
+et conserver la meilleure version. Les résultats légers et les échecs
+sont journalisés sur la branche `agent-trials` et **pas sur `main`** ;
+les binaires sont archivés séparément. Ne pas assimiler réussite en simulation
+et validation sur machine.
+
+## Frontières et sécurité de méthode
+
+- **Skill de workflow**, pas nouvelle commande OpenStitch : la segmentation sémantique et son graphe d'instances peuvent nécessiter OpenCV/Python/SVG.
+- Ne pas activer **--satin-bands** par défaut sans relire les réserves de brevet dans [parametres.md](references/parametres.md).
+- Ne jamais inventer métriques, exécutions, noms de commandes ou validation sur machine.
+- Ne pas présenter l'opération `directional_guides` comme l'import d'une courbe utilisateur, ni `merge --mode subtract` comme une suppression générale automatique des points cachés.
+- Si un paramétrage est refusé par le CLI, noter le refus et conserver la dernière version valide ; ne pas attribuer au rendu une opération non appliquée.
+- Ne pas modifier le code source ni ouvrir une PR au cours d'une simple mission de numérisation, sauf demande explicite.
+- Documenter toute nouvelle expérimentation (avant/après, dimensions, source) plutôt que transformer des heuristiques locales en règles universelles.

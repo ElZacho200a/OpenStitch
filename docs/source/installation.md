@@ -38,6 +38,31 @@ en ligne de commande `openstitch-cli.exe` est dans `cli\Release\` (voir
 
 ### Client CLI Linux x86-64
 
+**Installation automatique sans compilation** (Linux x86-64 compatible glibc) :
+
+```bash
+curl -fL --retry 2 -o install-cli-linux.sh \
+  https://raw.githubusercontent.com/ElZacho200a/OpenStitch/main/scripts/install-cli-linux.sh
+bash install-cli-linux.sh
+~/.local/bin/openstitch-cli --version
+```
+
+L'installateur refuse les archives dont l'empreinte SHA-256 ne correspond pas,
+vérifie les dépendances et exécute `--version` / `--help` avant l'installation.
+Il n'exige pas `sudo` et accepte `--install-dir /chemin/choisi`.
+Si `~/.local/bin` n'est pas dans votre PATH, utilisez le chemin absolu ou
+ajoutez ce dossier à votre PATH.
+
+**Sources utilisées, dans cet ordre** : l'archive durable de la release
+`latest`, puis, si `gh` est installé et authentifié, un artefact d'un run
+CI **réussi sur `main` déclenché par push** (jamais un artefact de PR
+non fiable). Un workflow GitHub Actions distinct publie/répare quotidiennement
+la release Linux, indépendamment d'un nouveau push sur `main`; il accepte aussi
+un déclenchement manuel dans Actions → Publish Linux CLI.
+Sans release ni artefact main accessible, l'installateur échoue explicitement :
+il faut compiler depuis les sources ou attendre la publication, et ne pas
+faire passer un fichier synthétique pour un vrai binaire OpenStitch.
+
 Sur [la release `latest`](https://github.com/ElZacho200a/OpenStitch/releases/tag/latest),
 téléchargez `openstitch-cli-linux-x86_64.tar.gz` ainsi que
 `openstitch-cli-linux-x86_64.tar.gz.sha256`. Ces fichiers ne sont publiés
