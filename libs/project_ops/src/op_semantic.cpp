@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "op_registry.hpp"
+#include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/project_ops/inspect.hpp"
 #include "openstitch/project_ops/semantic.hpp"
@@ -114,14 +115,23 @@ OpStatus check_intent(const SemanticRegion& r) {
 struct Created {
     std::vector<std::uint64_t> ids;
     std::vector<std::uint64_t> vector_ids;
+    json fallbacks = json::array(); // objets dont l'auto_satin a été refusé puis repliés
+};
+
+// Réglages de conversion : stratégie auto_satin et conduite en cas de refus du moteur.
+struct Policy {
+    std::string strategy{"skeleton"};
+    std::string satin_fallback{"fail"}; // fail | tatami | running
+    double mm_per_px{25.4 / 96.0};      // échelle image -> mm du manifeste
 };
 
 // Crée les objets d'un identifiant sémantique (un par contour extérieur du masque) puis, pour
-// auto_satin, convertit chacun par l'opération `auto_satin` (refus propagé, pas de repli).
+// auto_satin, convertit chacun par l'opération `auto_satin`. Un refus du moteur est propagé
+// (`satin_fallback=fail`, défaut) ou l'objet reste en tatami / passe en contour, et le repli est
+// consigné dans `Created::fallbacks` (jamais de conversion silencieuse).
 OpStatus create_objects(OpContext& ctx, const SemanticRegion& region,
                         const std::array<std::uint8_t, 3>& rgb,
-                        std::vector<geometry::PathSet> paths, const std::string& strategy,
-                        Created& out) {
+                        std::vector<geometry::PathSet> paths, const Policy& policy, Created& out) {
     const std::string& intent = *region.stitch_intent;
     std::vector<document::VectorObject> vectors;
     std::vector<document::EmbroideryObject> embroideries;
@@ -147,14 +157,47 @@ OpStatus create_objects(OpContext& ctx, const SemanticRegion& region,
         vectors.push_back(std::move(v));
         embroideries.push_back(std::move(e));
     }
+    if (intent != "running") {
+        // Angle de rangée naturel (axe principal de la forme) et réglages de tatami du moteur,
+        // comme `digitize` : sans cela tous les remplissages auraient le même angle (bandes
+        // horizontales sur toute la scène).
+        autodigitize::AutoOptions options;
+        options.mm_per_px = Millimeters{policy.mm_per_px};
+        const auto built =
+            autodigitize::auto_digitize_vectors(vectors, ctx.project.object_ids, options);
+        if (built) {
+            for (auto& e : embroideries) {
+                for (const auto& b : built->embroideries) {
+                    if (b.source_vector == e.source_vector &&
+                        std::holds_alternative<document::TatamiParams>(b.params)) {
+                        e.params = b.params;
+                    }
+                }
+            }
+        }
+    }
     ctx.stack.execute(std::make_unique<commands::AddObjectBatchCommand>(
                           std::move(vectors), std::move(embroideries),
                           "Importer l'objet sémantique " + region.semantic_id),
                       ctx.project);
     if (intent == "auto_satin") {
         for (const auto id : out.ids) {
-            const auto st =
-                run_nested_op(ctx, "auto_satin", json{{"object", id}, {"strategy", strategy}});
+            const auto st = run_nested_op(ctx, "auto_satin",
+                                          json{{"object", id}, {"strategy", policy.strategy}});
+            if (!st.ok && policy.satin_fallback != "fail") {
+                if (policy.satin_fallback == "running") {
+                    const auto to_running = run_nested_op(
+                        ctx, "set_stitch_type", json{{"object", id}, {"type", "running"}});
+                    if (!to_running.ok) {
+                        return to_running;
+                    }
+                }
+                out.fallbacks.push_back(json{{"semantic_id", region.semantic_id},
+                                             {"object", id},
+                                             {"fallback", policy.satin_fallback},
+                                             {"reason", st.error.message}});
+                continue;
+            }
             if (!st.ok) {
                 return OpStatus::failure(st.error.code,
                                          region.semantic_id +
@@ -167,9 +210,18 @@ OpStatus create_objects(OpContext& ctx, const SemanticRegion& region,
     return OpStatus::success();
 }
 
-OpStatus read_strategy(const OpContext& ctx, std::string& strategy) {
-    strategy = "skeleton";
-    return string_arg(ctx, "auto_satin_strategy", false, strategy);
+OpStatus read_policy(const OpContext& ctx, Policy& policy) {
+    if (auto st = string_arg(ctx, "auto_satin_strategy", false, policy.strategy); !st.ok) {
+        return st;
+    }
+    if (auto st = string_arg(ctx, "satin_fallback", false, policy.satin_fallback); !st.ok) {
+        return st;
+    }
+    if (policy.satin_fallback != "fail" && policy.satin_fallback != "tatami" &&
+        policy.satin_fallback != "running") {
+        return usage("argument « satin_fallback » : fail | tatami | running");
+    }
+    return OpStatus::success();
 }
 
 OpStatus read_rgb(const SemanticRegion& region, const std::array<std::uint8_t, 3>& fallback,
@@ -204,8 +256,8 @@ OpStatus semantic_import(OpContext& ctx) {
     if (auto st = string_arg(ctx, "manifest", true, manifest_arg); !st.ok) {
         return st;
     }
-    std::string strategy;
-    if (auto st = read_strategy(ctx, strategy); !st.ok) {
+    Policy policy;
+    if (auto st = read_policy(ctx, policy); !st.ok) {
         return st;
     }
     SemanticManifest manifest;
@@ -216,6 +268,7 @@ OpStatus semantic_import(OpContext& ctx) {
     if (auto st = resolve_scale(manifest, mm_per_px); !st.ok) {
         return st;
     }
+    policy.mm_per_px = mm_per_px;
 
     const auto order = creation_order(manifest);
     for (const auto* region : order) { // tout est vérifié AVANT la première mutation
@@ -237,6 +290,7 @@ OpStatus semantic_import(OpContext& ctx) {
     json mapping = json::object();
     json skipped = json::array();
     json created = json::array();
+    json fallbacks = json::array();
     for (const auto* region : order) {
         if (!stitchable(*region)) {
             skipped.push_back(json{{"semantic_id", region->semantic_id},
@@ -258,11 +312,14 @@ OpStatus semantic_import(OpContext& ctx) {
                                      "l'image source");
         }
         Created c;
-        if (auto st = create_objects(ctx, *region, rgb, std::move(*paths), strategy, c); !st.ok) {
+        if (auto st = create_objects(ctx, *region, rgb, std::move(*paths), policy, c); !st.ok) {
             return st;
         }
         for (const auto id : c.ids) {
             created.push_back(id);
+        }
+        for (const auto& f : c.fallbacks) {
+            fallbacks.push_back(f);
         }
         mapping[region->semantic_id] = region_entry(*region, c);
     }
@@ -274,7 +331,8 @@ OpStatus semantic_import(OpContext& ctx) {
     return OpStatus::success({{"id", created.front()},
                               {"created", created},
                               {"mapping", mapping},
-                              {"skipped", skipped}});
+                              {"skipped", skipped},
+                              {"fallbacks", fallbacks}});
 }
 
 // --- semantic_replace ---------------------------------------------------------------------
@@ -292,8 +350,8 @@ OpStatus semantic_replace(OpContext& ctx) {
     if (auto st = string_arg(ctx, "mask", false, mask_arg); !st.ok) {
         return st;
     }
-    std::string strategy;
-    if (auto st = read_strategy(ctx, strategy); !st.ok) {
+    Policy policy;
+    if (auto st = read_policy(ctx, policy); !st.ok) {
         return st;
     }
     SemanticManifest manifest;
@@ -305,6 +363,7 @@ OpStatus semantic_replace(OpContext& ctx) {
     if (auto st = resolve_scale(manifest, mm_per_px); !st.ok) {
         return st;
     }
+    policy.mm_per_px = mm_per_px;
     const auto found = std::find_if(manifest.regions.begin(), manifest.regions.end(),
                                     [&](const SemanticRegion& r) { return r.semantic_id == sid; });
     if (found == manifest.regions.end()) {
@@ -381,7 +440,7 @@ OpStatus semantic_replace(OpContext& ctx) {
         }
     }
     Created c;
-    if (auto st = create_objects(ctx, region, rgb, std::move(*paths), strategy, c); !st.ok) {
+    if (auto st = create_objects(ctx, region, rgb, std::move(*paths), policy, c); !st.ok) {
         return st;
     }
     // Les nouveaux objets reprennent la place des anciens dans l'ordre de couture.
@@ -406,6 +465,7 @@ OpStatus semantic_replace(OpContext& ctx) {
                               {"replaced", sid},
                               {"old_ids", old_ids},
                               {"new_ids", c.ids},
+                              {"fallbacks", c.fallbacks},
                               {"unchanged_objects", other_objects}});
 }
 
@@ -422,7 +482,12 @@ void register_semantic_ops(std::vector<OpSpec>& out) {
     import.args = {
         arg("manifest", "string", "fichier manifeste .json (masques relatifs à son dossier)", true),
         arg("auto_satin_strategy", "string", "stratégie des objets auto_satin (défaut skeleton)",
-            false, {}, "skeleton | parallel_sweep | medial_axis")};
+            false, {}, "skeleton | parallel_sweep | medial_axis"),
+        arg("satin_fallback", "string",
+            "si le moteur refuse l'auto_satin d'un objet : fail (défaut, tout est annulé), tatami "
+            "ou running (l'objet est gardé dans ce type et le repli est consigné dans « fallbacks "
+            "»)",
+            false, {}, "fail | tatami | running")};
     import.example = R"({"op":"semantic_import","manifest":"travail/carte.json"})";
     import.apply = semantic_import;
     out.push_back(std::move(import));
@@ -440,7 +505,12 @@ void register_semantic_ops(std::vector<OpSpec>& out) {
             "masque PNG corrigé (relatif au dossier du manifeste ; défaut : mask_path du "
             "manifeste)"),
         arg("auto_satin_strategy", "string", "stratégie des objets auto_satin (défaut skeleton)",
-            false, {}, "skeleton | parallel_sweep | medial_axis")};
+            false, {}, "skeleton | parallel_sweep | medial_axis"),
+        arg("satin_fallback", "string",
+            "si le moteur refuse l'auto_satin d'un objet : fail (défaut, tout est annulé), tatami "
+            "ou running (l'objet est gardé dans ce type et le repli est consigné dans « fallbacks "
+            "»)",
+            false, {}, "fail | tatami | running")};
     replace.example =
         R"({"op":"semantic_replace","manifest":"travail/carte.json","semantic_id":"voiles.grand","mask":"masks/grand_v2.png"})";
     replace.apply = semantic_replace;
