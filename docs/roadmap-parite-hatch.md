@@ -3382,9 +3382,10 @@ de référence. Restent : progression et annulation, régénération de toute la
 - À faire : script de test (hors build, optionnel) qui relit nos exports avec
   pyembroidery (MIT) et compare les points ; exécuté en CI.
 
-### HP-QA-006 — Crash sur fichiers réels [P1] — ☐ À faire
+### HP-QA-006 — Crash sur fichiers réels [P1] — ◐ Partiel (2026-10-21)
 - À faire : corpus de fichiers utilisateurs réels (DST/PES/SVG/images
   étranges : 16 bits, CMJN, énormes, transparents) ouverts en test.
+- Livré (2026-10-21, lot image) : générateur stdlib de sept PNG déterministes, dont palette, RVBA et 16 bits, import testable via la vraie CLI dans CTest ; cinq tests Python de contrat. **Reste** : corpus de fichiers utilisateurs réels sous licence vérifiée et cas CMJN/géants.
 
 ### HP-QA-007 — Interface programmatique `.osp` en ligne de commande (pilotable par un agent) [P1] — ◐ Partiel (en PR #46)
 - État OpenStitch : `openstitch-cli project …` (`libs/project_ops`, Qt-free) : `new`,
@@ -3568,6 +3569,7 @@ ci-dessus doit les respecter :
 |---|---|---|
 | 2026-10-21 | ChatGPT (PR risque textile) | HP-FAB-004 ◐ : première carte heuristique non calibrée, CLI/desktop, tests et protocole de limites ; solveur physique et validation machine restant à faire. |
 | 2026-09-22 | Claude (session d'audit) | Création : inventaire complet vérifié dans le code. |
+| 2026-10-21 | ChatGPT (corpus image) | HP-QA-006 ◐ : corpus image déterministe et tests CLI d'import/réjection, sans prétendre couvrir les cas réels. |
 | 2026-10-21 | ChatGPT (affichage) | HP-VIEW-011 ◐ : réglage d'opacité de l'image (0-100 %) instantané, persisté et testé avec QTest. |
 | 2026-10-21 | ChatGPT (fiche de production) | HP-PROD-001 ◐ : champ Client indépendant des notes, sorties JSON/HTML/PDF et tests. |
 | 2026-10-21 | ChatGPT (robustesse OSP) | HP-QA-003 ◐ : tests de rejet de 61 projets invalides contre la CLI Linux compilée, sans validation sur machine. |
