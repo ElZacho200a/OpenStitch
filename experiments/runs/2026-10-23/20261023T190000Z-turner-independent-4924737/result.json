@@ -1,0 +1,49 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261023T190000Z-turner-independent-4924737",
+  "created_utc": "2026-10-23T19:00:00Z",
+  "status": "failed",
+  "source": {
+    "library_file_id": "libfile_b7f90c9fdad0819180be1b6029c78d86",
+    "sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+    "size_px": [
+      1536,
+      1014
+    ],
+    "size_mm": [
+      363.55,
+      240
+    ]
+  },
+  "cli_version": "0.1.0",
+  "openstitch_commit": "fb624f7f93e577a3079161fa99edc86d5ed1bc10",
+  "variants": 1,
+  "score_before": null,
+  "score_after": null,
+  "evaluation": null,
+  "independent_reviewer": false,
+  "machine_tested": false,
+  "measurements": {
+    "semantic_regions": 19,
+    "stitches": 141156,
+    "trims": 60,
+    "check_errors": 0,
+    "check_warnings": 6,
+    "stitched_mm": [
+      363.15,
+      239.354
+    ],
+    "hotspot_4layers_mm2": 74
+  },
+  "fidelity": "failed: source image not embedded in OSP",
+  "visual_review": "Rejected after opening actual preview: lighthouse reduced to a column, angular clouds, horizontal waves, glaring green uncovered strip",
+  "artifact": {
+    "kind": "local-sandbox",
+    "url": null,
+    "retention_days": null
+  },
+  "lessons": [
+    "Gate A failed: artistic reconstruction must be solved before stitch settings",
+    "No independent judge; no /20 score"
+  ]
+}
