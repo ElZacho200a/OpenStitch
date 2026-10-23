@@ -1,11 +1,41 @@
 {
   "schema": "openstitch.benchmarks/1",
-  "note": "Cas prioritaire fourni par l'utilisateur le 23 octobre 2026. Source conservée dans la bibliothèque privée ChatGPT; les anciens essais tentabrode restent historiques. Un runner GitHub Actions ne peut pas télécharger directement la source privée.",
+  "note": "Benchmark actif = tableau de Turner (phare et tempête), remplace le cas ruines. Original privé dans ChatGPT Library; jobs GitHub sans source transférée doivent consigner blocked, sans essai de substitution.",
   "cases": [
     {
-      "id": "ruines-marais-20261023",
-      "priority": 1,
+      "id": "turner-phare-tempete-20261023",
       "active": true,
+      "priority": 1,
+      "source_kind": "chatgpt-library",
+      "source_library_path": "/OpenStitch/Benchmarks/turner-phare-tempete-20261023.jpg",
+      "source_library_file_id": "libfile_22ca9c43336c8191a02d12f3f3598a64",
+      "source_filename": "turner-phare-tempete-20261023.jpg",
+      "source_sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+      "source_size_px": [
+        1536,
+        1014
+      ],
+      "target_height_mm": 240,
+      "expected_width_mm": 363.55,
+      "keep_aspect_ratio": true,
+      "background": "full painting, background sky and ocean intentionally stitched or planned as fabric negative space",
+      "fabric": "unspecified",
+      "split": "development",
+      "available_to_github_actions": false,
+      "protected_details": [
+        "forme et lanterne du phare",
+        "voilier à gauche avec coque, mât, voile triangulaire",
+        "grande vague creuse devant le phare",
+        "écume distincte du corps des vagues",
+        "nuages sombres et percée lumineuse dorée",
+        "avant-plan marin sombre avec direction des crêtes"
+      ],
+      "notes": "Nouveau benchmark demandé explicitement par l'utilisateur. Chaque tentative part de CE JPEG original : générer une nouvelle réinterprétation artistique (prompts + objets), puis seulement créer l'OSP/DST et comparer. Ne pas remplacer par les ruines ou une autre image."
+    },
+    {
+      "id": "ruines-marais-20261023",
+      "priority": 10,
+      "active": false,
       "source_kind": "chatgpt-library",
       "source_library_path": "/OpenStitch/Benchmarks/ruines-marais-20261023.png",
       "source_library_file_id": "libfile_b55786e03b9c8191816dbb9f566226bb",
@@ -51,5 +81,5 @@
       "priority": 10
     }
   ],
-  "preferred_case_id": "ruines-marais-20261023"
+  "preferred_case_id": "turner-phare-tempete-20261023"
 }
