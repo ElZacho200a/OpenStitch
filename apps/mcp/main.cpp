@@ -2,7 +2,12 @@
 // openstitch-mcp : serveur MCP sur stdio (un message JSON-RPC par ligne). Le canal de protocole
 // est une copie privée de stdout ; le descripteur 1 est redirigé vers stderr, de sorte qu'une
 // bibliothèque tierce (OpenCV journalise sur stdout) ne puisse jamais corrompre le flux JSON-RPC.
+//
+//   openstitch-mcp            serveur stdio (lancé par le client MCP, sans argument)
+//   openstitch-mcp --version  version du serveur et du protocole
+//   openstitch-mcp --doctor   auto-test en mémoire (poignée de main, outils, rendu), code 0 / 2
 #include <cstdio>
+#include <cstring>
 #include <exception>
 #include <iostream>
 #include <optional>
@@ -23,7 +28,34 @@
 
 #include "openstitch/mcp/server.hpp"
 
-int main() {
+namespace {
+
+int usage(const char* program) {
+    std::fprintf(stderr,
+                 "usage : %s [--version | --doctor]\n"
+                 "Sans argument : serveur MCP (JSON-RPC 2.0) sur stdio, à lancer depuis un client "
+                 "MCP.\n",
+                 program);
+    return 2;
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
+    if (argc > 1) {
+        if (argc == 2 && std::strcmp(argv[1], "--version") == 0) {
+            std::printf("%s %s\n", openstitch::mcp::kServerName, openstitch::mcp::kServerVersion);
+            return 0;
+        }
+        if (argc == 2 && std::strcmp(argv[1], "--doctor") == 0) {
+            bool ok = false;
+            const std::string report = openstitch::mcp::self_test_json(ok);
+            std::printf("%s\n", report.c_str());
+            return ok ? 0 : 2;
+        }
+        return usage(argv[0]);
+    }
+
     std::FILE* protocol = nullptr;
     const int saved = OS_DUP(1);
     if (saved >= 0) {

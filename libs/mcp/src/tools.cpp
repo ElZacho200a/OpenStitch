@@ -7,10 +7,13 @@
 #include <exception>
 #include <format>
 #include <map>
+#include <set>
 #include <string_view>
 
 #include "guide.hpp"
 #include "openstitch/project_io/machine_file.hpp"
+#include "openstitch/project_ops/analysis.hpp"
+#include "openstitch/project_ops/auto_satin_service.hpp"
 #include "openstitch/project_ops/errors.hpp"
 #include "openstitch/project_ops/factory.hpp"
 #include "openstitch/project_ops/inspect.hpp"
@@ -19,6 +22,7 @@
 #include "openstitch/project_ops/quality.hpp"
 #include "openstitch/project_ops/render.hpp"
 #include "openstitch/project_ops/report.hpp"
+#include "openstitch/project_ops/semantic.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 
@@ -748,6 +752,560 @@ ToolResult tool_export(Session& s, const json& a) {
     return text_result(json{{"ok", true}, {"format", format}, {"path", path_text(target)}}.dump());
 }
 
+// ---- Sémantique ----------------------------------------------------------------------------
+
+// Applique UNE opération au projet de la session par le dispatcher transactionnel (donc les
+// mêmes refus et le même retour arrière que `project apply` de la CLI).
+ToolResult run_session_op(Session& s, const json& op, bool dry_run) {
+    auto& project = need_project(s);
+    po::BatchOptions options;
+    options.dry_run = dry_run;
+    const auto report = po::apply_operation(project, op.dump(), options);
+    if (report.applied) {
+        s.dirty = true;
+    }
+    return text_result(report.to_json(), !report.ok);
+}
+
+ToolResult tool_semantic_validate(Session&, const json& a) {
+    const std::string doc = po::validate_semantic_manifest(to_path(req_string(a, "manifest")),
+                                                           opt_bool(a, "skip_files", false));
+    return text_result(doc, !json::parse(doc).value("ok", false));
+}
+
+ToolResult tool_semantic_import(Session& s, const json& a) {
+    json op{{"op", "semantic_import"}, {"manifest", req_string(a, "manifest")}};
+    if (a.contains("auto_satin_strategy")) {
+        op["auto_satin_strategy"] = a.at("auto_satin_strategy");
+    }
+    return run_session_op(s, op, opt_bool(a, "dry_run", false));
+}
+
+ToolResult tool_semantic_replace(Session& s, const json& a) {
+    json op{{"op", "semantic_replace"},
+            {"manifest", req_string(a, "manifest")},
+            {"semantic_id", req_string(a, "semantic_id")}};
+    for (const char* key : {"mask", "auto_satin_strategy"}) {
+        if (a.contains(key)) {
+            op[key] = a.at(key);
+        }
+    }
+    return run_session_op(s, op, opt_bool(a, "dry_run", false));
+}
+
+ToolResult tool_semantic_map(Session& s, const json&) {
+    return text_result(po::semantic_map_json(need_project(s)));
+}
+
+// ---- Diagnostics ---------------------------------------------------------------------------
+
+// Résultat d'une analyse qui ne peut pas s'appliquer à ce projet : ce n'est ni un défaut du
+// projet ni une erreur d'usage, donc `unsupported` (jamais une métrique inventée).
+ToolResult unsupported(const char* tool, const std::string& reason) {
+    return text_result(json{
+        {"schema", "openstitch.mcp-status/1"},
+        {"tool", tool},
+        {"status", "unsupported"},
+        {"reason", reason}}.dump(2));
+}
+
+constexpr const char* kNoImage =
+    "aucune image source embarquée dans ce projet (créé par project_new ou importé) : la mesure "
+    "se fait contre l'image source ; numérisez avec project_digitize pour l'obtenir";
+
+void add_png(ToolResult& result, const std::vector<std::uint8_t>& png) {
+    if (!png.empty()) {
+        result.content.push_back(
+            json{{"type", "image"}, {"data", base64(png)}, {"mimeType", "image/png"}});
+    }
+}
+
+ToolResult tool_diagnose(Session& s, const json&) {
+    const auto report = po::diagnose_project(need_project(s));
+    if (!report) {
+        return engine_error("project_diagnose", po::code::kRefused, report.error());
+    }
+    return text_result(report->json);
+}
+
+ToolResult tool_density(Session& s, const json& a) {
+    po::DensityOptions options;
+    options.cell_mm = opt_double(a, "cell_mm", options.cell_mm);
+    options.heatmap = opt_bool(a, "heatmap", false);
+    if (!(options.cell_mm >= 0.2 && options.cell_mm <= 10.0)) {
+        throw UsageError{"« cell_mm » doit être dans [0.2, 10]", ""};
+    }
+    const auto report = po::measure_density(need_project(s), options);
+    if (!report) {
+        return engine_error("project_density", po::code::kRefused, report.error());
+    }
+    ToolResult result = text_result(report->json);
+    add_png(result, report->heatmap_png);
+    return result;
+}
+
+ToolResult tool_fidelity(Session& s, const json& a) {
+    const auto& project = need_project(s);
+    if (po::working_size(project) == std::pair<int, int>{0, 0}) {
+        return unsupported("project_fidelity", kNoImage);
+    }
+    po::FidelityOptions options;
+    options.error_map = opt_bool(a, "error_map", false);
+    const auto report = po::measure_fidelity(project, options);
+    if (!report) {
+        return engine_error("project_fidelity", po::code::kRefused, report.error());
+    }
+    ToolResult result = text_result(report->json);
+    add_png(result, report->error_map_png);
+    return result;
+}
+
+ToolResult tool_fabric_risk(Session& s, const json& a) {
+    po::FabricRiskOptions options;
+    options.fabric = opt_string(a, "fabric", options.fabric);
+    options.heatmap = opt_bool(a, "heatmap", false);
+    if (options.fabric != "woven" && options.fabric != "jersey" && options.fabric != "felt") {
+        throw UsageError{"« fabric » : woven | jersey | felt", ""};
+    }
+    const auto report = po::measure_fabric_risk(need_project(s), options);
+    if (!report) {
+        return engine_error("project_fabric_risk", po::code::kRefused, report.error());
+    }
+    ToolResult result = text_result(report->json);
+    add_png(result, report->heatmap_png);
+    return result;
+}
+
+ToolResult tool_locate(Session& s, const json& a) {
+    po::LocateQuery query;
+    query.x_mm = a.at("x_mm").get<double>();
+    query.y_mm = a.at("y_mm").get<double>();
+    query.radius_mm = opt_double(a, "radius_mm", query.radius_mm);
+    if (!(query.radius_mm > 0.0 && query.radius_mm <= 50.0)) {
+        throw UsageError{"« radius_mm » doit être dans ]0, 50]", ""};
+    }
+    const auto report = po::locate_objects(need_project(s), query);
+    if (!report) {
+        return engine_error("project_locate", po::code::kRefused, report.error());
+    }
+    return text_result(report->json);
+}
+
+const char* status_name(std::size_t errors, std::size_t warnings) {
+    return errors > 0 ? "error" : warnings > 0 ? "warning" : "pass";
+}
+
+int status_rank(const std::string& status) {
+    return status == "error" ? 3 : status == "warning" ? 2 : status == "pass" ? 1 : 0;
+}
+
+// Bilan en un appel : chaque analyse a un statut explicite (pass | warning | error | not_run |
+// unsupported), les dimensions réelles, les coupes et les changements de fil, et les défauts
+// localisés par objet. Les seuils de `fidelity` sont indicatifs (rien n'est fabriqué : ce sont
+// les mesures du moteur, classées par seuil).
+ToolResult tool_report(Session& s, const json& a) {
+    const auto& project = need_project(s);
+    std::set<std::string> wanted{"check", "diagnose", "density", "fidelity", "fabric_risk"};
+    if (a.contains("only")) {
+        wanted.clear();
+        for (const auto& name : a.at("only")) {
+            const std::string n = name.get<std::string>();
+            if (n != "check" && n != "diagnose" && n != "density" && n != "fidelity" &&
+                n != "fabric_risk") {
+                throw UsageError{"« only » : check | diagnose | density | fidelity | fabric_risk",
+                                 ""};
+            }
+            wanted.insert(n);
+        }
+    }
+    constexpr double kRatioWarning = 0.02; // trous intérieurs / détail perdu : seuil indicatif
+    json analyses = json::object();
+    json by_object = json::object();
+    json totals = json::object();
+    std::string overall = "not_run";
+    const auto record = [&](const std::string& name, const std::string& status, json summary) {
+        analyses[name] = json{{"status", status}, {"summary", std::move(summary)}};
+        if (status_rank(status) > status_rank(overall)) {
+            overall = status;
+        }
+    };
+    const auto skipped = [&](const std::string& name) {
+        analyses[name] = json{{"status", "not_run"}, {"reason", "exclu par « only »"}};
+    };
+    const auto cannot = [&](const std::string& name, const std::string& reason) {
+        analyses[name] = json{{"status", "unsupported"}, {"reason", reason}};
+    };
+
+    if (wanted.contains("check")) {
+        const auto q = po::build_quality_report(project);
+        if (q) {
+            record("check", status_name(q->errors, q->warnings),
+                   json{{"errors", q->errors}, {"warnings", q->warnings}});
+        } else {
+            cannot("check", q.error().message);
+        }
+    } else {
+        skipped("check");
+    }
+    if (wanted.contains("diagnose")) {
+        const auto d = po::diagnose_project(project);
+        if (d) {
+            record("diagnose", status_name(d->errors, d->warnings),
+                   json{{"errors", d->errors},
+                        {"warnings", d->warnings},
+                        {"infos", d->infos},
+                        {"connector_ratio", d->connector_ratio}});
+            totals = json{{"width_mm", d->motif_width_mm},
+                          {"height_mm", d->motif_height_mm},
+                          {"stitches", d->stitches},
+                          {"jumps", d->jumps},
+                          {"trims", d->trims},
+                          {"color_changes", d->color_changes},
+                          {"thread_m", d->thread_m}};
+            for (const auto& f : d->findings) {
+                for (const auto id : f.objects) {
+                    by_object[std::to_string(id)].push_back(
+                        json{{"severity", f.severity}, {"code", f.code}, {"message", f.message}});
+                }
+            }
+        } else {
+            cannot("diagnose", d.error().message);
+        }
+    } else {
+        skipped("diagnose");
+    }
+    if (wanted.contains("density")) {
+        const auto d = po::measure_density(project);
+        if (d) {
+            record("density", d->hotspot_area_mm2 > 0.0 ? "warning" : "pass",
+                   json{{"layers_max", d->layers_max},
+                        {"layers_p99", d->layers_p99},
+                        {"hotspot_area_mm2", d->hotspot_area_mm2}});
+        } else {
+            cannot("density", d.error().message);
+        }
+    } else {
+        skipped("density");
+    }
+    if (wanted.contains("fidelity")) {
+        if (po::working_size(project) == std::pair<int, int>{0, 0}) {
+            cannot("fidelity", kNoImage);
+        } else if (const auto f = po::measure_fidelity(project); f) {
+            const bool warn =
+                f->interior_hole_ratio > kRatioWarning || f->lost_detail_ratio > kRatioWarning;
+            record("fidelity", warn ? "warning" : "pass",
+                   json{{"interior_hole_ratio", f->interior_hole_ratio},
+                        {"lost_detail_ratio", f->lost_detail_ratio},
+                        {"missing_mm2", f->missing_mm2},
+                        {"warning_threshold", kRatioWarning}});
+        } else {
+            cannot("fidelity", f.error().message);
+        }
+    } else {
+        skipped("fidelity");
+    }
+    if (wanted.contains("fabric_risk")) {
+        const auto r = po::measure_fabric_risk(project);
+        if (r) {
+            record("fabric_risk", r->hotspot_area_mm2 > 0.0 ? "warning" : "pass",
+                   json{{"max_score", r->max_score},
+                        {"p99_score", r->p99_score},
+                        {"hotspot_area_mm2", r->hotspot_area_mm2},
+                        {"note", "estimation heuristique non calibrée, pas un essai textile"}});
+        } else {
+            cannot("fabric_risk", r.error().message);
+        }
+    } else {
+        skipped("fabric_risk");
+    }
+    return text_result(json{
+        {"schema", "openstitch.mcp-report/1"},
+        {"overall", overall},
+        {"analyses", analyses},
+        {"totals", totals},
+        {"findings_by_object", by_object},
+        {"note",
+         "0 erreur ne prouve pas la brodabilité : essai textile "
+         "nécessaire"}}.dump(2));
+}
+
+// ---- Points de contrôle, comparaison, benchmark des satins ----------------------------------
+
+constexpr std::size_t kMaxCheckpoints = 12;
+
+void check_name(const std::string& name) {
+    const bool ok = !name.empty() && name.size() <= 40 &&
+                    std::all_of(name.begin(), name.end(), [](unsigned char c) {
+                        return std::isalnum(c) != 0 || c == '_' || c == '-' || c == '.';
+                    });
+    if (!ok || name == "current") {
+        throw UsageError{"nom de variante invalide : « " + name + " »",
+                         "1 à 40 caractères parmi lettres, chiffres, _ - . ; « current » est "
+                         "réservé au projet de la session"};
+    }
+}
+
+json checkpoint_list(const Session& s) {
+    json list = json::array();
+    for (const auto& [name, project] : s.checkpoints) {
+        list.push_back(json{{"name", name},
+                            {"embroidery_objects", project.embroidery_objects.size()},
+                            {"vector_objects", project.vector_objects.size()}});
+    }
+    return list;
+}
+
+ToolResult tool_checkpoint(Session& s, const json& a) {
+    const auto& project = need_project(s);
+    const std::string name = req_string(a, "name");
+    check_name(name);
+    const bool exists = s.checkpoints.contains(name);
+    if (exists && !opt_bool(a, "overwrite", false)) {
+        return error_result("project_checkpoint", po::code::kIo,
+                            "la variante « " + name + " » existe déjà",
+                            "overwrite=true pour la remplacer, ou un autre nom");
+    }
+    if (!exists && s.checkpoints.size() >= kMaxCheckpoints) {
+        return error_result("project_checkpoint", po::code::kOutOfRange,
+                            "trop de variantes en mémoire (" + std::to_string(kMaxCheckpoints) +
+                                " au plus)",
+                            "exportez-en avec « path » ou restaurez puis écrasez-en une");
+    }
+    if (a.contains("path") && !a.at("path").is_null()) {
+        const fs::path file = to_path(req_string(a, "path"));
+        // Jamais d'écrasement implicite : un fichier existant est refusé.
+        if (auto w = po::write_project(file, project, nullptr, {}, /*no_clobber=*/true); !w) {
+            return engine_error("project_checkpoint", po::code::kIo, w.error());
+        }
+    }
+    s.checkpoints[name] = project;
+    return text_result(json{
+        {"ok", true}, {"name", name}, {"replaced", exists}, {"checkpoints", checkpoint_list(s)}}
+                           .dump(2));
+}
+
+ToolResult tool_restore(Session& s, const json& a) {
+    const std::string name = req_string(a, "name");
+    const auto it = s.checkpoints.find(name);
+    if (it == s.checkpoints.end()) {
+        return error_result("project_restore", po::code::kUnknownObject,
+                            "variante inconnue : " + name, "variantes : project_checkpoints");
+    }
+    // Filet : l'état courant est gardé avant d'être remplacé (rien ne se perd en silence).
+    if (s.project && name != "_avant_restauration") {
+        s.checkpoints["_avant_restauration"] = *s.project;
+    }
+    s.project = it->second;
+    s.dirty = true;
+    return session_state(
+        s, "project_restore",
+        json{{"restored", name}, {"previous_state_saved_as", "_avant_restauration"}});
+}
+
+ToolResult tool_checkpoints(Session& s, const json&) {
+    return text_result(
+        json{{"schema", "openstitch.mcp-checkpoints/1"}, {"checkpoints", checkpoint_list(s)}}.dump(
+            2));
+}
+
+const document::Project& variant(const Session& s, const std::string& name) {
+    if (name == "current") {
+        if (!s.project) {
+            throw UsageError{"aucun projet ouvert dans la session", "", kNoProject};
+        }
+        return *s.project;
+    }
+    const auto it = s.checkpoints.find(name);
+    if (it == s.checkpoints.end()) {
+        throw UsageError{"variante inconnue : " + name,
+                         "« current » ou un nom de project_checkpoints"};
+    }
+    return it->second;
+}
+
+json sequence_stats(const document::Project& project) {
+    const auto seq = stitch_generation::effective_sequence(project);
+    if (!seq) {
+        return json{{"error", seq.error().message}};
+    }
+    const auto st = stitch::compute_stats(*seq);
+    return json{{"stitches", st.stitches},
+                {"jumps", st.jumps},
+                {"trims", st.trims},
+                {"color_changes", st.color_changes},
+                {"thread_m", st.thread_length_um / 1.0e6},
+                {"width_mm", (st.bounds.max.x.value - st.bounds.min.x.value) / 1000.0},
+                {"height_mm", (st.bounds.max.y.value - st.bounds.min.y.value) / 1000.0}};
+}
+
+// Compare deux variantes (checkpoints ou « current ») : statistiques côte à côte, différences
+// par objet (diff du moteur) et rendus réels à MÊME échelle et même zone.
+ToolResult tool_compare(Session& s, const json& a) {
+    const std::string name_a = opt_string(a, "a", "current");
+    const std::string name_b = req_string(a, "b");
+    const auto& pa = variant(s, name_a);
+    const auto& pb = variant(s, name_b);
+    const json stats_a = sequence_stats(pa);
+    const json stats_b = sequence_stats(pb);
+    json delta = json::object();
+    for (const char* key :
+         {"stitches", "jumps", "trims", "color_changes", "thread_m", "width_mm", "height_mm"}) {
+        if (stats_a.contains(key) && stats_b.contains(key)) {
+            delta[key] = stats_b.at(key).get<double>() - stats_a.at(key).get<double>();
+        }
+    }
+    const auto diff = po::diff_projects_json(pa, pb);
+    if (!diff) {
+        return engine_error("project_compare", po::code::kRefused, diff.error());
+    }
+    ToolResult result;
+    result.content.push_back(json{{"type", "text"},
+                                  {"text", json{{"schema", "openstitch.mcp-compare/1"},
+                                                {"a", {{"name", name_a}, {"stats", stats_a}}},
+                                                {"b", {{"name", name_b}, {"stats", stats_b}}},
+                                                {"delta_b_minus_a", delta},
+                                                {"diff", json::parse(*diff)}}
+                                               .dump(2)}});
+    if (opt_bool(a, "render", true)) {
+        po::RenderOptions options;
+        options.px_per_mm = opt_double(a, "px_per_mm", 3.0);
+        if (!(options.px_per_mm > 0.0) || options.px_per_mm > 50.0) {
+            throw UsageError{"« px_per_mm » doit être dans ]0, 50]", ""};
+        }
+        options.max_pixels = 1'000'000;
+        if (a.contains("crop") && a.at("crop").is_array() && a.at("crop").size() == 4) {
+            for (std::size_t i = 0; i < 4; ++i) {
+                options.crop[i] = a.at("crop").at(i).get<double>();
+            }
+        }
+        json meta = json::array();
+        for (const auto& [label, project] :
+             {std::pair<const std::string&, const document::Project&>{name_a, pa},
+              std::pair<const std::string&, const document::Project&>{name_b, pb}}) {
+            const auto png = po::render_realistic_png(project, options);
+            if (!png) {
+                meta.push_back(json{{"variant", label}, {"error", png.error().message}});
+                continue;
+            }
+            result.content.push_back(
+                json{{"type", "image"}, {"data", base64(png->png)}, {"mimeType", "image/png"}});
+            meta.push_back(json{{"variant", label},
+                                {"width_px", png->width},
+                                {"height_px", png->height},
+                                {"px_per_mm", png->px_per_mm}});
+        }
+        result.content.push_back(json{{"type", "text"},
+                                      {"text", json{{"images_in_order", meta},
+                                                    {"note", "même échelle et même zone pour "
+                                                             "les deux ; l'écart de taille "
+                                                             "signale un cadre différent"}}
+                                                   .dump()}});
+    }
+    return result;
+}
+
+std::size_t stitches_of(const stitch::StitchSequence& seq, ObjectId id) {
+    return static_cast<std::size_t>(std::count_if(
+        seq.commands.begin(), seq.commands.end(), [&](const stitch::StitchCommand& c) {
+            return c.type == stitch::CommandType::Stitch && c.source == id;
+        }));
+}
+
+// Essaie skeleton / parallel_sweep / medial_axis sur la MÊME géométrie, chacun dans une copie
+// isolée du projet (le projet de la session n'est jamais modifié). Aucun « meilleur » n'est
+// choisi sur le seul nombre de points : couverture, refus, absence de points et sauts sont
+// donnés tels quels, avec les motifs de rejet explicites.
+ToolResult tool_satin_compare(Session& s, const json& a) {
+    const auto& project = need_project(s);
+    if (!a.contains("objects") || !a.at("objects").is_array() || a.at("objects").empty() ||
+        a.at("objects").size() > 20) {
+        throw UsageError{"« objects » : 1 à 20 identifiants d'objets de broderie", ""};
+    }
+    std::vector<std::string> strategies{"skeleton", "parallel_sweep", "medial_axis"};
+    if (a.contains("strategies")) {
+        strategies = a.at("strategies").get<std::vector<std::string>>();
+        for (const auto& st : strategies) {
+            if (!document::parse_auto_satin_strategy(st)) {
+                throw UsageError{"stratégie inconnue : " + st,
+                                 "skeleton | parallel_sweep | medial_axis"};
+            }
+        }
+    }
+    json objects = json::array();
+    for (const auto& item : a.at("objects")) {
+        if (!item.is_number_unsigned() || item.get<std::uint64_t>() == 0) {
+            throw UsageError{"« objects » : identifiants entiers >= 1", ""};
+        }
+        const ObjectId id{item.get<std::uint64_t>()};
+        const auto* emb = project.findEmbroidery(id);
+        if (emb == nullptr) {
+            return error_result("project_satin_compare", po::code::kUnknownObject,
+                                std::format("objet de broderie {} introuvable", id.value),
+                                "identifiants : project_inspect / project_select");
+        }
+        json trials = json::array();
+        for (const auto& strategy : strategies) {
+            json trial{{"strategy", strategy}};
+            po::AutoSatinPlanRequest request;
+            request.strategy = *document::parse_auto_satin_strategy(strategy);
+            const auto plan = po::plan_auto_satin(project, emb->source_vector, request);
+            if (plan) {
+                trial["columns"] = plan->columns;
+                trial["coverage_ratio"] =
+                    plan->coverage_measured ? json(plan->coverage_ratio) : json(nullptr);
+                trial["satinability"] = plan->satinability_status;
+            }
+            document::Project copy = project; // isolation : jamais d'effet sur la session
+            const json op{{"op", "auto_satin"}, {"object", id.value}, {"strategy", strategy}};
+            const auto applied = po::apply_operation(copy, op.dump());
+            if (!applied.ok) {
+                const auto& out =
+                    applied.outcomes.empty() ? po::OperationOutcome{} : applied.outcomes[0];
+                trial["status"] = "refused";
+                trial["code"] = out.code;
+                trial["message"] = out.message;
+                trial["hint"] = out.hint;
+                trial["rejected_because"] = json::array({"refus du moteur"});
+                trials.push_back(std::move(trial));
+                continue;
+            }
+            const auto seq = stitch_generation::effective_sequence(copy);
+            if (!seq) {
+                trial["status"] = "error";
+                trial["message"] = seq.error().message;
+                trials.push_back(std::move(trial));
+                continue;
+            }
+            const auto totals = stitch::compute_stats(*seq);
+            // L'objet garde son identifiant après conversion : on compte ses points.
+            const std::size_t own = stitches_of(*seq, id);
+            trial["status"] = own == 0 ? "no_points" : "ok";
+            trial["object_stitches"] = own;
+            trial["project_stitches"] = totals.stitches;
+            trial["project_jumps"] = totals.jumps;
+            trial["project_trims"] = totals.trims;
+            json rejected = json::array();
+            if (own == 0) {
+                rejected.push_back("aucun point produit");
+            }
+            if (plan && plan->coverage_measured && plan->coverage_ratio < 0.85) {
+                rejected.push_back("couverture faible (< 85 %)");
+            }
+            trial["rejected_because"] = rejected;
+            trials.push_back(std::move(trial));
+        }
+        objects.push_back(json{{"object", id.value},
+                               {"current_type", po::stitch_type_name(*emb)},
+                               {"trials", trials}});
+    }
+    return text_result(json{{"schema", "openstitch.mcp-satin-compare/1"},
+                            {"objects", objects},
+                            {"note", "aucun choix automatique : comparez couverture, refus, "
+                                     "sauts et rendu (project_checkpoint, project_apply "
+                                     "auto_satin, project_render zoomé) avant de décider"}}
+                           .dump(2));
+}
+
 const std::vector<Tool> kTools = {
     {"digitize_guide",
      "Guide de numérisation textile OpenStitch (méthode éprouvée : lecture sémantique, choix "
@@ -802,6 +1360,96 @@ const std::vector<Tool> kTools = {
      "Palette réellement cousue dans l'ordre de couture (blocs de couleur), avec par couleur le "
      "nombre d'objets, l'aire et la part de la segmentation. À lire avant de juger un rendu.",
      R"({"type":"object","properties":{}})", tool_palette},
+    {"semantic_validate",
+     "Valide un manifeste sémantique openstitch.semantic/1 (identifiants stables, parents, "
+     "occlusions sans cycle, masques PNG présents et de la taille de l'image source) SANS rien "
+     "modifier. skip_files=true : structure seule.",
+     R"({"type":"object","properties":{"manifest":{"type":"string"},"skip_files":{"type":"boolean"}},)"
+     R"("required":["manifest"]})",
+     tool_semantic_validate},
+    {"semantic_import",
+     "Importe les masques d'un manifeste sémantique : un objet distinct par contour et par "
+     "identifiant (jamais fusionné sur la seule couleur de fil), nommé « sem:<id> <n> », créé dans "
+     "l'ordre d'occlusion. Tout ou rien : un refus laisse le projet inchangé. dry_run = "
+     "simulation. Retourne la correspondance identifiant sémantique -> objets.",
+     R"({"type":"object","properties":{"manifest":{"type":"string"},"dry_run":{"type":"boolean"},)"
+     R"("auto_satin_strategy":{"enum":["skeleton","parallel_sweep","medial_axis"]}},)"
+     R"("required":["manifest"]})",
+     tool_semantic_import},
+    {"semantic_replace",
+     "Remplace UN objet logique (semantic_id) à partir d'un masque corrigé, à la même place dans "
+     "l'ordre de couture ; les autres objets restent strictement identiques. dry_run = "
+     "simulation ; refus nommés ; faites un project_checkpoint avant.",
+     R"({"type":"object","properties":{"manifest":{"type":"string"},"semantic_id":{"type":"string"},)"
+     R"("mask":{"type":"string"},"dry_run":{"type":"boolean"},)"
+     R"("auto_satin_strategy":{"enum":["skeleton","parallel_sweep","medial_axis"]}},)"
+     R"("required":["manifest","semantic_id"]})",
+     tool_semantic_replace},
+    {"semantic_map",
+     "Provenance sémantique du projet : identifiant sémantique -> objets de broderie et formes "
+     "sources (portée par le nom « sem:<id> <n> », sauvegardée dans le .osp).",
+     R"({"type":"object","properties":{}})", tool_semantic_map},
+    {"project_report",
+     "Bilan en un appel : statut explicite par analyse (pass | warning | error | not_run | "
+     "unsupported) pour check, diagnose, density, fidelity, fabric_risk ; dimensions réelles, "
+     "points, coupes, changements de fil ; défauts localisés par objet. « only » filtre. "
+     "0 erreur ne prouve pas la brodabilité.",
+     R"({"type":"object","properties":{"only":{"type":"array","items":{"enum":["check","diagnose",)"
+     R"("density","fidelity","fabric_risk"]}}}})",
+     tool_report},
+    {"project_diagnose",
+     "Constats détaillés avec suggestions et localisation par objet (openstitch.diagnose/1).",
+     R"({"type":"object","properties":{}})", tool_diagnose},
+    {"project_density",
+     "Épaisseur de fil par zone (couches, surépaisseurs) ; heatmap=true joint la carte PNG.",
+     R"({"type":"object","properties":{"cell_mm":{"type":"number"},"heatmap":{"type":"boolean"}}})",
+     tool_density},
+    {"project_fidelity",
+     "Fidélité de la couture à l'image source embarquée (trous intérieurs, détail perdu). Sans "
+     "image source : statut « unsupported », jamais de valeur inventée. error_map=true joint la "
+     "carte d'erreurs.",
+     R"({"type":"object","properties":{"error_map":{"type":"boolean"}}})", tool_fidelity},
+    {"project_fabric_risk",
+     "Risque textile heuristique non calibré (woven | jersey | felt) ; heatmap=true joint la "
+     "carte.",
+     R"({"type":"object","properties":{"fabric":{"enum":["woven","jersey","felt"]},)"
+     R"("heatmap":{"type":"boolean"}}})",
+     tool_fabric_risk},
+    {"project_locate",
+     "Quels objets ont cousu autour d'un point (mm, origine au centre, Y vers le haut), du dernier "
+     "cousu au premier.",
+     R"({"type":"object","properties":{"x_mm":{"type":"number"},"y_mm":{"type":"number"},)"
+     R"("radius_mm":{"type":"number"}},"required":["x_mm","y_mm"]})",
+     tool_locate},
+    {"project_checkpoint",
+     "Garde l'état courant sous un nom (variante en mémoire, 12 au plus) ; « path » l'écrit aussi "
+     "en .osp sans jamais écraser un fichier. À faire avant une retouche risquée.",
+     R"({"type":"object","properties":{"name":{"type":"string"},"overwrite":{"type":"boolean"},)"
+     R"("path":{"type":"string"}},"required":["name"]})",
+     tool_checkpoint},
+    {"project_restore",
+     "Revient à une variante (project_checkpoint). L'état courant est gardé sous "
+     "« _avant_restauration » : rien n'est perdu en silence.",
+     R"({"type":"object","properties":{"name":{"type":"string"}},"required":["name"]})",
+     tool_restore},
+    {"project_checkpoints", "Liste les variantes gardées en mémoire.",
+     R"({"type":"object","properties":{}})", tool_checkpoints},
+    {"project_compare",
+     "Compare deux variantes (« current » ou un nom de checkpoint) : statistiques côte à côte, "
+     "différences par objet, et deux rendus réels à même échelle et même zone (crop, px_per_mm).",
+     R"({"type":"object","properties":{"a":{"type":"string"},"b":{"type":"string"},)"
+     R"("render":{"type":"boolean"},"px_per_mm":{"type":"number"},)"
+     R"("crop":{"type":"array","items":{"type":"number"},"minItems":4,"maxItems":4}},)"
+     R"("required":["b"]})",
+     tool_compare},
+    {"project_satin_compare",
+     "Essaie skeleton / parallel_sweep / medial_axis sur la MÊME géométrie dans des copies "
+     "isolées (la session n'est pas modifiée) : couverture, colonnes, points, sauts, refus et "
+     "motifs de rejet. Aucun choix automatique.",
+     R"({"type":"object","properties":{"objects":{"type":"array","items":{"type":"integer","minimum":1},)"
+     R"("minItems":1,"maxItems":20},"strategies":{"type":"array","items":{"enum":["skeleton",)"
+     R"("parallel_sweep","medial_axis"]}}},"required":["objects"]})",
+     tool_satin_compare},
     {"project_fit_canvas",
      "Ajuste le cadre au motif (origine au centre) avec une marge de sécurité ; supprime les "
      "erreurs « hors-cadre » de project_check.",
