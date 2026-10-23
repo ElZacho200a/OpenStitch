@@ -3378,10 +3378,15 @@ de référence. Restent : progression et annulation, régénération de toute la
 - À faire : scénarios complets en QTest offscreen (image → numériser → éditer
   → exporter PES) pour chaque vague livrée.
 
-### HP-QA-005 — Vérification croisée avec un lecteur tiers [P1] — ☐ À faire
+### HP-QA-005 — Vérification croisée avec un lecteur tiers [P1] — ◐ Partiel (2026-10-21)
 - État OpenStitch : `limitations.md` : « Validé sur simulateur : non ».
 - À faire : script de test (hors build, optionnel) qui relit nos exports avec
   pyembroidery (MIT) et compare les points ; exécuté en CI.
+- Livré (2026-10-21, PR en attente) : comparateur optionnel en Python, OpenStitch
+  `stats --json` face à `pyembroidery` (MIT), rapports JSON de divergences,
+  six tests unitaires et CI de contrat. **Reste** : corpus multi-formats réels,
+  exécuter l'outil avec un binaire OpenStitch dans la CI et comparer les
+  séquences point par point ; aucun essai machine revendiqué.
 
 ### HP-QA-006 — Crash sur fichiers réels [P1] — ◐ Partiel (2026-10-21)
 - À faire : corpus de fichiers utilisateurs réels (DST/PES/SVG/images
@@ -3570,6 +3575,7 @@ ci-dessus doit les respecter :
 |---|---|---|
 | 2026-10-21 | ChatGPT (PR risque textile) | HP-FAB-004 ◐ : première carte heuristique non calibrée, CLI/desktop, tests et protocole de limites ; solveur physique et validation machine restant à faire. |
 | 2026-09-22 | Claude (session d'audit) | Création : inventaire complet vérifié dans le code. |
+| 2026-10-21 | ChatGPT (interopérabilité) | HP-QA-005 ◐ : comparaison des compteurs avec pyembroidery, six tests et CI de contrat, en attente d'un corpus de fichiers réels. |
 | 2026-10-21 | ChatGPT (performance) | HP-PERF-008 ◐ : workflow hebdomadaire de benchmark, artefacts JSON/Markdown, quatre tests de parsing. |
 | 2026-10-21 | ChatGPT (corpus image) | HP-QA-006 ◐ : corpus image déterministe et tests CLI d'import/réjection, sans prétendre couvrir les cas réels. |
 | 2026-10-21 | ChatGPT (affichage) | HP-VIEW-011 ◐ : réglage d'opacité de l'image (0-100 %) instantané, persisté et testé avec QTest. |
