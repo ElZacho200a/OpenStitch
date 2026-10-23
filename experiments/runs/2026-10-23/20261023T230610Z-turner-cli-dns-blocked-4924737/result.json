@@ -1,0 +1,45 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261023T230610Z-turner-cli-dns-blocked-4924737",
+  "created_utc": "2026-10-23T23:06:10Z",
+  "status": "blocked",
+  "source": {
+    "kind": "chatgpt-library",
+    "library_file_id": "libfile_b7f90c9fdad0819180be1b6029c78d86",
+    "sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+    "size_px": [
+      1536,
+      1014
+    ],
+    "size_mm": [
+      363.5503,
+      240
+    ],
+    "verified": true
+  },
+  "openstitch_commit": null,
+  "cli_version": null,
+  "attempts": 0,
+  "reason": "Official CLI/MCP executable not found on PATH or filesystem; curl to github.com failed: Could not resolve host: github.com. Existing ZIP archives contain previous outputs, not an executable. No new digitization was run.",
+  "checks": {
+    "inspect": "not_run",
+    "check": "not_run",
+    "diagnose": "not_run",
+    "fidelity": "not_run",
+    "density": "not_run",
+    "stats": "not_run"
+  },
+  "score_before": null,
+  "score_after": null,
+  "evaluation": null,
+  "artifact": {
+    "kind": "unavailable",
+    "url": null,
+    "retention_days": null
+  },
+  "changes": [],
+  "lessons": [
+    "Need accessible verified CLI/MCP binary in runtime before running a new iteration; do not reuse previous output as new trial."
+  ],
+  "parent_run_id": null
+}
