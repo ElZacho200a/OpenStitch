@@ -1,0 +1,110 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261024T040211Z-turner-negative-4924737",
+  "created_utc": "2026-10-24T04:02:11Z",
+  "status": "completed",
+  "acceptance": "rejected_visual_not_machine_ready",
+  "source": {
+    "kind": "chatgpt-private-library",
+    "library_path": "/OpenStitch/Benchmarks/turner-phare-tempete-original-20261023.jpg",
+    "library_file_id": "libfile_b7f90c9fdad0819180be1b6029c78d86",
+    "sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+    "size_px": [
+      1536,
+      1014
+    ],
+    "size_mm": [
+      363.55,
+      240
+    ],
+    "verified": true,
+    "substitution": false
+  },
+  "openstitch_commit": "1ead7502a605807917cb2d27511e470e2862f313",
+  "cli_version": "0.1.0",
+  "cli_provenance": {
+    "official_main_successful_ci_run_id": 40054711321,
+    "artifact_id": 12546090070,
+    "artifact_sha256": "6c74876d6d83e98eef2ea3f24b542dc60ccff4d43e98b3e30c90fe34b432e917",
+    "binary_sha256": "d4458e6dc513729bf0d68f5f20663e98c7da875bad67e48c4144c1274542038e",
+    "tarball_checksum_verified": true,
+    "ci_url": "https://github.com/ElZacho200a/OpenStitch/actions/runs/40054711321"
+  },
+  "hypothesis_tested": "TECHNICAL/ARTISTIC: dark fabric as negative space. Source-regenerated LAB clusters and smooth spatial luminance thresholds preserve highlighted cloud/wave/foam carriers, protected boat/lantern details; omit dark background with --skip-background yes; vary cleanup thresholds.",
+  "gate_A": "partial failure: lighthouse, sails and foam recognizable, but storm cloud structure, dark foreground waves and organic flow not adequately preserved; semantic family map only coarse ROIs",
+  "gate_B": "provisional: source-derived shapes filled mostly tatami, no verified per-instance occlusion/guide graph",
+  "gate_C": "passed: verified official CLI executed; 3 OSP and 3 DST from corresponding same projects; renders/diagnostics real",
+  "gate_D": "rejected: render visual comparison to verified original exposes loss of motion and cut-out areas",
+  "variants": [
+    {
+      "variant": "n9",
+      "stitches": 86088,
+      "trims": 814,
+      "objects": 411,
+      "color_changes": 7,
+      "check_errors": 0,
+      "check_warnings": 50,
+      "hotspot_mm2": 22,
+      "decision": "reject"
+    },
+    {
+      "variant": "n10",
+      "stitches": 73299,
+      "trims": 553,
+      "objects": 276,
+      "color_changes": 7,
+      "check_errors": 0,
+      "check_warnings": 42,
+      "hotspot_mm2": 13,
+      "decision": "reject"
+    },
+    {
+      "variant": "n11",
+      "stitches": 71805,
+      "trims": 531,
+      "objects": 231,
+      "color_changes": 6,
+      "check_errors": 0,
+      "check_warnings": 34,
+      "hotspot_mm2": 23,
+      "decision": "reject"
+    }
+  ],
+  "source_fidelity_score": null,
+  "score_before": null,
+  "score_after": null,
+  "evaluation": null,
+  "independent_reviewer": null,
+  "machine_tested": false,
+  "artifact": {
+    "kind": "chatgpt-private-library",
+    "library_path": "/OpenStitch/Experiments/Turner/turner_negative_space_20261024_0402.zip",
+    "library_file_id": "libfile_11a1f74348d481918666a684194d1a99",
+    "sha256": "595ee39feedab3da349ab2a28625ac12abe37da5f84dfc8c9632ba11fe4ee525",
+    "size_bytes": 23562723,
+    "verified_in_library_listing": true,
+    "url": null,
+    "retention_days": null,
+    "private_source_not_archived": true,
+    "contains": "3 real OSP/DST pairs, source-derived technical segmentations, real engine previews, inspect/check/diagnose/fidelity/density/stats and maps, reproduction scripts; no original JPEG"
+  },
+  "previous_best": "20261024T030621Z-turner-carrier-4924737/v1 (provisional visual reference; no machine validation)",
+  "parent_run_id": "20261024T030621Z-turner-carrier-4924737",
+  "changes": [
+    "New verified official main CLI from successful CI; previous CLI was from older main.",
+    "Three source-regenerated actual negative-space experiments; n1–n8 source-derived masks rejected before CLI after Gate A inspection.",
+    "n11 reduces points 47.6% and trims 21.6% versus prior v5, but visual loss invalidates quality improvement.",
+    "No changes to main, no merges, no PR."
+  ],
+  "lessons": [
+    "Simple luminance masking reduces area but erases the identity of dark clouds and waves.",
+    "Global per-region brightness thresholds—even smoothed—do not replace semantic object masks and direction-aware strokes.",
+    "CLI --skip-background yes correctly omitted largest dark region (40.7% to 48.6% of technical image).",
+    "Zero check errors do not imply acceptable visual or machine-ready embroidery.",
+    "Fidelity command compares against technical source, NOT original Turner.",
+    "Stop after n10/n11 consecutive lack of visual improvement."
+  ],
+  "next_hypothesis": "ARTISTIC/WORKFLOW: semantic-first directional linework. Reconstruct and validate a small set of continuous, long cloud and wave flow paths from the ORIGINAL (not global threshold mask), preserve major foam carrier shapes and dark fabric negative space; treat long curves as running or local satin candidates with direction guides and inspect A/B before CLI. Avoid repeating luminance sweeps.",
+  "main_modified": false,
+  "agent_trials_only": true
+}
