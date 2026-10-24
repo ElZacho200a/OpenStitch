@@ -1291,6 +1291,12 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 uSpacing->setObjectName(QStringLiteral("spin_underlaySpacing"));
                 auto* underpath = new QCheckBox(tr("Liaisons cousues cachées"), body_);
                 underpath->setChecked(p.hidden_underpath);
+                auto* uZig = new QCheckBox(tr("Sous-couche en zigzag"), body_);
+                uZig->setObjectName(QStringLiteral("check_underlayZigzag"));
+                uZig->setToolTip(tr("Rangées diagonales à 45° des rangées de la couche "
+                                    "supérieure, croisées avec la sous-couche perpendiculaire : "
+                                    "stabilise un grand aplat."));
+                uZig->setChecked(p.underlay_zigzag);
                 // HP-ENG-001 : compensation du tirage (allongement des rangées dans l'axe du fil).
                 auto* pull =
                     mmSpin(to_millimeters(p.pull_compensation).value, 3.0, 0.0,
@@ -1325,14 +1331,16 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 form->addRow(tr("Retrait de la sous-couche :"), uInset);
                 form->addRow(QString(), uPar);
                 form->addRow(tr("Espacement de la sous-couche :"), uSpacing);
+                form->addRow(QString(), uZig);
                 form->addRow(QString(), underpath);
                 dependOn(uEdge, uInset);
                 dependOn(uPar, uSpacing);
                 // Mode automatique : les réglages manuels sont ignorés, donc grisés.
-                const auto syncUnderlay = [form, uMode, uEdge, uInset, uPar, uSpacing] {
+                const auto syncUnderlay = [form, uMode, uEdge, uInset, uPar, uSpacing, uZig] {
                     const bool manual = uMode->currentIndex() == 0;
                     uEdge->setEnabled(manual);
                     uPar->setEnabled(manual);
+                    uZig->setEnabled(manual);
                     setRowEnabled(form, uInset, manual && uEdge->isChecked());
                     setRowEnabled(form, uSpacing, manual && uPar->isChecked());
                 };
@@ -1341,6 +1349,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                         [syncUnderlay](int) { syncUnderlay(); });
                 bindEnumField<T>(this, edit, uMode, tr("Sous-couche"), &T::underlay_mode, members);
                 bindMm(pull, tr("Compensation du tirage"), &T::pull_compensation);
+                bindBool(uZig, tr("Sous-couche en zigzag"), &T::underlay_zigzag);
                 bindMm(rowClip, tr("Écrêtage des bouts de rangée"), &T::row_end_clip);
                 bindBool(outline, tr("Contour cousu par-dessus"), &T::edge_outline);
                 bindMm(spacing, tr("Espacement des rangées"), &T::row_spacing);
@@ -1445,6 +1454,16 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                                        "le remplissage, pour masquer les bouts de lignes "
                                        "(bords effilochés)."));
                 outline->setChecked(p.edge_outline);
+                // HP-ENG-001 : prolonge chaque ligne de couture à ses deux bouts.
+                auto* dirPull =
+                    mmSpin(to_millimeters(p.pull_compensation).value, 3.0, 0.0,
+                           tr("Chaque ligne de couture dépasse du contour de cette longueur, dans "
+                              "sa direction de bout : le fil tire dans sa direction et la forme "
+                              "cousue rétrécit. 0,2 à 0,4 mm est courant ; 0 = aucune."));
+                dirPull->setObjectName(QStringLiteral("spin_directionalPull"));
+                auto* dirZig = new QCheckBox(tr("Sous-couche en zigzag"), body_);
+                dirZig->setObjectName(QStringLiteral("check_directionalUnderlayZigzag"));
+                dirZig->setChecked(p.underlay_zigzag);
                 auto* handmade = new QCheckBox(tr("Aspect fait main"), body_);
                 handmade->setObjectName(QStringLiteral("check_handmade"));
                 handmade->setChecked(p.handmade);
@@ -1564,17 +1583,20 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 form->addRow(tr("Retrait de la sous-couche :"), uInset);
                 form->addRow(QString(), uPar);
                 form->addRow(tr("Espacement de la sous-couche :"), uSpacing);
+                form->addRow(QString(), dirZig);
                 form->addRow(QString(), underpath);
                 form->addRow(QString(), outline);
+                form->addRow(tr("Compensation du tirage :"), dirPull);
                 form->addRow(QString(), handmade);
                 form->addRow(tr("Intensité :"), intensity);
                 form->addRow(QString(), reseed);
                 dependOn(uEdge, uInset);
                 dependOn(uPar, uSpacing);
-                const auto syncUnderlay = [form, uMode, uEdge, uInset, uPar, uSpacing] {
+                const auto syncUnderlay = [form, uMode, uEdge, uInset, uPar, uSpacing, dirZig] {
                     const bool manual = uMode->currentIndex() == 0;
                     uEdge->setEnabled(manual);
                     uPar->setEnabled(manual);
+                    dirZig->setEnabled(manual);
                     setRowEnabled(form, uInset, manual && uEdge->isChecked());
                     setRowEnabled(form, uSpacing, manual && uPar->isChecked());
                 };
@@ -1637,6 +1659,8 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 bindMm(uSpacing, tr("Espacement de la sous-couche"), &T::underlay_spacing);
                 bindBool(underpath, tr("Liaisons cousues cachées"), &T::hidden_underpath);
                 bindBool(outline, tr("Contour cousu par-dessus"), &T::edge_outline);
+                bindMm(dirPull, tr("Compensation du tirage"), &T::pull_compensation);
+                bindBool(dirZig, tr("Sous-couche en zigzag"), &T::underlay_zigzag);
                 bindInt(intensity, tr("Intensité"), &T::handmade_intensity);
                 connect(handmade, &QCheckBox::toggled, this, [intensity, reseed](bool on) {
                     intensity->setEnabled(on);

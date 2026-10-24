@@ -129,7 +129,7 @@ void set_blend_gradient(document::DirectionalFillParams& params,
     params.row_spacing = gradient.spacing_from;
     params.density_gradient = gradient;
     params.underlay_mode = document::UnderlayMode::Manual;
-    params.underlay_edge = params.underlay_parallel = false;
+    params.underlay_edge = params.underlay_parallel = params.underlay_zigzag = false;
     if (guide) {
         params.guides = {*guide};
     }

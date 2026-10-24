@@ -763,15 +763,27 @@ std::vector<std::vector<Vec2um>> tatami_underlay(const geometry::PathSet& region
     //    un angle Ã  +90Â° et un grand pas, puis on dÃ©coupe en trajets cousus (on
     //    ignore les sauts). Les options avancÃ©es sont neutralisÃ©es pour Ã©viter
     //    toute rÃ©cursion.
-    if (params.underlay_parallel) {
+    // 3) ZIGZAG (HP-ENG-002) : même balayage, rangées diagonales à +45° des rangées de la couche
+    //    supérieure, donc croisées avec la passe perpendiculaire (+90°).
+    struct RowPass {
+        bool enabled;
+        double turn;
+    };
+    for (const RowPass pass : {RowPass{params.underlay_parallel, std::numbers::pi / 2.0},
+                               RowPass{params.underlay_zigzag, std::numbers::pi / 4.0}}) {
+        if (!pass.enabled) {
+            continue;
+        }
+        const double turn = pass.turn;
         document::TatamiParams up = params;
-        up.angle = Angle{params.angle.radians + std::numbers::pi / 2.0};
+        up.angle = Angle{params.angle.radians + turn};
         up.row_spacing =
             Micrometers{std::max(params.underlay_spacing.value, params.row_spacing.value)};
         up.inset = Micrometers{0};
         up.pull_compensation = Micrometers{0}; // la sous-couche reste dans la forme
         up.underlay_edge = false;
         up.underlay_parallel = false;
+        up.underlay_zigzag = false;
         // Trajets cachÃ©s hÃ©ritÃ©s de l'objet : sous la couche supÃ©rieure, une
         // liaison cousue de sous-couche est invisible (audit marine : 625
         // sauts dans les sous-couches en rangÃ©es).
