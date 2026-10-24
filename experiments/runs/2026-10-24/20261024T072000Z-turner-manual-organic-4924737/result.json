@@ -1,0 +1,43 @@
+{
+  "schema": "openstitch.turner-lab-result/1",
+  "run_id": "20261024T072000Z-turner-manual-organic-4924737",
+  "source_sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+  "source_dimensions_px": [
+    1536,
+    1014
+  ],
+  "target_height_mm": 240,
+  "experiment": "Manually anchored polygon cloud layers and independent lighthouse/boat/foam regions",
+  "variants": [
+    {
+      "id": "organic",
+      "gate_A": "fail",
+      "issues": [
+        "angular zigzag cloud boundaries",
+        "lighthouse windows and lantern lost",
+        "foam forms isolated slabs",
+        "no directional flow"
+      ]
+    },
+    {
+      "id": "reduced",
+      "gate_A": "fail",
+      "issues": [
+        "removing light gap worsens multilayer cloud topology",
+        "same silhouette and foam failures"
+      ]
+    }
+  ],
+  "gate_B": "not_run",
+  "gate_C": "not_run",
+  "gate_D": "not_run",
+  "mcp": {
+    "doctor": "passed locally, openstitch-mcp 1.1.0",
+    "used_for_digitization": false
+  },
+  "osp": null,
+  "dst": null,
+  "engine_preview": null,
+  "reason": "Two Gate A failures; stopped before project creation according to protocol",
+  "next_hypothesis": "Replace sparse straight-line hand polygons with high-density image-anchored cubic spline contours; model lighthouse windows and boat rigging separately; trace continuous foam as ribbon/negative holes, inspect segmentation before MCP."
+}
