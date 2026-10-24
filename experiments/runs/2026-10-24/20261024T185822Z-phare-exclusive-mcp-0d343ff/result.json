@@ -1,0 +1,136 @@
+{
+  "schema": "openstitch.agent-trials/1",
+  "run_id": "20261024T185822Z-phare-exclusive-mcp-0d343ff",
+  "date_utc": "2026-10-24T18:58:22Z",
+  "main_sha": "520bcb4741062379225927ea6e09e3b8a9bad6ab",
+  "source": {
+    "kind": "private_library_zip",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "pixels": [
+      1536,
+      961
+    ],
+    "design_mm": [
+      370,
+      231.49
+    ]
+  },
+  "mcp": {
+    "version": "1.1.0",
+    "provided_tar_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "doctor": "ok",
+    "tools": 29
+  },
+  "method": "Three programmatic source-derived exclusive macro label maps; source semantic family/6 wave instances, per-instance component merging and source-traced protected details. Source ZIP/JPEG SHA verified. Iterated Gate A after first 1292-1458 component failures. Three real MCP semantic imports, true project_render previews and native OSP/DST. All artistic variants rejected.",
+  "variants": [
+    {
+      "name": "exclusive_macro",
+      "regions": 88,
+      "components": 417,
+      "lab_mae": 7.57,
+      "objects": 704,
+      "stitches": 141867,
+      "trims": 1727,
+      "jumps": 2068,
+      "color_changes": 68,
+      "hotspot_mm2": 67,
+      "warnings": 51,
+      "errors": 0,
+      "missing_percent": 5.473,
+      "lost_detail_percent": 2.302,
+      "wrong_colour_percent": 3.135
+    },
+    {
+      "name": "exclusive_balanced",
+      "regions": 87,
+      "components": 584,
+      "lab_mae": 6.758,
+      "objects": 943,
+      "stitches": 150520,
+      "trims": 2161,
+      "jumps": 2728,
+      "color_changes": 68,
+      "hotspot_mm2": 80,
+      "warnings": 51,
+      "errors": 0,
+      "missing_percent": 6.693,
+      "lost_detail_percent": 1.692,
+      "wrong_colour_percent": 2.481
+    },
+    {
+      "name": "exclusive_crest",
+      "regions": 87,
+      "components": 600,
+      "lab_mae": 7.038,
+      "objects": 963,
+      "stitches": 149077,
+      "trims": 2162,
+      "jumps": 2718,
+      "color_changes": 68,
+      "hotspot_mm2": 88,
+      "warnings": 51,
+      "errors": 0,
+      "missing_percent": 6.589,
+      "lost_detail_percent": 1.875,
+      "wrong_colour_percent": 2.682
+    }
+  ],
+  "retouch": {
+    "satin_compare": [
+      "skeleton",
+      "parallel_sweep",
+      "medial_axis"
+    ],
+    "window_935_coverage": [
+      0.9486,
+      0.9813,
+      0.9673
+    ],
+    "window_satin_trial": {
+      "stitches": 141896,
+      "trims": 1728,
+      "rejected": true
+    },
+    "directional_guides": {
+      "refused_object": 1418,
+      "accepted_candidates": [
+        1361,
+        194,
+        542
+      ],
+      "applied_object": 1361,
+      "stitches": 141866,
+      "trims": 1727,
+      "rejected": true
+    },
+    "semantic_replace": {
+      "semantic_id": "foam.instance_20.color_10",
+      "stitches": 141858,
+      "trims": 1725,
+      "rejected": true
+    },
+    "running_stem_trial": true,
+    "baseline_restored": true,
+    "osp_dst_byte_identical_after_restore": true
+  },
+  "gate_A": "failed_for_final_release; three diagnostic imports performed",
+  "verdict": "artistically_rejected",
+  "comparison": {
+    "prior_hybrid_hotspot_mm2": 1761,
+    "exclusive_hotspot_mm2": 67,
+    "prior_hybrid_trims": 1533,
+    "exclusive_trims": 1727,
+    "historical_min_trims": 1015
+  },
+  "machine_test": false,
+  "independent_judge": false,
+  "private_archive": {
+    "path": "/OpenStitch/Experiments/2026-10-24/phare-exclusif-mcp-2105-private.zip",
+    "library_file_id": "libfile_0082fed218008191ae6a97515d85fa6c",
+    "size_bytes": 34858628,
+    "sha256": "dd20002bf8b6b3375619458f0fa4bea7abbac3b600bec8f72b34b19fb867ceaa",
+    "verified_rematerialized": true
+  },
+  "next_hypothesis": "Construct six source-derived vector wave ribbons, narrow foam running/satin continuous axes, reduce technical objects to 150-300 and trims toward 1000, preserve lighthouse and sailboat; require Gate A before production import."
+}
