@@ -1,0 +1,136 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261024T055955Z-turner-tensor-4924737",
+  "created_utc": "2026-10-24T05:59:55Z",
+  "status": "failed",
+  "acceptance": "rejected_gate_A_no_digitization",
+  "source": {
+    "kind": "chatgpt-private-library",
+    "library_path": "/OpenStitch/Benchmarks/turner-phare-tempete-original-20261023.jpg",
+    "library_file_id": "libfile_b7f90c9fdad0819180be1b6029c78d86",
+    "sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+    "size_px": [
+      1536,
+      1014
+    ],
+    "size_mm": [
+      363.55,
+      240
+    ],
+    "verified": true,
+    "substitution": false
+  },
+  "canvas_mm": [
+    390,
+    268
+  ],
+  "margin_mm": 10,
+  "openstitch_commit": "1ead7502a605807917cb2d27511e470e2862f313",
+  "cli_version": "0.1.0",
+  "cli_provenance": {
+    "ci_run_id": 40054711321,
+    "artifact_id": 12546090070,
+    "artifact_sha256": "6c74876d6d83e98eef2ea3f24b542dc60ccff4d43e98b3e30c90fe34b432e917",
+    "binary_sha256": "d4458e6dc513729bf0d68f5f20663e98c7da875bad67e48c4144c1274542038e",
+    "tarball_checksum_verified": true,
+    "source_commit_matches_main": true,
+    "cli_version_executed": true,
+    "cli_digitization_executed": false,
+    "ci_url": "https://github.com/ElZacho200a/OpenStitch/actions/runs/40054711321"
+  },
+  "hypothesis_tested": "TECHNICAL/ARTISTIC: from the verified original, manually mark cloud/wave/foam source patches and seed trajectories; derive local tangent fields via weighted multi-scale structure tensors, integrate source-aligned streamlines, respect coarse boat/lighthouse exclusion polygons, visually validate before digitization.",
+  "gate_A": "failed: two independent source-derived parameterizations retained foreground wave paths but failed to recover storm-cloud structure and continuous foam carrier masks. Stopped before OSP as required.",
+  "gate_B": "not_run",
+  "gate_C": "not_run",
+  "gate_D": "not_run",
+  "variants": [
+    {
+      "variant": "patch_fine",
+      "source_restarted": true,
+      "scales": [
+        [
+          1.4,
+          5
+        ],
+        [
+          0.8,
+          3.5
+        ]
+      ],
+      "coherence_floor": 0.27,
+      "seeds_total": 24,
+      "paths_accepted": 15,
+      "cloud_paths": "2/8 (31 and 34 px; too short)",
+      "wave_paths": "7/8",
+      "foam_paths": "6/8",
+      "gate_A": "reject",
+      "visual_critique": "Foreground wave curves follow source brush-flow locally; cloud trajectories almost entirely absent; foam strokes are not carrier shapes. Hand-marked exclusion and ROI polygons are not finished semantic segmentation.",
+      "osp": null,
+      "dst": null,
+      "engine_preview": null,
+      "cli_reports": null
+    },
+    {
+      "variant": "patch_coarse",
+      "source_restarted": true,
+      "scales": [
+        [
+          2.8,
+          10
+        ],
+        [
+          1.4,
+          6
+        ]
+      ],
+      "coherence_floor": 0.33,
+      "seeds_total": 24,
+      "paths_accepted": 13,
+      "cloud_paths": "0/8",
+      "wave_paths": "7/8",
+      "foam_paths": "6/8",
+      "gate_A": "reject",
+      "visual_critique": "Longer smoother lower-wave curves (up to 416px), but no accepted cloud path and incomplete foam structure; whole-scene readability not established.",
+      "osp": null,
+      "dst": null,
+      "engine_preview": null,
+      "cli_reports": null
+    }
+  ],
+  "score_before": null,
+  "score_after": null,
+  "evaluation": null,
+  "independent_reviewer": null,
+  "machine_tested": false,
+  "source_fidelity_score": null,
+  "artifact": {
+    "kind": "chatgpt-private-library",
+    "library_path": "/OpenStitch/Experiments/Turner/turner_patch_tensor_20261024_0600_private.zip",
+    "library_file_id": "libfile_d3f6d2a616bc81919893b6447b915ea6",
+    "sha256": "3768b710eae35021d9c979f7c11551b412d3f148153ffdc41f1b8c4cb9046342",
+    "size_bytes": 9547206,
+    "verified_in_library_listing": true,
+    "url": null,
+    "retention_days": null,
+    "private_source_not_archived": true,
+    "contains": "source-derived private overlays, side-by-side patches, coherence maps, path metadata, script, report; no original JPEG, no OSP/DST/engine preview"
+  },
+  "parent_run_id": "20261024T050650Z-turner-flow-4924737",
+  "previous_best": "20261024T030621Z-turner-carrier-4924737/v1 (visual reference only; unvalidated)",
+  "changes": [
+    "Verified source bytes, SHA256 and dimensions via Files.",
+    "Read main digitize/evaluate skills, semantic/directions/satin references, agent-trials protocol and benchmark manifest.",
+    "Downloaded official main CI CLI artifact and verified ZIP/tarball/ELF SHA256; executed --version.",
+    "Tested two fresh multi-scale local flow methods on three human-marked patches, compared overlays at source resolution, stopped at failed gate A.",
+    "Archived only real private artifacts and verified Library ID/path."
+  ],
+  "lessons": [
+    "Local structure-tensor tracing can follow the real dark-wave curvature, unlike prior generic Bezier paths.",
+    "A grayscale structure tensor fails in diffuse storm clouds (2/8 short paths then 0/8), so cloud motion needs region and chromatic structure first.",
+    "Foam needs continuous semantic carrier shapes, not only streamlines; coarse exclusion polygons are not enough for a global digitization."
+  ],
+  "next_hypothesis": "ARTISTIC/TECHNICAL: semantic-instance-constrained cloud reconstruction. On 2-3 cloud patches from the original, manually mark cloud ridge/occlusion anchors and luminous gaps, segment coherent layers via multichannel superpixel graph cuts (not global brightness/LAB isophotes), then derive curved ridge and boundary paths and validate them against source. Preserve the local tensor dark-wave paths as a measured control, not as reused OSP/segmentation. Only compose full scene and digitize after clouds AND foam carrier masks pass gate A.",
+  "main_modified": false,
+  "agent_trials_only": true,
+  "pr_created": false
+}
