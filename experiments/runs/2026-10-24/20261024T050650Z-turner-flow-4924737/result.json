@@ -1,0 +1,107 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261024T050650Z-turner-flow-4924737",
+  "created_utc": "2026-10-24T05:06:50Z",
+  "status": "failed",
+  "acceptance": "rejected_gate_A_no_digitization",
+  "source": {
+    "kind": "chatgpt-private-library",
+    "library_path": "/OpenStitch/Benchmarks/turner-phare-tempete-original-20261023.jpg",
+    "library_file_id": "libfile_b7f90c9fdad0819180be1b6029c78d86",
+    "sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+    "size_px": [
+      1536,
+      1014
+    ],
+    "size_mm": [
+      363.55,
+      240
+    ],
+    "verified": true,
+    "substitution": false
+  },
+  "canvas_mm": [
+    390,
+    268
+  ],
+  "margin_mm": 10,
+  "openstitch_commit": "1ead7502a605807917cb2d27511e470e2862f313",
+  "cli_version": "0.1.0",
+  "cli_provenance": {
+    "ci_run_id": 40054711321,
+    "ci_status": "success",
+    "artifact_id": 12546090070,
+    "artifact_sha256": "6c74876d6d83e98eef2ea3f24b542dc60ccff4d43e98b3e30c90fe34b432e917",
+    "binary_sha256": "d4458e6dc513729bf0d68f5f20663e98c7da875bad67e48c4144c1274542038e",
+    "tarball_checksum_verified": true,
+    "source_commit_matches_main": true,
+    "cli_version_executed": true,
+    "ci_url": "https://github.com/ElZacho200a/OpenStitch/actions/runs/40054711321"
+  },
+  "hypothesis_tested": "ARTISTIC/WORKFLOW: reconstruct semantic-first long continuous cloud and wave trajectories from the original, retaining dark fabric as negative space and preserving lighthouse/lantern/boat/foam as separate families. Two independent fresh source-based gate-A preparations were evaluated.",
+  "gate_A": "failed: two consecutive reconstructions did not preserve source morphology. Stopped before digitization as required.",
+  "gate_B": "not_run",
+  "gate_C": "not_run",
+  "gate_D": "not_run",
+  "variants": [
+    {
+      "variant": "A1",
+      "source_restarted": true,
+      "method": "hand-curated cubic long flow curves, manually drawn organic carrier polygons, explicit protected lighthouse/boat subparts",
+      "technical_objects": 154,
+      "gate_A": "reject",
+      "visual_critique": "Cloud lines are uniform parallel ribbons with almost no storm mass; foam carriers look like triangular mountains, source crest shapes absent.",
+      "osp": null,
+      "dst": null,
+      "engine_preview": null,
+      "cli_reports": null
+    },
+    {
+      "variant": "A2",
+      "source_restarted": true,
+      "method": "family-specific source-local LAB isophote contours and source-derived bright foam carriers, independent source reconstruction",
+      "technical_objects": 63,
+      "gate_A": "reject",
+      "visual_critique": "Large flat contiguous foam slab, polygonal jagged contour lines and ROI-edge artifacts; dark clouds and water lose pictorial motion.",
+      "osp": null,
+      "dst": null,
+      "engine_preview": null,
+      "cli_reports": null
+    }
+  ],
+  "score_before": null,
+  "score_after": null,
+  "evaluation": null,
+  "independent_reviewer": null,
+  "machine_tested": false,
+  "source_fidelity_score": null,
+  "artifact": {
+    "kind": "chatgpt-private-library",
+    "library_path": "/OpenStitch/Experiments/Turner/turner_gateA_rejections_20261024_0502.zip",
+    "library_file_id": "libfile_baf8fd7cdc408191abc07ee4f8699e85",
+    "sha256": "c2dcb68b64731dca098225906b71f8c2ab811b4406e9e59faf8762f10fd6f58e",
+    "size_bytes": 1262380,
+    "verified_in_library_listing": true,
+    "url": null,
+    "retention_days": null,
+    "private_source_not_archived": true,
+    "contains": "A1/A2 source-free technical maps, semantic metadata, reproduction scripts, critique; no original, OSP, DST, engine preview or fictitious checks"
+  },
+  "parent_run_id": "20261024T040211Z-turner-negative-4924737",
+  "previous_best": "20261024T030621Z-turner-carrier-4924737/v1 (visual reference only, unvalidated)",
+  "changes": [
+    "Verified immutable source bytes and dimensions via Files.",
+    "Read current main digitize/evaluate skills, semantic and satin/direction references, agent-trials protocol, benchmark manifest and prior run.",
+    "Recovered and checksum-verified official CLI from successful CI matching current main.",
+    "Attempted two fresh semantic maps from original; both rejected at gate A; intentionally did not invoke digitization or fabricate CLI reports."
+  ],
+  "lessons": [
+    "Long cubic trajectories drawn without source-derived anchors create generic ribbons.",
+    "Source isophotes alone yield jagged boundaries and giant false foam carrier masses; cannot replace semantic instance and directional reasoning.",
+    "A visually failed gate A must prevent OSP/DST generation regardless of availability of a verified CLI."
+  ],
+  "next_hypothesis": "TECHNICAL/ARTISTIC: work on small source-aligned storm-cloud and central-wave patches first; manually seed a multi-scale orientation/structure-tensor field, integrate curved streamlines through real brush-flow directions, enforce source-defined semantic occlusion masks and maximum continuity. Validate the localized paths and foam skeletons overlaid on the original before composing the whole scene. Do not use LAB isophotes or flat brightness masks as primary segmentation.",
+  "main_modified": false,
+  "agent_trials_only": true,
+  "pr_created": false
+}
