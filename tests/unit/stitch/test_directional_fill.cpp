@@ -1543,3 +1543,81 @@ TEST_CASE("directional fill does not jump between neighbouring rows across a sta
     }
     CHECK(shortJumps <= 2);
 }
+
+// --- HP-ENG-001 : compensation du tirage du remplissage directionnel ---------------------------
+
+TEST_CASE("directional pull: zero compensation leaves the stitch lines unchanged") {
+    const auto region = rect_mm(0, 0, 20, 10);
+    auto dp = base_params();
+    const auto base = directional_stitch_lines(region, dp);
+    dp.pull_compensation = Micrometers{0};
+    CHECK(directional_stitch_lines(region, dp) == base);
+}
+
+TEST_CASE("directional pull: line ends overshoot the outline by the compensation") {
+    const auto region = rect_mm(0, 0, 20, 10);
+    auto dp = base_params();
+    dp.pull_compensation = Micrometers{300};
+    const auto lines = directional_stitch_lines(region, dp);
+    REQUIRE_FALSE(lines.empty());
+    std::int32_t minX = 1'000'000;
+    std::int32_t maxX = -1'000'000;
+    for (const auto& line : lines) {
+        for (const Vec2um p : line) {
+            minX = std::min(minX, p.x.value);
+            maxX = std::max(maxX, p.x.value);
+            CHECK(p.y.value >= 0);
+            CHECK(p.y.value <= 10'000);
+        }
+    }
+    // Lignes horizontales (champ par defaut = axe principal) : depassement de 0,3 mm +-0,1 mm.
+    CHECK(minX <= -200);
+    CHECK(minX >= -400);
+    CHECK(maxX >= 20'200);
+    CHECK(maxX <= 20'400);
+}
+
+TEST_CASE("directional pull: only end penetrations move, generation is deterministic") {
+    const auto region = rect_mm(0, 0, 20, 10);
+    auto dp = base_params();
+    const auto base = directional_stitch_lines(region, dp);
+    dp.pull_compensation = Micrometers{400};
+    const auto pulled = directional_stitch_lines(region, dp);
+    REQUIRE(base.size() == pulled.size());
+    for (std::size_t i = 0; i < base.size(); ++i) {
+        REQUIRE(base[i].size() == pulled[i].size());
+        for (std::size_t k = 1; k + 1 < base[i].size(); ++k) {
+            CHECK(base[i][k] == pulled[i][k]);
+        }
+        CHECK(std::abs(seg_len(base[i].front(), pulled[i].front()) - 400.0) <= 2.0);
+        CHECK(std::abs(seg_len(base[i].back(), pulled[i].back()) - 400.0) <= 2.0);
+    }
+    const auto a = fill_directional(region, dp);
+    const auto b = fill_directional(region, dp);
+    REQUIRE(a.size() == b.size());
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        CHECK(a[i].pos == b[i].pos);
+    }
+}
+
+TEST_CASE("directional pull: out-of-range compensation is bounded to 3 mm") {
+    const auto region = rect_mm(0, 0, 20, 10);
+    auto dp = base_params();
+    const auto base = directional_stitch_lines(region, dp);
+    dp.pull_compensation = Micrometers{50'000};
+    const auto pulled = directional_stitch_lines(region, dp);
+    REQUIRE(base.size() == pulled.size());
+    REQUIRE_FALSE(base.empty());
+    CHECK(std::abs(seg_len(base[0].front(), pulled[0].front()) - 3'000.0) <= 2.0);
+}
+
+TEST_CASE("directional pull: a tatami conversion keeps compensation and underlay settings") {
+    document::TatamiParams tp;
+    tp.pull_compensation = Micrometers{250};
+    tp.underlay_mode = document::UnderlayMode::Auto;
+    tp.underlay_zigzag = true;
+    const auto d = directional_from_tatami(tp, {rect_mm(0, 0, 20, 10)}, 7);
+    CHECK(d.pull_compensation.value == 250);
+    CHECK(d.underlay_mode == document::UnderlayMode::Auto);
+    CHECK(d.underlay_zigzag);
+}

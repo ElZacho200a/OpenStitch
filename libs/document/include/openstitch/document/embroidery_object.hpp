@@ -55,6 +55,10 @@ struct TatamiParams {
     // rétrécit dans ce sens), 0 = aucune. Plage [0 ; 3] mm, 0,2 à 0,4 mm typique.
     Micrometers pull_compensation{0};
     UnderlayMode underlay_mode{UnderlayMode::Manual}; // HP-ENG-002
+    // HP-ENG-002 : sous-couche en zigzag (rangées diagonales à 45° des rangées de la couche
+    // supérieure, espacées de `underlay_spacing`) ; croisée avec les rangées perpendiculaires,
+    // elle stabilise un grand aplat. Faux = aucune (historique). Choisie par le mode Auto.
+    bool underlay_zigzag{false};
     // Bords « effilochés » : sur un bord presque parallèle aux rangées, la fin de rangée saute
     // d'une rangée à l'autre et des pointes isolées dépassent. `row_end_clip` > 0 rabat toute
     // extrémité qui dépasse de plus de cette longueur les extrémités des deux rangées voisines
@@ -135,9 +139,14 @@ struct DirectionalFillParams {
     int handmade_intensity{50}; // 0 à 100 %
     std::uint32_t seed{0};
     UnderlayMode underlay_mode{UnderlayMode::Manual}; // HP-ENG-002
+    bool underlay_zigzag{false};                      // comme `TatamiParams::underlay_zigzag`
     // Passe de contour cousue PAR-DESSUS le remplissage (comme `TatamiParams::edge_outline`) :
     // masque les bouts de lignes de couture qui effilochent le bord. Faux = aucune (historique).
     bool edge_outline{false};
+    // HP-ENG-001 : compensation du tirage. Chaque ligne de couture est prolongée à ses deux
+    // extrémités de cette longueur, le long de sa tangente de bout (direction du fil). 0 =
+    // aucune (historique). Plage [0 ; 3] mm.
+    Micrometers pull_compensation{0};
 
     bool operator==(const DirectionalFillParams&) const = default;
 };

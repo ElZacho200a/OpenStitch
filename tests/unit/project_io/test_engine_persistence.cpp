@@ -174,3 +174,44 @@ TEST_CASE("moteur : valeurs aberrantes d'un fichier edite a la main sont bornees
     CHECK(project.finishing.max_stitch_length.value == 12'100);
     CHECK(project.finishing.auto_join);
 }
+
+TEST_CASE(
+    "moteur : tirage du directionnel et sous-couche zigzag, aller-retour et anciens fichiers") {
+    auto project = base_project();
+    document::TatamiParams tatami;
+    tatami.underlay_zigzag = true;
+    document::DirectionalFillParams directional;
+    directional.pull_compensation = Micrometers{300};
+    directional.underlay_zigzag = true;
+    std::uint64_t id = 10;
+    for (const document::StitchParams& params :
+         std::vector<document::StitchParams>{tatami, directional}) {
+        document::EmbroideryObject e;
+        e.id = ObjectId{id++};
+        e.name = "o";
+        e.params = params;
+        project.embroidery_objects.push_back(e);
+    }
+    const auto path = fs::temp_directory_path() / "openstitch_engine_pull_zigzag.osp";
+    REQUIRE(project_io::save_project(path, project).has_value());
+    const auto loaded = project_io::load_project(path);
+    fs::remove(path);
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->embroidery_objects.size() == 2);
+    CHECK(loaded->embroidery_objects[0].params == project.embroidery_objects[0].params);
+    CHECK(loaded->embroidery_objects[1].params == project.embroidery_objects[1].params);
+
+    // Fichier anterieur (cles absentes) : defauts du modele ; valeur aberrante : bornee.
+    const auto legacy = load_from_json(
+        R"({"id":2,"name":"d","sourceVector":1,"rgb":[1,2,3],"params":{"type":"directional"}},)"
+        R"({"id":3,"name":"e","sourceVector":1,"rgb":[1,2,3],"params":{"type":"directional",)"
+        R"("pullCompensation":999999}})");
+    REQUIRE(legacy.embroidery_objects.size() == 2);
+    const auto& plain =
+        std::get<document::DirectionalFillParams>(legacy.embroidery_objects[0].params);
+    CHECK(plain.pull_compensation.value == 0);
+    CHECK_FALSE(plain.underlay_zigzag);
+    const auto& huge =
+        std::get<document::DirectionalFillParams>(legacy.embroidery_objects[1].params);
+    CHECK(huge.pull_compensation.value == 3'000);
+}

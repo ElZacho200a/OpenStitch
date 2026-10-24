@@ -221,6 +221,9 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.underlay_mode != document::UnderlayMode::Manual) {
                     j["underlayMode"] = static_cast<int>(p.underlay_mode);
                 }
+                if (p.underlay_zigzag) {
+                    j["underlayZigzag"] = true;
+                }
                 if (p.row_end_clip.value != 0) {
                     j["rowEndClip"] = p.row_end_clip.value;
                 }
@@ -326,6 +329,12 @@ json params_to_json(const document::StitchParams& params) {
                 }
                 if (p.edge_outline) {
                     j["edgeOutline"] = true;
+                }
+                if (p.pull_compensation.value != 0) {
+                    j["pullCompensation"] = p.pull_compensation.value;
+                }
+                if (p.underlay_zigzag) {
+                    j["underlayZigzag"] = true;
                 }
                 if (p.spacing_regularity != 0.0) {
                     j["spacingRegularity"] = p.spacing_regularity;
@@ -438,6 +447,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.pull_compensation = Micrometers{std::clamp(j.value("pullCompensation", 0), 0, 3'000)};
         p.underlay_mode =
             static_cast<document::UnderlayMode>(std::clamp(j.value("underlayMode", 0), 0, 1));
+        p.underlay_zigzag = j.value("underlayZigzag", false);
         p.row_end_clip = Micrometers{std::clamp(j.value("rowEndClip", 0), 0, 5'000)};
         p.edge_outline = j.value("edgeOutline", false);
         if (j.contains("entryPoint")) {
@@ -574,6 +584,8 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.underlay_mode =
             static_cast<document::UnderlayMode>(std::clamp(j.value("underlayMode", 0), 0, 1));
         p.edge_outline = j.value("edgeOutline", false);
+        p.pull_compensation = Micrometers{std::clamp(j.value("pullCompensation", 0), 0, 3'000)};
+        p.underlay_zigzag = j.value("underlayZigzag", false);
         // Valeur hors [0 ; 1] ou non finie : bornée (fichier édité à la main).
         p.spacing_regularity = std::clamp(j.value("spacingRegularity", 0.0), 0.0, 1.0);
         if (j.contains("densityGradient") && j.at("densityGradient").is_object()) {

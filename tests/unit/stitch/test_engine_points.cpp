@@ -1140,3 +1140,77 @@ TEST_CASE("bords : le remplissage directionnel peut aussi coudre un contour par-
     CHECK(onEdge >= 20);
     CHECK(same_sequence(*seqOn, *generate_sequence(on)));
 }
+
+// --- HP-ENG-002 : sous-couche en zigzag des grands aplats ------------------------------------
+
+TEST_CASE("sous-couche auto : le zigzag n'apparait qu'a partir de 400 mm2") {
+    const auto choose = [](std::int32_t w, std::int32_t h) {
+        return choose_fill_underlay(measure_shape(geometry::PathSet{rect_at(0, 0, w, h), {}}));
+    };
+    CHECK_FALSE(choose(19'000, 19'000).zigzag); // 361 mm2
+    CHECK(choose(20'000, 20'000).zigzag);       // 400 mm2
+    CHECK(choose(40'000, 40'000).zigzag);
+    CHECK_FALSE(choose(5'000, 5'000).zigzag);
+}
+
+TEST_CASE("sous-couche zigzag : rangees diagonales a 45 degres dans la forme") {
+    const geometry::PathSet region{rect_at(0, 0, 30'000, 30'000), {}};
+    auto p = tatami();
+    p.underlay_zigzag = true;
+    p.underlay_spacing = Micrometers{3'000};
+    const auto passes = tatami_underlay(region, p);
+    REQUIRE_FALSE(passes.empty());
+    std::size_t diagonal = 0;
+    for (const auto& pass : passes) {
+        for (std::size_t i = 1; i < pass.size(); ++i) {
+            const auto d = pass[i] - pass[i - 1];
+            const double len = length_um(d);
+            // Les liaisons entre rangees ne sont pas diagonales : on compte seulement les pas
+            // de rangee (pente +-1 au micrometre pres).
+            if (len > 1'000.0 &&
+                std::abs(std::abs(static_cast<double>(d.x.value)) -
+                         std::abs(static_cast<double>(d.y.value))) <= 0.02 * len + 2.0) {
+                ++diagonal;
+            }
+        }
+        for (const Vec2um v : pass) {
+            CHECK(v.x.value >= 0);
+            CHECK(v.x.value <= 30'000);
+            CHECK(v.y.value >= 0);
+            CHECK(v.y.value <= 30'000);
+        }
+    }
+    CHECK(diagonal > 0);
+    CHECK(tatami_underlay(region, p) == passes); // deterministe
+}
+
+TEST_CASE("sous-couche zigzag : desactive, la sous-couche est inchangee") {
+    const geometry::PathSet region{rect_at(0, 0, 30'000, 30'000), {}};
+    auto p = tatami();
+    p.underlay_edge = true;
+    p.underlay_parallel = true;
+    const auto base = tatami_underlay(region, p);
+    p.underlay_zigzag = true;
+    const auto withZigzag = tatami_underlay(region, p);
+    REQUIRE(withZigzag.size() > base.size());
+    for (std::size_t i = 0; i < base.size(); ++i) {
+        CHECK(withZigzag[i] == base[i]); // le zigzag s'ajoute apres les passes existantes
+    }
+}
+
+TEST_CASE(
+    "sous-couche auto : un grand tatami recoit le zigzag, les reglages manuels sont ignores") {
+    document::Project project;
+    add_object(project, {rect_at(0, 0, 30'000, 30'000), {}}, tatami());
+    auto& tp = std::get<document::TatamiParams>(project.embroidery_objects[0].params);
+    tp.underlay_mode = document::UnderlayMode::Auto;
+    const auto autoSeq = generate_sequence(project);
+    REQUIRE(autoSeq.has_value());
+    const auto resolved = resolve_underlay(tp, {rect_at(0, 0, 30'000, 30'000), {}});
+    CHECK(resolved.underlay_zigzag);
+    CHECK(resolved.underlay_parallel);
+    tp.underlay_zigzag = true; // ignore en mode Auto : meme resultat qu'avec zigzag decoche
+    const auto again = generate_sequence(project);
+    REQUIRE(again.has_value());
+    CHECK(same_sequence(*again, *autoSeq));
+}
