@@ -56,6 +56,76 @@ std::optional<std::vector<geometry::PathSet>> pristine_contour(const document::P
     return *raw;
 }
 
+bool any_message_contains(const std::vector<std::string>& messages, const std::string& needle) {
+    return std::any_of(messages.begin(), messages.end(),
+                       [&](const std::string& m) { return m.find(needle) != std::string::npos; });
+}
+
+// Raison structurée + piste de correction d'un refus. Les opérations citées existent dans le
+// registre (`break_apart`, `split`, `set_geometry`, `remove_holes`, `set_stitch_type`).
+void explain_refusal(AutoSatinPlan& plan,
+                     const std::optional<auto_satin::SatinabilityReport>& report) {
+    if (report) {
+        plan.min_width_mm = report->minimum_width_mm;
+        plan.max_width_mm = report->maximum_width_mm;
+        plan.branch_count = report->branch_count;
+        plan.junction_count = report->junction_count;
+    }
+    const std::string fallback =
+        "ou passer l'objet en remplissage directionnel via `set_stitch_type` "
+        "(type=directional) ou tatami";
+    if (any_message_contains(plan.messages, "se coupe lui-même")) {
+        plan.reason_code = "self_intersecting_contour";
+        plan.suggestion = "Le contour se recoupe : séparer les branches avec `split` ou "
+                          "`break_apart`, ou redessiner un contour simple via `set_geometry`, " +
+                          fallback + ".";
+    } else if (any_message_contains(plan.messages, "contour trop complexe")) {
+        plan.reason_code = "contour_too_complex";
+        plan.suggestion = "Contour trop riche en segments : le simplifier via `set_geometry`, "
+                          "ou découper l'objet avec `split`, " +
+                          fallback + ".";
+    } else if (!report) {
+        plan.reason_code = "engine_no_column";
+        plan.suggestion = "Aucune colonne construite : essayer une autre `strategy`, "
+                          "`compact_axis`=true pour une forme compacte, " +
+                          fallback + ".";
+    } else if (report->hole_count > 0) {
+        plan.reason_code = "has_holes";
+        plan.suggestion = "La région contient des trous : les retirer avec `remove_holes`, ou "
+                          "séparer l'objet avec `split`, " +
+                          fallback + ".";
+    } else if (report->status == auto_satin::SatinabilityStatus::RequiresDecomposition) {
+        plan.reason_code = "branched_shape";
+        plan.suggestion = "Forme branchée (" + std::to_string(report->junction_count) +
+                          " jonction(s)) : séparer les branches avec `split`, ou simplifier le "
+                          "contour via `set_geometry`, " +
+                          fallback + ".";
+    } else if (report->status == auto_satin::SatinabilityStatus::Ambiguous) {
+        plan.reason_code = "compact_shape";
+        plan.suggestion = "Forme compacte, direction ambiguë : relancer `auto_satin` avec "
+                          "compact_axis=true, " +
+                          fallback + ".";
+    } else if (report->status == auto_satin::SatinabilityStatus::Unsuitable &&
+               report->maximum_width_mm > 0.0 && report->maximum_width_mm < 0.8) {
+        plan.reason_code = "too_narrow";
+        plan.suggestion = "Région trop étroite pour un satin (< 0,8 mm) : utiliser un contour "
+                          "(`set_stitch_type` type=running) ou élargir la forme via "
+                          "`set_geometry`.";
+    } else if (report->maximum_width_mm > 12.0) {
+        plan.reason_code = "width_out_of_range";
+        plan.suggestion = "Largeur hors plage satin (> 12 mm) : découper l'objet en bandes avec "
+                          "`split`, " +
+                          fallback + ".";
+    } else if (report->status == auto_satin::SatinabilityStatus::Unsuitable) {
+        plan.reason_code = "invalid_geometry";
+        plan.suggestion = "Géométrie invalide ou dégénérée : la redéfinir via `set_geometry`.";
+    } else {
+        plan.reason_code = "engine_no_column";
+        plan.suggestion =
+            "Aucune colonne construite : essayer une autre `strategy`, " + fallback + ".";
+    }
+}
+
 } // namespace
 
 Result<AutoSatinPlan> plan_auto_satin(const document::Project& project, ObjectId vector_object,
@@ -77,6 +147,9 @@ Result<AutoSatinPlan> plan_auto_satin(const document::Project& project, ObjectId
 
     if (current->paths.empty()) {
         plan.refusal = "Aucun contour source pour construire le satin.";
+        plan.reason_code = "no_source_contour";
+        plan.suggestion = "L'objet n'a pas de contour : le définir via `set_geometry`.";
+        plan.refusal += " [reason_code=" + plan.reason_code + "] Suggestion : " + plan.suggestion;
         return plan;
     }
 
@@ -98,6 +171,7 @@ Result<AutoSatinPlan> plan_auto_satin(const document::Project& project, ObjectId
     int orphan_guides = 0;
     double largest_area = -1.0;
     std::string status = "Indéterminé";
+    std::optional<auto_satin::SatinabilityReport> largest_report;
     const auto analysis_params = auto_satin::stable_skeleton_analysis();
 
     for (const auto& set : *source_paths) {
@@ -127,6 +201,7 @@ Result<AutoSatinPlan> plan_auto_satin(const document::Project& project, ObjectId
             if (analysis) {
                 largest_area = area;
                 status = auto_satin::to_string(analysis->report.status);
+                largest_report = analysis->report;
             } else {
                 add_message(plan.messages,
                             "satinabilité non évaluée : " + analysis.error().message);
@@ -159,6 +234,8 @@ Result<AutoSatinPlan> plan_auto_satin(const document::Project& project, ObjectId
         }
         plan.refusal = "Aucune colonne satin n'a pu être construite pour cette région : " +
                        (reasons.empty() ? std::string("forme non exploitable") : reasons);
+        explain_refusal(plan, largest_report);
+        plan.refusal += " [reason_code=" + plan.reason_code + "] Suggestion : " + plan.suggestion;
         plan.accepted = false;
         return plan;
     }
