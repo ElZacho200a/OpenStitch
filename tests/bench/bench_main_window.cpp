@@ -7,7 +7,7 @@
 // de simulation), et le coût de peinture de la scène. Protocole et résultats :
 // docs/performance-audit.md.
 //
-// Usage : openstitch-bench-ui <projet.osp> [--reps N] [--quantize]
+// Usage : openstitch-bench-ui <projet.osp> [--reps N] [--quantize] [--realistic-synthetic]
 //
 // Utilise le seam de test existant (`friend class MainWindowTest`, cf.
 // main_window.hpp) : aucune API de production ajoutée pour ce banc.
@@ -28,6 +28,7 @@
 #include "main_window.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/project_io/project_io.hpp"
+#include "openstitch/stitch_render/raster.hpp"
 
 using namespace openstitch;
 
@@ -47,6 +48,34 @@ void measure(const char* label, int reps, const std::function<void()>& fn) {
     std::printf("%-44s froid %9.2f ms | chaud min %9.2f med %9.2f ms\n", label, first, warm.front(),
                 warm[warm.size() / 2]);
     std::fflush(stdout);
+}
+
+// HP-VIEW-001 : critère « 100 000 points rendus en < 100 ms ». Motif synthétique
+// déterministe (satin en zigzag, ~2,5 mm de brin, 0,4 mm de pas), rendu sur une
+// fenêtre d'écran 1600x1000 à ~8 px/mm, qualités Fast et High.
+void benchRealisticSynthetic(int reps, std::size_t count) {
+    std::vector<stitch_render::ThreadSegment> segs;
+    segs.reserve(count);
+    const int cols = 250;
+    for (std::size_t i = 0; i < count; ++i) {
+        const float col = static_cast<float>(i % cols);
+        const float row = static_cast<float>(i / cols);
+        const bool up = (i & 1U) != 0;
+        const float x = 2.0F + col * 0.4F;
+        const float y = 2.0F + row * 0.7F;
+        segs.push_back({x, up ? y : y + 2.5F, x + 0.4F, up ? y + 2.5F : y, {200, 40, 40}});
+    }
+    const stitch_render::RectMm bounds = stitch_render::segments_bounds(segs);
+    for (const auto quality : {stitch_render::Quality::Fast, stitch_render::Quality::High}) {
+        stitch_render::RenderParams params;
+        params.quality = quality;
+        const auto view = stitch_render::plan_view(bounds, 8.0, 6'000'000);
+        char label[96];
+        std::snprintf(label, sizeof label, "render_threads %zu brins (%s, %dx%d)", count,
+                      quality == stitch_render::Quality::Fast ? "Fast" : "High", view.width,
+                      view.height);
+        measure(label, reps, [&] { (void)stitch_render::render_threads(segs, params, view); });
+    }
 }
 
 } // namespace
@@ -137,7 +166,9 @@ int main(int argc, char** argv) {
     int reps = 5;
     bool quantize = false;
     for (int i = 2; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--reps") == 0 && i + 1 < argc) {
+        if (std::strcmp(argv[i], "--realistic-synthetic") == 0) {
+            benchRealisticSynthetic(5, 100'000);
+        } else if (std::strcmp(argv[i], "--reps") == 0 && i + 1 < argc) {
             reps = std::max(1, std::atoi(argv[++i]));
         } else if (std::strcmp(argv[i], "--quantize") == 0) {
             quantize = true;
