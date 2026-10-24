@@ -1,0 +1,102 @@
+{
+  "schema": "openstitch.turner-lab-result/1",
+  "run_id": "20261024T100225Z-turner-source-flow-mcp-4924737",
+  "source_sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+  "source_px": [
+    1536,
+    1014
+  ],
+  "design_mm": [
+    363.5503,
+    240
+  ],
+  "canvas_mm": [
+    390,
+    268
+  ],
+  "provenance": {
+    "mcp_version": "1.1.0",
+    "main_commit": "1ead7502a605807917cb2d27511e470e2862f313",
+    "ci_run_id": 40054711321,
+    "ci_artifact_id": 12544739180,
+    "zip_sha256": "ebedc2518648448c46fd133994331a787176b145a5eedc95be562cb43e3a4e63",
+    "doctor_ok": true
+  },
+  "method": "Three original-specific prompts applied via programmatic source-luminance-guided cubic-spline ribbon construction and protected source-derived boat/lighthouse masks; NO generative image-to-image",
+  "candidates": [
+    "flow_sparse (14 ribbons)",
+    "flow_balanced (20 ribbons)",
+    "flow_layered (20 wide ribbons)"
+  ],
+  "selected": "flow_balanced",
+  "semantic_regions": 36,
+  "embroidery_objects": 47,
+  "thread_colors": 11,
+  "workflow": [
+    "semantic_validate",
+    "project_new",
+    "semantic_import dry-run + apply",
+    "project_checkpoint",
+    "project_render",
+    "project_report",
+    "project_check",
+    "project_save",
+    "project_export",
+    "project_open",
+    "project_satin_compare",
+    "semantic_replace twice dry-run + apply",
+    "project_apply directional_guides dry-run + apply"
+  ],
+  "versions": {
+    "occlusion_baseline": {
+      "stitches": 67884,
+      "trims": 176,
+      "jumps": 187,
+      "color_changes": 15,
+      "warnings": 7,
+      "errors": 0,
+      "hotspot_mm2": 446
+    },
+    "local_refined_selected": {
+      "stitches": 67594,
+      "trims": 178,
+      "jumps": 188,
+      "color_changes": 15,
+      "warnings": 7,
+      "errors": 0,
+      "hotspot_mm2": 448
+    },
+    "directional_trial_rejected": {
+      "stitches": 67542,
+      "trims": 182,
+      "jumps": 194,
+      "color_changes": 15,
+      "warnings": 8,
+      "errors": 0,
+      "hotspot_mm2": 448
+    }
+  },
+  "satin_comparison_objects": [
+    108,
+    114,
+    81
+  ],
+  "real_preview": true,
+  "independent_score": null,
+  "machine_tested": false,
+  "artistic_accepted": false,
+  "issues": [
+    "large flat sky masses",
+    "foam ribbons continuous rather than looped, but still geometrically regular",
+    "lighthouse/boat now legible after corrected occlusion order",
+    "unstitched water too empty, insufficient storm depth"
+  ],
+  "private_archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-24/turner-flow-mcp-1202-private.zip",
+    "library_file_id": "libfile_f5f818a9e7b08191a27b0d9909355d4d",
+    "sha256": "ab2119e9693258828bb1f5578ee96752695d0b4d700c2363b89f80e26bfcb4e9",
+    "size_bytes": 12051357
+  },
+  "public_pixels_uploaded": false,
+  "next_hypothesis": "Replace manually anchored smooth splines with source-driven ridge tracking and variable-width branched foam; split warm sky into atmospheric strata with natural boundaries; maintain semantic occlusion and compare true MCP previews."
+}
