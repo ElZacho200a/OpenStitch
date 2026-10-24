@@ -52,4 +52,16 @@ struct SegmentHit {
                                                               std::size_t segment, double t,
                                                               Vec2um delta, Micrometers tolerance);
 
+// Variante « translater l'arête » (Alt) : les DEUX nœuds du segment `segment` se déplacent de
+// `delta` avec leurs poignées (tangentes relatives, donc inchangées) ; le reste du contour reste
+// en place. Sur un tracé ouvert, les extrémités restent déplaçables. `segment` hors bornes ou
+// chemin à moins de 2 nœuds : chemin inchangé.
+[[nodiscard]] Path translate_segment(const Path& path, std::size_t segment, Vec2um delta);
+
+// Comme `reshape_path_set_segment` pour `translate_segment` (même refus des croisements nouveaux).
+[[nodiscard]] std::optional<PathSet> translate_path_set_segment(const PathSet& set,
+                                                                std::size_t path_index,
+                                                                std::size_t segment, Vec2um delta,
+                                                                Micrometers tolerance);
+
 } // namespace openstitch::geometry
