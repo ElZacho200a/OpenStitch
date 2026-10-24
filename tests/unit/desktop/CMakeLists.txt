@@ -103,3 +103,5 @@ openstitch_add_qt_test(test_text_typography_ui test_text_typography_ui.cpp)
 # [cablage-E:debut]
 openstitch_add_qt_test(test_density_map_ui test_density_map_ui.cpp)
 # [cablage-E:fin]
+# HP-OBJ-001/004 : cadre commun, rotation de plusieurs formes, pivot.
+openstitch_add_qt_test(test_object_manipulation test_object_manipulation.cpp)

@@ -118,6 +118,16 @@ private:
         }
         transformPoint(p.entry_point);
         transformPoint(p.exit_point);
+        // Un retournement inverse le côté gauche/droite de la colonne par rapport au sens de
+        // couture : on échange les rails (et leurs barreaux, compensations latérales) pour
+        // conserver l'orientation d'origine (HP-OBJ-006).
+        if (transform_.flips()) {
+            std::swap(p.rail_a, p.rail_b);
+            for (auto& rung : p.rungs) {
+                std::swap(rung.a, rung.b);
+            }
+            std::swap(p.pull_left, p.pull_right);
+        }
     }
     void transformParams(document::AutoSatinParams& p) const {
         for (auto& guide : p.guides) {

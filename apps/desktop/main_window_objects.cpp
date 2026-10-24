@@ -575,13 +575,14 @@ double MainWindow::rotationDragDegrees(QPointF centerScene, QPointF handleScene,
     return std::abs(degrees) < 0.05 ? 0.0 : degrees;
 }
 
-void MainWindow::rotateObjects(const std::vector<ObjectId>& ids, double degrees) {
+void MainWindow::rotateObjects(const std::vector<ObjectId>& ids, double degrees,
+                               std::optional<Vec2um> pivot) {
     const auto box = commands::objects_bounds(project_, ids);
     if (!box) {
         return;
     }
     runTransform(ids,
-                 commands::AffineTransform::rotation(box->center(),
+                 commands::AffineTransform::rotation(pivot.value_or(box->center()),
                                                      Angle{degrees * std::numbers::pi / 180.0}),
                  tr("Pivoter"), tr("Sélection pivotée de %1°.").arg(degrees, 0, 'f', 1));
 }
