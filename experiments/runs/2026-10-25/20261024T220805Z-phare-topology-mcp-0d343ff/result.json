@@ -1,0 +1,144 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261024T220805Z-phare-topology-mcp-0d343ff",
+  "timestamp_utc": "2026-10-24T22:08:05Z",
+  "source_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+  "source_zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+  "source_dimensions_px": [
+    1536,
+    961
+  ],
+  "hoop_mm": [
+    390,
+    268
+  ],
+  "motif_mm": [
+    370,
+    231.4908854
+  ],
+  "main_reference": "520bcb4741062379225927ea6e09e3b8a9bad6ab",
+  "engine": "openstitch-mcp 1.1.0",
+  "engine_archive_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+  "preparations": [
+    {
+      "name": "topology_sparse",
+      "regions": 63,
+      "components": 398,
+      "rails": 6,
+      "lab_mae": 10.233
+    },
+    {
+      "name": "topology_balanced",
+      "regions": 75,
+      "components": 455,
+      "rails": 8,
+      "lab_mae": 8.835
+    },
+    {
+      "name": "topology_detail",
+      "regions": 80,
+      "components": 461,
+      "rails": 12,
+      "lab_mae": 8.765,
+      "imported": false
+    },
+    {
+      "name": "topology_foam_repair",
+      "regions": 81,
+      "components": 438,
+      "rails": 12,
+      "lab_mae": 8.835
+    }
+  ],
+  "method": "Programmatic source-derived mask instance partition, source mask upper-envelope smoothed dual-rail SVG/running, foam repair with source masks; these are NOT full paired width-measured rails. Gate A failed (foam flattening and lighthouse noise), imports diagnostic only.",
+  "runs": [
+    {
+      "variant": "topology_sparse",
+      "objects": 638,
+      "stitches": 131030,
+      "trims": 1488,
+      "jumps": 1754,
+      "color_changes": 41,
+      "warnings": 51,
+      "errors": 0,
+      "hotspot_mm2": 81,
+      "fidelity_missing_pct": 4.279,
+      "fidelity_lost_detail_pct": 5.893,
+      "fidelity_wrong_colour_pct": 6.815,
+      "real_preview": true,
+      "artistic_verdict": "rejected"
+    },
+    {
+      "variant": "topology_balanced",
+      "objects": 722,
+      "stitches": 135667,
+      "trims": 1656,
+      "jumps": 1965,
+      "color_changes": 50,
+      "warnings": 51,
+      "errors": 0,
+      "hotspot_mm2": 91,
+      "fidelity_missing_pct": 4.707,
+      "fidelity_lost_detail_pct": 3.804,
+      "fidelity_wrong_colour_pct": 4.769,
+      "real_preview": true,
+      "artistic_verdict": "rejected"
+    },
+    {
+      "variant": "topology_foam_repair",
+      "objects": 726,
+      "stitches": 137372,
+      "trims": 1679,
+      "jumps": 1983,
+      "color_changes": 53,
+      "warnings": 51,
+      "errors": 0,
+      "hotspot_mm2": 88,
+      "fidelity_missing_pct": 4.887,
+      "fidelity_lost_detail_pct": 4.004,
+      "fidelity_wrong_colour_pct": 5.003,
+      "real_preview": true,
+      "artistic_verdict": "rejected"
+    }
+  ],
+  "retouches": {
+    "satin_compare": "skeleton/parallel_sweep/medial_axis on lighthouse windows 905/907/909/911",
+    "auto_satin": {
+      "object": 905,
+      "stitches": 131059,
+      "trims": 1489,
+      "verdict": "rejected"
+    },
+    "directional_guides": {
+      "object": 1148,
+      "stitches": 131050,
+      "trims": 1488,
+      "verdict": "rejected"
+    },
+    "semantic_replace": {
+      "semantic_id": "foam.instance_20.color_10",
+      "stitches": 127439,
+      "trims": 1360,
+      "hotspot_mm2": 79,
+      "verdict": "rejected, holes and lost foam"
+    },
+    "baseline_restored_byte_identical": true
+  },
+  "comparison_baseline": {
+    "variant": "vector_balanced",
+    "objects": 593,
+    "trims": 1464,
+    "hotspot_mm2": 57
+  },
+  "gate_A": "rejected",
+  "overall_verdict": "ARTISTICALLY REJECTED; no machine test; no independent rating",
+  "private_archive": {
+    "path": "/OpenStitch/Experiments/2026-10-25/phare-topologie-mcp-0010-private.zip",
+    "library_file_id": "libfile_5ca7ad15d0748191abe0ffbfdb7b4fdd",
+    "size_bytes": 29596694,
+    "sha256": "9efb82cc6e00bceed69bffec6d006fc8d60d532003dc2f75642f6a6b8650a385",
+    "rematerialized_and_verified": true
+  },
+  "next_hypothesis": "Stop partition-only refinements. Trace two real local rails of each luminous foam crest from source with width measurements and topological occlusion; six to twelve distinct wave mass carriers; satin only width admissible; protect lantern, windows, sails/rigging; compare genuine project_render and fidelity. Aim <300 objects/<1200 trims without artistic loss.",
+  "github_pixels_private": true
+}
