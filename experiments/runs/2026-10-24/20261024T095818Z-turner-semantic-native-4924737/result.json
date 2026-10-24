@@ -1,0 +1,66 @@
+{
+  "schema": "openstitch.turner-lab-result/1",
+  "run_id": "20261024T095818+0200-turner-semantic-native-4924737",
+  "source_sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+  "target_mm": [
+    363.5503,
+    240
+  ],
+  "canvas_mm": [
+    390,
+    268
+  ],
+  "method": "Four programmatic, image-specific candidate transforms (faithful, carriers, balanced, anchored); anchored selected; NO generative image-to-image",
+  "semantic_regions": 23,
+  "mcp_version": "1.1.0",
+  "mcp_tools": [
+    "digitize_guide",
+    "semantic_validate",
+    "project_new",
+    "semantic_import",
+    "project_inspect",
+    "semantic_map",
+    "project_checkpoint",
+    "project_report",
+    "project_render",
+    "project_check",
+    "project_save",
+    "project_export",
+    "project_open",
+    "semantic_replace",
+    "project_satin_compare"
+  ],
+  "semantic_replace_count": 8,
+  "baseline": {
+    "objects": 31,
+    "stitches": 53209,
+    "trims": 140,
+    "jumps": 141,
+    "color_changes": 22,
+    "errors": 0,
+    "warnings": 9,
+    "real_engine_preview": true
+  },
+  "refined": {
+    "objects": 37,
+    "stitches": 36025,
+    "trims": 138,
+    "jumps": 146,
+    "color_changes": 22,
+    "errors": 0,
+    "warnings": 12,
+    "real_engine_preview": true
+  },
+  "independent_score": null,
+  "machine_validated": false,
+  "artistic_acceptance": false,
+  "artistic_issues": [
+    "cloud shapes too schematic",
+    "foam as broad blobs lacks flow",
+    "boat and lighthouse simplified",
+    "excess negative space"
+  ],
+  "engine_fidelity": "unsupported: semantic import lacks embedded source image",
+  "artifacts": "Private local archive turner_semantic_20261024_1000_private.zip, original and derived pixels NOT uploaded to public GitHub",
+  "next_hypothesis": "Segment waves into curved directional ribbons with holes and source-anchored boundaries; improve cloud topology; try genuine source-referenced generative image editing; preserve native semantic identities and local replacements."
+}
