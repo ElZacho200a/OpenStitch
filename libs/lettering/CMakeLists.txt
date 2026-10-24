@@ -2,6 +2,7 @@ find_package(Freetype REQUIRED)
 
 add_library(openstitch_lettering
     src/font.cpp
+    src/gpos.cpp
     src/layout.cpp
     src/unicode.cpp
     src/build.cpp
