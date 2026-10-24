@@ -11,6 +11,7 @@ add_executable(test_commands
     test_engine_commands.cpp
     test_vector_path_commands.cpp
     test_calque_commands.cpp
+    test_click_to_stitch_commands.cpp
 )
 target_link_libraries(test_commands PRIVATE openstitch::commands Catch2::Catch2WithMain openstitch::warnings)
 catch_discover_tests(test_commands)

@@ -46,6 +46,9 @@ enum class Tool {
     Brush,
     // Pot de peinture : un clic dans un vide fermé entre des formes crée une forme qui le remplit.
     Bucket,
+    // Clic-pour-broder (HP-AUTO-003) : un clic sur une zone de couleur de l'image crée l'objet
+    // brodé (région par croissance, tolérance réglable).
+    ClickToStitch,
 };
 
 } // namespace openstitch::desktop

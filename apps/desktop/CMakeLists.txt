@@ -51,6 +51,7 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_brush.cpp
     main_window_node_select.cpp
     main_window_bucket.cpp
+    main_window_click_to_stitch.cpp
     main_window_eyedropper.cpp
     # [cablage-C:fin]
     # [cablage-D:debut]

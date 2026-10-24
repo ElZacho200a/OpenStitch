@@ -96,6 +96,7 @@ openstitch_add_qt_test(test_vector_tools test_vector_tools.cpp)
 openstitch_add_qt_test(test_measure_tool test_measure_tool.cpp)
 openstitch_add_qt_test(test_eyedropper_tool test_eyedropper_tool.cpp)
 openstitch_add_qt_test(test_bucket_tool test_bucket_tool.cpp)
+openstitch_add_qt_test(test_click_to_stitch_tool test_click_to_stitch_tool.cpp)
 # [cablage-C:fin]
 # [cablage-D:debut]
 openstitch_add_qt_test(test_thread_stock_ui test_thread_stock_ui.cpp)
