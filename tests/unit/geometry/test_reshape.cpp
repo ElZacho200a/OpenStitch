@@ -193,3 +193,53 @@ TEST_CASE("reshape_path_set_segment works on a hole and refuses crossing the out
     CHECK_FALSE(
         reshape_path_set_segment(set, 1, 0, 0.5, pt(0, -30'000), Micrometers{50}).has_value());
 }
+
+TEST_CASE("translate_segment moves both end nodes and keeps tangents", "[geometry][reshape]") {
+    const Path sq = square(10'000);
+    const Path moved = translate_segment(sq, 0, pt(0, -2'000));
+    REQUIRE(moved.nodes.size() == 4);
+    CHECK(moved.nodes[0].pos == pt(0, -2'000));
+    CHECK(moved.nodes[1].pos == pt(10'000, -2'000));
+    CHECK(moved.nodes[2].pos == sq.nodes[2].pos);
+    CHECK(moved.nodes[3].pos == sq.nodes[3].pos);
+    const Path wrap = translate_segment(sq, 3, pt(500, 0));
+    CHECK(wrap.nodes[3].pos == pt(500, 10'000));
+    CHECK(wrap.nodes[0].pos == pt(500, 0));
+    const Path chain = translate_segment(smooth_chain(), 0, pt(0, 1'000));
+    CHECK(chain.nodes[0].tan_out == smooth_chain().nodes[0].tan_out);
+    CHECK(chain.nodes[1].tan_in == smooth_chain().nodes[1].tan_in);
+}
+
+TEST_CASE("translate_segment works on open paths and rejects bad indices", "[geometry][reshape]") {
+    const Path chain = smooth_chain();
+    CHECK(translate_segment(chain, 2, pt(100, 0)) == chain);
+    CHECK(translate_segment(chain, 0, Vec2um{}) == chain);
+    const Path moved = translate_segment(chain, 1, pt(0, 700));
+    CHECK(moved.nodes[0].pos == chain.nodes[0].pos);
+    CHECK(moved.nodes[1].pos == pt(10'000, 700));
+    CHECK(moved.nodes[2].pos == pt(20'000, 700));
+    CHECK_FALSE(moved.closed);
+}
+
+TEST_CASE("open path segment reshape keeps ends and openness", "[geometry][reshape]") {
+    const Path chain = smooth_chain();
+    const auto hit = nearest_segment(chain, pt(5'000, 200), 1'000.0);
+    REQUIRE(hit.has_value());
+    const Path pulled = reshape_segment(chain, hit->segment, hit->t, pt(0, 3'000));
+    CHECK_FALSE(pulled.closed);
+    CHECK(pulled.nodes.size() == chain.nodes.size());
+    CHECK(pulled.nodes.front().pos == chain.nodes.front().pos);
+    CHECK(pulled.nodes.back().pos == chain.nodes.back().pos);
+    CHECK(pulled != chain);
+    const auto set = reshape_path_set_segment(PathSet{chain, {}}, 0, hit->segment, hit->t,
+                                              pt(0, 3'000), Micrometers{50});
+    REQUIRE(set.has_value());
+    CHECK_FALSE(set->outer.closed);
+}
+
+TEST_CASE("translate_path_set_segment validates targets", "[geometry][reshape]") {
+    const PathSet set{square(10'000), {}};
+    CHECK(translate_path_set_segment(set, 0, 0, pt(0, -2'000), Micrometers{50}).has_value());
+    CHECK_FALSE(translate_path_set_segment(set, 5, 0, pt(1, 1), Micrometers{50}).has_value());
+    CHECK_FALSE(translate_path_set_segment(set, 0, 9, pt(1, 1), Micrometers{50}).has_value());
+}

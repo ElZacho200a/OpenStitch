@@ -111,9 +111,14 @@ void MainWindow::updateSegmentReshape(QPointF sceneMm, Qt::KeyboardModifiers mod
     }
     const QPointF dragged = reshapeDragPoint(sceneMm, mods);
     const Vec2um delta = sceneToModel(dragged) - sceneToModel(reshape_->startSceneMm);
+    // Alt : « translater l'arête » (les deux extrémités suivent le curseur).
+    const bool edge = (mods & Qt::AltModifier) != 0;
     const auto reshaped =
-        geometry::reshape_path_set_segment(reshape_->base, reshape_->path, reshape_->segment,
-                                           reshape_->t, delta, kReshapeCrossingTolerance);
+        edge ? geometry::translate_path_set_segment(reshape_->base, reshape_->path,
+                                                    reshape_->segment, delta,
+                                                    kReshapeCrossingTolerance)
+             : geometry::reshape_path_set_segment(reshape_->base, reshape_->path, reshape_->segment,
+                                                  reshape_->t, delta, kReshapeCrossingTolerance);
 
     document::VectorObject shown = *object;
     if (reshaped) {
@@ -134,7 +139,8 @@ void MainWindow::updateSegmentReshape(QPointF sceneMm, Qt::KeyboardModifiers mod
     pen.setCosmetic(true);
     reshapePreview_->setPen(pen);
     reshapePreview_->setPath(objectPainterPath(shown));
-    statusBar()->showMessage(reshaped ? tr("Remodelage du segment — Échap pour annuler")
+    statusBar()->showMessage(reshaped ? (edge ? tr("Déplacement de l'arête — Échap pour annuler")
+                                              : tr("Remodelage du segment — Échap pour annuler"))
                                       : tr("Remodelage impossible : le contour se croiserait"));
 }
 
@@ -157,6 +163,7 @@ void MainWindow::commitSegmentReshape(QPointF sceneMm, Qt::KeyboardModifiers mod
     const ReshapeGesture gesture = *reshape_;
     const QPointF dragged = reshapeDragPoint(sceneMm, mods);
     const Vec2um delta = sceneToModel(dragged) - sceneToModel(gesture.startSceneMm);
+    const bool edge = (mods & Qt::AltModifier) != 0;
     if (reshapePreview_ != nullptr) {
         baseItems_.removeAll(reshapePreview_);
         delete reshapePreview_;
@@ -165,12 +172,16 @@ void MainWindow::commitSegmentReshape(QPointF sceneMm, Qt::KeyboardModifiers mod
     reshape_.reset();
     const std::uint64_t generation = documentGeneration_;
     // Différé : refreshImage() détruirait l'item de corps pendant son propre évènement souris.
-    QTimer::singleShot(0, this, [this, gesture, delta, generation] {
+    QTimer::singleShot(0, this, [this, gesture, delta, edge, generation] {
         if (generation != documentGeneration_) {
             return; // document remplacé entre-temps : aucune commande périmée
         }
-        auto result = commands::make_reshape_segment_command(
-            project_, gesture.object, gesture.set, gesture.path, gesture.segment, gesture.t, delta);
+        auto result =
+            edge ? commands::make_translate_edge_command(project_, gesture.object, gesture.set,
+                                                         gesture.path, gesture.segment, delta)
+                 : commands::make_reshape_segment_command(project_, gesture.object, gesture.set,
+                                                          gesture.path, gesture.segment, gesture.t,
+                                                          delta);
         if (!result.command) {
             statusBar()->showMessage(QString::fromStdString(result.error), 4000);
             refreshImage(); // efface tout reste d'aperçu
@@ -179,7 +190,7 @@ void MainWindow::commitSegmentReshape(QPointF sceneMm, Qt::KeyboardModifiers mod
         undoStack_.execute(std::move(result.command), project_);
         refreshImage();
         updateActions();
-        statusBar()->showMessage(tr("Segment remodelé."), 2000);
+        statusBar()->showMessage(edge ? tr("Arête déplacée.") : tr("Segment remodelé."), 2000);
     });
 }
 

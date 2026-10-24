@@ -6980,6 +6980,17 @@ void MainWindow::buildToolPalette() {
                                            "seront fermés."),
                                  6000);
     });
+    // Outil « Ligne » (HP-VEC-002) : raccourci vers le polygone en mode tracé ouvert (clics,
+    // Entrée ou double-clic pour terminer sans fermer).
+    auto* lineToolAct = toolPalette_->addAction(icons::openPath(), tr("Ligne"));
+    lineToolAct->setObjectName(QStringLiteral("action_lineTool"));
+    lineToolAct->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_L));
+    lineToolAct->setToolTip(tr("Ligne (Maj+L)\nClics successifs, Entrée pour terminer SANS fermer "
+                               "(ligne ou polyligne ouverte). Active le tracé ouvert."));
+    connect(lineToolAct, &QAction::triggered, this, [this] {
+        openPathAct_->setChecked(true);
+        setTool(Tool::DrawPolygon);
+    });
     toolDrawFreeformAct_ = addTool(icons::freeform(), tr("Dessiner à main levée (lasso)"),
                                    Tool::DrawFreeform, QKeySequence(Qt::Key_L));
     toolDrawSatinColumnAct_ =

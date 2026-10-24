@@ -12,7 +12,11 @@
 #include "canvas_view.hpp"
 #include "main_window.hpp"
 #include "node_handle.hpp"
+#include <filesystem>
+
 #include "openstitch/document/project.hpp"
+#include "openstitch/project_io/project_io.hpp"
+#include "openstitch/stitch_generation/border_satin.hpp"
 
 using openstitch::Micrometers;
 using openstitch::ObjectId;
@@ -219,6 +223,106 @@ private slots:
         QCOMPARE(f.window.project_.findObject(f.a)->paths == before, true);
         QVERIFY(!f.window.undoStack_.canUndo());
         QVERIFY(f.window.statusBar()->currentMessage().contains(QStringLiteral("croiser")));
+    }
+
+    void altDragTranslatesTheEdgeByBothEndsInOneUndoStep() {
+        Fixture f;
+        setup(f);
+        const auto before = f.window.project_.findObject(f.a)->paths;
+        const QPoint from = px(f.view, 0.0, 15.0);
+        const QPoint to = px(f.view, 0.0, 22.0);
+        QTest::mousePress(f.view->viewport(), Qt::LeftButton, Qt::NoModifier, from);
+        QTest::mouseMove(f.view->viewport(), (from + to) / 2);
+        QTest::mouseMove(f.view->viewport(), to);
+        QTest::mouseRelease(f.view->viewport(), Qt::LeftButton, Qt::AltModifier, to);
+        QCoreApplication::processEvents();
+        const auto& nodes = f.window.project_.findObject(f.a)->paths.front().outer.nodes;
+        const auto& old = before.front().outer.nodes;
+        QCOMPARE(nodes.size(), size_t{4});
+        // Bord bas (nœuds 0 et 1) descendu de 7 mm (Y modèle vers le haut : -7000 µm).
+        QVERIFY(nodes[0].pos.y.value < old[0].pos.y.value);
+        QCOMPARE(nodes[0].pos.y.value - old[0].pos.y.value,
+                 nodes[1].pos.y.value - old[1].pos.y.value);
+        QCOMPARE(nodes[0].pos.x, old[0].pos.x);
+        QCOMPARE(nodes[2].pos, old[2].pos);
+        QCOMPARE(nodes[3].pos, old[3].pos);
+        QVERIFY(!nodes[0].tan_out.has_value()); // arête translatée, pas courbée
+        QVERIFY(f.window.undoStack_.undo(f.window.project_));
+        QCOMPARE(f.window.project_.findObject(f.a)->paths == before, true);
+        QVERIFY(!f.window.undoStack_.canUndo());
+    }
+
+    void anOpenPathCanBeReshapedAndStaysOpen() {
+        Fixture f;
+        setup(f);
+        geo::Path line;
+        line.closed = false;
+        for (const int x : {-15'000, 0, 15'000}) {
+            line.nodes.push_back({Vec2um{Micrometers{x}, Micrometers{25'000}},
+                                  geo::NodeType::Corner, std::nullopt, std::nullopt});
+        }
+        doc::VectorObject object;
+        object.id = f.window.project_.object_ids.next();
+        object.name = "Ligne";
+        object.paths.push_back({line, {}});
+        f.window.project_.vector_objects.push_back(object);
+        f.window.setSelection(
+            {.region = std::nullopt, .embroidery = std::nullopt, .objects = {object.id}});
+        f.window.refreshImage();
+        QCoreApplication::processEvents();
+
+        const QPoint from = px(f.view, -7.5, -25.0);
+        const QPoint to = px(f.view, -7.5, -31.0);
+        QTest::mousePress(f.view->viewport(), Qt::LeftButton, Qt::NoModifier, from);
+        QTest::mouseMove(f.view->viewport(), (from + to) / 2);
+        QTest::mouseMove(f.view->viewport(), to);
+        QTest::mouseRelease(f.view->viewport(), Qt::LeftButton, Qt::NoModifier, to);
+        QCoreApplication::processEvents();
+        const auto& path = f.window.project_.findObject(object.id)->paths.front().outer;
+        QVERIFY(!path.closed);
+        QCOMPARE(path.nodes.size(), size_t{3});
+        QCOMPARE(path.nodes.front().pos, line.nodes.front().pos);
+        QCOMPARE(path.nodes.back().pos, line.nodes.back().pos);
+        QVERIFY(path.nodes[0].tan_out.has_value());
+        QVERIFY(f.window.undoStack_.undo(f.window.project_));
+        QCOMPARE(f.window.project_.findObject(object.id)->paths.front().outer == line, true);
+    }
+
+    void aReshapedOpenPathSurvivesAnOspRoundTripAndCarriesABorderSatin() {
+        doc::Project project;
+        project.original.width = 2;
+        project.original.height = 2;
+        project.original.rgba.assign(16, 255);
+        geo::Path line;
+        line.closed = false;
+        line.nodes.push_back({Vec2um{Micrometers{0}, Micrometers{0}}, geo::NodeType::Corner,
+                              std::nullopt, Vec2um{Micrometers{4'000}, Micrometers{6'000}}});
+        line.nodes.push_back({Vec2um{Micrometers{30'000}, Micrometers{0}}, geo::NodeType::Corner,
+                              Vec2um{Micrometers{-4'000}, Micrometers{6'000}}, std::nullopt});
+        doc::VectorObject object;
+        object.id = project.object_ids.next();
+        object.name = "Ligne";
+        object.paths.push_back({line, {}});
+        project.vector_objects.push_back(object);
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const std::filesystem::path file =
+            std::filesystem::path(dir.path().toStdString()) / "open.osp";
+        QVERIFY(openstitch::project_io::save_project(file, project).has_value());
+        const auto loaded = openstitch::project_io::load_project(file);
+        QVERIFY(loaded.has_value());
+        const auto* back = loaded->findObject(object.id);
+        QVERIFY(back != nullptr);
+        QCOMPARE(back->paths == object.paths, true);
+        QVERIFY(!back->paths.front().outer.closed);
+
+        // Satin de bordure sur ce tracé ouvert (HP-VEC-002) : des colonnes sont produites.
+        doc::BorderSatinSpec spec;
+        spec.width = Micrometers{3'000};
+        const auto satins =
+            openstitch::stitch_generation::border_satin_from_paths(back->paths, spec);
+        QVERIFY(!satins.empty());
     }
 };
 

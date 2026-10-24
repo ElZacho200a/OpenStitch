@@ -69,6 +69,14 @@ public:
     [[nodiscard]] std::string name() const override { return "Remodeler un segment"; }
 };
 
+// Translation d'une arête par ses deux extrémités (HP-VEC-016, variante Alt) : un geste, un pas.
+class TranslateEdgeCommand final : public RewriteVectorPathsCommand {
+public:
+    explicit TranslateEdgeCommand(std::vector<Entry> entries)
+        : RewriteVectorPathsCommand(std::move(entries)) {}
+    [[nodiscard]] std::string name() const override { return "Déplacer une arête"; }
+};
+
 // Déplacement / rotation / échelle d'un groupe de nœuds (HP-VEC-017) : un geste, un pas.
 class TransformNodesCommand final : public RewriteVectorPathsCommand {
 public:
@@ -104,6 +112,13 @@ inline constexpr Micrometers kDefaultSmoothTolerance{200};
 [[nodiscard]] VectorOpResult
 make_reshape_segment_command(const document::Project& project, ObjectId id, std::size_t set_index,
                              std::size_t path_index, std::size_t segment, double t, Vec2um delta);
+
+// Déplace de `delta` (µm) les deux nœuds du segment `segment` (`geometry::translate_segment`).
+// Mêmes refus que `make_reshape_segment_command`.
+[[nodiscard]] VectorOpResult make_translate_edge_command(const document::Project& project,
+                                                         ObjectId id, std::size_t set_index,
+                                                         std::size_t path_index,
+                                                         std::size_t segment, Vec2um delta);
 
 // Transforme les nœuds `selected` du chemin `path_index` du morceau `set_index` de l'objet `id`
 // (`geometry::transform_path_set_nodes`, transition douce si `soft_radius_um` > 0). Commande
