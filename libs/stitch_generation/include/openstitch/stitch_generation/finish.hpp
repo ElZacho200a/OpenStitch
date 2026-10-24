@@ -54,6 +54,10 @@ struct TrimReport {
     double underlay_jump_saved_um{0}; // longueur de saut économisée par ce réordonnancement
     std::size_t forced_trims{0};      // connecteur d'objet « toujours couper » (HP-SEQ-005)
     std::size_t forced_no_trim{0};    // connecteur d'objet « ne jamais couper » (HP-SEQ-005)
+    std::size_t length_merged{0};     // points courts retirés (HP-ENG-008)
+    std::size_t length_split{0};      // points longs découpés (HP-ENG-008)
+    std::size_t length_short_left{0}; // segments < min non fusionnables (HP-ENG-008)
+    std::size_t length_long_left{0}; // segments > max restants (découpage désactivé ou impossible)
 };
 
 struct FinishResult {

@@ -4,6 +4,8 @@ add_executable(test_stitch
     test_running_stitch.cpp
     test_generate.cpp
     test_finish.cpp
+    test_length_bounds.cpp
+    test_join_closest.cpp
     test_hidden_travel.cpp
     test_tatami.cpp
     test_directional_fill.cpp
