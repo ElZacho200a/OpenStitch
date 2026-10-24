@@ -1221,9 +1221,32 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 rep->setRange(1, 3);
                 rep->setValue(p.repeats);
                 rep->setToolTip(tr("1 = simple, 2 = aller-retour, 3 = point triple"));
+                auto* runStyle = new QComboBox(body_);
+                runStyle->setObjectName(QStringLiteral("combo_runningStyle"));
+                runStyle->addItems(
+                    {tr("Point droit"), tr("Point bean"), tr("Point arrière"), tr("Point tige")});
+                runStyle->setCurrentIndex(static_cast<int>(p.style));
+                runStyle->setToolTip(tr("Droit : passages ci-dessous. Bean : trois passages par "
+                                        "intervalle. Arrière : chaque point revient en arrière. "
+                                        "Tige : pénétrations décalées latéralement."));
+                auto* stemOff = mmSpin(to_millimeters(p.stem_offset).value, 3.0, 0.1,
+                                       tr("Décalage latéral du point tige."));
+                stemOff->setObjectName(QStringLiteral("spin_stemOffset"));
+                form->addRow(tr("Style :"), runStyle);
                 form->addRow(tr("Longueur de point :"), len);
                 form->addRow(tr("Longueur minimale :"), minl);
                 form->addRow(tr("Passages :"), rep);
+                form->addRow(tr("Décalage du point tige :"), stemOff);
+                const auto syncRunStyle = [form, runStyle, rep, stemOff] {
+                    const int s = runStyle->currentIndex();
+                    setRowEnabled(form, rep, s == 0);
+                    setRowEnabled(form, stemOff, s == 3);
+                };
+                syncRunStyle();
+                connect(runStyle, &QComboBox::currentIndexChanged, this,
+                        [syncRunStyle](int) { syncRunStyle(); });
+                bindEnumField<T>(this, edit, runStyle, tr("Style de point"), &T::style, members);
+                bindMm(stemOff, tr("Décalage du point tige"), &T::stem_offset);
                 bindMm(len, tr("Longueur de point"), &T::stitch_length);
                 bindMm(minl, tr("Longueur minimale"), &T::min_length);
                 bindInt(rep, tr("Passages"), &T::repeats);
