@@ -1,0 +1,100 @@
+{
+  "schema": "openstitch.turner-lab-result/1",
+  "run_id": "20261024T085755Z-turner-flow-source-mcp-4924737",
+  "source_sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+  "source_px": [
+    1536,
+    1014
+  ],
+  "design_mm": [
+    363.5503,
+    240
+  ],
+  "canvas_mm": [
+    390,
+    268
+  ],
+  "provenance": {
+    "mcp_version": "1.1.0",
+    "main_sha": "1ead7502a605807917cb2d27511e470e2862f313",
+    "ci_run_id": 40054711321,
+    "ci_artifact_id": 12544739180,
+    "archive_sha256": "308b4f858708a0d0a96b70523cfa95d3b0f5028f0acda132b730d165c8299730",
+    "doctor": true
+  },
+  "method": "Six source-specific prompts executed as programmatic original-image transforms: three spline-ribbon and three original-luminance-isocontour variants; no generative image-to-image. Source-derived protected lighthouse and boat masks. source_hybrid selected (29 semantic regions).",
+  "candidate_region_counts": {
+    "ribbon_sparse": 47,
+    "ribbon_layered": 47,
+    "ribbon_bright": 47,
+    "source_isocontours": 23,
+    "source_hybrid": 29,
+    "source_detailed": 32
+  },
+  "mcp_tools_called": [
+    "digitize_guide",
+    "semantic_validate",
+    "project_new",
+    "semantic_import",
+    "project_inspect",
+    "semantic_map",
+    "project_checkpoint",
+    "project_report",
+    "project_check",
+    "project_render",
+    "project_save",
+    "project_export",
+    "project_open",
+    "semantic_replace",
+    "project_satin_compare",
+    "project_palette"
+  ],
+  "local_replacements": 2,
+  "versions": {
+    "baseline": {
+      "stitches": 48517,
+      "trims": 194,
+      "jumps": 320,
+      "color_changes": 23,
+      "warnings": 6,
+      "errors": 0,
+      "hotspot_mm2": 659,
+      "preview_real": true
+    },
+    "refined": {
+      "stitches": 55594,
+      "trims": 251,
+      "jumps": 382,
+      "color_changes": 24,
+      "warnings": 13,
+      "errors": 0,
+      "hotspot_mm2": 904,
+      "preview_real": true
+    },
+    "pruned": {
+      "stitches": 50229,
+      "trims": 230,
+      "jumps": 330,
+      "color_changes": 24,
+      "warnings": 10,
+      "errors": 0,
+      "hotspot_mm2": 644,
+      "preview_real": true
+    }
+  },
+  "artistic_acceptance": false,
+  "independent_score": null,
+  "machine_validated": false,
+  "artistic_issues": [
+    "flat upper cloud tatami mass",
+    "foam contour loops remain tangled",
+    "lighthouse and boat simplified",
+    "insufficient motion and depth",
+    "cuts and hotspots remain"
+  ],
+  "fidelity": "unsupported (semantic OSP has no embedded source)",
+  "private_archive": "turner-flow-source-mcp-1100-private.zip",
+  "private_archive_sha256": "6fc2d71158be9d99059c6dc54d855aecb5b62f9c8101cbeea8f3a351a35cb386",
+  "next_hypothesis": "Use source structure-tensor orientation and hand-reviewed centerline topology for connected tapered foam ribbons, not closed isocontour loops. Decompose sky mass into layered atmospheric bands and optimize routing. Always compare real MCP project_render previews.",
+  "public_pixels_uploaded": false
+}
