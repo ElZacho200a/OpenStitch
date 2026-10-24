@@ -135,9 +135,9 @@ Result<FidelityData> compute_fidelity(const document::Project& project, const Th
                                       const ThreadRaster& raster, const FidelityOptions& opt) {
     const image::Image src = detail::working_image(project);
     if (src.empty()) {
-        return std::unexpected(
-            make_error(ErrorCategory::OperationImpossible,
-                       "fidélité impossible : le projet n'a pas d'image source"));
+        return std::unexpected(make_error(ErrorCategory::OperationImpossible,
+                                          "fidélité impossible : le projet n'a pas d'image source "
+                                          "(utiliser l'opération set_source_image)"));
     }
     const int w = src.width;
     const int h = src.height;
@@ -553,9 +553,9 @@ Result<FidelityReport> measure_fidelity(const document::Project& project,
         return std::unexpected(model.error());
     }
     if (work.empty()) {
-        return std::unexpected(
-            make_error(ErrorCategory::OperationImpossible,
-                       "fidélité impossible : le projet n'a pas d'image source"));
+        return std::unexpected(make_error(ErrorCategory::OperationImpossible,
+                                          "fidélité impossible : le projet n'a pas d'image source "
+                                          "(utiliser l'opération set_source_image)"));
     }
     const auto raster = detail::rasterize_threads(*model, work.width, work.height,
                                                   project.mm_per_px.value, options.thread_mm);
