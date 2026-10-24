@@ -24,6 +24,20 @@ libs/project_ops          fabrique, inspection, lots transactionnels, qualité, 
   (OpenCV journalise sur stdout) ; les réponses partent sur une copie privée.
 - Sans Qt (`linux-core`). Déterminisme : mêmes appels → mêmes réponses (aucun horodatage).
 
+## Installation Linux x86-64 (release vérifiée)
+
+Depuis un clone du dépôt :
+
+```bash
+bash scripts/install-mcp-linux.sh
+```
+
+Le script télécharge la release `latest` ou un artefact CI réussi de `main`,
+vérifie SHA-256, les dépendances et l'initialisation MCP, puis installe
+`~/.local/bin/openstitch-mcp`. Le serveur utilise **stdio**, sans ouverture
+de port réseau. Les archives `openstitch-mcp-linux-x86_64.tar.gz` et
+`.sha256` sont publiées dans la release après réussite des tests CI.
+
 ## Installation côté client
 
 ```json

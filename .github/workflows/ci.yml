@@ -131,6 +131,20 @@ jobs:
           bash packaging/linux/package-cli.sh \
             build/linux-cli-release/apps/cli/openstitch-cli dist/linux-cli
 
+      - name: Build and package Linux MCP server (Release)
+        run: |
+          cmake --build build/linux-cli-release --target openstitch-mcp -j "$(nproc)"
+          bash packaging/linux/package-mcp.sh \
+            build/linux-cli-release/apps/mcp/openstitch-mcp dist/linux-mcp
+
+      - name: Upload Linux MCP binary and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: openstitch-mcp-linux-x86_64
+          if-no-files-found: error
+          retention-days: 30
+          path: dist/linux-mcp/*
+
       - name: Upload Linux CLI binary and checksum
         uses: actions/upload-artifact@v4
         with:
@@ -177,6 +191,12 @@ jobs:
           name: openstitch-cli-linux-x86_64
           path: dist/linux-cli
 
+      - name: Télécharger l'artefact Linux MCP
+        uses: actions/download-artifact@v4
+        with:
+          name: openstitch-mcp-linux-x86_64
+          path: dist/linux-mcp
+
       - name: Empaqueter
         run: |
           cd dist
@@ -192,12 +212,16 @@ jobs:
               openstitch-windows-x64.zip \
               dist/linux-cli/openstitch-cli-linux-x86_64.tar.gz \
               dist/linux-cli/openstitch-cli-linux-x86_64.tar.gz.sha256 \
+              dist/linux-mcp/openstitch-mcp-linux-x86_64.tar.gz \
+              dist/linux-mcp/openstitch-mcp-linux-x86_64.tar.gz.sha256 \
               --clobber --repo "$GITHUB_REPOSITORY"
           else
             gh release create latest \
               openstitch-windows-x64.zip \
               dist/linux-cli/openstitch-cli-linux-x86_64.tar.gz \
               dist/linux-cli/openstitch-cli-linux-x86_64.tar.gz.sha256 \
+              dist/linux-mcp/openstitch-mcp-linux-x86_64.tar.gz \
+              dist/linux-mcp/openstitch-mcp-linux-x86_64.tar.gz.sha256 \
               --repo "$GITHUB_REPOSITORY" \
               --title "Dernier build (main)" \
               --notes "Build automatique généré depuis le commit ${{ github.sha }}." \
