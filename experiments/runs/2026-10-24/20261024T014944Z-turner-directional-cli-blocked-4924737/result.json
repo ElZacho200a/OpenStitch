@@ -1,0 +1,44 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261024T014944Z-turner-directional-cli-blocked-4924737",
+  "created_utc": "2026-10-24T01:49:44Z",
+  "status": "blocked",
+  "source": {
+    "kind": "chatgpt-library",
+    "path": "/OpenStitch/Benchmarks/turner-phare-tempete-original-20261023.jpg",
+    "library_file_id": "libfile_b7f90c9fdad0819180be1b6029c78d86",
+    "sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+    "sha256_verified_locally": true,
+    "size_px": [
+      1536,
+      1014
+    ],
+    "target_mm": [
+      363.55,
+      240
+    ]
+  },
+  "hypothesis": "Replace tatami polygon wave bands with directional curved stitch trajectories and layered density, maintaining semantic boat/lighthouse objects",
+  "attempts": 0,
+  "reason": "No executable openstitch-cli/openstitch-mcp on PATH or in /mnt/data,/tmp,/home/oai/share; github.com cannot resolve in container (curl exit 6). Archived previous trials contain OSP/DST but no executable. Cannot execute new engine-generated OSP/DST/render or technical reports.",
+  "checks": {
+    "inspect": null,
+    "check": null,
+    "diagnose": null,
+    "fidelity": null,
+    "density": null,
+    "stats": null
+  },
+  "cli_version": null,
+  "score_before": null,
+  "score_after": null,
+  "evaluation": null,
+  "artifact": {
+    "kind": "unavailable",
+    "url": null
+  },
+  "lessons": [
+    "Next iteration should first secure official executable via accessible verified distribution or runner before further artistic variants."
+  ],
+  "changes": []
+}
