@@ -1,0 +1,160 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261024T000427Z-turner-flow-rebuild-4924737",
+  "created_utc": "2026-10-24T00:04:27Z",
+  "status": "failed",
+  "reason": "Three real independent-from-original semantic reconstructions passed OpenStitch technical checks but failed artistic fidelity: water appears as tubes, storm loses painterly foam and light. Stopped after two consecutive hypotheses with no meaningful visual improvement.",
+  "source": {
+    "benchmark_id": "turner-phare-tempete-20261023",
+    "source_kind": "chatgpt-library",
+    "library_file_id": "libfile_b7f90c9fdad0819180be1b6029c78d86",
+    "sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+    "hash_verified": true,
+    "size_px": [
+      1536,
+      1014
+    ],
+    "size_mm": [
+      363.55,
+      240
+    ]
+  },
+  "canvas": {
+    "width_mm": 390,
+    "height_mm": 268,
+    "margin_mm": 10,
+    "stitched_dimensions_mm": [
+      363.2,
+      239.6
+    ]
+  },
+  "openstitch_commit": "faed4f93a0053b7b7eab7d1cd2112a8d485bb7bb",
+  "cli_version": "0.1.0",
+  "cli_sha256": "04d53ced2566d0e30096918e7b9c81f8dfe2ea92c8948ebb61ff6ac74bc1e614",
+  "cli_provenance": {
+    "kind": "github-actions-successful-main",
+    "run_id": 40024140522,
+    "artifact_id": 12533533014,
+    "checksum_verified": true,
+    "archive_sha256": "baff65c8c09ef7988ed77e1a824f683cc5b68d03a874d65a2ae012a3988193ce"
+  },
+  "mcp_executed": false,
+  "method": "fresh hand-traced semantic family/instance masks, flow-guided ribbon polygons, per-object stitch direction; three independent starts from the immutable original, no previous OSP reused, actual CLI project new/apply/render/check/inspect/diagnose/fidelity/density/osp2dst/stats",
+  "attempts": [
+    {
+      "variant": "v1",
+      "objects": 69,
+      "stitches": 74587,
+      "trims": 115,
+      "color_changes": 55,
+      "check_errors": 0,
+      "check_warnings": 4,
+      "hotspot_area_mm2": 12,
+      "visual": "Large rubans: foam becomes noodles, lost painterly movement",
+      "osp_sha256": "02e73c4cc08faf316d4ca0701820c0f8b79eb81b8fb3fb7b7068550ca9c08147",
+      "dst_sha256": "658e66982c4f48ea3654ca67f726ffdf0ef50379cf78f5cd5c988504855632e0",
+      "status": "failed_artistic_gate",
+      "check": "pass",
+      "inspect": "executed",
+      "diagnose": "executed",
+      "density": "executed",
+      "render": "executed",
+      "fidelity": {
+        "status": "refused",
+        "code": "E_REFUSED",
+        "reason": "vector OSP without embedded source"
+      },
+      "stats": "executed",
+      "score": null
+    },
+    {
+      "variant": "v2",
+      "objects": 74,
+      "stitches": 73303,
+      "trims": 118,
+      "color_changes": 56,
+      "check_errors": 0,
+      "check_warnings": 6,
+      "hotspot_area_mm2": 14,
+      "visual": "Narrower streamlines, slightly less bulky but still tube-like and flat",
+      "osp_sha256": "08a952ef22e8102715f4a60647231bd09bfe792a4870ab732b0fa55a79aa3a42",
+      "dst_sha256": "9966621d5100976e7c10aa9216aa3579816a0d1304c94ea3eab1ffdd41442b24",
+      "status": "failed_artistic_gate",
+      "check": "pass",
+      "inspect": "executed",
+      "diagnose": "executed",
+      "density": "executed",
+      "render": "executed",
+      "fidelity": {
+        "status": "refused",
+        "code": "E_REFUSED",
+        "reason": "vector OSP without embedded source"
+      },
+      "stats": "executed",
+      "score": null
+    },
+    {
+      "variant": "v3",
+      "objects": 78,
+      "stitches": 74028,
+      "trims": 122,
+      "color_changes": 57,
+      "check_errors": 0,
+      "check_warnings": 4,
+      "hotspot_area_mm2": 13,
+      "visual": "More distinct spray fringes and current glints, no convincing Turner motion",
+      "osp_sha256": "23e9c0f91808d4cbce7f481a2b5bf301ccb5cd6ed0349526553c5b4b143d0502",
+      "dst_sha256": "14dbadd14040c303cab6b6c9336ae7bc110d859f5503b6b49eca06a7da1f5362",
+      "status": "failed_artistic_gate",
+      "check": "pass",
+      "inspect": "executed",
+      "diagnose": "executed",
+      "density": "executed",
+      "render": "executed",
+      "fidelity": {
+        "status": "refused",
+        "code": "E_REFUSED",
+        "reason": "vector OSP without embedded source"
+      },
+      "stats": "executed",
+      "score": null
+    }
+  ],
+  "best_candidate": null,
+  "best_candidate_status": "none_artistically_acceptable",
+  "score_before": null,
+  "score_after": null,
+  "evaluation": null,
+  "independent_reviewer": null,
+  "machine_tested": false,
+  "artistic_self_critique": "Reject all three: lighthouse and small left sailboat recognizable, but dark bands and ribbon-like water misrepresent Turner's spray, curved crests and pictorial light. Technical cleanliness cannot rescue semantic geometry. Next: irregular foam masses and water negative spaces before choosing stitches.",
+  "artifact": {
+    "kind": "chatgpt-private-library",
+    "library_path": "/OpenStitch/Experiments/turner_lab_20261024_real_trials.zip",
+    "library_file_id": "libfile_ff2d6f4e3c208191af92d7aad7905cea",
+    "size_bytes": 11797226,
+    "sha256": "cadc93abd948a77851897b180e2ba137cd89f63ad335e31658a86e4a0895c10a",
+    "verified_in_library_listing": true,
+    "url": null,
+    "retention_days": null,
+    "contains": [
+      "v1-v3 OSP/DST/real preview/segmentation/individual masks/diagnostics",
+      "comparison.png",
+      "build_from_original.py",
+      "rapport.md"
+    ]
+  },
+  "changes": [
+    "3 new independent semantic reconstruction hypotheses from original Turner image",
+    "directional tatami plans per object; variant-specific foam/current outlines",
+    "kept full aspect ratio and 390x268 mm canvas"
+  ],
+  "lessons": [
+    "Do not model broad crashing surf as buffered centerline ribbons: the preview resembles noodles rather than painterly water.",
+    "Technical check pass and low trims do not validate aesthetics.",
+    "Semantic segmentation must represent torn foam masses and negative dark-water cutouts before stitching."
+  ],
+  "parent_run_id": "20261023T220800Z-turner-semantic-vector-4924737",
+  "main_modified": false,
+  "agent_trials_only": true
+}
