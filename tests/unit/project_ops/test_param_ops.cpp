@@ -305,6 +305,25 @@ TEST_CASE("param ops set_params refusals leave the project untouched", "[project
         CHECK_THAT(o.hint, ContainsSubstring("row_spacing_mm"));
         CHECK_THAT(o.hint, ContainsSubstring("running"));
     }
+    SECTION("field of another type: message names owners, valid keys and set_stitch_type") {
+        const auto o =
+            expect_refused(p, R"({"op":"set_params","object":2,"params":{"edge_weight":0.25}})",
+                           project_ops::code::kWrongType);
+        CHECK_THAT(o.message, ContainsSubstring("tatami"));
+        CHECK_THAT(o.message, ContainsSubstring("row_spacing_mm"));
+        CHECK_THAT(o.message, ContainsSubstring("existe pour"));
+        CHECK_THAT(o.message, ContainsSubstring("directional"));
+        CHECK_THAT(o.message, ContainsSubstring("set_stitch_type"));
+        // La cle n'est pas acceptee pour autant.
+        const auto* t = std::get_if<document::TatamiParams>(&p.findEmbroidery(ObjectId{2})->params);
+        CHECK(t != nullptr);
+    }
+    SECTION("unknown field lists valid keys in the message") {
+        const auto o = expect_refused(p, R"({"op":"set_params","object":2,"params":{"colour":1}})",
+                                      project_ops::code::kWrongType);
+        CHECK_THAT(o.message, ContainsSubstring("champs valides"));
+        CHECK_THAT(o.message, ContainsSubstring("row_spacing_mm"));
+    }
     SECTION("unknown field is never silently ignored") {
         const auto o =
             expect_refused(p, R"({"op":"set_params","object":2,"params":{"colour":"red"}})",
