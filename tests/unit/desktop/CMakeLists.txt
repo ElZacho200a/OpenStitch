@@ -38,6 +38,7 @@ function(openstitch_add_qt_test name)
 endfunction()
 
 openstitch_add_qt_test(test_canvas_view test_canvas_view.cpp)
+openstitch_add_qt_test(test_busy_indicator test_busy_indicator.cpp)
 openstitch_add_qt_test(test_node_handle test_node_handle.cpp)
 openstitch_add_qt_test(test_segment_reshape test_segment_reshape.cpp)
 openstitch_add_qt_test(test_node_selection test_node_selection.cpp)

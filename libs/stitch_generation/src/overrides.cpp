@@ -224,11 +224,25 @@ Result<stitch::StitchSequence> effective_sequence(const document::Project& proje
     return std::move(result->sequence);
 }
 
+Result<stitch::StitchSequence> effective_sequence(const document::Project& project,
+                                                  const TaskContext& task) {
+    auto result = effective_sequence_report(project, nullptr, &task);
+    if (!result) {
+        return std::unexpected(result.error());
+    }
+    return std::move(result->sequence);
+}
+
 Result<FinishResult> effective_sequence_report(const document::Project& project,
-                                               const document::HiddenTravel* hiddenTravel) {
-    auto sequence = generate_sequence(project);
+                                               const document::HiddenTravel* hiddenTravel,
+                                               const TaskContext* task) {
+    auto sequence =
+        task != nullptr ? generate_sequence(project, *task) : generate_sequence(project);
     if (!sequence) {
         return std::unexpected(sequence.error());
+    }
+    if (task != nullptr && task->cancelled()) {
+        return cancelled_error();
     }
     // Liste des objets Dirty volontairement ignorée ici : effective_sequence
     // est un point d'entree "au mieux" (apercu/export/...), pas un canal de

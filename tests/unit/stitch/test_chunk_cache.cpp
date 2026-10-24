@@ -3,7 +3,9 @@
 // octet, avec ou sans cache ; seul l'objet modifie est regenere.
 #include <catch2/catch_test_macros.hpp>
 
+#include <atomic>
 #include <cstdlib>
+#include <stop_token>
 #include <string>
 
 #include "openstitch/stitch_generation/generate.hpp"
@@ -164,4 +166,43 @@ TEST_CASE("chunk cache : effective_sequence suit une retouche de parametres") {
     set_chunk_cache_enabled(true);
     REQUIRE(reference.has_value());
     CHECK(after->commands == reference->commands);
+}
+
+TEST_CASE("task control : effective_sequence annulable identique sans annulation") {
+    const document::Project project = make_project();
+    const auto reference = effective_sequence(project);
+    REQUIRE(reference.has_value());
+
+    std::atomic<std::size_t> reports{0};
+    std::atomic<std::size_t> lastTotal{0};
+    TaskContext task;
+    task.progress = [&](std::size_t, std::size_t total) {
+        reports.fetch_add(1);
+        lastTotal.store(total);
+    };
+    const auto withTask = effective_sequence(project, task);
+    REQUIRE(withTask.has_value());
+    CHECK(withTask->commands == reference->commands);
+    CHECK(reports.load() == 4);
+    CHECK(lastTotal.load() == 4);
+}
+
+TEST_CASE("task control : une annulation renvoie Cancelled et ne pollue pas le cache") {
+    const document::Project project = make_project();
+    clear_chunk_cache();
+
+    std::stop_source source;
+    source.request_stop();
+    TaskContext task;
+    task.stop = source.get_token();
+    const auto cancelled = effective_sequence(project, task);
+    REQUIRE_FALSE(cancelled.has_value());
+    CHECK(cancelled.error().category == ErrorCategory::Cancelled);
+    CHECK(chunk_cache_stats().entries == 0);
+
+    // Le calcul suivant, non annule, reste correct.
+    const auto reference = uncached(project);
+    const auto after = generate_sequence(project);
+    REQUIRE(after.has_value());
+    CHECK(after->commands == reference.commands);
 }

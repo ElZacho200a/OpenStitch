@@ -8,6 +8,7 @@
 
 #include "openstitch/core/error.hpp"
 #include "openstitch/core/ids.hpp"
+#include "openstitch/core/task_control.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/finish.hpp"
@@ -68,12 +69,17 @@ enum class ObjectEditState : std::uint8_t { Clean, ManuallyEdited, Dirty };
 // aucun consommateur de production ne doit composer les deux passes
 // lui-meme (voir tests/check_no_raw_sequence_bypass.cmake).
 [[nodiscard]] Result<stitch::StitchSequence> effective_sequence(const document::Project& project);
+// Variante annulable avec progression (HP-PERF-001) : séquence identique octet pour octet à
+// `effective_sequence(project)` quand elle n'est pas annulée ; sinon `ErrorCategory::Cancelled`.
+[[nodiscard]] Result<stitch::StitchSequence> effective_sequence(const document::Project& project,
+                                                                const TaskContext& task);
 
 // Même séquence que `effective_sequence`, avec le bilan des ponts cachés (HP-SEQ-006.c). La
 // séquence est strictement celle d'`effective_sequence` : un seul chemin de calcul.
 [[nodiscard]] Result<FinishResult>
 effective_sequence_report(const document::Project& project,
-                          const document::HiddenTravel* hiddenTravel = nullptr);
+                          const document::HiddenTravel* hiddenTravel = nullptr,
+                          const TaskContext* task = nullptr);
 // `hiddenTravel` non nul : ces réglages de ponts cachés remplacent ceux du projet, ACTIVÉS, pour ce
 // calcul seulement (export à la demande, aperçu du bilan) ; le projet n'est pas modifié.
 
