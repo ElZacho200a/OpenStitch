@@ -1293,7 +1293,8 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
     c->add_option("--output,-o", rdArgs->out, "PNG à produire")->required();
     c->add_option("--px-per-mm", rdArgs->pxPerMm, "Résolution en pixels par mm (défaut : 5)")
         ->check(CLI::Range(0.5, 40.0));
-    c->add_option("--fabric", rdArgs->fabric, "Couleur du tissu #RRGGBB (défaut : #00FF00)");
+    CLI::Option* fabricOpt =
+        c->add_option("--fabric", rdArgs->fabric, "Couleur du tissu #RRGGBB (défaut : #00FF00)");
     c->add_option("--thread-mm", rdArgs->thread, "Diamètre apparent du fil en mm (défaut : 0.35)")
         ->check(CLI::Range(0.1, 1.0));
     c->add_option("--crop", rdArgs->crop,
@@ -1301,7 +1302,7 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
                   "gauche (défaut : 0,0,1,1 = tout)");
     c->add_flag("--no-clobber", rdArgs->noClobber, "Refuse d'écraser le fichier de sortie");
     c->add_flag("--json", jsonOut, "Rapport JSON sur stdout");
-    c->callback([rdArgs, &jsonOut] {
+    c->callback([rdArgs, fabricOpt, &jsonOut] {
         const auto& a = *rdArgs;
         if (const auto refused = check_output("render", jsonOut, a.out, a.noClobber)) {
             g_exit = *refused;
@@ -1347,12 +1348,19 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
         }
         if (jsonOut) {
             fmt::print("{{\"schema\":\"openstitch.render/1\",\"ok\":true,\"output\":{},"
-                       "\"width\":{},\"height\":{},\"px_per_mm\":{}}}\n",
+                       "\"width\":{},\"height\":{},\"px_per_mm\":{},\"fabric\":{}}}\n",
                        po::json_quote(a.out), rendered->width, rendered->height,
-                       rendered->px_per_mm);
+                       rendered->px_per_mm, po::json_quote(a.fabric));
         } else {
             fmt::print("Rendu écrit : {} ({} x {} px, {:.2f} px/mm)\n", a.out, rendered->width,
                        rendered->height, rendered->px_per_mm);
+            if (fabricOpt->count() == 0) {
+                fmt::print(
+                    stderr,
+                    "Info : fond par défaut {} (vert franc : les trous du motif ressortent) ;"
+                    " --fabric #RRGGBB pour une autre couleur de tissu.\n",
+                    a.fabric);
+            }
         }
         g_exit = 0;
     });

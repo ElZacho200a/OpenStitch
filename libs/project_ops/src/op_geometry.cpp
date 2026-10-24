@@ -1015,8 +1015,11 @@ OpStatus op_auto_satin(OpContext& ctx) {
         return OpStatus::failure(code::kInternal, plan.error().message);
     }
     if (!plan->accepted) {
-        return refused(plan->refusal,
-                       "forme compacte : essayer compact_axis=true ; sinon un remplissage tatami");
+        return refused(
+            plan->refusal,
+            plan->suggestion.empty()
+                ? "forme compacte : essayer compact_axis=true ; sinon un remplissage tatami"
+                : plan->suggestion);
     }
 
     // Même construction que le bureau (`setStitchType`, type satin) : conversion du groupe de

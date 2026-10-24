@@ -5,7 +5,9 @@
 // commandes existantes (`AddObjectBatchCommand`, `SetTextObjectCommand`).
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <numbers>
 #include <optional>
 #include <string>
@@ -16,6 +18,7 @@
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/text_commands.hpp"
 #include "openstitch/formats/svg_import.hpp"
+#include "openstitch/image/image.hpp"
 #include "openstitch/lettering/font.hpp"
 #include "openstitch/lettering/lettering.hpp"
 #include "openstitch/project_ops/inspect.hpp"
@@ -501,9 +504,135 @@ OpSpec op_remove_text() {
     return s;
 }
 
+// --- set_source_image ---------------------------------------------------------------------
+
+// Remplace l'image source et la résolution de travail, rien d'autre : objets, vecteurs et
+// identifiants ne sont pas touchés. Annulable en un pas (état précédent restitué à l'identique).
+class SetSourceImageCommand final : public commands::ICommand {
+public:
+    SetSourceImageCommand(image::Image image, double mm_per_px)
+        : image_(std::move(image)), mm_per_px_(mm_per_px) {}
+
+    void apply(document::Project& project) override {
+        previous_image_ = std::move(project.original);
+        previous_mm_per_px_ = project.mm_per_px;
+        project.original = image_;
+        project.mm_per_px = Millimeters{mm_per_px_};
+    }
+    void revert(document::Project& project) override {
+        project.original = std::move(previous_image_);
+        project.mm_per_px = previous_mm_per_px_;
+        previous_image_ = image::Image{};
+    }
+    [[nodiscard]] std::string name() const override { return "Définir l'image source"; }
+
+private:
+    image::Image image_;
+    double mm_per_px_;
+    image::Image previous_image_;
+    Millimeters previous_mm_per_px_{};
+};
+
+} // namespace
+
+OpStatus load_source_image(const document::Project& project, const std::string& path,
+                           std::optional<double> mm_per_px, SourceImagePlan& out) {
+    if (path.empty()) {
+        return OpStatus::failure(code::kUsage, "chemin de l'image source vide");
+    }
+    const fs::path file(std::u8string(reinterpret_cast<const char8_t*>(path.data()), path.size()));
+    std::error_code ec;
+    if (!fs::is_regular_file(file, ec)) {
+        return OpStatus::failure(code::kIo, "image source introuvable : " + path,
+                                 "chemin relatif au dossier courant ou absolu (PNG, JPEG, BMP, "
+                                 "TIFF)");
+    }
+    auto loaded = image::load_image(file);
+    if (!loaded || loaded->empty()) {
+        return OpStatus::failure(code::kRefused,
+                                 "image source illisible : " +
+                                     (loaded ? std::string("image vide") : loaded.error().message),
+                                 "formats pris en charge : PNG, JPEG, BMP, TIFF");
+    }
+    double scale = 0.0;
+    if (mm_per_px) {
+        scale = *mm_per_px;
+        if (!std::isfinite(scale) || scale < 0.001 || scale > 100.0) {
+            return out_of_range("mm_per_px = " + std::to_string(scale) +
+                                " hors plage [0.001 ; 100]");
+        }
+    } else {
+        // L'image remplit le cadre sans déformation : plus grande échelle telle que l'image tienne
+        // dans les deux dimensions. Comparaison en entiers (µm x px), une seule division finale.
+        const std::int64_t cw = project.canvas.width.value;
+        const std::int64_t ch = project.canvas.height.value;
+        const std::int64_t w = loaded->width;
+        const std::int64_t h = loaded->height;
+        if (cw <= 0 || ch <= 0) {
+            return OpStatus::failure(code::kRefused, "le cadre du projet est de taille nulle",
+                                     "définir le cadre par set_canvas ou passer mm_per_px");
+        }
+        scale = cw * h <= ch * w ? static_cast<double>(cw) / (static_cast<double>(w) * 1000.0)
+                                 : static_cast<double>(ch) / (static_cast<double>(h) * 1000.0);
+    }
+    out.image = std::move(*loaded);
+    out.mm_per_px = scale;
+    return OpStatus::success();
+}
+
+OpStatus apply_source_image(OpContext& ctx, SourceImagePlan&& plan) {
+    json result{{"width_px", plan.image.width},
+                {"height_px", plan.image.height},
+                {"mm_per_px", plan.mm_per_px},
+                {"width_mm", plan.image.width * plan.mm_per_px},
+                {"height_mm", plan.image.height * plan.mm_per_px}};
+    ctx.stack.execute(
+        std::make_unique<SetSourceImageCommand>(std::move(plan.image), plan.mm_per_px),
+        ctx.project);
+    return OpStatus::success(std::move(result));
+}
+
+namespace {
+
+OpStatus set_source_image(OpContext& ctx) {
+    const auto& path = ctx.args.at("path");
+    if (!path.is_string()) {
+        return OpStatus::failure(code::kUsage, "argument « path » : chaîne attendue");
+    }
+    std::optional<double> mm_per_px;
+    if (const auto it = ctx.args.find("mm_per_px"); it != ctx.args.end() && !it->is_null()) {
+        if (!it->is_number()) {
+            return OpStatus::failure(code::kUsage,
+                                     "argument « mm_per_px » : un nombre est attendu");
+        }
+        mm_per_px = it->get<double>();
+    }
+    SourceImagePlan plan;
+    if (auto st = load_source_image(ctx.project, path.get<std::string>(), mm_per_px, plan);
+        !st.ok) {
+        return st;
+    }
+    return apply_source_image(ctx, std::move(plan));
+}
+
 } // namespace
 
 void register_import_ops(std::vector<OpSpec>& out) {
+    OpSpec src;
+    src.name = "set_source_image";
+    src.summary =
+        "Définit l'image source du projet (et sa résolution) sans toucher aux objets : permet de "
+        "mesurer la fidélité d'un projet construit à la main (import_svg, semantic_import). "
+        "Annulable.";
+    src.args = {arg("path", "string", "image PNG, JPEG, BMP ou TIFF", true),
+                arg("mm_per_px", "number",
+                    "taille d'un pixel (défaut : l'image remplit le cadre du projet sans "
+                    "déformation)",
+                    false, "mm", "[0.001 ; 100]")};
+    src.example = R"({"op":"set_source_image","path":"source.png"})";
+    src.apply = set_source_image;
+    out.push_back(std::move(src));
+
     OpSpec svg;
     svg.name = "import_svg";
     svg.summary = "Importe les formes d'un fichier SVG comme objets vectoriels et de broderie "
