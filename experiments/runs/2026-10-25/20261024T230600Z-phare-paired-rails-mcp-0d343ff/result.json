@@ -1,0 +1,166 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261024T230600Z-phare-paired-rails-mcp-0d343ff",
+  "timestamp_utc": "2026-10-24T23:06:00Z",
+  "source_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+  "source_zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+  "source_dimensions_px": [
+    1536,
+    961
+  ],
+  "hoop_mm": [
+    390,
+    268
+  ],
+  "motif_mm": [
+    370,
+    231.4908854
+  ],
+  "main_reference": "520bcb4741062379225927ea6e09e3b8a9bad6ab",
+  "engine": "openstitch-mcp 1.1.0",
+  "engine_archive_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+  "method": "Real source-derived skeleton of ivory foam (color 0/11/12); longest paths on connected medial axes; two rails at +/-0.82 local distance radius, physical widths measured; 1px running paths traced from actual foam contours; three technical mask variants, source-derived; initial vector_balanced-base gate A failed and was regenerated from exclusive_macro source-aligned masks. No generative image editing.",
+  "preparations": [
+    {
+      "name": "paired_conservative",
+      "regions": 95,
+      "components": 424,
+      "lab_mae": 7.571,
+      "paired_satin": 3,
+      "paired_running": 6
+    },
+    {
+      "name": "paired_exclusive",
+      "regions": 103,
+      "components": 524,
+      "lab_mae": 7.573,
+      "paired_satin": 7,
+      "paired_running": 10
+    },
+    {
+      "name": "paired_crest_detail",
+      "regions": 113,
+      "components": 577,
+      "lab_mae": 7.573,
+      "paired_satin": 11,
+      "paired_running": 16
+    }
+  ],
+  "runs": [
+    {
+      "variant": "paired_conservative",
+      "objects": 694,
+      "stitches": 142244,
+      "trims": 1719,
+      "jumps": 2063,
+      "color_changes": 72,
+      "hotspot_mm2": 108,
+      "warnings": 51,
+      "errors": 0,
+      "fidelity_missing_pct": 5.428,
+      "fidelity_lost_detail_pct": 2.302,
+      "fidelity_wrong_colour_pct": 3.139,
+      "real_preview": true,
+      "artistic_verdict": "rejected"
+    },
+    {
+      "variant": "paired_exclusive",
+      "objects": 761,
+      "stitches": 142306,
+      "trims": 1775,
+      "jumps": 2149,
+      "color_changes": 77,
+      "hotspot_mm2": 69,
+      "warnings": 51,
+      "errors": 0,
+      "fidelity_missing_pct": 5.459,
+      "fidelity_lost_detail_pct": 2.303,
+      "fidelity_wrong_colour_pct": 3.145,
+      "real_preview": true,
+      "artistic_verdict": "rejected"
+    },
+    {
+      "variant": "paired_crest_detail",
+      "objects": 812,
+      "stitches": 142692,
+      "trims": 1815,
+      "jumps": 2215,
+      "color_changes": 81,
+      "hotspot_mm2": 79,
+      "warnings": 51,
+      "errors": 0,
+      "fidelity_missing_pct": 5.443,
+      "fidelity_lost_detail_pct": 2.304,
+      "fidelity_wrong_colour_pct": 3.147,
+      "real_preview": true,
+      "artistic_verdict": "rejected"
+    }
+  ],
+  "mcp_calls": [
+    "digitize_guide",
+    "project_operations",
+    "semantic_validate",
+    "project_new",
+    "semantic_import dry_run/apply",
+    "project_checkpoint",
+    "semantic_map",
+    "project_inspect",
+    "project_report",
+    "project_check",
+    "project_density",
+    "project_fabric_risk",
+    "project_apply set_source_image dry_run/apply",
+    "project_fidelity",
+    "project_render",
+    "project_save",
+    "project_export",
+    "project_satin_compare",
+    "project_apply auto_satin dry_run/apply",
+    "project_apply directional_guides dry_run/apply",
+    "semantic_replace dry_run/apply",
+    "project_restore"
+  ],
+  "retouches": {
+    "satin_compare": "skeleton/parallel_sweep/medial_axis on four lighthouse windows",
+    "parallel_sweep": {
+      "stitches": 142335,
+      "trims": 1776,
+      "verdict": "rejected"
+    },
+    "directional_guides": {
+      "stitches": 142310,
+      "trims": 1774,
+      "verdict": "rejected"
+    },
+    "semantic_replace": {
+      "stitches": 139684,
+      "trims": 1695,
+      "hotspot_mm2": 67,
+      "verdict": "rejected, lost foam"
+    },
+    "baseline_restored_byte_identical": true
+  },
+  "gate_A": "rejected, imports diagnostic only",
+  "overall_verdict": "ARTISTICALLY REJECTED; no machine test; no independent rating; paired rails added technical objects and trims without improving fidelity",
+  "comparison_baseline": {
+    "vector_balanced": {
+      "objects": 593,
+      "trims": 1464,
+      "hotspot_mm2": 57
+    },
+    "exclusive_macro": {
+      "objects": 704,
+      "trims": 1727,
+      "hotspot_mm2": 67
+    }
+  },
+  "private_archive": {
+    "path": "/OpenStitch/Experiments/2026-10-25/phare-deux-rails-mcp-0110-private.zip",
+    "library_file_id": "libfile_592c687c57e0819182b5e7b87e11e584",
+    "size_bytes": 30287043,
+    "sha256": "bb225759ef800b603450dfb0dae50c43ad4de2cfe12e3330ab483355956e67b0",
+    "rematerialized_and_verified": true
+  },
+  "github_pixels_private": true,
+  "next_hypothesis": "Do not add more crest micro-columns on existing tatami. Rebuild source-faithful scene segmentation with explicit carrier, satin and running roles before import; preserve lighthouse lantern, gallery, four windows, sailboat and foam topology; optimize routing within semantic instances, not by color alone. Strict gate A before diagnostic import."
+}
