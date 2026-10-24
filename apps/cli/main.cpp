@@ -45,6 +45,7 @@
 #include "openstitch/segmentation/segmentation.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_analysis/metrics.hpp"
+#include "openstitch/stitch_analysis/production_pdf.hpp"
 #include "openstitch/stitch_analysis/production_sheet.hpp"
 #include "openstitch/stitch_analysis/project_metrics.hpp"
 #include "openstitch/stitch_generation/border_satin.hpp"
@@ -1450,6 +1451,7 @@ struct ProductionArgs {
     std::string name;
     std::string date;
     std::string notes;
+    std::string client;
     double speed{700.0};
     bool json{false};
     bool noClobber{false};
@@ -1506,16 +1508,23 @@ int run_production(const ProductionArgs& a) {
         opts.date = a.date;
     }
     opts.notes = a.notes;
+    opts.client = a.client;
     opts.stitches_per_minute = a.speed;
     const auto sheet = stitch_analysis::make_production_sheet(project, sequence, opts);
 
     if (!a.output.empty()) {
+        std::string outExt = std::filesystem::path(a.output).extension().string();
+        std::transform(outExt.begin(), outExt.end(), outExt.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        const bool asPdf = outExt == ".pdf";
         std::ofstream out(a.output, std::ios::binary);
-        out << stitch_analysis::production_to_html(sheet);
+        out << (asPdf ? stitch_analysis::production_to_pdf(sheet)
+                      : stitch_analysis::production_to_html(sheet));
         if (!out) {
             return cli_error("production", fmt::format("écriture impossible : {}", a.output));
         }
-        fmt::print(a.json ? stderr : stdout, "Fiche de production (HTML) écrite : {}\n", a.output);
+        fmt::print(a.json ? stderr : stdout, "Fiche de production ({}) écrite : {}\n",
+                   asPdf ? "PDF" : "HTML", a.output);
         if (!a.json) {
             return kExitOk;
         }
@@ -1614,7 +1623,8 @@ int main(int argc, char** argv) {
     pr_cmd->group(kMain);
     pr_cmd->add_option("fichier", pr.file, "Projet .osp ou fichier .dst")->required();
     pr_cmd->add_option("--output,-o", pr.output,
-                       "Écrit la fiche en page HTML autonome (le PDF s'exporte depuis le bureau)");
+                       "Écrit la fiche : PDF A4 si l'extension est .pdf, sinon page HTML autonome");
+    pr_cmd->add_option("--client", pr.client, "Client / destinataire (facultatif)");
     pr_cmd->add_option("--name", pr.name, "Nom du projet (défaut : nom du fichier)");
     pr_cmd->add_option("--date", pr.date, "Date AAAA-MM-JJ (défaut : aujourd'hui)");
     pr_cmd->add_option("--notes", pr.notes, "Notes libres");
