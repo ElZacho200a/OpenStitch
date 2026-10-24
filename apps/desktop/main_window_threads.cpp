@@ -509,12 +509,26 @@ void MainWindow::buildThreadPanel() {
                 }
             });
 
+    // Masquer / réafficher tous les objets d'un fil (HP-THR-005) : un seul pas d'annulation.
+    connect(threadPanel_, &ThreadPanel::threadVisibilityToggled, this,
+            [this](const stitch_analysis::ThreadIdentity& identity, bool visible) {
+                const auto ids = stitch_analysis::objects_using_thread(project_, identity);
+                if (ids.empty()) {
+                    return;
+                }
+                undoStack_.execute(
+                    std::make_unique<commands::SetThreadVisibleCommand>(ids, visible), project_);
+                refreshImage();
+                updateActions();
+            });
+
+    // « Séquencer par couleur » (HP-SEQ-003) : tous les objets d'un même fil cousus d'un trait.
     connect(threadPanel_, &ThreadPanel::mergeFilmBlocksRequested, this, [this] {
         if (!sequence_) {
             return;
         }
         const auto film = stitch_analysis::color_film(project_, *sequence_);
-        const auto order = stitch_analysis::merge_same_thread_blocks(project_, film);
+        const auto order = stitch_analysis::sequence_by_color(project_, film);
         std::vector<ObjectId> current;
         for (const auto& obj : project_.embroidery_objects) {
             current.push_back(obj.id);
@@ -624,6 +638,7 @@ void MainWindow::refreshThreadPanel() {
     if (threadPanel_ == nullptr || threadDock_ == nullptr || !threadDock_->isVisible()) {
         return;
     }
+    threadPanel_->setVisibility(stitch_analysis::thread_visibility(project_));
     if (sequence_) {
         threadPanel_->setUsage(
             stitch_analysis::thread_usage(project_, *sequence_, &threadLibrary_));

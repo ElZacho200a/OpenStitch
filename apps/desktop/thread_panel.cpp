@@ -435,7 +435,8 @@ ThreadPanel::ThreadPanel(QWidget* parent) : QWidget(parent) {
     fl->addLayout(moveRow);
     filmSelectBtn_ = new QPushButton(tr("Sélectionner les objets du bloc"), filmTab);
     filmSelectBtn_->setObjectName(QStringLiteral("threadFilmSelectBtn"));
-    filmMergeBtn_ = new QPushButton(tr("Fusionner les blocs de même fil"), filmTab);
+    filmMergeBtn_ =
+        new QPushButton(tr("Séquencer par couleur (fusionner les blocs de même fil)"), filmTab);
     filmMergeBtn_->setObjectName(QStringLiteral("threadFilmMergeBtn"));
     filmMergeBtn_->setToolTip(tr("Regroupe les passages d'un même fil pour réduire les "
                                  "changements de fil. Attention : un fil cousu plus tard passe "
@@ -443,6 +444,31 @@ ThreadPanel::ThreadPanel(QWidget* parent) : QWidget(parent) {
     fl->addWidget(filmSelectBtn_);
     fl->addWidget(filmMergeBtn_);
     tabs_->addTab(filmTab, tr("Film couleur"));
+
+    // ---- Onglet « Visibilité » (masquer un fil depuis le film) -----------------------------
+    auto* visTab = new QWidget(tabs_);
+    auto* vl = new QVBoxLayout(visTab);
+    vl->setContentsMargins(8, 8, 8, 8);
+    vl->setSpacing(8);
+    visSummary_ = new QLabel(visTab);
+    visSummary_->setWordWrap(true);
+    visSummary_->setObjectName(QStringLiteral("threadVisibilitySummary"));
+    cards_.push_back(wrapInCard(visSummary_, visTab));
+    vl->addWidget(cards_.back());
+    visList_ = new QListWidget(visTab);
+    visList_->setObjectName(QStringLiteral("threadVisibilityList"));
+    visList_->setAccessibleName(tr("Visibilité des fils du motif"));
+    visList_->setToolTip(tr("Décochez un fil pour masquer tous ses objets (ils sortent de la "
+                            "séquence et du film) ; recochez-le pour le réafficher. Annulable."));
+    vl->addWidget(visList_, 1);
+    tabs_->addTab(visTab, tr("Visibilité"));
+    connect(visList_, &QListWidget::itemChanged, this, [this](QListWidgetItem* item) {
+        const int row = visList_->row(item);
+        if (row >= 0 && static_cast<std::size_t>(row) < visibility_.size()) {
+            emit threadVisibilityToggled(visibility_[static_cast<std::size_t>(row)].identity,
+                                         item->checkState() != Qt::Unchecked);
+        }
+    });
 
     // ---- Câblage -------------------------------------------------------------------------
     connect(usageList_, &QListWidget::currentRowChanged, this, [this] { updateButtons(); });
@@ -821,6 +847,38 @@ void ThreadPanel::setFilm(std::vector<stitch_analysis::ColorFilmBlock> film) {
                                               .arg(film_.size())
                                               .arg(stitch_analysis::color_change_count(film_)));
     updateButtons();
+}
+
+void ThreadPanel::setVisibility(std::vector<stitch_analysis::ThreadVisibility> visibility) {
+    visibility_ = std::move(visibility);
+    const QSignalBlocker block(visList_);
+    const int previousRow = visList_->currentRow();
+    visList_->clear();
+    std::size_t hiddenThreads = 0;
+    for (const auto& v : visibility_) {
+        const QString label = labelOf(v.identity);
+        QString counts = tr("%1 objet(s)").arg(v.objects.size());
+        if (v.partly_hidden()) {
+            counts += tr(" · %1 masqué(s)").arg(v.hidden);
+        } else if (v.fully_hidden()) {
+            counts += tr(" · masqué");
+            ++hiddenThreads;
+        }
+        auto* item = new QListWidgetItem(label + QLatin1Char('\n') + counts);
+        item->setIcon(icons::colorSwatch(toColor(v.identity.rgb), 18));
+        item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+        item->setCheckState(v.fully_hidden()    ? Qt::Unchecked
+                            : v.partly_hidden() ? Qt::PartiallyChecked
+                                                : Qt::Checked);
+        visList_->addItem(item);
+    }
+    if (previousRow >= 0 && previousRow < visList_->count()) {
+        visList_->setCurrentRow(previousRow);
+    }
+    visSummary_->setText(
+        visibility_.empty()
+            ? tr("Aucun objet de broderie.")
+            : tr("%1 fil(s) · %2 masqué(s)").arg(visibility_.size()).arg(hiddenThreads));
 }
 
 std::optional<thread_palette::Thread> ThreadPanel::currentCatalogThread() const {

@@ -77,3 +77,27 @@ TEST_CASE("SetObjectThreadCommand per-object assignments and unknown ids are ign
     CHECK(p.embroidery_objects[0].rgb == std::array<std::uint8_t, 3>{1, 1, 1});
     CHECK(p.embroidery_objects[1].rgb == std::array<std::uint8_t, 3>{2, 2, 2});
 }
+
+TEST_CASE("SetThreadVisibleCommand hides and restores objects in one undo step") {
+    document::Project p = project_with_three();
+    p.embroidery_objects[2].visible = false; // deja masque : doit le rester apres annulation
+    UndoStack stack;
+    const std::vector<ObjectId> ids{p.embroidery_objects[0].id, p.embroidery_objects[2].id,
+                                    ObjectId{9999}};
+    stack.execute(std::make_unique<SetThreadVisibleCommand>(ids, false), p);
+    CHECK_FALSE(p.embroidery_objects[0].visible);
+    CHECK(p.embroidery_objects[1].visible);
+    CHECK_FALSE(p.embroidery_objects[2].visible);
+
+    CHECK(stack.undo(p));
+    CHECK(p.embroidery_objects[0].visible);
+    CHECK_FALSE(p.embroidery_objects[2].visible);
+    CHECK_FALSE(stack.canUndo());
+
+    CHECK(stack.redo(p));
+    CHECK_FALSE(p.embroidery_objects[0].visible);
+
+    stack.execute(std::make_unique<SetThreadVisibleCommand>(ids, true), p);
+    CHECK(p.embroidery_objects[0].visible);
+    CHECK(p.embroidery_objects[2].visible);
+}
