@@ -1,0 +1,49 @@
+{
+  "schema": "openstitch.turner-lab-result/1",
+  "run_id": "20261024T073000Z-turner-multicandidate-mcp-4924737",
+  "source_sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+  "method": "Three original-derived computer-vision variants (pyrMeanShiftFiltering + k-means palette); NOT generative image-to-image prompt application",
+  "candidates": [
+    {
+      "id": "fidelity",
+      "palette": 24,
+      "connected_components": 27247
+    },
+    {
+      "id": "organic",
+      "palette": 18,
+      "connected_components": 13798,
+      "selected": true
+    },
+    {
+      "id": "economy",
+      "palette": 12,
+      "connected_components": 8234
+    }
+  ],
+  "mcp_tools_called": [
+    "digitize_guide",
+    "project_digitize",
+    "project_report",
+    "project_render",
+    "project_check",
+    "project_save",
+    "project_export"
+  ],
+  "engine_preview_real": true,
+  "stitches": 130899,
+  "trims": 1106,
+  "jumps": 1250,
+  "color_changes": 7,
+  "errors": 0,
+  "warnings": 51,
+  "gateA": "provisional only; machine candidate contains many islands",
+  "gateD": "rejected artistically: lighthouse and boat visually lost, green contours, broad undifferentiated filled regions",
+  "deliverables_local": [
+    "/mnt/data/turner_multicandidate_20261024/organic.png",
+    "/mnt/data/turner_multicandidate_20261024/turner_organic.osp",
+    "/mnt/data/turner_multicandidate_20261024/turner_organic.dst",
+    "/mnt/data/turner_multicandidate_20261024/preview.png"
+  ],
+  "next_hypothesis": "Use image-to-image edits anchored to actual source if available, or mask-based hand protected semantic regions lighthouse/ship/cloud/wave with per-region palette, not global kmeans; reduce connected components and test object identity before MCP."
+}
