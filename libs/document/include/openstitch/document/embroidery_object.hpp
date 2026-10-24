@@ -388,9 +388,9 @@ struct ContourFillParams {
 // intention/points (ADR-014) tient : les points sont régénérés à la demande.
 // Les alternatives directionnelle puis auto-satin sont AJOUTÉES en fin de
 // variant : les index des types historiques ne changent pas.
-using StitchParams = std::variant<RunningStitchParams, TatamiParams, SatinParams,
-                                  DirectionalFillParams, AutoSatinParams, BlanketStitchParams,
-                                  ContourFillParams>;
+using StitchParams =
+    std::variant<RunningStitchParams, TatamiParams, SatinParams, DirectionalFillParams,
+                 AutoSatinParams, BlanketStitchParams, ContourFillParams>;
 
 // Type de point autorisé après retouche manuelle (Lot 8 MVP, §2 du cadrage) :
 // seule transition permise, Stitch <-> Jump — pas de Trim/ColorChange/Stop,
