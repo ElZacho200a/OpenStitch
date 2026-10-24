@@ -41,6 +41,9 @@ public:
 
     void setUsage(std::vector<stitch_analysis::ThreadUsage> usage);
     void setFilm(std::vector<stitch_analysis::ColorFilmBlock> film);
+    // Onglet « Visibilité » (HP-THR-005) : tous les fils du document, y compris ceux dont
+    // tous les objets sont masqués (absents du film). Case cochée = visible.
+    void setVisibility(std::vector<stitch_analysis::ThreadVisibility> visibility);
     // Résultats d'une recherche « plus proche » affichés à la place du catalogue.
     void showMatches(const std::vector<thread_palette::Thread>& matches, const QString& title);
     // Texte d'état de la sélection courante (« 3 objets sélectionnés »).
@@ -77,6 +80,8 @@ signals:
     void filmBlockMoved(int from, int to);
     void filmBlockSelected(int row);
     void mergeFilmBlocksRequested();
+    // Case de l'onglet Visibilité : afficher (true) / masquer (false) tous les objets du fil.
+    void threadVisibilityToggled(const stitch_analysis::ThreadIdentity& identity, bool visible);
     // Case « je possède ce fil » (catalogue ou liste Mes fils) cochée / décochée.
     void stockOwnedToggled(const thread_palette::ThreadKey& key, bool owned);
     void personalThreadAddRequested(const thread_palette::Thread& thread);
@@ -128,6 +133,10 @@ private:
     QListWidget* stockList_{nullptr};
     QPushButton* addPersonalBtn_{nullptr};
     QPushButton* removeStockBtn_{nullptr};
+    // Visibilité des fils.
+    std::vector<stitch_analysis::ThreadVisibility> visibility_;
+    QListWidget* visList_{nullptr};
+    QLabel* visSummary_{nullptr};
     // Film couleur.
     QListWidget* filmList_{nullptr};
     QLabel* filmSummary_{nullptr};
