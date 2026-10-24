@@ -1,0 +1,147 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261024T160427Z-phare-source-contours-mcp-0d343ff",
+  "created_utc": "2026-10-24T16:04:27Z",
+  "status": "completed",
+  "artistic_accepted": false,
+  "source": {
+    "private_library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "archive_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "image_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "pixels": [
+      1536,
+      961
+    ],
+    "design_mm": [
+      370,
+      231.4908854
+    ],
+    "canvas_mm": [
+      390,
+      268
+    ],
+    "margin_mm": 10
+  },
+  "mcp": {
+    "version": "1.1.0",
+    "artifact_id": 12544739180,
+    "artifact_zip_sha256": "ebedc2518648448c46fd133994331a787176b145a5eedc95be562cb43e3a4e63",
+    "tarball_checksum_ok": true,
+    "doctor_ok": true
+  },
+  "method": "Python/OpenCV source-anchored contours at full resolution for architecture/boat; six wave instance polygons, source-derived foam, 16 shared thread colors, 17 running details; three actually applied programmatic hypotheses, no generative image-to-image.",
+  "prompts_applied": [
+    {
+      "id": "contour_fidelity",
+      "regions": 84,
+      "components": 2385,
+      "lab_mae": 6.084
+    },
+    {
+      "id": "contour_balanced",
+      "regions": 84,
+      "components": 2237,
+      "lab_mae": 6.38,
+      "mcp_imported": true
+    },
+    {
+      "id": "contour_textile",
+      "regions": 85,
+      "components": 2052,
+      "lab_mae": 7.012
+    }
+  ],
+  "gate_a": "REJECTED: fine spray and architecture still degrade, wave/foam fragmentation remains excessive. MCP import for diagnostic only.",
+  "mcp_calls": [
+    "initialize",
+    "digitize_guide",
+    "project_operations",
+    "semantic_validate",
+    "project_new",
+    "semantic_import dry_run",
+    "semantic_import apply",
+    "project_checkpoint",
+    "semantic_map",
+    "project_inspect",
+    "project_report",
+    "project_check",
+    "project_density",
+    "project_fabric_risk",
+    "project_render",
+    "project_save",
+    "project_export",
+    "project_open",
+    "project_satin_compare",
+    "project_apply directional_guides dry_run",
+    "project_apply directional_guides apply",
+    "project_check",
+    "project_render",
+    "project_restore",
+    "semantic_replace dry_run",
+    "semantic_replace apply",
+    "project_check",
+    "project_render",
+    "project_compare",
+    "project_restore",
+    "project_save",
+    "project_export"
+  ],
+  "baseline": {
+    "objects": 1871,
+    "stitches": 164562,
+    "trims": 3174,
+    "jumps": 4179,
+    "color_changes": 67,
+    "warnings": 51,
+    "errors": 0,
+    "hotspot_area_mm2": 116,
+    "embroidered_size_mm": [
+      369.36,
+      230.85
+    ]
+  },
+  "trials": {
+    "directional_guides_object_4089": {
+      "stitches": 164581,
+      "trims": 3174,
+      "warnings": 51,
+      "verdict": "rejected, no visible gain"
+    },
+    "semantic_replace_foam_instance_20_color_10": {
+      "stitches": 164266,
+      "trims": 2924,
+      "jumps": 3757,
+      "verdict": "rejected, foam detail lost despite 250 fewer trims"
+    },
+    "satin_compare": {
+      "objects": [
+        2188,
+        446,
+        4089,
+        3218
+      ],
+      "strategies": [
+        "skeleton",
+        "parallel_sweep",
+        "medial_axis"
+      ],
+      "verdict": "all compared; coverage alone not proof of admissible satin, no conversion retained"
+    }
+  },
+  "real_preview": true,
+  "preview_sha256": "908c8b942117d42d4a752471911e346f2dd0d8c8a66b4990a2bd9219c85cbb3f",
+  "real_osp_dst": true,
+  "machine_tested": false,
+  "independent_score": null,
+  "artistic_verdict": "REJECTED: sky/foam flattened, architectural details noisy, 3174 trims and 51 warnings worse than prior 1641 trims/51 warnings and older 1015 trims. No machine validation.",
+  "private_archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-24/phare-contours-mcp-1815-private.zip",
+    "library_file_id": "libfile_236e373a96ec8191b8180641e1716fac",
+    "size_bytes": 14388337,
+    "sha256": "06f838cde98b45c6a81f3822cecfbeb5aee68670524ed9f3e60b714e4590b522",
+    "verified": true
+  },
+  "public_pixels_uploaded": false,
+  "next_hypothesis": "Use low-object-count carrier shapes with source-following vector boundaries; overlay only major accents and protected details, not quantized pixel fragments. Preflight count <500 components, no excessive underlay, preserve spray using stroke skeleton/running and short admissible satin ribbons. Gate A before MCP."
+}
