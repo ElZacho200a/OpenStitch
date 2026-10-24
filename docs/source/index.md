@@ -56,6 +56,7 @@ associée** listant les fichiers, classes, fonctions et tests réels.
 - [Guide utilisateur détaillé](user-guide.md)
 - [Ligne de commande (openstitch-cli)](cli.md)
 - [Projets .osp en ligne de commande, lots et agents](cli-project.md)
+- [Serveur MCP pour agents IA (openstitch-mcp)](mcp.md)
 - [Dépannage](troubleshooting.md)
 - [Glossaire](glossary.md)
 

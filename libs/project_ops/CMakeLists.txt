@@ -15,6 +15,8 @@ add_library(openstitch_project_ops
     src/op_params.cpp
     src/op_geometry.cpp
     src/op_import.cpp
+    src/op_semantic.cpp
+    src/semantic.cpp
     src/auto_satin_service.cpp
     src/quality.cpp
     src/render.cpp
@@ -31,7 +33,7 @@ target_link_libraries(openstitch_project_ops
     PUBLIC openstitch::core openstitch::document openstitch::commands
            openstitch::project_io openstitch::stitch_analysis
     PRIVATE nlohmann_json::nlohmann_json openstitch::image openstitch::segmentation
-            openstitch::autodigitize openstitch::stitch_generation openstitch::auto_satin
+            openstitch::autodigitize openstitch::vectorization openstitch::stitch_generation openstitch::auto_satin
             openstitch::optimization openstitch::lettering openstitch::formats openstitch::stitch
             openstitch::geometry openstitch::thread_palette openstitch::stitch_render
             openstitch::warnings
