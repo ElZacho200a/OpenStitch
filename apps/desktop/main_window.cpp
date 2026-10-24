@@ -3293,6 +3293,8 @@ void MainWindow::renderBase(const image::Image& img) {
     guideHighlight_ = nullptr;
     snapIndicator_ = nullptr;
     resizePreview_ = nullptr;
+    rotationPreview_ = nullptr;
+    commonBox_ = nullptr;
     reshapePreview_ = nullptr;
     brushRing_ = nullptr;
     nodeHandles_.clear();
@@ -3742,48 +3744,13 @@ void MainWindow::renderBase(const image::Image& img) {
                         scene_->addItem(handle);
                         baseItems_.append(handle);
                     }
-                    // Poignée de rotation (HP-OBJ-004) : au-dessus du milieu du bord haut, à
-                    // distance fixe à l'écran. Glisser fait tourner la forme autour du centre de
-                    // sa boîte ; l'angle est validé au relâchement (une commande annulable).
-                    const Vec2um centerUm{
-                        Micrometers{static_cast<std::int32_t>(
-                            (static_cast<std::int64_t>(minX->value) + maxX->value) / 2)},
-                        Micrometers{static_cast<std::int32_t>(
-                            (static_cast<std::int64_t>(minY->value) + maxY->value) / 2)}};
-                    const QPointF centerScene = modelToSceneMm(centerUm);
-                    const double offsetMm = 26.0 / std::max(view_->pixelsPerMm(), 0.01);
-                    const QPointF handleScene(
-                        centerScene.x(), modelToSceneMm(Vec2um{centerUm.x, *maxY}).y() - offsetMm);
-                    auto* rotation = new ResizeHandleItem(
-                        handleScene,
-                        [this, objectId, centerScene, handleScene,
-                         generation](QPointF releasedSceneMm) {
-                            const double degrees = rotationDragDegrees(
-                                centerScene, handleScene, releasedSceneMm,
-                                (QGuiApplication::keyboardModifiers() & Qt::ShiftModifier) != 0);
-                            // Différé : refreshImage() détruirait cet item pendant son évènement.
-                            QTimer::singleShot(0, this, [this, objectId, degrees, generation] {
-                                if (generation != documentGeneration_) {
-                                    return;
-                                }
-                                if (degrees == 0.0) {
-                                    refreshImage(); // remet la poignée à sa place
-                                    return;
-                                }
-                                rotateObjects({objectId}, degrees);
-                            });
-                        },
-                        QPointF(), /*hasAnchor=*/false, Qt::CrossCursor);
-                    rotation->setBrush(QBrush(AppTheme::instance().tokens().canvasSelectionLine));
-                    rotation->setToolTip(tr("Glisser pour faire pivoter la forme autour de son "
-                                            "centre — Maj : pas de 15°, Échap : annuler"));
-                    rotation->setCancelled([] {});
-                    scene_->addItem(rotation);
-                    baseItems_.append(rotation);
                 }
             }
         }
     }
+
+    // Poignée de rotation + pivot de la sélection (une ou plusieurs formes), HP-OBJ-004.
+    addRotationHandles();
 
     // Poignée de rotation du remplissage tatami sélectionné : un axe montrant
     // l'orientation des fils, avec un bouton à faire glisser. Le nouvel angle est

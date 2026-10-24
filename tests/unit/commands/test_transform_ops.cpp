@@ -152,9 +152,13 @@ TEST_CASE("transform: mirror flips shape, row angle, guides and satin rails") {
     CHECK(d.density_gradient->to == pt(0, 5'000));
 
     const auto& s = std::get<document::SatinParams>(project.embroidery_objects[2].params);
-    CHECK(s.rail_a.nodes[0].pos == pt(20'000, 0));
-    CHECK(s.rail_b.nodes[1].pos == pt(0, 3'000));
-    CHECK(s.rungs[0].a == pt(15'000, 0));
+    // Les rails sont échangés par le retournement : l'ancien rail B (y = 3 mm) devient A.
+    CHECK(s.rail_a.nodes[0].pos == pt(20'000, 3'000));
+    CHECK(s.rail_a.nodes[1].pos == pt(0, 3'000));
+    CHECK(s.rail_b.nodes[0].pos == pt(20'000, 0));
+    CHECK(s.rail_b.nodes[1].pos == pt(0, 0));
+    CHECK(s.rungs[0].a == pt(15'000, 3'000));
+    CHECK(s.rungs[0].b == pt(15'000, 0));
     CHECK(s.entry_point == pt(19'000, 1'500));
 
     const auto& a = std::get<document::AutoSatinParams>(project.embroidery_objects[3].params);
@@ -173,6 +177,45 @@ TEST_CASE("transform: mirror flips shape, row angle, guides and satin rails") {
         CHECK(project.vector_objects[i].paths == before.vector_objects[i].paths);
         CHECK(project.embroidery_objects[i].params == before.embroidery_objects[i].params);
     }
+}
+
+TEST_CASE("transform: mirroring a satin twice restores it and rotation keeps rails in place") {
+    document::Project project;
+    document::SatinParams satin;
+    satin.rail_a.nodes = {{pt(0, 0), geometry::NodeType::Corner, {}, {}},
+                          {pt(20'000, 0), geometry::NodeType::Corner, {}, {}}};
+    satin.rail_b.nodes = {{pt(0, 3'000), geometry::NodeType::Corner, {}, {}},
+                          {pt(20'000, 3'000), geometry::NodeType::Corner, {}, {}}};
+    satin.rungs.push_back({pt(5'000, 0), pt(5'000, 3'000), {}});
+    satin.pull_left = Micrometers{100};
+    satin.pull_right = Micrometers{300};
+    const ObjectId column = add_shape(project, rect(0, 0, 20'000, 3'000), satin);
+    const auto before = project.embroidery_objects[0].params;
+
+    UndoStack stack;
+    stack.execute(make_transform_command(project, {column},
+                                         AffineTransform::mirror(pt(10'000, 1'500), false), "V"),
+                  project);
+    const auto& once = std::get<document::SatinParams>(project.embroidery_objects[0].params);
+    CHECK(once.pull_left.value == 300);
+    CHECK(once.pull_right.value == 100);
+    // Retournement vertical : l'ancien rail B (y = 3 mm) retombe en y = 0 mais reste le rail A.
+    CHECK(once.rail_a.nodes[0].pos == pt(0, 0));
+    CHECK(once.rail_b.nodes[0].pos == pt(0, 3'000));
+    CHECK(once.rungs[0].a == pt(5'000, 0));
+
+    stack.execute(make_transform_command(project, {column},
+                                         AffineTransform::mirror(pt(10'000, 1'500), false), "V"),
+                  project);
+    CHECK(project.embroidery_objects[0].params == before);
+
+    // Une rotation ne change pas la chiralité : les rails ne sont pas échangés.
+    stack.execute(make_transform_command(project, {column},
+                                         AffineTransform::rotation(pt(0, 0), Angle{kPi}), "R"),
+                  project);
+    const auto& turned = std::get<document::SatinParams>(project.embroidery_objects[0].params);
+    CHECK(turned.pull_left.value == 100);
+    CHECK(turned.rail_a.nodes[0].pos == pt(0, 0));
 }
 
 TEST_CASE("transform: scale and translate move everything; unknown ids give no command") {
