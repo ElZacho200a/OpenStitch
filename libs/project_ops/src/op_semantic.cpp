@@ -270,6 +270,28 @@ OpStatus semantic_import(OpContext& ctx) {
     }
     policy.mm_per_px = mm_per_px;
 
+    // Image source facultative : vérifiée avant toute mutation, posée en fin d'opération avec
+    // l'échelle du manifeste (les contours importés et l'image restent ainsi alignés).
+    std::string source_path;
+    if (auto st = string_arg(ctx, "source_path", false, source_path); !st.ok) {
+        return st;
+    }
+    SourceImagePlan source;
+    if (!source_path.empty()) {
+        if (auto st = load_source_image(ctx.project, source_path, mm_per_px, source); !st.ok) {
+            return st;
+        }
+        if (source.image.width != manifest.width_px || source.image.height != manifest.height_px) {
+            return OpStatus::failure(
+                code::kRefused,
+                "source_path : l'image fait " + std::to_string(source.image.width) + " x " +
+                    std::to_string(source.image.height) + " px, le manifeste déclare " +
+                    std::to_string(manifest.width_px) + " x " + std::to_string(manifest.height_px) +
+                    " px",
+                "passer l'image source du manifeste (source_image.path)");
+        }
+    }
+
     const auto order = creation_order(manifest);
     for (const auto* region : order) { // tout est vérifié AVANT la première mutation
         if (!stitchable(*region)) {
@@ -328,11 +350,16 @@ OpStatus semantic_import(OpContext& ctx) {
                                  "chaque région cousue porte une stitch_intent et un mask_path "
                                  "avec decision=keep");
     }
-    return OpStatus::success({{"id", created.front()},
-                              {"created", created},
-                              {"mapping", mapping},
-                              {"skipped", skipped},
-                              {"fallbacks", fallbacks}});
+    json result{{"id", created.front()},
+                {"created", created},
+                {"mapping", mapping},
+                {"skipped", skipped},
+                {"fallbacks", fallbacks}};
+    if (!source_path.empty()) {
+        auto applied = apply_source_image(ctx, std::move(source));
+        result["source_image"] = std::move(applied.result);
+    }
+    return OpStatus::success(std::move(result));
 }
 
 // --- semantic_replace ---------------------------------------------------------------------
@@ -487,7 +514,11 @@ void register_semantic_ops(std::vector<OpSpec>& out) {
             "si le moteur refuse l'auto_satin d'un objet : fail (défaut, tout est annulé), tatami "
             "ou running (l'objet est gardé dans ce type et le repli est consigné dans « fallbacks "
             "»)",
-            false, {}, "fail | tatami | running")};
+            false, {}, "fail | tatami | running"),
+        arg("source_path", "string",
+            "image source (mêmes dimensions que le manifeste) : posée comme par set_source_image, "
+            "à l'échelle du manifeste, pour permettre la mesure de fidélité. Absent : projet "
+            "inchangé côté image")};
     import.example = R"({"op":"semantic_import","manifest":"travail/carte.json"})";
     import.apply = semantic_import;
     out.push_back(std::move(import));

@@ -933,16 +933,24 @@ json apply_fields(P& target, const json& req, const std::vector<Field<P>>& field
                   const std::string& type_label) {
     for (const auto& [key, value] : req.items()) {
         if (find_field(fields, key) == nullptr) {
-            const auto owners = types_having(key);
+            const bool isFinishing = type_label == "finition";
+            const auto owners = isFinishing ? std::vector<std::string>{} : types_having(key);
             std::string hint =
                 "champs valides pour « " + type_label + " » : " + join(field_names(fields));
+            std::string message =
+                "champ « " + key + " » inexistant pour le type de points « " + type_label + " »";
             if (!owners.empty()) {
-                hint += " ; « " + key + " » existe pour : " + join(owners) +
-                        " (changez d'abord le type avec set_stitch_type)";
+                // Le message (seul texte relayé par certains clients) nomme les types porteurs
+                // de la clé et l'opération à utiliser ; la clé n'est PAS acceptée pour autant.
+                const std::string ownerText = "« " + key + " » existe pour : " + join(owners) +
+                                              " (changez d'abord le type avec set_stitch_type)";
+                message += " ; " + ownerText + " ; champs valides pour « " + type_label +
+                           " » : " + join(field_names(fields));
+                hint += " ; " + ownerText;
+            } else {
+                message += " ; champs valides : " + join(field_names(fields));
             }
-            refuse(code::kWrongType,
-                   "champ « " + key + " » inexistant pour le type de points « " + type_label + " »",
-                   hint);
+            refuse(code::kWrongType, message, hint);
         }
     }
     json changes = json::object();

@@ -13,7 +13,11 @@
 
 #include <nlohmann/json.hpp>
 
+#include "../../../libs/project_ops/src/op_registry.hpp"
+#include "openstitch/commands/undo_stack.hpp"
 #include "openstitch/image/image.hpp"
+#include "openstitch/project_io/project_io.hpp"
+#include "openstitch/project_ops/analysis.hpp"
 #include "openstitch/project_ops/factory.hpp"
 #include "openstitch/project_ops/inspect.hpp"
 #include "openstitch/project_ops/operations.hpp"
@@ -567,4 +571,167 @@ TEST_CASE("semantic_import: l'angle des rangees suit la forme (pas de bandes uni
     const double h = angle_of("barre.h");
     const double v = angle_of("barre.v");
     CHECK(std::abs(h - v) > 30.0); // perpendiculaires, pas deux fois le même angle par défaut
+}
+
+// --- set_source_image / source_path ----------------------------------------------------------
+
+namespace {
+
+void write_source(const fs::path& dir) {
+    write_two_masks(dir);
+    write_mask(dir / "source.png", {{20, 20, 80, 80}, {120, 20, 180, 80}});
+    write_text(dir / "carte.json", manifest_doc(two_regions()));
+}
+
+std::vector<std::uint64_t> all_ids(const document::Project& p) {
+    std::vector<std::uint64_t> out;
+    for (const auto& e : p.embroidery_objects) {
+        out.push_back(e.id.value);
+    }
+    for (const auto& v : p.vector_objects) {
+        out.push_back(v.id.value);
+    }
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("set_source_image: fidelite mesurable apres semantic_import", "[project_ops][semantic]") {
+    Workdir w("source");
+    write_source(w.dir);
+    auto project = empty_project();
+    REQUIRE(run(project, import_op(w.dir / "carte.json")).ok);
+
+    // Sans source : refus conserve, avec la piste de l'operation.
+    const auto refused = measure_fidelity(project);
+    REQUIRE_FALSE(refused.has_value());
+    CHECK(refused.error().message.find("n'a pas d'image source") != std::string::npos);
+    CHECK(refused.error().message.find("set_source_image") != std::string::npos);
+
+    const auto ids_before = all_ids(project);
+    const auto report =
+        run(project, json{{"op", "set_source_image"}, {"path", u8(w.dir / "source.png")}});
+    REQUIRE(report.ok);
+    CHECK(all_ids(project) == ids_before);
+    CHECK(project.original.width == kW);
+    CHECK(project.original.height == kH);
+    // Cadre 120 x 70 mm, image 200 x 100 px : 120 mm / 200 px, sans deformation.
+    CHECK(project.mm_per_px.value == 0.6);
+
+    const auto fidelity = measure_fidelity(project);
+    REQUIRE(fidelity.has_value());
+    CHECK(json::parse(fidelity->json).at("schema") == "openstitch.fidelity/1");
+
+    // mm_per_px explicite.
+    auto other = empty_project();
+    REQUIRE(run(other, json{{"op", "set_source_image"},
+                            {"path", u8(w.dir / "source.png")},
+                            {"mm_per_px", 0.25}})
+                .ok);
+    CHECK(other.mm_per_px.value == 0.25);
+}
+
+TEST_CASE("set_source_image: refus nommes, projet inchange", "[project_ops][semantic]") {
+    Workdir w("sourcebad");
+    write_source(w.dir);
+    auto project = empty_project();
+    const auto before = serialized(project);
+    CHECK_FALSE(
+        run(project, json{{"op", "set_source_image"}, {"path", u8(w.dir / "none.png")}}).ok);
+    CHECK_FALSE(run(project, json{{"op", "set_source_image"},
+                                  {"path", u8(w.dir / "source.png")},
+                                  {"mm_per_px", 0.0}})
+                    .ok);
+    CHECK_FALSE(
+        run(project, json{{"op", "set_source_image"}, {"path", u8(w.dir / "carte.json")}}).ok);
+    CHECK(project.original.empty());
+    CHECK(serialized(project) == before);
+}
+
+TEST_CASE("set_source_image: undo et redo restituent l'etat", "[project_ops][semantic]") {
+    Workdir w("sourceundo");
+    write_source(w.dir);
+    std::vector<project_ops::detail::OpSpec> specs;
+    project_ops::detail::register_import_ops(specs);
+    const auto spec = std::find_if(specs.begin(), specs.end(),
+                                   [](const auto& s) { return s.name == "set_source_image"; });
+    REQUIRE(spec != specs.end());
+
+    auto project = empty_project();
+    const double scale_before = project.mm_per_px.value;
+    commands::UndoStack stack;
+    const json args{{"op", "set_source_image"}, {"path", u8(w.dir / "source.png")}};
+    project_ops::detail::OpContext ctx{project, stack, args};
+    REQUIRE(spec->apply(ctx).ok);
+    const auto rgba = project.original.rgba;
+    REQUIRE_FALSE(rgba.empty());
+
+    REQUIRE(stack.undo(project));
+    CHECK(project.original.empty());
+    CHECK(project.mm_per_px.value == scale_before);
+    REQUIRE(stack.redo(project));
+    CHECK(project.original.rgba == rgba);
+    CHECK(project.mm_per_px.value == 0.6);
+}
+
+TEST_CASE("semantic_import: source_path pose l'image, absent ne change rien",
+          "[project_ops][semantic]") {
+    Workdir w("sourcepath");
+    write_source(w.dir);
+
+    auto plain = empty_project();
+    REQUIRE(run(plain, import_op(w.dir / "carte.json")).ok);
+    CHECK(plain.original.empty());
+
+    auto with_source = empty_project();
+    auto op = import_op(w.dir / "carte.json");
+    op["source_path"] = u8(w.dir / "source.png");
+    const auto report = run(with_source, op);
+    REQUIRE(report.ok);
+    CHECK(all_ids(with_source) == all_ids(plain));
+    CHECK(with_source.original.width == kW);
+    // Echelle du manifeste : 100 mm / 200 px.
+    CHECK(with_source.mm_per_px.value == 0.5);
+    REQUIRE(measure_fidelity(with_source).has_value());
+
+    // Determinisme : deux executions, memes octets.
+    auto again = empty_project();
+    REQUIRE(run(again, op).ok);
+    CHECK(serialized(again) == serialized(with_source));
+    CHECK(again.original.rgba == with_source.original.rgba);
+
+    // Dimensions incoherentes : refus avant toute modification.
+    write_mask(w.dir / "petit.png", {{1, 1, 5, 5}}, 50, 50);
+    auto bad = empty_project();
+    const auto before = serialized(bad);
+    op["source_path"] = u8(w.dir / "petit.png");
+    CHECK_FALSE(run(bad, op).ok);
+    CHECK(serialized(bad) == before);
+    CHECK(bad.embroidery_objects.empty());
+}
+
+TEST_CASE("set_source_image: l'image survit a l'enregistrement .osp", "[project_ops][semantic]") {
+    Workdir w("sourceosp");
+    write_source(w.dir);
+    auto project = empty_project();
+    REQUIRE(run(project, import_op(w.dir / "carte.json")).ok);
+    REQUIRE(run(project, json{{"op", "set_source_image"}, {"path", u8(w.dir / "source.png")}}).ok);
+    const auto file = w.dir / "p.osp";
+    REQUIRE(project_io::save_project(file, project).has_value());
+    const auto loaded = project_io::load_project(file);
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->original.width == project.original.width);
+    CHECK(loaded->original.height == project.original.height);
+    CHECK(loaded->original.rgba == project.original.rgba);
+    CHECK(loaded->mm_per_px.value == project.mm_per_px.value);
+    REQUIRE(measure_fidelity(*loaded).has_value());
+}
+
+TEST_CASE("set_source_image: figure au catalogue des operations", "[project_ops][semantic]") {
+    const json catalog = json::parse(operations_catalog_json());
+    bool found = false;
+    for (const auto& op : catalog.at("operations")) {
+        found = found || op.at("name") == "set_source_image";
+    }
+    CHECK(found);
 }

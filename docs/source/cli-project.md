@@ -135,6 +135,25 @@ littéral JSON (nombre, booléen, tableau, objet) sinon comme chaîne :
 
 Cadre et finitions générales (sucre pour `set_canvas` / `set_finishing`).
 
+Retours d'essais d'agents (branche `agent-trials`) :
+
+- **`set_source_image`** : définit l'image source (`path` : PNG/JPEG/BMP/TIFF) et `mm_per_px`
+  (optionnel ; défaut : l'image remplit le cadre `canvas` sans déformation) d'un projet bâti sans
+  image (`import_svg`, `semantic_import`). Les objets et leurs identifiants ne changent pas ;
+  l'opération est annulable. Elle rend `project fidelity` utilisable sur ces projets.
+  `semantic_import` accepte aussi `source_path` (mêmes dimensions que le manifeste, échelle du
+  manifeste) : même effet en une seule opération.
+- **`project render`** : le JSON contient `fabric` (fond utilisé) ; sans `--fabric`, stderr rappelle
+  que le défaut est `#00FF00`.
+- **`set_params`** : une clé inconnue ou non applicable au type refuse avec la liste des clés
+  valides ; si elle existe pour un autre type, le message nomme ce type et `set_stitch_type`.
+- **`auto_satin` refusé** : le message se termine par ` [reason_code=<code>] Suggestion : <piste>`
+  et `hint` porte la suggestion. Codes : `no_source_contour`, `self_intersecting_contour`,
+  `contour_too_complex`, `branched_shape`, `compact_shape`, `has_holes`, `too_narrow`,
+  `width_out_of_range`, `invalid_geometry`, `engine_no_column`. Les pistes ne citent que des
+  opérations du registre (`split`, `break_apart`, `set_geometry`, `remove_holes`,
+  `set_stitch_type`).
+
 ### `project operations [--json]`
 
 Catalogue des opérations (`openstitch.operations/1`) : nom, résumé, arguments
@@ -187,6 +206,7 @@ les objets en cause, la position et l'option conseillée :
 | Code | Niveau | Détecte |
 |---|---|---|
 | `motif-hors-image` | erreur | points à plus de 3 mm de l'image source (géométrie aberrante, ex. poignées de Bézier non bornées) |
+| `motif-hors-cadre` | avertissement | la boîte des points dépasse le cadre `project.canvas` (marge incluse) ; le message donne la boîte réelle et le cadre minimal à demander (`set_canvas`) |
 | `objet-etale` | avertissement | objet de plus de 300 mm² à moins de 8 % de remplissage de sa boîte et d'au moins 45 % de la diagonale du motif (réseau de barres relié en un objet) |
 | `fils-quasi-identiques` | info | deux fils à ΔE < 12 : un changement de fil pour rien |
 | `tissu-visible` | info ≥ 0,15 %, avertissement > 0,8 % | tissu visible à l'intérieur du motif |
