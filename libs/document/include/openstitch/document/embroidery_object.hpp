@@ -338,6 +338,23 @@ struct AutoSatinParams {
     bool operator==(const AutoSatinParams&) const = default;
 };
 
+// Point de couverture « blanket / E-stitch » et zigzag simple le long d'un chemin (HP-STI-003).
+// `Blanket` : une ligne de base, avec à chaque station une dent perpendiculaire (aller-retour).
+// `Zigzag` : les points alternent entre deux bords de la bande de largeur `width`.
+enum class BlanketStyle : std::uint8_t { Blanket, Zigzag };
+// Côté de la bande par rapport au sens du chemin (Y vers le haut). `Center` : bande centrée
+// sur le chemin (dents alternées gauche/droite pour le blanket).
+enum class BlanketSide : std::uint8_t { Left, Right, Center };
+
+struct BlanketStitchParams {
+    BlanketStyle style{BlanketStyle::Blanket};
+    Micrometers width{3'000};   // largeur de la bande / longueur des dents (3 mm)
+    Micrometers spacing{2'000}; // écart entre stations le long du chemin (2 mm)
+    BlanketSide side{BlanketSide::Left};
+
+    bool operator==(const BlanketStitchParams&) const = default;
+};
+
 // Un objet de broderie porte un TYPE de point sous forme de variant. Chaque
 // type suit la géométrie d'un objet vectoriel source (contour pour running,
 // région pleine pour tatami) ou porte la sienne (satin). La séparation
@@ -345,7 +362,7 @@ struct AutoSatinParams {
 // Les alternatives directionnelle puis auto-satin sont AJOUTÉES en fin de
 // variant : les index des types historiques ne changent pas.
 using StitchParams = std::variant<RunningStitchParams, TatamiParams, SatinParams,
-                                  DirectionalFillParams, AutoSatinParams>;
+                                  DirectionalFillParams, AutoSatinParams, BlanketStitchParams>;
 
 // Type de point autorisé après retouche manuelle (Lot 8 MVP, §2 du cadrage) :
 // seule transition permise, Stitch <-> Jump — pas de Trim/ColorChange/Stop,
@@ -438,6 +455,9 @@ struct EmbroideryObject {
     }
     [[nodiscard]] bool is_auto_satin() const {
         return std::holds_alternative<AutoSatinParams>(params);
+    }
+    [[nodiscard]] bool is_blanket() const {
+        return std::holds_alternative<BlanketStitchParams>(params);
     }
 };
 

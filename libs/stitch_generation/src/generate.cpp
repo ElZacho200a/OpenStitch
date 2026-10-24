@@ -13,6 +13,7 @@
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/stitch_generation/auto_satin_engine.hpp"
+#include "openstitch/stitch_generation/blanket_stitch.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 #include "openstitch/stitch_generation/join.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
@@ -929,6 +930,14 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                     generate_tatami(chunk, *unit.source, object, params);
                 } else if constexpr (std::is_same_v<T, document::DirectionalFillParams>) {
                     generate_directional(chunk, *unit.source, object, params);
+                } else if constexpr (std::is_same_v<T, document::BlanketStitchParams>) {
+                    // HP-STI-003 : blanket / zigzag le long de chaque contour de la source.
+                    for (const geometry::PathSet& set : unit.source->paths) {
+                        emit_polyline(chunk, blanket_stitch_points(set.outer, params), object.id);
+                        for (const geometry::Path& hole : set.holes) {
+                            emit_polyline(chunk, blanket_stitch_points(hole, params), object.id);
+                        }
+                    }
                 }
             },
             object.params);
