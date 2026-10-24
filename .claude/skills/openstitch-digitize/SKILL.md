@@ -211,6 +211,15 @@ sont journalisés sur la branche `agent-trials` et **pas sur `main`** ;
 les binaires sont archivés séparément. Ne pas assimiler réussite en simulation
 et validation sur machine.
 
+## Retours des essais `agent-trials` (≈ 50 essais, aucun noté /20)
+
+- **Deux échecs consécutifs de la porte A : s'arrêter** et reprendre la reconstruction sémantique ; ne pas tuner densité, nombre de coupes ou satin comme substitut (vérifié sur une trentaine d'essais de peinture).
+- **Cadre et fond explicites** : `project new` a un cadre de 100×100 mm par défaut ; `project render` utilise `#00FF00` sans `--fabric` (les trous ressortent). `project check` signale `motif-hors-cadre`.
+- **Fidélité d'un projet construit à la main** : après `import_svg` / `semantic_import`, ajouter l'image d'origine avec l'opération `set_source_image` (ou `source_path` de `semantic_import`) sinon `project fidelity` refuse. La fidélité mesurée reste celle de l'image intégrée, pas celle de l'œuvre d'origine.
+- **`RequiresDecomposition`** sur un satin : lire `reason_code` et `suggestion` du résultat de `auto_satin` avant de réessayer les trois stratégies.
+- **Ne pas confondre** quantification de couleurs et segmentation d'instances ; le nombre d'objets n'est pas une métrique de qualité ; deux éléments de même couleur qui se touchent ne sont pas une même instance.
+- **Validation indépendante** : ne pas optimiser et prouver sur la même image sans lot de contrôle.
+
 ## Frontières et sécurité de méthode
 
 - **Skill de workflow**, pas nouvelle commande OpenStitch : la segmentation sémantique et son graphe d'instances peuvent nécessiter OpenCV/Python/SVG.
