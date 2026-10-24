@@ -1,0 +1,128 @@
+{
+  "schema": "openstitch.turner-lab-result/1",
+  "run_id": "20261024T105823Z-turner-hessian-ridges-mcp-4924737",
+  "source_sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+  "source_px": [
+    1536,
+    1014
+  ],
+  "design_mm": [
+    363.5503,
+    240
+  ],
+  "canvas_mm": [
+    390,
+    268
+  ],
+  "main_commit": "1ead7502a605807917cb2d27511e470e2862f313",
+  "mcp": {
+    "version": "1.1.0",
+    "ci_run_id": 40054711321,
+    "ci_artifact_id": 12544739180,
+    "zip_sha256": "ebedc2518648448c46fd133994331a787176b145a5eedc95be562cb43e3a4e63",
+    "doctor_ok": true
+  },
+  "method": "7 original-specific prompts implemented with PROGRAMMATIC OpenCV/SciPy Hessian ridge + LAB tonal spray; no generative image-to-image; no structure-tensor streamline tracking yet",
+  "candidates": [
+    "ridge_sparse",
+    "ridge_balanced",
+    "ridge_layered",
+    "ridge_spray_sparse",
+    "ridge_spray",
+    "ridge_spray_refined",
+    "ridge_spray_outline"
+  ],
+  "selected": "ridge_spray_outline diagnostic only",
+  "semantic_regions": 46,
+  "embroidery_objects": 73,
+  "mcp_calls": [
+    "digitize_guide",
+    "semantic_validate",
+    "project_new",
+    "semantic_import dry_run+apply",
+    "project_checkpoint",
+    "project_report",
+    "project_check",
+    "project_render",
+    "project_save",
+    "project_export",
+    "semantic_map",
+    "semantic_replace dry_run+apply",
+    "project_open",
+    "project_satin_compare",
+    "project_apply directional_guides dry_run+apply",
+    "project_apply auto_satin dry_run+apply"
+  ],
+  "versions": {
+    "ridge_unpruned": {
+      "stitches": 88948,
+      "trims": 434,
+      "jumps": 456,
+      "color_changes": 37,
+      "warnings": 37,
+      "errors": 0
+    },
+    "ridge_pruned": {
+      "stitches": 84851,
+      "trims": 385,
+      "jumps": 403,
+      "color_changes": 21,
+      "warnings": 31,
+      "errors": 0
+    },
+    "outline_selected": {
+      "stitches": 85031,
+      "trims": 387,
+      "jumps": 405,
+      "color_changes": 22,
+      "warnings": 31,
+      "errors": 0
+    },
+    "directional_rejected": {
+      "stitches": 85182,
+      "trims": 396,
+      "jumps": 419,
+      "color_changes": 22,
+      "warnings": 31,
+      "errors": 0
+    },
+    "balcony_parallel_sweep_trial": {
+      "stitches": 84983,
+      "trims": 387,
+      "jumps": 405,
+      "color_changes": 22,
+      "warnings": 31,
+      "errors": 0
+    }
+  },
+  "real_preview": true,
+  "artistic_accepted": false,
+  "machine_tested": false,
+  "independent_score": null,
+  "satin_comparison": {
+    "objects": [
+      50,
+      52,
+      81
+    ],
+    "balcony_skeleton_coverage": 0.990955,
+    "balcony_parallel_sweep_coverage": 0.995864,
+    "ridge_object_requires_decomposition": true
+  },
+  "semantic_replace_note": "One ridge corrected after dry-run; no change to point/cut metrics",
+  "issues": [
+    "sky masses too flat",
+    "spray more source-faithful in technical map but remains noisy in stitch render",
+    "lighthouse and boat under-detailed",
+    "387 cuts and 31 warnings; regression versus prior run",
+    "ridge detection without flowline linking"
+  ],
+  "next_hypothesis": "Use structure tensor and source ridge streamline tracking to connect coherent ribbons with variable widths and negative gaps, rather than many fragmented source-ridge islands. Improve sky tonal hierarchy and protected subject contrast before digitizing.",
+  "private_archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-24/turner-hessian-mcp-1300-private.zip",
+    "library_file_id": "libfile_516ba5fc45308191a868ffc29c043241",
+    "size_bytes": 30840771,
+    "sha256": "61a141913f0b6127425724836a0ed7102584eab9476fc3ed19c435cff9d8f4df"
+  },
+  "public_pixels_uploaded": false
+}
