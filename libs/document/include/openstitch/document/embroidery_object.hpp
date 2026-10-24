@@ -17,11 +17,22 @@
 
 namespace openstitch::document {
 
+// Style du point de contour (HP-STI-001). `Run` : comportement historique piloté par
+// `repeats` (1 simple, 2 aller-retour, 3 triple). Les autres styles ignorent `repeats`.
+enum class RunningStyle : std::uint8_t {
+    Run,        // point droit, `repeats` passages
+    Bean,       // point « bean » : chaque intervalle cousu 3 fois
+    Backstitch, // point arrière : chaque point revient en arrière
+    Stem,       // point tige : pénétrations décalées latéralement (aspect torsadé)
+};
+
 // Paramètres du point droit de contour (§5.1).
 struct RunningStitchParams {
     Micrometers stitch_length{3'000}; // longueur cible (3 mm)
     Micrometers min_length{500};      // en dessous, les points sont fusionnés
     int repeats{1};                   // 1 simple, 2 aller-retour, 3 point triple
+    RunningStyle style{RunningStyle::Run};
+    Micrometers stem_offset{300}; // décalage latéral du point tige (0,3 mm)
 
     bool operator==(const RunningStitchParams&) const = default;
 };

@@ -201,7 +201,9 @@ json params_to_json(const document::StitchParams& params) {
                 j = {{"type", "running"},
                      {"stitchLength", p.stitch_length.value},
                      {"minLength", p.min_length.value},
-                     {"repeats", p.repeats}};
+                     {"repeats", p.repeats},
+                     {"style", static_cast<int>(p.style)},
+                     {"stemOffset", p.stem_offset.value}};
             } else if constexpr (std::is_same_v<T, document::TatamiParams>) {
                 j = {{"type", "tatami"},
                      {"angle", p.angle.radians},
@@ -418,6 +420,11 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.stitch_length = Micrometers{j.at("stitchLength")};
         p.min_length = Micrometers{j.at("minLength")};
         p.repeats = j.at("repeats");
+        // HP-STI-001 : champs optionnels (anciens .osp : point droit, décalage par défaut).
+        const int style = j.value("style", 0);
+        p.style = (style >= 0 && style <= 3) ? static_cast<document::RunningStyle>(style)
+                                             : document::RunningStyle::Run;
+        p.stem_offset = Micrometers{j.value("stemOffset", p.stem_offset.value)};
         return document::StitchParams{p};
     }
     if (type == "tatami") {

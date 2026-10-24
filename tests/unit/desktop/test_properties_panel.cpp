@@ -69,6 +69,7 @@ private slots:
     void switchingToInfoRemovesThePreviousFormControls();
     void tatamiOffersConversionToDirectionalFill();
     void directionalEditKeepsGuidesAndSeed();
+    void runningStyleComboEmitsStyleAndStemOffset();
     void directionalGradientControlsRequestMainWindow();
     void directionalSpacingRegularityIsEditable();
     void autoSatinInspectorListsGuidesAndEditsScalars();
@@ -98,7 +99,7 @@ void PropertiesPanelTest::showEmbroideryPopulatesSpinBoxesWithoutEmittingWhileBu
 
     QCOMPARE(emitCount, 0); // peuplement initial : pas d'édit émis
     const auto spins = panel.findChildren<QDoubleSpinBox*>();
-    QCOMPARE(spins.size(), 2); // longueur de point, longueur minimale
+    QCOMPARE(spins.size(), 3); // longueur de point, longueur minimale, decalage du point tige
     QCOMPARE(spins.at(0)->value(), 3.0);
     QCOMPARE(spins.at(1)->value(), 0.5);
 }
@@ -135,7 +136,7 @@ void PropertiesPanelTest::editingASpinBoxEmitsParamsEditedWithUpdatedValueAndPre
 void PropertiesPanelTest::switchingToInfoRemovesThePreviousFormControls() {
     PropertiesPanel panel;
     panel.showEmbroidery(runningStitchObject(3));
-    QCOMPARE(panel.findChildren<QDoubleSpinBox*>().size(), 2);
+    QCOMPARE(panel.findChildren<QDoubleSpinBox*>().size(), 3);
 
     panel.showInfo(QStringLiteral("Région"), QStringLiteral("détails"));
 
@@ -422,6 +423,29 @@ void PropertiesPanelTest::tatamiEditChangesOnlyTheTouchedFieldWithoutRounding() 
     angle->setValue(45.5);
     QCOMPARE(std::get<openstitch::document::TatamiParams>(*emitted).angle.radians,
              45.5 * 3.14159265358979323846 / 180.0);
+}
+
+void PropertiesPanelTest::runningStyleComboEmitsStyleAndStemOffset() {
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{41};
+    e.params = openstitch::document::RunningStitchParams{};
+    panel.showEmbroidery(e);
+
+    std::optional<StitchParams> emitted;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams p, QString) { emitted = p; });
+    auto* style = panel.findChild<QComboBox*>(QStringLiteral("combo_runningStyle"));
+    QVERIFY(style != nullptr);
+    QCOMPARE(style->count(), 4);
+    style->setCurrentIndex(3);
+    QVERIFY(emitted.has_value());
+    QVERIFY(std::get<openstitch::document::RunningStitchParams>(*emitted).style ==
+            openstitch::document::RunningStyle::Stem);
+    auto* off = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_stemOffset"));
+    QVERIFY(off != nullptr);
+    off->setValue(0.5);
+    QCOMPARE(std::get<openstitch::document::RunningStitchParams>(*emitted).stem_offset.value, 500);
 }
 
 void PropertiesPanelTest::engineSettingsEmitDedicatedEdits() {

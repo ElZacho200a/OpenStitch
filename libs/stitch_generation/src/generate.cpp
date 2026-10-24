@@ -224,7 +224,21 @@ void generate_running(stitch::StitchSequence& sequence, const document::VectorOb
                       const document::RunningStitchParams& params) {
     const auto stitchContour = [&](const geometry::Path& path) {
         const auto sampled = sample_path(path, params.stitch_length, params.min_length);
-        const auto points = apply_repeats(sampled, params.repeats);
+        std::vector<Vec2um> points;
+        switch (params.style) {
+        case document::RunningStyle::Bean:
+            points = apply_repeat_mode(sampled, RepeatMode::BeanStitch, 3);
+            break;
+        case document::RunningStyle::Backstitch:
+            points = apply_repeat_mode(sampled, RepeatMode::Backstitch);
+            break;
+        case document::RunningStyle::Stem:
+            points = apply_stem_stitch(sampled, params.stem_offset);
+            break;
+        case document::RunningStyle::Run:
+            points = apply_repeats(sampled, params.repeats);
+            break;
+        }
         emit_polyline(sequence, points, object.id);
     };
     for (const geometry::PathSet& set : source.paths) {
