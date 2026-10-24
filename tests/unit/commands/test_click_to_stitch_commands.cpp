@@ -48,7 +48,8 @@ segmentation::GrownRegion grow(const image::Image& img, int x, int y) {
 } // namespace
 
 TEST_CASE("click to stitch : auto cree un tatami annulable sur un grand aplat") {
-    const auto img = white_with_red_block(40, 30, 5, 5, 34, 24); // 15 x 10 mm
+    const auto img =
+        white_with_red_block(100, 80, 5, 5, 94, 74); // ~45 x 35 mm : au-delà du satin compact
     const auto region = grow(img, 10, 10);
     document::Project project;
     commands::UndoStack stack;

@@ -776,6 +776,7 @@ template <> const std::vector<Field<document::TatamiParams>>& fields_of<document
         v.push_back(int_field<P>("stagger", &P::stagger, 1, 8));
         v.push_back(bool_field<P>("underlay_edge", &P::underlay_edge));
         v.push_back(bool_field<P>("underlay_parallel", &P::underlay_parallel));
+        v.push_back(bool_field<P>("underlay_zigzag", &P::underlay_zigzag));
         v.push_back(mm_field<P>("underlay_inset_mm", &P::underlay_inset, 0.0, 5.0));
         v.push_back(mm_field<P>("underlay_spacing_mm", &P::underlay_spacing, 0.1, 10.0));
         v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
@@ -803,6 +804,8 @@ fields_of<document::DirectionalFillParams>() {
         v.push_back(int_field<P>("stagger", &P::stagger, 1, 8));
         v.push_back(bool_field<P>("underlay_edge", &P::underlay_edge));
         v.push_back(bool_field<P>("underlay_parallel", &P::underlay_parallel));
+        v.push_back(bool_field<P>("underlay_zigzag", &P::underlay_zigzag));
+        v.push_back(mm_field<P>("pull_compensation_mm", &P::pull_compensation, 0.0, 3.0));
         v.push_back(mm_field<P>("underlay_inset_mm", &P::underlay_inset, 0.0, 5.0));
         v.push_back(mm_field<P>("underlay_spacing_mm", &P::underlay_spacing, 0.1, 10.0));
         v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));

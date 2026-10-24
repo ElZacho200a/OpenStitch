@@ -31,12 +31,12 @@ enum class Context : std::uint8_t {
     DrawClicks, // DrawPolygon, DrawSatinColumn, DrawDirectionGuide, DrawBreakLine
     DrawBezier,
     DrawFreeform,
-    NodeEdit,   // poignées de nœuds / rails
-    StitchEdit, // édition des points de couture
-    Measure,    // outil Règle (HP-VEC-010) : glisser = mesure temporaire
-    Eyedropper, // outil Pipette (HP-THR-012) : clic = échantillonner
-    Brush,      // outil Pinceau (HP-VEC-018) : glisser = pousser / tirer le contour
-    Bucket,     // outil Pot de peinture : clic = remplir le vide fermé sous le curseur
+    NodeEdit,     // poignées de nœuds / rails
+    StitchEdit,   // édition des points de couture
+    Measure,      // outil Règle (HP-VEC-010) : glisser = mesure temporaire
+    Eyedropper,   // outil Pipette (HP-THR-012) : clic = échantillonner
+    Brush,        // outil Pinceau (HP-VEC-018) : glisser = pousser / tirer le contour
+    Bucket,       // outil Pot de peinture : clic = remplir le vide fermé sous le curseur
     ClickToStitch // outil Clic-pour-broder : clic = broder la zone de couleur sous le curseur
 };
 

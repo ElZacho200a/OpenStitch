@@ -130,7 +130,7 @@ private slots:
                     inSource = true;
                 else if (n == u"translation") {
                     inTranslation = true;
-                    unfinished = xml.attributes().hasAttribute(QStringLiteral("type"));
+                    unfinished = xml.attributes().value(QStringLiteral("type")) == u"unfinished";
                     current.clear();
                 } else if (n == u"numerusform") {
                     inForm = true;

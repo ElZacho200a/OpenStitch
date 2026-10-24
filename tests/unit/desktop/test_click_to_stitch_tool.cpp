@@ -110,7 +110,8 @@ private slots:
         QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
         QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{1});
         const auto& emb = window.project_.embroidery_objects.front();
-        QVERIFY(emb.is_tatami());
+        // Petit bloc compact : l'auto-numérisation le coud en satin compact ou en tatami.
+        QVERIFY(emb.is_tatami() || emb.is_auto_satin());
         QCOMPARE(emb.source_vector, window.project_.vector_objects.front().id);
         QCOMPARE(emb.rgb, (std::array<std::uint8_t, 3>{220, 30, 30}));
         QVERIFY(window.selectedEmbroidery_.has_value());

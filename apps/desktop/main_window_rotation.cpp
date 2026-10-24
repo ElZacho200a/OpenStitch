@@ -97,8 +97,8 @@ void MainWindow::addRotationHandles() {
     }
     // Boîte englobante commune d'une sélection multiple (HP-OBJ-001) : cadre en tirets.
     if (ids.size() > 1) {
-        auto* frame = new QGraphicsRectItem(QRectF(toSceneMm(Vec2um{box->min.x, box->max.y}),
-                                                   toSceneMm(Vec2um{box->max.x, box->min.y})));
+        auto* frame = new SelectionFrameItem(QRectF(toSceneMm(Vec2um{box->min.x, box->max.y}),
+                                                    toSceneMm(Vec2um{box->max.x, box->min.y})));
         QPen pen(AppTheme::instance().tokens().canvasSelectionLine, 1.0, Qt::DashLine);
         pen.setCosmetic(true);
         frame->setPen(pen);
@@ -153,8 +153,9 @@ void MainWindow::addRotationHandles() {
 
     // Pivot déplaçable : le glisser fixe un nouveau centre de rotation (mémorisé pour cette
     // sélection) ; le double-clic le ramène au centre.
+    const bool pivotDisplaced = rotationPivot_.has_value() && rotationPivotTargets_ == ids;
     auto* pivotItem = new PivotHandleItem(
-        pivotScene,
+        pivotScene, pivotDisplaced,
         [this, ids, generation](QPointF releasedSceneMm) {
             QTimer::singleShot(0, this, [this, ids, releasedSceneMm, generation] {
                 if (generation != documentGeneration_) {
@@ -175,8 +176,8 @@ void MainWindow::addRotationHandles() {
                 refreshImage();
             });
         });
-    pivotItem->setToolTip(tr("Centre de rotation : glisser pour le déplacer, double-clic pour "
-                             "le ramener au centre de la sélection"));
+    pivotItem->setToolTip(tr("Centre de rotation : Ctrl+Maj+glisser pour le déplacer, "
+                             "double-clic pour le ramener au centre de la sélection"));
     scene_->addItem(pivotItem);
     baseItems_.append(pivotItem);
 }

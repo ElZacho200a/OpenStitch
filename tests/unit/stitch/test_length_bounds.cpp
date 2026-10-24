@@ -63,15 +63,13 @@ TEST_CASE("bornes : un point court interieur est fusionne, les extremites sont c
     CHECK(r.commands.back().pos.x.value == 3'000);
 }
 
-TEST_CASE("bornes : un dernier point trop proche retire son predecesseur") {
+TEST_CASE("bornes : le dernier point du trace n'est jamais fusionne") {
     const document::Project project;
     const std::vector<stitch::StitchCommand> cmds = {jump(0, 0), st(0, 0), st(3'000, 0),
                                                      st(3'200, 0)};
     const auto r = enforce_length_bounds(cmds, project, bounds(true, false));
-    CHECK(r.report.merged == 1);
-    CHECK(r.report.short_left == 0);
-    REQUIRE(r.commands.size() == 3);
-    CHECK(r.commands.back().pos.x.value == 3'200); // la fin du trace ne bouge pas
+    CHECK(r.report.merged == 0);
+    CHECK(r.commands.size() == cmds.size()); // la fin du trace ne bouge pas
 }
 
 TEST_CASE("bornes : verrous et retouches manuelles ne sont jamais fusionnes") {

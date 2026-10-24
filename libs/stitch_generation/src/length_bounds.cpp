@@ -74,16 +74,6 @@ std::vector<StitchCommand> merge_short(const std::vector<StitchCommand>& cmds,
                     continue;
                 }
             }
-        } else if (afterStitch && !hasNext && !is_protected(c)) {
-            // Dernier point du tracé : trop proche de son prédécesseur, on retire ce dernier
-            // (jamais le premier point du tracé) pour que la fin du tracé reste en place.
-            while (out.size() >= 3 && out[out.size() - 2].type == CommandType::Stitch &&
-                   out.back().type == CommandType::Stitch && !is_protected(out.back()) &&
-                   length_um(c.pos - out.back().pos) < minLen &&
-                   chordInside(c.source, out[out.size() - 2].pos, c.pos)) {
-                out.pop_back();
-                ++merged;
-            }
         }
         out.push_back(c);
     }
