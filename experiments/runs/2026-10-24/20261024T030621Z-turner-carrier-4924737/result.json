@@ -1,0 +1,183 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261024T030621Z-turner-carrier-4924737",
+  "created_utc": "2026-10-24T03:06:21Z",
+  "status": "completed",
+  "reason": "Five independently regenerated original-based variants executed and engine checked; major visual improvement in continuous source-derived foam/crest silhouettes, but no candidate validated for production owing to excessive stitches/trims and pictorial thread direction issues.",
+  "source": {
+    "benchmark_id": "turner-phare-tempete-20261023",
+    "kind": "chatgpt-library",
+    "path": "/OpenStitch/Benchmarks/turner-phare-tempete-original-20261023.jpg",
+    "library_file_id": "libfile_b7f90c9fdad0819180be1b6029c78d86",
+    "sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+    "sha256_verified_locally": true,
+    "size_px": [
+      1536,
+      1014
+    ],
+    "target_mm": [
+      363.55,
+      240
+    ]
+  },
+  "canvas": {
+    "width_mm": 390,
+    "height_mm": 268,
+    "margin_mm": 10,
+    "usable_mm": [
+      370,
+      248
+    ],
+    "fits": true,
+    "actual_stitched_mm_approx": [
+      363,
+      239.4
+    ]
+  },
+  "hypothesis_tested": "ARTISTIC/TOPOLOGICAL: derive contiguous source-faithful crest/foam and organic cloud masses via LAB quantization of original, spatially cleaned connected regions, while protecting lighthouse/lantern/boat/sails/rigging as distinct semantic identities; compare selective directional guides and cleanup/hidden-travel variants.",
+  "workflow": {
+    "status": "success",
+    "cli_version": "0.1.0",
+    "cli_sha256": "d8ae7debd33bb776ee401a3fbe092a42e4fc1112c09466ce8f5f9ed5f5d4f6bf",
+    "ci_artifact_id": 12539507938,
+    "ci_run_id": 40038762068,
+    "ci_run_url": "https://github.com/ElZacho200a/OpenStitch/actions/runs/40038762068",
+    "ci_commit": "f84018fe88d51465e0b61ba9429d02a23caca761",
+    "checksum_verified": true,
+    "archive_checksum_verified": true,
+    "current_main_commit": "1ead7502a605807917cb2d27511e470e2862f313",
+    "current_main_cli_ci_status": "in_progress",
+    "provenance_note": "Verified binary built on successful main parent commit; current main adds MCP distribution and its own CI was still running; no claim this binary matches current main."
+  },
+  "openstitch_commit": "f84018fe88d51465e0b61ba9429d02a23caca761",
+  "cli_version": "0.1.0",
+  "method": "Every variant rebuilt technical source from SHA-verified private original with deterministic source LAB k-means, median/bilateral cleanup, protected manually reconstructed lantern/boat geometry, independent semantic family map; native CLI digitize to fresh OSP, canvas set, inspect-derived semantic rename, render/check/diagnose/fidelity/density/export/stats. V3 additionally applied directional_guides to 3 inspected wave objects.",
+  "attempts": [
+    {
+      "variant": "v1",
+      "objects": 297,
+      "stitches": 143027,
+      "trims": 872,
+      "color_changes": 14,
+      "hotspot_area_mm2": 27,
+      "check_errors": 0,
+      "directional_objects": 0,
+      "check_warnings": 51,
+      "canvas_fits": true,
+      "osp_dst_same_project": true,
+      "rendered_with_real_cli": true
+    },
+    {
+      "variant": "v2",
+      "objects": 260,
+      "stitches": 141442,
+      "trims": 751,
+      "color_changes": 13,
+      "hotspot_area_mm2": 17,
+      "check_errors": 0,
+      "directional_objects": 0,
+      "check_warnings": 51,
+      "canvas_fits": true,
+      "osp_dst_same_project": true,
+      "rendered_with_real_cli": true
+    },
+    {
+      "variant": "v3",
+      "objects": 297,
+      "stitches": 145179,
+      "trims": 926,
+      "color_changes": 14,
+      "hotspot_area_mm2": 31,
+      "check_errors": 0,
+      "directional_objects": 3,
+      "check_warnings": 51,
+      "canvas_fits": true,
+      "osp_dst_same_project": true,
+      "rendered_with_real_cli": true
+    },
+    {
+      "variant": "v4",
+      "objects": 276,
+      "stitches": 142653,
+      "trims": 838,
+      "color_changes": 14,
+      "hotspot_area_mm2": 31,
+      "check_errors": 0,
+      "directional_objects": 0,
+      "check_warnings": 51,
+      "canvas_fits": true,
+      "osp_dst_same_project": true,
+      "rendered_with_real_cli": true
+    },
+    {
+      "variant": "v5",
+      "objects": 197,
+      "stitches": 137197,
+      "trims": 677,
+      "color_changes": 11,
+      "hotspot_area_mm2": 24,
+      "check_errors": 0,
+      "directional_objects": 0,
+      "check_warnings": 51,
+      "canvas_fits": true,
+      "osp_dst_same_project": true,
+      "rendered_with_real_cli": true
+    }
+  ],
+  "checks": {
+    "inspect": "executed_all",
+    "check": "passed_zero_errors_all",
+    "diagnose": "executed_all",
+    "fidelity": "executed_all_against_embedded_prepared_source_not_original",
+    "density": "executed_all",
+    "render": "real_engine_all",
+    "dst_export": "from_same_annotated_osp_all",
+    "stats": "executed_all",
+    "physical_machine_test": false,
+    "independent_judge": false
+  },
+  "visual_review": {
+    "v1": "Best provisional source-detail legibility: coherent breaking wave and foam masses; 872 trims and many fragmented tatami regions.",
+    "v2": "Fewer cuts, lower hotspot area; slightly weaker fine details.",
+    "v3": "Three directional regions show stronger curved thread flow but also artificial concentric swirls and more cuts/hotspots; rejected.",
+    "v4": "Hidden-travel plus moderate island cleanup only modestly reduces trims; still cluttered.",
+    "v5": "197 objects and 677 trims, strongest technical economy but smooths away fine Turner texture; not visually proven superior."
+  },
+  "best_candidate": "v1",
+  "best_candidate_status": "provisional_visual_reference_only_not_machine_validated",
+  "technical_efficiency_candidate": "v5",
+  "score_before": null,
+  "score_after": null,
+  "evaluation": null,
+  "independent_reviewer": null,
+  "machine_tested": false,
+  "artifact": {
+    "kind": "chatgpt-private-library",
+    "library_path": "/OpenStitch/Experiments/Turner/turner_carrier_semantic_verified_20261024.zip",
+    "library_file_id": "libfile_9f7c63623ba08191adfae921c5f89642",
+    "size_bytes": 36001877,
+    "sha256": "3620e0eb4259f74b1f9a717f03ba1ff2e222e57f00960b61d733d87bd95717ec",
+    "verified_in_library_listing": true,
+    "url": null,
+    "retention_days": null,
+    "private_source_not_archived": true,
+    "contains": "Five actual OSP/DST/segmentation/semantic maps/engine previews/inspect/check/diagnose/fidelity/density/stats, reproducible source processing scripts, comparison report and metrics"
+  },
+  "changes": [
+    "Five real source-regenerated OpenStitch experiments with same-project OSP/DST and real preview.",
+    "Private archive verified in Library; attempted separate private comparison image upload but upload was rejected (403 trusted producer), comparison remains only in current sandbox.",
+    "No main modification, no merge, no PR."
+  ],
+  "lessons": [
+    "Quantizing the verified original into source-derived connected color masses restores coherent foam and wave silhouettes, unlike prior isolated gestures.",
+    "Native project digitize embeds the technical image so project fidelity is measurable, but that metric does NOT establish fidelity to original artwork.",
+    "Semantic object IDs assigned by inspect+rename are approximate ROI labels; native color segmentation still not a full semantic importer.",
+    "Three directional_guides wave objects add thread flow but also +54 trims versus V1 and slightly more hotspot area.",
+    "Even the simplest V5 has 137197 stitches and 677 trims; large background tatami and disconnected islands dominate physical risk.",
+    "Check returned zero errors with 51 warnings for every variant; physical stitch-out not attempted."
+  ],
+  "next_hypothesis": "TECHNICAL/ARTISTIC: make dark fabric intentional negative space by subtracting unneeded sky and sea background fills before stitch generation, preserving source-derived connected foam carrier silhouettes and protected lighthouse/boat; apply selective manually guided directional details only where visually justified. Aim major reduction in 137k-145k stitches and 677-926 trims without losing the Turner composition; audit overlap/underlay and test small satin candidates only on locally suitable shapes.",
+  "parent_run_id": "20261024T020304Z-turner-brush-4924737",
+  "main_modified": false,
+  "agent_trials_only": true
+}
