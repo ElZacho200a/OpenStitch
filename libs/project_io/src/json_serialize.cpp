@@ -407,6 +407,12 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.exit_point) {
                     j["exitPoint"] = {{"x", p.exit_point->x.value}, {"y", p.exit_point->y.value}};
                 }
+            } else if constexpr (std::is_same_v<T, document::BlanketStitchParams>) {
+                j = {{"type", "blanket"},
+                     {"style", static_cast<int>(p.style)},
+                     {"width", p.width.value},
+                     {"spacing", p.spacing.value},
+                     {"side", static_cast<int>(p.side)}};
             }
             return j;
         },
@@ -735,6 +741,20 @@ Result<document::StitchParams> params_from_json(const json& j) {
             p.exit_point = Vec2um{Micrometers{j.at("exitPoint").at("x")},
                                   Micrometers{j.at("exitPoint").at("y")}};
         }
+        return document::StitchParams{p};
+    }
+    if (type == "blanket") {
+        // Blanket / zigzag (HP-STI-003) : toutes les clés sauf `type` sont optionnelles.
+        document::BlanketStitchParams p;
+        const int style = j.value("style", static_cast<int>(p.style));
+        const int side = j.value("side", static_cast<int>(p.side));
+        if (style < 0 || style > 1 || side < 0 || side > 2) {
+            return fail(ErrorCategory::InvalidFile, "blanket : style ou côté hors limites");
+        }
+        p.style = static_cast<document::BlanketStyle>(style);
+        p.side = static_cast<document::BlanketSide>(side);
+        p.width = Micrometers{j.value("width", p.width.value)};
+        p.spacing = Micrometers{j.value("spacing", p.spacing.value)};
         return document::StitchParams{p};
     }
     return fail(ErrorCategory::InvalidFile, "Type de point inconnu : " + type);

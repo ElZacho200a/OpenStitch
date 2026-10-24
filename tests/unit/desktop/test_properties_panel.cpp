@@ -87,6 +87,7 @@ private slots:
     void autoSatinMethodChoiceEmitsTheStrategy();
     void autoSatinSweepAngleIsOnlyEditableForTheSweepMethod();
     void autoSatinCompareButtonAsksMainWindowAndIsAbsentForAGroup();
+    void blanketInspectorEditsWidthSpacingStyleAndSide();
 };
 
 void PropertiesPanelTest::showEmbroideryPopulatesSpinBoxesWithoutEmittingWhileBuilding() {
@@ -741,6 +742,47 @@ void PropertiesPanelTest::autoSatinCompareButtonAsksMainWindowAndIsAbsentForAGro
     compare->click();
     QVERIFY(asked.has_value());
     QCOMPARE(asked->value, std::uint64_t{42});
+}
+
+// HP-STI-003 : l'inspecteur du blanket / zigzag émet des StitchParams complets (champ touché
+// seulement), sans rien muter lui-même.
+void PropertiesPanelTest::blanketInspectorEditsWidthSpacingStyleAndSide() {
+    namespace doc = openstitch::document;
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{77};
+    e.name = "blanket";
+    e.params = doc::BlanketStitchParams{};
+    panel.showEmbroidery(e);
+
+    std::optional<doc::BlanketStitchParams> last;
+    int count = 0;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams params) {
+                         ++count;
+                         last = std::get<doc::BlanketStitchParams>(params);
+                     });
+
+    auto* width = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_blanketWidth"));
+    auto* spacing = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_blanketSpacing"));
+    auto* style = panel.findChild<QComboBox*>(QStringLiteral("combo_blanketStyle"));
+    auto* side = panel.findChild<QComboBox*>(QStringLiteral("combo_blanketSide"));
+    QVERIFY(width != nullptr && spacing != nullptr && style != nullptr && side != nullptr);
+    QCOMPARE(width->value(), 3.0);
+    QCOMPARE(spacing->value(), 2.0);
+    QCOMPARE(count, 0);
+
+    width->setValue(4.5);
+    QCOMPARE(count, 1);
+    QCOMPARE(last->width.value, 4'500);
+    QCOMPARE(last->spacing.value, 2'000); // le reste est conservé
+    spacing->setValue(1.2);
+    QCOMPARE(last->spacing.value, 1'200);
+    style->setCurrentIndex(1);
+    QVERIFY(last->style == doc::BlanketStyle::Zigzag);
+    side->setCurrentIndex(2);
+    QVERIFY(last->side == doc::BlanketSide::Center);
+    QCOMPARE(last->width.value, 4'500);
 }
 
 QTEST_MAIN(PropertiesPanelTest)

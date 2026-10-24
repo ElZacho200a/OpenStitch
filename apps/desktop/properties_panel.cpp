@@ -608,8 +608,9 @@ void PropertiesPanel::addStitchTypeRow(int current) {
     auto* layout = new QHBoxLayout(row);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(4);
-    const QString names[] = {tr("Contour"), tr("Tatami"), tr("Satin"), tr("Directionnel")};
-    for (int t = 0; t < 4; ++t) {
+    const QString names[] = {tr("Contour"), tr("Tatami"), tr("Satin"), tr("Directionnel"),
+                             tr("Blanket")};
+    for (int t = 0; t < 5; ++t) {
         auto* button = new QToolButton(row);
         button->setObjectName(QStringLiteral("button_stitchType%1").arg(t));
         button->setText(names[t]);
@@ -1061,6 +1062,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
         // showMultiSelection).
         addStitchTypeRow(object.is_tatami()                              ? 1
                          : object.is_directional()                       ? 3
+                         : object.is_blanket()                           ? 4
                          : (object.is_satin() || object.is_auto_satin()) ? 2
                                                                          : 0);
     }
@@ -1083,6 +1085,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
 
     const QString typeName = object.is_tatami()        ? tr("Remplissage tatami")
                              : object.is_directional() ? tr("Remplissage directionnel")
+                             : object.is_blanket()     ? tr("Blanket / zigzag")
                              : object.is_auto_satin()
                                  ? tr("Satin automatique (traversées orientées)")
                              : object.is_satin() ? tr("Colonne satin à rails (manuelle)")
@@ -1753,6 +1756,32 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                                  members);
                 bindEnumField<T>(this, edit, lockEnd, tr("Point d'arrêt (fin)"), &T::lock_end,
                                  members);
+            } else if constexpr (std::is_same_v<T, document::BlanketStitchParams>) {
+                // HP-STI-003 : blanket stitch / zigzag le long du contour.
+                auto* style = new QComboBox(body_);
+                style->setObjectName(QStringLiteral("combo_blanketStyle"));
+                style->addItems({tr("Blanket (dents perpendiculaires)"), tr("Zigzag")});
+                style->setCurrentIndex(static_cast<int>(p.style));
+                auto* side = new QComboBox(body_);
+                side->setObjectName(QStringLiteral("combo_blanketSide"));
+                side->addItems({tr("Gauche du tracé"), tr("Droite du tracé"), tr("Centré")});
+                side->setCurrentIndex(static_cast<int>(p.side));
+                side->setToolTip(tr("Côté de la bande par rapport au sens du chemin."));
+                auto* width = mmSpin(to_millimeters(p.width).value, 20.0, 0.2,
+                                     tr("Largeur de la bande (longueur des dents). 0,2 – 20 mm."));
+                width->setObjectName(QStringLiteral("spin_blanketWidth"));
+                auto* spacing = mmSpin(to_millimeters(p.spacing).value, 20.0, 0.3,
+                                       tr("Écart entre deux dents/points le long du chemin. "
+                                          "0,3 – 20 mm."));
+                spacing->setObjectName(QStringLiteral("spin_blanketSpacing"));
+                form->addRow(tr("Style :"), style);
+                form->addRow(tr("Côté :"), side);
+                form->addRow(tr("Largeur :"), width);
+                form->addRow(tr("Espacement :"), spacing);
+                bindEnumField<T>(this, edit, style, tr("Style blanket"), &T::style, members);
+                bindEnumField<T>(this, edit, side, tr("Côté du blanket"), &T::side, members);
+                bindMm(width, tr("Largeur du blanket"), &T::width);
+                bindMm(spacing, tr("Espacement du blanket"), &T::spacing);
             } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
                 // Guides : édités par signaux dédiés (liste ci-dessous, rafraîchie par
                 // setAutoSatinState). Les réglages scalaires passent par paramsEdited ;
