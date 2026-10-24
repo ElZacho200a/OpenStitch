@@ -459,6 +459,7 @@ MainWindow::MainWindow() {
     buildEyedropperTool();
     buildBrushTool();
     buildBucketTool();
+    buildClickToStitchTool();
     // [cablage-C:fin]
     // [cablage-D:debut]
     // [cablage-D:fin]
@@ -6983,6 +6984,7 @@ void MainWindow::buildToolPalette() {
     attachMeasureEyedropperTools();
     attachBrushTool();
     attachBucketTool();
+    attachClickToStitchTool();
     toolSelectAct_->setChecked(true);
 
     toolPalette_->addSeparator();
@@ -7250,6 +7252,7 @@ void MainWindow::setTool(Tool tool) {
     syncMeasureEyedropperTool(tool);
     syncBrushTool(tool);
     syncBucketTool(tool);
+    syncClickToStitchTool(tool);
     updateDrawActionsState();
     updateInteractionContext();
     hideHoverHighlight();
@@ -9661,6 +9664,10 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
     }
     if (currentTool_ == Tool::Bucket) {
         bucketFillAt(posMm);
+        return;
+    }
+    if (currentTool_ == Tool::ClickToStitch) {
+        clickToStitchAt(posMm);
         return;
     }
     if (drawingDirectionGuide()) {

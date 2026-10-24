@@ -33,10 +33,11 @@ struct GrowOptions {
 struct GrownRegion {
     int width{0};
     int height{0};
-    std::vector<std::uint8_t> mask;      // width*height, 1 = pixel de la région
-    std::size_t pixel_count{0};          // nombre de pixels à 1
+    std::vector<std::uint8_t> mask;         // width*height, 1 = pixel de la région
+    std::size_t pixel_count{0};             // nombre de pixels à 1
     std::array<std::uint8_t, 3> seed_rgb{}; // couleur du pixel cliqué
-    std::array<std::uint8_t, 3> mean_rgb{}; // couleur moyenne de la région (couleur de fil proposée)
+    std::array<std::uint8_t, 3>
+        mean_rgb{};                   // couleur moyenne de la région (couleur de fil proposée)
     int x0{0}, y0{0}, x1{-1}, y1{-1}; // boîte englobante (bornes incluses)
 
     [[nodiscard]] bool empty() const { return pixel_count == 0; }
@@ -59,8 +60,9 @@ struct GrownRegion {
 // Segmentation vide (aucune région) si le masque est vide.
 [[nodiscard]] Segmentation segmentation_from_grown(const GrownRegion& grown);
 
-// Image RGBA de l'aperçu : pixels de la région teintés de `tint` (alpha `alpha`), le reste
-// transparent. Même taille que l'image.
+// Image RGBA de l'aperçu, rognée à la boîte englobante de la région (x0..x1, y0..y1) pour rester
+// légère sur une grande image : pixels de la région teintés de `tint` (alpha `alpha`), le reste
+// transparent. Image vide si la région est vide.
 [[nodiscard]] image::Image render_grown_preview(const GrownRegion& grown,
                                                 std::array<std::uint8_t, 3> tint,
                                                 std::uint8_t alpha = 140);

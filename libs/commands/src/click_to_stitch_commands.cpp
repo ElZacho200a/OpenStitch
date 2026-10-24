@@ -35,7 +35,7 @@ ClickToStitchResult failure(std::string message) {
 
 } // namespace
 
-ClickToStitchResult make_click_to_stitch_command(document::Project& project,
+ClickToStitchResult make_click_to_stitch_command(IdGenerator<ObjectId>& ids,
                                                  const segmentation::GrownRegion& region,
                                                  const ClickToStitchOptions& options) {
     if (region.pixel_count < kMinRegionPx) {
@@ -65,7 +65,7 @@ ClickToStitchResult make_click_to_stitch_command(document::Project& project,
 
     // Les identifiants viennent du générateur du document (jamais réutilisés) ; l'annulation retire
     // exactement ces objets, le rétablissement les remet sous les mêmes identifiants.
-    auto digitized = autodigitize::auto_digitize(seg, project.object_ids, auto_options);
+    auto digitized = autodigitize::auto_digitize(seg, ids, auto_options);
     if (!digitized) {
         return failure(digitized.error().message);
     }

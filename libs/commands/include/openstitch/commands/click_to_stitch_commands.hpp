@@ -7,8 +7,8 @@
 #include <string>
 
 #include "openstitch/commands/command.hpp"
+#include "openstitch/core/ids.hpp"
 #include "openstitch/core/units.hpp"
-#include "openstitch/document/project.hpp"
 #include "openstitch/segmentation/region_growing.hpp"
 
 namespace openstitch::commands {
@@ -37,13 +37,14 @@ struct ClickToStitchResult {
     ObjectId embroidery_id; // objet de broderie créé (invalide si échec)
 };
 
-// Calcule la géométrie MAINTENANT (les identifiants sont tirés de `project.object_ids`, comme les
-// autres fabriques de commandes) et renvoie la commande ; ne modifie pas le contenu du document.
+// Calcule la géométrie MAINTENANT (les identifiants sont tirés de `ids`, le générateur du document
+// -- ou une copie, pour un calcul hors du fil d'interface) et renvoie la commande ; ne modifie pas
+// le contenu du document.
 // La région doit provenir de l'image du projet (même grille de pixels que celle dont `mm_per_px`
 // est la résolution). L'objet prend la couleur moyenne de la zone. Annuler retire exactement les
 // deux objets ; refaire les remet avec les mêmes identifiants.
 [[nodiscard]] ClickToStitchResult
-make_click_to_stitch_command(document::Project& project, const segmentation::GrownRegion& region,
+make_click_to_stitch_command(IdGenerator<ObjectId>& ids, const segmentation::GrownRegion& region,
                              const ClickToStitchOptions& options);
 
 } // namespace openstitch::commands

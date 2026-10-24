@@ -165,6 +165,7 @@ entre les deux marqueurs.
 | V3 | Pinceau | Glisser | Pousser / tirer le contour de la forme sélectionnée (Maj : lisser) |
 | V2 | Pipette | Clic | Échantillonner la couleur et choisir un fil |
 | V4 | Pot de peinture | Clic | Remplir le vide fermé entre les formes |
+| V5 | Clic-pour-broder | Clic | Broder la zone de couleur sous le curseur |
 <!-- GESTURES:END -->
 
 ### Outils Règle et Pipette

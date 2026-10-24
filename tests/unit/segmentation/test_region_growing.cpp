@@ -181,17 +181,18 @@ TEST_CASE("segmentation_from_grown builds a single-region segmentation", "[regio
     CHECK(segmentation_from_grown(none).region_count() == 0);
 }
 
-TEST_CASE("render_grown_preview tints only the selected pixels", "[region_growing]") {
-    image::Image img = solid(4, 4, kWhite);
-    paint(img, 1, 1, 2, 2, kRed);
-    const auto grown = grow_region(img, 1, 1, {.tolerance = 3.0});
+TEST_CASE("render_grown_preview is cropped to the bounding box and tints the region",
+          "[region_growing]") {
+    image::Image img = solid(8, 8, kWhite);
+    paint(img, 2, 3, 4, 4, kRed); // 3 x 2 px
+    const auto grown = grow_region(img, 2, 3, {.tolerance = 3.0});
     REQUIRE(grown.has_value());
     const image::Image preview = render_grown_preview(*grown, {10, 20, 30}, 100);
-    REQUIRE(preview.width == 4);
-    const auto px = [&preview](int x, int y) {
-        return &preview.rgba[(static_cast<std::size_t>(y) * 4U + static_cast<std::size_t>(x)) * 4U];
-    };
-    CHECK(px(1, 1)[0] == 10);
-    CHECK(px(1, 1)[3] == 100);
-    CHECK(px(0, 0)[3] == 0);
+    REQUIRE(preview.width == 3);
+    REQUIRE(preview.height == 2);
+    CHECK(preview.rgba[0] == 10);
+    CHECK(preview.rgba[3] == 100);
+    CHECK(preview.rgba[(1 * 3 + 2) * 4 + 3] == 100);
+    GrownRegion none;
+    CHECK(render_grown_preview(none, {1, 2, 3}).empty());
 }

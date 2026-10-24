@@ -119,6 +119,7 @@ constexpr auto kRows = std::to_array<Row>({
     row("V3", Context::Brush, drag(L), Intent::BrushReshape, QT_TRANSLATE_NOOP("InteractionMap", "Pousser / tirer le contour de la forme sélectionnée (Maj : lisser)"), P, Both, false, false, false, true),
     row("V2", Context::Eyedropper, click(L), Intent::PickColor, QT_TRANSLATE_NOOP("InteractionMap", "Échantillonner la couleur et choisir un fil"), P, Both, false, false, false, true),
     row("V4", Context::Bucket, click(L), Intent::FillGap, QT_TRANSLATE_NOOP("InteractionMap", "Remplir le vide fermé entre les formes"), P, Both, false, false, false, true),
+    row("V5", Context::ClickToStitch, click(L), Intent::StitchClickedArea, QT_TRANSLATE_NOOP("InteractionMap", "Broder la zone de couleur sous le curseur"), P, Both, false, false, false, true),
 });
 // clang-format on
 
@@ -372,6 +373,8 @@ QString InteractionMap::contextName(Context context) {
         return tr("Pinceau");
     case Context::Bucket:
         return tr("Pot de peinture");
+    case Context::ClickToStitch:
+        return tr("Clic-pour-broder");
     }
     return {};
 }
@@ -414,6 +417,8 @@ Context InteractionMap::contextFor(Tool tool, bool nodeEditActive, bool stitchEd
         return Context::Brush;
     case Tool::Bucket:
         return Context::Bucket;
+    case Tool::ClickToStitch:
+        return Context::ClickToStitch;
     }
     return Context::Select;
 }

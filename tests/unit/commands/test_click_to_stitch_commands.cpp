@@ -54,7 +54,7 @@ TEST_CASE("click to stitch : auto cree un tatami annulable sur un grand aplat") 
     commands::UndoStack stack;
 
     auto result = commands::make_click_to_stitch_command(
-        project, region, options(commands::ClickToStitchKind::Auto));
+        project.object_ids, region, options(commands::ClickToStitchKind::Auto));
     REQUIRE(result.command != nullptr);
     CHECK(result.vector_id.valid());
     CHECK(result.embroidery_id.valid());
@@ -87,7 +87,7 @@ TEST_CASE("click to stitch : les types forces donnent les parametres demandes") 
         document::Project project;
         commands::UndoStack stack;
         auto r = commands::make_click_to_stitch_command(
-            project, region, options(commands::ClickToStitchKind::Contour));
+            project.object_ids, region, options(commands::ClickToStitchKind::Contour));
         REQUIRE(r.command != nullptr);
         stack.execute(std::move(r.command), project);
         const auto& emb = project.embroidery_objects.front();
@@ -98,19 +98,20 @@ TEST_CASE("click to stitch : les types forces donnent les parametres demandes") 
         document::Project project;
         commands::UndoStack stack;
         auto r = commands::make_click_to_stitch_command(
-            project, region, options(commands::ClickToStitchKind::Satin));
+            project.object_ids, region, options(commands::ClickToStitchKind::Satin));
         REQUIRE(r.command != nullptr);
         stack.execute(std::move(r.command), project);
         CHECK(project.embroidery_objects.front().is_auto_satin());
     }
     {
-        // Petite zone (3 x 3 px = 2,25 mm2) : Auto la ramene a un contour, Remplissage force un tatami.
+        // Petite zone (3 x 3 px = 2,25 mm2) : Auto la ramene a un contour, Remplissage force un
+        // tatami.
         const auto small = white_with_red_block(20, 20, 4, 4, 6, 6);
         const auto small_region = grow(small, 5, 5);
         document::Project project_auto;
         commands::UndoStack stack_auto;
-        auto a = commands::make_click_to_stitch_command(
-            project_auto, small_region, options(commands::ClickToStitchKind::Auto));
+        auto a = commands::make_click_to_stitch_command(project_auto.object_ids, small_region,
+                                                        options(commands::ClickToStitchKind::Auto));
         REQUIRE(a.command != nullptr);
         stack_auto.execute(std::move(a.command), project_auto);
         CHECK(std::holds_alternative<document::RunningStitchParams>(
@@ -118,8 +119,8 @@ TEST_CASE("click to stitch : les types forces donnent les parametres demandes") 
 
         document::Project project_fill;
         commands::UndoStack stack_fill;
-        auto f = commands::make_click_to_stitch_command(
-            project_fill, small_region, options(commands::ClickToStitchKind::Fill));
+        auto f = commands::make_click_to_stitch_command(project_fill.object_ids, small_region,
+                                                        options(commands::ClickToStitchKind::Fill));
         REQUIRE(f.command != nullptr);
         stack_fill.execute(std::move(f.command), project_fill);
         CHECK(project_fill.embroidery_objects.front().is_tatami());
@@ -131,14 +132,14 @@ TEST_CASE("click to stitch : une zone minuscule ou vide est refusee avec un mess
     const auto region = grow(img, 4, 4);
     document::Project project;
     auto result = commands::make_click_to_stitch_command(
-        project, region, options(commands::ClickToStitchKind::Auto));
+        project.object_ids, region, options(commands::ClickToStitchKind::Auto));
     CHECK(result.command == nullptr);
     CHECK_FALSE(result.error.empty());
     CHECK(project.vector_objects.empty());
 
     segmentation::GrownRegion empty;
-    auto none = commands::make_click_to_stitch_command(
-        project, empty, options(commands::ClickToStitchKind::Auto));
+    auto none = commands::make_click_to_stitch_command(project.object_ids, empty,
+                                                       options(commands::ClickToStitchKind::Auto));
     CHECK(none.command == nullptr);
     CHECK_FALSE(none.error.empty());
 }
@@ -148,9 +149,9 @@ TEST_CASE("click to stitch : le resultat est deterministe") {
     const auto region = grow(img, 10, 10);
     document::Project a;
     document::Project b;
-    auto ra = commands::make_click_to_stitch_command(a, region,
+    auto ra = commands::make_click_to_stitch_command(a.object_ids, region,
                                                      options(commands::ClickToStitchKind::Auto));
-    auto rb = commands::make_click_to_stitch_command(b, region,
+    auto rb = commands::make_click_to_stitch_command(b.object_ids, region,
                                                      options(commands::ClickToStitchKind::Auto));
     REQUIRE(ra.command != nullptr);
     REQUIRE(rb.command != nullptr);

@@ -1319,6 +1319,28 @@ private:
     void syncBucketTool(Tool tool);
     void bucketFillAt(QPointF posMm);
     QAction* toolBucketAct_{nullptr};
+    // Clic-pour-broder (HP-AUTO-003, main_window_click_to_stitch.cpp) : le calcul est dans
+    // segmentation::grow_region et commands::make_click_to_stitch_command ; ici le câblage
+    // (outil, barre de réglages, aperçu, clic -> commande annulable).
+    void buildClickToStitchTool();
+    void attachClickToStitchTool();
+    void syncClickToStitchTool(Tool tool);
+    void clickToStitchAt(QPointF sceneMm);
+    void updateClickToStitchPreview(QPointF sceneMm);
+    void hideClickToStitchPreview();
+    void setClickToStitchTolerance(int tolerance);
+    void setClickToStitchKind(int kindIndex);
+    QAction* toolClickToStitchAct_{nullptr};
+    QToolBar* clickToStitchBar_{nullptr};
+    QSlider* clickToStitchToleranceSlider_{nullptr};
+    QSpinBox* clickToStitchToleranceSpin_{nullptr};
+    QComboBox* clickToStitchKindCombo_{nullptr};
+    QGraphicsPixmapItem* clickToStitchPreviewItem_{nullptr};
+    QTimer* clickToStitchPreviewTimer_{nullptr};
+    std::optional<QPointF> clickToStitchHoverMm_;
+    int clickToStitchTolerance_{12}; // ΔE76 maximal à la couleur cliquée
+    int clickToStitchKind_{0};       // index de commands::ClickToStitchKind
+    std::size_t clickToStitchPreviewPixels_{0};
     QAction* toolBrushAct_{nullptr};
     QAction* brushSettingsAct_{nullptr};
     QGraphicsEllipseItem* brushRing_{nullptr};

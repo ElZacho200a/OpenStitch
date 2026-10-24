@@ -21,7 +21,7 @@ struct Offset {
     int dx;
     int dy;
 };
-constexpr Offset kNeighbours[8] = {{0, -1}, {-1, 0}, {1, 0},  {0, 1},
+constexpr Offset kNeighbours[8] = {{0, -1},  {-1, 0}, {1, 0},  {0, 1},
                                    {-1, -1}, {1, -1}, {-1, 1}, {1, 1}};
 
 // Comble les composantes de pixels hors masque de taille <= `max_px` qui ne touchent pas le bord
@@ -79,8 +79,8 @@ void fill_small_holes(GrownRegion& g, std::size_t max_px) {
 Result<GrownRegion> grow_region(const image::Image& img, int seed_x, int seed_y,
                                 const GrowOptions& options) {
     if (img.width <= 0 || img.height <= 0 ||
-        img.rgba.size() != static_cast<std::size_t>(img.width) *
-                               static_cast<std::size_t>(img.height) * 4U) {
+        img.rgba.size() !=
+            static_cast<std::size_t>(img.width) * static_cast<std::size_t>(img.height) * 4U) {
         return fail(ErrorCategory::UserInput, "Image vide ou incohérente.");
     }
     if (seed_x < 0 || seed_y < 0 || seed_x >= img.width || seed_y >= img.height) {
@@ -197,16 +197,24 @@ Segmentation segmentation_from_grown(const GrownRegion& grown) {
 image::Image render_grown_preview(const GrownRegion& grown, std::array<std::uint8_t, 3> tint,
                                   std::uint8_t alpha) {
     image::Image img;
-    img.width = grown.width;
-    img.height = grown.height;
+    if (grown.empty()) {
+        return img;
+    }
+    img.width = grown.x1 - grown.x0 + 1;
+    img.height = grown.y1 - grown.y0 + 1;
     img.source_had_alpha = true;
-    img.rgba.assign(grown.mask.size() * 4U, 0);
-    for (std::size_t i = 0; i < grown.mask.size(); ++i) {
-        if (grown.mask[i] != 0) {
-            img.rgba[i * 4U] = tint[0];
-            img.rgba[i * 4U + 1U] = tint[1];
-            img.rgba[i * 4U + 2U] = tint[2];
-            img.rgba[i * 4U + 3U] = alpha;
+    img.rgba.assign(static_cast<std::size_t>(img.width) * static_cast<std::size_t>(img.height) * 4U,
+                    0);
+    for (int y = 0; y < img.height; ++y) {
+        for (int x = 0; x < img.width; ++x) {
+            if (!grown.contains(grown.x0 + x, grown.y0 + y)) {
+                continue;
+            }
+            std::uint8_t* p = &img.rgba[index_of(x, y, img.width) * 4U];
+            p[0] = tint[0];
+            p[1] = tint[1];
+            p[2] = tint[2];
+            p[3] = alpha;
         }
     }
     return img;
