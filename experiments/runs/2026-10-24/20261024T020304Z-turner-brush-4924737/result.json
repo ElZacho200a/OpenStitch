@@ -1,0 +1,135 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261024T020304Z-turner-brush-4924737",
+  "created_utc": "2026-10-24T02:03:04Z",
+  "status": "failed",
+  "reason": "CLI successfully recovered and executed; two real from-original pictorial-stroke variants pass engine checks but fail artistic fidelity: isolated confetti strokes, no continuous breaking-wave/foam silhouettes, angular storm cloud. Stop after two variants without meaningful improvement.",
+  "source": {
+    "benchmark_id": "turner-phare-tempete-20261023",
+    "kind": "chatgpt-library",
+    "path": "/OpenStitch/Benchmarks/turner-phare-tempete-original-20261023.jpg",
+    "library_file_id": "libfile_b7f90c9fdad0819180be1b6029c78d86",
+    "sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+    "sha256_verified_locally": true,
+    "size_px": [
+      1536,
+      1014
+    ],
+    "target_mm": [
+      363.55,
+      240
+    ]
+  },
+  "canvas": {
+    "width_mm": 390,
+    "height_mm": 268,
+    "margin_mm": 10,
+    "stitched_dimensions_mm": [
+      363.2,
+      239.6
+    ]
+  },
+  "hypothesis_tested": "WORKFLOW: use GitHub connector download_workflow_artifact to transfer official verified main CI CLI into DNS-isolated container; ARTISTIC: replace broad tatami wave tubes with source-conditioned curved tapered gestures, semantic current field, gradient-following orientations, layered tonal density.",
+  "workflow_result": {
+    "status": "success",
+    "transfer": "mcp__GitHub__download_workflow_artifact -> /mnt/data/openstitch-cli-main-40038762068.zip -> unzip -> sha256sum -c -> ELF executed",
+    "no_container_dns": true,
+    "github_actions_run_id": 40038762068,
+    "github_actions_artifact_id": 12539507938,
+    "github_actions_run_url": "https://github.com/ElZacho200a/OpenStitch/actions/runs/40038762068",
+    "github_actions_artifact_expiry": "2026-11-22T23:49:53Z",
+    "archive_inner_sha256": "a9531d31cbfe91ce5ec5f2ed64068d8d168828133879bd26ac8c4d6fb5ba435c",
+    "checksum_verified": true,
+    "cli_sha256": "d8ae7debd33bb776ee401a3fbe092a42e4fc1112c09466ce8f5f9ed5f5d4f6bf",
+    "cli_version": "0.1.0"
+  },
+  "openstitch_commit": "f84018fe88d51465e0b61ba9429d02a23caca761",
+  "cli_version": "0.1.0",
+  "method": "Rebuild both variants from SHA-verified private original, hand semantic cloud/lighthouse/lantern/boat/sails geometry plus source-luminance dark water negative spaces and per-region source-guided tapered brush gestures. Real CLI new/apply/inspect/check/diagnose/fidelity/density/render/export/stats.",
+  "attempts": [
+    {
+      "variant": "v1",
+      "objects": 346,
+      "stitches": 57030,
+      "trims": 382,
+      "color_changes": 270,
+      "check_errors": 0,
+      "check_warnings": 17,
+      "hotspot_area_mm2": 4,
+      "osp_sha256": "ecae80217a9f591eb9022aa6b1ca6001ecbb20adbe3ff8a49eea22d750f86a2e",
+      "dst_sha256": "9fbd722f86c8a01d8ddd3b5ae37d891f0e5ad351eda77d2c954e7328c14ff894",
+      "status": "failed_artistic_gate",
+      "visual": "Foam as scattered bright flecks, no continuous crest; recognizable tower/boat; clouds angular."
+    },
+    {
+      "variant": "v2",
+      "objects": 463,
+      "stitches": 53306,
+      "trims": 460,
+      "color_changes": 348,
+      "check_errors": 0,
+      "check_warnings": 16,
+      "hotspot_area_mm2": 0,
+      "osp_sha256": "6e5b58ecf645d7c4ff12d65df78e9a3b5a762d2c1948665b1ca1abc468c446ab",
+      "dst_sha256": "333a94aa612f66ecdb55cf16d829f5115773de598f8cf7b58ee0d55a372273b3",
+      "status": "failed_artistic_gate",
+      "visual": "More but smaller disconnected glints, weaker motion, higher trims/color changes; 13 real directional objects."
+    }
+  ],
+  "checks": {
+    "inspect": "executed_both",
+    "check": "passed_0_errors_both",
+    "diagnose": "executed_both",
+    "fidelity": {
+      "status": "refused_both",
+      "code": "E_REFUSED",
+      "reason": "vector OSP has no embedded source image"
+    },
+    "density": "executed_both",
+    "render": "executed_real_engine_both",
+    "dst_export": "same_osp_both",
+    "stats": "executed_both",
+    "reproducibility": "v2 batch regenerated from immutable original, byte-identical SHA256"
+  },
+  "best_candidate": null,
+  "best_candidate_status": "none_artistically_acceptable",
+  "score_before": null,
+  "score_after": null,
+  "evaluation": null,
+  "independent_reviewer": null,
+  "machine_tested": false,
+  "artifact": {
+    "kind": "chatgpt-private-library",
+    "library_path": "/OpenStitch/Experiments/Turner/turner_pictorial_verified_20261024.zip",
+    "library_file_id": "libfile_fbf52ab80734819183cd051891320109",
+    "size_bytes": 20198783,
+    "sha256": "b00cc23b94c05d7de31b5881726b0b14cc490257ee8d4235abffbc3001640df3",
+    "verified_in_library_listing": true,
+    "url": null,
+    "retention_days": null,
+    "contains": [
+      "v1/v2 actual OSP and DST",
+      "v1/v2 engine preview and segmentation",
+      "v1/v2 check/diagnose/inspect/density/fidelity refusal/stats",
+      "reproducible original-based generator and manifests",
+      "comparison and report"
+    ],
+    "private_source_not_archived": true
+  },
+  "changes": [
+    "Verified GitHub Actions artifact transfer to DNS-isolated container using connector, unlike previous blocked run.",
+    "Executed 2 new original-based OpenStitch variants with actual CLI and diagnostics; rejected both artistically.",
+    "No change to main, no merge or PR."
+  ],
+  "lessons": [
+    "GitHub connector artifact download yields a mounted ZIP in /mnt/data; nested tar.gz contains official executable and sha256 file; verify before executing.",
+    "Sparse small brush gestures alone resemble confetti and do not substitute for coherent source-faithful wave/foam carrier geometry.",
+    "More gestures reduce simulated hotspots but increase trims/color changes and worsen visual flow.",
+    "Directional stitch type rejects tatami-only angle_deg in set_params; the batch was corrected and v2 regenerated byte-identically.",
+    "Vector-only OSP lacks source metadata for project fidelity; record E_REFUSED, not pass."
+  ],
+  "next_hypothesis": "ARTISTIC/TOPOLOGICAL: first reconstruct connected, source-faithful crest and foam carrier masks with organic cloud contours and explicit negative-space cutouts; only then layer sparse directional brush details inside these semantic carriers. TECHNICAL: color-family ordering and selective directional guides on a few continuous crest objects to reduce 270-348 color changes and 382-460 trims. Use the same verified official CLI transfer route, recheck checksum and main SHA.",
+  "parent_run_id": "20261024T014944Z-turner-directional-cli-blocked-4924737",
+  "main_modified": false,
+  "agent_trials_only": true
+}
