@@ -1,0 +1,131 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261024T065819Z-turner-cloudcut-4924737",
+  "created_utc": "2026-10-24T06:58:19Z",
+  "status": "failed",
+  "acceptance": "rejected_gate_A_no_digitization",
+  "source": {
+    "kind": "chatgpt-private-library",
+    "library_path": "/OpenStitch/Benchmarks/turner-phare-tempete-original-20261023.jpg",
+    "library_file_id": "libfile_b7f90c9fdad0819180be1b6029c78d86",
+    "sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+    "size_px": [
+      1536,
+      1014
+    ],
+    "size_mm": [
+      363.55,
+      240
+    ],
+    "verified": true,
+    "substitution": false
+  },
+  "canvas_mm": [
+    390,
+    268
+  ],
+  "margin_mm": 10,
+  "openstitch_commit": "1ead7502a605807917cb2d27511e470e2862f313",
+  "cli_version": "0.1.0",
+  "cli_provenance": {
+    "ci_run_id": 40054711321,
+    "artifact_id": 12546090070,
+    "artifact_sha256": "6c74876d6d83e98eef2ea3f24b542dc60ccff4d43e98b3e30c90fe34b432e917",
+    "binary_sha256": "d4458e6dc513729bf0d68f5f20663e98c7da875bad67e48c4144c1274542038e",
+    "tarball_checksum_verified": true,
+    "source_commit_matches_main": true,
+    "cli_version_executed": true,
+    "cli_digitization_executed": false,
+    "ci_url": "https://github.com/ElZacho200a/OpenStitch/actions/runs/40054711321"
+  },
+  "hypothesis_tested": "ARTISTIC/TECHNICAL: annotate foreground/background cloud semantic seeds for three patches; segment SLIC superpixels with Lab, gradient, local texture and seeded graph mincut; compare chroma-led and texture-led variants.",
+  "gate_A": "failed: both segmentations are rectangular slabs with hard ROI clipping, missing actual cloud layers and luminous gaps; two independent parameterizations rejected, stopped before OSP.",
+  "gate_B": "not_run",
+  "gate_C": "not_run",
+  "gate_D": "not_run",
+  "variants": [
+    {
+      "variant": "A_color_semantic",
+      "source_restarted": true,
+      "method": "1450 target SLIC superpixels, Lab-heavy weighted KMeans unary + adjacency mincut",
+      "cloud_patch_superpixels": [
+        1603,
+        1278,
+        1400
+      ],
+      "cloud_patch_area_fractions": [
+        0.533,
+        0.262,
+        0.518
+      ],
+      "gate_A": "reject",
+      "visual_critique": "Left cloud becomes a large featureless slab with flat bottom; middle cloud has hard polygonal boundaries; right cloud has a rectangular left edge and false top line. Cloud ridges and luminous openings absent.",
+      "osp": null,
+      "dst": null,
+      "engine_preview": null,
+      "cli_reports": null
+    },
+    {
+      "variant": "B_texture_semantic",
+      "source_restarted": true,
+      "method": "2200 target SLIC superpixels, texture-heavy weighted KMeans unary + adjacency mincut",
+      "cloud_patch_superpixels": [
+        2062,
+        1851,
+        1913
+      ],
+      "cloud_patch_area_fractions": [
+        0.535,
+        0.198,
+        0.525
+      ],
+      "gate_A": "reject",
+      "visual_critique": "More texture sensitivity changes middle-cloud coverage but retains slab-like left/right regions and ROI boundaries; no semantic sublayers or faithful stitch-direction guides.",
+      "osp": null,
+      "dst": null,
+      "engine_preview": null,
+      "cli_reports": null
+    }
+  ],
+  "metrics": {
+    "union_mask_iou_A_B": 0.9634,
+    "union_mask_disagreement_fraction_of_canvas": 0.0089,
+    "interpretation": "Similarity of two rejected masks, not fidelity or score"
+  },
+  "score_before": null,
+  "score_after": null,
+  "evaluation": null,
+  "independent_reviewer": null,
+  "machine_tested": false,
+  "source_fidelity_score": null,
+  "artifact": {
+    "kind": "chatgpt-private-library",
+    "library_path": "/OpenStitch/Experiments/Turner/turner_cloud_graphcut_gateA_20261024_0700_private.zip",
+    "library_file_id": "libfile_e558eba230348191a5616fe7ddf87751",
+    "sha256": "bf17effbed3b6073636beb131bce5dde74e34b56f67025224c4f0f6c1441a063",
+    "size_bytes": 9186028,
+    "verified_in_library_listing": true,
+    "url": null,
+    "retention_days": null,
+    "private_source_not_archived": true,
+    "contains": "real private source-derived masks and overlays, comparison, metrics, script, report; no original JPEG, OSP, DST or engine preview"
+  },
+  "parent_run_id": "20261024T055955Z-turner-tensor-4924737",
+  "previous_best": "20261024T030621Z-turner-carrier-4924737/v1 (visual control only, not validated)",
+  "changes": [
+    "Materialized and SHA256/size-verified exclusive private source via Files.",
+    "Read main digitize/evaluate skills and semantic/directional/satin references, agent-trials protocol/manifest, recent journal.",
+    "Downloaded official successful-main CLI artifact via GitHub connector, verified ZIP/tarball/ELF hashes, executed --version.",
+    "Executed two source-derived three-patch SLIC+graphcut segmentations with manually placed semantic seeds, compared native-size overlays.",
+    "Rejected both at gate A, created no OSP or fake engine diagnostics; archived only real private artifacts and verified Library ID/path."
+  ],
+  "lessons": [
+    "Seeded binary appearance cuts on impressionistic clouds collapse multiple cloud layers into false large slabs despite color+texture features.",
+    "High IoU between two unsuccessful variants is not improvement; ROI boundary contact exposes artificial topology.",
+    "Next attempt must explicitly encode cloud layer boundaries and luminous gaps, not rely on one foreground/background label per patch."
+  ],
+  "next_hypothesis": "ARTISTIC/WORKFLOW: hand-anchor several distinct cloud layer crest/underside contours and luminous openings on original; fit edge-aware cubic splines or geodesic active contours with curvature and non-crossing/occlusion constraints and uncertainty corridors. Validate topology of each layer against original before any stitch-path generation; no binary graphcut slabs or rectangular ROI boundaries.",
+  "main_modified": false,
+  "agent_trials_only": true,
+  "pr_created": false
+}
