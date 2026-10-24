@@ -1,0 +1,127 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261024T170613Z-phare-carriers-mcp-0d343ff",
+  "created_utc": "2026-10-24T17:06:13Z",
+  "status": "completed",
+  "artistic_accepted": false,
+  "source": {
+    "private_library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "archive_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "image_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ]
+  },
+  "design_mm": [
+    370,
+    231.49
+  ],
+  "canvas_mm": [
+    390,
+    268
+  ],
+  "margin_mm": 10,
+  "mcp": {
+    "version": "1.1.0",
+    "artifact_id": 12544739180,
+    "artifact_zip_sha256": "ebedc2518648448c46fd133994331a787176b145a5eedc95be562cb43e3a4e63",
+    "tarball_checksum_ok": true,
+    "doctor_ok": true,
+    "render": "project_render"
+  },
+  "method": "Four source-derived programmatic transformations, no generative image editing. Semantic carriers for sky, clouds, six wave volumes, three foam systems, lighthouse and sailboat, with source-derived accents and protected running details. Exclusive variant carves accents from carriers.",
+  "preparations": {
+    "carrier_sparse": {
+      "technical_regions": 87,
+      "mask_components": 297,
+      "osp_objects": 609,
+      "stitches": 199461,
+      "trims": 2039,
+      "jumps": 2497,
+      "color_changes": 67,
+      "warnings": 53,
+      "errors": 0,
+      "hotspot_area_mm2": 2314,
+      "lab_mae": 8.516
+    },
+    "carrier_balanced": {
+      "technical_regions": 87,
+      "mask_components": 393,
+      "osp_objects": 784,
+      "stitches": 210707,
+      "trims": 2322,
+      "jumps": 2907,
+      "color_changes": 67,
+      "warnings": 53,
+      "errors": 0,
+      "hotspot_area_mm2": 2673,
+      "lab_mae": 7.352
+    },
+    "carrier_ribbons": {
+      "technical_regions": 87,
+      "mask_components": 468,
+      "osp_objects": 952,
+      "stitches": 214290,
+      "trims": 2523,
+      "jumps": 3215,
+      "color_changes": 67,
+      "warnings": 53,
+      "errors": 0,
+      "hotspot_area_mm2": 2758,
+      "lab_mae": 7.006
+    },
+    "carrier_exclusive": {
+      "technical_regions": 87,
+      "mask_components": 2433,
+      "osp_objects": 1850,
+      "stitches": 156496,
+      "trims": 3163,
+      "jumps": 4215,
+      "color_changes": 67,
+      "warnings": 51,
+      "errors": 0,
+      "hotspot_area_mm2": 193,
+      "lab_mae": 8.543
+    }
+  },
+  "retouches": {
+    "satin_compare_objects": [
+      380,
+      775,
+      988,
+      1190
+    ],
+    "strategies": [
+      "skeleton",
+      "parallel_sweep",
+      "medial_axis"
+    ],
+    "gallery_coverage": [
+      0.985997,
+      0.98888,
+      0.975288
+    ],
+    "directional_guides_object": 1295,
+    "directional_trial_stitches": 199484,
+    "directional_trial_trims": 2039,
+    "semantic_replace_id": "foam_left.relief_10",
+    "semantic_replace_trial_stitches": 199509,
+    "semantic_replace_trial_trims": 2030,
+    "retouches_kept": false,
+    "baseline_restored": true
+  },
+  "gate_a": "provisional pass at technical image scale, protected lantern and boat remain imperfect",
+  "gate_d": "rejected: real preview has flattened/dark waves, noisy lighthouse, high trims and overlapping density",
+  "comparison_previous_best_trims": 1015,
+  "no_machine_test": true,
+  "no_independent_rating": true,
+  "private_archive": {
+    "path": "/OpenStitch/Experiments/2026-10-24/phare-carriers-mcp-1910-private.zip",
+    "library_file_id": "libfile_3db54b0b51d48191963df1f333c6dab0",
+    "size_bytes": 25622902,
+    "sha256": "6454ef9cd01020042a3923f21c60227302e67c38bffa8109a5163c3c67f4907c"
+  },
+  "next_hypothesis": "Hybrid geometry: source-derived exclusive macro patches, but thin accents as running or admissible satin, not full tatami-on-tatami. Avoid fully carving fine accents out of carriers; target <300 objects, 12-15 shared threads, source fidelity and lower hotspot/trims together. Gate A before MCP."
+}
