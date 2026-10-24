@@ -1,0 +1,147 @@
+{
+  "schema": "openstitch.turner-lab-result/1",
+  "run_id": "20261024T115515Z-turner-structure-tensor-mcp-4924737",
+  "source_sha256": "492473720c9fd9abb5af9fd043d9f1f2cbc1887c36faaa682533ecfeee4f40ba",
+  "source_px": [
+    1536,
+    1014
+  ],
+  "design_mm": [
+    363.5503,
+    240
+  ],
+  "canvas_mm": [
+    390,
+    268
+  ],
+  "main_commit": "1ead7502a605807917cb2d27511e470e2862f313",
+  "mcp": {
+    "version": "1.1.0",
+    "ci_run_id": 40054711321,
+    "artifact_id": 12544739180,
+    "zip_sha256": "ebedc2518648448c46fd133994331a787176b145a5eedc95be562cb43e3a4e63",
+    "doctor_ok": true
+  },
+  "method": "Four source-specific PROGRAMMATIC hypotheses with actual structure tensor orientation field + Hessian-seeded source streamline integration, variable-width tapered ribbons; NO generative image-to-image",
+  "candidates": [
+    {
+      "id": "stream_sparse",
+      "streamlines": 18
+    },
+    {
+      "id": "stream_balanced",
+      "streamlines": 28
+    },
+    {
+      "id": "stream_dense",
+      "streamlines": 40
+    },
+    {
+      "id": "stream_refined",
+      "streamlines": 15,
+      "note": "from sparse, removed 3 weak/erratic ribbons, consolidated colors, pruned small sky/spray components"
+    }
+  ],
+  "selected": "stream_refined (technical witness only; artistically rejected)",
+  "semantic_regions": 39,
+  "embroidery_objects": 64,
+  "versions": {
+    "stream_sparse": {
+      "stitches": 81253,
+      "trims": 379,
+      "jumps": 409,
+      "color_changes": 40,
+      "warnings": 34,
+      "errors": 0,
+      "hotspot_area_mm2": 582
+    },
+    "stream_balanced": {
+      "stitches": 84622,
+      "trims": 425,
+      "jumps": 468,
+      "color_changes": 50,
+      "warnings": 49,
+      "errors": 0,
+      "hotspot_area_mm2": 693
+    },
+    "stream_dense": {
+      "stitches": 89144,
+      "trims": 479,
+      "jumps": 526,
+      "color_changes": 62,
+      "warnings": 50,
+      "errors": 0,
+      "hotspot_area_mm2": 897
+    },
+    "stream_refined": {
+      "stitches": 79667,
+      "trims": 338,
+      "jumps": 354,
+      "color_changes": 23,
+      "warnings": 29,
+      "errors": 0,
+      "hotspot_area_mm2": 569,
+      "width_mm": 362.914,
+      "height_mm": 239.364
+    },
+    "directional_trial": {
+      "stitches": 79662,
+      "trims": 342,
+      "warnings": 29
+    },
+    "semantic_replace_trial": {
+      "stitches": 79442,
+      "trims": 343,
+      "warnings": 27
+    },
+    "parallel_sweep_trial": {
+      "stitches": 80156,
+      "trims": 334,
+      "warnings": 28
+    }
+  },
+  "real_preview": true,
+  "real_osp_dst": true,
+  "mcp_calls": [
+    "initialize",
+    "tools/list",
+    "digitize_guide",
+    "semantic_validate",
+    "project_new",
+    "semantic_import dry_run+apply",
+    "project_checkpoint",
+    "project_report",
+    "project_check",
+    "project_render",
+    "project_save",
+    "project_export",
+    "semantic_map",
+    "project_inspect",
+    "project_satin_compare",
+    "project_apply directional_guides dry_run+apply",
+    "project_restore",
+    "semantic_replace dry_run+apply",
+    "project_density",
+    "project_fabric_risk",
+    "project_open",
+    "project_apply auto_satin dry_run+apply"
+  ],
+  "artistic_accepted": false,
+  "machine_tested": false,
+  "independent_score": null,
+  "issues": [
+    "sky flat and oversimplified",
+    "spray remains slab-like, depth of breaking wave missing",
+    "lighthouse and boat under-detailed",
+    "338 cuts/29 warnings despite zero engine errors",
+    "some streamlines cross low-contrast areas and are too smooth"
+  ],
+  "next_hypothesis": "Build 3D crest/spray occlusion hierarchy with source-derived region boundaries and shorter flowlines attached to real wavefronts; preserve negative holes, reduce sky tatami mass and underlay, protect lighthouse and ship details. Compare several source-specific variants before MCP and render real preview.",
+  "private_archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-24/turner-structure-tensor-mcp-1400-private.zip",
+    "library_file_id": "libfile_911a530a0c148191af72d8902d49d3b9",
+    "size_bytes": 40671616,
+    "sha256": "26cd1c49233540b05327a2805b4f7853d5008477b1ced0caecdddaac8a7fe044"
+  },
+  "public_pixels_uploaded": false
+}
