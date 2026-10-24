@@ -18,6 +18,7 @@ add_library(openstitch_stitch_generation
     src/join.cpp
     src/border_satin.cpp
     src/blanket_stitch.cpp
+    src/contour_fill.cpp
 )
 add_library(openstitch::stitch_generation ALIAS openstitch_stitch_generation)
 

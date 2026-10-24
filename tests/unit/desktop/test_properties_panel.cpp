@@ -70,6 +70,7 @@ private slots:
     void tatamiOffersConversionToDirectionalFill();
     void directionalEditKeepsGuidesAndSeed();
     void runningStyleComboEmitsStyleAndStemOffset();
+    void contourFillEditsEmitParamsAndConversionIsOffered();
     void directionalGradientControlsRequestMainWindow();
     void directionalSpacingRegularityIsEditable();
     void autoSatinInspectorListsGuidesAndEditsScalars();
@@ -161,6 +162,43 @@ void PropertiesPanelTest::tatamiOffersConversionToDirectionalFill() {
     button->click();
     QCOMPARE(requested.value_or(0), static_cast<std::uint64_t>(11));
     QCOMPARE(edits, 0); // la conversion passe par MainWindow, jamais par un edit direct
+}
+
+void PropertiesPanelTest::contourFillEditsEmitParamsAndConversionIsOffered() {
+    // Le tatami propose la conversion, jamais par un edit direct.
+    {
+        PropertiesPanel panel;
+        EmbroideryObject e;
+        e.id = openstitch::ObjectId{21};
+        e.params = openstitch::document::TatamiParams{};
+        panel.showEmbroidery(e);
+        auto* button = panel.findChild<QPushButton*>(QStringLiteral("button_convertToContourFill"));
+        QVERIFY(button != nullptr);
+        std::optional<std::uint64_t> requested;
+        QObject::connect(&panel, &PropertiesPanel::convertToContourFillRequested, &panel,
+                         [&](openstitch::ObjectId id) { requested = id.value; });
+        button->click();
+        QCOMPARE(requested.value_or(0), static_cast<std::uint64_t>(21));
+    }
+    // Le panneau du remplissage concentrique émet les réglages modifiés (µm entiers).
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{22};
+    e.params = openstitch::document::ContourFillParams{};
+    panel.showEmbroidery(e);
+    auto* spacing = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_contourSpacing"));
+    auto* spiral = panel.findChild<QCheckBox*>(QStringLiteral("check_contourSpiral"));
+    QVERIFY(spacing != nullptr);
+    QVERIFY(spiral != nullptr);
+    QVERIFY(spiral->isChecked());
+    std::optional<StitchParams> last;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams params) { last = params; });
+    spacing->setValue(0.6);
+    QVERIFY(last.has_value());
+    QCOMPARE(std::get<openstitch::document::ContourFillParams>(*last).row_spacing.value, 600);
+    spiral->setChecked(false);
+    QVERIFY(!std::get<openstitch::document::ContourFillParams>(*last).spiral);
 }
 
 void PropertiesPanelTest::directionalEditKeepsGuidesAndSeed() {

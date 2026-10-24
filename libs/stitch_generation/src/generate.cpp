@@ -14,6 +14,7 @@
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/stitch_generation/auto_satin_engine.hpp"
 #include "openstitch/stitch_generation/blanket_stitch.hpp"
+#include "openstitch/stitch_generation/contour_fill.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 #include "openstitch/stitch_generation/join.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
@@ -792,6 +793,23 @@ void generate_directional(stitch::StitchSequence& sequence, const document::Vect
     }
 }
 
+// Remplissage concentrique (HP-STI-007) : même enveloppe que le tatami (retrait de bord, îlots
+// dans l'ordre de couture, liaisons longues cachées), sans sous-couche.
+void generate_contour(stitch::StitchSequence& sequence, const document::VectorObject& source,
+                      const document::EmbroideryObject& object,
+                      const document::ContourFillParams& params) {
+    for (const geometry::PathSet& region :
+         fill_regions_in_sewing_order(sequence, source, params.inset)) {
+        std::optional<FillLinker> linker;
+        if (params.hidden_underpath) {
+            linker.emplace(region,
+                           Micrometers{std::clamp(params.stitch_length.value, 1'000, 7'000)},
+                           Micrometers{600});
+        }
+        emit_fill(sequence, fill_contour(region, params), object.id, linker ? &*linker : nullptr);
+    }
+}
+
 } // namespace
 
 namespace {
@@ -952,6 +970,8 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                             emit_polyline(chunk, blanket_stitch_points(hole, params), object.id);
                         }
                     }
+                } else if constexpr (std::is_same_v<T, document::ContourFillParams>) {
+                    generate_contour(chunk, *unit.source, object, params);
                 }
             },
             object.params);

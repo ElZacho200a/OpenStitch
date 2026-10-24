@@ -260,6 +260,9 @@ private slots:
     // Conversion d'un objet en remplissage directionnel (paramètres
     // équivalents calculés par le cœur, ConvertFillGroupCommand annulable).
     void convertToDirectional(ObjectId embroideryId);
+    // Remplissage concentrique / contour (HP-STI-007, main_window_contour.cpp) : conversion
+    // d'un remplissage en anneaux concentriques, ConvertFillGroupCommand annulable.
+    void convertToContourFill(ObjectId embroideryId);
     // Moteur de points (main_window_engine.cpp) : satin de bordure (HP-STI-004) et
     // entrée/sortie automatiques par objet (HP-ENG-010), commandes annulables.
     void createBorderSatin(ObjectId vectorId, double widthMm, int side, int corner);

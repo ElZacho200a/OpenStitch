@@ -413,6 +413,14 @@ json params_to_json(const document::StitchParams& params) {
                      {"width", p.width.value},
                      {"spacing", p.spacing.value},
                      {"side", static_cast<int>(p.side)}};
+            } else if constexpr (std::is_same_v<T, document::ContourFillParams>) {
+                j = {{"type", "contourFill"},
+                     {"rowSpacing", p.row_spacing.value},
+                     {"stitchLength", p.stitch_length.value},
+                     {"minLength", p.min_length.value},
+                     {"inset", p.inset.value},
+                     {"spiral", p.spiral},
+                     {"hiddenUnderpath", p.hidden_underpath}};
             }
             return j;
         },
@@ -755,6 +763,18 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.side = static_cast<document::BlanketSide>(side);
         p.width = Micrometers{j.value("width", p.width.value)};
         p.spacing = Micrometers{j.value("spacing", p.spacing.value)};
+        return document::StitchParams{p};
+    }
+    if (type == "contourFill") {
+        // Remplissage concentrique : toutes les clés sauf `type` sont optionnelles (défauts du
+        // modèle) ; valeurs bornées (fichier édité à la main).
+        document::ContourFillParams p;
+        p.row_spacing = Micrometers{std::clamp(j.value("rowSpacing", 400), 100, 10'000)};
+        p.stitch_length = Micrometers{std::clamp(j.value("stitchLength", 3'000), 1'000, 7'000)};
+        p.min_length = Micrometers{std::clamp(j.value("minLength", 500), 0, 7'000)};
+        p.inset = Micrometers{std::clamp(j.value("inset", 200), 0, 10'000)};
+        p.spiral = j.value("spiral", true);
+        p.hidden_underpath = j.value("hiddenUnderpath", true);
         return document::StitchParams{p};
     }
     return fail(ErrorCategory::InvalidFile, "Type de point inconnu : " + type);
