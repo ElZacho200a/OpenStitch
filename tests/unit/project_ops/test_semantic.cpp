@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -188,8 +189,10 @@ TEST_CASE("semantic validate: manifeste valide, defauts nommes", "[project_ops][
     const auto codes = [&](const json& doc, bool skip = false) {
         write_text(w.dir / "bad.json", doc);
         std::vector<std::string> out;
-        for (const auto& e :
-             json::parse(validate_semantic_manifest(w.dir / "bad.json", skip)).at("errors")) {
+        // Le document doit vivre pendant la boucle : itérer sur `json::parse(...).at(...)` laisse
+        // une référence pendante avant C++23 (GCC de la CI), invisible sous MSVC.
+        const json doc_out = json::parse(validate_semantic_manifest(w.dir / "bad.json", skip));
+        for (const auto& e : doc_out.at("errors")) {
             out.push_back(e.at("code").get<std::string>());
         }
         return out;
@@ -471,4 +474,97 @@ TEST_CASE("semantic_replace: refus nommes, projet inchange", "[project_ops][sema
         CHECK(r.outcomes[0].code == "E_REFUSED");
     }
     CHECK(serialized(project) == before);
+}
+
+namespace {
+
+// Disque blanc sur noir : forme compacte que l'auto-satin refuse (« disque, forme peu allongée »).
+void write_disc_mask(const fs::path& file, int cx, int cy, int radius) {
+    image::Image img;
+    img.width = kW;
+    img.height = kH;
+    img.rgba.assign(static_cast<std::size_t>(kW) * static_cast<std::size_t>(kH) * 4U, 0);
+    for (int y = 0; y < kH; ++y) {
+        for (int x = 0; x < kW; ++x) {
+            auto* px = img.rgba.data() + 4U * (static_cast<std::size_t>(y) * kW + x);
+            px[3] = 255;
+            if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= radius * radius) {
+                px[0] = px[1] = px[2] = 255;
+            }
+        }
+    }
+    const auto bytes = image::encode_png(img);
+    REQUIRE(bytes.has_value());
+    std::ofstream out(file, std::ios::binary);
+    out.write(reinterpret_cast<const char*>(bytes->data()),
+              static_cast<std::streamsize>(bytes->size()));
+}
+
+} // namespace
+
+TEST_CASE("semantic_import: satin_fallback consigne les refus d'auto_satin au lieu de tout annuler",
+          "[project_ops][semantic]") {
+    Workdir w("fallback");
+    fs::create_directories(w.dir / "masks");
+    write_disc_mask(w.dir / "masks" / "lune.png", 100, 50, 30);
+    auto doc =
+        manifest_doc(json::array({region("lune", "masks/lune.png", "auto_satin", "#E8DBB0")}));
+    write_text(w.dir / "carte.json", doc);
+
+    auto project = empty_project();
+    const std::string before = serialized(project);
+    // Par défaut le refus du moteur annule tout, avec le motif nommé.
+    const auto strict = run(project, import_op(w.dir / "carte.json"));
+    REQUIRE_FALSE(strict.ok);
+    CHECK(strict.outcomes[0].message.find("auto_satin refusé") != std::string::npos);
+    CHECK(serialized(project) == before);
+
+    for (const char* fallback : {"tatami", "running"}) {
+        CAPTURE(fallback);
+        auto p = empty_project();
+        json op = import_op(w.dir / "carte.json");
+        op["satin_fallback"] = fallback;
+        const auto report = run(p, op);
+        REQUIRE(report.ok);
+        REQUIRE(p.embroidery_objects.size() == 1);
+        CHECK(std::string(stitch_type_name(p.embroidery_objects[0])) ==
+              (std::string(fallback) == "running" ? "running" : "tatami"));
+        const auto result = json::parse(report.to_json()).at("outcomes")[0].at("result");
+        REQUIRE(result.at("fallbacks").size() == 1);
+        CHECK(result.at("fallbacks")[0].at("semantic_id") == "lune");
+        CHECK(result.at("fallbacks")[0].at("fallback") == fallback);
+    }
+
+    json bad = import_op(w.dir / "carte.json");
+    bad["satin_fallback"] = "satin";
+    auto p2 = empty_project();
+    const auto refused = run(p2, bad);
+    CHECK_FALSE(refused.ok);
+    CHECK(refused.outcomes[0].code == "E_USAGE");
+}
+
+TEST_CASE("semantic_import: l'angle des rangees suit la forme (pas de bandes uniformes)",
+          "[project_ops][semantic]") {
+    Workdir w("angles");
+    fs::create_directories(w.dir / "masks");
+    write_mask(w.dir / "masks" / "barre_h.png", {{10, 10, 160, 30}}); // 151 x 21 px, horizontale
+    write_mask(w.dir / "masks" / "barre_v.png", {{170, 5, 190, 90}}); // 21 x 86 px, verticale
+    write_text(
+        w.dir / "carte.json",
+        manifest_doc(json::array({region("barre.h", "masks/barre_h.png", "tatami", "#FF0000"),
+                                  region("barre.v", "masks/barre_v.png", "tatami", "#00FF00")})));
+    auto project = empty_project();
+    REQUIRE(run(project, import_op(w.dir / "carte.json")).ok);
+    const auto angle_of = [&](const char* sid) {
+        const auto ids = semantic_ids(project, sid);
+        REQUIRE(ids.size() == 1);
+        const auto* e = project.findEmbroidery(ObjectId{ids[0]});
+        REQUIRE(e != nullptr);
+        const auto* tatami = std::get_if<document::TatamiParams>(&e->params);
+        REQUIRE(tatami != nullptr);
+        return tatami->angle.radians * 180.0 / 3.14159265358979323846;
+    };
+    const double h = angle_of("barre.h");
+    const double v = angle_of("barre.v");
+    CHECK(std::abs(h - v) > 30.0); // perpendiculaires, pas deux fois le même angle par défaut
 }
