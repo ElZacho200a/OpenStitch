@@ -1,0 +1,137 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261024T140349Z-phare-semantic-mcp-0d343ff",
+  "created_utc": "2026-10-24T14:03:49Z",
+  "status": "completed",
+  "artistic_accepted": false,
+  "source": {
+    "private_library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "source_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "pixels": [
+      1536,
+      961
+    ],
+    "design_mm": [
+      370,
+      231.49088541666666
+    ],
+    "canvas_mm": [
+      390,
+      268
+    ],
+    "margin_mm": 10
+  },
+  "openstitch_commit": "1ead7502a605807917cb2d27511e470e2862f313",
+  "mcp_version": "1.1.0",
+  "mcp_artifact": {
+    "ci_run_id": 40054711321,
+    "artifact_id": 12544739180,
+    "zip_sha256": "ebedc2518648448c46fd133994331a787176b145a5eedc95be562cb43e3a4e63",
+    "doctor_ok": true
+  },
+  "method": "Programmatic LAB k-means by spatial/semantic families with manually anchored sea boundary, 3 component-pruning variants, protected lighthouse/boat overlays and 13 running detail masks; NO generative image editing. True OpenStitch MCP semantic import and project_render.",
+  "prompts_applied": [
+    {
+      "id": "fidelity_strict",
+      "components": 418,
+      "lab_mae": 5.3688
+    },
+    {
+      "id": "semantic_balanced",
+      "components": 210,
+      "lab_mae": 6.4753
+    },
+    {
+      "id": "textile_consolidated",
+      "components": 111,
+      "lab_mae": 8.2237
+    },
+    {
+      "id": "balanced_protected",
+      "regions": 39,
+      "objects": 225,
+      "selected_for_diagnostic": true
+    }
+  ],
+  "mcp_calls": [
+    "digitize_guide",
+    "project_operations",
+    "semantic_validate",
+    "project_new",
+    "semantic_import dry_run and apply",
+    "project_checkpoint",
+    "semantic_map",
+    "project_inspect",
+    "project_report",
+    "project_check",
+    "project_density",
+    "project_fabric_risk",
+    "project_render",
+    "project_save",
+    "project_export",
+    "project_open",
+    "project_satin_compare",
+    "project_apply directional_guides dry_run and apply",
+    "semantic_replace dry_run and apply",
+    "project_compare",
+    "project_restore"
+  ],
+  "baseline": {
+    "objects": 225,
+    "stitches": 147040,
+    "trims": 1015,
+    "jumps": 1131,
+    "color_changes": 29,
+    "warnings": 51,
+    "errors": 0,
+    "hotspot_area_mm2": 48,
+    "embroidered_size_mm": [
+      369.36,
+      230.85
+    ],
+    "fidelity": "unsupported"
+  },
+  "trials": {
+    "directional_guides_object_550": {
+      "stitches": 147639,
+      "trims": 1023,
+      "jumps": 1162,
+      "verdict": "rejected: more cuts, no clear visual improvement"
+    },
+    "semantic_replace_foam_region_15": {
+      "stitches": 146915,
+      "trims": 1019,
+      "jumps": 1129,
+      "verdict": "rejected: more cuts and no clear visual improvement"
+    },
+    "satin_compare": {
+      "objects": [
+        287,
+        422,
+        218,
+        550
+      ],
+      "strategies": [
+        "skeleton",
+        "parallel_sweep",
+        "medial_axis"
+      ],
+      "verdict": "gallery suitable; boom unsuitable; foam and wave require decomposition; no satin changes retained"
+    }
+  },
+  "real_preview": true,
+  "real_osp_dst": true,
+  "artistic_verdict": "REJECTED. Despite a real project_render preview, the lighthouse is illegible, the sea lacks wave-instance depth, the sky is a large uniform mass, and 1015 trims/51 warnings remain. Gate A (true semantic instance segmentation) fails; zero engine errors is not artistic acceptance.",
+  "machine_tested": false,
+  "independent_score": null,
+  "private_archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-24/phare-semantic-mcp-1610-private.zip",
+    "library_file_id": "libfile_a4015462e8d481919d3afebf6ab577cf",
+    "size_bytes": 16434593,
+    "sha256": "6363ea7fd9e1d43af5a554aa991fb813ec90d1070348946c4dd99f2c46caed48",
+    "verified": true
+  },
+  "public_pixels_uploaded": false,
+  "next_hypothesis": "Replace color-cluster fragments with source-faithful semantic wave instances and cloud masses; preserve exact source details, design 12-15 consolidated threads, ensure source-derived foam negative holes, plan tatami vs narrow satin/running by local width, and pass visual gate A BEFORE MCP import. Avoid 200+ islands and excessive cuts."
+}
