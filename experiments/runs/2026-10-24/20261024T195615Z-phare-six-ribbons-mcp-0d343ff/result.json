@@ -1,0 +1,105 @@
+{
+  "schema": "openstitch.agent-trials/1",
+  "run_id": "20261024T195615Z-phare-six-ribbons-mcp-0d343ff",
+  "benchmark": "phare-tempete-illustration-20261024",
+  "source_jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+  "source_zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+  "source_dimensions_px": [
+    1536,
+    961
+  ],
+  "design_mm": [
+    370,
+    231.49088541666666
+  ],
+  "hoop_mm": [
+    390,
+    268
+  ],
+  "main_sha": "520bcb4741062379225927ea6e09e3b8a9bad6ab",
+  "mcp_version": "1.1.0",
+  "mcp_archive_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+  "method": "Source-derived six polygonal wave carriers + exclusive raster colors; retain large foam components, source-skeleton running crest details; NOT native continuous Bezier vector ribbons. Four applied preparations, three diagnostic MCP imports.",
+  "preparations": {
+    "ribbon_six": {
+      "regions": 53,
+      "components": 683,
+      "lab_mae": 11.592
+    },
+    "ribbon_balanced": {
+      "regions": 55,
+      "components": 798,
+      "lab_mae": 10.579
+    },
+    "ribbon_crest": {
+      "regions": 56,
+      "components": 960,
+      "lab_mae": 10.304,
+      "imported": false
+    },
+    "ribbon_refined": {
+      "regions": 65,
+      "components": 1095,
+      "lab_mae": 8.781
+    }
+  },
+  "diagnostic_imports": {
+    "ribbon_six": {
+      "objects": 980,
+      "stitches": 128802,
+      "trims": 1755,
+      "jumps": 2232,
+      "colors": 27,
+      "hotspot_mm2": 117,
+      "missing_pct": 4.307,
+      "wrong_colour_pct": 8.442,
+      "errors": 0,
+      "warnings": 51,
+      "preview": "genuine project_render",
+      "verdict": "rejected"
+    },
+    "ribbon_balanced": {
+      "objects": 951,
+      "stitches": 137487,
+      "trims": 1939,
+      "jumps": 2511,
+      "colors": 35,
+      "hotspot_mm2": 90,
+      "missing_pct": 5.381,
+      "wrong_colour_pct": 7.925,
+      "errors": 0,
+      "warnings": 51,
+      "preview": "genuine project_render",
+      "verdict": "rejected"
+    },
+    "ribbon_refined": {
+      "objects": 1218,
+      "stitches": 143462,
+      "trims": 2302,
+      "jumps": 3069,
+      "colors": 46,
+      "hotspot_mm2": 86,
+      "missing_pct": 6.401,
+      "wrong_colour_pct": 4.803,
+      "errors": 0,
+      "warnings": 51,
+      "preview": "genuine project_render",
+      "verdict": "rejected"
+    }
+  },
+  "retouches": {
+    "satin": "3 strategies compared on 4 lighthouse windows; parallel_sweep applied +29 stitches +1 trim, rejected",
+    "directional": "same wave 1678 converted and compared; 128934 stitches 1756 trims, rejected",
+    "semantic_replace": "foam reduced 128802->127685 stitches 1755->1723 trims, rejected for lost detail",
+    "restored_baseline_byte_identical": true
+  },
+  "gate_a": "failed; diagnostic imports only",
+  "artistic_verdict": "REJECTED",
+  "machine_tested": false,
+  "independent_visual_judge": false,
+  "private_archive_library_path": "/OpenStitch/Experiments/2026-10-24/phare-rubans-mcp-2205-private.zip",
+  "private_archive_library_file_id": "libfile_3d0f8bac29fc81918f92f540541b1025",
+  "private_archive_sha256": "28034c0539f8970ceccdecd227ccd12aac3a8a2797e06a68034994e6e8733f82",
+  "next_hypothesis": "Explicit source-traced vector Bezier wave ribbons with three continuous foam ribbons; running/satin for thin crest, no tatami beneath foam, rebuild lighthouse architectural objects. Target <300 objects, <1200 trims, hotspot <100 mm2 without fidelity loss.",
+  "private_pixels_uploaded_to_github": false
+}
