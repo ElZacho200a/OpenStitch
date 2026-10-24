@@ -338,6 +338,22 @@ struct AutoSatinParams {
     bool operator==(const AutoSatinParams&) const = default;
 };
 
+// Remplissage CONCENTRIQUE / contour (« echo », HP-STI-007) : anneaux successifs décalés vers
+// l'intérieur du contour de la région (trous respectés : un anneau grandit autour de chaque trou),
+// cousus de l'extérieur vers le centre. Les valeurs sont bornées à la génération.
+struct ContourFillParams {
+    Micrometers row_spacing{400};     // écart entre anneaux (densité) — 0,4 mm
+    Micrometers stitch_length{3'000}; // longueur MAXIMALE d'un point, bornée à [1 ; 7] mm
+    Micrometers min_length{500};      // longueur minimale d'un point (sauf coins), 0,5 mm
+    Micrometers inset{200};           // retrait du bord (compensation de contour)
+    // Vrai : les anneaux sont reliés en spirale continue (chaque tour glisse vers l'anneau
+    // suivant, sans saut). Faux : anneaux fermés indépendants, reliés par un court pas.
+    bool spiral{true};
+    bool hidden_underpath{true}; // liaisons longues cousues cachées (au lieu de sauts)
+
+    bool operator==(const ContourFillParams&) const = default;
+};
+
 // Un objet de broderie porte un TYPE de point sous forme de variant. Chaque
 // type suit la géométrie d'un objet vectoriel source (contour pour running,
 // région pleine pour tatami) ou porte la sienne (satin). La séparation
@@ -345,7 +361,7 @@ struct AutoSatinParams {
 // Les alternatives directionnelle puis auto-satin sont AJOUTÉES en fin de
 // variant : les index des types historiques ne changent pas.
 using StitchParams = std::variant<RunningStitchParams, TatamiParams, SatinParams,
-                                  DirectionalFillParams, AutoSatinParams>;
+                                  DirectionalFillParams, AutoSatinParams, ContourFillParams>;
 
 // Type de point autorisé après retouche manuelle (Lot 8 MVP, §2 du cadrage) :
 // seule transition permise, Stitch <-> Jump — pas de Trim/ColorChange/Stop,
@@ -438,6 +454,9 @@ struct EmbroideryObject {
     }
     [[nodiscard]] bool is_auto_satin() const {
         return std::holds_alternative<AutoSatinParams>(params);
+    }
+    [[nodiscard]] bool is_contour_fill() const {
+        return std::holds_alternative<ContourFillParams>(params);
     }
 };
 

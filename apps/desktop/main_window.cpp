@@ -5829,6 +5829,11 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
             connect(rot, &QAction::triggered, this, &MainWindow::changeFillAngle);
         }
         if (emb->is_tatami() || emb->is_directional()) {
+            auto* contour = menu.addAction(tr("Convertir en remplissage concentrique"));
+            connect(contour, &QAction::triggered, this,
+                    [this, embId] { convertToContourFill(embId); });
+        }
+        if (emb->is_tatami() || emb->is_directional()) {
             auto* autoGuide = menu.addAction(tr("Generer un guide depuis la forme"));
             connect(autoGuide, &QAction::triggered, this,
                     &MainWindow::generateDirectionGuideFromShape);
@@ -7708,6 +7713,8 @@ void MainWindow::buildPropertiesPanel() {
             &MainWindow::discardOverrides);
     connect(propertiesPanel_, &PropertiesPanel::convertToDirectionalRequested, this,
             &MainWindow::convertToDirectional);
+    connect(propertiesPanel_, &PropertiesPanel::convertToContourFillRequested, this,
+            &MainWindow::convertToContourFill);
     connect(propertiesPanel_, &PropertiesPanel::createBorderSatinRequested, this,
             &MainWindow::createBorderSatin);
     connect(propertiesPanel_, &PropertiesPanel::borderSatinEdited, this,
@@ -8156,10 +8163,10 @@ const document::EmbroideryObject* MainWindow::orderRowObject(int row) const {
 }
 
 int MainWindow::stitchTypeIndex(const document::EmbroideryObject& object) {
-    return object.is_tatami()                            ? 1
-           : object.is_satin() || object.is_auto_satin() ? 2
-           : object.is_directional()                     ? 3
-                                                         : 0;
+    return object.is_tatami()                                    ? 1
+           : object.is_satin() || object.is_auto_satin()         ? 2
+           : object.is_directional() || object.is_contour_fill() ? 3
+                                                                 : 0;
 }
 
 double MainWindow::regionAreaMm2(const document::EmbroideryObject& object) const {
