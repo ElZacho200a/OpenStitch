@@ -13,6 +13,8 @@
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/stitch_generation/auto_satin_engine.hpp"
+#include "openstitch/stitch_generation/blanket_stitch.hpp"
+#include "openstitch/stitch_generation/contour_fill.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 #include "openstitch/stitch_generation/join.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
@@ -224,7 +226,21 @@ void generate_running(stitch::StitchSequence& sequence, const document::VectorOb
                       const document::RunningStitchParams& params) {
     const auto stitchContour = [&](const geometry::Path& path) {
         const auto sampled = sample_path(path, params.stitch_length, params.min_length);
-        const auto points = apply_repeats(sampled, params.repeats);
+        std::vector<Vec2um> points;
+        switch (params.style) {
+        case document::RunningStyle::Bean:
+            points = apply_repeat_mode(sampled, RepeatMode::BeanStitch, 3);
+            break;
+        case document::RunningStyle::Backstitch:
+            points = apply_repeat_mode(sampled, RepeatMode::Backstitch);
+            break;
+        case document::RunningStyle::Stem:
+            points = apply_stem_stitch(sampled, params.stem_offset);
+            break;
+        case document::RunningStyle::Run:
+            points = apply_repeats(sampled, params.repeats);
+            break;
+        }
         emit_polyline(sequence, points, object.id);
     };
     for (const geometry::PathSet& set : source.paths) {
@@ -777,6 +793,23 @@ void generate_directional(stitch::StitchSequence& sequence, const document::Vect
     }
 }
 
+// Remplissage concentrique (HP-STI-007) : même enveloppe que le tatami (retrait de bord, îlots
+// dans l'ordre de couture, liaisons longues cachées), sans sous-couche.
+void generate_contour(stitch::StitchSequence& sequence, const document::VectorObject& source,
+                      const document::EmbroideryObject& object,
+                      const document::ContourFillParams& params) {
+    for (const geometry::PathSet& region :
+         fill_regions_in_sewing_order(sequence, source, params.inset)) {
+        std::optional<FillLinker> linker;
+        if (params.hidden_underpath) {
+            linker.emplace(region,
+                           Micrometers{std::clamp(params.stitch_length.value, 1'000, 7'000)},
+                           Micrometers{600});
+        }
+        emit_fill(sequence, fill_contour(region, params), object.id, linker ? &*linker : nullptr);
+    }
+}
+
 } // namespace
 
 namespace {
@@ -929,6 +962,16 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                     generate_tatami(chunk, *unit.source, object, params);
                 } else if constexpr (std::is_same_v<T, document::DirectionalFillParams>) {
                     generate_directional(chunk, *unit.source, object, params);
+                } else if constexpr (std::is_same_v<T, document::BlanketStitchParams>) {
+                    // HP-STI-003 : blanket / zigzag le long de chaque contour de la source.
+                    for (const geometry::PathSet& set : unit.source->paths) {
+                        emit_polyline(chunk, blanket_stitch_points(set.outer, params), object.id);
+                        for (const geometry::Path& hole : set.holes) {
+                            emit_polyline(chunk, blanket_stitch_points(hole, params), object.id);
+                        }
+                    }
+                } else if constexpr (std::is_same_v<T, document::ContourFillParams>) {
+                    generate_contour(chunk, *unit.source, object, params);
                 }
             },
             object.params);

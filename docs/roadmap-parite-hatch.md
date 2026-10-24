@@ -826,7 +826,7 @@ compensation, finitions, locks, routage multi-colonnes), **remplissage
 directionnel** (guides, ruptures, aspect fait main). Hatch en propose beaucoup
 plus.
 
-### HP-STI-001 — Point arrière, point tige, point « bean » [P1] — ◐ Partiel
+### HP-STI-001 — Point arrière, point tige, point « bean » [P1] — ◐ Partiel (2026-10-24)
 - État OpenStitch : simple / aller-retour / triple (`RunningStitchParams::repeats`) ;
   `RepeatMode::Backstitch` et `BeanStitch` existent dans `apply_repeat_mode`
   (`running_stitch.cpp`, testés) mais **ne sont pas exposés** dans les paramètres ni l'UI ;
@@ -836,6 +836,7 @@ plus.
   point tige (points décalés latéralement, aspect torsadé) comme variantes de
   `RunningStitchParams` (enum de style).
 - Modules : `libs/stitch_generation/running_stitch`, `libs/document`.
+- Livré (2026-10-24) : `RunningStyle` (droit / bean / arrière / tige) + `stem_offset` dans `RunningStitchParams`, `apply_stem_stitch`, persistance `.osp` rétro-compatible, combo + décalage dans l'inspecteur (`paramsEdited`), tests Catch2 et QTest. **Reste** : dialogue « Créer avec réglages… », mémoire `ui_memory`, champs CLI `op_params`, validation physique.
 
 ### HP-STI-002 — Motif le long d'un chemin (motif run) [P1] — ☐ À faire
 - Hatch : bibliothèque de motifs (feuilles, cœurs, vagues…) répétés le long
@@ -845,11 +846,12 @@ plus.
   bibliothèque de base.
 - Modules : `libs/stitch_generation` (`motif_run`), `libs/document`.
 
-### HP-STI-003 — Point feston (blanket / E-stitch) et zigzag simple [P1] — ☐ À faire
+### HP-STI-003 — Point feston (blanket / E-stitch) et zigzag simple [P1] — ◐ Partiel (2026-10-24)
 - Hatch : Blanket, E-stitch (appliqué), zigzag.
 - À faire : générateurs paramétrés (largeur, espacement, côté) le long d'un
   chemin.
 - Modules : `libs/stitch_generation`.
+- Livré (2026-10-24) : `BlanketStitchParams` (blanket / zigzag, largeur, espacement, côté), `blanket_stitch.cpp`, `.osp` (`blanket`), inspecteur et menu contextuel, tests. **Reste** : menu d'une forme sans broderie, barre de contexte et multi-sélection, API CLI/analyse, test QTest du menu + annulation, E-stitch d'appliqué dédié, docs.
 
 ### HP-STI-004 — Satin de bordure à largeur fixe le long d'un chemin [P0] — ☑ Fait (2026-10-10)
 - Livré : `border_satin_from_path/_region` (`libs/stitch_generation/border_satin.cpp`),
@@ -889,11 +891,12 @@ plus.
 - Modules : `libs/stitch_generation`.
 - Dépend de : HP-STI-002 (format de motif).
 
-### HP-STI-007 — Remplissage concentrique / contour (echo) [P1] — ☐ À faire
+### HP-STI-007 — Remplissage concentrique / contour (echo) [P1] — ◐ Partiel (2026-10-24)
 - Hatch : Contour fill (lignes qui suivent le bord).
 - À faire : offsets successifs de Clipper2 (déjà encapsulé dans `geometry`),
   liaison en spirale des anneaux, trous gérés.
 - Modules : `libs/stitch_generation`, `libs/geometry`.
+- Livré (2026-10-24) : `ContourFillParams` + `contour_fill.cpp` (anneaux `inset_path_set`, spirale, trous contournés, longueurs min/max), `.osp` (`contourFill`), conversion annulable (`ConvertFillGroupCommand`, `main_window_contour.cpp`), panneau et menu, tests. **Reste** : régions multi-îlots (boucles au lieu de spirale), sous-couche, entrée propre dans le menu « Type de points », contrôle de longueur dans `limits.cpp`, docs.
 
 ### HP-STI-008 — Remplissage radial [P2] — ☐ À faire
 - À faire : rayons depuis un centre déplaçable, densité constante à la
@@ -3651,3 +3654,4 @@ ci-dessus doit les respecter :
 | 2026-10-21 | Audit UX/design (ChatGPT, demande du mainteneur) | **+5 entrées ☐** : HP-UX-046 (palette de commandes), 047 (couleurs/fils), 048 (avant/après), 049 (espaces de travail), HP-QA-010 (validation utilisateurs) ; HP-UX-015 enrichi (contrat visuel). Total 311 → 316 ; documentation uniquement. |
 | 2026-10-21 | Implémentation UX (ChatGPT, PR HP-UX-049) | Menu des espaces de travail (4 profils), visibilité de docks, restauration non destructive QSettings, test Qt ; statut ◐ jusqu'à validation CI et essais petit écran. |
 | 2026-10-21 | Implémentation UX (ChatGPT, PR HP-UX-046) | Palette de commandes Qt branchée au menu Édition avec Ctrl+K, recherche et exécution de QAction existantes, test QTest ; état ◐ jusqu'à validation CI et couverture complète des raisons/alias. |
+| 2026-10-24 | Claude (multi-agents) | HP-STI-001 (point tige/arrière/bean exposés), HP-STI-003 (blanket/zigzag) et HP-STI-007 (remplissage concentrique) passent ◐ : cœur, `.osp`, inspecteur et tests livrés ; restes listés dans chaque entrée. |

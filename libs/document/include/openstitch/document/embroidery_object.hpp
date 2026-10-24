@@ -17,11 +17,22 @@
 
 namespace openstitch::document {
 
+// Style du point de contour (HP-STI-001). `Run` : comportement historique piloté par
+// `repeats` (1 simple, 2 aller-retour, 3 triple). Les autres styles ignorent `repeats`.
+enum class RunningStyle : std::uint8_t {
+    Run,        // point droit, `repeats` passages
+    Bean,       // point « bean » : chaque intervalle cousu 3 fois
+    Backstitch, // point arrière : chaque point revient en arrière
+    Stem,       // point tige : pénétrations décalées latéralement (aspect torsadé)
+};
+
 // Paramètres du point droit de contour (§5.1).
 struct RunningStitchParams {
     Micrometers stitch_length{3'000}; // longueur cible (3 mm)
     Micrometers min_length{500};      // en dessous, les points sont fusionnés
     int repeats{1};                   // 1 simple, 2 aller-retour, 3 point triple
+    RunningStyle style{RunningStyle::Run};
+    Micrometers stem_offset{300}; // décalage latéral du point tige (0,3 mm)
 
     bool operator==(const RunningStitchParams&) const = default;
 };
@@ -338,14 +349,48 @@ struct AutoSatinParams {
     bool operator==(const AutoSatinParams&) const = default;
 };
 
+// Point de couverture « blanket / E-stitch » et zigzag simple le long d'un chemin (HP-STI-003).
+// `Blanket` : une ligne de base, avec à chaque station une dent perpendiculaire (aller-retour).
+// `Zigzag` : les points alternent entre deux bords de la bande de largeur `width`.
+enum class BlanketStyle : std::uint8_t { Blanket, Zigzag };
+// Côté de la bande par rapport au sens du chemin (Y vers le haut). `Center` : bande centrée
+// sur le chemin (dents alternées gauche/droite pour le blanket).
+enum class BlanketSide : std::uint8_t { Left, Right, Center };
+
+struct BlanketStitchParams {
+    BlanketStyle style{BlanketStyle::Blanket};
+    Micrometers width{3'000};   // largeur de la bande / longueur des dents (3 mm)
+    Micrometers spacing{2'000}; // écart entre stations le long du chemin (2 mm)
+    BlanketSide side{BlanketSide::Left};
+
+    bool operator==(const BlanketStitchParams&) const = default;
+};
+
+// Remplissage CONCENTRIQUE / contour (« echo », HP-STI-007) : anneaux successifs décalés vers
+// l'intérieur du contour de la région (trous respectés : un anneau grandit autour de chaque trou),
+// cousus de l'extérieur vers le centre. Les valeurs sont bornées à la génération.
+struct ContourFillParams {
+    Micrometers row_spacing{400};     // écart entre anneaux (densité) — 0,4 mm
+    Micrometers stitch_length{3'000}; // longueur MAXIMALE d'un point, bornée à [1 ; 7] mm
+    Micrometers min_length{500};      // longueur minimale d'un point (sauf coins), 0,5 mm
+    Micrometers inset{200};           // retrait du bord (compensation de contour)
+    // Vrai : les anneaux sont reliés en spirale continue (chaque tour glisse vers l'anneau
+    // suivant, sans saut). Faux : anneaux fermés indépendants, reliés par un court pas.
+    bool spiral{true};
+    bool hidden_underpath{true}; // liaisons longues cousues cachées (au lieu de sauts)
+
+    bool operator==(const ContourFillParams&) const = default;
+};
+
 // Un objet de broderie porte un TYPE de point sous forme de variant. Chaque
 // type suit la géométrie d'un objet vectoriel source (contour pour running,
 // région pleine pour tatami) ou porte la sienne (satin). La séparation
 // intention/points (ADR-014) tient : les points sont régénérés à la demande.
 // Les alternatives directionnelle puis auto-satin sont AJOUTÉES en fin de
 // variant : les index des types historiques ne changent pas.
-using StitchParams = std::variant<RunningStitchParams, TatamiParams, SatinParams,
-                                  DirectionalFillParams, AutoSatinParams>;
+using StitchParams =
+    std::variant<RunningStitchParams, TatamiParams, SatinParams, DirectionalFillParams,
+                 AutoSatinParams, BlanketStitchParams, ContourFillParams>;
 
 // Type de point autorisé après retouche manuelle (Lot 8 MVP, §2 du cadrage) :
 // seule transition permise, Stitch <-> Jump — pas de Trim/ColorChange/Stop,
@@ -438,6 +483,12 @@ struct EmbroideryObject {
     }
     [[nodiscard]] bool is_auto_satin() const {
         return std::holds_alternative<AutoSatinParams>(params);
+    }
+    [[nodiscard]] bool is_blanket() const {
+        return std::holds_alternative<BlanketStitchParams>(params);
+    }
+    [[nodiscard]] bool is_contour_fill() const {
+        return std::holds_alternative<ContourFillParams>(params);
     }
 };
 

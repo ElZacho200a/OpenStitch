@@ -69,6 +69,8 @@ private slots:
     void switchingToInfoRemovesThePreviousFormControls();
     void tatamiOffersConversionToDirectionalFill();
     void directionalEditKeepsGuidesAndSeed();
+    void runningStyleComboEmitsStyleAndStemOffset();
+    void contourFillEditsEmitParamsAndConversionIsOffered();
     void directionalGradientControlsRequestMainWindow();
     void directionalSpacingRegularityIsEditable();
     void autoSatinInspectorListsGuidesAndEditsScalars();
@@ -86,6 +88,7 @@ private slots:
     void autoSatinMethodChoiceEmitsTheStrategy();
     void autoSatinSweepAngleIsOnlyEditableForTheSweepMethod();
     void autoSatinCompareButtonAsksMainWindowAndIsAbsentForAGroup();
+    void blanketInspectorEditsWidthSpacingStyleAndSide();
 };
 
 void PropertiesPanelTest::showEmbroideryPopulatesSpinBoxesWithoutEmittingWhileBuilding() {
@@ -98,7 +101,7 @@ void PropertiesPanelTest::showEmbroideryPopulatesSpinBoxesWithoutEmittingWhileBu
 
     QCOMPARE(emitCount, 0); // peuplement initial : pas d'édit émis
     const auto spins = panel.findChildren<QDoubleSpinBox*>();
-    QCOMPARE(spins.size(), 2); // longueur de point, longueur minimale
+    QCOMPARE(spins.size(), 3); // longueur de point, longueur minimale, decalage du point tige
     QCOMPARE(spins.at(0)->value(), 3.0);
     QCOMPARE(spins.at(1)->value(), 0.5);
 }
@@ -135,7 +138,7 @@ void PropertiesPanelTest::editingASpinBoxEmitsParamsEditedWithUpdatedValueAndPre
 void PropertiesPanelTest::switchingToInfoRemovesThePreviousFormControls() {
     PropertiesPanel panel;
     panel.showEmbroidery(runningStitchObject(3));
-    QCOMPARE(panel.findChildren<QDoubleSpinBox*>().size(), 2);
+    QCOMPARE(panel.findChildren<QDoubleSpinBox*>().size(), 3);
 
     panel.showInfo(QStringLiteral("Région"), QStringLiteral("détails"));
 
@@ -159,6 +162,43 @@ void PropertiesPanelTest::tatamiOffersConversionToDirectionalFill() {
     button->click();
     QCOMPARE(requested.value_or(0), static_cast<std::uint64_t>(11));
     QCOMPARE(edits, 0); // la conversion passe par MainWindow, jamais par un edit direct
+}
+
+void PropertiesPanelTest::contourFillEditsEmitParamsAndConversionIsOffered() {
+    // Le tatami propose la conversion, jamais par un edit direct.
+    {
+        PropertiesPanel panel;
+        EmbroideryObject e;
+        e.id = openstitch::ObjectId{21};
+        e.params = openstitch::document::TatamiParams{};
+        panel.showEmbroidery(e);
+        auto* button = panel.findChild<QPushButton*>(QStringLiteral("button_convertToContourFill"));
+        QVERIFY(button != nullptr);
+        std::optional<std::uint64_t> requested;
+        QObject::connect(&panel, &PropertiesPanel::convertToContourFillRequested, &panel,
+                         [&](openstitch::ObjectId id) { requested = id.value; });
+        button->click();
+        QCOMPARE(requested.value_or(0), static_cast<std::uint64_t>(21));
+    }
+    // Le panneau du remplissage concentrique émet les réglages modifiés (µm entiers).
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{22};
+    e.params = openstitch::document::ContourFillParams{};
+    panel.showEmbroidery(e);
+    auto* spacing = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_contourSpacing"));
+    auto* spiral = panel.findChild<QCheckBox*>(QStringLiteral("check_contourSpiral"));
+    QVERIFY(spacing != nullptr);
+    QVERIFY(spiral != nullptr);
+    QVERIFY(spiral->isChecked());
+    std::optional<StitchParams> last;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams params) { last = params; });
+    spacing->setValue(0.6);
+    QVERIFY(last.has_value());
+    QCOMPARE(std::get<openstitch::document::ContourFillParams>(*last).row_spacing.value, 600);
+    spiral->setChecked(false);
+    QVERIFY(!std::get<openstitch::document::ContourFillParams>(*last).spiral);
 }
 
 void PropertiesPanelTest::directionalEditKeepsGuidesAndSeed() {
@@ -422,6 +462,29 @@ void PropertiesPanelTest::tatamiEditChangesOnlyTheTouchedFieldWithoutRounding() 
     angle->setValue(45.5);
     QCOMPARE(std::get<openstitch::document::TatamiParams>(*emitted).angle.radians,
              45.5 * 3.14159265358979323846 / 180.0);
+}
+
+void PropertiesPanelTest::runningStyleComboEmitsStyleAndStemOffset() {
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{41};
+    e.params = openstitch::document::RunningStitchParams{};
+    panel.showEmbroidery(e);
+
+    std::optional<StitchParams> emitted;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams p, QString) { emitted = p; });
+    auto* style = panel.findChild<QComboBox*>(QStringLiteral("combo_runningStyle"));
+    QVERIFY(style != nullptr);
+    QCOMPARE(style->count(), 4);
+    style->setCurrentIndex(3);
+    QVERIFY(emitted.has_value());
+    QVERIFY(std::get<openstitch::document::RunningStitchParams>(*emitted).style ==
+            openstitch::document::RunningStyle::Stem);
+    auto* off = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_stemOffset"));
+    QVERIFY(off != nullptr);
+    off->setValue(0.5);
+    QCOMPARE(std::get<openstitch::document::RunningStitchParams>(*emitted).stem_offset.value, 500);
 }
 
 void PropertiesPanelTest::engineSettingsEmitDedicatedEdits() {
@@ -717,6 +780,47 @@ void PropertiesPanelTest::autoSatinCompareButtonAsksMainWindowAndIsAbsentForAGro
     compare->click();
     QVERIFY(asked.has_value());
     QCOMPARE(asked->value, std::uint64_t{42});
+}
+
+// HP-STI-003 : l'inspecteur du blanket / zigzag émet des StitchParams complets (champ touché
+// seulement), sans rien muter lui-même.
+void PropertiesPanelTest::blanketInspectorEditsWidthSpacingStyleAndSide() {
+    namespace doc = openstitch::document;
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{77};
+    e.name = "blanket";
+    e.params = doc::BlanketStitchParams{};
+    panel.showEmbroidery(e);
+
+    std::optional<doc::BlanketStitchParams> last;
+    int count = 0;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams params) {
+                         ++count;
+                         last = std::get<doc::BlanketStitchParams>(params);
+                     });
+
+    auto* width = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_blanketWidth"));
+    auto* spacing = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_blanketSpacing"));
+    auto* style = panel.findChild<QComboBox*>(QStringLiteral("combo_blanketStyle"));
+    auto* side = panel.findChild<QComboBox*>(QStringLiteral("combo_blanketSide"));
+    QVERIFY(width != nullptr && spacing != nullptr && style != nullptr && side != nullptr);
+    QCOMPARE(width->value(), 3.0);
+    QCOMPARE(spacing->value(), 2.0);
+    QCOMPARE(count, 0);
+
+    width->setValue(4.5);
+    QCOMPARE(count, 1);
+    QCOMPARE(last->width.value, 4'500);
+    QCOMPARE(last->spacing.value, 2'000); // le reste est conservé
+    spacing->setValue(1.2);
+    QCOMPARE(last->spacing.value, 1'200);
+    style->setCurrentIndex(1);
+    QVERIFY(last->style == doc::BlanketStyle::Zigzag);
+    side->setCurrentIndex(2);
+    QVERIFY(last->side == doc::BlanketSide::Center);
+    QCOMPARE(last->width.value, 4'500);
 }
 
 QTEST_MAIN(PropertiesPanelTest)

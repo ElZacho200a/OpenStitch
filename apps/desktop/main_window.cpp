@@ -5647,6 +5647,10 @@ bool MainWindow::stitchParamsForType(const document::EmbroideryObject& emb, int 
         params = document::TatamiParams{};
         label = "Type : tatami";
         return true;
+    case 4: // blanket / zigzag le long du contour (HP-STI-003)
+        params = document::BlanketStitchParams{};
+        label = "Type : blanket";
+        return true;
     case 3: { // remplissage directionnel (réglages du tatami repris s'il y a lieu)
         auto directional = directionalParamsFor(emb);
         if (!directional) {
@@ -5817,8 +5821,8 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
         auto* typeMenu = menu.addMenu(tr("Type de points"));
         const int current = stitchTypeIndex(*emb);
         const char* labels[] = {"Contour cousu", "Remplissage tatami", "Colonne satin",
-                                "Remplissage directionnel"};
-        for (int t = 0; t < 4; ++t) {
+                                "Remplissage directionnel", "Blanket / zigzag"};
+        for (int t = 0; t < 5; ++t) {
             auto* act = typeMenu->addAction(tr(labels[t]));
             act->setCheckable(true);
             act->setChecked(t == current);
@@ -5827,6 +5831,11 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
         if (emb->is_tatami()) {
             auto* rot = menu.addAction(tr("Orientation du remplissage…"));
             connect(rot, &QAction::triggered, this, &MainWindow::changeFillAngle);
+        }
+        if (emb->is_tatami() || emb->is_directional()) {
+            auto* contour = menu.addAction(tr("Convertir en remplissage concentrique"));
+            connect(contour, &QAction::triggered, this,
+                    [this, embId] { convertToContourFill(embId); });
         }
         if (emb->is_tatami() || emb->is_directional()) {
             auto* autoGuide = menu.addAction(tr("Generer un guide depuis la forme"));
@@ -5852,7 +5861,9 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
                           [&](const auto& e) { return e.source_vector == emb->source_vector; });
         menu.addSeparator();
         const std::uint32_t embColorKey = colorKeyOf(emb->rgb);
-        const int embFilterType = stitchTypeIndex(*emb) == 3 ? 1 : stitchTypeIndex(*emb);
+        const int embFilterType = stitchTypeIndex(*emb) == 3   ? 1
+                                  : stitchTypeIndex(*emb) == 4 ? 0
+                                                               : stitchTypeIndex(*emb);
         connect(menu.addAction(tr("Afficher uniquement cette couleur")), &QAction::triggered, this,
                 [this, embColorKey] { isolateFilterColor(embColorKey); });
         connect(menu.addAction(tr("Afficher uniquement ce type de points")), &QAction::triggered,
@@ -7708,6 +7719,8 @@ void MainWindow::buildPropertiesPanel() {
             &MainWindow::discardOverrides);
     connect(propertiesPanel_, &PropertiesPanel::convertToDirectionalRequested, this,
             &MainWindow::convertToDirectional);
+    connect(propertiesPanel_, &PropertiesPanel::convertToContourFillRequested, this,
+            &MainWindow::convertToContourFill);
     connect(propertiesPanel_, &PropertiesPanel::createBorderSatinRequested, this,
             &MainWindow::createBorderSatin);
     connect(propertiesPanel_, &PropertiesPanel::borderSatinEdited, this,
@@ -8156,10 +8169,11 @@ const document::EmbroideryObject* MainWindow::orderRowObject(int row) const {
 }
 
 int MainWindow::stitchTypeIndex(const document::EmbroideryObject& object) {
-    return object.is_tatami()                            ? 1
-           : object.is_satin() || object.is_auto_satin() ? 2
-           : object.is_directional()                     ? 3
-                                                         : 0;
+    return object.is_tatami()                                    ? 1
+           : object.is_satin() || object.is_auto_satin()         ? 2
+           : object.is_directional() || object.is_contour_fill() ? 3
+           : object.is_blanket()                                 ? 4
+                                                                 : 0;
 }
 
 double MainWindow::regionAreaMm2(const document::EmbroideryObject& object) const {
@@ -8216,7 +8230,9 @@ bool MainWindow::vectorPassesFilter(const document::VectorObject& object) const 
         const std::uint32_t key = (static_cast<std::uint32_t>(emb.rgb[0]) << 16) |
                                   (static_cast<std::uint32_t>(emb.rgb[1]) << 8) |
                                   static_cast<std::uint32_t>(emb.rgb[2]);
-        if (showType_[static_cast<std::size_t>(typeIndex == 3 ? 1 : typeIndex)] &&
+        if (showType_[static_cast<std::size_t>(typeIndex == 3   ? 1
+                                               : typeIndex == 4 ? 0
+                                                                : typeIndex)] &&
             hiddenColors_.count(key) == 0) {
             return true;
         }
@@ -8230,7 +8246,7 @@ bool MainWindow::objectPassesFilter(const document::EmbroideryObject& object) co
     }
     // Filtre « remplissage » : tatami et directionnel ensemble (index 1).
     const int typeIndex = stitchTypeIndex(object);
-    if (!showType_[static_cast<std::size_t>(typeIndex == 3 ? 1 : typeIndex)]) {
+    if (!showType_[static_cast<std::size_t>(typeIndex == 3 ? 1 : typeIndex == 4 ? 0 : typeIndex)]) {
         return false;
     }
     const std::uint32_t key = (static_cast<std::uint32_t>(object.rgb[0]) << 16) |

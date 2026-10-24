@@ -7,6 +7,7 @@ add_executable(test_stitch
     test_hidden_travel.cpp
     test_tatami.cpp
     test_directional_fill.cpp
+    test_blanket_stitch.cpp
     test_satin.cpp
     test_satin_guides.cpp
     test_satin_pairing_metrics.cpp
@@ -15,6 +16,7 @@ add_executable(test_stitch
     test_engine_points.cpp
     test_chunk_cache.cpp
     test_calques_generation.cpp
+    test_contour_fill.cpp
 )
 target_link_libraries(test_stitch
     PRIVATE openstitch::stitch openstitch::stitch_generation Catch2::Catch2WithMain

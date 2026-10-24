@@ -18,6 +18,7 @@ add_library(openstitch_desktop_widgets STATIC
     command_palette_dialog.cpp
     command_palette_dialog.hpp
     main_window_directional.cpp
+    main_window_contour.cpp
     main_window_color_blend.cpp
     color_blend_dialog.cpp
     color_blend_dialog.hpp

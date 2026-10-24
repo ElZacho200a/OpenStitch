@@ -45,6 +45,7 @@ QIcon swatch(const std::array<std::uint8_t, 3>& rgb) {
 QString type_label(const document::EmbroideryObject& e) {
     return e.is_tatami()                       ? QObject::tr("Tatami")
            : e.is_directional()                ? QObject::tr("Directionnel")
+           : e.is_contour_fill()               ? QObject::tr("Concentrique")
            : e.is_satin() || e.is_auto_satin() ? QObject::tr("Satin")
                                                : QObject::tr("Contour");
 }

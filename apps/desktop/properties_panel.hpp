@@ -182,6 +182,8 @@ signals:
     // Bouton « Convertir en remplissage directionnel » d'un tatami : MainWindow
     // construit les paramètres équivalents (cœur) et exécute la commande.
     void convertToDirectionalRequested(ObjectId id);
+    // Bouton « Convertir en remplissage concentrique » (HP-STI-007).
+    void convertToContourFillRequested(ObjectId id);
     // Bouton « Éditer les guides » d'un remplissage directionnel : active
     // l'outil de guides du canevas sur cet objet.
     void editDirectionGuidesRequested(ObjectId id);

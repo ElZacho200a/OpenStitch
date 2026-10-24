@@ -639,6 +639,10 @@ const char* stitch_type_name(const document::EmbroideryObject& object) {
         return "directional";
     case 4:
         return "auto_satin";
+    case 5:
+        return "blanket";
+    case 6:
+        return "contour_fill";
     default:
         return "unknown";
     }

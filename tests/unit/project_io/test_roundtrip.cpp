@@ -77,7 +77,8 @@ document::Project rich_project() {
     run.name = "contour";
     run.source_vector = vec.id;
     run.rgb = {200, 50, 0};
-    run.params = document::RunningStitchParams{Micrometers{2'500}, Micrometers{400}, 3};
+    run.params = document::RunningStitchParams{Micrometers{2'500}, Micrometers{400}, 3,
+                                               document::RunningStyle::Stem, Micrometers{450}};
     project.embroidery_objects.push_back(run);
 
     document::EmbroideryObject fill;
@@ -324,6 +325,12 @@ TEST_CASE("projet complet : save puis load = memes donnees") {
         loaded->embroidery_objects[0].params));
     CHECK(std::get<document::RunningStitchParams>(loaded->embroidery_objects[0].params).repeats ==
           3);
+    {
+        const auto& lr =
+            std::get<document::RunningStitchParams>(loaded->embroidery_objects[0].params);
+        CHECK(lr.style == document::RunningStyle::Stem);
+        CHECK(lr.stem_offset.value == 450);
+    }
     CHECK(loaded->embroidery_objects[1].is_tatami());
     const auto& loadedTat = std::get<document::TatamiParams>(loaded->embroidery_objects[1].params);
     CHECK(loadedTat.row_spacing.value == 450);

@@ -168,6 +168,25 @@ const EnumTable<document::SatinShortStitch>& short_stitch_table() {
         {"multi_level_inset", document::SatinShortStitch::MultiLevelInset}};
     return t;
 }
+const EnumTable<document::RunningStyle>& running_style_table() {
+    static const EnumTable<document::RunningStyle> t{
+        {"run", document::RunningStyle::Run},
+        {"bean", document::RunningStyle::Bean},
+        {"backstitch", document::RunningStyle::Backstitch},
+        {"stem", document::RunningStyle::Stem}};
+    return t;
+}
+const EnumTable<document::BlanketStyle>& blanket_style_table() {
+    static const EnumTable<document::BlanketStyle> t{{"blanket", document::BlanketStyle::Blanket},
+                                                     {"zigzag", document::BlanketStyle::Zigzag}};
+    return t;
+}
+const EnumTable<document::BlanketSide>& blanket_side_table() {
+    static const EnumTable<document::BlanketSide> t{{"left", document::BlanketSide::Left},
+                                                    {"right", document::BlanketSide::Right},
+                                                    {"center", document::BlanketSide::Center}};
+    return t;
+}
 const EnumTable<document::SatinSplit>& split_table() {
     static const EnumTable<document::SatinSplit> t{
         {"disabled", document::SatinSplit::Disabled},
@@ -264,8 +283,8 @@ std::array<std::uint8_t, 3> parse_hex_color(const std::string& text) {
 }
 
 const char* stitch_type_name(const document::StitchParams& p) {
-    static constexpr const char* names[] = {"running", "tatami", "satin", "directional",
-                                            "auto_satin"};
+    static constexpr const char* names[] = {"running",    "tatami",  "satin",       "directional",
+                                            "auto_satin", "blanket", "contour_fill"};
     return names[p.index()];
 }
 
@@ -739,6 +758,8 @@ fields_of<document::RunningStitchParams>() {
         v.push_back(mm_field<P>("stitch_length_mm", &P::stitch_length, 0.5, 20.0));
         v.push_back(mm_field<P>("min_length_mm", &P::min_length, 0.1, 20.0));
         v.push_back(int_field<P>("repeats", &P::repeats, 1, 3));
+        v.push_back(enum_field<P>("style", &P::style, running_style_table()));
+        v.push_back(mm_field<P>("stem_offset_mm", &P::stem_offset, 0.1, 2.0));
         return v;
     }();
     return fields;
@@ -834,6 +855,37 @@ const std::vector<Field<document::AutoSatinParams>>& fields_of<document::AutoSat
     return fields;
 }
 
+template <>
+const std::vector<Field<document::BlanketStitchParams>>&
+fields_of<document::BlanketStitchParams>() {
+    using P = document::BlanketStitchParams;
+    static const auto fields = [] {
+        std::vector<Field<P>> v;
+        v.push_back(enum_field<P>("style", &P::style, blanket_style_table()));
+        v.push_back(mm_field<P>("width_mm", &P::width, 0.2, 20.0));
+        v.push_back(mm_field<P>("spacing_mm", &P::spacing, 0.3, 20.0));
+        v.push_back(enum_field<P>("side", &P::side, blanket_side_table()));
+        return v;
+    }();
+    return fields;
+}
+
+template <>
+const std::vector<Field<document::ContourFillParams>>& fields_of<document::ContourFillParams>() {
+    using P = document::ContourFillParams;
+    static const auto fields = [] {
+        std::vector<Field<P>> v;
+        v.push_back(mm_field<P>("row_spacing_mm", &P::row_spacing, 0.1, 10.0));
+        v.push_back(mm_field<P>("stitch_length_mm", &P::stitch_length, 1.0, 7.0));
+        v.push_back(mm_field<P>("min_length_mm", &P::min_length, 0.0, 7.0));
+        v.push_back(mm_field<P>("inset_mm", &P::inset, 0.0, 10.0));
+        v.push_back(bool_field<P>("spiral", &P::spiral));
+        v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
+        return v;
+    }();
+    return fields;
+}
+
 // Types de points (noms) qui possèdent le champ `name`.
 std::vector<std::string> types_having(const std::string& name) {
     std::vector<std::string> out;
@@ -852,6 +904,12 @@ std::vector<std::string> types_having(const std::string& name) {
     if (find_field(fields_of<document::AutoSatinParams>(), name) != nullptr) {
         out.emplace_back("auto_satin");
     }
+    if (find_field(fields_of<document::BlanketStitchParams>(), name) != nullptr) {
+        out.emplace_back("blanket");
+    }
+    if (find_field(fields_of<document::ContourFillParams>(), name) != nullptr) {
+        out.emplace_back("contour_fill");
+    }
     return out;
 }
 
@@ -862,7 +920,9 @@ std::string params_catalog_text() {
     out +=
         "directional : " + join(field_names(fields_of<document::DirectionalFillParams>())) + " ; ";
     out += "satin : " + join(field_names(fields_of<document::SatinParams>())) + " ; ";
-    out += "auto_satin : " + join(field_names(fields_of<document::AutoSatinParams>())) + ". ";
+    out += "auto_satin : " + join(field_names(fields_of<document::AutoSatinParams>())) + " ; ";
+    out += "blanket : " + join(field_names(fields_of<document::BlanketStitchParams>())) + " ; ";
+    out += "contour_fill : " + join(field_names(fields_of<document::ContourFillParams>())) + ". ";
     out += "Suffixe _mm = millimètres, _deg = degrés ; énumérations en chaîne";
     return out;
 }

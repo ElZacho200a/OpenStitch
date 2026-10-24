@@ -722,6 +722,7 @@ private slots:
 
     // Remplissage directionnel : conversion, outil de guides, undo/redo.
     void convertingTatamiToDirectionalIsUndoable();
+    void convertingTatamiToContourFillIsUndoable();
     void densityGradientIsUndoableAndSpansTheShape();
     void editingGradientEndSpacingKeepsTheInspectorAlive();
     void gradientEndSpacingKeepsNarrowedZoneUntilTheAngleChanges();
@@ -4861,6 +4862,26 @@ void MainWindowTest::convertingTatamiToDirectionalIsUndoable() {
     QCOMPARE(dp.seed, static_cast<std::uint32_t>(fx.embroideryId.value));
     QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
              QStringLiteral("Type : remplissage directionnel"));
+    QVERIFY(window.sequence_.has_value()); // la génération a bien tourné
+
+    window.undo();
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId)->is_tatami());
+}
+
+void MainWindowTest::convertingTatamiToContourFillIsUndoable() {
+    MainWindow window;
+    const Fixture fx = buildTatamiSquareFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+
+    window.convertToContourFill(fx.embroideryId);
+    const auto* emb = window.project_.findEmbroidery(fx.embroideryId);
+    QVERIFY(emb != nullptr && emb->is_contour_fill());
+    const auto& cp = std::get<openstitch::document::ContourFillParams>(emb->params);
+    QCOMPARE(cp.row_spacing.value, 450); // réglages du tatami repris
+    QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
+             QStringLiteral("Type : remplissage concentrique"));
     QVERIFY(window.sequence_.has_value()); // la génération a bien tourné
 
     window.undo();

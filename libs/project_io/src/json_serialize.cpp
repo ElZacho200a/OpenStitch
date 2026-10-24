@@ -201,7 +201,9 @@ json params_to_json(const document::StitchParams& params) {
                 j = {{"type", "running"},
                      {"stitchLength", p.stitch_length.value},
                      {"minLength", p.min_length.value},
-                     {"repeats", p.repeats}};
+                     {"repeats", p.repeats},
+                     {"style", static_cast<int>(p.style)},
+                     {"stemOffset", p.stem_offset.value}};
             } else if constexpr (std::is_same_v<T, document::TatamiParams>) {
                 j = {{"type", "tatami"},
                      {"angle", p.angle.radians},
@@ -405,6 +407,20 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.exit_point) {
                     j["exitPoint"] = {{"x", p.exit_point->x.value}, {"y", p.exit_point->y.value}};
                 }
+            } else if constexpr (std::is_same_v<T, document::BlanketStitchParams>) {
+                j = {{"type", "blanket"},
+                     {"style", static_cast<int>(p.style)},
+                     {"width", p.width.value},
+                     {"spacing", p.spacing.value},
+                     {"side", static_cast<int>(p.side)}};
+            } else if constexpr (std::is_same_v<T, document::ContourFillParams>) {
+                j = {{"type", "contourFill"},
+                     {"rowSpacing", p.row_spacing.value},
+                     {"stitchLength", p.stitch_length.value},
+                     {"minLength", p.min_length.value},
+                     {"inset", p.inset.value},
+                     {"spiral", p.spiral},
+                     {"hiddenUnderpath", p.hidden_underpath}};
             }
             return j;
         },
@@ -418,6 +434,11 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.stitch_length = Micrometers{j.at("stitchLength")};
         p.min_length = Micrometers{j.at("minLength")};
         p.repeats = j.at("repeats");
+        // HP-STI-001 : champs optionnels (anciens .osp : point droit, décalage par défaut).
+        const int style = j.value("style", 0);
+        p.style = (style >= 0 && style <= 3) ? static_cast<document::RunningStyle>(style)
+                                             : document::RunningStyle::Run;
+        p.stem_offset = Micrometers{j.value("stemOffset", p.stem_offset.value)};
         return document::StitchParams{p};
     }
     if (type == "tatami") {
@@ -728,6 +749,32 @@ Result<document::StitchParams> params_from_json(const json& j) {
             p.exit_point = Vec2um{Micrometers{j.at("exitPoint").at("x")},
                                   Micrometers{j.at("exitPoint").at("y")}};
         }
+        return document::StitchParams{p};
+    }
+    if (type == "blanket") {
+        // Blanket / zigzag (HP-STI-003) : toutes les clés sauf `type` sont optionnelles.
+        document::BlanketStitchParams p;
+        const int style = j.value("style", static_cast<int>(p.style));
+        const int side = j.value("side", static_cast<int>(p.side));
+        if (style < 0 || style > 1 || side < 0 || side > 2) {
+            return fail(ErrorCategory::InvalidFile, "blanket : style ou côté hors limites");
+        }
+        p.style = static_cast<document::BlanketStyle>(style);
+        p.side = static_cast<document::BlanketSide>(side);
+        p.width = Micrometers{j.value("width", p.width.value)};
+        p.spacing = Micrometers{j.value("spacing", p.spacing.value)};
+        return document::StitchParams{p};
+    }
+    if (type == "contourFill") {
+        // Remplissage concentrique : toutes les clés sauf `type` sont optionnelles (défauts du
+        // modèle) ; valeurs bornées (fichier édité à la main).
+        document::ContourFillParams p;
+        p.row_spacing = Micrometers{std::clamp(j.value("rowSpacing", 400), 100, 10'000)};
+        p.stitch_length = Micrometers{std::clamp(j.value("stitchLength", 3'000), 1'000, 7'000)};
+        p.min_length = Micrometers{std::clamp(j.value("minLength", 500), 0, 7'000)};
+        p.inset = Micrometers{std::clamp(j.value("inset", 200), 0, 10'000)};
+        p.spiral = j.value("spiral", true);
+        p.hidden_underpath = j.value("hiddenUnderpath", true);
         return document::StitchParams{p};
     }
     return fail(ErrorCategory::InvalidFile, "Type de point inconnu : " + type);
