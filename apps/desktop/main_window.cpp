@@ -6974,8 +6974,7 @@ void MainWindow::buildToolPalette() {
     auto* lineToolAct = toolPalette_->addAction(icons::openPath(), tr("Ligne"));
     lineToolAct->setObjectName(QStringLiteral("action_lineTool"));
     lineToolAct->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_L));
-    lineToolAct->setToolTip(tr("Ligne (Maj+L)
-Clics successifs, Entrée pour terminer SANS fermer "
+    lineToolAct->setToolTip(tr("Ligne (Maj+L)\nClics successifs, Entrée pour terminer SANS fermer "
                                "(ligne ou polyligne ouverte). Active le tracé ouvert."));
     connect(lineToolAct, &QAction::triggered, this, [this] {
         openPathAct_->setChecked(true);
