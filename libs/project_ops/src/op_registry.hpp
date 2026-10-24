@@ -4,6 +4,7 @@
 #pragma once
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -12,6 +13,7 @@
 #include "openstitch/commands/undo_stack.hpp"
 #include "openstitch/core/ids.hpp"
 #include "openstitch/document/project.hpp"
+#include "openstitch/image/image.hpp"
 #include "openstitch/project_ops/errors.hpp"
 
 namespace openstitch::project_ops::detail {
@@ -84,6 +86,18 @@ void register_semantic_ops(
 // `auto_satin`… sans rien réimplémenter. Nom inconnu : refus `E_UNKNOWN_OP`.
 [[nodiscard]] OpStatus run_nested_op(OpContext& parent, const std::string& name,
                                      const nlohmann::json& args);
+
+// Image source d'un projet bâti sans image (import_svg, semantic_import) : lecture + calcul de
+// l'échelle (op_import.cpp). Rien n'est modifié tant que `apply_source_image` n'est pas appelée ;
+// celle-ci passe par une `ICommand` annulable et ne touche ni objets ni identifiants.
+struct SourceImagePlan {
+    image::Image image;
+    double mm_per_px{0.0};
+};
+// `mm_per_px` absent : l'image remplit le cadre du projet sans déformation (calcul en µm entiers).
+[[nodiscard]] OpStatus load_source_image(const document::Project& project, const std::string& path,
+                                         std::optional<double> mm_per_px, SourceImagePlan& out);
+[[nodiscard]] OpStatus apply_source_image(OpContext& ctx, SourceImagePlan&& plan);
 
 [[nodiscard]] OpStatus require_embroidery(const OpContext& ctx, const char* key,
                                           const document::EmbroideryObject*& out);
