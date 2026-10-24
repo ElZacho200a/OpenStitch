@@ -82,6 +82,53 @@ TracePath reverse_path(const TracePath& path) {
     return out;
 }
 
+// HP-ENG-010 : tracé FERMÉ (première pénétration == dernière, >= 4 pénétrations, aucune passe de
+// verrou ni retouche manuelle) recommencé au sommet le plus proche de `from`. Mêmes segments,
+// mêmes pénétrations : seul le point de départ change (le dernier point referme sur le nouveau
+// départ). Chaque point garde la passe du segment qui y arrive. Tracé inchangé s'il n'est pas
+// fermé ou si le départ naturel est déjà le plus proche.
+TracePath rotate_closed_path(const TracePath& path, Vec2um from) {
+    std::vector<const StitchCommand*> st;
+    for (const StitchCommand& c : path.cmds) {
+        if (c.type == CommandType::Stitch) {
+            st.push_back(&c);
+        }
+    }
+    const std::size_t m = st.size();
+    if (m < 4 || st.front()->pos != st.back()->pos) {
+        return path;
+    }
+    for (const StitchCommand* c : st) {
+        if (c->pass == StitchPass::Lock || c->pass == StitchPass::Manual) {
+            return path;
+        }
+    }
+    // Sommets distincts : indices 0 .. m-2 (le dernier répète le premier).
+    std::size_t k = 0;
+    double bestD = length_um(st[0]->pos - from);
+    for (std::size_t i = 1; i + 1 < m; ++i) {
+        const double d = length_um(st[i]->pos - from);
+        if (d < bestD) {
+            bestD = d;
+            k = i;
+        }
+    }
+    if (k == 0) {
+        return path;
+    }
+    TracePath out;
+    out.underlay = path.underlay;
+    const StitchCommand& jump = path.cmds.front();
+    out.cmds.push_back({st[k]->pos, CommandType::Jump, jump.source, StitchPass::Travel});
+    for (std::size_t i = k; i < m; ++i) {
+        out.cmds.push_back(*st[i]);
+    }
+    for (std::size_t i = 1; i <= k; ++i) {
+        out.cmds.push_back(*st[i]);
+    }
+    return out;
+}
+
 // Une couche : tracés inversés (ordre des tracés et sens de chacun) ou conservés.
 std::vector<TracePath> layer(const std::vector<TracePath>& paths, bool reversed) {
     if (!reversed) {
@@ -145,6 +192,19 @@ std::vector<StitchCommand> orient_chunk(const std::vector<StitchCommand>& chunk,
     for (TracePath& p : paths) {
         (p.underlay ? under : top).push_back(std::move(p));
     }
+    // Variante : le premier tracé cousu (s'il est fermé) démarre au sommet le plus proche de la
+    // fin de l'objet précédent. Évaluée comme les autres, le sens naturel gagne les égalités.
+    std::vector<TracePath> underRot = under;
+    std::vector<TracePath> topRot = top;
+    bool rotated = false;
+    if (previous_end) {
+        std::vector<TracePath>& firstLayer = under.empty() ? topRot : underRot;
+        if (!firstLayer.empty()) {
+            TracePath r = rotate_closed_path(firstLayer.front(), *previous_end);
+            rotated = r.cmds.front().pos != firstLayer.front().cmds.front().pos;
+            firstLayer.front() = std::move(r);
+        }
+    }
     const auto cost = [&](const std::vector<StitchCommand>& c) {
         double d = internal_jumps(c);
         if (previous_end) {
@@ -158,16 +218,23 @@ std::vector<StitchCommand> orient_chunk(const std::vector<StitchCommand>& chunk,
     std::vector<StitchCommand> best = chunk;
     double bestCost = cost(chunk);
     // Combinaison naturelle = `chunk` lui-même (déjà évalué) ; les trois autres suivent.
-    for (const auto& [ru, rt] :
-         {std::pair{true, false}, std::pair{false, true}, std::pair{true, true}}) {
-        if ((ru && under.empty()) || (rt && top.empty())) {
+    for (const bool useRot : {false, true}) {
+        if (useRot && !rotated) {
             continue;
         }
-        std::vector<StitchCommand> candidate = assemble(layer(under, ru), layer(top, rt));
-        const double c = cost(candidate);
-        if (c < bestCost - 1.0) { // gain d'au moins 1 µm : sinon on garde le sens naturel
-            bestCost = c;
-            best = std::move(candidate);
+        const auto& u = useRot ? underRot : under;
+        const auto& t = useRot ? topRot : top;
+        for (const auto& [ru, rt] : {std::pair{false, false}, std::pair{true, false},
+                                     std::pair{false, true}, std::pair{true, true}}) {
+            if ((!useRot && !ru && !rt) || (ru && u.empty()) || (rt && t.empty())) {
+                continue; // combinaison naturelle = `chunk` lui-même, déjà évaluée
+            }
+            std::vector<StitchCommand> candidate = assemble(layer(u, ru), layer(t, rt));
+            const double c = cost(candidate);
+            if (c < bestCost - 1.0) { // gain d'au moins 1 µm : sinon on garde le sens naturel
+                bestCost = c;
+                best = std::move(candidate);
+            }
         }
     }
     return best;

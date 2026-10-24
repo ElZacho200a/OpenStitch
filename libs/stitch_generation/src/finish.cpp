@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "hidden_travel.hpp"
+#include "openstitch/stitch_generation/length_bounds.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
 #include "region_order.hpp"
@@ -88,109 +89,6 @@ void append(std::vector<StitchCommand>& out, const std::vector<StitchCommand>& m
     out.insert(out.end(), more.begin(), more.end());
 }
 
-// Surfaces de référence des objets (objet vectoriel suivi), pour vérifier
-// qu'une fusion de points ne fait jamais sortir le fil de sa région.
-std::map<std::uint64_t, const std::vector<geometry::PathSet>*>
-object_regions(const document::Project& project) {
-    std::map<std::uint64_t, const std::vector<geometry::PathSet>*> out;
-    for (const auto& obj : project.embroidery_objects) {
-        if (const auto* vec = project.findObject(obj.source_vector)) {
-            out[obj.id.value] = &vec->paths;
-        }
-    }
-    return out;
-}
-
-// Lot F : fusionne chaque point cousu plus court que `min_stitch_length` avec
-// le suivant (le point court est retiré, aucun point n'est déplacé). Jamais
-// le premier ni le dernier point d'un tracé, jamais une passe de verrou ni un
-// point retouché à la main (passe Manual), et seulement si le nouveau segment
-// reste dans la région de l'objet (`segment_stays_in_region` sur son objet
-// vectoriel ; objet sans surface -- satin manuel -- : écart borné par la
-// longueur minimale, accepté).
-std::vector<StitchCommand> filter_short_stitches(const std::vector<StitchCommand>& cmds,
-                                                 const document::Project& project,
-                                                 const document::SequenceFinishing& f) {
-    if (!f.filter_short_stitches || f.min_stitch_length.value <= 0) {
-        return cmds;
-    }
-    const auto regions = object_regions(project);
-    // Un testeur par morceau de l'objet vectoriel, construit à la première
-    // demande : même prédicat que `segment_stays_in_region`, sans reconstruire
-    // les polygones de l'objet à chaque point court (audit perf 2026-09).
-    std::map<std::uint64_t, std::vector<RegionSegmentTester>> testers;
-    const auto chordInside = [&](ObjectId source, Vec2um a, Vec2um b) {
-        const auto it = regions.find(source.value);
-        if (it == regions.end()) {
-            return true;
-        }
-        auto [tit, inserted] = testers.try_emplace(source.value);
-        if (inserted) {
-            for (const auto& set : *it->second) {
-                tit->second.emplace_back(set);
-            }
-        }
-        return std::any_of(tit->second.begin(), tit->second.end(),
-                           [&](const RegionSegmentTester& t) { return t.stays_inside(a, b); });
-    };
-    const double minLen = static_cast<double>(f.min_stitch_length.value);
-    std::vector<StitchCommand> out;
-    out.reserve(cmds.size());
-    for (std::size_t i = 0; i < cmds.size(); ++i) {
-        const StitchCommand& c = cmds[i];
-        const bool interior = c.type == CommandType::Stitch && i > 0 &&
-                              cmds[i - 1].type == CommandType::Stitch && i + 1 < cmds.size() &&
-                              cmds[i + 1].type == CommandType::Stitch;
-        if (interior && c.pass != StitchPass::Lock && c.pass != StitchPass::Manual &&
-            cmds[i + 1].pass != StitchPass::Lock) {
-            const Vec2um prev = out.back().pos; // dernier point conservé du tracé
-            if (length_um(c.pos - prev) < minLen && chordInside(c.source, prev, cmds[i + 1].pos)) {
-                continue;
-            }
-        }
-        out.push_back(c);
-    }
-    return out;
-}
-
-// HP-ENG-008 : aucun point cousu plus long que `max_stitch_length`. Un point trop long est
-// découpé en `ceil(L / max)` points égaux sur la MÊME droite (aucune pénétration ne quitte
-// la forme que le point traversait déjà), avec la passe et l'objet du point d'origine. Les
-// morceaux mesurent au moins max/2, donc jamais sous la longueur minimale usuelle. Seuls
-// les points enchaînés à un point cousu sont concernés (un point qui suit un saut n'a pas
-// de segment cousu derrière lui).
-std::vector<StitchCommand> split_long_stitches(const std::vector<StitchCommand>& cmds,
-                                               const document::SequenceFinishing& f) {
-    if (!f.split_long_stitches || f.max_stitch_length.value <= 0) {
-        return cmds;
-    }
-    const double maxLen = static_cast<double>(f.max_stitch_length.value);
-    std::vector<StitchCommand> out;
-    out.reserve(cmds.size());
-    for (std::size_t i = 0; i < cmds.size(); ++i) {
-        const StitchCommand& c = cmds[i];
-        if (c.type == CommandType::Stitch && i > 0 && cmds[i - 1].type == CommandType::Stitch) {
-            const Vec2um from = cmds[i - 1].pos;
-            const double len = length_um(c.pos - from);
-            if (len > maxLen) {
-                const int parts = static_cast<int>(std::ceil(len / maxLen));
-                for (int k = 1; k < parts; ++k) {
-                    const double t = static_cast<double>(k) / parts;
-                    const Vec2um mid{
-                        Micrometers{static_cast<std::int32_t>(std::lround(
-                            from.x.value + static_cast<double>(c.pos.x.value - from.x.value) * t))},
-                        Micrometers{static_cast<std::int32_t>(
-                            std::lround(from.y.value +
-                                        static_cast<double>(c.pos.y.value - from.y.value) * t))}};
-                    out.push_back({mid, CommandType::Stitch, c.source, c.pass});
-                }
-            }
-        }
-        out.push_back(c);
-    }
-    return out;
-}
-
 bool starts_with_lock(const std::vector<StitchCommand>& cmds, const Run& run) {
     return cmds[run.begin].pass == StitchPass::Lock ||
            (run.end - run.begin >= 2 && cmds[run.begin + 1].pass == StitchPass::Lock);
@@ -225,8 +123,13 @@ FinishResult finish_sequence_report(const stitch::StitchSequence& sequence,
     // « Optimiser les trajets » niveau 3 : ordre et sens des passes de sous-couche (invisible,
     // sous le remplissage), avant la détection des tracés et des coupes.
     // Mode avancé : ordre des régions d'une même couleur, AVANT tout le reste.
-    auto regionOrder = reorder_regions_same_color(
-        split_long_stitches(filter_short_stitches(sequence.commands, project, f), f), project, f);
+    // HP-ENG-008 : bornes de longueur (fusion des points courts, découpage des longs).
+    auto bounded = enforce_length_bounds(sequence.commands, project, f);
+    report.length_merged = bounded.report.merged;
+    report.length_split = bounded.report.split;
+    report.length_short_left = bounded.report.short_left;
+    report.length_long_left = bounded.report.long_left;
+    auto regionOrder = reorder_regions_same_color(bounded.commands, project, f);
     report.region_groups = regionOrder.groups;
     report.regions_moved = regionOrder.regions_moved;
     report.region_jump_saved_um = regionOrder.saved_um;

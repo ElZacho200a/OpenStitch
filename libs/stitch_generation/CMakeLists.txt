@@ -8,6 +8,7 @@ add_library(openstitch_stitch_generation
     src/lock.cpp
     src/routing.cpp
     src/finish.cpp
+    src/length_bounds.cpp
     src/hidden_travel.cpp
     src/underlay_order.cpp
     src/region_order.cpp

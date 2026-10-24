@@ -133,3 +133,63 @@ TEST_CASE("LayeredColorThenProximity : les objets verrouilles gardent leur place
     CHECK(order.front().value == 1);
     CHECK(ids(order) == std::vector<std::uint64_t>{1, 3, 2});
 }
+
+TEST_CASE("extremites : le cout va de la sortie de l'objet au debut du suivant") {
+    OrderItem a = item(1, red, 0, 0);
+    a.entry = Vec2um{Micrometers{0}, Micrometers{0}};
+    a.exit = Vec2um{Micrometers{10'000}, Micrometers{0}};
+    OrderItem b = item(2, red, 20'000, 0);
+    b.entry = Vec2um{Micrometers{12'000}, Micrometers{0}};
+    b.exit = Vec2um{Micrometers{30'000}, Micrometers{0}};
+    CHECK(compute_cost({a, b}).travel_um == 2'000.0); // et non 20 mm entre centres
+}
+
+TEST_CASE("extremites : un objet reversible est cousu dans le sens le plus proche") {
+    OrderItem a = item(1, red, 0, 0);
+    a.entry = Vec2um{Micrometers{0}, Micrometers{0}};
+    a.exit = Vec2um{Micrometers{10'000}, Micrometers{0}};
+    OrderItem b = item(2, red, 20'000, 0);
+    b.entry = Vec2um{Micrometers{30'000}, Micrometers{0}};
+    b.exit = Vec2um{Micrometers{11'000}, Micrometers{0}};
+    b.reversible = true;
+    const auto steps = plan_order({a, b}, OrderStrategy::ByProximity);
+    REQUIRE(steps.size() == 2);
+    CHECK(steps[0].id.value == 1);
+    CHECK_FALSE(steps[0].reversed);
+    CHECK(steps[1].id.value == 2);
+    CHECK(steps[1].reversed);
+}
+
+TEST_CASE("extremites : la proximite choisit le voisin par ses extremites, pas son centre") {
+    OrderItem a = item(1, red, 0, 0);
+    a.exit = Vec2um{Micrometers{10'000}, Micrometers{0}};
+    OrderItem near = item(2, red, 50'000, 0); // centre lointain, entree proche
+    near.entry = Vec2um{Micrometers{10'500}, Micrometers{0}};
+    OrderItem far = item(3, red, 12'000, 0); // centre proche, entree lointaine
+    far.entry = Vec2um{Micrometers{40'000}, Micrometers{0}};
+    CHECK(ids(optimize_order({a, far, near}, OrderStrategy::ByProximity)) ==
+          std::vector<std::uint64_t>{1, 2, 3});
+}
+
+TEST_CASE("extremites : sans extremites le plan est celui de optimize_order") {
+    const std::vector<OrderItem> items = {item(1, red, 0, 0), item(2, red, 9'000, 0),
+                                          item(3, red, 1'000, 0)};
+    const auto steps = plan_order(items, OrderStrategy::ByProximity);
+    std::vector<ObjectId> planned;
+    for (const auto& s : steps) {
+        CHECK_FALSE(s.reversed);
+        planned.push_back(s.id);
+    }
+    CHECK(ids(planned) == ids(optimize_order(items, OrderStrategy::ByProximity)));
+}
+
+TEST_CASE("contour ferme : depart au sommet le plus proche") {
+    const std::vector<Vec2um> ring = {{Micrometers{0}, Micrometers{0}},
+                                      {Micrometers{10'000}, Micrometers{0}},
+                                      {Micrometers{10'000}, Micrometers{10'000}},
+                                      {Micrometers{0}, Micrometers{10'000}}};
+    CHECK(nearest_vertex_index(ring, {Micrometers{9'000}, Micrometers{9'500}}) == 2);
+    CHECK(nearest_vertex_index({}, {}) == 0);
+    // Egalite : le premier sommet gagne.
+    CHECK(nearest_vertex_index(ring, {Micrometers{5'000}, Micrometers{0}}) == 0);
+}
