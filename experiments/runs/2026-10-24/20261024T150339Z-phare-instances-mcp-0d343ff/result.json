@@ -1,0 +1,165 @@
+{
+  "schema": "openstitch.trial/1",
+  "run_id": "20261024T150339Z-phare-instances-mcp-0d343ff",
+  "created_utc": "2026-10-24T15:03:39Z",
+  "status": "completed",
+  "artistic_accepted": false,
+  "source": {
+    "private_library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "source_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "archive_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "pixels": [
+      1536,
+      961
+    ],
+    "design_mm": [
+      370,
+      231.4908854167
+    ],
+    "canvas_mm": [
+      390,
+      268
+    ],
+    "margin_mm": 10
+  },
+  "openstitch_commit": "1ead7502a605807917cb2d27511e470e2862f313",
+  "mcp_version": "1.1.0",
+  "mcp_artifact": {
+    "ci_run_id": 40054711321,
+    "artifact_id": 12544739180,
+    "zip_sha256": "ebedc2518648448c46fd133994331a787176b145a5eedc95be562cb43e3a4e63",
+    "doctor_ok": true
+  },
+  "method": "Programmatic source-anchored semantic INSTANCE polygons for 6 wave fronts, 3 cloud masses, 3 foam systems, lighthouse and sailboat, local LAB shade classification, per-instance component filtering; no generative image editing. Gate A still fails, MCP used for diagnostic only.",
+  "prompts_applied": [
+    {
+      "id": "instance_fidelity",
+      "regions": 105,
+      "components": 1747,
+      "lab_mae": 5.827
+    },
+    {
+      "id": "instance_balanced",
+      "regions": 102,
+      "components": 1382,
+      "lab_mae": 6.368
+    },
+    {
+      "id": "instance_textile",
+      "regions": 99,
+      "components": 1178,
+      "lab_mae": 7.368,
+      "mcp_imported": true
+    },
+    {
+      "id": "instance_connected",
+      "regions": 94,
+      "components": 1665,
+      "lab_mae": 8.271
+    },
+    {
+      "id": "instance_islands",
+      "regions": 96,
+      "components": 662,
+      "lab_mae": 6.678,
+      "mcp_imported": true,
+      "selected_as_diagnostic": true
+    }
+  ],
+  "mcp_calls": [
+    "initialize",
+    "digitize_guide",
+    "project_operations",
+    "semantic_validate",
+    "project_new",
+    "semantic_import dry_run and apply",
+    "project_checkpoint",
+    "semantic_map",
+    "project_inspect",
+    "project_report",
+    "project_check",
+    "project_density",
+    "project_fabric_risk",
+    "project_render",
+    "project_save",
+    "project_export",
+    "project_open",
+    "project_satin_compare",
+    "project_apply directional_guides dry_run and apply",
+    "semantic_replace dry_run and apply",
+    "project_compare",
+    "project_restore"
+  ],
+  "baseline_textile": {
+    "objects": 1188,
+    "stitches": 156597,
+    "trims": 2355,
+    "jumps": 2973,
+    "color_changes": 88,
+    "warnings": 51,
+    "errors": 0
+  },
+  "baseline_islands": {
+    "objects": 685,
+    "stitches": 156684,
+    "trims": 1641,
+    "jumps": 1882,
+    "color_changes": 85,
+    "warnings": 51,
+    "errors": 0,
+    "hotspot_area_mm2": 67,
+    "embroidered_size_mm": [
+      369.36,
+      230.85
+    ]
+  },
+  "trials": {
+    "directional_guides_object_1423": {
+      "stitches": 156729,
+      "trims": 1641,
+      "warnings": 51,
+      "verdict": "rejected, no clear artistic gain"
+    },
+    "semantic_replace_foam_instance_14_shade_10": {
+      "stitches": 156441,
+      "trims": 1625,
+      "jumps": 1857,
+      "verdict": "rejected, lost fine details despite 16 fewer trims"
+    },
+    "satin_compare": {
+      "objects": [
+        497,
+        314,
+        1423,
+        1426
+      ],
+      "strategies": [
+        "skeleton",
+        "parallel_sweep",
+        "medial_axis"
+      ],
+      "gallery_coverage_ratio": [
+        0.9702,
+        0.9805,
+        0.9125
+      ],
+      "foam_requires_decomposition": true,
+      "verdict": "no automatic satin conversion retained"
+    }
+  },
+  "real_preview": true,
+  "real_osp_dst": true,
+  "machine_tested": false,
+  "independent_score": null,
+  "artistic_verdict": "REJECTED: source-faithful instance separation improves structure relative to color-only masks, but sky/clouds flat, lighthouse lantern and boat detail degraded, foam overly simplified, 1641 trims worse than previous 1015, and 51 warnings. Engine zero errors does not validate embroidery.",
+  "private_archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-24/phare-instance-mcp-1710-private.zip",
+    "library_file_id": "libfile_4c9ff23532248191beabe385abf157e1",
+    "size_bytes": 16867498,
+    "sha256": "bb75f105017a02ce98a795b8e4492ba6bc0f26201841566d240ceb65cb72277b",
+    "verified": true
+  },
+  "public_pixels_uploaded": false,
+  "next_hypothesis": "Extract source-native architecture at full resolution as separate masks (lantern, gallery, windows, shaft), use vector-like source contour tracing for each wave rather than arbitrary spatial partitions, design palette/order to reduce 85 color changes and >1600 trims; pass visual gate A before MCP."
+}
