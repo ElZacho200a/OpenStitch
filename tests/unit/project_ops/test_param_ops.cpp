@@ -691,3 +691,22 @@ TEST_CASE("param ops set_canvas hoop library and set_machine", "[project_ops][pa
     REQUIRE(run(p, R"({"op":"set_machine","machine":""})").ok);
     CHECK(p.machine_id.empty());
 }
+
+TEST_CASE("param ops set_design_points and optimize_order improve", "[project_ops][params]") {
+    auto p = make_project();
+    const auto r = run(p, R"({"op":"set_design_points","start_x_mm":1.5,"start_y_mm":-2,)"
+                          R"("end_x_mm":10,"end_y_mm":0})");
+    REQUIRE(r.ok);
+    REQUIRE(p.finishing.design_start.has_value());
+    CHECK(p.finishing.design_start->x == Micrometers{1500});
+    CHECK(p.finishing.design_start->y == Micrometers{-2000});
+    CHECK(p.finishing.design_end.has_value());
+    CHECK(run(p, R"({"op":"optimize_order","strategy":"by_proximity","improve":true})").ok);
+    REQUIRE(run(p, R"({"op":"set_design_points","clear":"start"})").ok);
+    CHECK_FALSE(p.finishing.design_start.has_value());
+    CHECK(p.finishing.design_end.has_value());
+    expect_refused(p, R"({"op":"set_design_points"})", project_ops::code::kUsage);
+    expect_refused(p, R"({"op":"set_design_points","start_x_mm":1})", project_ops::code::kUsage);
+    expect_refused(p, R"({"op":"set_design_points","start_x_mm":1,"start_y_mm":5000})",
+                   project_ops::code::kOutOfRange);
+}

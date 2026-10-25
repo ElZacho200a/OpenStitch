@@ -2,6 +2,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -50,7 +51,22 @@ struct OrderOptions {
     // premier, par aire décroissante) si son aire atteint cette fraction de
     // la plus grande zone de sa couleur.
     double layer_large_area_ratio{0.25};
+
+    // HP-SEQ-001 -- amélioration locale (2-opt + Or-opt + inversion de sens) appliquée APRES la
+    // stratégie. Borne DETERMINISTE : nombre maximal de candidats évalués (jamais un temps mur).
+    // 0 : désactivée, résultat strictement identique à l'historique. Les objets verrouillés
+    // gardent leur emplacement ; seuls les libres sont déplacés / retournés (si `reversible`).
+    std::size_t improve_budget{0};
+
+    // HP-SEQ-008 -- points de départ et d'arrivée du design. Quand ils sont renseignés, le trajet
+    // départ -> premier objet et dernier objet -> arrivée entre dans le coût de l'amélioration, et
+    // `ByProximity` / les chaînes de proximité démarrent au plus près du départ.
+    std::optional<Vec2um> start{};
+    std::optional<Vec2um> end{};
 };
+
+// Budget par défaut raisonnable pour l'IHM / les opérations (évaluations de candidats).
+inline constexpr std::size_t kDefaultImproveBudget = 20'000;
 
 struct OrderCost {
     double travel_um{0.0}; // somme des déplacements fin(i-1) -> début(i) (centres par défaut)
@@ -63,6 +79,12 @@ struct OrderCost {
 };
 
 [[nodiscard]] OrderCost compute_cost(const std::vector<OrderItem>& items);
+
+// Coût d'une séquence avec les points de départ / d'arrivée optionnels (HP-SEQ-008) :
+// ajoute départ -> début du premier et fin du dernier -> arrivée au trajet.
+[[nodiscard]] OrderCost compute_cost(const std::vector<OrderItem>& items,
+                                     const std::optional<Vec2um>& start,
+                                     const std::optional<Vec2um>& end);
 
 // Renvoie le nouvel ordre (liste d'ObjectId). Les objets verrouillés
 // conservent leur position ; seuls les objets libres sont réarrangés dans
