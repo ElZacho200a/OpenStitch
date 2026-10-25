@@ -30,6 +30,7 @@
 #include "openstitch/commands/thread_commands.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 #include "properties_panel.hpp"
+#include "stitch_type_catalog.hpp"
 #include "ui_memory.hpp"
 
 namespace openstitch::desktop {
@@ -398,9 +399,8 @@ void MainWindow::setStitchTypeForSelection(
         }
         return;
     }
-    const QString typeNames[] = {tr("Contour cousu"), tr("Remplissage tatami"), tr("Colonne satin"),
-                                 tr("Remplissage directionnel")};
-    const QString typeName = type >= 0 && type < 4 ? typeNames[type] : tr("Type de points");
+    const QString typeName =
+        type >= 0 && type < kStitchTypeCount ? stitchTypeLabel(type) : tr("Type de points");
     auto group = std::make_unique<commands::CompositeCommand>(
         tr("Type : %1 (%2 formes)").arg(typeName).arg(ids.size()).toStdString());
     QStringList skipped;

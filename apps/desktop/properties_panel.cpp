@@ -3,8 +3,10 @@
 
 #include "app_theme.hpp"
 #include "auto_satin_strategy_ui.hpp"
+#include "stitch_type_catalog.hpp"
 #include "ui_icons.hpp"
 
+#include <QAction>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
@@ -14,6 +16,7 @@
 #include <QIcon>
 #include <QLabel>
 #include <QListWidget>
+#include <QMenu>
 #include <QPixmap>
 #include <QPushButton>
 #include <QSignalBlocker>
@@ -631,6 +634,28 @@ void PropertiesPanel::addStitchTypeRow(int current) {
         });
         layout->addWidget(button);
     }
+    // Types sans bouton direct (motifs, concentrique, radial, spirale, croisé) : menu « Plus ».
+    {
+        auto* more = new QToolButton(row);
+        more->setObjectName(QStringLiteral("button_stitchTypeMore"));
+        more->setPopupMode(QToolButton::InstantPopup);
+        more->setCheckable(true);
+        more->setChecked(current >= 5);
+        more->setText(current >= 5 ? stitchTypeLabel(current) + QStringLiteral(" ▾")
+                                   : tr("Plus ▾"));
+        more->setAccessibleName(tr("Autres types de points"));
+        more->setToolTip(tr("Autres types de points : motifs, remplissages concentrique, radial, "
+                            "spirale et croisé."));
+        auto* moreMenu = new QMenu(more);
+        for (int t = 5; t < kStitchTypeCount; ++t) {
+            auto* act = moreMenu->addAction(stitchTypeLabel(t));
+            act->setCheckable(true);
+            act->setChecked(t == current);
+            connect(act, &QAction::triggered, this, [this, t] { emit stitchTypeRequested(t); });
+        }
+        more->setMenu(moreMenu);
+        layout->addWidget(more);
+    }
     layout->addStretch(1);
     body_->layout()->addWidget(row);
 }
@@ -873,10 +898,7 @@ void PropertiesPanel::showMultiSelection(int objectCount, int embroideryCount,
     // (en direct, une commande composite par édition) -- plus de bouton « Appliquer à N ».
     int commonType = -1;
     if (groupRep != nullptr && groupCount >= 2) {
-        commonType = groupRep->is_tatami()                                 ? 1
-                     : groupRep->is_directional()                          ? 3
-                     : (groupRep->is_satin() || groupRep->is_auto_satin()) ? 2
-                                                                           : 0;
+        commonType = stitchTypeIndexOf(*groupRep);
     }
     addStitchTypeRow(commonType);
 
@@ -1065,12 +1087,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
     if (!group) {
         // HP-UX-028 : les quatre types en tête de l'inspecteur (en groupe : posés par
         // showMultiSelection).
-        addStitchTypeRow(object.is_tatami()                                  ? 1
-                         : object.is_directional()                           ? 3
-                         : object.is_blanket()                               ? 4
-                         : (object.is_motif_run() || object.is_motif_fill()) ? -1
-                         : (object.is_satin() || object.is_auto_satin())     ? 2
-                                                                             : 0);
+        addStitchTypeRow(stitchTypeIndexOf(object));
     }
 
     auto* form = new QFormLayout();

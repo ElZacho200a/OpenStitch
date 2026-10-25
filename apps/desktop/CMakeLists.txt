@@ -29,6 +29,7 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_shapes.cpp
     main_window_objects.cpp
     simulation_nav_bar.cpp
+    stitch_type_catalog.cpp
     simulation_nav_bar.hpp
     main_window_rotation.cpp
     main_window_workflow.cpp

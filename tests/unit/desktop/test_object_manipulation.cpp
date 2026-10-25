@@ -12,6 +12,7 @@
 #include "main_window.hpp"
 #include "node_handle.hpp"
 #include "rotation_handle_items.hpp"
+#include "stitch_type_catalog.hpp"
 
 namespace openstitch::desktop {
 
@@ -147,6 +148,29 @@ private slots:
         QVERIFY(qAbs(bounds.height() - 10.0) < 1e-6);
         window.hideRotationPreview();
         QVERIFY(window.rotationPreview_ == nullptr);
+    }
+    // Chaque type de points du catalogue (sauf le satin, qui peut refuser une forme trop simple)
+    // s'applique a une forme selectionnee : concentrique, radial, spirale, croise, motifs.
+    void everyStitchTypeCanBeAppliedToASelectedShape() {
+        MainWindow window;
+        window.show();
+        window.applyLoadedProject(twoBlocks());
+        const ObjectId a = window.project_.vector_objects[0].id;
+        window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a}});
+        for (int t = 0; t < kStitchTypeCount; ++t) {
+            if (t == 2) {
+                continue; // satin : refus nomme possible sur un carre, boite de dialogue modale
+            }
+            window.setStitchTypeForSelection(t);
+            const document::EmbroideryObject* emb = nullptr;
+            for (const auto& e : window.project_.embroidery_objects) {
+                if (e.source_vector == a) {
+                    emb = &e;
+                }
+            }
+            QVERIFY2(emb != nullptr, qPrintable(QString::number(t)));
+            QCOMPARE(stitchTypeIndexOf(*emb), t);
+        }
     }
 };
 

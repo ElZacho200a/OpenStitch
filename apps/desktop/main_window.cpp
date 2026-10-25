@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "main_window.hpp"
 #include "simulation_nav_bar.hpp"
+#include "stitch_type_catalog.hpp"
 
 #include <QAction>
 #include <QActionGroup>
@@ -5682,7 +5683,11 @@ namespace {
 int stitchFilterFamily(int typeIndex) {
     switch (typeIndex) {
     case 3:
-    case 6: // remplissage à motif (HP-STI-006)
+    case 6:  // remplissage à motif (HP-STI-006)
+    case 7:  // concentrique
+    case 8:  // radial
+    case 9:  // spirale
+    case 10: // croisé
         return 1;
     case 4:
     case 5: // blanket, motif le long du contour (HP-STI-002)
@@ -5720,6 +5725,22 @@ bool MainWindow::stitchParamsForType(const document::EmbroideryObject& emb, int 
     case 4: // blanket / zigzag le long du contour (HP-STI-003)
         params = document::BlanketStitchParams{};
         label = "Type : blanket";
+        return true;
+    case 7: // remplissage concentrique (HP-STI-007)
+        params = document::ContourFillParams{};
+        label = "Type : remplissage concentrique";
+        return true;
+    case 8: // remplissage radial (HP-STI-008)
+        params = document::RadialFillParams{};
+        label = "Type : remplissage radial";
+        return true;
+    case 9: // remplissage en spirale (HP-STI-009)
+        params = document::SpiralFillParams{};
+        label = "Type : remplissage en spirale";
+        return true;
+    case 10: // remplissage croisé (HP-STI-014)
+        params = document::CrosshatchFillParams{};
+        label = "Type : remplissage croisé";
         return true;
     case 3: { // remplissage directionnel (réglages du tatami repris s'il y a lieu)
         auto directional = directionalParamsFor(emb);
@@ -5854,10 +5875,8 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
         title->setEnabled(false);
         menu.addSeparator();
         auto* multiTypeMenu = menu.addMenu(tr("Type de points (tous)"));
-        const char* multiLabels[] = {"Contour cousu", "Remplissage tatami", "Colonne satin",
-                                     "Remplissage directionnel"};
-        for (int t = 0; t < 4; ++t) {
-            auto* act = multiTypeMenu->addAction(tr(multiLabels[t]));
+        for (int t = 0; t < kStitchTypeCount; ++t) {
+            auto* act = multiTypeMenu->addAction(stitchTypeLabel(t));
             connect(act, &QAction::triggered, this, [this, t] { setStitchTypeForSelection(t); });
         }
         menu.addSeparator();
@@ -5890,12 +5909,8 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
         const ObjectId embId = emb->id;
         auto* typeMenu = menu.addMenu(tr("Type de points"));
         const int current = stitchTypeIndex(*emb);
-        const char* labels[] = {"Contour cousu",      "Remplissage tatami",
-                                "Colonne satin",      "Remplissage directionnel",
-                                "Blanket / zigzag",   "Motif le long du contour",
-                                "Remplissage à motif"};
-        for (int t = 0; t < 7; ++t) {
-            auto* act = typeMenu->addAction(tr(labels[t]));
+        for (int t = 0; t < kStitchTypeCount; ++t) {
+            auto* act = typeMenu->addAction(stitchTypeLabel(t));
             act->setCheckable(true);
             act->setChecked(t == current);
             connect(act, &QAction::triggered, this, [this, embId, t] { setStitchType(embId, t); });
@@ -5962,10 +5977,8 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
         // immédiate, un pas d'annulation, zéro dialogue).
         auto* typeMenu = menu.addMenu(tr("Type de points"));
         typeMenu->setObjectName(QStringLiteral("contextStitchTypeMenu"));
-        const char* labels[] = {"Contour cousu", "Remplissage tatami", "Colonne satin",
-                                "Remplissage directionnel"};
-        for (int t = 0; t < 4; ++t) {
-            auto* act = typeMenu->addAction(tr(labels[t]));
+        for (int t = 0; t < kStitchTypeCount; ++t) {
+            auto* act = typeMenu->addAction(stitchTypeLabel(t));
             connect(act, &QAction::triggered, this, [this, t] { setStitchTypeForSelection(t); });
         }
     }
@@ -6868,6 +6881,24 @@ void MainWindow::updateContextToolbar() {
             connect(btn, &QToolButton::clicked, this, [this, id, t] { setStitchType(id, t); });
             contextToolbar_->addWidget(btn);
         }
+        // Types sans bouton direct : un menu « Plus » (concentrique, radial, spirale, croisé,
+        // motifs).
+        {
+            auto* more = new QToolButton(contextToolbar_);
+            more->setText(tr("Plus ▾"));
+            more->setObjectName(QStringLiteral("button_contextStitchTypeMore"));
+            more->setAccessibleName(tr("Autres types de points"));
+            more->setPopupMode(QToolButton::InstantPopup);
+            auto* moreMenu = new QMenu(more);
+            for (int t = kStitchTypeDirectButtons; t < kStitchTypeCount; ++t) {
+                auto* act = moreMenu->addAction(stitchTypeLabel(t));
+                act->setCheckable(true);
+                act->setChecked(t == current);
+                connect(act, &QAction::triggered, this, [this, id, t] { setStitchType(id, t); });
+            }
+            more->setMenu(moreMenu);
+            contextToolbar_->addWidget(more);
+        }
         if (emb->is_tatami()) {
             contextToolbar_->addSeparator();
             auto* rot = contextToolbar_->addAction(tr("Orientation…"));
@@ -6929,6 +6960,25 @@ void MainWindow::updateContextToolbar() {
             btn->setAccessibleName(tr("Type de points : %1").arg(names[t]));
             connect(btn, &QToolButton::clicked, this, [this, t] { setStitchTypeForSelection(t); });
             contextToolbar_->addWidget(btn);
+        }
+        // Types sans bouton direct : un menu « Plus » (concentrique, radial, spirale, croisé,
+        // motifs).
+        {
+            auto* more = new QToolButton(contextToolbar_);
+            more->setText(tr("Plus ▾"));
+            more->setObjectName(QStringLiteral("button_contextStitchTypeMore"));
+            more->setAccessibleName(tr("Autres types de points"));
+            more->setPopupMode(QToolButton::InstantPopup);
+            auto* moreMenu = new QMenu(more);
+            for (int t = kStitchTypeDirectButtons; t < kStitchTypeCount; ++t) {
+                auto* act = moreMenu->addAction(stitchTypeLabel(t));
+                act->setCheckable(true);
+                act->setChecked(false);
+                connect(act, &QAction::triggered, this,
+                        [this, t] { setStitchTypeForSelection(t); });
+            }
+            more->setMenu(moreMenu);
+            contextToolbar_->addWidget(more);
         }
     } else if (hasReg) {
         const auto* region = project_.segmentation->find(*selectedRegion_);
@@ -8254,15 +8304,7 @@ const document::EmbroideryObject* MainWindow::orderRowObject(int row) const {
 }
 
 int MainWindow::stitchTypeIndex(const document::EmbroideryObject& object) {
-    return object.is_tatami()                            ? 1
-           : object.is_satin() || object.is_auto_satin() ? 2
-           : object.is_directional() || object.is_contour_fill() || object.is_radial_fill() ||
-                   object.is_spiral_fill() || object.is_crosshatch_fill()
-               ? 3
-           : object.is_blanket()    ? 4
-           : object.is_motif_run()  ? 5
-           : object.is_motif_fill() ? 6
-                                    : 0;
+    return stitchTypeIndexOf(object);
 }
 
 double MainWindow::regionAreaMm2(const document::EmbroideryObject& object) const {
