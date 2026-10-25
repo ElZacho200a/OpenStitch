@@ -650,7 +650,7 @@
         <translation>Each object is stitched in the direction that brings its start closest to the end of the previous one. Adjustable per object in the inspector.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8952"/>
+        <location filename="../main_window.cpp" line="8927"/>
         <source>Points : %1
 Sauts : %2
 Coupes : %3
@@ -3253,958 +3253,953 @@ Speed: %8 stitches/min</translation>
 <context>
     <name>openstitch::desktop::MainWindow</name>
     <message>
-        <location filename="../main_window.cpp" line="436"/>
+        <location filename="../main_window.cpp" line="437"/>
         <source>mm</source>
         <translation>mm</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="492"/>
+        <location filename="../main_window.cpp" line="493"/>
         <source>Mode &amp;portable (une seule colonne)</source>
         <translation>&amp;Laptop mode (single column)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="495"/>
+        <location filename="../main_window.cpp" line="496"/>
         <source>Regroupe les panneaux en onglets dans une colonne unique : utile sur un petit écran.</source>
         <translation>Groups the panels in tabs in a single column: useful on a small screen.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="519"/>
+        <location filename="../main_window.cpp" line="520"/>
         <source>&amp;Réinitialiser la disposition</source>
         <translation>&amp;Reset layout</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="521"/>
+        <location filename="../main_window.cpp" line="522"/>
         <source>Remet les panneaux et les barres à leur place d&apos;origine.</source>
         <translation>Puts the panels and bars back to their original place.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="550"/>
+        <location filename="../main_window.cpp" line="551"/>
         <source>Canevas</source>
         <translation>Canvas</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="551"/>
+        <location filename="../main_window.cpp" line="552"/>
         <source>Zone de travail du motif, en millimètres.</source>
         <translation>Pattern work area, in millimeters.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="578"/>
+        <location filename="../main_window.cpp" line="579"/>
         <source>Indications de geste</source>
         <translation>Gesture hints</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="584"/>
+        <location filename="../main_window.cpp" line="585"/>
         <source>État d&apos;enregistrement</source>
         <translation>Save status</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="613"/>
+        <location filename="../main_window.cpp" line="614"/>
         <source>Taille du cadre de broderie : cliquer pour la modifier.</source>
         <translation>Embroidery hoop size: click to change it.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="614"/>
+        <location filename="../main_window.cpp" line="615"/>
         <source>Taille du cadre</source>
         <translation>Hoop size</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="623"/>
+        <location filename="../main_window.cpp" line="624"/>
         <source>Accroche</source>
         <translation>Snap</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="626"/>
+        <location filename="../main_window.cpp" line="627"/>
         <source>Accroche des nœuds aux sommets des autres objets pendant le glisser (Ctrl : suspendre).</source>
         <translation>Snaps nodes to the vertices of other objects while dragging (Ctrl: suspend).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="628"/>
+        <location filename="../main_window.cpp" line="629"/>
         <source>Accroche des nœuds</source>
         <translation>Node snapping</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="650"/>
+        <location filename="../main_window.cpp" line="651"/>
         <source>x : %1 mm   y : %2 mm</source>
         <translation>x: %1 mm   y: %2 mm</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="735"/>
+        <location filename="../main_window.cpp" line="736"/>
         <source>Ouvrez une image (PNG, JPEG, BMP, TIFF) pour commencer.</source>
         <translation>Open an image (PNG, JPEG, BMP, TIFF) to get started.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="770"/>
+        <location filename="../main_window.cpp" line="771"/>
         <location filename="../../../tests/unit/desktop/test_app_language.cpp" line="180"/>
         <source>&amp;Fichier</source>
         <translation>&amp;File</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="771"/>
+        <location filename="../main_window.cpp" line="772"/>
         <source>&amp;Nouveau projet</source>
         <translation>&amp;New project</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="779"/>
+        <location filename="../main_window.cpp" line="780"/>
         <source>&amp;Ouvrir…</source>
         <translation>&amp;Open…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="783"/>
+        <location filename="../main_window.cpp" line="784"/>
         <source>Im&amp;porter une image ou un SVG…</source>
         <translation>Im&amp;port an image or SVG…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="790"/>
+        <location filename="../main_window.cpp" line="791"/>
         <source>Enre&amp;gistrer le projet</source>
         <translation>&amp;Save project</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="795"/>
+        <location filename="../main_window.cpp" line="796"/>
         <source>Enregistrer le projet &amp;sous…</source>
         <translation>Save project &amp;as…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="800"/>
+        <location filename="../main_window.cpp" line="801"/>
         <source>Ou&amp;vrir un projet…</source>
         <translation>O&amp;pen a project…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="806"/>
+        <location filename="../main_window.cpp" line="807"/>
         <source>&amp;Récents</source>
         <translation>&amp;Recent</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="816"/>
+        <location filename="../main_window.cpp" line="817"/>
         <source>Vider &amp;la liste des récents</source>
         <translation>Clear the &amp;recent list</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="822"/>
+        <location filename="../main_window.cpp" line="823"/>
         <source>&amp;Exporter une broderie machine…</source>
         <translation>&amp;Export machine embroidery…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="825"/>
+        <location filename="../main_window.cpp" line="826"/>
         <source>Exporter &amp;avec les derniers réglages</source>
         <translation>Export with &amp;last settings</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="829"/>
+        <location filename="../main_window.cpp" line="830"/>
         <source>Exporte tout de suite avec le format et les options du dernier export, sans résumé : seul le nom du fichier est demandé.</source>
         <translation>Exports immediately with the format and options of the last export, without a summary: only the file name is asked.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="833"/>
+        <location filename="../main_window.cpp" line="834"/>
         <source>&amp;Importer une broderie machine…</source>
         <translation>&amp;Import machine embroidery…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="836"/>
+        <location filename="../main_window.cpp" line="837"/>
         <source>Importer un &amp;DXF…</source>
         <translation>Import a &amp;DXF…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="838"/>
+        <location filename="../main_window.cpp" line="839"/>
         <source>Exporter en D&amp;XF…</source>
         <translation>Export as D&amp;XF…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="842"/>
+        <location filename="../main_window.cpp" line="843"/>
         <source>&amp;Quitter</source>
         <translation>&amp;Quit</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="846"/>
+        <location filename="../main_window.cpp" line="847"/>
         <source>&amp;Édition</source>
         <translation>&amp;Edit</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="847"/>
+        <location filename="../main_window.cpp" line="848"/>
         <source>Rec&amp;hercher une commande…</source>
         <translation>Find a &amp;command…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="850"/>
+        <location filename="../main_window.cpp" line="851"/>
         <source>Rechercher une commande des menus.</source>
         <translation>Search the menu commands.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="864"/>
-        <location filename="../main_window.cpp" line="10815"/>
+        <location filename="../main_window.cpp" line="865"/>
+        <location filename="../main_window.cpp" line="10798"/>
         <source>&amp;Annuler</source>
         <translation>&amp;Cancel</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="868"/>
-        <location filename="../main_window.cpp" line="10818"/>
+        <location filename="../main_window.cpp" line="869"/>
+        <location filename="../main_window.cpp" line="10801"/>
         <source>&amp;Rétablir</source>
         <translation>&amp;Redo</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="874"/>
+        <location filename="../main_window.cpp" line="875"/>
         <source>&amp;Dupliquer la forme</source>
         <translation>&amp;Duplicate shape</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="881"/>
+        <location filename="../main_window.cpp" line="882"/>
         <source>Dé&amp;caler la forme…</source>
         <translation>&amp;Offset shape…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="891"/>
+        <location filename="../main_window.cpp" line="892"/>
         <source>Préférences — &amp;Intelligence artificielle…</source>
         <translation>Preferences — &amp;Artificial intelligence…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="893"/>
+        <location filename="../main_window.cpp" line="894"/>
         <source>Paramètres…</source>
         <translation>Settings…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="898"/>
-        <location filename="../main_window.cpp" line="1196"/>
+        <location filename="../main_window.cpp" line="899"/>
+        <location filename="../main_window.cpp" line="1198"/>
         <source>&amp;Image</source>
         <translation>&amp;Image</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="906"/>
+        <location filename="../main_window.cpp" line="907"/>
         <source>Niveaux de &amp;gris</source>
         <translation>&amp;Grayscale</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="908"/>
+        <location filename="../main_window.cpp" line="909"/>
         <source>&amp;Luminosité/contraste…</source>
         <translation>&amp;Brightness/contrast…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="912"/>
+        <location filename="../main_window.cpp" line="913"/>
         <source>Dé&amp;bruitage léger</source>
         <translation>Light &amp;denoising</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="913"/>
+        <location filename="../main_window.cpp" line="914"/>
         <source>Débruitage &amp;moyen</source>
         <translation>&amp;Medium denoising</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="914"/>
+        <location filename="../main_window.cpp" line="915"/>
         <source>Lissage bilatéral (conserve les &amp;contours)</source>
         <translation>Bilateral smoothing (keeps &amp;edges)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="915"/>
+        <location filename="../main_window.cpp" line="916"/>
         <source>Aplat des &amp;zones (illustration)</source>
         <translation>Flat color &amp;zones (illustration)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="916"/>
+        <location filename="../main_window.cpp" line="917"/>
         <source>Contra&amp;ste local (CLAHE)</source>
         <translation>Local contra&amp;st (CLAHE)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="917"/>
+        <location filename="../main_window.cpp" line="918"/>
         <source>&amp;Netteté</source>
         <translation>&amp;Sharpness</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="918"/>
+        <location filename="../main_window.cpp" line="919"/>
         <source>Lignes cohérentes (photo → &amp;dessin au trait)</source>
         <translation>Coherent lines (photo → line &amp;drawing)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="920"/>
+        <location filename="../main_window.cpp" line="921"/>
         <source>&amp;Quantifier les couleurs…</source>
         <translation>&amp;Quantize colors…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="925"/>
+        <location filename="../main_window.cpp" line="926"/>
         <source>Symétrie &amp;horizontale</source>
         <translation>&amp;Horizontal symmetry</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="926"/>
+        <location filename="../main_window.cpp" line="927"/>
         <source>Symétrie &amp;verticale</source>
         <translation>&amp;Vertical symmetry</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="927"/>
+        <location filename="../main_window.cpp" line="928"/>
         <source>Rotation 90° h&amp;oraire</source>
         <translation>Rotate 90° c&amp;lockwise</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="928"/>
+        <location filename="../main_window.cpp" line="929"/>
         <source>Rotation 90° &amp;antihoraire</source>
         <translation>Rotate 90° &amp;counterclockwise</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="931"/>
+        <location filename="../main_window.cpp" line="932"/>
         <source>&amp;Recadrer l&apos;image (glisser un cadre)</source>
         <translation>&amp;Crop image (drag a frame)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="937"/>
+        <location filename="../main_window.cpp" line="938"/>
         <source>&amp;Segmentation</source>
         <translation>&amp;Segmentation</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="938"/>
+        <location filename="../main_window.cpp" line="939"/>
         <source>&amp;Segmenter l&apos;image…</source>
         <translation>&amp;Segment image…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="944"/>
+        <location filename="../main_window.cpp" line="945"/>
         <source>&amp;Afficher la carte des régions</source>
         <translation>&amp;Show region map</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="947"/>
+        <location filename="../main_window.cpp" line="948"/>
         <source>Affiche ou masque la carte des régions par-dessus l&apos;image (W).</source>
         <translation>Shows or hides the region map over the image (W).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="951"/>
+        <location filename="../main_window.cpp" line="952"/>
         <source>Fusionner les co&amp;uleurs…</source>
         <translation>Merge co&amp;lors…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="954"/>
+        <location filename="../main_window.cpp" line="955"/>
         <source>Panneau des couleurs de la segmentation : fusionne des teintes entre elles, ou réduit la palette à N couleurs avec aperçu.</source>
         <translation>Segmentation colors panel: merges hues together, or reduces the palette to N colors with a preview.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="958"/>
+        <location filename="../main_window.cpp" line="959"/>
         <source>&amp;Fusionner avec… (cliquer la région cible)</source>
         <translation>&amp;Merge with… (click the target region)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="961"/>
+        <location filename="../main_window.cpp" line="962"/>
         <source>Fusionne la région (ou toutes les régions sélectionnées) dans la région que vous cliquez ensuite ; elle garde sa couleur.</source>
         <translation>Merges the region (or all selected regions) into the region you click next; it keeps its color.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="965"/>
+        <location filename="../main_window.cpp" line="966"/>
         <source>Fusionner la sélecti&amp;on</source>
         <translation>Merge the selecti&amp;on</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="969"/>
+        <location filename="../main_window.cpp" line="970"/>
         <source>Fusionne toutes les régions sélectionnées dans la dernière cliquée (Ctrl+M ou J).</source>
         <translation>Merges all selected regions into the last one clicked (Ctrl+M or J).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="972"/>
+        <location filename="../main_window.cpp" line="973"/>
         <source>Fusionner dans la voisine &amp;principale</source>
         <translation>Merge into the &amp;main neighbor</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="978"/>
+        <location filename="../main_window.cpp" line="979"/>
         <source>Fusionne la région dans la voisine avec laquelle elle partage la plus longue frontière (Ctrl+Maj+M ou A).</source>
         <translation>Merges the region into the neighbor with which it shares the longest border (Ctrl+Shift+M or A).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="981"/>
+        <location filename="../main_window.cpp" line="982"/>
         <source>Nettoyer les petits &amp;îlots…</source>
         <translation>Clean small &amp;islands…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="984"/>
+        <location filename="../main_window.cpp" line="985"/>
         <source>Sur toute l&apos;image : fusionne chaque petite région dans la voisine dont la couleur est la plus proche (comme « boucher les trous »).</source>
         <translation>Over the whole image: merges each small region into the neighbor with the closest color (like &quot;fill holes&quot;).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="988"/>
+        <location filename="../main_window.cpp" line="989"/>
         <source>Sélectionner la &amp;même couleur</source>
         <translation>Select the &amp;same color</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="992"/>
+        <location filename="../main_window.cpp" line="993"/>
         <source>Sélectionne toutes les régions qui ont la couleur de la région active (C).</source>
         <translation>Selects all regions that have the color of the active region (C).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="996"/>
+        <location filename="../main_window.cpp" line="997"/>
         <source>Sélectionner les voisi&amp;nes</source>
         <translation>Select neighbo&amp;rs</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1000"/>
+        <location filename="../main_window.cpp" line="1001"/>
         <source>Ajoute à la sélection les régions voisines de la sélection (N).</source>
         <translation>Adds to the selection the regions neighboring the selection (N).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1003"/>
+        <location filename="../main_window.cpp" line="1004"/>
         <source>&amp;Tout sélectionner</source>
         <translation>Select &amp;all</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1010"/>
+        <location filename="../main_window.cpp" line="1011"/>
         <source>Région suivante</source>
         <translation>Next region</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1013"/>
+        <location filename="../main_window.cpp" line="1014"/>
         <source>Sélectionne la région suivante (Alt+→).</source>
         <translation>Selects the next region (Alt+→).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1015"/>
+        <location filename="../main_window.cpp" line="1016"/>
         <source>Région précédente</source>
         <translation>Previous region</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1018"/>
+        <location filename="../main_window.cpp" line="1019"/>
         <source>Sélectionne la région précédente (Alt+←).</source>
         <translation>Selects the previous region (Alt+←).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1024"/>
+        <location filename="../main_window.cpp" line="1025"/>
         <source>Su&amp;pprimer la sélection</source>
         <translation>Dele&amp;te selection</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1031"/>
+        <location filename="../main_window.cpp" line="1032"/>
         <source>&amp;Recolorer la sélection…</source>
         <translation>&amp;Recolor selection…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1035"/>
+        <location filename="../main_window.cpp" line="1036"/>
         <source>Rétablir la &amp;couleur d&apos;origine</source>
         <translation>Restore the original &amp;color</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1038"/>
+        <location filename="../main_window.cpp" line="1039"/>
         <source>Rend à chaque région sélectionnée la couleur moyenne de l&apos;image segmentée.</source>
         <translation>Gives each selected region the average color of the segmented image.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1043"/>
+        <location filename="../main_window.cpp" line="1044"/>
         <source>&amp;Vectoriser la sélection</source>
         <translation>&amp;Vectorize selection</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1046"/>
+        <location filename="../main_window.cpp" line="1047"/>
         <source>Convertit la ou les régions sélectionnées en objets vectoriels éditables (un seul pas d&apos;annulation). Maj+F7 règle le détail ; F7 réutilise le dernier.</source>
         <translation>Converts the selected region(s) into editable vector objects (single undo step). Shift+F7 adjusts the detail; F7 reuses the last one.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1062"/>
+        <location filename="../main_window.cpp" line="1063"/>
         <source>&amp;Broderie</source>
         <translation>&amp;Embroidery</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1063"/>
+        <location filename="../main_window.cpp" line="1064"/>
         <source>Numérisation &amp;automatique</source>
         <translation>&amp;Auto-digitize</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1068"/>
+        <location filename="../main_window.cpp" line="1069"/>
         <source>Segmenter avec l&apos;&amp;IA…</source>
         <translation>Segment with &amp;AI…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1071"/>
+        <location filename="../main_window.cpp" line="1072"/>
         <source>Détecte des formes avec SAM 2 : crée des régions éditables (à fusionner, recolorer puis vectoriser) ou directement les objets de broderie, au choix.</source>
         <translation>Detects shapes with SAM 2: creates editable regions (to merge, recolor then vectorize) or directly the embroidery objects, your choice.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1077"/>
+        <location filename="../main_window.cpp" line="1078"/>
         <source>Créer un objet de &amp;point de contour</source>
         <translation>Create an &amp;outline stitch object</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1080"/>
+        <location filename="../main_window.cpp" line="1081"/>
         <source>Créer un remplissage &amp;tatami</source>
         <translation>Create a &amp;tatami fill</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1083"/>
+        <location filename="../main_window.cpp" line="1084"/>
         <source>Créer un &amp;satin automatique</source>
         <translation>Create an automatic &amp;satin</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1086"/>
+        <location filename="../main_window.cpp" line="1087"/>
         <source>Créer avec &amp;réglages</source>
         <translation>Create with &amp;settings</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1087"/>
+        <location filename="../main_window.cpp" line="1088"/>
         <source>Point de contour…</source>
         <translation>Outline stitch…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1091"/>
+        <location filename="../main_window.cpp" line="1092"/>
         <source>Remplissage tatami…</source>
         <translation>Tatami fill…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1095"/>
+        <location filename="../main_window.cpp" line="1096"/>
         <source>Satin automatique…</source>
         <translation>Automatic satin…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1099"/>
+        <location filename="../main_window.cpp" line="1100"/>
         <source>Convertir automatiquement en satin (expérimental)…</source>
         <translation>Automatically convert to satin (experimental)…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1101"/>
+        <location filename="../main_window.cpp" line="1102"/>
         <source>Expérimental : construit le satin par squelette et traversées orientées (sans rails à poser). Le résultat est à vérifier avant broderie.</source>
         <translation>Experimental: builds the satin through skeleton and oriented crossings (no rails to place). The result must be checked before stitching.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1105"/>
+        <location filename="../main_window.cpp" line="1106"/>
         <source>&amp;Orientation du remplissage…</source>
         <translation>Fill &amp;orientation…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1107"/>
+        <location filename="../main_window.cpp" line="1108"/>
         <source>Change l&apos;angle des fils du remplissage tatami sélectionné (clic sur la forme ou dans l&apos;ordre de couture).</source>
         <translation>Changes the stitch angle of the selected tatami fill (click on the shape or in the stitching order).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1110"/>
+        <location filename="../main_window.cpp" line="1111"/>
         <source>Con&amp;vertir les satins auto en tatami</source>
         <translation>Con&amp;vert auto satins to tatami</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1112"/>
+        <location filename="../main_window.cpp" line="1113"/>
         <source>Remplace les colonnes satin automatiques (qui débordent sur les formes concaves) par des remplissages tatami découpés sur la région.</source>
         <translation>Replaces the automatic satin columns (which overflow concave shapes) with tatami fills cut to the region.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1117"/>
+        <location filename="../main_window.cpp" line="1118"/>
         <source>Options de &amp;génération…</source>
         <translation>&amp;Generation options…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1131"/>
+        <location filename="../main_window.cpp" line="1132"/>
         <source>&amp;Éditer les points…</source>
         <translation>&amp;Edit points…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1136"/>
+        <location filename="../main_window.cpp" line="1137"/>
         <source>Déplacer un à un les points de couture générés de l&apos;objet sélectionné (E). Distinct de l&apos;édition des nœuds vectoriels : ici, seul le point cousu bouge, pas la forme source.</source>
         <translation>Move the generated stitches of the selected object one by one (E). Distinct from vector node editing: here only the stitched point moves, not the source shape.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1147"/>
+        <location filename="../main_window.cpp" line="1149"/>
         <source>&amp;Modifier la colonne satin (rails + guides)…</source>
         <translation>&amp;Edit satin column (rails + guides)…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1152"/>
+        <location filename="../main_window.cpp" line="1154"/>
         <source>Affiche ensemble les nœuds des deux rails (glisser pour déplacer, double-clic pour ajouter un nœud) et les guides transversaux (glisser une extrémité) de la colonne satin sélectionnée (Maj+E).</source>
         <translation>Shows the nodes of both rails (drag to move, double-click to add a node) and the cross guides (drag an end) of the selected satin column together (Shift+E).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1159"/>
+        <location filename="../main_window.cpp" line="1161"/>
         <source>Remodelage satin (avancé)</source>
         <translation>Satin reshaping (advanced)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1161"/>
+        <location filename="../main_window.cpp" line="1163"/>
         <source>N&apos;affiche qu&apos;un seul des deux aspects (rails ou guides) — utile pour une colonne dense où les deux ensemble surchargeraient l&apos;affichage.</source>
         <translation>Shows only one of the two aspects (rails or guides) — useful for a dense column where both together would clutter the display.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1163"/>
+        <location filename="../main_window.cpp" line="1165"/>
         <source>Éditer seulement les guides satin…</source>
         <translation>Edit satin guides only…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1167"/>
+        <location filename="../main_window.cpp" line="1169"/>
         <source>Afficher les guides transversaux du satin et glisser leurs extrémités le long des rails. Plusieurs guides peuvent orienter une même colonne.</source>
         <translation>Show the satin cross guides and drag their ends along the rails. Several guides can orient the same column.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1170"/>
+        <location filename="../main_window.cpp" line="1172"/>
         <source>Ajouter un guide satin</source>
         <translation>Add a satin guide</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1174"/>
+        <location filename="../main_window.cpp" line="1176"/>
         <source>Supprimer le guide satin sélectionné</source>
         <translation>Delete the selected satin guide</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1177"/>
+        <location filename="../main_window.cpp" line="1179"/>
         <source>Éditer seulement les rails satin…</source>
         <translation>Edit satin rails only…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1181"/>
+        <location filename="../main_window.cpp" line="1183"/>
         <source>Afficher les nœuds des deux rails de la colonne satin sélectionnée et les glisser pour remodeler la colonne. Double-clic sur un rail : ajoute un nœud (forme exactement conservée).</source>
         <translation>Show the nodes of both rails of the selected satin column and drag them to reshape the column. Double-click on a rail: adds a node (shape exactly preserved).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1188"/>
+        <location filename="../main_window.cpp" line="1190"/>
         <source>Statisti&amp;ques…</source>
         <translation>Statisti&amp;cs…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1192"/>
+        <location filename="../main_window.cpp" line="1194"/>
         <source>&amp;Affichage</source>
         <translation>&amp;View</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1204"/>
+        <location filename="../main_window.cpp" line="1206"/>
         <source>&amp;Vecteurs</source>
         <translation>&amp;Vectors</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1209"/>
+        <location filename="../main_window.cpp" line="1211"/>
         <source>&amp;Broderie (points)</source>
         <translation>&amp;Embroidery (stitches)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1218"/>
+        <location filename="../main_window.cpp" line="1220"/>
         <source>Zoom &amp;avant</source>
         <translation>Zoom &amp;in</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1224"/>
+        <location filename="../main_window.cpp" line="1226"/>
         <source>Zoom a&amp;rrière</source>
         <translation>Zoom &amp;out</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1228"/>
+        <location filename="../main_window.cpp" line="1230"/>
         <source>A&amp;juster au canevas</source>
         <translation>Fit to &amp;canvas</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1233"/>
+        <location filename="../main_window.cpp" line="1235"/>
         <source>Zoom sur la &amp;sélection</source>
         <translation>Zoom to &amp;selection</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1237"/>
+        <location filename="../main_window.cpp" line="1239"/>
         <source>Zoom précéd&amp;ent</source>
         <translation>&amp;Previous zoom</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1241"/>
+        <location filename="../main_window.cpp" line="1243"/>
         <source>&amp;100 % (taille réelle)</source>
         <translation>&amp;100 % (actual size)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1247"/>
+        <location filename="../main_window.cpp" line="1249"/>
         <source>Tai&amp;lle du cadre…</source>
         <translation>Hoop si&amp;ze…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1248"/>
+        <location filename="../main_window.cpp" line="1250"/>
         <source>Définit la zone physique de broderie (cadre).</source>
         <translation>Defines the physical embroidery area (hoop).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1257"/>
+        <location filename="../main_window.cpp" line="1259"/>
         <source>&amp;Thème</source>
         <translation>&amp;Theme</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1266"/>
+        <location filename="../main_window.cpp" line="1268"/>
         <source>Clair</source>
         <translation>Light</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1267"/>
+        <location filename="../main_window.cpp" line="1269"/>
         <source>Sombre</source>
         <translation>Dark</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1269"/>
+        <location filename="../main_window.cpp" line="1271"/>
         <source>&amp;Densité</source>
         <translation>&amp;Density</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1278"/>
+        <location filename="../main_window.cpp" line="1280"/>
         <source>Confortable</source>
         <translation>Comfortable</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1279"/>
+        <location filename="../main_window.cpp" line="1281"/>
         <source>Compact</source>
         <translation>Compact</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1281"/>
+        <location filename="../main_window.cpp" line="1283"/>
         <source>Accrochage des nœuds au glisser</source>
         <translation>Node snapping while dragging</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1286"/>
+        <location filename="../main_window.cpp" line="1288"/>
         <source>Accroche un nœud glissé aux sommets des autres objets (Ctrl pendant le glisser : sans accroche ; Maj verrouille l&apos;axe et garde l&apos;accroche). Désactivé par défaut.</source>
         <translation>Snaps a dragged node to the vertices of other objects (Ctrl while dragging: no snapping; Shift locks the axis and keeps snapping). Disabled by default.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1296"/>
+        <location filename="../main_window.cpp" line="1298"/>
         <source>&amp;Panneaux</source>
         <translation>&amp;Panels</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1298"/>
+        <location filename="../main_window.cpp" line="1300"/>
         <source>&amp;Masquer les panneaux</source>
         <translation>&amp;Hide panels</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1302"/>
+        <location filename="../main_window.cpp" line="1304"/>
         <source>Mode canevas : masque tous les panneaux.</source>
         <translation>Canvas mode: hides all panels.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1390"/>
-        <location filename="../main_window.cpp" line="8662"/>
-        <location filename="../main_window.cpp" line="8802"/>
-        <location filename="../main_window.cpp" line="8840"/>
-        <location filename="../main_window.cpp" line="8918"/>
+        <location filename="../main_window.cpp" line="1392"/>
+        <location filename="../main_window.cpp" line="8637"/>
+        <location filename="../main_window.cpp" line="8777"/>
+        <location filename="../main_window.cpp" line="8815"/>
+        <location filename="../main_window.cpp" line="8893"/>
         <source>▶ Lecture</source>
         <translation>▶ Play</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1427"/>
+        <location filename="../main_window.cpp" line="1429"/>
         <source>Modifications non enregistrées</source>
         <translation>Unsaved changes</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1430"/>
+        <location filename="../main_window.cpp" line="1432"/>
         <source>Projet concerné : « %1 ».</source>
         <translation>Project concerned: &quot;%1&quot;.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1432"/>
-        <location filename="../main_window.cpp" line="9351"/>
+        <location filename="../main_window.cpp" line="1434"/>
+        <location filename="../main_window.cpp" line="9326"/>
         <location filename="../main_window_production.cpp" line="39"/>
         <source>Sans titre</source>
         <translation>Untitled</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1434"/>
+        <location filename="../main_window.cpp" line="1436"/>
         <source>Enregistrer</source>
         <translation>Save</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1435"/>
+        <location filename="../main_window.cpp" line="1437"/>
         <source>Ne pas enregistrer</source>
         <translation>Don&apos;t save</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1436"/>
-        <location filename="../main_window.cpp" line="1688"/>
-        <location filename="../main_window.cpp" line="4688"/>
-        <location filename="../main_window.cpp" line="5289"/>
+        <location filename="../main_window.cpp" line="1438"/>
+        <location filename="../main_window.cpp" line="1690"/>
+        <location filename="../main_window.cpp" line="4663"/>
+        <location filename="../main_window.cpp" line="5264"/>
         <location filename="../main_window_regions.cpp" line="364"/>
         <location filename="../main_window_workflow.cpp" line="179"/>
         <source>Annuler</source>
         <translation>Cancel</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1506"/>
+        <location filename="../main_window.cpp" line="1508"/>
         <source>Le projet a été modifié. Enregistrer avant de créer un nouveau projet ?</source>
         <translation>The project has been modified. Save before creating a new project?</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1515"/>
+        <location filename="../main_window.cpp" line="1517"/>
         <source>Nouveau projet — ouvrez une image ou dessinez une forme.</source>
         <translation>New project — open an image or draw a shape.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1524"/>
+        <location filename="../main_window.cpp" line="1526"/>
         <source>Ouvrir une image ou un SVG</source>
         <translation>Open an image or SVG</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1541"/>
+        <location filename="../main_window.cpp" line="1543"/>
         <source>Ouvrir</source>
         <translation>Open</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1563"/>
+        <location filename="../main_window.cpp" line="1565"/>
         <source>Image illisible</source>
         <translation>Unreadable image</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1580"/>
+        <location filename="../main_window.cpp" line="1582"/>
         <source>Taille invalide</source>
         <translation>Invalid size</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1581"/>
+        <location filename="../main_window.cpp" line="1583"/>
         <source>La taille physique de l&apos;image doit être strictement positive.</source>
         <translation>The physical size of the image must be strictly positive.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1587"/>
+        <location filename="../main_window.cpp" line="1589"/>
         <source>Le projet a été modifié. Enregistrer avant d&apos;ouvrir cette image ?</source>
         <translation>The project has been modified. Save before opening this image?</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1606"/>
+        <location filename="../main_window.cpp" line="1608"/>
         <source>%1 — %2 × %3 px</source>
         <translation>%1 — %2 × %3 px</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1617"/>
+        <location filename="../main_window.cpp" line="1619"/>
         <source>SVG illisible</source>
         <translation>Unreadable SVG</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1618"/>
+        <location filename="../main_window.cpp" line="1620"/>
         <source>Ce fichier n&apos;a pas pu être importé comme dessin SVG.</source>
         <translation>This file could not be imported as an SVG drawing.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1623"/>
+        <location filename="../main_window.cpp" line="1625"/>
         <source>Le projet a été modifié. Enregistrer avant d&apos;ouvrir ce SVG ?</source>
         <translation>The project has been modified. Save before opening this SVG?</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1636"/>
+        <location filename="../main_window.cpp" line="1638"/>
         <source>Import SVG %1</source>
         <translation>SVG import %1</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1648"/>
+        <location filename="../main_window.cpp" line="1650"/>
         <source>%1 — %2 objet(s) vectoriel(s) importé(s)</source>
         <translation>%1 — %2 vector object(s) imported</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1663"/>
+        <location filename="../main_window.cpp" line="1665"/>
         <source>Opération impossible</source>
         <translation>Operation not possible</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1664"/>
+        <location filename="../main_window.cpp" line="1666"/>
         <source>Cette opération ne peut pas être appliquée à l&apos;image.</source>
         <translation>This operation cannot be applied to the image.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1670"/>
+        <location filename="../main_window.cpp" line="1672"/>
         <source>Cette opération sur l&apos;image</source>
         <translation>This operation on the image</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1682"/>
+        <location filename="../main_window.cpp" line="1684"/>
         <source>Segmentation existante</source>
         <translation>Existing segmentation</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1683"/>
+        <location filename="../main_window.cpp" line="1685"/>
         <source>%1 supprime la segmentation actuelle : ses régions seront perdues. Vous pourrez revenir en arrière avec Ctrl+Z.</source>
         <translation>%1 removes the current segmentation: its regions will be lost. You can go back with Ctrl+Z.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1687"/>
+        <location filename="../main_window.cpp" line="1689"/>
         <source>Continuer</source>
         <translation>Continue</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1756"/>
-        <source>Édition des points : glissez un point pour le déplacer. Échap pour quitter.</source>
-        <translation>Point editing: drag a point to move it. Esc to leave.</translation>
-    </message>
-    <message>
-        <location filename="../main_window.cpp" line="1781"/>
+        <location filename="../main_window.cpp" line="1786"/>
         <source>Guides satin : glissez une extrémité le long de son rail (Maj+glisser un guide lié déplace tout le groupe). Échap pour quitter.</source>
         <translation>Satin guides: drag an end along its rail (Shift+drag a linked guide moves the whole group). Esc to leave.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1811"/>
+        <location filename="../main_window.cpp" line="1816"/>
         <source>Rails satin : glissez un nœud pour le déplacer, double-clic sur un rail pour ajouter un nœud. Échap pour quitter.</source>
         <translation>Satin rails: drag a node to move it, double-click on a rail to add a node. Esc to leave.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1837"/>
+        <location filename="../main_window.cpp" line="1842"/>
         <source>Impossible d&apos;ajouter les guides : identifiants de liaison épuisés.</source>
         <translation>Cannot add the guides: link identifiers exhausted.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1848"/>
+        <location filename="../main_window.cpp" line="1853"/>
         <source>Impossible d&apos;ajouter les guides : une section boucle sur la même jonction.</source>
         <translation>Cannot add the guides: a section loops on the same junction.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1862"/>
+        <location filename="../main_window.cpp" line="1867"/>
         <source>Impossible d&apos;ajouter les guides de jonction : une section n&apos;a aucun intervalle admissible.</source>
         <translation>Cannot add the junction guides: a section has no admissible interval.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1875"/>
+        <location filename="../main_window.cpp" line="1880"/>
         <source>Impossible d&apos;ajouter les guides : réseau de jonction incomplet.</source>
         <translation>Cannot add the guides: incomplete junction network.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1884"/>
+        <location filename="../main_window.cpp" line="1889"/>
         <source>%1 guides internes ajoutés autour de la jonction #%2.</source>
         <translation>%1 internal guides added around junction #%2.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1893"/>
+        <location filename="../main_window.cpp" line="1898"/>
         <source>Impossible d&apos;ajouter un guide : aucun intervalle assez large.</source>
         <translation>Cannot add a guide: no interval wide enough.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1917"/>
+        <location filename="../main_window.cpp" line="1922"/>
         <source>Guide de jonction #%1 verrouillé : ajoutez un guide interne pour orienter la section.</source>
         <translation>Junction guide #%1 locked: add an internal guide to orient the section.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1931"/>
+        <location filename="../main_window.cpp" line="1936"/>
         <source>Impossible de supprimer le groupe : identifiants de liaison incohérents.</source>
         <translation>Cannot delete the group: inconsistent link identifiers.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1942"/>
+        <location filename="../main_window.cpp" line="1947"/>
         <source>Impossible de supprimer le groupe : une section perdrait tous ses guides internes.</source>
         <translation>Cannot delete the group: a section would lose all its internal guides.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1954"/>
+        <location filename="../main_window.cpp" line="1959"/>
         <source>Groupe de %1 guides liés supprimé.</source>
         <translation>Group of %1 linked guides deleted.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1971"/>
-        <location filename="../main_window.cpp" line="6941"/>
+        <location filename="../main_window.cpp" line="1976"/>
+        <location filename="../main_window.cpp" line="6916"/>
         <source>Abandonner les retouches</source>
         <translation>Discard touch-ups</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1972"/>
+        <location filename="../main_window.cpp" line="1977"/>
         <source>Abandonner définitivement les retouches manuelles de « %1 » ? Les points reviendront à la géométrie générée. Cette action reste annulable (Ctrl+Z).</source>
         <translation>Permanently discard the manual touch-ups of &quot;%1&quot;? The stitches will revert to the generated geometry. This action can still be undone (Ctrl+Z).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1993"/>
+        <location filename="../main_window.cpp" line="1998"/>
         <source>Cadre %1 × %2 mm</source>
         <translation>Hoop %1 × %2 mm</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2027"/>
+        <location filename="../main_window.cpp" line="2032"/>
         <source>Le projet a été modifié. Enregistrer avant de quitter ?</source>
         <translation>The project has been modified. Save before quitting?</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2042"/>
+        <location filename="../main_window.cpp" line="2047"/>
         <source>Cadre de broderie</source>
         <translation>Embroidery hoop</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2044"/>
+        <location filename="../main_window.cpp" line="2049"/>
         <source>Zone physique dans laquelle le motif doit tenir.
 L&apos;analyse signale les points hors de la zone brodable.</source>
         <translation>Physical area in which the pattern must fit.
 The analysis flags stitches outside the embroidery area.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2052"/>
-        <location filename="../main_window.cpp" line="4512"/>
-        <location filename="../main_window.cpp" line="4586"/>
-        <location filename="../main_window.cpp" line="4591"/>
-        <location filename="../main_window.cpp" line="4883"/>
-        <location filename="../main_window.cpp" line="4904"/>
-        <location filename="../main_window.cpp" line="4990"/>
-        <location filename="../main_window.cpp" line="5020"/>
-        <location filename="../main_window.cpp" line="5058"/>
+        <location filename="../main_window.cpp" line="2057"/>
+        <location filename="../main_window.cpp" line="4487"/>
+        <location filename="../main_window.cpp" line="4561"/>
+        <location filename="../main_window.cpp" line="4566"/>
+        <location filename="../main_window.cpp" line="4858"/>
+        <location filename="../main_window.cpp" line="4879"/>
+        <location filename="../main_window.cpp" line="4965"/>
+        <location filename="../main_window.cpp" line="4995"/>
+        <location filename="../main_window.cpp" line="5033"/>
         <location filename="../main_window_shapes.cpp" line="211"/>
         <location filename="../main_window_vector_edit.cpp" line="193"/>
         <location filename="../main_window_vector_edit.cpp" line="202"/>
@@ -4212,887 +4207,877 @@ The analysis flags stitches outside the embroidery area.</translation>
         <translation> mm</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2067"/>
+        <location filename="../main_window.cpp" line="2072"/>
         <source>Bande de sécurité le long du cadre (pied presseur, collision avec le cadre) : le motif ne doit pas y passer. Hachurée sur le canevas.</source>
         <translation>Safety margin along the hoop (presser foot, hoop collision): the pattern must not go through it. Hatched on the canvas.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2097"/>
-        <location filename="../main_window.cpp" line="4732"/>
+        <location filename="../main_window.cpp" line="2102"/>
+        <location filename="../main_window.cpp" line="4707"/>
         <source>Personnalisé</source>
         <translation>Custom</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2118"/>
+        <location filename="../main_window.cpp" line="2123"/>
         <source>%1 (enregistré)</source>
         <translation>%1 (saved)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2141"/>
+        <location filename="../main_window.cpp" line="2146"/>
         <source>Zone brodable : %1 × %2 mm</source>
         <translation>Embroidery area: %1 × %2 mm</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2172"/>
+        <location filename="../main_window.cpp" line="2177"/>
         <location filename="../main_window_objects.cpp" line="155"/>
-        <location filename="../main_window_objects.cpp" line="604"/>
+        <location filename="../main_window_objects.cpp" line="609"/>
         <source>Pivoter</source>
         <translation>Rotate</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2174"/>
+        <location filename="../main_window.cpp" line="2179"/>
         <source>Échange la largeur et la hauteur (cadre à l&apos;horizontale ou à la verticale).</source>
         <translation>Swaps the width and height (horizontal or vertical hoop).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2180"/>
+        <location filename="../main_window.cpp" line="2185"/>
         <source>Enregistrer ce cadre…</source>
         <translation>Save this hoop…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2181"/>
+        <location filename="../main_window.cpp" line="2186"/>
         <source>Garde cette taille dans la liste, pour les prochains projets.</source>
         <translation>Keeps this size in the list, for future projects.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2182"/>
+        <location filename="../main_window.cpp" line="2187"/>
         <source>Supprimer</source>
         <translation>Delete</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2183"/>
+        <location filename="../main_window.cpp" line="2188"/>
         <source>Retire de la liste le cadre enregistré sélectionné.</source>
         <translation>Removes the selected saved hoop from the list.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2192"/>
+        <location filename="../main_window.cpp" line="2197"/>
         <source>Enregistrer le cadre</source>
         <translation>Save the hoop</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2192"/>
+        <location filename="../main_window.cpp" line="2197"/>
         <source>Nom du cadre :</source>
         <translation>Hoop name:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2217"/>
+        <location filename="../main_window.cpp" line="2222"/>
         <source>Modèle :</source>
         <translation>Model:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2218"/>
+        <location filename="../main_window.cpp" line="2223"/>
         <source>Largeur :</source>
         <translation>Width:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2219"/>
+        <location filename="../main_window.cpp" line="2224"/>
         <source>Hauteur :</source>
         <translation>Height:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2228"/>
+        <location filename="../main_window.cpp" line="2233"/>
         <source>Marge de sécurité :</source>
         <translation>Safety margin:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2253"/>
+        <location filename="../main_window.cpp" line="2258"/>
         <source>Cadre : %1 × %2 mm, zone brodable %3 × %4 mm</source>
         <translation>Hoop: %1 × %2 mm, embroidery area %3 × %4 mm</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2287"/>
-        <location filename="../main_window.cpp" line="7332"/>
+        <location filename="../main_window.cpp" line="2292"/>
+        <location filename="../main_window.cpp" line="7307"/>
         <source>Recadrer l&apos;image</source>
         <translation>Crop the image</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2288"/>
+        <location filename="../main_window.cpp" line="2293"/>
         <source>Recadrer l&apos;image la recentre sur le cadre : les objets déjà créés ne la suivront pas et seront décalés par rapport à elle. Recadrer quand même ?</source>
         <translation>Cropping the image recenters it on the hoop: objects already created will not follow it and will be offset from it. Crop anyway?</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2327"/>
+        <location filename="../main_window.cpp" line="2332"/>
         <source>Forme trop petite — glissez davantage.</source>
         <translation>Shape too small — drag further.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2359"/>
+        <location filename="../main_window.cpp" line="2364"/>
         <source>Forme trop petite après accroche — glissez davantage.</source>
         <translation>Shape too small after snapping — drag further.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2074"/>
-        <location filename="../main_window.cpp" line="2365"/>
+        <location filename="../main_window.cpp" line="2079"/>
+        <location filename="../main_window.cpp" line="2370"/>
         <source>Rectangle</source>
         <translation>Rectangle</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2367"/>
+        <location filename="../main_window.cpp" line="2372"/>
         <source>Ellipse</source>
         <translation>Ellipse</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2380"/>
+        <location filename="../main_window.cpp" line="2385"/>
         <source>Polygone régulier</source>
         <translation>Regular polygon</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2453"/>
+        <location filename="../main_window.cpp" line="2463"/>
         <source>Nœud ajouté sur le rail %1.</source>
         <translation>Node added on rail %1.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2486"/>
-        <location filename="../main_window.cpp" line="7105"/>
+        <location filename="../main_window.cpp" line="2496"/>
+        <location filename="../main_window.cpp" line="7080"/>
         <source>Ligne</source>
         <translation>Line</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2488"/>
+        <location filename="../main_window.cpp" line="2498"/>
         <source>Polygone</source>
         <translation>Polygon</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2490"/>
+        <location filename="../main_window.cpp" line="2500"/>
         <source>Ligne : au moins 2 points requis.</source>
         <translation>Line: at least 2 points required.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2491"/>
+        <location filename="../main_window.cpp" line="2501"/>
         <source>Polygone : au moins 3 sommets requis.</source>
         <translation>Polygon: at least 3 vertices required.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2513"/>
+        <location filename="../main_window.cpp" line="2523"/>
         <source>Polygone : dernier sommet retiré.</source>
         <translation>Polygon: last vertex removed.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2519"/>
+        <location filename="../main_window.cpp" line="2529"/>
         <source>Polygone : %1 sommet(s) restant(s).</source>
         <translation>Polygon: %1 vertex(es) left.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2641"/>
+        <location filename="../main_window.cpp" line="2651"/>
         <source>Nœud : %1 mm ; %2 mm%3</source>
         <translation>Node: %1 mm; %2 mm%3</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2644"/>
+        <location filename="../main_window.cpp" line="2654"/>
         <source>  — accroché à un sommet</source>
         <translation>  — snapped to a vertex</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2687"/>
+        <location filename="../main_window.cpp" line="2697"/>
         <source>Taille : %1 × %2 mm</source>
         <translation>Size: %1 × %2 mm</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2878"/>
+        <location filename="../main_window.cpp" line="2888"/>
         <source>Colonne satin : dernier point retiré.</source>
         <translation>Satin column: last point removed.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2884"/>
+        <location filename="../main_window.cpp" line="2894"/>
         <source>Colonne satin : %1 point(s) restant(s) — Retour arrière pour continuer à retirer</source>
         <translation>Satin column: %1 point(s) left — Backspace to keep removing</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2895"/>
+        <location filename="../main_window.cpp" line="2905"/>
         <source>Colonne satin : dernier point sans correspondance ignoré (paire incomplète).</source>
         <translation>Satin column: last unmatched point ignored (incomplete pair).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2899"/>
+        <location filename="../main_window.cpp" line="2909"/>
         <source>Colonne satin : au moins deux paires complètes (4 points) sont nécessaires.</source>
         <translation>Satin column: at least two complete pairs (4 points) are required.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2924"/>
+        <location filename="../main_window.cpp" line="2934"/>
         <source>Rails croisés</source>
         <translation>Crossed rails</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2925"/>
+        <location filename="../main_window.cpp" line="2935"/>
         <source>Les deux rails de cette colonne satin se croisent — l&apos;objet est créé, mais la couture résultante sera probablement incohérente. Corrigez les rails en mode remodelage (Maj+R) avant d&apos;exporter.</source>
         <translation>The two rails of this satin column cross — the object is created, but the resulting stitching will probably be inconsistent. Fix the rails in reshape mode (Shift+R) before exporting.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2942"/>
+        <location filename="../main_window.cpp" line="2952"/>
         <source>Colonne satin (rails)</source>
         <translation>Satin column (rails)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2951"/>
+        <location filename="../main_window.cpp" line="2961"/>
         <source>Colonne satin manuelle</source>
         <translation>Manual satin column</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2979"/>
+        <location filename="../main_window.cpp" line="2989"/>
         <source>Colonne satin créée : %1 paire(s), %2 points générés.</source>
         <translation>Satin column created: %1 pair(s), %2 stitches generated.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="3069"/>
+        <location filename="../main_window.cpp" line="3079"/>
         <source>Courbe : relâchez pour poser le nœud lisse (poignées symétriques)</source>
         <translation>Curve: release to place the smooth node (symmetric handles)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="3109"/>
+        <location filename="../main_window.cpp" line="3119"/>
         <source>Courbe : %1 nœud(s) — clic (coin) ou clic-glisser (lisse) pour continuer, Entrée/double-clic/bouton ✓ : terminer, Retour arrière : retirer le dernier nœud</source>
         <translation>Curve: %1 node(s) — click (corner) or click-drag (smooth) to continue, Enter/double-click/✓ button: finish, Backspace: remove the last node</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="3120"/>
+        <location filename="../main_window.cpp" line="3130"/>
         <source>Courbe ouverte</source>
         <translation>Open curve</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="3120"/>
+        <location filename="../main_window.cpp" line="3130"/>
         <source>Courbe</source>
         <translation>Curve</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="3122"/>
+        <location filename="../main_window.cpp" line="3132"/>
         <source>Courbe : au moins deux nœuds requis.</source>
         <translation>Curve: at least two nodes required.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="3149"/>
+        <location filename="../main_window.cpp" line="3159"/>
         <source>Courbe : dernier nœud retiré.</source>
         <translation>Curve: last node removed.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="3154"/>
+        <location filename="../main_window.cpp" line="3164"/>
         <source>Courbe : %1 nœud(s) restant(s).</source>
         <translation>Curve: %1 node(s) left.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="3212"/>
+        <location filename="../main_window.cpp" line="3222"/>
         <source>Forme libre</source>
         <translation>Freeform shape</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="3214"/>
+        <location filename="../main_window.cpp" line="3224"/>
         <source>Forme libre : tracé trop court.</source>
         <translation>Freeform shape: path too short.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="3247"/>
+        <location filename="../main_window.cpp" line="3257"/>
         <source>Forme créée — menu Broderie pour la convertir en points de couture</source>
         <translation>Shape created — use the Embroidery menu to convert it into stitches</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="3288"/>
+        <location filename="../main_window.cpp" line="3298"/>
         <source>Traitement de l&apos;image impossible</source>
         <translation>Image processing not possible</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="3289"/>
+        <location filename="../main_window.cpp" line="3299"/>
         <source>Une des opérations appliquées à l&apos;image a échoué.</source>
         <translation>One of the operations applied to the image failed.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="3341"/>
+        <location filename="../main_window.cpp" line="3351"/>
         <source>Génération des points impossible : %1</source>
         <translation>Stitch generation not possible: %1</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="3637"/>
+        <location filename="../main_window.cpp" line="3647"/>
         <source>Supprimer le nœud</source>
         <translation>Delete the node</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="3668"/>
+        <location filename="../main_window.cpp" line="3678"/>
         <source>Déplacement annulé.</source>
         <translation>Move cancelled.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="3723"/>
+        <location filename="../main_window.cpp" line="3733"/>
         <source>Poignée sortante — glisser pour incurver la courbe</source>
         <translation>Outgoing handle — drag to bend the curve</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="3725"/>
+        <location filename="../main_window.cpp" line="3735"/>
         <source>Poignée entrante — glisser pour incurver la courbe</source>
         <translation>Incoming handle — drag to bend the curve</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="3822"/>
+        <location filename="../main_window.cpp" line="3832"/>
         <source>Glisser pour redimensionner (coin opposé fixe) — Maj : conserver les proportions, Échap : annuler</source>
         <translation>Drag to resize (opposite corner fixed) — Shift: keep proportions, Esc: cancel</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="3889"/>
+        <location filename="../main_window.cpp" line="3899"/>
         <source>Orientation : %1°</source>
         <translation>Orientation: %1°</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="3894"/>
+        <location filename="../main_window.cpp" line="3904"/>
         <source>Glisser pour tourner l&apos;orientation des fils</source>
         <translation>Drag to rotate the thread orientation</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="3940"/>
+        <location filename="../main_window.cpp" line="3950"/>
         <source>Guide satin #%1 — jonction structurelle verrouillée</source>
         <translation>Satin guide #%1 — structural junction locked</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="3942"/>
+        <location filename="../main_window.cpp" line="3952"/>
         <source>Guide satin #%1 — lié : Maj+glisser une extrémité déplace tout le groupe, glisser seul ne modifie que cette section</source>
         <translation>Satin guide #%1 — linked: Shift+drag an end moves the whole group, dragging alone only changes this section</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="3945"/>
+        <location filename="../main_window.cpp" line="3955"/>
         <source>Guide satin #%1 — cliquer pour sélectionner</source>
         <translation>Satin guide #%1 — click to select</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="3981"/>
+        <location filename="../main_window.cpp" line="3991"/>
         <source>Déplacement du groupe refusé : intervalle épuisé ou jonction modifiée entretemps.</source>
         <translation>Group move refused: range exhausted or junction modified in the meantime.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4020"/>
+        <location filename="../main_window.cpp" line="4030"/>
         <source>%1 guides liés déplacés ensemble.</source>
         <translation>%1 linked guides moved together.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4027"/>
+        <location filename="../main_window.cpp" line="4037"/>
         <source>Guide refusé : il doit rester ordonné sur les deux rails.</source>
         <translation>Guide refused: it must stay ordered across both rails.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4052"/>
+        <location filename="../main_window.cpp" line="4062"/>
         <source>Guide satin #%1 — extrémité rail A</source>
         <translation>Satin guide #%1 — rail A end</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4053"/>
+        <location filename="../main_window.cpp" line="4063"/>
         <source>Guide satin #%1 — extrémité rail B</source>
         <translation>Satin guide #%1 — rail B end</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4125"/>
+        <location filename="../main_window.cpp" line="4135"/>
         <source>Rail %1, nœud #%2 — glisser pour déplacer</source>
         <translation>Rail %1, node #%2 — drag to move</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4221"/>
-        <source>Glisser pour déplacer le point de couture.</source>
-        <translation>Drag to move the stitch point.</translation>
-    </message>
-    <message>
-        <location filename="../main_window.cpp" line="4225"/>
-        <source>Point de couture #%1 — glisser pour déplacer</source>
-        <translation>Stitch point #%1 — drag to move</translation>
-    </message>
-    <message>
-        <location filename="../main_window.cpp" line="4506"/>
+        <location filename="../main_window.cpp" line="4481"/>
         <source>Objet de point de contour</source>
         <translation>Outline stitch object</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4514"/>
+        <location filename="../main_window.cpp" line="4489"/>
         <source>Point simple</source>
         <translation>Single stitch</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4515"/>
+        <location filename="../main_window.cpp" line="4490"/>
         <source>Aller-retour (double)</source>
         <translation>Back-and-forth (double)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4516"/>
+        <location filename="../main_window.cpp" line="4491"/>
         <location filename="../main_window_vector_edit.cpp" line="197"/>
         <source>Point triple</source>
         <translation>Triple stitch</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4518"/>
-        <location filename="../main_window.cpp" line="4598"/>
+        <location filename="../main_window.cpp" line="4493"/>
+        <location filename="../main_window.cpp" line="4573"/>
         <source>Longueur de point :</source>
         <translation>Stitch length:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4519"/>
+        <location filename="../main_window.cpp" line="4494"/>
         <source>Type :</source>
         <translation>Type:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4534"/>
+        <location filename="../main_window.cpp" line="4509"/>
         <source>Créer un contour pour %1 formes</source>
         <translation>Create an outline for %1 shapes</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4542"/>
+        <location filename="../main_window.cpp" line="4517"/>
         <source>Contour de %1</source>
         <translation>Outline of %1</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4556"/>
+        <location filename="../main_window.cpp" line="4531"/>
         <source>Points générés : %1 points, %2 saut(s)</source>
         <translation>Stitches generated: %1 stitches, %2 jump(s)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4580"/>
+        <location filename="../main_window.cpp" line="4555"/>
         <location filename="../main_window_editing.cpp" line="1005"/>
         <source>Remplissage tatami</source>
         <translation>Tatami fill</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4596"/>
+        <location filename="../main_window.cpp" line="4571"/>
         <source> °</source>
         <translation> °</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4597"/>
+        <location filename="../main_window.cpp" line="4572"/>
         <source>Espacement des rangées :</source>
         <translation>Row spacing:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4599"/>
+        <location filename="../main_window.cpp" line="4574"/>
         <source>Angle :</source>
         <translation>Angle:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4615"/>
+        <location filename="../main_window.cpp" line="4590"/>
         <source>Créer un remplissage pour %1 formes</source>
         <translation>Create a fill for %1 shapes</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4625"/>
+        <location filename="../main_window.cpp" line="4600"/>
         <source>Remplissage de %1</source>
         <translation>Fill of %1</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4644"/>
+        <location filename="../main_window.cpp" line="4619"/>
         <source>Remplissage généré : %1 points</source>
         <translation>Fill generated: %1 stitches</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4659"/>
-        <location filename="../main_window.cpp" line="4677"/>
-        <location filename="../main_window.cpp" line="4725"/>
+        <location filename="../main_window.cpp" line="4634"/>
+        <location filename="../main_window.cpp" line="4652"/>
+        <location filename="../main_window.cpp" line="4700"/>
         <source>Numérisation automatique</source>
         <translation>Auto-digitize</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4660"/>
+        <location filename="../main_window.cpp" line="4635"/>
         <source>Segmentez d&apos;abord l&apos;image (menu Segmentation), ou importez un fichier SVG, puis relancez.</source>
         <translation>Segment the image first (Segmentation menu), or import an SVG file, then try again.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4678"/>
+        <location filename="../main_window.cpp" line="4653"/>
         <source>Des objets existent déjà. Ajouter les nouveaux objets à côté des existants, ou remplacer les objets créés précédemment par la numérisation automatique ?</source>
         <translation>Objects already exist. Add the new objects next to the existing ones, or replace the objects previously created by auto-digitizing?</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4682"/>
+        <location filename="../main_window.cpp" line="4657"/>
         <source>« Remplacer » supprime les objets de broderie à choix automatique et les formes issues de la segmentation qui leur servent de source ; les objets verrouillés, retouchés à la main ou dessinés par vous sont conservés. Un seul Ctrl+Z annule le remplacement.</source>
         <translation>&quot;Replace&quot; deletes the automatically chosen embroidery objects and the segmentation shapes that serve as their source; locked objects, hand-touched-up objects or those you drew are kept. A single Ctrl+Z undoes the replacement.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4686"/>
-        <location filename="../main_window.cpp" line="5270"/>
+        <location filename="../main_window.cpp" line="4661"/>
+        <location filename="../main_window.cpp" line="5245"/>
         <source>Ajouter</source>
         <translation>Add</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4687"/>
-        <location filename="../main_window.cpp" line="5273"/>
+        <location filename="../main_window.cpp" line="4662"/>
+        <location filename="../main_window.cpp" line="5248"/>
         <location filename="../main_window_workflow.cpp" line="175"/>
         <source>Remplacer</source>
         <translation>Replace</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4731"/>
+        <location filename="../main_window.cpp" line="4706"/>
         <source>Préréglage de numérisation</source>
         <translation>Digitizing preset</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4733"/>
+        <location filename="../main_window.cpp" line="4708"/>
         <source>Logo / aplats</source>
         <translation>Logo / flat areas</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4734"/>
+        <location filename="../main_window.cpp" line="4709"/>
         <source>Dessin au trait</source>
         <translation>Line drawing</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4735"/>
+        <location filename="../main_window.cpp" line="4710"/>
         <source>Photo / pointillé</source>
         <translation>Photo / stipple</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4736"/>
+        <location filename="../main_window.cpp" line="4711"/>
         <source>Un préréglage remplit les réglages de ce dialogue ; vous pouvez ensuite les ajuster dans « Réglages avancés » (le préréglage passe alors à « Personnalisé »).</source>
         <translation>A preset fills in the settings of this dialog; you can then adjust them in &quot;Advanced settings&quot; (the preset then switches to &quot;Custom&quot;).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4739"/>
+        <location filename="../main_window.cpp" line="4714"/>
         <source>Type d&apos;image :</source>
         <translation>Image type:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4745"/>
+        <location filename="../main_window.cpp" line="4720"/>
         <source>Ignorer la plus grande région (probablement le fond)</source>
         <translation>Ignore the largest region (probably the background)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4749"/>
+        <location filename="../main_window.cpp" line="4724"/>
         <source>Exclut la couleur de la plus grande région, et toutes les régions de cette couleur. Cochée d&apos;office seulement pour un fond quasi blanc qui encadre le motif : sur une image plein cadre, la plus grande région (ciel, mer...) fait partie du dessin.</source>
         <translation>Excludes the color of the largest region, and all regions of that color. Checked by default only for a nearly white background that frames the pattern: on a full-frame image, the largest region (sky, sea...) is part of the drawing.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4765"/>
+        <location filename="../main_window.cpp" line="4740"/>
         <source>Satin automatique (bandes étroites, petits disques)</source>
         <translation>Automatic satin (narrow bands, small disks)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4770"/>
+        <location filename="../main_window.cpp" line="4745"/>
         <source>Mode formes : les anneaux, rubans et traits de 0,8 à 6 mm de large sont cousus en auto-satin au lieu d&apos;un tatami (repli tatami si le satin couvre mal la forme). Les petits disques (jusqu&apos;à 12 mm) sont cousus en cordes parallèles ; les formes plus larges restent en tatami.</source>
         <translation>Shapes mode: rings, ribbons and strokes 0.8 to 6 mm wide are stitched as auto-satin instead of tatami (tatami fallback if the satin covers the shape poorly). Small disks (up to 12 mm) are stitched as parallel cords; larger shapes stay tatami.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4785"/>
+        <location filename="../main_window.cpp" line="4760"/>
         <source>Région candidate : %1 % de l&apos;image, clarté L* %2, %3 bord(s) touché(s) sur 4</source>
         <translation>Candidate region: %1 % of the image, lightness L* %2, %3 edge(s) touched out of 4</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4797"/>
+        <location filename="../main_window.cpp" line="4772"/>
         <source>Limiter à :</source>
         <translation>Limit to:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4801"/>
+        <location filename="../main_window.cpp" line="4776"/>
         <source>pas de limite</source>
         <translation>no limit</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4802"/>
+        <location filename="../main_window.cpp" line="4777"/>
         <source> fils</source>
         <translation> threads</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4806"/>
+        <location filename="../main_window.cpp" line="4781"/>
         <source>Fusionne les couleurs les plus proches pour n&apos;utiliser que ce nombre de fils (la couleur du plus grand aplat est conservée).</source>
         <translation>Merges the closest colors to use only this number of threads (the color of the largest flat area is kept).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4812"/>
+        <location filename="../main_window.cpp" line="4787"/>
         <source>Formes pleines (remplissages)</source>
         <translation>Solid shapes (fills)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4815"/>
+        <location filename="../main_window.cpp" line="4790"/>
         <source>Contours (dessin au trait)</source>
         <translation>Outlines (line drawing)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4818"/>
+        <location filename="../main_window.cpp" line="4793"/>
         <source>Coud les traits du dessin (lignes médianes) en point droit, au lieu de remplir les formes.</source>
         <translation>Stitches the drawing strokes (center lines) in running stitch, instead of filling the shapes.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4820"/>
+        <location filename="../main_window.cpp" line="4795"/>
         <source>Pointillé (stippling)</source>
         <translation>Stipple (stippling)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4823"/>
+        <location filename="../main_window.cpp" line="4798"/>
         <source>Coud des points répartis selon les tons de l&apos;image (clair = peu de points, sombre = beaucoup), sans segmentation.</source>
         <translation>Stitches are distributed according to the image tones (light = few stitches, dark = many), without segmentation.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4832"/>
+        <location filename="../main_window.cpp" line="4807"/>
         <source>Réglages avancés</source>
         <translation>Advanced settings</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4862"/>
+        <location filename="../main_window.cpp" line="4837"/>
         <source>Niveau de détail des formes vectorisées : bas = contours lissés ; haut = plus fidèle aux pixels segmentés.</source>
         <translation>Detail level of vectorized shapes: low = smoothed outlines; high = more faithful to the segmented pixels.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4869"/>
+        <location filename="../main_window.cpp" line="4844"/>
         <source>Détail vectorisation :</source>
         <translation>Vectorization detail:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4870"/>
-        <location filename="../main_window.cpp" line="5117"/>
+        <location filename="../main_window.cpp" line="4845"/>
+        <location filename="../main_window.cpp" line="5092"/>
         <location filename="../main_window_workflow.cpp" line="120"/>
         <source>Faible</source>
         <translation>Low</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4872"/>
-        <location filename="../main_window.cpp" line="5119"/>
+        <location filename="../main_window.cpp" line="4847"/>
+        <location filename="../main_window.cpp" line="5094"/>
         <location filename="../main_window_workflow.cpp" line="122"/>
         <source>Élevé</source>
         <translation>High</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4887"/>
+        <location filename="../main_window.cpp" line="4862"/>
         <source>Débord de chaque remplissage sur ses voisins brodés, le long des bords partagés uniquement : évite les jours entre deux couleurs. 0 = contours exacts de la segmentation. Le débord fait partie de la forme vectorielle : un autre type de points choisi ensuite sur cette forme débordera aussi.</source>
         <translation>Overshoot of each fill onto its embroidered neighbors, along shared edges only: avoids gaps between two colors. 0 = exact segmentation outlines. The overshoot is part of the vector shape: another stitch type chosen afterward on this shape will overshoot too.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4891"/>
+        <location filename="../main_window.cpp" line="4866"/>
         <source>Chevauchement des remplissages :</source>
         <translation>Fill overlap:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4905"/>
-        <location filename="../main_window.cpp" line="4927"/>
-        <location filename="../main_window.cpp" line="4950"/>
+        <location filename="../main_window.cpp" line="4880"/>
+        <location filename="../main_window.cpp" line="4902"/>
+        <location filename="../main_window.cpp" line="4925"/>
         <source>désactivé</source>
         <translation>disabled</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4912"/>
+        <location filename="../main_window.cpp" line="4887"/>
         <source>Les détails plus étroits que cette largeur (contours fins, anneaux, pointes) sont retirés de leur forme et rendus à la voisine avant numérisation ; les coins convexes sont aussi arrondis. Baissez ou désactivez pour des contours plus fidèles à l&apos;image.</source>
         <translation>Details narrower than this width (thin outlines, rings, tips) are removed from their shape and given back to the neighbor before digitizing; convex corners are also rounded. Lower or disable for outlines more faithful to the image.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4916"/>
+        <location filename="../main_window.cpp" line="4891"/>
         <source>Largeur minimale des détails :</source>
         <translation>Minimum detail width:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4926"/>
-        <location filename="../main_window.cpp" line="4949"/>
-        <location filename="../main_window.cpp" line="8435"/>
+        <location filename="../main_window.cpp" line="4901"/>
+        <location filename="../main_window.cpp" line="4924"/>
+        <location filename="../main_window.cpp" line="8410"/>
         <location filename="../main_window_regions.cpp" line="278"/>
         <location filename="../main_window_shapes.cpp" line="218"/>
         <source> mm²</source>
         <translation> mm²</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4934"/>
+        <location filename="../main_window.cpp" line="4909"/>
         <source>Les régions plus petites que cette aire sont fusionnées avec leur voisine de plus longue frontière : elles disparaissent du résultat. 0 = toutes les régions segmentées sont conservées.</source>
         <translation>Regions smaller than this area are merged into the neighbor with the longest border: they disappear from the result. 0 = all segmented regions are kept.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4937"/>
+        <location filename="../main_window.cpp" line="4912"/>
         <source>Aire minimale des régions :</source>
         <translation>Minimum region area:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4955"/>
+        <location filename="../main_window.cpp" line="4930"/>
         <source>Les petits îlots collés à un grand aplat sont fusionnés dans la voisine dont la couleur est la plus proche (et non celle de plus longue frontière). Les traits fins sombres sont aussi des îlots : cochez « Traits sombres » pour les garder.</source>
         <translation>Small islands attached to a large flat area are merged into the neighbor with the closest color (not the one with the longest border). Thin dark strokes are islands too: check &quot;Dark strokes&quot; to keep them.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4958"/>
+        <location filename="../main_window.cpp" line="4933"/>
         <source>Nettoyage des îlots :</source>
         <translation>Island cleanup:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4963"/>
+        <location filename="../main_window.cpp" line="4938"/>
         <source>Bloc uni (sans tissu visible)</source>
         <translation>Solid block (no visible fabric)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4968"/>
+        <location filename="../main_window.cpp" line="4943"/>
         <source>Pour une broderie pleine d&apos;un seul tenant : les remplissages débordent d&apos;au moins 0,5 mm sous leurs voisins et les petites régions sont fusionnées dans leur voisine au lieu d&apos;être cousues en simple contour. Les réglages plus élevés ci-dessus (débord, aire minimale) sont conservés.</source>
         <translation>For a solid, single-piece embroidery: fills overshoot by at least 0.5 mm under their neighbors and small regions are merged into their neighbor instead of being stitched as a simple outline. The higher settings above (overshoot, minimum area) are kept.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4975"/>
+        <location filename="../main_window.cpp" line="4950"/>
         <source>Traits sombres cousus par-dessus</source>
         <translation>Dark strokes stitched on top</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4979"/>
+        <location filename="../main_window.cpp" line="4954"/>
         <source>Les traits sombres fins de l&apos;image (contours noirs, mâts, haubans) sont séparés des remplissages et cousus en point droit par-dessus, en dernier ; les remplissages passent dessous sans trou. Coûte des coupes : chaque trait est un tracé séparé.</source>
         <translation>Thin dark strokes in the image (black outlines, masts, rigging) are separated from the fills and stitched on top in running stitch, last; fills pass underneath without gaps. Costs trims: each stroke is a separate path.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4994"/>
+        <location filename="../main_window.cpp" line="4969"/>
         <source>Largeur maximale d&apos;un trait : au-delà, c&apos;est un aplat.</source>
         <translation>Maximum width of a stroke: beyond it, it is a flat area.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5003"/>
+        <location filename="../main_window.cpp" line="4978"/>
         <source>Clarté CIELAB L* maximale d&apos;un pixel de trait (0 = noir, 100 = blanc).</source>
         <translation>Maximum CIELAB lightness L* of a stroke pixel (0 = black, 100 = white).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5004"/>
+        <location filename="../main_window.cpp" line="4979"/>
         <source>Largeur max. :</source>
         <translation>Max. width:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5006"/>
+        <location filename="../main_window.cpp" line="4981"/>
         <source>Clarté max. (L*) :</source>
         <translation>Max. lightness (L*):</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5021"/>
+        <location filename="../main_window.cpp" line="4996"/>
         <source>aucune</source>
         <translation>none</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5026"/>
+        <location filename="../main_window.cpp" line="5001"/>
         <source>Les fragments de trait isolés plus courts que cette longueur ne sont pas cousus.</source>
         <translation>Isolated stroke fragments shorter than this length are not stitched.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5027"/>
+        <location filename="../main_window.cpp" line="5002"/>
         <source>Seulement les vrais objets</source>
         <translation>Real objects only</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5031"/>
+        <location filename="../main_window.cpp" line="5006"/>
         <source>Ne coud que les traits qui sont de vrais objets, pas les séparations entre zones.</source>
         <translation>Only stitches the strokes that are real objects, not the separations between zones.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5033"/>
+        <location filename="../main_window.cpp" line="5008"/>
         <source>Anneaux en satin</source>
         <translation>Satin rings</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5038"/>
+        <location filename="../main_window.cpp" line="5013"/>
         <source>Les cercles et ellipses épaissis (hublots, ventouses, bulles, yeux) sont reconnus sur le masque des traits sombres et cousus en auto-satin avec un contour exact.</source>
         <translation>Thickened circles and ellipses (portholes, suckers, bubbles, eyes) are recognized on the dark stroke mask and stitched as auto-satin with an exact outline.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5041"/>
+        <location filename="../main_window.cpp" line="5016"/>
         <source>Longueur min. :</source>
         <translation>Min. length:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5059"/>
+        <location filename="../main_window.cpp" line="5034"/>
         <source>polygones</source>
         <translation>polygons</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5064"/>
+        <location filename="../main_window.cpp" line="5039"/>
         <source>Contours des formes en courbes de Bézier (tolérance d&apos;ajustement) au lieu de polygones ; 0 = polygones.</source>
         <translation>Shape outlines as Bézier curves (fitting tolerance) instead of polygons; 0 = polygons.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5071"/>
+        <location filename="../main_window.cpp" line="5046"/>
         <location filename="../main_window_regions.cpp" line="285"/>
         <source>sans limite</source>
         <translation>no limit</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5075"/>
+        <location filename="../main_window.cpp" line="5050"/>
         <source>Avec le nettoyage des îlots : refuse une voisine plus éloignée que cet écart de couleur (ΔE CIELAB).</source>
         <translation>With island cleanup: refuses a neighbor farther away than this color difference (ΔE CIELAB).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5078"/>
+        <location filename="../main_window.cpp" line="5053"/>
         <source>Contours :</source>
         <translation>Outlines:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5080"/>
+        <location filename="../main_window.cpp" line="5055"/>
         <source>ΔE max. des îlots :</source>
         <translation>Max. island ΔE:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5087"/>
+        <location filename="../main_window.cpp" line="5062"/>
         <source>Remplissage qui suit le mouvement</source>
         <translation>Fill that follows the movement</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5092"/>
+        <location filename="../main_window.cpp" line="5067"/>
         <source>Les grandes formes allongées (tentacules, rubans, nuages, fumée) passent en remplissage directionnel dont les guides suivent l&apos;axe médian : les rangées suggèrent le mouvement. La couleur la plus sombre reste en tatami.</source>
         <translation>Large elongated shapes (tentacles, ribbons, clouds, smoke) become directional fills whose guides follow the medial axis: the rows suggest movement. The darkest color stays tatami.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5110"/>
+        <location filename="../main_window.cpp" line="5085"/>
         <source>Niveau de détail : bas = lignes très simplifiées, petits traits ignorés ; haut = fidèle au dessin.</source>
         <translation>Detail level: low = very simplified lines, small strokes ignored; high = faithful to the drawing.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5116"/>
+        <location filename="../main_window.cpp" line="5091"/>
         <location filename="../main_window_workflow.cpp" line="124"/>
         <source>Détail :</source>
         <translation>Detail:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5122"/>
+        <location filename="../main_window.cpp" line="5097"/>
         <source>Automatique</source>
         <translation>Automatic</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5125"/>
+        <location filename="../main_window.cpp" line="5100"/>
         <source>Running (point droit)</source>
         <translation>Running (running stitch)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5143"/>
+        <location filename="../main_window.cpp" line="5118"/>
         <source> points</source>
         <translation> stitches</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5151"/>
+        <location filename="../main_window.cpp" line="5126"/>
         <source>Graine : même graine, même répartition.</source>
         <translation>Seed: same seed, same distribution.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5152"/>
+        <location filename="../main_window.cpp" line="5127"/>
         <source>Inverser les tons</source>
         <translation>Invert tones</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5156"/>
+        <location filename="../main_window.cpp" line="5131"/>
         <source>Nombre :</source>
         <translation>Number:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5158"/>
+        <location filename="../main_window.cpp" line="5133"/>
         <source>Graine :</source>
         <translation>Seed:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5271"/>
+        <location filename="../main_window.cpp" line="5246"/>
         <source>Ajoute les nouveaux objets à côté des objets existants.</source>
         <translation>Adds the new objects next to the existing objects.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5275"/>
+        <location filename="../main_window.cpp" line="5250"/>
         <source>Supprime les objets de broderie à choix automatique et les formes issues de la segmentation qui leur servent de source ; les objets verrouillés, retouchés à la main ou dessinés par vous sont conservés. Un seul Ctrl+Z annule le remplacement.</source>
         <translation>Deletes the automatically chosen embroidery objects and the segmentation shapes that serve as their source; locked objects, hand-touched-up objects or those you drew are kept. A single Ctrl+Z undoes the replacement.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5286"/>
+        <location filename="../main_window.cpp" line="5261"/>
         <location filename="../main_window_ux.cpp" line="375"/>
         <location filename="../main_window_ux.cpp" line="414"/>
         <source>Numériser</source>
         <translation>Digitize</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5364"/>
+        <location filename="../main_window.cpp" line="5339"/>
         <location filename="../main_window_workflow.cpp" line="415"/>
         <source>Numérisation automatique en cours…</source>
         <translation>Auto-digitizing in progress…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5391"/>
+        <location filename="../main_window.cpp" line="5366"/>
         <location filename="../main_window_workflow.cpp" line="419"/>
         <source>Numérisation impossible</source>
         <translation>Digitizing not possible</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5392"/>
+        <location filename="../main_window.cpp" line="5367"/>
         <source>L&apos;image n&apos;a pas pu être numérisée automatiquement.</source>
         <translation>The image could not be auto-digitized.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5434"/>
+        <location filename="../main_window.cpp" line="5409"/>
         <source>Contours : %1 objet(s), %2 segment(s), %3 jonction(s) — point droit %4 mm, %5 repli(s), %6 rejet(s)</source>
         <translation>Outlines: %1 object(s), %2 segment(s), %3 junction(s) — straight stitch %4 mm, %5 fallback(s), %6 rejection(s)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5445"/>
+        <location filename="../main_window.cpp" line="5420"/>
         <source>Certains traits n&apos;ont pas pu être cousus tels quels (trop courts ou trop dégradés après nettoyage) :
 
 </source>
@@ -5101,29 +5086,29 @@ The analysis flags stitches outside the embroidery area.</translation>
 </translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5451"/>
-        <location filename="../main_window.cpp" line="5488"/>
-        <location filename="../main_window.cpp" line="5506"/>
+        <location filename="../main_window.cpp" line="5426"/>
+        <location filename="../main_window.cpp" line="5463"/>
+        <location filename="../main_window.cpp" line="5481"/>
         <source>… et %1 de plus.</source>
         <translation>… and %1 more.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5453"/>
+        <location filename="../main_window.cpp" line="5428"/>
         <source>Contours : avertissements</source>
         <translation>Outlines: warnings</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5458"/>
+        <location filename="../main_window.cpp" line="5433"/>
         <source>Numérisation automatique : %1 objet(s) vectoriel(s), %2 objet(s) de broderie — tous éditables</source>
         <translation>Auto-digitize: %1 vector object(s), %2 embroidery object(s) — all editable</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5463"/>
+        <location filename="../main_window.cpp" line="5438"/>
         <source> (%1 forme(s) en remplissage directionnel)</source>
         <translation> (%1 shape(s) with directional fill)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5479"/>
+        <location filename="../main_window.cpp" line="5454"/>
         <source>Le squelette auto-satin a rejeté une portion de forme sur certaines zones (souvent trop large pour du satin) : elles ont reçu un remplissage tatami de repli à la place, pour ne rien laisser sans point, mais le résultat mérite d&apos;être vérifié (aspect, densité) — ou redécoupé manuellement (ligne de coupe, outil Décaler) puis renumérisé si le tatami ne convient pas.
 
 </source>
@@ -5132,12 +5117,12 @@ The analysis flags stitches outside the embroidery area.</translation>
 </translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5490"/>
+        <location filename="../main_window.cpp" line="5465"/>
         <source>Zones remplies en tatami de repli</source>
         <translation>Zones filled with fallback tatami</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5499"/>
+        <location filename="../main_window.cpp" line="5474"/>
         <source>Certains éléments de ce fichier SVG n&apos;ont pas pu être importés (texte, dégradés, filtres, motifs... — non pris en charge dans cette première version) ou ont été simplifiés. Le reste du dessin a bien été importé.
 
 </source>
@@ -5146,64 +5131,64 @@ The analysis flags stitches outside the embroidery area.</translation>
 </translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5508"/>
+        <location filename="../main_window.cpp" line="5483"/>
         <source>Import SVG partiel</source>
         <translation>Partial SVG import</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5531"/>
+        <location filename="../main_window.cpp" line="5506"/>
         <source>Langue</source>
         <translation>Language</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5532"/>
+        <location filename="../main_window.cpp" line="5507"/>
         <source>La nouvelle langue sera appliquée au prochain démarrage.</source>
         <translation>The new language will be applied at the next startup.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5635"/>
+        <location filename="../main_window.cpp" line="5610"/>
         <source>Orientation du remplissage</source>
         <translation>Fill orientation</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5636"/>
+        <location filename="../main_window.cpp" line="5611"/>
         <source>Angle des fils (°) :</source>
         <translation>Stitch angle (°):</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5648"/>
+        <location filename="../main_window.cpp" line="5623"/>
         <source>Orientation du remplissage : %1° — %2 points</source>
         <translation>Fill orientation: %1° — %2 stitches</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5663"/>
+        <location filename="../main_window.cpp" line="5638"/>
         <source>Convertir en tatami</source>
         <translation>Convert to tatami</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5664"/>
+        <location filename="../main_window.cpp" line="5639"/>
         <source>%1 colonne(s) satin automatique(s) vont devenir des remplissages tatami (découpés sur leur région, sans débordement). L&apos;orientation restera réglable. Continuer ?</source>
         <translation>%1 automatic satin column(s) will become tatami fills (cut to their region, no overflow). Orientation will remain adjustable. Continue?</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5677"/>
+        <location filename="../main_window.cpp" line="5652"/>
         <source>Satins convertis en tatami : %1 points</source>
         <translation>Satins converted to tatami: %1 stitches</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5748"/>
+        <location filename="../main_window.cpp" line="5723"/>
         <location filename="../main_window_directional.cpp" line="97"/>
         <location filename="../main_window_directional.cpp" line="289"/>
         <source>Aucun contour source pour le remplissage directionnel.</source>
         <translation>No source outline for the directional fill.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5758"/>
+        <location filename="../main_window.cpp" line="5733"/>
         <source>Aucun contour source pour construire le satin.</source>
         <translation>No source outline to build the satin.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5787"/>
+        <location filename="../main_window.cpp" line="5762"/>
         <source>Aucune colonne satin n&apos;a pu être construite pour cette région :
 %1
 
@@ -5214,691 +5199,696 @@ Essayez un tatami.</source>
 Try a tatami.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5789"/>
+        <location filename="../main_window.cpp" line="5764"/>
         <location filename="../main_window_satin_auto.cpp" line="591"/>
         <location filename="../main_window_satin_auto.cpp" line="609"/>
         <source>forme non exploitable</source>
         <translation>unusable shape</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5799"/>
+        <location filename="../main_window.cpp" line="5774"/>
         <source>Type de points inconnu.</source>
         <translation>Unknown stitch type.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5814"/>
+        <location filename="../main_window.cpp" line="5789"/>
         <location filename="../main_window_satin_auto.cpp" line="606"/>
         <source>Satin impossible</source>
         <translation>Satin not possible</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5814"/>
+        <location filename="../main_window.cpp" line="5789"/>
         <location filename="../main_window_directional.cpp" line="96"/>
         <location filename="../main_window_directional.cpp" line="288"/>
         <source>Conversion impossible</source>
         <translation>Conversion not possible</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5874"/>
+        <location filename="../main_window.cpp" line="5849"/>
         <source>%1 objets</source>
         <translation>%1 objects</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5877"/>
+        <location filename="../main_window.cpp" line="5852"/>
         <source>Type de points (tous)</source>
         <translation>Stitch types (all)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5883"/>
+        <location filename="../main_window.cpp" line="5858"/>
         <source>&amp;Supprimer %1 objets</source>
         <translation>&amp;Delete %1 objects</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5910"/>
-        <location filename="../main_window.cpp" line="5978"/>
+        <location filename="../main_window.cpp" line="5885"/>
+        <location filename="../main_window.cpp" line="5953"/>
         <location filename="../main_window_editing.cpp" line="403"/>
         <source>Type de points</source>
         <translation>Stitch types</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5919"/>
+        <location filename="../main_window.cpp" line="5894"/>
         <source>Orientation du remplissage…</source>
         <translation>Fill orientation…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5928"/>
+        <location filename="../main_window.cpp" line="5903"/>
         <source>Generer un guide depuis la forme</source>
         <translation>Generate a guide from the shape</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5933"/>
+        <location filename="../main_window.cpp" line="5908"/>
         <source>Guides de direction…</source>
         <translation>Direction guides…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5952"/>
-        <location filename="../main_window.cpp" line="8492"/>
+        <location filename="../main_window.cpp" line="5927"/>
+        <location filename="../main_window.cpp" line="8467"/>
         <source>Afficher uniquement cette couleur</source>
         <translation>Show only this color</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5954"/>
+        <location filename="../main_window.cpp" line="5929"/>
         <source>Afficher uniquement ce type de points</source>
         <translation>Show only this stitch type</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5965"/>
+        <location filename="../main_window.cpp" line="5940"/>
         <source>Supprimer la broderie (garder la forme)</source>
         <translation>Delete the embroidery (keep the shape)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5972"/>
+        <location filename="../main_window.cpp" line="5947"/>
         <source>&amp;Déboguer : afficher toutes les données…</source>
         <translation>&amp;Debug: show all data…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5990"/>
-        <location filename="../main_window.cpp" line="6080"/>
+        <location filename="../main_window.cpp" line="5965"/>
+        <location filename="../main_window.cpp" line="6055"/>
         <location filename="../main_window_objects.cpp" line="337"/>
         <source>Dupliquer</source>
         <translation>Duplicate</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5993"/>
+        <location filename="../main_window.cpp" line="5968"/>
         <source>Décaler…</source>
         <translation>Offset…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6005"/>
+        <location filename="../main_window.cpp" line="5980"/>
         <location filename="../main_window_regions.cpp" line="534"/>
         <source>&amp;Supprimer</source>
         <translation>&amp;Delete</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6018"/>
+        <location filename="../main_window.cpp" line="5993"/>
         <source>Tout afficher (filtres)</source>
         <translation>Show all (filters)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1195"/>
+        <location filename="../main_window.cpp" line="1197"/>
         <source>Plans d&apos;affic&amp;hage</source>
         <translation>Display &amp;planes</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1250"/>
+        <location filename="../main_window.cpp" line="1252"/>
         <source>Machine…</source>
         <translation>Machine…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1252"/>
+        <location filename="../main_window.cpp" line="1254"/>
         <source>Choisit le profil de la machine à broder : champ, cadres, aiguilles, formats (vérifications avant export).</source>
         <translation>Choose the embroidery machine profile: field, hoops, needles, formats (checks before export).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1526"/>
+        <location filename="../main_window.cpp" line="1528"/>
         <source>Images et SVG (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.gif *.webp *.svg);;Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff);;SVG (*.svg);;Tous les fichiers (*)</source>
         <translation>Images and SVG (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.gif *.webp *.svg);;Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff);;SVG (*.svg);;All files (*)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1542"/>
+        <location filename="../main_window.cpp" line="1544"/>
         <source>Tous les formats pris en charge (*.osp *.dst *.pes *.jef *.vp3 *.exp *.svg *.png *.jpg *.jpeg *.bmp *.tif *.tiff *.gif *.webp);;Projets OpenStitch (*.osp);;Fichiers de broderie (*.dst *.pes *.jef *.vp3 *.exp);;Images et SVG (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.gif *.webp *.svg);;Tous les fichiers (*)</source>
         <translation>All supported formats (*.osp *.dst *.pes *.jef *.vp3 *.exp *.svg *.png *.jpg *.jpeg *.bmp *.tif *.tiff *.gif *.webp);;OpenStitch projects (*.osp);;Embroidery files (*.dst *.pes *.jef *.vp3 *.exp);;Images and SVG (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.gif *.webp *.svg);;All files (*)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="1564"/>
+        <location filename="../main_window.cpp" line="1566"/>
         <source>Ce fichier n&apos;a pas pu être ouvert comme image. Formats acceptés : PNG, JPEG, BMP, TIFF, GIF, WebP.</source>
         <translation>This file could not be opened as an image. Supported formats: PNG, JPEG, BMP, TIFF, GIF, WebP.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2075"/>
+        <location filename="../main_window.cpp" line="1758"/>
+        <source>Édition des points : clic pour sélectionner (Ctrl/Maj : ajouter, Ctrl+A : tout), glisser pour déplacer, Suppr pour supprimer, double-clic sur un trait pour insérer. Échap pour quitter.</source>
+        <translation>Point editing: click to select (Ctrl/Shift: add, Ctrl+A: all), drag to move, Delete to remove, double-click a stitch line to insert. Esc to leave.</translation>
+    </message>
+    <message>
+        <location filename="../main_window.cpp" line="2080"/>
         <source>Rond / ovale</source>
         <translation>Round / oval</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2076"/>
+        <location filename="../main_window.cpp" line="2081"/>
         <source>Coins arrondis</source>
         <translation>Rounded corners</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2083"/>
+        <location filename="../main_window.cpp" line="2088"/>
         <source>Rayon des coins du cadre (forme « Coins arrondis »).</source>
         <translation>Corner radius of the hoop (“Rounded corners” shape).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2220"/>
+        <location filename="../main_window.cpp" line="2225"/>
         <source>Forme :</source>
         <translation>Shape:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="2221"/>
+        <location filename="../main_window.cpp" line="2226"/>
         <source>Rayon des coins :</source>
         <translation>Corner radius:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4755"/>
+        <location filename="../main_window.cpp" line="4730"/>
         <source>Seulement le fond extérieur (garder le blanc enfermé dans le motif)</source>
         <translation>Outer background only (keep white enclosed in the design)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="4759"/>
+        <location filename="../main_window.cpp" line="4734"/>
         <source>N&apos;exclut que les régions de la couleur du fond qui touchent le pourtour de l&apos;image : un soleil ou un nuage blanc entouré de motif reste brodé. Un blanc relié au fond par la quantification reste ignoré.</source>
         <translation>Only excludes regions of the background color that touch the image border: a white sun or cloud surrounded by design stays embroidered. White linked to the background through quantization is still ignored.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5923"/>
+        <location filename="../main_window.cpp" line="5898"/>
         <source>Convertir en remplissage concentrique</source>
         <translation>Convert to concentric fill</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5940"/>
+        <location filename="../main_window.cpp" line="5915"/>
         <location filename="../main_window_directional.cpp" line="196"/>
         <source>Ajouter une couche…</source>
         <translation>Add a stitch layer…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="5963"/>
+        <location filename="../main_window.cpp" line="5938"/>
         <source>Supprimer la couche « %1 » (garder la forme)</source>
         <translation>Delete stitch layer &quot;%1&quot; (keep the shape)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6004"/>
+        <location filename="../main_window.cpp" line="5979"/>
         <source>&amp;Supprimer la forme et ses %1 couches</source>
         <translation>&amp;Delete the shape and its %1 stitch layers</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6026"/>
+        <location filename="../main_window.cpp" line="6001"/>
         <source>Plans d&apos;affichage</source>
         <translation>Display planes</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6040"/>
-        <location filename="../main_window.cpp" line="6053"/>
+        <location filename="../main_window.cpp" line="6015"/>
+        <location filename="../main_window.cpp" line="6028"/>
         <source>objet</source>
         <translation>object</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6048"/>
-        <location filename="../main_window.cpp" line="10531"/>
+        <location filename="../main_window.cpp" line="6023"/>
+        <location filename="../main_window.cpp" line="10513"/>
         <source>« %1 » supprimé.</source>
         <translation>&quot;%1&quot; deleted.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6062"/>
+        <location filename="../main_window.cpp" line="6037"/>
         <source>Broderie « %1 » supprimée (forme conservée).</source>
         <translation>Embroidery &quot;%1&quot; removed (shape kept).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6072"/>
-        <location filename="../main_window.cpp" line="6122"/>
+        <location filename="../main_window.cpp" line="6047"/>
+        <location filename="../main_window.cpp" line="6097"/>
         <source>%1 (copie)</source>
         <translation>%1 (copy)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6090"/>
+        <location filename="../main_window.cpp" line="6065"/>
         <source>« %1 » dupliqué avec ses %2 couches.</source>
         <translation>&quot;%1&quot; duplicated with its %2 stitch layers.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6091"/>
+        <location filename="../main_window.cpp" line="6066"/>
         <source>« %1 » dupliqué.</source>
         <translation>&quot;%1&quot; duplicated.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6113"/>
+        <location filename="../main_window.cpp" line="6088"/>
         <source>Dupliquer en déplaçant</source>
         <translation>Duplicate and move</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6136"/>
+        <location filename="../main_window.cpp" line="6111"/>
         <source>%1 objet(s) dupliqué(s) et déplacé(s).</source>
         <translation>%1 object(s) duplicated and moved.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6142"/>
+        <location filename="../main_window.cpp" line="6117"/>
         <source>Décaler la forme</source>
         <translation>Offset the shape</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6143"/>
+        <location filename="../main_window.cpp" line="6118"/>
         <source>Décalage (mm) — positif : agrandit vers l&apos;extérieur ; négatif : rétrécit vers l&apos;intérieur</source>
         <translation>Offset (mm) — positive: grows outward; negative: shrinks inward</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6178"/>
+        <location filename="../main_window.cpp" line="6153"/>
         <source>%1 (décalé)</source>
         <translation>%1 (offset)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6188"/>
+        <location filename="../main_window.cpp" line="6163"/>
         <source>Décalage impossible</source>
         <translation>Offset not possible</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6197"/>
+        <location filename="../main_window.cpp" line="6172"/>
         <source>Décalage trop important — la forme disparaît complètement.</source>
         <translation>Offset too large — the shape disappears completely.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6211"/>
+        <location filename="../main_window.cpp" line="6186"/>
         <source>Forme décalée créée.</source>
         <translation>Offset shape created.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6218"/>
+        <location filename="../main_window.cpp" line="6193"/>
         <source>Objet de broderie introuvable (id %1).</source>
         <translation>Embroidery object not found (id %1).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6506"/>
+        <location filename="../main_window.cpp" line="6481"/>
         <source>Données de débogage — objet %1</source>
         <translation>Debug data — object %1</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6520"/>
+        <location filename="../main_window.cpp" line="6495"/>
         <source>Copier</source>
         <translation>Copy</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6521"/>
+        <location filename="../main_window.cpp" line="6496"/>
         <source>Enregistrer sous…</source>
         <translation>Save as…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6527"/>
+        <location filename="../main_window.cpp" line="6502"/>
         <source>Enregistrer les données de débogage</source>
         <translation>Save debug data</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6528"/>
+        <location filename="../main_window.cpp" line="6503"/>
         <source>Texte (*.txt)</source>
         <translation>Text (*.txt)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6536"/>
+        <location filename="../main_window.cpp" line="6511"/>
         <source>Écriture impossible</source>
         <translation>Write not possible</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6537"/>
+        <location filename="../main_window.cpp" line="6512"/>
         <source>Le fichier n&apos;a pas pu être écrit. Vérifiez le dossier choisi et vos droits d&apos;écriture.</source>
         <translation>The file could not be written. Check the chosen folder and your write permissions.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6549"/>
+        <location filename="../main_window.cpp" line="6524"/>
         <source>Aid&amp;e</source>
         <translation>H&amp;elp</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6552"/>
+        <location filename="../main_window.cpp" line="6527"/>
         <source>&amp;Guide de prise en main</source>
         <translation>&amp;Getting started guide</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6555"/>
+        <location filename="../main_window.cpp" line="6530"/>
         <source>Les six étapes de l&apos;image au fichier DST, avec un bouton par commande</source>
         <translation>The six steps from image to DST file, with a button per command</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6557"/>
+        <location filename="../main_window.cpp" line="6532"/>
         <source>Guide de prise en main : de l&apos;image au fichier DST en six étapes</source>
         <translation>Getting started guide: from image to DST file in six steps</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6560"/>
+        <location filename="../main_window.cpp" line="6535"/>
         <source>Gestes &amp;souris et clavier</source>
         <translation>Mouse and keyboard &amp;gestures</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6563"/>
+        <location filename="../main_window.cpp" line="6538"/>
         <source>Tous les gestes de la souris et les raccourcis clavier (F1)</source>
         <translation>All mouse gestures and keyboard shortcuts (F1)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6565"/>
+        <location filename="../main_window.cpp" line="6540"/>
         <source>Tableau consultable des gestes souris et des raccourcis clavier</source>
         <translation>Searchable table of mouse gestures and keyboard shortcuts</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6568"/>
+        <location filename="../main_window.cpp" line="6543"/>
         <source>À &amp;propos</source>
         <translation>&amp;About</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6570"/>
+        <location filename="../main_window.cpp" line="6545"/>
         <source>Version, licence et code source</source>
         <translation>Version, license and source code</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6571"/>
+        <location filename="../main_window.cpp" line="6546"/>
         <source>Version, licence et code source d&apos;OpenStitch</source>
         <translation>OpenStitch version, license and source code</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6573"/>
+        <location filename="../main_window.cpp" line="6548"/>
         <source>À propos</source>
         <translation>About</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6631"/>
+        <location filename="../main_window.cpp" line="6606"/>
         <source>&amp;Navigation</source>
         <translation>&amp;Navigation</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6649"/>
+        <location filename="../main_window.cpp" line="6624"/>
         <source>&amp;OpenStitch</source>
         <translation>&amp;OpenStitch</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6650"/>
+        <location filename="../main_window.cpp" line="6625"/>
         <source>Souris à trois boutons : clic molette = panoramique, molette = zoom</source>
         <translation>Three-button mouse: middle click = pan, wheel = zoom</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6653"/>
+        <location filename="../main_window.cpp" line="6628"/>
         <source>Pavé &amp;tactile</source>
         <translation>Touch&amp;pad</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6654"/>
+        <location filename="../main_window.cpp" line="6629"/>
         <source>Sans clic molette : Espace + glisser = panoramique, Ctrl + molette = zoom</source>
         <translation>Without middle click: Space + drag = pan, Ctrl + wheel = zoom</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6712"/>
+        <location filename="../main_window.cpp" line="6687"/>
         <source>%1 : %2</source>
         <translation>%1: %2</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6719"/>
+        <location filename="../main_window.cpp" line="6694"/>
         <source>Barre principale</source>
         <translation>Main bar</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6764"/>
+        <location filename="../main_window.cpp" line="6739"/>
         <source>Barre contextuelle</source>
         <translation>Context bar</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6871"/>
+        <location filename="../main_window.cpp" line="6846"/>
         <source>Type de points :</source>
         <translation>Stitch types:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6873"/>
-        <location filename="../main_window.cpp" line="6955"/>
-        <location filename="../main_window.cpp" line="8409"/>
+        <location filename="../main_window.cpp" line="6848"/>
+        <location filename="../main_window.cpp" line="6930"/>
+        <location filename="../main_window.cpp" line="8384"/>
         <source>Contour</source>
         <translation>Outline</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6873"/>
-        <location filename="../main_window.cpp" line="6955"/>
-        <location filename="../main_window.cpp" line="8409"/>
+        <location filename="../main_window.cpp" line="6848"/>
+        <location filename="../main_window.cpp" line="6930"/>
+        <location filename="../main_window.cpp" line="8384"/>
         <source>Tatami</source>
         <translation>Tatami</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6873"/>
-        <location filename="../main_window.cpp" line="6955"/>
-        <location filename="../main_window.cpp" line="8409"/>
+        <location filename="../main_window.cpp" line="6848"/>
+        <location filename="../main_window.cpp" line="6930"/>
+        <location filename="../main_window.cpp" line="8384"/>
         <source>Satin</source>
         <translation>Satin</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6873"/>
-        <location filename="../main_window.cpp" line="6955"/>
+        <location filename="../main_window.cpp" line="6848"/>
+        <location filename="../main_window.cpp" line="6930"/>
         <source>Directionnel</source>
         <translation>Directional</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6877"/>
-        <location filename="../main_window.cpp" line="6960"/>
+        <location filename="../main_window.cpp" line="6852"/>
+        <location filename="../main_window.cpp" line="6935"/>
         <source>Type de points : %1</source>
         <translation>Stitch type: %1</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6888"/>
-        <location filename="../main_window.cpp" line="6968"/>
+        <location filename="../main_window.cpp" line="6863"/>
+        <location filename="../main_window.cpp" line="6943"/>
         <source>Plus ▾</source>
         <translation>More ▾</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6890"/>
-        <location filename="../main_window.cpp" line="6970"/>
+        <location filename="../main_window.cpp" line="6865"/>
+        <location filename="../main_window.cpp" line="6945"/>
         <source>Autres types de points</source>
         <translation>Other stitch types</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6904"/>
+        <location filename="../main_window.cpp" line="6879"/>
         <source>Orientation…</source>
         <translation>Orientation…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6933"/>
+        <location filename="../main_window.cpp" line="6908"/>
         <source>✎ retouché</source>
         <translation>✎ touched up</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6935"/>
+        <location filename="../main_window.cpp" line="6910"/>
         <source>⚠ retouches obsolètes</source>
         <translation>⚠ outdated touch-ups</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6936"/>
+        <location filename="../main_window.cpp" line="6911"/>
         <source>La géométrie ou l&apos;ordre de couture a changé depuis les dernières retouches : elles ne sont plus appliquées.</source>
         <translation>The geometry or stitching order has changed since the last touch-ups: they are no longer applied.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6949"/>
+        <location filename="../main_window.cpp" line="6924"/>
         <source>%1 objets sélectionnés · type de points :</source>
         <translation>%1 objects selected · stitch type:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6953"/>
+        <location filename="../main_window.cpp" line="6928"/>
         <source>Objet vectoriel · type de points :</source>
         <translation>Vector object · stitch type:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6989"/>
+        <location filename="../main_window.cpp" line="6964"/>
         <source>Région %1 · %2 mm²</source>
         <translation>Region %1 · %2 mm²</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="6997"/>
+        <location filename="../main_window.cpp" line="6972"/>
         <source>%1 régions · %2 mm²</source>
         <translation>%1 regions · %2 mm²</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7005"/>
+        <location filename="../main_window.cpp" line="6980"/>
         <source>Recolorer…</source>
         <translation>Recolor…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7016"/>
+        <location filename="../main_window.cpp" line="6991"/>
         <source>Motif : %1 × %2 mm · %3 points · %4 changement(s) de couleur</source>
         <translation>Pattern: %1 × %2 mm · %3 stitches · %4 color change(s)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7024"/>
+        <location filename="../main_window.cpp" line="6999"/>
         <source>Ouvrez une image, ou sélectionnez une région ou un objet.</source>
         <translation>Open an image, or select a region or an object.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7027"/>
+        <location filename="../main_window.cpp" line="7002"/>
         <source>Cadre : %1 × %2 mm…</source>
         <translation>Hoop: %1 × %2 mm…</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7035"/>
+        <location filename="../main_window.cpp" line="7010"/>
         <source>Outils</source>
         <translation>Tools</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7051"/>
+        <location filename="../main_window.cpp" line="7026"/>
         <source>%1 (%2)
 %3</source>
         <translation>%1 (%2)
 %3</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7053"/>
-        <location filename="../main_window.cpp" line="9704"/>
+        <location filename="../main_window.cpp" line="7028"/>
+        <location filename="../main_window.cpp" line="9679"/>
         <source>%1 (%2)</source>
         <translation>%1 (%2)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7061"/>
-        <location filename="../main_window.cpp" line="7330"/>
+        <location filename="../main_window.cpp" line="7036"/>
+        <location filename="../main_window.cpp" line="7305"/>
         <source>Sélection</source>
         <translation>Selection</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7062"/>
-        <location filename="../main_window.cpp" line="7331"/>
+        <location filename="../main_window.cpp" line="7037"/>
+        <location filename="../main_window.cpp" line="7306"/>
         <source>Déplacer la vue</source>
         <translation>Pan the view</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7063"/>
+        <location filename="../main_window.cpp" line="7038"/>
         <source>Recadrer l&apos;image (glisser un cadre)</source>
         <translation>Crop the image (drag a frame)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7065"/>
-        <location filename="../main_window.cpp" line="7333"/>
+        <location filename="../main_window.cpp" line="7040"/>
+        <location filename="../main_window.cpp" line="7308"/>
         <source>Dessiner un rectangle</source>
         <translation>Draw a rectangle</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7067"/>
+        <location filename="../main_window.cpp" line="7042"/>
         <source>Dessiner une ellipse (Maj = cercle)</source>
         <translation>Draw an ellipse (Shift = circle)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7069"/>
+        <location filename="../main_window.cpp" line="7044"/>
         <source>Dessiner un polygone (segments droits)</source>
         <translation>Draw a polygon (straight segments)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7072"/>
+        <location filename="../main_window.cpp" line="7047"/>
         <source>Dessiner un polygone régulier (glisser un cadre)</source>
         <translation>Draw a regular polygon (drag a frame)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7078"/>
+        <location filename="../main_window.cpp" line="7053"/>
         <source>Nombre de côtés du polygone régulier (molette ou flèches ↑ ↓)</source>
         <translation>Number of sides of the regular polygon (wheel or ↑ ↓ arrows)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7086"/>
+        <location filename="../main_window.cpp" line="7061"/>
         <source>Dessiner une courbe de Bézier (clic = coin, clic-glisser = nœud lisse)</source>
         <translation>Draw a Bézier curve (click = corner, click-drag = smooth node)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7088"/>
+        <location filename="../main_window.cpp" line="7063"/>
         <source>Tracé ouvert</source>
         <translation>Open path</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7093"/>
+        <location filename="../main_window.cpp" line="7068"/>
         <source>Tracé ouvert (U)
 Coché : le polygone (P) et la courbe de Bézier (B) se terminent sans être fermés — une ligne ou une courbe ouverte, pour un point de contour ou un satin de bordure. 2 points suffisent.</source>
         <translation>Open path (U)
 Checked: the polygon (P) and Bézier curve (B) end without being closed — an open line or curve, for an outline stitch or a border satin. 2 points are enough.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7097"/>
+        <location filename="../main_window.cpp" line="7072"/>
         <source>Tracé ouvert : les prochains polygones et courbes ne seront pas fermés.</source>
         <translation>Open path: the next polygons and curves will not be closed.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7099"/>
+        <location filename="../main_window.cpp" line="7074"/>
         <source>Tracé fermé : les prochains polygones et courbes seront fermés.</source>
         <translation>Closed path: the next polygons and curves will be closed.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7108"/>
+        <location filename="../main_window.cpp" line="7083"/>
         <source>Ligne (Maj+L)
 Clics successifs, Entrée pour terminer SANS fermer (ligne ou polyligne ouverte). Active le tracé ouvert.</source>
         <translation>Line (Shift+L) Successive clicks, Enter to finish WITHOUT closing (open line or polyline). Enables open drawing.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7114"/>
+        <location filename="../main_window.cpp" line="7089"/>
         <source>Dessiner à main levée (lasso)</source>
         <translation>Draw freehand (lasso)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7117"/>
+        <location filename="../main_window.cpp" line="7092"/>
         <source>Colonne satin (clics alternés côté A / côté B)</source>
         <translation>Satin column (alternating clicks side A / side B)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7120"/>
+        <location filename="../main_window.cpp" line="7095"/>
         <source>Couteau (tracez une ligne pour découper les formes qu&apos;elle traverse)</source>
         <translation>Knife (draw a line to cut the shapes it crosses)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7136"/>
+        <location filename="../main_window.cpp" line="7111"/>
         <source>Terminer la forme (Entrée)</source>
         <translation>Finish the shape (Enter)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7137"/>
+        <location filename="../main_window.cpp" line="7112"/>
         <source>Terminer la forme en cours (Entrée)</source>
         <translation>Finish the current shape (Enter)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7150"/>
+        <location filename="../main_window.cpp" line="7125"/>
         <source>Annuler le tracé (Échap)</source>
         <translation>Cancel the path (Esc)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7151"/>
+        <location filename="../main_window.cpp" line="7126"/>
         <source>Annuler le tracé en cours (Échap)</source>
         <translation>Cancel the current path (Esc)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7334"/>
+        <location filename="../main_window.cpp" line="7309"/>
         <source>Dessiner une ellipse</source>
         <translation>Draw an ellipse</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7335"/>
+        <location filename="../main_window.cpp" line="7310"/>
         <source>Dessiner un polygone</source>
         <translation>Draw a polygon</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7337"/>
+        <location filename="../main_window.cpp" line="7312"/>
         <source>Dessiner un polygone régulier</source>
         <translation>Draw a regular polygon</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7338"/>
+        <location filename="../main_window.cpp" line="7313"/>
         <source>Dessiner une courbe de Bézier</source>
         <translation>Draw a Bézier curve</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7339"/>
+        <location filename="../main_window.cpp" line="7314"/>
         <source>Dessiner à main levée</source>
         <translation>Draw freehand</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7340"/>
+        <location filename="../main_window.cpp" line="7315"/>
         <source>Guide de direction</source>
         <translation>Direction guide</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7341"/>
+        <location filename="../main_window.cpp" line="7316"/>
         <source>Ligne de rupture</source>
         <translation>Break line</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7342"/>
+        <location filename="../main_window.cpp" line="7317"/>
         <source>Couteau</source>
         <translation>Knife</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7343"/>
+        <location filename="../main_window.cpp" line="7318"/>
         <location filename="../main_window_lettering.cpp" line="60"/>
         <location filename="../main_window_lettering.cpp" line="176"/>
         <location filename="../main_window_lettering.cpp" line="189"/>
@@ -5906,13 +5896,13 @@ Clics successifs, Entrée pour terminer SANS fermer (ligne ou polyligne ouverte)
         <translation>Text</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7344"/>
+        <location filename="../main_window.cpp" line="7319"/>
         <location filename="../main_window_editing.cpp" line="1006"/>
         <source>Colonne satin</source>
         <translation>Satin column</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7345"/>
+        <location filename="../main_window.cpp" line="7320"/>
         <location filename="../main_window_measure.cpp" line="214"/>
         <location filename="../main_window_measure.cpp" line="221"/>
         <location filename="../main_window_brush.cpp" line="194"/>
@@ -5922,595 +5912,595 @@ Clics successifs, Entrée pour terminer SANS fermer (ligne ou polyligne ouverte)
         <translation>Tool: %1</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7353"/>
+        <location filename="../main_window.cpp" line="7328"/>
         <source>Glissez le cadre à conserver — l&apos;image sera recadrée au relâchement (Échap : annuler). Pour dessiner un rectangle, utilisez l&apos;outil R.</source>
         <translation>Drag the frame to keep — the image will be cropped on release (Esc: cancel). To draw a rectangle, use the R tool.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7357"/>
+        <location filename="../main_window.cpp" line="7332"/>
         <source>Cliquez-glissez sur le canevas pour dessiner le cadre, puis relâchez.</source>
         <translation>Click-drag on the canvas to draw the frame, then release.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7360"/>
+        <location filename="../main_window.cpp" line="7335"/>
         <source>Cliquez-glissez pour dessiner le polygone (inscrit dans le cadre) — réglez le nombre de côtés dans la palette d&apos;outils.</source>
         <translation>Click-drag to draw the polygon (inscribed in the frame) — set the number of sides in the tool palette.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7364"/>
+        <location filename="../main_window.cpp" line="7339"/>
         <source>Cliquez pour poser chaque sommet — Entrée/double-clic/bouton ✓ pour terminer (3 sommets min.), Échap pour annuler.</source>
         <translation>Click to place each vertex — Enter/double-click/✓ button to finish (3 vertices min.), Esc to cancel.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7368"/>
+        <location filename="../main_window.cpp" line="7343"/>
         <source>Cliquez (coin) ou cliquez-glissez (nœud lisse) pour poser chaque point — Entrée/double-clic/bouton ✓ pour terminer (2 nœuds min.), Échap pour annuler.</source>
         <translation>Click (corner) or click-drag (smooth node) to place each point — Enter/double-click/✓ button to finish (2 nodes min.), Esc to cancel.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7371"/>
+        <location filename="../main_window.cpp" line="7346"/>
         <source>Cliquez-glissez pour tracer la forme à main levée.</source>
         <translation>Click-drag to draw the freehand shape.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7374"/>
+        <location filename="../main_window.cpp" line="7349"/>
         <source>Texte : cliquez sur le canevas pour poser le texte (bord gauche de la ligne de base), puis réglez police, hauteur et type de point.</source>
         <translation>Text: click on the canvas to place the text (left edge of the baseline), then set font, height and stitch type.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7378"/>
+        <location filename="../main_window.cpp" line="7353"/>
         <source>Couteau : cliquez-glissez une ligne à travers la ou les formes à découper (sans sélection, toutes les formes traversées sont coupées).</source>
         <translation>Knife: click-drag a line across the shape(s) to cut (with no selection, all crossed shapes are cut).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7382"/>
+        <location filename="../main_window.cpp" line="7357"/>
         <source>Cliquez alternativement côté A puis côté B de chaque paire — Entrée/double-clic/bouton ✓ pour terminer (2 paires min.), Échap pour annuler.</source>
         <translation>Click alternately on side A then side B of each pair — Enter/double-click/✓ button to finish (2 pairs min.), Esc to cancel.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7386"/>
+        <location filename="../main_window.cpp" line="7361"/>
         <source>Cliquez les points de la courbe que le fil doit suivre — Entrée/double-clic pour terminer (2 points min.), Échap pour annuler.</source>
         <translation>Click the points of the curve the thread must follow — Enter/double-click to finish (2 points min.), Esc to cancel.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7390"/>
+        <location filename="../main_window.cpp" line="7365"/>
         <source>Cliquez les points de la ligne de rupture, d&apos;un bord de la forme à l&apos;autre — Entrée/double-clic pour terminer, Échap pour annuler.</source>
         <translation>Click the points of the break line, from one edge of the shape to the other — Enter/double-click to finish, Esc to cancel.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7403"/>
+        <location filename="../main_window.cpp" line="7378"/>
         <source>Workflow</source>
         <translation>Workflow</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7446"/>
+        <location filename="../main_window.cpp" line="7421"/>
         <source>Document</source>
         <translation>Document</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7499"/>
+        <location filename="../main_window.cpp" line="7474"/>
         <source>Forme sélectionnée : %1 section(s) de couture.</source>
         <translation>Shape selected: %1 stitching section(s).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7539"/>
+        <location filename="../main_window.cpp" line="7514"/>
         <source>Calque actif : « %1 ».</source>
         <translation>Active layer: &quot;%1&quot;.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7625"/>
+        <location filename="../main_window.cpp" line="7600"/>
         <source>Afficher %1 objets</source>
         <translation>Show %1 objects</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7625"/>
+        <location filename="../main_window.cpp" line="7600"/>
         <source>Masquer %1 objets</source>
         <translation>Hide %1 objects</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7639"/>
+        <location filename="../main_window.cpp" line="7614"/>
         <source>Figer l&apos;ordre de %1 objets</source>
         <translation>Lock the order of %1 objects</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7639"/>
+        <location filename="../main_window.cpp" line="7614"/>
         <source>Libérer l&apos;ordre de %1 objets</source>
         <translation>Unlock the order of %1 objects</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7674"/>
-        <location filename="../main_window.cpp" line="10550"/>
+        <location filename="../main_window.cpp" line="7649"/>
+        <location filename="../main_window.cpp" line="10532"/>
         <source>Supprimer %1 objets</source>
         <translation>Delete %1 objects</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7691"/>
+        <location filename="../main_window.cpp" line="7666"/>
         <source>%1 objet(s) supprimé(s).</source>
         <translation>%1 object(s) deleted.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7778"/>
+        <location filename="../main_window.cpp" line="7753"/>
         <source>Propriétés</source>
         <translation>Properties</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="7929"/>
+        <location filename="../main_window.cpp" line="7904"/>
         <source>%1 · %2</source>
         <translation>%1 · %2</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8077"/>
+        <location filename="../main_window.cpp" line="8052"/>
         <source>Objet vectoriel — %1 morceau(x), %2 nœud(s).
 Créez un objet de broderie (menu Broderie) pour régler la couture.</source>
         <translation>Vector object — %1 piece(s), %2 node(s).
 Create an embroidery object (Embroidery menu) to set the stitching.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8087"/>
+        <location filename="../main_window.cpp" line="8062"/>
         <source>Objet vectoriel</source>
         <translation>Vector object</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8109"/>
+        <location filename="../main_window.cpp" line="8084"/>
         <location filename="../main_window_regions.cpp" line="496"/>
         <location filename="../main_window_workflow.cpp" line="254"/>
         <source>Région %1</source>
         <translation>Region %1</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8110"/>
+        <location filename="../main_window.cpp" line="8085"/>
         <source>Aire : %1 mm²   ·   %2 pixels
 Voisines : %3</source>
         <translation>Area: %1 mm²   ·   %2 pixels
 Neighbors: %3</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8115"/>
+        <location filename="../main_window.cpp" line="8090"/>
         <location filename="../main_window_regions.cpp" line="497"/>
         <source>%1 régions</source>
         <translation>%1 regions</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8116"/>
+        <location filename="../main_window.cpp" line="8091"/>
         <source>Aire totale : %1 mm²   ·   %2 pixels
 Région active : %3 (la dernière cliquée)</source>
         <translation>Total area: %1 mm²   ·   %2 pixels
 Active region: %3 (the last one clicked)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8126"/>
+        <location filename="../main_window.cpp" line="8101"/>
         <source>Aucune sélection</source>
         <translation>No selection</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8127"/>
+        <location filename="../main_window.cpp" line="8102"/>
         <source>Sélectionnez une région, un objet vectoriel ou un objet de broderie.</source>
         <translation>Select a region, a vector object or an embroidery object.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8163"/>
+        <location filename="../main_window.cpp" line="8138"/>
         <source>Ordre de couture</source>
         <translation>Stitching order</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8183"/>
+        <location filename="../main_window.cpp" line="8158"/>
         <source>Ordre de couture des objets</source>
         <translation>Object stitching order</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8185"/>
+        <location filename="../main_window.cpp" line="8160"/>
         <source>↑ Monter</source>
         <translation>↑ Move up</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8188"/>
+        <location filename="../main_window.cpp" line="8163"/>
         <source>Coudre cet objet plus tôt (Alt+Haut).</source>
         <translation>Stitch this object earlier (Alt+Up).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8189"/>
+        <location filename="../main_window.cpp" line="8164"/>
         <source>↓ Descendre</source>
         <translation>↓ Move down</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8192"/>
+        <location filename="../main_window.cpp" line="8167"/>
         <source>Coudre cet objet plus tard (Alt+Bas).</source>
         <translation>Stitch this object later (Alt+Down).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8195"/>
+        <location filename="../main_window.cpp" line="8170"/>
         <source>Figer l&apos;ordre</source>
         <translation>Lock order</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8198"/>
+        <location filename="../main_window.cpp" line="8173"/>
         <source>Figer la position de cet objet dans l&apos;ordre de couture : « Optimiser l&apos;ordre » ne le déplace pas. L&apos;objet reste modifiable.</source>
         <translation>Lock the position of this object in the stitching order: &quot;Optimize order&quot; does not move it. The object remains editable.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8211"/>
+        <location filename="../main_window.cpp" line="8186"/>
         <source>Par couleur</source>
         <translation>By color</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8213"/>
+        <location filename="../main_window.cpp" line="8188"/>
         <source>Par proximité</source>
         <translation>By proximity</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8215"/>
+        <location filename="../main_window.cpp" line="8190"/>
         <source>Couleur puis proximité</source>
         <translation>Color then proximity</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8218"/>
+        <location filename="../main_window.cpp" line="8193"/>
         <source>Optimiser l&apos;ordre</source>
         <translation>Optimize order</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8270"/>
+        <location filename="../main_window.cpp" line="8245"/>
         <source>Trajet estimé : %1 mm — %2 changement(s) de fil</source>
         <translation>Estimated travel: %1 mm — %2 thread change(s)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8273"/>
+        <location filename="../main_window.cpp" line="8248"/>
         <source>Distance à vide entre objets successifs (estimation sur les centres), hors points de couture.</source>
         <translation>Empty travel distance between successive objects (estimate on the centers), excluding stitches.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8394"/>
+        <location filename="../main_window.cpp" line="8369"/>
         <source>Filtres d&apos;affichage</source>
         <translation>Display filters</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8400"/>
-        <location filename="../main_window.cpp" line="8418"/>
-        <location filename="../main_window.cpp" line="8494"/>
+        <location filename="../main_window.cpp" line="8375"/>
+        <location filename="../main_window.cpp" line="8393"/>
+        <location filename="../main_window.cpp" line="8469"/>
         <source>Tout afficher</source>
         <translation>Show all</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8403"/>
+        <location filename="../main_window.cpp" line="8378"/>
         <source>Réaffiche tous les types, toutes les couleurs et toutes les tailles. Clic droit sur un type ou une couleur : n&apos;afficher que celui-ci.</source>
         <translation>Shows all types, colors and sizes again. Right-click a type or color: show only that one.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8408"/>
+        <location filename="../main_window.cpp" line="8383"/>
         <source>Types de points :</source>
         <translation>Stitch types:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8416"/>
+        <location filename="../main_window.cpp" line="8391"/>
         <source>Afficher uniquement ce type</source>
         <translation>Show only this type</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8431"/>
+        <location filename="../main_window.cpp" line="8406"/>
         <source>Taille min. des zones :</source>
         <translation>Min. zone size:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8444"/>
+        <location filename="../main_window.cpp" line="8419"/>
         <source>Couleurs de fil :</source>
         <translation>Thread colors:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8649"/>
+        <location filename="../main_window.cpp" line="8624"/>
         <source>Ordre optimisé : trajet %1 → %2 mm, changements de fil %3 → %4</source>
         <translation>Order optimized: path %1 → %2 mm, thread changes %3 → %4</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8657"/>
+        <location filename="../main_window.cpp" line="8632"/>
         <source>Simulation</source>
         <translation>Simulation</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8664"/>
+        <location filename="../main_window.cpp" line="8639"/>
         <source>Lit la couture point par point.</source>
         <translation>Reads the stitching point by point.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8668"/>
+        <location filename="../main_window.cpp" line="8643"/>
         <source>⏹ Fin</source>
         <translation>⏹ End</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8671"/>
+        <location filename="../main_window.cpp" line="8646"/>
         <source>Quitte la simulation et affiche la couture complète (le rendu réaliste redevient disponible).</source>
         <translation>Leaves the simulation and shows the complete stitching (the realistic render becomes available again).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8674"/>
+        <location filename="../main_window.cpp" line="8649"/>
         <source>⏮ Couleur</source>
         <translation>⏮ Color</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8676"/>
+        <location filename="../main_window.cpp" line="8651"/>
         <source>Saute au début du bloc de couleur précédent.</source>
         <translation>Jumps to the start of the previous color block.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8678"/>
+        <location filename="../main_window.cpp" line="8653"/>
         <source>Couleur ⏭</source>
         <translation>Color ⏭</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8680"/>
+        <location filename="../main_window.cpp" line="8655"/>
         <source>Saute au début du bloc de couleur suivant.</source>
         <translation>Jumps to the start of the next color block.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8686"/>
+        <location filename="../main_window.cpp" line="8661"/>
         <source>Position dans la simulation</source>
         <translation>Position in the simulation</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8690"/>
-        <location filename="../main_window.cpp" line="8810"/>
+        <location filename="../main_window.cpp" line="8665"/>
+        <location filename="../main_window.cpp" line="8785"/>
         <source>— / —</source>
         <translation>— / —</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8692"/>
+        <location filename="../main_window.cpp" line="8667"/>
         <source>Progression de la simulation</source>
         <translation>Simulation progress</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8697"/>
+        <location filename="../main_window.cpp" line="8672"/>
         <source>Vitesse de simulation</source>
         <translation>Simulation speed</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8698"/>
+        <location filename="../main_window.cpp" line="8673"/>
         <source>Vitesse de lecture de la simulation</source>
         <translation>Simulation playback speed</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8699"/>
+        <location filename="../main_window.cpp" line="8674"/>
         <source>×0,25</source>
         <translation>×0.25</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8700"/>
+        <location filename="../main_window.cpp" line="8675"/>
         <source>×1</source>
         <translation>×1</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8701"/>
+        <location filename="../main_window.cpp" line="8676"/>
         <source>×4</source>
         <translation>×4</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8702"/>
+        <location filename="../main_window.cpp" line="8677"/>
         <source>×16</source>
         <translation>×16</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8703"/>
+        <location filename="../main_window.cpp" line="8678"/>
         <source>×64</source>
         <translation>×64</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8705"/>
+        <location filename="../main_window.cpp" line="8680"/>
         <source>Machine</source>
         <translation>Machine</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8712"/>
+        <location filename="../main_window.cpp" line="8687"/>
         <source>Couleur du fil courant</source>
         <translation>Current thread color</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8716"/>
+        <location filename="../main_window.cpp" line="8691"/>
         <source>Objet en cours de couture</source>
         <translation>Object being stitched</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8758"/>
+        <location filename="../main_window.cpp" line="8733"/>
         <source>Design importé</source>
         <translation>Imported design</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8776"/>
+        <location filename="../main_window.cpp" line="8751"/>
         <source>fil %1/%2</source>
         <translation>thread %1/%2</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8778"/>
+        <location filename="../main_window.cpp" line="8753"/>
         <source>« %1 » · %2</source>
         <translation>&quot;%1&quot; · %2</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8779"/>
+        <location filename="../main_window.cpp" line="8754"/>
         <source>%1 — %2</source>
         <translation>%1 — %2</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8820"/>
-        <location filename="../main_window.cpp" line="8869"/>
-        <location filename="../main_window.cpp" line="8925"/>
-        <location filename="../main_window.cpp" line="8941"/>
+        <location filename="../main_window.cpp" line="8795"/>
+        <location filename="../main_window.cpp" line="8844"/>
+        <location filename="../main_window.cpp" line="8900"/>
+        <location filename="../main_window.cpp" line="8916"/>
         <source>%1 / %2</source>
         <translation>%1 / %2</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8837"/>
+        <location filename="../main_window.cpp" line="8812"/>
         <source>⏸ Pause</source>
         <translation>⏸ Pause</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8967"/>
+        <location filename="../main_window.cpp" line="8942"/>
         <source>Statistiques indisponibles : générez d&apos;abord des points.</source>
         <translation>Statistics unavailable: generate stitches first.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8971"/>
+        <location filename="../main_window.cpp" line="8946"/>
         <source>Statistiques de broderie</source>
         <translation>Embroidery statistics</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8988"/>
+        <location filename="../main_window.cpp" line="8963"/>
         <source>Rien à enregistrer</source>
         <translation>Nothing to save</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8989"/>
+        <location filename="../main_window.cpp" line="8964"/>
         <source>Ouvrez une image et créez des objets d&apos;abord.</source>
         <translation>Open an image and create objects first.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8994"/>
-        <location filename="../main_window.cpp" line="9106"/>
+        <location filename="../main_window.cpp" line="8969"/>
+        <location filename="../main_window.cpp" line="9081"/>
         <source>Projet OpenStitch (*.osp)</source>
         <translation>OpenStitch project (*.osp)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="8998"/>
+        <location filename="../main_window.cpp" line="8973"/>
         <source>Enregistrer le projet sous</source>
         <translation>Save project as</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9014"/>
+        <location filename="../main_window.cpp" line="8989"/>
         <source>sans-titre</source>
         <translation>untitled</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9038"/>
+        <location filename="../main_window.cpp" line="9013"/>
         <source>Ouvrir le dossier</source>
         <translation>Open the folder</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9063"/>
+        <location filename="../main_window.cpp" line="9038"/>
         <source>Copie de sécurité impossible</source>
         <translation>Backup copy not possible</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9064"/>
+        <location filename="../main_window.cpp" line="9039"/>
         <source>L&apos;ancien fichier n&apos;a pas pu être sauvegardé avant migration. L&apos;enregistrement est annulé pour ne pas l&apos;écraser.</source>
         <translation>The old file could not be backed up before migration. Saving is cancelled so as not to overwrite it.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9075"/>
+        <location filename="../main_window.cpp" line="9050"/>
         <source>Enregistrement impossible</source>
         <translation>Save not possible</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9076"/>
+        <location filename="../main_window.cpp" line="9051"/>
         <source>Le projet n&apos;a pas pu être enregistré dans « %1 ». Vérifiez l&apos;espace disque et que le fichier n&apos;est pas ouvert ailleurs.</source>
         <translation>The project could not be saved to &quot;%1&quot;. Check the disk space and that the file is not open elsewhere.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9091"/>
+        <location filename="../main_window.cpp" line="9066"/>
         <source>Projet enregistré : %1</source>
         <translation>Project saved: %1</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9100"/>
-        <location filename="../main_window.cpp" line="9174"/>
+        <location filename="../main_window.cpp" line="9075"/>
+        <location filename="../main_window.cpp" line="9149"/>
         <source>Le projet a été modifié. Enregistrer avant d&apos;ouvrir un autre projet ?</source>
         <translation>The project has been modified. Save before opening another project?</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9105"/>
+        <location filename="../main_window.cpp" line="9080"/>
         <source>Ouvrir un projet</source>
         <translation>Open a project</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9117"/>
+        <location filename="../main_window.cpp" line="9092"/>
         <source>Ouverture impossible</source>
         <translation>Opening not possible</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9120"/>
+        <location filename="../main_window.cpp" line="9095"/>
         <source>Le fichier « %1 » n&apos;a pas pu être ouvert comme projet OpenStitch.</source>
         <translation>The file &quot;%1&quot; could not be opened as an OpenStitch project.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9137"/>
+        <location filename="../main_window.cpp" line="9112"/>
         <source>Projet ouvert : %1 — %2 objet(s) vectoriel(s), %3 objet(s) de broderie</source>
         <translation>Project opened: %1 — %2 vector object(s), %3 embroidery object(s)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9145"/>
+        <location filename="../main_window.cpp" line="9120"/>
         <source> — converti depuis le format v%1 (copie .v%1.osp.bak créée à l&apos;enregistrement)</source>
         <translation> — converted from format v%1 (copy .v%1.osp.bak created on save)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9235"/>
+        <location filename="../main_window.cpp" line="9210"/>
         <source>Sauvegarde automatique impossible : %1</source>
         <translation>Autosave not possible: %1</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9248"/>
+        <location filename="../main_window.cpp" line="9223"/>
         <source>Sauvegarde automatique à %1</source>
         <translation>Autosave at %1</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9276"/>
+        <location filename="../main_window.cpp" line="9251"/>
         <source>date inconnue</source>
         <translation>unknown date</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9277"/>
+        <location filename="../main_window.cpp" line="9252"/>
         <source>Récupération après un arrêt anormal</source>
         <translation>Recovery after an abnormal shutdown</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9279"/>
+        <location filename="../main_window.cpp" line="9254"/>
         <source>Un projet sans nom non enregistré a été retrouvé (%1).</source>
         <translation>An unsaved untitled project was found (%1).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9280"/>
+        <location filename="../main_window.cpp" line="9255"/>
         <source>Une sauvegarde automatique de « %1 » a été retrouvée (%2).</source>
         <translation>An autosave of &quot;%1&quot; was found (%2).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9285"/>
+        <location filename="../main_window.cpp" line="9260"/>
         <source>%1 sauvegarde(s) automatique(s) au total. Une seule est récupérée par session ; les autres seront reproposées au prochain démarrage.</source>
         <translation>%1 autosave(s) in total. Only one is recovered per session; the others will be offered again at the next startup.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9289"/>
+        <location filename="../main_window.cpp" line="9264"/>
         <source>Récupérer</source>
         <translation>Recover</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9291"/>
+        <location filename="../main_window.cpp" line="9266"/>
         <source>Décider plus tard</source>
         <translation>Decide later</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9294"/>
+        <location filename="../main_window.cpp" line="9269"/>
         <source>Supprimer la sauvegarde</source>
         <translation>Delete the autosave</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9307"/>
+        <location filename="../main_window.cpp" line="9282"/>
         <source>Le projet en cours a été modifié. Enregistrer avant de récupérer la sauvegarde automatique ?</source>
         <translation>The current project has been modified. Save before recovering the autosave?</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9314"/>
+        <location filename="../main_window.cpp" line="9289"/>
         <source>Récupération impossible</source>
         <translation>Recovery not possible</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9315"/>
+        <location filename="../main_window.cpp" line="9290"/>
         <source>La sauvegarde automatique n&apos;a pas pu être relue. Elle est conservée : vous pourrez réessayer au prochain démarrage.</source>
         <translation>The autosave could not be read back. It is kept: you can try again at the next startup.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9338"/>
+        <location filename="../main_window.cpp" line="9313"/>
         <source>Sauvegarde récupérée. %1 autre(s) seront proposées au prochain démarrage.</source>
         <translation>Autosave recovered. %1 other(s) will be offered at the next startup.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9342"/>
+        <location filename="../main_window.cpp" line="9317"/>
         <source>Sauvegarde automatique récupérée — enregistrez le projet pour la conserver.</source>
         <translation>Autosave recovered — save the project to keep it.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9421"/>
+        <location filename="../main_window.cpp" line="9396"/>
         <source>Dimensions : %1 × %2 mm
 Points : %3
 Sauts : %4
@@ -6527,56 +6517,56 @@ Estimated thread: %7 m
 Hoop: %8 × %9 mm</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9434"/>
+        <location filename="../main_window.cpp" line="9409"/>
         <source>
 Coupes supprimées : %1 sur %2 écart(s) possible(s) (%3 saut(s) recouvert(s), %4 pont(s) cousu(s), +%5 mm de fil).</source>
         <translation>
 Trims removed: %1 out of %2 possible gap(s) (%3 jump(s) covered, %4 bridge(s) stitched, +%5 mm of thread).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9443"/>
+        <location filename="../main_window.cpp" line="9418"/>
         <source>
 Régions : %1 déplacée(s) dans %2 groupe(s), %3 mm de saut en moins.</source>
         <translation>
 Regions: %1 moved into %2 group(s), %3 mm less jump.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9450"/>
+        <location filename="../main_window.cpp" line="9425"/>
         <source>
 Sous-couche : %1 groupe(s) de passes réordonné(s), %2 mm de saut en moins.</source>
         <translation>
 Underlay: %1 pass group(s) reordered, %2 mm less jump.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9456"/>
+        <location filename="../main_window.cpp" line="9431"/>
         <source>
 L&apos;optimisation des coupes n&apos;a pas pu être calculée.</source>
         <translation>
 Trim optimization could not be computed.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9474"/>
+        <location filename="../main_window.cpp" line="9449"/>
         <location filename="../main_window_analysis.cpp" line="718"/>
         <source>« %1 » : </source>
         <translation>&quot;%1&quot;:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9477"/>
+        <location filename="../main_window.cpp" line="9452"/>
         <source>Erreur : </source>
         <translation>Error:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9478"/>
+        <location filename="../main_window.cpp" line="9453"/>
         <source>Avertissement : </source>
         <translation>Warning:</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9482"/>
+        <location filename="../main_window.cpp" line="9457"/>
         <source>… et %1 de plus (panneau Analyse).</source>
         <translation>… and %1 more (Analysis panel).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9488"/>
+        <location filename="../main_window.cpp" line="9463"/>
         <source>
 
 Analyse : aucun problème détecté.</source>
@@ -6585,7 +6575,7 @@ Analyse : aucun problème détecté.</source>
 Analysis: no problem detected.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9489"/>
+        <location filename="../main_window.cpp" line="9464"/>
         <source>
 
 Analyse : %1 erreur(s), %2 avertissement(s) — voir Analyse ▸ Analyser le motif.</source>
@@ -6594,7 +6584,7 @@ Analyse : %1 erreur(s), %2 avertissement(s) — voir Analyse ▸ Analyser le mot
 Analysis: %1 error(s), %2 warning(s) — see Analysis ▸ Analyze pattern.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9495"/>
+        <location filename="../main_window.cpp" line="9470"/>
         <source>
 
 Attention : le motif dépasse le cadre.</source>
@@ -6603,25 +6593,25 @@ Attention : le motif dépasse le cadre.</source>
 Warning: the pattern exceeds the hoop.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9497"/>
+        <location filename="../main_window.cpp" line="9472"/>
         <source>Avertissement : le motif dépasse le cadre.</source>
         <translation>Warning: the pattern exceeds the hoop.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9507"/>
+        <location filename="../main_window.cpp" line="9482"/>
         <source>
 Impossible : %1</source>
         <translation>
 Not possible: %1</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9509"/>
+        <location filename="../main_window.cpp" line="9484"/>
         <source>Impossible : %1</source>
         <translation>Not possible: %1</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9512"/>
-        <location filename="../main_window.cpp" line="9527"/>
+        <location filename="../main_window.cpp" line="9487"/>
+        <location filename="../main_window.cpp" line="9502"/>
         <location filename="../main_window_satin_auto.cpp" line="436"/>
         <source>
 Attention : %1</source>
@@ -6629,20 +6619,20 @@ Attention : %1</source>
 Warning: %1</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9514"/>
-        <location filename="../main_window.cpp" line="9529"/>
+        <location filename="../main_window.cpp" line="9489"/>
+        <location filename="../main_window.cpp" line="9504"/>
         <source>Avertissement : %1</source>
         <translation>Warning: %1</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9517"/>
+        <location filename="../main_window.cpp" line="9492"/>
         <source>
 À noter : %1</source>
         <translation>
 Note: %1</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9534"/>
+        <location filename="../main_window.cpp" line="9509"/>
         <source>
 
 Le format %1 ne conserve pas les objets éditables.</source>
@@ -6651,334 +6641,339 @@ Le format %1 ne conserve pas les objets éditables.</source>
 The %1 format does not keep editable objects.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9537"/>
+        <location filename="../main_window.cpp" line="9512"/>
         <source> Les couleurs sont approchées par la palette du format.</source>
         <translation> Colors are approximated by the format palette.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9540"/>
+        <location filename="../main_window.cpp" line="9515"/>
         <source> Pensez à enregistrer aussi le projet (.osp).</source>
         <translation> Remember to also save the project (.osp).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9551"/>
+        <location filename="../main_window.cpp" line="9526"/>
         <source>%1. #%2 — %3 point(s), %4 mm</source>
         <translation>%1. #%2 — %3 stitch(es), %4 mm</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9598"/>
+        <location filename="../main_window.cpp" line="9573"/>
         <source>Exporter en %1</source>
         <translation>Export as %1</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9600"/>
+        <location filename="../main_window.cpp" line="9575"/>
         <source>%1 (*.%2)</source>
         <translation>%1 (*.%2)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9622"/>
-        <location filename="../main_window.cpp" line="9828"/>
+        <location filename="../main_window.cpp" line="9597"/>
+        <location filename="../main_window.cpp" line="9803"/>
         <source>Export impossible</source>
         <translation>Export not possible</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9623"/>
+        <location filename="../main_window.cpp" line="9598"/>
         <source>Le fichier %1 n&apos;a pas pu être écrit dans « %2 ». L&apos;ancien fichier, s&apos;il existait, est intact.</source>
         <translation>The file %1 could not be written to &quot;%2&quot;. The old file, if any, is intact.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9631"/>
+        <location filename="../main_window.cpp" line="9606"/>
         <source>%1 exporté : %2</source>
         <translation>%1 exported: %2</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9634"/>
+        <location filename="../main_window.cpp" line="9609"/>
         <source> (%1 points)</source>
         <translation> (%1 stitches)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9638"/>
+        <location filename="../main_window.cpp" line="9613"/>
         <source> Coupes supprimées : %1.</source>
         <translation> Trims removed: %1.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9641"/>
+        <location filename="../main_window.cpp" line="9616"/>
         <source> Fichier de couleurs : %1.</source>
         <translation> Color file: %1.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9644"/>
+        <location filename="../main_window.cpp" line="9619"/>
         <source> Attention : le fichier de couleurs n&apos;a pas pu être écrit (%1).</source>
         <translation> Warning: the color file could not be written (%1).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9677"/>
+        <location filename="../main_window.cpp" line="9652"/>
         <source>Export rapide impossible avec les derniers réglages (%1) : résumé ouvert.</source>
         <translation>Quick export not possible with the latest settings (%1): summary opened.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9706"/>
+        <location filename="../main_window.cpp" line="9681"/>
         <source>Broderies machine (%1)</source>
         <translation>Machine embroideries (%1)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9709"/>
+        <location filename="../main_window.cpp" line="9684"/>
         <source>Importer une broderie machine</source>
         <translation>Import a machine embroidery</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9722"/>
+        <location filename="../main_window.cpp" line="9697"/>
         <source>L&apos;import remplace le document en cours. Enregistrer le projet avant d&apos;importer cette broderie ?</source>
         <translation>The import replaces the current document. Save the project before importing this embroidery?</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9731"/>
-        <location filename="../main_window.cpp" line="9774"/>
+        <location filename="../main_window.cpp" line="9706"/>
+        <location filename="../main_window.cpp" line="9749"/>
         <source>Import impossible</source>
         <translation>Import not possible</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9732"/>
+        <location filename="../main_window.cpp" line="9707"/>
         <source>Ce fichier n&apos;a pas pu être lu comme broderie machine (DST, PES, JEF ou EXP).</source>
         <translation>This file could not be read as a machine embroidery (DST, PES, JEF or EXP).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9758"/>
+        <location filename="../main_window.cpp" line="9733"/>
         <source>%1 — %2 points, %3 saut(s), %4 changement(s) de fil</source>
         <translation>%1 — %2 stitches, %3 jump(s), %4 thread change(s)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9767"/>
+        <location filename="../main_window.cpp" line="9742"/>
         <source>Importer un DXF</source>
         <translation>Import a DXF</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9768"/>
-        <location filename="../main_window.cpp" line="9809"/>
+        <location filename="../main_window.cpp" line="9743"/>
+        <location filename="../main_window.cpp" line="9784"/>
         <source>Dessin AutoCAD (*.dxf)</source>
         <translation>AutoCAD drawing (*.dxf)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9784"/>
+        <location filename="../main_window.cpp" line="9759"/>
         <source>Import DXF %1</source>
         <translation>DXF import %1</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9798"/>
+        <location filename="../main_window.cpp" line="9773"/>
         <source>%1 — %2 tracé(s) importé(s)</source>
         <translation>%1 — %2 path(s) imported</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9803"/>
-        <location filename="../main_window.cpp" line="9807"/>
+        <location filename="../main_window.cpp" line="9778"/>
+        <location filename="../main_window.cpp" line="9782"/>
         <source>Exporter en DXF</source>
         <translation>Export as DXF</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9804"/>
-        <location filename="../main_window.cpp" line="10685"/>
+        <location filename="../main_window.cpp" line="9779"/>
+        <location filename="../main_window.cpp" line="10667"/>
         <source>Aucun objet vectoriel à exporter.</source>
         <translation>No vector object to export.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9829"/>
+        <location filename="../main_window.cpp" line="9804"/>
         <source>Le fichier DXF n&apos;a pas pu être écrit dans « %1 ».</source>
         <translation>The DXF file could not be written to &quot;%1&quot;.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9835"/>
+        <location filename="../main_window.cpp" line="9810"/>
         <source>%1 — %2 tracé(s) exporté(s)</source>
         <translation>%1 — %2 path(s) exported</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9890"/>
+        <location filename="../main_window.cpp" line="9865"/>
         <source>Polygone : %1 sommet(s) — Entrée/double-clic/bouton ✓ pour fermer, Échap pour annuler, Retour arrière pour retirer le dernier sommet</source>
         <translation>Polygon: %1 vertex(es) — Enter/double-click/✓ button to close, Esc to cancel, Backspace to remove the last vertex</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9916"/>
+        <location filename="../main_window.cpp" line="9891"/>
         <source>Colonne satin : cliquez le côté B de la paire — Échap : annuler</source>
         <translation>Satin column: click side B of the pair — Esc: cancel</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9917"/>
+        <location filename="../main_window.cpp" line="9892"/>
         <source>Colonne satin : %1 paire(s) posée(s) — cliquez le côté A de la paire suivante — Entrée/double-clic : terminer (2 paires min.), Retour arrière : retirer le dernier point</source>
         <translation>Satin column: %1 pair(s) placed — click side A of the next pair — Enter/double-click: finish (2 pairs min.), Backspace: remove the last point</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9926"/>
+        <location filename="../main_window.cpp" line="9901"/>
         <source>Une forme vectorielle est sous le curseur, mais la couche Vecteurs est masquée (touche 3 pour l&apos;afficher).</source>
         <translation>A vector shape is under the cursor, but the Vectors layer is hidden (press 3 to show it).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9945"/>
+        <location filename="../main_window.cpp" line="9920"/>
         <source>Objet « %1 » — %2 morceau(x), nœuds déplaçables</source>
         <translation>Object &quot;%1&quot; — %2 piece(s), movable nodes</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9949"/>
+        <location filename="../main_window.cpp" line="9924"/>
         <source> — %1/%2 sous le curseur (cliquez à nouveau pour le suivant)</source>
         <translation> — %1/%2 under the cursor (click again for the next one)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="9988"/>
+        <location filename="../main_window.cpp" line="9963"/>
         <source>Colonne satin « %1 » sélectionnée</source>
         <translation>Satin column &quot;%1&quot; selected</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10039"/>
+        <location filename="../main_window.cpp" line="10014"/>
         <source>Fusion : cliquez la région cible sur la carte — Échap : annuler</source>
         <translation>Merge: click the target region on the map — Esc: cancel</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10041"/>
+        <location filename="../main_window.cpp" line="10016"/>
         <source>Fusion : cliquez une région NON sélectionnée (la cible) — Échap : annuler</source>
         <translation>Merge: click a NON-selected region (the target) — Esc: cancel</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10155"/>
+        <location filename="../main_window.cpp" line="10130"/>
         <source>Le cadre a saisi des objets vectoriels. Masquez-les (menu Affichage) pour sélectionner des régions au cadre.</source>
         <translation>The frame grabbed vector objects. Hide them (View menu) to select regions with the frame.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10204"/>
+        <location filename="../main_window.cpp" line="10179"/>
         <source>La couche Vecteurs est masquée (touche 3 pour l&apos;afficher) : rien à sélectionner.</source>
         <translation>The Vectors layer is hidden (press 3 to show it): nothing to select.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10213"/>
+        <location filename="../main_window.cpp" line="10188"/>
         <source>Aucun objet sous le curseur.</source>
         <translation>No object under the cursor.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10223"/>
+        <location filename="../main_window.cpp" line="10198"/>
         <source>Objets sous le curseur</source>
         <translation>Objects under the cursor</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10239"/>
+        <location filename="../main_window.cpp" line="10214"/>
         <source>(sans nom)</source>
         <translation>(unnamed)</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10318"/>
+        <location filename="../main_window.cpp" line="10293"/>
         <source>Déplacer %1 objets</source>
         <translation>Move %1 objects</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10558"/>
+        <location filename="../main_window.cpp" line="10489"/>
+        <source>Aucun point sélectionné : cliquez un point d&apos;abord.</source>
+        <translation>No point selected: click a point first.</translation>
+    </message>
+    <message>
+        <location filename="../main_window.cpp" line="10540"/>
         <source>%1 objets supprimés.</source>
         <translation>%1 objects deleted.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10577"/>
+        <location filename="../main_window.cpp" line="10559"/>
         <source>Couleur de la région</source>
         <translation>Region color</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10578"/>
+        <location filename="../main_window.cpp" line="10560"/>
         <source>Couleur des %1 régions</source>
         <translation>Color of the %1 regions</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10625"/>
-        <location filename="../main_window.cpp" line="10628"/>
+        <location filename="../main_window.cpp" line="10607"/>
+        <location filename="../main_window.cpp" line="10610"/>
         <location filename="../main_window_workflow.cpp" line="495"/>
         <source>Ouvrez d&apos;abord une image.</source>
         <translation>Open an image first.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10630"/>
-        <location filename="../main_window.cpp" line="10632"/>
-        <location filename="../main_window.cpp" line="10634"/>
-        <location filename="../main_window.cpp" line="10636"/>
-        <location filename="../main_window.cpp" line="10701"/>
+        <location filename="../main_window.cpp" line="10612"/>
+        <location filename="../main_window.cpp" line="10614"/>
+        <location filename="../main_window.cpp" line="10616"/>
+        <location filename="../main_window.cpp" line="10618"/>
+        <location filename="../main_window.cpp" line="10683"/>
         <source>Segmentez d&apos;abord l&apos;image (menu Segmentation).</source>
         <translation>Segment the image first (Segmentation menu).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10637"/>
+        <location filename="../main_window.cpp" line="10619"/>
         <source>Aucun objet vectoriel : vectorisez une région ou dessinez.</source>
         <translation>No vector object: vectorize a region or draw.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10640"/>
+        <location filename="../main_window.cpp" line="10622"/>
         <source>Aucune broderie : créez un objet de broderie.</source>
         <translation>No embroidery: create an embroidery object.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10643"/>
+        <location filename="../main_window.cpp" line="10625"/>
         <source>Sélectionnez d&apos;abord une forme (clic sur le motif).</source>
         <translation>First select a shape (click on the pattern).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10645"/>
+        <location filename="../main_window.cpp" line="10627"/>
         <source>Une seule forme à la fois : plusieurs sont sélectionnées.</source>
         <translation>One shape at a time: several are selected.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10650"/>
+        <location filename="../main_window.cpp" line="10632"/>
         <source>Sélectionnez d&apos;abord une ou plusieurs formes (clic sur le motif).</source>
         <translation>First select one or more shapes (click on the pattern).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10664"/>
+        <location filename="../main_window.cpp" line="10646"/>
         <source>Sélectionnez un objet à remplissage (tatami ou directionnel).</source>
         <translation>Select an object with a fill (tatami or directional).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10669"/>
+        <location filename="../main_window.cpp" line="10651"/>
         <source>Aucun satin dans le projet.</source>
         <translation>No satin in the project.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10671"/>
+        <location filename="../main_window.cpp" line="10653"/>
         <source>Aucun point généré : créez d&apos;abord un objet de broderie (tatami, satin…).</source>
         <translation>No stitches generated: first create an embroidery object (tatami, satin…).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10681"/>
-        <location filename="../main_window.cpp" line="10683"/>
+        <location filename="../main_window.cpp" line="10663"/>
+        <location filename="../main_window.cpp" line="10665"/>
         <source>Rien à enregistrer : ouvrez une image ou dessinez une forme.</source>
         <translation>Nothing to save: open an image or draw a shape.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10690"/>
+        <location filename="../main_window.cpp" line="10672"/>
         <source>Sélectionnez d&apos;abord une région dans l&apos;image segmentée.</source>
         <translation>First select a region in the segmented image.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10694"/>
+        <location filename="../main_window.cpp" line="10676"/>
         <source>Sélectionnez au moins deux régions (Ctrl+clic ou Maj+clic).</source>
         <translation>Select at least two regions (Ctrl+click or Shift+click).</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10697"/>
+        <location filename="../main_window.cpp" line="10679"/>
         <source>Sélectionnez une seule région : elle sera fusionnée dans sa voisine.</source>
         <translation>Select a single region: it will be merged into its neighbor.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10706"/>
+        <location filename="../main_window.cpp" line="10688"/>
         <source>Rien à sélectionner : segmentez l&apos;image ou créez des formes.</source>
         <translation>Nothing to select: segment the image or create shapes.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10711"/>
+        <location filename="../main_window.cpp" line="10693"/>
         <source>Sélectionnez d&apos;abord une région ou un objet.</source>
         <translation>First select a region or an object.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10742"/>
+        <location filename="../main_window.cpp" line="10724"/>
         <source>Édition des points désactivée : cet objet compte plus de %1 points de couture déplaçables. Réduisez la densité ou la longueur de point pour l&apos;éditer point par point.</source>
         <translation>Point editing disabled: this object has more than %1 movable stitch points. Reduce the density or stitch length to edit it point by point.</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10814"/>
+        <location filename="../main_window.cpp" line="10797"/>
         <source>&amp;Annuler %1</source>
         <translation>&amp;Undo %1</translation>
     </message>
     <message>
-        <location filename="../main_window.cpp" line="10817"/>
+        <location filename="../main_window.cpp" line="10800"/>
         <source>&amp;Rétablir %1</source>
         <translation>&amp;Redo %1</translation>
     </message>
@@ -8476,7 +8471,7 @@ Click-drag on the canvas to measure a distance (mm), dx / dy and the angle. Pure
     </message>
     <message>
         <location filename="../main_window_objects.cpp" line="128"/>
-        <location filename="../main_window_objects.cpp" line="548"/>
+        <location filename="../main_window_objects.cpp" line="553"/>
         <source>Couleur de la broderie</source>
         <translation>Embroidery color</translation>
     </message>
@@ -8577,7 +8572,7 @@ Click-drag on the canvas to measure a distance (mm), dx / dy and the angle. Pure
     </message>
     <message>
         <location filename="../main_window_objects.cpp" line="185"/>
-        <location filename="../main_window_objects.cpp" line="643"/>
+        <location filename="../main_window_objects.cpp" line="648"/>
         <source>Redimensionner le design</source>
         <translation>Resize the design</translation>
     </message>
@@ -8741,93 +8736,93 @@ Click-drag on the canvas to measure a distance (mm), dx / dy and the angle. Pure
         <translation>Nothing to frame: select an object (Z).</translation>
     </message>
     <message>
-        <location filename="../main_window_objects.cpp" line="505"/>
+        <location filename="../main_window_objects.cpp" line="510"/>
         <location filename="../main_window_threads.cpp" line="248"/>
         <source>%1 forme(s) sélectionnée(s).</source>
         <translation>%1 shape(s) selected.</translation>
     </message>
     <message>
-        <location filename="../main_window_objects.cpp" line="537"/>
+        <location filename="../main_window_objects.cpp" line="542"/>
         <source>%1 forme(s) de cette couleur sélectionnée(s).</source>
         <translation>%1 shape(s) of this color selected.</translation>
     </message>
     <message>
-        <location filename="../main_window_objects.cpp" line="553"/>
+        <location filename="../main_window_objects.cpp" line="558"/>
         <source>Couleur appliquée à %1 objet(s) de broderie.</source>
         <translation>Color applied to %1 embroidery object(s).</translation>
     </message>
     <message>
-        <location filename="../main_window_objects.cpp" line="604"/>
+        <location filename="../main_window_objects.cpp" line="609"/>
         <source>Sélection pivotée de %1°.</source>
         <translation>Selection rotated by %1°.</translation>
     </message>
     <message>
-        <location filename="../main_window_objects.cpp" line="614"/>
+        <location filename="../main_window_objects.cpp" line="619"/>
         <source>Miroir horizontal</source>
         <translation>Horizontal mirror</translation>
     </message>
     <message>
-        <location filename="../main_window_objects.cpp" line="614"/>
+        <location filename="../main_window_objects.cpp" line="619"/>
         <source>Miroir vertical</source>
         <translation>Vertical mirror</translation>
     </message>
     <message>
-        <location filename="../main_window_objects.cpp" line="615"/>
+        <location filename="../main_window_objects.cpp" line="620"/>
         <source>Sélection retournée.</source>
         <translation>Selection flipped.</translation>
     </message>
     <message>
-        <location filename="../main_window_objects.cpp" line="626"/>
+        <location filename="../main_window_objects.cpp" line="631"/>
         <source>Le design est déjà centré dans le cadre.</source>
         <translation>The design is already centered in the hoop.</translation>
     </message>
     <message>
-        <location filename="../main_window_objects.cpp" line="633"/>
+        <location filename="../main_window_objects.cpp" line="638"/>
         <source>Centrer le design</source>
         <translation>Center the design</translation>
     </message>
     <message>
-        <location filename="../main_window_objects.cpp" line="633"/>
+        <location filename="../main_window_objects.cpp" line="638"/>
         <source>Design centré dans le cadre.</source>
         <translation>Design centered in the hoop.</translation>
     </message>
     <message>
-        <location filename="../main_window_objects.cpp" line="644"/>
+        <location filename="../main_window_objects.cpp" line="649"/>
         <source>Design redimensionné à %1 %.</source>
         <translation>Design resized to %1 %.</translation>
     </message>
     <message>
-        <location filename="../main_window_objects.cpp" line="665"/>
+        <location filename="../main_window_objects.cpp" line="670"/>
         <source>Ajuster le design au cadre</source>
         <translation>Fit design to hoop</translation>
     </message>
     <message>
-        <location filename="../main_window_objects.cpp" line="666"/>
+        <location filename="../main_window_objects.cpp" line="671"/>
         <source>Design ajusté à la zone brodable (%1 %).</source>
         <translation>Design fitted to the embroidery area (%1 %).</translation>
     </message>
     <message>
-        <location filename="../main_window_objects.cpp" line="679"/>
+        <location filename="../main_window_objects.cpp" line="684"/>
         <source>Pivoter le design</source>
         <translation>Rotate the design</translation>
     </message>
     <message>
-        <location filename="../main_window_objects.cpp" line="679"/>
+        <location filename="../main_window_objects.cpp" line="684"/>
         <source>Design pivoté de 90°.</source>
         <translation>Design rotated by 90°.</translation>
     </message>
     <message>
-        <location filename="../main_window_objects.cpp" line="683"/>
+        <location filename="../main_window_objects.cpp" line="688"/>
         <source>Miroir horizontal du design</source>
         <translation>Horizontal mirror of the design</translation>
     </message>
     <message>
-        <location filename="../main_window_objects.cpp" line="684"/>
+        <location filename="../main_window_objects.cpp" line="689"/>
         <source>Miroir vertical du design</source>
         <translation>Vertical mirror of the design</translation>
     </message>
     <message>
-        <location filename="../main_window_objects.cpp" line="685"/>
+        <location filename="../main_window_objects.cpp" line="690"/>
         <source>Design retourné.</source>
         <translation>Design flipped.</translation>
     </message>
@@ -10672,6 +10667,87 @@ Cliquez sur une zone de couleur de l&apos;image : elle devient un objet brodé (
         <location filename="../main_window_machine.cpp" line="52"/>
         <source>Machine : %1</source>
         <translation>Machine: %1</translation>
+    </message>
+    <message>
+        <location filename="../main_window_point_edit.cpp" line="92"/>
+        <source>Glisser pour déplacer le point (toute la sélection suit).</source>
+        <translation>Drag to move the point (the whole selection follows).</translation>
+    </message>
+    <message>
+        <location filename="../main_window_point_edit.cpp" line="123"/>
+        <source>Point #%1 supprimé — clic pour le sélectionner, clic droit pour le restaurer</source>
+        <translation>Point #%1 deleted — click to select it, right-click to restore it</translation>
+    </message>
+    <message>
+        <location filename="../main_window_point_edit.cpp" line="127"/>
+        <source>Point de couture #%1 — clic : sélectionner (Ctrl/Maj : ajouter), glisser : déplacer, clic droit : actions</source>
+        <translation>Stitch point #%1 — click: select (Ctrl/Shift: add), drag: move, right-click: actions</translation>
+    </message>
+    <message>
+        <location filename="../main_window_point_edit.cpp" line="162"/>
+        <source>%1 point(s) sélectionné(s).</source>
+        <translation>%1 point(s) selected.</translation>
+    </message>
+    <message>
+        <location filename="../main_window_point_edit.cpp" line="286"/>
+        <source>Double-cliquez près d&apos;un trait de couture pour y insérer un point.</source>
+        <translation>Double-click near a stitch line to insert a point there.</translation>
+    </message>
+    <message>
+        <location filename="../main_window_point_edit.cpp" line="296"/>
+        <source>Point inséré (annulable).</source>
+        <translation>Point inserted (undoable).</translation>
+    </message>
+    <message>
+        <location filename="../main_window_point_edit.cpp" line="308"/>
+        <location filename="../main_window_point_edit.cpp" line="345"/>
+        <source>Supprimer les points sélectionnés</source>
+        <translation>Delete selected points</translation>
+    </message>
+    <message>
+        <location filename="../main_window_point_edit.cpp" line="309"/>
+        <location filename="../main_window_point_edit.cpp" line="346"/>
+        <source>Restaurer les points sélectionnés</source>
+        <translation>Restore selected points</translation>
+    </message>
+    <message>
+        <location filename="../main_window_point_edit.cpp" line="310"/>
+        <location filename="../main_window_point_edit.cpp" line="347"/>
+        <source>Passer en saut (sans couture)</source>
+        <translation>Make jump (no stitch)</translation>
+    </message>
+    <message>
+        <location filename="../main_window_point_edit.cpp" line="311"/>
+        <location filename="../main_window_point_edit.cpp" line="348"/>
+        <source>Passer en point cousu</source>
+        <translation>Make stitch</translation>
+    </message>
+    <message>
+        <location filename="../main_window_point_edit.cpp" line="312"/>
+        <location filename="../main_window_point_edit.cpp" line="349"/>
+        <source>Couper le fil après</source>
+        <translation>Trim thread after</translation>
+    </message>
+    <message>
+        <location filename="../main_window_point_edit.cpp" line="313"/>
+        <location filename="../main_window_point_edit.cpp" line="350"/>
+        <source>Ne pas couper le fil après</source>
+        <translation>Do not trim thread after</translation>
+    </message>
+    <message>
+        <location filename="../main_window_point_edit.cpp" line="351"/>
+        <source>Sélectionner tous les points</source>
+        <translation>Select all points</translation>
+    </message>
+    <message>
+        <location filename="../main_window_point_edit.cpp" line="354"/>
+        <source>En mode « Éditer les points » : sélectionne tous les points de l&apos;objet (Ctrl+A).</source>
+        <translation>In “Edit points” mode: selects every point of the object (Ctrl+A).</translation>
+    </message>
+    <message>
+        <location filename="../main_window_point_edit.cpp" line="360"/>
+        <source>En mode « Éditer les points » : s&apos;applique aux points sélectionnés (un seul pas d&apos;annulation).</source>
+        <translation>In “Edit points” mode: applies to the selected points (a single undo step).</translation>
     </message>
 </context>
 <context>

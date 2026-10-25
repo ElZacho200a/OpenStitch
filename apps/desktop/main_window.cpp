@@ -59,6 +59,7 @@
 #include <numbers>
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 #include <variant>
 
 #include "ai_preferences.hpp"
@@ -1137,6 +1138,7 @@ void MainWindow::buildMenus() {
            "Distinct de l'édition des nœuds vectoriels : ici, seul le point cousu bouge, "
            "pas la forme source."));
     connect(stitchEditModeAct_, &QAction::toggled, this, &MainWindow::onStitchEditModeToggled);
+    buildStitchPointEditActions(embMenu); // sélection, suppression, saut, coupe (HP-EDIT-001..003)
     // Mode unique de remodelage satin : active À LA FOIS les nœuds de rail et
     // les guides transversaux, pour ne plus avoir à choisir entre deux modes
     // séparés dont la différence n'était pas claire à l'usage (défaut
@@ -1718,6 +1720,7 @@ void MainWindow::redo() {
 void MainWindow::onStitchEditModeToggled(bool on) {
     stitchEditTarget_.reset();
     stitchEditView_.reset();
+    stitchSelection_.clear();
     if (on) {
         // Poser la nouvelle cible AVANT de quitter un autre mode : ses slots relancent
         // updateActions(), qui annulerait l'activation si la cible était encore absente.
@@ -1752,8 +1755,10 @@ void MainWindow::onStitchEditModeToggled(bool on) {
             QSignalBlocker block(stitchEditModeAct_);
             stitchEditModeAct_->setChecked(false);
         } else {
-            statusBar()->showMessage(
-                tr("Édition des points : glissez un point pour le déplacer. Échap pour quitter."));
+            statusBar()->showMessage(tr(
+                "Édition des points : clic pour sélectionner (Ctrl/Maj : ajouter, Ctrl+A : tout), "
+                "glisser pour déplacer, Suppr pour supprimer, double-clic sur un trait pour "
+                "insérer. Échap pour quitter."));
         }
     }
     displayImage(processed_); // fait apparaître/disparaître les poignées
@@ -2382,6 +2387,11 @@ void MainWindow::onBoxDrawn(QRectF rectMm, Qt::KeyboardModifiers modifiers) {
 }
 
 void MainWindow::onCanvasDoubleClicked(QPointF posMm) {
+    // Mode « Éditer les points » : double-clic près d'un trait de couture = nouveau point.
+    if (stitchPointEditActive()) {
+        insertStitchPointAt(posMm);
+        return;
+    }
     // Double-clic sur une lettre : rouvre le texte (le premier clic l'a sélectionnée).
     if (currentTool_ == Tool::Select && selectedTextId()) {
         editSelectedText();
@@ -4164,11 +4174,20 @@ void MainWindow::renderBase(const image::Image& img) {
             // poignées ci-dessous ne doit pas redevenir O(points*overrides) en
             // rescannant `obj->overrides` pour chaque point (motif dense).
             std::unordered_map<std::size_t, Vec2um> movedOverrides;
+            std::unordered_set<std::size_t> deletedIdx;
             movedOverrides.reserve(obj->overrides.size());
             for (const auto& ov : obj->overrides) {
                 if (ov.moved_to) {
                     movedOverrides.emplace(ov.base_index, *ov.moved_to);
                 }
+                if (ov.deleted) {
+                    deletedIdx.insert(ov.base_index);
+                }
+            }
+            // La sélection n'a de sens que pour la vue brute qui l'a produite.
+            if (stitchSelectionFingerprint_ != view.fingerprint) {
+                stitchSelection_.clear();
+                stitchSelectionFingerprint_ = view.fingerprint;
             }
             for (std::size_t i = 0; i < view.raw.size(); ++i) {
                 const auto& cmd = view.raw[i];
@@ -4179,52 +4198,8 @@ void MainWindow::renderBase(const image::Image& img) {
                 if (auto it = movedOverrides.find(i); it != movedOverrides.end()) {
                     pos = it->second;
                 }
-                const QPointF sceneMm(to_millimeters(pos.x).value, -to_millimeters(pos.y).value);
-                const std::size_t baseIndex = i;
-                const std::uint64_t rawFingerprint = view.fingerprint;
-                const std::uint32_t rawPointCount = view.point_count;
-                // Génération du document au moment où la poignée est construite :
-                // si elle a changé quand le QTimer différé ci-dessous se déclenche,
-                // `project_` a été intégralement remplacé entretemps (nouveau
-                // document/projet chargé/import DST) -- abandonner plutôt que de
-                // muter un projet qui n'est plus celui visé par ce glisser.
-                const std::uint64_t generation = documentGeneration_;
-                auto* handle = new NodeHandleItem(
-                    sceneMm,
-                    [this, targetId, baseIndex, pos, rawFingerprint, rawPointCount,
-                     generation](QPointF newSceneMm) {
-                        const Vec2um newPos{to_micrometers(Millimeters{newSceneMm.x()}),
-                                            to_micrometers(Millimeters{-newSceneMm.y()})};
-                        if (newPos == pos) {
-                            return; // pas de mouvement : aucune commande (pas de pollution undo)
-                        }
-                        // Diffère : refreshImage() détruirait cette poignée pendant
-                        // son propre événement souris (même précaution que les
-                        // poignées de nœuds/rotation ci-dessus).
-                        QTimer::singleShot(
-                            0, this,
-                            [this, targetId, baseIndex, newPos, rawFingerprint, rawPointCount,
-                             generation] {
-                                if (generation != documentGeneration_) {
-                                    return; // document remplacé pendant le délai : commande
-                                            // abandonnée
-                                }
-                                undoStack_.execute(
-                                    std::make_unique<commands::MoveStitchPointCommand>(
-                                        targetId, baseIndex, newPos, rawFingerprint, rawPointCount),
-                                    project_);
-                                refreshImage();
-                                updateActions();
-                            });
-                    },
-                    [this](QPointF) {
-                        statusBar()->showMessage(tr("Glisser pour déplacer le point de couture."));
-                    });
-                handle->setPen(QPen(AppTheme::instance().tokens().accent, 1.5));
-                handle->setBrush(QBrush(AppTheme::instance().tokens().accent.lighter(150)));
-                handle->setToolTip(tr("Point de couture #%1 — glisser pour déplacer").arg(i));
-                scene_->addItem(handle);
-                baseItems_.append(handle);
+                addStitchPointHandle(i, pos, stitchSelection_.count(i) != 0,
+                                     deletedIdx.count(i) != 0);
             }
         }
     }
@@ -10508,6 +10483,12 @@ void MainWindow::applySelectionRectangle(const std::vector<ObjectId>& hits, Sele
 }
 
 void MainWindow::deleteSelection() {
+    // Mode « Éditer les points » avec des points sélectionnés : Suppr retire ces POINTS. Sans
+    // sélection de points, le comportement historique demeure (supprime l'objet, annulable).
+    if (stitchPointEditActive() && !stitchSelection_.empty()) {
+        editSelectedStitchPoints(0);
+        return;
+    }
     // Objet de broderie choisi (dock Ordre/Document) : la broderie seule, forme
     // source conservée -- sauf proxy invisible (colonne satin manuelle), dont la
     // suppression emporte la source (comme « Supprimer » du menu contextuel).
@@ -10752,6 +10733,7 @@ void MainWindow::updateActions() {
     }
     stitchEditModeAct_->setEnabled(stitchEditEmb != nullptr &&
                                    stitchEditState != stitch_generation::ObjectEditState::Dirty);
+    updateStitchPointActions();
     if (stitchEditNeedsRerender) {
         displayImage(processed_); // retire les poignées de l'objet quitté
     }

@@ -114,3 +114,4 @@ openstitch_add_qt_test(test_machine_ui test_machine_ui.cpp)
 # [cablage-HOOP:fin]
 # HP-OBJ-001/004 : cadre commun, rotation de plusieurs formes, pivot.
 openstitch_add_qt_test(test_object_manipulation test_object_manipulation.cpp)
+openstitch_add_qt_test(test_stitch_point_edit test_stitch_point_edit.cpp)
