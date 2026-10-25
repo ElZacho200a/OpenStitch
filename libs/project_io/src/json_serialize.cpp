@@ -1015,6 +1015,15 @@ json override_to_json(const document::StitchOverride& ov) {
         j["type"] = (*ov.forced_type == document::StitchPointType::Jump) ? "jump" : "stitch";
     }
     j["trimAfter"] = ov.trim_after;
+    if (ov.deleted) {
+        j["deleted"] = true;
+    }
+    if (!ov.inserted_after.empty()) {
+        j["insertedAfter"] = json::array();
+        for (const Vec2um& p : ov.inserted_after) {
+            j["insertedAfter"].push_back({{"x", p.x.value}, {"y", p.y.value}});
+        }
+    }
     return j;
 }
 
@@ -1086,7 +1095,30 @@ Result<std::vector<document::StitchOverride>> overrides_from_json(const json& ar
         // aucune commande du Lot 8.1 n'en produit (cf. Point 5,
         // `SetStitchTrimCommand`), donc seul un JSON malformé/hand-écrit peut
         // en contenir un -- refusé plutôt que silencieusement absorbé.
-        if (!ov.moved_to.has_value() && !ov.forced_type.has_value() && !ov.trim_after) {
+        if (entry.contains("deleted")) {
+            const auto& d = entry.at("deleted");
+            if (!d.is_boolean()) {
+                return fail(ErrorCategory::InvalidFile, "Retouche invalide : deleted non booléen");
+            }
+            ov.deleted = d.get<bool>();
+        }
+        if (entry.contains("insertedAfter")) {
+            const auto& ins = entry.at("insertedAfter");
+            if (!ins.is_array()) {
+                return fail(ErrorCategory::InvalidFile,
+                            "Retouche invalide : insertedAfter doit être un tableau");
+            }
+            for (const auto& p : ins) {
+                auto pos = override_pos_from_json(p);
+                if (!pos) {
+                    return std::unexpected(pos.error());
+                }
+                ov.inserted_after.push_back(*pos);
+            }
+        }
+
+        if (!ov.moved_to.has_value() && !ov.forced_type.has_value() && !ov.trim_after &&
+            !ov.deleted && ov.inserted_after.empty()) {
             return fail(ErrorCategory::InvalidFile,
                         "Retouche invalide : entrée sans modification effective (index " +
                             std::to_string(*idx) + ")");

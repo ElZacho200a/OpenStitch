@@ -497,8 +497,12 @@ struct StitchOverride {
     std::optional<Vec2um> moved_to;             // nullopt = position générée
     std::optional<StitchPointType> forced_type; // nullopt = type généré
     bool trim_after{false};                     // insère un Trim juste après ce point
+    // HP-EDIT-002 : suppression du point (Stitch ou Jump de passe TopStitch) et points Stitch
+    // insérés juste après lui (dans l'ordre), en deltas comme le reste (ADR-014).
+    bool deleted{false};
+    std::vector<Vec2um> inserted_after;
 
-    constexpr bool operator==(const StitchOverride&) const = default;
+    bool operator==(const StitchOverride&) const = default;
 };
 
 // §21/§24 du plan de refonte satin (2026-08-14) : distingue une
