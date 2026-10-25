@@ -1,0 +1,195 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261025T045759Z-phare-glass-open-mcp-0d343ff",
+  "timestamp_utc": "2026-10-25T04:57:59Z",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "sha_verified_this_run": true
+  },
+  "full_scene": {
+    "hoop_mm": [
+      390,
+      268
+    ],
+    "motif_mm": [
+      370,
+      231.490885
+    ],
+    "not_digitized_this_run": true
+  },
+  "subproject": {
+    "crop_px": [
+      888,
+      65,
+      1010,
+      466
+    ],
+    "crop_size_px": [
+      122,
+      401
+    ],
+    "motif_mm": [
+      29.388,
+      96.595
+    ],
+    "hoop_mm": [
+      50,
+      120
+    ],
+    "margin_mm": 5,
+    "metrics_not_comparable_to_full_scene": true
+  },
+  "main_commit": "520bcb4741062379225927ea6e09e3b8a9bad6ab",
+  "mcp": {
+    "version": "1.1.0",
+    "source": "official CI main workflow 40110471256 artifact 12567701806",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "doctor": "7/7",
+    "tools": 29
+  },
+  "method": "Five actually applied OpenCV/NumPy source-traced standalone lighthouse preparations. Curved dome, exclusive broad ivory and blue glass masks, optional warm/cool reflection, gallery full or two narrow carrier strips, original four windows and shaft. Native MCP import_svg of 22 (or 13) OPEN running paths. No generative painting.",
+  "variants": [
+    {
+      "name": "glass_ivory_two",
+      "regions": 14,
+      "components": 15,
+      "open_svg_paths": 22,
+      "objects": 37,
+      "points": 2440,
+      "trims": 39,
+      "jumps": 48,
+      "color_changes": 11,
+      "warnings": 0,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "missing_pct": 52.146,
+      "lost_detail_pct": 2.081,
+      "wrong_colour_pct": 6.01,
+      "real_mcp_preview": true
+    },
+    {
+      "name": "glass_three_tones",
+      "regions": 16,
+      "components": 18,
+      "open_svg_paths": 22,
+      "objects": 41,
+      "points": 2515,
+      "trims": 46,
+      "jumps": 51,
+      "color_changes": 13,
+      "warnings": 0,
+      "errors": 0,
+      "hotspot_mm2": 2,
+      "missing_pct": 52.486,
+      "lost_detail_pct": 1.603,
+      "wrong_colour_pct": 5.497,
+      "real_mcp_preview": true
+    },
+    {
+      "name": "glass_cool_reflect",
+      "regions": 17,
+      "components": 19,
+      "open_svg_paths": 22,
+      "objects": 42,
+      "points": 2466,
+      "trims": 45,
+      "jumps": 48,
+      "color_changes": 14,
+      "warnings": 2,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "missing_pct": 52.731,
+      "lost_detail_pct": 1.603,
+      "wrong_colour_pct": 5.47,
+      "real_mcp_preview": true
+    },
+    {
+      "name": "glass_minimal_rails",
+      "regions": 14,
+      "components": 15,
+      "open_svg_paths": 13,
+      "objects": 28,
+      "points": 2371,
+      "trims": 32,
+      "jumps": 39,
+      "color_changes": 11,
+      "warnings": 2,
+      "errors": 0,
+      "hotspot_mm2": 0,
+      "missing_pct": 52.187,
+      "lost_detail_pct": 2.054,
+      "wrong_colour_pct": 5.672,
+      "real_mcp_preview": true
+    },
+    {
+      "name": "glass_gallery_open",
+      "regions": 15,
+      "open_svg_paths": 22,
+      "objects": 38,
+      "points": 2329,
+      "trims": 41,
+      "jumps": 50,
+      "color_changes": 12,
+      "warnings": 0,
+      "errors": 0,
+      "hotspot_mm2": 2,
+      "missing_pct": 54.348,
+      "lost_detail_pct": 1.923,
+      "wrong_colour_pct": 5.648,
+      "real_mcp_preview": true
+    }
+  ],
+  "mcp_executed": [
+    "initialize",
+    "digitize_guide",
+    "project_operations",
+    "semantic_validate",
+    "project_new",
+    "semantic_import dry_run/apply",
+    "project_apply import_svg dry_run/apply",
+    "project_checkpoint",
+    "semantic_map",
+    "project_inspect",
+    "project_report",
+    "project_check",
+    "project_density",
+    "project_fabric_risk",
+    "project_fidelity",
+    "project_render real PNG",
+    "project_save OSP",
+    "project_export DST",
+    "project_satin_compare 3 strategies on 4 windows and 2 gallery strips",
+    "project_apply auto_satin skeleton/parallel_sweep/medial_axis dry_run/apply on same gallery strip",
+    "project_apply directional_guides dry_run/apply on same shaft tatami",
+    "semantic_replace glass.ivory dry_run/apply",
+    "project_apply set_params gallery row_spacing dry_run/apply",
+    "project_restore"
+  ],
+  "retouches": {
+    "windows": "4 tested, all Unsuitable; first parallel_sweep coverage 51.28%",
+    "gallery": "Two strips SuitableWithWarnings, first strip skeleton/parallel_sweep/medial_axis coverage 98.27/97.86/98.24%; all 3 applied and truly rendered, not retained",
+    "tatami_directional": "Same shaft tested and real render rejected",
+    "semantic_replace": "Ivory mask morphological edit dry_run/apply real preview rejected",
+    "set_params": "Gallery spacing 0.85mm dry_run/apply real preview rejected",
+    "baseline_restored_byte_identical": true
+  },
+  "gate_A": "FAILED for production; roof curve and broad glass clearer, but gallery still schematic; narrow colored gallery bands leave interstices dependent on fabric. All imports diagnostic only.",
+  "fidelity_caveat": "Crop excludes sky/foam intentionally; missing percent 52-54% is not global artistic fidelity.",
+  "verdict": "ALL DIAGNOSTIC; NO FULL SCENE DELIVERY; no machine test or independent evaluation.",
+  "private_archive": {
+    "path": "/OpenStitch/Experiments/2026-10-25/phare-verre-colore-mcp-0605-private.zip",
+    "library_file_id": "libfile_6ece1b5d637c8191b647cc0d0d04c6c4",
+    "size_bytes": 23792734,
+    "sha256": "c99cb7f3d0ca6e3377c26eba4796bfac58c8232c4edc879bea207375c82bea31",
+    "rematerialized_sha_verified": true
+  },
+  "github_pixels_private": true,
+  "next_hypothesis": "Make gallery source-fidelitous without relying on fabric: 2-4 continuous exclusive pale carrier regions plus sparse open SVG rail paths, perhaps partial colored mesh with controlled fill; improve dome source geometry and glass stitch directions, Gate A crop then real MCP preview. Only integrate into full scene after crop is artistically convincing. Never compare crop metrics with global bridge12 593 objects/1099 trims/37mm2."
+}
