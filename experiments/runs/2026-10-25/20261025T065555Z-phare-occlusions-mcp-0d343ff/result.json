@@ -1,0 +1,153 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261025T065555Z-phare-occlusions-mcp-0d343ff",
+  "timestamp_utc": "2026-10-25T06:55:55Z",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "verified_this_run": true
+  },
+  "main_commit": "520bcb4741062379225927ea6e09e3b8a9bad6ab",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "tools_catalogued": true
+  },
+  "subproject": {
+    "crop_px": [
+      888,
+      65,
+      1010,
+      466
+    ],
+    "size_mm": [
+      29.388,
+      96.595
+    ],
+    "hoop_mm": [
+      50,
+      120
+    ],
+    "not_full_scene": true
+  },
+  "preparations": {
+    "applied": [
+      "context_soft",
+      "context_contrast",
+      "context_running",
+      "context_protected",
+      "context_shaft_shadow",
+      "context_shaft_highlight",
+      "context_shaft_full"
+    ],
+    "method": "Source RGB classification for grey/blue cloud, ivory foam and warm shaft shade; occlusion subtraction from shaft tatamis; protected window/gallery/glass/dome; retained native open SVG running rails; OpenCV/NumPy, no generative AI.",
+    "gate_A": "FAILED; foam and cloud improve contextual reading but remain blocky and fragmented, lantern/gallery schematic. All MCP imports diagnostic."
+  },
+  "variants": [
+    {
+      "name": "context_soft",
+      "objects": 71,
+      "points": 4105,
+      "trims": 84,
+      "jumps": 109,
+      "color_changes": 26,
+      "warnings": 7,
+      "errors": 0,
+      "hotspot_mm2": 3,
+      "missing_percent": 30.493,
+      "lost_detail_percent": 2.432,
+      "wrong_colour_percent": 6.792,
+      "real_mcp_preview": true
+    },
+    {
+      "name": "context_shaft_shadow",
+      "objects": 76,
+      "points": 4153,
+      "trims": 88,
+      "jumps": 120,
+      "color_changes": 27,
+      "warnings": 7,
+      "errors": 0,
+      "hotspot_mm2": 3,
+      "missing_percent": 31.632,
+      "lost_detail_percent": 2.424,
+      "wrong_colour_percent": 6.786,
+      "real_mcp_preview": true
+    },
+    {
+      "name": "context_shaft_full",
+      "objects": 95,
+      "points": 4369,
+      "trims": 114,
+      "jumps": 161,
+      "color_changes": 28,
+      "warnings": 11,
+      "errors": 0,
+      "hotspot_mm2": 4,
+      "missing_percent": 34.51,
+      "lost_detail_percent": 2.506,
+      "wrong_colour_percent": 6.69,
+      "real_mcp_preview": true
+    }
+  ],
+  "mcp_executed": [
+    "digitize_guide",
+    "project_operations",
+    "semantic_validate",
+    "project_new",
+    "semantic_import dry_run/apply",
+    "project_apply import_svg dry_run/apply",
+    "project_apply set_source_image",
+    "project_apply set_finishing bridge12",
+    "project_checkpoint",
+    "semantic_map",
+    "project_inspect",
+    "project_report",
+    "project_check",
+    "project_density",
+    "project_fabric_risk",
+    "project_fidelity",
+    "project_render real PNG",
+    "project_save OSP",
+    "project_export DST",
+    "project_satin_compare 3 strategies",
+    "project_apply auto_satin 3 strategies dry_run/apply",
+    "project_apply directional_guides dry_run/apply",
+    "semantic_replace dry_run/apply",
+    "project_apply set_params dry_run/apply",
+    "project_restore"
+  ],
+  "retouches": {
+    "baseline": "context_soft",
+    "window_satin": "4 windows Unsuitable; skeleton/parallel_sweep/medial_axis measured, first coverage 95.5/51.3/94.2%",
+    "gallery_satin": "3 strategies applied to same gallery strip, rendered, rejected",
+    "directional": "same shaft mass tatami vs directional dry_run/apply rendered, rejected",
+    "semantic_replace": "ivory glass dry_run/apply rendered, rejected",
+    "set_params": "gallery tatami dry_run/apply rendered, rejected",
+    "restored_osp_byte_identical": true
+  },
+  "quality": {
+    "artistic_verdict": "REJECTED",
+    "machine_tested": false,
+    "independent_rating": false,
+    "warning_detail": "short stitch <0.1 mm especially foam fragments",
+    "fidelity_scope": "crop includes intentionally unstitched context; not comparable to global scene"
+  },
+  "private_archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-25/phare-occlusions-mcp-0805-private.zip",
+    "library_file_id": "libfile_203bef2e3d808191a9afe1ced5e3015d",
+    "size_bytes": 22104166,
+    "sha256": "49aee7af5f6ea0ad0e4fb05b932efe22626da39f1da537458c991615311373e3",
+    "rematerialized_sha_verified": true,
+    "zip_integrity_verified": true
+  },
+  "github_pixels_private": true,
+  "next_hypothesis": "Stop raster tatami fragmentation of foam; derive a few continuous source-traced foam carrier ribbons with exclusive holes, use native import_svg open running paths for thin filaments; maintain sky/cloud context and large shaft shadows; reduce short-stitch warnings and verify Gate A crop before any diagnostic MCP import; no global reintegration until artistic quality improves."
+}
