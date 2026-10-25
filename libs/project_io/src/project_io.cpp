@@ -35,7 +35,10 @@ int schema_version_for(const std::vector<document::EmbroideryObject>& objects,
     }
     // v8 : un texte porte un crénage manuel ou des ligatures (jamais pour les fichiers existants).
     for (const auto& text : texts) {
-        if (!text.kerning_pairs.empty() || text.ligatures) {
+        if (!text.kerning_pairs.empty() || text.ligatures ||
+            text.base.kind != document::TextBaseKind::Line || !text.glyph_edits.empty() ||
+            text.letter_connector != document::ConnectorMode::Inherit ||
+            text.word_connector != document::ConnectorMode::Inherit) {
             return kSchemaVersionTextTypography;
         }
     }

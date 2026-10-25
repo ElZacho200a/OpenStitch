@@ -224,7 +224,9 @@ Result<TextBuild> build_text_objects(const Font& font, const document::TextObjec
         }
     };
 
-    for (const PlacedGlyph& glyph : build.layout.glyphs) {
+    for (std::size_t gi = 0; gi < build.layout.glyphs.size(); ++gi) {
+        const PlacedGlyph& glyph = build.layout.glyphs[gi];
+        const auto glyph_rgb = glyph.rgb.value_or(text.rgb);
         const std::string letter = encode_utf8(glyph.code_point);
 
         // Un type de point PAR MORCEAU du glyphe : un « ä » est un corps (satin) et
@@ -279,7 +281,7 @@ Result<TextBuild> build_text_objects(const Font& font, const document::TextObjec
             vector.id = ids.next();
             vector.name =
                 "Lettre " + letter + (emitted > 0 ? " (" + std::to_string(emitted + 1) + ")" : "");
-            vector.rgb = text.rgb;
+            vector.rgb = glyph_rgb;
             vector.paths = std::move(groups[k]);
             vector.text_owner = text.id;
 
@@ -287,7 +289,7 @@ Result<TextBuild> build_text_objects(const Font& font, const document::TextObjec
             emb.id = ids.next();
             emb.name = vector.name;
             emb.source_vector = vector.id;
-            emb.rgb = text.rgb;
+            emb.rgb = glyph_rgb;
             emb.intent = document::EmbroideryIntent::ForcedUserChoice;
             switch (static_cast<Kind>(k)) {
             case Kind::Satin:
@@ -303,6 +305,13 @@ Result<TextBuild> build_text_objects(const Font& font, const document::TextObjec
             build.vectors.push_back(std::move(vector));
             build.embroideries.push_back(std::move(emb));
             ++emitted;
+        }
+        // Connecteur après la lettre (HP-TXT-014) : entre deux lettres d'un mot ou entre deux
+        // mots/lignes ; posé sur le dernier objet de la lettre (celui qui précède le saut).
+        if (emitted > 0 && gi + 1 < build.layout.glyphs.size()) {
+            const bool word_gap = build.layout.glyphs[gi + 1].word != glyph.word;
+            build.embroideries.back().connector =
+                word_gap ? text.word_connector : text.letter_connector;
         }
     }
 
