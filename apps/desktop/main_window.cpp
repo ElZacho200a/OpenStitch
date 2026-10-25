@@ -2,6 +2,7 @@
 #include "main_window.hpp"
 #include "simulation_nav_bar.hpp"
 #include "stitch_type_catalog.hpp"
+#include "thread_strip.hpp"
 
 #include <QAction>
 #include <QActionGroup>
@@ -690,6 +691,7 @@ MainWindow::MainWindow() {
     connect(view_, &CanvasView::canvasClickedMm, this, &MainWindow::onCanvasClicked);
     connect(view_, &CanvasView::selectionClickedMm, this, &MainWindow::onSelectionClicked);
     connect(view_, &CanvasView::nodeRectangleMm, this, &MainWindow::onNodeRectangle);
+    connect(view_, &CanvasView::stitchRectangleMm, this, &MainWindow::selectStitchPointsInRect);
     connect(view_, &CanvasView::selectionRectangleMm, this, &MainWindow::onSelectionRectangle);
     connect(view_, &CanvasView::selectBelowRequested, this, &MainWindow::onSelectBelow);
     // Préréglage de navigation GLOBAL : toute fenêtre reflète un changement venu d'ailleurs.
@@ -4200,6 +4202,12 @@ void MainWindow::renderBase(const image::Image& img) {
                 }
                 addStitchPointHandle(i, pos, stitchSelection_.count(i) != 0,
                                      deletedIdx.count(i) != 0);
+            }
+            // Points insérés (HP-EDIT-002) : poignées propres, déplaçables une à une.
+            for (const auto& ov : obj->overrides) {
+                for (std::size_t k = 0; k < ov.inserted_after.size(); ++k) {
+                    addInsertedPointHandle(ov.base_index, k, ov.inserted_after[k]);
+                }
             }
         }
     }
@@ -8240,6 +8248,7 @@ void MainWindow::refreshOrderPanel() {
         }
     }
     updateOrderButtons();
+    applySimulationHighlight();
 
     const auto cost = optimization::compute_cost(items);
     orderCostLabel_->setText(tr("Trajet estimé : %1 mm — %2 changement(s) de fil")
@@ -8721,6 +8730,22 @@ void MainWindow::updateSimulationInfo(int step) {
     if (simNavBar_ != nullptr) {
         simNavBar_->setStep(step);
     }
+    {
+        std::optional<ObjectId> current;
+        if (sequence_ && step >= 0 && step < static_cast<int>(sequence_->commands.size())) {
+            const ObjectId source = sequence_->commands[static_cast<std::size_t>(step)].source;
+            for (const auto& emb : project_.embroidery_objects) {
+                if (emb.id == source) {
+                    current = source;
+                    break;
+                }
+            }
+        }
+        if (current != simHighlightId_) {
+            simHighlightId_ = current;
+            applySimulationHighlight();
+        }
+    }
     if (simSwatch_ == nullptr || simObjectLabel_ == nullptr) {
         return;
     }
@@ -8752,6 +8777,41 @@ void MainWindow::updateSimulationInfo(int step) {
     simObjectLabel_->setText(simObjectLabel_->fontMetrics().elidedText(
         tr("« %1 » · %2").arg(name, thread), Qt::ElideRight, simObjectLabel_->minimumWidth()));
     simObjectLabel_->setToolTip(tr("%1 — %2").arg(name, thread));
+}
+
+void MainWindow::applySimulationHighlight() {
+    // Liste Ordre : ligne de l'objet courant en gras sur fond d'accent (la sélection n'est pas
+    // touchée).
+    if (orderList_ != nullptr) {
+        const QColor soft = palette().color(QPalette::Highlight).lighter(170);
+        for (int i = 0; i < orderList_->count(); ++i) {
+            QListWidgetItem* item = orderList_->item(i);
+            const bool current =
+                simHighlightId_ && static_cast<std::size_t>(i) < orderRows_.size() &&
+                project_.embroidery_objects[orderRows_[std::size_t(i)]].id == *simHighlightId_;
+            QFont f = item->font();
+            f.setBold(current);
+            item->setFont(f);
+            item->setData(Qt::BackgroundRole, current ? QVariant(QBrush(soft)) : QVariant());
+        }
+    }
+    if (documentPanel_ != nullptr) {
+        documentPanel_->setPlaybackObject(simHighlightId_);
+    }
+    // Film couleur : pastille du fil de l'objet courant.
+    if (threadStrip_ != nullptr) {
+        int index = -1;
+        if (simHighlightId_ && sequence_) {
+            const auto usage = stitch_analysis::thread_usage(project_, *sequence_, &threadLibrary_);
+            for (std::size_t u = 0; u < usage.size() && index < 0; ++u) {
+                if (std::find(usage[u].objects.begin(), usage[u].objects.end(), *simHighlightId_) !=
+                    usage[u].objects.end()) {
+                    index = static_cast<int>(u);
+                }
+            }
+        }
+        threadStrip_->setCurrent(index);
+    }
 }
 
 void MainWindow::updateSimulationRange() {
@@ -9709,6 +9769,9 @@ void MainWindow::importDstFile(const QString& file) {
                           imported.error().message);
         return;
     }
+
+    // HP-HOOP-006 : le design arrive centré dans le cadre (l'origine), comme Hatch.
+    document::center_imported_design(*imported);
 
     project_ = document::Project{};
     resetDocumentState();

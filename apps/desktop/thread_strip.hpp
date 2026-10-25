@@ -26,6 +26,9 @@ public:
     explicit ThreadStrip(QWidget* parent = nullptr);
 
     void setThreads(std::vector<Swatch> swatches, const QString& summary);
+    // HP-SIM-003 : pastille du fil en cours de couture pendant la simulation (-1 : aucune).
+    void setCurrent(int index);
+    [[nodiscard]] int currentIndex() const { return current_; }
     [[nodiscard]] int threadCount() const { return static_cast<int>(swatches_.size()); }
     // Centre de la pastille `index` (coordonnées du widget) : pour les tests et l'accessibilité.
     [[nodiscard]] QPointF swatchCenter(int index) const;
@@ -74,6 +77,7 @@ private:
     std::vector<Swatch> swatches_;
     QString summary_;
     int hovered_{-1};
+    int current_{-1};      // HP-SIM-003 : fil en cours de simulation
     int pressed_{-1};      // pastille sous le bouton enfoncé
     QPointF pressPos_;     // où le bouton a été enfoncé
     bool dragging_{false}; // le seuil de glissement est dépassé

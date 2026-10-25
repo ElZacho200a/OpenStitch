@@ -13,6 +13,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <set>
 #include <unordered_set>
 #include <vector>
 
@@ -137,6 +138,85 @@ void MainWindow::addStitchPointHandle(std::size_t baseIndex, Vec2um pos, bool se
     }
     scene_->addItem(handle);
     baseItems_.append(handle);
+}
+
+void MainWindow::addInsertedPointHandle(std::size_t baseIndex, std::size_t slot, Vec2um pos) {
+    const ObjectId targetId = *stitchEditTarget_;
+    const std::uint64_t fingerprint = stitchEditView_->fingerprint;
+    const std::uint32_t pointCount = stitchEditView_->point_count;
+    const std::uint64_t generation = documentGeneration_;
+    auto* handle = new NodeHandleItem(
+        sceneOfModel(pos), [](QPointF) {},
+        [this](QPointF) { statusBar()->showMessage(tr("Glisser pour déplacer le point inséré.")); },
+        [](QPoint) {});
+    handle->setReleasedWithModifiers([this, targetId, baseIndex, slot, pos, fingerprint, pointCount,
+                                      generation](QPointF newSceneMm, Qt::KeyboardModifiers) {
+        const Vec2um newPos = modelOfScene(newSceneMm);
+        if (newPos == pos) {
+            return; // simple clic : rien à faire
+        }
+        // Diffère : refreshImage() détruirait cette poignée pendant son propre évènement.
+        QTimer::singleShot(
+            0, this,
+            [this, targetId, baseIndex, slot, newPos, fingerprint, pointCount, generation] {
+                if (generation != documentGeneration_) {
+                    return;
+                }
+                moveInsertedStitchPoint(targetId, baseIndex, slot, newPos, fingerprint, pointCount);
+            });
+    });
+    const auto& tokens = AppTheme::instance().tokens();
+    handle->setPen(QPen(tokens.accent, 2.0, Qt::DotLine));
+    handle->setBrush(QBrush(Qt::white));
+    handle->setToolTip(tr("Point inséré — glisser pour le déplacer"));
+    scene_->addItem(handle);
+    baseItems_.append(handle);
+}
+
+void MainWindow::moveInsertedStitchPoint(ObjectId id, std::size_t baseIndex, std::size_t slot,
+                                         Vec2um to, std::uint64_t fingerprint,
+                                         std::uint32_t pointCount) {
+    if (!stitchPointEditActive() || *stitchEditTarget_ != id) {
+        return;
+    }
+    undoStack_.execute(std::make_unique<commands::MoveInsertedPointCommand>(
+                           id, baseIndex, slot, to, fingerprint, pointCount),
+                       project_);
+    refreshImage();
+    updateActions();
+}
+
+void MainWindow::selectStitchPointsInRect(QRectF rectMm, SelectMode mode) {
+    if (!stitchPointEditActive()) {
+        return;
+    }
+    const auto deleted = deletedStitchPoints();
+    const auto& raw = stitchEditView_->raw;
+    std::set<std::size_t> inside;
+    for (std::size_t i = 0; i < raw.size(); ++i) {
+        if (stitch_generation::is_movable_point(raw[i]) && deleted.count(i) == 0 &&
+            rectMm.contains(sceneOfModel(stitchPointDisplayPos(i)))) {
+            inside.insert(i);
+        }
+    }
+    switch (mode) {
+    case SelectMode::Replace:
+        stitchSelection_ = std::move(inside);
+        break;
+    case SelectMode::Add:
+        stitchSelection_.insert(inside.begin(), inside.end());
+        break;
+    case SelectMode::Toggle:
+        for (const std::size_t i : inside) {
+            if (stitchSelection_.erase(i) == 0) {
+                stitchSelection_.insert(i);
+            }
+        }
+        break;
+    }
+    statusBar()->showMessage(tr("%1 point(s) sélectionné(s).").arg(stitchSelection_.size()));
+    restyleStitchPointHandles();
+    updateActions();
 }
 
 void MainWindow::clickStitchPoint(std::size_t index, Qt::KeyboardModifiers mods) {

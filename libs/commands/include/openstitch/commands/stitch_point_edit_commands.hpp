@@ -205,6 +205,56 @@ private:
     std::uint32_t prevCount_{0};
 };
 
+// HP-EDIT-002 : deplace un point INSERE (`StitchOverride::inserted_after[slot]` de l'entree
+// `base_index`), en un pas d'annulation. No-op complet si l'objet est Dirty (vue brute changee),
+// si l'entree ou le rang n'existe pas.
+class MoveInsertedPointCommand final : public ICommand {
+public:
+    MoveInsertedPointCommand(ObjectId id, std::size_t base_index, std::size_t slot, Vec2um new_pos,
+                             std::uint64_t fp, std::uint32_t count)
+        : id_(id), base_index_(base_index), slot_(slot), new_pos_(new_pos), fp_(fp), count_(count) {
+    }
+
+    void apply(document::Project& project) override {
+        valid_ = false;
+        auto* obj = project.findEmbroidery(id_);
+        if (obj == nullptr || obj->edited_point_count != count_ || obj->edited_fingerprint != fp_) {
+            return;
+        }
+        auto found = std::find_if(
+            obj->overrides.begin(), obj->overrides.end(),
+            [&](const document::StitchOverride& o) { return o.base_index == base_index_; });
+        if (found == obj->overrides.end() || slot_ >= found->inserted_after.size()) {
+            return;
+        }
+        prevOverrides_ = obj->overrides;
+        found->inserted_after[slot_] = new_pos_;
+        valid_ = true;
+    }
+
+    void revert(document::Project& project) override {
+        if (!valid_) {
+            return;
+        }
+        if (auto* obj = project.findEmbroidery(id_)) {
+            obj->overrides = prevOverrides_;
+        }
+    }
+
+    [[nodiscard]] std::string name() const override { return "Deplacer un point insere"; }
+    [[nodiscard]] bool applied() const { return valid_; }
+
+private:
+    ObjectId id_;
+    std::size_t base_index_;
+    std::size_t slot_;
+    Vec2um new_pos_;
+    std::uint64_t fp_;
+    std::uint32_t count_;
+    bool valid_{false};
+    std::vector<document::StitchOverride> prevOverrides_;
+};
+
 // HP-EDIT-004 : edition point par point d'un design machine importe (`Project::imported_design`),
 // donnee SOURCE restituee telle quelle par `generate_sequence` : la retouche modifie directement
 // cette sequence (il n'y a pas de generation a laquelle appliquer un delta) et reste annulable
