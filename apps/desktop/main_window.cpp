@@ -887,6 +887,7 @@ void MainWindow::buildMenus() {
         }
     });
     buildAlignMenu(editMenu);
+    buildArrangeMenu(editMenu);
     buildObjectEditActions(editMenu);
     editMenu->addSeparator();
     auto* aiPrefsAct = editMenu->addAction(tr("Préférences — &Intelligence artificielle…"));
@@ -5542,7 +5543,7 @@ std::optional<ObjectId> MainWindow::objectAt(QPointF posMm) const {
     std::optional<ObjectId> hit;
     for (const auto& object : project_.vector_objects) {
         if (object.visible && calqueShowsShape(object) &&
-            !project_.shapeLockedByCalque(object.id) && objectPainterPath(object).contains(posMm)) {
+            !project_.shapeEditLocked(object.id) && objectPainterPath(object).contains(posMm)) {
             hit = object.id; // le dernier dessiné (au-dessus) gagne
         }
     }
@@ -10112,7 +10113,7 @@ void MainWindow::onSelectionRectangle(QRectF rectMm, SelectMode mode, bool cross
                            [&](ObjectId id) {
                                const document::VectorObject* vec = project_.findObject(id);
                                // Calque verrouillé (HP-OBJ-024) : jamais saisi par le cadre.
-                               if (vec != nullptr && project_.shapeLockedByCalque(id)) {
+                               if (vec != nullptr && project_.shapeEditLocked(id)) {
                                    return true;
                                }
                                return vec != nullptr &&
@@ -10639,6 +10640,7 @@ void MainWindow::updateActions() {
     setEnabledWithReason(duplicateSelectionAct_, singleObject, needOneShape);
     setEnabledWithReason(offsetSelectionAct_, singleObject, needOneShape);
     updateAlignActions();
+    updateArrangeActions();
     refreshHistoryPanel();
     refreshThreadSelectionInfo();
     setEnabledWithReason(fillAngleAct_, currentFillObject() != nullptr,

@@ -135,15 +135,16 @@ TEST_CASE("convert: running contour becomes a border satin on the same outline")
     CHECK(satin->border->width.value == 2'000);
     CHECK(project.embroidery_objects[0].rgb == std::array<std::uint8_t, 3>{200, 100, 50});
     CHECK(stack.undo(project));
-    CHECK(std::holds_alternative<document::RunningStitchParams>(project.embroidery_objects[0].params));
+    CHECK(std::holds_alternative<document::RunningStitchParams>(
+        project.embroidery_objects[0].params));
 }
 
 TEST_CASE("convert: tatami becomes an edge contour and the other conversions refuse it") {
     document::Project project;
     const ObjectId id = add_filled_rect(project, document::TatamiParams{});
     CHECK(conversion_applicable(project.embroidery_objects[0], ConversionKind::FillToContour));
-    CHECK_FALSE(conversion_applicable(project.embroidery_objects[0],
-                                      ConversionKind::SatinToCenterline));
+    CHECK_FALSE(
+        conversion_applicable(project.embroidery_objects[0], ConversionKind::SatinToCenterline));
     auto refused = make_conversion_command(project, id, ConversionKind::SatinToFilledShape);
     CHECK(refused.command == nullptr);
     CHECK_FALSE(refused.error.empty());
@@ -151,6 +152,7 @@ TEST_CASE("convert: tatami becomes an edge contour and the other conversions ref
     REQUIRE(plan.command != nullptr);
     UndoStack stack;
     stack.execute(std::move(plan.command), project);
-    CHECK(std::holds_alternative<document::RunningStitchParams>(project.embroidery_objects[0].params));
+    CHECK(std::holds_alternative<document::RunningStitchParams>(
+        project.embroidery_objects[0].params));
     CHECK(project.vector_objects[0].paths.size() == 1); // le bord de la forme reste la source
 }

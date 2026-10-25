@@ -63,9 +63,9 @@ TEST_CASE("arrange: align to the first object keeps it fixed even when it is not
     const ObjectId b = add_shape(project, rect(0, 0, 4'000, 10'000));
     const ObjectId c = add_shape(project, rect(30'000, 0, 50'000, 10'000));
     UndoStack stack;
-    stack.execute(make_shift_command(
-                      align_shifts(project, {a, b, c}, AlignMode::Right, AlignReference::FirstObject),
-                      "Aligner"),
+    stack.execute(make_shift_command(align_shifts(project, {a, b, c}, AlignMode::Right,
+                                                  AlignReference::FirstObject),
+                                     "Aligner"),
                   project);
     CHECK(max_x(project, a) == 20'000);
     CHECK(max_x(project, b) == 20'000);
@@ -84,8 +84,8 @@ TEST_CASE("arrange: align to the frame uses the supplied box and Y up for top") 
     auto top = align_shifts(project, {a}, AlignMode::Top, AlignReference::Frame, frame);
     REQUIRE(top.size() == 1);
     CHECK(top[0].delta == pt(0, 36'000));
-    auto middle = align_shifts(project, {a}, AlignMode::CenterHorizontal, AlignReference::Frame,
-                               frame);
+    auto middle =
+        align_shifts(project, {a}, AlignMode::CenterHorizontal, AlignReference::Frame, frame);
     REQUIRE(middle.size() == 1);
     CHECK(middle[0].delta == pt(-5'000, 0));
     // Sans cadre fourni : retombe sur la sélection (une seule forme : rien à faire).

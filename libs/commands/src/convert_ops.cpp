@@ -38,9 +38,8 @@ public:
         applied_ = false;
         removedAt_.clear();
         auto& embs = project.embroidery_objects;
-        const auto it = std::find_if(embs.begin(), embs.end(), [&](const auto& e) {
-            return e.id == spec_.replacement.id;
-        });
+        const auto it = std::find_if(embs.begin(), embs.end(),
+                                     [&](const auto& e) { return e.id == spec_.replacement.id; });
         if (it == embs.end()) {
             return;
         }
@@ -60,9 +59,8 @@ public:
         }
         std::reverse(removedAt_.begin(), removedAt_.end()); // ordre croissant d'index d'origine
 
-        const auto anchor = std::find_if(embs.begin(), embs.end(), [&](const auto& e) {
-            return e.id == spec_.replacement.id;
-        });
+        const auto anchor = std::find_if(
+            embs.begin(), embs.end(), [&](const auto& e) { return e.id == spec_.replacement.id; });
         embs.insert(anchor + 1, spec_.extras.begin(), spec_.extras.end());
 
         previousVector_.reset();
@@ -106,9 +104,10 @@ public:
         }
         if (spec_.added_vector) {
             auto& vecs = project.vector_objects;
-            vecs.erase(std::remove_if(vecs.begin(), vecs.end(),
-                                      [&](const auto& v) { return v.id == spec_.added_vector->id; }),
-                       vecs.end());
+            vecs.erase(
+                std::remove_if(vecs.begin(), vecs.end(),
+                               [&](const auto& v) { return v.id == spec_.added_vector->id; }),
+                vecs.end());
         }
         applied_ = false;
     }
@@ -165,11 +164,10 @@ geometry::Path center_line(const document::SatinParams& p) {
         const double f = static_cast<double>(i) / static_cast<double>(n);
         const Vec2um pa = geometry::point_at_length(a, ca, f * la);
         const Vec2um pb = geometry::point_at_length(b, cb, f * lb);
-        mid.push_back(Vec2um{
-            Micrometers{static_cast<std::int32_t>(
-                std::llround((static_cast<double>(pa.x.value) + pb.x.value) / 2.0))},
-            Micrometers{static_cast<std::int32_t>(
-                std::llround((static_cast<double>(pa.y.value) + pb.y.value) / 2.0))}});
+        mid.push_back(Vec2um{Micrometers{static_cast<std::int32_t>(std::llround(
+                                 (static_cast<double>(pa.x.value) + pb.x.value) / 2.0))},
+                             Micrometers{static_cast<std::int32_t>(std::llround(
+                                 (static_cast<double>(pa.y.value) + pb.y.value) / 2.0))}});
     }
     return polygon_path(mid, closed);
 }
