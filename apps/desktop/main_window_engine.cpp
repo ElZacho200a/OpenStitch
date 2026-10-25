@@ -153,7 +153,12 @@ void MainWindow::scheduleParamsRefresh() {
     updateActions();
     ++refreshSerial_; // tout résultat déjà en route est périmé
     paramsRefreshPending_ = true;
-    paramsRefreshTimer_->start(); // réarme : une rafale d'éditions = une seule régénération
+    // HP-VIEW-012 : un objet isolé / un petit motif se régénère en quelques millisecondes, donc
+    // l'aperçu suit presque sans attente ; un gros motif garde le débounce complet.
+    constexpr std::size_t kLiveMaxCommands = 20'000;
+    constexpr int kLiveDelayMs = 40;
+    const bool small = sequence_ && sequence_->commands.size() <= kLiveMaxCommands;
+    paramsRefreshTimer_->start(small ? kLiveDelayMs : kParamsRefreshDelayMs); // réarme la rafale
 }
 
 void MainWindow::flushPendingRefresh() {

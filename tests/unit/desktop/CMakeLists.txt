@@ -117,3 +117,5 @@ openstitch_add_qt_test(test_object_manipulation test_object_manipulation.cpp)
 openstitch_add_qt_test(test_arrange_ui test_arrange_ui.cpp)
 openstitch_add_qt_test(test_stitch_point_edit test_stitch_point_edit.cpp)
 openstitch_add_qt_test(test_sewing_order_ui test_sewing_order_ui.cpp)
+# HP-VIEW-003/007/010/012 : passes, zoom rectangle, grille et guides, apercu en direct.
+openstitch_add_qt_test(test_view_display_ui test_view_display_ui.cpp)

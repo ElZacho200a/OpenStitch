@@ -1247,6 +1247,7 @@ void MainWindow::buildMenus() {
     zoomActualAct_->setObjectName(QStringLiteral("action_zoomActual"));
     zoomActualAct_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_1));
     connect(zoomActualAct_, &QAction::triggered, view_, &CanvasView::zoomActualSize);
+    buildViewDisplayMenu(viewMenu); // HP-VIEW-003/007/010/012
 
     viewMenu->addSeparator();
     auto* hoopAct = viewMenu->addAction(tr("Tai&lle du cadre…"));
@@ -4229,6 +4230,7 @@ void MainWindow::renderBase(const image::Image& img) {
 }
 
 struct MainWindow::StitchMaps {
+    stitch_render::PassDisplay passes; // HP-VIEW-003 : passes affichées
     std::unordered_map<std::uint64_t, bool> visible;
     std::unordered_map<std::uint64_t, QRgb> colorOf;
 
@@ -4252,6 +4254,7 @@ struct MainWindow::StitchPaths {
 
 MainWindow::StitchMaps MainWindow::buildStitchMaps() const {
     StitchMaps maps;
+    maps.passes = viewDisplay_.passes;
     // Visibilité (filtres) et couleur de fil par objet de broderie.
     for (const auto& emb : project_.embroidery_objects) {
         maps.visible[emb.id.value] = objectPassesFilter(emb);
@@ -4285,15 +4288,23 @@ void MainWindow::walkStitches(const StitchMaps& maps, int from, int to, SimWalkS
         const QPointF p(to_millimeters(cmd.pos.x).value, -to_millimeters(cmd.pos.y).value);
         const std::uint64_t src = cmd.source.value;
         const bool vis = maps.isVisible(src);
+        // HP-VIEW-003 : une passe masquée n'est pas dessinée, mais la continuité est conservée.
+        const bool shown = vis && stitch_render::pass_visible(maps.passes, cmd.pass);
         switch (cmd.type) {
         case stitch::CommandType::Stitch:
             // On ne relie que deux points du MÊME objet (jamais entre objets).
-            if (vis && state.hasPos && state.lastSource == src) {
-                QPainterPath& path = out.sewByColor[maps.colorFor(src)];
+            if (shown && state.hasPos && state.lastSource == src) {
+                const QRgb key = maps.passes.distinct_colors
+                                     ? [&] {
+                                           const auto t = stitch_render::pass_tint(cmd.pass);
+                                           return qRgb(t[0], t[1], t[2]);
+                                       }()
+                                     : maps.colorFor(src);
+                QPainterPath& path = out.sewByColor[key];
                 path.moveTo(state.last);
                 path.lineTo(p);
             }
-            if (vis && drawDots) {
+            if (shown && drawDots) {
                 out.dots.addEllipse(p, 0.15, 0.15);
             }
             state.last = p;
@@ -4305,7 +4316,7 @@ void MainWindow::walkStitches(const StitchMaps& maps, int from, int to, SimWalkS
             }
             break;
         case stitch::CommandType::Jump:
-            if (vis && state.hasPos && state.lastSource == src) {
+            if (vis && maps.passes.travel && state.hasPos && state.lastSource == src) {
                 out.jump.moveTo(state.last);
                 out.jump.lineTo(p);
             }
@@ -4385,6 +4396,7 @@ void MainWindow::renderStitches() {
     SimWalkState state;
     walkStitches(maps, 0, limit, state, drawDots, paths);
     addStitchItems(paths, drawDots, /*skipEmpty=*/false);
+    addFunctionMarkers(); // HP-VIEW-003 (main_window_view_display.cpp)
 
     if (simulating()) {
         simWalk_ = state;

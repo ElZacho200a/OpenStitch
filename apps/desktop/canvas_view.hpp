@@ -7,8 +7,11 @@
 #include <QPoint>
 #include <QTimer>
 
+#include <vector>
+
 #include "interaction_map.hpp"
 #include "openstitch/document/canvas.hpp"
+#include "openstitch/stitch_render/view_display.hpp"
 
 class QRubberBand;
 
@@ -48,8 +51,30 @@ public:
     // Cadre la vue sur un rectangle de scène (mm) ; mémorise la vue précédente (HP-UX-023).
     void zoomToRectMm(const QRectF& sceneRectMm);
     void zoomToPreviousView();
-    // 100 % réel : 1 mm affiché = 1 mm à l'écran (selon la densité logique de l'écran).
+    // 100 % réel : 1 mm affiché = 1 mm à l'écran. Échelle = étalonnage utilisateur s'il existe,
+    // sinon densité PHYSIQUE de l'écran (repli : densité logique si la valeur est incohérente).
     void zoomActualSize();
+    // Pixels d'écran par mm de la taille réelle (HP-VIEW-007).
+    [[nodiscard]] double actualSizePxPerMm() const;
+    // Étalonnage : pixels par mm mesurés par l'utilisateur ; 0 = automatique.
+    void setActualSizeCalibration(double pxPerMm);
+    [[nodiscard]] double actualSizeCalibration() const { return actualSizeCalibration_; }
+    // Zoom rectangle (HP-VIEW-007) : le prochain glisser gauche cadre la vue sur le rectangle,
+    // puis le mode s'éteint (ou Échap). La vue seule gère le geste : rien n'est transmis à la
+    // scène.
+    void setZoomRectMode(bool enabled);
+    [[nodiscard]] bool zoomRectMode() const { return zoomRectMode_; }
+
+    // Grille et guides configurables (HP-VIEW-010) : dessinés dans drawBackground/drawForeground,
+    // jamais en items de scène, donc sans capter ni clic ni survol.
+    void setGridSettings(const stitch_render::GridSettings& settings);
+    [[nodiscard]] const stitch_render::GridSettings& gridSettings() const { return grid_; }
+    void setGuides(std::vector<stitch_render::Guide> guides);
+    [[nodiscard]] const std::vector<stitch_render::Guide>& guides() const { return guides_; }
+    void setGuidesVisible(bool visible);
+    [[nodiscard]] bool guidesVisible() const { return guidesVisible_; }
+    void setGuideColor(const QColor& color);
+    [[nodiscard]] QColor guideColor() const { return guideColor_; }
     // Zoom ancré : le point de la scène situé sous `viewportPos` (coordonnées du
     // viewport) y reste après le zoom. Ancrage manuel (NoAnchor) : indépendant
     // de QCursor::pos(), donc valable avec des évènements synthétiques et un
@@ -122,6 +147,8 @@ public:
     [[nodiscard]] bool measureMode() const { return measureMode_; }
 
 signals:
+    // Le zoom rectangle s'est terminé (cadre appliqué, annulé ou trop petit).
+    void zoomRectModeEnded();
     void brushPressedMm(QPointF posMm);
     void brushMovedMm(QPointF posMm, Qt::KeyboardModifiers modifiers);
     void brushReleasedMm(QPointF posMm);
@@ -240,6 +267,18 @@ private:
                             Qt::KeyboardModifiers mods);
     void fireLongPress();
     void queueSelectBelow(QPointF posMm, QPoint globalPos);
+
+    void finishZoomRect(bool apply, const QPoint& releasePos);
+
+    stitch_render::GridSettings grid_;
+    std::vector<stitch_render::Guide> guides_;
+    bool guidesVisible_{true};
+    QColor guideColor_{0x00, 0xA8, 0xC8};
+    double actualSizeCalibration_{0.0};
+    bool zoomRectMode_{false};
+    bool zoomRectActive_{false};
+    QPoint zoomRectStart_;
+    QCursor zoomRectSavedCursor_;
 
     QSizeF canvasMm_{100.0, 100.0};
     QColor fabricColor_{Qt::white};
