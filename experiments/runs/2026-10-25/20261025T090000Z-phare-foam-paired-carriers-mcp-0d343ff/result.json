@@ -1,0 +1,155 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261025T090000Z-phare-foam-paired-carriers-mcp-0d343ff",
+  "timestamp_utc": "2026-10-25T09:00:00Z",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "verified_this_run": true
+  },
+  "main_commit": "520bcb4741062379225927ea6e09e3b8a9bad6ab",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007"
+  },
+  "subproject": {
+    "crop_px": [
+      888,
+      65,
+      1010,
+      466
+    ],
+    "size_mm": [
+      29.388,
+      96.595
+    ],
+    "not_full_scene": true
+  },
+  "preparations": {
+    "applied": [
+      "rail_preserve",
+      "rail_negative",
+      "rail_sculpted",
+      "rail_two_carriers"
+    ],
+    "method": "OpenCV/NumPy source-derived right foam silhouette rail, inner source-brightness rail, locally measured widths and 2-3 exclusive foam carriers with narrow auto_satin crest bands; open SVG running paths. Rails use offset locally, not independent Bezier tracing.",
+    "gate_A": "FAILED before import: foam remains angular, lighthouse gallery and lantern too schematic; rail_sculpted not imported; all imports diagnostic"
+  },
+  "variants": [
+    {
+      "name": "rail_preserve",
+      "regions": 31,
+      "objects": 75,
+      "points": 4362,
+      "trims": 85,
+      "jumps": 112,
+      "color_changes": 27,
+      "warnings": 2,
+      "errors": 0,
+      "hotspot_mm2": 3,
+      "missing_percent": 28.417,
+      "lost_detail_percent": 2.15,
+      "wrong_colour_percent": 6.561,
+      "median_rail_width_mm": 1.204,
+      "real_mcp_preview": true,
+      "artistic_verdict": "REJECTED",
+      "diagnostic_only": true
+    },
+    {
+      "name": "rail_negative",
+      "regions": 31,
+      "objects": 79,
+      "points": 4410,
+      "trims": 89,
+      "jumps": 112,
+      "color_changes": 27,
+      "warnings": 2,
+      "errors": 0,
+      "hotspot_mm2": 8,
+      "missing_percent": 28.543,
+      "lost_detail_percent": 2.318,
+      "wrong_colour_percent": 7.88,
+      "median_rail_width_mm": 1.686,
+      "real_mcp_preview": true,
+      "artistic_verdict": "REJECTED",
+      "diagnostic_only": true
+    },
+    {
+      "name": "rail_two_carriers",
+      "regions": 29,
+      "objects": 76,
+      "points": 4480,
+      "trims": 89,
+      "jumps": 111,
+      "color_changes": 27,
+      "warnings": 2,
+      "errors": 0,
+      "hotspot_mm2": 5,
+      "missing_percent": 28.216,
+      "lost_detail_percent": 2.549,
+      "wrong_colour_percent": 7.949,
+      "median_rail_width_mm": 1.445,
+      "real_mcp_preview": true,
+      "artistic_verdict": "REJECTED",
+      "diagnostic_only": true
+    }
+  ],
+  "mcp_executed": [
+    "digitize_guide",
+    "project_operations",
+    "semantic_validate",
+    "project_new",
+    "semantic_import dry_run/apply",
+    "project_apply import_svg dry_run/apply",
+    "project_apply set_source_image",
+    "project_apply set_finishing bridge12",
+    "project_checkpoint",
+    "semantic_map",
+    "project_inspect",
+    "project_report",
+    "project_check",
+    "project_density",
+    "project_fabric_risk",
+    "project_fidelity",
+    "project_render real PNG",
+    "project_save OSP",
+    "project_export DST",
+    "project_satin_compare skeleton/parallel_sweep/medial_axis",
+    "project_apply auto_satin dry_run/apply",
+    "project_apply directional_guides dry_run/apply",
+    "semantic_replace dry_run/apply",
+    "project_apply set_params dry_run/apply",
+    "project_restore"
+  ],
+  "retouches": {
+    "baseline": "rail_negative",
+    "foam_crest_satin_compare": "Middle crest coverage skeleton 97.85%, parallel_sweep 97.74%, medial_axis 80.40% rejected for low coverage. All three applied and true-rendered; rejected.",
+    "gallery_satins": "Three strategies applied/rendered and rejected",
+    "tatami_vs_directional": "Applied and true-rendered on same shaft",
+    "semantic_replace": "Glass ivory trial applied and true-rendered",
+    "restored_osp_byte_identical": true
+  },
+  "quality": {
+    "artistic_verdict": "REJECTED",
+    "machine_tested": false,
+    "independent_rating": false,
+    "fidelity_scope": "crop intentionally unstitched context; not comparable to global"
+  },
+  "private_archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-25/phare-rails-separes-mcp-1005-private.zip",
+    "library_file_id": "libfile_4a0b2eabbdfc81918a6ba41c78f39466",
+    "size_bytes": 29834678,
+    "sha256": "57943bf5ed2823f64453f89c38d15b2cde0668db23dd9293e5549f205f1a2b41",
+    "rematerialized_sha_verified": true,
+    "zip_integrity_verified": true
+  },
+  "github_pixels_private": true,
+  "next_hypothesis": "Stop building new ribbons from previously simplified foam masks. Reconstruct faithful source JPEG semantic crop including gallery 3D, lantern and shaft highlights before making two independently traced crest rails with source-preserved occlusions. Gate A first, diagnostic imports only if failed; no global reintegration yet."
+}
