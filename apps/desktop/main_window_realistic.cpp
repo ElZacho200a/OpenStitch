@@ -23,6 +23,7 @@
 
 #include "busy_indicator.hpp"
 #include "canvas_view.hpp"
+#include "fabric_params.hpp"
 #include "main_window.hpp"
 #include "openstitch/stitch_render/raster.hpp"
 #include "realistic_render_dialog.hpp"
@@ -173,7 +174,8 @@ bool MainWindow::renderRealisticStitches() {
         return false;
     }
 
-    const stitch_render::RenderParams params = stitch_render::sanitized(realistic_.prefs.params);
+    const stitch_render::RenderParams params =
+        stitch_render::sanitized(withProjectFabric(realistic_.prefs.params, project_));
     const double ppm = view_->pixelsPerMm() * view_->devicePixelRatioF();
     if (stitch_render::choose_detail(ppm, params) == stitch_render::Detail::Lines) {
         return false; // dézoom fort : lignes épaisses colorées

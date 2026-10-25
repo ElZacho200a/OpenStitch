@@ -35,6 +35,12 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_analysis.cpp
     main_window_realistic.cpp
     main_window_production.cpp
+    main_window_colorways.cpp
+    colorway_dialog.cpp
+    colorway_dialog.hpp
+    thread_merge_dialog.cpp
+    thread_merge_dialog.hpp
+    fabric_params.hpp
     # [cablage-A:debut]
     main_window_export_image.cpp
     export_image.cpp

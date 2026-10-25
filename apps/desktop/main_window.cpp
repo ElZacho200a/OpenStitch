@@ -1207,6 +1207,7 @@ void MainWindow::buildMenus() {
     showStitchesAct_->setShortcut(QKeySequence(Qt::Key_4));
     connect(showStitchesAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
     buildRealisticMenu(viewMenu);
+    buildColorwayMenu(viewMenu); // HP-THR-006/008/011
     buildImageOpacityControls(viewMenu);
     viewMenu->addSeparator();
     zoomInAct_ = viewMenu->addAction(tr("Zoom &avant"));
@@ -10419,6 +10420,7 @@ bool MainWindow::hasDocumentContent() const {
 }
 
 void MainWindow::updateActions() {
+    syncColorwayUi(); // HP-THR-006/008 (main_window_colorways.cpp)
     updateShapeActions();
     updateObjectEditActions();
     updateTextActions();
