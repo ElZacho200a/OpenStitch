@@ -661,3 +661,24 @@ TEST_CASE("param ops directional_guides converts and guides a long shape",
         expect_refused(p, R"({"op":"directional_guides","object":4})", project_ops::code::kRefused);
     }
 }
+
+TEST_CASE("param ops set_canvas hoop library and set_machine", "[project_ops][params]") {
+    auto p = make_project();
+    REQUIRE(run(p, R"({"op":"set_canvas","hoop":"round-150","margin_mm":4})").ok);
+    CHECK(p.canvas.shape == document::HoopShape::Ellipse);
+    CHECK(p.canvas.width == Micrometers{150'000});
+    CHECK(p.canvas.margin == Micrometers{4'000});
+
+    REQUIRE(run(p, R"({"op":"set_canvas","shape":"rounded","corner_radius_mm":12})").ok);
+    CHECK(p.canvas.shape == document::HoopShape::RoundedRectangle);
+    CHECK(p.canvas.corner_radius == Micrometers{12'000});
+
+    expect_refused(p, R"({"op":"set_canvas","hoop":"nope"})", project_ops::code::kOutOfRange);
+    expect_refused(p, R"({"op":"set_canvas","shape":"star"})", project_ops::code::kOutOfRange);
+
+    REQUIRE(run(p, R"({"op":"set_machine","machine":"generic-multi-6"})").ok);
+    CHECK(p.machine_id == "generic-multi-6");
+    expect_refused(p, R"({"op":"set_machine","machine":"nope"})", project_ops::code::kOutOfRange);
+    REQUIRE(run(p, R"({"op":"set_machine","machine":""})").ok);
+    CHECK(p.machine_id.empty());
+}

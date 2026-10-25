@@ -1285,6 +1285,18 @@ json project_to_json(const document::Project& project) {
     if (project.canvas.margin.value > 0) {
         j["canvas"]["margin"] = project.canvas.margin.value; // absente = 0 (projets antérieurs)
     }
+    // HP-HOOP-001/002 : forme du cadre et profil machine, absents = rectangle / aucune machine
+    // (les .osp antérieurs se relisent à l'identique, et un rectangle s'écrit comme avant).
+    if (project.canvas.shape != document::HoopShape::Rectangle) {
+        j["canvas"]["shape"] =
+            project.canvas.shape == document::HoopShape::Ellipse ? "ellipse" : "rounded";
+        if (project.canvas.shape == document::HoopShape::RoundedRectangle) {
+            j["canvas"]["cornerRadius"] = project.canvas.corner_radius.value;
+        }
+    }
+    if (!project.machine_id.empty()) {
+        j["machine"] = project.machine_id;
+    }
 
     j["ops"] = json::array();
     for (const auto& op : project.ops) {
@@ -1486,7 +1498,13 @@ Result<document::Project> project_from_json(const json& j) {
             project.canvas.width = Micrometers{c.value("width", 100'000)};
             project.canvas.height = Micrometers{c.value("height", 100'000)};
             project.canvas.margin = Micrometers{c.value("margin", 0)};
+            const std::string shape = c.value("shape", std::string("rectangle"));
+            project.canvas.shape = shape == "ellipse"   ? document::HoopShape::Ellipse
+                                   : shape == "rounded" ? document::HoopShape::RoundedRectangle
+                                                        : document::HoopShape::Rectangle;
+            project.canvas.corner_radius = Micrometers{c.value("cornerRadius", 0)};
         }
+        project.machine_id = j.value("machine", std::string());
 
         for (const auto& op : j.at("ops")) {
             auto parsed = op_from_json(op);

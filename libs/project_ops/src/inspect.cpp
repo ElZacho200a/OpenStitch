@@ -462,7 +462,12 @@ json canvas_json(const document::Project& project) {
                 {"height_mm", mm(c.height)},
                 {"margin_mm", mm(c.margin)},
                 {"usable_width_mm", mm(c.usable_width())},
-                {"usable_height_mm", mm(c.usable_height())}};
+                {"usable_height_mm", mm(c.usable_height())},
+                {"shape", c.shape == document::HoopShape::Ellipse            ? "ellipse"
+                          : c.shape == document::HoopShape::RoundedRectangle ? "rounded"
+                                                                             : "rectangle"},
+                {"corner_radius_mm", mm(c.corner_radius)},
+                {"machine", project.machine_id}};
 }
 
 json finishing_json(const document::SequenceFinishing& f) {
