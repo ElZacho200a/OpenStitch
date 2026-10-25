@@ -37,6 +37,7 @@ struct ProductionOptions {
     double stitches_per_minute{700.0}; // plage usuelle 600-800 points/min
     double color_change_seconds{30.0}; // temps d'un changement de fil
     double trim_seconds{2.0};          // temps d'une coupe
+    double jump_seconds{0.0};          // HP-PROD-002 : temps d'un saut (0 : non compté)
 
     // Vrai : le cadre est `project.canvas` et sert aussi de zone d'analyse
     // (« hors cadre »). Faux (DST relu, aucun cadre connu) : pas de cadre.
@@ -111,7 +112,13 @@ struct ProductionSheet {
     double stitches_per_minute{700.0};
     double color_change_seconds{30.0};
     double trim_seconds{2.0};
+    double jump_seconds{0.0};
     double estimated_minutes{0.0};
+    // HP-PROD-002 : décomposition de `estimated_minutes` (leur somme la reproduit).
+    double stitch_minutes{0.0};
+    double color_change_minutes{0.0};
+    double trim_minutes{0.0};
+    double jump_minutes{0.0};
 
     std::vector<ProductionBlock> blocks;
     // HP-PROD-005 : consommation de fil (ordres de grandeur, cf. ThreadConsumptionOptions).

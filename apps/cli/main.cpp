@@ -45,6 +45,7 @@
 #include "openstitch/segmentation/segmentation.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_analysis/metrics.hpp"
+#include "openstitch/stitch_analysis/placement_template.hpp"
 #include "openstitch/stitch_analysis/production_pdf.hpp"
 #include "openstitch/stitch_analysis/production_sheet.hpp"
 #include "openstitch/stitch_analysis/project_metrics.hpp"
@@ -1453,6 +1454,12 @@ struct ProductionArgs {
     std::string notes;
     std::string client;
     double speed{700.0};
+    double colorChangeSeconds{30.0};
+    double trimSeconds{2.0};
+    double jumpSeconds{0.0};
+    std::string placementTemplate; // HP-PROD-003 : gabarit 1:1 en PDF
+    std::string paper{"a4"};       // a4 | letter
+    bool landscape{false};
     bool json{false};
     bool noClobber{false};
 };
@@ -1510,7 +1517,33 @@ int run_production(const ProductionArgs& a) {
     opts.notes = a.notes;
     opts.client = a.client;
     opts.stitches_per_minute = a.speed;
+    opts.color_change_seconds = a.colorChangeSeconds;
+    opts.trim_seconds = a.trimSeconds;
+    opts.jump_seconds = a.jumpSeconds;
     const auto sheet = stitch_analysis::make_production_sheet(project, sequence, opts);
+
+    if (!a.placementTemplate.empty()) {
+        if (const auto refused =
+                check_output_path("production", a.placementTemplate, a.noClobber)) {
+            return *refused;
+        }
+        stitch_analysis::PlacementTemplateOptions tplOpt;
+        if (a.paper == "letter") {
+            tplOpt.paper_width = Micrometers{215'900};
+            tplOpt.paper_height = Micrometers{279'400};
+        }
+        tplOpt.landscape = a.landscape;
+        tplOpt.title = opts.project_name;
+        const auto tpl = stitch_analysis::make_placement_template(sequence, tplOpt);
+        std::ofstream tout(a.placementTemplate, std::ios::binary);
+        tout << stitch_analysis::placement_template_to_pdf(tpl);
+        if (!tout) {
+            return cli_error("production",
+                             fmt::format("écriture impossible : {}", a.placementTemplate));
+        }
+        fmt::print(stderr, "Gabarit 1:1 écrit : {} ({} page(s), {} x {})\n", a.placementTemplate,
+                   tpl.pages.size(), tpl.columns, tpl.rows);
+    }
 
     if (!a.output.empty()) {
         std::string outExt = std::filesystem::path(a.output).extension().string();
@@ -1550,6 +1583,11 @@ int run_production(const ProductionArgs& a) {
     fmt::print("Temps estimé       : {} ({:g} points/min)\n",
                stitch_analysis::format_duration_fr(sheet.estimated_minutes),
                sheet.stitches_per_minute);
+    fmt::print("  dont couture {} / changements de fil {} / coupes {} / sauts {}\n",
+               stitch_analysis::format_duration_fr(sheet.stitch_minutes),
+               stitch_analysis::format_duration_fr(sheet.color_change_minutes),
+               stitch_analysis::format_duration_fr(sheet.trim_minutes),
+               stitch_analysis::format_duration_fr(sheet.jump_minutes));
     fmt::print("Blocs de couleur   :\n");
     for (const auto& b : sheet.blocks) {
         fmt::print("  {:>2}. #{:02x}{:02x}{:02x}  {:>8} points  {:>5} sauts  {}\n", b.number,
@@ -1630,6 +1668,22 @@ int main(int argc, char** argv) {
     pr_cmd->add_option("--notes", pr.notes, "Notes libres");
     pr_cmd->add_option("--speed", pr.speed, "Vitesse supposée en points/min (défaut : 700)")
         ->check(CLI::Range(100.0, 2000.0));
+    pr_cmd
+        ->add_option("--color-change-seconds", pr.colorChangeSeconds,
+                     "Durée d'un changement de fil en secondes (défaut : 30)")
+        ->check(CLI::Range(0.0, 600.0));
+    pr_cmd
+        ->add_option("--trim-seconds", pr.trimSeconds, "Durée d'une coupe en secondes (défaut : 2)")
+        ->check(CLI::Range(0.0, 600.0));
+    pr_cmd
+        ->add_option("--jump-seconds", pr.jumpSeconds,
+                     "Durée d'un saut en secondes (défaut : 0, non compté)")
+        ->check(CLI::Range(0.0, 600.0));
+    pr_cmd->add_option("--placement-template", pr.placementTemplate,
+                       "Écrit un gabarit de placement PDF à l'échelle 1:1 (multi-pages)");
+    pr_cmd->add_option("--paper", pr.paper, "Papier du gabarit : a4 (défaut) ou letter")
+        ->check(CLI::IsMember({"a4", "letter"}));
+    pr_cmd->add_flag("--landscape", pr.landscape, "Gabarit en paysage");
     pr_cmd->add_flag("--json", json_out, "JSON stable sur stdout");
     pr_cmd->add_flag("--no-clobber", pr.noClobber, "Refuse d'écraser un fichier existant");
 
