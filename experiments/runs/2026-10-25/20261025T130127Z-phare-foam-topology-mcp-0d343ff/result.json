@@ -1,0 +1,183 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261025T130127Z-phare-foam-topology-mcp-0d343ff",
+  "timestamp_utc": "2026-10-25T13:01:27Z",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "verified_this_run": true
+  },
+  "main_commit": "520bcb4741062379225927ea6e09e3b8a9bad6ab",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007"
+  },
+  "subproject": {
+    "crop_px": [
+      888,
+      65,
+      1010,
+      466
+    ],
+    "size_mm": [
+      29.388,
+      96.595
+    ],
+    "canvas_mm": [
+      50,
+      120
+    ],
+    "not_full_scene": true
+  },
+  "preparations": {
+    "applied": [
+      "topology_core",
+      "topology_branch",
+      "topology_negative",
+      "topology_reflections",
+      "topology_gallery"
+    ],
+    "first_gate": "FAILED: large cream foam masses and geometry",
+    "repair": "Tightened JPEG cream threshold and reduced morphological bridges; reapplied all five preparations",
+    "second_gate": "FAILED: foam still flattened and artificially separated by horizontal bands, gallery and dome too schematic",
+    "method": "OpenCV source-derived ivory segmentation, connected components, contour-vector polygon smoothing, 3 carrier masks with source negative holes, SVG open running foam filaments, exclusive glass masses, nonrepeating gallery open running rails; no AI",
+    "imports": "DIAGNOSTIC ONLY",
+    "not_imported": [
+      "topology_reflections"
+    ]
+  },
+  "variants": [
+    {
+      "name": "topology_core",
+      "objects": 82,
+      "points": 4485,
+      "trims": 100,
+      "jumps": 138,
+      "color_changes": 25,
+      "warnings": 6,
+      "errors": 0,
+      "hotspot_mm2": 0,
+      "fidelity_crop_missing_percent": 32.215,
+      "fidelity_crop_lost_detail_percent": 1.87,
+      "fidelity_crop_wrong_colour_percent": 6.425,
+      "real_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "artistic_verdict": "REJECTED",
+      "diagnostic_only": true
+    },
+    {
+      "name": "topology_branch",
+      "objects": 84,
+      "points": 4520,
+      "trims": 98,
+      "jumps": 138,
+      "color_changes": 25,
+      "warnings": 6,
+      "errors": 0,
+      "hotspot_mm2": 0,
+      "fidelity_crop_missing_percent": 31.585,
+      "fidelity_crop_lost_detail_percent": 1.97,
+      "fidelity_crop_wrong_colour_percent": 6.803,
+      "real_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "artistic_verdict": "REJECTED",
+      "diagnostic_only": true
+    },
+    {
+      "name": "topology_negative",
+      "objects": 81,
+      "points": 4324,
+      "trims": 97,
+      "jumps": 131,
+      "color_changes": 25,
+      "warnings": 8,
+      "errors": 0,
+      "hotspot_mm2": 0,
+      "fidelity_crop_missing_percent": 34.248,
+      "fidelity_crop_lost_detail_percent": 1.887,
+      "fidelity_crop_wrong_colour_percent": 6.842,
+      "real_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "artistic_verdict": "REJECTED",
+      "diagnostic_only": true
+    },
+    {
+      "name": "topology_gallery",
+      "objects": 83,
+      "points": 4389,
+      "trims": 102,
+      "jumps": 137,
+      "color_changes": 25,
+      "warnings": 10,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "fidelity_crop_missing_percent": 33.445,
+      "fidelity_crop_lost_detail_percent": 1.97,
+      "fidelity_crop_wrong_colour_percent": 6.758,
+      "real_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "artistic_verdict": "REJECTED",
+      "diagnostic_only": true
+    }
+  ],
+  "retouches": {
+    "baseline": "topology_branch",
+    "satin_compare": "skeleton, parallel_sweep and medial_axis compared on 3 foam carriers, 4 windows, 3 gallery bands; foam RequiresDecomposition; dry_run/apply and real renders on same carrier and gallery, rejected",
+    "directional": "shaft tatami vs directional_guides dry_run/apply/render rejected",
+    "semantic_replace": "ivory glass mask dry_run/apply/render rejected",
+    "set_params": "gallery row spacing dry_run/apply/render rejected",
+    "restored_osp_byte_identical": true
+  },
+  "mcp_executed": [
+    "digitize_guide",
+    "project_operations",
+    "semantic_validate",
+    "project_new",
+    "semantic_import dry_run/apply",
+    "project_apply import_svg dry_run/apply",
+    "project_apply set_source_image",
+    "project_apply set_finishing bridge12",
+    "project_checkpoint",
+    "semantic_map",
+    "project_inspect",
+    "project_report",
+    "project_check",
+    "project_density",
+    "project_fabric_risk",
+    "project_fidelity",
+    "project_render real PNG",
+    "project_save OSP",
+    "project_export DST",
+    "project_satin_compare skeleton/parallel_sweep/medial_axis",
+    "project_apply auto_satin dry_run/apply",
+    "project_apply directional_guides dry_run/apply",
+    "semantic_replace dry_run/apply",
+    "project_apply set_params dry_run/apply",
+    "project_restore"
+  ],
+  "quality": {
+    "gate_A": "FAILED",
+    "artistic_verdict": "REJECTED",
+    "machine_tested": false,
+    "independent_rating": false,
+    "warnings_cause": "short stitches <0.1mm, object ids archived",
+    "fidelity_scope": "crop includes intentionally unstitched context; not comparable to full scene"
+  },
+  "private_archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-25/phare-topologie-ramifiee-mcp-1405-private.zip",
+    "library_file_id": "libfile_302e29b59c9c81919ec2af3d46c13aa8",
+    "size_bytes": 24531193,
+    "sha256": "b034113b3ca447a42f91dfb799c128b6b4f6cb8803ab46948d8b8bb1d316157b",
+    "rematerialized_sha_verified": true,
+    "zip_integrity_verified": true
+  },
+  "github_pixels_private": true,
+  "next_hypothesis": "Stop splitting foam into horizontal zones and threshold-derived polygons. Manually/semi-manually trace true source branch graph and branch attachment points; design closed organic carriers at each bifurcation and open running for fine tips, then validate gate A before MCP import. Reconstruct gallery 3D and dome from source; no global scene integration before visual success."
+}
