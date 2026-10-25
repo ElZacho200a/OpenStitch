@@ -1990,12 +1990,14 @@ aussi Stitch↔Jump et coupe (`SetStitchPointTypeCommand`, `SetStitchTrimCommand
 mais **sans interface** (`stitch-editing.md`).
 
 ### HP-EDIT-001 — Interface Stitch↔Jump et coupe (Lot 8.3) [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25, bureau) : Câblage bureau : en mode « Éditer les points », clic droit sur un point ou menu Broderie : passer en saut / en point cousu, couper ou non le fil après (un pas d'annulation), `main_window_point_edit.cpp`. Reste : poignées de coupe visibles sur le canevas.
 - Livré (2026-10-25) : Commandes `SetStitchPointTypeCommand` / `SetStitchTrimCommand` / `EditStitchPointsCommand::set_type|set_trim` prêtes. Reste : menu contextuel et actions sur les poignées (bureau).
 - À faire : menu contextuel / raccourcis en mode édition des points ; voir
   `docs/lot8-manual-editing-design.md`.
 - Modules : `apps/desktop`.
 
 ### HP-EDIT-002 — Insérer et supprimer des points [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25, bureau) : Câblage bureau : Suppr retire les points sélectionnés (sans sélection de points, comportement historique : supprime l'objet), restauration par clic droit, double-clic près d'un trait pour insérer un point, points supprimés pâles et restaurables. Reste : poignée et déplacement d'un point inséré.
 - Livré (2026-10-25) : `StitchOverride` gagne `deleted` et `inserted_after` (deltas ADR-014), `apply_manual_overrides` en un passage, `.osp`. Reste : câblage bureau (menu, actions, QTest).
 - Hatch : insérer un point entre deux, supprimer des points.
 - À faire : étendre `StitchOverride` (insertions/suppressions en deltas,
@@ -2003,6 +2005,7 @@ mais **sans interface** (`stitch-editing.md`).
 - Modules : `libs/document`, `libs/stitch_generation/overrides`, `libs/commands`.
 
 ### HP-EDIT-003 — Sélection et déplacement de plusieurs points [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25, bureau) : Câblage bureau : sélection par clic, Ctrl/Maj pour ajouter ou retirer, Ctrl+A pour tout, déplacement groupé en un pas d'annulation (la sélection suit le point glissé). Reste : sélection au cadre (rubber-band).
 - Livré (2026-10-25) : `EditStitchPointsCommand` (déplacer, supprimer, restaurer, insérer, type, coupe) en un pas d'annulation. Reste : tout le bureau (sélection de points, cadre, glisser groupé, Suppr).
 - À faire : rectangle de sélection de points, déplacement groupé, suppression groupée.
 
@@ -3713,3 +3716,5 @@ ci-dessus doit les respecter :
 | 2026-10-24 | Claude (multi-agents) | HP-STI-001 (point tige/arrière/bean exposés), HP-STI-003 (blanket/zigzag) et HP-STI-007 (remplissage concentrique) passent ◐ : cœur, `.osp`, inspecteur et tests livrés ; restes listés dans chaque entrée. |
 | 2026-10-25 | Claude (multi-agents, P0) | Lot P0 : douze agents en parallèle ; HP-AUTO-003, HP-SEQ-003, HP-UX-006 et HP-I18N-002 passent de ☐ à ◐ ; livrés partiels sur THR-005, TXT-003/004, ENG-001/002/008/010, AUTO-001/009, VEC-002/016, OBJ-001/004/006/018, VIEW-001, PROD-001, PERF-001 (voir chaque entrée). Non traités faute d'humain ou de données : THR-002 (données de nuanciers sourcées), FMT-002..005, DIST-001, PHYS-001. Corrections d'intégration : pivot de rotation sans zone de contact au centre, `project_ops` (nouveaux champs), dernier point jamais fusionné. Tableau de bord non recalculé. |
 | 2026-10-25 | Claude (multi-agents, P1 vague 2) | Lot 2 : dix agents en parallèle ; cœur, `.osp`, `project_ops` et tests pour TXT-005/008/014, STI-002/006/008/009/014, THR-006/008/011/012, EDIT-001..004 (cœur seulement), SIM-001/002/004, HOOP-001..003, ENG-003..005, FMT-006/014/016/022, VEC-001/005/006/009 (voir chaque entrée). Les entrées ☐ concernées passent à ◐. Non traités : SIM-003, ENG-006, HOOP-005/006, VEC-015. Tableau de bord non recalculé. |
+| 2026-10-25 | Claude (câblage des types de points) | Audit du bureau : les remplissages concentrique, radial, spirale, croisé et les motifs n'étaient pas dans les sélecteurs de type. Catalogue unique `stitch_type_catalog` (11 types) utilisé par l'inspecteur (bouton « Plus ▾ »), la barre contextuelle et les menus contextuels (objet, forme sans broderie, multi-sélection) ; correction de l'index de type (ces objets étaient rangés comme directionnels). Reste sans interface : édition de points (HP-EDIT-001..004), SIM-003. |
+| 2026-10-25 | Claude (câblage de l'édition de points) | HP-EDIT-001/002/003 câblés dans le mode « Éditer les points » : sélection (clic, Ctrl/Maj, Ctrl+A), déplacement groupé, Suppr, restauration, insertion par double-clic, saut/point cousu, coupe de fil ; menu Broderie, clic droit, 9 QTest. Reste : rubber-band, déplacement d'un point inséré. |

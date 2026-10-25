@@ -489,6 +489,11 @@ void MainWindow::zoomToSelection() {
 }
 
 void MainWindow::selectAllObjects() {
+    // Mode « Éditer les points » : Ctrl+A sélectionne les points de l'objet, pas les objets.
+    if (stitchPointEditActive()) {
+        selectAllStitchPoints();
+        return;
+    }
     std::vector<ObjectId> ids;
     for (const auto& object : project_.vector_objects) {
         if (object.visible) {

@@ -7,9 +7,11 @@
 #include <QDoubleSpinBox>
 #include <QLabel>
 #include <QListWidget>
+#include <QMenu>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QTest>
+#include <QToolButton>
 #include <QWheelEvent>
 
 #include <cmath>
@@ -74,6 +76,7 @@ private slots:
     void runningStyleComboEmitsStyleAndStemOffset();
     void contourFillEditsEmitParamsAndConversionIsOffered();
     void motifPanelsEmitEditedParams();
+    void stitchTypeMoreMenuOffersEveryOtherType();
     void radialSpiralCrosshatchEditsEmitParamsAndConversionIsOffered();
     void directionalGradientControlsRequestMainWindow();
     void directionalSpacingRegularityIsEditable();
@@ -1046,6 +1049,36 @@ void PropertiesPanelTest::blanketInspectorEditsWidthSpacingStyleAndSide() {
     side->setCurrentIndex(2);
     QVERIFY(last->side == doc::BlanketSide::Center);
     QCOMPARE(last->width.value, 4'500);
+}
+
+void PropertiesPanelTest::stitchTypeMoreMenuOffersEveryOtherType() {
+    // Les types sans bouton direct (motifs, concentrique, radial, spirale, croise) passent par
+    // le menu « Plus » de la rangee de types : chacun emet son index.
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{60};
+    e.params = openstitch::document::TatamiParams{};
+    panel.showEmbroidery(e);
+    auto* more = panel.findChild<QToolButton*>(QStringLiteral("button_stitchTypeMore"));
+    QVERIFY(more != nullptr);
+    QVERIFY(more->menu() != nullptr);
+    QCOMPARE(more->menu()->actions().size(), 6);
+    std::vector<int> requested;
+    QObject::connect(&panel, &PropertiesPanel::stitchTypeRequested, &panel,
+                     [&](int type) { requested.push_back(type); });
+    for (QAction* act : more->menu()->actions()) {
+        act->trigger();
+    }
+    QCOMPARE(requested, (std::vector<int>{5, 6, 7, 8, 9, 10}));
+    // Un objet concentrique affiche son type dans le bouton « Plus ».
+    EmbroideryObject c;
+    c.id = openstitch::ObjectId{61};
+    c.params = openstitch::document::ContourFillParams{};
+    panel.showEmbroidery(c);
+    more = panel.findChild<QToolButton*>(QStringLiteral("button_stitchTypeMore"));
+    QVERIFY(more != nullptr);
+    QVERIFY(more->isChecked());
+    QVERIFY(more->text().contains(QStringLiteral("concentrique")));
 }
 
 QTEST_MAIN(PropertiesPanelTest)

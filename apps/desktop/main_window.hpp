@@ -20,6 +20,7 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <unordered_set>
 #include <vector>
 
 #include "auto_satin_strategy_ui.hpp"
@@ -1532,6 +1533,27 @@ private:
     QAction* stitchEditModeAct_{nullptr};
     std::optional<ObjectId> stitchEditTarget_;
     std::optional<stitch_generation::ObjectEditView> stitchEditView_;
+    // --- Édition de points : sélection, suppression, insertion (HP-EDIT-001/002/003) ---------
+    // Indices bruts (`base_index`) des points sélectionnés ; remise à zéro dès que la vue brute
+    // de l'objet change (empreinte) ou que le mode se ferme.
+    std::set<std::size_t> stitchSelection_;
+    std::uint64_t stitchSelectionFingerprint_{0};
+    QAction* selectAllStitchPointsAct_{nullptr};
+    std::array<QAction*, 6> stitchPointActs_{};
+    [[nodiscard]] bool stitchPointEditActive() const;
+    Vec2um stitchPointDisplayPos(std::size_t index);
+    std::unordered_set<std::size_t> deletedStitchPoints();
+    void addStitchPointHandle(std::size_t baseIndex, Vec2um pos, bool selected, bool deleted);
+    void clickStitchPoint(std::size_t index, Qt::KeyboardModifiers mods);
+    void restyleStitchPointHandles();
+    void selectAllStitchPoints();
+    void moveStitchPoints(ObjectId targetId, std::size_t anchor, Vec2um from, Vec2um to,
+                          std::uint64_t fingerprint, std::uint32_t pointCount);
+    bool editSelectedStitchPoints(int action);
+    bool insertStitchPointAt(QPointF sceneMm);
+    void showStitchPointMenu(std::size_t index, QPoint screenPos);
+    void buildStitchPointEditActions(QMenu* menu);
+    void updateStitchPointActions();
     // Mode unifié (rails + guides ensemble) — voir buildMenus() pour le
     // détail ; simple agrégateur au-dessus des deux modes ci-dessous.
     QAction* satinEditModeAct_{nullptr};
