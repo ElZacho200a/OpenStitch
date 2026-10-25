@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <functional>
 
+#include "openstitch/geometry/polyline.hpp"
 #include "openstitch/geometry/reshape.hpp"
 #include "openstitch/geometry/smooth.hpp"
 #include "openstitch/geometry/to_curves.hpp"
@@ -114,6 +115,87 @@ VectorOpResult make_reshape_segment_command(const document::Project& project, Ob
     after[set_index] = std::move(*reshaped);
     result.resulting_objects = 1;
     result.command = std::make_unique<ReshapeSegmentCommand>(
+        std::vector<RewriteVectorPathsCommand::Entry>{{id, std::move(after)}});
+    return result;
+}
+
+namespace {
+
+// Point dans un polygone (règle pair-impair), sur le chemin aplati.
+bool inside_path(const geometry::Path& path, Vec2um p) {
+    const geometry::Path flat = geometry::flatten_to_polygon(path, Micrometers{50});
+    const auto& n = flat.nodes;
+    bool inside = false;
+    for (std::size_t i = 0, j = n.size() - 1; i < n.size(); j = i++) {
+        const double yi = n[i].pos.y.value, yj = n[j].pos.y.value;
+        if ((yi > p.y.value) != (yj > p.y.value)) {
+            const double xCross = n[j].pos.x.value + (p.y.value - yj) *
+                                                         (n[i].pos.x.value - n[j].pos.x.value) /
+                                                         (yi - yj);
+            if (p.x.value < xCross) {
+                inside = !inside;
+            }
+        }
+    }
+    return inside;
+}
+
+} // namespace
+
+VectorOpResult make_remove_hole_at_command(const document::Project& project, ObjectId id,
+                                           Vec2um at) {
+    VectorOpResult result;
+    const auto* object = project.findObject(id);
+    if (object == nullptr) {
+        result.error = "Objet introuvable.";
+        return result;
+    }
+    std::vector<geometry::PathSet> after = object->paths;
+    for (auto& set : after) {
+        for (std::size_t h = 0; h < set.holes.size(); ++h) {
+            if (set.holes[h].nodes.size() >= 3 && inside_path(set.holes[h], at)) {
+                set.holes.erase(set.holes.begin() + static_cast<std::ptrdiff_t>(h));
+                result.resulting_objects = 1;
+                result.command = std::make_unique<RemoveHoleCommand>(
+                    std::vector<RewriteVectorPathsCommand::Entry>{{id, std::move(after)}});
+                return result;
+            }
+        }
+    }
+    result.error = "Aucun trou à cet endroit.";
+    return result;
+}
+
+VectorOpResult make_insert_node_command(const document::Project& project, ObjectId id,
+                                        std::size_t set_index, std::size_t path_index,
+                                        std::size_t segment, double t) {
+    VectorOpResult result;
+    const auto* object = project.findObject(id);
+    if (object == nullptr || set_index >= object->paths.size()) {
+        result.error = "Objet ou morceau introuvable.";
+        return result;
+    }
+    const geometry::Path* path = document::path_in(*object, set_index, path_index);
+    const std::size_t edges =
+        path == nullptr ? 0 : (path->closed ? path->nodes.size() : path->nodes.size() - 1);
+    if (path == nullptr || path->nodes.size() < 2 || segment >= edges) {
+        result.error = "Segment introuvable.";
+        return result;
+    }
+    if (!(t > 0.02 && t < 0.98)) {
+        result.error = "Point trop proche d'un nœud existant.";
+        return result;
+    }
+    std::vector<geometry::PathSet> after = object->paths;
+    geometry::Path* target =
+        path_index == 0 ? &after[set_index].outer : &after[set_index].holes[path_index - 1];
+    *target = geometry::insert_node_on_segment(*target, segment, t);
+    if (target->nodes.size() != path->nodes.size() + 1) {
+        result.error = "Insertion impossible.";
+        return result;
+    }
+    result.resulting_objects = 1;
+    result.command = std::make_unique<InsertNodeCommand>(
         std::vector<RewriteVectorPathsCommand::Entry>{{id, std::move(after)}});
     return result;
 }

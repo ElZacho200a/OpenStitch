@@ -2386,6 +2386,15 @@ void MainWindow::onCanvasDoubleClicked(QPointF posMm) {
         editSelectedText();
         return;
     }
+    // HP-VEC-001/005 : outil Sélection, double-clic sur le contour = nouveau nœud ; Alt + double-clic
+    // dans un trou = supprimer ce trou (hors mode remodelage des rails).
+    if (currentTool_ == Tool::Select &&
+        !(railEditModeAct_ != nullptr && railEditModeAct_->isChecked())) {
+        const bool alt = (QGuiApplication::keyboardModifiers() & Qt::AltModifier) != 0;
+        if (alt ? removeHoleAt(posMm) : insertNodeAt(posMm)) {
+            return;
+        }
+    }
     if (currentTool_ == Tool::DrawPolygon) {
         finishPolygon();
         return;
@@ -2579,6 +2588,9 @@ std::optional<QPointF> MainWindow::findSnapPointMm(QPointF cursorSceneMm,
                 considerPath(hole);
             }
         }
+    }
+    if (!best) {
+        best = gridSnapPointMm(cursorSceneMm, radiusMm); // HP-VEC-009 : grille, si activée
     }
     return best;
 }
