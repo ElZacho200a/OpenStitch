@@ -554,6 +554,17 @@ Result<json> build_project_doc(const document::Project& project, const InspectOp
                            : t.fill == document::TextFill::Tatami  ? "tatami"
                            : t.fill == document::TextFill::Contour ? "contour"
                                                                    : "auto";
+        const auto base_name = [](document::TextBaseKind k) {
+            return k == document::TextBaseKind::Arc      ? "arc"
+                   : k == document::TextBaseKind::Circle ? "circle"
+                   : k == document::TextBaseKind::Path   ? "path"
+                                                         : "line";
+        };
+        const auto connector_name = [](document::ConnectorMode m) {
+            return m == document::ConnectorMode::AlwaysTrim  ? "trim"
+                   : m == document::ConnectorMode::NeverTrim ? "no_trim"
+                                                             : "inherit";
+        };
         texts.push_back(json{{"id", t.id.value},
                              {"text", t.text},
                              {"font", json{{"family", t.font.family},
@@ -571,6 +582,13 @@ Result<json> build_project_doc(const document::Project& project, const InspectOp
                              {"color", rgb_json(t.rgb)},
                              {"fill", fill},
                              {"density_mm", mm(t.density)},
+                             {"base", base_name(t.base.kind)},
+                             {"base_radius_mm", mm(t.base.radius)},
+                             {"base_inside", t.base.inside},
+                             {"base_path_points", t.base.path.size()},
+                             {"letter_connector", connector_name(t.letter_connector)},
+                             {"word_connector", connector_name(t.word_connector)},
+                             {"glyph_edit_count", t.glyph_edits.size()},
                              {"letter_vector_ids", letters}});
     }
     doc["text_objects"] = texts;

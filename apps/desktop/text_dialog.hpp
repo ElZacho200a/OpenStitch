@@ -55,6 +55,8 @@ private:
     QColor color_{Qt::black};
 };
 
+class TextAdvancedPanel;
+
 // Dialogue de texte (outil Texte, double-clic sur une lettre, inspecteur). Ne modifie
 // pas le document : renvoie un `TextObject` (intention) que MainWindow transforme en
 // lettres par `lettering::build_text_objects` puis applique par `SetTextObjectCommand`.
@@ -94,6 +96,7 @@ private:
     QDoubleSpinBox* density_{nullptr};
     QCheckBox* kerning_{nullptr};
     QPlainTextEdit* kerningPairs_{nullptr};
+    TextAdvancedPanel* advanced_{nullptr};
     QCheckBox* ligatures_{nullptr};
     QDoubleSpinBox* posX_{nullptr};
     QDoubleSpinBox* posY_{nullptr};

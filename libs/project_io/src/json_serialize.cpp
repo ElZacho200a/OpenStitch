@@ -1019,6 +1019,42 @@ json text_to_json(const document::TextObject& t) {
     if (t.ligatures) {
         j["ligatures"] = true;
     }
+    // Bases de texte, éditions par lettre et connecteurs (HP-TXT-005/008/014) : mêmes règles.
+    if (t.base.kind != document::TextBaseKind::Line) {
+        json base;
+        base["kind"] = static_cast<int>(t.base.kind);
+        base["radius"] = t.base.radius.value;
+        base["inside"] = t.base.inside;
+        if (!t.base.path.empty()) {
+            json pts = json::array();
+            for (const auto& p : t.base.path) {
+                pts.push_back(vec_to_json(p));
+            }
+            base["path"] = std::move(pts);
+        }
+        j["base"] = std::move(base);
+    }
+    if (!t.glyph_edits.empty()) {
+        json edits = json::array();
+        for (const auto& e : t.glyph_edits) {
+            json ej{{"index", e.index},
+                    {"dx", e.dx.value},
+                    {"dy", e.dy.value},
+                    {"rotation", e.rotation.radians},
+                    {"scale", e.scale}};
+            if (e.rgb) {
+                ej["rgb"] = rgb_to_json(*e.rgb);
+            }
+            edits.push_back(std::move(ej));
+        }
+        j["glyphEdits"] = std::move(edits);
+    }
+    if (t.letter_connector != document::ConnectorMode::Inherit) {
+        j["letterConnector"] = static_cast<int>(t.letter_connector);
+    }
+    if (t.word_connector != document::ConnectorMode::Inherit) {
+        j["wordConnector"] = static_cast<int>(t.word_connector);
+    }
     return j;
 }
 
@@ -1060,6 +1096,35 @@ document::TextObject text_from_json(const json& j) {
         }
     }
     t.ligatures = j.value("ligatures", d.ligatures);
+    if (const auto it = j.find("base"); it != j.end() && it->is_object()) {
+        t.base.kind = static_cast<document::TextBaseKind>(std::clamp(it->value("kind", 0), 0, 3));
+        t.base.radius = Micrometers{std::max(1, it->value("radius", d.base.radius.value))};
+        t.base.inside = it->value("inside", false);
+        if (const auto pit = it->find("path"); pit != it->end() && pit->is_array()) {
+            for (const auto& pj : *pit) {
+                t.base.path.push_back(vec_from_json(pj));
+            }
+        }
+    }
+    if (const auto it = j.find("glyphEdits"); it != j.end() && it->is_array()) {
+        for (const auto& ej : *it) {
+            document::GlyphEdit e;
+            e.index = ej.value("index", 0U);
+            e.dx = Micrometers{ej.value("dx", 0)};
+            e.dy = Micrometers{ej.value("dy", 0)};
+            e.rotation = Angle{ej.value("rotation", 0.0)};
+            e.scale = ej.value("scale", 1.0);
+            if (ej.contains("rgb")) {
+                e.rgb = rgb_from_json(ej.at("rgb"));
+            }
+            t.glyph_edits.push_back(e);
+        }
+    }
+    const auto connector = [&](const char* key) {
+        return static_cast<document::ConnectorMode>(std::clamp(j.value(key, 0), 0, 2));
+    };
+    t.letter_connector = connector("letterConnector");
+    t.word_connector = connector("wordConnector");
     return t;
 }
 

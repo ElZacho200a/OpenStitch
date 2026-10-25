@@ -33,6 +33,11 @@ struct PlacedGlyph {
     int line{0};
     Vec2um pen{}; // origine du glyphe (ligne de base), après rotation
     std::vector<geometry::PathSet> shapes;
+    // Index de mot dans tout le texte (un espace ou un saut de ligne ouvre un mot) :
+    // sert aux connecteurs entre lettres / entre mots (HP-TXT-014).
+    int word{0};
+    // Couleur propre à la lettre (édition individuelle, HP-TXT-008) ; vide = couleur du texte.
+    std::optional<std::array<std::uint8_t, 3>> rgb;
 };
 
 struct TextLayout {
