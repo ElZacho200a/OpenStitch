@@ -9,6 +9,7 @@ add_library(openstitch_formats
     src/machine_palettes.cpp
     src/pes.cpp
     src/jef.cpp
+    src/vp3.cpp
     src/exp.cpp
     src/color_companion.cpp
     src/export_limits.cpp

@@ -52,7 +52,8 @@ constexpr int kUiLayoutVersion = 2;
 [[nodiscard]] bool isImageSuffix(const QString& suffix) {
     static const QStringList kImages{QStringLiteral("png"),  QStringLiteral("jpg"),
                                      QStringLiteral("jpeg"), QStringLiteral("bmp"),
-                                     QStringLiteral("tif"),  QStringLiteral("tiff")};
+                                     QStringLiteral("tif"),  QStringLiteral("tiff"),
+                                     QStringLiteral("gif"),  QStringLiteral("webp")};
     return kImages.contains(suffix);
 }
 

@@ -761,14 +761,14 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
         std::uint64_t only{0};
     };
     auto exArgs = std::make_shared<ExportArgs>();
-    c = project->add_subcommand("export", "Exporte un projet en broderie machine (dst, pes, jef, "
+    c = project->add_subcommand("export", "Exporte un projet en broderie machine (dst, pes, jef, vp3, "
                                           "exp) ou en SVG ; les points sont régénérés depuis le "
                                           ".osp (mêmes octets que osp2dst)");
     c->add_option("osp", exArgs->osp, "Projet .osp")->required();
     c->add_option("--output,-o", exArgs->out, "Fichier à produire (format déduit de l'extension)")
         ->required();
     c->add_option("--format", exArgs->format, "Force le format : dst|pes|jef|exp|svg")
-        ->check(CLI::IsMember({"dst", "pes", "jef", "exp", "svg"}));
+        ->check(CLI::IsMember({"dst", "pes", "jef", "vp3", "exp", "svg"}));
     c->add_flag("--no-trims", exArgs->noTrims, "Supprime les coupes (elles deviennent des sauts)");
     c->add_flag("--no-color-changes", exArgs->noColorChanges,
                 "Supprime les changements de couleur");
@@ -808,7 +808,7 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
         if (format != "svg" && (info == nullptr || !info->can_write)) {
             g_exit = fail_with("export", jsonOut, po::code::kUsage,
                                "format de sortie « " + format + " » non pris en charge",
-                               "extensions : .dst .pes .jef .exp .svg (ou --format)");
+                               "extensions : .dst .pes .jef .vp3 .exp .svg (ou --format)");
             return;
         }
         int rc = 0;

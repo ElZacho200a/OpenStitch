@@ -1512,7 +1512,7 @@ void MainWindow::openImage() {
     const QString file = QFileDialog::getOpenFileName(
         this, tr("Ouvrir une image ou un SVG"),
         QSettings().value(QStringLiteral("ui/lastImportDir")).toString(),
-        tr("Images et SVG (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.svg);;"
+        tr("Images et SVG (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.gif *.webp *.svg);;"
            "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff);;"
            "SVG (*.svg);;Tous les fichiers (*)"));
     if (file.isEmpty()) {
@@ -1528,11 +1528,11 @@ void MainWindow::openAny() {
                               : QFileInfo(currentProjectPath_).absolutePath();
     const QString file = QFileDialog::getOpenFileName(
         this, tr("Ouvrir"), start,
-        tr("Tous les formats pris en charge (*.osp *.dst *.pes *.jef *.exp *.svg *.png *.jpg "
-           "*.jpeg *.bmp *.tif *.tiff);;"
+        tr("Tous les formats pris en charge (*.osp *.dst *.pes *.jef *.vp3 *.exp *.svg *.png *.jpg "
+           "*.jpeg *.bmp *.tif *.tiff *.gif *.webp);;"
            "Projets OpenStitch (*.osp);;"
-           "Fichiers de broderie (*.dst *.pes *.jef *.exp);;"
-           "Images et SVG (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.svg);;"
+           "Fichiers de broderie (*.dst *.pes *.jef *.vp3 *.exp);;"
+           "Images et SVG (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.gif *.webp *.svg);;"
            "Tous les fichiers (*)"));
     if (file.isEmpty()) {
         return;
@@ -1551,7 +1551,7 @@ void MainWindow::openImageFile(const QString& file) {
     if (!loaded) {
         showFriendlyError(this, tr("Image illisible"),
                           tr("Ce fichier n'a pas pu être ouvert comme image. Formats acceptés : "
-                             "PNG, JPEG, BMP, TIFF."),
+                             "PNG, JPEG, BMP, TIFF, GIF, WebP."),
                           loaded.error().message);
         return;
     }
