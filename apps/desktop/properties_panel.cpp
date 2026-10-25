@@ -1060,11 +1060,12 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
     if (!group) {
         // HP-UX-028 : les quatre types en tête de l'inspecteur (en groupe : posés par
         // showMultiSelection).
-        addStitchTypeRow(object.is_tatami()                              ? 1
-                         : object.is_directional()                       ? 3
-                         : object.is_blanket()                           ? 4
-                         : (object.is_satin() || object.is_auto_satin()) ? 2
-                                                                         : 0);
+        addStitchTypeRow(object.is_tatami()                                  ? 1
+                         : object.is_directional()                           ? 3
+                         : object.is_blanket()                               ? 4
+                         : (object.is_motif_run() || object.is_motif_fill()) ? -1
+                         : (object.is_satin() || object.is_auto_satin())     ? 2
+                                                                             : 0);
     }
 
     auto* form = new QFormLayout();
@@ -1087,6 +1088,8 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                              : object.is_directional()  ? tr("Remplissage directionnel")
                              : object.is_blanket()      ? tr("Blanket / zigzag")
                              : object.is_contour_fill() ? tr("Remplissage concentrique")
+                             : object.is_motif_run()    ? tr("Motif le long du contour")
+                             : object.is_motif_fill()   ? tr("Remplissage à motif")
                              : object.is_auto_satin()
                                  ? tr("Satin automatique (traversées orientées)")
                              : object.is_satin() ? tr("Colonne satin à rails (manuelle)")
@@ -2234,6 +2237,78 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 bindMm(inset, tr("Retrait du bord"), &T::inset);
                 bindBool(spiral, tr("Liaison en spirale"), &T::spiral);
                 bindBool(underpath, tr("Liaisons cousues cachées"), &T::hidden_underpath);
+            } else if constexpr (std::is_same_v<T, document::MotifRunParams> ||
+                                 std::is_same_v<T, document::MotifFillParams>) {
+                // HP-STI-002 / HP-STI-006 : motif répété le long du contour ou pavant la région.
+                const bool isFill = std::is_same_v<T, document::MotifFillParams>;
+                const QString pfx =
+                    isFill ? QStringLiteral("motifFill") : QStringLiteral("motifRun");
+                auto* motif = new QComboBox(body_);
+                motif->setObjectName(QStringLiteral("combo_%1Motif").arg(pfx));
+                motif->addItems({tr("Vague"), tr("Zigzag"), tr("Feuille"), tr("Cœur"),
+                                 tr("Losange"), tr("Feston")});
+                motif->setCurrentIndex(static_cast<int>(p.motif));
+                auto* size = mmSpin(to_millimeters(p.size).value, 40.0, 0.5,
+                                    tr("Hauteur du motif (carré en remplissage). 0,5 – 40 mm."));
+                size->setObjectName(QStringLiteral("spin_%1Size").arg(pfx));
+                auto* spacing = mmSpin(to_millimeters(p.spacing).value, 100.0, 1.0,
+                                       isFill ? tr("Pas de la grille entre centres de motifs. "
+                                                   "1 – 100 mm.")
+                                              : tr("Longueur d'une répétition le long du tracé. "
+                                                   "1 – 100 mm."));
+                spacing->setObjectName(QStringLiteral("spin_%1Spacing").arg(pfx));
+                auto* len = mmSpin(to_millimeters(p.stitch_length).value, 7.0, 1.0,
+                                   tr("Longueur MAXIMALE d'un point, bornée entre 1 et 7 mm."));
+                len->setObjectName(QStringLiteral("spin_%1StitchLength").arg(pfx));
+                auto* minl = mmSpin(to_millimeters(p.min_length).value, 7.0, 0.0,
+                                    tr("Longueur minimale d'un point."));
+                minl->setObjectName(QStringLiteral("spin_%1MinLength").arg(pfx));
+                form->addRow(tr("Motif :"), motif);
+                form->addRow(tr("Taille :"), size);
+                form->addRow(isFill ? tr("Pas de la grille :") : tr("Répétition :"), spacing);
+                form->addRow(tr("Longueur de point :"), len);
+                form->addRow(tr("Longueur minimale :"), minl);
+                bindEnumField<T>(this, edit, motif, tr("Motif"), &T::motif, members);
+                bindMm(size, tr("Taille du motif"), &T::size);
+                bindMm(spacing, tr("Pas du motif"), &T::spacing);
+                bindMm(len, tr("Longueur de point"), &T::stitch_length);
+                bindMm(minl, tr("Longueur minimale"), &T::min_length);
+                if constexpr (std::is_same_v<T, document::MotifRunParams>) {
+                    auto* alt = new QCheckBox(tr("Alterner (miroir un sur deux)"), body_);
+                    alt->setObjectName(QStringLiteral("check_motifRunAlternate"));
+                    alt->setChecked(p.alternate);
+                    form->addRow(QString(), alt);
+                    bindBool(alt, tr("Alternance du motif"), &T::alternate);
+                } else {
+                    auto* angle = new QDoubleSpinBox(body_);
+                    angle->setObjectName(QStringLiteral("spin_motifFillAngle"));
+                    angle->setKeyboardTracking(false);
+                    angle->setRange(0.0, 179.9);
+                    angle->setDecimals(1);
+                    angle->setWrapping(true);
+                    angle->setSuffix(tr(" °"));
+                    angle->setToolTip(tr("Orientation de la grille : 0° = horizontal."));
+                    angle->setValue(std::fmod(std::fmod(to_deg(p.angle), 180.0) + 180.0, 180.0));
+                    auto* inset = mmSpin(to_millimeters(p.inset).value, 5.0, 0.0,
+                                         tr("Retrait des motifs par rapport au bord."));
+                    inset->setObjectName(QStringLiteral("spin_motifFillInset"));
+                    auto* stagger = new QCheckBox(tr("Rangées décalées"), body_);
+                    stagger->setObjectName(QStringLiteral("check_motifFillStagger"));
+                    stagger->setChecked(p.stagger);
+                    auto* underpath = new QCheckBox(tr("Liaisons cousues cachées"), body_);
+                    underpath->setObjectName(QStringLiteral("check_motifFillUnderpath"));
+                    underpath->setChecked(p.hidden_underpath);
+                    form->addRow(tr("Angle :"), angle);
+                    form->addRow(tr("Retrait du bord :"), inset);
+                    form->addRow(QString(), stagger);
+                    form->addRow(QString(), underpath);
+                    connect(angle, &QDoubleSpinBox::valueChanged, this, [edit](double v) {
+                        edit(tr("Angle du motif"), [v](T& t) { t.angle = from_deg(v); });
+                    });
+                    bindMm(inset, tr("Retrait du bord"), &T::inset);
+                    bindBool(stagger, tr("Rangées décalées"), &T::stagger);
+                    bindBool(underpath, tr("Liaisons cousues cachées"), &T::hidden_underpath);
+                }
             }
         },
         object.params);

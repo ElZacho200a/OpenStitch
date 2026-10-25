@@ -71,6 +71,7 @@ private slots:
     void directionalEditKeepsGuidesAndSeed();
     void runningStyleComboEmitsStyleAndStemOffset();
     void contourFillEditsEmitParamsAndConversionIsOffered();
+    void motifPanelsEmitEditedParams();
     void directionalGradientControlsRequestMainWindow();
     void directionalSpacingRegularityIsEditable();
     void autoSatinInspectorListsGuidesAndEditsScalars();
@@ -200,6 +201,53 @@ void PropertiesPanelTest::contourFillEditsEmitParamsAndConversionIsOffered() {
     QCOMPARE(std::get<openstitch::document::ContourFillParams>(*last).row_spacing.value, 600);
     spiral->setChecked(false);
     QVERIFY(!std::get<openstitch::document::ContourFillParams>(*last).spiral);
+}
+
+void PropertiesPanelTest::motifPanelsEmitEditedParams() {
+    // HP-STI-002 : motif le long du contour.
+    {
+        PropertiesPanel panel;
+        EmbroideryObject e;
+        e.id = openstitch::ObjectId{31};
+        e.params = openstitch::document::MotifRunParams{};
+        panel.showEmbroidery(e);
+        auto* size = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_motifRunSize"));
+        auto* alt = panel.findChild<QCheckBox*>(QStringLiteral("check_motifRunAlternate"));
+        auto* motif = panel.findChild<QComboBox*>(QStringLiteral("combo_motifRunMotif"));
+        QVERIFY(size != nullptr && alt != nullptr && motif != nullptr);
+        std::optional<StitchParams> last;
+        QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                         [&](openstitch::ObjectId, StitchParams params) { last = params; });
+        size->setValue(5.5);
+        QVERIFY(last.has_value());
+        QCOMPARE(std::get<openstitch::document::MotifRunParams>(*last).size.value, 5500);
+        alt->setChecked(true);
+        QVERIFY(std::get<openstitch::document::MotifRunParams>(*last).alternate);
+        motif->setCurrentIndex(2);
+        QVERIFY(std::get<openstitch::document::MotifRunParams>(*last).motif ==
+                openstitch::document::MotifId::Leaf);
+    }
+    // HP-STI-006 : remplissage a motif.
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{32};
+    e.params = openstitch::document::MotifFillParams{};
+    panel.showEmbroidery(e);
+    auto* spacing = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_motifFillSpacing"));
+    auto* angle = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_motifFillAngle"));
+    auto* stagger = panel.findChild<QCheckBox*>(QStringLiteral("check_motifFillStagger"));
+    QVERIFY(spacing != nullptr && angle != nullptr && stagger != nullptr);
+    std::optional<StitchParams> last;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams params) { last = params; });
+    spacing->setValue(7.0);
+    QVERIFY(last.has_value());
+    QCOMPARE(std::get<openstitch::document::MotifFillParams>(*last).spacing.value, 7000);
+    angle->setValue(30.0);
+    QVERIFY(std::abs(std::get<openstitch::document::MotifFillParams>(*last).angle.radians -
+                     30.0 * 3.14159265358979 / 180.0) < 1e-6);
+    stagger->setChecked(false);
+    QVERIFY(!std::get<openstitch::document::MotifFillParams>(*last).stagger);
 }
 
 void PropertiesPanelTest::directionalEditKeepsGuidesAndSeed() {

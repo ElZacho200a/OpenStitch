@@ -187,6 +187,13 @@ const EnumTable<document::BlanketSide>& blanket_side_table() {
                                                     {"center", document::BlanketSide::Center}};
     return t;
 }
+const EnumTable<document::MotifId>& motif_table() {
+    static const EnumTable<document::MotifId> t{
+        {"wave", document::MotifId::Wave},       {"zigzag", document::MotifId::Zigzag},
+        {"leaf", document::MotifId::Leaf},       {"heart", document::MotifId::Heart},
+        {"diamond", document::MotifId::Diamond}, {"scallop", document::MotifId::Scallop}};
+    return t;
+}
 const EnumTable<document::SatinSplit>& split_table() {
     static const EnumTable<document::SatinSplit> t{
         {"disabled", document::SatinSplit::Disabled},
@@ -283,8 +290,9 @@ std::array<std::uint8_t, 3> parse_hex_color(const std::string& text) {
 }
 
 const char* stitch_type_name(const document::StitchParams& p) {
-    static constexpr const char* names[] = {"running",    "tatami",  "satin",       "directional",
-                                            "auto_satin", "blanket", "contour_fill"};
+    static constexpr const char* names[] = {"running",      "tatami",     "satin",
+                                            "directional",  "auto_satin", "blanket",
+                                            "contour_fill", "motif_run",  "motif_fill"};
     return names[p.index()];
 }
 
@@ -889,6 +897,41 @@ const std::vector<Field<document::ContourFillParams>>& fields_of<document::Conto
     return fields;
 }
 
+template <>
+const std::vector<Field<document::MotifRunParams>>& fields_of<document::MotifRunParams>() {
+    using P = document::MotifRunParams;
+    static const auto fields = [] {
+        std::vector<Field<P>> v;
+        v.push_back(enum_field<P>("motif", &P::motif, motif_table()));
+        v.push_back(mm_field<P>("size_mm", &P::size, 0.5, 40.0));
+        v.push_back(mm_field<P>("spacing_mm", &P::spacing, 1.0, 100.0));
+        v.push_back(mm_field<P>("stitch_length_mm", &P::stitch_length, 1.0, 7.0));
+        v.push_back(mm_field<P>("min_length_mm", &P::min_length, 0.0, 7.0));
+        v.push_back(bool_field<P>("alternate", &P::alternate));
+        return v;
+    }();
+    return fields;
+}
+
+template <>
+const std::vector<Field<document::MotifFillParams>>& fields_of<document::MotifFillParams>() {
+    using P = document::MotifFillParams;
+    static const auto fields = [] {
+        std::vector<Field<P>> v;
+        v.push_back(enum_field<P>("motif", &P::motif, motif_table()));
+        v.push_back(mm_field<P>("size_mm", &P::size, 0.5, 40.0));
+        v.push_back(mm_field<P>("spacing_mm", &P::spacing, 1.0, 100.0));
+        v.push_back(deg_field<P>("angle_deg", &P::angle, -360.0, 360.0));
+        v.push_back(bool_field<P>("stagger", &P::stagger));
+        v.push_back(mm_field<P>("inset_mm", &P::inset, 0.0, 10.0));
+        v.push_back(mm_field<P>("stitch_length_mm", &P::stitch_length, 1.0, 7.0));
+        v.push_back(mm_field<P>("min_length_mm", &P::min_length, 0.0, 7.0));
+        v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
+        return v;
+    }();
+    return fields;
+}
+
 // Types de points (noms) qui possèdent le champ `name`.
 std::vector<std::string> types_having(const std::string& name) {
     std::vector<std::string> out;
@@ -913,6 +956,12 @@ std::vector<std::string> types_having(const std::string& name) {
     if (find_field(fields_of<document::ContourFillParams>(), name) != nullptr) {
         out.emplace_back("contour_fill");
     }
+    if (find_field(fields_of<document::MotifRunParams>(), name) != nullptr) {
+        out.emplace_back("motif_run");
+    }
+    if (find_field(fields_of<document::MotifFillParams>(), name) != nullptr) {
+        out.emplace_back("motif_fill");
+    }
     return out;
 }
 
@@ -925,7 +974,9 @@ std::string params_catalog_text() {
     out += "satin : " + join(field_names(fields_of<document::SatinParams>())) + " ; ";
     out += "auto_satin : " + join(field_names(fields_of<document::AutoSatinParams>())) + " ; ";
     out += "blanket : " + join(field_names(fields_of<document::BlanketStitchParams>())) + " ; ";
-    out += "contour_fill : " + join(field_names(fields_of<document::ContourFillParams>())) + ". ";
+    out += "contour_fill : " + join(field_names(fields_of<document::ContourFillParams>())) + " ; ";
+    out += "motif_run : " + join(field_names(fields_of<document::MotifRunParams>())) + " ; ";
+    out += "motif_fill : " + join(field_names(fields_of<document::MotifFillParams>())) + ". ";
     out += "Suffixe _mm = millimètres, _deg = degrés ; énumérations en chaîne";
     return out;
 }

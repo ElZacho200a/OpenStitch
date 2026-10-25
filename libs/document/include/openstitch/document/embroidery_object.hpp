@@ -391,15 +391,48 @@ struct ContourFillParams {
     bool operator==(const ContourFillParams&) const = default;
 };
 
+// Motifs de base (HP-STI-002 / HP-STI-006) : petites séquences normalisées définies dans
+// `stitch_generation::motif_pattern`. Ajouter en fin seulement (valeur persistée dans le .osp).
+enum class MotifId : std::uint8_t { Wave, Zigzag, Leaf, Heart, Diamond, Scallop };
+
+// Motif le long d'un chemin (« motif run », HP-STI-002) : le motif est répété par abscisse
+// curviligne le long de chaque contour de la source, orienté selon la tangente.
+struct MotifRunParams {
+    MotifId motif{MotifId::Wave};
+    Micrometers size{3'000};          // hauteur du motif (perpendiculaire au tracé), 3 mm
+    Micrometers spacing{4'000};       // longueur d'une répétition le long du tracé, 4 mm
+    Micrometers stitch_length{2'000}; // longueur MAXIMALE d'un point, bornée à [1 ; 7] mm
+    Micrometers min_length{400};      // longueur minimale d'un point, 0,4 mm
+    bool alternate{false};            // miroir d'un motif sur deux (feuille, vague en opposition)
+
+    bool operator==(const MotifRunParams&) const = default;
+};
+
+// Remplissage à motif (« motif fill », HP-STI-006) : pavage de la région par un motif répété
+// sur une grille tournée de `angle` ; les tracés sont coupés au contour (trous respectés).
+struct MotifFillParams {
+    MotifId motif{MotifId::Diamond};
+    Micrometers size{4'000};          // taille du motif (carré), 4 mm
+    Micrometers spacing{5'000};       // pas de la grille entre centres, 5 mm
+    Angle angle{0.0};                 // orientation de la grille (radians)
+    bool stagger{true};               // une rangée sur deux décalée d'un demi-pas
+    Micrometers inset{200};           // retrait du bord
+    Micrometers stitch_length{2'000}; // longueur MAXIMALE d'un point, bornée à [1 ; 7] mm
+    Micrometers min_length{400};      // longueur minimale d'un point
+    bool hidden_underpath{true};      // liaisons longues cousues cachées (au lieu de sauts)
+
+    bool operator==(const MotifFillParams&) const = default;
+};
+
 // Un objet de broderie porte un TYPE de point sous forme de variant. Chaque
 // type suit la géométrie d'un objet vectoriel source (contour pour running,
 // région pleine pour tatami) ou porte la sienne (satin). La séparation
 // intention/points (ADR-014) tient : les points sont régénérés à la demande.
 // Les alternatives directionnelle puis auto-satin sont AJOUTÉES en fin de
 // variant : les index des types historiques ne changent pas.
-using StitchParams =
-    std::variant<RunningStitchParams, TatamiParams, SatinParams, DirectionalFillParams,
-                 AutoSatinParams, BlanketStitchParams, ContourFillParams>;
+using StitchParams = std::variant<RunningStitchParams, TatamiParams, SatinParams,
+                                  DirectionalFillParams, AutoSatinParams, BlanketStitchParams,
+                                  ContourFillParams, MotifRunParams, MotifFillParams>;
 
 // Type de point autorisé après retouche manuelle (Lot 8 MVP, §2 du cadrage) :
 // seule transition permise, Stitch <-> Jump — pas de Trim/ColorChange/Stop,
@@ -498,6 +531,12 @@ struct EmbroideryObject {
     }
     [[nodiscard]] bool is_contour_fill() const {
         return std::holds_alternative<ContourFillParams>(params);
+    }
+    [[nodiscard]] bool is_motif_run() const {
+        return std::holds_alternative<MotifRunParams>(params);
+    }
+    [[nodiscard]] bool is_motif_fill() const {
+        return std::holds_alternative<MotifFillParams>(params);
     }
 };
 
