@@ -23,6 +23,11 @@ enum class ShortStitchMode { Disabled, RemoveAndRedistribute, SingleInset, Multi
 // intermédiaire est décalé (staggered/jitter) pour éviter une ligne centrale.
 enum class SplitStitchMode { Disabled, Simple, Staggered, DeterministicJitter };
 
+// Coins vifs de la colonne (HP-ENG-005, mêmes valeurs/ordre que `document::SatinCorner`) :
+// onglet (une seule traversée en bissectrice), chevauchement (les branches se croisent sans
+// traversée intermédiaire), coupe (saut au coin, la colonne repart sur la branche suivante).
+enum class SatinCornerMode { None, Miter, Overlap, Cut };
+
 // Terminaisons de colonne (§9).
 enum class SatinCapType { Flat, Rounded, Tapered, Automatic };
 
@@ -54,6 +59,15 @@ struct SatinConfig {
     Micrometers wide_throw_width{10'000}; // au-delà, les splits zigzaguent le long de l'axe
     double wide_throw_zigzag_amplitude{0.35};
     std::uint64_t split_seed{1}; // graine déterministe (jitter)
+
+    // --- Espacement automatique (HP-ENG-003) ---
+    // Vrai : le pas entre traversées dépend de la largeur locale (colonnes étroites plus lâches,
+    // larges plus serrées), `density` valant pour une largeur de 4 mm. Faux = inchangé.
+    bool auto_spacing{false};
+
+    // --- Coins vifs (HP-ENG-005) ---
+    SatinCornerMode corner_mode{SatinCornerMode::None};
+    double corner_angle_deg{60.0}; // changement de cap de l'axe au-delà duquel c'est un coin
 
     // --- Terminaisons ---
     SatinCapType cap_start{SatinCapType::Flat};

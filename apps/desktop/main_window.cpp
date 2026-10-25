@@ -2941,6 +2941,9 @@ void MainWindow::finishSatinColumn() {
     params.rail_a = std::move(railA);
     params.rail_b = std::move(railB);
     params.rungs = std::move(rungs);
+    // HP-ENG-004 : une colonne créée à la main est fractionnée d'office au-delà de
+    // `max_stitch_length` (les projets existants gardent leur réglage persisté).
+    params.split_stitch = document::SatinSplit::Staggered;
     embObject.params = std::move(params);
 
     const ObjectId newEmbId = embObject.id;

@@ -94,6 +94,19 @@ const char* split_name(document::SatinSplit v) {
     }
     return "disabled";
 }
+const char* corner_name(document::SatinCorner v) {
+    switch (v) {
+    case document::SatinCorner::None:
+        return "none";
+    case document::SatinCorner::Miter:
+        return "miter";
+    case document::SatinCorner::Overlap:
+        return "overlap";
+    case document::SatinCorner::Cut:
+        return "cut";
+    }
+    return "none";
+}
 const char* cap_name(document::SatinCap v) {
     switch (v) {
     case document::SatinCap::Flat:
@@ -221,6 +234,8 @@ json params_json(const document::StitchParams& params, bool full) {
                 j["lock_length_mm"] = mm(p.lock_length);
                 j["lock_passes"] = p.lock_passes;
                 j["underlay_mode"] = underlay_mode_name(p.underlay_mode);
+                j["auto_spacing"] = p.auto_spacing;
+                j["corner_mode"] = corner_name(p.corner_mode);
                 j["rail_a"] = polyline_mm(p.rail_a);
                 j["rail_b"] = polyline_mm(p.rail_b);
                 json rungs = json::array();
@@ -284,6 +299,8 @@ json params_json(const document::StitchParams& params, bool full) {
                 j["lock_passes"] = p.lock_passes;
                 j["underlay_mode"] = underlay_mode_name(p.underlay_mode);
                 j["compact_axis"] = p.compact_axis;
+                j["auto_spacing"] = p.auto_spacing;
+                j["corner_mode"] = corner_name(p.corner_mode);
                 j["strategy"] = std::string(document::auto_satin_strategy_id(p.strategy));
                 j["sweep_angle_deg"] = p.sweep_angle ? json(deg(*p.sweep_angle)) : json(nullptr);
                 json guides = json::array();
