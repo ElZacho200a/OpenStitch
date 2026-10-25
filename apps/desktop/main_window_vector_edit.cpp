@@ -10,7 +10,9 @@
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
+#include <QInputDialog>
 #include <QMenu>
+#include <QSettings>
 #include <QStatusBar>
 
 #include <algorithm>
@@ -51,6 +53,47 @@ void MainWindow::buildVectorEditActions() {
                                "des formes sélectionnées, à l'écart choisi. Les formes d'origine "
                                "ne changent pas."));
     connect(outlineAct_, &QAction::triggered, this, [this] { outlineSelectionDialog(); });
+
+    // Magnétisme à la grille (HP-VEC-009), réglages persistés.
+    QSettings settings;
+    gridStepMm_ =
+        std::clamp(settings.value(QStringLiteral("edit/gridStepMm"), 1.0).toDouble(), 0.1, 100.0);
+    shapeMenu_->addSeparator();
+    gridSnapAct_ = shapeMenu_->addAction(tr("Accrocher à la &grille"));
+    gridSnapAct_->setObjectName(QStringLiteral("action_gridSnap"));
+    gridSnapAct_->setCheckable(true);
+    gridSnapAct_->setChecked(settings.value(QStringLiteral("edit/gridSnap"), false).toBool());
+    gridSnapAct_->setToolTip(tr("Pendant le tracé, le curseur s'accroche aux points de la grille "
+                                "quand aucun sommet n'est assez proche (Ctrl suspend)."));
+    connect(gridSnapAct_, &QAction::toggled, this,
+            [](bool on) { QSettings().setValue(QStringLiteral("edit/gridSnap"), on); });
+    gridStepAct_ = shapeMenu_->addAction(tr("Pas de la grille…"));
+    gridStepAct_->setObjectName(QStringLiteral("action_gridStep"));
+    connect(gridStepAct_, &QAction::triggered, this, [this] {
+        bool ok = false;
+        const double mm =
+            QInputDialog::getDouble(this, tr("Pas de la grille"), tr("Pas de la grille (mm) :"),
+                                    gridStepMm_, 0.1, 100.0, 2, &ok);
+        if (ok) {
+            gridStepMm_ = mm;
+            QSettings().setValue(QStringLiteral("edit/gridStepMm"), mm);
+        }
+    });
+}
+
+std::optional<QPointF> MainWindow::gridSnapPointMm(QPointF cursorSceneMm, double radiusMm) const {
+    if (gridSnapAct_ == nullptr || !gridSnapAct_->isChecked() || snapSuspended() ||
+        gridStepMm_ <= 0.0) {
+        return std::nullopt;
+    }
+    const QPointF snapped(std::round(cursorSceneMm.x() / gridStepMm_) * gridStepMm_,
+                          std::round(cursorSceneMm.y() / gridStepMm_) * gridStepMm_);
+    const double dx = snapped.x() - cursorSceneMm.x();
+    const double dy = snapped.y() - cursorSceneMm.y();
+    if (dx * dx + dy * dy > radiusMm * radiusMm) {
+        return std::nullopt;
+    }
+    return snapped;
 }
 
 void MainWindow::updateVectorEditActions() {

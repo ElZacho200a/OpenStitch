@@ -119,6 +119,25 @@ private slots:
         QVERIFY(!f.window.removeHoleAt(QPointF(10.0, 10.0)));
     }
 
+    void gridSnapRoundsToTheGridOnlyWhenEnabled() {
+        Fixture f;
+        setup(f);
+        f.window.gridStepMm_ = 2.0;
+        const QPointF cursor(6.3, 0.1);
+        QVERIFY(f.window.gridSnapAct_ != nullptr);
+        f.window.gridSnapAct_->setChecked(false);
+        QVERIFY(!f.window.findSnapPointMm(cursor).has_value());
+        f.window.gridSnapAct_->setChecked(true);
+        const auto snapped = f.window.findSnapPointMm(cursor);
+        QVERIFY(snapped.has_value());
+        QCOMPARE(snapped->x(), 6.0);
+        QCOMPARE(snapped->y(), 0.0);
+        // Trop loin d'un point de grille (pas 20 mm, curseur à 10 mm) : pas d'accroche.
+        f.window.gridStepMm_ = 20.0;
+        QVERIFY(!f.window.findSnapPointMm(QPointF(10.0, 10.0)).has_value());
+        f.window.gridSnapAct_->setChecked(false);
+    }
+
     void outlineActionCreatesAnOutlineObjectInOneUndoStep() {
         Fixture f;
         setup(f);

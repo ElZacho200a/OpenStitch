@@ -828,6 +828,13 @@ private:
     bool removeHoleAt(QPointF sceneMm);
     void outlineSelection(int kind, double gapMm, double satinWidthMm, bool aroundHoles);
     void outlineSelectionDialog();
+    // Magnétisme à la grille (HP-VEC-009) : point de grille le plus proche si activé et à moins
+    // de `radiusMm` du curseur.
+    [[nodiscard]] std::optional<QPointF> gridSnapPointMm(QPointF cursorSceneMm,
+                                                         double radiusMm) const;
+    QAction* gridSnapAct_{nullptr};
+    QAction* gridStepAct_{nullptr};
+    double gridStepMm_{1.0};
     QAction* outlineAct_{nullptr};
     // Sélection de nœuds et déplacement groupé (HP-VEC-017, main_window_node_select.cpp). Tous
     // les nœuds sélectionnés appartiennent au même chemin (set, path) de `nodeSelObject_`.

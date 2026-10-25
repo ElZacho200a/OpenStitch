@@ -2527,6 +2527,9 @@ std::optional<QPointF> MainWindow::findSnapPointMm(QPointF cursorSceneMm,
             }
         }
     }
+    if (!best) {
+        best = gridSnapPointMm(cursorSceneMm, radiusMm); // HP-VEC-009 : grille, si activée
+    }
     return best;
 }
 
