@@ -20,6 +20,7 @@
 #include <cstdint>
 
 #include "canvas_view.hpp"
+#include "length_units.hpp"
 #include "main_window.hpp"
 #include "openstitch/commands/outline_ops.hpp"
 #include "openstitch/commands/vector_path_commands.hpp"
@@ -71,10 +72,15 @@ void MainWindow::buildVectorEditActions() {
     gridStepAct_->setObjectName(QStringLiteral("action_gridStep"));
     connect(gridStepAct_, &QAction::triggered, this, [this] {
         bool ok = false;
-        const double mm =
-            QInputDialog::getDouble(this, tr("Pas de la grille"), tr("Pas de la grille (mm) :"),
-                                    gridStepMm_, 0.1, 100.0, 2, &ok);
+        // HP-UX-008 : saisie dans l'unité d'affichage ; le pas reste mémorisé en mm.
+        const auto unit = length_units::current();
+        const double value = QInputDialog::getDouble(
+            this, tr("Pas de la grille"),
+            tr("Pas de la grille (%1) :").arg(length_units::suffix(unit)),
+            length_units::fromMm(gridStepMm_, unit), length_units::fromMm(0.1, unit),
+            length_units::fromMm(100.0, unit), unit == length_units::Unit::Inches ? 3 : 2, &ok);
         if (ok) {
+            const double mm = length_units::toMm(value, unit);
             gridStepMm_ = mm;
             QSettings().setValue(QStringLiteral("edit/gridStepMm"), mm);
         }

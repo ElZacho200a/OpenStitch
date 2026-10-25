@@ -19,6 +19,7 @@ add_executable(test_commands
     test_stitch_point_edit_commands.cpp
     test_outline_ops.cpp
     test_sewing_order_commands.cpp
+    test_insert_design_command.cpp
 )
 target_link_libraries(test_commands PRIVATE openstitch::commands Catch2::Catch2WithMain openstitch::warnings)
 catch_discover_tests(test_commands)

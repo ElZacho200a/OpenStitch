@@ -43,6 +43,7 @@ PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+ChangesAssociations=yes
 OutputDir=dist
 OutputBaseFilename=OpenStitchStudio-Setup-{#MyAppVersion}
 Compression=lzma2
@@ -57,6 +58,17 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
+
+; HP-FILE-005 : association des projets .osp (double-clic = ouverture ; le chemin est passé en
+; argument de ligne de commande, lu par main.cpp). Case cochée par défaut ; les formats machine
+; (.dst, .pes...) ne sont jamais associés d'office -- ils appartiennent souvent à un autre logiciel.
+Name: "associatefiles"; Description: "Associer les projets OpenStitch (.osp) à {#MyAppName}"; GroupDescription: "Associations de fichiers :"
+
+[Registry]
+Root: HKA; Subkey: "Software\Classes\.osp"; ValueType: string; ValueName: ""; ValueData: "OpenStitchStudio.Project"; Flags: uninsdeletevalue; Tasks: associatefiles
+Root: HKA; Subkey: "Software\Classes\OpenStitchStudio.Project"; ValueType: string; ValueName: ""; ValueData: "Projet OpenStitch Studio"; Flags: uninsdeletekey; Tasks: associatefiles
+Root: HKA; Subkey: "Software\Classes\OpenStitchStudio.Project\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Tasks: associatefiles
+Root: HKA; Subkey: "Software\Classes\OpenStitchStudio.Project\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: associatefiles
 
 [Files]
 ; Tout le contenu déployé par windeployqt (exe + DLL Qt/plugins) --
