@@ -632,6 +632,23 @@ Result<json> build_project_doc(const document::Project& project, const InspectOp
     }
     doc["embroidery_objects"] = embroideries;
 
+    // Coloris (HP-THR-006) et tissu (HP-THR-008) : clés présentes seulement si le document les
+    // utilise, pour ne pas modifier la sortie des documents existants.
+    if (!project.colorways.empty()) {
+        json colorways = json::array();
+        for (std::size_t i = 0; i < project.colorways.size(); ++i) {
+            colorways.push_back(json{{"name", project.colorways[i].name},
+                                     {"active", static_cast<int>(i) == project.active_colorway},
+                                     {"objects", project.colorways[i].entries.size()}});
+        }
+        doc["colorways"] = colorways;
+    }
+    if (!(project.fabric == document::FabricSettings{})) {
+        doc["fabric"] = json{{"rgb", json::array({project.fabric.color[0], project.fabric.color[1],
+                                                  project.fabric.color[2]})},
+                             {"name", project.fabric.name}};
+    }
+
     json warnings = json::array();
     for (const auto& f : stitch_analysis::check_stitch_limits(project)) {
         warnings.push_back(finding_json(f));

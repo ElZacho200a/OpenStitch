@@ -13,6 +13,9 @@ add_library(openstitch_stitch_analysis
     src/thickness_map.cpp
     src/uncovered_pockets.cpp
     src/text_rules.cpp
+    src/fabric_rules.cpp
+    src/thread_reduction.cpp
+    src/stitch_pick.cpp
     src/project_analysis.cpp
 )
 add_library(openstitch::stitch_analysis ALIAS openstitch_stitch_analysis)

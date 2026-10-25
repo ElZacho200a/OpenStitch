@@ -17,6 +17,7 @@ add_executable(test_project_io
     test_contour_fill_persistence.cpp
     test_motif_persistence.cpp
     test_radial_spiral_crosshatch_persistence.cpp
+    test_colorway_persistence.cpp
 )
 target_link_libraries(test_project_io
     PRIVATE openstitch::project_io openstitch::formats openstitch::stitch_generation

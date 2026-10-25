@@ -84,6 +84,7 @@ class DocumentPanel;
 class SegmentationColorsPanel;
 class SegmentationDialog;
 class ThreadPanel;
+class ColorwayDialog;
 class ThreadStrip;
 class WorkflowPanel;
 class EmptyStateWidget;
@@ -1274,6 +1275,14 @@ private:
     void buildProductionMenu(QMenu* fileMenu);
     void showProductionSheet();
     QAction* productionAct_{nullptr};
+    // Coloris, tissu, fusion de fils (HP-THR-006/008/011, main_window_colorways.cpp).
+    void buildColorwayMenu(QMenu* viewMenu);
+    void showColorwayDialog();
+    void showThreadMergeDialog();
+    void syncColorwayUi();
+    ColorwayDialog* colorwayDialog_{nullptr};
+    QAction* colorwayAct_{nullptr};
+    QAction* threadMergeAct_{nullptr};
     // Zones réservées au câblage des entrées livrées en cœur (une zone par lot, ne pas mélanger).
     // [cablage-A:debut]
     // Exporter l'image (HP-FMT-011, main_window_export_image.cpp).

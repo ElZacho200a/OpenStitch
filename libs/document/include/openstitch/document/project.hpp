@@ -11,6 +11,7 @@
 #include "openstitch/core/units.hpp"
 #include "openstitch/document/calque.hpp"
 #include "openstitch/document/canvas.hpp"
+#include "openstitch/document/colorway.hpp"
 #include "openstitch/document/embroidery_object.hpp"
 #include "openstitch/document/finishing.hpp"
 #include "openstitch/document/imported_design.hpp"
@@ -54,6 +55,14 @@ struct Project {
     // Calque qui reçoit les formes créées (état d'interface, ni annulable ni enregistré) ;
     // invalide = le calque du fond.
     ObjectId active_calque;
+
+    // Coloris multiples (HP-THR-006). `active_colorway` = indice dans `colorways`, -1 = aucun
+    // (document sans coloris : comportement historique). Voir `Colorway`.
+    std::vector<Colorway> colorways;
+    int active_colorway{-1};
+
+    // Tissu de fond (HP-THR-008), persisté dans le projet.
+    FabricSettings fabric;
 
     IdGenerator<ObjectId> object_ids; // partagé par tous les types d'objets
 

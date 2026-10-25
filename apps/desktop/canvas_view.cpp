@@ -359,6 +359,14 @@ void CanvasView::setCanvasSizeMm(QSizeF sizeMm) {
     emit viewChanged();
 }
 
+void CanvasView::setFabricColor(const QColor& color) {
+    if (color == fabricColor_) {
+        return;
+    }
+    fabricColor_ = color;
+    viewport()->update();
+}
+
 void CanvasView::setUsableMarginMm(double marginMm) {
     marginMm = std::max(0.0, marginMm);
     if (marginMm == marginMm_) {
@@ -1211,10 +1219,10 @@ void CanvasView::scrollContentsBy(int dx, int dy) {
 void CanvasView::drawBackground(QPainter* painter, const QRectF& rect) {
     QGraphicsView::drawBackground(painter, rect);
 
-    // Zone du canevas en blanc.
+    // Zone du canevas : couleur du tissu (blanc par défaut).
     const QRectF canvas(-canvasMm_.width() / 2.0, -canvasMm_.height() / 2.0, canvasMm_.width(),
                         canvasMm_.height());
-    painter->fillRect(canvas, Qt::white);
+    painter->fillRect(canvas, fabricColor_);
 
     // Grille adaptative : pas fin >= 8 px à l'écran, pas majeur = 5x ou 10x.
     const double pxPerMm = pixelsPerMm();
