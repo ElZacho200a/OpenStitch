@@ -1,0 +1,177 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261025T035741Z-phare-standalone-mcp-0d343ff",
+  "timestamp_utc": "2026-10-25T03:57:41Z",
+  "source": {
+    "zip_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "sha_verified_this_run": true
+  },
+  "full_scene": {
+    "hoop_mm": [
+      390,
+      268
+    ],
+    "motif_mm": [
+      370,
+      231.490885
+    ],
+    "source_exclusive": true
+  },
+  "subproject": {
+    "source_crop_px": [
+      888,
+      65,
+      1010,
+      466
+    ],
+    "crop_size_px": [
+      122,
+      401
+    ],
+    "motif_mm": [
+      29.388,
+      96.595
+    ],
+    "hoop_mm": [
+      50,
+      120
+    ],
+    "margin_mm": 5,
+    "not_full_scene": true
+  },
+  "main_commit": "520bcb4741062379225927ea6e09e3b8a9bad6ab",
+  "main_identical": true,
+  "mcp": {
+    "version": "1.1.0",
+    "source": "official main CI workflow 40110471256 artifact 12567701806",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "doctor": "7/7",
+    "tool_count": 29
+  },
+  "method": "Six real source-derived standalone lighthouse preparations. 4 semantic raster variants; native SVG open polylines imported as running in 2 further variants. No generative imagery. Four windows, dome, gallery and shaft protected. Gate A fails for production: glass and gallery still visually inaccurate or intentionally unstitched.",
+  "variants": [
+    {
+      "name": "standalone_structural",
+      "objects": 53,
+      "stitches": 2662,
+      "trims": 56,
+      "jumps": 73,
+      "warnings": 12,
+      "hotspot_mm2": 0,
+      "missing_pct": 50.343,
+      "real_mcp_preview": true
+    },
+    {
+      "name": "standalone_reflections",
+      "objects": 62,
+      "stitches": 2722,
+      "trims": 65,
+      "jumps": 84,
+      "warnings": 13,
+      "hotspot_mm2": 0,
+      "missing_pct": 50.501,
+      "real_mcp_preview": true
+    },
+    {
+      "name": "standalone_gallery",
+      "objects": 71,
+      "stitches": 2845,
+      "trims": 73,
+      "jumps": 102,
+      "warnings": 13,
+      "hotspot_mm2": 0,
+      "missing_pct": 50.781,
+      "real_mcp_preview": true
+    },
+    {
+      "name": "standalone_smooth",
+      "objects": 44,
+      "stitches": 2913,
+      "trims": 36,
+      "jumps": 49,
+      "warnings": 7,
+      "hotspot_mm2": 3,
+      "missing_pct": 48.487,
+      "real_mcp_preview": true
+    },
+    {
+      "name": "standalone_svgpaths",
+      "objects": 61,
+      "stitches": 2554,
+      "trims": 62,
+      "jumps": 78,
+      "warnings": 9,
+      "hotspot_mm2": 0,
+      "missing_pct": 52.668,
+      "real_mcp_preview": true
+    },
+    {
+      "name": "standalone_negative_glass",
+      "objects": 33,
+      "stitches": 1883,
+      "trims": 35,
+      "jumps": 36,
+      "warnings": 1,
+      "hotspot_mm2": 0,
+      "missing_pct": 60.323,
+      "real_mcp_preview": true
+    }
+  ],
+  "mcp_executed": [
+    "initialize",
+    "digitize_guide",
+    "project_operations",
+    "semantic_validate",
+    "project_new",
+    "semantic_import dry_run+apply",
+    "project_apply import_svg dry_run+apply",
+    "project_checkpoint",
+    "semantic_map",
+    "project_inspect",
+    "project_report",
+    "project_check",
+    "project_density",
+    "project_fabric_risk",
+    "project_fidelity",
+    "project_render real PNG",
+    "project_save OSP",
+    "project_export DST",
+    "project_satin_compare skeleton/parallel_sweep/medial_axis",
+    "project_apply auto_satin dry_run+apply",
+    "project_apply directional_guides dry_run+apply",
+    "semantic_replace dry_run+apply",
+    "project_apply set_params dry_run+apply",
+    "project_restore"
+  ],
+  "retouches": {
+    "satin": "4 dark windows tested; engine marked unsuitable, parallel_sweep window 1 51.28% coverage, applied and visually rejected",
+    "directional": "shaft tatami vs directional applied and rendered; rejected",
+    "semantic_replace": "ivory pane morphological closing 56 to 50 trims; real preview still visually poor; rejected",
+    "params": "dome row spacing 0.65mm applied and rendered; rejected",
+    "baseline_restored_byte_identical": true
+  },
+  "insight": "Raster masks for thin running strokes are interpreted as contour surfaces and create many doubled paths/fragments. Native open SVG polylines render clearer. Negative-space glass/gallery improves legibility but leaves source colors unstitched and depends on fabric. Crop fidelity missing includes intentional unstitched background; cannot compare with full-scene fidelity.",
+  "reference_full_scene": {
+    "name": "route_protected bridge12",
+    "objects": 593,
+    "trims": 1099,
+    "hotspot_mm2": 37,
+    "not_directly_comparable": true
+  },
+  "verdict": "ALL DIAGNOSTIC; NO FULL SCENE DELIVERY; no machine test or independent evaluation.",
+  "private_archive": {
+    "path": "/OpenStitch/Experiments/2026-10-25/phare-lanterne-independante-mcp-0500-private.zip",
+    "library_file_id": "libfile_20aaa961b53881919ce5e419256fac29",
+    "size_bytes": 9378316,
+    "sha256": "e1c661f6a5b44ba1002b6df64a223a181b8ed1b28ea64a4735389e9fba663048",
+    "rematerialized_sha_verified": true
+  },
+  "github_pixels_private": true,
+  "next_hypothesis": "Build source-colored glass/gallery as 2-4 broad connected exclusive regions, combine with native SVG open running rails and source-aligned dome. Compare true 29.4mm crop preview, then integrate into full scene only after Gate A. Preserve bridge12 baseline; don't confuse routing with artistic success."
+}
