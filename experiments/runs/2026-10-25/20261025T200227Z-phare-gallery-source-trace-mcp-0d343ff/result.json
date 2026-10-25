@@ -1,0 +1,155 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261025T200227Z-phare-gallery-source-trace-mcp-0d343ff",
+  "created_utc": "2026-10-25T20:02:27Z",
+  "status": "failed",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "verified_this_run": true
+  },
+  "main_commit": "206ad8eb35cf4d0db751c6021cab8ae1bbd4d7bb",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "note": "verified official binary, not rebuilt from current main"
+  },
+  "subproject": {
+    "crop_px": [
+      888,
+      65,
+      1010,
+      466
+    ],
+    "size_mm": [
+      29.388,
+      96.595
+    ],
+    "canvas_mm": [
+      50,
+      120
+    ],
+    "not_full_scene": true,
+    "global_frame_mm": [
+      390,
+      268
+    ],
+    "global_design_mm": [
+      370,
+      231.490885
+    ],
+    "protected_windows": 5
+  },
+  "preparations": {
+    "applied": [
+      "trace_dense",
+      "trace_balanced",
+      "trace_sparse",
+      "trace_double"
+    ],
+    "gate_A": "FAILED 2 visual gates before imports",
+    "imports": "DIAGNOSTIC ONLY",
+    "method": "Source JPEG gallery ROI local dark contrast -> skeleton -> graph chains -> length pruning -> source open SVG running. Double trial repeats identical paths, not invented offsets."
+  },
+  "variants": [
+    {
+      "name": "trace_dense",
+      "source_paths": 39,
+      "objects": 118,
+      "stitches": 4541,
+      "trims": 128,
+      "jumps": 161,
+      "color_changes": 27,
+      "warnings": 8,
+      "errors": 0,
+      "hotspot_mm2": 2,
+      "fabric_risk_ge70_mm2": 15,
+      "missing_crop_percent": 30.138,
+      "lost_detail_crop_percent": 3.575,
+      "wrong_colour_crop_percent": 8.025,
+      "real_mcp_preview": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "trace_balanced",
+      "source_paths": 26,
+      "objects": 105,
+      "stitches": 4432,
+      "trims": 117,
+      "jumps": 149,
+      "color_changes": 27,
+      "warnings": 8,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "fabric_risk_ge70_mm2": 13,
+      "missing_crop_percent": 30.383,
+      "lost_detail_crop_percent": 3.551,
+      "wrong_colour_crop_percent": 7.964,
+      "real_mcp_preview": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "trace_sparse",
+      "source_paths": 11,
+      "objects": 90,
+      "stitches": 4290,
+      "trims": 102,
+      "jumps": 134,
+      "color_changes": 27,
+      "warnings": 8,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "fabric_risk_ge70_mm2": 11,
+      "missing_crop_percent": 30.745,
+      "lost_detail_crop_percent": 3.52,
+      "wrong_colour_crop_percent": 7.843,
+      "real_mcp_preview": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "trace_double",
+      "source_paths": 26,
+      "objects": 131,
+      "stitches": 4666,
+      "trims": 141,
+      "jumps": 175,
+      "color_changes": 27,
+      "warnings": 8,
+      "errors": 0,
+      "hotspot_mm2": 13,
+      "fabric_risk_ge70_mm2": 27,
+      "missing_crop_percent": 30.383,
+      "lost_detail_crop_percent": 3.551,
+      "wrong_colour_crop_percent": 7.964,
+      "real_mcp_preview": true,
+      "artistic_verdict": "REJECTED"
+    }
+  ],
+  "retouches": {
+    "baseline": "trace_balanced",
+    "satin_compare": "skeleton/parallel_sweep/medial_axis on foam, 5 windows and gallery; window medial_axis refused, gallery all three applied/rendered/rejected",
+    "directional": "same shaft tatami vs directional_guides dry-run/apply/render rejected",
+    "semantic_replace": "glass ivory dry-run/apply/render rejected",
+    "set_params": "gallery rim dry-run/apply/render rejected",
+    "restored_osp_byte_identical": true,
+    "restored_sha256": "3b2f70c0c5ad5b20e12a4af09a1fe7f4f404ea750ec7c139a9f8c9615256b588"
+  },
+  "finding": "Source tracing reduces invented geometry but leaves too many disconnected segments. Double running does not improve fidelity; raises hotspot 1 to 13 mm2 and risk area 13 to 27 mm2.",
+  "artistic_verdict": "REJECTED; no global reintegration; no machine test; no independent score",
+  "next_hypothesis": "Topological grouping of source-extracted gallery lines into 5-8 continuous source-evidenced motifs with preserved holes, no double running. Then fix inherited cloud/shaft micro-islands and glass/dome, later foam; gate A before global scene.",
+  "archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-25/phare-ferronnerie-source-tracee-mcp-2105-private.zip",
+    "library_file_id": "libfile_161c7aac1154819188a58571bf88c907",
+    "size_bytes": 24561380,
+    "sha256": "9692f6ed48be5ce9ab30b3737ffaa53b8ebe26c1bfcca2e91c4d232649841881",
+    "entries": 224,
+    "rematerialized_sha_verified": true
+  }
+}
