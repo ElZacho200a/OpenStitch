@@ -123,6 +123,11 @@ struct Project {
         const Calque* calque = calqueOfShape(vectorId);
         return calque != nullptr && calque->locked;
     }
+    // Forme intouchable au canevas : verrou d'édition de la forme (HP-OBJ-010) ou de son calque.
+    [[nodiscard]] bool shapeEditLocked(ObjectId vectorId) const {
+        const VectorObject* shape = findObject(vectorId);
+        return (shape != nullptr && shape->locked) || shapeLockedByCalque(vectorId);
+    }
     // `ids` (objets de broderie) regroupés par calque : tri STABLE sur le rang de calque, l'ordre
     // relatif d'un même calque est conservé. Garde un ordre calculé (optimisation) compatible
     // avec la clé principale de l'ordre de couture.

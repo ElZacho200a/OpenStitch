@@ -1386,6 +1386,9 @@ json project_to_json(const document::Project& project) {
         vo["name"] = v.name;
         vo["rgb"] = rgb_to_json(v.rgb);
         vo["visible"] = v.visible;
+        if (v.locked) { // clé absente quand déverrouillé : les anciens fichiers restent identiques
+            vo["locked"] = true;
+        }
         if (v.source_region) {
             vo["sourceRegion"] = v.source_region->value;
         }
@@ -1608,6 +1611,7 @@ Result<document::Project> project_from_json(const json& j) {
             v.name = vo.at("name");
             v.rgb = rgb_from_json(vo.at("rgb"));
             v.visible = vo.value("visible", true);
+            v.locked = vo.value("locked", false);
             if (vo.contains("sourceRegion")) {
                 v.source_region = RegionId{vo.at("sourceRegion").get<std::uint64_t>()};
             }

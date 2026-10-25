@@ -198,6 +198,14 @@ AffineTransform AffineTransform::scale(Vec2um pivot, double factor) {
     return t;
 }
 
+AffineTransform AffineTransform::scale_xy(Vec2um pivot, double factor_x, double factor_y) {
+    AffineTransform t;
+    t.m00 = std::isfinite(factor_x) && factor_x > 0.0 ? factor_x : 1.0;
+    t.m11 = std::isfinite(factor_y) && factor_y > 0.0 ? factor_y : 1.0;
+    t.pivot = pivot;
+    return t;
+}
+
 AffineTransform AffineTransform::translate(Vec2um delta) {
     AffineTransform t;
     t.translation = delta;
