@@ -6,6 +6,7 @@
 #include <string>
 
 #include "openstitch/stitch_analysis/analyze.hpp"
+#include "openstitch/stitch_analysis/fabric_rules.hpp"
 #include "openstitch/stitch_analysis/text_rules.hpp"
 #include "openstitch/stitch_generation/finish.hpp"
 
@@ -214,6 +215,9 @@ AnalysisReport analyze_project(const document::Project& project,
         report.findings.push_back(std::move(f));
     }
     for (Finding& f : check_stitch_limits(project)) {
+        report.findings.push_back(std::move(f));
+    }
+    for (Finding& f : check_thread_vs_fabric(project)) { // HP-THR-008
         report.findings.push_back(std::move(f));
     }
     return report;

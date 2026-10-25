@@ -1109,6 +1109,34 @@ json project_to_json(const document::Project& project) {
         }
     }
 
+    if (!project.colorways.empty()) {
+        // Coloris multiples (HP-THR-006) : clé facultative, un lecteur plus ancien l'ignore (les
+        // objets portent déjà les couleurs du coloris actif).
+        json cw;
+        cw["active"] = project.active_colorway;
+        cw["items"] = json::array();
+        for (const auto& colorway : project.colorways) {
+            json item;
+            item["name"] = colorway.name;
+            item["entries"] = json::array();
+            for (const auto& entry : colorway.entries) {
+                json e;
+                e["object"] = entry.object.value;
+                e["rgb"] = rgb_to_json(entry.rgb);
+                if (entry.thread) {
+                    e["thread"] = {{"chart", entry.thread->chart_id}, {"code", entry.thread->code}};
+                }
+                item["entries"].push_back(std::move(e));
+            }
+            cw["items"].push_back(std::move(item));
+        }
+        j["colorways"] = std::move(cw);
+    }
+    if (!(project.fabric == document::FabricSettings{})) {
+        // Tissu de fond (HP-THR-008) : clé facultative, absente = blanc.
+        j["fabric"] = {{"rgb", rgb_to_json(project.fabric.color)}, {"name", project.fabric.name}};
+    }
+
     j["vectorObjects"] = json::array();
     for (const auto& v : project.vector_objects) {
         json vo;
@@ -1285,6 +1313,45 @@ Result<document::Project> project_from_json(const json& j) {
                 calque.locked = co.value("locked", false);
                 project.calques.push_back(std::move(calque));
             }
+        }
+
+        if (j.contains("colorways")) {
+            const auto& cw = j.at("colorways");
+            if (cw.contains("items")) {
+                for (const auto& item : cw.at("items")) {
+                    document::Colorway colorway;
+                    colorway.name = item.value("name", std::string{});
+                    for (const auto& e : item.at("entries")) {
+                        document::ColorwayEntry entry;
+                        entry.object = ObjectId{e.at("object").get<std::uint64_t>()};
+                        entry.rgb = rgb_from_json(e.at("rgb"));
+                        if (e.contains("thread")) {
+                            const auto& tj = e.at("thread");
+                            if (!tj.is_object() || !tj.contains("chart") || !tj.contains("code") ||
+                                !tj.at("chart").is_string() || !tj.at("code").is_string()) {
+                                return fail(ErrorCategory::InvalidFile,
+                                            "Coloris invalide : « thread » doit porter « chart » "
+                                            "et « code »");
+                            }
+                            entry.thread =
+                                thread_palette::ThreadKey{tj.at("chart").get<std::string>(),
+                                                          tj.at("code").get<std::string>()};
+                        }
+                        colorway.entries.push_back(std::move(entry));
+                    }
+                    project.colorways.push_back(std::move(colorway));
+                }
+            }
+            const int active = cw.value("active", -1);
+            project.active_colorway =
+                (active >= 0 && static_cast<std::size_t>(active) < project.colorways.size())
+                    ? active
+                    : -1;
+        }
+        if (j.contains("fabric")) {
+            const auto& fj = j.at("fabric");
+            project.fabric.color = rgb_from_json(fj.at("rgb"));
+            project.fabric.name = fj.value("name", std::string{});
         }
 
         for (const auto& vo : j.at("vectorObjects")) {
