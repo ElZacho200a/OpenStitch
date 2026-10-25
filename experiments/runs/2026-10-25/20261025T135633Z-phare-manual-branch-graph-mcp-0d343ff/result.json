@@ -1,0 +1,180 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261025T135633Z-phare-manual-branch-graph-mcp-0d343ff",
+  "timestamp_utc": "2026-10-25T13:56:33Z",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "verified_this_run": true
+  },
+  "main_commit": "b7d497bf3c2b525df04811490bea8e5d2e08a1fc",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "tool_count": 29
+  },
+  "subproject": {
+    "crop_px": [
+      888,
+      65,
+      1010,
+      466
+    ],
+    "size_mm": [
+      29.388,
+      96.595
+    ],
+    "canvas_mm": [
+      50,
+      120
+    ],
+    "not_full_scene": true
+  },
+  "preparations": {
+    "applied": [
+      "graph_trunk",
+      "graph_branches",
+      "graph_organic",
+      "graph_gallery",
+      "graph_context",
+      "graph_foam_sparse"
+    ],
+    "method": "source-guided semi-manual branch graph with a main trunk and 8 individual bifurcating branches, no horizontal foam zones; source color clipping and negative spaces, organic glass, 3D gallery carriers, shaft/cloud occlusion fix, open SVG running paths; no AI",
+    "gate_A": "FAILED after initial and two repair gates: foam too tree-like, glazing schematic, gallery overly geometric",
+    "imports": "DIAGNOSTIC ONLY",
+    "not_imported": [
+      "graph_trunk",
+      "graph_organic"
+    ]
+  },
+  "variants": [
+    {
+      "name": "graph_branches",
+      "objects": 97,
+      "points": 4209,
+      "trims": 114,
+      "jumps": 160,
+      "color_changes": 26,
+      "warnings": 6,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "missing_crop_percent": 37,
+      "lost_detail_crop_percent": 1.737,
+      "wrong_colour_crop_percent": 6.578,
+      "real_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "graph_gallery",
+      "objects": 80,
+      "points": 4044,
+      "trims": 92,
+      "jumps": 127,
+      "color_changes": 25,
+      "warnings": 4,
+      "errors": 0,
+      "hotspot_mm2": 2,
+      "missing_crop_percent": 30.782,
+      "lost_detail_crop_percent": 2.794,
+      "wrong_colour_crop_percent": 8.209,
+      "real_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "graph_context",
+      "objects": 80,
+      "points": 4052,
+      "trims": 93,
+      "jumps": 127,
+      "color_changes": 25,
+      "warnings": 5,
+      "errors": 0,
+      "hotspot_mm2": 2,
+      "missing_crop_percent": 30.89,
+      "lost_detail_crop_percent": 2.819,
+      "wrong_colour_crop_percent": 8.213,
+      "real_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "graph_foam_sparse",
+      "objects": 79,
+      "points": 4015,
+      "trims": 90,
+      "jumps": 124,
+      "color_changes": 25,
+      "warnings": 4,
+      "errors": 0,
+      "hotspot_mm2": 2,
+      "missing_crop_percent": 30.729,
+      "lost_detail_crop_percent": 2.896,
+      "wrong_colour_crop_percent": 8.231,
+      "real_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "artistic_verdict": "REJECTED"
+    }
+  ],
+  "retouches": {
+    "baseline": "graph_gallery",
+    "satin_compare": "3 strategies on foam carriers, 4 windows, 3 gallery bands; foam requires decomposition; six applied/rendered trials rejected",
+    "directional": "tatami vs directional on shaft dry_run/apply/real render rejected",
+    "semantic_replace": "ivory glass dry_run/apply/real render rejected",
+    "set_params": "gallery row spacing dry_run/apply/real render rejected",
+    "restored_osp_byte_identical": true
+  },
+  "mcp_executed": [
+    "digitize_guide",
+    "project_operations",
+    "semantic_validate",
+    "project_new",
+    "semantic_import dry_run/apply",
+    "project_apply import_svg dry_run/apply",
+    "project_apply set_source_image",
+    "project_apply set_finishing bridge12",
+    "project_checkpoint",
+    "semantic_map",
+    "project_inspect",
+    "project_report",
+    "project_check",
+    "project_density",
+    "project_fabric_risk",
+    "project_fidelity",
+    "project_render real PNG",
+    "project_save OSP",
+    "project_export DST",
+    "project_satin_compare skeleton/parallel_sweep/medial_axis",
+    "project_apply auto_satin dry_run/apply",
+    "project_apply directional_guides dry_run/apply",
+    "semantic_replace dry_run/apply",
+    "project_apply set_params dry_run/apply",
+    "project_restore"
+  ],
+  "quality": {
+    "gate_A": "FAILED",
+    "artistic_verdict": "REJECTED",
+    "machine_tested": false,
+    "independent_rating": false,
+    "warnings_cause": "short stitches under 0.1mm; per-object coordinates in private archive",
+    "fidelity_scope": "crop includes intentionally unstitched context, not comparable to full scene"
+  },
+  "private_archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-25/phare-graphe-branches-mcp-1505-private.zip",
+    "library_file_id": "libfile_01fda53ab578819197f427735d26089a",
+    "size_bytes": 24309023,
+    "sha256": "40d4483a0f8f6856effc075f4ed63c9e3145b909aefb8403058c723464a66f09",
+    "rematerialized_sha_verified": true,
+    "zip_integrity_verified": true
+  },
+  "github_pixels_private": true,
+  "next_hypothesis": "Stop treating foam as a tree of even-width branches. Reconstruct 1-2 irregular continuous foam masses preserving source holes and only salient filaments as open running or admissible narrow satin, then redesign perspective gallery, dome and glass from source; strict visual gate A before diagnostic MCP imports; no global integration until artistic acceptance."
+}
