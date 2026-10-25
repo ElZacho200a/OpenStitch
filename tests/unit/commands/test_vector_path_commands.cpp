@@ -243,3 +243,25 @@ TEST_CASE("brush stroke command is one exact undo step and refuses crossings",
     CHECK(make_brush_stroke_command(project, a, {geometry::apply_brush_dab(before.front(), huge)})
               .command == nullptr);
 }
+
+TEST_CASE("translate edge command is one exact undo step", "[commands][reshape]") {
+    document::Project project;
+    const ObjectId a = addObject(project, square(10'000));
+    const auto before = project.findObject(a)->paths;
+    auto result = make_translate_edge_command(project, a, 0, 0, 0,
+                                              Vec2um{Micrometers{0}, Micrometers{-2'000}});
+    REQUIRE(result.command != nullptr);
+    CHECK(project.findObject(a)->paths == before);
+    UndoStack stack;
+    stack.execute(std::move(result.command), project);
+    const auto& nodes = project.findObject(a)->paths.front().outer.nodes;
+    CHECK(nodes[0].pos.y.value == before.front().outer.nodes[0].pos.y.value - 2'000);
+    CHECK(nodes[1].pos.y.value == before.front().outer.nodes[1].pos.y.value - 2'000);
+    CHECK(nodes[2].pos == before.front().outer.nodes[2].pos);
+    REQUIRE(stack.undo(project));
+    CHECK(project.findObject(a)->paths == before);
+    CHECK_FALSE(stack.canUndo());
+    CHECK(make_translate_edge_command(project, a, 0, 0, 0, Vec2um{}).command == nullptr);
+    CHECK(make_translate_edge_command(project, a, 0, 0, 9, Vec2um{Micrometers{1}, Micrometers{1}})
+              .command == nullptr);
+}

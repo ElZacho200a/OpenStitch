@@ -591,6 +591,7 @@ des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
 - Dépend de : HP-THR-001 ; skill `openstitch-stitch-param` pour le champ persistant.
 
 ### HP-THR-005 — Film couleur / barre des couleurs du design [P0] — ◐ Partiel (2026-10-10)
+- Livré (2026-10-25) : masquage d'un fil depuis le film (`SetThreadVisibleCommand`, un pas d'annulation), onglet « Visibilité » du panneau Fils, `stitch_analysis::thread_visibility`. Reste : vignettes de motif par bloc.
 - Livré : onglets *Projet* (fils utilisés, ordre de première couture, pastille, marque,
   référence, objets, points, longueur, durée estimée) et *Film couleur* (blocs dans
   l'ordre de couture) du panneau **Fils** (`apps/desktop/thread_panel.*`) ; sélection
@@ -705,6 +706,7 @@ prénumérisées et la conversion des polices TrueType.
 - Dépend de : HP-TXT-001.
 
 ### HP-TXT-003 — Conversion de polices TrueType/OpenType [P0] — ◐ Partiel (2026-10-10)
+- Livré (2026-10-25) : lecteur GPOS maison (`kern`, PairPos formats 1 et 2) avec repli sur la table `kern`. Reste : HarfBuzz/GSUB (dépendance et licence à valider).
 - Fait : FreeType (FTL) encapsulé dans `libs/lettering`, contours → `PathSet` µm, crénage `kern`,
   catalogue des polices installées côté desktop. Reste : HarfBuzz (GPOS, ligatures).
 - Hatch : convertit n'importe quelle police installée.
@@ -717,6 +719,7 @@ prénumérisées et la conversion des polices TrueType.
 - Dépend de : HP-TXT-001.
 
 ### HP-TXT-004 — Lettrage satin automatique par lettre [P0] — ◐ Partiel (2026-10-10)
+- Livré (2026-10-25) : ordre interne des morceaux d'une lettre (plus proche voisin, déterministe). Reste : SVG dorés, connecteurs explicites entre morceaux.
 - Fait : auto-satin par squelette par morceau de glyphe, repli tatami (trait large, squelette
   insuffisant : 4, 6, 9, R en Vera) ou contour, alphabet complet 100 % cousu sans débordement
   (test). Reste : SVG dorés, ordre/connecteurs internes à la lettre.
@@ -1180,6 +1183,7 @@ Hatch applique automatiquement des règles de métier (« stitch processing ») 
 l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 
 ### HP-ENG-001 — Compensation d'étirement du tatami [P0] — ◐ Partiel (2026-10-10)
+- Livré (2026-10-25) : `DirectionalFillParams::pull_compensation` (0-3 mm, bouts de rangée prolongés), repris à la conversion depuis le tatami, `.osp`, inspecteur. Reste : pièce-test physique (HP-PHYS-001), table par tissu (HP-ENG-001.a).
 - Livré (tatami) : `TatamiParams::pull_compensation` (0–3 mm, défaut 0, réglage manuel :
   le modèle n'a pas de notion de tissu), rangées allongées dans l'axe du fil, test
   géométrique exact (dépassement = `pull` au µm près), inspecteur, `.osp`, annulable.
@@ -1224,6 +1228,7 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   HP-PHYS-001 (broderie réelle, mesures consignées dans la doc).
 
 ### HP-ENG-002 — Sous-couche automatique selon la forme [P0] — ◐ Partiel (2026-10-06)
+- Livré (2026-10-25) : sous-couche zigzag (rangées à 45°) pour tatami et directionnel, activée en mode Auto à partir de 400 mm², objets créés à la main en Auto. Reste : vrai zigzag de type satin.
 - Livré 2026-10-10 : `UnderlayMode::Auto` (défaut Manual) pour tatami, directionnel, satin
   et auto-satin, seuils documentés (`moteur-de-points.md` §10) et testés, réglable et
   désactivable dans l'inspecteur. Reste : Auto n'est pas encore le défaut des objets créés
@@ -1281,6 +1286,7 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 - Modules : `apps/desktop`.
 
 ### HP-ENG-008 — Longueurs min/max appliquées à tous les générateurs [P0] — ◐ Partiel
+- Livré (2026-10-25) : passe commune `enforce_length_bounds` (`length_bounds.cpp`) appelée par `finish.cpp`, rapport étendu. Reste : découpage des longs désactivé par défaut, invariant sur tout le corpus non mesuré.
 - Livré 2026-10-10 : `split_long_stitches`/`max_stitch_length` dans les finitions
   (découpage de tout point cousu trop long, tous types, testé : aucun point > max),
   options d'analyse alignées sur le projet, avertissements pré-export
@@ -1299,6 +1305,7 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   mieux (mesure : régularité de la direction des fils).
 
 ### HP-ENG-010 — Entrée et sortie automatiques au plus proche [P0] — ◐ Partiel
+- Livré (2026-10-25) : extrémités d'entrée/sortie et sens dans `libs/optimization` (`plan_order`), départ de contour fermé au sommet le plus proche (`join.cpp`). Reste : aucun appelant ne fournit encore les extrémités réelles des objets.
 - Livré 2026-10-10 : choix automatique du sens de couture de chaque objet
   (`auto_join` global + `join` par objet, `orient_chunk`), entrée des satins depuis la
   fin de l'objet précédent ; scène de référence : sauts 116,0 → 102,6 mm
@@ -1375,6 +1382,7 @@ vecteurs → satin/tatami), classification **expérimentale**, segmentation IA
 SAM via un worker **WSL**. ~18 s sur l'image de référence.
 
 ### HP-AUTO-001 — Qualité de l'auto-numérisation comparable à Hatch [P0] — ◐ Partiel
+- Livré (2026-10-25) : mesure `measure_auto_quality` (satin vs tatami). Reste : corpus 10-20 images, comparaison à Hatch, métriques de points/coupes/sauts, boucle d'amélioration mesurée.
 - État OpenStitch : le mode Contours (2026-10-05) apporte des métriques internes
   (`ContourMetrics`) et une QA adversariale, mais aucun corpus de référence ni comparaison à Hatch.
 - À faire : jeu de référence (10–20 images variées : logo, dessin au trait,
@@ -1394,7 +1402,8 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
   automatiquement (nombre de couleurs estimé, fond détecté), en tâche de fond
   avec progression (HP-PERF-001).
 
-### HP-AUTO-003 — Clic-pour-broder / baguette magique [P0] — ☐ À faire
+### HP-AUTO-003 — Clic-pour-broder / baguette magique [P0] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : `grow_region` (CIELAB, déterministe), `make_click_to_stitch_command` (un pas d'annulation), outil Maj+W avec tolérance, type et aperçu au survol. Reste : multi-clic / Maj+clic, lissage en courbes.
 - Hatch : Click-to-Stitch : un clic sur une zone de couleur de l'image crée
   l'objet (remplissage, satin ou contour).
 - À faire : outil : clic → région par croissance (tolérance réglable) → vecteur
@@ -1469,6 +1478,7 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
 - À faire : lissage des bords en escalier ; étendre le niveau de détail au mode « Formes ».
 
 ### HP-AUTO-009 — Choix du type satin / tatami fiable [P0] — ◐ Partiel
+- Livré (2026-10-25) : `measure_band_shape` factorisé et `measure_auto_quality`. Aucune nouvelle heuristique (rien mesuré meilleur).
 - État OpenStitch : moteur topologique par défaut, refus → tatami ; étiqueté
   expérimental. Le mode Contours a des garde-fous de largeur satin et un repli documenté,
   mais aucune métrique satin/tatami n'est enregistrée.
@@ -1544,6 +1554,7 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
 - Modules : `libs/geometry`, `libs/commands`, `apps/desktop`.
 
 ### HP-VEC-002 — Tracé ouvert (ligne, polyligne, courbe ouverte) [P0] — ◐ Partiel (2026-10-13, en PR)
+- Livré (2026-10-25) : outil « Ligne » (Maj+L), Entrée termine sans fermer. Reste : courbe ouverte distincte, test du chemin `createBorderSatin`.
 - Livré (second lot du 2026-10-13, en PR) : option **Tracé ouvert** (U) de la palette : le polygone devient une ligne brisée ouverte (2 points suffisent) et la courbe de Bézier une courbe ouverte (`geometry::Path::closed = false`). Un contour cousu dessus ne revient pas au départ (test `openPathOptionLeavesPolygonAndBezierOpen`).
 - Reste : satin de bordure sur un chemin ouvert non vérifié dans l'interface (`border_satin.cpp` le prévoit) ; pas d'outil « ligne » distinct (c'est une option).
 - État OpenStitch : `geometry::Path::closed` existe et le mode Contours produit des
@@ -1647,6 +1658,7 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
 Besoin (retour utilisateur) : le moteur d'auto-numérisation est bon ; ce qui coûte du temps est la retouche artistique d'un contour (silhouette, courbure, zone locale) nœud par nœud. Audit du 2026-10-19 : l'existant est `MoveNodeCommand`, `SetNodeHandleCommand`, `SetNodeTypeCommand`, `RemoveNodeCommand` (un nœud ou une poignée à la fois, `NodeHandleItem` dans `apps/desktop/node_handle.hpp`), plus `smooth_path` (HP-VEC-007), `convert_to_curves` (HP-VEC-008) et l'insertion de nœud par De Casteljau (HP-VEC-001, géométrie seulement). **Rien** n'agit sur un segment, une sélection de nœuds ou une zone ; les entrées 007/008 sont globales (toute la forme), pas un remodelage local. Les points de broderie sont dérivés (`effective_sequence`) : toute modification de `VectorObject::paths` les régénère, aucun changement de modèle ni de format `.osp` n'est nécessaire (les tangentes sont déjà persistées). Principe commun : une commande `RewriteVectorPathsCommand` (instantané avant/après de l'objet entier) par GESTE, aperçu calculé par une fonction pure de `libs/geometry`, Échap = aucun effet sur le document, refus des croisements que la forme d'origine n'avait pas.
 
 ### HP-VEC-016 — Déplacement direct d'un segment de contour [P0] — ◐ Partiel (2026-10-19)
+- Livré (2026-10-25) : Alt+glisser translate l'arête (`TranslateEdgeCommand`, aperçu, refus des croisements, un pas d'annulation). Reste : Alt tenu dès l'appui non vérifié.
 - Livré (2026-10-21, PR) : curseur précis au survol d'un segment remodelable, retour au curseur déplacement dans l'intérieur et à la sortie du contour ; test QTest sans mutation.
 - État OpenStitch : voir ci-dessus ; un appui sur le contour d'une forme sélectionnée déplaçait la forme entière.
 - Choix d'algorithme (arbitrage structurant) : la poignée de Bézier est préférée à une déformation locale contrainte (qui ajoute des nœuds et dégrade les courbes à l'usage répété). Le point saisi (paramètre `t` de la cubique, borné à [0,15 ; 0,85]) suit le curseur ; seules les poignées des DEUX nœuds du segment bougent, pondérées par la base de Bernstein. Nœuds d'extrémité et nombre de nœuds inchangés ; nœud Lisse : la poignée opposée pivote (longueur conservée) ; nœud Coin : angle conservé ; un segment droit devient une cubique. Limite connue : sur un contour très dense en micro-segments, tirer un seul segment est peu utile (c'est le rôle du pinceau, HP-VEC-018).
@@ -1710,6 +1722,7 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
 - Reste : poignées sur le canevas et entrée dans la palette d'outils ; intégration à la bibliothèque HP-LIB-002.
 
 ### HP-OBJ-001 — Sélection multiple [P0] — ◐ Partiel (2026-10-13)
+- Livré (2026-10-25) : cadre commun en tirets de la sélection multiple (sans zone de contact). Reste : poignées de redimensionnement (HP-OBJ-005), classe `selection_model`.
 - Constaté sur `main` (`1ab521a` et suivants) : Ctrl/Maj+clic, rectangle de sélection (fenêtre ou croisement), sélection multi-lignes depuis la liste Document, inspecteur de groupe ; tests `rectangleLeftToRightIsWindow…`, `shiftRectangleAddsToTheSelection`, `documentListMultiSelectionDrivesRegionSelection`. Les critères d'acceptation sont remplis.
 - Livré (PR #27, fusionnée le 2026-10-13 (`296ff34`)) : **Sélectionner tous les objets** (Ctrl+Maj+A ; Ctrl+A reste aux régions) et **Sélectionner les objets de même couleur** (`main_window_objects.cpp`).
 - Reste : boîte englobante commune avec poignées (avec HP-OBJ-005) ; modèle de sélection encore dans `MainWindow` (pas de classe `selection_model`).
@@ -1743,6 +1756,7 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
 - Modules : `apps/desktop`, `libs/commands` (fusion de commandes consécutives).
 
 ### HP-OBJ-004 — Rotation libre d'objets [P0] — ◐ Partiel (2026-10-13, en PR)
+- Livré (2026-10-25) : poignée de rotation pour une ou plusieurs formes, pivot déplaçable (Ctrl+Maj+glisser, double-clic pour revenir au centre), aperçu, Maj = 15°. Reste : saisie numérique du pivot.
 - Livré (second lot du 2026-10-13, en PR) : **poignée de rotation sur le canevas** (au-dessus de la forme sélectionnée, glisser = pivoter autour du centre, Maj = pas de 15°, une commande au relâchement). Reste révisé : pivot déplaçable, poignée pour une sélection multiple, aperçu pendant le glisser.
 - Livré (PR #27, fusionnée le 2026-10-13 (`296ff34`)) : `commands::make_transform_command` + `AffineTransform::rotation` (`libs/commands/transform_ops.*`) : contours, angle du tatami, guides et ruptures directionnels, dégradé, rails/barreaux/entrée-sortie des satins, guides d'auto-satin ; annulation exacte par instantané. Menu Édition ▸ Transformer : pivoter de 90° à gauche/droite (Ctrl+[ / Ctrl+]), pivoter d'un angle. Acceptation vérifiée par test : tatami 30° tourné de 45° → 75° ; 360° et quatre quarts de tour = géométrie identique.
 - Reste : poignées de rotation sur le canevas, Maj = pas de 15°, pivot déplaçable ; les retouches manuelles de points ne tournent pas.
@@ -1765,6 +1779,7 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
 - Dépend de : HP-OBJ-001.
 
 ### HP-OBJ-006 — Miroir horizontal / vertical [P0] — ◐ Partiel (2026-10-13)
+- Livré (2026-10-25) : le miroir échange rails A/B, barreaux et compensations gauche/droite d'un satin. Reste : retouches manuelles de points.
 - Livré (PR #27, fusionnée le 2026-10-13 (`296ff34`)) : miroir horizontal / vertical de la sélection autour de son centre (`AffineTransform::mirror`, même commande que la rotation), paramètres dépendants retournés (angles, guides, rails). Test `transform: mirror flips shape, row angle, guides and satin rails`.
 - Reste : les rails A/B d'un satin ne sont pas échangés (le sens de couture de la colonne est donc inversé).
 - À faire : `MirrorObjectsCommand` sur la sélection (axe = centre de la
@@ -1842,6 +1857,7 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
 - À faire : F2 / double-clic dans la liste.
 
 ### HP-OBJ-018 — Changer la couleur d'un objet de broderie [P0] — ◐ Partiel (2026-10-13, en PR)
+- Constaté (2026-10-25) : pastille d'inspecteur, couleur libre sur la sélection multiple et annulation présentes et testées.
 - Livré (second lot du 2026-10-13, en PR) : **pastille de couleur dans l'inspecteur** (`button_embroideryColor`), qui ouvre le sélecteur de couleur libre pour toute la sélection et suit les changements (annulation comprise). Le nuancier reste dans le panneau Fils. Il ne reste que la fusion sur `main`.
 - Livré (PR #27, fusionnée le 2026-10-13 (`296ff34`)) : Édition ▸ **Couleur de la broderie…** (`QColorDialog`, RGB libre, sélection multiple, un pas d'annulation, fil de nuancier retiré).
 - Reste (révisé) : la pastille dans l'inspecteur.
@@ -2003,7 +2019,8 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
 ### HP-SEQ-002 — Ordre par glisser-déposer [P1] — ☐ À faire
 - Voir HP-OBJ-011 ; dans le film couleur (HP-THR-005) aussi.
 
-### HP-SEQ-003 — Séquencer par couleur depuis le film couleur [P0] — ☐ À faire
+### HP-SEQ-003 — Séquencer par couleur depuis le film couleur [P0] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : `stitch_analysis::sequence_by_color` (ordre de fils optionnel, objets verrouillés respectés), bouton « Séquencer par couleur ». Reste : dialogue pour l'ordre explicite des fils.
 - Voir HP-THR-005.
 
 ### HP-SEQ-004 — Fusion de plusieurs objets en un seul parcours (branching) [P2] — ☐ À faire
@@ -2214,6 +2231,7 @@ sauts en pointillés, pastilles de pénétration masquées au-delà de 4 000 poi
 calques image/régions/vecteurs/broderie, filtres d'affichage, thème clair/sombre.
 
 ### HP-VIEW-001 — Rendu réaliste des points [P0] — ◐ Partiel (2026-10-13)
+- Livré (2026-10-25) : rendu au-delà de 30 000 brins hors du fil d'interface, banc `--realistic-synthetic`. Reste : mesure Release du critère 100 000 points < 100 ms.
 - Constaté sur `main` (`0a4c140` et suivants) : lib `stitch_render` (fils, ombrage, tissu) et vue réaliste du desktop (Affichage ▸ Rendu réaliste, Ctrl+Maj+R, réglages).
 - Reste : vérifier le critère « 100 000 points en < 100 ms après modification » dans `bench_main_window.cpp` (non mesuré lors de cette revue).
 - Hatch : TrueView : chaque point dessiné comme un fil (épaisseur réelle
@@ -2357,6 +2375,7 @@ fil), analyse par règles (points courts/longs, sauts longs, trop de points,
 hors cadre, déplacement sans coupe), résumé avant export DST.
 
 ### HP-PROD-001 — Fiche de production imprimable [P0] — ◐ Partiel
+- Livré (2026-10-25) : `production_to_pdf` sans Qt et `openstitch-cli production --output x.pdf --client`. Reste : références de fil par bloc (HP-THR-004).
 - Livré (2026-10-21, PR) : champ Client distinct des notes dans le dialogue, HTML/PDF et JSON (clé additive), avec tests Catch2/QTest.
 - Hatch : Production worksheet : aperçu du design, dimensions, nombre de
   points, temps estimé, cadre, **liste des fils dans l'ordre** (marque, code,
@@ -2807,7 +2826,8 @@ les paramètres avant de créer) et par des **modes** distincts (édition satin,
   grouper, aligner, transformer, convertir, propriétés — cohérent avec la
   barre de menus.
 
-### HP-UX-006 — Progression et annulation des opérations longues [P0] — ☐ À faire
+### HP-UX-006 — Progression et annulation des opérations longues [P0] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : barre de progression déterminée et bouton Annuler dans `BusyIndicator`, branchés sur l'aperçu du fondu. Reste : migration des autres opérations longues.
 - Voir HP-PERF-001 : barre de progression, bouton Annuler, UI jamais figée.
 
 ### HP-UX-007 — Préférences générales [P1] — ☐ À faire
@@ -3272,7 +3292,8 @@ fichier `.ts`. Hatch est disponible en une dizaine de langues.
 - Acceptation : en anglais, aucun message d'analyse ni d'erreur du cœur n'apparaît en français
   (test sur un projet qui déclenche chaque règle) ; le cœur reste sans Qt.
 
-### HP-I18N-002 — Anglais complet [P0] — ☐ À faire
+### HP-I18N-002 — Anglais complet [P0] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : catalogue anglais complet (`openstitch_en.ts`, aucune entrée non finie) et test de complétude. Reste : relecture humaine de la terminologie, collisions de mnémoniques.
 - Dépend de : HP-I18N-001.
 - Acceptation : aucune chaîne française visible en anglais (test qui charge la
   traduction et vérifie l'absence de chaînes non traduites).
@@ -3299,6 +3320,7 @@ de référence. Restent : progression et annulation, régénération de toute la
 à chaque modification (~40 ms), scène reconstruite à chaque rafraîchissement.
 
 ### HP-PERF-001 — Tâches en arrière-plan avec progression et annulation [P0] — ◐ Partiel (2026-10-13)
+- Livré (2026-10-25) : `core::TaskContext` (jeton d'annulation + progression), `generate_sequence`/`effective_sequence` annulables. Reste : segmentation, auto-numérisation, analyses.
 - Constaté sur `main` (`b810cf0`) : `BusyIndicator::run` exécute segmentation et auto-numérisation dans un fil de travail pendant que l'interface continue de peindre.
 - Reste : progression réelle, annulation (`std::stop_token`), instantané du projet et résultat appliqué par commande de façon générale ; test « un événement traité pendant une auto-numérisation ».
 - À faire : infrastructure de tâches (thread de travail, instantané immuable
@@ -3312,6 +3334,7 @@ de référence. Restent : progression et annulation, régénération de toute la
   inchangé (même résultat en tâche de fond qu'en synchrone).
 
 ### HP-PERF-002 — Régénération incrémentale par objet [P0] — ◐ Partiel (2026-10-18)
+- Constaté (2026-10-25) : rien de nouveau (fond de `tentabrode` toujours régénéré entièrement, satins routés à analyser).
 - À faire : cache de la séquence générée par objet, clé = empreinte (paramètres
   + géométrie source + contexte de routage) ; modifier un objet ne régénère
   que lui et ses liaisons ; `effective_sequence` assemble les tranches.
@@ -3655,3 +3678,4 @@ ci-dessus doit les respecter :
 | 2026-10-21 | Implémentation UX (ChatGPT, PR HP-UX-049) | Menu des espaces de travail (4 profils), visibilité de docks, restauration non destructive QSettings, test Qt ; statut ◐ jusqu'à validation CI et essais petit écran. |
 | 2026-10-21 | Implémentation UX (ChatGPT, PR HP-UX-046) | Palette de commandes Qt branchée au menu Édition avec Ctrl+K, recherche et exécution de QAction existantes, test QTest ; état ◐ jusqu'à validation CI et couverture complète des raisons/alias. |
 | 2026-10-24 | Claude (multi-agents) | HP-STI-001 (point tige/arrière/bean exposés), HP-STI-003 (blanket/zigzag) et HP-STI-007 (remplissage concentrique) passent ◐ : cœur, `.osp`, inspecteur et tests livrés ; restes listés dans chaque entrée. |
+| 2026-10-25 | Claude (multi-agents, P0) | Lot P0 : douze agents en parallèle ; HP-AUTO-003, HP-SEQ-003, HP-UX-006 et HP-I18N-002 passent de ☐ à ◐ ; livrés partiels sur THR-005, TXT-003/004, ENG-001/002/008/010, AUTO-001/009, VEC-002/016, OBJ-001/004/006/018, VIEW-001, PROD-001, PERF-001 (voir chaque entrée). Non traités faute d'humain ou de données : THR-002 (données de nuanciers sourcées), FMT-002..005, DIST-001, PHYS-001. Corrections d'intégration : pivot de rotation sans zone de contact au centre, `project_ops` (nouveaux champs), dernier point jamais fusionné. Tableau de bord non recalculé. |

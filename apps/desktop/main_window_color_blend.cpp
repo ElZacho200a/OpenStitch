@@ -206,9 +206,13 @@ void MainWindow::createColorBlend(ObjectId baseId, std::optional<ObjectId> secon
         const auto rgbTop = top.rgb;
         snapshot.embroidery_objects = {std::move(base), std::move(top)};
         BusyIndicator busy(&dialog, tr("Calcul de l'aperçu des points…"),
-                           {autosaveTimer_, simTimer_, analysisTimer_});
-        const auto sequence =
-            busy.run([&] { return stitch_generation::effective_sequence(snapshot); });
+                           {autosaveTimer_, simTimer_, analysisTimer_}, true);
+        const auto sequence = busy.run([&](const TaskContext& task) {
+            return stitch_generation::effective_sequence(snapshot, task);
+        });
+        if (!sequence && sequence.error().category == ErrorCategory::Cancelled) {
+            return; // annulé par l'utilisateur : l'aperçu précédent reste affiché
+        }
         if (!sequence) {
             dialog.setPreviewMessage(QString::fromStdString(sequence.error().message));
             return;

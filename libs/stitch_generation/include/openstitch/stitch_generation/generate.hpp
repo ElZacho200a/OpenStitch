@@ -4,6 +4,7 @@
 #include <cstddef>
 
 #include "openstitch/core/error.hpp"
+#include "openstitch/core/task_control.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/stitch/sequence.hpp"
 
@@ -14,6 +15,11 @@ namespace openstitch::stitch_generation {
 // entre deux objets de couleurs différentes, End à la fin.
 // Fonction pure : recalculable à tout moment depuis le document (ADR-014).
 [[nodiscard]] Result<stitch::StitchSequence> generate_sequence(const document::Project& project);
+// Variante annulable avec progression (HP-PERF-001) : même séquence octet pour octet quand elle
+// n'est pas annulée ; une annulation renvoie `ErrorCategory::Cancelled` sans rien produire.
+// La progression compte les unités de génération terminées (appelée depuis les fils de travail).
+[[nodiscard]] Result<stitch::StitchSequence> generate_sequence(const document::Project& project,
+                                                               const TaskContext& task);
 
 // Cache de régénération par objet (HP-PERF-002) : les objets droits, tatami et directionnels
 // sont mémorisés avec une clé exacte (identifiant, paramètres, géométrie source). Modifier un

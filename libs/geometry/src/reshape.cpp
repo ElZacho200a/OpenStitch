@@ -258,4 +258,37 @@ std::optional<PathSet> reshape_path_set_segment(const PathSet& set, std::size_t 
     return out;
 }
 
+Path translate_segment(const Path& path, std::size_t segment, Vec2um delta) {
+    const std::size_t n = path.nodes.size();
+    if (n < 2 || segment >= (path.closed ? n : n - 1) || delta == Vec2um{}) {
+        return path;
+    }
+    Path out = path;
+    for (const std::size_t i : {segment, (segment + 1) % n}) {
+        out.nodes[i].pos = Vec2um{Micrometers{out.nodes[i].pos.x.value + delta.x.value},
+                                  Micrometers{out.nodes[i].pos.y.value + delta.y.value}};
+    }
+    return out;
+}
+
+std::optional<PathSet> translate_path_set_segment(const PathSet& set, std::size_t path_index,
+                                                  std::size_t segment, Vec2um delta,
+                                                  Micrometers tolerance) {
+    if (path_index > set.holes.size()) {
+        return std::nullopt;
+    }
+    const Path& source = path_index == 0 ? set.outer : set.holes[path_index - 1];
+    const std::size_t n = source.nodes.size();
+    if (n < 2 || segment >= (source.closed ? n : n - 1)) {
+        return std::nullopt;
+    }
+    PathSet out = set;
+    (path_index == 0 ? out.outer : out.holes[path_index - 1]) =
+        translate_segment(source, segment, delta);
+    if (path_set_has_crossings(out, tolerance) && !path_set_has_crossings(set, tolerance)) {
+        return std::nullopt;
+    }
+    return out;
+}
+
 } // namespace openstitch::geometry

@@ -78,6 +78,7 @@ private slots:
     void autoSatinStateRefreshUpdatesListWithoutRebuildingTheForm();
     void tatamiEditChangesOnlyTheTouchedFieldWithoutRounding();
     void engineSettingsEmitDedicatedEdits();
+    void directionalPullAndZigzagUnderlayAreEditable();
     void borderSatinInspectorEmitsRegenerationRequests();
     void rowSpacingAndLengthsAreBoundedWithRangeTooltips();
     void wheelDoesNotChangeAnUnfocusedField();
@@ -548,6 +549,52 @@ void PropertiesPanelTest::engineSettingsEmitDedicatedEdits() {
     panel.setConnectorMode(e.id, openstitch::document::ConnectorMode::AlwaysTrim);
     QCOMPARE(connectorMode, -1);
     QCOMPARE(connector->currentIndex(), 1);
+}
+
+// HP-ENG-001 / HP-ENG-002 : tirage du directionnel et sous-couche en zigzag dans l'inspecteur.
+void PropertiesPanelTest::directionalPullAndZigzagUnderlayAreEditable() {
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{41};
+    e.params = openstitch::document::DirectionalFillParams{};
+    panel.showEmbroidery(e);
+    std::optional<StitchParams> emitted;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams p, QString) { emitted = p; });
+
+    auto* pull = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_directionalPull"));
+    QVERIFY(pull != nullptr);
+    QCOMPARE(pull->maximum(), 3.0);
+    pull->setValue(0.3);
+    QVERIFY(emitted.has_value());
+    QCOMPARE(
+        std::get<openstitch::document::DirectionalFillParams>(*emitted).pull_compensation.value,
+        300);
+
+    auto* zig = panel.findChild<QCheckBox*>(QStringLiteral("check_directionalUnderlayZigzag"));
+    QVERIFY(zig != nullptr);
+    QVERIFY(!zig->isChecked());
+    zig->setChecked(true);
+    QVERIFY(std::get<openstitch::document::DirectionalFillParams>(*emitted).underlay_zigzag);
+    // Mode automatique : le zigzag manuel est ignore, donc grise.
+    auto* mode = panel.findChild<QComboBox*>(QStringLiteral("combo_underlayMode"));
+    QVERIFY(mode != nullptr);
+    mode->setCurrentIndex(1);
+    QVERIFY(!zig->isEnabled());
+
+    PropertiesPanel tatamiPanel;
+    EmbroideryObject t;
+    t.id = openstitch::ObjectId{42};
+    t.params = openstitch::document::TatamiParams{};
+    tatamiPanel.showEmbroidery(t);
+    std::optional<StitchParams> tatamiEmitted;
+    QObject::connect(&tatamiPanel, &PropertiesPanel::paramsEdited, &tatamiPanel,
+                     [&](openstitch::ObjectId, StitchParams p, QString) { tatamiEmitted = p; });
+    auto* tzig = tatamiPanel.findChild<QCheckBox*>(QStringLiteral("check_underlayZigzag"));
+    QVERIFY(tzig != nullptr);
+    tzig->setChecked(true);
+    QVERIFY(tatamiEmitted.has_value());
+    QVERIFY(std::get<openstitch::document::TatamiParams>(*tatamiEmitted).underlay_zigzag);
 }
 
 void PropertiesPanelTest::borderSatinInspectorEmitsRegenerationRequests() {

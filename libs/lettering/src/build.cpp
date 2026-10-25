@@ -38,6 +38,74 @@ bool is_tiny_blob(const geometry::PathSet& set) {
            hi <= 2.0 * lo;
 }
 
+struct PieceCenter {
+    double x;
+    double y;
+};
+
+PieceCenter piece_center(const geometry::PathSet& set) {
+    std::int32_t x0 = INT32_MAX, y0 = INT32_MAX, x1 = INT32_MIN, y1 = INT32_MIN;
+    for (const auto& n : set.outer.nodes) {
+        x0 = std::min(x0, n.pos.x.value);
+        x1 = std::max(x1, n.pos.x.value);
+        y0 = std::min(y0, n.pos.y.value);
+        y1 = std::max(y1, n.pos.y.value);
+    }
+    if (set.outer.nodes.empty()) {
+        return {0.0, 0.0};
+    }
+    return {(static_cast<double>(x0) + x1) / 2.0, (static_cast<double>(y0) + y1) / 2.0};
+}
+
+// Ordre de couture des morceaux d'une même lettre (HP-TXT-004) : on part du morceau
+// le plus à gauche (puis le plus bas) et on enchaîne toujours le plus proche non cousu,
+// pour que les sauts internes à la lettre restent les plus courts. Égalités départagées
+// par l'index d'origine : sortie déterministe.
+void order_pieces(std::vector<geometry::PathSet>& pieces) {
+    const std::size_t n = pieces.size();
+    if (n < 3) {
+        return; // 1 ou 2 morceaux : l'ordre de la police est déjà le bon
+    }
+    std::vector<PieceCenter> centers;
+    centers.reserve(n);
+    for (const auto& p : pieces) {
+        centers.push_back(piece_center(p));
+    }
+    std::vector<bool> used(n, false);
+    std::size_t current = 0;
+    for (std::size_t i = 1; i < n; ++i) {
+        if (centers[i].x < centers[current].x ||
+            (centers[i].x == centers[current].x && centers[i].y < centers[current].y)) {
+            current = i;
+        }
+    }
+    std::vector<geometry::PathSet> ordered;
+    ordered.reserve(n);
+    for (std::size_t step = 0; step < n; ++step) {
+        used[current] = true;
+        ordered.push_back(std::move(pieces[current]));
+        std::size_t next = n;
+        double best = 0.0;
+        for (std::size_t j = 0; j < n; ++j) {
+            if (used[j]) {
+                continue;
+            }
+            const double dx = centers[j].x - centers[current].x;
+            const double dy = centers[j].y - centers[current].y;
+            const double d = dx * dx + dy * dy;
+            if (next == n || d < best) {
+                next = j;
+                best = d;
+            }
+        }
+        if (next == n) {
+            break;
+        }
+        current = next;
+    }
+    pieces = std::move(ordered);
+}
+
 std::string mm_fr(double um) {
     char buf[32];
     std::snprintf(buf, sizeof buf, "%.1f", um / 1000.0);
@@ -205,6 +273,7 @@ Result<TextBuild> build_text_objects(const Font& font, const document::TextObjec
             if (groups[k].empty()) {
                 continue;
             }
+            order_pieces(groups[k]);
             const double stroke = mean_stroke_width_um(groups[k]);
             document::VectorObject vector;
             vector.id = ids.next();

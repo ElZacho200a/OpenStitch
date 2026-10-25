@@ -21,6 +21,7 @@
 #include <cmath>
 #include <unordered_map>
 
+#include "busy_indicator.hpp"
 #include "canvas_view.hpp"
 #include "main_window.hpp"
 #include "openstitch/stitch_render/raster.hpp"
@@ -46,6 +47,10 @@ constexpr double kPpmHigh = 1.35;
 // Plafond de mémoire de l'image (pixels) selon la qualité.
 constexpr std::size_t kMaxPixelsHigh = 12'000'000;
 constexpr std::size_t kMaxPixelsFast = 6'000'000;
+
+// Au-delà de ce nombre de brins, le calcul est fait hors du fil d'interface
+// (BusyIndicator::run) : en dessous, il tient dans un battement d'image.
+constexpr std::size_t kAsyncSegmentThreshold = 30'000;
 
 std::uint64_t combine(std::uint64_t a, std::uint64_t b) {
     return (a ^ (b + 0x9e3779b97f4a7c15ULL + (a << 6) + (a >> 2))) * 1099511628211ULL;
@@ -202,8 +207,15 @@ bool MainWindow::renderRealisticStitches() {
         if (rasterView.width <= 0) {
             return true;
         }
-        const stitch_render::RasterImage image =
-            stitch_render::render_threads(segments, params, rasterView);
+        stitch_render::RasterImage image;
+        if (segments.size() > kAsyncSegmentThreshold) {
+            BusyIndicator busy(this, tr("Rendu réaliste des points…"), {autosaveTimer_, simTimer_});
+            image = busy.run([&segments, &params, &rasterView] {
+                return stitch_render::render_threads(segments, params, rasterView);
+            });
+        } else {
+            image = stitch_render::render_threads(segments, params, rasterView);
+        }
         const QImage qimage(image.rgba.data(), image.width, image.height, image.width * 4,
                             QImage::Format_RGBA8888_Premultiplied);
         realistic_.pixmap = QPixmap::fromImage(qimage); // copie : `image` est locale

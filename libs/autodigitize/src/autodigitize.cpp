@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/autodigitize/autodigitize.hpp"
+#include "openstitch/autodigitize/quality_metrics.hpp"
 #include "openstitch/core/parallel.hpp"
 
 #include <algorithm>
@@ -95,33 +96,13 @@ SatinChoice choose_satin(const geometry::PathSet& region, const AutoOptions& opt
     if (region.holes.size() > 1) {
         return {}; // plusieurs trous : cas non couvert par le satin squelette
     }
-    auto_satin::SkeletonSatinParameters params;
-    const auto analysis = auto_satin::analyze_region(region, params.analysis);
-    if (!analysis) {
+    // Mesure partagée avec `measure_auto_quality` (le choix et sa métrique ne divergent pas).
+    const auto shape = measure_band_shape(region, options);
+    if (!shape) {
         return {};
     }
-    const auto& r = analysis->report;
-    // Le rapport de satinabilité ignore les trous dans le périmètre et n'a pas
-    // d'axe pour un anneau (squelette sans arête) : on mesure ici la bande
-    // elle-même. Une bande a deux bords de longueur ~L, d'où L = périmètre
-    // total / 2 ; W = diamètre inscrit maximal ; largeur moyenne = aire / L.
-    double perimeterUm = 0.0;
-    const auto addPerimeter = [&perimeterUm](const geometry::Path& path) {
-        for (std::size_t i = 0; i < path.nodes.size(); ++i) {
-            perimeterUm +=
-                length_um(path.nodes[(i + 1) % path.nodes.size()].pos - path.nodes[i].pos);
-        }
-    };
-    addPerimeter(region.outer);
-    for (const auto& hole : region.holes) {
-        addPerimeter(hole);
-    }
-    const double lengthUm = perimeterUm / 2.0;
-    const double widthUm = r.maximum_width_mm * 1000.0;
-    const double meanWidthUm = lengthUm > 0.0 ? r.area_mm2 * 1e6 / lengthUm : 0.0;
-    const double minWidth = static_cast<double>(params.analysis.thresholds.min_satin_width.value);
-    const double maxWidth = static_cast<double>(options.satin_max_width.value);
-    const double minElongation = params.analysis.thresholds.min_elongation;
+    const double widthUm = shape->max_width_um;
+    const double minWidth = shape->min_satin_width_um;
 
     const auto covered = [&](bool compact) {
         auto_satin::SkeletonSatinParameters p;
@@ -133,8 +114,7 @@ SatinChoice choose_satin(const geometry::PathSet& region, const AutoOptions& opt
                generated->diagnostics.coverage_ratio >= options.satin_min_coverage;
     };
 
-    const bool bandLike =
-        meanWidthUm >= minWidth && widthUm <= maxWidth && lengthUm >= minElongation * widthUm;
+    const bool bandLike = shape->band_like;
     if (bandLike && covered(false)) {
         return {true, false};
     }

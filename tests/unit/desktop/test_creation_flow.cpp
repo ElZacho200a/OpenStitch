@@ -109,6 +109,7 @@ private slots:
     // HP-UX-038
     void mixedSpacingIsIndeterminateAndAngleEditKeepsEachSpacing();
     void mixedCheckboxAndComboAreIndeterminate();
+    void newlyCreatedFillsGetTheAutomaticUnderlay();
     void mixedTypeGroupHasIndeterminateLiveFields();
 
     // HP-PERF-009
@@ -503,6 +504,21 @@ void CreationFlowTest::mixedSpacingIsIndeterminateAndAngleEditKeepsEachSpacing()
     QCOMPARE(std::get<doc::TatamiParams>(window.project_.findEmbroidery(fx.embB)->params)
                  .row_spacing.value,
              400);
+}
+
+// HP-ENG-002 : un objet cree a la main recoit la sous-couche automatique ; les parametres
+// charges depuis un projet (defaut du modele) restent en Manual.
+void CreationFlowTest::newlyCreatedFillsGetTheAutomaticUnderlay() {
+    doc::TatamiParams tatami;
+    doc::DirectionalFillParams directional;
+    doc::AutoSatinParams autoSatin;
+    QCOMPARE(tatami.underlay_mode, doc::UnderlayMode::Manual);
+    ui_memory::creation::apply(tatami);
+    ui_memory::creation::apply(directional);
+    ui_memory::creation::apply(autoSatin);
+    QCOMPARE(tatami.underlay_mode, doc::UnderlayMode::Auto);
+    QCOMPARE(directional.underlay_mode, doc::UnderlayMode::Auto);
+    QCOMPARE(autoSatin.underlay_mode, doc::UnderlayMode::Auto);
 }
 
 void CreationFlowTest::mixedCheckboxAndComboAreIndeterminate() {

@@ -3,9 +3,14 @@
 // chargement du `.qm` embarqué et repli sur le français (langue source). Réglages redirigés vers
 // un dossier temporaire : jamais le vrai fichier de l'utilisateur.
 
+#include <QFile>
+#include <QFileInfo>
 #include <QLocale>
+#include <QRegularExpression>
 #include <QSettings>
+#include <QStringList>
 #include <QTemporaryDir>
+#include <QXmlStreamReader>
 #include <QtTest>
 
 #include "app_language.hpp"
@@ -89,6 +94,91 @@ private slots:
 
     void unknownLanguageLoadsNothingWithoutError() {
         QVERIFY(!installTranslators(QStringLiteral("xx")));
+    }
+
+    // HP-I18N-002 : le catalogue anglais source (`.ts`) est complet. Aucune entrée « unfinished »,
+    // aucune traduction vide, et aucune chaîne accentuée du français recopiée telle quelle.
+    void englishCatalogIsComplete() {
+        const QString path = QFileInfo(QStringLiteral(__FILE__)).absolutePath() +
+                             QStringLiteral("/../../../apps/desktop/i18n/openstitch_en.ts");
+        QFile file(path);
+        QVERIFY2(file.open(QIODevice::ReadOnly), qPrintable(path));
+        QXmlStreamReader xml(&file);
+        int messages = 0;
+        QStringList problems;
+        QString source;
+        QString context;
+        bool inName = false;
+        bool inSource = false;
+        bool inTranslation = false;
+        bool unfinished = false;
+        QStringList forms;
+        QString current;
+        bool inForm = false;
+        bool numerus = false;
+        while (!xml.atEnd()) {
+            xml.readNext();
+            if (xml.isStartElement()) {
+                const QStringView n = xml.name();
+                if (n == u"name")
+                    inName = true;
+                else if (n == u"message") {
+                    numerus = xml.attributes().value(QStringLiteral("numerus")) == u"yes";
+                    forms.clear();
+                    source.clear();
+                } else if (n == u"source")
+                    inSource = true;
+                else if (n == u"translation") {
+                    inTranslation = true;
+                    unfinished = xml.attributes().value(QStringLiteral("type")) == u"unfinished";
+                    current.clear();
+                } else if (n == u"numerusform") {
+                    inForm = true;
+                    current.clear();
+                }
+            } else if (xml.isCharacters()) {
+                if (inName)
+                    context = xml.text().toString();
+                else if (inSource)
+                    source += xml.text();
+                else if (inForm || (inTranslation && !numerus))
+                    current += xml.text();
+            } else if (xml.isEndElement()) {
+                const QStringView n = xml.name();
+                if (n == u"name")
+                    inName = false;
+                else if (n == u"source")
+                    inSource = false;
+                else if (n == u"numerusform") {
+                    forms << current;
+                    inForm = false;
+                } else if (n == u"translation") {
+                    inTranslation = false;
+                    if (!numerus)
+                        forms << current;
+                    ++messages;
+                    if (unfinished)
+                        problems << QStringLiteral("unfinished: ") + context +
+                                        QStringLiteral(" / ") + source;
+                    static const QRegularExpression accent(QStringLiteral("[éèàùçêîôûœ«»]"));
+                    for (const QString& form : forms) {
+                        if (form.isEmpty() && !source.isEmpty())
+                            problems << QStringLiteral("empty: ") + source;
+                        else if (QString(form).remove(QStringLiteral("Bézier")).contains(accent))
+                            problems << QStringLiteral("french: ") + form;
+                    }
+                }
+            }
+        }
+        QVERIFY2(!xml.hasError(), qPrintable(xml.errorString()));
+        QVERIFY(messages > 2000);
+        QVERIFY2(problems.isEmpty(), qPrintable(problems.mid(0, 20).join(QLatin1Char('\n'))));
+    }
+
+    void englishCatalogTranslatesMainWindowStrings() {
+        QVERIFY(installTranslators(QStringLiteral("en")));
+        QCOMPARE(QCoreApplication::translate("openstitch::desktop::MainWindow", "&Fichier"),
+                 QStringLiteral("&File"));
     }
 
     void dialogReflectsAndReturnsLanguagePreference() {

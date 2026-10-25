@@ -130,6 +130,31 @@ reorder_threads(const document::Project& project, const std::vector<ColorFilmBlo
 [[nodiscard]] std::vector<ObjectId>
 merge_same_thread_blocks(const document::Project& project, const std::vector<ColorFilmBlock>& film);
 
+// Séquencer par couleur (HP-SEQ-003) : regroupe tous les objets d'un même fil en un seul bloc
+// et range les fils selon `thread_order` (identités listées d'abord, dans cet ordre ; les fils
+// non listés suivent dans l'ordre de première apparition du film ; les identités absentes du
+// film sont ignorées). Avec `thread_order` vide, équivaut à `merge_same_thread_blocks`. Même
+// règles de verrouillage que `reorder_film_blocks` ; l'appelant avertit que l'empilement des
+// couches change.
+[[nodiscard]] std::vector<ObjectId>
+sequence_by_color(const document::Project& project, const std::vector<ColorFilmBlock>& film,
+                  const std::vector<ThreadIdentity>& thread_order = {});
+
+// Visibilité des fils (HP-THR-005, masquage depuis le film). Contrairement au film, calculée
+// sur TOUS les objets de broderie du document, y compris les objets masqués (absents de la
+// séquence effective) : un fil entièrement masqué reste donc listé et peut être réaffiché.
+struct ThreadVisibility {
+    ThreadIdentity identity;
+    std::vector<ObjectId> objects; // tous les objets de ce fil, ordre du document
+    std::size_t hidden{0};         // dont masqués
+
+    [[nodiscard]] bool fully_hidden() const { return !objects.empty() && hidden == objects.size(); }
+    [[nodiscard]] bool partly_hidden() const { return hidden > 0 && hidden < objects.size(); }
+};
+
+// Fils du document dans l'ordre de première apparition des objets. Déterministe.
+[[nodiscard]] std::vector<ThreadVisibility> thread_visibility(const document::Project& project);
+
 // Nombre de changements de fil qu'impose un film (blocs - 1, plancher 0).
 [[nodiscard]] std::size_t color_change_count(const std::vector<ColorFilmBlock>& film);
 

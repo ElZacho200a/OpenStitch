@@ -2,6 +2,7 @@
 #include "openstitch/stitch_generation/generate.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <memory>
 #include <variant>
@@ -829,6 +830,11 @@ bool is_routable_satin(const document::EmbroideryObject& o) {
 } // namespace
 
 Result<stitch::StitchSequence> generate_sequence(const document::Project& project) {
+    return generate_sequence(project, TaskContext{});
+}
+
+Result<stitch::StitchSequence> generate_sequence(const document::Project& project,
+                                                 const TaskContext& task) {
     // S2a (AD-04) : un design importé est une donnée SOURCE, jamais
     // régénérée par objet -- restituée telle quelle, avant toute
     // construction depuis `embroidery_objects` (vide pour un projet
@@ -930,8 +936,19 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
         }
     }
     std::vector<stitch::StitchSequence> chunks(units.size());
+    std::atomic<std::size_t> unitsDone{0};
+    const std::size_t unitsTotal = units.size();
     parallel_for(parallelUnits.size(), [&](std::size_t k) {
+        if (task.cancelled()) {
+            return; // annulation coopérative : le résultat partiel est écarté après la phase
+        }
         const std::size_t u = parallelUnits[k];
+        struct Progress {
+            const TaskContext& task;
+            std::atomic<std::size_t>& done;
+            std::size_t total;
+            ~Progress() { task.report(done.fetch_add(1) + 1, total); }
+        } const progress{task, unitsDone, unitsTotal};
         const Unit& unit = units[u];
         const document::EmbroideryObject& object = objects[unit.first];
         if (unit.kind == Kind::AutoSatin) {
@@ -979,9 +996,16 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                           std::make_shared<const stitch::StitchSequence>(chunk));
     });
 
+    if (task.cancelled()) {
+        return cancelled_error();
+    }
+
     // Phase 3 -- assemblage séquentiel, dans l'ordre de couture.
     const document::EmbroideryObject* previous = nullptr;
     for (std::size_t u = 0; u < units.size(); ++u) {
+        if (task.cancelled()) {
+            return cancelled_error();
+        }
         const Unit& unit = units[u];
         const document::EmbroideryObject& object = objects[unit.first];
         if (previous != nullptr && previous->rgb != object.rgb && !sequence.commands.empty()) {
@@ -991,6 +1015,9 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
 
         // Routage (§13) : un groupe **contigu** de colonnes satin auto de même
         // couleur et même source est ordonné/orienté ensemble, liaisons cachées.
+        if (unit.kind == Kind::Sequential) {
+            task.report(unitsDone.fetch_add(1) + 1, unitsTotal);
+        }
         if (is_routable_satin(object)) {
             std::vector<const document::EmbroideryObject*> group;
             for (std::size_t j = unit.first; j < unit.first + unit.count; ++j) {

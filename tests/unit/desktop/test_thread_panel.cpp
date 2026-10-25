@@ -360,6 +360,33 @@ private slots:
         QApplication::processEvents();
         QCOMPARE(usage->count(), 2);
     }
+
+    void hidingAThreadFromTheVisibilityTabKeepsItListedAndIsOneUndoStep() {
+        MainWindow window;
+        window.show();
+        window.applyLoadedProject(twoTrianglesProject());
+        auto* dock = window.findChild<QDockWidget*>("threadDock");
+        auto* panel = window.findChild<ThreadPanel*>();
+        dock->show();
+        QApplication::processEvents();
+        auto* usage = panel->findChild<QListWidget*>("threadUsageList");
+        auto* visibility = panel->findChild<QListWidget*>("threadVisibilityList");
+        QVERIFY(visibility != nullptr);
+        QCOMPARE(usage->count(), 2);
+        QCOMPARE(visibility->count(), 2);
+        QCOMPARE(visibility->item(0)->checkState(), Qt::Checked);
+
+        visibility->item(0)->setCheckState(Qt::Unchecked); // masque le rouge
+        QApplication::processEvents();
+        QCOMPARE(usage->count(), 1);      // sorti de la sequence et du film
+        QCOMPARE(visibility->count(), 2); // mais toujours liste pour etre reaffiche
+        QCOMPARE(visibility->item(0)->checkState(), Qt::Unchecked);
+
+        window.findChild<QAction*>("action_undo")->trigger(); // un seul pas d'annulation
+        QApplication::processEvents();
+        QCOMPARE(usage->count(), 2);
+        QCOMPARE(visibility->item(0)->checkState(), Qt::Checked);
+    }
 };
 
 } // namespace openstitch::desktop

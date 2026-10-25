@@ -45,6 +45,7 @@ class QGraphicsPathItem;
 class QGraphicsPixmapItem;
 class QGraphicsEllipseItem;
 class QGraphicsRectItem;
+class QGraphicsPolygonItem;
 class QLabel;
 class QToolButton;
 class QAction;
@@ -621,7 +622,19 @@ private:
     void runTransform(const std::vector<ObjectId>& ids, const commands::AffineTransform& transform,
                       const QString& label, const QString& done);
     void rotateSelection(double degrees); // positif : anti-horaire
-    void rotateObjects(const std::vector<ObjectId>& ids, double degrees);
+    // `pivot` absent : centre de la boîte des objets. Une seule commande annulable.
+    void rotateObjects(const std::vector<ObjectId>& ids, double degrees,
+                       std::optional<Vec2um> pivot = std::nullopt);
+    // Poignée de rotation + pivot déplaçable de la sélection (main_window_rotation.cpp).
+    void addRotationHandles();
+    [[nodiscard]] Vec2um rotationPivotFor(const std::vector<ObjectId>& ids,
+                                          const commands::BoundsUm& box) const;
+    void showRotationPreview(const commands::BoundsUm& box, Vec2um pivot, double degrees);
+    void hideRotationPreview();
+    std::optional<Vec2um> rotationPivot_; // pivot choisi, valable pour rotationPivotTargets_
+    std::vector<ObjectId> rotationPivotTargets_;
+    QGraphicsPolygonItem* rotationPreview_{nullptr};
+    QGraphicsRectItem* commonBox_{nullptr}; // cadre commun d'une sélection multiple
     // Angle (degrés, positif = anti-horaire) d'un glisser de la poignée de rotation : de
     // `handleScene` à `releasedScene` autour de `centerScene` (repère scène, Y vers le bas).
     // `snap` (Maj) arrondit au multiple de 15° ; un mouvement négligeable donne 0.
@@ -1322,6 +1335,28 @@ private:
     void syncBucketTool(Tool tool);
     void bucketFillAt(QPointF posMm);
     QAction* toolBucketAct_{nullptr};
+    // Clic-pour-broder (HP-AUTO-003, main_window_click_to_stitch.cpp) : le calcul est dans
+    // segmentation::grow_region et commands::make_click_to_stitch_command ; ici le câblage
+    // (outil, barre de réglages, aperçu, clic -> commande annulable).
+    void buildClickToStitchTool();
+    void attachClickToStitchTool();
+    void syncClickToStitchTool(Tool tool);
+    void clickToStitchAt(QPointF sceneMm);
+    void updateClickToStitchPreview(QPointF sceneMm);
+    void hideClickToStitchPreview();
+    void setClickToStitchTolerance(int tolerance);
+    void setClickToStitchKind(int kindIndex);
+    QAction* toolClickToStitchAct_{nullptr};
+    QToolBar* clickToStitchBar_{nullptr};
+    QSlider* clickToStitchToleranceSlider_{nullptr};
+    QSpinBox* clickToStitchToleranceSpin_{nullptr};
+    QComboBox* clickToStitchKindCombo_{nullptr};
+    QGraphicsPixmapItem* clickToStitchPreviewItem_{nullptr};
+    QTimer* clickToStitchPreviewTimer_{nullptr};
+    std::optional<QPointF> clickToStitchHoverMm_;
+    int clickToStitchTolerance_{12}; // ΔE76 maximal à la couleur cliquée
+    int clickToStitchKind_{0};       // index de commands::ClickToStitchKind
+    std::size_t clickToStitchPreviewPixels_{0};
     QAction* toolBrushAct_{nullptr};
     QAction* brushSettingsAct_{nullptr};
     QGraphicsEllipseItem* brushRing_{nullptr};

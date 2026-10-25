@@ -1,5 +1,6 @@
 add_executable(test_lettering
     test_font.cpp
+    test_gpos.cpp
     test_layout.cpp
     test_unicode.cpp
     test_build.cpp

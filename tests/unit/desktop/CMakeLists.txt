@@ -38,6 +38,7 @@ function(openstitch_add_qt_test name)
 endfunction()
 
 openstitch_add_qt_test(test_canvas_view test_canvas_view.cpp)
+openstitch_add_qt_test(test_busy_indicator test_busy_indicator.cpp)
 openstitch_add_qt_test(test_node_handle test_node_handle.cpp)
 openstitch_add_qt_test(test_segment_reshape test_segment_reshape.cpp)
 openstitch_add_qt_test(test_node_selection test_node_selection.cpp)
@@ -95,6 +96,7 @@ openstitch_add_qt_test(test_vector_tools test_vector_tools.cpp)
 openstitch_add_qt_test(test_measure_tool test_measure_tool.cpp)
 openstitch_add_qt_test(test_eyedropper_tool test_eyedropper_tool.cpp)
 openstitch_add_qt_test(test_bucket_tool test_bucket_tool.cpp)
+openstitch_add_qt_test(test_click_to_stitch_tool test_click_to_stitch_tool.cpp)
 # [cablage-C:fin]
 # [cablage-D:debut]
 openstitch_add_qt_test(test_thread_stock_ui test_thread_stock_ui.cpp)
@@ -103,3 +105,5 @@ openstitch_add_qt_test(test_text_typography_ui test_text_typography_ui.cpp)
 # [cablage-E:debut]
 openstitch_add_qt_test(test_density_map_ui test_density_map_ui.cpp)
 # [cablage-E:fin]
+# HP-OBJ-001/004 : cadre commun, rotation de plusieurs formes, pivot.
+openstitch_add_qt_test(test_object_manipulation test_object_manipulation.cpp)

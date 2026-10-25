@@ -459,6 +459,7 @@ MainWindow::MainWindow() {
     buildEyedropperTool();
     buildBrushTool();
     buildBucketTool();
+    buildClickToStitchTool();
     // [cablage-C:fin]
     // [cablage-D:debut]
     // [cablage-D:fin]
@@ -532,7 +533,8 @@ MainWindow::MainWindow() {
     buildSimulationToolbar();
     // Une barre masquée doit pouvoir se rouvrir depuis un menu, comme les panneaux.
     panelsMenu_->insertSeparator(resetLayoutAct);
-    for (auto* bar : {mainToolbar_, contextToolbar_, toolPalette_, simToolbar_, threadStripBar_}) {
+    for (auto* bar : {mainToolbar_, contextToolbar_, toolPalette_, simToolbar_, threadStripBar_,
+                      clickToStitchBar_}) {
         panelsMenu_->insertAction(resetLayoutAct, bar->toggleViewAction());
     }
 
@@ -3293,6 +3295,8 @@ void MainWindow::renderBase(const image::Image& img) {
     guideHighlight_ = nullptr;
     snapIndicator_ = nullptr;
     resizePreview_ = nullptr;
+    rotationPreview_ = nullptr;
+    commonBox_ = nullptr;
     reshapePreview_ = nullptr;
     brushRing_ = nullptr;
     nodeHandles_.clear();
@@ -3742,48 +3746,13 @@ void MainWindow::renderBase(const image::Image& img) {
                         scene_->addItem(handle);
                         baseItems_.append(handle);
                     }
-                    // Poignée de rotation (HP-OBJ-004) : au-dessus du milieu du bord haut, à
-                    // distance fixe à l'écran. Glisser fait tourner la forme autour du centre de
-                    // sa boîte ; l'angle est validé au relâchement (une commande annulable).
-                    const Vec2um centerUm{
-                        Micrometers{static_cast<std::int32_t>(
-                            (static_cast<std::int64_t>(minX->value) + maxX->value) / 2)},
-                        Micrometers{static_cast<std::int32_t>(
-                            (static_cast<std::int64_t>(minY->value) + maxY->value) / 2)}};
-                    const QPointF centerScene = modelToSceneMm(centerUm);
-                    const double offsetMm = 26.0 / std::max(view_->pixelsPerMm(), 0.01);
-                    const QPointF handleScene(
-                        centerScene.x(), modelToSceneMm(Vec2um{centerUm.x, *maxY}).y() - offsetMm);
-                    auto* rotation = new ResizeHandleItem(
-                        handleScene,
-                        [this, objectId, centerScene, handleScene,
-                         generation](QPointF releasedSceneMm) {
-                            const double degrees = rotationDragDegrees(
-                                centerScene, handleScene, releasedSceneMm,
-                                (QGuiApplication::keyboardModifiers() & Qt::ShiftModifier) != 0);
-                            // Différé : refreshImage() détruirait cet item pendant son évènement.
-                            QTimer::singleShot(0, this, [this, objectId, degrees, generation] {
-                                if (generation != documentGeneration_) {
-                                    return;
-                                }
-                                if (degrees == 0.0) {
-                                    refreshImage(); // remet la poignée à sa place
-                                    return;
-                                }
-                                rotateObjects({objectId}, degrees);
-                            });
-                        },
-                        QPointF(), /*hasAnchor=*/false, Qt::CrossCursor);
-                    rotation->setBrush(QBrush(AppTheme::instance().tokens().canvasSelectionLine));
-                    rotation->setToolTip(tr("Glisser pour faire pivoter la forme autour de son "
-                                            "centre — Maj : pas de 15°, Échap : annuler"));
-                    rotation->setCancelled([] {});
-                    scene_->addItem(rotation);
-                    baseItems_.append(rotation);
                 }
             }
         }
     }
+
+    // Poignée de rotation + pivot de la sélection (une ou plusieurs formes), HP-OBJ-004.
+    addRotationHandles();
 
     // Poignée de rotation du remplissage tatami sélectionné : un axe montrant
     // l'orientation des fils, avec un bouton à faire glisser. Le nouvel angle est
@@ -6980,6 +6949,17 @@ void MainWindow::buildToolPalette() {
                                            "seront fermés."),
                                  6000);
     });
+    // Outil « Ligne » (HP-VEC-002) : raccourci vers le polygone en mode tracé ouvert (clics,
+    // Entrée ou double-clic pour terminer sans fermer).
+    auto* lineToolAct = toolPalette_->addAction(icons::openPath(), tr("Ligne"));
+    lineToolAct->setObjectName(QStringLiteral("action_lineTool"));
+    lineToolAct->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_L));
+    lineToolAct->setToolTip(tr("Ligne (Maj+L)\nClics successifs, Entrée pour terminer SANS fermer "
+                               "(ligne ou polyligne ouverte). Active le tracé ouvert."));
+    connect(lineToolAct, &QAction::triggered, this, [this] {
+        openPathAct_->setChecked(true);
+        setTool(Tool::DrawPolygon);
+    });
     toolDrawFreeformAct_ = addTool(icons::freeform(), tr("Dessiner à main levée (lasso)"),
                                    Tool::DrawFreeform, QKeySequence(Qt::Key_L));
     toolDrawSatinColumnAct_ =
@@ -6994,6 +6974,7 @@ void MainWindow::buildToolPalette() {
     attachMeasureEyedropperTools();
     attachBrushTool();
     attachBucketTool();
+    attachClickToStitchTool();
     toolSelectAct_->setChecked(true);
 
     toolPalette_->addSeparator();
@@ -7261,6 +7242,7 @@ void MainWindow::setTool(Tool tool) {
     syncMeasureEyedropperTool(tool);
     syncBrushTool(tool);
     syncBucketTool(tool);
+    syncClickToStitchTool(tool);
     updateDrawActionsState();
     updateInteractionContext();
     hideHoverHighlight();
@@ -9677,6 +9659,10 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
     }
     if (currentTool_ == Tool::Bucket) {
         bucketFillAt(posMm);
+        return;
+    }
+    if (currentTool_ == Tool::ClickToStitch) {
+        clickToStitchAt(posMm);
         return;
     }
     if (drawingDirectionGuide()) {

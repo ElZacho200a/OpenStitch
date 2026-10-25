@@ -118,6 +118,33 @@ VectorOpResult make_reshape_segment_command(const document::Project& project, Ob
     return result;
 }
 
+VectorOpResult make_translate_edge_command(const document::Project& project, ObjectId id,
+                                           std::size_t set_index, std::size_t path_index,
+                                           std::size_t segment, Vec2um delta) {
+    VectorOpResult result;
+    const auto* object = project.findObject(id);
+    if (object == nullptr || set_index >= object->paths.size()) {
+        result.error = "Objet ou morceau introuvable.";
+        return result;
+    }
+    auto moved = geometry::translate_path_set_segment(object->paths[set_index], path_index, segment,
+                                                      delta, Micrometers{50});
+    if (!moved) {
+        result.error = "Déplacement refusé : segment introuvable ou contour qui se croiserait.";
+        return result;
+    }
+    if (*moved == object->paths[set_index]) {
+        result.error = "Rien à déplacer : la forme ne change pas.";
+        return result;
+    }
+    std::vector<geometry::PathSet> after = object->paths;
+    after[set_index] = std::move(*moved);
+    result.resulting_objects = 1;
+    result.command = std::make_unique<TranslateEdgeCommand>(
+        std::vector<RewriteVectorPathsCommand::Entry>{{id, std::move(after)}});
+    return result;
+}
+
 VectorOpResult make_transform_nodes_command(const document::Project& project, ObjectId id,
                                             std::size_t set_index, std::size_t path_index,
                                             const std::vector<std::size_t>& selected,

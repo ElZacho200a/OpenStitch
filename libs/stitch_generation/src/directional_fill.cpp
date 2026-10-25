@@ -1706,6 +1706,27 @@ void regularize_lines(std::vector<Traced>& lines, const Sector& sector, const Sp
     }
 }
 
+// HP-ENG-001 : compensation du tirage. Prolonge la première et la dernière pénétration de
+// `pull` µm le long de la tangente de bout (corde du premier / dernier point). Borné à 3 mm.
+std::vector<P2> pull_compensated(const std::vector<P2>& pts, std::int32_t pullUm) {
+    std::vector<P2> out = pts;
+    const double pull = static_cast<double>(std::clamp<std::int32_t>(pullUm, 0, 3'000));
+    if (pull <= 0.0 || out.size() < 2) {
+        return out;
+    }
+    const P2 d0 = pts[0] - pts[1];
+    const double n0 = norm(d0);
+    if (n0 > 0.0) {
+        out.front() = pts.front() + d0 * (pull / n0);
+    }
+    const P2 d1 = pts.back() - pts[pts.size() - 2];
+    const double n1 = norm(d1);
+    if (n1 > 0.0) {
+        out.back() = pts.back() + d1 * (pull / n1);
+    }
+    return out;
+}
+
 struct SectorLines {
     std::vector<Traced> traced;
     std::vector<std::vector<P2>> stitched; // lignes retenues (≥ 2 pénétrations)
@@ -1772,7 +1793,7 @@ directional_stitch_lines(const geometry::PathSet& region,
         for (const auto& line : sl.stitched) {
             std::vector<Vec2um> um;
             um.reserve(line.size());
-            for (const P2 p : line) {
+            for (const P2 p : pull_compensated(line, params.pull_compensation.value)) {
                 um.push_back(to_um(p));
             }
             out.push_back(std::move(um));
@@ -2004,6 +2025,9 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
             if (bestReversed) {
                 std::reverse(pts.begin(), pts.end());
             }
+            // Les liaisons se décident sur les pénétrations d'origine (dans la région) ; seule la
+            // position émise des extrémités est prolongée (compensation du tirage).
+            const std::vector<P2> emitted = pull_compensated(pts, params.pull_compensation.value);
             for (std::size_t k = 0; k < pts.size(); ++k) {
                 const P2 rp = pts[k];
                 bool jump = false;
@@ -2030,7 +2054,7 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
                         }
                     }
                 }
-                out.push_back({to_um(rp), jump, false});
+                out.push_back({to_um(emitted[k]), jump, false});
                 cur = rp;
                 hasCur = true;
             }
@@ -2042,7 +2066,7 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
 std::vector<std::vector<Vec2um>>
 directional_underlay(const geometry::PathSet& region,
                      const document::DirectionalFillParams& params) {
-    if (!params.underlay_edge && !params.underlay_parallel) {
+    if (!params.underlay_edge && !params.underlay_parallel && !params.underlay_zigzag) {
         return {};
     }
     document::TatamiParams tp;
@@ -2054,9 +2078,10 @@ directional_underlay(const geometry::PathSet& region,
     tp.underlay_parallel = params.underlay_parallel;
     tp.underlay_inset = params.underlay_inset;
     tp.underlay_spacing = params.underlay_spacing;
+    tp.underlay_zigzag = params.underlay_zigzag;
     // Direction MOYENNE du champ (moyenne des vecteurs doublés sur une grille
     // intérieure) : `tatami_underlay` pose ses rangées à +90° de cet angle.
-    if (params.underlay_parallel) {
+    if (params.underlay_parallel || params.underlay_zigzag) {
         const auto sectors = build_sectors(region, params);
         P2 acc{0.0, 0.0};
         const double step = std::max(1'000.0, clamp_spacing(params));
@@ -2278,6 +2303,9 @@ document::DirectionalFillParams directional_from_tatami(const document::TatamiPa
     d.underlay_inset = tatami.underlay_inset;
     d.underlay_spacing = tatami.underlay_spacing;
     d.hidden_underpath = tatami.hidden_underpath;
+    d.pull_compensation = tatami.pull_compensation;
+    d.underlay_mode = tatami.underlay_mode;
+    d.underlay_zigzag = tatami.underlay_zigzag;
     d.seed = seed;
 
     std::vector<P2> nodes;

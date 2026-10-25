@@ -126,7 +126,7 @@ options pour un texte qui porte un crénage manuel.
 ## Limites connues
 
 - Texte sur ligne droite seulement (bases arc/cercle/chemin : HP-TXT-005, enveloppes : 006).
-- Pas de HarfBuzz : crénage `kern` seulement (pas GPOS), pas de façonnage contextuel (arabe,
+- Pas de HarfBuzz : crénage `kern` et GPOS `kern` (paires, formats 1 et 2), pas de façonnage contextuel (arabe,
   écritures indiennes), pas de ligatures de la police autres que f. Les glyphes absents sont
   signalés. Le crénage manuel par paire et les ligatures sont stockés dans `TextObject`
   (`kerning_pairs`, `ligatures`) et saisis dans le dialogue (voir *Crénage manuel et ligatures*) ;
