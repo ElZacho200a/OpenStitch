@@ -201,6 +201,9 @@ signals:
     // Alt + cadre (HP-VEC-017) : sélection de NŒUDS de la forme courante (Maj : ajouter,
     // Ctrl : basculer, sinon remplacer).
     void nodeRectangleMm(QRectF rectMm, openstitch::desktop::SelectMode mode);
+    // HP-EDIT-003 : cadre de sélection de points en mode « Éditer les points »
+    // (Maj : ajouter, Ctrl : basculer, Alt : remplacer).
+    void stitchRectangleMm(QRectF rectMm, openstitch::desktop::SelectMode mode);
     void selectionRectangleMm(QRectF rectMm, openstitch::desktop::SelectMode mode, bool crossing);
     // Clic avec Maj/Ctrl (mode != Replace) ; le clic simple reste canvasClickedMm.
     void selectionClickedMm(QPointF posMm, openstitch::desktop::SelectMode mode);

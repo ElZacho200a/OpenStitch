@@ -1006,6 +1006,20 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
             }
         }
     }
+    // HP-EDIT-003 : « Éditer les points » — Maj (ajouter), Ctrl (basculer) ou Alt (remplacer) +
+    // glisser dans le vide trace un cadre de sélection de points ; sans modificateur, glisser
+    // déplace toujours la vue. Une poignée sous le curseur garde son propre glisser.
+    if (event->button() == Qt::LeftButton && ctx == Context::StitchEdit && !onHandle &&
+        (mods & (Qt::ShiftModifier | Qt::ControlModifier | Qt::AltModifier)) != 0) {
+        selectionPress_ = true;
+        rectActive_ = false;
+        longPressFired_ = false;
+        pressViewportPos_ = viewportPos;
+        pressGlobalPos_ = event->globalPosition().toPoint();
+        pressMods_ = mods;
+        event->accept();
+        return;
+    }
     if (event->button() == Qt::LeftButton && inputModelEnabled_ && selectionRectEnabled_ &&
         ctx == Context::Select && !onHandle) {
         const bool selectionMods =
@@ -1178,6 +1192,14 @@ void CanvasView::mouseReleaseEvent(QMouseEvent* event) {
         if (wasRect) {
             const QRectF rectMm =
                 mapToScene(QRect(pressPos, releasePos).normalized()).boundingRect();
+            if (baseContext_ == Context::StitchEdit) {
+                emit stitchRectangleMm(rectMm, (mods & Qt::ControlModifier) != 0
+                                                   ? SelectMode::Toggle
+                                                   : ((mods & Qt::ShiftModifier) != 0
+                                                          ? SelectMode::Add
+                                                          : SelectMode::Replace));
+                return;
+            }
             if ((mods & Qt::AltModifier) != 0) {
                 emit nodeRectangleMm(rectMm,
                                      (mods & Qt::ControlModifier) != 0

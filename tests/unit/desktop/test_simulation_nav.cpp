@@ -5,6 +5,7 @@
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QLabel>
+#include <QListWidget>
 #include <QSettings>
 #include <QSlider>
 #include <QTemporaryDir>
@@ -12,9 +13,11 @@
 
 #include <vector>
 
+#include "document_panel.hpp"
 #include "main_window.hpp"
 #include "openstitch/document/project.hpp"
 #include "simulation_nav_bar.hpp"
+#include "thread_strip.hpp"
 
 using openstitch::Micrometers;
 using openstitch::ObjectId;
@@ -147,6 +150,35 @@ private slots:
             window.onSimTick();
         }
         QVERIFY(window.simStep_ >= 17 && window.simStep_ <= 19);
+    }
+
+    void currentObjectIsHighlightedInListsAndThreadStrip() {
+        MainWindow window;
+        window.applyLoadedProject(twoObjectProject());
+        QVERIFY(window.sequence_.has_value());
+        window.refreshOrderPanel();
+        const auto& cmds = window.sequence_->commands;
+        int step = 0;
+        while (step < static_cast<int>(cmds.size()) &&
+               cmds[static_cast<std::size_t>(step)].type !=
+                   openstitch::stitch::CommandType::Stitch) {
+            ++step;
+        }
+        window.simSlider_->setValue(step);
+        QVERIFY(window.simHighlightId_.has_value());
+        QCOMPARE(*window.simHighlightId_, cmds[static_cast<std::size_t>(step)].source);
+        int boldRows = 0;
+        for (int i = 0; i < window.orderList_->count(); ++i) {
+            boldRows += window.orderList_->item(i)->font().bold() ? 1 : 0;
+        }
+        QCOMPARE(boldRows, 1);
+        QVERIFY(window.threadStrip_->currentIndex() >= 0);
+        QCOMPARE(window.documentPanel_->playbackObject(), window.simHighlightId_);
+        // Fin de simulation : plus de surbrillance.
+        window.simStep_ = -1;
+        window.updateSimulationInfo(-1);
+        QVERIFY(!window.simHighlightId_.has_value());
+        QCOMPARE(window.threadStrip_->currentIndex(), -1);
     }
 
 private:

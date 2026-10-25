@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <algorithm>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -44,5 +46,46 @@ struct ImportedDesign {
                sequence.commands == other.sequence.commands && color_blocks == other.color_blocks;
     }
 };
+
+// HP-HOOP-006 : translate le design importé pour que le centre de sa boîte englobante (points
+// cousus, sauts et coupes) tombe sur l'origine du cadre. Retourne le décalage appliqué
+// (nul si le design est vide ou déjà centré). Entiers (µm) : le centre est tronqué vers zéro.
+inline Vec2um center_imported_design(ImportedDesign& design) {
+    bool any = false;
+    std::int32_t min_x = 0;
+    std::int32_t max_x = 0;
+    std::int32_t min_y = 0;
+    std::int32_t max_y = 0;
+    for (const auto& c : design.sequence.commands) {
+        if (c.type != stitch::CommandType::Stitch && c.type != stitch::CommandType::Jump &&
+            c.type != stitch::CommandType::Trim) {
+            continue;
+        }
+        if (!any) {
+            min_x = max_x = c.pos.x.value;
+            min_y = max_y = c.pos.y.value;
+            any = true;
+        } else {
+            min_x = std::min(min_x, c.pos.x.value);
+            max_x = std::max(max_x, c.pos.x.value);
+            min_y = std::min(min_y, c.pos.y.value);
+            max_y = std::max(max_y, c.pos.y.value);
+        }
+    }
+    if (!any) {
+        return {};
+    }
+    const std::int32_t dx =
+        -static_cast<std::int32_t>((static_cast<std::int64_t>(min_x) + max_x) / 2);
+    const std::int32_t dy =
+        -static_cast<std::int32_t>((static_cast<std::int64_t>(min_y) + max_y) / 2);
+    if (dx == 0 && dy == 0) {
+        return {};
+    }
+    for (auto& c : design.sequence.commands) {
+        c.pos = Vec2um{Micrometers{c.pos.x.value + dx}, Micrometers{c.pos.y.value + dy}};
+    }
+    return Vec2um{Micrometers{dx}, Micrometers{dy}};
+}
 
 } // namespace openstitch::document

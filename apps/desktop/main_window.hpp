@@ -1586,7 +1586,11 @@ private:
     void addStitchPointHandle(std::size_t baseIndex, Vec2um pos, bool selected, bool deleted);
     void clickStitchPoint(std::size_t index, Qt::KeyboardModifiers mods);
     void restyleStitchPointHandles();
+    void addInsertedPointHandle(std::size_t baseIndex, std::size_t slot, Vec2um pos);
+    void moveInsertedStitchPoint(ObjectId id, std::size_t baseIndex, std::size_t slot, Vec2um to,
+                                 std::uint64_t fingerprint, std::uint32_t pointCount);
     void selectAllStitchPoints();
+    void selectStitchPointsInRect(QRectF rectMm, SelectMode mode);
     void moveStitchPoints(ObjectId targetId, std::size_t anchor, Vec2um from, Vec2um to,
                           std::uint64_t fingerprint, std::uint32_t pointCount);
     bool editSelectedStitchPoints(int action);
@@ -1751,6 +1755,9 @@ private:
     // montre les points que jusqu'à cet index.
     QToolBar* simToolbar_{nullptr};
     QSlider* simSlider_{nullptr};
+    // HP-SIM-003 : objet en cours de couture, surligné dans les listes et le film couleur.
+    std::optional<ObjectId> simHighlightId_;
+    void applySimulationHighlight();
     SimulationNavBar* simNavBar_{nullptr}; // HP-SIM-002/004 : pas à pas, objet, temps
     QLabel* simLabel_{nullptr};
     QLabel* simSwatch_{nullptr};      // pastille de la couleur du fil courant

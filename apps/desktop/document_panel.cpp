@@ -724,6 +724,39 @@ void DocumentPanel::refresh(
     calquePanel_->refresh(project);
     updateAddLayerButton();
     applyFilter();
+    applyPlayback();
+}
+
+void DocumentPanel::setPlaybackObject(std::optional<ObjectId> id) {
+    if (playbackId_ == id) {
+        return;
+    }
+    playbackId_ = id;
+    applyPlayback();
+}
+
+void DocumentPanel::applyPlayback() {
+    const Tokens& t = AppTheme::instance().tokens();
+    const std::function<void(QTreeWidgetItem*)> visit = [&](QTreeWidgetItem* item) {
+        const QVariant idData = item->data(0, Qt::UserRole);
+        const bool current = playbackId_ && idData.isValid() &&
+                             !item->data(0, kVectorIdRole).isValid() &&
+                             idData.toULongLong() == playbackId_->value;
+        QFont f = item->font(0);
+        f.setBold(current);
+        item->setFont(0, f);
+        if (current) {
+            item->setBackground(0, soft_accent(t));
+        } else {
+            item->setData(0, Qt::BackgroundRole, QVariant());
+        }
+        for (int c = 0; c < item->childCount(); ++c) {
+            visit(item->child(c));
+        }
+    };
+    for (int i = 0; i < objectsList_->topLevelItemCount(); ++i) {
+        visit(objectsList_->topLevelItem(i));
+    }
 }
 
 QTreeWidgetItem* DocumentPanel::layerTargetItem() const {
