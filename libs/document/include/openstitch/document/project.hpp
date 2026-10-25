@@ -16,6 +16,7 @@
 #include "openstitch/document/embroidery_object.hpp"
 #include "openstitch/document/finishing.hpp"
 #include "openstitch/document/imported_design.hpp"
+#include "openstitch/document/object_group.hpp"
 #include "openstitch/document/text_object.hpp"
 #include "openstitch/document/vector_object.hpp"
 #include "openstitch/image/image.hpp"
@@ -57,6 +58,10 @@ struct Project {
     // Calque qui reçoit les formes créées (état d'interface, ni annulable ni enregistré) ;
     // invalide = le calque du fond.
     ObjectId active_calque;
+
+    // Groupes d'objets de l'utilisateur (HP-OBJ-009), imbriquables par `ObjectGroup::parent`.
+    // Vide = aucun groupe (documents antérieurs).
+    std::vector<ObjectGroup> groups;
 
     // Coloris multiples (HP-THR-006). `active_colorway` = indice dans `colorways`, -1 = aucun
     // (document sans coloris : comportement historique). Voir `Colorway`.
@@ -151,6 +156,79 @@ struct Project {
                              [&](std::size_t a, std::size_t b) { return rank[a] < rank[b]; });
         }
         return order;
+    }
+
+    // ---- Groupes (HP-OBJ-009) ------------------------------------------------------------------
+    [[nodiscard]] const ObjectGroup* findGroup(ObjectId id) const {
+        if (!id.valid()) {
+            return nullptr;
+        }
+        for (const auto& group : groups) {
+            if (group.id == id) {
+                return &group;
+            }
+        }
+        return nullptr;
+    }
+    // Groupe de premier niveau contenant le groupe `groupId` (lui-même s'il est de premier
+    // niveau) ; invalide si `groupId` est inconnu. Protégé contre un parent cyclique.
+    [[nodiscard]] ObjectId topGroupOfGroup(ObjectId groupId) const {
+        const ObjectGroup* group = findGroup(groupId);
+        ObjectId top{};
+        for (std::size_t guard = 0; group != nullptr && guard <= groups.size(); ++guard) {
+            top = group->id;
+            group = findGroup(group->parent);
+        }
+        return top;
+    }
+    // Groupe de premier niveau contenant la forme `shapeId` ; invalide si elle n'est dans aucun
+    // groupe.
+    [[nodiscard]] ObjectId topGroupOfShape(ObjectId shapeId) const {
+        const VectorObject* shape = findObject(shapeId);
+        return shape != nullptr ? topGroupOfGroup(shape->group) : ObjectId{};
+    }
+    // `groupId` est-il `ancestorId` ou l'un de ses descendants ?
+    [[nodiscard]] bool groupIsWithin(ObjectId groupId, ObjectId ancestorId) const {
+        const ObjectGroup* group = findGroup(groupId);
+        for (std::size_t guard = 0; group != nullptr && guard <= groups.size(); ++guard) {
+            if (group->id == ancestorId) {
+                return true;
+            }
+            group = findGroup(group->parent);
+        }
+        return false;
+    }
+    // Formes appartenant au groupe `groupId` ou à l'un de ses sous-groupes, dans l'ordre du
+    // document (`vector_objects`).
+    [[nodiscard]] std::vector<ObjectId> shapesOfGroup(ObjectId groupId) const {
+        std::vector<ObjectId> out;
+        for (const auto& shape : vector_objects) {
+            if (groupIsWithin(shape.group, groupId)) {
+                out.push_back(shape.id);
+            }
+        }
+        return out;
+    }
+    // Étend `ids` (formes) à toutes les formes de leurs groupes de premier niveau : cliquer une
+    // forme groupée sélectionne le groupe entier. L'ordre de `ids` est conservé, les formes
+    // ajoutées suivent dans l'ordre du document ; sans doublon.
+    [[nodiscard]] std::vector<ObjectId> expandToGroups(const std::vector<ObjectId>& ids) const {
+        std::vector<ObjectId> out;
+        const auto push = [&out](ObjectId id) {
+            if (std::find(out.begin(), out.end(), id) == out.end()) {
+                out.push_back(id);
+            }
+        };
+        for (const ObjectId id : ids) {
+            push(id);
+            const ObjectId top = topGroupOfShape(id);
+            if (top.valid()) {
+                for (const ObjectId member : shapesOfGroup(top)) {
+                    push(member);
+                }
+            }
+        }
+        return out;
     }
 
     [[nodiscard]] VectorObject* findObject(ObjectId id) {

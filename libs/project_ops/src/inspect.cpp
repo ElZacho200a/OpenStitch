@@ -556,9 +556,23 @@ Result<json> build_project_doc(const document::Project& project, const InspectOp
         }
         vj["holes"] = holes;
         vj["nodes"] = nodes;
+        if (v.group.valid()) {
+            vj["group"] = v.group.value; // HP-OBJ-009 : absent hors groupe (sortie inchangée)
+        }
         vectors.push_back(std::move(vj));
     }
     doc["vector_objects"] = vectors;
+    if (!project.groups.empty()) {
+        json groups = json::array();
+        for (const auto& g : project.groups) {
+            groups.push_back(
+                json{{"id", g.id.value},
+                     {"name", g.name},
+                     {"parent", g.parent.valid() ? json(g.parent.value) : json(nullptr)},
+                     {"shapes", json(project.shapesOfGroup(g.id).size())}});
+        }
+        doc["groups"] = groups;
+    }
 
     json texts = json::array();
     for (const auto& t : project.text_objects) {

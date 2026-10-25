@@ -2,6 +2,7 @@ add_executable(test_project_ops
     test_factory_inspect.cpp
     test_operations.cpp
     test_param_ops.cpp
+    test_group_ops.cpp
     test_geometry_ops.cpp
     test_workflow.cpp
     test_params_geometry.cpp

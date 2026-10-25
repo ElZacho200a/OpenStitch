@@ -28,6 +28,8 @@ struct VectorObject {
     // l'objet texte `Project::text_objects[id]` ; il est régénéré quand le texte
     // est édité. Absent = objet vectoriel ordinaire.
     std::optional<ObjectId> text_owner;
+    // Groupe utilisateur (HP-OBJ-009) qui contient cette forme ; invalide ou inconnu = aucun.
+    ObjectId group;
 };
 
 // Adresse d'un nœud dans un objet : morceau, chemin (0 = extérieur,
