@@ -9,6 +9,7 @@
 #include <cmath>
 #include <fstream>
 #include <limits>
+#include <map>
 #include <numbers>
 #include <optional>
 #include <string>
@@ -638,7 +639,34 @@ struct ParseContext {
     // svg_import.hpp).
     std::vector<std::vector<DPath>> shapeGroups;
     std::vector<std::string> warnings;
+    // HP-FMT-014 : éléments portant un `id` (cibles de <use>), et profondeur de <use> en cours
+    // (garde contre les références circulaires).
+    std::map<std::string, pugi::xml_node> ids;
+    int useDepth{0};
 };
+
+void collect_ids(const pugi::xml_node& node, ParseContext& ctx) {
+    for (const auto& child : node.children()) {
+        if (child.type() != pugi::node_element)
+            continue;
+        if (const auto id = child.attribute("id"); id && !ctx.ids.contains(id.value())) {
+            ctx.ids.emplace(id.value(), child);
+        }
+        collect_ids(child, ctx);
+    }
+}
+
+// `style="...;display:none;..."` : même effet que l'attribut `display`.
+bool style_hides(const pugi::xml_node& node) {
+    const auto style = node.attribute("style");
+    if (!style)
+        return false;
+    std::string text = style.value();
+    text.erase(
+        std::remove_if(text.begin(), text.end(), [](unsigned char c) { return std::isspace(c); }),
+        text.end());
+    return text.find("display:none") != std::string::npos;
+}
 
 void warn_unsupported(ParseContext& ctx, const pugi::xml_node& node) {
     const std::string_view name = node.name();
@@ -681,7 +709,38 @@ void walk(const pugi::xml_node& node, const Affine& parentTransform, ParseContex
     // pas non plus un diagnostic -- c'est une intention normale de l'auteur,
     // pas une fonctionnalité manquante).
     if (const auto display = node.attribute("display");
-        display && std::string_view(display.value()) == "none") {
+        (display && std::string_view(display.value()) == "none") || style_hides(node)) {
+        return;
+    }
+    // <defs> et <symbol> ne se rendent pas directement : seul un <use> les instancie.
+    if (tag == "defs" || tag == "symbol" || tag == "clipPath" || tag == "mask" ||
+        tag == "pattern" || tag == "marker") {
+        return;
+    }
+    if (tag == "use") {
+        auto href = node.attribute("href");
+        if (!href)
+            href = node.attribute("xlink:href");
+        const std::string_view ref = href ? std::string_view(href.value()) : std::string_view();
+        if (ref.size() < 2 || ref.front() != '#') {
+            ctx.warnings.push_back("<use> : référence externe ou absente ignorée");
+            return;
+        }
+        const auto it = ctx.ids.find(std::string(ref.substr(1)));
+        if (it == ctx.ids.end() || ctx.useDepth >= 16) {
+            ctx.warnings.push_back("<use> : cible introuvable ou récursive (" + std::string(ref) +
+                                   ")");
+            return;
+        }
+        const Affine shift{1.0, 0.0, 0.0, 1.0, attr_len(node, "x"), attr_len(node, "y")};
+        const Affine placed = compose(transform, shift);
+        ++ctx.useDepth;
+        if (std::string_view(it->second.name()) == "symbol") {
+            walk_children(it->second, placed, ctx);
+        } else {
+            walk(it->second, placed, ctx);
+        }
+        --ctx.useDepth;
         return;
     }
 
@@ -949,6 +1008,7 @@ Result<SvgImportResult> decode_svg(std::span<const std::uint8_t> bytes) {
     // c'est la conversion finale ci-dessous qui applique l'échelle et le
     // centrage). ----------------------------------------------------------
     ParseContext ctx;
+    collect_ids(root, ctx);
     walk_children(root, Affine{}, ctx);
 
     if (userUnitsWidth <= 0.0 || userUnitsHeight <= 0.0) {

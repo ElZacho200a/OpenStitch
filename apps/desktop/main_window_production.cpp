@@ -7,6 +7,7 @@
 #include <QMenu>
 #include <QMessageBox>
 
+#include "fabric_params.hpp"
 #include "main_window.hpp"
 #include "production_dialog.hpp"
 
@@ -37,7 +38,8 @@ void MainWindow::showProductionSheet() {
     if (name.isEmpty()) {
         name = tr("Sans titre");
     }
-    ProductionDialog dialog(project_, *sequence_, name, realistic_.prefs.params, this);
+    ProductionDialog dialog(project_, *sequence_, name,
+                            withProjectFabric(realistic_.prefs.params, project_), this);
     dialog.exec();
 }
 

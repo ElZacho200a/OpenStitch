@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "main_window.hpp"
+#include "simulation_nav_bar.hpp"
 
 #include <QAction>
 #include <QActionGroup>
@@ -92,6 +93,7 @@
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/core/app_info.hpp"
 #include "openstitch/document/canvas.hpp"
+#include "openstitch/document/hoop_library.hpp"
 #include "openstitch/document/hoop_presets.hpp"
 #include "openstitch/document/image_placement.hpp"
 #include "openstitch/formats/dst.hpp"
@@ -109,6 +111,8 @@
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/project_ops/factory.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
+#include "openstitch/stitch_analysis/machine_checks.hpp"
+#include "openstitch/stitch_analysis/thread_usage.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
@@ -533,8 +537,8 @@ MainWindow::MainWindow() {
     buildSimulationToolbar();
     // Une barre masquée doit pouvoir se rouvrir depuis un menu, comme les panneaux.
     panelsMenu_->insertSeparator(resetLayoutAct);
-    for (auto* bar : {mainToolbar_, contextToolbar_, toolPalette_, simToolbar_, threadStripBar_,
-                      clickToStitchBar_}) {
+    for (auto* bar : {mainToolbar_, contextToolbar_, toolPalette_, simToolbar_,
+                      static_cast<QToolBar*>(simNavBar_), threadStripBar_, clickToStitchBar_}) {
         panelsMenu_->insertAction(resetLayoutAct, bar->toggleViewAction());
     }
 
@@ -1207,6 +1211,7 @@ void MainWindow::buildMenus() {
     showStitchesAct_->setShortcut(QKeySequence(Qt::Key_4));
     connect(showStitchesAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
     buildRealisticMenu(viewMenu);
+    buildColorwayMenu(viewMenu); // HP-THR-006/008/011
     buildImageOpacityControls(viewMenu);
     viewMenu->addSeparator();
     zoomInAct_ = viewMenu->addAction(tr("Zoom &avant"));
@@ -1241,6 +1246,11 @@ void MainWindow::buildMenus() {
     auto* hoopAct = viewMenu->addAction(tr("Tai&lle du cadre…"));
     hoopAct->setToolTip(tr("Définit la zone physique de broderie (cadre)."));
     connect(hoopAct, &QAction::triggered, this, &MainWindow::setHoopSize);
+    machineAct_ = viewMenu->addAction(tr("Machine…"));
+    machineAct_->setObjectName(QStringLiteral("action_machine"));
+    machineAct_->setToolTip(tr("Choisit le profil de la machine à broder : champ, cadres, "
+                               "aiguilles, formats (vérifications avant export)."));
+    connect(machineAct_, &QAction::triggered, this, &MainWindow::chooseMachine);
 
     viewMenu->addSeparator();
     auto* themeMenu = viewMenu->addMenu(tr("&Thème"));
@@ -1512,7 +1522,7 @@ void MainWindow::openImage() {
     const QString file = QFileDialog::getOpenFileName(
         this, tr("Ouvrir une image ou un SVG"),
         QSettings().value(QStringLiteral("ui/lastImportDir")).toString(),
-        tr("Images et SVG (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.svg);;"
+        tr("Images et SVG (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.gif *.webp *.svg);;"
            "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff);;"
            "SVG (*.svg);;Tous les fichiers (*)"));
     if (file.isEmpty()) {
@@ -1528,11 +1538,11 @@ void MainWindow::openAny() {
                               : QFileInfo(currentProjectPath_).absolutePath();
     const QString file = QFileDialog::getOpenFileName(
         this, tr("Ouvrir"), start,
-        tr("Tous les formats pris en charge (*.osp *.dst *.pes *.jef *.exp *.svg *.png *.jpg "
-           "*.jpeg *.bmp *.tif *.tiff);;"
+        tr("Tous les formats pris en charge (*.osp *.dst *.pes *.jef *.vp3 *.exp *.svg *.png *.jpg "
+           "*.jpeg *.bmp *.tif *.tiff *.gif *.webp);;"
            "Projets OpenStitch (*.osp);;"
-           "Fichiers de broderie (*.dst *.pes *.jef *.exp);;"
-           "Images et SVG (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.svg);;"
+           "Fichiers de broderie (*.dst *.pes *.jef *.vp3 *.exp);;"
+           "Images et SVG (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.gif *.webp *.svg);;"
            "Tous les fichiers (*)"));
     if (file.isEmpty()) {
         return;
@@ -1551,7 +1561,7 @@ void MainWindow::openImageFile(const QString& file) {
     if (!loaded) {
         showFriendlyError(this, tr("Image illisible"),
                           tr("Ce fichier n'a pas pu être ouvert comme image. Formats acceptés : "
-                             "PNG, JPEG, BMP, TIFF."),
+                             "PNG, JPEG, BMP, TIFF, GIF, WebP."),
                           loaded.error().message);
         return;
     }
@@ -1976,6 +1986,7 @@ void MainWindow::applyCanvasToView() {
         view_->setCanvasSizeMm(want);
     }
     view_->setUsableMarginMm(to_millimeters(project_.canvas.margin).value);
+    view_->setHoopShape(project_.canvas.shape, to_millimeters(project_.canvas.corner_radius).value);
     if (hoopStatusButton_ != nullptr) {
         hoopStatusButton_->setText(
             tr("Cadre %1 × %2 mm").arg(want.width(), 0, 'f', 0).arg(want.height(), 0, 'f', 0));
@@ -2056,10 +2067,30 @@ void MainWindow::setHoopSize() {
                           "cadre) : le motif ne doit pas y passer. Hachurée sur le canevas."));
     auto* usable = new QLabel(&dialog);
     usable->setObjectName(QStringLiteral("hoopUsableLabel"));
+    // Forme du cadre (HP-HOOP-001) : rectangle, rond / ovale, coins arrondis.
+    auto* shapeCombo = new QComboBox(&dialog);
+    shapeCombo->setObjectName(QStringLiteral("hoopShapeCombo"));
+    shapeCombo->addItem(tr("Rectangle"), static_cast<int>(document::HoopShape::Rectangle));
+    shapeCombo->addItem(tr("Rond / ovale"), static_cast<int>(document::HoopShape::Ellipse));
+    shapeCombo->addItem(tr("Coins arrondis"),
+                        static_cast<int>(document::HoopShape::RoundedRectangle));
+    shapeCombo->setCurrentIndex(
+        std::max(0, shapeCombo->findData(static_cast<int>(project_.canvas.shape))));
+    auto* radius = makeSpin(to_millimeters(project_.canvas.corner_radius).value, 100.0);
+    radius->setObjectName(QStringLiteral("hoopCornerSpin"));
+    radius->setSingleStep(1.0);
+    radius->setToolTip(tr("Rayon des coins du cadre (forme « Coins arrondis »)."));
+    const auto refreshShape = [&] {
+        radius->setEnabled(shapeCombo->currentData().toInt() ==
+                           static_cast<int>(document::HoopShape::RoundedRectangle));
+    };
+    refreshShape();
 
     // Entrées de la liste : « Personnalisé », modèles courants, puis cadres enregistrés.
     std::vector<CustomHoop> custom = loadCustomHoops();
     constexpr int kCustomRole = Qt::UserRole + 1;
+    constexpr int kShapeRole = Qt::UserRole + 2;  // forme d'un cadre de la bibliothèque
+    constexpr int kRadiusRole = Qt::UserRole + 3; // rayon des coins (mm)
     const auto fillPresets = [&] {
         presetCombo->clear();
         presetCombo->addItem(tr("Personnalisé"), QSizeF{});
@@ -2067,6 +2098,20 @@ void MainWindow::setHoopSize() {
             presetCombo->addItem(
                 QString::fromUtf8(p.name.data(), static_cast<qsizetype>(p.name.size())),
                 QSizeF(static_cast<double>(p.width_mm), static_cast<double>(p.height_mm)));
+        }
+        // Cadres ronds, ovales et à coins arrondis de la bibliothèque générique (les
+        // rectangles sont déjà ci-dessus).
+        for (const auto& h : document::hoop_library()) {
+            if (h.shape == document::HoopShape::Rectangle) {
+                continue;
+            }
+            presetCombo->addItem(
+                QString::fromUtf8(h.name.data(), static_cast<qsizetype>(h.name.size())),
+                QSizeF(static_cast<double>(h.width_mm), static_cast<double>(h.height_mm)));
+            presetCombo->setItemData(presetCombo->count() - 1, static_cast<int>(h.shape),
+                                     kShapeRole);
+            presetCombo->setItemData(presetCombo->count() - 1,
+                                     static_cast<double>(h.corner_radius_mm), kRadiusRole);
         }
         for (const auto& c : custom) {
             presetCombo->addItem(tr("%1 (enregistré)").arg(c.name), QSizeF(c.widthMm, c.heightMm));
@@ -2081,7 +2126,8 @@ void MainWindow::setHoopSize() {
         for (int i = 1; i < presetCombo->count(); ++i) {
             const QSizeF size = presetCombo->itemData(i).toSizeF();
             if (std::abs(size.width() - w->value()) < 0.05 &&
-                std::abs(size.height() - h->value()) < 0.05) {
+                std::abs(size.height() - h->value()) < 0.05 &&
+                presetCombo->itemData(i, kShapeRole).toInt() == shapeCombo->currentData().toInt()) {
                 found = i;
                 break;
             }
@@ -2103,6 +2149,16 @@ void MainWindow::setHoopSize() {
         }
         w->setValue(size.width());
         h->setValue(size.height());
+        shapeCombo->setCurrentIndex(
+            std::max(0, shapeCombo->findData(presetCombo->itemData(index, kShapeRole).toInt())));
+        if (presetCombo->itemData(index, kRadiusRole).isValid()) {
+            radius->setValue(presetCombo->itemData(index, kRadiusRole).toDouble());
+        }
+        refreshShape();
+        selectMatchingPreset();
+    });
+    connect(shapeCombo, &QComboBox::currentIndexChanged, &dialog, [&] {
+        refreshShape();
         selectMatchingPreset();
     });
     for (auto* spin : {w, h, margin}) {
@@ -2160,6 +2216,8 @@ void MainWindow::setHoopSize() {
     layout->addRow(tr("Modèle :"), presetCombo);
     layout->addRow(tr("Largeur :"), w);
     layout->addRow(tr("Hauteur :"), h);
+    layout->addRow(tr("Forme :"), shapeCombo);
+    layout->addRow(tr("Rayon des coins :"), radius);
     auto* tools = new QHBoxLayout;
     tools->addWidget(swapBtn);
     tools->addWidget(saveBtn);
@@ -2179,6 +2237,10 @@ void MainWindow::setHoopSize() {
     c.width = to_micrometers(Millimeters{w->value()});
     c.height = to_micrometers(Millimeters{h->value()});
     c.margin = to_micrometers(Millimeters{margin->value()});
+    c.shape = static_cast<document::HoopShape>(shapeCombo->currentData().toInt());
+    if (c.shape == document::HoopShape::RoundedRectangle) {
+        c.corner_radius = to_micrometers(Millimeters{radius->value()});
+    }
     rememberCanvas(c);
     if (c == project_.canvas) {
         return;
@@ -2323,6 +2385,15 @@ void MainWindow::onCanvasDoubleClicked(QPointF posMm) {
     if (currentTool_ == Tool::Select && selectedTextId()) {
         editSelectedText();
         return;
+    }
+    // HP-VEC-001/005 : outil Sélection, double-clic sur le contour = nouveau nœud ; Alt +
+    // double-clic dans un trou = supprimer ce trou (hors mode remodelage des rails).
+    if (currentTool_ == Tool::Select &&
+        !(railEditModeAct_ != nullptr && railEditModeAct_->isChecked())) {
+        const bool alt = (QGuiApplication::keyboardModifiers() & Qt::AltModifier) != 0;
+        if (alt ? removeHoleAt(posMm) : insertNodeAt(posMm)) {
+            return;
+        }
     }
     if (currentTool_ == Tool::DrawPolygon) {
         finishPolygon();
@@ -2517,6 +2588,9 @@ std::optional<QPointF> MainWindow::findSnapPointMm(QPointF cursorSceneMm,
                 considerPath(hole);
             }
         }
+    }
+    if (!best) {
+        best = gridSnapPointMm(cursorSceneMm, radiusMm); // HP-VEC-009 : grille, si activée
     }
     return best;
 }
@@ -2880,6 +2954,9 @@ void MainWindow::finishSatinColumn() {
     params.rail_a = std::move(railA);
     params.rail_b = std::move(railB);
     params.rungs = std::move(rungs);
+    // HP-ENG-004 : une colonne créée à la main est fractionnée d'office au-delà de
+    // `max_stitch_length` (les projets existants gardent leur réglage persisté).
+    params.split_stitch = document::SatinSplit::Staggered;
     embObject.params = std::move(params);
 
     const ObjectId newEmbId = embObject.id;
@@ -5600,6 +5677,22 @@ void MainWindow::convertSatinsToTatami() {
     }
 }
 
+namespace {
+// Famille du filtre d'affichage (0 contour, 1 remplissage, 2 satin) d'un index de type de points.
+int stitchFilterFamily(int typeIndex) {
+    switch (typeIndex) {
+    case 3:
+    case 6: // remplissage à motif (HP-STI-006)
+        return 1;
+    case 4:
+    case 5: // blanket, motif le long du contour (HP-STI-002)
+        return 0;
+    default:
+        return typeIndex;
+    }
+}
+} // namespace
+
 bool MainWindow::stitchParamsForType(const document::EmbroideryObject& emb, int type,
                                      document::StitchParams& params, std::string& label,
                                      std::optional<std::vector<geometry::PathSet>>& restoredContour,
@@ -5615,6 +5708,14 @@ bool MainWindow::stitchParamsForType(const document::EmbroideryObject& emb, int 
     case 1: // tatami
         params = document::TatamiParams{};
         label = "Type : tatami";
+        return true;
+    case 5: // motif répété le long du contour (HP-STI-002)
+        params = document::MotifRunParams{};
+        label = "Type : motif le long du contour";
+        return true;
+    case 6: // remplissage à motif (HP-STI-006)
+        params = document::MotifFillParams{};
+        label = "Type : remplissage à motif";
         return true;
     case 4: // blanket / zigzag le long du contour (HP-STI-003)
         params = document::BlanketStitchParams{};
@@ -5789,9 +5890,11 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
         const ObjectId embId = emb->id;
         auto* typeMenu = menu.addMenu(tr("Type de points"));
         const int current = stitchTypeIndex(*emb);
-        const char* labels[] = {"Contour cousu", "Remplissage tatami", "Colonne satin",
-                                "Remplissage directionnel", "Blanket / zigzag"};
-        for (int t = 0; t < 5; ++t) {
+        const char* labels[] = {"Contour cousu",      "Remplissage tatami",
+                                "Colonne satin",      "Remplissage directionnel",
+                                "Blanket / zigzag",   "Motif le long du contour",
+                                "Remplissage à motif"};
+        for (int t = 0; t < 7; ++t) {
             auto* act = typeMenu->addAction(tr(labels[t]));
             act->setCheckable(true);
             act->setChecked(t == current);
@@ -5830,9 +5933,7 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
                           [&](const auto& e) { return e.source_vector == emb->source_vector; });
         menu.addSeparator();
         const std::uint32_t embColorKey = colorKeyOf(emb->rgb);
-        const int embFilterType = stitchTypeIndex(*emb) == 3   ? 1
-                                  : stitchTypeIndex(*emb) == 4 ? 0
-                                                               : stitchTypeIndex(*emb);
+        const int embFilterType = stitchFilterFamily(stitchTypeIndex(*emb));
         connect(menu.addAction(tr("Afficher uniquement cette couleur")), &QAction::triggered, this,
                 [this, embColorKey] { isolateFilterColor(embColorKey); });
         connect(menu.addAction(tr("Afficher uniquement ce type de points")), &QAction::triggered,
@@ -7703,6 +7804,8 @@ void MainWindow::buildPropertiesPanel() {
             &MainWindow::convertToDirectional);
     connect(propertiesPanel_, &PropertiesPanel::convertToContourFillRequested, this,
             &MainWindow::convertToContourFill);
+    connect(propertiesPanel_, &PropertiesPanel::convertToFillKindRequested, this,
+            &MainWindow::convertToFillKind);
     connect(propertiesPanel_, &PropertiesPanel::createBorderSatinRequested, this,
             &MainWindow::createBorderSatin);
     connect(propertiesPanel_, &PropertiesPanel::borderSatinEdited, this,
@@ -8151,11 +8254,15 @@ const document::EmbroideryObject* MainWindow::orderRowObject(int row) const {
 }
 
 int MainWindow::stitchTypeIndex(const document::EmbroideryObject& object) {
-    return object.is_tatami()                                    ? 1
-           : object.is_satin() || object.is_auto_satin()         ? 2
-           : object.is_directional() || object.is_contour_fill() ? 3
-           : object.is_blanket()                                 ? 4
-                                                                 : 0;
+    return object.is_tatami()                            ? 1
+           : object.is_satin() || object.is_auto_satin() ? 2
+           : object.is_directional() || object.is_contour_fill() || object.is_radial_fill() ||
+                   object.is_spiral_fill() || object.is_crosshatch_fill()
+               ? 3
+           : object.is_blanket()    ? 4
+           : object.is_motif_run()  ? 5
+           : object.is_motif_fill() ? 6
+                                    : 0;
 }
 
 double MainWindow::regionAreaMm2(const document::EmbroideryObject& object) const {
@@ -8212,9 +8319,7 @@ bool MainWindow::vectorPassesFilter(const document::VectorObject& object) const 
         const std::uint32_t key = (static_cast<std::uint32_t>(emb.rgb[0]) << 16) |
                                   (static_cast<std::uint32_t>(emb.rgb[1]) << 8) |
                                   static_cast<std::uint32_t>(emb.rgb[2]);
-        if (showType_[static_cast<std::size_t>(typeIndex == 3   ? 1
-                                               : typeIndex == 4 ? 0
-                                                                : typeIndex)] &&
+        if (showType_[static_cast<std::size_t>(stitchFilterFamily(typeIndex))] &&
             hiddenColors_.count(key) == 0) {
             return true;
         }
@@ -8228,7 +8333,7 @@ bool MainWindow::objectPassesFilter(const document::EmbroideryObject& object) co
     }
     // Filtre « remplissage » : tatami et directionnel ensemble (index 1).
     const int typeIndex = stitchTypeIndex(object);
-    if (!showType_[static_cast<std::size_t>(typeIndex == 3 ? 1 : typeIndex == 4 ? 0 : typeIndex)]) {
+    if (!showType_[static_cast<std::size_t>(stitchFilterFamily(typeIndex))]) {
         return false;
     }
     const std::uint32_t key = (static_cast<std::uint32_t>(object.rgb[0]) << 16) |
@@ -8553,6 +8658,9 @@ void MainWindow::buildSimulationToolbar() {
     simSpeedCombo_->addItem(tr("×1"), 1.0);
     simSpeedCombo_->addItem(tr("×4"), 4.0);
     simSpeedCombo_->addItem(tr("×16"), 16.0);
+    simSpeedCombo_->addItem(tr("×64"), 64.0);
+    // HP-SIM-001 : cadence réelle d'une machine (700 points/min), indépendante de la taille.
+    simSpeedCombo_->addItem(tr("Machine"), -1.0);
     simSpeedCombo_->setCurrentIndex(1);
     simToolbar_->addWidget(simSpeedCombo_);
 
@@ -8566,13 +8674,23 @@ void MainWindow::buildSimulationToolbar() {
     simObjectLabel_->setAccessibleName(tr("Objet en cours de couture"));
     simToolbar_->addWidget(simObjectLabel_);
 
+    // HP-SIM-002/004 : pas à pas, objet précédent/suivant, temps de couture écoulé/total.
+    simNavBar_ = new SimulationNavBar(this);
+    addToolBar(Qt::BottomToolBarArea, simNavBar_);
+    connect(simNavBar_, &SimulationNavBar::stepRequested, this, [this](int step) {
+        if (simTimer_->isActive() && simPlayAct_->isChecked()) {
+            simPlayAct_->setChecked(false); // un saut manuel met la lecture en pause
+        }
+        simSlider_->setValue(step);
+    });
+
     simTimer_ = new QTimer(this);
     simTimer_->setInterval(16); // ~60 pas/seconde
     connect(simTimer_, &QTimer::timeout, this, &MainWindow::onSimTick);
 
     // Un masquage demandé par l'utilisateur (menu Panneaux) l'emporte sur l'affichage
     // automatique de la rangée du bas (cf. refreshThreadStrip) : retenu dans une propriété.
-    for (QToolBar* bar : {simToolbar_, threadStripBar_}) {
+    for (QToolBar* bar : {simToolbar_, static_cast<QToolBar*>(simNavBar_), threadStripBar_}) {
         connect(bar->toggleViewAction(), &QAction::triggered, bar,
                 [bar](bool shown) { bar->setProperty("userHidden", !shown); });
     }
@@ -8583,6 +8701,9 @@ void MainWindow::buildSimulationToolbar() {
 }
 
 void MainWindow::updateSimulationInfo(int step) {
+    if (simNavBar_ != nullptr) {
+        simNavBar_->setStep(step);
+    }
     if (simSwatch_ == nullptr || simObjectLabel_ == nullptr) {
         return;
     }
@@ -8618,6 +8739,9 @@ void MainWindow::updateSimulationInfo(int step) {
 
 void MainWindow::updateSimulationRange() {
     const bool hasSeq = sequence_ && !sequence_->commands.empty();
+    if (simNavBar_ != nullptr) {
+        simNavBar_->setSequence(sequence_ ? &*sequence_ : nullptr);
+    }
     simPlayAct_->setEnabled(hasSeq);
     simExitAct_->setEnabled(hasSeq);
     simPrevColorAct_->setEnabled(hasSeq);
@@ -8685,7 +8809,12 @@ void MainWindow::onSimTick() {
     // Avance proportionnellement à la taille (motif long = plus rapide), multipliée par la
     // vitesse choisie ; le reste fractionnaire (x0,25) s'accumule d'un pas au suivant.
     const double speed = simSpeedCombo_ != nullptr ? simSpeedCombo_->currentData().toDouble() : 1.0;
-    simAccum_ += std::max(1, (n + 1) / 400) * (speed > 0.0 ? speed : 1.0);
+    if (speed < 0.0) { // « Machine » : pas par tick = cadence machine x durée du tick
+        simAccum_ += stitch_render::simulation_machine_steps_per_second({}) *
+                     (static_cast<double>(simTimer_->interval()) / 1000.0);
+    } else {
+        simAccum_ += std::max(1, (n + 1) / 400) * (speed > 0.0 ? speed : 1.0);
+    }
     const int advance = static_cast<int>(simAccum_);
     if (advance < 1) {
         return;
@@ -9347,6 +9476,16 @@ void MainWindow::exportDst() {
                 break;
             }
         }
+        // HP-HOOP-003 : format d'export non accepté par la machine du projet.
+        for (const auto& f : stitch_analysis::check_machine(project_, shown, format.id)) {
+            if (f.category != "machine-format") {
+                continue; // les autres constats machine sont déjà dans l'analyse ci-dessus
+            }
+            const QString text = QString::fromStdString(f.message);
+            limits += tr("\nAttention : %1").arg(text);
+            result.has_warnings = true;
+            problemLines << tr("Avertissement : %1").arg(text);
+        }
         if (!limits.isEmpty()) {
             summary += QStringLiteral("\n") + limits;
         }
@@ -9357,6 +9496,22 @@ void MainWindow::exportDst() {
         }
         if (!project_.embroidery_objects.empty()) {
             summary += tr(" Pensez à enregistrer aussi le projet (.osp).");
+        }
+        // HP-FMT-022 : blocs de couleur dans l'ordre de couture de la séquence exportée.
+        {
+            const auto film = stitch_analysis::color_film(project_, shown);
+            int rank = 0;
+            for (const auto& block : film) {
+                ++rank;
+                const unsigned rgb = (static_cast<unsigned>(block.identity.rgb[0]) << 16) |
+                                     (static_cast<unsigned>(block.identity.rgb[1]) << 8) |
+                                     static_cast<unsigned>(block.identity.rgb[2]);
+                result.blocks.push_back({rgb, tr("%1. #%2 — %3 point(s), %4 mm")
+                                                  .arg(rank)
+                                                  .arg(rgb, 6, 16, QLatin1Char('0'))
+                                                  .arg(block.stitch_count)
+                                                  .arg(block.length_mm, 0, 'f', 0)});
+            }
         }
         result.text = summary;
         result.problems = problemLines.join(QLatin1Char('\n'));
@@ -10419,6 +10574,7 @@ bool MainWindow::hasDocumentContent() const {
 }
 
 void MainWindow::updateActions() {
+    syncColorwayUi(); // HP-THR-006/008 (main_window_colorways.cpp)
     updateShapeActions();
     updateObjectEditActions();
     updateTextActions();

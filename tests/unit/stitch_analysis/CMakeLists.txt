@@ -14,6 +14,8 @@ add_executable(test_stitch_analysis
     test_thread_consumption.cpp
     test_analysis_rules.cpp
     test_analyze_project.cpp
+    test_thread_tools.cpp
+    test_machine_checks.cpp
 )
 target_link_libraries(test_stitch_analysis
     PRIVATE openstitch::stitch_analysis openstitch::stitch_generation Catch2::Catch2WithMain openstitch::warnings)

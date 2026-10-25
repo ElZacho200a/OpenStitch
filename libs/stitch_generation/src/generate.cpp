@@ -16,12 +16,17 @@
 #include "openstitch/stitch_generation/auto_satin_engine.hpp"
 #include "openstitch/stitch_generation/blanket_stitch.hpp"
 #include "openstitch/stitch_generation/contour_fill.hpp"
+#include "openstitch/stitch_generation/crosshatch_fill.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 #include "openstitch/stitch_generation/join.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
+#include "openstitch/stitch_generation/motif_fill.hpp"
+#include "openstitch/stitch_generation/motif_run.hpp"
+#include "openstitch/stitch_generation/radial_fill.hpp"
 #include "openstitch/stitch_generation/routing.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
+#include "openstitch/stitch_generation/spiral_fill.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
 #include "openstitch/stitch_generation/underlay_auto.hpp"
 
@@ -272,6 +277,8 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
     config.pull_right = params.pull_right;
     config.push_start = params.push_start;
     config.push_end = params.push_end;
+    config.auto_spacing = params.auto_spacing;
+    config.corner_mode = static_cast<SatinCornerMode>(static_cast<int>(params.corner_mode));
     // Sous-couche automatique (HP-ENG-002) : selon la largeur réelle de la colonne.
     if (params.underlay_mode == document::UnderlayMode::Auto) {
         const SatinUnderlayChoice c =
@@ -376,6 +383,8 @@ void generate_auto_satin(stitch::StitchSequence& sequence, const document::Vecto
     config.pull_right = params.pull_right;
     config.push_start = params.push_start;
     config.push_end = params.push_end;
+    config.auto_spacing = params.auto_spacing;
+    config.corner_mode = static_cast<SatinCornerMode>(static_cast<int>(params.corner_mode));
     // Sous-couche automatique (HP-ENG-002) : largeur moyenne de la région source.
     if (params.underlay_mode == document::UnderlayMode::Auto) {
         double area = 0.0;
@@ -811,6 +820,24 @@ void generate_contour(stitch::StitchSequence& sequence, const document::VectorOb
     }
 }
 
+// Remplissages radial / spirale / croisé (HP-STI-008/009/014) : même enveloppe que le concentrique
+// (retrait de bord, îlots dans l'ordre de couture, liaisons longues cachées), sans sous-couche.
+template <class Params, class Fill>
+void generate_simple_fill(stitch::StitchSequence& sequence, const document::VectorObject& source,
+                          const document::EmbroideryObject& object, const Params& params,
+                          Fill&& fill) {
+    for (const geometry::PathSet& region :
+         fill_regions_in_sewing_order(sequence, source, params.inset)) {
+        std::optional<FillLinker> linker;
+        if (params.hidden_underpath) {
+            linker.emplace(region,
+                           Micrometers{std::clamp(params.stitch_length.value, 1'000, 7'000)},
+                           Micrometers{600});
+        }
+        emit_fill(sequence, fill(region, params), object.id, linker ? &*linker : nullptr);
+    }
+}
+
 } // namespace
 
 namespace {
@@ -989,6 +1016,22 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                     }
                 } else if constexpr (std::is_same_v<T, document::ContourFillParams>) {
                     generate_contour(chunk, *unit.source, object, params);
+                } else if constexpr (std::is_same_v<T, document::MotifRunParams>) {
+                    // HP-STI-002 : motif répété le long de chaque contour de la source.
+                    for (const geometry::PathSet& set : unit.source->paths) {
+                        emit_polyline(chunk, motif_run_points(set.outer, params), object.id);
+                        for (const geometry::Path& hole : set.holes) {
+                            emit_polyline(chunk, motif_run_points(hole, params), object.id);
+                        }
+                    }
+                } else if constexpr (std::is_same_v<T, document::MotifFillParams>) {
+                    generate_simple_fill(chunk, *unit.source, object, params, fill_motif);
+                } else if constexpr (std::is_same_v<T, document::RadialFillParams>) {
+                    generate_simple_fill(chunk, *unit.source, object, params, fill_radial);
+                } else if constexpr (std::is_same_v<T, document::SpiralFillParams>) {
+                    generate_simple_fill(chunk, *unit.source, object, params, fill_spiral);
+                } else if constexpr (std::is_same_v<T, document::CrosshatchFillParams>) {
+                    generate_simple_fill(chunk, *unit.source, object, params, fill_crosshatch);
                 }
             },
             object.params);

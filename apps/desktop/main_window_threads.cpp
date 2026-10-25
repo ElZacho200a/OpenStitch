@@ -31,6 +31,7 @@
 #include "openstitch/thread_palette/chart_import.hpp"
 #include "openstitch/thread_palette/color_reduction.hpp"
 #include "responsive.hpp"
+#include "simulation_nav_bar.hpp"
 #include "thread_panel.hpp"
 #include "thread_strip.hpp"
 
@@ -626,7 +627,7 @@ void MainWindow::refreshThreadStrip() {
     threadStrip_->setThreads(std::move(swatches), summary);
     // Rangée du bas (simulation + fils) visible seulement quand une séquence existe
     // (HP-UX-026), sauf si l'utilisateur a masqué la barre lui-même.
-    for (QToolBar* bar : {simToolbar_, threadStripBar_}) {
+    for (QToolBar* bar : {simToolbar_, static_cast<QToolBar*>(simNavBar_), threadStripBar_}) {
         if (bar != nullptr) {
             bar->setVisible(sequence_.has_value() && !bar->property("userHidden").toBool());
         }

@@ -5,12 +5,14 @@
 #include <cstddef>
 #include <numeric>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "openstitch/core/ids.hpp"
 #include "openstitch/core/units.hpp"
 #include "openstitch/document/calque.hpp"
 #include "openstitch/document/canvas.hpp"
+#include "openstitch/document/colorway.hpp"
 #include "openstitch/document/embroidery_object.hpp"
 #include "openstitch/document/finishing.hpp"
 #include "openstitch/document/imported_design.hpp"
@@ -31,6 +33,7 @@ struct Project {
     image::Image original;              // jamais modifiée après l'import
     Millimeters mm_per_px{25.4 / 96.0}; // résolution de travail
     Canvas canvas;                      // cadre de broderie (défaut 100x100 mm)
+    std::string machine_id;             // HP-HOOP-002 : profil machine (vide = aucun)
     std::vector<image::ImageOp> ops;    // pile de prétraitements
 
     // Segmentation de l'image de travail. Invalidée (remise à nullopt) par
@@ -54,6 +57,14 @@ struct Project {
     // Calque qui reçoit les formes créées (état d'interface, ni annulable ni enregistré) ;
     // invalide = le calque du fond.
     ObjectId active_calque;
+
+    // Coloris multiples (HP-THR-006). `active_colorway` = indice dans `colorways`, -1 = aucun
+    // (document sans coloris : comportement historique). Voir `Colorway`.
+    std::vector<Colorway> colorways;
+    int active_colorway{-1};
+
+    // Tissu de fond (HP-THR-008), persisté dans le projet.
+    FabricSettings fabric;
 
     IdGenerator<ObjectId> object_ids; // partagé par tous les types d'objets
 

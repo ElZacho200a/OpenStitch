@@ -3,12 +3,16 @@
 #include "responsive.hpp"
 
 #include <QCheckBox>
+#include <QColor>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QLabel>
+#include <QListWidget>
+#include <QPixmap>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSettings>
@@ -194,6 +198,22 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
     summary_->setWordWrap(true);
     summary_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     layout->addWidget(summary_);
+
+    // HP-FMT-022 : blocs de couleur dans l'ordre de couture du fichier. L'ordre se change dans le
+    // film couleur du panneau Fils (réordonnancement annulable) ; ce dialogue le reflète.
+    blocksTitle_ = new QLabel(tr("Ordre des couleurs dans le fichier (réordonnez-les dans le "
+                                 "panneau Fils) :"),
+                              this);
+    blocksTitle_->setWordWrap(true);
+    blocksTitle_->hide();
+    layout->addWidget(blocksTitle_);
+    blocks_ = new QListWidget(this);
+    blocks_->setObjectName(QStringLiteral("list_exportBlocks"));
+    blocks_->setAccessibleName(tr("Blocs de couleur dans l'ordre de couture"));
+    blocks_->setSelectionMode(QAbstractItemView::NoSelection);
+    blocks_->setMaximumHeight(150);
+    blocks_->hide();
+    layout->addWidget(blocks_);
 
     // Problèmes détectés : montrés ici, sans fermer le dialogue (HP-UX-032).
     problemsView_ = new QPlainTextEdit(this);
@@ -446,6 +466,15 @@ void MachineExportDialog::refresh() {
     const auto summary = summarize_(*f, options(), optimizations());
     summary_->setText(summary.text);
     summary_->setEnabled(true);
+    blocks_->clear();
+    for (const auto& row : summary.blocks) {
+        QPixmap swatch(14, 14);
+        swatch.fill(QColor::fromRgb(row.rgb));
+        auto* item = new QListWidgetItem(QIcon(swatch), row.text, blocks_);
+        item->setData(Qt::UserRole, row.rgb);
+    }
+    blocks_->setVisible(!summary.blocks.empty());
+    blocksTitle_->setVisible(!summary.blocks.empty());
     blocking_ = summary.blocking;
     const bool hasProblems = summary.has_analysis_errors || summary.has_warnings;
     problemsView_->setPlainText(summary.problems);

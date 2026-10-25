@@ -2,6 +2,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <numbers>
+#include <optional>
 
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/clean.hpp"
@@ -22,8 +24,92 @@ struct Item {
     char32_t cp{0};
     GlyphOutline outline;
     bool space{false};
-    bool mark{false}; // marque combinante : se superpose à la lettre précédente
-    double pen{0.0};  // abscisse de la ligne de base du glyphe, en µm (avant alignement)
+    bool mark{false};       // marque combinante : se superpose à la lettre précédente
+    double pen{0.0};        // abscisse de la ligne de base du glyphe, en µm (avant alignement)
+    double center_off{0.0}; // décalage du centre de la chasse par rapport à `pen` (bases courbes)
+};
+
+// Base de pose des lettres (HP-TXT-005) : repère local où la ligne de base est l'axe X
+// (abscisse curviligne `s`, µm). `at(s)` donne le point de la base et sa tangente unitaire ;
+// la normale (côté sommet des lettres) est (-ty, tx). Repère avant rotation du texte.
+class BaseCurve {
+public:
+    struct Frame {
+        double x{0.0};
+        double y{0.0};
+        double tx{1.0};
+        double ty{0.0};
+    };
+
+    explicit BaseCurve(const document::TextBase& base) : kind_(base.kind), inside_(base.inside) {
+        radius_ = std::max(1.0, static_cast<double>(base.radius.value));
+        if (kind_ == document::TextBaseKind::Path) {
+            double acc = 0.0;
+            for (std::size_t i = 0; i < base.path.size(); ++i) {
+                const double x = static_cast<double>(base.path[i].x.value);
+                const double y = static_cast<double>(base.path[i].y.value);
+                if (i > 0) {
+                    acc += std::hypot(x - pts_.back().x, y - pts_.back().y);
+                }
+                pts_.push_back({x, y, acc});
+            }
+            if (pts_.size() < 2 || acc <= 0.0) {
+                kind_ = document::TextBaseKind::Line; // chemin inutilisable : ligne droite
+            }
+        }
+    }
+
+    [[nodiscard]] bool curved() const { return kind_ != document::TextBaseKind::Line; }
+    [[nodiscard]] bool is_circle() const { return kind_ == document::TextBaseKind::Circle; }
+    [[nodiscard]] double circumference() const { return 2.0 * std::numbers::pi * radius_; }
+
+    [[nodiscard]] Frame at(double s) const {
+        Frame f;
+        switch (kind_) {
+        case document::TextBaseKind::Line:
+            f.x = s;
+            return f;
+        case document::TextBaseKind::Arc:
+        case document::TextBaseKind::Circle: {
+            const double phi = s / radius_;
+            const double sn = std::sin(phi);
+            const double cs = std::cos(phi);
+            if (!inside_) {
+                f = {radius_ * sn, radius_ * cs - radius_, cs, -sn};
+            } else {
+                f = {radius_ * sn, radius_ - radius_ * cs, cs, sn};
+            }
+            return f;
+        }
+        case document::TextBaseKind::Path: {
+            // Segment contenant s ; hors bornes : prolongement du premier / dernier segment.
+            std::size_t i = 1;
+            while (i + 1 < pts_.size() && pts_[i].s < s) {
+                ++i;
+            }
+            const Pt& a = pts_[i - 1];
+            const Pt& b = pts_[i];
+            const double len = std::max(b.s - a.s, 1e-9);
+            f.tx = (b.x - a.x) / len;
+            f.ty = (b.y - a.y) / len;
+            f.x = a.x + f.tx * (s - a.s);
+            f.y = a.y + f.ty * (s - a.s);
+            return f;
+        }
+        }
+        return f;
+    }
+
+private:
+    struct Pt {
+        double x;
+        double y;
+        double s;
+    };
+    document::TextBaseKind kind_;
+    bool inside_{false};
+    double radius_{1.0};
+    std::vector<Pt> pts_;
 };
 
 std::string hex_code(char32_t cp) {
@@ -255,6 +341,58 @@ LayoutOptions layout_options_for(const document::TextObject& text) {
     return options;
 }
 
+namespace {
+
+// Édition individuelle d'une lettre (HP-TXT-008) : rotation et échelle autour du centre de
+// la boîte de la lettre, puis décalage ; couleur propre mémorisée dans le glyphe.
+void apply_glyph_edit(const document::TextObject& text, std::uint32_t index, PlacedGlyph& glyph) {
+    const auto it = std::find_if(text.glyph_edits.begin(), text.glyph_edits.end(),
+                                 [&](const document::GlyphEdit& e) { return e.index == index; });
+    if (it == text.glyph_edits.end()) {
+        return;
+    }
+    const document::GlyphEdit& edit = *it;
+    glyph.rgb = edit.rgb;
+    std::int32_t x0 = INT32_MAX, y0 = INT32_MAX, x1 = INT32_MIN, y1 = INT32_MIN;
+    const auto visit = [&](auto&& fn) {
+        for (auto& set : glyph.shapes) {
+            for (auto& n : set.outer.nodes) {
+                fn(n);
+            }
+            for (auto& hole : set.holes) {
+                for (auto& n : hole.nodes) {
+                    fn(n);
+                }
+            }
+        }
+    };
+    visit([&](geometry::PathNode& n) {
+        x0 = std::min(x0, n.pos.x.value);
+        x1 = std::max(x1, n.pos.x.value);
+        y0 = std::min(y0, n.pos.y.value);
+        y1 = std::max(y1, n.pos.y.value);
+    });
+    if (x0 > x1) {
+        return;
+    }
+    const double cx = (static_cast<double>(x0) + x1) / 2.0;
+    const double cy = (static_cast<double>(y0) + y1) / 2.0;
+    const double s = edit.scale > 0.0 ? edit.scale : 1.0;
+    const double co = std::cos(edit.rotation.radians);
+    const double si = std::sin(edit.rotation.radians);
+    visit([&](geometry::PathNode& n) {
+        const double dx = static_cast<double>(n.pos.x.value) - cx;
+        const double dy = static_cast<double>(n.pos.y.value) - cy;
+        const double rx = cx + s * (dx * co - dy * si) + static_cast<double>(edit.dx.value);
+        const double ry = cy + s * (dx * si + dy * co) + static_cast<double>(edit.dy.value);
+        n.pos = Vec2um{Micrometers{round_um(rx)}, Micrometers{round_um(ry)}};
+    });
+    glyph.pen = Vec2um{Micrometers{glyph.pen.x.value + edit.dx.value},
+                       Micrometers{glyph.pen.y.value + edit.dy.value}};
+}
+
+} // namespace
+
 Result<TextLayout> layout_text(const Font& font, const document::TextObject& text,
                                const LayoutOptions& options) {
     TextLayout layout;
@@ -302,6 +440,7 @@ Result<TextLayout> layout_text(const Font& font, const document::TextObject& tex
         double end = 0.0; // bord droit du dernier caractère non blanc
         char32_t prev = 0;
         double prev_pen = 0.0; // abscisse de la dernière lettre (hors marques)
+        double prev_center_off = 0.0;
         bool first = true;
         const Prepared prepared = prepare_line(font, lines[li], options);
         arabic = arabic || prepared.arabic;
@@ -328,6 +467,7 @@ Result<TextLayout> layout_text(const Font& font, const document::TextObject& tex
             if (item.mark) {
                 // Marque combinante : sur la lettre précédente, sans chasse propre.
                 item.pen = prev_pen;
+                item.center_off = prev_center_off;
                 line.items.push_back(std::move(item));
                 continue;
             }
@@ -345,6 +485,8 @@ Result<TextLayout> layout_text(const Font& font, const document::TextObject& tex
                 }
             }
             item.pen = pen;
+            item.center_off = item.outline.advance * scale / 2.0;
+            prev_center_off = item.center_off;
             prev_pen = pen;
             pen += item.outline.advance * scale;
             if (item.space) {
@@ -368,11 +510,30 @@ Result<TextLayout> layout_text(const Font& font, const document::TextObject& tex
     }
 
     // Pass 2 : alignement, justification, rotation, formes en µm absolus.
+    const BaseCurve curve(text.base);
+    int word = 0;
+    bool any_glyph = false;
+    bool circle_overlap = false;
     for (std::size_t li = 0; li < placed.size(); ++li) {
         Line& line = placed[li];
+        if (any_glyph) {
+            ++word; // une nouvelle ligne ouvre un nouveau mot
+        }
         double shift = 0.0;
         double extra_per_space = 0.0;
-        switch (text.align) {
+        // Cercle complet : lettres réparties sur toute la circonférence (le texte part du
+        // sommet, l'alignement ne s'applique pas).
+        double circle_k = 1.0;
+        if (curve.is_circle() && line.width > 0.0) {
+            int glyph_count = 0;
+            for (const Item& it : line.items) {
+                glyph_count += it.space ? 0 : 1;
+            }
+            const double gap = line.width / std::max(1, glyph_count);
+            circle_k = curve.circumference() / (line.width + gap);
+            circle_overlap = circle_overlap || circle_k < 1.0;
+        }
+        switch (curve.is_circle() ? document::TextAlign::Left : text.align) {
         case document::TextAlign::Left:
             break;
         case document::TextAlign::Center:
@@ -407,11 +568,15 @@ Result<TextLayout> layout_text(const Font& font, const document::TextObject& tex
             if (it.space) {
                 if (seen_glyph) {
                     accumulated += extra_per_space;
+                    ++word;
                 }
                 continue;
             }
             seen_glyph = true;
-            const double px = it.pen + accumulated + shift;
+            const double px = (it.pen + accumulated + shift) * circle_k;
+            // Base courbe : la lettre est posée rigidement autour du centre de sa chasse.
+            const double center = px + it.center_off;
+            const BaseCurve::Frame frame = curve.at(center);
             // Contours : polylignes en µm, rotation autour de l'origine du texte.
             std::vector<geometry::Path> raw;
             for (const auto& loop : it.outline.loops) {
@@ -419,8 +584,15 @@ Result<TextLayout> layout_text(const Font& font, const document::TextObject& tex
                 path.closed = true;
                 path.nodes.reserve(loop.size());
                 for (const FontPoint& p : loop) {
-                    const double x = px + p.x * scale;
-                    const double y = base_y + p.y * scale;
+                    double x = px + p.x * scale;
+                    double y = base_y + p.y * scale;
+                    if (curve.curved()) {
+                        const double d = x - center;
+                        const double bx = frame.x + d * frame.tx - y * frame.ty;
+                        const double by = frame.y + d * frame.ty + y * frame.tx;
+                        x = bx;
+                        y = by;
+                    }
                     const double rx =
                         x * cos_r - y * sin_r + static_cast<double>(text.origin.x.value);
                     const double ry =
@@ -434,17 +606,25 @@ Result<TextLayout> layout_text(const Font& font, const document::TextObject& tex
             PlacedGlyph glyph;
             glyph.code_point = it.cp;
             glyph.line = static_cast<int>(li);
-            const double gx = px;
-            glyph.pen = Vec2um{Micrometers{round_um(gx * cos_r - base_y * sin_r +
+            double gx = px;
+            double gy = base_y;
+            if (curve.curved()) {
+                gx = frame.x - it.center_off * frame.tx - base_y * frame.ty;
+                gy = frame.y - it.center_off * frame.ty + base_y * frame.tx;
+            }
+            glyph.pen = Vec2um{Micrometers{round_um(gx * cos_r - gy * sin_r +
                                                     static_cast<double>(text.origin.x.value))},
-                               Micrometers{round_um(gx * sin_r + base_y * cos_r +
+                               Micrometers{round_um(gx * sin_r + gy * cos_r +
                                                     static_cast<double>(text.origin.y.value))}};
+            glyph.word = word;
+            any_glyph = true;
             auto sets = geometry::union_nonzero(raw);
             if (!sets) {
                 return std::unexpected(sets.error());
             }
             glyph.shapes = std::move(*sets);
             if (!glyph.shapes.empty()) {
+                apply_glyph_edit(text, static_cast<std::uint32_t>(layout.glyphs.size()), glyph);
                 layout.glyphs.push_back(std::move(glyph));
             }
         }
@@ -474,6 +654,12 @@ Result<TextLayout> layout_text(const Font& font, const document::TextObject& tex
         }
         layout.warnings.push_back(
             {"glyphe-remplace", "Caractères absents de la police, remplacés : " + list + "."});
+    }
+    if (circle_overlap) {
+        layout.warnings.push_back(
+            {"texte-trop-long-cercle",
+             "Le texte est plus long que la circonférence du cercle : les lettres se "
+             "chevauchent ; augmentez le rayon ou réduisez le texte."});
     }
     if (arabic) {
         layout.warnings.push_back(

@@ -4,6 +4,7 @@ add_executable(test_project_io
     test_intent_persistence.cpp
     test_thread_persistence.cpp
     test_finishing_persistence.cpp
+    test_hoop_persistence.cpp
     test_machine_file.cpp
     test_machine_file_formats.cpp
     test_load_robustness.cpp
@@ -15,6 +16,9 @@ add_executable(test_project_io
     test_calque_persistence.cpp
     test_blanket_persistence.cpp
     test_contour_fill_persistence.cpp
+    test_motif_persistence.cpp
+    test_radial_spiral_crosshatch_persistence.cpp
+    test_colorway_persistence.cpp
 )
 target_link_libraries(test_project_io
     PRIVATE openstitch::project_io openstitch::formats openstitch::stitch_generation

@@ -11,6 +11,7 @@
 #include <numbers>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "op_registry.hpp"
@@ -279,6 +280,101 @@ OpStatus read_text_fields(const json& args, document::TextObject& t, bool& origi
                                 "valeurs : auto, satin, tatami, contour");
         }
     }
+    if (args.contains("base")) {
+        const auto b = args.at("base").get<std::string>();
+        if (b == "line") {
+            t.base.kind = document::TextBaseKind::Line;
+        } else if (b == "arc") {
+            t.base.kind = document::TextBaseKind::Arc;
+        } else if (b == "circle") {
+            t.base.kind = document::TextBaseKind::Circle;
+        } else if (b == "path") {
+            t.base.kind = document::TextBaseKind::Path;
+        } else {
+            return out_of_range("base « " + b + " » inconnue", "valeurs : line, arc, circle, path");
+        }
+    }
+    if (args.contains("base_radius_mm")) {
+        if (auto s = number("base_radius_mm", 1.0, 1000.0, v); !s.ok) {
+            return s;
+        }
+        t.base.radius = to_micrometers(Millimeters{v});
+    }
+    if (args.contains("base_inside")) {
+        t.base.inside = args.at("base_inside").get<bool>();
+    }
+    if (args.contains("base_path_mm")) {
+        const auto& pts = args.at("base_path_mm");
+        if (!pts.is_array() || pts.size() > 500) {
+            return out_of_range("base_path_mm : tableau de [x, y] (500 points au plus) attendu");
+        }
+        t.base.path.clear();
+        for (const auto& pj : pts) {
+            Vec2um p;
+            if (!read_point(pj, p)) {
+                return out_of_range(
+                    "base_path_mm : points [x, y] en mm (|coord| <= 1000) attendus");
+            }
+            t.base.path.push_back(p);
+        }
+    }
+    if (t.base.kind == document::TextBaseKind::Path && t.base.path.size() < 2) {
+        return out_of_range("base path : base_path_mm doit contenir au moins 2 points");
+    }
+    for (const char* key : {"letter_connector", "word_connector"}) {
+        if (!args.contains(key)) {
+            continue;
+        }
+        const auto c = args.at(key).get<std::string>();
+        document::ConnectorMode mode = document::ConnectorMode::Inherit;
+        if (c == "trim") {
+            mode = document::ConnectorMode::AlwaysTrim;
+        } else if (c == "no_trim") {
+            mode = document::ConnectorMode::NeverTrim;
+        } else if (c != "inherit") {
+            return out_of_range(std::string(key) + " « " + c + " » inconnu",
+                                "valeurs : inherit, trim, no_trim");
+        }
+        (std::string_view(key) == "letter_connector" ? t.letter_connector : t.word_connector) =
+            mode;
+    }
+    if (args.contains("glyph_edits")) {
+        const auto& edits = args.at("glyph_edits");
+        if (!edits.is_array() || edits.size() > 2000) {
+            return out_of_range("glyph_edits : tableau d'objets {index, dx_mm, dy_mm, "
+                                "rotation_deg, scale, rgb} attendu");
+        }
+        t.glyph_edits.clear();
+        for (const auto& ej : edits) {
+            if (!ej.is_object() || !ej.contains("index") || !ej.at("index").is_number_integer() ||
+                ej.at("index").get<long long>() < 0) {
+                return out_of_range("glyph_edits : chaque entrée porte un `index` >= 0");
+            }
+            document::GlyphEdit e;
+            e.index = ej.at("index").get<std::uint32_t>();
+            e.dx = to_micrometers(Millimeters{ej.value("dx_mm", 0.0)});
+            e.dy = to_micrometers(Millimeters{ej.value("dy_mm", 0.0)});
+            e.rotation = Angle{ej.value("rotation_deg", 0.0) * std::numbers::pi / 180.0};
+            e.scale = ej.value("scale", 1.0);
+            if (!(e.scale >= 0.1 && e.scale <= 10.0)) {
+                return out_of_range("glyph_edits : scale hors plage [0.1 ; 10]");
+            }
+            if (ej.contains("rgb")) {
+                const auto parsed = rgb_from_hex(ej.at("rgb").get<std::string>());
+                if (!parsed) {
+                    return out_of_range("glyph_edits : rgb invalide", "format attendu : #RRGGBB");
+                }
+                e.rgb = *parsed;
+            }
+            t.glyph_edits.push_back(e);
+        }
+        std::sort(t.glyph_edits.begin(), t.glyph_edits.end(),
+                  [](const auto& a, const auto& b) { return a.index < b.index; });
+        t.glyph_edits.erase(
+            std::unique(t.glyph_edits.begin(), t.glyph_edits.end(),
+                        [](const auto& a, const auto& b) { return a.index == b.index; }),
+            t.glyph_edits.end());
+    }
     if (args.contains("rgb")) {
         const auto parsed = rgb_from_hex(args.at("rgb").get<std::string>());
         if (!parsed) {
@@ -382,7 +478,22 @@ std::vector<ArgSpec> text_style_args() {
         arg("density_mm", "number", "écart des traversées satin / rangées tatami (défaut 0.4)",
             false, "mm", "[0.2 ; 2]"),
         arg("max_satin_width_mm", "number", "au-delà, la lettre passe en tatami (défaut 6)", false,
-            "mm", "[1 ; 20]")};
+            "mm", "[1 ; 20]"),
+        arg("base", "string", "base du texte : line | arc | circle | path (défaut line)", false, {},
+            "line | arc | circle | path"),
+        arg("base_radius_mm", "number", "rayon de la base arc / circle (défaut 50)", false, "mm",
+            "[1 ; 1000]"),
+        arg("base_inside", "boolean", "arc / circle : texte en dessous, sommets vers le centre"),
+        arg("base_path_mm", "array", "base path : points [[x,y],...] relatifs à l'origine", false,
+            "mm", "2 à 500 points"),
+        arg("letter_connector", "string", "entre lettres d'un mot : inherit | trim | no_trim",
+            false, {}, "inherit | trim | no_trim"),
+        arg("word_connector", "string", "entre mots / lignes : inherit | trim | no_trim", false, {},
+            "inherit | trim | no_trim"),
+        arg("glyph_edits", "array",
+            "éditions par lettre [{index, dx_mm, dy_mm, rotation_deg, scale, rgb}] (index = rang "
+            "de la lettre, espaces exclus)",
+            false, {}, "scale [0.1 ; 10]")};
 }
 
 OpSpec op_add_text() {

@@ -23,8 +23,11 @@
 #include "op_registry.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/finishing_commands.hpp"
+#include "openstitch/commands/machine_commands.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/thread_commands.hpp"
+#include "openstitch/document/hoop_library.hpp"
+#include "openstitch/document/machine_profile.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/optimization/order.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
@@ -187,12 +190,26 @@ const EnumTable<document::BlanketSide>& blanket_side_table() {
                                                     {"center", document::BlanketSide::Center}};
     return t;
 }
+const EnumTable<document::MotifId>& motif_table() {
+    static const EnumTable<document::MotifId> t{
+        {"wave", document::MotifId::Wave},       {"zigzag", document::MotifId::Zigzag},
+        {"leaf", document::MotifId::Leaf},       {"heart", document::MotifId::Heart},
+        {"diamond", document::MotifId::Diamond}, {"scallop", document::MotifId::Scallop}};
+    return t;
+}
 const EnumTable<document::SatinSplit>& split_table() {
     static const EnumTable<document::SatinSplit> t{
         {"disabled", document::SatinSplit::Disabled},
         {"simple", document::SatinSplit::Simple},
         {"staggered", document::SatinSplit::Staggered},
         {"deterministic_jitter", document::SatinSplit::DeterministicJitter}};
+    return t;
+}
+const EnumTable<document::SatinCorner>& satin_corner_table() {
+    static const EnumTable<document::SatinCorner> t{{"none", document::SatinCorner::None},
+                                                    {"miter", document::SatinCorner::Miter},
+                                                    {"overlap", document::SatinCorner::Overlap},
+                                                    {"cut", document::SatinCorner::Cut}};
     return t;
 }
 const EnumTable<document::SatinCap>& cap_table() {
@@ -283,8 +300,9 @@ std::array<std::uint8_t, 3> parse_hex_color(const std::string& text) {
 }
 
 const char* stitch_type_name(const document::StitchParams& p) {
-    static constexpr const char* names[] = {"running",    "tatami",  "satin",       "directional",
-                                            "auto_satin", "blanket", "contour_fill"};
+    static constexpr const char* names[] = {
+        "running",      "tatami",    "satin",      "directional", "auto_satin",  "blanket",
+        "contour_fill", "motif_run", "motif_fill", "radial_fill", "spiral_fill", "crosshatch_fill"};
     return names[p.index()];
 }
 
@@ -745,6 +763,8 @@ template <class P> void add_satin_common(std::vector<Field<P>>& v) {
     v.push_back(enum_field<P>("underlay_mode", &P::underlay_mode, underlay_mode_table()));
     v.push_back(enum_field<P>("short_stitch", &P::short_stitch, short_stitch_table()));
     v.push_back(enum_field<P>("split_stitch", &P::split_stitch, split_table()));
+    v.push_back(bool_field<P>("auto_spacing", &P::auto_spacing));
+    v.push_back(enum_field<P>("corner_mode", &P::corner_mode, satin_corner_table()));
 }
 
 template <class P> const std::vector<Field<P>>& fields_of();
@@ -889,6 +909,91 @@ const std::vector<Field<document::ContourFillParams>>& fields_of<document::Conto
     return fields;
 }
 
+template <>
+const std::vector<Field<document::MotifRunParams>>& fields_of<document::MotifRunParams>() {
+    using P = document::MotifRunParams;
+    static const auto fields = [] {
+        std::vector<Field<P>> v;
+        v.push_back(enum_field<P>("motif", &P::motif, motif_table()));
+        v.push_back(mm_field<P>("size_mm", &P::size, 0.5, 40.0));
+        v.push_back(mm_field<P>("spacing_mm", &P::spacing, 1.0, 100.0));
+        v.push_back(mm_field<P>("stitch_length_mm", &P::stitch_length, 1.0, 7.0));
+        v.push_back(mm_field<P>("min_length_mm", &P::min_length, 0.0, 7.0));
+        v.push_back(bool_field<P>("alternate", &P::alternate));
+        return v;
+    }();
+    return fields;
+}
+
+template <>
+const std::vector<Field<document::MotifFillParams>>& fields_of<document::MotifFillParams>() {
+    using P = document::MotifFillParams;
+    static const auto fields = [] {
+        std::vector<Field<P>> v;
+        v.push_back(enum_field<P>("motif", &P::motif, motif_table()));
+        v.push_back(mm_field<P>("size_mm", &P::size, 0.5, 40.0));
+        v.push_back(mm_field<P>("spacing_mm", &P::spacing, 1.0, 100.0));
+        v.push_back(deg_field<P>("angle_deg", &P::angle, -360.0, 360.0));
+        v.push_back(bool_field<P>("stagger", &P::stagger));
+        v.push_back(mm_field<P>("inset_mm", &P::inset, 0.0, 10.0));
+        v.push_back(mm_field<P>("stitch_length_mm", &P::stitch_length, 1.0, 7.0));
+        v.push_back(mm_field<P>("min_length_mm", &P::min_length, 0.0, 7.0));
+        v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
+        return v;
+    }();
+    return fields;
+}
+
+template <>
+const std::vector<Field<document::RadialFillParams>>& fields_of<document::RadialFillParams>() {
+    using P = document::RadialFillParams;
+    static const auto fields = [] {
+        std::vector<Field<P>> v;
+        v.push_back(mm_field<P>("row_spacing_mm", &P::row_spacing, 0.1, 10.0));
+        v.push_back(mm_field<P>("stitch_length_mm", &P::stitch_length, 1.0, 7.0));
+        v.push_back(mm_field<P>("min_length_mm", &P::min_length, 0.0, 7.0));
+        v.push_back(mm_field<P>("inset_mm", &P::inset, 0.0, 10.0));
+        v.push_back(point_field<P>("center_mm", &P::center));
+        v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
+        return v;
+    }();
+    return fields;
+}
+
+template <>
+const std::vector<Field<document::SpiralFillParams>>& fields_of<document::SpiralFillParams>() {
+    using P = document::SpiralFillParams;
+    static const auto fields = [] {
+        std::vector<Field<P>> v;
+        v.push_back(mm_field<P>("row_spacing_mm", &P::row_spacing, 0.1, 10.0));
+        v.push_back(mm_field<P>("stitch_length_mm", &P::stitch_length, 1.0, 7.0));
+        v.push_back(mm_field<P>("min_length_mm", &P::min_length, 0.0, 7.0));
+        v.push_back(mm_field<P>("inset_mm", &P::inset, 0.0, 10.0));
+        v.push_back(point_field<P>("center_mm", &P::center));
+        v.push_back(bool_field<P>("clockwise", &P::clockwise));
+        v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
+        return v;
+    }();
+    return fields;
+}
+
+template <>
+const std::vector<Field<document::CrosshatchFillParams>>&
+fields_of<document::CrosshatchFillParams>() {
+    using P = document::CrosshatchFillParams;
+    static const auto fields = [] {
+        std::vector<Field<P>> v;
+        v.push_back(deg_field<P>("angle_deg", &P::angle, -360.0, 360.0));
+        v.push_back(int_field<P>("layers", &P::layers, 2, 3));
+        v.push_back(mm_field<P>("row_spacing_mm", &P::row_spacing, 0.3, 10.0));
+        v.push_back(mm_field<P>("stitch_length_mm", &P::stitch_length, 1.0, 7.0));
+        v.push_back(mm_field<P>("inset_mm", &P::inset, 0.0, 10.0));
+        v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
+        return v;
+    }();
+    return fields;
+}
+
 // Types de points (noms) qui possèdent le champ `name`.
 std::vector<std::string> types_having(const std::string& name) {
     std::vector<std::string> out;
@@ -913,6 +1018,21 @@ std::vector<std::string> types_having(const std::string& name) {
     if (find_field(fields_of<document::ContourFillParams>(), name) != nullptr) {
         out.emplace_back("contour_fill");
     }
+    if (find_field(fields_of<document::MotifRunParams>(), name) != nullptr) {
+        out.emplace_back("motif_run");
+    }
+    if (find_field(fields_of<document::MotifFillParams>(), name) != nullptr) {
+        out.emplace_back("motif_fill");
+    }
+    if (find_field(fields_of<document::RadialFillParams>(), name) != nullptr) {
+        out.emplace_back("radial_fill");
+    }
+    if (find_field(fields_of<document::SpiralFillParams>(), name) != nullptr) {
+        out.emplace_back("spiral_fill");
+    }
+    if (find_field(fields_of<document::CrosshatchFillParams>(), name) != nullptr) {
+        out.emplace_back("crosshatch_fill");
+    }
     return out;
 }
 
@@ -925,7 +1045,13 @@ std::string params_catalog_text() {
     out += "satin : " + join(field_names(fields_of<document::SatinParams>())) + " ; ";
     out += "auto_satin : " + join(field_names(fields_of<document::AutoSatinParams>())) + " ; ";
     out += "blanket : " + join(field_names(fields_of<document::BlanketStitchParams>())) + " ; ";
-    out += "contour_fill : " + join(field_names(fields_of<document::ContourFillParams>())) + ". ";
+    out += "contour_fill : " + join(field_names(fields_of<document::ContourFillParams>())) + " ; ";
+    out += "motif_run : " + join(field_names(fields_of<document::MotifRunParams>())) + " ; ";
+    out += "motif_fill : " + join(field_names(fields_of<document::MotifFillParams>())) + " ; ";
+    out += "radial_fill : " + join(field_names(fields_of<document::RadialFillParams>())) + " ; ";
+    out += "spiral_fill : " + join(field_names(fields_of<document::SpiralFillParams>())) + " ; ";
+    out += "crosshatch_fill : " + join(field_names(fields_of<document::CrosshatchFillParams>())) +
+           ". ";
     out += "Suffixe _mm = millimètres, _deg = degrés ; énumérations en chaîne";
     return out;
 }
@@ -1554,7 +1680,11 @@ OpSpec op_discard_overrides() {
 json canvas_json(const document::Canvas& c) {
     return {{"width_mm", to_millimeters(c.width).value},
             {"height_mm", to_millimeters(c.height).value},
-            {"margin_mm", to_millimeters(c.margin).value}};
+            {"margin_mm", to_millimeters(c.margin).value},
+            {"shape", c.shape == document::HoopShape::Ellipse            ? "ellipse"
+                      : c.shape == document::HoopShape::RoundedRectangle ? "rounded"
+                                                                         : "rectangle"},
+            {"corner_radius_mm", to_millimeters(c.corner_radius).value}};
 }
 
 OpSpec op_set_canvas() {
@@ -1565,15 +1695,56 @@ OpSpec op_set_canvas() {
     s.args = {arg("width_mm", "number", "largeur du cadre", false, "mm", "]0 ; 2000]"),
               arg("height_mm", "number", "hauteur du cadre", false, "mm", "]0 ; 2000]"),
               arg("margin_mm", "number", "marge de sécurité sur chaque côté", false, "mm",
-                  "[0 ; 500], 2 x marge < min(largeur, hauteur)")};
+                  "[0 ; 500], 2 x marge < min(largeur, hauteur)"),
+              arg("hoop", "string",
+                  "identifiant d'un cadre de la bibliothèque (taille et forme), ex. round-150 ; "
+                  "width_mm / height_mm / shape donnés en plus l'emportent",
+                  false, "", "voir document::hoop_library()"),
+              arg("shape", "string", "forme du cadre : rectangle, ellipse (rond ou ovale), rounded",
+                  false, "", "rectangle | ellipse | rounded"),
+              arg("corner_radius_mm", "number", "rayon des coins (forme rounded)", false, "mm",
+                  "[0 ; 500]")};
     s.example = R"({"op":"set_canvas","width_mm":160,"height_mm":260,"margin_mm":5})";
     s.apply = guarded([](OpContext& ctx) {
         if (!ctx.args.contains("width_mm") && !ctx.args.contains("height_mm") &&
-            !ctx.args.contains("margin_mm")) {
-            refuse(code::kUsage, "indiquez au moins un de : width_mm, height_mm, margin_mm");
+            !ctx.args.contains("margin_mm") && !ctx.args.contains("hoop") &&
+            !ctx.args.contains("shape") && !ctx.args.contains("corner_radius_mm")) {
+            refuse(code::kUsage,
+                   "indiquez au moins un de : hoop, width_mm, height_mm, margin_mm, shape, "
+                   "corner_radius_mm");
         }
         const document::Canvas before = ctx.project.canvas;
         document::Canvas next = before;
+        if (const auto it = ctx.args.find("hoop"); it != ctx.args.end()) {
+            const std::string id = it->get<std::string>();
+            const document::HoopSpec* spec = document::find_hoop(id);
+            if (spec == nullptr) {
+                refuse(code::kOutOfRange, "cadre inconnu : « " + id + " »",
+                       "voir la bibliothèque de cadres (hoop_library)");
+            }
+            next = document::canvas_from_hoop(*spec, before.margin);
+        }
+        if (const auto it = ctx.args.find("shape"); it != ctx.args.end()) {
+            const std::string shape = it->get<std::string>();
+            if (shape == "rectangle") {
+                next.shape = document::HoopShape::Rectangle;
+            } else if (shape == "ellipse") {
+                next.shape = document::HoopShape::Ellipse;
+            } else if (shape == "rounded") {
+                next.shape = document::HoopShape::RoundedRectangle;
+            } else {
+                refuse(code::kOutOfRange, "« shape » : « " + shape + " » inconnue",
+                       "rectangle, ellipse ou rounded");
+            }
+        }
+        if (const auto it = ctx.args.find("corner_radius_mm"); it != ctx.args.end()) {
+            const double d = it->get<double>();
+            if (!(d >= 0.0 && d <= 500.0)) {
+                refuse(code::kOutOfRange,
+                       "« corner_radius_mm » : " + num(d) + " hors plage [0 ; 500] mm");
+            }
+            next.corner_radius = to_micrometers(Millimeters{d});
+        }
         const auto dimension = [&](const char* key, Micrometers& target) {
             if (const auto it = ctx.args.find(key); it != ctx.args.end()) {
                 const double d = it->get<double>();
@@ -1607,6 +1778,27 @@ OpSpec op_set_canvas() {
         }
         ctx.stack.execute(std::make_unique<commands::SetCanvasCommand>(next), ctx.project);
         return OpStatus::success({{"before", canvas_json(before)}, {"after", canvas_json(next)}});
+    });
+    return s;
+}
+
+OpSpec op_set_machine() {
+    OpSpec s;
+    s.name = "set_machine";
+    s.summary = "Choisit le profil machine du projet (champ, cadres, aiguilles, formats : sert aux "
+                "vérifications avant export). Chaîne vide = aucune machine.";
+    s.args = {arg("machine", "string", "identifiant du profil, ex. generic-multi-6 ; vide = aucune",
+                  true, "", "voir document::machine_profiles()")};
+    s.example = R"({"op":"set_machine","machine":"generic-multi-6"})";
+    s.apply = guarded([](OpContext& ctx) {
+        const std::string id = ctx.args.at("machine").get<std::string>();
+        if (!id.empty() && document::find_machine(id) == nullptr) {
+            refuse(code::kOutOfRange, "machine inconnue : « " + id + " »",
+                   "voir les profils machine disponibles (machine_profiles)");
+        }
+        const std::string before = ctx.project.machine_id;
+        ctx.stack.execute(std::make_unique<commands::SetMachineCommand>(id), ctx.project);
+        return OpStatus::success({{"before", before}, {"after", id}});
     });
     return s;
 }
@@ -1700,6 +1892,7 @@ void register_param_ops(std::vector<OpSpec>& out) {
     out.push_back(op_remove_object());
     out.push_back(op_discard_overrides());
     out.push_back(op_set_canvas());
+    out.push_back(op_set_machine());
     out.push_back(op_set_finishing());
 }
 

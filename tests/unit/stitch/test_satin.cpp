@@ -837,3 +837,133 @@ TEST_CASE("rails_from_contour : contour trop petit -> nullopt") {
     tri.nodes = {{Vec2um{Micrometers{0}, Micrometers{0}}, geometry::NodeType::Corner, {}, {}}};
     CHECK_FALSE(rails_from_contour(tri).has_value());
 }
+
+// --- HP-ENG-003 / HP-ENG-005 : espacement automatique et coins vifs ------------
+
+namespace {
+
+std::vector<SatinStation> straight_stations(std::int32_t halfWidth) {
+    std::vector<SatinStation> s;
+    for (std::int32_t x = 0; x <= 20'000; x += 400) {
+        s.push_back({v(x, halfWidth), v(x, -halfWidth), false, false});
+    }
+    return s;
+}
+
+// Branche horizontale (x = 0..10 mm, largeur 2 mm), éventail de 5 fils sur le coin, puis branche
+// verticale : l'axe tourne de 90 degrés au point (10 mm, 0).
+std::vector<SatinStation> corner_stations() {
+    std::vector<SatinStation> s;
+    for (std::int32_t x = 0; x <= 10'000; x += 400) {
+        s.push_back({v(x, 1'000), v(x, -1'000), false, false});
+    }
+    constexpr double kPi = 3.14159265358979323846;
+    for (int deg = 15; deg <= 75; deg += 15) {
+        const double r = deg * kPi / 180.0;
+        const auto sx = static_cast<std::int32_t>(std::lround(1'000.0 * std::sin(r)));
+        const auto cy = static_cast<std::int32_t>(std::lround(1'000.0 * std::cos(r)));
+        s.push_back({v(10'000 - sx, cy), v(10'000 + sx, -cy), false, false});
+    }
+    for (std::int32_t y = 400; y <= 10'000; y += 400) {
+        s.push_back({v(9'000, y), v(11'000, y), false, false});
+    }
+    return s;
+}
+
+bool has_point(const SatinResult& r, Vec2um p) {
+    for (const auto& q : r.satin) {
+        if (q == p) {
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
+TEST_CASE("satin espacement auto : etroit plus lache, large plus serre, defaut inchange") {
+    SatinConfig base;
+    base.density = Micrometers{400};
+    SatinConfig autoCfg = base;
+    autoCfg.auto_spacing = true;
+
+    const auto narrow = straight_stations(500);   // 1 mm
+    const auto wide = straight_stations(4'000);   // 8 mm
+    const auto medium = straight_stations(2'000); // 4 mm : facteur 1
+
+    const auto nBase = finish_satin_stations(narrow, base);
+    const auto nAuto = finish_satin_stations(narrow, autoCfg);
+    CHECK(nAuto.satin.size() < nBase.satin.size());
+
+    const auto wBase = finish_satin_stations(wide, base);
+    const auto wAuto = finish_satin_stations(wide, autoCfg);
+    CHECK(wAuto.satin.size() > wBase.satin.size());
+
+    const auto mBase = finish_satin_stations(medium, base);
+    const auto mAuto = finish_satin_stations(medium, autoCfg);
+    CHECK(mAuto.satin.size() == mBase.satin.size());
+
+    // Déterministe, et les bouts de colonne restent exacts.
+    const auto again = finish_satin_stations(wide, autoCfg);
+    CHECK(again.satin == wAuto.satin);
+    CHECK(wAuto.satin.front() == v(0, 4'000));
+    CHECK(wAuto.satin.back() == v(20'000, -4'000));
+}
+
+TEST_CASE("satin espacement auto : un barreau est traverse exactement") {
+    auto stations = straight_stations(500);
+    stations[25].anchor = true; // x = 10 mm
+    SatinConfig cfg;
+    cfg.density = Micrometers{400};
+    cfg.auto_spacing = true;
+    const auto result = finish_satin_stations(stations, cfg);
+    CHECK(has_point(result, v(10'000, 500)));
+    CHECK(has_point(result, v(10'000, -500)));
+}
+
+TEST_CASE("satin coins vifs : onglet, chevauchement et coupe") {
+    const auto stations = corner_stations();
+    REQUIRE(stations.size() == 56);
+
+    SatinConfig none;
+    const auto base = finish_satin_stations(stations, none);
+    CHECK(base.satin.size() == 112);
+    CHECK(base.jump_before.empty());
+
+    SatinConfig miter;
+    miter.corner_mode = SatinCornerMode::Miter;
+    const auto m = finish_satin_stations(stations, miter);
+    CHECK(m.satin.size() == 104); // 4 fils d'éventail retirés, la bissectrice reste
+    CHECK(has_point(m, v(9'293, 707)));
+    CHECK(m.jump_before.empty());
+
+    SatinConfig overlap;
+    overlap.corner_mode = SatinCornerMode::Overlap;
+    const auto o = finish_satin_stations(stations, overlap);
+    CHECK(o.satin.size() == 102); // la bissectrice est retirée aussi
+    CHECK_FALSE(has_point(o, v(9'293, 707)));
+
+    SatinConfig cut;
+    cut.corner_mode = SatinCornerMode::Cut;
+    const auto c = finish_satin_stations(stations, cut);
+    CHECK(c.satin.size() == 112);
+    REQUIRE(c.jump_before.size() == 1);
+    CHECK(c.jump_before.front() == 58);
+
+    // Déterministe.
+    CHECK(finish_satin_stations(stations, miter).satin == m.satin);
+}
+
+TEST_CASE("satin coins vifs : une colonne droite n'est pas modifiee") {
+    const auto stations = straight_stations(1'000);
+    SatinConfig none;
+    const auto base = finish_satin_stations(stations, none);
+    for (const auto mode :
+         {SatinCornerMode::Miter, SatinCornerMode::Overlap, SatinCornerMode::Cut}) {
+        SatinConfig cfg;
+        cfg.corner_mode = mode;
+        const auto r = finish_satin_stations(stations, cfg);
+        CHECK(r.satin == base.satin);
+        CHECK(r.jump_before.empty());
+    }
+}

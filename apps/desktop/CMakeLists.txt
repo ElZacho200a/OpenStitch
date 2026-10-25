@@ -28,6 +28,8 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_regions.cpp
     main_window_shapes.cpp
     main_window_objects.cpp
+    simulation_nav_bar.cpp
+    simulation_nav_bar.hpp
     main_window_rotation.cpp
     main_window_workflow.cpp
     ui_memory.hpp
@@ -35,6 +37,12 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_analysis.cpp
     main_window_realistic.cpp
     main_window_production.cpp
+    main_window_colorways.cpp
+    colorway_dialog.cpp
+    colorway_dialog.hpp
+    thread_merge_dialog.cpp
+    thread_merge_dialog.hpp
+    fabric_params.hpp
     # [cablage-A:debut]
     main_window_export_image.cpp
     export_image.cpp
@@ -45,6 +53,7 @@ add_library(openstitch_desktop_widgets STATIC
     # [cablage-B:debut]
     main_window_vector_tools.cpp
     # [cablage-B:fin]
+    main_window_vector_edit.cpp
     # [cablage-C:debut]
     main_window_measure.cpp
     main_window_reshape.cpp
@@ -61,6 +70,11 @@ add_library(openstitch_desktop_widgets STATIC
     density_overlay.hpp
     main_window_density.cpp
     # [cablage-E:fin]
+    # [cablage-HOOP:debut]
+    machine_dialog.cpp
+    machine_dialog.hpp
+    main_window_machine.cpp
+    # [cablage-HOOP:fin]
     production_dialog.cpp
     production_dialog.hpp
     realistic_preferences.cpp
@@ -79,6 +93,8 @@ add_library(openstitch_desktop_widgets STATIC
     font_catalog.hpp
     text_dialog.cpp
     text_dialog.hpp
+    text_advanced_panel.cpp
+    text_advanced_panel.hpp
     lettering_fonts.qrc
     main_window.hpp
     app_settings.cpp

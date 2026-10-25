@@ -6,11 +6,14 @@
 #include <QAction>
 #include <QClipboard>
 #include <QColorDialog>
+#include <QDir>
 #include <QGuiApplication>
+#include <QImage>
 #include <QInputDialog>
 #include <QLineF>
 #include <QMenu>
 #include <QMimeData>
+#include <QStandardPaths>
 #include <QStatusBar>
 
 #include <algorithm>
@@ -210,7 +213,8 @@ void MainWindow::updateObjectEditActions() {
     }
     const QMimeData* mime = QGuiApplication::clipboard()->mimeData();
     setEnabledWithReason(pasteAct_,
-                         mime != nullptr && mime->hasFormat(project_io::kFragmentMimeType),
+                         mime != nullptr &&
+                             (mime->hasFormat(project_io::kFragmentMimeType) || mime->hasImage()),
                          tr("Copiez d'abord des formes (Édition ▸ Copier)."));
     setEnabledWithReason(pasteInPlaceAct_, pasteAct_ != nullptr && pasteAct_->isEnabled(),
                          tr("Copiez d'abord des formes (Édition ▸ Copier)."));
@@ -293,6 +297,19 @@ void MainWindow::cutSelection() {
 
 void MainWindow::pasteClipboard(bool inPlace) {
     const QMimeData* mime = QGuiApplication::clipboard()->mimeData();
+    // HP-FMT-016 : une image du presse-papiers (capture, copie depuis un navigateur) s'ouvre comme
+    // une image importée, via un PNG temporaire.
+    if (mime != nullptr && !mime->hasFormat(project_io::kFragmentMimeType) && mime->hasImage()) {
+        const QImage clip = qvariant_cast<QImage>(mime->imageData());
+        const QString tmp = QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
+                                .filePath(QStringLiteral("openstitch-presse-papiers.png"));
+        if (!clip.isNull() && clip.save(tmp, "PNG")) {
+            openPath(tmp);
+        } else {
+            statusBar()->showMessage(tr("L'image du presse-papiers n'a pas pu être lue."), 6000);
+        }
+        return;
+    }
     if (mime == nullptr || !mime->hasFormat(project_io::kFragmentMimeType)) {
         statusBar()->showMessage(
             tr("Rien à coller : copiez d'abord des formes (Édition ▸ Copier)."), 6000);

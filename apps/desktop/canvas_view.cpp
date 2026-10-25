@@ -359,12 +359,30 @@ void CanvasView::setCanvasSizeMm(QSizeF sizeMm) {
     emit viewChanged();
 }
 
+void CanvasView::setFabricColor(const QColor& color) {
+    if (color == fabricColor_) {
+        return;
+    }
+    fabricColor_ = color;
+    viewport()->update();
+}
+
 void CanvasView::setUsableMarginMm(double marginMm) {
     marginMm = std::max(0.0, marginMm);
     if (marginMm == marginMm_) {
         return;
     }
     marginMm_ = marginMm;
+    viewport()->update();
+}
+
+void CanvasView::setHoopShape(document::HoopShape shape, double cornerRadiusMm) {
+    cornerRadiusMm = std::max(0.0, cornerRadiusMm);
+    if (shape == hoopShape_ && cornerRadiusMm == cornerRadiusMm_) {
+        return;
+    }
+    hoopShape_ = shape;
+    cornerRadiusMm_ = cornerRadiusMm;
     viewport()->update();
 }
 
@@ -1211,10 +1229,10 @@ void CanvasView::scrollContentsBy(int dx, int dy) {
 void CanvasView::drawBackground(QPainter* painter, const QRectF& rect) {
     QGraphicsView::drawBackground(painter, rect);
 
-    // Zone du canevas en blanc.
+    // Zone du canevas : couleur du tissu (blanc par défaut).
     const QRectF canvas(-canvasMm_.width() / 2.0, -canvasMm_.height() / 2.0, canvasMm_.width(),
                         canvasMm_.height());
-    painter->fillRect(canvas, Qt::white);
+    painter->fillRect(canvas, fabricColor_);
 
     // Grille adaptative : pas fin >= 8 px à l'écran, pas majeur = 5x ou 10x.
     const double pxPerMm = pixelsPerMm();
@@ -1260,7 +1278,25 @@ void CanvasView::drawForeground(QPainter* painter, const QRectF& rect) {
     pen.setStyle(Qt::DashLine);
     painter->setPen(pen);
     painter->setBrush(Qt::NoBrush);
-    painter->drawRect(canvas);
+    // Contour de la forme du cadre (rectangle, rond / ovale, coins arrondis).
+    const auto shapePath = [this](const QRectF& r, double radius) {
+        QPainterPath path;
+        switch (hoopShape_) {
+        case document::HoopShape::Ellipse:
+            path.addEllipse(r);
+            break;
+        case document::HoopShape::RoundedRectangle: {
+            const double rr = std::clamp(radius, 0.0, std::min(r.width(), r.height()) / 2.0);
+            path.addRoundedRect(r, rr, rr);
+            break;
+        }
+        default:
+            path.addRect(r);
+            break;
+        }
+        return path;
+    };
+    painter->drawPath(shapePath(canvas, cornerRadiusMm_));
 
     // Zone brodable : le cadre moins la marge de sécurité. La bande entre les deux est
     // hachurée (le motif ne doit pas y passer), le contour de la zone brodable est plein.
@@ -1270,8 +1306,8 @@ void CanvasView::drawForeground(QPainter* painter, const QRectF& rect) {
         QColor hatch = AppTheme::instance().tokens().canvasHoop;
         hatch.setAlpha(110);
         QPainterPath band;
-        band.addRect(canvas);
-        band.addRect(usable);
+        band.addPath(shapePath(canvas, cornerRadiusMm_));
+        band.addPath(shapePath(usable, cornerRadiusMm_ - m));
         band.setFillRule(Qt::OddEvenFill);
         painter->setPen(Qt::NoPen);
         painter->setBrush(QBrush(hatch, Qt::BDiagPattern));
@@ -1281,7 +1317,7 @@ void CanvasView::drawForeground(QPainter* painter, const QRectF& rect) {
         usablePen.setWidth(1);
         painter->setPen(usablePen);
         painter->setBrush(Qt::NoBrush);
-        painter->drawRect(usable);
+        painter->drawPath(shapePath(usable, cornerRadiusMm_ - m));
     }
 }
 

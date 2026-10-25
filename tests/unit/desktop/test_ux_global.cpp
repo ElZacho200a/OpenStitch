@@ -539,7 +539,7 @@ private slots:
         addEmbroidery(project, addSquareVector(project));
         window.applyLoadedProject(project);
         QVERIFY(window.sequence_.has_value());
-        QCOMPARE(window.simSpeedCombo_->count(), 4);
+        QCOMPARE(window.simSpeedCombo_->count(), 6);
         QCOMPARE(window.simSpeedCombo_->itemData(0).toDouble(), 0.25);
         QCOMPARE(window.simSpeedCombo_->itemData(3).toDouble(), 16.0);
         window.simSlider_->setValue(3); // déplace le curseur : objet et couleur courants

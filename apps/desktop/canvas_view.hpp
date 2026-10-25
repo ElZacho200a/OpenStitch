@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <QColor>
 #include <QCursor>
 #include <QGraphicsView>
 #include <QPoint>
 #include <QTimer>
 
 #include "interaction_map.hpp"
+#include "openstitch/document/canvas.hpp"
 
 class QRubberBand;
 
@@ -27,9 +29,15 @@ public:
 
     void setCanvasSizeMm(QSizeF sizeMm);
     [[nodiscard]] QSizeF canvasSizeMm() const { return canvasMm_; }
+    // Couleur du tissu de fond (HP-THR-008) ; blanc par défaut.
+    void setFabricColor(const QColor& color);
+    [[nodiscard]] QColor fabricColor() const { return fabricColor_; }
     // Marge de sécurité (mm) entre le cadre et la zone réellement brodable ; 0 = pas de marge.
     void setUsableMarginMm(double marginMm);
     [[nodiscard]] double usableMarginMm() const { return marginMm_; }
+    // Forme du cadre dessiné (HP-HOOP-001) ; surcouche de dessin seule, sans capture de clic.
+    void setHoopShape(document::HoopShape shape, double cornerRadiusMm);
+    [[nodiscard]] document::HoopShape hoopShape() const { return hoopShape_; }
 
     // Échelle courante en pixels d'écran par millimètre.
     [[nodiscard]] double pixelsPerMm() const;
@@ -234,7 +242,10 @@ private:
     void queueSelectBelow(QPointF posMm, QPoint globalPos);
 
     QSizeF canvasMm_{100.0, 100.0};
+    QColor fabricColor_{Qt::white};
     double marginMm_{0.0};
+    document::HoopShape hoopShape_{document::HoopShape::Rectangle};
+    double cornerRadiusMm_{0.0};
     bool cropMode_{false};
     bool boxDrawMode_{false};
     bool polygonDrawMode_{false};

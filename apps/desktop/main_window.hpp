@@ -75,6 +75,8 @@ class CompositeCommand;
 
 namespace openstitch::desktop {
 
+class SimulationNavBar;
+
 class CanvasView;
 struct DensityRaster; // density_overlay.hpp
 class GesturesDialog;
@@ -84,6 +86,7 @@ class DocumentPanel;
 class SegmentationColorsPanel;
 class SegmentationDialog;
 class ThreadPanel;
+class ColorwayDialog;
 class ThreadStrip;
 class WorkflowPanel;
 class EmptyStateWidget;
@@ -264,6 +267,8 @@ private slots:
     // Remplissage concentrique / contour (HP-STI-007, main_window_contour.cpp) : conversion
     // d'un remplissage en anneaux concentriques, ConvertFillGroupCommand annulable.
     void convertToContourFill(ObjectId embroideryId);
+    // Radial (0), spirale (1), croisé (2) : HP-STI-008 / 009 / 014 (main_window_contour.cpp).
+    void convertToFillKind(ObjectId embroideryId, int kind);
     // Moteur de points (main_window_engine.cpp) : satin de bordure (HP-STI-004) et
     // entrée/sortie automatiques par objet (HP-ENG-010), commandes annulables.
     void createBorderSatin(ObjectId vectorId, double widthMm, int side, int corner);
@@ -821,6 +826,21 @@ private:
     void cancelSegmentReshape();
     [[nodiscard]] QPointF reshapeDragPoint(QPointF sceneMm, Qt::KeyboardModifiers mods) const;
     std::optional<ReshapeGesture> reshape_;
+    // Édition vectorielle (HP-VEC-001/005/006, main_window_vector_edit.cpp).
+    void buildVectorEditActions();
+    void updateVectorEditActions();
+    bool insertNodeAt(QPointF sceneMm);
+    bool removeHoleAt(QPointF sceneMm);
+    void outlineSelection(int kind, double gapMm, double satinWidthMm, bool aroundHoles);
+    void outlineSelectionDialog();
+    // Magnétisme à la grille (HP-VEC-009) : point de grille le plus proche si activé et à moins
+    // de `radiusMm` du curseur.
+    [[nodiscard]] std::optional<QPointF> gridSnapPointMm(QPointF cursorSceneMm,
+                                                         double radiusMm) const;
+    QAction* gridSnapAct_{nullptr};
+    QAction* gridStepAct_{nullptr};
+    double gridStepMm_{1.0};
+    QAction* outlineAct_{nullptr};
     // Sélection de nœuds et déplacement groupé (HP-VEC-017, main_window_node_select.cpp). Tous
     // les nœuds sélectionnés appartiennent au même chemin (set, path) de `nodeSelObject_`.
     void buildNodeSelectionActions();
@@ -1272,6 +1292,14 @@ private:
     void buildProductionMenu(QMenu* fileMenu);
     void showProductionSheet();
     QAction* productionAct_{nullptr};
+    // Coloris, tissu, fusion de fils (HP-THR-006/008/011, main_window_colorways.cpp).
+    void buildColorwayMenu(QMenu* viewMenu);
+    void showColorwayDialog();
+    void showThreadMergeDialog();
+    void syncColorwayUi();
+    ColorwayDialog* colorwayDialog_{nullptr};
+    QAction* colorwayAct_{nullptr};
+    QAction* threadMergeAct_{nullptr};
     // Zones réservées au câblage des entrées livrées en cœur (une zone par lot, ne pas mélanger).
     // [cablage-A:debut]
     // Exporter l'image (HP-FMT-011, main_window_export_image.cpp).
@@ -1402,6 +1430,12 @@ private:
     double densityScaleMax_{1.0};
     int densityComputeCount_{0}; // calculs réellement faits (tests)
     // [cablage-E:fin]
+    // [cablage-HOOP:debut]
+    // Machine du projet (HP-HOOP-002, main_window_machine.cpp).
+    void chooseMachine();
+    void applyMachineChoice(const QString& machineId, const QString& hoopId);
+    QAction* machineAct_{nullptr};
+    // [cablage-HOOP:fin]
     void applyNavigationPreset(Preset preset);
     // Duplique `ids` (copies exactes, même position) puis translate les COPIES de
     // `delta`, en un seul pas d'annulation (CompositeCommand) ; les copies deviennent
@@ -1655,6 +1689,7 @@ private:
     // montre les points que jusqu'à cet index.
     QToolBar* simToolbar_{nullptr};
     QSlider* simSlider_{nullptr};
+    SimulationNavBar* simNavBar_{nullptr}; // HP-SIM-002/004 : pas à pas, objet, temps
     QLabel* simLabel_{nullptr};
     QLabel* simSwatch_{nullptr};      // pastille de la couleur du fil courant
     QLabel* simObjectLabel_{nullptr}; // objet courant

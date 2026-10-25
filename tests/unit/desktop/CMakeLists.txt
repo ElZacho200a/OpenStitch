@@ -42,6 +42,7 @@ openstitch_add_qt_test(test_busy_indicator test_busy_indicator.cpp)
 openstitch_add_qt_test(test_node_handle test_node_handle.cpp)
 openstitch_add_qt_test(test_segment_reshape test_segment_reshape.cpp)
 openstitch_add_qt_test(test_node_selection test_node_selection.cpp)
+openstitch_add_qt_test(test_vector_edit test_vector_edit.cpp)
 openstitch_add_qt_test(test_brush_tool test_brush_tool.cpp)
 openstitch_add_qt_test(test_document_panel test_document_panel.cpp)
 openstitch_add_qt_test(test_properties_panel test_properties_panel.cpp)
@@ -57,6 +58,7 @@ openstitch_add_qt_test(test_ui_invariants test_ui_invariants.cpp)
 openstitch_add_qt_test(test_ui_adversarial test_ui_adversarial.cpp)
 openstitch_add_qt_test(test_ui_characterization test_ui_characterization.cpp)
 openstitch_add_qt_test(test_ux_global test_ux_global.cpp)
+openstitch_add_qt_test(test_simulation_nav test_simulation_nav.cpp)
 openstitch_add_qt_test(test_workspace_presets test_workspace_presets.cpp)
 openstitch_add_qt_test(test_command_palette test_command_palette.cpp)
 openstitch_add_qt_test(test_creation_flow test_creation_flow.cpp)
@@ -92,6 +94,7 @@ openstitch_add_qt_test(test_export_image test_export_image.cpp)
 # [cablage-B:debut]
 openstitch_add_qt_test(test_vector_tools test_vector_tools.cpp)
 # [cablage-B:fin]
+openstitch_add_qt_test(test_colorway_ui test_colorway_ui.cpp)
 # [cablage-C:debut]
 openstitch_add_qt_test(test_measure_tool test_measure_tool.cpp)
 openstitch_add_qt_test(test_eyedropper_tool test_eyedropper_tool.cpp)
@@ -101,9 +104,13 @@ openstitch_add_qt_test(test_click_to_stitch_tool test_click_to_stitch_tool.cpp)
 # [cablage-D:debut]
 openstitch_add_qt_test(test_thread_stock_ui test_thread_stock_ui.cpp)
 openstitch_add_qt_test(test_text_typography_ui test_text_typography_ui.cpp)
+openstitch_add_qt_test(test_text_bases_ui test_text_bases_ui.cpp)
 # [cablage-D:fin]
 # [cablage-E:debut]
 openstitch_add_qt_test(test_density_map_ui test_density_map_ui.cpp)
 # [cablage-E:fin]
+# [cablage-HOOP:debut]
+openstitch_add_qt_test(test_machine_ui test_machine_ui.cpp)
+# [cablage-HOOP:fin]
 # HP-OBJ-001/004 : cadre commun, rotation de plusieurs formes, pivot.
 openstitch_add_qt_test(test_object_manipulation test_object_manipulation.cpp)

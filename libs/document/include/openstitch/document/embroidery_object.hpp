@@ -193,6 +193,9 @@ enum class SatinShortStitch { Disabled, RemoveAndRedistribute, SingleInset, Mult
 enum class SatinSplit { Disabled, Simple, Staggered, DeterministicJitter };
 enum class SatinCap { Flat, Rounded, Tapered, Automatic };
 enum class SatinLock { None, BackAndForth, Triangle, MicroZigzag };
+// Coins vifs de la colonne (HP-ENG-005) : onglet (une traversée en bissectrice), chevauchement
+// (les deux branches se croisent sans traversée intermédiaire) ou coupe (saut au coin).
+enum class SatinCorner : std::uint8_t { None, Miter, Overlap, Cut };
 
 // Origine « satin de bordure » (HP-STI-004) : un satin de largeur fixe suivant un
 // contour. Les rails/barreaux de `SatinParams` restent la vérité de la génération ;
@@ -252,6 +255,8 @@ struct SatinParams {
 
     UnderlayMode underlay_mode{UnderlayMode::Manual}; // HP-ENG-002
     std::optional<BorderSatinSpec> border;            // HP-STI-004 : satin de bordure
+    bool auto_spacing{false};                         // HP-ENG-003 : pas selon la largeur locale
+    SatinCorner corner_mode{SatinCorner::None};       // HP-ENG-005 : coins vifs
 
     bool operator==(const SatinParams&) const = default;
 };
@@ -354,6 +359,8 @@ struct AutoSatinParams {
     // Forme compacte (disque, pétale) : axe synthétique le long de l'axe principal
     // au lieu d'un refus (`SkeletonSatinParameters::compact_axis`). Faux par défaut.
     bool compact_axis{false};
+    bool auto_spacing{false};                   // HP-ENG-003 : pas selon la largeur locale
+    SatinCorner corner_mode{SatinCorner::None}; // HP-ENG-005 : coins vifs
 
     bool operator==(const AutoSatinParams&) const = default;
 };
@@ -391,6 +398,82 @@ struct ContourFillParams {
     bool operator==(const ContourFillParams&) const = default;
 };
 
+// Motifs de base (HP-STI-002 / HP-STI-006) : petites séquences normalisées définies dans
+// `stitch_generation::motif_pattern`. Ajouter en fin seulement (valeur persistée dans le .osp).
+enum class MotifId : std::uint8_t { Wave, Zigzag, Leaf, Heart, Diamond, Scallop };
+
+// Motif le long d'un chemin (« motif run », HP-STI-002) : le motif est répété par abscisse
+// curviligne le long de chaque contour de la source, orienté selon la tangente.
+struct MotifRunParams {
+    MotifId motif{MotifId::Wave};
+    Micrometers size{3'000};          // hauteur du motif (perpendiculaire au tracé), 3 mm
+    Micrometers spacing{4'000};       // longueur d'une répétition le long du tracé, 4 mm
+    Micrometers stitch_length{2'000}; // longueur MAXIMALE d'un point, bornée à [1 ; 7] mm
+    Micrometers min_length{400};      // longueur minimale d'un point, 0,4 mm
+    bool alternate{false};            // miroir d'un motif sur deux (feuille, vague en opposition)
+
+    bool operator==(const MotifRunParams&) const = default;
+};
+
+// Remplissage à motif (« motif fill », HP-STI-006) : pavage de la région par un motif répété
+// sur une grille tournée de `angle` ; les tracés sont coupés au contour (trous respectés).
+struct MotifFillParams {
+    MotifId motif{MotifId::Diamond};
+    Micrometers size{4'000};          // taille du motif (carré), 4 mm
+    Micrometers spacing{5'000};       // pas de la grille entre centres, 5 mm
+    Angle angle{0.0};                 // orientation de la grille (radians)
+    bool stagger{true};               // une rangée sur deux décalée d'un demi-pas
+    Micrometers inset{200};           // retrait du bord
+    Micrometers stitch_length{2'000}; // longueur MAXIMALE d'un point, bornée à [1 ; 7] mm
+    Micrometers min_length{400};      // longueur minimale d'un point
+    bool hidden_underpath{true};      // liaisons longues cousues cachées (au lieu de sauts)
+
+    bool operator==(const MotifFillParams&) const = default;
+};
+
+// Remplissage RADIAL (HP-STI-008) : rayons depuis un centre (par défaut le centre de la boîte
+// englobante de la région). La densité reste constante à la périphérie : les rayons sont plus
+// nombreux vers l'extérieur (ils ne démarrent qu'à partir d'un rayon où l'écart reste supérieur
+// ou égal à `row_spacing`), les points raccourcissent vers le centre. Bornes à la génération.
+struct RadialFillParams {
+    Micrometers row_spacing{400};     // écart (arc) entre rayons à la périphérie — 0,4 mm
+    Micrometers stitch_length{3'000}; // longueur MAXIMALE d'un point, bornée à [1 ; 7] mm
+    Micrometers min_length{500};      // longueur minimale d'un point (sauf bout de rayon)
+    Micrometers inset{200};           // retrait du bord
+    std::optional<Vec2um> center;     // nullopt = centre de la boîte englobante
+    bool hidden_underpath{true};      // liaisons longues cousues cachées (au lieu de sauts)
+
+    bool operator==(const RadialFillParams&) const = default;
+};
+
+// Remplissage en SPIRALE (HP-STI-009) : spirale d'Archimède continue depuis un centre, pas de
+// `row_spacing` entre deux tours, rognée au contour de la région (sans coupe tant que la région
+// contient la spirale ; les trous et sorties sont reliés par un saut caché si possible).
+struct SpiralFillParams {
+    Micrometers row_spacing{400};     // écart entre deux tours — 0,4 mm
+    Micrometers stitch_length{3'000}; // longueur MAXIMALE d'un point, bornée à [1 ; 7] mm
+    Micrometers min_length{500};      // longueur minimale d'un point (hors rognage au bord)
+    Micrometers inset{200};           // retrait du bord
+    std::optional<Vec2um> center;     // nullopt = centre de la boîte englobante
+    bool clockwise{false};            // sens de rotation (faux = anti-horaire, Y vers le haut)
+    bool hidden_underpath{true};
+
+    bool operator==(const SpiralFillParams&) const = default;
+};
+
+// Remplissage CROISÉ / crosshatch (HP-STI-014) : 2 ou 3 tatamis très espacés à angles différents
+// (répartis sur 180°) dans un seul objet.
+struct CrosshatchFillParams {
+    Angle angle{0.0};                 // orientation de la première couche (radians)
+    int layers{2};                    // 2 (perpendiculaires) ou 3 (à 60°), borné à [2 ; 3]
+    Micrometers row_spacing{1'500};   // écart entre rangées d'UNE couche — 1,5 mm
+    Micrometers stitch_length{3'000}; // longueur de point le long d'une rangée
+    Micrometers inset{200};           // retrait du bord
+    bool hidden_underpath{true};
+
+    bool operator==(const CrosshatchFillParams&) const = default;
+};
+
 // Un objet de broderie porte un TYPE de point sous forme de variant. Chaque
 // type suit la géométrie d'un objet vectoriel source (contour pour running,
 // région pleine pour tatami) ou porte la sienne (satin). La séparation
@@ -399,7 +482,8 @@ struct ContourFillParams {
 // variant : les index des types historiques ne changent pas.
 using StitchParams =
     std::variant<RunningStitchParams, TatamiParams, SatinParams, DirectionalFillParams,
-                 AutoSatinParams, BlanketStitchParams, ContourFillParams>;
+                 AutoSatinParams, BlanketStitchParams, ContourFillParams, MotifRunParams,
+                 MotifFillParams, RadialFillParams, SpiralFillParams, CrosshatchFillParams>;
 
 // Type de point autorisé après retouche manuelle (Lot 8 MVP, §2 du cadrage) :
 // seule transition permise, Stitch <-> Jump — pas de Trim/ColorChange/Stop,
@@ -420,8 +504,12 @@ struct StitchOverride {
     std::optional<Vec2um> moved_to;             // nullopt = position générée
     std::optional<StitchPointType> forced_type; // nullopt = type généré
     bool trim_after{false};                     // insère un Trim juste après ce point
+    // HP-EDIT-002 : suppression du point (Stitch ou Jump de passe TopStitch) et points Stitch
+    // insérés juste après lui (dans l'ordre), en deltas comme le reste (ADR-014).
+    bool deleted{false};
+    std::vector<Vec2um> inserted_after;
 
-    constexpr bool operator==(const StitchOverride&) const = default;
+    bool operator==(const StitchOverride&) const = default;
 };
 
 // §21/§24 du plan de refonte satin (2026-08-14) : distingue une
@@ -498,6 +586,21 @@ struct EmbroideryObject {
     }
     [[nodiscard]] bool is_contour_fill() const {
         return std::holds_alternative<ContourFillParams>(params);
+    }
+    [[nodiscard]] bool is_motif_run() const {
+        return std::holds_alternative<MotifRunParams>(params);
+    }
+    [[nodiscard]] bool is_motif_fill() const {
+        return std::holds_alternative<MotifFillParams>(params);
+    }
+    [[nodiscard]] bool is_radial_fill() const {
+        return std::holds_alternative<RadialFillParams>(params);
+    }
+    [[nodiscard]] bool is_spiral_fill() const {
+        return std::holds_alternative<SpiralFillParams>(params);
+    }
+    [[nodiscard]] bool is_crosshatch_fill() const {
+        return std::holds_alternative<CrosshatchFillParams>(params);
     }
 };
 

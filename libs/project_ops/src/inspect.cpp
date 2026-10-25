@@ -94,6 +94,19 @@ const char* split_name(document::SatinSplit v) {
     }
     return "disabled";
 }
+const char* corner_name(document::SatinCorner v) {
+    switch (v) {
+    case document::SatinCorner::None:
+        return "none";
+    case document::SatinCorner::Miter:
+        return "miter";
+    case document::SatinCorner::Overlap:
+        return "overlap";
+    case document::SatinCorner::Cut:
+        return "cut";
+    }
+    return "none";
+}
 const char* cap_name(document::SatinCap v) {
     switch (v) {
     case document::SatinCap::Flat:
@@ -221,6 +234,8 @@ json params_json(const document::StitchParams& params, bool full) {
                 j["lock_length_mm"] = mm(p.lock_length);
                 j["lock_passes"] = p.lock_passes;
                 j["underlay_mode"] = underlay_mode_name(p.underlay_mode);
+                j["auto_spacing"] = p.auto_spacing;
+                j["corner_mode"] = corner_name(p.corner_mode);
                 j["rail_a"] = polyline_mm(p.rail_a);
                 j["rail_b"] = polyline_mm(p.rail_b);
                 json rungs = json::array();
@@ -284,6 +299,8 @@ json params_json(const document::StitchParams& params, bool full) {
                 j["lock_passes"] = p.lock_passes;
                 j["underlay_mode"] = underlay_mode_name(p.underlay_mode);
                 j["compact_axis"] = p.compact_axis;
+                j["auto_spacing"] = p.auto_spacing;
+                j["corner_mode"] = corner_name(p.corner_mode);
                 j["strategy"] = std::string(document::auto_satin_strategy_id(p.strategy));
                 j["sweep_angle_deg"] = p.sweep_angle ? json(deg(*p.sweep_angle)) : json(nullptr);
                 json guides = json::array();
@@ -462,7 +479,12 @@ json canvas_json(const document::Project& project) {
                 {"height_mm", mm(c.height)},
                 {"margin_mm", mm(c.margin)},
                 {"usable_width_mm", mm(c.usable_width())},
-                {"usable_height_mm", mm(c.usable_height())}};
+                {"usable_height_mm", mm(c.usable_height())},
+                {"shape", c.shape == document::HoopShape::Ellipse            ? "ellipse"
+                          : c.shape == document::HoopShape::RoundedRectangle ? "rounded"
+                                                                             : "rectangle"},
+                {"corner_radius_mm", mm(c.corner_radius)},
+                {"machine", project.machine_id}};
 }
 
 json finishing_json(const document::SequenceFinishing& f) {
@@ -554,6 +576,17 @@ Result<json> build_project_doc(const document::Project& project, const InspectOp
                            : t.fill == document::TextFill::Tatami  ? "tatami"
                            : t.fill == document::TextFill::Contour ? "contour"
                                                                    : "auto";
+        const auto base_name = [](document::TextBaseKind k) {
+            return k == document::TextBaseKind::Arc      ? "arc"
+                   : k == document::TextBaseKind::Circle ? "circle"
+                   : k == document::TextBaseKind::Path   ? "path"
+                                                         : "line";
+        };
+        const auto connector_name = [](document::ConnectorMode m) {
+            return m == document::ConnectorMode::AlwaysTrim  ? "trim"
+                   : m == document::ConnectorMode::NeverTrim ? "no_trim"
+                                                             : "inherit";
+        };
         texts.push_back(json{{"id", t.id.value},
                              {"text", t.text},
                              {"font", json{{"family", t.font.family},
@@ -571,6 +604,13 @@ Result<json> build_project_doc(const document::Project& project, const InspectOp
                              {"color", rgb_json(t.rgb)},
                              {"fill", fill},
                              {"density_mm", mm(t.density)},
+                             {"base", base_name(t.base.kind)},
+                             {"base_radius_mm", mm(t.base.radius)},
+                             {"base_inside", t.base.inside},
+                             {"base_path_points", t.base.path.size()},
+                             {"letter_connector", connector_name(t.letter_connector)},
+                             {"word_connector", connector_name(t.word_connector)},
+                             {"glyph_edit_count", t.glyph_edits.size()},
                              {"letter_vector_ids", letters}});
     }
     doc["text_objects"] = texts;
@@ -614,6 +654,23 @@ Result<json> build_project_doc(const document::Project& project, const InspectOp
     }
     doc["embroidery_objects"] = embroideries;
 
+    // Coloris (HP-THR-006) et tissu (HP-THR-008) : clés présentes seulement si le document les
+    // utilise, pour ne pas modifier la sortie des documents existants.
+    if (!project.colorways.empty()) {
+        json colorways = json::array();
+        for (std::size_t i = 0; i < project.colorways.size(); ++i) {
+            colorways.push_back(json{{"name", project.colorways[i].name},
+                                     {"active", static_cast<int>(i) == project.active_colorway},
+                                     {"objects", project.colorways[i].entries.size()}});
+        }
+        doc["colorways"] = colorways;
+    }
+    if (!(project.fabric == document::FabricSettings{})) {
+        doc["fabric"] = json{{"rgb", json::array({project.fabric.color[0], project.fabric.color[1],
+                                                  project.fabric.color[2]})},
+                             {"name", project.fabric.name}};
+    }
+
     json warnings = json::array();
     for (const auto& f : stitch_analysis::check_stitch_limits(project)) {
         warnings.push_back(finding_json(f));
@@ -643,6 +700,16 @@ const char* stitch_type_name(const document::EmbroideryObject& object) {
         return "blanket";
     case 6:
         return "contour_fill";
+    case 7:
+        return "motif_run";
+    case 8:
+        return "motif_fill";
+    case 9:
+        return "radial_fill";
+    case 10:
+        return "spiral_fill";
+    case 11:
+        return "crosshatch_fill";
     default:
         return "unknown";
     }

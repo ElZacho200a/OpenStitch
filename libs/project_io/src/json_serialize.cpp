@@ -282,6 +282,12 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.underlay_mode != document::UnderlayMode::Manual) {
                     j["underlayMode"] = static_cast<int>(p.underlay_mode);
                 }
+                if (p.auto_spacing) {
+                    j["autoSpacing"] = true;
+                }
+                if (p.corner_mode != document::SatinCorner::None) {
+                    j["cornerMode"] = static_cast<int>(p.corner_mode);
+                }
                 if (p.border) {
                     j["border"] = {{"width", p.border->width.value},
                                    {"side", static_cast<int>(p.border->side)},
@@ -401,6 +407,12 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.compact_axis) {
                     j["compactAxis"] = true;
                 }
+                if (p.auto_spacing) {
+                    j["autoSpacing"] = true;
+                }
+                if (p.corner_mode != document::SatinCorner::None) {
+                    j["cornerMode"] = static_cast<int>(p.corner_mode);
+                }
                 // Méthode : par nom, seulement si elle n'est pas le défaut (le fichier reste
                 // lisible par une version antérieure tant que le squelette est utilisé).
                 if (p.strategy != document::AutoSatinStrategy::Skeleton) {
@@ -429,6 +441,49 @@ json params_to_json(const document::StitchParams& params) {
                      {"minLength", p.min_length.value},
                      {"inset", p.inset.value},
                      {"spiral", p.spiral},
+                     {"hiddenUnderpath", p.hidden_underpath}};
+            } else if constexpr (std::is_same_v<T, document::MotifRunParams>) {
+                j = {{"type", "motifRun"},
+                     {"motif", static_cast<int>(p.motif)},
+                     {"size", p.size.value},
+                     {"spacing", p.spacing.value},
+                     {"stitchLength", p.stitch_length.value},
+                     {"minLength", p.min_length.value},
+                     {"alternate", p.alternate}};
+            } else if constexpr (std::is_same_v<T, document::MotifFillParams>) {
+                j = {{"type", "motifFill"},
+                     {"motif", static_cast<int>(p.motif)},
+                     {"size", p.size.value},
+                     {"spacing", p.spacing.value},
+                     {"angle", p.angle.radians},
+                     {"stagger", p.stagger},
+                     {"inset", p.inset.value},
+                     {"stitchLength", p.stitch_length.value},
+                     {"minLength", p.min_length.value},
+                     {"hiddenUnderpath", p.hidden_underpath}};
+            } else if constexpr (std::is_same_v<T, document::RadialFillParams> ||
+                                 std::is_same_v<T, document::SpiralFillParams>) {
+                // HP-STI-008 / 009 : mêmes clés, `type` distinct.
+                j = {{"type",
+                      std::is_same_v<T, document::RadialFillParams> ? "radialFill" : "spiralFill"},
+                     {"rowSpacing", p.row_spacing.value},
+                     {"stitchLength", p.stitch_length.value},
+                     {"minLength", p.min_length.value},
+                     {"inset", p.inset.value},
+                     {"hiddenUnderpath", p.hidden_underpath}};
+                if (p.center) {
+                    j["center"] = {{"x", p.center->x.value}, {"y", p.center->y.value}};
+                }
+                if constexpr (std::is_same_v<T, document::SpiralFillParams>) {
+                    j["clockwise"] = p.clockwise;
+                }
+            } else if constexpr (std::is_same_v<T, document::CrosshatchFillParams>) {
+                j = {{"type", "crosshatchFill"},
+                     {"angle", p.angle.radians},
+                     {"layers", p.layers},
+                     {"rowSpacing", p.row_spacing.value},
+                     {"stitchLength", p.stitch_length.value},
+                     {"inset", p.inset.value},
                      {"hiddenUnderpath", p.hidden_underpath}};
             }
             return j;
@@ -519,6 +574,9 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.lock_passes = j.value("lockPasses", 2);
         p.underlay_mode =
             static_cast<document::UnderlayMode>(std::clamp(j.value("underlayMode", 0), 0, 1));
+        p.auto_spacing = j.value("autoSpacing", false);
+        p.corner_mode =
+            static_cast<document::SatinCorner>(std::clamp(j.value("cornerMode", 0), 0, 3));
         if (j.contains("border") && j.at("border").is_object()) {
             const auto& bj = j.at("border");
             document::BorderSatinSpec spec;
@@ -676,7 +734,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
               Range{"lockLength", 0, 20'000}, Range{"pullCompensation", -5'000, 5'000},
               Range{"pullLeft", -5'000, 5'000}, Range{"pullRight", -5'000, 5'000},
               Range{"pushStart", -5'000, 5'000}, Range{"pushEnd", -5'000, 5'000},
-              Range{"underlayMode", 0, 1}}) {
+              Range{"underlayMode", 0, 1}, Range{"cornerMode", 0, 3}}) {
             if (const auto err = badNumber(field(r.name), r.name, r.lo, r.hi)) {
                 return fail(ErrorCategory::InvalidFile, *err);
             }
@@ -729,6 +787,9 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.lock_passes = j.value("lockPasses", 2);
         p.underlay_mode = static_cast<document::UnderlayMode>(j.value("underlayMode", 0));
         p.compact_axis = j.value("compactAxis", false);
+        p.auto_spacing = j.value("autoSpacing", false);
+        p.corner_mode =
+            static_cast<document::SatinCorner>(std::clamp(j.value("cornerMode", 0), 0, 3));
         if (j.contains("strategy")) {
             // Une méthode inconnue (fichier d'une version plus récente) est REFUSÉE : la
             // remplacer par le squelette ferait changer le satin à l'insu de l'utilisateur.
@@ -786,6 +847,78 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.min_length = Micrometers{std::clamp(j.value("minLength", 500), 0, 7'000)};
         p.inset = Micrometers{std::clamp(j.value("inset", 200), 0, 10'000)};
         p.spiral = j.value("spiral", true);
+        p.hidden_underpath = j.value("hiddenUnderpath", true);
+        return document::StitchParams{p};
+    }
+    if (type == "motifRun") {
+        // Motif le long d'un chemin (HP-STI-002) : clés optionnelles, valeurs bornées.
+        document::MotifRunParams p;
+        const int motif = j.value("motif", static_cast<int>(p.motif));
+        if (motif < 0 || motif > static_cast<int>(document::MotifId::Scallop)) {
+            return fail(ErrorCategory::InvalidFile, "motifRun : motif inconnu");
+        }
+        p.motif = static_cast<document::MotifId>(motif);
+        p.size = Micrometers{std::clamp(j.value("size", p.size.value), 500, 40'000)};
+        p.spacing = Micrometers{std::clamp(j.value("spacing", p.spacing.value), 1'000, 100'000)};
+        p.stitch_length =
+            Micrometers{std::clamp(j.value("stitchLength", p.stitch_length.value), 1'000, 7'000)};
+        p.min_length = Micrometers{std::clamp(j.value("minLength", p.min_length.value), 0, 7'000)};
+        p.alternate = j.value("alternate", p.alternate);
+        return document::StitchParams{p};
+    }
+    if (type == "motifFill") {
+        // Remplissage à motif (HP-STI-006) : clés optionnelles, valeurs bornées.
+        document::MotifFillParams p;
+        const int motif = j.value("motif", static_cast<int>(p.motif));
+        if (motif < 0 || motif > static_cast<int>(document::MotifId::Scallop)) {
+            return fail(ErrorCategory::InvalidFile, "motifFill : motif inconnu");
+        }
+        p.motif = static_cast<document::MotifId>(motif);
+        p.size = Micrometers{std::clamp(j.value("size", p.size.value), 500, 40'000)};
+        p.spacing = Micrometers{std::clamp(j.value("spacing", p.spacing.value), 1'000, 100'000)};
+        p.angle = Angle{j.value("angle", p.angle.radians)};
+        p.stagger = j.value("stagger", p.stagger);
+        p.inset = Micrometers{std::clamp(j.value("inset", p.inset.value), 0, 10'000)};
+        p.stitch_length =
+            Micrometers{std::clamp(j.value("stitchLength", p.stitch_length.value), 1'000, 7'000)};
+        p.min_length = Micrometers{std::clamp(j.value("minLength", p.min_length.value), 0, 7'000)};
+        p.hidden_underpath = j.value("hiddenUnderpath", p.hidden_underpath);
+        return document::StitchParams{p};
+    }
+    if (type == "radialFill" || type == "spiralFill") {
+        // HP-STI-008 / 009 : clés optionnelles (défauts du modèle), valeurs bornées.
+        const auto common = [&](auto& p) {
+            p.row_spacing = Micrometers{std::clamp(j.value("rowSpacing", 400), 100, 10'000)};
+            p.stitch_length = Micrometers{std::clamp(j.value("stitchLength", 3'000), 1'000, 7'000)};
+            p.min_length = Micrometers{std::clamp(j.value("minLength", 500), 0, 7'000)};
+            p.inset = Micrometers{std::clamp(j.value("inset", 200), 0, 10'000)};
+            p.hidden_underpath = j.value("hiddenUnderpath", true);
+            if (j.contains("center")) {
+                p.center = Vec2um{Micrometers{j.at("center").at("x")},
+                                  Micrometers{j.at("center").at("y")}};
+            }
+        };
+        if (type == "radialFill") {
+            document::RadialFillParams p;
+            common(p);
+            return document::StitchParams{p};
+        }
+        document::SpiralFillParams p;
+        common(p);
+        p.clockwise = j.value("clockwise", false);
+        return document::StitchParams{p};
+    }
+    if (type == "crosshatchFill") {
+        document::CrosshatchFillParams p;
+        const double angle = j.value("angle", 0.0);
+        if (!std::isfinite(angle)) {
+            return fail(ErrorCategory::InvalidFile, "crosshatchFill : angle invalide");
+        }
+        p.angle = Angle{angle};
+        p.layers = std::clamp(j.value("layers", 2), 2, 3);
+        p.row_spacing = Micrometers{std::clamp(j.value("rowSpacing", 1'500), 300, 10'000)};
+        p.stitch_length = Micrometers{std::clamp(j.value("stitchLength", 3'000), 1'000, 7'000)};
+        p.inset = Micrometers{std::clamp(j.value("inset", 200), 0, 10'000)};
         p.hidden_underpath = j.value("hiddenUnderpath", true);
         return document::StitchParams{p};
     }
@@ -900,6 +1033,15 @@ json override_to_json(const document::StitchOverride& ov) {
         j["type"] = (*ov.forced_type == document::StitchPointType::Jump) ? "jump" : "stitch";
     }
     j["trimAfter"] = ov.trim_after;
+    if (ov.deleted) {
+        j["deleted"] = true;
+    }
+    if (!ov.inserted_after.empty()) {
+        j["insertedAfter"] = json::array();
+        for (const Vec2um& p : ov.inserted_after) {
+            j["insertedAfter"].push_back({{"x", p.x.value}, {"y", p.y.value}});
+        }
+    }
     return j;
 }
 
@@ -971,7 +1113,30 @@ Result<std::vector<document::StitchOverride>> overrides_from_json(const json& ar
         // aucune commande du Lot 8.1 n'en produit (cf. Point 5,
         // `SetStitchTrimCommand`), donc seul un JSON malformé/hand-écrit peut
         // en contenir un -- refusé plutôt que silencieusement absorbé.
-        if (!ov.moved_to.has_value() && !ov.forced_type.has_value() && !ov.trim_after) {
+        if (entry.contains("deleted")) {
+            const auto& d = entry.at("deleted");
+            if (!d.is_boolean()) {
+                return fail(ErrorCategory::InvalidFile, "Retouche invalide : deleted non booléen");
+            }
+            ov.deleted = d.get<bool>();
+        }
+        if (entry.contains("insertedAfter")) {
+            const auto& ins = entry.at("insertedAfter");
+            if (!ins.is_array()) {
+                return fail(ErrorCategory::InvalidFile,
+                            "Retouche invalide : insertedAfter doit être un tableau");
+            }
+            for (const auto& p : ins) {
+                auto pos = override_pos_from_json(p);
+                if (!pos) {
+                    return std::unexpected(pos.error());
+                }
+                ov.inserted_after.push_back(*pos);
+            }
+        }
+
+        if (!ov.moved_to.has_value() && !ov.forced_type.has_value() && !ov.trim_after &&
+            !ov.deleted && ov.inserted_after.empty()) {
             return fail(ErrorCategory::InvalidFile,
                         "Retouche invalide : entrée sans modification effective (index " +
                             std::to_string(*idx) + ")");
@@ -1019,6 +1184,42 @@ json text_to_json(const document::TextObject& t) {
     if (t.ligatures) {
         j["ligatures"] = true;
     }
+    // Bases de texte, éditions par lettre et connecteurs (HP-TXT-005/008/014) : mêmes règles.
+    if (t.base.kind != document::TextBaseKind::Line) {
+        json base;
+        base["kind"] = static_cast<int>(t.base.kind);
+        base["radius"] = t.base.radius.value;
+        base["inside"] = t.base.inside;
+        if (!t.base.path.empty()) {
+            json pts = json::array();
+            for (const auto& p : t.base.path) {
+                pts.push_back(vec_to_json(p));
+            }
+            base["path"] = std::move(pts);
+        }
+        j["base"] = std::move(base);
+    }
+    if (!t.glyph_edits.empty()) {
+        json edits = json::array();
+        for (const auto& e : t.glyph_edits) {
+            json ej{{"index", e.index},
+                    {"dx", e.dx.value},
+                    {"dy", e.dy.value},
+                    {"rotation", e.rotation.radians},
+                    {"scale", e.scale}};
+            if (e.rgb) {
+                ej["rgb"] = rgb_to_json(*e.rgb);
+            }
+            edits.push_back(std::move(ej));
+        }
+        j["glyphEdits"] = std::move(edits);
+    }
+    if (t.letter_connector != document::ConnectorMode::Inherit) {
+        j["letterConnector"] = static_cast<int>(t.letter_connector);
+    }
+    if (t.word_connector != document::ConnectorMode::Inherit) {
+        j["wordConnector"] = static_cast<int>(t.word_connector);
+    }
     return j;
 }
 
@@ -1060,6 +1261,35 @@ document::TextObject text_from_json(const json& j) {
         }
     }
     t.ligatures = j.value("ligatures", d.ligatures);
+    if (const auto it = j.find("base"); it != j.end() && it->is_object()) {
+        t.base.kind = static_cast<document::TextBaseKind>(std::clamp(it->value("kind", 0), 0, 3));
+        t.base.radius = Micrometers{std::max(1, it->value("radius", d.base.radius.value))};
+        t.base.inside = it->value("inside", false);
+        if (const auto pit = it->find("path"); pit != it->end() && pit->is_array()) {
+            for (const auto& pj : *pit) {
+                t.base.path.push_back(vec_from_json(pj));
+            }
+        }
+    }
+    if (const auto it = j.find("glyphEdits"); it != j.end() && it->is_array()) {
+        for (const auto& ej : *it) {
+            document::GlyphEdit e;
+            e.index = ej.value("index", 0U);
+            e.dx = Micrometers{ej.value("dx", 0)};
+            e.dy = Micrometers{ej.value("dy", 0)};
+            e.rotation = Angle{ej.value("rotation", 0.0)};
+            e.scale = ej.value("scale", 1.0);
+            if (ej.contains("rgb")) {
+                e.rgb = rgb_from_json(ej.at("rgb"));
+            }
+            t.glyph_edits.push_back(e);
+        }
+    }
+    const auto connector = [&](const char* key) {
+        return static_cast<document::ConnectorMode>(std::clamp(j.value(key, 0), 0, 2));
+    };
+    t.letter_connector = connector("letterConnector");
+    t.word_connector = connector("wordConnector");
     return t;
 }
 
@@ -1072,6 +1302,18 @@ json project_to_json(const document::Project& project) {
     j["canvas"] = {{"width", project.canvas.width.value}, {"height", project.canvas.height.value}};
     if (project.canvas.margin.value > 0) {
         j["canvas"]["margin"] = project.canvas.margin.value; // absente = 0 (projets antérieurs)
+    }
+    // HP-HOOP-001/002 : forme du cadre et profil machine, absents = rectangle / aucune machine
+    // (les .osp antérieurs se relisent à l'identique, et un rectangle s'écrit comme avant).
+    if (project.canvas.shape != document::HoopShape::Rectangle) {
+        j["canvas"]["shape"] =
+            project.canvas.shape == document::HoopShape::Ellipse ? "ellipse" : "rounded";
+        if (project.canvas.shape == document::HoopShape::RoundedRectangle) {
+            j["canvas"]["cornerRadius"] = project.canvas.corner_radius.value;
+        }
+    }
+    if (!project.machine_id.empty()) {
+        j["machine"] = project.machine_id;
     }
 
     j["ops"] = json::array();
@@ -1107,6 +1349,34 @@ json project_to_json(const document::Project& project) {
             co["locked"] = calque.locked;
             j["calques"].push_back(std::move(co));
         }
+    }
+
+    if (!project.colorways.empty()) {
+        // Coloris multiples (HP-THR-006) : clé facultative, un lecteur plus ancien l'ignore (les
+        // objets portent déjà les couleurs du coloris actif).
+        json cw;
+        cw["active"] = project.active_colorway;
+        cw["items"] = json::array();
+        for (const auto& colorway : project.colorways) {
+            json item;
+            item["name"] = colorway.name;
+            item["entries"] = json::array();
+            for (const auto& entry : colorway.entries) {
+                json e;
+                e["object"] = entry.object.value;
+                e["rgb"] = rgb_to_json(entry.rgb);
+                if (entry.thread) {
+                    e["thread"] = {{"chart", entry.thread->chart_id}, {"code", entry.thread->code}};
+                }
+                item["entries"].push_back(std::move(e));
+            }
+            cw["items"].push_back(std::move(item));
+        }
+        j["colorways"] = std::move(cw);
+    }
+    if (!(project.fabric == document::FabricSettings{})) {
+        // Tissu de fond (HP-THR-008) : clé facultative, absente = blanc.
+        j["fabric"] = {{"rgb", rgb_to_json(project.fabric.color)}, {"name", project.fabric.name}};
     }
 
     j["vectorObjects"] = json::array();
@@ -1246,7 +1516,13 @@ Result<document::Project> project_from_json(const json& j) {
             project.canvas.width = Micrometers{c.value("width", 100'000)};
             project.canvas.height = Micrometers{c.value("height", 100'000)};
             project.canvas.margin = Micrometers{c.value("margin", 0)};
+            const std::string shape = c.value("shape", std::string("rectangle"));
+            project.canvas.shape = shape == "ellipse"   ? document::HoopShape::Ellipse
+                                   : shape == "rounded" ? document::HoopShape::RoundedRectangle
+                                                        : document::HoopShape::Rectangle;
+            project.canvas.corner_radius = Micrometers{c.value("cornerRadius", 0)};
         }
+        project.machine_id = j.value("machine", std::string());
 
         for (const auto& op : j.at("ops")) {
             auto parsed = op_from_json(op);
@@ -1285,6 +1561,45 @@ Result<document::Project> project_from_json(const json& j) {
                 calque.locked = co.value("locked", false);
                 project.calques.push_back(std::move(calque));
             }
+        }
+
+        if (j.contains("colorways")) {
+            const auto& cw = j.at("colorways");
+            if (cw.contains("items")) {
+                for (const auto& item : cw.at("items")) {
+                    document::Colorway colorway;
+                    colorway.name = item.value("name", std::string{});
+                    for (const auto& e : item.at("entries")) {
+                        document::ColorwayEntry entry;
+                        entry.object = ObjectId{e.at("object").get<std::uint64_t>()};
+                        entry.rgb = rgb_from_json(e.at("rgb"));
+                        if (e.contains("thread")) {
+                            const auto& tj = e.at("thread");
+                            if (!tj.is_object() || !tj.contains("chart") || !tj.contains("code") ||
+                                !tj.at("chart").is_string() || !tj.at("code").is_string()) {
+                                return fail(ErrorCategory::InvalidFile,
+                                            "Coloris invalide : « thread » doit porter « chart » "
+                                            "et « code »");
+                            }
+                            entry.thread =
+                                thread_palette::ThreadKey{tj.at("chart").get<std::string>(),
+                                                          tj.at("code").get<std::string>()};
+                        }
+                        colorway.entries.push_back(std::move(entry));
+                    }
+                    project.colorways.push_back(std::move(colorway));
+                }
+            }
+            const int active = cw.value("active", -1);
+            project.active_colorway =
+                (active >= 0 && static_cast<std::size_t>(active) < project.colorways.size())
+                    ? active
+                    : -1;
+        }
+        if (j.contains("fabric")) {
+            const auto& fj = j.at("fabric");
+            project.fabric.color = rgb_from_json(fj.at("rgb"));
+            project.fabric.name = fj.value("name", std::string{});
         }
 
         for (const auto& vo : j.at("vectorObjects")) {

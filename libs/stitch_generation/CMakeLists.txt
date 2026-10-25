@@ -20,6 +20,11 @@ add_library(openstitch_stitch_generation
     src/border_satin.cpp
     src/blanket_stitch.cpp
     src/contour_fill.cpp
+    src/motif_run.cpp
+    src/motif_fill.cpp
+    src/radial_fill.cpp
+    src/spiral_fill.cpp
+    src/crosshatch_fill.cpp
 )
 add_library(openstitch::stitch_generation ALIAS openstitch_stitch_generation)
 

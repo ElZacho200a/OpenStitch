@@ -6,6 +6,8 @@
 #include <string>
 
 #include "openstitch/stitch_analysis/analyze.hpp"
+#include "openstitch/stitch_analysis/fabric_rules.hpp"
+#include "openstitch/stitch_analysis/machine_checks.hpp"
 #include "openstitch/stitch_analysis/text_rules.hpp"
 #include "openstitch/stitch_generation/finish.hpp"
 
@@ -47,7 +49,7 @@ bool shift_into(std::int32_t lo, std::int32_t hi, std::int32_t hoopLo, std::int3
 // Constats « hors-cadre » REGROUPÉS par objet (ordre d'identifiant croissant), avec la
 // correction « ramener dans le cadre ». Applique le plafond par catégorie.
 void group_out_of_hoop(const stitch::StitchSequence& sequence, const stitch::BoundsUm& hoop,
-                       std::size_t cap, std::vector<Finding>& out,
+                       const document::Canvas& canvas, std::size_t cap, std::vector<Finding>& out,
                        std::map<std::string, std::size_t>& suppressed) {
     std::map<std::uint64_t, ObjectOverflow> perObject;
     for (const auto& cmd : sequence.commands) {
@@ -59,7 +61,8 @@ void group_out_of_hoop(const stitch::StitchSequence& sequence, const stitch::Bou
         o.box.min.y = std::min(o.box.min.y, cmd.pos.y);
         o.box.max.x = std::max(o.box.max.x, cmd.pos.x);
         o.box.max.y = std::max(o.box.max.y, cmd.pos.y);
-        if (outside(cmd.pos, hoop)) {
+        // Rectangle : bornes ; rond, ovale, coins arrondis : forme réelle (HP-HOOP-001).
+        if (outside(cmd.pos, hoop) || !canvas.contains_usable(cmd.pos)) {
             if (o.count == 0) {
                 o.first = cmd.pos;
             }
@@ -84,7 +87,9 @@ void group_out_of_hoop(const stitch::StitchSequence& sequence, const stitch::Bou
         f.location = o.first;
         f.object = ObjectId{id};
         f.hint = "Déplacez l'objet dans le cadre ou agrandissez le canevas.";
-        if (id != 0) {
+        if (id != 0 && canvas.shape != document::HoopShape::Rectangle) {
+            f.hint = "Déplacez l'objet dans la forme du cadre ou agrandissez le cadre.";
+        } else if (id != 0) {
             std::int32_t dx = 0;
             std::int32_t dy = 0;
             if (shift_into(o.box.min.x.value, o.box.max.x.value, hoop.min.x.value, hoop.max.x.value,
@@ -176,8 +181,8 @@ AnalysisReport analyze_project(const document::Project& project,
     if (!detailed.findings.empty() && detailed.findings.front().category == "vide") {
         report = std::move(detailed);
     } else {
-        group_out_of_hoop(sequence, hoop, options.max_findings_per_category, report.findings,
-                          report.suppressed);
+        group_out_of_hoop(sequence, hoop, project.canvas, options.max_findings_per_category,
+                          report.findings, report.suppressed);
         for (auto& f : detailed.findings) {
             report.findings.push_back(std::move(f));
         }
@@ -214,6 +219,14 @@ AnalysisReport analyze_project(const document::Project& project,
         report.findings.push_back(std::move(f));
     }
     for (Finding& f : check_stitch_limits(project)) {
+        report.findings.push_back(std::move(f));
+    }
+    for (Finding& f : check_thread_vs_fabric(project)) { // HP-THR-008
+        report.findings.push_back(std::move(f));
+    }
+    // HP-HOOP-003 : profil machine (champ, cadres, aiguilles, points longs) ; le format
+    // d'export se vérifie à l'export, via `check_machine` avec le format choisi.
+    for (Finding& f : check_machine(project, sequence)) {
         report.findings.push_back(std::move(f));
     }
     return report;

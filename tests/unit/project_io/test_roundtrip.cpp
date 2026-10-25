@@ -124,6 +124,8 @@ document::Project rich_project() {
     sp.lock_start = document::SatinLock::BackAndForth;
     sp.lock_end = document::SatinLock::MicroZigzag;
     sp.lock_passes = 3;
+    sp.auto_spacing = true;
+    sp.corner_mode = document::SatinCorner::Overlap;
     sp.entry_point = Vec2um{Micrometers{1'234}, Micrometers{5'678}};
     sat.params = sp;
     project.embroidery_objects.push_back(sat);
@@ -362,6 +364,8 @@ TEST_CASE("projet complet : save puis load = memes donnees") {
     CHECK(loadedSatin.lock_start == document::SatinLock::BackAndForth);
     CHECK(loadedSatin.lock_end == document::SatinLock::MicroZigzag);
     CHECK(loadedSatin.lock_passes == 3);
+    CHECK(loadedSatin.auto_spacing);
+    CHECK(loadedSatin.corner_mode == document::SatinCorner::Overlap);
     REQUIRE(loadedSatin.entry_point.has_value());
     CHECK(*loadedSatin.entry_point == Vec2um{Micrometers{1'234}, Micrometers{5'678}});
     CHECK_FALSE(loadedSatin.exit_point.has_value());
@@ -507,6 +511,8 @@ TEST_CASE("auto-satin : save puis load = memes parametres, guides compris") {
     sp.lock_end = document::SatinLock::BackAndForth;
     sp.lock_length = Micrometers{900};
     sp.lock_passes = 3;
+    sp.auto_spacing = true;
+    sp.corner_mode = document::SatinCorner::Miter;
     sp.entry_point = um(10, 20);
     sp.exit_point = um(4'990, 4'980);
 
