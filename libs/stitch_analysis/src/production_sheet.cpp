@@ -145,6 +145,7 @@ ProductionSheet make_production_sheet(const document::Project& project,
         options.stitches_per_minute > 0.0 ? options.stitches_per_minute : 700.0;
     sheet.color_change_seconds = std::max(0.0, options.color_change_seconds);
     sheet.trim_seconds = std::max(0.0, options.trim_seconds);
+    sheet.jump_seconds = std::max(0.0, options.jump_seconds);
 
     const stitch::StitchStats stats = stitch::compute_stats(sequence);
     sheet.stitches = stats.stitches;
@@ -241,10 +242,15 @@ ProductionSheet make_production_sheet(const document::Project& project,
         }
         flush();
         out.thread_length_mm = lengthUm / 1000.0;
-        out.minutes = static_cast<double>(out.stitches) / sheet.stitches_per_minute +
-                      (static_cast<double>(out.trims) * sheet.trim_seconds +
-                       (b > 0 ? sheet.color_change_seconds : 0.0)) /
-                          60.0;
+        const double stitchMin = static_cast<double>(out.stitches) / sheet.stitches_per_minute;
+        const double colorMin = (b > 0 ? sheet.color_change_seconds : 0.0) / 60.0;
+        const double trimMin = static_cast<double>(out.trims) * sheet.trim_seconds / 60.0;
+        const double jumpMin = static_cast<double>(out.jumps) * sheet.jump_seconds / 60.0;
+        out.minutes = stitchMin + colorMin + trimMin + jumpMin;
+        sheet.stitch_minutes += stitchMin;
+        sheet.color_change_minutes += colorMin;
+        sheet.trim_minutes += trimMin;
+        sheet.jump_minutes += jumpMin;
         sheet.thread_length_m += out.thread_length_mm / 1000.0;
         sheet.estimated_minutes += out.minutes;
         sheet.blocks.push_back(std::move(out));
@@ -321,8 +327,11 @@ std::string production_to_json(const ProductionSheet& s) {
                      s.thread_length_m);
     j += fmt::format(
         "\"estimate\":{{\"stitches_per_minute\":{:.1f},\"color_change_seconds\":{:.1f},"
-        "\"trim_seconds\":{:.1f},\"minutes\":{:.2f}}},",
-        s.stitches_per_minute, s.color_change_seconds, s.trim_seconds, s.estimated_minutes);
+        "\"trim_seconds\":{:.1f},\"minutes\":{:.2f},\"jump_seconds\":{:.1f},"
+        "\"stitch_minutes\":{:.2f},\"color_change_minutes\":{:.2f},\"trim_minutes\":{:.2f},"
+        "\"jump_minutes\":{:.2f}}},",
+        s.stitches_per_minute, s.color_change_seconds, s.trim_seconds, s.estimated_minutes,
+        s.jump_seconds, s.stitch_minutes, s.color_change_minutes, s.trim_minutes, s.jump_minutes);
     j += "\"blocks\":[";
     for (std::size_t i = 0; i < s.blocks.size(); ++i) {
         const auto& b = s.blocks[i];
@@ -477,8 +486,12 @@ std::string production_to_html(const ProductionSheet& s, const ProductionHtmlOpt
     h += "</table>\n";
     h += "<p class=\"small\">Hypothèses du temps estimé : " + fmt_fr(s.stitches_per_minute, 0) +
          " points par minute, " + fmt_fr(s.color_change_seconds, 0) + " s par changement de fil, " +
-         fmt_fr(s.trim_seconds, 0) +
-         " s par coupe. La vitesse réelle dépend de la machine et du motif ; la longueur de fil "
+         fmt_fr(s.trim_seconds, 0) + " s par coupe" +
+         (s.jump_seconds > 0.0 ? ", " + fmt_fr(s.jump_seconds, 1) + " s par saut" : std::string()) +
+         " (couture " + format_duration_fr(s.stitch_minutes) + ", changements de fil " +
+         format_duration_fr(s.color_change_minutes) + ", coupes " +
+         format_duration_fr(s.trim_minutes) + ", sauts " + format_duration_fr(s.jump_minutes) +
+         "). La vitesse réelle dépend de la machine et du motif ; la longueur de fil "
          "ne compte ni le fil de canette ni les points de saut.</p>\n";
 
     // Tableau des blocs dans l'ordre de couture.
