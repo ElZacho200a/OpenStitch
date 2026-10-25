@@ -23,8 +23,11 @@
 #include "op_registry.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/finishing_commands.hpp"
+#include "openstitch/commands/machine_commands.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/thread_commands.hpp"
+#include "openstitch/document/hoop_library.hpp"
+#include "openstitch/document/machine_profile.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/optimization/order.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
@@ -1554,7 +1557,11 @@ OpSpec op_discard_overrides() {
 json canvas_json(const document::Canvas& c) {
     return {{"width_mm", to_millimeters(c.width).value},
             {"height_mm", to_millimeters(c.height).value},
-            {"margin_mm", to_millimeters(c.margin).value}};
+            {"margin_mm", to_millimeters(c.margin).value},
+            {"shape", c.shape == document::HoopShape::Ellipse            ? "ellipse"
+                      : c.shape == document::HoopShape::RoundedRectangle ? "rounded"
+                                                                         : "rectangle"},
+            {"corner_radius_mm", to_millimeters(c.corner_radius).value}};
 }
 
 OpSpec op_set_canvas() {
@@ -1565,15 +1572,56 @@ OpSpec op_set_canvas() {
     s.args = {arg("width_mm", "number", "largeur du cadre", false, "mm", "]0 ; 2000]"),
               arg("height_mm", "number", "hauteur du cadre", false, "mm", "]0 ; 2000]"),
               arg("margin_mm", "number", "marge de sécurité sur chaque côté", false, "mm",
-                  "[0 ; 500], 2 x marge < min(largeur, hauteur)")};
+                  "[0 ; 500], 2 x marge < min(largeur, hauteur)"),
+              arg("hoop", "string",
+                  "identifiant d'un cadre de la bibliothèque (taille et forme), ex. round-150 ; "
+                  "width_mm / height_mm / shape donnés en plus l'emportent",
+                  false, "", "voir document::hoop_library()"),
+              arg("shape", "string", "forme du cadre : rectangle, ellipse (rond ou ovale), rounded",
+                  false, "", "rectangle | ellipse | rounded"),
+              arg("corner_radius_mm", "number", "rayon des coins (forme rounded)", false, "mm",
+                  "[0 ; 500]")};
     s.example = R"({"op":"set_canvas","width_mm":160,"height_mm":260,"margin_mm":5})";
     s.apply = guarded([](OpContext& ctx) {
         if (!ctx.args.contains("width_mm") && !ctx.args.contains("height_mm") &&
-            !ctx.args.contains("margin_mm")) {
-            refuse(code::kUsage, "indiquez au moins un de : width_mm, height_mm, margin_mm");
+            !ctx.args.contains("margin_mm") && !ctx.args.contains("hoop") &&
+            !ctx.args.contains("shape") && !ctx.args.contains("corner_radius_mm")) {
+            refuse(code::kUsage,
+                   "indiquez au moins un de : hoop, width_mm, height_mm, margin_mm, shape, "
+                   "corner_radius_mm");
         }
         const document::Canvas before = ctx.project.canvas;
         document::Canvas next = before;
+        if (const auto it = ctx.args.find("hoop"); it != ctx.args.end()) {
+            const std::string id = it->get<std::string>();
+            const document::HoopSpec* spec = document::find_hoop(id);
+            if (spec == nullptr) {
+                refuse(code::kOutOfRange, "cadre inconnu : « " + id + " »",
+                       "voir la bibliothèque de cadres (hoop_library)");
+            }
+            next = document::canvas_from_hoop(*spec, before.margin);
+        }
+        if (const auto it = ctx.args.find("shape"); it != ctx.args.end()) {
+            const std::string shape = it->get<std::string>();
+            if (shape == "rectangle") {
+                next.shape = document::HoopShape::Rectangle;
+            } else if (shape == "ellipse") {
+                next.shape = document::HoopShape::Ellipse;
+            } else if (shape == "rounded") {
+                next.shape = document::HoopShape::RoundedRectangle;
+            } else {
+                refuse(code::kOutOfRange, "« shape » : « " + shape + " » inconnue",
+                       "rectangle, ellipse ou rounded");
+            }
+        }
+        if (const auto it = ctx.args.find("corner_radius_mm"); it != ctx.args.end()) {
+            const double d = it->get<double>();
+            if (!(d >= 0.0 && d <= 500.0)) {
+                refuse(code::kOutOfRange,
+                       "« corner_radius_mm » : " + num(d) + " hors plage [0 ; 500] mm");
+            }
+            next.corner_radius = to_micrometers(Millimeters{d});
+        }
         const auto dimension = [&](const char* key, Micrometers& target) {
             if (const auto it = ctx.args.find(key); it != ctx.args.end()) {
                 const double d = it->get<double>();
@@ -1607,6 +1655,27 @@ OpSpec op_set_canvas() {
         }
         ctx.stack.execute(std::make_unique<commands::SetCanvasCommand>(next), ctx.project);
         return OpStatus::success({{"before", canvas_json(before)}, {"after", canvas_json(next)}});
+    });
+    return s;
+}
+
+OpSpec op_set_machine() {
+    OpSpec s;
+    s.name = "set_machine";
+    s.summary = "Choisit le profil machine du projet (champ, cadres, aiguilles, formats : sert aux "
+                "vérifications avant export). Chaîne vide = aucune machine.";
+    s.args = {arg("machine", "string", "identifiant du profil, ex. generic-multi-6 ; vide = aucune",
+                  true, "", "voir document::machine_profiles()")};
+    s.example = R"({"op":"set_machine","machine":"generic-multi-6"})";
+    s.apply = guarded([](OpContext& ctx) {
+        const std::string id = ctx.args.at("machine").get<std::string>();
+        if (!id.empty() && document::find_machine(id) == nullptr) {
+            refuse(code::kOutOfRange, "machine inconnue : « " + id + " »",
+                   "voir les profils machine disponibles (machine_profiles)");
+        }
+        const std::string before = ctx.project.machine_id;
+        ctx.stack.execute(std::make_unique<commands::SetMachineCommand>(id), ctx.project);
+        return OpStatus::success({{"before", before}, {"after", id}});
     });
     return s;
 }
@@ -1700,6 +1769,7 @@ void register_param_ops(std::vector<OpSpec>& out) {
     out.push_back(op_remove_object());
     out.push_back(op_discard_overrides());
     out.push_back(op_set_canvas());
+    out.push_back(op_set_machine());
     out.push_back(op_set_finishing());
 }
 

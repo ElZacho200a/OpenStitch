@@ -14,6 +14,7 @@ add_library(openstitch_stitch_analysis
     src/uncovered_pockets.cpp
     src/text_rules.cpp
     src/project_analysis.cpp
+    src/machine_checks.cpp
 )
 add_library(openstitch::stitch_analysis ALIAS openstitch_stitch_analysis)
 
