@@ -1,0 +1,189 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261025T075700Z-phare-foam-carriers-mcp-0d343ff",
+  "timestamp_utc": "2026-10-25T07:57:00Z",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "verified_this_run": true
+  },
+  "main_commit": "520bcb4741062379225927ea6e09e3b8a9bad6ab",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "tools_catalogued": true
+  },
+  "subproject": {
+    "crop_px": [
+      888,
+      65,
+      1010,
+      466
+    ],
+    "size_mm": [
+      29.388,
+      96.595
+    ],
+    "hoop_mm": [
+      50,
+      120
+    ],
+    "not_full_scene": true
+  },
+  "preparations": {
+    "applied": [
+      "ribbon_source",
+      "ribbon_negative",
+      "ribbon_filaments",
+      "ribbon_sculpted",
+      "ribbon_cloud_clean",
+      "ribbon_cloud_soft",
+      "ribbon_smooth_foam"
+    ],
+    "method": "OpenCV/NumPy source-derived ivory foam connected carriers with optional source-dark negative holes; open SVG running filament paths, source-aligned exclusivity from shaft, Gaussian smoothing trial; NOT genuine paired-rail cubic Bezier geometry",
+    "gate_A": "FAILED: foam still oversized tatami mass, lighthouse gallery/lantern schematic; all imports diagnostic",
+    "dry_run_refusal": "ribbon_cloud_clean cloud.blue empty after cleanup, removed empty region from manifest, retried successfully"
+  },
+  "variants": [
+    {
+      "name": "ribbon_source",
+      "objects": 67,
+      "points": 4192,
+      "trims": 82,
+      "jumps": 109,
+      "color_changes": 26,
+      "warnings": 5,
+      "errors": 0,
+      "hotspot_mm2": 3,
+      "missing_percent": 28.065,
+      "lost_detail_percent": 2.175,
+      "wrong_colour_percent": 6.578,
+      "real_mcp_preview": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "ribbon_negative",
+      "objects": 64,
+      "points": 4131,
+      "trims": 79,
+      "jumps": 98,
+      "color_changes": 26,
+      "warnings": 7,
+      "errors": 0,
+      "hotspot_mm2": 3,
+      "missing_percent": 28.184,
+      "lost_detail_percent": 2.15,
+      "wrong_colour_percent": 6.48,
+      "real_mcp_preview": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "ribbon_filaments",
+      "objects": 74,
+      "points": 4385,
+      "trims": 90,
+      "jumps": 111,
+      "color_changes": 26,
+      "warnings": 3,
+      "errors": 0,
+      "hotspot_mm2": 4,
+      "missing_percent": 27.601,
+      "lost_detail_percent": 2.381,
+      "wrong_colour_percent": 8.403,
+      "real_mcp_preview": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "ribbon_cloud_clean",
+      "objects": 57,
+      "points": 4061,
+      "trims": 72,
+      "jumps": 91,
+      "color_changes": 25,
+      "warnings": 7,
+      "errors": 0,
+      "hotspot_mm2": 3,
+      "missing_percent": 28.343,
+      "lost_detail_percent": 2.15,
+      "wrong_colour_percent": 6.48,
+      "real_mcp_preview": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "ribbon_smooth_foam",
+      "objects": 73,
+      "points": 4357,
+      "trims": 87,
+      "jumps": 108,
+      "color_changes": 26,
+      "warnings": 1,
+      "errors": 0,
+      "hotspot_mm2": 3,
+      "missing_percent": 27.65,
+      "lost_detail_percent": 2.381,
+      "wrong_colour_percent": 8.401,
+      "real_mcp_preview": true,
+      "artistic_verdict": "REJECTED"
+    }
+  ],
+  "mcp_executed": [
+    "digitize_guide",
+    "project_operations",
+    "semantic_validate",
+    "project_new",
+    "semantic_import dry_run/apply",
+    "project_apply import_svg dry_run/apply",
+    "project_apply set_source_image",
+    "project_apply set_finishing bridge12",
+    "project_checkpoint",
+    "semantic_map",
+    "project_inspect",
+    "project_report",
+    "project_check",
+    "project_density",
+    "project_fabric_risk",
+    "project_fidelity",
+    "project_render real PNG",
+    "project_save OSP",
+    "project_export DST",
+    "project_satin_compare skeleton/parallel_sweep/medial_axis",
+    "project_apply auto_satin dry_run/apply",
+    "project_apply directional_guides dry_run/apply",
+    "semantic_replace dry_run/apply",
+    "project_apply set_params dry_run/apply",
+    "project_restore"
+  ],
+  "retouches": {
+    "baseline": "ribbon_filaments",
+    "satin": "4 windows unsuitable; 3 strategies compared and applied to gallery strip with true render; rejected",
+    "directional": "tatami versus directional on same shaft mass; rendered and rejected",
+    "semantic_replace": "glass ivory mask morphologically edited, dry-run/apply rendered and rejected",
+    "set_params": "gallery row spacing, dry-run/apply rendered and rejected",
+    "restored_osp_byte_identical": true,
+    "osp_sha256": "2d91a07e317f74a45ed0b4678df32c931d25669e070762d295682fb315b8d7d2"
+  },
+  "quality": {
+    "artistic_verdict": "REJECTED",
+    "machine_tested": false,
+    "independent_rating": false,
+    "warning_detail": "sub-0.1mm stitches especially foam edge; smooth variant reduced 3 to 1 warning",
+    "fidelity_scope": "crop includes unstitched context, not comparable to full-scene baseline"
+  },
+  "private_archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-25/phare-ecume-porteuse-mcp-0905-private.zip",
+    "library_file_id": "libfile_148e305b57148191b54ac706176d4c8c",
+    "size_bytes": 46113274,
+    "sha256": "74b96ce484da42b3e88962908604bcf7364ec23912b9358e39ef1e592dcccc63",
+    "rematerialized_sha_verified": true,
+    "zip_integrity_verified": true
+  },
+  "github_pixels_private": true,
+  "next_hypothesis": "Stop monolithic foam tatami. Construct 2-3 genuine continuous source-traced open rails with measured local width and negative spaces, with separate shadow carriers; use native import_svg running for filaments, satin only admissible, improve gallery and lantern source fidelity before global reintegration."
+}
