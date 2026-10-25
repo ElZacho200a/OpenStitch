@@ -1,0 +1,148 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261025T055940Z-phare-gallery-carriers-mcp-0d343ff",
+  "timestamp_utc": "2026-10-25T05:59:40Z",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "verified_this_run": true
+  },
+  "main_commit": "520bcb4741062379225927ea6e09e3b8a9bad6ab",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "artifact_id": 12567701806
+  },
+  "subproject": {
+    "crop_px": [
+      888,
+      65,
+      1010,
+      466
+    ],
+    "size_mm": [
+      29.388,
+      96.595
+    ],
+    "hoop_mm": [
+      50,
+      120
+    ],
+    "not_full_scene": true
+  },
+  "method": "6 real source-derived OpenCV preparations: 4 exclusive gallery carrier schemes, repaired glass vertical panes, filled four window interiors. Native import_svg open running rails. Gate A failed; all imports diagnostic.",
+  "variants": [
+    {
+      "name": "carrier_ivory",
+      "objects": 39,
+      "points": 2441,
+      "trims": 41,
+      "jumps": 49,
+      "warnings": 0,
+      "hotspot_mm2": 1,
+      "real_mcp_preview": true
+    },
+    {
+      "name": "carrier_shadow",
+      "objects": 40,
+      "points": 2474,
+      "trims": 42,
+      "jumps": 50,
+      "warnings": 0,
+      "hotspot_mm2": 1,
+      "real_mcp_preview": true
+    },
+    {
+      "name": "carrier_lattice",
+      "objects": 42,
+      "points": 2496,
+      "trims": 43,
+      "jumps": 52,
+      "warnings": 0,
+      "hotspot_mm2": 1,
+      "real_mcp_preview": true
+    },
+    {
+      "name": "carrier_darkedge",
+      "objects": 42,
+      "points": 2492,
+      "trims": 45,
+      "jumps": 53,
+      "warnings": 0,
+      "hotspot_mm2": 1,
+      "real_mcp_preview": true
+    },
+    {
+      "name": "carrier_glass_repaired",
+      "objects": 45,
+      "points": 2532,
+      "trims": 51,
+      "jumps": 58,
+      "warnings": 0,
+      "hotspot_mm2": 2,
+      "real_mcp_preview": true
+    },
+    {
+      "name": "carrier_windows_filled",
+      "objects": 49,
+      "points": 2576,
+      "trims": 55,
+      "jumps": 62,
+      "warnings": 0,
+      "hotspot_mm2": 2,
+      "real_mcp_preview": true
+    }
+  ],
+  "mcp_executed": [
+    "digitize_guide",
+    "project_operations",
+    "semantic_validate",
+    "project_new",
+    "semantic_import dry_run/apply",
+    "project_apply import_svg dry_run/apply",
+    "project_apply set_source_image",
+    "project_apply set_finishing bridge12",
+    "project_checkpoint",
+    "semantic_map",
+    "project_inspect",
+    "project_report",
+    "project_check",
+    "project_density",
+    "project_fabric_risk",
+    "project_fidelity",
+    "project_render real PNG",
+    "project_save OSP",
+    "project_export DST",
+    "project_satin_compare 3 strategies",
+    "project_apply auto_satin 3 strategies dry_run/apply",
+    "project_apply directional_guides dry_run/apply",
+    "semantic_replace dry_run/apply",
+    "project_apply set_params dry_run/apply",
+    "project_restore"
+  ],
+  "retouches": {
+    "windows": "all unsuitable; first skeleton/parallel_sweep/medial_axis coverage 95.5/51.3/94.2%",
+    "gallery": "same strip three satins applied and truly rendered, rejected",
+    "directional": "same shaft tatami vs directional, rendered, rejected",
+    "semantic_replace": "ivory glass mask dry_run/apply rendered, rejected",
+    "restored_osp_byte_identical": true
+  },
+  "gate_A": "FAILED: gallery still schematic, original clouds and foam missing from crop, glass and shaft simplified",
+  "verdict": "ALL ARTISTICALLY REJECTED; no full-scene delivery, no physical machine test, no independent rating",
+  "private_archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-25/phare-galerie-continue-mcp-0705-private.zip",
+    "library_file_id": "libfile_baae204065fc81918de0c687ff2bc5a3",
+    "size_bytes": 19606522,
+    "sha256": "e323b93a5a8056f469acb4ac3ab4743688c604f5e6665f1361ceeb3121cca7a8",
+    "rematerialized_sha_verified": true
+  },
+  "github_pixels_private": true,
+  "next_hypothesis": "Stop clean isolated lighthouse silhouette; restore cloud and foam occlusions in same crop from verified source, 3D source-traced gallery curves, continuous shaft masses and original 4 windows. Gate A crop first; only then real MCP diagnostic previews; do not compare crop stats with full scene."
+}
