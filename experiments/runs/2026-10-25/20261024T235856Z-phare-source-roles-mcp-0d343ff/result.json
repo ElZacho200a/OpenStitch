@@ -1,0 +1,140 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261024T235856Z-phare-source-roles-mcp-0d343ff",
+  "timestamp_utc": "2026-10-25T00:05:08Z",
+  "source_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+  "source_zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+  "source_dimensions_px": [
+    1536,
+    961
+  ],
+  "hoop_mm": [
+    390,
+    268
+  ],
+  "motif_mm": [
+    370,
+    231.49088541666666
+  ],
+  "main_reference": "520bcb4741062379225927ea6e09e3b8a9bad6ab",
+  "engine": "openstitch-mcp 1.1.0",
+  "engine_archive_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+  "method": "Three applied source-conditioned LAB palette/semantic-instance reconstructions (OpenCV, scipy, skimage), not generative. Source-quantized sky/cloud only, then foam with exclusive running hairlines, then foam/waves with source hairlines. Protected lighthouse/boat masks unchanged. Strict visual gate A failed. All three imports diagnostic only.",
+  "variants": [
+    {
+      "name": "roles_guarded",
+      "regions": 88,
+      "components": 592,
+      "lab_mae": 6.692,
+      "threads": 16,
+      "objects": 1176,
+      "stitches": 155005,
+      "trims": 2459,
+      "jumps": 3105,
+      "color_changes": 68,
+      "hotspot_mm2": 86,
+      "errors": 0,
+      "warnings": 51,
+      "fidelity_missing_pct": 7.349,
+      "fidelity_lost_detail_pct": 1.746,
+      "fidelity_wrong_colour_pct": 2.42,
+      "real_preview": true,
+      "verdict": "rejected"
+    },
+    {
+      "name": "roles_foam",
+      "regions": 96,
+      "components": 892,
+      "lab_mae": 6.242,
+      "threads": 16,
+      "source_running": 8,
+      "objects": 1810,
+      "stitches": 159105,
+      "trims": 3175,
+      "jumps": 4086,
+      "color_changes": 74,
+      "hotspot_mm2": 93,
+      "errors": 0,
+      "warnings": 51,
+      "fidelity_missing_pct": 8.83,
+      "fidelity_lost_detail_pct": 1.567,
+      "fidelity_wrong_colour_pct": 2.208,
+      "real_preview": true,
+      "verdict": "rejected"
+    },
+    {
+      "name": "roles_full",
+      "regions": 103,
+      "components": 3004,
+      "lab_mae": 5.177,
+      "threads": 16,
+      "source_running": 16,
+      "objects": 6135,
+      "stitches": 402841,
+      "trims": 10229,
+      "jumps": 13598,
+      "color_changes": 74,
+      "hotspot_mm2": 17236,
+      "errors": 0,
+      "warnings": 63,
+      "fidelity_missing_pct": 10.101,
+      "fidelity_lost_detail_pct": 0.216,
+      "fidelity_wrong_colour_pct": 0.582,
+      "real_preview": true,
+      "verdict": "rejected"
+    }
+  ],
+  "mcp_calls": [
+    "initialize",
+    "digitize_guide",
+    "project_operations",
+    "semantic_validate",
+    "project_new",
+    "semantic_import dry_run/apply",
+    "project_checkpoint",
+    "semantic_map",
+    "project_inspect",
+    "project_report",
+    "project_check",
+    "project_density",
+    "project_fabric_risk",
+    "project_apply set_source_image dry_run/apply",
+    "project_fidelity",
+    "project_render",
+    "project_save",
+    "project_export",
+    "project_satin_compare",
+    "project_apply auto_satin dry_run/apply",
+    "project_apply directional_guides dry_run/apply",
+    "project_compare",
+    "semantic_replace dry_run/apply",
+    "project_restore"
+  ],
+  "diagnostic_issue": "roles_full first semantic_import dry_run refused empty foam.instance_20.color_9; removed empty technical region and reran successful import. Visual preparation more source-faithful, but severe fragmentation and hotspot regression.",
+  "retouches": {
+    "variant": "roles_guarded",
+    "satin": "4 lighthouse windows; parallel_sweep dry_run/apply 155034 stitches/2460 trims; real preview rejected",
+    "directional": "same wave as tatami baseline; dry_run/apply 155009 stitches/2458 trims; real preview and project_compare rejected",
+    "semantic_replace": "foam.instance_20.color_10 dry_run/apply 152383 stitches/2379 trims/hotspot84mm2; real preview rejected due to lost foam",
+    "baseline_restored_byte_identical": true
+  },
+  "gate_A": "rejected, all three imports diagnostic",
+  "overall_verdict": "ARTISTICALLY REJECTED; 0 errors is insufficient; lower pixel LAB error and lost_detail do not compensate for fragmentation, cuts and density. No physical machine test, no independent review.",
+  "baseline": {
+    "vector_balanced": {
+      "objects": 593,
+      "trims": 1464,
+      "hotspot_mm2": 57
+    },
+    "historical_trims": 1015
+  },
+  "private_archive": {
+    "path": "/OpenStitch/Experiments/2026-10-25/phare-roles-source-mcp-0210-private.zip",
+    "library_file_id": "libfile_a3a534d2a66c8191a705f7418db3467e",
+    "size_bytes": 35921593,
+    "sha256": "e202652296f0ecaa59e4db34ba0ad97546eea77705b23eefdc554cc9885f0df7",
+    "rematerialized_and_verified": true
+  },
+  "github_pixels_private": true,
+  "next_hypothesis": "Stop per-pixel repartition: preserve exclusive source-aligned carriers, build within-instance sewing/travel graph and explicit routing under existing fills; isolate lighthouse architectural reconstruction before global scene changes. Avoid adding tatami islands. Test 3+ variants and gate A first, then genuine MCP previews."
+}
