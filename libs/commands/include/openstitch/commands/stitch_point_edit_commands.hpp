@@ -55,6 +55,12 @@ public:
         return EditStitchPointsCommand(Kind::Insert, id, {Item{base_index, pos}},
                                        document::StitchPointType::Stitch, false, fp, count);
     }
+    // Plusieurs insertions en un pas d'annulation (un point apres chaque `Item::base_index`).
+    [[nodiscard]] static EditStitchPointsCommand
+    insert_points(ObjectId id, std::vector<Item> items, std::uint64_t fp, std::uint32_t count) {
+        return EditStitchPointsCommand(Kind::Insert, id, std::move(items),
+                                       document::StitchPointType::Stitch, false, fp, count);
+    }
     [[nodiscard]] static EditStitchPointsCommand set_type(ObjectId id,
                                                           std::vector<std::size_t> indices,
                                                           document::StitchPointType type,
@@ -226,6 +232,11 @@ public:
         return EditImportedPointsCommand(Kind::Insert, {Item{index, pos}},
                                          document::StitchPointType::Stitch);
     }
+    // Plusieurs insertions en un pas d'annulation (un point apres chaque index).
+    [[nodiscard]] static EditImportedPointsCommand insert_points(std::vector<Item> items) {
+        return EditImportedPointsCommand(Kind::Insert, std::move(items),
+                                         document::StitchPointType::Stitch);
+    }
     [[nodiscard]] static EditImportedPointsCommand set_type(std::vector<std::size_t> indices,
                                                             document::StitchPointType type) {
         return EditImportedPointsCommand(Kind::SetType, to_items(indices), type);
@@ -266,14 +277,19 @@ public:
             }
             break;
         case Kind::Insert: {
-            const std::size_t at = items_.front().index + 1;
-            stitch::StitchCommand fresh{items_.front().pos, stitch::CommandType::Stitch,
-                                        cmds[items_.front().index].source,
-                                        stitch::StitchPass::Manual};
-            cmds.insert(cmds.begin() + static_cast<std::ptrdiff_t>(at), fresh);
-            for (auto& b : design.color_blocks) {
-                b.start += (b.start >= at) ? 1 : 0;
-                b.end += (b.end >= at) ? 1 : 0;
+            // Indices decroissants (tri stable) : une insertion ne decale pas celles a venir.
+            auto ordered = items_;
+            std::stable_sort(ordered.begin(), ordered.end(),
+                             [](const Item& a, const Item& b) { return a.index > b.index; });
+            for (const Item& it : ordered) {
+                const std::size_t at = it.index + 1;
+                stitch::StitchCommand fresh{it.pos, stitch::CommandType::Stitch,
+                                            cmds[it.index].source, stitch::StitchPass::Manual};
+                cmds.insert(cmds.begin() + static_cast<std::ptrdiff_t>(at), fresh);
+                for (auto& b : design.color_blocks) {
+                    b.start += (b.start >= at) ? 1 : 0;
+                    b.end += (b.end >= at) ? 1 : 0;
+                }
             }
             break;
         }
