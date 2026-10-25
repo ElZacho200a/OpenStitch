@@ -79,6 +79,8 @@ add_library(openstitch_desktop_widgets STATIC
     font_catalog.hpp
     text_dialog.cpp
     text_dialog.hpp
+    text_advanced_panel.cpp
+    text_advanced_panel.hpp
     lettering_fonts.qrc
     main_window.hpp
     app_settings.cpp
