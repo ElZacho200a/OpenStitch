@@ -1,0 +1,149 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261025T190112Z-phare-gallery-cells-mcp-0d343ff",
+  "created_utc": "2026-10-25T19:01:12Z",
+  "status": "failed",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "verified_this_run": true
+  },
+  "main_commit": "206ad8eb35cf4d0db751c6021cab8ae1bbd4d7bb",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007"
+  },
+  "subproject": {
+    "crop_px": [
+      888,
+      65,
+      1010,
+      466
+    ],
+    "size_mm": [
+      29.388,
+      96.595
+    ],
+    "canvas_mm": [
+      50,
+      120
+    ],
+    "not_full_scene": true,
+    "global_frame_mm": [
+      390,
+      268
+    ],
+    "global_design_mm": [
+      370,
+      231.490885
+    ]
+  },
+  "preparations": {
+    "applied": [
+      "cells_source",
+      "cells_glass",
+      "cells_dome",
+      "cells_facet",
+      "cells_foam",
+      "cells_minimal"
+    ],
+    "gate_A": "FAILED 3 visual gates before import",
+    "imports": "DIAGNOSTIC ONLY",
+    "not_imported": [
+      "cells_dome",
+      "cells_foam"
+    ],
+    "method": "Source-traced small irregular gallery cells and central curved rings with open SVG running; negative holes; five windows; two curved glass reflection masses; curved shaft facet; no AI"
+  },
+  "variants": [
+    {
+      "name": "cells_source",
+      "objects": 90,
+      "stitches": 4471,
+      "trims": 106,
+      "jumps": 142,
+      "color_changes": 27,
+      "warnings": 13,
+      "errors": 0,
+      "hotspot_mm2": 2,
+      "missing_crop_percent": 28.67,
+      "lost_detail_crop_percent": 3.138,
+      "wrong_colour_crop_percent": 8.054,
+      "real_mcp_preview": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "cells_glass",
+      "objects": 90,
+      "stitches": 4413,
+      "trims": 106,
+      "jumps": 139,
+      "color_changes": 27,
+      "warnings": 11,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "missing_crop_percent": 28.433,
+      "lost_detail_crop_percent": 3.726,
+      "wrong_colour_crop_percent": 8.556,
+      "real_mcp_preview": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "cells_facet",
+      "objects": 100,
+      "stitches": 4408,
+      "trims": 112,
+      "jumps": 144,
+      "color_changes": 27,
+      "warnings": 8,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "missing_crop_percent": 29.277,
+      "lost_detail_crop_percent": 3.726,
+      "wrong_colour_crop_percent": 8.665,
+      "real_mcp_preview": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "cells_minimal",
+      "objects": 91,
+      "stitches": 4308,
+      "trims": 103,
+      "jumps": 135,
+      "color_changes": 27,
+      "warnings": 8,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "missing_crop_percent": 30.14,
+      "lost_detail_crop_percent": 3.579,
+      "wrong_colour_crop_percent": 8.199,
+      "real_mcp_preview": true,
+      "artistic_verdict": "REJECTED"
+    }
+  ],
+  "retouches": {
+    "baseline": "cells_facet",
+    "satin_compare": "skeleton/parallel_sweep/medial_axis on foam, five windows, gallery; dry-run/apply/render when accepted; window medial_axis refused; rejected",
+    "directional": "same shaft tatami vs directional_guides dry-run/apply/render rejected",
+    "semantic_replace": "glass ivory dry-run/apply/render rejected",
+    "set_params": "gallery rim dry-run/apply/render rejected",
+    "restored_osp_byte_identical": true
+  },
+  "artistic_verdict": "REJECTED; no global reintegration; no machine test; no independent score",
+  "next_hypothesis": "Use source-image line extraction on gallery crop; reduce to 5-8 actual source structures at textile scale, compare running stitch density and only locally admissible satin. Preserve 5 windows. Avoid monolithic foam.",
+  "archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-25/phare-cellules-ferronnerie-mcp-2005-private.zip",
+    "library_file_id": "libfile_a0277398e4f08191bc40509ca060ca2c",
+    "size_bytes": 25031746,
+    "sha256": "4cb64fe9c8328b249857cec149f6b233fe9acce26ed2a278650b5135548b98ab",
+    "entries": 211,
+    "rematerialized_sha_verified": true
+  }
+}
