@@ -25,6 +25,7 @@
 
 #include "auto_satin_strategy_ui.hpp"
 #include "interaction_map.hpp"
+#include "view_display_state.hpp"
 #include "openstitch/commands/transform_ops.hpp"
 #include "openstitch/commands/undo_stack.hpp"
 #include "openstitch/commands/vector_ops.hpp"
@@ -841,6 +842,13 @@ private:
     QAction* gridSnapAct_{nullptr};
     QAction* gridStepAct_{nullptr};
     double gridStepMm_{1.0};
+    // Affichage par passe, zoom rectangle / 1:1 étalonné, grille et guides, aperçu en direct
+    // (HP-VIEW-003/007/010/012, main_window_view_display.cpp).
+    void buildViewDisplayMenu(QMenu* viewMenu);
+    void applyViewDisplay();
+    void addFunctionMarkers();
+    ViewDisplayState viewDisplay_;
+    QAction* zoomRectAct_{nullptr};
     QAction* outlineAct_{nullptr};
     // Sélection de nœuds et déplacement groupé (HP-VEC-017, main_window_node_select.cpp). Tous
     // les nœuds sélectionnés appartiennent au même chemin (set, path) de `nodeSelObject_`.
