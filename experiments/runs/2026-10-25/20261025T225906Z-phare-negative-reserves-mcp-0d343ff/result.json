@@ -1,0 +1,145 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261025T225906Z-phare-negative-reserves-mcp-0d343ff",
+  "created_utc": "2026-10-25T22:59:06Z",
+  "status": "failed",
+  "artistic_verdict": "all five diagnostic variants rejected; gate A failed; no global integration",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "verified_this_run": true
+  },
+  "main_commit": "206ad8eb35cf4d0db751c6021cab8ae1bbd4d7bb",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "binary_not_rebuilt_from_main": true
+  },
+  "subproject": {
+    "crop_px": [
+      888,
+      65,
+      1010,
+      466
+    ],
+    "size_mm": [
+      29.388,
+      96.595
+    ],
+    "canvas_mm": [
+      50,
+      120
+    ],
+    "not_full_scene": true,
+    "protected_windows": 5
+  },
+  "method": {
+    "preparations": [
+      "reserve_source",
+      "reserve_open",
+      "reserve_arch",
+      "reserve_smooth",
+      "reserve_smooth_open"
+    ],
+    "additional_preparation_not_imported": "reserve_arch_foam",
+    "description": "Source-JPEG local dark contrast masks in three independent gallery sections, unstitched negative cell voids, open SVG running rails; source-guided roof/glass and median cleanup. Repaired a real E_REFUSED on 1px left glass by restoring 602/511/1997px source-derived glass masks.",
+    "gate_A": "failed before imports; masks either isolated dots or thick featureless dark fragments",
+    "imports": "diagnostic only"
+  },
+  "variants": [
+    {
+      "name": "reserve_source",
+      "objects": 107,
+      "stitches": 4260,
+      "trims": 111,
+      "jumps": 155,
+      "warnings": 9,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "missing_crop_percent": 31.123
+    },
+    {
+      "name": "reserve_open",
+      "objects": 121,
+      "stitches": 4291,
+      "trims": 122,
+      "jumps": 169,
+      "warnings": 9,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "missing_crop_percent": 31.094
+    },
+    {
+      "name": "reserve_arch",
+      "objects": 101,
+      "stitches": 4277,
+      "trims": 110,
+      "jumps": 153,
+      "warnings": 9,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "missing_crop_percent": 31.154
+    },
+    {
+      "name": "reserve_smooth",
+      "objects": 100,
+      "stitches": 4277,
+      "trims": 107,
+      "jumps": 150,
+      "warnings": 10,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "missing_crop_percent": 31.16
+    },
+    {
+      "name": "reserve_smooth_open",
+      "objects": 97,
+      "stitches": 4263,
+      "trims": 106,
+      "jumps": 149,
+      "warnings": 9,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "missing_crop_percent": 31.084
+    }
+  ],
+  "mcp_operations": "digitize_guide, project_operations, semantic_validate, project_new, semantic_import dry_run/apply, project_apply import_svg dry_run/apply, checkpoint/map/inspect/report/check/density/fabric_risk/fidelity, real project_render PNG, project_save OSP and project_export DST for each variant",
+  "retouches": {
+    "baseline": "reserve_arch",
+    "satin_compare": [
+      "skeleton",
+      "parallel_sweep",
+      "medial_axis"
+    ],
+    "groups": [
+      "foam",
+      "five windows",
+      "gallery"
+    ],
+    "trial_renders": 8,
+    "window_medial_axis": "refused at dry-run",
+    "tatami_vs_directional": "executed/rejected",
+    "semantic_replace_glass": "executed/rejected",
+    "set_params_gallery": "executed/rejected",
+    "restored_osp_byte_identical": true,
+    "restored_sha256": "b81e2a603be7045cf9fde313defaa6dccd8d8e691f1755da2a22fd10599f00db"
+  },
+  "warnings": "Nine short-stitch warnings in reserve_arch: cloud gray object 29 (2), dome shadow 47 (1), gallery lattice 98 (1), shaft body 140/142/144/150 (5). Coordinates archived. Median cleanup increased warnings 9 to 10 in reserve_smooth.",
+  "fidelity_caveat": "Crop fidelity not comparable with full-scene route_protected bridge12; no machine test and no independent rating",
+  "archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-25/phare-reserves-negatives-mcp-2359-private.zip",
+    "library_file_id": "libfile_a36a516c4c908191a7bcd447229f251f",
+    "size_bytes": 28788173,
+    "sha256": "c709d166f8486d235890ba99fbbd340296dcb09669d23d937cb1646bf95ffc93",
+    "entries": 328,
+    "rematerialized_sha_verified": true
+  },
+  "next_hypothesis": "Abandon dark pixel tatami masks at 29.4mm. Use physical-scale-first 3–5 source-validated structural rails (left grid, two central rosettes, right border), only negative holes >=0.5–0.7mm, running or locally admissible satin. Rebuild dome/glass/shaft source fidelity and foam as 2–3 organic masses with open filaments; strict gate A and real MCP previews; no global integration until visually convincing."
+}
