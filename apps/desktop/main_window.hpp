@@ -821,6 +821,14 @@ private:
     void cancelSegmentReshape();
     [[nodiscard]] QPointF reshapeDragPoint(QPointF sceneMm, Qt::KeyboardModifiers mods) const;
     std::optional<ReshapeGesture> reshape_;
+    // Édition vectorielle (HP-VEC-001/005/006, main_window_vector_edit.cpp).
+    void buildVectorEditActions();
+    void updateVectorEditActions();
+    bool insertNodeAt(QPointF sceneMm);
+    bool removeHoleAt(QPointF sceneMm);
+    void outlineSelection(int kind, double gapMm, double satinWidthMm, bool aroundHoles);
+    void outlineSelectionDialog();
+    QAction* outlineAct_{nullptr};
     // Sélection de nœuds et déplacement groupé (HP-VEC-017, main_window_node_select.cpp). Tous
     // les nœuds sélectionnés appartiennent au même chemin (set, path) de `nodeSelObject_`.
     void buildNodeSelectionActions();

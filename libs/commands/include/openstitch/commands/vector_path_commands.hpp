@@ -93,6 +93,23 @@ public:
     [[nodiscard]] std::string name() const override { return "Pinceau de déformation"; }
 };
 
+// Insertion d'un nœud sur un segment d'un objet vectoriel (HP-VEC-001) : subdivision de
+// De Casteljau EXACTE, la forme ne change pas.
+class InsertNodeCommand final : public RewriteVectorPathsCommand {
+public:
+    explicit InsertNodeCommand(std::vector<Entry> entries)
+        : RewriteVectorPathsCommand(std::move(entries)) {}
+    [[nodiscard]] std::string name() const override { return "Insérer un nœud"; }
+};
+
+// Suppression d'UN trou précis d'un objet vectoriel (HP-VEC-005).
+class RemoveHoleCommand final : public RewriteVectorPathsCommand {
+public:
+    explicit RemoveHoleCommand(std::vector<Entry> entries)
+        : RewriteVectorPathsCommand(std::move(entries)) {}
+    [[nodiscard]] std::string name() const override { return "Supprimer un trou"; }
+};
+
 // Tolérance de lissage par défaut : 0,2 mm.
 inline constexpr Micrometers kDefaultSmoothTolerance{200};
 
@@ -104,6 +121,18 @@ inline constexpr Micrometers kDefaultSmoothTolerance{200};
                                                  Micrometers tolerance = kDefaultSmoothTolerance);
 [[nodiscard]] VectorOpResult make_convert_to_curves_command(const document::Project& project,
                                                             const std::vector<ObjectId>& ids);
+
+// Supprime le trou de l'objet `id` qui contient le point `at` (µm). Commande nulle (avec `error`)
+// si l'objet n'existe pas ou si `at` n'est dans aucun trou.
+[[nodiscard]] VectorOpResult make_remove_hole_at_command(const document::Project& project,
+                                                         ObjectId id, Vec2um at);
+
+// Insère un nœud au paramètre `t` (0..1) du segment `segment` (index du nœud de départ) du chemin
+// `path_index` du morceau `set_index` de l'objet `id`. Commande nulle (avec `error`) si la cible
+// n'existe pas ou si `t` est trop proche d'une extrémité (nœud superposé).
+[[nodiscard]] VectorOpResult make_insert_node_command(const document::Project& project, ObjectId id,
+                                                      std::size_t set_index, std::size_t path_index,
+                                                      std::size_t segment, double t);
 
 // Remodèle le segment `segment` (index du nœud de départ) du chemin `path_index` (0 = extérieur,
 // i+1 = trou i) du morceau `set_index` de l'objet `id`, en tirant son point `t` de `delta`

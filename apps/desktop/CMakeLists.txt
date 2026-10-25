@@ -45,6 +45,7 @@ add_library(openstitch_desktop_widgets STATIC
     # [cablage-B:debut]
     main_window_vector_tools.cpp
     # [cablage-B:fin]
+    main_window_vector_edit.cpp
     # [cablage-C:debut]
     main_window_measure.cpp
     main_window_reshape.cpp
