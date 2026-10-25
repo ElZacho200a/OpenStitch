@@ -1518,7 +1518,8 @@ begin_stitch_edit(document::Project& project, ObjectId id, std::size_t base_inde
 // seul champ effectif) -- Move/SetType posent toujours un champ a valeur non
 // vide, jamais de retour a l'etat vide par ce chemin.
 [[nodiscard]] inline bool is_override_empty(const document::StitchOverride& o) {
-    return !o.moved_to.has_value() && !o.forced_type.has_value() && !o.trim_after;
+    return !o.moved_to.has_value() && !o.forced_type.has_value() && !o.trim_after && !o.deleted &&
+           o.inserted_after.empty();
 }
 
 // Annule exactement l'effet de `begin_stitch_edit` (entree restauree ou

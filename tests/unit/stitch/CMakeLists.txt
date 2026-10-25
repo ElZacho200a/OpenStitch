@@ -15,6 +15,7 @@ add_executable(test_stitch
     test_satin_pairing_metrics.cpp
     test_routing.cpp
     test_overrides.cpp
+    test_point_insert_delete.cpp
     test_engine_points.cpp
     test_chunk_cache.cpp
     test_calques_generation.cpp

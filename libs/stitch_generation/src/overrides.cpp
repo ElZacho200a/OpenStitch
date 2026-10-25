@@ -143,6 +143,11 @@ std::vector<ObjectId> apply_manual_overrides(stitch::StitchSequence& sequence,
         ObjectId source;
     };
     std::vector<TrimInsertion> trims;
+    struct StructuralEdit {
+        bool deleted;
+        const std::vector<Vec2um>* inserted;
+    };
+    std::unordered_map<std::size_t, StructuralEdit> structural;
 
     static const std::vector<std::size_t> kEmptyIndices;
 
@@ -198,17 +203,44 @@ std::vector<ObjectId> apply_manual_overrides(stitch::StitchSequence& sequence,
             if (ov->trim_after && can_trim_after(original)) {
                 trims.push_back({seq_index, cmd.pos, obj.id});
             }
+            // HP-EDIT-002 : suppression et insertion, mêmes éligibilités que la coupe.
+            if ((ov->deleted || !ov->inserted_after.empty()) && can_trim_after(original)) {
+                structural.emplace(seq_index, StructuralEdit{ov->deleted, &ov->inserted_after});
+            }
         }
     }
 
-    std::sort(trims.begin(), trims.end(), [](const TrimInsertion& a, const TrimInsertion& b) {
-        return a.seq_index > b.seq_index;
-    });
-    for (const auto& t : trims) {
-        sequence.commands.insert(sequence.commands.begin() +
-                                     static_cast<std::ptrdiff_t>(t.seq_index) + 1,
-                                 stitch::StitchCommand{t.pos, stitch::CommandType::Trim, t.source,
-                                                       stitch::StitchPass::Manual});
+    if (!trims.empty() || !structural.empty()) {
+        // Reconstruction en un passage (indices de la séquence brute stables pendant la lecture) :
+        // point (sauf supprimé), points insérés, puis coupe. Déterministe : lookup par index.
+        std::unordered_map<std::size_t, const TrimInsertion*> trimAt;
+        for (const auto& t : trims) {
+            trimAt.emplace(t.seq_index, &t);
+        }
+        std::vector<stitch::StitchCommand> rebuilt;
+        rebuilt.reserve(sequence.commands.size() + trims.size() + structural.size());
+        for (std::size_t i = 0; i < sequence.commands.size(); ++i) {
+            const stitch::StitchCommand& cmd = sequence.commands[i];
+            const auto st = structural.find(i);
+            const bool removed = st != structural.end() && st->second.deleted;
+            if (!removed) {
+                rebuilt.push_back(cmd);
+            }
+            Vec2um last = cmd.pos;
+            if (st != structural.end()) {
+                for (const Vec2um& p : *st->second.inserted) {
+                    rebuilt.push_back(stitch::StitchCommand{
+                        p, stitch::CommandType::Stitch, cmd.source, stitch::StitchPass::Manual});
+                    last = p;
+                }
+            }
+            if (const auto tr = trimAt.find(i); tr != trimAt.end() && !removed) {
+                rebuilt.push_back(stitch::StitchCommand{last, stitch::CommandType::Trim,
+                                                        tr->second->source,
+                                                        stitch::StitchPass::Manual});
+            }
+        }
+        sequence.commands = std::move(rebuilt);
     }
 
     std::sort(dirty.begin(),
