@@ -1,0 +1,203 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261025T100100Z-phare-direct-source-mcp-0d343ff",
+  "timestamp_utc": "2026-10-25T10:01:00Z",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "verified_this_run": true
+  },
+  "main_commit": "520bcb4741062379225927ea6e09e3b8a9bad6ab",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007"
+  },
+  "subproject": {
+    "crop_px": [
+      888,
+      65,
+      1010,
+      466
+    ],
+    "size_mm": [
+      29.388,
+      96.595
+    ],
+    "not_full_scene": true
+  },
+  "preparations": {
+    "applied": [
+      "direct_source",
+      "direct_gallery",
+      "direct_foam",
+      "direct_repaired",
+      "direct_repaired_foam",
+      "direct_grid",
+      "direct_vector_mass"
+    ],
+    "method": "Source JPEG pixels directly: family-local LAB palette classification, protected window ROIs, source brightness foam, open SVG source edge tracing; repair glass/gallery into exclusive carriers; manually verified 19 open gallery/lantern/mast SVG paths; three source-guided longitudinal shaft carriers instead of fragmented colour islands. No generative AI. No inherited simplified foam masks.",
+    "gate_A": "FAILED before import: source glass/gallery and foam remain too schematic; 5 imports diagnostic only",
+    "unimported": [
+      "direct_gallery",
+      "direct_foam"
+    ],
+    "paired_crest_rails": "Not achieved: source edge paths are open running, not two independent paired satin rails"
+  },
+  "variants": [
+    {
+      "name": "direct_source",
+      "regions": 29,
+      "objects": 186,
+      "points": 4806,
+      "trims": 194,
+      "jumps": 299,
+      "color_changes": 27,
+      "warnings": 23,
+      "errors": 0,
+      "hotspot_mm2": 3,
+      "missing_percent": 38.498,
+      "lost_detail_percent": 0.748,
+      "wrong_colour_percent": 3.878,
+      "real_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "diagnostic_only": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "direct_repaired",
+      "regions": 29,
+      "objects": 182,
+      "points": 4588,
+      "trims": 186,
+      "jumps": 277,
+      "color_changes": 27,
+      "warnings": 20,
+      "errors": 0,
+      "hotspot_mm2": 2,
+      "missing_percent": 37.153,
+      "lost_detail_percent": 1.251,
+      "wrong_colour_percent": 5.552,
+      "real_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "diagnostic_only": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "direct_repaired_foam",
+      "regions": 29,
+      "objects": 153,
+      "points": 4936,
+      "trims": 167,
+      "jumps": 261,
+      "color_changes": 27,
+      "warnings": 11,
+      "errors": 0,
+      "hotspot_mm2": 5,
+      "missing_percent": 32.311,
+      "lost_detail_percent": 3.125,
+      "wrong_colour_percent": 8.295,
+      "real_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "diagnostic_only": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "direct_grid",
+      "regions": 29,
+      "objects": 201,
+      "points": 4844,
+      "trims": 203,
+      "jumps": 294,
+      "color_changes": 27,
+      "warnings": 20,
+      "errors": 0,
+      "hotspot_mm2": 5,
+      "missing_percent": 35.751,
+      "lost_detail_percent": 1.848,
+      "wrong_colour_percent": 7.303,
+      "real_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "diagnostic_only": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "direct_vector_mass",
+      "regions": 28,
+      "objects": 147,
+      "points": 4567,
+      "trims": 150,
+      "jumps": 210,
+      "color_changes": 26,
+      "warnings": 9,
+      "errors": 0,
+      "hotspot_mm2": 4,
+      "missing_percent": 30.651,
+      "lost_detail_percent": 2.007,
+      "wrong_colour_percent": 7.953,
+      "real_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "diagnostic_only": true,
+      "artistic_verdict": "REJECTED"
+    }
+  ],
+  "mcp_executed": [
+    "digitize_guide",
+    "project_operations",
+    "semantic_validate",
+    "project_new",
+    "semantic_import dry_run/apply",
+    "project_apply import_svg dry_run/apply",
+    "project_apply set_source_image",
+    "project_apply set_finishing bridge12",
+    "project_checkpoint",
+    "semantic_map",
+    "project_inspect",
+    "project_report",
+    "project_check",
+    "project_density",
+    "project_fabric_risk",
+    "project_fidelity",
+    "project_render true PNG",
+    "project_save OSP",
+    "project_export DST",
+    "project_satin_compare skeleton/parallel_sweep/medial_axis",
+    "project_apply auto_satin dry_run/apply",
+    "project_apply directional_guides dry_run/apply",
+    "semantic_replace dry_run/apply",
+    "project_apply set_params dry_run/apply",
+    "project_restore"
+  ],
+  "retouches": {
+    "baseline": [
+      "direct_repaired",
+      "direct_vector_mass"
+    ],
+    "tested": "Three gallery satins and four window comparisons, tatami vs directional on same shaft, semantic_replace ivory glass, set_params gallery. Real previews inspected, all rejected.",
+    "restored_osp_byte_identical": true
+  },
+  "quality": {
+    "gate_A": "FAILED",
+    "artistic_verdict": "REJECTED",
+    "machine_tested": false,
+    "independent_rating": false,
+    "fidelity_scope": "crop intentionally unstitched context, not comparable to global scene"
+  },
+  "controlled_comparison": "direct_grid 201 objects/203 trims/20 warnings -> direct_vector_mass 147/150/9; shaft continuity improves, gallery and foam remain poor. No artistic acceptance.",
+  "private_archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-25/phare-direct-source-mcp-1105-private.zip",
+    "library_file_id": "libfile_8e334215e3a08191836a8e03ef661f8a",
+    "size_bytes": 44341404,
+    "sha256": "be6c2eddb98f12458461b9c829beff7443971db45dd6e1336a4712ef63c53441",
+    "rematerialized_sha_verified": true,
+    "zip_integrity_verified": true
+  },
+  "github_pixels_private": true,
+  "next_hypothesis": "Source-traced coherent Bézier/polygon carriers for dome, lantern, gallery, shaft, with occlusion holes; independently traced continuous paired rails for foam measured in mm. Avoid pixel-wise LAB island labels even within instances; Gate A before diagnostic import. No full-scene reintegration until artistic improvement."
+}
