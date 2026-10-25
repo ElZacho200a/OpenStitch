@@ -22,7 +22,9 @@
 #include <optional>
 
 #include "app_settings.hpp"
+#include "simulation_nav_bar.hpp"
 #include "main_window.hpp"
+#include "simulation_nav_bar.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/thread_commands.hpp"
@@ -626,7 +628,7 @@ void MainWindow::refreshThreadStrip() {
     threadStrip_->setThreads(std::move(swatches), summary);
     // Rangée du bas (simulation + fils) visible seulement quand une séquence existe
     // (HP-UX-026), sauf si l'utilisateur a masqué la barre lui-même.
-    for (QToolBar* bar : {simToolbar_, threadStripBar_}) {
+    for (QToolBar* bar : {simToolbar_, static_cast<QToolBar*>(simNavBar_), threadStripBar_}) {
         if (bar != nullptr) {
             bar->setVisible(sequence_.has_value() && !bar->property("userHidden").toBool());
         }
