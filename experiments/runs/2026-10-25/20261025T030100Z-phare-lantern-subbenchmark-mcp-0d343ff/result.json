@@ -1,0 +1,159 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261025T030100Z-phare-lantern-subbenchmark-mcp-0d343ff",
+  "timestamp_utc": "2026-10-25T03:01:04Z",
+  "source_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+  "source_zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+  "source_dimensions_px": [
+    1536,
+    961
+  ],
+  "hoop_mm": [
+    390,
+    268
+  ],
+  "motif_mm": [
+    370,
+    231.49088541666666
+  ],
+  "main_reference": "520bcb4741062379225927ea6e09e3b8a9bad6ab",
+  "engine": "openstitch-mcp 1.1.0",
+  "engine_archive_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+  "method": "Four genuinely applied programmatic source-derived lighthouse preparations from vector_balanced: cool glass reflections, dome source brightness, gallery source-dark lattice and four windows. Fourth source LAB pane quantization failed gate A and was not imported. Three real MCP diagnostic imports, genuine project_render previews, OSP/DST.",
+  "gate_A": "FAILED: lantern glass, dome and gallery remain illegible; foam and cloud structures oversimplified. Diagnostic imports only.",
+  "variants": [
+    {
+      "name": "lantern_glass",
+      "regions": 71,
+      "components": 334,
+      "threads": 18,
+      "lab_mae": 8.954,
+      "objects": 603,
+      "stitches": 131857,
+      "trims": 1108,
+      "jumps": 1764,
+      "color_changes": 51,
+      "hotspot_mm2": 39,
+      "warnings": 51,
+      "errors": 0,
+      "long_moves_without_trim": 0,
+      "fidelity_missing_pct": 4.555,
+      "fidelity_lost_detail_pct": 4.288,
+      "fidelity_wrong_colour_pct": 5.281,
+      "real_preview": true,
+      "verdict": "rejected"
+    },
+    {
+      "name": "lantern_dome",
+      "regions": 71,
+      "components": 341,
+      "threads": 18,
+      "lab_mae": 8.959,
+      "objects": 607,
+      "stitches": 131874,
+      "trims": 1112,
+      "jumps": 1773,
+      "color_changes": 51,
+      "hotspot_mm2": 38,
+      "warnings": 51,
+      "errors": 0,
+      "long_moves_without_trim": 0,
+      "fidelity_missing_pct": 4.557,
+      "fidelity_lost_detail_pct": 4.309,
+      "fidelity_wrong_colour_pct": 5.305,
+      "real_preview": true,
+      "verdict": "rejected"
+    },
+    {
+      "name": "lantern_complete",
+      "regions": 72,
+      "components": 344,
+      "threads": 18,
+      "lab_mae": 8.958,
+      "objects": 612,
+      "stitches": 132093,
+      "trims": 1117,
+      "jumps": 1786,
+      "color_changes": 51,
+      "hotspot_mm2": 41,
+      "warnings": 51,
+      "errors": 0,
+      "long_moves_without_trim": 0,
+      "fidelity_missing_pct": 4.547,
+      "fidelity_lost_detail_pct": 4.31,
+      "fidelity_wrong_colour_pct": 5.317,
+      "real_preview": true,
+      "verdict": "rejected"
+    }
+  ],
+  "controlled_baseline": {
+    "name": "route_protected bridge12",
+    "objects": 593,
+    "stitches": 131823,
+    "trims": 1099,
+    "hotspot_mm2": 37,
+    "warnings": 51
+  },
+  "mcp_calls": [
+    "initialize",
+    "digitize_guide",
+    "project_operations",
+    "semantic_validate",
+    "project_new",
+    "semantic_import dry_run/apply",
+    "project_checkpoint",
+    "semantic_map",
+    "project_inspect",
+    "project_apply set_source_image dry_run/apply",
+    "project_apply set_finishing bridge12 dry_run/apply",
+    "project_report",
+    "project_check",
+    "project_density",
+    "project_fabric_risk",
+    "project_fidelity",
+    "project_render real PNG",
+    "project_save",
+    "project_export",
+    "project_satin_compare skeleton/parallel_sweep/medial_axis",
+    "project_apply auto_satin dry_run/apply",
+    "project_apply directional_guides dry_run/apply",
+    "semantic_replace dry_run/apply",
+    "project_apply set_params dry_run/apply",
+    "project_restore"
+  ],
+  "retouches": {
+    "satin_first_window": {
+      "skeleton_coverage_pct": 98.83,
+      "parallel_sweep_coverage_pct": 97.32,
+      "medial_axis": "refused: self-intersecting contour"
+    },
+    "parallel_sweep": {
+      "stitches": 132108,
+      "trims": 1117
+    },
+    "directional": {
+      "stitches": 132113,
+      "trims": 1117
+    },
+    "semantic_replace": {
+      "stitches": 132098,
+      "trims": 1117
+    },
+    "tatami_spacing": {
+      "stitches": 132089,
+      "trims": 1117
+    },
+    "all_rejected": true,
+    "baseline_restored_byte_identical": true
+  },
+  "overall_verdict": "ARTISTICALLY REJECTED. All previews genuinely rendered by OpenStitch; no improvement over bridge12, lantern/gallery still noisy and sea oversimplified. No physical machine test or independent grade.",
+  "private_archive": {
+    "path": "/OpenStitch/Experiments/2026-10-25/phare-lanterne-mcp-0405-private.zip",
+    "library_file_id": "libfile_5c17e4f0b93c8191847fcabd841b54e2",
+    "size_bytes": 54828848,
+    "sha256": "c28513757ef56f291ac02021560882e399c97ac4ee920edf73caa5f885187a6a",
+    "rematerialized_and_verified": true
+  },
+  "github_pixels_private": true,
+  "next_hypothesis": "Stop modifying the same lighthouse tatami with small source color patches. Build a standalone lantern as a compact embroidery project with 2-3 exclusive dome masses, sparse glass panes, source-traced frame and gallery as running/satin, intentional negative space and explicit occlusion. Compare true crop preview at real scale before recomposing; keep bridge12 as controlled routing reference."
+}
