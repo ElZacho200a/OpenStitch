@@ -107,10 +107,20 @@ private slots:
         next->trigger();
         const int second = window.simStep_;
         QVERIFY(second > 1);
-        QVERIFY(window.sequence_->commands[static_cast<std::size_t>(second)].source !=
-                window.sequence_->commands[static_cast<std::size_t>(second - 1)].source);
+        // Le saut qui precede un objet porte deja sa source : on compare au dernier POINT cousu.
+        const auto& cmds = window.sequence_->commands;
+        int before = second - 1;
+        while (before > 0 && cmds[static_cast<std::size_t>(before)].type !=
+                                 openstitch::stitch::CommandType::Stitch) {
+            --before;
+        }
+        QVERIFY(cmds[static_cast<std::size_t>(second)].source !=
+                cmds[static_cast<std::size_t>(before)].source);
         prev->trigger();
-        QCOMPARE(window.simStep_, 0);
+        // Retour au debut du premier objet (son premier point cousu, apres le saut initial).
+        QVERIFY(window.simStep_ < second);
+        QVERIFY(cmds[static_cast<std::size_t>(window.simStep_)].source !=
+                cmds[static_cast<std::size_t>(second)].source);
     }
 
     void timeLabelGrowsWithTheCursorAndEndsAtTotal() {

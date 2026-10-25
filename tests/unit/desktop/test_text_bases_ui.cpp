@@ -43,8 +43,9 @@ private:
         t.cap_height = Micrometers{12'000};
         return t;
     }
+    // Troisieme lettre (malgre le nom) : en arc centre, la lettre du milieu reste au sommet.
     static int secondLetterY(const document::Project& project) {
-        return project.vector_objects.at(1).paths.at(0).outer.nodes.at(0).pos.y.value;
+        return project.vector_objects.at(2).paths.at(0).outer.nodes.at(0).pos.y.value;
     }
 
 private slots:

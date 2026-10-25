@@ -47,7 +47,7 @@ void MainWindow::buildVectorEditActions() {
     if (shapeMenu_ == nullptr) {
         return;
     }
-    outlineAct_ = shapeMenu_->addAction(tr("&Contour autour de la sélection…"));
+    outlineAct_ = shapeMenu_->addAction(tr("Contour autour de la sélection…"));
     outlineAct_->setObjectName(QStringLiteral("action_shapeOutline"));
     outlineAct_->setToolTip(tr("Crée un contour de broderie (point droit, triple ou satin) autour "
                                "des formes sélectionnées, à l'écart choisi. Les formes d'origine "
@@ -59,7 +59,7 @@ void MainWindow::buildVectorEditActions() {
     gridStepMm_ =
         std::clamp(settings.value(QStringLiteral("edit/gridStepMm"), 1.0).toDouble(), 0.1, 100.0);
     shapeMenu_->addSeparator();
-    gridSnapAct_ = shapeMenu_->addAction(tr("Accrocher à la &grille"));
+    gridSnapAct_ = shapeMenu_->addAction(tr("Accrocher à la grille"));
     gridSnapAct_->setObjectName(QStringLiteral("action_gridSnap"));
     gridSnapAct_->setCheckable(true);
     gridSnapAct_->setChecked(settings.value(QStringLiteral("edit/gridSnap"), false).toBool());

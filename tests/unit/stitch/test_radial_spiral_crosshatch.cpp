@@ -134,11 +134,17 @@ TEST_CASE("spiral fill: turn spacing matches the row spacing") {
     // Le long de l'axe +x depuis le centre, deux franchissements successifs sont espaces de 1 mm.
     std::vector<double> crossings;
     for (std::size_t i = 1; i < stitches.size(); ++i) {
+        const double x0 = stitches[i - 1].pos.x.value / 1000.0 - 15.0;
         const double y0 = stitches[i - 1].pos.y.value / 1000.0 - 15.0;
         const double y1 = stitches[i].pos.y.value / 1000.0 - 15.0;
         const double x1 = stitches[i].pos.x.value / 1000.0 - 15.0;
-        if (!stitches[i].jump && y0 < 0.0 && y1 >= 0.0 && x1 > 0.0) {
-            crossings.push_back(x1);
+        if (!stitches[i].jump && y0 < 0.0 && y1 >= 0.0) {
+            // abscisse du franchissement de l'axe (interpolee sur la corde), pas du point d'arrivee
+            const double xc = x0 + (x1 - x0) * (0.0 - y0) / (y1 - y0);
+            // Au-dela de 14 mm la spirale est rognee par le bord du carre (demi-cote 15 mm).
+            if (xc > 0.0 && xc < 14.0) {
+                crossings.push_back(xc);
+            }
         }
     }
     REQUIRE(crossings.size() > 4);

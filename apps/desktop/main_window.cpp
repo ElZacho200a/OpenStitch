@@ -537,8 +537,8 @@ MainWindow::MainWindow() {
     buildSimulationToolbar();
     // Une barre masquée doit pouvoir se rouvrir depuis un menu, comme les panneaux.
     panelsMenu_->insertSeparator(resetLayoutAct);
-    for (auto* bar : {mainToolbar_, contextToolbar_, toolPalette_, simToolbar_, static_cast<QToolBar*>(simNavBar_), threadStripBar_,
-                      clickToStitchBar_}) {
+    for (auto* bar : {mainToolbar_, contextToolbar_, toolPalette_, simToolbar_,
+                      static_cast<QToolBar*>(simNavBar_), threadStripBar_, clickToStitchBar_}) {
         panelsMenu_->insertAction(resetLayoutAct, bar->toggleViewAction());
     }
 
@@ -1246,7 +1246,7 @@ void MainWindow::buildMenus() {
     auto* hoopAct = viewMenu->addAction(tr("Tai&lle du cadre…"));
     hoopAct->setToolTip(tr("Définit la zone physique de broderie (cadre)."));
     connect(hoopAct, &QAction::triggered, this, &MainWindow::setHoopSize);
-    machineAct_ = viewMenu->addAction(tr("&Machine…"));
+    machineAct_ = viewMenu->addAction(tr("Machine…"));
     machineAct_->setObjectName(QStringLiteral("action_machine"));
     machineAct_->setToolTip(tr("Choisit le profil de la machine à broder : champ, cadres, "
                                "aiguilles, formats (vérifications avant export)."));
@@ -2386,8 +2386,8 @@ void MainWindow::onCanvasDoubleClicked(QPointF posMm) {
         editSelectedText();
         return;
     }
-    // HP-VEC-001/005 : outil Sélection, double-clic sur le contour = nouveau nœud ; Alt + double-clic
-    // dans un trou = supprimer ce trou (hors mode remodelage des rails).
+    // HP-VEC-001/005 : outil Sélection, double-clic sur le contour = nouveau nœud ; Alt +
+    // double-clic dans un trou = supprimer ce trou (hors mode remodelage des rails).
     if (currentTool_ == Tool::Select &&
         !(railEditModeAct_ != nullptr && railEditModeAct_->isChecked())) {
         const bool alt = (QGuiApplication::keyboardModifiers() & Qt::AltModifier) != 0;

@@ -304,7 +304,8 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
 - Livré (câblage bureau, 2026-10-18) : `.inf` d'EXP écrit et relu, branché au dialogue d'export, à l'import et au CLI.
 - Reste : validation par un lecteur tiers et sur machine réelle (humain).
 
-### HP-FMT-006 — VP3 / VIP / HUS (Husqvarna Viking, Pfaff) [P1] — ☐ À faire
+### HP-FMT-006 — VP3 / VIP / HUS (Husqvarna Viking, Pfaff) [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : Codec VP3 (lecture/écriture) enregistré au registre, export bureau et CLI. Reste : VIP et HUS ; structure écrite de mémoire, validation visualiseur/machine (humain).
 - État OpenStitch : absent.
 - Hatch : oui.
 - À faire : VP3 d'abord (le plus actuel, couleurs et noms de fils inclus),
@@ -388,6 +389,7 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
 - Modules : `libs/formats`, `THIRD_PARTY_LICENSES.md`.
 
 ### HP-FMT-014 — Import SVG plus complet [P1] — ◐ Partiel
+- Livré (2026-10-25) : `<use>`, `<symbol>`, `display:none`, garde de profondeur. Reste : `<text>`, CSS, `fill-rule`, `clipPath` effectif, couleurs de remplissage/contour.
 - État OpenStitch : formes, `<path>` complet, `<g>`, transformations, **`viewBox`,
   `width`/`height` et unités** (`mm`/`cm`/`in`/`pt`/`pc`, `svg_import.cpp`).
 - À faire : `<text>` (converti en contours via HP-TXT-003), styles CSS et
@@ -405,7 +407,8 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
   blocs, lecture de `$INSUNITS`, calques DXF → objets séparés.
 - Modules : `libs/formats/dxf`.
 
-### HP-FMT-016 — Formats d'image supplémentaires et glisser-déposer [P1] — ☐ À faire
+### HP-FMT-016 — Formats d'image supplémentaires et glisser-déposer [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : GIF et WebP (filtres, glisser-déposer), collage d'une image du presse-papiers. Reste : décodage GIF/WebP du build OpenCV non vérifié, test dédié.
 - État OpenStitch : PNG/JPEG/BMP/TIFF/SVG via dialogue seulement.
 - À faire : GIF, WebP ; **glisser-déposer** d'un fichier (image, SVG, DXF,
   DST, PES, OSP) sur la fenêtre ; coller une image depuis le presse-papiers.
@@ -448,7 +451,8 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
   build ; refus clair d'un fichier d'une version *future*.
 - Modules : `libs/project_io`.
 
-### HP-FMT-022 — Panneau d'export avec ordre des couleurs [P1] — ☐ À faire
+### HP-FMT-022 — Panneau d'export avec ordre des couleurs [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : Le dialogue d'export liste les blocs de couleur dans l'ordre de couture. Reste : réordonnancement depuis le dialogue.
 - Origine : roadmap nocturne du 2026-10-20 (« Ergonomie : panneau d'export avec ordre des couleurs »).
 - État OpenStitch : le dialogue d'export (`MachineExportDialog`) choisit le format et les options
   machine et montre un résumé pré-export (limites, avertissements) ; l'ordre des couleurs se voit
@@ -614,7 +618,8 @@ des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
   pour le réordonnancement contraint.
 - Dépend de : HP-THR-004.
 
-### HP-THR-006 — Coloris multiples (colorways) [P1] — ☐ À faire
+### HP-THR-006 — Coloris multiples (colorways) [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : `Project::colorways` / `active_colorway` (instantanés par objet), commandes annulables, `.osp`, dialogue « Coloris et tissu… ». Reste : fiche de production par coloris, export en lot de tous les coloris.
 - Hatch : plusieurs jeux de couleurs pour un même design, bascule instantanée.
 - À faire : `Project::colorways` (liste de tables fil-logique → fil réel),
   coloris actif, export dans le coloris actif, fiche de production par coloris.
@@ -631,7 +636,8 @@ des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
 - Livré (câblage bureau, 2026-10-18) : onglet « Mes fils » du panneau Fils (cases « je possède », bascule « limiter la recherche du fil le plus proche à mes fils », nuancier personnel éditable), stock en JSON dans les préférences (hors `.osp`, hors annulation) ; la pipette respecte la bascule ; `test_thread_stock_ui`.
 - Reste : import/export `.thr`/`.rgb`/`.edr`/`.gpl` ; édition d'un fil personnel existant (le ré-ajouter le remplace).
 
-### HP-THR-008 — Couleur / texture du tissu de fond [P1] — ☐ À faire
+### HP-THR-008 — Couleur / texture du tissu de fond [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : `Project::fabric` + `SetFabricCommand`, fond du canevas, rendu réaliste/PNG/fiche, règle `fil-couleur-tissu` (CIEDE2000). Reste : texture du tissu (HP-VIEW-004).
 - Hatch : couleur de fond réglable (et produits en arrière-plan, HP-VIEW-004).
 - À faire : couleur de tissu par projet (persistée), utilisée par le rendu et
   par l'analyse (fil trop proche du tissu = avertissement).
@@ -652,6 +658,7 @@ des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
 - Dépend de : HP-HOOP-002.
 
 ### HP-THR-011 — Réduire / fusionner les couleurs d'un design [P1] — ◐ Partiel (2026-10-10)
+- Livré (2026-10-25) : `thread_reduction` (`plan_reduce_threads`, `plan_merge_threads`), dialogue « Réduire / fusionner les fils… » avec aperçu. Reste : rebrancher « Limiter à N fils » du panneau Fils.
 - Livré : `thread_palette::reduce_colors` (fusion agglomérative CIEDE2000, la plus lourde
   garde sa teinte, déterministe) ; bouton **Limiter à N fils** du panneau Fils (un seul
   pas d'annulation, sans aperçu préalable) ; option « Limiter à N fils » de la
@@ -666,6 +673,7 @@ des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
 - Modules : `libs/thread_palette`, `libs/commands`.
 
 ### HP-THR-012 — Pipette (couleur depuis l'image ou un objet) [P1] — ◐ Partiel (2026-10-18, `f38da87`)
+- Livré (2026-10-25) : `stitch_object_at` et « Reprendre le fil du point cousu » dans la pipette. Reste : échantillonnage du pixel du rendu réaliste.
 - À faire : outil pipette : clic sur l'image → fil le plus proche proposé ;
   clic sur un objet → reprendre son fil.
 - Modules : `apps/desktop`.
@@ -735,7 +743,8 @@ prénumérisées et la conversion des polices TrueType.
   police sans empattement donne 100 % de lettres cousues sans zone oubliée ni
   débordement (métriques des tests satin), SVG dorés.
 
-### HP-TXT-005 — Bases de texte (ligne, arc, cercle, chemin) [P1] — ☐ À faire
+### HP-TXT-005 — Bases de texte (ligne, arc, cercle, chemin) [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : `TextBase` (ligne, arc, cercle, chemin ; dessus/dessous) dans `TextObject`, lettres posées par abscisse curviligne et orientées selon la tangente, avertissement `texte-trop-long-cercle`, dialogue texte, `.osp`, `project_ops`. Reste : poignées canevas (rayon, angle), enveloppes (HP-TXT-006).
 - Hatch : ligne droite, arc concave/convexe, cercle complet (texte en haut et
   en bas), ligne verticale, texte sur un chemin quelconque.
 - À faire : placement de chaque glyphe par abscisse curviligne sur la base,
@@ -759,7 +768,8 @@ prénumérisées et la conversion des polices TrueType.
 - Livré (câblage bureau, 2026-10-18) : crénage manuel par paire dans `document::TextObject` (`kerning_pairs`), saisi dans le dialogue texte (« AV: -0,3 mm »), persistant (`.osp` v8 écrit seulement si utilisé, migration v7→v8, anciens fichiers réécrits à l'identique) ; « agrandir le texte » et l'import CLI en tiennent compte (`lettering::layout_options_for`) ; tests.
 - Reste : crénage GPOS (seule la table `kern` est lue).
 
-### HP-TXT-008 — Édition individuelle d'une lettre [P1] — ☐ À faire
+### HP-TXT-008 — Édition individuelle d'une lettre [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : `GlyphEdit` (décalage, rotation, échelle, couleur propre par lettre), saisie dans le dialogue. Reste : manipulation directe au canevas.
 - Hatch : sélectionner une lettre d'un texte pour la déplacer, tourner,
   redimensionner, recolorer sans casser l'objet texte.
 - À faire : décalages par lettre stockés dans l'objet texte (deltas, comme
@@ -806,7 +816,8 @@ prénumérisées et la conversion des polices TrueType.
 - Livré (2026-10-18) : densité satin et tatami +0 % à 8 mm jusqu'à +15 % à 4 mm et moins (jamais plus serrée que le réglage utilisateur), point de tatami = hauteur/3 borné 1,5–3 mm ; tests de paramètres, de séquence cousue à 6 mm, sans `saut-long`, déterministe (`ec80a25`).
 - Reste : validation sur broderie réelle (la courbe +15 % est une heuristique de prudence) ; cas des générateurs de `libs/stitch_generation`.
 
-### HP-TXT-014 — Connecteurs entre lettres [P1] — ☐ À faire
+### HP-TXT-014 — Connecteurs entre lettres [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : `letter_connector` / `word_connector` posés sur le dernier objet de chaque lettre. Reste : placement du début de la lettre suivante près de la fin de la précédente.
 - À faire : ordre de gauche à droite, fin d'une lettre près du début de la
   suivante, trajet caché si possible sinon saut + coupe selon le seuil,
   réglage « couper entre les lettres » / « entre les mots ».
@@ -841,7 +852,8 @@ plus.
 - Modules : `libs/stitch_generation/running_stitch`, `libs/document`.
 - Livré (2026-10-24) : `RunningStyle` (droit / bean / arrière / tige) + `stem_offset` dans `RunningStitchParams`, `apply_stem_stitch`, persistance `.osp` rétro-compatible, combo + décalage dans l'inspecteur (`paramsEdited`), tests Catch2 et QTest. **Reste** : dialogue « Créer avec réglages… », mémoire `ui_memory`, champs CLI `op_params`, validation physique.
 
-### HP-STI-002 — Motif le long d'un chemin (motif run) [P1] — ☐ À faire
+### HP-STI-002 — Motif le long d'un chemin (motif run) [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : `MotifRunParams` + `motif_run.cpp` (6 motifs écrits en interne, répétition par abscisse curviligne, miroir un sur deux), `.osp`, inspecteur, `project_ops`. Reste : boutons du type dans l'inspecteur (menu contextuel seulement), bibliothèque étendue.
 - Hatch : bibliothèque de motifs (feuilles, cœurs, vagues…) répétés le long
   d'un tracé.
 - À faire : motif = petite séquence de points normalisée ; répétition par
@@ -887,7 +899,8 @@ plus.
   bibliothèque de motifs, motif « programme » défini par une petite grille.
 - Modules : `libs/stitch_generation/tatami`.
 
-### HP-STI-006 — Remplissage à motif (motif fill) [P1] — ☐ À faire
+### HP-STI-006 — Remplissage à motif (motif fill) [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : `MotifFillParams` + `motif_fill.cpp` (grille tournée, décalage une rangée sur deux, coupe au contour). Reste : sous-couche, conversion depuis un remplissage, coupe précise à un point près.
 - Hatch : pavage de la zone par un motif 2D répété (étoiles, écailles…).
 - À faire : pavage de motifs découpés au contour, chemins reliés par le
   routage existant.
@@ -901,12 +914,14 @@ plus.
 - Modules : `libs/stitch_generation`, `libs/geometry`.
 - Livré (2026-10-24) : `ContourFillParams` + `contour_fill.cpp` (anneaux `inset_path_set`, spirale, trous contournés, longueurs min/max), `.osp` (`contourFill`), conversion annulable (`ConvertFillGroupCommand`, `main_window_contour.cpp`), panneau et menu, tests. **Reste** : régions multi-îlots (boucles au lieu de spirale), sous-couche, entrée propre dans le menu « Type de points », contrôle de longueur dans `limits.cpp`, docs.
 
-### HP-STI-008 — Remplissage radial [P2] — ☐ À faire
+### HP-STI-008 — Remplissage radial [P2] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : `RadialFillParams` + `radial_fill.cpp` (rayons plus nombreux vers l'extérieur, centre auto ou fixe), `.osp`, inspecteur, conversion depuis un tatami. Reste : poignée de centre au canevas, sous-couche.
 - À faire : rayons depuis un centre déplaçable, densité constante à la
   périphérie (points raccourcis vers le centre).
 - Modules : `libs/stitch_generation`.
 
-### HP-STI-009 — Remplissage en spirale [P2] — ☐ À faire
+### HP-STI-009 — Remplissage en spirale [P2] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : `SpiralFillParams` + `spiral_fill.cpp` (spirale d'Archimède continue, sens horaire en option). Reste : sous-couche, poignée de centre.
 - À faire : spirale continue depuis un centre, sans coupe.
 - Modules : `libs/stitch_generation`.
 
@@ -974,7 +989,8 @@ plus.
   Priorité P3, après le pointillé d'image déjà livré.
 - Modules : `libs/stitch_generation`.
 
-### HP-STI-014 — Remplissage croisé (crosshatch) [P2] — ☐ À faire
+### HP-STI-014 — Remplissage croisé (crosshatch) [P2] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : `CrosshatchFillParams` + `crosshatch_fill.cpp` (2 ou 3 couches réutilisant le tatami). Reste : sous-couche.
 - À faire : deux (ou trois) tatamis très espacés à angles différents, un seul
   objet.
 - Modules : `libs/stitch_generation`.
@@ -1246,7 +1262,8 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   des seuils documentés et testés ; les anciens projets gardent leurs réglages.
 - Modules : `libs/stitch_generation`, `libs/document` (enum Auto/Manuel).
 
-### HP-ENG-003 — Espacement satin automatique selon la largeur [P1] — ☐ À faire
+### HP-ENG-003 — Espacement satin automatique selon la largeur [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : `auto_spacing` (SatinParams, AutoSatinParams) : pas = densité × f(largeur), inactif par défaut, inspecteur. Reste : facteurs non calés sur la littérature.
 - Note 2026-10 : le moteur par squelette adapte déjà le **pas le long de l'axe** à la
   courbure/rotation de l'orientation (US6390005B1), pas la densité selon la largeur : l'item reste ouvert.
 - Hatch : Auto spacing : colonnes étroites plus lâches, larges plus serrées.
@@ -1256,12 +1273,14 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   (vérifié 2026-10).
 
 ### HP-ENG-004 — Découpe automatique des satins trop larges [P1] — ◐ Partiel
+- Livré (2026-10-25) : Colonne satin créée à la main : `split_stitch = Staggered` d'office. Reste : défaut de la struct, satins de bordure et sans barreaux.
 - État OpenStitch : split stitch disponible mais désactivé par défaut ;
   avertissement > 9 mm.
 - Hatch : Auto split automatique au-delà de la longueur max.
 - À faire : split automatique par défaut au-delà de `max_stitch_length`.
 
 ### HP-ENG-005 — Coins satin intelligents [P1] — ◐ Partiel
+- Livré (2026-10-25) : `corner_mode` (aucun, onglet, chevauchement, coupe) au-delà de 60° de changement de cap, inspecteur. Reste : seuil réglable, validation sur forme réelle.
 - État OpenStitch : `ShortStitchMode` dans les virages ; `satin.md` note que
   le coude C0 franc (sans congé) n'est pas traité (« mitre/congé hors
   périmètre »).
@@ -1546,6 +1565,7 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
 (déplacer, type de nœud, tangentes, suppression) ; dupliquer ; décaler.
 
 ### HP-VEC-001 — Insertion de nœuds sur un objet vectoriel [P1] — ◐ Partiel
+- Livré (2026-10-25) : Insertion de nœud par double-clic sur le contour (`InsertNodeCommand`). Reste : ligne `interaction_map`.
 - État OpenStitch : `MoveNodeCommand`, `SetNodeHandleCommand`,
   `SetNodeTypeCommand`, `RemoveNodeCommand` ; insertion seulement sur les
   **rails satin** (`InsertSatinRailNodeCommand`), pas sur un vecteur.
@@ -1584,6 +1604,7 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
   existe), les deux morceaux gardent le type de broderie.
 
 ### HP-VEC-005 — Supprimer / remplir les trous [P1] — ◐ Partiel (2026-10-13, en PR)
+- Livré (2026-10-25) : Alt + double-clic dans un trou (`RemoveHoleCommand`). Reste : menu, `interaction_map`.
 - Livré (second lot du 2026-10-13, en PR) : Forme ▸ **Supprimer les trous** et **Combler les petits trous…** (seuil en mm²), `commands::make_remove_holes_command`, une commande.
 - Reste : « supprimer CE trou » (clic sur un trou précis).
 - Hatch : Remove holes / Fill holes.
@@ -1591,6 +1612,7 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
   « combler les trous < X mm² ».
 
 ### HP-VEC-006 — Créer un contour autour d'objets [P1] — ◐ Partiel
+- Livré (2026-10-25) : Forme › Contour autour de la sélection… (`make_outline_command` : point droit, triple ou satin). Reste : satin non vérifié en rendu réel, sélection du nouvel objet.
 - État OpenStitch : « Décaler… » (offset d'une forme).
 - Hatch : Outlines & Offsets : contour (point de contour ou satin) autour d'un
   ou plusieurs objets, avec écart, sur les trous ou non.
@@ -1613,6 +1635,7 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
 - Reste : aucun.
 
 ### HP-VEC-009 — Magnétisme (grille, nœuds, guides) [P1] — ◐ Partiel (2026-10-06)
+- Livré (2026-10-25) : Accrochage à la grille (pas réglable, Ctrl suspend). Reste : guides (HP-VEC-011), grille dessinée.
 - État OpenStitch : accrochage aux sommets, milieux de segment et centres de forme
   pendant le dessin, avec indicateur (`findSnapPointMm`) ; manquent grille, guides
   et l'activation par touche/bouton.
@@ -1966,21 +1989,25 @@ indicateurs Clean/Dirty/ManuallyEdited, abandon des retouches. Le cœur sait
 aussi Stitch↔Jump et coupe (`SetStitchPointTypeCommand`, `SetStitchTrimCommand`)
 mais **sans interface** (`stitch-editing.md`).
 
-### HP-EDIT-001 — Interface Stitch↔Jump et coupe (Lot 8.3) [P1] — ☐ À faire
+### HP-EDIT-001 — Interface Stitch↔Jump et coupe (Lot 8.3) [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : Commandes `SetStitchPointTypeCommand` / `SetStitchTrimCommand` / `EditStitchPointsCommand::set_type|set_trim` prêtes. Reste : menu contextuel et actions sur les poignées (bureau).
 - À faire : menu contextuel / raccourcis en mode édition des points ; voir
   `docs/lot8-manual-editing-design.md`.
 - Modules : `apps/desktop`.
 
-### HP-EDIT-002 — Insérer et supprimer des points [P1] — ☐ À faire
+### HP-EDIT-002 — Insérer et supprimer des points [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : `StitchOverride` gagne `deleted` et `inserted_after` (deltas ADR-014), `apply_manual_overrides` en un passage, `.osp`. Reste : câblage bureau (menu, actions, QTest).
 - Hatch : insérer un point entre deux, supprimer des points.
 - À faire : étendre `StitchOverride` (insertions/suppressions en deltas,
   compatibles ADR-014) + commandes + UI.
 - Modules : `libs/document`, `libs/stitch_generation/overrides`, `libs/commands`.
 
-### HP-EDIT-003 — Sélection et déplacement de plusieurs points [P1] — ☐ À faire
+### HP-EDIT-003 — Sélection et déplacement de plusieurs points [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : `EditStitchPointsCommand` (déplacer, supprimer, restaurer, insérer, type, coupe) en un pas d'annulation. Reste : tout le bureau (sélection de points, cadre, glisser groupé, Suppr).
 - À faire : rectangle de sélection de points, déplacement groupé, suppression groupée.
 
-### HP-EDIT-004 — Édition des points d'un fichier machine importé [P1] — ☐ À faire
+### HP-EDIT-004 — Édition des points d'un fichier machine importé [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : `EditImportedPointsCommand` sur `imported_design` avec recalage des blocs de couleur. Reste : bouton d'activation du mode d'édition d'un design importé.
 - État OpenStitch : une séquence importée est « la vérité », non éditable
   point par point.
 - À faire : même mode d'édition sur la séquence importée (objet pseudo
@@ -2346,10 +2373,12 @@ calques image/régions/vecteurs/broderie, filtres d'affichage, thème clair/somb
 
 Aujourd'hui : lecture/pause, curseur, compteur, repère d'aiguille (~60 pas/s).
 
-### HP-SIM-001 — Réglage de vitesse [P1] — ☐ À faire
+### HP-SIM-001 — Réglage de vitesse [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : Vitesses ×64 et « Machine » (700 points/min). Reste : réglage libre en points/s.
 - État OpenStitch : `simulation.md` : pas de réglage de vitesse.
 
-### HP-SIM-002 — Navigation par objet / couleur / point [P1] — ☐ À faire
+### HP-SIM-002 — Navigation par objet / couleur / point [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : Barre `SimulationNavBar` : point ◀/▶, objet ⏮/⏭ (met en pause), ajoutée au menu des barres.
 - Hatch : Stitch Player : sauter à l'objet ou à la couleur suivant(e) /
   précédent(e), pas à pas avant/arrière.
 
@@ -2357,7 +2386,8 @@ Aujourd'hui : lecture/pause, curseur, compteur, repère d'aiguille (~60 pas/s).
 - À faire : l'objet en cours de couture est surligné dans la liste et le
   film couleur ; la couleur de fil courante est affichée.
 
-### HP-SIM-004 — Estimation du temps affichée pendant la simulation [P1] — ☐ À faire
+### HP-SIM-004 — Estimation du temps affichée pendant la simulation [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : Temps écoulé / total (m:ss), cadence de la fiche de production. Reste : réglage des durées, options du projet.
 - Dépend de : HP-PROD-002.
 
 ### HP-SIM-005 — Export vidéo / GIF de la simulation [P3] — ☐ À faire
@@ -2456,6 +2486,7 @@ hors cadre, déplacement sans coupe), résumé avant export DST.
 Aujourd'hui : un cadre **rectangulaire** de taille libre (10–500 mm), persisté.
 
 ### HP-HOOP-001 — Bibliothèque de cadres par marque [P1] — ◐ Partiel (2026-10-13)
+- Livré (2026-10-25) : `HoopShape` (rectangle, ellipse, coins arrondis), 16 cadres génériques, hors-cadre sur la forme réelle, dialogue du cadre. Reste : cadres par marque, gabarits, forme dans les cadres utilisateur.
 - Livré (PR #25, fusionnée le 2026-10-13) : 8 cadres rectangulaires usuels (`document/hoop_presets.hpp`), cadres enregistrés par l'utilisateur, bouton Pivoter, marge de sécurité (`Canvas::margin`) et zone brodable affichée et utilisée par l'analyse.
 - Reste : cadres par marque, formes non rectangulaires, gabarits.
 - Hatch : liste des cadres de chaque marque (Brother, Babylock, Janome,
@@ -2465,14 +2496,16 @@ Aujourd'hui : un cadre **rectangulaire** de taille libre (10–500 mm), persist�
   `Canvas`, test « hors cadre » sur la forme réelle.
 - Modules : `libs/document`, données, `apps/desktop`.
 
-### HP-HOOP-002 — Profil machine [P1] — ☐ À faire
+### HP-HOOP-002 — Profil machine [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : 6 profils machine génériques, `Project::machine_id`, `SetMachineCommand`, dialogue Affichage › Machine…. Reste : choix dans les préférences, lien avec HP-FMT-001.
 - À faire : `MachineProfile` : marque/modèle, format préféré, cadres
   disponibles, champ max, longueur max de point, coupe auto oui/non, nombre
   d'aiguilles, vitesse ; choisi dans les préférences et par projet ;
   alimente HP-FMT-001.
 - Modules : `libs/document` ou nouvelle `libs/machine`, `apps/desktop`.
 
-### HP-HOOP-003 — Vérifications à l'export selon la machine [P1] — ☐ À faire
+### HP-HOOP-003 — Vérifications à l'export selon la machine [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-25) : `check_machine` (champ, cadre, aiguilles, point trop long, coupe sans coupe-fil, format) appelé par `analyze_project` et le résumé d'export. Reste : export rapide sans contrôle du format.
 - À faire : le résumé d'export avertit : format incompatible, design plus
   grand que le plus grand cadre, trop de couleurs pour les aiguilles…
 - Dépend de : HP-HOOP-002.
@@ -3679,3 +3712,4 @@ ci-dessus doit les respecter :
 | 2026-10-21 | Implémentation UX (ChatGPT, PR HP-UX-046) | Palette de commandes Qt branchée au menu Édition avec Ctrl+K, recherche et exécution de QAction existantes, test QTest ; état ◐ jusqu'à validation CI et couverture complète des raisons/alias. |
 | 2026-10-24 | Claude (multi-agents) | HP-STI-001 (point tige/arrière/bean exposés), HP-STI-003 (blanket/zigzag) et HP-STI-007 (remplissage concentrique) passent ◐ : cœur, `.osp`, inspecteur et tests livrés ; restes listés dans chaque entrée. |
 | 2026-10-25 | Claude (multi-agents, P0) | Lot P0 : douze agents en parallèle ; HP-AUTO-003, HP-SEQ-003, HP-UX-006 et HP-I18N-002 passent de ☐ à ◐ ; livrés partiels sur THR-005, TXT-003/004, ENG-001/002/008/010, AUTO-001/009, VEC-002/016, OBJ-001/004/006/018, VIEW-001, PROD-001, PERF-001 (voir chaque entrée). Non traités faute d'humain ou de données : THR-002 (données de nuanciers sourcées), FMT-002..005, DIST-001, PHYS-001. Corrections d'intégration : pivot de rotation sans zone de contact au centre, `project_ops` (nouveaux champs), dernier point jamais fusionné. Tableau de bord non recalculé. |
+| 2026-10-25 | Claude (multi-agents, P1 vague 2) | Lot 2 : dix agents en parallèle ; cœur, `.osp`, `project_ops` et tests pour TXT-005/008/014, STI-002/006/008/009/014, THR-006/008/011/012, EDIT-001..004 (cœur seulement), SIM-001/002/004, HOOP-001..003, ENG-003..005, FMT-006/014/016/022, VEC-001/005/006/009 (voir chaque entrée). Les entrées ☐ concernées passent à ◐. Non traités : SIM-003, ENG-006, HOOP-005/006, VEC-015. Tableau de bord non recalculé. |

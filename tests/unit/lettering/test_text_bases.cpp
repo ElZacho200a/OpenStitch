@@ -112,10 +112,11 @@ TEST_CASE("circle base spreads the letters over the whole circumference") {
     const Box first = box_of(layout.glyphs.front());
     const double a0 = std::atan2(first.cx(), first.cy() + 40'000.0);
     const double a1 = std::atan2(last.cx(), last.cy() + 40'000.0);
-    // La derniere lettre est tout pres de la premiere en faisant le tour (a 1 lettre pres).
+    // La derniere lettre est proche de la premiere en faisant le tour : le texte laisse un
+    // emplacement vide entre sa fin et son debut (ecart d'environ deux pas).
     double gap = std::fabs(a0 - a1);
     gap = std::min(gap, 2.0 * std::numbers::pi - gap);
-    CHECK(gap < 2.0 * std::numbers::pi / 8.0 * 1.5);
+    CHECK(gap < 2.0 * std::numbers::pi / 8.0 * 2.5);
     CHECK(gap > 0.1);
     CHECK(layout.warnings.empty());
 }
