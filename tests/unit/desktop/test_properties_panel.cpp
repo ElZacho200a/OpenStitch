@@ -80,6 +80,7 @@ private slots:
     void engineSettingsEmitDedicatedEdits();
     void directionalPullAndZigzagUnderlayAreEditable();
     void borderSatinInspectorEmitsRegenerationRequests();
+    void satinSpacingAndCornersAreEditableOnBothSatinKinds();
     void rowSpacingAndLengthsAreBoundedWithRangeTooltips();
     void wheelDoesNotChangeAnUnfocusedField();
     void underlayFieldsAreGreyedWhenTheirBoxIsUnchecked();
@@ -595,6 +596,49 @@ void PropertiesPanelTest::directionalPullAndZigzagUnderlayAreEditable() {
     tzig->setChecked(true);
     QVERIFY(tatamiEmitted.has_value());
     QVERIFY(std::get<openstitch::document::TatamiParams>(*tatamiEmitted).underlay_zigzag);
+}
+
+void PropertiesPanelTest::satinSpacingAndCornersAreEditableOnBothSatinKinds() {
+    namespace doc = openstitch::document;
+    {
+        PropertiesPanel panel;
+        EmbroideryObject e;
+        e.id = openstitch::ObjectId{52};
+        e.params = doc::SatinParams{};
+        panel.showEmbroidery(e);
+        auto* spacing = panel.findChild<QCheckBox*>(QStringLiteral("chk_satinAutoSpacing"));
+        auto* corner = panel.findChild<QComboBox*>(QStringLiteral("combo_satinCorner"));
+        QVERIFY(spacing != nullptr && corner != nullptr);
+        QVERIFY(!spacing->isChecked());
+        QCOMPARE(corner->currentIndex(), 0);
+        std::optional<StitchParams> emitted;
+        QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                         [&](openstitch::ObjectId, StitchParams params) { emitted = params; });
+        spacing->setChecked(true);
+        QVERIFY(emitted.has_value());
+        QVERIFY(std::get<doc::SatinParams>(*emitted).auto_spacing);
+        emitted.reset();
+        corner->setCurrentIndex(3);
+        QVERIFY(emitted.has_value());
+        QCOMPARE(std::get<doc::SatinParams>(*emitted).corner_mode, doc::SatinCorner::Cut);
+    }
+    {
+        PropertiesPanel panel;
+        panel.showEmbroidery(autoSatinObject(53));
+        auto* spacing = panel.findChild<QCheckBox*>(QStringLiteral("chk_autoSatinAutoSpacing"));
+        auto* corner = panel.findChild<QComboBox*>(QStringLiteral("combo_autoSatinCorner"));
+        QVERIFY(spacing != nullptr && corner != nullptr);
+        std::optional<StitchParams> emitted;
+        QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                         [&](openstitch::ObjectId, StitchParams params) { emitted = params; });
+        corner->setCurrentIndex(1);
+        QVERIFY(emitted.has_value());
+        QCOMPARE(std::get<AutoSatinParams>(*emitted).corner_mode, doc::SatinCorner::Miter);
+        emitted.reset();
+        spacing->setChecked(true);
+        QVERIFY(emitted.has_value());
+        QVERIFY(std::get<AutoSatinParams>(*emitted).auto_spacing);
+    }
 }
 
 void PropertiesPanelTest::borderSatinInspectorEmitsRegenerationRequests() {

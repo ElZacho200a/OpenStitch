@@ -64,6 +64,11 @@ QStringList lockItems() {
             QObject::tr("Micro-zigzag")};
 }
 
+QStringList cornerItems() {
+    return {QObject::tr("Aucun traitement"), QObject::tr("Onglet"), QObject::tr("Chevauchement"),
+            QObject::tr("Coupe (saut)")};
+}
+
 QStringList borderSideItems() {
     return {QObject::tr("Centré sur le contour"), QObject::tr("Intérieur"),
             QObject::tr("Extérieur")};
@@ -1768,6 +1773,20 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 form->addRow(tr("Forme du bout (fin) :"), capEnd);
                 form->addRow(tr("Point d'arrêt (début) :"), lockStart);
                 form->addRow(tr("Point d'arrêt (fin) :"), lockEnd);
+                auto* autoSpacing =
+                    new QCheckBox(tr("Espacement automatique selon la largeur"), body_);
+                autoSpacing->setObjectName(QStringLiteral("chk_satinAutoSpacing"));
+                autoSpacing->setChecked(p.auto_spacing);
+                autoSpacing->setToolTip(tr("Colonnes étroites plus lâches, larges plus serrées."));
+                auto* corner = new QComboBox(body_);
+                corner->setObjectName(QStringLiteral("combo_satinCorner"));
+                corner->addItems(cornerItems());
+                corner->setCurrentIndex(static_cast<int>(p.corner_mode));
+                corner->setToolTip(tr("Traitement des coins vifs de la colonne."));
+                form->addRow(QString(), autoSpacing);
+                form->addRow(tr("Coins vifs :"), corner);
+                bindBool(autoSpacing, tr("Espacement automatique"), &T::auto_spacing);
+                bindEnumField<T>(this, edit, corner, tr("Coins vifs"), &T::corner_mode, members);
                 bindMm(density, tr("Espacement"), &T::density);
                 bindMm(comp, tr("Compensation de tirage"), &T::pull_compensation);
                 bindBool(underlay, tr("Sous-couche centrale"), &T::center_underlay);
@@ -2045,6 +2064,20 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 form->addRow(tr("Forme du bout (fin) :"), capEnd);
                 form->addRow(tr("Point d'arrêt (début) :"), lockStart);
                 form->addRow(tr("Point d'arrêt (fin) :"), lockEnd);
+                auto* autoSpacing =
+                    new QCheckBox(tr("Espacement automatique selon la largeur"), body_);
+                autoSpacing->setObjectName(QStringLiteral("chk_autoSatinAutoSpacing"));
+                autoSpacing->setChecked(p.auto_spacing);
+                autoSpacing->setToolTip(tr("Colonnes étroites plus lâches, larges plus serrées."));
+                auto* corner = new QComboBox(body_);
+                corner->setObjectName(QStringLiteral("combo_autoSatinCorner"));
+                corner->addItems(cornerItems());
+                corner->setCurrentIndex(static_cast<int>(p.corner_mode));
+                corner->setToolTip(tr("Traitement des coins vifs de la colonne."));
+                form->addRow(QString(), autoSpacing);
+                form->addRow(tr("Coins vifs :"), corner);
+                bindBool(autoSpacing, tr("Espacement automatique"), &T::auto_spacing);
+                bindEnumField<T>(this, edit, corner, tr("Coins vifs"), &T::corner_mode, members);
                 section(tr("Orientation des fils"));
                 if (group) {
                     // Guides en lot : un même angle pour toutes les formes du groupe.

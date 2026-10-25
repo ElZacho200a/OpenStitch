@@ -195,6 +195,13 @@ const EnumTable<document::SatinSplit>& split_table() {
         {"deterministic_jitter", document::SatinSplit::DeterministicJitter}};
     return t;
 }
+const EnumTable<document::SatinCorner>& satin_corner_table() {
+    static const EnumTable<document::SatinCorner> t{{"none", document::SatinCorner::None},
+                                                    {"miter", document::SatinCorner::Miter},
+                                                    {"overlap", document::SatinCorner::Overlap},
+                                                    {"cut", document::SatinCorner::Cut}};
+    return t;
+}
 const EnumTable<document::SatinCap>& cap_table() {
     static const EnumTable<document::SatinCap> t{{"flat", document::SatinCap::Flat},
                                                  {"rounded", document::SatinCap::Rounded},
@@ -745,6 +752,8 @@ template <class P> void add_satin_common(std::vector<Field<P>>& v) {
     v.push_back(enum_field<P>("underlay_mode", &P::underlay_mode, underlay_mode_table()));
     v.push_back(enum_field<P>("short_stitch", &P::short_stitch, short_stitch_table()));
     v.push_back(enum_field<P>("split_stitch", &P::split_stitch, split_table()));
+    v.push_back(bool_field<P>("auto_spacing", &P::auto_spacing));
+    v.push_back(enum_field<P>("corner_mode", &P::corner_mode, satin_corner_table()));
 }
 
 template <class P> const std::vector<Field<P>>& fields_of();

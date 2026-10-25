@@ -193,6 +193,9 @@ enum class SatinShortStitch { Disabled, RemoveAndRedistribute, SingleInset, Mult
 enum class SatinSplit { Disabled, Simple, Staggered, DeterministicJitter };
 enum class SatinCap { Flat, Rounded, Tapered, Automatic };
 enum class SatinLock { None, BackAndForth, Triangle, MicroZigzag };
+// Coins vifs de la colonne (HP-ENG-005) : onglet (une traversée en bissectrice), chevauchement
+// (les deux branches se croisent sans traversée intermédiaire) ou coupe (saut au coin).
+enum class SatinCorner : std::uint8_t { None, Miter, Overlap, Cut };
 
 // Origine « satin de bordure » (HP-STI-004) : un satin de largeur fixe suivant un
 // contour. Les rails/barreaux de `SatinParams` restent la vérité de la génération ;
@@ -252,6 +255,8 @@ struct SatinParams {
 
     UnderlayMode underlay_mode{UnderlayMode::Manual}; // HP-ENG-002
     std::optional<BorderSatinSpec> border;            // HP-STI-004 : satin de bordure
+    bool auto_spacing{false};                         // HP-ENG-003 : pas selon la largeur locale
+    SatinCorner corner_mode{SatinCorner::None};       // HP-ENG-005 : coins vifs
 
     bool operator==(const SatinParams&) const = default;
 };
@@ -354,6 +359,8 @@ struct AutoSatinParams {
     // Forme compacte (disque, pétale) : axe synthétique le long de l'axe principal
     // au lieu d'un refus (`SkeletonSatinParameters::compact_axis`). Faux par défaut.
     bool compact_axis{false};
+    bool auto_spacing{false};                   // HP-ENG-003 : pas selon la largeur locale
+    SatinCorner corner_mode{SatinCorner::None}; // HP-ENG-005 : coins vifs
 
     bool operator==(const AutoSatinParams&) const = default;
 };

@@ -282,6 +282,12 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.underlay_mode != document::UnderlayMode::Manual) {
                     j["underlayMode"] = static_cast<int>(p.underlay_mode);
                 }
+                if (p.auto_spacing) {
+                    j["autoSpacing"] = true;
+                }
+                if (p.corner_mode != document::SatinCorner::None) {
+                    j["cornerMode"] = static_cast<int>(p.corner_mode);
+                }
                 if (p.border) {
                     j["border"] = {{"width", p.border->width.value},
                                    {"side", static_cast<int>(p.border->side)},
@@ -401,6 +407,12 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.compact_axis) {
                     j["compactAxis"] = true;
                 }
+                if (p.auto_spacing) {
+                    j["autoSpacing"] = true;
+                }
+                if (p.corner_mode != document::SatinCorner::None) {
+                    j["cornerMode"] = static_cast<int>(p.corner_mode);
+                }
                 // Méthode : par nom, seulement si elle n'est pas le défaut (le fichier reste
                 // lisible par une version antérieure tant que le squelette est utilisé).
                 if (p.strategy != document::AutoSatinStrategy::Skeleton) {
@@ -519,6 +531,9 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.lock_passes = j.value("lockPasses", 2);
         p.underlay_mode =
             static_cast<document::UnderlayMode>(std::clamp(j.value("underlayMode", 0), 0, 1));
+        p.auto_spacing = j.value("autoSpacing", false);
+        p.corner_mode =
+            static_cast<document::SatinCorner>(std::clamp(j.value("cornerMode", 0), 0, 3));
         if (j.contains("border") && j.at("border").is_object()) {
             const auto& bj = j.at("border");
             document::BorderSatinSpec spec;
@@ -676,7 +691,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
               Range{"lockLength", 0, 20'000}, Range{"pullCompensation", -5'000, 5'000},
               Range{"pullLeft", -5'000, 5'000}, Range{"pullRight", -5'000, 5'000},
               Range{"pushStart", -5'000, 5'000}, Range{"pushEnd", -5'000, 5'000},
-              Range{"underlayMode", 0, 1}}) {
+              Range{"underlayMode", 0, 1}, Range{"cornerMode", 0, 3}}) {
             if (const auto err = badNumber(field(r.name), r.name, r.lo, r.hi)) {
                 return fail(ErrorCategory::InvalidFile, *err);
             }
@@ -729,6 +744,9 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.lock_passes = j.value("lockPasses", 2);
         p.underlay_mode = static_cast<document::UnderlayMode>(j.value("underlayMode", 0));
         p.compact_axis = j.value("compactAxis", false);
+        p.auto_spacing = j.value("autoSpacing", false);
+        p.corner_mode =
+            static_cast<document::SatinCorner>(std::clamp(j.value("cornerMode", 0), 0, 3));
         if (j.contains("strategy")) {
             // Une méthode inconnue (fichier d'une version plus récente) est REFUSÉE : la
             // remplacer par le squelette ferait changer le satin à l'insu de l'utilisateur.

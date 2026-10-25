@@ -272,6 +272,8 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
     config.pull_right = params.pull_right;
     config.push_start = params.push_start;
     config.push_end = params.push_end;
+    config.auto_spacing = params.auto_spacing;
+    config.corner_mode = static_cast<SatinCornerMode>(static_cast<int>(params.corner_mode));
     // Sous-couche automatique (HP-ENG-002) : selon la largeur réelle de la colonne.
     if (params.underlay_mode == document::UnderlayMode::Auto) {
         const SatinUnderlayChoice c =
@@ -376,6 +378,8 @@ void generate_auto_satin(stitch::StitchSequence& sequence, const document::Vecto
     config.pull_right = params.pull_right;
     config.push_start = params.push_start;
     config.push_end = params.push_end;
+    config.auto_spacing = params.auto_spacing;
+    config.corner_mode = static_cast<SatinCornerMode>(static_cast<int>(params.corner_mode));
     // Sous-couche automatique (HP-ENG-002) : largeur moyenne de la région source.
     if (params.underlay_mode == document::UnderlayMode::Auto) {
         double area = 0.0;
