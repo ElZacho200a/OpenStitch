@@ -193,3 +193,70 @@ TEST_CASE("contour ferme : depart au sommet le plus proche") {
     // Egalite : le premier sommet gagne.
     CHECK(nearest_vertex_index(ring, {Micrometers{5'000}, Micrometers{0}}) == 0);
 }
+
+TEST_CASE("amelioration locale : 2-opt/Or-opt ne degrade jamais et gagne sur un zigzag") {
+    // Ordre document en zigzag sur une ligne : 0, 9, 1, 8, 2, 7 (mm), meme couleur.
+    const std::vector<OrderItem> items = {item(1, red, 0, 0),     item(2, red, 9'000, 0),
+                                          item(3, red, 1'000, 0), item(4, red, 8'000, 0),
+                                          item(5, red, 2'000, 0), item(6, red, 7'000, 0)};
+    OrderOptions off;
+    OrderOptions on;
+    on.improve_budget = 5'000;
+    const auto plain = optimize_order(items, OrderStrategy::Document, off);
+    CHECK(ids(plain) == std::vector<std::uint64_t>{1, 2, 3, 4, 5, 6}); // inchange
+    const auto better = optimize_order(items, OrderStrategy::Document, on);
+    std::vector<OrderItem> byId;
+    for (const auto id : better) {
+        for (const auto& it : items) {
+            if (it.id == id) {
+                byId.push_back(it);
+            }
+        }
+    }
+    REQUIRE(byId.size() == items.size());
+    CHECK(compute_cost(byId).travel_um < compute_cost(items).travel_um);
+}
+
+TEST_CASE("amelioration locale : deterministe, bornee, respecte les verrous") {
+    std::vector<OrderItem> items = {item(1, red, 0, 0), item(2, red, 9'000, 0),
+                                    item(3, red, 1'000, 0, true), item(4, red, 8'000, 0),
+                                    item(5, red, 2'000, 0)};
+    OrderOptions on;
+    on.improve_budget = 3'000;
+    const auto a = optimize_order(items, OrderStrategy::Document, on);
+    const auto b = optimize_order(items, OrderStrategy::Document, on);
+    CHECK(ids(a) == ids(b));
+    CHECK(a[2].value == 3); // l'objet verrouille garde son emplacement
+
+    OrderOptions tiny;
+    tiny.improve_budget = 1; // un seul candidat evalue : borne en iterations, pas en temps
+    const auto c = optimize_order(items, OrderStrategy::Document, tiny);
+    CHECK(c.size() == items.size());
+}
+
+TEST_CASE("amelioration locale : retourne un objet reversible quand c'est gagnant") {
+    OrderItem a = item(1, red, 0, 0);
+    a.entry = Vec2um{Micrometers{0}, Micrometers{0}};
+    a.exit = Vec2um{Micrometers{1'000}, Micrometers{0}};
+    OrderItem b = item(2, red, 5'000, 0);
+    b.entry = Vec2um{Micrometers{10'000}, Micrometers{0}};
+    b.exit = Vec2um{Micrometers{2'000}, Micrometers{0}};
+    b.reversible = true;
+    OrderOptions on;
+    on.improve_budget = 100;
+    const auto steps = plan_order({a, b}, OrderStrategy::Document, on);
+    REQUIRE(steps.size() == 2);
+    CHECK(steps[1].reversed); // entree a 2 mm au lieu de 10 mm
+}
+
+TEST_CASE("depart et arrivee du design : ByProximity demarre au plus pres du depart") {
+    const std::vector<OrderItem> items = {item(1, red, 0, 0), item(2, red, 5'000, 0),
+                                          item(3, red, 10'000, 0)};
+    OrderOptions o;
+    o.start = Vec2um{Micrometers{11'000}, Micrometers{0}};
+    const auto order = optimize_order(items, OrderStrategy::ByProximity, o);
+    CHECK(order.front().value == 3);
+    const auto cost = compute_cost(items, o.start, Vec2um{Micrometers{0}, Micrometers{0}});
+    // 11 mm (depart -> 1er) + 5 + 5 (entre objets) + 10 (dernier -> arrivee).
+    CHECK(cost.travel_um == 11'000.0 + 10'000.0 + 10'000.0);
+}

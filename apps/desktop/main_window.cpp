@@ -81,6 +81,8 @@
 #include "import_dialog.hpp"
 #include "machine_export_dialog.hpp"
 #include "node_handle.hpp"
+#include "openstitch/commands/sewing_order_commands.hpp"
+#include "order_list_widget.hpp"
 #include "responsive.hpp"
 #include "vector_tooltip.hpp"
 
@@ -8142,8 +8144,30 @@ void MainWindow::buildOrderPanel() {
     auto* panel = new QWidget(orderDock_);
     auto* layout = new QVBoxLayout(panel);
 
-    orderList_ = new QListWidget(panel);
+    auto* orderList = new OrderListWidget(panel);
+    orderList->setObjectName(QStringLiteral("list_sewingOrder"));
+    orderList_ = orderList;
     layout->addWidget(orderList_, 1);
+    // HP-SEQ-002 : glisser-déposer d'une ligne = une commande (un pas d'annulation).
+    connect(orderList, &OrderListWidget::moveRequested, this, [this](int from, int to) {
+        const auto* moved = orderRowObject(from);
+        if (moved == nullptr || to < 0) {
+            return;
+        }
+        const ObjectId movedId = moved->id;
+        if (!commands::moved_sewing_order(project_, movedId, static_cast<std::size_t>(to))) {
+            statusBar()->showMessage(
+                tr("Déplacement impossible : un objet ne change pas de calque en se déplaçant."));
+            return;
+        }
+        undoStack_.execute(std::make_unique<commands::MoveInSewingOrderCommand>(
+                               movedId, static_cast<std::size_t>(to)),
+                           project_);
+        refreshImage();
+        refreshOrderPanel();
+        orderList_->setCurrentRow(to);
+        updateActions();
+    });
     connect(orderList_, &QListWidget::currentRowChanged, this, [this](int row) {
         if (const auto* rowObject = orderRowObject(row)) {
             // sélection d'objet vectoriel distincte
@@ -8191,6 +8215,20 @@ void MainWindow::buildOrderPanel() {
     orderStrategyCombo_->addItem(tr("Couleur puis proximité"),
                                  static_cast<int>(optimization::OrderStrategy::ColorThenProximity));
     layout->addWidget(orderStrategyCombo_);
+    // HP-SEQ-008 / HP-SEQ-001 : départ, arrivée du design et amélioration locale.
+    auto* orderOptions = new OrderOptionsWidget(panel);
+    orderOptions->setObjectName(QStringLiteral("orderOptions"));
+    layout->addWidget(orderOptions);
+    connect(orderOptions, &OrderOptionsWidget::endpointsChanged, this, [this, orderOptions] {
+        document::SequenceFinishing next = project_.finishing;
+        next.design_start = orderOptions->start();
+        next.design_end = orderOptions->end();
+        if (next == project_.finishing) {
+            return;
+        }
+        undoStack_.execute(std::make_unique<commands::SetFinishingCommand>(next), project_);
+        updateActions();
+    });
     auto* applyBtn = new QPushButton(tr("Optimiser l'ordre"), panel);
     connect(applyBtn, &QPushButton::clicked, this, &MainWindow::applyOrderStrategy);
     layout->addWidget(applyBtn);
@@ -8241,8 +8279,13 @@ void MainWindow::refreshOrderPanel() {
         }
     }
     updateOrderButtons();
+    if (auto* options =
+            orderDock_->findChild<OrderOptionsWidget*>(QStringLiteral("orderOptions"))) {
+        options->setEndpoints(project_.finishing.design_start, project_.finishing.design_end);
+    }
 
-    const auto cost = optimization::compute_cost(items);
+    const auto cost = optimization::compute_cost(items, project_.finishing.design_start,
+                                                 project_.finishing.design_end);
     orderCostLabel_->setText(tr("Trajet estimé : %1 mm — %2 changement(s) de fil")
                                  .arg(cost.travel_um / 1000.0, 0, 'f', 1)
                                  .arg(cost.color_changes));
@@ -8608,8 +8651,18 @@ void MainWindow::applyOrderStrategy() {
     }
     const auto strategy =
         static_cast<optimization::OrderStrategy>(orderStrategyCombo_->currentData().toInt());
-    const auto before = optimization::compute_cost(items);
-    const auto order = project_.groupedByCalque(optimization::optimize_order(items, strategy));
+    // HP-SEQ-001/008 : amélioration locale (borne déterministe) et points de départ / arrivée.
+    optimization::OrderOptions options;
+    options.start = project_.finishing.design_start;
+    options.end = project_.finishing.design_end;
+    if (const auto* extra =
+            orderDock_->findChild<OrderOptionsWidget*>(QStringLiteral("orderOptions"));
+        extra != nullptr && extra->improveEnabled()) {
+        options.improve_budget = optimization::kDefaultImproveBudget;
+    }
+    const auto before = optimization::compute_cost(items, options.start, options.end);
+    const auto order =
+        project_.groupedByCalque(optimization::optimize_order(items, strategy, options));
 
     undoStack_.execute(std::make_unique<commands::ReorderEmbroideryCommand>(order), project_);
     refreshImage();
@@ -8621,7 +8674,7 @@ void MainWindow::applyOrderStrategy() {
     for (const auto& obj : project_.embroidery_objects) {
         reordered.push_back({obj.id, obj.rgb, embroideryCentroid(obj), obj.locked});
     }
-    const auto after = optimization::compute_cost(reordered);
+    const auto after = optimization::compute_cost(reordered, options.start, options.end);
     statusBar()->showMessage(tr("Ordre optimisé : trajet %1 → %2 mm, changements de fil %3 → %4")
                                  .arg(before.travel_um / 1000.0, 0, 'f', 1)
                                  .arg(after.travel_um / 1000.0, 0, 'f', 1)

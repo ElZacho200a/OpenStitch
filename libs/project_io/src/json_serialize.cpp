@@ -1495,6 +1495,13 @@ json project_to_json(const document::Project& project) {
                         {"withinObject", f.hidden_travel.within_object},
                         {"reorderUnderlay", f.hidden_travel.reorder_underlay},
                         {"reorderRegions", f.hidden_travel.reorder_regions}}}};
+    // HP-SEQ-008 : écrits seulement s'ils existent (fichier identique sinon).
+    if (f.design_start) {
+        j["finishing"]["designStart"] = vec_to_json(*f.design_start);
+    }
+    if (f.design_end) {
+        j["finishing"]["designEnd"] = vec_to_json(*f.design_end);
+    }
 
     // AD-04 : design importé (DST aujourd'hui) -- donnée source immuable,
     // absente d'un projet qui n'en a pas (comportement historique inchangé).
@@ -1799,6 +1806,12 @@ Result<document::Project> project_from_json(const json& j) {
                 h.within_object = hj.value("withinObject", hd.within_object);
                 h.reorder_underlay = hj.value("reorderUnderlay", hd.reorder_underlay);
                 h.reorder_regions = hj.value("reorderRegions", hd.reorder_regions);
+            }
+            if (fj.contains("designStart")) {
+                f.design_start = vec_from_json(fj.at("designStart"));
+            }
+            if (fj.contains("designEnd")) {
+                f.design_end = vec_from_json(fj.at("designEnd"));
             }
         } else {
             project.finishing = document::SequenceFinishing::legacy();

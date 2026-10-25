@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <optional>
+
 #include "openstitch/core/units.hpp"
 
 namespace openstitch::document {
@@ -94,6 +96,13 @@ struct SequenceFinishing {
 
     // HP-SEQ-006.a -- ponts cachés (désactivés par défaut).
     HiddenTravel hidden_travel{};
+
+    // HP-SEQ-008 -- points de départ et d'arrivée du design (µm, repère document). Absents :
+    // comportement historique. Servent à l'optimisation de l'ordre de couture (premier objet au
+    // plus près du départ, dernier au plus près de l'arrivée) ; la séquence de points n'est pas
+    // modifiée.
+    std::optional<Vec2um> design_start{};
+    std::optional<Vec2um> design_end{};
 
     bool operator==(const SequenceFinishing&) const = default;
 

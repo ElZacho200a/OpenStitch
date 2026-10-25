@@ -118,6 +118,8 @@ add_library(openstitch_desktop_widgets STATIC
     calque_panel.hpp
     document_panel.cpp
     document_panel.hpp
+    order_list_widget.cpp
+    order_list_widget.hpp
     segmentation_colors_panel.cpp
     segmentation_colors_panel.hpp
     main_window_colors.cpp
