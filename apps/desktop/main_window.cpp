@@ -109,6 +109,7 @@
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/project_ops/factory.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
+#include "openstitch/stitch_analysis/thread_usage.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
@@ -9357,6 +9358,22 @@ void MainWindow::exportDst() {
         }
         if (!project_.embroidery_objects.empty()) {
             summary += tr(" Pensez à enregistrer aussi le projet (.osp).");
+        }
+        // HP-FMT-022 : blocs de couleur dans l'ordre de couture de la séquence exportée.
+        {
+            const auto film = stitch_analysis::color_film(project_, shown);
+            int rank = 0;
+            for (const auto& block : film) {
+                ++rank;
+                const unsigned rgb = (static_cast<unsigned>(block.identity.rgb[0]) << 16) |
+                                     (static_cast<unsigned>(block.identity.rgb[1]) << 8) |
+                                     static_cast<unsigned>(block.identity.rgb[2]);
+                result.blocks.push_back({rgb, tr("%1. #%2 — %3 point(s), %4 mm")
+                                                  .arg(rank)
+                                                  .arg(rgb, 6, 16, QLatin1Char('0'))
+                                                  .arg(block.stitch_count)
+                                                  .arg(block.length_mm, 0, 'f', 0)});
+            }
         }
         result.text = summary;
         result.problems = problemLines.join(QLatin1Char('\n'));
