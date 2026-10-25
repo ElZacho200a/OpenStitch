@@ -430,6 +430,25 @@ json params_to_json(const document::StitchParams& params) {
                      {"inset", p.inset.value},
                      {"spiral", p.spiral},
                      {"hiddenUnderpath", p.hidden_underpath}};
+            } else if constexpr (std::is_same_v<T, document::MotifRunParams>) {
+                j = {{"type", "motifRun"},
+                     {"motif", static_cast<int>(p.motif)},
+                     {"size", p.size.value},
+                     {"spacing", p.spacing.value},
+                     {"stitchLength", p.stitch_length.value},
+                     {"minLength", p.min_length.value},
+                     {"alternate", p.alternate}};
+            } else if constexpr (std::is_same_v<T, document::MotifFillParams>) {
+                j = {{"type", "motifFill"},
+                     {"motif", static_cast<int>(p.motif)},
+                     {"size", p.size.value},
+                     {"spacing", p.spacing.value},
+                     {"angle", p.angle.radians},
+                     {"stagger", p.stagger},
+                     {"inset", p.inset.value},
+                     {"stitchLength", p.stitch_length.value},
+                     {"minLength", p.min_length.value},
+                     {"hiddenUnderpath", p.hidden_underpath}};
             }
             return j;
         },
@@ -787,6 +806,41 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.inset = Micrometers{std::clamp(j.value("inset", 200), 0, 10'000)};
         p.spiral = j.value("spiral", true);
         p.hidden_underpath = j.value("hiddenUnderpath", true);
+        return document::StitchParams{p};
+    }
+    if (type == "motifRun") {
+        // Motif le long d'un chemin (HP-STI-002) : clés optionnelles, valeurs bornées.
+        document::MotifRunParams p;
+        const int motif = j.value("motif", static_cast<int>(p.motif));
+        if (motif < 0 || motif > static_cast<int>(document::MotifId::Scallop)) {
+            return fail(ErrorCategory::InvalidFile, "motifRun : motif inconnu");
+        }
+        p.motif = static_cast<document::MotifId>(motif);
+        p.size = Micrometers{std::clamp(j.value("size", p.size.value), 500, 40'000)};
+        p.spacing = Micrometers{std::clamp(j.value("spacing", p.spacing.value), 1'000, 100'000)};
+        p.stitch_length =
+            Micrometers{std::clamp(j.value("stitchLength", p.stitch_length.value), 1'000, 7'000)};
+        p.min_length = Micrometers{std::clamp(j.value("minLength", p.min_length.value), 0, 7'000)};
+        p.alternate = j.value("alternate", p.alternate);
+        return document::StitchParams{p};
+    }
+    if (type == "motifFill") {
+        // Remplissage à motif (HP-STI-006) : clés optionnelles, valeurs bornées.
+        document::MotifFillParams p;
+        const int motif = j.value("motif", static_cast<int>(p.motif));
+        if (motif < 0 || motif > static_cast<int>(document::MotifId::Scallop)) {
+            return fail(ErrorCategory::InvalidFile, "motifFill : motif inconnu");
+        }
+        p.motif = static_cast<document::MotifId>(motif);
+        p.size = Micrometers{std::clamp(j.value("size", p.size.value), 500, 40'000)};
+        p.spacing = Micrometers{std::clamp(j.value("spacing", p.spacing.value), 1'000, 100'000)};
+        p.angle = Angle{j.value("angle", p.angle.radians)};
+        p.stagger = j.value("stagger", p.stagger);
+        p.inset = Micrometers{std::clamp(j.value("inset", p.inset.value), 0, 10'000)};
+        p.stitch_length =
+            Micrometers{std::clamp(j.value("stitchLength", p.stitch_length.value), 1'000, 7'000)};
+        p.min_length = Micrometers{std::clamp(j.value("minLength", p.min_length.value), 0, 7'000)};
+        p.hidden_underpath = j.value("hiddenUnderpath", p.hidden_underpath);
         return document::StitchParams{p};
     }
     return fail(ErrorCategory::InvalidFile, "Type de point inconnu : " + type);

@@ -5600,6 +5600,22 @@ void MainWindow::convertSatinsToTatami() {
     }
 }
 
+namespace {
+// Famille du filtre d'affichage (0 contour, 1 remplissage, 2 satin) d'un index de type de points.
+int stitchFilterFamily(int typeIndex) {
+    switch (typeIndex) {
+    case 3:
+    case 6: // remplissage à motif (HP-STI-006)
+        return 1;
+    case 4:
+    case 5: // blanket, motif le long du contour (HP-STI-002)
+        return 0;
+    default:
+        return typeIndex;
+    }
+}
+} // namespace
+
 bool MainWindow::stitchParamsForType(const document::EmbroideryObject& emb, int type,
                                      document::StitchParams& params, std::string& label,
                                      std::optional<std::vector<geometry::PathSet>>& restoredContour,
@@ -5615,6 +5631,14 @@ bool MainWindow::stitchParamsForType(const document::EmbroideryObject& emb, int 
     case 1: // tatami
         params = document::TatamiParams{};
         label = "Type : tatami";
+        return true;
+    case 5: // motif répété le long du contour (HP-STI-002)
+        params = document::MotifRunParams{};
+        label = "Type : motif le long du contour";
+        return true;
+    case 6: // remplissage à motif (HP-STI-006)
+        params = document::MotifFillParams{};
+        label = "Type : remplissage à motif";
         return true;
     case 4: // blanket / zigzag le long du contour (HP-STI-003)
         params = document::BlanketStitchParams{};
@@ -5789,9 +5813,11 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
         const ObjectId embId = emb->id;
         auto* typeMenu = menu.addMenu(tr("Type de points"));
         const int current = stitchTypeIndex(*emb);
-        const char* labels[] = {"Contour cousu", "Remplissage tatami", "Colonne satin",
-                                "Remplissage directionnel", "Blanket / zigzag"};
-        for (int t = 0; t < 5; ++t) {
+        const char* labels[] = {"Contour cousu",      "Remplissage tatami",
+                                "Colonne satin",      "Remplissage directionnel",
+                                "Blanket / zigzag",   "Motif le long du contour",
+                                "Remplissage à motif"};
+        for (int t = 0; t < 7; ++t) {
             auto* act = typeMenu->addAction(tr(labels[t]));
             act->setCheckable(true);
             act->setChecked(t == current);
@@ -5830,9 +5856,7 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
                           [&](const auto& e) { return e.source_vector == emb->source_vector; });
         menu.addSeparator();
         const std::uint32_t embColorKey = colorKeyOf(emb->rgb);
-        const int embFilterType = stitchTypeIndex(*emb) == 3   ? 1
-                                  : stitchTypeIndex(*emb) == 4 ? 0
-                                                               : stitchTypeIndex(*emb);
+        const int embFilterType = stitchFilterFamily(stitchTypeIndex(*emb));
         connect(menu.addAction(tr("Afficher uniquement cette couleur")), &QAction::triggered, this,
                 [this, embColorKey] { isolateFilterColor(embColorKey); });
         connect(menu.addAction(tr("Afficher uniquement ce type de points")), &QAction::triggered,
@@ -8155,6 +8179,8 @@ int MainWindow::stitchTypeIndex(const document::EmbroideryObject& object) {
            : object.is_satin() || object.is_auto_satin()         ? 2
            : object.is_directional() || object.is_contour_fill() ? 3
            : object.is_blanket()                                 ? 4
+           : object.is_motif_run()                               ? 5
+           : object.is_motif_fill()                              ? 6
                                                                  : 0;
 }
 
@@ -8212,9 +8238,7 @@ bool MainWindow::vectorPassesFilter(const document::VectorObject& object) const 
         const std::uint32_t key = (static_cast<std::uint32_t>(emb.rgb[0]) << 16) |
                                   (static_cast<std::uint32_t>(emb.rgb[1]) << 8) |
                                   static_cast<std::uint32_t>(emb.rgb[2]);
-        if (showType_[static_cast<std::size_t>(typeIndex == 3   ? 1
-                                               : typeIndex == 4 ? 0
-                                                                : typeIndex)] &&
+        if (showType_[static_cast<std::size_t>(stitchFilterFamily(typeIndex))] &&
             hiddenColors_.count(key) == 0) {
             return true;
         }
@@ -8228,7 +8252,7 @@ bool MainWindow::objectPassesFilter(const document::EmbroideryObject& object) co
     }
     // Filtre « remplissage » : tatami et directionnel ensemble (index 1).
     const int typeIndex = stitchTypeIndex(object);
-    if (!showType_[static_cast<std::size_t>(typeIndex == 3 ? 1 : typeIndex == 4 ? 0 : typeIndex)]) {
+    if (!showType_[static_cast<std::size_t>(stitchFilterFamily(typeIndex))]) {
         return false;
     }
     const std::uint32_t key = (static_cast<std::uint32_t>(object.rgb[0]) << 16) |

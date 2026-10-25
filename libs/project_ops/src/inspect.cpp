@@ -661,6 +661,10 @@ const char* stitch_type_name(const document::EmbroideryObject& object) {
         return "blanket";
     case 6:
         return "contour_fill";
+    case 7:
+        return "motif_run";
+    case 8:
+        return "motif_fill";
     default:
         return "unknown";
     }

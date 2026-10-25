@@ -19,6 +19,8 @@
 #include "openstitch/stitch_generation/directional_fill.hpp"
 #include "openstitch/stitch_generation/join.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
+#include "openstitch/stitch_generation/motif_fill.hpp"
+#include "openstitch/stitch_generation/motif_run.hpp"
 #include "openstitch/stitch_generation/routing.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
@@ -811,6 +813,22 @@ void generate_contour(stitch::StitchSequence& sequence, const document::VectorOb
     }
 }
 
+// Remplissage à motif (HP-STI-006) : même enveloppe que le remplissage concentrique.
+void generate_motif_fill(stitch::StitchSequence& sequence, const document::VectorObject& source,
+                         const document::EmbroideryObject& object,
+                         const document::MotifFillParams& params) {
+    for (const geometry::PathSet& region :
+         fill_regions_in_sewing_order(sequence, source, params.inset)) {
+        std::optional<FillLinker> linker;
+        if (params.hidden_underpath) {
+            linker.emplace(region,
+                           Micrometers{std::clamp(params.stitch_length.value, 1'000, 7'000)},
+                           Micrometers{600});
+        }
+        emit_fill(sequence, fill_motif(region, params), object.id, linker ? &*linker : nullptr);
+    }
+}
+
 } // namespace
 
 namespace {
@@ -989,6 +1007,16 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                     }
                 } else if constexpr (std::is_same_v<T, document::ContourFillParams>) {
                     generate_contour(chunk, *unit.source, object, params);
+                } else if constexpr (std::is_same_v<T, document::MotifRunParams>) {
+                    // HP-STI-002 : motif répété le long de chaque contour de la source.
+                    for (const geometry::PathSet& set : unit.source->paths) {
+                        emit_polyline(chunk, motif_run_points(set.outer, params), object.id);
+                        for (const geometry::Path& hole : set.holes) {
+                            emit_polyline(chunk, motif_run_points(hole, params), object.id);
+                        }
+                    }
+                } else if constexpr (std::is_same_v<T, document::MotifFillParams>) {
+                    generate_motif_fill(chunk, *unit.source, object, params);
                 }
             },
             object.params);
