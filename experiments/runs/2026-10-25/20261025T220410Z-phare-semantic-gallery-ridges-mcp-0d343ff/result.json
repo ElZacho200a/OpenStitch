@@ -1,0 +1,142 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261025T220410Z-phare-semantic-gallery-ridges-mcp-0d343ff",
+  "created_utc": "2026-10-25T22:04:10Z",
+  "status": "failed",
+  "artistic_verdict": "all five variants rejected; gate A failed; diagnostic imports only",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "verified_this_run": true
+  },
+  "main_commit": "206ad8eb35cf4d0db751c6021cab8ae1bbd4d7bb",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "binary_not_rebuilt_from_current_main": true
+  },
+  "subproject": {
+    "crop_px": [
+      888,
+      65,
+      1010,
+      466
+    ],
+    "size_mm": [
+      29.388,
+      96.595
+    ],
+    "canvas_mm": [
+      50,
+      120
+    ],
+    "not_full_scene": true,
+    "protected_windows": 5
+  },
+  "method": {
+    "preparations": [
+      "semantic_minimal",
+      "semantic_structures",
+      "semantic_ridge135",
+      "semantic_ridge145",
+      "semantic_warning_island"
+    ],
+    "gate_A": "failed before import",
+    "description": "Visual-semantic gallery partition (left grid, two central rosettes, right lattice), manual source-guided open paths vs JPEG darkness skeleton split at branchpoints (thresholds 135 and 145); targeted deletion of one isolated 21px shaft-body component",
+    "no_global_integration": true
+  },
+  "variants": [
+    {
+      "name": "semantic_minimal",
+      "objects": 86,
+      "stitches": 4254,
+      "trims": 98,
+      "jumps": 130,
+      "warnings": 8,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "missing_crop_percent": 30.645
+    },
+    {
+      "name": "semantic_structures",
+      "objects": 92,
+      "stitches": 4322,
+      "trims": 104,
+      "jumps": 136,
+      "warnings": 8,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "missing_crop_percent": 30.034
+    },
+    {
+      "name": "semantic_ridge135",
+      "objects": 108,
+      "stitches": 4463,
+      "trims": 117,
+      "jumps": 152,
+      "warnings": 8,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "missing_crop_percent": 29.921
+    },
+    {
+      "name": "semantic_ridge145",
+      "objects": 101,
+      "stitches": 4397,
+      "trims": 112,
+      "jumps": 145,
+      "warnings": 8,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "missing_crop_percent": 30.211
+    },
+    {
+      "name": "semantic_warning_island",
+      "objects": 91,
+      "stitches": 4310,
+      "trims": 103,
+      "warnings": 7,
+      "errors": 0,
+      "hotspot_mm2": 1
+    }
+  ],
+  "mcp_operations": "digitize_guide, project_operations, semantic_validate, project_new, semantic_import dry_run/apply, project_apply import_svg dry_run/apply, checkpoint, semantic_map, inspect/report/check/density/fabric_risk/fidelity, real project_render PNG, project_save OSP, project_export DST for each variant",
+  "retouches": {
+    "baseline": "semantic_structures",
+    "satin_compare": [
+      "skeleton",
+      "parallel_sweep",
+      "medial_axis"
+    ],
+    "regions": [
+      "foam",
+      "5 windows",
+      "gallery"
+    ],
+    "trial_renders": 8,
+    "medial_axis_window": "refused at dry_run",
+    "tatami_vs_directional": "executed/rejected",
+    "semantic_replace_glass": "executed/rejected",
+    "set_params_gallery": "executed/rejected",
+    "restored_osp_byte_identical": true,
+    "restored_sha256": "c3b5fc2ca6555906dc827ac916a393175867b8d3ca3bb5703cf8aa1a39e348ad"
+  },
+  "warnings": "8 short stitches <0.1mm inherited cloud/dome/shaft; one exact isolated shaft body component 21px removed, warnings 8→7; others not removed arbitrarily",
+  "fidelity_caveat": "crop fidelity not comparable to full scene route_protected bridge12; no machine test and no independent rating",
+  "archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-25/phare-galerie-semantique-ridges-mcp-2305-private.zip",
+    "library_file_id": "libfile_64cf7dcf86a0819184d3cbcef6648243",
+    "size_bytes": 31858088,
+    "sha256": "6fd3e51d46cdc9243f98e95b28a109a62039bc1c0c01d93c5d4603ef8f1d025a",
+    "entries": 359,
+    "rematerialized_sha_verified": true
+  },
+  "next_hypothesis": "Stop thin isolated running strokes at ~25mm gallery. Test gallery semantic negative cutouts in 2–3 narrow dark carrier masses preserving actual cell voids, alongside full coherent source-derived architecture preparation (dome/glass/shaft), before importing. Gate A must pass before global scene; protect 5 windows; improve foam separately. No invented decorative cells."
+}
