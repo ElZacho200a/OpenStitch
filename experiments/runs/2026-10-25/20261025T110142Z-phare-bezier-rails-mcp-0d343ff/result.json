@@ -1,0 +1,175 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261025T110142Z-phare-bezier-rails-mcp-0d343ff",
+  "timestamp_utc": "2026-10-25T11:01:42Z",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "verified_this_run": true
+  },
+  "main_commit": "520bcb4741062379225927ea6e09e3b8a9bad6ab",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007"
+  },
+  "subproject": {
+    "crop_px": [
+      888,
+      65,
+      1010,
+      466
+    ],
+    "size_mm": [
+      29.388,
+      96.595
+    ],
+    "not_full_scene": true
+  },
+  "preparations": {
+    "applied": [
+      "bezier_arch",
+      "bezier_glass",
+      "bezier_foam",
+      "bezier_foam_strict",
+      "bezier_gallery_light",
+      "bezier_windows",
+      "bezier_windows_foam",
+      "bezier_windows_cloud"
+    ],
+    "method": "Source-anchored independent cubic Bézier polygon carriers for dome/glass/gallery, source-guided longitudinal shaft masses, protected arched windows, 3 paired independent foam Bézier rails (median width 2.60/3.14/3.10mm), exclusive occlusions and open SVG running rails. No generative AI. Visual pre-import gate inspected twice.",
+    "gate_A": "FAILED: glazing/gallery schematic, foam ribbons over-smooth and dark in stitch preview, source branches missing",
+    "imports": "DIAGNOSTIC ONLY"
+  },
+  "variants": [
+    {
+      "name": "bezier_glass",
+      "objects": 95,
+      "points": 3790,
+      "trims": 97,
+      "jumps": 126,
+      "warnings": 4,
+      "errors": 0,
+      "hotspot_mm2": 4,
+      "missing_percent": 36.519,
+      "lost_detail_percent": 1.539,
+      "wrong_colour_percent": 5.321,
+      "real_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "diagnostic_only": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "bezier_windows",
+      "objects": 83,
+      "points": 3656,
+      "trims": 83,
+      "jumps": 106,
+      "warnings": 6,
+      "errors": 0,
+      "hotspot_mm2": 4,
+      "missing_percent": 36.538,
+      "lost_detail_percent": 2.369,
+      "wrong_colour_percent": 6.613,
+      "real_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "diagnostic_only": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "bezier_windows_foam",
+      "objects": 91,
+      "points": 4067,
+      "trims": 92,
+      "jumps": 119,
+      "warnings": 5,
+      "errors": 0,
+      "hotspot_mm2": 2,
+      "missing_percent": 32.805,
+      "lost_detail_percent": 3.209,
+      "wrong_colour_percent": 9.497,
+      "real_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "diagnostic_only": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "bezier_windows_cloud",
+      "objects": 87,
+      "points": 4062,
+      "trims": 85,
+      "jumps": 104,
+      "warnings": 4,
+      "errors": 0,
+      "hotspot_mm2": 7,
+      "missing_percent": 32.012,
+      "lost_detail_percent": 3.134,
+      "wrong_colour_percent": 9.499,
+      "real_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "diagnostic_only": true,
+      "artistic_verdict": "REJECTED"
+    }
+  ],
+  "mcp_executed": [
+    "digitize_guide",
+    "project_operations",
+    "semantic_validate",
+    "project_new",
+    "semantic_import dry_run/apply",
+    "project_apply import_svg dry_run/apply",
+    "project_apply set_source_image",
+    "project_apply set_finishing bridge12",
+    "project_checkpoint",
+    "semantic_map",
+    "project_inspect",
+    "project_report",
+    "project_check",
+    "project_density",
+    "project_fabric_risk",
+    "project_fidelity",
+    "project_render true PNG",
+    "project_save OSP",
+    "project_export DST",
+    "project_satin_compare skeleton/parallel_sweep/medial_axis",
+    "project_apply auto_satin dry_run/apply",
+    "project_apply directional_guides dry_run/apply",
+    "semantic_replace dry_run/apply",
+    "project_apply set_params dry_run/apply",
+    "project_restore"
+  ],
+  "retouches": {
+    "baseline": "bezier_windows_foam",
+    "crest_mid_coverage_percent": {
+      "skeleton": 99.573,
+      "parallel_sweep": 99.288,
+      "medial_axis": 98.405
+    },
+    "four_windows_satinability": "Unsuitable",
+    "tested": "3 crest satins and 3 gallery satins rendered; tatami vs directional on same shaft, semantic_replace ivory glazing, set_params gallery; all rejected",
+    "restored_osp_byte_identical": true
+  },
+  "quality": {
+    "gate_A": "FAILED",
+    "artistic_verdict": "REJECTED",
+    "machine_tested": false,
+    "independent_rating": false,
+    "fidelity_scope": "crop includes intentionally unstitched context, not comparable to global scene"
+  },
+  "private_archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-25/phare-bezier-fenetres-ecume-mcp-1205-private.zip",
+    "library_file_id": "libfile_90c1b0e5e3408191a43ac8ba0c077de5",
+    "size_bytes": 27087721,
+    "sha256": "861e3aa38b2096a1f2059d286592a518595cbba709aa7ba45874d8156bb52dba",
+    "rematerialized_sha_verified": true,
+    "zip_integrity_verified": true
+  },
+  "github_pixels_private": true,
+  "next_hypothesis": "Restore source-specific foam branching and lantern glass highlights; use few coherent Bézier carrier surfaces with fine open running source edge paths, not three over-smooth dark satin bands; preserve protected windows and source gallery 3D. Gate A strict; no full-scene integration until visual acceptance."
+}
