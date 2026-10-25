@@ -7727,6 +7727,8 @@ void MainWindow::buildPropertiesPanel() {
             &MainWindow::convertToDirectional);
     connect(propertiesPanel_, &PropertiesPanel::convertToContourFillRequested, this,
             &MainWindow::convertToContourFill);
+    connect(propertiesPanel_, &PropertiesPanel::convertToFillKindRequested, this,
+            &MainWindow::convertToFillKind);
     connect(propertiesPanel_, &PropertiesPanel::createBorderSatinRequested, this,
             &MainWindow::createBorderSatin);
     connect(propertiesPanel_, &PropertiesPanel::borderSatinEdited, this,
@@ -8175,13 +8177,15 @@ const document::EmbroideryObject* MainWindow::orderRowObject(int row) const {
 }
 
 int MainWindow::stitchTypeIndex(const document::EmbroideryObject& object) {
-    return object.is_tatami()                                    ? 1
-           : object.is_satin() || object.is_auto_satin()         ? 2
-           : object.is_directional() || object.is_contour_fill() ? 3
-           : object.is_blanket()                                 ? 4
-           : object.is_motif_run()                               ? 5
-           : object.is_motif_fill()                              ? 6
-                                                                 : 0;
+    return object.is_tatami()                            ? 1
+           : object.is_satin() || object.is_auto_satin() ? 2
+           : object.is_directional() || object.is_contour_fill() || object.is_radial_fill() ||
+                   object.is_spiral_fill() || object.is_crosshatch_fill()
+               ? 3
+           : object.is_blanket()    ? 4
+           : object.is_motif_run()  ? 5
+           : object.is_motif_fill() ? 6
+                                    : 0;
 }
 
 double MainWindow::regionAreaMm2(const document::EmbroideryObject& object) const {

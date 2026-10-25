@@ -449,6 +449,30 @@ json params_to_json(const document::StitchParams& params) {
                      {"stitchLength", p.stitch_length.value},
                      {"minLength", p.min_length.value},
                      {"hiddenUnderpath", p.hidden_underpath}};
+            } else if constexpr (std::is_same_v<T, document::RadialFillParams> ||
+                                 std::is_same_v<T, document::SpiralFillParams>) {
+                // HP-STI-008 / 009 : mêmes clés, `type` distinct.
+                j = {{"type",
+                      std::is_same_v<T, document::RadialFillParams> ? "radialFill" : "spiralFill"},
+                     {"rowSpacing", p.row_spacing.value},
+                     {"stitchLength", p.stitch_length.value},
+                     {"minLength", p.min_length.value},
+                     {"inset", p.inset.value},
+                     {"hiddenUnderpath", p.hidden_underpath}};
+                if (p.center) {
+                    j["center"] = {{"x", p.center->x.value}, {"y", p.center->y.value}};
+                }
+                if constexpr (std::is_same_v<T, document::SpiralFillParams>) {
+                    j["clockwise"] = p.clockwise;
+                }
+            } else if constexpr (std::is_same_v<T, document::CrosshatchFillParams>) {
+                j = {{"type", "crosshatchFill"},
+                     {"angle", p.angle.radians},
+                     {"layers", p.layers},
+                     {"rowSpacing", p.row_spacing.value},
+                     {"stitchLength", p.stitch_length.value},
+                     {"inset", p.inset.value},
+                     {"hiddenUnderpath", p.hidden_underpath}};
             }
             return j;
         },
@@ -841,6 +865,43 @@ Result<document::StitchParams> params_from_json(const json& j) {
             Micrometers{std::clamp(j.value("stitchLength", p.stitch_length.value), 1'000, 7'000)};
         p.min_length = Micrometers{std::clamp(j.value("minLength", p.min_length.value), 0, 7'000)};
         p.hidden_underpath = j.value("hiddenUnderpath", p.hidden_underpath);
+        return document::StitchParams{p};
+    }
+    if (type == "radialFill" || type == "spiralFill") {
+        // HP-STI-008 / 009 : clés optionnelles (défauts du modèle), valeurs bornées.
+        const auto common = [&](auto& p) {
+            p.row_spacing = Micrometers{std::clamp(j.value("rowSpacing", 400), 100, 10'000)};
+            p.stitch_length = Micrometers{std::clamp(j.value("stitchLength", 3'000), 1'000, 7'000)};
+            p.min_length = Micrometers{std::clamp(j.value("minLength", 500), 0, 7'000)};
+            p.inset = Micrometers{std::clamp(j.value("inset", 200), 0, 10'000)};
+            p.hidden_underpath = j.value("hiddenUnderpath", true);
+            if (j.contains("center")) {
+                p.center = Vec2um{Micrometers{j.at("center").at("x")},
+                                  Micrometers{j.at("center").at("y")}};
+            }
+        };
+        if (type == "radialFill") {
+            document::RadialFillParams p;
+            common(p);
+            return document::StitchParams{p};
+        }
+        document::SpiralFillParams p;
+        common(p);
+        p.clockwise = j.value("clockwise", false);
+        return document::StitchParams{p};
+    }
+    if (type == "crosshatchFill") {
+        document::CrosshatchFillParams p;
+        const double angle = j.value("angle", 0.0);
+        if (!std::isfinite(angle)) {
+            return fail(ErrorCategory::InvalidFile, "crosshatchFill : angle invalide");
+        }
+        p.angle = Angle{angle};
+        p.layers = std::clamp(j.value("layers", 2), 2, 3);
+        p.row_spacing = Micrometers{std::clamp(j.value("rowSpacing", 1'500), 300, 10'000)};
+        p.stitch_length = Micrometers{std::clamp(j.value("stitchLength", 3'000), 1'000, 7'000)};
+        p.inset = Micrometers{std::clamp(j.value("inset", 200), 0, 10'000)};
+        p.hidden_underpath = j.value("hiddenUnderpath", true);
         return document::StitchParams{p};
     }
     return fail(ErrorCategory::InvalidFile, "Type de point inconnu : " + type);

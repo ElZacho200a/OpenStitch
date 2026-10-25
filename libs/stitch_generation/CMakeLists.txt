@@ -22,6 +22,9 @@ add_library(openstitch_stitch_generation
     src/contour_fill.cpp
     src/motif_run.cpp
     src/motif_fill.cpp
+    src/radial_fill.cpp
+    src/spiral_fill.cpp
+    src/crosshatch_fill.cpp
 )
 add_library(openstitch::stitch_generation ALIAS openstitch_stitch_generation)
 

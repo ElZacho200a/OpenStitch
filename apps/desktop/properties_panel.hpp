@@ -184,6 +184,8 @@ signals:
     void convertToDirectionalRequested(ObjectId id);
     // Bouton « Convertir en remplissage concentrique » (HP-STI-007).
     void convertToContourFillRequested(ObjectId id);
+    // Radial (0), spirale (1) ou croisé (2) : HP-STI-008 / 009 / 014.
+    void convertToFillKindRequested(ObjectId id, int kind);
     // Bouton « Éditer les guides » d'un remplissage directionnel : active
     // l'outil de guides du canevas sur cet objet.
     void editDirectionGuidesRequested(ObjectId id);

@@ -290,9 +290,9 @@ std::array<std::uint8_t, 3> parse_hex_color(const std::string& text) {
 }
 
 const char* stitch_type_name(const document::StitchParams& p) {
-    static constexpr const char* names[] = {"running",      "tatami",     "satin",
-                                            "directional",  "auto_satin", "blanket",
-                                            "contour_fill", "motif_run",  "motif_fill"};
+    static constexpr const char* names[] = {
+        "running",      "tatami",    "satin",      "directional", "auto_satin",  "blanket",
+        "contour_fill", "motif_run", "motif_fill", "radial_fill", "spiral_fill", "crosshatch_fill"};
     return names[p.index()];
 }
 
@@ -932,6 +932,56 @@ const std::vector<Field<document::MotifFillParams>>& fields_of<document::MotifFi
     return fields;
 }
 
+template <>
+const std::vector<Field<document::RadialFillParams>>& fields_of<document::RadialFillParams>() {
+    using P = document::RadialFillParams;
+    static const auto fields = [] {
+        std::vector<Field<P>> v;
+        v.push_back(mm_field<P>("row_spacing_mm", &P::row_spacing, 0.1, 10.0));
+        v.push_back(mm_field<P>("stitch_length_mm", &P::stitch_length, 1.0, 7.0));
+        v.push_back(mm_field<P>("min_length_mm", &P::min_length, 0.0, 7.0));
+        v.push_back(mm_field<P>("inset_mm", &P::inset, 0.0, 10.0));
+        v.push_back(point_field<P>("center_mm", &P::center));
+        v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
+        return v;
+    }();
+    return fields;
+}
+
+template <>
+const std::vector<Field<document::SpiralFillParams>>& fields_of<document::SpiralFillParams>() {
+    using P = document::SpiralFillParams;
+    static const auto fields = [] {
+        std::vector<Field<P>> v;
+        v.push_back(mm_field<P>("row_spacing_mm", &P::row_spacing, 0.1, 10.0));
+        v.push_back(mm_field<P>("stitch_length_mm", &P::stitch_length, 1.0, 7.0));
+        v.push_back(mm_field<P>("min_length_mm", &P::min_length, 0.0, 7.0));
+        v.push_back(mm_field<P>("inset_mm", &P::inset, 0.0, 10.0));
+        v.push_back(point_field<P>("center_mm", &P::center));
+        v.push_back(bool_field<P>("clockwise", &P::clockwise));
+        v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
+        return v;
+    }();
+    return fields;
+}
+
+template <>
+const std::vector<Field<document::CrosshatchFillParams>>&
+fields_of<document::CrosshatchFillParams>() {
+    using P = document::CrosshatchFillParams;
+    static const auto fields = [] {
+        std::vector<Field<P>> v;
+        v.push_back(deg_field<P>("angle_deg", &P::angle, -360.0, 360.0));
+        v.push_back(int_field<P>("layers", &P::layers, 2, 3));
+        v.push_back(mm_field<P>("row_spacing_mm", &P::row_spacing, 0.3, 10.0));
+        v.push_back(mm_field<P>("stitch_length_mm", &P::stitch_length, 1.0, 7.0));
+        v.push_back(mm_field<P>("inset_mm", &P::inset, 0.0, 10.0));
+        v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
+        return v;
+    }();
+    return fields;
+}
+
 // Types de points (noms) qui possèdent le champ `name`.
 std::vector<std::string> types_having(const std::string& name) {
     std::vector<std::string> out;
@@ -962,6 +1012,15 @@ std::vector<std::string> types_having(const std::string& name) {
     if (find_field(fields_of<document::MotifFillParams>(), name) != nullptr) {
         out.emplace_back("motif_fill");
     }
+    if (find_field(fields_of<document::RadialFillParams>(), name) != nullptr) {
+        out.emplace_back("radial_fill");
+    }
+    if (find_field(fields_of<document::SpiralFillParams>(), name) != nullptr) {
+        out.emplace_back("spiral_fill");
+    }
+    if (find_field(fields_of<document::CrosshatchFillParams>(), name) != nullptr) {
+        out.emplace_back("crosshatch_fill");
+    }
     return out;
 }
 
@@ -976,7 +1035,11 @@ std::string params_catalog_text() {
     out += "blanket : " + join(field_names(fields_of<document::BlanketStitchParams>())) + " ; ";
     out += "contour_fill : " + join(field_names(fields_of<document::ContourFillParams>())) + " ; ";
     out += "motif_run : " + join(field_names(fields_of<document::MotifRunParams>())) + " ; ";
-    out += "motif_fill : " + join(field_names(fields_of<document::MotifFillParams>())) + ". ";
+    out += "motif_fill : " + join(field_names(fields_of<document::MotifFillParams>())) + " ; ";
+    out += "radial_fill : " + join(field_names(fields_of<document::RadialFillParams>())) + " ; ";
+    out += "spiral_fill : " + join(field_names(fields_of<document::SpiralFillParams>())) + " ; ";
+    out += "crosshatch_fill : " + join(field_names(fields_of<document::CrosshatchFillParams>())) +
+           ". ";
     out += "Suffixe _mm = millimètres, _deg = degrés ; énumérations en chaîne";
     return out;
 }

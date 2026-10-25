@@ -48,6 +48,9 @@ QString type_label(const document::EmbroideryObject& e) {
            : e.is_contour_fill()               ? QObject::tr("Concentrique")
            : e.is_motif_run()                  ? QObject::tr("Motif")
            : e.is_motif_fill()                 ? QObject::tr("Remplissage à motif")
+           : e.is_radial_fill()                ? QObject::tr("Radial")
+           : e.is_spiral_fill()                ? QObject::tr("Spirale")
+           : e.is_crosshatch_fill()            ? QObject::tr("Croisé")
            : e.is_satin() || e.is_auto_satin() ? QObject::tr("Satin")
                                                : QObject::tr("Contour");
 }

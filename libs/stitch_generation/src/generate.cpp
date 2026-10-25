@@ -16,14 +16,17 @@
 #include "openstitch/stitch_generation/auto_satin_engine.hpp"
 #include "openstitch/stitch_generation/blanket_stitch.hpp"
 #include "openstitch/stitch_generation/contour_fill.hpp"
+#include "openstitch/stitch_generation/crosshatch_fill.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 #include "openstitch/stitch_generation/join.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
 #include "openstitch/stitch_generation/motif_fill.hpp"
 #include "openstitch/stitch_generation/motif_run.hpp"
+#include "openstitch/stitch_generation/radial_fill.hpp"
 #include "openstitch/stitch_generation/routing.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
+#include "openstitch/stitch_generation/spiral_fill.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
 #include "openstitch/stitch_generation/underlay_auto.hpp"
 
@@ -813,10 +816,12 @@ void generate_contour(stitch::StitchSequence& sequence, const document::VectorOb
     }
 }
 
-// Remplissage à motif (HP-STI-006) : même enveloppe que le remplissage concentrique.
-void generate_motif_fill(stitch::StitchSequence& sequence, const document::VectorObject& source,
-                         const document::EmbroideryObject& object,
-                         const document::MotifFillParams& params) {
+// Remplissages radial / spirale / croisé (HP-STI-008/009/014) : même enveloppe que le concentrique
+// (retrait de bord, îlots dans l'ordre de couture, liaisons longues cachées), sans sous-couche.
+template <class Params, class Fill>
+void generate_simple_fill(stitch::StitchSequence& sequence, const document::VectorObject& source,
+                          const document::EmbroideryObject& object, const Params& params,
+                          Fill&& fill) {
     for (const geometry::PathSet& region :
          fill_regions_in_sewing_order(sequence, source, params.inset)) {
         std::optional<FillLinker> linker;
@@ -825,7 +830,7 @@ void generate_motif_fill(stitch::StitchSequence& sequence, const document::Vecto
                            Micrometers{std::clamp(params.stitch_length.value, 1'000, 7'000)},
                            Micrometers{600});
         }
-        emit_fill(sequence, fill_motif(region, params), object.id, linker ? &*linker : nullptr);
+        emit_fill(sequence, fill(region, params), object.id, linker ? &*linker : nullptr);
     }
 }
 
@@ -1016,7 +1021,13 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                         }
                     }
                 } else if constexpr (std::is_same_v<T, document::MotifFillParams>) {
-                    generate_motif_fill(chunk, *unit.source, object, params);
+                    generate_simple_fill(chunk, *unit.source, object, params, fill_motif);
+                } else if constexpr (std::is_same_v<T, document::RadialFillParams>) {
+                    generate_simple_fill(chunk, *unit.source, object, params, fill_radial);
+                } else if constexpr (std::is_same_v<T, document::SpiralFillParams>) {
+                    generate_simple_fill(chunk, *unit.source, object, params, fill_spiral);
+                } else if constexpr (std::is_same_v<T, document::CrosshatchFillParams>) {
+                    generate_simple_fill(chunk, *unit.source, object, params, fill_crosshatch);
                 }
             },
             object.params);
