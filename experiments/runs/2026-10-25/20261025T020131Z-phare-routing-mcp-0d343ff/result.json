@@ -1,0 +1,169 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261025T020131Z-phare-routing-mcp-0d343ff",
+  "timestamp_utc": "2026-10-25T02:06:07Z",
+  "source_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+  "source_zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+  "source_dimensions_px": [
+    1536,
+    961
+  ],
+  "hoop_mm": [
+    390,
+    268
+  ],
+  "motif_mm": [
+    370,
+    231.49088541666666
+  ],
+  "main_reference": "520bcb4741062379225927ea6e09e3b8a9bad6ab",
+  "engine": "openstitch-mcp 1.1.0",
+  "engine_archive_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+  "method": "Three actually applied source-derived preparations from vector_balanced masks: unchanged source-aligned carrier baseline, source-dark-pixel repairs to 4 windows, repairs to windows+lantern+gallery+dome. Then controlled MCP set_finishing hidden-travel underlays/routing without new tatami islands. Visual gate A failed; imports diagnostic only.",
+  "variants": [
+    {
+      "name": "route_protected",
+      "regions": 69,
+      "components": 322,
+      "objects": 593,
+      "stitches": 134332,
+      "trims": 1464,
+      "jumps": 1754,
+      "color_changes": 49,
+      "hotspot_mm2": 57,
+      "warnings": 51,
+      "errors": 0,
+      "fidelity_missing_pct": 4.55,
+      "fidelity_lost_detail_pct": 4.288,
+      "fidelity_wrong_colour_pct": 5.278,
+      "real_preview": true,
+      "verdict": "rejected"
+    },
+    {
+      "name": "route_windows",
+      "regions": 69,
+      "components": 322,
+      "objects": 593,
+      "stitches": 132239,
+      "trims": 1163,
+      "jumps": 1750,
+      "color_changes": 49,
+      "hotspot_mm2": 48,
+      "warnings": 51,
+      "errors": 0,
+      "fidelity_missing_pct": 4.547,
+      "fidelity_lost_detail_pct": 4.303,
+      "real_preview": true,
+      "verdict": "rejected"
+    },
+    {
+      "name": "route_architecture",
+      "regions": 69,
+      "components": 325,
+      "objects": 594,
+      "stitches": 132021,
+      "trims": 1095,
+      "jumps": 1751,
+      "color_changes": 49,
+      "hotspot_mm2": 41,
+      "warnings": 52,
+      "errors": 0,
+      "long_moves_without_trim": 1,
+      "fidelity_missing_pct": 4.539,
+      "fidelity_lost_detail_pct": 4.304,
+      "real_preview": true,
+      "verdict": "rejected"
+    }
+  ],
+  "controlled_routing_same_geometry": {
+    "baseline": {
+      "objects": 593,
+      "stitches": 134332,
+      "trims": 1464,
+      "hotspot_mm2": 57,
+      "long_moves_without_trim": 0
+    },
+    "permissive": {
+      "objects": 593,
+      "stitches": 131830,
+      "trims": 1093,
+      "hotspot_mm2": 37,
+      "long_moves_without_trim": 1,
+      "warnings": 52
+    },
+    "bridge12": {
+      "objects": 593,
+      "stitches": 131823,
+      "trims": 1099,
+      "hotspot_mm2": 37,
+      "long_moves_without_trim": 0,
+      "warnings": 51,
+      "errors": 0,
+      "fidelity_missing_pct": 4.546,
+      "fidelity_lost_detail_pct": 4.288,
+      "fidelity_wrong_colour_pct": 5.28
+    },
+    "bridge8": {
+      "stitches": 131831,
+      "trims": 1100,
+      "hotspot_mm2": 37,
+      "long_moves_without_trim": 0
+    },
+    "bridge16": {
+      "stitches": 131831,
+      "trims": 1097,
+      "hotspot_mm2": 37,
+      "long_moves_without_trim": 0
+    }
+  },
+  "mcp_calls": [
+    "initialize",
+    "digitize_guide",
+    "project_operations",
+    "semantic_validate",
+    "project_new",
+    "semantic_import dry_run/apply",
+    "project_checkpoint",
+    "semantic_map",
+    "project_inspect",
+    "project_apply set_source_image dry_run/apply",
+    "project_apply set_finishing dry_run/apply",
+    "project_report",
+    "project_check",
+    "project_density",
+    "project_fabric_risk",
+    "project_fidelity",
+    "project_render genuine PNG",
+    "project_save",
+    "project_export",
+    "project_satin_compare skeleton/parallel_sweep/medial_axis",
+    "project_apply auto_satin dry_run/apply",
+    "project_apply directional_guides dry_run/apply",
+    "semantic_replace dry_run/apply",
+    "project_apply optimize_order layered dry_run/apply",
+    "project_compare",
+    "project_restore"
+  ],
+  "retouches": {
+    "satin_first_window_coverage_pct": {
+      "skeleton": 97.31,
+      "parallel_sweep": 96.26,
+      "medial_axis": 93.46
+    },
+    "directional": "applied, real preview, rejected",
+    "semantic_replace": "applied, real preview, rejected (lost foam)",
+    "optimize_layered": "49 to 15 color changes, trims 1095 to 1097, rejected",
+    "baseline_restored_byte_identical": true
+  },
+  "gate_A": "failed; all imports diagnostic",
+  "overall_verdict": "ARTISTICALLY REJECTED: sea and foam oversimplified, lighthouse noisy, 51 warnings; safe hidden travel is a technical routing gain only. No physical machine test or independent grade.",
+  "private_archive": {
+    "path": "/OpenStitch/Experiments/2026-10-25/phare-routing-mcp-0310-private.zip",
+    "library_file_id": "libfile_29400e131da08191ac09672100a9a94c",
+    "size_bytes": 56817775,
+    "sha256": "a4b4e88710c08df5ce848088edb627e307b9050f493a4e3929b674b9fd51ee8b",
+    "rematerialized_and_verified": true
+  },
+  "github_pixels_private": true,
+  "next_hypothesis": "Independent lighthouse sub-benchmark: reconstruct dome, glass, gallery, 4 windows source-faithfully before scene composition. Rebuild continuous foam with explicit occlusions, preserve 593-object geometry where possible. Keep hidden-travel bridge12 as safe technical baseline; do not use routing to excuse visual gate A failure."
+}
