@@ -22,9 +22,7 @@
 #include <optional>
 
 #include "app_settings.hpp"
-#include "simulation_nav_bar.hpp"
 #include "main_window.hpp"
-#include "simulation_nav_bar.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/thread_commands.hpp"
@@ -33,6 +31,7 @@
 #include "openstitch/thread_palette/chart_import.hpp"
 #include "openstitch/thread_palette/color_reduction.hpp"
 #include "responsive.hpp"
+#include "simulation_nav_bar.hpp"
 #include "thread_panel.hpp"
 #include "thread_strip.hpp"
 

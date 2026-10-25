@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
-#include <string>
 #include <algorithm>
 #include <cstddef>
 #include <numeric>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "openstitch/core/ids.hpp"

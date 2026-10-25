@@ -761,9 +761,10 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
         std::uint64_t only{0};
     };
     auto exArgs = std::make_shared<ExportArgs>();
-    c = project->add_subcommand("export", "Exporte un projet en broderie machine (dst, pes, jef, vp3, "
-                                          "exp) ou en SVG ; les points sont régénérés depuis le "
-                                          ".osp (mêmes octets que osp2dst)");
+    c = project->add_subcommand("export",
+                                "Exporte un projet en broderie machine (dst, pes, jef, vp3, "
+                                "exp) ou en SVG ; les points sont régénérés depuis le "
+                                ".osp (mêmes octets que osp2dst)");
     c->add_option("osp", exArgs->osp, "Projet .osp")->required();
     c->add_option("--output,-o", exArgs->out, "Fichier à produire (format déduit de l'extension)")
         ->required();
