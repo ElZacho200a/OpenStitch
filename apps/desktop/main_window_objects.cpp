@@ -357,8 +357,7 @@ std::vector<ObjectId> MainWindow::selectableObjectsAt(QPointF posMm) const {
     const double pxPerMm = std::max(view_->pixelsPerMm(), 1e-6);
     const double toleranceMm = std::max(0.4, 4.0 / pxPerMm);
     return objectsAtPointMm(
-        project_, posMm, toleranceMm,
-        [this](const document::VectorObject& object) {
+        project_, posMm, toleranceMm, [this](const document::VectorObject& object) {
             return vectorPassesFilter(object) && !project_.shapeEditLocked(object.id);
         });
 }

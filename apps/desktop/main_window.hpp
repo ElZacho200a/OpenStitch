@@ -25,7 +25,6 @@
 
 #include "auto_satin_strategy_ui.hpp"
 #include "interaction_map.hpp"
-#include "view_display_state.hpp"
 #include "openstitch/commands/transform_ops.hpp"
 #include "openstitch/commands/undo_stack.hpp"
 #include "openstitch/commands/vector_ops.hpp"
@@ -38,6 +37,7 @@
 #include "openstitch/thread_palette/thread_library.hpp"
 #include "realistic_view_state.hpp"
 #include "tools.hpp"
+#include "view_display_state.hpp"
 
 class QGraphicsScene;
 class QAbstractGraphicsShapeItem;

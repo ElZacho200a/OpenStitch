@@ -120,7 +120,8 @@ PlacementTemplate make_placement_template(const stitch::StitchSequence& sequence
             continue;
         }
         const P64 cur{c.pos.x.value - cx, -(c.pos.y.value - cy)};
-        if (c.type == CommandType::Stitch && hasPrev) {
+        // Pas de segment de longueur nulle (saut puis premier point au même endroit).
+        if (c.type == CommandType::Stitch && hasPrev && (prev.x != cur.x || prev.y != cur.y)) {
             segs.emplace_back(prev, cur);
         }
         prev = cur;

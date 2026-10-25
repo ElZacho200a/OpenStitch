@@ -108,7 +108,7 @@ TEST_CASE("grid plan is automatic, custom or hidden", "[stitch_render][view]") {
 
 TEST_CASE("grid positions are multiples of the step and bounded", "[stitch_render][view]") {
     const auto xs = grid_positions(2.0, -3.0, 5.0);
-    REQUIRE(xs.size() == 5);
+    REQUIRE(xs.size() == 4); // multiples de 2 dans [-3 ; 5] : -2, 0, 2, 4
     CHECK(xs.front() == -2.0);
     CHECK(xs.back() == 4.0);
     CHECK(grid_positions(0.0, 0.0, 10.0).empty());

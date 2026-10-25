@@ -64,8 +64,6 @@
 #include <variant>
 
 #include "ai_preferences.hpp"
-#include "general_preferences_dialog.hpp"
-#include "length_units.hpp"
 #include "ai_preferences_dialog.hpp"
 #include "ai_segmentation_dialog.hpp"
 #include "app_language.hpp"
@@ -79,10 +77,12 @@
 #include "command_palette_dialog.hpp"
 #include "document_panel.hpp"
 #include "empty_state_widget.hpp"
+#include "general_preferences_dialog.hpp"
 #include "generation_options_dialog.hpp"
 #include "help_dialogs.hpp"
 #include "help_manual.hpp"
 #include "import_dialog.hpp"
+#include "length_units.hpp"
 #include "machine_export_dialog.hpp"
 #include "node_handle.hpp"
 #include "openstitch/commands/sewing_order_commands.hpp"
@@ -1178,7 +1178,8 @@ void MainWindow::buildMenus() {
     satinAdvancedMenu->setToolTip(
         tr("Ne montre que les bords ou que les repères d'orientation — utile pour une "
            "colonne dense où les deux ensemble surchargeraient l'affichage."));
-    satinGuideModeAct_ = satinAdvancedMenu->addAction(tr("Éditer seulement les repères d'orientation du satin…"));
+    satinGuideModeAct_ =
+        satinAdvancedMenu->addAction(tr("Éditer seulement les repères d'orientation du satin…"));
     satinGuideModeAct_->setObjectName(QStringLiteral("action_satinGuideMode"));
     satinGuideModeAct_->setCheckable(true);
     satinGuideModeAct_->setToolTip(
@@ -4313,12 +4314,11 @@ void MainWindow::walkStitches(const StitchMaps& maps, int from, int to, SimWalkS
         case stitch::CommandType::Stitch:
             // On ne relie que deux points du MÊME objet (jamais entre objets).
             if (shown && state.hasPos && state.lastSource == src) {
-                const QRgb key = maps.passes.distinct_colors
-                                     ? [&] {
-                                           const auto t = stitch_render::pass_tint(cmd.pass);
-                                           return qRgb(t[0], t[1], t[2]);
-                                       }()
-                                     : maps.colorFor(src);
+                const QRgb key = maps.passes.distinct_colors ? [&] {
+                    const auto t = stitch_render::pass_tint(cmd.pass);
+                    return qRgb(t[0], t[1], t[2]);
+                }()
+                                                             : maps.colorFor(src);
                 QPainterPath& path = out.sewByColor[key];
                 path.moveTo(state.last);
                 path.lineTo(p);
@@ -5575,8 +5575,8 @@ document::EmbroideryObject* MainWindow::currentFillObject() {
 std::optional<ObjectId> MainWindow::objectAt(QPointF posMm) const {
     std::optional<ObjectId> hit;
     for (const auto& object : project_.vector_objects) {
-        if (object.visible && calqueShowsShape(object) &&
-            !project_.shapeEditLocked(object.id) && objectPainterPath(object).contains(posMm)) {
+        if (object.visible && calqueShowsShape(object) && !project_.shapeEditLocked(object.id) &&
+            objectPainterPath(object).contains(posMm)) {
             hit = object.id; // le dernier dessiné (au-dessus) gagne
         }
     }
@@ -10273,20 +10273,21 @@ void MainWindow::onSelectionRectangle(QRectF rectMm, SelectMode mode, bool cross
         // Même règle que le rendu : un objet masqué par les filtres d'affichage (type, couleur,
         // taille) n'est pas saisi par le cadre, sauf s'il est déjà sélectionné (donc affiché).
         const std::vector<ObjectId> selected = currentSelection().objects;
-        objectHits.erase(
-            std::remove_if(objectHits.begin(), objectHits.end(),
-                           [&](ObjectId id) {
-                               const document::VectorObject* vec = project_.findObject(id);
-                               // Calque verrouillé (HP-OBJ-024) : jamais saisi par le cadre.
-                               if (vec != nullptr && project_.shapeEditLocked(id)) {
-                                   return true;
-                               }
-                               return vec != nullptr &&
-                                      std::find(selected.begin(), selected.end(), id) ==
-                                          selected.end() &&
-                                      !vectorPassesFilter(*vec);
-                           }),
-            objectHits.end());
+        objectHits.erase(std::remove_if(objectHits.begin(), objectHits.end(),
+                                        [&](ObjectId id) {
+                                            const document::VectorObject* vec =
+                                                project_.findObject(id);
+                                            // Calque verrouillé (HP-OBJ-024) : jamais saisi par le
+                                            // cadre.
+                                            if (vec != nullptr && project_.shapeEditLocked(id)) {
+                                                return true;
+                                            }
+                                            return vec != nullptr &&
+                                                   std::find(selected.begin(), selected.end(),
+                                                             id) == selected.end() &&
+                                                   !vectorPassesFilter(*vec);
+                                        }),
+                         objectHits.end());
     }
     const bool regionsUsable = currentTool_ == Tool::Select && !mergeMode_ &&
                                showSegAct_->isChecked() && project_.segmentation &&

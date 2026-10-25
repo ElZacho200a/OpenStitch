@@ -150,12 +150,15 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
     between_ = new QCheckBox(
         tr("Entre les objets : relier sans couper le fil si le trajet sera recouvert"), this);
     between_->setObjectName(QStringLiteral("check_exportRoutesBetween"));
-    within_ = new QCheckBox(tr("Dans un objet : relier la sous-couche au remplissage sans couper le fil"), this);
+    within_ = new QCheckBox(
+        tr("Dans un objet : relier la sous-couche au remplissage sans couper le fil"), this);
     within_->setObjectName(QStringLiteral("check_exportRoutesWithin"));
-    underlay_ = new QCheckBox(tr("Sous-couche : réordonner les passes pour réduire les sauts (invisible)"), this);
+    underlay_ = new QCheckBox(
+        tr("Sous-couche : réordonner les passes pour réduire les sauts (invisible)"), this);
     underlay_->setObjectName(QStringLiteral("check_exportRoutesUnderlay"));
     regions_ = new QCheckBox(
-        tr("Réordonner aussi les zones d'une même couleur (avancé, modifie davantage l'ordre)"), this);
+        tr("Réordonner aussi les zones d'une même couleur (avancé, modifie davantage l'ordre)"),
+        this);
     regions_->setObjectName(QStringLiteral("check_exportRoutesRegions"));
     regions_->setToolTip(
         tr("Change l'ordre de couture des objets d'une même couleur pour raccourcir les "

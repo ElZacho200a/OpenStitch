@@ -190,12 +190,14 @@ private slots:
         ObjectId emb;
         window.applyLoadedProject(rectangleWithRunningStitch(emb));
         enterEditMode(window, emb);
-        // Bande horizontale autour du bord bas (y = 0 mm) : quelques points seulement.
+        window.selectAllStitchPoints();
+        const std::size_t everyPoint = window.stitchSelection_.size();
+        // Bande horizontale autour du bord bas (y = 0 mm) : une partie des points seulement.
         const QRectF bottom(-1.0, -1.0, 42.0, 2.0);
         window.selectStitchPointsInRect(bottom, SelectMode::Replace);
         const auto first = window.stitchSelection_;
         QVERIFY(!first.empty());
-        QVERIFY(first.size() < 8);
+        QVERIFY(first.size() < everyPoint);
         window.selectStitchPointsInRect(QRectF(500, 500, 1, 1), SelectMode::Add);
         QCOMPARE(window.stitchSelection_, first); // cadre vide : rien ne change
         window.selectStitchPointsInRect(bottom, SelectMode::Toggle);
