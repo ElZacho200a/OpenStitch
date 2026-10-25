@@ -633,7 +633,7 @@ La variable d'environnement `OPENSTITCH_THREADS=1` force le calcul séquentiel (
   estimée, et **refuse avec une raison** les formes qui ne s'y prêtent pas (disque,
   forme compacte) en proposant un tatami. Le contour utilisé est celui de la région
   segmentée. **Non validé sur machine** : vérifiez le résultat avant de broder ;
-- **Convertir automatiquement en satin (expérimental)…** — **même moteur, sans fenêtre de
+- **Convertir en satin automatiquement…** — **même moteur, sans fenêtre de
   réglages** : réglages par défaut et une seule confirmation (« Créer le satin ?
   annulable »). *Choisissez « Créer un satin automatique » pour régler, « Convertir
   automatiquement » pour aller vite* ;
@@ -1057,8 +1057,19 @@ un terminal (`.\openstitch.exe 2> journal.txt` pour les garder). Pour les
 
 ## Menu Aide
 
-Le menu **Aide** compte trois entrées, chacune avec une infobulle et un texte
+Le menu **Aide** compte six entrées, chacune avec une infobulle et un texte
 d'aide dans la barre d'état :
+
+- **Tutoriel : de l'image à la broderie…** : génère une image d'exemple (un disque,
+  un rectangle et un triangle de trois couleurs, créés par le logiciel, sans fichier
+  ni droit d'auteur), l'ouvre par l'import habituel et affiche le *Guide de prise en
+  main* pour la suivre pas à pas jusqu'au fichier de broderie.
+- **Manuel d'utilisation** : ce guide, affiché dans l'application avec un champ de
+  recherche (Entrée lance la recherche).
+- **Aide sur l'outil ou le panneau actif** (**Maj+F1**) : ouvre le manuel directement à
+  la section du panneau où se trouve le focus (Propriétés, Document, Fils, Ordre de
+  couture, Analyse, Filtres, Workflow, Historique) ou, à défaut, de l'outil actif
+  (dessin, texte, règle, pipette…). **F1** reste réservé aux gestes ci-dessous.
 
 - **Guide de prise en main** : une fenêtre **non modale** (elle reste ouverte
   pendant que vous travaillez, une seule à la fois) qui déroule les six étapes de
@@ -1125,6 +1136,7 @@ la liste complète et filtrable est dans **Aide ▸ Gestes souris et clavier** (
 | I | Outil Pipette : échantillonner une couleur de l'image et choisir un fil |
 | U | Option « Tracé ouvert » (polygone et courbe non fermés) |
 | F1 | Ouvrir « Gestes souris et clavier » |
+| Maj+F1 | Aide sur l'outil ou le panneau actif (ouvre le manuel à la bonne section) |
 | Ctrl+Shift+P | Masquer / afficher les panneaux |
 | Ctrl+Shift+R | Activer / désactiver le rendu réaliste des points |
 | Ctrl+Q | Quitter |

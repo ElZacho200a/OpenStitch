@@ -82,6 +82,7 @@ class CanvasView;
 struct DensityRaster; // density_overlay.hpp
 class GesturesDialog;
 class QuickStartDialog;
+class ManualDialog;
 class PropertiesPanel;
 class DocumentPanel;
 class SegmentationColorsPanel;
@@ -108,6 +109,7 @@ class MainWindow : public QMainWindow {
     Q_OBJECT
     friend class MainWindowTest;
     friend class CreationFlowTest;
+    friend class HelpManualTest;
 
 public:
     MainWindow();
@@ -1278,6 +1280,11 @@ private:
     [[nodiscard]] QString hintsText() const { return hintsFullText_; }
     void showGesturesDialog();
     void showQuickStartDialog();
+    // Manuel en ligne (help_manual.hpp, main_window_help.cpp) : section selon le contexte.
+    void showManual(const QString& heading = {});
+    void showContextualHelp();
+    [[nodiscard]] QString contextualHelpHeading() const;
+    void startGuidedTour();
     void buildNavigationMenu(QMenu* viewMenu);
     // Rendu réaliste des points (main_window_realistic.cpp) : sous-menu
     // Affichage > Rendu réaliste, fenêtre de réglages et peinture du cache.
@@ -1478,6 +1485,7 @@ private:
                                                         ObjectId exclude) const;
     QPointer<GesturesDialog> gesturesDialog_;
     QPointer<QuickStartDialog> quickStartDialog_;
+    QPointer<ManualDialog> manualDialog_;
     QPointer<QMenu> selectBelowMenu_;
     std::vector<ObjectId> isolatedIds_;
     std::optional<document::StitchParams> styleClipboard_;
@@ -1495,6 +1503,9 @@ private:
     QAction* navTouchpadAct_{nullptr};
     QAction* helpQuickStartAct_{nullptr};
     QAction* helpGesturesAct_{nullptr};
+    QAction* helpManualAct_{nullptr};
+    QAction* helpContextAct_{nullptr};
+    QAction* helpTourAct_{nullptr};
     QAction* aboutAct_{nullptr};
     // Actions du guide de prise en main (étapes construites à partir d'elles).
     QAction* openImageAct_{nullptr};

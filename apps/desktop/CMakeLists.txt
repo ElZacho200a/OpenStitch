@@ -136,6 +136,10 @@ add_library(openstitch_desktop_widgets STATIC
     interaction_map.hpp
     help_dialogs.cpp
     help_dialogs.hpp
+help_manual.cpp
+help_manual.hpp
+help_manual.qrc
+main_window_help.cpp
     selection_hit_test.cpp
     selection_hit_test.hpp
     ui_icons.cpp
