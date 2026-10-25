@@ -80,6 +80,7 @@
 #include "empty_state_widget.hpp"
 #include "generation_options_dialog.hpp"
 #include "help_dialogs.hpp"
+#include "help_manual.hpp"
 #include "import_dialog.hpp"
 #include "machine_export_dialog.hpp"
 #include "node_handle.hpp"
@@ -1110,10 +1111,10 @@ void MainWindow::buildMenus() {
     createSatinWithSettingsAct_->setObjectName(QStringLiteral("action_createSatinWithSettings"));
     connect(createSatinWithSettingsAct_, &QAction::triggered, this,
             &MainWindow::createSatinObjectWithSettings);
-    autoSatinAct_ = embMenu->addAction(tr("Convertir automatiquement en satin (expérimental)…"));
+    autoSatinAct_ = embMenu->addAction(tr("Convertir en satin automatiquement…"));
     autoSatinAct_->setToolTip(
-        tr("Expérimental : construit le satin par squelette et traversées orientées (sans "
-           "rails à poser). Le résultat est à vérifier avant broderie."));
+        tr("Le logiciel dessine le satin tout seul, sans que vous posiez les deux bords. "
+           "Vérifiez le résultat avant de broder."));
     connect(autoSatinAct_, &QAction::triggered, this, &MainWindow::autoConvertToSatin);
     embMenu->addSeparator();
     fillAngleAct_ = embMenu->addAction(tr("&Orientation du remplissage…"));
@@ -1171,11 +1172,11 @@ void MainWindow::buildMenus() {
         satinGuideModeAct_->setChecked(on);
         railEditModeAct_->setChecked(on);
     });
-    auto* satinAdvancedMenu = embMenu->addMenu(tr("Remodelage satin (avancé)"));
+    auto* satinAdvancedMenu = embMenu->addMenu(tr("Réglages fins du satin"));
     satinAdvancedMenu->setToolTip(
-        tr("N'affiche qu'un seul des deux aspects (rails ou guides) — utile pour une "
+        tr("Ne montre que les bords ou que les repères d'orientation — utile pour une "
            "colonne dense où les deux ensemble surchargeraient l'affichage."));
-    satinGuideModeAct_ = satinAdvancedMenu->addAction(tr("Éditer seulement les guides satin…"));
+    satinGuideModeAct_ = satinAdvancedMenu->addAction(tr("Éditer seulement les repères d'orientation du satin…"));
     satinGuideModeAct_->setObjectName(QStringLiteral("action_satinGuideMode"));
     satinGuideModeAct_->setCheckable(true);
     satinGuideModeAct_->setToolTip(
@@ -1189,7 +1190,7 @@ void MainWindow::buildMenus() {
     removeSatinGuideAct_ = satinAdvancedMenu->addAction(tr("Supprimer le guide satin sélectionné"));
     removeSatinGuideAct_->setObjectName(QStringLiteral("action_removeSatinGuide"));
     connect(removeSatinGuideAct_, &QAction::triggered, this, &MainWindow::removeSelectedSatinGuide);
-    railEditModeAct_ = satinAdvancedMenu->addAction(tr("Éditer seulement les rails satin…"));
+    railEditModeAct_ = satinAdvancedMenu->addAction(tr("Éditer seulement les bords du satin…"));
     railEditModeAct_->setObjectName(QStringLiteral("action_satinRailEditMode"));
     railEditModeAct_->setCheckable(true);
     railEditModeAct_->setToolTip(
@@ -6565,6 +6566,29 @@ void MainWindow::buildHelpMenu() {
         tr("Tableau consultable des gestes souris et des raccourcis clavier"));
     connect(helpGesturesAct_, &QAction::triggered, this, &MainWindow::showGesturesDialog);
 
+    helpTourAct_ = helpMenu->addAction(tr("Tutoriel : de l'image à la broderie…"));
+    helpTourAct_->setObjectName(QStringLiteral("action_help_tutorial"));
+    helpTourAct_->setToolTip(
+        tr("Ouvre une image d'exemple et déroule le guide pas à pas jusqu'au fichier de broderie"));
+    helpTourAct_->setStatusTip(
+        tr("Tutoriel guidé avec une image d'exemple générée par le logiciel"));
+    connect(helpTourAct_, &QAction::triggered, this, &MainWindow::startGuidedTour);
+
+    helpManualAct_ = helpMenu->addAction(tr("Manuel d'utilisation"));
+    helpManualAct_->setObjectName(QStringLiteral("action_help_manual"));
+    helpManualAct_->setToolTip(tr("Le manuel complet, avec recherche, sans quitter le logiciel"));
+    helpManualAct_->setStatusTip(tr("Manuel d'utilisation consultable dans l'application"));
+    connect(helpManualAct_, &QAction::triggered, this, [this] { showManual(); });
+
+    helpContextAct_ = helpMenu->addAction(tr("Aide sur l'outil ou le panneau actif"));
+    helpContextAct_->setObjectName(QStringLiteral("action_help_context"));
+    helpContextAct_->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F1));
+    helpContextAct_->setToolTip(
+        tr("Ouvre le manuel à la section de l'outil actif ou du panneau où vous travaillez "
+           "(Maj+F1)"));
+    helpContextAct_->setStatusTip(tr("Aide contextuelle : section du manuel de l'outil actif"));
+    connect(helpContextAct_, &QAction::triggered, this, &MainWindow::showContextualHelp);
+
     aboutAct_ = helpMenu->addAction(tr("À &propos"));
     aboutAct_->setObjectName(QStringLiteral("action_about"));
     aboutAct_->setToolTip(tr("Version, licence et code source"));
@@ -6920,7 +6944,7 @@ void MainWindow::updateContextToolbar() {
         contextToolbar_->addAction(stitchEditModeAct_);
         if (emb->is_satin()) {
             // Un seul bouton visible par défaut (rails + guides ensemble) ;
-            // le sous-menu Broderie ▸ Remodelage satin (avancé) reste
+            // le sous-menu Broderie ▸ Réglages fins du satin reste
             // disponible pour n'afficher qu'un seul des deux aspects.
             contextToolbar_->addAction(satinEditModeAct_);
             if (satinGuideModeAct_->isChecked()) {
