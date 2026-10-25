@@ -63,6 +63,8 @@
 #include <variant>
 
 #include "ai_preferences.hpp"
+#include "general_preferences_dialog.hpp"
+#include "length_units.hpp"
 #include "ai_preferences_dialog.hpp"
 #include "ai_segmentation_dialog.hpp"
 #include "app_language.hpp"
@@ -647,8 +649,8 @@ MainWindow::MainWindow() {
     }
     setTool(Tool::Select);
     connect(view_, &CanvasView::cursorMovedMm, this, [this](QPointF mm) {
-        cursorLabel_->setText(
-            tr("x : %1 mm   y : %2 mm").arg(mm.x(), 0, 'f', 1).arg(mm.y(), 0, 'f', 1));
+        // HP-UX-008 : coordonnées dans l'unité d'affichage choisie (mm ou pouces).
+        cursorLabel_->setText(length_units::formatPoint(mm.x(), mm.y(), length_units::current()));
     });
     connect(view_, &CanvasView::cropSelectedMm, this, &MainWindow::onCropSelected);
     connect(view_, &CanvasView::boxDrawnMm, this, &MainWindow::onBoxDrawn);
@@ -739,7 +741,7 @@ MainWindow::MainWindow() {
     // HP-FILE-004 : autosave périodique, démarré dès l'ouverture (protège
     // dès avant la première modification, pas seulement après).
     autosaveTimer_ = new QTimer(this);
-    autosaveTimer_->setInterval(120000); // ASM-S11-01 : 2 min, non configurable en P0
+    autosaveTimer_->setInterval(loadGeneralPreferences().autosaveMinutes * 60'000); // HP-UX-007
     connect(autosaveTimer_, &QTimer::timeout, this, &MainWindow::onAutosaveTick);
     autosaveTimer_->start();
     // Différé après le premier passage de la boucle d'évènements (donc après
@@ -834,6 +836,11 @@ void MainWindow::buildMenus() {
     auto* importDstAct = fileMenu->addAction(tr("&Importer une broderie machine…"));
     connect(importDstAct, &QAction::triggered, this, &MainWindow::importDst);
     fileMenu->addSeparator();
+    insertDesignAct_ = fileMenu->addAction(tr("Insérer un design…"));
+    insertDesignAct_->setObjectName(QStringLiteral("action_insertDesign"));
+    insertDesignAct_->setToolTip(tr("Ajoute le contenu d'un projet .osp ou d'une broderie machine "
+                                    "au projet ouvert (annulable en un pas)."));
+    connect(insertDesignAct_, &QAction::triggered, this, &MainWindow::insertDesign);
     auto* importDxfAct = fileMenu->addAction(tr("Importer un &DXF…"));
     connect(importDxfAct, &QAction::triggered, this, &MainWindow::importDxf);
     exportDxfAct_ = fileMenu->addAction(tr("Exporter en D&XF…"));
@@ -891,6 +898,9 @@ void MainWindow::buildMenus() {
     editMenu->addSeparator();
     auto* aiPrefsAct = editMenu->addAction(tr("Préférences — &Intelligence artificielle…"));
     connect(aiPrefsAct, &QAction::triggered, this, &MainWindow::openAiPreferences);
+    auto* generalPrefsAct = editMenu->addAction(tr("Préférences générales…"));
+    generalPrefsAct->setObjectName(QStringLiteral("action_generalPreferences"));
+    connect(generalPrefsAct, &QAction::triggered, this, &MainWindow::openGeneralPreferences);
     auto* settingsAct = editMenu->addAction(tr("Paramètres…"));
     settingsAct->setObjectName(QStringLiteral("action_settings"));
     settingsAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Comma));
@@ -8994,6 +9004,9 @@ QString MainWindow::suggestedFilePath(const QString& suffix) const {
     } else {
         QSettings settings;
         dir = settings.value(QStringLiteral("files/lastDir")).toString();
+        if (dir.isEmpty()) { // HP-UX-007 : dossier de travail des préférences générales
+            dir = settings.value(QStringLiteral("prefs/workingDirectory")).toString();
+        }
     }
     if (dir.isEmpty() || !QFileInfo(dir).isDir()) {
         dir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);

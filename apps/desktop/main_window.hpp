@@ -182,6 +182,11 @@ private slots:
     void warnAboutSkippedSvgFeatures(const std::vector<std::string>& warnings);
     void openAiPreferences();
     void openSettings(); // onglet « Paramètres » (EditSettings, fichier INI)
+    // HP-UX-007/008 : préférences générales (unités, grille, autosave, dossier de travail).
+    void openGeneralPreferences();
+    // HP-FILE-007 : insère un .osp / une broderie machine dans le projet ouvert (une ICommand).
+    void insertDesign();
+    bool insertDesignFile(const QString& file);
     // HP-UX-002 : création DIRECTE (sans dialogue) d'un objet par forme sélectionnée, au dernier
     // réglage mémorisé (`ui_memory::creation`). Les variantes `…WithSettings` gardent le dialogue
     // de saisie (« Créer avec réglages… »).
@@ -840,6 +845,7 @@ private:
                                                          double radiusMm) const;
     QAction* gridSnapAct_{nullptr};
     QAction* gridStepAct_{nullptr};
+    QAction* insertDesignAct_{nullptr};
     double gridStepMm_{1.0};
     QAction* outlineAct_{nullptr};
     // Sélection de nœuds et déplacement groupé (HP-VEC-017, main_window_node_select.cpp). Tous

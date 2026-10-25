@@ -10,24 +10,31 @@
 #include <cmath>
 
 #include "canvas_view.hpp"
+#include "length_units.hpp"
 
 namespace openstitch::desktop {
 
 namespace {
 
-double niceLabelStepMm(double pxPerMm) {
-    static constexpr double steps[] = {0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500};
+// Pas d'étiquette, en unité d'affichage (mm ou pouces) ; `pxPerUnit` = pixels par unité.
+double niceLabelStep(double pxPerUnit, length_units::Unit unit) {
+    static constexpr double stepsMm[] = {0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500};
+    static constexpr double stepsIn[] = {0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 50};
+    const auto& steps = unit == length_units::Unit::Inches ? stepsIn : stepsMm;
     for (const double s : steps) {
-        if (s * pxPerMm >= 45.0) { // au moins 45 px entre deux étiquettes
+        if (s * pxPerUnit >= 45.0) { // au moins 45 px entre deux étiquettes
             return s;
         }
     }
     return 1000.0;
 }
 
-QString formatMm(double mm) {
-    return (std::abs(mm - std::round(mm)) < 1e-9) ? QString::number(std::lround(mm))
-                                                  : QString::number(mm, 'f', 1);
+QString formatTick(double value, length_units::Unit unit) {
+    if (unit == length_units::Unit::Inches) {
+        return QString::number(value, 'f', 2);
+    }
+    return (std::abs(value - std::round(value)) < 1e-9) ? QString::number(std::lround(value))
+                                                        : QString::number(value, 'f', 1);
 }
 
 } // namespace
@@ -70,7 +77,10 @@ void Ruler::paintEvent(QPaintEvent* /*event*/) {
     QPainter painter(this);
     painter.fillRect(rect(), palette().window());
 
-    const double pxPerMm = view_->pixelsPerMm();
+    const length_units::Unit unit = length_units::current();
+    const double unitMm = length_units::mmPerUnit(unit);
+    // Tout le tracé se fait en unité d'affichage ; la scène, elle, reste en mm.
+    const double pxPerMm = view_->pixelsPerMm() * unitMm; // pixels par unité d'affichage
     if (pxPerMm <= 0.0) {
         return;
     }
@@ -82,7 +92,7 @@ void Ruler::paintEvent(QPaintEvent* /*event*/) {
     const int majorTick = std::max(10, thick * 10 / 26);
     const int minorTick = std::max(5, majorTick / 2);
 
-    const double labelStep = niceLabelStepMm(pxPerMm);
+    const double labelStep = niceLabelStep(pxPerMm, unit);
     const double tickStep = labelStep / 5.0;
 
     painter.setPen(palette().color(QPalette::WindowText));
@@ -92,7 +102,7 @@ void Ruler::paintEvent(QPaintEvent* /*event*/) {
 
     // Coordonnée scène (mm) aux deux extrémités du viewport.
     const QPointF sceneStart = view_->mapToScene(QPoint(0, 0));
-    const double startMm = horizontal ? sceneStart.x() : sceneStart.y();
+    const double startMm = (horizontal ? sceneStart.x() : sceneStart.y()) / unitMm;
     const double mmSpan = lengthPx / pxPerMm;
     const double endMm = startMm + mmSpan;
 
@@ -108,7 +118,7 @@ void Ruler::paintEvent(QPaintEvent* /*event*/) {
             painter.drawLine(QPointF(px, thick), QPointF(px, thick - tickLen));
             if (isLabel) {
                 painter.drawText(QRectF(px + 2, 0, labelWidth, thick - 8), Qt::AlignLeft,
-                                 formatMm(mm));
+                                 formatTick(mm, unit));
             }
         } else {
             painter.drawLine(QPointF(thick, px), QPointF(thick - tickLen, px));
@@ -119,7 +129,7 @@ void Ruler::paintEvent(QPaintEvent* /*event*/) {
                 // Repère physique : l'axe Y de la scène pointe vers le bas,
                 // la règle affiche donc -mm pour que « vers le haut » soit positif.
                 painter.drawText(QRectF(0, 0, labelWidth, labelHeight), Qt::AlignLeft,
-                                 formatMm(-mm));
+                                 formatTick(-mm, unit));
                 painter.restore();
             }
         }

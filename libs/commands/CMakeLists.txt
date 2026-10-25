@@ -8,6 +8,7 @@ add_library(openstitch_commands
     src/vector_path_commands.cpp
     src/outline_ops.cpp
     src/click_to_stitch_commands.cpp
+    src/insert_design_command.cpp
 )
 add_library(openstitch::commands ALIAS openstitch_commands)
 

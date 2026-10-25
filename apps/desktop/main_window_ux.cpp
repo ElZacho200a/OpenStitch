@@ -131,6 +131,14 @@ void MainWindow::dropEvent(QDropEvent* event) {
         return;
     }
     event->acceptProposedAction();
+    // HP-FILE-007 : Maj + dépôt d'un .osp / fichier machine = insérer dans le projet ouvert
+    // plutôt que le remplacer.
+    const QString suffix = QFileInfo(path).suffix().toLower();
+    if ((event->modifiers() & Qt::ShiftModifier) != 0 &&
+        (suffix == QLatin1String("osp") || isMachineSuffix(suffix))) {
+        QTimer::singleShot(0, this, [this, path] { (void)insertDesignFile(path); });
+        return;
+    }
     // Différé : ouvrir un dialogue (garde d'enregistrement, import) pendant le glisser bloquerait
     // l'application source (l'Explorateur) tant qu'il reste ouvert.
     QTimer::singleShot(0, this, [this, path] { openPath(path); });

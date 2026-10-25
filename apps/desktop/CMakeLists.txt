@@ -36,6 +36,10 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_workflow.cpp
     ui_memory.hpp
     main_window_ux.cpp
+    main_window_preferences.cpp
+    general_preferences_dialog.cpp
+    general_preferences_dialog.hpp
+    length_units.hpp
     main_window_analysis.cpp
     main_window_realistic.cpp
     main_window_production.cpp
