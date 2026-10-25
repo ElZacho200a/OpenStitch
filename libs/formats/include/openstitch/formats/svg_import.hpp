@@ -22,6 +22,10 @@ namespace openstitch::formats {
 //   - Éléments de forme : <path> (grammaire de commandes complète : M/L/H/V/
 //     C/S/Q/T/A/Z, absolu/relatif, répétition implicite), <rect>, <circle>,
 //     <ellipse>, <line>, <polyline>, <polygon>.
+//   - <use> (href interne vers un élément ou un <symbol>, x/y), <defs> non rendu, display:none
+//     par attribut ou `style` (HP-FMT-014).
+//   - <use> (href interne vers un élément ou un <symbol>, x/y), <defs> non rendu, display:none
+//     par attribut ou `style` (HP-FMT-014).
 //   - <g> et transformations composées (translate/scale/rotate/matrix/
 //     skewX/skewY), imbrication quelconque.
 //   - Courbes cubiques/quadratiques converties EXACTEMENT en tan_in/tan_out
@@ -43,7 +47,7 @@ namespace openstitch::formats {
 //
 // Diagnostiqué EXPLICITEMENT (jamais ignoré en silence, contrairement au
 // décodeur DXF) mais non rendu : <text>, dégradés, filtres, `clip-path`,
-// motifs (`pattern`), `use`/`symbol`, styles CSS externes/imbriqués au-delà
+// motifs (`pattern`), styles CSS externes/imbriqués au-delà
 // de `fill`/`stroke` inline basique. Chaque diagnostic nomme l'élément et
 // sa position dans le document.
 struct SvgImportResult {

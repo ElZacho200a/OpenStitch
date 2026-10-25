@@ -5,6 +5,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QListWidget>
 #include <QScrollArea>
 #include <QSettings>
 #include <QTemporaryDir>
@@ -196,6 +197,32 @@ private slots:
         format->setCurrentIndex(format->findData(QStringLiteral("pes")));
         QVERIFY(!companion->isEnabled());
         QVERIFY(!dialog.companion().write); // PES emporte ses couleurs
+    }
+
+    // HP-FMT-022 : les blocs fournis par le résumé sont listés dans l'ordre, avec leur pastille.
+    void blocksAreListedInSewingOrder() {
+        MachineExportDialog dialog(
+            [](const openstitch::formats::FormatInfo&,
+               const openstitch::formats::MachineExportOptions&,
+               const project_io::ExportOptimizations&) {
+                MachineExportDialog::Summary s;
+                s.blocks = {{0xFF0000u, QStringLiteral("1. rouge")},
+                            {0x0000FFu, QStringLiteral("2. bleu")}};
+                return s;
+            },
+            QStringLiteral("dst"), nullptr);
+        dialog.flushPendingRefresh();
+        auto* list = dialog.findChild<QListWidget*>(QStringLiteral("list_exportBlocks"));
+        QVERIFY(list != nullptr);
+        QCOMPARE(list->count(), 2);
+        QCOMPARE(list->item(0)->text(), QStringLiteral("1. rouge"));
+        QCOMPARE(list->item(1)->data(Qt::UserRole).toUInt(), 0x0000FFu);
+        QVERIFY(!list->isHidden());
+
+        // VP3 est proposé par le registre (HP-FMT-006).
+        auto* format = dialog.findChild<QComboBox*>(QStringLiteral("combo_exportFormat"));
+        QVERIFY(format != nullptr);
+        QVERIFY(format->findData(QStringLiteral("vp3")) >= 0);
     }
 
 private:
