@@ -19,6 +19,7 @@ add_executable(test_stitch
     test_chunk_cache.cpp
     test_calques_generation.cpp
     test_contour_fill.cpp
+    test_radial_spiral_crosshatch.cpp
 )
 target_link_libraries(test_stitch
     PRIVATE openstitch::stitch openstitch::stitch_generation Catch2::Catch2WithMain

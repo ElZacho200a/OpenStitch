@@ -643,6 +643,12 @@ const char* stitch_type_name(const document::EmbroideryObject& object) {
         return "blanket";
     case 6:
         return "contour_fill";
+    case 7:
+        return "radial_fill";
+    case 8:
+        return "spiral_fill";
+    case 9:
+        return "crosshatch_fill";
     default:
         return "unknown";
     }

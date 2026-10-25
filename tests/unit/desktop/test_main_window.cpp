@@ -723,6 +723,7 @@ private slots:
     // Remplissage directionnel : conversion, outil de guides, undo/redo.
     void convertingTatamiToDirectionalIsUndoable();
     void convertingTatamiToContourFillIsUndoable();
+    void convertingTatamiToRadialSpiralCrosshatchIsUndoable();
     void densityGradientIsUndoableAndSpansTheShape();
     void editingGradientEndSpacingKeepsTheInspectorAlive();
     void gradientEndSpacingKeepsNarrowedZoneUntilTheAngleChanges();
@@ -4884,6 +4885,34 @@ void MainWindowTest::convertingTatamiToContourFillIsUndoable() {
              QStringLiteral("Type : remplissage concentrique"));
     QVERIFY(window.sequence_.has_value()); // la génération a bien tourné
 
+    window.undo();
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId)->is_tatami());
+}
+
+void MainWindowTest::convertingTatamiToRadialSpiralCrosshatchIsUndoable() {
+    MainWindow window;
+    const Fixture fx = buildTatamiSquareFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+
+    window.convertToFillKind(fx.embroideryId, 0);
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId)->is_radial_fill());
+    QVERIFY(window.sequence_.has_value());
+    window.convertToFillKind(fx.embroideryId, 1);
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId)->is_spiral_fill());
+    window.convertToFillKind(fx.embroideryId, 2);
+    const auto* emb = window.project_.findEmbroidery(fx.embroideryId);
+    QVERIFY(emb != nullptr && emb->is_crosshatch_fill());
+    QVERIFY(std::get<openstitch::document::CrosshatchFillParams>(emb->params).row_spacing.value >=
+            1'500);
+    QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
+             QStringLiteral("Type : remplissage croisé"));
+
+    window.undo();
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId)->is_spiral_fill());
+    window.undo();
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId)->is_radial_fill());
     window.undo();
     QVERIFY(window.project_.findEmbroidery(fx.embroideryId)->is_tatami());
 }
