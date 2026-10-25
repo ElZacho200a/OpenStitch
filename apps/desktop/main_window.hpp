@@ -75,6 +75,8 @@ class CompositeCommand;
 
 namespace openstitch::desktop {
 
+class SimulationNavBar;
+
 class CanvasView;
 struct DensityRaster; // density_overlay.hpp
 class GesturesDialog;
@@ -1666,6 +1668,7 @@ private:
     // montre les points que jusqu'à cet index.
     QToolBar* simToolbar_{nullptr};
     QSlider* simSlider_{nullptr};
+    SimulationNavBar* simNavBar_{nullptr}; // HP-SIM-002/004 : pas à pas, objet, temps
     QLabel* simLabel_{nullptr};
     QLabel* simSwatch_{nullptr};      // pastille de la couleur du fil courant
     QLabel* simObjectLabel_{nullptr}; // objet courant

@@ -5,6 +5,7 @@ add_library(openstitch_stitch_render
     src/segments.cpp
     src/raster.cpp
     src/presentation.cpp
+    src/simulation.cpp
 )
 add_library(openstitch::stitch_render ALIAS openstitch_stitch_render)
 

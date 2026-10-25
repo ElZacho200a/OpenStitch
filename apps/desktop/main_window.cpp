@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "main_window.hpp"
+#include "simulation_nav_bar.hpp"
 
 #include <QAction>
 #include <QActionGroup>
@@ -533,7 +534,7 @@ MainWindow::MainWindow() {
     buildSimulationToolbar();
     // Une barre masquée doit pouvoir se rouvrir depuis un menu, comme les panneaux.
     panelsMenu_->insertSeparator(resetLayoutAct);
-    for (auto* bar : {mainToolbar_, contextToolbar_, toolPalette_, simToolbar_, threadStripBar_,
+    for (auto* bar : {mainToolbar_, contextToolbar_, toolPalette_, simToolbar_, static_cast<QToolBar*>(simNavBar_), threadStripBar_,
                       clickToStitchBar_}) {
         panelsMenu_->insertAction(resetLayoutAct, bar->toggleViewAction());
     }
@@ -8582,6 +8583,9 @@ void MainWindow::buildSimulationToolbar() {
     simSpeedCombo_->addItem(tr("×1"), 1.0);
     simSpeedCombo_->addItem(tr("×4"), 4.0);
     simSpeedCombo_->addItem(tr("×16"), 16.0);
+    simSpeedCombo_->addItem(tr("×64"), 64.0);
+    // HP-SIM-001 : cadence réelle d'une machine (700 points/min), indépendante de la taille.
+    simSpeedCombo_->addItem(tr("Machine"), -1.0);
     simSpeedCombo_->setCurrentIndex(1);
     simToolbar_->addWidget(simSpeedCombo_);
 
@@ -8595,13 +8599,23 @@ void MainWindow::buildSimulationToolbar() {
     simObjectLabel_->setAccessibleName(tr("Objet en cours de couture"));
     simToolbar_->addWidget(simObjectLabel_);
 
+    // HP-SIM-002/004 : pas à pas, objet précédent/suivant, temps de couture écoulé/total.
+    simNavBar_ = new SimulationNavBar(this);
+    addToolBar(Qt::BottomToolBarArea, simNavBar_);
+    connect(simNavBar_, &SimulationNavBar::stepRequested, this, [this](int step) {
+        if (simTimer_->isActive() && simPlayAct_->isChecked()) {
+            simPlayAct_->setChecked(false); // un saut manuel met la lecture en pause
+        }
+        simSlider_->setValue(step);
+    });
+
     simTimer_ = new QTimer(this);
     simTimer_->setInterval(16); // ~60 pas/seconde
     connect(simTimer_, &QTimer::timeout, this, &MainWindow::onSimTick);
 
     // Un masquage demandé par l'utilisateur (menu Panneaux) l'emporte sur l'affichage
     // automatique de la rangée du bas (cf. refreshThreadStrip) : retenu dans une propriété.
-    for (QToolBar* bar : {simToolbar_, threadStripBar_}) {
+    for (QToolBar* bar : {simToolbar_, static_cast<QToolBar*>(simNavBar_), threadStripBar_}) {
         connect(bar->toggleViewAction(), &QAction::triggered, bar,
                 [bar](bool shown) { bar->setProperty("userHidden", !shown); });
     }
@@ -8612,6 +8626,9 @@ void MainWindow::buildSimulationToolbar() {
 }
 
 void MainWindow::updateSimulationInfo(int step) {
+    if (simNavBar_ != nullptr) {
+        simNavBar_->setStep(step);
+    }
     if (simSwatch_ == nullptr || simObjectLabel_ == nullptr) {
         return;
     }
@@ -8647,6 +8664,9 @@ void MainWindow::updateSimulationInfo(int step) {
 
 void MainWindow::updateSimulationRange() {
     const bool hasSeq = sequence_ && !sequence_->commands.empty();
+    if (simNavBar_ != nullptr) {
+        simNavBar_->setSequence(sequence_ ? &*sequence_ : nullptr);
+    }
     simPlayAct_->setEnabled(hasSeq);
     simExitAct_->setEnabled(hasSeq);
     simPrevColorAct_->setEnabled(hasSeq);
@@ -8714,7 +8734,12 @@ void MainWindow::onSimTick() {
     // Avance proportionnellement à la taille (motif long = plus rapide), multipliée par la
     // vitesse choisie ; le reste fractionnaire (x0,25) s'accumule d'un pas au suivant.
     const double speed = simSpeedCombo_ != nullptr ? simSpeedCombo_->currentData().toDouble() : 1.0;
-    simAccum_ += std::max(1, (n + 1) / 400) * (speed > 0.0 ? speed : 1.0);
+    if (speed < 0.0) { // « Machine » : pas par tick = cadence machine x durée du tick
+        simAccum_ += stitch_render::simulation_machine_steps_per_second({}) *
+                     (static_cast<double>(simTimer_->interval()) / 1000.0);
+    } else {
+        simAccum_ += std::max(1, (n + 1) / 400) * (speed > 0.0 ? speed : 1.0);
+    }
     const int advance = static_cast<int>(simAccum_);
     if (advance < 1) {
         return;
