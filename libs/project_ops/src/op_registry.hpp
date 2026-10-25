@@ -78,6 +78,8 @@ void register_geometry_ops(
     std::vector<OpSpec>& out); // op_geometry.cpp : forme, transformation, fusion, auto-satin
 void register_semantic_ops(
     std::vector<OpSpec>& out); // op_semantic.cpp : import / remplacement sémantique
+void register_group_ops(
+    std::vector<OpSpec>& out); // op_group.cpp    : groupes, empilement, position/taille
 
 // Aides communes (implémentées dans json_common.cpp).
 // Lit un identifiant d'objet de broderie existant dans `ctx.args[key]` ; refus nommé sinon.

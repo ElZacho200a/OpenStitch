@@ -11,6 +11,7 @@ add_executable(test_commands
     test_engine_commands.cpp
     test_vector_path_commands.cpp
     test_calque_commands.cpp
+    test_group_commands.cpp
     test_click_to_stitch_commands.cpp
     test_colorway_commands.cpp
     test_stitch_point_edit_commands.cpp

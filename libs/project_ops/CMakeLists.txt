@@ -16,6 +16,7 @@ add_library(openstitch_project_ops
     src/op_geometry.cpp
     src/op_import.cpp
     src/op_semantic.cpp
+    src/op_group.cpp
     src/semantic.cpp
     src/auto_satin_service.cpp
     src/quality.cpp

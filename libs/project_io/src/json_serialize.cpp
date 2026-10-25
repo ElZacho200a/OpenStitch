@@ -1351,6 +1351,21 @@ json project_to_json(const document::Project& project) {
         }
     }
 
+    if (!project.groups.empty()) {
+        // Groupes d'objets (HP-OBJ-009) : clé facultative sans montée de schéma ; un lecteur
+        // plus ancien l'ignore (les formes restent présentes, simplement non groupées).
+        j["groups"] = json::array();
+        for (const auto& group : project.groups) {
+            json go;
+            go["id"] = group.id.value;
+            go["name"] = group.name;
+            if (group.parent.valid()) {
+                go["parent"] = group.parent.value;
+            }
+            j["groups"].push_back(std::move(go));
+        }
+    }
+
     if (!project.colorways.empty()) {
         // Coloris multiples (HP-THR-006) : clé facultative, un lecteur plus ancien l'ignore (les
         // objets portent déjà les couleurs du coloris actif).
@@ -1394,6 +1409,9 @@ json project_to_json(const document::Project& project) {
         }
         if (v.calque.valid()) {
             vo["calque"] = v.calque.value;
+        }
+        if (v.group.valid()) {
+            vo["group"] = v.group.value;
         }
         vo["paths"] = json::array();
         for (const auto& ps : v.paths) {
@@ -1552,6 +1570,15 @@ Result<document::Project> project_from_json(const json& j) {
             project.segmentation = std::move(seg);
         }
 
+        if (j.contains("groups")) {
+            for (const auto& go : j.at("groups")) {
+                document::ObjectGroup group;
+                group.id = ObjectId{go.at("id").get<std::uint64_t>()};
+                group.name = go.value("name", std::string{});
+                group.parent = ObjectId{go.value("parent", std::uint64_t{0})};
+                project.groups.push_back(std::move(group));
+            }
+        }
         if (j.contains("calques")) {
             for (const auto& co : j.at("calques")) {
                 document::Calque calque;
@@ -1613,6 +1640,9 @@ Result<document::Project> project_from_json(const json& j) {
             }
             if (vo.contains("textOwner")) {
                 v.text_owner = ObjectId{vo.at("textOwner").get<std::uint64_t>()};
+            }
+            if (vo.contains("group")) {
+                v.group = ObjectId{vo.at("group").get<std::uint64_t>()};
             }
             if (vo.contains("calque")) {
                 v.calque = ObjectId{vo.at("calque").get<std::uint64_t>()};
