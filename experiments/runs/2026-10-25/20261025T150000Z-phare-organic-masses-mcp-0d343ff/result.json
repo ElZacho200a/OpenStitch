@@ -1,0 +1,184 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261025T150000Z-phare-organic-masses-mcp-0d343ff",
+  "created_utc": "2026-10-25T15:00:00Z",
+  "status": "failed",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "verified_this_run": true
+  },
+  "main_commit": "b7d497bf3c2b525df04811490bea8e5d2e08a1fc",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "tool_count": 29
+  },
+  "subproject": {
+    "crop_px": [
+      888,
+      65,
+      1010,
+      466
+    ],
+    "size_mm": [
+      29.388,
+      96.595
+    ],
+    "canvas_mm": [
+      50,
+      120
+    ],
+    "not_full_scene": true
+  },
+  "preparations": {
+    "applied": [
+      "organic_source",
+      "organic_carrier",
+      "organic_tips",
+      "organic_glass",
+      "organic_gallery",
+      "organic_cloud",
+      "organic_sparse"
+    ],
+    "method": "source-ivory mask plus morphology with controlled linking, one continuous irregular organic foam carrier with negative holes and source filaments as open SVG running; exclusive ivory/cool/warm glass; simplified 3D gallery; source-based cloud variants; no AI",
+    "gate_A": "FAILED before import: foam overmassive, glazing too schematic, gallery flat, dome and shaft oversimplified",
+    "imports": "DIAGNOSTIC ONLY",
+    "not_imported": [
+      "organic_tips",
+      "organic_gallery",
+      "organic_cloud"
+    ]
+  },
+  "variants": [
+    {
+      "name": "organic_source",
+      "objects": 64,
+      "stitches": 4284,
+      "trims": 81,
+      "jumps": 120,
+      "color_changes": 24,
+      "warnings": 11,
+      "errors": 0,
+      "hotspot_mm2": 5,
+      "missing_crop_percent": 26.681,
+      "lost_detail_crop_percent": 3.457,
+      "wrong_colour_crop_percent": 8.033,
+      "real_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "organic_carrier",
+      "objects": 62,
+      "stitches": 4145,
+      "trims": 75,
+      "jumps": 108,
+      "color_changes": 24,
+      "warnings": 7,
+      "errors": 0,
+      "hotspot_mm2": 3,
+      "missing_crop_percent": 26.63,
+      "lost_detail_crop_percent": 3.185,
+      "wrong_colour_crop_percent": 7.81,
+      "real_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "organic_glass",
+      "objects": 57,
+      "stitches": 4125,
+      "trims": 68,
+      "jumps": 97,
+      "color_changes": 24,
+      "warnings": 6,
+      "errors": 0,
+      "hotspot_mm2": 2,
+      "missing_crop_percent": 25.796,
+      "lost_detail_crop_percent": 3.266,
+      "wrong_colour_crop_percent": 8.146,
+      "real_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "organic_sparse",
+      "objects": 59,
+      "stitches": 4141,
+      "trims": 70,
+      "jumps": 86,
+      "color_changes": 24,
+      "warnings": 6,
+      "errors": 0,
+      "hotspot_mm2": 4,
+      "missing_crop_percent": 25.853,
+      "lost_detail_crop_percent": 3.336,
+      "wrong_colour_crop_percent": 8.209,
+      "real_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "artistic_verdict": "REJECTED"
+    }
+  ],
+  "retouches": {
+    "baseline": "organic_glass",
+    "satin_compare": "skeleton/parallel_sweep/medial_axis on organic foam carrier, four windows and three gallery carriers; foam/windows unsuitable, gallery backing suitable with warnings (98.98/98.49/99.21% coverage); trials applied/rendered then rejected",
+    "directional": "tatami vs directional_guides on shaft dry_run/apply/real render rejected",
+    "semantic_replace": "ivory glass dry_run/apply/real render rejected",
+    "set_params": "gallery row spacing dry_run/apply/real render rejected",
+    "restored_osp_byte_identical": true
+  },
+  "mcp_executed": [
+    "digitize_guide",
+    "project_operations",
+    "semantic_validate",
+    "project_new",
+    "semantic_import dry_run/apply",
+    "project_apply import_svg dry_run/apply",
+    "project_apply set_source_image",
+    "project_apply set_finishing bridge12",
+    "project_checkpoint",
+    "semantic_map",
+    "project_inspect",
+    "project_report",
+    "project_check",
+    "project_density",
+    "project_fabric_risk",
+    "project_fidelity",
+    "project_render real PNG",
+    "project_save OSP",
+    "project_export DST",
+    "project_satin_compare skeleton/parallel_sweep/medial_axis",
+    "project_apply auto_satin dry_run/apply",
+    "project_apply directional_guides dry_run/apply",
+    "semantic_replace dry_run/apply",
+    "project_apply set_params dry_run/apply",
+    "project_restore"
+  ],
+  "quality": {
+    "gate_A": "FAILED",
+    "artistic_verdict": "REJECTED",
+    "machine_tested": false,
+    "independent_rating": false,
+    "warnings_cause": "short stitches <0.1mm, organic_glass objects 29,47,80,82, full coordinates in private archive",
+    "fidelity_scope": "crop includes intentionally unstitched context; not comparable to global scene"
+  },
+  "private_archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-25/phare-masses-organiques-mcp-1605-private.zip",
+    "library_file_id": "libfile_5025ae83b7dc8191862ee41e52c99983",
+    "size_bytes": 46408301,
+    "sha256": "608db3c24c4e329ada36aafb425481a959b2a539dee2a5c8f1cf78019a5bd0b3",
+    "rematerialized_sha_verified": true,
+    "zip_integrity_verified": true
+  },
+  "github_pixels_private": true,
+  "parent_run_id": "20261025T135633Z-phare-manual-branch-graph-mcp-0d343ff",
+  "next_hypothesis": "Stop simplifying the lighthouse architecture and spray together: source-trace dome ribs, cylindrical lantern glass, gallery perspective lattice and shaft shadow facets first; then integrate multiple organically bounded foam carriers respecting source negative holes and sparse SVG running filaments. Strict gate A before diagnostic MCP, no full-scene integration until visual acceptance."
+}
