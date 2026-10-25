@@ -7,6 +7,7 @@
 #include <QTimer>
 
 #include "interaction_map.hpp"
+#include "openstitch/document/canvas.hpp"
 
 class QRubberBand;
 
@@ -30,6 +31,9 @@ public:
     // Marge de sécurité (mm) entre le cadre et la zone réellement brodable ; 0 = pas de marge.
     void setUsableMarginMm(double marginMm);
     [[nodiscard]] double usableMarginMm() const { return marginMm_; }
+    // Forme du cadre dessiné (HP-HOOP-001) ; surcouche de dessin seule, sans capture de clic.
+    void setHoopShape(document::HoopShape shape, double cornerRadiusMm);
+    [[nodiscard]] document::HoopShape hoopShape() const { return hoopShape_; }
 
     // Échelle courante en pixels d'écran par millimètre.
     [[nodiscard]] double pixelsPerMm() const;
@@ -235,6 +239,8 @@ private:
 
     QSizeF canvasMm_{100.0, 100.0};
     double marginMm_{0.0};
+    document::HoopShape hoopShape_{document::HoopShape::Rectangle};
+    double cornerRadiusMm_{0.0};
     bool cropMode_{false};
     bool boxDrawMode_{false};
     bool polygonDrawMode_{false};

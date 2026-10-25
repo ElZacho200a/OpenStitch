@@ -61,6 +61,11 @@ add_library(openstitch_desktop_widgets STATIC
     density_overlay.hpp
     main_window_density.cpp
     # [cablage-E:fin]
+    # [cablage-HOOP:debut]
+    machine_dialog.cpp
+    machine_dialog.hpp
+    main_window_machine.cpp
+    # [cablage-HOOP:fin]
     production_dialog.cpp
     production_dialog.hpp
     realistic_preferences.cpp

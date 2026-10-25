@@ -1402,6 +1402,12 @@ private:
     double densityScaleMax_{1.0};
     int densityComputeCount_{0}; // calculs réellement faits (tests)
     // [cablage-E:fin]
+    // [cablage-HOOP:debut]
+    // Machine du projet (HP-HOOP-002, main_window_machine.cpp).
+    void chooseMachine();
+    void applyMachineChoice(const QString& machineId, const QString& hoopId);
+    QAction* machineAct_{nullptr};
+    // [cablage-HOOP:fin]
     void applyNavigationPreset(Preset preset);
     // Duplique `ids` (copies exactes, même position) puis translate les COPIES de
     // `delta`, en un seul pas d'annulation (CompositeCommand) ; les copies deviennent

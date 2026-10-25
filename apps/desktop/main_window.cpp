@@ -92,6 +92,7 @@
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/core/app_info.hpp"
 #include "openstitch/document/canvas.hpp"
+#include "openstitch/document/hoop_library.hpp"
 #include "openstitch/document/hoop_presets.hpp"
 #include "openstitch/document/image_placement.hpp"
 #include "openstitch/formats/dst.hpp"
@@ -109,6 +110,7 @@
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/project_ops/factory.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
+#include "openstitch/stitch_analysis/machine_checks.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
@@ -1241,6 +1243,11 @@ void MainWindow::buildMenus() {
     auto* hoopAct = viewMenu->addAction(tr("Tai&lle du cadre…"));
     hoopAct->setToolTip(tr("Définit la zone physique de broderie (cadre)."));
     connect(hoopAct, &QAction::triggered, this, &MainWindow::setHoopSize);
+    machineAct_ = viewMenu->addAction(tr("&Machine…"));
+    machineAct_->setObjectName(QStringLiteral("action_machine"));
+    machineAct_->setToolTip(tr("Choisit le profil de la machine à broder : champ, cadres, "
+                               "aiguilles, formats (vérifications avant export)."));
+    connect(machineAct_, &QAction::triggered, this, &MainWindow::chooseMachine);
 
     viewMenu->addSeparator();
     auto* themeMenu = viewMenu->addMenu(tr("&Thème"));
@@ -1976,6 +1983,7 @@ void MainWindow::applyCanvasToView() {
         view_->setCanvasSizeMm(want);
     }
     view_->setUsableMarginMm(to_millimeters(project_.canvas.margin).value);
+    view_->setHoopShape(project_.canvas.shape, to_millimeters(project_.canvas.corner_radius).value);
     if (hoopStatusButton_ != nullptr) {
         hoopStatusButton_->setText(
             tr("Cadre %1 × %2 mm").arg(want.width(), 0, 'f', 0).arg(want.height(), 0, 'f', 0));
@@ -2056,10 +2064,30 @@ void MainWindow::setHoopSize() {
                           "cadre) : le motif ne doit pas y passer. Hachurée sur le canevas."));
     auto* usable = new QLabel(&dialog);
     usable->setObjectName(QStringLiteral("hoopUsableLabel"));
+    // Forme du cadre (HP-HOOP-001) : rectangle, rond / ovale, coins arrondis.
+    auto* shapeCombo = new QComboBox(&dialog);
+    shapeCombo->setObjectName(QStringLiteral("hoopShapeCombo"));
+    shapeCombo->addItem(tr("Rectangle"), static_cast<int>(document::HoopShape::Rectangle));
+    shapeCombo->addItem(tr("Rond / ovale"), static_cast<int>(document::HoopShape::Ellipse));
+    shapeCombo->addItem(tr("Coins arrondis"),
+                        static_cast<int>(document::HoopShape::RoundedRectangle));
+    shapeCombo->setCurrentIndex(
+        std::max(0, shapeCombo->findData(static_cast<int>(project_.canvas.shape))));
+    auto* radius = makeSpin(to_millimeters(project_.canvas.corner_radius).value, 100.0);
+    radius->setObjectName(QStringLiteral("hoopCornerSpin"));
+    radius->setSingleStep(1.0);
+    radius->setToolTip(tr("Rayon des coins du cadre (forme « Coins arrondis »)."));
+    const auto refreshShape = [&] {
+        radius->setEnabled(shapeCombo->currentData().toInt() ==
+                           static_cast<int>(document::HoopShape::RoundedRectangle));
+    };
+    refreshShape();
 
     // Entrées de la liste : « Personnalisé », modèles courants, puis cadres enregistrés.
     std::vector<CustomHoop> custom = loadCustomHoops();
     constexpr int kCustomRole = Qt::UserRole + 1;
+    constexpr int kShapeRole = Qt::UserRole + 2;  // forme d'un cadre de la bibliothèque
+    constexpr int kRadiusRole = Qt::UserRole + 3; // rayon des coins (mm)
     const auto fillPresets = [&] {
         presetCombo->clear();
         presetCombo->addItem(tr("Personnalisé"), QSizeF{});
@@ -2067,6 +2095,20 @@ void MainWindow::setHoopSize() {
             presetCombo->addItem(
                 QString::fromUtf8(p.name.data(), static_cast<qsizetype>(p.name.size())),
                 QSizeF(static_cast<double>(p.width_mm), static_cast<double>(p.height_mm)));
+        }
+        // Cadres ronds, ovales et à coins arrondis de la bibliothèque générique (les
+        // rectangles sont déjà ci-dessus).
+        for (const auto& h : document::hoop_library()) {
+            if (h.shape == document::HoopShape::Rectangle) {
+                continue;
+            }
+            presetCombo->addItem(
+                QString::fromUtf8(h.name.data(), static_cast<qsizetype>(h.name.size())),
+                QSizeF(static_cast<double>(h.width_mm), static_cast<double>(h.height_mm)));
+            presetCombo->setItemData(presetCombo->count() - 1, static_cast<int>(h.shape),
+                                     kShapeRole);
+            presetCombo->setItemData(presetCombo->count() - 1,
+                                     static_cast<double>(h.corner_radius_mm), kRadiusRole);
         }
         for (const auto& c : custom) {
             presetCombo->addItem(tr("%1 (enregistré)").arg(c.name), QSizeF(c.widthMm, c.heightMm));
@@ -2081,7 +2123,8 @@ void MainWindow::setHoopSize() {
         for (int i = 1; i < presetCombo->count(); ++i) {
             const QSizeF size = presetCombo->itemData(i).toSizeF();
             if (std::abs(size.width() - w->value()) < 0.05 &&
-                std::abs(size.height() - h->value()) < 0.05) {
+                std::abs(size.height() - h->value()) < 0.05 &&
+                presetCombo->itemData(i, kShapeRole).toInt() == shapeCombo->currentData().toInt()) {
                 found = i;
                 break;
             }
@@ -2103,6 +2146,16 @@ void MainWindow::setHoopSize() {
         }
         w->setValue(size.width());
         h->setValue(size.height());
+        shapeCombo->setCurrentIndex(
+            std::max(0, shapeCombo->findData(presetCombo->itemData(index, kShapeRole).toInt())));
+        if (presetCombo->itemData(index, kRadiusRole).isValid()) {
+            radius->setValue(presetCombo->itemData(index, kRadiusRole).toDouble());
+        }
+        refreshShape();
+        selectMatchingPreset();
+    });
+    connect(shapeCombo, &QComboBox::currentIndexChanged, &dialog, [&] {
+        refreshShape();
         selectMatchingPreset();
     });
     for (auto* spin : {w, h, margin}) {
@@ -2160,6 +2213,8 @@ void MainWindow::setHoopSize() {
     layout->addRow(tr("Modèle :"), presetCombo);
     layout->addRow(tr("Largeur :"), w);
     layout->addRow(tr("Hauteur :"), h);
+    layout->addRow(tr("Forme :"), shapeCombo);
+    layout->addRow(tr("Rayon des coins :"), radius);
     auto* tools = new QHBoxLayout;
     tools->addWidget(swapBtn);
     tools->addWidget(saveBtn);
@@ -2179,6 +2234,10 @@ void MainWindow::setHoopSize() {
     c.width = to_micrometers(Millimeters{w->value()});
     c.height = to_micrometers(Millimeters{h->value()});
     c.margin = to_micrometers(Millimeters{margin->value()});
+    c.shape = static_cast<document::HoopShape>(shapeCombo->currentData().toInt());
+    if (c.shape == document::HoopShape::RoundedRectangle) {
+        c.corner_radius = to_micrometers(Millimeters{radius->value()});
+    }
     rememberCanvas(c);
     if (c == project_.canvas) {
         return;
@@ -9346,6 +9405,16 @@ void MainWindow::exportDst() {
                 limits += tr("\nÀ noter : %1").arg(text);
                 break;
             }
+        }
+        // HP-HOOP-003 : format d'export non accepté par la machine du projet.
+        for (const auto& f : stitch_analysis::check_machine(project_, shown, format.id)) {
+            if (f.category != "machine-format") {
+                continue; // les autres constats machine sont déjà dans l'analyse ci-dessus
+            }
+            const QString text = QString::fromStdString(f.message);
+            limits += tr("\nAttention : %1").arg(text);
+            result.has_warnings = true;
+            problemLines << tr("Avertissement : %1").arg(text);
         }
         if (!limits.isEmpty()) {
             summary += QStringLiteral("\n") + limits;
