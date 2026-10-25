@@ -1,0 +1,181 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261025T170433Z-phare-gallery-five-windows-mcp-0d343ff",
+  "created_utc": "2026-10-25T17:04:33Z",
+  "status": "failed",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "verified_this_run": true
+  },
+  "main_commit": "b7d497bf3c2b525df04811490bea8e5d2e08a1fc",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007"
+  },
+  "subproject": {
+    "crop_px": [
+      888,
+      65,
+      1010,
+      466
+    ],
+    "size_mm": [
+      29.388,
+      96.595
+    ],
+    "canvas_mm": [
+      50,
+      120
+    ],
+    "not_full_scene": true,
+    "global_frame_mm": [
+      390,
+      268
+    ],
+    "global_design_mm": [
+      370,
+      231.490885
+    ]
+  },
+  "preparations": {
+    "applied": [
+      "gallery_sparse",
+      "windows_five",
+      "glass_curved",
+      "gallery_depth",
+      "foam_twigs"
+    ],
+    "gate_A": "FAILED after two source comparison gates before import",
+    "imports": "DIAGNOSTIC ONLY",
+    "not_imported": [
+      "foam_twigs"
+    ],
+    "method": "Source-aligned minimal open running gallery rails, five visible arched windows (one left plus four right), curved blue glass reflections, optional gallery depth and foam running filaments; no AI"
+  },
+  "variants": [
+    {
+      "name": "gallery_sparse",
+      "objects": 73,
+      "stitches": 4323,
+      "trims": 90,
+      "jumps": 121,
+      "color_changes": 27,
+      "warnings": 12,
+      "errors": 0,
+      "hotspot_mm2": 4,
+      "missing_crop_percent": 29.324,
+      "lost_detail_crop_percent": 2.725,
+      "wrong_colour_crop_percent": 7.066,
+      "real_mcp_preview": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "windows_five",
+      "objects": 84,
+      "stitches": 4520,
+      "trims": 102,
+      "jumps": 134,
+      "color_changes": 29,
+      "warnings": 12,
+      "errors": 0,
+      "hotspot_mm2": 6,
+      "missing_crop_percent": 27.955,
+      "lost_detail_crop_percent": 3.142,
+      "wrong_colour_crop_percent": 8.09,
+      "real_mcp_preview": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "glass_curved",
+      "objects": 85,
+      "stitches": 4527,
+      "trims": 101,
+      "jumps": 138,
+      "color_changes": 29,
+      "warnings": 13,
+      "errors": 0,
+      "hotspot_mm2": 5,
+      "missing_crop_percent": 27.955,
+      "lost_detail_crop_percent": 3.138,
+      "wrong_colour_crop_percent": 8.082,
+      "real_mcp_preview": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "gallery_depth",
+      "objects": 89,
+      "stitches": 4615,
+      "trims": 105,
+      "jumps": 142,
+      "color_changes": 29,
+      "warnings": 13,
+      "errors": 0,
+      "hotspot_mm2": 6,
+      "missing_crop_percent": 26.955,
+      "lost_detail_crop_percent": 4.104,
+      "wrong_colour_crop_percent": 10.637,
+      "real_mcp_preview": true,
+      "artistic_verdict": "REJECTED"
+    }
+  ],
+  "retouches": {
+    "baseline": "glass_curved",
+    "satin_compare": "Three strategies on foam, five windows and gallery. On same window skeleton and parallel_sweep applied/rendered; medial_axis dry-run refused. All three applied/rendered on same gallery carrier, all rejected.",
+    "directional": "Same shaft tatami vs directional_guides dry-run/apply/render rejected",
+    "semantic_replace": "Ivory glass dry-run/apply/render rejected",
+    "set_params": "Gallery dry-run/apply/render rejected",
+    "restored_osp_byte_identical": true,
+    "restored_osp_sha256": "a78a93f22bcb3dc5abb208d5ba8254a455387d08f0f9e65013a17b924d4ea893"
+  },
+  "mcp_executed": [
+    "digitize_guide",
+    "project_operations",
+    "semantic_validate",
+    "project_new",
+    "semantic_import dry_run/apply",
+    "project_apply import_svg dry_run/apply",
+    "project_checkpoint",
+    "semantic_map",
+    "project_inspect",
+    "project_report",
+    "project_check",
+    "project_density",
+    "project_fabric_risk",
+    "project_fidelity",
+    "project_render real PNG",
+    "project_save OSP",
+    "project_export DST",
+    "project_satin_compare",
+    "project_apply auto_satin dry_run/apply",
+    "project_apply directional_guides dry_run/apply",
+    "semantic_replace dry_run/apply",
+    "project_apply set_params dry_run/apply",
+    "project_restore"
+  ],
+  "quality": {
+    "gate_A": "FAILED",
+    "artistic_verdict": "REJECTED",
+    "machine_tested": false,
+    "independent_rating": false,
+    "fidelity_scope": "crop intentionally unstitched context; not comparable to global scene"
+  },
+  "private_archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-25/phare-galerie-cinq-fenetres-mcp-1805-private.zip",
+    "library_file_id": "libfile_5a227839838c81918690fcf449d39390",
+    "size_bytes": 26326435,
+    "sha256": "4dd649cde224af817fa46da96c0d114294f26767ef2372f550443ce20f2fdacc",
+    "rematerialized_sha_verified": true,
+    "zip_integrity_verified": true
+  },
+  "github_pixels_private": true,
+  "parent_run_id": "20261025T160207Z-phare-architecture-source-mcp-0d343ff",
+  "next_hypothesis": "Protect all five windows; reconstruct gallery as open cylindrical mesh with true negative spaces instead of tatami backing; improve dome/glass and eliminate microtatami cloud/shaft artifacts before tackling foam; 3+ source preparations and gate A before MCP imports."
+}
