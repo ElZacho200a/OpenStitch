@@ -632,70 +632,7 @@ void MainWindow::updateAlignActions() {
 }
 
 void MainWindow::alignSelection(int mode) {
-    const std::vector<ObjectId> ids = selectedObjectIds();
-    if (ids.size() < 2) {
-        return;
-    }
-    std::vector<std::pair<ObjectId, BoundsUm>> boxes;
-    BoundsUm all;
-    for (const ObjectId id : ids) {
-        const auto* object = project_.findObject(id);
-        if (object == nullptr) {
-            continue;
-        }
-        const BoundsUm b = boundsOf(*object);
-        if (!b.valid) {
-            continue;
-        }
-        boxes.emplace_back(id, b);
-        all.minX = std::min(all.minX, b.minX);
-        all.maxX = std::max(all.maxX, b.maxX);
-        all.minY = std::min(all.minY, b.minY);
-        all.maxY = std::max(all.maxY, b.maxY);
-        all.valid = true;
-    }
-    if (boxes.size() < 2) {
-        return;
-    }
-    auto composite = std::make_unique<commands::CompositeCommand>(
-        tr("Aligner %1 objets").arg(boxes.size()).toStdString());
-    for (const auto& [id, b] : boxes) {
-        std::int64_t dx = 0;
-        std::int64_t dy = 0;
-        switch (mode) {
-        case 0:
-            dx = all.minX - b.minX;
-            break;
-        case 1:
-            dx = (all.minX + all.maxX) / 2 - (b.minX + b.maxX) / 2;
-            break;
-        case 2:
-            dx = all.maxX - b.maxX;
-            break;
-        case 3: // Y vers le haut : « en haut » = Y maximal
-            dy = all.maxY - b.maxY;
-            break;
-        case 4:
-            dy = (all.minY + all.maxY) / 2 - (b.minY + b.maxY) / 2;
-            break;
-        case 5:
-            dy = all.minY - b.minY;
-            break;
-        default:
-            return;
-        }
-        if (dx != 0 || dy != 0) {
-            composite->add(
-                std::make_unique<commands::TranslateVectorObjectCommand>(id, vec(dx, dy)));
-        }
-    }
-    if (composite->empty()) {
-        statusBar()->showMessage(tr("Les objets sont déjà alignés."));
-        return;
-    }
-    undoStack_.execute(std::move(composite), project_);
-    refreshImage();
-    updateActions();
+    alignShapes(mode); // référence d'alignement et commande : main_window_arrange.cpp
 }
 
 // ---------------------------------------------------------------------------------------------

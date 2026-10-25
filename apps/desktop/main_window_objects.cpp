@@ -334,7 +334,7 @@ void MainWindow::pasteClipboard(bool inPlace) {
 
 void MainWindow::duplicateSelectionWithStitches() {
     const auto fragment = commands::collect_fragment(project_, transformTargets());
-    applyPastedFragment(fragment, Vec2um{Micrometers{2'000}, Micrometers{-2'000}}, tr("Dupliquer"),
+    applyPastedFragment(fragment, duplicateOffset_, tr("Dupliquer"),
                         tr("%1 forme(s) dupliquée(s) avec leur broderie."));
 }
 
@@ -358,7 +358,9 @@ std::vector<ObjectId> MainWindow::selectableObjectsAt(QPointF posMm) const {
     const double toleranceMm = std::max(0.4, 4.0 / pxPerMm);
     return objectsAtPointMm(
         project_, posMm, toleranceMm,
-        [this](const document::VectorObject& object) { return vectorPassesFilter(object); });
+        [this](const document::VectorObject& object) {
+            return vectorPassesFilter(object) && !project_.shapeEditLocked(object.id);
+        });
 }
 
 ObjectId MainWindow::cycleTarget(const std::vector<ObjectId>& under, QPointF posMm) {

@@ -4,6 +4,8 @@ add_library(openstitch_commands
     src/vector_ops.cpp
     src/fill_pockets.cpp
     src/transform_ops.cpp
+    src/arrange_ops.cpp
+    src/convert_ops.cpp
     src/text_commands.cpp
     src/vector_path_commands.cpp
     src/outline_ops.cpp
@@ -14,5 +16,5 @@ add_library(openstitch::commands ALIAS openstitch_commands)
 target_include_directories(openstitch_commands PUBLIC include)
 target_link_libraries(openstitch_commands
     PUBLIC openstitch::document openstitch::segmentation
-    PRIVATE openstitch::autodigitize openstitch::warnings
+    PRIVATE openstitch::autodigitize openstitch::stitch_generation openstitch::warnings
 )

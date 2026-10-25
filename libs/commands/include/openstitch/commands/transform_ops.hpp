@@ -25,6 +25,8 @@ struct AffineTransform {
     // sinon haut/bas (axe horizontal).
     [[nodiscard]] static AffineTransform mirror(Vec2um pivot, bool horizontal);
     [[nodiscard]] static AffineTransform scale(Vec2um pivot, double factor);
+    // Échelle anisotrope (HP-OBJ-005) : facteur non fini ou <= 0 remplacé par 1.
+    [[nodiscard]] static AffineTransform scale_xy(Vec2um pivot, double factor_x, double factor_y);
     [[nodiscard]] static AffineTransform translate(Vec2um delta);
 
     [[nodiscard]] Vec2um apply(Vec2um p) const;

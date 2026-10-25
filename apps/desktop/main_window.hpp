@@ -801,6 +801,21 @@ private:
     QDockWidget* historyDock_{nullptr};
     QListWidget* historyList_{nullptr};
     QList<QAction*> alignActs_;
+    // Organiser les objets (main_window_arrange.cpp) : référence d'alignement, répartition,
+    // verrou d'édition, redimensionnement numérique, décalage de duplication, conversions.
+    void buildArrangeMenu(QMenu* editMenu);
+    void updateArrangeActions();
+    void alignShapes(int mode);
+    void distributeShapes(bool horizontal);
+    void setShapesLocked(const std::vector<ObjectId>& ids, bool locked);
+    void resizeSelectionByFactors(double sx, double sy, bool fromCenter);
+    void resizeSelectionDialog();
+    void duplicateWithOffsetDialog();
+    void convertSelectionType(int kind);
+    int alignReference_{0}; // 0 sélection, 1 premier objet, 2 cadre
+    Vec2um duplicateOffset_{Micrometers{2'000}, Micrometers{-2'000}};
+    QList<QAction*> arrangeActs_;
+    QList<QAction*> convertActs_;
     // Aperçus de glisser (poignées) : repère d'accroche, cadre de redimensionnement.
     void showNodeDragFeedback(QPointF sceneMm, ObjectId objectId);
     void hideNodeDragFeedback();
