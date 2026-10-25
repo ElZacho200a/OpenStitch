@@ -79,6 +79,10 @@ add_library(openstitch_desktop_widgets STATIC
     # [cablage-HOOP:fin]
     production_dialog.cpp
     production_dialog.hpp
+    placement_template_dialog.cpp
+    placement_template_dialog.hpp
+    print_preview.cpp
+    print_preview.hpp
     realistic_preferences.cpp
     realistic_preferences.hpp
     realistic_render_dialog.cpp
