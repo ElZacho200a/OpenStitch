@@ -1,0 +1,142 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261025T210824Z-phare-topological-gallery-mcp-0d343ff",
+  "created_utc": "2026-10-25T21:08:24Z",
+  "status": "failed",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "verified_this_run": true
+  },
+  "main_commit": "206ad8eb35cf4d0db751c6021cab8ae1bbd4d7bb",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "note": "official verified CI binary, not rebuilt from current main"
+  },
+  "subproject": {
+    "crop_px": [
+      888,
+      65,
+      1010,
+      466
+    ],
+    "size_mm": [
+      29.388,
+      96.595
+    ],
+    "canvas_mm": [
+      50,
+      120
+    ],
+    "not_full_scene": true,
+    "protected_windows": 5
+  },
+  "method": {
+    "description": "8-neighbour source-extracted skeleton graph, greedy edge-disjoint geodesic trails without invented joins; 5/8/12 trails, source-guided structural rims; 3 tiny inherited components cleaned in one variant",
+    "preparations": [
+      "topo_five",
+      "topo_eight",
+      "topo_twelve",
+      "topo_eight_clean"
+    ],
+    "gate_A": "failed before diagnostic imports",
+    "gate_A_reason": "source gallery lattice becomes wavy strokes, not recognizable cells; glass/dome/foam and shaft still schematic"
+  },
+  "variants": [
+    {
+      "name": "topo_five",
+      "paths": 5,
+      "objects": 84,
+      "stitches": 4326,
+      "trims": 96,
+      "jumps": 128,
+      "color_changes": 27,
+      "warnings": 8,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "fabric_risk_ge70_mm2": 11,
+      "fidelity_crop_missing_percent": 30.04
+    },
+    {
+      "name": "topo_eight",
+      "paths": 8,
+      "objects": 87,
+      "stitches": 4366,
+      "trims": 98,
+      "jumps": 131,
+      "color_changes": 27,
+      "warnings": 8,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "fabric_risk_ge70_mm2": 11,
+      "fidelity_crop_missing_percent": 29.817
+    },
+    {
+      "name": "topo_twelve",
+      "paths": 12,
+      "objects": 91,
+      "stitches": 4417,
+      "trims": 102,
+      "jumps": 135,
+      "color_changes": 27,
+      "warnings": 8,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "fabric_risk_ge70_mm2": 11,
+      "fidelity_crop_missing_percent": 29.692
+    },
+    {
+      "name": "topo_eight_clean",
+      "paths": 8,
+      "objects": 86,
+      "stitches": 4365,
+      "trims": 97,
+      "jumps": 130,
+      "color_changes": 27,
+      "warnings": 8,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "fabric_risk_ge70_mm2": 11,
+      "fidelity_crop_missing_percent": 29.817
+    }
+  ],
+  "mcp_operations": "digitize_guide, project_operations, semantic_validate, project_new, semantic_import dry_run/apply, project_apply import_svg dry_run/apply, checkpoint, map, inspect/report/check/density/fabric_risk/fidelity, project_render real PNG, project_save OSP and project_export DST for each variant",
+  "retouches": {
+    "baseline": "topo_eight",
+    "satin_compare": [
+      "skeleton",
+      "parallel_sweep",
+      "medial_axis"
+    ],
+    "regions": [
+      "foam",
+      "5 windows",
+      "gallery"
+    ],
+    "trial_renders": 8,
+    "semantic_replace": "glass ivory dry_run/apply, rejected",
+    "project_apply": "satin/directional_guides/set_params dry_run/apply, rejected",
+    "restored_osp_byte_identical": true,
+    "restored_sha256": "01e82131c1abcbafb4b581fbbbeb588983ba0872e25693cf4bdb1f4360ccc4b9"
+  },
+  "warnings": "8 short stitches <0.1mm in inherited cloud/dome/shaft objects; locations in private archive. Three tiny connected components removed, no change in warnings.",
+  "artistic_verdict": "rejected all four; no global integration, no machine test, no independent score",
+  "fidelity_caveat": "crop metrics not comparable to full-scene route_protected bridge12 (593 objects, 1099 trims, 37mm2 hotspot)",
+  "next_hypothesis": "Stop optimizing continuous graph trails. Segment gallery into source-faithful visual components: left rectangular grid, central two rosettes, right lattice; trace cell borders individually with open running without arbitrary junctions. Fix inherited short-stitch masks, then dome/glass/foam; gate A before import.",
+  "archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-25/phare-ferronnerie-chemins-topologiques-mcp-2205-private.zip",
+    "library_file_id": "libfile_177599b36aa88191bc0bf2d5413ffd17",
+    "size_bytes": 24052812,
+    "sha256": "742379421b79239ebf1c5fdb6c8f48563a55004e00752011be8bb336405cc384",
+    "entries": 227,
+    "rematerialized_sha_verified": true
+  }
+}
