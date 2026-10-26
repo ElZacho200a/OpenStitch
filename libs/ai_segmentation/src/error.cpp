@@ -14,7 +14,7 @@ struct CodeEntry {
     const char* message;
 };
 
-constexpr std::array<CodeEntry, 17> kCodes{{
+constexpr std::array<CodeEntry, 22> kCodes{{
     {AiErrorCode::WorkerNotConfigured, "WORKER_NOT_CONFIGURED",
      "La segmentation par IA n'est pas configurée. Ouvrez Préférences > Intelligence "
      "artificielle pour la mettre en place."},
@@ -52,6 +52,16 @@ constexpr std::array<CodeEntry, 17> kCodes{{
      "Le worker de segmentation IA s'est arrêté de façon inattendue. Un nouveau worker va "
      "être relancé."},
     {AiErrorCode::Cancelled, "CANCELLED", "Segmentation annulée."},
+    {AiErrorCode::ProtocolMismatch, "PROTOCOL_MISMATCH",
+     "Ce backend IA parle une version incompatible du protocole OpenStitch."},
+    {AiErrorCode::UnsupportedPrompt, "UNSUPPORTED_PROMPT",
+     "Ce backend IA ne gère pas ce type d'invite."},
+    {AiErrorCode::BackendBusy, "BACKEND_BUSY",
+     "Le backend IA traite déjà une tâche. Attendez la fin ou annulez-la."},
+    {AiErrorCode::BackendTimeout, "BACKEND_TIMEOUT",
+     "Le backend IA n'a pas répondu dans le délai imparti."},
+    {AiErrorCode::BackendUnavailable, "BACKEND_UNAVAILABLE",
+     "Ce backend IA n'est pas disponible sur cette machine."},
 }};
 
 } // namespace

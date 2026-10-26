@@ -60,6 +60,7 @@ de port réseau. Les archives `openstitch-mcp-linux-x86_64.tar.gz` et
 | `project_palette` | palette réellement cousue, dans l'ordre de couture (blocs), objets / aire / part de segmentation par couleur |
 | `digitize_guide` | guide de numérisation (voir ci-dessous) : à appeler avant de numériser |
 | `semantic_validate` / `semantic_import` / `semantic_replace` / `semantic_map` | manifeste `openstitch.semantic/1` + masques PNG -> objets distincts qui gardent leur identité (voir *Sémantique native*) |
+| `ai_backends` | diagnostic en lecture seule des backends de vision IA déclarés par l'utilisateur (fichier `OPENSTITCH_AI_BACKENDS`, protocole `openstitch.ai.backend/1`) : capacités, licences code/poids, santé, choix ou repli sur la segmentation classique. Un agent ne peut pas choisir la commande lancée (voir `docs/ai/backend-protocol.md`) |
 | `project_report` | bilan en un appel : statut explicite par analyse, dimensions, points, coupes, défauts par objet |
 | `project_diagnose` / `project_density` / `project_fidelity` / `project_fabric_risk` / `project_locate` | analyses du moteur (mêmes fonctions que la CLI) |
 | `project_checkpoint` / `project_restore` / `project_checkpoints` / `project_compare` | variantes en mémoire, retour arrière sûr, comparaison à même échelle |

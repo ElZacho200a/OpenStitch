@@ -20,6 +20,7 @@
 #include <numbers>
 #include <vector>
 
+#include "ai_cmd.hpp"
 #include "openstitch/auto_satin/auto_satin.hpp"
 #include "openstitch/auto_satin/satin_strategy.hpp"
 #include "openstitch/auto_satin/shapes.hpp"
@@ -1892,11 +1893,15 @@ int main(int argc, char** argv) {
 
     auto* project_cmd = openstitch_cli::register_project_commands(app, json_out);
     auto* commands_cmd = openstitch_cli::register_commands_listing(app, json_out);
+    auto* ai_cmd = openstitch_cli::register_ai_commands(app);
 
     CLI11_PARSE(app, argc, argv);
 
     if (project_cmd->parsed() || commands_cmd->parsed()) {
         return openstitch_cli::project_exit_code();
+    }
+    if (ai_cmd->parsed()) {
+        return openstitch_cli::ai_exit_code();
     }
 
     if (info_cmd->parsed()) {

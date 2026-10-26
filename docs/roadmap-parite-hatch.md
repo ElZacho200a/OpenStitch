@@ -37,6 +37,7 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
+| 2026-10-26 | Claude (IA PR-02) | **Contrat de backend IA générique** `openstitch.ai.backend/1` : worker Python `ai-worker/` (adaptateur SAM 2.1 sans modifier `sam-worker/`, deux faux backends), client sans Qt dans `libs/ai_segmentation` (protocole, session avec annulation/délais, transport processus Windows+POSIX, registre de découverte avec repli classique), `openstitch-cli ai backends`, outil MCP `ai_backends` en lecture seule, 5 nouveaux codes d'erreur, tests Catch2 + Python. Le desktop garde son client SAM v1 (migration prévue). |
 | P0 | 12 | 28 | 5 | 45 |
 | P1 | 10 | 68 | 74 | 152 |
 | P2 | 3 | 34 | 66 | 103 |
@@ -3679,6 +3680,7 @@ ci-dessus doit les respecter :
 | Date | Qui | Changement |
 |---|---|---|
 | 2026-10-26 | Claude (IA PR-01) | **Banc de segmentation reproductible** : manifeste épinglé `openstitch.ai.benchmark-manifest/1`, fixture synthétique CC0 `marine-synth-01`, runner stdlib `scripts/openstitch_ai_bench.py` (baseline CIELAB via `openstitch-cli`, SAM 2.1 via le worker existant, skip explicite sans poids), métriques par objet avec porte « sujet principal absent = échec », 18 tests Python + CI `ai-bench.yml`. Aucun code C++ modifié. |
+| 2026-10-26 | Claude (IA PR-00) | **Architecture IA auto-digitize : audit, ADR-001, matrice de licences code + poids, plan de benchmark** (`docs/ai/`) ; dérive de `docs/agent-semantic-format.md` corrigée (import/remplacement natifs). Rouvre à la demande du mainteneur le périmètre IA écarté avec HP-UX-040 (repli couleur et annulation deviennent des exigences de PR-02). Aucun code, aucune dépendance. |
 | 2026-10-24 | Claude (lecture de `agent-trials`) | **Outillage agent : leçons des essais ChatGPT** — `set_source_image` / `source_path` (fidélité d'un projet importé du SVG), constat `motif-hors-cadre`, `fabric` dans le rendu, erreurs `set_params` explicites, refus `auto_satin` avec `reason_code` et suggestion ; section de retours dans le skill `openstitch-digitize`. Aucune entrée HP-* concernée (outillage MCP/CLI). Manque restant : `branched_shape` non testé ; reconstruction sémantique de peintures, aucune note /20 dans les essais. |
 | 2026-10-23 | Claude (session pilotée) | **Serveur MCP : édition sémantique native** (`semantic_import` / `semantic_replace`, provenance par nom d'objet), bilan `project_report`, variantes et comparaison, benchmark des trois satins, `--doctor`. Pistes agent B03, B04, C02, C04, D04 → ◐ (`docs/roadmap-agent-cli.md`). Aucune entrée HP-* concernée. |
 | 2026-10-23 | Claude (session pilotée) | **Guide de numérisation dans le serveur MCP** : le skill `openstitch-digitize` est embarqué au build (source unique) et servi par `initialize.instructions`, l'outil `digitize_guide`, des ressources et un prompt ; outil `project_palette`. Aucune entrée HP-* concernée. |
