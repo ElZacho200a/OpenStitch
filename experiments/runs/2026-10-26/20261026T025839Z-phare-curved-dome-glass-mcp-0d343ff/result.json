@@ -1,0 +1,155 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261026T025839Z-phare-curved-dome-glass-mcp-0d343ff",
+  "created_utc": "2026-10-26T03:02:00Z",
+  "status": "failed",
+  "artistic_verdict": "Gate A failed; four real MCP diagnostic crop imports and project_render previews inspected, all artistically rejected. No full-scene integration.",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "rematerialized_and_verified": true
+  },
+  "main_commit": "ea630a7576d9c538ba2c1b1276cb60bd8acdfd9b",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "binary_not_rebuilt_from_main": true,
+    "real_semantic_import": true,
+    "real_project_render": true,
+    "real_project_save_export": true,
+    "real_satin_compare": true,
+    "real_semantic_replace": true,
+    "real_project_apply": true
+  },
+  "subproject": {
+    "crop_px": [
+      888,
+      65,
+      1010,
+      466
+    ],
+    "size_mm": [
+      29.388,
+      96.595
+    ],
+    "canvas_mm": [
+      50,
+      120
+    ],
+    "not_full_scene": true,
+    "protected_windows": 5
+  },
+  "method": {
+    "preparations": [
+      "roof_source_curves",
+      "roof_glass_columns",
+      "roof_glass_rim",
+      "roof_glass_reflections"
+    ],
+    "gate_A": "failed, pre-import visual inspection",
+    "description": "Source-constrained curved dome shadow/gold/glint, large exclusive glass blue/ivory facets, curved contiguous shaft facets, 3 short open running glass reflections; no foam changes; all 4 MCP imports diagnostic only."
+  },
+  "variants": [
+    {
+      "name": "roof_source_curves",
+      "objects": 75,
+      "stitches": 4234,
+      "trims": 87,
+      "jumps": 113,
+      "color_changes": 27,
+      "warnings": 3,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "fabric_risk_ge70_mm2": 11,
+      "missing_crop_percent": 28.255,
+      "lost_detail_percent": 3.888,
+      "wrong_colour_percent": 8.397,
+      "artistic_verdict": "rejected"
+    },
+    {
+      "name": "roof_glass_columns",
+      "objects": 75,
+      "stitches": 4262,
+      "trims": 87,
+      "jumps": 111,
+      "color_changes": 27,
+      "warnings": 3,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "fabric_risk_ge70_mm2": 16,
+      "missing_crop_percent": 28.241,
+      "lost_detail_percent": 3.826,
+      "wrong_colour_percent": 8.311,
+      "artistic_verdict": "rejected"
+    },
+    {
+      "name": "roof_glass_rim",
+      "objects": 76,
+      "stitches": 4341,
+      "trims": 89,
+      "jumps": 112,
+      "color_changes": 27,
+      "warnings": 3,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "fabric_risk_ge70_mm2": 17,
+      "missing_crop_percent": 28.621,
+      "lost_detail_percent": 3.974,
+      "wrong_colour_percent": 8.462,
+      "artistic_verdict": "rejected"
+    },
+    {
+      "name": "roof_glass_reflections",
+      "objects": 79,
+      "stitches": 4373,
+      "trims": 92,
+      "jumps": 115,
+      "color_changes": 27,
+      "warnings": 3,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "fabric_risk_ge70_mm2": 18,
+      "missing_crop_percent": 28.619,
+      "lost_detail_percent": 3.982,
+      "wrong_colour_percent": 8.499,
+      "artistic_verdict": "rejected"
+    }
+  ],
+  "retouches": {
+    "true_project_render_count": 8,
+    "three_satin_strategies": [
+      "skeleton",
+      "parallel_sweep",
+      "medial_axis"
+    ],
+    "tatami_vs_directional_same_shaft": true,
+    "semantic_replace": true,
+    "set_params": true,
+    "all_rejected": true,
+    "baseline_restored_byte_identical": true,
+    "baseline_sha256": "6819109ef9811c7d0adb35d940f6fc0f478dfe341bffb06bf4cc34e2ff9c37e2"
+  },
+  "warning_summary": "Three <0.1mm points per variant, cloud gray object 29 (2) and shaft mid object 77 (1); precise coordinates in private archive.",
+  "machine_tested": false,
+  "independent_review": null,
+  "score_before": null,
+  "score_after": null,
+  "comparison_scope": "crop only, not comparable to full-scene route_protected bridge12",
+  "archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-26/phare-dome-vitrage-courbes-mcp-0405-private.zip",
+    "library_file_id": "libfile_6d987c2c152c8191a0a30a5dc357be11",
+    "size_bytes": 24326005,
+    "sha256": "8134263b72ebddcffe8e9ba7e0bdcaa221ee70c2320dce0dcc487d678740d8a2",
+    "zip_entries": 233,
+    "rematerialized_and_verified": true
+  },
+  "next_hypothesis": "Gallery is a 3D lattice not line art; construct front/back railing volume with source-validated negative cells >0.7mm and no invented decoration. Experiment with controlled directional fill on continuous dome/glass and avoid row hatching. Correct warnings by precise cloud/shaft object coords; then treat foam as independent organic masses with open running filaments. Do not reintegrate global scene until crop gate A passes.",
+  "parent_run_id": "20261026T020002Z-phare-contiguous-glass-satin-mcp-0d343ff"
+}
