@@ -45,7 +45,8 @@ struct EnvGuard {
 
 } // namespace
 
-TEST_CASE("mcp ai_backends: sans réglages, repli classique et aucun processus lancé", "[mcp][ai]") {
+TEST_CASE("mcp ai_backends without settings falls back to classical and launches nothing",
+          "[mcp][ai]") {
     EnvGuard guard;
     set_env("OPENSTITCH_AI_BACKENDS", "");
     Server server;
@@ -58,9 +59,8 @@ TEST_CASE("mcp ai_backends: sans réglages, repli classique et aucun processus l
     CHECK(report.at("resolution").at("classical_fallback").get<bool>());
 }
 
-TEST_CASE(
-    "mcp ai_backends: un agent ne choisit pas la commande, un fichier illisible est une erreur",
-    "[mcp][ai]") {
+TEST_CASE("mcp ai_backends refuses an agent-chosen command and an unreadable settings file",
+          "[mcp][ai]") {
     EnvGuard guard;
     const fs::path bad = fs::temp_directory_path() / "openstitch-ai-backends-bad.json";
     std::ofstream(bad) << "{ pas du json";
@@ -74,8 +74,7 @@ TEST_CASE(
     fs::remove(bad);
 }
 
-TEST_CASE("mcp ai_backends: backend déclaré mais introuvable donne un diagnostic, pas un plantage",
-          "[mcp][ai]") {
+TEST_CASE("mcp ai_backends reports a missing declared backend without crashing", "[mcp][ai]") {
     EnvGuard guard;
     const fs::path cfg = fs::temp_directory_path() / "openstitch-ai-backends-ghost.json";
     std::ofstream(cfg)
