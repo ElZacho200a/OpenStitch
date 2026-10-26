@@ -1,0 +1,164 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261026T000135Z-phare-textile-scale-rails-mcp-0d343ff",
+  "created_utc": "2026-10-26T00:01:35Z",
+  "status": "failed",
+  "artistic_verdict": "five diagnostic variants rejected; gate A failed; no global integration",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "verified_this_run": true
+  },
+  "main_commit": "aa3bd614b0685d906f9c88ed2950e3f04aa8a185",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "binary_not_rebuilt_from_main": true
+  },
+  "subproject": {
+    "crop_px": [
+      888,
+      65,
+      1010,
+      466
+    ],
+    "size_mm": [
+      29.388,
+      96.595
+    ],
+    "canvas_mm": [
+      50,
+      120
+    ],
+    "not_full_scene": true,
+    "protected_windows": 5
+  },
+  "method": {
+    "preparations": [
+      "textile_rails",
+      "textile_cells",
+      "textile_arch",
+      "textile_foam",
+      "textile_repaired"
+    ],
+    "description": "Four source-inspected gallery semantic groups; 9 or 17 open running rails, no gallery dark-pixel tatami; local CIELAB source-guided dome/glass/shaft color segmentation; source ivory/warm foam color split; small-island and rosette repairs. Strict pre-import gates inspected and failed.",
+    "gate_A": "failed; manually approximated rosettes remain too geometric; architecture fragmenting and foam monolithic",
+    "imports": "diagnostic only"
+  },
+  "variants": [
+    {
+      "name": "textile_rails",
+      "objects": 88,
+      "stitches": 4282,
+      "trims": 100,
+      "jumps": 130,
+      "color_changes": 27,
+      "warnings": 8,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "fabric_risk_ge70_mm2": 11,
+      "missing_crop_percent": 30.363,
+      "lost_detail_percent": 3.71,
+      "wrong_colour_percent": 8.328
+    },
+    {
+      "name": "textile_cells",
+      "objects": 96,
+      "stitches": 4359,
+      "trims": 107,
+      "jumps": 138,
+      "color_changes": 27,
+      "warnings": 8,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "fabric_risk_ge70_mm2": 11,
+      "missing_crop_percent": 29.557,
+      "lost_detail_percent": 3.88,
+      "wrong_colour_percent": 8.73
+    },
+    {
+      "name": "textile_arch",
+      "objects": 134,
+      "stitches": 4746,
+      "trims": 148,
+      "jumps": 195,
+      "color_changes": 27,
+      "warnings": 15,
+      "errors": 0,
+      "hotspot_mm2": 3,
+      "fabric_risk_ge70_mm2": 17,
+      "missing_crop_percent": 30.299,
+      "lost_detail_percent": 2.24,
+      "wrong_colour_percent": 6.758
+    },
+    {
+      "name": "textile_foam",
+      "objects": 138,
+      "stitches": 4741,
+      "trims": 151,
+      "jumps": 199,
+      "color_changes": 28,
+      "warnings": 16,
+      "errors": 0,
+      "hotspot_mm2": 3,
+      "fabric_risk_ge70_mm2": 17,
+      "missing_crop_percent": 30.87,
+      "lost_detail_percent": 2.24,
+      "wrong_colour_percent": 6.709
+    },
+    {
+      "name": "textile_repaired",
+      "objects": 128,
+      "stitches": 4760,
+      "trims": 142,
+      "jumps": 184,
+      "color_changes": 27,
+      "warnings": 18,
+      "errors": 0,
+      "hotspot_mm2": 4,
+      "fabric_risk_ge70_mm2": 21,
+      "missing_crop_percent": 30.381,
+      "lost_detail_percent": 2.12,
+      "wrong_colour_percent": 6.586
+    }
+  ],
+  "mcp_operations": "digitize_guide, project_operations, semantic_validate, project_new, semantic_import dry_run/apply, project_apply import_svg dry_run/apply, checkpoint, semantic_map, inspect/report/check/density/fabric_risk/fidelity, project_render real PNG, project_save OSP and project_export DST each",
+  "retouches": {
+    "baseline": "textile_arch",
+    "satin_compare": [
+      "skeleton",
+      "parallel_sweep",
+      "medial_axis"
+    ],
+    "groups": [
+      "foam",
+      "five windows",
+      "gallery"
+    ],
+    "trial_renders": 8,
+    "window_medial_axis": "refused at dry-run",
+    "tatami_vs_directional": "executed/rejected",
+    "semantic_replace_glass": "executed/rejected",
+    "set_params_gallery": "executed/rejected",
+    "restored_osp_byte_identical": true,
+    "restored_sha256": "1d7a050b8b3950db41eafb9e6f015a2e99ec213272e6b389d1feee95daacfdb4"
+  },
+  "warnings": "15 short-stitch warnings on textile_arch; coordinates and object IDs in private archive. 8 on textile_rails/cells; 18 on repaired.",
+  "fidelity_caveat": "Crop fidelity not comparable with full-scene route_protected bridge12; no machine test and no independent rating",
+  "archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-26/phare-rails-echelle-textile-mcp-0105-private.zip",
+    "library_file_id": "libfile_5407d4316f8481919509d4880b53f343",
+    "size_bytes": 40877872,
+    "sha256": "904c5541ebc83209ac0b3378c09cd07814d13cc3fab76471de59c870cd6f0729",
+    "entries": 330,
+    "rematerialized_sha_verified": true
+  },
+  "next_hypothesis": "Stop hand approximating 17 gallery strokes: use just source-proven vertical posts and two organic central arcs at true textile width 0.5-1mm, source-registered control at 1:1. Rebuild dome/glass/shaft as contiguous semantic carriers with occlusion and pre-quantization small island elimination; split foam by true source object boundaries, not pixel color alone. Strict gate A before imports, real MCP previews, no full scene until crop passes."
+}
