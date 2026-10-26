@@ -1,0 +1,197 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261026T035540Z-phare-two-plane-gallery-mcp-0d343ff",
+  "created_utc": "2026-10-26T03:59:30Z",
+  "status": "failed",
+  "artistic_verdict": "Gate A failed before import. Four true MCP diagnostic imports and genuine previews inspected; all artistically rejected; no full scene.",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "rematerialized_and_verified": true
+  },
+  "main_commit": "ea630a7576d9c538ba2c1b1276cb60bd8acdfd9b",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "binary_not_rebuilt_from_main": true,
+    "tools_called": [
+      "digitize_guide",
+      "project_operations",
+      "semantic_validate",
+      "project_new",
+      "semantic_import dry_run/apply",
+      "project_apply import_svg dry_run/apply front/back",
+      "project_checkpoint",
+      "semantic_map",
+      "project_inspect",
+      "project_report",
+      "project_check",
+      "project_density",
+      "project_fabric_risk",
+      "project_fidelity",
+      "project_render",
+      "project_save",
+      "project_export",
+      "project_satin_compare",
+      "semantic_replace dry_run/apply",
+      "project_restore"
+    ]
+  },
+  "subproject": {
+    "crop_px": [
+      888,
+      65,
+      1010,
+      466
+    ],
+    "size_mm": [
+      29.388,
+      96.595
+    ],
+    "canvas_mm": [
+      50,
+      120
+    ],
+    "not_full_scene": true,
+    "protected_windows": 5
+  },
+  "method": {
+    "preparations": [
+      "depth_split",
+      "depth_curved",
+      "depth_relief",
+      "depth_warning_fix"
+    ],
+    "description": "Source-guided gallery front/back planes via two independent open SVG running imports in two thread colors; left/right grilles and two central diamonds with negative gaps; variants reallocate contiguous glass and dome masks, additional roof source-traced running paths; warning mask cleanup attempted only at exact coordinates, no pixels removed because unsafe. Foam unchanged.",
+    "gate_A": "Failed. Visual inspection before import: front/back geometry still too simplified and too open, artificial central diamonds, dome and glass blocky, tatami hatching, foam massive.",
+    "imports": "diagnostic only"
+  },
+  "variants": [
+    {
+      "name": "depth_split",
+      "objects": 63,
+      "stitches": 4080,
+      "trims": 76,
+      "jumps": 99,
+      "color_changes": 28,
+      "warnings": 3,
+      "errors": 0,
+      "hotspot_mm2": 2,
+      "fabric_risk_ge70_mm2": 8,
+      "missing_crop_percent": 28.531,
+      "lost_detail_percent": 2.428,
+      "wrong_colour_percent": 5.672,
+      "preview_rendered_by_mcp": true,
+      "artistic_verdict": "rejected"
+    },
+    {
+      "name": "depth_curved",
+      "objects": 64,
+      "stitches": 4040,
+      "trims": 78,
+      "jumps": 101,
+      "color_changes": 28,
+      "warnings": 3,
+      "errors": 0,
+      "hotspot_mm2": 2,
+      "fabric_risk_ge70_mm2": 8,
+      "missing_crop_percent": 28.629,
+      "lost_detail_percent": 2.516,
+      "wrong_colour_percent": 5.787,
+      "preview_rendered_by_mcp": true,
+      "artistic_verdict": "rejected"
+    },
+    {
+      "name": "depth_relief",
+      "objects": 65,
+      "stitches": 4068,
+      "trims": 79,
+      "jumps": 102,
+      "color_changes": 29,
+      "warnings": 3,
+      "errors": 0,
+      "hotspot_mm2": 2,
+      "fabric_risk_ge70_mm2": 7,
+      "missing_crop_percent": 28.243,
+      "lost_detail_percent": 2.739,
+      "wrong_colour_percent": 6.171,
+      "preview_rendered_by_mcp": true,
+      "artistic_verdict": "rejected"
+    },
+    {
+      "name": "depth_warning_fix",
+      "objects": 65,
+      "stitches": 4059,
+      "trims": 78,
+      "jumps": 102,
+      "color_changes": 29,
+      "warnings": 3,
+      "errors": 0,
+      "hotspot_mm2": 2,
+      "fabric_risk_ge70_mm2": 7,
+      "missing_crop_percent": 28.288,
+      "lost_detail_percent": 2.739,
+      "wrong_colour_percent": 6.134,
+      "preview_rendered_by_mcp": true,
+      "artistic_verdict": "rejected"
+    }
+  ],
+  "retouches": {
+    "true_project_render_count": 8,
+    "satin_strategies": [
+      "skeleton",
+      "parallel_sweep",
+      "medial_axis"
+    ],
+    "window_medial_axis": "dry-run refused",
+    "directional_guides_tested": true,
+    "semantic_replace_tested": true,
+    "set_params_tested": true,
+    "all_artistic_rejected": true,
+    "baseline_restored_byte_identical": true,
+    "baseline_sha256": ""
+  },
+  "warnings": {
+    "count_each": 3,
+    "locations": [
+      {
+        "object": 29,
+        "x_mm": -14.374,
+        "y_mm": 7.039
+      },
+      {
+        "object": 29,
+        "x_mm": -6.209,
+        "y_mm": 22.476
+      },
+      {
+        "object": "shaft mid 77/80/83",
+        "x_mm": -6.871,
+        "y_mm": -42.02
+      }
+    ],
+    "targeted_mask_cleanup_removed_pixels": 0
+  },
+  "machine_tested": false,
+  "independent_review": null,
+  "score_before": null,
+  "score_after": null,
+  "comparison_scope": "crop only, not comparable to global scene",
+  "next_hypothesis": "At 29.4mm the photographed gallery cells are sub-mm; do not add more fictive geometric lattice. Isolate same architectural masks and test directional fill / larger spacing for dome/glass/shaft; evaluate at physical scale. Gallery as source-traced thin silhouette plus 2-3 genuine diagonal cues; target warning stitch geometry not blind mask morphology. Foam only after architecture passes gate A.",
+  "archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-26/phare-galerie-deux-plans-mcp-0505-private.zip",
+    "library_file_id": "libfile_7ce86277ff68819183498d6b51de4a49",
+    "size_bytes": 23941623,
+    "sha256": "116ae73ad1cae3a44ffafed420b2530993b76a47ad14f0e6431620e4f649cc74",
+    "rematerialized_and_verified": true,
+    "zip_entries": 238
+  },
+  "parent_run_id": "20261026T025839Z-phare-curved-dome-glass-mcp-0d343ff"
+}
