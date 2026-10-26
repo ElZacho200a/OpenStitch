@@ -8,6 +8,7 @@
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QLabel>
 #include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -16,6 +17,9 @@
 
 #include <functional>
 
+#include "busy_indicator.hpp"
+#include "openstitch/ai_segmentation/backend_run.hpp"
+#include "responsive.hpp"
 #include "sam_worker_client.hpp"
 
 namespace openstitch::desktop {
@@ -36,7 +40,8 @@ QLineEdit* makePathRow(QFormLayout* form, const QString& label, QWidget* parent,
 
 } // namespace
 
-AiPreferencesDialog::AiPreferencesDialog(QWidget* parent) : QDialog(parent) {
+AiPreferencesDialog::AiPreferencesDialog(QWidget* parent)
+    : QDialog(parent), transportFactory_(ai_segmentation::process_transport_factory()) {
     setWindowTitle(tr("Préférences — Intelligence artificielle"));
     resize(560, 520);
 
@@ -90,6 +95,32 @@ AiPreferencesDialog::AiPreferencesDialog(QWidget* parent) : QDialog(parent) {
     defaultsForm->addRow(tr("Niveau de journalisation du worker :"), logLevelCombo_);
     mainLayout->addWidget(defaultsGroup);
 
+    auto* backendsGroup = new QGroupBox(tr("Backends IA (openstitch.ai.backend/1)"), this);
+    backendsGroup->setObjectName(QStringLiteral("aiBackendsGroup"));
+    auto* backendsForm = new QFormLayout(backendsGroup);
+    auto* backendsNote = new QLabel(
+        tr("Les backends (SAM 2.1, HQ-SAM 2, Florence-2…) sont déclarés dans un fichier JSON que "
+           "vous maîtrisez : seule la commande qu'il contient est lancée. OpenStitch ne télécharge "
+           "ni n'installe aucun modèle ; si un backend est absent, la segmentation couleur "
+           "(CIELAB) prend le relais."),
+        backendsGroup);
+    backendsNote->setWordWrap(true);
+    backendsForm->addRow(backendsNote);
+    backendsFileEdit_ = makePathRow(backendsForm, tr("Fichier de backends :"), backendsGroup,
+                                    [this] { browseBackendsFile(); });
+    backendsFileEdit_->setObjectName(QStringLiteral("aiBackendsFileEdit"));
+    backendsFileEdit_->setPlaceholderText(tr("vide = variable OPENSTITCH_AI_BACKENDS"));
+    engineCombo_ = new QComboBox(backendsGroup);
+    engineCombo_->setObjectName(QStringLiteral("aiDefaultEngineCombo"));
+    backendsForm->addRow(tr("Moteur par défaut :"), engineCombo_);
+    auto* probeButton = new QPushButton(tr("Sonder les backends"), backendsGroup);
+    probeButton->setObjectName(QStringLiteral("aiProbeBackendsButton"));
+    connect(probeButton, &QPushButton::clicked, this, &AiPreferencesDialog::probeBackends);
+    backendsForm->addRow(probeButton);
+    connect(backendsFileEdit_, &QLineEdit::editingFinished, this,
+            [this] { refreshEngineChoices(engineCombo_->currentData().toString()); });
+    mainLayout->addWidget(backendsGroup);
+
     testButton_ = new QPushButton(tr("Tester la configuration"), this);
     connect(testButton_, &QPushButton::clicked, this, &AiPreferencesDialog::testConfiguration);
     mainLayout->addWidget(testButton_);
@@ -103,6 +134,10 @@ AiPreferencesDialog::AiPreferencesDialog(QWidget* parent) : QDialog(parent) {
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     mainLayout->addWidget(buttons);
+    // Le groupe « Backends IA » allonge le dialogue : le contenu défile, OK / Annuler restent
+    // visibles (HP-UX-025).
+    scrollDialogBody(this, buttons);
+    fitDialogToScreen(this);
 }
 
 AiPreferencesDialog::~AiPreferencesDialog() {
@@ -126,6 +161,79 @@ void AiPreferencesDialog::setPreferences(const AiPreferences& prefs) {
     maxResolutionSpin_->setValue(prefs.maxAnalysisResolution);
     keepDiagnosticsCheck_->setChecked(prefs.keepDiagnosticFiles);
     logLevelCombo_->setCurrentText(prefs.logLevel);
+    backendsFileEdit_->setText(prefs.backendsFile);
+    refreshEngineChoices(prefs.engine);
+}
+
+void AiPreferencesDialog::setTransportFactory(ai_segmentation::TransportFactory factory) {
+    transportFactory_ = std::move(factory);
+}
+
+void AiPreferencesDialog::refreshEngineChoices(const QString& wanted) {
+    AiPreferences current;
+    current.backendsFile = backendsFileEdit_->text();
+    QString error;
+    const auto settings = loadBackendSettings(current, &error);
+    engineCombo_->clear();
+    engineCombo_->addItem(tr("SAM 2.1 — worker historique (WSL/Python)"),
+                          AiEngine{AiEngine::Kind::Legacy, {}}.toString());
+    for (const auto& backend : settings.backends) {
+        engineCombo_->addItem(
+            QString::fromStdString(backend.display_name.empty() ? backend.id
+                                                                : backend.display_name),
+            AiEngine{AiEngine::Kind::Backend, QString::fromStdString(backend.id)}.toString());
+    }
+    engineCombo_->addItem(tr("Segmentation couleur (CIELAB, sans IA)"),
+                          AiEngine{AiEngine::Kind::Classical, {}}.toString());
+    const int index = engineCombo_->findData(wanted);
+    engineCombo_->setCurrentIndex(index >= 0 ? index : 0);
+    if (!error.isEmpty()) {
+        appendTestLog(error);
+    }
+}
+
+void AiPreferencesDialog::browseBackendsFile() {
+    const QString picked = QFileDialog::getOpenFileName(
+        this, tr("Sélectionner le fichier de backends IA"), {}, tr("JSON (*.json)"));
+    if (!picked.isEmpty()) {
+        backendsFileEdit_->setText(picked);
+        refreshEngineChoices(engineCombo_->currentData().toString());
+    }
+}
+
+void AiPreferencesDialog::probeBackends() {
+    testLog_->clear();
+    AiPreferences current;
+    current.backendsFile = backendsFileEdit_->text();
+    QString error;
+    const auto settings = loadBackendSettings(current, &error);
+    if (!error.isEmpty()) {
+        appendTestLog(error);
+        return;
+    }
+    if (settings.backends.empty()) {
+        appendTestLog(tr("Aucun backend déclaré : seuls le worker historique et la segmentation "
+                         "couleur (CIELAB) sont disponibles."));
+        return;
+    }
+    ai_segmentation::SessionOptions options;
+    options.start_timeout = std::chrono::seconds{60};
+    std::vector<ai_segmentation::BackendStatus> statuses;
+    {
+        BusyIndicator busy(this, tr("Sonde des backends IA…"));
+        statuses = busy.run([&] {
+            return ai_segmentation::discover_backends(settings, transportFactory_, options);
+        });
+    }
+    for (const auto& status : statuses) {
+        appendTestLog(QString::fromStdString(ai_segmentation::backend_status_line(status)));
+    }
+    const auto engine = AiEngine::fromString(engineCombo_->currentData().toString());
+    if (engine.kind == AiEngine::Kind::Backend) {
+        const auto resolution = ai_segmentation::resolve_backend(
+            statuses, engine.backendId.toStdString(), ai_segmentation::PromptKind::Automatic);
+        appendTestLog(QString::fromStdString(resolution.reason));
+    }
 }
 
 AiPreferences AiPreferencesDialog::preferences() const {
@@ -148,6 +256,8 @@ AiPreferences AiPreferencesDialog::preferences() const {
     prefs.maxAnalysisResolution = maxResolutionSpin_->value();
     prefs.keepDiagnosticFiles = keepDiagnosticsCheck_->isChecked();
     prefs.logLevel = logLevelCombo_->currentText();
+    prefs.backendsFile = backendsFileEdit_->text().trimmed();
+    prefs.engine = engineCombo_->currentData().toString();
     return prefs;
 }
 

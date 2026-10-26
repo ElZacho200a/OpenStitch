@@ -4,6 +4,7 @@
 #include <QDialog>
 
 #include "ai_preferences.hpp"
+#include "openstitch/ai_segmentation/backend_registry.hpp"
 
 class QCheckBox;
 class QComboBox;
@@ -30,15 +31,21 @@ public:
 
     void setPreferences(const AiPreferences& prefs);
     [[nodiscard]] AiPreferences preferences() const;
+    // Fabrique de transports pour « Sonder les backends » (tests : backends factices en mémoire).
+    void setTransportFactory(ai_segmentation::TransportFactory factory);
 
 private slots:
     void browseVenvPython();
     void browseWorkerScript();
     void browseModelsDir();
     void testConfiguration();
+    void browseBackendsFile();
+    void probeBackends();
 
 private:
     void appendTestLog(const QString& line);
+    // Recharge la liste des moteurs depuis le fichier de backends en cours de saisie.
+    void refreshEngineChoices(const QString& wanted);
 
     QCheckBox* enabledCheck_{nullptr};
     QComboBox* runtimeCombo_{nullptr};
@@ -51,7 +58,10 @@ private:
     QSpinBox* maxResolutionSpin_{nullptr};
     QCheckBox* keepDiagnosticsCheck_{nullptr};
     QComboBox* logLevelCombo_{nullptr};
+    QLineEdit* backendsFileEdit_{nullptr};
+    QComboBox* engineCombo_{nullptr};
     QPlainTextEdit* testLog_{nullptr};
+    ai_segmentation::TransportFactory transportFactory_;
     QPushButton* testButton_{nullptr};
 
     SamWorkerClient* testClient_{nullptr};

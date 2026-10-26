@@ -20,6 +20,10 @@ struct MaskEntry {
     std::array<int, 4> bbox_xywh{}; // x, y, largeur, hauteur en pixels
     double predicted_iou{0.0};
     double stability_score{0.0};
+    // Faux quand le backend ne rapporte pas le score (jamais synthétisé : l'IHM affiche « — »).
+    // Non sérialisé : `masks.json` (worker SAM historique) porte toujours les deux scores.
+    bool iou_reported{true};
+    bool stability_reported{true};
     int component_count_before{0};
     int component_count_after_cleanup{0};
     int removed_island_count{0};
