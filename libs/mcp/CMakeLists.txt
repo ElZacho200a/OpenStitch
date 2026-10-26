@@ -48,5 +48,5 @@ target_link_libraries(openstitch_mcp
     PRIVATE nlohmann_json::nlohmann_json openstitch::project_ops openstitch::document
             openstitch::project_io openstitch::image openstitch::stitch
             openstitch::autodigitize openstitch::segmentation
-            openstitch::stitch_generation openstitch::warnings
+            openstitch::stitch_generation openstitch::ai_segmentation openstitch::warnings
 )

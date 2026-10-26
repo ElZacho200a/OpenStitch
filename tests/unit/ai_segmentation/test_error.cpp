@@ -24,6 +24,11 @@ TEST_CASE("every AiErrorCode round-trips through its protocol name") {
         AiErrorCode::InvalidWorkerResponse,
         AiErrorCode::WorkerCrashed,
         AiErrorCode::Cancelled,
+        AiErrorCode::ProtocolMismatch,
+        AiErrorCode::UnsupportedPrompt,
+        AiErrorCode::BackendBusy,
+        AiErrorCode::BackendTimeout,
+        AiErrorCode::BackendUnavailable,
     };
     for (const AiErrorCode code : codes) {
         const std::string name = ai_error_code_name(code);

@@ -37,6 +37,7 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
+| 2026-10-26 | Claude (IA PR-02) | **Contrat de backend IA générique** `openstitch.ai.backend/1` : worker Python `ai-worker/` (adaptateur SAM 2.1 sans modifier `sam-worker/`, deux faux backends), client sans Qt dans `libs/ai_segmentation` (protocole, session avec annulation/délais, transport processus Windows+POSIX, registre de découverte avec repli classique), `openstitch-cli ai backends`, outil MCP `ai_backends` en lecture seule, 5 nouveaux codes d'erreur, tests Catch2 + Python. Le desktop garde son client SAM v1 (migration prévue). |
 | P0 | 12 | 28 | 5 | 45 |
 | P1 | 10 | 68 | 74 | 152 |
 | P2 | 3 | 34 | 66 | 103 |
