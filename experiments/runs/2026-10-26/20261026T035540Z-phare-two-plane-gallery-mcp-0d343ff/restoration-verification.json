@@ -1,0 +1,6 @@
+{
+  "run_id": "20261026T035540Z-phare-two-plane-gallery-mcp-0d343ff",
+  "baseline_restored_byte_identical": true,
+  "baseline_osp_sha256": "237c4f44d28ab16c5d0f1cb6cb8b480a087f80d9baa4a1a9311b79079f264536",
+  "note": "Immutable supplemental verification for restoration hash omitted in initial result.json. Source of truth: private archive work/depth_relief/restoration.json."
+}
