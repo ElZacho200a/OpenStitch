@@ -1,0 +1,130 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261026T110000Z-tempete-source-foam-facets-mcp-0d343ff",
+  "created_utc": "2026-10-26T11:06:00Z",
+  "status": "rejected_artistic_global",
+  "source": {
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "rematerialized_verified": true,
+    "old_Turner_used": false
+  },
+  "scope": {
+    "full_scene": true,
+    "design_mm": [
+      370,
+      231.490885
+    ],
+    "frame_mm": [
+      390,
+      268
+    ],
+    "six_waves": true,
+    "five_windows": true,
+    "sailboat_sky_clouds_foam": true
+  },
+  "main_commit": "cb26e5a7707d240e90127fa1a118dfbffbbcca27",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "not_rebuilt_from_main": true,
+    "project_render_real_png": true
+  },
+  "preparations": {
+    "variants": [
+      "foam_luma_3",
+      "foam_lab_4",
+      "foam_edge_5"
+    ],
+    "methods": [
+      "3 source-luminance bands",
+      "4 original JPEG Lab kmeans clusters",
+      "5 edge-aware bilateral+Lab kmeans clusters"
+    ],
+    "source_derived": true,
+    "gate_A": "FAILED, inspected globally and at boat/lighthouse/wave zoom BEFORE MCP import; all imports diagnostic",
+    "notes": "Source foam masks and holes preserved separately per six waves; tiny source-colour islands reassigned within same wave. Too little internal blue-grey foam structure; too many colour islands."
+  },
+  "variants": [
+    {
+      "name": "foam_luma_3",
+      "objects": 1199,
+      "stitches": 137532,
+      "trims": 1600,
+      "jumps": 2563,
+      "color_changes": 167,
+      "warnings_displayed": 51,
+      "errors": 0,
+      "hotspot_mm2": 48,
+      "missing_percent": 12.458,
+      "wrong_colour_percent": 2.986,
+      "lost_detail_percent": 1.652,
+      "verdict": "REJECTED_ARTISTIC"
+    },
+    {
+      "name": "foam_lab_4",
+      "objects": 1319,
+      "stitches": 139791,
+      "trims": 1760,
+      "jumps": 2780,
+      "color_changes": 187,
+      "warnings_displayed": 51,
+      "errors": 0,
+      "hotspot_mm2": 57,
+      "missing_percent": 13.1,
+      "wrong_colour_percent": 2.642,
+      "lost_detail_percent": 1.271,
+      "verdict": "REJECTED_ARTISTIC"
+    },
+    {
+      "name": "foam_edge_5",
+      "objects": 899,
+      "stitches": 137084,
+      "trims": 1335,
+      "jumps": 1973,
+      "color_changes": 171,
+      "warnings_displayed": 51,
+      "errors": 0,
+      "hotspot_mm2": 62,
+      "missing_percent": 11.403,
+      "wrong_colour_percent": 2.789,
+      "lost_detail_percent": 1.518,
+      "verdict": "REJECTED_ARTISTIC"
+    }
+  ],
+  "retouches": {
+    "target": "foam_edge_5",
+    "foresail_id": 371,
+    "satin_strategies": [
+      "skeleton",
+      "parallel_sweep",
+      "medial_axis"
+    ],
+    "same_wave_id": 476,
+    "operations": [
+      "directional_guides",
+      "set_params angle42",
+      "semantic_replace hull shade"
+    ],
+    "all_dry_run_applied_rendered": true,
+    "all_rejected": true,
+    "baseline_restored_byte_identical_sha256": "92b11c21c3099760d1f4a3c1cd7918ad3b86c6a0236a063e2acc8c697a2455cb"
+  },
+  "archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-26/tempete-facettes-source-mcp-1200-private.zip",
+    "library_file_id": "libfile_22d231285f548191b3ecb42fd49b97ff",
+    "sha256": "f752fd2fc2086458a9b04cf9d7217f513e5936e6a5b05e2976c161a988612444",
+    "bytes": 70108395,
+    "entries": 599,
+    "rematerialized_sha_and_zip_verified": true
+  },
+  "machine_test": "not_run",
+  "independent_score": "not_run",
+  "next_hypothesis": "ALWAYS FULL SCENE. Stop isolated foam quantization. Re-segment entire large wave, including source-derived blue-grey inner shadows, negative spaces, crest and volutes; protect boat and lighthouse detail. Reduce trims through sequencing rather than destructive color merges. 3+ global variants, visual Gate A, real MCP renders."
+}
