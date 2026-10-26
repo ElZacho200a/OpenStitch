@@ -1,0 +1,142 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261026T130401Z-tempete-crest-volute-topology-mcp-0d343ff",
+  "created_utc": "2026-10-26T13:04:01Z",
+  "status": "rejected_artistic_global",
+  "source": {
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "rematerialized_verified": true,
+    "old_Turner_used": false
+  },
+  "scope": {
+    "full_scene": true,
+    "frame_mm": [
+      390,
+      268
+    ],
+    "design_mm": [
+      370,
+      231.490885
+    ],
+    "six_waves": true,
+    "five_windows": true,
+    "sailboat_sky_clouds_foam": true
+  },
+  "main_commit": "cb26e5a7707d240e90127fa1a118dfbffbbcca27",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "not_rebuilt_from_main": true,
+    "project_render_real_png": true
+  },
+  "preparations": {
+    "variants": [
+      "contour_palette10",
+      "crest_protected8",
+      "volute_dual9"
+    ],
+    "methods": [
+      "Whole-wave per-instance source Lab palette 10 colors",
+      "Whole-wave source bilateral Lab 8 + independent locally bright crest mask",
+      "Whole-wave source bilateral Lab 9 + locally bright crests and blue-grey shadow ridges + 11 open source-traced running arcs"
+    ],
+    "wave_source_pixels": 151640,
+    "source_derived": true,
+    "gate_A": "FAILED; full-scene plus boat/lighthouse/wave zooms inspected BEFORE MCP; imports diagnostic only",
+    "notes": "Global source composition preserved with boat, five windows, six waves. Crest mask smooths internal movement, shadow masks fragment waves; lighthouse and boat remain schematic."
+  },
+  "variants": [
+    {
+      "name": "contour_palette10",
+      "objects": 1117,
+      "stitches": 141327,
+      "trims": 1699,
+      "jumps": 2604,
+      "color_changes": 106,
+      "warnings_displayed": 51,
+      "errors": 0,
+      "hotspot_mm2": 61,
+      "fabric_risk_ge70_mm2": 197,
+      "missing_percent": 13.443,
+      "wrong_colour_percent": 1.724,
+      "lost_detail_percent": 0.653,
+      "short_stitches": 1979,
+      "short_lock_stitches": 2288,
+      "verdict": "REJECTED_ARTISTIC"
+    },
+    {
+      "name": "crest_protected8",
+      "objects": 1121,
+      "stitches": 142258,
+      "trims": 1678,
+      "jumps": 2505,
+      "color_changes": 100,
+      "warnings_displayed": 51,
+      "errors": 0,
+      "hotspot_mm2": 71,
+      "fabric_risk_ge70_mm2": 236,
+      "missing_percent": 13.541,
+      "wrong_colour_percent": 1.45,
+      "lost_detail_percent": 0.436,
+      "short_stitches": 1810,
+      "short_lock_stitches": 2360,
+      "verdict": "REJECTED_ARTISTIC"
+    },
+    {
+      "name": "volute_dual9",
+      "objects": 1473,
+      "stitches": 143887,
+      "trims": 2042,
+      "jumps": 2976,
+      "color_changes": 111,
+      "warnings_displayed": 51,
+      "errors": 0,
+      "hotspot_mm2": 82,
+      "fabric_risk_ge70_mm2": 257,
+      "missing_percent": 14.729,
+      "wrong_colour_percent": 2.107,
+      "lost_detail_percent": 0.775,
+      "short_stitches": 2126,
+      "short_lock_stitches": 2820,
+      "verdict": "REJECTED_ARTISTIC"
+    }
+  ],
+  "retouches": {
+    "target": "contour_palette10",
+    "foresail_id": 638,
+    "foresail_area_mm2": 16.946,
+    "satin_strategies": [
+      "skeleton",
+      "parallel_sweep",
+      "medial_axis"
+    ],
+    "same_wave_id": 767,
+    "same_wave_area_mm2": 76.48,
+    "operations": [
+      "directional_guides",
+      "set_params angle42",
+      "semantic_replace boat.hull.shade"
+    ],
+    "all_dry_run_applied_rendered": true,
+    "all_rejected": true,
+    "baseline_restored_byte_identical_sha256": "22af390c56be8254c9aca3abfb213ec97b059e129d7dc0fb7aa52f0ecd7f8e9a"
+  },
+  "archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-26/tempete-volutes-cretes-source-mcp-1410-private.zip",
+    "library_file_id": "libfile_19433f8220708191801f503e496eeb03",
+    "sha256": "9fa905b0f11d4893e0f00d7e5f065915237e79e73a140207f5aadc109b8aa14f",
+    "bytes": 62180847,
+    "entries": 388,
+    "rematerialized_sha_and_zip_verified": true
+  },
+  "machine_test": "not_run",
+  "independent_score": "not_run",
+  "next_hypothesis": "ALWAYS FULL SCENE. Stop increasing per-wave color classes. Model crest, volute, inner shadow and highlight as connected geometry with explicit source curves; reduce excessive dark edge outlines in true stitch render and route within each of six waves; simultaneously correct boat silhouette and five lighthouse windows. 3+ source-derived full-scene variants, global visual Gate A before MCP, true global render, diagnose short-stitch warnings by object. Never lighthouse-only."
+}
