@@ -103,6 +103,29 @@ void setRowEnabled(QFormLayout* form, QWidget* field, bool on) {
     }
 }
 
+// Choix « Manuelle / Automatique » de la compensation du tirage (HP-ENG-001.b).
+QComboBox* makePullModeCombo(QWidget* parent, document::PullMode mode) {
+    auto* combo = new QComboBox(parent);
+    combo->setObjectName(QStringLiteral("combo_pullMode"));
+    combo->addItems({QObject::tr("Manuelle"), QObject::tr("Automatique")});
+    combo->setCurrentIndex(static_cast<int>(mode));
+    combo->setToolTip(
+        QObject::tr("Automatique : le moteur compense lui-même le tirage du fil selon la largeur "
+                    "de la forme (rangées plus longues, colonnes de satin plus larges). Le "
+                    "réglage manuel est alors ignoré."));
+    return combo;
+}
+
+// Grise la compensation manuelle quand le mode est Automatique ; à appeler une fois les deux
+// champs ajoutés au formulaire.
+void syncPullMode(QFormLayout* form, QComboBox* mode, QWidget* manualField) {
+    const auto sync = [form, mode, manualField] {
+        setRowEnabled(form, manualField, mode->currentIndex() == 0);
+    };
+    sync();
+    QObject::connect(mode, &QComboBox::currentIndexChanged, mode, [sync](int) { sync(); });
+}
+
 // Adapte une modification typée (un champ de T) en modification de StitchParams : sans effet si
 // les paramètres ne portent pas un T. (Fonction à part : une lambda imbriquée dans la lambda
 // générique d'édition met MSVC en échec.)
@@ -1351,7 +1374,11 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 form->addRow(tr("Longueur de point :"), len);
                 form->addRow(tr("Angle (orientation) :"), angle);
                 form->addRow(tr("Retrait de bord :"), inset);
+                auto* pMode = makePullModeCombo(body_, p.pull_mode);
+                form->addRow(tr("Tirage :"), pMode);
                 form->addRow(tr("Compensation du tirage :"), pull);
+                syncPullMode(form, pMode, pull);
+                bindEnumField<T>(this, edit, pMode, tr("Tirage"), &T::pull_mode, members);
                 form->addRow(tr("Écrêtage des bouts :"), rowClip);
                 form->addRow(QString(), outline);
                 form->addRow(tr("Décalage (stagger) :"), stagger);
@@ -1637,7 +1664,11 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 form->addRow(QString(), dirZig);
                 form->addRow(QString(), underpath);
                 form->addRow(QString(), outline);
+                auto* pMode = makePullModeCombo(body_, p.pull_mode);
+                form->addRow(tr("Tirage :"), pMode);
                 form->addRow(tr("Compensation du tirage :"), dirPull);
+                syncPullMode(form, pMode, dirPull);
+                bindEnumField<T>(this, edit, pMode, tr("Tirage"), &T::pull_mode, members);
                 form->addRow(QString(), handmade);
                 form->addRow(tr("Intensité :"), intensity);
                 form->addRow(QString(), reseed);
@@ -1794,7 +1825,11 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 }
                 auto* uMode = makeUnderlayModeCombo(body_, p.underlay_mode);
                 form->addRow(tr("Espacement :"), density);
+                auto* pMode = makePullModeCombo(body_, p.pull_mode);
+                form->addRow(tr("Tirage :"), pMode);
                 form->addRow(tr("Compensation de tirage :"), comp);
+                syncPullMode(form, pMode, comp);
+                bindEnumField<T>(this, edit, pMode, tr("Tirage"), &T::pull_mode, members);
                 form->addRow(tr("Sous-couche :"), uMode);
                 form->addRow(QString(), underlay);
                 form->addRow(QString(), edgeU);
@@ -2086,7 +2121,11 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 form->addRow(tr("Longueur max des segments (y ≤ Lmax) :"), splitLen);
                 form->addRow(tr("Points courts dans les virages :"), shortCombo);
                 section(tr("Compensation"));
+                auto* pMode = makePullModeCombo(body_, p.pull_mode);
+                form->addRow(tr("Tirage :"), pMode);
                 form->addRow(tr("Compensation de tirage :"), comp);
+                syncPullMode(form, pMode, comp);
+                bindEnumField<T>(this, edit, pMode, tr("Tirage"), &T::pull_mode, members);
                 form->addRow(tr("Compensation gauche :"), pullL);
                 form->addRow(tr("Compensation droite :"), pullR);
                 section(tr("Sous-couches"));

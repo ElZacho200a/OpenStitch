@@ -60,17 +60,21 @@ TEST_CASE("moteur : round-trip des nouveaux reglages (tatami, directionnel, sati
     document::TatamiParams tatami;
     tatami.pull_compensation = Micrometers{350};
     tatami.underlay_mode = document::UnderlayMode::Auto;
+    tatami.pull_mode = document::PullMode::Auto; // HP-ENG-001.b
     tatami.row_end_clip = Micrometers{1'000};
     tatami.edge_outline = true;
     document::DirectionalFillParams directional;
     directional.underlay_mode = document::UnderlayMode::Auto;
+    directional.pull_mode = document::PullMode::Auto;
     directional.edge_outline = true;
     document::SatinParams satin;
     satin.underlay_mode = document::UnderlayMode::Auto;
+    satin.pull_mode = document::PullMode::Auto;
     satin.border = document::BorderSatinSpec{Micrometers{4'500}, document::BorderSide::Outside,
                                              document::BorderCorner::Round, 2, 1};
     document::AutoSatinParams autoSatin;
     autoSatin.underlay_mode = document::UnderlayMode::Auto;
+    autoSatin.pull_mode = document::PullMode::Auto;
     autoSatin.compact_axis = true;
 
     std::uint64_t id = 10;
@@ -120,14 +124,17 @@ TEST_CASE("moteur : un .osp anterieur est relu avec les defauts (comportement in
     const auto& tatami = std::get<document::TatamiParams>(project.embroidery_objects[0].params);
     CHECK(tatami.pull_compensation.value == 0);
     CHECK(tatami.underlay_mode == document::UnderlayMode::Manual);
+    CHECK(tatami.pull_mode == document::PullMode::Manual);
     CHECK(tatami.row_end_clip.value == 0);
     CHECK_FALSE(tatami.edge_outline);
     const auto& satin = std::get<document::SatinParams>(project.embroidery_objects[1].params);
     CHECK(satin.underlay_mode == document::UnderlayMode::Manual);
+    CHECK(satin.pull_mode == document::PullMode::Manual);
     CHECK_FALSE(satin.border.has_value());
     const auto& autoSatin =
         std::get<document::AutoSatinParams>(project.embroidery_objects[2].params);
     CHECK(autoSatin.underlay_mode == document::UnderlayMode::Manual);
+    CHECK(autoSatin.pull_mode == document::PullMode::Manual);
     for (const auto& e : project.embroidery_objects) {
         CHECK(e.join == document::JoinMode::Inherit);
     }

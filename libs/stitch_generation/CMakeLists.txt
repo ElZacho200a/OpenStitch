@@ -16,6 +16,7 @@ add_library(openstitch_stitch_generation
     src/chunk_cache.cpp
     src/overrides.cpp
     src/underlay_auto.cpp
+    src/pull_auto.cpp
     src/join.cpp
     src/border_satin.cpp
     src/blanket_stitch.cpp
