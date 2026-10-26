@@ -1,6 +1,9 @@
 # Format de travail sémantique pour agents — openstitch.semantic/1
 
-État : validateur expérimental ; **pas encore importable nativement dans un OSP**.
+État : le format est **importable nativement** dans un OSP depuis le 2026-10-23 : opérations
+`semantic_import` et `semantic_replace` (CLI `project op`, MCP), validation par `semantic_validate`
+(MCP) ou `scripts/openstitch_semantic.py`, carte de provenance par `semantic_map`. Le desktop n'appelle
+pas encore ces opérations (pas d'annulation côté IHM, voir `docs/ai/README.md` F4).
 
 Le manifeste évite qu'une segmentation par couleurs fasse perdre l'identité
 des structures : pierre, lierre, roseau, reflet et nénuphar. Il décrit les
@@ -95,6 +98,10 @@ l'alpha ou la couverture des masques. Il ne génère aucun point, ne modifie
 aucun OSP, n'effectue aucune fusion géométrique et ne calcule pas une
 correspondance entre régions sémantiques et objets de broderie.
 
-B02 : opérations atomiques sur masques et fusion contrôlée par famille/instance.
-B03 : import dans un projet OSP conservant les identifiants sémantiques.
-B04 : re-numérisation locale sans toucher aux objets non concernés.
+B02 : opérations atomiques sur masques et fusion contrôlée par famille/instance (restant).
+B03 : import dans un projet OSP conservant les identifiants sémantiques — **natif** (`semantic_import`, identité dans le nom d'objet `sem:<id> <n>`) ; intentions `directional`/`satin` sans guides refusées.
+B04 : re-numérisation locale — **native** (`semantic_replace`, même place de couture, autres objets intacts, IDs natifs renouvelés).
+
+Le validateur Python ne couvre toujours que la structure ; la validation native fait foi pour l'import.
+Extensions prévues (rétrocompatibles, voir `docs/ai/`) : boîte et score par région, provenance du backend
+(`backend_id`, `model_hash`), relations typées.
