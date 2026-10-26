@@ -159,6 +159,9 @@ void classify_and_build_embroidery(const geometry::PathSet& main, const RegionSo
         // Bande étroite (anneau, ruban, arc) ou petit disque -> auto-satin.
         document::AutoSatinParams sp;
         sp.compact_axis = satin.compact_axis;
+        if (options.auto_pull_compensation) {
+            sp.pull_mode = document::PullMode::Auto;
+        }
         emb.params = sp;
         emb.name = "Satin " + source.label;
     } else if (areaMm2 >= options.min_fill_area_mm2) {
@@ -166,6 +169,9 @@ void classify_and_build_embroidery(const geometry::PathSet& main, const RegionSo
         // éditable ensuite.
         document::TatamiParams tp;
         tp.inset = options.fill_inset;
+        if (options.auto_pull_compensation) {
+            tp.pull_mode = document::PullMode::Auto;
+        }
         emb.params = tp;
         emb.name = "Remplissage " + source.label;
     } else {

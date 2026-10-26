@@ -83,6 +83,7 @@ inline void apply(document::TatamiParams& p) {
     // HP-ENG-002 : un objet créé à la main reçoit la sous-couche automatique (les projets
     // existants gardent leur mode : le fichier ne l'écrit que s'il n'est pas Manual).
     p.underlay_mode = document::UnderlayMode::Auto;
+    p.pull_mode = document::PullMode::Auto; // HP-ENG-001.b
 }
 inline void apply(document::RunningStitchParams& p) {
     p.stitch_length.value = intValue(kRunningLength, p.stitch_length.value, 500, 20'000);
@@ -91,10 +92,12 @@ inline void apply(document::RunningStitchParams& p) {
 inline void apply(document::DirectionalFillParams& p) {
     p.row_spacing.value = intValue(kDirectionalSpacing, p.row_spacing.value, 100, 5'000);
     p.underlay_mode = document::UnderlayMode::Auto; // HP-ENG-002
+    p.pull_mode = document::PullMode::Auto;         // HP-ENG-001.b
 }
 inline void apply(document::AutoSatinParams& p) {
     p.spacing.value = intValue(kSatinSpacing, p.spacing.value, 100, 2'000);
     p.underlay_mode = document::UnderlayMode::Auto; // HP-ENG-002
+    p.pull_mode = document::PullMode::Auto;         // HP-ENG-001.b
 }
 inline void apply(document::StitchParams& params) {
     std::visit(

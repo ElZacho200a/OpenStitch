@@ -644,6 +644,18 @@ void PropertiesPanelTest::engineSettingsEmitDedicatedEdits() {
     QVERIFY(emitted.has_value());
     QCOMPARE(std::get<openstitch::document::TatamiParams>(*emitted).pull_compensation.value, 300);
 
+    // HP-ENG-001.b : le mode Automatique grise la compensation manuelle.
+    auto* pullMode = panel.findChild<QComboBox*>(QStringLiteral("combo_pullMode"));
+    QVERIFY(pullMode != nullptr);
+    QCOMPARE(pullMode->currentIndex(), 0);
+    QVERIFY(pull->isEnabled());
+    pullMode->setCurrentIndex(1);
+    QCOMPARE(std::get<openstitch::document::TatamiParams>(*emitted).pull_mode,
+             openstitch::document::PullMode::Auto);
+    QVERIFY(!pull->isEnabled());
+    pullMode->setCurrentIndex(0);
+    QVERIFY(pull->isEnabled());
+
     // Bords effilochés : écrêtage des bouts de rangée et contour cousu par-dessus.
     auto* clip = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_tatamiRowEndClip"));
     QVERIFY(clip != nullptr);

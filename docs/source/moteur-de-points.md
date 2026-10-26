@@ -705,6 +705,33 @@ Le retrait du contour de remplissage vaut un quart de l'épaisseur, borné à
 l'inspecteur). Les nouveaux objets créés à la main restent en `Manual` : le
 mode Auto se choisit dans l'inspecteur (« Sous-couche : Automatique »).
 
+### Compensation du tirage automatique (HP-ENG-001.b)
+
+Symptôme : après broderie, les zones de couleurs voisines sont écartées (filet de tissu
+visible), parce que le fil tire dans sa direction et que la forme cousue rétrécit. Le réglage
+manuel `pull_compensation` existait, mais il fallait le trouver et le régler objet par objet.
+
+`PullMode::Auto` (tatami, directionnel, satin, auto-satin ; défaut `Manual`) fait calculer
+la compensation par le moteur à la génération (`pull_auto.cpp`, fonctions pures, déterministes,
+réglage manuel ignoré et grisé dans l'inspecteur). Elle est recalculée pour chaque région
+d'un objet multi-îlots, à partir de son épaisseur moyenne `2·aire/périmètre` (celle de la
+sous-couche automatique) :
+
+| Objet | Compensation | Bornes |
+|---|---|---|
+| Remplissage (tatami, directionnel) | dépassement de CHAQUE bout de rangée, `0,15 mm + 0,03 × épaisseur` | [0,15 ; 0,40] mm |
+| Satin, auto-satin | élargissement de CHAQUE côté de la colonne, `5 % de la largeur` | [0,10 ; 0,35] mm |
+
+Qui l'active : les objets créés à la main (comme la sous-couche automatique), et l'auto-numérisation
+(`AutoOptions::auto_pull_compensation`, vrai par défaut). Un `.osp` n'écrit `pullMode` que hors
+`Manual` : un fichier existant reste identique et produit les mêmes points.
+
+**Limites connues.** Les coefficients sont des règles empiriques, non mesurées sur tissu : aucun
+modèle physique de l'étirement n'est publié, et il dépend du tissu, de la sous-couche et de la
+tension. À recaler avec la pièce-test HP-ENG-001.a. Le mode Auto agit dans l'axe du fil
+seulement : le retrait de bord (`inset`, 0,2 mm par défaut) qui laisse ~0,4 mm entre deux
+tatamis voisins n'est pas modifié.
+
 ### Entrée/sortie automatiques (HP-ENG-010)
 
 `SequenceFinishing::auto_join` (« Options de génération ») et, par objet,

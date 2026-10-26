@@ -54,6 +54,10 @@ json rgb_json(const std::array<std::uint8_t, 3>& rgb) {
     return rgb_to_hex(rgb);
 }
 
+const char* pull_mode_name(document::PullMode m) {
+    return m == document::PullMode::Auto ? "auto" : "manual";
+}
+
 const char* underlay_mode_name(document::UnderlayMode m) {
     return m == document::UnderlayMode::Auto ? "auto" : "manual";
 }
@@ -207,6 +211,7 @@ json params_json(const document::StitchParams& params, bool full) {
                 j["hidden_underpath"] = p.hidden_underpath;
                 j["pull_compensation_mm"] = mm(p.pull_compensation);
                 j["underlay_mode"] = underlay_mode_name(p.underlay_mode);
+                j["pull_mode"] = pull_mode_name(p.pull_mode);
                 j["row_end_clip_mm"] = mm(p.row_end_clip);
                 j["edge_outline"] = p.edge_outline;
                 if (p.entry_point) {
@@ -234,6 +239,7 @@ json params_json(const document::StitchParams& params, bool full) {
                 j["lock_length_mm"] = mm(p.lock_length);
                 j["lock_passes"] = p.lock_passes;
                 j["underlay_mode"] = underlay_mode_name(p.underlay_mode);
+                j["pull_mode"] = pull_mode_name(p.pull_mode);
                 j["auto_spacing"] = p.auto_spacing;
                 j["corner_mode"] = corner_name(p.corner_mode);
                 j["rail_a"] = polyline_mm(p.rail_a);
@@ -263,6 +269,7 @@ json params_json(const document::StitchParams& params, bool full) {
                 j["handmade_intensity"] = p.handmade_intensity;
                 j["seed"] = p.seed;
                 j["underlay_mode"] = underlay_mode_name(p.underlay_mode);
+                j["pull_mode"] = pull_mode_name(p.pull_mode);
                 j["edge_outline"] = p.edge_outline;
                 j["guides"] = paths_mm(p.guides);
                 j["break_lines"] = paths_mm(p.break_lines);
@@ -298,6 +305,7 @@ json params_json(const document::StitchParams& params, bool full) {
                 j["lock_length_mm"] = mm(p.lock_length);
                 j["lock_passes"] = p.lock_passes;
                 j["underlay_mode"] = underlay_mode_name(p.underlay_mode);
+                j["pull_mode"] = pull_mode_name(p.pull_mode);
                 j["compact_axis"] = p.compact_axis;
                 j["auto_spacing"] = p.auto_spacing;
                 j["corner_mode"] = corner_name(p.corner_mode);
