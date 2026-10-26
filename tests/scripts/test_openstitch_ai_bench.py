@@ -49,6 +49,24 @@ class FixtureTests(unittest.TestCase):
     def test_committed_corpus_matches_regeneration(self):
         self.assertEqual(fixtures.main(["--check", str(CORPUS)]), 0)
 
+    def test_check_ignores_zlib_differences_but_not_pixels(self):
+        import zlib as _zlib
+        with tempfile.TemporaryDirectory() as tmp:
+            copy = Path(tmp) / "corpus"
+            shutil.copytree(CORPUS, copy)
+            target = copy / "marine-synth-01" / "gold" / "sky.png"
+            w, h, ch, px = pngio.decode(target.read_bytes())
+            # meme image, autre niveau de compression (autre implementation de zlib = octets differents)
+            raw = b"".join(bytes([0]) + px[y * w:(y + 1) * w] for y in range(h))
+            data = bytearray(pngio.encode(w, h, "L", px))
+            self.assertNotEqual(_zlib.compress(raw, 1), _zlib.compress(raw, 9))
+            target.write_bytes(bytes(data))
+            self.assertEqual(fixtures.main(["--check", str(copy)]), 0)
+            changed = bytearray(px)
+            changed[0] ^= 255
+            target.write_bytes(pngio.encode(w, h, "L", bytes(changed)))
+            self.assertEqual(fixtures.main(["--check", str(copy)]), 2)
+
     def test_manifest_describes_the_required_scene(self):
         case = json.loads((CORPUS / "manifest.json").read_text(encoding="utf-8"))["cases"][0]
         ids = {o["semantic_id"] for o in case["objects"]}
