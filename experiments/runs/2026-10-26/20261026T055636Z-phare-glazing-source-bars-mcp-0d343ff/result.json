@@ -1,0 +1,185 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261026T055636Z-phare-glazing-source-bars-mcp-0d343ff",
+  "date_local": "2026-10-26 06:56–07:01 Europe/Paris",
+  "status": "failed_gate_A",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "rematerialized_and_verified": true
+  },
+  "main_commit": "ea630a7576d9c538ba2c1b1276cb60bd8acdfd9b",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "binary_not_rebuilt_from_main": true,
+    "actual_tools": [
+      "digitize_guide",
+      "project_operations",
+      "semantic_validate",
+      "project_new",
+      "semantic_import dry_run/apply",
+      "project_apply import_svg dry_run/apply",
+      "project_checkpoint",
+      "semantic_map",
+      "project_inspect",
+      "project_report",
+      "project_check",
+      "project_density",
+      "project_fabric_risk",
+      "project_fidelity",
+      "project_render",
+      "project_save",
+      "project_export",
+      "project_satin_compare",
+      "semantic_replace dry_run/apply",
+      "project_apply set_params dry_run/apply",
+      "project_apply directional_guides dry_run/apply",
+      "project_restore"
+    ]
+  },
+  "subproject": {
+    "crop_px": [
+      888,
+      65,
+      1010,
+      466
+    ],
+    "size_mm": [
+      29.388,
+      96.595
+    ],
+    "canvas_mm": [
+      50,
+      120
+    ],
+    "protected_windows": 5,
+    "full_scene": false
+  },
+  "method": {
+    "preparations": [
+      "bars_minimal",
+      "bars_full",
+      "bars_blue_source",
+      "bars_ridge"
+    ],
+    "new_graphical_preparations": true,
+    "glazing_mullions": "Two JPEG-anchored curved horizontal bars plus five or seven vertical ribs as OPEN running SVG paths.",
+    "source_blue": "Optional JPEG-derived B-R chromatic clusters >=7 pixels replace full-height blue strips.",
+    "ridge": "Optional local JPEG luminance following; no bridge invention.",
+    "gallery": "Unchanged inherited decorative diamonds, visually rejected.",
+    "gate_A": "Failed on visual inspection before MCP import; all four imports diagnostic.",
+    "protected_windows_preserved": true
+  },
+  "variants": [
+    {
+      "name": "bars_minimal",
+      "objects": 72,
+      "stitches": 4156,
+      "trims": 86,
+      "jumps": 109,
+      "color_changes": 30,
+      "warnings": 3,
+      "errors": 0,
+      "hotspot_mm2": 2,
+      "fabric_risk_ge70_mm2": 7,
+      "missing_crop_percent": 27.963,
+      "lost_detail_percent": 3.054,
+      "wrong_colour_percent": 6.952,
+      "true_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "artistic_verdict": "rejected"
+    },
+    {
+      "name": "bars_full",
+      "objects": 74,
+      "stitches": 4180,
+      "trims": 88,
+      "jumps": 111,
+      "color_changes": 30,
+      "warnings": 3,
+      "errors": 0,
+      "hotspot_mm2": 2,
+      "fabric_risk_ge70_mm2": 7,
+      "missing_crop_percent": 27.91,
+      "lost_detail_percent": 3.176,
+      "wrong_colour_percent": 7.152,
+      "true_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "artistic_verdict": "rejected"
+    },
+    {
+      "name": "bars_blue_source",
+      "objects": 76,
+      "stitches": 4266,
+      "trims": 91,
+      "jumps": 120,
+      "color_changes": 30,
+      "warnings": 4,
+      "errors": 0,
+      "hotspot_mm2": 3,
+      "fabric_risk_ge70_mm2": 7,
+      "missing_crop_percent": 27.848,
+      "lost_detail_percent": 2.672,
+      "wrong_colour_percent": 6.891,
+      "true_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "artistic_verdict": "rejected"
+    },
+    {
+      "name": "bars_ridge",
+      "objects": 76,
+      "stitches": 4274,
+      "trims": 91,
+      "jumps": 120,
+      "color_changes": 30,
+      "warnings": 4,
+      "errors": 0,
+      "hotspot_mm2": 3,
+      "fabric_risk_ge70_mm2": 7,
+      "missing_crop_percent": 27.805,
+      "lost_detail_percent": 2.404,
+      "wrong_colour_percent": 6.633,
+      "true_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "artistic_verdict": "rejected"
+    }
+  ],
+  "retouches": {
+    "true_project_render_count": 10,
+    "satin_strategies": [
+      "skeleton",
+      "parallel_sweep",
+      "medial_axis"
+    ],
+    "window_medial_axis": "dry-run refused",
+    "tatami_vs_directional": true,
+    "semantic_replace": true,
+    "project_apply_set_params": true,
+    "cloud_gray_underlay_off_warning_reduction": "3 to 1 in bars_full; physical stitch-out not tested",
+    "global_short_stitch_filter": "3 to 5 warnings; rejected",
+    "restored_baseline_byte_identical": true,
+    "restored_baseline_sha256": "f5679a1372aaea8e3335bace90310721bb457ed7b4c9703c486c6887e52d0124"
+  },
+  "machine_tested": false,
+  "independent_review": null,
+  "score": null,
+  "artistic_verdict": "All four rejected: recognizable cylindrical glazing, but invented gallery diamonds, striped glass fills, dome/shaft/foam unfaithful.",
+  "next_hypothesis": "Reconstruct gallery in separate source-faithful families: left rectangular grid, two irregular central rosettes, right curved mesh; preserve negative holes >=0.7mm and five windows. Keep improved glazing ribs as candidate. Avoid changing dome/shaft/foam concurrently; gate A before diagnostic import; no full scene until artistically accepted.",
+  "archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-26/phare-traverses-vitrage-source-mcp-0705-private.zip",
+    "library_file_id": "libfile_05bd83ed759481919de8be5a98a1a0d4",
+    "size_bytes": 24725667,
+    "sha256": "fe37e51a7d90d9699f95d87bad92ec106673df90f15067decbfa79f572025e42",
+    "rematerialized_and_verified": true,
+    "zip_entries": 246
+  },
+  "parent_run_id": "20261026T050824Z-phare-controlled-fill-mcp-0d343ff"
+}
