@@ -1,0 +1,156 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261026T020002Z-phare-contiguous-glass-satin-mcp-0d343ff",
+  "created_utc": "2026-10-26T02:03:30Z",
+  "status": "failed",
+  "artistic_verdict": "Four genuine MCP diagnostic imports and previews inspected; all artistically rejected; gate A failed; no full scene",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "rematerialized_and_verified_this_run": true
+  },
+  "main_commit": "ea630a7576d9c538ba2c1b1276cb60bd8acdfd9b",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "binary_not_rebuilt_from_main": true,
+    "real_project_render": true,
+    "real_semantic_import": true,
+    "real_satin_compare": true,
+    "real_semantic_replace": true,
+    "real_project_apply": true,
+    "real_project_save_export": true
+  },
+  "subproject": {
+    "crop_px": [
+      888,
+      65,
+      1010,
+      466
+    ],
+    "size_mm": [
+      29.388,
+      96.595
+    ],
+    "canvas_mm": [
+      50,
+      120
+    ],
+    "not_full_scene": true,
+    "protected_windows": 5
+  },
+  "method": {
+    "preparations": [
+      "arch_contour",
+      "arch_glass_source",
+      "arch_foam_carriers",
+      "arch_satin_columns"
+    ],
+    "gate_A": "failed; pre-import visual inspection",
+    "description": "Source-derived contiguous shaft masks; local source-colour glazing; three source-union-preserving foam carriers; 0.7mm satin gallery columns vs running. Imports diagnostic only."
+  },
+  "variants": [
+    {
+      "name": "arch_contour",
+      "objects": 78,
+      "stitches": 4271,
+      "trims": 90,
+      "jumps": 120,
+      "color_changes": 27,
+      "warnings": 3,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "fabric_risk_ge70_mm2": 9,
+      "missing_crop_percent": 28.036,
+      "lost_detail_percent": 4.082,
+      "wrong_colour_percent": 8.751,
+      "artistic_verdict": "rejected"
+    },
+    {
+      "name": "arch_glass_source",
+      "objects": 90,
+      "stitches": 4357,
+      "trims": 100,
+      "jumps": 136,
+      "color_changes": 27,
+      "warnings": 5,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "fabric_risk_ge70_mm2": 9,
+      "missing_crop_percent": 28.723,
+      "lost_detail_percent": 3.365,
+      "wrong_colour_percent": 8.27,
+      "artistic_verdict": "rejected"
+    },
+    {
+      "name": "arch_foam_carriers",
+      "objects": 94,
+      "stitches": 4382,
+      "trims": 101,
+      "jumps": 136,
+      "color_changes": 29,
+      "warnings": 5,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "fabric_risk_ge70_mm2": 9,
+      "missing_crop_percent": 28.893,
+      "lost_detail_percent": 3.365,
+      "wrong_colour_percent": 8.256,
+      "artistic_verdict": "rejected"
+    },
+    {
+      "name": "arch_satin_columns",
+      "objects": 90,
+      "stitches": 4503,
+      "trims": 100,
+      "jumps": 141,
+      "color_changes": 28,
+      "warnings": 5,
+      "errors": 0,
+      "hotspot_mm2": 2,
+      "fabric_risk_ge70_mm2": 10,
+      "missing_crop_percent": 27.981,
+      "lost_detail_percent": 3.616,
+      "wrong_colour_percent": 8.718,
+      "artistic_verdict": "rejected"
+    }
+  ],
+  "retouches": {
+    "true_render_count": 8,
+    "three_satin_strategies": [
+      "skeleton",
+      "parallel_sweep",
+      "medial_axis"
+    ],
+    "window_medial_axis": "not rendered (dry-run refusal)",
+    "tatami_vs_directional_same_shaft": true,
+    "semantic_replace": true,
+    "set_params": true,
+    "all_rejected": true,
+    "baseline_restored_byte_identical": true,
+    "baseline_sha256": "5c80b0c7e0560b81982be01736869c1a1a803e328ecb7203062c4ba1865d2d1c"
+  },
+  "warning_summary": "Point <0.1mm in cloud gray object 29 (2), gallery/shaft dependent object IDs and foam; full object IDs and coordinates in private archive.",
+  "machine_tested": false,
+  "independent_review": null,
+  "score_before": null,
+  "score_after": null,
+  "comparison_scope": "crop only; not comparable to full-scene route_protected bridge12",
+  "archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-26/phare-volumes-vitrage-mcp-0305-private.zip",
+    "library_file_id": "libfile_7c0403b68884819186a5f01235fb7e11",
+    "size_bytes": 25163130,
+    "sha256": "ad8f671407f779590ed58eeb41647ef0f037a2424153fd195e232332254efc2c",
+    "zip_entries": 240,
+    "rematerialized_and_verified": true
+  },
+  "next_hypothesis": "Do not simplify architecture and foam simultaneously. Reconstruct dome and cylindrical glazing from larger contiguous source-traced curved highlights, not pixel class quantization; model gallery depth from a few true perspective rails and selectively satin columns; source-trace 2-3 foam objects by actual boundaries and open running filaments; resolve warning coordinates before global integration.",
+  "parent_run_id": "20261026T005734Z-phare-structural-carriers-mcp-0d343ff"
+}
