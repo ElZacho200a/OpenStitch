@@ -44,6 +44,13 @@ struct RunningStitchParams {
 // réglages manuels étant alors ignorés. N'agit qu'à la génération.
 enum class UnderlayMode : std::uint8_t { Manual, Auto };
 
+// Choix de la compensation du tirage (HP-ENG-001.b). `Manual` (défaut, comportement
+// historique) : `pull_compensation` s'applique tel quel. `Auto` : le moteur calcule la
+// compensation selon la taille et la largeur de la forme (`stitch_generation::
+// resolve_pull_compensation`), le réglage manuel étant alors ignoré. N'agit qu'à la
+// génération. Valeurs persistées : ne pas réordonner.
+enum class PullMode : std::uint8_t { Manual, Auto };
+
 // Paramètres du remplissage tatami (§5.4, §15).
 struct TatamiParams {
     Angle angle{0.0};                 // orientation des rangées (radians)
@@ -65,6 +72,7 @@ struct TatamiParams {
     // longueur DANS L'AXE DU FIL (le fil tire dans sa direction : la forme cousue
     // rétrécit dans ce sens), 0 = aucune. Plage [0 ; 3] mm, 0,2 à 0,4 mm typique.
     Micrometers pull_compensation{0};
+    PullMode pull_mode{PullMode::Manual};             // HP-ENG-001.b
     UnderlayMode underlay_mode{UnderlayMode::Manual}; // HP-ENG-002
     // HP-ENG-002 : sous-couche en zigzag (rangées diagonales à 45° des rangées de la couche
     // supérieure, espacées de `underlay_spacing`) ; croisée avec les rangées perpendiculaires,
@@ -158,6 +166,7 @@ struct DirectionalFillParams {
     // extrémités de cette longueur, le long de sa tangente de bout (direction du fil). 0 =
     // aucune (historique). Plage [0 ; 3] mm.
     Micrometers pull_compensation{0};
+    PullMode pull_mode{PullMode::Manual}; // HP-ENG-001.b
 
     bool operator==(const DirectionalFillParams&) const = default;
 };
@@ -226,6 +235,7 @@ struct SatinParams {
     std::optional<SatinSectionTopology> topology; // absent = colonne indépendante/legacy
     Micrometers density{400};
     Micrometers pull_compensation{0};
+    PullMode pull_mode{PullMode::Manual}; // HP-ENG-001.b
     bool center_underlay{true};
     Micrometers max_width{9'000};       // au-delà, avertissement (satin trop large -> tatami)
     Micrometers max_width_hard{48'000}; // plafond géométrique avant refus du corridor
@@ -340,6 +350,7 @@ struct AutoSatinParams {
     // Finitions (mêmes réglages et mêmes générateurs que le satin à rails).
     SatinShortStitch short_stitch{SatinShortStitch::SingleInset};
     Micrometers pull_compensation{0};
+    PullMode pull_mode{PullMode::Manual}; // HP-ENG-001.b
     bool center_underlay{true};
     bool underlay_edge{false};
     bool underlay_zigzag{false};

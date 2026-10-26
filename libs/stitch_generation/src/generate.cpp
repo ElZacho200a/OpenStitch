@@ -22,6 +22,7 @@
 #include "openstitch/stitch_generation/lock.hpp"
 #include "openstitch/stitch_generation/motif_fill.hpp"
 #include "openstitch/stitch_generation/motif_run.hpp"
+#include "openstitch/stitch_generation/pull_auto.hpp"
 #include "openstitch/stitch_generation/radial_fill.hpp"
 #include "openstitch/stitch_generation/routing.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
@@ -287,6 +288,11 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
         config.underlay_edge = c.edge;
         config.underlay_zigzag = c.zigzag;
     }
+    // Compensation du tirage automatique (HP-ENG-001.b) : selon la largeur réelle de la colonne.
+    if (params.pull_mode == document::PullMode::Auto) {
+        config.pull_compensation =
+            choose_satin_pull(satin_mean_width_mm(params.rail_a, params.rail_b));
+    }
     // Avec barreaux (satin auto) : correspondance par sections + espacement
     // perpendiculaire. Sans barreaux (satin manuel/legacy) : ré-échantillonnage
     // par fraction d'abscisse.
@@ -385,8 +391,10 @@ void generate_auto_satin(stitch::StitchSequence& sequence, const document::Vecto
     config.push_end = params.push_end;
     config.auto_spacing = params.auto_spacing;
     config.corner_mode = static_cast<SatinCornerMode>(static_cast<int>(params.corner_mode));
-    // Sous-couche automatique (HP-ENG-002) : largeur moyenne de la région source.
-    if (params.underlay_mode == document::UnderlayMode::Auto) {
+    // Réglages automatiques (HP-ENG-002 sous-couche, HP-ENG-001.b tirage) : largeur moyenne de
+    // la région source.
+    if (params.underlay_mode == document::UnderlayMode::Auto ||
+        params.pull_mode == document::PullMode::Auto) {
         double area = 0.0;
         double perimeter = 0.0;
         for (const geometry::PathSet& rawSet : source.paths) {
@@ -395,11 +403,16 @@ void generate_auto_satin(stitch::StitchSequence& sequence, const document::Vecto
             area += m.area_mm2;
             perimeter += m.perimeter_mm;
         }
-        const SatinUnderlayChoice c =
-            choose_satin_underlay(perimeter > 1e-9 ? 2.0 * area / perimeter : 0.0);
-        config.center_underlay = c.center;
-        config.underlay_edge = c.edge;
-        config.underlay_zigzag = c.zigzag;
+        const double widthMm = perimeter > 1e-9 ? 2.0 * area / perimeter : 0.0;
+        if (params.underlay_mode == document::UnderlayMode::Auto) {
+            const SatinUnderlayChoice c = choose_satin_underlay(widthMm);
+            config.center_underlay = c.center;
+            config.underlay_edge = c.edge;
+            config.underlay_zigzag = c.zigzag;
+        }
+        if (params.pull_mode == document::PullMode::Auto) {
+            config.pull_compensation = choose_satin_pull(widthMm);
+        }
     }
 
     std::vector<std::vector<SatinStation>> columns;
@@ -772,7 +785,8 @@ void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObj
         for (const auto& up : underlay) {
             emit_underlay_pass(sequence, up, object.id, linker ? &*linker : nullptr);
         }
-        emit_fill(sequence, fill_tatami(region, params), object.id, linker ? &*linker : nullptr);
+        emit_fill(sequence, fill_tatami(region, resolve_pull_compensation(params, region)),
+                  object.id, linker ? &*linker : nullptr);
         if (params.edge_outline) {
             emit_edge_outline(sequence, region, object.id, params.underlay_inset);
         }
@@ -795,8 +809,8 @@ void generate_directional(stitch::StitchSequence& sequence, const document::Vect
         for (const auto& up : underlay) {
             emit_underlay_pass(sequence, up, object.id, linker ? &*linker : nullptr);
         }
-        emit_fill(sequence, fill_directional(region, params), object.id,
-                  linker ? &*linker : nullptr);
+        emit_fill(sequence, fill_directional(region, resolve_pull_compensation(params, region)),
+                  object.id, linker ? &*linker : nullptr);
         if (params.edge_outline) {
             emit_edge_outline(sequence, region, object.id, params.underlay_inset);
         }

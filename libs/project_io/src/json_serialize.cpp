@@ -223,6 +223,10 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.underlay_mode != document::UnderlayMode::Manual) {
                     j["underlayMode"] = static_cast<int>(p.underlay_mode);
                 }
+                // HP-ENG-001.b : écrit seulement hors défaut (un .osp inchangé reste inchangé).
+                if (p.pull_mode != document::PullMode::Manual) {
+                    j["pullMode"] = static_cast<int>(p.pull_mode);
+                }
                 if (p.underlay_zigzag) {
                     j["underlayZigzag"] = true;
                 }
@@ -282,6 +286,10 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.underlay_mode != document::UnderlayMode::Manual) {
                     j["underlayMode"] = static_cast<int>(p.underlay_mode);
                 }
+                // HP-ENG-001.b : écrit seulement hors défaut (un .osp inchangé reste inchangé).
+                if (p.pull_mode != document::PullMode::Manual) {
+                    j["pullMode"] = static_cast<int>(p.pull_mode);
+                }
                 if (p.auto_spacing) {
                     j["autoSpacing"] = true;
                 }
@@ -334,6 +342,10 @@ json params_to_json(const document::StitchParams& params) {
                      {"seed", p.seed}};
                 if (p.underlay_mode != document::UnderlayMode::Manual) {
                     j["underlayMode"] = static_cast<int>(p.underlay_mode);
+                }
+                // HP-ENG-001.b : écrit seulement hors défaut (un .osp inchangé reste inchangé).
+                if (p.pull_mode != document::PullMode::Manual) {
+                    j["pullMode"] = static_cast<int>(p.pull_mode);
                 }
                 if (p.edge_outline) {
                     j["edgeOutline"] = true;
@@ -403,6 +415,10 @@ json params_to_json(const document::StitchParams& params) {
                      {"lockPasses", p.lock_passes}};
                 if (p.underlay_mode != document::UnderlayMode::Manual) {
                     j["underlayMode"] = static_cast<int>(p.underlay_mode);
+                }
+                // HP-ENG-001.b : écrit seulement hors défaut (un .osp inchangé reste inchangé).
+                if (p.pull_mode != document::PullMode::Manual) {
+                    j["pullMode"] = static_cast<int>(p.pull_mode);
                 }
                 if (p.compact_axis) {
                     j["compactAxis"] = true;
@@ -523,6 +539,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.pull_compensation = Micrometers{std::clamp(j.value("pullCompensation", 0), 0, 3'000)};
         p.underlay_mode =
             static_cast<document::UnderlayMode>(std::clamp(j.value("underlayMode", 0), 0, 1));
+        p.pull_mode = static_cast<document::PullMode>(std::clamp(j.value("pullMode", 0), 0, 1));
         p.underlay_zigzag = j.value("underlayZigzag", false);
         p.row_end_clip = Micrometers{std::clamp(j.value("rowEndClip", 0), 0, 5'000)};
         p.edge_outline = j.value("edgeOutline", false);
@@ -574,6 +591,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.lock_passes = j.value("lockPasses", 2);
         p.underlay_mode =
             static_cast<document::UnderlayMode>(std::clamp(j.value("underlayMode", 0), 0, 1));
+        p.pull_mode = static_cast<document::PullMode>(std::clamp(j.value("pullMode", 0), 0, 1));
         p.auto_spacing = j.value("autoSpacing", false);
         p.corner_mode =
             static_cast<document::SatinCorner>(std::clamp(j.value("cornerMode", 0), 0, 3));
@@ -662,6 +680,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.handmade_intensity = j.value("handmadeIntensity", 50);
         p.underlay_mode =
             static_cast<document::UnderlayMode>(std::clamp(j.value("underlayMode", 0), 0, 1));
+        p.pull_mode = static_cast<document::PullMode>(std::clamp(j.value("pullMode", 0), 0, 1));
         p.edge_outline = j.value("edgeOutline", false);
         p.pull_compensation = Micrometers{std::clamp(j.value("pullCompensation", 0), 0, 3'000)};
         p.underlay_zigzag = j.value("underlayZigzag", false);
@@ -734,7 +753,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
               Range{"lockLength", 0, 20'000}, Range{"pullCompensation", -5'000, 5'000},
               Range{"pullLeft", -5'000, 5'000}, Range{"pullRight", -5'000, 5'000},
               Range{"pushStart", -5'000, 5'000}, Range{"pushEnd", -5'000, 5'000},
-              Range{"underlayMode", 0, 1}, Range{"cornerMode", 0, 3}}) {
+              Range{"underlayMode", 0, 1}, Range{"pullMode", 0, 1}, Range{"cornerMode", 0, 3}}) {
             if (const auto err = badNumber(field(r.name), r.name, r.lo, r.hi)) {
                 return fail(ErrorCategory::InvalidFile, *err);
             }
@@ -786,6 +805,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.lock_length = Micrometers{j.value("lockLength", 800)};
         p.lock_passes = j.value("lockPasses", 2);
         p.underlay_mode = static_cast<document::UnderlayMode>(j.value("underlayMode", 0));
+        p.pull_mode = static_cast<document::PullMode>(j.value("pullMode", 0));
         p.compact_axis = j.value("compactAxis", false);
         p.auto_spacing = j.value("autoSpacing", false);
         p.corner_mode =

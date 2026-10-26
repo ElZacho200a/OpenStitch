@@ -82,6 +82,11 @@ struct AutoOptions {
     // Lot F : liaisons cousues cachées (underpath) plutôt que des sauts entre
     // les composantes de rangées d'un même tatami.
     bool fill_hidden_underpath{true};
+    // HP-ENG-001.b : les tatamis et auto-satins créés reçoivent la compensation du tirage
+    // AUTOMATIQUE (`PullMode::Auto`) : le moteur calcule le dépassement des rangées / la largeur
+    // de colonne à la génération, sans réglage manuel. Faux = `Manual` à 0 (comportement
+    // antérieur : zones voisines trop espacées après broderie).
+    bool auto_pull_compensation{true};
 
     // --- Chevauchement et ordre (Lot C) ---
     // Débord de chaque tatami sur ses voisins BRODÉS, uniquement le long des

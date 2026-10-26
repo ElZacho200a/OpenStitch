@@ -520,6 +520,10 @@ void CreationFlowTest::newlyCreatedFillsGetTheAutomaticUnderlay() {
     QCOMPARE(tatami.underlay_mode, doc::UnderlayMode::Auto);
     QCOMPARE(directional.underlay_mode, doc::UnderlayMode::Auto);
     QCOMPARE(autoSatin.underlay_mode, doc::UnderlayMode::Auto);
+    // HP-ENG-001.b : et la compensation du tirage automatique.
+    QCOMPARE(tatami.pull_mode, doc::PullMode::Auto);
+    QCOMPARE(directional.pull_mode, doc::PullMode::Auto);
+    QCOMPARE(autoSatin.pull_mode, doc::PullMode::Auto);
 }
 
 void CreationFlowTest::mixedCheckboxAndComboAreIndeterminate() {

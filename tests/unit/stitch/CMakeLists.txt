@@ -17,6 +17,7 @@ add_executable(test_stitch
     test_overrides.cpp
     test_point_insert_delete.cpp
     test_engine_points.cpp
+    test_pull_auto.cpp
     test_chunk_cache.cpp
     test_calques_generation.cpp
     test_contour_fill.cpp

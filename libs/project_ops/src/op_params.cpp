@@ -224,6 +224,11 @@ const EnumTable<document::UnderlayMode>& underlay_mode_table() {
                                                      {"auto", document::UnderlayMode::Auto}};
     return t;
 }
+const EnumTable<document::PullMode>& pull_mode_table() {
+    static const EnumTable<document::PullMode> t{{"manual", document::PullMode::Manual},
+                                                 {"auto", document::PullMode::Auto}};
+    return t;
+}
 const EnumTable<document::DensityCurve>& density_curve_table() {
     static const EnumTable<document::DensityCurve> t{{"linear", document::DensityCurve::Linear},
                                                      {"smooth", document::DensityCurve::Smooth},
@@ -745,6 +750,7 @@ const Field<P>* find_field(const std::vector<Field<P>>& fields, const std::strin
 // Champs communs au satin à rails et à l'auto-satin (mêmes noms, mêmes plages).
 template <class P> void add_satin_common(std::vector<Field<P>>& v) {
     v.push_back(mm_field<P>("pull_compensation_mm", &P::pull_compensation, 0.0, 2.0));
+    v.push_back(enum_field<P>("pull_mode", &P::pull_mode, pull_mode_table()));
     v.push_back(bool_field<P>("center_underlay", &P::center_underlay));
     v.push_back(bool_field<P>("underlay_edge", &P::underlay_edge));
     v.push_back(bool_field<P>("underlay_zigzag", &P::underlay_zigzag));
@@ -801,6 +807,7 @@ template <> const std::vector<Field<document::TatamiParams>>& fields_of<document
         v.push_back(mm_field<P>("underlay_spacing_mm", &P::underlay_spacing, 0.1, 10.0));
         v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
         v.push_back(mm_field<P>("pull_compensation_mm", &P::pull_compensation, 0.0, 3.0));
+        v.push_back(enum_field<P>("pull_mode", &P::pull_mode, pull_mode_table()));
         v.push_back(enum_field<P>("underlay_mode", &P::underlay_mode, underlay_mode_table()));
         v.push_back(mm_field<P>("row_end_clip_mm", &P::row_end_clip, 0.0, 5.0));
         v.push_back(bool_field<P>("edge_outline", &P::edge_outline));
@@ -826,6 +833,7 @@ fields_of<document::DirectionalFillParams>() {
         v.push_back(bool_field<P>("underlay_parallel", &P::underlay_parallel));
         v.push_back(bool_field<P>("underlay_zigzag", &P::underlay_zigzag));
         v.push_back(mm_field<P>("pull_compensation_mm", &P::pull_compensation, 0.0, 3.0));
+        v.push_back(enum_field<P>("pull_mode", &P::pull_mode, pull_mode_table()));
         v.push_back(mm_field<P>("underlay_inset_mm", &P::underlay_inset, 0.0, 5.0));
         v.push_back(mm_field<P>("underlay_spacing_mm", &P::underlay_spacing, 0.1, 10.0));
         v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));

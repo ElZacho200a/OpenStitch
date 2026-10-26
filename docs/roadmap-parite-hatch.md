@@ -1216,6 +1216,19 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 - Acceptation : test géométrique (la rangée dépasse du contour de exactement
   `pull` ± 0,1 mm) ; validation physique HP-PHYS-001.
 
+### HP-ENG-001.b — Compensation du tirage automatique [P0] — ◐ Partiel (2026-10-26)
+- Livré : `PullMode::Auto` (défaut `Manual`) sur tatami, directionnel, satin et auto-satin.
+  Le moteur calcule la compensation à la génération selon l'épaisseur de la forme (remplissage :
+  0,15 mm + 0,03 × épaisseur, borné à 0,15-0,40 mm ; satin : 5 % de la largeur, 0,10-0,35 mm par
+  côté). Activé pour les objets créés à la main et par l'auto-numérisation
+  (`auto_pull_compensation`), sélecteur « Tirage » dans l'inspecteur, `.osp` (clé `pullMode`
+  hors défaut), CLI `project` (`pull_mode`), tests (`test_pull_auto.cpp`).
+- Reste : coefficients empiriques non mesurés (validation physique HP-PHYS-001, calibration
+  HP-ENG-001.a) ; l'`inset` de 0,2 mm entre tatamis voisins n'est pas compensé ; pas de
+  compensation perpendiculaire aux rangées (poussée latérale).
+- Modules : `libs/stitch_generation/pull_auto`, `libs/document`, `libs/project_io`,
+  `libs/project_ops`, `libs/autodigitize`, `apps/desktop/properties_panel`.
+
 ### HP-ENG-001.a — Pièce-test de calibration et table de compensation par tissu [P1] — ☐ À faire
 - Source : veille `docs/veille-innovations-2026-10.md` §V1. Aucune source lue ne
   fournit de modèle physique de l'étirement : les valeurs publiées sont des
@@ -3679,6 +3692,7 @@ ci-dessus doit les respecter :
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-26 | Claude | **Compensation du tirage automatique** (HP-ENG-001.b) : `PullMode::Auto` sur tatami, directionnel, satin et auto-satin, calcul selon l'épaisseur de la forme, activé à la création et par l'auto-numérisation, inspecteur, `.osp`, CLI. Coefficients empiriques à valider sur tissu (HP-PHYS-001). |
 | 2026-10-26 | Claude (IA PR-01) | **Banc de segmentation reproductible** : manifeste épinglé `openstitch.ai.benchmark-manifest/1`, fixture synthétique CC0 `marine-synth-01`, runner stdlib `scripts/openstitch_ai_bench.py` (baseline CIELAB via `openstitch-cli`, SAM 2.1 via le worker existant, skip explicite sans poids), métriques par objet avec porte « sujet principal absent = échec », 18 tests Python + CI `ai-bench.yml`. Aucun code C++ modifié. |
 | 2026-10-26 | Claude (IA PR-00) | **Architecture IA auto-digitize : audit, ADR-001, matrice de licences code + poids, plan de benchmark** (`docs/ai/`) ; dérive de `docs/agent-semantic-format.md` corrigée (import/remplacement natifs). Rouvre à la demande du mainteneur le périmètre IA écarté avec HP-UX-040 (repli couleur et annulation deviennent des exigences de PR-02). Aucun code, aucune dépendance. |
 | 2026-10-26 | Claude (IA PR-01) | **Banc de segmentation reproductible** : manifeste épinglé `openstitch.ai.benchmark-manifest/1`, fixture synthétique CC0 `marine-synth-01`, runner stdlib `scripts/openstitch_ai_bench.py` (baseline CIELAB via `openstitch-cli`, SAM 2.1 via le worker existant, skip explicite sans poids), métriques par objet avec porte « sujet principal absent = échec », 18 tests Python + CI `ai-bench.yml`. Aucun code C++ modifié. |
