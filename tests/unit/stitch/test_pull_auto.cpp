@@ -177,3 +177,59 @@ TEST_CASE("tirage auto : le satin Auto elargit la colonne") {
     REQUIRE_FALSE(manual.commands.empty());
     CHECK(spread(automatic) == spread(manual) + 2 * choose_satin_pull(4.0).value);
 }
+
+TEST_CASE("tirage auto : le retrait de bord effectif est nul en Auto seulement") {
+    CHECK(effective_fill_inset(document::PullMode::Manual, Micrometers{200}).value == 200);
+    CHECK(effective_fill_inset(document::PullMode::Auto, Micrometers{200}).value == 0);
+}
+
+TEST_CASE("tirage auto : deux zones voisines ne laissent plus l'ecart du retrait de bord") {
+    // Deux rectangles jointifs (x < 10 mm | x >= 10 mm), rangées horizontales : écart entre la
+    // dernière pénétration du premier et la première du second.
+    const auto gap_between = [](document::PullMode mode) {
+        document::Project project;
+        for (int k = 0; k < 2; ++k) {
+            document::VectorObject vec;
+            vec.id = project.object_ids.next();
+            geometry::Path p;
+            p.closed = true;
+            const std::int32_t x0 = k * 10'000;
+            p.nodes = {node(x0, 0), node(x0 + 10'000, 0), node(x0 + 10'000, 10'000),
+                       node(x0, 10'000)};
+            vec.paths.push_back(geometry::PathSet{p, {}});
+            project.vector_objects.push_back(vec);
+            document::EmbroideryObject emb;
+            emb.id = project.object_ids.next();
+            emb.source_vector = vec.id;
+            auto params = document::TatamiParams{}; // retrait de bord par défaut : 0,2 mm
+            params.pull_mode = mode;
+            emb.params = params;
+            project.embroidery_objects.push_back(emb);
+        }
+        const auto seq = gen(project);
+        std::int32_t maxFirst = -1'000'000;
+        std::int32_t minSecond = 1'000'000;
+        for (const auto& c : seq.commands) {
+            if (c.type != stitch::CommandType::Stitch || c.pass != stitch::StitchPass::TopStitch) {
+                continue;
+            }
+            if (c.source == project.embroidery_objects[0].id) {
+                maxFirst = std::max(maxFirst, c.pos.x.value);
+            } else {
+                minSecond = std::min(minSecond, c.pos.x.value);
+            }
+        }
+        return minSecond - maxFirst;
+    };
+    const auto manual = gap_between(document::PullMode::Manual);
+    const auto automatic = gap_between(document::PullMode::Auto);
+    CHECK(manual >= 400);      // 2 x 0,2 mm de retrait
+    CHECK(automatic < manual); // l'écart se ferme
+    CHECK(automatic <= 0);     // les rangées se rejoignent, voire se recouvrent
+}
+
+TEST_CASE("tirage auto : le remplissage directionnel Auto couvre aussi jusqu'au contour") {
+    document::DirectionalFillParams params;
+    params.pull_mode = document::PullMode::Auto;
+    CHECK(effective_fill_inset(params.pull_mode, params.inset).value == 0);
+}

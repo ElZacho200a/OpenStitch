@@ -8115,10 +8115,13 @@ void MainWindowTest::shapeExcludeAndRemoveHolesActions() {
 }
 
 void MainWindowTest::fillBlockHolesFillsTheGapBetweenTwoZones() {
-    // Deux zones tatami de 10 x 10 mm séparées par 1,2 mm : un jour sans fil entre elles.
+    // Deux zones tatami de 10 x 10 mm séparées par 1,8 mm : un jour sans fil entre elles, sous
+    // l'écart maximal comblé (2 mm). Les zones créées à la main compensent le tirage
+    // (HP-ENG-001.b : pas de retrait de bord, rangées prolongées d'environ 0,25 mm) : un jour de
+    // 1,2 mm serait déjà refermé (0,2 mm de jour visible, sous la largeur minimale d'une poche).
     auto project = twoOverlappingRectangles();
     for (auto& node : project.vector_objects[1].paths[0].outer.nodes) {
-        node.pos.x.value += 6'200; // 5..15 mm -> 11,2..21,2 mm
+        node.pos.x.value += 6'800; // 5..15 mm -> 11,8..21,8 mm
     }
     MainWindow window;
     window.applyLoadedProject(project);

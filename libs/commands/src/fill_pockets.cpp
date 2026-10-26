@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <algorithm>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <utility>
@@ -10,6 +11,7 @@
 #include "openstitch/commands/vector_ops.hpp"
 #include "openstitch/document/footprint.hpp"
 #include "openstitch/geometry/boolean.hpp"
+#include "openstitch/geometry/offset.hpp"
 
 namespace openstitch::commands {
 
@@ -21,10 +23,15 @@ constexpr Micrometers kFlattenTolerance{20};
 // Part minimale d'une poche située hors du vecteur voisin pour qu'agrandir ce vecteur serve à
 // quelque chose (sinon la poche est déjà « dans » la zone et le tatami ne l'a pas couverte).
 constexpr double kMinOutsideRatio = 0.5;
+// Portée de rattachement d'une poche à un objet (µm) : en mode de tirage automatique, les rangées
+// dépassent de l'emprise nominale (jusqu'à 0,4 mm) et la détection compte une demi-largeur de fil
+// (0,25 mm) de plus ; une poche encore visible peut donc se trouver à ~0,65 mm de l'emprise.
+constexpr std::int32_t kNeighborReach = 700;
 
 struct Candidate {
     const document::EmbroideryObject* object{};
     std::vector<PathSet> footprint;
+    std::vector<PathSet> reach; // emprise élargie de `kNeighborReach` : test de rattachement
     double area{0.0};
     bool fill{false}; // tatami ou directionnel
 };
@@ -45,7 +52,7 @@ VectorOpResult refuse(std::string message) {
 
 // Aire de l'intersection entre `pocket` et l'emprise d'un candidat ; 0 si rien ou en cas d'échec.
 double overlap_area(const PathSet& pocket, const Candidate& candidate) {
-    auto common = geometry::intersect_polygons({pocket}, candidate.footprint);
+    auto common = geometry::intersect_polygons({pocket}, candidate.reach);
     return common ? total_area(*common) : 0.0;
 }
 
@@ -90,6 +97,15 @@ VectorOpResult make_fill_pockets_command(document::Project& project,
         candidate.object = &emb;
         candidate.footprint = document::embroidery_footprint(project, emb, kFlattenTolerance);
         candidate.area = total_area(candidate.footprint);
+        for (const PathSet& set : candidate.footprint) {
+            if (auto grown = geometry::inset_path_set(set, Micrometers{-kNeighborReach}); grown) {
+                candidate.reach.insert(candidate.reach.end(),
+                                       std::make_move_iterator(grown->begin()),
+                                       std::make_move_iterator(grown->end()));
+            } else {
+                candidate.reach.push_back(set);
+            }
+        }
         candidate.fill = emb.is_tatami() || emb.is_directional();
         if (candidate.area > 0.0) {
             candidates.push_back(std::move(candidate));
