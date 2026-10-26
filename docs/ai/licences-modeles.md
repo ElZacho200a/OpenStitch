@@ -13,6 +13,18 @@ La licence d'un **checkpoint** est distincte de celle du **code** : toujours les
 | HQ-SAM / HQ-SAM 2 (SysCV) | Apache-2.0 | non confirmé (checkpoints HQ-SAM 2 en « beta ») | poids à vérifier | Lire le README `sam-hq2` et la source de téléchargement. |
 | MobileSAM (ChaoningZhang) | Apache-2.0 | non confirmé | poids à vérifier | Idem. |
 
+## Candidats cités par la veille, non revérifiés dans cette PR
+
+| Composant | Licence annoncée par la veille | Statut |
+|---|---|---|
+| HQ-SAM 2 | Apache-2.0 « d'après son README » | à confirmer pour les **poids** |
+| Qwen3-VL-4B-Instruct | Apache-2.0 (poids) | non revérifié |
+| SmolVLM2 | Apache-2.0 | non revérifié |
+| RF-DETR Seg | core Apache-2.0, autres variantes licence distincte | non revérifié, vérifier la variante |
+| VTracer 1 | MIT (moteur v1, distinct de l'app VTracer 2) | non revérifié |
+| FastSAM | mentions AGPL sur le dépôt | **exclu** sans audit |
+| Potrace, Ink/Stitch, Ultralytics | GPL/AGPL | **exclus** (garde-fous) |
+
 ## Règles
 
 1. Une dépendance de worker n'est jamais livrée avec OpenStitch : l'utilisateur l'installe (comme `torch`/`sam2` aujourd'hui, cf. `sam-worker/requirements.txt`). Le dépôt ne distribue ni code ni poids de modèle.

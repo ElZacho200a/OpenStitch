@@ -1,12 +1,12 @@
 # Intégration IA dans l'auto-numérisation — architecture et inventaire
 
 *État : PR-00 (audit, aucun code, aucune dépendance). Date de l'audit : 2026-10-26.*
-*Document de veille source : `OpenStitch_veille_IA_autodigitize_2026-10-26.md` — **non fourni dans cette session** ; les arbitrages ci-dessous reposent sur l'inspection du dépôt et sur la vérification des licences à la source, pas sur ce document.*
+*Source de cadrage : veille `OpenStitch_veille_IA_autodigitize_2026-10-26.md` (étude qualitative, **aucun benchmark exécuté**). L'audit ci-dessous a été fait sur le dépôt, puis recoupé avec la veille ; les écarts sont signalés.*
 
 ## Principes
 
 1. **L'IA est facultative.** Le chemin traditionnel (CIELAB + k-means, `segmentation`, `autodigitize`) reste complet et hors ligne.
-2. **Aucun modèle n'est présumé meilleur.** Un backend entre dans le produit seulement s'il bat la base de référence sur le benchmark ([plan-benchmark.md](plan-benchmark.md)).
+2. **Aucun modèle n'est présumé meilleur.** Un backend entre dans le produit seulement s'il bat la base de référence sur le benchmark ([model-evaluation.md](model-evaluation.md)).
 3. **Isolation par processus.** Tout modèle tourne dans un worker externe (JSON Lines stdin/stdout, logs sur stderr). Jamais de PyTorch lié au cœur C++ (invariant `CLAUDE.md`).
 4. **Les points viennent du moteur.** L'IA ne produit que des masques, des relations et des intentions ; les points, aperçus et DST sont générés par `stitch_generation::effective_sequence`.
 5. **Une carte sémantique qui omet un sujet principal est un échec bloquant**, quel que soit le score géométrique des masques restants (cas d'acceptation : voilier + phare + mer + écume + détails fins).
@@ -40,7 +40,7 @@
 | F2 | Le client est dans `apps/desktop` (Qt) : le CLI/MCP ne peuvent pas lancer de segmentation IA. | PR-02 : client sans Qt dans `libs/ai_segmentation`, le desktop l'enveloppe. |
 | F3 | `docs/agent-semantic-format.md` affirmait « pas encore importable nativement » alors que `semantic_import`/`semantic_replace` existent. | Corrigé dans cette PR. |
 | F4 | Les opérations sémantiques s'exécutent sur une **copie** du projet avec une `UndoStack` locale (`operations.cpp`) ; `apps/desktop` n'appelle aucune opération sémantique. L'annulation d'un `semantic_import` dans le bureau n'est donc **pas** câblée. | À traiter avant toute promesse « undo/redo » côté UI (PR-09 au plus tard). |
-| F5 | Le manifeste `openstitch.semantic/1` n'a ni boîte, ni score, ni `backend`/`model_hash`, ni relations typées autres que `under/over`. | PR-03/05 : extension **rétrocompatible**. |
+| F5 | Le manifeste `openstitch.semantic/1` n'a ni boîte, ni score, ni `backend`/`model_hash`, ni relations typées autres que `under/over`. | Décision (veille §5.1) : **ne pas modifier `openstitch.semantic/1`**. Deux schémas intermédiaires versionnés `openstitch.ai.scene/1` (plan de scène) et `openstitch.ai.proposals/1` (masques candidats + provenance), avec convertisseur/validateur vers `semantic/1` (PR-03/05). |
 | F6 | Aucun corpus ni métrique de segmentation (instances présentes, trous, traits). `docs/validation/image-import-corpus.md` couvre l'import, pas la segmentation. | PR-01. |
 | F7 | `HP-UX-040` (contrat IA : repli couleur, annulation tardive) a été retiré le 2026-10-18 (« l'IA n'est pas une priorité »). La présente mission le **rouvre explicitement** à la demande du mainteneur. | Journal roadmap §28 ; son contenu (repli, annulation) devient une exigence de PR-02. |
 | F8 | Les poids sont téléchargés par l'utilisateur ; `HP-DIST-006` (IA installable) reste ouvert. | Hors périmètre PR-00..02 ; rien n'est embarqué. |
@@ -58,4 +58,20 @@ image -> backend(s) -> masques normalisés + scores -> graphe sémantique (famil
 
 Découpage : PR-00 doc/ADR · PR-01 benchmark · PR-02 contrat de backend · PR-03 scène + Florence-2 · PR-04 comparaison SAM2.1/HQ-SAM 2/MobileSAM · PR-05 graphe sémantique · PR-06 traits/trous · PR-07 intentions de points · PR-08 boucle d'itération · PR-09 IHM · PR-10 SAM 3 (licence validée d'abord) · PR-11+ données de couture.
 
-Documents liés : [ADR-001](adr-001-backends-ia-modulaires.md), [licences code + poids](licences-modeles.md), [plan de benchmark](plan-benchmark.md).
+Documents liés : [ADR-001](adr-001-backends-ia-modulaires.md), [licences code + poids](licences-modeles.md), [plan de benchmark](model-evaluation.md).
+
+## Décisions issues de la veille (à confirmer par mesure)
+
+- **Deux voies, composants interchangeables.** Voie A « aplats » (CIELAB + graphe, défaut, hors IA) ; voie B « scène complexe » (planner → localiseur → masques → fusion sémantique → moteur de points). Au MVP l'utilisateur choisit la voie ; un routage automatique n'est envisagé qu'avec des données qui le justifient.
+- **Trois objets de données distincts** : `scene-plan` (raisonnement, sans points), `mask-proposals` (candidats immuables, sans mutation du projet), `openstitch.semantic/1` (masques *choisis*, existant). Une intention non supportée (`directional`/`satin` sans guides) est refusée ou différée avec raison : **jamais de repli silencieux vers tatami**.
+- **Contrat `MaskBackend`** : `capabilities`, `prepare_image`, `predict`, `refine`, `cancel`/`health`/`unload` ; sorties `mask_id`, `image_sha`, `model_id`, `model_revision`, `bbox`, `mask_path`, `confidence` *optionnelle*, `elapsed_ms`. Masques en PNG binaires sur disque validés (dimensions, valeurs), pas de traversée de chemin. Un seul modèle chargé par défaut.
+- **Traits fins** : chemin distinct (`line` vs `area`) par centre-ligne, jamais absorbés par le nettoyage d'îlots (PR-06).
+- **Cloud** : aucun réseau sans action explicite, fournisseur choisi et consentement sur les images ; clé hors `.osp`/logs/CI ; l'ouverture, l'édition et l'export ne dépendent jamais du cloud.
+- **Sécurité du worker** : processus non privilégié, répertoire temporaire dédié, limites (taille d'image, nombre de masques, mémoire, durée, taille de réponse), timeouts, environnement Python isolé par backend avec dépendances épinglées, poids téléchargés sur consentement avec hash.
+- **Candidats** (qualitatif, non mesuré) : SAM 2.1 (baseline), HQ-SAM 2 (détails), Florence-2 / Grounding DINO (localisation), MobileSAM (machines modestes), SAM 3/3.1 (optionnel, licence spécifique), Qwen3-VL 4B / SmolVLM2 (planner facultatif), RF-DETR Seg (après corpus), VTracer 1 (vectorisation, bench externe). FastSAM et toute base GPL/AGPL (Potrace, Ink/Stitch, Ultralytics) sont exclus sans audit.
+
+## Écarts audit ↔ veille
+
+- La veille cite `docs/ai/autodigitize-architecture.md` et `docs/ai/model-evaluation.md` : les fichiers portent ces noms.
+- La veille place l'interface desktop en PR-09 ; l'audit ajoute que **l'undo/redo des opérations `semantic_*` n'est pas câblé** (F4) : c'est un prérequis de PR-09, pas un détail.
+- La veille liste le client Qt à « isoler » ; l'audit précise qu'il est le **seul** client (F2), donc que CLI/MCP n'ont aujourd'hui aucun accès aux backends.

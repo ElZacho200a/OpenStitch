@@ -4,7 +4,7 @@
 
 ## Contexte
 
-Le seul chemin IA actuel est SAM 2.1 en mode « génération automatique de masques », via un worker Python dont le client est lié à Qt (voir [README](README.md), F1/F2). Le domaine évolue vite (SAM 3, HQ-SAM 2, MobileSAM, Florence-2, Grounding DINO) et aucun résultat publié ne remplace une mesure sur des illustrations brodables.
+Le seul chemin IA actuel est SAM 2.1 en mode « génération automatique de masques », via un worker Python dont le client est lié à Qt (voir [README](autodigitize-architecture.md), F1/F2). Le domaine évolue vite (SAM 3, HQ-SAM 2, MobileSAM, Florence-2, Grounding DINO) et aucun résultat publié ne remplace une mesure sur des illustrations brodables.
 
 ## Décision
 
@@ -12,7 +12,7 @@ Le seul chemin IA actuel est SAM 2.1 en mode « génération automatique de masq
 2. **Un contrat, plusieurs moteurs.** Chaque réponse porte `backend_id`, `backend_revision`, `model_hash` (SHA-256 du checkpoint), les transformations d'image appliquées (échelle, recadrage) et des masques normalisés (coordonnées de l'image source). Une version de protocole incompatible est un refus explicite, jamais une dégradation silencieuse.
 3. **Client sans Qt** dans `libs/ai_segmentation`; le desktop n'en est qu'un adaptateur. Le CLI et le MCP peuvent alors piloter les mêmes backends.
 4. **SAM 2.1 est le backend de référence et ne change pas de comportement par défaut** ; son adaptation au contrat est un refactoring protégé par les tests du worker existants.
-5. **Aucun backend n'est adopté sans benchmark** ([plan-benchmark.md](plan-benchmark.md)) : critères d'adoption mesurés, jamais supposés.
+5. **Aucun backend n'est adopté sans benchmark** ([model-evaluation.md](model-evaluation.md)) : critères d'adoption mesurés, jamais supposés.
 6. **Facultatif et hors ligne.** Pas de dépendance de build, pas de poids dans le dépôt, les binaires ou la CI de base, pas de transmission cloud sans consentement explicite. Repli : segmentation CIELAB.
 7. **L'IA ne génère jamais de points.** Elle fournit masques et relations ; mutation du document uniquement par `ICommand` (opérations `semantic_*`), coordonnées en µm entiers aux frontières.
 

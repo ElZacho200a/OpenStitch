@@ -3,7 +3,7 @@
 État : le format est **importable nativement** dans un OSP depuis le 2026-10-23 : opérations
 `semantic_import` et `semantic_replace` (CLI `project op`, MCP), validation par `semantic_validate`
 (MCP) ou `scripts/openstitch_semantic.py`, carte de provenance par `semantic_map`. Le desktop n'appelle
-pas encore ces opérations (pas d'annulation côté IHM, voir `docs/ai/README.md` F4).
+pas encore ces opérations (pas d'annulation côté IHM, voir `docs/ai/autodigitize-architecture.md` F4).
 
 Le manifeste évite qu'une segmentation par couleurs fasse perdre l'identité
 des structures : pierre, lierre, roseau, reflet et nénuphar. Il décrit les
