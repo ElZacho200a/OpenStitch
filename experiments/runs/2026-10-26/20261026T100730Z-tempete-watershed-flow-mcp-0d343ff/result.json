@@ -1,0 +1,158 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261026T100730Z-tempete-watershed-flow-mcp-0d343ff",
+  "created_utc": "2026-10-26T10:08:30Z",
+  "status": "rejected_artistic_global",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "rematerialized_verified": true,
+    "old_Turner_used": false
+  },
+  "scope": {
+    "full_scene": true,
+    "design_mm": [
+      370,
+      231.490885
+    ],
+    "frame_mm": [
+      390,
+      268
+    ],
+    "five_windows": true,
+    "six_waves": true,
+    "sailboat_sky_clouds_foam": true
+  },
+  "main_commit": "cb26e5a7707d240e90127fa1a118dfbffbbcca27",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "official_tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "not_rebuilt_from_main": true,
+    "tools": [
+      "digitize_guide",
+      "project_operations",
+      "semantic_validate",
+      "project_new",
+      "semantic_import dry_run/apply",
+      "project_apply import_svg dry_run/apply",
+      "project_checkpoint",
+      "semantic_map",
+      "project_inspect",
+      "project_report",
+      "project_check",
+      "project_density",
+      "project_fabric_risk",
+      "project_fidelity",
+      "project_render true PNG",
+      "project_save OSP",
+      "project_export DST",
+      "project_satin_compare",
+      "project_apply auto_satin dry_run/apply",
+      "project_apply directional_guides dry_run/apply",
+      "project_apply set_params dry_run/apply",
+      "semantic_replace dry_run/apply",
+      "project_restore"
+    ]
+  },
+  "preparations": {
+    "variants": [
+      "flow_ribbons_2",
+      "flow_ribbons_3",
+      "flow_negative_3"
+    ],
+    "method": "Source-derived per-wave foam partition via watershed on original Lab gradients, 2/3 streamwise markers, negative holes unchanged, selected source-blue shadow facets, source SVG running preserved",
+    "gate_A": "INSPECTED BEFORE MCP, FAILED ARTISTICALLY: central foam too uniform, sail and lighthouse schematic; imports diagnostic only"
+  },
+  "variants": [
+    {
+      "name": "flow_ribbons_2",
+      "masks": 165,
+      "objects": 869,
+      "stitches": 137891,
+      "trims": 1327,
+      "jumps": 2106,
+      "color_changes": 165,
+      "warnings_displayed": 51,
+      "errors": 0,
+      "hotspot_mm2": 54,
+      "fabric_risk_ge70_mm2": 133,
+      "missing_percent": 11.59,
+      "wrong_colour_percent": 2.986,
+      "lost_detail_percent": 1.652,
+      "verdict": "REJECTED"
+    },
+    {
+      "name": "flow_ribbons_3",
+      "masks": 186,
+      "objects": 909,
+      "stitches": 138811,
+      "trims": 1409,
+      "jumps": 2207,
+      "color_changes": 186,
+      "warnings_displayed": 51,
+      "errors": 0,
+      "hotspot_mm2": 56,
+      "fabric_risk_ge70_mm2": 177,
+      "missing_percent": 11.849,
+      "wrong_colour_percent": 2.642,
+      "lost_detail_percent": 1.271,
+      "verdict": "REJECTED"
+    },
+    {
+      "name": "flow_negative_3",
+      "masks": 170,
+      "objects": 761,
+      "stitches": 137219,
+      "trims": 1234,
+      "jumps": 1796,
+      "color_changes": 170,
+      "warnings_displayed": 51,
+      "errors": 0,
+      "hotspot_mm2": 67,
+      "fabric_risk_ge70_mm2": 167,
+      "missing_percent": 11.127,
+      "wrong_colour_percent": 2.789,
+      "lost_detail_percent": 1.518,
+      "verdict": "REJECTED"
+    }
+  ],
+  "retouches": {
+    "satin_target": "boat.foresail.light ID446",
+    "satin_strategies_applied_rendered_rejected": [
+      "skeleton",
+      "parallel_sweep",
+      "medial_axis"
+    ],
+    "wave_target": "sea.wave_2.color_02 ID548",
+    "directional_vs_tatami_applied_rendered_rejected": true,
+    "semantic_replace_hull_applied_rendered_rejected": true,
+    "baseline_osp_sha256": "2cced8ac878eff3884201152a42f4c5408f3819f1ec501a9c92e0d9f0424c319",
+    "restored_byte_identical": true
+  },
+  "comparison_prior_global": {
+    "variant": "wave_edge_guarded",
+    "objects": 850,
+    "trims": 1322,
+    "hotspot_mm2": 54,
+    "missing_percent": 11.563,
+    "wrong_colour_percent": 2.986,
+    "assessment": "No artistic or technical improvement. Foam gradients still flatten internal swirls."
+  },
+  "machine_test": "not_run",
+  "independent_score": "not_run",
+  "archive": {
+    "private_library_path": "/OpenStitch/Experiments/2026-10-26/tempete-rubans-watershed-mcp-1110-private.zip",
+    "library_file_id": "libfile_3c7bae83a8848191a19d144ad48ec625",
+    "bytes": 74097626,
+    "sha256": "6d995a7cd131d38837fa21a19f23ff63f03343b1c6b2361c971d3e718877f530",
+    "entries": 1155,
+    "upload_rematerialized_sha_and_zip_verified": true
+  },
+  "next_hypothesis": "Always FULL SCENE. Do not partition the central foam into uniform pastel stripes. Preserve source ivory and blue-grey internal faceting, infer local wave-flow direction from source contour tangents, reduce excessive trims/short stitches, evaluate true global MCP renders."
+}
