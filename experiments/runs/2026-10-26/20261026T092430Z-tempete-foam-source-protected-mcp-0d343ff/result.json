@@ -1,0 +1,176 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261026T092430Z-tempete-foam-source-protected-mcp-0d343ff",
+  "created_utc": "2026-10-26T09:24:30Z",
+  "status": "rejected_artistic_global",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "rematerialized_and_verified": true,
+    "never_old_Turner": true
+  },
+  "main_commit": "cb26e5a7707d240e90127fa1a118dfbffbbcca27",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "official_tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "not_rebuilt_from_current_main": true,
+    "tools_executed": [
+      "digitize_guide",
+      "project_operations",
+      "semantic_validate",
+      "project_new",
+      "semantic_import dry_run/apply",
+      "project_apply import_svg dry_run/apply",
+      "project_checkpoint",
+      "semantic_map",
+      "project_inspect",
+      "project_report",
+      "project_check",
+      "project_density",
+      "project_fabric_risk",
+      "project_fidelity",
+      "project_render true PNG",
+      "project_save OSP",
+      "project_export DST",
+      "project_satin_compare",
+      "project_apply auto_satin dry_run/apply",
+      "project_apply directional_guides dry_run/apply",
+      "project_apply set_params dry_run/apply",
+      "semantic_replace dry_run/apply",
+      "project_restore",
+      "project_diagnose"
+    ]
+  },
+  "scope": {
+    "full_scene": true,
+    "frame_mm": [
+      390,
+      268
+    ],
+    "design_mm": [
+      370,
+      231.490885
+    ],
+    "six_waves": true,
+    "five_windows": true,
+    "boat_mast_hull_sails": true,
+    "sky_clouds_foam": true
+  },
+  "preparations": {
+    "applied": [
+      "wave_edge_guarded",
+      "wave_foam_ribbons",
+      "wave_flow_contours"
+    ],
+    "source_derived_methods": [
+      "bilateral+Lab palette32 with protected foam threshold220",
+      "original+Lab palette38 with foam threshold210",
+      "meanshift+Lab palette28 with foam threshold227",
+      "connected-component tone cleanup from 4025 to 577 raw components in edge_guarded",
+      "source-traced lighthouse glass and five window running SVG",
+      "nine/ten/eight source-traced open crest lines, all six waves"
+    ],
+    "gate_A": "INSPECTED BEFORE MCP; FAILED ARTISTICALLY: over-simplified foam curls and lighthouse grid; imports DIAGNOSTIC ONLY"
+  },
+  "variants": [
+    {
+      "variant": "wave_edge_guarded",
+      "masks": 160,
+      "objects": 850,
+      "stitches": 137933,
+      "trims": 1322,
+      "jumps": 2071,
+      "color_changes": 160,
+      "warnings": 51,
+      "errors": 0,
+      "hotspot_mm2": 54,
+      "fabric_risk_ge70_mm2": 129,
+      "missing_percent": 11.563,
+      "wrong_colour_percent": 2.986,
+      "lost_detail_percent": 1.652,
+      "foam_source_pixels": 22038,
+      "wave_paths": 9,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "variant": "wave_foam_ribbons",
+      "masks": 176,
+      "objects": 907,
+      "stitches": 138661,
+      "trims": 1419,
+      "jumps": 2239,
+      "color_changes": 176,
+      "warnings": 51,
+      "errors": 0,
+      "hotspot_mm2": 51,
+      "fabric_risk_ge70_mm2": 175,
+      "missing_percent": 11.769,
+      "wrong_colour_percent": 2.643,
+      "lost_detail_percent": 1.271,
+      "foam_source_pixels": 34063,
+      "wave_paths": 10,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "variant": "wave_flow_contours",
+      "masks": 160,
+      "objects": 750,
+      "stitches": 137360,
+      "trims": 1232,
+      "jumps": 1800,
+      "color_changes": 160,
+      "warnings": 51,
+      "errors": 0,
+      "hotspot_mm2": 69,
+      "fabric_risk_ge70_mm2": 173,
+      "missing_percent": 11.101,
+      "wrong_colour_percent": 2.789,
+      "lost_detail_percent": 1.518,
+      "foam_source_pixels": 12888,
+      "wave_paths": 8,
+      "artistic_verdict": "REJECTED"
+    }
+  ],
+  "retouches": {
+    "baseline_variant": "wave_edge_guarded",
+    "foresail_id": 443,
+    "satin_strategies_applied_rendered_rejected": [
+      "skeleton",
+      "parallel_sweep",
+      "medial_axis"
+    ],
+    "same_wave_id": 545,
+    "directional_vs_tatami_applied_rendered_rejected": true,
+    "semantic_replace_boat_hull_applied_rendered_rejected": true,
+    "baseline_osp_sha256": "83c3928791b23aec11426ed89a7bbd929c8a4833017c974d1ea4b633bc254961",
+    "restored_byte_identical": true
+  },
+  "comparison_prior_global": {
+    "baseline": "global_carrier_balanced",
+    "objects": 399,
+    "trims": 879,
+    "hotspot_mm2": 43,
+    "missing_percent": 9.04,
+    "wrong_colour_percent": 3.08,
+    "assessment": "Source-traced contours look less geometric but technical counts rise and coverage worsens; no accepted improvement."
+  },
+  "machine_test": "not_run",
+  "independent_score": "not_run",
+  "archive": {
+    "private_library_path": "/OpenStitch/Experiments/2026-10-26/tempete-ecume-source-protegee-mcp-1025-private.zip",
+    "library_file_id": "libfile_d54ceefab3e481919d2bf799fd17ce1b",
+    "bytes": 69932575,
+    "sha256": "07b1d5da5397b7567a1cffdd311802f4d028e58af499a6d02e2a426bacccbee9",
+    "entries": 615,
+    "upload_and_rematerialization_sha_verified": true,
+    "zip_integrity_verified": true
+  },
+  "next_hypothesis": "Always FULL SCENE. Build source-traced continuous wave-flow ribbons, preserve negative foam spaces and boat, reduce trims through semantic connectivity and routing; evaluate actual MCP global preview and object-level warnings. Do not revert to lighthouse-only crop."
+}
