@@ -1576,7 +1576,10 @@ OpSpec op_optimize_order() {
                 "verrouillés ne bougent pas).";
     s.args = {arg("strategy", "string",
                   "document | by_color | by_proximity | color_then_proximity | layered", true, {},
-                  "document | by_color | by_proximity | color_then_proximity | layered")};
+                  "document | by_color | by_proximity | color_then_proximity | layered"),
+              arg("improve", "boolean",
+                  "amélioration locale 2-opt / Or-opt après la stratégie (borne déterministe)",
+                  false, {}, "true | false (défaut false)")};
     s.example = R"({"op":"optimize_order","strategy":"color_then_proximity"})";
     s.apply = guarded([](OpContext& ctx) {
         const std::string name = need_string(ctx.args, "strategy");
@@ -1584,9 +1587,16 @@ OpSpec op_optimize_order() {
         const auto items_before = order_items(ctx.project);
         const auto cost_before = optimization::compute_cost(items_before);
         const std::vector<ObjectId> before = current_order(ctx.project);
+        // HP-SEQ-001/008 : amélioration locale optionnelle ; départ / arrivée du design.
+        optimization::OrderOptions options;
+        if (ctx.args.value("improve", false)) {
+            options.improve_budget = optimization::kDefaultImproveBudget;
+        }
+        options.start = ctx.project.finishing.design_start;
+        options.end = ctx.project.finishing.design_end;
         // Calques (HP-OBJ-024) : l'optimisation ne franchit pas les calques.
-        const std::vector<ObjectId> next =
-            ctx.project.groupedByCalque(optimization::optimize_order(items_before, strategy));
+        const std::vector<ObjectId> next = ctx.project.groupedByCalque(
+            optimization::optimize_order(items_before, strategy, options));
         const bool changed = !next.empty() && next != before;
         if (changed) {
             ctx.stack.execute(std::make_unique<commands::ReorderEmbroideryCommand>(next),
@@ -1875,6 +1885,67 @@ OpSpec op_set_finishing() {
     return s;
 }
 
+// HP-SEQ-008 : points de départ / d'arrivée du design (mm, repère document, Y vers le haut).
+OpSpec op_set_design_points() {
+    OpSpec s;
+    s.name = "set_design_points";
+    s.summary = "Définit (ou efface) les points de départ et d'arrivée du design, utilisés par "
+                "l'optimisation de l'ordre de couture. Au moins un argument.";
+    s.args = {arg("start_x_mm", "number", "départ X", false, "mm", "-1000..1000"),
+              arg("start_y_mm", "number", "départ Y", false, "mm", "-1000..1000"),
+              arg("end_x_mm", "number", "arrivée X", false, "mm", "-1000..1000"),
+              arg("end_y_mm", "number", "arrivée Y", false, "mm", "-1000..1000"),
+              arg("clear", "string", "start | end | both : efface ce point", false, {},
+                  "start | end | both")};
+    s.example = R"({"op":"set_design_points","start_x_mm":0,"start_y_mm":0,"end_x_mm":10,)"
+                R"("end_y_mm":0})";
+    s.apply = guarded([](OpContext& ctx) {
+        document::SequenceFinishing next = ctx.project.finishing;
+        const auto read_point = [&](const char* kx, const char* ky,
+                                    std::optional<Vec2um>& target) -> bool {
+            const bool hasX = ctx.args.contains(kx);
+            const bool hasY = ctx.args.contains(ky);
+            if (!hasX && !hasY) {
+                return false;
+            }
+            if (!hasX || !hasY) {
+                refuse(code::kUsage, std::string("indiquez ") + kx + " ET " + ky,
+                       "un point se donne par ses deux coordonnées");
+            }
+            const double x = ctx.args.at(kx).get<double>();
+            const double y = ctx.args.at(ky).get<double>();
+            if (!(x >= -1000.0 && x <= 1000.0 && y >= -1000.0 && y <= 1000.0)) {
+                refuse(code::kOutOfRange, "coordonnée hors de -1000..1000 mm", "valeurs en mm");
+            }
+            target = Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(x * 1000.0))},
+                            Micrometers{static_cast<std::int32_t>(std::lround(y * 1000.0))}};
+            return true;
+        };
+        bool any = read_point("start_x_mm", "start_y_mm", next.design_start);
+        any = read_point("end_x_mm", "end_y_mm", next.design_end) || any;
+        if (ctx.args.contains("clear")) {
+            const std::string c = ctx.args.at("clear").get<std::string>();
+            if (c != "start" && c != "end" && c != "both") {
+                refuse(code::kOutOfRange, "clear : « " + c + " » inconnu", "start | end | both");
+            }
+            if (c != "end") {
+                next.design_start.reset();
+            }
+            if (c != "start") {
+                next.design_end.reset();
+            }
+            any = true;
+        }
+        if (!any) {
+            refuse(code::kUsage, "indiquez un point à définir ou clear", "voir les arguments");
+        }
+        ctx.stack.execute(std::make_unique<commands::SetFinishingCommand>(next), ctx.project);
+        return OpStatus::success({{"has_start", next.design_start.has_value()},
+                                  {"has_end", next.design_end.has_value()}});
+    });
+    return s;
+}
+
 } // namespace
 
 void register_param_ops(std::vector<OpSpec>& out) {
@@ -1894,6 +1965,7 @@ void register_param_ops(std::vector<OpSpec>& out) {
     out.push_back(op_set_canvas());
     out.push_back(op_set_machine());
     out.push_back(op_set_finishing());
+    out.push_back(op_set_design_points());
 }
 
 } // namespace openstitch::project_ops::detail

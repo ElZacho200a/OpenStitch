@@ -4,6 +4,7 @@
 #include <QPoint>
 #include <QWidget>
 
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -48,6 +49,10 @@ public:
     void refresh(const document::Project& project,
                  const std::vector<std::pair<ObjectId, stitch_generation::ObjectEditState>>&
                      editStates = {});
+    // HP-SIM-003 : objet en cours de couture pendant la simulation (surbrillance de sa ligne,
+    // sans toucher à la sélection ni émettre de signal) ; nullopt efface la surbrillance.
+    void setPlaybackObject(std::optional<ObjectId> id);
+    [[nodiscard]] std::optional<ObjectId> playbackObject() const { return playbackId_; }
     // Sélectionne la ligne correspondant à la sélection courante (sans réémettre).
     void syncSelection(Kind kind, std::uint64_t id);
     // Sélection multiple de régions : coche toutes les lignes de `ids` (l'active devient la
@@ -131,6 +136,8 @@ private:
     // plus d'une ; un objet seul reste un simple item de premier niveau,
     // visuellement identique à l'ancienne liste plate.
     QTreeWidget* objectsList_{nullptr};
+    std::optional<ObjectId> playbackId_; // HP-SIM-003
+    void applyPlayback();
     QLineEdit* filterEdit_{nullptr};
     QComboBox* typeFilter_{nullptr}; // filtre par type de point (HP-UX-042)
     QListWidget* regionsList_{nullptr};

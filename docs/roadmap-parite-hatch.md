@@ -1795,6 +1795,7 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
   = géométrie identique (au µm près, arrondi documenté).
 
 ### HP-OBJ-005 — Redimensionnement complet [P1] — ◐ Partiel
+- Livré (2026-10-26) : `AffineTransform::scale_xy` (angle des rangées, rails, guides suivent) et Édition › « Redimensionner la sélection… » (mm ou %, multi-sélection, un pas d'annulation). Reste : poignées de côté, Maj proportionnel, Alt depuis le centre ; les poignées de coin utilisent encore `ScaleVectorObjectCommand`.
 - État OpenStitch : poignées de coin (coin opposé fixe).
 - À faire : poignées de côté (une dimension), Maj = proportionnel, Alt =
   depuis le centre, saisie numérique en mm et en %, redimensionnement d'une
@@ -1813,13 +1814,15 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
 ### HP-OBJ-007 — Inclinaison (skew) [P2] — ☐ À faire
 
 ### HP-OBJ-008 — Aligner et répartir [P1] — ◐ Partiel (2026-10-13)
+- Livré (2026-10-26) : `align_shifts` (6 modes, référence sélection / premier objet / cadre) et `distribute_shifts`, menu Édition « Aligner sur » et « Répartir », un pas d'annulation.
 - Constaté sur `main` (`1ab521a`) : Édition ▸ Aligner la sélection (gauche, centre, droite, haut, milieu, bas) sur la boîte de la sélection.
 - Reste : alignement sur le premier objet ou sur le cadre ; répartir horizontalement/verticalement.
 - À faire : aligner gauche/centre/droite/haut/milieu/bas, sur la sélection,
   sur le premier objet ou sur le cadre ; répartir horizontalement/verticalement.
 - Dépend de : HP-OBJ-001.
 
-### HP-OBJ-009 — Grouper / dégrouper [P1] — ☐ À faire
+### HP-OBJ-009 — Grouper / dégrouper [P1] — ◐ Partiel (2026-10-26)
+- Livré (2026-10-26) : Cœur : `ObjectGroup`, `Project::groups`, `GroupShapesCommand` / `UngroupCommand` (annulables, ordre de couture inchangé), `.osp` (clés `groups`/`group`), opérations `group`/`ungroup` de `project_ops`. Reste : tout le bureau (menu, raccourci, sélection du groupe au clic, entrée au double-clic, panneau Document).
 - État OpenStitch : groupes **affichés** pour les sections d'un même plan
   satin dans le panneau Document, pas de groupe utilisateur.
 - À faire : groupe persistant (sélection et transformation comme un seul
@@ -1828,18 +1831,21 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
 - Modules : `libs/document`, `libs/commands`, `libs/project_io`, `apps/desktop`.
 
 ### HP-OBJ-010 — Masquer / verrouiller par objet depuis la liste [P1] — ◐ Partiel
+- Livré (2026-10-26) : Verrou d'édition `VectorObject::locked` (`.osp`), formes verrouillées ni cliquables ni saisies au cadre, menu Édition (verrouiller, déverrouiller, tout déverrouiller). Reste : colonne cadenas dans la liste Document, exposition `project_ops`.
 - État OpenStitch : `visible` existe dans le modèle ; verrou = « ne pas bouger
   à l'optimisation » seulement.
 - À faire : icônes œil/cadenas dans la liste ; verrou d'**édition**
   (non sélectionnable au canevas) distinct du verrou d'ordre.
 
-### HP-OBJ-011 — Réordonner par glisser-déposer dans la liste [P1] — ☐ À faire
+### HP-OBJ-011 — Réordonner par glisser-déposer dans la liste [P1] — ◐ Partiel (2026-10-26)
+- Livré (2026-10-26) : Le glisser-déposer de la liste existait déjà. Ajouté : `stacked_order` (premier plan, arrière-plan, avancer, reculer) + opération `stack_order`. Reste : entrées de menu Édition › Ordre et raccourcis Ctrl+Pg.
 - État OpenStitch : boutons monter/descendre.
 - À faire : glisser-déposer (un ou plusieurs objets) dans Document/Ordre ;
   « premier plan / arrière-plan / avant / arrière » (Ctrl+Pg↑/↓ …).
 - Voir aussi HP-SEQ-002.
 
 ### HP-OBJ-012 — Dupliquer les objets de broderie [P1] — ◐ Partiel (2026-10-13)
+- Livré (2026-10-26) : Décalage mémorisé repris par chaque Ctrl+D et « Dupliquer avec décalage… ».
 - Livré (PR #27, fusionnée le 2026-10-13 (`296ff34`)) : **Dupliquer avec la broderie** (Ctrl+D) sur la sélection multiple : vecteur + broderie + fil, décalage de 2 mm, un pas d'annulation.
 - Reste : décalage paramétrable, duplication répétée au même décalage.
 - État OpenStitch : « Dupliquer » sur un vecteur.
@@ -1862,7 +1868,8 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
   de sa machine.
 - Dépend de : HP-OBJ-004, HP-OBJ-005, HP-OBJ-006.
 
-### HP-OBJ-015 — Barre de propriétés X / Y / L / H / angle [P1] — ☐ À faire
+### HP-OBJ-015 — Barre de propriétés X / Y / L / H / angle [P1] — ◐ Partiel (2026-10-26)
+- Livré (2026-10-26) : Cœur : `make_place_command`, `make_rotate_about_center_command`, `selection_geometry` (position = centre de la boîte, mm, Y vers le haut), opération `place`. Reste : la barre X / Y / L / H / angle et le cadenas de proportions (bureau).
 - Hatch : champs numériques de position/taille/rotation de la sélection.
 - À faire : champs en mm dans la barre contextuelle ou l'inspecteur, cadenas
   de proportions ; chaque validation = une commande.
@@ -1896,7 +1903,8 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
   application à la sélection multiple.
 - Dépend de : HP-THR-004 pour la version « fil » (une version RGB peut venir avant).
 
-### HP-OBJ-019 — Inspecteur multi-objets [P1] — ☐ À faire
+### HP-OBJ-019 — Inspecteur multi-objets [P1] — ◐ Partiel (2026-10-26)
+- Livré (2026-10-26) : Non commencé (inspecteur multi-objets).
 - À faire : la sélection de plusieurs objets du même type montre les
   paramètres communs (valeurs différentes = champ « — ») ; une modification
   s'applique à tous en une commande.
@@ -1911,6 +1919,7 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
   revenir à cet état.
 
 ### HP-OBJ-022 — Convertir entre types sans perte [P1] — ◐ Partiel
+- Livré (2026-10-26) : `convert_ops` : satin vers ligne centrale, satin vers tatami, contour vers satin de bordure, remplissage vers contour (une commande, fil conservé), menu Édition › « Convertir le type ». Reste : entrée perdue vers un contour, menu contextuel du canevas.
 - État OpenStitch : changement de type par clic droit (contour/tatami/satin/
   directionnel) ; le satin est reconstruit depuis le contour.
 - À faire : conversions manquantes : satin → contour (ligne centrale), satin →
@@ -1997,6 +2006,7 @@ mais **sans interface** (`stitch-editing.md`).
 - Modules : `apps/desktop`.
 
 ### HP-EDIT-002 — Insérer et supprimer des points [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-26) : `MoveInsertedPointCommand` et poignées pointillées déplaçables pour les points insérés. Reste : Suppr et clic droit sur un point inséré.
 - Livré (2026-10-25, bureau) : Câblage bureau : Suppr retire les points sélectionnés (sans sélection de points, comportement historique : supprime l'objet), restauration par clic droit, double-clic près d'un trait pour insérer un point, points supprimés pâles et restaurables. Reste : poignée et déplacement d'un point inséré.
 - Livré (2026-10-25) : `StitchOverride` gagne `deleted` et `inserted_after` (deltas ADR-014), `apply_manual_overrides` en un passage, `.osp`. Reste : câblage bureau (menu, actions, QTest).
 - Hatch : insérer un point entre deux, supprimer des points.
@@ -2005,6 +2015,7 @@ mais **sans interface** (`stitch-editing.md`).
 - Modules : `libs/document`, `libs/stitch_generation/overrides`, `libs/commands`.
 
 ### HP-EDIT-003 — Sélection et déplacement de plusieurs points [P1] — ◐ Partiel (2026-10-25)
+- Livré (2026-10-26) : Sélection de points au cadre : Maj ajoute, Ctrl bascule, Alt remplace.
 - Livré (2026-10-25, bureau) : Câblage bureau : sélection par clic, Ctrl/Maj pour ajouter ou retirer, Ctrl+A pour tout, déplacement groupé en un pas d'annulation (la sélection suit le point glissé). Reste : sélection au cadre (rubber-band).
 - Livré (2026-10-25) : `EditStitchPointsCommand` (déplacer, supprimer, restaurer, insérer, type, coupe) en un pas d'annulation. Reste : tout le bureau (sélection de points, cadre, glisser groupé, Suppr).
 - À faire : rectangle de sélection de points, déplacement groupé, suppression groupée.
@@ -2039,6 +2050,7 @@ Aujourd'hui : stratégies document / couleur / proximité / couleur+proximité /
 couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
 
 ### HP-SEQ-001 — Amélioration 2-opt / Or-opt [P1] — ◐ Partiel (2026-10-06)
+- Livré (2026-10-26) : Amélioration locale 2-opt + Or-opt (1 à 3 objets) + retournement des objets réversibles, bornée en nombre de candidats (`OrderOptions::improve_budget`, 0 par défaut), déterministe, objets verrouillés immobiles. Reste : extrémités réelles non branchées côté IHM/`project_ops`, coût O(n) par candidat.
 - État OpenStitch : 2-opt existe pour le routage *interne* d'un objet
   (`RoutingConfig::two_opt`, `routing.cpp`) ; il manque pour l'ordre *entre*
   objets (`libs/optimization/src/order.cpp`), seul concerné par `limitations.md`.
@@ -2046,7 +2058,8 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
   les points d'entrée/sortie réels (HP-ENG-010).
 - Modules : `libs/optimization`.
 
-### HP-SEQ-002 — Ordre par glisser-déposer [P1] — ☐ À faire
+### HP-SEQ-002 — Ordre par glisser-déposer [P1] — ◐ Partiel (2026-10-26)
+- Livré (2026-10-26) : Glisser-déposer dans le dock « Ordre de couture » (`OrderListWidget`, `MoveInSewingOrderCommand`, un pas d'annulation, refuse de franchir un calque). Reste : film couleur.
 - Voir HP-OBJ-011 ; dans le film couleur (HP-THR-005) aussi.
 
 ### HP-SEQ-003 — Séquencer par couleur depuis le film couleur [P0] — ◐ Partiel (2026-10-25)
@@ -2248,7 +2261,8 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
   (l'utilisateur coupe à la main) avec points d'arrêt renforcés.
 - Dépend de : HP-HOOP-002.
 
-### HP-SEQ-008 — Point de départ / d'arrivée du design [P1] — ☐ À faire
+### HP-SEQ-008 — Point de départ / d'arrivée du design [P1] — ◐ Partiel (2026-10-26)
+- Livré (2026-10-26) : `SequenceFinishing::design_start` / `design_end` (`.osp`, `SetFinishingCommand`), saisie X / Y dans les options d'ordre, pris en compte par l'optimisation de l'ordre, opération `set_design_points`. Reste : la séquence de points et le DST ne changent pas (pas de saut d'origine ni de point de retour).
 - Hatch : départ/fin au centre, en haut à gauche…
 - À faire : réglage de l'origine machine et du point de retour final.
 
@@ -2280,7 +2294,8 @@ calques image/régions/vecteurs/broderie, filtres d'affichage, thème clair/somb
 - Roadmap nocturne du 2026-10-20 : **facultatif** (P2 → P3). S'appuie sur la carte d'épaisseur
   (HP-VIEW-014) et sur les épaisseurs par type de point de la veille HP-STI-025.
 
-### HP-VIEW-003 — Affichage par passe (sous-couche, déplacements, verrous) [P1] — ☐ À faire
+### HP-VIEW-003 — Affichage par passe (sous-couche, déplacements, verrous) [P1] — ◐ Partiel (2026-10-26)
+- Livré (2026-10-26) : Menu Affichage › « Passes de couture » (sous-couche, couche supérieure, déplacements, verrous, manuels), une couleur par passe, symboles d'entrée et de coupe. Reste : rendu réaliste ignore le filtre ; symboles absents en simulation.
 - État OpenStitch : `StitchPass` existe dans chaque commande ; `limitations.md` :
   « affichage/toggle par passe dans l'UI à venir ».
 - À faire : cases à cocher Sous-couche / Couche supérieure / Déplacements /
@@ -2309,7 +2324,8 @@ calques image/régions/vecteurs/broderie, filtres d'affichage, thème clair/somb
 
 ### HP-VIEW-006 — Vue d'ensemble (mini-carte) [P2] — ☐ À faire
 
-### HP-VIEW-007 — Zoom rectangle et zoom 1:1 réel [P1] — ☐ À faire
+### HP-VIEW-007 — Zoom rectangle et zoom 1:1 réel [P1] — ◐ Partiel (2026-10-26)
+- Livré (2026-10-26) : Zoom rectangle, 1:1 sur la densité physique de l'écran, « Étalonner le zoom 100 % » (DPI mémorisé). Reste : mesure guidée à l'écran.
 - À faire : zoom sur un rectangle glissé ; zoom 100 % = taille réelle à
   l'écran (DPI physique, calibrable) ; zoom sur la sélection.
 
@@ -2327,14 +2343,16 @@ calques image/régions/vecteurs/broderie, filtres d'affichage, thème clair/somb
   d'éclairage, l'image correspondante. À mesurer avec le banc avant de choisir ;
   à ne pas adopter sans gain démontré sur le rendu actuel.
 
-### HP-VIEW-010 — Grille et guides configurables [P1] — ☐ À faire
+### HP-VIEW-010 — Grille et guides configurables [P1] — ◐ Partiel (2026-10-26)
+- Livré (2026-10-26) : Grille dessinée (pas fin ou auto, ligne majeure tous les N pas, couleur) et guides par saisie en mm, dialogue de réglages. Reste : guides glissés depuis les règles, accrochage aux guides, guides enregistrés avec le projet.
 - À faire : pas de grille réglable, grille majeure/mineure, couleur, masquage.
 
 ### HP-VIEW-011 — Opacité de l'image de fond [P1] — ◐ Partiel (2026-10-21)
 - Livré (2026-10-21, PR) : curseur Affichage (0-100 %) persisté dans QSettings, appliqué seulement au pixmap de fond et maintenu après rafraîchissement, QTest du comportement. Reste : validation visuelle et tests sous Windows avant statut Fait.
 - À faire : curseur d'opacité / estompage de l'image pendant la numérisation.
 
-### HP-VIEW-012 — Aperçu en direct pendant le réglage [P1] — ☐ À faire
+### HP-VIEW-012 — Aperçu en direct pendant le réglage [P1] — ◐ Partiel (2026-10-26)
+- Livré (2026-10-26) : Aperçu en direct pendant la frappe dans les champs mm, délai de régénération 40 ms pour ≤ 20 000 commandes. Reste : mesure de latence, HP-PERF-002.
 - À faire : les spinbox de l'inspecteur mettent à jour l'aperçu pendant le
   glisser/la saisie (commande validée à la fin), sans latence perceptible
   pour un objet isolé.
@@ -2385,7 +2403,8 @@ Aujourd'hui : lecture/pause, curseur, compteur, repère d'aiguille (~60 pas/s).
 - Hatch : Stitch Player : sauter à l'objet ou à la couleur suivant(e) /
   précédent(e), pas à pas avant/arrière.
 
-### HP-SIM-003 — Objet courant mis en évidence [P1] — ☐ À faire
+### HP-SIM-003 — Objet courant mis en évidence [P1] — ◐ Partiel (2026-10-26)
+- Livré (2026-10-26) : Objet en cours surligné dans la liste Ordre, le panneau Document et le film couleur (`applySimulationHighlight`).
 - À faire : l'objet en cours de couture est surligné dans la liste et le
   film couleur ; la couleur de fil courante est affichée.
 
@@ -2428,6 +2447,7 @@ hors cadre, déplacement sans coupe), résumé avant export DST.
 - Dépend de : HP-THR-004 (liste de fils), HP-PROD-002.
 
 ### HP-PROD-002 — Estimation de la durée de couture [P1] — ◐ Partiel
+- Livré (2026-10-26) : Décomposition de la durée (couture, changements de fil, coupes, sauts) dans la fiche (JSON, HTML, CLI), options `--color-change-seconds`, `--trim-seconds`, `--jump-seconds`. Reste : profil machine, panneau de statistiques.
 - À faire : points / vitesse machine (profil) + temps par changement de fil,
   par coupe, par saut ; affichée dans les statistiques, le résumé d'export,
   la fiche.
@@ -2437,12 +2457,14 @@ hors cadre, déplacement sans coupe), résumé avant export DST.
 - Modules : `libs/stitch_analysis`.
 - Dépend de : HP-HOOP-002 (vitesse).
 
-### HP-PROD-003 — Gabarit de placement imprimé à l'échelle 1:1 [P1] — ☐ À faire
+### HP-PROD-003 — Gabarit de placement imprimé à l'échelle 1:1 [P1] — ◐ Partiel (2026-10-26)
+- Livré (2026-10-26) : Gabarit de placement 1:1 (`make_placement_template`, pages A4 / Lettre recouvertes de 10 mm, axes, croix, équerres, règle 100 mm), PDF vectoriel déterministe, CLI `--placement-template`, dialogue bureau avec aperçu et impression. Reste : contrôle sur imprimante réelle.
 - Hatch : impression du design à taille réelle avec croix de centrage et axes.
 - À faire : impression 1:1 vérifiée (règle imprimée de 10 cm), sur plusieurs
   pages si besoin.
 
-### HP-PROD-004 — Aperçu avant impression général [P1] — ☐ À faire
+### HP-PROD-004 — Aperçu avant impression général [P1] — ◐ Partiel (2026-10-26)
+- Livré (2026-10-26) : Fichier › « Aperçu avant impression… » (fiche ou gabarit), `print_preview` réutilisable. Reste : `ProductionDialog` n'utilise pas encore ce module.
 
 ### HP-PROD-005 — Consommation de fil par couleur et canette [P1] — ☑ Fait (2026-10-18, `6f8fe96`)
 - État OpenStitch : longueur de fil totale.
@@ -2541,6 +2563,7 @@ Aujourd'hui : un cadre **rectangulaire** de taille libre (10–500 mm), persist�
 - Livré (PR #25, fusionnée le 2026-10-13 et PR #27, fusionnée le 2026-10-13 (`296ff34`)) : bouton Pivoter du dialogue du cadre (échange largeur/hauteur) ; « Pivoter le design de 90° ».
 
 ### HP-HOOP-006 — Centrer automatiquement dans le cadre [P1] — ◐ Partiel (2026-10-13)
+- Livré (2026-10-26) : `center_imported_design` appliqué à l'import des fichiers machine (DST). Reste : DXF et SVG non centrés.
 - Livré (PR #27, fusionnée le 2026-10-13 (`296ff34`)) : « Centrer dans le cadre » et « Ajuster à la zone brodable » (voir HP-OBJ-014). Pas de centrage automatique à l'import.
 - Voir HP-OBJ-014.
 
@@ -2771,7 +2794,8 @@ et récupération après plantage (HP-FILE-004).
   pas de vignette dans le dialogue de récupération (HP-FMT-020 hors
   périmètre) ; pas de `.osp.bak` versionné (HP-FILE-009, entrée distincte).
 
-### HP-FILE-005 — Association de fichiers et glisser-déposer [P1] — ☐ À faire
+### HP-FILE-005 — Association de fichiers et glisser-déposer [P1] — ◐ Partiel (2026-10-26)
+- Livré (2026-10-26) : Association des `.osp` dans l'installateur (`installer.iss`) ; l'ouverture par argument et le glisser-déposer existaient. Reste : instance unique, test de l'installateur.
 - À faire : double-clic sur un `.osp` (et, en option, `.dst`/`.pes`) ouvre
   OpenStitch (installateur) ; ouverture par argument de ligne de commande ;
   instance unique optionnelle ; glisser-déposer (HP-FMT-016).
@@ -2779,7 +2803,8 @@ et récupération après plantage (HP-FILE-004).
 ### HP-FILE-006 — Plusieurs documents ouverts (onglets) [P2] — ☐ À faire
 - À faire : `Project` + `UndoStack` par onglet ; copier/coller entre onglets.
 
-### HP-FILE-007 — Insérer un design dans le projet courant [P1] — ☐ À faire
+### HP-FILE-007 — Insérer un design dans le projet courant [P1] — ◐ Partiel (2026-10-26)
+- Livré (2026-10-26) : `InsertDesignCommand` (ids neufs, `.osp` ou fichier machine, un pas d'annulation), Fichier › « Insérer un design… », Maj + dépôt. Reste : position (toujours à l'origine), calques et coloris ignorés.
 - Hatch : Insert design : fusionner un autre fichier dans le design ouvert.
 - À faire : insérer un `.osp` (objets éditables) ou un fichier machine
   (séquence brute positionnable) ; une commande annulable.
@@ -2866,13 +2891,15 @@ les paramètres avant de créer) et par des **modes** distincts (édition satin,
 - Livré (2026-10-25) : barre de progression déterminée et bouton Annuler dans `BusyIndicator`, branchés sur l'aperçu du fondu. Reste : migration des autres opérations longues.
 - Voir HP-PERF-001 : barre de progression, bouton Annuler, UI jamais figée.
 
-### HP-UX-007 — Préférences générales [P1] — ☐ À faire
+### HP-UX-007 — Préférences générales [P1] — ◐ Partiel (2026-10-26)
+- Livré (2026-10-26) : Dialogue Édition › « Préférences générales… » (unité, pas de grille, intervalle de sauvegarde, dossier de travail). Reste : magnétisme, défauts de points, machine et cadre par défaut, thème.
 - État OpenStitch : seules les préférences IA ont un dialogue ; thème et
   densité dans le menu.
 - À faire : dialogue Préférences : unités, grille, magnétisme, défauts de
   points, machine/cadre par défaut, dossier de travail, autosave, langue.
 
-### HP-UX-008 — Unités impériales (pouces) [P1] — ☐ À faire
+### HP-UX-008 — Unités impériales (pouces) [P1] — ◐ Partiel (2026-10-26)
+- Livré (2026-10-26) : `length_units.hpp` (mm / pouces, mémorisé), branché sur les règles, le curseur et le pas de grille. Reste : environ 89 sites d'affichage dans `main_window.cpp`, `properties_panel.cpp` et les dialogues.
 - À faire : affichage et saisie en pouces (règles, inspecteur, dimensions),
   stockage toujours en µm. Indispensable pour le marché nord-américain.
 
@@ -2924,7 +2951,8 @@ les paramètres avant de créer) et par des **modes** distincts (édition satin,
   contraste, focus visible et ordre de tabulation ; QTest et `QAccessible`,
   sans imposer d'égalité pixel à pixel. Coordination HP-I18N-004 et HP-QA-008.
 
-### HP-UX-016 — Libellés compréhensibles par un non-technicien [P1] — ☐ À faire
+### HP-UX-016 — Libellés compréhensibles par un non-technicien [P1] — ◐ Partiel (2026-10-26)
+- Livré (2026-10-26) : Quatre entrées du menu Broderie et quatre options d'export reformulées sans jargon. Reste : menu « Avancé » replié, fusion des deux entrées de satin automatique.
 - À faire : relire tous les libellés (« Déboguer : afficher toutes les
   données… », « Remodelage satin (avancé) », « trajet caché ») ; masquer les
   outils de débogage derrière un mode développeur.
@@ -3577,12 +3605,14 @@ release « latest » publiée par la CI (`ci.yml`) ; installateur non signé.
 Aujourd'hui : documentation technique riche (PDF) surtout pour développeurs ;
 un guide utilisateur ; aide = liste des raccourcis + À propos.
 
-### HP-HELP-001 — Manuel utilisateur en ligne et aide contextuelle (F1) [P1] — ☐ À faire
+### HP-HELP-001 — Manuel utilisateur en ligne et aide contextuelle (F1) [P1] — ◐ Partiel (2026-10-26)
+- Livré (2026-10-26) : Manuel `user-guide.md` embarqué (QTextBrowser, recherche), Aide › « Manuel d'utilisation », Maj+F1 ouvre la section du panneau ou de l'outil actif (F1 reste « Gestes »). Reste : manuel orienté tâches.
 - À faire : manuel orienté tâches (« broder un logo », « faire du texte »,
   « exporter pour une Brother »), accessible par F1 sur l'outil/le panneau
   courant.
 
-### HP-HELP-002 — Tutoriels et projets guidés [P1] — ☐ À faire
+### HP-HELP-002 — Tutoriels et projets guidés [P1] — ◐ Partiel (2026-10-26)
+- Livré (2026-10-26) : Aide › « Tutoriel : de l'image à la broderie… » (image d'exemple générée + guide de prise en main). Reste : tutoriels thématiques avec projets d'exemple (HP-LIB-001).
 - À faire : 5 à 10 tutoriels pas à pas avec fichiers d'exemple (HP-LIB-001).
 
 ### HP-HELP-003 — Premier lancement guidé [P2] — ☐ À faire
@@ -3718,3 +3748,4 @@ ci-dessus doit les respecter :
 | 2026-10-25 | Claude (multi-agents, P1 vague 2) | Lot 2 : dix agents en parallèle ; cœur, `.osp`, `project_ops` et tests pour TXT-005/008/014, STI-002/006/008/009/014, THR-006/008/011/012, EDIT-001..004 (cœur seulement), SIM-001/002/004, HOOP-001..003, ENG-003..005, FMT-006/014/016/022, VEC-001/005/006/009 (voir chaque entrée). Les entrées ☐ concernées passent à ◐. Non traités : SIM-003, ENG-006, HOOP-005/006, VEC-015. Tableau de bord non recalculé. |
 | 2026-10-25 | Claude (câblage des types de points) | Audit du bureau : les remplissages concentrique, radial, spirale, croisé et les motifs n'étaient pas dans les sélecteurs de type. Catalogue unique `stitch_type_catalog` (11 types) utilisé par l'inspecteur (bouton « Plus ▾ »), la barre contextuelle et les menus contextuels (objet, forme sans broderie, multi-sélection) ; correction de l'index de type (ces objets étaient rangés comme directionnels). Reste sans interface : édition de points (HP-EDIT-001..004), SIM-003. |
 | 2026-10-25 | Claude (câblage de l'édition de points) | HP-EDIT-001/002/003 câblés dans le mode « Éditer les points » : sélection (clic, Ctrl/Maj, Ctrl+A), déplacement groupé, Suppr, restauration, insertion par double-clic, saut/point cousu, coupe de fil ; menu Broderie, clic droit, 9 QTest. Reste : rubber-band, déplacement d'un point inséré. |
+| 2026-10-26 | Claude (multi-agents, lot 3) | Lot 3 : huit agents en parallèle ; OBJ-005/008/009/010/011/012/015/022, SEQ-001/002/008, VIEW-003/007/010/012, PROD-002/003/004, FILE-005/007, UX-007/008/016, HELP-001/002, SIM-003, restes EDIT-002/003 et HOOP-006 (voir chaque entrée). Cœur livré mais bureau non câblé : OBJ-009 (groupes), OBJ-011 (menu Ordre), OBJ-015 (barre X/Y/L/H) ; OBJ-019, ENG-006 et TXT-012/013 non faits. Tableau de bord non recalculé. |

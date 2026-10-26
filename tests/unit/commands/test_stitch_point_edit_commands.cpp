@@ -185,3 +185,27 @@ TEST_CASE("EditImportedPointsCommand : insertion et refus sur une commande non e
     CHECK_FALSE(refused.applied());
     CHECK(project.imported_design->sequence.commands.size() == 9);
 }
+
+TEST_CASE("MoveInsertedPointCommand : deplace un point insere en un undo, refuse hors vue") {
+    auto project = project_with_object();
+    const ObjectId id = project.embroidery_objects[0].id;
+    UndoStack stack;
+    stack.execute(std::make_unique<EditStitchPointsCommand>(
+                      EditStitchPointsCommand::insert_point(id, 2, pt(100, 100), 77, 5)),
+                  project);
+    stack.execute(std::make_unique<MoveInsertedPointCommand>(id, 2, 0, pt(300, 400), 77, 5),
+                  project);
+    const auto* obj = project.findEmbroidery(id);
+    REQUIRE(obj->overrides.size() == 1);
+    CHECK(obj->overrides[0].inserted_after[0] == pt(300, 400));
+    CHECK(stack.undo(project));
+    CHECK(project.findEmbroidery(id)->overrides[0].inserted_after[0] == pt(100, 100));
+
+    auto bad_slot = MoveInsertedPointCommand(id, 2, 5, pt(1, 1), 77, 5);
+    bad_slot.apply(project);
+    CHECK_FALSE(bad_slot.applied());
+    auto dirty = MoveInsertedPointCommand(id, 2, 0, pt(1, 1), 99, 5);
+    dirty.apply(project);
+    CHECK_FALSE(dirty.applied());
+    CHECK(project.findEmbroidery(id)->overrides[0].inserted_after[0] == pt(100, 100));
+}

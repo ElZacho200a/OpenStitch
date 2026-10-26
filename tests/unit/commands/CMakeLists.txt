@@ -7,14 +7,19 @@ add_executable(test_commands
     test_import_machine_design_command.cpp
     test_vector_ops.cpp
     test_transform_ops.cpp
+    test_arrange_ops.cpp
+    test_convert_ops.cpp
     test_thread_commands.cpp
     test_engine_commands.cpp
     test_vector_path_commands.cpp
     test_calque_commands.cpp
+    test_group_commands.cpp
     test_click_to_stitch_commands.cpp
     test_colorway_commands.cpp
     test_stitch_point_edit_commands.cpp
     test_outline_ops.cpp
+    test_sewing_order_commands.cpp
+    test_insert_design_command.cpp
 )
 target_link_libraries(test_commands PRIVATE openstitch::commands Catch2::Catch2WithMain openstitch::warnings)
 catch_discover_tests(test_commands)

@@ -21,6 +21,10 @@ struct VectorObject {
     std::array<std::uint8_t, 3> rgb{};
     std::vector<geometry::PathSet> paths; // plusieurs morceaux possibles
     bool visible{true};
+    // Verrou d'édition (HP-OBJ-010) : la forme n'est ni cliquable ni saisie par un cadre au
+    // canevas (elle reste atteignable depuis la liste du Document). Distinct du verrou d'ordre
+    // de couture (`EmbroideryObject::locked`).
+    bool locked{false};
     // Calque du document (HP-OBJ-024) qui contient cette forme et donc toutes ses couches de
     // couture. Invalide ou inconnu = calque du fond (cf. `Project::calques`).
     ObjectId calque;
@@ -28,6 +32,8 @@ struct VectorObject {
     // l'objet texte `Project::text_objects[id]` ; il est régénéré quand le texte
     // est édité. Absent = objet vectoriel ordinaire.
     std::optional<ObjectId> text_owner;
+    // Groupe utilisateur (HP-OBJ-009) qui contient cette forme ; invalide ou inconnu = aucun.
+    ObjectId group;
 };
 
 // Adresse d'un nœud dans un objet : morceau, chemin (0 = extérieur,

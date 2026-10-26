@@ -37,6 +37,7 @@
 #include "openstitch/thread_palette/thread_library.hpp"
 #include "realistic_view_state.hpp"
 #include "tools.hpp"
+#include "view_display_state.hpp"
 
 class QGraphicsScene;
 class QAbstractGraphicsShapeItem;
@@ -82,6 +83,7 @@ class CanvasView;
 struct DensityRaster; // density_overlay.hpp
 class GesturesDialog;
 class QuickStartDialog;
+class ManualDialog;
 class PropertiesPanel;
 class DocumentPanel;
 class SegmentationColorsPanel;
@@ -108,6 +110,7 @@ class MainWindow : public QMainWindow {
     Q_OBJECT
     friend class MainWindowTest;
     friend class CreationFlowTest;
+    friend class HelpManualTest;
 
 public:
     MainWindow();
@@ -182,6 +185,11 @@ private slots:
     void warnAboutSkippedSvgFeatures(const std::vector<std::string>& warnings);
     void openAiPreferences();
     void openSettings(); // onglet « Paramètres » (EditSettings, fichier INI)
+    // HP-UX-007/008 : préférences générales (unités, grille, autosave, dossier de travail).
+    void openGeneralPreferences();
+    // HP-FILE-007 : insère un .osp / une broderie machine dans le projet ouvert (une ICommand).
+    void insertDesign();
+    bool insertDesignFile(const QString& file);
     // HP-UX-002 : création DIRECTE (sans dialogue) d'un objet par forme sélectionnée, au dernier
     // réglage mémorisé (`ui_memory::creation`). Les variantes `…WithSettings` gardent le dialogue
     // de saisie (« Créer avec réglages… »).
@@ -801,6 +809,21 @@ private:
     QDockWidget* historyDock_{nullptr};
     QListWidget* historyList_{nullptr};
     QList<QAction*> alignActs_;
+    // Organiser les objets (main_window_arrange.cpp) : référence d'alignement, répartition,
+    // verrou d'édition, redimensionnement numérique, décalage de duplication, conversions.
+    void buildArrangeMenu(QMenu* editMenu);
+    void updateArrangeActions();
+    void alignShapes(int mode);
+    void distributeShapes(bool horizontal);
+    void setShapesLocked(const std::vector<ObjectId>& ids, bool locked);
+    void resizeSelectionByFactors(double sx, double sy, bool fromCenter);
+    void resizeSelectionDialog();
+    void duplicateWithOffsetDialog();
+    void convertSelectionType(int kind);
+    int alignReference_{0}; // 0 sélection, 1 premier objet, 2 cadre
+    Vec2um duplicateOffset_{Micrometers{2'000}, Micrometers{-2'000}};
+    QList<QAction*> arrangeActs_;
+    QList<QAction*> convertActs_;
     // Aperçus de glisser (poignées) : repère d'accroche, cadre de redimensionnement.
     void showNodeDragFeedback(QPointF sceneMm, ObjectId objectId);
     void hideNodeDragFeedback();
@@ -840,7 +863,15 @@ private:
                                                          double radiusMm) const;
     QAction* gridSnapAct_{nullptr};
     QAction* gridStepAct_{nullptr};
+    QAction* insertDesignAct_{nullptr};
     double gridStepMm_{1.0};
+    // Affichage par passe, zoom rectangle / 1:1 étalonné, grille et guides, aperçu en direct
+    // (HP-VIEW-003/007/010/012, main_window_view_display.cpp).
+    void buildViewDisplayMenu(QMenu* viewMenu);
+    void applyViewDisplay();
+    void addFunctionMarkers();
+    ViewDisplayState viewDisplay_;
+    QAction* zoomRectAct_{nullptr};
     QAction* outlineAct_{nullptr};
     // Sélection de nœuds et déplacement groupé (HP-VEC-017, main_window_node_select.cpp). Tous
     // les nœuds sélectionnés appartiennent au même chemin (set, path) de `nodeSelObject_`.
@@ -1278,6 +1309,11 @@ private:
     [[nodiscard]] QString hintsText() const { return hintsFullText_; }
     void showGesturesDialog();
     void showQuickStartDialog();
+    // Manuel en ligne (help_manual.hpp, main_window_help.cpp) : section selon le contexte.
+    void showManual(const QString& heading = {});
+    void showContextualHelp();
+    [[nodiscard]] QString contextualHelpHeading() const;
+    void startGuidedTour();
     void buildNavigationMenu(QMenu* viewMenu);
     // Rendu réaliste des points (main_window_realistic.cpp) : sous-menu
     // Affichage > Rendu réaliste, fenêtre de réglages et peinture du cache.
@@ -1478,6 +1514,7 @@ private:
                                                         ObjectId exclude) const;
     QPointer<GesturesDialog> gesturesDialog_;
     QPointer<QuickStartDialog> quickStartDialog_;
+    QPointer<ManualDialog> manualDialog_;
     QPointer<QMenu> selectBelowMenu_;
     std::vector<ObjectId> isolatedIds_;
     std::optional<document::StitchParams> styleClipboard_;
@@ -1495,6 +1532,9 @@ private:
     QAction* navTouchpadAct_{nullptr};
     QAction* helpQuickStartAct_{nullptr};
     QAction* helpGesturesAct_{nullptr};
+    QAction* helpManualAct_{nullptr};
+    QAction* helpContextAct_{nullptr};
+    QAction* helpTourAct_{nullptr};
     QAction* aboutAct_{nullptr};
     // Actions du guide de prise en main (étapes construites à partir d'elles).
     QAction* openImageAct_{nullptr};
@@ -1546,7 +1586,11 @@ private:
     void addStitchPointHandle(std::size_t baseIndex, Vec2um pos, bool selected, bool deleted);
     void clickStitchPoint(std::size_t index, Qt::KeyboardModifiers mods);
     void restyleStitchPointHandles();
+    void addInsertedPointHandle(std::size_t baseIndex, std::size_t slot, Vec2um pos);
+    void moveInsertedStitchPoint(ObjectId id, std::size_t baseIndex, std::size_t slot, Vec2um to,
+                                 std::uint64_t fingerprint, std::uint32_t pointCount);
     void selectAllStitchPoints();
+    void selectStitchPointsInRect(QRectF rectMm, SelectMode mode);
     void moveStitchPoints(ObjectId targetId, std::size_t anchor, Vec2um from, Vec2um to,
                           std::uint64_t fingerprint, std::uint32_t pointCount);
     bool editSelectedStitchPoints(int action);
@@ -1711,6 +1755,9 @@ private:
     // montre les points que jusqu'à cet index.
     QToolBar* simToolbar_{nullptr};
     QSlider* simSlider_{nullptr};
+    // HP-SIM-003 : objet en cours de couture, surligné dans les listes et le film couleur.
+    std::optional<ObjectId> simHighlightId_;
+    void applySimulationHighlight();
     SimulationNavBar* simNavBar_{nullptr}; // HP-SIM-002/004 : pas à pas, objet, temps
     QLabel* simLabel_{nullptr};
     QLabel* simSwatch_{nullptr};      // pastille de la couleur du fil courant

@@ -28,6 +28,7 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_regions.cpp
     main_window_shapes.cpp
     main_window_objects.cpp
+    main_window_arrange.cpp
     simulation_nav_bar.cpp
     stitch_type_catalog.cpp
     main_window_point_edit.cpp
@@ -36,6 +37,10 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_workflow.cpp
     ui_memory.hpp
     main_window_ux.cpp
+    main_window_preferences.cpp
+    general_preferences_dialog.cpp
+    general_preferences_dialog.hpp
+    length_units.hpp
     main_window_analysis.cpp
     main_window_realistic.cpp
     main_window_production.cpp
@@ -71,6 +76,10 @@ add_library(openstitch_desktop_widgets STATIC
     density_overlay.cpp
     density_overlay.hpp
     main_window_density.cpp
+    grid_settings_dialog.cpp
+    grid_settings_dialog.hpp
+    main_window_view_display.cpp
+    view_display_state.hpp
     # [cablage-E:fin]
     # [cablage-HOOP:debut]
     machine_dialog.cpp
@@ -79,6 +88,10 @@ add_library(openstitch_desktop_widgets STATIC
     # [cablage-HOOP:fin]
     production_dialog.cpp
     production_dialog.hpp
+    placement_template_dialog.cpp
+    placement_template_dialog.hpp
+    print_preview.cpp
+    print_preview.hpp
     realistic_preferences.cpp
     realistic_preferences.hpp
     realistic_render_dialog.cpp
@@ -117,6 +130,8 @@ add_library(openstitch_desktop_widgets STATIC
     calque_panel.hpp
     document_panel.cpp
     document_panel.hpp
+    order_list_widget.cpp
+    order_list_widget.hpp
     segmentation_colors_panel.cpp
     segmentation_colors_panel.hpp
     main_window_colors.cpp
@@ -136,6 +151,10 @@ add_library(openstitch_desktop_widgets STATIC
     interaction_map.hpp
     help_dialogs.cpp
     help_dialogs.hpp
+help_manual.cpp
+help_manual.hpp
+help_manual.qrc
+main_window_help.cpp
     selection_hit_test.cpp
     selection_hit_test.hpp
     ui_icons.cpp

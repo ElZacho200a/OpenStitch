@@ -5,6 +5,7 @@
 #include "auto_satin_strategy_ui.hpp"
 #include "stitch_type_catalog.hpp"
 #include "ui_icons.hpp"
+#include "ui_memory.hpp"
 
 #include <QAction>
 #include <QCheckBox>
@@ -683,9 +684,9 @@ void PropertiesPanel::clearBody() {
 QDoubleSpinBox* PropertiesPanel::mmSpin(double valueMm, double maxMm, double minMm,
                                         const QString& tip) {
     auto* spin = new QDoubleSpinBox(body_);
-    // Frappe au clavier : une seule modification à la validation, pas une par chiffre
-    // (chaque modification régénère les points).
-    spin->setKeyboardTracking(false);
+    // HP-VIEW-012 : par défaut l'aperçu suit la frappe (la commande se fusionne en un seul pas
+    // d'annulation et la régénération est débouncée) ; décochable dans Affichage.
+    spin->setKeyboardTracking(ui_memory::boolValue(QStringLiteral("view/liveTyping"), true));
     spin->setRange(minMm, maxMm);
     spin->setDecimals(2);
     spin->setSingleStep(0.1);

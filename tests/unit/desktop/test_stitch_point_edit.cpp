@@ -184,6 +184,49 @@ private slots:
         QVERIFY(window.project_.findEmbroidery(emb)->overrides.empty());
     }
 
+    void rubberBandSelectsPointsInsideAndHonoursModes() {
+        MainWindow window;
+        window.show();
+        ObjectId emb;
+        window.applyLoadedProject(rectangleWithRunningStitch(emb));
+        enterEditMode(window, emb);
+        window.selectAllStitchPoints();
+        const std::size_t everyPoint = window.stitchSelection_.size();
+        // Bande horizontale autour du bord bas (y = 0 mm) : une partie des points seulement.
+        const QRectF bottom(-1.0, -1.0, 42.0, 2.0);
+        window.selectStitchPointsInRect(bottom, SelectMode::Replace);
+        const auto first = window.stitchSelection_;
+        QVERIFY(!first.empty());
+        QVERIFY(first.size() < everyPoint);
+        window.selectStitchPointsInRect(QRectF(500, 500, 1, 1), SelectMode::Add);
+        QCOMPARE(window.stitchSelection_, first); // cadre vide : rien ne change
+        window.selectStitchPointsInRect(bottom, SelectMode::Toggle);
+        QVERIFY(window.stitchSelection_.empty()); // bascule : tout est retire
+        window.selectStitchPointsInRect(QRectF(-1, -21, 42, 22), SelectMode::Add);
+        QVERIFY(window.stitchSelection_.size() > first.size());
+    }
+
+    void insertedPointCanBeMovedAsOneUndoStep() {
+        MainWindow window;
+        window.show();
+        ObjectId emb;
+        window.applyLoadedProject(rectangleWithRunningStitch(emb));
+        enterEditMode(window, emb);
+        QVERIFY(window.insertStitchPointAt(QPointF(10.0, 0.0)));
+        const int handlesWithInserted = countHandles(window);
+        const auto* object = window.project_.findEmbroidery(emb);
+        const std::size_t base = object->overrides[0].base_index;
+        window.moveInsertedStitchPoint(
+            emb, base, 0, Vec2um{Micrometers{10'000}, Micrometers{3'000}},
+            window.stitchEditView_->fingerprint, window.stitchEditView_->point_count);
+        object = window.project_.findEmbroidery(emb);
+        QCOMPARE(object->overrides[0].inserted_after[0].y.value, 3'000);
+        QCOMPARE(countHandles(window), handlesWithInserted);
+        window.undo();
+        object = window.project_.findEmbroidery(emb);
+        QCOMPARE(object->overrides[0].inserted_after[0].y.value, 0);
+    }
+
     void editActionsAreOnlyEnabledInTheModeWithASelection() {
         MainWindow window;
         window.show();

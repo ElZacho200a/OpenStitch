@@ -1351,6 +1351,21 @@ json project_to_json(const document::Project& project) {
         }
     }
 
+    if (!project.groups.empty()) {
+        // Groupes d'objets (HP-OBJ-009) : clé facultative sans montée de schéma ; un lecteur
+        // plus ancien l'ignore (les formes restent présentes, simplement non groupées).
+        j["groups"] = json::array();
+        for (const auto& group : project.groups) {
+            json go;
+            go["id"] = group.id.value;
+            go["name"] = group.name;
+            if (group.parent.valid()) {
+                go["parent"] = group.parent.value;
+            }
+            j["groups"].push_back(std::move(go));
+        }
+    }
+
     if (!project.colorways.empty()) {
         // Coloris multiples (HP-THR-006) : clé facultative, un lecteur plus ancien l'ignore (les
         // objets portent déjà les couleurs du coloris actif).
@@ -1386,6 +1401,9 @@ json project_to_json(const document::Project& project) {
         vo["name"] = v.name;
         vo["rgb"] = rgb_to_json(v.rgb);
         vo["visible"] = v.visible;
+        if (v.locked) { // clé absente quand déverrouillé : les anciens fichiers restent identiques
+            vo["locked"] = true;
+        }
         if (v.source_region) {
             vo["sourceRegion"] = v.source_region->value;
         }
@@ -1394,6 +1412,9 @@ json project_to_json(const document::Project& project) {
         }
         if (v.calque.valid()) {
             vo["calque"] = v.calque.value;
+        }
+        if (v.group.valid()) {
+            vo["group"] = v.group.value;
         }
         vo["paths"] = json::array();
         for (const auto& ps : v.paths) {
@@ -1474,6 +1495,13 @@ json project_to_json(const document::Project& project) {
                         {"withinObject", f.hidden_travel.within_object},
                         {"reorderUnderlay", f.hidden_travel.reorder_underlay},
                         {"reorderRegions", f.hidden_travel.reorder_regions}}}};
+    // HP-SEQ-008 : écrits seulement s'ils existent (fichier identique sinon).
+    if (f.design_start) {
+        j["finishing"]["designStart"] = vec_to_json(*f.design_start);
+    }
+    if (f.design_end) {
+        j["finishing"]["designEnd"] = vec_to_json(*f.design_end);
+    }
 
     // AD-04 : design importé (DST aujourd'hui) -- donnée source immuable,
     // absente d'un projet qui n'en a pas (comportement historique inchangé).
@@ -1552,6 +1580,15 @@ Result<document::Project> project_from_json(const json& j) {
             project.segmentation = std::move(seg);
         }
 
+        if (j.contains("groups")) {
+            for (const auto& go : j.at("groups")) {
+                document::ObjectGroup group;
+                group.id = ObjectId{go.at("id").get<std::uint64_t>()};
+                group.name = go.value("name", std::string{});
+                group.parent = ObjectId{go.value("parent", std::uint64_t{0})};
+                project.groups.push_back(std::move(group));
+            }
+        }
         if (j.contains("calques")) {
             for (const auto& co : j.at("calques")) {
                 document::Calque calque;
@@ -1608,11 +1645,15 @@ Result<document::Project> project_from_json(const json& j) {
             v.name = vo.at("name");
             v.rgb = rgb_from_json(vo.at("rgb"));
             v.visible = vo.value("visible", true);
+            v.locked = vo.value("locked", false);
             if (vo.contains("sourceRegion")) {
                 v.source_region = RegionId{vo.at("sourceRegion").get<std::uint64_t>()};
             }
             if (vo.contains("textOwner")) {
                 v.text_owner = ObjectId{vo.at("textOwner").get<std::uint64_t>()};
+            }
+            if (vo.contains("group")) {
+                v.group = ObjectId{vo.at("group").get<std::uint64_t>()};
             }
             if (vo.contains("calque")) {
                 v.calque = ObjectId{vo.at("calque").get<std::uint64_t>()};
@@ -1765,6 +1806,12 @@ Result<document::Project> project_from_json(const json& j) {
                 h.within_object = hj.value("withinObject", hd.within_object);
                 h.reorder_underlay = hj.value("reorderUnderlay", hd.reorder_underlay);
                 h.reorder_regions = hj.value("reorderRegions", hd.reorder_regions);
+            }
+            if (fj.contains("designStart")) {
+                f.design_start = vec_from_json(fj.at("designStart"));
+            }
+            if (fj.contains("designEnd")) {
+                f.design_end = vec_from_json(fj.at("designEnd"));
             }
         } else {
             project.finishing = document::SequenceFinishing::legacy();

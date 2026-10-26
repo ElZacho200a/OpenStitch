@@ -32,3 +32,22 @@ TEST_CASE("ImportedDesign : egalite de valeur") {
     b.source_format = "autre";
     CHECK_FALSE(a == b);
 }
+
+TEST_CASE("center_imported_design : la boite englobante est ramenee sur l'origine") {
+    document::ImportedDesign d;
+    const auto at = [](int x, int y) { return Vec2um{Micrometers{x}, Micrometers{y}}; };
+    d.sequence.commands = {
+        {at(0, 0), stitch::CommandType::Stitch, ObjectId{}},
+        {at(40'000, 0), stitch::CommandType::Stitch, ObjectId{}},
+        {at(40'000, 20'000), stitch::CommandType::Stitch, ObjectId{}},
+        {at(999'999, 999'999), stitch::CommandType::ColorChange, ObjectId{}},
+    };
+    const Vec2um shift = document::center_imported_design(d);
+    CHECK(shift == at(-20'000, -10'000));
+    CHECK(d.sequence.commands[0].pos == at(-20'000, -10'000));
+    CHECK(d.sequence.commands[2].pos == at(20'000, 10'000));
+    // Deja centre : aucun decalage (idempotent).
+    CHECK(document::center_imported_design(d) == at(0, 0));
+    document::ImportedDesign empty;
+    CHECK(document::center_imported_design(empty) == at(0, 0));
+}

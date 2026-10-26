@@ -2,6 +2,7 @@
 #include "main_window.hpp"
 #include "simulation_nav_bar.hpp"
 #include "stitch_type_catalog.hpp"
+#include "thread_strip.hpp"
 
 #include <QAction>
 #include <QActionGroup>
@@ -76,11 +77,16 @@
 #include "command_palette_dialog.hpp"
 #include "document_panel.hpp"
 #include "empty_state_widget.hpp"
+#include "general_preferences_dialog.hpp"
 #include "generation_options_dialog.hpp"
 #include "help_dialogs.hpp"
+#include "help_manual.hpp"
 #include "import_dialog.hpp"
+#include "length_units.hpp"
 #include "machine_export_dialog.hpp"
 #include "node_handle.hpp"
+#include "openstitch/commands/sewing_order_commands.hpp"
+#include "order_list_widget.hpp"
 #include "responsive.hpp"
 #include "vector_tooltip.hpp"
 
@@ -647,8 +653,8 @@ MainWindow::MainWindow() {
     }
     setTool(Tool::Select);
     connect(view_, &CanvasView::cursorMovedMm, this, [this](QPointF mm) {
-        cursorLabel_->setText(
-            tr("x : %1 mm   y : %2 mm").arg(mm.x(), 0, 'f', 1).arg(mm.y(), 0, 'f', 1));
+        // HP-UX-008 : coordonnées dans l'unité d'affichage choisie (mm ou pouces).
+        cursorLabel_->setText(length_units::formatPoint(mm.x(), mm.y(), length_units::current()));
     });
     connect(view_, &CanvasView::cropSelectedMm, this, &MainWindow::onCropSelected);
     connect(view_, &CanvasView::boxDrawnMm, this, &MainWindow::onBoxDrawn);
@@ -690,6 +696,7 @@ MainWindow::MainWindow() {
     connect(view_, &CanvasView::canvasClickedMm, this, &MainWindow::onCanvasClicked);
     connect(view_, &CanvasView::selectionClickedMm, this, &MainWindow::onSelectionClicked);
     connect(view_, &CanvasView::nodeRectangleMm, this, &MainWindow::onNodeRectangle);
+    connect(view_, &CanvasView::stitchRectangleMm, this, &MainWindow::selectStitchPointsInRect);
     connect(view_, &CanvasView::selectionRectangleMm, this, &MainWindow::onSelectionRectangle);
     connect(view_, &CanvasView::selectBelowRequested, this, &MainWindow::onSelectBelow);
     // Préréglage de navigation GLOBAL : toute fenêtre reflète un changement venu d'ailleurs.
@@ -739,7 +746,7 @@ MainWindow::MainWindow() {
     // HP-FILE-004 : autosave périodique, démarré dès l'ouverture (protège
     // dès avant la première modification, pas seulement après).
     autosaveTimer_ = new QTimer(this);
-    autosaveTimer_->setInterval(120000); // ASM-S11-01 : 2 min, non configurable en P0
+    autosaveTimer_->setInterval(loadGeneralPreferences().autosaveMinutes * 60'000); // HP-UX-007
     connect(autosaveTimer_, &QTimer::timeout, this, &MainWindow::onAutosaveTick);
     autosaveTimer_->start();
     // Différé après le premier passage de la boucle d'évènements (donc après
@@ -834,6 +841,11 @@ void MainWindow::buildMenus() {
     auto* importDstAct = fileMenu->addAction(tr("&Importer une broderie machine…"));
     connect(importDstAct, &QAction::triggered, this, &MainWindow::importDst);
     fileMenu->addSeparator();
+    insertDesignAct_ = fileMenu->addAction(tr("Insérer un design…"));
+    insertDesignAct_->setObjectName(QStringLiteral("action_insertDesign"));
+    insertDesignAct_->setToolTip(tr("Ajoute le contenu d'un projet .osp ou d'une broderie machine "
+                                    "au projet ouvert (annulable en un pas)."));
+    connect(insertDesignAct_, &QAction::triggered, this, &MainWindow::insertDesign);
     auto* importDxfAct = fileMenu->addAction(tr("Importer un &DXF…"));
     connect(importDxfAct, &QAction::triggered, this, &MainWindow::importDxf);
     exportDxfAct_ = fileMenu->addAction(tr("Exporter en D&XF…"));
@@ -887,10 +899,14 @@ void MainWindow::buildMenus() {
         }
     });
     buildAlignMenu(editMenu);
+    buildArrangeMenu(editMenu);
     buildObjectEditActions(editMenu);
     editMenu->addSeparator();
     auto* aiPrefsAct = editMenu->addAction(tr("Préférences — &Intelligence artificielle…"));
     connect(aiPrefsAct, &QAction::triggered, this, &MainWindow::openAiPreferences);
+    auto* generalPrefsAct = editMenu->addAction(tr("Préférences générales…"));
+    generalPrefsAct->setObjectName(QStringLiteral("action_generalPreferences"));
+    connect(generalPrefsAct, &QAction::triggered, this, &MainWindow::openGeneralPreferences);
     auto* settingsAct = editMenu->addAction(tr("Paramètres…"));
     settingsAct->setObjectName(QStringLiteral("action_settings"));
     settingsAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Comma));
@@ -1097,10 +1113,10 @@ void MainWindow::buildMenus() {
     createSatinWithSettingsAct_->setObjectName(QStringLiteral("action_createSatinWithSettings"));
     connect(createSatinWithSettingsAct_, &QAction::triggered, this,
             &MainWindow::createSatinObjectWithSettings);
-    autoSatinAct_ = embMenu->addAction(tr("Convertir automatiquement en satin (expérimental)…"));
+    autoSatinAct_ = embMenu->addAction(tr("Convertir en satin automatiquement…"));
     autoSatinAct_->setToolTip(
-        tr("Expérimental : construit le satin par squelette et traversées orientées (sans "
-           "rails à poser). Le résultat est à vérifier avant broderie."));
+        tr("Le logiciel dessine le satin tout seul, sans que vous posiez les deux bords. "
+           "Vérifiez le résultat avant de broder."));
     connect(autoSatinAct_, &QAction::triggered, this, &MainWindow::autoConvertToSatin);
     embMenu->addSeparator();
     fillAngleAct_ = embMenu->addAction(tr("&Orientation du remplissage…"));
@@ -1158,11 +1174,12 @@ void MainWindow::buildMenus() {
         satinGuideModeAct_->setChecked(on);
         railEditModeAct_->setChecked(on);
     });
-    auto* satinAdvancedMenu = embMenu->addMenu(tr("Remodelage satin (avancé)"));
+    auto* satinAdvancedMenu = embMenu->addMenu(tr("Réglages fins du satin"));
     satinAdvancedMenu->setToolTip(
-        tr("N'affiche qu'un seul des deux aspects (rails ou guides) — utile pour une "
+        tr("Ne montre que les bords ou que les repères d'orientation — utile pour une "
            "colonne dense où les deux ensemble surchargeraient l'affichage."));
-    satinGuideModeAct_ = satinAdvancedMenu->addAction(tr("Éditer seulement les guides satin…"));
+    satinGuideModeAct_ =
+        satinAdvancedMenu->addAction(tr("Éditer seulement les repères d'orientation du satin…"));
     satinGuideModeAct_->setObjectName(QStringLiteral("action_satinGuideMode"));
     satinGuideModeAct_->setCheckable(true);
     satinGuideModeAct_->setToolTip(
@@ -1176,7 +1193,7 @@ void MainWindow::buildMenus() {
     removeSatinGuideAct_ = satinAdvancedMenu->addAction(tr("Supprimer le guide satin sélectionné"));
     removeSatinGuideAct_->setObjectName(QStringLiteral("action_removeSatinGuide"));
     connect(removeSatinGuideAct_, &QAction::triggered, this, &MainWindow::removeSelectedSatinGuide);
-    railEditModeAct_ = satinAdvancedMenu->addAction(tr("Éditer seulement les rails satin…"));
+    railEditModeAct_ = satinAdvancedMenu->addAction(tr("Éditer seulement les bords du satin…"));
     railEditModeAct_->setObjectName(QStringLiteral("action_satinRailEditMode"));
     railEditModeAct_->setCheckable(true);
     railEditModeAct_->setToolTip(
@@ -1244,6 +1261,7 @@ void MainWindow::buildMenus() {
     zoomActualAct_->setObjectName(QStringLiteral("action_zoomActual"));
     zoomActualAct_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_1));
     connect(zoomActualAct_, &QAction::triggered, view_, &CanvasView::zoomActualSize);
+    buildViewDisplayMenu(viewMenu); // HP-VIEW-003/007/010/012
 
     viewMenu->addSeparator();
     auto* hoopAct = viewMenu->addAction(tr("Tai&lle du cadre…"));
@@ -4201,6 +4219,12 @@ void MainWindow::renderBase(const image::Image& img) {
                 addStitchPointHandle(i, pos, stitchSelection_.count(i) != 0,
                                      deletedIdx.count(i) != 0);
             }
+            // Points insérés (HP-EDIT-002) : poignées propres, déplaçables une à une.
+            for (const auto& ov : obj->overrides) {
+                for (std::size_t k = 0; k < ov.inserted_after.size(); ++k) {
+                    addInsertedPointHandle(ov.base_index, k, ov.inserted_after[k]);
+                }
+            }
         }
     }
 
@@ -4226,6 +4250,7 @@ void MainWindow::renderBase(const image::Image& img) {
 }
 
 struct MainWindow::StitchMaps {
+    stitch_render::PassDisplay passes; // HP-VIEW-003 : passes affichées
     std::unordered_map<std::uint64_t, bool> visible;
     std::unordered_map<std::uint64_t, QRgb> colorOf;
 
@@ -4249,6 +4274,7 @@ struct MainWindow::StitchPaths {
 
 MainWindow::StitchMaps MainWindow::buildStitchMaps() const {
     StitchMaps maps;
+    maps.passes = viewDisplay_.passes;
     // Visibilité (filtres) et couleur de fil par objet de broderie.
     for (const auto& emb : project_.embroidery_objects) {
         maps.visible[emb.id.value] = objectPassesFilter(emb);
@@ -4282,15 +4308,22 @@ void MainWindow::walkStitches(const StitchMaps& maps, int from, int to, SimWalkS
         const QPointF p(to_millimeters(cmd.pos.x).value, -to_millimeters(cmd.pos.y).value);
         const std::uint64_t src = cmd.source.value;
         const bool vis = maps.isVisible(src);
+        // HP-VIEW-003 : une passe masquée n'est pas dessinée, mais la continuité est conservée.
+        const bool shown = vis && stitch_render::pass_visible(maps.passes, cmd.pass);
         switch (cmd.type) {
         case stitch::CommandType::Stitch:
             // On ne relie que deux points du MÊME objet (jamais entre objets).
-            if (vis && state.hasPos && state.lastSource == src) {
-                QPainterPath& path = out.sewByColor[maps.colorFor(src)];
+            if (shown && state.hasPos && state.lastSource == src) {
+                const QRgb key = maps.passes.distinct_colors ? [&] {
+                    const auto t = stitch_render::pass_tint(cmd.pass);
+                    return qRgb(t[0], t[1], t[2]);
+                }()
+                                                             : maps.colorFor(src);
+                QPainterPath& path = out.sewByColor[key];
                 path.moveTo(state.last);
                 path.lineTo(p);
             }
-            if (vis && drawDots) {
+            if (shown && drawDots) {
                 out.dots.addEllipse(p, 0.15, 0.15);
             }
             state.last = p;
@@ -4302,7 +4335,7 @@ void MainWindow::walkStitches(const StitchMaps& maps, int from, int to, SimWalkS
             }
             break;
         case stitch::CommandType::Jump:
-            if (vis && state.hasPos && state.lastSource == src) {
+            if (vis && maps.passes.travel && state.hasPos && state.lastSource == src) {
                 out.jump.moveTo(state.last);
                 out.jump.lineTo(p);
             }
@@ -4382,6 +4415,7 @@ void MainWindow::renderStitches() {
     SimWalkState state;
     walkStitches(maps, 0, limit, state, drawDots, paths);
     addStitchItems(paths, drawDots, /*skipEmpty=*/false);
+    addFunctionMarkers(); // HP-VIEW-003 (main_window_view_display.cpp)
 
     if (simulating()) {
         simWalk_ = state;
@@ -5541,8 +5575,8 @@ document::EmbroideryObject* MainWindow::currentFillObject() {
 std::optional<ObjectId> MainWindow::objectAt(QPointF posMm) const {
     std::optional<ObjectId> hit;
     for (const auto& object : project_.vector_objects) {
-        if (object.visible && calqueShowsShape(object) &&
-            !project_.shapeLockedByCalque(object.id) && objectPainterPath(object).contains(posMm)) {
+        if (object.visible && calqueShowsShape(object) && !project_.shapeEditLocked(object.id) &&
+            objectPainterPath(object).contains(posMm)) {
             hit = object.id; // le dernier dessiné (au-dessus) gagne
         }
     }
@@ -6540,6 +6574,29 @@ void MainWindow::buildHelpMenu() {
         tr("Tableau consultable des gestes souris et des raccourcis clavier"));
     connect(helpGesturesAct_, &QAction::triggered, this, &MainWindow::showGesturesDialog);
 
+    helpTourAct_ = helpMenu->addAction(tr("Tutoriel : de l'image à la broderie…"));
+    helpTourAct_->setObjectName(QStringLiteral("action_help_tutorial"));
+    helpTourAct_->setToolTip(
+        tr("Ouvre une image d'exemple et déroule le guide pas à pas jusqu'au fichier de broderie"));
+    helpTourAct_->setStatusTip(
+        tr("Tutoriel guidé avec une image d'exemple générée par le logiciel"));
+    connect(helpTourAct_, &QAction::triggered, this, &MainWindow::startGuidedTour);
+
+    helpManualAct_ = helpMenu->addAction(tr("Manuel d'utilisation"));
+    helpManualAct_->setObjectName(QStringLiteral("action_help_manual"));
+    helpManualAct_->setToolTip(tr("Le manuel complet, avec recherche, sans quitter le logiciel"));
+    helpManualAct_->setStatusTip(tr("Manuel d'utilisation consultable dans l'application"));
+    connect(helpManualAct_, &QAction::triggered, this, [this] { showManual(); });
+
+    helpContextAct_ = helpMenu->addAction(tr("Aide sur l'outil ou le panneau actif"));
+    helpContextAct_->setObjectName(QStringLiteral("action_help_context"));
+    helpContextAct_->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F1));
+    helpContextAct_->setToolTip(
+        tr("Ouvre le manuel à la section de l'outil actif ou du panneau où vous travaillez "
+           "(Maj+F1)"));
+    helpContextAct_->setStatusTip(tr("Aide contextuelle : section du manuel de l'outil actif"));
+    connect(helpContextAct_, &QAction::triggered, this, &MainWindow::showContextualHelp);
+
     aboutAct_ = helpMenu->addAction(tr("À &propos"));
     aboutAct_->setObjectName(QStringLiteral("action_about"));
     aboutAct_->setToolTip(tr("Version, licence et code source"));
@@ -6895,7 +6952,7 @@ void MainWindow::updateContextToolbar() {
         contextToolbar_->addAction(stitchEditModeAct_);
         if (emb->is_satin()) {
             // Un seul bouton visible par défaut (rails + guides ensemble) ;
-            // le sous-menu Broderie ▸ Remodelage satin (avancé) reste
+            // le sous-menu Broderie ▸ Réglages fins du satin reste
             // disponible pour n'afficher qu'un seul des deux aspects.
             contextToolbar_->addAction(satinEditModeAct_);
             if (satinGuideModeAct_->isChecked()) {
@@ -8141,8 +8198,30 @@ void MainWindow::buildOrderPanel() {
     auto* panel = new QWidget(orderDock_);
     auto* layout = new QVBoxLayout(panel);
 
-    orderList_ = new QListWidget(panel);
+    auto* orderList = new OrderListWidget(panel);
+    orderList->setObjectName(QStringLiteral("list_sewingOrder"));
+    orderList_ = orderList;
     layout->addWidget(orderList_, 1);
+    // HP-SEQ-002 : glisser-déposer d'une ligne = une commande (un pas d'annulation).
+    connect(orderList, &OrderListWidget::moveRequested, this, [this](int from, int to) {
+        const auto* moved = orderRowObject(from);
+        if (moved == nullptr || to < 0) {
+            return;
+        }
+        const ObjectId movedId = moved->id;
+        if (!commands::moved_sewing_order(project_, movedId, static_cast<std::size_t>(to))) {
+            statusBar()->showMessage(
+                tr("Déplacement impossible : un objet ne change pas de calque en se déplaçant."));
+            return;
+        }
+        undoStack_.execute(std::make_unique<commands::MoveInSewingOrderCommand>(
+                               movedId, static_cast<std::size_t>(to)),
+                           project_);
+        refreshImage();
+        refreshOrderPanel();
+        orderList_->setCurrentRow(to);
+        updateActions();
+    });
     connect(orderList_, &QListWidget::currentRowChanged, this, [this](int row) {
         if (const auto* rowObject = orderRowObject(row)) {
             // sélection d'objet vectoriel distincte
@@ -8190,6 +8269,20 @@ void MainWindow::buildOrderPanel() {
     orderStrategyCombo_->addItem(tr("Couleur puis proximité"),
                                  static_cast<int>(optimization::OrderStrategy::ColorThenProximity));
     layout->addWidget(orderStrategyCombo_);
+    // HP-SEQ-008 / HP-SEQ-001 : départ, arrivée du design et amélioration locale.
+    auto* orderOptions = new OrderOptionsWidget(panel);
+    orderOptions->setObjectName(QStringLiteral("orderOptions"));
+    layout->addWidget(orderOptions);
+    connect(orderOptions, &OrderOptionsWidget::endpointsChanged, this, [this, orderOptions] {
+        document::SequenceFinishing next = project_.finishing;
+        next.design_start = orderOptions->start();
+        next.design_end = orderOptions->end();
+        if (next == project_.finishing) {
+            return;
+        }
+        undoStack_.execute(std::make_unique<commands::SetFinishingCommand>(next), project_);
+        updateActions();
+    });
     auto* applyBtn = new QPushButton(tr("Optimiser l'ordre"), panel);
     connect(applyBtn, &QPushButton::clicked, this, &MainWindow::applyOrderStrategy);
     layout->addWidget(applyBtn);
@@ -8240,8 +8333,14 @@ void MainWindow::refreshOrderPanel() {
         }
     }
     updateOrderButtons();
+    if (auto* options =
+            orderDock_->findChild<OrderOptionsWidget*>(QStringLiteral("orderOptions"))) {
+        options->setEndpoints(project_.finishing.design_start, project_.finishing.design_end);
+    }
+    applySimulationHighlight();
 
-    const auto cost = optimization::compute_cost(items);
+    const auto cost = optimization::compute_cost(items, project_.finishing.design_start,
+                                                 project_.finishing.design_end);
     orderCostLabel_->setText(tr("Trajet estimé : %1 mm — %2 changement(s) de fil")
                                  .arg(cost.travel_um / 1000.0, 0, 'f', 1)
                                  .arg(cost.color_changes));
@@ -8607,8 +8706,18 @@ void MainWindow::applyOrderStrategy() {
     }
     const auto strategy =
         static_cast<optimization::OrderStrategy>(orderStrategyCombo_->currentData().toInt());
-    const auto before = optimization::compute_cost(items);
-    const auto order = project_.groupedByCalque(optimization::optimize_order(items, strategy));
+    // HP-SEQ-001/008 : amélioration locale (borne déterministe) et points de départ / arrivée.
+    optimization::OrderOptions options;
+    options.start = project_.finishing.design_start;
+    options.end = project_.finishing.design_end;
+    if (const auto* extra =
+            orderDock_->findChild<OrderOptionsWidget*>(QStringLiteral("orderOptions"));
+        extra != nullptr && extra->improveEnabled()) {
+        options.improve_budget = optimization::kDefaultImproveBudget;
+    }
+    const auto before = optimization::compute_cost(items, options.start, options.end);
+    const auto order =
+        project_.groupedByCalque(optimization::optimize_order(items, strategy, options));
 
     undoStack_.execute(std::make_unique<commands::ReorderEmbroideryCommand>(order), project_);
     refreshImage();
@@ -8620,7 +8729,7 @@ void MainWindow::applyOrderStrategy() {
     for (const auto& obj : project_.embroidery_objects) {
         reordered.push_back({obj.id, obj.rgb, embroideryCentroid(obj), obj.locked});
     }
-    const auto after = optimization::compute_cost(reordered);
+    const auto after = optimization::compute_cost(reordered, options.start, options.end);
     statusBar()->showMessage(tr("Ordre optimisé : trajet %1 → %2 mm, changements de fil %3 → %4")
                                  .arg(before.travel_um / 1000.0, 0, 'f', 1)
                                  .arg(after.travel_um / 1000.0, 0, 'f', 1)
@@ -8721,6 +8830,22 @@ void MainWindow::updateSimulationInfo(int step) {
     if (simNavBar_ != nullptr) {
         simNavBar_->setStep(step);
     }
+    {
+        std::optional<ObjectId> current;
+        if (sequence_ && step >= 0 && step < static_cast<int>(sequence_->commands.size())) {
+            const ObjectId source = sequence_->commands[static_cast<std::size_t>(step)].source;
+            for (const auto& emb : project_.embroidery_objects) {
+                if (emb.id == source) {
+                    current = source;
+                    break;
+                }
+            }
+        }
+        if (current != simHighlightId_) {
+            simHighlightId_ = current;
+            applySimulationHighlight();
+        }
+    }
     if (simSwatch_ == nullptr || simObjectLabel_ == nullptr) {
         return;
     }
@@ -8752,6 +8877,41 @@ void MainWindow::updateSimulationInfo(int step) {
     simObjectLabel_->setText(simObjectLabel_->fontMetrics().elidedText(
         tr("« %1 » · %2").arg(name, thread), Qt::ElideRight, simObjectLabel_->minimumWidth()));
     simObjectLabel_->setToolTip(tr("%1 — %2").arg(name, thread));
+}
+
+void MainWindow::applySimulationHighlight() {
+    // Liste Ordre : ligne de l'objet courant en gras sur fond d'accent (la sélection n'est pas
+    // touchée).
+    if (orderList_ != nullptr) {
+        const QColor soft = palette().color(QPalette::Highlight).lighter(170);
+        for (int i = 0; i < orderList_->count(); ++i) {
+            QListWidgetItem* item = orderList_->item(i);
+            const bool current =
+                simHighlightId_ && static_cast<std::size_t>(i) < orderRows_.size() &&
+                project_.embroidery_objects[orderRows_[std::size_t(i)]].id == *simHighlightId_;
+            QFont f = item->font();
+            f.setBold(current);
+            item->setFont(f);
+            item->setData(Qt::BackgroundRole, current ? QVariant(QBrush(soft)) : QVariant());
+        }
+    }
+    if (documentPanel_ != nullptr) {
+        documentPanel_->setPlaybackObject(simHighlightId_);
+    }
+    // Film couleur : pastille du fil de l'objet courant.
+    if (threadStrip_ != nullptr) {
+        int index = -1;
+        if (simHighlightId_ && sequence_) {
+            const auto usage = stitch_analysis::thread_usage(project_, *sequence_, &threadLibrary_);
+            for (std::size_t u = 0; u < usage.size() && index < 0; ++u) {
+                if (std::find(usage[u].objects.begin(), usage[u].objects.end(), *simHighlightId_) !=
+                    usage[u].objects.end()) {
+                    index = static_cast<int>(u);
+                }
+            }
+        }
+        threadStrip_->setCurrent(index);
+    }
 }
 
 void MainWindow::updateSimulationRange() {
@@ -8994,6 +9154,9 @@ QString MainWindow::suggestedFilePath(const QString& suffix) const {
     } else {
         QSettings settings;
         dir = settings.value(QStringLiteral("files/lastDir")).toString();
+        if (dir.isEmpty()) { // HP-UX-007 : dossier de travail des préférences générales
+            dir = settings.value(QStringLiteral("prefs/workingDirectory")).toString();
+        }
     }
     if (dir.isEmpty() || !QFileInfo(dir).isDir()) {
         dir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
@@ -9710,6 +9873,9 @@ void MainWindow::importDstFile(const QString& file) {
         return;
     }
 
+    // HP-HOOP-006 : le design arrive centré dans le cadre (l'origine), comme Hatch.
+    document::center_imported_design(*imported);
+
     project_ = document::Project{};
     resetDocumentState();
     // AD-04 (Tier 0) : le design importé entre dans le document par
@@ -10107,20 +10273,21 @@ void MainWindow::onSelectionRectangle(QRectF rectMm, SelectMode mode, bool cross
         // Même règle que le rendu : un objet masqué par les filtres d'affichage (type, couleur,
         // taille) n'est pas saisi par le cadre, sauf s'il est déjà sélectionné (donc affiché).
         const std::vector<ObjectId> selected = currentSelection().objects;
-        objectHits.erase(
-            std::remove_if(objectHits.begin(), objectHits.end(),
-                           [&](ObjectId id) {
-                               const document::VectorObject* vec = project_.findObject(id);
-                               // Calque verrouillé (HP-OBJ-024) : jamais saisi par le cadre.
-                               if (vec != nullptr && project_.shapeLockedByCalque(id)) {
-                                   return true;
-                               }
-                               return vec != nullptr &&
-                                      std::find(selected.begin(), selected.end(), id) ==
-                                          selected.end() &&
-                                      !vectorPassesFilter(*vec);
-                           }),
-            objectHits.end());
+        objectHits.erase(std::remove_if(objectHits.begin(), objectHits.end(),
+                                        [&](ObjectId id) {
+                                            const document::VectorObject* vec =
+                                                project_.findObject(id);
+                                            // Calque verrouillé (HP-OBJ-024) : jamais saisi par le
+                                            // cadre.
+                                            if (vec != nullptr && project_.shapeEditLocked(id)) {
+                                                return true;
+                                            }
+                                            return vec != nullptr &&
+                                                   std::find(selected.begin(), selected.end(),
+                                                             id) == selected.end() &&
+                                                   !vectorPassesFilter(*vec);
+                                        }),
+                         objectHits.end());
     }
     const bool regionsUsable = currentTool_ == Tool::Select && !mergeMode_ &&
                                showSegAct_->isChecked() && project_.segmentation &&
@@ -10639,6 +10806,7 @@ void MainWindow::updateActions() {
     setEnabledWithReason(duplicateSelectionAct_, singleObject, needOneShape);
     setEnabledWithReason(offsetSelectionAct_, singleObject, needOneShape);
     updateAlignActions();
+    updateArrangeActions();
     refreshHistoryPanel();
     refreshThreadSelectionInfo();
     setEnabledWithReason(fillAngleAct_, currentFillObject() != nullptr,
