@@ -1,0 +1,136 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261026T120300Z-tempete-whole-wave-topology-mcp-0d343ff",
+  "created_utc": "2026-10-26T12:03:00Z",
+  "status": "rejected_artistic_global",
+  "source": {
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "rematerialized_verified": true,
+    "old_Turner_used": false
+  },
+  "scope": {
+    "full_scene": true,
+    "design_mm": [
+      370,
+      231.490885
+    ],
+    "frame_mm": [
+      390,
+      268
+    ],
+    "six_waves": true,
+    "five_windows": true,
+    "sailboat_sky_clouds_foam": true
+  },
+  "main_commit": "cb26e5a7707d240e90127fa1a118dfbffbbcca27",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "not_rebuilt_from_main": true,
+    "project_render_real_png": true
+  },
+  "preparations": {
+    "variants": [
+      "wave_original_lab24",
+      "wave_edge_guided32",
+      "wave_slic_facet36"
+    ],
+    "methods": [
+      "Whole-wave original source Lab kmeans 24",
+      "Whole-wave bilateral edge-aware Lab kmeans 32",
+      "Whole-wave SLIC superpixel median + Lab kmeans 36"
+    ],
+    "wave_source_pixels": 151640,
+    "source_derived": true,
+    "gate_A": "FAILED; inspected global and boat/lighthouse/wave zooms BEFORE MCP; diagnostic imports only",
+    "notes": "Six distinct whole-wave masks protected; sky, clouds, boat, lighthouse retained. Volutes and inner relief still too flat; boat/lighthouse schematic."
+  },
+  "variants": [
+    {
+      "name": "wave_original_lab24",
+      "objects": 1219,
+      "stitches": 139006,
+      "trims": 1672,
+      "jumps": 2493,
+      "color_changes": 171,
+      "warnings_displayed": 51,
+      "errors": 0,
+      "hotspot_mm2": 57,
+      "fabric_risk_ge70_mm2": 178,
+      "missing_percent": 13.488,
+      "wrong_colour_percent": 2.226,
+      "lost_detail_percent": 1.001,
+      "verdict": "REJECTED_ARTISTIC"
+    },
+    {
+      "name": "wave_edge_guided32",
+      "objects": 1551,
+      "stitches": 138906,
+      "trims": 1976,
+      "jumps": 2843,
+      "color_changes": 213,
+      "warnings_displayed": 51,
+      "errors": 0,
+      "hotspot_mm2": 50,
+      "fabric_risk_ge70_mm2": 166,
+      "missing_percent": 14.747,
+      "wrong_colour_percent": 1.747,
+      "lost_detail_percent": 0.592,
+      "verdict": "REJECTED_ARTISTIC"
+    },
+    {
+      "name": "wave_slic_facet36",
+      "objects": 880,
+      "stitches": 136613,
+      "trims": 1301,
+      "jumps": 1871,
+      "color_changes": 210,
+      "warnings_displayed": 51,
+      "errors": 0,
+      "hotspot_mm2": 44,
+      "fabric_risk_ge70_mm2": 158,
+      "missing_percent": 12.339,
+      "wrong_colour_percent": 1.876,
+      "lost_detail_percent": 0.84,
+      "short_stitches": 1238,
+      "short_lock_stitches": 1828,
+      "verdict": "REJECTED_ARTISTIC"
+    }
+  ],
+  "retouches": {
+    "target": "wave_slic_facet36",
+    "foresail_id": 509,
+    "satin_strategies": [
+      "skeleton",
+      "parallel_sweep",
+      "medial_axis"
+    ],
+    "same_wave_id": 623,
+    "operations": [
+      "directional_guides",
+      "set_params angle42",
+      "semantic_replace boat.hull.shade"
+    ],
+    "all_dry_run_applied_rendered": true,
+    "all_rejected": true,
+    "baseline_restored_byte_identical_sha256": "ddc70c98a8caaa8e2136de1a83ece1cc6166fc87d5e792ab8c070d40c6525c70"
+  },
+  "archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-26/tempete-vagues-entieres-source-mcp-1305-private.zip",
+    "library_file_id": "libfile_4f9b45bed6948191961a5eab565060cd",
+    "sha256": "ed15e29db1b26fa3d2d51a80487688aa720006858eec1f11e3f3dc9c028fa4e0",
+    "bytes": 70372732,
+    "entries": 668,
+    "rematerialized_sha_and_zip_verified": true
+  },
+  "machine_test": "not_run",
+  "independent_score": "not_run",
+  "next_hypothesis": "ALWAYS FULL SCENE. Trace the six source wave crest/volute/shadow trajectories before color quantization; protect inner blue-grey relief and negative spaces, optimize routing within each wave rather than destructively merge; preserve boat and five lighthouse windows. 3+ global preparations, visual Gate A before MCP, true global project_render; never lighthouse-only."
+}
