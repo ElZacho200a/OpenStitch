@@ -79,6 +79,11 @@ rendu OpenStitch, erreurs bloquantes et rapport transparent.
 - 2026-10-26 : contrat de backend IA générique `openstitch.ai.backend/1` (PR-02) : worker `ai-worker/`, client sans Qt dans `libs/ai_segmentation`, `openstitch-cli ai backends`, outil MCP `ai_backends` (`docs/ai/backend-protocol.md`).
 - 2026-10-26 : audit IA PR-00, voir `docs/ai/` (backends modulaires, licences, benchmark).
 
+- 2026-10-26 : banc de segmentation reproductible (`scripts/openstitch_ai_bench.py`, PR-01 IA).
+- 2026-10-26 : banc de segmentation reproductible (`scripts/openstitch_ai_bench.py`, PR-01 IA).
+- 2026-10-26 : contrat de backend IA générique `openstitch.ai.backend/1` (PR-02) : worker `ai-worker/`, client sans Qt dans `libs/ai_segmentation`, `openstitch-cli ai backends`, outil MCP `ai_backends` (`docs/ai/backend-protocol.md`).
+- 2026-10-26 : audit IA PR-00, voir `docs/ai/` (backends modulaires, licences, benchmark).
+
 - 2026-10-23 : import/remplacement sémantiques natifs (`semantic_import`, `semantic_replace`), bilan `project_report`, variantes `project_checkpoint` / `project_compare`, `project_satin_compare` et `--doctor` dans `openstitch-mcp`.
 
 - 2026-10-22 : création de la piste agent-first ; premier pont Python de

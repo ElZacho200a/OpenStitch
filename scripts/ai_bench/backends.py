@@ -292,10 +292,83 @@ class Sam2:
                     pass
 
 
-def available(cli: str | None, sam_models: str | None, sam_model: str, sam_python: str | None) -> dict:
+def available(cli: str | None, sam_models: str | None, sam_model: str, sam_python: str | None,
+              pipelines: dict | None = None) -> dict:
+    pools = {name: PlanThenSegment(name, p.get("planner"), p.get("segmenter"), name)
+             for name, p in (pipelines or {}).items()}
     return {
+        **pools,
         "cielab": Cielab(cli),
         "sam2": Sam2(sam_models, model=sam_model, python=sam_python),
         "oracle": Oracle(),
         "lighthouse_only": LighthouseOnly(),
     }
+
+
+class PlanThenSegment:
+    """Pipeline en deux etages via le protocole generique : un planner (Florence-2) localise les
+    phrases du plan de scene, un segmenteur guide par boites (SAM 2.1, HQ-SAM 2, MobileSAM) rend
+    un masque par detection. Le plan de scene vient du manifeste (phrases seulement, aucun masque or).
+    Chaque masque est une instance de FAMILLE (voilier, phare...) : pas de sous-composants."""
+
+    def __init__(self, name: str, planner: list[str] | None, segmenter: list[str] | None, label: str) -> None:
+        self.name, self.planner, self.segmenter, self.label = name, planner, segmenter, label
+
+    def run(self, case: dict, case_root: Path, grid: Grid, workdir: Path) -> BackendResult:
+        from workerclient import WorkerError, WorkerSession
+
+        if not self.planner or not self.segmenter:
+            return BackendResult(self.name, "skipped", "commande du planner ou du segmenteur non configuree (--planner / --segmenter)")
+        plan = case.get("scene_plan")
+        if not plan:
+            return BackendResult(self.name, "skipped", "le cas n'a pas de scene_plan")
+        job = workdir / self.name
+        job.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(case_root / case["source"]["path"], job / "input.png")
+        phrases = ". ".join(p["phrase"] for p in plan)
+        planner = segmenter = None
+        try:
+            planner = WorkerSession(self.planner)
+            caps_p = planner.request("capabilities")["backend"]
+            res = planner.request("predict", job_dir=str(job), image_file="input.png",
+                                  prompts=[{"kind": "text", "text": phrases}], options={})
+            detections = res.get("detections", [])
+            planner.close()
+            planner = None
+            # etiquette Florence -> famille du plan (correspondance exacte de phrase, sinon ignore)
+            by_phrase = {p["phrase"].lower(): p["family"] for p in plan}
+            kept = [(d, by_phrase[d["label"].lower()]) for d in detections if d["label"].lower() in by_phrase]
+            if not kept:
+                return BackendResult(self.name, "ok", regions=[], label_map=[0] * (grid.width * grid.height),
+                                     meta={"planner": caps_p, "detections": detections,
+                                           "note": "aucune detection associee au plan"})
+            segmenter = WorkerSession(self.segmenter)
+            caps_s = segmenter.request("capabilities")["backend"]
+            res2 = segmenter.request("predict", job_dir=str(job), image_file="input.png",
+                                     prompts=[{"kind": "box", "box_xywh": d["bbox_xywh"]} for d, _ in kept], options={})
+            regions, labels = [], [0] * (grid.width * grid.height)
+            for m in res2["masks"]:
+                w, h, ch, px = pngio.decode((job / m["file"]).read_bytes())
+                flat = bytes(1 if v else 0 for v in pngio.to_gray(w, h, ch, px))
+                fam = kept[m["prompt_index"]][1]
+                regions.append(Region(f"{fam}#{m['id']}", grid.pack(flat), m.get("confidence")))
+                for i, v in enumerate(flat):
+                    if v:
+                        labels[i] = 1 + m["prompt_index"]
+            return BackendResult(
+                self.name, "ok", regions=regions, label_map=labels,
+                meta={"planner": {k: caps_p.get(k) for k in ("backend_id", "backend_revision", "model_hash")},
+                      "segmenter": {k: caps_s.get(k) for k in ("backend_id", "backend_revision", "model_hash")},
+                      "detections": [{"label": d["label"], "bbox_xywh": d["bbox_xywh"]} for d in detections],
+                      "protocol": PLAN_PROTOCOL, "level": "family"})
+        except (WorkerError, OSError, KeyError, ValueError) as exc:
+            code = getattr(exc, "code", type(exc).__name__)
+            status = "skipped" if code in ("SAM2_NOT_INSTALLED", "CHECKPOINT_NOT_FOUND", "MODEL_NOT_INSTALLED") else "error"
+            return BackendResult(self.name, status, f"{code} : {exc}")
+        finally:
+            for s in (planner, segmenter):
+                if s is not None:
+                    s.close()
+
+
+PLAN_PROTOCOL = "openstitch.ai.backend/1"

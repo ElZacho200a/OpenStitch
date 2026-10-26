@@ -65,11 +65,20 @@ struct MaskProposal {
     std::optional<int> prompt_index;
 };
 
+// Detection d'un planner (Florence-2...) : une etiquette et une boite, sans masque.
+struct Detection {
+    std::string id;
+    std::string label;
+    std::array<int, 4> bbox_xywh{};
+    std::optional<int> prompt_index;
+};
+
 struct PredictResult {
     std::string request_id;
     std::string image_sha256;
     ImageTransform transform;
     std::vector<MaskProposal> masks;
+    std::vector<Detection> detections;
     std::int64_t elapsed_ms{0};
     std::vector<std::string> warnings;
 };

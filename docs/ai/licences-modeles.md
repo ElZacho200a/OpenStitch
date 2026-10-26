@@ -10,7 +10,7 @@ La licence d'un **checkpoint** est distincte de celle du **code** : toujours les
 | SAM 3 (facebookresearch/sam3) | **SAM License** (pas Apache-2.0) | SAM License ; accès Hugging Face sur demande avec authentification | conditions non lues | Lire le texte intégral et le faire valider par le mainteneur **avant PR-10**. Ne jamais embarquer les poids. |
 | Florence-2 (microsoft) | MIT (carte du modèle) | MIT (carte du modèle) | vérifié | `trust_remote_code` exécute du code du dépôt du modèle : épingler une révision. |
 | Grounding DINO (IDEA-Research) | Apache-2.0 | non confirmé | poids à vérifier | La page ne donne pas de licence des poids. |
-| HQ-SAM / HQ-SAM 2 (SysCV) | Apache-2.0 | non confirmé (checkpoints HQ-SAM 2 en « beta ») | poids à vérifier | Lire le README `sam-hq2` et la source de téléchargement. |
+| HQ-SAM / HQ-SAM 2 (SysCV) | Apache-2.0 | README `sam-hq2` : « HQ-SAM 2, the SAM 2 checkpoints … are under Apache 2.0 » (page lue le 2026-10-26) | à confirmer par le fichier `LICENSE` | Checkpoints en « beta » ; poids téléchargés mais non exécutés (voir `resultats-2026-10-26.md`). |
 | MobileSAM (ChaoningZhang) | Apache-2.0 | non confirmé | poids à vérifier | Idem. |
 
 ## Candidats cités par la veille, non revérifiés dans cette PR
