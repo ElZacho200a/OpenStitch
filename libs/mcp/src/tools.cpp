@@ -11,6 +11,7 @@
 #include <string_view>
 
 #include "guide.hpp"
+#include "openstitch/ai_segmentation/backend_registry.hpp"
 #include "openstitch/project_io/machine_file.hpp"
 #include "openstitch/project_ops/analysis.hpp"
 #include "openstitch/project_ops/auto_satin_service.hpp"
@@ -799,6 +800,35 @@ ToolResult tool_semantic_map(Session& s, const json&) {
     return text_result(po::semantic_map_json(need_project(s)));
 }
 
+// ---- Backends IA --------------------------------------------------------------------------
+// Lecture seule. Les backends viennent EXCLUSIVEMENT du fichier désigné par la variable
+// OPENSTITCH_AI_BACKENDS (maîtrisé par l'utilisateur) : un agent ne peut ni choisir ni injecter
+// la commande lancée. Chaque sonde lance le worker déclaré puis l'arrête.
+ToolResult tool_ai_backends(Session&, const json& a) {
+    namespace ai = openstitch::ai_segmentation;
+    const std::string path = ai::backend_settings_env_path();
+    ai::BackendSettings settings;
+    if (!path.empty()) {
+        auto loaded = ai::load_backend_settings(path);
+        if (!loaded) {
+            return error_result("ai_backends", po::code::kUsage, loaded.error().message,
+                                loaded.error().detail);
+        }
+        settings = std::move(*loaded);
+    }
+    const auto kind = ai::prompt_kind_from_name(opt_string(a, "prompt", "automatic"));
+    if (!kind) {
+        return error_result("ai_backends", po::code::kUsage, "invite inconnue",
+                            "automatic | box | point | text | exemplar");
+    }
+    if (const std::string prefer = opt_string(a, "prefer", ""); !prefer.empty()) {
+        settings.preferred_id = prefer;
+    }
+    const auto statuses = ai::discover_backends(settings, ai::process_transport_factory());
+    return text_result(ai::backends_report_json(
+        statuses, ai::resolve_backend(statuses, settings.preferred_id, *kind)));
+}
+
 // ---- Diagnostics ---------------------------------------------------------------------------
 
 // Résultat d'une analyse qui ne peut pas s'appliquer à ce projet : ce n'est ni un défaut du
@@ -1393,6 +1423,14 @@ const std::vector<Tool> kTools = {
      "Provenance sémantique du projet : identifiant sémantique -> objets de broderie et formes "
      "sources (portée par le nom « sem:<id> <n> », sauvegardée dans le .osp).",
      R"({"type":"object","properties":{}})", tool_semantic_map},
+    {"ai_backends",
+     "Diagnostic des backends de vision IA déclarés par l'utilisateur (protocole "
+     "openstitch.ai.backend/1) : découverte, capacités, licences code/poids, santé, et choix ou "
+     "repli sur la segmentation classique. Lecture seule ; ne lance que les commandes du fichier "
+     "OPENSTITCH_AI_BACKENDS.",
+     R"({"type":"object","properties":{"prefer":{"type":"string"},)"
+     R"("prompt":{"enum":["automatic","box","point","text","exemplar"]}}})",
+     tool_ai_backends},
     {"project_report",
      "Bilan en un appel : statut explicite par analyse (pass | warning | error | not_run | "
      "unsupported) pour check, diagnose, density, fidelity, fabric_risk ; dimensions réelles, "
