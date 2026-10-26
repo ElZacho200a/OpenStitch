@@ -30,7 +30,7 @@ document doit passer par une `ICommand`.
 | D02 | P1 | Profils tissu/machine/cadre | ☐ |
 | D03 | P1 | Paquet de livraison validé et traçable | ☐ |
 | D04 | P2 | SDK et MCP optionnel au-dessus du CLI | ◐ `openstitch-mcp` (docs/source/mcp.md) : outils typés, guide embarqué, `--doctor` ; SDK restant |
-| D05 | P1 | Corpus visuel et textile de régression | ☐ |
+| D05 | P1 | Corpus visuel et textile de régression | ◐ Banc de segmentation hors ligne + fixture synthétique `marine-synth-01` (`docs/ai/benchmark-runner.md`) ; corpus réel et validation textile restants |
 
 Ne marquer « fait » que lorsque **tests + critères d'acceptation** sont
 réunis sur `main`. Un script ne doit pas être présenté comme une
@@ -75,6 +75,7 @@ rendu OpenStitch, erreurs bloquantes et rapport transparent.
 
 ## Contrat de découverte du pont agent (A02 partiel)\n\n`python3 scripts/openstitch_agent.py contract` renvoie un objet JSON stable sans binaire installé. Il décrit `doctor` et `inspect`, leurs arguments et bornes, les codes de sortie, et les exemples. La sortie JSON est indépendante de la locale ; les erreurs d’exécution sont également des objets JSON avec `ok=false`. Les erreurs de syntaxe argparse restent sur stderr et conservent son code de sortie. Ce contrat décrit **le pont Python uniquement** : les capacités du client natif se découvrent avec `doctor` et ses schémas `commands --json` / `project operations --json`.\n\n## Historique
 
+- 2026-10-26 : banc de segmentation reproductible (`scripts/openstitch_ai_bench.py`, PR-01 IA).
 - 2026-10-23 : import/remplacement sémantiques natifs (`semantic_import`, `semantic_replace`), bilan `project_report`, variantes `project_checkpoint` / `project_compare`, `project_satin_compare` et `--doctor` dans `openstitch-mcp`.
 
 - 2026-10-22 : création de la piste agent-first ; premier pont Python de
