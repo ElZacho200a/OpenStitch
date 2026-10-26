@@ -281,6 +281,35 @@ def build() -> dict[str, bytes]:
     return files
 
 
+def _strip_hashes(node):
+    """Le manifeste epingle des SHA-256 d'octets PNG, qui dependent de l'implementation de zlib
+    (versions differentes = flux compresses differents pour les memes pixels) : la comparaison
+    ignore ces empreintes ; le runner, lui, verifie chaque empreinte contre les octets du depot."""
+    if isinstance(node, dict):
+        return {k: _strip_hashes(v) for k, v in node.items() if k != "sha256"}
+    if isinstance(node, list):
+        return [_strip_hashes(v) for v in node]
+    return node
+
+
+def _same(path: Path, rel: str, expected: bytes) -> bool:
+    """Octets identiques pour le manifeste ; pour un PNG, pixels identiques (pas le flux zlib)."""
+    if not path.is_file():
+        return False
+    found = path.read_bytes()
+    if rel.endswith(".png"):
+        try:
+            return pngio.decode(found) == pngio.decode(expected)
+        except pngio.PngError:
+            return False
+    if rel.endswith(".json"):
+        try:
+            return _strip_hashes(json.loads(found)) == _strip_hashes(json.loads(expected))
+        except ValueError:
+            return False
+    return found == expected
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     group = ap.add_mutually_exclusive_group(required=True)
@@ -297,7 +326,7 @@ def main(argv=None) -> int:
         print(f"{len(files)} fichiers ecrits dans {root}")
         return 0
     root = Path(args.check)
-    bad = [rel for rel, data in files.items() if not (root / rel).is_file() or (root / rel).read_bytes() != data]
+    bad = [rel for rel, data in files.items() if not _same(root / rel, rel, data)]
     if bad:
         print("fixtures differentes de la regeneration : " + ", ".join(bad), file=sys.stderr)
         return 2
