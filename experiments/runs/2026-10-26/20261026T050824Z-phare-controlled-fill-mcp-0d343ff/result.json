@@ -1,0 +1,207 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261026T050824Z-phare-controlled-fill-mcp-0d343ff",
+  "date_local": "2026-10-26 06:04-06:10 Europe/Paris",
+  "status": "failed_gate_A",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "rematerialized_and_verified": true
+  },
+  "main_commit": "ea630a7576d9c538ba2c1b1276cb60bd8acdfd9b",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "binary_not_rebuilt_from_main": true,
+    "actual_tools": [
+      "digitize_guide",
+      "project_operations",
+      "semantic_validate",
+      "project_new",
+      "semantic_import dry_run/apply",
+      "project_apply import_svg dry_run/apply",
+      "project_apply set_params dry_run/apply",
+      "project_apply directional_guides dry_run/apply",
+      "project_checkpoint",
+      "semantic_map",
+      "project_inspect object geometry/stitches",
+      "project_report",
+      "project_check",
+      "project_density",
+      "project_fabric_risk",
+      "project_fidelity",
+      "project_render",
+      "project_save",
+      "project_export",
+      "project_satin_compare",
+      "semantic_replace dry_run/apply",
+      "project_restore"
+    ]
+  },
+  "subproject": {
+    "crop_px": [
+      888,
+      65,
+      1010,
+      466
+    ],
+    "size_mm": [
+      29.388,
+      96.595
+    ],
+    "canvas_mm": [
+      50,
+      120
+    ],
+    "protected_windows": 5,
+    "full_scene": false
+  },
+  "method": {
+    "preparations": [
+      "fill_reference",
+      "fill_angle30",
+      "fill_angle70",
+      "fill_directional",
+      "fill_angle30_cloudfix"
+    ],
+    "source_derived_masks_byte_identical": true,
+    "svg_geometry_byte_identical": true,
+    "comparison": "Fixed source masks and gallery geometry; varied only dome/glass/shaft tatami angle+row spacing or automatic directional guides. Fifth variant changed only cloud-gray underlay after 30-degree trial.",
+    "gate_A": "failed before import: original source still richer than simplified gallery/dome/glass/shaft/foam; all imports diagnostic",
+    "directional_guides_requested": 16,
+    "directional_guides_applied": 12,
+    "directional_guides_refused": 4
+  },
+  "variants": [
+    {
+      "name": "fill_reference",
+      "objects": 65,
+      "stitches": 4068,
+      "trims": 79,
+      "jumps": 102,
+      "color_changes": 29,
+      "warnings": 3,
+      "errors": 0,
+      "hotspot_mm2": 2,
+      "fabric_risk_ge70_mm2": 7,
+      "missing_crop_percent": 28.243,
+      "true_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "artistic_verdict": "rejected"
+    },
+    {
+      "name": "fill_angle30",
+      "objects": 65,
+      "stitches": 4059,
+      "trims": 76,
+      "jumps": 97,
+      "color_changes": 29,
+      "warnings": 2,
+      "errors": 0,
+      "hotspot_mm2": 2,
+      "fabric_risk_ge70_mm2": 7,
+      "missing_crop_percent": 28.77,
+      "true_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "artistic_verdict": "rejected"
+    },
+    {
+      "name": "fill_angle70",
+      "objects": 65,
+      "stitches": 3625,
+      "trims": 73,
+      "jumps": 94,
+      "color_changes": 29,
+      "warnings": 2,
+      "errors": 0,
+      "hotspot_mm2": 2,
+      "fabric_risk_ge70_mm2": 8,
+      "missing_crop_percent": 32.482,
+      "true_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "artistic_verdict": "rejected"
+    },
+    {
+      "name": "fill_directional",
+      "objects": 65,
+      "stitches": 4158,
+      "trims": 76,
+      "jumps": 107,
+      "color_changes": 29,
+      "warnings": 2,
+      "errors": 0,
+      "hotspot_mm2": 3,
+      "fabric_risk_ge70_mm2": 11,
+      "missing_crop_percent": 30.105,
+      "true_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "artistic_verdict": "rejected"
+    },
+    {
+      "name": "fill_angle30_cloudfix",
+      "objects": 65,
+      "stitches": 3958,
+      "trims": 75,
+      "jumps": 95,
+      "color_changes": 29,
+      "warnings": 0,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "fabric_risk_ge70_mm2": 1,
+      "missing_crop_percent": 28.92,
+      "true_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "artistic_verdict": "rejected"
+    }
+  ],
+  "retouches": {
+    "true_project_render_count": 10,
+    "satin_strategies": [
+      "skeleton",
+      "parallel_sweep",
+      "medial_axis"
+    ],
+    "window_medial_axis": "dry-run refused",
+    "tatami_vs_directional": true,
+    "semantic_replace": true,
+    "project_apply_set_params": true,
+    "cloud_gray_object29_underlay_off": {
+      "warnings_before": 2,
+      "warnings_after": 0,
+      "stitches_before": 4059,
+      "stitches_after": 3958,
+      "hotspot_before_mm2": 2,
+      "hotspot_after_mm2": 1,
+      "fabric_risk_ge70_before_mm2": 7,
+      "fabric_risk_ge70_after_mm2": 1,
+      "machine_approved": false
+    },
+    "global_short_stitch_filter": {
+      "warnings_after": 4,
+      "verdict": "rejected"
+    },
+    "restored_baseline_byte_identical": true,
+    "restored_baseline_sha256": "b3813ff0f1638fd92cd24008769fc50a91922d65d883840026676295d6bb2e5e"
+  },
+  "machine_tested": false,
+  "independent_review": null,
+  "score": null,
+  "artistic_verdict": "all five variants rejected; changing stitch direction does not repair source geometry",
+  "next_hypothesis": "Stop angle sweeps; source-trace actual horizontal glazing bars and narrow vertical ribs of cylindrical glass/gallery instead of invented diamonds; preserve five shaft windows and negative holes >=0.7mm; 3+ genuinely different graphic preparations, gate A first; treat cloud underlay-off as software-only warning fix with unknown machine stability; foam after architecture.",
+  "archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-26/phare-remplissages-controles-mcp-0605-private.zip",
+    "library_file_id": "libfile_406de8b8fcf881919db075916bb0e5f5",
+    "size_bytes": 29276288,
+    "sha256": "db5954152a3096857371abf64d32ee55c790f11b3b918f41559f22c2002df75a",
+    "rematerialized_and_verified": true,
+    "zip_entries": 303
+  },
+  "parent_run_id": "20261026T035540Z-phare-two-plane-gallery-mcp-0d343ff"
+}
