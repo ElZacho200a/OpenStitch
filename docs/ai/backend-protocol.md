@@ -92,8 +92,19 @@ OpenStitch ne télécharge ni n'installe rien. **Sécurité :** la commande lanc
 
 `discover_backends` sonde chaque backend (états `available`, `unavailable`, `incompatible`, `failed`, `disabled`) sans qu'un échec n'empêche les suivants. `resolve_backend` choisit le backend préféré s'il est disponible **et** sait traiter l'invite demandée ; sinon `classical_fallback = true` avec la raison : la segmentation CIELAB reste toujours possible, aucun backend n'est requis.
 
+## Desktop (« Segmenter avec l'IA »)
+
+Le dialogue propose trois moteurs : le **worker SAM 2 historique** (défaut, inchangé), chaque **backend déclaré** dans le fichier `openstitch.ai.backends/1` (réglé dans Préférences > Intelligence artificielle, sinon `OPENSTITCH_AI_BACKENDS`) et la **segmentation couleur CIELAB**.
+
+- Un backend du registre n'est lancé qu'au clic sur « Analyser » ; l'appel passe par `BusyIndicator::run` (fil de calcul, bouton « Annuler » → `cancel` coopératif du protocole, arrêt forcé après `cancel_grace`). La logique vit dans `libs/ai_segmentation/backend_run` (sans Qt, testée avec des backends en mémoire) ; le desktop ne fait que câbler.
+- **Repli explicite :** processus introuvable, `hello` refusé (version majeure), poids absents (`health` ≠ `ready`), invite `automatic` non gérée, erreur d'inférence, délai, plantage, aucun masque (un planificateur comme Florence-2 ne rend que des boîtes), résolution de masques différente de l'image ou fichier de masque hors du dossier de tâche : le dialogue affiche la raison (détail technique en infobulle), puis produit la segmentation CIELAB ; « Valider » la crée comme régions éditables. Une annulation n'est jamais un repli.
+- Le modèle, son empreinte SHA-256 et les licences viennent de `capabilities` et sont affichés après l'analyse et par « Sonder les backends ». Les scores absents du backend s'affichent « — » (jamais synthétisés).
+- Les masques n'entrent dans le document que par le chemin existant (revue → `SetSegmentationCommand` / lot d'objets annulable) : le backend ne modifie jamais le projet.
+- **Poids :** OpenStitch ne télécharge rien (voir ci-dessus et `licences-modeles.md`) ; l'état des poids est visible, pas le téléchargement (installation guidée : HP-DIST-006).
+- **Pas encore :** enchaîner planificateur (Florence-2) puis segmenteur par boîtes (SAM 2.1 / MobileSAM), qui donne les meilleurs résultats mesurés (`resultats-2026-10-26.md`), demande la composition en C++ de deux sessions et le graphe sémantique (PR-05).
+
 ## Limites de cette PR
 
-- Le desktop utilise toujours son client Qt historique (protocole SAM v1) : la migration vers ce contrat, l'invite `box`/`point` de SAM 2 et `refine` sont prévues (PR-04, PR-09).
+- Le desktop passe désormais par ce contrat (section suivante) ; son client Qt historique (protocole SAM v1) reste disponible et reste le moteur par défaut. L'invite `box`/`point` de SAM 2 dans l'IHM et `refine` sont prévues (PR-05, PR-09).
 - Validé sur Windows (processus réels contre le worker générique et ses backends factices) ; la branche POSIX du transport est compilée et exercée par la CI Linux, non exécutée sur la machine de développement.
 - Aucun poids de modèle n'a été utilisé : l'adaptateur SAM 2 n'a pas été exécuté avec de vrais poids.

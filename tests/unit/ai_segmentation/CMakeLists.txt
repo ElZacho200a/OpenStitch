@@ -7,6 +7,7 @@ add_executable(test_ai_segmentation
     test_color_refine.cpp
     test_backend_protocol.cpp
     test_backend_session.cpp
+    test_backend_run.cpp
     test_process_transport.cpp
 )
 target_link_libraries(test_ai_segmentation

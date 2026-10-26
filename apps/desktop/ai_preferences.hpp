@@ -3,6 +3,7 @@
 
 #include <QString>
 
+#include "openstitch/ai_segmentation/backend_registry.hpp"
 #include "openstitch/ai_segmentation/model_catalog.hpp"
 #include "sam_worker_client.hpp"
 
@@ -33,7 +34,33 @@ struct AiPreferences {
     int maxAnalysisResolution{1536};
     bool keepDiagnosticFiles{false};
     QString logLevel{QStringLiteral("INFO")};
+    // Backends du contrat `openstitch.ai.backend/1` : fichier `openstitch.ai.backends/1` choisi
+    // par l'utilisateur (vide = variable OPENSTITCH_AI_BACKENDS). OpenStitch ne télécharge ni
+    // n'installe aucun modèle : la commande lancée ne vient que de ce fichier.
+    QString backendsFile;
+    // Moteur proposé par défaut dans le dialogue : voir `AiEngine`. Le worker SAM historique
+    // reste le défaut (ADR-001 : SAM 2.1 ne change pas de comportement par défaut).
+    QString engine{QStringLiteral("legacy")};
 };
+
+// Moteur de segmentation choisi : le worker SAM historique, un backend déclaré (registre) ou la
+// segmentation couleur CIELAB. Sérialisé en texte : « legacy », « classical », « backend:<id> ».
+struct AiEngine {
+    enum class Kind { Legacy, Classical, Backend };
+    Kind kind{Kind::Legacy};
+    QString backendId; // seulement pour Kind::Backend
+
+    [[nodiscard]] QString toString() const;
+    [[nodiscard]] static AiEngine fromString(const QString& text);
+    friend bool operator==(const AiEngine&, const AiEngine&) = default;
+};
+
+// Fichier de backends effectif : celui des préférences, sinon OPENSTITCH_AI_BACKENDS ; vide si
+// aucun n'est désigné (alors seuls le worker historique et la segmentation couleur existent).
+[[nodiscard]] QString effectiveBackendsFile(const AiPreferences& prefs);
+// Lit le fichier ; en cas d'erreur, `errorMessage` dit pourquoi (la liste est alors vide).
+[[nodiscard]] ai_segmentation::BackendSettings loadBackendSettings(const AiPreferences& prefs,
+                                                                   QString* errorMessage);
 
 [[nodiscard]] AiPreferences loadAiPreferences();
 void saveAiPreferences(const AiPreferences& prefs);

@@ -11,6 +11,7 @@ add_library(openstitch_ai_segmentation
     src/backend_protocol.cpp
     src/backend_session.cpp
     src/backend_registry.cpp
+    src/backend_run.cpp
     src/process_transport.cpp
 )
 add_library(openstitch::ai_segmentation ALIAS openstitch_ai_segmentation)
