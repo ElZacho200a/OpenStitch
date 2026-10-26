@@ -120,6 +120,10 @@ class RunnerTests(unittest.TestCase):
             self.assertFalse(lh["gate"]["passed"])
             self.assertIn("boat.hull", lh["gate"]["required_missing"])
             self.assertTrue(all(o["present"] for o in lh["objects"] if o["family"] == "lighthouse"))
+            # niveau famille : le voilier est absent, le phare present
+            self.assertTrue(oracle["family_gate"]["passed"])
+            self.assertFalse(lh["family_gate"]["passed"])
+            self.assertEqual(lh["family_gate"]["main_missing"], ["boat"])
             self.assertTrue((Path(tmp) / "summary.md").is_file())
             self.assertTrue((Path(tmp) / "compare_marine-synth-01_oracle.png").is_file())
 
@@ -156,6 +160,15 @@ class RunnerTests(unittest.TestCase):
             (copy / "manifest.json").write_text(json.dumps(doc), encoding="utf-8")
             with self.assertRaises(bench.ManifestError):
                 bench.load_manifest(copy / "manifest.json")
+
+    def test_pipeline_without_commands_is_an_explicit_skip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = Path(tmp) / "pipelines.json"
+            cfg.write_text(json.dumps({"plan+seg": {}}), encoding="utf-8")
+            report = run_bench(Path(tmp) / "out", "--backends", "plan+seg", "--pipelines", str(cfg))
+            r = result_of(report, "plan+seg")
+            self.assertEqual(r["status"], "skipped")
+            self.assertIn("non configuree", r["reason"])
 
     def test_unknown_backend_is_a_usage_error(self):
         with tempfile.TemporaryDirectory() as tmp:

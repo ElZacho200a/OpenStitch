@@ -65,5 +65,11 @@ class Backend(abc.ABC):
     def health(self) -> dict:
         return {"state": "ready", "detail": ""}
 
+    def preload(self) -> None:
+        """Importe les bibliotheques lourdes (torch, transformers...) dans le THREAD PRINCIPAL, avant
+        la boucle de service : constate sous Windows, `import torch` lance depuis le thread d'une
+        tache ne rend jamais la main tant que le thread principal attend sur stdin."""
+        return None
+
     def unload(self) -> None:
         return None

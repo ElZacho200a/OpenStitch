@@ -28,6 +28,8 @@ Chaque requête porte `id` (texte non vide) et `type` ; le client ajoute `"proto
 
 `transform` = {`source_width`, `source_height`, `width`, `height`, `scale`, `crop` (`[x,y,w,h]` ou `null`)} : ce que le backend a fait de l'image en interne. **Les masques sont toujours rendus à la résolution de l'image source.**
 
+`detections[]` (optionnel, planners comme Florence-2 : étiquette + boîte, sans masque) = {`id`, `label`, `bbox_xywh`, `prompt_index`?}.
+
 `masks[]` = {`id`, `file` (PNG 8 bits sous `job_dir/masks/`, 255 = dans le masque), `bbox_xywh`, `area_px`, `confidence`? (rapportée par le modèle, jamais synthétisée), `prompt_index`?}.
 
 ## Requêtes du client
@@ -44,6 +46,18 @@ Une invite non listée dans `capabilities.prompts` est refusée en `UNSUPPORTED_
 ## Codes d'erreur
 
 Réutilisent `libs/ai_segmentation/src/error.cpp` : `PROTOCOL_MISMATCH`, `INVALID_REQUEST`, `UNSUPPORTED_PROMPT`, `BACKEND_BUSY`, `IMAGE_LOAD_FAILED`, `INFERENCE_FAILED`, `CUDA_OUT_OF_MEMORY`, `SAM2_NOT_INSTALLED`, `CHECKPOINT_NOT_FOUND`, `MODEL_NOT_INSTALLED`, etc. Côté client s'ajoutent `BACKEND_TIMEOUT`, `BACKEND_UNAVAILABLE` et `WORKER_CRASHED`. Un code inconnu n'est jamais ignoré : il devient `INVALID_WORKER_RESPONSE` avec le code d'origine en détail.
+
+## Backends fournis par `ai-worker/`
+
+| `--backend` | invites | notes |
+|---|---|---|
+| `sam2` | `automatic` | adaptateur de `sam-worker/` (SAM 2.1) |
+| `sam2-box` / `hqsam2-box` | `box` | `SAM2ImagePredictor` ; `--checkpoint` + `--config` explicites ; HQ-SAM 2 demande son propre paquet `sam2` (autre environnement) |
+| `mobilesam` | `box` | `vit_t` |
+| `florence2` | `automatic` (`<OD>`), `text` (ancrage de phrases) | classe native `transformers`, poids safetensors ; **aucun `trust_remote_code`** |
+| `fake-grid`, `fake-flaky` | — | tests |
+
+Contraintes d'implémentation : le worker lit stdin par `os.read` et appelle `Backend.preload()` dans le thread principal avant la boucle de service — sous Windows, `import torch` lancé depuis le thread d'une tâche ne rend jamais la main tant que le thread principal attend sur stdin (constaté).
 
 ## Implémentations
 

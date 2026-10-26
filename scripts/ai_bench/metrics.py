@@ -216,3 +216,31 @@ def semantic_gate(scores: list[ObjectScore], main_families: list[str]) -> dict:
             "required_missing": [s.semantic_id for s in mine if s.required and not s.present],
         }
     return {"passed": not missing, "required_missing": missing, "families": families}
+
+
+@dataclass
+class FamilyScore:
+    family: str
+    main_subject: bool
+    present: bool
+    best_single_iou: float | None
+    best_region: str | None
+    union_iou: float | None
+
+
+def score_family(grid: Grid, family: dict, gold: int, regions: list[Region]) -> FamilyScore:
+    """Une famille (voilier, phare...) est un sujet entier : « le voilier existe-t-il ? ». Presente si
+    une region la recouvre a IoU >= 0,5 (instance) ou si l'union des regions majoritairement
+    contenues dans la famille la recouvre a IoU >= 0,5 (composants a regrouper)."""
+    best, best_id, pure = 0.0, None, 0
+    for r in regions:
+        j = iou(r.mask, gold)
+        if j is not None and j > best:
+            best, best_id = j, r.region_id
+        if count(r.mask & gold) / max(1, count(r.mask)) >= PURITY:
+            pure |= r.mask
+    u = iou(pure, gold) if pure else 0.0
+    # presente si une instance OU l'union des regions pures (composants a regrouper) couvre la famille
+    present = best >= PRESENT_IOU or bool(u is not None and u >= PRESENT_IOU)
+    return FamilyScore(family["family"], bool(family.get("main_subject")), present,
+                       round(best, 4), best_id, None if u is None else round(u, 4))

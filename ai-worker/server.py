@@ -123,6 +123,10 @@ class Server:
 
     def serve(self, requests) -> None:
         self.hello()
+        try:
+            self.backend.preload()
+        except Exception:  # noqa: BLE001 -- l'absence de dependances se voit dans `health`, pas ici
+            log.exception("prechargement impossible")
         for req in requests:
             try:
                 if not self.dispatch(req):

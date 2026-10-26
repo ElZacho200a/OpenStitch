@@ -235,6 +235,16 @@ def build() -> dict[str, bytes]:
             entry["width_mm_max"] = 1.0
         entry.update(RELATIONS.get(sid, {}))
         objects.append(entry)
+    families = []
+    for fam in dict.fromkeys(o[1] for o in OBJECTS):
+        labels_of = {i + 1 for i, o in enumerate(OBJECTS) if o[1] == fam}
+        mask = bytes(255 if v in labels_of else 0 for v in labels)
+        png = pngio.encode(WIDTH, HEIGHT, "L", mask)
+        rel = f"{CASE_ID}/gold/family_{fam}.png"
+        files[rel] = png
+        families.append({"family": fam, "main_subject": fam in MAIN_SUBJECT_FAMILIES,
+                         "gold_mask": {"path": rel, "sha256": _sha(png)},
+                         "area_px": sum(1 for v in mask if v)})
     manifest = {
         "schema": SCHEMA,
         "cases": [
@@ -256,6 +266,11 @@ def build() -> dict[str, bytes]:
                     "redistributable": True,
                 },
                 "main_subject_families": MAIN_SUBJECT_FAMILIES,
+                # Plan de scene fourni a l'IA (phrases de localisation) : ne contient aucun masque or.
+                "scene_plan": [{"family": "boat", "phrase": "a sailboat"},
+                               {"family": "lighthouse", "phrase": "a lighthouse"},
+                               {"family": "sea", "phrase": "the sea"}],
+                "families": families,
                 "notes": "Voilier + phare + mer + ecume + elements fins. Couleurs partagees voulues : "
                 "voiles principale/foc, ecume/tour blanche, mat/cordages.",
                 "objects": objects,

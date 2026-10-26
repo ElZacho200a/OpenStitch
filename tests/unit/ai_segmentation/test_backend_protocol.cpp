@@ -104,3 +104,14 @@ TEST_CASE("requests are single ASCII lines carrying the protocol version") {
     CHECK(line.find("\"profile\":\"balanced\"") != std::string::npos);
     CHECK(serialize_cancel_request("c1", "p1").find("\"target_id\":\"p1\"") != std::string::npos);
 }
+
+TEST_CASE("planner detections are parsed without masks") {
+    const auto msg = parse_worker_message(
+        R"({"id":"p","type":"result","image_sha256":"aa","transform":{},"masks":[],"detections":[{"id":"d0","label":"a sailboat","bbox_xywh":[70,58,101,115],"prompt_index":0}],"elapsed_ms":9})");
+    REQUIRE(msg.has_value());
+    const auto& r = std::get<PredictResult>(*msg);
+    CHECK(r.masks.empty());
+    REQUIRE(r.detections.size() == 1);
+    CHECK(r.detections[0].label == "a sailboat");
+    CHECK(r.detections[0].bbox_xywh == std::array<int, 4>{70, 58, 101, 115});
+}

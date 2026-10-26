@@ -25,6 +25,58 @@
         "boat",
         "lighthouse"
       ],
+      "scene_plan": [
+        {
+          "family": "boat",
+          "phrase": "a sailboat"
+        },
+        {
+          "family": "lighthouse",
+          "phrase": "a lighthouse"
+        },
+        {
+          "family": "sea",
+          "phrase": "the sea"
+        }
+      ],
+      "families": [
+        {
+          "family": "sky",
+          "main_subject": false,
+          "gold_mask": {
+            "path": "marine-synth-01/gold/family_sky.png",
+            "sha256": "82a020174bc8d224b62cbec9bf8da03b1d64bfa424b783900ac0e5ee1329f2f4"
+          },
+          "area_px": 41823
+        },
+        {
+          "family": "sea",
+          "main_subject": false,
+          "gold_mask": {
+            "path": "marine-synth-01/gold/family_sea.png",
+            "sha256": "b2b4ed39da7e9e8b93571a9094058b3dfa4b618b8633ae89f23d5737cd852aca"
+          },
+          "area_px": 27032
+        },
+        {
+          "family": "boat",
+          "main_subject": true,
+          "gold_mask": {
+            "path": "marine-synth-01/gold/family_boat.png",
+            "sha256": "f0980d524621690d785b2c323d775bde7cbf1f5b668b1b22150bc77665e337d7"
+          },
+          "area_px": 5265
+        },
+        {
+          "family": "lighthouse",
+          "main_subject": true,
+          "gold_mask": {
+            "path": "marine-synth-01/gold/family_lighthouse.png",
+            "sha256": "c8c3352b846673e33b9d8fad05d9b03a24a387d992047a54b407dcd09da61ded"
+          },
+          "area_px": 2680
+        }
+      ],
       "notes": "Voilier + phare + mer + ecume + elements fins. Couleurs partagees voulues : voiles principale/foc, ecume/tour blanche, mat/cordages.",
       "objects": [
         {

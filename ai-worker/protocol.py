@@ -8,6 +8,7 @@ a la resolution de l'image SOURCE) dans le dossier de tache.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import threading
 from collections.abc import Generator
@@ -53,10 +54,35 @@ def error_payload(request_id: str | None, code: str, message: str, details: str 
     return {"id": request_id, "type": "error", "code": code, "message": message, "details": details}
 
 
+NEWLINE = bytes([10])
+
+
+def _lines_from_fd(fd: int) -> Generator[str, None, None]:
+    """Lit les lignes de stdin par `os.read` sur le descripteur : l'objet `sys.stdin` (et son verrou)
+    n'est jamais pris. Un thread de tache qui importe torch/transformers peut interroger
+    `sys.stdin` (isatty...) : avec une lecture bufferisee en cours dans le thread principal, il se
+    bloquerait (constate sous Windows)."""
+    pending = b""
+    while True:
+        chunk = os.read(fd, 65536)
+        if not chunk:
+            break
+        pending += chunk
+        while True:
+            cut = pending.find(NEWLINE)
+            if cut < 0:
+                break
+            line, pending = pending[:cut], pending[cut + 1:]
+            yield line.decode("utf-8", errors="replace")
+    if pending:
+        yield pending.decode("utf-8", errors="replace")
+
+
 def read_requests(stream: TextIO | None = None) -> Generator[dict, None, None]:
     """Une requete JSON (objet) par ligne non vide ; une ligne illisible donne un marqueur
-    `__parse_error__` au lieu de lever : le worker ne s'arrete jamais sur une ligne malformee."""
-    for raw in stream or sys.stdin:
+    `__parse_error__` au lieu de lever : le worker ne s'arrete jamais sur une ligne malformee.
+    Sans `stream`, lit le descripteur 0 (voir `_lines_from_fd`)."""
+    for raw in (stream if stream is not None else _lines_from_fd(0)):
         line = raw.strip()
         if not line:
             continue

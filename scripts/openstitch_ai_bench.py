@@ -130,6 +130,14 @@ def evaluate(case: dict, case_root: Path, backend, workdir: Path, tol_mm: float)
     for r in result.regions:
         covered |= r.mask
     protected = [s for s in scores if s.protected]
+    fam_scores = []
+    for fam in case.get("families", []):
+        gw, gh, gc, gpx = pngio.decode((case_root / fam["gold_mask"]["path"]).read_bytes())
+        fgold = grid.pack(bytes(1 if v else 0 for v in pngio.to_gray(gw, gh, gc, gpx)))
+        fam_scores.append(metrics.score_family(grid, fam, fgold, result.regions))
+    fam_missing = [f.family for f in fam_scores if f.main_subject and not f.present]
+    entry["family_gate"] = {"passed": not fam_missing, "main_missing": fam_missing,
+                            "families": [f.__dict__ for f in fam_scores]}
 
     def mean(values):
         values = [v for v in values if v is not None]
@@ -163,17 +171,19 @@ def render_summary(report: dict) -> str:
              f"Manifeste `{report['inputs']['manifest_sha256'][:12]}` · runner v{report['runner']['version']}", ""]
     for case in report["cases"]:
         lines += [f"## {case['case_id']}", "",
-                  "| backend | statut | porte sujets principaux | protégés présents | IoU moyen | contour/trait F | régions | project_check |",
-                  "|---|---|---|---|---|---|---|---|"]
+                  "| backend | statut | sujets principaux (familles) | porte objets requis | protégés présents | IoU moyen | contour/trait F | régions | project_check |",
+                  "|---|---|---|---|---|---|---|---|---|"]
         for r in case["results"]:
             if r["status"] != "ok":
-                lines.append(f"| {r['backend']} | **{r['status']}** — {r['reason']} | — | — | — | — | — | — |")
+                lines.append(f"| {r['backend']} | **{r['status']}** — {r['reason']} | — | — | — | — | — | — | — |")
                 continue
             a, g = r["aggregate"], r["gate"]
             pc = r.get("project_check")
             pcs = "—" if not pc else f"{pc['summary'].get('errors')} err / {pc['summary'].get('warnings')} avert."
+            fg = r["family_gate"]
+            fam = "**OK**" if fg["passed"] else "**ÉCHEC** (" + ", ".join(fg["main_missing"]) + ")"
             lines.append(
-                f"| {r['backend']} | ok | {'**OK**' if g['passed'] else '**ÉCHEC** (' + ', '.join(g['required_missing']) + ')'} "
+                f"| {r['backend']} | ok | {fam} | {'**OK**' if g['passed'] else '**ÉCHEC** (' + ', '.join(g['required_missing']) + ')'} "
                 f"| {a['protected_present']} | {a['mean_union_iou_protected']} | {a['mean_edge_f_protected']} "
                 f"| {a['regions']} | {pcs} |")
         for r in case["results"]:
@@ -204,6 +214,7 @@ def main(argv=None) -> int:
     ap.add_argument("--sam-models", default=os.environ.get("OPENSTITCH_SAM_MODELS"))
     ap.add_argument("--sam-model", default="small", choices=["tiny", "small", "base_plus", "large"])
     ap.add_argument("--sam-python", default=os.environ.get("OPENSTITCH_SAM_PYTHON"))
+    ap.add_argument("--pipelines", help="JSON {nom: {planner:[commande...], segmenter:[commande...]}} (protocole generique)")
     ap.add_argument("--tol-mm", type=float, default=0.5, help="tolerance de contour en mm")
     args = ap.parse_args(argv)
 
@@ -216,7 +227,8 @@ def main(argv=None) -> int:
     wanted = [b for b in args.backends.split(",") if b]
     if args.controls:
         wanted += [c for c in CONTROLS if c not in wanted]
-    pool = bk.available(args.cli, args.sam_models, args.sam_model, args.sam_python)
+    pipelines = json.loads(Path(args.pipelines).read_text(encoding="utf-8")) if args.pipelines else None
+    pool = bk.available(args.cli, args.sam_models, args.sam_model, args.sam_python, pipelines)
     unknown = [b for b in wanted if b not in pool]
     if unknown:
         print(f"backend inconnu : {', '.join(unknown)} (disponibles : {', '.join(pool)})", file=sys.stderr)

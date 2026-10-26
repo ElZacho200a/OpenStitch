@@ -106,6 +106,18 @@ PredictResult parse_result(const json& j) {
             r.masks.push_back(std::move(p));
         }
     }
+    if (const auto it = j.find("detections"); it != j.end() && it->is_array()) {
+        for (const auto& d : *it) {
+            Detection det;
+            det.id = str(d, "id");
+            det.label = str(d, "label");
+            det.bbox_xywh = int4(d, "bbox_xywh");
+            if (const auto pi = opt_number(d, "prompt_index")) {
+                det.prompt_index = static_cast<int>(*pi);
+            }
+            r.detections.push_back(std::move(det));
+        }
+    }
     r.elapsed_ms = integer(j, "elapsed_ms");
     if (const auto it = j.find("warnings"); it != j.end() && it->is_array()) {
         for (const auto& w : *it) {
