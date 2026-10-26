@@ -75,6 +75,7 @@ rendu OpenStitch, erreurs bloquantes et rapport transparent.
 
 ## Contrat de découverte du pont agent (A02 partiel)\n\n`python3 scripts/openstitch_agent.py contract` renvoie un objet JSON stable sans binaire installé. Il décrit `doctor` et `inspect`, leurs arguments et bornes, les codes de sortie, et les exemples. La sortie JSON est indépendante de la locale ; les erreurs d’exécution sont également des objets JSON avec `ok=false`. Les erreurs de syntaxe argparse restent sur stderr et conservent son code de sortie. Ce contrat décrit **le pont Python uniquement** : les capacités du client natif se découvrent avec `doctor` et ses schémas `commands --json` / `project operations --json`.\n\n## Historique
 
+- 2026-10-26 : banc de segmentation reproductible (`scripts/openstitch_ai_bench.py`, PR-01 IA).
 - 2026-10-26 : contrat de backend IA générique `openstitch.ai.backend/1` (PR-02) : worker `ai-worker/`, client sans Qt dans `libs/ai_segmentation`, `openstitch-cli ai backends`, outil MCP `ai_backends` (`docs/ai/backend-protocol.md`).
 - 2026-10-26 : audit IA PR-00, voir `docs/ai/` (backends modulaires, licences, benchmark).
 
