@@ -1,0 +1,180 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261026T005734Z-phare-structural-carriers-mcp-0d343ff",
+  "created_utc": "2026-10-26T01:03:00Z",
+  "status": "failed",
+  "artistic_verdict": "Six diagnostic crop variants rejected; gate A failed; no full-scene integration",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "rematerialized_and_verified_this_run": true
+  },
+  "main_commit": "ea630a7576d9c538ba2c1b1276cb60bd8acdfd9b",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "binary_not_rebuilt_from_main": true
+  },
+  "subproject": {
+    "crop_px": [
+      888,
+      65,
+      1010,
+      466
+    ],
+    "size_mm": [
+      29.388,
+      96.595
+    ],
+    "canvas_mm": [
+      50,
+      120
+    ],
+    "not_full_scene": true,
+    "protected_windows": 5
+  },
+  "method": {
+    "preparations": [
+      "carrier_sparse",
+      "carrier_posts_arcs",
+      "carrier_arch_contiguous",
+      "carrier_foam_objects",
+      "carrier_clean",
+      "carrier_window_rings"
+    ],
+    "description": "Source-registered four/six gallery posts plus two organic arcs, no invented diamond mesh; contiguous Gaussian-smoothed dome/glass/shaft semantic carriers; source foam split at narrow waist with identical union; targeted five-window ring erosion. Gates A visually inspected before diagnostic imports.",
+    "gate_A": "failed: gallery oversimplified, architecture schematic, foam remains monolithic",
+    "imports": "diagnostic only"
+  },
+  "variants": [
+    {
+      "name": "carrier_sparse",
+      "objects": 85,
+      "stitches": 4247,
+      "trims": 97,
+      "jumps": 127,
+      "color_changes": 27,
+      "warnings": 8,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "fabric_risk_ge70_mm2": 11,
+      "missing_crop_percent": 30.902,
+      "lost_detail_percent": 3.675,
+      "wrong_colour_percent": 8.07
+    },
+    {
+      "name": "carrier_posts_arcs",
+      "objects": 87,
+      "stitches": 4267,
+      "trims": 99,
+      "jumps": 129,
+      "color_changes": 27,
+      "warnings": 8,
+      "errors": 0,
+      "hotspot_mm2": 1,
+      "fabric_risk_ge70_mm2": 11,
+      "missing_crop_percent": 30.757,
+      "lost_detail_percent": 3.694,
+      "wrong_colour_percent": 8.115
+    },
+    {
+      "name": "carrier_arch_contiguous",
+      "objects": 76,
+      "stitches": 4208,
+      "trims": 88,
+      "jumps": 115,
+      "color_changes": 27,
+      "warnings": 8,
+      "errors": 0,
+      "hotspot_mm2": 2,
+      "fabric_risk_ge70_mm2": 8,
+      "missing_crop_percent": 28.848,
+      "lost_detail_percent": 3.771,
+      "wrong_colour_percent": 8.191
+    },
+    {
+      "name": "carrier_foam_objects",
+      "objects": 77,
+      "stitches": 4255,
+      "trims": 89,
+      "jumps": 111,
+      "color_changes": 28,
+      "warnings": 9,
+      "errors": 0,
+      "hotspot_mm2": 3,
+      "fabric_risk_ge70_mm2": 14,
+      "missing_crop_percent": 28.987,
+      "lost_detail_percent": 3.771,
+      "wrong_colour_percent": 8.176
+    },
+    {
+      "name": "carrier_clean",
+      "objects": 75,
+      "stitches": 4207,
+      "trims": 87,
+      "jumps": 114,
+      "color_changes": 27,
+      "warnings": 8,
+      "errors": 0,
+      "hotspot_mm2": 2,
+      "fabric_risk_ge70_mm2": 8,
+      "missing_crop_percent": 28.848,
+      "lost_detail_percent": 3.771,
+      "wrong_colour_percent": 8.191
+    },
+    {
+      "name": "carrier_window_rings",
+      "objects": 76,
+      "stitches": 4160,
+      "trims": 88,
+      "jumps": 132,
+      "color_changes": 27,
+      "warnings": 11,
+      "errors": 0,
+      "hotspot_mm2": 2,
+      "fabric_risk_ge70_mm2": 8,
+      "missing_crop_percent": 29.576,
+      "lost_detail_percent": 3.129,
+      "wrong_colour_percent": 7.633
+    }
+  ],
+  "mcp_operations": "digitize_guide, project_operations, semantic_validate, project_new, semantic_import dry_run/apply, project_apply import_svg dry_run/apply, checkpoint, semantic_map, inspect/report/check/density/fabric_risk/fidelity, true project_render PNG, project_save OSP and project_export DST each",
+  "retouches": {
+    "baseline": "carrier_window_rings",
+    "satin_compare": [
+      "skeleton",
+      "parallel_sweep",
+      "medial_axis"
+    ],
+    "groups": [
+      "foam",
+      "five windows",
+      "gallery"
+    ],
+    "trial_renders": 9,
+    "window_medial_axis": "accepted and rendered this time, artistically rejected",
+    "tatami_vs_directional": "executed and rejected",
+    "semantic_replace_glass": "executed and rejected",
+    "set_params_gallery": "executed and rejected",
+    "restored_osp_byte_identical": true,
+    "restored_sha256": "a42b3f9ed8e2a2f7fc89e59383b996dca3260d9bab88a3170e2160786217eb30"
+  },
+  "warnings": "Short-stitch findings in cloud gray, shaft body/mid, and additional window frame warnings for ring variant. Exact IDs/coordinates in private archive. Generic small-island cleanup did not reduce eight baseline warnings.",
+  "fidelity_caveat": "Crop fidelity not comparable to full-scene route_protected bridge12; no machine test and no independent rating",
+  "archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-26/phare-structures-porteuses-mcp-0205-private.zip",
+    "library_file_id": "libfile_1ba676092e1c81918356470a873620b8",
+    "size_bytes": 32873769,
+    "sha256": "aee04cb288f474a748a102f63da418f46018826d5184ef6fc5f4fde0ef4a72ed",
+    "entries": 360,
+    "rematerialized_sha_verified": true
+  },
+  "next_hypothesis": "Prioritize visually faithful 29.4mm representation over detailed micro-geometry: compare limited source-proven verticals and 1-2 central curves as running vs 0.5-1mm admissible satin columns; reconstruct dome/glass/shaft with true occlusion and fewer broad, non-fragmented masses; eliminate source-specific short stitches by exact mask/point locations; foam use source contour carrier and open filament accents, not monolithic tatami. Strict gate A before imports, true MCP previews, no full scene until crop passes."
+}
