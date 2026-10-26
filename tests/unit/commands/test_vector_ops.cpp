@@ -691,6 +691,17 @@ TEST_CASE("vector ops: pockets are refused without pockets or without a neighbou
     CHECK(none.command == nullptr);
 }
 
+TEST_CASE("vector ops: a pocket a little away from the footprint is still attached") {
+    // Tirage automatique : les rangees depassent de l'emprise et la detection compte une
+    // demi-largeur de fil ; la poche restante peut etre a ~0,5 mm de l'emprise.
+    document::Project project;
+    const ObjectId big = add_object(project, rect(0, 0, 20'000, 10'000), true);
+    const auto near = make_fill_pockets_command(project, {big}, {rect(20'500, 0, 21'500, 10'000)});
+    CHECK(near.command != nullptr);
+    const auto far = make_fill_pockets_command(project, {big}, {rect(23'000, 0, 24'000, 10'000)});
+    CHECK(far.command == nullptr);
+}
+
 TEST_CASE("vector ops: split keeps colour blend layers linked on every piece",
           "[vector_ops][blend_core]") {
     auto project = linked_blend_project();

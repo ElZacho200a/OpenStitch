@@ -728,9 +728,17 @@ Qui l'active : les objets créés à la main (comme la sous-couche automatique),
 
 **Limites connues.** Les coefficients sont des règles empiriques, non mesurées sur tissu : aucun
 modèle physique de l'étirement n'est publié, et il dépend du tissu, de la sous-couche et de la
-tension. À recaler avec la pièce-test HP-ENG-001.a. Le mode Auto agit dans l'axe du fil
-seulement : le retrait de bord (`inset`, 0,2 mm par défaut) qui laisse ~0,4 mm entre deux
-tatamis voisins n'est pas modifié.
+tension. À recaler avec la pièce-test HP-ENG-001.a. Pas de compensation perpendiculaire aux
+rangées (poussée latérale).
+
+**Retrait de bord.** Le retrait `inset` (0,2 mm par défaut) laissait ~0,4 mm de vide entre deux
+remplissages voisins : filet de tissu visible, indépendamment du tirage. En mode Auto, le
+retrait effectif des remplissages (tatami, directionnel) vaut 0 (`effective_fill_inset`) : la
+forme cousue part du contour vectoriel et ses rangées le dépassent de la compensation du tirage,
+sans additionner les deux corrections. Le réglage `inset` de l'objet est conservé (il
+s'applique de nouveau en `Manual`). Le chevauchement `fill_overlap` de l'auto-numérisation reste
+désactivé : il modifiait la forme vectorielle partagée par les autres types de points.
+Conséquence pour « Combler les vides du bloc » : les rangées dépassant de l'emprise, un vide encore visible peut se trouver à ~0,5 mm d'elle ; le rattachement d'une poche à un objet (`make_fill_pockets_command`) a une portée de 0,7 mm, et un écart de 1,2 mm est déjà refermé par la compensation.
 
 ### Entrée/sortie automatiques (HP-ENG-010)
 

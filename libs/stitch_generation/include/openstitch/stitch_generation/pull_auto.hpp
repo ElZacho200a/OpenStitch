@@ -23,6 +23,13 @@ namespace openstitch::stitch_generation {
 // `5 % de la largeur`, borné à [0,10 ; 0,35] mm. Largeur nulle ou négative : 0.
 [[nodiscard]] Micrometers choose_satin_pull(double width_mm);
 
+// Retrait de bord EFFECTIF d'un remplissage. `Manual` : le retrait de l'objet. `Auto` : 0.
+// Le retrait de 0,2 mm par défaut compense le gonflement du bord, mais il laisse ~0,4 mm de vide
+// entre deux zones voisines (filet de tissu visible) ; en mode Auto, la compensation du tirage
+// le remplace : la forme cousue part du contour vectoriel, ses rangées le dépassent de
+// `choose_fill_pull` dans l'axe du fil. Sans quoi les deux compensations s'additionneraient.
+[[nodiscard]] Micrometers effective_fill_inset(document::PullMode mode, Micrometers inset);
+
 // Paramètres EFFECTIFS d'un remplissage pour une région : copie inchangée en mode `Manual`,
 // compensation choisie par `choose_fill_pull` (épaisseur moyenne de la région) en mode `Auto`.
 [[nodiscard]] document::TatamiParams resolve_pull_compensation(const document::TatamiParams& params,

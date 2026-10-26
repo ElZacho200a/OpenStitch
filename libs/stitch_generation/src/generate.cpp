@@ -773,8 +773,8 @@ void emit_edge_outline(stitch::StitchSequence& sequence, const geometry::PathSet
 void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObject& source,
                      const document::EmbroideryObject& object,
                      const document::TatamiParams& params) {
-    for (const geometry::PathSet& region :
-         fill_regions_in_sewing_order(sequence, source, params.inset)) {
+    for (const geometry::PathSet& region : fill_regions_in_sewing_order(
+             sequence, source, effective_fill_inset(params.pull_mode, params.inset))) {
         // Sous-couches d'abord (§15), puis couche supérieure. Avec liaisons cachées, les
         // tracés de sous-couche et le remplissage s'enchaînent sans saut (donc sans coupe).
         const auto underlay = tatami_underlay(region, resolve_underlay(params, region));
@@ -799,8 +799,8 @@ void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObj
 void generate_directional(stitch::StitchSequence& sequence, const document::VectorObject& source,
                           const document::EmbroideryObject& object,
                           const document::DirectionalFillParams& params) {
-    for (const geometry::PathSet& region :
-         fill_regions_in_sewing_order(sequence, source, params.inset)) {
+    for (const geometry::PathSet& region : fill_regions_in_sewing_order(
+             sequence, source, effective_fill_inset(params.pull_mode, params.inset))) {
         const auto underlay = directional_underlay(region, resolve_underlay(params, region));
         std::optional<FillLinker> linker;
         if (params.hidden_underpath) {

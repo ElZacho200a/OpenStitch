@@ -2304,6 +2304,7 @@ document::DirectionalFillParams directional_from_tatami(const document::TatamiPa
     d.underlay_spacing = tatami.underlay_spacing;
     d.hidden_underpath = tatami.hidden_underpath;
     d.pull_compensation = tatami.pull_compensation;
+    d.pull_mode = tatami.pull_mode;
     d.underlay_mode = tatami.underlay_mode;
     d.underlay_zigzag = tatami.underlay_zigzag;
     d.seed = seed;

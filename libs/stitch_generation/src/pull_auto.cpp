@@ -30,6 +30,10 @@ Micrometers choose_satin_pull(double width_mm) {
     return to_um(std::clamp(0.05 * width_mm, 0.10, 0.35));
 }
 
+Micrometers effective_fill_inset(document::PullMode mode, Micrometers inset) {
+    return mode == document::PullMode::Auto ? Micrometers{0} : inset;
+}
+
 document::TatamiParams resolve_pull_compensation(const document::TatamiParams& params,
                                                  const geometry::PathSet& region) {
     if (params.pull_mode != document::PullMode::Auto) {
