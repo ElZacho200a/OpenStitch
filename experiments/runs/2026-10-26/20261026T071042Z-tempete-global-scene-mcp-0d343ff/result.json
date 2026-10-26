@@ -1,0 +1,195 @@
+{
+  "schema": "openstitch.agent-trial/1",
+  "run_id": "20261026T071042Z-tempete-global-scene-mcp-0d343ff",
+  "created_utc": "2026-10-26T07:10:42Z",
+  "status": "rejected_artistic_global",
+  "source": {
+    "library_path": "/OpenStitch/Benchmarks/phare-tempete-illustration-20261024-source.zip",
+    "library_file_id": "libfile_d5d642ffc2e88191a3e06bacbe714901",
+    "zip_sha256": "97e59a9ce1d40a7b7e68c02f4877e69e4e7486fda9cf3737d0e7bc9196ab7624",
+    "jpeg_sha256": "0d343ff04a95f58fc5abe0076dffb0f8e3f13abb2fb3b44d7af709e97ec045d2",
+    "dimensions_px": [
+      1536,
+      961
+    ],
+    "rematerialized_and_verified": true,
+    "never_old_Turner": true
+  },
+  "main_commit": "80e1c5b19b20cce523ff220d6abb0b93e28075ed",
+  "mcp": {
+    "version": "1.1.0",
+    "doctor": "7/7",
+    "tools": 29,
+    "official_tarball_sha256": "c3200eaab2d498ce5e802fc3d7f7148f19eed4a6c4930562f025afa4a912a007",
+    "not_rebuilt_from_current_main": true,
+    "actual_tools": [
+      "digitize_guide",
+      "project_operations",
+      "semantic_validate",
+      "project_new",
+      "semantic_import dry_run/apply",
+      "project_apply import_svg dry_run/apply",
+      "project_checkpoint",
+      "semantic_map",
+      "project_inspect",
+      "project_report",
+      "project_check",
+      "project_density",
+      "project_fabric_risk",
+      "project_fidelity",
+      "project_render",
+      "project_save",
+      "project_export",
+      "project_satin_compare",
+      "project_open",
+      "project_restore",
+      "semantic_replace dry_run/apply",
+      "project_apply auto_satin dry_run/apply",
+      "project_apply directional_guides dry_run/apply",
+      "project_apply set_params dry_run/apply",
+      "project_diagnose"
+    ]
+  },
+  "scope": {
+    "full_scene": true,
+    "frame_mm": [
+      390,
+      268
+    ],
+    "margin_mm": 10,
+    "design_mm": [
+      370,
+      231.490885
+    ],
+    "protected": [
+      "cream sailboat main sail, foresail, jib, hull, mast, rigging",
+      "golden lighthouse silhouette and five windows",
+      "sky/clouds",
+      "six macro-wave instances",
+      "foam and negative spaces"
+    ],
+    "not_lighthouse_crop": true
+  },
+  "preparations": {
+    "source_derived": true,
+    "applied": [
+      "global_structure",
+      "global_balanced",
+      "global_detail"
+    ],
+    "methods": [
+      "OpenCV KMeans quantization of source at 768x480, 14/18/22 colors",
+      "semantic six-wave partition independent of RGB",
+      "connected component filtering with spatial+color reconstruction",
+      "protected source-traced curved main sail and other boat parts",
+      "lighthouse protected windows and six open SVG running wave crests"
+    ],
+    "gate_A": "initial failure from int16 color-distance overflow, fixed float32 before import; final global composition readable but local details only conditional",
+    "preimport_visual_inspected": true,
+    "imports": "full-scene diagnostic, no final machine approval"
+  },
+  "variants": [
+    {
+      "name": "global_structure",
+      "technical_masks": 95,
+      "objects": 1266,
+      "stitches": 141263,
+      "trims": 1823,
+      "jumps": 2939,
+      "color_changes": 95,
+      "warnings": 51,
+      "errors": 0,
+      "hotspot_mm2": 70,
+      "fabric_risk_ge70_mm2": 204,
+      "missing_full_scene_percent": 13.384,
+      "wrong_colour_percent": 1.171,
+      "true_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "global_balanced",
+      "technical_masks": 114,
+      "objects": 1544,
+      "stitches": 142125,
+      "trims": 2103,
+      "jumps": 3435,
+      "color_changes": 114,
+      "warnings": 51,
+      "errors": 0,
+      "hotspot_mm2": 66,
+      "fabric_risk_ge70_mm2": 202,
+      "missing_full_scene_percent": 14.899,
+      "wrong_colour_percent": 0.941,
+      "true_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "artistic_verdict": "REJECTED"
+    },
+    {
+      "name": "global_detail",
+      "technical_masks": 131,
+      "objects": 1574,
+      "stitches": 141619,
+      "trims": 2128,
+      "jumps": 3353,
+      "color_changes": 131,
+      "warnings": 51,
+      "errors": 0,
+      "hotspot_mm2": 80,
+      "fabric_risk_ge70_mm2": 237,
+      "missing_full_scene_percent": 15.145,
+      "wrong_colour_percent": 0.748,
+      "true_mcp_preview": true,
+      "osp_dst_same_project": true,
+      "artistic_verdict": "REJECTED"
+    }
+  ],
+  "diagnostic": {
+    "project_diagnose_warnings": 3,
+    "visible_fabric_mm2": 11463.81,
+    "visible_fabric_percent": 13.384,
+    "hotspot_ge4layers_mm2": 70,
+    "visible_connectors_percent": 1.543,
+    "object_ids_with_connector_warnings": [
+      3640,
+      2204,
+      3662,
+      3271,
+      3337,
+      3097,
+      3471,
+      710
+    ]
+  },
+  "retouches": {
+    "baseline": "global_structure",
+    "satin_compare": [
+      "boat.foresail light",
+      "boat.jib light"
+    ],
+    "satin_strategies_applied_and_rendered_on_same_foresail": [
+      "skeleton",
+      "parallel_sweep",
+      "medial_axis"
+    ],
+    "wave_tatami_vs_directional_applied_and_rendered": true,
+    "main_sail_tatami_angle42_applied_and_rendered": true,
+    "hull_semantic_replace_applied_and_rendered": true,
+    "all_rejected": true,
+    "baseline_restored_byte_identical": true,
+    "baseline_sha256": "aa267ecaaf1d066d0958289edc511a1b89270c8eb15a1804a9c0bab2772a0ffd"
+  },
+  "machine_tested": false,
+  "independent_score": null,
+  "artistic_verdict": "ALL THREE GLOBAL VARIANTS REJECTED: whole scene visible in true MCP renders but too many tiny tatami islands, excessive trims, muted stitch rendering and degraded sail/foam fidelity; do not claim machine readiness.",
+  "next_hypothesis": "Continue WHOLE SCENE every run. Merge sky/sea technical islands into semantically continuous color carriers without losing six wave fronts, reduce 1800+ trims and 51 warnings; improve source-traced sail curve and foam as separate organic masses, use directional guides selectively on wave ribbons. Never gate global work on lighthouse crop.",
+  "archive": {
+    "library_path": "/OpenStitch/Experiments/2026-10-26/tempete-scene-complete-mcp-0810-private.zip",
+    "library_file_id": "libfile_c96d6b6e242481918c86313aeca9ec55",
+    "size_bytes": 66644862,
+    "sha256": "76748e1a703aec3a8ff0e7b2ca7b4ffcfd12e7bc0ef61a0dcc5db35f94c5f5a4",
+    "entries": 440,
+    "rematerialized_sha_and_zip_verified": true
+  },
+  "parent_run_id": "20261026T055636Z-phare-glazing-source-bars-mcp-0d343ff"
+}
