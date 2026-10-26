@@ -1,0 +1,508 @@
+{
+  "schema": "openstitch.ai.benchmark-manifest/1",
+  "cases": [
+    {
+      "case_id": "marine-synth-01",
+      "image_type": "synthetic-illustration",
+      "source": {
+        "path": "marine-synth-01/source.png",
+        "sha256": "824eb5c4f7d16807be5f37f7704bbb26520bc873d8ea11115ea3e8694811f885",
+        "width_px": 320,
+        "height_px": 240
+      },
+      "design": {
+        "width_mm": 160.0,
+        "height_mm": 120.0
+      },
+      "px_per_mm": 2.0,
+      "rights": {
+        "license": "CC0-1.0",
+        "author": "OpenStitch contributors",
+        "generator": "scripts/ai_bench/fixtures.py",
+        "redistributable": true
+      },
+      "main_subject_families": [
+        "boat",
+        "lighthouse"
+      ],
+      "notes": "Voilier + phare + mer + ecume + elements fins. Couleurs partagees voulues : voiles principale/foc, ecume/tour blanche, mat/cordages.",
+      "objects": [
+        {
+          "semantic_id": "sky",
+          "family": "sky",
+          "kind": "area",
+          "label": 1,
+          "color_rgb": [
+            170,
+            205,
+            235
+          ],
+          "protected": false,
+          "required": false,
+          "main_subject": false,
+          "gold_mask": {
+            "path": "marine-synth-01/gold/sky.png",
+            "sha256": "82a020174bc8d224b62cbec9bf8da03b1d64bfa424b783900ac0e5ee1329f2f4"
+          },
+          "area_px": 41823,
+          "bbox_px": [
+            0,
+            0,
+            320,
+            150
+          ],
+          "anchor_px": [
+            0,
+            0
+          ],
+          "components": 1,
+          "holes": 48,
+          "protect_holes": false
+        },
+        {
+          "semantic_id": "sea.water",
+          "family": "sea",
+          "kind": "area",
+          "label": 2,
+          "color_rgb": [
+            30,
+            90,
+            150
+          ],
+          "protected": true,
+          "required": true,
+          "main_subject": false,
+          "gold_mask": {
+            "path": "marine-synth-01/gold/sea.water.png",
+            "sha256": "04eec39df547c698c613dfc743c888f0188acf556bc22cdc2dfb577db8bb979b"
+          },
+          "area_px": 24129,
+          "bbox_px": [
+            0,
+            150,
+            320,
+            90
+          ],
+          "anchor_px": [
+            0,
+            150
+          ],
+          "components": 3,
+          "holes": 0,
+          "protect_holes": false,
+          "under": [
+            "boat.hull",
+            "sea.crest",
+            "sea.foam"
+          ]
+        },
+        {
+          "semantic_id": "sea.crest",
+          "family": "sea",
+          "kind": "area",
+          "label": 3,
+          "color_rgb": [
+            20,
+            65,
+            120
+          ],
+          "protected": false,
+          "required": false,
+          "main_subject": false,
+          "gold_mask": {
+            "path": "marine-synth-01/gold/sea.crest.png",
+            "sha256": "d6bbf51eecda524bccd0f7772141b599690064f8745ae7cae6c83f4b4a1b0578"
+          },
+          "area_px": 2560,
+          "bbox_px": [
+            0,
+            175,
+            320,
+            34
+          ],
+          "anchor_px": [
+            0,
+            175
+          ],
+          "components": 2,
+          "holes": 0,
+          "protect_holes": false
+        },
+        {
+          "semantic_id": "sea.foam",
+          "family": "sea",
+          "kind": "area",
+          "label": 4,
+          "color_rgb": [
+            245,
+            245,
+            245
+          ],
+          "protected": false,
+          "required": false,
+          "main_subject": false,
+          "gold_mask": {
+            "path": "marine-synth-01/gold/sea.foam.png",
+            "sha256": "ac5c32b52b1a6d8495e722363088c0f6b0830d6292d0ebb4191e2e5a8f0dc70a"
+          },
+          "area_px": 343,
+          "bbox_px": [
+            54,
+            144,
+            242,
+            16
+          ],
+          "anchor_px": [
+            60,
+            144
+          ],
+          "components": 3,
+          "holes": 0,
+          "protect_holes": false,
+          "over": [
+            "sea.water",
+            "sky"
+          ]
+        },
+        {
+          "semantic_id": "boat.hull",
+          "family": "boat",
+          "kind": "area",
+          "label": 5,
+          "color_rgb": [
+            110,
+            60,
+            30
+          ],
+          "protected": true,
+          "required": true,
+          "main_subject": true,
+          "gold_mask": {
+            "path": "marine-synth-01/gold/boat.hull.png",
+            "sha256": "e94867e1da2ae5865da839279d2604b04c3e85cb0d55f7490fe28d7dd9ff5e7e"
+          },
+          "area_px": 1885,
+          "bbox_px": [
+            70,
+            150,
+            100,
+            22
+          ],
+          "anchor_px": [
+            70,
+            150
+          ],
+          "components": 1,
+          "holes": 0,
+          "protect_holes": false,
+          "over": [
+            "sea.water"
+          ]
+        },
+        {
+          "semantic_id": "boat.sail_main",
+          "family": "boat",
+          "kind": "area",
+          "label": 6,
+          "color_rgb": [
+            250,
+            240,
+            210
+          ],
+          "protected": true,
+          "required": true,
+          "main_subject": true,
+          "gold_mask": {
+            "path": "marine-synth-01/gold/boat.sail_main.png",
+            "sha256": "aac6189cc5440d3f6f3a8ec98e289781fc6c0e08743586bea79e9e0622147def"
+          },
+          "area_px": 1748,
+          "bbox_px": [
+            120,
+            63,
+            44,
+            79
+          ],
+          "anchor_px": [
+            120,
+            63
+          ],
+          "components": 1,
+          "holes": 0,
+          "protect_holes": false,
+          "over": [
+            "sky"
+          ]
+        },
+        {
+          "semantic_id": "boat.sail_jib",
+          "family": "boat",
+          "kind": "area",
+          "label": 7,
+          "color_rgb": [
+            250,
+            240,
+            210
+          ],
+          "protected": true,
+          "required": true,
+          "main_subject": true,
+          "gold_mask": {
+            "path": "marine-synth-01/gold/boat.sail_jib.png",
+            "sha256": "9f0cac58b79d965aea8f24da09f330d22c332611831e676a45464a5549b7e22b"
+          },
+          "area_px": 1276,
+          "bbox_px": [
+            81,
+            73,
+            36,
+            69
+          ],
+          "anchor_px": [
+            116,
+            73
+          ],
+          "components": 1,
+          "holes": 0,
+          "protect_holes": false,
+          "over": [
+            "sky"
+          ]
+        },
+        {
+          "semantic_id": "boat.mast",
+          "family": "boat",
+          "kind": "line",
+          "label": 8,
+          "color_rgb": [
+            40,
+            30,
+            30
+          ],
+          "protected": true,
+          "required": true,
+          "main_subject": true,
+          "gold_mask": {
+            "path": "marine-synth-01/gold/boat.mast.png",
+            "sha256": "5fba6a59a18001a8161748897aae149042d1a68750df7e4a6c6326fcc28f419b"
+          },
+          "area_px": 177,
+          "bbox_px": [
+            118,
+            60,
+            2,
+            90
+          ],
+          "anchor_px": [
+            118,
+            60
+          ],
+          "components": 1,
+          "holes": 0,
+          "protect_holes": false,
+          "width_mm_max": 1.0
+        },
+        {
+          "semantic_id": "boat.rigging",
+          "family": "boat",
+          "kind": "line",
+          "label": 9,
+          "color_rgb": [
+            40,
+            30,
+            30
+          ],
+          "protected": true,
+          "required": false,
+          "main_subject": true,
+          "gold_mask": {
+            "path": "marine-synth-01/gold/boat.rigging.png",
+            "sha256": "18f5076686fc57cea6c24b9b54e1e1e03233d331f49b3b71f542af6d7dbf5bde"
+          },
+          "area_px": 179,
+          "bbox_px": [
+            72,
+            60,
+            97,
+            90
+          ],
+          "anchor_px": [
+            119,
+            60
+          ],
+          "components": 1,
+          "holes": 0,
+          "protect_holes": false,
+          "width_mm_max": 1.0,
+          "over": [
+            "boat.sail_jib",
+            "sky"
+          ]
+        },
+        {
+          "semantic_id": "lighthouse.tower_white",
+          "family": "lighthouse",
+          "kind": "area",
+          "label": 10,
+          "color_rgb": [
+            245,
+            245,
+            245
+          ],
+          "protected": true,
+          "required": true,
+          "main_subject": true,
+          "gold_mask": {
+            "path": "marine-synth-01/gold/lighthouse.tower_white.png",
+            "sha256": "334a05b24b415b44cdf006e9423fb965457a6d12eef4d6b0f28fdc3d12fd60f0"
+          },
+          "area_px": 892,
+          "bbox_px": [
+            231,
+            100,
+            38,
+            50
+          ],
+          "anchor_px": [
+            236,
+            100
+          ],
+          "components": 2,
+          "holes": 1,
+          "protect_holes": true
+        },
+        {
+          "semantic_id": "lighthouse.tower_red",
+          "family": "lighthouse",
+          "kind": "area",
+          "label": 11,
+          "color_rgb": [
+            200,
+            40,
+            40
+          ],
+          "protected": true,
+          "required": true,
+          "main_subject": true,
+          "gold_mask": {
+            "path": "marine-synth-01/gold/lighthouse.tower_red.png",
+            "sha256": "f665ccb34d92303c6d17c788bb57b10f3bb965e9d07e4a8b65f220316fcfaff5"
+          },
+          "area_px": 1192,
+          "bbox_px": [
+            232,
+            80,
+            36,
+            60
+          ],
+          "anchor_px": [
+            238,
+            80
+          ],
+          "components": 2,
+          "holes": 0,
+          "protect_holes": false
+        },
+        {
+          "semantic_id": "lighthouse.lantern",
+          "family": "lighthouse",
+          "kind": "area",
+          "label": 12,
+          "color_rgb": [
+            250,
+            215,
+            60
+          ],
+          "protected": true,
+          "required": true,
+          "main_subject": true,
+          "gold_mask": {
+            "path": "marine-synth-01/gold/lighthouse.lantern.png",
+            "sha256": "c8804a7f18ac758410fce29ba188bb3ed86446c6c70da58470ab742c4447fd1f"
+          },
+          "area_px": 360,
+          "bbox_px": [
+            240,
+            62,
+            20,
+            18
+          ],
+          "anchor_px": [
+            240,
+            62
+          ],
+          "components": 1,
+          "holes": 0,
+          "protect_holes": false
+        },
+        {
+          "semantic_id": "lighthouse.roof",
+          "family": "lighthouse",
+          "kind": "area",
+          "label": 13,
+          "color_rgb": [
+            150,
+            30,
+            30
+          ],
+          "protected": false,
+          "required": false,
+          "main_subject": true,
+          "gold_mask": {
+            "path": "marine-synth-01/gold/lighthouse.roof.png",
+            "sha256": "638efdd1bbe73a7919d6b6f4c1d1ad1004d6f7795bc50ea79a725c2e6679ab19"
+          },
+          "area_px": 156,
+          "bbox_px": [
+            239,
+            49,
+            22,
+            13
+          ],
+          "anchor_px": [
+            249,
+            49
+          ],
+          "components": 1,
+          "holes": 0,
+          "protect_holes": false
+        },
+        {
+          "semantic_id": "lighthouse.window",
+          "family": "lighthouse",
+          "kind": "area",
+          "label": 14,
+          "color_rgb": [
+            30,
+            40,
+            60
+          ],
+          "protected": false,
+          "required": false,
+          "main_subject": true,
+          "gold_mask": {
+            "path": "marine-synth-01/gold/lighthouse.window.png",
+            "sha256": "08884175c573ae2c1801bbe37718c737f5a067f4276ef53d128e0dbbc6ce79c6"
+          },
+          "area_px": 80,
+          "bbox_px": [
+            246,
+            104,
+            8,
+            10
+          ],
+          "anchor_px": [
+            246,
+            104
+          ],
+          "components": 1,
+          "holes": 0,
+          "protect_holes": false,
+          "over": [
+            "lighthouse.tower_white"
+          ]
+        }
+      ]
+    }
+  ]
+}
