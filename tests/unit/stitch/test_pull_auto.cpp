@@ -125,8 +125,7 @@ TEST_CASE("tirage auto : les rangees depassent de la compensation choisie") {
     REQUIRE(resolved.pull_compensation.value > 0);
     const auto base = fill_tatami(region, tatami());
     const auto pulled = fill_tatami(region, resolved);
-    CHECK(x_extent(pulled) ==
-          x_extent(base) + 2 * choose_fill_pull(20.0).value);
+    CHECK(x_extent(pulled) == x_extent(base) + 2 * choose_fill_pull(20.0).value);
 }
 
 TEST_CASE("tirage auto : la generation applique le mode Auto, Manual reste historique") {
