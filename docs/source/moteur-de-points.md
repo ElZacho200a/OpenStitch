@@ -808,6 +808,21 @@ par défaut ; il sera lu depuis le profil matière du projet (HP-FAB, PR #155) q
 dans `main`. Non fait : visualisation du champ dans le canevas, calibration par la pièce-test
 (HP-ENG-001.a), `calibrated = true` (la confiance reste donc plafonnée à 0,3).
 
+**Niveau 3 — prévisualisation du tirage (`pull_map.hpp/.cpp`).** Deux lectures du MÊME `PullField`,
+en lecture seule (jamais écrites dans le document) : `compute_pull_map` (carte du déplacement prédit,
+grille bornée à 512 x 512 cases) et `simulate_fabric_pull` (la séquence « telle que le tissu la
+restituera »). La simulation est ordonnée : une pénétration d'un bloc de couleur est décalée du
+déplacement imposé au tissu par les blocs cousus AVANT elle ; le premier bloc reste en place. C'est
+ce défaut de repérage entre couleurs (contour qui ne retombe plus sur le remplissage, trous entre
+deux aplats) que l'on veut voir, pas un décalage global. Trois réglages de tissu nommés,
+EMPIRIQUES et non validés (`fabric_preset` : `default`, `linen` lin lâche, `stable` bien stabilisé).
+Côté bureau : `Affichage > Carte de tirage du tissu` (surimpression bleu → rouge, z = 26),
+`Affichage > Aperçu avec tirage du tissu` (rendu des points décalés, via le rendu réaliste, visible
+au zoom du rendu réaliste) et `Affichage > Tissu du tirage` ; réglages mémorisés
+(`main_window_pull_preview.cpp`). CLI : `openstitch-cli render IN OUT --simulate-pull | --pull-map
+--fabric linen`. Limite : un seul bloc de couleur ne produit aucun défaut de repérage simulé (le
+tirage d'un objet sur lui-même relève de la compensation, `PullMode::Predicted`).
+
 ### Entrée/sortie automatiques (HP-ENG-010)
 
 `SequenceFinishing::auto_join` (« Options de génération ») et, par objet,

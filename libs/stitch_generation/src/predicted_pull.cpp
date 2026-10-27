@@ -6,6 +6,8 @@
 #include <variant>
 #include <vector>
 
+#include "openstitch/stitch_generation/pull_map.hpp"
+
 namespace openstitch::stitch_generation {
 
 namespace {
@@ -37,18 +39,8 @@ void apply_predicted_pull(stitch::StitchSequence& sequence, const document::Proj
     }
     std::sort(predicted.begin(), predicted.end());
 
-    // Sources : segments cousus consécutifs d'un même objet (jamais à travers un saut/une coupe).
-    std::vector<PullSource> sources;
     const auto& cmds = sequence.commands;
-    for (std::size_t i = 1; i < cmds.size(); ++i) {
-        const stitch::StitchCommand& a = cmds[i - 1];
-        const stitch::StitchCommand& b = cmds[i];
-        if (a.type == stitch::CommandType::Stitch && b.type == stitch::CommandType::Stitch &&
-            a.source == b.source && b.pass != stitch::StitchPass::Travel &&
-            b.pass != stitch::StitchPass::Lock && a.pos != b.pos) {
-            sources.push_back({a.pos, b.pos, 1.0});
-        }
-    }
+    std::vector<PullSource> sources = collect_pull_sources(sequence);
     if (sources.empty()) {
         return;
     }

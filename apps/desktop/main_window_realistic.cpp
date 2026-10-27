@@ -143,8 +143,14 @@ void MainWindow::showRealisticDialog() {
 }
 
 bool MainWindow::renderRealisticStitches() {
-    if (!realistic_.prefs.enabled || !sequence_ || simulating() || view_ == nullptr) {
+    // L'aperçu avec tirage passe par ce rendu même quand le rendu réaliste est éteint.
+    const stitch::StitchSequence* shown = pullPreviewSequence();
+    if ((!realistic_.prefs.enabled && shown == nullptr) || !sequence_ || simulating() ||
+        view_ == nullptr) {
         return false;
+    }
+    if (shown == nullptr) {
+        shown = &*sequence_;
     }
 
     // Couleur de fil par objet ; un objet masqué par les filtres n'est pas peint.
@@ -162,7 +168,7 @@ bool MainWindow::renderRealisticStitches() {
             blocks.empty() ? std::array<std::uint8_t, 3>{0, 0, 0} : blocks.front().rgb;
     }
     const auto segments = stitch_render::build_thread_segments(
-        *sequence_, sequence_->commands.size(),
+        *shown, shown->commands.size(),
         [&colorOf](ObjectId id) -> std::optional<std::array<std::uint8_t, 3>> {
             const auto it = colorOf.find(id.value);
             if (it == colorOf.end()) {

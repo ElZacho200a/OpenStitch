@@ -113,6 +113,7 @@ openstitch_add_qt_test(test_text_bases_ui test_text_bases_ui.cpp)
 # [cablage-D:fin]
 # [cablage-E:debut]
 openstitch_add_qt_test(test_density_map_ui test_density_map_ui.cpp)
+openstitch_add_qt_test(test_pull_preview_ui test_pull_preview_ui.cpp)
 # [cablage-E:fin]
 # [cablage-HOOP:debut]
 openstitch_add_qt_test(test_machine_ui test_machine_ui.cpp)

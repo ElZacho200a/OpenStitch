@@ -477,6 +477,7 @@ MainWindow::MainWindow() {
     // [cablage-D:fin]
     // [cablage-E:debut]
     buildDensityFeature();
+    buildPullPreviewFeature();
     // [cablage-E:fin]
     panelsMenu_->addAction(historyDock_->toggleViewAction());
     for (auto* d :
@@ -4396,6 +4397,7 @@ void MainWindow::renderStitches() {
     simMarker_ = nullptr;
     simWalkValid_ = false;
     refreshDensityOverlay(); // HP-VIEW-005 (main_window_density.cpp)
+    refreshPullMapOverlay(); // tirage prédit (main_window_pull_preview.cpp)
 
     if (showStitchesAct_ == nullptr || !showStitchesAct_->isChecked() || !sequence_) {
         return;

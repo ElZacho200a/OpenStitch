@@ -76,6 +76,7 @@ add_library(openstitch_desktop_widgets STATIC
     density_overlay.cpp
     density_overlay.hpp
     main_window_density.cpp
+    main_window_pull_preview.cpp
     grid_settings_dialog.cpp
     grid_settings_dialog.hpp
     main_window_view_display.cpp
