@@ -3,8 +3,8 @@
 #include <QAction>
 #include <QApplication>
 #include <QComboBox>
-#include <QListWidget>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QPushButton>
 #include <QSettings>
 #include <QTemporaryDir>
