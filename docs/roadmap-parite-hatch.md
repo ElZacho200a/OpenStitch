@@ -3346,6 +3346,20 @@ migration `.osp` pour ces seuls besoins ; la segmentation IA reste hors périmè
 - Reste : validation CI, contrôle sur le portable à DPI variés,
   vérification du choix de panneaux avec des brodeurs réels.
 
+### HP-UX-050 — Inspecteur : réglages essentiels visibles, options avancées repliables [P1] — ◐ Partiel (2026-10-27, PR à valider)
+- Constat audit UI/UX : l'inspecteur tatami et satin expose immédiatement les
+  sous-couches, longueurs de fractionnement, extrémités et conversions, ce qui
+  repousse les réglages essentiels hors de l'écran sur un portable.
+- Livré en PR : « Réglages avancés » repliables pour tatami, satin à rails et
+  satin automatique ; les champs restent dans le même QFormLayout et conservent
+  leurs signaux, bornes et commandes Undo/Redo. État mémorisé par type via
+  QSettings (aucune mutation du document, aucun champ .osp).
+- Tests QTest : visibilité initiale, commandes toujours disponibles après
+  expansion, état distinct par type, guides et comparaison auto-satin visibles.
+- Reste : CI Windows/Qt, contrôles visuels et extension aux autres remplissages
+  si besoin (directionnel, motifs), puis retour des brodeurs.
+- Modules : apps/desktop/properties_panel.cpp, tests/unit/desktop.
+
 ---
 
 ## 21. Internationalisation et accessibilité (I18N)
@@ -3702,6 +3716,7 @@ ci-dessus doit les respecter :
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-27 | ChatGPT (audit UI/UX, PR 4) | HP-UX-050 ◐ : inspector tatami/satin/auto-satin avec réglages avancés repliables et mémorisés, sans toucher au moteur ni au format .osp ; tests Qt à valider. |
 | 2026-10-27 | ChatGPT (audit UI/UX, PR 1) | HP-PERF-001 / HP-UX-006 : vectorisation asynchrone de régions, progression et annulation sans mutation documentaire ; tests Catch2 et QTest, CI à confirmer. Autres tâches longues encore à migrer. |
 | 2026-10-26 | Claude (IA, desktop) | **Segmentation IA du desktop via le registre de backends** (`openstitch.ai.backend/1`) : `libs/ai_segmentation/backend_run` (analyse complète par un backend, repli explicite CIELAB, annulation, masques sans score inventé), sélecteur de moteur dans « Segmenter avec l'IA » (worker historique, backends déclarés, couleur), préférences (fichier de backends, moteur par défaut, « Sonder les backends » : état, modèle, empreinte, licences), tests Catch2 + QTest. Le worker SAM v1 reste le défaut. Aucune entrée de parité modifiée. |
 | 2026-10-26 | Claude | **Compensation du tirage automatique** (HP-ENG-001.b) : `PullMode::Auto` sur tatami, directionnel, satin et auto-satin, calcul selon l'épaisseur de la forme, activé à la création et par l'auto-numérisation, inspecteur, `.osp`, CLI. Coefficients empiriques à valider sur tissu (HP-PHYS-001). |
