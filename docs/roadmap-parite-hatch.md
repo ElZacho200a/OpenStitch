@@ -1249,6 +1249,12 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   `effective_sequence` (tous les segments voisins sont sources, seuls les points de couche
   supérieure des objets prédits bougent), tests `test_predicted_pull.cpp`. Reste : lecture du
   profil matière (#155), visualisation du champ, calibration (HP-ENG-001.a).
+- Livré (2026-10-27, niveau 3, prévisualisation) : `pull_map.cpp` (carte de déplacement,
+  `simulate_fabric_pull` ordonné par bloc de couleur : le défaut de repérage entre couleurs),
+  réglages de tissu empiriques (standard, lin lâche, bien stabilisé), `Affichage > Carte de tirage
+  du tissu` / `Aperçu avec tirage du tissu` / `Tissu du tirage`, CLI `render --simulate-pull
+  --pull-map --fabric`. Tests `test_pull_map.cpp`, `test_pull_preview_ui.cpp`. Reste : lecture du
+  profil matière (#155), calibration (HP-ENG-001.a) ; l'aperçu n'est pas une mesure.
 
 ### HP-ENG-001.a — Pièce-test de calibration et table de compensation par tissu [P1] — ☐ À faire
 - Source : veille `docs/veille-innovations-2026-10.md` §V1. Aucune source lue ne
@@ -3800,3 +3806,4 @@ ci-dessus doit les respecter :
 | 2026-10-27 | Claude | **AdaptivePullCompensation, lot 1** (HP-ENG-001.b) : `PullMode::Adaptive`, compensation locale du satin par station, inspecteur, `.osp`, CLI/MCP. Coefficients empiriques, non validés sur machine. |
 | 2026-10-27 | Claude | **AdaptivePullCompensation niveau 3, lot A** (HP-ENG-001.b) : `PullField`, champ de déplacement du tissu anisotrope avec confiance, cœur seul non branché. Coefficients empiriques, non validés sur machine. |
 | 2026-10-27 | Claude | **Niveau 3, lot B** (HP-ENG-001.b) : `PullMode::Predicted` branché (passe finale d'`effective_sequence`, `.osp`, CLI/MCP, inspecteur). Confiance plafonnée tant que non calibré. |
+| 2026-10-27 | Claude | **Niveau 3, prévisualisation du tirage** (HP-ENG-001.b) : carte de déplacement prédit et aperçu des points décalés par bloc de couleur, menu Affichage, CLI `render --simulate-pull/--pull-map`. Estimation non calibrée. |

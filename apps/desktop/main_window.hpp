@@ -34,6 +34,7 @@
 #include "openstitch/segmentation/color_merge.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
+#include "openstitch/stitch_generation/pull_field.hpp"
 #include "openstitch/thread_palette/thread_library.hpp"
 #include "realistic_view_state.hpp"
 #include "tools.hpp"
@@ -1466,6 +1467,23 @@ private:
     bool densityValid_{false};
     double densityScaleMax_{1.0};
     int densityComputeCount_{0}; // calculs réellement faits (tests)
+    // Prévisualisation du tirage du tissu, niveau 3 (main_window_pull_preview.cpp) : carte du
+    // déplacement prédit + aperçu des points décalés. Jamais écrit dans le document.
+    void buildPullPreviewFeature();
+    void refreshPullMapOverlay(); // appelée par renderStitches()
+    [[nodiscard]] stitch_generation::FabricResponse pullFabric() const;
+    // Séquence décalée du tirage (en cache), nulle si l'aperçu est éteint.
+    [[nodiscard]] const stitch::StitchSequence* pullPreviewSequence();
+    QAction* pullMapAct_{nullptr};
+    QAction* pullPreviewAct_{nullptr};
+    QPixmap pullMapPixmap_;
+    QRectF pullMapRect_;
+    std::uint64_t pullMapKey_{0};
+    bool pullMapValid_{false};
+    stitch::StitchSequence pullPreviewSeq_;
+    std::uint64_t pullPreviewKey_{0};
+    bool pullPreviewValid_{false};
+    int pullComputeCount_{0}; // calculs réellement faits (tests)
     // [cablage-E:fin]
     // [cablage-HOOP:debut]
     // Machine du projet (HP-HOOP-002, main_window_machine.cpp).

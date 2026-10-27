@@ -19,6 +19,7 @@ add_library(openstitch_stitch_generation
     src/adaptive_pull.cpp
     src/pull_auto.cpp
     src/pull_field.cpp
+    src/pull_map.cpp
     src/predicted_pull.cpp
     src/join.cpp
     src/border_satin.cpp
