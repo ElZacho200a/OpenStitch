@@ -521,7 +521,7 @@ void MainWindow::onWorkflowStepClicked(int step) {
         QString hint;
     };
     const std::array<Step, 6> steps{{
-        {openImageAct_, tr("Fichier ▸ Ouvrir une image… pour commencer.")},
+        {openAnyAct_, tr("Fichier ▸ Ouvrir… pour choisir une image, un SVG, un projet ou une broderie machine.")},
         {segmentAct_, tr("Segmentation ▸ Segmenter l'image… (F6), ou Segmentation ▸ Segmenter "
                          "avec l'IA…")},
         {vectorizeRegionAct_, tr("Sélectionnez une ou plusieurs régions (Ctrl+clic, ou glisser un "
@@ -532,6 +532,11 @@ void MainWindow::onWorkflowStepClicked(int step) {
         {exportDstAct_, tr("Fichier ▸ Exporter une broderie machine… (Ctrl+E).")},
     }};
     if (step < 0 || step >= static_cast<int>(steps.size())) {
+        return;
+    }
+    if (workflowPanel_ != nullptr &&
+        workflowPanel_->currentState(step) == WorkflowPanel::State::Skipped) {
+        statusBar()->showMessage(tr("Étape non requise pour le type de source ouvert."), 6000);
         return;
     }
     const Step& entry = steps[static_cast<std::size_t>(step)];
