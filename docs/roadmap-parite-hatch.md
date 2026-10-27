@@ -2585,7 +2585,13 @@ Aujourd'hui : un cadre **rectangulaire** de taille libre (10–500 mm), persist�
 
 ## 16. Tissus (FAB)
 
-### HP-FAB-001 — Profils de tissu (Auto Fabric) [P1] — ☐ À faire
+### HP-FAB-001 — Profils de tissu (Auto Fabric) [P1] — ◐ Partiel (2026-10-27)
+- Livré (2026-10-27) : matériau et stabilisateur déclarés dans FabricSettings,
+  persistés dans .osp, éditables dans « Coloris et tissu » avec undo/redo,
+  visibles via project inspect/MCP ; anciennes valeurs par défaut conservées.
+- Reste : facteurs sur densité, sous-couche et tirage calculés depuis la
+  validation physique HP-PHYS-001, table calibrée et prévisualisation. Aucune
+  modification physique de la couture à ce stade.
 - Hatch : Auto Fabric : choisir le tissu (coton, jersey, polaire, éponge,
   denim, soie, cuir, casquette) ajuste densité, sous-couche, compensation de
   tous les objets automatiquement.
@@ -3692,6 +3698,7 @@ ci-dessus doit les respecter :
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-27 | ChatGPT | HP-FAB-001 : métadonnées matériau/stabilisateur dans .osp, dialogue desktop et inspection ; aucun coefficient textile non validé appliqué. |
 | 2026-10-26 | Claude (IA, desktop) | **Segmentation IA du desktop via le registre de backends** (`openstitch.ai.backend/1`) : `libs/ai_segmentation/backend_run` (analyse complète par un backend, repli explicite CIELAB, annulation, masques sans score inventé), sélecteur de moteur dans « Segmenter avec l'IA » (worker historique, backends déclarés, couleur), préférences (fichier de backends, moteur par défaut, « Sonder les backends » : état, modèle, empreinte, licences), tests Catch2 + QTest. Le worker SAM v1 reste le défaut. Aucune entrée de parité modifiée. |
 | 2026-10-26 | Claude | **Compensation du tirage automatique** (HP-ENG-001.b) : `PullMode::Auto` sur tatami, directionnel, satin et auto-satin, calcul selon l'épaisseur de la forme, activé à la création et par l'auto-numérisation, inspecteur, `.osp`, CLI. Coefficients empiriques à valider sur tissu (HP-PHYS-001). |
 | 2026-10-26 | Claude (IA PR-01) | **Banc de segmentation reproductible** : manifeste épinglé `openstitch.ai.benchmark-manifest/1`, fixture synthétique CC0 `marine-synth-01`, runner stdlib `scripts/openstitch_ai_bench.py` (baseline CIELAB via `openstitch-cli`, SAM 2.1 via le worker existant, skip explicite sans poids), métriques par objet avec porte « sujet principal absent = échec », 18 tests Python + CI `ai-bench.yml`. Aucun code C++ modifié. |
