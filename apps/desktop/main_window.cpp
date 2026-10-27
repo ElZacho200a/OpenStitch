@@ -7465,13 +7465,17 @@ void MainWindow::refreshWorkflow() {
     const bool machineOnly = imported && !img && !seg && !vec;
 
     st[0] = hasSource ? S::Done : S::NotStarted;
-    st[1] = !hasSource ? S::NotStarted
-                      : (!img ? S::Skipped : ((seg || vec) ? S::Done : S::Available));
-    st[2] = !hasSource ? S::NotStarted
-                      : (machineOnly ? S::Skipped
-                                     : (vec ? S::Done : (seg ? S::Available : S::NotStarted)));
-    st[3] = (emb || imported) ? S::Done
-                              : ((vec || seg) ? S::Available : S::NotStarted);
+    if (!hasSource) {
+        st[1] = S::NotStarted;
+        st[2] = S::NotStarted;
+    } else if (machineOnly) {
+        st[1] = S::Skipped;
+        st[2] = S::Skipped;
+    } else {
+        st[1] = !img ? S::Skipped : ((seg || vec) ? S::Done : S::Available);
+        st[2] = vec ? S::Done : (seg ? S::Available : S::NotStarted);
+    }
+    st[3] = (emb || imported) ? S::Done : ((vec || seg) ? S::Available : S::NotStarted);
     st[4] = seq ? S::Available : S::NotStarted;
     st[5] = seq ? S::Available : S::NotStarted;
     workflowPanel_->setStates(st);
