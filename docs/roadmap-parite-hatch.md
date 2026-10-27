@@ -1229,7 +1229,11 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 - Modules : `libs/stitch_generation/pull_auto`, `libs/document`, `libs/project_io`,
   `libs/project_ops`, `libs/autodigitize`, `apps/desktop/properties_panel`.
 
-### HP-ENG-001.a — Pièce-test de calibration et table de compensation par tissu [P1] — ☐ À faire
+### HP-ENG-001.a — Pièce-test de calibration et table de compensation par tissu [P1] — ◐ Partiel (2026-10-27)
+- Livré : prototype hors moteur CSV → JSON avec provenance par tissu/machine/fil/aiguille,
+  réplications, dispersion, estimation symétrique bornée et tests Python.
+- Reste : générateur de pièce-test DST, validation machine, persistance des profils .osp,
+  application au moteur et assistant desktop. Profils non appliqués automatiquement.
 - Source : veille `docs/veille-innovations-2026-10.md` §V1. Aucune source lue ne
   fournit de modèle physique de l'étirement : les valeurs publiées sont des
   règles empiriques, dépendantes du tissu et non vérifiées. On mesure donc
@@ -3692,6 +3696,7 @@ ci-dessus doit les respecter :
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-27 | ChatGPT | HP-ENG-001.a : outil de calibration expérimental isolé, sans modification de la production DST ; essais physiques et intégration restent requis. |
 | 2026-10-26 | Claude (IA, desktop) | **Segmentation IA du desktop via le registre de backends** (`openstitch.ai.backend/1`) : `libs/ai_segmentation/backend_run` (analyse complète par un backend, repli explicite CIELAB, annulation, masques sans score inventé), sélecteur de moteur dans « Segmenter avec l'IA » (worker historique, backends déclarés, couleur), préférences (fichier de backends, moteur par défaut, « Sonder les backends » : état, modèle, empreinte, licences), tests Catch2 + QTest. Le worker SAM v1 reste le défaut. Aucune entrée de parité modifiée. |
 | 2026-10-26 | Claude | **Compensation du tirage automatique** (HP-ENG-001.b) : `PullMode::Auto` sur tatami, directionnel, satin et auto-satin, calcul selon l'épaisseur de la forme, activé à la création et par l'auto-numérisation, inspecteur, `.osp`, CLI. Coefficients empiriques à valider sur tissu (HP-PHYS-001). |
 | 2026-10-26 | Claude (IA PR-01) | **Banc de segmentation reproductible** : manifeste épinglé `openstitch.ai.benchmark-manifest/1`, fixture synthétique CC0 `marine-synth-01`, runner stdlib `scripts/openstitch_ai_bench.py` (baseline CIELAB via `openstitch-cli`, SAM 2.1 via le worker existant, skip explicite sans poids), métriques par objet avec porte « sujet principal absent = échec », 18 tests Python + CI `ai-bench.yml`. Aucun code C++ modifié. |
