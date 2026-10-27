@@ -20,6 +20,7 @@
 
 #include "openstitch/document/embroidery_object.hpp"
 #include "properties_panel.hpp"
+#include "ui_memory.hpp"
 
 using openstitch::Micrometers;
 using openstitch::Millimeters;
@@ -98,7 +99,114 @@ private slots:
     void autoSatinSweepAngleIsOnlyEditableForTheSweepMethod();
     void autoSatinCompareButtonAsksMainWindowAndIsAbsentForAGroup();
     void blanketInspectorEditsWidthSpacingStyleAndSide();
+    void advancedTatamiPreservesValuesAndUndoSignals();
+    void advancedSatinModesRememberSeparatePreferences();
+    void advancedAutoSatinKeepsGuidesAndComparisonVisible();
 };
+
+// HP-UX : options avancées, sans duplication ni modification des paramètres.
+void PropertiesPanelTest::advancedTatamiPreservesValuesAndUndoSignals() {
+    using namespace openstitch::desktop;
+    ui_memory::setBoolValue(QStringLiteral("inspector/advanced/tatami"), false);
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{171};
+    e.params = openstitch::document::TatamiParams{};
+    panel.showEmbroidery(e);
+    panel.show();
+
+    auto* toggle = panel.findChild<QToolButton*>(QStringLiteral("button_inspectorAdvanced"));
+    auto* spacing = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_rowSpacing"));
+    auto* inset = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_underlayInset"));
+    auto* zig = panel.findChild<QCheckBox*>(QStringLiteral("check_underlayZigzag"));
+    QVERIFY(toggle && spacing && inset && zig);
+    QVERIFY(!toggle->isChecked());
+    QVERIFY(spacing->isVisible());
+    QVERIFY(inset->isHidden() && zig->isHidden());
+
+    int edits = 0;
+    std::optional<StitchParams> latest;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams params) {
+                         ++edits;
+                         latest = params;
+                     });
+    toggle->click();
+    QVERIFY(toggle->isChecked());
+    QVERIFY(inset->isVisible() && zig->isVisible());
+    QCOMPARE(edits, 0); // ouvrir le volet ne change pas la broderie
+    zig->setChecked(true);
+    QCOMPARE(edits, 1);
+    QVERIFY(latest.has_value());
+    QVERIFY(std::get<openstitch::document::TatamiParams>(*latest).underlay_zigzag);
+    toggle->click();
+    QVERIFY(zig->isHidden());
+    QCOMPARE(edits, 1);
+    ui_memory::setBoolValue(QStringLiteral("inspector/advanced/tatami"), false);
+}
+
+void PropertiesPanelTest::advancedSatinModesRememberSeparatePreferences() {
+    using namespace openstitch::desktop;
+    ui_memory::setBoolValue(QStringLiteral("inspector/advanced/satin"), false);
+    ui_memory::setBoolValue(QStringLiteral("inspector/advanced/autoSatin"), false);
+    PropertiesPanel panel;
+    EmbroideryObject satin;
+    satin.id = openstitch::ObjectId{172};
+    satin.params = openstitch::document::SatinParams{};
+    panel.showEmbroidery(satin);
+    panel.show();
+
+    auto* toggle = panel.findChild<QToolButton*>(QStringLiteral("button_inspectorAdvanced"));
+    auto* corner = panel.findChild<QComboBox*>(QStringLiteral("combo_satinCorner"));
+    QVERIFY(toggle && corner);
+    QVERIFY(!toggle->isChecked());
+    QVERIFY(corner->isHidden());
+    toggle->click();
+    QVERIFY(toggle->isChecked());
+    QVERIFY(corner->isVisible());
+
+    panel.showEmbroidery(autoSatinObject(173));
+    auto* autoToggle = panel.findChild<QToolButton*>(QStringLiteral("button_inspectorAdvanced"));
+    auto* autoCorner = panel.findChild<QComboBox*>(QStringLiteral("combo_autoSatinCorner"));
+    QVERIFY(autoToggle && autoCorner);
+    QVERIFY(!autoToggle->isChecked());
+    QVERIFY(autoCorner->isHidden());
+
+    panel.showEmbroidery(satin);
+    auto* restored = panel.findChild<QToolButton*>(QStringLiteral("button_inspectorAdvanced"));
+    QVERIFY(restored && restored->isChecked());
+    corner = panel.findChild<QComboBox*>(QStringLiteral("combo_satinCorner"));
+    QVERIFY(corner && corner->isVisible());
+    ui_memory::setBoolValue(QStringLiteral("inspector/advanced/satin"), false);
+}
+
+void PropertiesPanelTest::advancedAutoSatinKeepsGuidesAndComparisonVisible() {
+    using namespace openstitch::desktop;
+    ui_memory::setBoolValue(QStringLiteral("inspector/advanced/autoSatin"), false);
+    PropertiesPanel panel;
+    panel.showEmbroidery(autoSatinObject(174));
+    panel.show();
+
+    auto* toggle = panel.findChild<QToolButton*>(QStringLiteral("button_inspectorAdvanced"));
+    auto* method = panel.findChild<QComboBox*>(QStringLiteral("combo_autoSatinStrategy"));
+    auto* threshold =
+        panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_autoSatinThreshold"));
+    auto* guides = panel.findChild<QListWidget*>(QStringLiteral("list_satinGuides"));
+    auto* compare = panel.findChild<QPushButton*>(QStringLiteral("button_autoSatinCompare"));
+    QVERIFY(toggle && method && threshold && guides && compare);
+    QVERIFY(method->isVisible() && guides->isVisible() && compare->isVisible());
+    QVERIFY(threshold->isHidden());
+
+    int edits = 0;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams) { ++edits; });
+    toggle->click();
+    QCOMPARE(edits, 0);
+    QVERIFY(threshold->isVisible());
+    threshold->setValue(threshold->value() + 0.5);
+    QVERIFY(edits >= 1);
+    ui_memory::setBoolValue(QStringLiteral("inspector/advanced/autoSatin"), false);
+}
 
 void PropertiesPanelTest::showEmbroideryPopulatesSpinBoxesWithoutEmittingWhileBuilding() {
     PropertiesPanel panel;
