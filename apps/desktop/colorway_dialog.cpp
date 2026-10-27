@@ -73,7 +73,8 @@ ColorwayDialog::ColorwayDialog(QWidget* parent) : QDialog(parent) {
     root->addWidget(colorwayBox);
 
     auto* fabricBox = new QGroupBox(tr("Tissu de fond"), this);
-    auto* fabricLayout = new QHBoxLayout(fabricBox);
+    auto* fabricRoot = new QVBoxLayout(fabricBox);
+    auto* fabricLayout = new QHBoxLayout();
     presetCombo_ = new QComboBox(fabricBox);
     presetCombo_->setObjectName(QStringLiteral("combo_fabric_preset"));
     presetCombo_->addItem(tr("Tissu courant…"));
@@ -90,6 +91,23 @@ ColorwayDialog::ColorwayDialog(QWidget* parent) : QDialog(parent) {
     fabricLayout->addWidget(presetCombo_);
     fabricLayout->addWidget(fabricButton_);
     fabricLayout->addWidget(fabricName_, 1);
+    fabricRoot->addLayout(fabricLayout);
+    auto* profileLayout = new QHBoxLayout();
+    profileLayout->addWidget(new QLabel(tr("Matière :"), fabricBox));
+    materialCombo_ = new QComboBox(fabricBox);
+    materialCombo_->setObjectName(QStringLiteral("combo_fabric_material"));
+    materialCombo_->addItem(tr("Non précisée"), QString());
+    materialCombo_->addItem(tr("Coton tissé"), QStringLiteral("woven"));
+    materialCombo_->addItem(tr("Jersey"), QStringLiteral("jersey"));
+    materialCombo_->addItem(tr("Éponge"), QStringLiteral("terry"));
+    materialCombo_->addItem(tr("Feutrine"), QStringLiteral("felt"));
+    materialCombo_->addItem(tr("Jean"), QStringLiteral("denim"));
+    profileLayout->addWidget(materialCombo_);
+    stabilizer_ = new QLineEdit(fabricBox);
+    stabilizer_->setObjectName(QStringLiteral("edit_fabric_stabilizer"));
+    stabilizer_->setPlaceholderText(tr("Stabilisateur (ex. cut-away)"));
+    profileLayout->addWidget(stabilizer_, 1);
+    fabricRoot->addLayout(profileLayout);
     root->addWidget(fabricBox);
 
     connect(list_, &QListWidget::currentRowChanged, this, [this] { updateButtons(); });
@@ -117,12 +135,23 @@ ColorwayDialog::ColorwayDialog(QWidget* parent) : QDialog(parent) {
             emitFabric();
         }
     });
+    connect(materialCombo_, &QComboBox::currentIndexChanged, this, [this](int) {
+        if (!populating_) {
+            emitFabric();
+        }
+    });
+    connect(stabilizer_, &QLineEdit::editingFinished, this, [this] {
+        if (!populating_) {
+            emitFabric();
+        }
+    });
     paintSwatch();
     updateButtons();
 }
 
 void ColorwayDialog::setState(const QStringList& names, int active, const QColor& fabric,
-                              const QString& fabricName) {
+                              const QString& fabricName, const QString& material,
+                              const QString& stabilizer) {
     populating_ = true;
     const int keep = list_->currentRow();
     list_->clear();
@@ -140,6 +169,9 @@ void ColorwayDialog::setState(const QStringList& names, int active, const QColor
     list_->setCurrentRow(keep >= 0 && keep < names.size() ? keep : (active >= 0 ? active : -1));
     fabric_ = fabric;
     fabricName_->setText(fabricName);
+    const int materialIndex = materialCombo_->findData(material);
+    materialCombo_->setCurrentIndex(materialIndex >= 0 ? materialIndex : 0);
+    stabilizer_->setText(stabilizer);
     presetCombo_->setCurrentIndex(0);
     populating_ = false;
     paintSwatch();
@@ -179,7 +211,9 @@ void ColorwayDialog::applyPreset(int presetIndex) {
 }
 
 void ColorwayDialog::emitFabric() {
-    emit fabricChangeRequested(fabric_, fabricName_->text().trimmed());
+    emit fabricChangeRequested(fabric_, fabricName_->text().trimmed(),
+                               materialCombo_->currentData().toString(),
+                               stabilizer_->text().trimmed());
 }
 
 } // namespace openstitch::desktop

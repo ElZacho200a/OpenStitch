@@ -2606,7 +2606,13 @@ Aujourd'hui : un cadre **rectangulaire** de taille libre (10–500 mm), persist�
 
 ## 16. Tissus (FAB)
 
-### HP-FAB-001 — Profils de tissu (Auto Fabric) [P1] — ☐ À faire
+### HP-FAB-001 — Profils de tissu (Auto Fabric) [P1] — ◐ Partiel (2026-10-27)
+- Livré (2026-10-27) : matériau et stabilisateur déclarés dans FabricSettings,
+  persistés dans .osp, éditables dans « Coloris et tissu » avec undo/redo,
+  visibles via project inspect/MCP ; anciennes valeurs par défaut conservées.
+- Reste : facteurs sur densité, sous-couche et tirage calculés depuis la
+  validation physique HP-PHYS-001, table calibrée et prévisualisation. Aucune
+  modification physique de la couture à ce stade.
 - Hatch : Auto Fabric : choisir le tissu (coton, jersey, polaire, éponge,
   denim, soie, cuir, casquette) ajuste densité, sous-couche, compensation de
   tous les objets automatiquement.
@@ -3716,6 +3722,7 @@ ci-dessus doit les respecter :
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-27 | ChatGPT | HP-FAB-001 : métadonnées matériau/stabilisateur dans .osp, dialogue desktop et inspection ; aucun coefficient textile non validé appliqué. |
 | 2026-10-27 | ChatGPT (audit UI/UX, PR 2) | HP-UX-039 : Workflow « Source » reconnu pour raster/SVG/design machine ; étapes facultatives indiquées « non requis », action Ouvrir universelle, tests desktop. |
 | 2026-10-27 | ChatGPT | HP-ENG-001.b : inspection JSON de la référence de compensation automatique, explicitement non prédictive ; tests CLI JSON. |
 | 2026-10-27 | ChatGPT (audit UI/UX, PR 1) | HP-PERF-001 / HP-UX-006 : vectorisation asynchrone de régions, progression et annulation sans mutation documentaire ; tests Catch2 et QTest, CI à confirmer. Autres tâches longues encore à migrer. |

@@ -3,6 +3,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QComboBox>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
 #include <QSettings>
@@ -102,6 +103,25 @@ private slots:
         window.undoStack_.undo(window.project_);
         window.updateActions();
         QCOMPARE(window.view_->fabricColor(), QColor(Qt::white));
+    }
+
+    void fabricMaterialAndStabilizerAreUndoable() {
+        MainWindow window;
+        window.show();
+        window.applyLoadedProject(twoObjects());
+        window.showColorwayDialog();
+        const auto* dialog = window.colorwayDialog_;
+        auto* material = dialog->findChild<QComboBox*>(QStringLiteral("combo_fabric_material"));
+        auto* stabilizer = dialog->findChild<QLineEdit*>(QStringLiteral("edit_fabric_stabilizer"));
+        QVERIFY(material != nullptr && stabilizer != nullptr);
+        material->setCurrentIndex(material->findData(QStringLiteral("jersey")));
+        QCOMPARE(window.project_.fabric.material, std::string("jersey"));
+        stabilizer->setText(QStringLiteral("cut-away"));
+        emit stabilizer->editingFinished();
+        QCOMPARE(window.project_.fabric.stabilizer, std::string("cut-away"));
+        QVERIFY(window.undoStack_.undo(window.project_));
+        QCOMPARE(window.project_.fabric.stabilizer, std::string());
+        QCOMPARE(window.project_.fabric.material, std::string("jersey"));
     }
 
     void mergeDialogPreviewsAndBuildsPlan() {
