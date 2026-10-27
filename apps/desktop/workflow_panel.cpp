@@ -117,11 +117,13 @@ void WorkflowPanel::applyTheme() {
     // Les couleurs viennent de la feuille de style (propriété « state ») : rien à peindre ici.
     for (int i = 0; i < kStepCount; ++i) {
         const char* key = state_key(current_[i]);
-        const QString badge = current_[i] == State::Done
-                                  ? QStringLiteral("✓")
-                                  : (current_[i] == State::Skipped ? QStringLiteral("–")
-                                                                   : QString::number(i + 1));
-        dots_[i]->setText(badge);
+        if (current_[i] == State::Done) {
+            dots_[i]->setText(QStringLiteral("✓"));
+        } else if (current_[i] == State::Skipped) {
+            dots_[i]->setText(QStringLiteral("–"));
+        } else {
+            dots_[i]->setText(QString::number(i + 1));
+        }
         states_[i]->setText(state_word(current_[i]));
         buttons_[i]->setToolTip(current_[i] == State::Skipped
                                     ? tr("Cette étape n’est pas nécessaire pour cette source.")
