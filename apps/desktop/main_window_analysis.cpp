@@ -610,9 +610,12 @@ void MainWindow::showFabricRiskReport() {
     }
     const QStringList profiles{tr("Coton tissé"), tr("Jersey"), tr("Feutrine")};
     bool accepted = false;
+    // Selection initiale cohérente avec la matiere declaree dans le projet.
+    const int initial = project_.fabric.material == "jersey" ? 1
+                        : project_.fabric.material == "felt" ? 2 : 0;
     const QString selected = QInputDialog::getItem(
-        this, title, tr("Profil indicatif de tissu (sans calibration physique) :"), profiles, 0,
-        false, &accepted);
+        this, title, tr("Profil indicatif de tissu (sans calibration physique) :"), profiles,
+        initial, false, &accepted);
     if (!accepted) {
         return;
     }
