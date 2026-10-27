@@ -1217,6 +1217,9 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   `pull` ± 0,1 mm) ; validation physique HP-PHYS-001.
 
 ### HP-ENG-001.b — Compensation du tirage automatique [P0] — ◐ Partiel (2026-10-26)
+- Livré (2026-10-27, PR inspection) : `project inspect --json` expose une valeur Auto
+  de référence (`pull_auto_reference_mm`) clairement identifiée comme indicative,
+  également accessible aux outils MCP qui réutilisent l'inspection.
 - Livré : `PullMode::Auto` (défaut `Manual`) sur tatami, directionnel, satin et auto-satin.
   Le moteur calcule la compensation à la génération selon l'épaisseur de la forme (remplissage :
   0,15 mm + 0,03 × épaisseur, borné à 0,15-0,40 mm ; satin : 5 % de la largeur, 0,10-0,35 mm par
@@ -3704,6 +3707,7 @@ ci-dessus doit les respecter :
 | Date | Qui | Changement |
 |---|---|---|
 | 2026-10-27 | ChatGPT (audit UI/UX, PR 2) | HP-UX-039 : Workflow « Source » reconnu pour raster/SVG/design machine ; étapes facultatives indiquées « non requis », action Ouvrir universelle, tests desktop. |
+| 2026-10-27 | ChatGPT | HP-ENG-001.b : inspection JSON de la référence de compensation automatique, explicitement non prédictive ; tests CLI JSON. |
 | 2026-10-27 | ChatGPT (audit UI/UX, PR 1) | HP-PERF-001 / HP-UX-006 : vectorisation asynchrone de régions, progression et annulation sans mutation documentaire ; tests Catch2 et QTest, CI à confirmer. Autres tâches longues encore à migrer. |
 | 2026-10-26 | Claude (IA, desktop) | **Segmentation IA du desktop via le registre de backends** (`openstitch.ai.backend/1`) : `libs/ai_segmentation/backend_run` (analyse complète par un backend, repli explicite CIELAB, annulation, masques sans score inventé), sélecteur de moteur dans « Segmenter avec l'IA » (worker historique, backends déclarés, couleur), préférences (fichier de backends, moteur par défaut, « Sonder les backends » : état, modèle, empreinte, licences), tests Catch2 + QTest. Le worker SAM v1 reste le défaut. Aucune entrée de parité modifiée. |
 | 2026-10-26 | Claude | **Compensation du tirage automatique** (HP-ENG-001.b) : `PullMode::Auto` sur tatami, directionnel, satin et auto-satin, calcul selon l'épaisseur de la forme, activé à la création et par l'auto-numérisation, inspecteur, `.osp`, CLI. Coefficients empiriques à valider sur tissu (HP-PHYS-001). |
