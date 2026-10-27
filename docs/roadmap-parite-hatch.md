@@ -2910,6 +2910,7 @@ les paramètres avant de créer) et par des **modes** distincts (édition satin,
   barre de menus.
 
 ### HP-UX-006 — Progression et annulation des opérations longues [P0] — ◐ Partiel (2026-10-25)
+- En PR (2026-10-27) : vectorisation F7 sur instantané via `BusyIndicator::run`, progression par région et annulation atomique sans modifier le document. Tests Catch2 et QTest ajoutés, vérification CI requise.
 - Livré (2026-10-25) : barre de progression déterminée et bouton Annuler dans `BusyIndicator`, branchés sur l'aperçu du fondu. Reste : migration des autres opérations longues.
 - Voir HP-PERF-001 : barre de progression, bouton Annuler, UI jamais figée.
 
@@ -3407,6 +3408,7 @@ de référence. Restent : progression et annulation, régénération de toute la
 à chaque modification (~40 ms), scène reconstruite à chaque rafraîchissement.
 
 ### HP-PERF-001 — Tâches en arrière-plan avec progression et annulation [P0] — ◐ Partiel (2026-10-13)
+- En PR (2026-10-27) : `vectorize_region(s)` accepte `TaskContext` (annulation coopérative + progression) ; le desktop exécute la vectorisation hors du fil UI. Reste à migrer segmentation, auto-numérisation et les autres opérations synchrones.
 - Livré (2026-10-25) : `core::TaskContext` (jeton d'annulation + progression), `generate_sequence`/`effective_sequence` annulables. Reste : segmentation, auto-numérisation, analyses.
 - Constaté sur `main` (`b810cf0`) : `BusyIndicator::run` exécute segmentation et auto-numérisation dans un fil de travail pendant que l'interface continue de peindre.
 - Reste : progression réelle, annulation (`std::stop_token`), instantané du projet et résultat appliqué par commande de façon générale ; test « un événement traité pendant une auto-numérisation ».
@@ -3702,6 +3704,7 @@ ci-dessus doit les respecter :
 | Date | Qui | Changement |
 |---|---|---|
 | 2026-10-27 | ChatGPT (audit UI/UX, PR 2) | HP-UX-039 : Workflow « Source » reconnu pour raster/SVG/design machine ; étapes facultatives indiquées « non requis », action Ouvrir universelle, tests desktop. |
+| 2026-10-27 | ChatGPT (audit UI/UX, PR 1) | HP-PERF-001 / HP-UX-006 : vectorisation asynchrone de régions, progression et annulation sans mutation documentaire ; tests Catch2 et QTest, CI à confirmer. Autres tâches longues encore à migrer. |
 | 2026-10-26 | Claude (IA, desktop) | **Segmentation IA du desktop via le registre de backends** (`openstitch.ai.backend/1`) : `libs/ai_segmentation/backend_run` (analyse complète par un backend, repli explicite CIELAB, annulation, masques sans score inventé), sélecteur de moteur dans « Segmenter avec l'IA » (worker historique, backends déclarés, couleur), préférences (fichier de backends, moteur par défaut, « Sonder les backends » : état, modèle, empreinte, licences), tests Catch2 + QTest. Le worker SAM v1 reste le défaut. Aucune entrée de parité modifiée. |
 | 2026-10-26 | Claude | **Compensation du tirage automatique** (HP-ENG-001.b) : `PullMode::Auto` sur tatami, directionnel, satin et auto-satin, calcul selon l'épaisseur de la forme, activé à la création et par l'auto-numérisation, inspecteur, `.osp`, CLI. Coefficients empiriques à valider sur tissu (HP-PHYS-001). |
 | 2026-10-26 | Claude (IA PR-01) | **Banc de segmentation reproductible** : manifeste épinglé `openstitch.ai.benchmark-manifest/1`, fixture synthétique CC0 `marine-synth-01`, runner stdlib `scripts/openstitch_ai_bench.py` (baseline CIELAB via `openstitch-cli`, SAM 2.1 via le worker existant, skip explicite sans poids), métriques par objet avec porte « sujet principal absent = échec », 18 tests Python + CI `ai-bench.yml`. Aucun code C++ modifié. |
