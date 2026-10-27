@@ -4,6 +4,7 @@
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
+#include <atomic>
 #include <optional>
 
 #include <algorithm>
@@ -65,6 +66,16 @@ bool is_overlap_grown_contour(const std::vector<geometry::PathSet>& current,
 Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segmentation& seg,
                                                         RegionId id,
                                                         const VectorizeOptions& options) {
+    return vectorize_region(seg, id, options, TaskContext{});
+}
+
+Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segmentation& seg,
+                                                        RegionId id,
+                                                        const VectorizeOptions& options,
+                                                        const TaskContext& task) {
+    if (task.cancelled()) {
+        return cancelled_error();
+    }
     if (seg.find(id) == nullptr) {
         return fail(ErrorCategory::Internal, "Région introuvable",
                     "vectorize id=" + std::to_string(id.value));
@@ -82,6 +93,9 @@ Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segm
     const auto label = static_cast<std::uint32_t>(id.value);
     int minX = seg.width, minY = seg.height, maxX = -1, maxY = -1;
     for (int y = 0; y < seg.height; ++y) {
+        if ((y % 32) == 0 && task.cancelled()) {
+            return cancelled_error();
+        }
         const std::uint32_t* row =
             seg.labels.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(seg.width);
         for (int x = 0; x < seg.width; ++x) {
@@ -100,6 +114,9 @@ Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segm
     const int y0 = minY - 1;
     cv::Mat mask(maxY - minY + 3, maxX - minX + 3, CV_8U, cv::Scalar(0));
     for (int y = minY; y <= maxY; ++y) {
+        if ((y % 32) == 0 && task.cancelled()) {
+            return cancelled_error();
+        }
         const std::uint32_t* row =
             seg.labels.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(seg.width);
         auto* dst = mask.ptr<std::uint8_t>(y - y0);
@@ -115,6 +132,9 @@ Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segm
     // loin par le nettoyage (règle pair-impair), inutile de l'exploiter ici.
     std::vector<std::vector<cv::Point>> contours;
     cv::findContours(mask, contours, cv::RETR_CCOMP, cv::CHAIN_APPROX_SIMPLE, cv::Point(x0, y0));
+    if (task.cancelled()) {
+        return cancelled_error();
+    }
     if (contours.empty()) {
         return fail(ErrorCategory::Internal, "La région n'a produit aucun contour");
     }
@@ -122,6 +142,9 @@ Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segm
     std::vector<geometry::Path> raw;
     raw.reserve(contours.size());
     for (const auto& contour : contours) {
+        if (task.cancelled()) {
+            return cancelled_error();
+        }
         if (contour.size() < 3) {
             continue; // micro-artefact d'un pixel isolé
         }
@@ -146,7 +169,13 @@ Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segm
                                                         : geometry::simplify(path, adaptiveTol));
     }
 
+    if (task.cancelled()) {
+        return cancelled_error();
+    }
     auto sets = geometry::clean_to_path_sets(raw);
+    if (task.cancelled()) {
+        return cancelled_error();
+    }
     if (!sets) {
         return std::unexpected(sets.error());
     }
@@ -168,11 +197,17 @@ Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segm
             return geometry::fit_curves(path, {.tolerance = tol});
         };
         for (geometry::PathSet& set : *sets) {
+            if (task.cancelled()) {
+                return cancelled_error();
+            }
             set.outer = fit(set.outer);
             for (geometry::Path& hole : set.holes) {
                 hole = fit(hole);
             }
         }
+    }
+    if (task.cancelled()) {
+        return cancelled_error();
     }
     return sets;
 }
@@ -180,10 +215,20 @@ Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segm
 std::vector<Result<std::vector<geometry::PathSet>>>
 vectorize_regions(const segmentation::Segmentation& seg, const std::vector<RegionId>& ids,
                   const VectorizeOptions& options) {
+    return vectorize_regions(seg, ids, options, TaskContext{});
+}
+
+std::vector<Result<std::vector<geometry::PathSet>>>
+vectorize_regions(const segmentation::Segmentation& seg, const std::vector<RegionId>& ids,
+                  const VectorizeOptions& options, const TaskContext& task) {
+    task.report(0, ids.size());
+    std::atomic<std::size_t> completed{0};
     // Result<T> n'est pas constructible par défaut : cases optionnelles remplies en parallèle.
     std::vector<std::optional<Result<std::vector<geometry::PathSet>>>> slots(ids.size());
-    parallel_for(ids.size(),
-                 [&](std::size_t i) { slots[i] = vectorize_region(seg, ids[i], options); });
+    parallel_for(ids.size(), [&](std::size_t i) {
+        slots[i] = vectorize_region(seg, ids[i], options, task);
+        task.report(completed.fetch_add(1, std::memory_order_relaxed) + 1, ids.size());
+    });
     std::vector<Result<std::vector<geometry::PathSet>>> out;
     out.reserve(ids.size());
     for (auto& slot : slots) {
