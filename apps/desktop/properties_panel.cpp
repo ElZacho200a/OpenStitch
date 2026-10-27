@@ -1395,8 +1395,16 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 form->addRow(tr("Espacement de la sous-couche :"), uSpacing);
                 form->addRow(QString(), uZig);
                 form->addRow(QString(), underpath);
-                advancedRows = {inset, rowClip, outline, stagger, uEdge, uInset,
-                                uPar, uSpacing, uZig, underpath};
+                advancedRows.push_back(inset);
+                advancedRows.push_back(rowClip);
+                advancedRows.push_back(outline);
+                advancedRows.push_back(stagger);
+                advancedRows.push_back(uEdge);
+                advancedRows.push_back(uInset);
+                advancedRows.push_back(uPar);
+                advancedRows.push_back(uSpacing);
+                advancedRows.push_back(uZig);
+                advancedRows.push_back(underpath);
                 dependOn(uEdge, uInset);
                 dependOn(uPar, uSpacing);
                 // Mode automatique : les réglages manuels sont ignorés, donc grisés.
@@ -1877,9 +1885,21 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 corner->setToolTip(tr("Traitement des coins vifs de la colonne."));
                 form->addRow(QString(), autoSpacing);
                 form->addRow(tr("Coins vifs :"), corner);
-                advancedRows = {underlay, edgeU, zigU, pullL, pullR, shortCombo,
-                                splitCombo, maxLen, maxHard, capStart, capEnd,
-                                lockStart, lockEnd, autoSpacing, corner};
+                advancedRows.push_back(underlay);
+                advancedRows.push_back(edgeU);
+                advancedRows.push_back(zigU);
+                advancedRows.push_back(pullL);
+                advancedRows.push_back(pullR);
+                advancedRows.push_back(shortCombo);
+                advancedRows.push_back(splitCombo);
+                advancedRows.push_back(maxLen);
+                advancedRows.push_back(maxHard);
+                advancedRows.push_back(capStart);
+                advancedRows.push_back(capEnd);
+                advancedRows.push_back(lockStart);
+                advancedRows.push_back(lockEnd);
+                advancedRows.push_back(autoSpacing);
+                advancedRows.push_back(corner);
                 bindBool(autoSpacing, tr("Espacement automatique"), &T::auto_spacing);
                 bindEnumField<T>(this, edit, corner, tr("Coins vifs"), &T::corner_mode, members);
                 bindMm(density, tr("Espacement"), &T::density);
@@ -2576,12 +2596,12 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
     // Les réglages détaillés restent câblés au document : replier leur ligne
     // réduit seulement l'encombrement visuel. État mémorisé par type de points.
     if (!advancedRows.empty()) {
-        const QString kind =
-            std::holds_alternative<document::TatamiParams>(object.params)
-                ? QStringLiteral("tatami")
-                : (std::holds_alternative<document::SatinParams>(object.params)
-                       ? QStringLiteral("satin")
-                       : QStringLiteral("autoSatin"));
+        QString kind = QStringLiteral("autoSatin");
+        if (std::holds_alternative<document::TatamiParams>(object.params)) {
+            kind = QStringLiteral("tatami");
+        } else if (std::holds_alternative<document::SatinParams>(object.params)) {
+            kind = QStringLiteral("satin");
+        }
         const QString key = QStringLiteral("inspector/advanced/") + kind;
         const bool expanded = ui_memory::boolValue(key, false);
         auto* toggle = new QToolButton(body_);
