@@ -189,8 +189,7 @@ void PropertiesPanelTest::advancedAutoSatinKeepsGuidesAndComparisonVisible() {
 
     auto* toggle = panel.findChild<QToolButton*>(QStringLiteral("button_inspectorAdvanced"));
     auto* method = panel.findChild<QComboBox*>(QStringLiteral("combo_autoSatinStrategy"));
-    auto* threshold =
-        panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_autoSatinThreshold"));
+    auto* threshold = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_autoSatinThreshold"));
     auto* guides = panel.findChild<QListWidget*>(QStringLiteral("list_satinGuides"));
     auto* compare = panel.findChild<QPushButton*>(QStringLiteral("button_autoSatinCompare"));
     QVERIFY(toggle && method && threshold && guides && compare);
