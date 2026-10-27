@@ -211,6 +211,22 @@ TEST_CASE("fabric risk : couches, profils, determinisme et parametres invalides"
     REQUIRE(felt.has_value());
     CHECK(felt->p99_score < single->p99_score);
 
+    // Le mode Auto reprend le support du projet sans changer les points.
+    options.fabric = "auto";
+    one.fabric.material = "jersey";
+    const auto autoJersey = measure_fabric_risk(one, options);
+    REQUIRE(autoJersey);
+    CHECK(autoJersey->p99_score > single->p99_score);
+    CHECK(has(autoJersey->json, "\"fabric_selection\": \"auto\""));
+    one.fabric.material = "felt";
+    const auto autoFelt = measure_fabric_risk(one, options);
+    REQUIRE(autoFelt);
+    CHECK(autoFelt->p99_score < single->p99_score);
+    one.fabric.material.clear(); // repli defini en "woven"
+    const auto fallback = measure_fabric_risk(one, options);
+    REQUIRE(fallback);
+    CHECK((fallback->json == single->json || fallback->p99_score == single->p99_score));
+
     options.fabric = "unknown";
     CHECK_FALSE(measure_fabric_risk(one, options).has_value());
     options.fabric = "woven";

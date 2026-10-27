@@ -77,7 +77,7 @@ struct DensityReport {
 // Estimation relative (0..100) : pas une tension en N, ni une simulation de deformations.
 struct FabricRiskOptions {
     // Profils indicatifs non calibres ; aucun changement des reglages de couture.
-    std::string fabric{"woven"}; // woven | jersey | felt
+    std::string fabric{"auto"}; // auto (projet, repli woven) | woven | jersey | felt
     double cell_mm{1.0};
     double reference_spacing_mm{0.4};
     double heatmap_px_per_cell{4.0};
