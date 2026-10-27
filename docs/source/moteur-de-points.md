@@ -743,7 +743,7 @@ confondus :
 |---|---|---|
 | 1 — géométrique | déterministe, selon les formes et les directions de couture | livré ici (satin) |
 | 2 — textile empirique | profil de tissu, calibration mesurée | à venir (`scale` du modèle en est le point d'entrée) |
-| 3 — prédiction | champ de déplacement estimé, avec confiance | lot A livré (`pull_field`, cœur seul) ; non branché sur `PullMode` |
+| 3 — prédiction | champ de déplacement estimé, avec confiance | livré : `pull_field` + `PullMode::Predicted` (passe finale) ; calibration à venir |
 
 **Satin.** `adaptive_pull.cpp` (`adaptive_satin_pull`, fonction pure) calcule, pour chaque station
 (couple de points rail A/rail B) de la colonne, un élargissement par côté :
@@ -793,9 +793,20 @@ déplacement atténué par la confiance (prudent quand la prédiction est incert
 sources parcourues par indice croissant dans une grille à clé ordonnée ; entrées dégénérées bornées
 (`sanitized`). **Aucun coefficient n'est mesuré** (règles empiriques) ; le champ est une fonction
 continue de la géométrie cousue et ne reproduit aucune table largeur de bout × tissu (brevets
-Melco, voir `roadmap-rd-brevets.md`). Non fait (lots suivants) : `PullMode::Predicted`,
-extraction des segments depuis les objets, application dans `effective_sequence`, `.osp`,
-inspecteur/visualisation, calibration par la pièce-test (HP-ENG-001.a).
+Melco, voir `roadmap-rd-brevets.md`). 
+**Niveau 3 — branchement (`PullMode::Predicted`, index 3 ; `.osp` : `pullMode: 3` ; CLI/MCP :
+`pull_mode: predicted` ; inspecteur : « Prédite »).** `apply_predicted_pull`
+(`predicted_pull.cpp`) est appelée par `effective_sequence` APRÈS les retouches manuelles et AVANT
+les finitions (coupes, verrous : posés sur la matière déjà compensée). Les sources du champ sont
+TOUS les segments cousus de la séquence (deux pénétrations consécutives d'un même objet, sous-couche
+comprise, jamais à travers un saut ni une coupe) : un objet voisin, même en mode manuel, tire donc le
+tissu d'un objet prédit. Seuls les points de couche supérieure des objets `Predicted` sont déplacés
+(positions d'origine échantillonnées d'abord). Sans objet `Predicted`, la séquence est strictement
+inchangée. La compensation de bout d'objet (`pull_compensation`, rallonge de rangée, satin) est
+mise à zéro pour ces objets : le champ la remplace. Le profil de tissu est `FabricResponse{}`
+par défaut ; il sera lu depuis le profil matière du projet (HP-FAB, PR #155) quand celui-ci sera
+dans `main`. Non fait : visualisation du champ dans le canevas, calibration par la pièce-test
+(HP-ENG-001.a), `calibrated = true` (la confiance reste donc plafonnée à 0,3).
 
 ### Entrée/sortie automatiques (HP-ENG-010)
 

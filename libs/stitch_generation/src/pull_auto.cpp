@@ -32,6 +32,11 @@ Micrometers choose_satin_pull(double width_mm) {
 
 document::TatamiParams resolve_pull_compensation(const document::TatamiParams& params,
                                                  const geometry::PathSet& region) {
+    if (params.pull_mode == document::PullMode::Predicted) {
+        document::TatamiParams out = params;
+        out.pull_compensation = Micrometers{0}; // le champ prédit s'en charge (passe finale)
+        return out;
+    }
     if (params.pull_mode != document::PullMode::Auto) {
         return params;
     }
@@ -43,6 +48,11 @@ document::TatamiParams resolve_pull_compensation(const document::TatamiParams& p
 document::DirectionalFillParams
 resolve_pull_compensation(const document::DirectionalFillParams& params,
                           const geometry::PathSet& region) {
+    if (params.pull_mode == document::PullMode::Predicted) {
+        document::DirectionalFillParams out = params;
+        out.pull_compensation = Micrometers{0};
+        return out;
+    }
     if (params.pull_mode != document::PullMode::Auto) {
         return params;
     }
