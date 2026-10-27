@@ -1217,6 +1217,9 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   `pull` ± 0,1 mm) ; validation physique HP-PHYS-001.
 
 ### HP-ENG-001.b — Compensation du tirage automatique [P0] — ◐ Partiel (2026-10-26)
+- Livré (2026-10-27, PR directionnelle) : longueur propre à chaque ligne de
+  remplissage directionnel, y compris courbe, utilisée en Auto ; manuel inchangé.
+  La couverture réelle et les déformations restent à valider sur machine.
 - Livré : `PullMode::Auto` (défaut `Manual`) sur tatami, directionnel, satin et auto-satin.
   Le moteur calcule la compensation à la génération selon l'épaisseur de la forme (remplissage :
   0,15 mm + 0,03 × épaisseur, borné à 0,15-0,40 mm ; satin : 5 % de la largeur, 0,10-0,35 mm par
@@ -3692,6 +3695,7 @@ ci-dessus doit les respecter :
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-27 | ChatGPT | HP-ENG-001.b : pull Auto par longueur de ligne directionnelle, tests déterministes ; machine et CI à vérifier. |
 | 2026-10-26 | Claude (IA, desktop) | **Segmentation IA du desktop via le registre de backends** (`openstitch.ai.backend/1`) : `libs/ai_segmentation/backend_run` (analyse complète par un backend, repli explicite CIELAB, annulation, masques sans score inventé), sélecteur de moteur dans « Segmenter avec l'IA » (worker historique, backends déclarés, couleur), préférences (fichier de backends, moteur par défaut, « Sonder les backends » : état, modèle, empreinte, licences), tests Catch2 + QTest. Le worker SAM v1 reste le défaut. Aucune entrée de parité modifiée. |
 | 2026-10-26 | Claude | **Compensation du tirage automatique** (HP-ENG-001.b) : `PullMode::Auto` sur tatami, directionnel, satin et auto-satin, calcul selon l'épaisseur de la forme, activé à la création et par l'auto-numérisation, inspecteur, `.osp`, CLI. Coefficients empiriques à valider sur tissu (HP-PHYS-001). |
 | 2026-10-26 | Claude (IA PR-01) | **Banc de segmentation reproductible** : manifeste épinglé `openstitch.ai.benchmark-manifest/1`, fixture synthétique CC0 `marine-synth-01`, runner stdlib `scripts/openstitch_ai_bench.py` (baseline CIELAB via `openstitch-cli`, SAM 2.1 via le worker existant, skip explicite sans poids), métriques par objet avec porte « sujet principal absent = échec », 18 tests Python + CI `ai-bench.yml`. Aucun code C++ modifié. |
