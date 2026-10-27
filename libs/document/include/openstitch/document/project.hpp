@@ -41,6 +41,11 @@ struct Project {
     // toute nouvelle opération de prétraitement.
     std::optional<segmentation::Segmentation> segmentation;
 
+    // Zones « détail » peintes au pinceau, à la taille de l'image de travail (vide = aucune).
+    // Elles pilotent le lissage et le nettoyage de la segmentation (`SegmentationOptions::
+    // detail_mask`) ; modifiées par `PaintDetailMaskCommand`, enregistrées dans le projet.
+    segmentation::DetailMask detail_mask;
+
     // Objets vectoriels (Phase 5). Contrairement à la segmentation, ils
     // survivent aux retouches d'image : leur géométrie est indépendante.
     std::vector<VectorObject> vector_objects;

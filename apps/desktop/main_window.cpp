@@ -472,6 +472,7 @@ MainWindow::MainWindow() {
     buildBrushTool();
     buildBucketTool();
     buildClickToStitchTool();
+    buildDetailZonesTool();
     // [cablage-C:fin]
     // [cablage-D:debut]
     // [cablage-D:fin]
@@ -546,8 +547,9 @@ MainWindow::MainWindow() {
     buildSimulationToolbar();
     // Une barre masquée doit pouvoir se rouvrir depuis un menu, comme les panneaux.
     panelsMenu_->insertSeparator(resetLayoutAct);
-    for (auto* bar : {mainToolbar_, contextToolbar_, toolPalette_, simToolbar_,
-                      static_cast<QToolBar*>(simNavBar_), threadStripBar_, clickToStitchBar_}) {
+    for (auto* bar :
+         {mainToolbar_, contextToolbar_, toolPalette_, simToolbar_,
+          static_cast<QToolBar*>(simNavBar_), threadStripBar_, clickToStitchBar_, detailBar_}) {
         panelsMenu_->insertAction(resetLayoutAct, bar->toggleViewAction());
     }
 
@@ -965,6 +967,7 @@ void MainWindow::buildMenus() {
     showSegAct_->setToolTip(tr("Affiche ou masque la carte des régions par-dessus l'image (W)."));
     connect(showSegAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
     buildRegionViewControls(segMenu);
+    segmentMenu_ = segMenu;
 
     mergeColorsAct_ = segMenu->addAction(tr("Fusionner les co&uleurs…"));
     mergeColorsAct_->setObjectName(QStringLiteral("action_mergeColors"));
@@ -3296,6 +3299,7 @@ void MainWindow::refreshImage() {
     pruneSelection();
     Q_ASSERT(checkSelectionInvariants());
     refreshColorsPanel(); // le document a changé : liste des teintes à jour, aperçu caduc
+    refreshDetailZonesOverlay();
     // Le raster est facultatif : SVG, dessin, texte et design machine doivent
     // eux aussi régénérer leurs points et rafraîchir tous les panneaux.
     if (!project_.hasImage()) {
@@ -3406,6 +3410,7 @@ void MainWindow::renderBase(const image::Image& img) {
     commonBox_ = nullptr;
     reshapePreview_ = nullptr;
     brushRing_ = nullptr;
+    detailRing_ = nullptr;
     nodeHandles_.clear();
     if (nodeSelObject_ &&
         (hasMultiSelection() || !selectedObject_ || *selectedObject_ != *nodeSelObject_ ||
@@ -7160,6 +7165,7 @@ void MainWindow::buildToolPalette() {
     attachBrushTool();
     attachBucketTool();
     attachClickToStitchTool();
+    attachDetailZonesTool();
     toolSelectAct_->setChecked(true);
 
     toolPalette_->addSeparator();
@@ -7428,6 +7434,7 @@ void MainWindow::setTool(Tool tool) {
     syncBrushTool(tool);
     syncBucketTool(tool);
     syncClickToStitchTool(tool);
+    syncDetailZonesTool(tool); // après syncBrushTool : réutilise le geste du pinceau
     updateDrawActionsState();
     updateInteractionContext();
     hideHoverHighlight();
@@ -9994,7 +10001,7 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
         placeTextAt(posMm);
         return;
     }
-    if (currentTool_ == Tool::Brush) {
+    if (currentTool_ == Tool::Brush || currentTool_ == Tool::DetailBrush) {
         return; // le pinceau passe par brushPressedMm / brushMovedMm / brushReleasedMm
     }
     if (currentTool_ == Tool::Measure) {

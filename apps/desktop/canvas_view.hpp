@@ -142,7 +142,9 @@ public:
     void setMeasureMode(bool enabled);
     // Mode pinceau (HP-VEC-018) : un glisser gauche émet appui / déplacements / relâchement ;
     // aucune sélection ni déplacement de vue. Échap émet `brushCancelled`.
-    void setBrushMode(bool enabled);
+    // `context` : contexte de gestes annoncé tant que le mode est actif (Pinceau ou Zones de
+    // détail).
+    void setBrushMode(bool enabled, Context context = Context::Brush);
     [[nodiscard]] bool brushMode() const { return brushMode_; }
     [[nodiscard]] bool measureMode() const { return measureMode_; }
 
@@ -297,6 +299,7 @@ private:
     bool measureMode_{false};
     bool measureActive_{false};
     bool brushMode_{false};
+    Context brushContext_{Context::Brush};
     bool brushActive_{false};
     QPointF measureStartMm_;
     bool freeformActive_{false};

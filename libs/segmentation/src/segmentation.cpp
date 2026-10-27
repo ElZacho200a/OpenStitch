@@ -41,6 +41,66 @@ std::vector<std::uint32_t> relabel(Segmentation& seg, std::uint32_t from, std::u
 
 } // namespace
 
+bool DetailMask::any_detail() const {
+    return std::any_of(weights.begin(), weights.end(), [](std::uint8_t w) { return w != 0; });
+}
+
+std::vector<DetailMaskChange> paint_detail_disc(DetailMask& mask, int width, int height, int cx,
+                                                int cy, int radius_px, std::uint8_t value,
+                                                double hardness) {
+    std::vector<DetailMaskChange> changes;
+    if (width <= 0 || height <= 0 || radius_px < 0) {
+        return changes;
+    }
+    if (!mask.matches(width, height)) {
+        mask.width = width;
+        mask.height = height;
+        mask.weights.assign(static_cast<std::size_t>(width) * static_cast<std::size_t>(height), 0);
+    }
+    const double h = std::clamp(hardness, 0.0, 1.0);
+    const double r = static_cast<double>(radius_px) + 0.5;
+    const int x0 = std::max(0, cx - radius_px);
+    const int x1 = std::min(width - 1, cx + radius_px);
+    const int y0 = std::max(0, cy - radius_px);
+    const int y1 = std::min(height - 1, cy + radius_px);
+    for (int y = y0; y <= y1; ++y) {
+        for (int x = x0; x <= x1; ++x) {
+            const double d = std::hypot(static_cast<double>(x - cx), static_cast<double>(y - cy));
+            if (d > r) {
+                continue;
+            }
+            // Plein jusqu'à `h * r`, puis dégradé linéaire jusqu'au bord.
+            const double t = d / r;
+            const double falloff = t <= h ? 1.0 : (h >= 1.0 ? 0.0 : (1.0 - t) / (1.0 - h));
+            const auto stroke = static_cast<std::uint8_t>(std::lround(value * falloff));
+            const auto i = static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
+                           static_cast<std::size_t>(x);
+            const std::uint8_t before = mask.weights[i];
+            std::uint8_t after = before;
+            if (value == 0) {
+                // Gomme : tout le disque est effacé (un reste de bord doux serait invisible et
+                // impossible à retirer).
+                after = 0;
+            } else {
+                after = std::max(before, stroke);
+            }
+            if (after != before) {
+                mask.weights[i] = after;
+                changes.push_back({static_cast<std::uint32_t>(i), before});
+            }
+        }
+    }
+    return changes;
+}
+
+void revert_detail_changes(DetailMask& mask, const std::vector<DetailMaskChange>& changes) {
+    for (const auto& change : changes) {
+        if (change.index < mask.weights.size()) {
+            mask.weights[change.index] = change.before;
+        }
+    }
+}
+
 const Region* Segmentation::find(RegionId id) const {
     if (!id.valid() || slot_of(id) >= region_slots.size() || !region_slots[slot_of(id)]) {
         return nullptr;
@@ -67,6 +127,17 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
 
     const auto pixelCount =
         static_cast<std::size_t>(img.width) * static_cast<std::size_t>(img.height);
+
+    if (options.detail_mask != nullptr && !options.detail_mask->empty() &&
+        !options.detail_mask->matches(img.width, img.height)) {
+        return fail(ErrorCategory::UserInput,
+                    "Le masque de détail n'a pas la taille de l'image à segmenter");
+    }
+    // Masque actif seulement s'il contient au moins un pixel de détail : sinon on garde
+    // strictement le chemin historique (déterminisme des documents existants).
+    const DetailMask* const detail =
+        options.detail_mask != nullptr && options.detail_mask->any_detail() ? options.detail_mask
+                                                                            : nullptr;
 
     // RGB -> Lab (perceptuel) sur les pixels opaques uniquement.
     cv::Mat rgb(img.height, img.width, CV_8UC3);
@@ -165,25 +236,40 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
     // lisses, sans laisser de trou : contrairement à une ouverture
     // morphologique appliquée séparément à chaque masque de couleur, un
     // pixel réaffecté rejoint toujours une classe existante).
-    if (options.smoothing_radius_px > 0) {
-        const int ksize = 2 * options.smoothing_radius_px + 1;
-        std::vector<cv::Mat> density(static_cast<std::size_t>(k));
-        // Une classe = une tâche (masque + filtre moyenneur, indépendants d'une classe à l'autre).
-        parallel_for(static_cast<std::size_t>(k), [&](std::size_t classIndex) {
-            const int c = static_cast<int>(classIndex);
-            cv::Mat classMask(img.height, img.width, CV_32F, cv::Scalar(0.0f));
-            for (int y = 0; y < img.height; ++y) {
-                const int* idx = colorIdx.ptr<int>(y);
-                auto* mask = classMask.ptr<float>(y);
-                for (int x = 0; x < img.width; ++x) {
-                    if (idx[x] == c) {
-                        mask[x] = 1.0f;
+    if (options.smoothing_radius_px > 0 ||
+        (detail != nullptr && options.detail_smoothing_radius_px > 0)) {
+        // Densité locale de chaque classe pour un rayon donné (rayon 0 = la classe elle-même).
+        const auto densityMaps = [&](int radius) {
+            const int ksize = 2 * radius + 1;
+            std::vector<cv::Mat> density(static_cast<std::size_t>(k));
+            // Une classe = une tâche (masque + filtre moyenneur, indépendants d'une classe à
+            // l'autre).
+            parallel_for(static_cast<std::size_t>(k), [&](std::size_t classIndex) {
+                const int c = static_cast<int>(classIndex);
+                cv::Mat classMask(img.height, img.width, CV_32F, cv::Scalar(0.0f));
+                for (int y = 0; y < img.height; ++y) {
+                    const int* idx = colorIdx.ptr<int>(y);
+                    auto* mask = classMask.ptr<float>(y);
+                    for (int x = 0; x < img.width; ++x) {
+                        if (idx[x] == c) {
+                            mask[x] = 1.0f;
+                        }
                     }
                 }
-            }
-            cv::boxFilter(classMask, density[classIndex], CV_32F, cv::Size(ksize, ksize),
-                          cv::Point(-1, -1), false);
-        });
+                if (radius > 0) {
+                    cv::boxFilter(classMask, density[classIndex], CV_32F, cv::Size(ksize, ksize),
+                                  cv::Point(-1, -1), false);
+                } else {
+                    density[classIndex] = classMask;
+                }
+            });
+            return density;
+        };
+        const std::vector<cv::Mat> density = densityMaps(options.smoothing_radius_px);
+        std::vector<cv::Mat> detailDensity;
+        if (detail != nullptr) {
+            detailDensity = densityMaps(options.detail_smoothing_radius_px);
+        }
         // Vote : une ligne = une tâche (lit les densités, écrit sa ligne).
         cv::Mat smoothedColorIdx = colorIdx.clone();
         parallel_for(static_cast<std::size_t>(img.height), [&](std::size_t rowIndex) {
@@ -196,8 +282,19 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
                 }
                 int bestClass = idx[x];
                 float bestDensity = 0.0f;
+                const float w =
+                    detail != nullptr
+                        ? static_cast<float>(
+                              detail->weights[rowIndex * static_cast<std::size_t>(img.width) +
+                                              static_cast<std::size_t>(x)]) /
+                              255.0f
+                        : 0.0f;
                 for (int c = 0; c < k; ++c) {
-                    const float d = density[static_cast<std::size_t>(c)].at<float>(y, x);
+                    float d = density[static_cast<std::size_t>(c)].at<float>(y, x);
+                    if (detail != nullptr) {
+                        d = (1.0f - w) * d +
+                            w * detailDensity[static_cast<std::size_t>(c)].at<float>(y, x);
+                    }
                     if (d > bestDensity) {
                         bestDensity = d;
                         bestClass = c;
@@ -276,11 +373,26 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
 
     // Nettoyage des petites régions : absorbées par leur voisine majoritaire
     // (ou par le fond si isolées). Une passe, des plus petites aux plus grandes.
-    if (options.min_region_px > 1) {
+    if (options.min_region_px > 1 || (detail != nullptr && options.detail_min_region_px > 1)) {
+        // Seuil par région : celui du détail si la moyenne du masque sur ses pixels est >= 128.
+        std::vector<std::uint64_t> weightSum;
+        if (detail != nullptr) {
+            weightSum.assign(seg.region_slots.size(), 0);
+            for (std::size_t i = 0; i < seg.labels.size(); ++i) {
+                if (seg.labels[i] != 0) {
+                    weightSum[seg.labels[i] - 1] += detail->weights[i];
+                }
+            }
+        }
+        const auto thresholdOf = [&](std::size_t s) {
+            if (detail != nullptr && weightSum[s] >= 128ULL * seg.region_slots[s]->pixel_count) {
+                return static_cast<std::size_t>(std::max(options.detail_min_region_px, 0));
+            }
+            return static_cast<std::size_t>(std::max(options.min_region_px, 0));
+        };
         std::vector<std::size_t> order;
         for (std::size_t s = 0; s < seg.region_slots.size(); ++s) {
-            if (seg.region_slots[s] && seg.region_slots[s]->pixel_count <
-                                           static_cast<std::size_t>(options.min_region_px)) {
+            if (seg.region_slots[s] && seg.region_slots[s]->pixel_count < thresholdOf(s)) {
                 order.push_back(s);
             }
         }

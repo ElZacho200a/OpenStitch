@@ -49,6 +49,9 @@ enum class Tool {
     // Clic-pour-broder (HP-AUTO-003) : un clic sur une zone de couleur de l'image crée l'objet
     // brodé (région par croissance, tolérance réglable).
     ClickToStitch,
+    // Zones de détail (Segmentation) : glisser = peindre (ou gommer) les zones où la segmentation
+    // doit préserver les petites formes ; le reste est traité en aplat.
+    DetailBrush,
 };
 
 } // namespace openstitch::desktop
