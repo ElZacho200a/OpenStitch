@@ -60,6 +60,7 @@ void MainWindow::openSegmentationDialog() {
     auto* dialog = new SegmentationDialog(project_.mm_per_px.value, this);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     segmentDialog_ = dialog;
+    dialog->setSourceThumbnail(*segmentSnapshot_);
     connect(dialog, &SegmentationDialog::optionsChanged, this,
             &MainWindow::requestSegmentationPreview);
     connect(dialog, &SegmentationDialog::previewToggled, this, [this](bool enabled) {
@@ -160,6 +161,7 @@ void MainWindow::showSegmentationPreview(const segmentation::Segmentation& seg, 
                                   .colors = segmentation::color_classes(seg).size(),
                                   .smallRegions = small,
                                   .seconds = seconds});
+        segmentDialog_->setSegmentationThumbnail(seg);
     }
     previewSegmentation_ = seg;
     if (!showSegAct_->isChecked()) {
