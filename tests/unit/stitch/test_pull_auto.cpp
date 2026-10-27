@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <utility>
 #include <vector>
 
@@ -179,7 +180,7 @@ TEST_CASE("tirage auto : le satin Auto elargit la colonne") {
     CHECK(spread(automatic) == spread(manual) + 2 * choose_satin_pull(4.0).value);
 }
 
-TEST_CASE("tirage auto : satin a largeur variable compense par traversée") {
+TEST_CASE("tirage auto : satin a largeur variable compense par traversee") {
     const std::vector<SatinStation> stations{
         {um(0, -1'000), um(0, 1'000)},
         {um(2'000, -4'000), um(2'000, 4'000)},
