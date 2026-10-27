@@ -37,6 +37,8 @@ struct Colorway {
 struct FabricSettings {
     std::array<std::uint8_t, 3> color{255, 255, 255};
     std::string name; // libellé libre (« Coton écru »…), facultatif
+    std::string material; // identifiant libre (woven, jersey, terry, felt…), facultatif
+    std::string stabilizer; // stabilisateur déclaré ; aucune heuristique textile non validée
 
     friend bool operator==(const FabricSettings&, const FabricSettings&) = default;
 };
