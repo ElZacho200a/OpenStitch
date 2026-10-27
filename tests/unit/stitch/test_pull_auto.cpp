@@ -141,8 +141,8 @@ TEST_CASE("tirage auto : la generation applique le mode Auto, Manual reste histo
 
     // Auto équivaut au réglage manuel de la valeur choisie pour la même forme.
     auto manualEquivalent = tatami();
-    manualEquivalent.pull_compensation =
-        resolve_pull_compensation(autoParams, rect(20'000, 10'000)).pull_compensation;
+    // Le rectangle possède des rangées horizontales de 20 mm, sans variation.
+    manualEquivalent.pull_compensation = choose_fill_pull(20.0);
     CHECK(same_points(autoSeq, gen(tatami_project(manualEquivalent))));
 
     // Déterminisme.
@@ -176,4 +176,14 @@ TEST_CASE("tirage auto : le satin Auto elargit la colonne") {
     const auto automatic = make(document::PullMode::Auto);
     REQUIRE_FALSE(manual.commands.empty());
     CHECK(spread(automatic) == spread(manual) + 2 * choose_satin_pull(4.0).value);
+}
+
+TEST_CASE("tirage auto : sous-couche tatami non compensee") {
+    auto p = tatami();
+    p.underlay_parallel = true;
+    p.pull_mode = document::PullMode::Manual;
+    const auto base = tatami_underlay(rect(20'000, 10'000), p);
+    p.pull_mode = document::PullMode::Auto;
+    const auto automatic = tatami_underlay(rect(20'000, 10'000), p);
+    CHECK(automatic == base);
 }

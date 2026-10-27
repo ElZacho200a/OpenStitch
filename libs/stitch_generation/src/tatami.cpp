@@ -9,6 +9,7 @@
 
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
+#include "openstitch/stitch_generation/pull_auto.hpp"
 
 namespace openstitch::stitch_generation {
 
@@ -439,8 +440,13 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
         s.pens.push_back(s.hi);
         // Compensation du tirage : seules les penetrations d'extremite depassent ; les bornes
         // `lo`/`hi` du segment restent celles de la region (adjacence, validation des liaisons).
-        s.pens.front() = s.lo - pull;
-        s.pens.back() = s.hi + pull;
+        // En Auto, les rangées longues et courtes ne reçoivent plus la même correction.
+        // La longueur est mesurée APRES l'écrêtage, avant la compensation.
+        const double rowPull = params.pull_mode == document::PullMode::Auto
+                                   ? static_cast<double>(choose_fill_pull((s.hi - s.lo) / 1000.0).value)
+                                   : pull;
+        s.pens.front() = s.lo - rowPull;
+        s.pens.back() = s.hi + rowPull;
     }
 
     // 2) ADJACENCE : deux segments de rangÃ©es consÃ©cutives qui se chevauchent en
@@ -781,6 +787,7 @@ std::vector<std::vector<Vec2um>> tatami_underlay(const geometry::PathSet& region
             Micrometers{std::max(params.underlay_spacing.value, params.row_spacing.value)};
         up.inset = Micrometers{0};
         up.pull_compensation = Micrometers{0}; // la sous-couche reste dans la forme
+        up.pull_mode = document::PullMode::Manual; // surtout pas de compensation auto sur l'underlay
         up.underlay_edge = false;
         up.underlay_parallel = false;
         up.underlay_zigzag = false;
