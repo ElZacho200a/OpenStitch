@@ -64,6 +64,8 @@ const char* pull_mode_name(document::PullMode m) {
         return "auto";
     case document::PullMode::Adaptive:
         return "adaptive";
+    case document::PullMode::Predicted:
+        return "predicted";
     default:
         return "manual";
     }

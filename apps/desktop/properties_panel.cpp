@@ -107,8 +107,8 @@ void setRowEnabled(QFormLayout* form, QWidget* field, bool on) {
 QComboBox* makePullModeCombo(QWidget* parent, document::PullMode mode) {
     auto* combo = new QComboBox(parent);
     combo->setObjectName(QStringLiteral("combo_pullMode"));
-    combo->addItems(
-        {QObject::tr("Manuelle"), QObject::tr("Automatique"), QObject::tr("Adaptative")});
+    combo->addItems({QObject::tr("Manuelle"), QObject::tr("Automatique"), QObject::tr("Adaptative"),
+                     QObject::tr("Prédite")});
     combo->setCurrentIndex(static_cast<int>(mode));
     combo->setToolTip(QObject::tr(
         "Manuelle : la valeur saisie s'applique telle quelle.\n"
@@ -116,7 +116,11 @@ QComboBox* makePullModeCombo(QWidget* parent, document::PullMode mode) {
         "moyenne de la forme.\n"
         "Adaptative : la compensation est calculée localement (station par station pour le "
         "satin : largeur, courbure, extrémités, jonctions, avec lissage). Règle géométrique, "
-        "non validée sur machine. Le réglage manuel est ignoré dans ces deux modes."));
+        "non validée sur machine.\n"
+        "Prédite : un champ de déplacement du tissu, calculé sur tous les segments cousus voisins "
+        "(anisotrope selon le sens des fils, avec indice de confiance), est appliqué en dernière "
+        "passe. Coefficients empiriques, non validés sur machine. Le réglage manuel est ignoré "
+        "dans ces trois modes."));
     return combo;
 }
 

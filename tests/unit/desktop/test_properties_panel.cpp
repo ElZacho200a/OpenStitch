@@ -658,6 +658,11 @@ void PropertiesPanelTest::engineSettingsEmitDedicatedEdits() {
     QCOMPARE(std::get<openstitch::document::TatamiParams>(*emitted).pull_mode,
              openstitch::document::PullMode::Adaptive);
     QVERIFY(!pull->isEnabled());
+    // Mode Prédit (niveau 3) : champ de déplacement, réglage manuel grisé.
+    pullMode->setCurrentIndex(3);
+    QCOMPARE(std::get<openstitch::document::TatamiParams>(*emitted).pull_mode,
+             openstitch::document::PullMode::Predicted);
+    QVERIFY(!pull->isEnabled());
     pullMode->setCurrentIndex(0);
     QVERIFY(pull->isEnabled());
 
