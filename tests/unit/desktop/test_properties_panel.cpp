@@ -9,7 +9,9 @@
 #include <QListWidget>
 #include <QMenu>
 #include <QPushButton>
+#include <QSettings>
 #include <QSpinBox>
+#include <QTemporaryDir>
 #include <QTest>
 #include <QToolButton>
 #include <QWheelEvent>
@@ -67,7 +69,17 @@ EmbroideryObject autoSatinObject(std::uint64_t id) {
 class PropertiesPanelTest : public QObject {
     Q_OBJECT
 
+    QTemporaryDir settingsDir_;
+
 private slots:
+    void initTestCase() {
+        QVERIFY(settingsDir_.isValid());
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenStitchUITest"));
+        QCoreApplication::setApplicationName(QStringLiteral("PropertiesPanelTest"));
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir_.path());
+    }
+
     void showEmbroideryPopulatesSpinBoxesWithoutEmittingWhileBuilding();
     void headerShowsColorDotAndTypePillOnlyForAnEmbroideryObject();
     void editingASpinBoxEmitsParamsEditedWithUpdatedValueAndPreservesOthers();
@@ -133,6 +145,7 @@ void PropertiesPanelTest::advancedTatamiPreservesValuesAndUndoSignals() {
                      });
     toggle->click();
     QVERIFY(toggle->isChecked());
+    QVERIFY(ui_memory::boolValue(QStringLiteral("inspector/advanced/tatami"), false));
     QVERIFY(inset->isVisible() && zig->isVisible());
     QCOMPARE(edits, 0); // ouvrir le volet ne change pas la broderie
     zig->setChecked(true);
@@ -163,6 +176,7 @@ void PropertiesPanelTest::advancedSatinModesRememberSeparatePreferences() {
     QVERIFY(corner->isHidden());
     toggle->click();
     QVERIFY(toggle->isChecked());
+    QVERIFY(ui_memory::boolValue(QStringLiteral("inspector/advanced/satin"), false));
     QVERIFY(corner->isVisible());
 
     panel.showEmbroidery(autoSatinObject(173));
