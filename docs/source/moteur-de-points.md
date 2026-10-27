@@ -732,6 +732,40 @@ tension. À recaler avec la pièce-test HP-ENG-001.a. Le mode Auto agit dans l'a
 seulement : le retrait de bord (`inset`, 0,2 mm par défaut) qui laisse ~0,4 mm entre deux
 tatamis voisins n'est pas modifié.
 
+### Compensation adaptative du tirage — niveau 1, satin (AdaptivePullCompensation)
+
+Troisième valeur de `PullMode` : **`Adaptive`** (index 2 ; `.osp` : `pullMode: 2`). Le mode `Auto`
+ci-dessus (largeur MOYENNE, une valeur par objet) reste inchangé et disponible ; `Adaptive`
+calcule la compensation **localement**. Trois niveaux sont distingués et ne doivent jamais être
+confondus :
+
+| Niveau | Contenu | État |
+|---|---|---|
+| 1 — géométrique | déterministe, selon les formes et les directions de couture | livré ici (satin) |
+| 2 — textile empirique | profil de tissu, calibration mesurée | à venir (`scale` du modèle en est le point d'entrée) |
+| 3 — prédiction | champ de déplacement estimé, avec confiance | à venir |
+
+**Satin.** `adaptive_pull.cpp` (`adaptive_satin_pull`, fonction pure) calcule, pour chaque station
+(couple de points rail A/rail B) de la colonne, un élargissement par côté :
+
+`C(s) = clamp(a + b · largeur(s), min, max) · scale · f_extrémité · f_jonction · f_pente`
+
+avec `a = 0,05 mm`, `b = 0,04`, `[min ; max] = [0,08 ; 0,40] mm` (règles empiriques, NON mesurées).
+Facteurs : `f_extrémité` (0,6 au tout bout → 1 à 1,5 mm), `f_jonction` (0,7 près d'un saut →
+1 à 1 mm), `f_pente = 1/(1 + 2·|d largeur / ds|)`. Puis lissage spatial (fenêtre triangulaire de
+rayon 1,5 mm, jamais à travers un saut) et **bornes de sécurité** : jamais plus de 20 % de la
+largeur par côté ; côté intérieur d'un virage limité à 40 % de son rayon intérieur (cercle
+circonscrit à trois stations) ; plafond absolu 0,6 mm et `pull_max`. Le réglage manuel
+`pull_compensation` est ignoré ; `pull_left/right` (fixe et proportionnel) restent additifs.
+
+Le calcul s'exécute dans `finish_satin_stations`, point de convergence du satin manuel, du satin à
+barreaux et de l'auto-satin par squelette, ainsi que dans `fill_satin` (rails sans barreaux). Il
+travaille sur la géométrie finale des fils (après terminaisons, points courts et push). Le profil
+station par station est exposé dans `SatinResult::pull_profile` (largeur, courbure, drapeaux).
+
+**Limites.** Aucune validation sur machine : la qualité de l'approximation géométrique n'est pas
+une preuve d'efficacité textile.
+
 ### Entrée/sortie automatiques (HP-ENG-010)
 
 `SequenceFinishing::auto_join` (« Options de génération ») et, par objet,

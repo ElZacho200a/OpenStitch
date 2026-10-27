@@ -226,7 +226,8 @@ const EnumTable<document::UnderlayMode>& underlay_mode_table() {
 }
 const EnumTable<document::PullMode>& pull_mode_table() {
     static const EnumTable<document::PullMode> t{{"manual", document::PullMode::Manual},
-                                                 {"auto", document::PullMode::Auto}};
+                                                 {"auto", document::PullMode::Auto},
+                                                 {"adaptive", document::PullMode::Adaptive}};
     return t;
 }
 const EnumTable<document::DensityCurve>& density_curve_table() {
