@@ -1228,6 +1228,14 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   compensation perpendiculaire aux rangées (poussée latérale).
 - Modules : `libs/stitch_generation/pull_auto`, `libs/document`, `libs/project_io`,
   `libs/project_ops`, `libs/autodigitize`, `apps/desktop/properties_panel`.
+- Livré (2026-10-27) : `PullMode::Adaptive` (AdaptivePullCompensation niveau 1, satin) : compensation
+  locale par station (largeur, courbure, extrémités, jonctions, variation de largeur, lissage,
+  bornes de sécurité), `adaptive_pull.cpp`, sélecteur « Adaptative » de l'inspecteur, `.osp`
+  (`pullMode: 2`), CLI/MCP (`pull_mode: adaptive`), tests `test_adaptive_pull.cpp`. Le mode `Auto`
+  reste la règle historique. Reste : profil textile, calibration.
+- Livré (2026-10-27, lot 2) : `Adaptive` pour tatami (par rangée, lissage, plafond d'intervalle
+  libre devant trous/étranglements) et directionnel (par ligne, virage cumulé) ; sous-couche
+  jamais adaptative ; tests `[adaptive_pull][tatami|directional]`.
 
 ### HP-ENG-001.a — Pièce-test de calibration et table de compensation par tissu [P1] — ☐ À faire
 - Source : veille `docs/veille-innovations-2026-10.md` §V1. Aucune source lue ne
@@ -3773,3 +3781,4 @@ ci-dessus doit les respecter :
 | 2026-10-25 | Claude (câblage des types de points) | Audit du bureau : les remplissages concentrique, radial, spirale, croisé et les motifs n'étaient pas dans les sélecteurs de type. Catalogue unique `stitch_type_catalog` (11 types) utilisé par l'inspecteur (bouton « Plus ▾ »), la barre contextuelle et les menus contextuels (objet, forme sans broderie, multi-sélection) ; correction de l'index de type (ces objets étaient rangés comme directionnels). Reste sans interface : édition de points (HP-EDIT-001..004), SIM-003. |
 | 2026-10-25 | Claude (câblage de l'édition de points) | HP-EDIT-001/002/003 câblés dans le mode « Éditer les points » : sélection (clic, Ctrl/Maj, Ctrl+A), déplacement groupé, Suppr, restauration, insertion par double-clic, saut/point cousu, coupe de fil ; menu Broderie, clic droit, 9 QTest. Reste : rubber-band, déplacement d'un point inséré. |
 | 2026-10-26 | Claude (multi-agents, lot 3) | Lot 3 : huit agents en parallèle ; OBJ-005/008/009/010/011/012/015/022, SEQ-001/002/008, VIEW-003/007/010/012, PROD-002/003/004, FILE-005/007, UX-007/008/016, HELP-001/002, SIM-003, restes EDIT-002/003 et HOOP-006 (voir chaque entrée). Cœur livré mais bureau non câblé : OBJ-009 (groupes), OBJ-011 (menu Ordre), OBJ-015 (barre X/Y/L/H) ; OBJ-019, ENG-006 et TXT-012/013 non faits. Tableau de bord non recalculé. |
+| 2026-10-27 | Claude | **AdaptivePullCompensation, lot 1** (HP-ENG-001.b) : `PullMode::Adaptive`, compensation locale du satin par station, inspecteur, `.osp`, CLI/MCP. Coefficients empiriques, non validés sur machine. |
