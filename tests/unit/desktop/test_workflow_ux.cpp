@@ -52,10 +52,10 @@
 #include "machine_export_dialog.hpp"
 #include "main_window.hpp"
 #include "openstitch/document/project.hpp"
-#include "workflow_panel.hpp"
 #include "openstitch/project_io/machine_file.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
+#include "workflow_panel.hpp"
 
 namespace {
 
