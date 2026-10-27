@@ -6,6 +6,7 @@
 
 #include "openstitch/stitch_generation/finish.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
+#include "openstitch/stitch_generation/predicted_pull.hpp"
 
 namespace openstitch::stitch_generation {
 
@@ -281,6 +282,9 @@ Result<FinishResult> effective_sequence_report(const document::Project& project,
     // notification -- un consommateur qui a besoin de detecter/signaler l'etat
     // Dirty doit appeler apply_manual_overrides directement (UI, hors Lot 8.1).
     (void)apply_manual_overrides(*sequence, project);
+    // Tirage de niveau 3 (`PullMode::Predicted`) : champ de déplacement sur tous les segments,
+    // appliqué avant les finitions, sans effet si aucun objet n'est en mode prédit.
+    apply_predicted_pull(*sequence, project);
     // Finitions (Lots E/F : coupes, points d'arrêt, points courts) en DERNIER,
     // après les retouches : elles ne touchent jamais la vue brute (raw_slice)
     // à laquelle les index des retouches se réfèrent.

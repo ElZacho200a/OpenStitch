@@ -69,7 +69,7 @@ TEST_CASE("moteur : round-trip des nouveaux reglages (tatami, directionnel, sati
     directional.edge_outline = true;
     document::SatinParams satin;
     satin.underlay_mode = document::UnderlayMode::Auto;
-    satin.pull_mode = document::PullMode::Auto;
+    satin.pull_mode = document::PullMode::Predicted; // niveau 3
     satin.border = document::BorderSatinSpec{Micrometers{4'500}, document::BorderSide::Outside,
                                              document::BorderCorner::Round, 2, 1};
     document::AutoSatinParams autoSatin;

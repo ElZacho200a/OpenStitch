@@ -1239,6 +1239,16 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 - Livré (2026-10-27, lot 2) : `Adaptive` pour tatami (par rangée, lissage, plafond d'intervalle
   libre devant trous/étranglements) et directionnel (par ligne, virage cumulé) ; sous-couche
   jamais adaptative ; tests `[adaptive_pull][tatami|directional]`.
+- Livré (2026-10-27, niveau 3, lot A) : `PullField` (`pull_field.cpp`), champ de déplacement du
+  tissu sous la traction de tous les segments voisins, anisotrope selon le sens des fils, avec
+  confiance (plafonnée tant que non calibré) ; cœur seul, tests `test_pull_field.cpp`. Reste :
+  `PullMode::Predicted`, extraction depuis les objets, application dans `effective_sequence`,
+  `.osp`, inspecteur, calibration (HP-ENG-001.a). Coefficients empiriques, non mesurés.
+- Livré (2026-10-27, niveau 3, lot B) : `PullMode::Predicted` (`.osp` `pullMode: 3`, CLI/MCP
+  `pull_mode: predicted`, inspecteur « Prédite »), passe finale `apply_predicted_pull` dans
+  `effective_sequence` (tous les segments voisins sont sources, seuls les points de couche
+  supérieure des objets prédits bougent), tests `test_predicted_pull.cpp`. Reste : lecture du
+  profil matière (#155), visualisation du champ, calibration (HP-ENG-001.a).
 
 ### HP-ENG-001.a — Pièce-test de calibration et table de compensation par tissu [P1] — ☐ À faire
 - Source : veille `docs/veille-innovations-2026-10.md` §V1. Aucune source lue ne
@@ -3788,3 +3798,5 @@ ci-dessus doit les respecter :
 | 2026-10-25 | Claude (câblage de l'édition de points) | HP-EDIT-001/002/003 câblés dans le mode « Éditer les points » : sélection (clic, Ctrl/Maj, Ctrl+A), déplacement groupé, Suppr, restauration, insertion par double-clic, saut/point cousu, coupe de fil ; menu Broderie, clic droit, 9 QTest. Reste : rubber-band, déplacement d'un point inséré. |
 | 2026-10-26 | Claude (multi-agents, lot 3) | Lot 3 : huit agents en parallèle ; OBJ-005/008/009/010/011/012/015/022, SEQ-001/002/008, VIEW-003/007/010/012, PROD-002/003/004, FILE-005/007, UX-007/008/016, HELP-001/002, SIM-003, restes EDIT-002/003 et HOOP-006 (voir chaque entrée). Cœur livré mais bureau non câblé : OBJ-009 (groupes), OBJ-011 (menu Ordre), OBJ-015 (barre X/Y/L/H) ; OBJ-019, ENG-006 et TXT-012/013 non faits. Tableau de bord non recalculé. |
 | 2026-10-27 | Claude | **AdaptivePullCompensation, lot 1** (HP-ENG-001.b) : `PullMode::Adaptive`, compensation locale du satin par station, inspecteur, `.osp`, CLI/MCP. Coefficients empiriques, non validés sur machine. |
+| 2026-10-27 | Claude | **AdaptivePullCompensation niveau 3, lot A** (HP-ENG-001.b) : `PullField`, champ de déplacement du tissu anisotrope avec confiance, cœur seul non branché. Coefficients empiriques, non validés sur machine. |
+| 2026-10-27 | Claude | **Niveau 3, lot B** (HP-ENG-001.b) : `PullMode::Predicted` branché (passe finale d'`effective_sequence`, `.osp`, CLI/MCP, inspecteur). Confiance plafonnée tant que non calibré. |

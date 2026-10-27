@@ -295,6 +295,8 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
     } else if (params.pull_mode == document::PullMode::Adaptive) {
         config.pull_compensation = Micrometers{0}; // le réglage manuel est ignoré
         config.adaptive_pull = true;
+    } else if (params.pull_mode == document::PullMode::Predicted) {
+        config.pull_compensation = Micrometers{0}; // champ prédit appliqué en passe finale
     }
     // Avec barreaux (satin auto) : correspondance par sections + espacement
     // perpendiculaire. Sans barreaux (satin manuel/legacy) : ré-échantillonnage
@@ -420,6 +422,8 @@ void generate_auto_satin(stitch::StitchSequence& sequence, const document::Vecto
     if (params.pull_mode == document::PullMode::Adaptive) {
         config.pull_compensation = Micrometers{0};
         config.adaptive_pull = true;
+    } else if (params.pull_mode == document::PullMode::Predicted) {
+        config.pull_compensation = Micrometers{0};
     }
 
     std::vector<std::vector<SatinStation>> columns;
