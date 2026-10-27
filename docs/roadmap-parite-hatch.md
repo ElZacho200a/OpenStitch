@@ -2619,6 +2619,10 @@ Aujourd'hui : un cadre **rectangulaire** de taille libre (10–500 mm), persist�
   pour les tissus à poils.
 
 ### HP-FAB-004 — Carte du risque de tirage textile [P1] — ◐ Partiel (PR du 2026-10-21)
+- Livré (2026-10-27, PR empilée sur HP-FAB-001) : mode profil `auto`
+  sélectionné depuis la matière du projet, repli explicite woven pour les tissus
+  sans indice étalonné ; choix initial harmonisé dans l'analyse desktop.
+  Le risque est toujours purement relatif et n'altère aucun point.
 - Objet : visualiser un risque relatif de tirage, distinct de la carte d'épaisseurs de fil.
 - Livré (sur branche de PR, non encore fusionnée) : `project_ops::measure_fabric_risk`
   (séquence effective, grille et tenseur d'orientation local), export PNG/JSON via
