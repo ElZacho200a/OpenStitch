@@ -2,6 +2,7 @@
 #include "segmentation_dialog.hpp"
 
 #include <QCheckBox>
+#include <QColor>
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QFrame>
@@ -17,6 +18,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 
 #include "ui_memory.hpp"
 
