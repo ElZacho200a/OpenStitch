@@ -2601,6 +2601,10 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
     // parent Qt valide lors de l'application de la visibilité initiale.
     auto* holder = new QWidget(body_);
     holder->setLayout(form);
+    // Insérer le conteneur dans le layout visible avant de restaurer l'état des lignes :
+    // sous Qt/Windows, setRowVisible(true) sur un formulaire non encore inséré peut
+    // laisser les contrôles avancés masqués après un changement de type de point.
+    body_->layout()->addWidget(holder);
 
     // Les réglages détaillés restent câblés au document : replier leur ligne
     // réduit seulement l'encombrement visuel. État mémorisé par type de points.
@@ -2636,7 +2640,6 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
         applyAdvanced(expanded);
     }
 
-    body_->layout()->addWidget(holder);
     if (activeForm != nullptr) {
         auto* title = makeSectionLabel(tr("Objet actif seulement"), body_);
         title->setToolTip(tr("Ces réglages n'agissent que sur « %1 » (le premier objet du groupe), "
