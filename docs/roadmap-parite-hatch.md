@@ -1240,7 +1240,11 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   libre devant trous/étranglements) et directionnel (par ligne, virage cumulé) ; sous-couche
   jamais adaptative ; tests `[adaptive_pull][tatami|directional]`.
 
-### HP-ENG-001.a — Pièce-test de calibration et table de compensation par tissu [P1] — ☐ À faire
+### HP-ENG-001.a — Pièce-test de calibration et table de compensation par tissu [P1] — ◐ Partiel (2026-10-27)
+- Livré : prototype hors moteur CSV → JSON avec provenance par tissu/machine/fil/aiguille,
+  réplications, dispersion, estimation symétrique bornée et tests Python.
+- Reste : générateur de pièce-test DST, validation machine, persistance des profils .osp,
+  application au moteur et assistant desktop. Profils non appliqués automatiquement.
 - Source : veille `docs/veille-innovations-2026-10.md` §V1. Aucune source lue ne
   fournit de modèle physique de l'étirement : les valeurs publiées sont des
   règles empiriques, dépendantes du tissu et non vérifiées. On mesure donc
@@ -3705,6 +3709,7 @@ ci-dessus doit les respecter :
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-27 | ChatGPT | HP-ENG-001.a : outil de calibration expérimental isolé, sans modification de la production DST ; essais physiques et intégration restent requis. |
 | 2026-10-27 | ChatGPT | HP-ENG-001.b : inspection JSON de la référence de compensation automatique, explicitement non prédictive ; tests CLI JSON. |
 | 2026-10-27 | ChatGPT (audit UI/UX, PR 1) | HP-PERF-001 / HP-UX-006 : vectorisation asynchrone de régions, progression et annulation sans mutation documentaire ; tests Catch2 et QTest, CI à confirmer. Autres tâches longues encore à migrer. |
 | 2026-10-26 | Claude (IA, desktop) | **Segmentation IA du desktop via le registre de backends** (`openstitch.ai.backend/1`) : `libs/ai_segmentation/backend_run` (analyse complète par un backend, repli explicite CIELAB, annulation, masques sans score inventé), sélecteur de moteur dans « Segmenter avec l'IA » (worker historique, backends déclarés, couleur), préférences (fichier de backends, moteur par défaut, « Sonder les backends » : état, modèle, empreinte, licences), tests Catch2 + QTest. Le worker SAM v1 reste le défaut. Aucune entrée de parité modifiée. |
