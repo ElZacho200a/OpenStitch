@@ -1411,7 +1411,14 @@ json project_to_json(const document::Project& project) {
     }
     if (!(project.fabric == document::FabricSettings{})) {
         // Tissu de fond (HP-THR-008) : clé facultative, absente = blanc.
-        j["fabric"] = {{"rgb", rgb_to_json(project.fabric.color)}, {"name", project.fabric.name}};
+        json fabric = {{"rgb", rgb_to_json(project.fabric.color)}, {"name", project.fabric.name}};
+        if (!project.fabric.material.empty()) {
+            fabric["material"] = project.fabric.material;
+        }
+        if (!project.fabric.stabilizer.empty()) {
+            fabric["stabilizer"] = project.fabric.stabilizer;
+        }
+        j["fabric"] = std::move(fabric);
     }
 
     j["vectorObjects"] = json::array();
@@ -1657,6 +1664,8 @@ Result<document::Project> project_from_json(const json& j) {
             const auto& fj = j.at("fabric");
             project.fabric.color = rgb_from_json(fj.at("rgb"));
             project.fabric.name = fj.value("name", std::string{});
+            project.fabric.material = fj.value("material", std::string{});
+            project.fabric.stabilizer = fj.value("stabilizer", std::string{});
         }
 
         for (const auto& vo : j.at("vectorObjects")) {
