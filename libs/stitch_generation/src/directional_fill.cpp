@@ -1710,10 +1710,9 @@ void regularize_lines(std::vector<Traced>& lines, const Sector& sector, const Sp
 // HP-ENG-001 : compensation du tirage. Prolonge la première et la dernière pénétration de
 // `pull` µm le long de la tangente de bout (corde du premier / dernier point). Borné à 3 mm.
 // En mode Auto, le tirage suit la longueur REELLE de chaque ligne courbe.
-std::int32_t directional_pull_um(const std::vector<P2>& pts,
-                                const document::DirectionalFillParams& params) {
-    if (params.pull_mode != document::PullMode::Auto) {
-        return params.pull_compensation.value;
+auto directional_pull_um(const std::vector<P2>& pts, const document::DirectionalFillParams& p) {
+    if (p.pull_mode != document::PullMode::Auto) {
+        return p.pull_compensation.value;
     }
     double lengthUm = 0.0;
     for (std::size_t i = 1; i < pts.size(); ++i) {
