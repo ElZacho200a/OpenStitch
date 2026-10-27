@@ -59,7 +59,14 @@ json rgb_json(const std::array<std::uint8_t, 3>& rgb) {
 }
 
 const char* pull_mode_name(document::PullMode m) {
-    return m == document::PullMode::Auto ? "auto" : "manual";
+    switch (m) {
+    case document::PullMode::Auto:
+        return "auto";
+    case document::PullMode::Adaptive:
+        return "adaptive";
+    default:
+        return "manual";
+    }
 }
 
 const char* underlay_mode_name(document::UnderlayMode m) {

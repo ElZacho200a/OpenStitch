@@ -848,6 +848,18 @@ SatinResult finish_satin_stations(const std::vector<SatinStation>& stations,
     const double maxLen =
         static_cast<double>(std::max<std::int32_t>(1, config.max_stitch_length.value));
     const double pmax = static_cast<double>(config.pull_max.value);
+    // Compensation adaptative : profil station par station sur la géométrie FINALE des fils
+    // (après terminaisons, points courts et push), calculé une fois avant l'émission.
+    std::vector<SatinPullSample> adaptive;
+    if (config.adaptive_pull) {
+        std::vector<SatinPullInput> in;
+        in.reserve(threads.size());
+        for (const auto& t : threads) {
+            in.push_back({t.a.x, t.a.y, t.b.x, t.b.y, t.jump_before});
+        }
+        adaptive = adaptive_satin_pull(in, config.adaptive_model, pmax);
+        result.pull_profile = adaptive;
+    }
     int emitted = 0;
     PointD prevB{0.0, 0.0};
     for (int i = 0; i < nThreads; ++i) {
@@ -863,10 +875,14 @@ SatinResult finish_satin_stations(const std::vector<SatinStation>& stations,
         const double w = dist(pa, pb);
         result.max_width_um = std::max(result.max_width_um, w);
         // Pull latérale : base symétrique (pull_compensation) + fixe + proportionnelle par côté.
+        const double baseA =
+            config.adaptive_pull ? adaptive[static_cast<std::size_t>(i)].left_um : comp;
+        const double baseB =
+            config.adaptive_pull ? adaptive[static_cast<std::size_t>(i)].right_um : comp;
         const double offA =
-            std::clamp(comp + config.pull_left.value + config.pull_left_prop * w, 0.0, pmax);
+            std::clamp(baseA + config.pull_left.value + config.pull_left_prop * w, 0.0, pmax);
         const double offB =
-            std::clamp(comp + config.pull_right.value + config.pull_right_prop * w, 0.0, pmax);
+            std::clamp(baseB + config.pull_right.value + config.pull_right_prop * w, 0.0, pmax);
         if (w > 1e-6) {
             const double ux = (pa.x - pb.x) / w;
             const double uy = (pa.y - pb.y) / w;
@@ -1008,11 +1024,32 @@ SatinResult fill_satin(const geometry::Path& rail_a, const geometry::Path& rail_
 
     // Satin : zigzag A0, B0, B1, A1, A2, B2, … en avançant sur la correspondance.
     const auto resampled = resample_by_medial_spacing(ladder, a, cumA, b, cumB, density);
+    // Compensation adaptative (`PullMode::Adaptive`) : profil local sur les stations du ruban.
+    if (config.adaptive_pull) {
+        std::vector<SatinPullInput> in;
+        in.reserve(resampled.size());
+        for (const auto& cp : resampled) {
+            in.push_back({cp.pa.x, cp.pa.y, cp.pb.x, cp.pb.y, false});
+        }
+        result.pull_profile = adaptive_satin_pull(in, config.adaptive_model,
+                                                  static_cast<double>(config.pull_max.value));
+    }
     for (std::size_t i = 0; i < resampled.size(); ++i) {
         PointD pa = resampled[i].pa;
         PointD pb = resampled[i].pb;
         result.max_width_um = std::max(result.max_width_um, dist(pa, pb));
-        std::tie(pa, pb) = compensate(pa, pb, comp);
+        if (config.adaptive_pull) {
+            const double w = dist(pa, pb);
+            if (w > 1e-6) {
+                const double ux = (pa.x - pb.x) / w;
+                const double uy = (pa.y - pb.y) / w;
+                const SatinPullSample& p = result.pull_profile[i];
+                pa = {pa.x + ux * p.left_um, pa.y + uy * p.left_um};
+                pb = {pb.x - ux * p.right_um, pb.y - uy * p.right_um};
+            }
+        } else {
+            std::tie(pa, pb) = compensate(pa, pb, comp);
+        }
         // Alternance du bord de départ pour former le zigzag.
         if (i % 2 == 0) {
             result.satin.push_back(toUm(pa));

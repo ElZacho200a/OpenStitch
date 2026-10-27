@@ -15,6 +15,7 @@
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/geometry/primitives.hpp"
+#include "openstitch/stitch_generation/adaptive_pull.hpp"
 
 namespace openstitch::stitch_generation {
 
@@ -1708,6 +1709,31 @@ void regularize_lines(std::vector<Traced>& lines, const Sector& sector, const Sp
 
 // HP-ENG-001 : compensation du tirage. Prolonge la première et la dernière pénétration de
 // `pull` µm le long de la tangente de bout (corde du premier / dernier point). Borné à 3 mm.
+// Compensation de bout d'UNE ligne : la valeur manuelle / Auto résolue, ou, en mode Adaptive, un
+// calcul local (longueur d'arc de la ligne, virage cumulé : une ligne très courbe a une corde de
+// bout moins représentative, donc moins prolongée).
+std::int32_t line_pull_um(const std::vector<P2>& pts,
+                          const document::DirectionalFillParams& params) {
+    if (params.pull_mode != document::PullMode::Adaptive) {
+        return params.pull_compensation.value;
+    }
+    FillEndContext ctx;
+    for (std::size_t i = 1; i < pts.size(); ++i) {
+        ctx.row_length_um += norm(pts[i] - pts[i - 1]);
+    }
+    for (std::size_t i = 1; i + 1 < pts.size(); ++i) {
+        const P2 a = pts[i] - pts[i - 1];
+        const P2 b = pts[i + 1] - pts[i];
+        const double na = norm(a);
+        const double nb = norm(b);
+        if (na > 0.0 && nb > 0.0) {
+            const double cs = std::clamp((a.x * b.x + a.y * b.y) / (na * nb), -1.0, 1.0);
+            ctx.turning_rad += std::acos(cs);
+        }
+    }
+    return static_cast<std::int32_t>(std::lround(adaptive_fill_end_pull(ctx, AdaptiveFillModel{})));
+}
+
 std::vector<P2> pull_compensated(const std::vector<P2>& pts, std::int32_t pullUm) {
     std::vector<P2> out = pts;
     const double pull = static_cast<double>(std::clamp<std::int32_t>(pullUm, 0, 3'000));
@@ -1793,7 +1819,7 @@ directional_stitch_lines(const geometry::PathSet& region,
         for (const auto& line : sl.stitched) {
             std::vector<Vec2um> um;
             um.reserve(line.size());
-            for (const P2 p : pull_compensated(line, params.pull_compensation.value)) {
+            for (const P2 p : pull_compensated(line, line_pull_um(line, params))) {
                 um.push_back(to_um(p));
             }
             out.push_back(std::move(um));
@@ -2027,7 +2053,7 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
             }
             // Les liaisons se décident sur les pénétrations d'origine (dans la région) ; seule la
             // position émise des extrémités est prolongée (compensation du tirage).
-            const std::vector<P2> emitted = pull_compensated(pts, params.pull_compensation.value);
+            const std::vector<P2> emitted = pull_compensated(pts, line_pull_um(pts, params));
             for (std::size_t k = 0; k < pts.size(); ++k) {
                 const P2 rp = pts[k];
                 bool jump = false;
