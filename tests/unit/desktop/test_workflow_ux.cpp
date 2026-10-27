@@ -414,7 +414,7 @@ private slots:
         auto buttons = window.workflowPanel_->findChildren<QToolButton*>();
         QCOMPARE(buttons.size(), WorkflowPanel::kStepCount);
         QCOMPARE(buttons[0]->text(), QStringLiteral("Source"));
-        QCOMPARE(window.openAnyAct_->shortcut(), QKeySequence::Open);
+        QCOMPARE(window.openAnyAct_->shortcut(), QKeySequence(QKeySequence::Open));
 
         doc::Project svg;
         addSquare(svg, 0, 1'000, 10'000);
