@@ -15,6 +15,7 @@
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/geometry/primitives.hpp"
+#include "openstitch/stitch_generation/pull_auto.hpp"
 
 namespace openstitch::stitch_generation {
 
@@ -1708,6 +1709,19 @@ void regularize_lines(std::vector<Traced>& lines, const Sector& sector, const Sp
 
 // HP-ENG-001 : compensation du tirage. Prolonge la première et la dernière pénétration de
 // `pull` µm le long de la tangente de bout (corde du premier / dernier point). Borné à 3 mm.
+// En mode Auto, le tirage suit la longueur REELLE de chaque ligne courbe.
+std::int32_t directional_pull_um(const std::vector<P2>& pts,
+                                const document::DirectionalFillParams& params) {
+    if (params.pull_mode != document::PullMode::Auto) {
+        return params.pull_compensation.value;
+    }
+    double lengthUm = 0.0;
+    for (std::size_t i = 1; i < pts.size(); ++i) {
+        lengthUm += norm(pts[i] - pts[i - 1]);
+    }
+    return choose_fill_pull(lengthUm / 1000.0).value;
+}
+
 std::vector<P2> pull_compensated(const std::vector<P2>& pts, std::int32_t pullUm) {
     std::vector<P2> out = pts;
     const double pull = static_cast<double>(std::clamp<std::int32_t>(pullUm, 0, 3'000));
@@ -1793,7 +1807,7 @@ directional_stitch_lines(const geometry::PathSet& region,
         for (const auto& line : sl.stitched) {
             std::vector<Vec2um> um;
             um.reserve(line.size());
-            for (const P2 p : pull_compensated(line, params.pull_compensation.value)) {
+            for (const P2 p : pull_compensated(line, directional_pull_um(line, params))) {
                 um.push_back(to_um(p));
             }
             out.push_back(std::move(um));
@@ -2027,7 +2041,7 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
             }
             // Les liaisons se décident sur les pénétrations d'origine (dans la région) ; seule la
             // position émise des extrémités est prolongée (compensation du tirage).
-            const std::vector<P2> emitted = pull_compensated(pts, params.pull_compensation.value);
+            const std::vector<P2> emitted = pull_compensated(pts, directional_pull_um(pts, params));
             for (std::size_t k = 0; k < pts.size(); ++k) {
                 const P2 rp = pts[k];
                 bool jump = false;
