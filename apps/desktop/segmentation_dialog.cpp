@@ -36,9 +36,9 @@ QSize thumbnailSize(int width, int height) {
     if (width <= 0 || height <= 0) {
         return {};
     }
-    const double scale =
-        std::min(static_cast<double>(kThumbnailWidth) / width,
-                 static_cast<double>(kThumbnailHeight) / height);
+    const double xScale = static_cast<double>(kThumbnailWidth) / width;
+    const double yScale = static_cast<double>(kThumbnailHeight) / height;
+    const double scale = std::min(xScale, yScale);
     return QSize(std::clamp(static_cast<int>(std::lround(width * scale)), 1, kThumbnailWidth),
                  std::clamp(static_cast<int>(std::lround(height * scale)), 1, kThumbnailHeight));
 }
@@ -50,14 +50,15 @@ QRgb checkerColor(int x, int y) {
 
 QImage sourceThumbnail(const image::Image& source) {
     const QSize size = thumbnailSize(source.width, source.height);
-    if (size.isEmpty() ||
-        source.rgba.size() !=
-            static_cast<std::size_t>(source.width) * static_cast<std::size_t>(source.height) * 4U) {
+    const std::size_t pixels =
+        static_cast<std::size_t>(source.width) * static_cast<std::size_t>(source.height);
+    if (size.isEmpty() || source.rgba.size() != pixels * 4U) {
         return {};
     }
     QImage result(size, QImage::Format_RGB32);
     for (int y = 0; y < size.height(); ++y) {
-        const int sy = static_cast<int>(static_cast<std::int64_t>(y) * source.height / size.height());
+        const auto sourceY = static_cast<std::int64_t>(y) * source.height;
+        const int sy = static_cast<int>(sourceY / size.height());
         for (int x = 0; x < size.width(); ++x) {
             const int sx =
                 static_cast<int>(static_cast<std::int64_t>(x) * source.width / size.width());
@@ -79,16 +80,18 @@ QImage sourceThumbnail(const image::Image& source) {
 
 QImage mapThumbnail(const segmentation::Segmentation& seg) {
     const QSize size = thumbnailSize(seg.width, seg.height);
-    if (size.isEmpty() ||
-        seg.labels.size() !=
-            static_cast<std::size_t>(seg.width) * static_cast<std::size_t>(seg.height)) {
+    const std::size_t pixels =
+        static_cast<std::size_t>(seg.width) * static_cast<std::size_t>(seg.height);
+    if (size.isEmpty() || seg.labels.size() != pixels) {
         return {};
     }
     QImage result(size, QImage::Format_RGB32);
     for (int y = 0; y < size.height(); ++y) {
-        const int sy = static_cast<int>(static_cast<std::int64_t>(y) * seg.height / size.height());
+        const auto sourceY = static_cast<std::int64_t>(y) * seg.height;
+        const int sy = static_cast<int>(sourceY / size.height());
         for (int x = 0; x < size.width(); ++x) {
-            const int sx = static_cast<int>(static_cast<std::int64_t>(x) * seg.width / size.width());
+            const auto sourceX = static_cast<std::int64_t>(x) * seg.width;
+            const int sx = static_cast<int>(sourceX / size.width());
             const auto label = seg.labels[static_cast<std::size_t>(sy) * seg.width + sx];
             if (label == 0U || static_cast<std::size_t>(label) > seg.region_slots.size() ||
                 !seg.region_slots[label - 1U]) {
@@ -152,16 +155,14 @@ SegmentationDialog::SegmentationDialog(double mmPerPx, QWidget* parent)
 
     auto* compareRow = new QHBoxLayout;
     compareRow->setSpacing(8);
-    const auto makeThumbnail = [this, compareRow](const QString& title,
-                                                   const QString& objectName,
-                                                   const QString& accessibleName) {
+    const auto makeThumbnail = [this, compareRow](QString title, QString name, QString desc) {
         auto* column = new QVBoxLayout;
         auto* caption = new QLabel(title, this);
         caption->setWordWrap(true);
         column->addWidget(caption);
         auto* thumb = new QLabel(this);
-        thumb->setObjectName(objectName);
-        thumb->setAccessibleName(accessibleName);
+        thumb->setObjectName(name);
+        thumb->setAccessibleName(desc);
         thumb->setFixedSize(kThumbnailWidth, kThumbnailHeight);
         thumb->setAlignment(Qt::AlignCenter);
         thumb->setFrameShape(QFrame::StyledPanel);
