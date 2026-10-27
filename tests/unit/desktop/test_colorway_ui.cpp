@@ -110,10 +110,9 @@ private slots:
         window.show();
         window.applyLoadedProject(twoObjects());
         window.showColorwayDialog();
-        auto* material = window.colorwayDialog_->findChild<QComboBox*>(
-            QStringLiteral("combo_fabric_material"));
-        auto* stabilizer = window.colorwayDialog_->findChild<QLineEdit*>(
-            QStringLiteral("edit_fabric_stabilizer"));
+        const auto* dialog = window.colorwayDialog_;
+        auto* material = dialog->findChild<QComboBox*>(QStringLiteral("combo_fabric_material"));
+        auto* stabilizer = dialog->findChild<QLineEdit*>(QStringLiteral("edit_fabric_stabilizer"));
         QVERIFY(material != nullptr && stabilizer != nullptr);
         material->setCurrentIndex(material->findData(QStringLiteral("jersey")));
         QCOMPARE(window.project_.fabric.material, std::string("jersey"));
