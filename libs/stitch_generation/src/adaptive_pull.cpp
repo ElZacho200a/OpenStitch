@@ -188,4 +188,37 @@ std::vector<SatinPullSample> adaptive_satin_pull(const std::vector<SatinPullInpu
     return out;
 }
 
+double adaptive_fill_end_pull(const FillEndContext& ctx, const AdaptiveFillModel& model,
+                              std::uint32_t* flags) {
+    std::uint32_t f = 0;
+    if (!(ctx.row_length_um > 0.0)) {
+        if (flags) {
+            *flags = 0;
+        }
+        return 0.0;
+    }
+    const double lengthMm = std::min(ctx.row_length_um / kUmPerMm, model.length_cap_mm);
+    double mm =
+        std::clamp(model.a_mm + model.b * lengthMm, model.min_mm, model.max_mm) * model.scale;
+    // Densité : des rangées plus serrées tirent davantage ; effet borné.
+    const double spacingMm = std::max(ctx.spacing_um, 1.0) / kUmPerMm;
+    mm *= std::clamp(model.reference_spacing_mm / spacingMm, 0.75, 1.25);
+    if (ctx.overhang_um > model.tip_overhang_rows * std::max(ctx.spacing_um, 1.0)) {
+        mm *= model.tip_factor;
+        f |= kFillTip;
+    }
+    mm /= 1.0 + model.curvature_gain * std::max(0.0, ctx.turning_rad);
+    double um = mm * kUmPerMm;
+    const double rowCap = model.max_row_fraction * ctx.row_length_um;
+    if (um > rowCap) {
+        um = rowCap;
+        f |= kFillRowCapped;
+    }
+    um = std::clamp(um, 0.0, model.hard_max_mm * kUmPerMm);
+    if (flags) {
+        *flags = f;
+    }
+    return um;
+}
+
 } // namespace openstitch::stitch_generation

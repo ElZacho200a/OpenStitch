@@ -1232,7 +1232,10 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   locale par station (largeur, courbure, extrémités, jonctions, variation de largeur, lissage,
   bornes de sécurité), `adaptive_pull.cpp`, sélecteur « Adaptative » de l'inspecteur, `.osp`
   (`pullMode: 2`), CLI/MCP (`pull_mode: adaptive`), tests `test_adaptive_pull.cpp`. Le mode `Auto`
-  reste la règle historique. Reste : tatami/directionnel par rangée, profil textile, calibration.
+  reste la règle historique. Reste : profil textile, calibration.
+- Livré (2026-10-27, lot 2) : `Adaptive` pour tatami (par rangée, lissage, plafond d'intervalle
+  libre devant trous/étranglements) et directionnel (par ligne, virage cumulé) ; sous-couche
+  jamais adaptative ; tests `[adaptive_pull][tatami|directional]`.
 
 ### HP-ENG-001.a — Pièce-test de calibration et table de compensation par tissu [P1] — ☐ À faire
 - Source : veille `docs/veille-innovations-2026-10.md` §V1. Aucune source lue ne
