@@ -486,8 +486,7 @@ void MainWindow::updateSavedIndicator() {
         // courante » par cette session. Ne pas inventer une heure de sauvegarde.
         savedLabel_->setText(tr("Projet ouvert"));
     } else {
-        savedLabel_->setText(
-            tr("Enregistré à %1").arg(savedAt_.toString(QStringLiteral("HH:mm"))));
+        savedLabel_->setText(tr("Enregistré à %1").arg(savedAt_.toString(QStringLiteral("HH:mm"))));
     }
 }
 
