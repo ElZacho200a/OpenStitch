@@ -31,8 +31,7 @@ Result<FabricRiskReport> measure_fabric_risk(const document::Project& project,
     std::string resolvedFabric = options.fabric;
     if (resolvedFabric == "auto") {
         resolvedFabric = project.fabric.material;
-        if (resolvedFabric != "jersey" && resolvedFabric != "felt" &&
-            resolvedFabric != "woven") {
+        if (resolvedFabric != "jersey" && resolvedFabric != "felt" && resolvedFabric != "woven") {
             resolvedFabric = "woven";
         }
     }
@@ -43,7 +42,7 @@ Result<FabricRiskReport> measure_fabric_risk(const document::Project& project,
         susceptibility = 0.75;
     } else if (resolvedFabric != "woven") {
         return std::unexpected(
-            Error{ErrorCategory::UserInput, "risque tissu : choisir auto, woven, jersey ou felt", {}});
+            Error{ErrorCategory::UserInput, "risque tissu : profil invalide", {}});
     }
 
     auto model = detail::build_thread_model(project);

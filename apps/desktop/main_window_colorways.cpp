@@ -70,8 +70,8 @@ void MainWindow::showColorwayDialog() {
                     });
                 });
         connect(colorwayDialog_, &ColorwayDialog::fabricChangeRequested, this,
-                [this](const QColor& color, const QString& name,
-                       const QString& material, const QString& stabilizer) {
+                [this](const QColor& color, const QString& name, const QString& material,
+                       const QString& stabilizer) {
                     document::FabricSettings fabric;
                     fabric.color = {static_cast<std::uint8_t>(color.red()),
                                     static_cast<std::uint8_t>(color.green()),
@@ -104,10 +104,11 @@ void MainWindow::syncColorwayUi() {
         for (const auto& colorway : project_.colorways) {
             names << QString::fromStdString(colorway.name);
         }
-        colorwayDialog_->setState(names, project_.active_colorway, fabric,
-                                  QString::fromStdString(f.name),
-                                  QString::fromStdString(f.material),
-                                  QString::fromStdString(f.stabilizer));
+        const QString name = QString::fromStdString(f.name);
+        const QString material = QString::fromStdString(f.material);
+        const QString stabilizer = QString::fromStdString(f.stabilizer);
+        colorwayDialog_->setState(names, project_.active_colorway, fabric, name, material,
+                                  stabilizer);
     }
 }
 
