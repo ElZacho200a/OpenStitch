@@ -3385,6 +3385,20 @@ migration `.osp` pour ces seuls besoins ; la segmentation IA reste hors périmè
 - Reste : validation CI, contrôle sur le portable à DPI variés,
   vérification du choix de panneaux avec des brodeurs réels.
 
+### HP-UX-050 — Inspecteur : réglages essentiels visibles, options avancées repliables [P1] — ◐ Partiel (2026-10-27, PR à valider)
+- Constat audit UI/UX : l'inspecteur tatami et satin expose immédiatement les
+  sous-couches, longueurs de fractionnement, extrémités et conversions, ce qui
+  repousse les réglages essentiels hors de l'écran sur un portable.
+- Livré en PR : « Réglages avancés » repliables pour tatami, satin à rails et
+  satin automatique ; les champs restent dans le même QFormLayout et conservent
+  leurs signaux, bornes et commandes Undo/Redo. État mémorisé par type via
+  QSettings (aucune mutation du document, aucun champ .osp).
+- Tests QTest : visibilité initiale, commandes toujours disponibles après
+  expansion, état distinct par type, guides et comparaison auto-satin visibles.
+- Reste : CI Windows/Qt, contrôles visuels et extension aux autres remplissages
+  si besoin (directionnel, motifs), puis retour des brodeurs.
+- Modules : apps/desktop/properties_panel.cpp, tests/unit/desktop.
+
 ---
 
 ## 21. Internationalisation et accessibilité (I18N)
@@ -3741,6 +3755,7 @@ ci-dessus doit les respecter :
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-27 | ChatGPT (audit UI/UX, PR 4) | HP-UX-050 ◐ : inspector tatami/satin/auto-satin avec réglages avancés repliables et mémorisés, sans toucher au moteur ni au format .osp ; tests Qt à valider. |
 | 2026-10-27 | ChatGPT (HP-UX-048 lot 1) | Comparaison miniatures avant/après dans Segmenter : source et carte de régions, aucun second calcul, tests Qt et effets documentaires inchangés. Suite simplification/vectorisation encore à faire. |
 | 2026-10-27 | ChatGPT | HP-FAB-001 : métadonnées matériau/stabilisateur dans .osp, dialogue desktop et inspection ; aucun coefficient textile non validé appliqué. |
 | 2026-10-27 | ChatGPT (audit UI/UX, PR 2) | HP-UX-039 : Workflow « Source » reconnu pour raster/SVG/design machine ; étapes facultatives indiquées « non requis », action Ouvrir universelle, tests desktop. |

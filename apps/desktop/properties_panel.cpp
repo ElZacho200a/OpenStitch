@@ -1124,6 +1124,8 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
 
     auto* form = new QFormLayout();
     styleForm(form);
+    // Une ligne avancée reste dans le vrai formulaire : aucun doublon de champs ni signal.
+    std::vector<QWidget*> advancedRows;
     // HP-UX-038 : en groupe, les contrôles à portée INDIVIDUELLE (ils n'agissent que sur l'objet
     // actif, jamais sur toute la sélection) sont isolés sous « Objet actif seulement ».
     QFormLayout* activeForm = nullptr;
@@ -1397,6 +1399,16 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 form->addRow(tr("Espacement de la sous-couche :"), uSpacing);
                 form->addRow(QString(), uZig);
                 form->addRow(QString(), underpath);
+                advancedRows.push_back(inset);
+                advancedRows.push_back(rowClip);
+                advancedRows.push_back(outline);
+                advancedRows.push_back(stagger);
+                advancedRows.push_back(uEdge);
+                advancedRows.push_back(uInset);
+                advancedRows.push_back(uPar);
+                advancedRows.push_back(uSpacing);
+                advancedRows.push_back(uZig);
+                advancedRows.push_back(underpath);
                 dependOn(uEdge, uInset);
                 dependOn(uPar, uSpacing);
                 // Mode automatique : les réglages manuels sont ignorés, donc grisés.
@@ -1450,6 +1462,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                     delete toDirectional; // conversion de type : bloc « Type de points »
                 } else {
                     form->addRow(QString(), toDirectional);
+                    advancedRows.push_back(toDirectional);
                     connect(toDirectional, &QPushButton::clicked, this,
                             [this, id] { emit convertToDirectionalRequested(id); });
                     auto* toContour =
@@ -1458,6 +1471,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                     toContour->setToolTip(tr("Remplace les rangées par des anneaux concentriques "
                                              "qui suivent le bord (echo). Annulable (Ctrl+Z)."));
                     form->addRow(QString(), toContour);
+                    advancedRows.push_back(toContour);
                     connect(toContour, &QPushButton::clicked, this,
                             [this, id] { emit convertToContourFillRequested(id); });
                     // HP-STI-008 / 009 / 014 : radial, spirale, croisé (kind 0 / 1 / 2).
@@ -1479,6 +1493,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                         b->setObjectName(QString::fromLatin1(extra[kind].name));
                         b->setToolTip(extra[kind].tip);
                         form->addRow(QString(), b);
+                        advancedRows.push_back(b);
                         connect(b, &QPushButton::clicked, this,
                                 [this, id, kind] { emit convertToFillKindRequested(id, kind); });
                     }
@@ -1874,6 +1889,21 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 corner->setToolTip(tr("Traitement des coins vifs de la colonne."));
                 form->addRow(QString(), autoSpacing);
                 form->addRow(tr("Coins vifs :"), corner);
+                advancedRows.push_back(underlay);
+                advancedRows.push_back(edgeU);
+                advancedRows.push_back(zigU);
+                advancedRows.push_back(pullL);
+                advancedRows.push_back(pullR);
+                advancedRows.push_back(shortCombo);
+                advancedRows.push_back(splitCombo);
+                advancedRows.push_back(maxLen);
+                advancedRows.push_back(maxHard);
+                advancedRows.push_back(capStart);
+                advancedRows.push_back(capEnd);
+                advancedRows.push_back(lockStart);
+                advancedRows.push_back(lockEnd);
+                advancedRows.push_back(autoSpacing);
+                advancedRows.push_back(corner);
                 bindBool(autoSpacing, tr("Espacement automatique"), &T::auto_spacing);
                 bindEnumField<T>(this, edit, corner, tr("Coins vifs"), &T::corner_mode, members);
                 bindMm(density, tr("Espacement"), &T::density);
@@ -2058,7 +2088,9 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
 
                 // Intertitres : 20 champs à plat sont illisibles ; on les regroupe par sujet.
                 const auto section = [this, form](const QString& title) {
-                    form->addRow(makeSectionLabel(title, body_));
+                    auto* heading = makeSectionLabel(title, body_);
+                    form->addRow(heading);
+                    return heading;
                 };
                 if (!group) {
                     form->addRow(QString(), summary);
@@ -2152,7 +2184,8 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 connect(uMode, &QComboBox::currentIndexChanged, this,
                         [syncUnderlay](int) { syncUnderlay(); });
                 bindEnumField<T>(this, edit, uMode, tr("Sous-couche"), &T::underlay_mode, members);
-                section(tr("Extrémités"));
+                auto* endsTitle = section(tr("Extrémités"));
+                advancedRows.push_back(endsTitle);
                 form->addRow(tr("Forme du bout (début) :"), capStart);
                 form->addRow(tr("Forme du bout (fin) :"), capEnd);
                 form->addRow(tr("Point d'arrêt (début) :"), lockStart);
@@ -2169,6 +2202,10 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 corner->setToolTip(tr("Traitement des coins vifs de la colonne."));
                 form->addRow(QString(), autoSpacing);
                 form->addRow(tr("Coins vifs :"), corner);
+                advancedRows.insert(advancedRows.end(),
+                                    {splitCombo, threshold, splitLen, shortCombo, pullL, pullR,
+                                     underlay, edgeU, zigU, capStart, capEnd, lockStart, lockEnd,
+                                     autoSpacing, corner});
                 bindBool(autoSpacing, tr("Espacement automatique"), &T::auto_spacing);
                 bindEnumField<T>(this, edit, corner, tr("Coins vifs"), &T::corner_mode, members);
                 section(tr("Orientation des fils"));
@@ -2560,9 +2597,49 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
         object.params);
     building_ = false;
 
+    // Installer le formulaire avant setRowVisible : les widgets doivent avoir un
+    // parent Qt valide lors de l'application de la visibilité initiale.
     auto* holder = new QWidget(body_);
     holder->setLayout(form);
+    // Insérer le conteneur dans le layout visible avant de restaurer l'état des lignes :
+    // sous Qt/Windows, setRowVisible(true) sur un formulaire non encore inséré peut
+    // laisser les contrôles avancés masqués après un changement de type de point.
     body_->layout()->addWidget(holder);
+
+    // Les réglages détaillés restent câblés au document : replier leur ligne
+    // réduit seulement l'encombrement visuel. État mémorisé par type de points.
+    if (!advancedRows.empty()) {
+        QString kind = QStringLiteral("autoSatin");
+        if (std::holds_alternative<document::TatamiParams>(object.params)) {
+            kind = QStringLiteral("tatami");
+        } else if (std::holds_alternative<document::SatinParams>(object.params)) {
+            kind = QStringLiteral("satin");
+        }
+        const QString key = QStringLiteral("inspector/advanced/") + kind;
+        const bool expanded = ui_memory::boolValue(key, false);
+        auto* toggle = new QToolButton(body_);
+        toggle->setObjectName(QStringLiteral("button_inspectorAdvanced"));
+        toggle->setText(tr("Réglages avancés"));
+        toggle->setAccessibleName(tr("Afficher ou masquer les réglages avancés"));
+        toggle->setToolTip(tr("Affiche les paramètres détaillés sans changer la broderie."));
+        toggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        toggle->setCheckable(true);
+        toggle->setChecked(expanded);
+        body_->layout()->addWidget(toggle);
+
+        const auto applyAdvanced = [form, advancedRows, toggle](bool on) {
+            toggle->setArrowType(on ? Qt::DownArrow : Qt::RightArrow);
+            for (QWidget* field : advancedRows) {
+                form->setRowVisible(field, on);
+            }
+        };
+        connect(toggle, &QToolButton::toggled, this, [applyAdvanced, key](bool on) {
+            applyAdvanced(on);
+            ui_memory::setBoolValue(key, on);
+        });
+        applyAdvanced(expanded);
+    }
+
     if (activeForm != nullptr) {
         auto* title = makeSectionLabel(tr("Objet actif seulement"), body_);
         title->setToolTip(tr("Ces réglages n'agissent que sur « %1 » (le premier objet du groupe), "
