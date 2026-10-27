@@ -477,6 +477,7 @@ MainWindow::MainWindow() {
     // [cablage-D:fin]
     // [cablage-E:debut]
     buildDensityFeature();
+    buildPullPreviewFeature();
     // [cablage-E:fin]
     panelsMenu_->addAction(historyDock_->toggleViewAction());
     for (auto* d :
@@ -4396,6 +4397,7 @@ void MainWindow::renderStitches() {
     simMarker_ = nullptr;
     simWalkValid_ = false;
     refreshDensityOverlay(); // HP-VIEW-005 (main_window_density.cpp)
+    refreshPullMapOverlay(); // tirage prédit (main_window_pull_preview.cpp)
 
     if (showStitchesAct_ == nullptr || !showStitchesAct_->isChecked() || !sequence_) {
         return;
@@ -7456,19 +7458,26 @@ void MainWindow::refreshWorkflow() {
     const bool seg = project_.segmentation.has_value();
     const bool vec = !project_.vector_objects.empty();
     const bool emb = !project_.embroidery_objects.empty();
+    const bool imported = project_.imported_design.has_value();
     const bool seq = sequence_.has_value();
-    // La segmentation par IA (menu Broderie ▸ Segmenter avec l'IA) vectorise
-    // directement les formes retenues sans jamais passer par
-    // project_.segmentation (cf. AiSegmentationDialog + autodigitize::
-    // auto_digitize) : ne jamais gater « Régions »/« Vecteurs » sur `seg`
-    // seul, sous peine d'afficher « à faire » alors que des objets existent
-    // déjà (défaut trouvé par revue ergonomie).
-    const bool regionsDone = seg || vec;
+    // Source ≠ raster : un SVG peut fournir directement des vecteurs, et un DST/PES
+    // directement des points. Les étapes inapplicables sont indiquées « non requis »
+    // plutôt que « à faire » : elles ne doivent pas bloquer le parcours utilisateur.
+    const bool hasSource = img || seg || vec || emb || imported;
+    const bool machineOnly = imported && !img && !seg && !vec;
 
-    st[0] = img ? S::Done : S::NotStarted;
-    st[1] = !img ? S::NotStarted : (regionsDone ? S::Done : S::Available);
-    st[2] = !regionsDone ? S::NotStarted : (vec ? S::Done : S::Available);
-    st[3] = emb ? S::Done : ((vec || seg) ? S::Available : S::NotStarted);
+    st[0] = hasSource ? S::Done : S::NotStarted;
+    if (!hasSource) {
+        st[1] = S::NotStarted;
+        st[2] = S::NotStarted;
+    } else if (machineOnly) {
+        st[1] = S::Skipped;
+        st[2] = S::Skipped;
+    } else {
+        st[1] = !img ? S::Skipped : ((seg || vec) ? S::Done : S::Available);
+        st[2] = vec ? S::Done : (seg ? S::Available : S::NotStarted);
+    }
+    st[3] = (emb || imported) ? S::Done : ((vec || seg) ? S::Available : S::NotStarted);
     st[4] = seq ? S::Available : S::NotStarted;
     st[5] = seq ? S::Available : S::NotStarted;
     workflowPanel_->setStates(st);

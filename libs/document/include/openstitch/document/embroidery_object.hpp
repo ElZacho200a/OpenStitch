@@ -50,9 +50,12 @@ enum class UnderlayMode : std::uint8_t { Manual, Auto };
 // resolve_pull_compensation`), le réglage manuel étant alors ignoré. `Adaptive`
 // (AdaptivePullCompensation, niveau 1 : géométrique) : la compensation est calculée
 // LOCALEMENT (par station de satin, par rangée de remplissage) avec lissage et bornes de
-// sécurité ; `Auto` reste la règle historique à largeur moyenne, inchangée. N'agit qu'à la
+// sécurité ; `Auto` reste la règle historique à largeur moyenne, inchangée. `Predicted`
+// (niveau 3) : le déplacement du tissu est prédit par un CHAMP sur tous les segments cousus voisins
+// (`stitch_generation::PullField`, anisotrope, avec confiance) et appliqué en passe finale de
+// `effective_sequence` ; la compensation de bout d'objet est alors nulle. N'agit qu'à la
 // génération. Valeurs persistées : ne pas réordonner.
-enum class PullMode : std::uint8_t { Manual, Auto, Adaptive };
+enum class PullMode : std::uint8_t { Manual, Auto, Adaptive, Predicted };
 
 // Paramètres du remplissage tatami (§5.4, §15).
 struct TatamiParams {
