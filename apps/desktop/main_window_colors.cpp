@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-// Segmentation : fusion de COULEURS (panneau « Couleurs »). Membres de MainWindow séparés de
-// main_window.cpp. Aucune logique métier ici : les teintes, les plans de fusion et leur application
-// viennent de libs/segmentation (`color_merge.hpp`) ; le document n'est modifié que par une
-// commande annulable (un seul pas d'annulation), jamais par l'aperçu, qui travaille sur une copie.
+// Panneau « Couleurs de segmentation » : fusion des teintes techniques.
+// Ce module ne contient aucune logique métier. Les plans de fusion viennent
+// de libs/segmentation ; seule une commande annulable modifie le projet.
+// L'aperçu travaille sur une copie, sans mutation du document.
 #include <QDockWidget>
 #include <QStatusBar>
 
@@ -19,7 +19,7 @@ namespace openstitch::desktop {
 
 void MainWindow::showColorsPanel() {
     if (colorsDock_ == nullptr) {
-        colorsDock_ = new QDockWidget(tr("Couleurs"), this);
+        colorsDock_ = new QDockWidget(tr("Couleurs de segmentation"), this);
         colorsDock_->setObjectName(QStringLiteral("colorsDock"));
         colorsDock_->setAccessibleName(colorsDock_->windowTitle());
         colorsPanel_ = new SegmentationColorsPanel(colorsDock_);
