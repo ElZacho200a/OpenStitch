@@ -10,6 +10,7 @@
 
 #include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/stitch_generation/pull_auto.hpp"
+#include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
 
 using namespace openstitch;
@@ -176,4 +177,24 @@ TEST_CASE("tirage auto : le satin Auto elargit la colonne") {
     const auto automatic = make(document::PullMode::Auto);
     REQUIRE_FALSE(manual.commands.empty());
     CHECK(spread(automatic) == spread(manual) + 2 * choose_satin_pull(4.0).value);
+}
+
+TEST_CASE("tirage auto : satin a largeur variable compense par traversée") {
+    const std::vector<SatinStation> stations{
+        {um(0, -1'000), um(0, 1'000)},
+        {um(2'000, -4'000), um(2'000, 4'000)},
+    };
+    SatinConfig base;
+    base.density = Micrometers{2'000};
+    SatinConfig local = base;
+    local.auto_pull_local = true;
+    const auto nominal = finish_satin_stations(stations, base);
+    const auto compensated = finish_satin_stations(stations, local);
+    REQUIRE(compensated.satin.size() == nominal.satin.size());
+    REQUIRE(compensated.satin.size() >= 4);
+    CHECK(std::abs(compensated.satin.front().y.value - nominal.satin.front().y.value) ==
+          choose_satin_pull(2.0).value);
+    CHECK(std::abs(compensated.satin.back().y.value - nominal.satin.back().y.value) ==
+          choose_satin_pull(8.0).value);
+    CHECK(compensated.satin == finish_satin_stations(stations, local).satin);
 }

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/stitch_generation/satin.hpp"
+#include "openstitch/stitch_generation/pull_auto.hpp"
 
 #include "openstitch/geometry/polyline.hpp"
 
@@ -862,11 +863,17 @@ SatinResult finish_satin_stations(const std::vector<SatinStation>& stations,
         PointD pb = t.b;
         const double w = dist(pa, pb);
         result.max_width_um = std::max(result.max_width_um, w);
-        // Pull latérale : base symétrique (pull_compensation) + fixe + proportionnelle par côté.
-        const double offA =
-            std::clamp(comp + config.pull_left.value + config.pull_left_prop * w, 0.0, pmax);
-        const double offB =
-            std::clamp(comp + config.pull_right.value + config.pull_right_prop * w, 0.0, pmax);
+        // En Auto, la largeur locale de chaque traversée détermine la compensation.
+        // La correction symétrique manuelle et les suppléments par côté restent inchangés.
+        const double basePull = config.auto_pull_local
+                                    ? static_cast<double>(choose_satin_pull(w / 1000.0).value)
+                                    : comp;
+        const double offA = std::clamp(basePull + config.pull_left.value +
+                                           config.pull_left_prop * w,
+                                       0.0, pmax);
+        const double offB = std::clamp(basePull + config.pull_right.value +
+                                           config.pull_right_prop * w,
+                                       0.0, pmax);
         if (w > 1e-6) {
             const double ux = (pa.x - pb.x) / w;
             const double uy = (pa.y - pb.y) / w;

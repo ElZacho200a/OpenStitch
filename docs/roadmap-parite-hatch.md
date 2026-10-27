@@ -1223,6 +1223,9 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   côté). Activé pour les objets créés à la main et par l'auto-numérisation
   (`auto_pull_compensation`), sélecteur « Tirage » dans l'inspecteur, `.osp` (clé `pullMode`
   hors défaut), CLI `project` (`pull_mode`), tests (`test_pull_auto.cpp`).
+- Livré (2026-10-27, PR dédiée) : satin à stations/barreaux en Auto compensé par largeur
+  locale de chaque traversée (0,10 à 0,35 mm par côté) ; satin legacy sans barreaux
+  conserve l'heuristique moyenne, modes manuels et anciens projets inchangés.
 - Reste : coefficients empiriques non mesurés (validation physique HP-PHYS-001, calibration
   HP-ENG-001.a) ; l'`inset` de 0,2 mm entre tatamis voisins n'est pas compensé ; pas de
   compensation perpendiculaire aux rangées (poussée latérale).
@@ -3692,6 +3695,7 @@ ci-dessus doit les respecter :
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-27 | ChatGPT | HP-ENG-001.b : compensation satin Auto calculée par station, sans modifier le mode manuel ; test géométrique et déterminisme ajoutés. CI à vérifier. |
 | 2026-10-26 | Claude (IA, desktop) | **Segmentation IA du desktop via le registre de backends** (`openstitch.ai.backend/1`) : `libs/ai_segmentation/backend_run` (analyse complète par un backend, repli explicite CIELAB, annulation, masques sans score inventé), sélecteur de moteur dans « Segmenter avec l'IA » (worker historique, backends déclarés, couleur), préférences (fichier de backends, moteur par défaut, « Sonder les backends » : état, modèle, empreinte, licences), tests Catch2 + QTest. Le worker SAM v1 reste le défaut. Aucune entrée de parité modifiée. |
 | 2026-10-26 | Claude | **Compensation du tirage automatique** (HP-ENG-001.b) : `PullMode::Auto` sur tatami, directionnel, satin et auto-satin, calcul selon l'épaisseur de la forme, activé à la création et par l'auto-numérisation, inspecteur, `.osp`, CLI. Coefficients empiriques à valider sur tissu (HP-PHYS-001). |
 | 2026-10-26 | Claude (IA PR-01) | **Banc de segmentation reproductible** : manifeste épinglé `openstitch.ai.benchmark-manifest/1`, fixture synthétique CC0 `marine-synth-01`, runner stdlib `scripts/openstitch_ai_bench.py` (baseline CIELAB via `openstitch-cli`, SAM 2.1 via le worker existant, skip explicite sans poids), métriques par objet avec porte « sujet principal absent = échec », 18 tests Python + CI `ai-bench.yml`. Aucun code C++ modifié. |

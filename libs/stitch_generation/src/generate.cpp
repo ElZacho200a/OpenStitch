@@ -288,10 +288,14 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
         config.underlay_edge = c.edge;
         config.underlay_zigzag = c.zigzag;
     }
-    // Compensation du tirage automatique (HP-ENG-001.b) : selon la largeur réelle de la colonne.
+    // Satin avec barreaux : compensation locale par traversée ; ancien satin sans barreaux :
+    // valeur moyenne historique, car fill_satin ne passe pas par finish_satin_stations.
     if (params.pull_mode == document::PullMode::Auto) {
-        config.pull_compensation =
-            choose_satin_pull(satin_mean_width_mm(params.rail_a, params.rail_b));
+        config.auto_pull_local = params.rungs.size() >= 2;
+        if (!config.auto_pull_local) {
+            config.pull_compensation =
+                choose_satin_pull(satin_mean_width_mm(params.rail_a, params.rail_b));
+        }
     }
     // Avec barreaux (satin auto) : correspondance par sections + espacement
     // perpendiculaire. Sans barreaux (satin manuel/legacy) : ré-échantillonnage
@@ -411,7 +415,8 @@ void generate_auto_satin(stitch::StitchSequence& sequence, const document::Vecto
             config.underlay_zigzag = c.zigzag;
         }
         if (params.pull_mode == document::PullMode::Auto) {
-            config.pull_compensation = choose_satin_pull(widthMm);
+            config.auto_pull_local = true;
+            config.pull_compensation = Micrometers{0};
         }
     }
 
