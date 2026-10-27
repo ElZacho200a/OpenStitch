@@ -701,6 +701,28 @@ private slots:
         window.segmentDialog_->close();
     }
 
+    // Régression : un calcul lancé avant un clic « source » ne peut pas
+    // faire réapparaître la carte en fin de traitement.
+    void turningOffPreviewDuringCalculationKeepsCanvasOnSource() {
+        MainWindow window;
+        auto project = threeBandProject();
+        project.segmentation.reset();
+        window.applyLoadedProject(project);
+        window.segmentImage();
+        QVERIFY(!window.segmentDialog_.isNull());
+        QVERIFY(window.segmentThread_ != nullptr);
+
+        auto* toggle = window.segmentDialog_->findChild<QCheckBox*>("segmentPreviewCheck");
+        QVERIFY(toggle != nullptr);
+        toggle->setChecked(false);
+        QTRY_VERIFY_WITH_TIMEOUT(window.segmentThread_ == nullptr, 20000);
+        QVERIFY(!window.previewSegmentation_.has_value());
+        QVERIFY(!window.showSegAct_->isChecked());
+        QVERIFY(!window.project_.segmentation.has_value());
+        QVERIFY(window.undoStack_.isClean());
+        window.segmentDialog_->close();
+    }
+
     void segmentationThumbnailsRejectInvalidInput() {
         openstitch::desktop::SegmentationDialog dialog(0.1);
         auto* before = dialog.findChild<QLabel*>(QStringLiteral("segmentSourceThumbnail"));
