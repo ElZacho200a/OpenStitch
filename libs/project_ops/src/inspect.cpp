@@ -746,9 +746,16 @@ Result<json> build_project_doc(const document::Project& project, const InspectOp
         doc["colorways"] = colorways;
     }
     if (!(project.fabric == document::FabricSettings{})) {
-        doc["fabric"] = json{{"rgb", json::array({project.fabric.color[0], project.fabric.color[1],
-                                                  project.fabric.color[2]})},
-                             {"name", project.fabric.name}};
+        json fabric = json{{"rgb", json::array({project.fabric.color[0], project.fabric.color[1],
+                                                project.fabric.color[2]})},
+                           {"name", project.fabric.name}};
+        if (!project.fabric.material.empty()) {
+            fabric["material"] = project.fabric.material;
+        }
+        if (!project.fabric.stabilizer.empty()) {
+            fabric["stabilizer"] = project.fabric.stabilizer;
+        }
+        doc["fabric"] = std::move(fabric);
     }
 
     json warnings = json::array();

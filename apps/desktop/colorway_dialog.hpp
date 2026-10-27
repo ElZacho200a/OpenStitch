@@ -25,14 +25,15 @@ public:
 
     // `names` : un coloris par ligne ; `active` : indice du coloris actif (-1 = aucun).
     void setState(const QStringList& names, int active, const QColor& fabric,
-                  const QString& fabricName);
+                  const QString& fabricName, const QString& material, const QString& stabilizer);
 
 signals:
     void addRequested(const QString& suggestedName);
     void activateRequested(int index);
     void removeRequested(int index);
     void renameRequested(int index, const QString& name);
-    void fabricChangeRequested(const QColor& color, const QString& name);
+    void fabricChangeRequested(const QColor& color, const QString& name, const QString& material,
+                               const QString& stabilizer);
 
 private:
     void updateButtons();
@@ -48,6 +49,8 @@ private:
     QPushButton* fabricButton_{nullptr};
     QComboBox* presetCombo_{nullptr};
     QLineEdit* fabricName_{nullptr};
+    QComboBox* materialCombo_{nullptr};
+    QLineEdit* stabilizer_{nullptr};
     QColor fabric_{Qt::white};
     int active_{-1};
     bool populating_{false};
