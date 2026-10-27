@@ -653,6 +653,11 @@ void PropertiesPanelTest::engineSettingsEmitDedicatedEdits() {
     QCOMPARE(std::get<openstitch::document::TatamiParams>(*emitted).pull_mode,
              openstitch::document::PullMode::Auto);
     QVERIFY(!pull->isEnabled());
+    // Mode Adaptatif : compensation locale, le réglage manuel est aussi grisé.
+    pullMode->setCurrentIndex(2);
+    QCOMPARE(std::get<openstitch::document::TatamiParams>(*emitted).pull_mode,
+             openstitch::document::PullMode::Adaptive);
+    QVERIFY(!pull->isEnabled());
     pullMode->setCurrentIndex(0);
     QVERIFY(pull->isEnabled());
 
