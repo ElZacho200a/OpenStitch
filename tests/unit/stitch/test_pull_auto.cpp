@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "openstitch/stitch_generation/directional_fill.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/stitch_generation/pull_auto.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
@@ -176,4 +177,26 @@ TEST_CASE("tirage auto : le satin Auto elargit la colonne") {
     const auto automatic = make(document::PullMode::Auto);
     REQUIRE_FALSE(manual.commands.empty());
     CHECK(spread(automatic) == spread(manual) + 2 * choose_satin_pull(4.0).value);
+}
+
+TEST_CASE("tirage auto : les lignes directionnelles sont compensees localement") {
+    const geometry::PathSet shape = rect(20'000, 10'000);
+    document::DirectionalFillParams p;
+    p.inset = Micrometers{0};
+    p.pull_mode = document::PullMode::Manual;
+    const auto base = directional_stitch_lines(shape, p);
+    REQUIRE_FALSE(base.empty());
+    p.pull_mode = document::PullMode::Auto;
+    const auto automatic = directional_stitch_lines(shape, p);
+    REQUIRE(automatic.size() == base.size());
+    bool changed = false;
+    for (std::size_t i = 0; i < base.size(); ++i) {
+        REQUIRE(automatic[i].size() == base[i].size());
+        if (base[i].size() >= 2) {
+            changed |= automatic[i].front() != base[i].front();
+            changed |= automatic[i].back() != base[i].back();
+        }
+    }
+    CHECK(changed);
+    CHECK(automatic == directional_stitch_lines(shape, p));
 }
