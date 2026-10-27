@@ -225,7 +225,7 @@ TEST_CASE("fabric risk : couches, profils, determinisme et parametres invalides"
     one.fabric.material.clear(); // repli defini en "woven"
     const auto fallback = measure_fabric_risk(one, options);
     REQUIRE(fallback);
-    CHECK(fallback->json == single->json || fallback->p99_score == single->p99_score);
+    CHECK((fallback->json == single->json || fallback->p99_score == single->p99_score));
 
     options.fabric = "unknown";
     CHECK_FALSE(measure_fabric_risk(one, options).has_value());
