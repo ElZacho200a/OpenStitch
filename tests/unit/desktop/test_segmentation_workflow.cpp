@@ -670,10 +670,8 @@ private slots:
         window.segmentImage();
         QVERIFY(!window.segmentDialog_.isNull());
 
-        auto* before = window.segmentDialog_->findChild<QLabel*>(
-            QStringLiteral("segmentSourceThumbnail"));
-        auto* after = window.segmentDialog_->findChild<QLabel*>(
-            QStringLiteral("segmentResultThumbnail"));
+        auto* before = window.segmentDialog_->findChild<QLabel*>("segmentSourceThumbnail");
+        auto* after = window.segmentDialog_->findChild<QLabel*>("segmentResultThumbnail");
         QVERIFY(before != nullptr && after != nullptr);
         QVERIFY(before->accessibleName().contains(QStringLiteral("avant segmentation")));
         QVERIFY(after->accessibleName().contains(QStringLiteral("Résultat")));
