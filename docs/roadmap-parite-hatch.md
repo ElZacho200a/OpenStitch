@@ -3286,7 +3286,7 @@ migration `.osp` pour ces seuls besoins ; la segmentation IA reste hors périmè
 - Reste pour fermeture : CI Windows Qt et tests complets à valider, enrichir
   les raisons de désactivation absentes des QAction et les alias métier.
 
-### HP-UX-047 — Différencier couleurs de régions, d'objets et fils [P1] — ☐ À faire
+### HP-UX-047 — Différencier couleurs de régions, d'objets et fils [P1] — ◐ Partiel (2026-10-27)
 - Besoin : fausses couleurs de segmentation, couleurs d'objets et références
   réelles des fils représentent trois informations distinctes. Les réglages
   de réduction des couleurs se retrouvent à plusieurs endroits (PAR-16 du
@@ -3305,6 +3305,13 @@ migration `.osp` pour ces seuls besoins ; la segmentation IA reste hors périmè
   un changement de fil est annulable par une seule `ICommand` et apparaît
   dans le récapitulatif d'export ; le rôle n'est pas signalé par la couleur
   seule ; tests Qt.
+- En PR (2026-10-27) : dock renommé « Couleurs de segmentation », légende
+  permanente explicitant qu'une teinte de région n'est pas une référence de
+  fil, info-bulles contextualisées et légende distincte dans l'onglet Projet
+  du panneau Fils. Deux QTests valident les libellés et leur accessibilité.
+- Reste : lier les trois rôles dans une vue contextuelle (région → couleur
+  d'objet → référence de fil) et vérifier le résultat visuellement ; aucune
+  transformation de points ni changement d'attribution dans ce premier lot.
 
 ### HP-UX-048 — Comparer original et aperçu avant transformation [P2] — ☐ À faire
 - Besoin : HP-VIEW-012 couvre l'aperçu direct mais ne pose pas un comportement
@@ -3702,6 +3709,7 @@ ci-dessus doit les respecter :
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-27 | ChatGPT (audit UI/UX, PR 5) | HP-UX-047 ◐ : distinguer visuellement et textuellement teintes de segmentation, couleurs d'objets et références de fils ; QTests, sans modifier ni broderie ni export. |
 | 2026-10-27 | ChatGPT (audit UI/UX, PR 1) | HP-PERF-001 / HP-UX-006 : vectorisation asynchrone de régions, progression et annulation sans mutation documentaire ; tests Catch2 et QTest, CI à confirmer. Autres tâches longues encore à migrer. |
 | 2026-10-26 | Claude (IA, desktop) | **Segmentation IA du desktop via le registre de backends** (`openstitch.ai.backend/1`) : `libs/ai_segmentation/backend_run` (analyse complète par un backend, repli explicite CIELAB, annulation, masques sans score inventé), sélecteur de moteur dans « Segmenter avec l'IA » (worker historique, backends déclarés, couleur), préférences (fichier de backends, moteur par défaut, « Sonder les backends » : état, modèle, empreinte, licences), tests Catch2 + QTest. Le worker SAM v1 reste le défaut. Aucune entrée de parité modifiée. |
 | 2026-10-26 | Claude | **Compensation du tirage automatique** (HP-ENG-001.b) : `PullMode::Auto` sur tatami, directionnel, satin et auto-satin, calcul selon l'épaisseur de la forme, activé à la création et par l'auto-numérisation, inspecteur, `.osp`, CLI. Coefficients empiriques à valider sur tissu (HP-PHYS-001). |
