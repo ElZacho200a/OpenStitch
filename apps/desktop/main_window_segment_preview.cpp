@@ -60,12 +60,16 @@ void MainWindow::openSegmentationDialog() {
     auto* dialog = new SegmentationDialog(project_.mm_per_px.value, this);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     segmentDialog_ = dialog;
+    dialog->setSourceThumbnail(*segmentSnapshot_);
     connect(dialog, &SegmentationDialog::optionsChanged, this,
             &MainWindow::requestSegmentationPreview);
     connect(dialog, &SegmentationDialog::previewToggled, this, [this](bool enabled) {
         if (enabled && segmentDialog_ != nullptr) {
             requestSegmentationPreview(segmentDialog_->options());
         } else {
+            // Un résultat encore en vol ne doit jamais réafficher la carte
+            // après que l'utilisateur a choisi de voir la source.
+            segmentPending_.reset();
             hideSegmentationPreview();
         }
     });
@@ -129,11 +133,12 @@ void MainWindow::onSegmentationPreviewReady() {
         segmentCachedOptions_ = job->options;
         segmentCachedSeconds_ = job->seconds;
         segmentCached_ = std::move(**job->result);
-        if (!pending && sameOptions(job->options, segmentDialog_->options())) {
+        if (!pending && segmentDialog_->previewEnabled() &&
+            sameOptions(job->options, segmentDialog_->options())) {
             showSegmentationPreview(*segmentCached_, job->seconds);
         }
     }
-    if (pending) {
+    if (pending && segmentDialog_->previewEnabled()) {
         if (segmentCached_ && segmentCachedOptions_ &&
             sameOptions(*segmentCachedOptions_, *pending)) {
             requestSegmentationPreview(*pending);
@@ -160,6 +165,7 @@ void MainWindow::showSegmentationPreview(const segmentation::Segmentation& seg, 
                                   .colors = segmentation::color_classes(seg).size(),
                                   .smallRegions = small,
                                   .seconds = seconds});
+        segmentDialog_->setSegmentationThumbnail(seg);
     }
     previewSegmentation_ = seg;
     if (!showSegAct_->isChecked()) {
