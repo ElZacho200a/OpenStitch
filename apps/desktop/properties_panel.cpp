@@ -2593,6 +2593,11 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
         object.params);
     building_ = false;
 
+    // Installer le formulaire avant setRowVisible : les widgets doivent avoir un
+    // parent Qt valide lors de l'application de la visibilité initiale.
+    auto* holder = new QWidget(body_);
+    holder->setLayout(form);
+
     // Les réglages détaillés restent câblés au document : replier leur ligne
     // réduit seulement l'encombrement visuel. État mémorisé par type de points.
     if (!advancedRows.empty()) {
@@ -2627,8 +2632,6 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
         applyAdvanced(expanded);
     }
 
-    auto* holder = new QWidget(body_);
-    holder->setLayout(form);
     body_->layout()->addWidget(holder);
     if (activeForm != nullptr) {
         auto* title = makeSectionLabel(tr("Objet actif seulement"), body_);
