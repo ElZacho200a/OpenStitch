@@ -190,7 +190,9 @@ void PropertiesPanelTest::advancedSatinModesRememberSeparatePreferences() {
     auto* restored = panel.findChild<QToolButton*>(QStringLiteral("button_inspectorAdvanced"));
     QVERIFY(restored && restored->isChecked());
     corner = panel.findChild<QComboBox*>(QStringLiteral("combo_satinCorner"));
-    QVERIFY(corner && corner->isVisible());
+    // Le layout Qt peut différer l'affichage après remplacement du formulaire
+    // (notamment avec le plugin offscreen sous Windows) : attendre son activation.
+    QTRY_VERIFY(corner && corner->isVisible());
     ui_memory::setBoolValue(QStringLiteral("inspector/advanced/satin"), false);
 }
 
