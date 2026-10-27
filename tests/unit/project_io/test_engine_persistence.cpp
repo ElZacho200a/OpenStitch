@@ -65,7 +65,7 @@ TEST_CASE("moteur : round-trip des nouveaux reglages (tatami, directionnel, sati
     tatami.edge_outline = true;
     document::DirectionalFillParams directional;
     directional.underlay_mode = document::UnderlayMode::Auto;
-    directional.pull_mode = document::PullMode::Auto;
+    directional.pull_mode = document::PullMode::Adaptive; // AdaptivePullCompensation
     directional.edge_outline = true;
     document::SatinParams satin;
     satin.underlay_mode = document::UnderlayMode::Auto;
@@ -74,7 +74,7 @@ TEST_CASE("moteur : round-trip des nouveaux reglages (tatami, directionnel, sati
                                              document::BorderCorner::Round, 2, 1};
     document::AutoSatinParams autoSatin;
     autoSatin.underlay_mode = document::UnderlayMode::Auto;
-    autoSatin.pull_mode = document::PullMode::Auto;
+    autoSatin.pull_mode = document::PullMode::Adaptive;
     autoSatin.compact_axis = true;
 
     std::uint64_t id = 10;

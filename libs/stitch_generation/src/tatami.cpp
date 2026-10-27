@@ -8,6 +8,7 @@
 #include <numbers>
 
 #include "openstitch/geometry/offset.hpp"
+#include "openstitch/stitch_generation/adaptive_pull.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
 
 namespace openstitch::stitch_generation {
@@ -292,8 +293,11 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
     const int stagger = std::max(1, params.stagger);
     // HP-ENG-001 : dÃ©passement des rangÃ©es dans l'axe du fil (bornÃ© Ã  3 mm : un fichier
     // aberrant ne doit pas Ã©taler la couture hors de toute proportion).
-    const double pull =
-        static_cast<double>(std::clamp<std::int32_t>(params.pull_compensation.value, 0, 3'000));
+    // En mode Adaptive, le réglage manuel est ignoré (calcul par rangée plus bas).
+    const double pull = params.pull_mode == document::PullMode::Adaptive
+                            ? 0.0
+                            : static_cast<double>(std::clamp<std::int32_t>(
+                                  params.pull_compensation.value, 0, 3'000));
 
     const double cosA = std::cos(-params.angle.radians);
     const double sinA = std::sin(-params.angle.radians);
@@ -441,6 +445,95 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
         // `lo`/`hi` du segment restent celles de la region (adjacence, validation des liaisons).
         s.pens.front() = s.lo - pull;
         s.pens.back() = s.hi + pull;
+    }
+
+    // 1 quater) Compensation ADAPTATIVE (`PullMode::Adaptive`) : un dépassement par bout et par
+    //    rangée, selon la longueur de la rangée, la densité et la saillie du bout par rapport
+    //    aux rangées voisines (pointe fine), lissé entre rangées voisines, puis borné par la
+    //    moitié de l'intervalle libre jusqu'au segment voisin de la même rangée (trous,
+    //    étranglements : aucune pénétration n'entre dans un trou ni ne croise sa voisine).
+    if (params.pull_mode == document::PullMode::Adaptive) {
+        const AdaptiveFillModel model{};
+        const auto overlapping = [&](const Segment& s, int row) {
+            std::vector<int> ids;
+            const auto it = byRow.find(row);
+            if (it != byRow.end()) {
+                for (const int j : it->second) {
+                    const Segment& o = segs[static_cast<std::size_t>(j)];
+                    if (std::min(s.hi, o.hi) - std::max(s.lo, o.lo) > 0.0) {
+                        ids.push_back(j);
+                    }
+                }
+            }
+            return ids;
+        };
+        std::vector<double> rawLo(static_cast<std::size_t>(n), 0.0);
+        std::vector<double> rawHi(static_cast<std::size_t>(n), 0.0);
+        std::vector<std::vector<int>> nb(static_cast<std::size_t>(n));
+        for (int i = 0; i < n; ++i) {
+            const Segment& s = segs[static_cast<std::size_t>(i)];
+            auto up = overlapping(s, s.row - 1);
+            const auto down = overlapping(s, s.row + 1);
+            up.insert(up.end(), down.begin(), down.end());
+            // Saillie de chaque bout au-delà de l'étendue des rangées voisines (0 si aucune).
+            double nLo = std::numeric_limits<double>::max();
+            double nHi = std::numeric_limits<double>::lowest();
+            for (const int j : up) {
+                nLo = std::min(nLo, segs[static_cast<std::size_t>(j)].lo);
+                nHi = std::max(nHi, segs[static_cast<std::size_t>(j)].hi);
+            }
+            FillEndContext ctx;
+            ctx.row_length_um = s.hi - s.lo;
+            ctx.spacing_um = spacing;
+            ctx.overhang_um = up.empty() ? 0.0 : std::max(0.0, nLo - s.lo);
+            rawLo[static_cast<std::size_t>(i)] = adaptive_fill_end_pull(ctx, model);
+            ctx.overhang_um = up.empty() ? 0.0 : std::max(0.0, s.hi - nHi);
+            rawHi[static_cast<std::size_t>(i)] = adaptive_fill_end_pull(ctx, model);
+            nb[static_cast<std::size_t>(i)] = std::move(up);
+        }
+        // Lissage entre rangées voisines (valeurs d'origine : indépendant de l'ordre).
+        std::vector<double> smLo = rawLo;
+        std::vector<double> smHi = rawHi;
+        for (int i = 0; i < n; ++i) {
+            const auto& ids = nb[static_cast<std::size_t>(i)];
+            if (ids.empty()) {
+                continue;
+            }
+            double aLo = 0.0;
+            double aHi = 0.0;
+            for (const int j : ids) {
+                aLo += rawLo[static_cast<std::size_t>(j)];
+                aHi += rawHi[static_cast<std::size_t>(j)];
+            }
+            const double k = static_cast<double>(ids.size());
+            smLo[static_cast<std::size_t>(i)] =
+                0.5 * rawLo[static_cast<std::size_t>(i)] + 0.5 * aLo / k;
+            smHi[static_cast<std::size_t>(i)] =
+                0.5 * rawHi[static_cast<std::size_t>(i)] + 0.5 * aHi / k;
+        }
+        // Intervalles libres entre segments consécutifs d'une même rangée.
+        std::vector<double> capLo(static_cast<std::size_t>(n), 1e30);
+        std::vector<double> capHi(static_cast<std::size_t>(n), 1e30);
+        for (const auto& [row, ids] : byRow) {
+            (void)row;
+            for (std::size_t k = 0; k + 1 < ids.size(); ++k) {
+                const int a = ids[k];
+                const int b = ids[k + 1];
+                const double gap =
+                    segs[static_cast<std::size_t>(b)].lo - segs[static_cast<std::size_t>(a)].hi;
+                capHi[static_cast<std::size_t>(a)] = std::max(0.0, 0.5 * gap);
+                capLo[static_cast<std::size_t>(b)] = std::max(0.0, 0.5 * gap);
+            }
+        }
+        for (int i = 0; i < n; ++i) {
+            Segment& s = segs[static_cast<std::size_t>(i)];
+            const double pl =
+                std::min(smLo[static_cast<std::size_t>(i)], capLo[static_cast<std::size_t>(i)]);
+            const double ph =
+                std::min(smHi[static_cast<std::size_t>(i)], capHi[static_cast<std::size_t>(i)]);
+            s.pens.front() = s.lo - pl;
+            s.pens.back() = s.hi + ph;
+        }
     }
 
     // 2) ADJACENCE : deux segments de rangÃ©es consÃ©cutives qui se chevauchent en
@@ -781,6 +874,8 @@ std::vector<std::vector<Vec2um>> tatami_underlay(const geometry::PathSet& region
             Micrometers{std::max(params.underlay_spacing.value, params.row_spacing.value)};
         up.inset = Micrometers{0};
         up.pull_compensation = Micrometers{0}; // la sous-couche reste dans la forme
+        up.pull_mode =
+            document::PullMode::Manual; // jamais de compensation adaptative en sous-couche
         up.underlay_edge = false;
         up.underlay_parallel = false;
         up.underlay_zigzag = false;
