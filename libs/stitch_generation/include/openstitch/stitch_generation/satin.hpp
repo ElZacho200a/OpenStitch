@@ -35,7 +35,7 @@ enum class SatinCapType { Flat, Rounded, Tapered, Automatic };
 struct SatinConfig {
     Micrometers density{400};            // écart entre pénétrations le long d'un rail (0,4 mm)
     Micrometers pull_compensation{0};    // élargit la colonne pour compenser la traction du fil
-    bool auto_pull_local{false};         // tirage auto par station selon sa largeur (sans effet en manuel)
+    bool auto_pull_local{false};         // auto par station, mode manuel inchange
     bool center_underlay{false};         // sous-couche : point droit sur l'axe central
     Micrometers underlay_spacing{2'000}; // longueur de point de la sous-couche centrale
 
