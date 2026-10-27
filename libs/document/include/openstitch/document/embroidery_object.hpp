@@ -47,9 +47,12 @@ enum class UnderlayMode : std::uint8_t { Manual, Auto };
 // Choix de la compensation du tirage (HP-ENG-001.b). `Manual` (défaut, comportement
 // historique) : `pull_compensation` s'applique tel quel. `Auto` : le moteur calcule la
 // compensation selon la taille et la largeur de la forme (`stitch_generation::
-// resolve_pull_compensation`), le réglage manuel étant alors ignoré. N'agit qu'à la
+// resolve_pull_compensation`), le réglage manuel étant alors ignoré. `Adaptive`
+// (AdaptivePullCompensation, niveau 1 : géométrique) : la compensation est calculée
+// LOCALEMENT (par station de satin, par rangée de remplissage) avec lissage et bornes de
+// sécurité ; `Auto` reste la règle historique à largeur moyenne, inchangée. N'agit qu'à la
 // génération. Valeurs persistées : ne pas réordonner.
-enum class PullMode : std::uint8_t { Manual, Auto };
+enum class PullMode : std::uint8_t { Manual, Auto, Adaptive };
 
 // Paramètres du remplissage tatami (§5.4, §15).
 struct TatamiParams {

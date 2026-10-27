@@ -107,12 +107,16 @@ void setRowEnabled(QFormLayout* form, QWidget* field, bool on) {
 QComboBox* makePullModeCombo(QWidget* parent, document::PullMode mode) {
     auto* combo = new QComboBox(parent);
     combo->setObjectName(QStringLiteral("combo_pullMode"));
-    combo->addItems({QObject::tr("Manuelle"), QObject::tr("Automatique")});
+    combo->addItems(
+        {QObject::tr("Manuelle"), QObject::tr("Automatique"), QObject::tr("Adaptative")});
     combo->setCurrentIndex(static_cast<int>(mode));
-    combo->setToolTip(
-        QObject::tr("Automatique : le moteur compense lui-même le tirage du fil selon la largeur "
-                    "de la forme (rangées plus longues, colonnes de satin plus larges). Le "
-                    "réglage manuel est alors ignoré."));
+    combo->setToolTip(QObject::tr(
+        "Manuelle : la valeur saisie s'applique telle quelle.\n"
+        "Automatique (historique) : le moteur compense le tirage du fil selon la largeur "
+        "moyenne de la forme.\n"
+        "Adaptative : la compensation est calculée localement (station par station pour le "
+        "satin : largeur, courbure, extrémités, jonctions, avec lissage). Règle géométrique, "
+        "non validée sur machine. Le réglage manuel est ignoré dans ces deux modes."));
     return combo;
 }
 

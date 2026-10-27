@@ -8,6 +8,7 @@
 
 #include "openstitch/core/units.hpp"
 #include "openstitch/geometry/path.hpp"
+#include "openstitch/stitch_generation/adaptive_pull.hpp"
 
 namespace openstitch::stitch_generation {
 
@@ -90,6 +91,13 @@ struct SatinConfig {
     Micrometers pull_max{5'000}; // borne de l'offset par côté
     Micrometers push_start{0};   // >0 étend la colonne au départ
     Micrometers push_end{0};     // >0 étend la colonne à la fin
+
+    // --- Compensation adaptative (`PullMode::Adaptive`, AdaptivePullCompensation niveau 1) ---
+    // Vrai : la pull latérale de base est calculée STATION PAR STATION (largeur, courbure,
+    // extrémités, jonctions, variation de largeur, lissage) au lieu de `pull_compensation`
+    // (ignoré). `pull_left`/`pull_right` et leurs parts proportionnelles restent additifs.
+    bool adaptive_pull{false};
+    AdaptiveSatinModel adaptive_model{};
 };
 
 // Une passe de couture (polyligne) — sous-couche ou trajet.
@@ -116,6 +124,9 @@ struct SatinResult {
     // masquer après coup. Vide dans le cas courant (ruban continu du début
     // à la fin, la grande majorité des colonnes).
     std::vector<std::size_t> jump_before;
+
+    // Compensation effective par station, remplie seulement en mode adaptatif (diagnostic).
+    std::vector<SatinPullSample> pull_profile;
 };
 
 // Station structurelle d'une colonne satin : un couple (point rail A, point
