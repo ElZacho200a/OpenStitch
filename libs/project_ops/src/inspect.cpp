@@ -6,19 +6,19 @@
 #include <cstdio>
 #include <map>
 #include <numbers>
-#include <variant>
 #include <type_traits>
+#include <variant>
 
 #include <nlohmann/json.hpp>
 
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/polyline.hpp"
-#include "openstitch/stitch_generation/pull_auto.hpp"
-#include "openstitch/stitch_generation/underlay_auto.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
+#include "openstitch/stitch_generation/pull_auto.hpp"
+#include "openstitch/stitch_generation/underlay_auto.hpp"
 
 namespace openstitch::project_ops {
 
@@ -491,10 +491,9 @@ json embroidery_json(const document::Project& project, const document::Embroider
                 }
             } else if constexpr (std::is_same_v<T, document::SatinParams>) {
                 if (params.pull_mode == document::PullMode::Auto) {
-                    const double width = stitch_generation::satin_mean_width_mm(
-                        params.rail_a, params.rail_b);
-                    j["pull_auto_reference_mm"] =
-                        mm(stitch_generation::choose_satin_pull(width));
+                    const double width =
+                        stitch_generation::satin_mean_width_mm(params.rail_a, params.rail_b);
+                    j["pull_auto_reference_mm"] = mm(stitch_generation::choose_satin_pull(width));
                     j["pull_auto_reference_only"] = true;
                 }
             }
