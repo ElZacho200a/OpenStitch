@@ -743,7 +743,7 @@ confondus :
 |---|---|---|
 | 1 — géométrique | déterministe, selon les formes et les directions de couture | livré ici (satin) |
 | 2 — textile empirique | profil de tissu, calibration mesurée | à venir (`scale` du modèle en est le point d'entrée) |
-| 3 — prédiction | champ de déplacement estimé, avec confiance | à venir |
+| 3 — prédiction | champ de déplacement estimé, avec confiance | lot A livré (`pull_field`, cœur seul) ; non branché sur `PullMode` |
 
 **Satin.** `adaptive_pull.cpp` (`adaptive_satin_pull`, fonction pure) calcule, pour chaque station
 (couple de points rail A/rail B) de la colonne, un élargissement par côté :
@@ -776,6 +776,26 @@ adaptatif. Le réglage manuel est ignoré.
 
 **Limites.** Aucune validation sur machine : la qualité de l'approximation géométrique n'est pas
 une preuve d'efficacité textile.
+
+**Niveau 3 — champ de déplacement (lot A, `pull_field`).** `PullField` (`pull_field.hpp/.cpp`,
+fonctions pures, sans Qt) estime en tout point le déplacement du tissu sous la traction de tous les
+segments cousus voisins, au lieu de compenser chaque objet isolément. Chaque segment (`PullSource`,
+poids = densité relative) contracte le tissu vers son centre le long de son axe
+(`-gain · s · w`, `s` borné à la demi-longueur) et le pousse latéralement (`poisson · gain · h ·
+tanh(t/σ) · w`) ; `w` décroît en gaussienne au-delà des bouts (`sigma_along_mm`) et en
+travers (`sigma_across_mm`). Les contributions s'additionnent ; **l'anisotropie du tissu** est
+appliquée à la somme : la composante perpendiculaire à la chaîne (`grain_angle_rad`) est multipliée
+par `grain_anisotropy` (souplesse trame / chaîne). La norme est plafonnée (`max_displacement_mm`).
+`PullSample` renvoie aussi une **confiance** [0 ; 1] : plafonnée à `uncalibrated_confidence` (0,3)
+tant que `FabricResponse::calibrated` est faux, et réduite par le recouvrement
+(`base / (1 + 0,15 · Σw)`) ; 1 hors de toute influence. `compensation_at` renvoie l'opposé du
+déplacement atténué par la confiance (prudent quand la prédiction est incertaine). Déterminisme :
+sources parcourues par indice croissant dans une grille à clé ordonnée ; entrées dégénérées bornées
+(`sanitized`). **Aucun coefficient n'est mesuré** (règles empiriques) ; le champ est une fonction
+continue de la géométrie cousue et ne reproduit aucune table largeur de bout × tissu (brevets
+Melco, voir `roadmap-rd-brevets.md`). Non fait (lots suivants) : `PullMode::Predicted`,
+extraction des segments depuis les objets, application dans `effective_sequence`, `.osp`,
+inspecteur/visualisation, calibration par la pièce-test (HP-ENG-001.a).
 
 ### Entrée/sortie automatiques (HP-ENG-010)
 
