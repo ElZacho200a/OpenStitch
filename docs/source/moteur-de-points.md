@@ -763,6 +763,17 @@ barreaux et de l'auto-satin par squelette, ainsi que dans `fill_satin` (rails sa
 travaille sur la géométrie finale des fils (après terminaisons, points courts et push). Le profil
 station par station est exposé dans `SatinResult::pull_profile` (largeur, courbure, drapeaux).
 
+**Remplissages (tatami, directionnel).** `adaptive_fill_end_pull` calcule un dépassement PAR BOUT
+et PAR RANGÉE (tatami) ou PAR LIGNE (directionnel) :
+`clamp(0,12 + 0,012 × longueur, 0,08 ; 0,40) mm × f_densité × f_pointe × f_courbure`, avec
+`f_densité = clamp(0,4 mm / écart, 0,75 ; 1,25)`, `f_pointe = 0,5` quand le bout dépasse de plus de
+deux écarts les rangées voisines (pointe fine : on ne l'allonge pas), `f_courbure = 1/(1 + 0,5 × virage
+cumulé en rad)` (une ligne courbe a une corde de bout peu représentative). Bornes : au plus 15 % de la
+longueur de la rangée par bout ; pour le tatami, lissage entre rangées voisines puis plafond à la
+**moitié de l'intervalle libre** jusqu'au segment voisin d'une même rangée (trou, étranglement : aucune
+pénétration n'entre dans un trou ni ne croise sa voisine). La sous-couche n'hérite jamais du mode
+adaptatif. Le réglage manuel est ignoré.
+
 **Limites.** Aucune validation sur machine : la qualité de l'approximation géométrique n'est pas
 une preuve d'efficacité textile.
 

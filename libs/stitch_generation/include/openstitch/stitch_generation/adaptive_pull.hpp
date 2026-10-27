@@ -70,4 +70,45 @@ struct SatinPullSample {
 adaptive_satin_pull(const std::vector<SatinPullInput>& stations, const AdaptiveSatinModel& model,
                     double max_per_side_um);
 
+// --- Remplissages (tatami, directionnel) : dépassement de bout de rangée -----------------------
+//
+//   P = clamp(a + b · min(longueur, plafond), min, max) · scale · f_densité · f_pointe · f_courbure
+//
+// puis bornes : jamais plus de `max_row_fraction` de la longueur de la rangée par bout, et (côté
+// appelant) jamais plus de la moitié d'un intervalle libre entre deux segments d'une même rangée
+// (trou, étranglement), pour qu'aucune pénétration n'entre dans un trou ni ne croise sa voisine.
+struct AdaptiveFillModel {
+    double a_mm{0.12};
+    double b{0.012};            // mm par mm de longueur de rangée
+    double length_cap_mm{20.0}; // au-delà, l'effet sature
+    double min_mm{0.08};
+    double max_mm{0.40};
+    double scale{1.0}; // facteur textile / calibration (1 = neutre)
+    double reference_spacing_mm{0.4};
+    double tip_overhang_rows{2.0}; // bout dépassant ses voisines de plus de N écarts = pointe
+    double tip_factor{0.5};
+    double curvature_gain{0.5}; // atténuation par radian de virage cumulé de la ligne
+    double max_row_fraction{0.15};
+    double hard_max_mm{0.60};
+};
+
+// Contexte d'un bout de rangée (µm / radians).
+struct FillEndContext {
+    double row_length_um{0.0};
+    double spacing_um{400.0};
+    double overhang_um{0.0}; // saillie du bout au-delà des rangées voisines (0 si inconnue)
+    double turning_rad{0.0}; // virage cumulé de la ligne (directionnel ; 0 pour le tatami)
+};
+
+enum FillPullFlag : std::uint32_t {
+    kFillTip = 1u << 0,       // pointe fine : compensation réduite
+    kFillRowCapped = 1u << 1, // limitée par la fraction de la longueur de rangée
+    kFillGapCapped = 1u << 2, // limitée par l'intervalle libre (appliqué par l'appelant)
+};
+
+// Compensation d'un bout, en µm (>= 0). `flags` (optionnel) reçoit les drapeaux de diagnostic.
+[[nodiscard]] double adaptive_fill_end_pull(const FillEndContext& ctx,
+                                            const AdaptiveFillModel& model,
+                                            std::uint32_t* flags = nullptr);
+
 } // namespace openstitch::stitch_generation

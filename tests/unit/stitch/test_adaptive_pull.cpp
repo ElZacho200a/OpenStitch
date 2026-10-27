@@ -12,7 +12,9 @@
 #include <vector>
 
 #include "openstitch/stitch_generation/adaptive_pull.hpp"
+#include "openstitch/stitch_generation/directional_fill.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
+#include "openstitch/stitch_generation/tatami.hpp"
 
 using namespace openstitch;
 using namespace openstitch::stitch_generation;
@@ -193,4 +195,126 @@ TEST_CASE("fill satin adaptive widens the column locally and exposes the profile
     // La compensation locale croit avec la largeur le long de la colonne.
     REQUIRE(r1.pull_profile[r1.pull_profile.size() * 3 / 4].left_um >
             r1.pull_profile[r1.pull_profile.size() / 4].left_um);
+}
+
+namespace {
+
+Vec2um um(std::int32_t x, std::int32_t y) {
+    return Vec2um{Micrometers{x}, Micrometers{y}};
+}
+
+geometry::PathNode cnode(std::int32_t x, std::int32_t y) {
+    return geometry::PathNode{um(x, y), geometry::NodeType::Corner, std::nullopt, std::nullopt};
+}
+
+geometry::Path square_path(std::int32_t x0, std::int32_t y0, std::int32_t x1, std::int32_t y1) {
+    geometry::Path p;
+    p.closed = true;
+    p.nodes = {cnode(x0, y0), cnode(x1, y0), cnode(x1, y1), cnode(x0, y1)};
+    return p;
+}
+
+document::TatamiParams flat_tatami(document::PullMode mode) {
+    document::TatamiParams p;
+    p.inset = Micrometers{0};
+    p.pull_mode = mode;
+    return p;
+}
+
+std::pair<int, int> x_range(const std::vector<FillStitch>& fill) {
+    int lo = 1'000'000;
+    int hi = -1'000'000;
+    for (const auto& f : fill) {
+        lo = std::min(lo, f.pos.x.value);
+        hi = std::max(hi, f.pos.x.value);
+    }
+    return {lo, hi};
+}
+
+} // namespace
+
+TEST_CASE("adaptive fill end pull scales with row length and respects its caps",
+          "[adaptive_pull][fill]") {
+    const AdaptiveFillModel m{};
+    FillEndContext shortRow{600.0, 400.0, 0.0, 0.0};
+    FillEndContext longRow{20'000.0, 400.0, 0.0, 0.0};
+    const double ps = adaptive_fill_end_pull(shortRow, m);
+    const double pl = adaptive_fill_end_pull(longRow, m);
+    REQUIRE(ps <= 0.15 * 600.0 + 1e-9); // jamais plus de 15 % d'une rangee minuscule
+    REQUIRE(pl > ps);
+    REQUIRE(pl <= m.max_mm * 1000.0 * 1.25 + 1e-9);
+    REQUIRE(adaptive_fill_end_pull(FillEndContext{}, m) == 0.0);
+
+    std::uint32_t flags = 0;
+    FillEndContext tip = longRow;
+    tip.overhang_um = 5'000.0;
+    const double pt = adaptive_fill_end_pull(tip, m, &flags);
+    REQUIRE(pt < pl);
+    REQUIRE((flags & kFillTip) != 0);
+
+    FillEndContext curved = longRow;
+    curved.turning_rad = 3.0;
+    REQUIRE(adaptive_fill_end_pull(curved, m) < pl);
+}
+
+TEST_CASE("tatami adaptive overshoots rows locally, ignores the manual value, is deterministic",
+          "[adaptive_pull][tatami]") {
+    const geometry::PathSet region{square_path(0, 0, 20'000, 10'000), {}};
+    auto none = flat_tatami(document::PullMode::Manual);
+    auto adaptive = flat_tatami(document::PullMode::Adaptive);
+    adaptive.pull_compensation = Micrometers{2'500}; // ignore en mode adaptatif
+    const auto plain = fill_tatami(region, none);
+    const auto a = fill_tatami(region, adaptive);
+    const auto b = fill_tatami(region, adaptive);
+    REQUIRE(a == b);
+    const auto [plo, phi] = x_range(plain);
+    const auto [alo, ahi] = x_range(a);
+    REQUIRE(alo < plo);
+    REQUIRE(ahi > phi);
+    REQUIRE(plo - alo < 600); // < 0,6 mm : la valeur manuelle de 2,5 mm n'est pas reprise
+}
+
+TEST_CASE("tatami adaptive never crosses over a narrow hole", "[adaptive_pull][tatami]") {
+    // Trou de 0,3 mm de large (x = 9,85..10,15 mm) : chaque bout garde au plus la moitie.
+    geometry::PathSet region{square_path(0, 0, 20'000, 10'000), {}};
+    region.holes.push_back(square_path(9'850, 2'000, 10'150, 8'000));
+    const auto fill = fill_tatami(region, flat_tatami(document::PullMode::Adaptive));
+    REQUIRE_FALSE(fill.empty());
+    int leftMax = -1'000'000;
+    int rightMin = 1'000'000;
+    for (const auto& f : fill) {
+        if (f.jump || f.travel || f.pos.y.value < 2'200 || f.pos.y.value > 7'800) {
+            continue;
+        }
+        if (f.pos.x.value < 10'000) {
+            leftMax = std::max(leftMax, f.pos.x.value);
+        } else {
+            rightMin = std::min(rightMin, f.pos.x.value);
+        }
+    }
+    REQUIRE(leftMax <= 10'000);
+    REQUIRE(rightMin >= 10'000);
+}
+
+TEST_CASE("directional adaptive prolongs line ends and is deterministic",
+          "[adaptive_pull][directional]") {
+    const geometry::PathSet region{square_path(0, 0, 20'000, 10'000), {}};
+    document::DirectionalFillParams plain;
+    document::DirectionalFillParams adaptive;
+    adaptive.pull_mode = document::PullMode::Adaptive;
+    adaptive.pull_compensation = Micrometers{2'500}; // ignore
+    const auto lp = directional_stitch_lines(region, plain);
+    const auto la = directional_stitch_lines(region, adaptive);
+    const auto lb = directional_stitch_lines(region, adaptive);
+    REQUIRE(la == lb);
+    REQUIRE(la.size() == lp.size());
+    REQUIRE_FALSE(la.empty());
+    double extraMax = 0.0;
+    for (std::size_t i = 0; i < la.size(); ++i) {
+        const double dx = la[i].front().x.value - lp[i].front().x.value;
+        const double dy = la[i].front().y.value - lp[i].front().y.value;
+        extraMax = std::max(extraMax, std::hypot(dx, dy));
+    }
+    REQUIRE(extraMax > 50.0);
+    REQUIRE(extraMax < 700.0);
 }
