@@ -19,6 +19,7 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPainter>
+#include <QProgressDialog>
 #include <QPushButton>
 #include <QSettings>
 #include <QShortcut>
@@ -266,6 +267,42 @@ private slots:
     void init() { QSettings().clear(); }
 
     // ---- vectorisation de toute la sélection (audit A4/A5) --------------------------------
+
+    // HP-PERF-001 : une annulation depuis le vrai bouton du dialogue ne doit produire
+    // ni objet, ni commande dans l'historique, ni identifiant consommé.
+    void cancelVectorizationLeavesTheDocumentUnchanged() {
+        MainWindow window;
+        window.applyLoadedProject(threeBandProject());
+        window.selectRegions({regionAt(window, 5, 5), regionAt(window, 30, 5)},
+                             SelectMode::Replace);
+        const auto before = window.project_.vector_objects;
+
+        bool cancelClicked = false;
+        QTimer::singleShot(0, &window, [&] {
+            auto* progress = qobject_cast<QProgressDialog*>(QApplication::activeModalWidget());
+            if (progress == nullptr) {
+                return;
+            }
+            for (QPushButton* button : progress->findChildren<QPushButton*>()) {
+                if (button->text() == QStringLiteral("Annuler")) {
+                    button->click();
+                    cancelClicked = true;
+                    break;
+                }
+            }
+        });
+        window.vectorizeSelectedRegion(false);
+        QVERIFY(cancelClicked);
+        QCOMPARE(window.project_.vector_objects, before);
+        QVERIFY(window.statusBar()->currentMessage().contains(QStringLiteral("annulée")));
+        QVERIFY(window.undoStack_.isClean());
+
+        // Le calcul suivant doit fonctionner avec les mêmes données et rester annulable.
+        window.vectorizeSelectedRegion(false);
+        QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
+        window.undo();
+        QCOMPARE(window.project_.vector_objects, before);
+    }
 
     void vectorizeAllSelectedRegionsInOneUndoStep() {
         MainWindow window;
