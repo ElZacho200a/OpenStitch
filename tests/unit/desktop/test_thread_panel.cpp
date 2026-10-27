@@ -4,8 +4,8 @@
 #include <QAction>
 #include <QApplication>
 #include <QDockWidget>
-#include <QLineEdit>
 #include <QLabel>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
 #include <QSettings>
