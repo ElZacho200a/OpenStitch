@@ -3332,7 +3332,7 @@ migration `.osp` pour ces seuls besoins ; la segmentation IA reste hors périmè
   dans le récapitulatif d'export ; le rôle n'est pas signalé par la couleur
   seule ; tests Qt.
 
-### HP-UX-048 — Comparer original et aperçu avant transformation [P2] — ☐ À faire
+### HP-UX-048 — Comparer original et aperçu avant transformation [P2] — ◐ Partiel (2026-10-27, branche feat/ux-048-segmentation-before-after-20261027)
 - Besoin : HP-VIEW-012 couvre l'aperçu direct mais ne pose pas un comportement
   homogène de comparaison pour les opérations à fort impact (quantification,
   simplification, vectorisation, notamment).
@@ -3347,6 +3347,19 @@ migration `.osp` pour ces seuls besoins ; la segmentation IA reste hors périmè
   d'édition et conserve le document identique ; Appliquer = un pas undo/redo ;
   disponible en mode portable 911 × 480 et pendant une opération longue
   sans bloquer l'interface ; QTest.
+- Livré (PR 1 de comparaison) : miniatures bornées (176 × 112 px) « Avant — image
+  de travail » et « Après — carte des régions » directement dans le dialogue
+  de segmentation. L'image source est réduite par échantillonnage borné,
+  y compris pour les originaux très grands ou transparents ; la carte utilise
+  le résultat de l'aperçu existant (aucun deuxième calcul). Le dialogue reste
+  non modal, les réglages et la sélection restent modifiables, et aucune
+  mutation du .osp ni commande Undo n'a lieu avant « Segmenter ».
+- Tests : vrai dialogue MainWindow, deux images accessibles non vides après
+  le calcul, résultat maintenu lors du basculement d'aperçu, rejet des images
+  malformées, Undo inchangé. À valider par CI Windows/Qt.
+- Reste : comparaison pleine résolution pour simplification/vectorisation,
+  validation de la lisibilité sur écran compact et tests de performance
+  sur images de plusieurs mégapixels.
 
 ### HP-UX-049 — Espaces de travail par tâche, facultatifs [P2] — ◐ Partiel (2026-10-21, branche feat/ux-049-workspace-presets)
 - Besoin : numériser, retoucher une forme, régler des points et préparer
@@ -3728,6 +3741,7 @@ ci-dessus doit les respecter :
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-27 | ChatGPT (HP-UX-048 lot 1) | Comparaison miniatures avant/après dans Segmenter : source et carte de régions, aucun second calcul, tests Qt et effets documentaires inchangés. Suite simplification/vectorisation encore à faire. |
 | 2026-10-27 | ChatGPT | HP-FAB-001 : métadonnées matériau/stabilisateur dans .osp, dialogue desktop et inspection ; aucun coefficient textile non validé appliqué. |
 | 2026-10-27 | ChatGPT (audit UI/UX, PR 2) | HP-UX-039 : Workflow « Source » reconnu pour raster/SVG/design machine ; étapes facultatives indiquées « non requis », action Ouvrir universelle, tests desktop. |
 | 2026-10-27 | ChatGPT | HP-ENG-001.b : inspection JSON de la référence de compensation automatique, explicitement non prédictive ; tests CLI JSON. |
