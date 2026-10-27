@@ -34,6 +34,7 @@
 #include "canvas_view.hpp"
 #include "main_window.hpp"
 #include "ui_memory.hpp"
+#include "workflow_panel.hpp"
 
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/commands/composite_command.hpp"
