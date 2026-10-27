@@ -6,15 +6,19 @@
 #include <cstdio>
 #include <map>
 #include <numbers>
+#include <type_traits>
 #include <variant>
 
 #include <nlohmann/json.hpp>
 
 #include "openstitch/geometry/boolean.hpp"
+#include "openstitch/geometry/polyline.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
+#include "openstitch/stitch_generation/pull_auto.hpp"
+#include "openstitch/stitch_generation/underlay_auto.hpp"
 
 namespace openstitch::project_ops {
 
@@ -458,6 +462,51 @@ json embroidery_json(const document::Project& project, const document::Embroider
     j["join"] = join_name(e.join);
     j["connector"] = connector_name(e.connector);
     j["params"] = params_json(e.params, options.full_params);
+    // Reference de l'heuristique Auto visible par CLI/MCP, mais PAS une prediction physique.
+    // Les versions a compensation par rangee/station peuvent varier autour de cette reference.
+    std::visit(
+        [&](const auto& params) {
+            using T = std::decay_t<decltype(params)>;
+            if constexpr (std::is_same_v<T, document::TatamiParams> ||
+                          std::is_same_v<T, document::DirectionalFillParams> ||
+                          std::is_same_v<T, document::AutoSatinParams>) {
+                if (params.pull_mode != document::PullMode::Auto) {
+                    return;
+                }
+                const auto* source = project.findObject(e.source_vector);
+                if (source == nullptr) {
+                    return;
+                }
+                double area = 0.0;
+                double perimeter = 0.0;
+                for (const auto& raw : source->paths) {
+                    const auto flattened = geometry::flatten_to_polygon(raw, Micrometers{50});
+                    const auto metrics = stitch_generation::measure_shape(flattened);
+                    area += metrics.area_mm2;
+                    perimeter += metrics.perimeter_mm;
+                }
+                if (perimeter > 1e-9) {
+                    const double width = 2.0 * area / perimeter;
+                    if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
+                        j["pull_auto_reference_mm"] =
+                            mm(stitch_generation::choose_satin_pull(width));
+                    } else {
+                        j["pull_auto_reference_mm"] =
+                            mm(stitch_generation::choose_fill_pull(width));
+                    }
+                    j["pull_auto_reference_only"] = true;
+                }
+            } else if constexpr (std::is_same_v<T, document::SatinParams>) {
+                if (params.pull_mode == document::PullMode::Auto) {
+                    const double width =
+                        stitch_generation::satin_mean_width_mm(params.rail_a, params.rail_b);
+                    j["pull_auto_reference_mm"] = mm(stitch_generation::choose_satin_pull(width));
+                    j["pull_auto_reference_only"] = true;
+                }
+            }
+        },
+        e.params);
+
     j["manual_overrides"] = e.overrides.size();
     if (e.color_blend) {
         j["color_blend"] = json{{"partner", e.color_blend->partner.value},
