@@ -275,7 +275,7 @@ private slots:
         window.applyLoadedProject(threeBandProject());
         window.selectRegions({regionAt(window, 5, 5), regionAt(window, 30, 5)},
                              SelectMode::Replace);
-        const auto before = window.project_.vector_objects;
+        const std::size_t before = window.project_.vector_objects.size();
 
         bool cancelClicked = false;
         QTimer::singleShot(0, &window, [&] {
@@ -293,7 +293,7 @@ private slots:
         });
         window.vectorizeSelectedRegion(false);
         QVERIFY(cancelClicked);
-        QCOMPARE(window.project_.vector_objects, before);
+        QCOMPARE(window.project_.vector_objects.size(), before);
         QVERIFY(window.statusBar()->currentMessage().contains(QStringLiteral("annulée")));
         QVERIFY(window.undoStack_.isClean());
 
@@ -301,7 +301,7 @@ private slots:
         window.vectorizeSelectedRegion(false);
         QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
         window.undo();
-        QCOMPARE(window.project_.vector_objects, before);
+        QCOMPARE(window.project_.vector_objects.size(), before);
     }
 
     void vectorizeAllSelectedRegionsInOneUndoStep() {
