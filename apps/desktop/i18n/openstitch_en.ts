@@ -13943,6 +13943,38 @@ The stitch type below applies to all of them; deleting or moving (arrows) too, a
 <context>
     <name>openstitch::desktop::SegmentationDialog</name>
     <message>
+        <source>Avant — image de travail</source>
+        <translation>Before — working image</translation>
+    </message>
+    <message>
+        <source>Après — carte des régions</source>
+        <translation>After — region map</translation>
+    </message>
+    <message>
+        <source>Image avant segmentation</source>
+        <translation>Image before segmentation</translation>
+    </message>
+    <message>
+        <source>Résultat de la segmentation</source>
+        <translation>Segmentation result</translation>
+    </message>
+    <message>
+        <source>Aucun aperçu</source>
+        <translation>No preview</translation>
+    </message>
+    <message>
+        <source>Calcul en cours…</source>
+        <translation>Computing…</translation>
+    </message>
+    <message>
+        <source>Image indisponible</source>
+        <translation>Image unavailable</translation>
+    </message>
+    <message>
+        <source>Aperçu indisponible</source>
+        <translation>Preview unavailable</translation>
+    </message>
+    <message>
         <location filename="../segmentation_dialog.cpp" line="27"/>
         <source>Segmenter l&apos;image</source>
         <translation>Segment the image</translation>
