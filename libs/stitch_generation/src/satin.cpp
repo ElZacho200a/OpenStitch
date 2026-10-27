@@ -868,12 +868,10 @@ SatinResult finish_satin_stations(const std::vector<SatinStation>& stations,
         const double basePull = config.auto_pull_local
                                     ? static_cast<double>(choose_satin_pull(w / 1000.0).value)
                                     : comp;
-        const double offA = std::clamp(basePull + config.pull_left.value +
-                                           config.pull_left_prop * w,
-                                       0.0, pmax);
-        const double offB = std::clamp(basePull + config.pull_right.value +
-                                           config.pull_right_prop * w,
-                                       0.0, pmax);
+        const double left = basePull + config.pull_left.value + config.pull_left_prop * w;
+        const double right = basePull + config.pull_right.value + config.pull_right_prop * w;
+        const double offA = std::clamp(left, 0.0, pmax);
+        const double offB = std::clamp(right, 0.0, pmax);
         if (w > 1e-6) {
             const double ux = (pa.x - pb.x) / w;
             const double uy = (pa.y - pb.y) / w;
