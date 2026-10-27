@@ -52,6 +52,8 @@ signals:
     void optionsChanged(const openstitch::segmentation::SegmentationOptions& options);
     void previewToggled(bool enabled);
     void applyRequested(const openstitch::segmentation::SegmentationOptions& options);
+    // « Peindre les zones de détail… » : MainWindow active l'outil pinceau de masque.
+    void paintDetailRequested();
 
 private:
     void scheduleChange();
@@ -62,6 +64,8 @@ private:
     QSpinBox* minSizeSpin_{nullptr};
     QLabel* minSizeMm_{nullptr};
     QSpinBox* smoothingSpin_{nullptr};
+    QSpinBox* detailSmoothingSpin_{nullptr};
+    QSpinBox* detailMinSizeSpin_{nullptr};
     QCheckBox* previewCheck_{nullptr};
     QLabel* sourceThumbnail_{nullptr};
     QLabel* segmentationThumbnail_{nullptr};

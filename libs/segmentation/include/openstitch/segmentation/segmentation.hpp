@@ -38,6 +38,41 @@ struct Segmentation {
     [[nodiscard]] std::size_t region_count() const;
 };
 
+// Carte « détail / aplat » peinte par l'utilisateur, à la taille de l'image de travail :
+// 0 = aplat (lissage et nettoyage forts), 255 = détail (on préserve les petites formes), les
+// valeurs intermédiaires (bord doux du pinceau) mélangent les deux réglages.
+struct DetailMask {
+    int width{0};
+    int height{0};
+    std::vector<std::uint8_t> weights; // width*height octets, ligne par ligne
+
+    [[nodiscard]] bool empty() const { return weights.empty(); }
+    [[nodiscard]] bool matches(int w, int h) const {
+        return width == w && height == h &&
+               weights.size() == static_cast<std::size_t>(w) * static_cast<std::size_t>(h);
+    }
+    [[nodiscard]] bool any_detail() const;
+    bool operator==(const DetailMask&) const = default;
+};
+
+// Un pixel modifié par un coup de pinceau : indice et ancienne valeur (annulation).
+struct DetailMaskChange {
+    std::uint32_t index{0};
+    std::uint8_t before{0};
+};
+
+// Peint un disque de rayon `radius_px` centré en (cx, cy) avec la valeur `value` (0 = gomme,
+// 255 = détail). `hardness` dans [0,1] : 1 = bord franc, 0 = dégradé du centre au bord (peinture
+// seulement). Peindre prend le maximum avec l'existant ; la gomme remet à 0 tout le disque. Crée le
+// masque (à zéro) s'il n'a pas la taille (width, height). Renvoie les pixels effectivement
+// modifiés, dans l'ordre de balayage (déterministe).
+std::vector<DetailMaskChange> paint_detail_disc(DetailMask& mask, int width, int height, int cx,
+                                                int cy, int radius_px, std::uint8_t value,
+                                                double hardness);
+
+// Rétablit les anciennes valeurs d'un coup de pinceau.
+void revert_detail_changes(DetailMask& mask, const std::vector<DetailMaskChange>& changes);
+
 struct SegmentationOptions {
     int max_colors{8};     // 2..64
     int min_region_px{16}; // régions plus petites absorbées par leur voisine
@@ -50,6 +85,15 @@ struct SegmentationOptions {
     // pipelines existants). Un rayon plus grand donne des formes plus
     // lisses mais efface les détails plus fins que lui.
     int smoothing_radius_px{0};
+
+    // Zones de détail (optionnelles). Sans masque (nullptr) ou sans pixel de détail, le
+    // résultat est strictement celui d'avant. Avec un masque, les pixels de détail utilisent
+    // `detail_smoothing_radius_px` et `detail_min_region_px` à la place des réglages ci-dessus
+    // (mélange pondéré au bord du pinceau pour le lissage ; une région est « détail » si la
+    // moyenne du masque sur ses pixels est >= 128). Le masque doit avoir la taille de l'image.
+    const DetailMask* detail_mask{nullptr};
+    int detail_smoothing_radius_px{0};
+    int detail_min_region_px{2};
 };
 
 // Quantifie l'image en CIELAB (k-means déterministe) puis extrait les

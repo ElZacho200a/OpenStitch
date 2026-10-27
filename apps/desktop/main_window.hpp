@@ -1136,6 +1136,7 @@ private:
     std::shared_ptr<const image::Image> segmentSnapshot_; // image de travail à l'ouverture
     std::optional<segmentation::SegmentationOptions> segmentCachedOptions_;
     std::optional<segmentation::Segmentation> segmentCached_; // dernier aperçu calculé
+    segmentation::DetailMask segmentCachedMask_;              // masque de détail de ce calcul
     double segmentCachedSeconds_{0.0};                        // durée de ce calcul
     std::uint64_t segmentGeneration_{0};
     bool segmentAutoShownMap_{false}; // l'aperçu a affiché la carte (à masquer à la fermeture)
@@ -1423,6 +1424,36 @@ private:
     int clickToStitchTolerance_{12}; // ΔE76 maximal à la couleur cliquée
     int clickToStitchKind_{0};       // index de commands::ClickToStitchKind
     std::size_t clickToStitchPreviewPixels_{0};
+    // Zones de détail (main_window_detail_zones.cpp) : pinceau de masque « détail / aplat » qui
+    // pilote le lissage et le nettoyage de la segmentation. Réutilise le geste du pinceau.
+    void buildDetailZonesTool();
+    void attachDetailZonesTool();
+    void syncDetailZonesTool(Tool tool);
+    void refreshDetailZonesOverlay();
+    void updateDetailRing(QPointF sceneMm);
+    void hideDetailRing();
+    void beginDetailStroke(QPointF sceneMm);
+    void moveDetailStroke(QPointF sceneMm);
+    void endDetailStroke();
+    void cancelDetailStroke();
+    void clearDetailZones();
+    void setDetailRadiusMm(double radiusMm);
+    struct DetailStroke {
+        std::vector<std::pair<int, int>> centers; // centres des disques, en pixels
+        QPointF lastSceneMm;
+        bool erase{false};
+    };
+    QMenu* segmentMenu_{nullptr};
+    QAction* toolDetailAct_{nullptr};
+    QAction* clearDetailAct_{nullptr};
+    QToolBar* detailBar_{nullptr};
+    QDoubleSpinBox* detailRadiusSpin_{nullptr};
+    QCheckBox* detailEraseCheck_{nullptr};
+    QGraphicsEllipseItem* detailRing_{nullptr};
+    QGraphicsPixmapItem* detailOverlayItem_{nullptr};
+    std::optional<DetailStroke> detailStroke_;
+    segmentation::DetailMask detailLive_; // masque + trait en cours, pour l'aperçu
+    double detailRadiusMm_{4.0};
     QAction* toolBrushAct_{nullptr};
     QAction* brushSettingsAct_{nullptr};
     QGraphicsEllipseItem* brushRing_{nullptr};

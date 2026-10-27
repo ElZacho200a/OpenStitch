@@ -151,6 +151,29 @@ SegmentationDialog::SegmentationDialog(double mmPerPx, QWidget* parent)
     form->addRow(tr("Nombre maximal de couleurs :"), colorsSpin_);
     form->addRow(tr("Taille minimale de région :"), minSizeRow);
     form->addRow(tr("Lissage des formes :"), smoothingSpin_);
+
+    // Zones de détail : mêmes réglages, appliqués seulement là où l'utilisateur a peint avec
+    // l'outil « Zones de détail » ; sans zone peinte ces deux réglages n'ont aucun effet.
+    detailSmoothingSpin_ = new QSpinBox(this);
+    detailSmoothingSpin_->setObjectName(QStringLiteral("segmentDetailSmoothingSpin"));
+    detailSmoothingSpin_->setRange(0, 20);
+    detailSmoothingSpin_->setValue(
+        ui_memory::intValue(QStringLiteral("segment/detailSmoothing"), 0, 0, 20));
+    detailSmoothingSpin_->setSuffix(tr(" px"));
+    detailSmoothingSpin_->setToolTip(
+        tr("Lissage appliqué dans les zones de détail (0 = aucun : les petites formes sont "
+           "conservées)."));
+    detailMinSizeSpin_ = new QSpinBox(this);
+    detailMinSizeSpin_->setObjectName(QStringLiteral("segmentDetailMinSizeSpin"));
+    detailMinSizeSpin_->setRange(1, 100'000);
+    detailMinSizeSpin_->setValue(
+        ui_memory::intValue(QStringLiteral("segment/detailMinSize"), 2, 1, 100'000));
+    detailMinSizeSpin_->setSuffix(tr(" px"));
+    detailMinSizeSpin_->setToolTip(
+        tr("Taille minimale de région dans les zones de détail (en dessous, absorbée par sa "
+           "voisine)."));
+    form->addRow(tr("Lissage dans les détails :"), detailSmoothingSpin_);
+    form->addRow(tr("Taille minimale dans les détails :"), detailMinSizeSpin_);
     layout->addLayout(form);
 
     auto* compareRow = new QHBoxLayout;
@@ -178,6 +201,14 @@ SegmentationDialog::SegmentationDialog(double mmPerPx, QWidget* parent)
         makeThumbnail(tr("Après — carte des régions"), QStringLiteral("segmentResultThumbnail"),
                       tr("Résultat de la segmentation"));
     layout->addLayout(compareRow);
+
+    auto* paintDetail = new QPushButton(tr("Peindre les zones de détail…"), this);
+    paintDetail->setObjectName(QStringLiteral("segmentPaintDetailButton"));
+    paintDetail->setToolTip(
+        tr("Active le pinceau « Zones de détail » : peignez les endroits où garder les petites "
+           "formes. Le reste de l'image est traité en aplat avec les réglages ci-dessus."));
+    layout->addWidget(paintDetail);
+    connect(paintDetail, &QPushButton::clicked, this, &SegmentationDialog::paintDetailRequested);
 
     previewCheck_ = new QCheckBox(tr("Aperçu sur l'image"), this);
     previewCheck_->setObjectName(QStringLiteral("segmentPreviewCheck"));
@@ -211,6 +242,8 @@ SegmentationDialog::SegmentationDialog(double mmPerPx, QWidget* parent)
         scheduleChange();
     });
     connect(smoothingSpin_, &QSpinBox::valueChanged, this, [this] { scheduleChange(); });
+    connect(detailSmoothingSpin_, &QSpinBox::valueChanged, this, [this] { scheduleChange(); });
+    connect(detailMinSizeSpin_, &QSpinBox::valueChanged, this, [this] { scheduleChange(); });
     connect(changeTimer_, &QTimer::timeout, this, [this] { emit optionsChanged(options()); });
     connect(previewCheck_, &QCheckBox::toggled, this, &SegmentationDialog::previewToggled);
     connect(applyButton_, &QPushButton::clicked, this, [this] { emit applyRequested(options()); });
@@ -221,7 +254,10 @@ SegmentationDialog::SegmentationDialog(double mmPerPx, QWidget* parent)
 segmentation::SegmentationOptions SegmentationDialog::options() const {
     return {.max_colors = colorsSpin_->value(),
             .min_region_px = minSizeSpin_->value(),
-            .smoothing_radius_px = smoothingSpin_->value()};
+            .smoothing_radius_px = smoothingSpin_->value(),
+            .detail_mask = nullptr, // fourni par MainWindow (masque du projet)
+            .detail_smoothing_radius_px = detailSmoothingSpin_->value(),
+            .detail_min_region_px = detailMinSizeSpin_->value()};
 }
 
 bool SegmentationDialog::previewEnabled() const {
@@ -278,6 +314,9 @@ void SegmentationDialog::rememberSettings() const {
     ui_memory::setIntValue(QStringLiteral("segment/colors"), colorsSpin_->value());
     ui_memory::setIntValue(QStringLiteral("segment/minSize"), minSizeSpin_->value());
     ui_memory::setIntValue(QStringLiteral("segment/smoothing"), smoothingSpin_->value());
+    ui_memory::setIntValue(QStringLiteral("segment/detailSmoothing"),
+                           detailSmoothingSpin_->value());
+    ui_memory::setIntValue(QStringLiteral("segment/detailMinSize"), detailMinSizeSpin_->value());
 }
 
 void SegmentationDialog::scheduleChange() {
