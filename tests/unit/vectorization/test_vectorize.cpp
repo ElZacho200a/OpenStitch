@@ -2,7 +2,9 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <atomic>
 #include <cmath>
+#include <stop_token>
 
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
@@ -232,6 +234,70 @@ TEST_CASE("courbes : un anneau garde son trou, resultat deterministe, defaut inc
     for (const auto& nd : (*p)[0].outer.nodes) {
         CHECK_FALSE(nd.tan_out.has_value());
     }
+}
+
+TEST_CASE("vectorize_region : annulation avant calcul sans geometrie partielle", "[task]") {
+    const auto seg = segmentation::segment(ring_image(), {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    const auto red = segmentation::region_at(*seg, 2, 2);
+    REQUIRE(red.has_value());
+
+    std::stop_source stop;
+    stop.request_stop();
+    const TaskContext task{.stop = stop.get_token()};
+    const auto result = vectorize_region(*seg, *red, {}, task);
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error().category == ErrorCategory::Cancelled);
+}
+
+TEST_CASE("vectorize_regions : annulation batch et progres deterministe", "[task]") {
+    const auto seg = segmentation::segment(ring_image(), {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    std::vector<RegionId> ids;
+    for (const auto& slot : seg->region_slots) {
+        if (slot) {
+            ids.push_back(slot->id);
+        }
+    }
+    REQUIRE(ids.size() >= 2);
+    const VectorizeOptions options{.mm_per_px = Millimeters{1.0},
+                                   .simplify_tolerance = Micrometers{200}};
+    std::stop_source stop;
+    stop.request_stop();
+    std::atomic<std::size_t> reports{0};
+    std::atomic<std::size_t> totalReported{0};
+    TaskContext cancelled;
+    cancelled.stop = stop.get_token();
+    cancelled.progress = [&](std::size_t, std::size_t total) {
+        ++reports;
+        totalReported = total;
+    };
+    const auto batch = vectorize_regions(*seg, ids, options, cancelled);
+    REQUIRE(batch.size() == ids.size());
+    for (const auto& result : batch) {
+        REQUIRE_FALSE(result.has_value());
+        CHECK(result.error().category == ErrorCategory::Cancelled);
+    }
+    CHECK(reports.load() == ids.size() + 1); // initialisation + une fin par region
+    CHECK(totalReported.load() == ids.size());
+
+    std::atomic<std::size_t> completed{0};
+    TaskContext progress;
+    progress.progress = [&](std::size_t done, std::size_t total) {
+        if (done > 0 && total == ids.size()) {
+            ++completed;
+        }
+    };
+    const auto withProgress = vectorize_regions(*seg, ids, options, progress);
+    const auto legacy = vectorize_regions(*seg, ids, options);
+    REQUIRE(withProgress.size() == legacy.size());
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+        REQUIRE(withProgress[i].has_value() == legacy[i].has_value());
+        if (legacy[i]) {
+            CHECK(*withProgress[i] == *legacy[i]);
+        }
+    }
+    CHECK(completed.load() == ids.size());
 }
 
 TEST_CASE("vectorize_regions : meme resultat que la boucle sequentielle, dans l'ordre demande") {

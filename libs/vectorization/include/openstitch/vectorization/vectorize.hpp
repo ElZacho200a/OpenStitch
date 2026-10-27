@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "openstitch/core/error.hpp"
+#include "openstitch/core/task_control.hpp"
 #include "openstitch/core/units.hpp"
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
@@ -31,6 +32,12 @@ struct VectorizeOptions {
 vectorize_region(const segmentation::Segmentation& seg, RegionId id,
                  const VectorizeOptions& options);
 
+// Variante coopérative : aucune géométrie partielle n’est retournée après annulation.
+// Le contexte par défaut de l’API historique conserve exactement les mêmes résultats.
+[[nodiscard]] Result<std::vector<geometry::PathSet>>
+vectorize_region(const segmentation::Segmentation& seg, RegionId id,
+                 const VectorizeOptions& options, const TaskContext& task);
+
 // Vectorise plusieurs régions EN PARALLÈLE (`parallel_for`) : `out[i]` est le résultat de
 // `vectorize_region(seg, ids[i], options)`, exactement. Chaque région est indépendante et la
 // segmentation n'est que lue : le résultat ne dépend ni du nombre de fils ni de leur
@@ -38,6 +45,11 @@ vectorize_region(const segmentation::Segmentation& seg, RegionId id,
 [[nodiscard]] std::vector<Result<std::vector<geometry::PathSet>>>
 vectorize_regions(const segmentation::Segmentation& seg, const std::vector<RegionId>& ids,
                   const VectorizeOptions& options);
+
+// Annulation et progression par région terminée ; out[i] conserve l’ordre de ids.
+[[nodiscard]] std::vector<Result<std::vector<geometry::PathSet>>>
+vectorize_regions(const segmentation::Segmentation& seg, const std::vector<RegionId>& ids,
+                  const VectorizeOptions& options, const TaskContext& task);
 
 // Le contour `current` d'un objet n'est-il que le contour brut `raw` de sa région, épaissi par le
 // recouvrement des tatamis voisins ? Vrai seulement si `current` est plus grand que `raw` (de
