@@ -2,9 +2,9 @@
 #include "openstitch/vectorization/vectorize.hpp"
 #include "openstitch/core/parallel.hpp"
 
+#include <atomic>
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
-#include <atomic>
 #include <optional>
 
 #include <algorithm>
