@@ -5,6 +5,7 @@
 #include <QApplication>
 #include <QDockWidget>
 #include <QLineEdit>
+#include <QLabel>
 #include <QListWidget>
 #include <QPushButton>
 #include <QSettings>
@@ -75,6 +76,17 @@ private slots:
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir_.path());
         QStandardPaths::setTestModeEnabled(true);
         qRegisterMetaType<thread_palette::Thread>();
+    }
+
+    void panelExplainsThreadRoleWithoutMixingSegmentation() {
+        ThreadPanel panel;
+        auto* hint = panel.findChild<QLabel*>(QStringLiteral("threadColorRoleHint"));
+        auto* catalog = panel.findChild<QListWidget*>(QStringLiteral("threadCatalogList"));
+        QVERIFY(hint != nullptr && catalog != nullptr);
+        QVERIFY(hint->wordWrap());
+        QVERIFY(hint->text().contains(QStringLiteral("références")));
+        QVERIFY(hint->text().contains(QStringLiteral("segmentation")));
+        QVERIFY(catalog->toolTip().contains(QStringLiteral("sans modifier")));
     }
 
     void panelListsCatalogAndFiltersBySearch() {
