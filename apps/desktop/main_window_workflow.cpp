@@ -521,7 +521,8 @@ void MainWindow::onWorkflowStepClicked(int step) {
         QString hint;
     };
     const std::array<Step, 6> steps{{
-        {openAnyAct_, tr("Fichier ▸ Ouvrir… pour choisir une image, un SVG, un projet ou une broderie machine.")},
+        {openAnyAct_, tr("Fichier ▸ Ouvrir… pour choisir une image, un SVG, un projet ou "
+                          "une broderie machine.")},
         {segmentAct_, tr("Segmentation ▸ Segmenter l'image… (F6), ou Segmentation ▸ Segmenter "
                          "avec l'IA…")},
         {vectorizeRegionAct_, tr("Sélectionnez une ou plusieurs régions (Ctrl+clic, ou glisser un "
