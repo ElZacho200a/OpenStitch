@@ -140,10 +140,9 @@ PullSample PullField::sample(Vec2um p) const {
 
 Vec2um PullField::compensation_at(Vec2um p) const {
     const PullSample s = sample(p);
-    double x = -static_cast<double>(s.displacement.x.value) * s.confidence *
-               fabric_.compensation_strength;
-    double y = -static_cast<double>(s.displacement.y.value) * s.confidence *
-               fabric_.compensation_strength;
+    const double scale = s.confidence * fabric_.compensation_strength;
+    double x = -static_cast<double>(s.displacement.x.value) * scale;
+    double y = -static_cast<double>(s.displacement.y.value) * scale;
     // Renforcer Predicted sans déborder du plafond absolu, même avec beaucoup
     // de sources ou une intensité demandée très élevée.
     const double cap = fabric_.max_displacement_mm * kUmPerMm;
