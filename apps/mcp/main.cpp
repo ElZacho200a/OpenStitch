@@ -8,6 +8,7 @@
 //   openstitch-mcp --doctor   auto-test en mémoire (poignée de main, outils, rendu), code 0 / 2
 #include <cstdio>
 #include <cstring>
+#include <cstddef>
 #include <exception>
 #include <iostream>
 #include <optional>
@@ -68,17 +69,37 @@ int main(int argc, char** argv) {
     }
 
     openstitch::mcp::Server server;
+    constexpr std::size_t kMaxRequestBytes = 8 * 1024 * 1024;
     std::string line;
-    while (std::getline(std::cin, line)) {
+    while (true) {
+        line.clear();
+        bool too_large = false;
+        int next = 0;
+        while ((next = std::cin.get()) != std::char_traits<char>::eof() && next != '\n') {
+            if (line.size() < kMaxRequestBytes) {
+                line.push_back(static_cast<char>(next));
+            } else {
+                too_large = true;
+            }
+        }
+        if (next == std::char_traits<char>::eof() && line.empty() && !too_large) {
+            break;
+        }
         if (!line.empty() && line.back() == '\r') {
             line.pop_back();
         }
-        if (line.empty()) {
+        if (line.empty() && !too_large) {
+            if (next == std::char_traits<char>::eof()) {
+                break;
+            }
             continue;
         }
         std::optional<std::string> response;
         try {
-            response = server.handle(line);
+            response = too_large
+                           ? std::optional<std::string>(
+                                 R"({"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"requete de plus de 8 Mio"}})")
+                           : server.handle(line);
         } catch (const std::exception& e) { // dernier rempart : le serveur ne doit pas mourir
             response = std::string(R"({"jsonrpc":"2.0","id":null,"error":{"code":-32603,)"
                                    R"("message":"erreur interne du serveur"}})");
@@ -89,6 +110,9 @@ int main(int argc, char** argv) {
             std::fwrite(response->data(), 1, response->size(), protocol);
             std::fputc('\n', protocol);
             std::fflush(protocol);
+        }
+        if (next == std::char_traits<char>::eof()) {
+            break;
         }
     }
     return 0;

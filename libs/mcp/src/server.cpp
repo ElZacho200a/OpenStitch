@@ -9,6 +9,16 @@ namespace openstitch::mcp {
 namespace {
 
 constexpr const char* kDefaultProtocol = "2025-06-18";
+constexpr std::size_t kMaxRequestBytes = 8 * 1024 * 1024;
+
+std::string negotiated_protocol(const json& params) {
+    const auto requested = params.value("protocolVersion", std::string{});
+    if (requested == "2025-06-18" || requested == "2025-03-26" ||
+        requested == "2024-11-05") {
+        return requested;
+    }
+    return kDefaultProtocol;
+}
 constexpr const char* kInstructions =
     "OpenStitch : numérisation de broderie machine (image -> objets -> points -> DST). Une session "
     "garde UN projet ouvert.\n"
@@ -47,9 +57,23 @@ struct Server::Impl {
     json list_tools() const {
         json list = json::array();
         for (const auto& tool : tools()) {
+            const std::string_view name = tool.name;
+            const bool readonly = name == "project_status" || name == "project_operations" ||
+                                  name == "digitize_guide" || name == "project_inspect" ||
+                                  name == "project_select" || name == "project_palette" ||
+                                  name == "semantic_validate" || name == "semantic_map" ||
+                                  name == "ai_backends" || name == "project_report" ||
+                                  name == "project_diagnose" || name == "project_density" ||
+                                  name == "project_fidelity" || name == "project_fabric_risk" ||
+                                  name == "project_locate" || name == "project_check" ||
+                                  name == "project_render" || name == "project_compare" ||
+                                  name == "project_checkpoints" || name == "project_satin_compare";
             list.push_back(json{{"name", tool.name},
                                 {"description", tool.description},
-                                {"inputSchema", json::parse(tool.input_schema)}});
+                                {"inputSchema", json::parse(tool.input_schema)},
+                                {"annotations", {{"readOnlyHint", readonly},
+                                                 {"destructiveHint", !readonly},
+                                                 {"openWorldHint", false}}}});
         }
         return json{{"tools", list}};
     }
@@ -105,7 +129,7 @@ struct Server::Impl {
         std::string task =
             "Numérise l'image « " + args.value("image", "<chemin à préciser>") + " »";
         if (args.contains("width_mm")) {
-            task += ", largeur brodée " + args.at("width_mm").get<std::string>() + " mm";
+            task += ", largeur brodée " + (args.at("width_mm").is_string() ? args.at("width_mm").get<std::string>() : args.at("width_mm").dump()) + " mm";
         }
         task +=
             ", en suivant la méthode ci-dessous avec les outils du serveur openstitch "
@@ -134,6 +158,9 @@ Server::Server() : impl_(std::make_unique<Impl>()) {}
 Server::~Server() = default;
 
 std::optional<std::string> Server::handle(std::string_view message) {
+    if (message.size() > kMaxRequestBytes) {
+        return error_response(nullptr, kInvalidRequest, "requete de plus de 8 Mio").dump();
+    }
     const json request = json::parse(message, nullptr, /*allow_exceptions=*/false);
     if (request.is_discarded()) {
         return error_response(nullptr, kParseError, "JSON invalide").dump();
@@ -142,6 +169,13 @@ std::optional<std::string> Server::handle(std::string_view message) {
         return error_response(request.is_object() ? request.value("id", json{}) : json{},
                               kInvalidRequest, "requête JSON-RPC invalide")
             .dump();
+    }
+    if (!request.contains("jsonrpc") || request.at("jsonrpc") != "2.0") {
+        return error_response(nullptr, kInvalidRequest, "jsonrpc doit valoir 2.0").dump();
+    }
+    if (request.contains("id") && !request.at("id").is_null() &&
+        !request.at("id").is_string() && !request.at("id").is_number()) {
+        return error_response(nullptr, kInvalidRequest, "id JSON-RPC invalide").dump();
     }
     const std::string method = request.at("method").get<std::string>();
     const bool is_notification = !request.contains("id");
@@ -152,12 +186,12 @@ std::optional<std::string> Server::handle(std::string_view message) {
         return std::nullopt; // notifications/initialized, notifications/cancelled… : rien à
                              // répondre
     }
+    if (!params.is_object()) {
+        return error_response(id, kInvalidParams, "params doit etre un objet").dump();
+    }
     try {
         if (method == "initialize") {
-            const std::string protocol = params.is_object() && params.contains("protocolVersion") &&
-                                                 params.at("protocolVersion").is_string()
-                                             ? params.at("protocolVersion").get<std::string>()
-                                             : kDefaultProtocol;
+            const std::string protocol = negotiated_protocol(params);
             return ok_response(
                        id, {{"protocolVersion", protocol},
                             {"capabilities",
