@@ -140,5 +140,25 @@ module de rigidité.
    vérification de taille des points après compensation, déterminisme.
    Attention au cumul avec la compensation de base `Adaptive`.
 
-La PR #170 renforce le comportement prédit et préserve Adaptive, mais
-ne constitue pas encore ce modèle textile calibré.
+## 5. Intégration effective dans la PR #170 (2026-10-28)
+
+- `predicted_fabric_response` consomme les valeurs `project.fabric.material` et
+  `project.fabric.stabilizer`, déjà éditables et persistées via « Coloris et tissu ».
+  Les profils ne sont **pas** une transposition directe des nombres Wilcom :
+  woven/neutre 1,00 ; jersey 1,20 ; terry 1,25 ; felt 0,75 ; denim 0,85
+  (facteurs appliqués au `gain` du modèle), puis cut-away 0,80,
+  tear-away 0,92, aucun entoilage 1,10. Ces valeurs sont entièrement
+  **exploratoires**, sans calibration externe. Toute matière inconnue est neutre.
+- Les sources de traction de `Predicted` prennent en compte les sous-couches
+  (poids 0,55), les colonnes satin (facteur 1,15), et la longueur locale
+  des segments (facteur borné 0,8–1,2). La densité se répercute par le nombre
+  de segments et leur recouvrement ; les orientations par les vecteurs locaux.
+- Les profils déjà marqués `calibrated` ne sont jamais modifiés par ces règles.
+  Les poids et profils n'affectent aucun objet non prédit.
+- L'aperçu standard du desktop lit le profil du projet, tandis que les
+  presets de simulation « lin lâche » et « bien stabilisé » restent distincts.
+
+La PR #170 améliore le comportement prédit et préserve Adaptive, mais
+ne constitue pas encore un modèle textile calibré. Restent notamment
+à mesurer le titre et la tension du fil, l'anisotropie des tissus, la
+stabilisation réelle et l'effet du cerclage.
