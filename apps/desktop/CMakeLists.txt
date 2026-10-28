@@ -41,6 +41,8 @@ add_library(openstitch_desktop_widgets STATIC
     companion_dock.cpp
     companion_launcher.cpp
     companion_launcher.hpp
+    claude_code_process_backend.cpp
+    claude_code_process_backend.hpp
     companion_backend.hpp
     claude_backend.cpp
     claude_backend.hpp

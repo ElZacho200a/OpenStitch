@@ -15,6 +15,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSettings>
+#include <QSignalSpy>
 #include <QStackedWidget>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -24,6 +25,7 @@
 #include <QTimer>
 
 #include "claude_backend.hpp"
+#include "claude_code_process_backend.hpp"
 #include "companion_dock.hpp"
 #include "companion_launcher.hpp"
 #include "companion_settings_dialog.hpp"
@@ -157,6 +159,7 @@ private slots:
     void disabledCompanionOffersNoProvider();
     void settingsDialogStoresKeyOnlyInTheSecretStore();
     void targetPhraseWorksEndToEndFromTheDesktop();
+    void claudeCodeProcessParsesStructuredEvents();
     void launcherPreparesWorkspaceAndStartsTheUsersClaude();
     void launcherReportsMissingClaudeAndMissingMcpWithoutLaunching();
     void openClaudeCodeActionEnablesTheBridgeOnlyOnExplicitUse();
@@ -501,6 +504,22 @@ QString makeFakeMcp(const QString& appDir) {
 }
 
 } // namespace
+
+void MainWindowTest::claudeCodeProcessParsesStructuredEvents() {
+    ClaudeCodeProcessBackend backend(QStringLiteral("fake-claude"),
+                                     QStringLiteral("/virtual/workspace"));
+    QSignalSpy text(&backend, &CompanionBackend::assistantText);
+    QSignalSpy tools(&backend, &CompanionBackend::toolCalled);
+    QSignalSpy usage(&backend, &CompanionBackend::usage);
+    backend.ingestEventForTest(R"({"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"mcp__openstitch__live_context","input":{}}]}})");
+    backend.ingestEventForTest(R"({"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"mcp__openstitch__live_context","input":{}}]}})");
+    backend.ingestEventForTest(R"({"type":"result","is_error":false,"session_id":"unit-session","result":"Trois objets orange","usage":{"input_tokens":120,"output_tokens":22}})");
+    QCOMPARE(tools.size(), 1);
+    QCOMPARE(text.size(), 1);
+    QCOMPARE(text.at(0).at(0).toString(), QStringLiteral("Trois objets orange"));
+    QCOMPARE(usage.size(), 1);
+    QCOMPARE(usage.at(0).at(0).toULongLong(), quint64{120});
+}
 
 void MainWindowTest::launcherPreparesWorkspaceAndStartsTheUsersClaude() {
     QTemporaryDir tmp;

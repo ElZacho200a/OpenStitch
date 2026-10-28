@@ -25,6 +25,8 @@ public:
 
     [[nodiscard]] static Env systemEnv();
     [[nodiscard]] static Result launch(const Env& env);
+    // Prepare un workspace sans ouvrir un terminal : utilise par le chat Claude Code du dock.
+    [[nodiscard]] static Result prepare(const Env& env, QString& executable, QString& workspace);
     // Dossier de l'espace de travail pour `dataDir`.
     [[nodiscard]] static QString workspaceDir(const QString& dataDir);
     // Message utilisateur pour un résultat d'échec.

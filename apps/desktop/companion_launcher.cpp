@@ -49,7 +49,8 @@ QString findMcpExe(const QString& appDir) {
 
 } // namespace
 
-ClaudeCodeLauncher::Result ClaudeCodeLauncher::launch(const Env& env) {
+ClaudeCodeLauncher::Result ClaudeCodeLauncher::prepare(const Env& env, QString& executable,
+                                                       QString& workspace) {
     QString claude = env.findExecutable(QStringLiteral("claude"));
     if (claude.isEmpty()) {
         claude = env.findExecutable(QStringLiteral("claude.cmd"));
@@ -66,6 +67,18 @@ ClaudeCodeLauncher::Result ClaudeCodeLauncher::launch(const Env& env) {
     if (!agent::write_claude_workspace(dir.toStdString(), mcp.toStdString(),
                                       static_cast<int>(QCoreApplication::applicationPid()))) {
         return Result::WorkspaceFailed;
+    }
+    executable = claude;
+    workspace = dir;
+    return Result::Started;
+}
+
+ClaudeCodeLauncher::Result ClaudeCodeLauncher::launch(const Env& env) {
+    QString claude;
+    QString dir;
+    const Result ready = prepare(env, claude, dir);
+    if (ready != Result::Started) {
+        return ready;
     }
     const QString wt = env.findExecutable(QStringLiteral("wt"));
     bool started = false;
