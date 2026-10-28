@@ -1784,6 +1784,17 @@ void MainWindow::buildCompanionDock() {
         }
     });
     // Les approbations de l'agent s'affichent dans le dock (boîte modale seulement en repli).
+    liveGate_.setChoiceDelegate([this](const mcp::ChoiceRequest& request) {
+        companionDock_->show();
+        companionDock_->raise();
+        QStringList labels;
+        QList<quint64> focus;
+        for (const auto& option : request.options) {
+            labels << QString::fromStdString(option.label);
+            focus << (option.object_ids.empty() ? 0 : option.object_ids.front());
+        }
+        return companionDock_->askChoice(QString::fromStdString(request.question), labels, focus);
+    });
     liveGate_.setDelegate([this](const mcp::ApprovalRequest& request) {
         companionDock_->show();
         companionDock_->raise();

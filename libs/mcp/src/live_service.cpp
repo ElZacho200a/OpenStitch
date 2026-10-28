@@ -8,6 +8,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "live_agent.hpp"
 #include "openstitch/mcp/live.hpp"
 #include "openstitch/project_ops/errors.hpp"
 #include "openstitch/project_ops/report.hpp"
@@ -31,6 +32,43 @@ const std::vector<LiveExtraTool> kExtraTools = {
      "sélection courante (identifiants d'objets de broderie), session et révision. À appeler avant "
      "de modifier : une modification sur une révision périmée est refusée (E_STALE_REVISION).",
      R"({"type":"object","properties":{}})"},
+    {"live_context",
+     "Paquet de contexte COMPACT du projet ouvert : session/révision, sélection, cadre, palette "
+     "des "
+     "FILS cousus (pas les teintes de segmentation), objets à identifiants stables (type, fil, "
+     "verrou, visibilité) et risques. À appeler avant de cibler ou de modifier.",
+     R"({"type":"object","properties":{}})"},
+    {"live_target",
+     "Cible des objets de broderie par teinte de FIL : « orange », « rouge »… (familles), "
+     "« #RRGGBB » (tolérance), ou « selection » (sélection du canevas). Signale "
+     "verrouillés/masqués, "
+     "fils à la frontière d'une famille et cas ambigus (ambiguous=true : appeler live_ask_user "
+     "AVANT de modifier).",
+     R"({"type":"object","properties":{"query":{"type":"string"},"tolerance":{"type":"number"}},)"
+     R"("required":["query"]})"},
+    {"live_plan_satin",
+     "Plan de conversion en satin pour 1 à 20 objets : compare skeleton / parallel_sweep / "
+     "medial_axis (copies isolées), choisit la meilleure variante non rejetée, JUSTIFIE chaque "
+     "refus "
+     "(le tatami est conservé), saute verrouillés/masqués/déjà satin, et prépare le lot "
+     "(auto_satin + pull_mode=predicted par défaut) validé en simulation. N'applique rien.",
+     R"({"type":"object","properties":{"objects":{"type":"array","items":{"type":"integer",)"
+     R"("minimum":1},"minItems":1,"maxItems":20},"pull_mode":{"enum":["predicted","adaptive",)"
+     R"("auto","manual","none"]}},"required":["objects"]})"},
+    {"live_preview",
+     "Aperçu AVANT/APRÈS d'un lot d'opérations sur une copie : rapport du lot, points, sauts, "
+     "coupes, constats qualité, risque textile (avant, après, écart) et rendu de l'état après. Le "
+     "projet ouvert ne change pas. À appeler avant project_apply.",
+     R"({"type":"object","properties":{"operations":{"type":"array","items":{"type":"object",)"
+     R"("properties":{"op":{"type":"string"}},"required":["op"]}}},"required":["operations"]})"},
+    {"live_ask_user",
+     "Pose une question à l'utilisateur DANS LE PANNEAU du compagnon quand la demande est ambiguë "
+     "(plusieurs teintes, sélection vide…). 2 à 8 options, chacune avec ses identifiants d'objets. "
+     "Retourne le choix ; ne modifie rien.",
+     R"({"type":"object","properties":{"question":{"type":"string"},"options":{"type":"array",)"
+     R"("minItems":2,"maxItems":8,"items":{"type":"object","properties":{"label":{"type":"string"},)"
+     R"("object_ids":{"type":"array","items":{"type":"integer"}}},"required":["label"]}}},)"
+     R"("required":["question","options"]})"},
 };
 
 json error_content(const std::string& tool, const char* code, const std::string& message,
@@ -49,6 +87,14 @@ json text_content(const std::string& text) {
 } // namespace
 
 LivePolicy live_policy(std::string_view tool) {
+    if (tool.starts_with("live_") && tool != "live_commit") {
+        for (const auto& extra : kExtraTools) {
+            if (tool == extra.name) {
+                return LivePolicy::Read;
+            }
+        }
+        return LivePolicy::Denied;
+    }
     if (std::find(kReadTools.begin(), kReadTools.end(), tool) != kReadTools.end()) {
         return LivePolicy::Read;
     }
@@ -90,6 +136,8 @@ struct LivePendingCall::Impl {
     std::optional<json> immediate; // réponse prête (refus, live_status, argument invalide)
     project_ops::LiveBridge::Snapshot snapshot;
     ToolResult result;
+    LiveContextInput context;         // live_context / live_target
+    std::optional<ChoiceRequest> ask; // live_ask_user (réponse au retour sur le fil GUI)
     std::shared_ptr<const document::Project> final_project; // issu d'un project_apply réussi
     bool ran{false};
 };
@@ -103,6 +151,28 @@ void LivePendingCall::run() {
         return;
     }
     c.ran = true;
+    if (c.tool.starts_with("live_")) {
+        if (c.ask) {
+            return; // question à l'utilisateur : rien à calculer, la réponse vient au retour GUI
+        }
+        try {
+            if (c.tool == "live_context") {
+                c.result = live_context_tool(*c.snapshot.project, c.context);
+            } else if (c.tool == "live_target") {
+                c.result = live_target_tool(*c.snapshot.project, c.context, c.args);
+            } else if (c.tool == "live_plan_satin") {
+                c.result = live_plan_satin_tool(*c.snapshot.project, c.args);
+            } else {
+                c.result = live_preview_tool(*c.snapshot.project, c.args);
+            }
+        } catch (const std::exception& e) {
+            c.result.is_error = true;
+            c.result.content.push_back(
+                json{{"type", "text"},
+                     {"text", po::error_json(c.tool, po::code::kInternal, e.what(), {})}});
+        }
+        return;
+    }
     Session session;
     session.project = *c.snapshot.project; // copie privée : le document hôte n'est jamais touché
     c.result = call_tool(session, c.tool, c.args);
@@ -153,7 +223,44 @@ std::shared_ptr<LivePendingCall> LiveService::begin(const std::string& tool,
     c.args = parsed.is_null() ? json::object() : parsed;
     c.dry_run = c.args.contains("dry_run") && c.args.at("dry_run").is_boolean() &&
                 c.args.at("dry_run").get<bool>();
+    if (tool == "live_ask_user") {
+        ChoiceRequest ask;
+        ask.question = c.args.value("question", std::string{});
+        if (c.args.contains("options") && c.args.at("options").is_array()) {
+            for (const auto& o : c.args.at("options")) {
+                ChoiceOption option;
+                option.label = o.value("label", std::string{});
+                if (o.contains("object_ids") && o.at("object_ids").is_array()) {
+                    for (const auto& id : o.at("object_ids")) {
+                        if (id.is_number_unsigned()) {
+                            option.object_ids.push_back(id.get<std::uint64_t>());
+                        }
+                    }
+                }
+                if (!option.label.empty() && ask.options.size() < 8) {
+                    ask.options.push_back(std::move(option));
+                }
+            }
+        }
+        if (ask.question.empty() || ask.options.size() < 2) {
+            c.immediate = error_content(tool, po::code::kUsage,
+                                        "« question » et 2 à 8 « options » (avec « label ») requis",
+                                        "voir inputSchema de l'outil");
+        } else {
+            c.ask = std::move(ask);
+        }
+        return call;
+    }
     c.snapshot = bridge_.snapshot();
+    if (tool == "live_context" || tool == "live_target") {
+        const LiveDocumentInfo info = info_ ? info_() : LiveDocumentInfo{};
+        c.context.document_name = info.name;
+        c.context.dirty = info.dirty;
+        c.context.never_saved = info.never_saved;
+        c.context.selection = info.selection;
+        c.context.revision = c.snapshot.revision;
+        c.context.session_id = c.snapshot.session_id;
+    }
     return call;
 }
 
@@ -161,6 +268,26 @@ std::string LiveService::finish(LivePendingCall& call) {
     auto& c = *call.impl_;
     if (c.immediate) {
         return c.immediate->dump();
+    }
+    if (c.ask) {
+        const int index = gate_.choose(*c.ask);
+        json answer{{"schema", "openstitch.live-choice/1"}, {"chosen", false}};
+        if (index >= 0 && static_cast<std::size_t>(index) < c.ask->options.size()) {
+            const auto& picked = c.ask->options[static_cast<std::size_t>(index)];
+            answer = json{{"schema", "openstitch.live-choice/1"},
+                          {"chosen", true},
+                          {"index", index},
+                          {"label", picked.label},
+                          {"object_ids", picked.object_ids}};
+        } else {
+            answer["note"] = "l'utilisateur n'a rien choisi : ne modifiez rien et demandez-lui de "
+                             "préciser sa demande";
+        }
+        json reply = text_content(answer.dump());
+        reply["live"] = json{{"session_id", bridge_.session_id()},
+                             {"revision", bridge_.revision()},
+                             {"applied", false}};
+        return reply.dump();
     }
     json out{{"content", c.result.content}, {"isError", c.result.is_error}};
     bool applied = false;
@@ -247,7 +374,9 @@ std::string LiveService::attach_info_json() {
     for (const auto& t : kReadTools) {
         perms["read"].push_back(std::string(t));
     }
-    perms["read"].push_back("live_status");
+    for (const auto& extra : kExtraTools) {
+        perms["read"].push_back(extra.name);
+    }
     return json{{"schema", kLiveSchema},
                 {"version", kLiveVersion},
                 {"session_id", bridge_.session_id()},

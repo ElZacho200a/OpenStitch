@@ -380,6 +380,8 @@ void CompanionDock::showProposal(const CompanionProposal& proposal,
     afterImage_->setPixmap(scaled(proposal.afterPng));
     beforeImage_->setVisible(!proposal.beforePng.isEmpty());
     afterImage_->setVisible(!proposal.afterPng.isEmpty());
+    confirm_->setText(proposal.confirmText.isEmpty() ? tr("Appliquer") : proposal.confirmText);
+    reject_->setText(proposal.rejectText.isEmpty() ? tr("Rejeter") : proposal.rejectText);
     pendingDecision_ = std::move(decision);
     proposalBox_->setVisible(true);
     confirm_->setFocus();
@@ -397,6 +399,32 @@ bool CompanionDock::askApproval(const CompanionProposal& proposal) {
         loop.exec();
     }
     return self != nullptr ? result : false;
+}
+
+int CompanionDock::askChoice(const QString& question, const QStringList& labels,
+                             const QList<quint64>& focusIds) {
+    CompanionProposal proposal;
+    proposal.title = tr("Question de l'agent");
+    proposal.summary = question;
+    for (int i = 0; i < labels.size(); ++i) {
+        proposal.items.push_back({i < focusIds.size() ? focusIds.at(i) : 0, labels.at(i)});
+    }
+    proposal.confirmText = tr("Choisir");
+    proposal.rejectText = tr("Aucun");
+    int chosen = -1;
+    QEventLoop loop;
+    QPointer<CompanionDock> self(this);
+    showProposal(proposal, [&](bool approved) {
+        if (approved && self != nullptr) {
+            chosen = proposalItems_->currentRow();
+        }
+        loop.quit();
+    });
+    if (pendingDecision_) {
+        proposalItems_->setCurrentRow(0);
+        loop.exec();
+    }
+    return self != nullptr ? chosen : -1;
 }
 
 void CompanionDock::resolveProposal(bool approved) {

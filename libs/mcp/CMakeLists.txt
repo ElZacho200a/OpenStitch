@@ -39,6 +39,7 @@ add_library(openstitch_mcp
     src/tools.cpp
     src/guide.cpp
     src/live_service.cpp
+    src/live_agent.cpp
     src/live_transport.cpp
     "${GUIDE_CPP}"
 )

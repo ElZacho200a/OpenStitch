@@ -51,6 +51,10 @@ public:
     void showProposal(const CompanionProposal& proposal, std::function<void(bool)> decision);
     // Variante bloquante (boucle d'événements locale) pour l'approbation d'un outil MCP.
     bool askApproval(const CompanionProposal& proposal);
+    // Question de l'agent dans le panneau (cas ambigu) : l'utilisateur choisit une ligne.
+    // Retourne l'indice choisi, -1 s'il refuse ou si le document change.
+    int askChoice(const QString& question, const QStringList& labels,
+                  const QList<quint64>& focusIds);
 
     void appendUserMessage(const QString& text);
     void appendAssistantMessage(const QString& text);

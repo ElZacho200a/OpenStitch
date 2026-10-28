@@ -31,6 +31,8 @@ struct CompanionProposal {
     QStringList warnings;
     QByteArray beforePng; // aperçu facultatif (PNG) ; vide = pas de comparaison visuelle
     QByteArray afterPng;
+    QString confirmText; // vide = « Appliquer »
+    QString rejectText;  // vide = « Rejeter »
 };
 
 // Frontière entre le dock (widgets, sans logique métier) et l'agent. Le fournisseur réel (Claude)

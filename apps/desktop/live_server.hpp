@@ -33,11 +33,16 @@ public:
     void setDelegate(std::function<bool(const mcp::ApprovalRequest&)> fn) {
         delegate_ = std::move(fn);
     }
+    void setChoiceDelegate(std::function<int(const mcp::ChoiceRequest&)> fn) {
+        choice_ = std::move(fn);
+    }
+    int choose(const mcp::ChoiceRequest& request) override;
 
 private:
     QWidget* parent_;
     std::function<bool(const mcp::ApprovalRequest&)> override_;
     std::function<bool(const mcp::ApprovalRequest&)> delegate_;
+    std::function<int(const mcp::ChoiceRequest&)> choice_;
 };
 
 // Serveur local du pont live : un tube nommé / socket de domaine Unix accessible à l'utilisateur

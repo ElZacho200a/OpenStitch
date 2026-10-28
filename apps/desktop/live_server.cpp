@@ -41,6 +41,13 @@ bool DialogApprovalGate::approve(const mcp::ApprovalRequest& request) {
     return box.clickedButton() == apply;
 }
 
+int DialogApprovalGate::choose(const mcp::ChoiceRequest& request) {
+    if (choice_) {
+        return choice_(request);
+    }
+    return -1; // sans interface de choix, l'agent n'obtient aucune réponse : il ne modifie rien
+}
+
 LiveServer::LiveServer(mcp::LiveService& service, QObject* parent)
     : QObject(parent), service_(service) {}
 

@@ -96,6 +96,8 @@ private slots:
     void longMessagesAndHugeToolResultsAreBounded();
     void tabMovesFromInputToSendButton();
     void agentApprovalGoesThroughTheDockAndIsUndoable();
+    void agentQuestionIsAnsweredInThePanel();
+    void agentQuestionDeclinedReturnsNoChoice();
 };
 
 void MainWindowTest::dockIsHiddenByDefaultAndReopensFromThePanelsMenu() {
@@ -336,6 +338,46 @@ void MainWindowTest::agentApprovalGoesThroughTheDockAndIsUndoable() {
     QVERIFY(undo != nullptr && undo->isVisibleTo(dock));
     undo->click();
     QCOMPARE(w.project_.embroidery_objects.front().rgb, (std::array<std::uint8_t, 3>{60, 30, 30}));
+}
+
+void MainWindowTest::agentQuestionIsAnsweredInThePanel() {
+    MainWindow w;
+    auto f = oneShape();
+    w.applyLoadedProject(std::move(f.project));
+    auto* dock = w.companionDock();
+    QTimer::singleShot(30, &w, [dock] {
+        auto* items = dock->findChild<QListWidget*>(QStringLiteral("list_companionProposalItems"));
+        if (items != nullptr && items->count() == 2) {
+            items->setCurrentRow(1);
+            dock->findChild<QPushButton*>(QStringLiteral("button_companionConfirm"))->click();
+        }
+    });
+    const std::string args =
+        "{\"question\":\"Quels oranges ?\",\"options\":[{\"label\":\"Stricts\"},"
+        "{\"label\":\"Avec la frontiere\",\"object_ids\":[2]}]}";
+    const std::string reply = w.liveService().call("live_ask_user", args);
+    QVERIFY2(reply.find("chosen\\\":true") != std::string::npos, reply.c_str());
+    QVERIFY(reply.find("Avec la frontiere") != std::string::npos);
+    QVERIFY(!dock->isHidden());
+    QVERIFY(!dock->hasPendingProposal());
+    QVERIFY(!w.undoAct_->isEnabled()); // une question ne modifie rien
+}
+
+void MainWindowTest::agentQuestionDeclinedReturnsNoChoice() {
+    MainWindow w;
+    auto f = oneShape();
+    w.applyLoadedProject(std::move(f.project));
+    auto* dock = w.companionDock();
+    QTimer::singleShot(30, &w, [dock] {
+        auto* group = dock->findChild<QWidget*>(QStringLiteral("group_companionProposal"));
+        if (group != nullptr && group->isVisibleTo(dock)) {
+            dock->findChild<QPushButton*>(QStringLiteral("button_companionReject"))->click();
+        }
+    });
+    const std::string args =
+        "{\"question\":\"Lequel ?\",\"options\":[{\"label\":\"A\"},{\"label\":\"B\"}]}";
+    const std::string reply = w.liveService().call("live_ask_user", args);
+    QVERIFY2(reply.find("chosen\\\":false") != std::string::npos, reply.c_str());
 }
 
 } // namespace openstitch::desktop

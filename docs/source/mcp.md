@@ -252,3 +252,21 @@ live (pas de serveur HTTP, pas de « remote MCP »).
    normalement. « Désactiver entièrement le compagnon » coupe fournisseur et pont local.
 5. Erreurs (réseau, quota, délai, clé refusée) : bandeau non bloquant, reprises bornées,
    bouton Interrompre ; l'usage en jetons est affiché (le coût se lit chez le fournisseur).
+
+### Édition agentique : « mets les formes orange compatibles en satin (Predicted) »
+
+Outils propres au mode live (lecture seule, calculés sur une copie, hors fil d'interface) :
+
+| Outil | Rôle |
+|---|---|
+| `live_context` | paquet compact : session/révision, sélection, cadre, palette des **fils** (pas les teintes de segmentation), objets à identifiants stables, risques (verrouillés, masqués, non enregistré) |
+| `live_target` | cible par teinte de **fil** (`orange`, `#RRGGBB`, `selection`) ; signale verrouillés/masqués, fils **à la frontière** d'une famille et les cas ambigus (`ambiguous`) |
+| `live_ask_user` | pose la question **dans le panneau** (2 à 8 options avec leurs objets, lien de focus) ; rien n'est modifié tant que l'utilisateur n'a pas répondu |
+| `live_plan_satin` | compare `skeleton` / `parallel_sweep` / `medial_axis` (copies isolées) pour 1 à 20 objets, retient la meilleure variante non rejetée, **justifie chaque refus** (tatami conservé), saute verrouillés/masqués/déjà satin, prépare le lot `auto_satin` + `set_params {pull_mode: predicted}` validé en simulation |
+| `live_preview` | avant/après d'un lot sur une copie : rapport, points, sauts, coupes, constats qualité, risque textile (écarts) et rendu de l'état après |
+
+Boucle recommandée : `live_context` → `live_target` (→ `live_ask_user` si ambigu) → `live_plan_satin`
+→ `live_preview` → `project_apply` (approbation dans le dock, **un seul** Ctrl+Z) → contrôle. Une
+modification manuelle entre l'aperçu et l'application donne `E_STALE_REVISION`. **Limites** :
+`Predicted` est une compensation de tirage empirique (PR #170), non calibrée sur machine
+(calibration physique : PR #152) ; aucune forme n'est garantie convertible en satin.

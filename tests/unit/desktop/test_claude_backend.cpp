@@ -24,6 +24,7 @@
 #include "companion_settings_dialog.hpp"
 #include "main_window.hpp"
 #include "openstitch/geometry/primitives.hpp"
+#include "openstitch/project_ops/inspect.hpp"
 
 namespace openstitch::desktop {
 namespace {
@@ -150,6 +151,7 @@ private slots:
     void cancelStopsTheRequestAndTheDockStaysUsable();
     void disabledCompanionOffersNoProvider();
     void settingsDialogStoresKeyOnlyInTheSecretStore();
+    void targetPhraseWorksEndToEndFromTheDesktop();
 };
 
 namespace {
@@ -338,6 +340,145 @@ void MainWindowTest::settingsDialogStoresKeyOnlyInTheSecretStore() {
     QVERIFY(companion_settings::providerEnabled());
     child<QPushButton>(&dialog, "button_companionRemoveKey")->click();
     QVERIFY(!secrets.read(companion_settings::kSecretKey).has_value());
+}
+
+namespace {
+
+// Extrait le tableau JSON equilibre qui suit `marker` (sans analyseur JSON : le desktop ne lie pas
+// nlohmann).
+std::string arrayAfter(const std::string& text, const std::string& marker) {
+    const auto start = text.find(marker);
+    if (start == std::string::npos) {
+        return {};
+    }
+    const auto open = text.find('[', start);
+    int depth = 0;
+    bool inString = false;
+    for (std::size_t i = open; i < text.size(); ++i) {
+        const char c = text[i];
+        if (c == '"' && (i == 0 || text[i - 1] != '\\')) {
+            inString = !inString;
+        } else if (!inString && c == '[') {
+            ++depth;
+        } else if (!inString && c == ']' && --depth == 0) {
+            return text.substr(open, i - open + 1);
+        }
+    }
+    return {};
+}
+
+std::string lastToolResultText(const agent::ProviderRequest& request) {
+    const auto& blocks = request.messages.back().blocks;
+    if (blocks.empty() || blocks.front().content.empty()) {
+        return {};
+    }
+    return blocks.front().content.front().text;
+}
+
+class DynamicProvider final : public agent::IAgentProvider {
+public:
+    std::function<agent::ProviderResult(const agent::ProviderRequest&)> fn;
+    [[nodiscard]] std::string name() const override { return "Faux"; }
+    [[nodiscard]] agent::ProviderCapabilities capabilities() const override { return {}; }
+    agent::ProviderResult complete(const agent::ProviderRequest& r,
+                                   const agent::CancelToken&) override {
+        return fn(r);
+    }
+};
+
+} // namespace
+
+void MainWindowTest::targetPhraseWorksEndToEndFromTheDesktop() {
+    MainWindow w;
+    // Trois colonnes orange (fils) + une rouge : "mets les formes orange en satin, Predicted".
+    document::Project project;
+    const auto column = [&](int x_mm, std::array<std::uint8_t, 3> rgb) {
+        document::VectorObject v;
+        v.id = project.object_ids.next();
+        v.paths = {
+            {geometry::rectangle_path(Vec2um{Micrometers{x_mm * 1000}, Micrometers{0}},
+                                      Vec2um{Micrometers{x_mm * 1000 + 4000}, Micrometers{20'000}}),
+             {}}};
+        project.vector_objects.push_back(v);
+        document::EmbroideryObject e;
+        e.id = project.object_ids.next();
+        e.name = "Colonne";
+        e.source_vector = v.id;
+        e.rgb = rgb;
+        e.params = document::TatamiParams{};
+        project.embroidery_objects.push_back(e);
+    };
+    column(0, {232, 116, 42});
+    column(6, {240, 140, 30});
+    column(12, {230, 100, 20});
+    column(18, {200, 30, 30});
+    w.applyLoadedProject(std::move(project));
+    const auto typesNow = [&] {
+        std::vector<std::string> types;
+        for (const auto& e : w.project_.embroidery_objects) {
+            types.emplace_back(project_ops::stitch_type_name(e));
+        }
+        return types;
+    };
+    const auto before = typesNow();
+
+    Rig rig(w);
+    int step = 0;
+    std::string appliedOps;
+    auto provider = std::make_shared<DynamicProvider>();
+    provider->fn = [&](const agent::ProviderRequest& request) {
+        ++step;
+        const std::string last = lastToolResultText(request);
+        switch (step) {
+        case 1:
+            return toolReply("1", "live_context", "{}");
+        case 2:
+            return toolReply("2", "live_target", "{\"query\":\"orange\"}");
+        case 3:
+            return toolReply("3", "live_plan_satin", "{\"objects\":[2,4,6]}");
+        case 4:
+            appliedOps = arrayAfter(last, "\"batch\":{\"operations\":");
+            return toolReply("4", "live_preview", "{\"operations\":" + appliedOps + "}");
+        case 5:
+            return toolReply("5", "project_apply", "{\"operations\":" + appliedOps + "}");
+        default:
+            return textReply("Les formes orange compatibles sont en satin (Predicted).");
+        }
+    };
+    rig.backend = std::make_unique<ClaudeCompanionBackend>(
+        w.liveService(), rig.secrets,
+        [provider](const std::string&, const std::string&) { return provider; });
+    w.companionDock()->setBackend(rig.backend.get());
+
+    QTimer approve;
+    approve.setInterval(20);
+    connect(&approve, &QTimer::timeout, &approve, [&] {
+        auto* group = child<QWidget>(w.companionDock(), "group_companionProposal");
+        if (group != nullptr && group->isVisibleTo(w.companionDock())) {
+            child<QPushButton>(w.companionDock(), "button_companionConfirm")->click();
+        }
+    });
+    approve.start();
+    rig.ask(w, QStringLiteral("Mets toutes les formes orange compatibles en satin avec Predicted"));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        transcriptOf(w.companionDock()).contains(QStringLiteral("compatibles sont en satin")),
+        60000);
+    approve.stop();
+
+    const QString text = transcriptOf(w.companionDock());
+    for (const char* tool :
+         {"live_context", "live_target", "live_plan_satin", "live_preview", "project_apply"}) {
+        QVERIFY2(text.contains(QString::fromLatin1(tool)), tool);
+    }
+    QVERIFY(!appliedOps.empty());
+    // Sans export ni rechargement : le document ouvert a change, en UNE etape, la rouge est
+    // intacte.
+    QCOMPARE(w.undoStack_.undoNames().size(), std::size_t{1});
+    const auto after = typesNow();
+    QVERIFY(after != before);
+    QCOMPARE(after.back(), before.back());
+    w.undoAct_->trigger();
+    QCOMPARE(typesNow(), before);
 }
 
 } // namespace openstitch::desktop

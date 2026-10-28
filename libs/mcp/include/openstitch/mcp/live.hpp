@@ -70,9 +70,24 @@ struct ApprovalRequest {
     std::uint64_t revision{0};
 };
 
+// Question posée à l'utilisateur dans l'interface (cas ambigu) : il choisit parmi des options,
+// chacune pouvant désigner des objets. Retourne l'indice choisi, -1 = aucune réponse / refus.
+struct ChoiceOption {
+    std::string label;
+    std::vector<std::uint64_t> object_ids;
+};
+struct ChoiceRequest {
+    std::string question;
+    std::vector<ChoiceOption> options;
+};
+
 class IApprovalGate {
 public:
     virtual ~IApprovalGate() = default;
+    virtual int choose(const ChoiceRequest& request) {
+        (void)request;
+        return -1;
+    }
     // Fil GUI. true = l'utilisateur approuve ; l'approbation vaut pour CETTE demande seulement.
     virtual bool approve(const ApprovalRequest& request) = 0;
 };
