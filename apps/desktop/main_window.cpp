@@ -5393,7 +5393,7 @@ void MainWindow::autoDigitize() {
                                             ? processed_
                                             : project_.original;
         const project_ops::DigitizeSource source{&*project_.segmentation, &workImage,
-                                                 project_.mm_per_px};
+                                                 project_.mm_per_px, &project_.detail_mask};
         auto outcome = project_ops::digitize_objects(source, project_.object_ids, ds, skipLargest);
         if (!outcome) {
             return std::unexpected(outcome.error());

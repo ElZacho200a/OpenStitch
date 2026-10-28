@@ -21,6 +21,12 @@ struct VectorizeOptions {
     // pour les petits trous). Prendre ~1,5 px ou plus : en dessous, l'escalier de
     // la trame empêche de réduire le nombre de nœuds. 0 (défaut) : polygones.
     Micrometers curve_tolerance{0};
+    // Zones de détail (optionnel) : une région dont la moyenne du masque est >= 128 est vectorisée
+    // avec des tolérances multipliées par `detail_tolerance_factor` (contour plus fidèle, plus de
+    // nœuds). Le masque doit avoir la taille de la segmentation, sinon il est ignoré. Sans masque,
+    // résultat inchangé.
+    const segmentation::DetailMask* detail_mask{nullptr};
+    double detail_tolerance_factor{0.5};
 };
 
 // Transforme une région segmentée en contours vectoriels propres :

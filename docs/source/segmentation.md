@@ -69,8 +69,14 @@ un octet par pixel de l'image de travail : 0 = aplat, 255 = détail) donne un r�
   est **un** pas d'annulation (`PaintDetailMaskCommand`) ; le masque est enregistré dans le projet
   (`detail_mask.u8` dans l'archive `.osp`, sans changement de version de schéma). Le masque n'agit
   qu'à la prochaine segmentation ; l'aperçu du dialogue le suit.
-- **Limites.** Seuls le lissage et la taille minimale dépendent de la zone ; la vectorisation et la
-  couture (tolérance de simplification, type de point préféré) ne lisent pas encore le masque. Pas
+- **Vectorisation.** `VectorizeOptions::detail_mask` et `detail_tolerance_factor` (0,5 par défaut) :
+  une région dont la moyenne du masque est ≥ 128 est vectorisée avec des tolérances de
+  simplification (polygone, plancher 0,1 mm = pas machine) et de courbe divisées par le facteur,
+  donc un contour plus fidèle et plus de nœuds. Transmis par `AutoOptions::detail_mask`,
+  `DigitizeSource::detail_mask` (numérisation automatique du bureau) et la vectorisation des régions
+  du parcours Workflow. Masque absent ou de mauvaise taille : sortie inchangée.
+- **Limites.** La couture (type de point préféré, densité) ne lit pas encore le masque ; le CLI et
+  le MCP, qui n'ont pas de projet peint, ne passent pas de masque. Pas
   de proposition automatique de zones. Un recadrage ou une rotation de l'image rend le masque
   inutilisable (taille différente) : il est ignoré puis remplacé au prochain trait.
 

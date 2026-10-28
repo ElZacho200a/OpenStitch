@@ -594,7 +594,7 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
     limit_thread_count(seg, options.max_threads, backgroundRgb);
 
     const vectorization::VectorizeOptions vecOpts{options.mm_per_px, options.simplify_tolerance,
-                                                  options.curve_tolerance};
+                                                  options.curve_tolerance, options.detail_mask};
     // Objet vectoriel principal de chaque région numérisée (Lot C) : une
     // région absente (fond ignoré, non vectorisable) n'est jamais une voisine
     // brodée.
