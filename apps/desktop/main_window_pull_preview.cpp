@@ -61,10 +61,9 @@ void MainWindow::buildPullPreviewFeature() {
     const struct {
         const char* id;
         QString label;
-    } kinds[] = {
-        {"default", tr("Tissu du projet / standard")},
-        {"linen", tr("Lin lâche")},
-        {"stable", tr("Bien stabilisé")}};
+    } kinds[] = {{"default", tr("Tissu du projet / standard")},
+                 {"linen", tr("Lin lâche")},
+                 {"stable", tr("Bien stabilisé")}};
     const int saved = ui_memory::intValue(kFabricKey, 0, 0, 2);
     int index = 0;
     for (const auto& kind : kinds) {
@@ -120,7 +119,10 @@ stitch_generation::FabricResponse MainWindow::pullFabric() const {
     const auto response = stitch_generation::fabric_preset(kIds[choice]);
     // Par défaut, la prévisualisation lit la même matière que la compensation
     // Predicted de l'export ; les deux autres entrées sont des essais explicites.
-    return choice == 0 ? stitch_generation::predicted_fabric_response(project_, response) : response;
+    if (choice == 0) {
+        return stitch_generation::predicted_fabric_response(project_, response);
+    }
+    return response;
 }
 
 // Séquence décalée du tirage prédit, en cache sous la clé (séquence + tissu). Nul si l'aperçu est
