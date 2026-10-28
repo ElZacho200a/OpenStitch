@@ -3741,6 +3741,7 @@ ci-dessus doit les respecter :
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-28 | Claude (desktop) | **Zones de détail, lot 2 : vectorisation** : `VectorizeOptions::detail_mask` / `detail_tolerance_factor` (régions de détail vectorisées plus finement), relayé par `AutoOptions`, `DigitizeSource` et le parcours Workflow du bureau ; tests Catch2. Manque : couture (type de point, densité) par zone. Aucune entrée de parité Hatch concernée. |
 | 2026-10-27 | ChatGPT (HP-UX-048 lot 1) | Comparaison miniatures avant/après dans Segmenter : source et carte de régions, aucun second calcul, tests Qt et effets documentaires inchangés. Suite simplification/vectorisation encore à faire. |
 | 2026-10-27 | ChatGPT | HP-FAB-001 : métadonnées matériau/stabilisateur dans .osp, dialogue desktop et inspection ; aucun coefficient textile non validé appliqué. |
 | 2026-10-27 | Claude (desktop) | **Zones de détail / aplats pour la segmentation** : `DetailMask` + `paint_detail_disc` (libs/segmentation), lissage mélangé et taille minimale par zone (`detail_mask`, `detail_smoothing_radius_px`, `detail_min_region_px`), `PaintDetailMaskCommand` / `ClearDetailMaskCommand`, entrée `detail_mask.u8` du `.osp`, outil pinceau Maj+D, surcouche et réglages dans le dialogue Segmenter, tests Catch2 + QTest. Idée de l'utilisateur ; manque : vectorisation et couture par zone, proposition automatique. Aucune entrée de parité Hatch concernée. |

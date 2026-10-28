@@ -235,7 +235,8 @@ void MainWindow::vectorizeSelectedRegion(bool askDetail) {
     }
     const segmentation::Segmentation snapshot = *project_.segmentation;
     const vectorization::VectorizeOptions options{.mm_per_px = project_.mm_per_px,
-                                                  .simplify_tolerance = simplifyTolerance};
+                                                  .simplify_tolerance = simplifyTolerance,
+                                                  .detail_mask = &project_.detail_mask};
     std::vector<Result<std::vector<geometry::PathSet>>> vectorized;
     {
         BusyIndicator busy(this, tr("Vectorisation en cours…"),
