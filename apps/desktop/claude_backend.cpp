@@ -46,6 +46,18 @@ QString model() {
 void setModel(const QString& model) {
     QSettings().setValue(QStringLiteral("ai/companion/model"), model);
 }
+bool diagnosticsEnabled() {
+    return QSettings().value(QStringLiteral("ai/companion/diagnostics"), false).toBool();
+}
+void setDiagnosticsEnabled(bool on) {
+    QSettings().setValue(QStringLiteral("ai/companion/diagnostics"), on);
+}
+bool diagnosticsContentConsent() {
+    return QSettings().value(QStringLiteral("ai/companion/diagnosticsContent"), false).toBool();
+}
+void setDiagnosticsContentConsent(bool on) {
+    QSettings().setValue(QStringLiteral("ai/companion/diagnosticsContent"), on);
+}
 
 } // namespace companion_settings
 
@@ -213,7 +225,8 @@ constexpr const char* kSystemPrompt =
 
 class RunObserver final : public agent::IAgentObserver {
 public:
-    explicit RunObserver(ClaudeCompanionBackend* backend) : backend_(backend) {}
+    RunObserver(ClaudeCompanionBackend* backend, agent::DiagnosticLog* log)
+        : backend_(backend), log_(log) {}
 
     void on_text(const std::string& text) override {
         emit backend_->assistantText(QString::fromStdString(text));
@@ -231,6 +244,10 @@ public:
                 card.refusal = card.refusal.left(400) + QStringLiteral("…");
             }
         }
+        if (log_ != nullptr) {
+            log_->record("tool", name + (card.isError ? " erreur" : " ok"));
+            log_->record_content("tool_args", name + " " + args_json);
+        }
         emit backend_->toolCalled(card);
     }
     void on_usage(const agent::Usage&, const agent::Usage& total) override {
@@ -239,6 +256,7 @@ public:
 
 private:
     ClaudeCompanionBackend* backend_;
+    agent::DiagnosticLog* log_;
 };
 
 QString hintFor(const QString& code) {
@@ -348,8 +366,14 @@ void ClaudeCompanionBackend::send(const QString& userText) {
     auto alive = alive_;
     auto token = token_;
     QPointer<ClaudeCompanionBackend> self(this);
+    agent::DiagnosticLog* log = log_;
+    if (log != nullptr) {
+        log->add_secret(apiKey);
+        log->record("request", "chars=" + std::to_string(text.size()) + " modele=" + model);
+        log->record_content("user_message", text);
+    }
     QThreadPool::globalInstance()->start([=, this] {
-        RunObserver observer(this);
+        RunObserver observer(this, log);
         LiveToolHost host(service_, this);
         std::shared_ptr<agent::IAgentProvider> provider = factory_(apiKey, model);
         agent::RunnerOptions options;
@@ -363,6 +387,15 @@ void ClaudeCompanionBackend::send(const QString& userText) {
                                            "project_export", "project_new", "project_digitize"});
         agent::AgentRunner runner(*provider, host, policy, options);
         const agent::RunOutcome outcome = runner.run(history_, text, observer, *token);
+        if (log != nullptr) {
+            log->record(
+                "finished",
+                "statut=" + std::to_string(static_cast<int>(outcome.status)) +
+                    " etapes=" + std::to_string(outcome.steps) +
+                    " jetons_in=" + std::to_string(outcome.usage.input_tokens) +
+                    " jetons_out=" + std::to_string(outcome.usage.output_tokens) +
+                    (outcome.error.code.empty() ? std::string{} : " code=" + outcome.error.code));
+        }
         if (!*alive) {
             return;
         }

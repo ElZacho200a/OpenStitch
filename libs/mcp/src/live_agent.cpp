@@ -3,9 +3,13 @@
 #include "live_agent.hpp"
 
 #include <algorithm>
+#include <array>
+#include <cctype>
 #include <cmath>
+#include <cstdlib>
 #include <format>
 #include <map>
+#include <optional>
 #include <set>
 
 #include "openstitch/project_ops/analysis.hpp"

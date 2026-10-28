@@ -297,8 +297,12 @@ std::string LiveService::finish(LivePendingCall& call) {
                                 const std::string& hint) {
             out = error_content(c.tool, code, message, hint);
         };
-        if (c.snapshot.session_id != bridge_.session_id() ||
-            c.snapshot.revision != bridge_.revision()) {
+        if (bridge_.closed() || c.snapshot.session_id != bridge_.session_id()) {
+            refuse(po::code::kSessionClosed,
+                   "le document ouvert a été fermé ou remplacé : la modification n'est pas "
+                   "appliquée",
+                   "relisez live_status sur le nouveau document (rien n'a été modifié)");
+        } else if (c.snapshot.revision != bridge_.revision()) {
             refuse(po::code::kStaleRevision,
                    "le projet a changé pendant le calcul : la modification n'est pas appliquée",
                    "relisez live_status puis recommencez (rien n'a été modifié)");
@@ -419,6 +423,11 @@ LiveHost::LiveHost(LiveService& service, std::string token)
 LiveHost::Reply LiveHost::begin(const std::string& line) {
     Reply reply;
     reply.id_json = "null";
+    if (line.size() > kLiveMaxRequestBytes) {
+        reply.immediate =
+            reply_error("null", "E_USAGE", "requête trop volumineuse", "limite : 8 Mo par ligne");
+        return reply;
+    }
     const json request = json::parse(line, nullptr, /*exceptions=*/false);
     if (request.is_discarded() || !request.is_object()) {
         reply.immediate = reply_error("null", "E_USAGE", "requête JSON invalide");

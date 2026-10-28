@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <string>
@@ -173,6 +174,43 @@ private:
 // Remplace toute occurrence d'un secret (et sa forme tronquée à 8 caractères) par « *** » :
 // à appliquer à tout texte destiné à un journal ou à l'interface.
 [[nodiscard]] std::string redact(std::string text, const std::vector<std::string>& secrets);
+
+// --- Journal de diagnostic ---------------------------------------------------------------------
+
+// Journal OPTIONNEL (désactivé par défaut), borné, qui masque clés et chemins sensibles et
+// n'enregistre AUCUN contenu utilisateur (messages, résultats d'outils) sans consentement
+// explicite. Sert au dépannage : événements, codes d'erreur, noms d'outils, durées, comptes.
+class DiagnosticLog {
+public:
+    explicit DiagnosticLog(std::size_t capacity = 500) : capacity_(capacity) {}
+
+    void set_enabled(bool on);
+    [[nodiscard]] bool enabled() const;
+    void set_content_consent(bool on);
+    [[nodiscard]] bool content_consent() const;
+    void add_secret(const std::string& secret); // à masquer partout (clé API)
+
+    // Métadonnée (nom d'événement, code, compte) : toujours masquée avant écriture.
+    void record(const std::string& event, const std::string& detail = {});
+    // Contenu utilisateur : ignoré sans consentement.
+    void record_content(const std::string& event, const std::string& content);
+
+    [[nodiscard]] std::string dump() const;
+    [[nodiscard]] std::size_t size() const;
+    void clear();
+
+    // Masque secrets et chemins absolus (« C:\\Users\\x\\a.osp » -> « <chemin> »).
+    [[nodiscard]] std::string sanitize(std::string text) const;
+
+private:
+    mutable std::mutex mutex_;
+    std::size_t capacity_;
+    bool enabled_{false};
+    bool content_{false};
+    std::vector<std::string> secrets_;
+    std::vector<std::string> lines_;
+    std::uint64_t next_{1};
+};
 
 // --- Anthropic --------------------------------------------------------------------------------
 

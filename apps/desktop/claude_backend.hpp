@@ -23,6 +23,10 @@ void setProviderEnabled(bool on);
 void setFullyDisabled(bool off);
 [[nodiscard]] QString model();
 void setModel(const QString& model);
+[[nodiscard]] bool diagnosticsEnabled(); // journal de diagnostic (désactivé par défaut)
+void setDiagnosticsEnabled(bool on);
+[[nodiscard]] bool diagnosticsContentConsent(); // consentement à journaliser le contenu
+void setDiagnosticsContentConsent(bool on);
 inline constexpr const char* kSecretKey = "OpenStitch/anthropic-api-key";
 } // namespace companion_settings
 
@@ -71,6 +75,8 @@ public:
     [[nodiscard]] bool available() const override;
     // Relit les réglages et la présence de la clé (après le dialogue de configuration).
     void refresh();
+    // Journal de diagnostic optionnel (non possédé) ; masque clés et chemins.
+    void setDiagnostics(agent::DiagnosticLog* log) { log_ = log; }
     // Nouvelle conversation (document remplacé) : interrompt une demande en cours.
     void resetConversation();
     [[nodiscard]] bool running() const { return running_; }
@@ -89,6 +95,7 @@ private:
     std::shared_ptr<agent::CancelToken> token_;
     std::vector<agent::Message> history_;
     std::shared_ptr<bool> alive_;
+    agent::DiagnosticLog* log_{nullptr};
 };
 
 } // namespace openstitch::desktop

@@ -4,6 +4,7 @@
 // Predicted), aperçu avant/après sur copie, application après approbation, annulation en un pas.
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <map>
 #include <set>
 #include <string>
@@ -386,4 +387,45 @@ TEST_CASE("agentic tools are exposed read-only and project_export stays denied",
     CHECK(names.contains("live_plan_satin"));
     CHECK(names.contains("project_apply"));
     CHECK_FALSE(names.contains("project_export"));
+}
+
+// Performance : un projet de plusieurs centaines d'objets ne doit pas figer l'hote. Seuils
+// volontairement larges (build Debug, CI chargee) : ils detectent une explosion, pas un jitter.
+// Reference mesuree : voir docs/source/ai-companion.md (section Performances).
+TEST_CASE("live tools stay fast on a project with hundreds of objects", "[live][agentic][bench]") {
+    using clock = std::chrono::steady_clock;
+    Doc d;
+    for (int i = 0; i < 500; ++i) {
+        d.add({static_cast<std::uint8_t>(20 + (i * 37) % 200),
+               static_cast<std::uint8_t>(30 + (i * 11) % 150),
+               static_cast<std::uint8_t>(40 + (i * 53) % 180)},
+              i % 40 * 3, 20, 20, "dense");
+    }
+    const auto ms = [](auto from) {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(clock::now() - from).count();
+    };
+    // Fil GUI : l'instantane (copie) est la seule etape qui tient le document.
+    const auto t0 = clock::now();
+    const auto snapshot = d.bridge.snapshot();
+    const auto snapshot_ms = ms(t0);
+    CHECK(snapshot.project->embroidery_objects.size() >= 500);
+    CHECK(snapshot_ms < 2000);
+
+    const auto t1 = clock::now();
+    const auto context = d.call("live_context", json::object());
+    const auto context_ms = ms(t1);
+    CHECK_FALSE(context["isError"].get<bool>());
+    CHECK(context_ms < 5000);
+    // Le paquet reste compact : liste bornee a 200 objets + avertissement de troncature.
+    const auto doc = Doc::text_of(context);
+    CHECK(doc["objects"].size() == 200);
+    CHECK(doc["risks"].dump().find("tronqu") != std::string::npos);
+
+    const auto t2 = clock::now();
+    const auto target = d.call("live_target", {{"query", "orange"}});
+    const auto target_ms = ms(t2);
+    CHECK_FALSE(target["isError"].get<bool>());
+    CHECK(target_ms < 5000);
+    INFO("snapshot " << snapshot_ms << " ms, live_context " << context_ms << " ms, live_target "
+                     << target_ms << " ms");
 }

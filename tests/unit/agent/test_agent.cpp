@@ -471,3 +471,51 @@ TEST_CASE("an error message from the provider never contains the key", "[agent]"
     CHECK_FALSE(r.ok);
     CHECK(r.error.message.find("SECRET") == std::string::npos);
 }
+
+TEST_CASE("diagnostic log is off by default and never records content without consent",
+          "[agent][log]") {
+    DiagnosticLog log;
+    log.record("demarrage");
+    CHECK(log.size() == 0); // desactive par defaut : rien n'est ecrit
+
+    log.set_enabled(true);
+    log.record("demande", "chars=42");
+    log.record_content("message", "mon projet secret de rose");
+    CHECK(log.size() == 1);
+    CHECK(log.dump().find("secret de rose") == std::string::npos);
+
+    log.set_content_consent(true);
+    log.record_content("message", "bonjour");
+    CHECK(log.dump().find("bonjour") != std::string::npos);
+}
+
+TEST_CASE("diagnostic log masks keys and absolute paths", "[agent][log]") {
+    DiagnosticLog log;
+    log.set_enabled(true);
+    log.set_content_consent(true);
+    log.add_secret(kKey);
+    log.record("erreur",
+               std::string("cle ") + kKey +
+                   " fichier C:\\Users\\zache\\Documents\\motif.osp et /home/zache/x.osp");
+    log.record_content("outil",
+                       std::string("{\"path\":\"D:/Projets/rose.osp\",\"k\":\"") + kKey + "\"}");
+    const std::string dump = log.dump();
+    CHECK(dump.find("SECRET") == std::string::npos);
+    CHECK(dump.find("zache") == std::string::npos);
+    CHECK(dump.find("motif.osp") == std::string::npos);
+    CHECK(dump.find("rose.osp") == std::string::npos);
+    CHECK(dump.find("<chemin>") != std::string::npos);
+}
+
+TEST_CASE("diagnostic log is bounded", "[agent][log]") {
+    DiagnosticLog log(5);
+    log.set_enabled(true);
+    for (int i = 0; i < 50; ++i) {
+        log.record("evt", std::to_string(i));
+    }
+    CHECK(log.size() == 5);
+    CHECK(log.dump().find("evt 49") != std::string::npos);
+    CHECK(log.dump().find("evt 0\n") == std::string::npos);
+    log.clear();
+    CHECK(log.size() == 0);
+}

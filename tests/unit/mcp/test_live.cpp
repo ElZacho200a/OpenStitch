@@ -250,7 +250,8 @@ TEST_CASE("live mode server lists only allowed tools plus live_status", "[live]"
     const auto reply = live.handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}");
     REQUIRE(reply.has_value());
     std::set<std::string> names;
-    for (const auto& t : parse(*reply)["result"]["tools"]) {
+    const json listing = parse(*reply); // pas de temporaire dans la boucle (référence pendante)
+    for (const auto& t : listing["result"]["tools"]) {
         names.insert(t["name"].get<std::string>());
     }
     CHECK(names.contains("project_inspect"));
@@ -284,4 +285,59 @@ TEST_CASE("live discovery files round trip and pick the requested pid", "[live]"
     std::filesystem::remove_all(dir);
     CHECK(mcp::make_live_token().size() == 64);
     CHECK(mcp::make_live_token() != mcp::make_live_token());
+}
+
+TEST_CASE("live host refuses oversized requests", "[live]") {
+    Doc d;
+    mcp::LiveHost host(d.service, "secret");
+    const std::string huge(mcp::kLiveMaxRequestBytes + 1, 'x');
+    const auto reply = host.begin(huge);
+    CHECK(parse(reply.immediate)["ok"] == false);
+    CHECK(parse(reply.immediate)["error"]["code"] == "E_USAGE");
+}
+
+TEST_CASE("two concurrent clients see consistent revisions and only one commit wins", "[live]") {
+    Doc d;
+    mcp::LiveHost host(d.service, "secret");
+    Loopback t1(host);
+    Loopback t2(host);
+    mcp::LiveRelay a(t1, [] { return std::string("secret"); });
+    mcp::LiveRelay b(t2, [] { return std::string("secret"); });
+    // Les deux lisent la meme revision, calculent, puis tentent d'appliquer : la 2e est perimee.
+    auto first = d.service.begin("project_apply", d.recolor(false));
+    auto second = d.service.begin("project_apply", d.recolor(false));
+    first->run();
+    second->run();
+    const auto ra = parse(d.service.finish(*first));
+    const auto rb = parse(d.service.finish(*second));
+    CHECK_FALSE(ra["isError"].get<bool>());
+    CHECK(rb["isError"].get<bool>());
+    CHECK(rb["content"][0]["text"].get<std::string>().find("E_STALE_REVISION") !=
+          std::string::npos);
+    CHECK(d.stack.undoNames().size() == 1);
+    // Les clients ordinaires de lecture continuent de fonctionner.
+    CHECK_FALSE(parse(a.call("project_inspect", "{}"))["isError"].get<bool>());
+    CHECK_FALSE(parse(b.call("live_status", "{}"))["isError"].get<bool>());
+}
+
+TEST_CASE("app closing or document replaced mid-call never applies the change", "[live]") {
+    {
+        Doc d;
+        auto pending = d.service.begin("project_apply", d.recolor(false));
+        pending->run();
+        d.bridge.close(); // l'application se ferme pendant le calcul
+        const auto reply = parse(d.service.finish(*pending));
+        CHECK(reply["isError"].get<bool>());
+        CHECK(d.color() == std::array<std::uint8_t, 3>{10, 20, 30});
+        CHECK(d.gate.asked == 0);
+    }
+    {
+        Doc d;
+        auto pending = d.service.begin("project_apply", d.recolor(false));
+        pending->run();
+        d.bridge.reset("autre-document"); // nouveau document pendant le calcul
+        const auto reply = parse(d.service.finish(*pending));
+        CHECK(reply["isError"].get<bool>());
+        CHECK(d.color() == std::array<std::uint8_t, 3>{10, 20, 30});
+    }
 }

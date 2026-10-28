@@ -2,8 +2,10 @@
 #include "companion_settings_dialog.hpp"
 
 #include <QCheckBox>
+#include <QClipboard>
 #include <QDialogButtonBox>
 #include <QFormLayout>
+#include <QGuiApplication>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
@@ -13,8 +15,9 @@
 
 namespace openstitch::desktop {
 
-CompanionSettingsDialog::CompanionSettingsDialog(agent::ISecretStore& secrets, QWidget* parent)
-    : QDialog(parent), secrets_(secrets) {
+CompanionSettingsDialog::CompanionSettingsDialog(agent::ISecretStore& secrets,
+                                                 agent::DiagnosticLog& log, QWidget* parent)
+    : QDialog(parent), secrets_(secrets), log_(log) {
     setObjectName(QStringLiteral("dialog_companionSettings"));
     setWindowTitle(tr("Compagnon IA"));
     auto* layout = new QVBoxLayout(this);
@@ -59,11 +62,33 @@ CompanionSettingsDialog::CompanionSettingsDialog(agent::ISecretStore& secrets, Q
     form->addRow(tr("Modèle"), model_);
     form->addRow(tr("Clé API"), key_);
     form->addRow(keyStatus_);
+    diagnostics_ = new QCheckBox(
+        tr("Journal de diagnostic (événements et codes d'erreur ; clés et chemins masqués)"), this);
+    diagnostics_->setObjectName(QStringLiteral("check_companionDiagnostics"));
+    diagnostics_->setChecked(companion_settings::diagnosticsEnabled());
+    diagnosticsContent_ = new QCheckBox(
+        tr("Inclure le contenu de mes messages et des outils dans le journal (sinon jamais)"),
+        this);
+    diagnosticsContent_->setObjectName(QStringLiteral("check_companionDiagnosticsContent"));
+    diagnosticsContent_->setChecked(companion_settings::diagnosticsContentConsent());
+    form->addRow(diagnostics_);
+    form->addRow(diagnosticsContent_);
     layout->addLayout(form);
     auto* keyButtons = new QHBoxLayout;
     keyButtons->addWidget(saveKey_);
     keyButtons->addWidget(removeKey_);
     layout->addLayout(keyButtons);
+    auto* logButtons = new QHBoxLayout;
+    auto* copyLog = new QPushButton(tr("Copier le journal"), this);
+    copyLog->setObjectName(QStringLiteral("button_companionCopyLog"));
+    auto* clearLog = new QPushButton(tr("Effacer le journal"), this);
+    clearLog->setObjectName(QStringLiteral("button_companionClearLog"));
+    logButtons->addWidget(copyLog);
+    logButtons->addWidget(clearLog);
+    layout->addLayout(logButtons);
+    connect(copyLog, &QPushButton::clicked, this,
+            [this] { QGuiApplication::clipboard()->setText(QString::fromStdString(log_.dump())); });
+    connect(clearLog, &QPushButton::clicked, this, [this] { log_.clear(); });
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     layout->addWidget(buttons);
@@ -80,6 +105,10 @@ CompanionSettingsDialog::CompanionSettingsDialog(agent::ISecretStore& secrets, Q
 void CompanionSettingsDialog::applyToSettings() {
     companion_settings::setFullyDisabled(fullyOff_->isChecked());
     companion_settings::setProviderEnabled(enableProvider_->isChecked());
+    companion_settings::setDiagnosticsEnabled(diagnostics_->isChecked());
+    companion_settings::setDiagnosticsContentConsent(diagnosticsContent_->isChecked());
+    log_.set_enabled(diagnostics_->isChecked());
+    log_.set_content_consent(diagnostics_->isChecked() && diagnosticsContent_->isChecked());
     const QString model = model_->text().trimmed();
     if (!model.isEmpty()) {
         companion_settings::setModel(model);

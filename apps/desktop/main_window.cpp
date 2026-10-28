@@ -1759,6 +1759,10 @@ void MainWindow::buildCompanionDock() {
     tabifyDockWidget(analysisDock_, companionDock_);
     secretStore_ = makeSystemSecretStore();
     claudeBackend_ = new ClaudeCompanionBackend(liveService_, *secretStore_, {}, this);
+    claudeBackend_->setDiagnostics(&companionLog_);
+    companionLog_.set_enabled(companion_settings::diagnosticsEnabled());
+    companionLog_.set_content_consent(companion_settings::diagnosticsEnabled() &&
+                                      companion_settings::diagnosticsContentConsent());
     companionDock_->setBackend(claudeBackend_);
     connect(companionDock_, &CompanionDock::configureProviderRequested, this,
             &MainWindow::showCompanionSettings);
@@ -1841,7 +1845,7 @@ void MainWindow::focusEmbroideryObject(quint64 id) {
 }
 
 void MainWindow::showCompanionSettings() {
-    CompanionSettingsDialog dialog(*secretStore_, this);
+    CompanionSettingsDialog dialog(*secretStore_, companionLog_, this);
     if (dialog.exec() == QDialog::Accepted) {
         applyCompanionSettings();
     }

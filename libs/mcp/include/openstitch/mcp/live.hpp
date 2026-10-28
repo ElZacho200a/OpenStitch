@@ -24,6 +24,8 @@ namespace openstitch::mcp {
 
 inline constexpr const char* kLiveSchema = "openstitch.live/1";
 inline constexpr int kLiveVersion = 1;
+inline constexpr std::size_t kLiveMaxRequestBytes =
+    8 * 1024 * 1024; // une requête plus grosse est un abus
 
 enum class LivePolicy {
     Read,   // lecture : exécutée sur une copie figée, aucune confirmation

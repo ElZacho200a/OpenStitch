@@ -325,7 +325,8 @@ void MainWindowTest::disabledCompanionOffersNoProvider() {
 
 void MainWindowTest::settingsDialogStoresKeyOnlyInTheSecretStore() {
     agent::MemorySecretStore secrets;
-    CompanionSettingsDialog dialog(secrets);
+    agent::DiagnosticLog log;
+    CompanionSettingsDialog dialog(secrets, log);
     child<QLineEdit>(&dialog, "edit_companionKey")->setText(QString::fromLatin1(kKey));
     child<QPushButton>(&dialog, "button_companionSaveKey")->click();
     QCOMPARE(secrets.read(companion_settings::kSecretKey), std::optional<std::string>(kKey));

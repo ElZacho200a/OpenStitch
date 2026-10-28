@@ -1132,6 +1132,7 @@ private:
     QAction* liveBridgeAct_{nullptr};
     CompanionDock* companionDock_{nullptr};
     std::unique_ptr<agent::ISecretStore> secretStore_;
+    agent::DiagnosticLog companionLog_;
     ClaudeCompanionBackend* claudeBackend_{nullptr};
     QAction* companionSettingsAct_{nullptr};
     image::Image processed_; // dernier résultat du pipeline (pour l'affichage)

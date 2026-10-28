@@ -19,7 +19,8 @@ class CompanionSettingsDialog : public QDialog {
     Q_OBJECT
 
 public:
-    CompanionSettingsDialog(agent::ISecretStore& secrets, QWidget* parent = nullptr);
+    CompanionSettingsDialog(agent::ISecretStore& secrets, agent::DiagnosticLog& log,
+                            QWidget* parent = nullptr);
 
     // Écrit les réglages (activation, modèle, désactivation totale). La clé a son bouton propre.
     void applyToSettings();
@@ -30,6 +31,9 @@ private:
     void removeKey();
 
     agent::ISecretStore& secrets_;
+    agent::DiagnosticLog& log_;
+    QCheckBox* diagnostics_{nullptr};
+    QCheckBox* diagnosticsContent_{nullptr};
     QCheckBox* fullyOff_{nullptr};
     QCheckBox* enableProvider_{nullptr};
     QLineEdit* model_{nullptr};
