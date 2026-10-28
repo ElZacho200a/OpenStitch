@@ -75,7 +75,12 @@ un octet par pixel de l'image de travail : 0 = aplat, 255 = détail) donne un r�
   donc un contour plus fidèle et plus de nœuds. Transmis par `AutoOptions::detail_mask`,
   `DigitizeSource::detail_mask` (numérisation automatique du bureau) et la vectorisation des régions
   du parcours Workflow. Masque absent ou de mauvaise taille : sortie inchangée.
-- **Limites.** La couture (type de point préféré, densité) ne lit pas encore le masque ; le CLI et
+- **Couture.** `AutoOptions::detail_min_fill_area_mm2` (défaut 1 mm²) remplace `min_fill_area_mm2`
+  pour les régions de détail : une petite forme de détail (oeil, lettre) est cousue en tatami
+  (ou satin) au lieu d'un simple contour. `merge_small_regions` reçoit le masque et un seuil de
+  détail pour ne pas absorber ces régions avant la couture. Sans masque : inchangé. La densité
+  et l'angle ne dépendent pas encore de la zone.
+- **Limites.** Le CLI et
   le MCP, qui n'ont pas de projet peint, ne passent pas de masque. Pas
   de proposition automatique de zones. Un recadrage ou une rotation de l'image rend le masque
   inutilisable (taille différente) : il est ignoré puis remplacé au prochain trait.
