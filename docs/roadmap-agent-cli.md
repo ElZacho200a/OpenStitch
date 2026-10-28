@@ -29,7 +29,7 @@ document doit passer par une `ICommand`.
 | D01 | P1 | Gestion d'expériences, cache et reprise | ☐ |
 | D02 | P1 | Profils tissu/machine/cadre | ☐ |
 | D03 | P1 | Paquet de livraison validé et traçable | ☐ |
-| D04 | P2 | SDK et MCP optionnel au-dessus du CLI | ◐ `openstitch-mcp` (docs/source/mcp.md) : outils typés, guide embarqué, `--doctor` ; SDK restant |
+| D04 | P2 | SDK et MCP optionnel au-dessus du CLI | ◐ MCP autonome et live, chat Claude Code (CLI headless + dock), contrôle de révision et approbation ; SDK, tests sur vraie installation et parité CLI complète restant |
 | D05 | P1 | Corpus visuel et textile de régression | ◐ Banc de segmentation hors ligne + fixture synthétique `marine-synth-01` (`docs/ai/benchmark-runner.md`) ; corpus réel et validation textile restants |
 
 Ne marquer « fait » que lorsque **tests + critères d'acceptation** sont

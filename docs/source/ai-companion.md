@@ -7,15 +7,18 @@ fonctionne à l'identique. Décisions d'architecture : [ADR 0001](../adr/0001-co
 (session live, révisions, permissions) et [ADR 0002](../adr/0002-fournisseur-claude.md) (fournisseur
 Claude). Détail des outils : [Serveur MCP](mcp.md).
 
-## Deux façons de l'utiliser
+## Trois modes d'utilisation
 
-| Mode | Qui parle à qui | Mise en route |
-|---|---|---|
-| **Agent externe** (Claude Code, autre client MCP) | le client lance `openstitch-mcp --live`, qui relaie au desktop | **Aide ▸ Pont IA local (MCP)** puis, dans le client MCP : `"command": "…\mcp\openstitch-mcp.exe", "args": ["--live"]` |
-| **Dock intégré** (Claude via votre clé API) | le dock appelle l'API Anthropic ; l'agent utilise les outils en processus | **Aide ▸ Compagnon IA…** : clé API, « Activer le fournisseur Claude » ; ouvrir **Affichage ▸ Panneaux ▸ Compagnon IA** (`Ctrl+Maj+J`) |
+| Mode | Conversation | Connexion au projet ouvert | Prérequis |
+| --- | --- | --- | --- |
+| **Claude Code dans le dock** | Directement dans OpenStitch (chat) | CLI headless et MCP --live, approbation dans le dock | CLI Claude Code installée et authentifiée ; **pas de clé API OpenStitch** |
+| **Claude Code dans un terminal** | Terminal Windows/Linux externe | CLI Claude Code et MCP --live, approbation dans le dock | CLI Claude Code installée et authentifiée |
+| **Fournisseur Anthropic dans le dock** | Directement dans OpenStitch (chat) | Agent en processus + pont live, approbation dans le dock | Clé API Anthropic dans le stockage sécurisé |
 
-Les deux modes partagent les mêmes outils, la même politique de permissions et le même point
-d'approbation (le dock).
+Pour le parcours recommandé, afficher **Compagnon IA** (Ctrl+Maj+J), puis choisir
+**Discuter avec Claude Code ici (via MCP)…**. Le mode terminal reste disponible depuis
+le même accueil ou le menu Aide. Le chat API est **un mode différent** : les identifiants
+et la facturation de Claude Code ne deviennent pas une clé API Anthropic.
 
 ## Ce que l'agent peut faire
 
@@ -51,90 +54,97 @@ La **clé API** est stockée dans le Gestionnaire d'identifiants Windows (jamais
 Claude grand public n'est utilisable : une clé API est nécessaire. **Désactiver entièrement le
 compagnon** (Aide ▸ Compagnon IA…) coupe le fournisseur et le pont local.
 
-## Coûts et usage
+## Parcours utilisateur recommandé
 
-Le dock affiche le fournisseur et les jetons consommés par la demande (entrée/sortie). Le coût en
-euros dépend de votre compte Anthropic (consultez votre console). Limites de sécurité :
-12 allers - retours d 'outils par demande, résultats d' outils tronqués à 60 000 caractères,
-    reprises réseau bornées(≤ 5, recul exponentiel),
-    bouton **Interrompre **immédiat.
+1. Ouvrir un projet OSP (ou créer un projet) dans OpenStitch.
+2. Afficher le panneau Compagnon IA (Ctrl+Maj+J).
+3. Cliquer **Discuter avec Claude Code ici (via MCP)…**. L'application prépare un workspace
+   propre à l'instance, puis active son pont local. Aucun terminal n'est nécessaire.
+4. Écrire une demande en français, par exemple : « Mets les objets orange compatibles
+   en satin avec une compensation de tirage prédictive ».
+5. Claude Code lit le contexte du projet ouvert, cible les **couleurs de fil** et non les
+   couleurs de segmentation, compare les trois types de satin, construit un aperçu.
+6. Le dock affiche la proposition. **Appliquer** valide un lot atomique, **Rejeter**
+   ne modifie rien ; **Ctrl+Z** annule le lot appliqué dans OpenStitch.
 
-        ##Dépannage
+Le chat intégré démarre la CLI Claude Code avec **QProcess** en mode non interactif
+(sortie JSON structurée et reprise par identifiant de session) : le texte de la demande
+est fourni via l'entrée standard, pas par un interpréteur de commandes. Les outils
+OpenStitch sont accessibles par le MCP local : le chat ne modifie jamais le projet
+en écrivant directement un OSP.
 
-        | Symptôme | Cause probable | Action | | -- - | -- - | -- - |
-        | « OpenStitch Desktop est injoignable » (`E_SESSION_CLOSED`) |
-        application fermée ou pont inactif | ouvrir OpenStitch Studio,
-    cocher **Aide ▸ Pont IA local **,
-    relancer le client MCP | | `E_UNAUTHORIZED` | jeton périmé(application relancée) |
-        relancer le client MCP
-    : il relit le fichier de découverte
-      |
-      | `E_STALE_REVISION` | le projet a changé pendant le calcul |
-      l'agent doit relire `live_status`/`live_context` puis recommencer | | `E_APPROVAL_DENIED` |
-      vous avez rejeté la modification | normal;
-reformulez la demande | | « Clé API refusée » (`E_AUTH`) | clé absente, révoquée ou fausse |
-                                                                            Aide ▸ Compagnon IA…
-    : enregistrer une clé valide
-      |
-      | Quota / limite de débit(`E_QUOTA`) | limite chez le fournisseur | attendre;
-OpenStitch reste utilisable | | Réseau / délai(`E_NETWORK`, `E_TIMEOUT`) | hors ligne
-    | le dock reste sur l'accueil ; mode hors ligne = édition normale | |
-    Le dock affiche l'accueil | aucun fournisseur actif | configurer Claude, ou utiliser le pont avec un agent externe |
+**Ouvrir Claude Code dans un terminal** est l'option secondaire. Elle conserve les outils,
+les skills et les approbations, mais la conversation reste dans le terminal externe.
 
-    Pour un rapport de bug : activer le** journal de diagnostic**(Aide ▸ Compagnon IA…),
-    reproduire,
-    **Copier le journal**(clés et chemins masqués)
-            .
+## Configuration et isolation
 
-        ##Protocole de tests(mainteneurs)
+OpenStitch crée un espace de travail par **processus Desktop** dans son dossier de données
+locales. La configuration de Claude Code contient un serveur MCP nommé openstitch démarré
+avec les arguments **--live --pid N**, où N correspond au processus OpenStitch courant.
 
-        - `test_agent` (Catch2)
-    : fournisseur Anthropic avec faux HTTP(erreurs, reprises, secrets),
-boucle d'agent (allow/deny, interruption, limites), journal de diagnostic. - `test_mcp` (`[live]`, `[agentic]`, `
-                                                                                             [bench]`)
-    : politique d'outils, protocole hôte/relais, clients concurrents,
-fermeture / remplacement du document en cours d'appel, ciblage, plan satin, aperçu avant / après,
-performances sur 500 objets.- QTest
-    headless(`test_live_bridge_ui`, `test_live_server` avec * *vrai tube nommé**,
-  `test_companion_dock`, `test_claude_backend` dont le scénario de bout en bout
-  `targetPhraseWorksEndToEndFromTheDesktop`)
-    : aucun réseau,
-aucune clé, fournisseur simulé.- Garde `check_companion_security` : aucun port réseau,
-    aucune exécution de commande,
-    aucun secret dans `QSettings` dans `libs / agent`, `libs / mcp` et les fichiers desktop du
-                                                               compagnon.-
-                                                           Mode MCP autonome et `--doctor`
-    : non
-      -
-      régression à chaque étape(`test_mcp`, CLI)
-          .
+Le workspace intègre CLAUDE.md, un hook SessionStart et deux skills de travail :
+openstitch-live-edit et openstitch-live-satin. En cas de changement de document,
+l'historique de conversation du mode intégré est réinitialisé afin d'éviter les
+propositions visant le projet précédent.
 
-      ##Performances
+Le transport local est un tube nommé ou un socket avec découverte restreinte et jeton
+de session. Aucune ouverture de port réseau n'est nécessaire. Le projet peut être
+non enregistré : les opérations live s'appliquent à son état en mémoire.
 
-      Mesure de référence(build** Debug**, 500 objets, machine de développement)
-    : instantané du
-      projet(copie tenue sur le fil
-                 d 'interface) et `live_context` / `live_target` (hors fil d' interface)
-          restent sous quelques centaines de millisecondes;
-les tests `[bench]` échouent au - delà de * * 2 s **(instantané)et * * 5 s **(outils),
-    seuils volontairement larges pour détecter une explosion plutôt qu
-    'un écart. Le calcul d' un outil ne bloque jamais l 'interface : seuls l' instantané,
-    l'approbation et l 'installation du résultat passent par le fil d' interface.
+## Coûts, données et sécurité
 
-    ##Installation et désinstallation
+- **Mode Claude Code (intégré ou terminal)** : l'authentification et la facturation
+  utilisent votre installation Claude Code. OpenStitch n'a pas besoin d'une clé API
+  Anthropic distincte. Les données envoyées à Claude dépendent des autorisations
+  et politiques de Claude Code.
+- **Mode API Anthropic** : utilise une clé API configurée dans OpenStitch ; coûts
+  et quotas API distincts.
+- Les demandes de modification live passent uniquement par les outils MCP autorisés.
+  Le mode chat CLI autorise les outils du serveur OpenStitch ; l'accès Bash et les
+  modifications directes de fichiers sont refusés par la configuration de lancement.
+  L'utilisateur conserve l'approbation du changement dans le dock.
+- Les requêtes portent une **révision** du document ; si l'utilisateur modifie le
+  projet entre le calcul et l'approbation, la proposition devient périmée.
+- L'annulation native garde le projet réversible ; le serveur MCP autonome refuse
+  par défaut de remplacer un projet non sauvegardé.
 
-    L'installeur Windows copie `openstitch-mcp.exe` et une notice dans `mcp\` à côté de l' application(
-        aucun environnement développeur requis);
-la désinstallation supprime les fichiers de découverte du pont(`% LOCALAPPDATA %\OpenStitch\live`)
-    et la clé API du Gestionnaire d'identifiants. Aucune bibliothèque tierce ni agent externe n'est embarqué par le compagnon.
+Les résultats du calcul de risque textile et le tirage prédictif restent des estimations :
+un test de broderie réel est nécessaire.
 
-## Ouvrir Claude Code depuis OpenStitch
+## Dépannage
 
-**Aide ▸ Ouvrir Claude Code…** lance **votre** Claude Code (installé par vos soins ; OpenStitch ne le
-fournit pas) dans un terminal (Windows Terminal, sinon `cmd`), avec votre abonnement ou votre
-compte habituel. OpenStitch prépare l'espace de travail
-`%LOCALAPPDATA%\OpenStitch\companion\workspace` : `.mcp.json` (serveur `openstitch-mcp --live`),
-`CLAUDE.md` et hook `SessionStart` qui réinjectent les consignes du mode live à chaque session, et
-deux skills (`openstitch-live-edit`, `openstitch-live-satin`). L'action active le pont IA local
-(sur votre clic seulement). Attention : Claude Code a ses propres outils (fichiers, shell) hors du
-périmètre OpenStitch ; seules les modifications du **projet ouvert** passent par l'approbation du dock.
+| Symptôme | Cause possible | Vérification |
+| --- | --- | --- |
+| Claude Code non détecté | CLI absente du PATH | Installer Claude Code ou choisir la version native disponible |
+| MCP introuvable | Installation incomplète du composant MCP | Vérifier le paquet OpenStitch et le binaire openstitch-mcp |
+| Le chat reste en attente | Processus Claude Code bloqué, erreur de démarrage | Cliquer Interrompre et consulter le diagnostic |
+| E_SESSION_CLOSED | Desktop fermé, projet ou pont local indisponible | Garder OpenStitch ouvert et activer le pont |
+| E_STALE_REVISION | Projet modifié manuellement pendant le calcul | Relire le contexte, proposer un nouveau lot |
+| E_APPROVAL_DENIED | Proposition rejetée | Ne pas appliquer, demander une retouche |
+| E_AUTH dans le mode API | Clé API erronée | Vérifier Aide ▸ Compagnon IA |
+| Aucun message dans le dock après lancement externe | Conversation dans le terminal | Utiliser le terminal ou choisir le chat intégré |
+
+Le bouton **Configurer Claude…** concerne le fournisseur API. Une validation de ses
+préférences ramène au mode API ; il reste possible de choisir de nouveau Claude Code.
+
+## Critères de recette obligatoires
+
+Tests automatisés : Catch2 test_mcp et test_agent, QTest test_live_server,
+test_live_bridge_ui, test_companion_dock et test_claude_backend, incluant
+le parseur JSON du mode headless et l'activation du chat sans clé API.
+
+Tests **manuels** avant fusion : sur une installation Windows propre, avec Claude Code
+réellement installé et authentifié, vérifier le dialogue depuis le dock, le chargement
+du MCP, une demande comportant plusieurs outils, les approbations, le refus, Ctrl+Z,
+le changement de document en cours de session, le lancement terminal et l'isolation
+entre deux processus OpenStitch.
+
+La présence des tests simulés et du code n'atteste pas à elle seule du fonctionnement
+avec une version particulière de la CLI Claude Code. Si l'essai réel échoue, la PR doit
+rester en brouillon jusqu'à correction.
+
+## Installation et désinstallation
+
+L'installeur copie le binaire MCP à côté de l'application. Il ne fournit pas la CLI
+Claude Code ni vos identifiants. La désinstallation retire les fichiers de découverte
+du pont et la clé API du stockage sécurisé Windows.

@@ -1,37 +1,55 @@
-# Audit MCP OpenStitch — 2026-10-28
+# Audit de l'intégration Claude Code – OpenStitch MCP (28 octobre 2026)
 
-Base inspectée : main, libs/mcp, apps/mcp, tests/unit/mcp, docs/source/mcp.md, CLI project_ops, PR Companion #182 et #186.
+## Objectif cible
 
-## État au départ
+L'utilisateur doit pouvoir commander le projet ACTUELLEMENT OUVERT dans OpenStitch
+à l'aide de Claude Code, avec un chat dans le logiciel, des actions observables,
+un aperçu avant chaque mutation, une approbation, et un Ctrl+Z fiable.
 
-29 outils MCP : numérisation, inspection, modification via project_ops/ICommand, palette, rendu PNG, analyse, import/remplacement sémantique, comparaison satin, checkpoints, export machine. Ressources de guide et prompt digitize sur stdio JSON-RPC.
+## Périmètre regroupé dans une seule PR
 
-## Défaillances confirmées, corrigées dans cette PR
+La PR #188 contient la série cumulative des PR #180–#187 (ADR, pont de document vivant,
+MCP local, dock, fournisseur API séparé, planification satin, packaging, lanceur),
+les corrections du client MCP autonome et le mode chat Claude Code via CLI headless.
 
-| Gravité | Défaut | Correctif |
-| --- | --- | --- |
-| Critique | project_new/open/digitize remplaçaient le projet modifié sans confirmation | E_UNSAVED_CHANGES ; sauvegarde ou discard_changes=true |
-| Haute | Checkpoints conservés après changement de projet | Effacement sur new/open/digitize/close |
-| Haute | JSON-RPC sans version/identifiant valide accepté | Validation enveloppe, id et params |
-| Haute | Version de protocole inconnue répercutée au client | Négociation bornée aux versions supportées |
-| Haute | Requêtes non bornées | 8 Mio max et drainage de ligne côté stdio |
-| Moyenne | Champs inconnus ou types/enum incohérents ignorés par les outils | Validation top-level ; opérations métier restent dans project_ops |
-| Moyenne | Pas de statut léger ni de fermeture sûre | project_status, project_close |
-| Moyenne | Agents sans indications lecture/écriture | annotations dans tools/list |
-| Moyenne | Guide ne décrit pas le risque de perte d'état | Guide MCP actualisé |
+Fonctionnalités proposées :
+- Chat Claude Code dans le dock via QProcess et sortie JSON, sans nouvelle clé API.
+- Mode terminal externe conservé pour l'usage interactif complet de Claude Code.
+- Workspace isolé par PID, configuration MCP --live --pid N, guide et skills.
+- Outils live : contexte, ciblage par couleur de fil, plan satin comparatif,
+  aperçu avant/après, projet appliqué exclusivement après approbation.
+- Prévention des modifications perdues, isolation des checkpoints, validation
+  du protocole et limite de requête sur le serveur autonome.
+- Isolation de l'historique lorsque l'utilisateur change de document et
+  opérations atomiques / révisions / annulation native.
+- Distinction explicite entre CLI Claude Code et API Anthropic optionnelle.
 
-## Non couvert — chantiers à traiter sans duplication
+## Bloqueurs P0 avant validation
 
-- Synchronisation et approbation des mutations du projet **ouvert dans le desktop** : pont live de la pile Companion, PR #182 et #186, non fusionné sur main lors de l'audit.
-- Parité CLI partielle : project sweep, --debug-dir, statistiques d'un DST importé.
-- Annulation/progression réelle d'un appel long : moteur synchrone, notifications cancelled non exploitées.
-- Concurrence : une session par processus, pas de gestion multi-clients ou verrouillage inter-processus.
-- Validation profonde de settings / operations assurée par project_ops plutôt qu'un JSON Schema externe complet.
+1. Compiler Windows Debug et Release, linux-core, exécuter Catch2 / QTest.
+2. Contrôler le format clang-format 18 et la garde de sécurité.
+3. Exécuter une session réelle Claude Code dans le dock à partir d'une
+   installation propre, vérifier l'authentification et l'accord MCP.
+4. Tester la compatibilité des wrappers Windows .cmd et des exécutables natifs.
+5. Demander une modification satin sur un OSP non sauvegardé : aperçu,
+   approbation, changement visuel immédiat, annulation sans perte.
+6. Tester le rejet, la fermeture et la modification concurrente (E_STALE_REVISION).
+7. Ouvrir deux instances Desktop et vérifier que chacune cible seulement son PID.
+8. Tester interruption, reprise de session et limite de tours.
 
-## Compatibilité, tests et limites
+## Couverture connue et limites honnêtes
 
-Version MCP 1.2.0 ; OSP/DST inchangés. Les anciens agents doivent appeler project_save ou confirmer discard_changes=true avant remplacement d'un projet dirty. Le catalogue tools/list est étendu de deux outils.
+- La CLI Claude Code doit être installée et authentifiée par l'utilisateur.
+- Le mode intégré utilise la CLI en mode non interactif, pas un terminal
+  virtuel complet (ConPTY/VT). Les fonctions purement interactives de la CLI
+  restent disponibles via le lancement terminal externe.
+- Le mode API Anthropic du dock est indépendant et peut être facturé séparément.
+- OpenStitch ne maîtrise pas le comportement des modèles externes ; les garde-fous
+  de validation et la révision du projet sont essentiels.
+- MCP autonome : project sweep, debug-dir, stats d'un DST externe et progression
+  fine des longues opérations restent des travaux complémentaires.
+- Les tests ajoutés ne sont pas une preuve de recette sans vraie CLI.
+- Le format OSP/DST et les algorithmes de broderie ne sont pas modifiés par cette PR.
 
-Tests Catch2 ajoutés pour JSON-RPC invalide, négociation, limite, schémas d'arguments, annotations, sessions sales et isolation des checkpoints. **Aucune compilation locale possible depuis le connecteur GitHub :** compilation, clang-format 18 et ctest sont à vérifier par CI avant fusion.
-
-Roadmap de parité Hatch : aucune entrée concernée ; amélioration strictement MCP.
+Roadmap Hatch : aucune entrée métier concernée ; travail centré sur l'intégration
+agent, les contrats et les parcours UI.

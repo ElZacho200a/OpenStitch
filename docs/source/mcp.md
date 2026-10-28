@@ -6,6 +6,20 @@ typés** du protocole MCP (Model Context Protocol, JSON-RPC 2.0 sur stdio). Il c
 scriptable, le serveur évite à l'agent de relancer un processus et de recharger le `.osp` à chaque
 étape, et lui fournit des schémas d'arguments, des erreurs actionnables et un **rendu image**.
 
+## Claude Code et projet Desktop
+
+Sur la branche de ce compagnon, OpenStitch propose Claude Code dans son dock.
+Le backend du chat lance la CLI de l'utilisateur en mode non interactif, échange
+les résultats au format JSON, et donne accès au projet **actuellement ouvert** par
+le pont MCP local (openstitch-mcp --live --pid N). Le terminal Claude Code
+externe reste une alternative. Le fournisseur Anthropic utilisant une clé API
+est distinct et optionnel. Voir [Compagnon IA](ai-companion.md).
+
+Le projet ouvert n'est jamais modifié par l'écriture directe de fichiers :
+seul project_apply après approbation dans le dock réalise une mutation. Le
+serveur MCP autonome conserve sa propre session et ne doit pas être confondu
+avec le mode live.
+
 ## Architecture
 
 ```
