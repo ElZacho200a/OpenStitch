@@ -2,6 +2,7 @@
 #include "openstitch/mcp/server.hpp"
 
 #include "guide.hpp"
+#include "openstitch/mcp/live.hpp"
 #include "tools.hpp"
 
 namespace openstitch::mcp {
@@ -43,13 +44,24 @@ json ok_response(const json& id, json result) {
 
 struct Server::Impl {
     Session session;
+    LiveRelay* relay{nullptr}; // mode live : appels relayés au desktop
 
     json list_tools() const {
         json list = json::array();
         for (const auto& tool : tools()) {
+            if (relay != nullptr && live_policy(tool.name) == LivePolicy::Denied) {
+                continue; // jamais exposé sur le projet ouvert (ADR 0001 §6)
+            }
             list.push_back(json{{"name", tool.name},
                                 {"description", tool.description},
                                 {"inputSchema", json::parse(tool.input_schema)}});
+        }
+        if (relay != nullptr) {
+            for (const auto& extra : live_extra_tools()) {
+                list.push_back(json{{"name", extra.name},
+                                    {"description", extra.description},
+                                    {"inputSchema", json::parse(extra.input_schema)}});
+            }
         }
         return json{{"tools", list}};
     }
@@ -125,12 +137,18 @@ struct Server::Impl {
     json call(const json& params) {
         const std::string name = params.at("name").get<std::string>();
         const json args = params.value("arguments", json::object());
+        if (relay != nullptr) {
+            return json::parse(relay->call(name, args.dump()));
+        }
         const ToolResult result = call_tool(session, name, args);
         return json{{"content", result.content}, {"isError", result.is_error}};
     }
 };
 
 Server::Server() : impl_(std::make_unique<Impl>()) {}
+Server::Server(LiveRelay* relay) : impl_(std::make_unique<Impl>()) {
+    impl_->relay = relay;
+}
 Server::~Server() = default;
 
 std::optional<std::string> Server::handle(std::string_view message) {

@@ -1,4 +1,4 @@
-find_package(Qt6 COMPONENTS Widgets PrintSupport LinguistTools QUIET)
+find_package(Qt6 COMPONENTS Widgets PrintSupport Network LinguistTools QUIET)
 if(NOT Qt6_FOUND)
     message(WARNING
         "Qt6 introuvable : l'application desktop ne sera pas construite. "
@@ -37,6 +37,7 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_workflow.cpp
     ui_memory.hpp
     main_window_ux.cpp
+    live_server.cpp
     main_window_preferences.cpp
     general_preferences_dialog.cpp
     general_preferences_dialog.hpp
@@ -197,12 +198,12 @@ qt_add_translations(openstitch_desktop_widgets
     RESOURCE_PREFIX /i18n)
 target_include_directories(openstitch_desktop_widgets PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(openstitch_desktop_widgets
-    PUBLIC Qt6::Widgets Qt6::PrintSupport openstitch::core openstitch::image openstitch::document
+    PUBLIC Qt6::Widgets Qt6::Network Qt6::PrintSupport openstitch::core openstitch::image openstitch::document
            openstitch::commands openstitch::vectorization openstitch::stitch openstitch::stitch_render
            openstitch::stitch_generation openstitch::formats openstitch::project_io
            openstitch::stitch_analysis openstitch::optimization openstitch::autodigitize
            openstitch::auto_satin openstitch::segmentation openstitch::lettering
-           openstitch::ai_segmentation openstitch::project_ops
+           openstitch::ai_segmentation openstitch::project_ops openstitch::mcp
     PRIVATE openstitch::warnings
 )
 

@@ -60,6 +60,14 @@ public:
                                 std::string_view batch_json, const std::string& label,
                                 bool approved);
 
+    // Installe un état DÉJÀ calculé à partir de l'instantané de `revision` (ex. le projet final
+    // produit par un outil MCP sur une copie) : mêmes gardes et même étape d'annulation unique que
+    // `commit`. `result` est consommé.
+    [[nodiscard]] Result commit_project(std::string_view session_id, std::uint64_t revision,
+                                        std::shared_ptr<const document::Project> before,
+                                        std::shared_ptr<const document::Project> result,
+                                        const std::string& label, bool approved);
+
     // Le document hôte a été remplacé hors pile (nouveau, ouverture) : nouvelle session, ancienne
     // close, révision toujours croissante.
     void reset(std::string session_id = {});
@@ -67,6 +75,9 @@ public:
     void close() { closed_ = true; }
 
 private:
+    [[nodiscard]] Result install(Result r, std::shared_ptr<const document::Project> before,
+                                 std::shared_ptr<const document::Project> after,
+                                 const std::string& label);
     [[nodiscard]] Result guard(std::string_view session_id, std::uint64_t revision);
     void sync();
 

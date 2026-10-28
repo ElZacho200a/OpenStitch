@@ -1731,12 +1731,49 @@ MainWindow::commitLiveBatch(const std::string& sessionId, std::uint64_t revision
                             const std::string& batchJson, const std::string& label, bool approved) {
     auto result = liveBridge_.commit(sessionId, revision, batchJson, label, approved);
     if (result.applied) {
-        // Même rafraîchissement qu'un Undo/Redo : le document a changé sous l'interface.
-        refreshImage();
-        setWindowModified(!undoStack_.isClean());
-        updateActions();
+        afterLiveCommit();
     }
     return result;
+}
+
+void MainWindow::afterLiveCommit() {
+    // Même rafraîchissement qu'un Undo/Redo : le document a changé sous l'interface.
+    refreshImage();
+    setWindowModified(!undoStack_.isClean());
+    updateActions();
+}
+
+bool MainWindow::setLiveBridgeEnabled(bool on, const std::filesystem::path& dir, QString* error) {
+    if (!on) {
+        if (liveServer_) {
+            liveServer_->stop();
+            liveServer_.reset();
+        }
+        return true;
+    }
+    if (liveServer_) {
+        return true;
+    }
+    auto server = std::make_unique<LiveServer>(liveService_, this);
+    if (!server->start(dir.empty() ? mcp::live_directory() : dir, error)) {
+        return false;
+    }
+    liveServer_ = std::move(server);
+    return true;
+}
+
+mcp::LiveDocumentInfo MainWindow::liveDocumentInfo() const {
+    mcp::LiveDocumentInfo info;
+    // Nom seul, jamais le chemin complet : rien de plus que nécessaire n'est transmis à l'agent.
+    info.name = currentProjectPath_.isEmpty()
+                    ? std::string("(sans titre)")
+                    : QFileInfo(currentProjectPath_).fileName().toStdString();
+    info.dirty = isWindowModified();
+    info.never_saved = currentProjectPath_.isEmpty();
+    for (const ObjectId id : selectedEmbroideryIds()) {
+        info.selection.push_back(id.value);
+    }
+    return info;
 }
 
 void MainWindow::redo() {
@@ -2073,6 +2110,9 @@ void MainWindow::closeEvent(QCloseEvent* event) {
     // continue de tourner normalement.
     if (event->isAccepted()) {
         liveBridge_.close();
+        if (liveServer_) {
+            liveServer_->stop();
+        }
         autosaveTimer_->stop();
         discardAutosave(slotFor(currentProjectPath_));
         discardPendingRecoverySlot();
@@ -6587,6 +6627,35 @@ void MainWindow::buildHelpMenu() {
     helpQuickStartAct_->setStatusTip(
         tr("Guide de prise en main : de l'image au fichier DST en six étapes"));
     connect(helpQuickStartAct_, &QAction::triggered, this, &MainWindow::showQuickStartDialog);
+
+    liveBridgeAct_ = helpMenu->addAction(tr("Pont IA &local (MCP)"));
+    liveBridgeAct_->setObjectName(QStringLiteral("action_live_bridge"));
+    liveBridgeAct_->setCheckable(true);
+    liveBridgeAct_->setToolTip(
+        tr("Autorise un agent IA local (openstitch-mcp --live) à lire le projet ouvert et à "
+           "proposer des modifications. Aucun port réseau ; chaque modification demande votre "
+           "approbation et s'annule en une étape. Désactivé par défaut."));
+    liveBridgeAct_->setStatusTip(liveBridgeAct_->toolTip());
+    liveBridgeAct_->setChecked(QSettings().value(QStringLiteral("ai/liveBridge"), false).toBool());
+    connect(liveBridgeAct_, &QAction::toggled, this, [this](bool on) {
+        QString error;
+        if (!setLiveBridgeEnabled(on, {}, &error)) {
+            QSignalBlocker block(liveBridgeAct_);
+            liveBridgeAct_->setChecked(false);
+            statusBar()->showMessage(tr("Pont IA local indisponible : %1").arg(error), 8000);
+            return;
+        }
+        QSettings().setValue(QStringLiteral("ai/liveBridge"), on);
+    });
+    if (liveBridgeAct_->isChecked()) {
+        QTimer::singleShot(0, this, [this] {
+            QString error;
+            if (!setLiveBridgeEnabled(true, {}, &error)) {
+                QSignalBlocker block(liveBridgeAct_);
+                liveBridgeAct_->setChecked(false);
+            }
+        });
+    }
 
     helpGesturesAct_ = helpMenu->addAction(tr("Gestes &souris et clavier"));
     helpGesturesAct_->setObjectName(QStringLiteral("action_help_gestures"));

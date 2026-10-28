@@ -6,10 +6,15 @@
 //   openstitch-mcp            serveur stdio (lancé par le client MCP, sans argument)
 //   openstitch-mcp --version  version du serveur et du protocole
 //   openstitch-mcp --doctor   auto-test en mémoire (poignée de main, outils, rendu), code 0 / 2
+//   openstitch-mcp --live [--pid N]
+//                             mode live : les outils s'exécutent sur le projet OUVERT dans
+//                             OpenStitch Desktop (tube nommé local, jeton ; aucun port réseau)
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <exception>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -26,13 +31,53 @@
 #define OS_FDOPEN fdopen
 #endif
 
+#include "openstitch/mcp/live.hpp"
 #include "openstitch/mcp/server.hpp"
 
 namespace {
 
+// Transport vers le desktop qui (re)découvre l'hôte à la demande : le serveur MCP peut démarrer
+// avant l'application, et celle-ci peut être relancée (nouveau jeton) sans redémarrer le client.
+class DiscoveringTransport final : public openstitch::mcp::ILiveTransport {
+public:
+    explicit DiscoveringTransport(int pid) : pid_(pid) {}
+
+    // Relu à chaque requête (peu coûteux) : un desktop relancé change de jeton.
+    std::string token() const {
+        const auto found =
+            openstitch::mcp::find_live_endpoint(openstitch::mcp::live_directory(), pid_);
+        return found ? found->token : std::string{};
+    }
+
+    std::optional<std::string> exchange(const std::string& line) override {
+        for (int attempt = 0; attempt < 2; ++attempt) {
+            if (!client_) {
+                const auto found =
+                    openstitch::mcp::find_live_endpoint(openstitch::mcp::live_directory(), pid_);
+                if (!found) {
+                    return std::nullopt;
+                }
+                client_ = openstitch::mcp::LocalLineClient::connect(found->endpoint);
+                if (!client_) {
+                    return std::nullopt;
+                }
+            }
+            if (const auto reply = client_->exchange(line)) {
+                return reply;
+            }
+            client_.reset(); // connexion perdue : une nouvelle tentative redécouvre l'hôte
+        }
+        return std::nullopt;
+    }
+
+private:
+    int pid_;
+    std::unique_ptr<openstitch::mcp::LocalLineClient> client_;
+};
+
 int usage(const char* program) {
     std::fprintf(stderr,
-                 "usage : %s [--version | --doctor]\n"
+                 "usage : %s [--version | --doctor | --live [--pid N]]\n"
                  "Sans argument : serveur MCP (JSON-RPC 2.0) sur stdio, à lancer depuis un client "
                  "MCP.\n",
                  program);
@@ -42,6 +87,8 @@ int usage(const char* program) {
 } // namespace
 
 int main(int argc, char** argv) {
+    bool live = false;
+    int livePid = 0;
     if (argc > 1) {
         if (argc == 2 && std::strcmp(argv[1], "--version") == 0) {
             std::printf("%s %s\n", openstitch::mcp::kServerName, openstitch::mcp::kServerVersion);
@@ -53,7 +100,15 @@ int main(int argc, char** argv) {
             std::printf("%s\n", report.c_str());
             return ok ? 0 : 2;
         }
-        return usage(argv[0]);
+        if (std::strcmp(argv[1], "--live") != 0) {
+            return usage(argv[0]);
+        }
+        if (argc == 4 && std::strcmp(argv[2], "--pid") == 0) {
+            livePid = std::atoi(argv[3]);
+        } else if (argc != 2) {
+            return usage(argv[0]);
+        }
+        live = true;
     }
 
     std::FILE* protocol = nullptr;
@@ -67,7 +122,9 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    openstitch::mcp::Server server;
+    DiscoveringTransport transport(livePid);
+    openstitch::mcp::LiveRelay relay(transport, [&transport] { return transport.token(); });
+    openstitch::mcp::Server server(live ? &relay : nullptr);
     std::string line;
     while (std::getline(std::cin, line)) {
         if (!line.empty() && line.back() == '\r') {

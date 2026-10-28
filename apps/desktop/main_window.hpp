@@ -25,6 +25,7 @@
 
 #include "auto_satin_strategy_ui.hpp"
 #include "interaction_map.hpp"
+#include "live_server.hpp"
 #include "openstitch/commands/transform_ops.hpp"
 #include "openstitch/commands/undo_stack.hpp"
 #include "openstitch/commands/vector_ops.hpp"
@@ -128,6 +129,13 @@ public:
     // copie. `commitLiveBatch` applique un lot validé en UNE étape d'annulation de la pile du
     // desktop puis rafraîchit canevas, inspecteur, état « modifié » et actions.
     [[nodiscard]] project_ops::LiveBridge& liveBridge() { return liveBridge_; }
+    // Ouvre / ferme le pont IA local (tube nommé + fichier de découverte `dir`, défaut
+    // `mcp::live_directory()`). Faux si l'ouverture échoue (message dans `error`).
+    bool setLiveBridgeEnabled(bool on, const std::filesystem::path& dir = {},
+                              QString* error = nullptr);
+    [[nodiscard]] mcp::LiveService& liveService() { return liveService_; }
+    [[nodiscard]] mcp::LiveDocumentInfo liveDocumentInfo() const;
+    void afterLiveCommit();
     project_ops::LiveBridge::Result commitLiveBatch(const std::string& sessionId,
                                                     std::uint64_t revision,
                                                     const std::string& batchJson,
@@ -1107,6 +1115,12 @@ private:
     QMenu* recentMenu_{nullptr};
     commands::UndoStack undoStack_;
     project_ops::LiveBridge liveBridge_{project_, undoStack_};
+    // Pont IA local (ADR 0001) : désactivé par défaut ; ne s'ouvre que sur action explicite.
+    DialogApprovalGate liveGate_{this};
+    mcp::LiveService liveService_{liveBridge_, liveGate_, [this] { return liveDocumentInfo(); },
+                                  [this] { afterLiveCommit(); }};
+    std::unique_ptr<LiveServer> liveServer_;
+    QAction* liveBridgeAct_{nullptr};
     image::Image processed_; // dernier résultat du pipeline (pour l'affichage)
     // Entrées exactes ayant produit `processed_` (clé de contenu du cache,
     // cf. refreshImage) : `processed_` n'est recalculée que si l'image source

@@ -8,6 +8,8 @@
 
 namespace openstitch::mcp {
 
+class LiveRelay;
+
 inline constexpr const char* kServerName = "openstitch-mcp";
 inline constexpr const char* kServerVersion = "1.1.0";
 
@@ -19,6 +21,9 @@ inline constexpr const char* kServerVersion = "1.1.0";
 class Server {
 public:
     Server();
+    // Mode live (`openstitch-mcp --live`) : les appels d'outils sont relayés à OpenStitch Desktop
+    // et s'exécutent sur le projet OUVERT ; `relay` n'est pas possédé et doit survivre au serveur.
+    explicit Server(LiveRelay* relay);
     ~Server();
     Server(const Server&) = delete;
     Server& operator=(const Server&) = delete;

@@ -143,17 +143,49 @@ LiveBridge::Result LiveBridge::commit(std::string_view session_id, std::uint64_t
         r.message = failure_message(r.report);
         return r;
     }
-    if (r.report.operation_count > 0) {
-        stack_.execute(std::make_unique<commands::ReplaceProjectCommand>(
-                           label.empty() ? std::string("IA : lot d'opérations") : label,
-                           std::move(before), std::move(work)),
-                       project_);
-        r.applied = true;
+    if (r.report.operation_count == 0) {
+        busy_ = false;
+        return r;
     }
+    return install(std::move(r), std::move(before), std::move(work), label);
+}
+
+LiveBridge::Result LiveBridge::install(Result r, std::shared_ptr<const document::Project> before,
+                                       std::shared_ptr<const document::Project> after,
+                                       const std::string& label) {
+    stack_.execute(std::make_unique<commands::ReplaceProjectCommand>(
+                       label.empty() ? std::string("IA : lot d'opérations") : label,
+                       std::move(before), std::move(after)),
+                   project_);
+    r.applied = true;
     busy_ = false;
     sync();
     r.revision = revision_;
     return r;
+}
+
+LiveBridge::Result LiveBridge::commit_project(std::string_view session_id, std::uint64_t revision,
+                                              std::shared_ptr<const document::Project> before,
+                                              std::shared_ptr<const document::Project> result,
+                                              const std::string& label, bool approved) {
+    Result r = guard(session_id, revision);
+    if (!r.ok) {
+        return r;
+    }
+    if (busy_) {
+        r.ok = false;
+        r.code = code::kBusy;
+        r.message = "un commit est déjà en cours";
+        return r;
+    }
+    if (!approved) {
+        r.ok = false;
+        r.code = code::kApprovalRequired;
+        r.message = "la modification du projet ouvert exige l'approbation de l'utilisateur";
+        return r;
+    }
+    busy_ = true;
+    return install(std::move(r), std::move(before), std::move(result), label);
 }
 
 } // namespace openstitch::project_ops

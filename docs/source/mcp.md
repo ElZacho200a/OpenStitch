@@ -189,13 +189,28 @@ Un refus est un résultat d'outil `isError: true` dont le texte est le document
 - Outils d'analyse fine (`fabric-risk`, balayage d'options, localisation) pas encore exposés :
   à ajouter au besoin dans `libs/mcp/src/tools.cpp`.
 
-## Mode live : pont vers le projet ouvert (en préparation)
+## Mode live : agent IA sur le projet ouvert dans OpenStitch Desktop
 
-Le contrat est arrêté dans [l'ADR 0001](../adr/0001-compagnon-ia-session-live.md). Premier
-jalon livré : `project_ops::LiveBridge` (sans Qt) et `commands::ReplaceProjectCommand`. Le desktop
-prête son `Project` et son `UndoStack` au pont (`MainWindow::liveBridge()`) ; `commitLiveBatch`
-applique un lot validé en **une** étape d'annulation, avec contrôle de `session_id` et de
-`revision` (`E_STALE_REVISION`, `E_SESSION_CLOSED`, `E_APPROVAL_REQUIRED`, `E_BUSY`). L'aperçu
-(`preview`) simule le lot sur une copie sans toucher au dirty flag ni à l'historique. Le mode MCP
-autonome décrit plus haut est inchangé ; le transport IPC et les outils live arrivent au jalon
-suivant.
+Contrat et décisions : [ADR 0001](../adr/0001-compagnon-ia-session-live.md). Le mode autonome
+décrit plus haut est **inchangé** ; le mode live est une option explicite.
+
+1. Dans OpenStitch Desktop : **Aide ▸ Pont IA local (MCP)** (désactivé par défaut, réglage
+   mémorisé). Le desktop ouvre un **tube nommé** (Windows) / socket de domaine Unix accessible à
+   l'utilisateur courant seul — **aucun port réseau** — et écrit un fichier de découverte avec un
+   jeton aléatoire (`%LOCALAPPDATA%\OpenStitch\live\<pid>.json`, ou `OPENSTITCH_LIVE_DIR`).
+2. Le client MCP lance `openstitch-mcp --live` (option `--pid N` s'il y a plusieurs instances) :
+   un relais stdio qui retrouve l'hôte à chaque requête (desktop relancé = nouveau jeton, sans
+   redémarrer le client).
+3. Les outils s'exécutent sur une **copie figée** du projet ouvert, hors du fil d'interface :
+
+| Classe | Outils | Politique |
+|---|---|---|
+| Lecture | `live_status`, `project_inspect`, `project_select`, `project_palette`, `project_check`, `project_render`, `project_satin_compare`, `project_fabric_risk`, `project_report`, `project_diagnose`, `project_density`, `project_fidelity`, `project_locate`, `project_operations`, `semantic_validate`, `digitize_guide`, `ai_backends` | automatique |
+| Mutation | `project_apply` (hors `dry_run`) | **approbation de l'utilisateur** à chaque appel ; une seule étape d'annulation (Ctrl+Z) ; `E_STALE_REVISION` si le document a changé pendant le calcul |
+| Refusés | `project_open/new/digitize/save/export/restore/checkpoint…` | jamais exposés (ouvrir, enregistrer, exporter reste une action de l'utilisateur) |
+
+`live_status` donne le nom du document (jamais le chemin complet), « modifié », « jamais
+enregistré », la sélection et la `revision`. Sans desktop joignable, un appel répond
+`E_SESSION_CLOSED` avec un conseil actionnable ; il n'y a jamais de repli silencieux sur un autre
+projet. Le dock de conversation (confirmation riche avant/après) remplacera la boîte de dialogue
+d'approbation actuelle.

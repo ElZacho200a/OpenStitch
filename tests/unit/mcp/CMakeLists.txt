@@ -1,8 +1,8 @@
 find_package(nlohmann_json CONFIG REQUIRED)
 
-add_executable(test_mcp test_server.cpp test_guide.cpp test_tools_semantic.cpp test_tools_ai.cpp)
+add_executable(test_mcp test_server.cpp test_guide.cpp test_tools_semantic.cpp test_tools_ai.cpp test_live.cpp)
 target_link_libraries(test_mcp
-    PRIVATE openstitch::mcp openstitch::image nlohmann_json::nlohmann_json Catch2::Catch2WithMain
+    PRIVATE openstitch::mcp openstitch::project_ops openstitch::document openstitch::geometry openstitch::commands openstitch::image nlohmann_json::nlohmann_json Catch2::Catch2WithMain
             openstitch::warnings)
 target_compile_definitions(test_mcp
     PRIVATE OPENSTITCH_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/tests/fixtures"

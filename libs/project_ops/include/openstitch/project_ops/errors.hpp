@@ -28,7 +28,8 @@ inline constexpr const char* kStaleRevision =
 inline constexpr const char* kSessionClosed =
     "E_SESSION_CLOSED"; // document remplacé / session close
 inline constexpr const char* kApprovalRequired = "E_APPROVAL_REQUIRED"; // mutation sans approbation
-inline constexpr const char* kBusy = "E_BUSY";                          // commit déjà en cours
+inline constexpr const char* kApprovalDenied = "E_APPROVAL_DENIED"; // refusée par l'utilisateur
+inline constexpr const char* kBusy = "E_BUSY";                      // commit déjà en cours
 } // namespace code
 
 // Erreur structurée montrable telle quelle (texte) ou en JSON.
