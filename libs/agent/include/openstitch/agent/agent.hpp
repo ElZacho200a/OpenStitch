@@ -218,7 +218,8 @@ private:
 // `openstitch-mcp --live`), `CLAUDE.md` et hook SessionStart qui expliquent le mode live, et deux
 // skills (édition, satin). Idempotent ; ne lance rien. Retourne faux si l'écriture échoue.
 [[nodiscard]] bool write_claude_workspace(const std::string& directory,
-                                          const std::string& mcp_exe_path);
+                                          const std::string& mcp_exe_path,
+                                          int desktop_pid = 0);
 
 // --- Anthropic --------------------------------------------------------------------------------
 

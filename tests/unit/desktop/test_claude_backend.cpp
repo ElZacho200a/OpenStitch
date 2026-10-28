@@ -526,6 +526,11 @@ void MainWindowTest::launcherPreparesWorkspaceAndStartsTheUsersClaude() {
     QVERIFY(args.contains(QStringLiteral("C:/bin/claude.exe")));
     const QString ws = ClaudeCodeLauncher::workspaceDir(env.dataDir);
     QVERIFY(QFileInfo::exists(ws + QStringLiteral("/.mcp.json")));
+    QFile mcpConfig(ws + QStringLiteral("/.mcp.json"));
+    QVERIFY(mcpConfig.open(QIODevice::ReadOnly));
+    const QByteArray configText = mcpConfig.readAll();
+    QVERIFY(configText.contains("--pid"));
+    QVERIFY(configText.contains(QByteArray::number(QCoreApplication::applicationPid())));
     QVERIFY(QFileInfo::exists(ws + QStringLiteral("/.claude/settings.json")));
     QVERIFY(
         QFileInfo::exists(ws + QStringLiteral("/.claude/skills/openstitch-live-satin/SKILL.md")));
@@ -570,6 +575,12 @@ void MainWindowTest::openClaudeCodeActionEnablesTheBridgeOnlyOnExplicitUse() {
         return true;
     };
     w.findChild<QAction*>(QStringLiteral("action_open_claude_code"))->trigger();
+    QVERIFY(launched);
+    launched = false;
+    auto* launchButton =
+        w.companionDock()->findChild<QPushButton*>(QStringLiteral("button_companionOpenClaudeCode"));
+    QVERIFY(launchButton != nullptr);
+    launchButton->click();
     QVERIFY(launched);
     QVERIFY(bridge->isChecked()); // activé par cette action explicite
     w.setLiveBridgeEnabled(false);

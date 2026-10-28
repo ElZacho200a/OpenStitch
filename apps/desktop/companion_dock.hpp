@@ -68,6 +68,7 @@ signals:
     void focusObjectRequested(quint64 objectId);
     void undoLastRequested();
     void enableLiveBridgeRequested();
+    void openClaudeCodeRequested();
     void configureProviderRequested();
 
 protected:
@@ -104,6 +105,7 @@ private:
     QStackedWidget* stack_{nullptr};
     QLabel* welcome_{nullptr};
     QPushButton* enableBridge_{nullptr};
+    QPushButton* openClaudeCode_{nullptr};
     QPushButton* configure_{nullptr};
     bool fullyDisabled_{false};
     quint64 usageIn_{0};

@@ -13,7 +13,8 @@
 namespace openstitch::desktop {
 
 QString ClaudeCodeLauncher::workspaceDir(const QString& dataDir) {
-    return QDir(dataDir).filePath(QStringLiteral("companion/workspace"));
+    return QDir(dataDir).filePath(
+        QStringLiteral("companion/workspace-%1").arg(QCoreApplication::applicationPid()));
 }
 
 ClaudeCodeLauncher::Env ClaudeCodeLauncher::systemEnv() {
@@ -62,7 +63,8 @@ ClaudeCodeLauncher::Result ClaudeCodeLauncher::launch(const Env& env) {
     }
     const QString dir = workspaceDir(env.dataDir);
     QDir().mkpath(dir);
-    if (!agent::write_claude_workspace(dir.toStdString(), mcp.toStdString())) {
+    if (!agent::write_claude_workspace(dir.toStdString(), mcp.toStdString(),
+                                      static_cast<int>(QCoreApplication::applicationPid()))) {
         return Result::WorkspaceFailed;
     }
     const QString wt = env.findExecutable(QStringLiteral("wt"));

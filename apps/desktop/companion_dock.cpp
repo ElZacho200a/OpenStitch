@@ -85,10 +85,15 @@ void CompanionDock::buildUi() {
     enableBridge_ = new QPushButton(welcomePage);
     enableBridge_->setObjectName(QStringLiteral("button_companionEnableBridge"));
     connect(enableBridge_, &QPushButton::clicked, this, &CompanionDock::enableLiveBridgeRequested);
+    openClaudeCode_ = new QPushButton(welcomePage);
+    openClaudeCode_->setObjectName(QStringLiteral("button_companionOpenClaudeCode"));
+    connect(openClaudeCode_, &QPushButton::clicked, this,
+            &CompanionDock::openClaudeCodeRequested);
     configure_ = new QPushButton(welcomePage);
     configure_->setObjectName(QStringLiteral("button_companionConfigure"));
     connect(configure_, &QPushButton::clicked, this, &CompanionDock::configureProviderRequested);
     welcomeLayout->addWidget(welcome_);
+    welcomeLayout->addWidget(openClaudeCode_);
     welcomeLayout->addWidget(configure_);
     welcomeLayout->addWidget(enableBridge_);
     welcomeLayout->addStretch(1);
@@ -210,6 +215,10 @@ void CompanionDock::retranslate() {
            "réseau n'est ouvert ; chaque modification demande votre approbation et s'annule en "
            "une seule étape (Ctrl+Z)."));
     enableBridge_->setText(tr("Activer le pont IA local"));
+    openClaudeCode_->setText(tr("Ouvrir Claude Code (via MCP)…"));
+    openClaudeCode_->setToolTip(
+        tr("Lance votre Claude Code dans un terminal relié au projet ouvert. Aucune clé API "
+           "OpenStitch nécessaire ; modifications approuvées dans le dock."));
     configure_->setText(tr("Configurer Claude…"));
     send_->setText(tr("Envoyer"));
     send_->setToolTip(tr("Envoyer le message (Entrée) — Maj+Entrée : saut de ligne"));
@@ -297,6 +306,7 @@ void CompanionDock::refreshHeader() {
     const bool connected = backend_ != nullptr && backend_->available();
     stack_->setCurrentIndex(connected ? 1 : 0);
     enableBridge_->setVisible(!liveBridgeActive_ && !fullyDisabled_);
+    openClaudeCode_->setEnabled(!fullyDisabled_);
     configure_->setVisible(true);
     if (fullyDisabled_) {
         welcome_->setText(tr("Le compagnon IA est désactivé (pont local et fournisseur). "

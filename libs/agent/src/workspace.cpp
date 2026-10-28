@@ -80,7 +80,8 @@ void write_file(const fs::path& path, const std::string& content) {
 
 } // namespace
 
-bool write_claude_workspace(const std::string& directory, const std::string& mcp_exe_path) {
+bool write_claude_workspace(const std::string& directory, const std::string& mcp_exe_path,
+                            int desktop_pid) {
     using json = nlohmann::json;
     try {
         const fs::path dir = fs::path(directory);
@@ -88,9 +89,14 @@ bool write_claude_workspace(const std::string& directory, const std::string& mcp
         write_file(dir / ".claude" / "openstitch-live-guide.md", kGuide);
         write_file(dir / ".claude" / "skills" / "openstitch-live-edit" / "SKILL.md", kSkillEdit);
         write_file(dir / ".claude" / "skills" / "openstitch-live-satin" / "SKILL.md", kSkillSatin);
+        json args = json::array({"--live"});
+        if (desktop_pid > 0) {
+            args.push_back("--pid");
+            args.push_back(std::to_string(desktop_pid));
+        }
         const json mcp{
             {"mcpServers",
-             {{"openstitch", {{"command", mcp_exe_path}, {"args", json::array({"--live"})}}}}}};
+             {{"openstitch", {{"command", mcp_exe_path}, {"args", args}}}}}};
         write_file(dir / ".mcp.json", mcp.dump(2));
         // Hook SessionStart : réinjecte les consignes à chaque démarrage / reprise de session.
         // Claude Code exécute les hooks via un shell POSIX (Git Bash sous Windows) : `cat` partout.

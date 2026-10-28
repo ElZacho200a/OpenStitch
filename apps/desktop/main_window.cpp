@@ -1787,6 +1787,8 @@ void MainWindow::buildCompanionDock() {
             liveBridgeAct_->setChecked(true);
         }
     });
+    connect(companionDock_, &CompanionDock::openClaudeCodeRequested,
+            this, &MainWindow::openClaudeCode);
     // Les approbations de l'agent s'affichent dans le dock (boîte modale seulement en repli).
     liveGate_.setChoiceDelegate([this](const mcp::ChoiceRequest& request) {
         companionDock_->show();
@@ -1857,12 +1859,16 @@ void MainWindow::openClaudeCode() {
                                  tr("Le compagnon IA est désactivé (Aide ▸ Compagnon IA…)."));
         return;
     }
-    // Le pont local est nécessaire : activé ici, sur cette action explicite de l'utilisateur.
-    if (liveBridgeAct_ != nullptr && !liveBridgeAct_->isChecked()) {
+    // Retour a l'etat initial si la CLI n'est pas installee ou ne demarre pas.
+    const bool wasActive = liveBridgeAct_ != nullptr && liveBridgeAct_->isChecked();
+    if (liveBridgeAct_ != nullptr && !wasActive) {
         liveBridgeAct_->setChecked(true);
     }
     const auto result = ClaudeCodeLauncher::launch(launcherEnv_);
     if (result != ClaudeCodeLauncher::Result::Started) {
+        if (liveBridgeAct_ != nullptr && !wasActive) {
+            liveBridgeAct_->setChecked(false);
+        }
         QMessageBox::warning(this, tr("Claude Code"), ClaudeCodeLauncher::describe(result));
         return;
     }
