@@ -110,8 +110,7 @@ TEST_CASE("predicted_pull: un objet voisin modifie la compensation", "[predicted
     CHECK(max_x(effective(alone), id) != max_x(effective(crowded), id));
 }
 
-TEST_CASE("predicted_pull: refresh_context identique a la sequence exportee",
-          "[predicted_pull]") {
+TEST_CASE("predicted_pull: refresh_context identique a la sequence exportee", "[predicted_pull]") {
     // Le desktop utilise refresh_context ; l'export passe par effective_sequence.
     // En mode predit, les deux doivent appliquer la meme passe avant les finitions.
     for (const auto mode : {document::PullMode::Manual, document::PullMode::Auto,
