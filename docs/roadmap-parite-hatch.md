@@ -1255,8 +1255,11 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   tatami et directionnel, `Predicted` conserve désormais la compensation géométrique `Adaptive`
   comme socle avant le décalage du champ ; auparavant le socle était remis à zéro, donnant une
   sous-compensation évidente en absence de calibration. Tests de parité desktop/export,
-  aller-retour des quatre modes et enveloppe tatami adaptative. Reste : validation CI,
-  et mesures physiques du modèle de champ sur tissu.
+  aller-retour des quatre modes et enveloppe tatami adaptative. La correction
+  prédictive est renforcée indépendamment de la confiance du champ (`compensation_strength`
+  par défaut 3×, bornée à 6× ; amplitude finale ≤ `max_displacement_mm`), avec tests de force,
+  de conservation de confiance et de plafond. Reste : validation CI, exposition d'un réglage
+  d'intensité par objet dans le desktop/CLI/MCP et mesures physiques du modèle sur tissu.
 - Livré (2026-10-27, niveau 3, prévisualisation) : `pull_map.cpp` (carte de déplacement,
   `simulate_fabric_pull` ordonné par bloc de couleur : le défaut de repérage entre couleurs),
   réglages de tissu empiriques (standard, lin lâche, bien stabilisé), `Affichage > Carte de tirage
