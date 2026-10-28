@@ -41,6 +41,12 @@ bool sameOptions(const segmentation::SegmentationOptions& a,
            a.detail_min_region_px == b.detail_min_region_px;
 }
 
+// Image de l'instantané, ou une image vide si le dialogue vient de se fermer (instantané libéré).
+const image::Image& snapshotOf(const std::shared_ptr<const image::Image>& snapshot) {
+    static const image::Image none;
+    return snapshot ? *snapshot : none;
+}
+
 // Le masque du projet n'est utilisable que s'il a la taille de l'image segmentée.
 segmentation::DetailMask usableMask(const segmentation::DetailMask& mask, const image::Image& img) {
     return mask.matches(img.width, img.height) ? mask : segmentation::DetailMask{};
@@ -103,7 +109,7 @@ void MainWindow::requestSegmentationPreview(const segmentation::SegmentationOpti
         return;
     }
     if (segmentCached_ && segmentCachedOptions_ && sameOptions(*segmentCachedOptions_, options) &&
-        segmentCachedMask_ == usableMask(project_.detail_mask, *segmentSnapshot_)) {
+        segmentCachedMask_ == usableMask(project_.detail_mask, snapshotOf(segmentSnapshot_))) {
         showSegmentationPreview(*segmentCached_, segmentCachedSeconds_); // déjà calculé
         return;
     }
@@ -117,7 +123,7 @@ void MainWindow::requestSegmentationPreview(const segmentation::SegmentationOpti
 void MainWindow::startSegmentationPreview(const segmentation::SegmentationOptions& options) {
     auto job = std::make_shared<SegmentationJob>();
     job->options = options;
-    job->mask = usableMask(project_.detail_mask, *segmentSnapshot_);
+    job->mask = usableMask(project_.detail_mask, snapshotOf(segmentSnapshot_));
     job->options.detail_mask = job->mask.any_detail() ? &job->mask : nullptr;
     job->generation = ++segmentGeneration_;
     segmentJob_ = job;
@@ -158,14 +164,14 @@ void MainWindow::onSegmentationPreviewReady() {
         segmentCached_ = std::move(**job->result);
         if (!pending && segmentDialog_->previewEnabled() &&
             sameOptions(job->options, segmentDialog_->options()) &&
-            job->mask == usableMask(project_.detail_mask, *segmentSnapshot_)) {
+            job->mask == usableMask(project_.detail_mask, snapshotOf(segmentSnapshot_))) {
             showSegmentationPreview(*segmentCached_, job->seconds);
         }
     }
     if (pending && segmentDialog_->previewEnabled()) {
         if (segmentCached_ && segmentCachedOptions_ &&
             sameOptions(*segmentCachedOptions_, *pending) &&
-            segmentCachedMask_ == usableMask(project_.detail_mask, *segmentSnapshot_)) {
+            segmentCachedMask_ == usableMask(project_.detail_mask, snapshotOf(segmentSnapshot_))) {
             requestSegmentationPreview(*pending);
         } else {
             // Le fil précédent a émis `finished` : il n'est plus en cours.

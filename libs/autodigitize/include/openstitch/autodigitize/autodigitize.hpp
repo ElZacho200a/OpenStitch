@@ -21,6 +21,10 @@ struct AutoOptions {
     // > 0 : contours des formes en courbes de Bézier (voir
     // `vectorization::VectorizeOptions::curve_tolerance`). 0 : polygones.
     Micrometers curve_tolerance{0};
+    // Zones de détail (voir `vectorization::VectorizeOptions::detail_mask`) : les régions de détail
+    // sont vectorisées plus finement. nullptr = aucune. Le pointeur doit rester valide pendant
+    // l'appel.
+    const segmentation::DetailMask* detail_mask{nullptr};
     // Largeur maximale d'une bande satinable (voir `satin_bands`). Ignoré
     // tant que `satin_bands` est faux.
     Micrometers satin_max_width{6'000};

@@ -362,3 +362,80 @@ TEST_CASE("is_overlap_grown_contour : bande fine oui, fusion ou retouche non") {
     // Forme retouchee plus petite : jamais restauree.
     CHECK_FALSE(is_overlap_grown_contour({square_mm(2, 2, 18, 18)}, raw));
 }
+
+namespace {
+
+// Disque rouge (rayon 40 px) sur fond blanc, 100x100.
+image::Image disc_image() {
+    image::Image img;
+    img.width = 100;
+    img.height = 100;
+    img.rgba.assign(100 * 100 * 4, 0);
+    for (int y = 0; y < 100; ++y) {
+        for (int x = 0; x < 100; ++x) {
+            const bool in = (x - 50) * (x - 50) + (y - 50) * (y - 50) <= 40 * 40;
+            if (in) {
+                set_px(img, x, y, 220, 30, 30);
+            } else {
+                set_px(img, x, y, 250, 250, 250);
+            }
+        }
+    }
+    return img;
+}
+
+std::size_t node_count(const std::vector<geometry::PathSet>& sets) {
+    std::size_t n = 0;
+    for (const auto& set : sets) {
+        n += set.outer.nodes.size();
+    }
+    return n;
+}
+
+segmentation::DetailMask uniform_mask(std::uint8_t value) {
+    segmentation::DetailMask mask;
+    mask.width = 100;
+    mask.height = 100;
+    mask.weights.assign(100 * 100, value);
+    return mask;
+}
+
+} // namespace
+
+TEST_CASE("zones de detail : une region de detail est vectorisee plus finement") {
+    const auto seg = segmentation::segment(disc_image(), {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    const auto red = segmentation::region_at(*seg, 50, 50);
+    REQUIRE(red.has_value());
+
+    const auto detail = uniform_mask(255);
+    const auto flat = uniform_mask(0);
+    VectorizeOptions options{.mm_per_px = Millimeters{0.25},
+                             .simplify_tolerance = Micrometers{400}};
+    const auto base = vectorize_region(*seg, *red, options);
+    options.detail_mask = &detail;
+    const auto fine = vectorize_region(*seg, *red, options);
+    options.detail_mask = &flat;
+    const auto stillFlat = vectorize_region(*seg, *red, options);
+    REQUIRE((base.has_value() && fine.has_value() && stillFlat.has_value()));
+
+    CHECK(node_count(*fine) > node_count(*base));       // contour plus fidele en detail
+    CHECK(node_count(*stillFlat) == node_count(*base)); // aplat : inchange
+}
+
+TEST_CASE("zones de detail : masque de mauvaise taille ignore") {
+    const auto seg = segmentation::segment(disc_image(), {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    const auto red = segmentation::region_at(*seg, 50, 50);
+    segmentation::DetailMask wrong;
+    wrong.width = 10;
+    wrong.height = 10;
+    wrong.weights.assign(100, 255);
+    VectorizeOptions options{.mm_per_px = Millimeters{0.25},
+                             .simplify_tolerance = Micrometers{400}};
+    const auto base = vectorize_region(*seg, *red, options);
+    options.detail_mask = &wrong;
+    const auto ignored = vectorize_region(*seg, *red, options);
+    REQUIRE((base.has_value() && ignored.has_value()));
+    CHECK(node_count(*ignored) == node_count(*base));
+}
