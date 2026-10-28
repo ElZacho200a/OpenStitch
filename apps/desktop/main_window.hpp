@@ -26,6 +26,7 @@
 #include "auto_satin_strategy_ui.hpp"
 #include "claude_backend.hpp"
 #include "companion_dock.hpp"
+#include "companion_launcher.hpp"
 #include "interaction_map.hpp"
 #include "live_server.hpp"
 #include "openstitch/commands/transform_ops.hpp"
@@ -142,6 +143,7 @@ public:
     void buildCompanionDock();
     void applyCompanionSettings();
     void showCompanionSettings();
+    void openClaudeCode();
     void updateCompanionContext();
     void focusEmbroideryObject(quint64 id);
     [[nodiscard]] CompanionDock* companionDock() const { return companionDock_; }
@@ -1135,6 +1137,9 @@ private:
     agent::DiagnosticLog companionLog_;
     ClaudeCompanionBackend* claudeBackend_{nullptr};
     QAction* companionSettingsAct_{nullptr};
+    QAction* openClaudeCodeAct_{nullptr};
+    // Environnement système du lanceur Claude Code (remplaçable par les tests).
+    ClaudeCodeLauncher::Env launcherEnv_{ClaudeCodeLauncher::systemEnv()};
     image::Image processed_; // dernier résultat du pipeline (pour l'affichage)
     // Entrées exactes ayant produit `processed_` (clé de contenu du cache,
     // cf. refreshImage) : `processed_` n'est recalculée que si l'image source

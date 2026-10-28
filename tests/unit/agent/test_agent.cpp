@@ -2,6 +2,8 @@
 // Agent IA du compagnon : fournisseur Anthropic (faux HTTP), boucle d'agent (faux fournisseur,
 // faux outils), politique d'outils, interruption, erreurs, secrets. Aucun réseau, aucune clé.
 #include <deque>
+#include <filesystem>
+#include <fstream>
 #include <string>
 
 #include <catch2/catch_test_macros.hpp>
@@ -518,4 +520,33 @@ TEST_CASE("diagnostic log is bounded", "[agent][log]") {
     CHECK(log.dump().find("evt 0\n") == std::string::npos);
     log.clear();
     CHECK(log.size() == 0);
+}
+
+TEST_CASE("claude workspace carries the mcp server, guide, hook and skills", "[agent][workspace]") {
+    const auto dir = std::filesystem::temp_directory_path() / "openstitch-ws-test";
+    std::filesystem::remove_all(dir);
+    REQUIRE(write_claude_workspace(dir.string(),
+                                   "C:\\Program Files\\OpenStitch\\mcp\\openstitch-mcp.exe"));
+    REQUIRE(write_claude_workspace(dir.string(), "C:\\x\\openstitch-mcp.exe")); // idempotent
+
+    const auto read = [&](const char* rel) {
+        std::ifstream in(dir / rel, std::ios::binary);
+        return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    };
+    const json mcp = json::parse(read(".mcp.json"));
+    CHECK(mcp["mcpServers"]["openstitch"]["command"] == "C:\\x\\openstitch-mcp.exe");
+    CHECK(mcp["mcpServers"]["openstitch"]["args"] == json::array({"--live"}));
+    const json settings = json::parse(read(".claude/settings.json"));
+    CHECK(settings["hooks"]["SessionStart"][0]["hooks"][0]["type"] == "command");
+    CHECK(settings["hooks"]["SessionStart"][0]["hooks"][0]["command"].get<std::string>().find(
+              "openstitch-live-guide.md") != std::string::npos);
+    CHECK(read("CLAUDE.md").find("live_context") != std::string::npos);
+    CHECK(read(".claude/openstitch-live-guide.md") == read("CLAUDE.md"));
+    CHECK(
+        read(".claude/skills/openstitch-live-satin/SKILL.md").find("name: openstitch-live-satin") !=
+        std::string::npos);
+    CHECK(read(".claude/skills/openstitch-live-edit/SKILL.md").find("project_apply") !=
+          std::string::npos);
+    CHECK(read("CLAUDE.md").find("EMPIRIQUE") != std::string::npos);
+    std::filesystem::remove_all(dir);
 }

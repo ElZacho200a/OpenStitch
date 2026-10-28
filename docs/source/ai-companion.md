@@ -127,3 +127,14 @@ les tests `[bench]` échouent au - delà de * * 2 s **(instantané)et * * 5 s **
         aucun environnement développeur requis);
 la désinstallation supprime les fichiers de découverte du pont(`% LOCALAPPDATA %\OpenStitch\live`)
     et la clé API du Gestionnaire d'identifiants. Aucune bibliothèque tierce ni agent externe n'est embarqué par le compagnon.
+
+## Ouvrir Claude Code depuis OpenStitch
+
+**Aide ▸ Ouvrir Claude Code…** lance **votre** Claude Code (installé par vos soins ; OpenStitch ne le
+fournit pas) dans un terminal (Windows Terminal, sinon `cmd`), avec votre abonnement ou votre
+compte habituel. OpenStitch prépare l'espace de travail
+`%LOCALAPPDATA%\OpenStitch\companion\workspace` : `.mcp.json` (serveur `openstitch-mcp --live`),
+`CLAUDE.md` et hook `SessionStart` qui réinjectent les consignes du mode live à chaque session, et
+deux skills (`openstitch-live-edit`, `openstitch-live-satin`). L'action active le pont IA local
+(sur votre clic seulement). Attention : Claude Code a ses propres outils (fichiers, shell) hors du
+périmètre OpenStitch ; seules les modifications du **projet ouvert** passent par l'approbation du dock.

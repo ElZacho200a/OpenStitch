@@ -7,6 +7,9 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPlainTextEdit>
@@ -14,6 +17,7 @@
 #include <QSettings>
 #include <QStackedWidget>
 #include <QStandardPaths>
+#include <QTemporaryDir>
 #include <QTest>
 #include <QTextBrowser>
 #include <QThread>
@@ -21,6 +25,7 @@
 
 #include "claude_backend.hpp"
 #include "companion_dock.hpp"
+#include "companion_launcher.hpp"
 #include "companion_settings_dialog.hpp"
 #include "main_window.hpp"
 #include "openstitch/geometry/primitives.hpp"
@@ -152,6 +157,9 @@ private slots:
     void disabledCompanionOffersNoProvider();
     void settingsDialogStoresKeyOnlyInTheSecretStore();
     void targetPhraseWorksEndToEndFromTheDesktop();
+    void launcherPreparesWorkspaceAndStartsTheUsersClaude();
+    void launcherReportsMissingClaudeAndMissingMcpWithoutLaunching();
+    void openClaudeCodeActionEnablesTheBridgeOnlyOnExplicitUse();
 };
 
 namespace {
@@ -480,6 +488,91 @@ void MainWindowTest::targetPhraseWorksEndToEndFromTheDesktop() {
     QCOMPARE(after.back(), before.back());
     w.undoAct_->trigger();
     QCOMPARE(typesNow(), before);
+}
+
+namespace {
+
+QString makeFakeMcp(const QString& appDir) {
+    QDir().mkpath(appDir + QStringLiteral("/mcp"));
+    QFile f(appDir + QStringLiteral("/mcp/openstitch-mcp.exe"));
+    f.open(QIODevice::WriteOnly);
+    f.write("x");
+    return f.fileName();
+}
+
+} // namespace
+
+void MainWindowTest::launcherPreparesWorkspaceAndStartsTheUsersClaude() {
+    QTemporaryDir tmp;
+    const QString app = tmp.path() + QStringLiteral("/app");
+    makeFakeMcp(app);
+    QString program;
+    QStringList args;
+    ClaudeCodeLauncher::Env env;
+    env.appDir = app;
+    env.dataDir = tmp.path() + QStringLiteral("/data");
+    env.findExecutable = [](const QString& name) {
+        return name == QLatin1String("claude")
+                   ? QStringLiteral("C:/bin/claude.exe")
+                   : (name == QLatin1String("wt") ? QStringLiteral("C:/bin/wt.exe") : QString());
+    };
+    env.startDetached = [&](const QString& p, const QStringList& a, const QString&) {
+        program = p;
+        args = a;
+        return true;
+    };
+    QCOMPARE(ClaudeCodeLauncher::launch(env), ClaudeCodeLauncher::Result::Started);
+    QCOMPARE(program, QStringLiteral("C:/bin/wt.exe"));
+    QVERIFY(args.contains(QStringLiteral("C:/bin/claude.exe")));
+    const QString ws = ClaudeCodeLauncher::workspaceDir(env.dataDir);
+    QVERIFY(QFileInfo::exists(ws + QStringLiteral("/.mcp.json")));
+    QVERIFY(QFileInfo::exists(ws + QStringLiteral("/.claude/settings.json")));
+    QVERIFY(
+        QFileInfo::exists(ws + QStringLiteral("/.claude/skills/openstitch-live-satin/SKILL.md")));
+}
+
+void MainWindowTest::launcherReportsMissingClaudeAndMissingMcpWithoutLaunching() {
+    QTemporaryDir tmp;
+    ClaudeCodeLauncher::Env env;
+    env.appDir = tmp.path();
+    env.dataDir = tmp.path() + QStringLiteral("/data");
+    bool launched = false;
+    env.startDetached = [&](const QString&, const QStringList&, const QString&) {
+        launched = true;
+        return true;
+    };
+    env.findExecutable = [](const QString&) { return QString(); };
+    QCOMPARE(ClaudeCodeLauncher::launch(env), ClaudeCodeLauncher::Result::ClaudeNotFound);
+    QVERIFY(ClaudeCodeLauncher::describe(ClaudeCodeLauncher::Result::ClaudeNotFound)
+                .contains(QStringLiteral("installé")));
+    env.findExecutable = [](const QString& n) {
+        return n == QLatin1String("claude") ? QStringLiteral("C:/c.exe") : QString();
+    };
+    QCOMPARE(ClaudeCodeLauncher::launch(env), ClaudeCodeLauncher::Result::McpNotFound);
+    QVERIFY(!launched);
+    QVERIFY(!QFileInfo::exists(ClaudeCodeLauncher::workspaceDir(env.dataDir)));
+}
+
+void MainWindowTest::openClaudeCodeActionEnablesTheBridgeOnlyOnExplicitUse() {
+    QTemporaryDir tmp;
+    makeFakeMcp(tmp.path() + QStringLiteral("/app"));
+    MainWindow w;
+    auto* bridge = w.findChild<QAction*>(QStringLiteral("action_live_bridge"));
+    QVERIFY(bridge != nullptr && !bridge->isChecked()); // jamais actif d'office
+    bool launched = false;
+    w.launcherEnv_.appDir = tmp.path() + QStringLiteral("/app");
+    w.launcherEnv_.dataDir = tmp.path() + QStringLiteral("/data");
+    w.launcherEnv_.findExecutable = [](const QString& n) {
+        return n == QLatin1String("claude") ? QStringLiteral("C:/c.exe") : QString();
+    };
+    w.launcherEnv_.startDetached = [&](const QString&, const QStringList&, const QString&) {
+        launched = true;
+        return true;
+    };
+    w.findChild<QAction*>(QStringLiteral("action_open_claude_code"))->trigger();
+    QVERIFY(launched);
+    QVERIFY(bridge->isChecked()); // activé par cette action explicite
+    w.setLiveBridgeEnabled(false);
 }
 
 } // namespace openstitch::desktop

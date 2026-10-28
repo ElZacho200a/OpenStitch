@@ -1851,6 +1851,24 @@ void MainWindow::showCompanionSettings() {
     }
 }
 
+void MainWindow::openClaudeCode() {
+    if (companion_settings::fullyDisabled()) {
+        QMessageBox::information(this, tr("Claude Code"),
+                                 tr("Le compagnon IA est désactivé (Aide ▸ Compagnon IA…)."));
+        return;
+    }
+    // Le pont local est nécessaire : activé ici, sur cette action explicite de l'utilisateur.
+    if (liveBridgeAct_ != nullptr && !liveBridgeAct_->isChecked()) {
+        liveBridgeAct_->setChecked(true);
+    }
+    const auto result = ClaudeCodeLauncher::launch(launcherEnv_);
+    if (result != ClaudeCodeLauncher::Result::Started) {
+        QMessageBox::warning(this, tr("Claude Code"), ClaudeCodeLauncher::describe(result));
+        return;
+    }
+    statusBar()->showMessage(tr("Claude Code ouvert dans un terminal."), 6000);
+}
+
 void MainWindow::applyCompanionSettings() {
     const bool off = companion_settings::fullyDisabled();
     if (off) {
@@ -6790,6 +6808,14 @@ void MainWindow::buildHelpMenu() {
            "désactivation du compagnon."));
     companionSettingsAct_->setStatusTip(companionSettingsAct_->toolTip());
     connect(companionSettingsAct_, &QAction::triggered, this, &MainWindow::showCompanionSettings);
+
+    openClaudeCodeAct_ = helpMenu->addAction(tr("Ouvrir Claude &Code…"));
+    openClaudeCodeAct_->setObjectName(QStringLiteral("action_open_claude_code"));
+    openClaudeCodeAct_->setToolTip(
+        tr("Ouvre votre Claude Code dans un terminal, relié au projet ouvert (pont IA local, "
+           "consignes et skills OpenStitch préparés). Claude Code doit être installé."));
+    openClaudeCodeAct_->setStatusTip(openClaudeCodeAct_->toolTip());
+    connect(openClaudeCodeAct_, &QAction::triggered, this, &MainWindow::openClaudeCode);
 
     helpGesturesAct_ = helpMenu->addAction(tr("Gestes &souris et clavier"));
     helpGesturesAct_->setObjectName(QStringLiteral("action_help_gestures"));
