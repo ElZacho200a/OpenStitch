@@ -1361,6 +1361,7 @@ void MainWindow::resetDocumentState() {
     migratedFromVersion_ = 0;
     migratedFromPath_.clear();
     undoStack_.clear();
+    liveBridge_.reset(); // nouveau document : l'ancienne session live est close
     sequence_.reset();
     editStates_.clear();
     setSelection({});
@@ -1725,6 +1726,19 @@ void MainWindow::undo() {
     }
 }
 
+project_ops::LiveBridge::Result
+MainWindow::commitLiveBatch(const std::string& sessionId, std::uint64_t revision,
+                            const std::string& batchJson, const std::string& label, bool approved) {
+    auto result = liveBridge_.commit(sessionId, revision, batchJson, label, approved);
+    if (result.applied) {
+        // Même rafraîchissement qu'un Undo/Redo : le document a changé sous l'interface.
+        refreshImage();
+        setWindowModified(!undoStack_.isClean());
+        updateActions();
+    }
+    return result;
+}
+
 void MainWindow::redo() {
     if (undoStack_.redo(project_)) {
         refreshImage();
@@ -2058,6 +2072,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
     // Si l'évènement n'est pas accepté (fermeture annulée), l'autosave
     // continue de tourner normalement.
     if (event->isAccepted()) {
+        liveBridge_.close();
         autosaveTimer_->stop();
         discardAutosave(slotFor(currentProjectPath_));
         discardPendingRecoverySlot();

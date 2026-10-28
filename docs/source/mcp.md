@@ -188,3 +188,14 @@ Un refus est un résultat d'outil `isError: true` dont le texte est le document
   non traitée ici.
 - Outils d'analyse fine (`fabric-risk`, balayage d'options, localisation) pas encore exposés :
   à ajouter au besoin dans `libs/mcp/src/tools.cpp`.
+
+## Mode live : pont vers le projet ouvert (en préparation)
+
+Le contrat est arrêté dans [l'ADR 0001](../adr/0001-compagnon-ia-session-live.md). Premier
+jalon livré : `project_ops::LiveBridge` (sans Qt) et `commands::ReplaceProjectCommand`. Le desktop
+prête son `Project` et son `UndoStack` au pont (`MainWindow::liveBridge()`) ; `commitLiveBatch`
+applique un lot validé en **une** étape d'annulation, avec contrôle de `session_id` et de
+`revision` (`E_STALE_REVISION`, `E_SESSION_CLOSED`, `E_APPROVAL_REQUIRED`, `E_BUSY`). L'aperçu
+(`preview`) simule le lot sur une copie sans toucher au dirty flag ni à l'historique. Le mode MCP
+autonome décrit plus haut est inchangé ; le transport IPC et les outils live arrivent au jalon
+suivant.

@@ -31,6 +31,7 @@
 #include "openstitch/document/object_fragment.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/path.hpp"
+#include "openstitch/project_ops/live_bridge.hpp"
 #include "openstitch/segmentation/color_merge.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
@@ -122,6 +123,15 @@ public:
     // machine), .svg et images. Passe par les mêmes gardes « modifications non
     // enregistrées » que les menus ; reporté tant qu'un dialogue modal est ouvert.
     void openPath(const QString& path);
+
+    // Pont « projet vivant » (ADR 0001) : un agent local lit et modifie CE document, jamais une
+    // copie. `commitLiveBatch` applique un lot validé en UNE étape d'annulation de la pile du
+    // desktop puis rafraîchit canevas, inspecteur, état « modifié » et actions.
+    [[nodiscard]] project_ops::LiveBridge& liveBridge() { return liveBridge_; }
+    project_ops::LiveBridge::Result commitLiveBatch(const std::string& sessionId,
+                                                    std::uint64_t revision,
+                                                    const std::string& batchJson,
+                                                    const std::string& label, bool approved);
 
 protected:
     void closeEvent(QCloseEvent* event) override;
@@ -1096,6 +1106,7 @@ private:
     QStringList recentFiles_;
     QMenu* recentMenu_{nullptr};
     commands::UndoStack undoStack_;
+    project_ops::LiveBridge liveBridge_{project_, undoStack_};
     image::Image processed_; // dernier résultat du pipeline (pour l'affichage)
     // Entrées exactes ayant produit `processed_` (clé de contenu du cache,
     // cf. refreshImage) : `processed_` n'est recalculée que si l'image source

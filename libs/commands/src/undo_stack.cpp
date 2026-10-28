@@ -5,6 +5,7 @@ namespace openstitch::commands {
 
 void UndoStack::execute(std::unique_ptr<ICommand> command, document::Project& project) {
     command->apply(project);
+    ++version_;
     if (cleanIndex_ > static_cast<long long>(undo_.size())) {
         // L'état propre se trouvait dans la branche « rétablir » qu'on écrase.
         cleanIndex_ = -1;
@@ -30,6 +31,7 @@ bool UndoStack::undo(document::Project& project) {
         return false;
     }
     undo_.back()->revert(project);
+    ++version_;
     redo_.push_back(std::move(undo_.back()));
     undo_.pop_back();
     mergeable_ = false;
@@ -41,6 +43,7 @@ bool UndoStack::redo(document::Project& project) {
         return false;
     }
     redo_.back()->apply(project);
+    ++version_;
     undo_.push_back(std::move(redo_.back()));
     redo_.pop_back();
     mergeable_ = false;
@@ -74,6 +77,7 @@ std::vector<std::string> UndoStack::redoNames() const {
 }
 
 void UndoStack::clear() {
+    ++version_;
     undo_.clear();
     redo_.clear();
     cleanIndex_ = 0;
