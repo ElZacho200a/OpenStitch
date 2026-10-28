@@ -1,5 +1,0 @@
-Filters: [agentic]
-Randomness seeded to: 2287676349
-===============================================================================
-All tests passed (135 assertions in 10 test cases)
-
