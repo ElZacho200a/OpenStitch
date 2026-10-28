@@ -22,6 +22,7 @@
 #include "canvas_view.hpp"
 #include "density_overlay.hpp"
 #include "main_window.hpp"
+#include "openstitch/stitch_generation/predicted_pull.hpp"
 #include "openstitch/stitch_generation/pull_map.hpp"
 #include "ui_memory.hpp"
 
@@ -61,7 +62,9 @@ void MainWindow::buildPullPreviewFeature() {
         const char* id;
         QString label;
     } kinds[] = {
-        {"default", tr("Standard")}, {"linen", tr("Lin lâche")}, {"stable", tr("Bien stabilisé")}};
+        {"default", tr("Tissu du projet / standard")},
+        {"linen", tr("Lin lâche")},
+        {"stable", tr("Bien stabilisé")}};
     const int saved = ui_memory::intValue(kFabricKey, 0, 0, 2);
     int index = 0;
     for (const auto& kind : kinds) {
@@ -113,7 +116,11 @@ void MainWindow::buildPullPreviewFeature() {
 
 stitch_generation::FabricResponse MainWindow::pullFabric() const {
     static const char* const kIds[] = {"default", "linen", "stable"};
-    return stitch_generation::fabric_preset(kIds[ui_memory::intValue(kFabricKey, 0, 0, 2)]);
+    const int choice = ui_memory::intValue(kFabricKey, 0, 0, 2);
+    const auto response = stitch_generation::fabric_preset(kIds[choice]);
+    // Par défaut, la prévisualisation lit la même matière que la compensation
+    // Predicted de l'export ; les deux autres entrées sont des essais explicites.
+    return choice == 0 ? stitch_generation::predicted_fabric_response(project_, response) : response;
 }
 
 // Séquence décalée du tirage prédit, en cache sous la clé (séquence + tissu). Nul si l'aperçu est
