@@ -1,31 +1,25 @@
-#À propos de ce document
+# À propos de ce document
 
-Cette documentation décrit **OpenStitch Studio **,
-    une application de bureau libre de numérisation pour broderie machine
-            .Elle couvre l'usage du logiciel, les concepts
-                de broderie qu'il met en œuvre, son architecture logicielle, ses formats
-                    de fichiers et sa compilation.
+Cette documentation décrit **OpenStitch Studio**, une application de bureau libre
+de numérisation pour broderie machine. Elle couvre l'usage du logiciel, les
+concepts de broderie qu'il met en œuvre, son architecture logicielle, ses
+formats de fichiers et sa compilation.
 
-        Le document s 'adresse à quatre publics : l' *
-        *utilisateur débutant **,
-    l'**utilisateur avancé en broderie **,
-    le **développeur contributeur **et le **mainteneur *
-            *.Chaque chapitre indique clairement à qui il s'adresse en priorité.
+Le document s'adresse à quatre publics : l'**utilisateur débutant**, l'**utilisateur
+avancé en broderie**, le **développeur contributeur** et le **mainteneur**. Chaque
+chapitre indique clairement à qui il s'adresse en priorité.
 
-        ##Principe de véracité
+## Principe de véracité
 
-            Les descriptions de fonctionnalités ont été **rapprochées du code et des tests **
-                présents dans le
-                dépôt(
-                    lire le code confirme
-                        qu'une fonction existe et ce qu 'elle fait, mais ne garantit pas que son résultat est de qualité — d' où
-                            la distinction des niveaux de validation,
-                    voir* Limitations*)
-                    .Lorsqu'une capacité était prévue mais n'est pas encore disponible, elle est marquée explicitement :
+Les descriptions de fonctionnalités ont été **rapprochées du code et des tests**
+présents dans le dépôt (lire le code confirme qu'une fonction existe et ce
+qu'elle fait, mais ne garantit pas que son résultat est de qualité — d'où la
+distinction des niveaux de validation, voir *Limitations*). Lorsqu'une capacité
+était prévue mais n'est pas encore disponible, elle est marquée explicitement :
 
-        - **Implémenté ** : disponible et testé;
-- ** Partiellement implémenté* *:présent mais incomplet;
-- ** Expérimental* *:présent, non stabilisé;
+- **Implémenté** : disponible et testé ;
+- **Partiellement implémenté** : présent mais incomplet ;
+- **Expérimental** : présent, non stabilisé ;
 - **Prévu** : conçu dans l'architecture, non implémenté ;
 - **Non implémenté** : absent.
 

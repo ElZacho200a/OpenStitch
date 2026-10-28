@@ -1,4 +1,4 @@
-#Compagnon IA
+# Compagnon IA
 
 Public : utilisateurs, intégrateurs, mainteneurs. Le compagnon est un **assistant optionnel** :
 un agent IA peut inspecter et, **avec votre approbation**, modifier le projet actuellement ouvert
@@ -12,8 +12,7 @@ Claude). Détail des outils : [Serveur MCP](mcp.md).
 | Mode | Qui parle à qui | Mise en route |
 |---|---|---|
 | **Agent externe** (Claude Code, autre client MCP) | le client lance `openstitch-mcp --live`, qui relaie au desktop | **Aide ▸ Pont IA local (MCP)** puis, dans le client MCP : `"command": "…\mcp\openstitch-mcp.exe", "args": ["--live"]` |
-| **Dock intégré** (Claude via votre clé API) | le dock appelle l'API Anthropic ; l'agent utilise les outils en processus | **Aide ▸ Compagnon IA…** : clé API, « Activer le fournisseur Claude » ;
-ouvrir **Affichage ▸ Panneaux ▸ Compagnon IA** (`Ctrl+Maj+J`) |
+| **Dock intégré** (Claude via votre clé API) | le dock appelle l'API Anthropic ; l'agent utilise les outils en processus | **Aide ▸ Compagnon IA…** : clé API, « Activer le fournisseur Claude » ; ouvrir **Affichage ▸ Panneaux ▸ Compagnon IA** (`Ctrl+Maj+J`) |
 
 Les deux modes partagent les mêmes outils, la même politique de permissions et le même point
 d'approbation (le dock).
@@ -45,8 +44,7 @@ tissu reste nécessaire.
 |---|---|
 | Pont IA local seul (agent externe) | **Rien** par OpenStitch : le tube nommé est local (accessible à votre compte seul, jeton aléatoire par session, aucun port réseau). Ce que votre client MCP envoie à son propre fournisseur dépend de ce client. |
 | Fournisseur Claude du dock activé | À chaque message que **vous** envoyez : votre texte, les résultats d'outils (statistiques, listes d'objets, aperçus de rendu PNG) et votre clé API (en-tête HTTPS) vers `api.anthropic.com`. Rien n'est envoyé tant que vous n'écrivez pas. |
-| Journal de diagnostic (désactivé par défaut) | Reste en mémoire sur votre machine ;
-clés et chemins masqués; contenu des messages **jamais** inclus sans case dédiée cochée. |
+| Journal de diagnostic (désactivé par défaut) | Reste en mémoire sur votre machine ; clés et chemins masqués; contenu des messages **jamais** inclus sans case dédiée cochée. |
 
 La **clé API** est stockée dans le Gestionnaire d'identifiants Windows (jamais dans un fichier,
 `QSettings`, un projet `.osp` ni un journal) et retirée à la désinstallation. Aucun abonnement
