@@ -198,11 +198,15 @@ std::size_t reassign_to_neighbours(Segmentation& seg, std::vector<char> pending,
 // toute voisine plus éloignée (l'îlot reste alors tel quel), 0 = pas de limite.
 enum class MergeTarget { LongestBorder, ClosestColour };
 
+// `detail_mask` (optionnel, à la taille de la segmentation, sinon ignoré) : une région dont la
+// moyenne du masque est >= 128 est comparée à `detail_min_px` (si plus petit que `min_px`) au lieu
+// de `min_px` -- les petites formes de détail ne sont pas absorbées.
 std::size_t merge_small_regions(Segmentation& seg, std::size_t min_px,
                                 std::optional<std::array<std::uint8_t, 3>> excluded = {},
                                 double boundary_weight = 0.0,
                                 MergeTarget target = MergeTarget::LongestBorder,
-                                double max_delta_e = 0.0);
+                                double max_delta_e = 0.0, const DetailMask* detail_mask = nullptr,
+                                std::size_t detail_min_px = 0);
 
 // Écart de couleur CIELAB (ΔE76, illuminant D65) entre deux couleurs sRGB 8 bits.
 [[nodiscard]] double cielab_delta_e(std::array<std::uint8_t, 3> a, std::array<std::uint8_t, 3> b);
