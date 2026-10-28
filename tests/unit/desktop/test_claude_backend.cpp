@@ -531,9 +531,12 @@ void MainWindowTest::claudeCodeStreamsAssistantTextWithoutRepeatingFinalResult()
                                      QStringLiteral("/virtual/workspace"));
     QSignalSpy text(&backend, &CompanionBackend::assistantText);
 
-    const QByteArray assistant = R"({"type":"assistant","message":{"id":"msg-live-1","content":[{"type":"text","text":"Trois objets orange identifies."}]}})";
+    const QByteArray assistant =
+        R"({"type":"assistant","message":{"id":"msg-live-1",)"
+        R"("content":[{"type":"text","text":"Trois objets orange identifies."}]}})";
     backend.ingestEventForTest(assistant);
-    QCOMPARE(text.size(), 1); // Le texte arrive AVANT l'evenement final.
+    // Le texte arrive AVANT l'evenement final.
+    QCOMPARE(text.size(), 1);
     backend.ingestEventForTest(assistant); // Retansmission d'un meme message : ignoree.
     backend.ingestEventForTest(
         R"({"type":"result","is_error":false,"session_id":"12345678-1234-1234-1234-123456789abc","result":"Trois objets orange identifies."})");

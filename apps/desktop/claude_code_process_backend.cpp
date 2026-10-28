@@ -201,7 +201,8 @@ void ClaudeCodeProcessBackend::handleLine(const QByteArray& line) {
                 const QString text = block.value(QStringLiteral("text")).toString();
                 if (!text.trimmed().isEmpty()) {
                     streamedText_ = true;
-                    emit assistantText(text); // Afficher au fur et a mesure, avant l'evenement result.
+                    // Afficher au fil de l'eau, avant l'evenement result.
+                    emit assistantText(text);
                 }
                 continue;
             }
