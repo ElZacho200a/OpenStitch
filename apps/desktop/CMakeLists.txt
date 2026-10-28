@@ -40,6 +40,10 @@ add_library(openstitch_desktop_widgets STATIC
     live_server.cpp
     companion_dock.cpp
     companion_backend.hpp
+    claude_backend.cpp
+    claude_backend.hpp
+    companion_settings_dialog.cpp
+    companion_settings_dialog.hpp
     main_window_preferences.cpp
     general_preferences_dialog.cpp
     general_preferences_dialog.hpp
@@ -205,9 +209,13 @@ target_link_libraries(openstitch_desktop_widgets
            openstitch::stitch_generation openstitch::formats openstitch::project_io
            openstitch::stitch_analysis openstitch::optimization openstitch::autodigitize
            openstitch::auto_satin openstitch::segmentation openstitch::lettering
-           openstitch::ai_segmentation openstitch::project_ops openstitch::mcp
+           openstitch::ai_segmentation openstitch::project_ops openstitch::mcp openstitch::agent
     PRIVATE openstitch::warnings
 )
+
+if(WIN32)
+    target_link_libraries(openstitch_desktop_widgets PRIVATE advapi32)
+endif()
 
 add_executable(openstitch WIN32 main.cpp)
 target_link_libraries(openstitch PRIVATE openstitch_desktop_widgets openstitch::warnings)

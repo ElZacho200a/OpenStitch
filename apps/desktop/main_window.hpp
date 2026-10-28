@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "auto_satin_strategy_ui.hpp"
+#include "claude_backend.hpp"
 #include "companion_dock.hpp"
 #include "interaction_map.hpp"
 #include "live_server.hpp"
@@ -139,6 +140,8 @@ public:
     void afterLiveCommit();
     // Dock « Compagnon IA » (masqué par défaut) ; `focusEmbroideryObject` sélectionne un objet.
     void buildCompanionDock();
+    void applyCompanionSettings();
+    void showCompanionSettings();
     void updateCompanionContext();
     void focusEmbroideryObject(quint64 id);
     [[nodiscard]] CompanionDock* companionDock() const { return companionDock_; }
@@ -1128,6 +1131,9 @@ private:
     std::unique_ptr<LiveServer> liveServer_;
     QAction* liveBridgeAct_{nullptr};
     CompanionDock* companionDock_{nullptr};
+    std::unique_ptr<agent::ISecretStore> secretStore_;
+    ClaudeCompanionBackend* claudeBackend_{nullptr};
+    QAction* companionSettingsAct_{nullptr};
     image::Image processed_; // dernier résultat du pipeline (pour l'affichage)
     // Entrées exactes ayant produit `processed_` (clé de contenu du cache,
     // cf. refreshImage) : `processed_` n'est recalculée que si l'image source

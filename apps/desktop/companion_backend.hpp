@@ -56,7 +56,8 @@ signals:
     void toolCalled(const openstitch::desktop::CompanionToolCall& call);
     void proposalReady(const openstitch::desktop::CompanionProposal& proposal);
     void failed(const QString& message); // réseau, quota, refus… (non bloquant)
-    void finished();                     // fin du tour (succès, échec ou annulation)
+    void usage(quint64 inputTokens, quint64 outputTokens); // cumul de la demande, si connu
+    void finished(); // fin du tour (succès, échec ou annulation)
 };
 
 } // namespace openstitch::desktop

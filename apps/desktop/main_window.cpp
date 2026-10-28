@@ -91,6 +91,7 @@
 #include "vector_tooltip.hpp"
 
 #include "calque_panel.hpp"
+#include "companion_settings_dialog.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/autodigitize/contour_objects.hpp"
 #include "openstitch/autodigitize/line_layer.hpp"
@@ -555,6 +556,7 @@ MainWindow::MainWindow() {
     }
 
     buildHelpMenu();
+    applyCompanionSettings();
     buildWorkspacesMenu();
 
     // Noms accessibles (lecteurs d'écran) sur les grandes zones.
@@ -1366,6 +1368,9 @@ void MainWindow::resetDocumentState() {
     if (companionDock_ != nullptr) {
         companionDock_->documentReplaced();
     }
+    if (claudeBackend_ != nullptr) {
+        claudeBackend_->resetConversation();
+    }
     liveBridge_.reset(); // nouveau document : l'ancienne session live est close
     sequence_.reset();
     editStates_.clear();
@@ -1752,6 +1757,11 @@ void MainWindow::buildCompanionDock() {
     companionDock_ = new CompanionDock(this);
     addDockWidget(Qt::RightDockWidgetArea, companionDock_);
     tabifyDockWidget(analysisDock_, companionDock_);
+    secretStore_ = makeSystemSecretStore();
+    claudeBackend_ = new ClaudeCompanionBackend(liveService_, *secretStore_, {}, this);
+    companionDock_->setBackend(claudeBackend_);
+    connect(companionDock_, &CompanionDock::configureProviderRequested, this,
+            &MainWindow::showCompanionSettings);
     companionDock_->hide(); // masqué par défaut : n'occupe aucune place tant qu'on ne l'ouvre pas
     // Raccourci configurable : réglage « shortcuts/companionDock » (séquence Qt), Ctrl+Maj+J par
     // défaut ; vide = aucun raccourci.
@@ -1817,6 +1827,31 @@ void MainWindow::focusEmbroideryObject(quint64 id) {
             return;
         }
     }
+}
+
+void MainWindow::showCompanionSettings() {
+    CompanionSettingsDialog dialog(*secretStore_, this);
+    if (dialog.exec() == QDialog::Accepted) {
+        applyCompanionSettings();
+    }
+}
+
+void MainWindow::applyCompanionSettings() {
+    const bool off = companion_settings::fullyDisabled();
+    if (off) {
+        if (liveBridgeAct_ != nullptr) {
+            liveBridgeAct_->setChecked(false);
+        }
+        setLiveBridgeEnabled(false);
+    }
+    if (liveBridgeAct_ != nullptr) {
+        liveBridgeAct_->setEnabled(!off);
+    }
+    if (claudeBackend_ != nullptr) {
+        claudeBackend_->refresh();
+    }
+    companionDock_->setFullyDisabled(off);
+    companionDock_->refresh();
 }
 
 bool MainWindow::setLiveBridgeEnabled(bool on, const std::filesystem::path& dir, QString* error) {
@@ -6732,6 +6767,14 @@ void MainWindow::buildHelpMenu() {
             }
         });
     }
+
+    companionSettingsAct_ = helpMenu->addAction(tr("Compagnon &IA…"));
+    companionSettingsAct_->setObjectName(QStringLiteral("action_companion_settings"));
+    companionSettingsAct_->setToolTip(
+        tr("Fournisseur Claude, clé API (stockage sécurisé du système), données transmises, "
+           "désactivation du compagnon."));
+    companionSettingsAct_->setStatusTip(companionSettingsAct_->toolTip());
+    connect(companionSettingsAct_, &QAction::triggered, this, &MainWindow::showCompanionSettings);
 
     helpGesturesAct_ = helpMenu->addAction(tr("Gestes &souris et clavier"));
     helpGesturesAct_->setObjectName(QStringLiteral("action_help_gestures"));

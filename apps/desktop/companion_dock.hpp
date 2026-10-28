@@ -40,6 +40,11 @@ public:
     // Le document a été remplacé (nouveau, ouverture) ou fermé : rejette toute proposition en
     // attente et avertit que la conversation concerne l'ancien document.
     void documentReplaced();
+    // Compagnon désactivé par l'utilisateur (pont local et fournisseur) : accueil explicatif.
+    void setFullyDisabled(bool disabled);
+    // Relit la disponibilité du backend (clé ajoutée / retirée, réglages modifiés).
+    void refresh() { refreshHeader(); }
+    void setUsage(quint64 inputTokens, quint64 outputTokens);
 
     // Proposition affichée sans bloquer ; `decision(true|false)` est appelé une seule fois (rejet
     // automatique si une autre proposition ou un changement de document survient).
@@ -59,6 +64,7 @@ signals:
     void focusObjectRequested(quint64 objectId);
     void undoLastRequested();
     void enableLiveBridgeRequested();
+    void configureProviderRequested();
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
@@ -94,6 +100,10 @@ private:
     QStackedWidget* stack_{nullptr};
     QLabel* welcome_{nullptr};
     QPushButton* enableBridge_{nullptr};
+    QPushButton* configure_{nullptr};
+    bool fullyDisabled_{false};
+    quint64 usageIn_{0};
+    quint64 usageOut_{0};
     QLabel* header_{nullptr};
     QLabel* errorBanner_{nullptr};
     QTextBrowser* transcript_{nullptr};

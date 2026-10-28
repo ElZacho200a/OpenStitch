@@ -233,3 +233,22 @@ d'activer le pont IA local ; l'édition d'OpenStitch ne dépend jamais de lui.
 - Contexte affiché : projet actif, objets sélectionnés, état du pont. Thèmes clair/sombre et
   fenêtres étroites pris en charge ; noms accessibles sur chaque contrôle.
 - Le fournisseur (`CompanionBackend`) est une interface ; les tests utilisent un faux backend.
+
+### Fournisseur Claude (Aide ▸ Compagnon IA…)
+
+Décision et alternatives : [ADR 0002](../adr/0002-fournisseur-claude.md). Le dock peut dialoguer avec
+Claude via l'API Messages d'Anthropic ; l'agent appelle **en processus** les mêmes outils que le mode
+live (pas de serveur HTTP, pas de « remote MCP »).
+
+1. **Aide ▸ Compagnon IA…** : saisir votre **clé API** (Gestionnaire d'identifiants Windows, jamais
+   un fichier ni `QSettings`), cocher « Activer le fournisseur Claude », choisir le modèle.
+2. Dans le dock : poser une question (« combien d'objets orange ? ») ; l'agent lit le projet
+   (`live_status`, `project_inspect`, `project_palette`…) sans le modifier. Toute modification
+   passe par l'approbation du dock et s'annule en une étape.
+3. **Ce qui quitte la machine** : vos messages, les résultats d'outils (statistiques, listes
+   d'objets, aperçus de rendu) et la clé (en-tête HTTPS) vers `api.anthropic.com`, uniquement quand
+   vous envoyez un message. Aucun abonnement Claude grand public n'est utilisable : il faut une clé API.
+4. **Hors ligne / sans clé** : le dock reste sur l'écran d'accueil ; OpenStitch fonctionne
+   normalement. « Désactiver entièrement le compagnon » coupe fournisseur et pont local.
+5. Erreurs (réseau, quota, délai, clé refusée) : bandeau non bloquant, reprises bornées,
+   bouton Interrompre ; l'usage en jetons est affiché (le coût se lit chez le fournisseur).

@@ -85,7 +85,11 @@ void CompanionDock::buildUi() {
     enableBridge_ = new QPushButton(welcomePage);
     enableBridge_->setObjectName(QStringLiteral("button_companionEnableBridge"));
     connect(enableBridge_, &QPushButton::clicked, this, &CompanionDock::enableLiveBridgeRequested);
+    configure_ = new QPushButton(welcomePage);
+    configure_->setObjectName(QStringLiteral("button_companionConfigure"));
+    connect(configure_, &QPushButton::clicked, this, &CompanionDock::configureProviderRequested);
     welcomeLayout->addWidget(welcome_);
+    welcomeLayout->addWidget(configure_);
     welcomeLayout->addWidget(enableBridge_);
     welcomeLayout->addStretch(1);
     stack_->addWidget(welcomePage);
@@ -206,6 +210,7 @@ void CompanionDock::retranslate() {
            "réseau n'est ouvert ; chaque modification demande votre approbation et s'annule en "
            "une seule étape (Ctrl+Z)."));
     enableBridge_->setText(tr("Activer le pont IA local"));
+    configure_->setText(tr("Configurer Claude…"));
     send_->setText(tr("Envoyer"));
     send_->setToolTip(tr("Envoyer le message (Entrée) — Maj+Entrée : saut de ligne"));
     cancel_->setText(tr("Interrompre"));
@@ -259,6 +264,8 @@ void CompanionDock::connectBackend() {
     connect(backend_, &CompanionBackend::failed, this,
             [this](const QString& message) { showError(message); });
     connect(backend_, &CompanionBackend::finished, this, [this] { setBusy(false); });
+    connect(backend_, &CompanionBackend::usage, this,
+            [this](quint64 in, quint64 out) { setUsage(in, out); });
     connect(backend_, &QObject::destroyed, this, [this] {
         backend_ = nullptr;
         setBusy(false);
@@ -289,7 +296,13 @@ void CompanionDock::setUndoAvailable(bool available, const QString& undoName) {
 void CompanionDock::refreshHeader() {
     const bool connected = backend_ != nullptr && backend_->available();
     stack_->setCurrentIndex(connected ? 1 : 0);
-    enableBridge_->setVisible(!liveBridgeActive_);
+    enableBridge_->setVisible(!liveBridgeActive_ && !fullyDisabled_);
+    configure_->setVisible(true);
+    if (fullyDisabled_) {
+        welcome_->setText(tr("Le compagnon IA est désactivé (pont local et fournisseur). "
+                             "OpenStitch fonctionne normalement. Vous pouvez le réactiver dans "
+                             "Aide ▸ Compagnon IA…"));
+    }
     QString text;
     if (!hasDocument_) {
         text = tr("Aucun projet actif.");
@@ -301,10 +314,31 @@ void CompanionDock::refreshHeader() {
             (liveBridgeActive_ ? tr("Pont IA local : actif.") : tr("Pont IA local : inactif."));
     if (connected) {
         text += QLatin1Char('\n') + tr("Fournisseur : %1").arg(backend_->providerName());
+        if (usageIn_ + usageOut_ > 0) {
+            text += QLatin1Char('\n') +
+                    tr("Utilisation : %1 jetons en entrée, %2 en sortie (coût : voir votre "
+                       "compte chez le fournisseur)")
+                        .arg(usageIn_)
+                        .arg(usageOut_);
+        }
     }
     header_->setText(text);
     send_->setEnabled(connected && !busy_ && hasDocument_);
     input_->setEnabled(connected);
+}
+
+void CompanionDock::setFullyDisabled(bool disabled) {
+    fullyDisabled_ = disabled;
+    if (!disabled) {
+        retranslate(); // restaure le texte d'accueil standard
+    }
+    refreshHeader();
+}
+
+void CompanionDock::setUsage(quint64 inputTokens, quint64 outputTokens) {
+    usageIn_ = inputTokens;
+    usageOut_ = outputTokens;
+    refreshHeader();
 }
 
 void CompanionDock::documentReplaced() {

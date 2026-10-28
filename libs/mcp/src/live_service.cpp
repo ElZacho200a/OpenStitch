@@ -62,6 +62,24 @@ const std::vector<LiveExtraTool>& live_extra_tools() {
     return kExtraTools;
 }
 
+std::string live_tools_json() {
+    json list = json::array();
+    for (const auto& tool : tools()) {
+        if (live_policy(tool.name) == LivePolicy::Denied) {
+            continue;
+        }
+        list.push_back(json{{"name", tool.name},
+                            {"description", tool.description},
+                            {"input_schema", json::parse(tool.input_schema)}});
+    }
+    for (const auto& extra : live_extra_tools()) {
+        list.push_back(json{{"name", extra.name},
+                            {"description", extra.description},
+                            {"input_schema", json::parse(extra.input_schema)}});
+    }
+    return list.dump();
+}
+
 // --- Appel en cours --------------------------------------------------------------------------
 
 struct LivePendingCall::Impl {

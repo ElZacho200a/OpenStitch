@@ -42,6 +42,10 @@ struct LiveExtraTool {
 };
 [[nodiscard]] const std::vector<LiveExtraTool>& live_extra_tools();
 
+// Outils exposés à un agent en mode live (lecture + `project_apply` + `live_status`), au format
+// JSON `[{"name","description","input_schema"}]`. Même source que `tools/list` du relais.
+[[nodiscard]] std::string live_tools_json();
+
 // État du document hôte, fourni par l'application à la demande (fil GUI).
 struct LiveDocumentInfo {
     std::string name; // nom affiché (sans chemin complet : pas de fuite de chemin)
