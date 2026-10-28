@@ -250,7 +250,8 @@ TEST_CASE("live mode server lists only allowed tools plus live_status", "[live]"
     const auto reply = live.handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}");
     REQUIRE(reply.has_value());
     std::set<std::string> names;
-    for (const auto& t : parse(*reply)["result"]["tools"]) {
+    const json listing = parse(*reply); // pas de temporaire dans la boucle (référence pendante)
+    for (const auto& t : listing["result"]["tools"]) {
         names.insert(t["name"].get<std::string>());
     }
     CHECK(names.contains("project_inspect"));
