@@ -24,13 +24,18 @@
 #include <vector>
 
 #include "auto_satin_strategy_ui.hpp"
+#include "claude_backend.hpp"
+#include "companion_dock.hpp"
+#include "companion_launcher.hpp"
 #include "interaction_map.hpp"
+#include "live_server.hpp"
 #include "openstitch/commands/transform_ops.hpp"
 #include "openstitch/commands/undo_stack.hpp"
 #include "openstitch/commands/vector_ops.hpp"
 #include "openstitch/document/object_fragment.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/path.hpp"
+#include "openstitch/project_ops/live_bridge.hpp"
 #include "openstitch/segmentation/color_merge.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
@@ -79,6 +84,7 @@ class CompositeCommand;
 namespace openstitch::desktop {
 
 class SimulationNavBar;
+class ClaudeCodeProcessBackend;
 
 class CanvasView;
 struct DensityRaster; // density_overlay.hpp
@@ -122,6 +128,31 @@ public:
     // machine), .svg et images. Passe par les mêmes gardes « modifications non
     // enregistrées » que les menus ; reporté tant qu'un dialogue modal est ouvert.
     void openPath(const QString& path);
+
+    // Pont « projet vivant » (ADR 0001) : un agent local lit et modifie CE document, jamais une
+    // copie. `commitLiveBatch` applique un lot validé en UNE étape d'annulation de la pile du
+    // desktop puis rafraîchit canevas, inspecteur, état « modifié » et actions.
+    [[nodiscard]] project_ops::LiveBridge& liveBridge() { return liveBridge_; }
+    // Ouvre / ferme le pont IA local (tube nommé + fichier de découverte `dir`, défaut
+    // `mcp::live_directory()`). Faux si l'ouverture échoue (message dans `error`).
+    bool setLiveBridgeEnabled(bool on, const std::filesystem::path& dir = {},
+                              QString* error = nullptr);
+    [[nodiscard]] mcp::LiveService& liveService() { return liveService_; }
+    [[nodiscard]] mcp::LiveDocumentInfo liveDocumentInfo() const;
+    void afterLiveCommit();
+    // Dock « Compagnon IA » (masqué par défaut) ; `focusEmbroideryObject` sélectionne un objet.
+    void buildCompanionDock();
+    void applyCompanionSettings();
+    void showCompanionSettings();
+    void openClaudeCode();
+    void useClaudeCodeInDock();
+    void updateCompanionContext();
+    void focusEmbroideryObject(quint64 id);
+    [[nodiscard]] CompanionDock* companionDock() const { return companionDock_; }
+    project_ops::LiveBridge::Result commitLiveBatch(const std::string& sessionId,
+                                                    std::uint64_t revision,
+                                                    const std::string& batchJson,
+                                                    const std::string& label, bool approved);
 
 protected:
     void closeEvent(QCloseEvent* event) override;
@@ -1096,6 +1127,22 @@ private:
     QStringList recentFiles_;
     QMenu* recentMenu_{nullptr};
     commands::UndoStack undoStack_;
+    project_ops::LiveBridge liveBridge_{project_, undoStack_};
+    // Pont IA local (ADR 0001) : désactivé par défaut ; ne s'ouvre que sur action explicite.
+    DialogApprovalGate liveGate_{this};
+    mcp::LiveService liveService_{liveBridge_, liveGate_, [this] { return liveDocumentInfo(); },
+                                  [this] { afterLiveCommit(); }};
+    std::unique_ptr<LiveServer> liveServer_;
+    QAction* liveBridgeAct_{nullptr};
+    CompanionDock* companionDock_{nullptr};
+    std::unique_ptr<agent::ISecretStore> secretStore_;
+    agent::DiagnosticLog companionLog_;
+    ClaudeCompanionBackend* claudeBackend_{nullptr};
+    ClaudeCodeProcessBackend* codeBackend_{nullptr};
+    QAction* companionSettingsAct_{nullptr};
+    QAction* openClaudeCodeAct_{nullptr};
+    // Environnement système du lanceur Claude Code (remplaçable par les tests).
+    ClaudeCodeLauncher::Env launcherEnv_{ClaudeCodeLauncher::systemEnv()};
     image::Image processed_; // dernier résultat du pipeline (pour l'affichage)
     // Entrées exactes ayant produit `processed_` (clé de contenu du cache,
     // cf. refreshImage) : `processed_` n'est recalculée que si l'image source

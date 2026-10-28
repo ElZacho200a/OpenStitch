@@ -22,6 +22,14 @@ inline constexpr const char* kIo = "E_IO";           // fichier illisible/non é
 inline constexpr const char* kInvalidProject = "E_INVALID_PROJECT"; // .osp invalide
 inline constexpr const char* kNothingToDo = "E_NOTHING_TO_DO";      // rien produit (aucun objet)
 inline constexpr const char* kInternal = "E_INTERNAL";              // défaut interne
+// Mode live (ADR 0001, docs/adr/0001-compagnon-ia-session-live.md).
+inline constexpr const char* kStaleRevision =
+    "E_STALE_REVISION"; // document changé depuis la lecture
+inline constexpr const char* kSessionClosed =
+    "E_SESSION_CLOSED"; // document remplacé / session close
+inline constexpr const char* kApprovalRequired = "E_APPROVAL_REQUIRED"; // mutation sans approbation
+inline constexpr const char* kApprovalDenied = "E_APPROVAL_DENIED"; // refusée par l'utilisateur
+inline constexpr const char* kBusy = "E_BUSY";                      // commit déjà en cours
 } // namespace code
 
 // Erreur structurée montrable telle quelle (texte) ou en JSON.

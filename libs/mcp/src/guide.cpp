@@ -36,8 +36,10 @@ dans le rapport plutôt que d'inventer une mesure.
 
 ## Ce que le serveur change
 
-- Une session garde UN projet ouvert : pas besoin de copies de fichiers pour comparer. Pour
-  conserver une variante, `project_save` sous un autre nom puis `project_open` pour y revenir.
+- Une session garde UN projet ouvert : `project_status` donne le statut `dirty` et les variantes.
+  `project_open`, `project_new` et `project_digitize` refusent la perte de modifications non
+  enregistrees : faire `project_save` ou confirmer `discard_changes=true`. `project_close`
+  libere le projet ; un changement de projet vide les anciens checkpoints.
 - `project_apply` est tout ou rien ; `skip_refused` écarte les opérations refusées (listées dans
   `skipped`) et applique le reste : utile pour tester `auto_satin` sur beaucoup d'objets.
 - Les trois satins : `project_apply` avec `{"op":"auto_satin","object":ID,"strategy":"skeleton"

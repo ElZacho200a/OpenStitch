@@ -91,6 +91,8 @@
 #include "vector_tooltip.hpp"
 
 #include "calque_panel.hpp"
+#include "claude_code_process_backend.hpp"
+#include "companion_settings_dialog.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/autodigitize/contour_objects.hpp"
 #include "openstitch/autodigitize/line_layer.hpp"
@@ -480,6 +482,7 @@ MainWindow::MainWindow() {
     buildDensityFeature();
     buildPullPreviewFeature();
     // [cablage-E:fin]
+    buildCompanionDock();
     panelsMenu_->addAction(historyDock_->toggleViewAction());
     for (auto* d :
          {documentDock_, propertiesDock_, workflowDock_, orderDock_, filterDock_, analysisDock_}) {
@@ -554,6 +557,7 @@ MainWindow::MainWindow() {
     }
 
     buildHelpMenu();
+    applyCompanionSettings();
     buildWorkspacesMenu();
 
     // Noms accessibles (lecteurs d'écran) sur les grandes zones.
@@ -1329,6 +1333,7 @@ void MainWindow::buildMenus() {
         std::vector<QDockWidget*> docks{documentDock_, propertiesDock_, workflowDock_,
                                         orderDock_,    filterDock_,     analysisDock_};
         docks.push_back(historyDock_);
+        docks.push_back(companionDock_);
         if (hide) {
             panelsToRestore_.clear();
             for (auto* d : docks) {
@@ -1361,6 +1366,16 @@ void MainWindow::resetDocumentState() {
     migratedFromVersion_ = 0;
     migratedFromPath_.clear();
     undoStack_.clear();
+    if (companionDock_ != nullptr) {
+        companionDock_->documentReplaced();
+    }
+    if (claudeBackend_ != nullptr) {
+        claudeBackend_->resetConversation();
+        if (codeBackend_ != nullptr) {
+            codeBackend_->resetConversation();
+        }
+    }
+    liveBridge_.reset(); // nouveau document : l'ancienne session live est close
     sequence_.reset();
     editStates_.clear();
     setSelection({});
@@ -1725,6 +1740,250 @@ void MainWindow::undo() {
     }
 }
 
+project_ops::LiveBridge::Result
+MainWindow::commitLiveBatch(const std::string& sessionId, std::uint64_t revision,
+                            const std::string& batchJson, const std::string& label, bool approved) {
+    auto result = liveBridge_.commit(sessionId, revision, batchJson, label, approved);
+    if (result.applied) {
+        afterLiveCommit();
+    }
+    return result;
+}
+
+void MainWindow::afterLiveCommit() {
+    // Même rafraîchissement qu'un Undo/Redo : le document a changé sous l'interface.
+    refreshImage();
+    setWindowModified(!undoStack_.isClean());
+    updateActions();
+}
+
+void MainWindow::buildCompanionDock() {
+    companionDock_ = new CompanionDock(this);
+    addDockWidget(Qt::RightDockWidgetArea, companionDock_);
+    tabifyDockWidget(analysisDock_, companionDock_);
+    secretStore_ = makeSystemSecretStore();
+    claudeBackend_ = new ClaudeCompanionBackend(liveService_, *secretStore_, {}, this);
+    claudeBackend_->setDiagnostics(&companionLog_);
+    companionLog_.set_enabled(companion_settings::diagnosticsEnabled());
+    companionLog_.set_content_consent(companion_settings::diagnosticsEnabled() &&
+                                      companion_settings::diagnosticsContentConsent());
+    companionDock_->setBackend(claudeBackend_);
+    connect(companionDock_, &CompanionDock::configureProviderRequested, this,
+            &MainWindow::showCompanionSettings);
+    companionDock_->hide(); // masqué par défaut : n'occupe aucune place tant qu'on ne l'ouvre pas
+    // Raccourci configurable : réglage « shortcuts/companionDock » (séquence Qt), Ctrl+Maj+J par
+    // défaut ; vide = aucun raccourci.
+    const QString keys =
+        QSettings()
+            .value(QStringLiteral("shortcuts/companionDock"), QStringLiteral("Ctrl+Shift+J"))
+            .toString();
+    QAction* toggle = companionDock_->toggleViewAction();
+    toggle->setObjectName(QStringLiteral("action_companionDock"));
+    toggle->setShortcut(QKeySequence(keys));
+    toggle->setToolTip(tr("Affiche ou masque le compagnon IA (%1)").arg(keys));
+    toggle->setStatusTip(toggle->toolTip());
+    panelsMenu_->addAction(toggle);
+    connect(companionDock_, &CompanionDock::focusObjectRequested, this,
+            [this](quint64 id) { focusEmbroideryObject(id); });
+    connect(companionDock_, &CompanionDock::undoLastRequested, this, &MainWindow::undo);
+    connect(companionDock_, &CompanionDock::enableLiveBridgeRequested, this, [this] {
+        if (liveBridgeAct_ != nullptr) {
+            liveBridgeAct_->setChecked(true);
+        }
+    });
+    connect(companionDock_, &CompanionDock::openClaudeCodeRequested, this,
+            &MainWindow::openClaudeCode);
+    connect(companionDock_, &CompanionDock::useClaudeCodeInDockRequested, this,
+            &MainWindow::useClaudeCodeInDock);
+    // Les approbations de l'agent s'affichent dans le dock (boîte modale seulement en repli).
+    liveGate_.setChoiceDelegate([this](const mcp::ChoiceRequest& request) {
+        companionDock_->show();
+        companionDock_->raise();
+        QStringList labels;
+        QList<quint64> focus;
+        for (const auto& option : request.options) {
+            labels << QString::fromStdString(option.label);
+            focus << (option.object_ids.empty() ? 0 : option.object_ids.front());
+        }
+        return companionDock_->askChoice(QString::fromStdString(request.question), labels, focus);
+    });
+    liveGate_.setDelegate([this](const mcp::ApprovalRequest& request) {
+        companionDock_->show();
+        companionDock_->raise();
+        CompanionProposal proposal;
+        proposal.title = tr("Changement proposé par un agent IA");
+        proposal.summary = tr("« %1 » : %n opération(s). Annulable en une étape (Ctrl+Z).", "",
+                              static_cast<int>(request.items.size()))
+                               .arg(QString::fromStdString(request.label));
+        for (const auto& item : request.items) {
+            proposal.items.push_back({item.object_id, QString::fromStdString(item.text)});
+        }
+        proposal.beforePng = QByteArray::fromStdString(request.before_png);
+        proposal.afterPng = QByteArray::fromStdString(request.after_png);
+        QStringList metrics;
+        for (const auto& metric : request.metrics) {
+            metrics << QString::fromStdString(metric);
+        }
+        if (!metrics.isEmpty()) {
+            proposal.summary += QStringLiteral("\n") + metrics.join(QStringLiteral("\n"));
+        }
+        for (const auto& warning : request.warnings) {
+            proposal.warnings << QString::fromStdString(warning);
+        }
+        return companionDock_->askApproval(proposal);
+    });
+}
+
+void MainWindow::updateCompanionContext() {
+    if (companionDock_ == nullptr) {
+        return;
+    }
+    const auto info = liveDocumentInfo();
+    companionDock_->setContext(QString::fromStdString(info.name),
+                               static_cast<int>(info.selection.size()), hasDocumentContent());
+    companionDock_->setLiveBridgeActive(liveServer_ != nullptr);
+    companionDock_->setUndoAvailable(undoStack_.canUndo(),
+                                     QString::fromStdString(undoStack_.undoName()));
+}
+
+void MainWindow::focusEmbroideryObject(quint64 id) {
+    ObjectId target;
+    target.value = id;
+    for (const auto& e : project_.embroidery_objects) {
+        if (e.id == target) {
+            Selection selection;
+            selection.embroidery = target;
+            setSelection(selection);
+            refreshImage();
+            updateActions();
+            return;
+        }
+    }
+}
+
+void MainWindow::showCompanionSettings() {
+    CompanionSettingsDialog dialog(*secretStore_, companionLog_, this);
+    if (dialog.exec() == QDialog::Accepted) {
+        applyCompanionSettings();
+    }
+}
+
+void MainWindow::useClaudeCodeInDock() {
+    if (companion_settings::fullyDisabled()) {
+        QMessageBox::information(this, tr("Claude Code"),
+                                 tr("Le compagnon IA est desactive dans les preferences."));
+        return;
+    }
+    QString executable;
+    QString workspace;
+    const auto ready = ClaudeCodeLauncher::prepare(launcherEnv_, executable, workspace);
+    if (ready != ClaudeCodeLauncher::Result::Started) {
+        QMessageBox::warning(this, tr("Claude Code"), ClaudeCodeLauncher::describe(ready));
+        return;
+    }
+    if (liveBridgeAct_ != nullptr && !liveBridgeAct_->isChecked()) {
+        liveBridgeAct_->setChecked(true);
+    }
+    if (liveServer_ == nullptr) {
+        QMessageBox::warning(this, tr("Claude Code"), tr("Le pont MCP local n'a pas pu demarrer."));
+        return;
+    }
+    // Un seul processus Claude Code par session de conversation : changement de mode explicite.
+    if (codeBackend_ != nullptr) {
+        codeBackend_->resetConversation();
+        codeBackend_->deleteLater();
+    }
+    codeBackend_ = new ClaudeCodeProcessBackend(executable, workspace, this);
+    companionDock_->setBackend(codeBackend_);
+    companionDock_->show();
+    companionDock_->raise();
+}
+
+void MainWindow::openClaudeCode() {
+    if (companion_settings::fullyDisabled()) {
+        QMessageBox::information(this, tr("Claude Code"),
+                                 tr("Le compagnon IA est désactivé (Aide ▸ Compagnon IA…)."));
+        return;
+    }
+    // Retour a l'etat initial si la CLI n'est pas installee ou ne demarre pas.
+    const bool wasActive = liveBridgeAct_ != nullptr && liveBridgeAct_->isChecked();
+    if (liveBridgeAct_ != nullptr && !wasActive) {
+        liveBridgeAct_->setChecked(true);
+    }
+    const auto result = ClaudeCodeLauncher::launch(launcherEnv_);
+    if (result != ClaudeCodeLauncher::Result::Started) {
+        if (liveBridgeAct_ != nullptr && !wasActive) {
+            liveBridgeAct_->setChecked(false);
+        }
+        QMessageBox::warning(this, tr("Claude Code"), ClaudeCodeLauncher::describe(result));
+        return;
+    }
+    statusBar()->showMessage(tr("Claude Code ouvert dans un terminal."), 6000);
+}
+
+void MainWindow::applyCompanionSettings() {
+    const bool off = companion_settings::fullyDisabled();
+    if (off) {
+        if (liveBridgeAct_ != nullptr) {
+            liveBridgeAct_->setChecked(false);
+        }
+        setLiveBridgeEnabled(false);
+    }
+    if (liveBridgeAct_ != nullptr) {
+        liveBridgeAct_->setEnabled(!off);
+    }
+    if (claudeBackend_ != nullptr) {
+        claudeBackend_->refresh();
+    }
+    // Valider les preferences de l'API revient explicitement au fournisseur API.
+    if (companionDock_->backend() != claudeBackend_) {
+        if (codeBackend_ != nullptr) {
+            codeBackend_->resetConversation();
+        }
+        companionDock_->setBackend(claudeBackend_);
+    }
+    companionDock_->setFullyDisabled(off);
+    companionDock_->refresh();
+}
+
+bool MainWindow::setLiveBridgeEnabled(bool on, const std::filesystem::path& dir, QString* error) {
+    if (!on) {
+        if (liveServer_) {
+            // Invalider les calculs MCP deja en cours, y compris pendant une approbation.
+            // Un agent ne doit jamais pouvoir appliquer apres la desactivation du pont.
+            if (!liveBridge_.closed()) {
+                liveBridge_.reset();
+            }
+            liveServer_->stop();
+            liveServer_.reset();
+        }
+        return true;
+    }
+    if (liveServer_) {
+        return true;
+    }
+    auto server = std::make_unique<LiveServer>(liveService_, this);
+    if (!server->start(dir.empty() ? mcp::live_directory() : dir, error)) {
+        return false;
+    }
+    liveServer_ = std::move(server);
+    return true;
+}
+
+mcp::LiveDocumentInfo MainWindow::liveDocumentInfo() const {
+    mcp::LiveDocumentInfo info;
+    // Nom seul, jamais le chemin complet : rien de plus que nécessaire n'est transmis à l'agent.
+    info.name = currentProjectPath_.isEmpty()
+                    ? std::string("(sans titre)")
+                    : QFileInfo(currentProjectPath_).fileName().toStdString();
+    info.dirty = isWindowModified();
+    info.never_saved = currentProjectPath_.isEmpty();
+    for (const ObjectId id : selectedEmbroideryIds()) {
+        info.selection.push_back(id.value);
+    }
+    return info;
+}
+
 void MainWindow::redo() {
     if (undoStack_.redo(project_)) {
         refreshImage();
@@ -2058,6 +2317,10 @@ void MainWindow::closeEvent(QCloseEvent* event) {
     // Si l'évènement n'est pas accepté (fermeture annulée), l'autosave
     // continue de tourner normalement.
     if (event->isAccepted()) {
+        liveBridge_.close();
+        if (liveServer_) {
+            liveServer_->stop();
+        }
         autosaveTimer_->stop();
         discardAutosave(slotFor(currentProjectPath_));
         discardPendingRecoverySlot();
@@ -6573,6 +6836,51 @@ void MainWindow::buildHelpMenu() {
         tr("Guide de prise en main : de l'image au fichier DST en six étapes"));
     connect(helpQuickStartAct_, &QAction::triggered, this, &MainWindow::showQuickStartDialog);
 
+    liveBridgeAct_ = helpMenu->addAction(tr("Pont IA &local (MCP)"));
+    liveBridgeAct_->setObjectName(QStringLiteral("action_live_bridge"));
+    liveBridgeAct_->setCheckable(true);
+    liveBridgeAct_->setToolTip(
+        tr("Autorise un agent IA local (openstitch-mcp --live) à lire le projet ouvert et à "
+           "proposer des modifications. Aucun port réseau ; chaque modification demande votre "
+           "approbation et s'annule en une étape. Désactivé par défaut."));
+    liveBridgeAct_->setStatusTip(liveBridgeAct_->toolTip());
+    liveBridgeAct_->setChecked(QSettings().value(QStringLiteral("ai/liveBridge"), false).toBool());
+    connect(liveBridgeAct_, &QAction::toggled, this, [this](bool on) {
+        QString error;
+        if (!setLiveBridgeEnabled(on, {}, &error)) {
+            QSignalBlocker block(liveBridgeAct_);
+            liveBridgeAct_->setChecked(false);
+            statusBar()->showMessage(tr("Pont IA local indisponible : %1").arg(error), 8000);
+            return;
+        }
+        QSettings().setValue(QStringLiteral("ai/liveBridge"), on);
+    });
+    if (liveBridgeAct_->isChecked()) {
+        QTimer::singleShot(0, this, [this] {
+            QString error;
+            if (!setLiveBridgeEnabled(true, {}, &error)) {
+                QSignalBlocker block(liveBridgeAct_);
+                liveBridgeAct_->setChecked(false);
+            }
+        });
+    }
+
+    companionSettingsAct_ = helpMenu->addAction(tr("Compagnon &IA…"));
+    companionSettingsAct_->setObjectName(QStringLiteral("action_companion_settings"));
+    companionSettingsAct_->setToolTip(
+        tr("Fournisseur Claude, clé API (stockage sécurisé du système), données transmises, "
+           "désactivation du compagnon."));
+    companionSettingsAct_->setStatusTip(companionSettingsAct_->toolTip());
+    connect(companionSettingsAct_, &QAction::triggered, this, &MainWindow::showCompanionSettings);
+
+    openClaudeCodeAct_ = helpMenu->addAction(tr("Ouvrir Claude &Code…"));
+    openClaudeCodeAct_->setObjectName(QStringLiteral("action_open_claude_code"));
+    openClaudeCodeAct_->setToolTip(
+        tr("Ouvre votre Claude Code dans un terminal, relié au projet ouvert (pont IA local, "
+           "consignes et skills OpenStitch préparés). Claude Code doit être installé."));
+    openClaudeCodeAct_->setStatusTip(openClaudeCodeAct_->toolTip());
+    connect(openClaudeCodeAct_, &QAction::triggered, this, &MainWindow::openClaudeCode);
+
     helpGesturesAct_ = helpMenu->addAction(tr("Gestes &souris et clavier"));
     helpGesturesAct_->setObjectName(QStringLiteral("action_help_gestures"));
     helpGesturesAct_->setShortcut(QKeySequence(Qt::Key_F1));
@@ -10780,6 +11088,7 @@ bool MainWindow::hasDocumentContent() const {
 }
 
 void MainWindow::updateActions() {
+    updateCompanionContext();
     syncColorwayUi(); // HP-THR-006/008 (main_window_colorways.cpp)
     updateShapeActions();
     updateObjectEditActions();

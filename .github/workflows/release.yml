@@ -71,6 +71,7 @@ jobs:
           path: |
             build/msvc/apps/desktop/Release/
             build/msvc/apps/cli/Release/
+            build/msvc/apps/mcp/Release/
 
       # Même garde-fou qualité qu'un merge sur main (ci.yml) : une release
       # ne se publie jamais sur un build dont les tests échouent.
