@@ -9,7 +9,6 @@ add_library(openstitch_agent
     src/secret.cpp
     src/mcp_adapter.cpp
     src/diagnostics.cpp
-    src/workspace.cpp
 )
 add_library(openstitch::agent ALIAS openstitch_agent)
 

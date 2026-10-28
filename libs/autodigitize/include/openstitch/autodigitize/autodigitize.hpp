@@ -30,6 +30,10 @@ struct AutoOptions {
     Micrometers satin_max_width{6'000};
     // Aire min (mm²) pour un remplissage ; en dessous, simple contour.
     double min_fill_area_mm2{4.0};
+    // Avec `detail_mask` : seuil de remplissage (mm²) des régions de détail, à la place de
+    // `min_fill_area_mm2` (si plus petit). Une petite forme de détail (oeil, lettre) est cousue en
+    // tatami plutôt qu'en simple contour. 0 ou >= min_fill_area_mm2 : sans effet.
+    double detail_min_fill_area_mm2{1.0};
     // Ignore le FOND présumé : la couleur du plus gros morceau segmenté, et
     // TOUTE autre région de cette même couleur exacte (pas seulement ce
     // morceau) -- un fond peut se fragmenter en plusieurs régions disjointes

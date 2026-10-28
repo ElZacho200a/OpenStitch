@@ -806,7 +806,8 @@ double cielab_delta_e(std::array<std::uint8_t, 3> a, std::array<std::uint8_t, 3>
 
 std::size_t merge_small_regions(Segmentation& seg, std::size_t min_px,
                                 std::optional<std::array<std::uint8_t, 3>> excluded,
-                                double boundary_weight, MergeTarget target, double max_delta_e) {
+                                double boundary_weight, MergeTarget target, double max_delta_e,
+                                const DetailMask* detail_mask, std::size_t detail_min_px) {
     const std::size_t slots = seg.region_slots.size();
     std::vector<std::size_t> count(slots + 1, 0);
     for (std::size_t s = 0; s < slots; ++s) {
@@ -841,13 +842,28 @@ std::size_t merge_small_regions(Segmentation& seg, std::size_t min_px,
         return static_cast<double>(count[l]) - boundary_weight * static_cast<double>(border) +
                2.0 * boundary_weight;
     };
-    const double minSize = static_cast<double>(min_px);
+    // Seuil par région : celui des zones de détail pour une région dont le masque moyen est >= 128.
+    std::vector<double> minSize(slots + 1, static_cast<double>(min_px));
+    if (detail_mask != nullptr && detail_min_px < min_px &&
+        detail_mask->matches(seg.width, seg.height)) {
+        std::vector<std::uint64_t> sum(slots + 1, 0);
+        for (std::size_t i = 0; i < seg.labels.size(); ++i) {
+            if (seg.labels[i] != 0) {
+                sum[seg.labels[i]] += detail_mask->weights[i];
+            }
+        }
+        for (std::uint32_t l = 1; l <= slots; ++l) {
+            if (seg.region_slots[l - 1] && count[l] > 0 && sum[l] >= 128ULL * count[l]) {
+                minSize[l] = static_cast<double>(detail_min_px);
+            }
+        }
+    }
     std::set<std::pair<double, std::uint32_t>> queue;
     std::vector<double> key(slots + 1, 0.0);
     for (std::uint32_t l = 1; l <= slots; ++l) {
         if (seg.region_slots[l - 1]) {
             key[l] = effective(l);
-            if (key[l] < minSize) {
+            if (key[l] < minSize[l]) {
                 queue.insert({key[l], l});
             }
         }
@@ -903,7 +919,7 @@ std::size_t merge_small_regions(Segmentation& seg, std::size_t min_px,
         // frontière totale est inchangée (longueurs transférées), seule la
         // clé de `keep` bouge.
         key[keep] = effective(keep);
-        if (key[keep] < minSize) {
+        if (key[keep] < minSize[keep]) {
             queue.insert({key[keep], keep});
         }
     }
