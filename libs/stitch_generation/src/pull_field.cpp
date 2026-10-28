@@ -26,6 +26,7 @@ FabricResponse sanitized(FabricResponse f) {
     f.max_displacement_mm = std::clamp(f.max_displacement_mm, 0.0, 3.0);
     f.calibrated_confidence = std::clamp(f.calibrated_confidence, 0.0, 1.0);
     f.uncalibrated_confidence = std::clamp(f.uncalibrated_confidence, 0.0, 1.0);
+    f.compensation_strength = std::clamp(f.compensation_strength, 0.0, 6.0);
     return f;
 }
 
@@ -139,8 +140,19 @@ PullSample PullField::sample(Vec2um p) const {
 
 Vec2um PullField::compensation_at(Vec2um p) const {
     const PullSample s = sample(p);
-    return {{round_um(-static_cast<double>(s.displacement.x.value) * s.confidence)},
-            {round_um(-static_cast<double>(s.displacement.y.value) * s.confidence)}};
+    double x = -static_cast<double>(s.displacement.x.value) * s.confidence *
+               fabric_.compensation_strength;
+    double y = -static_cast<double>(s.displacement.y.value) * s.confidence *
+               fabric_.compensation_strength;
+    // Renforcer Predicted sans déborder du plafond absolu, même avec beaucoup
+    // de sources ou une intensité demandée très élevée.
+    const double cap = fabric_.max_displacement_mm * kUmPerMm;
+    const double norm = std::hypot(x, y);
+    if (norm > cap && norm > 0.0) {
+        x *= cap / norm;
+        y *= cap / norm;
+    }
+    return {{round_um(x)}, {round_um(y)}};
 }
 
 } // namespace openstitch::stitch_generation
