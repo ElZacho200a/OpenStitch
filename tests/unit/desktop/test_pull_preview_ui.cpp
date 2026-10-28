@@ -12,6 +12,8 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <cmath>
+
 #include "canvas_view.hpp"
 #include "main_window.hpp"
 #include "openstitch/document/project.hpp"
@@ -122,6 +124,20 @@ private slots:
 
         window.pullMapAct_->setChecked(false);
         QCOMPARE(overlayCount(window), 0);
+    }
+
+    void projectFabricFeedsDefaultPredictionButNotExplicitPreviewPresets() {
+        auto project = twoColors();
+        project.fabric.material = "jersey";
+        project.fabric.stabilizer = "cut-away";
+        MainWindow window;
+        window.applyLoadedProject(project);
+        const auto fromProject = window.pullFabric();
+        QVERIFY(std::abs(fromProject.gain - 0.020 * 1.20 * 0.80) < 1e-9);
+        auto* linen = window.findChild<QAction*>(QStringLiteral("action_pullFabric_linen"));
+        QVERIFY(linen != nullptr);
+        linen->setChecked(true);
+        QVERIFY(std::abs(window.pullFabric().gain - 0.030) < 1e-9);
     }
 
     void changingTheFabricInvalidatesTheMap() {
