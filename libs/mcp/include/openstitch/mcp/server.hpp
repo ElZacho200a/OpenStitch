@@ -11,7 +11,7 @@ namespace openstitch::mcp {
 class LiveRelay;
 
 inline constexpr const char* kServerName = "openstitch-mcp";
-inline constexpr const char* kServerVersion = "1.1.0";
+inline constexpr const char* kServerVersion = "1.2.0";
 
 // Serveur MCP (Model Context Protocol, JSON-RPC 2.0) qui expose `libs/project_ops` à un agent IA
 // sous forme d'outils typés. Une session garde UN projet ouvert en mémoire : l'agent enchaîne
