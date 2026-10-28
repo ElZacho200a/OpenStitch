@@ -32,6 +32,14 @@ Micrometers choose_satin_pull(double width_mm) {
 
 document::TatamiParams resolve_pull_compensation(const document::TatamiParams& params,
                                                  const geometry::PathSet& region) {
+    if (params.pull_mode == document::PullMode::Predicted) {
+        document::TatamiParams out = params;
+        // La prédiction complète la compensation géométrique, elle ne la remplace pas.
+        // La passe finale est appliquée séparément dans effective_sequence.
+        out.pull_mode = document::PullMode::Adaptive;
+        out.pull_compensation = Micrometers{0};
+        return out;
+    }
     if (params.pull_mode != document::PullMode::Auto) {
         return params;
     }
@@ -43,6 +51,13 @@ document::TatamiParams resolve_pull_compensation(const document::TatamiParams& p
 document::DirectionalFillParams
 resolve_pull_compensation(const document::DirectionalFillParams& params,
                           const geometry::PathSet& region) {
+    if (params.pull_mode == document::PullMode::Predicted) {
+        document::DirectionalFillParams out = params;
+        // Conserver les fins de lignes calculées par Adaptive avant la passe prédite.
+        out.pull_mode = document::PullMode::Adaptive;
+        out.pull_compensation = Micrometers{0};
+        return out;
+    }
     if (params.pull_mode != document::PullMode::Auto) {
         return params;
     }

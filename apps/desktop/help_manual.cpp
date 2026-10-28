@@ -55,6 +55,7 @@ QString manualHeadingForTool(Tool tool) {
     case Tool::Eyedropper:
         return QStringLiteral("Outils Règle et Pipette");
     case Tool::ClickToStitch:
+    case Tool::DetailBrush:
         return QStringLiteral("Menu Segmentation");
     }
     return QStringLiteral("Souris et clavier");

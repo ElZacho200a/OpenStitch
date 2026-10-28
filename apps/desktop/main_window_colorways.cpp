@@ -70,17 +70,22 @@ void MainWindow::showColorwayDialog() {
                     });
                 });
         connect(colorwayDialog_, &ColorwayDialog::fabricChangeRequested, this,
-                [this](const QColor& color, const QString& name) {
+                [this](const QColor& color, const QString& name, const QString& material,
+                       const QString& stabilizer) {
                     document::FabricSettings fabric;
                     fabric.color = {static_cast<std::uint8_t>(color.red()),
                                     static_cast<std::uint8_t>(color.green()),
                                     static_cast<std::uint8_t>(color.blue())};
                     fabric.name = name.toStdString();
+                    fabric.material = material.toStdString();
+                    fabric.stabilizer = stabilizer.toStdString();
                     if (fabric == project_.fabric) {
                         return;
                     }
                     undoStack_.execute(std::make_unique<commands::SetFabricCommand>(fabric),
                                        project_);
+                    pullMapValid_ = false;
+                    pullPreviewValid_ = false;
                     refreshImage();
                     updateActions();
                 });
@@ -101,8 +106,11 @@ void MainWindow::syncColorwayUi() {
         for (const auto& colorway : project_.colorways) {
             names << QString::fromStdString(colorway.name);
         }
-        colorwayDialog_->setState(names, project_.active_colorway, fabric,
-                                  QString::fromStdString(f.name));
+        const QString name = QString::fromStdString(f.name);
+        const QString material = QString::fromStdString(f.material);
+        const QString stabilizer = QString::fromStdString(f.stabilizer);
+        colorwayDialog_->setState(names, project_.active_colorway, fabric, name, material,
+                                  stabilizer);
     }
 }
 

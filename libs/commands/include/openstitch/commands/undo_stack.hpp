@@ -2,6 +2,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -25,6 +26,11 @@ public:
     [[nodiscard]] std::string redoName() const;
 
     void clear();
+
+    // Compteur monotone des changements du document pilotés par la pile (execute, fusion, undo,
+    // redo) : base de la révision du pont live (ADR 0001). `clear` l'incrémente aussi, jamais
+    // de retour en arrière.
+    [[nodiscard]] std::uint64_t version() const { return version_; }
 
     // Marqueur « document propre » (état enregistré). markClean() mémorise la
     // position courante ; isClean() reste vrai après undo+redo qui y reviennent
@@ -59,6 +65,7 @@ public:
     [[nodiscard]] std::vector<std::string> redoNames() const;
 
 private:
+    std::uint64_t version_{0};
     std::chrono::milliseconds mergeWindow_{600};
     std::chrono::steady_clock::time_point lastExecute_{};
     bool mergeable_{false};

@@ -73,6 +73,66 @@ private:
     std::optional<segmentation::Segmentation> previous_;
 };
 
+// Un trait de pinceau « zones de détail » (suite de disques peints ou effacés). Ne touche ni la
+// segmentation ni les objets : le masque n'agit qu'à la prochaine segmentation. L'annulation
+// rétablit les pixels modifiés (indices + anciennes valeurs, pas de copie du masque entier).
+class PaintDetailMaskCommand final : public ICommand {
+public:
+    PaintDetailMaskCommand(int width, int height, std::vector<std::pair<int, int>> centers,
+                           int radius_px, bool erase, double hardness)
+        : width_(width), height_(height), centers_(std::move(centers)), radius_(radius_px),
+          erase_(erase), hardness_(hardness) {}
+
+    void apply(document::Project& project) override {
+        wasEmpty_ = project.detail_mask.empty();
+        changes_.clear();
+        for (const auto& [cx, cy] : centers_) {
+            auto step = segmentation::paint_detail_disc(project.detail_mask, width_, height_, cx,
+                                                        cy, radius_, erase_ ? 0 : 255, hardness_);
+            changes_.insert(changes_.end(), step.begin(), step.end());
+        }
+    }
+    void revert(document::Project& project) override {
+        // Ordre inverse : un pixel touché par plusieurs disques retrouve sa valeur d'origine.
+        for (auto it = changes_.rbegin(); it != changes_.rend(); ++it) {
+            project.detail_mask.weights[it->index] = it->before;
+        }
+        if (wasEmpty_) {
+            project.detail_mask = {}; // le masque a été créé par ce trait : on le retire
+        }
+    }
+    [[nodiscard]] std::string name() const override {
+        return erase_ ? "Effacer une zone de détail" : "Peindre une zone de détail";
+    }
+
+private:
+    int width_;
+    int height_;
+    std::vector<std::pair<int, int>> centers_;
+    int radius_;
+    bool erase_;
+    double hardness_;
+    bool wasEmpty_{false};
+    std::vector<segmentation::DetailMaskChange> changes_;
+};
+
+// Efface toutes les zones de détail (annulable : le masque est restitué tel quel).
+class ClearDetailMaskCommand final : public ICommand {
+public:
+    void apply(document::Project& project) override {
+        previous_ = std::move(project.detail_mask);
+        project.detail_mask = {};
+    }
+    void revert(document::Project& project) override {
+        project.detail_mask = std::move(previous_);
+        previous_ = {};
+    }
+    [[nodiscard]] std::string name() const override { return "Effacer les zones de détail"; }
+
+private:
+    segmentation::DetailMask previous_;
+};
+
 // Fusionne une région dans une autre. L'annulation restaure les pixels
 // réétiquetés (stockés par indices, pas par copie de la carte entière).
 class MergeRegionsCommand final : public ICommand {

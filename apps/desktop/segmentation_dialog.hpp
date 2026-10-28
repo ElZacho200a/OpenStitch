@@ -3,6 +3,7 @@
 
 #include <QDialog>
 
+#include "openstitch/image/image.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
 
 class QCheckBox;
@@ -40,6 +41,9 @@ public:
     void setBusy(bool busy);
     void setStats(const Stats& stats);
     void setFailed(const QString& message);
+    // Deux vues bornées en pixels, indépendantes du canevas et non destructives.
+    void setSourceThumbnail(const image::Image& source);
+    void setSegmentationThumbnail(const segmentation::Segmentation& segmentation);
     // Mémorise les réglages pour la prochaine ouverture (appelé au moment de valider).
     void rememberSettings() const;
 
@@ -48,6 +52,8 @@ signals:
     void optionsChanged(const openstitch::segmentation::SegmentationOptions& options);
     void previewToggled(bool enabled);
     void applyRequested(const openstitch::segmentation::SegmentationOptions& options);
+    // « Peindre les zones de détail… » : MainWindow active l'outil pinceau de masque.
+    void paintDetailRequested();
 
 private:
     void scheduleChange();
@@ -58,7 +64,11 @@ private:
     QSpinBox* minSizeSpin_{nullptr};
     QLabel* minSizeMm_{nullptr};
     QSpinBox* smoothingSpin_{nullptr};
+    QSpinBox* detailSmoothingSpin_{nullptr};
+    QSpinBox* detailMinSizeSpin_{nullptr};
     QCheckBox* previewCheck_{nullptr};
+    QLabel* sourceThumbnail_{nullptr};
+    QLabel* segmentationThumbnail_{nullptr};
     QLabel* statsLabel_{nullptr};
     QLabel* stateLabel_{nullptr};
     QPushButton* applyButton_{nullptr};

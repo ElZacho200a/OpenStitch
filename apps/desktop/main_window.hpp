@@ -24,16 +24,22 @@
 #include <vector>
 
 #include "auto_satin_strategy_ui.hpp"
+#include "claude_backend.hpp"
+#include "companion_dock.hpp"
+#include "companion_launcher.hpp"
 #include "interaction_map.hpp"
+#include "live_server.hpp"
 #include "openstitch/commands/transform_ops.hpp"
 #include "openstitch/commands/undo_stack.hpp"
 #include "openstitch/commands/vector_ops.hpp"
 #include "openstitch/document/object_fragment.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/path.hpp"
+#include "openstitch/project_ops/live_bridge.hpp"
 #include "openstitch/segmentation/color_merge.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
+#include "openstitch/stitch_generation/pull_field.hpp"
 #include "openstitch/thread_palette/thread_library.hpp"
 #include "realistic_view_state.hpp"
 #include "tools.hpp"
@@ -78,6 +84,7 @@ class CompositeCommand;
 namespace openstitch::desktop {
 
 class SimulationNavBar;
+class ClaudeCodeProcessBackend;
 
 class CanvasView;
 struct DensityRaster; // density_overlay.hpp
@@ -121,6 +128,31 @@ public:
     // machine), .svg et images. Passe par les mêmes gardes « modifications non
     // enregistrées » que les menus ; reporté tant qu'un dialogue modal est ouvert.
     void openPath(const QString& path);
+
+    // Pont « projet vivant » (ADR 0001) : un agent local lit et modifie CE document, jamais une
+    // copie. `commitLiveBatch` applique un lot validé en UNE étape d'annulation de la pile du
+    // desktop puis rafraîchit canevas, inspecteur, état « modifié » et actions.
+    [[nodiscard]] project_ops::LiveBridge& liveBridge() { return liveBridge_; }
+    // Ouvre / ferme le pont IA local (tube nommé + fichier de découverte `dir`, défaut
+    // `mcp::live_directory()`). Faux si l'ouverture échoue (message dans `error`).
+    bool setLiveBridgeEnabled(bool on, const std::filesystem::path& dir = {},
+                              QString* error = nullptr);
+    [[nodiscard]] mcp::LiveService& liveService() { return liveService_; }
+    [[nodiscard]] mcp::LiveDocumentInfo liveDocumentInfo() const;
+    void afterLiveCommit();
+    // Dock « Compagnon IA » (masqué par défaut) ; `focusEmbroideryObject` sélectionne un objet.
+    void buildCompanionDock();
+    void applyCompanionSettings();
+    void showCompanionSettings();
+    void openClaudeCode();
+    void useClaudeCodeInDock();
+    void updateCompanionContext();
+    void focusEmbroideryObject(quint64 id);
+    [[nodiscard]] CompanionDock* companionDock() const { return companionDock_; }
+    project_ops::LiveBridge::Result commitLiveBatch(const std::string& sessionId,
+                                                    std::uint64_t revision,
+                                                    const std::string& batchJson,
+                                                    const std::string& label, bool approved);
 
 protected:
     void closeEvent(QCloseEvent* event) override;
@@ -1095,6 +1127,22 @@ private:
     QStringList recentFiles_;
     QMenu* recentMenu_{nullptr};
     commands::UndoStack undoStack_;
+    project_ops::LiveBridge liveBridge_{project_, undoStack_};
+    // Pont IA local (ADR 0001) : désactivé par défaut ; ne s'ouvre que sur action explicite.
+    DialogApprovalGate liveGate_{this};
+    mcp::LiveService liveService_{liveBridge_, liveGate_, [this] { return liveDocumentInfo(); },
+                                  [this] { afterLiveCommit(); }};
+    std::unique_ptr<LiveServer> liveServer_;
+    QAction* liveBridgeAct_{nullptr};
+    CompanionDock* companionDock_{nullptr};
+    std::unique_ptr<agent::ISecretStore> secretStore_;
+    agent::DiagnosticLog companionLog_;
+    ClaudeCompanionBackend* claudeBackend_{nullptr};
+    ClaudeCodeProcessBackend* codeBackend_{nullptr};
+    QAction* companionSettingsAct_{nullptr};
+    QAction* openClaudeCodeAct_{nullptr};
+    // Environnement système du lanceur Claude Code (remplaçable par les tests).
+    ClaudeCodeLauncher::Env launcherEnv_{ClaudeCodeLauncher::systemEnv()};
     image::Image processed_; // dernier résultat du pipeline (pour l'affichage)
     // Entrées exactes ayant produit `processed_` (clé de contenu du cache,
     // cf. refreshImage) : `processed_` n'est recalculée que si l'image source
@@ -1135,6 +1183,7 @@ private:
     std::shared_ptr<const image::Image> segmentSnapshot_; // image de travail à l'ouverture
     std::optional<segmentation::SegmentationOptions> segmentCachedOptions_;
     std::optional<segmentation::Segmentation> segmentCached_; // dernier aperçu calculé
+    segmentation::DetailMask segmentCachedMask_;              // masque de détail de ce calcul
     double segmentCachedSeconds_{0.0};                        // durée de ce calcul
     std::uint64_t segmentGeneration_{0};
     bool segmentAutoShownMap_{false}; // l'aperçu a affiché la carte (à masquer à la fermeture)
@@ -1422,6 +1471,36 @@ private:
     int clickToStitchTolerance_{12}; // ΔE76 maximal à la couleur cliquée
     int clickToStitchKind_{0};       // index de commands::ClickToStitchKind
     std::size_t clickToStitchPreviewPixels_{0};
+    // Zones de détail (main_window_detail_zones.cpp) : pinceau de masque « détail / aplat » qui
+    // pilote le lissage et le nettoyage de la segmentation. Réutilise le geste du pinceau.
+    void buildDetailZonesTool();
+    void attachDetailZonesTool();
+    void syncDetailZonesTool(Tool tool);
+    void refreshDetailZonesOverlay();
+    void updateDetailRing(QPointF sceneMm);
+    void hideDetailRing();
+    void beginDetailStroke(QPointF sceneMm);
+    void moveDetailStroke(QPointF sceneMm);
+    void endDetailStroke();
+    void cancelDetailStroke();
+    void clearDetailZones();
+    void setDetailRadiusMm(double radiusMm);
+    struct DetailStroke {
+        std::vector<std::pair<int, int>> centers; // centres des disques, en pixels
+        QPointF lastSceneMm;
+        bool erase{false};
+    };
+    QMenu* segmentMenu_{nullptr};
+    QAction* toolDetailAct_{nullptr};
+    QAction* clearDetailAct_{nullptr};
+    QToolBar* detailBar_{nullptr};
+    QDoubleSpinBox* detailRadiusSpin_{nullptr};
+    QCheckBox* detailEraseCheck_{nullptr};
+    QGraphicsEllipseItem* detailRing_{nullptr};
+    QGraphicsPixmapItem* detailOverlayItem_{nullptr};
+    std::optional<DetailStroke> detailStroke_;
+    segmentation::DetailMask detailLive_; // masque + trait en cours, pour l'aperçu
+    double detailRadiusMm_{4.0};
     QAction* toolBrushAct_{nullptr};
     QAction* brushSettingsAct_{nullptr};
     QGraphicsEllipseItem* brushRing_{nullptr};
@@ -1466,6 +1545,23 @@ private:
     bool densityValid_{false};
     double densityScaleMax_{1.0};
     int densityComputeCount_{0}; // calculs réellement faits (tests)
+    // Prévisualisation du tirage du tissu, niveau 3 (main_window_pull_preview.cpp) : carte du
+    // déplacement prédit + aperçu des points décalés. Jamais écrit dans le document.
+    void buildPullPreviewFeature();
+    void refreshPullMapOverlay(); // appelée par renderStitches()
+    [[nodiscard]] stitch_generation::FabricResponse pullFabric() const;
+    // Séquence décalée du tirage (en cache), nulle si l'aperçu est éteint.
+    [[nodiscard]] const stitch::StitchSequence* pullPreviewSequence();
+    QAction* pullMapAct_{nullptr};
+    QAction* pullPreviewAct_{nullptr};
+    QPixmap pullMapPixmap_;
+    QRectF pullMapRect_;
+    std::uint64_t pullMapKey_{0};
+    bool pullMapValid_{false};
+    stitch::StitchSequence pullPreviewSeq_;
+    std::uint64_t pullPreviewKey_{0};
+    bool pullPreviewValid_{false};
+    int pullComputeCount_{0}; // calculs réellement faits (tests)
     // [cablage-E:fin]
     // [cablage-HOOP:debut]
     // Machine du projet (HP-HOOP-002, main_window_machine.cpp).

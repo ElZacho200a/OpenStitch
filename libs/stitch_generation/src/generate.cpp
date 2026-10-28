@@ -292,8 +292,11 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
     if (params.pull_mode == document::PullMode::Auto) {
         config.pull_compensation =
             choose_satin_pull(satin_mean_width_mm(params.rail_a, params.rail_b));
-    } else if (params.pull_mode == document::PullMode::Adaptive) {
-        config.pull_compensation = Micrometers{0}; // le réglage manuel est ignoré
+    } else if (params.pull_mode == document::PullMode::Adaptive ||
+               params.pull_mode == document::PullMode::Predicted) {
+        // Le modèle prédictif corrige les interactions entre points ; la largeur
+        // géométrique de base reste protégée par Adaptive (sans cumul manuel).
+        config.pull_compensation = Micrometers{0};
         config.adaptive_pull = true;
     }
     // Avec barreaux (satin auto) : correspondance par sections + espacement
@@ -417,7 +420,9 @@ void generate_auto_satin(stitch::StitchSequence& sequence, const document::Vecto
             config.pull_compensation = choose_satin_pull(widthMm);
         }
     }
-    if (params.pull_mode == document::PullMode::Adaptive) {
+    if (params.pull_mode == document::PullMode::Adaptive ||
+        params.pull_mode == document::PullMode::Predicted) {
+        // Auto-satin : même socle local qu'Adaptive, prédiction en passe finale.
         config.pull_compensation = Micrometers{0};
         config.adaptive_pull = true;
     }

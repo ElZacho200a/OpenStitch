@@ -156,6 +156,8 @@ struct DigitizeSource {
     const segmentation::Segmentation* segmentation{nullptr};
     const image::Image* image{nullptr};
     Millimeters mm_per_px{25.4 / 96.0};
+    // Zones de détail du projet (facultatif) : vectorisation plus fine dans ces zones.
+    const segmentation::DetailMask* detail_mask{nullptr};
 };
 
 struct DigitizedObjects {

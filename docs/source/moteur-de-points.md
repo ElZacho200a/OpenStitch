@@ -743,7 +743,7 @@ confondus :
 |---|---|---|
 | 1 — géométrique | déterministe, selon les formes et les directions de couture | livré ici (satin) |
 | 2 — textile empirique | profil de tissu, calibration mesurée | à venir (`scale` du modèle en est le point d'entrée) |
-| 3 — prédiction | champ de déplacement estimé, avec confiance | à venir |
+| 3 — prédiction | champ de déplacement estimé, avec confiance | livré : `pull_field` + `PullMode::Predicted` (passe finale) ; calibration à venir |
 
 **Satin.** `adaptive_pull.cpp` (`adaptive_satin_pull`, fonction pure) calcule, pour chaque station
 (couple de points rail A/rail B) de la colonne, un élargissement par côté :
@@ -776,6 +776,52 @@ adaptatif. Le réglage manuel est ignoré.
 
 **Limites.** Aucune validation sur machine : la qualité de l'approximation géométrique n'est pas
 une preuve d'efficacité textile.
+
+**Niveau 3 — champ de déplacement (lot A, `pull_field`).** `PullField` (`pull_field.hpp/.cpp`,
+fonctions pures, sans Qt) estime en tout point le déplacement du tissu sous la traction de tous les
+segments cousus voisins, au lieu de compenser chaque objet isolément. Chaque segment (`PullSource`,
+poids = densité relative) contracte le tissu vers son centre le long de son axe
+(`-gain · s · w`, `s` borné à la demi-longueur) et le pousse latéralement (`poisson · gain · h ·
+tanh(t/σ) · w`) ; `w` décroît en gaussienne au-delà des bouts (`sigma_along_mm`) et en
+travers (`sigma_across_mm`). Les contributions s'additionnent ; **l'anisotropie du tissu** est
+appliquée à la somme : la composante perpendiculaire à la chaîne (`grain_angle_rad`) est multipliée
+par `grain_anisotropy` (souplesse trame / chaîne). La norme est plafonnée (`max_displacement_mm`).
+`PullSample` renvoie aussi une **confiance** [0 ; 1] : plafonnée à `uncalibrated_confidence` (0,3)
+tant que `FabricResponse::calibrated` est faux, et réduite par le recouvrement
+(`base / (1 + 0,15 · Σw)`) ; 1 hors de toute influence. `compensation_at` renvoie l'opposé du
+déplacement atténué par la confiance (prudent quand la prédiction est incertaine). Déterminisme :
+sources parcourues par indice croissant dans une grille à clé ordonnée ; entrées dégénérées bornées
+(`sanitized`). **Aucun coefficient n'est mesuré** (règles empiriques) ; le champ est une fonction
+continue de la géométrie cousue et ne reproduit aucune table largeur de bout × tissu (brevets
+Melco, voir `roadmap-rd-brevets.md`). 
+**Niveau 3 — branchement (`PullMode::Predicted`, index 3 ; `.osp` : `pullMode: 3` ; CLI/MCP :
+`pull_mode: predicted` ; inspecteur : « Prédite »).** `apply_predicted_pull`
+(`predicted_pull.cpp`) est appelée par `effective_sequence` APRÈS les retouches manuelles et AVANT
+les finitions (coupes, verrous : posés sur la matière déjà compensée). Les sources du champ sont
+TOUS les segments cousus de la séquence (deux pénétrations consécutives d'un même objet, sous-couche
+comprise, jamais à travers un saut ni une coupe) : un objet voisin, même en mode manuel, tire donc le
+tissu d'un objet prédit. Seuls les points de couche supérieure des objets `Predicted` sont déplacés
+(positions d'origine échantillonnées d'abord). Sans objet `Predicted`, la séquence est strictement
+inchangée. La compensation de bout d'objet (`pull_compensation`, rallonge de rangée, satin) est
+mise à zéro pour ces objets : le champ la remplace. Le profil de tissu est `FabricResponse{}`
+par défaut ; il sera lu depuis le profil matière du projet (HP-FAB, PR #155) quand celui-ci sera
+dans `main`. Non fait : visualisation du champ dans le canevas, calibration par la pièce-test
+(HP-ENG-001.a), `calibrated = true` (la confiance reste donc plafonnée à 0,3).
+
+**Niveau 3 — prévisualisation du tirage (`pull_map.hpp/.cpp`).** Deux lectures du MÊME `PullField`,
+en lecture seule (jamais écrites dans le document) : `compute_pull_map` (carte du déplacement prédit,
+grille bornée à 512 x 512 cases) et `simulate_fabric_pull` (la séquence « telle que le tissu la
+restituera »). La simulation est ordonnée : une pénétration d'un bloc de couleur est décalée du
+déplacement imposé au tissu par les blocs cousus AVANT elle ; le premier bloc reste en place. C'est
+ce défaut de repérage entre couleurs (contour qui ne retombe plus sur le remplissage, trous entre
+deux aplats) que l'on veut voir, pas un décalage global. Trois réglages de tissu nommés,
+EMPIRIQUES et non validés (`fabric_preset` : `default`, `linen` lin lâche, `stable` bien stabilisé).
+Côté bureau : `Affichage > Carte de tirage du tissu` (surimpression bleu → rouge, z = 26),
+`Affichage > Aperçu avec tirage du tissu` (rendu des points décalés, via le rendu réaliste, visible
+au zoom du rendu réaliste) et `Affichage > Tissu du tirage` ; réglages mémorisés
+(`main_window_pull_preview.cpp`). CLI : `openstitch-cli render IN OUT --simulate-pull | --pull-map
+--fabric linen`. Limite : un seul bloc de couleur ne produit aucun défaut de repérage simulé (le
+tirage d'un objet sur lui-même relève de la compensation, `PullMode::Predicted`).
 
 ### Entrée/sortie automatiques (HP-ENG-010)
 

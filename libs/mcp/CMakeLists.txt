@@ -38,14 +38,17 @@ add_library(openstitch_mcp
     src/server.cpp
     src/tools.cpp
     src/guide.cpp
+    src/live_service.cpp
+    src/live_agent.cpp
+    src/live_transport.cpp
     "${GUIDE_CPP}"
 )
 add_library(openstitch::mcp ALIAS openstitch_mcp)
 
 target_include_directories(openstitch_mcp PUBLIC include PRIVATE src)
 target_link_libraries(openstitch_mcp
-    PUBLIC openstitch::core
-    PRIVATE nlohmann_json::nlohmann_json openstitch::project_ops openstitch::document
+    PUBLIC openstitch::core openstitch::project_ops
+    PRIVATE nlohmann_json::nlohmann_json openstitch::document
             openstitch::project_io openstitch::image openstitch::stitch
             openstitch::autodigitize openstitch::segmentation
             openstitch::stitch_generation openstitch::ai_segmentation openstitch::warnings

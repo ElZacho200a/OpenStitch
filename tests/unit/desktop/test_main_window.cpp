@@ -5959,7 +5959,9 @@ void MainWindowTest::helpMenuHasThreeEntriesAndF1OpensGestures() {
     }
     QCOMPARE(names,
              (QStringList{
-                 QStringLiteral("action_help_quickstart"), QStringLiteral("action_help_gestures"),
+                 QStringLiteral("action_help_quickstart"), QStringLiteral("action_live_bridge"),
+                 QStringLiteral("action_companion_settings"),
+                 QStringLiteral("action_open_claude_code"), QStringLiteral("action_help_gestures"),
                  QStringLiteral("action_help_tutorial"), QStringLiteral("action_help_manual"),
                  QStringLiteral("action_help_context"), QStringLiteral("action_about")}));
     for (const QAction* act : helpMenu->actions()) {

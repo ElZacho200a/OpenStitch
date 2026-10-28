@@ -56,6 +56,44 @@ constexpr const char* kJsonEntry = "project.json";
 constexpr const char* kImageEntry = "original.png";
 constexpr const char* kLabelsEntry = "segmentation.u32";
 
+constexpr const char* kDetailMaskEntry = "detail_mask.u8";
+
+// Masque de détail : largeur et hauteur (uint32 little-endian) puis un octet par pixel.
+detail::Blob detail_mask_to_bytes(const segmentation::DetailMask& mask) {
+    detail::Blob out(8 + mask.weights.size());
+    for (int k = 0; k < 4; ++k) {
+        out[static_cast<std::size_t>(k)] =
+            static_cast<std::uint8_t>((static_cast<std::uint32_t>(mask.width) >> (8 * k)) & 0xFF);
+        out[static_cast<std::size_t>(4 + k)] =
+            static_cast<std::uint8_t>((static_cast<std::uint32_t>(mask.height) >> (8 * k)) & 0xFF);
+    }
+    std::copy(mask.weights.begin(), mask.weights.end(), out.begin() + 8);
+    return out;
+}
+
+// Vide en cas d'incohérence (le masque est facultatif : un fichier abîmé ne bloque pas
+// l'ouverture).
+segmentation::DetailMask detail_mask_from_bytes(const detail::Blob& bytes) {
+    segmentation::DetailMask mask;
+    if (bytes.size() < 8) {
+        return mask;
+    }
+    std::uint32_t w = 0;
+    std::uint32_t h = 0;
+    for (int k = 0; k < 4; ++k) {
+        w |= static_cast<std::uint32_t>(bytes[static_cast<std::size_t>(k)]) << (8 * k);
+        h |= static_cast<std::uint32_t>(bytes[static_cast<std::size_t>(4 + k)]) << (8 * k);
+    }
+    if (w == 0 || h == 0 || w > 65536 || h > 65536 ||
+        static_cast<std::uint64_t>(w) * h != bytes.size() - 8) {
+        return mask;
+    }
+    mask.width = static_cast<int>(w);
+    mask.height = static_cast<int>(h);
+    mask.weights.assign(bytes.begin() + 8, bytes.end());
+    return mask;
+}
+
 // Labels de segmentation <-> octets bruts little-endian (indépendant de la
 // plateforme : on écrit octet par octet).
 detail::Blob labels_to_bytes(const std::vector<std::uint32_t>& labels) {
@@ -155,6 +193,9 @@ Result<void> save_project(const std::filesystem::path& path, const document::Pro
     }
     if (project.segmentation) {
         entries.emplace(kLabelsEntry, std::move(labels));
+    }
+    if (project.detail_mask.any_detail()) {
+        entries.emplace(kDetailMaskEntry, detail_mask_to_bytes(project.detail_mask));
     }
 
     // Écriture atomique : fichier temporaire puis renommage.
@@ -283,6 +324,10 @@ Result<document::Project> load_project_impl(const std::filesystem::path& path, L
             return std::unexpected(img.error());
         }
         project->original = std::move(*img);
+    }
+
+    if (const auto maskIt = entries->find(kDetailMaskEntry); maskIt != entries->end()) {
+        project->detail_mask = detail_mask_from_bytes(maskIt->second);
     }
 
     if (project->segmentation) {

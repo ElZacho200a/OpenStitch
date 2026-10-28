@@ -1239,6 +1239,43 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 - Livré (2026-10-27, lot 2) : `Adaptive` pour tatami (par rangée, lissage, plafond d'intervalle
   libre devant trous/étranglements) et directionnel (par ligne, virage cumulé) ; sous-couche
   jamais adaptative ; tests `[adaptive_pull][tatami|directional]`.
+- Livré (2026-10-27, niveau 3, lot A) : `PullField` (`pull_field.cpp`), champ de déplacement du
+  tissu sous la traction de tous les segments voisins, anisotrope selon le sens des fils, avec
+  confiance (plafonnée tant que non calibré) ; cœur seul, tests `test_pull_field.cpp`. Reste :
+  `PullMode::Predicted`, extraction depuis les objets, application dans `effective_sequence`,
+  `.osp`, inspecteur, calibration (HP-ENG-001.a). Coefficients empiriques, non mesurés.
+- Livré (2026-10-27, niveau 3, lot B) : `PullMode::Predicted` (`.osp` `pullMode: 3`, CLI/MCP
+  `pull_mode: predicted`, inspecteur « Prédite »), passe finale `apply_predicted_pull` dans
+  `effective_sequence` (tous les segments voisins sont sources, seuls les points de couche
+  supérieure des objets prédits bougent), tests `test_predicted_pull.cpp`. Reste : lecture du
+  profil matière (#155), visualisation du champ, calibration (HP-ENG-001.a).
+- Correctif proposé (2026-10-28, niveau 3) : mode `Predicted` accepté à la relecture `.osp`
+  pour l'auto-satin (validation 0–3), et `refresh_context` applique la passe prédite après les
+  retouches manuelles, avant les finitions comme `effective_sequence`. Sur satin, auto-satin,
+  tatami et directionnel, `Predicted` conserve désormais la compensation géométrique `Adaptive`
+  comme socle avant le décalage du champ ; auparavant le socle était remis à zéro, donnant une
+  sous-compensation évidente en absence de calibration. Tests de parité desktop/export,
+  aller-retour des quatre modes et enveloppe tatami adaptative. La correction
+  prédictive est renforcée indépendamment de la confiance du champ (`compensation_strength`
+  par défaut 3×, bornée à 6× ; amplitude finale ≤ `max_displacement_mm`), avec tests de force,
+  de conservation de confiance et de plafond. Reste : validation CI, exposition d'un réglage
+  d'intensité par objet dans le desktop/CLI/MCP et mesures physiques du modèle sur tissu.
+- Extension (2026-10-28, PR #170) : lecture des champs persistés `fabric.material` et
+  `fabric.stabilizer` dans le cœur `Predicted`, avec profils heuristiques bornés par le champ
+  (woven neutre ; jersey 1,20× ; terry 1,25× ; felt 0,75× ; denim 0,85× ; cut-away 0,80×,
+  tear-away 0,92×, aucun entoilage 1,10×). Réponse calibrée explicitement fournie : jamais
+  modifiée. Sources de traction pondérées par passe, longueur et satin vs remplissage ;
+  densité et direction déjà présentes dans le nombre et les orientations des segments.
+  `Coloris et tissu` renseigne les paramètres dans le desktop ; le prévisualiseur utilise
+  ces champs par défaut, tout en conservant des presets d'exploration indépendants.
+  Ces facteurs sont des **choix exploratoires**, pas des constantes publiées ; vérification
+  sur coupons indispensable avant tout usage métrologique.
+- Livré (2026-10-27, niveau 3, prévisualisation) : `pull_map.cpp` (carte de déplacement,
+  `simulate_fabric_pull` ordonné par bloc de couleur : le défaut de repérage entre couleurs),
+  réglages de tissu empiriques (standard, lin lâche, bien stabilisé), `Affichage > Carte de tirage
+  du tissu` / `Aperçu avec tirage du tissu` / `Tissu du tirage`, CLI `render --simulate-pull
+  --pull-map --fabric`. Tests `test_pull_map.cpp`, `test_pull_preview_ui.cpp`. Reste : lecture du
+  profil matière (#155), calibration (HP-ENG-001.a) ; l'aperçu n'est pas une mesure.
 
 ### HP-ENG-001.a — Pièce-test de calibration et table de compensation par tissu [P1] — ☐ À faire
 - Source : veille `docs/veille-innovations-2026-10.md` §V1. Aucune source lue ne
@@ -2596,7 +2633,13 @@ Aujourd'hui : un cadre **rectangulaire** de taille libre (10–500 mm), persist�
 
 ## 16. Tissus (FAB)
 
-### HP-FAB-001 — Profils de tissu (Auto Fabric) [P1] — ☐ À faire
+### HP-FAB-001 — Profils de tissu (Auto Fabric) [P1] — ◐ Partiel (2026-10-27)
+- Livré (2026-10-27) : matériau et stabilisateur déclarés dans FabricSettings,
+  persistés dans .osp, éditables dans « Coloris et tissu » avec undo/redo,
+  visibles via project inspect/MCP ; anciennes valeurs par défaut conservées.
+- Reste : facteurs sur densité, sous-couche et tirage calculés depuis la
+  validation physique HP-PHYS-001, table calibrée et prévisualisation. Aucune
+  modification physique de la couture à ce stade.
 - Hatch : Auto Fabric : choisir le tissu (coton, jersey, polaire, éponge,
   denim, soie, cuir, casquette) ajuste densité, sous-couche, compensation de
   tous les objets automatiquement.
@@ -3200,6 +3243,7 @@ Le lot C comprend aussi **HP-PERF-009** (régénération différée à l'éditio
 - Livré : liste Objets en sélection étendue synchronisée avec la fenêtre, formes vectorielles non cousues comme lignes indépendantes, repli/sélection/défilement restaurés par identité après rafraîchissement, glisser-déposer qui émet `orderChangeRequested` (commande de réordonnancement existante), menu de ligne (Masquer, Figer, Supprimer) ; 8 tests. Reste : le glisser-déposer à la souris réelle n'est pas exercé en test (`handleDrop` appelé directement), fusion visuelle avec le dock « Ordre de couture » (laissé en place). Test existant adapté : `documentPanelCheckBoxesAndRenameAreUndoableCommands` (une 3ᵉ ligne vectorielle voulue).
 
 ### HP-UX-039 — Contrat d'état de l'interface (workflow, enregistrement, erreurs) [P2] — ◐ Partiel (2026-10-18, branche `ux-lot-d2`)
+- En PR (2026-10-27) : le Workflow affiche « Source » et marque « non requis » pour les étapes Régions/Vecteurs lorsqu'un SVG ou un design machine fournit directement la géométrie/les points. Clic sur une étape non requise = explication, sans ouvrir un outil inadapté. Tests QTest raster / SVG / machine ; CI à confirmer.
 - Problème : le workflow est un lanceur (Vérification/Export « disponible » dès qu'une séquence existe) ; l'heure d'enregistrement est celle du rafraîchissement ; erreurs de génération/autosave uniquement en barre d'état éphémère (`main_window.cpp:6730-6734, 526-536`, `main_window_ux.cpp:260-278`). Constats UX-14, UX-32, UX-26.
 - Comportement attendu : états d'étape liés à la révision du document (vérifié, exporté, périmé après modification) ; instant de sauvegarde mémorisé ; notification d'erreur persistante avec reprise. **En mémoire seulement** : aucun champ `.osp`.
 - Complexité : M. Composants : `apps/desktop/main_window_workflow.cpp`, `main_window_ux.cpp`, `workflow_panel.*`.
@@ -3310,7 +3354,7 @@ migration `.osp` pour ces seuls besoins ; la segmentation IA reste hors périmè
   dans le récapitulatif d'export ; le rôle n'est pas signalé par la couleur
   seule ; tests Qt.
 
-### HP-UX-048 — Comparer original et aperçu avant transformation [P2] — ☐ À faire
+### HP-UX-048 — Comparer original et aperçu avant transformation [P2] — ◐ Partiel (2026-10-27, branche feat/ux-048-segmentation-before-after-20261027)
 - Besoin : HP-VIEW-012 couvre l'aperçu direct mais ne pose pas un comportement
   homogène de comparaison pour les opérations à fort impact (quantification,
   simplification, vectorisation, notamment).
@@ -3325,6 +3369,19 @@ migration `.osp` pour ces seuls besoins ; la segmentation IA reste hors périmè
   d'édition et conserve le document identique ; Appliquer = un pas undo/redo ;
   disponible en mode portable 911 × 480 et pendant une opération longue
   sans bloquer l'interface ; QTest.
+- Livré (PR 1 de comparaison) : miniatures bornées (176 × 112 px) « Avant — image
+  de travail » et « Après — carte des régions » directement dans le dialogue
+  de segmentation. L'image source est réduite par échantillonnage borné,
+  y compris pour les originaux très grands ou transparents ; la carte utilise
+  le résultat de l'aperçu existant (aucun deuxième calcul). Le dialogue reste
+  non modal, les réglages et la sélection restent modifiables, et aucune
+  mutation du .osp ni commande Undo n'a lieu avant « Segmenter ».
+- Tests : vrai dialogue MainWindow, deux images accessibles non vides après
+  le calcul, résultat maintenu lors du basculement d'aperçu, rejet des images
+  malformées, Undo inchangé. À valider par CI Windows/Qt.
+- Reste : comparaison pleine résolution pour simplification/vectorisation,
+  validation de la lisibilité sur écran compact et tests de performance
+  sur images de plusieurs mégapixels.
 
 ### HP-UX-049 — Espaces de travail par tâche, facultatifs [P2] — ◐ Partiel (2026-10-21, branche feat/ux-049-workspace-presets)
 - Besoin : numériser, retoucher une forme, régler des points et préparer
@@ -3706,6 +3763,12 @@ ci-dessus doit les respecter :
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-28 | Claude (desktop) | **Zones de détail, lot 2 : vectorisation** : `VectorizeOptions::detail_mask` / `detail_tolerance_factor` (régions de détail vectorisées plus finement), relayé par `AutoOptions`, `DigitizeSource` et le parcours Workflow du bureau ; tests Catch2. Manque : couture (type de point, densité) par zone. Aucune entrée de parité Hatch concernée. |
+| 2026-10-28 | Claude (desktop) | **Zones de détail, lot 3 : couture** : `AutoOptions::detail_min_fill_area_mm2` (1 mm²) abaisse le seuil de remplissage des régions de détail (petites formes en tatami plutôt qu'en contour) ; `merge_small_regions` gagne `detail_mask`/`detail_min_px` pour ne pas les absorber. Tests `test_autodigitize`. Manque : densité/angle par zone, masque dans le CLI/MCP. |
+| 2026-10-27 | ChatGPT (HP-UX-048 lot 1) | Comparaison miniatures avant/après dans Segmenter : source et carte de régions, aucun second calcul, tests Qt et effets documentaires inchangés. Suite simplification/vectorisation encore à faire. |
+| 2026-10-27 | ChatGPT | HP-FAB-001 : métadonnées matériau/stabilisateur dans .osp, dialogue desktop et inspection ; aucun coefficient textile non validé appliqué. |
+| 2026-10-27 | Claude (desktop) | **Zones de détail / aplats pour la segmentation** : `DetailMask` + `paint_detail_disc` (libs/segmentation), lissage mélangé et taille minimale par zone (`detail_mask`, `detail_smoothing_radius_px`, `detail_min_region_px`), `PaintDetailMaskCommand` / `ClearDetailMaskCommand`, entrée `detail_mask.u8` du `.osp`, outil pinceau Maj+D, surcouche et réglages dans le dialogue Segmenter, tests Catch2 + QTest. Idée de l'utilisateur ; manque : vectorisation et couture par zone, proposition automatique. Aucune entrée de parité Hatch concernée. |
+| 2026-10-27 | ChatGPT (audit UI/UX, PR 2) | HP-UX-039 : Workflow « Source » reconnu pour raster/SVG/design machine ; étapes facultatives indiquées « non requis », action Ouvrir universelle, tests desktop. |
 | 2026-10-27 | ChatGPT | HP-ENG-001.b : inspection JSON de la référence de compensation automatique, explicitement non prédictive ; tests CLI JSON. |
 | 2026-10-27 | ChatGPT (audit UI/UX, PR 1) | HP-PERF-001 / HP-UX-006 : vectorisation asynchrone de régions, progression et annulation sans mutation documentaire ; tests Catch2 et QTest, CI à confirmer. Autres tâches longues encore à migrer. |
 | 2026-10-26 | Claude (IA, desktop) | **Segmentation IA du desktop via le registre de backends** (`openstitch.ai.backend/1`) : `libs/ai_segmentation/backend_run` (analyse complète par un backend, repli explicite CIELAB, annulation, masques sans score inventé), sélecteur de moteur dans « Segmenter avec l'IA » (worker historique, backends déclarés, couleur), préférences (fichier de backends, moteur par défaut, « Sonder les backends » : état, modèle, empreinte, licences), tests Catch2 + QTest. Le worker SAM v1 reste le défaut. Aucune entrée de parité modifiée. |
@@ -3788,3 +3851,6 @@ ci-dessus doit les respecter :
 | 2026-10-25 | Claude (câblage de l'édition de points) | HP-EDIT-001/002/003 câblés dans le mode « Éditer les points » : sélection (clic, Ctrl/Maj, Ctrl+A), déplacement groupé, Suppr, restauration, insertion par double-clic, saut/point cousu, coupe de fil ; menu Broderie, clic droit, 9 QTest. Reste : rubber-band, déplacement d'un point inséré. |
 | 2026-10-26 | Claude (multi-agents, lot 3) | Lot 3 : huit agents en parallèle ; OBJ-005/008/009/010/011/012/015/022, SEQ-001/002/008, VIEW-003/007/010/012, PROD-002/003/004, FILE-005/007, UX-007/008/016, HELP-001/002, SIM-003, restes EDIT-002/003 et HOOP-006 (voir chaque entrée). Cœur livré mais bureau non câblé : OBJ-009 (groupes), OBJ-011 (menu Ordre), OBJ-015 (barre X/Y/L/H) ; OBJ-019, ENG-006 et TXT-012/013 non faits. Tableau de bord non recalculé. |
 | 2026-10-27 | Claude | **AdaptivePullCompensation, lot 1** (HP-ENG-001.b) : `PullMode::Adaptive`, compensation locale du satin par station, inspecteur, `.osp`, CLI/MCP. Coefficients empiriques, non validés sur machine. |
+| 2026-10-27 | Claude | **AdaptivePullCompensation niveau 3, lot A** (HP-ENG-001.b) : `PullField`, champ de déplacement du tissu anisotrope avec confiance, cœur seul non branché. Coefficients empiriques, non validés sur machine. |
+| 2026-10-27 | Claude | **Niveau 3, lot B** (HP-ENG-001.b) : `PullMode::Predicted` branché (passe finale d'`effective_sequence`, `.osp`, CLI/MCP, inspecteur). Confiance plafonnée tant que non calibré. |
+| 2026-10-27 | Claude | **Niveau 3, prévisualisation du tirage** (HP-ENG-001.b) : carte de déplacement prédit et aperçu des points décalés par bloc de couleur, menu Affichage, CLI `render --simulate-pull/--pull-map`. Estimation non calibrée. |

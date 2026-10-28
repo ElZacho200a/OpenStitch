@@ -166,6 +166,7 @@ entre les deux marqueurs.
 | V2 | Pipette | Clic | Échantillonner la couleur et choisir un fil |
 | V4 | Pot de peinture | Clic | Remplir le vide fermé entre les formes |
 | V5 | Clic-pour-broder | Clic | Broder la zone de couleur sous le curseur |
+| V6 | Zones de détail | Glisser | Peindre (ou gommer) une zone de détail pour la segmentation |
 <!-- GESTURES:END -->
 
 ### Outils Règle et Pipette

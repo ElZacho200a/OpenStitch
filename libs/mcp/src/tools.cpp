@@ -35,6 +35,7 @@ namespace fs = std::filesystem;
 namespace {
 
 constexpr const char* kNoProject = "E_NO_PROJECT";
+constexpr const char* kUnsaved = "E_UNSAVED_CHANGES";
 
 // Erreur d'usage levée par les assistants d'arguments ; convertie en résultat d'outil.
 struct UsageError {
@@ -202,6 +203,41 @@ json summarize_inspection(const json& full) {
     return out;
 }
 
+void check_discard(const Session& s, const json& a) {
+    if (s.project && s.dirty && !opt_bool(a, "discard_changes", false)) {
+        throw UsageError{"projet non enregistre : abandon des modifications refuse",
+                         "appelez project_save ou passez discard_changes=true pour confirmer",
+                         kUnsaved};
+    }
+}
+
+ToolResult tool_status(Session& s, const json&) {
+    json names = json::array();
+    for (const auto& entry : s.checkpoints) {
+        names.push_back(entry.first);
+    }
+    json state{{"schema", "openstitch.mcp-status/1"},
+               {"has_project", s.project.has_value()},
+               {"dirty", s.dirty},
+               {"path", path_text(s.path)},
+               {"checkpoints", names}};
+    if (s.project) {
+        state["embroidery_objects"] = s.project->embroidery_objects.size();
+        state["vector_objects"] = s.project->vector_objects.size();
+    }
+    return text_result(state.dump(2));
+}
+
+ToolResult tool_close(Session& s, const json& a) {
+    check_discard(s, a);
+    s.project.reset();
+    s.info.reset();
+    s.path.clear();
+    s.dirty = false;
+    s.checkpoints.clear();
+    return tool_status(s, json::object());
+}
+
 // ---- Outils ------------------------------------------------------------------------------
 
 ToolResult tool_operations(Session&, const json&) {
@@ -209,6 +245,7 @@ ToolResult tool_operations(Session&, const json&) {
 }
 
 ToolResult tool_new(Session& s, const json& a) {
+    check_discard(s, a);
     po::NewProjectOptions options;
     options.width_mm = opt_double(a, "width_mm", options.width_mm);
     options.height_mm = opt_double(a, "height_mm", options.height_mm);
@@ -229,6 +266,7 @@ ToolResult tool_new(Session& s, const json& a) {
         }
     }
     s.project = std::move(*created);
+    s.checkpoints.clear();
     s.info.reset();
     s.path = path;
     s.dirty = path.empty();
@@ -236,12 +274,14 @@ ToolResult tool_new(Session& s, const json& a) {
 }
 
 ToolResult tool_open(Session& s, const json& a) {
+    check_discard(s, a);
     const fs::path path = to_path(req_string(a, "path"));
     auto opened = po::open_project(path);
     if (!opened) {
         return engine_error("project_open", po::code::kInvalidProject, opened.error());
     }
     s.project = std::move(opened->project);
+    s.checkpoints.clear();
     s.info = opened->info;
     s.path = path;
     s.dirty = false;
@@ -357,6 +397,7 @@ void read_settings(const json& j, po::DigitizeSettings& s) {
 }
 
 ToolResult tool_digitize(Session& s, const json& a) {
+    check_discard(s, a);
     const std::string image = req_string(a, "image");
     po::DigitizeSettings settings;
     if (a.contains("settings")) {
@@ -441,6 +482,7 @@ ToolResult tool_digitize(Session& s, const json& a) {
         result["notes"] = notes;
     }
     s.project = std::move(project);
+    s.checkpoints.clear();
     s.info.reset();
     s.path = out_path;
     s.dirty = out.empty();
@@ -1339,6 +1381,10 @@ ToolResult tool_satin_compare(Session& s, const json& a) {
 }
 
 const std::vector<Tool> kTools = {
+    {"project_status", "Statut compact de la session, modifications non sauvegardees et variantes.",
+     R"({"type":"object","properties":{}})", tool_status},
+    {"project_close", "Ferme le projet ; exige discard_changes=true si dirty.",
+     R"({"type":"object","properties":{"discard_changes":{"type":"boolean"}}})", tool_close},
     {"digitize_guide",
      "Guide de numérisation textile OpenStitch (méthode éprouvée : lecture sémantique, choix "
      "satin/tatami/contour, comparaison des trois satins, retouches, mesures, livrables). À "
@@ -1353,10 +1399,13 @@ const std::vector<Tool> kTools = {
      R"({"type":"object","properties":{"path":{"type":"string","description":"fichier .osp à écrire"},)"
      R"("width_mm":{"type":"number"},"height_mm":{"type":"number"},"margin_mm":{"type":"number"},)"
      R"("trim_threshold_mm":{"type":"number"},)"
-     R"("lock":{"enum":["none","backforth","triangle","zigzag"]},"no_clobber":{"type":"boolean"}}})",
+     R"("lock":{"enum":["none","backforth","triangle","zigzag"]},"no_clobber":{"type":"boolean"},)"
+     R"("discard_changes":{"type":"boolean"}}})",
      tool_new},
     {"project_open", "Ouvre un projet .osp existant (remplace le projet de la session).",
-     R"({"type":"object","properties":{"path":{"type":"string"}},"required":["path"]})", tool_open},
+     R"({"type":"object","properties":{"path":{"type":"string"},)"
+     R"("discard_changes":{"type":"boolean"}},"required":["path"]})",
+     tool_open},
     {"project_digitize",
      "Numérise une image en projet .osp éditable (remplace le projet de la session). Retourne le "
      "rapport de numérisation. « settings » : mode (shapes|contours|stipple), max_colors, "
@@ -1370,7 +1419,8 @@ const std::vector<Tool> kTools = {
      R"({"type":"object","properties":{"image":{"type":"string"},"out":{"type":"string",)"
      R"("description":"fichier .osp à écrire, dans un dossier existant"},)"
      R"("settings":{"type":"object"},"no_clobber":{"type":"boolean"},)"
-     R"("fit_canvas":{"type":"boolean"},"margin_mm":{"type":"number"}},"required":["image"]})",
+     R"("fit_canvas":{"type":"boolean"},"margin_mm":{"type":"number"},)"
+     R"("discard_changes":{"type":"boolean"}},"required":["image"]})",
      tool_digitize},
     {"project_inspect",
      "Structure du projet. Par défaut un RÉSUMÉ compact : cadre, dimensions, nombre de points, "
@@ -1536,6 +1586,62 @@ const std::vector<Tool>& tools() {
     return kTools;
 }
 
+void validate_args(const Tool& tool, const json& args) {
+    const json spec = json::parse(tool.input_schema);
+    const json props = spec.value("properties", json::object());
+    for (const auto& required : spec.value("required", json::array())) {
+        const std::string key = required.get<std::string>();
+        if (!args.contains(key)) {
+            throw UsageError{"argument manquant : " + key, "voir tools/list"};
+        }
+    }
+    const auto type_ok = [](const json& v, const std::string& t) {
+        return (t == "string" && v.is_string()) || (t == "boolean" && v.is_boolean()) ||
+               (t == "object" && v.is_object()) || (t == "array" && v.is_array()) ||
+               (t == "number" && v.is_number()) || (t == "integer" && v.is_number_integer());
+    };
+    for (const auto& [key, v] : args.items()) {
+        if (!props.contains(key)) {
+            throw UsageError{"argument inconnu : " + key, "voir tools/list"};
+        }
+        const json& field = props.at(key);
+        if (v.is_null()) {
+            continue;
+        }
+        if (field.contains("type") && !type_ok(v, field.at("type").get<std::string>())) {
+            throw UsageError{"type invalide : " + key, "voir tools/list"};
+        }
+        if (field.contains("enum") && std::find(field.at("enum").begin(), field.at("enum").end(),
+                                                v) == field.at("enum").end()) {
+            throw UsageError{"valeur invalide : " + key, field.at("enum").dump()};
+        }
+        if (v.is_number() && field.contains("minimum") &&
+            v.get<double>() < field.at("minimum").get<double>()) {
+            throw UsageError{"valeur trop petite : " + key, "voir tools/list"};
+        }
+        if (v.is_array()) {
+            if ((field.contains("minItems") &&
+                 v.size() < field.at("minItems").get<std::size_t>()) ||
+                (field.contains("maxItems") &&
+                 v.size() > field.at("maxItems").get<std::size_t>())) {
+                throw UsageError{"taille de liste invalide : " + key, "voir tools/list"};
+            }
+            if (field.contains("items")) {
+                const json& item = field.at("items");
+                for (const auto& x : v) {
+                    if ((item.contains("type") &&
+                         !type_ok(x, item.at("type").get<std::string>())) ||
+                        (item.contains("enum") &&
+                         std::find(item.at("enum").begin(), item.at("enum").end(), x) ==
+                             item.at("enum").end())) {
+                        throw UsageError{"element invalide : " + key, "voir tools/list"};
+                    }
+                }
+            }
+        }
+    }
+}
+
 ToolResult call_tool(Session& session, const std::string& name, const json& args) {
     for (const auto& tool : tools()) {
         if (name != tool.name) {
@@ -1546,7 +1652,9 @@ ToolResult call_tool(Session& session, const std::string& name, const json& args
                 throw UsageError{"« arguments » doit être un objet JSON",
                                  "voir inputSchema de l'outil"};
             }
-            return tool.run(session, args.is_null() ? json::object() : args);
+            const json checked = args.is_null() ? json::object() : args;
+            validate_args(tool, checked);
+            return tool.run(session, checked);
         } catch (const UsageError& e) {
             return error_result(name, e.code, e.message, e.hint);
         } catch (const json::exception& e) {

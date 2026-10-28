@@ -539,7 +539,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.pull_compensation = Micrometers{std::clamp(j.value("pullCompensation", 0), 0, 3'000)};
         p.underlay_mode =
             static_cast<document::UnderlayMode>(std::clamp(j.value("underlayMode", 0), 0, 1));
-        p.pull_mode = static_cast<document::PullMode>(std::clamp(j.value("pullMode", 0), 0, 2));
+        p.pull_mode = static_cast<document::PullMode>(std::clamp(j.value("pullMode", 0), 0, 3));
         p.underlay_zigzag = j.value("underlayZigzag", false);
         p.row_end_clip = Micrometers{std::clamp(j.value("rowEndClip", 0), 0, 5'000)};
         p.edge_outline = j.value("edgeOutline", false);
@@ -591,7 +591,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.lock_passes = j.value("lockPasses", 2);
         p.underlay_mode =
             static_cast<document::UnderlayMode>(std::clamp(j.value("underlayMode", 0), 0, 1));
-        p.pull_mode = static_cast<document::PullMode>(std::clamp(j.value("pullMode", 0), 0, 2));
+        p.pull_mode = static_cast<document::PullMode>(std::clamp(j.value("pullMode", 0), 0, 3));
         p.auto_spacing = j.value("autoSpacing", false);
         p.corner_mode =
             static_cast<document::SatinCorner>(std::clamp(j.value("cornerMode", 0), 0, 3));
@@ -680,7 +680,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.handmade_intensity = j.value("handmadeIntensity", 50);
         p.underlay_mode =
             static_cast<document::UnderlayMode>(std::clamp(j.value("underlayMode", 0), 0, 1));
-        p.pull_mode = static_cast<document::PullMode>(std::clamp(j.value("pullMode", 0), 0, 2));
+        p.pull_mode = static_cast<document::PullMode>(std::clamp(j.value("pullMode", 0), 0, 3));
         p.edge_outline = j.value("edgeOutline", false);
         p.pull_compensation = Micrometers{std::clamp(j.value("pullCompensation", 0), 0, 3'000)};
         p.underlay_zigzag = j.value("underlayZigzag", false);
@@ -753,7 +753,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
               Range{"lockLength", 0, 20'000}, Range{"pullCompensation", -5'000, 5'000},
               Range{"pullLeft", -5'000, 5'000}, Range{"pullRight", -5'000, 5'000},
               Range{"pushStart", -5'000, 5'000}, Range{"pushEnd", -5'000, 5'000},
-              Range{"underlayMode", 0, 1}, Range{"pullMode", 0, 2}, Range{"cornerMode", 0, 3}}) {
+              Range{"underlayMode", 0, 1}, Range{"pullMode", 0, 3}, Range{"cornerMode", 0, 3}}) {
             if (const auto err = badNumber(field(r.name), r.name, r.lo, r.hi)) {
                 return fail(ErrorCategory::InvalidFile, *err);
             }
@@ -805,7 +805,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.lock_length = Micrometers{j.value("lockLength", 800)};
         p.lock_passes = j.value("lockPasses", 2);
         p.underlay_mode = static_cast<document::UnderlayMode>(j.value("underlayMode", 0));
-        p.pull_mode = static_cast<document::PullMode>(std::clamp(j.value("pullMode", 0), 0, 2));
+        p.pull_mode = static_cast<document::PullMode>(std::clamp(j.value("pullMode", 0), 0, 3));
         p.compact_axis = j.value("compactAxis", false);
         p.auto_spacing = j.value("autoSpacing", false);
         p.corner_mode =
@@ -1411,7 +1411,14 @@ json project_to_json(const document::Project& project) {
     }
     if (!(project.fabric == document::FabricSettings{})) {
         // Tissu de fond (HP-THR-008) : clé facultative, absente = blanc.
-        j["fabric"] = {{"rgb", rgb_to_json(project.fabric.color)}, {"name", project.fabric.name}};
+        json fabric = {{"rgb", rgb_to_json(project.fabric.color)}, {"name", project.fabric.name}};
+        if (!project.fabric.material.empty()) {
+            fabric["material"] = project.fabric.material;
+        }
+        if (!project.fabric.stabilizer.empty()) {
+            fabric["stabilizer"] = project.fabric.stabilizer;
+        }
+        j["fabric"] = std::move(fabric);
     }
 
     j["vectorObjects"] = json::array();
@@ -1657,6 +1664,8 @@ Result<document::Project> project_from_json(const json& j) {
             const auto& fj = j.at("fabric");
             project.fabric.color = rgb_from_json(fj.at("rgb"));
             project.fabric.name = fj.value("name", std::string{});
+            project.fabric.material = fj.value("material", std::string{});
+            project.fabric.stabilizer = fj.value("stabilizer", std::string{});
         }
 
         for (const auto& vo : j.at("vectorObjects")) {

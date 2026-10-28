@@ -202,6 +202,9 @@ void MainWindow::syncBrushTool(Tool tool) {
 
 void MainWindow::beginBrushStroke(QPointF sceneMm) {
     brushStroke_.reset();
+    if (currentTool_ != Tool::Brush) {
+        return; // le même geste sert aux zones de détail (main_window_detail_zones.cpp)
+    }
     if (hasMultiSelection() || !selectedObject_) {
         statusBar()->showMessage(tr("Pinceau : sélectionnez d'abord UNE forme vectorielle."), 4000);
         return;
@@ -215,6 +218,9 @@ void MainWindow::beginBrushStroke(QPointF sceneMm) {
 }
 
 void MainWindow::moveBrushStroke(QPointF sceneMm, Qt::KeyboardModifiers mods) {
+    if (currentTool_ != Tool::Brush) {
+        return;
+    }
     updateBrushRing(sceneMm);
     if (!brushStroke_) {
         return;

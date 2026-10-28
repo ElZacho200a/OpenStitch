@@ -73,7 +73,11 @@ TEST_CASE("fabric : round-trip de la couleur et du nom, defaut = pas de cle") {
 
     project.fabric.color = {30, 40, 120};
     project.fabric.name = "Jean";
+    project.fabric.material = "denim";
+    project.fabric.stabilizer = "cut-away";
     const auto loaded = round_trip(project, "openstitch_fabric_roundtrip.osp");
     CHECK(loaded.fabric.color == std::array<std::uint8_t, 3>{30, 40, 120});
     CHECK(loaded.fabric.name == "Jean");
+    CHECK(loaded.fabric.material == "denim");
+    CHECK(loaded.fabric.stabilizer == "cut-away");
 }
