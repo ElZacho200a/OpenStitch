@@ -160,6 +160,7 @@ private slots:
     void settingsDialogStoresKeyOnlyInTheSecretStore();
     void targetPhraseWorksEndToEndFromTheDesktop();
     void claudeCodeProcessParsesStructuredEvents();
+    void claudeCodeStreamsAssistantTextWithoutRepeatingFinalResult();
     void launcherPreparesWorkspaceAndStartsTheUsersClaude();
     void launcherReportsMissingClaudeAndMissingMcpWithoutLaunching();
     void openClaudeCodeActionEnablesTheBridgeOnlyOnExplicitUse();
@@ -523,6 +524,29 @@ void MainWindowTest::claudeCodeProcessParsesStructuredEvents() {
     QCOMPARE(text.at(0).at(0).toString(), QStringLiteral("Trois objets orange"));
     QCOMPARE(usage.size(), 1);
     QCOMPARE(usage.at(0).at(0).toULongLong(), quint64{120});
+}
+
+void MainWindowTest::claudeCodeStreamsAssistantTextWithoutRepeatingFinalResult() {
+    ClaudeCodeProcessBackend backend(QStringLiteral("fake-claude"),
+                                     QStringLiteral("/virtual/workspace"));
+    QSignalSpy text(&backend, &CompanionBackend::assistantText);
+
+    const QByteArray assistant = R"({"type":"assistant","message":{"id":"msg-live-1","content":[{"type":"text","text":"Trois objets orange identifies."}]}})";
+    backend.ingestEventForTest(assistant);
+    QCOMPARE(text.size(), 1); // Le texte arrive AVANT l'evenement final.
+    backend.ingestEventForTest(assistant); // Retansmission d'un meme message : ignoree.
+    backend.ingestEventForTest(
+        R"({"type":"result","is_error":false,"session_id":"12345678-1234-1234-1234-123456789abc","result":"Trois objets orange identifies."})");
+    QCOMPARE(text.size(), 1);
+    QCOMPARE(text.at(0).at(0).toString(), QStringLiteral("Trois objets orange identifies."));
+
+    // Les versions de CLI qui n'envoient pas de message assistant conservent le resultat final.
+    ClaudeCodeProcessBackend fallback(QStringLiteral("fake-claude"),
+                                      QStringLiteral("/virtual/workspace"));
+    QSignalSpy fallbackText(&fallback, &CompanionBackend::assistantText);
+    fallback.ingestEventForTest(R"({"type":"result","result":"Reponse finale"})");
+    QCOMPARE(fallbackText.size(), 1);
+    QCOMPARE(fallbackText.at(0).at(0).toString(), QStringLiteral("Reponse finale"));
 }
 
 void MainWindowTest::launcherPreparesWorkspaceAndStartsTheUsersClaude() {

@@ -30,6 +30,8 @@ void ClaudeCodeProcessBackend::resetConversation() {
     cancel();
     sessionId_.clear();
     reportedToolIds_.clear();
+    reportedAssistantIds_.clear();
+    streamedText_ = false;
 }
 
 void ClaudeCodeProcessBackend::send(const QString& userText) {
@@ -42,6 +44,8 @@ void ClaudeCodeProcessBackend::send(const QString& userText) {
     resultSeen_ = false;
     buffer_.clear();
     reportedToolIds_.clear();
+    reportedAssistantIds_.clear();
+    streamedText_ = false;
 
     // QProcess execute la CLI en sous-processus ; aucun texte utilisateur ne passe dans
     // les arguments du shell. Le prompt est fourni par stdin.
@@ -180,13 +184,28 @@ void ClaudeCodeProcessBackend::handleLine(const QByteArray& line) {
     const QJsonObject event = document.object();
     const QString kind = event.value(QStringLiteral("type")).toString();
     if (kind == QLatin1String("assistant")) {
-        const auto blocks = event.value(QStringLiteral("message"))
-                                .toObject()
-                                .value(QStringLiteral("content"))
-                                .toArray();
+        const QJsonObject message = event.value(QStringLiteral("message")).toObject();
+        const QString messageId = message.value(QStringLiteral("id")).toString();
+        // En mode stream-json, la CLI peut reemettre un message complet : pas de doublon.
+        if (!messageId.isEmpty()) {
+            if (reportedAssistantIds_.contains(messageId)) {
+                return;
+            }
+            reportedAssistantIds_.insert(messageId);
+        }
+        const auto blocks = message.value(QStringLiteral("content")).toArray();
         for (const auto& value : blocks) {
             const auto block = value.toObject();
-            if (block.value(QStringLiteral("type")).toString() != QLatin1String("tool_use")) {
+            const QString blockType = block.value(QStringLiteral("type")).toString();
+            if (blockType == QLatin1String("text")) {
+                const QString text = block.value(QStringLiteral("text")).toString();
+                if (!text.trimmed().isEmpty()) {
+                    streamedText_ = true;
+                    emit assistantText(text); // Afficher au fur et a mesure, avant l'evenement result.
+                }
+                continue;
+            }
+            if (blockType != QLatin1String("tool_use")) {
                 continue;
             }
             const QString id = block.value(QStringLiteral("id")).toString();
@@ -214,7 +233,8 @@ void ClaudeCodeProcessBackend::handleLine(const QByteArray& line) {
         sessionId_ = session;
     }
     const QString result = event.value(QStringLiteral("result")).toString();
-    if (!result.isEmpty()) {
+    // Le resultat final repete souvent les textes deja recus dans les messages assistant.
+    if (!streamedText_ && !result.isEmpty()) {
         emit assistantText(result);
     }
     const auto usage = event.value(QStringLiteral("usage")).toObject();

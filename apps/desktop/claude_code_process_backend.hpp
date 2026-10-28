@@ -47,6 +47,8 @@ private:
     QPointer<QProcess> process_;
     QByteArray buffer_;
     QSet<QString> reportedToolIds_;
+    QSet<QString> reportedAssistantIds_;
+    bool streamedText_{false};
     bool cancelled_{false};
     bool resultSeen_{false};
 };
