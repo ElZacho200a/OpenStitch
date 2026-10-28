@@ -1251,8 +1251,12 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   profil matière (#155), visualisation du champ, calibration (HP-ENG-001.a).
 - Correctif proposé (2026-10-28, niveau 3) : mode `Predicted` accepté à la relecture `.osp`
   pour l'auto-satin (validation 0–3), et `refresh_context` applique la passe prédite après les
-  retouches manuelles, avant les finitions comme `effective_sequence` ; tests de parité desktop/
-  export et aller-retour des quatre modes. Reste : validation C++/Qt en CI et sur machine.
+  retouches manuelles, avant les finitions comme `effective_sequence`. Sur satin, auto-satin,
+  tatami et directionnel, `Predicted` conserve désormais la compensation géométrique `Adaptive`
+  comme socle avant le décalage du champ ; auparavant le socle était remis à zéro, donnant une
+  sous-compensation évidente en absence de calibration. Tests de parité desktop/export,
+  aller-retour des quatre modes et enveloppe tatami adaptative. Reste : validation CI,
+  et mesures physiques du modèle de champ sur tissu.
 - Livré (2026-10-27, niveau 3, prévisualisation) : `pull_map.cpp` (carte de déplacement,
   `simulate_fabric_pull` ordonné par bloc de couleur : le défaut de repérage entre couleurs),
   réglages de tissu empiriques (standard, lin lâche, bien stabilisé), `Affichage > Carte de tirage
