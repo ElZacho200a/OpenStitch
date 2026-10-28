@@ -5,6 +5,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
+#include <QRegularExpression>
 
 namespace openstitch::desktop {
 
@@ -53,12 +54,27 @@ void ClaudeCodeProcessBackend::send(const QString& userText) {
                         QStringLiteral("--allowedTools"), QStringLiteral("mcp__openstitch"),
                         QStringLiteral("--disallowedTools"),
                         QStringLiteral("Bash,Edit,Write,NotebookEdit")};
-    if (!sessionId_.isEmpty()) {
+    // Ne jamais transmettre au wrapper cmd un identifiant non controle provenant du JSON.
+    const QRegularExpression uuid(
+        QStringLiteral("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"));
+    if (uuid.match(sessionId_).hasMatch()) {
         args << QStringLiteral("--resume") << sessionId_;
+    } else {
+        sessionId_.clear();
     }
     QString program = executable_;
 #ifdef _WIN32
     if (executable_.endsWith(QStringLiteral(".cmd"), Qt::CaseInsensitive)) {
+        // Le parseur de cmd.exe n'a pas les memes regles que QProcess : refuser
+        // les chemins contenant des caracteres interpretes par le shell Windows.
+        if (executable_.contains(QRegularExpression(QStringLiteral("[&|<>^%()]")))) {
+            emit failed(tr("Chemin Claude Code incompatible avec le mode integre. "
+                           "Utilisez le terminal externe."));
+            process_ = nullptr;
+            proc->deleteLater();
+            emit finished();
+            return;
+        }
         // Les installations npm placent parfois un wrapper .cmd au lieu d'un .exe natif.
         // AUCUNE entree utilisateur n'est envoyee a cmd.exe : stdin seulement.
         program = QStringLiteral("cmd.exe");
@@ -75,14 +91,28 @@ void ClaudeCodeProcessBackend::send(const QString& userText) {
         proc->closeWriteChannel();
     });
     connect(proc, &QProcess::readyReadStandardOutput, this, [this] { handleOutput(); });
-    connect(proc, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
-        if (!cancelled_ && error == QProcess::FailedToStart) {
-            emit failed(tr("Impossible de demarrer Claude Code. Verifiez son installation."));
-        }
-    });
+    connect(proc, &QProcess::errorOccurred, this,
+            [this, proc](QProcess::ProcessError error) {
+                if (error != QProcess::FailedToStart || process_ != proc) {
+                    return;
+                }
+                if (!cancelled_) {
+                    emit failed(tr("Impossible de demarrer Claude Code. Verifiez son installation."));
+                }
+                process_ = nullptr;
+                proc->deleteLater();
+                emit finished();
+            });
     connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, [this, proc](int code, QProcess::ExitStatus status) {
+                if (process_ != proc) {
+                    return;
+                }
                 handleOutput();
+                if (!buffer_.trimmed().isEmpty()) {
+                    handleLine(buffer_.trimmed()); // Claude Code peut omettre le dernier LF.
+                }
+                buffer_.clear();
                 if (!cancelled_ && !resultSeen_) {
                     if (status == QProcess::NormalExit && code == 0) {
                         emit failed(tr("Claude Code n'a pas renvoye de resultat JSON."));
@@ -123,6 +153,9 @@ void ClaudeCodeProcessBackend::ingestEventForTest(const QByteArray& jsonLine) {
 }
 
 void ClaudeCodeProcessBackend::handleLine(const QByteArray& line) {
+    if (cancelled_) {
+        return;
+    }
     QJsonParseError parseError;
     const auto document = QJsonDocument::fromJson(line, &parseError);
     if (parseError.error != QJsonParseError::NoError || !document.isObject()) {

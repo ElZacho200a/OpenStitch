@@ -64,7 +64,7 @@ ClaudeCodeLauncher::Result ClaudeCodeLauncher::prepare(const Env& env, QString& 
     }
     const QString dir = workspaceDir(env.dataDir);
     QDir().mkpath(dir);
-    if (!agent::write_claude_workspace(dir.toStdString(), mcp.toStdString(),
+    if (!agent::write_claude_workspace(dir.toUtf8().toStdString(), mcp.toUtf8().toStdString(),
                                       static_cast<int>(QCoreApplication::applicationPid()))) {
         return Result::WorkspaceFailed;
     }

@@ -84,7 +84,9 @@ bool write_claude_workspace(const std::string& directory, const std::string& mcp
                             int desktop_pid) {
     using json = nlohmann::json;
     try {
-        const fs::path dir = fs::path(directory);
+        // Les chemins fournis par Qt sont en UTF-8, y compris les repertoires Windows accents.
+        const fs::path dir = fs::path(std::u8string(
+            reinterpret_cast<const char8_t*>(directory.data()), directory.size()));
         write_file(dir / "CLAUDE.md", kGuide);
         write_file(dir / ".claude" / "openstitch-live-guide.md", kGuide);
         write_file(dir / ".claude" / "skills" / "openstitch-live-edit" / "SKILL.md", kSkillEdit);
