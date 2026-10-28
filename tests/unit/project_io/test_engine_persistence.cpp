@@ -123,9 +123,9 @@ TEST_CASE("moteur : auto-satin conserve tous les modes de tirage dont Predicted"
         object.params = params;
         project.embroidery_objects.push_back(object);
 
-        const auto path = fs::temp_directory_path() /
-                          ("openstitch_auto_satin_pull_" +
-                           std::to_string(static_cast<int>(mode)) + ".osp");
+        const auto suffix = std::to_string(static_cast<int>(mode));
+        const auto filename = "openstitch_auto_satin_pull_" + suffix + ".osp";
+        const auto path = fs::temp_directory_path() / filename;
         REQUIRE(project_io::save_project(path, project).has_value());
         const auto loaded = project_io::load_project(path);
         fs::remove(path);
