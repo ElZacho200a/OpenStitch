@@ -1260,6 +1260,16 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   par défaut 3×, bornée à 6× ; amplitude finale ≤ `max_displacement_mm`), avec tests de force,
   de conservation de confiance et de plafond. Reste : validation CI, exposition d'un réglage
   d'intensité par objet dans le desktop/CLI/MCP et mesures physiques du modèle sur tissu.
+- Extension (2026-10-28, PR #170) : lecture des champs persistés `fabric.material` et
+  `fabric.stabilizer` dans le cœur `Predicted`, avec profils heuristiques bornés par le champ
+  (woven neutre ; jersey 1,20× ; terry 1,25× ; felt 0,75× ; denim 0,85× ; cut-away 0,80×,
+  tear-away 0,92×, aucun entoilage 1,10×). Réponse calibrée explicitement fournie : jamais
+  modifiée. Sources de traction pondérées par passe, longueur et satin vs remplissage ;
+  densité et direction déjà présentes dans le nombre et les orientations des segments.
+  `Coloris et tissu` renseigne les paramètres dans le desktop ; le prévisualiseur utilise
+  ces champs par défaut, tout en conservant des presets d'exploration indépendants.
+  Ces facteurs sont des **choix exploratoires**, pas des constantes publiées ; vérification
+  sur coupons indispensable avant tout usage métrologique.
 - Livré (2026-10-27, niveau 3, prévisualisation) : `pull_map.cpp` (carte de déplacement,
   `simulate_fabric_pull` ordonné par bloc de couleur : le défaut de repérage entre couleurs),
   réglages de tissu empiriques (standard, lin lâche, bien stabilisé), `Affichage > Carte de tirage
