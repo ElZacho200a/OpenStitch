@@ -53,7 +53,7 @@ enum class UnderlayMode : std::uint8_t { Manual, Auto };
 // sécurité ; `Auto` reste la règle historique à largeur moyenne, inchangée. `Predicted`
 // (niveau 3) : le déplacement du tissu est prédit par un CHAMP sur tous les segments cousus voisins
 // (`stitch_generation::PullField`, anisotrope, avec confiance) et appliqué en passe finale de
-// `effective_sequence` ; la compensation de bout d'objet est alors nulle. N'agit qu'à la
+// `effective_sequence`, EN PLUS de la compensation locale Adaptive. N'agit qu'à la
 // génération. Valeurs persistées : ne pas réordonner.
 enum class PullMode : std::uint8_t { Manual, Auto, Adaptive, Predicted };
 
