@@ -1249,6 +1249,10 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   `effective_sequence` (tous les segments voisins sont sources, seuls les points de couche
   supérieure des objets prédits bougent), tests `test_predicted_pull.cpp`. Reste : lecture du
   profil matière (#155), visualisation du champ, calibration (HP-ENG-001.a).
+- Correctif proposé (2026-10-28, niveau 3) : mode `Predicted` accepté à la relecture `.osp`
+  pour l'auto-satin (validation 0–3), et `refresh_context` applique la passe prédite après les
+  retouches manuelles, avant les finitions comme `effective_sequence` ; tests de parité desktop/
+  export et aller-retour des quatre modes. Reste : validation C++/Qt en CI et sur machine.
 - Livré (2026-10-27, niveau 3, prévisualisation) : `pull_map.cpp` (carte de déplacement,
   `simulate_fabric_pull` ordonné par bloc de couleur : le défaut de repérage entre couleurs),
   réglages de tissu empiriques (standard, lin lâche, bien stabilisé), `Affichage > Carte de tirage
