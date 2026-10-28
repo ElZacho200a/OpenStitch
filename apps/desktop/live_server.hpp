@@ -70,7 +70,7 @@ private:
     void serve(QLocalSocket* socket, const std::string& line);
 
     mcp::LiveService& service_;
-    std::unique_ptr<mcp::LiveHost> host_;
+    std::shared_ptr<mcp::LiveHost> host_;
     std::string token_;
     std::filesystem::path dir_;
     QLocalServer* server_{nullptr};

@@ -1940,6 +1940,11 @@ void MainWindow::applyCompanionSettings() {
 bool MainWindow::setLiveBridgeEnabled(bool on, const std::filesystem::path& dir, QString* error) {
     if (!on) {
         if (liveServer_) {
+            // Invalider les calculs MCP deja en cours, y compris pendant une approbation.
+            // Un agent ne doit jamais pouvoir appliquer apres la desactivation du pont.
+            if (!liveBridge_.closed()) {
+                liveBridge_.reset();
+            }
             liveServer_->stop();
             liveServer_.reset();
         }

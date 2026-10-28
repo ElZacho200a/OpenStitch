@@ -64,7 +64,7 @@ bool LiveServer::start(const std::filesystem::path& dir, QString* error) {
         return true;
     }
     token_ = mcp::make_live_token();
-    host_ = std::make_unique<mcp::LiveHost>(service_, token_);
+    host_ = std::make_shared<mcp::LiveHost>(service_, token_);
     const QString name = QStringLiteral("openstitch-live-%1-%2")
                              .arg(QCoreApplication::applicationPid())
                              .arg(QString::fromStdString(token_.substr(0, 8)));
@@ -149,15 +149,18 @@ void LiveServer::serve(QLocalSocket* socket, const std::string& line) {
     // Calcul sur la copie figée hors du fil GUI ; approbation et commit reviennent sur le fil GUI.
     QPointer<LiveServer> self(this);
     QPointer<QLocalSocket> target(socket);
-    QThreadPool::globalInstance()->start([self, target, reply, send] {
+    // L'approbation peut faire fermer le pont depuis une boucle d'evenements imbriquee.
+    // Conserver l'hote jusqu'a la fin du retour GUI pour eviter un use-after-free.
+    const auto host = host_;
+    QThreadPool::globalInstance()->start([self, target, reply, send, host] {
         reply->call->run();
         QMetaObject::invokeMethod(
             qApp,
-            [self, target, reply, send] {
-                if (self == nullptr || !self->host_) {
+            [self, target, reply, send, host] {
+                if (self == nullptr || self->host_ != host) {
                     return; // serveur arrêté ou application en fermeture : réponse abandonnée
                 }
-                send(target, self->host_->finish(*reply));
+                send(target, host->finish(*reply));
             },
             Qt::QueuedConnection);
     });

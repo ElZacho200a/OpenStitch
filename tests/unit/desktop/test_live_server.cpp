@@ -102,6 +102,7 @@ private slots:
     }
     void externalClientReadsAndModifiesTheOpenDocument();
     void refusedApprovalLeavesTheDocumentUntouched();
+    void disablingTheBridgeDuringApprovalDoesNotModifyTheDocument();
     void wrongTokenIsRefusedAndDisabledBridgeLeavesNoEndpoint();
 };
 
@@ -165,6 +166,34 @@ void MainWindowTest::refusedApprovalLeavesTheDocumentUntouched() {
     QVERIFY2(reply.find("E_APPROVAL_DENIED") != std::string::npos, reply.c_str());
     QCOMPARE(colorOf(w.project_, first), (std::array<std::uint8_t, 3>{60, 30, 30}));
     QVERIFY(!w.undoAct_->isEnabled());
+}
+
+void MainWindowTest::disablingTheBridgeDuringApprovalDoesNotModifyTheDocument() {
+    QTemporaryDir tmp;
+    const std::filesystem::path dir = tmp.path().toStdString();
+    MainWindow w;
+    auto f = twoShapes();
+    const ObjectId first = f.first;
+    w.applyLoadedProject(std::move(f.project));
+    QVERIFY(w.setLiveBridgeEnabled(true, dir));
+
+    bool asked = false;
+    bool stopped = false;
+    w.liveGate_.setOverride([&](const mcp::ApprovalRequest&) {
+        asked = true;
+        stopped = w.setLiveBridgeEnabled(false);
+        return true; // Meme une approbation tardive ne doit plus rien appliquer.
+    });
+
+    auto pump = [] { QCoreApplication::processEvents(QEventLoop::AllEvents, 5); };
+    auto apply = std::async(std::launch::async, externalCall, dir, "project_apply",
+                            applyArgs(first, "#FF0000"));
+    const std::string reply = waitFor(apply, pump);
+    QVERIFY2(asked, reply.c_str());
+    QVERIFY(stopped);
+    QCOMPARE(colorOf(w.project_, first), (std::array<std::uint8_t, 3>{60, 30, 30}));
+    QVERIFY(!w.undoAct_->isEnabled());
+    QVERIFY(!mcp::find_live_endpoint(dir).has_value());
 }
 
 void MainWindowTest::wrongTokenIsRefusedAndDisabledBridgeLeavesNoEndpoint() {
