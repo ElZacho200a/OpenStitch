@@ -92,6 +92,26 @@ TEST_CASE("predicted_pull: les bouts de rangee sont repousses vers l'exterieur",
     CHECK(max_x(b, id) - max_x(a, id) <= 800);
 }
 
+TEST_CASE("predicted_pull: conserve un socle adaptatif en tatami", "[predicted_pull]") {
+    document::Project manual;
+    document::Project adaptive;
+    document::Project predicted;
+    add_tatami(manual, 0, document::PullMode::Manual);
+    add_tatami(adaptive, 0, document::PullMode::Adaptive);
+    add_tatami(predicted, 0, document::PullMode::Predicted);
+
+    const auto m = effective(manual);
+    const auto a = effective(adaptive);
+    const auto p = effective(predicted);
+    const ObjectId id = predicted.embroidery_objects.front().id;
+    const auto extension = max_x(a, id) - max_x(m, id);
+    REQUIRE(extension > 0);
+    // Le champ ajoute une correction ; il ne doit plus repartir d'une
+    // géométrie sans compensation, comme c'était le cas avant ce correctif.
+    CHECK(max_x(p, id) >= max_x(a, id));
+    CHECK(max_x(p, id) - max_x(a, id) <= 800);
+}
+
 TEST_CASE("predicted_pull: determinisme octet pour octet", "[predicted_pull]") {
     document::Project project;
     add_tatami(project, 0, document::PullMode::Predicted);
