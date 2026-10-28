@@ -10,8 +10,7 @@ namespace openstitch::stitch_generation {
 // Résout les catégories de matière et de stabilisateur persistées dans le projet.
 // Profils exploratoires NON calibrés : matière inconnue = réponse inchangée ;
 // une réponse explicitement calibrée n'est jamais écrasée par ces heuristiques.
-[[nodiscard]] FabricResponse predicted_fabric_response(
-    const document::Project& project, const FabricResponse& base = FabricResponse{});
+FabricResponse predicted_fabric_response(const document::Project&, const FabricResponse& = {});
 
 // Passe finale du tirage de NIVEAU 3 (`PullMode::Predicted`), appelée par `effective_sequence`
 // APRÈS les retouches manuelles et AVANT les finitions (coupes, verrous : ils se posent sur la
