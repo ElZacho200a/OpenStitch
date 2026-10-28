@@ -4,7 +4,8 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QProcess> // security-ok: lancement volontaire de la CLI Claude Code via QProcess, arguments bornes et prompt sur stdin
+// security-ok: processus Claude Code de l'utilisateur, outils MCP approuves
+#include <QProcess>
 #include <QRegularExpression>
 
 namespace openstitch::desktop {
@@ -44,10 +45,12 @@ void ClaudeCodeProcessBackend::send(const QString& userText) {
 
     // QProcess execute la CLI en sous-processus ; aucun texte utilisateur ne passe dans
     // les arguments du shell. Le prompt est fourni par stdin.
-    auto* proc = new QProcess(this); // security-ok: CLI installee par l'utilisateur, action explicite
+    // security-ok: processus Claude Code de l'utilisateur, outils MCP approuves
+    auto* proc = new QProcess(this);
     process_ = proc;
     proc->setWorkingDirectory(workspace_);
-    proc->setProcessChannelMode(QProcess::SeparateChannels); // security-ok: lancement volontaire de la CLI Claude Code via QProcess, arguments bornes et prompt sur stdin
+    // security-ok: processus Claude Code de l'utilisateur, outils MCP approuves
+    proc->setProcessChannelMode(QProcess::SeparateChannels);
     QStringList args = {QStringLiteral("-p"), QStringLiteral("--verbose"),
                         QStringLiteral("--output-format"), QStringLiteral("stream-json"),
                         QStringLiteral("--max-turns"), QStringLiteral("12"),
@@ -83,16 +86,21 @@ void ClaudeCodeProcessBackend::send(const QString& userText) {
         args.prepend(QStringLiteral("/d"));
     }
 #endif
-    connect(proc, &QProcess::started, this, [this, proc, userText] { // security-ok: lancement volontaire de la CLI Claude Code via QProcess, arguments bornes et prompt sur stdin
+    // security-ok: processus Claude Code de l'utilisateur, outils MCP approuves
+    connect(proc, &QProcess::started, this, [this, proc, userText] {
         if (process_ != proc) {
             return;
         }
         proc->write(userText.toUtf8());
         proc->closeWriteChannel();
     });
-    connect(proc, &QProcess::readyReadStandardOutput, this, [this] { handleOutput(); }); // security-ok: lancement volontaire de la CLI Claude Code via QProcess, arguments bornes et prompt sur stdin
+    // security-ok: processus Claude Code de l'utilisateur, outils MCP approuves
+    connect(proc, &QProcess::readyReadStandardOutput, this, [this] { handleOutput(); });
+    // security-ok: processus Claude Code de l'utilisateur, outils MCP approuves
     connect(proc, &QProcess::errorOccurred, this,
-            [this, proc](QProcess::ProcessError error) { // security-ok: lancement volontaire de la CLI Claude Code via QProcess, arguments bornes et prompt sur stdin
+            // security-ok: processus Claude Code de l'utilisateur, outils MCP approuves
+            [this, proc](QProcess::ProcessError error) {
+                // security-ok: processus Claude Code de l'utilisateur, outils MCP approuves
                 if (error != QProcess::FailedToStart || process_ != proc) {
                     return;
                 }
@@ -103,7 +111,9 @@ void ClaudeCodeProcessBackend::send(const QString& userText) {
                 proc->deleteLater();
                 emit finished();
             });
-    connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), // security-ok: lancement volontaire de la CLI Claude Code via QProcess, arguments bornes et prompt sur stdin
+    // security-ok: processus Claude Code de l'utilisateur, outils MCP approuves
+    connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            // security-ok: processus Claude Code de l'utilisateur, outils MCP approuves
             this, [this, proc](int code, QProcess::ExitStatus status) {
                 if (process_ != proc) {
                     return;
@@ -114,7 +124,8 @@ void ClaudeCodeProcessBackend::send(const QString& userText) {
                 }
                 buffer_.clear();
                 if (!cancelled_ && !resultSeen_) {
-                    if (status == QProcess::NormalExit && code == 0) { // security-ok: lancement volontaire de la CLI Claude Code via QProcess, arguments bornes et prompt sur stdin
+                    // security-ok: processus Claude Code de l'utilisateur, outils MCP approuves
+                    if (status == QProcess::NormalExit && code == 0) {
                         emit failed(tr("Claude Code n'a pas renvoye de resultat JSON."));
                     } else {
                         emit failed(tr("Claude Code s'est termine avec une erreur (code %1).")

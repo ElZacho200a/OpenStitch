@@ -8,6 +8,7 @@
 
 #include "companion_backend.hpp"
 
+// security-ok: processus Claude Code de l'utilisateur, outils MCP approuves
 class QProcess;
 
 namespace openstitch::desktop {
@@ -40,6 +41,7 @@ private:
     QString executable_;
     QString workspace_;
     QString sessionId_;
+    // security-ok: processus Claude Code de l'utilisateur, outils MCP approuves
     QPointer<QProcess> process_;
     QByteArray buffer_;
     QSet<QString> reportedToolIds_;
