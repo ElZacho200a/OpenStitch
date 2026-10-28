@@ -18,7 +18,8 @@ file(GLOB_RECURSE scoped
     "${SRC_DIR}/apps/mcp/*.cpp"
     "${SRC_DIR}/apps/desktop/live_server.*"
     "${SRC_DIR}/apps/desktop/companion_*"
-    "${SRC_DIR}/apps/desktop/claude_backend.*")
+    "${SRC_DIR}/apps/desktop/claude_backend.*"
+    "${SRC_DIR}/apps/desktop/claude_code_process_backend.*")
 
 set(network_patterns "QTcpServer" "QUdpSocket" "QHttpServer" "QWebSocketServer" "QSslServer"
     "AF_INET" "INADDR_ANY" "SOCK_DGRAM" "WSAStartup")
