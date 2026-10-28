@@ -636,8 +636,6 @@ void MainWindowTest::openClaudeCodeActionEnablesTheBridgeOnlyOnExplicitUse() {
     w.setLiveBridgeEnabled(false);
 }
 
-} // namespace openstitch::desktop
-
 void MainWindowTest::claudeCodeChatCanBeSelectedWithoutApiKey() {
     QTemporaryDir tmp;
     makeFakeMcp(tmp.path() + QStringLiteral("/app"));
@@ -659,6 +657,8 @@ void MainWindowTest::claudeCodeChatCanBeSelectedWithoutApiKey() {
     QVERIFY(bridge != nullptr && bridge->isChecked());
     w.setLiveBridgeEnabled(false);
 }
+
+} // namespace openstitch::desktop
 
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
