@@ -6,6 +6,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
@@ -110,6 +111,51 @@ TEST_CASE("predicted_pull: conserve un socle adaptatif en tatami", "[predicted_p
     // géométrie sans compensation, comme c'était le cas avant ce correctif.
     CHECK(max_x(p, id) >= max_x(a, id));
     CHECK(max_x(p, id) - max_x(a, id) <= 800);
+}
+
+TEST_CASE("predicted_pull: tissu et entoilage modulent un profil non calibre",
+          "[predicted_pull][fabric]") {
+    document::Project project;
+    const auto initial = predicted_fabric_response(project);
+    CHECK(initial.gain == FabricResponse{}.gain);
+
+    project.fabric.material = "jersey";
+    const auto jersey = predicted_fabric_response(project);
+    CHECK(std::abs(jersey.gain - initial.gain * 1.20) < 1e-12);
+    CHECK_FALSE(jersey.calibrated); // ne jamais prétendre être un profil mesuré
+
+    project.fabric.stabilizer = "cut-away";
+    const auto cutAway = predicted_fabric_response(project);
+    CHECK(std::abs(cutAway.gain - jersey.gain * 0.80) < 1e-12);
+
+    project.fabric.material = "felt";
+    CHECK(predicted_fabric_response(project).gain < cutAway.gain);
+    project.fabric.material = "unknown-custom-textile";
+    project.fabric.stabilizer = "unknown-stabilizer";
+    CHECK(predicted_fabric_response(project).gain == initial.gain);
+
+    FabricResponse measured;
+    measured.gain = 0.067;
+    measured.calibrated = true;
+    project.fabric.material = "jersey";
+    project.fabric.stabilizer = "cut-away";
+    CHECK(predicted_fabric_response(project, measured).gain == measured.gain);
+}
+
+TEST_CASE("predicted_pull: la matiere du projet affecte uniquement les objets Predicted",
+          "[predicted_pull][fabric]") {
+    document::Project project;
+    add_tatami(project, 0, document::PullMode::Predicted);
+    auto jersey = project;
+    jersey.fabric.material = "jersey";
+    jersey.fabric.stabilizer = "none";
+    CHECK(effective(project).commands != effective(jersey).commands);
+
+    // Un changement de matière ne modifie pas le comportement d'un projet
+    // dépourvu d'objets Predicted (compatibilité des anciens .osp).
+    project.embroidery_objects.front().params = document::TatamiParams{};
+    jersey.embroidery_objects.front().params = document::TatamiParams{};
+    CHECK(effective(project).commands == effective(jersey).commands);
 }
 
 TEST_CASE("predicted_pull: determinisme octet pour octet", "[predicted_pull]") {
