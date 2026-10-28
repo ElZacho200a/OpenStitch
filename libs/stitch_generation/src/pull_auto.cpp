@@ -34,7 +34,10 @@ document::TatamiParams resolve_pull_compensation(const document::TatamiParams& p
                                                  const geometry::PathSet& region) {
     if (params.pull_mode == document::PullMode::Predicted) {
         document::TatamiParams out = params;
-        out.pull_compensation = Micrometers{0}; // le champ prédit s'en charge (passe finale)
+        // La prédiction complète la compensation géométrique, elle ne la remplace pas.
+        // La passe finale est appliquée séparément dans effective_sequence.
+        out.pull_mode = document::PullMode::Adaptive;
+        out.pull_compensation = Micrometers{0};
         return out;
     }
     if (params.pull_mode != document::PullMode::Auto) {
@@ -50,6 +53,8 @@ resolve_pull_compensation(const document::DirectionalFillParams& params,
                           const geometry::PathSet& region) {
     if (params.pull_mode == document::PullMode::Predicted) {
         document::DirectionalFillParams out = params;
+        // Conserver les fins de lignes calculées par Adaptive avant la passe prédite.
+        out.pull_mode = document::PullMode::Adaptive;
         out.pull_compensation = Micrometers{0};
         return out;
     }
