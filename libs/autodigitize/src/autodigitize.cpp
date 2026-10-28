@@ -77,7 +77,35 @@ struct RegionSource {
     ObjectId vec_id;
     std::array<std::uint8_t, 3> rgb;
     std::string label;
+    // Seuil de remplissage applicable à ce morceau (mm²) : celui des options, ou celui des zones
+    // de détail.
+    double min_fill_area_mm2{0.0};
 };
+
+// Une région est « de détail » si la moyenne du masque sur ses pixels est >= 128 (même critère
+// que la vectorisation et la segmentation).
+bool region_is_detail(const segmentation::Segmentation& seg, RegionId id,
+                      const segmentation::DetailMask* mask) {
+    if (mask == nullptr || !mask->matches(seg.width, seg.height)) {
+        return false;
+    }
+    const auto label = static_cast<std::uint32_t>(id.value);
+    std::uint64_t sum = 0;
+    std::uint64_t count = 0;
+    for (std::size_t i = 0; i < seg.labels.size(); ++i) {
+        if (seg.labels[i] == label) {
+            sum += mask->weights[i];
+            ++count;
+        }
+    }
+    return count > 0 && sum >= 128ULL * count;
+}
+
+double fill_threshold(const AutoOptions& options, bool detail) {
+    return detail && options.detail_min_fill_area_mm2 > 0.0
+               ? std::min(options.min_fill_area_mm2, options.detail_min_fill_area_mm2)
+               : options.min_fill_area_mm2;
+}
 
 // Résultat de l'essai de satin sur une région.
 struct SatinChoice {
@@ -135,10 +163,11 @@ SatinChoice choose_satin(const geometry::PathSet& region, const AutoOptions& opt
 // Essai de satin d'un morceau : la SEULE partie coûteuse de la classification (génération
 // d'essai + mesure de couverture). Fonction pure de (morceau, options) : calculée en parallèle
 // par les appelants, puis passée à `classify_and_build_embroidery`.
-SatinChoice satin_choice_for(const geometry::PathSet& main, const AutoOptions& options) {
+SatinChoice satin_choice_for(const geometry::PathSet& main, const AutoOptions& options,
+                             double minFillMm2) {
     const double areaMm2 = net_area_um2(main) / 1e6;
-    return areaMm2 >= options.min_fill_area_mm2 && options.satin_bands ? choose_satin(main, options)
-                                                                       : SatinChoice{};
+    return areaMm2 >= minFillMm2 && options.satin_bands ? choose_satin(main, options)
+                                                        : SatinChoice{};
 }
 
 void classify_and_build_embroidery(const geometry::PathSet& main, const RegionSource& source,
@@ -164,7 +193,7 @@ void classify_and_build_embroidery(const geometry::PathSet& main, const RegionSo
         }
         emb.params = sp;
         emb.name = "Satin " + source.label;
-    } else if (areaMm2 >= options.min_fill_area_mm2) {
+    } else if (areaMm2 >= source.min_fill_area_mm2) {
         // Toute zone remplissable -> tatami. L'orientation des fils reste
         // éditable ensuite.
         document::TatamiParams tp;
@@ -588,7 +617,10 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
         segmentation::merge_small_regions(
             seg,
             static_cast<std::size_t>(std::ceil(options.min_region_area_mm2 / (mmPerPx * mmPerPx))),
-            backgroundRgb, kVectorizedBoundaryLoss);
+            backgroundRgb, kVectorizedBoundaryLoss, segmentation::MergeTarget::LongestBorder, 0.0,
+            options.detail_mask,
+            static_cast<std::size_t>(
+                std::ceil(fill_threshold(options, true) / (mmPerPx * mmPerPx))));
     }
 
     limit_thread_count(seg, options.max_threads, backgroundRgb);
@@ -607,6 +639,7 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
     struct Vectorized {
         std::vector<geometry::PathSet> sets; // vide : région ignorée
         SatinChoice satin;
+        double minFill{0.0};
     };
     const segmentation::Segmentation& constSeg = seg;
     std::vector<Vectorized> vectorized(regions.size());
@@ -630,7 +663,10 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
             return; // région non vectorisable : ignorée sans erreur
         }
         vectorized[i].sets = std::move(*sets);
-        vectorized[i].satin = satin_choice_for(largest_piece(vectorized[i].sets), options);
+        vectorized[i].minFill =
+            fill_threshold(options, region_is_detail(constSeg, regions[i], options.detail_mask));
+        vectorized[i].satin =
+            satin_choice_for(largest_piece(vectorized[i].sets), options, vectorized[i].minFill);
     });
 
     for (std::size_t i = 0; i < regions.size(); ++i) {
@@ -655,7 +691,8 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
         // logique PARTAGÉE avec `auto_digitize_vectors` (§ classify_and_
         // build_embroidery ci-dessus), une région de segmentation n'étant
         // qu'une des deux sources possibles d'un morceau déjà vectorisé.
-        const RegionSource source{vecId, region->rgb, "Région " + std::to_string(id.value)};
+        const RegionSource source{vecId, region->rgb, "Région " + std::to_string(id.value),
+                                  vectorized[i].minFill};
         classify_and_build_embroidery(largest_piece(result.vectors.back().paths), source, ids,
                                       options, vectorized[i].satin, result);
     }
@@ -692,7 +729,8 @@ Result<AutoResult> auto_digitize_vectors(const std::vector<document::VectorObjec
     std::vector<SatinChoice> choices(vectors.size());
     parallel_for(vectors.size(), [&](std::size_t i) {
         if (!vectors[i].paths.empty()) {
-            choices[i] = satin_choice_for(largest_piece(vectors[i].paths), options);
+            choices[i] = satin_choice_for(largest_piece(vectors[i].paths), options,
+                                          options.min_fill_area_mm2);
         }
     });
     for (std::size_t i = 0; i < vectors.size(); ++i) {
@@ -703,7 +741,7 @@ Result<AutoResult> auto_digitize_vectors(const std::vector<document::VectorObjec
         }
         // Aucun nouvel objet vectoriel créé pour la géométrie d'entrée : elle
         // existe déjà (import SVG direct, § "skip segmentation").
-        const RegionSource source{vec.id, vec.rgb, vec.name};
+        const RegionSource source{vec.id, vec.rgb, vec.name, options.min_fill_area_mm2};
         classify_and_build_embroidery(largest_piece(vec.paths), source, ids, options, choices[i],
                                       result);
     }
