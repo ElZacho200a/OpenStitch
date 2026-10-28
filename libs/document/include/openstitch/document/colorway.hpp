@@ -40,7 +40,8 @@ struct FabricSettings {
     std::string name;
     // Identifiant libre : woven, jersey, terry, felt, denim...
     std::string material;
-    // Entoilage declare ; aucune heuristique textile non calibree appliquee.
+    // Entoilage declare (cut-away, tear-away, etc.). Predicted peut l'utiliser
+    // pour un ajustement exploratoire, jamais pour une calibration physique.
     std::string stabilizer;
 
     friend bool operator==(const FabricSettings&, const FabricSettings&) = default;

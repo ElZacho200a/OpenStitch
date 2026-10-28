@@ -84,6 +84,8 @@ void MainWindow::showColorwayDialog() {
                     }
                     undoStack_.execute(std::make_unique<commands::SetFabricCommand>(fabric),
                                        project_);
+                    pullMapValid_ = false;
+                    pullPreviewValid_ = false;
                     refreshImage();
                     updateActions();
                 });

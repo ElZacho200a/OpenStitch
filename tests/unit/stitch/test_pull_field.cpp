@@ -145,6 +145,43 @@ TEST_CASE("pull_field: compensation opposee au deplacement et attenuee", "[pull_
     CHECK(std::abs(c.x.value) <= std::abs(s.displacement.x.value));
 }
 
+TEST_CASE("pull_field: une intensite plus forte augmente la correction sans fausser la confiance",
+          "[pull_field]") {
+    const std::vector<PullSource> sources{seg(-2000, 0, 2000, 0)};
+    FabricResponse low;
+    low.compensation_strength = 1.0;
+    FabricResponse high;
+    high.compensation_strength = 3.0;
+    const PullField weak(sources, low);
+    const PullField strong(sources, high);
+    const Vec2um position{{2000}, {0}};
+    const auto a = weak.compensation_at(position);
+    const auto b = strong.compensation_at(position);
+
+    CHECK(b.x.value > a.x.value);
+    CHECK(b.x.value >= 2 * a.x.value);
+    CHECK(strong.sample(position).confidence == weak.sample(position).confidence);
+    CHECK(strong.sample(position).displacement == weak.sample(position).displacement);
+    CHECK(strong.compensation_at(position) == strong.compensation_at(position));
+}
+
+TEST_CASE("pull_field: intensite elevee toujours bornee par le plafond physique", "[pull_field]") {
+    std::vector<PullSource> sources;
+    for (int i = 0; i < 150; ++i) {
+        sources.push_back(seg(-6000, i * 12, 6000, i * 12, 3.0));
+    }
+    FabricResponse response;
+    response.gain = 0.2;
+    response.max_displacement_mm = 0.25;
+    response.uncalibrated_confidence = 1.0;
+    response.compensation_strength = 6.0;
+    const PullField field(sources, response);
+    for (int x = -7000; x <= 7000; x += 500) {
+        const auto pull = field.compensation_at({{x}, {2000}});
+        CHECK(norm(pull) <= 251.0);
+    }
+}
+
 TEST_CASE("pull_field: entrees degenerees ne produisent ni NaN ni crash", "[pull_field]") {
     FabricResponse bad;
     bad.sigma_along_mm = 0.0;

@@ -753,7 +753,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
               Range{"lockLength", 0, 20'000}, Range{"pullCompensation", -5'000, 5'000},
               Range{"pullLeft", -5'000, 5'000}, Range{"pullRight", -5'000, 5'000},
               Range{"pushStart", -5'000, 5'000}, Range{"pushEnd", -5'000, 5'000},
-              Range{"underlayMode", 0, 1}, Range{"pullMode", 0, 2}, Range{"cornerMode", 0, 3}}) {
+              Range{"underlayMode", 0, 1}, Range{"pullMode", 0, 3}, Range{"cornerMode", 0, 3}}) {
             if (const auto err = badNumber(field(r.name), r.name, r.lo, r.hi)) {
                 return fail(ErrorCategory::InvalidFile, *err);
             }

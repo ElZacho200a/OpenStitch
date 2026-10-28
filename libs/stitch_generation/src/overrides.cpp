@@ -366,10 +366,11 @@ Result<RefreshContext> refresh_context(const document::Project& project,
     if (target) {
         ctx.target_view = edit_view_from_sequence(project, *target, *sequence);
     }
-    // Mêmes deux passes, dans le même ordre, que `effective_sequence` : ne
-    // JAMAIS diverger de ce que produirait `effective_sequence(project)` pour
-    // le contenu affiché/exporté (cf. tests/check_no_raw_sequence_bypass.cmake).
+    // Mêmes passes et même ordre que `effective_sequence_report` : les vues brutes
+    // d'édition restent inchangées, mais la séquence effective affichée doit inclure
+    // le tirage prédit, comme l'export machine (cf. test_predicted_pull.cpp).
     (void)apply_manual_overrides(*sequence, project);
+    apply_predicted_pull(*sequence, project);
     ctx.effective = finish_sequence(*sequence, project);
     return ctx;
 }
