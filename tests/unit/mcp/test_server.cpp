@@ -288,29 +288,29 @@ TEST_CASE("mcp chemins UTF-8: enregistrer et rouvrir sous un dossier accentue", 
     fs::remove_all(dir);
 }
 
-
 // Contrats et sécurité de session (aucune dependance sur un chemin de fixture).
 TEST_CASE("mcp request contract enforces envelope and size", "[mcp][contract]") {
     Server s;
     CHECK(rpc(s, {{"id", 1}, {"method", "ping"}}).at("error").at("code") == -32600);
-    CHECK(rpc(s, {{"jsonrpc", "2.0"}, {"id", true}, {"method", "ping"}})
-              .at("error").at("code") == -32600);
-    CHECK(rpc(s, {{"jsonrpc", "2.0"}, {"id", 1}, {"method", "ping"},
-                  {"params", json::array()}}).at("error").at("code") == -32602);
-    const auto init = rpc(s, {{"jsonrpc", "2.0"}, {"id", 1},
+    CHECK(rpc(s, {{"jsonrpc", "2.0"}, {"id", true}, {"method", "ping"}}).at("error").at("code") ==
+          -32600);
+    CHECK(rpc(s, {{"jsonrpc", "2.0"}, {"id", 1}, {"method", "ping"}, {"params", json::array()}})
+              .at("error")
+              .at("code") == -32602);
+    const auto init = rpc(s, {{"jsonrpc", "2.0"},
+                              {"id", 1},
                               {"method", "initialize"},
                               {"params", {{"protocolVersion", "2099-01-01"}}}});
     CHECK(init.at("result").at("protocolVersion") == "2025-06-18");
-    CHECK(json::parse(*s.handle(std::string(8 * 1024 * 1024 + 1, 'x')))
-              .at("error").at("code") == -32600);
+    CHECK(json::parse(*s.handle(std::string(8 * 1024 * 1024 + 1, 'x'))).at("error").at("code") ==
+          -32600);
 }
 
 TEST_CASE("mcp tool arguments and annotations are actionable", "[mcp][contract]") {
     Server s;
-    CHECK(text_of(call(s, "project_new", {{"unknown", 1}}))
-              .at("error").at("code") == "E_USAGE");
-    CHECK(text_of(call(s, "project_new", {{"lock", "banana"}}))
-              .at("error").at("code") == "E_USAGE");
+    CHECK(text_of(call(s, "project_new", {{"unknown", 1}})).at("error").at("code") == "E_USAGE");
+    CHECK(text_of(call(s, "project_new", {{"lock", "banana"}})).at("error").at("code") ==
+          "E_USAGE");
     const auto list = rpc(s, {{"jsonrpc", "2.0"}, {"id", 1}, {"method", "tools/list"}});
     bool status_readonly = false, close_destructive = false;
     for (const auto& item : list.at("result").at("tools")) {
@@ -329,19 +329,17 @@ TEST_CASE("mcp unsaved edits cannot be replaced silently", "[mcp][contract]") {
     Server s;
     CHECK(text_of(call(s, "project_status")).at("has_project") == false);
     REQUIRE(call(s, "project_new").at("result").at("isError") == false);
-    REQUIRE(call(s, "project_checkpoint", {{"name", "old"}})
-                .at("result").at("isError") == false);
+    REQUIRE(call(s, "project_checkpoint", {{"name", "old"}}).at("result").at("isError") == false);
     CHECK(text_of(call(s, "project_new")).at("error").at("code") == "E_UNSAVED_CHANGES");
-    CHECK(text_of(call(s, "project_open", {{"path", "missing.osp"}}))
-              .at("error").at("code") == "E_UNSAVED_CHANGES");
-    CHECK(text_of(call(s, "project_digitize", {{"image", "missing.png"}}))
-              .at("error").at("code") == "E_UNSAVED_CHANGES");
-    CHECK(text_of(call(s, "project_close")).at("error").at("code") ==
+    CHECK(text_of(call(s, "project_open", {{"path", "missing.osp"}})).at("error").at("code") ==
           "E_UNSAVED_CHANGES");
-    REQUIRE(call(s, "project_new", {{"discard_changes", true}})
-                .at("result").at("isError") == false);
+    CHECK(text_of(call(s, "project_digitize", {{"image", "missing.png"}})).at("error").at("code") ==
+          "E_UNSAVED_CHANGES");
+    CHECK(text_of(call(s, "project_close")).at("error").at("code") == "E_UNSAVED_CHANGES");
+    REQUIRE(call(s, "project_new", {{"discard_changes", true}}).at("result").at("isError") ==
+            false);
     CHECK(text_of(call(s, "project_status")).at("checkpoints").empty());
-    REQUIRE(call(s, "project_close", {{"discard_changes", true}})
-                .at("result").at("isError") == false);
+    REQUIRE(call(s, "project_close", {{"discard_changes", true}}).at("result").at("isError") ==
+            false);
     CHECK(text_of(call(s, "project_status")).at("has_project") == false);
 }

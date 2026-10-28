@@ -538,8 +538,7 @@ TEST_CASE("claude workspace carries the mcp server, guide, hook and skills", "[a
     CHECK(mcp["mcpServers"]["openstitch"]["args"] == json::array({"--live"}));
     REQUIRE(write_claude_workspace(dir.string(), "openstitch-mcp.exe", 43210));
     const json scoped = json::parse(read(".mcp.json"));
-    CHECK(scoped["mcpServers"]["openstitch"]["args"] ==
-          json::array({"--live", "--pid", "43210"}));
+    CHECK(scoped["mcpServers"]["openstitch"]["args"] == json::array({"--live", "--pid", "43210"}));
     const json settings = json::parse(read(".claude/settings.json"));
     CHECK(settings["hooks"]["SessionStart"][0]["hooks"][0]["type"] == "command");
     CHECK(settings["hooks"]["SessionStart"][0]["hooks"][0]["command"].get<std::string>().find(

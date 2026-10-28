@@ -85,8 +85,8 @@ bool write_claude_workspace(const std::string& directory, const std::string& mcp
     using json = nlohmann::json;
     try {
         // Les chemins fournis par Qt sont en UTF-8, y compris les repertoires Windows accents.
-        const fs::path dir = fs::path(std::u8string(
-            reinterpret_cast<const char8_t*>(directory.data()), directory.size()));
+        const fs::path dir = fs::path(
+            std::u8string(reinterpret_cast<const char8_t*>(directory.data()), directory.size()));
         write_file(dir / "CLAUDE.md", kGuide);
         write_file(dir / ".claude" / "openstitch-live-guide.md", kGuide);
         write_file(dir / ".claude" / "skills" / "openstitch-live-edit" / "SKILL.md", kSkillEdit);
@@ -97,8 +97,7 @@ bool write_claude_workspace(const std::string& directory, const std::string& mcp
             args.push_back(std::to_string(desktop_pid));
         }
         const json mcp{
-            {"mcpServers",
-             {{"openstitch", {{"command", mcp_exe_path}, {"args", args}}}}}};
+            {"mcpServers", {{"openstitch", {{"command", mcp_exe_path}, {"args", args}}}}}};
         write_file(dir / ".mcp.json", mcp.dump(2));
         // Hook SessionStart : réinjecte les consignes à chaque démarrage / reprise de session.
         // Claude Code exécute les hooks via un shell POSIX (Git Bash sous Windows) : `cat` partout.

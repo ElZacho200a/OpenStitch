@@ -91,8 +91,7 @@ void CompanionDock::buildUi() {
             &CompanionDock::useClaudeCodeInDockRequested);
     openClaudeCode_ = new QPushButton(welcomePage);
     openClaudeCode_->setObjectName(QStringLiteral("button_companionOpenClaudeCode"));
-    connect(openClaudeCode_, &QPushButton::clicked, this,
-            &CompanionDock::openClaudeCodeRequested);
+    connect(openClaudeCode_, &QPushButton::clicked, this, &CompanionDock::openClaudeCodeRequested);
     configure_ = new QPushButton(welcomePage);
     configure_->setObjectName(QStringLiteral("button_companionConfigure"));
     connect(configure_, &QPushButton::clicked, this, &CompanionDock::configureProviderRequested);

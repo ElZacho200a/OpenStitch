@@ -9,10 +9,10 @@
 //   openstitch-mcp --live [--pid N]
 //                             mode live : les outils s'exécutent sur le projet OUVERT dans
 //                             OpenStitch Desktop (tube nommé local, jeton ; aucun port réseau)
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <cstddef>
 #include <exception>
 #include <iostream>
 #include <memory>
@@ -153,10 +153,11 @@ int main(int argc, char** argv) {
         }
         std::optional<std::string> response;
         try {
-            response = too_large
-                           ? std::optional<std::string>(
-                                 R"({"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"requete de plus de 8 Mio"}})")
-                           : server.handle(line);
+            response =
+                too_large
+                    ? std::optional<std::string>(
+                          R"({"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"requete de plus de 8 Mio"}})")
+                    : server.handle(line);
         } catch (const std::exception& e) { // dernier rempart : le serveur ne doit pas mourir
             response = std::string(R"({"jsonrpc":"2.0","id":null,"error":{"code":-32603,)"
                                    R"("message":"erreur interne du serveur"}})");

@@ -512,9 +512,12 @@ void MainWindowTest::claudeCodeProcessParsesStructuredEvents() {
     QSignalSpy text(&backend, &CompanionBackend::assistantText);
     QSignalSpy tools(&backend, &CompanionBackend::toolCalled);
     QSignalSpy usage(&backend, &CompanionBackend::usage);
-    backend.ingestEventForTest(R"({"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"mcp__openstitch__live_context","input":{}}]}})");
-    backend.ingestEventForTest(R"({"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"mcp__openstitch__live_context","input":{}}]}})");
-    backend.ingestEventForTest(R"({"type":"result","is_error":false,"session_id":"unit-session","result":"Trois objets orange","usage":{"input_tokens":120,"output_tokens":22}})");
+    backend.ingestEventForTest(
+        R"({"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"mcp__openstitch__live_context","input":{}}]}})");
+    backend.ingestEventForTest(
+        R"({"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"mcp__openstitch__live_context","input":{}}]}})");
+    backend.ingestEventForTest(
+        R"({"type":"result","is_error":false,"session_id":"unit-session","result":"Trois objets orange","usage":{"input_tokens":120,"output_tokens":22}})");
     QCOMPARE(tools.size(), 1);
     QCOMPARE(text.size(), 1);
     QCOMPARE(text.at(0).at(0).toString(), QStringLiteral("Trois objets orange"));
@@ -597,8 +600,8 @@ void MainWindowTest::openClaudeCodeActionEnablesTheBridgeOnlyOnExplicitUse() {
     w.findChild<QAction*>(QStringLiteral("action_open_claude_code"))->trigger();
     QVERIFY(launched);
     launched = false;
-    auto* launchButton =
-        w.companionDock()->findChild<QPushButton*>(QStringLiteral("button_companionOpenClaudeCode"));
+    auto* launchButton = w.companionDock()->findChild<QPushButton*>(
+        QStringLiteral("button_companionOpenClaudeCode"));
     QVERIFY(launchButton != nullptr);
     launchButton->click();
     QVERIFY(launched);
@@ -615,14 +618,13 @@ void MainWindowTest::claudeCodeChatCanBeSelectedWithoutApiKey() {
     w.launcherEnv_.appDir = tmp.path() + QStringLiteral("/app");
     w.launcherEnv_.dataDir = tmp.path() + QStringLiteral("/data");
     w.launcherEnv_.findExecutable = [](const QString& n) {
-        return n == QLatin1String("claude")
-                   ? QStringLiteral("C:/bin/claude.exe") : QString();
+        return n == QLatin1String("claude") ? QStringLiteral("C:/bin/claude.exe") : QString();
     };
     w.launcherEnv_.startDetached = [](const QString&, const QStringList&, const QString&) {
         return false; // Le chat dans le dock n'ouvre PAS un terminal.
     };
-    auto* button =
-        w.companionDock()->findChild<QPushButton*>(QStringLiteral("button_companionChatClaudeCode"));
+    auto* button = w.companionDock()->findChild<QPushButton*>(
+        QStringLiteral("button_companionChatClaudeCode"));
     QVERIFY(button != nullptr);
     button->click();
     QCOMPARE(w.companionDock()->backend()->providerName(), QStringLiteral("Claude Code (MCP)"));

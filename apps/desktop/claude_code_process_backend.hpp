@@ -23,7 +23,9 @@ public:
     ClaudeCodeProcessBackend(QString executable, QString workspace, QObject* parent = nullptr);
     ~ClaudeCodeProcessBackend() override;
 
-    [[nodiscard]] QString providerName() const override { return QStringLiteral("Claude Code (MCP)"); }
+    [[nodiscard]] QString providerName() const override {
+        return QStringLiteral("Claude Code (MCP)");
+    }
     [[nodiscard]] bool available() const override;
     void resetConversation();
     // Expose uniquement le decodeur d'evenements pour les tests sans executable Claude.

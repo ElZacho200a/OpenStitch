@@ -13,8 +13,7 @@ constexpr const char* kDefaultProtocol = "2025-06-18";
 constexpr std::size_t kMaxRequestBytes = 8 * 1024 * 1024;
 std::string negotiated_protocol(const json& params) {
     const auto requested = params.value("protocolVersion", std::string{});
-    if (requested == "2025-06-18" || requested == "2025-03-26" ||
-        requested == "2024-11-05") {
+    if (requested == "2025-06-18" || requested == "2025-03-26" || requested == "2024-11-05") {
         return requested;
     }
     return kDefaultProtocol;
@@ -59,11 +58,13 @@ struct Server::Impl {
         json list = json::array();
         const auto add = [&](const char* name, const char* description, const char* schema,
                              bool read_only) {
-            list.push_back(json{{"name", name}, {"description", description},
+            list.push_back(json{{"name", name},
+                                {"description", description},
                                 {"inputSchema", json::parse(schema)},
-                                {"annotations", {{"readOnlyHint", read_only},
-                                                 {"destructiveHint", !read_only},
-                                                 {"openWorldHint", false}}}});
+                                {"annotations",
+                                 {{"readOnlyHint", read_only},
+                                  {"destructiveHint", !read_only},
+                                  {"openWorldHint", false}}}});
         };
         for (const auto& tool : tools()) {
             if (relay != nullptr && live_policy(tool.name) == LivePolicy::Denied) {
@@ -141,7 +142,10 @@ struct Server::Impl {
         std::string task =
             "Numérise l'image « " + args.value("image", "<chemin à préciser>") + " »";
         if (args.contains("width_mm")) {
-            task += ", largeur brodée " + (args.at("width_mm").is_string() ? args.at("width_mm").get<std::string>() : args.at("width_mm").dump()) + " mm";
+            task += ", largeur brodée " +
+                    (args.at("width_mm").is_string() ? args.at("width_mm").get<std::string>()
+                                                     : args.at("width_mm").dump()) +
+                    " mm";
         }
         task +=
             ", en suivant la méthode ci-dessous avec les outils du serveur openstitch "
@@ -191,8 +195,8 @@ std::optional<std::string> Server::handle(std::string_view message) {
     if (!request.contains("jsonrpc") || request.at("jsonrpc") != "2.0") {
         return error_response(nullptr, kInvalidRequest, "jsonrpc doit valoir 2.0").dump();
     }
-    if (request.contains("id") && !request.at("id").is_null() &&
-        !request.at("id").is_string() && !request.at("id").is_number()) {
+    if (request.contains("id") && !request.at("id").is_null() && !request.at("id").is_string() &&
+        !request.at("id").is_number()) {
         return error_response(nullptr, kInvalidRequest, "id JSON-RPC invalide").dump();
     }
     const std::string method = request.at("method").get<std::string>();

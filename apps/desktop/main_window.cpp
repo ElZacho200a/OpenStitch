@@ -91,8 +91,8 @@
 #include "vector_tooltip.hpp"
 
 #include "calque_panel.hpp"
-#include "companion_settings_dialog.hpp"
 #include "claude_code_process_backend.hpp"
+#include "companion_settings_dialog.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/autodigitize/contour_objects.hpp"
 #include "openstitch/autodigitize/line_layer.hpp"
@@ -1791,10 +1791,10 @@ void MainWindow::buildCompanionDock() {
             liveBridgeAct_->setChecked(true);
         }
     });
-    connect(companionDock_, &CompanionDock::openClaudeCodeRequested,
-            this, &MainWindow::openClaudeCode);
-    connect(companionDock_, &CompanionDock::useClaudeCodeInDockRequested,
-            this, &MainWindow::useClaudeCodeInDock);
+    connect(companionDock_, &CompanionDock::openClaudeCodeRequested, this,
+            &MainWindow::openClaudeCode);
+    connect(companionDock_, &CompanionDock::useClaudeCodeInDockRequested, this,
+            &MainWindow::useClaudeCodeInDock);
     // Les approbations de l'agent s'affichent dans le dock (boîte modale seulement en repli).
     liveGate_.setChoiceDelegate([this](const mcp::ChoiceRequest& request) {
         companionDock_->show();
@@ -1876,8 +1876,7 @@ void MainWindow::useClaudeCodeInDock() {
         liveBridgeAct_->setChecked(true);
     }
     if (liveServer_ == nullptr) {
-        QMessageBox::warning(this, tr("Claude Code"),
-                             tr("Le pont MCP local n'a pas pu demarrer."));
+        QMessageBox::warning(this, tr("Claude Code"), tr("Le pont MCP local n'a pas pu demarrer."));
         return;
     }
     // Un seul processus Claude Code par session de conversation : changement de mode explicite.

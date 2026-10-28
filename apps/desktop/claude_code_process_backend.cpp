@@ -51,10 +51,14 @@ void ClaudeCodeProcessBackend::send(const QString& userText) {
     proc->setWorkingDirectory(workspace_);
     // security-ok: processus Claude Code de l'utilisateur, outils MCP approuves
     proc->setProcessChannelMode(QProcess::SeparateChannels);
-    QStringList args = {QStringLiteral("-p"), QStringLiteral("--verbose"),
-                        QStringLiteral("--output-format"), QStringLiteral("stream-json"),
-                        QStringLiteral("--max-turns"), QStringLiteral("12"),
-                        QStringLiteral("--allowedTools"), QStringLiteral("mcp__openstitch"),
+    QStringList args = {QStringLiteral("-p"),
+                        QStringLiteral("--verbose"),
+                        QStringLiteral("--output-format"),
+                        QStringLiteral("stream-json"),
+                        QStringLiteral("--max-turns"),
+                        QStringLiteral("12"),
+                        QStringLiteral("--allowedTools"),
+                        QStringLiteral("mcp__openstitch"),
                         QStringLiteral("--disallowedTools"),
                         QStringLiteral("Bash,Edit,Write,NotebookEdit")};
     // Ne jamais transmettre au wrapper cmd un identifiant non controle provenant du JSON.
@@ -105,7 +109,8 @@ void ClaudeCodeProcessBackend::send(const QString& userText) {
                     return;
                 }
                 if (!cancelled_) {
-                    emit failed(tr("Impossible de demarrer Claude Code. Verifiez son installation."));
+                    emit failed(
+                        tr("Impossible de demarrer Claude Code. Verifiez son installation."));
                 }
                 process_ = nullptr;
                 proc->deleteLater();
@@ -128,8 +133,8 @@ void ClaudeCodeProcessBackend::send(const QString& userText) {
                     if (status == QProcess::NormalExit && code == 0) {
                         emit failed(tr("Claude Code n'a pas renvoye de resultat JSON."));
                     } else {
-                        emit failed(tr("Claude Code s'est termine avec une erreur (code %1).")
-                                        .arg(code));
+                        emit failed(
+                            tr("Claude Code s'est termine avec une erreur (code %1).").arg(code));
                     }
                 }
                 process_ = nullptr;
@@ -176,7 +181,9 @@ void ClaudeCodeProcessBackend::handleLine(const QByteArray& line) {
     const QString kind = event.value(QStringLiteral("type")).toString();
     if (kind == QLatin1String("assistant")) {
         const auto blocks = event.value(QStringLiteral("message"))
-                                .toObject().value(QStringLiteral("content")).toArray();
+                                .toObject()
+                                .value(QStringLiteral("content"))
+                                .toArray();
         for (const auto& value : blocks) {
             const auto block = value.toObject();
             if (block.value(QStringLiteral("type")).toString() != QLatin1String("tool_use")) {

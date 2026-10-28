@@ -203,7 +203,6 @@ json summarize_inspection(const json& full) {
     return out;
 }
 
-
 void check_discard(const Session& s, const json& a) {
     if (s.project && s.dirty && !opt_bool(a, "discard_changes", false)) {
         throw UsageError{"projet non enregistre : abandon des modifications refuse",
@@ -219,7 +218,9 @@ ToolResult tool_status(Session& s, const json&) {
     }
     json state{{"schema", "openstitch.mcp-status/1"},
                {"has_project", s.project.has_value()},
-               {"dirty", s.dirty}, {"path", path_text(s.path)}, {"checkpoints", names}};
+               {"dirty", s.dirty},
+               {"path", path_text(s.path)},
+               {"checkpoints", names}};
     if (s.project) {
         state["embroidery_objects"] = s.project->embroidery_objects.size();
         state["vector_objects"] = s.project->vector_objects.size();
@@ -1403,7 +1404,8 @@ const std::vector<Tool> kTools = {
      tool_new},
     {"project_open", "Ouvre un projet .osp existant (remplace le projet de la session).",
      R"({"type":"object","properties":{"path":{"type":"string"},)"
-     R"("discard_changes":{"type":"boolean"}},"required":["path"]})", tool_open},
+     R"("discard_changes":{"type":"boolean"}},"required":["path"]})",
+     tool_open},
     {"project_digitize",
      "Numérise une image en projet .osp éditable (remplace le projet de la session). Retourne le "
      "rapport de numérisation. « settings » : mode (shapes|contours|stipple), max_colors, "
@@ -1584,7 +1586,6 @@ const std::vector<Tool>& tools() {
     return kTools;
 }
 
-
 void validate_args(const Tool& tool, const json& args) {
     const json spec = json::parse(tool.input_schema);
     const json props = spec.value("properties", json::object());
@@ -1610,9 +1611,8 @@ void validate_args(const Tool& tool, const json& args) {
         if (field.contains("type") && !type_ok(v, field.at("type").get<std::string>())) {
             throw UsageError{"type invalide : " + key, "voir tools/list"};
         }
-        if (field.contains("enum") &&
-            std::find(field.at("enum").begin(), field.at("enum").end(), v) ==
-                field.at("enum").end()) {
+        if (field.contains("enum") && std::find(field.at("enum").begin(), field.at("enum").end(),
+                                                v) == field.at("enum").end()) {
             throw UsageError{"valeur invalide : " + key, field.at("enum").dump()};
         }
         if (v.is_number() && field.contains("minimum") &&
@@ -1620,8 +1620,10 @@ void validate_args(const Tool& tool, const json& args) {
             throw UsageError{"valeur trop petite : " + key, "voir tools/list"};
         }
         if (v.is_array()) {
-            if ((field.contains("minItems") && v.size() < field.at("minItems").get<std::size_t>()) ||
-                (field.contains("maxItems") && v.size() > field.at("maxItems").get<std::size_t>())) {
+            if ((field.contains("minItems") &&
+                 v.size() < field.at("minItems").get<std::size_t>()) ||
+                (field.contains("maxItems") &&
+                 v.size() > field.at("maxItems").get<std::size_t>())) {
                 throw UsageError{"taille de liste invalide : " + key, "voir tools/list"};
             }
             if (field.contains("items")) {
