@@ -17,6 +17,7 @@
 #include "openstitch/project_ops/inspect.hpp"
 #include "openstitch/project_ops/operations.hpp"
 #include "openstitch/project_ops/quality.hpp"
+#include "openstitch/project_ops/render.hpp"
 #include "openstitch/project_ops/report.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
@@ -500,6 +501,57 @@ json measure(const document::Project& project) {
 }
 
 } // namespace
+
+namespace {
+
+std::string signed_delta(std::int64_t before, std::int64_t after) {
+    const auto d = after - before;
+    return std::to_string(before) + " → " + std::to_string(after) + " (" + (d >= 0 ? "+" : "") +
+           std::to_string(d) + ")";
+}
+
+std::string render_png(const document::Project& project) {
+    po::RenderOptions options;
+    options.px_per_mm = 2.0;
+    options.max_pixels = 1'000'000;
+    options.fabric_rgb = {236, 236, 236}; // fond neutre : les fils ressortent
+    const auto rendered = po::render_realistic_png(project, options);
+    if (!rendered) {
+        return {};
+    }
+    return std::string(rendered->png.begin(), rendered->png.end());
+}
+
+} // namespace
+
+ApplyPreview build_apply_preview(const document::Project& before, const document::Project& after) {
+    ApplyPreview preview;
+    preview.before_png = render_png(before);
+    preview.after_png = render_png(after);
+    const json b = measure(before);
+    const json a = measure(after);
+    const auto line = [&](const char* label, const char* key) {
+        if (b.contains(key) && a.contains(key)) {
+            preview.metrics.push_back(
+                std::string(label) + " : " +
+                signed_delta(b.at(key).get<std::int64_t>(), a.at(key).get<std::int64_t>()));
+        }
+    };
+    line("Points", "stitches");
+    line("Sauts", "jumps");
+    line("Coupes", "trims");
+    line("Erreurs qualité", "quality_errors");
+    line("Avertissements qualité", "quality_warnings");
+    if (b.contains("fabric_risk_hotspot_mm2") && a.contains("fabric_risk_hotspot_mm2")) {
+        preview.metrics.push_back("Risque textile (zone chaude, mm²) : " +
+                                  std::to_string(static_cast<std::int64_t>(
+                                      b.at("fabric_risk_hotspot_mm2").get<double>())) +
+                                  " → " +
+                                  std::to_string(static_cast<std::int64_t>(
+                                      a.at("fabric_risk_hotspot_mm2").get<double>())));
+    }
+    return preview;
+}
 
 ToolResult live_preview_tool(const document::Project& project, const json& args) {
     if (!args.contains("operations") || !args.at("operations").is_array()) {

@@ -29,8 +29,10 @@ struct Gate final : mcp::IApprovalGate {
     int choice{-1};
     int approvals{0};
     mcp::ChoiceRequest last_question;
-    bool approve(const mcp::ApprovalRequest&) override {
+    mcp::ApprovalRequest last_approval;
+    bool approve(const mcp::ApprovalRequest& request) override {
         ++approvals;
+        last_approval = request;
         return answer;
     }
     int choose(const mcp::ChoiceRequest& request) override {
@@ -332,6 +334,13 @@ TEST_CASE("full agentic flow: target, plan, preview, approve, undo in one step",
     REQUIRE_FALSE(applied["isError"].get<bool>());
     CHECK(applied["live"]["applied"].get<bool>());
     CHECK(d.gate.approvals == 1);
+    // L'utilisateur voit AVANT d'approuver : rendus avant/apres (PNG) et ecarts de metriques.
+    const std::string png_magic = "\x89PNG";
+    CHECK(d.gate.last_approval.before_png.substr(0, 4) == png_magic);
+    CHECK(d.gate.last_approval.after_png.substr(0, 4) == png_magic);
+    CHECK(d.gate.last_approval.before_png != d.gate.last_approval.after_png);
+    REQUIRE_FALSE(d.gate.last_approval.metrics.empty());
+    CHECK(d.gate.last_approval.metrics.front().find("Points") != std::string::npos);
     CHECK(d.stack.undoNames().size() == 1); // un seul pas, quel que soit le nombre d'objets
     CHECK(d.project.embroidery_objects.size() == objects_before);
     // Le verrouillé et le masqué n'ont pas été touchés.

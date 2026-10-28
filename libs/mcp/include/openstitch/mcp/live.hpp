@@ -68,6 +68,9 @@ struct ApprovalRequest {
     std::vector<std::string> warnings; // opérations écartées, réserves
     std::string label;                 // nom de l'étape d'annulation
     std::string report_json;           // résultat de la simulation (rapport du lot)
+    std::string before_png;            // rendu réaliste AVANT (PNG), vide si indisponible
+    std::string after_png;             // rendu réaliste APRÈS (PNG), vide si indisponible
+    std::vector<std::string> metrics;  // ex. « Points : 118127 → 118298 (+171) »
     std::string session_id;
     std::uint64_t revision{0};
 };

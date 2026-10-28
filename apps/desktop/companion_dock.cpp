@@ -41,7 +41,7 @@ QString html(const QString& text, int limit) {
 QPixmap scaled(const QByteArray& png) {
     QPixmap pixmap;
     pixmap.loadFromData(png, "PNG");
-    return pixmap.isNull() ? pixmap : pixmap.scaledToWidth(160, Qt::SmoothTransformation);
+    return pixmap.isNull() ? pixmap : pixmap.scaledToWidth(280, Qt::SmoothTransformation);
 }
 
 } // namespace
@@ -163,11 +163,15 @@ void CompanionDock::buildUi() {
         }
     });
     proposal->addWidget(proposalItems_);
-    auto* images = new QHBoxLayout;
+    auto* images = new QVBoxLayout;
     beforeImage_ = new QLabel(proposalBox_);
     beforeImage_->setObjectName(QStringLiteral("label_companionBefore"));
+    beforeImage_->setAccessibleName(tr("Aperçu avant la modification"));
+    beforeImage_->setToolTip(tr("Avant"));
     afterImage_ = new QLabel(proposalBox_);
     afterImage_->setObjectName(QStringLiteral("label_companionAfter"));
+    afterImage_->setAccessibleName(tr("Aperçu après la modification"));
+    afterImage_->setToolTip(tr("Après"));
     images->addWidget(beforeImage_);
     images->addWidget(afterImage_);
     proposal->addLayout(images);

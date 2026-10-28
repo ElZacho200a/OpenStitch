@@ -1818,6 +1818,15 @@ void MainWindow::buildCompanionDock() {
         for (const auto& item : request.items) {
             proposal.items.push_back({item.object_id, QString::fromStdString(item.text)});
         }
+        proposal.beforePng = QByteArray::fromStdString(request.before_png);
+        proposal.afterPng = QByteArray::fromStdString(request.after_png);
+        QStringList metrics;
+        for (const auto& metric : request.metrics) {
+            metrics << QString::fromStdString(metric);
+        }
+        if (!metrics.isEmpty()) {
+            proposal.summary += QStringLiteral("\n") + metrics.join(QStringLiteral("\n"));
+        }
         for (const auto& warning : request.warnings) {
             proposal.warnings << QString::fromStdString(warning);
         }

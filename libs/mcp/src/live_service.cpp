@@ -139,6 +139,7 @@ struct LivePendingCall::Impl {
     LiveContextInput context;         // live_context / live_target
     std::optional<ChoiceRequest> ask; // live_ask_user (réponse au retour sur le fil GUI)
     std::shared_ptr<const document::Project> final_project; // issu d'un project_apply réussi
+    ApplyPreview apply_preview; // rendus et écarts montrés avant l'approbation
     bool ran{false};
 };
 
@@ -178,6 +179,11 @@ void LivePendingCall::run() {
     c.result = call_tool(session, c.tool, c.args);
     if (c.policy == LivePolicy::Apply && !c.dry_run && !c.result.is_error && session.dirty) {
         c.final_project = std::make_shared<const document::Project>(std::move(*session.project));
+        try {
+            c.apply_preview = build_apply_preview(*c.snapshot.project, *c.final_project);
+        } catch (const std::exception&) {
+            // L'aperçu est un confort : son échec n'empêche jamais la demande d'approbation.
+        }
     }
 }
 
@@ -339,6 +345,9 @@ std::string LiveService::finish(LivePendingCall& call) {
                     }
                 }
             }
+            request.before_png = c.apply_preview.before_png;
+            request.after_png = c.apply_preview.after_png;
+            request.metrics = c.apply_preview.metrics;
             request.session_id = c.snapshot.session_id;
             request.revision = c.snapshot.revision;
             if (!gate_.approve(request)) {

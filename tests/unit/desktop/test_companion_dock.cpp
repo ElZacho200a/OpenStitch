@@ -5,6 +5,9 @@
 // (confirmer / rejeter / focus), changement de document, approbation d'un agent via le dock.
 // Faux backend : aucun réseau, aucun fournisseur.
 #include <QApplication>
+#include <QBuffer>
+#include <QImage>
+#include <QLabel>
 #include <QListWidget>
 #include <QMenu>
 #include <QPlainTextEdit>
@@ -96,6 +99,7 @@ private slots:
     void longMessagesAndHugeToolResultsAreBounded();
     void tabMovesFromInputToSendButton();
     void agentApprovalGoesThroughTheDockAndIsUndoable();
+    void proposalShowsBeforeAndAfterPreviews();
     void agentQuestionIsAnsweredInThePanel();
     void agentQuestionDeclinedReturnsNoChoice();
 };
@@ -338,6 +342,36 @@ void MainWindowTest::agentApprovalGoesThroughTheDockAndIsUndoable() {
     QVERIFY(undo != nullptr && undo->isVisibleTo(dock));
     undo->click();
     QCOMPARE(w.project_.embroidery_objects.front().rgb, (std::array<std::uint8_t, 3>{60, 30, 30}));
+}
+
+void MainWindowTest::proposalShowsBeforeAndAfterPreviews() {
+    MainWindow w;
+    auto* dock = w.companionDock();
+    dock->show();
+    const auto png = [](QColor color) {
+        QImage image(40, 30, QImage::Format_RGB32);
+        image.fill(color);
+        QByteArray bytes;
+        QBuffer buffer(&bytes);
+        buffer.open(QIODevice::WriteOnly);
+        image.save(&buffer, "PNG");
+        return bytes;
+    };
+    CompanionProposal proposal;
+    proposal.summary = QStringLiteral("Points : 10 -> 12 (+2)");
+    proposal.beforePng = png(Qt::red);
+    proposal.afterPng = png(Qt::blue);
+    dock->showProposal(proposal, [](bool) {});
+    auto* before = child<QLabel>(dock, "label_companionBefore");
+    auto* after = child<QLabel>(dock, "label_companionAfter");
+    QVERIFY(before->isVisibleTo(dock) && after->isVisibleTo(dock));
+    QVERIFY(!before->pixmap().isNull() && !after->pixmap().isNull());
+    QVERIFY(!before->accessibleName().isEmpty());
+    // Sans apercu, les images sont masquees (pas de zone vide).
+    CompanionProposal plain;
+    plain.summary = QStringLiteral("x");
+    dock->showProposal(plain, [](bool) {});
+    QVERIFY(!before->isVisibleTo(dock));
 }
 
 void MainWindowTest::agentQuestionIsAnsweredInThePanel() {

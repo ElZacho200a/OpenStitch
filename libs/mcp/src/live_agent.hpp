@@ -31,6 +31,16 @@ struct LiveContextInput {
 [[nodiscard]] ToolResult live_target_tool(const document::Project& project,
                                           const LiveContextInput& in, const json& args);
 [[nodiscard]] ToolResult live_plan_satin_tool(const document::Project& project, const json& args);
+// Aperçu montré à l'utilisateur AVANT d'approuver une modification : rendus avant/après et écarts
+// de métriques (calculés sur des copies, hors fil d'interface).
+struct ApplyPreview {
+    std::string before_png;
+    std::string after_png;
+    std::vector<std::string> metrics;
+};
+[[nodiscard]] ApplyPreview build_apply_preview(const document::Project& before,
+                                               const document::Project& after);
+
 [[nodiscard]] ToolResult live_preview_tool(const document::Project& project, const json& args);
 
 } // namespace openstitch::mcp
