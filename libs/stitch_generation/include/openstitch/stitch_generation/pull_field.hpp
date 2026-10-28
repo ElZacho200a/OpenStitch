@@ -42,6 +42,10 @@ struct FabricResponse {
     bool calibrated{false};              // vrai seulement si les coefficients viennent de mesures
     double calibrated_confidence{0.8};   // confiance de base d'un tissu calibré
     double uncalibrated_confidence{0.3}; // confiance de base sans calibration
+    // Intensité de la correction inverse, distincte de la confiance du modèle.
+    // 3× par défaut pour rendre le mode Predicted sensible ; la correction finale
+    // reste bornée par max_displacement_mm. Empirique, à calibrer sur tissu.
+    double compensation_strength{3.0};
 };
 
 // Un segment cousu : source de traction. `weight` module sa traction (densité de points, 1 =
@@ -65,9 +69,9 @@ public:
 
     [[nodiscard]] PullSample sample(Vec2um p) const;
 
-    // Décalage à appliquer à un point cousu pour que le tissu, une fois tiré, le place là où
-    // le dessin le demande : l'opposé du déplacement, atténué par la confiance (prudent quand
-    // la prédiction est incertaine).
+    // Décalage à appliquer à un point cousu : opposé du déplacement, pondéré par
+    // la confiance puis amplifié par compensation_strength. La norme finale reste
+    // inférieure ou égale à max_displacement_mm (indépendamment de l'intensité).
     [[nodiscard]] Vec2um compensation_at(Vec2um p) const;
 
     [[nodiscard]] std::size_t source_count() const { return sources_.size(); }
