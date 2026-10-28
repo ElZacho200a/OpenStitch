@@ -84,6 +84,7 @@ class CompositeCommand;
 namespace openstitch::desktop {
 
 class SimulationNavBar;
+class ClaudeCodeProcessBackend;
 
 class CanvasView;
 struct DensityRaster; // density_overlay.hpp
@@ -144,6 +145,7 @@ public:
     void applyCompanionSettings();
     void showCompanionSettings();
     void openClaudeCode();
+    void useClaudeCodeInDock();
     void updateCompanionContext();
     void focusEmbroideryObject(quint64 id);
     [[nodiscard]] CompanionDock* companionDock() const { return companionDock_; }
@@ -1136,6 +1138,7 @@ private:
     std::unique_ptr<agent::ISecretStore> secretStore_;
     agent::DiagnosticLog companionLog_;
     ClaudeCompanionBackend* claudeBackend_{nullptr};
+    ClaudeCodeProcessBackend* codeBackend_{nullptr};
     QAction* companionSettingsAct_{nullptr};
     QAction* openClaudeCodeAct_{nullptr};
     // Environnement système du lanceur Claude Code (remplaçable par les tests).

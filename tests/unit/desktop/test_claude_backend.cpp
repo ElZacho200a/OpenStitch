@@ -163,6 +163,7 @@ private slots:
     void launcherPreparesWorkspaceAndStartsTheUsersClaude();
     void launcherReportsMissingClaudeAndMissingMcpWithoutLaunching();
     void openClaudeCodeActionEnablesTheBridgeOnlyOnExplicitUse();
+    void claudeCodeChatCanBeSelectedWithoutApiKey();
 };
 
 namespace {
@@ -606,6 +607,29 @@ void MainWindowTest::openClaudeCodeActionEnablesTheBridgeOnlyOnExplicitUse() {
 }
 
 } // namespace openstitch::desktop
+
+void MainWindowTest::claudeCodeChatCanBeSelectedWithoutApiKey() {
+    QTemporaryDir tmp;
+    makeFakeMcp(tmp.path() + QStringLiteral("/app"));
+    MainWindow w;
+    w.launcherEnv_.appDir = tmp.path() + QStringLiteral("/app");
+    w.launcherEnv_.dataDir = tmp.path() + QStringLiteral("/data");
+    w.launcherEnv_.findExecutable = [](const QString& n) {
+        return n == QLatin1String("claude")
+                   ? QStringLiteral("C:/bin/claude.exe") : QString();
+    };
+    w.launcherEnv_.startDetached = [](const QString&, const QStringList&, const QString&) {
+        return false; // Le chat dans le dock n'ouvre PAS un terminal.
+    };
+    auto* button =
+        w.companionDock()->findChild<QPushButton*>(QStringLiteral("button_companionChatClaudeCode"));
+    QVERIFY(button != nullptr);
+    button->click();
+    QCOMPARE(w.companionDock()->backend()->providerName(), QStringLiteral("Claude Code (MCP)"));
+    auto* bridge = w.findChild<QAction*>(QStringLiteral("action_live_bridge"));
+    QVERIFY(bridge != nullptr && bridge->isChecked());
+    w.setLiveBridgeEnabled(false);
+}
 
 int main(int argc, char** argv) {
     QApplication app(argc, argv);

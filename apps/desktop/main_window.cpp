@@ -92,6 +92,7 @@
 
 #include "calque_panel.hpp"
 #include "companion_settings_dialog.hpp"
+#include "claude_code_process_backend.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/autodigitize/contour_objects.hpp"
 #include "openstitch/autodigitize/line_layer.hpp"
@@ -1370,6 +1371,9 @@ void MainWindow::resetDocumentState() {
     }
     if (claudeBackend_ != nullptr) {
         claudeBackend_->resetConversation();
+        if (codeBackend_ != nullptr) {
+            codeBackend_->resetConversation();
+        }
     }
     liveBridge_.reset(); // nouveau document : l'ancienne session live est close
     sequence_.reset();
@@ -1789,6 +1793,8 @@ void MainWindow::buildCompanionDock() {
     });
     connect(companionDock_, &CompanionDock::openClaudeCodeRequested,
             this, &MainWindow::openClaudeCode);
+    connect(companionDock_, &CompanionDock::useClaudeCodeInDockRequested,
+            this, &MainWindow::useClaudeCodeInDock);
     // Les approbations de l'agent s'affichent dans le dock (boîte modale seulement en repli).
     liveGate_.setChoiceDelegate([this](const mcp::ChoiceRequest& request) {
         companionDock_->show();
@@ -1853,6 +1859,38 @@ void MainWindow::showCompanionSettings() {
     }
 }
 
+void MainWindow::useClaudeCodeInDock() {
+    if (companion_settings::fullyDisabled()) {
+        QMessageBox::information(this, tr("Claude Code"),
+                                 tr("Le compagnon IA est desactive dans les preferences."));
+        return;
+    }
+    QString executable;
+    QString workspace;
+    const auto ready = ClaudeCodeLauncher::prepare(launcherEnv_, executable, workspace);
+    if (ready != ClaudeCodeLauncher::Result::Started) {
+        QMessageBox::warning(this, tr("Claude Code"), ClaudeCodeLauncher::describe(ready));
+        return;
+    }
+    if (liveBridgeAct_ != nullptr && !liveBridgeAct_->isChecked()) {
+        liveBridgeAct_->setChecked(true);
+    }
+    if (liveServer_ == nullptr) {
+        QMessageBox::warning(this, tr("Claude Code"),
+                             tr("Le pont MCP local n'a pas pu demarrer."));
+        return;
+    }
+    // Un seul processus Claude Code par session de conversation : changement de mode explicite.
+    if (codeBackend_ != nullptr) {
+        codeBackend_->resetConversation();
+        codeBackend_->deleteLater();
+    }
+    codeBackend_ = new ClaudeCodeProcessBackend(executable, workspace, this);
+    companionDock_->setBackend(codeBackend_);
+    companionDock_->show();
+    companionDock_->raise();
+}
+
 void MainWindow::openClaudeCode() {
     if (companion_settings::fullyDisabled()) {
         QMessageBox::information(this, tr("Claude Code"),
@@ -1888,6 +1926,13 @@ void MainWindow::applyCompanionSettings() {
     }
     if (claudeBackend_ != nullptr) {
         claudeBackend_->refresh();
+    }
+    // Valider les preferences de l'API revient explicitement au fournisseur API.
+    if (companionDock_->backend() != claudeBackend_) {
+        if (codeBackend_ != nullptr) {
+            codeBackend_->resetConversation();
+        }
+        companionDock_->setBackend(claudeBackend_);
     }
     companionDock_->setFullyDisabled(off);
     companionDock_->refresh();

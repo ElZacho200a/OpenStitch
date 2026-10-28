@@ -85,6 +85,10 @@ void CompanionDock::buildUi() {
     enableBridge_ = new QPushButton(welcomePage);
     enableBridge_->setObjectName(QStringLiteral("button_companionEnableBridge"));
     connect(enableBridge_, &QPushButton::clicked, this, &CompanionDock::enableLiveBridgeRequested);
+    chatClaudeCode_ = new QPushButton(welcomePage);
+    chatClaudeCode_->setObjectName(QStringLiteral("button_companionChatClaudeCode"));
+    connect(chatClaudeCode_, &QPushButton::clicked, this,
+            &CompanionDock::useClaudeCodeInDockRequested);
     openClaudeCode_ = new QPushButton(welcomePage);
     openClaudeCode_->setObjectName(QStringLiteral("button_companionOpenClaudeCode"));
     connect(openClaudeCode_, &QPushButton::clicked, this,
@@ -93,6 +97,7 @@ void CompanionDock::buildUi() {
     configure_->setObjectName(QStringLiteral("button_companionConfigure"));
     connect(configure_, &QPushButton::clicked, this, &CompanionDock::configureProviderRequested);
     welcomeLayout->addWidget(welcome_);
+    welcomeLayout->addWidget(chatClaudeCode_);
     welcomeLayout->addWidget(openClaudeCode_);
     welcomeLayout->addWidget(configure_);
     welcomeLayout->addWidget(enableBridge_);
@@ -215,7 +220,11 @@ void CompanionDock::retranslate() {
            "réseau n'est ouvert ; chaque modification demande votre approbation et s'annule en "
            "une seule étape (Ctrl+Z)."));
     enableBridge_->setText(tr("Activer le pont IA local"));
-    openClaudeCode_->setText(tr("Ouvrir Claude Code (via MCP)…"));
+    chatClaudeCode_->setText(tr("Discuter avec Claude Code ici (via MCP)…"));
+    chatClaudeCode_->setToolTip(
+        tr("Utilise la CLI Claude Code installee, sans cle API OpenStitch. "
+           "Les outils MCP modifient le projet ouvert avec votre approbation."));
+    openClaudeCode_->setText(tr("Ouvrir Claude Code dans un terminal…"));
     openClaudeCode_->setToolTip(
         tr("Lance votre Claude Code dans un terminal relié au projet ouvert. Aucune clé API "
            "OpenStitch nécessaire ; modifications approuvées dans le dock."));
@@ -307,6 +316,7 @@ void CompanionDock::refreshHeader() {
     stack_->setCurrentIndex(connected ? 1 : 0);
     enableBridge_->setVisible(!liveBridgeActive_ && !fullyDisabled_);
     openClaudeCode_->setEnabled(!fullyDisabled_);
+    chatClaudeCode_->setEnabled(!fullyDisabled_);
     configure_->setVisible(true);
     if (fullyDisabled_) {
         welcome_->setText(tr("Le compagnon IA est désactivé (pont local et fournisseur). "

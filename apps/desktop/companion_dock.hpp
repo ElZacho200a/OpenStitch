@@ -69,6 +69,7 @@ signals:
     void undoLastRequested();
     void enableLiveBridgeRequested();
     void openClaudeCodeRequested();
+    void useClaudeCodeInDockRequested();
     void configureProviderRequested();
 
 protected:
@@ -106,6 +107,7 @@ private:
     QLabel* welcome_{nullptr};
     QPushButton* enableBridge_{nullptr};
     QPushButton* openClaudeCode_{nullptr};
+    QPushButton* chatClaudeCode_{nullptr};
     QPushButton* configure_{nullptr};
     bool fullyDisabled_{false};
     quint64 usageIn_{0};
