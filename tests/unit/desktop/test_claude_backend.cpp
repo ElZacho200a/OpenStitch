@@ -161,6 +161,7 @@ private slots:
     void targetPhraseWorksEndToEndFromTheDesktop();
     void claudeCodeProcessParsesStructuredEvents();
     void claudeCodeStreamsAssistantTextWithoutRepeatingFinalResult();
+    void claudeCodeErrorsCarryAnActionableReason();
     void launcherPreparesWorkspaceAndStartsTheUsersClaude();
     void launcherReportsMissingClaudeAndMissingMcpWithoutLaunching();
     void openClaudeCodeActionEnablesTheBridgeOnlyOnExplicitUse();
@@ -524,6 +525,30 @@ void MainWindowTest::claudeCodeProcessParsesStructuredEvents() {
     QCOMPARE(text.at(0).at(0).toString(), QStringLiteral("Trois objets orange"));
     QCOMPARE(usage.size(), 1);
     QCOMPARE(usage.at(0).at(0).toULongLong(), quint64{120});
+}
+
+void MainWindowTest::claudeCodeErrorsCarryAnActionableReason() {
+    {
+        ClaudeCodeProcessBackend backend(QStringLiteral("fake-claude"),
+                                         QStringLiteral("/virtual/workspace"));
+        QSignalSpy failed(&backend, &CompanionBackend::failed);
+        backend.ingestEventForTest(
+            "{\"type\":\"result\",\"subtype\":\"error_max_turns\",\"is_error\":true}");
+        QCOMPARE(failed.size(), 1);
+        QVERIFY(failed.at(0).at(0).toString().contains(QStringLiteral("limite de tours")));
+    }
+    {
+        ClaudeCodeProcessBackend backend(QStringLiteral("fake-claude"),
+                                         QStringLiteral("/virtual/workspace"));
+        QSignalSpy failed(&backend, &CompanionBackend::failed);
+        backend.ingestEventForTest(
+            "{\"type\":\"result\",\"subtype\":\"error_during_execution\",\"is_error\":true,"
+            "\"result\":\"MCP server openstitch failed to connect\"}");
+        QCOMPARE(failed.size(), 1);
+        const QString message = failed.at(0).at(0).toString();
+        QVERIFY(message.contains(QStringLiteral("error_during_execution")));
+        QVERIFY(message.contains(QStringLiteral("failed to connect")));
+    }
 }
 
 void MainWindowTest::claudeCodeStreamsAssistantTextWithoutRepeatingFinalResult() {

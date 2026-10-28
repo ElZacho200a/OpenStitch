@@ -60,7 +60,7 @@ void ClaudeCodeProcessBackend::send(const QString& userText) {
                         QStringLiteral("--output-format"),
                         QStringLiteral("stream-json"),
                         QStringLiteral("--max-turns"),
-                        QStringLiteral("12"),
+                        QStringLiteral("25"),
                         QStringLiteral("--allowedTools"),
                         QStringLiteral("mcp__openstitch"),
                         QStringLiteral("--disallowedTools"),
@@ -172,6 +172,31 @@ void ClaudeCodeProcessBackend::ingestEventForTest(const QByteArray& jsonLine) {
     handleLine(jsonLine);
 }
 
+// Message actionnable pour un evenement `result` en erreur : sous-type (limite de tours,
+// execution…) puis debut du texte renvoye par Claude Code (jamais le flux brut entier).
+QString ClaudeCodeProcessBackend::describeError(const QJsonObject& event) {
+    const QString subtype = event.value(QStringLiteral("subtype")).toString();
+    QString detail = event.value(QStringLiteral("result")).toString().simplified();
+    if (detail.size() > 300) {
+        detail = detail.left(300) + QStringLiteral("…");
+    }
+    QString message;
+    if (subtype == QLatin1String("error_max_turns")) {
+        message = tr("Claude Code a atteint la limite de tours de la demande : reformulez en "
+                     "plusieurs demandes plus courtes.");
+    } else {
+        message = tr("Claude Code a signale une erreur pendant la demande");
+        if (!subtype.isEmpty()) {
+            message += tr(" (%1)").arg(subtype);
+        }
+        message += QLatin1Char('.');
+    }
+    if (!detail.isEmpty()) {
+        message += QLatin1Char(' ') + detail;
+    }
+    return message;
+}
+
 void ClaudeCodeProcessBackend::handleLine(const QByteArray& line) {
     if (cancelled_) {
         return;
@@ -226,7 +251,7 @@ void ClaudeCodeProcessBackend::handleLine(const QByteArray& line) {
     }
     resultSeen_ = true;
     if (event.value(QStringLiteral("is_error")).toBool(false)) {
-        emit failed(tr("Claude Code a signale une erreur pendant la demande."));
+        emit failed(describeError(event));
         return;
     }
     const QString session = event.value(QStringLiteral("session_id")).toString();

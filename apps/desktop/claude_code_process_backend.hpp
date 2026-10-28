@@ -2,6 +2,7 @@
 #pragma once
 
 #include <QByteArray>
+#include <QJsonObject>
 #include <QPointer>
 #include <QSet>
 #include <QString>
@@ -38,6 +39,7 @@ public slots:
 
 private:
     void handleOutput();
+    static QString describeError(const QJsonObject& event);
     void handleLine(const QByteArray& line);
 
     QString executable_;
