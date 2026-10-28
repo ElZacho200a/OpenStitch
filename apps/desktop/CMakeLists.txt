@@ -38,6 +38,8 @@ add_library(openstitch_desktop_widgets STATIC
     ui_memory.hpp
     main_window_ux.cpp
     live_server.cpp
+    companion_dock.cpp
+    companion_backend.hpp
     main_window_preferences.cpp
     general_preferences_dialog.cpp
     general_preferences_dialog.hpp

@@ -480,6 +480,7 @@ MainWindow::MainWindow() {
     buildDensityFeature();
     buildPullPreviewFeature();
     // [cablage-E:fin]
+    buildCompanionDock();
     panelsMenu_->addAction(historyDock_->toggleViewAction());
     for (auto* d :
          {documentDock_, propertiesDock_, workflowDock_, orderDock_, filterDock_, analysisDock_}) {
@@ -1329,6 +1330,7 @@ void MainWindow::buildMenus() {
         std::vector<QDockWidget*> docks{documentDock_, propertiesDock_, workflowDock_,
                                         orderDock_,    filterDock_,     analysisDock_};
         docks.push_back(historyDock_);
+        docks.push_back(companionDock_);
         if (hide) {
             panelsToRestore_.clear();
             for (auto* d : docks) {
@@ -1361,6 +1363,9 @@ void MainWindow::resetDocumentState() {
     migratedFromVersion_ = 0;
     migratedFromPath_.clear();
     undoStack_.clear();
+    if (companionDock_ != nullptr) {
+        companionDock_->documentReplaced();
+    }
     liveBridge_.reset(); // nouveau document : l'ancienne session live est close
     sequence_.reset();
     editStates_.clear();
@@ -1741,6 +1746,77 @@ void MainWindow::afterLiveCommit() {
     refreshImage();
     setWindowModified(!undoStack_.isClean());
     updateActions();
+}
+
+void MainWindow::buildCompanionDock() {
+    companionDock_ = new CompanionDock(this);
+    addDockWidget(Qt::RightDockWidgetArea, companionDock_);
+    tabifyDockWidget(analysisDock_, companionDock_);
+    companionDock_->hide(); // masqué par défaut : n'occupe aucune place tant qu'on ne l'ouvre pas
+    // Raccourci configurable : réglage « shortcuts/companionDock » (séquence Qt), Ctrl+Maj+J par
+    // défaut ; vide = aucun raccourci.
+    const QString keys =
+        QSettings()
+            .value(QStringLiteral("shortcuts/companionDock"), QStringLiteral("Ctrl+Shift+J"))
+            .toString();
+    QAction* toggle = companionDock_->toggleViewAction();
+    toggle->setObjectName(QStringLiteral("action_companionDock"));
+    toggle->setShortcut(QKeySequence(keys));
+    toggle->setToolTip(tr("Affiche ou masque le compagnon IA (%1)").arg(keys));
+    toggle->setStatusTip(toggle->toolTip());
+    panelsMenu_->addAction(toggle);
+    connect(companionDock_, &CompanionDock::focusObjectRequested, this,
+            [this](quint64 id) { focusEmbroideryObject(id); });
+    connect(companionDock_, &CompanionDock::undoLastRequested, this, &MainWindow::undo);
+    connect(companionDock_, &CompanionDock::enableLiveBridgeRequested, this, [this] {
+        if (liveBridgeAct_ != nullptr) {
+            liveBridgeAct_->setChecked(true);
+        }
+    });
+    // Les approbations de l'agent s'affichent dans le dock (boîte modale seulement en repli).
+    liveGate_.setDelegate([this](const mcp::ApprovalRequest& request) {
+        companionDock_->show();
+        companionDock_->raise();
+        CompanionProposal proposal;
+        proposal.title = tr("Changement proposé par un agent IA");
+        proposal.summary = tr("« %1 » : %n opération(s). Annulable en une étape (Ctrl+Z).", "",
+                              static_cast<int>(request.items.size()))
+                               .arg(QString::fromStdString(request.label));
+        for (const auto& item : request.items) {
+            proposal.items.push_back({item.object_id, QString::fromStdString(item.text)});
+        }
+        for (const auto& warning : request.warnings) {
+            proposal.warnings << QString::fromStdString(warning);
+        }
+        return companionDock_->askApproval(proposal);
+    });
+}
+
+void MainWindow::updateCompanionContext() {
+    if (companionDock_ == nullptr) {
+        return;
+    }
+    const auto info = liveDocumentInfo();
+    companionDock_->setContext(QString::fromStdString(info.name),
+                               static_cast<int>(info.selection.size()), hasDocumentContent());
+    companionDock_->setLiveBridgeActive(liveServer_ != nullptr);
+    companionDock_->setUndoAvailable(undoStack_.canUndo(),
+                                     QString::fromStdString(undoStack_.undoName()));
+}
+
+void MainWindow::focusEmbroideryObject(quint64 id) {
+    ObjectId target;
+    target.value = id;
+    for (const auto& e : project_.embroidery_objects) {
+        if (e.id == target) {
+            Selection selection;
+            selection.embroidery = target;
+            setSelection(selection);
+            refreshImage();
+            updateActions();
+            return;
+        }
+    }
 }
 
 bool MainWindow::setLiveBridgeEnabled(bool on, const std::filesystem::path& dir, QString* error) {
@@ -10864,6 +10940,7 @@ bool MainWindow::hasDocumentContent() const {
 }
 
 void MainWindow::updateActions() {
+    updateCompanionContext();
     syncColorwayUi(); // HP-THR-006/008 (main_window_colorways.cpp)
     updateShapeActions();
     updateObjectEditActions();

@@ -214,3 +214,22 @@ enregistré », la sélection et la `revision`. Sans desktop joignable, un appel
 `E_SESSION_CLOSED` avec un conseil actionnable ; il n'y a jamais de repli silencieux sur un autre
 projet. Le dock de conversation (confirmation riche avant/après) remplacera la boîte de dialogue
 d'approbation actuelle.
+
+### Dock « Compagnon IA »
+
+Panneau latéral natif (**Affichage ▸ Panneaux ▸ Compagnon IA**, `Ctrl+Maj+J` ; autre séquence
+dans le réglage `shortcuts/companionDock`), masqué par défaut, ancrable à gauche ou à droite et
+mémorisé avec la disposition. Sans fournisseur connecté, il affiche un écran d'accueil qui propose
+d'activer le pont IA local ; l'édition d'OpenStitch ne dépend jamais de lui.
+
+- **Conversation** : saisie multiligne (Entrée envoie, Maj+Entrée saute une ligne), indicateur
+  d'attente, bouton Interrompre, erreurs non bloquantes ; messages et résultats d'outils très longs
+  tronqués à l'affichage.
+- **Appels d'outils** affichés en cartes (outil, cible, résultat, motif de refus), jamais en JSON.
+- **Changement proposé** : liste des opérations avec lien de focus sur l'objet (Entrée), avertissements,
+  aperçus avant/après facultatifs, **Appliquer / Rejeter**. Une proposition en attente est rejetée
+  si le document est remplacé. Après application, **Annuler : IA : …** défait le lot en une étape.
+- Le dock est le point d'approbation des modifications demandées par un agent via le pont IA local.
+- Contexte affiché : projet actif, objets sélectionnés, état du pont. Thèmes clair/sombre et
+  fenêtres étroites pris en charge ; noms accessibles sur chaque contrôle.
+- Le fournisseur (`CompanionBackend`) est une interface ; les tests utilisent un faux backend.

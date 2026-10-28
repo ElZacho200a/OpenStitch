@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "auto_satin_strategy_ui.hpp"
+#include "companion_dock.hpp"
 #include "interaction_map.hpp"
 #include "live_server.hpp"
 #include "openstitch/commands/transform_ops.hpp"
@@ -136,6 +137,11 @@ public:
     [[nodiscard]] mcp::LiveService& liveService() { return liveService_; }
     [[nodiscard]] mcp::LiveDocumentInfo liveDocumentInfo() const;
     void afterLiveCommit();
+    // Dock « Compagnon IA » (masqué par défaut) ; `focusEmbroideryObject` sélectionne un objet.
+    void buildCompanionDock();
+    void updateCompanionContext();
+    void focusEmbroideryObject(quint64 id);
+    [[nodiscard]] CompanionDock* companionDock() const { return companionDock_; }
     project_ops::LiveBridge::Result commitLiveBatch(const std::string& sessionId,
                                                     std::uint64_t revision,
                                                     const std::string& batchJson,
@@ -1121,6 +1127,7 @@ private:
                                   [this] { afterLiveCommit(); }};
     std::unique_ptr<LiveServer> liveServer_;
     QAction* liveBridgeAct_{nullptr};
+    CompanionDock* companionDock_{nullptr};
     image::Image processed_; // dernier résultat du pipeline (pour l'affichage)
     // Entrées exactes ayant produit `processed_` (clé de contenu du cache,
     // cf. refreshImage) : `processed_` n'est recalculée que si l'image source

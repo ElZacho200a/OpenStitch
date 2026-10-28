@@ -164,6 +164,32 @@ std::string LiveService::finish(LivePendingCall& call) {
             request.report_json = c.result.content.empty()
                                       ? std::string{}
                                       : c.result.content.front().value("text", std::string{});
+            // Lignes lisibles : chaque opération du lot avec son objet cible (lien de focus).
+            if (c.args.contains("operations") && c.args.at("operations").is_array()) {
+                for (const auto& op : c.args.at("operations")) {
+                    ApprovalItem item;
+                    const std::string name = op.value("op", std::string("?"));
+                    if (op.contains("object") && op.at("object").is_number_unsigned()) {
+                        item.object_id = op.at("object").get<std::uint64_t>();
+                        item.text = name + " #" + std::to_string(item.object_id);
+                    } else {
+                        item.text = name;
+                    }
+                    request.items.push_back(std::move(item));
+                }
+            }
+            if (!c.result.content.empty()) {
+                const json report = json::parse(request.report_json, nullptr, false);
+                if (report.is_object() && report.contains("skipped") &&
+                    report.at("skipped").is_array()) {
+                    for (const auto& skipped : report.at("skipped")) {
+                        request.warnings.push_back(
+                            "écartée : " + skipped.value("op", std::string("?")) + " (" +
+                            skipped.value("code", std::string("?")) + ") — " +
+                            skipped.value("message", std::string{}));
+                    }
+                }
+            }
             request.session_id = c.snapshot.session_id;
             request.revision = c.snapshot.revision;
             if (!gate_.approve(request)) {

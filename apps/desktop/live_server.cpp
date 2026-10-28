@@ -20,6 +20,9 @@ bool DialogApprovalGate::approve(const mcp::ApprovalRequest& request) {
     if (override_) {
         return override_(request);
     }
+    if (delegate_) {
+        return delegate_(request);
+    }
     QMessageBox box(QMessageBox::Question, QObject::tr("Modification demandée par un agent IA"),
                     QObject::tr("Un agent IA demande de modifier le projet ouvert (« %1 »).\n"
                                 "L'opération sera annulable en une seule étape (Ctrl+Z).")

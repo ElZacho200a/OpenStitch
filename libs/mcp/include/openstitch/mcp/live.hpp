@@ -51,10 +51,17 @@ struct LiveDocumentInfo {
 };
 
 // Demande d'approbation présentée à l'utilisateur avant toute mutation du projet ouvert.
+struct ApprovalItem {
+    std::uint64_t object_id{0}; // 0 = opération sans objet cible
+    std::string text;           // ex. « set_color #12 »
+};
+
 struct ApprovalRequest {
     std::string tool;
-    std::string label;       // nom de l'étape d'annulation
-    std::string report_json; // résultat de la simulation (rapport du lot)
+    std::vector<ApprovalItem> items;   // une ligne par opération du lot
+    std::vector<std::string> warnings; // opérations écartées, réserves
+    std::string label;                 // nom de l'étape d'annulation
+    std::string report_json;           // résultat de la simulation (rapport du lot)
     std::string session_id;
     std::uint64_t revision{0};
 };

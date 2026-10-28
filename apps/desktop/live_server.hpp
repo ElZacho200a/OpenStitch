@@ -29,10 +29,15 @@ public:
     void setOverride(std::function<bool(const mcp::ApprovalRequest&)> fn) {
         override_ = std::move(fn);
     }
+    // Interface d'approbation préférée (le dock compagnon) ; la boîte modale sert de repli.
+    void setDelegate(std::function<bool(const mcp::ApprovalRequest&)> fn) {
+        delegate_ = std::move(fn);
+    }
 
 private:
     QWidget* parent_;
     std::function<bool(const mcp::ApprovalRequest&)> override_;
+    std::function<bool(const mcp::ApprovalRequest&)> delegate_;
 };
 
 // Serveur local du pont live : un tube nommé / socket de domaine Unix accessible à l'utilisateur
