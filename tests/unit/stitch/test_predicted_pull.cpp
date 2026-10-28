@@ -110,6 +110,29 @@ TEST_CASE("predicted_pull: un objet voisin modifie la compensation", "[predicted
     CHECK(max_x(effective(alone), id) != max_x(effective(crowded), id));
 }
 
+TEST_CASE("predicted_pull: refresh_context identique a la sequence exportee",
+          "[predicted_pull]") {
+    // Le desktop utilise refresh_context ; l'export passe par effective_sequence.
+    // En mode predit, les deux doivent appliquer la meme passe avant les finitions.
+    for (const auto mode : {document::PullMode::Manual, document::PullMode::Auto,
+                            document::PullMode::Adaptive, document::PullMode::Predicted}) {
+        document::Project project;
+        add_tatami(project, 0, mode);
+        add_tatami(project, 20'800, document::PullMode::Manual);
+        const auto expected = effective(project);
+        const ObjectId id = project.embroidery_objects.front().id;
+
+        const auto desktop = refresh_context(project, id);
+        REQUIRE(desktop.has_value());
+        CHECK(desktop->effective.commands == expected.commands);
+        REQUIRE(desktop->target_view.has_value());
+
+        const auto withoutTarget = refresh_context(project, std::nullopt);
+        REQUIRE(withoutTarget.has_value());
+        CHECK(withoutTarget->effective.commands == expected.commands);
+    }
+}
+
 TEST_CASE("predicted_pull: seuls les points de l'objet predit bougent", "[predicted_pull]") {
     document::Project manual;
     add_tatami(manual, 0, document::PullMode::Predicted);
