@@ -302,6 +302,15 @@ TEST_CASE("semantic cache persists in OSP and follows source geometry", "[semant
           *project.embroidery_objects.front().semantic);
     fs::remove(path);
 
+    // Déplacer toute la forme ne change pas ce qu'elle représente.
+    for (auto& node : project.vector_objects.front().paths.front().outer.nodes) {
+        node.pos.x.value += 1000;
+    }
+    for (auto& node : project.vector_objects.front().paths.front().holes.front().nodes) {
+        node.pos.x.value += 1000;
+    }
+    CHECK(document::semantic_geometry_fingerprint(project.vector_objects.front()) == fingerprint);
+    // Déformer un seul nœud, en revanche, rend l'annotation périmée.
     project.vector_objects.front().paths.front().outer.nodes.front().pos.x.value += 1000;
     CHECK(document::semantic_geometry_fingerprint(project.vector_objects.front()) != fingerprint);
 

@@ -46,12 +46,17 @@ struct VectorObject {
             hash *= 1099511628211ULL;
         }
     };
+    const Vec2um origin = object.paths.empty() || object.paths.front().outer.nodes.empty()
+                              ? Vec2um{}
+                              : object.paths.front().outer.nodes.front().pos;
     const auto path = [&](const geometry::Path& p) {
         mix(p.closed ? 1 : 0);
         mix(p.nodes.size());
         for (const auto& node : p.nodes) {
-            mix(static_cast<std::uint64_t>(node.pos.x.value));
-            mix(static_cast<std::uint64_t>(node.pos.y.value));
+            mix(static_cast<std::uint64_t>(
+                static_cast<std::int64_t>(node.pos.x.value) - origin.x.value));
+            mix(static_cast<std::uint64_t>(
+                static_cast<std::int64_t>(node.pos.y.value) - origin.y.value));
             mix(static_cast<std::uint64_t>(node.type));
             for (const auto& tangent : {node.tan_in, node.tan_out}) {
                 mix(tangent ? 1 : 0);
