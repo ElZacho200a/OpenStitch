@@ -421,8 +421,8 @@ VectorOpResult make_split_command(document::Project& project, const std::vector<
             targets.push_back(*object);
         }
     }
-    // La coupe se limite au segment [a,b] tracé (bande centrée sur son milieu, demi-portée
-    // |ab|/2) : une forme que le trait ne traverse pas de part en part n'est pas touchée.
+    // La coupe se limite au segment [a,b] tracé (bande centrée sur son milieu,
+    // demi-portée |ab|/2) : les parties hors de cette bande ne sont pas touchées.
     const double reach = length_um(b - a) / 2.0;
     for (const auto& object : targets) {
         std::vector<PathSet> pieces;
