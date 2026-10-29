@@ -140,10 +140,12 @@ private slots:
         QTest::mouseMove(window.view_->viewport(), end);
         QTest::mouseRelease(window.view_->viewport(), Qt::LeftButton, Qt::NoModifier, end);
 
-        QTRY_VERIFY(window.project_.vector_objects[0].paths[0].outer.nodes[1].pos.x.value >
-                    10'000);
-        QVERIFY(window.project_.vector_objects[1].paths[0].outer.nodes[0].pos.x.value >
-                20'000);
+        const auto firstRightX = [&window] {
+            return window.project_.vector_objects[0].paths[0].outer.nodes[1].pos.x.value;
+        };
+        QTRY_VERIFY(firstRightX() > 10'000);
+        const auto secondLeftX = window.project_.vector_objects[1].paths[0].outer.nodes[0].pos.x.value;
+        QVERIFY(secondLeftX > 20'000);
         window.undo();
         QVERIFY(window.project_.vector_objects[0].paths == beforeA);
         QVERIFY(window.project_.vector_objects[1].paths == beforeB);
