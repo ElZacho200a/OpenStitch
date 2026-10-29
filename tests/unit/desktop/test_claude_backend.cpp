@@ -162,6 +162,7 @@ private slots:
     void claudeCodeProcessParsesStructuredEvents();
     void claudeCodeStreamsAssistantTextWithoutRepeatingFinalResult();
     void claudeCodeErrorsCarryAnActionableReason();
+    void claudeCodeAcceptsHugeCompleteLinesButRejectsRunawayPartialOnes();
     void launcherPreparesWorkspaceAndStartsTheUsersClaude();
     void launcherReportsMissingClaudeAndMissingMcpWithoutLaunching();
     void openClaudeCodeActionEnablesTheBridgeOnlyOnExplicitUse();
@@ -525,6 +526,39 @@ void MainWindowTest::claudeCodeProcessParsesStructuredEvents() {
     QCOMPARE(text.at(0).at(0).toString(), QStringLiteral("Trois objets orange"));
     QCOMPARE(usage.size(), 1);
     QCOMPARE(usage.at(0).at(0).toULongLong(), quint64{120});
+}
+
+void MainWindowTest::claudeCodeAcceptsHugeCompleteLinesButRejectsRunawayPartialOnes() {
+    {
+        ClaudeCodeProcessBackend backend(QStringLiteral("fake-claude"),
+                                         QStringLiteral("/virtual/workspace"));
+        QSignalSpy failed(&backend, &CompanionBackend::failed);
+        QSignalSpy text(&backend, &CompanionBackend::assistantText);
+        // Echo de resultat d'outil avec un rendu base64 de 6 Mo : ligne complete, ignoree sans
+        // erreur.
+        QByteArray huge = "{\"type\":\"user\",\"message\":{\"content\":[{\"data\":\"";
+        huge += QByteArray(6 * 1024 * 1024, 'A');
+        huge += "\"}]}}\n";
+        // Livree en plusieurs morceaux, comme le fait le pipe du processus.
+        for (qsizetype i = 0; i < huge.size(); i += 1024 * 1024) {
+            backend.ingestChunkForTest(huge.mid(i, 1024 * 1024));
+        }
+        backend.ingestChunkForTest(
+            "{\"type\":\"assistant\",\"message\":{\"id\":\"m1\",\"content\":[{\"type\":\"text\","
+            "\"text\":\"Analyse terminee\"}]}}\n");
+        QCOMPARE(failed.size(), 0);
+        QCOMPARE(text.size(), 1);
+        QCOMPARE(text.at(0).at(0).toString(), QStringLiteral("Analyse terminee"));
+    }
+    {
+        ClaudeCodeProcessBackend backend(QStringLiteral("fake-claude"),
+                                         QStringLiteral("/virtual/workspace"));
+        QSignalSpy failed(&backend, &CompanionBackend::failed);
+        // Une ligne qui ne se termine jamais et depasse 64 Mo est bien une erreur.
+        backend.ingestChunkForTest(QByteArray(65 * 1024 * 1024, 'x'));
+        QCOMPARE(failed.size(), 1);
+        QVERIFY(failed.at(0).at(0).toString().contains(QStringLiteral("volumineux")));
+    }
 }
 
 void MainWindowTest::claudeCodeErrorsCarryAnActionableReason() {
