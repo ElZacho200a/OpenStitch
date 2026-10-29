@@ -158,6 +158,7 @@ private slots:
     void cancelStopsTheRequestAndTheDockStaysUsable();
     void disabledCompanionOffersNoProvider();
     void settingsDialogStoresKeyOnlyInTheSecretStore();
+    void cancellingSettingsDoesNotEnableSemanticAnalysis();
     void targetPhraseWorksEndToEndFromTheDesktop();
     void claudeCodeProcessParsesStructuredEvents();
     void claudeCodeLaunchIsRestricted();
@@ -358,6 +359,26 @@ void MainWindowTest::disabledCompanionOffersNoProvider() {
     companion_settings::setProviderEnabled(false);
     rig.backend->refresh();
     QVERIFY(!rig.backend->available()); // fournisseur non activé : rien n'est jamais envoyé
+}
+
+void MainWindowTest::cancellingSettingsDoesNotEnableSemanticAnalysis() {
+    agent::MemorySecretStore secrets;
+    agent::DiagnosticLog log;
+    companion_settings::setAutoSemanticAnalysis(false);
+    {
+        CompanionSettingsDialog dialog(secrets, log);
+        auto* control = child<QCheckBox>(&dialog, "check_companionAutoSemantic");
+        QVERIFY(control != nullptr);
+        control->setChecked(true);
+        dialog.reject();
+    }
+    QVERIFY(!companion_settings::autoSemanticAnalysis());
+    {
+        CompanionSettingsDialog dialog(secrets, log);
+        child<QCheckBox>(&dialog, "check_companionAutoSemantic")->setChecked(true);
+        dialog.applyToSettings();
+    }
+    QVERIFY(companion_settings::autoSemanticAnalysis());
 }
 
 void MainWindowTest::settingsDialogStoresKeyOnlyInTheSecretStore() {

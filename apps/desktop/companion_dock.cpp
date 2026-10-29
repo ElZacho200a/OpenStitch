@@ -20,8 +20,8 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QStackedWidget>
-#include <QTextCursor>
 #include <QTextBrowser>
+#include <QTextCursor>
 #include <QVBoxLayout>
 
 namespace openstitch::desktop {
@@ -510,8 +510,7 @@ void CompanionDock::showPreview(bool before) {
         return;
     }
     QDialog dialog(this);
-    const QString title = before ? tr("Aperçu avant modification") : tr("Aperçu après modification");
-    dialog.setWindowTitle(title);
+    dialog.setWindowTitle(before ? tr("Aperçu avant") : tr("Aperçu après"));
     auto* layout = new QVBoxLayout(&dialog);
     auto* scroll = new QScrollArea(&dialog);
     auto* image = new QLabel(scroll);
@@ -676,8 +675,8 @@ void CompanionDock::setBusy(bool busy) {
 
 bool CompanionDock::eventFilter(QObject* watched, QEvent* event) {
     const bool preview = watched == beforeImage_ || watched == afterImage_;
-    const bool activate = event->type() == QEvent::MouseButtonRelease ||
-                          event->type() == QEvent::KeyPress;
+    const auto type = event->type();
+    const bool activate = type == QEvent::MouseButtonRelease || type == QEvent::KeyPress;
     if (preview && activate) {
         if (event->type() == QEvent::MouseButtonRelease) {
             showPreview(watched == beforeImage_);
