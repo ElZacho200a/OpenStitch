@@ -100,6 +100,7 @@ private slots:
     void tabMovesFromInputToSendButton();
     void agentApprovalGoesThroughTheDockAndIsUndoable();
     void proposalShowsBeforeAndAfterPreviews();
+    void decisionButtonsStayVisibleWithTallPreviews();
     void programmaticSendShowsTheMessageAndReachesTheBackend();
     void approvalHighlightsAffectedObjectsThenRestoresTheSelection();
     void agentQuestionIsAnsweredInThePanel();
@@ -416,6 +417,40 @@ void MainWindowTest::programmaticSendShowsTheMessageAndReachesTheBackend() {
     backend.isAvailable = false;
     emit backend.finished();
     QVERIFY(!dock->sendProgrammatic(QStringLiteral("x"), QStringLiteral("3e"))); // indisponible
+}
+
+void MainWindowTest::decisionButtonsStayVisibleWithTallPreviews() {
+    MainWindow w;
+    w.resize(1200, 700);
+    w.show();
+    auto* dock = w.companionDock();
+    dock->setFloating(true);
+    dock->resize(320, 420);
+    dock->show();
+    QImage tall(600, 1800, QImage::Format_RGB32);
+    tall.fill(Qt::darkCyan);
+    QByteArray bytes;
+    QBuffer buffer(&bytes);
+    buffer.open(QIODevice::WriteOnly);
+    tall.save(&buffer, "PNG");
+    CompanionProposal proposal;
+    proposal.summary =
+        QStringLiteral("Points : 1 -> 1 (+0)\nSauts : 1 -> 1 (+0)\nCoupes : 1 -> 1 (+0)");
+    for (int i = 0; i < 6; ++i) {
+        proposal.items.push_back({0, QStringLiteral("rename #%1").arg(i)});
+    }
+    proposal.beforePng = bytes;
+    proposal.afterPng = bytes;
+    dock->showProposal(proposal, [](bool) {});
+    QCoreApplication::processEvents();
+    auto* confirm = child<QPushButton>(dock, "button_companionConfirm");
+    auto* reject = child<QPushButton>(dock, "button_companionReject");
+    QVERIFY(confirm->isVisible() && reject->isVisible());
+    // Les boutons sont dans la partie haute du panneau, dans la zone visible sans défilement.
+    const int bottom = confirm->mapTo(dock, QPoint(0, confirm->height())).y();
+    QVERIFY2(bottom < dock->height(), qPrintable(QString::number(bottom)));
+    // Les apercus sont bornes (une image tres haute ne depasse pas 220 px).
+    QVERIFY(child<QLabel>(dock, "label_companionBefore")->pixmap().height() <= 220);
 }
 
 void MainWindowTest::agentQuestionIsAnsweredInThePanel() {

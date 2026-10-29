@@ -15,6 +15,7 @@
 #include <QPointer>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QStackedWidget>
 #include <QTextBrowser>
 #include <QVBoxLayout>
@@ -41,7 +42,9 @@ QString html(const QString& text, int limit) {
 QPixmap scaled(const QByteArray& png) {
     QPixmap pixmap;
     pixmap.loadFromData(png, "PNG");
-    return pixmap.isNull() ? pixmap : pixmap.scaledToWidth(280, Qt::SmoothTransformation);
+    return pixmap.isNull()
+               ? pixmap
+               : pixmap.scaled(QSize(200, 220), Qt::KeepAspectRatio, Qt::SmoothTransformation);
 }
 
 } // namespace
@@ -151,6 +154,15 @@ void CompanionDock::buildUi() {
     proposalSummary_->setWordWrap(true);
     proposalSummary_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     proposal->addWidget(proposalSummary_);
+    // Boutons en HAUT du panneau : toujours visibles, même avec de grands aperçus.
+    auto* decision = new QHBoxLayout;
+    confirm_ = new QPushButton(proposalBox_);
+    confirm_->setObjectName(QStringLiteral("button_companionConfirm"));
+    reject_ = new QPushButton(proposalBox_);
+    reject_->setObjectName(QStringLiteral("button_companionReject"));
+    decision->addWidget(confirm_);
+    decision->addWidget(reject_);
+    proposal->addLayout(decision);
     proposalItems_ = new QListWidget(proposalBox_);
     proposalItems_->setObjectName(QStringLiteral("list_companionProposalItems"));
     proposalItems_->setAccessibleName(tr("Objets concernés par le changement proposé"));
@@ -163,7 +175,7 @@ void CompanionDock::buildUi() {
         }
     });
     proposal->addWidget(proposalItems_);
-    auto* images = new QVBoxLayout;
+    auto* images = new QHBoxLayout;
     beforeImage_ = new QLabel(proposalBox_);
     beforeImage_->setObjectName(QStringLiteral("label_companionBefore"));
     beforeImage_->setAccessibleName(tr("Aperçu avant la modification"));
@@ -172,6 +184,10 @@ void CompanionDock::buildUi() {
     afterImage_->setObjectName(QStringLiteral("label_companionAfter"));
     afterImage_->setAccessibleName(tr("Aperçu après la modification"));
     afterImage_->setToolTip(tr("Après"));
+    for (QLabel* image : {beforeImage_, afterImage_}) {
+        image->setAlignment(Qt::AlignTop | Qt::AlignHCenter);
+        image->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Maximum);
+    }
     images->addWidget(beforeImage_);
     images->addWidget(afterImage_);
     proposal->addLayout(images);
@@ -179,14 +195,6 @@ void CompanionDock::buildUi() {
     proposalWarnings_->setWordWrap(true);
     proposalWarnings_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     proposal->addWidget(proposalWarnings_);
-    auto* decision = new QHBoxLayout;
-    confirm_ = new QPushButton(proposalBox_);
-    confirm_->setObjectName(QStringLiteral("button_companionConfirm"));
-    reject_ = new QPushButton(proposalBox_);
-    reject_->setObjectName(QStringLiteral("button_companionReject"));
-    decision->addWidget(confirm_);
-    decision->addWidget(reject_);
-    proposal->addLayout(decision);
     layout->addWidget(proposalBox_);
     connect(confirm_, &QPushButton::clicked, this, [this] { resolveProposal(true); });
     connect(reject_, &QPushButton::clicked, this, [this] { resolveProposal(false); });
@@ -209,7 +217,14 @@ void CompanionDock::buildUi() {
         }
     });
 
-    setWidget(root);
+    // Défilement vertical : un panneau trop haut (liste, aperçus) ne cache jamais les boutons.
+    auto* scroll = new QScrollArea(this);
+    scroll->setObjectName(QStringLiteral("scroll_companion"));
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setWidget(root);
+    setWidget(scroll);
     retranslate();
 }
 
