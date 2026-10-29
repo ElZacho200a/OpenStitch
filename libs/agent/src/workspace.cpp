@@ -366,8 +366,13 @@ bool write_workspace_files(const std::string& directory, const std::vector<Works
             std::u8string(reinterpret_cast<const char8_t*>(directory.data()), directory.size()));
         for (const auto& [relative, content] : files) {
             const fs::path rel = fs::path(relative);
+            // fs::path ne reconnaît pas les préfixes Windows (C:/, C:) sous Linux.
+            // Refuser également les antislashs (séparateurs Windows) et ':' (lecteurs/ADS)
+            // sur toutes les plateformes pour une validation portable.
             if (relative.empty() || rel.is_absolute() || rel.has_root_name() ||
-                rel.has_root_directory() || relative.find("..") != std::string::npos) {
+                rel.has_root_directory() || relative.find("..") != std::string::npos ||
+                relative.find(':') != std::string::npos ||
+                relative.find('\\') != std::string::npos) {
                 return false; // jamais d'écriture hors de l'espace de travail
             }
             write_file(dir / rel, content);

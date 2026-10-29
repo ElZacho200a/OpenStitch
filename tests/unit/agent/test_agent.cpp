@@ -586,6 +586,11 @@ TEST_CASE("workspace files are written relative to the workspace and traversal i
     CHECK(std::filesystem::exists(dir / ".claude" / "skills" / "x" / "references" / "r.md"));
     CHECK_FALSE(write_workspace_files(dir.string(), {{"../evil.txt", "x"}}));
     CHECK_FALSE(write_workspace_files(dir.string(), {{"C:/evil.txt", "x"}}));
+    CHECK_FALSE(write_workspace_files(dir.string(), {{"C:\\evil.txt", "x"}}));
+    CHECK_FALSE(write_workspace_files(dir.string(), {{"C:evil.txt", "x"}}));
+    CHECK_FALSE(write_workspace_files(dir.string(), {{"..\\evil.txt", "x"}}));
+    CHECK_FALSE(write_workspace_files(dir.string(), {{"\\\\server\\share\\evil.txt", "x"}}));
+    CHECK_FALSE(write_workspace_files(dir.string(), {{"safe:stream", "x"}}));
     CHECK_FALSE(write_workspace_files(dir.string(), {{"/etc/evil", "x"}}));
     CHECK_FALSE(write_workspace_files(dir.string(), {{"", "x"}}));
     CHECK_FALSE(std::filesystem::exists(dir.parent_path() / "evil.txt"));
