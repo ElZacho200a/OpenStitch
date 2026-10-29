@@ -31,6 +31,7 @@ public:
     void resetConversation();
     // Expose uniquement le decodeur d'evenements pour les tests sans executable Claude.
     void ingestEventForTest(const QByteArray& jsonLine);
+    [[nodiscard]] static QStringList disallowedTools();
     void ingestChunkForTest(const QByteArray& chunk);
 
 public slots:

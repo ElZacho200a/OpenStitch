@@ -1957,10 +1957,13 @@ void MainWindow::maybeStartSemanticAnalysis() {
         return;
     }
     const QString prompt = tr(
-        "Fais l'analyse sémantique du projet ouvert : live_context, project_render, puis "
-        "live_object_views par lots de 8 objets (regroupés par fil). Dresse la table « objet → ce "
-        "qu'il représente » avec ton niveau de confiance, résume le motif en deux phrases, puis "
-        "PROPOSE des opérations rename (aperçu live_preview). N'applique rien sans mon accord.");
+        "Fais l'analyse sémantique du projet ouvert avec UNIQUEMENT les outils openstitch (ni "
+        "fichier "
+        "ni shell) : live_context, project_render, puis live_object_views sur AU PLUS 5 lots de 8 "
+        "objets (les plus grands, un échantillon par fil) ; déduis le reste par fil et voisinage. "
+        "Dresse la table « objet → ce qu'il représente » avec ton niveau de confiance, résume le "
+        "motif en deux phrases, puis PROPOSE des opérations rename (aperçu live_preview). "
+        "N'applique rien sans mon accord.");
     if (companionDock_->sendProgrammatic(tr("Analyse sémantique automatique du projet…"), prompt)) {
         semanticAnalysisGeneration_ = documentGeneration_;
     }
