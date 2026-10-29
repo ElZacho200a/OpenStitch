@@ -48,7 +48,7 @@ struct VectorOpResult {
 // clonent leurs remplissages (sans retouches manuelles). Si un pont est tranché
 // mais qu'une autre jonction maintient la forme connexe, seule sa géométrie est
 // modifiée : même identité et mêmes broderies, sans nouveaux objets.
-// Refusé si le segment ne retire aucune matière.
+// Refusé si la coupe ne change pas la topologie (entaille borgne ou hors forme).
 [[nodiscard]] VectorOpResult make_split_command(document::Project& project,
                                                 const std::vector<ObjectId>& ids, Vec2um a,
                                                 Vec2um b, Micrometers cut_width = Micrometers{20});
