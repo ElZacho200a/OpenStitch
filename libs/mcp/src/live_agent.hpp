@@ -30,6 +30,9 @@ struct LiveContextInput {
                                            const LiveContextInput& in);
 [[nodiscard]] ToolResult live_target_tool(const document::Project& project,
                                           const LiveContextInput& in, const json& args);
+// Vues zoomées de 1 à 8 objets de broderie (rendu réaliste recadré sur chaque objet, avec marge) :
+// sert à l'analyse sémantique (« à quoi correspond chaque objet »). Lecture seule, sur copie.
+[[nodiscard]] ToolResult live_object_views_tool(const document::Project& project, const json& args);
 [[nodiscard]] ToolResult live_plan_satin_tool(const document::Project& project, const json& args);
 // Aperçu montré à l'utilisateur AVANT d'approuver une modification : rendus avant/après et écarts
 // de métriques (calculés sur des copies, hors fil d'interface).
