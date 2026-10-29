@@ -53,10 +53,10 @@ struct VectorObject {
         mix(p.closed ? 1 : 0);
         mix(p.nodes.size());
         for (const auto& node : p.nodes) {
-            mix(static_cast<std::uint64_t>(
-                static_cast<std::int64_t>(node.pos.x.value) - origin.x.value));
-            mix(static_cast<std::uint64_t>(
-                static_cast<std::int64_t>(node.pos.y.value) - origin.y.value));
+            const auto x = static_cast<std::int64_t>(node.pos.x.value) - origin.x.value;
+            const auto y = static_cast<std::int64_t>(node.pos.y.value) - origin.y.value;
+            mix(static_cast<std::uint64_t>(x));
+            mix(static_cast<std::uint64_t>(y));
             mix(static_cast<std::uint64_t>(node.type));
             for (const auto& tangent : {node.tan_in, node.tan_out}) {
                 mix(tangent ? 1 : 0);

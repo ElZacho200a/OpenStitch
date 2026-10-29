@@ -167,19 +167,36 @@ void ClaudeCodeProcessBackend::handleOutput() {
         return;
     }
     buffer_ += process_->readAllStandardOutput();
-    if (buffer_.size() > 4 * 1024 * 1024) {
-        emit failed(tr("Flux de Claude Code trop volumineux."));
-        cancel();
-        return;
-    }
+    consumeBuffer();
+}
+
+// Une ligne COMPLETE peut etre tres grosse (les evenements « user » rejouent les resultats
+// d'outils, donc les rendus PNG en base64) : seule une ligne INCOMPLETE demesuree est une erreur.
+void ClaudeCodeProcessBackend::consumeBuffer() {
+    constexpr qsizetype kMaxPendingLine = 64 * 1024 * 1024;
     qsizetype pos = 0;
     while ((pos = buffer_.indexOf('\n')) >= 0) {
         const QByteArray line = buffer_.left(pos).trimmed();
         buffer_.remove(0, pos + 1);
-        if (!line.isEmpty()) {
-            handleLine(line);
+        if (line.isEmpty()) {
+            continue;
         }
+        // Les echos de resultats d'outils (type « user ») ne servent a rien ici : pas d'analyse
+        // JSON d'un contenu de plusieurs Mo.
+        if (line.startsWith("{\"type\":\"user\"")) {
+            continue;
+        }
+        handleLine(line);
     }
+    if (buffer_.size() > kMaxPendingLine) {
+        emit failed(tr("Flux de Claude Code trop volumineux."));
+        cancel();
+    }
+}
+
+void ClaudeCodeProcessBackend::ingestChunkForTest(const QByteArray& chunk) {
+    buffer_ += chunk;
+    consumeBuffer();
 }
 
 void ClaudeCodeProcessBackend::ingestEventForTest(const QByteArray& jsonLine) {
