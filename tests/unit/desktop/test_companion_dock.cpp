@@ -100,6 +100,8 @@ private slots:
     void tabMovesFromInputToSendButton();
     void agentApprovalGoesThroughTheDockAndIsUndoable();
     void proposalShowsBeforeAndAfterPreviews();
+    void programmaticSendShowsTheMessageAndReachesTheBackend();
+    void approvalHighlightsAffectedObjectsThenRestoresTheSelection();
     void agentQuestionIsAnsweredInThePanel();
     void agentQuestionDeclinedReturnsNoChoice();
 };
@@ -372,6 +374,48 @@ void MainWindowTest::proposalShowsBeforeAndAfterPreviews() {
     plain.summary = QStringLiteral("x");
     dock->showProposal(plain, [](bool) {});
     QVERIFY(!before->isVisibleTo(dock));
+}
+
+void MainWindowTest::approvalHighlightsAffectedObjectsThenRestoresTheSelection() {
+    MainWindow w;
+    auto f = oneShape();
+    const ObjectId first = f.first;
+    w.applyLoadedProject(std::move(f.project));
+    const ObjectId vector = w.project_.embroidery_objects.front().source_vector;
+    QVERIFY(w.selectedObjectIds().empty());
+    bool highlightedDuringApproval = false;
+    auto* dock = w.companionDock();
+    QTimer::singleShot(30, &w, [&] {
+        highlightedDuringApproval = w.isObjectSelected(vector);
+        dock->findChild<QPushButton*>(QStringLiteral("button_companionReject"))->click();
+    });
+    const std::string args =
+        "{\"operations\":[{\"op\":\"set_color\",\"object\":" + std::to_string(first.value) +
+        ",\"rgb\":\"#FF0000\"}]}";
+    (void)w.liveService().call("project_apply", args);
+    QVERIFY(highlightedDuringApproval);     // fantome visible pendant la decision
+    QVERIFY(w.selectedObjectIds().empty()); // selection d'origine restauree
+    QCOMPARE(w.project_.embroidery_objects.front().rgb, (std::array<std::uint8_t, 3>{60, 30, 30}));
+}
+
+void MainWindowTest::programmaticSendShowsTheMessageAndReachesTheBackend() {
+    MainWindow w;
+    auto f = oneShape();
+    w.applyLoadedProject(std::move(f.project));
+    MockBackend backend;
+    auto* dock = w.companionDock();
+    dock->setBackend(&backend);
+    QVERIFY(
+        dock->sendProgrammatic(QStringLiteral("Analyse automatique"), QStringLiteral("PROMPT")));
+    QCOMPARE(backend.sent, QStringList{QStringLiteral("PROMPT")});
+    QVERIFY(dock->busy());
+    QVERIFY(child<QTextBrowser>(dock, "browser_companionTranscript")
+                ->toPlainText()
+                .contains(QStringLiteral("Analyse automatique")));
+    QVERIFY(!dock->sendProgrammatic(QStringLiteral("x"), QStringLiteral("2e"))); // deja occupe
+    backend.isAvailable = false;
+    emit backend.finished();
+    QVERIFY(!dock->sendProgrammatic(QStringLiteral("x"), QStringLiteral("3e"))); // indisponible
 }
 
 void MainWindowTest::agentQuestionIsAnsweredInThePanel() {

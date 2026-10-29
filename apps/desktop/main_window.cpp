@@ -1830,8 +1830,57 @@ void MainWindow::buildCompanionDock() {
         for (const auto& warning : request.warnings) {
             proposal.warnings << QString::fromStdString(warning);
         }
-        return companionDock_->askApproval(proposal);
+        // Mode fantôme : pendant la décision, les objets concernés sont mis en évidence sur le
+        // canevas (halo de sélection existant) ; la sélection de l'utilisateur est restaurée après.
+        const Selection saved = currentSelection();
+        std::vector<quint64> ids;
+        for (const auto& item : request.items) {
+            if (item.object_id != 0) {
+                ids.push_back(item.object_id);
+            }
+        }
+        showGhostSelection(ids);
+        const bool approved = companionDock_->askApproval(proposal);
+        restoreGhostSelection(saved);
+        return approved;
     });
+}
+
+void MainWindow::showGhostSelection(const std::vector<quint64>& embroideryIds) {
+    Selection ghost;
+    for (const quint64 id : embroideryIds) {
+        ObjectId target;
+        target.value = id;
+        if (const auto* e = project_.findEmbroidery(target)) {
+            if (project_.findObject(e->source_vector) != nullptr) {
+                ghost.objects.push_back(e->source_vector);
+            }
+        }
+    }
+    if (ghost.objects.empty()) {
+        return;
+    }
+    setSelection(ghost);
+    refreshImage();
+    updateActions();
+}
+
+void MainWindow::restoreGhostSelection(Selection saved) {
+    // Les objets n'existent peut-être plus (modification appliquée) : seuls les présents sont
+    // gardés.
+    std::vector<ObjectId> kept;
+    for (const ObjectId id : saved.objects) {
+        if (project_.findObject(id) != nullptr) {
+            kept.push_back(id);
+        }
+    }
+    saved.objects = std::move(kept);
+    if (saved.embroidery && project_.findEmbroidery(*saved.embroidery) == nullptr) {
+        saved.embroidery.reset();
+    }
+    setSelection(saved);
+    refreshImage();
+    updateActions();
 }
 
 void MainWindow::updateCompanionContext() {
@@ -1897,6 +1946,24 @@ void MainWindow::useClaudeCodeInDock() {
     companionDock_->setBackend(codeBackend_);
     companionDock_->show();
     companionDock_->raise();
+    maybeStartSemanticAnalysis();
+}
+
+void MainWindow::maybeStartSemanticAnalysis() {
+    // Une seule fois par document ouvert, uniquement sur un projet non vide, et si l'utilisateur
+    // ne l'a pas désactivée (Aide ▸ Compagnon IA…).
+    if (!companion_settings::autoSemanticAnalysis() || project_.embroidery_objects.empty() ||
+        semanticAnalysisGeneration_ == documentGeneration_) {
+        return;
+    }
+    const QString prompt = tr(
+        "Fais l'analyse sémantique du projet ouvert : live_context, project_render, puis "
+        "live_object_views par lots de 8 objets (regroupés par fil). Dresse la table « objet → ce "
+        "qu'il représente » avec ton niveau de confiance, résume le motif en deux phrases, puis "
+        "PROPOSE des opérations rename (aperçu live_preview). N'applique rien sans mon accord.");
+    if (companionDock_->sendProgrammatic(tr("Analyse sémantique automatique du projet…"), prompt)) {
+        semanticAnalysisGeneration_ = documentGeneration_;
+    }
 }
 
 void MainWindow::openClaudeCode() {

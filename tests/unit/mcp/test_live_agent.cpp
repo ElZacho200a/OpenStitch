@@ -438,3 +438,27 @@ TEST_CASE("live tools stay fast on a project with hundreds of objects", "[live][
     INFO("snapshot " << snapshot_ms << " ms, live_context " << context_ms << " ms, live_target "
                      << target_ms << " ms");
 }
+
+TEST_CASE("live_object_views returns one zoomed image per object with a legend",
+          "[live][agentic]") {
+    Doc d;
+    const auto reply =
+        d.call("live_object_views", {{"objects", {d.orange[0], d.others[0], 99999}}});
+    REQUIRE_FALSE(reply["isError"].get<bool>());
+    const auto legend = Doc::text_of(reply);
+    CHECK(legend["schema"] == "openstitch.live-object-views/1");
+    REQUIRE(legend["views"].size() == 3);
+    CHECK(legend["views"][0]["thread"].get<std::string>().size() == 7);
+    CHECK(legend["views"][0]["family"] == "orange");
+    CHECK(legend["views"][2].contains("error")); // objet introuvable signale, pas ignore
+    std::size_t images = 0;
+    for (const auto& block : reply["content"]) {
+        images += block["type"] == "image" ? 1 : 0;
+    }
+    CHECK(images == 2);
+    CHECK_FALSE(d.stack.canUndo()); // lecture seule
+    CHECK(d.call("live_object_views", {{"objects", json::array()}})["isError"].get<bool>());
+    CHECK(d.call("live_object_views", {{"objects", {1, 2, 3, 4, 5, 6, 7, 8, 9}}})["isError"]
+              .get<bool>());
+    CHECK(mcp::live_policy("live_object_views") == mcp::LivePolicy::Read);
+}

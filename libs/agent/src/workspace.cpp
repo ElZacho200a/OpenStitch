@@ -20,6 +20,15 @@ Tu travailles avec le projet de broderie OUVERT dans OpenStitch Studio, via le s
 « openstitch » (mode --live). Le projet peut être non enregistré : l'état visible dans le logiciel
 est l'état à modifier. Réponds en français, de façon concise.
 
+## Au démarrage : analyse sémantique
+Dès que tu es lancé sur un projet non vide, avant toute autre demande : (1) `live_context` ;
+(2) `project_render` pour la vue d'ensemble ; (3) `live_object_views` par lots de 8 objets
+(regroupe d'abord par fil avec `thread_palette`) ; (4) dresse la table « objet → ce qu'il
+REPRÉSENTE » (ex. pétale, feuille, nénuphar, contour, ombre) avec ton niveau de confiance ;
+(5) PROPOSE (sans l'appliquer) d'inscrire ces noms dans le projet via des opérations `rename`
+(`live_preview` puis `project_apply`, approbation dans le dock). Ne modifie rien sans approbation.
+Résume ensuite le motif en deux phrases.
+
 ## Cycle de travail
 1. `live_context` (ou `live_status`) : révision, sélection, palette des FILS, objets, risques.
 2. `live_target` : cible par teinte de fil (« orange », « #RRGGBB », « selection »). Si
@@ -57,6 +66,22 @@ description: Modifier le projet OpenStitch ouvert (couleurs, types de points, pa
    le même lot : demande ce qui ne convient pas.
 )";
 
+constexpr const char* kSkillSemantic = R"(---
+name: openstitch-live-semantic
+description: Analyse sémantique du projet OpenStitch ouvert - identifier à quoi correspond chaque objet de broderie (pétale, feuille, contour…) à partir de vues zoomées, puis proposer de les nommer. À utiliser au démarrage sur un projet non vide.
+---
+
+# Analyse sémantique du motif
+
+1. `live_context` : objets, fils, familles de couleur, sélection.
+2. `project_render` (vue d'ensemble) pour comprendre le sujet global.
+3. `live_object_views` par lots de 8 objets, en commençant par les plus grands / les plus
+   nombreux par fil : regarde chaque image et nomme ce que l'objet représente.
+4. Table finale : identifiant, nom proposé, confiance (haute/moyenne/basse), fil. Les objets
+   douteux sont listés à part, jamais inventés.
+5. Propose des `rename` ; `live_preview` puis `project_apply` seulement après accord.
+)";
+
 constexpr const char* kSkillSatin = R"(---
 name: openstitch-live-satin
 description: Convertir des formes en satin avec compensation de tirage Predicted sur le projet OpenStitch ouvert (ciblage par fil, comparaison des 3 stratégies, refus justifiés). À utiliser pour « mets ces formes en satin ».
@@ -91,6 +116,8 @@ bool write_claude_workspace(const std::string& directory, const std::string& mcp
         write_file(dir / ".claude" / "openstitch-live-guide.md", kGuide);
         write_file(dir / ".claude" / "skills" / "openstitch-live-edit" / "SKILL.md", kSkillEdit);
         write_file(dir / ".claude" / "skills" / "openstitch-live-satin" / "SKILL.md", kSkillSatin);
+        write_file(dir / ".claude" / "skills" / "openstitch-live-semantic" / "SKILL.md",
+                   kSkillSemantic);
         json args = json::array({"--live"});
         if (desktop_pid > 0) {
             args.push_back("--pid");

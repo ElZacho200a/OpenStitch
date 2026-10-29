@@ -23,6 +23,10 @@ void setProviderEnabled(bool on);
 void setFullyDisabled(bool off);
 [[nodiscard]] QString model();
 void setModel(const QString& model);
+// Analyse sémantique automatique au lancement de Claude sur un projet non vide (activée par
+// défaut).
+[[nodiscard]] bool autoSemanticAnalysis();
+void setAutoSemanticAnalysis(bool on);
 [[nodiscard]] bool diagnosticsEnabled(); // journal de diagnostic (désactivé par défaut)
 void setDiagnosticsEnabled(bool on);
 [[nodiscard]] bool diagnosticsContentConsent(); // consentement à journaliser le contenu

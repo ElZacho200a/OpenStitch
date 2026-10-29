@@ -551,5 +551,8 @@ TEST_CASE("claude workspace carries the mcp server, guide, hook and skills", "[a
     CHECK(read(".claude/skills/openstitch-live-edit/SKILL.md").find("project_apply") !=
           std::string::npos);
     CHECK(read("CLAUDE.md").find("EMPIRIQUE") != std::string::npos);
+    CHECK(read("CLAUDE.md").find("analyse sémantique") != std::string::npos);
+    CHECK(read(".claude/skills/openstitch-live-semantic/SKILL.md").find("live_object_views") !=
+          std::string::npos);
     std::filesystem::remove_all(dir);
 }

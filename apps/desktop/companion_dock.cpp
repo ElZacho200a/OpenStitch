@@ -568,6 +568,17 @@ void CompanionDock::submit() {
     backend_->send(text);
 }
 
+bool CompanionDock::sendProgrammatic(const QString& displayText, const QString& prompt) {
+    if (backend_ == nullptr || !backend_->available() || busy_ || prompt.trimmed().isEmpty()) {
+        return false;
+    }
+    errorBanner_->setVisible(false);
+    appendUserMessage(displayText);
+    setBusy(true);
+    backend_->send(prompt);
+    return true;
+}
+
 void CompanionDock::setBusy(bool busy) {
     busy_ = busy;
     progress_->setVisible(busy);

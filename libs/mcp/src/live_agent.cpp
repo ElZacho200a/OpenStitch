@@ -329,6 +329,113 @@ ToolResult live_target_tool(const document::Project& project, const LiveContextI
                                 : "vérifiez avec live_plan_satin puis live_preview"}});
 }
 
+ToolResult live_object_views_tool(const document::Project& project, const json& args) {
+    constexpr std::size_t kMaxViews = 8;
+    if (!args.contains("objects") || !args.at("objects").is_array() || args.at("objects").empty() ||
+        args.at("objects").size() > kMaxViews) {
+        return error_tool("live_object_views", po::code::kUsage,
+                          "« objects » : 1 à 8 identifiants d'objets de broderie",
+                          "découpez en lots de 8 ; liste des objets : live_context");
+    }
+    const double margin = std::clamp(args.value("margin", 0.35), 0.05, 2.0);
+    // Boîte englobante du motif et de chaque objet (nœuds des contours, µm).
+    struct Box {
+        double x0{1e18}, y0{1e18}, x1{-1e18}, y1{-1e18};
+        void add(double x, double y) {
+            x0 = std::min(x0, x);
+            y0 = std::min(y0, y);
+            x1 = std::max(x1, x);
+            y1 = std::max(y1, y);
+        }
+        [[nodiscard]] bool valid() const { return x1 > x0 && y1 > y0; }
+    };
+    const auto box_of = [&](const document::EmbroideryObject& e) {
+        Box b;
+        if (const auto* v = project.findObject(e.source_vector)) {
+            for (const auto& set : v->paths) {
+                for (const auto& n : set.outer.nodes) {
+                    b.add(static_cast<double>(n.pos.x.value), static_cast<double>(n.pos.y.value));
+                }
+            }
+        }
+        return b;
+    };
+    Box all;
+    for (const auto& e : project.embroidery_objects) {
+        if (!e.visible) {
+            continue;
+        }
+        const Box b = box_of(e);
+        if (b.valid()) {
+            all.add(b.x0, b.y0);
+            all.add(b.x1, b.y1);
+        }
+    }
+    if (!all.valid()) {
+        return error_tool("live_object_views", po::code::kNothingToDo,
+                          "aucun objet visible à rendre", {});
+    }
+    ToolResult result;
+    json legend = json::array();
+    int images = 0;
+    Session scratch;
+    scratch.project = project;
+    for (const auto& item : args.at("objects")) {
+        if (!item.is_number_unsigned()) {
+            continue;
+        }
+        const auto* e = project.findEmbroidery(ObjectId{item.get<std::uint64_t>()});
+        if (e == nullptr) {
+            legend.push_back(json{{"object", item}, {"error", "objet introuvable"}});
+            continue;
+        }
+        const Box b = box_of(*e);
+        if (!b.valid()) {
+            legend.push_back(json{{"object", e->id.value}, {"error", "géométrie vide"}});
+            continue;
+        }
+        const double w = all.x1 - all.x0;
+        const double h = all.y1 - all.y0;
+        const double mx = (b.x1 - b.x0) * margin;
+        const double my = (b.y1 - b.y0) * margin;
+        // Repère image : origine en haut à gauche, Y vers le bas (la géométrie a Y vers le haut).
+        const double cx0 = std::clamp((b.x0 - mx - all.x0) / w, 0.0, 1.0);
+        const double cx1 = std::clamp((b.x1 + mx - all.x0) / w, 0.0, 1.0);
+        const double cy0 = std::clamp(1.0 - (b.y1 + my - all.y0) / h, 0.0, 1.0);
+        const double cy1 = std::clamp(1.0 - (b.y0 - my - all.y0) / h, 0.0, 1.0);
+        if (cx1 - cx0 < 1e-4 || cy1 - cy0 < 1e-4) {
+            legend.push_back(json{{"object", e->id.value}, {"error", "zone de rendu vide"}});
+            continue;
+        }
+        ToolResult view = call_tool(scratch, "project_render",
+                                    json{{"px_per_mm", 4.0}, {"crop", {cx0, cy0, cx1, cy1}}});
+        bool attached = false;
+        for (auto& block : view.content) {
+            if (!view.is_error && block.value("type", std::string{}) == "image") {
+                result.content.push_back(std::move(block));
+                attached = true;
+                ++images;
+                break;
+            }
+        }
+        json entry{{"object", e->id.value},
+                   {"name", e->name},
+                   {"type", po::stitch_type_name(*e)},
+                   {"thread", hex_of(e->rgb)},
+                   {"family", color_family(e->rgb[0], e->rgb[1], e->rgb[2])},
+                   {"image_index", attached ? json(images - 1) : json(nullptr)}};
+        legend.push_back(std::move(entry));
+    }
+    // Le texte vient en tête : les images suivent dans l'ordre de `legend` (image_index = rang).
+    json doc{{"schema", "openstitch.live-object-views/1"},
+             {"views", legend},
+             {"note", "chaque image est un zoom réaliste de l'objet (ordre = image_index) ; nomme "
+                      "ce que l'objet REPRÉSENTE (pétale, feuille, contour…) en te "
+                      "servant aussi du contexte autour"}};
+    result.content.insert(result.content.begin(), json{{"type", "text"}, {"text", doc.dump()}});
+    return result;
+}
+
 ToolResult live_plan_satin_tool(const document::Project& project, const json& args) {
     if (!args.contains("objects") || !args.at("objects").is_array() || args.at("objects").empty() ||
         args.at("objects").size() > 20) {
