@@ -34,6 +34,18 @@ void ClaudeCodeProcessBackend::resetConversation() {
     streamedText_ = false;
 }
 
+// Claude Code garde ses outils natifs (fichiers, shell, web) : le dock n'en autorise AUCUN, seuls
+// les outils MCP OpenStitch passent (--allowedTools mcp__openstitch). Liste de refus explicite en
+// plus, car une demande d'outil refusee consomme un tour pour rien.
+QStringList ClaudeCodeProcessBackend::disallowedTools() {
+    return {
+        QStringLiteral("Bash"),      QStringLiteral("PowerShell"),   QStringLiteral("Edit"),
+        QStringLiteral("Write"),     QStringLiteral("NotebookEdit"), QStringLiteral("Read"),
+        QStringLiteral("Glob"),      QStringLiteral("Grep"),         QStringLiteral("WebFetch"),
+        QStringLiteral("WebSearch"), QStringLiteral("Task"),         QStringLiteral("Agent"),
+        QStringLiteral("TodoWrite"), QStringLiteral("BashOutput"),   QStringLiteral("KillShell")};
+}
+
 void ClaudeCodeProcessBackend::send(const QString& userText) {
     if (!available() || userText.trimmed().isEmpty() || process_ != nullptr) {
         emit failed(tr("Claude Code n'est pas pret ou une demande est deja en cours."));
@@ -60,11 +72,11 @@ void ClaudeCodeProcessBackend::send(const QString& userText) {
                         QStringLiteral("--output-format"),
                         QStringLiteral("stream-json"),
                         QStringLiteral("--max-turns"),
-                        QStringLiteral("25"),
+                        QStringLiteral("40"),
                         QStringLiteral("--allowedTools"),
                         QStringLiteral("mcp__openstitch"),
                         QStringLiteral("--disallowedTools"),
-                        QStringLiteral("Bash,Edit,Write,NotebookEdit")};
+                        disallowedTools().join(QLatin1Char(','))};
     // Ne jamais transmettre au wrapper cmd un identifiant non controle provenant du JSON.
     const QRegularExpression uuid(
         QStringLiteral("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"));

@@ -22,7 +22,7 @@ est l'état à modifier. Réponds en français, de façon concise.
 
 ## Au démarrage : analyse sémantique
 Dès que tu es lancé sur un projet non vide, avant toute autre demande : (1) `live_context` ;
-(2) `project_render` pour la vue d'ensemble ; (3) `live_object_views` par lots de 8 objets
+(2) `project_render` pour la vue d'ensemble ; (3) `live_object_views` par lots de 8 objets, AU PLUS 5 lots (les plus grands, un échantillon par fil ; déduis le reste par fil et voisinage)
 (regroupe d'abord par fil avec `thread_palette`) ; (4) dresse la table « objet → ce qu'il
 REPRÉSENTE » (ex. pétale, feuille, nénuphar, contour, ombre) avec ton niveau de confiance ;
 (5) PROPOSE (sans l'appliquer) d'inscrire ces noms dans le projet via des opérations `rename`
@@ -87,7 +87,7 @@ description: Analyse sémantique du projet OpenStitch ouvert - identifier à quo
 
 1. `live_context` : objets, fils, familles de couleur, sélection.
 2. `project_render` (vue d'ensemble) pour comprendre le sujet global.
-3. `live_object_views` par lots de 8 objets, en commençant par les plus grands / les plus
+3. `live_object_views` par lots de 8 objets, AU PLUS 5 lots (limite de tours), en commençant par les plus grands / les plus
    nombreux par fil : regarde chaque image et nomme ce que l'objet représente.
 4. Table finale : identifiant, nom proposé, confiance (haute/moyenne/basse), fil. Les objets
    douteux sont listés à part, jamais inventés.
