@@ -144,7 +144,8 @@ private slots:
             return window.project_.vector_objects[0].paths[0].outer.nodes[1].pos.x.value;
         };
         QTRY_VERIFY(firstRightX() > 10'000);
-        const auto secondLeftX = window.project_.vector_objects[1].paths[0].outer.nodes[0].pos.x.value;
+        const auto& second = window.project_.vector_objects[1];
+        const auto secondLeftX = second.paths[0].outer.nodes[0].pos.x.value;
         QVERIFY(secondLeftX > 20'000);
         window.undo();
         QVERIFY(window.project_.vector_objects[0].paths == beforeA);
