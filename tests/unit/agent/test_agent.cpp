@@ -551,8 +551,35 @@ TEST_CASE("claude workspace carries the mcp server, guide, hook and skills", "[a
     CHECK(read(".claude/skills/openstitch-live-edit/SKILL.md").find("project_apply") !=
           std::string::npos);
     CHECK(read("CLAUDE.md").find("EMPIRIQUE") != std::string::npos);
+    for (const char* name :
+         {"openstitch-live-diagnose", "openstitch-live-fabric", "openstitch-live-order",
+          "openstitch-live-cleanup", "openstitch-live-naming", "openstitch-live-review",
+          "openstitch-live-lettering", "openstitch-live-layout", "openstitch-live-variants"}) {
+        const std::string skill =
+            read((std::string(".claude/skills/") + name + "/SKILL.md").c_str());
+        CHECK(skill.starts_with("---\nname: " + std::string(name) + "\n"));
+        CHECK(skill.find("description:") != std::string::npos);
+        CHECK(read("CLAUDE.md")
+                  .find(std::string(name).substr(std::string("openstitch-live").size())) !=
+              std::string::npos);
+    }
     CHECK(read("CLAUDE.md").find("analyse sémantique") != std::string::npos);
     CHECK(read(".claude/skills/openstitch-live-semantic/SKILL.md").find("live_object_views") !=
           std::string::npos);
+    std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("workspace files are written relative to the workspace and traversal is refused",
+          "[agent][workspace]") {
+    const auto dir = std::filesystem::temp_directory_path() / "openstitch-ws-files";
+    std::filesystem::remove_all(dir);
+    REQUIRE(write_workspace_files(dir.string(), {{".claude/skills/x/SKILL.md", "a"},
+                                                 {".claude/skills/x/references/r.md", "b"}}));
+    CHECK(std::filesystem::exists(dir / ".claude" / "skills" / "x" / "references" / "r.md"));
+    CHECK_FALSE(write_workspace_files(dir.string(), {{"../evil.txt", "x"}}));
+    CHECK_FALSE(write_workspace_files(dir.string(), {{"C:/evil.txt", "x"}}));
+    CHECK_FALSE(write_workspace_files(dir.string(), {{"/etc/evil", "x"}}));
+    CHECK_FALSE(write_workspace_files(dir.string(), {{"", "x"}}));
+    CHECK_FALSE(std::filesystem::exists(dir.parent_path() / "evil.txt"));
     std::filesystem::remove_all(dir);
 }

@@ -44,6 +44,10 @@ struct LiveExtraTool {
 };
 [[nodiscard]] const std::vector<LiveExtraTool>& live_extra_tools();
 
+// Skill `openstitch-digitize` embarqué (SKILL.md + références, fichiers d'origine avec leur front
+// matter) : (chemin relatif au dossier du skill, contenu). Source unique : le skill du dépôt.
+[[nodiscard]] std::vector<std::pair<std::string, std::string>> digitize_skill_files();
+
 // Outils exposés à un agent en mode live (lecture + `project_apply` + `live_status`), au format
 // JSON `[{"name","description","input_schema"}]`. Même source que `tools/list` du relais.
 [[nodiscard]] std::string live_tools_json();
