@@ -687,6 +687,62 @@ ApplyPreview build_apply_preview(const document::Project& before, const document
     return preview;
 }
 
+// Cadrage automatique sur les OBJETS, avec conversion au crop normalisé du rendu.
+// Le cadre de référence est calculé sur tous les contours visibles, comme live_object_views.
+std::optional<json> preview_crop_for_objects(const document::Project& project, const json& ids) {
+    struct Bounds {
+        double xmin{1e18}, ymin{1e18}, xmax{-1e18}, ymax{-1e18};
+        void include(double x, double y) {
+            xmin = std::min(xmin, x);
+            ymin = std::min(ymin, y);
+            xmax = std::max(xmax, x);
+            ymax = std::max(ymax, y);
+        }
+        bool valid() const { return xmax > xmin && ymax > ymin; }
+    };
+    const auto include_shape = [&](Bounds& bounds, const document::EmbroideryObject& e) {
+        if (const auto* shape = project.findObject(e.source_vector)) {
+            for (const auto& set : shape->paths) {
+                for (const auto& node : set.outer.nodes) {
+                    bounds.include(node.pos.x.value, node.pos.y.value);
+                }
+            }
+        }
+    };
+    Bounds full;
+    for (const auto& e : project.embroidery_objects) {
+        if (e.visible) {
+            include_shape(full, e);
+        }
+    }
+    Bounds focus;
+    for (const auto& id : ids) {
+        if (!id.is_number_unsigned()) {
+            return std::nullopt;
+        }
+        const auto* e = project.findEmbroidery(ObjectId{id.get<std::uint64_t>()});
+        if (e == nullptr) {
+            return std::nullopt;
+        }
+        include_shape(focus, *e);
+    }
+    if (!full.valid() || !focus.valid()) {
+        return std::nullopt;
+    }
+    const double mx = (focus.xmax - focus.xmin) * 0.2;
+    const double my = (focus.ymax - focus.ymin) * 0.2;
+    const double width = full.xmax - full.xmin;
+    const double height = full.ymax - full.ymin;
+    const double x0 = std::clamp((focus.xmin - mx - full.xmin) / width, 0.0, 1.0);
+    const double x1 = std::clamp((focus.xmax + mx - full.xmin) / width, 0.0, 1.0);
+    const double y0 = std::clamp(1.0 - (focus.ymax + my - full.ymin) / height, 0.0, 1.0);
+    const double y1 = std::clamp(1.0 - (focus.ymin - my - full.ymin) / height, 0.0, 1.0);
+    if (x1 - x0 < 1e-4 || y1 - y0 < 1e-4) {
+        return std::nullopt;
+    }
+    return json::array({x0, y0, x1, y1});
+}
+
 ToolResult live_preview_tool(const document::Project& project, const json& args) {
     if (!args.contains("operations") || !args.at("operations").is_array()) {
         return error_tool("live_preview", po::code::kUsage, "« operations » obligatoire (tableau)",
@@ -719,17 +775,54 @@ ToolResult live_preview_tool(const document::Project& project, const json& args)
     out["before"] = before_m;
     out["after"] = after_m;
     out["delta"] = delta;
-    out["note"] = "aperçu calculé sur une copie : le projet ouvert n'a pas changé";
-    result.content.push_back(json{{"type", "text"}, {"text", out.dump()}});
-    // Rendu de l'état APRÈS (image) pour que l'agent et l'utilisateur voient le résultat.
+    out["note"] = "simulation sur copie uniquement : AUCUNE modification du projet ouvert";
+    out["preview_only"] = true;
+    out["applied_to_project"] = false;
+    // Toutes les options de zoom s'appliquent à la COPIE après simulation, jamais au projet.
+    json render_args{{"px_per_mm", 2.0}};
+    if (args.contains("px_per_mm")) {
+        if (!args.at("px_per_mm").is_number() || args.at("px_per_mm").get<double>() <= 0.0 ||
+            args.at("px_per_mm").get<double>() > 50.0) {
+            return error_tool("live_preview", po::code::kUsage,
+                              "px_per_mm doit être un nombre dans ]0,50]");
+        }
+        render_args["px_per_mm"] = args.at("px_per_mm");
+    }
+    if (args.contains("crop")) {
+        render_args["crop"] = args.at("crop"); // validé par project_render
+    } else if (args.contains("objects")) {
+        const auto& objects = args.at("objects");
+        if (!objects.is_array() || objects.empty() || objects.size() > 20) {
+            return error_tool("live_preview", po::code::kUsage,
+                              "objects : de 1 à 20 identifiants valides",
+                              "ex. {operations:[...], objects:[12,15]}");
+        }
+        const auto crop = preview_crop_for_objects(after, objects);
+        if (!crop) {
+            return error_tool("live_preview", po::code::kUnknownObject,
+                              "objets de cadrage introuvables ou géométrie sans surface",
+                              "liste des identifiants : live_context");
+        }
+        render_args["crop"] = *crop;
+        out["focus_objects"] = objects;
+    }
+    if (render_args.contains("crop")) {
+        out["render_crop"] = render_args.at("crop");
+    }
+    out["render_px_per_mm"] = render_args.at("px_per_mm");
+    // Rendu de l'état APRÈS sur copie, recadré avant approbation.
     Session scratch;
     scratch.project = std::move(after);
-    ToolResult rendered = call_tool(scratch, "project_render", json{{"px_per_mm", 2.0}});
-    if (!rendered.is_error) {
-        for (auto& block : rendered.content) {
-            if (block.value("type", std::string{}) == "image") {
-                result.content.push_back(std::move(block));
-            }
+    ToolResult rendered = call_tool(scratch, "project_render", render_args);
+    if (rendered.is_error) {
+        return error_tool("live_preview", po::code::kUsage,
+                          "échec du rendu de l'aperçu ; vérifiez crop et px_per_mm",
+                          "crop attend [x0,y0,x1,y1] dans [0,1]");
+    }
+    result.content.push_back(json{{"type", "text"}, {"text", out.dump()}});
+    for (auto& block : rendered.content) {
+        if (block.value("type", std::string{}) == "image") {
+            result.content.push_back(std::move(block));
         }
     }
     return result;
