@@ -677,8 +677,8 @@ TEST_CASE("mode avance : desactive par defaut, region verrouillee et changement 
 TEST_CASE("mode avance : privilegie une coupe evitee sur un petit detour") {
     stitch::StitchSequence s;
     region(s, 1, 0, 1'500);
-    region(s, 2, 2'700, 3'200);
-    region(s, 1, 4'400, 5'400); // meme objet, saute 2,9 mm depuis A
+    region(s, 2, 2'800, 3'000);
+    region(s, 1, 4'300, 5'300); // meme objet, saute 2,8 mm depuis A
     region(s, 3, 6'600, 7'600);
 
     const auto off = finish_sequence_report(s, advanced_project(false));
