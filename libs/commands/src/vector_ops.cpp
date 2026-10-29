@@ -426,22 +426,37 @@ VectorOpResult make_split_command(document::Project& project, const std::vector<
     const double reach = length_um(b - a) / 2.0;
     for (const auto& object : targets) {
         std::vector<PathSet> pieces;
-        bool crossed = false;
+        bool changed = false;
+        bool separated = false;
         for (const PathSet& set : object.paths) {
             auto cut = geometry::cut_path_set_bounded(set, a, b, reach, cut_width);
             if (!cut) {
                 return failure(cut.error().message);
             }
-            if (cut->size() >= 2) {
-                crossed = true;
+            if (cut->empty()) {
+                // Le couteau ne supprime pas une forme entièrement engloutie par sa bande.
+                pieces.push_back(set);
+                continue;
             }
+            // La coupe peut supprimer un pont sans séparer l'objet : une autre
+            // jonction le maintient connexe. Ce changement est bien une coupe.
+            changed = changed || cut->size() != 1 || cut->front() != set;
+            separated = separated || cut->size() >= 2;
             pieces.insert(pieces.end(), cut->begin(), cut->end());
         }
-        if (!crossed || pieces.size() < 2) {
+        if (!changed) {
             continue;
         }
-        total += pieces.size();
-        add_piece_commands(project, *group, object, std::move(pieces), "Découper les formes");
+        if (separated) {
+            total += pieces.size();
+            add_piece_commands(project, *group, object, std::move(pieces), "Découper les formes");
+        } else {
+            // Une seule composante par région : conserver l'identité, les autres
+            // chemins et les remplissages associés, sans créer de clone inutile.
+            ++total;
+            group->add(std::make_unique<SetVectorPathsCommand>(
+                object.id, std::move(pieces), "Découper les formes"));
+        }
     }
     if (total == 0) {
         return failure("La ligne de coupe ne traverse aucune forme sélectionnée.");
