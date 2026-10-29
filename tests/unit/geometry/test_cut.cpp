@@ -120,15 +120,19 @@ TEST_CASE("cut_path_set_bounded: bridge cut keeps one connected shape", "[cut][r
     PathSet ring = square(30'000);
     Path hole;
     hole.closed = true;
-    hole.nodes = {corner(p(10'000, 10'000)), corner(p(20'000, 10'000)),
-                  corner(p(20'000, 20'000)), corner(p(10'000, 20'000))};
+    hole.nodes.push_back(corner(p(10'000, 10'000)));
+    hole.nodes.push_back(corner(p(20'000, 10'000)));
+    hole.nodes.push_back(corner(p(20'000, 20'000)));
+    hole.nodes.push_back(corner(p(10'000, 20'000)));
     ring.holes.push_back(hole);
 
-    const auto cut = cut_path_set_bounded(ring, p(15'000, -5'000), p(15'000, 15'000),
-                                          10'000.0, Micrometers{20});
+    const auto start = p(15'000, -5'000);
+    const auto end = p(15'000, 15'000);
+    const auto cut = cut_path_set_bounded(ring, start, end, 10'000.0, Micrometers{20});
     REQUIRE(cut.has_value());
-    REQUIRE(cut->size() == 1);  // l'autre pont maintient la connexion
-    CHECK(cut->front().holes.empty());  // le vide est ouvert vers l'extérieur
+    // L'autre pont maintient la connexion et le vide s'ouvre vers l'extérieur.
+    REQUIRE(cut->size() == 1);
+    CHECK(cut->front().holes.empty());
     CHECK(path_set_area_um2(cut->front()) < path_set_area_um2(ring));
     CHECK(std::abs(path_set_area_um2(cut->front()) / 1e6 - 799.8) < 0.01);
 }
@@ -138,8 +142,9 @@ TEST_CASE("cut_path_set_bounded: miss preserves original curved geometry", "[cut
     // Une tangente doit survivre intacte si la coupe n'atteint pas la forme.
     shape.outer.nodes[0].type = NodeType::Smooth;
     shape.outer.nodes[0].tan_out = p(500, 0);
-    const auto cut = cut_path_set_bounded(shape, p(20'000, -5'000), p(20'000, 15'000),
-                                          10'000.0, Micrometers{20});
+    const auto start = p(20'000, -5'000);
+    const auto end = p(20'000, 15'000);
+    const auto cut = cut_path_set_bounded(shape, start, end, 10'000.0, Micrometers{20});
     REQUIRE(cut.has_value());
     REQUIRE(cut->size() == 1);
     CHECK(cut->front() == shape);
