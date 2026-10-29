@@ -2165,6 +2165,13 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
   `libs/project_io`, `apps/desktop/properties_panel`.
 
 ### HP-SEQ-006 — Minimiser les coupes [P1] — ◐ Partiel (2026-10-13, en PR)
+- Proposé le 2026-10-29 (`perf/trim-aware-routing-20261029`) : optimisation des régions
+  pénalisant les coupes réelles probables (y compris entre objets à moins de 3 mm),
+  protection des retouches manuelles et recherche locale bornée (retournement,
+  2-opt, Or-opt) des sous-couches au-delà de six passes. Disponible via les
+  options de trajets de l'export desktop ; tests de déterminisme ajoutés.
+  Reste : validation CI / machine, mesure sur corpus réel, branching multi-objets
+  et choix global de points d'entrée/sortie tenant compte des trajets cachés.
 - À faire : préférer un déplacement cousu caché sous un objet cousu ensuite
   (même couleur ou couverture garantie) plutôt qu'une coupe ; métrique :
   nombre de coupes sur le corpus.
@@ -3762,6 +3769,7 @@ ci-dessus doit les respecter :
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-29 | ChatGPT (HP-SEQ-006) | Optimisation des coupes des régions par score de coupe prévu et amélioration locale 2-opt/Or-opt des grandes sous-couches ; options desktop d'export préexistantes ; tests ajoutés, gains réels encore à mesurer. |
 | 2026-10-28 | Claude (desktop) | **Zones de détail, lot 2 : vectorisation** : `VectorizeOptions::detail_mask` / `detail_tolerance_factor` (régions de détail vectorisées plus finement), relayé par `AutoOptions`, `DigitizeSource` et le parcours Workflow du bureau ; tests Catch2. Manque : couture (type de point, densité) par zone. Aucune entrée de parité Hatch concernée. |
 | 2026-10-28 | Claude (desktop) | **Zones de détail, lot 3 : couture** : `AutoOptions::detail_min_fill_area_mm2` (1 mm²) abaisse le seuil de remplissage des régions de détail (petites formes en tatami plutôt qu'en contour) ; `merge_small_regions` gagne `detail_mask`/`detail_min_px` pour ne pas les absorber. Tests `test_autodigitize`. Manque : densité/angle par zone, masque dans le CLI/MCP. |
 | 2026-10-27 | ChatGPT (HP-UX-048 lot 1) | Comparaison miniatures avant/après dans Segmenter : source et carte de régions, aucun second calcul, tests Qt et effets documentaires inchangés. Suite simplification/vectorisation encore à faire. |
