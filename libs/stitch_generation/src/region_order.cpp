@@ -132,7 +132,12 @@ RegionOrderResult reorder_regions_same_color(const std::vector<StitchCommand>& c
     if (!cfg.enabled || !cfg.reorder_regions) {
         return result;
     }
-    const double bridgeMax = static_cast<double>(cfg.max_bridge_length.value);
+    // Les coutures de finitions coupent entre deux sources distinctes, même à courte
+    // distance ; au sein d'une source, elles coupent si le saut dépasse le seuil.
+    // 50 mm est un poids heuristique (PAS une durée machine mesurée) : une coupe
+    // évitée vaut en priorité un détour modéré. Ne change pas le réglage de coupe.
+    const double trimThreshold = static_cast<double>(finishing.trim_threshold.value);
+    constexpr double kTrimPenaltyUm = 50'000.0;
     const double radius =
         std::max(1, cfg.cover_thread_width.value) / 2.0 + std::max(0, cfg.cover_margin.value);
 
@@ -173,6 +178,11 @@ RegionOrderResult reorder_regions_same_color(const std::vector<StitchCommand>& c
             const auto it = pinnedSource.find(c.source);
             c.pinned = c.source == 0 || (it != pinnedSource.end() && it->second);
             for (std::size_t k = i; k < j; ++k) {
+                // Un raccord saisi manuellement n'est pas déplaçable par l'optimiseur.
+                if (cmds[k].type == CommandType::Trim ||
+                    cmds[k].pass == StitchPass::Manual) {
+                    c.pinned = true;
+                }
                 if (cmds[k].type == CommandType::Stitch) {
                     if (!c.first) {
                         c.first = cmds[k].pos;
@@ -194,9 +204,11 @@ RegionOrderResult reorder_regions_same_color(const std::vector<StitchCommand>& c
         }
     }
 
-    const auto cost = [&](Vec2um a, Vec2um b) {
+    const auto cost = [&](Vec2um a, Vec2um b, std::uint64_t fromSource,
+                          std::uint64_t toSource) {
         const double d = length_um(b - a);
-        return d + (d > bridgeMax ? bridgeMax : 0.0);
+        const bool wouldTrim = d > 0.0 && (fromSource != toSource || d > trimThreshold);
+        return d + (wouldTrim ? kTrimPenaltyUm : 0.0);
     };
 
     // Ordre final des régions de toute la séquence (indices dans `chunks`).
@@ -255,13 +267,16 @@ RegionOrderResult reorder_regions_same_color(const std::vector<StitchCommand>& c
             const auto total = [&](const std::vector<std::size_t>& order) {
                 double c = 0.0;
                 if (before) {
-                    c += cost(*before, *chunks[k + order.front()].first);
+                    c += cost(*before, *chunks[k + order.front()].first, chunks[k - 1].source,
+                              chunks[k + order.front()].source);
                 }
                 for (std::size_t q = 1; q < order.size(); ++q) {
-                    c += cost(*chunks[k + order[q - 1]].last, *chunks[k + order[q]].first);
+                    c += cost(*chunks[k + order[q - 1]].last, *chunks[k + order[q]].first,
+                              chunks[k + order[q - 1]].source, chunks[k + order[q]].source);
                 }
                 if (after) {
-                    c += cost(*chunks[k + order.back()].last, *after);
+                    c += cost(*chunks[k + order.back()].last, *after,
+                              chunks[k + order.back()].source, chunks[e].source);
                 }
                 return c;
             };
