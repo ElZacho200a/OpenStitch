@@ -101,8 +101,7 @@ json parse(const std::string& s) {
 
 } // namespace
 
-TEST_CASE("live tool schemas distinguish object, objects, crop and operations",
-          "[live][skills]") {
+TEST_CASE("live tool schemas distinguish object, objects, crop and operations", "[live][skills]") {
     const json tools = json::parse(mcp::live_tools_json());
     const auto schema = [&](const std::string& name) {
         const auto found = std::find_if(tools.begin(), tools.end(), [&](const json& item) {
