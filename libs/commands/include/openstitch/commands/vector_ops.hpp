@@ -42,11 +42,13 @@ struct VectorOpResult {
                                                   const std::vector<ObjectId>& ids,
                                                   Micrometers union_gap = Micrometers{50});
 
-// Découpe chaque objet de `ids` le long du segment (a, b) : seules les formes que le segment
-// traverse de part en part sont coupées. `cut_width` : largeur de la bande retirée.
-// Chaque morceau devient un objet : le plus grand garde l'identité d'origine, les autres sont
-// de nouveaux objets, et leurs broderies de remplissage sont clonées (réglages identiques,
-// retouches manuelles non copiées). Refusé si aucune forme n'est réellement traversée.
+// Découpe chaque objet de `ids` le long du segment (a, b), en retirant une bande
+// de largeur `cut_width`. Si la coupe sépare plusieurs composantes, chaque morceau
+// devient un objet : le plus grand garde l'identité d'origine et les autres
+// clonent leurs remplissages (sans retouches manuelles). Si un pont est tranché
+// mais qu'une autre jonction maintient la forme connexe, seule sa géométrie est
+// modifiée : même identité et mêmes broderies, sans nouveaux objets.
+// Refusé si la coupe ne change pas la topologie (entaille borgne ou hors forme).
 [[nodiscard]] VectorOpResult make_split_command(document::Project& project,
                                                 const std::vector<ObjectId>& ids, Vec2um a,
                                                 Vec2um b, Micrometers cut_width = Micrometers{20});

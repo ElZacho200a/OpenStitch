@@ -960,6 +960,39 @@ private slots:
         QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
     }
 
+    // Un pont coupé peut laisser la forme connexe par l'autre côté de son trou.
+    // Vérifier le vrai geste souris : une seule forme et un seul remplissage,
+    // avec une modification annulable plutôt qu'un refus silencieux.
+    void knifeCutsBridgeWithoutCreatingNewObject() {
+        MainWindow window;
+        auto fx = editFixture(EditMode::DirectionGuide);
+        auto& shape = fx.project.vector_objects.front().paths.front();
+        shape.outer = geometry::rectangle_path(um(-12'000, -12'000), um(12'000, 12'000));
+        shape.holes.push_back(geometry::rectangle_path(um(-4'000, -4'000), um(4'000, 4'000)));
+        const auto originalPaths = fx.project.vector_objects.front().paths;
+        window.applyLoadedProject(fx.project);
+        expose(window);
+        QVERIFY(!QTest::currentTestFailed());
+
+        window.setSelection(
+            {.region = std::nullopt, .embroidery = std::nullopt, .objects = {fx.vector}});
+        activate(window, Tool::Cut);
+        QVERIFY(!QTest::currentTestFailed());
+        dragScene(window, QPointF(0, -15), QPointF(0, -2));
+
+        QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
+        QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{1});
+        QCOMPARE(window.project_.vector_objects[0].id, fx.vector);
+        QCOMPARE(window.project_.embroidery_objects[0].id, fx.embroidery);
+        QVERIFY(window.project_.vector_objects[0].paths.front().holes.empty());
+        QCOMPARE(window.undoStack_.undoNames().size(), std::size_t{1});
+
+        window.undoAct_->trigger();
+        QCOMPARE(window.project_.findObject(fx.vector)->paths == originalPaths, true);
+        window.redoAct_->trigger();
+        QVERIFY(window.project_.findObject(fx.vector)->paths.front().holes.empty());
+    }
+
     void directionToolsDrawEditCancelAndRoundTrip_data() {
         QTest::addColumn<bool>("isBreak");
         QTest::newRow("direction-guide") << false;
