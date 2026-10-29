@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Mode live du serveur MCP (ADR 0001) : politique d'outils, lecture sur copie, mutation avec
 // approbation en une étape d'annulation, refus périmé, protocole hôte/relais, découverte.
+#include <algorithm>
 #include <array>
 #include <filesystem>
 #include <set>
@@ -340,4 +341,20 @@ TEST_CASE("app closing or document replaced mid-call never applies the change", 
         CHECK(reply["isError"].get<bool>());
         CHECK(d.color() == std::array<std::uint8_t, 3>{10, 20, 30});
     }
+}
+
+TEST_CASE("digitize skill files are embedded with their front matter", "[live][skills]") {
+    const auto files = mcp::digitize_skill_files();
+    REQUIRE(files.size() >= 5);
+    const auto skill = std::find_if(files.begin(), files.end(),
+                                    [](const auto& f) { return f.first == "SKILL.md"; });
+    REQUIRE(skill != files.end());
+    CHECK(skill->second.starts_with("---"));
+    CHECK(skill->second.find("name: openstitch-digitize") != std::string::npos);
+    std::size_t references = 0;
+    for (const auto& [path, content] : files) {
+        CHECK_FALSE(content.empty());
+        references += path.starts_with("references/") ? 1 : 0;
+    }
+    CHECK(references >= 4);
 }

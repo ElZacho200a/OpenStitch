@@ -556,3 +556,18 @@ TEST_CASE("claude workspace carries the mcp server, guide, hook and skills", "[a
           std::string::npos);
     std::filesystem::remove_all(dir);
 }
+
+TEST_CASE("workspace files are written relative to the workspace and traversal is refused",
+          "[agent][workspace]") {
+    const auto dir = std::filesystem::temp_directory_path() / "openstitch-ws-files";
+    std::filesystem::remove_all(dir);
+    REQUIRE(write_workspace_files(dir.string(), {{".claude/skills/x/SKILL.md", "a"},
+                                                 {".claude/skills/x/references/r.md", "b"}}));
+    CHECK(std::filesystem::exists(dir / ".claude" / "skills" / "x" / "references" / "r.md"));
+    CHECK_FALSE(write_workspace_files(dir.string(), {{"../evil.txt", "x"}}));
+    CHECK_FALSE(write_workspace_files(dir.string(), {{"C:/evil.txt", "x"}}));
+    CHECK_FALSE(write_workspace_files(dir.string(), {{"/etc/evil", "x"}}));
+    CHECK_FALSE(write_workspace_files(dir.string(), {{"", "x"}}));
+    CHECK_FALSE(std::filesystem::exists(dir.parent_path() / "evil.txt"));
+    std::filesystem::remove_all(dir);
+}

@@ -175,6 +175,18 @@ const std::vector<GuideTopic>& guide_topics() {
     return topics;
 }
 
+std::vector<std::pair<std::string, std::string>> digitize_skill_files() {
+    std::vector<std::pair<std::string, std::string>> files;
+    for (std::size_t i = 0; i < kGuideBlobCount; ++i) {
+        const GuideBlob& blob = kGuideBlobs[i];
+        const std::string name = blob.name;
+        files.emplace_back(name == "workflow" ? std::string("SKILL.md")
+                                              : "references/" + name + ".md",
+                           std::string(reinterpret_cast<const char*>(blob.data), blob.size));
+    }
+    return files;
+}
+
 const GuideTopic* find_topic(std::string_view name) {
     const auto& topics = guide_topics();
     const auto it = std::find_if(topics.begin(), topics.end(),
