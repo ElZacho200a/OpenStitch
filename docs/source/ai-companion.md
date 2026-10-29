@@ -81,6 +81,17 @@ les skills et les approbations, mais la conversation reste dans le terminal exte
 L’analyse sémantique automatique est désactivée par défaut. Elle peut être activée dans
 les préférences et envoie alors des rendus au fournisseur Claude Code lors du lancement.
 
+## Mémoire sémantique dans le projet OSP
+
+Les annotations de chaque objet (`role`, `family`, `confidence`) sont persistées
+dans `project.json` à la prochaine sauvegarde du fichier `.osp`. L'opération MCP
+`set_semantic`, utilisable dans `project_apply`, les enregistre en un lot annulable
+après approbation. `live_context` retourne `semantic_cache.cached/stale/missing`
+et l'annotation des objets à jour : Claude Code ne refait pas leur reconnaissance
+à chaque ouverture. Seuls les objets nouvellement créés, sans annotation ou dont
+la géométrie source a changé nécessitent une nouvelle analyse. Les métadonnées
+n'affectent pas les points de broderie, les couleurs de fil ni le nom utilisateur.
+
 ## Configuration et isolation
 
 OpenStitch crée un espace de travail par **processus Desktop** dans son dossier de données

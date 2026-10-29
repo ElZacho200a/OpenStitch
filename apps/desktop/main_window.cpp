@@ -1956,11 +1956,24 @@ void MainWindow::maybeStartSemanticAnalysis() {
         semanticAnalysisGeneration_ == documentGeneration_) {
         return;
     }
+    const bool allCached = std::all_of(
+        project_.embroidery_objects.begin(), project_.embroidery_objects.end(),
+        [this](const document::EmbroideryObject& object) {
+            const auto* shape = project_.findObject(object.source_vector);
+            return shape && object.semantic &&
+                   object.semantic->geometry_fingerprint ==
+                       document::semantic_geometry_fingerprint(*shape);
+        });
+    if (allCached) {
+        semanticAnalysisGeneration_ = documentGeneration_;
+        return; // zéro appel modèle : tout est déjà connu dans le .osp
+    }
     const QString prompt = tr(
-        "Fais l'analyse sémantique du projet ouvert : live_context, project_render, puis "
-        "live_object_views par lots de 8 objets (regroupés par fil). Dresse la table « objet → ce "
-        "qu'il représente » avec ton niveau de confiance, résume le motif en deux phrases, puis "
-        "PROPOSE des opérations rename (aperçu live_preview). N'applique rien sans mon accord.");
+        "Lis live_context : réutilise TOUS les objets dont semantic.status=cached. "
+        "Examine UNIQUEMENT les objets sans semantic ou avec semantic.status=stale "
+        "(project_render si nécessaire, live_object_views par lots de 8). "
+        "Propose un lot set_semantic (role, family, confidence) avec live_preview, "
+        "puis project_apply après mon approbation. Ne renomme pas les objets.");
     if (companionDock_->sendProgrammatic(tr("Analyse sémantique automatique du projet…"), prompt)) {
         semanticAnalysisGeneration_ = documentGeneration_;
     }

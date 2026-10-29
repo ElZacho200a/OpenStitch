@@ -122,14 +122,28 @@ ToolResult text_tool(const json& doc) {
     return r;
 }
 
-json object_card(const document::EmbroideryObject& e) {
-    return json{{"id", e.id.value},
+json object_card(const document::EmbroideryObject& e, const document::Project& project) {
+    json card{{"id", e.id.value},
                 {"name", e.name},
                 {"type", po::stitch_type_name(e)},
                 {"color", hex_of(e.rgb)},
                 {"family", color_family(e.rgb[0], e.rgb[1], e.rgb[2])},
                 {"locked", e.locked},
                 {"visible", e.visible}};
+    if (e.semantic) {
+        const auto* shape = project.findObject(e.source_vector);
+        const bool valid = shape && e.semantic->geometry_fingerprint ==
+                                        document::semantic_geometry_fingerprint(*shape);
+        if (valid) {
+            card["semantic"] = {{"role", e.semantic->role},
+                                {"family", e.semantic->family},
+                                {"confidence", e.semantic->confidence},
+                                {"status", "cached"}};
+        } else {
+            card["semantic"] = {{"status", "stale"}};
+        }
+    }
+    return card;
 }
 
 } // namespace
@@ -164,6 +178,8 @@ ToolResult live_context_tool(const document::Project& project, const LiveContext
     std::size_t locked = 0;
     std::size_t hidden = 0;
     std::size_t count = 0;
+    std::size_t cached = 0;
+    std::size_t stale = 0;
     for (const auto& e : project.embroidery_objects) {
         ++count;
         locked += e.locked ? 1 : 0;
@@ -171,8 +187,17 @@ ToolResult live_context_tool(const document::Project& project, const LiveContext
         auto& slot = palette[hex_of(e.rgb)];
         slot.first = color_family(e.rgb[0], e.rgb[1], e.rgb[2]);
         ++slot.second;
+        if (e.semantic) {
+            const auto* shape = project.findObject(e.source_vector);
+            if (shape && e.semantic->geometry_fingerprint ==
+                             document::semantic_geometry_fingerprint(*shape)) {
+                ++cached;
+            } else {
+                ++stale;
+            }
+        }
         if (objects.size() < kMaxObjects) {
-            objects.push_back(object_card(e));
+            objects.push_back(object_card(e, project));
         }
     }
     json colors = json::array();
@@ -205,6 +230,8 @@ ToolResult live_context_tool(const document::Project& project, const LiveContext
               {{"width", project.canvas.width.value / 1000.0},
                {"height", project.canvas.height.value / 1000.0}}},
              {"object_count", count},
+             {"semantic_cache", {{"cached", cached}, {"stale", stale},
+                                  {"missing", count - cached - stale}}},
              {"thread_palette", colors},
              {"note",
               "les couleurs sont celles des FILS cousus (objets de broderie), pas les teintes de "
@@ -238,7 +265,7 @@ ToolResult live_target_tool(const document::Project& project, const LiveContextI
         }
         for (const auto id : in.selection) {
             if (const auto* e = project.findEmbroidery(ObjectId{id})) {
-                candidates.push_back(object_card(*e));
+                candidates.push_back(object_card(*e, project));
             }
         }
     } else if (query.starts_with('#')) {
@@ -268,7 +295,7 @@ ToolResult live_target_tool(const document::Project& project, const LiveContextI
             const double dg = static_cast<double>(e.rgb[1]) - (*parsed)[1];
             const double db = static_cast<double>(e.rgb[2]) - (*parsed)[2];
             if (std::sqrt(dr * dr + dg * dg + db * db) <= tolerance) {
-                candidates.push_back(object_card(e));
+                candidates.push_back(object_card(e, project));
             }
         }
     } else {
@@ -291,7 +318,7 @@ ToolResult live_target_tool(const document::Project& project, const LiveContextI
                         edge = hue_margin(f, c.h) >= 0.0 && hue_margin(f, c.h) < 5.0;
                     }
                 }
-                (edge ? borderline : candidates).push_back(object_card(e));
+                (edge ? borderline : candidates).push_back(object_card(e, project));
             }
             if (!borderline.empty()) {
                 ambiguous = true;

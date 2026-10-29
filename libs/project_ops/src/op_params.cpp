@@ -1189,6 +1189,41 @@ OpSpec op_rename() {
     return s;
 }
 
+OpSpec op_set_semantic() {
+    OpSpec s;
+    s.name = "set_semantic";
+    s.summary = "Enregistre l'identité visuelle dans le OSP, sans nouvelle analyse "
+                "tant que le contour source ne change pas.";
+    s.args = {arg("object", "object_id", "objet de broderie", true),
+              arg("role", "string", "identité visuelle (ex. voile, phare, reflet)"),
+              arg("family", "string", "famille (ex. bateau, architecture)"),
+              arg("confidence", "number", "confiance 0..1 (défaut 0.5)", false, {}, "[0 ; 1]"),
+              arg("clear", "boolean", "effacer l'annotation")};
+    s.example = R"({"op":"set_semantic","object":2,"role":"voile","family":"bateau","confidence":0.9})";
+    s.apply = guarded([](OpContext& ctx) {
+        const auto& emb = need_emb(ctx, "object");
+        const ObjectId id = emb.id;
+        const bool clear = ctx.args.value("clear", false);
+        std::optional<document::SemanticAnnotation> annotation;
+        if (!clear) {
+            const std::string role = need_string(ctx.args, "role");
+            const std::string family = ctx.args.value("family", std::string{});
+            const double confidence = ctx.args.value("confidence", 0.5);
+            const auto* shape = ctx.project.findObject(emb.source_vector);
+            if (!shape || role.empty() || role.size() > 200 || family.size() > 120 ||
+                !std::isfinite(confidence) || confidence < 0.0 || confidence > 1.0) {
+                refuse(code::kUsage, "annotation invalide : role, famille et confiance 0..1");
+            }
+            annotation = document::SemanticAnnotation{
+                role, family, confidence, document::semantic_geometry_fingerprint(*shape)};
+        }
+        ctx.stack.execute(std::make_unique<commands::SetEmbroiderySemanticCommand>(id, annotation),
+                          ctx.project);
+        return OpStatus::success({{"id", id.value}, {"cached", annotation.has_value()}});
+    });
+    return s;
+}
+
 OpSpec op_set_visible() {
     OpSpec s;
     s.name = "set_visible";
@@ -1961,6 +1996,7 @@ OpSpec op_set_design_points() {
 void register_param_ops(std::vector<OpSpec>& out) {
     out.push_back(op_set_color());
     out.push_back(op_rename());
+    out.push_back(op_set_semantic());
     out.push_back(op_set_visible());
     out.push_back(op_set_locked());
     out.push_back(op_set_join());

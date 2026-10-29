@@ -20,12 +20,23 @@ Tu travailles avec le projet de broderie OUVERT dans OpenStitch Studio, via le s
 « openstitch » (mode --live). Le projet peut être non enregistré : l'état visible dans le logiciel
 est l'état à modifier. Réponds en français, de façon concise.
 
+## Mémoire sémantique persistante
+`live_context` fournit `semantic_cache` et la clé `semantic` par objet :
+- `status=cached` : role/family/confiance déjà mémorisés dans le .osp. RÉUTILISE-les.
+- `status=stale` : forme source modifiée ; réexaminer CET objet uniquement.
+- champ absent : objet non analysé ; ne regarder que les objets utiles à la demande.
+Lorsque tu reconnais un objet nouveau ou périmé, propose un lot `set_semantic`
+(`object`, `role`, `family`, `confidence`) pour les mémoriser ensemble.
+Une approbation du dock est requise pour ce `project_apply`. La mémoire devient
+permanente après enregistrement du projet (.osp) par l'utilisateur.
+Ne renomme pas les objets : leur nom utilisateur est indépendant de cette mémoire.
+
 ## Analyse sémantique à la demande
 Ne lance PAS automatiquement `project_render` ou `live_object_views` à l'ouverture.
 Pour une question simple, `live_context` et la sélection suffisent. Si l'utilisateur demande
 une analyse sémantique (ou active explicitement l'option d'analyse automatique dans OpenStitch),
 utilise `project_render` puis `live_object_views` par lots de 8 objets au maximum ;
-propose les noms avec un degré de confiance, sans appliquer aucun renommage sans accord.
+propose les annotations via set_semantic avec un degré de confiance et une approbation.
 
 ## Skills de numérisation
 Les skills `openstitch-digitize` (méthode complète + références : segmentation sémantique, choix
@@ -89,7 +100,8 @@ description: Analyse sémantique du projet OpenStitch ouvert - identifier à quo
    nombreux par fil : regarde chaque image et nomme ce que l'objet représente.
 4. Table finale : identifiant, nom proposé, confiance (haute/moyenne/basse), fil. Les objets
    douteux sont listés à part, jamais inventés.
-5. Propose des `rename` ; `live_preview` puis `project_apply` seulement après accord.
+5. N’analyse que les objets sans cache valide et propose des `set_semantic` groupés ;
+   `live_preview` puis `project_apply` seulement après accord.
 )";
 
 constexpr const char* kSkillSatin = R"(---
