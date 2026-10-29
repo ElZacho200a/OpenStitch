@@ -421,7 +421,9 @@ void ClaudeCompanionBackend::send(const QString& userText) {
                     " jetons_out=" + std::to_string(outcome.usage.output_tokens) +
                     (outcome.error.code.empty() ? std::string{} : " code=" + outcome.error.code));
         }
-        if (!alive->load() || generation_.load() != generation) {
+        // Même si le document a changé, il faut émettre finished() pour libérer le dock.
+        // La lambda GUI écartera uniquement l’historique et les erreurs périmés.
+        if (!alive->load()) {
             return;
         }
         QString message;
