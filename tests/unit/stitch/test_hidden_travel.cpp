@@ -674,7 +674,6 @@ TEST_CASE("mode avance : desactive par defaut, region verrouillee et changement 
     CHECK(count_type(res.sequence, CmdType::ColorChange) == 1);
 }
 
-
 TEST_CASE("mode avance : privilegie une coupe evitee sur un petit detour") {
     stitch::StitchSequence s;
     region(s, 1, 0, 1'500);
@@ -729,7 +728,6 @@ TEST_CASE("sous-couches : recherche locale bornee pour sept passes et plus") {
     CHECK(count_type(optimized.sequence, CmdType::Trim) <
           count_type(baseline.sequence, CmdType::Trim));
     CHECK(top_layer(optimized.sequence) == top_layer(baseline.sequence));
-    CHECK(underlay_points_sorted(optimized.sequence) ==
-          underlay_points_sorted(baseline.sequence));
+    CHECK(underlay_points_sorted(optimized.sequence) == underlay_points_sorted(baseline.sequence));
     CHECK(finish_sequence_report(s, on).sequence.commands == optimized.sequence.commands);
 }
