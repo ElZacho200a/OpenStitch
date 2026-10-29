@@ -299,6 +299,7 @@ RegionOrderResult reorder_regions_same_color(const std::vector<StitchCommand>& c
             order.reserve(n);
             std::vector<bool> placed(n, false);
             std::optional<Vec2um> at = before;
+            std::uint64_t atSource = k > 0 ? chunks[k - 1].source : 0;
             for (std::size_t step = 0; step < n; ++step) {
                 std::size_t best = n;
                 double bestD = 0.0;
@@ -313,7 +314,9 @@ RegionOrderResult reorder_regions_same_color(const std::vector<StitchCommand>& c
                     if (!ready) {
                         continue;
                     }
-                    const double d = at ? cost(*at, *chunks[k + cand].first) : 0.0;
+                    const double d = at ? cost(*at, *chunks[k + cand].first, atSource,
+                                               chunks[k + cand].source)
+                                        : 0.0;
                     if (best == n || d < bestD - 1e-9) {
                         best = cand;
                         bestD = d;
@@ -322,6 +325,7 @@ RegionOrderResult reorder_regions_same_color(const std::vector<StitchCommand>& c
                 placed[best] = true;
                 order.push_back(best);
                 at = chunks[k + best].last;
+                atSource = chunks[k + best].source;
             }
 
             // Déplacements d'une région vers une autre position, tant qu'ils font baisser le coût
