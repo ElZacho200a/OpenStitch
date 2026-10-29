@@ -100,12 +100,15 @@ TEST_CASE("ops serialization is deterministic for the comparison helper", "[proj
 TEST_CASE("spiral_fill is a native stitch type with a shared configurable center",
           "[project_ops][spiral]") {
     auto project = make_project();
-    const auto report = project_ops::apply_batch(
-        project,
-        batch(R"({"op":"set_stitch_type","object":2,"type":"spiral_fill"},)"
-              R"({"op":"set_stitch_type","object":6,"type":"spiral_fill"},)"
-              R"({"op":"set_params","object":2,"params":{"center_mm":[18,12],"row_spacing_mm":0.7}},)"
-              R"({"op":"set_params","object":6,"params":{"center_mm":[18,12],"row_spacing_mm":0.7}})"));
+    json actions = json::array();
+    for (const int id : {2, 6}) {
+        actions.push_back({{"op", "set_stitch_type"}, {"object", id}, {"type", "spiral_fill"}});
+        actions.push_back({{"op", "set_params"},
+                           {"object", id},
+                           {"params", {{"center_mm", {18, 12}}, {"row_spacing_mm", 0.7}}}});
+    }
+    const json envelope{{"schema", "openstitch.batch/1"}, {"operations", actions}};
+    const auto report = project_ops::apply_batch(project, envelope.dump());
     REQUIRE(report.ok);
     REQUIRE(report.applied);
     for (const ObjectId id : {ObjectId{2}, ObjectId{6}}) {
