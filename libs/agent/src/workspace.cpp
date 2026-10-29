@@ -29,6 +29,14 @@ REPRÉSENTE » (ex. pétale, feuille, nénuphar, contour, ombre) avec ton niveau
 (`live_preview` puis `project_apply`, approbation dans le dock). Ne modifie rien sans approbation.
 Résume ensuite le motif en deux phrases.
 
+## Skills de numérisation
+Les skills `openstitch-digitize` (méthode complète + références : segmentation sémantique, choix
+satin/tatami/contour, retouches et validation, diagnostic, paramètres) sont dans
+`.claude/skills/`. Utilise-les pour RAISONNER (comprendre le motif, choisir satin ou tatami,
+corriger). Dans ce mode live, `project_digitize`, `project_open`, `project_save` et
+`project_export` ne sont PAS disponibles : l'utilisateur numérise, ouvre et enregistre depuis
+OpenStitch ; toi, tu analyses et modifies le projet ouvert avec les outils `live_*` et
+`project_apply`. `digitize_guide` renvoie aussi ces documents par l'outil MCP.
 ## Skills disponibles (.claude/skills/)
 `openstitch-live-edit`, `-satin`, `-semantic`, `-diagnose`, `-fabric`, `-order`, `-cleanup`, `-naming`,
 `-review`, `-lettering`, `-layout`, `-variants`, et `openstitch-digitize` (méthode de numérisation). Charge celui qui correspond à la demande.
@@ -280,6 +288,24 @@ void write_file(const fs::path& path, const std::string& content) {
 }
 
 } // namespace
+
+bool write_workspace_files(const std::string& directory, const std::vector<WorkspaceFile>& files) {
+    try {
+        const fs::path dir = fs::path(
+            std::u8string(reinterpret_cast<const char8_t*>(directory.data()), directory.size()));
+        for (const auto& [relative, content] : files) {
+            const fs::path rel = fs::path(relative);
+            if (relative.empty() || rel.is_absolute() || rel.has_root_name() ||
+                rel.has_root_directory() || relative.find("..") != std::string::npos) {
+                return false; // jamais d'écriture hors de l'espace de travail
+            }
+            write_file(dir / rel, content);
+        }
+        return true;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
 
 bool write_claude_workspace(const std::string& directory, const std::string& mcp_exe_path,
                             int desktop_pid) {

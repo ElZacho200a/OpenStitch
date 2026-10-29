@@ -609,6 +609,10 @@ void MainWindowTest::launcherPreparesWorkspaceAndStartsTheUsersClaude() {
     QVERIFY(QFileInfo::exists(ws + QStringLiteral("/.claude/settings.json")));
     QVERIFY(
         QFileInfo::exists(ws + QStringLiteral("/.claude/skills/openstitch-live-satin/SKILL.md")));
+    // Skills de numérisation embarqués (SKILL.md + références).
+    QVERIFY(QFileInfo::exists(ws + QStringLiteral("/.claude/skills/openstitch-digitize/SKILL.md")));
+    QVERIFY(QFileInfo::exists(
+        ws + QStringLiteral("/.claude/skills/openstitch-digitize/references/parametres.md")));
 }
 
 void MainWindowTest::launcherReportsMissingClaudeAndMissingMcpWithoutLaunching() {

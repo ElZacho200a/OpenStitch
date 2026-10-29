@@ -9,6 +9,7 @@
 #include <QStandardPaths>
 
 #include "openstitch/agent/agent.hpp"
+#include "openstitch/mcp/live.hpp"
 
 namespace openstitch::desktop {
 
@@ -66,6 +67,15 @@ ClaudeCodeLauncher::Result ClaudeCodeLauncher::prepare(const Env& env, QString& 
     QDir().mkpath(dir);
     if (!agent::write_claude_workspace(dir.toUtf8().toStdString(), mcp.toUtf8().toStdString(),
                                        static_cast<int>(QCoreApplication::applicationPid()))) {
+        return Result::WorkspaceFailed;
+    }
+    // Skills de numérisation embarqués (openstitch-digitize + références) : auto-découverts par
+    // Claude Code dans .claude/skills/.
+    std::vector<agent::WorkspaceFile> skills;
+    for (auto& [relative, content] : mcp::digitize_skill_files()) {
+        skills.emplace_back(".claude/skills/openstitch-digitize/" + relative, std::move(content));
+    }
+    if (!agent::write_workspace_files(dir.toUtf8().toStdString(), skills)) {
         return Result::WorkspaceFailed;
     }
     executable = claude;

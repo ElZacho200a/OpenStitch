@@ -220,6 +220,13 @@ private:
 [[nodiscard]] bool write_claude_workspace(const std::string& directory,
                                           const std::string& mcp_exe_path, int desktop_pid = 0);
 
+// Écrit des fichiers supplémentaires dans l'espace de travail (ex. les skills de numérisation
+// embarqués). Chemins RELATIFS uniquement : un chemin absolu ou contenant « .. » est refusé (aucune
+// écriture hors de `directory`). Retourne faux au premier échec.
+using WorkspaceFile = std::pair<std::string, std::string>; // chemin relatif, contenu
+[[nodiscard]] bool write_workspace_files(const std::string& directory,
+                                         const std::vector<WorkspaceFile>& files);
+
 // --- Anthropic --------------------------------------------------------------------------------
 
 struct AnthropicOptions {
