@@ -40,6 +40,31 @@ utilise `project_render` puis `live_object_views` sur AU PLUS 5 lots de 8 objets
 avec certitude d'une simple couleur : laisse les objets douteux sans annotation.
 Propose les annotations via set_semantic avec un degré de confiance et une approbation.
 
+## Arguments exacts des outils MCP (ne jamais les deviner)
+Lis le schéma d'entrée de l'outil avant de l'appeler. `object` et `objects`
+NE SONT PAS interchangeables. Appels valides (les ID sont des exemples) :
+- Vue d'ensemble : `project_render({})` ou
+  `project_render({"crop":[0.1,0.2,0.8,0.9],"px_per_mm":4})`.
+  `project_render` n'accepte PAS `object`, `objects` ou `object_id`.
+- Vues zoomées par objet : `live_object_views({"objects":[12,15]})`
+  (1 à 8 identifiants par appel). Jamais `{"object":12}` ici.
+- Informations textuelles d'UN objet : `project_inspect({"object":12,"geometry":true})`.
+  Qualité d'UN objet : `project_check({"object":12})`.
+- Ciblage : `live_target({"query":"orange"})` ;
+  filtre de projet : `project_select({"where":["area_lt=3"]})`.
+- Comparaison satin : `live_plan_satin({"objects":[12,15]})`.
+- Simulation d'une MODIFICATION : `live_preview({"operations":[{"op":"rename",
+  "object":12,"name":"Voile"}]})`. L'ID se trouve DANS l'opération, pas au
+  premier niveau de `live_preview`.
+- Application (après approbation) : `project_apply({"operations":[{"op":"rename",
+  "object":12,"name":"Voile"}]})`. Consulte `project_operations` pour les
+  arguments réels de chaque opération (dont `set_semantic`).
+Pour une reconnaissance sémantique SANS modification de points, `set_semantic`
+est une métadonnée : inutile d'appeler `live_preview` ou de rendre l'image
+pour chaque annotation. Propose le lot, puis `project_apply` avec approbation.
+Si un outil refuse un argument, corrige en relisant SON schéma / catalogue ;
+ne multiplie pas les essais de clés supposées ni les rendus coûteux.
+
 ## Skills de numérisation
 Les skills `openstitch-digitize` (méthode complète + références : segmentation sémantique, choix
 satin/tatami/contour, retouches et validation, diagnostic, paramètres) sont dans
@@ -57,9 +82,10 @@ OpenStitch ; toi, tu analyses et modifies le projet ouvert avec les outils `live
 2. `live_target` : cible par teinte de fil (« orange », « #RRGGBB », « selection »). Si
    `ambiguous` est vrai, pose la question avec `live_ask_user` (l'utilisateur répond dans le panneau
    Compagnon IA) AVANT toute modification.
-3. `live_plan_satin` : compare skeleton / parallel_sweep / medial_axis, justifie les refus (le
-   tatami est conservé), prépare un lot validé en simulation.
-4. `live_preview` : avant/après (points, sauts, constats, risque textile, rendu) sur une copie.
+3. `live_plan_satin({"objects":[12,15]})` : compare skeleton / parallel_sweep /
+   medial_axis, justifie les refus et propose un lot de corrections.
+4. `live_preview({"operations":[...]})` : avant/après des MODIFICATIONS de couture
+   (points, sauts, constats, risque textile, rendu) sur une copie.
 5. `project_apply` : applique le lot. L'utilisateur approuve dans le dock ; un seul Ctrl+Z annule.
 6. Contrôle : `project_check`, `project_render`. Au plus 3 itérations par demande.
 
@@ -81,9 +107,10 @@ description: Modifier le projet OpenStitch ouvert (couleurs, types de points, pa
 
 # Modifier le projet ouvert
 
-1. `live_context` puis `live_target` pour identifier les objets (identifiants stables).
-2. `project_operations` pour le catalogue des opérations ; construis un lot `project_apply`.
-3. `live_preview` avec ce lot : montre l'avant/après à l'utilisateur.
+1. `live_context({})` puis `live_target({"query":"orange"})` pour cibler les objets.
+2. `project_operations({})` pour le catalogue ; prépare un lot `operations`.
+3. `live_preview({"operations":[...]})` avec ce lot (NE PAS passer `object`
+   directement à `live_preview`) : montre l'avant/après à l'utilisateur.
 4. `project_apply` (sans dry_run) : l'approbation se fait dans le dock ; annulable en un Ctrl+Z.
 5. `project_check` et `project_render` pour vérifier. Si l'utilisateur rejette, ne réessaie pas
    le même lot : demande ce qui ne convient pas.
@@ -97,13 +124,17 @@ description: Analyse sémantique du projet OpenStitch ouvert - identifier à quo
 # Analyse sémantique du motif
 
 1. `live_context` : objets, fils, familles de couleur, sélection.
-2. `project_render` (vue d'ensemble) pour comprendre le sujet global.
-3. `live_object_views` sur AU PLUS 5 lots de 8 objets non reconnus (limite de tours),
-   en commençant par les plus grands et les plus nombreux par fil : examine chaque vue.
-4. Table finale : identifiant, nom proposé, confiance (haute/moyenne/basse), fil. Les objets
-   douteux sont listés à part, jamais inventés.
-5. N’analyse que les objets sans cache valide et propose des `set_semantic` groupés ;
-   `live_preview` puis `project_apply` seulement après accord.
+2. `project_render({})` UNE FOIS si une vue d'ensemble est nécessaire.
+   Il n'accepte pas `object` ; le zoom d'un objet se fait avec `live_object_views`.
+3. `live_object_views({"objects":[12,15]})` pour les objets sans cache valide,
+   au plus 5 lots de 8 IDs. Pour le descriptif textuel d'un seul objet, utilise
+   `project_inspect({"object":12,"geometry":true})`.
+4. Table finale : identifiant, rôle reconnu, confiance, fil. Les objets douteux
+   restent non annotés ; ne devine pas leur nature à partir de la couleur seule.
+5. Propose un lot `project_apply({"operations":[{"op":"set_semantic",
+   "object":12,"role":"voile","family":"bateau","confidence":0.9}]})`
+   pour les objets réellement reconnus ; l'utilisateur doit approuver.
+   Ne lance pas `live_preview` pour ces seules métadonnées : aucun point ne change.
 )";
 
 constexpr const char* kSkillSatin = R"(---
@@ -113,10 +144,12 @@ description: Convertir des formes en satin avec compensation de tirage Predicted
 
 # Passer des formes en satin
 
-1. `live_target` avec la teinte demandée ; si `ambiguous`, `live_ask_user`.
-2. `live_plan_satin` sur les candidats (20 au plus par appel) : lis `targets[].verdict` ; les
-   `refused` restent en tatami, explique les motifs ; `skipped` = verrouillé, masqué ou déjà satin.
-3. `live_preview` sur `batch.operations`, présente points/sauts/constats/risque textile.
+1. `live_target({"query":"orange"})` ; si `ambiguous`, `live_ask_user`.
+2. `live_plan_satin({"objects":[12,15]})` (20 IDs max) : lis `targets[].verdict` ;
+   `refused` reste en tatami, `skipped` = verrouillé, masqué ou déjà satin.
+3. Passe le lot retourné dans `live_preview({"operations":[...]})`
+   (la valeur de `batch.operations` est placée sous la clé `operations`)
+   et compare points, sauts, constats et risque textile.
 4. `project_apply` avec le même lot. Rappelle que `Predicted` est empirique et non calibré machine :
    un essai sur tissu reste nécessaire.
 )";
@@ -130,8 +163,9 @@ description: Auditer la qualité du projet OpenStitch ouvert (points trop courts
 
 1. `project_report` : statut explicite par analyse (pass / warning / error / not_run / unsupported).
    Ne commente jamais une analyse `not_run` ou `unsupported` comme si elle avait été faite.
-2. `project_diagnose` : constats détaillés avec objet et suggestion ; `project_check` pour le détail
-   par objet ; `project_density` (couches, surépaisseurs) ; `project_fidelity` (trous intérieurs,
+2. `project_diagnose` : constats détaillés avec objet et suggestion ;
+   `project_check({"object":12})` pour UN objet (`object` singulier) ;
+   `project_density` (couches, surépaisseurs) ; `project_fidelity` (trous intérieurs,
    détail perdu — nécessite l'image source).
 3. `project_fabric_risk` : demande d'abord la matière (woven / jersey / felt). Le score est
    heuristique et NON calibré : ne le présente pas comme une preuve de brodabilité.
@@ -183,8 +217,9 @@ description: Nettoyer le projet OpenStitch ouvert - îlots minuscules, trous par
 
 # Nettoyage géométrique
 
-1. Repère : `project_select` avec `area_lt=<mm²>` (petits objets), `project_locate` (qui a cousu
-   autour d'un point), `project_diagnose` pour les suggestions.
+1. Repère : `project_select({"where":["area_lt=3"]})` pour les objets de
+   moins de 3 mm² ; `project_locate({"x_mm":0,"y_mm":0})` pour identifier les
+   coutures autour d'un point ; `project_diagnose` pour les suggestions.
 2. Montre la liste (identifiants, aire, fil) à l'utilisateur AVANT toute suppression : un petit objet
    peut être un détail voulu (œil, point lumineux). Demande en cas de doute (`live_ask_user`).
 3. Opérations : `remove_holes` (`max_area_mm2`), `fill_block_holes` (`closing_gap_mm`,
@@ -205,7 +240,9 @@ description: Nommer et regrouper les objets du projet OpenStitch ouvert selon ce
    à faible confiance : liste-les à part.
 3. Opérations : `rename` par objet, puis `group` (`objects`, `name`) par ensemble cohérent. Le
    groupement ne change pas l'ordre de couture.
-4. `live_preview` puis `project_apply` après accord ; un seul Ctrl+Z défait tous les renommages.
+4. Pour renommer, `live_preview({"operations":[...]})` puis
+   `project_apply({"operations":[...]})` après accord. Si seule la mémoire
+   `set_semantic` change, l'aperçu est inutile ; l'approbation reste requise.
 )";
 
 constexpr const char* kSkillReview = R"(---

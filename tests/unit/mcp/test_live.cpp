@@ -101,6 +101,31 @@ json parse(const std::string& s) {
 
 } // namespace
 
+TEST_CASE("live tool schemas distinguish object, objects, crop and operations",
+          "[live][skills]") {
+    const json tools = json::parse(mcp::live_tools_json());
+    const auto schema = [&](const std::string& name) {
+        const auto found = std::find_if(tools.begin(), tools.end(), [&](const json& item) {
+            return item.value("name", std::string{}) == name;
+        });
+        REQUIRE(found != tools.end());
+        return found->at("input_schema");
+    };
+    const json render = schema("project_render");
+    CHECK(render["properties"].contains("crop"));
+    CHECK_FALSE(render["properties"].contains("object"));
+    CHECK_FALSE(render["properties"].contains("objects"));
+    const json views = schema("live_object_views");
+    CHECK(views["properties"].contains("objects"));
+    CHECK_FALSE(views["properties"].contains("object"));
+    CHECK(views["required"] == json::array({"objects"}));
+    CHECK(schema("project_inspect")["properties"].contains("object"));
+    CHECK(schema("project_check")["properties"].contains("object"));
+    CHECK(schema("live_preview")["required"] == json::array({"operations"}));
+    CHECK(schema("project_apply")["required"] == json::array({"operations"}));
+    CHECK(schema("project_select")["required"] == json::array({"where"}));
+}
+
 TEST_CASE("live policy classifies tools", "[live]") {
     CHECK(mcp::live_policy("project_inspect") == mcp::LivePolicy::Read);
     CHECK(mcp::live_policy("project_render") == mcp::LivePolicy::Read);

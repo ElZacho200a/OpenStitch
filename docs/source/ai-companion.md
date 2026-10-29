@@ -81,6 +81,18 @@ les skills et les approbations, mais la conversation reste dans le terminal exte
 L’analyse sémantique automatique est désactivée par défaut. Elle peut être activée dans
 les préférences et envoie alors des rendus au fournisseur Claude Code lors du lancement.
 
+## Syntaxe des appels MCP dans les skills
+
+Les consignes générées par OpenStitch pour Claude Code contiennent des exemples
+qui reprennent les schémas MCP réels : `project_render` accepte `crop` et
+`px_per_mm` mais **pas** `object` ; `live_object_views` prend
+`{"objects":[12,15]}` ; `project_inspect` et `project_check` utilisent
+`{"object":12}` ; `live_preview` et `project_apply` attendent
+`{"operations":[...]}`. Pour consulter une seule région, préférer
+`live_object_views` plutôt que des essais successifs de paramètres de rendu.
+Les annotations `set_semantic` n'altèrent aucun point et ne justifient
+pas à elles seules un rendu avant/après.
+
 ## Mémoire sémantique dans le projet OSP
 
 Les annotations de chaque objet (`role`, `family`, `confidence`) sont persistées
