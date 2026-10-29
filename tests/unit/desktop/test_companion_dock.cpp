@@ -14,6 +14,7 @@
 #include <QPushButton>
 #include <QSettings>
 #include <QSignalSpy>
+#include <QScrollBar>
 #include <QStackedWidget>
 #include <QStandardPaths>
 #include <QTest>
@@ -96,6 +97,8 @@ private slots:
     void toolCardsAndErrorsAreShownWithoutBlocking();
     void proposalConfirmRejectAndFocusLink();
     void documentChangeRejectsPendingProposal();
+    void hidingDockRejectsPendingApproval();
+    void transcriptAppendPreservesReadingPosition();
     void longMessagesAndHugeToolResultsAreBounded();
     void tabMovesFromInputToSendButton();
     void agentApprovalGoesThroughTheDockAndIsUndoable();
@@ -285,6 +288,45 @@ void MainWindowTest::documentChangeRejectsPendingProposal() {
     w.applyLoadedProject(std::move(g.project)); // autre document
     QVERIFY(!dock->hasPendingProposal());
     QCOMPARE(backend.decisions, QList<bool>{false});
+}
+
+void MainWindowTest::hidingDockRejectsPendingApproval() {
+    MainWindow w;
+    auto f = oneShape();
+    w.applyLoadedProject(std::move(f.project));
+    MockBackend backend;
+    auto* dock = w.companionDock();
+    dock->setBackend(&backend);
+    w.show();
+    dock->show();
+    CompanionProposal proposal;
+    proposal.summary = QStringLiteral("Modifications proposées");
+    emit backend.proposalReady(proposal);
+    QVERIFY(dock->hasPendingProposal());
+    dock->hide();
+    QVERIFY(!dock->hasPendingProposal());
+    QCOMPARE(backend.decisions, QList<bool>{false});
+}
+
+void MainWindowTest::transcriptAppendPreservesReadingPosition() {
+    MainWindow w;
+    MockBackend backend;
+    auto* dock = w.companionDock();
+    dock->setBackend(&backend);
+    w.resize(900, 600);
+    w.show();
+    dock->show();
+    auto* transcript = child<QTextBrowser>(dock, "browser_companionTranscript");
+    for (int i = 0; i < 80; ++i) {
+        emit backend.assistantText(QStringLiteral("Long message numéro %1 : ").arg(i) +
+                                   QString(250, QLatin1Char('x')));
+    }
+    auto* bar = transcript->verticalScrollBar();
+    QVERIFY(bar->maximum() > 0);
+    bar->setValue(0);
+    emit backend.assistantText(QStringLiteral("Nouveau message"));
+    QCOMPARE(bar->value(), 0);
+    QVERIFY(transcript->toPlainText().contains(QStringLiteral("Nouveau message")));
 }
 
 void MainWindowTest::longMessagesAndHugeToolResultsAreBounded() {

@@ -2,8 +2,10 @@
 #include "companion_dock.hpp"
 
 #include <QCoreApplication>
+#include <QDialog>
 #include <QEvent>
 #include <QEventLoop>
+#include <QHideEvent>
 #include <QGroupBox>
 #include <QKeyEvent>
 #include <QLabel>
@@ -16,6 +18,8 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QScrollBar>
+#include <QTextCursor>
 #include <QStackedWidget>
 #include <QTextBrowser>
 #include <QVBoxLayout>
@@ -187,6 +191,9 @@ void CompanionDock::buildUi() {
     for (QLabel* image : {beforeImage_, afterImage_}) {
         image->setAlignment(Qt::AlignTop | Qt::AlignHCenter);
         image->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Maximum);
+        image->setFocusPolicy(Qt::StrongFocus);
+        image->setToolTip(tr("Cliquer ou appuyer sur Entrée pour agrandir"));
+        image->installEventFilter(this);
     }
     images->addWidget(beforeImage_);
     images->addWidget(afterImage_);
@@ -272,6 +279,11 @@ void CompanionDock::setBackend(CompanionBackend* backend) {
     if (backend_ == backend) {
         return;
     }
+    if (pendingDecision_) {
+        resolveProposal(false);
+    }
+    // Ne pas laisser le texte du fournisseur API apparaître dans le mode CLI (ou inversement).
+    clearConversation();
     if (backend_ != nullptr) {
         backend_->disconnect(this);
     }
@@ -384,6 +396,7 @@ void CompanionDock::documentReplaced() {
         resolveProposal(false);
     }
     if (!entries_.empty()) {
+        clearConversation();
         Entry note;
         note.kind = Entry::Kind::Note;
         note.text = tr("Le projet actif a changé : la conversation précédente concerne l'ancien "
@@ -414,8 +427,10 @@ void CompanionDock::showProposal(const CompanionProposal& proposal,
                                    : tr("Avertissements :\n• ") +
                                          proposal.warnings.join(QStringLiteral("\n• ")));
     proposalWarnings_->setVisible(!proposal.warnings.isEmpty());
-    beforeImage_->setPixmap(scaled(proposal.beforePng));
-    afterImage_->setPixmap(scaled(proposal.afterPng));
+    beforePng_ = proposal.beforePng;
+    afterPng_ = proposal.afterPng;
+    beforeImage_->setPixmap(scaled(beforePng_));
+    afterImage_->setPixmap(scaled(afterPng_));
     beforeImage_->setVisible(!proposal.beforePng.isEmpty());
     afterImage_->setVisible(!proposal.afterPng.isEmpty());
     confirm_->setText(proposal.confirmText.isEmpty() ? tr("Appliquer") : proposal.confirmText);
@@ -469,9 +484,43 @@ void CompanionDock::resolveProposal(bool approved) {
     auto decision = std::move(pendingDecision_);
     pendingDecision_ = nullptr;
     proposalBox_->setVisible(false);
+    beforePng_.clear();
+    afterPng_.clear();
     if (decision) {
         decision(approved);
     }
+}
+
+void CompanionDock::hideEvent(QHideEvent* event) {
+    // Une approbation ne doit jamais bloquer si le panneau est fermé/masqué.
+    // La boucle locale de askApproval est débloquée par le rejet.
+    if (pendingDecision_) {
+        resolveProposal(false);
+    }
+    QDockWidget::hideEvent(event);
+}
+
+void CompanionDock::showPreview(bool before) {
+    const QByteArray& png = before ? beforePng_ : afterPng_;
+    if (png.isEmpty()) {
+        return;
+    }
+    QPixmap pixmap;
+    if (!pixmap.loadFromData(png, "PNG")) {
+        return;
+    }
+    QDialog dialog(this);
+    dialog.setWindowTitle(before ? tr("Aperçu avant modification") : tr("Aperçu après modification"));
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* scroll = new QScrollArea(&dialog);
+    auto* image = new QLabel(scroll);
+    image->setPixmap(pixmap);
+    image->setAlignment(Qt::AlignCenter);
+    scroll->setWidget(image);
+    scroll->setWidgetResizable(false);
+    layout->addWidget(scroll);
+    dialog.resize(850, 650);
+    dialog.exec();
 }
 
 void CompanionDock::appendUserMessage(const QString& text) {
@@ -514,58 +563,81 @@ void CompanionDock::addEntry(Entry entry) {
     entries_.push_back(std::move(entry));
     if (entries_.size() > kMaxEntries) {
         entries_.erase(entries_.begin(), entries_.begin() + static_cast<std::ptrdiff_t>(
-                                                                entries_.size() - kMaxEntries));
-    }
-    rebuildTranscript();
-}
-
-void CompanionDock::rebuildTranscript() {
-    if (transcript_ == nullptr) {
+                                                                 entries_.size() - kMaxEntries));
+        rebuildTranscript();
         return;
     }
+    // Un événement ne doit pas reconstruire les 500 messages précédents.
+    if (transcript_ != nullptr) {
+        auto* bar = transcript_->verticalScrollBar();
+        const bool wasAtBottom = bar->value() >= bar->maximum() - 16;
+        QTextCursor cursor = transcript_->textCursor();
+        cursor.movePosition(QTextCursor::End);
+        cursor.insertHtml(entryHtml(entries_.back()));
+        if (wasAtBottom) {
+            bar->setValue(bar->maximum());
+        }
+    }
+}
+
+QString CompanionDock::entryHtml(const Entry& e) const {
     const QPalette pal = transcript_->palette();
     const bool dark = pal.color(QPalette::Base).lightness() < 128;
     const QString accent = pal.color(QPalette::Highlight).name();
     const QString muted = pal.color(QPalette::Mid).name();
     const QString danger = dark ? QStringLiteral("#ef9a9a") : QStringLiteral("#b3261e");
     QString body;
-    for (const Entry& e : entries_) {
-        switch (e.kind) {
-        case Entry::Kind::User:
-            body += QStringLiteral("<p style=\"border-left:3px solid %1; padding-left:6px\"><b>%2"
-                                   "</b><br>%3</p>")
-                        .arg(accent, tr("Vous").toHtmlEscaped(), html(e.text, kMaxMessageChars));
-            break;
-        case Entry::Kind::Assistant:
-            body += QStringLiteral("<p><b>%1</b><br>%2</p>")
-                        .arg(tr("Compagnon").toHtmlEscaped(), html(e.text, kMaxMessageChars));
-            break;
-        case Entry::Kind::Tool: {
-            const QString colour = e.tool.isError ? danger : muted;
-            QString card =
-                QStringLiteral("<p style=\"border:1px solid %1; padding:4px\"><b>%2</b> "
-                               "— %3")
-                    .arg(colour, e.tool.tool.toHtmlEscaped(), html(e.tool.summary, kMaxToolChars));
-            if (!e.tool.refusal.isEmpty()) {
-                card += QStringLiteral("<br><span style=\"color:%1\"><b>%2</b> %3</span>")
-                            .arg(danger, tr("Refusé :").toHtmlEscaped(),
-                                 html(e.tool.refusal, kMaxToolChars));
-            }
-            body += card + QStringLiteral("</p>");
-            break;
+    switch (e.kind) {
+    case Entry::Kind::User:
+        body += QStringLiteral("<p style=\"border-left:3px solid %1; padding-left:6px\"><b>%2"
+                               "</b><br>%3</p>")
+                    .arg(accent, tr("Vous").toHtmlEscaped(), html(e.text, kMaxMessageChars));
+        break;
+    case Entry::Kind::Assistant:
+        body += QStringLiteral("<p><b>%1</b><br>%2</p>")
+                    .arg(tr("Compagnon").toHtmlEscaped(), html(e.text, kMaxMessageChars));
+        break;
+    case Entry::Kind::Tool: {
+        const QString colour = e.tool.isError ? danger : muted;
+        const QString name = e.tool.tool.startsWith(QStringLiteral("mcp__openstitch__"))
+                                 ? e.tool.tool.mid(17)
+                                 : e.tool.tool;
+        QString card =
+            QStringLiteral("<p style=\"border:1px solid %1; padding:4px\"><b>%2</b> — %3")
+                .arg(colour, name.toHtmlEscaped(), html(e.tool.summary, kMaxToolChars));
+        if (!e.tool.refusal.isEmpty()) {
+            card += QStringLiteral("<br><span style=\"color:%1\"><b>%2</b> %3</span>")
+                        .arg(danger, tr("Refusé :").toHtmlEscaped(),
+                             html(e.tool.refusal, kMaxToolChars));
         }
-        case Entry::Kind::Error:
-            body += QStringLiteral("<p style=\"color:%1\"><b>%2</b> %3</p>")
-                        .arg(danger, tr("Erreur :").toHtmlEscaped(), html(e.text, kMaxToolChars));
-            break;
-        case Entry::Kind::Note:
-            body += QStringLiteral("<p style=\"color:%1\"><i>%2</i></p>")
-                        .arg(muted, html(e.text, kMaxToolChars));
-            break;
-        }
+        body += card + QStringLiteral("</p>");
+        break;
+    }
+    case Entry::Kind::Error:
+        body += QStringLiteral("<p style=\"color:%1\"><b>%2</b> %3</p>")
+                    .arg(danger, tr("Erreur :").toHtmlEscaped(), html(e.text, kMaxToolChars));
+        break;
+    case Entry::Kind::Note:
+        body += QStringLiteral("<p style=\"color:%1\"><i>%2</i></p>")
+                    .arg(muted, html(e.text, kMaxToolChars));
+        break;
+    }
+    return body;
+}
+
+void CompanionDock::rebuildTranscript() {
+    if (transcript_ == nullptr) {
+        return;
+    }
+    auto* bar = transcript_->verticalScrollBar();
+    const int previous = bar->value();
+    const bool wasAtBottom = previous >= bar->maximum() - 16;
+    QString body;
+    for (const Entry& entry : entries_) {
+        body += entryHtml(entry);
     }
     transcript_->setHtml(body);
-    transcript_->moveCursor(QTextCursor::End);
+    bar->setValue(wasAtBottom ? bar->maximum() : qMin(previous, bar->maximum()));
 }
 
 void CompanionDock::submit() {
@@ -602,6 +674,19 @@ void CompanionDock::setBusy(bool busy) {
 }
 
 bool CompanionDock::eventFilter(QObject* watched, QEvent* event) {
+    if ((watched == beforeImage_ || watched == afterImage_) &&
+        (event->type() == QEvent::MouseButtonRelease ||
+         event->type() == QEvent::KeyPress)) {
+        if (event->type() == QEvent::MouseButtonRelease) {
+            showPreview(watched == beforeImage_);
+            return true;
+        }
+        auto* key = static_cast<QKeyEvent*>(event);
+        if (key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter) {
+            showPreview(watched == beforeImage_);
+            return true;
+        }
+    }
     if (watched == input_ && event->type() == QEvent::KeyPress) {
         auto* key = static_cast<QKeyEvent*>(event);
         const bool enter = key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter;

@@ -16,6 +16,7 @@ class QPushButton;
 class QStackedWidget;
 class QTextBrowser;
 class QGroupBox;
+class QHideEvent;
 
 namespace openstitch::desktop {
 
@@ -78,6 +79,7 @@ signals:
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
     void changeEvent(QEvent* event) override;
+    void hideEvent(QHideEvent* event) override;
 
 private:
     struct Entry {
@@ -90,6 +92,8 @@ private:
     void retranslate();
     void addEntry(Entry entry);
     void rebuildTranscript();
+    [[nodiscard]] QString entryHtml(const Entry& entry) const;
+    void showPreview(bool before);
     void submit();
     void setBusy(bool busy);
     void resolveProposal(bool approved);
@@ -124,6 +128,8 @@ private:
     QLabel* proposalWarnings_{nullptr};
     QLabel* beforeImage_{nullptr};
     QLabel* afterImage_{nullptr};
+    QByteArray beforePng_;
+    QByteArray afterPng_;
     QPushButton* confirm_{nullptr};
     QPushButton* reject_{nullptr};
     QPushButton* undoLast_{nullptr};
