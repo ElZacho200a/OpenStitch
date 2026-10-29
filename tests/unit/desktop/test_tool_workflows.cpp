@@ -989,7 +989,7 @@ private slots:
         QCOMPARE(window.undoStack_.undoNames().size(), std::size_t{1});
 
         window.undoAct_->trigger();
-        QCOMPARE(window.project_.findObject(fx.vector)->paths, originalPaths);
+        QCOMPARE(window.project_.findObject(fx.vector)->paths == originalPaths, true);
         window.redoAct_->trigger();
         QVERIFY(window.project_.findObject(fx.vector)->paths.front().holes.empty());
     }
