@@ -839,8 +839,7 @@ TEST_CASE("vector ops: knife misses shape and does not create a command",
     const ObjectId id = add_object(project, rect(0, 0, 10'000, 10'000), true);
     const auto originalPaths = project.findObject(id)->paths;
 
-    const auto result =
-        make_split_command(project, {id}, pt(20'000, -5'000), pt(20'000, 15'000));
+    const auto result = make_split_command(project, {id}, pt(20'000, -5'000), pt(20'000, 15'000));
     CHECK_FALSE(result.command);
     CHECK(project.findObject(id)->paths == originalPaths);
     CHECK(project.vector_objects.size() == 1);
