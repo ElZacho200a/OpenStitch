@@ -179,8 +179,7 @@ RegionOrderResult reorder_regions_same_color(const std::vector<StitchCommand>& c
             c.pinned = c.source == 0 || (it != pinnedSource.end() && it->second);
             for (std::size_t k = i; k < j; ++k) {
                 // Un raccord saisi manuellement n'est pas déplaçable par l'optimiseur.
-                if (cmds[k].type == CommandType::Trim ||
-                    cmds[k].pass == StitchPass::Manual) {
+                if (cmds[k].type == CommandType::Trim || cmds[k].pass == StitchPass::Manual) {
                     c.pinned = true;
                 }
                 if (cmds[k].type == CommandType::Stitch) {
@@ -204,8 +203,7 @@ RegionOrderResult reorder_regions_same_color(const std::vector<StitchCommand>& c
         }
     }
 
-    const auto cost = [&](Vec2um a, Vec2um b, std::uint64_t fromSource,
-                          std::uint64_t toSource) {
+    const auto cost = [&](Vec2um a, Vec2um b, std::uint64_t fromSource, std::uint64_t toSource) {
         const double d = length_um(b - a);
         const bool wouldTrim = d > 0.0 && (fromSource != toSource || d > trimThreshold);
         return d + (wouldTrim ? kTrimPenaltyUm : 0.0);
