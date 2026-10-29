@@ -146,6 +146,9 @@ public:
     void showCompanionSettings();
     void openClaudeCode();
     void useClaudeCodeInDock();
+    // Analyse sémantique automatique au lancement de Claude (une fois par projet ouvert).
+    void maybeStartSemanticAnalysis();
+    std::uint64_t semanticAnalysisGeneration_{~0ULL};
     void updateCompanionContext();
     void focusEmbroideryObject(quint64 id);
     [[nodiscard]] CompanionDock* companionDock() const { return companionDock_; }
@@ -983,6 +986,9 @@ private:
     // multiSelection_ vide. Ne rafraîchit rien (l'appelant appelle
     // displayImage/refreshImage + updateActions).
     void setSelection(Selection selection);
+    // Mode fantôme (approbation d'un agent) : met en évidence les objets visés, puis restaure.
+    void showGhostSelection(const std::vector<quint64>& embroideryIds);
+    void restoreGhostSelection(Selection saved);
     // Modification partielle : copie l'état courant, applique `edit`, puis passe
     // par setSelection (jamais d'écriture directe des membres).
     void editSelection(const std::function<void(Selection&)>& edit);

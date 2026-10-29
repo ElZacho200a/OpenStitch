@@ -71,6 +71,15 @@ CompanionSettingsDialog::CompanionSettingsDialog(agent::ISecretStore& secrets,
         this);
     diagnosticsContent_->setObjectName(QStringLiteral("check_companionDiagnosticsContent"));
     diagnosticsContent_->setChecked(companion_settings::diagnosticsContentConsent());
+    auto* autoSemantic = new QCheckBox(
+        tr("Analyse sémantique automatique quand Claude est lancé sur un projet (envoie des "
+           "aperçus du projet au fournisseur)"),
+        this);
+    autoSemantic->setObjectName(QStringLiteral("check_companionAutoSemantic"));
+    autoSemantic->setChecked(companion_settings::autoSemanticAnalysis());
+    connect(autoSemantic, &QCheckBox::toggled, this,
+            [](bool on) { companion_settings::setAutoSemanticAnalysis(on); });
+    form->addRow(autoSemantic);
     form->addRow(diagnostics_);
     form->addRow(diagnosticsContent_);
     layout->addLayout(form);

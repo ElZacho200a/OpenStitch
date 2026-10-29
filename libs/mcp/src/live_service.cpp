@@ -46,6 +46,13 @@ const std::vector<LiveExtraTool> kExtraTools = {
      "AVANT de modifier).",
      R"({"type":"object","properties":{"query":{"type":"string"},"tolerance":{"type":"number"}},)"
      R"("required":["query"]})"},
+    {"live_object_views",
+     "Vues ZOOMÉES (rendu réaliste recadré) de 1 à 8 objets de broderie pour comprendre ce que "
+     "chacun REPRÉSENTE (analyse sémantique : pétale, feuille, contour, ombre…). Retourne une "
+     "légende (type, fil, famille) puis une image par objet. Lecture seule.",
+     R"({"type":"object","properties":{"objects":{"type":"array","items":{"type":"integer",)"
+     R"("minimum":1},"minItems":1,"maxItems":8},"margin":{"type":"number"}},)"
+     R"("required":["objects"]})"},
     {"live_plan_satin",
      "Plan de conversion en satin pour 1 à 20 objets : compare skeleton / parallel_sweep / "
      "medial_axis (copies isolées), choisit la meilleure variante non rejetée, JUSTIFIE chaque "
@@ -161,6 +168,8 @@ void LivePendingCall::run() {
                 c.result = live_context_tool(*c.snapshot.project, c.context);
             } else if (c.tool == "live_target") {
                 c.result = live_target_tool(*c.snapshot.project, c.context, c.args);
+            } else if (c.tool == "live_object_views") {
+                c.result = live_object_views_tool(*c.snapshot.project, c.args);
             } else if (c.tool == "live_plan_satin") {
                 c.result = live_plan_satin_tool(*c.snapshot.project, c.args);
             } else {

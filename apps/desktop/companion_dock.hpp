@@ -56,6 +56,9 @@ public:
     int askChoice(const QString& question, const QStringList& labels,
                   const QList<quint64>& focusIds);
 
+    // Envoi par l'application (analyse sémantique automatique) : affiche `displayText` comme
+    // message de l'utilisateur et transmet `prompt` au backend. Faux si le backend n'est pas prêt.
+    bool sendProgrammatic(const QString& displayText, const QString& prompt);
     void appendUserMessage(const QString& text);
     void appendAssistantMessage(const QString& text);
     void appendToolCall(const CompanionToolCall& call);
