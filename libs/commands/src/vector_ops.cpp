@@ -438,10 +438,19 @@ VectorOpResult make_split_command(document::Project& project, const std::vector<
                 pieces.push_back(set);
                 continue;
             }
-            // La coupe peut supprimer un pont sans séparer l'objet : une autre
-            // jonction le maintient connexe. Ce changement est bien une coupe.
-            changed = changed || cut->size() != 1 || cut->front() != set;
-            separated = separated || cut->size() >= 2;
+            // Une coupe doit changer la topologie, pas seulement creuser une
+            // entaille qui s'arrête au milieu d'une surface pleine. Un pont
+            // coupé peut laisser une seule composante, mais ouvre alors un trou
+            // préexistant vers l'extérieur (le nombre de trous diminue).
+            const bool splits = cut->size() >= 2;
+            const bool opens_bridge =
+                cut->size() == 1 && cut->front().holes.size() < set.holes.size();
+            if (!splits && !opens_bridge) {
+                pieces.push_back(set);
+                continue;
+            }
+            changed = true;
+            separated = separated || splits;
             pieces.insert(pieces.end(), cut->begin(), cut->end());
         }
         if (!changed) {
