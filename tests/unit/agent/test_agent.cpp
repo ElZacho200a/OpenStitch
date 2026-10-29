@@ -553,7 +553,8 @@ TEST_CASE("claude workspace carries the mcp server, guide, hook and skills", "[a
     CHECK(read("CLAUDE.md").find("EMPIRIQUE") != std::string::npos);
     for (const char* name :
          {"openstitch-live-diagnose", "openstitch-live-fabric", "openstitch-live-order",
-          "openstitch-live-cleanup", "openstitch-live-naming", "openstitch-live-review"}) {
+          "openstitch-live-cleanup", "openstitch-live-naming", "openstitch-live-review",
+          "openstitch-live-lettering", "openstitch-live-layout", "openstitch-live-variants"}) {
         const std::string skill =
             read((std::string(".claude/skills/") + name + "/SKILL.md").c_str());
         CHECK(skill.starts_with("---\nname: " + std::string(name) + "\n"));

@@ -31,7 +31,7 @@ Résume ensuite le motif en deux phrases.
 
 ## Skills disponibles (.claude/skills/)
 `openstitch-live-edit`, `-satin`, `-semantic`, `-diagnose`, `-fabric`, `-order`, `-cleanup`, `-naming`,
-`-review`, et `openstitch-digitize` (méthode de numérisation). Charge celui qui correspond à la demande.
+`-review`, `-lettering`, `-layout`, `-variants`, et `openstitch-digitize` (méthode de numérisation). Charge celui qui correspond à la demande.
 
 ## Cycle de travail
 1. `live_context` (ou `live_status`) : révision, sélection, palette des FILS, objets, risques.
@@ -205,15 +205,72 @@ description: Donner un avis chiffré et honnête sur le projet OpenStitch ouvert
    points de reprise (chaque application = une étape Ctrl+Z).
 )";
 
+constexpr const char* kSkillLettering = R"(---
+name: openstitch-live-lettering
+description: Ajouter, modifier ou supprimer du texte brodé (lettrage) dans le projet OpenStitch ouvert - taille, espacement, alignement, couleur, remplissage satin/tatami, lisibilité. À utiliser pour « ajoute le mot… », « change le texte », « agrandis les lettres ».
+---
+
+# Lettrage
+
+1. `live_context` : cadre (mm), objets existants, fils déjà utilisés (réutilise une couleur du motif
+   si l'utilisateur n'en précise pas). Demande le texte exact et l'emplacement s'ils manquent.
+2. Opérations : `add_text` (`text`, `cap_height_mm`, `letter_spacing_mm`, `align`, `origin_mm`, `rgb`,
+   `fill`, `density_mm`, `max_satin_width_mm`…), `set_text` (mise à jour partielle d'un texte existant,
+   argument `text_object`), `remove_text`. Une lettre = un objet vectoriel + un objet de broderie.
+3. Lisibilité : en dessous d'environ 5 mm de hauteur de capitale, le satin est fragile ; propose une
+   taille minimale plutôt que de produire un texte illisible. Vérifie que le texte tient dans le cadre
+   (`live_context` donne `canvas_mm`) et ne recouvre pas un détail important (`project_locate`).
+4. `live_preview` : regarde le rendu et les écarts ; `project_apply` après accord. Un seul Ctrl+Z
+   annule tout le lettrage.
+)";
+
+constexpr const char* kSkillLayout = R"(---
+name: openstitch-live-layout
+description: Mise en page du projet OpenStitch ouvert - cadre et marge de sécurité, déplacer / mettre à l'échelle / pivoter / retourner / dupliquer des objets, placement numérique, finitions (coupes, points d'arrêt). À utiliser pour « recentre », « agrandis », « fais tenir dans le cadre ».
+---
+
+# Mise en page et finitions
+
+1. `live_context` : `canvas_mm`, objets, sélection. `project_check` signale les objets hors cadre.
+2. Opérations : `set_canvas` (`width_mm`, `height_mm`, `margin_mm`, `hoop`), `place` (centre, taille
+   et rotation numériques d'une sélection), `translate`, `scale` (uniforme), `rotate`, `mirror`,
+   `duplicate_object`. Les objets verrouillés ne se déplacent pas sans demande explicite.
+3. Agrandir ou réduire change densités et longueurs de point : après `scale`, relance
+   `project_check` et `project_density`, et signale ce qui sort des limites.
+4. Finitions : `set_finishing` (coupes, points d'arrêt, filtrage des points courts, sauts cachés) ;
+   explique l'effet attendu et mesure-le avec `live_preview` (sauts, coupes).
+5. `project_apply` après accord ; un seul Ctrl+Z annule le lot.
+)";
+
+constexpr const char* kSkillVariants = R"(---
+name: openstitch-live-variants
+description: Comparer plusieurs variantes d'une modification du projet OpenStitch ouvert (stratégies de satin, densités, ordres de couture) avant de choisir. À utiliser pour « essaie deux options », « quelle version est meilleure ? ».
+---
+
+# Comparer des variantes
+
+1. Formule 2 à 3 variantes réalistes (lots d'opérations différents) sur les MÊMES objets.
+2. Pour chacune : `live_preview` sur copie (rien n'est modifié) ; note points, sauts, coupes,
+   constats qualité, risque textile et regarde le rendu. Pour le satin, `live_plan_satin` compare
+   déjà skeleton / parallel_sweep / medial_axis.
+3. Présente un tableau variante × mesures, sans inventer de gain : une mesure absente est dite
+   absente. Recommande une variante en expliquant le compromis (qualité visuelle vs coupes, etc.).
+4. N'applique que la variante choisie, avec `project_apply` (approbation dans le dock). Le
+   point de reprise est le Ctrl+Z ; Ctrl+Y rétablit si l'utilisateur change d'avis.
+5. Les checkpoints MCP (`project_checkpoint`) ne sont pas disponibles en mode live : n'en promets pas.
+)";
+
 struct WorkspaceSkill {
     const char* dir;
     const char* content;
 };
 
 const WorkspaceSkill kExtraSkills[] = {
-    {"openstitch-live-diagnose", kSkillDiagnose}, {"openstitch-live-fabric", kSkillFabric},
-    {"openstitch-live-order", kSkillOrder},       {"openstitch-live-cleanup", kSkillCleanup},
-    {"openstitch-live-naming", kSkillNaming},     {"openstitch-live-review", kSkillReview},
+    {"openstitch-live-diagnose", kSkillDiagnose},   {"openstitch-live-fabric", kSkillFabric},
+    {"openstitch-live-order", kSkillOrder},         {"openstitch-live-cleanup", kSkillCleanup},
+    {"openstitch-live-naming", kSkillNaming},       {"openstitch-live-review", kSkillReview},
+    {"openstitch-live-lettering", kSkillLettering}, {"openstitch-live-layout", kSkillLayout},
+    {"openstitch-live-variants", kSkillVariants},
 };
 
 void write_file(const fs::path& path, const std::string& content) {
