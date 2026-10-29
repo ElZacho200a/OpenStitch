@@ -314,9 +314,11 @@ RegionOrderResult reorder_regions_same_color(const std::vector<StitchCommand>& c
                     if (!ready) {
                         continue;
                     }
-                    const double d = at ? cost(*at, *chunks[k + cand].first, atSource,
-                                               chunks[k + cand].source)
-                                        : 0.0;
+                    double d = 0.0;
+                    if (at) {
+                        const Chunk& candidate = chunks[k + cand];
+                        d = cost(*at, *candidate.first, atSource, candidate.source);
+                    }
                     if (best == n || d < bestD - 1e-9) {
                         best = cand;
                         bestD = d;
