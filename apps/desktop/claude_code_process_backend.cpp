@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "claude_code_process_backend.hpp"
 
+#include <QDir>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -34,6 +35,36 @@ void ClaudeCodeProcessBackend::resetConversation() {
     streamedText_ = false;
 }
 
+QStringList ClaudeCodeProcessBackend::restrictedArguments(const QString& workspace,
+                                                          const QString& sessionId) {
+    // --allowedTools ne RESTREINT PAS le catalogue : --tools le fait pour les outils
+    // intégrés, --strict-mcp-config limite les serveurs MCP à celui du workspace.
+    // dontAsk refuse sans prompt les outils non explicitement autorisés.
+    QStringList args = {QStringLiteral("-p"),
+                        QStringLiteral("--verbose"),
+                        QStringLiteral("--output-format"),
+                        QStringLiteral("stream-json"),
+                        QStringLiteral("--max-turns"),
+                        QStringLiteral("25"),
+                        QStringLiteral("--tools"),
+                        QString(),
+                        QStringLiteral("--mcp-config"),
+                        QDir(workspace).filePath(QStringLiteral(".mcp.json")),
+                        QStringLiteral("--strict-mcp-config"),
+                        QStringLiteral("--permission-mode"),
+                        QStringLiteral("dontAsk"),
+                        QStringLiteral("--allowedTools"),
+                        QStringLiteral("mcp__openstitch__*"),
+                        QStringLiteral("--disallowedTools"),
+                        QStringLiteral("Bash,Edit,Write,NotebookEdit")};
+    const QRegularExpression uuid(
+        QStringLiteral("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"));
+    if (uuid.match(sessionId).hasMatch()) {
+        args << QStringLiteral("--resume") << sessionId;
+    }
+    return args;
+}
+
 void ClaudeCodeProcessBackend::send(const QString& userText) {
     if (!available() || userText.trimmed().isEmpty() || process_ != nullptr) {
         emit failed(tr("Claude Code n'est pas pret ou une demande est deja en cours."));
@@ -55,24 +86,7 @@ void ClaudeCodeProcessBackend::send(const QString& userText) {
     proc->setWorkingDirectory(workspace_);
     // security-ok: processus Claude Code de l'utilisateur, outils MCP approuves
     proc->setProcessChannelMode(QProcess::SeparateChannels);
-    QStringList args = {QStringLiteral("-p"),
-                        QStringLiteral("--verbose"),
-                        QStringLiteral("--output-format"),
-                        QStringLiteral("stream-json"),
-                        QStringLiteral("--max-turns"),
-                        QStringLiteral("25"),
-                        QStringLiteral("--allowedTools"),
-                        QStringLiteral("mcp__openstitch"),
-                        QStringLiteral("--disallowedTools"),
-                        QStringLiteral("Bash,Edit,Write,NotebookEdit")};
-    // Ne jamais transmettre au wrapper cmd un identifiant non controle provenant du JSON.
-    const QRegularExpression uuid(
-        QStringLiteral("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"));
-    if (uuid.match(sessionId_).hasMatch()) {
-        args << QStringLiteral("--resume") << sessionId_;
-    } else {
-        sessionId_.clear();
-    }
+    QStringList args = restrictedArguments(workspace_, sessionId_);
     QString program = executable_;
 #ifdef _WIN32
     if (executable_.endsWith(QStringLiteral(".cmd"), Qt::CaseInsensitive)) {
@@ -241,7 +255,19 @@ void ClaudeCodeProcessBackend::handleLine(const QByteArray& line) {
             reportedToolIds_.insert(id);
             CompanionToolCall tool;
             tool.tool = block.value(QStringLiteral("name")).toString();
-            tool.summary = tr("Outil appele (validation dans OpenStitch si modification).");
+            const QJsonObject input = block.value(QStringLiteral("input")).toObject();
+            tool.summary = tr("Action sur le projet ouvert.");
+            if (input.value(QStringLiteral("query")).isString()) {
+                tool.summary = tr("Cible : %1").arg(
+                    input.value(QStringLiteral("query")).toString().left(120));
+            } else if (input.value(QStringLiteral("objects")).isArray()) {
+                const int count = input.value(QStringLiteral("objects")).toArray().size();
+                tool.summary = tr("%n objet(s) concernés", "", count);
+            } else if (input.value(QStringLiteral("operations")).isArray()) {
+                const int count = input.value(QStringLiteral("operations")).toArray().size();
+                tool.summary = tr("%n opération(s) proposées (approbation dans OpenStitch)", "",
+                                  count);
+            }
             emit toolCalled(tool);
         }
         return;

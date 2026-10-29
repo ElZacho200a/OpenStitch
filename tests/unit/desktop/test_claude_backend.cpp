@@ -160,6 +160,7 @@ private slots:
     void settingsDialogStoresKeyOnlyInTheSecretStore();
     void targetPhraseWorksEndToEndFromTheDesktop();
     void claudeCodeProcessParsesStructuredEvents();
+    void claudeCodeLaunchIsRestricted();
     void claudeCodeStreamsAssistantTextWithoutRepeatingFinalResult();
     void claudeCodeErrorsCarryAnActionableReason();
     void launcherPreparesWorkspaceAndStartsTheUsersClaude();
@@ -525,6 +526,30 @@ void MainWindowTest::claudeCodeProcessParsesStructuredEvents() {
     QCOMPARE(text.at(0).at(0).toString(), QStringLiteral("Trois objets orange"));
     QCOMPARE(usage.size(), 1);
     QCOMPARE(usage.at(0).at(0).toULongLong(), quint64{120});
+}
+
+void MainWindowTest::claudeCodeLaunchIsRestricted() {
+    const QString workspace = QStringLiteral("C:/OpenStitch tests/companion");
+    const QStringList args = ClaudeCodeProcessBackend::restrictedArguments(workspace);
+    const auto valueAfter = [&args](const QString& option) {
+        const auto index = args.indexOf(option);
+        return index >= 0 && index + 1 < args.size() ? args.at(index + 1) : QStringLiteral("MISSING");
+    };
+    QCOMPARE(valueAfter(QStringLiteral("--tools")), QString());
+    QCOMPARE(valueAfter(QStringLiteral("--permission-mode")), QStringLiteral("dontAsk"));
+    QCOMPARE(valueAfter(QStringLiteral("--allowedTools")),
+             QStringLiteral("mcp__openstitch__*"));
+    QCOMPARE(valueAfter(QStringLiteral("--mcp-config")),
+             QDir(workspace).filePath(QStringLiteral(".mcp.json")));
+    QVERIFY(args.contains(QStringLiteral("--strict-mcp-config")));
+    QVERIFY(!args.contains(QStringLiteral("--dangerously-skip-permissions")));
+    QVERIFY(!args.contains(QStringLiteral("--resume")));
+    const auto resumed = ClaudeCodeProcessBackend::restrictedArguments(
+        workspace, QStringLiteral("12345678-1234-1234-1234-123456789abc"));
+    QVERIFY(resumed.contains(QStringLiteral("--resume")));
+    const auto invalid = ClaudeCodeProcessBackend::restrictedArguments(
+        workspace, QStringLiteral("name & shell"));
+    QVERIFY(!invalid.contains(QStringLiteral("--resume")));
 }
 
 void MainWindowTest::claudeCodeErrorsCarryAnActionableReason() {
