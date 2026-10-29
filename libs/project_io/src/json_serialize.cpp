@@ -2,8 +2,8 @@
 #include "json_serialize.hpp"
 
 #include <algorithm>
-#include <cmath>
 #include <array>
+#include <cmath>
 #include <limits>
 #include <optional>
 #include <unordered_map>

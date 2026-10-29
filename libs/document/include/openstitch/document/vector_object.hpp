@@ -37,8 +37,6 @@ struct VectorObject {
     ObjectId group;
 };
 
-// Adresse d'un nœud dans un objet : morceau, chemin (0 = extérieur,
-// i+1 = trou i), index du nœud.
 // Signature géométrique déterministe, indépendante de la couleur et des points cousus.
 [[nodiscard]] inline std::uint64_t semantic_geometry_fingerprint(const VectorObject& object) {
     std::uint64_t hash = 14695981039346656037ULL;
@@ -75,6 +73,8 @@ struct VectorObject {
     return hash;
 }
 
+// Adresse d'un nœud dans un objet : morceau, chemin (0 = extérieur,
+// i+1 = trou i), index du nœud.
 struct NodeRef {
     std::size_t set{0};
     std::size_t path{0};

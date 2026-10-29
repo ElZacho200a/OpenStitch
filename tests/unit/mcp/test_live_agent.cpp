@@ -149,6 +149,38 @@ TEST_CASE("live_context is compact and reports thread palette and risks", "[live
     CHECK(reply["content"][0]["text"].get<std::string>().size() < 8000);
 }
 
+TEST_CASE("semantic memory is reused, becomes stale after geometry edits and is undoable",
+          "[live][semantic]") {
+    Doc d;
+    const auto id = d.orange.front();
+    auto first = d.call("live_context", json::object());
+    auto context = Doc::text_of(first);
+    CHECK(context["semantic_cache"]["missing"] == 12);
+    const json batch{{"operations",
+                      json::array({json{{"op", "set_semantic"},
+                                        {"object", id},
+                                        {"role", "voile"},
+                                        {"family", "bateau"},
+                                        {"confidence", 0.88}}})}};
+    auto applied = d.call("project_apply", batch);
+    REQUIRE_FALSE(applied["isError"].get<bool>());
+    REQUIRE(applied["live"]["applied"].get<bool>());
+    context = Doc::text_of(d.call("live_context", json::object()));
+    CHECK(context["semantic_cache"]["cached"] == 1);
+    CHECK(context["objects"][0]["semantic"]["role"] == "voile");
+    auto* e = d.project.findEmbroidery(ObjectId{id});
+    REQUIRE(e != nullptr);
+    REQUIRE(e->semantic);
+    const auto* source = d.project.findObject(e->source_vector);
+    REQUIRE(source != nullptr);
+    auto* mutableSource = d.project.findObject(e->source_vector);
+    mutableSource->paths.front().outer.nodes.front().pos.x.value += 1000;
+    context = Doc::text_of(d.call("live_context", json::object()));
+    CHECK(context["semantic_cache"]["stale"] == 1);
+    CHECK(context["objects"][0]["semantic"]["status"] == "stale");
+    CHECK_FALSE(context["objects"][0]["semantic"].contains("role"));
+}
+
 TEST_CASE("live_target 'orange' follows the sewn thread, flags locked, hidden and borderline",
           "[live][agentic]") {
     Doc d;
