@@ -88,9 +88,66 @@ private slots:
         QCOMPARE(box.right(), 30.0);
         QCOMPARE(box.top(), -10.0);
         QCOMPARE(box.bottom(), 0.0);
-        // Pas de coins de redimensionnement en multi (HP-OBJ-005), mais la rotation et le pivot.
-        QCOMPARE(countItems<ResizeHandleItem>(window), 1);
+        // Quatre coins pour le groupe, plus la poignée de rotation (HP-OBJ-005).
+        QCOMPARE(countItems<ResizeHandleItem>(window), 5);
         QCOMPARE(countItems<PivotHandleItem>(window), 1);
+    }
+
+    void resizingTwoShapesPreservesRelativePositionsAndUndoesTogether() {
+        MainWindow window;
+        window.show();
+        window.applyLoadedProject(twoBlocks());
+        const ObjectId a = window.project_.vector_objects[0].id;
+        const ObjectId b = window.project_.vector_objects[1].id;
+        const auto beforeA = window.project_.vector_objects[0].paths;
+        const auto beforeB = window.project_.vector_objects[1].paths;
+
+        window.setSelection(
+            {.region = std::nullopt, .embroidery = std::nullopt, .objects = {a, b}});
+        window.resizeSelectionByFactors(2.0, 2.0, true);
+        // Centre commun (15, 5) fixe : l'intervalle entre les formes double aussi.
+        QCOMPARE(window.project_.vector_objects[0].paths[0].outer.nodes[0].pos,
+                 (Vec2um{Micrometers{-15'000}, Micrometers{-5'000}}));
+        QCOMPARE(window.project_.vector_objects[1].paths[0].outer.nodes[0].pos,
+                 (Vec2um{Micrometers{25'000}, Micrometers{-5'000}}));
+        window.undo();
+        QVERIFY(window.project_.vector_objects[0].paths == beforeA);
+        QVERIFY(window.project_.vector_objects[1].paths == beforeB);
+        QVERIFY(!window.undoStack_.canUndo());
+    }
+
+    void draggingGroupResizeHandleScalesAllSelectedShapes() {
+        MainWindow window;
+        window.resize(1100, 800);
+        window.show();
+        window.applyLoadedProject(twoBlocks());
+        window.showVectorsAct_->setChecked(true);
+        const ObjectId a = window.project_.vector_objects[0].id;
+        const ObjectId b = window.project_.vector_objects[1].id;
+        const auto beforeA = window.project_.vector_objects[0].paths;
+        const auto beforeB = window.project_.vector_objects[1].paths;
+        window.setSelection(
+            {.region = std::nullopt, .embroidery = std::nullopt, .objects = {a, b}});
+        window.refreshImage();
+
+        // Coin haut-droit du cadre commun, puis glisser vers l'extérieur.
+        const QPoint start = window.view_->mapFromScene(QPointF(30.0, -10.0));
+        const QPoint end = start + QPoint(35, -20);
+        QVERIFY(window.view_->viewport()->rect().contains(end));
+        QVERIFY(dynamic_cast<ResizeHandleItem*>(window.view_->itemAt(start)) != nullptr);
+        QTest::mousePress(window.view_->viewport(), Qt::LeftButton, Qt::NoModifier, start);
+        QTest::mouseMove(window.view_->viewport(), start + QPoint(18, -10));
+        QTest::mouseMove(window.view_->viewport(), end);
+        QTest::mouseRelease(window.view_->viewport(), Qt::LeftButton, Qt::NoModifier, end);
+
+        QTRY_VERIFY(window.project_.vector_objects[0].paths[0].outer.nodes[1].pos.x.value >
+                    10'000);
+        QVERIFY(window.project_.vector_objects[1].paths[0].outer.nodes[0].pos.x.value >
+                20'000);
+        window.undo();
+        QVERIFY(window.project_.vector_objects[0].paths == beforeA);
+        QVERIFY(window.project_.vector_objects[1].paths == beforeB);
+        QVERIFY(!window.undoStack_.canUndo());
     }
 
     void rotatingTwoShapesAroundACustomPivotIsOneUndoStep() {
