@@ -278,6 +278,50 @@ TEST_CASE("blend core: malformed JSON links and non boolean interpolation are re
     }
 }
 
+TEST_CASE("semantic cache persists in OSP and follows source geometry", "[semantic][project_io]") {
+    auto project = rich_project();
+    const auto fingerprint =
+        document::semantic_geometry_fingerprint(project.vector_objects.front());
+    project.embroidery_objects.front().semantic =
+        document::SemanticAnnotation{"voile principale", "bateau", 0.93, fingerprint};
+    const auto json = project_io::detail::project_to_json(project);
+    REQUIRE(json["embroideryObjects"][0].contains("semantic"));
+    CHECK_FALSE(json["embroideryObjects"][1].contains("semantic"));
+    const auto restored = project_io::detail::project_from_json(json);
+    REQUIRE(restored);
+    REQUIRE(restored->embroidery_objects.front().semantic);
+    CHECK(*restored->embroidery_objects.front().semantic ==
+          *project.embroidery_objects.front().semantic);
+
+    const auto path = temp_osp();
+    REQUIRE(project_io::save_project(path, project));
+    const auto loaded = project_io::load_project(path);
+    REQUIRE(loaded);
+    REQUIRE(loaded->embroidery_objects.front().semantic);
+    CHECK(*loaded->embroidery_objects.front().semantic ==
+          *project.embroidery_objects.front().semantic);
+    fs::remove(path);
+
+    // Déplacer toute la forme ne change pas ce qu'elle représente.
+    for (auto& node : project.vector_objects.front().paths.front().outer.nodes) {
+        node.pos.x.value += 1000;
+    }
+    for (auto& node : project.vector_objects.front().paths.front().holes.front().nodes) {
+        node.pos.x.value += 1000;
+    }
+    CHECK(document::semantic_geometry_fingerprint(project.vector_objects.front()) == fingerprint);
+    // Déformer un seul nœud, en revanche, rend l'annotation périmée.
+    project.vector_objects.front().paths.front().outer.nodes.front().pos.x.value += 1000;
+    CHECK(document::semantic_geometry_fingerprint(project.vector_objects.front()) != fingerprint);
+
+    auto invalid = json;
+    invalid["embroideryObjects"][0]["semantic"]["confidence"] = 1.5;
+    CHECK_FALSE(project_io::detail::project_from_json(invalid));
+    invalid = json;
+    invalid["embroideryObjects"][0]["semantic"]["geometryFingerprint"] = "not-an-integer";
+    CHECK_FALSE(project_io::detail::project_from_json(invalid));
+}
+
 TEST_CASE("projet complet : save puis load = memes donnees") {
     const auto original = rich_project();
     const auto path = temp_osp();

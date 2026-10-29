@@ -71,10 +71,52 @@ Le chat intégré démarre la CLI Claude Code avec **QProcess** en mode non inte
 (sortie JSON structurée et reprise par identifiant de session) : le texte de la demande
 est fourni via l'entrée standard, pas par un interpréteur de commandes. Les outils
 OpenStitch sont accessibles par le MCP local : le chat ne modifie jamais le projet
-en écrivant directement un OSP.
+en écrivant directement un OSP. Le processus headless utilise `--tools ""`,
+`--strict-mcp-config`, `--mcp-config` et `--permission-mode dontAsk` pour ne mettre
+à disposition que les outils MCP de cette instance OpenStitch.
 
 **Ouvrir Claude Code dans un terminal** est l'option secondaire. Elle conserve les outils,
 les skills et les approbations, mais la conversation reste dans le terminal externe.
+
+L’analyse sémantique automatique est désactivée par défaut. Elle peut être activée dans
+les préférences et envoie alors des rendus au fournisseur Claude Code lors du lancement.
+
+## Syntaxe des appels MCP dans les skills
+
+Les consignes générées par OpenStitch pour Claude Code contiennent des exemples
+qui reprennent les schémas MCP réels : `project_render` accepte `crop` et
+`px_per_mm` mais **pas** `object` ; `live_object_views` prend
+`{"objects":[12,15]}` ; `project_inspect` et `project_check` utilisent
+`{"object":12}` ; `live_preview` et `project_apply` attendent
+`{"operations":[...]}`. Pour consulter une seule région, préférer
+`live_object_views` plutôt que des essais successifs de paramètres de rendu.
+Les annotations `set_semantic` n'altèrent aucun point et ne justifient
+pas à elles seules un rendu avant/après.
+
+## Aperçu zoomé sur copie et spirale native
+
+Pour contrôler visuellement une modification **avant** de l'appliquer, le compagnon
+peut appeler `live_preview` avec `operations` et `objects:[id,...]` (zoom
+automatique, 1 à 20 objets), ou avec `crop:[x0,y0,x1,y1]` et
+`px_per_mm`. Le projet reste intact : seul `project_apply` peut réellement
+changer les objets, après approbation. L'existence de mesures ou d'une image
+dans `live_preview` n'est **pas** une confirmation d'application.
+
+L'opération `set_stitch_type` accepte aussi `spiral_fill`. Le paramètre
+`center_mm:[x,y]` de `set_params` définit un centre *commun en coordonnées du
+projet* pour plusieurs objets. Un vrai remplissage en spirale est différent
+d'un remplissage directionnel guidé par une polyligne en spirale.
+
+## Mémoire sémantique dans le projet OSP
+
+Les annotations de chaque objet (`role`, `family`, `confidence`) sont persistées
+dans `project.json` à la prochaine sauvegarde du fichier `.osp`. L'opération MCP
+`set_semantic`, utilisable dans `project_apply`, les enregistre en un lot annulable
+après approbation. `live_context` retourne `semantic_cache.cached/stale/missing`
+et l'annotation des objets à jour : Claude Code ne refait pas leur reconnaissance
+à chaque ouverture. Seuls les objets nouvellement créés, sans annotation ou dont
+la géométrie source a changé nécessitent une nouvelle analyse. Les métadonnées
+n'affectent pas les points de broderie, les couleurs de fil ni le nom utilisateur.
 
 ## Configuration et isolation
 
@@ -82,7 +124,7 @@ OpenStitch crée un espace de travail par **processus Desktop** dans son dossier
 locales. La configuration de Claude Code contient un serveur MCP nommé openstitch démarré
 avec les arguments **--live --pid N**, où N correspond au processus OpenStitch courant.
 
-Le workspace intègre CLAUDE.md, un hook SessionStart et deux skills de travail :
+Le workspace intègre CLAUDE.md, un hook SessionStart et trois skills de travail :
 openstitch-live-edit et openstitch-live-satin. En cas de changement de document,
 l'historique de conversation du mode intégré est réinitialisé afin d'éviter les
 propositions visant le projet précédent.
@@ -124,7 +166,7 @@ un test de broderie réel est nécessaire.
 | E_AUTH dans le mode API | Clé API erronée | Vérifier Aide ▸ Compagnon IA |
 | Aucun message dans le dock après lancement externe | Conversation dans le terminal | Utiliser le terminal ou choisir le chat intégré |
 
-Le bouton **Configurer Claude…** concerne le fournisseur API. Une validation de ses
+Le bouton **Configurer Claude…** concerne uniquement le fournisseur API. Une validation de ses
 préférences ramène au mode API ; il reste possible de choisir de nouveau Claude Code.
 
 ## Critères de recette obligatoires

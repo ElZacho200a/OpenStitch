@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "claude_code_process_backend.hpp"
 
+#include <QDir>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -34,9 +35,8 @@ void ClaudeCodeProcessBackend::resetConversation() {
     streamedText_ = false;
 }
 
-// Claude Code garde ses outils natifs (fichiers, shell, web) : le dock n'en autorise AUCUN, seuls
-// les outils MCP OpenStitch passent (--allowedTools mcp__openstitch). Liste de refus explicite en
-// plus, car une demande d'outil refusee consomme un tour pour rien.
+// Les outils natifs n'ont pas a etre exposes par le dock Claude Code. Ce refus
+// explicite complete --tools "" et le catalogue MCP strict (defense en profondeur).
 QStringList ClaudeCodeProcessBackend::disallowedTools() {
     return {
         QStringLiteral("Bash"),      QStringLiteral("PowerShell"),   QStringLiteral("Edit"),
@@ -44,6 +44,36 @@ QStringList ClaudeCodeProcessBackend::disallowedTools() {
         QStringLiteral("Glob"),      QStringLiteral("Grep"),         QStringLiteral("WebFetch"),
         QStringLiteral("WebSearch"), QStringLiteral("Task"),         QStringLiteral("Agent"),
         QStringLiteral("TodoWrite"), QStringLiteral("BashOutput"),   QStringLiteral("KillShell")};
+}
+
+QStringList ClaudeCodeProcessBackend::restrictedArguments(const QString& workspace,
+                                                          const QString& sessionId) {
+    // --allowedTools ne RESTREINT PAS le catalogue : --tools le fait pour les outils
+    // intégrés, --strict-mcp-config limite les serveurs MCP à celui du workspace.
+    // dontAsk refuse sans prompt les outils non explicitement autorisés.
+    QStringList args = {QStringLiteral("-p"),
+                        QStringLiteral("--verbose"),
+                        QStringLiteral("--output-format"),
+                        QStringLiteral("stream-json"),
+                        QStringLiteral("--max-turns"),
+                        QStringLiteral("40"),
+                        QStringLiteral("--tools"),
+                        QString(),
+                        QStringLiteral("--mcp-config"),
+                        QDir(workspace).filePath(QStringLiteral(".mcp.json")),
+                        QStringLiteral("--strict-mcp-config"),
+                        QStringLiteral("--permission-mode"),
+                        QStringLiteral("dontAsk"),
+                        QStringLiteral("--allowedTools"),
+                        QStringLiteral("mcp__openstitch__*"),
+                        QStringLiteral("--disallowedTools"),
+                        disallowedTools().join(QLatin1Char(','))};
+    const QRegularExpression uuid(
+        QStringLiteral("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"));
+    if (uuid.match(sessionId).hasMatch()) {
+        args << QStringLiteral("--resume") << sessionId;
+    }
+    return args;
 }
 
 void ClaudeCodeProcessBackend::send(const QString& userText) {
@@ -67,24 +97,7 @@ void ClaudeCodeProcessBackend::send(const QString& userText) {
     proc->setWorkingDirectory(workspace_);
     // security-ok: processus Claude Code de l'utilisateur, outils MCP approuves
     proc->setProcessChannelMode(QProcess::SeparateChannels);
-    QStringList args = {QStringLiteral("-p"),
-                        QStringLiteral("--verbose"),
-                        QStringLiteral("--output-format"),
-                        QStringLiteral("stream-json"),
-                        QStringLiteral("--max-turns"),
-                        QStringLiteral("40"),
-                        QStringLiteral("--allowedTools"),
-                        QStringLiteral("mcp__openstitch"),
-                        QStringLiteral("--disallowedTools"),
-                        disallowedTools().join(QLatin1Char(','))};
-    // Ne jamais transmettre au wrapper cmd un identifiant non controle provenant du JSON.
-    const QRegularExpression uuid(
-        QStringLiteral("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"));
-    if (uuid.match(sessionId_).hasMatch()) {
-        args << QStringLiteral("--resume") << sessionId_;
-    } else {
-        sessionId_.clear();
-    }
+    QStringList args = restrictedArguments(workspace_, sessionId_);
     QString program = executable_;
 #ifdef _WIN32
     if (executable_.endsWith(QStringLiteral(".cmd"), Qt::CaseInsensitive)) {
@@ -270,7 +283,19 @@ void ClaudeCodeProcessBackend::handleLine(const QByteArray& line) {
             reportedToolIds_.insert(id);
             CompanionToolCall tool;
             tool.tool = block.value(QStringLiteral("name")).toString();
-            tool.summary = tr("Outil appele (validation dans OpenStitch si modification).");
+            const QJsonObject input = block.value(QStringLiteral("input")).toObject();
+            tool.summary = tr("Action sur le projet ouvert.");
+            if (input.value(QStringLiteral("query")).isString()) {
+                const QString requested = input.value(QStringLiteral("query")).toString().left(120);
+                tool.summary = tr("Cible : %1").arg(requested);
+            } else if (input.value(QStringLiteral("objects")).isArray()) {
+                const int count = input.value(QStringLiteral("objects")).toArray().size();
+                tool.summary = tr("%n objet(s) concernés", "", count);
+            } else if (input.value(QStringLiteral("operations")).isArray()) {
+                const int count = input.value(QStringLiteral("operations")).toArray().size();
+                const QString action = tr("%n opération(s) proposées", "", count);
+                tool.summary = tr("%1 (approbation dans OpenStitch)").arg(action);
+            }
             emit toolCalled(tool);
         }
         return;

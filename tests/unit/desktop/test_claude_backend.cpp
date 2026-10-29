@@ -158,8 +158,11 @@ private slots:
     void cancelStopsTheRequestAndTheDockStaysUsable();
     void disabledCompanionOffersNoProvider();
     void settingsDialogStoresKeyOnlyInTheSecretStore();
+    void cancellingSettingsDoesNotEnableSemanticAnalysis();
     void targetPhraseWorksEndToEndFromTheDesktop();
     void claudeCodeProcessParsesStructuredEvents();
+    void claudeCodeLaunchIsRestricted();
+    void resetDuringRequestDoesNotCarryHistoryAcrossDocuments();
     void claudeCodeStreamsAssistantTextWithoutRepeatingFinalResult();
     void claudeCodeAllowsOnlyOpenStitchTools();
     void claudeCodeErrorsCarryAnActionableReason();
@@ -326,6 +329,27 @@ void MainWindowTest::cancelStopsTheRequestAndTheDockStaysUsable() {
     QVERIFY(!w.undoAct_->isEnabled());
 }
 
+void MainWindowTest::resetDuringRequestDoesNotCarryHistoryAcrossDocuments() {
+    MainWindow w;
+    auto fixture = oneShape();
+    w.applyLoadedProject(std::move(fixture.project));
+    Rig rig(w);
+    rig.script->replies = {textReply("Ancien projet")};
+    rig.script->onCall = [] { QThread::msleep(150); };
+    rig.ask(w, QStringLiteral("ancien"));
+    QTRY_VERIFY_WITH_TIMEOUT(rig.backend->running(), 2000);
+    rig.backend->resetConversation();
+    QTRY_VERIFY_WITH_TIMEOUT(!rig.backend->running(), 8000);
+    rig.script->onCall = {};
+    rig.script->replies = {textReply("Nouveau projet")};
+    rig.ask(w, QStringLiteral("nouveau"));
+    QTRY_VERIFY_WITH_TIMEOUT(!rig.backend->running(), 8000);
+    QVERIFY(!rig.script->requests.empty());
+    const auto& messages = rig.script->requests.back().messages;
+    QCOMPARE(messages.size(), std::size_t{1});
+    QCOMPARE(messages.front().role, std::string("user"));
+}
+
 void MainWindowTest::disabledCompanionOffersNoProvider() {
     MainWindow w;
     Rig rig(w);
@@ -337,6 +361,26 @@ void MainWindowTest::disabledCompanionOffersNoProvider() {
     companion_settings::setProviderEnabled(false);
     rig.backend->refresh();
     QVERIFY(!rig.backend->available()); // fournisseur non activé : rien n'est jamais envoyé
+}
+
+void MainWindowTest::cancellingSettingsDoesNotEnableSemanticAnalysis() {
+    agent::MemorySecretStore secrets;
+    agent::DiagnosticLog log;
+    companion_settings::setAutoSemanticAnalysis(false);
+    {
+        CompanionSettingsDialog dialog(secrets, log);
+        auto* control = child<QCheckBox>(&dialog, "check_companionAutoSemantic");
+        QVERIFY(control != nullptr);
+        control->setChecked(true);
+        dialog.reject();
+    }
+    QVERIFY(!companion_settings::autoSemanticAnalysis());
+    {
+        CompanionSettingsDialog dialog(secrets, log);
+        child<QCheckBox>(&dialog, "check_companionAutoSemantic")->setChecked(true);
+        dialog.applyToSettings();
+    }
+    QVERIFY(companion_settings::autoSemanticAnalysis());
 }
 
 void MainWindowTest::settingsDialogStoresKeyOnlyInTheSecretStore() {
@@ -527,6 +571,32 @@ void MainWindowTest::claudeCodeProcessParsesStructuredEvents() {
     QCOMPARE(text.at(0).at(0).toString(), QStringLiteral("Trois objets orange"));
     QCOMPARE(usage.size(), 1);
     QCOMPARE(usage.at(0).at(0).toULongLong(), quint64{120});
+}
+
+void MainWindowTest::claudeCodeLaunchIsRestricted() {
+    const QString workspace = QStringLiteral("C:/OpenStitch tests/companion");
+    const QStringList args = ClaudeCodeProcessBackend::restrictedArguments(workspace);
+    const auto valueAfter = [&args](const QString& option) {
+        const auto index = args.indexOf(option);
+        if (index < 0 || index + 1 >= args.size()) {
+            return QStringLiteral("MISSING");
+        }
+        return args.at(index + 1);
+    };
+    QCOMPARE(valueAfter(QStringLiteral("--tools")), QString());
+    QCOMPARE(valueAfter(QStringLiteral("--permission-mode")), QStringLiteral("dontAsk"));
+    QCOMPARE(valueAfter(QStringLiteral("--allowedTools")), QStringLiteral("mcp__openstitch__*"));
+    QCOMPARE(valueAfter(QStringLiteral("--mcp-config")),
+             QDir(workspace).filePath(QStringLiteral(".mcp.json")));
+    QVERIFY(args.contains(QStringLiteral("--strict-mcp-config")));
+    QVERIFY(!args.contains(QStringLiteral("--dangerously-skip-permissions")));
+    QVERIFY(!args.contains(QStringLiteral("--resume")));
+    const auto resumed = ClaudeCodeProcessBackend::restrictedArguments(
+        workspace, QStringLiteral("12345678-1234-1234-1234-123456789abc"));
+    QVERIFY(resumed.contains(QStringLiteral("--resume")));
+    const QString badSession = QStringLiteral("name & shell");
+    const auto invalid = ClaudeCodeProcessBackend::restrictedArguments(workspace, badSession);
+    QVERIFY(!invalid.contains(QStringLiteral("--resume")));
 }
 
 void MainWindowTest::claudeCodeAcceptsHugeCompleteLinesButRejectsRunawayPartialOnes() {

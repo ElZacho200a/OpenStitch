@@ -6,6 +6,7 @@
 #include <QPointer>
 #include <QSet>
 #include <QString>
+#include <QStringList>
 
 #include "companion_backend.hpp"
 
@@ -29,9 +30,12 @@ public:
     }
     [[nodiscard]] bool available() const override;
     void resetConversation();
+    // Arguments purs et inspectables : interdit les outils système et les autres MCP.
+    [[nodiscard]] static QStringList restrictedArguments(const QString& workspace,
+                                                         const QString& sessionId = {});
+    [[nodiscard]] static QStringList disallowedTools();
     // Expose uniquement le decodeur d'evenements pour les tests sans executable Claude.
     void ingestEventForTest(const QByteArray& jsonLine);
-    [[nodiscard]] static QStringList disallowedTools();
     void ingestChunkForTest(const QByteArray& chunk);
 
 public slots:

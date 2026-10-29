@@ -564,8 +564,16 @@ TEST_CASE("claude workspace carries the mcp server, guide, hook and skills", "[a
               std::string::npos);
     }
     CHECK(read("CLAUDE.md").find("analyse sémantique") != std::string::npos);
-    CHECK(read(".claude/skills/openstitch-live-semantic/SKILL.md").find("live_object_views") !=
+    const std::string semantic = read(".claude/skills/openstitch-live-semantic/SKILL.md");
+    CHECK(semantic.find(R"SKILL(live_object_views({"objects":[12,15]}))SKILL") !=
           std::string::npos);
+    CHECK(semantic.find("project_render({})") != std::string::npos);
+    CHECK(semantic.find("Ne lance pas `live_preview`") != std::string::npos);
+    const std::string guide = read("CLAUDE.md");
+    CHECK(guide.find("n\'accepte PAS `object`") != std::string::npos);
+    CHECK(guide.find(R"SKILL(live_preview({"operations":[)SKILL") != std::string::npos);
+    CHECK(guide.find(R"SKILL(project_inspect({"object":12)SKILL") != std::string::npos);
+    CHECK(guide.find(R"SKILL(project_select({"where":[)SKILL") != std::string::npos);
     std::filesystem::remove_all(dir);
 }
 
@@ -578,6 +586,11 @@ TEST_CASE("workspace files are written relative to the workspace and traversal i
     CHECK(std::filesystem::exists(dir / ".claude" / "skills" / "x" / "references" / "r.md"));
     CHECK_FALSE(write_workspace_files(dir.string(), {{"../evil.txt", "x"}}));
     CHECK_FALSE(write_workspace_files(dir.string(), {{"C:/evil.txt", "x"}}));
+    CHECK_FALSE(write_workspace_files(dir.string(), {{"C:\\evil.txt", "x"}}));
+    CHECK_FALSE(write_workspace_files(dir.string(), {{"C:evil.txt", "x"}}));
+    CHECK_FALSE(write_workspace_files(dir.string(), {{"..\\evil.txt", "x"}}));
+    CHECK_FALSE(write_workspace_files(dir.string(), {{"\\\\server\\share\\evil.txt", "x"}}));
+    CHECK_FALSE(write_workspace_files(dir.string(), {{"safe:stream", "x"}}));
     CHECK_FALSE(write_workspace_files(dir.string(), {{"/etc/evil", "x"}}));
     CHECK_FALSE(write_workspace_files(dir.string(), {{"", "x"}}));
     CHECK_FALSE(std::filesystem::exists(dir.parent_path() / "evil.txt"));

@@ -149,6 +149,38 @@ TEST_CASE("live_context is compact and reports thread palette and risks", "[live
     CHECK(reply["content"][0]["text"].get<std::string>().size() < 8000);
 }
 
+TEST_CASE("semantic memory is reused, becomes stale after geometry edits and is undoable",
+          "[live][semantic]") {
+    Doc d;
+    const auto id = d.orange.front();
+    auto first = d.call("live_context", json::object());
+    auto context = Doc::text_of(first);
+    CHECK(context["semantic_cache"]["missing"] == 12);
+    const json annotation{{"op", "set_semantic"},
+                          {"object", id},
+                          {"role", "voile"},
+                          {"family", "bateau"},
+                          {"confidence", 0.88}};
+    const json batch{{"operations", json::array({annotation})}};
+    auto applied = d.call("project_apply", batch);
+    REQUIRE_FALSE(applied["isError"].get<bool>());
+    REQUIRE(applied["live"]["applied"].get<bool>());
+    context = Doc::text_of(d.call("live_context", json::object()));
+    CHECK(context["semantic_cache"]["cached"] == 1);
+    CHECK(context["objects"][0]["semantic"]["role"] == "voile");
+    auto* e = d.project.findEmbroidery(ObjectId{id});
+    REQUIRE(e != nullptr);
+    REQUIRE(e->semantic);
+    const auto* source = d.project.findObject(e->source_vector);
+    REQUIRE(source != nullptr);
+    auto* mutableSource = d.project.findObject(e->source_vector);
+    mutableSource->paths.front().outer.nodes.front().pos.x.value += 1000;
+    context = Doc::text_of(d.call("live_context", json::object()));
+    CHECK(context["semantic_cache"]["stale"] == 1);
+    CHECK(context["objects"][0]["semantic"]["status"] == "stale");
+    CHECK_FALSE(context["objects"][0]["semantic"].contains("role"));
+}
+
 TEST_CASE("live_target 'orange' follows the sewn thread, flags locked, hidden and borderline",
           "[live][agentic]") {
     Doc d;
@@ -286,6 +318,38 @@ TEST_CASE("live_preview shows before/after on a copy and never changes the proje
         d.call("live_preview",
                {{"operations", {{{"op", "set_color"}, {"object", 424242}, {"rgb", "#FF0000"}}}}});
     CHECK(refused["isError"].get<bool>());
+}
+
+TEST_CASE("live_preview zooms on proposed objects BEFORE approval and never edits the project",
+          "[live][agentic]") {
+    Doc d;
+    const auto first = d.orange.front();
+    const json operations =
+        json::array({{{"op", "set_stitch_type"}, {"object", first}, {"type", "spiral_fill"}}});
+    json focus_args = json::object();
+    focus_args["operations"] = operations;
+    focus_args["objects"] = json::array({first});
+    focus_args["px_per_mm"] = 4.0;
+    const auto result = d.call("live_preview", focus_args);
+    REQUIRE_FALSE(result["isError"].get<bool>());
+    const json preview = Doc::text_of(result);
+    CHECK(preview["report"]["ok"] == true);
+    CHECK(preview["preview_only"] == true);
+    CHECK(preview["applied_to_project"] == false);
+    CHECK(preview["focus_objects"] == json::array({first}));
+    CHECK(preview["render_crop"].size() == 4);
+    CHECK(preview["render_crop"][2].get<double>() < 1.0);
+    CHECK(result["content"].size() > 1);
+    CHECK(result["content"][1]["type"] == "image");
+    CHECK(d.project.findEmbroidery(ObjectId{first})->is_tatami());
+    CHECK(d.gate.approvals == 0);
+    CHECK_FALSE(d.stack.canUndo());
+    const json crop_args{{"operations", operations}, {"crop", {0.0, 0.0, 0.4, 1.0}}};
+    const auto crop = d.call("live_preview", crop_args);
+    REQUIRE_FALSE(crop["isError"].get<bool>());
+    CHECK(Doc::text_of(crop)["render_crop"] == json::array({0.0, 0.0, 0.4, 1.0}));
+    const json invalid_args{{"operations", operations}, {"objects", json::array({999999})}};
+    CHECK(d.call("live_preview", invalid_args)["isError"] == true);
 }
 
 TEST_CASE("live_ask_user returns the choice made in the panel and nothing else",

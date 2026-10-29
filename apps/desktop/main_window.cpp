@@ -1956,14 +1956,28 @@ void MainWindow::maybeStartSemanticAnalysis() {
         semanticAnalysisGeneration_ == documentGeneration_) {
         return;
     }
-    const QString prompt = tr(
-        "Fais l'analyse sémantique du projet ouvert avec UNIQUEMENT les outils openstitch (ni "
-        "fichier "
-        "ni shell) : live_context, project_render, puis live_object_views sur AU PLUS 5 lots de 8 "
-        "objets (les plus grands, un échantillon par fil) ; déduis le reste par fil et voisinage. "
-        "Dresse la table « objet → ce qu'il représente » avec ton niveau de confiance, résume le "
-        "motif en deux phrases, puis PROPOSE des opérations rename (aperçu live_preview). "
-        "N'applique rien sans mon accord.");
+    bool allCached = true;
+    for (const auto& object : project_.embroidery_objects) {
+        const auto* shape = project_.findObject(object.source_vector);
+        if (!shape || !object.semantic ||
+            object.semantic->geometry_fingerprint !=
+                document::semantic_geometry_fingerprint(*shape)) {
+            allCached = false;
+            break;
+        }
+    }
+    if (allCached) {
+        semanticAnalysisGeneration_ = documentGeneration_;
+        return; // zéro appel modèle : tout est déjà connu dans le .osp
+    }
+    const QString prompt =
+        tr("Lis live_context : réutilise les objets semantic.status=cached. "
+           "Examine seulement ceux sans semantic ou avec semantic.status=stale. "
+           "Utilise project_render si nécessaire et live_object_views sur au plus 5 lots "
+           "de 8 objets à analyser, en priorité les plus importants de chaque fil. "
+           "Laisse les objets incertains sans annotation. "
+           "Propose set_semantic (role, family, confidence), live_preview puis "
+           "project_apply avec mon approbation. Ne renomme pas les objets.");
     if (companionDock_->sendProgrammatic(tr("Analyse sémantique automatique du projet…"), prompt)) {
         semanticAnalysisGeneration_ = documentGeneration_;
     }

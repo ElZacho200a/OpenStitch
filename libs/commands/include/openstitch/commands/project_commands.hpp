@@ -1103,6 +1103,31 @@ private:
     bool previous_{true};
 };
 
+// Modification atomique et annulable de la mémoire sémantique.
+class SetEmbroiderySemanticCommand final : public ICommand {
+public:
+    SetEmbroiderySemanticCommand(ObjectId id, std::optional<document::SemanticAnnotation> next)
+        : id_(id), next_(std::move(next)) {}
+
+    void apply(document::Project& project) override {
+        if (auto* object = project.findEmbroidery(id_)) {
+            previous_ = object->semantic;
+            object->semantic = next_;
+        }
+    }
+    void revert(document::Project& project) override {
+        if (auto* object = project.findEmbroidery(id_)) {
+            object->semantic = previous_;
+        }
+    }
+    [[nodiscard]] std::string name() const override { return "Mémoire sémantique"; }
+
+private:
+    ObjectId id_;
+    std::optional<document::SemanticAnnotation> next_;
+    std::optional<document::SemanticAnnotation> previous_;
+};
+
 // Renomme un objet de broderie (double-clic dans le panneau Document).
 class RenameEmbroideryCommand final : public ICommand {
 public:
