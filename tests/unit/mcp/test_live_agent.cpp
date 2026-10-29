@@ -320,6 +320,36 @@ TEST_CASE("live_preview shows before/after on a copy and never changes the proje
     CHECK(refused["isError"].get<bool>());
 }
 
+TEST_CASE("live_preview zooms on proposed objects BEFORE approval and never edits the project",
+          "[live][agentic]") {
+    Doc d;
+    const auto first = d.orange.front();
+    const json operations =
+        json::array({{{"op", "set_stitch_type"}, {"object", first}, {"type", "spiral_fill"}}});
+    const auto result = d.call("live_preview", {{"operations", operations},
+                                                 {"objects", {first}},
+                                                 {"px_per_mm", 4.0}});
+    REQUIRE_FALSE(result["isError"].get<bool>());
+    const json preview = Doc::text_of(result);
+    CHECK(preview["report"]["ok"] == true);
+    CHECK(preview["preview_only"] == true);
+    CHECK(preview["applied_to_project"] == false);
+    CHECK(preview["focus_objects"] == json::array({first}));
+    CHECK(preview["render_crop"].size() == 4);
+    CHECK(preview["render_crop"][2].get<double>() < 1.0);
+    CHECK(result["content"].size() > 1);
+    CHECK(result["content"][1]["type"] == "image");
+    CHECK(d.project.findEmbroidery(ObjectId{first})->is_tatami());
+    CHECK(d.gate.approvals == 0);
+    CHECK_FALSE(d.stack.canUndo());
+    const auto crop = d.call("live_preview", {{"operations", operations},
+                                               {"crop", {0.0, 0.0, 0.4, 1.0}}});
+    REQUIRE_FALSE(crop["isError"].get<bool>());
+    CHECK(Doc::text_of(crop)["render_crop"] == json::array({0.0, 0.0, 0.4, 1.0}));
+    CHECK(d.call("live_preview", {{"operations", operations},
+                                   {"objects", {999999}}})["isError"] == true);
+}
+
 TEST_CASE("live_ask_user returns the choice made in the panel and nothing else",
           "[live][agentic]") {
     Doc d;

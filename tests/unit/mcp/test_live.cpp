@@ -121,6 +121,9 @@ TEST_CASE("live tool schemas distinguish object, objects, crop and operations", 
     CHECK(schema("project_inspect")["properties"].contains("object"));
     CHECK(schema("project_check")["properties"].contains("object"));
     CHECK(schema("live_preview")["required"] == json::array({"operations"}));
+    CHECK(schema("live_preview")["properties"].contains("objects"));
+    CHECK(schema("live_preview")["properties"].contains("crop"));
+    CHECK(schema("live_preview")["properties"].contains("px_per_mm"));
     CHECK(schema("project_apply")["required"] == json::array({"operations"}));
     CHECK(schema("project_select")["required"] == json::array({"where"}));
 }

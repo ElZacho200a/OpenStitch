@@ -775,7 +775,7 @@ ToolResult live_preview_tool(const document::Project& project, const json& args)
     out["before"] = before_m;
     out["after"] = after_m;
     out["delta"] = delta;
-    out["note"] = "simulation sur copie uniquement : AUCUNE modification du projet ouvert";
+    out["note"] = "aperçu calculé sur une copie : le projet ouvert n'a pas changé";
     out["preview_only"] = true;
     out["applied_to_project"] = false;
     // Toutes les options de zoom s'appliquent à la COPIE après simulation, jamais au projet.
