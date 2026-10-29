@@ -561,6 +561,16 @@ struct ColorBlendLink {
     bool operator==(const ColorBlendLink&) const = default;
 };
 
+// Interprétation visuelle enregistrée dans le fichier OSP, non dans le nom utilisateur.
+struct SemanticAnnotation {
+    std::string role;
+    std::string family;
+    double confidence{0.0};
+    std::uint64_t geometry_fingerprint{0};
+
+    bool operator==(const SemanticAnnotation&) const = default;
+};
+
 struct EmbroideryObject {
     ObjectId id;
     std::string name;
@@ -589,6 +599,7 @@ struct EmbroideryObject {
     // l'affichage. Écrit/lu dans le .osp (schéma v6, champ `thread`).
     std::optional<thread_palette::ThreadKey> thread;
     std::optional<ColorBlendLink> color_blend;
+    std::optional<SemanticAnnotation> semantic; // reconnaissance persistée et facultative
 
     [[nodiscard]] bool is_tatami() const { return std::holds_alternative<TatamiParams>(params); }
     [[nodiscard]] bool is_satin() const { return std::holds_alternative<SatinParams>(params); }

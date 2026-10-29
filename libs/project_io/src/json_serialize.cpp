@@ -2,6 +2,7 @@
 #include "json_serialize.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <array>
 #include <limits>
 #include <optional>
@@ -1463,6 +1464,12 @@ json project_to_json(const document::Project& project) {
         json eo;
         eo["id"] = e.id.value;
         eo["name"] = e.name;
+        if (e.semantic) {
+            eo["semantic"] = {{"role", e.semantic->role},
+                              {"family", e.semantic->family},
+                              {"confidence", e.semantic->confidence},
+                              {"geometryFingerprint", e.semantic->geometry_fingerprint}};
+        }
         eo["sourceVector"] = e.source_vector.value;
         eo["rgb"] = rgb_to_json(e.rgb);
         eo["visible"] = e.visible;
@@ -1703,6 +1710,32 @@ Result<document::Project> project_from_json(const json& j) {
             document::EmbroideryObject e;
             e.id = ObjectId{eo.at("id").get<std::uint64_t>()};
             e.name = eo.at("name");
+            if (eo.contains("semantic")) {
+                const auto& semantic = eo.at("semantic");
+                if (!semantic.is_object() || !semantic.contains("role") ||
+                    !semantic.at("role").is_string() || !semantic.contains("family") ||
+                    !semantic.at("family").is_string() || !semantic.contains("confidence") ||
+                    !semantic.at("confidence").is_number() ||
+                    !semantic.contains("geometryFingerprint")) {
+                    return fail(ErrorCategory::InvalidFile, "Mémoire sémantique invalide");
+                }
+                document::SemanticAnnotation annotation;
+                annotation.role = semantic.at("role").get<std::string>();
+                annotation.family = semantic.at("family").get<std::string>();
+                annotation.confidence = semantic.at("confidence").get<double>();
+                if (annotation.role.empty() || annotation.role.size() > 200 ||
+                    annotation.family.size() > 120 || !std::isfinite(annotation.confidence) ||
+                    annotation.confidence < 0.0 || annotation.confidence > 1.0) {
+                    return fail(ErrorCategory::InvalidFile, "Champs sémantiques hors limites");
+                }
+                auto fingerprint = strict_uint64(semantic.at("geometryFingerprint"),
+                                                 "semantic.geometryFingerprint");
+                if (!fingerprint) {
+                    return std::unexpected(fingerprint.error());
+                }
+                annotation.geometry_fingerprint = *fingerprint;
+                e.semantic = std::move(annotation);
+            }
             e.source_vector = ObjectId{eo.at("sourceVector").get<std::uint64_t>()};
             e.rgb = rgb_from_json(eo.at("rgb"));
             e.visible = eo.value("visible", true);

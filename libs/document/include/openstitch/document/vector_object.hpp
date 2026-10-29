@@ -2,6 +2,7 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -38,6 +39,42 @@ struct VectorObject {
 
 // Adresse d'un nœud dans un objet : morceau, chemin (0 = extérieur,
 // i+1 = trou i), index du nœud.
+// Signature géométrique déterministe, indépendante de la couleur et des points cousus.
+[[nodiscard]] inline std::uint64_t semantic_geometry_fingerprint(const VectorObject& object) {
+    std::uint64_t hash = 14695981039346656037ULL;
+    const auto mix = [&](std::uint64_t value) {
+        for (int byte = 0; byte < 8; ++byte) {
+            hash ^= (value >> (byte * 8)) & 0xffU;
+            hash *= 1099511628211ULL;
+        }
+    };
+    const auto path = [&](const geometry::Path& p) {
+        mix(p.closed ? 1 : 0);
+        mix(p.nodes.size());
+        for (const auto& node : p.nodes) {
+            mix(static_cast<std::uint64_t>(node.pos.x.value));
+            mix(static_cast<std::uint64_t>(node.pos.y.value));
+            mix(static_cast<std::uint64_t>(node.type));
+            for (const auto& tangent : {node.tan_in, node.tan_out}) {
+                mix(tangent ? 1 : 0);
+                if (tangent) {
+                    mix(static_cast<std::uint64_t>(tangent->x.value));
+                    mix(static_cast<std::uint64_t>(tangent->y.value));
+                }
+            }
+        }
+    };
+    mix(object.paths.size());
+    for (const auto& set : object.paths) {
+        path(set.outer);
+        mix(set.holes.size());
+        for (const auto& hole : set.holes) {
+            path(hole);
+        }
+    }
+    return hash;
+}
+
 struct NodeRef {
     std::size_t set{0};
     std::size_t path{0};
