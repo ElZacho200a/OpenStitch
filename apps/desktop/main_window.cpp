@@ -1956,24 +1956,26 @@ void MainWindow::maybeStartSemanticAnalysis() {
         semanticAnalysisGeneration_ == documentGeneration_) {
         return;
     }
-    const bool allCached = std::all_of(
-        project_.embroidery_objects.begin(), project_.embroidery_objects.end(),
-        [this](const document::EmbroideryObject& object) {
-            const auto* shape = project_.findObject(object.source_vector);
-            return shape && object.semantic &&
-                   object.semantic->geometry_fingerprint ==
-                       document::semantic_geometry_fingerprint(*shape);
-        });
+    bool allCached = true;
+    for (const auto& object : project_.embroidery_objects) {
+        const auto* shape = project_.findObject(object.source_vector);
+        if (!shape || !object.semantic ||
+            object.semantic->geometry_fingerprint !=
+                document::semantic_geometry_fingerprint(*shape)) {
+            allCached = false;
+            break;
+        }
+    }
     if (allCached) {
         semanticAnalysisGeneration_ = documentGeneration_;
         return; // zéro appel modèle : tout est déjà connu dans le .osp
     }
-    const QString prompt = tr(
-        "Lis live_context : réutilise TOUS les objets dont semantic.status=cached. "
-        "Examine UNIQUEMENT les objets sans semantic ou avec semantic.status=stale "
-        "(project_render si nécessaire, live_object_views par lots de 8). "
-        "Propose un lot set_semantic (role, family, confidence) avec live_preview, "
-        "puis project_apply après mon approbation. Ne renomme pas les objets.");
+    const QString prompt =
+        tr("Lis live_context : réutilise les objets semantic.status=cached. "
+           "Examine seulement ceux sans semantic ou avec semantic.status=stale. "
+           "Utilise project_render si nécessaire et live_object_views par lots de 8. "
+           "Propose set_semantic (role, family, confidence), live_preview puis "
+           "project_apply avec mon approbation. Ne renomme pas les objets.");
     if (companionDock_->sendProgrammatic(tr("Analyse sémantique automatique du projet…"), prompt)) {
         semanticAnalysisGeneration_ = documentGeneration_;
     }

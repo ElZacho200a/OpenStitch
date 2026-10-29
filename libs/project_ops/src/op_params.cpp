@@ -1199,7 +1199,8 @@ OpSpec op_set_semantic() {
               arg("family", "string", "famille (ex. bateau, architecture)"),
               arg("confidence", "number", "confiance 0..1 (défaut 0.5)", false, {}, "[0 ; 1]"),
               arg("clear", "boolean", "effacer l'annotation")};
-    s.example = R"({"op":"set_semantic","object":2,"role":"voile","family":"bateau","confidence":0.9})";
+    s.example = R"({"op":"set_semantic","object":2,"role":"voile",)"
+                R"("family":"bateau","confidence":0.9})";
     s.apply = guarded([](OpContext& ctx) {
         const auto& emb = need_emb(ctx, "object");
         const ObjectId id = emb.id;

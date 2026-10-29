@@ -280,7 +280,8 @@ TEST_CASE("blend core: malformed JSON links and non boolean interpolation are re
 
 TEST_CASE("semantic cache persists in OSP and follows source geometry", "[semantic][project_io]") {
     auto project = rich_project();
-    const auto fingerprint = document::semantic_geometry_fingerprint(project.vector_objects.front());
+    const auto fingerprint =
+        document::semantic_geometry_fingerprint(project.vector_objects.front());
     project.embroidery_objects.front().semantic =
         document::SemanticAnnotation{"voile principale", "bateau", 0.93, fingerprint};
     const auto json = project_io::detail::project_to_json(project);

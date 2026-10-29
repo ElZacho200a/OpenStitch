@@ -124,12 +124,12 @@ ToolResult text_tool(const json& doc) {
 
 json object_card(const document::EmbroideryObject& e, const document::Project& project) {
     json card{{"id", e.id.value},
-                {"name", e.name},
-                {"type", po::stitch_type_name(e)},
-                {"color", hex_of(e.rgb)},
-                {"family", color_family(e.rgb[0], e.rgb[1], e.rgb[2])},
-                {"locked", e.locked},
-                {"visible", e.visible}};
+              {"name", e.name},
+              {"type", po::stitch_type_name(e)},
+              {"color", hex_of(e.rgb)},
+              {"family", color_family(e.rgb[0], e.rgb[1], e.rgb[2])},
+              {"locked", e.locked},
+              {"visible", e.visible}};
     if (e.semantic) {
         const auto* shape = project.findObject(e.source_vector);
         const bool valid = shape && e.semantic->geometry_fingerprint ==
@@ -230,8 +230,8 @@ ToolResult live_context_tool(const document::Project& project, const LiveContext
               {{"width", project.canvas.width.value / 1000.0},
                {"height", project.canvas.height.value / 1000.0}}},
              {"object_count", count},
-             {"semantic_cache", {{"cached", cached}, {"stale", stale},
-                                  {"missing", count - cached - stale}}},
+             {"semantic_cache",
+              {{"cached", cached}, {"stale", stale}, {"missing", count - cached - stale}}},
              {"thread_palette", colors},
              {"note",
               "les couleurs sont celles des FILS cousus (objets de broderie), pas les teintes de "

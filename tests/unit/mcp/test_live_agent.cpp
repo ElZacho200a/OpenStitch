@@ -156,12 +156,12 @@ TEST_CASE("semantic memory is reused, becomes stale after geometry edits and is 
     auto first = d.call("live_context", json::object());
     auto context = Doc::text_of(first);
     CHECK(context["semantic_cache"]["missing"] == 12);
-    const json batch{{"operations",
-                      json::array({json{{"op", "set_semantic"},
-                                        {"object", id},
-                                        {"role", "voile"},
-                                        {"family", "bateau"},
-                                        {"confidence", 0.88}}})}};
+    const json annotation{{"op", "set_semantic"},
+                          {"object", id},
+                          {"role", "voile"},
+                          {"family", "bateau"},
+                          {"confidence", 0.88}};
+    const json batch{{"operations", json::array({annotation})}};
     auto applied = d.call("project_apply", batch);
     REQUIRE_FALSE(applied["isError"].get<bool>());
     REQUIRE(applied["live"]["applied"].get<bool>());
