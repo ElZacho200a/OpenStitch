@@ -565,14 +565,15 @@ TEST_CASE("claude workspace carries the mcp server, guide, hook and skills", "[a
     }
     CHECK(read("CLAUDE.md").find("analyse sémantique") != std::string::npos);
     const std::string semantic = read(".claude/skills/openstitch-live-semantic/SKILL.md");
-    CHECK(semantic.find("live_object_views({\\"objects\\":[12,15]})") != std::string::npos);
+    CHECK(semantic.find(R"SKILL(live_object_views({"objects":[12,15]}))SKILL") !=
+          std::string::npos);
     CHECK(semantic.find("project_render({})") != std::string::npos);
     CHECK(semantic.find("Ne lance pas `live_preview`") != std::string::npos);
     const std::string guide = read("CLAUDE.md");
-    CHECK(guide.find("n'accepte PAS `object`") != std::string::npos);
-    CHECK(guide.find("live_preview({\\"operations\\":[") != std::string::npos);
-    CHECK(guide.find("project_inspect({\\"object\\":12") != std::string::npos);
-    CHECK(guide.find("project_select({\\"where\\":[") != std::string::npos);
+    CHECK(guide.find("n\'accepte PAS `object`") != std::string::npos);
+    CHECK(guide.find(R"SKILL(live_preview({"operations":[)SKILL") != std::string::npos);
+    CHECK(guide.find(R"SKILL(project_inspect({"object":12)SKILL") != std::string::npos);
+    CHECK(guide.find(R"SKILL(project_select({"where":[)SKILL") != std::string::npos);
     std::filesystem::remove_all(dir);
 }
 
