@@ -555,12 +555,14 @@ void MainWindowTest::claudeCodeLaunchIsRestricted() {
     const QStringList args = ClaudeCodeProcessBackend::restrictedArguments(workspace);
     const auto valueAfter = [&args](const QString& option) {
         const auto index = args.indexOf(option);
-        return index >= 0 && index + 1 < args.size() ? args.at(index + 1) : QStringLiteral("MISSING");
+        if (index < 0 || index + 1 >= args.size()) {
+            return QStringLiteral("MISSING");
+        }
+        return args.at(index + 1);
     };
     QCOMPARE(valueAfter(QStringLiteral("--tools")), QString());
     QCOMPARE(valueAfter(QStringLiteral("--permission-mode")), QStringLiteral("dontAsk"));
-    QCOMPARE(valueAfter(QStringLiteral("--allowedTools")),
-             QStringLiteral("mcp__openstitch__*"));
+    QCOMPARE(valueAfter(QStringLiteral("--allowedTools")), QStringLiteral("mcp__openstitch__*"));
     QCOMPARE(valueAfter(QStringLiteral("--mcp-config")),
              QDir(workspace).filePath(QStringLiteral(".mcp.json")));
     QVERIFY(args.contains(QStringLiteral("--strict-mcp-config")));
@@ -569,8 +571,8 @@ void MainWindowTest::claudeCodeLaunchIsRestricted() {
     const auto resumed = ClaudeCodeProcessBackend::restrictedArguments(
         workspace, QStringLiteral("12345678-1234-1234-1234-123456789abc"));
     QVERIFY(resumed.contains(QStringLiteral("--resume")));
-    const auto invalid = ClaudeCodeProcessBackend::restrictedArguments(
-        workspace, QStringLiteral("name & shell"));
+    const QString badSession = QStringLiteral("name & shell");
+    const auto invalid = ClaudeCodeProcessBackend::restrictedArguments(workspace, badSession);
     QVERIFY(!invalid.contains(QStringLiteral("--resume")));
 }
 

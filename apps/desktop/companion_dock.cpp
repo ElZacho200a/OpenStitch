@@ -5,8 +5,8 @@
 #include <QDialog>
 #include <QEvent>
 #include <QEventLoop>
-#include <QHideEvent>
 #include <QGroupBox>
+#include <QHideEvent>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QListWidget>
@@ -19,8 +19,8 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
-#include <QTextCursor>
 #include <QStackedWidget>
+#include <QTextCursor>
 #include <QTextBrowser>
 #include <QVBoxLayout>
 
@@ -510,7 +510,8 @@ void CompanionDock::showPreview(bool before) {
         return;
     }
     QDialog dialog(this);
-    dialog.setWindowTitle(before ? tr("Aperçu avant modification") : tr("Aperçu après modification"));
+    const QString title = before ? tr("Aperçu avant modification") : tr("Aperçu après modification");
+    dialog.setWindowTitle(title);
     auto* layout = new QVBoxLayout(&dialog);
     auto* scroll = new QScrollArea(&dialog);
     auto* image = new QLabel(scroll);
@@ -562,8 +563,8 @@ void CompanionDock::clearConversation() {
 void CompanionDock::addEntry(Entry entry) {
     entries_.push_back(std::move(entry));
     if (entries_.size() > kMaxEntries) {
-        entries_.erase(entries_.begin(), entries_.begin() + static_cast<std::ptrdiff_t>(
-                                                                 entries_.size() - kMaxEntries));
+        const auto count = static_cast<std::ptrdiff_t>(entries_.size() - kMaxEntries);
+        entries_.erase(entries_.begin(), entries_.begin() + count);
         rebuildTranscript();
         return;
     }
@@ -674,9 +675,10 @@ void CompanionDock::setBusy(bool busy) {
 }
 
 bool CompanionDock::eventFilter(QObject* watched, QEvent* event) {
-    if ((watched == beforeImage_ || watched == afterImage_) &&
-        (event->type() == QEvent::MouseButtonRelease ||
-         event->type() == QEvent::KeyPress)) {
+    const bool preview = watched == beforeImage_ || watched == afterImage_;
+    const bool activate = event->type() == QEvent::MouseButtonRelease ||
+                          event->type() == QEvent::KeyPress;
+    if (preview && activate) {
         if (event->type() == QEvent::MouseButtonRelease) {
             showPreview(watched == beforeImage_);
             return true;

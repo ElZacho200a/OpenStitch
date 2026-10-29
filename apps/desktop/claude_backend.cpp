@@ -234,12 +234,10 @@ public:
     RunObserver(ClaudeCompanionBackend* backend, agent::DiagnosticLog* log,
                 std::shared_ptr<std::atomic<bool>> alive,
                 const std::atomic<std::uint64_t>* generation, std::uint64_t epoch)
-        : backend_(backend), log_(log), alive_(std::move(alive)),
-          generation_(generation), epoch_(epoch) {}
+        : backend_(backend), log_(log), alive_(std::move(alive)), generation_(generation),
+          epoch_(epoch) {}
 
-    bool current() const {
-        return alive_->load() && generation_->load() == epoch_;
-    }
+    bool current() const { return alive_->load() && generation_->load() == epoch_; }
     void on_text(const std::string& text) override {
         if (current()) {
             emit backend_->assistantText(QString::fromStdString(text));

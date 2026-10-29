@@ -258,15 +258,15 @@ void ClaudeCodeProcessBackend::handleLine(const QByteArray& line) {
             const QJsonObject input = block.value(QStringLiteral("input")).toObject();
             tool.summary = tr("Action sur le projet ouvert.");
             if (input.value(QStringLiteral("query")).isString()) {
-                tool.summary = tr("Cible : %1").arg(
-                    input.value(QStringLiteral("query")).toString().left(120));
+                const QString requested = input.value(QStringLiteral("query")).toString().left(120);
+                tool.summary = tr("Cible : %1").arg(requested);
             } else if (input.value(QStringLiteral("objects")).isArray()) {
                 const int count = input.value(QStringLiteral("objects")).toArray().size();
                 tool.summary = tr("%n objet(s) concernés", "", count);
             } else if (input.value(QStringLiteral("operations")).isArray()) {
                 const int count = input.value(QStringLiteral("operations")).toArray().size();
-                tool.summary = tr("%n opération(s) proposées (approbation dans OpenStitch)", "",
-                                  count);
+                const QString action = tr("%n opération(s) proposées", "", count);
+                tool.summary = tr("%1 (approbation dans OpenStitch)").arg(action);
             }
             emit toolCalled(tool);
         }

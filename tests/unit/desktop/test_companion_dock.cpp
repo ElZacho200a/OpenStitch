@@ -12,9 +12,9 @@
 #include <QMenu>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QScrollBar>
 #include <QSettings>
 #include <QSignalSpy>
-#include <QScrollBar>
 #include <QStackedWidget>
 #include <QStandardPaths>
 #include <QTest>

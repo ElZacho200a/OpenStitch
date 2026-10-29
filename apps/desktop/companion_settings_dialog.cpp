@@ -70,15 +70,13 @@ CompanionSettingsDialog::CompanionSettingsDialog(agent::ISecretStore& secrets,
         this);
     diagnosticsContent_->setObjectName(QStringLiteral("check_companionDiagnosticsContent"));
     diagnosticsContent_->setChecked(companion_settings::diagnosticsContentConsent());
-    auto* autoSemantic = new QCheckBox(
-        tr("Analyse sémantique automatique (optionnelle, envoie des "
-           "aperçus du projet au fournisseur)"),
+    autoSemantic_ = new QCheckBox(
+        tr("Analyse sémantique automatique (optionnelle, envoie des aperçus du projet "
+           "au fournisseur)"),
         this);
-    autoSemantic->setObjectName(QStringLiteral("check_companionAutoSemantic"));
-    autoSemantic->setChecked(companion_settings::autoSemanticAnalysis());
-    connect(autoSemantic, &QCheckBox::toggled, this,
-            [](bool on) { companion_settings::setAutoSemanticAnalysis(on); });
-    form->addRow(autoSemantic);
+    autoSemantic_->setObjectName(QStringLiteral("check_companionAutoSemantic"));
+    autoSemantic_->setChecked(companion_settings::autoSemanticAnalysis());
+    form->addRow(autoSemantic_);
     form->addRow(diagnostics_);
     form->addRow(diagnosticsContent_);
     layout->addLayout(form);
@@ -113,6 +111,7 @@ CompanionSettingsDialog::CompanionSettingsDialog(agent::ISecretStore& secrets,
 void CompanionSettingsDialog::applyToSettings() {
     companion_settings::setFullyDisabled(fullyOff_->isChecked());
     companion_settings::setProviderEnabled(enableProvider_->isChecked());
+    companion_settings::setAutoSemanticAnalysis(autoSemantic_->isChecked());
     companion_settings::setDiagnosticsEnabled(diagnostics_->isChecked());
     companion_settings::setDiagnosticsContentConsent(diagnosticsContent_->isChecked());
     log_.set_enabled(diagnostics_->isChecked());

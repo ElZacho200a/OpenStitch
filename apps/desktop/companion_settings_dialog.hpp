@@ -36,6 +36,7 @@ private:
     QCheckBox* diagnosticsContent_{nullptr};
     QCheckBox* fullyOff_{nullptr};
     QCheckBox* enableProvider_{nullptr};
+    QCheckBox* autoSemantic_{nullptr};
     QLineEdit* model_{nullptr};
     QLineEdit* key_{nullptr};
     QLabel* keyStatus_{nullptr};
