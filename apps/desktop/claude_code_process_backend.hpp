@@ -33,6 +33,7 @@ public:
     // Arguments purs et inspectables : interdit les outils système et les autres MCP.
     [[nodiscard]] static QStringList restrictedArguments(const QString& workspace,
                                                          const QString& sessionId = {});
+    [[nodiscard]] static QStringList disallowedTools();
     // Expose uniquement le decodeur d'evenements pour les tests sans executable Claude.
     void ingestEventForTest(const QByteArray& jsonLine);
     void ingestChunkForTest(const QByteArray& chunk);

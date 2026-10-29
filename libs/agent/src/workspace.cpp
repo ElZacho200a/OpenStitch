@@ -35,8 +35,10 @@ Ne renomme pas les objets : leur nom utilisateur est indépendant de cette mémo
 Ne lance PAS automatiquement `project_render` ou `live_object_views` à l'ouverture.
 Pour une question simple, `live_context` et la sélection suffisent. Si l'utilisateur demande
 une analyse sémantique (ou active explicitement l'option d'analyse automatique dans OpenStitch),
-utilise `project_render` puis `live_object_views` par lots de 8 objets au maximum ;
-propose les annotations via set_semantic avec un degré de confiance et une approbation.
+utilise `project_render` puis `live_object_views` sur AU PLUS 5 lots de 8 objets
+(non reconnus, les plus importants, avec diversité par fil). Ne déduis pas une identité
+avec certitude d'une simple couleur : laisse les objets douteux sans annotation.
+Propose les annotations via set_semantic avec un degré de confiance et une approbation.
 
 ## Skills de numérisation
 Les skills `openstitch-digitize` (méthode complète + références : segmentation sémantique, choix
@@ -96,8 +98,8 @@ description: Analyse sémantique du projet OpenStitch ouvert - identifier à quo
 
 1. `live_context` : objets, fils, familles de couleur, sélection.
 2. `project_render` (vue d'ensemble) pour comprendre le sujet global.
-3. `live_object_views` par lots de 8 objets, en commençant par les plus grands / les plus
-   nombreux par fil : regarde chaque image et nomme ce que l'objet représente.
+3. `live_object_views` sur AU PLUS 5 lots de 8 objets non reconnus (limite de tours),
+   en commençant par les plus grands et les plus nombreux par fil : examine chaque vue.
 4. Table finale : identifiant, nom proposé, confiance (haute/moyenne/basse), fil. Les objets
    douteux sont listés à part, jamais inventés.
 5. N’analyse que les objets sans cache valide et propose des `set_semantic` groupés ;

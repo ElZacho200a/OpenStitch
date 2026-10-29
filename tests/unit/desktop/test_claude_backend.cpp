@@ -164,6 +164,7 @@ private slots:
     void claudeCodeLaunchIsRestricted();
     void resetDuringRequestDoesNotCarryHistoryAcrossDocuments();
     void claudeCodeStreamsAssistantTextWithoutRepeatingFinalResult();
+    void claudeCodeAllowsOnlyOpenStitchTools();
     void claudeCodeErrorsCarryAnActionableReason();
     void claudeCodeAcceptsHugeCompleteLinesButRejectsRunawayPartialOnes();
     void launcherPreparesWorkspaceAndStartsTheUsersClaude();
@@ -629,6 +630,15 @@ void MainWindowTest::claudeCodeAcceptsHugeCompleteLinesButRejectsRunawayPartialO
         QCOMPARE(failed.size(), 1);
         QVERIFY(failed.at(0).at(0).toString().contains(QStringLiteral("volumineux")));
     }
+}
+
+void MainWindowTest::claudeCodeAllowsOnlyOpenStitchTools() {
+    const QStringList denied = ClaudeCodeProcessBackend::disallowedTools();
+    for (const char* tool : {"Bash", "PowerShell", "Edit", "Write", "Read", "Glob", "Grep",
+                             "WebFetch", "WebSearch", "Task"}) {
+        QVERIFY2(denied.contains(QString::fromLatin1(tool)), tool);
+    }
+    QVERIFY(!denied.contains(QStringLiteral("mcp__openstitch")));
 }
 
 void MainWindowTest::claudeCodeErrorsCarryAnActionableReason() {

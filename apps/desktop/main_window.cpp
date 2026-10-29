@@ -1973,7 +1973,9 @@ void MainWindow::maybeStartSemanticAnalysis() {
     const QString prompt =
         tr("Lis live_context : réutilise les objets semantic.status=cached. "
            "Examine seulement ceux sans semantic ou avec semantic.status=stale. "
-           "Utilise project_render si nécessaire et live_object_views par lots de 8. "
+           "Utilise project_render si nécessaire et live_object_views sur au plus 5 lots "
+           "de 8 objets à analyser, en priorité les plus importants de chaque fil. "
+           "Laisse les objets incertains sans annotation. "
            "Propose set_semantic (role, family, confidence), live_preview puis "
            "project_apply avec mon approbation. Ne renomme pas les objets.");
     if (companionDock_->sendProgrammatic(tr("Analyse sémantique automatique du projet…"), prompt)) {

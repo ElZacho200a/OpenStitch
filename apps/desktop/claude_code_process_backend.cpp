@@ -35,6 +35,17 @@ void ClaudeCodeProcessBackend::resetConversation() {
     streamedText_ = false;
 }
 
+// Les outils natifs n'ont pas a etre exposes par le dock Claude Code. Ce refus
+// explicite complete --tools "" et le catalogue MCP strict (defense en profondeur).
+QStringList ClaudeCodeProcessBackend::disallowedTools() {
+    return {
+        QStringLiteral("Bash"),      QStringLiteral("PowerShell"),   QStringLiteral("Edit"),
+        QStringLiteral("Write"),     QStringLiteral("NotebookEdit"), QStringLiteral("Read"),
+        QStringLiteral("Glob"),      QStringLiteral("Grep"),         QStringLiteral("WebFetch"),
+        QStringLiteral("WebSearch"), QStringLiteral("Task"),         QStringLiteral("Agent"),
+        QStringLiteral("TodoWrite"), QStringLiteral("BashOutput"),   QStringLiteral("KillShell")};
+}
+
 QStringList ClaudeCodeProcessBackend::restrictedArguments(const QString& workspace,
                                                           const QString& sessionId) {
     // --allowedTools ne RESTREINT PAS le catalogue : --tools le fait pour les outils
@@ -45,7 +56,7 @@ QStringList ClaudeCodeProcessBackend::restrictedArguments(const QString& workspa
                         QStringLiteral("--output-format"),
                         QStringLiteral("stream-json"),
                         QStringLiteral("--max-turns"),
-                        QStringLiteral("25"),
+                        QStringLiteral("40"),
                         QStringLiteral("--tools"),
                         QString(),
                         QStringLiteral("--mcp-config"),
@@ -56,7 +67,7 @@ QStringList ClaudeCodeProcessBackend::restrictedArguments(const QString& workspa
                         QStringLiteral("--allowedTools"),
                         QStringLiteral("mcp__openstitch__*"),
                         QStringLiteral("--disallowedTools"),
-                        QStringLiteral("Bash,Edit,Write,NotebookEdit")};
+                        disallowedTools().join(QLatin1Char(','))};
     const QRegularExpression uuid(
         QStringLiteral("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"));
     if (uuid.match(sessionId).hasMatch()) {
