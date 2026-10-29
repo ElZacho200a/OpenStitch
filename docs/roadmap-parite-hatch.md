@@ -1661,6 +1661,14 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
 
 ### HP-VEC-004 — Couteau : couper une forme en deux [P1] — ☑ Fait (2026-10-13, constaté sur `main`, `eee6188`)
 - Livré : outil **Couteau** (K) sur toute forme vectorielle (`commands::make_split_command`, `geometry/cut.hpp`) ; chaque morceau garde son type de broderie (remplissages clonés). Vérifié par vrais gestes souris (`sidebarKnifeRealGesture`, PR #25).
+- Correctif (2026-10-29) : le couteau ignorait une coupe de pont quand une seconde
+  jonction gardait la forme connexe (condition erronée `cut->size() >= 2`).
+  Désormais une coupe avec une seule composante restante met à jour le
+  `PathSet` du même objet (broderies et id préservés, undo/redo). Si elle
+  produit plusieurs composants, le découpage en objets distincts reste inchangé.
+  Une coupe hors de la forme conserve aussi les tangentes Bézier d'origine.
+  Non-régression : `test_cut`, `test_vector_ops` et QTest `test_tool_workflows`.
+  Validation de la suite complète attendue en CI.
 - État OpenStitch : ligne de coupe **satin** uniquement (`DrawSatinCutLine`).
 - À faire : couteau général sur toute forme vectorielle (`geometry/cut.hpp`
   existe), les deux morceaux gardent le type de broderie.
