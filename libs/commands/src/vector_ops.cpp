@@ -454,8 +454,8 @@ VectorOpResult make_split_command(document::Project& project, const std::vector<
             // Une seule composante par région : conserver l'identité, les autres
             // chemins et les remplissages associés, sans créer de clone inutile.
             ++total;
-            group->add(std::make_unique<SetVectorPathsCommand>(
-                object.id, std::move(pieces), "Découper les formes"));
+            group->add(std::make_unique<SetVectorPathsCommand>(object.id, std::move(pieces),
+                                                               "Découper les formes"));
         }
     }
     if (total == 0) {
