@@ -29,6 +29,10 @@ REPRÉSENTE » (ex. pétale, feuille, nénuphar, contour, ombre) avec ton niveau
 (`live_preview` puis `project_apply`, approbation dans le dock). Ne modifie rien sans approbation.
 Résume ensuite le motif en deux phrases.
 
+## Skills disponibles (.claude/skills/)
+`openstitch-live-edit`, `-satin`, `-semantic`, `-diagnose`, `-fabric`, `-order`, `-cleanup`, `-naming`,
+`-review`, `-lettering`, `-layout`, `-variants`, et `openstitch-digitize` (méthode de numérisation). Charge celui qui correspond à la demande.
+
 ## Cycle de travail
 1. `live_context` (ou `live_status`) : révision, sélection, palette des FILS, objets, risques.
 2. `live_target` : cible par teinte de fil (« orange », « #RRGGBB », « selection »). Si
@@ -97,6 +101,178 @@ description: Convertir des formes en satin avec compensation de tirage Predicted
    un essai sur tissu reste nécessaire.
 )";
 
+constexpr const char* kSkillDiagnose = R"(---
+name: openstitch-live-diagnose
+description: Auditer la qualité du projet OpenStitch ouvert (points trop courts/longs, sauts, coupes, hors cadre, surépaisseurs, risque textile, fidélité à l'image) et proposer des corrections priorisées. À utiliser pour « le projet est-il propre ? », « qu'est-ce qui cloche ? », « vérifie avant d'exporter ».
+---
+
+# Audit qualité du projet ouvert
+
+1. `project_report` : statut explicite par analyse (pass / warning / error / not_run / unsupported).
+   Ne commente jamais une analyse `not_run` ou `unsupported` comme si elle avait été faite.
+2. `project_diagnose` : constats détaillés avec objet et suggestion ; `project_check` pour le détail
+   par objet ; `project_density` (couches, surépaisseurs) ; `project_fidelity` (trous intérieurs,
+   détail perdu — nécessite l'image source).
+3. `project_fabric_risk` : demande d'abord la matière (woven / jersey / felt). Le score est
+   heuristique et NON calibré : ne le présente pas comme une preuve de brodabilité.
+4. Classe les problèmes : bloquants (erreurs) > risques (surépaisseurs, risque textile) >
+   confort (sauts, coupes). Donne les identifiants d'objets concernés (liens de focus dans le dock).
+5. Pour chaque correction : lot d'opérations (`project_operations`), `live_preview` (écart de
+   points/sauts/coupes/qualité), puis `project_apply` seulement après accord. Re-vérifie ensuite.
+)";
+
+constexpr const char* kSkillFabric = R"(---
+name: openstitch-live-fabric
+description: Adapter le projet OpenStitch ouvert à la matière (tissu tissé, jersey, feutre) - compensation de tirage (Predicted/Adaptive), densité, risque textile. À utiliser pour « ça va froncer ? », « adapte pour du jersey », « règle la compensation de tirage ».
+---
+
+# Adapter à la matière
+
+1. Demande la matière (woven / jersey / felt) et si un stabilisateur est prévu.
+2. `project_fabric_risk` avec `fabric` et `heatmap=true` : repère les zones chaudes ; `project_density`
+   pour les surépaisseurs. Rappelle que le score est heuristique, non calibré machine.
+3. Leviers (via `set_params`, champs visibles avec `project_inspect object=ID` et
+   `project_operations`) : `pull_mode` (`manual` / `auto` / `adaptive` / `predicted`),
+   `pull_compensation_mm`, espacement de rangée (densité). `Predicted` est EMPIRIQUE (PR #170) ;
+   la calibration physique n'est pas faite : un essai sur tissu reste nécessaire.
+4. Cible d'abord les grandes surfaces et les satins larges ; ne touche pas aux objets verrouillés.
+5. `live_preview` (avant/après : points, sauts, risque textile), puis `project_apply` après accord.
+)";
+
+constexpr const char* kSkillOrder = R"(---
+name: openstitch-live-order
+description: Optimiser l'ordre de couture du projet OpenStitch ouvert pour réduire changements de fil, sauts et coupes, sans casser les recouvrements. À utiliser pour « réduis les coupes », « optimise l'ordre », « trop de changements de couleur ».
+---
+
+# Ordre de couture
+
+1. `project_palette` : blocs de couleur dans l'ordre actuel ; `project_report`/`project_check` pour
+   sauts et coupes de départ.
+2. Opération `optimize_order` (stratégie et `improve` : voir `project_operations`) : les objets
+   verrouillés ne bougent pas. Pour un cas précis : `set_order` (position, avant/après, début/fin).
+3. Règle métier : le fond se coud avant les détails ; un objet recouvert ne passe pas après ce qui le
+   recouvre. En cas de doute, ne déplace pas et explique pourquoi.
+4. `live_preview` : compare sauts, coupes et changements de fil avant/après ; n'annonce un gain que
+   mesuré. `project_apply` après accord (un seul Ctrl+Z annule).
+)";
+
+constexpr const char* kSkillCleanup = R"(---
+name: openstitch-live-cleanup
+description: Nettoyer le projet OpenStitch ouvert - îlots minuscules, trous parasites, vides entre zones, formes à fusionner ou séparer. À utiliser pour « enlève les petits îlots », « bouche les trous », « fusionne ces formes ».
+---
+
+# Nettoyage géométrique
+
+1. Repère : `project_select` avec `area_lt=<mm²>` (petits objets), `project_locate` (qui a cousu
+   autour d'un point), `project_diagnose` pour les suggestions.
+2. Montre la liste (identifiants, aire, fil) à l'utilisateur AVANT toute suppression : un petit objet
+   peut être un détail voulu (œil, point lumineux). Demande en cas de doute (`live_ask_user`).
+3. Opérations : `remove_holes` (`max_area_mm2`), `fill_block_holes` (`closing_gap_mm`,
+   `max_area_mm2`), `merge` (modes union/soustraction/intersection/exclusion), `break_apart`,
+   `remove_object` en dernier recours.
+4. `live_preview` puis `project_apply` après accord ; rappelle qu'un Ctrl+Z annule le lot.
+)";
+
+constexpr const char* kSkillNaming = R"(---
+name: openstitch-live-naming
+description: Nommer et regrouper les objets du projet OpenStitch ouvert selon ce qu'ils représentent (pétale, feuille, contour…) à partir de l'analyse sémantique. À utiliser après l'analyse sémantique ou pour « range le projet ».
+---
+
+# Nommer et regrouper
+
+1. Pars de l'analyse (`openstitch-live-semantic`) : table identifiant → sens → confiance.
+2. Convention de noms : « <sujet> <partie> <n> » (ex. « nénuphar pétale 3 »). Pas de nom pour les objets
+   à faible confiance : liste-les à part.
+3. Opérations : `rename` par objet, puis `group` (`objects`, `name`) par ensemble cohérent. Le
+   groupement ne change pas l'ordre de couture.
+4. `live_preview` puis `project_apply` après accord ; un seul Ctrl+Z défait tous les renommages.
+)";
+
+constexpr const char* kSkillReview = R"(---
+name: openstitch-live-review
+description: Donner un avis chiffré et honnête sur le projet OpenStitch ouvert (fidélité, propreté, brodabilité, efficacité) et suivre l'effet des modifications. À utiliser pour « note ce projet », « est-ce mieux qu'avant ? », bilan avant export.
+---
+
+# Avis chiffré
+
+1. `project_report` (+ `project_fidelity` si l'image source est embarquée) : n'invente aucune mesure ;
+   une analyse indisponible est dite indisponible.
+2. Grille /20 : fidélité à l'image (6), propreté des constats (5), brodabilité/densités (5),
+   efficacité sauts-coupes-changements (4). Justifie chaque note avec une mesure ou un constat.
+3. Dis clairement ce que l'outil ne prouve pas : 0 erreur ≠ brodable ; densités simulées ;
+   `Predicted` et le risque textile non calibrés machine ; un essai physique reste nécessaire.
+4. Après modifications : compare aux mesures de départ (`live_preview` donne les écarts) ; cite les
+   points de reprise (chaque application = une étape Ctrl+Z).
+)";
+
+constexpr const char* kSkillLettering = R"(---
+name: openstitch-live-lettering
+description: Ajouter, modifier ou supprimer du texte brodé (lettrage) dans le projet OpenStitch ouvert - taille, espacement, alignement, couleur, remplissage satin/tatami, lisibilité. À utiliser pour « ajoute le mot… », « change le texte », « agrandis les lettres ».
+---
+
+# Lettrage
+
+1. `live_context` : cadre (mm), objets existants, fils déjà utilisés (réutilise une couleur du motif
+   si l'utilisateur n'en précise pas). Demande le texte exact et l'emplacement s'ils manquent.
+2. Opérations : `add_text` (`text`, `cap_height_mm`, `letter_spacing_mm`, `align`, `origin_mm`, `rgb`,
+   `fill`, `density_mm`, `max_satin_width_mm`…), `set_text` (mise à jour partielle d'un texte existant,
+   argument `text_object`), `remove_text`. Une lettre = un objet vectoriel + un objet de broderie.
+3. Lisibilité : en dessous d'environ 5 mm de hauteur de capitale, le satin est fragile ; propose une
+   taille minimale plutôt que de produire un texte illisible. Vérifie que le texte tient dans le cadre
+   (`live_context` donne `canvas_mm`) et ne recouvre pas un détail important (`project_locate`).
+4. `live_preview` : regarde le rendu et les écarts ; `project_apply` après accord. Un seul Ctrl+Z
+   annule tout le lettrage.
+)";
+
+constexpr const char* kSkillLayout = R"(---
+name: openstitch-live-layout
+description: Mise en page du projet OpenStitch ouvert - cadre et marge de sécurité, déplacer / mettre à l'échelle / pivoter / retourner / dupliquer des objets, placement numérique, finitions (coupes, points d'arrêt). À utiliser pour « recentre », « agrandis », « fais tenir dans le cadre ».
+---
+
+# Mise en page et finitions
+
+1. `live_context` : `canvas_mm`, objets, sélection. `project_check` signale les objets hors cadre.
+2. Opérations : `set_canvas` (`width_mm`, `height_mm`, `margin_mm`, `hoop`), `place` (centre, taille
+   et rotation numériques d'une sélection), `translate`, `scale` (uniforme), `rotate`, `mirror`,
+   `duplicate_object`. Les objets verrouillés ne se déplacent pas sans demande explicite.
+3. Agrandir ou réduire change densités et longueurs de point : après `scale`, relance
+   `project_check` et `project_density`, et signale ce qui sort des limites.
+4. Finitions : `set_finishing` (coupes, points d'arrêt, filtrage des points courts, sauts cachés) ;
+   explique l'effet attendu et mesure-le avec `live_preview` (sauts, coupes).
+5. `project_apply` après accord ; un seul Ctrl+Z annule le lot.
+)";
+
+constexpr const char* kSkillVariants = R"(---
+name: openstitch-live-variants
+description: Comparer plusieurs variantes d'une modification du projet OpenStitch ouvert (stratégies de satin, densités, ordres de couture) avant de choisir. À utiliser pour « essaie deux options », « quelle version est meilleure ? ».
+---
+
+# Comparer des variantes
+
+1. Formule 2 à 3 variantes réalistes (lots d'opérations différents) sur les MÊMES objets.
+2. Pour chacune : `live_preview` sur copie (rien n'est modifié) ; note points, sauts, coupes,
+   constats qualité, risque textile et regarde le rendu. Pour le satin, `live_plan_satin` compare
+   déjà skeleton / parallel_sweep / medial_axis.
+3. Présente un tableau variante × mesures, sans inventer de gain : une mesure absente est dite
+   absente. Recommande une variante en expliquant le compromis (qualité visuelle vs coupes, etc.).
+4. N'applique que la variante choisie, avec `project_apply` (approbation dans le dock). Le
+   point de reprise est le Ctrl+Z ; Ctrl+Y rétablit si l'utilisateur change d'avis.
+5. Les checkpoints MCP (`project_checkpoint`) ne sont pas disponibles en mode live : n'en promets pas.
+)";
+
+struct WorkspaceSkill {
+    const char* dir;
+    const char* content;
+};
+
+const WorkspaceSkill kExtraSkills[] = {
+    {"openstitch-live-diagnose", kSkillDiagnose},   {"openstitch-live-fabric", kSkillFabric},
+    {"openstitch-live-order", kSkillOrder},         {"openstitch-live-cleanup", kSkillCleanup},
+    {"openstitch-live-naming", kSkillNaming},       {"openstitch-live-review", kSkillReview},
+    {"openstitch-live-lettering", kSkillLettering}, {"openstitch-live-layout", kSkillLayout},
+    {"openstitch-live-variants", kSkillVariants},
+};
+
 void write_file(const fs::path& path, const std::string& content) {
     fs::create_directories(path.parent_path());
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
@@ -118,6 +294,9 @@ bool write_claude_workspace(const std::string& directory, const std::string& mcp
         write_file(dir / ".claude" / "skills" / "openstitch-live-satin" / "SKILL.md", kSkillSatin);
         write_file(dir / ".claude" / "skills" / "openstitch-live-semantic" / "SKILL.md",
                    kSkillSemantic);
+        for (const auto& skill : kExtraSkills) {
+            write_file(dir / ".claude" / "skills" / skill.dir / "SKILL.md", skill.content);
+        }
         json args = json::array({"--live"});
         if (desktop_pid > 0) {
             args.push_back("--pid");
