@@ -71,10 +71,15 @@ Le chat intégré démarre la CLI Claude Code avec **QProcess** en mode non inte
 (sortie JSON structurée et reprise par identifiant de session) : le texte de la demande
 est fourni via l'entrée standard, pas par un interpréteur de commandes. Les outils
 OpenStitch sont accessibles par le MCP local : le chat ne modifie jamais le projet
-en écrivant directement un OSP.
+en écrivant directement un OSP. Le processus headless utilise `--tools ""`,
+`--strict-mcp-config`, `--mcp-config` et `--permission-mode dontAsk` pour ne mettre
+à disposition que les outils MCP de cette instance OpenStitch.
 
 **Ouvrir Claude Code dans un terminal** est l'option secondaire. Elle conserve les outils,
 les skills et les approbations, mais la conversation reste dans le terminal externe.
+
+L’analyse sémantique automatique est désactivée par défaut. Elle peut être activée dans
+les préférences et envoie alors des rendus au fournisseur Claude Code lors du lancement.
 
 ## Configuration et isolation
 
@@ -82,7 +87,7 @@ OpenStitch crée un espace de travail par **processus Desktop** dans son dossier
 locales. La configuration de Claude Code contient un serveur MCP nommé openstitch démarré
 avec les arguments **--live --pid N**, où N correspond au processus OpenStitch courant.
 
-Le workspace intègre CLAUDE.md, un hook SessionStart et deux skills de travail :
+Le workspace intègre CLAUDE.md, un hook SessionStart et trois skills de travail :
 openstitch-live-edit et openstitch-live-satin. En cas de changement de document,
 l'historique de conversation du mode intégré est réinitialisé afin d'éviter les
 propositions visant le projet précédent.
@@ -124,7 +129,7 @@ un test de broderie réel est nécessaire.
 | E_AUTH dans le mode API | Clé API erronée | Vérifier Aide ▸ Compagnon IA |
 | Aucun message dans le dock après lancement externe | Conversation dans le terminal | Utiliser le terminal ou choisir le chat intégré |
 
-Le bouton **Configurer Claude…** concerne le fournisseur API. Une validation de ses
+Le bouton **Configurer Claude…** concerne uniquement le fournisseur API. Une validation de ses
 préférences ramène au mode API ; il reste possible de choisir de nouveau Claude Code.
 
 ## Critères de recette obligatoires

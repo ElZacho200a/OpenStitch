@@ -47,7 +47,7 @@ void setModel(const QString& model) {
     QSettings().setValue(QStringLiteral("ai/companion/model"), model);
 }
 bool autoSemanticAnalysis() {
-    return QSettings().value(QStringLiteral("ai/companion/autoSemantic"), true).toBool();
+    return QSettings().value(QStringLiteral("ai/companion/autoSemantic"), false).toBool();
 }
 void setAutoSemanticAnalysis(bool on) {
     QSettings().setValue(QStringLiteral("ai/companion/autoSemantic"), on);
@@ -231,14 +231,25 @@ constexpr const char* kSystemPrompt =
 
 class RunObserver final : public agent::IAgentObserver {
 public:
-    RunObserver(ClaudeCompanionBackend* backend, agent::DiagnosticLog* log)
-        : backend_(backend), log_(log) {}
+    RunObserver(ClaudeCompanionBackend* backend, agent::DiagnosticLog* log,
+                std::shared_ptr<std::atomic<bool>> alive,
+                const std::atomic<std::uint64_t>* generation, std::uint64_t epoch)
+        : backend_(backend), log_(log), alive_(std::move(alive)),
+          generation_(generation), epoch_(epoch) {}
 
+    bool current() const {
+        return alive_->load() && generation_->load() == epoch_;
+    }
     void on_text(const std::string& text) override {
-        emit backend_->assistantText(QString::fromStdString(text));
+        if (current()) {
+            emit backend_->assistantText(QString::fromStdString(text));
+        }
     }
     void on_tool_call(const std::string& name, const std::string& args_json,
                       const agent::ToolHostResult& result, const std::string& refusal) override {
+        if (!current()) {
+            return;
+        }
         CompanionToolCall card;
         card.tool = QString::fromStdString(name);
         card.summary = QString::fromStdString(agent::describe_arguments(args_json));
@@ -257,12 +268,17 @@ public:
         emit backend_->toolCalled(card);
     }
     void on_usage(const agent::Usage&, const agent::Usage& total) override {
-        emit backend_->usage(total.input_tokens, total.output_tokens);
+        if (current()) {
+            emit backend_->usage(total.input_tokens, total.output_tokens);
+        }
     }
 
 private:
     ClaudeCompanionBackend* backend_;
     agent::DiagnosticLog* log_;
+    std::shared_ptr<std::atomic<bool>> alive_;
+    const std::atomic<std::uint64_t>* generation_;
+    std::uint64_t epoch_;
 };
 
 QString hintFor(const QString& code) {
@@ -285,7 +301,7 @@ ClaudeCompanionBackend::ClaudeCompanionBackend(mcp::LiveService& service,
                                                agent::ISecretStore& secrets,
                                                ProviderFactory factory, QObject* parent)
     : CompanionBackend(parent), service_(service), secrets_(secrets), factory_(std::move(factory)),
-      alive_(std::make_shared<bool>(true)) {
+      alive_(std::make_shared<std::atomic<bool>>(true)) {
     qRegisterMetaType<CompanionToolCall>(); // signaux émis depuis le fil de travail (file
                                             // d'attente)
     if (!factory_) {
@@ -315,7 +331,7 @@ ClaudeCompanionBackend::ClaudeCompanionBackend(mcp::LiveService& service,
 }
 
 ClaudeCompanionBackend::~ClaudeCompanionBackend() {
-    *alive_ = false;
+    alive_->store(false);
     if (token_) {
         token_->cancel();
     }
@@ -337,10 +353,11 @@ void ClaudeCompanionBackend::refresh() {
 }
 
 void ClaudeCompanionBackend::resetConversation() {
+    // Historique uniquement utilisé sur le fil GUI. Le worker modifie sa propre copie :
+    // une réponse tardive ne peut pas repeupler l'historique d'un autre document.
+    ++generation_;
     cancel();
-    if (!running_) {
-        history_.clear();
-    }
+    history_.clear();
 }
 
 void ClaudeCompanionBackend::decide(bool) {
@@ -369,6 +386,8 @@ void ClaudeCompanionBackend::send(const QString& userText) {
     const std::string text = userText.toStdString();
     const std::string apiKey = *key;
     const std::string model = companion_settings::model().toStdString();
+    const auto generation = generation_.load();
+    auto history = history_;
     auto alive = alive_;
     auto token = token_;
     QPointer<ClaudeCompanionBackend> self(this);
@@ -378,8 +397,8 @@ void ClaudeCompanionBackend::send(const QString& userText) {
         log->record("request", "chars=" + std::to_string(text.size()) + " modele=" + model);
         log->record_content("user_message", text);
     }
-    QThreadPool::globalInstance()->start([=, this] {
-        RunObserver observer(this, log);
+    QThreadPool::globalInstance()->start([=, this, history = std::move(history)]() mutable {
+        RunObserver observer(this, log, alive, &generation_, generation);
         LiveToolHost host(service_, this);
         std::shared_ptr<agent::IAgentProvider> provider = factory_(apiKey, model);
         agent::RunnerOptions options;
@@ -392,7 +411,7 @@ void ClaudeCompanionBackend::send(const QString& userText) {
         agent::ToolPolicy policy(allowed, {"bash", "shell", "project_open", "project_save",
                                            "project_export", "project_new", "project_digitize"});
         agent::AgentRunner runner(*provider, host, policy, options);
-        const agent::RunOutcome outcome = runner.run(history_, text, observer, *token);
+        const agent::RunOutcome outcome = runner.run(history, text, observer, *token);
         if (log != nullptr) {
             log->record(
                 "finished",
@@ -402,7 +421,7 @@ void ClaudeCompanionBackend::send(const QString& userText) {
                     " jetons_out=" + std::to_string(outcome.usage.output_tokens) +
                     (outcome.error.code.empty() ? std::string{} : " code=" + outcome.error.code));
         }
-        if (!*alive) {
+        if (!alive->load() || generation_.load() != generation) {
             return;
         }
         QString message;
@@ -423,13 +442,16 @@ void ClaudeCompanionBackend::send(const QString& userText) {
         }
         QMetaObject::invokeMethod(
             self.data(),
-            [self, message] {
+            [self, message, generation, history = std::move(history)]() mutable {
                 if (self == nullptr) {
                     return;
                 }
                 self->running_ = false;
-                if (!message.isEmpty()) {
-                    emit self->failed(message);
+                if (self->generation_.load() == generation) {
+                    self->history_ = std::move(history);
+                    if (!message.isEmpty()) {
+                        emit self->failed(message);
+                    }
                 }
                 emit self->finished();
             },

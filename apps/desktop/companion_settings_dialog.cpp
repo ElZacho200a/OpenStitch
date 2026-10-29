@@ -23,12 +23,11 @@ CompanionSettingsDialog::CompanionSettingsDialog(agent::ISecretStore& secrets,
     auto* layout = new QVBoxLayout(this);
 
     auto* notice = new QLabel(
-        tr("Données : si vous activez Claude, vos messages et les résultats des outils "
-           "(statistiques "
-           "du projet, listes d'objets, aperçus de rendu) sont envoyés à api.anthropic.com avec "
-           "votre clé API. Rien n'est envoyé tant que vous n'écrivez pas de message. Un abonnement "
-           "Claude grand public n'est pas utilisable ici : il faut une clé API. Sans réseau ni "
-           "clé, OpenStitch fonctionne normalement."),
+        tr("Ces réglages concernent l'API Anthropic facultative. Le mode Claude Code dans "
+           "le dock utilise votre CLI authentifiée, sans clé API à configurer ici. "
+           "En mode API, vos messages, statistiques du projet et aperçus sont envoyés à "
+           "api.anthropic.com lorsque vous soumettez une demande. "
+           "OpenStitch fonctionne normalement sans fournisseur connecté."),
         this);
     notice->setObjectName(QStringLiteral("label_companionNotice"));
     notice->setWordWrap(true);
@@ -39,7 +38,7 @@ CompanionSettingsDialog::CompanionSettingsDialog(agent::ISecretStore& secrets,
         new QCheckBox(tr("Désactiver entièrement le compagnon (pont local et fournisseur)"), this);
     fullyOff_->setObjectName(QStringLiteral("check_companionOff"));
     fullyOff_->setChecked(companion_settings::fullyDisabled());
-    enableProvider_ = new QCheckBox(tr("Activer le fournisseur Claude (réseau requis)"), this);
+    enableProvider_ = new QCheckBox(tr("Activer l’API Anthropic (clé API requise)"), this);
     enableProvider_->setObjectName(QStringLiteral("check_companionProvider"));
     enableProvider_->setChecked(companion_settings::providerEnabled());
     model_ = new QLineEdit(companion_settings::model(), this);
@@ -72,7 +71,7 @@ CompanionSettingsDialog::CompanionSettingsDialog(agent::ISecretStore& secrets,
     diagnosticsContent_->setObjectName(QStringLiteral("check_companionDiagnosticsContent"));
     diagnosticsContent_->setChecked(companion_settings::diagnosticsContentConsent());
     auto* autoSemantic = new QCheckBox(
-        tr("Analyse sémantique automatique quand Claude est lancé sur un projet (envoie des "
+        tr("Analyse sémantique automatique (optionnelle, envoie des "
            "aperçus du projet au fournisseur)"),
         this);
     autoSemantic->setObjectName(QStringLiteral("check_companionAutoSemantic"));

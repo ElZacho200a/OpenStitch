@@ -24,7 +24,7 @@ void setFullyDisabled(bool off);
 [[nodiscard]] QString model();
 void setModel(const QString& model);
 // Analyse sémantique automatique au lancement de Claude sur un projet non vide (activée par
-// défaut).
+// défaut : désactivée pour éviter un envoi de rendus et un coût involontaires).
 [[nodiscard]] bool autoSemanticAnalysis();
 void setAutoSemanticAnalysis(bool on);
 [[nodiscard]] bool diagnosticsEnabled(); // journal de diagnostic (désactivé par défaut)
@@ -98,7 +98,8 @@ private:
     std::atomic<bool> running_{false};
     std::shared_ptr<agent::CancelToken> token_;
     std::vector<agent::Message> history_;
-    std::shared_ptr<bool> alive_;
+    std::shared_ptr<std::atomic<bool>> alive_;
+    std::atomic<std::uint64_t> generation_{0}; // invalide les réponses de l’ancien document
     agent::DiagnosticLog* log_{nullptr};
 };
 

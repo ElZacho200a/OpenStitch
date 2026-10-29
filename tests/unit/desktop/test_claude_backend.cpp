@@ -161,6 +161,7 @@ private slots:
     void targetPhraseWorksEndToEndFromTheDesktop();
     void claudeCodeProcessParsesStructuredEvents();
     void claudeCodeLaunchIsRestricted();
+    void resetDuringRequestDoesNotCarryHistoryAcrossDocuments();
     void claudeCodeStreamsAssistantTextWithoutRepeatingFinalResult();
     void claudeCodeErrorsCarryAnActionableReason();
     void launcherPreparesWorkspaceAndStartsTheUsersClaude();
@@ -323,6 +324,27 @@ void MainWindowTest::cancelStopsTheRequestAndTheDockStaysUsable() {
     QTRY_VERIFY_WITH_TIMEOUT(!w.companionDock()->busy(), 8000);
     QVERIFY(!transcriptOf(w.companionDock()).contains(QStringLiteral("jamais affiché")));
     QVERIFY(!w.undoAct_->isEnabled());
+}
+
+void MainWindowTest::resetDuringRequestDoesNotCarryHistoryAcrossDocuments() {
+    MainWindow w;
+    auto fixture = oneShape();
+    w.applyLoadedProject(std::move(fixture.project));
+    Rig rig(w);
+    rig.script->replies = {textReply("Ancien projet")};
+    rig.script->onCall = [] { QThread::msleep(150); };
+    rig.ask(w, QStringLiteral("ancien"));
+    QTRY_VERIFY_WITH_TIMEOUT(rig.backend->running(), 2000);
+    rig.backend->resetConversation();
+    QTRY_VERIFY_WITH_TIMEOUT(!rig.backend->running(), 8000);
+    rig.script->onCall = {};
+    rig.script->replies = {textReply("Nouveau projet")};
+    rig.ask(w, QStringLiteral("nouveau"));
+    QTRY_VERIFY_WITH_TIMEOUT(!rig.backend->running(), 8000);
+    QVERIFY(!rig.script->requests.empty());
+    const auto& messages = rig.script->requests.back().messages;
+    QCOMPARE(messages.size(), std::size_t{1});
+    QCOMPARE(messages.front().role, std::string("user"));
 }
 
 void MainWindowTest::disabledCompanionOffersNoProvider() {
