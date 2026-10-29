@@ -845,3 +845,19 @@ TEST_CASE("vector ops: knife misses shape and does not create a command",
     CHECK(project.vector_objects.size() == 1);
     CHECK(project.embroidery_objects.size() == 1);
 }
+
+TEST_CASE("vector ops: knife ignores a blind slit before reaching a hole",
+          "[vector_ops][regression]") {
+    document::Project project;
+    auto ring = rect(0, 0, 30'000, 30'000);
+    ring.holes.push_back(rect(10'000, 10'000, 20'000, 20'000).outer);
+    const ObjectId id = add_object(project, std::move(ring), true);
+    const auto originalPaths = project.findObject(id)->paths;
+
+    // Même forme que le pont valide, mais la coupe s'arrête avant le trou.
+    const auto cut = make_split_command(project, {id}, pt(15'000, -5'000), pt(15'000, 5'000));
+    CHECK_FALSE(cut.command);
+    CHECK(project.findObject(id)->paths == originalPaths);
+    CHECK(project.vector_objects.size() == 1);
+    CHECK(project.embroidery_objects.size() == 1);
+}
