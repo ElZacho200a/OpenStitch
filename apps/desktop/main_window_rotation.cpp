@@ -126,12 +126,12 @@ void MainWindow::addRotationHandles() {
                     if (moved == corner) {
                         return;
                     }
-                    const double sx =
-                        std::max(0.05, double((moved.x - anchor.x).value) /
-                                           double((corner.x - anchor.x).value));
-                    const double sy =
-                        std::max(0.05, double((moved.y - anchor.y).value) /
-                                           double((corner.y - anchor.y).value));
+                    const double dx = double((moved.x - anchor.x).value);
+                    const double dy = double((moved.y - anchor.y).value);
+                    const double originalDx = double((corner.x - anchor.x).value);
+                    const double originalDy = double((corner.y - anchor.y).value);
+                    const double sx = std::max(0.05, dx / originalDx);
+                    const double sy = std::max(0.05, dy / originalDy);
                     // Un refresh immédiat détruirait la poignée pendant son événement souris.
                     QTimer::singleShot(0, this, [this, ids, anchor, sx, sy, generation] {
                         if (generation != documentGeneration_ || selectedObjectIds() != ids) {
