@@ -326,9 +326,10 @@ TEST_CASE("live_preview zooms on proposed objects BEFORE approval and never edit
     const auto first = d.orange.front();
     const json operations =
         json::array({{{"op", "set_stitch_type"}, {"object", first}, {"type", "spiral_fill"}}});
-    const json focus_args{{"operations", operations},
-                          {"objects", json::array({first})},
-                          {"px_per_mm", 4.0}};
+    json focus_args = json::object();
+    focus_args["operations"] = operations;
+    focus_args["objects"] = json::array({first});
+    focus_args["px_per_mm"] = 4.0;
     const auto result = d.call("live_preview", focus_args);
     REQUIRE_FALSE(result["isError"].get<bool>());
     const json preview = Doc::text_of(result);
