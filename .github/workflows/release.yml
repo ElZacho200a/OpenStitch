@@ -78,6 +78,18 @@ jobs:
       - name: Test (Release)
         run: ctest --preset msvc-release
 
+      - name: Package and smoke-test Windows MCP
+        shell: pwsh
+        run: |
+          ./packaging/windows/package-mcp.ps1 -BinaryDir build/msvc/apps/mcp/Release -OutputDir dist/windows-mcp
+          $verify = Join-Path $env:RUNNER_TEMP "openstitch-mcp-release-smoke"
+          Expand-Archive -LiteralPath "dist/windows-mcp/openstitch-mcp-windows-x64.zip" -DestinationPath $verify -Force
+          $exe = Join-Path $verify "openstitch-mcp-windows-x64/openstitch-mcp.exe"
+          & $exe --version
+          if ($LASTEXITCODE -ne 0) { throw "MCP --version failed" }
+          & $exe --doctor
+          if ($LASTEXITCODE -ne 0) { throw "MCP --doctor failed" }
+
       - name: Determine version from tag
         id: version
         shell: pwsh
@@ -120,12 +132,14 @@ jobs:
             throw "Aucun installeur trouvé dans packaging\windows\dist\ -- ISCC.exe a-t-il réellement produit une sortie ?"
           }
           $tag = $env:RELEASE_TAG
+          $mcpZip = "dist/windows-mcp/openstitch-mcp-windows-x64.zip"
+          $mcpSha = "dist/windows-mcp/openstitch-mcp-windows-x64.zip.sha256"
           gh release view $tag --repo "${{ github.repository }}" *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag $installer.FullName --repo "${{ github.repository }}" --clobber
+            gh release upload $tag $installer.FullName $mcpZip $mcpSha --repo "${{ github.repository }}" --clobber
           } else {
             $prerelease = if ($tag -match '-') { "--prerelease" } else { "" }
-            gh release create $tag $installer.FullName `
+            gh release create $tag $installer.FullName $mcpZip $mcpSha `
               --repo "${{ github.repository }}" `
               --title $tag `
               --generate-notes `
