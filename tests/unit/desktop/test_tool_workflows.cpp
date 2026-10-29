@@ -968,8 +968,7 @@ private slots:
         auto fx = editFixture(EditMode::DirectionGuide);
         auto& shape = fx.project.vector_objects.front().paths.front();
         shape.outer = geometry::rectangle_path(um(-12'000, -12'000), um(12'000, 12'000));
-        shape.holes.push_back(
-            geometry::rectangle_path(um(-4'000, -4'000), um(4'000, 4'000)));
+        shape.holes.push_back(geometry::rectangle_path(um(-4'000, -4'000), um(4'000, 4'000)));
         const auto originalPaths = fx.project.vector_objects.front().paths;
         window.applyLoadedProject(fx.project);
         expose(window);
