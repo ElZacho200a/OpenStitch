@@ -799,3 +799,50 @@ TEST_CASE("vector ops: fill gap ignores hidden shapes and refuses open areas") {
     CHECK(leaking.command == nullptr);
     CHECK(leaking.error.find("fermée") != std::string::npos);
 }
+
+TEST_CASE("vector ops: knife cuts one bridge without splitting the object",
+          "[vector_ops][regression]") {
+    document::Project project;
+    auto ring = rect(0, 0, 30'000, 30'000);
+    ring.holes.push_back(rect(10'000, 10'000, 20'000, 20'000).outer);
+    const ObjectId id = add_object(project, std::move(ring), true);
+    const ObjectId embroideryId = project.embroidery_objects.front().id;
+    const auto originalPaths = project.findObject(id)->paths;
+
+    auto result = make_split_command(project, {id}, pt(15'000, -5'000), pt(15'000, 15'000));
+    REQUIRE(result.command);
+    CHECK(result.resulting_objects == 1);
+    UndoStack stack;
+    stack.execute(std::move(result.command), project);
+
+    REQUIRE(project.vector_objects.size() == 1);
+    CHECK(project.vector_objects[0].id == id);
+    REQUIRE(project.vector_objects[0].paths.size() == 1);
+    CHECK(project.vector_objects[0].paths[0].holes.empty());
+    CHECK(std::abs(area_mm2(project.vector_objects[0]) - 799.8) < 0.01);
+    REQUIRE(project.embroidery_objects.size() == 1);
+    CHECK(project.embroidery_objects[0].id == embroideryId);
+    CHECK(project.embroidery_objects[0].source_vector == id);
+
+    REQUIRE(stack.undo(project));
+    REQUIRE(project.vector_objects.size() == 1);
+    CHECK(project.findObject(id)->paths == originalPaths);
+    REQUIRE(stack.redo(project));
+    CHECK(project.vector_objects.size() == 1);
+    CHECK(project.findObject(id)->paths[0].holes.empty());
+    CHECK(std::abs(area_mm2(*project.findObject(id)) - 799.8) < 0.01);
+}
+
+TEST_CASE("vector ops: knife misses shape and does not create a command",
+          "[vector_ops][regression]") {
+    document::Project project;
+    const ObjectId id = add_object(project, rect(0, 0, 10'000, 10'000), true);
+    const auto originalPaths = project.findObject(id)->paths;
+
+    const auto result =
+        make_split_command(project, {id}, pt(20'000, -5'000), pt(20'000, 15'000));
+    CHECK_FALSE(result.command);
+    CHECK(project.findObject(id)->paths == originalPaths);
+    CHECK(project.vector_objects.size() == 1);
+    CHECK(project.embroidery_objects.size() == 1);
+}
