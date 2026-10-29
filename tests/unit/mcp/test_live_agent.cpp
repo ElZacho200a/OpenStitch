@@ -326,9 +326,10 @@ TEST_CASE("live_preview zooms on proposed objects BEFORE approval and never edit
     const auto first = d.orange.front();
     const json operations =
         json::array({{{"op", "set_stitch_type"}, {"object", first}, {"type", "spiral_fill"}}});
-    const auto result = d.call("live_preview", {{"operations", operations},
-                                                 {"objects", {first}},
-                                                 {"px_per_mm", 4.0}});
+    const json focus_args{{"operations", operations},
+                          {"objects", json::array({first})},
+                          {"px_per_mm", 4.0}};
+    const auto result = d.call("live_preview", focus_args);
     REQUIRE_FALSE(result["isError"].get<bool>());
     const json preview = Doc::text_of(result);
     CHECK(preview["report"]["ok"] == true);
@@ -342,12 +343,12 @@ TEST_CASE("live_preview zooms on proposed objects BEFORE approval and never edit
     CHECK(d.project.findEmbroidery(ObjectId{first})->is_tatami());
     CHECK(d.gate.approvals == 0);
     CHECK_FALSE(d.stack.canUndo());
-    const auto crop = d.call("live_preview", {{"operations", operations},
-                                               {"crop", {0.0, 0.0, 0.4, 1.0}}});
+    const json crop_args{{"operations", operations}, {"crop", {0.0, 0.0, 0.4, 1.0}}};
+    const auto crop = d.call("live_preview", crop_args);
     REQUIRE_FALSE(crop["isError"].get<bool>());
     CHECK(Doc::text_of(crop)["render_crop"] == json::array({0.0, 0.0, 0.4, 1.0}));
-    CHECK(d.call("live_preview", {{"operations", operations},
-                                   {"objects", {999999}}})["isError"] == true);
+    const json invalid_args{{"operations", operations}, {"objects", json::array({999999})}};
+    CHECK(d.call("live_preview", invalid_args)["isError"] == true);
 }
 
 TEST_CASE("live_ask_user returns the choice made in the panel and nothing else",
