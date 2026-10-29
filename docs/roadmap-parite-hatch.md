@@ -1667,7 +1667,12 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
   `PathSet` du même objet (broderies et id préservés, undo/redo). Si elle
   produit plusieurs composants, le découpage en objets distincts reste inchangé.
   Une coupe hors de la forme conserve aussi les tangentes Bézier d'origine.
-  Non-régression : `test_cut`, `test_vector_ops` et QTest `test_tool_workflows`.
+  Suivi CI (2026-10-29) : l'ancien test « split ignores a segment that
+  stops inside the shape » a révélé qu'une simple entaille borgne était
+  acceptée à tort. Correction : une composante unique n'est mise à jour
+  que si un trou existant s'ouvre (pont effectivement sectionné).
+  Non-régression : `test_cut`, `test_vector_ops` (pont et entaille borgne,
+  même dans une forme trouée) et QTest `test_tool_workflows`.
   Validation de la suite complète attendue en CI.
 - État OpenStitch : ligne de coupe **satin** uniquement (`DrawSatinCutLine`).
 - À faire : couteau général sur toute forme vectorielle (`geometry/cut.hpp`
