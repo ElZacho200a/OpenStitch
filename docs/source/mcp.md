@@ -52,6 +52,16 @@ vérifie SHA-256, les dépendances et l'initialisation MCP, puis installe
 de port réseau. Les archives `openstitch-mcp-linux-x86_64.tar.gz` et
 `.sha256` sont publiées dans la release après réussite des tests CI.
 
+## Installation Windows x64 (release vérifiée)
+
+Téléchargez `openstitch-mcp-windows-x64.zip` et le fichier
+`openstitch-mcp-windows-x64.zip.sha256` depuis la
+[release `latest`](https://github.com/ElZacho200a/OpenStitch/releases/tag/latest).
+Décompressez l'archive, conservez les DLL à côté de `openstitch-mcp.exe`,
+puis testez `openstitch-mcp.exe --version` et `openstitch-mcp.exe --doctor`
+dans PowerShell. Le ZIP est également joint aux releases versionnées `v*`.
+L'installeur Studio inclut déjà son serveur MCP pour le pont IA local.
+
 ## Installation côté client
 
 ```json
