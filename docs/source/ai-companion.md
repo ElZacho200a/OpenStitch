@@ -93,6 +93,20 @@ qui reprennent les schémas MCP réels : `project_render` accepte `crop` et
 Les annotations `set_semantic` n'altèrent aucun point et ne justifient
 pas à elles seules un rendu avant/après.
 
+## Aperçu zoomé sur copie et spirale native
+
+Pour contrôler visuellement une modification **avant** de l'appliquer, le compagnon
+peut appeler `live_preview` avec `operations` et `objects:[id,...]` (zoom
+automatique, 1 à 20 objets), ou avec `crop:[x0,y0,x1,y1]` et
+`px_per_mm`. Le projet reste intact : seul `project_apply` peut réellement
+changer les objets, après approbation. L'existence de mesures ou d'une image
+dans `live_preview` n'est **pas** une confirmation d'application.
+
+L'opération `set_stitch_type` accepte aussi `spiral_fill`. Le paramètre
+`center_mm:[x,y]` de `set_params` définit un centre *commun en coordonnées du
+projet* pour plusieurs objets. Un vrai remplissage en spirale est différent
+d'un remplissage directionnel guidé par une polyligne en spirale.
+
 ## Mémoire sémantique dans le projet OSP
 
 Les annotations de chaque objet (`role`, `family`, `confidence`) sont persistées

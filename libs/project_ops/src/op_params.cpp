@@ -1314,11 +1314,12 @@ OpSpec op_set_connector() {
 OpSpec op_set_stitch_type() {
     OpSpec s;
     s.name = "set_stitch_type";
-    s.summary = "Change le type de points d'un objet : contour (running), tatami ou directionnel. "
-                "Le satin passe par l'opération auto_satin.";
+    s.summary = "Change le type de points : running, tatami, directional ou spiral_fill "
+                "(spirale d'Archimède centrable par set_params.center_mm). "
+                "Le satin passe par auto_satin.";
     s.args = {arg("object", "object_id", "objet de broderie", true),
-              arg("type", "string", "running | tatami | directional", true, {},
-                  "running | tatami | directional")};
+              arg("type", "string", "running | tatami | directional | spiral_fill", true, {},
+                  "running | tatami | directional | spiral_fill")};
     s.example = R"({"op":"set_stitch_type","object":2,"type":"running"})";
     s.apply = guarded([](OpContext& ctx) {
         const auto& emb = need_emb(ctx, "object");
@@ -1328,9 +1329,11 @@ OpSpec op_set_stitch_type() {
             refuse(code::kRefused, "le type « " + type + " » n'est pas disponible ici",
                    "utilisez l'opération auto_satin");
         }
-        if (type != "running" && type != "tatami" && type != "directional") {
+        if (type != "running" && type != "tatami" && type != "directional" &&
+            type != "spiral_fill") {
             refuse(code::kOutOfRange, "type de points « " + type + " » inconnu",
-                   "valeurs valides : running, tatami, directional (satin : opération auto_satin)");
+                   "valeurs valides : running, tatami, directional, spiral_fill "
+                   "(satin : opération auto_satin)");
         }
         const std::string from = stitch_type_name(emb.params);
         if (from == type) {
@@ -1348,6 +1351,20 @@ OpSpec op_set_stitch_type() {
         } else if (type == "tatami") {
             params = document::TatamiParams{};
             label = "Type : tatami";
+        } else if (type == "spiral_fill") {
+            const auto* source = ctx.project.findObject(emb.source_vector);
+            if (source == nullptr || source->paths.empty()) {
+                refuse(code::kRefused, "aucun contour source pour le remplissage en spirale");
+            }
+            document::SpiralFillParams spiral;
+            if (const auto* tatami = std::get_if<document::TatamiParams>(&emb.params)) {
+                spiral.row_spacing = tatami->row_spacing;
+                spiral.stitch_length = tatami->stitch_length;
+                spiral.inset = tatami->inset;
+                spiral.hidden_underpath = tatami->hidden_underpath;
+            }
+            params = spiral;
+            label = "Type : remplissage en spirale";
         } else {
             const auto* source = ctx.project.findObject(emb.source_vector);
             if (source == nullptr || source->paths.empty()) {

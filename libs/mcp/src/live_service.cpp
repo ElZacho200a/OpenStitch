@@ -65,9 +65,14 @@ const std::vector<LiveExtraTool> kExtraTools = {
     {"live_preview",
      "Aperçu AVANT/APRÈS d'un lot d'opérations sur une copie : rapport du lot, points, sauts, "
      "coupes, constats qualité, risque textile (avant, après, écart) et rendu de l'état après. Le "
-     "projet ouvert ne change pas. À appeler avant project_apply.",
+     "projet ouvert ne change pas. Zoom AVANT application avec objects=[id,...] (cadrage "
+     "automatique sur 1 à 20 objets), ou crop=[x0,y0,x1,y1] (coordonnées normalisées). "
+     "px_per_mm règle la résolution, sans modifier le projet.",
      R"({"type":"object","properties":{"operations":{"type":"array","items":{"type":"object",)"
-     R"("properties":{"op":{"type":"string"}},"required":["op"]}}},"required":["operations"]})"},
+     R"("properties":{"op":{"type":"string"}},"required":["op"]}},"objects":{"type":"array",)"
+     R"("items":{"type":"integer","minimum":1},"minItems":1,"maxItems":20},)"
+     R"("crop":{"type":"array","items":{"type":"number"},"minItems":4,"maxItems":4},)"
+     R"("px_per_mm":{"type":"number"}},"required":["operations"]})"},
     {"live_ask_user",
      "Pose une question à l'utilisateur DANS LE PANNEAU du compagnon quand la demande est ambiguë "
      "(plusieurs teintes, sélection vide…). 2 à 8 options, chacune avec ses identifiants d'objets. "

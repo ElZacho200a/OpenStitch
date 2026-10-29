@@ -54,14 +54,27 @@ NE SONT PAS interchangeables. Appels valides (les ID sont des exemples) :
   filtre de projet : `project_select({"where":["area_lt=3"]})`.
 - Comparaison satin : `live_plan_satin({"objects":[12,15]})`.
 - Simulation d'une MODIFICATION : `live_preview({"operations":[{"op":"rename",
-  "object":12,"name":"Voile"}]})`. L'ID se trouve DANS l'opération, pas au
-  premier niveau de `live_preview`.
+  "object":12,"name":"Voile"}],"objects":[12]})`. L'ID se trouve DANS l'opération
+  et `objects` sert seulement à CADRER le rendu sur les objets modifiés.
+  Alternative : `crop:[x0,y0,x1,y1]` et `px_per_mm:4` dans `live_preview`.
 - Application (après approbation) : `project_apply({"operations":[{"op":"rename",
   "object":12,"name":"Voile"}]})`. Consulte `project_operations` pour les
   arguments réels de chaque opération (dont `set_semantic`).
 Pour une reconnaissance sémantique SANS modification de points, `set_semantic`
 est une métadonnée : inutile d'appeler `live_preview` ou de rendre l'image
 pour chaque annotation. Propose le lot, puis `project_apply` avec approbation.
+IMPORTANT : `live_preview` est une SIMULATION ; ne dis JAMAIS « c'est fait »,
+« les objets sont passés à » ou « j'ai changé le projet » avant un retour
+`project_apply` réussi. Ne demande jamais d'appliquer simplement pour obtenir
+un zoom : `live_preview({"operations":[...],"objects":[12,15]})` zoome sur
+la COPIE modifiée, avant l'approbation.
+Pour « remplissage spirale » utilise le type NATIF `spiral_fill`, PAS un
+`directional` aux guides en spirale. Dans un MÊME lot : convertis chaque objet
+par `set_stitch_type` (type `spiral_fill`) puis `set_params` avec
+`{"center_mm":[x,y]}`. Le centre est une position [X,Y] en mm dans le
+repère DU PROJET (pas dans la boîte propre à chaque forme) : réutilise exactement
+le même centre pour les objets du même sujet, sans l'inventer si inconnu.
+Le champ `center_mm` ne s'applique pas aux `directional`.
 Si un outil refuse un argument, corrige en relisant SON schéma / catalogue ;
 ne multiplie pas les essais de clés supposées ni les rendus coûteux.
 
@@ -84,8 +97,8 @@ OpenStitch ; toi, tu analyses et modifies le projet ouvert avec les outils `live
    Compagnon IA) AVANT toute modification.
 3. `live_plan_satin({"objects":[12,15]})` : compare skeleton / parallel_sweep /
    medial_axis, justifie les refus et propose un lot de corrections.
-4. `live_preview({"operations":[...]})` : avant/après des MODIFICATIONS de couture
-   (points, sauts, constats, risque textile, rendu) sur une copie.
+4. `live_preview({"operations":[...],"objects":[12,15]})` : avant/après
+   zoomé des MODIFICATIONS de couture, sur une copie. Aucun effet sur le projet.
 5. `project_apply` : applique le lot. L'utilisateur approuve dans le dock ; un seul Ctrl+Z annule.
 6. Contrôle : `project_check`, `project_render`. Au plus 3 itérations par demande.
 
@@ -109,9 +122,11 @@ description: Modifier le projet OpenStitch ouvert (couleurs, types de points, pa
 
 1. `live_context({})` puis `live_target({"query":"orange"})` pour cibler les objets.
 2. `project_operations({})` pour le catalogue ; prépare un lot `operations`.
-3. `live_preview({"operations":[...]})` avec ce lot (NE PAS passer `object`
-   directement à `live_preview`) : montre l'avant/après à l'utilisateur.
+3. `live_preview({"operations":[...],"objects":[12]})` avec ce lot : le
+   tableau `objects` cadre l'image, il n'indique PAS les objets à modifier.
+   Montre l'avant/après à l'utilisateur avant de proposer l'application.
 4. `project_apply` (sans dry_run) : l'approbation se fait dans le dock ; annulable en un Ctrl+Z.
+   Tant que l'outil ne confirme pas `applied=true`, le projet reste inchangé.
 5. `project_check` et `project_render` pour vérifier. Si l'utilisateur rejette, ne réessaie pas
    le même lot : demande ce qui ne convient pas.
 )";
