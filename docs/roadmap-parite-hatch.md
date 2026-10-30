@@ -2509,7 +2509,8 @@ Aujourd'hui : statistiques (points, sauts, coupes, couleurs, dimensions,
 fil), analyse par règles (points courts/longs, sauts longs, trop de points,
 hors cadre, déplacement sans coupe), résumé avant export DST.
 
-### HP-PROD-001 — Fiche de production imprimable [P0] — ◐ Partiel
+### HP-PROD-001 — Fiche de production imprimable [P0] — ☑ Fait (2026-10-30)
+- Livré (2026-10-30) : vérification dans le code — la référence de fil (marque, code, nom) est lue du `thread_key` des blocs (`color_blocks.cpp`, HP-THR-004 fait) et rendue en JSON/HTML/PDF et dans la liste des consommations ; test `test_production_sheet.cpp` « référence de fil issue du thread_key ». Les « Reste » ci-dessous (fil, client, PDF CLI) sont donc périmés.
 - Livré (2026-10-25) : `production_to_pdf` sans Qt et `openstitch-cli production --output x.pdf --client`. Reste : références de fil par bloc (HP-THR-004).
 - Livré (2026-10-21, PR) : champ Client distinct des notes dans le dialogue, HTML/PDF et JSON (clé additive), avec tests Catch2/QTest.
 - Hatch : Production worksheet : aperçu du design, dimensions, nombre de
@@ -4542,3 +4543,4 @@ ouvrant le lot (§0.1).
 | 2026-10-27 | Claude | **AdaptivePullCompensation niveau 3, lot A** (HP-ENG-001.b) : `PullField`, champ de déplacement du tissu anisotrope avec confiance, cœur seul non branché. Coefficients empiriques, non validés sur machine. |
 | 2026-10-27 | Claude | **Niveau 3, lot B** (HP-ENG-001.b) : `PullMode::Predicted` branché (passe finale d'`effective_sequence`, `.osp`, CLI/MCP, inspecteur). Confiance plafonnée tant que non calibré. |
 | 2026-10-27 | Claude | **Niveau 3, prévisualisation du tirage** (HP-ENG-001.b) : carte de déplacement prédit et aperçu des points décalés par bloc de couleur, menu Affichage, CLI `render --simulate-pull/--pull-map`. Estimation non calibrée. |
+| 2026-10-30 | Claude (roadmap) | **HP-PROD-001 ◐ → ☑** : le « Reste » (références de fil par bloc) était déjà comblé depuis HP-THR-004 ; vérifié dans le code et les tests, aucune modification de code. HP-FMT-002..005 n'attendent plus que la validation humaine (visualiseurs tiers, machine). roadmap : pas d'autre entrée concernée. |
