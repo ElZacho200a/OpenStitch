@@ -1661,6 +1661,19 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
 
 ### HP-VEC-004 — Couteau : couper une forme en deux [P1] — ☑ Fait (2026-10-13, constaté sur `main`, `eee6188`)
 - Livré : outil **Couteau** (K) sur toute forme vectorielle (`commands::make_split_command`, `geometry/cut.hpp`) ; chaque morceau garde son type de broderie (remplissages clonés). Vérifié par vrais gestes souris (`sidebarKnifeRealGesture`, PR #25).
+- Correctif (2026-10-29) : le couteau ignorait une coupe de pont quand une seconde
+  jonction gardait la forme connexe (condition erronée `cut->size() >= 2`).
+  Désormais une coupe avec une seule composante restante met à jour le
+  `PathSet` du même objet (broderies et id préservés, undo/redo). Si elle
+  produit plusieurs composants, le découpage en objets distincts reste inchangé.
+  Une coupe hors de la forme conserve aussi les tangentes Bézier d'origine.
+  Suivi CI (2026-10-29) : l'ancien test « split ignores a segment that
+  stops inside the shape » a révélé qu'une simple entaille borgne était
+  acceptée à tort. Correction : une composante unique n'est mise à jour
+  que si un trou existant s'ouvre (pont effectivement sectionné).
+  Non-régression : `test_cut`, `test_vector_ops` (pont et entaille borgne,
+  même dans une forme trouée) et QTest `test_tool_workflows`.
+  Validation de la suite complète attendue en CI.
 - État OpenStitch : ligne de coupe **satin** uniquement (`DrawSatinCutLine`).
 - À faire : couteau général sur toute forme vectorielle (`geometry/cut.hpp`
   existe), les deux morceaux gardent le type de broderie.
@@ -1807,10 +1820,10 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
 - Reste : poignées sur le canevas et entrée dans la palette d'outils ; intégration à la bibliothèque HP-LIB-002.
 
 ### HP-OBJ-001 — Sélection multiple [P0] — ◐ Partiel (2026-10-13)
-- Livré (2026-10-25) : cadre commun en tirets de la sélection multiple (sans zone de contact). Reste : poignées de redimensionnement (HP-OBJ-005), classe `selection_model`.
+- Livré (2026-10-25) : cadre commun en tirets de la sélection multiple. En PR (2026-10-29) : quatre poignées de redimensionnement du groupe, sans découper les formes. Reste : classe `selection_model`.
 - Constaté sur `main` (`1ab521a` et suivants) : Ctrl/Maj+clic, rectangle de sélection (fenêtre ou croisement), sélection multi-lignes depuis la liste Document, inspecteur de groupe ; tests `rectangleLeftToRightIsWindow…`, `shiftRectangleAddsToTheSelection`, `documentListMultiSelectionDrivesRegionSelection`. Les critères d'acceptation sont remplis.
 - Livré (PR #27, fusionnée le 2026-10-13 (`296ff34`)) : **Sélectionner tous les objets** (Ctrl+Maj+A ; Ctrl+A reste aux régions) et **Sélectionner les objets de même couleur** (`main_window_objects.cpp`).
-- Reste : boîte englobante commune avec poignées (avec HP-OBJ-005) ; modèle de sélection encore dans `MainWindow` (pas de classe `selection_model`).
+- Reste : modèle de sélection encore dans `MainWindow` (pas de classe `selection_model`) ; poignées communes en PR (2026-10-29).
 - À faire : Ctrl/Maj+clic, rectangle de sélection (glisser dans le vide),
   Ctrl+A, sélection depuis la liste Document (multi-lignes), sélection de
   tous les objets d'une couleur ; boîte englobante commune avec poignées ;
@@ -1857,8 +1870,8 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
   = géométrie identique (au µm près, arrondi documenté).
 
 ### HP-OBJ-005 — Redimensionnement complet [P1] — ◐ Partiel
-- Livré (2026-10-26) : `AffineTransform::scale_xy` (angle des rangées, rails, guides suivent) et Édition › « Redimensionner la sélection… » (mm ou %, multi-sélection, un pas d'annulation). Reste : poignées de côté, Maj proportionnel, Alt depuis le centre ; les poignées de coin utilisent encore `ScaleVectorObjectCommand`.
-- État OpenStitch : poignées de coin (coin opposé fixe).
+- Livré (2026-10-26) : `AffineTransform::scale_xy` (angle des rangées, rails, guides suivent) et Édition › « Redimensionner la sélection… » (mm ou %, multi-sélection, un pas d'annulation). En PR (2026-10-29) : quatre poignées d'angle sur le cadre commun, Maj proportionnel, aperçu en mm, groupe redimensionné en une seule commande annulable avec dépendances de broderie. Reste : poignées latérales, Alt depuis le centre et migration des poignées mono-objet de `ScaleVectorObjectCommand` vers `make_transform_command` ; les retouches manuelles des points ne sont pas transformées.
+- État OpenStitch : poignées de coin (coin opposé fixe), y compris pour la sélection multiple dans la PR du 2026-10-29.
 - À faire : poignées de côté (une dimension), Maj = proportionnel, Alt =
   depuis le centre, saisie numérique en mm et en %, redimensionnement d'une
   sélection multiple ; les paramètres dépendants suivent (guides, rails).
@@ -3770,6 +3783,7 @@ ci-dessus doit les respecter :
 | Date | Qui | Changement |
 |---|---|---|
 | 2026-10-29 | ChatGPT (HP-SEQ-006) | Optimisation des coupes des régions par score de coupe prévu et amélioration locale 2-opt/Or-opt des grandes sous-couches ; options desktop d'export préexistantes ; tests ajoutés, gains réels encore à mesurer. |
+| 2026-10-29 | ChatGPT (HP-OBJ-001/005) | **Redimensionnement collectif sur le canevas** : quatre poignées sur la boîte commune, Maj conserve les proportions, aperçu des dimensions ; une transformation et une annulation pour les formes et leurs paramètres de points. Tests QTest : cadre, glisser et restauration du groupe. En PR, CI à vérifier ; restent les poignées latérales et le redimensionnement autour du centre (Alt). |
 | 2026-10-28 | Claude (desktop) | **Zones de détail, lot 2 : vectorisation** : `VectorizeOptions::detail_mask` / `detail_tolerance_factor` (régions de détail vectorisées plus finement), relayé par `AutoOptions`, `DigitizeSource` et le parcours Workflow du bureau ; tests Catch2. Manque : couture (type de point, densité) par zone. Aucune entrée de parité Hatch concernée. |
 | 2026-10-28 | Claude (desktop) | **Zones de détail, lot 3 : couture** : `AutoOptions::detail_min_fill_area_mm2` (1 mm²) abaisse le seuil de remplissage des régions de détail (petites formes en tatami plutôt qu'en contour) ; `merge_small_regions` gagne `detail_mask`/`detail_min_px` pour ne pas les absorber. Tests `test_autodigitize`. Manque : densité/angle par zone, masque dans le CLI/MCP. |
 | 2026-10-27 | ChatGPT (HP-UX-048 lot 1) | Comparaison miniatures avant/après dans Segmenter : source et carte de régions, aucun second calcul, tests Qt et effets documentaires inchangés. Suite simplification/vectorisation encore à faire. |

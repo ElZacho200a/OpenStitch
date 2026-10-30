@@ -108,6 +108,57 @@ void MainWindow::addRotationHandles() {
         scene_->addItem(frame);
         baseItems_.append(frame);
         commonBox_ = frame;
+
+        // Quatre coins de la boîte commune : toutes les formes sélectionnées restent
+        // à leur place relative. Une transformation = un seul pas d'annulation.
+        const Vec2um corners[4] = {box->min, Vec2um{box->max.x, box->min.y}, box->max,
+                                   Vec2um{box->min.x, box->max.y}};
+        const auto generation = documentGeneration_;
+        for (std::size_t i = 0; i < 4; ++i) {
+            const Vec2um corner = corners[i];
+            const Vec2um anchor = corners[(i + 2) % 4];
+            const QPointF anchorScene = toSceneMm(anchor);
+            auto* handle = new ResizeHandleItem(
+                toSceneMm(corner),
+                [this, ids, corner, anchor, generation](QPointF releasedSceneMm) {
+                    hideResizePreview();
+                    const Vec2um moved = toModel(releasedSceneMm);
+                    if (moved == corner) {
+                        return;
+                    }
+                    const double dx = double((moved.x - anchor.x).value);
+                    const double dy = double((moved.y - anchor.y).value);
+                    const double originalDx = double((corner.x - anchor.x).value);
+                    const double originalDy = double((corner.y - anchor.y).value);
+                    const double sx = std::max(0.05, dx / originalDx);
+                    const double sy = std::max(0.05, dy / originalDy);
+                    // Un refresh immédiat détruirait la poignée pendant son événement souris.
+                    QTimer::singleShot(0, this, [this, ids, anchor, sx, sy, generation] {
+                        if (generation != documentGeneration_ || selectedObjectIds() != ids) {
+                            return;
+                        }
+                        if (sx == 1.0 && sy == 1.0) {
+                            refreshImage();
+                            return;
+                        }
+                        runTransform(ids, commands::AffineTransform::scale_xy(anchor, sx, sy),
+                                     tr("Redimensionner la sélection"),
+                                     tr("%1 formes redimensionnées ensemble.").arg(ids.size()));
+                    });
+                },
+                anchorScene, /*hasAnchor=*/true,
+                i % 2 == 0 ? Qt::SizeBDiagCursor : Qt::SizeFDiagCursor,
+                [this, anchorScene](QPointF movedSceneMm) {
+                    showResizePreview(anchorScene, movedSceneMm);
+                });
+            handle->setCancelled([this] { hideResizePreview(); });
+            handle->setToolTip(
+                tr("Redimensionner les %1 formes ensemble — Maj : conserver les proportions, "
+                   "Échap : annuler")
+                    .arg(ids.size()));
+            scene_->addItem(handle);
+            baseItems_.append(handle);
+        }
     }
     const Vec2um pivot = rotationPivotFor(ids, *box);
     const QPointF pivotScene = toSceneMm(pivot);
