@@ -39,10 +39,12 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 |---|---|---|---|---|
 | 2026-10-26 | Claude (IA PR-02) | **Contrat de backend IA générique** `openstitch.ai.backend/1` : worker Python `ai-worker/` (adaptateur SAM 2.1 sans modifier `sam-worker/`, deux faux backends), client sans Qt dans `libs/ai_segmentation` (protocole, session avec annulation/délais, transport processus Windows+POSIX, registre de découverte avec repli classique), `openstitch-cli ai backends`, outil MCP `ai_backends` en lecture seule, 5 nouveaux codes d'erreur, tests Catch2 + Python. Le desktop garde son client SAM v1 (migration prévue). |
 | P0 | 12 | 28 | 5 | 45 |
-| P1 | 10 | 68 | 74 | 152 |
-| P2 | 3 | 34 | 66 | 103 |
-| P3 | 0 | 3 | 13 | 16 |
-| **Total** | **25** | **133** | **158** | **316** |
+| P1 | 10 | 68 | 87 | 165 |
+| P2 | 3 | 34 | 92 | 129 |
+| P3 | 0 | 3 | 25 | 28 |
+| **Total** | **25** | **133** | **209** | **367** |
+
+Analyse multi-agents du 2026-10-30 : **+51 entrées à faire** (13 P1, 26 P2, 12 P3) regroupées en §27bis avec un plan de livraison par lots A à F ; aucun statut existant n'a été revérifié ni modifié.
 
 Complément UX/design du 2026-10-21 : **+5 entrées à faire** (HP-UX-046 à 049 et HP-QA-010 : deux P1, trois P2), et HP-UX-015 enrichi. Aucun statut existant n'a été revérifié, aucune fonctionnalité déclarée livrée.
 
@@ -168,6 +170,10 @@ bibliothèques.
 ### Vague 4 — Finitions
 
 Les P3.
+
+### Chantier transverse — Améliorations de l'analyse du 2026-10-30
+
+Les 51 entrées de §27bis (garde-fous et déterminisme, mémoire/temps, numérisation d'images réelles, ergonomie, points, formats/distribution) se planifient par lots A à F (§27bis.1), intercalés dans les vagues selon les fichiers touchés ; le lot A (petits, sûrs) est un bon choix quand une vague est bloquée par une preuve humaine.
 
 ### Chantier transverse — Ergonomie (audit du 2026-10-18)
 
@@ -3771,10 +3777,356 @@ ci-dessus doit les respecter :
 
 ---
 
+## 27bis. Plan d'amélioration issu de l'analyse multi-agents du 2026-10-30
+
+Six agents d'exploration (haiku) ont relu le code par domaine (IHM, pipeline image,
+génération de points, document/commandes/rendu, formats/lettrage, CLI/MCP/CI) et
+proposé des améliorations **absentes de ce fichier** (les idées déjà suivies ont été
+écartées : sanitizers → HP-QA-003, empreinte du cache → HP-PERF-002, corpus `.osp` →
+HP-FMT-021, bench périodique → HP-PERF-008, mini-carte, grille, historique, etc.).
+Les entrées ci-dessous gardent la numérotation de leur préfixe mais sont regroupées ici
+pour être planifiées ensemble ; toutes sont `☐ À faire`.
+
+> **Réserve.** Les rapports viennent d'agents rapides, sans compilation ni exécution :
+> les numéros de ligne sont approximatifs et les entrées marquées **(à vérifier)**
+> reposent sur une hypothèse non confirmée. **Avant d'ouvrir une entrée, relire le code
+> cité** et corriger l'entrée si l'hypothèse est fausse. Toute perf se mesure
+> (`openstitch-performance`) avant d'être annoncée ; aucune ne doit changer les octets
+> de sortie hors mention contraire.
+
+### 27bis.1 Plan de livraison
+
+| Lot | Thème | Entrées | Pourquoi d'abord |
+|---|---|---|---|
+| **A** | Garde-fous, déterminisme et CI (petits, sûrs) | QA-011, QA-012, QA-013, QA-017, QA-018, QA-020, QA-014 | Sécurisent tout le reste ; la plupart tiennent en un lot court |
+| **B** | Mémoire et temps sur gros projets | PERF-010, 011, 012, 013, 015, 016, 022 (après HP-PERF-007) | Le séquençage est O(n²), l'annulation copie le projet entier |
+| **C** | Qualité de numérisation des images réelles | AUTO-014 à 019, PERF-014 (après le corpus de HP-AUTO-001) | Photos, logos flous, dégradés : où l'auto-numérisation déçoit |
+| **D** | Ergonomie desktop | UX-050 à 057, TXT-016 | Petits gains visibles, QTest headless |
+| **E** | Points et réglages | STI-027 à 032, PROD-009 | Après le lot A (déterminisme des tris) |
+| **F** | Formats, fils, distribution, doc | FMT-023 à 026, THR-013, DIST-008, HELP-005, PERF-017 à 021 | Indépendants, bons lots de remplissage |
+
+Ordre par défaut en mode piloté : A → B → D → C → E → F ; un lot ne passe pas devant
+une entrée P0 ouverte (§0.4).
+
+### 27bis.2 Robustesse, déterminisme et CI (QA)
+
+### HP-QA-011 — Départage total des tris et test de déterminisme multi-fils [P1] — ☐ À faire
+- État OpenStitch : `tatami.cpp` trie `(row, lo)` sans clé de départage (≈ l.574) ; plusieurs `std::sort` de `satin_guides.cpp` et `directional_fill.cpp` à relire **(à vérifier : égalités possibles ?)**. `parallel_for` suit le nombre de fils matériel ; aucun test ne compare 1 fil et N fils.
+- Hatch : sans objet (garantie propre à OpenStitch, voir §27).
+- À faire : auditer chaque tri de `stitch_generation`/`auto_satin`/`optimization` ; clé finale = indice stable ou `std::stable_sort` ; test CTest qui génère le même projet avec `OPENSTITCH_THREADS=1` et `=8` et compare les octets du DST (corpus de `tests/golden`).
+- Modules : `libs/stitch_generation`, `libs/optimization`, `libs/core` (tests).
+- Dépend de : —
+- Acceptation : octets identiques à 1 et 8 fils ; un test échoue si un nouveau tri n'a pas de clé totale (garde CTest sur le motif `std::sort(` hors liste annotée).
+
+### HP-QA-012 — Graine RNG OpenCV non globale [P1] — ☐ À faire
+- État OpenStitch : `cv::setRNGSeed(12345)` dans `segmentation.cpp` (≈ l.186) et `ops.cpp` (≈ l.200) ; état possiblement partagé entre aperçu et tâche de fond **(à vérifier : `cv::theRNG` est-il par fil dans la version vcpkg ?)**.
+- À faire : si l'état est partagé, passer un `cv::RNG` local à `kmeans` ; sinon documenter et tester la concurrence.
+- Modules : `libs/segmentation`, `libs/image`.
+- Acceptation : deux `segment()` concurrents (fils distincts) donnent chacun le résultat de l'appel isolé, testé.
+
+### HP-QA-013 — Entrées hostiles : taille des images et entrées ZIP [P1] — ☐ À faire
+- État OpenStitch : `load.cpp` lit tout le fichier puis `cv::imdecode` sans plafond de pixels ; `static_cast<int>(bytes.size())` sans garde (≈ l.44-51). `project_io/archive.cpp` alloue chaque entrée d'après `uncompressed_size` déclarée, sans plafond de taille ni de nombre d'entrées ; une entrée en double garde silencieusement la première (≈ l.70-96).
+- À faire : plafonds (pixels, octets, nombre d'entrées, taille décompressée) avec code `E_*` et `hint` ; refus explicite des doublons ZIP ; tests avec fichiers forgés (bombe de décompression, dimensions géantes).
+- Modules : `libs/image`, `libs/project_io`.
+- Dépend de : —
+- Acceptation : un `.osp` annonçant plusieurs Go et une image de dimensions démesurées sont refusés sans allocation notable ; `.osp` à deux `project.json` refusé avec message clair.
+
+### HP-QA-014 — Fuzzing des entrées JSON (lots `apply` et trames MCP) [P1] — ☐ À faire
+- État OpenStitch : fuzz `.osp` en CI (`ci.yml`) et décodeurs (`test_fuzz_decoders.cpp`) ; les opérations JSON de `project_ops` et les trames JSON-RPC du MCP n'ont qu'un cas « garbage » (`test_server.cpp`).
+- À faire : mutations déterministes (graine fixe) de lots d'opérations et de trames ; contrat : seulement des erreurs codées, jamais de crash ni de blocage.
+- Modules : `libs/project_ops`, `libs/mcp`, `scripts/qa`.
+- Dépend de : — (complète HP-QA-003).
+- Acceptation : N mutations en CTest sans crash ni timeout ; chaque refus porte un `E_*`.
+
+### HP-QA-017 — Épingler clang-format 18 dans la CI [P1] — ☐ À faire
+- État OpenStitch : le job `format` fait `apt-get install clang-format` sans version (≈ `ci.yml:184`), contraire à la règle du dépôt (18 exactement).
+- À faire : installer `clang-format-18` ou échouer si `--version` n'est pas 18.x.
+- Modules : `.github/workflows/ci.yml`.
+- Acceptation : le job échoue explicitement avec une autre version.
+
+### HP-QA-018 — Contrat CLI : codes de sortie centralisés et schémas JSON publiés [P1] — ☐ À faire
+- État OpenStitch : codes 0/1/2/3 définis à trois endroits (`apps/cli/main.cpp:127-129`, `project_cmd.hpp:29`, `project_cmd.cpp:44-45`), absents de `docs/source/cli-project.md` ; une vingtaine de sorties `--json` versionnées `openstitch.*/1` sans fichier de schéma.
+- À faire : un seul en-tête de codes + table dans la doc ; schémas JSON dans `docs/schemas/` ; test qui valide chaque sortie `--json` de `tests/cli` contre son schéma.
+- Modules : `apps/cli`, `tests/cli`, `docs/`.
+- Acceptation : changer un champ de sortie sans toucher au schéma fait échouer CTest.
+
+### HP-QA-019 — Version et provenance lisibles par machine [P3] — ☐ À faire
+- État OpenStitch : `--version` simple (`apps/cli/main.cpp`), rien sur le MCP.
+- À faire : `--version --json` (version, commit, type de build, version du protocole MCP) pour CLI et `openstitch-mcp`.
+- Modules : `apps/cli`, `apps/mcp`, `libs/core`.
+- Acceptation : test de forme du JSON.
+
+### HP-QA-020 — Serveur MCP : outils manquants et schéma de sortie [P1] — ☐ À faire
+- État OpenStitch : 32 outils (`libs/mcp/src/tools.cpp`) ; `project diff` et `project validate` n'existent qu'en CLI ; `project_export.format` est une chaîne libre ; pas d'`outputSchema`.
+- À faire : outils `project_diff` et `project_validate` (mêmes JSON que la CLI) ; `format` en énumération (DST, PES, JEF, EXP, SVG) avec refus `E_*` ; `outputSchema` pour les outils stables.
+- Modules : `libs/mcp`, `libs/project_ops`.
+- Dépend de : HP-QA-018 (schémas).
+- Acceptation : tests `tests/unit/mcp` ; un format inconnu est refusé avec un code stable.
+
+### HP-QA-015 — Test de propriété sur l'annulation [P2] — ☐ À faire
+- État OpenStitch : `test_undo_stack.cpp`, `test_command_merge.cpp`, `test_composite_adversarial.cpp` couvrent des cas écrits à la main.
+- À faire : séquences aléatoires de commandes (graine fixe), annuler tout puis rétablir tout rend l'état d'origine, `isClean` exact, fusions de rafale incluses.
+- Modules : `tests/unit/commands`.
+- Acceptation : 1000 séquences sans écart.
+
+### HP-QA-016 — Golden d'octets par codec machine [P2] — ☐ À faire
+- État OpenStitch : test de déterminisme des codecs ; pas de fichier de référence relu/réécrit par format.
+- À faire : un fichier de référence par codec (PES, JEF, VP3, EXP) relu puis réécrit à l'identique (sans jamais réécrire la référence par un test).
+- Dépend de : HP-FMT-021 (corpus de fixtures).
+- Modules : `tests/unit/formats`.
+- Acceptation : round-trip octet pour octet ; écart = test rouge.
+
+### 27bis.3 Performance et mémoire (PERF)
+
+### HP-PERF-010 — Pile d'annulation bornée et commandes delta [P1] — ☐ À faire
+- État OpenStitch : `ReplaceProjectCommand` garde deux copies complètes du `Project` (avant/après) ; `UndoStack` n'a aucune profondeur maximale (`replace_project_command.hpp:23-30`, `undo_stack.cpp`).
+- À faire : (a) profondeur maximale réglable avec compactage du plus ancien pas ; (b) commandes delta pour les éditions d'objet (stocker l'objet modifié, pas le projet) ; mesure de mémoire d'abord (HP-PERF-007).
+- Modules : `libs/commands`, `libs/document`.
+- Dépend de : HP-PERF-007.
+- Acceptation : une édition d'objet sur un projet de 2000 objets alloue un delta ; mémoire de la pile bornée ; undo/redo exacts (test de rejeu et HP-QA-015).
+
+### HP-PERF-011 — Séquençage : index spatial et placement par blocs [P1] — ☐ À faire
+- État OpenStitch : `optimization/order.cpp` — plus proche voisin en O(n²) (≈ l.45-53) et placement libre en O(n²) (≈ l.130-170).
+- À faire : grille/kd-tree pour le plus proche voisin ; variante par blocs au-delà d'un seuil ; départage déterministe identique (HP-QA-011).
+- Modules : `libs/optimization`.
+- Acceptation : 1000 objets sous un seuil mesuré (`tests/bench`) ; sortie identique octet pour octet à l'ancienne sur le corpus.
+
+### HP-PERF-012 — Rendu raster : segments répartis par bande [P1] — ☐ À faire
+- État OpenStitch : chaque bande de `stitch_render/raster.cpp` parcourt tous les segments (≈ l.538-548).
+- À faire : répartir les segments par bande une fois (tri stable), rejet rapide conservé.
+- Modules : `libs/stitch_render`.
+- Acceptation : 100 000 brins rendus avec un coût proportionnel au nombre de segments ; pixels identiques aux goldens.
+
+### HP-PERF-013 — Simulation : temps et points écoulés en O(1) [P2] — ☐ À faire
+- État OpenStitch : boucle linéaire par pas (`simulation.cpp` ≈ l.55-70).
+- À faire : table préfixe construite une fois ; scrubbing direct.
+- Modules : `libs/stitch_render`.
+- Acceptation : valeurs identiques aux tests existants, glissement fluide sur 100 000 points.
+
+### HP-PERF-014 — Cache de quantification pour l'aperçu de segmentation [P2] — ☐ À faire
+- État OpenStitch : conversion Lab et k-means relancés à chaque `segment()` (≈ `segmentation.cpp:163-189`), y compris pour un simple changement de `min_region_px`.
+- À faire : cache à clé exacte (image, `max_colors`, graine) des centres/étiquettes ; invalidation stricte.
+- Modules : `libs/segmentation`, `apps/desktop` (aperçu).
+- Acceptation : modifier un réglage aval ne relance pas le k-means (compteur de test) ; résultats identiques.
+
+### HP-PERF-015 — Lissage de segmentation sans une carte par classe [P1] — ☐ À faire
+- État OpenStitch : `segmentation.cpp` (≈ l.242-268) alloue simultanément k cartes de densité `float` (et leur version « détail »).
+- À faire : accumulation par fenêtre/ligne pour borner le pic à ≈ 2 cartes.
+- Modules : `libs/segmentation`.
+- Acceptation : pic mémoire de `segment()` indépendant de k (≤ 64) ; sorties identiques aux tests existants.
+
+### HP-PERF-016 — Lecture `.osp` paresseuse [P2] — ☐ À faire
+- État OpenStitch : `archive.cpp` copie toutes les entrées en mémoire à l'ouverture (image source comprise).
+- À faire : lire `project.json` d'abord, entrées volumineuses (image, masques) à la demande.
+- Dépend de : HP-QA-013.
+- Modules : `libs/project_io`.
+- Acceptation : ouvrir un `.osp` à image de 50 Mo réduit le pic mémoire mesuré d'au moins la taille de l'image ; round-trip identique.
+
+### HP-PERF-017 — Stipple : k-NN et grille en parallèle [P3] — ☐ À faire
+- État OpenStitch : aucun `parallel_for` dans `libs/stipple` (`tour.cpp` ≈ l.72/374, `stipple.cpp` ≈ l.106-117).
+- À faire : k-NN et construction de grille via `parallel_for` (chaque tâche écrit sa case).
+- Acceptation : sortie identique à la version séquentielle ; gain mesuré.
+
+### HP-PERF-018 — Caches de fils et de lettrage [P2] — ☐ À faire
+- État OpenStitch : valeurs CIELab recalculées et tri complet à chaque requête (`color_distance.cpp` ≈ l.170-183, `thread_stock.cpp` ≈ l.408-414) ; `FT_Get_Char_Index` et crénage à chaque paire (`font.cpp` ≈ l.267-270).
+- À faire : cache Lab par nuancier et sélection des N meilleurs sans tri complet ; cache glyphe/crénage par police.
+- Modules : `libs/thread_palette`, `libs/lettering`.
+- Acceptation : résultats identiques ; mesures avant/après sur 500 fils et un texte de 200 lettres.
+
+### HP-PERF-019 — `digitize-batch` : `--jobs` et `--resume` [P2] — ☐ À faire
+- État OpenStitch : boucle séquentielle (`apps/cli/project_cmd.cpp` ≈ l.562-599).
+- À faire : exécution parallèle par image (une tâche, un projet) ; reprise en sautant les sorties dont l'entrée n'a pas changé (hash).
+- Modules : `apps/cli`, `libs/project_ops`.
+- Acceptation : `--jobs N` produit des `.osp` identiques octet pour octet à l'exécution séquentielle.
+
+### HP-PERF-020 — MCP : progression et annulation des opérations longues [P1] — ☐ À faire
+- État OpenStitch : aucune notification de progression ; opérations (`project_digitize`…) bloquantes.
+- À faire : jeton de progression, notifications, prise en charge de `notifications/cancelled` via `core::TaskContext`.
+- Dépend de : HP-PERF-001.
+- Modules : `libs/mcp`, `libs/core`.
+- Acceptation : un `project_digitize` émet au moins une progression et s'arrête sur annulation, sans état partiel.
+
+### HP-PERF-021 — Temps de build : ccache/sccache en CI [P2] — ☐ À faire
+- État OpenStitch : seul le cache binaire vcpkg est utilisé ; aucun cache de compilation.
+- À faire : sccache (ou ccache) dans `windows-msvc` et `linux-core`, durées à froid/à chaud dans le résumé du job.
+- Modules : `CMakePresets.json`, `.github/workflows`.
+- Acceptation : durée de build à chaud mesurée sur deux runs.
+
+### HP-PERF-022 — Cache de séquence : cohérence du cache de squelette et métriques [P2] — ☐ À faire
+- État OpenStitch : cache du squelette `thread_local` (`auto_satin.cpp` ≈ l.130) alors que `generate.cpp` évoque un cache partagé **(à vérifier)** ; compteurs hits/misses exposés (`chunk_cache_stats`) mais absents du rapport CLI.
+- À faire : trancher thread-local ou partagé (mesure), afficher hits/misses dans le rapport de régénération.
+- Dépend de : HP-PERF-002.
+- Acceptation : taux de hits mesuré sur un projet multi-objets.
+
+### 27bis.4 Numérisation d'images réelles (AUTO)
+
+### HP-AUTO-014 — Orientation EXIF des photos [P1] — ☐ À faire
+- État OpenStitch : `load.cpp` lit en `IMREAD_UNCHANGED` ; l'orientation EXIF est possiblement ignorée **(à vérifier sur fixture)**.
+- À faire : appliquer l'orientation (rotation/miroir) au chargement, dimensions cohérentes avec l'import.
+- Modules : `libs/image`.
+- Acceptation : une photo JPEG d'orientation 6 est chargée dans le bon sens (fixture de test).
+
+### HP-AUTO-015 — Pixels de transition des bords flous [P2] — ☐ À faire
+- État OpenStitch : affectation au centre le plus proche, aucun traitement des pixels mixtes (≈ `segmentation.cpp:202-231`).
+- À faire : détecter les pixels de transition et les rattacher à la région dominante (ou à la plus proche en ΔE) avant l'extraction des composantes.
+- Modules : `libs/segmentation`, `libs/autodigitize`.
+- Dépend de : corpus de HP-AUTO-001.
+- Acceptation : sur un logo aux bords flous, aucune région-liseré de 1 à 2 px ne subsiste ; pas de perte de surface au-delà de 0,3 mm.
+
+### HP-AUTO-016 — Alpha progressif au lieu du seuil dur [P2] — ☐ À faire
+- État OpenStitch : alpha < 128 = fond (`segmentation.hpp` ≈ l.100).
+- À faire : seuil réglable et traitement de la frange semi-transparente (érosion/rattachement) pour éviter trous et bandes vides.
+- Acceptation : un PNG à bord semi-transparent ne produit ni trou ni bande vide.
+
+### HP-AUTO-017 — Détection des zones de dégradé avant quantification [P2] — ☐ À faire
+- État OpenStitch : le bruit des dégradés n'est traité que par lissage (`segmentation.hpp` ≈ l.79-86).
+- À faire : repérer les zones à faible variance Lab continue et les quantifier en peu de teintes (ou les orienter vers HP-STI-010).
+- Acceptation : un dégradé ne produit pas plus de N régions voisines (N fixé au test) ; les aplats nets sont intacts.
+
+### HP-AUTO-018 — Débruitage automatique des photos [P2] — ☐ À faire
+- État OpenStitch : filtre bilatéral présent (`ops.hpp`) mais jamais déclenché par l'auto-numérisation.
+- À faire : estimation du bruit ; bilatéral/aplat appliqué si dépassement d'un seuil, rapporté dans le rapport de numérisation.
+- Acceptation : sur le corpus, moins de régions < 16 px pour une photo bruitée ; images propres inchangées.
+
+### HP-AUTO-019 — Qualité de la quantification : essais k-means et 16 bits [P3] — ☐ À faire
+- État OpenStitch : 3 essais k-means, compacité ignorée ; conversion 16→8 bits linéaire sans tramage (`load.cpp` ≈ l.62-64).
+- À faire : choisir le meilleur essai par compacité (budget borné) ; conversion 16 bits avec plage dynamique conservée.
+- Acceptation : compacité moyenne −5 % sur 10 images sans multiplier le temps par plus de 2 ; test de dégradé 16 bits.
+
+### 27bis.5 Ergonomie desktop (UX) et lettrage
+
+### HP-UX-050 — Navigation clavier entre objets (Tab / Maj+Tab) [P2] — ☐ À faire
+- État OpenStitch : aucun `Key_Tab` dans `apps/desktop` (`canvas_view.cpp`).
+- À faire : Tab/Maj+Tab sélectionnent l'objet suivant/précédent dans l'ordre du document ; annonce pour les lecteurs d'écran.
+- Acceptation : test QTest headless.
+
+### HP-UX-051 — Avertissements avec « ne plus afficher » [P3] — ☐ À faire
+- État OpenStitch : `QMessageBox::warning` répétitifs sans case (`main_window.cpp` ≈ l.5816-5871).
+- À faire : case « ne plus afficher », réinitialisable dans les préférences.
+- Acceptation : un avertissement coché ne revient plus (test QSettings).
+
+### HP-UX-052 — Dépôt de plusieurs fichiers et indication de dépôt [P3] — ☐ À faire
+- État OpenStitch : `dropEvent` n'ouvre que le premier fichier (`main_window_ux.cpp` ≈ l.116-140) ; l'état vide ne cite pas le glisser-déposer.
+- À faire : demander quoi faire des autres fichiers (importer tous / choisir) ; mention « ou glissez un fichier ici ».
+- Acceptation : test QTest sur trois fichiers déposés ; texte de l'état vide testé.
+
+### HP-UX-053 — Saisies numériques fusionnées en un pas d'annulation [P2] — ☐ À faire
+- État OpenStitch : `mergeKey` vide par défaut ; la fusion de rafale (600 ms) ne couvre que certaines commandes.
+- À faire : clé de fusion par (objet, champ) pour X/Y/angle/largeur ; une saisie complète = un pas.
+- Modules : `libs/commands`, `apps/desktop`.
+- Acceptation : 10 frappes dans un champ = 1 pas d'annulation (test de fusion).
+
+### HP-UX-054 — Panneau Historique : vérifier le statut de HP-OBJ-021 et le retour d'état au clic [P2] — ☐ À faire
+- État OpenStitch : un agent a vu un panneau Historique câblé (`main_window_editing.cpp` ≈ l.655-680) alors que HP-OBJ-021 reste `☐` **(à vérifier)**.
+- À faire : confirmer ce qui existe, corriger le statut de HP-OBJ-021, câbler « clic sur une ligne = retour à cet état » si absent.
+- Acceptation : test QTest offscreen ; statut roadmap corrigé.
+
+### HP-UX-055 — Signaler la résolution abaissée de l'aperçu [P3] — ☐ À faire
+- État OpenStitch : `plan_view` borné par `max_pixels` sans avertir (`raster.hpp` ≈ l.37-39).
+- À faire : bandeau discret quand la résolution est réduite, avec action « plein écran ».
+- Acceptation : test QTest.
+
+### HP-UX-056 — Palette sûre pour le daltonisme [P3] — ☐ À faire
+- État OpenStitch : seule mention d'accessibilité visuelle dans `app_theme.hpp` ; pas de palette dédiée.
+- À faire : mode de couleurs de régions et d'aperçu distinguable en deutéranopie/protanopie (données inchangées).
+- Dépend de : HP-I18N-004.
+- Acceptation : contraste ΔE mesuré entre les 12 premières teintes.
+
+### HP-TXT-016 — Avertissement sur les caractères absents de la police [P2] — ☐ À faire
+- État OpenStitch : `has_glyph` existe (`font.cpp` ≈ l.230) mais n'alimente aucun message **(à vérifier : HP-TXT-012 couvre-t-il le repli ?)**.
+- À faire : lister les codes sans glyphe dans le dialogue texte avant validation.
+- Acceptation : test QTest.
+
+### 27bis.6 Points, réglages et analyse (STI / PROD)
+
+### HP-STI-027 — Point de couchage (couching / laid-in) [P2] — ☐ À faire
+- État OpenStitch : aucun type de ce genre (aucun enum, aucune entrée).
+- Hatch : « Couching » (fil posé fixé par de petits points).
+- À faire : objet de couchage (fil de contour posé + points de fixation espacés), paramètres d'espacement, `.osp`, inspecteur.
+- Modules : `libs/stitch_generation`, `libs/document`, `apps/desktop` (suivre `openstitch-stitch-param`).
+- Acceptation : octets DST identiques à chaque génération ; test Catch2 et QTest.
+
+### HP-STI-028 — Point bouclé (terry) [P3] — ☐ À faire
+- À faire : boucles régulières de hauteur réglable (séquence déterministe).
+- Acceptation : test Catch2 ; refus ou avertissement sur machine non adaptée.
+
+### HP-STI-029 — Nœud français [P3] — ☐ À faire
+- À faire : nœud de N tours à une position donnée, longueur de fil bornée.
+- Acceptation : test Catch2.
+
+### HP-STI-030 — Sous-couche générique pour tous les remplissages [P2] — ☐ À faire
+- État OpenStitch : plusieurs entrées marquent « Reste : sous-couche » (motif, contour, radial, spirale, crosshatch ; §5).
+- À faire : option de sous-couche unique exposée à ces remplissages (via `.osp`, inspecteur), générée comme passe d'`Underlay`.
+- Acceptation : une sous-couche par remplissage, testée, y compris compatibilité d'ouverture d'anciens `.osp`.
+
+### HP-STI-031 — Avertissements de génération unifiés [P2] — ☐ À faire
+- État OpenStitch : `GenerationWarning` à 5 codes propres au point droit (`running_stitch.hpp`), satin à part.
+- À faire : codes stables et emplacement pour tatami/satin/contour/remplissages, relayés par le contrôle qualité.
+- Modules : `libs/stitch_generation`, `libs/stitch_analysis`.
+- Acceptation : chaque générateur émet un code stable testé.
+
+### HP-STI-032 — Réglages finement exposés (angle de coin, jitter tatami) [P3] — ☐ À faire
+- État OpenStitch : `corner_threshold` fixe à ≈ 35° pour le point droit ; décalage `stagger` entier pour le tatami (recoupe HP-ENG-006.b).
+- À faire : exposer l'angle de coin par objet (défaut inchangé) ; jitter déterministe de longueur de point.
+- Acceptation : réglage sérialisé ; deux exports ⇒ mêmes octets.
+
+### HP-PROD-009 — Quasi-doublons et micro-sauts : analyse et correction [P2] — ☐ À faire
+- État OpenStitch : le journal cite 414 points < 0,1 mm sans catégorie de contrôle ; `FixKind` n'a pas de suppression de doublons.
+- À faire : catégorie d'analyse dédiée ; correction « fusionner les points quasi-doublons » en `ICommand` annulable.
+- Modules : `libs/stitch_analysis`, `libs/commands`.
+- Acceptation : séquence effective inchangée hors ces points ; corpus de test.
+
+### 27bis.7 Formats, fils, distribution et documentation
+
+### HP-FMT-023 — Import DST tronqué en mode récupération [P2] — ☐ À faire
+- État OpenStitch : un DST sans marqueur final `00 00 F3` est rejeté (`dst.cpp` ≈ l.254-257).
+- À faire : option de récupération (CLI/dialogue) qui lit les points valides avec avertissement ; refus par défaut conservé.
+- Acceptation : un DST tronqué fournit ses points + avertissement.
+
+### HP-FMT-024 — Version minimale de lecture dans l'en-tête `.osp` [P2] — ☐ À faire
+- État OpenStitch : seul `schemaVersion` protège (`project_io.cpp` ≈ l.284-299).
+- À faire : champ « version minimale de lecture » : un fichier n'utilisant que des champs optionnels nouveaux reste lisible par la version N.
+- Dépend de : HP-FMT-021.
+- Acceptation : tests de lecture montante/descendante.
+
+### HP-FMT-025 — Exports : nom DST multi-octets et coordonnées hors plage [P3] — ☐ À faire
+- État OpenStitch : `substr(0,16)` d'octets dans `dst.cpp` ≈ l.200 ; plages VP3 (`vp3.cpp` ≈ l.12-13) **(à vérifier : troncage silencieux ?)**.
+- À faire : couper à une frontière de caractère ; avertir avant tout troncage de coordonnées.
+- Acceptation : nom accentué de 16 octets valide ; hors plage ⇒ avertissement.
+
+### HP-FMT-026 — Commande `openstitch-cli format check` [P2] — ☐ À faire
+- État OpenStitch : décodage unifié `decode_ex` dans le registre, pas de commande de contrôle d'un fichier machine **(à vérifier : recoupement avec `stats`/`info`)**.
+- À faire : JSON (points, couleurs, étendue, avertissements) pour tout fichier machine.
+- Acceptation : test CLI JSON sur chaque format.
+
+### HP-THR-013 — Import de nuanciers Adobe ACO / ASE [P3] — ☐ À faire
+- État OpenStitch : import CSV/hex (`chart_import.hpp`) ; HP-THR-007 ne cite que `.thr/.rgb/.edr/.gpl`.
+- Acceptation : un `.ase` de N couleurs nommées donne un `ThreadChart` de N fils (fichier fixé).
+
+### HP-DIST-008 — Zip portable de la CLI Windows [P2] — ☐ À faire
+- État OpenStitch : l'installeur Inno n'embarque que `openstitch-mcp.exe` (`installer.iss` ≈ l.86) ; artefact CLI Linux seulement.
+- À faire : `openstitch-cli-windows-x64.zip` + `.sha256`, testé comme le zip MCP.
+- Acceptation : l'artefact est produit et exécuté en CI.
+
+### HP-HELP-005 — Référence CLI/MCP générée et guide utilisateur à jour [P2] — ☐ À faire
+- État OpenStitch : `user-guide.md` ne mentionne ni le MCP ni la CLI `project` ; la référence est écrite à la main.
+- À faire : page générée depuis `project commands --json` et la table des outils MCP, comparée en CI ; section « automatisation » dans le guide.
+- Acceptation : la CI échoue si la page générée diverge.
+
+### 27bis.8 Récapitulatif et choses à ne pas oublier
+
+- **Entrées ajoutées : 51** (voir le tableau d'état). Aucune n'est livrée ; aucun statut existant n'est modifié.
+- Complètent des entrées existantes sans en créer : HP-PERF-008 (étendre le bench à 100 000 points / 1 000 objets avec alerte à +20 %), HP-QA-003 (fuzz guidé par couverture nocturne ASan/UBSan sur décodeurs, `.osp`, lettrage), HP-FMT-021 (une migration testée par version v1…v8), HP-PERF-002 (empreinte 64 bits en pré-filtre du cache).
+- Exclues volontairement : tout ce qui relève de l'IA/SAM (hors priorité, voir `HP-UX-040`).
+- Piste à instruire plus tard : BusyIndicator n'est utilisé que dans trois fichiers du desktop alors que génération et export sont longs (relève de HP-PERF-001, à traiter dans cette entrée).
+
+---
+
 ## 28. Journal des mises à jour de ce fichier
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-30 | Claude (analyse multi-agents) | **Analyse complète des fonctionnalités et plan d'amélioration** : six agents haiku (IHM, pipeline image, génération de points, document/commandes/rendu, formats/lettrage, CLI/MCP/CI) ; **+51 entrées** HP-QA-011 à 020, HP-PERF-010 à 022, HP-AUTO-014 à 019, HP-UX-050 à 056, HP-TXT-016, HP-STI-027 à 032, HP-PROD-009, HP-FMT-023 à 026, HP-THR-013, HP-DIST-008, HP-HELP-005 (§27bis, lots A à F). Entrées non vérifiées à l'exécution (marquées « à vérifier »). Aucun code modifié ; HP-OBJ-021 à recontrôler (HP-UX-054). |
 | 2026-10-29 | ChatGPT (HP-OBJ-001/005) | **Redimensionnement collectif sur le canevas** : quatre poignées sur la boîte commune, Maj conserve les proportions, aperçu des dimensions ; une transformation et une annulation pour les formes et leurs paramètres de points. Tests QTest : cadre, glisser et restauration du groupe. En PR, CI à vérifier ; restent les poignées latérales et le redimensionnement autour du centre (Alt). |
 | 2026-10-28 | Claude (desktop) | **Zones de détail, lot 2 : vectorisation** : `VectorizeOptions::detail_mask` / `detail_tolerance_factor` (régions de détail vectorisées plus finement), relayé par `AutoOptions`, `DigitizeSource` et le parcours Workflow du bureau ; tests Catch2. Manque : couture (type de point, densité) par zone. Aucune entrée de parité Hatch concernée. |
 | 2026-10-28 | Claude (desktop) | **Zones de détail, lot 3 : couture** : `AutoOptions::detail_min_fill_area_mm2` (1 mm²) abaisse le seuil de remplissage des régions de détail (petites formes en tatami plutôt qu'en contour) ; `merge_small_regions` gagne `detail_mask`/`detail_min_px` pour ne pas les absorber. Tests `test_autodigitize`. Manque : densité/angle par zone, masque dans le CLI/MCP. |
