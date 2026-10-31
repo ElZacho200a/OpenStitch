@@ -4203,9 +4203,10 @@ ouvrant le lot (§0.1).
 - À faire : `LoadInfo.warnings` (masque ignoré, migrations appliquées, incohérences) affichés à l'ouverture ; refus ou alerte si segmentation et image divergent. [`libs/project_io`, `apps/desktop`]
 - Acceptation : `.osp` forgé (segmentation ≠ image) refusé ou signalé.
 
-### HP-FILE-014 — Profil de numérisation pour la CLI (`--settings`) [P2] — ☐ À faire
+### HP-FILE-014 — Profil de numérisation pour la CLI (`--settings`) [P2] — ☑ Livré (CLI)
 - État : `digitize`/`digitize-batch` n'acceptent que des options unitaires ; recoupe HP-UX-030 côté bureau.
-- À faire : `--settings profil.json` ; le lot et le rapport citent le profil. [`apps/cli`, `libs/project_ops`]
+- Livré : `--settings profil.json` sur `digitize`, `project digitize`, `digitize-batch` et le balayage (profil JSON → options équivalentes avant parse, `settings_profile.cpp` ; clés inconnues refusées avec suggestion et liste, bornes de la CLI, option explicite prioritaire) ; rapport (`settings.profile`) et lot (`settings_profile`) citent le profil ; octets identiques (test `cli_settings_profile`, Catch2 `[settings_profile]`).
+- Reste : lecture du même profil côté bureau (HP-UX-030).
 - Acceptation : mêmes octets que les options équivalentes.
 
 ### HP-PERF-032 — Sauvegarde automatique hors fil d'interface [P1] — ☐ À faire
