@@ -1228,38 +1228,6 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
         }
     });
 
-    // HP-ENG-011 : ne pas coudre sous les remplissages posés après (tatami / directionnel).
-    if (object.is_tatami() || object.is_directional()) {
-        auto* knockoutCheck = new QCheckBox(tr("Retirer les points cachés"), body_);
-        knockoutCheck->setObjectName(QStringLiteral("check_knockout"));
-        knockoutCheck->setChecked(object.knockout);
-        knockoutCheck->setToolTip(
-            tr("Ne coud pas la partie de ce remplissage cachée par un tatami ou un remplissage "
-               "posé après lui (moins de points, moins d'épaisseur). La marge garde un "
-               "recouvrement sous le bord de l'objet du dessus."));
-        auto* knockoutMargin = new QDoubleSpinBox(body_);
-        knockoutMargin->setObjectName(QStringLiteral("spin_knockoutMargin"));
-        knockoutMargin->setRange(0.0, 5.0);
-        knockoutMargin->setSingleStep(0.1);
-        knockoutMargin->setDecimals(2);
-        knockoutMargin->setSuffix(tr(" mm"));
-        knockoutMargin->setValue(object.knockout_margin.value / 1000.0);
-        knockoutMargin->setEnabled(object.knockout);
-        knockoutCheck_ = knockoutCheck;
-        knockoutMargin_ = knockoutMargin;
-        scoped()->addRow(knockoutCheck);
-        scoped()->addRow(tr("Recouvrement :"), knockoutMargin);
-        const auto emitKnockout = [this, id] {
-            if (!building_ && knockoutCheck_ != nullptr && knockoutMargin_ != nullptr) {
-                knockoutMargin_->setEnabled(knockoutCheck_->isChecked());
-                emit knockoutEdited(id, knockoutCheck_->isChecked(), knockoutMargin_->value());
-            }
-        };
-        connect(knockoutCheck, &QCheckBox::toggled, this, emitKnockout);
-        knockoutMargin->setKeyboardTracking(false); // un seul signal par saisie validée
-        connect(knockoutMargin, &QDoubleSpinBox::valueChanged, this, emitKnockout);
-    }
-
     building_ = true;
     std::visit(
         [&](const auto& p) {
@@ -2603,6 +2571,34 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
         },
         object.params);
     building_ = false;
+
+    // HP-ENG-011 : ne pas coudre sous les remplissages posés après (tatami / directionnel).
+    if (object.is_tatami() || object.is_directional()) {
+        auto* knockoutCheck = new QCheckBox(tr("Retirer les points cachés"), body_);
+        knockoutCheck->setObjectName(QStringLiteral("check_knockout"));
+        knockoutCheck->setChecked(object.knockout);
+        knockoutCheck->setToolTip(
+            tr("Ne coud pas la partie de ce remplissage cachée par un tatami ou un remplissage "
+               "posé après lui (moins de points, moins d'épaisseur). La marge garde un "
+               "recouvrement sous le bord de l'objet du dessus."));
+        auto* knockoutMargin =
+            mmSpin(object.knockout_margin.value / 1000.0, 5.0, 0.0,
+                   tr("Recouvrement conservé sous le bord de l'objet du dessus."));
+        knockoutMargin->setObjectName(QStringLiteral("spin_knockoutMargin"));
+        knockoutMargin->setEnabled(object.knockout);
+        knockoutCheck_ = knockoutCheck;
+        knockoutMargin_ = knockoutMargin;
+        scoped()->addRow(knockoutCheck);
+        scoped()->addRow(tr("Recouvrement :"), knockoutMargin);
+        const auto emitKnockout = [this, id] {
+            if (!building_ && knockoutCheck_ != nullptr && knockoutMargin_ != nullptr) {
+                knockoutMargin_->setEnabled(knockoutCheck_->isChecked());
+                emit knockoutEdited(id, knockoutCheck_->isChecked(), knockoutMargin_->value());
+            }
+        };
+        connect(knockoutCheck, &QCheckBox::toggled, this, emitKnockout);
+        connect(knockoutMargin, &QDoubleSpinBox::valueChanged, this, emitKnockout);
+    }
 
     auto* holder = new QWidget(body_);
     holder->setLayout(form);
