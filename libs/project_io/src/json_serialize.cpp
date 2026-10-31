@@ -297,6 +297,9 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.corner_mode != document::SatinCorner::None) {
                     j["cornerMode"] = static_cast<int>(p.corner_mode);
                 }
+                if (p.corner_threshold != document::SatinParams{}.corner_threshold) {
+                    j["cornerThreshold"] = p.corner_threshold.radians;
+                }
                 if (p.border) {
                     j["border"] = {{"width", p.border->width.value},
                                    {"side", static_cast<int>(p.border->side)},
@@ -429,6 +432,9 @@ json params_to_json(const document::StitchParams& params) {
                 }
                 if (p.corner_mode != document::SatinCorner::None) {
                     j["cornerMode"] = static_cast<int>(p.corner_mode);
+                }
+                if (p.corner_threshold != document::AutoSatinParams{}.corner_threshold) {
+                    j["cornerThreshold"] = p.corner_threshold.radians;
                 }
                 // Méthode : par nom, seulement si elle n'est pas le défaut (le fichier reste
                 // lisible par une version antérieure tant que le squelette est utilisé).
@@ -596,6 +602,9 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.auto_spacing = j.value("autoSpacing", false);
         p.corner_mode =
             static_cast<document::SatinCorner>(std::clamp(j.value("cornerMode", 0), 0, 3));
+        p.corner_threshold =
+            Angle{std::clamp(j.value("cornerThreshold", p.corner_threshold.radians),
+                             0.2617993877991494, 2.6179938779914940)};
         if (j.contains("border") && j.at("border").is_object()) {
             const auto& bj = j.at("border");
             document::BorderSatinSpec spec;
@@ -811,6 +820,9 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.auto_spacing = j.value("autoSpacing", false);
         p.corner_mode =
             static_cast<document::SatinCorner>(std::clamp(j.value("cornerMode", 0), 0, 3));
+        p.corner_threshold =
+            Angle{std::clamp(j.value("cornerThreshold", p.corner_threshold.radians),
+                             0.2617993877991494, 2.6179938779914940)};
         if (j.contains("strategy")) {
             // Une méthode inconnue (fichier d'une version plus récente) est REFUSÉE : la
             // remplacer par le squelette ferait changer le satin à l'insu de l'utilisateur.

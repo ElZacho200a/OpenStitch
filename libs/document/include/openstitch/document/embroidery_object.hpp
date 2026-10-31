@@ -273,6 +273,8 @@ struct SatinParams {
     std::optional<BorderSatinSpec> border;            // HP-STI-004 : satin de bordure
     bool auto_spacing{false};                         // HP-ENG-003 : pas selon la largeur locale
     SatinCorner corner_mode{SatinCorner::None};       // HP-ENG-005 : coins vifs
+    // Changement de cap de l'axe au-delà duquel c'est un coin (radians, défaut 60° ; [15° ; 150°]).
+    Angle corner_threshold{1.0471975511965976};
 
     bool operator==(const SatinParams&) const = default;
 };
@@ -378,6 +380,7 @@ struct AutoSatinParams {
     bool compact_axis{false};
     bool auto_spacing{false};                   // HP-ENG-003 : pas selon la largeur locale
     SatinCorner corner_mode{SatinCorner::None}; // HP-ENG-005 : coins vifs
+    Angle corner_threshold{1.0471975511965976}; // seuil de coin (radians, défaut 60°)
 
     bool operator==(const AutoSatinParams&) const = default;
 };

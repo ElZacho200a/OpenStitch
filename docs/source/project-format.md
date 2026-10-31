@@ -94,7 +94,8 @@ Compression (2026-10) : l'image PNG, déjà compressée, est stockée telle quel
   `underlayMode` (0 manuelle, 1 automatique, HP-ENG-002) ; satin `border`
   (`width` µm [500 ; 20000], `side` 0 centré / 1 intérieur / 2 extérieur,
   `corner` 0 vifs / 1 arrondis, `pathSet`, `ring` : anneau suivi du vecteur
-  source, HP-STI-004). Aucun changement de `schemaVersion` : un ancien lecteur
+  source, HP-STI-004) ; satin et auto-satin `cornerMode` (0 aucun, 1 onglet, 2 chevauchement, 3 coupe)
+  et `cornerThreshold` (radians, [15° ; 150°], défaut 60° ; HP-ENG-005). Aucun changement de `schemaVersion` : un ancien lecteur
   ignore ces clés.
 
 ### Fil de nuancier d'un objet (schéma v6)
