@@ -722,6 +722,7 @@ private slots:
 
     // Remplissage directionnel : conversion, outil de guides, undo/redo.
     void convertingTatamiToDirectionalIsUndoable();
+    void knockoutOptionIsUndoableAndRegenerates();
     void convertingTatamiToContourFillIsUndoable();
     void convertingTatamiToRadialSpiralCrosshatchIsUndoable();
     void densityGradientIsUndoableAndSpansTheShape();
@@ -4846,6 +4847,30 @@ Fixture buildTatamiSquareFixture() {
 } // namespace
 
 namespace openstitch::desktop {
+
+// HP-ENG-011 : « Retirer les points cachés » -- un pas d'annulation, la génération tourne.
+void MainWindowTest::knockoutOptionIsUndoableAndRegenerates() {
+    MainWindow window;
+    const Fixture fx = buildTatamiSquareFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+
+    window.setKnockout(fx.embroideryId, true, 0.5);
+    const auto* emb = window.project_.findEmbroidery(fx.embroideryId);
+    QVERIFY(emb != nullptr && emb->knockout);
+    QCOMPARE(emb->knockout_margin.value, 500);
+    QCOMPARE(window.undoStack_.undoNames().size(), std::size_t{1});
+    QVERIFY(window.sequence_.has_value());
+
+    window.setKnockout(fx.embroideryId, true, 0.5); // identique : aucun pas d'annulation de plus
+    QCOMPARE(window.undoStack_.undoNames().size(), std::size_t{1});
+
+    window.undo();
+    emb = window.project_.findEmbroidery(fx.embroideryId);
+    QVERIFY(!emb->knockout);
+    QCOMPARE(emb->knockout_margin.value, 300);
+}
 
 void MainWindowTest::convertingTatamiToDirectionalIsUndoable() {
     MainWindow window;

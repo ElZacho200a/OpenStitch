@@ -897,6 +897,18 @@ void PropertiesPanel::setConnectorMode(std::optional<ObjectId> id, document::Con
     connectorCombo_->setCurrentIndex(static_cast<int>(mode));
 }
 
+void PropertiesPanel::setKnockout(std::optional<ObjectId> id, bool enabled, double marginMm) {
+    if (!id || !currentId_ || *id != *currentId_ || knockoutCheck_ == nullptr ||
+        knockoutMargin_ == nullptr) {
+        return;
+    }
+    const QSignalBlocker blockCheck(knockoutCheck_);
+    const QSignalBlocker blockMargin(knockoutMargin_);
+    knockoutCheck_->setChecked(enabled);
+    knockoutMargin_->setValue(marginMm);
+    knockoutMargin_->setEnabled(enabled);
+}
+
 bool PropertiesPanel::showsVectorBox(ObjectId id, QRectF boxMm) const {
     if (!vectorId_ || *vectorId_ != id) {
         return false;
@@ -1215,6 +1227,37 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
             emit connectorModeEdited(id, index);
         }
     });
+
+    // HP-ENG-011 : ne pas coudre sous les remplissages posés après (tatami / directionnel).
+    if (object.is_tatami() || object.is_directional()) {
+        auto* knockoutCheck = new QCheckBox(tr("Retirer les points cachés"), body_);
+        knockoutCheck->setObjectName(QStringLiteral("check_knockout"));
+        knockoutCheck->setChecked(object.knockout);
+        knockoutCheck->setToolTip(
+            tr("Ne coud pas la partie de ce remplissage cachée par un tatami ou un remplissage "
+               "posé après lui (moins de points, moins d'épaisseur). La marge garde un "
+               "recouvrement sous le bord de l'objet du dessus."));
+        auto* knockoutMargin = new QDoubleSpinBox(body_);
+        knockoutMargin->setObjectName(QStringLiteral("spin_knockoutMargin"));
+        knockoutMargin->setRange(0.0, 5.0);
+        knockoutMargin->setSingleStep(0.1);
+        knockoutMargin->setDecimals(2);
+        knockoutMargin->setSuffix(tr(" mm"));
+        knockoutMargin->setValue(object.knockout_margin.value / 1000.0);
+        knockoutMargin->setEnabled(object.knockout);
+        knockoutCheck_ = knockoutCheck;
+        knockoutMargin_ = knockoutMargin;
+        scoped()->addRow(knockoutCheck);
+        scoped()->addRow(tr("Recouvrement :"), knockoutMargin);
+        const auto emitKnockout = [this, id] {
+            if (!building_ && knockoutCheck_ != nullptr && knockoutMargin_ != nullptr) {
+                knockoutMargin_->setEnabled(knockoutCheck_->isChecked());
+                emit knockoutEdited(id, knockoutCheck_->isChecked(), knockoutMargin_->value());
+            }
+        };
+        connect(knockoutCheck, &QCheckBox::toggled, this, emitKnockout);
+        connect(knockoutMargin, &QDoubleSpinBox::editingFinished, this, emitKnockout);
+    }
 
     building_ = true;
     std::visit(

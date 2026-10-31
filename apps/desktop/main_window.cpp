@@ -8303,6 +8303,7 @@ void MainWindow::buildPropertiesPanel() {
     connect(propertiesPanel_, &PropertiesPanel::joinModeEdited, this, &MainWindow::setJoinMode);
     connect(propertiesPanel_, &PropertiesPanel::connectorModeEdited, this,
             &MainWindow::setConnectorMode);
+    connect(propertiesPanel_, &PropertiesPanel::knockoutEdited, this, &MainWindow::setKnockout);
     connect(propertiesPanel_, &PropertiesPanel::densityGradientRequested, this,
             &MainWindow::setDensityGradient);
     connect(
@@ -8436,6 +8437,9 @@ void MainWindow::updateInspector() {
     propertiesPanel_->setConnectorMode(
         emb != nullptr ? std::optional<ObjectId>(emb->id) : std::nullopt,
         emb != nullptr ? emb->connector : document::ConnectorMode::Inherit);
+    propertiesPanel_->setKnockout(emb != nullptr ? std::optional<ObjectId>(emb->id) : std::nullopt,
+                                  emb != nullptr && emb->knockout,
+                                  emb != nullptr ? emb->knockout_margin.value / 1000.0 : 0.3);
 
     // Auto-satin : liste des guides et diagnostic mis à jour à chaque appel (les
     // guides se posent aussi depuis le canevas), sans reconstruire le formulaire.
