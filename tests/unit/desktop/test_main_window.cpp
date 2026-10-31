@@ -623,6 +623,7 @@ private slots:
     void regionRectangleSelectionHonoursWindowAndCrossing();
     void documentListMultiSelectionDrivesRegionSelection();
     void shapeUnionActionIsOneUndoStep();
+    void shapeBreakApartActionSplitsPiecesInOneUndoStep();
     void blendZonesActionMakesBaseAndGradedTopInOneUndoStep();
     void displayFiltersApplyToVectorShapes();
     void displayFilterShortcutsIsolateAndRestore();
@@ -7271,6 +7272,38 @@ void MainWindowTest::shapeUnionActionIsOneUndoStep() {
 
     window.undo();
     QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
+}
+
+void MainWindowTest::shapeBreakApartActionSplitsPiecesInOneUndoStep() {
+    auto project = twoOverlappingRectangles();
+    // Un seul objet à deux morceaux disjoints (HP-VEC-013).
+    auto far = project.vector_objects[0].paths.front();
+    for (auto& node : far.outer.nodes) {
+        node.pos.x = Micrometers{node.pos.x.value + 50'000};
+    }
+    project.vector_objects[0].paths.push_back(far);
+    MainWindow window;
+    window.applyLoadedProject(std::move(project));
+    QAction* apart = window.findChild<QAction*>(QStringLiteral("action_shapeBreakApart"));
+    QVERIFY(apart != nullptr);
+    window.updateActions();
+    QVERIFY(!apart->isEnabled()); // rien de sélectionné
+
+    const ObjectId a = window.project_.vector_objects[0].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a}});
+    window.updateActions();
+    QVERIFY(apart->isEnabled());
+
+    apart->trigger();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{3});
+    for (const auto& object : window.project_.vector_objects) {
+        QCOMPARE(object.paths.size(), std::size_t{1});
+    }
+    QVERIFY(window.checkSelectionInvariants());
+
+    window.undo();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
+    QCOMPARE(window.project_.vector_objects[0].paths.size(), std::size_t{2});
 }
 
 void MainWindowTest::blendZonesActionMakesBaseAndGradedTopInOneUndoStep() {
