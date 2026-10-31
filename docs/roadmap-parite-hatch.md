@@ -3920,7 +3920,9 @@ une entrée P0 ouverte (§0.4).
 - Modules : `libs/segmentation`, `apps/desktop` (aperçu).
 - Acceptation : modifier un réglage aval ne relance pas le k-means (compteur de test) ; résultats identiques.
 
-### HP-PERF-015 — Lissage de segmentation sans une carte par classe [P1] — ☐ À faire
+### HP-PERF-015 — Lissage de segmentation sans une carte par classe [P1] — ✔ Livré
+- Livré : le vote de lissage traite des bandes de 32 lignes (`parallel_for` par bande), classe après classe, et ne garde que (meilleure densité, classe) ; classes absentes de la bande ignorées. Pic des cartes de densité : 64 classes × 1600×1200 × 4 o ≈ 490 Mio avant, quelques centaines de Kio par fil après (indépendant de k). Étiquettes identiques (empreintes figées avant refonte, 11 cas : tailles, k de 2 à 64, rayons 1 à 40, masque de détail). Banc `[.perf015]` (Debug, 1600×1200, rayon 3) : k=8 900→749 ms, k=32 1268→1051 ms, k=64 2090→1864 ms.
+- Reste : rien.
 - État OpenStitch : `segmentation.cpp` (≈ l.242-268) alloue simultanément k cartes de densité `float` (et leur version « détail »).
 - À faire : accumulation par fenêtre/ligne pour borner le pic à ≈ 2 cartes.
 - Modules : `libs/segmentation`.

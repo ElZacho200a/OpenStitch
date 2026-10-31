@@ -238,69 +238,130 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
     // pixel réaffecté rejoint toujours une classe existante).
     if (options.smoothing_radius_px > 0 ||
         (detail != nullptr && options.detail_smoothing_radius_px > 0)) {
-        // Densité locale de chaque classe pour un rayon donné (rayon 0 = la classe elle-même).
-        const auto densityMaps = [&](int radius) {
-            const int ksize = 2 * radius + 1;
-            std::vector<cv::Mat> density(static_cast<std::size_t>(k));
-            // Une classe = une tâche (masque + filtre moyenneur, indépendants d'une classe à
-            // l'autre).
-            parallel_for(static_cast<std::size_t>(k), [&](std::size_t classIndex) {
-                const int c = static_cast<int>(classIndex);
-                cv::Mat classMask(img.height, img.width, CV_32F, cv::Scalar(0.0f));
-                for (int y = 0; y < img.height; ++y) {
+        // Vote par BANDES de lignes (HP-PERF-015). Chaque bande calcule, classe après classe, la
+        // densité locale (filtre moyenneur sur la bande élargie de `rayon` lignes de chaque côté,
+        // donc valeurs identiques à celles d'un filtrage de l'image entière : les sommes de 0/1
+        // sont exactes en float) et ne retient que la meilleure densité et sa classe. La mémoire
+        // ne dépend plus du nombre de classes : au plus quelques cartes de la taille d'une bande
+        // par fil. Les classes sont parcourues par indice croissant avec un `>` strict, comme la
+        // boucle d'origine : mêmes égalités départagées, mêmes étiquettes.
+        constexpr int kBandRows = 32;
+        const int rowsTotal = img.height;
+        const int bandCount = (rowsTotal + kBandRows - 1) / kBandRows;
+        cv::Mat smoothedColorIdx = colorIdx.clone();
+        const int radiusFlat = options.smoothing_radius_px;
+        const int radiusDetail = options.detail_smoothing_radius_px;
+        parallel_for(static_cast<std::size_t>(bandCount), [&](std::size_t bandIndex) {
+            const int y0 = static_cast<int>(bandIndex) * kBandRows;
+            const int y1 = std::min(rowsTotal, y0 + kBandRows);
+            const int bandH = y1 - y0;
+            // Bande élargie pour un rayon donné, bornée à l'image.
+            const auto roiTop = [&](int radius) { return std::max(0, y0 - radius); };
+            const auto roiBottom = [&](int radius) { return std::min(rowsTotal, y1 + radius); };
+
+            // Classes présentes dans les bandes élargies : une classe absente a une densité nulle
+            // partout et ne peut jamais gagner (il faut une densité strictement positive).
+            std::vector<std::uint8_t> present(static_cast<std::size_t>(k), 0);
+            const auto markPresent = [&](int radius) {
+                for (int y = roiTop(radius); y < roiBottom(radius); ++y) {
                     const int* idx = colorIdx.ptr<int>(y);
-                    auto* mask = classMask.ptr<float>(y);
                     for (int x = 0; x < img.width; ++x) {
-                        if (idx[x] == c) {
-                            mask[x] = 1.0f;
+                        if (idx[x] >= 0) {
+                            present[static_cast<std::size_t>(idx[x])] = 1;
                         }
                     }
                 }
+            };
+            markPresent(radiusFlat);
+            if (detail != nullptr) {
+                markPresent(radiusDetail);
+            }
+
+            // Densité de la classe `c` sur les lignes [y0, y1) de la bande, pour un rayon donné.
+            cv::Mat mask;
+            cv::Mat filtered;
+            const auto densityOf = [&](int c, int radius, cv::Mat& out) {
+                const int top = roiTop(radius);
+                const int rows = roiBottom(radius) - top;
+                mask.create(rows, img.width, CV_32F);
+                for (int y = 0; y < rows; ++y) {
+                    const int* idx = colorIdx.ptr<int>(top + y);
+                    auto* m = mask.ptr<float>(y);
+                    for (int x = 0; x < img.width; ++x) {
+                        m[x] = idx[x] == c ? 1.0f : 0.0f;
+                    }
+                }
                 if (radius > 0) {
-                    cv::boxFilter(classMask, density[classIndex], CV_32F, cv::Size(ksize, ksize),
-                                  cv::Point(-1, -1), false);
+                    const int ksize = 2 * radius + 1;
+                    cv::boxFilter(mask, filtered, CV_32F, cv::Size(ksize, ksize), cv::Point(-1, -1),
+                                  false);
+                    out = filtered.rowRange(y0 - top, y0 - top + bandH);
                 } else {
-                    density[classIndex] = classMask;
+                    out = mask.rowRange(y0 - top, y0 - top + bandH);
                 }
-            });
-            return density;
-        };
-        const std::vector<cv::Mat> density = densityMaps(options.smoothing_radius_px);
-        std::vector<cv::Mat> detailDensity;
-        if (detail != nullptr) {
-            detailDensity = densityMaps(options.detail_smoothing_radius_px);
-        }
-        // Vote : une ligne = une tâche (lit les densités, écrit sa ligne).
-        cv::Mat smoothedColorIdx = colorIdx.clone();
-        parallel_for(static_cast<std::size_t>(img.height), [&](std::size_t rowIndex) {
-            const int y = static_cast<int>(rowIndex);
-            const int* idx = colorIdx.ptr<int>(y);
-            int* out = smoothedColorIdx.ptr<int>(y);
-            for (int x = 0; x < img.width; ++x) {
-                if (idx[x] < 0) {
-                    continue; // pixel transparent : jamais reclasse
+            };
+
+            cv::Mat bestDensity(bandH, img.width, CV_32F, cv::Scalar(0.0f));
+            cv::Mat bestClass(bandH, img.width, CV_32S);
+            for (int y = 0; y < bandH; ++y) {
+                const int* idx = colorIdx.ptr<int>(y0 + y);
+                std::copy(idx, idx + img.width, bestClass.ptr<int>(y));
+            }
+            cv::Mat flat;
+            cv::Mat flatCopy;
+            for (int c = 0; c < k; ++c) {
+                if (present[static_cast<std::size_t>(c)] == 0) {
+                    continue;
                 }
-                int bestClass = idx[x];
-                float bestDensity = 0.0f;
-                const float w =
-                    detail != nullptr
-                        ? static_cast<float>(
-                              detail->weights[rowIndex * static_cast<std::size_t>(img.width) +
-                                              static_cast<std::size_t>(x)]) /
-                              255.0f
-                        : 0.0f;
-                for (int c = 0; c < k; ++c) {
-                    float d = density[static_cast<std::size_t>(c)].at<float>(y, x);
-                    if (detail != nullptr) {
-                        d = (1.0f - w) * d +
-                            w * detailDensity[static_cast<std::size_t>(c)].at<float>(y, x);
+                densityOf(c, radiusFlat, flat);
+                if (detail != nullptr) {
+                    // `mask`/`filtered` sont réutilisés par le second appel : copie de la
+                    // première densité.
+                    flat.copyTo(flatCopy);
+                    cv::Mat det;
+                    densityOf(c, radiusDetail, det);
+                    for (int y = 0; y < bandH; ++y) {
+                        const std::size_t row = static_cast<std::size_t>(y0 + y);
+                        const float* d1 = flatCopy.ptr<float>(y);
+                        const float* d2 = det.ptr<float>(y);
+                        float* bd = bestDensity.ptr<float>(y);
+                        int* bc = bestClass.ptr<int>(y);
+                        for (int x = 0; x < img.width; ++x) {
+                            const float w =
+                                static_cast<float>(
+                                    detail->weights[row * static_cast<std::size_t>(img.width) +
+                                                    static_cast<std::size_t>(x)]) /
+                                255.0f;
+                            const float d = (1.0f - w) * d1[x] + w * d2[x];
+                            if (d > bd[x]) {
+                                bd[x] = d;
+                                bc[x] = c;
+                            }
+                        }
                     }
-                    if (d > bestDensity) {
-                        bestDensity = d;
-                        bestClass = c;
+                } else {
+                    for (int y = 0; y < bandH; ++y) {
+                        const float* d1 = flat.ptr<float>(y);
+                        float* bd = bestDensity.ptr<float>(y);
+                        int* bc = bestClass.ptr<int>(y);
+                        for (int x = 0; x < img.width; ++x) {
+                            if (d1[x] > bd[x]) {
+                                bd[x] = d1[x];
+                                bc[x] = c;
+                            }
+                        }
                     }
                 }
-                out[x] = bestClass;
+            }
+            for (int y = 0; y < bandH; ++y) {
+                const int* idx = colorIdx.ptr<int>(y0 + y);
+                const int* bc = bestClass.ptr<int>(y);
+                int* out = smoothedColorIdx.ptr<int>(y0 + y);
+                for (int x = 0; x < img.width; ++x) {
+                    if (idx[x] >= 0) { // pixel transparent : jamais reclasse
+                        out[x] = bc[x];
+                    }
+                }
             }
         });
         colorIdx = smoothedColorIdx;
