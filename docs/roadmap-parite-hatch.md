@@ -3931,6 +3931,7 @@ une entrée P0 ouverte (§0.4).
 - Acceptation : modifier un réglage aval ne relance pas le k-means (compteur de test) ; résultats identiques.
 
 ### HP-PERF-015 — Lissage de segmentation sans une carte par classe [P1] — ☐ À faire
+- Tenté (2026-10-31, branche `worktree-agent-a75c38e662d7b7587`, PR #203 fermée) : lissage par bandes de 32 lignes, étiquettes identiques sous MSVC (11 cas, empreintes FNV) et 12 à 17 % de gain en Debug, mais **les empreintes ne se reproduisent pas sous Linux** (CI `linux-core`) : on ne sait pas si c'est le k-means / OpenCV de la plateforme ou l'ordre des sommes flottantes du nouveau lissage. À réintroduire avec un test de référence en processus (nouvel algorithme contre l'ancien, sur la même plateforme) au lieu d'empreintes figées.
 - État OpenStitch : `segmentation.cpp` (≈ l.242-268) alloue simultanément k cartes de densité `float` (et leur version « détail »).
 - À faire : accumulation par fenêtre/ligne pour borner le pic à ≈ 2 cartes.
 - Modules : `libs/segmentation`.
@@ -4569,7 +4570,7 @@ ouvrant le lot (§0.1).
 | 2026-10-31 | Claude (HP-ENG-011) | **HP-ENG-011 ◐ → ☑** : câblage bureau (inspecteur, commande annulable, 2 tests QTest). |
 | 2026-10-31 | Claude (HP-PERF-012, agent) | **HP-PERF-012 ◐** (PR #202) : prototype des listes de segments par bande, pixels identiques mais aucun gain mesuré (8 bandes, Debug) ; non livré. Livrés : test d'empreinte et banc `[!benchmark]`. À rouvrir avec un découpage en tuiles si un profilage le justifie. |
 | 2026-10-31 | Claude (agent, PR #204) | **HP-FILE-012 ☑** : `fragment_from_json` migre un fragment du presse-papiers comme un `.osp` (version absente lue telle quelle, 0 ou future refusée). Test `test_schema_migrations`. |
-| 2026-10-31 | Claude (agent, PR #203) | **HP-PERF-015 ☑** : lissage de segmentation par bandes de 32 lignes, sans carte de densité par classe ; étiquettes identiques (empreintes FNV, 11 cas), gain 12 à 17 % en Debug, mémoire estimée de ~490 Mio à quelques centaines de Kio pour k=64 (estimation, non mesurée). |
+| 2026-10-31 | Claude (agent, PR #203) | **HP-PERF-015 retiré de #210** (CI `linux-core` : les empreintes figées sous MSVC divergent sous Linux, 4 cas sur 7 et 2 sur 4). Travail conservé sur la branche `worktree-agent-a75c38e662d7b7587`. Description d'origine : lissage de segmentation par bandes de 32 lignes, sans carte de densité par classe ; étiquettes identiques (empreintes FNV, 11 cas), gain 12 à 17 % en Debug, mémoire estimée de ~490 Mio à quelques centaines de Kio pour k=64 (estimation, non mesurée). |
 | 2026-10-31 | Claude (agent, PR #205) | **HP-PERF-011 ◐** : grille spatiale pour le plus proche voisin (≥ 48 objets), ordre identique à l'ancien balayage, 14 ms contre 3 500 ms pour 5 000 objets (Debug). Reste : variante par blocs, 2-opt/Or-opt, banc étendu. |
 | 2026-10-31 | Claude (agent, PR #206) | **HP-VEC-013 ☑** (Union/Séparer) : fonctions déjà présentes ; test QTest du menu « Séparer les morceaux » ajouté. Reste : combiner sans souder les formes qui se recouvrent. |
 | 2026-10-31 | Claude (agent, PR #207) | **HP-FILE-014 ◐** : `--settings profil.json` pour `digitize`, `project digitize`, `digitize-batch` et le balayage ; sortie identique aux options équivalentes ; `CLI11_PARSE` remplacé par un parse manuel. Reste : lecture du profil côté bureau (HP-UX-030). |
