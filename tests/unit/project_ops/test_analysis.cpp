@@ -4,6 +4,8 @@
 // noir.
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 
@@ -219,6 +221,58 @@ TEST_CASE("fabric risk : couches, profils, determinisme et parametres invalides"
 
     document::Project empty;
     CHECK_FALSE(measure_fabric_risk(empty).has_value());
+}
+
+TEST_CASE("fabric risk : classes de risque et grille spatiale", "[project_ops][fabric-risk]") {
+    CHECK(classify_fabric_risk(0.0) == FabricRiskLevel::None);
+    CHECK(classify_fabric_risk(-3.0) == FabricRiskLevel::None);
+    CHECK(classify_fabric_risk(std::nan("")) == FabricRiskLevel::None);
+    CHECK(classify_fabric_risk(0.5) == FabricRiskLevel::Low);
+    CHECK(classify_fabric_risk(39.99) == FabricRiskLevel::Low);
+    CHECK(classify_fabric_risk(40.0) == FabricRiskLevel::Moderate);
+    CHECK(classify_fabric_risk(69.99) == FabricRiskLevel::Moderate);
+    CHECK(classify_fabric_risk(70.0) == FabricRiskLevel::High);
+    CHECK(classify_fabric_risk(100.0) == FabricRiskLevel::High);
+
+    document::Project one;
+    add_square(one, 0, 0, 10'000, {200, 30, 30});
+    document::Project two;
+    add_square(two, 0, 0, 10'000, {200, 30, 30});
+    add_square(two, 0, 0, 10'000, {30, 30, 200});
+    add_square(two, 0, 0, 10'000, {30, 200, 30});
+    const auto a = measure_fabric_risk(one);
+    const auto b = measure_fabric_risk(two);
+    REQUIRE(a.has_value());
+    REQUIRE(b.has_value());
+
+    const auto count = [](const FabricRiskGrid& grid, FabricRiskLevel level) {
+        return std::count(grid.levels.begin(), grid.levels.end(), level);
+    };
+    for (const auto* report : {&*a, &*b}) {
+        const FabricRiskGrid& grid = report->grid;
+        REQUIRE(grid.cols > 0);
+        REQUIRE(grid.rows > 0);
+        CHECK(grid.cell.value == 1000); // cellule par defaut : 1 mm
+        CHECK(grid.levels.size() == static_cast<std::size_t>(grid.cols) * grid.rows);
+        CHECK(grid.levels.size() - count(grid, FabricRiskLevel::None) > 0);
+        // Le coin haut-gauche de la grille est celui du motif cousu (carre de 10 mm, legerement
+        // rentre par la generation des points).
+        CHECK(grid.top_left.x.value >= -12'000);
+        CHECK(grid.top_left.x.value <= 1'000);
+        CHECK(grid.top_left.y.value >= 9'000);
+        CHECK(grid.top_left.y.value <= 10'500);
+    }
+    // Plus de couches : au moins autant de cases au niveau eleve, et davantage de cases non basses.
+    CHECK(count(b->grid, FabricRiskLevel::High) >= count(a->grid, FabricRiskLevel::High));
+    CHECK(count(b->grid, FabricRiskLevel::High) + count(b->grid, FabricRiskLevel::Moderate) >
+          count(a->grid, FabricRiskLevel::High) + count(a->grid, FabricRiskLevel::Moderate));
+    // Les cases tres hautes recoupent la surface signalee par le rapport (indice >= 70).
+    CHECK((count(b->grid, FabricRiskLevel::High) > 0) == (b->hotspot_area_mm2 > 0.0));
+
+    const auto repeat = measure_fabric_risk(two);
+    REQUIRE(repeat.has_value());
+    CHECK(repeat->grid.levels == b->grid.levels);
+    CHECK(repeat->grid.top_left == b->grid.top_left);
 }
 
 TEST_CASE("locate : le dernier objet cousu est celui qu'on voit", "[project_ops][analysis]") {

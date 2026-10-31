@@ -478,6 +478,7 @@ MainWindow::MainWindow() {
     // [cablage-C:fin]
     // [cablage-D:debut]
     buildOrderJumpsFeature();
+    buildFabricRiskFeature();
     // [cablage-D:fin]
     // [cablage-E:debut]
     buildDensityFeature();
@@ -4753,6 +4754,7 @@ void MainWindow::renderStitches() {
     refreshDensityOverlay();    // HP-VIEW-005 (main_window_density.cpp)
     refreshPullMapOverlay();    // tirage prédit (main_window_pull_preview.cpp)
     refreshOrderJumpsOverlay(); // sauts à vide du panneau Ordre (main_window_order_jumps.cpp)
+    refreshFabricRiskOverlay(); // risque tissu (main_window_fabric_risk.cpp)
 
     if (stitchLayerSuspended_ || showStitchesAct_ == nullptr || !showStitchesAct_->isChecked() ||
         !sequence_) {

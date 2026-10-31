@@ -36,6 +36,7 @@
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/optimization/order.hpp"
+#include "openstitch/project_ops/analysis.hpp"
 #include "openstitch/project_ops/live_bridge.hpp"
 #include "openstitch/segmentation/color_merge.hpp"
 #include "openstitch/stitch/sequence.hpp"
@@ -1556,6 +1557,22 @@ private:
     bool orderJumpsHasBefore_{false};
     int orderJumpsBeforeRefresh_{-1}; // valeur de refreshCount_ pour laquelle la base est valable
     QString orderJumpsDeltaText_; // libellé « −X mm » dessiné sur le canevas (vide : aucun)
+    // Risque tissu en surimpression (main_window_fabric_risk.cpp) : grille de cases classées
+    // calculée par project_ops::measure_fabric_risk (la même analyse que le CLI), hors du fil UI,
+    // mise en cache sous une clé exacte (séquence + profil de tissu).
+    void buildFabricRiskFeature();
+    void refreshFabricRiskOverlay(); // appelée par renderStitches() (pose le cache ou planifie)
+    void recomputeFabricRisk();
+    void setFabricRiskEnabled(bool on);
+    [[nodiscard]] int fabricRiskProfile() const; // 0 tissé, 1 jersey, 2 feutrine
+    QAction* fabricRiskAct_{nullptr};
+    QTimer* fabricRiskTimer_{nullptr};
+    QPixmap fabricRiskPixmap_;
+    QRectF fabricRiskRect_; // zone couverte par l'image, mm (repère scène)
+    project_ops::FabricRiskGrid fabricRiskGrid_;
+    std::uint64_t fabricRiskKey_{0};
+    bool fabricRiskValid_{false};
+    int fabricRiskComputeCount_{0}; // calculs réellement faits (tests)
     // [cablage-D:fin]
     // [cablage-E:debut]
     // HP-VIEW-005 : carte de densité (main_window_density.cpp). Image mise en cache sous une
