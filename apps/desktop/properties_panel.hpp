@@ -111,6 +111,8 @@ public:
     // l'objet montré ; sinon ignoré. Sans reconstruction ni émission.
     void setJoinMode(std::optional<ObjectId> id, document::JoinMode mode);
     void setConnectorMode(std::optional<ObjectId> id, document::ConnectorMode mode);
+    // HP-ENG-011 : état de la case « Retirer les points cachés » (suit annulation/rétablissement).
+    void setKnockout(std::optional<ObjectId> id, bool enabled, double marginMm);
 
     // Lettrage : bandeau « Texte « … » » + bouton « Modifier le texte… » en tête de l'inspecteur
     // quand la sélection est une lettre d'un texte (`summary` vide = masqué). Persistant comme
@@ -209,6 +211,8 @@ signals:
     // HP-SEQ-005 : connecteur après l'objet (0 = suit le projet, 1 = toujours couper, 2 = ne
     // jamais couper) ; MainWindow exécute SetEmbroideryConnectorModeCommand.
     void connectorModeEdited(ObjectId id, int mode);
+    // HP-ENG-011 : retirer les points cachés par les remplissages posés après (marge en mm).
+    void knockoutEdited(ObjectId id, bool enabled, double marginMm);
     // HP-STI-004 : bordure satin. `createBorderSatinRequested` : depuis un objet vectoriel,
     // largeur (mm), côté (0 centré, 1 intérieur, 2 extérieur), coins (0 vifs, 1 arrondis).
     // `borderSatinEdited` : changement de ces réglages d'un satin de bordure existant
@@ -271,6 +275,8 @@ private:
     QPointer<QPushButton> satinGuideRemove_;
     QPointer<QComboBox> joinCombo_;
     QPointer<QComboBox> connectorCombo_;
+    QPointer<QCheckBox> knockoutCheck_;
+    QPointer<QDoubleSpinBox> knockoutMargin_;
 };
 
 } // namespace openstitch::desktop

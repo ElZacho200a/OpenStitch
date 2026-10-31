@@ -22,5 +22,5 @@ add_executable(test_commands
     test_insert_design_command.cpp
     test_detail_mask_commands.cpp
 )
-target_link_libraries(test_commands PRIVATE openstitch::commands Catch2::Catch2WithMain openstitch::warnings)
+target_link_libraries(test_commands PRIVATE openstitch::commands openstitch::stitch_generation Catch2::Catch2WithMain openstitch::warnings)
 catch_discover_tests(test_commands)

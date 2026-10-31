@@ -6,6 +6,7 @@ add_executable(test_stitch
     test_finish.cpp
     test_length_bounds.cpp
     test_join_closest.cpp
+    test_knockout.cpp
     test_hidden_travel.cpp
     test_tatami.cpp
     test_directional_fill.cpp

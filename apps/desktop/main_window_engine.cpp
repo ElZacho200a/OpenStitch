@@ -105,6 +105,22 @@ void MainWindow::setJoinMode(ObjectId id, int mode) {
     updateActions();
 }
 
+void MainWindow::setKnockout(ObjectId id, bool enabled, double marginMm) {
+    const auto* emb = project_.findEmbroidery(id);
+    if (emb == nullptr) {
+        return;
+    }
+    const Micrometers margin{
+        static_cast<std::int32_t>(std::lround(std::clamp(marginMm, 0.0, 5.0) * 1000.0))};
+    if (emb->knockout == enabled && emb->knockout_margin == margin) {
+        return;
+    }
+    undoStack_.execute(
+        std::make_unique<commands::SetEmbroideryKnockoutCommand>(id, enabled, margin), project_);
+    refreshImage();
+    updateActions();
+}
+
 void MainWindow::setConnectorMode(ObjectId id, int mode) {
     if (project_.findEmbroidery(id) == nullptr) {
         return;

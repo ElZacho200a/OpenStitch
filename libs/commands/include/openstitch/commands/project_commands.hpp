@@ -1076,6 +1076,37 @@ private:
     document::ConnectorMode previous_{document::ConnectorMode::Inherit};
 };
 
+// « Ne pas coudre sous les objets qui recouvrent » (HP-ENG-011) : active/désactive l'option et fixe
+// le recouvrement conservé. Annulable ; sans effet si l'objet a disparu.
+class SetEmbroideryKnockoutCommand final : public ICommand {
+public:
+    SetEmbroideryKnockoutCommand(ObjectId id, bool enabled, Micrometers margin)
+        : id_(id), enabled_(enabled), margin_(margin) {}
+
+    void apply(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            previousEnabled_ = obj->knockout;
+            previousMargin_ = obj->knockout_margin;
+            obj->knockout = enabled_;
+            obj->knockout_margin = margin_;
+        }
+    }
+    void revert(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            obj->knockout = previousEnabled_;
+            obj->knockout_margin = previousMargin_;
+        }
+    }
+    [[nodiscard]] std::string name() const override { return "Retirer les points cachés"; }
+
+private:
+    ObjectId id_;
+    bool enabled_;
+    Micrometers margin_;
+    bool previousEnabled_{false};
+    Micrometers previousMargin_{300};
+};
+
 // Affiche/masque un objet de broderie (case « visible » du panneau Document). Un objet
 // masqué n'est ni dessiné ni cousu : annulable comme toute mutation du document.
 class SetEmbroideryVisibleCommand final : public ICommand {
