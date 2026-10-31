@@ -3893,7 +3893,8 @@ une entrée P0 ouverte (§0.4).
 - Modules : `libs/optimization`.
 - Acceptation : 1000 objets sous un seuil mesuré (`tests/bench`) ; sortie identique octet pour octet à l'ancienne sur le corpus.
 
-### HP-PERF-012 — Rendu raster : segments répartis par bande [P1] — ☐ À faire
+### HP-PERF-012 — Rendu raster : segments répartis par bande [P1] — ◐ Partiel (2026-10-31)
+- **Livré / Reste** : mesure faite, répartition par bande (listes d'indices, ordre d'empilement conservé) prototypée puis **non livrée** : à 100 000 brins (1280×880, Debug) le rendu reste à ≈ 570 ms avant comme après, car il n'y a que ≤ 8 bandes (≤ 8 rejets rapides par brin, négligeables devant le dessin des pixels) ; la répartition ajoutait de la complexité sans gain. Livré : garde-fou de non-régression (empreinte FNV-1a des pixels d'une scène de 20 000 brins, test `[golden]`) et banc `[!benchmark]` 100 000 brins dans `test_raster.cpp`. Reste : le critère « coût proportionnel au nombre de segments » deviendrait pertinent avec un découpage en tuiles bien plus nombreux ; à rouvrir si le profilage montre ce coût.
 - État OpenStitch : chaque bande de `stitch_render/raster.cpp` parcourt tous les segments (≈ l.538-548).
 - À faire : répartir les segments par bande une fois (tri stable), rejet rapide conservé.
 - Modules : `libs/stitch_render`.
