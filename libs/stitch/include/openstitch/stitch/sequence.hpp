@@ -65,4 +65,15 @@ struct StitchStats {
 
 [[nodiscard]] StitchStats compute_stats(const StitchSequence& sequence);
 
+// HP-ENG-010 -- premier et dernier point cousu (`Stitch`) de chaque objet source, dans l'ordre de
+// première apparition. Les commandes sans source (0 : manuel / importé) sont ignorées. Sert au
+// coût d'ordre par extrémités réelles plutôt que par centres.
+struct ObjectEndpoints {
+    ObjectId id{};
+    Vec2um first{};
+    Vec2um last{};
+};
+
+[[nodiscard]] std::vector<ObjectEndpoints> object_endpoints(const StitchSequence& sequence);
+
 } // namespace openstitch::stitch

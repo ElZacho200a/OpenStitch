@@ -9112,10 +9112,23 @@ void MainWindow::applyOrderStrategy() {
     }
     // Calques (HP-OBJ-024) : on optimise l'ordre réel de couture, puis on regroupe par calque -- le
     // rang du calque reste la clé principale, l'optimisation ne joue qu'à l'intérieur de chacun.
+    // HP-ENG-010 : extrémités réelles de la séquence affichée (repli : centre de l'objet).
+    const auto endpoints =
+        sequence_ ? stitch::object_endpoints(*sequence_) : std::vector<stitch::ObjectEndpoints>{};
+    const auto makeItem = [&](const document::EmbroideryObject& obj) {
+        optimization::OrderItem item{obj.id, obj.rgb, embroideryCentroid(obj), obj.locked};
+        for (const auto& e : endpoints) {
+            if (e.id == obj.id) {
+                item.entry = e.first;
+                item.exit = e.last;
+                break;
+            }
+        }
+        return item;
+    };
     std::vector<optimization::OrderItem> items;
     for (const std::size_t index : project_.sewingOrder()) {
-        const auto& obj = project_.embroidery_objects[index];
-        items.push_back({obj.id, obj.rgb, embroideryCentroid(obj), obj.locked});
+        items.push_back(makeItem(project_.embroidery_objects[index]));
     }
     const auto strategy =
         static_cast<optimization::OrderStrategy>(orderStrategyCombo_->currentData().toInt());
@@ -9140,7 +9153,7 @@ void MainWindow::applyOrderStrategy() {
     // Coût après (recalculé sur le nouvel ordre).
     std::vector<optimization::OrderItem> reordered;
     for (const auto& obj : project_.embroidery_objects) {
-        reordered.push_back({obj.id, obj.rgb, embroideryCentroid(obj), obj.locked});
+        reordered.push_back(makeItem(obj));
     }
     const auto after = optimization::compute_cost(reordered, options.start, options.end);
     statusBar()->showMessage(tr("Ordre optimisé : trajet %1 → %2 mm, changements de fil %3 → %4")

@@ -2,6 +2,8 @@
 #include "openstitch/stitch/sequence.hpp"
 
 #include <algorithm>
+#include <cstdint>
+#include <map>
 
 namespace openstitch::stitch {
 
@@ -47,6 +49,23 @@ StitchStats compute_stats(const StitchSequence& sequence) {
         }
     }
     return stats;
+}
+
+std::vector<ObjectEndpoints> object_endpoints(const StitchSequence& sequence) {
+    std::vector<ObjectEndpoints> out;
+    std::map<std::uint64_t, std::size_t> index;
+    for (const StitchCommand& cmd : sequence.commands) {
+        if (cmd.type != CommandType::Stitch || cmd.source.value == 0) {
+            continue;
+        }
+        const auto [it, inserted] = index.try_emplace(cmd.source.value, out.size());
+        if (inserted) {
+            out.push_back({cmd.source, cmd.pos, cmd.pos});
+        } else {
+            out[it->second].last = cmd.pos;
+        }
+    }
+    return out;
 }
 
 } // namespace openstitch::stitch
