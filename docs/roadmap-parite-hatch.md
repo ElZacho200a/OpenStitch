@@ -1389,6 +1389,7 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 - Modules : `libs/stitch_generation/finish`.
 
 ### HP-ENG-009 — Satin sur formes rondes et larges [P1] — ☐ À faire
+- Constaté (2026-10-31, agent) : manque confirmé — une zone de plus de 12 mm (`satin_compact_max_width`) ou à trous est refusée par `choose_satin` et tombe en tatami à angle fixe (`libs/autodigitize/src/autodigitize.cpp`). **Bloqué par HP-STI-018** : le satin tournant (`IsoOffsetRing`, `RailConstructionMethod`) n'est pas dans `libs/`, seulement dans `WIP.md` / `specs/plans/hp-sti-018-turning-satin.md`. Un repli spirale/radial contredirait la règle « tatami ou contour » de l'auto-numérisation et n'a pas de métrique de régularité définie : à décider avant de coder.
 - Voir HP-STI-018 ; ici côté qualité : ne plus jamais tomber sur un tatami
   à angle fixe pour un disque de 15 mm si un directionnel/satin tournant fait
   mieux (mesure : régularité de la direction des fils).
@@ -2420,6 +2421,7 @@ calques image/régions/vecteurs/broderie, filtres d'affichage, thème clair/somb
 ### HP-VIEW-008 — Vue scindée dessin / broderie [P3] — ☐ À faire
 
 ### HP-VIEW-009 — Fluidité sur gros designs [P1] — ☐ À faire
+- Mesuré (2026-10-31, agent, Release, 200 000 points synthétiques, 1600x1000 offscreen) : reconstruction de la couche points 7,7 ms ; peinture au zoom ajusté 27,7 ms (~36 i/s), au zoom x4 11,3 ms ; pan ~28 ms/image (ajusté), ~9,5 ms (x4). Essai `DeviceCoordinateCache` sur les tracés de plus de 40 000 éléments : repeinture à zoom fixe 0,76 ms mais zoom x4 dégradé (11,3 → 46,9 ms) et pan ajusté seulement ~16-20 ms : **abandonné**. Pistes : cache par tuiles ou pixmap du viewport (pan à pas entiers), rendu simplifié pendant zoom/pan (change les pixels pendant l'interaction).
 - État OpenStitch : pastilles masquées au-delà de 4 000 points ; la scène est
   reconstruite par `refreshImage()` à chaque modification (voir aussi
   HP-PERF-004).
@@ -4561,4 +4563,6 @@ ouvrant le lot (§0.1).
 | 2026-10-31 | Claude (agent, PR #207) | **HP-FILE-014 ◐** : `--settings profil.json` pour `digitize`, `project digitize`, `digitize-batch` et le balayage ; sortie identique aux options équivalentes ; `CLI11_PARSE` remplacé par un parse manuel. Reste : lecture du profil côté bureau (HP-UX-030). |
 | 2026-10-31 | Claude (agent, PR #208) | **HP-ENG-013 ◐** : préréglages de points stockés dans le projet (`stitchPresets` du `.osp`), 3 commandes annulables, sous-menu Broderie ▸ « Préréglages de points ». Reste : défaut par type, bibliothèque partagée, préréglages livrés, sélecteur d'inspecteur ; invalidation des caches d'aperçu non vérifiée. |
 | 2026-10-31 | Claude (PERF-012, PR #202) | Voir la ligne PERF-012 ci-dessus : non livré faute de gain mesuré. |
+| 2026-10-31 | Claude (agent, PR #209) | **HP-PERF-010 ◐** : `UndoStack::setMaxDepth` (0 = illimité, défaut), élimination des pas les plus anciens, pas conservés annulables exactement, état propre éliminé -> `isClean` faux ; 3 tests, `test_commands` vert. Reste : câblage bureau, commandes delta après mesure (HP-PERF-007), borne en octets, rejeu HP-QA-015. |
+| 2026-10-31 | Claude (agents ENG-009, VIEW-009) | **Aucun code livré.** ENG-009 bloquée par HP-STI-018 (satin tournant absent du dépôt) ; VIEW-009 : `DeviceCoordinateCache` mesuré et rejeté (régression au zoom fort). Constats consignés dans chaque entrée. |
 
