@@ -4752,7 +4752,8 @@ void MainWindow::renderStitches() {
     refreshDensityOverlay(); // HP-VIEW-005 (main_window_density.cpp)
     refreshPullMapOverlay(); // tirage prédit (main_window_pull_preview.cpp)
 
-    if (showStitchesAct_ == nullptr || !showStitchesAct_->isChecked() || !sequence_) {
+    if (stitchLayerSuspended_ || showStitchesAct_ == nullptr || !showStitchesAct_->isChecked() ||
+        !sequence_) {
         return;
     }
     if (renderRealisticStitches()) {
