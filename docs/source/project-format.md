@@ -89,7 +89,7 @@ Compression (2026-10) : l'image PNG, déjà compressée, est stockée telle quel
   l'optimisation des trajets), `reorderRegions` (bool, défaut faux : mode avancé).
 - Lot « moteur de points », clés additives d'un objet de broderie, écrites
   seulement hors défaut et bornées à la lecture : `join` (0 hérite du projet, 1
-  automatique, 2 désactivé) ; `connector` (HP-SEQ-005 : 0 hérite, 1 toujours couper, 2 ne jamais couper) ; dans `params` : tatami `pullCompensation` (µm,
+  automatique, 2 désactivé) ; `knockout` / `knockoutMargin` (HP-ENG-011 : absent = désactivé ; booléen, recouvrement conservé en µm, défaut 300) ; `connector` (HP-SEQ-005 : 0 hérite, 1 toujours couper, 2 ne jamais couper) ; dans `params` : tatami `pullCompensation` (µm,
   [0 ; 3000], HP-ENG-001), tatami `rowEndClip` (µm, [0 ; 5000], écrêtage des bouts de rangée) et `edgeOutline` (booléen, contour cousu par-dessus ; aussi pour le directionnel) et, pour tatami, directionnel, satin et auto-satin,
   `underlayMode` (0 manuelle, 1 automatique, HP-ENG-002) ; satin `border`
   (`width` µm [500 ; 20000], `side` 0 centré / 1 intérieur / 2 extérieur,

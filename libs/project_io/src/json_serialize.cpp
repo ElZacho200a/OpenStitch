@@ -1483,6 +1483,10 @@ json project_to_json(const document::Project& project) {
         if (e.connector != document::ConnectorMode::Inherit) {
             eo["connector"] = static_cast<int>(e.connector); // HP-SEQ-005 : absent = Inherit
         }
+        if (e.knockout) { // HP-ENG-011 : absent = désactivé
+            eo["knockout"] = true;
+            eo["knockoutMargin"] = e.knockout_margin.value;
+        }
         eo["params"] = params_to_json(e.params);
         // Schéma v6 (HP-THR-004) : fil de nuancier assigné, écrit seulement s'il existe.
         if (e.thread) {
@@ -1745,6 +1749,8 @@ Result<document::Project> project_from_json(const json& j) {
             e.join = static_cast<document::JoinMode>(std::clamp(eo.value("join", 0), 0, 2));
             e.connector =
                 static_cast<document::ConnectorMode>(std::clamp(eo.value("connector", 0), 0, 2));
+            e.knockout = eo.value("knockout", false);
+            e.knockout_margin = Micrometers{std::clamp(eo.value("knockoutMargin", 300), 0, 5'000)};
             auto params = params_from_json(eo.at("params"));
             if (!params) {
                 return std::unexpected(params.error());

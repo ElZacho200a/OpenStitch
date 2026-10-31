@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <deque>
 #include <memory>
 #include <variant>
 
@@ -11,6 +12,7 @@
 #include "openstitch/auto_satin/satin_strategy.hpp"
 #include "openstitch/auto_satin/skeleton_satin.hpp"
 #include "openstitch/core/parallel.hpp"
+#include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/stitch_generation/auto_satin_engine.hpp"
@@ -882,6 +884,59 @@ bool is_routable_satin(const document::EmbroideryObject& o) {
 
 } // namespace
 
+namespace {
+
+// Remplissage opaque (HP-ENG-011) : couvre entièrement sa forme, donc cache ce qui est dessous.
+bool covers_opaquely(const document::EmbroideryObject& o) {
+    return o.visible && (o.is_tatami() || o.is_directional());
+}
+
+// Forme de `objects[index]` privée de la partie cachée par les remplissages opaques posés après
+// elle, chacun rétréci de `knockout_margin` (le recouvrement garde le fond couvert). `nullopt` :
+// rien à retirer ou calcul impossible -> la forme d'origine est cousue (jamais moins que avant).
+std::optional<document::VectorObject>
+knocked_out_source(const document::Project& project,
+                   const std::vector<document::EmbroideryObject>& objects, std::size_t index,
+                   const document::VectorObject& source) {
+    const document::EmbroideryObject& self = objects[index];
+    std::vector<geometry::PathSet> covers;
+    for (std::size_t j = index + 1; j < objects.size(); ++j) {
+        const document::EmbroideryObject& above = objects[j];
+        if (!covers_opaquely(above) || above.source_vector == self.source_vector) {
+            continue;
+        }
+        const document::VectorObject* vec = nullptr;
+        for (const auto& candidate : project.vector_objects) {
+            if (candidate.id == above.source_vector) {
+                vec = &candidate;
+                break;
+            }
+        }
+        if (vec == nullptr) {
+            continue;
+        }
+        for (const geometry::PathSet& set : vec->paths) {
+            if (self.knockout_margin.value <= 0) {
+                covers.push_back(set);
+            } else if (auto shrunk = geometry::inset_path_set(set, self.knockout_margin)) {
+                covers.insert(covers.end(), shrunk->begin(), shrunk->end());
+            }
+        }
+    }
+    if (covers.empty()) {
+        return std::nullopt;
+    }
+    auto remaining = geometry::difference_polygons(source.paths, covers);
+    if (!remaining) {
+        return std::nullopt;
+    }
+    document::VectorObject copy = source;
+    copy.paths = std::move(*remaining);
+    return copy;
+}
+
+} // namespace
+
 Result<stitch::StitchSequence> generate_sequence(const document::Project& project) {
     return generate_sequence(project, TaskContext{});
 }
@@ -935,6 +990,7 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
         Kind kind{Kind::Sequential};
     };
     std::vector<Unit> units;
+    std::deque<document::VectorObject> knockedSources; // adresses stables (HP-ENG-011)
     for (std::size_t idx = 0; idx < objects.size();) {
         const document::EmbroideryObject& object = objects[idx];
         if (!object.visible) {
@@ -955,6 +1011,12 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                 return fail(ErrorCategory::Internal,
                             "Objet vectoriel source introuvable pour « " + object.name + " »",
                             "source_vector=" + std::to_string(object.source_vector.value));
+            }
+        }
+        if (object.knockout && covers_opaquely(object) && unit.source != nullptr) {
+            if (auto knocked = knocked_out_source(project, objects, idx, *unit.source)) {
+                knockedSources.push_back(std::move(*knocked));
+                unit.source = &knockedSources.back();
             }
         }
         if (is_routable_satin(object)) {

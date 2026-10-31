@@ -1419,7 +1419,8 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   (grille de test : 7 -> 5 coupes), en repassant un court tronçon plutôt que
   de couper. L'ordre entre objets reste à faire.
 
-### HP-ENG-011 — Ne pas coudre sous les objets qui recouvrent [P1] — ☐ À faire
+### HP-ENG-011 — Ne pas coudre sous les objets qui recouvrent [P1] — ◐ Partiel (2026-10-31)
+- Livré (2026-10-31) : champ `EmbroideryObject::knockout` + `knockout_margin` (0,3 mm), `.osp` (`knockout`, `knockoutMargin`, absent = désactivé), `SetEmbroideryKnockoutCommand`, soustraction Clipper2 en phase 1 de `generate_sequence` (tatami et directionnel, par les remplissages opaques posés après, rétrécis de la marge ; repli sur la forme d'origine si le calcul échoue), 3 tests Catch2 (moins de points, marge, déterminisme, objet entièrement caché). Reste : **câblage bureau** (case dans l'inspecteur + test QTest), op `project_ops`/MCP, satin et autres remplissages comme dessous ou dessus, doc `tatami.md`.
 - Hatch : Remove overlaps : la partie d'un remplissage cachée par un objet
   cousu au-dessus n'est pas cousue (moins de points, moins d'épaisseur).
 - À faire : soustraction booléenne (Clipper2) des objets suivants avec une
@@ -1643,7 +1644,8 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
   courbe : subdivision de De Casteljau) ; `InsertNodeCommand`.
 - Modules : `libs/geometry`, `libs/commands`, `apps/desktop`.
 
-### HP-VEC-002 — Tracé ouvert (ligne, polyligne, courbe ouverte) [P0] — ◐ Partiel (2026-10-13, en PR)
+### HP-VEC-002 — Tracé ouvert (ligne, polyligne, courbe ouverte) [P0] — ☑ Fait (2026-10-30)
+- Constaté (2026-10-30) : outil « Ligne » (Maj+L), option Tracé ouvert (U) pour polygone et Bézier, satin de bordure sur chemin ouvert testé (cœur : `bordure : trace en S ouvert…` ; bureau : `aReshapedOpenPathSurvivesAnOspRoundTripAndCarriesABorderSatin`). La « courbe ouverte distincte » est couverte par l'option U sur l'outil Bézier ; plus de travail P0 restant.
 - Livré (2026-10-25) : outil « Ligne » (Maj+L), Entrée termine sans fermer. Reste : courbe ouverte distincte, test du chemin `createBorderSatin`.
 - Livré (second lot du 2026-10-13, en PR) : option **Tracé ouvert** (U) de la palette : le polygone devient une ligne brisée ouverte (2 points suffisent) et la courbe de Bézier une courbe ouverte (`geometry::Path::closed = false`). Un contour cousu dessus ne revient pas au départ (test `openPathOptionLeavesPolygonAndBezierOpen`).
 - Reste : satin de bordure sur un chemin ouvert non vérifié dans l'interface (`border_satin.cpp` le prévoit) ; pas d'outil « ligne » distinct (c'est une option).
@@ -1862,7 +1864,7 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
 - Modules : `apps/desktop`, `libs/commands` (fusion de commandes consécutives).
 
 ### HP-OBJ-004 — Rotation libre d'objets [P0] — ◐ Partiel (2026-10-13, en PR)
-- Livré (2026-10-25) : poignée de rotation pour une ou plusieurs formes, pivot déplaçable (Ctrl+Maj+glisser, double-clic pour revenir au centre), aperçu, Maj = 15°. Reste : saisie numérique du pivot.
+- Livré (2026-10-25) : poignée de rotation pour une ou plusieurs formes, pivot déplaçable (Ctrl+Maj+glisser, double-clic pour revenir au centre), aperçu, Maj = 15°. Reste : saisie numérique du pivot. Retouches de points : voir HP-OBJ-006 (2026-10-30).
 - Livré (second lot du 2026-10-13, en PR) : **poignée de rotation sur le canevas** (au-dessus de la forme sélectionnée, glisser = pivoter autour du centre, Maj = pas de 15°, une commande au relâchement). Reste révisé : pivot déplaçable, poignée pour une sélection multiple, aperçu pendant le glisser.
 - Livré (PR #27, fusionnée le 2026-10-13 (`296ff34`)) : `commands::make_transform_command` + `AffineTransform::rotation` (`libs/commands/transform_ops.*`) : contours, angle du tatami, guides et ruptures directionnels, dégradé, rails/barreaux/entrée-sortie des satins, guides d'auto-satin ; annulation exacte par instantané. Menu Édition ▸ Transformer : pivoter de 90° à gauche/droite (Ctrl+[ / Ctrl+]), pivoter d'un angle. Acceptation vérifiée par test : tatami 30° tourné de 45° → 75° ; 360° et quatre quarts de tour = géométrie identique.
 - Reste : poignées de rotation sur le canevas, Maj = pas de 15°, pivot déplaçable ; les retouches manuelles de points ne tournent pas.
@@ -1886,7 +1888,7 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
 - Dépend de : HP-OBJ-001.
 
 ### HP-OBJ-006 — Miroir horizontal / vertical [P0] — ◐ Partiel (2026-10-13)
-- Livré (2026-10-25) : le miroir échange rails A/B, barreaux et compensations gauche/droite d'un satin. Reste : retouches manuelles de points.
+- Livré (2026-10-25) : le miroir échange rails A/B, barreaux et compensations gauche/droite d'un satin. Livré (2026-10-30) : les retouches manuelles de points suivent un déplacement, une rotation ou un miroir lorsque la nouvelle séquence brute est exactement l'image de l'ancienne (contours, satins) ; sinon l'objet reste « Dirty » (jamais de retouche mal placée). Reste : tatami/remplissages ancrés sur une grille globale (les retouches y sont encore perdues).
 - Livré (PR #27, fusionnée le 2026-10-13 (`296ff34`)) : miroir horizontal / vertical de la sélection autour de son centre (`AffineTransform::mirror`, même commande que la rotation), paramètres dépendants retournés (angles, guides, rails). Test `transform: mirror flips shape, row angle, guides and satin rails`.
 - Reste : les rails A/B d'un satin ne sont pas échangés (le sens de couture de la colonne est donc inversé).
 - À faire : `MirrorObjectsCommand` sur la sélection (axe = centre de la
@@ -1957,7 +1959,8 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
 - À faire : champs en mm dans la barre contextuelle ou l'inspecteur, cadenas
   de proportions ; chaque validation = une commande.
 
-### HP-OBJ-016 — Suppression multiple [P0] — ◐ Partiel (2026-10-13)
+### HP-OBJ-016 — Suppression multiple [P0] — ☑ Fait (2026-10-30)
+- Constaté (2026-10-30) : Suppr supprime la sélection multiple en une commande (test `test_tool_workflows.cpp`, annulation/rétablissement) et les points en mode édition (HP-EDIT-002, journal 2026-10-25) ; « Reste » périmé.
 - Constaté sur `main` : Suppr supprime la sélection d'objets, multiple comprise, en une commande (`MainWindow::deleteSelection`).
 - Reste : même touche pour les points en mode édition (non vérifié).
 - État OpenStitch : supprimer un objet, supprimer la broderie en gardant la
@@ -1969,7 +1972,8 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
 ### HP-OBJ-017 — Renommer les objets [P2] — ☐ À faire
 - À faire : F2 / double-clic dans la liste.
 
-### HP-OBJ-018 — Changer la couleur d'un objet de broderie [P0] — ◐ Partiel (2026-10-13, en PR)
+### HP-OBJ-018 — Changer la couleur d'un objet de broderie [P0] — ☑ Fait (2026-10-30)
+- Constaté (2026-10-30) : pastille `button_embroideryColor` dans l'inspecteur (`properties_panel.cpp`, testée dans `test_main_window.cpp`), RGB libre, sélection multiple, annulation, assignation de fil depuis le panneau Fils ; les « Reste » ci-dessous sont périmés.
 - Constaté (2026-10-25) : pastille d'inspecteur, couleur libre sur la sélection multiple et annulation présentes et testées.
 - Livré (second lot du 2026-10-13, en PR) : **pastille de couleur dans l'inspecteur** (`button_embroideryColor`), qui ouvre le sélecteur de couleur libre pour toute la sélection et suit les changements (annulation comprise). Le nuancier reste dans le panneau Fils. Il ne reste que la fusion sur `main`.
 - Livré (PR #27, fusionnée le 2026-10-13 (`296ff34`)) : Édition ▸ **Couleur de la broderie…** (`QColorDialog`, RGB libre, sélection multiple, un pas d'annulation, fil de nuancier retiré).
@@ -4544,3 +4548,6 @@ ouvrant le lot (§0.1).
 | 2026-10-27 | Claude | **Niveau 3, lot B** (HP-ENG-001.b) : `PullMode::Predicted` branché (passe finale d'`effective_sequence`, `.osp`, CLI/MCP, inspecteur). Confiance plafonnée tant que non calibré. |
 | 2026-10-27 | Claude | **Niveau 3, prévisualisation du tirage** (HP-ENG-001.b) : carte de déplacement prédit et aperçu des points décalés par bloc de couleur, menu Affichage, CLI `render --simulate-pull/--pull-map`. Estimation non calibrée. |
 | 2026-10-30 | Claude (roadmap) | **HP-PROD-001 ◐ → ☑** : le « Reste » (références de fil par bloc) était déjà comblé depuis HP-THR-004 ; vérifié dans le code et les tests, aucune modification de code. HP-FMT-002..005 n'attendent plus que la validation humaine (visualiseurs tiers, machine). roadmap : pas d'autre entrée concernée. |
+| 2026-10-30 | Claude (roadmap) | **HP-VEC-002, HP-OBJ-016, HP-OBJ-018 ◐ → ☑** : « Reste » périmés, vérifiés dans le code et les tests (aucune modification de code). |
+| 2026-10-30 | Claude (OBJ-004/006) | `TransformObjectsCommand` fait suivre les retouches manuelles de points (`moved_to`, `inserted_after`, empreinte) quand la nouvelle séquence brute est l'image exacte (±50 µm) de l'ancienne ; sinon comportement inchangé (Dirty). Test Catch2 contour : déplacement, rotation, miroir, annulation. Tatami non couvert (grille globale). |
+| 2026-10-31 | Claude (HP-ENG-011) | **HP-ENG-011 ☐ → ◐** : cœur livré (modèle, `.osp`, commande, génération, tests). Reste le câblage bureau. Garde `check_no_raw_sequence_bypass` : deux appels annotés dans `transform_ops.cpp` (suivi des retouches, HP-OBJ-004/006). |
