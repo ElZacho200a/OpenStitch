@@ -1287,7 +1287,11 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   --pull-map --fabric`. Tests `test_pull_map.cpp`, `test_pull_preview_ui.cpp`. Reste : lecture du
   profil matière (#155), calibration (HP-ENG-001.a) ; l'aperçu n'est pas une mesure.
 
-### HP-ENG-001.a — Pièce-test de calibration et table de compensation par tissu [P1] — ☐ À faire
+### HP-ENG-001.a — Pièce-test de calibration et table de compensation par tissu [P1] — ◐ Partiel (2026-10-27)
+- Livré : prototype hors moteur CSV → JSON avec provenance par tissu/machine/fil/aiguille,
+  réplications, dispersion, estimation symétrique bornée et tests Python.
+- Reste : générateur de pièce-test DST, validation machine, persistance des profils .osp,
+  application au moteur et assistant desktop. Profils non appliqués automatiquement.
 - Source : veille `docs/veille-innovations-2026-10.md` §V1. Aucune source lue ne
   fournit de modèle physique de l'étirement : les valeurs publiées sont des
   règles empiriques, dépendantes du tissu et non vérifiées. On mesure donc
@@ -4486,6 +4490,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-27 | ChatGPT | HP-ENG-001.a : outil de calibration expérimental isolé, sans modification de la production DST ; essais physiques et intégration restent requis. |
 | 2026-10-27 | ChatGPT (audit UI/UX, PR 5) | HP-UX-047 ◐ : distinguer visuellement et textuellement teintes de segmentation, couleurs d'objets et références de fils ; QTests, sans modifier ni broderie ni export. |
 | 2026-10-30 | Claude (analyse multi-agents, passe 2) | **Seconde passe sans limite de tours** : six agents haiku `general-purpose` relisent les mêmes domaines en profondeur ; **+61 entrées** (§27ter, lots G à L) : écriture atomique et durable, fragments non migrés, trim VP3 perdu, mode contour « running » inopérant, refusion après limite de fils, vectorisation en O(régions × pixels), lignes cohérentes en série, compensation du tirage des autres remplissages, chevron/plume, CI (cache Qt, tests Python jamais lancés), UX presse-papiers/simulation. Entrées « à vérifier » non confirmées à l'exécution ; aucun code modifié ; HP-OBJ-017 et HP-OBJ-021 à recontrôler. |
 | 2026-10-30 | Claude (analyse multi-agents) | **Analyse complète des fonctionnalités et plan d'amélioration** : six agents haiku (IHM, pipeline image, génération de points, document/commandes/rendu, formats/lettrage, CLI/MCP/CI) ; **+51 entrées** HP-QA-011 à 020, HP-PERF-010 à 022, HP-AUTO-014 à 019, HP-UX-050 à 056, HP-TXT-016, HP-STI-027 à 032, HP-PROD-009, HP-FMT-023 à 026, HP-THR-013, HP-DIST-008, HP-HELP-005 (§27bis, lots A à F). Entrées non vérifiées à l'exécution (marquées « à vérifier »). Aucun code modifié ; HP-OBJ-021 à recontrôler (HP-UX-054). |
