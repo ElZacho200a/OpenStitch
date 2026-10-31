@@ -259,6 +259,15 @@ ThreadPanel::ThreadPanel(QWidget* parent) : QWidget(parent) {
     auto* pl = new QVBoxLayout(projectTab);
     pl->setContentsMargins(8, 8, 8, 8);
     pl->setSpacing(8);
+    auto* roleHint = new QLabel(
+        tr("Fils de broderie : couleurs et références réellement prévues pour la machine. "
+           "La segmentation de l'image se règle séparément dans Couleurs de segmentation."),
+        projectTab);
+    roleHint->setObjectName(QStringLiteral("threadColorRoleHint"));
+    roleHint->setAccessibleName(tr("Rôle des couleurs de fil"));
+    roleHint->setWordWrap(true);
+    markSecondaryText(roleHint);
+    pl->addWidget(roleHint);
     usageSummary_ = new QLabel(projectTab);
     usageSummary_->setWordWrap(true);
     usageSummary_->setObjectName(QStringLiteral("threadUsageSummary"));
@@ -352,7 +361,9 @@ ThreadPanel::ThreadPanel(QWidget* parent) : QWidget(parent) {
     catalogList_ = new QListWidget(catalogTab);
     catalogList_->setObjectName(QStringLiteral("threadCatalogList"));
     catalogList_->setAccessibleName(tr("Fils du nuancier"));
-    catalogList_->setToolTip(tr("Cliquez un fil pour l'assigner à la sélection."));
+    catalogList_->setToolTip(
+        tr("Assignez une référence de fil à la sélection de broderie, sans modifier "
+           "les couleurs techniques de segmentation."));
     catalogList_->setItemDelegate(new ThreadRowDelegate(false, catalogList_));
     catalogList_->setMouseTracking(true);
     cl->addWidget(catalogList_, 1);

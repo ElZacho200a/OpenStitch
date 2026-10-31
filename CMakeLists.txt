@@ -50,6 +50,7 @@ add_subdirectory(libs/project_io)
 add_subdirectory(libs/commands)
 add_subdirectory(libs/project_ops)
 add_subdirectory(libs/mcp)
+add_subdirectory(libs/agent)
 add_subdirectory(apps/cli)
 add_subdirectory(apps/mcp)
 

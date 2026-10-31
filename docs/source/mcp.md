@@ -6,6 +6,20 @@ typés** du protocole MCP (Model Context Protocol, JSON-RPC 2.0 sur stdio). Il c
 scriptable, le serveur évite à l'agent de relancer un processus et de recharger le `.osp` à chaque
 étape, et lui fournit des schémas d'arguments, des erreurs actionnables et un **rendu image**.
 
+## Claude Code et projet Desktop
+
+Sur la branche de ce compagnon, OpenStitch propose Claude Code dans son dock.
+Le backend du chat lance la CLI de l'utilisateur en mode non interactif, échange
+les résultats au format JSON, et donne accès au projet **actuellement ouvert** par
+le pont MCP local (openstitch-mcp --live --pid N). Le terminal Claude Code
+externe reste une alternative. Le fournisseur Anthropic utilisant une clé API
+est distinct et optionnel. Voir [Compagnon IA](ai-companion.md).
+
+Le projet ouvert n'est jamais modifié par l'écriture directe de fichiers :
+seul project_apply après approbation dans le dock réalise une mutation. Le
+serveur MCP autonome conserve sa propre session et ne doit pas être confondu
+avec le mode live.
+
 ## Architecture
 
 ```
@@ -37,6 +51,16 @@ vérifie SHA-256, les dépendances et l'initialisation MCP, puis installe
 `~/.local/bin/openstitch-mcp`. Le serveur utilise **stdio**, sans ouverture
 de port réseau. Les archives `openstitch-mcp-linux-x86_64.tar.gz` et
 `.sha256` sont publiées dans la release après réussite des tests CI.
+
+## Installation Windows x64 (release vérifiée)
+
+Téléchargez `openstitch-mcp-windows-x64.zip` et le fichier
+`openstitch-mcp-windows-x64.zip.sha256` depuis la
+[release `latest`](https://github.com/ElZacho200a/OpenStitch/releases/tag/latest).
+Décompressez l'archive, conservez les DLL à côté de `openstitch-mcp.exe`,
+puis testez `openstitch-mcp.exe --version` et `openstitch-mcp.exe --doctor`
+dans PowerShell. Le ZIP est également joint aux releases versionnées `v*`.
+L'installeur Studio inclut déjà son serveur MCP pour le pont IA local.
 
 ## Installation côté client
 
@@ -188,3 +212,85 @@ Un refus est un résultat d'outil `isError: true` dont le texte est le document
   non traitée ici.
 - Outils d'analyse fine (`fabric-risk`, balayage d'options, localisation) pas encore exposés :
   à ajouter au besoin dans `libs/mcp/src/tools.cpp`.
+
+## Mode live : agent IA sur le projet ouvert dans OpenStitch Desktop
+
+Contrat et décisions : [ADR 0001](../adr/0001-compagnon-ia-session-live.md). Le mode autonome
+décrit plus haut est **inchangé** ; le mode live est une option explicite.
+
+1. Dans OpenStitch Desktop : **Aide ▸ Pont IA local (MCP)** (désactivé par défaut, réglage
+   mémorisé). Le desktop ouvre un **tube nommé** (Windows) / socket de domaine Unix accessible à
+   l'utilisateur courant seul — **aucun port réseau** — et écrit un fichier de découverte avec un
+   jeton aléatoire (`%LOCALAPPDATA%\OpenStitch\live\<pid>.json`, ou `OPENSTITCH_LIVE_DIR`).
+2. Le client MCP lance `openstitch-mcp --live` (option `--pid N` s'il y a plusieurs instances) :
+   un relais stdio qui retrouve l'hôte à chaque requête (desktop relancé = nouveau jeton, sans
+   redémarrer le client).
+3. Les outils s'exécutent sur une **copie figée** du projet ouvert, hors du fil d'interface :
+
+| Classe | Outils | Politique |
+|---|---|---|
+| Lecture | `live_status`, `project_inspect`, `project_select`, `project_palette`, `project_check`, `project_render`, `project_satin_compare`, `project_fabric_risk`, `project_report`, `project_diagnose`, `project_density`, `project_fidelity`, `project_locate`, `project_operations`, `semantic_validate`, `digitize_guide`, `ai_backends` | automatique |
+| Mutation | `project_apply` (hors `dry_run`) | **approbation de l'utilisateur** à chaque appel ; une seule étape d'annulation (Ctrl+Z) ; `E_STALE_REVISION` si le document a changé pendant le calcul |
+| Refusés | `project_open/new/digitize/save/export/restore/checkpoint…` | jamais exposés (ouvrir, enregistrer, exporter reste une action de l'utilisateur) |
+
+`live_status` donne le nom du document (jamais le chemin complet), « modifié », « jamais
+enregistré », la sélection et la `revision`. Sans desktop joignable, un appel répond
+`E_SESSION_CLOSED` avec un conseil actionnable ; il n'y a jamais de repli silencieux sur un autre
+projet. Le dock de conversation (confirmation riche avant/après) remplacera la boîte de dialogue
+d'approbation actuelle.
+
+### Dock « Compagnon IA »
+
+Panneau latéral natif (**Affichage ▸ Panneaux ▸ Compagnon IA**, `Ctrl+Maj+J` ; autre séquence
+dans le réglage `shortcuts/companionDock`), masqué par défaut, ancrable à gauche ou à droite et
+mémorisé avec la disposition. Sans fournisseur connecté, il affiche un écran d'accueil qui propose
+d'activer le pont IA local ; l'édition d'OpenStitch ne dépend jamais de lui.
+
+- **Conversation** : saisie multiligne (Entrée envoie, Maj+Entrée saute une ligne), indicateur
+  d'attente, bouton Interrompre, erreurs non bloquantes ; messages et résultats d'outils très longs
+  tronqués à l'affichage.
+- **Appels d'outils** affichés en cartes (outil, cible, résultat, motif de refus), jamais en JSON.
+- **Changement proposé** : liste des opérations avec lien de focus sur l'objet (Entrée), avertissements,
+  aperçus avant/après facultatifs, **Appliquer / Rejeter**. Une proposition en attente est rejetée
+  si le document est remplacé. Après application, **Annuler : IA : …** défait le lot en une étape.
+- Le dock est le point d'approbation des modifications demandées par un agent via le pont IA local.
+- Contexte affiché : projet actif, objets sélectionnés, état du pont. Thèmes clair/sombre et
+  fenêtres étroites pris en charge ; noms accessibles sur chaque contrôle.
+- Le fournisseur (`CompanionBackend`) est une interface ; les tests utilisent un faux backend.
+
+### Fournisseur Claude (Aide ▸ Compagnon IA…)
+
+Décision et alternatives : [ADR 0002](../adr/0002-fournisseur-claude.md). Le dock peut dialoguer avec
+Claude via l'API Messages d'Anthropic ; l'agent appelle **en processus** les mêmes outils que le mode
+live (pas de serveur HTTP, pas de « remote MCP »).
+
+1. **Aide ▸ Compagnon IA…** : saisir votre **clé API** (Gestionnaire d'identifiants Windows, jamais
+   un fichier ni `QSettings`), cocher « Activer le fournisseur Claude », choisir le modèle.
+2. Dans le dock : poser une question (« combien d'objets orange ? ») ; l'agent lit le projet
+   (`live_status`, `project_inspect`, `project_palette`…) sans le modifier. Toute modification
+   passe par l'approbation du dock et s'annule en une étape.
+3. **Ce qui quitte la machine** : vos messages, les résultats d'outils (statistiques, listes
+   d'objets, aperçus de rendu) et la clé (en-tête HTTPS) vers `api.anthropic.com`, uniquement quand
+   vous envoyez un message. Aucun abonnement Claude grand public n'est utilisable : il faut une clé API.
+4. **Hors ligne / sans clé** : le dock reste sur l'écran d'accueil ; OpenStitch fonctionne
+   normalement. « Désactiver entièrement le compagnon » coupe fournisseur et pont local.
+5. Erreurs (réseau, quota, délai, clé refusée) : bandeau non bloquant, reprises bornées,
+   bouton Interrompre ; l'usage en jetons est affiché (le coût se lit chez le fournisseur).
+
+### Édition agentique : « mets les formes orange compatibles en satin (Predicted) »
+
+Outils propres au mode live (lecture seule, calculés sur une copie, hors fil d'interface) :
+
+| Outil | Rôle |
+|---|---|
+| `live_context` | paquet compact : session/révision, sélection, cadre, palette des **fils** (pas les teintes de segmentation), objets à identifiants stables, risques (verrouillés, masqués, non enregistré) |
+| `live_target` | cible par teinte de **fil** (`orange`, `#RRGGBB`, `selection`) ; signale verrouillés/masqués, fils **à la frontière** d'une famille et les cas ambigus (`ambiguous`) |
+| `live_ask_user` | pose la question **dans le panneau** (2 à 8 options avec leurs objets, lien de focus) ; rien n'est modifié tant que l'utilisateur n'a pas répondu |
+| `live_plan_satin` | compare `skeleton` / `parallel_sweep` / `medial_axis` (copies isolées) pour 1 à 20 objets, retient la meilleure variante non rejetée, **justifie chaque refus** (tatami conservé), saute verrouillés/masqués/déjà satin, prépare le lot `auto_satin` + `set_params {pull_mode: predicted}` validé en simulation |
+| `live_preview` | avant/après d'un lot sur une copie : rapport, points, sauts, coupes, constats qualité, risque textile (écarts) et rendu de l'état après |
+
+Boucle recommandée : `live_context` → `live_target` (→ `live_ask_user` si ambigu) → `live_plan_satin`
+→ `live_preview` → `project_apply` (approbation dans le dock, **un seul** Ctrl+Z) → contrôle. Une
+modification manuelle entre l'aperçu et l'application donne `E_STALE_REVISION`. **Limites** :
+`Predicted` est une compensation de tirage empirique (PR #170), non calibrée sur machine
+(calibration physique : PR #152) ; aucune forme n'est garantie convertible en satin.

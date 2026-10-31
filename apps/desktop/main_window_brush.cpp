@@ -202,6 +202,9 @@ void MainWindow::syncBrushTool(Tool tool) {
 
 void MainWindow::beginBrushStroke(QPointF sceneMm) {
     brushStroke_.reset();
+    if (currentTool_ != Tool::Brush) {
+        return; // le même geste sert aux zones de détail (main_window_detail_zones.cpp)
+    }
     if (hasMultiSelection() || !selectedObject_) {
         statusBar()->showMessage(tr("Pinceau : sélectionnez d'abord UNE forme vectorielle."), 4000);
         return;
@@ -211,10 +214,32 @@ void MainWindow::beginBrushStroke(QPointF sceneMm) {
         return;
     }
     brushStroke_ = BrushStroke{*selectedObject_, object->paths, sceneMm};
+    suspendStitchLayer(true);
     updateBrushRing(sceneMm);
 }
 
+void MainWindow::suspendStitchLayer(bool suspended) {
+    if (stitchLayerSuspended_ == suspended) {
+        return;
+    }
+    stitchLayerSuspended_ = suspended;
+    if (suspended) {
+        for (QGraphicsItem* it : stitchItems_) {
+            scene_->removeItem(it);
+            delete it;
+        }
+        stitchItems_.clear();
+        simMarker_ = nullptr;
+        simWalkValid_ = false;
+    } else {
+        renderStitches();
+    }
+}
+
 void MainWindow::moveBrushStroke(QPointF sceneMm, Qt::KeyboardModifiers mods) {
+    if (currentTool_ != Tool::Brush) {
+        return;
+    }
     updateBrushRing(sceneMm);
     if (!brushStroke_) {
         return;
@@ -262,6 +287,7 @@ void MainWindow::cancelBrushStroke() {
     const bool wasActive = brushStroke_.has_value();
     brushStroke_.reset();
     hideGroupPreview();
+    suspendStitchLayer(false);
     if (wasActive) {
         statusBar()->showMessage(tr("Coup de pinceau annulé."), 2000);
     }
@@ -275,10 +301,14 @@ void MainWindow::endBrushStroke(QPointF sceneMm) {
     const BrushStroke stroke = std::move(*brushStroke_);
     brushStroke_.reset();
     hideGroupPreview();
+    // Les points sont recalculés par refreshImage() (ou par la remise en place ci-dessous si le
+    // coup est refusé) : la couche reste vide jusque-là.
     const std::uint64_t generation = documentGeneration_;
     // Différé : refreshImage() reconstruit la scène pendant l'évènement souris.
     QTimer::singleShot(0, this, [this, stroke, generation] {
+        stitchLayerSuspended_ = false; // refreshImage() / renderStitches() reconstruisent la couche
         if (generation != documentGeneration_) {
+            renderStitches();
             return;
         }
         auto result = commands::make_brush_stroke_command(project_, stroke.object, stroke.working);

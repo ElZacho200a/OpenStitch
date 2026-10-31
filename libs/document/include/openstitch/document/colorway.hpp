@@ -36,7 +36,13 @@ struct Colorway {
 // tissu). Défaut = blanc, l'apparence historique du canevas.
 struct FabricSettings {
     std::array<std::uint8_t, 3> color{255, 255, 255};
-    std::string name; // libellé libre (« Coton écru »…), facultatif
+    // Libelle facultatif et descriptif de la matiere.
+    std::string name;
+    // Identifiant libre : woven, jersey, terry, felt, denim...
+    std::string material;
+    // Entoilage declare (cut-away, tear-away, etc.). Predicted peut l'utiliser
+    // pour un ajustement exploratoire, jamais pour une calibration physique.
+    std::string stabilizer;
 
     friend bool operator==(const FabricSettings&, const FabricSettings&) = default;
 };

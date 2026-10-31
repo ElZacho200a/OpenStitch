@@ -55,6 +55,7 @@
 #include "openstitch/stitch_generation/join.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
+#include "openstitch/stitch_generation/pull_map.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
@@ -390,6 +391,9 @@ struct RenderArgs {
     bool fast{false};
     bool noClobber{false};
     bool json{false};
+    bool simulatePull{false}; // décale chaque point du déplacement prédit du tissu (niveau 3)
+    bool pullMap{false};      // carte de déplacement prédit (PNG) au lieu du rendu brodé
+    std::string fabric{"default"}; // réglage de tissu empirique : default, linen, stable
 };
 
 int run_render(const RenderArgs& a) {
@@ -402,6 +406,42 @@ int run_render(const RenderArgs& a) {
     options.margin_mm = a.marginMm;
     options.params.fabric_opaque = !a.transparent;
     options.params.quality = a.fast ? stitch_render::Quality::Fast : stitch_render::Quality::High;
+
+    const auto& presets = stitch_generation::fabric_preset_names();
+    if (std::find(presets.begin(), presets.end(), a.fabric) == presets.end()) {
+        return cli_error("render", "Tissu inconnu : " + a.fabric + " (default, linen, stable)");
+    }
+    const stitch_generation::FabricResponse fabric = stitch_generation::fabric_preset(a.fabric);
+    // Carte de déplacement : PNG de la carte seule (pas de rendu brodé).
+    const auto write_pull_map = [&](const stitch::StitchSequence& seq) {
+        const auto map = stitch_generation::compute_pull_map(seq, fabric, Micrometers{500});
+        const auto pr = stitch_generation::rasterize_pull_map(map);
+        if (pr.width <= 0) {
+            return cli_error("render", "Aucun point cousu : rien à dessiner");
+        }
+        image::Image img;
+        img.width = pr.width;
+        img.height = pr.height;
+        img.source_had_alpha = true;
+        img.rgba = pr.rgba;
+        const auto png = image::encode_png(img);
+        if (!png) {
+            return cli_error("render", png.error().message);
+        }
+        std::ofstream file(std::filesystem::path(a.output), std::ios::binary);
+        file.write(reinterpret_cast<const char*>(png->data()),
+                   static_cast<std::streamsize>(png->size()));
+        file.close();
+        if (!file) {
+            return cli_error("render", "Écriture impossible : " + a.output);
+        }
+        const auto peak = stitch_generation::find_pull_peak(map);
+        fmt::print(
+            "Carte de déplacement écrite : {} ({} x {} cases de {:.2f} mm, maximum {:.2f} mm "
+            "estimés, non calibré)\n",
+            a.output, pr.width, pr.height, map.cell.value / 1000.0, peak.magnitude_mm);
+        return kExitOk;
+    };
 
     stitch_render::RasterImage raster;
     std::string ext = std::filesystem::path(a.input).extension().string();
@@ -416,12 +456,17 @@ int run_render(const RenderArgs& a) {
         if (!seq) {
             return cli_error("render", seq.error().message);
         }
+        if (a.pullMap) {
+            return write_pull_map(*seq);
+        }
+        const stitch::StitchSequence shown =
+            a.simulatePull ? stitch_generation::simulate_fabric_pull(*seq, fabric) : *seq;
         std::map<std::uint64_t, std::array<std::uint8_t, 3>> colors;
         for (const auto& emb : project->embroidery_objects) {
             colors[emb.id.value] = emb.rgb;
         }
         raster = stitch_render::render_sequence(
-            *seq,
+            shown,
             [&](ObjectId id) -> std::optional<std::array<std::uint8_t, 3>> {
                 const auto it = colors.find(id.value);
                 if (it == colors.end()) {
@@ -435,7 +480,11 @@ int run_render(const RenderArgs& a) {
         if (!seq) {
             return cli_error("render", seq.error().message, kDstHint);
         }
-        raster = stitch_render::render_machine_sequence(*seq, options);
+        if (a.pullMap) {
+            return write_pull_map(*seq);
+        }
+        raster = stitch_render::render_machine_sequence(
+            a.simulatePull ? stitch_generation::simulate_fabric_pull(*seq, fabric) : *seq, options);
     }
     if (raster.width <= 0 || raster.height <= 0) {
         return cli_error("render", "Aucun point cousu : rien à dessiner");
@@ -1716,6 +1765,13 @@ int main(int argc, char** argv) {
         ->check(CLI::Range(0.0, 50.0));
     render_cmd->add_flag("--transparent", rnd.transparent, "Fond transparent (sans tissu)");
     render_cmd->add_flag("--fast", rnd.fast, "Rendu rapide (sans torsion ni ombre portée)");
+    render_cmd->add_flag("--simulate-pull", rnd.simulatePull,
+                         "Décale chaque point du tirage prédit du tissu (niveau 3, non calibré) "
+                         "pour voir les trous entre couleurs");
+    render_cmd->add_flag("--pull-map", rnd.pullMap,
+                         "Écrit la carte du déplacement prédit du tissu au lieu du rendu brodé");
+    render_cmd->add_option("--fabric", rnd.fabric,
+                           "Réglage de tissu empirique : default, linen (lin lâche), stable");
     render_cmd->add_flag("--json", rnd.json, "JSON stable sur stdout");
     render_cmd->add_flag("--no-clobber", rnd.noClobber, "Refuse d'écraser un fichier existant");
 
@@ -1895,7 +1951,20 @@ int main(int argc, char** argv) {
     auto* commands_cmd = openstitch_cli::register_commands_listing(app, json_out);
     auto* ai_cmd = openstitch_cli::register_ai_commands(app);
 
-    CLI11_PARSE(app, argc, argv);
+    // HP-FILE-014 : `--settings profil.json` est développé en options équivalentes avant le parse.
+    {
+        argv = app.ensure_utf8(argv);
+        std::vector<std::string> args(argv + 1, argv + argc);
+        if (const auto refused = openstitch_cli::expand_settings_profile(app, args)) {
+            return *refused;
+        }
+        std::ranges::reverse(args); // CLI11 attend les arguments en ordre inverse
+        try {
+            app.parse(args);
+        } catch (const CLI::ParseError& e) {
+            return app.exit(e);
+        }
+    }
 
     if (project_cmd->parsed() || commands_cmd->parsed()) {
         return openstitch_cli::project_exit_code();

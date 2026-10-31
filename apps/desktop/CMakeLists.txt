@@ -1,4 +1,4 @@
-find_package(Qt6 COMPONENTS Widgets PrintSupport LinguistTools QUIET)
+find_package(Qt6 COMPONENTS Widgets PrintSupport Network LinguistTools QUIET)
 if(NOT Qt6_FOUND)
     message(WARNING
         "Qt6 introuvable : l'application desktop ne sera pas construite. "
@@ -37,6 +37,17 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_workflow.cpp
     ui_memory.hpp
     main_window_ux.cpp
+    live_server.cpp
+    companion_dock.cpp
+    companion_launcher.cpp
+    companion_launcher.hpp
+    claude_code_process_backend.cpp
+    claude_code_process_backend.hpp
+    companion_backend.hpp
+    claude_backend.cpp
+    claude_backend.hpp
+    companion_settings_dialog.cpp
+    companion_settings_dialog.hpp
     main_window_preferences.cpp
     general_preferences_dialog.cpp
     general_preferences_dialog.hpp
@@ -45,6 +56,7 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_realistic.cpp
     main_window_production.cpp
     main_window_colorways.cpp
+    main_window_stitch_presets.cpp
     colorway_dialog.cpp
     colorway_dialog.hpp
     thread_merge_dialog.cpp
@@ -68,14 +80,20 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_node_select.cpp
     main_window_bucket.cpp
     main_window_click_to_stitch.cpp
+    main_window_detail_zones.cpp
     main_window_eyedropper.cpp
     # [cablage-C:fin]
     # [cablage-D:debut]
+    main_window_order_jumps.cpp
+    main_window_fabric_risk.cpp
+    fabric_risk_overlay.cpp
+    fabric_risk_overlay.hpp
     # [cablage-D:fin]
     # [cablage-E:debut]
     density_overlay.cpp
     density_overlay.hpp
     main_window_density.cpp
+    main_window_pull_preview.cpp
     grid_settings_dialog.cpp
     grid_settings_dialog.hpp
     main_window_view_display.cpp
@@ -195,14 +213,18 @@ qt_add_translations(openstitch_desktop_widgets
     RESOURCE_PREFIX /i18n)
 target_include_directories(openstitch_desktop_widgets PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(openstitch_desktop_widgets
-    PUBLIC Qt6::Widgets Qt6::PrintSupport openstitch::core openstitch::image openstitch::document
+    PUBLIC Qt6::Widgets Qt6::Network Qt6::PrintSupport openstitch::core openstitch::image openstitch::document
            openstitch::commands openstitch::vectorization openstitch::stitch openstitch::stitch_render
            openstitch::stitch_generation openstitch::formats openstitch::project_io
            openstitch::stitch_analysis openstitch::optimization openstitch::autodigitize
            openstitch::auto_satin openstitch::segmentation openstitch::lettering
-           openstitch::ai_segmentation openstitch::project_ops
+           openstitch::ai_segmentation openstitch::project_ops openstitch::mcp openstitch::agent
     PRIVATE openstitch::warnings
 )
+
+if(WIN32)
+    target_link_libraries(openstitch_desktop_widgets PRIVATE advapi32)
+endif()
 
 add_executable(openstitch WIN32 main.cpp)
 target_link_libraries(openstitch PRIVATE openstitch_desktop_widgets openstitch::warnings)

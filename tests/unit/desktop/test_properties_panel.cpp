@@ -338,6 +338,32 @@ void PropertiesPanelTest::radialSpiralCrosshatchEditsEmitParamsAndConversionIsOf
         QVERIFY(std::abs(std::get<openstitch::document::CrosshatchFillParams>(*last).angle.radians -
                          std::numbers::pi / 4.0) < 1e-9);
     }
+    // Point de croix (HP-STI-012) : taille de cellule, angle, croix complete, passes.
+    {
+        PropertiesPanel panel;
+        EmbroideryObject e;
+        e.id = openstitch::ObjectId{35};
+        e.params = openstitch::document::CrossStitchParams{};
+        panel.showEmbroidery(e);
+        QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                         [&](openstitch::ObjectId, StitchParams params) { last = params; });
+        auto* cell = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_crossCell"));
+        auto* angle = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_crossAngle"));
+        auto* full = panel.findChild<QCheckBox*>(QStringLiteral("check_crossFull"));
+        auto* passes = panel.findChild<QSpinBox*>(QStringLiteral("spin_crossPasses"));
+        QVERIFY(cell != nullptr && angle != nullptr && full != nullptr && passes != nullptr);
+        QVERIFY(full->isChecked());
+        cell->setValue(3.5);
+        QCOMPARE(std::get<openstitch::document::CrossStitchParams>(*last).cell.value, 3'500);
+        full->setChecked(false);
+        QVERIFY(!std::get<openstitch::document::CrossStitchParams>(*last).full_cross);
+        passes->setValue(2);
+        QCOMPARE(std::get<openstitch::document::CrossStitchParams>(*last).passes, 2);
+        angle->setValue(90.0);
+        QVERIFY(
+            std::abs(std::get<openstitch::document::CrossStitchParams>(*last).grid_angle.radians -
+                     std::numbers::pi / 2.0) < 1e-9);
+    }
 }
 
 void PropertiesPanelTest::directionalEditKeepsGuidesAndSeed() {
@@ -658,6 +684,11 @@ void PropertiesPanelTest::engineSettingsEmitDedicatedEdits() {
     QCOMPARE(std::get<openstitch::document::TatamiParams>(*emitted).pull_mode,
              openstitch::document::PullMode::Adaptive);
     QVERIFY(!pull->isEnabled());
+    // Mode Prédit (niveau 3) : champ de déplacement, réglage manuel grisé.
+    pullMode->setCurrentIndex(3);
+    QCOMPARE(std::get<openstitch::document::TatamiParams>(*emitted).pull_mode,
+             openstitch::document::PullMode::Predicted);
+    QVERIFY(!pull->isEnabled());
     pullMode->setCurrentIndex(0);
     QVERIFY(pull->isEnabled());
 
@@ -704,6 +735,38 @@ void PropertiesPanelTest::engineSettingsEmitDedicatedEdits() {
     panel.setConnectorMode(e.id, openstitch::document::ConnectorMode::AlwaysTrim);
     QCOMPARE(connectorMode, -1);
     QCOMPARE(connector->currentIndex(), 1);
+
+    // HP-ENG-011 : « Retirer les points cachés » (tatami), marge activée avec la case.
+    e.params = openstitch::document::TatamiParams{};
+    panel.showEmbroidery(e);
+    auto* knockout = panel.findChild<QCheckBox*>(QStringLiteral("check_knockout"));
+    auto* margin = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_knockoutMargin"));
+    QVERIFY(knockout != nullptr);
+    QVERIFY(margin != nullptr);
+    QVERIFY(!knockout->isChecked());
+    QVERIFY(!margin->isEnabled());
+    QCOMPARE(margin->value(), 0.3);
+    bool knockoutOn = false;
+    double knockoutMm = -1.0;
+    QObject::connect(&panel, &PropertiesPanel::knockoutEdited, &panel,
+                     [&](openstitch::ObjectId, bool on, double mm) {
+                         knockoutOn = on;
+                         knockoutMm = mm;
+                     });
+    knockout->setChecked(true);
+    QVERIFY(knockoutOn);
+    QCOMPARE(knockoutMm, 0.3);
+    QVERIFY(margin->isEnabled());
+    // Resynchronisation sans émission (annulation).
+    knockoutOn = true;
+    panel.setKnockout(e.id, false, 0.5);
+    QVERIFY(knockoutOn);
+    QVERIFY(!knockout->isChecked());
+    QCOMPARE(margin->value(), 0.5);
+    // Un contour n'a rien à retirer : pas de case.
+    e.params = openstitch::document::RunningStitchParams{};
+    panel.showEmbroidery(e);
+    QVERIFY(panel.findChild<QCheckBox*>(QStringLiteral("check_knockout")) == nullptr);
 }
 
 // HP-ENG-001 / HP-ENG-002 : tirage du directionnel et sous-couche en zigzag dans l'inspecteur.
@@ -775,6 +838,15 @@ void PropertiesPanelTest::satinSpacingAndCornersAreEditableOnBothSatinKinds() {
         corner->setCurrentIndex(3);
         QVERIFY(emitted.has_value());
         QCOMPARE(std::get<doc::SatinParams>(*emitted).corner_mode, doc::SatinCorner::Cut);
+        auto* threshold =
+            panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_satinCornerThreshold"));
+        QVERIFY(threshold != nullptr);
+        QCOMPARE(threshold->value(), 60.0);
+        emitted.reset();
+        threshold->setValue(100.0);
+        QVERIFY(emitted.has_value());
+        QVERIFY(std::abs(std::get<doc::SatinParams>(*emitted).corner_threshold.radians -
+                         100.0 * std::numbers::pi / 180.0) < 1e-9);
     }
     {
         PropertiesPanel panel;
@@ -788,10 +860,66 @@ void PropertiesPanelTest::satinSpacingAndCornersAreEditableOnBothSatinKinds() {
         corner->setCurrentIndex(1);
         QVERIFY(emitted.has_value());
         QCOMPARE(std::get<AutoSatinParams>(*emitted).corner_mode, doc::SatinCorner::Miter);
+        auto* threshold =
+            panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_autoSatinCornerThreshold"));
+        QVERIFY(threshold != nullptr);
+        emitted.reset();
+        threshold->setValue(80.0);
+        QVERIFY(emitted.has_value());
+        QVERIFY(std::abs(std::get<AutoSatinParams>(*emitted).corner_threshold.radians -
+                         80.0 * std::numbers::pi / 180.0) < 1e-9);
         emitted.reset();
         spacing->setChecked(true);
         QVERIFY(emitted.has_value());
         QVERIFY(std::get<AutoSatinParams>(*emitted).auto_spacing);
+    }
+    {
+        // HP-STI-022 : bord irregulier (satin a rails puis auto-satin).
+        PropertiesPanel panel;
+        EmbroideryObject e;
+        e.id = openstitch::ObjectId{54};
+        e.params = doc::SatinParams{};
+        panel.showEmbroidery(e);
+        auto* jagged = panel.findChild<QComboBox*>(QStringLiteral("combo_satinJagged"));
+        auto* amp = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_satinJaggedAmplitude"));
+        auto* seed = panel.findChild<QSpinBox*>(QStringLiteral("spin_satinJaggedSeed"));
+        QVERIFY(jagged != nullptr && amp != nullptr && seed != nullptr);
+        QCOMPARE(jagged->currentIndex(), 0);
+        QCOMPARE(amp->value(), 1.5);
+        QCOMPARE(seed->value(), 1);
+        std::optional<StitchParams> emitted;
+        QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                         [&](openstitch::ObjectId, StitchParams params) { emitted = params; });
+        jagged->setCurrentIndex(2);
+        QVERIFY(emitted.has_value());
+        QCOMPARE(std::get<doc::SatinParams>(*emitted).jagged, doc::SatinJagged::SideB);
+        emitted.reset();
+        amp->setValue(3.0);
+        QVERIFY(emitted.has_value());
+        QCOMPARE(std::get<doc::SatinParams>(*emitted).jagged_amplitude,
+                 openstitch::Micrometers{3000});
+        emitted.reset();
+        seed->setValue(77);
+        QVERIFY(emitted.has_value());
+        QCOMPARE(std::get<doc::SatinParams>(*emitted).jagged_seed, 77u);
+    }
+    {
+        PropertiesPanel panel;
+        panel.showEmbroidery(autoSatinObject(55));
+        auto* jagged = panel.findChild<QComboBox*>(QStringLiteral("combo_autoSatinJagged"));
+        auto* seed = panel.findChild<QSpinBox*>(QStringLiteral("spin_autoSatinJaggedSeed"));
+        QVERIFY(jagged != nullptr && seed != nullptr);
+        QVERIFY(panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_autoSatinJaggedAmplitude")));
+        std::optional<StitchParams> emitted;
+        QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                         [&](openstitch::ObjectId, StitchParams params) { emitted = params; });
+        jagged->setCurrentIndex(3);
+        QVERIFY(emitted.has_value());
+        QCOMPARE(std::get<AutoSatinParams>(*emitted).jagged, doc::SatinJagged::Both);
+        emitted.reset();
+        seed->setValue(5);
+        QVERIFY(emitted.has_value());
+        QCOMPARE(std::get<AutoSatinParams>(*emitted).jagged_seed, 5u);
     }
 }
 
@@ -1069,8 +1197,8 @@ void PropertiesPanelTest::blanketInspectorEditsWidthSpacingStyleAndSide() {
 }
 
 void PropertiesPanelTest::stitchTypeMoreMenuOffersEveryOtherType() {
-    // Les types sans bouton direct (motifs, concentrique, radial, spirale, croise) passent par
-    // le menu « Plus » de la rangee de types : chacun emet son index.
+    // Les types sans bouton direct (motifs, concentrique, radial, spirale, croise, point de croix)
+    // passent par le menu « Plus » de la rangee de types : chacun emet son index.
     PropertiesPanel panel;
     EmbroideryObject e;
     e.id = openstitch::ObjectId{60};
@@ -1079,14 +1207,14 @@ void PropertiesPanelTest::stitchTypeMoreMenuOffersEveryOtherType() {
     auto* more = panel.findChild<QToolButton*>(QStringLiteral("button_stitchTypeMore"));
     QVERIFY(more != nullptr);
     QVERIFY(more->menu() != nullptr);
-    QCOMPARE(more->menu()->actions().size(), 6);
+    QCOMPARE(more->menu()->actions().size(), 7);
     std::vector<int> requested;
     QObject::connect(&panel, &PropertiesPanel::stitchTypeRequested, &panel,
                      [&](int type) { requested.push_back(type); });
     for (QAction* act : more->menu()->actions()) {
         act->trigger();
     }
-    QCOMPARE(requested, (std::vector<int>{5, 6, 7, 8, 9, 10}));
+    QCOMPARE(requested, (std::vector<int>{5, 6, 7, 8, 9, 10, 11}));
     // Un objet concentrique affiche son type dans le bouton « Plus ».
     EmbroideryObject c;
     c.id = openstitch::ObjectId{61};

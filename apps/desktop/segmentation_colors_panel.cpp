@@ -53,8 +53,20 @@ SegmentationColorsPanel::SegmentationColorsPanel(QWidget* parent) : QWidget(pare
     summary_->setWordWrap(true);
     layout->addWidget(summary_);
 
+    // Les teintes techniques servent à définir les REGIONS. L'attribution des fils
+    // et les références machine se font après numérisation dans le panneau Fils.
+    auto* roleHint = new QLabel(
+        tr("Couleurs de segmentation : elles définissent les zones de l'image, pas les fils "
+           "à broder. Choisissez les fils dans le panneau Fils après la numérisation."),
+        this);
+    roleHint->setObjectName(QStringLiteral("segColorsRoleHint"));
+    roleHint->setAccessibleName(tr("Rôle des couleurs de segmentation"));
+    roleHint->setWordWrap(true);
+    layout->addWidget(roleHint);
+
     list_ = new QListWidget(this);
     list_->setObjectName(QStringLiteral("segColorsList"));
+    list_->setAccessibleName(tr("Couleurs des régions de l'image, sans référence de fil"));
     list_->setSelectionMode(QAbstractItemView::ExtendedSelection);
     list_->setToolTip(
         tr("Cliquez une teinte pour sélectionner toutes ses régions ; Ctrl ou Maj+clic "
@@ -182,7 +194,11 @@ void SegmentationColorsPanel::setClasses(std::vector<segmentation::ColorClass> c
                 .arg(percent, 0, 'f', 1),
             list_);
         item->setData(kRgbRole, pack(cls.rgb));
-        item->setToolTip(tr("RGB(%1, %2, %3)").arg(cls.rgb[0]).arg(cls.rgb[1]).arg(cls.rgb[2]));
+        item->setToolTip(
+            tr("Teinte de segmentation RGB(%1, %2, %3). Aucun fil machine n'est attribué ici.")
+                .arg(cls.rgb[0])
+                .arg(cls.rgb[1])
+                .arg(cls.rgb[2]));
         if (std::find(keep.begin(), keep.end(), cls.rgb) != keep.end()) {
             item->setSelected(true);
         }
@@ -192,7 +208,7 @@ void SegmentationColorsPanel::setClasses(std::vector<segmentation::ColorClass> c
     countSpin_->setValue(std::max(1, classCount_));
     distanceSpin_->setValue(0.0);
     summary_->setText(classCount_ == 0 ? tr("Aucune segmentation.")
-                                       : tr("%n couleur(s) distincte(s).", "", classCount_));
+                                       : tr("%n teinte(s) de segmentation.", "", classCount_));
     updating_ = false;
     updateButtons();
 }

@@ -101,6 +101,14 @@ Result<std::vector<PathSet>> cut_band(const PathSet& region, Vec2um a, Vec2um b,
     }
     const Clipper2Lib::Paths64 clip{cutBand};
 
+    // Sans intersection de surface, conserver la géométrie d'origine telle quelle
+    // (notamment les tangentes Bézier) plutôt que le contour normalisé par Clipper.
+    // Une coupe qui retire de la matière peut laisser UNE seule composante connexe :
+    // c'est le cas d'un pont coupé dans une forme reliée par un autre pont.
+    if (Clipper2Lib::Intersect(subject, clip, Clipper2Lib::FillRule::EvenOdd).empty()) {
+        return std::vector<PathSet>{region};
+    }
+
     Clipper2Lib::Clipper64 clipper;
     clipper.AddSubject(subject);
     clipper.AddClip(clip);

@@ -17,6 +17,7 @@
 #include "openstitch/document/finishing.hpp"
 #include "openstitch/document/imported_design.hpp"
 #include "openstitch/document/object_group.hpp"
+#include "openstitch/document/stitch_preset.hpp"
 #include "openstitch/document/text_object.hpp"
 #include "openstitch/document/vector_object.hpp"
 #include "openstitch/image/image.hpp"
@@ -40,6 +41,11 @@ struct Project {
     // Segmentation de l'image de travail. Invalidée (remise à nullopt) par
     // toute nouvelle opération de prétraitement.
     std::optional<segmentation::Segmentation> segmentation;
+
+    // Zones « détail » peintes au pinceau, à la taille de l'image de travail (vide = aucune).
+    // Elles pilotent le lissage et le nettoyage de la segmentation (`SegmentationOptions::
+    // detail_mask`) ; modifiées par `PaintDetailMaskCommand`, enregistrées dans le projet.
+    segmentation::DetailMask detail_mask;
 
     // Objets vectoriels (Phase 5). Contrairement à la segmentation, ils
     // survivent aux retouches d'image : leur géométrie est indépendante.
@@ -67,6 +73,10 @@ struct Project {
     // (document sans coloris : comportement historique). Voir `Colorway`.
     std::vector<Colorway> colorways;
     int active_colorway{-1};
+
+    // Préréglages de points du projet (HP-ENG-013) : jeux de paramètres nommés, appliqués à la
+    // sélection. Vide = aucun préréglage (documents antérieurs). Noms uniques.
+    std::vector<StitchPreset> stitch_presets;
 
     // Tissu de fond (HP-THR-008), persisté dans le projet.
     FabricSettings fabric;

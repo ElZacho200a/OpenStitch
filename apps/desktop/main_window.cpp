@@ -91,6 +91,8 @@
 #include "vector_tooltip.hpp"
 
 #include "calque_panel.hpp"
+#include "claude_code_process_backend.hpp"
+#include "companion_settings_dialog.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/autodigitize/contour_objects.hpp"
 #include "openstitch/autodigitize/line_layer.hpp"
@@ -472,12 +474,17 @@ MainWindow::MainWindow() {
     buildBrushTool();
     buildBucketTool();
     buildClickToStitchTool();
+    buildDetailZonesTool();
     // [cablage-C:fin]
     // [cablage-D:debut]
+    buildOrderJumpsFeature();
+    buildFabricRiskFeature();
     // [cablage-D:fin]
     // [cablage-E:debut]
     buildDensityFeature();
+    buildPullPreviewFeature();
     // [cablage-E:fin]
+    buildCompanionDock();
     panelsMenu_->addAction(historyDock_->toggleViewAction());
     for (auto* d :
          {documentDock_, propertiesDock_, workflowDock_, orderDock_, filterDock_, analysisDock_}) {
@@ -545,12 +552,14 @@ MainWindow::MainWindow() {
     buildSimulationToolbar();
     // Une barre masquée doit pouvoir se rouvrir depuis un menu, comme les panneaux.
     panelsMenu_->insertSeparator(resetLayoutAct);
-    for (auto* bar : {mainToolbar_, contextToolbar_, toolPalette_, simToolbar_,
-                      static_cast<QToolBar*>(simNavBar_), threadStripBar_, clickToStitchBar_}) {
+    for (auto* bar :
+         {mainToolbar_, contextToolbar_, toolPalette_, simToolbar_,
+          static_cast<QToolBar*>(simNavBar_), threadStripBar_, clickToStitchBar_, detailBar_}) {
         panelsMenu_->insertAction(resetLayoutAct, bar->toggleViewAction());
     }
 
     buildHelpMenu();
+    applyCompanionSettings();
     buildWorkspacesMenu();
 
     // Noms accessibles (lecteurs d'écran) sur les grandes zones.
@@ -964,6 +973,7 @@ void MainWindow::buildMenus() {
     showSegAct_->setToolTip(tr("Affiche ou masque la carte des régions par-dessus l'image (W)."));
     connect(showSegAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
     buildRegionViewControls(segMenu);
+    segmentMenu_ = segMenu;
 
     mergeColorsAct_ = segMenu->addAction(tr("Fusionner les co&uleurs…"));
     mergeColorsAct_->setObjectName(QStringLiteral("action_mergeColors"));
@@ -1113,6 +1123,7 @@ void MainWindow::buildMenus() {
     createSatinWithSettingsAct_->setObjectName(QStringLiteral("action_createSatinWithSettings"));
     connect(createSatinWithSettingsAct_, &QAction::triggered, this,
             &MainWindow::createSatinObjectWithSettings);
+    buildStitchPresetMenu(embMenu); // HP-ENG-013
     autoSatinAct_ = embMenu->addAction(tr("Convertir en satin automatiquement…"));
     autoSatinAct_->setToolTip(
         tr("Le logiciel dessine le satin tout seul, sans que vous posiez les deux bords. "
@@ -1325,6 +1336,7 @@ void MainWindow::buildMenus() {
         std::vector<QDockWidget*> docks{documentDock_, propertiesDock_, workflowDock_,
                                         orderDock_,    filterDock_,     analysisDock_};
         docks.push_back(historyDock_);
+        docks.push_back(companionDock_);
         if (hide) {
             panelsToRestore_.clear();
             for (auto* d : docks) {
@@ -1357,6 +1369,16 @@ void MainWindow::resetDocumentState() {
     migratedFromVersion_ = 0;
     migratedFromPath_.clear();
     undoStack_.clear();
+    if (companionDock_ != nullptr) {
+        companionDock_->documentReplaced();
+    }
+    if (claudeBackend_ != nullptr) {
+        claudeBackend_->resetConversation();
+        if (codeBackend_ != nullptr) {
+            codeBackend_->resetConversation();
+        }
+    }
+    liveBridge_.reset(); // nouveau document : l'ancienne session live est close
     sequence_.reset();
     editStates_.clear();
     setSelection({});
@@ -1721,6 +1743,334 @@ void MainWindow::undo() {
     }
 }
 
+project_ops::LiveBridge::Result
+MainWindow::commitLiveBatch(const std::string& sessionId, std::uint64_t revision,
+                            const std::string& batchJson, const std::string& label, bool approved) {
+    auto result = liveBridge_.commit(sessionId, revision, batchJson, label, approved);
+    if (result.applied) {
+        afterLiveCommit();
+    }
+    return result;
+}
+
+void MainWindow::afterLiveCommit() {
+    // Même rafraîchissement qu'un Undo/Redo : le document a changé sous l'interface.
+    refreshImage();
+    setWindowModified(!undoStack_.isClean());
+    updateActions();
+}
+
+void MainWindow::buildCompanionDock() {
+    companionDock_ = new CompanionDock(this);
+    addDockWidget(Qt::RightDockWidgetArea, companionDock_);
+    tabifyDockWidget(analysisDock_, companionDock_);
+    secretStore_ = makeSystemSecretStore();
+    claudeBackend_ = new ClaudeCompanionBackend(liveService_, *secretStore_, {}, this);
+    claudeBackend_->setDiagnostics(&companionLog_);
+    companionLog_.set_enabled(companion_settings::diagnosticsEnabled());
+    companionLog_.set_content_consent(companion_settings::diagnosticsEnabled() &&
+                                      companion_settings::diagnosticsContentConsent());
+    companionDock_->setBackend(claudeBackend_);
+    connect(companionDock_, &CompanionDock::configureProviderRequested, this,
+            &MainWindow::showCompanionSettings);
+    companionDock_->hide(); // masqué par défaut : n'occupe aucune place tant qu'on ne l'ouvre pas
+    // Raccourci configurable : réglage « shortcuts/companionDock » (séquence Qt), Ctrl+Maj+J par
+    // défaut ; vide = aucun raccourci.
+    const QString keys =
+        QSettings()
+            .value(QStringLiteral("shortcuts/companionDock"), QStringLiteral("Ctrl+Shift+J"))
+            .toString();
+    QAction* toggle = companionDock_->toggleViewAction();
+    toggle->setObjectName(QStringLiteral("action_companionDock"));
+    toggle->setShortcut(QKeySequence(keys));
+    toggle->setToolTip(tr("Affiche ou masque le compagnon IA (%1)").arg(keys));
+    toggle->setStatusTip(toggle->toolTip());
+    panelsMenu_->addAction(toggle);
+    connect(companionDock_, &CompanionDock::focusObjectRequested, this,
+            [this](quint64 id) { focusEmbroideryObject(id); });
+    connect(companionDock_, &CompanionDock::undoLastRequested, this, &MainWindow::undo);
+    connect(companionDock_, &CompanionDock::enableLiveBridgeRequested, this, [this] {
+        if (liveBridgeAct_ != nullptr) {
+            liveBridgeAct_->setChecked(true);
+        }
+    });
+    connect(companionDock_, &CompanionDock::openClaudeCodeRequested, this,
+            &MainWindow::openClaudeCode);
+    connect(companionDock_, &CompanionDock::useClaudeCodeInDockRequested, this,
+            &MainWindow::useClaudeCodeInDock);
+    // Les approbations de l'agent s'affichent dans le dock (boîte modale seulement en repli).
+    liveGate_.setChoiceDelegate([this](const mcp::ChoiceRequest& request) {
+        companionDock_->show();
+        companionDock_->raise();
+        QStringList labels;
+        QList<quint64> focus;
+        for (const auto& option : request.options) {
+            labels << QString::fromStdString(option.label);
+            focus << (option.object_ids.empty() ? 0 : option.object_ids.front());
+        }
+        return companionDock_->askChoice(QString::fromStdString(request.question), labels, focus);
+    });
+    liveGate_.setDelegate([this](const mcp::ApprovalRequest& request) {
+        companionDock_->show();
+        companionDock_->raise();
+        CompanionProposal proposal;
+        proposal.title = tr("Changement proposé par un agent IA");
+        proposal.summary = tr("« %1 » : %n opération(s). Annulable en une étape (Ctrl+Z).", "",
+                              static_cast<int>(request.items.size()))
+                               .arg(QString::fromStdString(request.label));
+        for (const auto& item : request.items) {
+            proposal.items.push_back({item.object_id, QString::fromStdString(item.text)});
+        }
+        proposal.beforePng = QByteArray::fromStdString(request.before_png);
+        proposal.afterPng = QByteArray::fromStdString(request.after_png);
+        QStringList metrics;
+        for (const auto& metric : request.metrics) {
+            metrics << QString::fromStdString(metric);
+        }
+        if (!metrics.isEmpty()) {
+            proposal.summary += QStringLiteral("\n") + metrics.join(QStringLiteral("\n"));
+        }
+        for (const auto& warning : request.warnings) {
+            proposal.warnings << QString::fromStdString(warning);
+        }
+        // Mode fantôme : pendant la décision, les objets concernés sont mis en évidence sur le
+        // canevas (halo de sélection existant) ; la sélection de l'utilisateur est restaurée après.
+        const Selection saved = currentSelection();
+        std::vector<quint64> ids;
+        for (const auto& item : request.items) {
+            if (item.object_id != 0) {
+                ids.push_back(item.object_id);
+            }
+        }
+        showGhostSelection(ids);
+        const bool approved = companionDock_->askApproval(proposal);
+        restoreGhostSelection(saved);
+        return approved;
+    });
+}
+
+void MainWindow::showGhostSelection(const std::vector<quint64>& embroideryIds) {
+    Selection ghost;
+    for (const quint64 id : embroideryIds) {
+        ObjectId target;
+        target.value = id;
+        if (const auto* e = project_.findEmbroidery(target)) {
+            if (project_.findObject(e->source_vector) != nullptr) {
+                ghost.objects.push_back(e->source_vector);
+            }
+        }
+    }
+    if (ghost.objects.empty()) {
+        return;
+    }
+    setSelection(ghost);
+    refreshImage();
+    updateActions();
+}
+
+void MainWindow::restoreGhostSelection(Selection saved) {
+    // Les objets n'existent peut-être plus (modification appliquée) : seuls les présents sont
+    // gardés.
+    std::vector<ObjectId> kept;
+    for (const ObjectId id : saved.objects) {
+        if (project_.findObject(id) != nullptr) {
+            kept.push_back(id);
+        }
+    }
+    saved.objects = std::move(kept);
+    if (saved.embroidery && project_.findEmbroidery(*saved.embroidery) == nullptr) {
+        saved.embroidery.reset();
+    }
+    setSelection(saved);
+    refreshImage();
+    updateActions();
+}
+
+void MainWindow::updateCompanionContext() {
+    if (companionDock_ == nullptr) {
+        return;
+    }
+    const auto info = liveDocumentInfo();
+    companionDock_->setContext(QString::fromStdString(info.name),
+                               static_cast<int>(info.selection.size()), hasDocumentContent());
+    companionDock_->setLiveBridgeActive(liveServer_ != nullptr);
+    companionDock_->setUndoAvailable(undoStack_.canUndo(),
+                                     QString::fromStdString(undoStack_.undoName()));
+}
+
+void MainWindow::focusEmbroideryObject(quint64 id) {
+    ObjectId target;
+    target.value = id;
+    for (const auto& e : project_.embroidery_objects) {
+        if (e.id == target) {
+            Selection selection;
+            selection.embroidery = target;
+            setSelection(selection);
+            refreshImage();
+            updateActions();
+            return;
+        }
+    }
+}
+
+void MainWindow::showCompanionSettings() {
+    CompanionSettingsDialog dialog(*secretStore_, companionLog_, this);
+    if (dialog.exec() == QDialog::Accepted) {
+        applyCompanionSettings();
+    }
+}
+
+void MainWindow::useClaudeCodeInDock() {
+    if (companion_settings::fullyDisabled()) {
+        QMessageBox::information(this, tr("Claude Code"),
+                                 tr("Le compagnon IA est desactive dans les preferences."));
+        return;
+    }
+    QString executable;
+    QString workspace;
+    const auto ready = ClaudeCodeLauncher::prepare(launcherEnv_, executable, workspace);
+    if (ready != ClaudeCodeLauncher::Result::Started) {
+        QMessageBox::warning(this, tr("Claude Code"), ClaudeCodeLauncher::describe(ready));
+        return;
+    }
+    if (liveBridgeAct_ != nullptr && !liveBridgeAct_->isChecked()) {
+        liveBridgeAct_->setChecked(true);
+    }
+    if (liveServer_ == nullptr) {
+        QMessageBox::warning(this, tr("Claude Code"), tr("Le pont MCP local n'a pas pu demarrer."));
+        return;
+    }
+    // Un seul processus Claude Code par session de conversation : changement de mode explicite.
+    if (codeBackend_ != nullptr) {
+        codeBackend_->resetConversation();
+        codeBackend_->deleteLater();
+    }
+    codeBackend_ = new ClaudeCodeProcessBackend(executable, workspace, this);
+    companionDock_->setBackend(codeBackend_);
+    companionDock_->show();
+    companionDock_->raise();
+    maybeStartSemanticAnalysis();
+}
+
+void MainWindow::maybeStartSemanticAnalysis() {
+    // Une seule fois par document ouvert, uniquement sur un projet non vide, et si l'utilisateur
+    // ne l'a pas désactivée (Aide ▸ Compagnon IA…).
+    if (!companion_settings::autoSemanticAnalysis() || project_.embroidery_objects.empty() ||
+        semanticAnalysisGeneration_ == documentGeneration_) {
+        return;
+    }
+    bool allCached = true;
+    for (const auto& object : project_.embroidery_objects) {
+        const auto* shape = project_.findObject(object.source_vector);
+        if (!shape || !object.semantic ||
+            object.semantic->geometry_fingerprint !=
+                document::semantic_geometry_fingerprint(*shape)) {
+            allCached = false;
+            break;
+        }
+    }
+    if (allCached) {
+        semanticAnalysisGeneration_ = documentGeneration_;
+        return; // zéro appel modèle : tout est déjà connu dans le .osp
+    }
+    const QString prompt =
+        tr("Lis live_context : réutilise les objets semantic.status=cached. "
+           "Examine seulement ceux sans semantic ou avec semantic.status=stale. "
+           "Utilise project_render si nécessaire et live_object_views sur au plus 5 lots "
+           "de 8 objets à analyser, en priorité les plus importants de chaque fil. "
+           "Laisse les objets incertains sans annotation. "
+           "Propose set_semantic (role, family, confidence), live_preview puis "
+           "project_apply avec mon approbation. Ne renomme pas les objets.");
+    if (companionDock_->sendProgrammatic(tr("Analyse sémantique automatique du projet…"), prompt)) {
+        semanticAnalysisGeneration_ = documentGeneration_;
+    }
+}
+
+void MainWindow::openClaudeCode() {
+    if (companion_settings::fullyDisabled()) {
+        QMessageBox::information(this, tr("Claude Code"),
+                                 tr("Le compagnon IA est désactivé (Aide ▸ Compagnon IA…)."));
+        return;
+    }
+    // Retour a l'etat initial si la CLI n'est pas installee ou ne demarre pas.
+    const bool wasActive = liveBridgeAct_ != nullptr && liveBridgeAct_->isChecked();
+    if (liveBridgeAct_ != nullptr && !wasActive) {
+        liveBridgeAct_->setChecked(true);
+    }
+    const auto result = ClaudeCodeLauncher::launch(launcherEnv_);
+    if (result != ClaudeCodeLauncher::Result::Started) {
+        if (liveBridgeAct_ != nullptr && !wasActive) {
+            liveBridgeAct_->setChecked(false);
+        }
+        QMessageBox::warning(this, tr("Claude Code"), ClaudeCodeLauncher::describe(result));
+        return;
+    }
+    statusBar()->showMessage(tr("Claude Code ouvert dans un terminal."), 6000);
+}
+
+void MainWindow::applyCompanionSettings() {
+    const bool off = companion_settings::fullyDisabled();
+    if (off) {
+        if (liveBridgeAct_ != nullptr) {
+            liveBridgeAct_->setChecked(false);
+        }
+        setLiveBridgeEnabled(false);
+    }
+    if (liveBridgeAct_ != nullptr) {
+        liveBridgeAct_->setEnabled(!off);
+    }
+    if (claudeBackend_ != nullptr) {
+        claudeBackend_->refresh();
+    }
+    // Valider les preferences de l'API revient explicitement au fournisseur API.
+    if (companionDock_->backend() != claudeBackend_) {
+        if (codeBackend_ != nullptr) {
+            codeBackend_->resetConversation();
+        }
+        companionDock_->setBackend(claudeBackend_);
+    }
+    companionDock_->setFullyDisabled(off);
+    companionDock_->refresh();
+}
+
+bool MainWindow::setLiveBridgeEnabled(bool on, const std::filesystem::path& dir, QString* error) {
+    if (!on) {
+        if (liveServer_) {
+            // Invalider les calculs MCP deja en cours, y compris pendant une approbation.
+            // Un agent ne doit jamais pouvoir appliquer apres la desactivation du pont.
+            if (!liveBridge_.closed()) {
+                liveBridge_.reset();
+            }
+            liveServer_->stop();
+            liveServer_.reset();
+        }
+        return true;
+    }
+    if (liveServer_) {
+        return true;
+    }
+    auto server = std::make_unique<LiveServer>(liveService_, this);
+    if (!server->start(dir.empty() ? mcp::live_directory() : dir, error)) {
+        return false;
+    }
+    liveServer_ = std::move(server);
+    return true;
+}
+
+mcp::LiveDocumentInfo MainWindow::liveDocumentInfo() const {
+    mcp::LiveDocumentInfo info;
+    // Nom seul, jamais le chemin complet : rien de plus que nécessaire n'est transmis à l'agent.
+    info.name = currentProjectPath_.isEmpty()
+                    ? std::string("(sans titre)")
+                    : QFileInfo(currentProjectPath_).fileName().toStdString();
+    info.dirty = isWindowModified();
+    info.never_saved = currentProjectPath_.isEmpty();
+    for (const ObjectId id : selectedEmbroideryIds()) {
+        info.selection.push_back(id.value);
+    }
+    return info;
+}
+
 void MainWindow::redo() {
     if (undoStack_.redo(project_)) {
         refreshImage();
@@ -2054,6 +2404,10 @@ void MainWindow::closeEvent(QCloseEvent* event) {
     // Si l'évènement n'est pas accepté (fermeture annulée), l'autosave
     // continue de tourner normalement.
     if (event->isAccepted()) {
+        liveBridge_.close();
+        if (liveServer_) {
+            liveServer_->stop();
+        }
         autosaveTimer_->stop();
         discardAutosave(slotFor(currentProjectPath_));
         discardPendingRecoverySlot();
@@ -3295,6 +3649,7 @@ void MainWindow::refreshImage() {
     pruneSelection();
     Q_ASSERT(checkSelectionInvariants());
     refreshColorsPanel(); // le document a changé : liste des teintes à jour, aperçu caduc
+    refreshDetailZonesOverlay();
     // Le raster est facultatif : SVG, dessin, texte et design machine doivent
     // eux aussi régénérer leurs points et rafraîchir tous les panneaux.
     if (!project_.hasImage()) {
@@ -3405,6 +3760,7 @@ void MainWindow::renderBase(const image::Image& img) {
     commonBox_ = nullptr;
     reshapePreview_ = nullptr;
     brushRing_ = nullptr;
+    detailRing_ = nullptr;
     nodeHandles_.clear();
     if (nodeSelObject_ &&
         (hasMultiSelection() || !selectedObject_ || *selectedObject_ != *nodeSelObject_ ||
@@ -4395,9 +4751,13 @@ void MainWindow::renderStitches() {
     stitchItems_.clear();
     simMarker_ = nullptr;
     simWalkValid_ = false;
-    refreshDensityOverlay(); // HP-VIEW-005 (main_window_density.cpp)
+    refreshDensityOverlay();    // HP-VIEW-005 (main_window_density.cpp)
+    refreshPullMapOverlay();    // tirage prédit (main_window_pull_preview.cpp)
+    refreshOrderJumpsOverlay(); // sauts à vide du panneau Ordre (main_window_order_jumps.cpp)
+    refreshFabricRiskOverlay(); // risque tissu (main_window_fabric_risk.cpp)
 
-    if (showStitchesAct_ == nullptr || !showStitchesAct_->isChecked() || !sequence_) {
+    if (stitchLayerSuspended_ || showStitchesAct_ == nullptr || !showStitchesAct_->isChecked() ||
+        !sequence_) {
         return;
     }
     if (renderRealisticStitches()) {
@@ -5386,7 +5746,7 @@ void MainWindow::autoDigitize() {
                                             ? processed_
                                             : project_.original;
         const project_ops::DigitizeSource source{&*project_.segmentation, &workImage,
-                                                 project_.mm_per_px};
+                                                 project_.mm_per_px, &project_.detail_mask};
         auto outcome = project_ops::digitize_objects(source, project_.object_ids, ds, skipLargest);
         if (!outcome) {
             return std::unexpected(outcome.error());
@@ -5697,6 +6057,7 @@ int stitchFilterFamily(int typeIndex) {
     case 8:  // radial
     case 9:  // spirale
     case 10: // croisé
+    case 11: // point de croix (HP-STI-012)
         return 1;
     case 4:
     case 5: // blanket, motif le long du contour (HP-STI-002)
@@ -5750,6 +6111,10 @@ bool MainWindow::stitchParamsForType(const document::EmbroideryObject& emb, int 
     case 10: // remplissage croisé (HP-STI-014)
         params = document::CrosshatchFillParams{};
         label = "Type : remplissage croisé";
+        return true;
+    case 11: // point de croix (HP-STI-012)
+        params = document::CrossStitchParams{};
+        label = "Type : point de croix";
         return true;
     case 3: { // remplissage directionnel (réglages du tatami repris s'il y a lieu)
         auto directional = directionalParamsFor(emb);
@@ -6566,6 +6931,51 @@ void MainWindow::buildHelpMenu() {
         tr("Guide de prise en main : de l'image au fichier DST en six étapes"));
     connect(helpQuickStartAct_, &QAction::triggered, this, &MainWindow::showQuickStartDialog);
 
+    liveBridgeAct_ = helpMenu->addAction(tr("Pont IA &local (MCP)"));
+    liveBridgeAct_->setObjectName(QStringLiteral("action_live_bridge"));
+    liveBridgeAct_->setCheckable(true);
+    liveBridgeAct_->setToolTip(
+        tr("Autorise un agent IA local (openstitch-mcp --live) à lire le projet ouvert et à "
+           "proposer des modifications. Aucun port réseau ; chaque modification demande votre "
+           "approbation et s'annule en une étape. Désactivé par défaut."));
+    liveBridgeAct_->setStatusTip(liveBridgeAct_->toolTip());
+    liveBridgeAct_->setChecked(QSettings().value(QStringLiteral("ai/liveBridge"), false).toBool());
+    connect(liveBridgeAct_, &QAction::toggled, this, [this](bool on) {
+        QString error;
+        if (!setLiveBridgeEnabled(on, {}, &error)) {
+            QSignalBlocker block(liveBridgeAct_);
+            liveBridgeAct_->setChecked(false);
+            statusBar()->showMessage(tr("Pont IA local indisponible : %1").arg(error), 8000);
+            return;
+        }
+        QSettings().setValue(QStringLiteral("ai/liveBridge"), on);
+    });
+    if (liveBridgeAct_->isChecked()) {
+        QTimer::singleShot(0, this, [this] {
+            QString error;
+            if (!setLiveBridgeEnabled(true, {}, &error)) {
+                QSignalBlocker block(liveBridgeAct_);
+                liveBridgeAct_->setChecked(false);
+            }
+        });
+    }
+
+    companionSettingsAct_ = helpMenu->addAction(tr("Compagnon &IA…"));
+    companionSettingsAct_->setObjectName(QStringLiteral("action_companion_settings"));
+    companionSettingsAct_->setToolTip(
+        tr("Fournisseur Claude, clé API (stockage sécurisé du système), données transmises, "
+           "désactivation du compagnon."));
+    companionSettingsAct_->setStatusTip(companionSettingsAct_->toolTip());
+    connect(companionSettingsAct_, &QAction::triggered, this, &MainWindow::showCompanionSettings);
+
+    openClaudeCodeAct_ = helpMenu->addAction(tr("Ouvrir Claude &Code…"));
+    openClaudeCodeAct_->setObjectName(QStringLiteral("action_open_claude_code"));
+    openClaudeCodeAct_->setToolTip(
+        tr("Ouvre votre Claude Code dans un terminal, relié au projet ouvert (pont IA local, "
+           "consignes et skills OpenStitch préparés). Claude Code doit être installé."));
+    openClaudeCodeAct_->setStatusTip(openClaudeCodeAct_->toolTip());
+    connect(openClaudeCodeAct_, &QAction::triggered, this, &MainWindow::openClaudeCode);
+
     helpGesturesAct_ = helpMenu->addAction(tr("Gestes &souris et clavier"));
     helpGesturesAct_->setObjectName(QStringLiteral("action_help_gestures"));
     helpGesturesAct_->setShortcut(QKeySequence(Qt::Key_F1));
@@ -7158,6 +7568,7 @@ void MainWindow::buildToolPalette() {
     attachBrushTool();
     attachBucketTool();
     attachClickToStitchTool();
+    attachDetailZonesTool();
     toolSelectAct_->setChecked(true);
 
     toolPalette_->addSeparator();
@@ -7426,6 +7837,7 @@ void MainWindow::setTool(Tool tool) {
     syncBrushTool(tool);
     syncBucketTool(tool);
     syncClickToStitchTool(tool);
+    syncDetailZonesTool(tool); // après syncBrushTool : réutilise le geste du pinceau
     updateDrawActionsState();
     updateInteractionContext();
     hideHoverHighlight();
@@ -7456,19 +7868,26 @@ void MainWindow::refreshWorkflow() {
     const bool seg = project_.segmentation.has_value();
     const bool vec = !project_.vector_objects.empty();
     const bool emb = !project_.embroidery_objects.empty();
+    const bool imported = project_.imported_design.has_value();
     const bool seq = sequence_.has_value();
-    // La segmentation par IA (menu Broderie ▸ Segmenter avec l'IA) vectorise
-    // directement les formes retenues sans jamais passer par
-    // project_.segmentation (cf. AiSegmentationDialog + autodigitize::
-    // auto_digitize) : ne jamais gater « Régions »/« Vecteurs » sur `seg`
-    // seul, sous peine d'afficher « à faire » alors que des objets existent
-    // déjà (défaut trouvé par revue ergonomie).
-    const bool regionsDone = seg || vec;
+    // Source ≠ raster : un SVG peut fournir directement des vecteurs, et un DST/PES
+    // directement des points. Les étapes inapplicables sont indiquées « non requis »
+    // plutôt que « à faire » : elles ne doivent pas bloquer le parcours utilisateur.
+    const bool hasSource = img || seg || vec || emb || imported;
+    const bool machineOnly = imported && !img && !seg && !vec;
 
-    st[0] = img ? S::Done : S::NotStarted;
-    st[1] = !img ? S::NotStarted : (regionsDone ? S::Done : S::Available);
-    st[2] = !regionsDone ? S::NotStarted : (vec ? S::Done : S::Available);
-    st[3] = emb ? S::Done : ((vec || seg) ? S::Available : S::NotStarted);
+    st[0] = hasSource ? S::Done : S::NotStarted;
+    if (!hasSource) {
+        st[1] = S::NotStarted;
+        st[2] = S::NotStarted;
+    } else if (machineOnly) {
+        st[1] = S::Skipped;
+        st[2] = S::Skipped;
+    } else {
+        st[1] = !img ? S::Skipped : ((seg || vec) ? S::Done : S::Available);
+        st[2] = vec ? S::Done : (seg ? S::Available : S::NotStarted);
+    }
+    st[3] = (emb || imported) ? S::Done : ((vec || seg) ? S::Available : S::NotStarted);
     st[4] = seq ? S::Available : S::NotStarted;
     st[5] = seq ? S::Available : S::NotStarted;
     workflowPanel_->setStates(st);
@@ -7895,6 +8314,7 @@ void MainWindow::buildPropertiesPanel() {
     connect(propertiesPanel_, &PropertiesPanel::joinModeEdited, this, &MainWindow::setJoinMode);
     connect(propertiesPanel_, &PropertiesPanel::connectorModeEdited, this,
             &MainWindow::setConnectorMode);
+    connect(propertiesPanel_, &PropertiesPanel::knockoutEdited, this, &MainWindow::setKnockout);
     connect(propertiesPanel_, &PropertiesPanel::densityGradientRequested, this,
             &MainWindow::setDensityGradient);
     connect(
@@ -8028,6 +8448,9 @@ void MainWindow::updateInspector() {
     propertiesPanel_->setConnectorMode(
         emb != nullptr ? std::optional<ObjectId>(emb->id) : std::nullopt,
         emb != nullptr ? emb->connector : document::ConnectorMode::Inherit);
+    propertiesPanel_->setKnockout(emb != nullptr ? std::optional<ObjectId>(emb->id) : std::nullopt,
+                                  emb != nullptr && emb->knockout,
+                                  emb != nullptr ? emb->knockout_margin.value / 1000.0 : 0.3);
 
     // Auto-satin : liste des guides et diagnostic mis à jour à chaque appel (les
     // guides se posent aussi depuis le canevas), sans reconstruire le formulaire.
@@ -8297,11 +8720,29 @@ void MainWindow::buildOrderPanel() {
     orderDock_->hide();
 }
 
+// HP-ENG-010 : objet à ordonner, avec ses extrémités réelles de couture (repli : le centre).
+static optimization::OrderItem
+makeOrderItem(const document::EmbroideryObject& obj, Vec2um centroid,
+              const std::vector<stitch::ObjectEndpoints>& endpoints) {
+    optimization::OrderItem item{obj.id, obj.rgb, centroid, obj.locked};
+    for (const auto& e : endpoints) {
+        if (e.id == obj.id) {
+            item.entry = e.first;
+            item.exit = e.last;
+            break;
+        }
+    }
+    return item;
+}
+
 void MainWindow::refreshOrderPanel() {
     if (orderList_ == nullptr) {
         return;
     }
     const int previousRow = orderList_->currentRow();
+    // Même coût que « Appliquer » : extrémités de la séquence affichée.
+    const auto endpoints =
+        sequence_ ? stitch::object_endpoints(*sequence_) : std::vector<stitch::ObjectEndpoints>{};
     std::vector<optimization::OrderItem> items;
     {
         // Signaux bloqués : clear() émettait currentRowChanged(-1), qui vidait la sélection de
@@ -8316,7 +8757,7 @@ void MainWindow::refreshOrderPanel() {
             auto* item = new QListWidgetItem(DocumentPanel::itemText(obj, ++rank));
             item->setIcon(icons::colorSwatch(QColor(obj.rgb[0], obj.rgb[1], obj.rgb[2])));
             orderList_->addItem(item);
-            items.push_back({obj.id, obj.rgb, embroideryCentroid(obj), obj.locked});
+            items.push_back(makeOrderItem(obj, embroideryCentroid(obj), endpoints));
         }
         // La ligne courante suit la sélection de broderie si elle existe, sinon l'ancienne.
         int row = previousRow;
@@ -8344,8 +8785,8 @@ void MainWindow::refreshOrderPanel() {
     orderCostLabel_->setText(tr("Trajet estimé : %1 mm — %2 changement(s) de fil")
                                  .arg(cost.travel_um / 1000.0, 0, 'f', 1)
                                  .arg(cost.color_changes));
-    orderCostLabel_->setToolTip(tr("Distance à vide entre objets successifs (estimation sur les "
-                                   "centres), hors points de couture."));
+    orderCostLabel_->setToolTip(tr("Distance à vide entre objets successifs (de la fin de l'un "
+                                   "au début du suivant), hors points de couture."));
     setDockAutoVisible(orderDock_, !project_.embroidery_objects.empty());
 }
 
@@ -8699,10 +9140,15 @@ void MainWindow::applyOrderStrategy() {
     }
     // Calques (HP-OBJ-024) : on optimise l'ordre réel de couture, puis on regroupe par calque -- le
     // rang du calque reste la clé principale, l'optimisation ne joue qu'à l'intérieur de chacun.
+    // HP-ENG-010 : extrémités réelles de la séquence affichée (repli : centre de l'objet).
+    const auto endpoints =
+        sequence_ ? stitch::object_endpoints(*sequence_) : std::vector<stitch::ObjectEndpoints>{};
+    const auto makeItem = [&](const document::EmbroideryObject& obj) {
+        return makeOrderItem(obj, embroideryCentroid(obj), endpoints);
+    };
     std::vector<optimization::OrderItem> items;
     for (const std::size_t index : project_.sewingOrder()) {
-        const auto& obj = project_.embroidery_objects[index];
-        items.push_back({obj.id, obj.rgb, embroideryCentroid(obj), obj.locked});
+        items.push_back(makeItem(project_.embroidery_objects[index]));
     }
     const auto strategy =
         static_cast<optimization::OrderStrategy>(orderStrategyCombo_->currentData().toInt());
@@ -8718,6 +9164,7 @@ void MainWindow::applyOrderStrategy() {
     const auto before = optimization::compute_cost(items, options.start, options.end);
     const auto order =
         project_.groupedByCalque(optimization::optimize_order(items, strategy, options));
+    captureOrderJumpsBaseline(endpoints); // surimpression « Sauts à vide » : anciens sauts
 
     undoStack_.execute(std::make_unique<commands::ReorderEmbroideryCommand>(order), project_);
     refreshImage();
@@ -8727,7 +9174,7 @@ void MainWindow::applyOrderStrategy() {
     // Coût après (recalculé sur le nouvel ordre).
     std::vector<optimization::OrderItem> reordered;
     for (const auto& obj : project_.embroidery_objects) {
-        reordered.push_back({obj.id, obj.rgb, embroideryCentroid(obj), obj.locked});
+        reordered.push_back(makeItem(obj));
     }
     const auto after = optimization::compute_cost(reordered, options.start, options.end);
     statusBar()->showMessage(tr("Ordre optimisé : trajet %1 → %2 mm, changements de fil %3 → %4")
@@ -9985,7 +10432,7 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
         placeTextAt(posMm);
         return;
     }
-    if (currentTool_ == Tool::Brush) {
+    if (currentTool_ == Tool::Brush || currentTool_ == Tool::DetailBrush) {
         return; // le pinceau passe par brushPressedMm / brushMovedMm / brushReleasedMm
     }
     if (currentTool_ == Tool::Measure) {
@@ -10764,6 +11211,7 @@ bool MainWindow::hasDocumentContent() const {
 }
 
 void MainWindow::updateActions() {
+    updateCompanionContext();
     syncColorwayUi(); // HP-THR-006/008 (main_window_colorways.cpp)
     updateShapeActions();
     updateObjectEditActions();

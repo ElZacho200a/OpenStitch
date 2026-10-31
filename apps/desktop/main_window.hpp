@@ -24,16 +24,24 @@
 #include <vector>
 
 #include "auto_satin_strategy_ui.hpp"
+#include "claude_backend.hpp"
+#include "companion_dock.hpp"
+#include "companion_launcher.hpp"
 #include "interaction_map.hpp"
+#include "live_server.hpp"
 #include "openstitch/commands/transform_ops.hpp"
 #include "openstitch/commands/undo_stack.hpp"
 #include "openstitch/commands/vector_ops.hpp"
 #include "openstitch/document/object_fragment.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/path.hpp"
+#include "openstitch/optimization/order.hpp"
+#include "openstitch/project_ops/analysis.hpp"
+#include "openstitch/project_ops/live_bridge.hpp"
 #include "openstitch/segmentation/color_merge.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
+#include "openstitch/stitch_generation/pull_field.hpp"
 #include "openstitch/thread_palette/thread_library.hpp"
 #include "realistic_view_state.hpp"
 #include "tools.hpp"
@@ -78,6 +86,7 @@ class CompositeCommand;
 namespace openstitch::desktop {
 
 class SimulationNavBar;
+class ClaudeCodeProcessBackend;
 
 class CanvasView;
 struct DensityRaster; // density_overlay.hpp
@@ -121,6 +130,34 @@ public:
     // machine), .svg et images. Passe par les mêmes gardes « modifications non
     // enregistrées » que les menus ; reporté tant qu'un dialogue modal est ouvert.
     void openPath(const QString& path);
+
+    // Pont « projet vivant » (ADR 0001) : un agent local lit et modifie CE document, jamais une
+    // copie. `commitLiveBatch` applique un lot validé en UNE étape d'annulation de la pile du
+    // desktop puis rafraîchit canevas, inspecteur, état « modifié » et actions.
+    [[nodiscard]] project_ops::LiveBridge& liveBridge() { return liveBridge_; }
+    // Ouvre / ferme le pont IA local (tube nommé + fichier de découverte `dir`, défaut
+    // `mcp::live_directory()`). Faux si l'ouverture échoue (message dans `error`).
+    bool setLiveBridgeEnabled(bool on, const std::filesystem::path& dir = {},
+                              QString* error = nullptr);
+    [[nodiscard]] mcp::LiveService& liveService() { return liveService_; }
+    [[nodiscard]] mcp::LiveDocumentInfo liveDocumentInfo() const;
+    void afterLiveCommit();
+    // Dock « Compagnon IA » (masqué par défaut) ; `focusEmbroideryObject` sélectionne un objet.
+    void buildCompanionDock();
+    void applyCompanionSettings();
+    void showCompanionSettings();
+    void openClaudeCode();
+    void useClaudeCodeInDock();
+    // Analyse sémantique automatique au lancement de Claude (une fois par projet ouvert).
+    void maybeStartSemanticAnalysis();
+    std::uint64_t semanticAnalysisGeneration_{~0ULL};
+    void updateCompanionContext();
+    void focusEmbroideryObject(quint64 id);
+    [[nodiscard]] CompanionDock* companionDock() const { return companionDock_; }
+    project_ops::LiveBridge::Result commitLiveBatch(const std::string& sessionId,
+                                                    std::uint64_t revision,
+                                                    const std::string& batchJson,
+                                                    const std::string& label, bool approved);
 
 protected:
     void closeEvent(QCloseEvent* event) override;
@@ -284,6 +321,7 @@ private slots:
     void editBorderSatin(ObjectId id, double widthMm, int side, int corner);
     void setJoinMode(ObjectId id, int mode);
     void setConnectorMode(ObjectId id, int mode);
+    void setKnockout(ObjectId id, bool enabled, double marginMm);
     void setDensityGradient(ObjectId embroideryId, bool enabled, double angleDeg,
                             double endSpacingMm);
     void applyTwoColorBlend();
@@ -951,6 +989,9 @@ private:
     // multiSelection_ vide. Ne rafraîchit rien (l'appelant appelle
     // displayImage/refreshImage + updateActions).
     void setSelection(Selection selection);
+    // Mode fantôme (approbation d'un agent) : met en évidence les objets visés, puis restaure.
+    void showGhostSelection(const std::vector<quint64>& embroideryIds);
+    void restoreGhostSelection(Selection saved);
     // Modification partielle : copie l'état courant, applique `edit`, puis passe
     // par setSelection (jamais d'écriture directe des membres).
     void editSelection(const std::function<void(Selection&)>& edit);
@@ -1095,6 +1136,22 @@ private:
     QStringList recentFiles_;
     QMenu* recentMenu_{nullptr};
     commands::UndoStack undoStack_;
+    project_ops::LiveBridge liveBridge_{project_, undoStack_};
+    // Pont IA local (ADR 0001) : désactivé par défaut ; ne s'ouvre que sur action explicite.
+    DialogApprovalGate liveGate_{this};
+    mcp::LiveService liveService_{liveBridge_, liveGate_, [this] { return liveDocumentInfo(); },
+                                  [this] { afterLiveCommit(); }};
+    std::unique_ptr<LiveServer> liveServer_;
+    QAction* liveBridgeAct_{nullptr};
+    CompanionDock* companionDock_{nullptr};
+    std::unique_ptr<agent::ISecretStore> secretStore_;
+    agent::DiagnosticLog companionLog_;
+    ClaudeCompanionBackend* claudeBackend_{nullptr};
+    ClaudeCodeProcessBackend* codeBackend_{nullptr};
+    QAction* companionSettingsAct_{nullptr};
+    QAction* openClaudeCodeAct_{nullptr};
+    // Environnement système du lanceur Claude Code (remplaçable par les tests).
+    ClaudeCodeLauncher::Env launcherEnv_{ClaudeCodeLauncher::systemEnv()};
     image::Image processed_; // dernier résultat du pipeline (pour l'affichage)
     // Entrées exactes ayant produit `processed_` (clé de contenu du cache,
     // cf. refreshImage) : `processed_` n'est recalculée que si l'image source
@@ -1135,6 +1192,7 @@ private:
     std::shared_ptr<const image::Image> segmentSnapshot_; // image de travail à l'ouverture
     std::optional<segmentation::SegmentationOptions> segmentCachedOptions_;
     std::optional<segmentation::Segmentation> segmentCached_; // dernier aperçu calculé
+    segmentation::DetailMask segmentCachedMask_;              // masque de détail de ce calcul
     double segmentCachedSeconds_{0.0};                        // durée de ce calcul
     std::uint64_t segmentGeneration_{0};
     bool segmentAutoShownMap_{false}; // l'aperçu a affiché la carte (à masquer à la fermeture)
@@ -1337,6 +1395,15 @@ private:
     ColorwayDialog* colorwayDialog_{nullptr};
     QAction* colorwayAct_{nullptr};
     QAction* threadMergeAct_{nullptr};
+    // Préréglages de points (HP-ENG-013, main_window_stitch_presets.cpp).
+    void buildStitchPresetMenu(QMenu* embMenu);
+    void rebuildStitchPresetMenu();
+    void saveStitchPreset(const QString& name);
+    void applyStitchPreset(int index);
+    void deleteStitchPreset(int index);
+    void saveStitchPresetFromSelection(); // demande le nom puis enregistre
+    QMenu* stitchPresetMenu_{nullptr};
+    QAction* stitchPresetSaveAct_{nullptr};
     // Zones réservées au câblage des entrées livrées en cœur (une zone par lot, ne pas mélanger).
     // [cablage-A:debut]
     // Exporter l'image (HP-FMT-011, main_window_export_image.cpp).
@@ -1422,10 +1489,45 @@ private:
     int clickToStitchTolerance_{12}; // ΔE76 maximal à la couleur cliquée
     int clickToStitchKind_{0};       // index de commands::ClickToStitchKind
     std::size_t clickToStitchPreviewPixels_{0};
+    // Zones de détail (main_window_detail_zones.cpp) : pinceau de masque « détail / aplat » qui
+    // pilote le lissage et le nettoyage de la segmentation. Réutilise le geste du pinceau.
+    void buildDetailZonesTool();
+    void attachDetailZonesTool();
+    void syncDetailZonesTool(Tool tool);
+    void refreshDetailZonesOverlay();
+    void updateDetailRing(QPointF sceneMm);
+    void hideDetailRing();
+    void beginDetailStroke(QPointF sceneMm);
+    void moveDetailStroke(QPointF sceneMm);
+    void endDetailStroke();
+    void cancelDetailStroke();
+    void clearDetailZones();
+    void setDetailRadiusMm(double radiusMm);
+    struct DetailStroke {
+        std::vector<std::pair<int, int>> centers; // centres des disques, en pixels
+        QPointF lastSceneMm;
+        bool erase{false};
+    };
+    QMenu* segmentMenu_{nullptr};
+    QAction* toolDetailAct_{nullptr};
+    QAction* clearDetailAct_{nullptr};
+    QToolBar* detailBar_{nullptr};
+    QDoubleSpinBox* detailRadiusSpin_{nullptr};
+    QCheckBox* detailEraseCheck_{nullptr};
+    QGraphicsEllipseItem* detailRing_{nullptr};
+    QGraphicsPixmapItem* detailOverlayItem_{nullptr};
+    std::optional<DetailStroke> detailStroke_;
+    segmentation::DetailMask detailLive_; // masque + trait en cours, pour l'aperçu
+    double detailRadiusMm_{4.0};
     QAction* toolBrushAct_{nullptr};
     QAction* brushSettingsAct_{nullptr};
     QGraphicsEllipseItem* brushRing_{nullptr};
     std::optional<BrushStroke> brushStroke_;
+    // Couche points suspendue pendant un coup de pinceau : les points affichés seraient périmés
+    // et chaque touche repeindrait la texture réaliste sous la forme ; `renderStitches` la
+    // reconstruit à la fin (ou à l'annulation).
+    bool stitchLayerSuspended_{false};
+    void suspendStitchLayer(bool suspended);
     double brushRadiusMm_{5.0};
     double brushStrength_{0.6};
     QAction* toolMeasureAct_{nullptr};
@@ -1437,6 +1539,40 @@ private:
     std::array<std::uint8_t, 3> eyedropperRgb_{};
     // [cablage-C:fin]
     // [cablage-D:debut]
+    // Surimpression « Sauts à vide » du panneau Ordre (main_window_order_jumps.cpp) : segments
+    // entre la fin d'un objet et le début du suivant (optimization::jump_segments), avec une
+    // comparaison avant / après « Optimiser l'ordre ». Ne modifie jamais le document.
+    void buildOrderJumpsFeature();
+    void refreshOrderJumpsOverlay(); // appelée par renderStitches()
+    void setOrderJumpsEnabled(bool on);
+    // Mémorise les sauts d'avant une optimisation ; valable pour le prochain refreshImage
+    // seulement.
+    void captureOrderJumpsBaseline(const std::vector<stitch::ObjectEndpoints>& endpoints);
+    QAction* orderJumpsAct_{nullptr};
+    QCheckBox* orderJumpsCheck_{nullptr};
+    QCheckBox* orderJumpsCompareCheck_{nullptr};
+    QLabel* orderJumpsLabel_{nullptr};
+    std::vector<optimization::JumpSegment> orderJumps_;       // sauts de la séquence affichée
+    std::vector<optimization::JumpSegment> orderJumpsBefore_; // sauts avant l'optimisation
+    bool orderJumpsHasBefore_{false};
+    int orderJumpsBeforeRefresh_{-1}; // valeur de refreshCount_ pour laquelle la base est valable
+    QString orderJumpsDeltaText_; // libellé « −X mm » dessiné sur le canevas (vide : aucun)
+    // Risque tissu en surimpression (main_window_fabric_risk.cpp) : grille de cases classées
+    // calculée par project_ops::measure_fabric_risk (la même analyse que le CLI), hors du fil UI,
+    // mise en cache sous une clé exacte (séquence + profil de tissu).
+    void buildFabricRiskFeature();
+    void refreshFabricRiskOverlay(); // appelée par renderStitches() (pose le cache ou planifie)
+    void recomputeFabricRisk();
+    void setFabricRiskEnabled(bool on);
+    [[nodiscard]] int fabricRiskProfile() const; // 0 tissé, 1 jersey, 2 feutrine
+    QAction* fabricRiskAct_{nullptr};
+    QTimer* fabricRiskTimer_{nullptr};
+    QPixmap fabricRiskPixmap_;
+    QRectF fabricRiskRect_; // zone couverte par l'image, mm (repère scène)
+    project_ops::FabricRiskGrid fabricRiskGrid_;
+    std::uint64_t fabricRiskKey_{0};
+    bool fabricRiskValid_{false};
+    int fabricRiskComputeCount_{0}; // calculs réellement faits (tests)
     // [cablage-D:fin]
     // [cablage-E:debut]
     // HP-VIEW-005 : carte de densité (main_window_density.cpp). Image mise en cache sous une
@@ -1466,6 +1602,23 @@ private:
     bool densityValid_{false};
     double densityScaleMax_{1.0};
     int densityComputeCount_{0}; // calculs réellement faits (tests)
+    // Prévisualisation du tirage du tissu, niveau 3 (main_window_pull_preview.cpp) : carte du
+    // déplacement prédit + aperçu des points décalés. Jamais écrit dans le document.
+    void buildPullPreviewFeature();
+    void refreshPullMapOverlay(); // appelée par renderStitches()
+    [[nodiscard]] stitch_generation::FabricResponse pullFabric() const;
+    // Séquence décalée du tirage (en cache), nulle si l'aperçu est éteint.
+    [[nodiscard]] const stitch::StitchSequence* pullPreviewSequence();
+    QAction* pullMapAct_{nullptr};
+    QAction* pullPreviewAct_{nullptr};
+    QPixmap pullMapPixmap_;
+    QRectF pullMapRect_;
+    std::uint64_t pullMapKey_{0};
+    bool pullMapValid_{false};
+    stitch::StitchSequence pullPreviewSeq_;
+    std::uint64_t pullPreviewKey_{0};
+    bool pullPreviewValid_{false};
+    int pullComputeCount_{0}; // calculs réellement faits (tests)
     // [cablage-E:fin]
     // [cablage-HOOP:debut]
     // Machine du projet (HP-HOOP-002, main_window_machine.cpp).

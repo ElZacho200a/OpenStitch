@@ -56,6 +56,44 @@ constexpr const char* kJsonEntry = "project.json";
 constexpr const char* kImageEntry = "original.png";
 constexpr const char* kLabelsEntry = "segmentation.u32";
 
+constexpr const char* kDetailMaskEntry = "detail_mask.u8";
+
+// Masque de détail : largeur et hauteur (uint32 little-endian) puis un octet par pixel.
+detail::Blob detail_mask_to_bytes(const segmentation::DetailMask& mask) {
+    detail::Blob out(8 + mask.weights.size());
+    for (int k = 0; k < 4; ++k) {
+        out[static_cast<std::size_t>(k)] =
+            static_cast<std::uint8_t>((static_cast<std::uint32_t>(mask.width) >> (8 * k)) & 0xFF);
+        out[static_cast<std::size_t>(4 + k)] =
+            static_cast<std::uint8_t>((static_cast<std::uint32_t>(mask.height) >> (8 * k)) & 0xFF);
+    }
+    std::copy(mask.weights.begin(), mask.weights.end(), out.begin() + 8);
+    return out;
+}
+
+// Vide en cas d'incohérence (le masque est facultatif : un fichier abîmé ne bloque pas
+// l'ouverture).
+segmentation::DetailMask detail_mask_from_bytes(const detail::Blob& bytes) {
+    segmentation::DetailMask mask;
+    if (bytes.size() < 8) {
+        return mask;
+    }
+    std::uint32_t w = 0;
+    std::uint32_t h = 0;
+    for (int k = 0; k < 4; ++k) {
+        w |= static_cast<std::uint32_t>(bytes[static_cast<std::size_t>(k)]) << (8 * k);
+        h |= static_cast<std::uint32_t>(bytes[static_cast<std::size_t>(4 + k)]) << (8 * k);
+    }
+    if (w == 0 || h == 0 || w > 65536 || h > 65536 ||
+        static_cast<std::uint64_t>(w) * h != bytes.size() - 8) {
+        return mask;
+    }
+    mask.width = static_cast<int>(w);
+    mask.height = static_cast<int>(h);
+    mask.weights.assign(bytes.begin() + 8, bytes.end());
+    return mask;
+}
+
 // Labels de segmentation <-> octets bruts little-endian (indépendant de la
 // plateforme : on écrit octet par octet).
 detail::Blob labels_to_bytes(const std::vector<std::uint32_t>& labels) {
@@ -155,6 +193,9 @@ Result<void> save_project(const std::filesystem::path& path, const document::Pro
     }
     if (project.segmentation) {
         entries.emplace(kLabelsEntry, std::move(labels));
+    }
+    if (project.detail_mask.any_detail()) {
+        entries.emplace(kDetailMaskEntry, detail_mask_to_bytes(project.detail_mask));
     }
 
     // Écriture atomique : fichier temporaire puis renommage.
@@ -285,6 +326,10 @@ Result<document::Project> load_project_impl(const std::filesystem::path& path, L
         project->original = std::move(*img);
     }
 
+    if (const auto maskIt = entries->find(kDetailMaskEntry); maskIt != entries->end()) {
+        project->detail_mask = detail_mask_from_bytes(maskIt->second);
+    }
+
     if (project->segmentation) {
         const auto labelsIt = entries->find(kLabelsEntry);
         if (labelsIt == entries->end()) {
@@ -333,7 +378,7 @@ std::string fragment_to_json(const document::ObjectFragment& fragment) {
 
 Result<document::ObjectFragment> fragment_from_json(std::string_view text) {
     try {
-        const nlohmann::json root = nlohmann::json::parse(text, nullptr, false);
+        nlohmann::json root = nlohmann::json::parse(text, nullptr, false);
         if (!root.is_object() || !root.contains("openstitchFragment") ||
             !root.contains("document")) {
             return fail(ErrorCategory::InvalidFile,
@@ -342,6 +387,15 @@ Result<document::ObjectFragment> fragment_from_json(std::string_view text) {
         if (root.value("schemaVersion", 0) > kMaxReadableSchemaVersion) {
             return fail(ErrorCategory::InvalidFile,
                         "Objets copiés depuis une version plus récente d'OpenStitch");
+        }
+        // HP-FILE-012 : mêmes migrations que le `.osp` (le fragment partage son schéma).
+        // Un fragment sans version déclarée est lu tel quel (comportement historique).
+        if (root.contains("schemaVersion")) {
+            auto migrated = migrate_project_json(text);
+            if (!migrated) {
+                return std::unexpected(migrated.error());
+            }
+            root = nlohmann::json::parse(*migrated);
         }
         auto carrier = detail::project_from_json(root.at("document"));
         if (!carrier) {

@@ -9,6 +9,8 @@
 #include "openstitch/commands/transform_ops.hpp"
 #include "openstitch/commands/undo_stack.hpp"
 #include "openstitch/document/project.hpp"
+#include "openstitch/stitch_generation/generate.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
 
 using namespace openstitch;
 using namespace openstitch::commands;
@@ -238,4 +240,51 @@ TEST_CASE("transform: scale and translate move everything; unknown ids give no c
     CHECK(make_transform_command(project, {}, AffineTransform{}, "x") == nullptr);
     CHECK_FALSE(objects_bounds(project, {}).has_value());
     CHECK_FALSE(objects_bounds(project, {ObjectId{424'242}}).has_value());
+}
+
+TEST_CASE("transform: manual stitch edits of a contour follow a move, rotation and mirror") {
+    for (const int kind : {0, 1, 2}) {
+        document::Project project;
+        const ObjectId id =
+            add_shape(project, rect(0, 0, 20'000, 10'000), document::RunningStitchParams{});
+        auto& emb = project.embroidery_objects.back();
+        const auto sequence = stitch_generation::generate_sequence(project);
+        REQUIRE(sequence.has_value());
+        const auto raw = stitch_generation::raw_slice(*sequence, emb.id);
+        std::size_t index = 0;
+        while (index < raw.size() && !stitch_generation::is_movable_point(raw[index])) {
+            ++index;
+        }
+        REQUIRE(index < raw.size());
+        document::StitchOverride edit;
+        edit.base_index = index;
+        edit.moved_to = raw[index].pos + pt(120, 0);
+        emb.overrides.push_back(edit);
+        emb.edited_fingerprint = stitch_generation::fingerprint(raw);
+        emb.edited_point_count = static_cast<std::uint32_t>(raw.size());
+        const auto savedOverrides = emb.overrides;
+        const auto savedFingerprint = emb.edited_fingerprint;
+
+        const AffineTransform transform =
+            kind == 0   ? AffineTransform::translate(pt(5'000, -3'000))
+            : kind == 1 ? AffineTransform::rotation(pt(0, 0), Angle{kPi / 2.0})
+                        : AffineTransform::mirror(pt(10'000, 5'000), true);
+        UndoStack stack;
+        stack.execute(make_transform_command(project, {id}, transform, "t"), project);
+
+        const auto after = stitch_generation::generate_sequence(project);
+        REQUIRE(after.has_value());
+        const auto* moved = project.findEmbroidery(emb.id);
+        REQUIRE(moved != nullptr);
+        const auto state = stitch_generation::classify_edit_state(
+            *moved, stitch_generation::raw_slice(*after, moved->id));
+        // Un contour suit la géométrie point pour point : la retouche suit la transformation.
+        CHECK(state == stitch_generation::ObjectEditState::ManuallyEdited);
+        CHECK(moved->overrides[0].moved_to == transform.apply(*savedOverrides[0].moved_to));
+
+        stack.undo(project);
+        const auto* restored = project.findEmbroidery(emb.id);
+        CHECK(restored->overrides == savedOverrides);
+        CHECK(restored->edited_fingerprint == savedFingerprint);
+    }
 }

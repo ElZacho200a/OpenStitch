@@ -207,7 +207,7 @@ Context CanvasView::currentContext() const {
         return Context::Measure;
     }
     if (brushMode_) {
-        return Context::Brush;
+        return brushContext_;
     }
     if (polygonDrawMode_ || satinPairDrawMode_) {
         return Context::DrawClicks;
@@ -324,12 +324,13 @@ void CanvasView::setMeasureMode(bool enabled) {
     applyModeCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
 }
 
-void CanvasView::setBrushMode(bool enabled) {
+void CanvasView::setBrushMode(bool enabled, Context context) {
     if (brushActive_) {
         brushActive_ = false;
         emit brushCancelled();
     }
     brushMode_ = enabled;
+    brushContext_ = enabled ? context : Context::Brush;
     updateDragMode();
     applyModeCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
 }

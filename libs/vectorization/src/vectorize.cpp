@@ -113,6 +113,10 @@ Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segm
     const int x0 = minX - 1;
     const int y0 = minY - 1;
     cv::Mat mask(maxY - minY + 3, maxX - minX + 3, CV_8U, cv::Scalar(0));
+    const bool useDetail =
+        options.detail_mask != nullptr && options.detail_mask->matches(seg.width, seg.height);
+    std::uint64_t detailSum = 0;
+    std::uint64_t regionPixels = 0;
     for (int y = minY; y <= maxY; ++y) {
         if ((y % 32) == 0 && task.cancelled()) {
             return cancelled_error();
@@ -123,9 +127,24 @@ Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segm
         for (int x = minX; x <= maxX; ++x) {
             if (row[x] == label) {
                 dst[x - x0] = 255;
+                if (useDetail) {
+                    detailSum +=
+                        options.detail_mask->weights[static_cast<std::size_t>(y) *
+                                                         static_cast<std::size_t>(seg.width) +
+                                                     static_cast<std::size_t>(x)];
+                    ++regionPixels;
+                }
             }
         }
     }
+    // Région « de détail » : tolérances réduites (le plancher de 0,1 mm = pas machine reste
+    // respecté pour le polygone ; 1 µm pour les courbes).
+    const bool isDetail = useDetail && regionPixels > 0 && detailSum >= 128ULL * regionPixels;
+    const double factor = isDetail ? std::clamp(options.detail_tolerance_factor, 0.05, 1.0) : 1.0;
+    const double simplifyTol =
+        std::max(std::min(100.0, static_cast<double>(options.simplify_tolerance.value)),
+                 static_cast<double>(options.simplify_tolerance.value) * factor);
+    const double curveTol = static_cast<double>(options.curve_tolerance.value) * factor;
 
     // Contours extérieurs ET trous (RETR_CCOMP) ; CHAIN_APPROX_SIMPLE retire
     // déjà les points colinéaires. La hiérarchie exacte est reconstruite plus
@@ -163,8 +182,8 @@ Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segm
         for (std::size_t i = 0; i < path.nodes.size(); ++i) {
             perim += length_um(path.nodes[(i + 1) % path.nodes.size()].pos - path.nodes[i].pos);
         }
-        const auto adaptiveTol = Micrometers{static_cast<std::int32_t>(
-            std::min<double>(static_cast<double>(options.simplify_tolerance.value), perim / 16.0))};
+        const auto adaptiveTol =
+            Micrometers{static_cast<std::int32_t>(std::min<double>(simplifyTol, perim / 16.0))};
         raw.push_back(options.curve_tolerance.value > 0 ? path
                                                         : geometry::simplify(path, adaptiveTol));
     }
@@ -191,9 +210,8 @@ Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segm
             for (std::size_t i = 0; i < path.nodes.size(); ++i) {
                 perim += length_um(path.nodes[(i + 1) % path.nodes.size()].pos - path.nodes[i].pos);
             }
-            const auto tol = Micrometers{static_cast<std::int32_t>(
-                std::max(1.0, std::min<double>(static_cast<double>(options.curve_tolerance.value),
-                                               perim / 16.0)))};
+            const auto tol = Micrometers{
+                static_cast<std::int32_t>(std::max(1.0, std::min<double>(curveTol, perim / 16.0)))};
             return geometry::fit_curves(path, {.tolerance = tol});
         };
         for (geometry::PathSet& set : *sets) {

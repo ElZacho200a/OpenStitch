@@ -216,6 +216,45 @@ TEST_CASE("petite region -> contour (point triple)") {
     CHECK(anyRunning);
 }
 
+TEST_CASE("zone de detail : petite region cousue en tatami au lieu d'un contour") {
+    // Carre 3x3 mm (9 mm²) sous le seuil de remplissage (20 mm²) : contour sans masque, tatami
+    // quand il est peint en detail (seuil de detail 4 mm²) ; un masque d'aplat ne change rien.
+    image::Image img = blank(9, 9);
+    for (int y = 3; y < 6; ++y) {
+        for (int x = 3; x < 6; ++x) {
+            set_px(img, x, y, 30, 200, 30);
+        }
+    }
+    const auto seg = segmentation::segment(img, {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+
+    const auto countKinds = [&](const segmentation::DetailMask* mask) {
+        AutoOptions o = opts();
+        o.detail_mask = mask;
+        o.detail_min_fill_area_mm2 = 4.0;
+        IdGenerator<ObjectId> ids;
+        const auto result = auto_digitize(*seg, ids, o);
+        REQUIRE(result.has_value());
+        std::pair<int, int> kinds{0, 0}; // (tatami, contour)
+        for (const auto& e : result->embroideries) {
+            kinds.first += std::holds_alternative<document::TatamiParams>(e.params) ? 1 : 0;
+            kinds.second += std::holds_alternative<document::RunningStitchParams>(e.params) ? 1 : 0;
+        }
+        return kinds;
+    };
+
+    segmentation::DetailMask flat;
+    flat.width = 9;
+    flat.height = 9;
+    flat.weights.assign(81, 0);
+    segmentation::DetailMask detail = flat;
+    detail.weights.assign(81, 255);
+
+    CHECK(countKinds(nullptr) == std::pair<int, int>{0, 1});
+    CHECK(countKinds(&flat) == std::pair<int, int>{0, 1});
+    CHECK(countKinds(&detail) == std::pair<int, int>{1, 0});
+}
+
 // Défaut trouvé sur un projet réel (logo circulaire sans canal alpha) : le
 // fond se fragmentait en plusieurs régions blanches DISJOINTES (les zones
 // hors d'un motif rond inscrit dans une image carrée). skip_largest_region

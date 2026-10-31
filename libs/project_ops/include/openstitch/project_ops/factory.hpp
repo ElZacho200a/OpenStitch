@@ -121,6 +121,9 @@ struct DigitizeSettings {
     int stipple_points{2000};
     int stipple_seed{1};
     bool stipple_invert{false};
+    // HP-FILE-014 : chemin du profil de réglages (`--settings`) cité dans le rapport ; vide =
+    // aucun. Sans effet sur la numérisation.
+    std::string profile_path;
 };
 
 // Valide la grammaire de `DigitizeSettings::pre` sans toucher d'image.
@@ -156,6 +159,8 @@ struct DigitizeSource {
     const segmentation::Segmentation* segmentation{nullptr};
     const image::Image* image{nullptr};
     Millimeters mm_per_px{25.4 / 96.0};
+    // Zones de détail du projet (facultatif) : vectorisation plus fine dans ces zones.
+    const segmentation::DetailMask* detail_mask{nullptr};
 };
 
 struct DigitizedObjects {

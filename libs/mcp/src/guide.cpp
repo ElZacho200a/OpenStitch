@@ -36,8 +36,10 @@ dans le rapport plutôt que d'inventer une mesure.
 
 ## Ce que le serveur change
 
-- Une session garde UN projet ouvert : pas besoin de copies de fichiers pour comparer. Pour
-  conserver une variante, `project_save` sous un autre nom puis `project_open` pour y revenir.
+- Une session garde UN projet ouvert : `project_status` donne le statut `dirty` et les variantes.
+  `project_open`, `project_new` et `project_digitize` refusent la perte de modifications non
+  enregistrees : faire `project_save` ou confirmer `discard_changes=true`. `project_close`
+  libere le projet ; un changement de projet vide les anciens checkpoints.
 - `project_apply` est tout ou rien ; `skip_refused` écarte les opérations refusées (listées dans
   `skipped`) et applique le reste : utile pour tester `auto_satin` sur beaucoup d'objets.
 - Les trois satins : `project_apply` avec `{"op":"auto_satin","object":ID,"strategy":"skeleton"
@@ -171,6 +173,18 @@ std::vector<GuideTopic> build_topics() {
 const std::vector<GuideTopic>& guide_topics() {
     static const std::vector<GuideTopic> topics = build_topics();
     return topics;
+}
+
+std::vector<std::pair<std::string, std::string>> digitize_skill_files() {
+    std::vector<std::pair<std::string, std::string>> files;
+    for (std::size_t i = 0; i < kGuideBlobCount; ++i) {
+        const GuideBlob& blob = kGuideBlobs[i];
+        const std::string name = blob.name;
+        files.emplace_back(name == "workflow" ? std::string("SKILL.md")
+                                              : "references/" + name + ".md",
+                           std::string(reinterpret_cast<const char*>(blob.data), blob.size));
+    }
+    return files;
 }
 
 const GuideTopic* find_topic(std::string_view name) {

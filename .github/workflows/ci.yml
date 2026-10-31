@@ -51,9 +51,31 @@ jobs:
           path: |
             build/msvc/apps/desktop/Release/
             build/msvc/apps/cli/Release/
+            build/msvc/apps/mcp/Release/
 
       - name: Test (Release)
         run: ctest --preset msvc-release
+
+      - name: Package and smoke-test Windows MCP (Release)
+        shell: pwsh
+        run: |
+          ./packaging/windows/package-mcp.ps1 -BinaryDir build/msvc/apps/mcp/Release -OutputDir dist/windows-mcp
+          $verify = Join-Path $env:RUNNER_TEMP "openstitch-mcp-smoke"
+          Expand-Archive -LiteralPath "dist/windows-mcp/openstitch-mcp-windows-x64.zip" -DestinationPath $verify -Force
+          $exe = Join-Path $verify "openstitch-mcp-windows-x64/openstitch-mcp.exe"
+          if (-not (Test-Path -LiteralPath $exe)) { throw "MCP exe missing from ZIP" }
+          & $exe --version
+          if ($LASTEXITCODE -ne 0) { throw "MCP --version failed" }
+          & $exe --doctor
+          if ($LASTEXITCODE -ne 0) { throw "MCP --doctor failed" }
+
+      - name: Upload Windows MCP ZIP + SHA256
+        uses: actions/upload-artifact@v4
+        with:
+          name: openstitch-mcp-windows-x64
+          if-no-files-found: error
+          retention-days: 30
+          path: dist/windows-mcp/*
 
       # Diagnostic : test_ui_action_workflows échoue par intermittence en Release sans aucun message
       # (ctest n'affiche que « Failed », ni sortie ni code de sortie). Quand un test échoue, on relance
@@ -185,6 +207,12 @@ jobs:
           name: openstitch-beta-windows-x64
           path: dist/openstitch-windows-x64
 
+      - name: Télécharger l'archive Windows MCP
+        uses: actions/download-artifact@v4
+        with:
+          name: openstitch-mcp-windows-x64
+          path: dist/windows-mcp
+
       - name: Télécharger l'artefact Linux CLI
         uses: actions/download-artifact@v4
         with:
@@ -210,6 +238,8 @@ jobs:
           if gh release view latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload latest \
               openstitch-windows-x64.zip \
+              dist/windows-mcp/openstitch-mcp-windows-x64.zip \
+              dist/windows-mcp/openstitch-mcp-windows-x64.zip.sha256 \
               dist/linux-cli/openstitch-cli-linux-x86_64.tar.gz \
               dist/linux-cli/openstitch-cli-linux-x86_64.tar.gz.sha256 \
               dist/linux-mcp/openstitch-mcp-linux-x86_64.tar.gz \
@@ -218,6 +248,8 @@ jobs:
           else
             gh release create latest \
               openstitch-windows-x64.zip \
+              dist/windows-mcp/openstitch-mcp-windows-x64.zip \
+              dist/windows-mcp/openstitch-mcp-windows-x64.zip.sha256 \
               dist/linux-cli/openstitch-cli-linux-x86_64.tar.gz \
               dist/linux-cli/openstitch-cli-linux-x86_64.tar.gz.sha256 \
               dist/linux-mcp/openstitch-mcp-linux-x86_64.tar.gz \
