@@ -1197,8 +1197,8 @@ void PropertiesPanelTest::blanketInspectorEditsWidthSpacingStyleAndSide() {
 }
 
 void PropertiesPanelTest::stitchTypeMoreMenuOffersEveryOtherType() {
-    // Les types sans bouton direct (motifs, concentrique, radial, spirale, croise) passent par
-    // le menu « Plus » de la rangee de types : chacun emet son index.
+    // Les types sans bouton direct (motifs, concentrique, radial, spirale, croise, point de croix)
+    // passent par le menu « Plus » de la rangee de types : chacun emet son index.
     PropertiesPanel panel;
     EmbroideryObject e;
     e.id = openstitch::ObjectId{60};
@@ -1207,14 +1207,14 @@ void PropertiesPanelTest::stitchTypeMoreMenuOffersEveryOtherType() {
     auto* more = panel.findChild<QToolButton*>(QStringLiteral("button_stitchTypeMore"));
     QVERIFY(more != nullptr);
     QVERIFY(more->menu() != nullptr);
-    QCOMPARE(more->menu()->actions().size(), 6);
+    QCOMPARE(more->menu()->actions().size(), 7);
     std::vector<int> requested;
     QObject::connect(&panel, &PropertiesPanel::stitchTypeRequested, &panel,
                      [&](int type) { requested.push_back(type); });
     for (QAction* act : more->menu()->actions()) {
         act->trigger();
     }
-    QCOMPARE(requested, (std::vector<int>{5, 6, 7, 8, 9, 10}));
+    QCOMPARE(requested, (std::vector<int>{5, 6, 7, 8, 9, 10, 11}));
     // Un objet concentrique affiche son type dans le bouton « Plus ».
     EmbroideryObject c;
     c.id = openstitch::ObjectId{61};
