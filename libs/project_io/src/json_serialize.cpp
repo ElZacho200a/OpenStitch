@@ -1410,6 +1410,14 @@ json project_to_json(const document::Project& project) {
         }
         j["colorways"] = std::move(cw);
     }
+    if (!project.stitch_presets.empty()) {
+        // Préréglages de points (HP-ENG-013) : clé facultative, absente = aucun préréglage.
+        json presets = json::array();
+        for (const auto& preset : project.stitch_presets) {
+            presets.push_back({{"name", preset.name}, {"params", params_to_json(preset.params)}});
+        }
+        j["stitchPresets"] = std::move(presets);
+    }
     if (!(project.fabric == document::FabricSettings{})) {
         // Tissu de fond (HP-THR-008) : clé facultative, absente = blanc.
         json fabric = {{"rgb", rgb_to_json(project.fabric.color)}, {"name", project.fabric.name}};
@@ -1670,6 +1678,21 @@ Result<document::Project> project_from_json(const json& j) {
                 (active >= 0 && static_cast<std::size_t>(active) < project.colorways.size())
                     ? active
                     : -1;
+        }
+        if (j.contains("stitchPresets") && j.at("stitchPresets").is_array()) {
+            for (const auto& pj : j.at("stitchPresets")) {
+                if (!pj.is_object() || !pj.contains("params")) {
+                    continue; // entrée illisible : ignorée (lecture tolérante)
+                }
+                auto params = params_from_json(pj.at("params"));
+                if (!params) {
+                    continue;
+                }
+                document::StitchPreset preset;
+                preset.name = pj.value("name", std::string{});
+                preset.params = std::move(*params);
+                project.stitch_presets.push_back(std::move(preset));
+            }
         }
         if (j.contains("fabric")) {
             const auto& fj = j.at("fabric");

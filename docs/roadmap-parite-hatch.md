@@ -1438,7 +1438,13 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   sauts restants) contre un résultat Hatch sur les mêmes formes ; corriger
   chaque défaut par la méthode `openstitch-bugfix`.
 
-### HP-ENG-013 — Styles / préréglages de points [P1] — ☐ À faire
+### HP-ENG-013 — Styles / préréglages de points [P1] — ◐ Partiel (2026-10-31)
+- Livré (2026-10-31) : `Project::stitch_presets` (`StitchPreset` = nom + `StitchParams`, stockés dans le
+  projet), clé `.osp` facultative `stitchPresets` (lecture tolérante), commandes annulables
+  `SaveStitchPresetCommand` / `RemoveStitchPresetCommand` / `ApplyStitchPresetCommand` (un seul pas
+  pour toute la sélection), menu Broderie ▸ « Préréglages de points » (enregistrer la sélection,
+  appliquer, supprimer). Reste : valeurs par défaut par type (« définir comme défaut »), bibliothèque
+  utilisateur partagée entre projets, préréglages livrés d'office, sélecteur dans l'inspecteur.
 - Hatch : styles réutilisables (jeu de paramètres nommé) et valeurs par
   défaut par type.
 - À faire : bibliothèque de préréglages (« satin lettrage fin », « tatami

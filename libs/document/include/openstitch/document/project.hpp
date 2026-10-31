@@ -17,6 +17,7 @@
 #include "openstitch/document/finishing.hpp"
 #include "openstitch/document/imported_design.hpp"
 #include "openstitch/document/object_group.hpp"
+#include "openstitch/document/stitch_preset.hpp"
 #include "openstitch/document/text_object.hpp"
 #include "openstitch/document/vector_object.hpp"
 #include "openstitch/image/image.hpp"
@@ -72,6 +73,10 @@ struct Project {
     // (document sans coloris : comportement historique). Voir `Colorway`.
     std::vector<Colorway> colorways;
     int active_colorway{-1};
+
+    // Préréglages de points du projet (HP-ENG-013) : jeux de paramètres nommés, appliqués à la
+    // sélection. Vide = aucun préréglage (documents antérieurs). Noms uniques.
+    std::vector<StitchPreset> stitch_presets;
 
     // Tissu de fond (HP-THR-008), persisté dans le projet.
     FabricSettings fabric;

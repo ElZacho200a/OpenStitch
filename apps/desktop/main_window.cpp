@@ -1121,6 +1121,7 @@ void MainWindow::buildMenus() {
     createSatinWithSettingsAct_->setObjectName(QStringLiteral("action_createSatinWithSettings"));
     connect(createSatinWithSettingsAct_, &QAction::triggered, this,
             &MainWindow::createSatinObjectWithSettings);
+    buildStitchPresetMenu(embMenu); // HP-ENG-013
     autoSatinAct_ = embMenu->addAction(tr("Convertir en satin automatiquement…"));
     autoSatinAct_->setToolTip(
         tr("Le logiciel dessine le satin tout seul, sans que vous posiez les deux bords. "

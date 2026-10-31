@@ -56,6 +56,7 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_realistic.cpp
     main_window_production.cpp
     main_window_colorways.cpp
+    main_window_stitch_presets.cpp
     colorway_dialog.cpp
     colorway_dialog.hpp
     thread_merge_dialog.cpp

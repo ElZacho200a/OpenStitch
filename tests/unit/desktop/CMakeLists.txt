@@ -105,6 +105,7 @@ openstitch_add_qt_test(test_export_image test_export_image.cpp)
 openstitch_add_qt_test(test_vector_tools test_vector_tools.cpp)
 # [cablage-B:fin]
 openstitch_add_qt_test(test_colorway_ui test_colorway_ui.cpp)
+openstitch_add_qt_test(test_stitch_preset_ui test_stitch_preset_ui.cpp)
 # [cablage-C:debut]
 openstitch_add_qt_test(test_measure_tool test_measure_tool.cpp)
 openstitch_add_qt_test(test_eyedropper_tool test_eyedropper_tool.cpp)

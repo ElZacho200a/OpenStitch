@@ -162,6 +162,13 @@ Le fichier n'est écrit en **v9 que si le document définit des calques** ; sino
 version antérieure, octet pour octet. Raison : un lecteur v8 ignorerait les calques et coudrait
 dans un autre ordre (`tests/unit/project_io/test_calque_persistence.cpp`).
 
+### Préréglages de points (HP-ENG-013)
+
+Clé facultative `stitchPresets` au niveau du document : tableau de `{name, params}` où `params`
+a exactement la forme du champ `params` d'un objet de broderie. Absente = aucun préréglage ; une
+entrée sans `params` lisible est ignorée. Aucune montée de `schemaVersion` : un lecteur plus ancien
+ignore la clé sans conséquence sur la couture.
+
 ## Versionnement et validation
 
 `schemaVersion` vaut **6**, **7** si un auto-satin utilise une méthode autre que le squelette, ou **8** si un texte porte un crénage manuel ou des ligatures, ou **9** si le document définit des calques (v8 → v9 : clés `calques` et `calque`, voir plus haut ; v7 → v8 : `kerningPairs` et `ligatures` d'un texte, voir plus haut ; v6 → v7 : clé `strategy` et `sweepAngle` de l'auto-satin, voir plus haut ; v5 → v6 : fil de nuancier `thread` des objets de broderie (`{chart, code}`, voir *Palettes et fils*) ; objets texte du lettrage, clé `textObjects`
