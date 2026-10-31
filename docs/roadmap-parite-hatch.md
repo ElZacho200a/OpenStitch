@@ -1740,10 +1740,10 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
 ### HP-VEC-012 — Contraintes de tracé [P2] — ☐ À faire
 - À faire : Maj = angles multiples de 15°/45° pendant le tracé polygone/ligne/Bézier.
 
-### HP-VEC-013 — Séparer / combiner des morceaux [P1] — ☐ À faire
+### HP-VEC-013 — Séparer / combiner des morceaux [P1] — ☑ Fait
 - Hatch : Break apart / Combine.
-- À faire : un `VectorObject` à plusieurs `PathSet` se sépare en objets ; à
-  l'inverse plusieurs objets se combinent en un seul.
+- Livré : Forme › « Séparer les morceaux » (`make_break_apart_command`, un objet à plusieurs `PathSet` devient autant d'objets, annulable en un pas) ; combiner = Forme › « Unir » (`make_boolean_command` Union : des formes distantes restent des morceaux d'un seul objet). Tests Catch2 `vector ops: break apart separates disjoint pieces` / `union keeps distant shapes as separate pieces` ; QTest `shapeBreakApartActionSplitsPiecesInOneUndoStep` (ajouté ici, le câblage bureau n'était pas couvert).
+- Reste : « combiner » sans souder les formes qui se recouvrent (chemin composé, règle pair-impair) n'existe pas.
 - Dépend de : HP-OBJ-001.
 
 ### HP-VEC-014 — Formes prédéfinies supplémentaires [P2] — ☑ Fait (2026-10-18, `89a3e2d`)
