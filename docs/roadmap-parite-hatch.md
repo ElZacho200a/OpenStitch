@@ -1395,6 +1395,7 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   mieux (mesure : régularité de la direction des fils).
 
 ### HP-ENG-010 — Entrée et sortie automatiques au plus proche [P0] — ◐ Partiel
+- Livré (2026-10-31) : `stitch::object_endpoints(sequence)` (premier / dernier point cousu par objet) ; l'op `optimize_order` (project_ops) et « Optimiser l'ordre » du bureau renseignent `entry`/`exit` depuis la séquence effective (repli : centre), donc l'ordre et les coûts affichés se calculent sur les extrémités réelles. Reste : `reversible` jamais renseigné (le sens d'un objet n'est pas inversé par l'ordre), mesure de la réduction des sauts sur « marine » / `tentabrode` (absents du dépôt).
 - Livré (2026-10-25) : extrémités d'entrée/sortie et sens dans `libs/optimization` (`plan_order`), départ de contour fermé au sommet le plus proche (`join.cpp`). Reste : aucun appelant ne fournit encore les extrémités réelles des objets.
 - Livré 2026-10-10 : choix automatique du sens de couture de chaque objet
   (`auto_join` global + `join` par objet, `orient_chunk`), entrée des satins depuis la
@@ -4579,4 +4580,4 @@ ouvrant le lot (§0.1).
 | 2026-10-31 | Claude (PERF-012, PR #202) | Voir la ligne PERF-012 ci-dessus : non livré faute de gain mesuré. |
 | 2026-10-31 | Claude (agent, PR #209) | **HP-PERF-010 ◐** : `UndoStack::setMaxDepth` (0 = illimité, défaut), élimination des pas les plus anciens, pas conservés annulables exactement, état propre éliminé -> `isClean` faux ; 3 tests, `test_commands` vert. Reste : câblage bureau, commandes delta après mesure (HP-PERF-007), borne en octets, rejeu HP-QA-015. |
 | 2026-10-31 | Claude (agents ENG-009, VIEW-009) | **Aucun code livré.** ENG-009 bloquée par HP-STI-018 (satin tournant absent du dépôt) ; VIEW-009 : `DeviceCoordinateCache` mesuré et rejeté (régression au zoom fort). Constats consignés dans chaque entrée. |
-
+| 2026-10-31 | Claude (HP-ENG-010) | **HP-ENG-010 ◐** : `stitch::object_endpoints` + extrémités réelles fournies à `plan_order`/`optimize_order` par l'op `optimize_order` et le bureau (test Catch2 `object_endpoints`). `reversible` et mesure sur corpus restent. |
