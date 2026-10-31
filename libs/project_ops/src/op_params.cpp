@@ -214,6 +214,13 @@ const EnumTable<document::SatinCorner>& satin_corner_table() {
                                                     {"cut", document::SatinCorner::Cut}};
     return t;
 }
+const EnumTable<document::SatinJagged>& satin_jagged_table() {
+    static const EnumTable<document::SatinJagged> t{{"none", document::SatinJagged::None},
+                                                    {"side_a", document::SatinJagged::SideA},
+                                                    {"side_b", document::SatinJagged::SideB},
+                                                    {"both", document::SatinJagged::Both}};
+    return t;
+}
 const EnumTable<document::SatinCap>& cap_table() {
     static const EnumTable<document::SatinCap> t{{"flat", document::SatinCap::Flat},
                                                  {"rounded", document::SatinCap::Rounded},
@@ -776,6 +783,9 @@ template <class P> void add_satin_common(std::vector<Field<P>>& v) {
     v.push_back(bool_field<P>("auto_spacing", &P::auto_spacing));
     v.push_back(enum_field<P>("corner_mode", &P::corner_mode, satin_corner_table()));
     v.push_back(deg_field<P>("corner_threshold_deg", &P::corner_threshold, 15.0, 150.0));
+    v.push_back(enum_field<P>("jagged", &P::jagged, satin_jagged_table()));
+    v.push_back(mm_field<P>("jagged_amplitude_mm", &P::jagged_amplitude, 0.2, 6.0));
+    v.push_back(int_field<P>("jagged_seed", &P::jagged_seed, 0, 4294967295LL));
 }
 
 template <class P> const std::vector<Field<P>>& fields_of();

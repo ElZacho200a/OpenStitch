@@ -983,3 +983,53 @@ TEST_CASE("satin coins vifs : une colonne droite n'est pas modifiee") {
         CHECK(r.jump_before.empty());
     }
 }
+
+TEST_CASE("satin bord irregulier : defaut inchange, effet, determinisme et borne de largeur") {
+    const auto stations = straight_stations(1'000);
+    SatinConfig none;
+    const auto base = finish_satin_stations(stations, none);
+
+    SatinConfig explicitNone;
+    explicitNone.jagged = SatinJaggedMode::None;
+    explicitNone.jagged_amplitude = Micrometers{4'000};
+    CHECK(finish_satin_stations(stations, explicitNone).satin == base.satin);
+
+    SatinConfig a;
+    a.jagged = SatinJaggedMode::SideA;
+    a.jagged_amplitude = Micrometers{600};
+    const auto ra = finish_satin_stations(stations, a);
+    REQUIRE(ra.satin.size() == base.satin.size());
+    CHECK(ra.satin != base.satin);
+    // Octet pour octet, et la graine change le motif.
+    CHECK(finish_satin_stations(stations, a).satin == ra.satin);
+    SatinConfig a2 = a;
+    a2.jagged_seed = 7;
+    CHECK(finish_satin_stations(stations, a2).satin != ra.satin);
+
+    // Seul le cote A bouge : les points du cote B sont ceux de la colonne de base.
+    std::size_t moved = 0;
+    for (std::size_t i = 0; i < ra.satin.size(); ++i) {
+        const bool sideB = base.satin[i].y.value < 0;
+        if (sideB) {
+            CHECK(ra.satin[i] == base.satin[i]);
+        } else if (ra.satin[i] != base.satin[i]) {
+            ++moved;
+            CHECK(ra.satin[i].y.value <= 1'000);
+            CHECK(ra.satin[i].y.value >= 1'000 - 600 - 1);
+        }
+    }
+    CHECK(moved > 0);
+
+    // Amplitude enorme sur une colonne etroite (0,8 mm) : jamais moins de 0,4 mm de large.
+    const auto narrow = straight_stations(400);
+    SatinConfig both;
+    both.jagged = SatinJaggedMode::Both;
+    both.jagged_amplitude = Micrometers{6'000};
+    const auto rn = finish_satin_stations(narrow, both);
+    REQUIRE(rn.satin.size() >= 2);
+    for (std::size_t i = 0; i + 1 < rn.satin.size(); i += 2) {
+        const double dx = static_cast<double>(rn.satin[i].x.value - rn.satin[i + 1].x.value);
+        const double dy = static_cast<double>(rn.satin[i].y.value - rn.satin[i + 1].y.value);
+        CHECK(std::sqrt(dx * dx + dy * dy) >= 399.0);
+    }
+}

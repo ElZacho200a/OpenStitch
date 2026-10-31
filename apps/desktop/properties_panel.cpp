@@ -73,6 +73,11 @@ QStringList cornerItems() {
             QObject::tr("Coupe (saut)")};
 }
 
+QStringList jaggedItems() {
+    return {QObject::tr("Aucun"), QObject::tr("Côté A"), QObject::tr("Côté B"),
+            QObject::tr("Les deux côtés")};
+}
+
 QStringList borderSideItems() {
     return {QObject::tr("Centré sur le contour"), QObject::tr("Intérieur"),
             QObject::tr("Extérieur")};
@@ -1901,6 +1906,32 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 connect(cornerAngle, &QDoubleSpinBox::valueChanged, this, [edit](double v) {
                     edit(tr("Seuil de coin"), [v](T& t) { t.corner_threshold = from_deg(v); });
                 });
+                auto* jagged = new QComboBox(body_);
+                jagged->setObjectName(QStringLiteral("combo_satinJagged"));
+                jagged->addItems(jaggedItems());
+                jagged->setCurrentIndex(static_cast<int>(p.jagged));
+                jagged->setToolTip(tr("Raccourcit au hasard (reproductible) un ou deux côtés de "
+                                      "la colonne : fourrure, herbe."));
+                form->addRow(tr("Bord irrégulier :"), jagged);
+                bindEnumField<T>(this, edit, jagged, tr("Bord irrégulier"), &T::jagged, members);
+                auto* jaggedAmp =
+                    mmSpin(to_millimeters(p.jagged_amplitude).value, 6.0, 0.2,
+                           tr("Raccourcissement maximal d'un fil du bord irrégulier."));
+                jaggedAmp->setObjectName(QStringLiteral("spin_satinJaggedAmplitude"));
+                jaggedAmp->setKeyboardTracking(false);
+                form->addRow(tr("Amplitude du bord :"), jaggedAmp);
+                bindMm(jaggedAmp, tr("Amplitude du bord irrégulier"), &T::jagged_amplitude);
+                auto* jaggedSeed = new QSpinBox(body_);
+                jaggedSeed->setObjectName(QStringLiteral("spin_satinJaggedSeed"));
+                jaggedSeed->setKeyboardTracking(false);
+                jaggedSeed->setRange(0, 999'999);
+                jaggedSeed->setValue(static_cast<int>(p.jagged_seed));
+                jaggedSeed->setToolTip(tr("Graine du hasard : change le motif du bord."));
+                form->addRow(tr("Graine du bord :"), jaggedSeed);
+                connect(jaggedSeed, &QSpinBox::valueChanged, this, [edit](int v) {
+                    edit(tr("Graine du bord irrégulier"),
+                         [v](T& t) { t.jagged_seed = static_cast<std::uint32_t>(v); });
+                });
                 bindMm(density, tr("Espacement"), &T::density);
                 bindMm(comp, tr("Compensation de tirage"), &T::pull_compensation);
                 bindBool(underlay, tr("Sous-couche centrale"), &T::center_underlay);
@@ -2208,6 +2239,32 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 form->addRow(tr("Seuil de coin :"), cornerAngle);
                 connect(cornerAngle, &QDoubleSpinBox::valueChanged, this, [edit](double v) {
                     edit(tr("Seuil de coin"), [v](T& t) { t.corner_threshold = from_deg(v); });
+                });
+                auto* jagged = new QComboBox(body_);
+                jagged->setObjectName(QStringLiteral("combo_autoSatinJagged"));
+                jagged->addItems(jaggedItems());
+                jagged->setCurrentIndex(static_cast<int>(p.jagged));
+                jagged->setToolTip(tr("Raccourcit au hasard (reproductible) un ou deux côtés de "
+                                      "la colonne : fourrure, herbe."));
+                form->addRow(tr("Bord irrégulier :"), jagged);
+                bindEnumField<T>(this, edit, jagged, tr("Bord irrégulier"), &T::jagged, members);
+                auto* jaggedAmp =
+                    mmSpin(to_millimeters(p.jagged_amplitude).value, 6.0, 0.2,
+                           tr("Raccourcissement maximal d'un fil du bord irrégulier."));
+                jaggedAmp->setObjectName(QStringLiteral("spin_autoSatinJaggedAmplitude"));
+                jaggedAmp->setKeyboardTracking(false);
+                form->addRow(tr("Amplitude du bord :"), jaggedAmp);
+                bindMm(jaggedAmp, tr("Amplitude du bord irrégulier"), &T::jagged_amplitude);
+                auto* jaggedSeed = new QSpinBox(body_);
+                jaggedSeed->setObjectName(QStringLiteral("spin_autoSatinJaggedSeed"));
+                jaggedSeed->setKeyboardTracking(false);
+                jaggedSeed->setRange(0, 999'999);
+                jaggedSeed->setValue(static_cast<int>(p.jagged_seed));
+                jaggedSeed->setToolTip(tr("Graine du hasard : change le motif du bord."));
+                form->addRow(tr("Graine du bord :"), jaggedSeed);
+                connect(jaggedSeed, &QSpinBox::valueChanged, this, [edit](int v) {
+                    edit(tr("Graine du bord irrégulier"),
+                         [v](T& t) { t.jagged_seed = static_cast<std::uint32_t>(v); });
                 });
                 section(tr("Orientation des fils"));
                 if (group) {
