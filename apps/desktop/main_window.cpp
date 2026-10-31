@@ -6057,6 +6057,7 @@ int stitchFilterFamily(int typeIndex) {
     case 8:  // radial
     case 9:  // spirale
     case 10: // croisé
+    case 11: // point de croix (HP-STI-012)
         return 1;
     case 4:
     case 5: // blanket, motif le long du contour (HP-STI-002)
@@ -6110,6 +6111,10 @@ bool MainWindow::stitchParamsForType(const document::EmbroideryObject& emb, int 
     case 10: // remplissage croisé (HP-STI-014)
         params = document::CrosshatchFillParams{};
         label = "Type : remplissage croisé";
+        return true;
+    case 11: // point de croix (HP-STI-012)
+        params = document::CrossStitchParams{};
+        label = "Type : point de croix";
         return true;
     case 3: { // remplissage directionnel (réglages du tatami repris s'il y a lieu)
         auto directional = directionalParamsFor(emb);

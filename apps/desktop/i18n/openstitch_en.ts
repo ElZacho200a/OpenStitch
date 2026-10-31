@@ -1140,6 +1140,11 @@ Estimated stitched thread: %7 m</translation>
         <source>Remplissage croisé</source>
         <translation>Crosshatch fill</translation>
     </message>
+    <message>
+        <location filename="../stitch_type_catalog.cpp" line="19"/>
+        <source>Point de croix</source>
+        <translation>Cross stitch</translation>
+    </message>
 </context>
 <context>
     <name>openstitch::desktop</name>

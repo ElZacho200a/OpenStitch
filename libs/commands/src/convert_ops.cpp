@@ -130,7 +130,7 @@ bool is_contour_type(const document::EmbroideryObject& e) {
 bool is_fill_type(const document::EmbroideryObject& e) {
     return e.is_tatami() || e.is_directional() || e.is_contour_fill() || e.is_motif_fill() ||
            e.is_radial_fill() || e.is_spiral_fill() ||
-           std::holds_alternative<document::CrosshatchFillParams>(e.params);
+           std::holds_alternative<document::CrosshatchFillParams>(e.params) || e.is_cross_stitch();
 }
 
 // Rail à >= 2 nœuds.

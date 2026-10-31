@@ -15,7 +15,8 @@ QString stitchTypeLabel(int type) {
         QT_TRANSLATE_NOOP("StitchTypeCatalog", "Remplissage concentrique"),
         QT_TRANSLATE_NOOP("StitchTypeCatalog", "Remplissage radial"),
         QT_TRANSLATE_NOOP("StitchTypeCatalog", "Remplissage en spirale"),
-        QT_TRANSLATE_NOOP("StitchTypeCatalog", "Remplissage croisé")};
+        QT_TRANSLATE_NOOP("StitchTypeCatalog", "Remplissage croisé"),
+        QT_TRANSLATE_NOOP("StitchTypeCatalog", "Point de croix")};
     if (type < 0 || type >= kStitchTypeCount) {
         return {};
     }

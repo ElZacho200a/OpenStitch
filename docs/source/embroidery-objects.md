@@ -33,9 +33,25 @@ Le satin est particulier : il **porte sa propre géométrie** (deux rails
 | Satin | `fill_satin` | `density`, `pull_compensation`, `center_underlay` | Expérimental |
 | Directionnel | `fill_directional` | `guides`, `break_lines`, `row_spacing`, `stitch_length`, `handmade` | Expérimental |
 
+| Point de croix (HP-STI-012) | `fill_cross_stitch` | `cell`, `grid_angle`, `full_cross`, `passes`, `hidden_underpath` | Nouveau |
+
 Le remplissage directionnel est détaillé dans son chapitre (*Remplissage
 directionnel*) ; il se crée par conversion d'un tatami (inspecteur) ou via
 *Type de points*.
+
+**Point de croix** (`CrossStitchParams`, dernière alternative du variant). La région
+vectorielle source est pavée par une grille de cellules carrées de côté `cell` (1 à 8 mm,
+2,5 mm par défaut), ancrée à l'origine du projet et tournée de `grid_angle` ; une cellule est
+cousue si son **centre** est dans la région (trous respectés). Chaque rangée est cousue en
+tronçons de cellules contiguës, comme se brode une croix en rangs : toutes les jambes « / » à
+l'aller, les « \ » au retour (`full_cross`) ; en demi-croix seules les « / » sont cousues, une
+rangée sur deux en sens inverse. `passes` (1 à 3) répète chaque tronçon. Tous les points sont des
+coins de cellule ; entre deux tronçons (trou, rangée non contiguë) la liaison est un saut, relié
+par un trajet caché si `hidden_underpath`. Les points de fixation (entrée/sortie) sont ceux du
+traitement de séquence commun (`SequenceFinishing`). Exposé dans le bureau (« Point de croix » du
+menu *Type de points*, inspecteur : taille de cellule, angle, passes, croix complète) et au CLI
+(`set_stitch_type` avec `cross_stitch`, `set_params` avec `cell_mm`, `grid_angle_deg`,
+`full_cross`, `passes`, `hidden_underpath`).
 
 Le tableau reflète la **qualité métier**, pas seulement la présence de code : le
 running stitch est solide ; le tatami est fonctionnel, sa sous-couche et son

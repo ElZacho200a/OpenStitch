@@ -338,6 +338,32 @@ void PropertiesPanelTest::radialSpiralCrosshatchEditsEmitParamsAndConversionIsOf
         QVERIFY(std::abs(std::get<openstitch::document::CrosshatchFillParams>(*last).angle.radians -
                          std::numbers::pi / 4.0) < 1e-9);
     }
+    // Point de croix (HP-STI-012) : taille de cellule, angle, croix complete, passes.
+    {
+        PropertiesPanel panel;
+        EmbroideryObject e;
+        e.id = openstitch::ObjectId{35};
+        e.params = openstitch::document::CrossStitchParams{};
+        panel.showEmbroidery(e);
+        QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                         [&](openstitch::ObjectId, StitchParams params) { last = params; });
+        auto* cell = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_crossCell"));
+        auto* angle = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_crossAngle"));
+        auto* full = panel.findChild<QCheckBox*>(QStringLiteral("check_crossFull"));
+        auto* passes = panel.findChild<QSpinBox*>(QStringLiteral("spin_crossPasses"));
+        QVERIFY(cell != nullptr && angle != nullptr && full != nullptr && passes != nullptr);
+        QVERIFY(full->isChecked());
+        cell->setValue(3.5);
+        QCOMPARE(std::get<openstitch::document::CrossStitchParams>(*last).cell.value, 3'500);
+        full->setChecked(false);
+        QVERIFY(!std::get<openstitch::document::CrossStitchParams>(*last).full_cross);
+        passes->setValue(2);
+        QCOMPARE(std::get<openstitch::document::CrossStitchParams>(*last).passes, 2);
+        angle->setValue(90.0);
+        QVERIFY(
+            std::abs(std::get<openstitch::document::CrossStitchParams>(*last).grid_angle.radians -
+                     std::numbers::pi / 2.0) < 1e-9);
+    }
 }
 
 void PropertiesPanelTest::directionalEditKeepsGuidesAndSeed() {

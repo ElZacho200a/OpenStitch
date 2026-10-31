@@ -44,6 +44,10 @@ Compression (2026-10) : l'image PNG, déjà compressée, est stockée telle quel
   `sectionIndex`, `sectionCount` et les identifiants optionnels
   `startJunction`/`endJunction`. Ces identifiants sont locaux au réseau défini
   par `sourceVector`; l'absence de `topology` désigne un satin isolé/historique.
+  Le variant `crossStitch` (HP-STI-012, point de croix) porte `cell` (µm, [1000 ; 8000], défaut
+  2500), `gridAngle` (radians, défaut 0), `fullCross` (booléen, défaut vrai ; faux = demi-croix),
+  `passes` ([1 ; 3], défaut 1) et `hiddenUnderpath` (défaut vrai) — toutes les clés optionnelles ;
+  un lecteur sans ce type refuse le fichier (« Type de point inconnu »), `schemaVersion` inchangé.
   Le `tatami` porte de même ses réglages avancés (Lot 7) : `underlayEdge`,
   `underlayParallel`, `underlayInset`, `underlaySpacing`, `hiddenUnderpath` et
   `entryPoint` — optionnels et rétrocompatibles. Le `directional`

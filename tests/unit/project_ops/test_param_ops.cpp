@@ -232,6 +232,25 @@ TEST_CASE("param ops set_stitch_type follows the desktop rules", "[project_ops][
         CHECK(result_of(r)["changed"] == false);
         CHECK(serialize(p) == before);
     }
+    SECTION("cross_stitch converts and set_params edits its grid") {
+        const auto r = run(p, R"({"op":"set_stitch_type","object":2,"type":"cross_stitch"})");
+        REQUIRE(r.ok);
+        CHECK(result_of(r)["to"] == "cross_stitch");
+        const auto* cross =
+            std::get_if<document::CrossStitchParams>(&p.findEmbroidery(ObjectId{2})->params);
+        REQUIRE(cross != nullptr);
+        CHECK(*cross == document::CrossStitchParams{});
+        REQUIRE(run(p, R"({"op":"set_params","object":2,"params":{"cell_mm":3.5,)"
+                       R"("grid_angle_deg":45,"full_cross":false,"passes":2}})")
+                    .ok);
+        cross = std::get_if<document::CrossStitchParams>(&p.findEmbroidery(ObjectId{2})->params);
+        REQUIRE(cross != nullptr);
+        CHECK(cross->cell == Micrometers{3'500});
+        CHECK(cross->full_cross == false);
+        CHECK(cross->passes == 2);
+        expect_refused(p, R"({"op":"set_params","object":2,"params":{"cell_mm":12}})",
+                       project_ops::code::kOutOfRange);
+    }
     SECTION("satin and auto_satin are refused with the auto_satin hint") {
         for (const char* type : {"satin", "auto_satin"}) {
             const auto o = expect_refused(
