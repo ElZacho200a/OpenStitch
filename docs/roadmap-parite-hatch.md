@@ -979,7 +979,8 @@ plus.
 - À faire : couple d'objets liés à dégradés complémentaires générés ensemble.
 - Dépend de : HP-STI-010.
 
-### HP-STI-012 — Point de croix [P2] — ☐ À faire
+### HP-STI-012 — Point de croix [P2] — ◐ Partiel (2026-10-31)
+- Livré (2026-10-31) : `CrossStitchParams` (cellule 1–8 mm, angle, croix complète / demi-croix, passes), `fill_cross_stitch` (grille ancrée à l'origine, cellule cousue si son centre est dans la région, rangs « / » à l'aller puis « \ » au retour), `.osp` `crossStitch`, CLI, type 11 « Point de croix » du bureau. Reste : bouton de conversion dédié, motif de croix depuis une image (pixel art), bordure en point arrière ; test desktop à valider en CI.
 - Hatch : outil point de croix sur grille (Hatch intègre un module Cross Stitch).
 - À faire : grille, cellules → croix (ordre des jambes cohérent), import d'une
   image pixélisée en grille, fil par cellule.
@@ -1136,7 +1137,8 @@ plus.
 - Hatch : bibliothèque de bordures (satin, motifs, feston) autour d'une forme.
 - Dépend de : HP-STI-002, HP-STI-004, HP-LIB-002.
 
-### HP-STI-022 — Bord irrégulier (fourrure, herbe) [P2] — ☐ À faire
+### HP-STI-022 — Bord irrégulier (fourrure, herbe) [P2] — ◐ Partiel (2026-10-31)
+- Livré (2026-10-31) : `SatinJagged` (aucun / côté A / côté B / deux) + amplitude 0,2–6 mm + graine sur satin et auto-satin ; raccourcissement déterministe des fils (hash de graine, indice, côté), largeur résiduelle ≥ 0,4 mm ; `.osp`, `set_params`, inspecteur. Reste : tatami et remplissage directionnel ; pas de test de bout en bout sur un auto-satin généré.
 - Hatch : « Jagged edge » : un côté du remplissage à longueurs aléatoires.
 - À faire : option tatami/satin avec longueur de pénétration aléatoire (graine
   fixe) côté A, B ou les deux.
@@ -2457,6 +2459,12 @@ calques image/régions/vecteurs/broderie, filtres d'affichage, thème clair/somb
 ### HP-VIEW-013 — Info-bulle de survol d'un objet [P2] — ◐ Partiel (2026-10-21)
 - Livré (2026-10-21, PR) : info-bulle sur la forme vectorielle affichant nom, dimensions, type de points lié et fil de nuancier ou RGB ; test Qt et aucune mutation. Reste : nombre réel de points sans pénaliser le rendu, plusieurs broderies associées et validation visuelle.
 - À faire : type, fil, nombre de points, dimensions.
+
+### HP-UX-064 — Aperçu des sauts à vide du panneau Ordre [P2] — ◐ Partiel (2026-10-31)
+- Livré : `optimization::jump_segments` / `jump_length_um`, surimpression pointillée des sauts sur le canevas (action vue `action_orderJumps`, cases du panneau Ordre), comparaison avant/après « Optimiser l'ordre » (anciens sauts en gris, « −X mm »). Reste : sauts entre couleurs non distingués des sauts internes à un objet ; vérification visuelle non faite (tests headless).
+
+### HP-VIEW-015 — Carte de risque tissu en surimpression [P2] — ◐ Partiel (2026-10-31)
+- Livré : `FabricRiskReport::grid` + `classify_fabric_risk` (vert / orange / rouge, seuils 40 et 70), surimpression `action_fabricRisk` et section « Risque tissu » du panneau Analyse (profil tissé / jersey / feutrine, légende), calcul via `BusyIndicator::run`, cache à clé exacte. Reste : indice heuristique non calibré sur machine ; pas de liste de zones cliquables ; vérification visuelle non faite.
 
 ### HP-VIEW-014 — Carte d'épaisseur réactive [P2] — ◐ Partiel (2026-10-20, en PR)
 - Origine : roadmap nocturne du 2026-10-20 (« Épaisseur : carte d'épaisseur responsive »).
@@ -4581,4 +4589,6 @@ ouvrant le lot (§0.1).
 | 2026-10-31 | Claude (agents ENG-009, VIEW-009) | **Aucun code livré.** ENG-009 bloquée par HP-STI-018 (satin tournant absent du dépôt) ; VIEW-009 : `DeviceCoordinateCache` mesuré et rejeté (régression au zoom fort). Constats consignés dans chaque entrée. |
 | 2026-10-31 | Claude (HP-ENG-010) | **HP-ENG-010 ◐** : `stitch::object_endpoints` + extrémités réelles fournies à `plan_order`/`optimize_order` par l'op `optimize_order` et le bureau (test Catch2 `object_endpoints`). `reversible` et mesure sur corpus restent. |
 | 2026-10-31 | Claude (pinceau) | Pinceau fluide avec rendu réaliste : la couche points est suspendue pendant un coup de pinceau (plus de repeinture de la texture sous la forme à chaque touche), reconstruite à la fin ou à l'annulation. Test QTest `strokeSuspendsTheStitchLayerUntilItEnds`. Aucune entrée HP concernée. |
-
+| 2026-10-31 | Claude (HP-STI-012) | **HP-STI-012 ◐** : point de croix (`CrossStitchParams`, `fill_cross_stitch`, `.osp` `crossStitch`, CLI, type 11 du bureau). Tests stitch / project_io / project_ops. |
+| 2026-10-31 | Claude (HP-STI-022) | **HP-STI-022 ◐** : bord irrégulier du satin et de l'auto-satin (`SatinJagged`, amplitude, graine), `.osp`, `set_params`, inspecteur. |
+| 2026-10-31 | Claude (HP-UX-064, HP-VIEW-015) | **Nouvelles entrées ◐** : surimpression des sauts à vide avec comparaison avant/après, et carte de risque tissu en surimpression. |
