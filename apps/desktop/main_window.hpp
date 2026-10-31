@@ -1521,6 +1521,11 @@ private:
     QAction* brushSettingsAct_{nullptr};
     QGraphicsEllipseItem* brushRing_{nullptr};
     std::optional<BrushStroke> brushStroke_;
+    // Couche points suspendue pendant un coup de pinceau : les points affichés seraient périmés
+    // et chaque touche repeindrait la texture réaliste sous la forme ; `renderStitches` la
+    // reconstruit à la fin (ou à l'annulation).
+    bool stitchLayerSuspended_{false};
+    void suspendStitchLayer(bool suspended);
     double brushRadiusMm_{5.0};
     double brushStrength_{0.6};
     QAction* toolMeasureAct_{nullptr};
