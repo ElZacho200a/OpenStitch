@@ -4867,6 +4867,12 @@ void MainWindowTest::knockoutOptionIsUndoableAndRegenerates() {
     window.setKnockout(fx.embroideryId, true, 0.5); // identique : aucun pas d'annulation de plus
     QCOMPARE(window.undoStack_.undoNames().size(), std::size_t{1});
 
+    // Saisie en direct de la marge : les changements successifs fusionnent en un seul pas.
+    window.setKnockout(fx.embroideryId, true, 0.6);
+    window.setKnockout(fx.embroideryId, true, 0.7);
+    QCOMPARE(window.undoStack_.undoNames().size(), std::size_t{1});
+    QCOMPARE(window.project_.findEmbroidery(fx.embroideryId)->knockout_margin.value, 700);
+
     window.undo();
     emb = window.project_.findEmbroidery(fx.embroideryId);
     QVERIFY(!emb->knockout);

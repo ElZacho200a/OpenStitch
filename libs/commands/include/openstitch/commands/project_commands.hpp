@@ -1098,6 +1098,18 @@ public:
         }
     }
     [[nodiscard]] std::string name() const override { return "Retirer les points cachés"; }
+    [[nodiscard]] std::string mergeKey() const override {
+        return "knockout:" + std::to_string(id_.value);
+    }
+    bool mergeWith(const ICommand& newer) override {
+        const auto* other = dynamic_cast<const SetEmbroideryKnockoutCommand*>(&newer);
+        if (other == nullptr || other->id_.value != id_.value) {
+            return false;
+        }
+        enabled_ = other->enabled_; // `previous*` restent l'état d'avant la première frappe
+        margin_ = other->margin_;
+        return true;
+    }
 
 private:
     ObjectId id_;
