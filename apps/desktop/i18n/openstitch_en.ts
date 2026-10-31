@@ -6321,8 +6321,8 @@ Active region: %3 (the last one clicked)</translation>
     </message>
     <message>
         <location filename="../main_window.cpp" line="8347"/>
-        <source>Distance à vide entre objets successifs (estimation sur les centres), hors points de couture.</source>
-        <translation>Empty travel distance between successive objects (estimate on the centers), excluding stitches.</translation>
+        <source>Distance à vide entre objets successifs (de la fin de l'un au début du suivant), hors points de couture.</source>
+        <translation>Empty travel distance between successive objects (from the end of one to the start of the next), excluding stitches.</translation>
     </message>
     <message>
         <location filename="../main_window.cpp" line="8468"/>
