@@ -3271,6 +3271,7 @@ Le lot C comprend aussi **HP-PERF-009** (régénération différée à l'éditio
 - Dépend de : HP-QA-001 (partiel).
 - Acceptation : sauver à T1, éditer, annuler à T2 → T1 affiché ; export réussi visible puis invalidé par une modification ; un SVG ne réclame pas d'étape Régions.
 - Livré : l'instant « Enregistré à HH:mm » est mémorisé à la sauvegarde/ouverture (`savedAt_`) et n'est plus l'heure du dernier rafraîchissement (UX-32) ; test `savedIndicatorShowsTheSaveTimeNotTheRefreshTime`. Reste : états d'étape du workflow liés à la révision du document (UX-14), notifications d'erreur persistantes (UX-26).
+- En PR (2026-10-27) : aucun horaire fictif pour un projet simplement ouvert (« Projet ouvert »), remise à zéro de `savedAt_` au changement de document, actualisation du libellé après un vrai `save_project` même sans bascule d'état modifié ; QTest associé. Validation CI requise.
 
 #### Lot E — Finitions (P2/P3)
 
@@ -4471,6 +4472,7 @@ ouvrant le lot (§0.1).
 | 2026-10-23 | Claude (session pilotée) | **Serveur MCP : édition sémantique native** (`semantic_import` / `semantic_replace`, provenance par nom d'objet), bilan `project_report`, variantes et comparaison, benchmark des trois satins, `--doctor`. Pistes agent B03, B04, C02, C04, D04 → ◐ (`docs/roadmap-agent-cli.md`). Aucune entrée HP-* concernée. |
 | 2026-10-23 | Claude (session pilotée) | **Guide de numérisation dans le serveur MCP** : le skill `openstitch-digitize` est embarqué au build (source unique) et servi par `initialize.instructions`, l'outil `digitize_guide`, des ressources et un prompt ; outil `project_palette`. Aucune entrée HP-* concernée. |
 | 2026-10-23 | Claude (session pilotée) | **Serveur MCP `openstitch-mcp`** (`libs/mcp`, `apps/mcp`) : `project_ops` exposé en outils typés pour agents IA (numérisation, inspection, lots, qualité, rendu image, export), session à un projet, stdout protégé ; ergonomie agent (cadre ajusté au motif, inspection résumée, `project_select`, `skip_refused`) validée en essai réel. Aucune entrée HP-* concernée (outillage agent, pas de parité Hatch) ; limites listées dans `docs/source/mcp.md`. |
+| 2026-10-27 | ChatGPT (audit UI/UX, PR 3) | HP-UX-039 : indicateur de sauvegarde fidèle aux fichiers réellement écrits ; suppression du faux horaire et de la fuite de l'heure du projet précédent, test desktop. |
 | 2026-10-21 | ChatGPT (PR risque textile) | HP-FAB-004 ◐ : première carte heuristique non calibrée, CLI/desktop, tests et protocole de limites ; solveur physique et validation machine restant à faire. |
 | 2026-09-22 | Claude (session d'audit) | Création : inventaire complet vérifié dans le code. |
 | 2026-10-23 | Claude (pot de peinture) | **HP-VEC-021 ◐** : outil Pot de peinture (Maj+F) qui remplit un vide fermé entre formes vectorielles, `fill_gap_at`, commande annulable, tests Catch2 et QTest. |
