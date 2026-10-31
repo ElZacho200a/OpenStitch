@@ -5,6 +5,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 #include "openstitch/stitch_generation/finish.hpp"
@@ -671,4 +672,62 @@ TEST_CASE("mode avance : desactive par defaut, region verrouillee et changement 
     const auto res = finish_sequence_report(withColor, advanced_project(true));
     CHECK(object_order(res.sequence) == std::vector<std::uint64_t>{1, 2, 3});
     CHECK(count_type(res.sequence, CmdType::ColorChange) == 1);
+}
+
+TEST_CASE("mode avance : privilegie une coupe evitee sur un petit detour") {
+    stitch::StitchSequence s;
+    region(s, 1, 0, 1'500);
+    region(s, 2, 2'800, 3'000);
+    region(s, 1, 4'300, 5'300); // meme objet, saute 2,8 mm depuis A
+    region(s, 3, 6'600, 7'600);
+
+    const auto off = finish_sequence_report(s, advanced_project(false));
+    const auto on = finish_sequence_report(s, advanced_project(true));
+    // L'ordre naturel est geometriquement plus court, mais multiplie les
+    // transitions entre objets et donc les coupes (y compris sous 3 mm).
+    CHECK(count_type(off.sequence, CmdType::Trim) == 4);
+    CHECK(count_type(on.sequence, CmdType::Trim) == 3);
+    CHECK(on.report.regions_moved > 0);
+    CHECK(on.report.region_jump_saved_um < 0.0); // detour accepte pour eviter une coupe
+    CHECK(object_order(on.sequence).size() == 3);
+    CHECK(finish_sequence_report(s, advanced_project(true)).sequence.commands ==
+          on.sequence.commands);
+}
+
+TEST_CASE("sous-couches : recherche locale bornee pour sept passes et plus") {
+    stitch::StitchSequence s;
+    stitch_to(s, pt(0, 0), obj(8)); // ancre precedente
+    const std::array<std::array<std::int32_t, 4>, 7> spans{{
+        {{28'000, 20'000, 30'000, 20'000}},
+        {{40'000, 29'000, 44'000, 29'000}},
+        {{33'000, 34'000, 37'000, 34'000}},
+        {{35'000, 9'000, 37'000, 9'000}},
+        {{12'000, 10'000, 15'000, 10'000}},
+        {{3'000, 26'000, 5'000, 26'000}},
+        {{29'000, 20'000, 31'000, 20'000}},
+    }};
+    for (const auto& b : spans) {
+        jump_to(s, pt(b[0], b[1]), obj(1));
+        stitch_to(s, pt(b[0], b[1]), obj(1), Pass::Underlay);
+        stitch_to(s, pt(b[2], b[3]), obj(1), Pass::Underlay);
+    }
+    jump_to(s, pt(30'000, 30'000), obj(9));
+    stitch_to(s, pt(30'000, 30'000), obj(9));
+
+    auto off = project_with(false);
+    auto on = project_with(true);
+    off.finishing.lock_type = document::LockStitch::None;
+    on.finishing.lock_type = document::LockStitch::None;
+    on.finishing.hidden_travel.between_objects = false;
+    on.finishing.hidden_travel.within_object = false;
+    const auto baseline = finish_sequence_report(s, off);
+    const auto optimized = finish_sequence_report(s, on);
+
+    CHECK(optimized.report.underlay_blocks == 1);
+    CHECK(optimized.report.underlay_jump_saved_um > 0.0);
+    CHECK(count_type(optimized.sequence, CmdType::Trim) <
+          count_type(baseline.sequence, CmdType::Trim));
+    CHECK(top_layer(optimized.sequence) == top_layer(baseline.sequence));
+    CHECK(underlay_points_sorted(optimized.sequence) == underlay_points_sorted(baseline.sequence));
+    CHECK(finish_sequence_report(s, on).sequence.commands == optimized.sequence.commands);
 }

@@ -217,10 +217,81 @@ UnderlayOrderResult reorder_underlay_passes(const std::vector<StitchCommand>& cm
                 cand.push_back({bestRun, bestRev});
                 at = endOf(cand.back());
             }
-            const double c = costOf(cand);
-            if (c < bestCost - 1e-9) {
-                bestCost = c;
-                best = std::move(cand);
+            // Au-delà de six passes, le plus proche voisin peut rester bloqué dans un
+            // parcours coûteux. Recherche locale bornée, sur l'ordre ET le sens des passes :
+            // retournement seul, 2-opt (segment inversé), puis Or-opt (déplacement).
+            // On part du meilleur de l'ordre initial et du parcours glouton. Un gain strict
+            // est exigé : résultat déterministe et jamais plus mauvais que l'ancien mode.
+            std::vector<Choice> local =
+                costOf(cand) < originalCost - 1e-9 ? std::move(cand) : original;
+            double localCost = costOf(local);
+            std::size_t budget = 4'096;
+            const auto accept = [&](std::vector<Choice> candidate) {
+                if (budget == 0) {
+                    return false;
+                }
+                --budget;
+                const double score = costOf(candidate);
+                if (score < localCost - 1e-9) {
+                    localCost = score;
+                    local = std::move(candidate);
+                    return true;
+                }
+                return false;
+            };
+            for (std::size_t pass = 0; pass < 8 && budget > 0; ++pass) {
+                bool improved = false;
+                for (std::size_t i = 0; i < n && budget > 0; ++i) {
+                    auto candidate = local;
+                    candidate[i].reversed = !candidate[i].reversed;
+                    if (accept(std::move(candidate))) {
+                        improved = true;
+                        break;
+                    }
+                }
+                if (improved) {
+                    continue;
+                }
+                for (std::size_t i = 0; i + 1 < n && !improved && budget > 0; ++i) {
+                    for (std::size_t j = i + 1; j < n && budget > 0; ++j) {
+                        auto candidate = local;
+                        std::reverse(candidate.begin() + static_cast<std::ptrdiff_t>(i),
+                                     candidate.begin() + static_cast<std::ptrdiff_t>(j + 1));
+                        for (std::size_t k = i; k <= j; ++k) {
+                            candidate[k].reversed = !candidate[k].reversed;
+                        }
+                        if (accept(std::move(candidate))) {
+                            improved = true;
+                            break;
+                        }
+                    }
+                }
+                if (improved) {
+                    continue;
+                }
+                for (std::size_t from = 0; from < n && !improved && budget > 0; ++from) {
+                    for (std::size_t to = 0; to < n && budget > 0; ++to) {
+                        if (from == to) {
+                            continue;
+                        }
+                        auto candidate = local;
+                        const Choice moved = candidate[from];
+                        candidate.erase(candidate.begin() + static_cast<std::ptrdiff_t>(from));
+                        candidate.insert(candidate.begin() + static_cast<std::ptrdiff_t>(to),
+                                         moved);
+                        if (accept(std::move(candidate))) {
+                            improved = true;
+                            break;
+                        }
+                    }
+                }
+                if (!improved) {
+                    break;
+                }
+            }
+            if (localCost < bestCost - 1e-9) {
+                bestCost = localCost;
+                best = std::move(local);
             }
         }
         if (bestCost < originalCost - 1e-9) {

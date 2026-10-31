@@ -2199,6 +2199,13 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
   `libs/project_io`, `apps/desktop/properties_panel`.
 
 ### HP-SEQ-006 — Minimiser les coupes [P1] — ◐ Partiel (2026-10-13, en PR)
+- Proposé le 2026-10-29 (`perf/trim-aware-routing-20261029`) : optimisation des régions
+  pénalisant les coupes réelles probables (y compris entre objets à moins de 3 mm),
+  protection des retouches manuelles et recherche locale bornée (retournement,
+  2-opt, Or-opt) des sous-couches au-delà de six passes. Disponible via les
+  options de trajets de l'export desktop ; tests de déterminisme ajoutés.
+  Reste : validation CI / machine, mesure sur corpus réel, branching multi-objets
+  et choix global de points d'entrée/sortie tenant compte des trajets cachés.
 - À faire : préférer un déplacement cousu caché sous un objet cousu ensuite
   (même couleur ou couverture garantie) plutôt qu'une coupe ; métrique :
   nombre de coupes sur le corpus.
@@ -4471,6 +4478,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-29 | ChatGPT (HP-SEQ-006) | Optimisation des coupes des régions par score de coupe prévu et amélioration locale 2-opt/Or-opt des grandes sous-couches ; options desktop d'export préexistantes ; tests ajoutés, gains réels encore à mesurer. |
 | 2026-10-30 | Claude (analyse multi-agents, passe 2) | **Seconde passe sans limite de tours** : six agents haiku `general-purpose` relisent les mêmes domaines en profondeur ; **+61 entrées** (§27ter, lots G à L) : écriture atomique et durable, fragments non migrés, trim VP3 perdu, mode contour « running » inopérant, refusion après limite de fils, vectorisation en O(régions × pixels), lignes cohérentes en série, compensation du tirage des autres remplissages, chevron/plume, CI (cache Qt, tests Python jamais lancés), UX presse-papiers/simulation. Entrées « à vérifier » non confirmées à l'exécution ; aucun code modifié ; HP-OBJ-017 et HP-OBJ-021 à recontrôler. |
 | 2026-10-30 | Claude (analyse multi-agents) | **Analyse complète des fonctionnalités et plan d'amélioration** : six agents haiku (IHM, pipeline image, génération de points, document/commandes/rendu, formats/lettrage, CLI/MCP/CI) ; **+51 entrées** HP-QA-011 à 020, HP-PERF-010 à 022, HP-AUTO-014 à 019, HP-UX-050 à 056, HP-TXT-016, HP-STI-027 à 032, HP-PROD-009, HP-FMT-023 à 026, HP-THR-013, HP-DIST-008, HP-HELP-005 (§27bis, lots A à F). Entrées non vérifiées à l'exécution (marquées « à vérifier »). Aucun code modifié ; HP-OBJ-021 à recontrôler (HP-UX-054). |
 | 2026-10-29 | ChatGPT (HP-OBJ-001/005) | **Redimensionnement collectif sur le canevas** : quatre poignées sur la boîte commune, Maj conserve les proportions, aperçu des dimensions ; une transformation et une annulation pour les formes et leurs paramètres de points. Tests QTest : cadre, glisser et restauration du groupe. En PR, CI à vérifier ; restent les poignées latérales et le redimensionnement autour du centre (Alt). |
