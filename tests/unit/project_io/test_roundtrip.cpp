@@ -126,6 +126,10 @@ document::Project rich_project() {
     sp.lock_passes = 3;
     sp.auto_spacing = true;
     sp.corner_mode = document::SatinCorner::Overlap;
+    sp.corner_threshold = Angle{1.5};
+    sp.jagged = document::SatinJagged::Both;
+    sp.jagged_amplitude = Micrometers{2'500};
+    sp.jagged_seed = 4242;
     sp.entry_point = Vec2um{Micrometers{1'234}, Micrometers{5'678}};
     sat.params = sp;
     project.embroidery_objects.push_back(sat);
@@ -278,6 +282,50 @@ TEST_CASE("blend core: malformed JSON links and non boolean interpolation are re
     }
 }
 
+TEST_CASE("semantic cache persists in OSP and follows source geometry", "[semantic][project_io]") {
+    auto project = rich_project();
+    const auto fingerprint =
+        document::semantic_geometry_fingerprint(project.vector_objects.front());
+    project.embroidery_objects.front().semantic =
+        document::SemanticAnnotation{"voile principale", "bateau", 0.93, fingerprint};
+    const auto json = project_io::detail::project_to_json(project);
+    REQUIRE(json["embroideryObjects"][0].contains("semantic"));
+    CHECK_FALSE(json["embroideryObjects"][1].contains("semantic"));
+    const auto restored = project_io::detail::project_from_json(json);
+    REQUIRE(restored);
+    REQUIRE(restored->embroidery_objects.front().semantic);
+    CHECK(*restored->embroidery_objects.front().semantic ==
+          *project.embroidery_objects.front().semantic);
+
+    const auto path = temp_osp();
+    REQUIRE(project_io::save_project(path, project));
+    const auto loaded = project_io::load_project(path);
+    REQUIRE(loaded);
+    REQUIRE(loaded->embroidery_objects.front().semantic);
+    CHECK(*loaded->embroidery_objects.front().semantic ==
+          *project.embroidery_objects.front().semantic);
+    fs::remove(path);
+
+    // Déplacer toute la forme ne change pas ce qu'elle représente.
+    for (auto& node : project.vector_objects.front().paths.front().outer.nodes) {
+        node.pos.x.value += 1000;
+    }
+    for (auto& node : project.vector_objects.front().paths.front().holes.front().nodes) {
+        node.pos.x.value += 1000;
+    }
+    CHECK(document::semantic_geometry_fingerprint(project.vector_objects.front()) == fingerprint);
+    // Déformer un seul nœud, en revanche, rend l'annotation périmée.
+    project.vector_objects.front().paths.front().outer.nodes.front().pos.x.value += 1000;
+    CHECK(document::semantic_geometry_fingerprint(project.vector_objects.front()) != fingerprint);
+
+    auto invalid = json;
+    invalid["embroideryObjects"][0]["semantic"]["confidence"] = 1.5;
+    CHECK_FALSE(project_io::detail::project_from_json(invalid));
+    invalid = json;
+    invalid["embroideryObjects"][0]["semantic"]["geometryFingerprint"] = "not-an-integer";
+    CHECK_FALSE(project_io::detail::project_from_json(invalid));
+}
+
 TEST_CASE("projet complet : save puis load = memes donnees") {
     const auto original = rich_project();
     const auto path = temp_osp();
@@ -366,6 +414,10 @@ TEST_CASE("projet complet : save puis load = memes donnees") {
     CHECK(loadedSatin.lock_passes == 3);
     CHECK(loadedSatin.auto_spacing);
     CHECK(loadedSatin.corner_mode == document::SatinCorner::Overlap);
+    CHECK(loadedSatin.corner_threshold == Angle{1.5});
+    CHECK(loadedSatin.jagged == document::SatinJagged::Both);
+    CHECK(loadedSatin.jagged_amplitude == Micrometers{2'500});
+    CHECK(loadedSatin.jagged_seed == 4242u);
     REQUIRE(loadedSatin.entry_point.has_value());
     CHECK(*loadedSatin.entry_point == Vec2um{Micrometers{1'234}, Micrometers{5'678}});
     CHECK_FALSE(loadedSatin.exit_point.has_value());
@@ -513,6 +565,9 @@ TEST_CASE("auto-satin : save puis load = memes parametres, guides compris") {
     sp.lock_passes = 3;
     sp.auto_spacing = true;
     sp.corner_mode = document::SatinCorner::Miter;
+    sp.jagged = document::SatinJagged::SideB;
+    sp.jagged_amplitude = Micrometers{900};
+    sp.jagged_seed = 99;
     sp.entry_point = um(10, 20);
     sp.exit_point = um(4'990, 4'980);
 
@@ -613,4 +668,56 @@ TEST_CASE("fragment d'objets : JSON aller-retour, deterministe, entrees invalide
     lonely.source_vector = ObjectId{123'456'789};
     orphan.embroideries.push_back(lonely);
     CHECK_FALSE(project_io::fragment_from_json(project_io::fragment_to_json(orphan)).has_value());
+}
+
+TEST_CASE("HP-ENG-013 stitch presets: roundtrip and tolerant read", "[stitch_preset]") {
+    auto project = rich_project();
+    CHECK_FALSE(project_io::detail::project_to_json(project).contains("stitchPresets"));
+    document::TatamiParams tatami;
+    tatami.row_spacing = Micrometers{550};
+    project.stitch_presets.push_back({"tatami serviette", tatami});
+    project.stitch_presets.push_back({"contour", document::RunningStitchParams{}});
+    const auto json = project_io::detail::project_to_json(project);
+    REQUIRE(json.contains("stitchPresets"));
+    const auto loaded = project_io::detail::project_from_json(json);
+    REQUIRE(loaded);
+    CHECK(loaded->stitch_presets == project.stitch_presets);
+    CHECK(project_io::detail::project_to_json(*loaded) == json);
+
+    auto damaged = json;
+    damaged["stitchPresets"].push_back({{"name", "sans params"}});
+    const auto tolerant = project_io::detail::project_from_json(damaged);
+    REQUIRE(tolerant);
+    CHECK(tolerant->stitch_presets.size() == 2);
+    auto legacy = json;
+    legacy.erase("stitchPresets");
+    const auto old = project_io::detail::project_from_json(legacy);
+    REQUIRE(old);
+    CHECK(old->stitch_presets.empty());
+}
+
+TEST_CASE("bord irregulier : defaut non ecrit, cles absentes relues au defaut") {
+    document::Project project;
+    document::EmbroideryObject sat;
+    sat.id = project.object_ids.next();
+    sat.params = document::SatinParams{};
+    document::EmbroideryObject autoSat;
+    autoSat.id = project.object_ids.next();
+    autoSat.params = document::AutoSatinParams{};
+    project.embroidery_objects = {sat, autoSat};
+    const auto json = project_io::detail::project_to_json(project);
+    CHECK(json.dump().find("jagged") == std::string::npos);
+
+    // Un .osp anterieur (sans la cle) se relit avec les valeurs par defaut.
+    const auto parsed = project_io::detail::project_from_json(json);
+    REQUIRE(parsed);
+    REQUIRE(parsed->embroidery_objects.size() == 2);
+    const auto& s = std::get<document::SatinParams>(parsed->embroidery_objects[0].params);
+    CHECK(s.jagged == document::SatinJagged::None);
+    CHECK(s.jagged_amplitude == Micrometers{1'500});
+    CHECK(s.jagged_seed == 1u);
+    const auto& a = std::get<document::AutoSatinParams>(parsed->embroidery_objects[1].params);
+    CHECK(a.jagged == document::SatinJagged::None);
+    CHECK(a.jagged_amplitude == Micrometers{1'500});
+    CHECK(a.jagged_seed == 1u);
 }

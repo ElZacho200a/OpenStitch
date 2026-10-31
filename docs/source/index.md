@@ -57,6 +57,7 @@ associée** listant les fichiers, classes, fonctions et tests réels.
 - [Ligne de commande (openstitch-cli)](cli.md)
 - [Projets .osp en ligne de commande, lots et agents](cli-project.md)
 - [Serveur MCP pour agents IA (openstitch-mcp)](mcp.md)
+- [Compagnon IA (pont local, dock, Claude, données, dépannage)](ai-companion.md)
 - [Dépannage](troubleshooting.md)
 - [Glossaire](glossary.md)
 

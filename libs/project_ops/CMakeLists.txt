@@ -26,6 +26,8 @@ add_library(openstitch_project_ops
     src/fabric_risk.cpp
     src/sweep.cpp
     src/debug_dump.cpp
+    src/live_bridge.cpp
+    src/settings_profile.cpp
 )
 add_library(openstitch::project_ops ALIAS openstitch_project_ops)
 

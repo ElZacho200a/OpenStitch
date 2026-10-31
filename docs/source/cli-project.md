@@ -102,6 +102,17 @@ et `at --px` travaillent sur l'image de travail ; axe de balayage `pre=none,medi
 `--report rapport.json` (rapport de numérisation, schéma
 `openstitch.digitize-report/1`), `--no-clobber`.
 
+`--settings profil.json` (HP-FILE-014, aussi pour `digitize`, `digitize-batch` et les
+commandes de balayage) : profil de réglages, objet JSON dont les clés sont les noms longs des
+options de numérisation sans `--`, par exemple
+`{"max-colors": 6, "dark-lines": true, "no-underpath": true, "hidden-travel-levels": ["between","within"]}`
+(drapeau = booléen, `false` = absent, liste de chaînes jointe par des virgules). Le profil est
+traduit en options équivalentes avant l'analyse de la ligne : mêmes bornes, mêmes octets que
+les options passées à la main ; une option donnée explicitement l'emporte sur le profil. Une
+clé inconnue est refusée (code 1, `E_USAGE` avec `--json`) avec la liste des clés admises et la
+plus proche suggérée. Le rapport de numérisation cite le profil (`settings.profile`), le
+rapport de lot aussi (`settings_profile`).
+
 Le `.osp` contient l'image source, la segmentation, les objets vectoriels
 (contours éditables) et les objets de broderie dans l'ordre de couture. Rien
 n'est écrit si aucun objet ou aucun point n'est produit (`E_NOTHING_TO_DO`).

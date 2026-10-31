@@ -30,7 +30,9 @@
 #include "openstitch/document/machine_profile.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/optimization/order.hpp"
+#include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
 #include "openstitch/thread_palette/thread_library.hpp"
 
 namespace openstitch::project_ops::detail {
@@ -212,6 +214,13 @@ const EnumTable<document::SatinCorner>& satin_corner_table() {
                                                     {"cut", document::SatinCorner::Cut}};
     return t;
 }
+const EnumTable<document::SatinJagged>& satin_jagged_table() {
+    static const EnumTable<document::SatinJagged> t{{"none", document::SatinJagged::None},
+                                                    {"side_a", document::SatinJagged::SideA},
+                                                    {"side_b", document::SatinJagged::SideB},
+                                                    {"both", document::SatinJagged::Both}};
+    return t;
+}
 const EnumTable<document::SatinCap>& cap_table() {
     static const EnumTable<document::SatinCap> t{{"flat", document::SatinCap::Flat},
                                                  {"rounded", document::SatinCap::Rounded},
@@ -227,7 +236,8 @@ const EnumTable<document::UnderlayMode>& underlay_mode_table() {
 const EnumTable<document::PullMode>& pull_mode_table() {
     static const EnumTable<document::PullMode> t{{"manual", document::PullMode::Manual},
                                                  {"auto", document::PullMode::Auto},
-                                                 {"adaptive", document::PullMode::Adaptive}};
+                                                 {"adaptive", document::PullMode::Adaptive},
+                                                 {"predicted", document::PullMode::Predicted}};
     return t;
 }
 const EnumTable<document::DensityCurve>& density_curve_table() {
@@ -307,8 +317,9 @@ std::array<std::uint8_t, 3> parse_hex_color(const std::string& text) {
 
 const char* stitch_type_name(const document::StitchParams& p) {
     static constexpr const char* names[] = {
-        "running",      "tatami",    "satin",      "directional", "auto_satin",  "blanket",
-        "contour_fill", "motif_run", "motif_fill", "radial_fill", "spiral_fill", "crosshatch_fill"};
+        "running",     "tatami",          "satin",       "directional", "auto_satin",
+        "blanket",     "contour_fill",    "motif_run",   "motif_fill",  "radial_fill",
+        "spiral_fill", "crosshatch_fill", "cross_stitch"};
     return names[p.index()];
 }
 
@@ -772,6 +783,10 @@ template <class P> void add_satin_common(std::vector<Field<P>>& v) {
     v.push_back(enum_field<P>("split_stitch", &P::split_stitch, split_table()));
     v.push_back(bool_field<P>("auto_spacing", &P::auto_spacing));
     v.push_back(enum_field<P>("corner_mode", &P::corner_mode, satin_corner_table()));
+    v.push_back(deg_field<P>("corner_threshold_deg", &P::corner_threshold, 15.0, 150.0));
+    v.push_back(enum_field<P>("jagged", &P::jagged, satin_jagged_table()));
+    v.push_back(mm_field<P>("jagged_amplitude_mm", &P::jagged_amplitude, 0.2, 6.0));
+    v.push_back(int_field<P>("jagged_seed", &P::jagged_seed, 0, 4294967295LL));
 }
 
 template <class P> const std::vector<Field<P>>& fields_of();
@@ -1003,6 +1018,21 @@ fields_of<document::CrosshatchFillParams>() {
     return fields;
 }
 
+template <>
+const std::vector<Field<document::CrossStitchParams>>& fields_of<document::CrossStitchParams>() {
+    using P = document::CrossStitchParams;
+    static const auto fields = [] {
+        std::vector<Field<P>> v;
+        v.push_back(mm_field<P>("cell_mm", &P::cell, 1.0, 8.0));
+        v.push_back(deg_field<P>("grid_angle_deg", &P::grid_angle, -360.0, 360.0));
+        v.push_back(bool_field<P>("full_cross", &P::full_cross));
+        v.push_back(int_field<P>("passes", &P::passes, 1, 3));
+        v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
+        return v;
+    }();
+    return fields;
+}
+
 // Types de points (noms) qui possèdent le champ `name`.
 std::vector<std::string> types_having(const std::string& name) {
     std::vector<std::string> out;
@@ -1042,6 +1072,9 @@ std::vector<std::string> types_having(const std::string& name) {
     if (find_field(fields_of<document::CrosshatchFillParams>(), name) != nullptr) {
         out.emplace_back("crosshatch_fill");
     }
+    if (find_field(fields_of<document::CrossStitchParams>(), name) != nullptr) {
+        out.emplace_back("cross_stitch");
+    }
     return out;
 }
 
@@ -1060,7 +1093,8 @@ std::string params_catalog_text() {
     out += "radial_fill : " + join(field_names(fields_of<document::RadialFillParams>())) + " ; ";
     out += "spiral_fill : " + join(field_names(fields_of<document::SpiralFillParams>())) + " ; ";
     out += "crosshatch_fill : " + join(field_names(fields_of<document::CrosshatchFillParams>())) +
-           ". ";
+           " ; ";
+    out += "cross_stitch : " + join(field_names(fields_of<document::CrossStitchParams>())) + ". ";
     out += "Suffixe _mm = millimètres, _deg = degrés ; énumérations en chaîne";
     return out;
 }
@@ -1188,6 +1222,42 @@ OpSpec op_rename() {
     return s;
 }
 
+OpSpec op_set_semantic() {
+    OpSpec s;
+    s.name = "set_semantic";
+    s.summary = "Enregistre l'identité visuelle dans le OSP, sans nouvelle analyse "
+                "tant que le contour source ne change pas.";
+    s.args = {arg("object", "object_id", "objet de broderie", true),
+              arg("role", "string", "identité visuelle (ex. voile, phare, reflet)"),
+              arg("family", "string", "famille (ex. bateau, architecture)"),
+              arg("confidence", "number", "confiance 0..1 (défaut 0.5)", false, {}, "[0 ; 1]"),
+              arg("clear", "boolean", "effacer l'annotation")};
+    s.example = R"({"op":"set_semantic","object":2,"role":"voile",)"
+                R"("family":"bateau","confidence":0.9})";
+    s.apply = guarded([](OpContext& ctx) {
+        const auto& emb = need_emb(ctx, "object");
+        const ObjectId id = emb.id;
+        const bool clear = ctx.args.value("clear", false);
+        std::optional<document::SemanticAnnotation> annotation;
+        if (!clear) {
+            const std::string role = need_string(ctx.args, "role");
+            const std::string family = ctx.args.value("family", std::string{});
+            const double confidence = ctx.args.value("confidence", 0.5);
+            const auto* shape = ctx.project.findObject(emb.source_vector);
+            if (!shape || role.empty() || role.size() > 200 || family.size() > 120 ||
+                !std::isfinite(confidence) || confidence < 0.0 || confidence > 1.0) {
+                refuse(code::kUsage, "annotation invalide : role, famille et confiance 0..1");
+            }
+            annotation = document::SemanticAnnotation{
+                role, family, confidence, document::semantic_geometry_fingerprint(*shape)};
+        }
+        ctx.stack.execute(std::make_unique<commands::SetEmbroiderySemanticCommand>(id, annotation),
+                          ctx.project);
+        return OpStatus::success({{"id", id.value}, {"cached", annotation.has_value()}});
+    });
+    return s;
+}
+
 OpSpec op_set_visible() {
     OpSpec s;
     s.name = "set_visible";
@@ -1277,11 +1347,13 @@ OpSpec op_set_connector() {
 OpSpec op_set_stitch_type() {
     OpSpec s;
     s.name = "set_stitch_type";
-    s.summary = "Change le type de points d'un objet : contour (running), tatami ou directionnel. "
-                "Le satin passe par l'opération auto_satin.";
+    s.summary = "Change le type de points : running, tatami, directional, spiral_fill "
+                "(spirale d'Archimède centrable par set_params.center_mm) ou cross_stitch "
+                "(point de croix, grille réglable par set_params). "
+                "Le satin passe par auto_satin.";
     s.args = {arg("object", "object_id", "objet de broderie", true),
-              arg("type", "string", "running | tatami | directional", true, {},
-                  "running | tatami | directional")};
+              arg("type", "string", "running | tatami | directional | spiral_fill | cross_stitch",
+                  true, {}, "running | tatami | directional | spiral_fill | cross_stitch")};
     s.example = R"({"op":"set_stitch_type","object":2,"type":"running"})";
     s.apply = guarded([](OpContext& ctx) {
         const auto& emb = need_emb(ctx, "object");
@@ -1291,9 +1363,11 @@ OpSpec op_set_stitch_type() {
             refuse(code::kRefused, "le type « " + type + " » n'est pas disponible ici",
                    "utilisez l'opération auto_satin");
         }
-        if (type != "running" && type != "tatami" && type != "directional") {
+        if (type != "running" && type != "tatami" && type != "directional" &&
+            type != "spiral_fill" && type != "cross_stitch") {
             refuse(code::kOutOfRange, "type de points « " + type + " » inconnu",
-                   "valeurs valides : running, tatami, directional (satin : opération auto_satin)");
+                   "valeurs valides : running, tatami, directional, spiral_fill, cross_stitch "
+                   "(satin : opération auto_satin)");
         }
         const std::string from = stitch_type_name(emb.params);
         if (from == type) {
@@ -1311,6 +1385,27 @@ OpSpec op_set_stitch_type() {
         } else if (type == "tatami") {
             params = document::TatamiParams{};
             label = "Type : tatami";
+        } else if (type == "cross_stitch") {
+            const auto* source = ctx.project.findObject(emb.source_vector);
+            if (source == nullptr || source->paths.empty()) {
+                refuse(code::kRefused, "aucun contour source pour le point de croix");
+            }
+            params = document::CrossStitchParams{};
+            label = "Type : point de croix";
+        } else if (type == "spiral_fill") {
+            const auto* source = ctx.project.findObject(emb.source_vector);
+            if (source == nullptr || source->paths.empty()) {
+                refuse(code::kRefused, "aucun contour source pour le remplissage en spirale");
+            }
+            document::SpiralFillParams spiral;
+            if (const auto* tatami = std::get_if<document::TatamiParams>(&emb.params)) {
+                spiral.row_spacing = tatami->row_spacing;
+                spiral.stitch_length = tatami->stitch_length;
+                spiral.inset = tatami->inset;
+                spiral.hidden_underpath = tatami->hidden_underpath;
+            }
+            params = spiral;
+            label = "Type : remplissage en spirale";
         } else {
             const auto* source = ctx.project.findObject(emb.source_vector);
             if (source == nullptr || source->paths.empty()) {
@@ -1557,12 +1652,24 @@ Vec2um embroidery_centroid(const document::Project& project,
 
 std::vector<optimization::OrderItem> order_items(const document::Project& project) {
     std::vector<optimization::OrderItem> items;
+    // HP-ENG-010 : extrémités réelles de couture (séquence effective) ; absentes en cas d'échec,
+    // le centre sert alors de repli.
+    std::vector<stitch::ObjectEndpoints> endpoints;
+    if (auto seq = stitch_generation::effective_sequence(project); seq) {
+        endpoints = stitch::object_endpoints(*seq);
+    }
     for (const auto& obj : project.embroidery_objects) {
         optimization::OrderItem item;
         item.id = obj.id;
         item.rgb = obj.rgb;
         item.centroid = embroidery_centroid(project, obj);
         item.locked = obj.locked;
+        if (const auto it = std::find_if(endpoints.begin(), endpoints.end(),
+                                         [&](const auto& e) { return e.id == obj.id; });
+            it != endpoints.end()) {
+            item.entry = it->first;
+            item.exit = it->last;
+        }
         if (const auto* vec =
                 project.findObject(obj.source_vector)) { // aire : stratégie « layered »
             for (const auto& set : vec->paths) {
@@ -1960,6 +2067,7 @@ OpSpec op_set_design_points() {
 void register_param_ops(std::vector<OpSpec>& out) {
     out.push_back(op_set_color());
     out.push_back(op_rename());
+    out.push_back(op_set_semantic());
     out.push_back(op_set_visible());
     out.push_back(op_set_locked());
     out.push_back(op_set_join());

@@ -88,6 +88,18 @@ TEST_CASE("crosshatch fill: osp round-trip keeps every setting") {
     CHECK(std::get<document::CrosshatchFillParams>(round_trip(p, "os_crosshatch_rt.osp")) == p);
 }
 
+TEST_CASE("cross stitch: osp round-trip keeps every setting and missing keys give defaults") {
+    document::CrossStitchParams p;
+    p.cell = Micrometers{3'200};
+    p.grid_angle = Angle{0.75};
+    p.full_cross = false;
+    p.passes = 2;
+    p.hidden_underpath = false;
+    CHECK(std::get<document::CrossStitchParams>(round_trip(p, "os_cross_rt.osp")) == p);
+    CHECK(std::get<document::CrossStitchParams>(
+              from_json_type("crossStitch", "os_cross_def.osp")) == document::CrossStitchParams{});
+}
+
 TEST_CASE("radial spiral crosshatch: missing keys fall back to the model defaults") {
     CHECK(std::get<document::RadialFillParams>(from_json_type("radialFill", "os_radial_def.osp")) ==
           document::RadialFillParams{});

@@ -6,6 +6,7 @@ add_executable(test_stitch
     test_finish.cpp
     test_length_bounds.cpp
     test_join_closest.cpp
+    test_knockout.cpp
     test_hidden_travel.cpp
     test_tatami.cpp
     test_directional_fill.cpp
@@ -19,11 +20,15 @@ add_executable(test_stitch
     test_engine_points.cpp
     test_pull_auto.cpp
     test_adaptive_pull.cpp
+    test_pull_field.cpp
+    test_pull_map.cpp
+    test_predicted_pull.cpp
     test_chunk_cache.cpp
     test_calques_generation.cpp
     test_contour_fill.cpp
     test_motif.cpp
     test_radial_spiral_crosshatch.cpp
+    test_cross_stitch.cpp
 )
 target_link_libraries(test_stitch
     PRIVATE openstitch::stitch openstitch::stitch_generation Catch2::Catch2WithMain

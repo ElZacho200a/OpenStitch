@@ -69,7 +69,7 @@ TEST_CASE("moteur : round-trip des nouveaux reglages (tatami, directionnel, sati
     directional.edge_outline = true;
     document::SatinParams satin;
     satin.underlay_mode = document::UnderlayMode::Auto;
-    satin.pull_mode = document::PullMode::Auto;
+    satin.pull_mode = document::PullMode::Predicted; // niveau 3
     satin.border = document::BorderSatinSpec{Micrometers{4'500}, document::BorderSide::Outside,
                                              document::BorderCorner::Round, 2, 1};
     document::AutoSatinParams autoSatin;
@@ -109,6 +109,32 @@ TEST_CASE("moteur : round-trip des nouveaux reglages (tatami, directionnel, sati
     CHECK(again->finishing == loaded->finishing);
     fs::remove(path);
     fs::remove(second);
+}
+
+TEST_CASE("moteur : auto-satin conserve tous les modes de tirage dont Predicted",
+          "[project_io][predicted_pull]") {
+    for (const auto mode : {document::PullMode::Manual, document::PullMode::Auto,
+                            document::PullMode::Adaptive, document::PullMode::Predicted}) {
+        auto project = base_project();
+        document::EmbroideryObject object;
+        object.id = ObjectId{10};
+        document::AutoSatinParams params;
+        params.pull_mode = mode;
+        object.params = params;
+        project.embroidery_objects.push_back(object);
+
+        const auto suffix = std::to_string(static_cast<int>(mode));
+        const auto filename = "openstitch_auto_satin_pull_" + suffix + ".osp";
+        const auto path = fs::temp_directory_path() / filename;
+        REQUIRE(project_io::save_project(path, project).has_value());
+        const auto loaded = project_io::load_project(path);
+        fs::remove(path);
+        REQUIRE(loaded.has_value());
+        REQUIRE(loaded->embroidery_objects.size() == 1);
+        const auto& restored =
+            std::get<document::AutoSatinParams>(loaded->embroidery_objects.front().params);
+        CHECK(restored.pull_mode == mode);
+    }
 }
 
 TEST_CASE("moteur : un .osp anterieur est relu avec les defauts (comportement inchange)") {

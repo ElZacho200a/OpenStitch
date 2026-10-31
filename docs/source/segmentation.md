@@ -42,6 +42,49 @@ contour).
   prend **0,09 à 0,22 s** en Debug (0,6 s au premier appel), de sorte que l'aperçu se fait sur
   l'image entière, sans version réduite.
 
+## Zones de détail et aplats
+
+Un seul réglage de lissage et de taille minimale pour toute l'image oblige à choisir : lisser fort
+nettoie les aplats mais efface les détails fins (yeux, texte), lisser peu garde les détails mais
+laisse du « poivre et sel » dans les aplats. Le **masque de détail** (`segmentation::DetailMask`,
+un octet par pixel de l'image de travail : 0 = aplat, 255 = détail) donne un réglage par zone.
+
+- **Réglages.** `SegmentationOptions::detail_mask` (pointeur, `nullptr` = aucune zone),
+  `detail_smoothing_radius_px` (défaut 0) et `detail_min_region_px` (défaut 2) remplacent
+  `smoothing_radius_px` et `min_region_px` **dans les zones de détail**.
+- **Lissage.** Pour chaque classe de couleur, la densité locale est calculée avec le rayon d'aplat
+  et avec le rayon de détail, puis mélangée pixel par pixel avec le poids du masque ; le bord doux
+  du pinceau donne donc une transition progressive et pas de coupe nette sur la frontière.
+- **Nettoyage.** Une région est « de détail » si la moyenne du masque sur ses pixels est ≥ 128 ;
+  elle est alors comparée à `detail_min_region_px` au lieu de `min_region_px`.
+- **Inchangé sans masque.** Un masque absent, vide ou sans pixel de détail suit exactement le chemin
+  historique (même sortie octet pour octet). Le k-means reste global : les couleurs sont cohérentes
+  d'une zone à l'autre. Un masque qui n'a pas la taille de l'image est refusé (`UserInput`).
+- **Pinceau.** `paint_detail_disc` peint (valeur 255) ou gomme (valeur 0) un disque, bord franc ou
+  doux, et renvoie les pixels modifiés avec leur ancienne valeur : l'annulation ne copie pas le
+  masque entier.
+- **Bureau.** Outil *Segmentation → Zones de détail* (Maj+D, aussi dans la palette d'outils, bouton
+  « Peindre les zones de détail… » du dialogue) : glisser peint, la case *Gomme* retire, *Tout
+  effacer* vide le masque, Échap abandonne le trait. La surcouche colorée montre les zones. Un trait
+  est **un** pas d'annulation (`PaintDetailMaskCommand`) ; le masque est enregistré dans le projet
+  (`detail_mask.u8` dans l'archive `.osp`, sans changement de version de schéma). Le masque n'agit
+  qu'à la prochaine segmentation ; l'aperçu du dialogue le suit.
+- **Vectorisation.** `VectorizeOptions::detail_mask` et `detail_tolerance_factor` (0,5 par défaut) :
+  une région dont la moyenne du masque est ≥ 128 est vectorisée avec des tolérances de
+  simplification (polygone, plancher 0,1 mm = pas machine) et de courbe divisées par le facteur,
+  donc un contour plus fidèle et plus de nœuds. Transmis par `AutoOptions::detail_mask`,
+  `DigitizeSource::detail_mask` (numérisation automatique du bureau) et la vectorisation des régions
+  du parcours Workflow. Masque absent ou de mauvaise taille : sortie inchangée.
+- **Couture.** `AutoOptions::detail_min_fill_area_mm2` (défaut 1 mm²) remplace `min_fill_area_mm2`
+  pour les régions de détail : une petite forme de détail (oeil, lettre) est cousue en tatami
+  (ou satin) au lieu d'un simple contour. `merge_small_regions` reçoit le masque et un seuil de
+  détail pour ne pas absorber ces régions avant la couture. Sans masque : inchangé. La densité
+  et l'angle ne dépendent pas encore de la zone.
+- **Limites.** Le CLI et
+  le MCP, qui n'ont pas de projet peint, ne passent pas de masque. Pas
+  de proposition automatique de zones. Un recadrage ou une rotation de l'image rend le masque
+  inutilisable (taille différente) : il est ignoré puis remplacé au prochain trait.
+
 ## Identifiants stables
 
 Chaque région a un `RegionId` = index de slot + 1. Les slots ne sont **jamais**

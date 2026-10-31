@@ -421,27 +421,51 @@ VectorOpResult make_split_command(document::Project& project, const std::vector<
             targets.push_back(*object);
         }
     }
-    // La coupe se limite au segment [a,b] tracé (bande centrée sur son milieu, demi-portée
-    // |ab|/2) : une forme que le trait ne traverse pas de part en part n'est pas touchée.
+    // La coupe se limite au segment [a,b] tracé (bande centrée sur son milieu,
+    // demi-portée |ab|/2) : les parties hors de cette bande ne sont pas touchées.
     const double reach = length_um(b - a) / 2.0;
     for (const auto& object : targets) {
         std::vector<PathSet> pieces;
-        bool crossed = false;
+        bool changed = false;
+        bool separated = false;
         for (const PathSet& set : object.paths) {
             auto cut = geometry::cut_path_set_bounded(set, a, b, reach, cut_width);
             if (!cut) {
                 return failure(cut.error().message);
             }
-            if (cut->size() >= 2) {
-                crossed = true;
+            if (cut->empty()) {
+                // Le couteau ne supprime pas une forme entièrement engloutie par sa bande.
+                pieces.push_back(set);
+                continue;
             }
+            // Une coupe doit changer la topologie, pas seulement creuser une
+            // entaille qui s'arrête au milieu d'une surface pleine. Un pont
+            // coupé peut laisser une seule composante, mais ouvre alors un trou
+            // préexistant vers l'extérieur (le nombre de trous diminue).
+            const bool splits = cut->size() >= 2;
+            const bool opens_bridge =
+                cut->size() == 1 && cut->front().holes.size() < set.holes.size();
+            if (!splits && !opens_bridge) {
+                pieces.push_back(set);
+                continue;
+            }
+            changed = true;
+            separated = separated || splits;
             pieces.insert(pieces.end(), cut->begin(), cut->end());
         }
-        if (!crossed || pieces.size() < 2) {
+        if (!changed) {
             continue;
         }
-        total += pieces.size();
-        add_piece_commands(project, *group, object, std::move(pieces), "Découper les formes");
+        if (separated) {
+            total += pieces.size();
+            add_piece_commands(project, *group, object, std::move(pieces), "Découper les formes");
+        } else {
+            // Une seule composante par région : conserver l'identité, les autres
+            // chemins et les remplissages associés, sans créer de clone inutile.
+            ++total;
+            group->add(std::make_unique<SetVectorPathsCommand>(object.id, std::move(pieces),
+                                                               "Découper les formes"));
+        }
     }
     if (total == 0) {
         return failure("La ligne de coupe ne traverse aucune forme sélectionnée.");

@@ -1,0 +1,97 @@
+name: Publish Windows MCP
+
+# Repair latest on a schedule even if a bot merge does not trigger push workflows.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/windows-mcp-release.yml'
+      - 'packaging/windows/package-mcp.ps1'
+      - 'apps/mcp/**'
+      - 'libs/**'
+      - 'CMakeLists.txt'
+      - 'vcpkg.json'
+  schedule:
+    - cron: '47 3 * * *'
+
+permissions:
+  contents: write
+
+env:
+  VCPKG_BINARY_SOURCES: 'clear;x-gha,readwrite'
+
+jobs:
+  publish-windows-mcp:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    concurrency:
+      group: openstitch-latest-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Export vcpkg cache environment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Set up vcpkg
+        shell: pwsh
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$env:RUNNER_TEMP/vcpkg"
+          & "$env:RUNNER_TEMP/vcpkg/bootstrap-vcpkg.bat" -disableMetrics
+          "VCPKG_ROOT=$env:RUNNER_TEMP/vcpkg" | Out-File -Append -FilePath $env:GITHUB_ENV
+
+      - name: Build Windows MCP (Release, no Qt)
+        shell: pwsh
+        run: |
+          cmake -S . -B build/windows-mcp-release -G "Visual Studio 17 2022" -A x64 `
+            -DOPENSTITCH_BUILD_DESKTOP=OFF -DOPENSTITCH_BUILD_TESTS=OFF `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          if ($LASTEXITCODE -ne 0) { throw "Configure failed" }
+          cmake --build build/windows-mcp-release --config Release --target openstitch-mcp --parallel 4
+          if ($LASTEXITCODE -ne 0) { throw "Build failed" }
+
+      - name: Package and smoke-test
+        shell: pwsh
+        run: |
+          ./packaging/windows/package-mcp.ps1 -BinaryDir build/windows-mcp-release/apps/mcp/Release -OutputDir dist/windows-mcp
+          $verify = Join-Path $env:RUNNER_TEMP "windows-mcp-smoke"
+          Expand-Archive -LiteralPath "dist/windows-mcp/openstitch-mcp-windows-x64.zip" -DestinationPath $verify -Force
+          $exe = Join-Path $verify "openstitch-mcp-windows-x64/openstitch-mcp.exe"
+          if (-not (Test-Path -LiteralPath $exe)) { throw "MCP exe missing in archive" }
+          & $exe --version
+          if ($LASTEXITCODE -ne 0) { throw "MCP --version failed" }
+          & $exe --doctor
+          if ($LASTEXITCODE -ne 0) { throw "MCP --doctor failed" }
+
+      - name: Upload verified artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openstitch-mcp-windows-x64
+          retention-days: 30
+          if-no-files-found: error
+          path: dist/windows-mcp/*
+
+      - name: Publish or repair latest (preserve other assets)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $zip = "dist/windows-mcp/openstitch-mcp-windows-x64.zip"
+          $sha = "dist/windows-mcp/openstitch-mcp-windows-x64.zip.sha256"
+          gh release view latest --repo "$env:GITHUB_REPOSITORY" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload latest $zip $sha --clobber --repo "$env:GITHUB_REPOSITORY"
+          } else {
+            gh release create latest $zip $sha --repo "$env:GITHUB_REPOSITORY" `
+              --title 'Dernier build (main)' `
+              --notes "MCP Windows x64 construit depuis main ($env:GITHUB_SHA)" `
+              --target "$env:GITHUB_SHA"
+          }
+          if ($LASTEXITCODE -ne 0) { throw "GitHub release upload failed" }

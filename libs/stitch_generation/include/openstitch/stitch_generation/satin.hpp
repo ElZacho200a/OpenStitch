@@ -29,6 +29,9 @@ enum class SplitStitchMode { Disabled, Simple, Staggered, DeterministicJitter };
 // traversée intermédiaire), coupe (saut au coin, la colonne repart sur la branche suivante).
 enum class SatinCornerMode { None, Miter, Overlap, Cut };
 
+// Bord irrégulier (HP-STI-022, mêmes valeurs/ordre que `document::SatinJagged`).
+enum class SatinJaggedMode { None, SideA, SideB, Both };
+
 // Terminaisons de colonne (§9).
 enum class SatinCapType { Flat, Rounded, Tapered, Automatic };
 
@@ -69,6 +72,12 @@ struct SatinConfig {
     // --- Coins vifs (HP-ENG-005) ---
     SatinCornerMode corner_mode{SatinCornerMode::None};
     double corner_angle_deg{60.0}; // changement de cap de l'axe au-delà duquel c'est un coin
+
+    // --- Bord irrégulier (HP-STI-022) : raccourcit un côté de chaque fil d'une longueur
+    // déterministe dans [0 ; amplitude] (hash de graine + indice) ; largeur résiduelle >= 0,4 mm.
+    SatinJaggedMode jagged{SatinJaggedMode::None};
+    Micrometers jagged_amplitude{1'500};
+    std::uint32_t jagged_seed{1};
 
     // --- Terminaisons ---
     SatinCapType cap_start{SatinCapType::Flat};

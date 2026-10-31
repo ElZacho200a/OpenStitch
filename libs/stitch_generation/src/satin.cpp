@@ -653,6 +653,44 @@ std::vector<SatinStation> satin_stations(const geometry::Path& rail_a, const geo
     return stations;
 }
 
+// Bord irrégulier (HP-STI-022) : raccourcit côté A et/ou B de chaque fil d'une longueur issue d'un
+// hash entier de (graine, indice, côté) dans [0 ; amplitude], sans jamais laisser moins de 0,4 mm.
+void apply_jagged(std::vector<Thread>& threads, const SatinConfig& config) {
+    if (config.jagged == SatinJaggedMode::None) {
+        return;
+    }
+    constexpr double kMinWidth = 400.0;
+    const double amp =
+        std::clamp(static_cast<double>(config.jagged_amplitude.value), 200.0, 6'000.0);
+    const bool doA =
+        config.jagged == SatinJaggedMode::SideA || config.jagged == SatinJaggedMode::Both;
+    const bool doB =
+        config.jagged == SatinJaggedMode::SideB || config.jagged == SatinJaggedMode::Both;
+    for (std::size_t i = 0; i < threads.size(); ++i) {
+        auto& t = threads[i];
+        const double w = dist(t.a, t.b);
+        if (w <= kMinWidth) {
+            continue;
+        }
+        double room = w - kMinWidth;
+        const auto key = [&](std::uint64_t side) {
+            return (static_cast<std::uint64_t>(config.jagged_seed) << 33) ^
+                   (static_cast<std::uint64_t>(i) << 1) ^ side;
+        };
+        double cutA = doA ? jitter01(key(0)) * amp : 0.0;
+        double cutB = doB ? jitter01(key(1)) * amp : 0.0;
+        if (cutA + cutB > room) {
+            const double f = room / (cutA + cutB);
+            cutA *= f;
+            cutB *= f;
+        }
+        const PointD a0 = t.a;
+        const PointD b0 = t.b;
+        t.a = lerpP(a0, b0, cutA / w);
+        t.b = lerpP(b0, a0, cutB / w);
+    }
+}
+
 SatinResult finish_satin_stations(const std::vector<SatinStation>& stations,
                                   const SatinConfig& config) {
     SatinResult result;
@@ -671,6 +709,7 @@ SatinResult finish_satin_stations(const std::vector<SatinStation>& stations,
     if (config.auto_spacing) {
         apply_auto_spacing(threads, density);
     }
+    apply_jagged(threads, config);
     const int nThreads = static_cast<int>(threads.size());
 
     // --- Terminaisons (§9) : réduit la largeur des fils aux deux bouts. ---

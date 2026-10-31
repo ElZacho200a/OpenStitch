@@ -20,11 +20,11 @@ namespace openstitch::geometry {
 // deux morceaux qui se retouchent en un point, toujours une seule composante
 // connexe).
 //
-// Renvoie un morceau par composante connexe résultante : 1 seul morceau
-// (la région inchangée, aux quelques µm de la bande près) si la ligne ne
-// traverse pas réellement la région ou est dégénérée (A == B) -- à
-// l'appelant de vérifier `size() >= 2` pour savoir si la coupe a réellement
-// séparé quelque chose.
+// Renvoie un morceau par composante connexe résultante. Une coupe peut
+// modifier la région tout en laissant une SEULE composante (pont tranché mais
+// autre jonction intacte) : le morceau retourné est alors différent de
+// l'original. Sans intersection de surface, renvoie la région strictement
+// inchangée (y compris ses tangentes). A == B ne coupe rien.
 [[nodiscard]] Result<std::vector<PathSet>> cut_path_set(const PathSet& region, Vec2um a, Vec2um b,
                                                         Micrometers cut_width = Micrometers{20});
 

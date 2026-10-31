@@ -12,7 +12,9 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <map>
 #include <optional>
+#include <set>
 #include <sstream>
 
 #include "openstitch/formats/format_registry.hpp"
@@ -28,6 +30,7 @@
 #include "openstitch/project_ops/quality.hpp"
 #include "openstitch/project_ops/render.hpp"
 #include "openstitch/project_ops/report.hpp"
+#include "openstitch/project_ops/settings_profile.hpp"
 #include "openstitch/project_ops/sweep.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
@@ -40,6 +43,12 @@ namespace fs = std::filesystem;
 namespace {
 
 int g_exit = 0;
+
+// Options de numérisation (clés admises d'un profil `--settings`) par commande.
+std::map<const CLI::App*, std::vector<po::ProfileKey>>& profile_keys() {
+    static std::map<const CLI::App*, std::vector<po::ProfileKey>> keys;
+    return keys;
+}
 
 constexpr int kExitInput = 1;
 constexpr int kExitQuality = 2;
@@ -329,6 +338,7 @@ int run_batch_flow(const BatchFlow& f, const std::string& text, bool single) {
 // ---------------------------------------------------------------------------------------
 void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
     auto& s = v.settings;
+    const std::size_t firstOption = cmd->get_options().size();
     cmd->add_option("--dpi", s.dpi, "Résolution supposée pour l'échelle mm/px (défaut : 96)")
         ->check(CLI::PositiveNumber);
     cmd->add_option("--max-colors", s.max_colors, "Nombre maximal de couleurs (défaut : 8)")
@@ -486,9 +496,79 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
         "(fidelite.png) et decisions.json");
     cmd->add_option("--lock", s.lock, "Point d'arrêt : none|backforth|triangle|zigzag")
         ->check(CLI::IsMember({"none", "backforth", "triangle", "zigzag"}));
+    // Clés d'un profil : les options ci-dessus (pas `--settings` lui-même).
+    auto& keys = profile_keys()[cmd];
+    keys.clear();
+    const auto& options = cmd->get_options();
+    for (std::size_t i = firstOption; i < options.size(); ++i) {
+        if (!options[i]->get_lnames().empty()) {
+            keys.push_back({options[i]->get_lnames().front(), options[i]->get_expected_max() == 0});
+        }
+    }
+    cmd->add_option("--settings", v.settingsPath,
+                    "Profil de réglages JSON {\"nom-d-option\": valeur} (clés = options de "
+                    "numérisation sans « -- » ; une option de la ligne de commande l'emporte)");
+}
+
+std::optional<int> expand_settings_profile(CLI::App& app, std::vector<std::string>& args) {
+    // Commande visée : descente dans les sous-commandes citées avant tout argument inconnu.
+    CLI::App* sub = &app;
+    for (const auto& a : args) {
+        if (a.starts_with("-")) {
+            continue;
+        }
+        if (auto* next = sub->get_subcommand_no_throw(a)) {
+            sub = next;
+        }
+    }
+    const auto keys = profile_keys().find(sub);
+    if (keys == profile_keys().end()) {
+        return std::nullopt;
+    }
+    std::string path;
+    std::set<std::string> explicitNames;
+    bool json = false;
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        const std::string& a = args[i];
+        if (a == "--json") {
+            json = true;
+        } else if (a == "--settings" && i + 1 < args.size()) {
+            path = args[++i];
+        } else if (a.starts_with("--settings=")) {
+            path = a.substr(11);
+        } else if (a.starts_with("--")) {
+            explicitNames.insert(a.substr(2, a.find('=') == std::string::npos ? std::string::npos
+                                                                              : a.find('=') - 2));
+        }
+    }
+    if (path.empty()) {
+        return std::nullopt;
+    }
+    auto refuse = [&](const std::string& message, const std::string& hint) {
+        fmt::print(stderr, "openstitch-cli : --settings : {}\n", message);
+        if (!hint.empty()) {
+            fmt::print(stderr, "  Piste : {}\n", hint);
+        }
+        if (json) {
+            fmt::print("{}\n", po::error_json("settings", po::code::kUsage, message, hint));
+        }
+        return std::optional<int>(kExitInput);
+    };
+    std::string text;
+    std::string readError;
+    if (!read_all(path, text, readError)) {
+        return refuse(readError, "chemin du profil JSON (--settings profil.json)");
+    }
+    const auto extra = po::settings_profile_args(text, keys->second, explicitNames);
+    if (!extra) {
+        return refuse(extra.error().message, extra.error().detail);
+    }
+    args.insert(args.end(), extra->begin(), extra->end());
+    return std::nullopt;
 }
 
 void finalize_digitize_options(DigitizeOptionValues& v) {
+    v.settings.profile_path = v.settingsPath;
     const auto& b = v.skipBackground;
     v.settings.skip_background = (b == "auto" || b == "-1")   ? -1
                                  : (b == "yes" || b == "1")   ? 1
@@ -589,9 +669,13 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
                             rc == 0 ? "true" : "false", rc, rc == 0 ? report : "null");
         }
         if (jsonOut) {
-            fmt::print("{{\"schema\":\"openstitch.digitize-batch/1\",\"ok\":{},\"failed\":{},"
+            const std::string profile = bdValues->settingsPath.empty()
+                                            ? std::string()
+                                            : fmt::format("\"settings_profile\":{},",
+                                                          po::json_quote(bdValues->settingsPath));
+            fmt::print("{{\"schema\":\"openstitch.digitize-batch/1\",\"ok\":{},\"failed\":{},{}"
                        "\"items\":[{}]}}\n",
-                       failures == 0 ? "true" : "false", failures, items);
+                       failures == 0 ? "true" : "false", failures, profile, items);
         } else {
             fmt::print("{} image(s), {} échec(s)\n", bdArgs->images.size(), failures);
         }
