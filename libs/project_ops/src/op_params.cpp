@@ -773,6 +773,7 @@ template <class P> void add_satin_common(std::vector<Field<P>>& v) {
     v.push_back(enum_field<P>("split_stitch", &P::split_stitch, split_table()));
     v.push_back(bool_field<P>("auto_spacing", &P::auto_spacing));
     v.push_back(enum_field<P>("corner_mode", &P::corner_mode, satin_corner_table()));
+    v.push_back(deg_field<P>("corner_threshold_deg", &P::corner_threshold, 15.0, 150.0));
 }
 
 template <class P> const std::vector<Field<P>>& fields_of();

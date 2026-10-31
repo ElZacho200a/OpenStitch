@@ -1350,7 +1350,8 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 - À faire : split automatique par défaut au-delà de `max_stitch_length`.
 
 ### HP-ENG-005 — Coins satin intelligents [P1] — ◐ Partiel
-- Livré (2026-10-25) : `corner_mode` (aucun, onglet, chevauchement, coupe) au-delà de 60° de changement de cap, inspecteur. Reste : seuil réglable, validation sur forme réelle.
+- Livré (2026-10-25) : `corner_mode` (aucun, onglet, chevauchement, coupe) au-delà de 60° de changement de cap, inspecteur.
+- Livré (2026-10-31) : seuil réglable `corner_threshold` (15° à 150°, défaut 60°) sur `SatinParams` et `AutoSatinParams` : `.osp` (`cornerThreshold`, absent = 60°), CLI `set_params` (`corner_threshold_deg`), inspecteur « Seuil de coin ». Reste : validation sur forme réelle.
 - État OpenStitch : `ShortStitchMode` dans les virages ; `satin.md` note que
   le coude C0 franc (sans congé) n'est pas traité (« mitre/congé hors
   périmètre »).
@@ -4550,3 +4551,4 @@ ouvrant le lot (§0.1).
 | 2026-10-27 | Claude | **AdaptivePullCompensation niveau 3, lot A** (HP-ENG-001.b) : `PullField`, champ de déplacement du tissu anisotrope avec confiance, cœur seul non branché. Coefficients empiriques, non validés sur machine. |
 | 2026-10-27 | Claude | **Niveau 3, lot B** (HP-ENG-001.b) : `PullMode::Predicted` branché (passe finale d'`effective_sequence`, `.osp`, CLI/MCP, inspecteur). Confiance plafonnée tant que non calibré. |
 | 2026-10-27 | Claude | **Niveau 3, prévisualisation du tirage** (HP-ENG-001.b) : carte de déplacement prédit et aperçu des points décalés par bloc de couleur, menu Affichage, CLI `render --simulate-pull/--pull-map`. Estimation non calibrée. |
+| 2026-10-31 | Claude | **HP-ENG-005** : seuil de coin du satin réglable (`corner_threshold`, `.osp`, CLI, inspecteur, tests moteur/format/CLI/IHM). Validation sur forme réelle toujours à faire. |

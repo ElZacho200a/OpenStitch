@@ -954,6 +954,22 @@ TEST_CASE("satin coins vifs : onglet, chevauchement et coupe") {
     CHECK(finish_satin_stations(stations, miter).satin == m.satin);
 }
 
+TEST_CASE("satin coins vifs : le seuil de cap decide ce qui est un coin") {
+    const auto stations = corner_stations();
+    SatinConfig none;
+    const auto base = finish_satin_stations(stations, none);
+
+    SatinConfig strict;
+    strict.corner_mode = SatinCornerMode::Miter;
+    strict.corner_angle_deg = 120.0; // le coin de 90 degres n'en est plus un
+    CHECK(finish_satin_stations(stations, strict).satin == base.satin);
+
+    SatinConfig sensitive;
+    sensitive.corner_mode = SatinCornerMode::Miter;
+    sensitive.corner_angle_deg = 45.0;
+    CHECK(finish_satin_stations(stations, sensitive).satin.size() == 104);
+}
+
 TEST_CASE("satin coins vifs : une colonne droite n'est pas modifiee") {
     const auto stations = straight_stations(1'000);
     SatinConfig none;

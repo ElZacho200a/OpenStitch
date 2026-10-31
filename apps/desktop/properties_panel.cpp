@@ -1876,6 +1876,19 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 form->addRow(tr("Coins vifs :"), corner);
                 bindBool(autoSpacing, tr("Espacement automatique"), &T::auto_spacing);
                 bindEnumField<T>(this, edit, corner, tr("Coins vifs"), &T::corner_mode, members);
+                auto* cornerAngle = new QDoubleSpinBox(body_);
+                cornerAngle->setObjectName(QStringLiteral("spin_satinCornerThreshold"));
+                cornerAngle->setKeyboardTracking(false);
+                cornerAngle->setRange(15.0, 150.0);
+                cornerAngle->setDecimals(0);
+                cornerAngle->setSuffix(tr(" °"));
+                cornerAngle->setToolTip(
+                    tr("Changement de cap de l'axe au-delà duquel la colonne a un coin vif."));
+                cornerAngle->setValue(to_deg(p.corner_threshold));
+                form->addRow(tr("Seuil de coin :"), cornerAngle);
+                connect(cornerAngle, &QDoubleSpinBox::valueChanged, this, [edit](double v) {
+                    edit(tr("Seuil de coin"), [v](T& t) { t.corner_threshold = from_deg(v); });
+                });
                 bindMm(density, tr("Espacement"), &T::density);
                 bindMm(comp, tr("Compensation de tirage"), &T::pull_compensation);
                 bindBool(underlay, tr("Sous-couche centrale"), &T::center_underlay);
@@ -2171,6 +2184,19 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 form->addRow(tr("Coins vifs :"), corner);
                 bindBool(autoSpacing, tr("Espacement automatique"), &T::auto_spacing);
                 bindEnumField<T>(this, edit, corner, tr("Coins vifs"), &T::corner_mode, members);
+                auto* cornerAngle = new QDoubleSpinBox(body_);
+                cornerAngle->setObjectName(QStringLiteral("spin_autoSatinCornerThreshold"));
+                cornerAngle->setKeyboardTracking(false);
+                cornerAngle->setRange(15.0, 150.0);
+                cornerAngle->setDecimals(0);
+                cornerAngle->setSuffix(tr(" °"));
+                cornerAngle->setToolTip(
+                    tr("Changement de cap de l'axe au-delà duquel la colonne a un coin vif."));
+                cornerAngle->setValue(to_deg(p.corner_threshold));
+                form->addRow(tr("Seuil de coin :"), cornerAngle);
+                connect(cornerAngle, &QDoubleSpinBox::valueChanged, this, [edit](double v) {
+                    edit(tr("Seuil de coin"), [v](T& t) { t.corner_threshold = from_deg(v); });
+                });
                 section(tr("Orientation des fils"));
                 if (group) {
                     // Guides en lot : un même angle pour toutes les formes du groupe.
