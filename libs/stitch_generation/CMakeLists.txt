@@ -30,6 +30,7 @@ add_library(openstitch_stitch_generation
     src/radial_fill.cpp
     src/spiral_fill.cpp
     src/crosshatch_fill.cpp
+    src/cross_stitch.cpp
 )
 add_library(openstitch::stitch_generation ALIAS openstitch_stitch_generation)
 

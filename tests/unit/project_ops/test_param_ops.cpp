@@ -232,6 +232,25 @@ TEST_CASE("param ops set_stitch_type follows the desktop rules", "[project_ops][
         CHECK(result_of(r)["changed"] == false);
         CHECK(serialize(p) == before);
     }
+    SECTION("cross_stitch converts and set_params edits its grid") {
+        const auto r = run(p, R"({"op":"set_stitch_type","object":2,"type":"cross_stitch"})");
+        REQUIRE(r.ok);
+        CHECK(result_of(r)["to"] == "cross_stitch");
+        const auto* cross =
+            std::get_if<document::CrossStitchParams>(&p.findEmbroidery(ObjectId{2})->params);
+        REQUIRE(cross != nullptr);
+        CHECK(*cross == document::CrossStitchParams{});
+        REQUIRE(run(p, R"({"op":"set_params","object":2,"params":{"cell_mm":3.5,)"
+                       R"("grid_angle_deg":45,"full_cross":false,"passes":2}})")
+                    .ok);
+        cross = std::get_if<document::CrossStitchParams>(&p.findEmbroidery(ObjectId{2})->params);
+        REQUIRE(cross != nullptr);
+        CHECK(cross->cell == Micrometers{3'500});
+        CHECK(cross->full_cross == false);
+        CHECK(cross->passes == 2);
+        expect_refused(p, R"({"op":"set_params","object":2,"params":{"cell_mm":12}})",
+                       project_ops::code::kOutOfRange);
+    }
     SECTION("satin and auto_satin are refused with the auto_satin hint") {
         for (const char* type : {"satin", "auto_satin"}) {
             const auto o = expect_refused(
@@ -421,6 +440,18 @@ TEST_CASE("param ops set_params on satin types", "[project_ops][params]") {
     expect_refused(p, R"({"op":"set_params","object":4,"params":{"corner_threshold_deg":200}})",
                    project_ops::code::kOutOfRange);
     expect_refused(p, R"({"op":"set_params","object":4,"params":{"corner_mode":"round"}})",
+                   project_ops::code::kOutOfRange);
+    REQUIRE(run(p, R"({"op":"set_params","object":4,"params":{"jagged":"side_b",)"
+                   R"("jagged_amplitude_mm":2.5,"jagged_seed":42}})")
+                .ok);
+    s = std::get_if<document::SatinParams>(&p.findEmbroidery(ObjectId{4})->params);
+    REQUIRE(s != nullptr);
+    CHECK(s->jagged == document::SatinJagged::SideB);
+    CHECK(s->jagged_amplitude == Micrometers{2'500});
+    CHECK(s->jagged_seed == 42u);
+    expect_refused(p, R"({"op":"set_params","object":4,"params":{"jagged_amplitude_mm":9}})",
+                   project_ops::code::kOutOfRange);
+    expect_refused(p, R"({"op":"set_params","object":4,"params":{"jagged":"left"}})",
                    project_ops::code::kOutOfRange);
     // La topologie et la bordure ne sont pas modifiables ici : refus nommé.
     expect_refused(p, R"({"op":"set_params","object":4,"params":{"topology":{}}})",

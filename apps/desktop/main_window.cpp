@@ -477,6 +477,8 @@ MainWindow::MainWindow() {
     buildDetailZonesTool();
     // [cablage-C:fin]
     // [cablage-D:debut]
+    buildOrderJumpsFeature();
+    buildFabricRiskFeature();
     // [cablage-D:fin]
     // [cablage-E:debut]
     buildDensityFeature();
@@ -4749,8 +4751,10 @@ void MainWindow::renderStitches() {
     stitchItems_.clear();
     simMarker_ = nullptr;
     simWalkValid_ = false;
-    refreshDensityOverlay(); // HP-VIEW-005 (main_window_density.cpp)
-    refreshPullMapOverlay(); // tirage prédit (main_window_pull_preview.cpp)
+    refreshDensityOverlay();    // HP-VIEW-005 (main_window_density.cpp)
+    refreshPullMapOverlay();    // tirage prédit (main_window_pull_preview.cpp)
+    refreshOrderJumpsOverlay(); // sauts à vide du panneau Ordre (main_window_order_jumps.cpp)
+    refreshFabricRiskOverlay(); // risque tissu (main_window_fabric_risk.cpp)
 
     if (stitchLayerSuspended_ || showStitchesAct_ == nullptr || !showStitchesAct_->isChecked() ||
         !sequence_) {
@@ -6053,6 +6057,7 @@ int stitchFilterFamily(int typeIndex) {
     case 8:  // radial
     case 9:  // spirale
     case 10: // croisé
+    case 11: // point de croix (HP-STI-012)
         return 1;
     case 4:
     case 5: // blanket, motif le long du contour (HP-STI-002)
@@ -6106,6 +6111,10 @@ bool MainWindow::stitchParamsForType(const document::EmbroideryObject& emb, int 
     case 10: // remplissage croisé (HP-STI-014)
         params = document::CrosshatchFillParams{};
         label = "Type : remplissage croisé";
+        return true;
+    case 11: // point de croix (HP-STI-012)
+        params = document::CrossStitchParams{};
+        label = "Type : point de croix";
         return true;
     case 3: { // remplissage directionnel (réglages du tatami repris s'il y a lieu)
         auto directional = directionalParamsFor(emb);
@@ -9155,6 +9164,7 @@ void MainWindow::applyOrderStrategy() {
     const auto before = optimization::compute_cost(items, options.start, options.end);
     const auto order =
         project_.groupedByCalque(optimization::optimize_order(items, strategy, options));
+    captureOrderJumpsBaseline(endpoints); // surimpression « Sauts à vide » : anciens sauts
 
     undoStack_.execute(std::make_unique<commands::ReorderEmbroideryCommand>(order), project_);
     refreshImage();

@@ -28,6 +28,7 @@ add_executable(test_stitch
     test_contour_fill.cpp
     test_motif.cpp
     test_radial_spiral_crosshatch.cpp
+    test_cross_stitch.cpp
 )
 target_link_libraries(test_stitch
     PRIVATE openstitch::stitch openstitch::stitch_generation Catch2::Catch2WithMain

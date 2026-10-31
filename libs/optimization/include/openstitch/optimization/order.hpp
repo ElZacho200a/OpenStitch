@@ -111,4 +111,25 @@ struct OrderStep {
 // cas d'égalité, donc déterministe). `ring` vide : 0.
 [[nodiscard]] std::size_t nearest_vertex_index(const std::vector<Vec2um>& ring, Vec2um from);
 
+// Saut à vide de la surimpression « Sauts à vide » du panneau Ordre : déplacement entre la fin d'un
+// objet et le début du suivant, dans l'ordre de couture. Calcul pur (aucune dépendance IHM).
+struct SewnSpan {
+    Vec2um first{}; // premier point cousu de l'objet
+    Vec2um last{};  // dernier point cousu de l'objet
+};
+
+struct JumpSegment {
+    Vec2um from{};
+    Vec2um to{};
+
+    constexpr auto operator<=>(const JumpSegment&) const = default;
+};
+
+// Un segment par paire d'objets successifs ; les paires dont la fin coïncide avec le début
+// suivant (déplacement nul) sont omises. Moins de deux objets : liste vide. Déterministe.
+[[nodiscard]] std::vector<JumpSegment> jump_segments(const std::vector<SewnSpan>& spans);
+
+// Longueur totale des sauts (µm, somme des distances arrondies à l'entier le plus proche).
+[[nodiscard]] std::int64_t jump_length_um(const std::vector<JumpSegment>& jumps);
+
 } // namespace openstitch::optimization

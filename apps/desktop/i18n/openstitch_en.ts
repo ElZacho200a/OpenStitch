@@ -1140,6 +1140,11 @@ Estimated stitched thread: %7 m</translation>
         <source>Remplissage croisé</source>
         <translation>Crosshatch fill</translation>
     </message>
+    <message>
+        <location filename="../stitch_type_catalog.cpp" line="19"/>
+        <source>Point de croix</source>
+        <translation>Cross stitch</translation>
+    </message>
 </context>
 <context>
     <name>openstitch::desktop</name>
@@ -2395,6 +2400,33 @@ Estimated stitched thread: %7 m</translation>
         <location filename="../density_overlay.cpp" line="317"/>
         <source>seuil %1</source>
         <translation>threshold %1</translation>
+    </message>
+</context>
+<context>
+    <name>openstitch::desktop::FabricRiskLegend</name>
+    <message>
+        <source>Légende de la carte de risque tissu</source>
+        <translation>Fabric risk map legend</translation>
+    </message>
+    <message>
+        <source>Risque relatif de tirage du tissu (indice heuristique 0 à 100, non calibré sur machine) : faible sous 40, modéré de 40 à 70, élevé à partir de 70.</source>
+        <translation>Relative fabric-pull risk (heuristic index 0 to 100, not calibrated on a machine): low below 40, moderate from 40 to 70, high from 70.</translation>
+    </message>
+    <message>
+        <source>Risque tissu (estimé)</source>
+        <translation>Fabric risk (estimated)</translation>
+    </message>
+    <message>
+        <source>Faible (&lt; 40)</source>
+        <translation>Low (&lt; 40)</translation>
+    </message>
+    <message>
+        <source>Modéré (40 à 70)</source>
+        <translation>Moderate (40 to 70)</translation>
+    </message>
+    <message>
+        <source>Élevé (≥ 70)</source>
+        <translation>High (≥ 70)</translation>
     </message>
 </context>
 <context>
@@ -11358,6 +11390,74 @@ Cliquez sur une zone de couleur de l&apos;image : elle devient un objet brodé (
         <location filename="../main_window_help.cpp" line="64"/>
         <source>Impossible de créer l&apos;image d&apos;exemple dans le dossier temporaire.</source>
         <translation>Unable to create the sample image in the temporary folder.</translation>
+    </message>
+    <message>
+        <source>Sauts à vide de l'ordre</source>
+        <translation>Order empty jumps</translation>
+    </message>
+    <message>
+        <source>Dessine en pointillé les déplacements à vide entre la fin d'un objet et le début du suivant, dans l'ordre de couture. Après « Optimiser l'ordre », les anciens sauts restent en gris.</source>
+        <translation>Draws the empty moves between the end of one object and the start of the next, in sewing order, as dashed lines. After "Optimize order", the old jumps stay in grey.</translation>
+    </message>
+    <message>
+        <source>Sauts à vide sur le canevas</source>
+        <translation>Show empty jumps on the canvas</translation>
+    </message>
+    <message>
+        <source>Comparer avant / après l'optimisation</source>
+        <translation>Compare before / after optimization</translation>
+    </message>
+    <message>
+        <source>Après « Optimiser l'ordre », garde les anciens sauts en gris et affiche l'écart de trajet. La comparaison disparaît à la modification suivante.</source>
+        <translation>After "Optimize order", keeps the old jumps in grey and shows the travel difference. The comparison disappears at the next edit.</translation>
+    </message>
+    <message>
+        <source>%1 saut(s) à vide, %2 mm</source>
+        <translation>%1 empty jump(s), %2 mm</translation>
+    </message>
+    <message>
+        <source>%1%2 mm</source>
+        <translation>%1%2 mm</translation>
+    </message>
+    <message>
+        <source> (avant : %1 mm, écart %2)</source>
+        <translation> (before: %1 mm, difference %2)</translation>
+    </message>
+    <message>
+        <source>Risque tissu</source>
+        <translation>Fabric risk</translation>
+    </message>
+    <message>
+        <source>Surimpression colorée du risque relatif de tirage du tissu (vert : faible, orange : modéré, rouge : élevé). Indice heuristique non calibré sur machine, pas une mesure.</source>
+        <translation>Coloured overlay of the relative fabric-pull risk (green: low, orange: moderate, red: high). Heuristic index not calibrated on a machine, not a measurement.</translation>
+    </message>
+    <message>
+        <source>Afficher la carte sur le canevas</source>
+        <translation>Show the map on the canvas</translation>
+    </message>
+    <message>
+        <source>Profil de tissu</source>
+        <translation>Fabric profile</translation>
+    </message>
+    <message>
+        <source>Profil indicatif de tissu pour le risque de tirage</source>
+        <translation>Indicative fabric profile for the pull risk</translation>
+    </message>
+    <message>
+        <source>Carte désactivée (Affichage &gt; Risque tissu).</source>
+        <translation>Map disabled (View &gt; Fabric risk).</translation>
+    </message>
+    <message>
+        <source>Calcul du risque tissu…</source>
+        <translation>Computing the fabric risk…</translation>
+    </message>
+    <message>
+        <source>Indice max %1 / 100 · %2 mm² à risque élevé, %3 mm² modéré. Estimation heuristique non calibrée, pas une mesure.</source>
+        <translation>Max index %1 / 100 · %2 mm² at high risk, %3 mm² moderate. Uncalibrated heuristic estimate, not a measurement.</translation>
+    </message>
+    <message>
+        <source>Aucun fil cousu à analyser : pas de carte de risque.</source>
+        <translation>No sewn thread to analyse: no risk map.</translation>
     </message>
 </context>
 <context>

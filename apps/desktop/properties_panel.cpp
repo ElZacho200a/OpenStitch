@@ -73,6 +73,11 @@ QStringList cornerItems() {
             QObject::tr("Coupe (saut)")};
 }
 
+QStringList jaggedItems() {
+    return {QObject::tr("Aucun"), QObject::tr("Côté A"), QObject::tr("Côté B"),
+            QObject::tr("Les deux côtés")};
+}
+
 QStringList borderSideItems() {
     return {QObject::tr("Centré sur le contour"), QObject::tr("Intérieur"),
             QObject::tr("Extérieur")};
@@ -1159,6 +1164,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                              : object.is_radial_fill()     ? tr("Remplissage radial")
                              : object.is_spiral_fill()     ? tr("Remplissage en spirale")
                              : object.is_crosshatch_fill() ? tr("Remplissage croisé")
+                             : object.is_cross_stitch()    ? tr("Point de croix")
                              : object.is_auto_satin()
                                  ? tr("Satin automatique (traversées orientées)")
                              : object.is_satin() ? tr("Colonne satin à rails (manuelle)")
@@ -1901,6 +1907,32 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 connect(cornerAngle, &QDoubleSpinBox::valueChanged, this, [edit](double v) {
                     edit(tr("Seuil de coin"), [v](T& t) { t.corner_threshold = from_deg(v); });
                 });
+                auto* jagged = new QComboBox(body_);
+                jagged->setObjectName(QStringLiteral("combo_satinJagged"));
+                jagged->addItems(jaggedItems());
+                jagged->setCurrentIndex(static_cast<int>(p.jagged));
+                jagged->setToolTip(tr("Raccourcit au hasard (reproductible) un ou deux côtés de "
+                                      "la colonne : fourrure, herbe."));
+                form->addRow(tr("Bord irrégulier :"), jagged);
+                bindEnumField<T>(this, edit, jagged, tr("Bord irrégulier"), &T::jagged, members);
+                auto* jaggedAmp =
+                    mmSpin(to_millimeters(p.jagged_amplitude).value, 6.0, 0.2,
+                           tr("Raccourcissement maximal d'un fil du bord irrégulier."));
+                jaggedAmp->setObjectName(QStringLiteral("spin_satinJaggedAmplitude"));
+                jaggedAmp->setKeyboardTracking(false);
+                form->addRow(tr("Amplitude du bord :"), jaggedAmp);
+                bindMm(jaggedAmp, tr("Amplitude du bord irrégulier"), &T::jagged_amplitude);
+                auto* jaggedSeed = new QSpinBox(body_);
+                jaggedSeed->setObjectName(QStringLiteral("spin_satinJaggedSeed"));
+                jaggedSeed->setKeyboardTracking(false);
+                jaggedSeed->setRange(0, 999'999);
+                jaggedSeed->setValue(static_cast<int>(p.jagged_seed));
+                jaggedSeed->setToolTip(tr("Graine du hasard : change le motif du bord."));
+                form->addRow(tr("Graine du bord :"), jaggedSeed);
+                connect(jaggedSeed, &QSpinBox::valueChanged, this, [edit](int v) {
+                    edit(tr("Graine du bord irrégulier"),
+                         [v](T& t) { t.jagged_seed = static_cast<std::uint32_t>(v); });
+                });
                 bindMm(density, tr("Espacement"), &T::density);
                 bindMm(comp, tr("Compensation de tirage"), &T::pull_compensation);
                 bindBool(underlay, tr("Sous-couche centrale"), &T::center_underlay);
@@ -2208,6 +2240,32 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 form->addRow(tr("Seuil de coin :"), cornerAngle);
                 connect(cornerAngle, &QDoubleSpinBox::valueChanged, this, [edit](double v) {
                     edit(tr("Seuil de coin"), [v](T& t) { t.corner_threshold = from_deg(v); });
+                });
+                auto* jagged = new QComboBox(body_);
+                jagged->setObjectName(QStringLiteral("combo_autoSatinJagged"));
+                jagged->addItems(jaggedItems());
+                jagged->setCurrentIndex(static_cast<int>(p.jagged));
+                jagged->setToolTip(tr("Raccourcit au hasard (reproductible) un ou deux côtés de "
+                                      "la colonne : fourrure, herbe."));
+                form->addRow(tr("Bord irrégulier :"), jagged);
+                bindEnumField<T>(this, edit, jagged, tr("Bord irrégulier"), &T::jagged, members);
+                auto* jaggedAmp =
+                    mmSpin(to_millimeters(p.jagged_amplitude).value, 6.0, 0.2,
+                           tr("Raccourcissement maximal d'un fil du bord irrégulier."));
+                jaggedAmp->setObjectName(QStringLiteral("spin_autoSatinJaggedAmplitude"));
+                jaggedAmp->setKeyboardTracking(false);
+                form->addRow(tr("Amplitude du bord :"), jaggedAmp);
+                bindMm(jaggedAmp, tr("Amplitude du bord irrégulier"), &T::jagged_amplitude);
+                auto* jaggedSeed = new QSpinBox(body_);
+                jaggedSeed->setObjectName(QStringLiteral("spin_autoSatinJaggedSeed"));
+                jaggedSeed->setKeyboardTracking(false);
+                jaggedSeed->setRange(0, 999'999);
+                jaggedSeed->setValue(static_cast<int>(p.jagged_seed));
+                jaggedSeed->setToolTip(tr("Graine du hasard : change le motif du bord."));
+                form->addRow(tr("Graine du bord :"), jaggedSeed);
+                connect(jaggedSeed, &QSpinBox::valueChanged, this, [edit](int v) {
+                    edit(tr("Graine du bord irrégulier"),
+                         [v](T& t) { t.jagged_seed = static_cast<std::uint32_t>(v); });
                 });
                 section(tr("Orientation des fils"));
                 if (group) {
@@ -2592,6 +2650,49 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                         return;
                     }
                     edit(tr("Angle"), [v](T& t) { t.angle = from_deg(v); });
+                });
+            } else if constexpr (std::is_same_v<T, document::CrossStitchParams>) {
+                // HP-STI-012 : grille de croix (taille de cellule, angle, croix complète, passes).
+                auto* cell = mmSpin(to_millimeters(p.cell).value, 8.0, 1.0,
+                                    tr("Côté d'une cellule de la grille. Plage : 1 – 8 mm."));
+                cell->setObjectName(QStringLiteral("spin_crossCell"));
+                auto* angle = new QDoubleSpinBox(body_);
+                angle->setObjectName(QStringLiteral("spin_crossAngle"));
+                angle->setKeyboardTracking(false);
+                angle->setRange(0.0, 359.9);
+                angle->setDecimals(1);
+                angle->setWrapping(true);
+                angle->setSuffix(tr(" °"));
+                angle->setToolTip(tr("Orientation de la grille : 0° = rangées horizontales, sens "
+                                     "trigonométrique."));
+                angle->setValue(std::fmod(std::fmod(to_deg(p.grid_angle), 360.0) + 360.0, 360.0));
+                auto* full = new QCheckBox(tr("Croix complète"), body_);
+                full->setObjectName(QStringLiteral("check_crossFull"));
+                full->setToolTip(tr("Décochée : demi-croix (une seule jambe « / » par cellule)."));
+                full->setChecked(p.full_cross);
+                auto* passes = new QSpinBox(body_);
+                passes->setObjectName(QStringLiteral("spin_crossPasses"));
+                passes->setKeyboardTracking(false);
+                passes->setRange(1, 3);
+                passes->setValue(p.passes);
+                passes->setToolTip(tr("Nombre de passes de chaque rangée de croix (1 – 3)."));
+                auto* underpath = new QCheckBox(tr("Liaisons cousues cachées"), body_);
+                underpath->setObjectName(QStringLiteral("check_crossUnderpath"));
+                underpath->setChecked(p.hidden_underpath);
+                form->addRow(tr("Taille de cellule :"), cell);
+                form->addRow(tr("Angle de la grille :"), angle);
+                form->addRow(tr("Passes :"), passes);
+                form->addRow(QString(), full);
+                form->addRow(QString(), underpath);
+                bindMm(cell, tr("Taille de cellule"), &T::cell);
+                bindInt(passes, tr("Passes"), &T::passes);
+                bindBool(full, tr("Croix complète"), &T::full_cross);
+                bindBool(underpath, tr("Liaisons cousues cachées"), &T::hidden_underpath);
+                connect(angle, &QDoubleSpinBox::valueChanged, this, [edit, angle](double v) {
+                    if (!takeMixed(angle, v)) {
+                        return;
+                    }
+                    edit(tr("Angle de la grille"), [v](T& t) { t.grid_angle = from_deg(v); });
                 });
             }
         },

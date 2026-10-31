@@ -44,6 +44,10 @@ Compression (2026-10) : l'image PNG, déjà compressée, est stockée telle quel
   `sectionIndex`, `sectionCount` et les identifiants optionnels
   `startJunction`/`endJunction`. Ces identifiants sont locaux au réseau défini
   par `sourceVector`; l'absence de `topology` désigne un satin isolé/historique.
+  Le variant `crossStitch` (HP-STI-012, point de croix) porte `cell` (µm, [1000 ; 8000], défaut
+  2500), `gridAngle` (radians, défaut 0), `fullCross` (booléen, défaut vrai ; faux = demi-croix),
+  `passes` ([1 ; 3], défaut 1) et `hiddenUnderpath` (défaut vrai) — toutes les clés optionnelles ;
+  un lecteur sans ce type refuse le fichier (« Type de point inconnu »), `schemaVersion` inchangé.
   Le `tatami` porte de même ses réglages avancés (Lot 7) : `underlayEdge`,
   `underlayParallel`, `underlayInset`, `underlaySpacing`, `hiddenUnderpath` et
   `entryPoint` — optionnels et rétrocompatibles. Le `directional`
@@ -95,7 +99,10 @@ Compression (2026-10) : l'image PNG, déjà compressée, est stockée telle quel
   (`width` µm [500 ; 20000], `side` 0 centré / 1 intérieur / 2 extérieur,
   `corner` 0 vifs / 1 arrondis, `pathSet`, `ring` : anneau suivi du vecteur
   source, HP-STI-004) ; satin et auto-satin `cornerMode` (0 aucun, 1 onglet, 2 chevauchement, 3 coupe)
-  et `cornerThreshold` (radians, [15° ; 150°], défaut 60° ; HP-ENG-005). Aucun changement de `schemaVersion` : un ancien lecteur
+  et `cornerThreshold` (radians, [15° ; 150°], défaut 60° ; HP-ENG-005) ; satin et auto-satin
+  `jagged` (0 aucun, 1 côté A, 2 côté B, 3 les deux), `jaggedAmplitude` (µm, [200 ; 6000], défaut 1500)
+  et `jaggedSeed` (entier non signé, défaut 1) : bord irrégulier, écrits hors défaut seulement
+  (HP-STI-022). Aucun changement de `schemaVersion` : un ancien lecteur
   ignore ces clés.
 
 ### Fil de nuancier d'un objet (schéma v6)
