@@ -24,6 +24,26 @@ void UndoStack::execute(std::unique_ptr<ICommand> command, document::Project& pr
     redo_.clear();
     lastExecute_ = now;
     mergeable_ = !undo_.back()->mergeKey().empty();
+    trimToDepth();
+}
+
+void UndoStack::setMaxDepth(std::size_t maxDepth) {
+    maxDepth_ = maxDepth;
+    trimToDepth();
+}
+
+void UndoStack::trimToDepth() {
+    if (maxDepth_ == 0 || undo_.size() <= maxDepth_) {
+        return;
+    }
+    const std::size_t drop = undo_.size() - maxDepth_;
+    undo_.erase(undo_.begin(), undo_.begin() + static_cast<std::ptrdiff_t>(drop));
+    // L'état propre décalé : s'il tombe avant le plus ancien pas conservé, il est inatteignable.
+    if (cleanIndex_ >= 0) {
+        cleanIndex_ = cleanIndex_ >= static_cast<long long>(drop)
+                          ? cleanIndex_ - static_cast<long long>(drop)
+                          : -1;
+    }
 }
 
 bool UndoStack::undo(document::Project& project) {

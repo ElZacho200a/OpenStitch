@@ -3880,10 +3880,12 @@ une entrée P0 ouverte (§0.4).
 
 ### 27bis.3 Performance et mémoire (PERF)
 
-### HP-PERF-010 — Pile d'annulation bornée et commandes delta [P1] — ☐ À faire
+### HP-PERF-010 — Pile d'annulation bornée et commandes delta [P1] — ◐ Partiel
 - État OpenStitch : `ReplaceProjectCommand` garde deux copies complètes du `Project` (avant/après) ; `UndoStack` n'a aucune profondeur maximale (`replace_project_command.hpp:23-30`, `undo_stack.cpp`).
 - À faire : (a) profondeur maximale réglable avec compactage du plus ancien pas ; (b) commandes delta pour les éditions d'objet (stocker l'objet modifié, pas le projet) ; mesure de mémoire d'abord (HP-PERF-007).
 - Modules : `libs/commands`, `libs/document`.
+- Livré : (a) `UndoStack::setMaxDepth` (0 = illimitée, défaut) : élimination des plus anciens pas, état propre recalculé (inatteignable si éliminé), pas conservés inchangés ; 3 tests Catch2.
+- Reste : câblage bureau (réglage de profondeur), (b) commandes delta pour `ReplaceProjectCommand` (non mesuré), borne en octets.
 - Dépend de : HP-PERF-007.
 - Acceptation : une édition d'objet sur un projet de 2000 objets alloue un delta ; mémoire de la pile bornée ; undo/redo exacts (test de rejeu et HP-QA-015).
 
