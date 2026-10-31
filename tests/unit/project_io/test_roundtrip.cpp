@@ -126,6 +126,7 @@ document::Project rich_project() {
     sp.lock_passes = 3;
     sp.auto_spacing = true;
     sp.corner_mode = document::SatinCorner::Overlap;
+    sp.corner_threshold = Angle{1.5};
     sp.entry_point = Vec2um{Micrometers{1'234}, Micrometers{5'678}};
     sat.params = sp;
     project.embroidery_objects.push_back(sat);
@@ -410,6 +411,7 @@ TEST_CASE("projet complet : save puis load = memes donnees") {
     CHECK(loadedSatin.lock_passes == 3);
     CHECK(loadedSatin.auto_spacing);
     CHECK(loadedSatin.corner_mode == document::SatinCorner::Overlap);
+    CHECK(loadedSatin.corner_threshold == Angle{1.5});
     REQUIRE(loadedSatin.entry_point.has_value());
     CHECK(*loadedSatin.entry_point == Vec2um{Micrometers{1'234}, Micrometers{5'678}});
     CHECK_FALSE(loadedSatin.exit_point.has_value());

@@ -414,6 +414,12 @@ TEST_CASE("param ops set_params on satin types", "[project_ops][params]") {
     REQUIRE(s != nullptr);
     CHECK(s->auto_spacing);
     CHECK(s->corner_mode == document::SatinCorner::Miter);
+    REQUIRE(run(p, R"({"op":"set_params","object":4,"params":{"corner_threshold_deg":90}})").ok);
+    s = std::get_if<document::SatinParams>(&p.findEmbroidery(ObjectId{4})->params);
+    REQUIRE(s != nullptr);
+    CHECK(std::abs(s->corner_threshold.radians - std::numbers::pi / 2.0) < 1e-9);
+    expect_refused(p, R"({"op":"set_params","object":4,"params":{"corner_threshold_deg":200}})",
+                   project_ops::code::kOutOfRange);
     expect_refused(p, R"({"op":"set_params","object":4,"params":{"corner_mode":"round"}})",
                    project_ops::code::kOutOfRange);
     // La topologie et la bordure ne sont pas modifiables ici : refus nommé.

@@ -780,6 +780,15 @@ void PropertiesPanelTest::satinSpacingAndCornersAreEditableOnBothSatinKinds() {
         corner->setCurrentIndex(3);
         QVERIFY(emitted.has_value());
         QCOMPARE(std::get<doc::SatinParams>(*emitted).corner_mode, doc::SatinCorner::Cut);
+        auto* threshold =
+            panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_satinCornerThreshold"));
+        QVERIFY(threshold != nullptr);
+        QCOMPARE(threshold->value(), 60.0);
+        emitted.reset();
+        threshold->setValue(100.0);
+        QVERIFY(emitted.has_value());
+        QVERIFY(std::abs(std::get<doc::SatinParams>(*emitted).corner_threshold.radians -
+                         100.0 * std::numbers::pi / 180.0) < 1e-9);
     }
     {
         PropertiesPanel panel;
@@ -793,6 +802,14 @@ void PropertiesPanelTest::satinSpacingAndCornersAreEditableOnBothSatinKinds() {
         corner->setCurrentIndex(1);
         QVERIFY(emitted.has_value());
         QCOMPARE(std::get<AutoSatinParams>(*emitted).corner_mode, doc::SatinCorner::Miter);
+        auto* threshold =
+            panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_autoSatinCornerThreshold"));
+        QVERIFY(threshold != nullptr);
+        emitted.reset();
+        threshold->setValue(80.0);
+        QVERIFY(emitted.has_value());
+        QVERIFY(std::abs(std::get<AutoSatinParams>(*emitted).corner_threshold.radians -
+                         80.0 * std::numbers::pi / 180.0) < 1e-9);
         emitted.reset();
         spacing->setChecked(true);
         QVERIFY(emitted.has_value());
