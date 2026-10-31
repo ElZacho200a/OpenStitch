@@ -84,10 +84,42 @@ struct FabricRiskOptions {
     bool heatmap{false};
 };
 
+// Classes de risque d'une case de la grille, pour la surimpression du bureau (vert / orange /
+// rouge). Les seuils sont ceux de l'indice relatif 0..100 : 70 est aussi la borne de
+// `hotspot_area_mm2`. Heuristique non calibree, comme l'indice dont elle derive.
+enum class FabricRiskLevel : std::uint8_t {
+    None = 0,     // aucun fil dans la case
+    Low = 1,      // indice < 40
+    Moderate = 2, // 40 <= indice < 70
+    High = 3,     // indice >= 70
+};
+inline constexpr double kFabricRiskModerateScore = 40.0;
+inline constexpr double kFabricRiskHighScore = 70.0;
+
+// Pure et deterministe. Un indice <= 0 (ou non fini) donne `None`.
+[[nodiscard]] FabricRiskLevel classify_fabric_risk(double score);
+
+// Grille spatiale de cases classees, dans le repere du modele (µm, Y vers le haut) : la case
+// (col, row) couvre x dans [top_left.x + col*cell, +cell] et y dans
+// [top_left.y - (row+1)*cell, top_left.y - row*cell] (rangee 0 = haut).
+struct FabricRiskGrid {
+    int cols{0};
+    int rows{0};
+    Micrometers cell{0};
+    Vec2um top_left{};
+    std::vector<FabricRiskLevel> levels; // rangee par rangee, taille cols * rows
+
+    [[nodiscard]] FabricRiskLevel at(int col, int row) const {
+        return levels[static_cast<std::size_t>(row) * static_cast<std::size_t>(cols) +
+                      static_cast<std::size_t>(col)];
+    }
+};
+
 struct FabricRiskReport {
     std::string json; // openstitch.fabric-risk/1
     std::string text;
     std::vector<std::uint8_t> heatmap_png;
+    FabricRiskGrid grid; // memes cases que la carte PNG et que le JSON
     double max_score{0.0};
     double p99_score{0.0};
     double hotspot_area_mm2{0.0}; // score >= 70

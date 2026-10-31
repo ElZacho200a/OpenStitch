@@ -300,6 +300,16 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.corner_threshold != document::SatinParams{}.corner_threshold) {
                     j["cornerThreshold"] = p.corner_threshold.radians;
                 }
+                // HP-STI-022 : bord irrégulier, écrit seulement hors défaut.
+                if (p.jagged != document::SatinJagged::None) {
+                    j["jagged"] = static_cast<int>(p.jagged);
+                }
+                if (p.jagged_amplitude != document::SatinParams{}.jagged_amplitude) {
+                    j["jaggedAmplitude"] = p.jagged_amplitude.value;
+                }
+                if (p.jagged_seed != document::SatinParams{}.jagged_seed) {
+                    j["jaggedSeed"] = p.jagged_seed;
+                }
                 if (p.border) {
                     j["border"] = {{"width", p.border->width.value},
                                    {"side", static_cast<int>(p.border->side)},
@@ -436,6 +446,16 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.corner_threshold != document::AutoSatinParams{}.corner_threshold) {
                     j["cornerThreshold"] = p.corner_threshold.radians;
                 }
+                // HP-STI-022 : bord irrégulier, écrit seulement hors défaut.
+                if (p.jagged != document::SatinJagged::None) {
+                    j["jagged"] = static_cast<int>(p.jagged);
+                }
+                if (p.jagged_amplitude != document::AutoSatinParams{}.jagged_amplitude) {
+                    j["jaggedAmplitude"] = p.jagged_amplitude.value;
+                }
+                if (p.jagged_seed != document::AutoSatinParams{}.jagged_seed) {
+                    j["jaggedSeed"] = p.jagged_seed;
+                }
                 // Méthode : par nom, seulement si elle n'est pas le défaut (le fichier reste
                 // lisible par une version antérieure tant que le squelette est utilisé).
                 if (p.strategy != document::AutoSatinStrategy::Skeleton) {
@@ -507,6 +527,13 @@ json params_to_json(const document::StitchParams& params) {
                      {"rowSpacing", p.row_spacing.value},
                      {"stitchLength", p.stitch_length.value},
                      {"inset", p.inset.value},
+                     {"hiddenUnderpath", p.hidden_underpath}};
+            } else if constexpr (std::is_same_v<T, document::CrossStitchParams>) {
+                j = {{"type", "crossStitch"},
+                     {"cell", p.cell.value},
+                     {"gridAngle", p.grid_angle.radians},
+                     {"fullCross", p.full_cross},
+                     {"passes", p.passes},
                      {"hiddenUnderpath", p.hidden_underpath}};
             }
             return j;
@@ -605,6 +632,10 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.corner_threshold =
             Angle{std::clamp(j.value("cornerThreshold", p.corner_threshold.radians),
                              0.2617993877991494, 2.6179938779914940)};
+        p.jagged = static_cast<document::SatinJagged>(std::clamp(j.value("jagged", 0), 0, 3));
+        p.jagged_amplitude = Micrometers{std::clamp<std::int32_t>(
+            j.value("jaggedAmplitude", p.jagged_amplitude.value), 200, 6'000)};
+        p.jagged_seed = j.value("jaggedSeed", p.jagged_seed);
         if (j.contains("border") && j.at("border").is_object()) {
             const auto& bj = j.at("border");
             document::BorderSatinSpec spec;
@@ -823,6 +854,10 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.corner_threshold =
             Angle{std::clamp(j.value("cornerThreshold", p.corner_threshold.radians),
                              0.2617993877991494, 2.6179938779914940)};
+        p.jagged = static_cast<document::SatinJagged>(std::clamp(j.value("jagged", 0), 0, 3));
+        p.jagged_amplitude = Micrometers{std::clamp<std::int32_t>(
+            j.value("jaggedAmplitude", p.jagged_amplitude.value), 200, 6'000)};
+        p.jagged_seed = j.value("jaggedSeed", p.jagged_seed);
         if (j.contains("strategy")) {
             // Une méthode inconnue (fichier d'une version plus récente) est REFUSÉE : la
             // remplacer par le squelette ferait changer le satin à l'insu de l'utilisateur.
@@ -952,6 +987,19 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.row_spacing = Micrometers{std::clamp(j.value("rowSpacing", 1'500), 300, 10'000)};
         p.stitch_length = Micrometers{std::clamp(j.value("stitchLength", 3'000), 1'000, 7'000)};
         p.inset = Micrometers{std::clamp(j.value("inset", 200), 0, 10'000)};
+        p.hidden_underpath = j.value("hiddenUnderpath", true);
+        return document::StitchParams{p};
+    }
+    if (type == "crossStitch") {
+        document::CrossStitchParams p;
+        const double angle = j.value("gridAngle", 0.0);
+        if (!std::isfinite(angle)) {
+            return fail(ErrorCategory::InvalidFile, "crossStitch : gridAngle invalide");
+        }
+        p.grid_angle = Angle{angle};
+        p.cell = Micrometers{std::clamp(j.value("cell", 2'500), 1'000, 8'000)};
+        p.full_cross = j.value("fullCross", true);
+        p.passes = std::clamp(j.value("passes", 1), 1, 3);
         p.hidden_underpath = j.value("hiddenUnderpath", true);
         return document::StitchParams{p};
     }

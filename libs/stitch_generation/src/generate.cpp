@@ -19,6 +19,7 @@
 #include "openstitch/stitch_generation/auto_satin_engine.hpp"
 #include "openstitch/stitch_generation/blanket_stitch.hpp"
 #include "openstitch/stitch_generation/contour_fill.hpp"
+#include "openstitch/stitch_generation/cross_stitch.hpp"
 #include "openstitch/stitch_generation/crosshatch_fill.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 #include "openstitch/stitch_generation/join.hpp"
@@ -284,6 +285,9 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
     config.auto_spacing = params.auto_spacing;
     config.corner_mode = static_cast<SatinCornerMode>(static_cast<int>(params.corner_mode));
     config.corner_angle_deg = params.corner_threshold.radians * 180.0 / std::numbers::pi;
+    config.jagged = static_cast<SatinJaggedMode>(static_cast<int>(params.jagged));
+    config.jagged_amplitude = params.jagged_amplitude;
+    config.jagged_seed = params.jagged_seed;
     // Sous-couche automatique (HP-ENG-002) : selon la largeur réelle de la colonne.
     if (params.underlay_mode == document::UnderlayMode::Auto) {
         const SatinUnderlayChoice c =
@@ -402,6 +406,9 @@ void generate_auto_satin(stitch::StitchSequence& sequence, const document::Vecto
     config.auto_spacing = params.auto_spacing;
     config.corner_mode = static_cast<SatinCornerMode>(static_cast<int>(params.corner_mode));
     config.corner_angle_deg = params.corner_threshold.radians * 180.0 / std::numbers::pi;
+    config.jagged = static_cast<SatinJaggedMode>(static_cast<int>(params.jagged));
+    config.jagged_amplitude = params.jagged_amplitude;
+    config.jagged_seed = params.jagged_seed;
     // Réglages automatiques (HP-ENG-002 sous-couche, HP-ENG-001.b tirage) : largeur moyenne de
     // la région source.
     if (params.underlay_mode == document::UnderlayMode::Auto ||
@@ -869,6 +876,22 @@ void generate_simple_fill(stitch::StitchSequence& sequence, const document::Vect
     }
 }
 
+// Point de croix (HP-STI-012) : pas de retrait de bord (les cellules sont choisies par leur
+// centre), îlots dans l'ordre de couture, liaisons longues cachées.
+void generate_cross_stitch(stitch::StitchSequence& sequence, const document::VectorObject& source,
+                           const document::EmbroideryObject& object,
+                           const document::CrossStitchParams& params) {
+    for (const geometry::PathSet& region :
+         fill_regions_in_sewing_order(sequence, source, Micrometers{0})) {
+        std::optional<FillLinker> linker;
+        if (params.hidden_underpath) {
+            linker.emplace(region, Micrometers{3'000}, Micrometers{600});
+        }
+        emit_fill(sequence, fill_cross_stitch(region, params), object.id,
+                  linker ? &*linker : nullptr);
+    }
+}
+
 } // namespace
 
 namespace {
@@ -1123,6 +1146,8 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                     generate_simple_fill(chunk, *unit.source, object, params, fill_spiral);
                 } else if constexpr (std::is_same_v<T, document::CrosshatchFillParams>) {
                     generate_simple_fill(chunk, *unit.source, object, params, fill_crosshatch);
+                } else if constexpr (std::is_same_v<T, document::CrossStitchParams>) {
+                    generate_cross_stitch(chunk, *unit.source, object, params);
                 }
             },
             object.params);
