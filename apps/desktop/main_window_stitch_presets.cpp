@@ -13,7 +13,7 @@
 namespace openstitch::desktop {
 
 void MainWindow::buildStitchPresetMenu(QMenu* embMenu) {
-    stitchPresetMenu_ = embMenu->addMenu(tr("Préréglages de &points"));
+    stitchPresetMenu_ = embMenu->addMenu(tr("Préréglages de points"));
     stitchPresetMenu_->setObjectName(QStringLiteral("menu_stitchPresets"));
     stitchPresetMenu_->setToolTip(
         tr("Jeux de réglages de couture nommés, enregistrés dans le projet."));
