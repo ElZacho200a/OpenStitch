@@ -873,6 +873,54 @@ void PropertiesPanelTest::satinSpacingAndCornersAreEditableOnBothSatinKinds() {
         QVERIFY(emitted.has_value());
         QVERIFY(std::get<AutoSatinParams>(*emitted).auto_spacing);
     }
+    {
+        // HP-STI-022 : bord irregulier (satin a rails puis auto-satin).
+        PropertiesPanel panel;
+        EmbroideryObject e;
+        e.id = openstitch::ObjectId{54};
+        e.params = doc::SatinParams{};
+        panel.showEmbroidery(e);
+        auto* jagged = panel.findChild<QComboBox*>(QStringLiteral("combo_satinJagged"));
+        auto* amp = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_satinJaggedAmplitude"));
+        auto* seed = panel.findChild<QSpinBox*>(QStringLiteral("spin_satinJaggedSeed"));
+        QVERIFY(jagged != nullptr && amp != nullptr && seed != nullptr);
+        QCOMPARE(jagged->currentIndex(), 0);
+        QCOMPARE(amp->value(), 1.5);
+        QCOMPARE(seed->value(), 1);
+        std::optional<StitchParams> emitted;
+        QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                         [&](openstitch::ObjectId, StitchParams params) { emitted = params; });
+        jagged->setCurrentIndex(2);
+        QVERIFY(emitted.has_value());
+        QCOMPARE(std::get<doc::SatinParams>(*emitted).jagged, doc::SatinJagged::SideB);
+        emitted.reset();
+        amp->setValue(3.0);
+        QVERIFY(emitted.has_value());
+        QCOMPARE(std::get<doc::SatinParams>(*emitted).jagged_amplitude,
+                 openstitch::Micrometers{3000});
+        emitted.reset();
+        seed->setValue(77);
+        QVERIFY(emitted.has_value());
+        QCOMPARE(std::get<doc::SatinParams>(*emitted).jagged_seed, 77u);
+    }
+    {
+        PropertiesPanel panel;
+        panel.showEmbroidery(autoSatinObject(55));
+        auto* jagged = panel.findChild<QComboBox*>(QStringLiteral("combo_autoSatinJagged"));
+        auto* seed = panel.findChild<QSpinBox*>(QStringLiteral("spin_autoSatinJaggedSeed"));
+        QVERIFY(jagged != nullptr && seed != nullptr);
+        QVERIFY(panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_autoSatinJaggedAmplitude")));
+        std::optional<StitchParams> emitted;
+        QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                         [&](openstitch::ObjectId, StitchParams params) { emitted = params; });
+        jagged->setCurrentIndex(3);
+        QVERIFY(emitted.has_value());
+        QCOMPARE(std::get<AutoSatinParams>(*emitted).jagged, doc::SatinJagged::Both);
+        emitted.reset();
+        seed->setValue(5);
+        QVERIFY(emitted.has_value());
+        QCOMPARE(std::get<AutoSatinParams>(*emitted).jagged_seed, 5u);
+    }
 }
 
 void PropertiesPanelTest::borderSatinInspectorEmitsRegenerationRequests() {

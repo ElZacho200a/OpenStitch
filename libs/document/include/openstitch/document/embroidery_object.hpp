@@ -211,6 +211,9 @@ enum class SatinLock { None, BackAndForth, Triangle, MicroZigzag };
 // Coins vifs de la colonne (HP-ENG-005) : onglet (une traversée en bissectrice), chevauchement
 // (les deux branches se croisent sans traversée intermédiaire) ou coupe (saut au coin).
 enum class SatinCorner : std::uint8_t { None, Miter, Overlap, Cut };
+// Bord irrégulier de la colonne (HP-STI-022, fourrure/herbe) : côté(s) dont les pénétrations sont
+// raccourcies d'une longueur pseudo-aléatoire DÉTERMINISTE (hash de graine + indice du barreau).
+enum class SatinJagged : std::uint8_t { None, SideA, SideB, Both };
 
 // Origine « satin de bordure » (HP-STI-004) : un satin de largeur fixe suivant un
 // contour. Les rails/barreaux de `SatinParams` restent la vérité de la génération ;
@@ -275,6 +278,9 @@ struct SatinParams {
     SatinCorner corner_mode{SatinCorner::None};       // HP-ENG-005 : coins vifs
     // Changement de cap de l'axe au-delà duquel c'est un coin (radians, défaut 60° ; [15° ; 150°]).
     Angle corner_threshold{1.0471975511965976};
+    SatinJagged jagged{SatinJagged::None}; // HP-STI-022 : bord irrégulier
+    Micrometers jagged_amplitude{1'500};   // raccourcissement max (1,5 mm), plage [0,2 ; 6] mm
+    std::uint32_t jagged_seed{1};          // graine du hasard déterministe
 
     bool operator==(const SatinParams&) const = default;
 };
@@ -381,6 +387,9 @@ struct AutoSatinParams {
     bool auto_spacing{false};                   // HP-ENG-003 : pas selon la largeur locale
     SatinCorner corner_mode{SatinCorner::None}; // HP-ENG-005 : coins vifs
     Angle corner_threshold{1.0471975511965976}; // seuil de coin (radians, défaut 60°)
+    SatinJagged jagged{SatinJagged::None};      // HP-STI-022 : bord irrégulier
+    Micrometers jagged_amplitude{1'500};        // raccourcissement max (1,5 mm), [0,2 ; 6] mm
+    std::uint32_t jagged_seed{1};               // graine du hasard déterministe
 
     bool operator==(const AutoSatinParams&) const = default;
 };

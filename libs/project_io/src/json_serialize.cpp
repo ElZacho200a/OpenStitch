@@ -300,6 +300,16 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.corner_threshold != document::SatinParams{}.corner_threshold) {
                     j["cornerThreshold"] = p.corner_threshold.radians;
                 }
+                // HP-STI-022 : bord irrégulier, écrit seulement hors défaut.
+                if (p.jagged != document::SatinJagged::None) {
+                    j["jagged"] = static_cast<int>(p.jagged);
+                }
+                if (p.jagged_amplitude != document::SatinParams{}.jagged_amplitude) {
+                    j["jaggedAmplitude"] = p.jagged_amplitude.value;
+                }
+                if (p.jagged_seed != document::SatinParams{}.jagged_seed) {
+                    j["jaggedSeed"] = p.jagged_seed;
+                }
                 if (p.border) {
                     j["border"] = {{"width", p.border->width.value},
                                    {"side", static_cast<int>(p.border->side)},
@@ -435,6 +445,16 @@ json params_to_json(const document::StitchParams& params) {
                 }
                 if (p.corner_threshold != document::AutoSatinParams{}.corner_threshold) {
                     j["cornerThreshold"] = p.corner_threshold.radians;
+                }
+                // HP-STI-022 : bord irrégulier, écrit seulement hors défaut.
+                if (p.jagged != document::SatinJagged::None) {
+                    j["jagged"] = static_cast<int>(p.jagged);
+                }
+                if (p.jagged_amplitude != document::AutoSatinParams{}.jagged_amplitude) {
+                    j["jaggedAmplitude"] = p.jagged_amplitude.value;
+                }
+                if (p.jagged_seed != document::AutoSatinParams{}.jagged_seed) {
+                    j["jaggedSeed"] = p.jagged_seed;
                 }
                 // Méthode : par nom, seulement si elle n'est pas le défaut (le fichier reste
                 // lisible par une version antérieure tant que le squelette est utilisé).
@@ -612,6 +632,10 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.corner_threshold =
             Angle{std::clamp(j.value("cornerThreshold", p.corner_threshold.radians),
                              0.2617993877991494, 2.6179938779914940)};
+        p.jagged = static_cast<document::SatinJagged>(std::clamp(j.value("jagged", 0), 0, 3));
+        p.jagged_amplitude = Micrometers{std::clamp<std::int32_t>(
+            j.value("jaggedAmplitude", p.jagged_amplitude.value), 200, 6'000)};
+        p.jagged_seed = j.value("jaggedSeed", p.jagged_seed);
         if (j.contains("border") && j.at("border").is_object()) {
             const auto& bj = j.at("border");
             document::BorderSatinSpec spec;
@@ -830,6 +854,10 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.corner_threshold =
             Angle{std::clamp(j.value("cornerThreshold", p.corner_threshold.radians),
                              0.2617993877991494, 2.6179938779914940)};
+        p.jagged = static_cast<document::SatinJagged>(std::clamp(j.value("jagged", 0), 0, 3));
+        p.jagged_amplitude = Micrometers{std::clamp<std::int32_t>(
+            j.value("jaggedAmplitude", p.jagged_amplitude.value), 200, 6'000)};
+        p.jagged_seed = j.value("jaggedSeed", p.jagged_seed);
         if (j.contains("strategy")) {
             // Une méthode inconnue (fichier d'une version plus récente) est REFUSÉE : la
             // remplacer par le squelette ferait changer le satin à l'insu de l'utilisateur.

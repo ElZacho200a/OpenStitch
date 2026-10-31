@@ -441,6 +441,18 @@ TEST_CASE("param ops set_params on satin types", "[project_ops][params]") {
                    project_ops::code::kOutOfRange);
     expect_refused(p, R"({"op":"set_params","object":4,"params":{"corner_mode":"round"}})",
                    project_ops::code::kOutOfRange);
+    REQUIRE(run(p, R"({"op":"set_params","object":4,"params":{"jagged":"side_b",)"
+                   R"("jagged_amplitude_mm":2.5,"jagged_seed":42}})")
+                .ok);
+    s = std::get_if<document::SatinParams>(&p.findEmbroidery(ObjectId{4})->params);
+    REQUIRE(s != nullptr);
+    CHECK(s->jagged == document::SatinJagged::SideB);
+    CHECK(s->jagged_amplitude == Micrometers{2'500});
+    CHECK(s->jagged_seed == 42u);
+    expect_refused(p, R"({"op":"set_params","object":4,"params":{"jagged_amplitude_mm":9}})",
+                   project_ops::code::kOutOfRange);
+    expect_refused(p, R"({"op":"set_params","object":4,"params":{"jagged":"left"}})",
+                   project_ops::code::kOutOfRange);
     // La topologie et la bordure ne sont pas modifiables ici : refus nommé.
     expect_refused(p, R"({"op":"set_params","object":4,"params":{"topology":{}}})",
                    project_ops::code::kWrongType);
