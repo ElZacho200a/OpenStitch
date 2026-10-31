@@ -378,7 +378,7 @@ std::string fragment_to_json(const document::ObjectFragment& fragment) {
 
 Result<document::ObjectFragment> fragment_from_json(std::string_view text) {
     try {
-        const nlohmann::json root = nlohmann::json::parse(text, nullptr, false);
+        nlohmann::json root = nlohmann::json::parse(text, nullptr, false);
         if (!root.is_object() || !root.contains("openstitchFragment") ||
             !root.contains("document")) {
             return fail(ErrorCategory::InvalidFile,
@@ -387,6 +387,15 @@ Result<document::ObjectFragment> fragment_from_json(std::string_view text) {
         if (root.value("schemaVersion", 0) > kMaxReadableSchemaVersion) {
             return fail(ErrorCategory::InvalidFile,
                         "Objets copiés depuis une version plus récente d'OpenStitch");
+        }
+        // HP-FILE-012 : mêmes migrations que le `.osp` (le fragment partage son schéma).
+        // Un fragment sans version déclarée est lu tel quel (comportement historique).
+        if (root.contains("schemaVersion")) {
+            auto migrated = migrate_project_json(text);
+            if (!migrated) {
+                return std::unexpected(migrated.error());
+            }
+            root = nlohmann::json::parse(*migrated);
         }
         auto carrier = detail::project_from_json(root.at("document"));
         if (!carrier) {

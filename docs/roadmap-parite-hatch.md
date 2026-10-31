@@ -4204,9 +4204,9 @@ ouvrant le lot (§0.1).
 - Dépend de : HP-QA-018.
 - Acceptation : un test échoue si une clé CLI n'a pas d'équivalent MCP.
 
-### HP-FILE-012 — Fragments du presse-papiers migrés comme les `.osp` [P1] — ☐ À faire
-- État : `fragment_from_json` ne passe pas par `migrate_project_json` (`project_io.cpp:379-391`) alors que le `.osp` est migré (`:302`).
-- À faire : migrer les fragments ; version dans le fragment. [`libs/project_io`]
+### HP-FILE-012 — Fragments du presse-papiers migrés comme les `.osp` [P1] — ☑ Fait
+- Livré : `fragment_from_json` passe par `migrate_project_json` quand le fragment déclare `schemaVersion` (déjà écrit par `fragment_to_json`) ; sans version, lecture telle quelle (historique). Version 0 ou future refusée. Test : `test_schema_migrations.cpp` (fragment v3 sans `maxWidthHard` → 48 mm).
+- Reste : rien (le collage bureau appelle déjà `fragment_from_json`). [`libs/project_io`]
 - Acceptation : un fragment écrit en v≤8 se colle avec les mêmes défauts qu'un `.osp` migré (JSON forgé).
 
 ### HP-FILE-013 — Chargement `.osp` : avertissements et contrôles croisés [P2] — ☐ À faire
