@@ -1159,6 +1159,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                              : object.is_radial_fill()     ? tr("Remplissage radial")
                              : object.is_spiral_fill()     ? tr("Remplissage en spirale")
                              : object.is_crosshatch_fill() ? tr("Remplissage croisé")
+                             : object.is_cross_stitch()    ? tr("Point de croix")
                              : object.is_auto_satin()
                                  ? tr("Satin automatique (traversées orientées)")
                              : object.is_satin() ? tr("Colonne satin à rails (manuelle)")
@@ -2592,6 +2593,49 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                         return;
                     }
                     edit(tr("Angle"), [v](T& t) { t.angle = from_deg(v); });
+                });
+            } else if constexpr (std::is_same_v<T, document::CrossStitchParams>) {
+                // HP-STI-012 : grille de croix (taille de cellule, angle, croix complète, passes).
+                auto* cell = mmSpin(to_millimeters(p.cell).value, 8.0, 1.0,
+                                    tr("Côté d'une cellule de la grille. Plage : 1 – 8 mm."));
+                cell->setObjectName(QStringLiteral("spin_crossCell"));
+                auto* angle = new QDoubleSpinBox(body_);
+                angle->setObjectName(QStringLiteral("spin_crossAngle"));
+                angle->setKeyboardTracking(false);
+                angle->setRange(0.0, 359.9);
+                angle->setDecimals(1);
+                angle->setWrapping(true);
+                angle->setSuffix(tr(" °"));
+                angle->setToolTip(tr("Orientation de la grille : 0° = rangées horizontales, sens "
+                                     "trigonométrique."));
+                angle->setValue(std::fmod(std::fmod(to_deg(p.grid_angle), 360.0) + 360.0, 360.0));
+                auto* full = new QCheckBox(tr("Croix complète"), body_);
+                full->setObjectName(QStringLiteral("check_crossFull"));
+                full->setToolTip(tr("Décochée : demi-croix (une seule jambe « / » par cellule)."));
+                full->setChecked(p.full_cross);
+                auto* passes = new QSpinBox(body_);
+                passes->setObjectName(QStringLiteral("spin_crossPasses"));
+                passes->setKeyboardTracking(false);
+                passes->setRange(1, 3);
+                passes->setValue(p.passes);
+                passes->setToolTip(tr("Nombre de passes de chaque rangée de croix (1 – 3)."));
+                auto* underpath = new QCheckBox(tr("Liaisons cousues cachées"), body_);
+                underpath->setObjectName(QStringLiteral("check_crossUnderpath"));
+                underpath->setChecked(p.hidden_underpath);
+                form->addRow(tr("Taille de cellule :"), cell);
+                form->addRow(tr("Angle de la grille :"), angle);
+                form->addRow(tr("Passes :"), passes);
+                form->addRow(QString(), full);
+                form->addRow(QString(), underpath);
+                bindMm(cell, tr("Taille de cellule"), &T::cell);
+                bindInt(passes, tr("Passes"), &T::passes);
+                bindBool(full, tr("Croix complète"), &T::full_cross);
+                bindBool(underpath, tr("Liaisons cousues cachées"), &T::hidden_underpath);
+                connect(angle, &QDoubleSpinBox::valueChanged, this, [edit, angle](double v) {
+                    if (!takeMixed(angle, v)) {
+                        return;
+                    }
+                    edit(tr("Angle de la grille"), [v](T& t) { t.grid_angle = from_deg(v); });
                 });
             }
         },

@@ -494,6 +494,20 @@ struct CrosshatchFillParams {
     bool operator==(const CrosshatchFillParams&) const = default;
 };
 
+// Point de croix (HP-STI-012) : la région est remplie par une grille de croix (X) ; une cellule est
+// cousue si son centre est dans la région. Grille ancrée à l'origine du projet, tournée de
+// `grid_angle`. Valeurs bornées à la génération.
+struct CrossStitchParams {
+    Micrometers cell{2'500}; // côté d'une cellule, borné à [1 ; 8] mm — 2,5 mm
+    Angle grid_angle{0.0};   // orientation de la grille (radians)
+    bool full_cross{true}; // vrai : croix complète (« / » puis « \ ») ; faux : demi-croix « / »
+    int passes{1};         // nombre de passes de chaque tronçon de rangée, borné à [1 ; 3]
+    bool hidden_underpath{
+        true}; // liaisons longues entre tronçons cousues cachées (au lieu de sauts)
+
+    bool operator==(const CrossStitchParams&) const = default;
+};
+
 // Un objet de broderie porte un TYPE de point sous forme de variant. Chaque
 // type suit la géométrie d'un objet vectoriel source (contour pour running,
 // région pleine pour tatami) ou porte la sienne (satin). La séparation
@@ -503,7 +517,8 @@ struct CrosshatchFillParams {
 using StitchParams =
     std::variant<RunningStitchParams, TatamiParams, SatinParams, DirectionalFillParams,
                  AutoSatinParams, BlanketStitchParams, ContourFillParams, MotifRunParams,
-                 MotifFillParams, RadialFillParams, SpiralFillParams, CrosshatchFillParams>;
+                 MotifFillParams, RadialFillParams, SpiralFillParams, CrosshatchFillParams,
+                 CrossStitchParams>;
 
 // Type de point autorisé après retouche manuelle (Lot 8 MVP, §2 du cadrage) :
 // seule transition permise, Stitch <-> Jump — pas de Trim/ColorChange/Stop,
@@ -638,6 +653,9 @@ struct EmbroideryObject {
     }
     [[nodiscard]] bool is_crosshatch_fill() const {
         return std::holds_alternative<CrosshatchFillParams>(params);
+    }
+    [[nodiscard]] bool is_cross_stitch() const {
+        return std::holds_alternative<CrossStitchParams>(params);
     }
 };
 

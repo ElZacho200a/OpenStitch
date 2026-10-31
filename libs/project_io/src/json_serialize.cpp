@@ -508,6 +508,13 @@ json params_to_json(const document::StitchParams& params) {
                      {"stitchLength", p.stitch_length.value},
                      {"inset", p.inset.value},
                      {"hiddenUnderpath", p.hidden_underpath}};
+            } else if constexpr (std::is_same_v<T, document::CrossStitchParams>) {
+                j = {{"type", "crossStitch"},
+                     {"cell", p.cell.value},
+                     {"gridAngle", p.grid_angle.radians},
+                     {"fullCross", p.full_cross},
+                     {"passes", p.passes},
+                     {"hiddenUnderpath", p.hidden_underpath}};
             }
             return j;
         },
@@ -952,6 +959,19 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.row_spacing = Micrometers{std::clamp(j.value("rowSpacing", 1'500), 300, 10'000)};
         p.stitch_length = Micrometers{std::clamp(j.value("stitchLength", 3'000), 1'000, 7'000)};
         p.inset = Micrometers{std::clamp(j.value("inset", 200), 0, 10'000)};
+        p.hidden_underpath = j.value("hiddenUnderpath", true);
+        return document::StitchParams{p};
+    }
+    if (type == "crossStitch") {
+        document::CrossStitchParams p;
+        const double angle = j.value("gridAngle", 0.0);
+        if (!std::isfinite(angle)) {
+            return fail(ErrorCategory::InvalidFile, "crossStitch : gridAngle invalide");
+        }
+        p.grid_angle = Angle{angle};
+        p.cell = Micrometers{std::clamp(j.value("cell", 2'500), 1'000, 8'000)};
+        p.full_cross = j.value("fullCross", true);
+        p.passes = std::clamp(j.value("passes", 1), 1, 3);
         p.hidden_underpath = j.value("hiddenUnderpath", true);
         return document::StitchParams{p};
     }
