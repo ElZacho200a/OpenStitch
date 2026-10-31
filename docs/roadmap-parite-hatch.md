@@ -3895,7 +3895,9 @@ une entrée P0 ouverte (§0.4).
 - Dépend de : HP-PERF-007.
 - Acceptation : une édition d'objet sur un projet de 2000 objets alloue un delta ; mémoire de la pile bornée ; undo/redo exacts (test de rejeu et HP-QA-015).
 
-### HP-PERF-011 — Séquençage : index spatial et placement par blocs [P1] — ☐ À faire
+### HP-PERF-011 — Séquençage : index spatial et placement par blocs [P1] — ◐ Partiel
+- **Livré** : grille uniforme des extrémités (`PointGrid`, `order.cpp`) pour le plus proche voisin (`ByProximity`, `ColorThenProximity`, petites zones de `Layered`) au-delà de 48 objets ; départage par plus petit indice, sortie identique octet pour octet à l'ancien balayage (test `test_order_spatial.cpp` avec copie de l'ancien algorithme, réseaux à égalités exactes, sens inversé, départ). `ByColor` en O(n) (regroupement par table). Mesure (build debug, 5000 objets réversibles) : ≈ 14 ms contre ≈ 3500 ms.
+- **Reste** : variante par blocs au-delà d'un seuil ; l'amélioration locale `improve_sequence` (2-opt/Or-opt, budgétée) garde un coût O(n) par candidat ; banc `tests/bench` à étendre à 1000+ objets avec seuil.
 - État OpenStitch : `optimization/order.cpp` — plus proche voisin en O(n²) (≈ l.45-53) et placement libre en O(n²) (≈ l.130-170).
 - À faire : grille/kd-tree pour le plus proche voisin ; variante par blocs au-delà d'un seuil ; départage déterministe identique (HP-QA-011).
 - Modules : `libs/optimization`.
