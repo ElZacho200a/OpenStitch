@@ -1256,7 +1256,8 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
             }
         };
         connect(knockoutCheck, &QCheckBox::toggled, this, emitKnockout);
-        connect(knockoutMargin, &QDoubleSpinBox::editingFinished, this, emitKnockout);
+        knockoutMargin->setKeyboardTracking(false); // un seul signal par saisie validée
+        connect(knockoutMargin, &QDoubleSpinBox::valueChanged, this, emitKnockout);
     }
 
     building_ = true;
