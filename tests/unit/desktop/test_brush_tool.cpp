@@ -219,6 +219,20 @@ private slots:
         QVERIFY(!f.window.undoStack_.canUndo());
     }
 
+    void strokeSuspendsTheStitchLayerUntilItEnds() {
+        Fixture f;
+        setup(f);
+        QVERIFY(!f.window.stitchLayerSuspended_);
+        stroke(f.view, QPointF(19.0, 0.0), QPointF(25.0, 0.0), 6, Qt::NoModifier, false);
+        QVERIFY(f.window.stitchLayerSuspended_);
+        QVERIFY(f.window.stitchItems_.isEmpty());
+        f.window.cancelBrushStroke();
+        QVERIFY(!f.window.stitchLayerSuspended_);
+        stroke(f.view, QPointF(19.0, 0.0), QPointF(25.0, 0.0), 6);
+        QTest::qWait(20);
+        QVERIFY(!f.window.stitchLayerSuspended_);
+    }
+
     void leavingTheToolRemovesTheRing() {
         Fixture f;
         setup(f);
