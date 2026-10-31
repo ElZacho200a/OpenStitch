@@ -1395,7 +1395,7 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   mieux (mesure : régularité de la direction des fils).
 
 ### HP-ENG-010 — Entrée et sortie automatiques au plus proche [P0] — ◐ Partiel
-- Livré (2026-10-25) : extrémités d'entrée/sortie et sens dans `libs/optimization` (`plan_order`), départ de contour fermé au sommet le plus proche (`join.cpp`). Reste : aucun appelant ne fournit encore les extrémités réelles des objets.
+- Livré (2026-10-25) : extrémités d'entrée/sortie et sens dans `libs/optimization` (`plan_order`), départ de contour fermé au sommet le plus proche (`join.cpp`). Livré (2026-10-31) : l'op `optimize_order` et « Appliquer » du bureau fournissent les extrémités réelles (`stitch::object_endpoints`) ; le « Trajet estimé » du panneau Ordre les utilise aussi (même coût avant/après application). Reste : le sens `reversed` de `plan_order` n'est pas appliqué aux objets (`optimize_order` ne rend que l'ordre), l'auto-numérisation ordonne encore par centres, mesure sur « marine » / `tentabrode`.
 - Livré 2026-10-10 : choix automatique du sens de couture de chaque objet
   (`auto_join` global + `join` par objet, `orient_chunk`), entrée des satins depuis la
   fin de l'objet précédent ; scène de référence : sauts 116,0 → 102,6 mm
@@ -4581,4 +4581,4 @@ ouvrant le lot (§0.1).
 | 2026-10-31 | Claude (agents ENG-009, VIEW-009) | **Aucun code livré.** ENG-009 bloquée par HP-STI-018 (satin tournant absent du dépôt) ; VIEW-009 : `DeviceCoordinateCache` mesuré et rejeté (régression au zoom fort). Constats consignés dans chaque entrée. |
 | 2026-10-31 | Claude (HP-ENG-010) | **HP-ENG-010 ◐** : `stitch::object_endpoints` + extrémités réelles fournies à `plan_order`/`optimize_order` par l'op `optimize_order` et le bureau (test Catch2 `object_endpoints`). `reversible` et mesure sur corpus restent. |
 | 2026-10-31 | Claude (pinceau) | Pinceau fluide avec rendu réaliste : la couche points est suspendue pendant un coup de pinceau (plus de repeinture de la texture sous la forme à chaque touche), reconstruite à la fin ou à l'annulation. Test QTest `strokeSuspendsTheStitchLayerUntilItEnds`. Aucune entrée HP concernée. |
-
+| 2026-10-31 | Claude (HP-ENG-010) | **HP-ENG-010 ◐** : le « Trajet estimé » du panneau Ordre utilise les extrémités réelles de couture (comme « Appliquer » et l'op `optimize_order`), plus les centres ; infobulle et traduction alignées. Reste : sens `reversed` non appliqué, auto-numérisation par centres. |
