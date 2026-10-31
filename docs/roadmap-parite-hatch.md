@@ -3376,7 +3376,7 @@ migration `.osp` pour ces seuls besoins ; la segmentation IA reste hors périmè
 - Reste pour fermeture : CI Windows Qt et tests complets à valider, enrichir
   les raisons de désactivation absentes des QAction et les alias métier.
 
-### HP-UX-047 — Différencier couleurs de régions, d'objets et fils [P1] — ☐ À faire
+### HP-UX-047 — Différencier couleurs de régions, d'objets et fils [P1] — ◐ Partiel (2026-10-27)
 - Besoin : fausses couleurs de segmentation, couleurs d'objets et références
   réelles des fils représentent trois informations distinctes. Les réglages
   de réduction des couleurs se retrouvent à plusieurs endroits (PAR-16 du
@@ -3395,6 +3395,13 @@ migration `.osp` pour ces seuls besoins ; la segmentation IA reste hors périmè
   un changement de fil est annulable par une seule `ICommand` et apparaît
   dans le récapitulatif d'export ; le rôle n'est pas signalé par la couleur
   seule ; tests Qt.
+- En PR (2026-10-27) : dock renommé « Couleurs de segmentation », légende
+  permanente explicitant qu'une teinte de région n'est pas une référence de
+  fil, info-bulles contextualisées et légende distincte dans l'onglet Projet
+  du panneau Fils. Deux QTests valident les libellés et leur accessibilité.
+- Reste : lier les trois rôles dans une vue contextuelle (région → couleur
+  d'objet → référence de fil) et vérifier le résultat visuellement ; aucune
+  transformation de points ni changement d'attribution dans ce premier lot.
 
 ### HP-UX-048 — Comparer original et aperçu avant transformation [P2] — ◐ Partiel (2026-10-27, branche feat/ux-048-segmentation-before-after-20261027)
 - Besoin : HP-VIEW-012 couvre l'aperçu direct mais ne pose pas un comportement
@@ -4479,6 +4486,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-27 | ChatGPT (audit UI/UX, PR 5) | HP-UX-047 ◐ : distinguer visuellement et textuellement teintes de segmentation, couleurs d'objets et références de fils ; QTests, sans modifier ni broderie ni export. |
 | 2026-10-30 | Claude (analyse multi-agents, passe 2) | **Seconde passe sans limite de tours** : six agents haiku `general-purpose` relisent les mêmes domaines en profondeur ; **+61 entrées** (§27ter, lots G à L) : écriture atomique et durable, fragments non migrés, trim VP3 perdu, mode contour « running » inopérant, refusion après limite de fils, vectorisation en O(régions × pixels), lignes cohérentes en série, compensation du tirage des autres remplissages, chevron/plume, CI (cache Qt, tests Python jamais lancés), UX presse-papiers/simulation. Entrées « à vérifier » non confirmées à l'exécution ; aucun code modifié ; HP-OBJ-017 et HP-OBJ-021 à recontrôler. |
 | 2026-10-30 | Claude (analyse multi-agents) | **Analyse complète des fonctionnalités et plan d'amélioration** : six agents haiku (IHM, pipeline image, génération de points, document/commandes/rendu, formats/lettrage, CLI/MCP/CI) ; **+51 entrées** HP-QA-011 à 020, HP-PERF-010 à 022, HP-AUTO-014 à 019, HP-UX-050 à 056, HP-TXT-016, HP-STI-027 à 032, HP-PROD-009, HP-FMT-023 à 026, HP-THR-013, HP-DIST-008, HP-HELP-005 (§27bis, lots A à F). Entrées non vérifiées à l'exécution (marquées « à vérifier »). Aucun code modifié ; HP-OBJ-021 à recontrôler (HP-UX-054). |
 | 2026-10-29 | ChatGPT (HP-OBJ-001/005) | **Redimensionnement collectif sur le canevas** : quatre poignées sur la boîte commune, Maj conserve les proportions, aperçu des dimensions ; une transformation et une annulation pour les formes et leurs paramètres de points. Tests QTest : cadre, glisser et restauration du groupe. En PR, CI à vérifier ; restent les poignées latérales et le redimensionnement autour du centre (Alt). |
