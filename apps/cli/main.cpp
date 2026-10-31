@@ -1951,7 +1951,20 @@ int main(int argc, char** argv) {
     auto* commands_cmd = openstitch_cli::register_commands_listing(app, json_out);
     auto* ai_cmd = openstitch_cli::register_ai_commands(app);
 
-    CLI11_PARSE(app, argc, argv);
+    // HP-FILE-014 : `--settings profil.json` est développé en options équivalentes avant le parse.
+    {
+        argv = app.ensure_utf8(argv);
+        std::vector<std::string> args(argv + 1, argv + argc);
+        if (const auto refused = openstitch_cli::expand_settings_profile(app, args)) {
+            return *refused;
+        }
+        std::ranges::reverse(args); // CLI11 attend les arguments en ordre inverse
+        try {
+            app.parse(args);
+        } catch (const CLI::ParseError& e) {
+            return app.exit(e);
+        }
+    }
 
     if (project_cmd->parsed() || commands_cmd->parsed()) {
         return openstitch_cli::project_exit_code();

@@ -12,6 +12,7 @@ add_executable(test_project_ops
     test_analysis.cpp
     test_auto_satin_service.cpp
     test_live_bridge.cpp
+    test_settings_profile.cpp
 )
 target_link_libraries(test_project_ops
     PRIVATE openstitch::project_ops openstitch::project_io openstitch::stitch_generation
