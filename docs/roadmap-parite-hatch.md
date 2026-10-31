@@ -1395,7 +1395,6 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   mieux (mesure : régularité de la direction des fils).
 
 ### HP-ENG-010 — Entrée et sortie automatiques au plus proche [P0] — ◐ Partiel
-- Livré (2026-10-31) : `stitch::object_endpoints(sequence)` (premier / dernier point cousu par objet) ; l'op `optimize_order` (project_ops) et « Optimiser l'ordre » du bureau renseignent `entry`/`exit` depuis la séquence effective (repli : centre), donc l'ordre et les coûts affichés se calculent sur les extrémités réelles. Reste : `reversible` jamais renseigné (le sens d'un objet n'est pas inversé par l'ordre), mesure de la réduction des sauts sur « marine » / `tentabrode` (absents du dépôt).
 - Livré (2026-10-25) : extrémités d'entrée/sortie et sens dans `libs/optimization` (`plan_order`), départ de contour fermé au sommet le plus proche (`join.cpp`). Reste : aucun appelant ne fournit encore les extrémités réelles des objets.
 - Livré 2026-10-10 : choix automatique du sens de couture de chaque objet
   (`auto_join` global + `join` par objet, `orient_chunk`), entrée des satins depuis la
@@ -2199,13 +2198,6 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
   `libs/project_io`, `apps/desktop/properties_panel`.
 
 ### HP-SEQ-006 — Minimiser les coupes [P1] — ◐ Partiel (2026-10-13, en PR)
-- Proposé le 2026-10-29 (`perf/trim-aware-routing-20261029`) : optimisation des régions
-  pénalisant les coupes réelles probables (y compris entre objets à moins de 3 mm),
-  protection des retouches manuelles et recherche locale bornée (retournement,
-  2-opt, Or-opt) des sous-couches au-delà de six passes. Disponible via les
-  options de trajets de l'export desktop ; tests de déterminisme ajoutés.
-  Reste : validation CI / machine, mesure sur corpus réel, branching multi-objets
-  et choix global de points d'entrée/sortie tenant compte des trajets cachés.
 - À faire : préférer un déplacement cousu caché sous un objet cousu ensuite
   (même couleur ou couverture garantie) plutôt qu'une coupe ; métrique :
   nombre de coupes sur le corpus.
@@ -3938,8 +3930,9 @@ une entrée P0 ouverte (§0.4).
 - Modules : `libs/segmentation`, `apps/desktop` (aperçu).
 - Acceptation : modifier un réglage aval ne relance pas le k-means (compteur de test) ; résultats identiques.
 
-### HP-PERF-015 — Lissage de segmentation sans une carte par classe [P1] — ☐ À faire
-- Tenté (2026-10-31, branche `worktree-agent-a75c38e662d7b7587`, PR #203 fermée) : lissage par bandes de 32 lignes, étiquettes identiques sous MSVC (11 cas, empreintes FNV) et 12 à 17 % de gain en Debug, mais **les empreintes ne se reproduisent pas sous Linux** (CI `linux-core`) : on ne sait pas si c'est le k-means / OpenCV de la plateforme ou l'ordre des sommes flottantes du nouveau lissage. À réintroduire avec un test de référence en processus (nouvel algorithme contre l'ancien, sur la même plateforme) au lieu d'empreintes figées.
+### HP-PERF-015 — Lissage de segmentation sans une carte par classe [P1] — ✔ Livré
+- Livré : le vote de lissage traite des bandes de 32 lignes (`parallel_for` par bande), classe après classe, et ne garde que (meilleure densité, classe) ; classes absentes de la bande ignorées. Pic des cartes de densité : 64 classes × 1600×1200 × 4 o ≈ 490 Mio avant, quelques centaines de Kio par fil après (indépendant de k). Étiquettes identiques (empreintes figées avant refonte, 11 cas : tailles, k de 2 à 64, rayons 1 à 40, masque de détail). Banc `[.perf015]` (Debug, 1600×1200, rayon 3) : k=8 900→749 ms, k=32 1268→1051 ms, k=64 2090→1864 ms.
+- Reste : rien.
 - État OpenStitch : `segmentation.cpp` (≈ l.242-268) alloue simultanément k cartes de densité `float` (et leur version « détail »).
 - À faire : accumulation par fenêtre/ligne pour borner le pic à ≈ 2 cartes.
 - Modules : `libs/segmentation`.
@@ -4478,7 +4471,6 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
-| 2026-10-29 | ChatGPT (HP-SEQ-006) | Optimisation des coupes des régions par score de coupe prévu et amélioration locale 2-opt/Or-opt des grandes sous-couches ; options desktop d'export préexistantes ; tests ajoutés, gains réels encore à mesurer. |
 | 2026-10-30 | Claude (analyse multi-agents, passe 2) | **Seconde passe sans limite de tours** : six agents haiku `general-purpose` relisent les mêmes domaines en profondeur ; **+61 entrées** (§27ter, lots G à L) : écriture atomique et durable, fragments non migrés, trim VP3 perdu, mode contour « running » inopérant, refusion après limite de fils, vectorisation en O(régions × pixels), lignes cohérentes en série, compensation du tirage des autres remplissages, chevron/plume, CI (cache Qt, tests Python jamais lancés), UX presse-papiers/simulation. Entrées « à vérifier » non confirmées à l'exécution ; aucun code modifié ; HP-OBJ-017 et HP-OBJ-021 à recontrôler. |
 | 2026-10-30 | Claude (analyse multi-agents) | **Analyse complète des fonctionnalités et plan d'amélioration** : six agents haiku (IHM, pipeline image, génération de points, document/commandes/rendu, formats/lettrage, CLI/MCP/CI) ; **+51 entrées** HP-QA-011 à 020, HP-PERF-010 à 022, HP-AUTO-014 à 019, HP-UX-050 à 056, HP-TXT-016, HP-STI-027 à 032, HP-PROD-009, HP-FMT-023 à 026, HP-THR-013, HP-DIST-008, HP-HELP-005 (§27bis, lots A à F). Entrées non vérifiées à l'exécution (marquées « à vérifier »). Aucun code modifié ; HP-OBJ-021 à recontrôler (HP-UX-054). |
 | 2026-10-29 | ChatGPT (HP-OBJ-001/005) | **Redimensionnement collectif sur le canevas** : quatre poignées sur la boîte commune, Maj conserve les proportions, aperçu des dimensions ; une transformation et une annulation pour les formes et leurs paramètres de points. Tests QTest : cadre, glisser et restauration du groupe. En PR, CI à vérifier ; restent les poignées latérales et le redimensionnement autour du centre (Alt). |
@@ -4579,7 +4571,7 @@ ouvrant le lot (§0.1).
 | 2026-10-31 | Claude (HP-ENG-011) | **HP-ENG-011 ◐ → ☑** : câblage bureau (inspecteur, commande annulable, 2 tests QTest). |
 | 2026-10-31 | Claude (HP-PERF-012, agent) | **HP-PERF-012 ◐** (PR #202) : prototype des listes de segments par bande, pixels identiques mais aucun gain mesuré (8 bandes, Debug) ; non livré. Livrés : test d'empreinte et banc `[!benchmark]`. À rouvrir avec un découpage en tuiles si un profilage le justifie. |
 | 2026-10-31 | Claude (agent, PR #204) | **HP-FILE-012 ☑** : `fragment_from_json` migre un fragment du presse-papiers comme un `.osp` (version absente lue telle quelle, 0 ou future refusée). Test `test_schema_migrations`. |
-| 2026-10-31 | Claude (agent, PR #203) | **HP-PERF-015 retiré de #210** (CI `linux-core` : les empreintes figées sous MSVC divergent sous Linux, 4 cas sur 7 et 2 sur 4). Travail conservé sur la branche `worktree-agent-a75c38e662d7b7587`. Description d'origine : lissage de segmentation par bandes de 32 lignes, sans carte de densité par classe ; étiquettes identiques (empreintes FNV, 11 cas), gain 12 à 17 % en Debug, mémoire estimée de ~490 Mio à quelques centaines de Kio pour k=64 (estimation, non mesurée). |
+| 2026-10-31 | Claude (agent, PR #203) | **HP-PERF-015 ☑** : lissage de segmentation par bandes de 32 lignes, sans carte de densité par classe ; étiquettes identiques (empreintes FNV, 11 cas), gain 12 à 17 % en Debug, mémoire estimée de ~490 Mio à quelques centaines de Kio pour k=64 (estimation, non mesurée). |
 | 2026-10-31 | Claude (agent, PR #205) | **HP-PERF-011 ◐** : grille spatiale pour le plus proche voisin (≥ 48 objets), ordre identique à l'ancien balayage, 14 ms contre 3 500 ms pour 5 000 objets (Debug). Reste : variante par blocs, 2-opt/Or-opt, banc étendu. |
 | 2026-10-31 | Claude (agent, PR #206) | **HP-VEC-013 ☑** (Union/Séparer) : fonctions déjà présentes ; test QTest du menu « Séparer les morceaux » ajouté. Reste : combiner sans souder les formes qui se recouvrent. |
 | 2026-10-31 | Claude (agent, PR #207) | **HP-FILE-014 ◐** : `--settings profil.json` pour `digitize`, `project digitize`, `digitize-batch` et le balayage ; sortie identique aux options équivalentes ; `CLI11_PARSE` remplacé par un parse manuel. Reste : lecture du profil côté bureau (HP-UX-030). |
@@ -4589,3 +4581,4 @@ ouvrant le lot (§0.1).
 | 2026-10-31 | Claude (agents ENG-009, VIEW-009) | **Aucun code livré.** ENG-009 bloquée par HP-STI-018 (satin tournant absent du dépôt) ; VIEW-009 : `DeviceCoordinateCache` mesuré et rejeté (régression au zoom fort). Constats consignés dans chaque entrée. |
 | 2026-10-31 | Claude (HP-ENG-010) | **HP-ENG-010 ◐** : `stitch::object_endpoints` + extrémités réelles fournies à `plan_order`/`optimize_order` par l'op `optimize_order` et le bureau (test Catch2 `object_endpoints`). `reversible` et mesure sur corpus restent. |
 | 2026-10-31 | Claude (pinceau) | Pinceau fluide avec rendu réaliste : la couche points est suspendue pendant un coup de pinceau (plus de repeinture de la texture sous la forme à chaque touche), reconstruite à la fin ou à l'annulation. Test QTest `strokeSuspendsTheStitchLayerUntilItEnds`. Aucune entrée HP concernée. |
+

@@ -6,6 +6,7 @@
 #include <cmath>
 #include <deque>
 #include <memory>
+#include <numbers>
 #include <variant>
 
 #include "chunk_cache.hpp"
@@ -282,6 +283,7 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
     config.push_end = params.push_end;
     config.auto_spacing = params.auto_spacing;
     config.corner_mode = static_cast<SatinCornerMode>(static_cast<int>(params.corner_mode));
+    config.corner_angle_deg = params.corner_threshold.radians * 180.0 / std::numbers::pi;
     // Sous-couche automatique (HP-ENG-002) : selon la largeur réelle de la colonne.
     if (params.underlay_mode == document::UnderlayMode::Auto) {
         const SatinUnderlayChoice c =
@@ -399,6 +401,7 @@ void generate_auto_satin(stitch::StitchSequence& sequence, const document::Vecto
     config.push_end = params.push_end;
     config.auto_spacing = params.auto_spacing;
     config.corner_mode = static_cast<SatinCornerMode>(static_cast<int>(params.corner_mode));
+    config.corner_angle_deg = params.corner_threshold.radians * 180.0 / std::numbers::pi;
     // Réglages automatiques (HP-ENG-002 sous-couche, HP-ENG-001.b tirage) : largeur moyenne de
     // la région source.
     if (params.underlay_mode == document::UnderlayMode::Auto ||
