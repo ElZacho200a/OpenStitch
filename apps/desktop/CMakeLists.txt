@@ -84,6 +84,7 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_eyedropper.cpp
     # [cablage-C:fin]
     # [cablage-D:debut]
+    main_window_order_jumps.cpp
     # [cablage-D:fin]
     # [cablage-E:debut]
     density_overlay.cpp

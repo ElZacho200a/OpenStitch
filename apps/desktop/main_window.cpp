@@ -477,6 +477,7 @@ MainWindow::MainWindow() {
     buildDetailZonesTool();
     // [cablage-C:fin]
     // [cablage-D:debut]
+    buildOrderJumpsFeature();
     // [cablage-D:fin]
     // [cablage-E:debut]
     buildDensityFeature();
@@ -4749,8 +4750,9 @@ void MainWindow::renderStitches() {
     stitchItems_.clear();
     simMarker_ = nullptr;
     simWalkValid_ = false;
-    refreshDensityOverlay(); // HP-VIEW-005 (main_window_density.cpp)
-    refreshPullMapOverlay(); // tirage prédit (main_window_pull_preview.cpp)
+    refreshDensityOverlay();    // HP-VIEW-005 (main_window_density.cpp)
+    refreshPullMapOverlay();    // tirage prédit (main_window_pull_preview.cpp)
+    refreshOrderJumpsOverlay(); // sauts à vide du panneau Ordre (main_window_order_jumps.cpp)
 
     if (stitchLayerSuspended_ || showStitchesAct_ == nullptr || !showStitchesAct_->isChecked() ||
         !sequence_) {
@@ -9145,6 +9147,7 @@ void MainWindow::applyOrderStrategy() {
     const auto before = optimization::compute_cost(items, options.start, options.end);
     const auto order =
         project_.groupedByCalque(optimization::optimize_order(items, strategy, options));
+    captureOrderJumpsBaseline(endpoints); // surimpression « Sauts à vide » : anciens sauts
 
     undoStack_.execute(std::make_unique<commands::ReorderEmbroideryCommand>(order), project_);
     refreshImage();

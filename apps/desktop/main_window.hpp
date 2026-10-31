@@ -35,6 +35,7 @@
 #include "openstitch/document/object_fragment.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/path.hpp"
+#include "openstitch/optimization/order.hpp"
 #include "openstitch/project_ops/live_bridge.hpp"
 #include "openstitch/segmentation/color_merge.hpp"
 #include "openstitch/stitch/sequence.hpp"
@@ -1537,6 +1538,24 @@ private:
     std::array<std::uint8_t, 3> eyedropperRgb_{};
     // [cablage-C:fin]
     // [cablage-D:debut]
+    // Surimpression « Sauts à vide » du panneau Ordre (main_window_order_jumps.cpp) : segments
+    // entre la fin d'un objet et le début du suivant (optimization::jump_segments), avec une
+    // comparaison avant / après « Optimiser l'ordre ». Ne modifie jamais le document.
+    void buildOrderJumpsFeature();
+    void refreshOrderJumpsOverlay(); // appelée par renderStitches()
+    void setOrderJumpsEnabled(bool on);
+    // Mémorise les sauts d'avant une optimisation ; valable pour le prochain refreshImage
+    // seulement.
+    void captureOrderJumpsBaseline(const std::vector<stitch::ObjectEndpoints>& endpoints);
+    QAction* orderJumpsAct_{nullptr};
+    QCheckBox* orderJumpsCheck_{nullptr};
+    QCheckBox* orderJumpsCompareCheck_{nullptr};
+    QLabel* orderJumpsLabel_{nullptr};
+    std::vector<optimization::JumpSegment> orderJumps_;       // sauts de la séquence affichée
+    std::vector<optimization::JumpSegment> orderJumpsBefore_; // sauts avant l'optimisation
+    bool orderJumpsHasBefore_{false};
+    int orderJumpsBeforeRefresh_{-1}; // valeur de refreshCount_ pour laquelle la base est valable
+    QString orderJumpsDeltaText_; // libellé « −X mm » dessiné sur le canevas (vide : aucun)
     // [cablage-D:fin]
     // [cablage-E:debut]
     // HP-VIEW-005 : carte de densité (main_window_density.cpp). Image mise en cache sous une

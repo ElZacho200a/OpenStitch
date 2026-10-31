@@ -539,4 +539,23 @@ std::vector<ObjectId> optimize_order(const std::vector<OrderItem>& items, OrderS
     return result;
 }
 
+std::vector<JumpSegment> jump_segments(const std::vector<SewnSpan>& spans) {
+    std::vector<JumpSegment> out;
+    for (std::size_t i = 1; i < spans.size(); ++i) {
+        if (spans[i - 1].last == spans[i].first) {
+            continue;
+        }
+        out.push_back({spans[i - 1].last, spans[i].first});
+    }
+    return out;
+}
+
+std::int64_t jump_length_um(const std::vector<JumpSegment>& jumps) {
+    std::int64_t total = 0;
+    for (const JumpSegment& j : jumps) {
+        total += static_cast<std::int64_t>(std::llround(distance(j.from, j.to)));
+    }
+    return total;
+}
+
 } // namespace openstitch::optimization
