@@ -1397,7 +1397,7 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   mieux (mesure : régularité de la direction des fils).
 
 ### HP-ENG-010 — Entrée et sortie automatiques au plus proche [P0] — ◐ Partiel
-- Livré (2026-10-25) : extrémités d'entrée/sortie et sens dans `libs/optimization` (`plan_order`), départ de contour fermé au sommet le plus proche (`join.cpp`). Reste : aucun appelant ne fournit encore les extrémités réelles des objets.
+- Livré (2026-10-25) : extrémités d'entrée/sortie et sens dans `libs/optimization` (`plan_order`), départ de contour fermé au sommet le plus proche (`join.cpp`). Livré (2026-10-31) : l'op `optimize_order` et « Appliquer » du bureau fournissent les extrémités réelles (`stitch::object_endpoints`) ; le « Trajet estimé » du panneau Ordre les utilise aussi (même coût avant/après application). Reste : le sens `reversed` de `plan_order` n'est pas appliqué aux objets (`optimize_order` ne rend que l'ordre), l'auto-numérisation ordonne encore par centres, mesure sur « marine » / `tentabrode`.
 - Livré 2026-10-10 : choix automatique du sens de couture de chaque objet
   (`auto_join` global + `join` par objet, `orient_chunk`), entrée des satins depuis la
   fin de l'objet précédent ; scène de référence : sauts 116,0 → 102,6 mm
@@ -4592,3 +4592,4 @@ ouvrant le lot (§0.1).
 | 2026-10-31 | Claude (HP-STI-012) | **HP-STI-012 ◐** : point de croix (`CrossStitchParams`, `fill_cross_stitch`, `.osp` `crossStitch`, CLI, type 11 du bureau). Tests stitch / project_io / project_ops. |
 | 2026-10-31 | Claude (HP-STI-022) | **HP-STI-022 ◐** : bord irrégulier du satin et de l'auto-satin (`SatinJagged`, amplitude, graine), `.osp`, `set_params`, inspecteur. |
 | 2026-10-31 | Claude (HP-UX-064, HP-VIEW-015) | **Nouvelles entrées ◐** : surimpression des sauts à vide avec comparaison avant/après, et carte de risque tissu en surimpression. |
+| 2026-10-31 | Claude (HP-ENG-010) | **HP-ENG-010 ◐** : le « Trajet estimé » du panneau Ordre utilise les extrémités réelles de couture (comme « Appliquer » et l'op `optimize_order`), plus les centres ; infobulle et traduction alignées. Reste : sens `reversed` non appliqué, auto-numérisation par centres. |
