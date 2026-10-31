@@ -1422,6 +1422,14 @@ json project_to_json(const document::Project& project) {
         }
         j["colorways"] = std::move(cw);
     }
+    if (!project.stitch_presets.empty()) {
+        // Préréglages de points (HP-ENG-013) : clé facultative, absente = aucun préréglage.
+        json presets = json::array();
+        for (const auto& preset : project.stitch_presets) {
+            presets.push_back({{"name", preset.name}, {"params", params_to_json(preset.params)}});
+        }
+        j["stitchPresets"] = std::move(presets);
+    }
     if (!(project.fabric == document::FabricSettings{})) {
         // Tissu de fond (HP-THR-008) : clé facultative, absente = blanc.
         json fabric = {{"rgb", rgb_to_json(project.fabric.color)}, {"name", project.fabric.name}};
@@ -1494,6 +1502,10 @@ json project_to_json(const document::Project& project) {
         }
         if (e.connector != document::ConnectorMode::Inherit) {
             eo["connector"] = static_cast<int>(e.connector); // HP-SEQ-005 : absent = Inherit
+        }
+        if (e.knockout) { // HP-ENG-011 : absent = désactivé
+            eo["knockout"] = true;
+            eo["knockoutMargin"] = e.knockout_margin.value;
         }
         eo["params"] = params_to_json(e.params);
         // Schéma v6 (HP-THR-004) : fil de nuancier assigné, écrit seulement s'il existe.
@@ -1679,6 +1691,21 @@ Result<document::Project> project_from_json(const json& j) {
                     ? active
                     : -1;
         }
+        if (j.contains("stitchPresets") && j.at("stitchPresets").is_array()) {
+            for (const auto& pj : j.at("stitchPresets")) {
+                if (!pj.is_object() || !pj.contains("params")) {
+                    continue; // entrée illisible : ignorée (lecture tolérante)
+                }
+                auto params = params_from_json(pj.at("params"));
+                if (!params) {
+                    continue;
+                }
+                document::StitchPreset preset;
+                preset.name = pj.value("name", std::string{});
+                preset.params = std::move(*params);
+                project.stitch_presets.push_back(std::move(preset));
+            }
+        }
         if (j.contains("fabric")) {
             const auto& fj = j.at("fabric");
             project.fabric.color = rgb_from_json(fj.at("rgb"));
@@ -1757,6 +1784,8 @@ Result<document::Project> project_from_json(const json& j) {
             e.join = static_cast<document::JoinMode>(std::clamp(eo.value("join", 0), 0, 2));
             e.connector =
                 static_cast<document::ConnectorMode>(std::clamp(eo.value("connector", 0), 0, 2));
+            e.knockout = eo.value("knockout", false);
+            e.knockout_margin = Micrometers{std::clamp(eo.value("knockoutMargin", 300), 0, 5'000)};
             auto params = params_from_json(eo.at("params"));
             if (!params) {
                 return std::unexpected(params.error());

@@ -709,6 +709,38 @@ void PropertiesPanelTest::engineSettingsEmitDedicatedEdits() {
     panel.setConnectorMode(e.id, openstitch::document::ConnectorMode::AlwaysTrim);
     QCOMPARE(connectorMode, -1);
     QCOMPARE(connector->currentIndex(), 1);
+
+    // HP-ENG-011 : « Retirer les points cachés » (tatami), marge activée avec la case.
+    e.params = openstitch::document::TatamiParams{};
+    panel.showEmbroidery(e);
+    auto* knockout = panel.findChild<QCheckBox*>(QStringLiteral("check_knockout"));
+    auto* margin = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_knockoutMargin"));
+    QVERIFY(knockout != nullptr);
+    QVERIFY(margin != nullptr);
+    QVERIFY(!knockout->isChecked());
+    QVERIFY(!margin->isEnabled());
+    QCOMPARE(margin->value(), 0.3);
+    bool knockoutOn = false;
+    double knockoutMm = -1.0;
+    QObject::connect(&panel, &PropertiesPanel::knockoutEdited, &panel,
+                     [&](openstitch::ObjectId, bool on, double mm) {
+                         knockoutOn = on;
+                         knockoutMm = mm;
+                     });
+    knockout->setChecked(true);
+    QVERIFY(knockoutOn);
+    QCOMPARE(knockoutMm, 0.3);
+    QVERIFY(margin->isEnabled());
+    // Resynchronisation sans émission (annulation).
+    knockoutOn = true;
+    panel.setKnockout(e.id, false, 0.5);
+    QVERIFY(knockoutOn);
+    QVERIFY(!knockout->isChecked());
+    QCOMPARE(margin->value(), 0.5);
+    // Un contour n'a rien à retirer : pas de case.
+    e.params = openstitch::document::RunningStitchParams{};
+    panel.showEmbroidery(e);
+    QVERIFY(panel.findChild<QCheckBox*>(QStringLiteral("check_knockout")) == nullptr);
 }
 
 // HP-ENG-001 / HP-ENG-002 : tirage du directionnel et sous-couche en zigzag dans l'inspecteur.

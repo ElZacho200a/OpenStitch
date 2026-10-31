@@ -623,6 +623,7 @@ private slots:
     void regionRectangleSelectionHonoursWindowAndCrossing();
     void documentListMultiSelectionDrivesRegionSelection();
     void shapeUnionActionIsOneUndoStep();
+    void shapeBreakApartActionSplitsPiecesInOneUndoStep();
     void blendZonesActionMakesBaseAndGradedTopInOneUndoStep();
     void displayFiltersApplyToVectorShapes();
     void displayFilterShortcutsIsolateAndRestore();
@@ -722,6 +723,7 @@ private slots:
 
     // Remplissage directionnel : conversion, outil de guides, undo/redo.
     void convertingTatamiToDirectionalIsUndoable();
+    void knockoutOptionIsUndoableAndRegenerates();
     void convertingTatamiToContourFillIsUndoable();
     void convertingTatamiToRadialSpiralCrosshatchIsUndoable();
     void densityGradientIsUndoableAndSpansTheShape();
@@ -4847,6 +4849,36 @@ Fixture buildTatamiSquareFixture() {
 
 namespace openstitch::desktop {
 
+// HP-ENG-011 : « Retirer les points cachés » -- un pas d'annulation, la génération tourne.
+void MainWindowTest::knockoutOptionIsUndoableAndRegenerates() {
+    MainWindow window;
+    const Fixture fx = buildTatamiSquareFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+
+    window.setKnockout(fx.embroideryId, true, 0.5);
+    const auto* emb = window.project_.findEmbroidery(fx.embroideryId);
+    QVERIFY(emb != nullptr && emb->knockout);
+    QCOMPARE(emb->knockout_margin.value, 500);
+    QCOMPARE(window.undoStack_.undoNames().size(), std::size_t{1});
+    QVERIFY(window.sequence_.has_value());
+
+    window.setKnockout(fx.embroideryId, true, 0.5); // identique : aucun pas d'annulation de plus
+    QCOMPARE(window.undoStack_.undoNames().size(), std::size_t{1});
+
+    // Saisie en direct de la marge : les changements successifs fusionnent en un seul pas.
+    window.setKnockout(fx.embroideryId, true, 0.6);
+    window.setKnockout(fx.embroideryId, true, 0.7);
+    QCOMPARE(window.undoStack_.undoNames().size(), std::size_t{1});
+    QCOMPARE(window.project_.findEmbroidery(fx.embroideryId)->knockout_margin.value, 700);
+
+    window.undo();
+    emb = window.project_.findEmbroidery(fx.embroideryId);
+    QVERIFY(!emb->knockout);
+    QCOMPARE(emb->knockout_margin.value, 300);
+}
+
 void MainWindowTest::convertingTatamiToDirectionalIsUndoable() {
     MainWindow window;
     const Fixture fx = buildTatamiSquareFixture();
@@ -7246,6 +7278,38 @@ void MainWindowTest::shapeUnionActionIsOneUndoStep() {
 
     window.undo();
     QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
+}
+
+void MainWindowTest::shapeBreakApartActionSplitsPiecesInOneUndoStep() {
+    auto project = twoOverlappingRectangles();
+    // Un seul objet à deux morceaux disjoints (HP-VEC-013).
+    auto far = project.vector_objects[0].paths.front();
+    for (auto& node : far.outer.nodes) {
+        node.pos.x = Micrometers{node.pos.x.value + 50'000};
+    }
+    project.vector_objects[0].paths.push_back(far);
+    MainWindow window;
+    window.applyLoadedProject(std::move(project));
+    QAction* apart = window.findChild<QAction*>(QStringLiteral("action_shapeBreakApart"));
+    QVERIFY(apart != nullptr);
+    window.updateActions();
+    QVERIFY(!apart->isEnabled()); // rien de sélectionné
+
+    const ObjectId a = window.project_.vector_objects[0].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a}});
+    window.updateActions();
+    QVERIFY(apart->isEnabled());
+
+    apart->trigger();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{3});
+    for (const auto& object : window.project_.vector_objects) {
+        QCOMPARE(object.paths.size(), std::size_t{1});
+    }
+    QVERIFY(window.checkSelectionInvariants());
+
+    window.undo();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
+    QCOMPARE(window.project_.vector_objects[0].paths.size(), std::size_t{2});
 }
 
 void MainWindowTest::blendZonesActionMakesBaseAndGradedTopInOneUndoStep() {

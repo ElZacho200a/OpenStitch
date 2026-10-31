@@ -319,6 +319,7 @@ private slots:
     void editBorderSatin(ObjectId id, double widthMm, int side, int corner);
     void setJoinMode(ObjectId id, int mode);
     void setConnectorMode(ObjectId id, int mode);
+    void setKnockout(ObjectId id, bool enabled, double marginMm);
     void setDensityGradient(ObjectId embroideryId, bool enabled, double angleDeg,
                             double endSpacingMm);
     void applyTwoColorBlend();
@@ -1392,6 +1393,15 @@ private:
     ColorwayDialog* colorwayDialog_{nullptr};
     QAction* colorwayAct_{nullptr};
     QAction* threadMergeAct_{nullptr};
+    // Préréglages de points (HP-ENG-013, main_window_stitch_presets.cpp).
+    void buildStitchPresetMenu(QMenu* embMenu);
+    void rebuildStitchPresetMenu();
+    void saveStitchPreset(const QString& name);
+    void applyStitchPreset(int index);
+    void deleteStitchPreset(int index);
+    void saveStitchPresetFromSelection(); // demande le nom puis enregistre
+    QMenu* stitchPresetMenu_{nullptr};
+    QAction* stitchPresetSaveAct_{nullptr};
     // Zones réservées au câblage des entrées livrées en cœur (une zone par lot, ne pas mélanger).
     // [cablage-A:debut]
     // Exporter l'image (HP-FMT-011, main_window_export_image.cpp).

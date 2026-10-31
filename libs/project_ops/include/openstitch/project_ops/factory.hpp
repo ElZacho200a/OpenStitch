@@ -121,6 +121,9 @@ struct DigitizeSettings {
     int stipple_points{2000};
     int stipple_seed{1};
     bool stipple_invert{false};
+    // HP-FILE-014 : chemin du profil de réglages (`--settings`) cité dans le rapport ; vide =
+    // aucun. Sans effet sur la numérisation.
+    std::string profile_path;
 };
 
 // Valide la grammaire de `DigitizeSettings::pre` sans toucher d'image.

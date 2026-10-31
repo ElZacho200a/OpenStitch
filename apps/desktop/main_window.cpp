@@ -1121,6 +1121,7 @@ void MainWindow::buildMenus() {
     createSatinWithSettingsAct_->setObjectName(QStringLiteral("action_createSatinWithSettings"));
     connect(createSatinWithSettingsAct_, &QAction::triggered, this,
             &MainWindow::createSatinObjectWithSettings);
+    buildStitchPresetMenu(embMenu); // HP-ENG-013
     autoSatinAct_ = embMenu->addAction(tr("Convertir en satin automatiquement…"));
     autoSatinAct_->setToolTip(
         tr("Le logiciel dessine le satin tout seul, sans que vous posiez les deux bords. "
@@ -8303,6 +8304,7 @@ void MainWindow::buildPropertiesPanel() {
     connect(propertiesPanel_, &PropertiesPanel::joinModeEdited, this, &MainWindow::setJoinMode);
     connect(propertiesPanel_, &PropertiesPanel::connectorModeEdited, this,
             &MainWindow::setConnectorMode);
+    connect(propertiesPanel_, &PropertiesPanel::knockoutEdited, this, &MainWindow::setKnockout);
     connect(propertiesPanel_, &PropertiesPanel::densityGradientRequested, this,
             &MainWindow::setDensityGradient);
     connect(
@@ -8436,6 +8438,9 @@ void MainWindow::updateInspector() {
     propertiesPanel_->setConnectorMode(
         emb != nullptr ? std::optional<ObjectId>(emb->id) : std::nullopt,
         emb != nullptr ? emb->connector : document::ConnectorMode::Inherit);
+    propertiesPanel_->setKnockout(emb != nullptr ? std::optional<ObjectId>(emb->id) : std::nullopt,
+                                  emb != nullptr && emb->knockout,
+                                  emb != nullptr ? emb->knockout_margin.value / 1000.0 : 0.3);
 
     // Auto-satin : liste des guides et diagnostic mis à jour à chaque appel (les
     // guides se posent aussi depuis le canevas), sans reconstruire le formulaire.
@@ -9107,10 +9112,23 @@ void MainWindow::applyOrderStrategy() {
     }
     // Calques (HP-OBJ-024) : on optimise l'ordre réel de couture, puis on regroupe par calque -- le
     // rang du calque reste la clé principale, l'optimisation ne joue qu'à l'intérieur de chacun.
+    // HP-ENG-010 : extrémités réelles de la séquence affichée (repli : centre de l'objet).
+    const auto endpoints =
+        sequence_ ? stitch::object_endpoints(*sequence_) : std::vector<stitch::ObjectEndpoints>{};
+    const auto makeItem = [&](const document::EmbroideryObject& obj) {
+        optimization::OrderItem item{obj.id, obj.rgb, embroideryCentroid(obj), obj.locked};
+        for (const auto& e : endpoints) {
+            if (e.id == obj.id) {
+                item.entry = e.first;
+                item.exit = e.last;
+                break;
+            }
+        }
+        return item;
+    };
     std::vector<optimization::OrderItem> items;
     for (const std::size_t index : project_.sewingOrder()) {
-        const auto& obj = project_.embroidery_objects[index];
-        items.push_back({obj.id, obj.rgb, embroideryCentroid(obj), obj.locked});
+        items.push_back(makeItem(project_.embroidery_objects[index]));
     }
     const auto strategy =
         static_cast<optimization::OrderStrategy>(orderStrategyCombo_->currentData().toInt());
@@ -9135,7 +9153,7 @@ void MainWindow::applyOrderStrategy() {
     // Coût après (recalculé sur le nouvel ordre).
     std::vector<optimization::OrderItem> reordered;
     for (const auto& obj : project_.embroidery_objects) {
-        reordered.push_back({obj.id, obj.rgb, embroideryCentroid(obj), obj.locked});
+        reordered.push_back(makeItem(obj));
     }
     const auto after = optimization::compute_cost(reordered, options.start, options.end);
     statusBar()->showMessage(tr("Ordre optimisé : trajet %1 → %2 mm, changements de fil %3 → %4")

@@ -585,6 +585,12 @@ struct EmbroideryObject {
     EmbroideryIntent intent{EmbroideryIntent::AutoChoice};
     JoinMode join{JoinMode::Inherit};                // HP-ENG-010
     ConnectorMode connector{ConnectorMode::Inherit}; // HP-SEQ-005
+    // HP-ENG-011 (« Remove overlaps ») : un tatami / remplissage directionnel ne coud pas la partie
+    // cachée par un tatami / remplissage directionnel POSÉ APRÈS lui (ordre de couture). Les
+    // sous-couches suivent la forme réduite. `knockout_margin` : recouvrement conservé sous le bord
+    // de l'objet qui recouvre (0,3 mm par défaut) pour qu'aucun fil de fond ne perce.
+    bool knockout{false};
+    Micrometers knockout_margin{300};
 
     // Retouches manuelles (Lot 8 MVP) — deltas épars, jamais O(nombre de
     // points). Vide = comportement actuel inchangé (Clean, rétrocompatible).

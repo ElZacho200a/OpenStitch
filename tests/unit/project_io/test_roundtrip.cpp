@@ -660,3 +660,29 @@ TEST_CASE("fragment d'objets : JSON aller-retour, deterministe, entrees invalide
     orphan.embroideries.push_back(lonely);
     CHECK_FALSE(project_io::fragment_from_json(project_io::fragment_to_json(orphan)).has_value());
 }
+
+TEST_CASE("HP-ENG-013 stitch presets: roundtrip and tolerant read", "[stitch_preset]") {
+    auto project = rich_project();
+    CHECK_FALSE(project_io::detail::project_to_json(project).contains("stitchPresets"));
+    document::TatamiParams tatami;
+    tatami.row_spacing = Micrometers{550};
+    project.stitch_presets.push_back({"tatami serviette", tatami});
+    project.stitch_presets.push_back({"contour", document::RunningStitchParams{}});
+    const auto json = project_io::detail::project_to_json(project);
+    REQUIRE(json.contains("stitchPresets"));
+    const auto loaded = project_io::detail::project_from_json(json);
+    REQUIRE(loaded);
+    CHECK(loaded->stitch_presets == project.stitch_presets);
+    CHECK(project_io::detail::project_to_json(*loaded) == json);
+
+    auto damaged = json;
+    damaged["stitchPresets"].push_back({{"name", "sans params"}});
+    const auto tolerant = project_io::detail::project_from_json(damaged);
+    REQUIRE(tolerant);
+    CHECK(tolerant->stitch_presets.size() == 2);
+    auto legacy = json;
+    legacy.erase("stitchPresets");
+    const auto old = project_io::detail::project_from_json(legacy);
+    REQUIRE(old);
+    CHECK(old->stitch_presets.empty());
+}

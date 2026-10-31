@@ -2,8 +2,11 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <cstdio>
 #include <vector>
 
 #include "openstitch/stitch_render/raster.hpp"
@@ -291,4 +294,59 @@ TEST_CASE("large render with many segments completes and is deterministic across
     const RasterImage a = render_threads(segs, p, view);
     CHECK(a.width == view.width);
     CHECK(a.rgba == render_threads(segs, p, view).rgba);
+}
+
+namespace {
+
+// Scene non triviale : brins de longueurs et orientations variees, certains
+// hors vue, empiles dans un ordre significatif.
+std::vector<ThreadSegment> mixed_scene(int count) {
+    std::vector<ThreadSegment> segs;
+    segs.reserve(static_cast<std::size_t>(count));
+    for (int i = 0; i < count; ++i) {
+        const float x = static_cast<float>((i * 37) % 3400) * 0.05F - 5.0F;
+        const float y = static_cast<float>((i * 91) % 2400) * 0.05F - 5.0F;
+        const float dx = static_cast<float>((i * 53) % 61 - 30) * 0.1F;
+        const float dy = static_cast<float>((i * 29) % 41 - 20) * 0.1F;
+        segs.push_back(
+            ThreadSegment{x,
+                          y,
+                          x + dx,
+                          y + dy,
+                          {static_cast<std::uint8_t>(i * 7), static_cast<std::uint8_t>(i * 3 + 40),
+                           static_cast<std::uint8_t>(255 - (i % 200))}});
+    }
+    return segs;
+}
+
+std::uint64_t fnv1a(const std::vector<std::uint8_t>& bytes) {
+    std::uint64_t h = 1469598103934665603ULL;
+    for (const std::uint8_t b : bytes) {
+        h = (h ^ b) * 1099511628211ULL;
+    }
+    return h;
+}
+
+} // namespace
+
+TEST_CASE("banded raster output is byte-identical to the reference render",
+          "[stitch_render][golden]") {
+    const RasterView view = plan_view(RectMm{0, 0, 160, 110}, 8.0, 4'000'000);
+    const RasterImage img = render_threads(mixed_scene(20'000), RenderParams{}, view);
+    REQUIRE(img.rgba.size() ==
+            static_cast<std::size_t>(view.width) * static_cast<std::size_t>(view.height) * 4);
+    // Empreinte mesuree AVANT la repartition des segments par bande.
+    CHECK(fnv1a(img.rgba) == 0xdd756ba17326d062ULL);
+}
+
+TEST_CASE("raster timing with 100000 segments", "[stitch_render][!benchmark]") {
+    const RasterView view = plan_view(RectMm{0, 0, 160, 110}, 8.0, 4'000'000);
+    const auto segs = mixed_scene(100'000);
+    const auto t0 = std::chrono::steady_clock::now();
+    const RasterImage img = render_threads(segs, RenderParams{}, view);
+    const auto t1 = std::chrono::steady_clock::now();
+    std::printf("BENCH render_threads 100000 segs: %lld ms\n",
+                static_cast<long long>(
+                    std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count()));
+    CHECK(!img.rgba.empty());
 }

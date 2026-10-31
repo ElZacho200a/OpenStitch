@@ -8,6 +8,9 @@
 #include <utility>
 #include <variant>
 
+#include "openstitch/stitch_generation/generate.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
+
 namespace openstitch::commands {
 
 namespace {
@@ -35,6 +38,8 @@ public:
     void apply(document::Project& project) override {
         pathsBefore_.clear();
         paramsBefore_.clear();
+        editsBefore_.clear();
+        const auto rawBefore = rawOfEditedObjects(project);
         for (const ObjectId id : ids_) {
             auto* object = project.findObject(id);
             if (object == nullptr) {
@@ -56,6 +61,7 @@ public:
             paramsBefore_.emplace_back(emb.id, emb.params);
             std::visit([this](auto& params) { transformParams(params); }, emb.params);
         }
+        carryEditsAlong(project, rawBefore);
     }
 
     void revert(document::Project& project) override {
@@ -69,11 +75,104 @@ public:
                 emb->params = params;
             }
         }
+        for (auto& saved : editsBefore_) {
+            if (auto* emb = project.findEmbroidery(saved.id)) {
+                emb->overrides = saved.overrides;
+                emb->edited_fingerprint = saved.fingerprint;
+                emb->edited_point_count = saved.pointCount;
+            }
+        }
     }
 
     [[nodiscard]] std::string name() const override { return label_; }
 
 private:
+    struct SavedEdits {
+        ObjectId id;
+        std::vector<document::StitchOverride> overrides;
+        std::uint64_t fingerprint{};
+        std::uint32_t pointCount{};
+    };
+    using RawByObject = std::vector<std::pair<ObjectId, std::vector<stitch::StitchCommand>>>;
+
+    // Vue brute des objets retouchés (et encore valides) touchés par la transformation, AVANT
+    // celle-ci. Vide si aucun : la génération n'est alors jamais appelée.
+    [[nodiscard]] RawByObject rawOfEditedObjects(const document::Project& project) const {
+        std::vector<ObjectId> wanted;
+        for (const auto& emb : project.embroidery_objects) {
+            if (!emb.overrides.empty() &&
+                std::find(ids_.begin(), ids_.end(), emb.source_vector) != ids_.end()) {
+                wanted.push_back(emb.id);
+            }
+        }
+        RawByObject out;
+        if (wanted.empty()) {
+            return out;
+        }
+        // raw-sequence-ok: vue brute
+        const auto sequence = stitch_generation::generate_sequence(project); // raw-sequence-ok
+        if (!sequence) {
+            return out;
+        }
+        for (const ObjectId id : wanted) {
+            auto raw = stitch_generation::raw_slice(*sequence, id);
+            const auto* emb = project.findEmbroidery(id);
+            if (emb != nullptr && stitch_generation::classify_edit_state(*emb, raw) ==
+                                      stitch_generation::ObjectEditState::ManuallyEdited) {
+                out.emplace_back(id, std::move(raw));
+            }
+        }
+        return out;
+    }
+
+    // Les retouches sont des positions absolues : après une transformation rigide elles doivent
+    // suivre les points générés. On ne les conserve que si la nouvelle vue brute est exactement
+    // l'image de l'ancienne (même nombre de points, chacun à `kTolerance` de l'image du
+    // précédent) ; sinon l'objet devient « Dirty » comme avant, jamais une retouche mal placée.
+    void carryEditsAlong(document::Project& project, const RawByObject& before) {
+        if (before.empty()) {
+            return;
+        }
+        // raw-sequence-ok: vue brute
+        const auto sequence = stitch_generation::generate_sequence(project); // raw-sequence-ok
+        if (!sequence) {
+            return;
+        }
+        constexpr double kTolerance = 50.0; // µm : arrondis des générateurs
+        for (const auto& [id, oldRaw] : before) {
+            auto* emb = project.findEmbroidery(id);
+            if (emb == nullptr) {
+                continue;
+            }
+            const auto newRaw = stitch_generation::raw_slice(*sequence, id);
+            if (newRaw.size() != oldRaw.size()) {
+                continue;
+            }
+            bool follows = true;
+            for (std::size_t i = 0; i < oldRaw.size() && follows; ++i) {
+                const Vec2um expected = transform_.apply(oldRaw[i].pos);
+                const double dx = static_cast<double>(expected.x.value) - newRaw[i].pos.x.value;
+                const double dy = static_cast<double>(expected.y.value) - newRaw[i].pos.y.value;
+                follows = newRaw[i].type == oldRaw[i].type && std::hypot(dx, dy) <= kTolerance;
+            }
+            if (!follows) {
+                continue;
+            }
+            editsBefore_.push_back(
+                {id, emb->overrides, emb->edited_fingerprint, emb->edited_point_count});
+            for (auto& entry : emb->overrides) {
+                if (entry.moved_to) {
+                    entry.moved_to = transform_.apply(*entry.moved_to);
+                }
+                for (auto& inserted : entry.inserted_after) {
+                    inserted = transform_.apply(inserted);
+                }
+            }
+            emb->edited_fingerprint = stitch_generation::fingerprint(newRaw);
+            emb->edited_point_count = static_cast<std::uint32_t>(newRaw.size());
+        }
+    }
+
     void transformNode(geometry::PathNode& node) const {
         node.pos = transform_.apply(node.pos);
         if (node.tan_in) {
@@ -157,6 +256,7 @@ private:
     std::string label_;
     std::vector<std::pair<ObjectId, std::vector<geometry::PathSet>>> pathsBefore_;
     std::vector<std::pair<ObjectId, document::StitchParams>> paramsBefore_;
+    std::vector<SavedEdits> editsBefore_;
 };
 
 } // namespace

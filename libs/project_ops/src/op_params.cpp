@@ -30,7 +30,9 @@
 #include "openstitch/document/machine_profile.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/optimization/order.hpp"
+#include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
 #include "openstitch/thread_palette/thread_library.hpp"
 
 namespace openstitch::project_ops::detail {
@@ -1612,12 +1614,24 @@ Vec2um embroidery_centroid(const document::Project& project,
 
 std::vector<optimization::OrderItem> order_items(const document::Project& project) {
     std::vector<optimization::OrderItem> items;
+    // HP-ENG-010 : extrémités réelles de couture (séquence effective) ; absentes en cas d'échec,
+    // le centre sert alors de repli.
+    std::vector<stitch::ObjectEndpoints> endpoints;
+    if (auto seq = stitch_generation::effective_sequence(project); seq) {
+        endpoints = stitch::object_endpoints(*seq);
+    }
     for (const auto& obj : project.embroidery_objects) {
         optimization::OrderItem item;
         item.id = obj.id;
         item.rgb = obj.rgb;
         item.centroid = embroidery_centroid(project, obj);
         item.locked = obj.locked;
+        if (const auto it = std::find_if(endpoints.begin(), endpoints.end(),
+                                         [&](const auto& e) { return e.id == obj.id; });
+            it != endpoints.end()) {
+            item.entry = it->first;
+            item.exit = it->last;
+        }
         if (const auto* vec =
                 project.findObject(obj.source_vector)) { // aire : stratégie « layered »
             for (const auto& set : vec->paths) {
