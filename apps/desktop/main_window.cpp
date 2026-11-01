@@ -1366,6 +1366,8 @@ void MainWindow::resetDocumentState() {
     // après) : sans ça, un Ctrl+S après « Nouveau » écraserait le projet
     // précédent sans rien demander (HP-FILE-002).
     setCurrentProjectPath(QString());
+    savedAt_ = QTime{}; // l’heure de l’ancien projet ne concerne jamais le suivant
+    updateSavedIndicator();
     migratedFromVersion_ = 0;
     migratedFromPath_.clear();
     undoStack_.clear();
@@ -9675,6 +9677,7 @@ bool MainWindow::saveProjectToPath(const QString& file) {
     discardPendingRecoverySlot();
     statusBar()->showMessage(tr("Projet enregistré : %1").arg(QFileInfo(file).fileName()));
     setWindowModified(false);
+    updateSavedIndicator(); // la sauvegarde peut partir d’un état déjà « propre »
     return true;
 }
 
@@ -9752,6 +9755,7 @@ void MainWindow::setCurrentProjectPath(const QString& file) {
         saveRecentFiles(recentFiles_);
         refreshRecentFilesUi();
     }
+    updateSavedIndicator(); // chargement/sauvegarde sans changement d’état « modifié »
 }
 
 void MainWindow::openRecentFile(const QString& path) {
