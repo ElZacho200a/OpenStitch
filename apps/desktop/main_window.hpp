@@ -687,6 +687,9 @@ private:
                                           const commands::BoundsUm& box) const;
     void showRotationPreview(const commands::BoundsUm& box, Vec2um pivot, double degrees);
     void hideRotationPreview();
+    // Saisie numérique du pivot (mm, Y vers le haut) ; `setRotationPivot` est la partie testable.
+    void editRotationPivot();
+    void setRotationPivot(const std::vector<ObjectId>& ids, Vec2um pivot);
     std::optional<Vec2um> rotationPivot_; // pivot choisi, valable pour rotationPivotTargets_
     std::vector<ObjectId> rotationPivotTargets_;
     QGraphicsPolygonItem* rotationPreview_{nullptr};
@@ -1266,6 +1269,7 @@ private:
     QAction* rotateLeftAct_{nullptr};
     QAction* rotateRightAct_{nullptr};
     QAction* rotateAngleAct_{nullptr};
+    QAction* rotationPivotAct_{nullptr};
     QAction* mirrorHorizontalAct_{nullptr};
     QAction* mirrorVerticalAct_{nullptr};
     QAction* designCenterAct_{nullptr};
