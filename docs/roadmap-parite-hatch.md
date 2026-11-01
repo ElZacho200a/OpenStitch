@@ -2717,6 +2717,12 @@ Aujourd'hui : un cadre **rectangulaire** de taille libre (10–500 mm), persist�
   (séquence effective, grille et tenseur d'orientation local), export PNG/JSON via
   `project fabric-risk`, action desktop Analyse, profils indicatifs coton tissé /
   jersey / feutrine, tests de déterminisme et de superpositions.
+- Livré (2026-11-01) : **prédiction de déformation par solveur 2D de la feuille** (élasticité plane
+  orthotrope, bord fixé au cadre, dipôles de tension des points, raidissement par la densité de fil,
+  indice de plissement), `stitch_analysis::solve_sheet_deformation`, `project_ops::predict_fabric_deformation`,
+  `openstitch-cli project fabric-deformation`, `Analyse > Déformation prévue du tissu…`. Estimation non
+  calibrée, plis réels (flambage) non simulés : `docs/deformation-tissu-solveur.md`. Reste : surimpression
+  canevas, couplage ordre de couture, calibration (HP-PHYS-001).
 - IMPORTANT : score heuristique sans calibration, **pas** une mesure en newtons ni une
   prédiction de déformation ou de plis. Voir `docs/fabric-risk-heuristic.md`.
 - Reste : validation physique multi-tissus et stabilisateurs, paramètres mesurés,
@@ -4614,3 +4620,4 @@ ouvrant le lot (§0.1).
 | 2026-11-01 | Claude (HP-OBJ-001) | **HP-OBJ-001 ◐** : règles de sélection (normalisation, invariants) extraites de `MainWindow` vers `apps/desktop/selection_model` (Qt-free, test QTest `test_selection_model`). Reste : déplacer les membres d'état eux-mêmes. |
 | 2026-11-01 | Claude (tirage prédit) | **Tirage du tissu : tassement, grain, ordre de couture** : champ saturant (`compression`, plafond doux `tanh`), souplesse selon l'angle du point par rapport au grain, rang de couture (`PullSource::order`) et raidissement par les segments voisins, compensation prédite à point fixe (3 passes), tous les remplissages suivent la prédiction du projet, sens du tissu réglable (`FabricSettings::grain_angle` / `weft_softness`, `.osp`, dialogue « Coloris et tissu »), correction du signe de `simulate_fabric_pull`, pièce-test de calibration (HP-ENG-001.a ◐). Théorie : `docs/theorie-tirage-tissu-2026-11.md`. Coefficients toujours empiriques, non mesurés. |
 | 2026-11-01 | Claude (HP-UX-065) | **HP-UX-065 ◐** (nouvelle entrée) : audit sélection/filtres puis livraison en un lot : requêtes de sélection pures, menu Édition ▸ Sélection (inverser, même type/fil/calque, voisines, ordre de couture, plage, lasso, retrouver, sélections nommées), filtres d'état et de couleur dans la liste Document, filtres d'affichage mémorisés avec indicateur de barre d'état. Tests QTest. |
+| 2026-11-01 | Claude (déformation tissu) | **Prédiction de la déformation du tissu** (HP-FAB-004) : solveur FEM 2D orthotrope à bord fixe, dipôles de tension, raidissement par la densité, indice de plissement ; CLI `project fabric-deformation`, action Analyse du bureau. Coefficients empiriques, non calibrés, plis non simulés. |

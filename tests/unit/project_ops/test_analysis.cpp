@@ -12,6 +12,7 @@
 #include "openstitch/document/project.hpp"
 #include "openstitch/image/image.hpp"
 #include "openstitch/project_ops/analysis.hpp"
+#include "openstitch/project_ops/fabric_deformation.hpp"
 #include "openstitch/project_ops/factory.hpp"
 #include "openstitch/project_ops/sweep.hpp"
 
@@ -536,4 +537,45 @@ TEST_CASE("flow fill converts elongated fills to directional with guides",
     }
     const auto [strict, strictCount] = digitize(true, 1e9);
     CHECK(strictCount == 0);
+}
+
+TEST_CASE("fabric deformation : tissu, entoilage, determinisme et parametres invalides",
+          "[project_ops][fabric-deformation]") {
+    document::Project project;
+    add_square(project, 0, 0, 20'000, {200, 30, 30});
+
+    FabricDeformationOptions options;
+    options.heatmap = true;
+    options.stabilizer = "none";
+    const auto soft = predict_fabric_deformation(project, options);
+    REQUIRE(soft.has_value());
+    CHECK(soft->deformation.converged);
+    CHECK(soft->deformation.max_displacement_mm > 0.0);
+    CHECK(has(soft->json, kFabricDeformationSchema));
+    CHECK_FALSE(soft->heatmap_png.empty());
+
+    // Un entoilage rigide limite le deplacement et le plissement.
+    options.stabilizer = "cutaway";
+    const auto stable = predict_fabric_deformation(project, options);
+    REQUIRE(stable.has_value());
+    CHECK(stable->deformation.max_displacement_mm < soft->deformation.max_displacement_mm);
+    CHECK(stable->deformation.max_wrinkle_index < soft->deformation.max_wrinkle_index);
+
+    // Un jersey cede davantage qu'un tissu serre.
+    options.stabilizer = "none";
+    options.material = "jersey";
+    const auto jersey = predict_fabric_deformation(project, options);
+    REQUIRE(jersey.has_value());
+    CHECK(jersey->deformation.max_displacement_mm > soft->deformation.max_displacement_mm);
+
+    options.material.clear();
+    const auto repeat = predict_fabric_deformation(project, options);
+    REQUIRE(repeat.has_value());
+    CHECK(repeat->json == soft->json);
+    CHECK(repeat->heatmap_png == soft->heatmap_png);
+
+    options.cell_mm = 0.0;
+    CHECK_FALSE(predict_fabric_deformation(project, options).has_value());
+    document::Project empty;
+    CHECK_FALSE(predict_fabric_deformation(empty, {}).has_value());
 }

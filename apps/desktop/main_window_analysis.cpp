@@ -45,6 +45,7 @@
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/lettering/lettering.hpp"
 #include "openstitch/project_ops/analysis.hpp"
+#include "openstitch/project_ops/fabric_deformation.hpp"
 #include "openstitch/project_ops/render.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
 #include "openstitch/stitch_analysis/text_rules.hpp"
@@ -505,6 +506,12 @@ void MainWindow::buildAnalysisPanel() {
     auto* fabricRiskAct = analyseMenu->addAction(tr("Risque de tirage du &tissu…"));
     fabricRiskAct->setObjectName(QStringLiteral("action_fabricRiskReport"));
     connect(fabricRiskAct, &QAction::triggered, this, &MainWindow::showFabricRiskReport);
+    auto* deformationAct = analyseMenu->addAction(tr("Déformation &prévue du tissu…"));
+    deformationAct->setObjectName(QStringLiteral("action_fabricDeformationReport"));
+    deformationAct->setToolTip(tr("Solveur mécanique 2D de la feuille tissu + entoilage, cadre "
+                                  "fixe : déplacement et indice de plissement. Estimation non "
+                                  "calibrée, pas une mesure."));
+    connect(deformationAct, &QAction::triggered, this, &MainWindow::showFabricDeformationReport);
     auto* diagnoseAct = analyseMenu->addAction(tr("&Diagnostic des défauts connus…"));
     diagnoseAct->setObjectName(QStringLiteral("action_diagnoseReport"));
     connect(diagnoseAct, &QAction::triggered, this, &MainWindow::showDiagnoseReport);
@@ -629,6 +636,26 @@ void MainWindow::showFabricRiskReport() {
     }
     showReportDialog(this, title, QString::fromStdString(report->text), report->heatmap_png,
                      QStringLiteral("risque_tissu.png"));
+}
+
+void MainWindow::showFabricDeformationReport() {
+    const QString title = tr("Déformation prévue du tissu (estimation)");
+    if (!requireEmbroideryForReport(title)) {
+        return;
+    }
+    // Tissu, entoilage et sens du grain viennent du projet (« Coloris et tissu »).
+    project_ops::FabricDeformationOptions options;
+    options.heatmap = true;
+    BusyIndicator busy(this, tr("Calcul de la déformation du tissu…"), {autosaveTimer_, simTimer_});
+    const document::Project snapshot = project_;
+    auto report =
+        busy.run([&] { return project_ops::predict_fabric_deformation(snapshot, options); });
+    if (!report) {
+        reportError(this, title, tr("L'estimation n'a pas pu être faite."), report.error().message);
+        return;
+    }
+    showReportDialog(this, title, QString::fromStdString(report->text), report->heatmap_png,
+                     QStringLiteral("deformation_tissu.png"));
 }
 
 void MainWindow::showDiagnoseReport() {
