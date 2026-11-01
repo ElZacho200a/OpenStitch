@@ -17,8 +17,8 @@
 #include <vector>
 
 #include "document_panel.hpp"
-#include "stitch_type_catalog.hpp"
 #include "openstitch/document/project.hpp"
+#include "stitch_type_catalog.hpp"
 
 using openstitch::desktop::DocumentPanel;
 using openstitch::document::Project;
