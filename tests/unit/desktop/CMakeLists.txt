@@ -76,6 +76,7 @@ openstitch_add_qt_test(test_help_manual test_help_manual.cpp)
 target_compile_definitions(test_help_manual PRIVATE
     OPENSTITCH_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 openstitch_add_qt_test(test_selection_hit_test test_selection_hit_test.cpp)
+openstitch_add_qt_test(test_selection_model test_selection_model.cpp)
 openstitch_add_qt_test(test_wsl_path_converter test_wsl_path_converter.cpp)
 openstitch_add_qt_test(test_generation_options test_generation_options.cpp)
 openstitch_add_qt_test(test_segmentation_workflow test_segmentation_workflow.cpp)

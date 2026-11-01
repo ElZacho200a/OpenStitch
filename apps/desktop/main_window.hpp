@@ -44,6 +44,7 @@
 #include "openstitch/stitch_generation/pull_field.hpp"
 #include "openstitch/thread_palette/thread_library.hpp"
 #include "realistic_view_state.hpp"
+#include "selection_model.hpp"
 #include "tools.hpp"
 #include "view_display_state.hpp"
 
@@ -977,14 +978,8 @@ private:
     // État de sélection complet. `objects` : objets vectoriels dans l'ordre de
     // sélection, le DERNIER est le principal. Un seul élément = cas legacy
     // (multiSelection_ reste vide, selectedObject_ porte l'objet).
-    struct Selection {
-        std::optional<RegionId> region; // région ACTIVE (la dernière cliquée)
-        std::optional<ObjectId> embroidery;
-        std::vector<ObjectId> objects;
-        // Autres régions sélectionnées avec la région active (sélection multiple de régions).
-        // Vide sans région active ; l'active n'y figure jamais.
-        std::vector<RegionId> extraRegions;
-    };
+    // Type et règles de normalisation : selection_model.hpp (HP-OBJ-001).
+    using Selection = desktop::Selection;
     // SEUL écrivain de selectedObject_/selectedRegion_/selectedEmbroidery_/
     // multiSelection_ (garde CTest check_selection_single_mutator). Normalise :
     // doublons retirés (dernière occurrence gardée), région/broderie

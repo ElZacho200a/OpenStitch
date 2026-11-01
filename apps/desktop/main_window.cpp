@@ -10846,36 +10846,12 @@ void MainWindow::onSelectBelow(QPointF posMm, QPoint globalPos, SelectMode mode)
 // multiSelection_ (garde tests/check_selection_single_mutator.cmake). Tout autre
 // site passe par setSelection()/editSelection().
 void MainWindow::setSelection(Selection selection) {
-    // Doublons : la DERNIÈRE occurrence est gardée (le dernier id reste le principal).
-    std::vector<ObjectId> objects;
-    objects.reserve(selection.objects.size());
-    for (std::size_t i = 0; i < selection.objects.size(); ++i) {
-        const bool later =
-            std::find(selection.objects.begin() + static_cast<std::ptrdiff_t>(i) + 1,
-                      selection.objects.end(), selection.objects[i]) != selection.objects.end();
-        if (!later) {
-            objects.push_back(selection.objects[i]);
-        }
-    }
-    // Sélectionner une région ou une broderie vide la multi-sélection (seul le
-    // principal peut subsister, ex. forme source d'une broderie choisie au dock).
-    if ((selection.region || selection.embroidery) && objects.size() > 1) {
-        objects = {objects.back()};
-    }
+    selection = desktop::normalize_selection(std::move(selection), [this](RegionId r) {
+        return project_.segmentation && project_.segmentation->find(r) != nullptr;
+    });
+    std::vector<ObjectId> objects = std::move(selection.objects);
     selectedRegion_ = selection.region;
-    // Régions supplémentaires : sans doublon, ni l'active, ni région disparue ; vides sans active.
-    extraRegions_.clear();
-    if (selection.region) {
-        for (const RegionId r : selection.extraRegions) {
-            const bool known = project_.segmentation && project_.segmentation->find(r) != nullptr;
-            const bool dup =
-                r == *selection.region ||
-                std::find(extraRegions_.begin(), extraRegions_.end(), r) != extraRegions_.end();
-            if (known && !dup) {
-                extraRegions_.push_back(r);
-            }
-        }
-    }
+    extraRegions_ = std::move(selection.extraRegions);
     selectedEmbroidery_ = selection.embroidery;
     if (objects.empty()) {
         selectedObject_.reset();
@@ -10970,23 +10946,9 @@ void MainWindow::pruneSelection() {
 }
 
 bool MainWindow::checkSelectionInvariants() const {
-    if (!multiSelection_.empty()) {
-        if (multiSelection_.size() < 2) {
-            return false; // un seul objet = cas legacy (multi vide)
-        }
-        if (!selectedObject_ || multiSelection_.back() != *selectedObject_) {
-            return false; // principal = dernier
-        }
-        if (selectedRegion_ || selectedEmbroidery_) {
-            return false; // région/broderie sélectionnée => multi vide
-        }
-        for (std::size_t i = 0; i < multiSelection_.size(); ++i) {
-            for (std::size_t j = i + 1; j < multiSelection_.size(); ++j) {
-                if (multiSelection_[i] == multiSelection_[j]) {
-                    return false;
-                }
-            }
-        }
+    if (!desktop::selection_state_is_consistent(selectedObject_, multiSelection_,
+                                                selectedRegion_ || selectedEmbroidery_)) {
+        return false;
     }
     for (const ObjectId id : selectedObjectIds()) {
         if (project_.findObject(id) == nullptr) {

@@ -1843,7 +1843,8 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
 - Livré (2026-10-25) : cadre commun en tirets de la sélection multiple. En PR (2026-10-29) : quatre poignées de redimensionnement du groupe, sans découper les formes. Reste : classe `selection_model`.
 - Constaté sur `main` (`1ab521a` et suivants) : Ctrl/Maj+clic, rectangle de sélection (fenêtre ou croisement), sélection multi-lignes depuis la liste Document, inspecteur de groupe ; tests `rectangleLeftToRightIsWindow…`, `shiftRectangleAddsToTheSelection`, `documentListMultiSelectionDrivesRegionSelection`. Les critères d'acceptation sont remplis.
 - Livré (PR #27, fusionnée le 2026-10-13 (`296ff34`)) : **Sélectionner tous les objets** (Ctrl+Maj+A ; Ctrl+A reste aux régions) et **Sélectionner les objets de même couleur** (`main_window_objects.cpp`).
-- Reste : modèle de sélection encore dans `MainWindow` (pas de classe `selection_model`) ; poignées communes en PR (2026-10-29).
+- Livré (2026-11-01) : `apps/desktop/selection_model.{hpp,cpp}`, sans Qt : type `Selection`, `normalize_selection` (doublons, principal, régions supplémentaires) et `selection_state_is_consistent`, appelés par `MainWindow::setSelection` / `checkSelectionInvariants` (comportement inchangé, garde `check_selection_single_mutator` verte) ; test QTest `test_selection_model`.
+- Reste : les membres d'état (`selectedObject_`, `multiSelection_`…) vivent encore dans `MainWindow` (≈ 130 sites de lecture, garde CTest dédiée) ; poignées communes en PR (2026-10-29).
 - À faire : Ctrl/Maj+clic, rectangle de sélection (glisser dans le vide),
   Ctrl+A, sélection depuis la liste Document (multi-lignes), sélection de
   tous les objets d'une couleur ; boîte englobante commune avec poignées ;
@@ -3376,7 +3377,7 @@ migration `.osp` pour ces seuls besoins ; la segmentation IA reste hors périmè
 - Reste pour fermeture : CI Windows Qt et tests complets à valider, enrichir
   les raisons de désactivation absentes des QAction et les alias métier.
 
-### HP-UX-047 — Différencier couleurs de régions, d'objets et fils [P1] — ☐ À faire
+### HP-UX-047 — Différencier couleurs de régions, d'objets et fils [P1] — ◐ Partiel (2026-10-27)
 - Besoin : fausses couleurs de segmentation, couleurs d'objets et références
   réelles des fils représentent trois informations distinctes. Les réglages
   de réduction des couleurs se retrouvent à plusieurs endroits (PAR-16 du
@@ -3395,6 +3396,13 @@ migration `.osp` pour ces seuls besoins ; la segmentation IA reste hors périmè
   un changement de fil est annulable par une seule `ICommand` et apparaît
   dans le récapitulatif d'export ; le rôle n'est pas signalé par la couleur
   seule ; tests Qt.
+- En PR (2026-10-27) : dock renommé « Couleurs de segmentation », légende
+  permanente explicitant qu'une teinte de région n'est pas une référence de
+  fil, info-bulles contextualisées et légende distincte dans l'onglet Projet
+  du panneau Fils. Deux QTests valident les libellés et leur accessibilité.
+- Reste : lier les trois rôles dans une vue contextuelle (région → couleur
+  d'objet → référence de fil) et vérifier le résultat visuellement ; aucune
+  transformation de points ni changement d'attribution dans ce premier lot.
 
 ### HP-UX-048 — Comparer original et aperçu avant transformation [P2] — ◐ Partiel (2026-10-27, branche feat/ux-048-segmentation-before-after-20261027)
 - Besoin : HP-VIEW-012 couvre l'aperçu direct mais ne pose pas un comportement
@@ -4479,6 +4487,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-27 | ChatGPT (audit UI/UX, PR 5) | HP-UX-047 ◐ : distinguer visuellement et textuellement teintes de segmentation, couleurs d'objets et références de fils ; QTests, sans modifier ni broderie ni export. |
 | 2026-10-30 | Claude (analyse multi-agents, passe 2) | **Seconde passe sans limite de tours** : six agents haiku `general-purpose` relisent les mêmes domaines en profondeur ; **+61 entrées** (§27ter, lots G à L) : écriture atomique et durable, fragments non migrés, trim VP3 perdu, mode contour « running » inopérant, refusion après limite de fils, vectorisation en O(régions × pixels), lignes cohérentes en série, compensation du tirage des autres remplissages, chevron/plume, CI (cache Qt, tests Python jamais lancés), UX presse-papiers/simulation. Entrées « à vérifier » non confirmées à l'exécution ; aucun code modifié ; HP-OBJ-017 et HP-OBJ-021 à recontrôler. |
 | 2026-10-30 | Claude (analyse multi-agents) | **Analyse complète des fonctionnalités et plan d'amélioration** : six agents haiku (IHM, pipeline image, génération de points, document/commandes/rendu, formats/lettrage, CLI/MCP/CI) ; **+51 entrées** HP-QA-011 à 020, HP-PERF-010 à 022, HP-AUTO-014 à 019, HP-UX-050 à 056, HP-TXT-016, HP-STI-027 à 032, HP-PROD-009, HP-FMT-023 à 026, HP-THR-013, HP-DIST-008, HP-HELP-005 (§27bis, lots A à F). Entrées non vérifiées à l'exécution (marquées « à vérifier »). Aucun code modifié ; HP-OBJ-021 à recontrôler (HP-UX-054). |
 | 2026-10-29 | ChatGPT (HP-OBJ-001/005) | **Redimensionnement collectif sur le canevas** : quatre poignées sur la boîte commune, Maj conserve les proportions, aperçu des dimensions ; une transformation et une annulation pour les formes et leurs paramètres de points. Tests QTest : cadre, glisser et restauration du groupe. En PR, CI à vérifier ; restent les poignées latérales et le redimensionnement autour du centre (Alt). |
@@ -4594,3 +4603,4 @@ ouvrant le lot (§0.1).
 | 2026-10-31 | Claude (HP-STI-022) | **HP-STI-022 ◐** : bord irrégulier du satin et de l'auto-satin (`SatinJagged`, amplitude, graine), `.osp`, `set_params`, inspecteur. |
 | 2026-10-31 | Claude (HP-UX-064, HP-VIEW-015) | **Nouvelles entrées ◐** : surimpression des sauts à vide avec comparaison avant/après, et carte de risque tissu en surimpression. |
 | 2026-10-31 | Claude (HP-ENG-010) | **HP-ENG-010 ◐** : le « Trajet estimé » du panneau Ordre utilise les extrémités réelles de couture (comme « Appliquer » et l'op `optimize_order`), plus les centres ; infobulle et traduction alignées. Reste : sens `reversed` non appliqué, auto-numérisation par centres. |
+| 2026-11-01 | Claude (HP-OBJ-001) | **HP-OBJ-001 ◐** : règles de sélection (normalisation, invariants) extraites de `MainWindow` vers `apps/desktop/selection_model` (Qt-free, test QTest `test_selection_model`). Reste : déplacer les membres d'état eux-mêmes. |
