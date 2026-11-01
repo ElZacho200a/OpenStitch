@@ -56,6 +56,7 @@
 #include "openstitch/stitch_generation/lock.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "openstitch/stitch_generation/pull_map.hpp"
+#include "openstitch/stitch_generation/pull_test_piece.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
@@ -377,6 +378,76 @@ int run_dst2svg(const std::string& input, const std::string& output, bool noClob
         return cli_error("dst2svg", written.error().message);
     }
     fmt::print("SVG écrit : {}\n", output);
+    return kExitOk;
+}
+
+// Pièce-test de calibration du tirage (HP-ENG-001.a) : motif DST à broder sur le tissu réel,
+// tableau CSV des distances à mesurer, comparaison prédit / mesuré et ajustement des coefficients.
+struct PullTestPieceArgs {
+    std::string output;   // DST de la pièce-test
+    std::string metrics;  // CSV des métriques (modèle à remplir)
+    std::string measured; // CSV relu avec la colonne measured_mm remplie
+    std::string fabric{"default"};
+    bool fit{false};
+    bool noClobber{false};
+};
+
+int run_pull_test_piece(const PullTestPieceArgs& a) {
+    using namespace openstitch;
+    const auto& presets = stitch_generation::fabric_preset_names();
+    if (std::find(presets.begin(), presets.end(), a.fabric) == presets.end()) {
+        return cli_error("pull-test-piece",
+                         "Tissu inconnu : " + a.fabric + " (default, linen, stable)");
+    }
+    const stitch_generation::FabricResponse fabric = stitch_generation::fabric_preset(a.fabric);
+    const stitch_generation::PullTestPiece piece = stitch_generation::build_pull_test_piece();
+    if (!a.output.empty()) {
+        if (const auto refused = check_output_path("pull-test-piece", a.output, a.noClobber)) {
+            return *refused;
+        }
+        const auto written =
+            formats::write_dst_file(std::filesystem::path(a.output), piece.sequence);
+        if (!written) {
+            return cli_error("pull-test-piece", written.error().message);
+        }
+        fmt::print("Pièce-test écrite : {} (X du dessin = sens de la chaîne)\n", a.output);
+    }
+    auto results = stitch_generation::predict_pull_metrics(piece, fabric);
+    if (!a.measured.empty()) {
+        std::ifstream in(a.measured, std::ios::binary);
+        if (!in) {
+            return cli_error("pull-test-piece", "Lecture impossible : " + a.measured);
+        }
+        std::ostringstream text;
+        text << in.rdbuf();
+        const std::size_t kept = stitch_generation::apply_measurements_csv(results, text.str());
+        fmt::print("Mesures retenues : {} / {}\n", kept, results.size());
+        if (kept == 0) {
+            return cli_error("pull-test-piece", "Aucune mesure exploitable (colonne measured_mm)",
+                             "remplissez measured_mm (mm) dans le CSV produit par --metrics");
+        }
+        fmt::print("Écart quadratique moyen prédit/mesuré : {:.3f} mm\n",
+                   stitch_generation::pull_metrics_rms(results));
+        if (a.fit) {
+            const auto fit = stitch_generation::fit_pull_response(piece, results, fabric);
+            fmt::print("Ajustement : gain={:.3f} tassement={:.2f} souplesse de trame={:.2f}  "
+                       "(écart {:.3f} -> {:.3f} mm, {} mesures{})\n",
+                       fit.response.gain, fit.response.compression, fit.response.grain_anisotropy,
+                       fit.rms_before_mm, fit.rms_after_mm, fit.used,
+                       fit.enough_data ? "" : " : INSUFFISANT, au moins 6 mesures requises");
+        }
+    }
+    if (!a.metrics.empty()) {
+        if (const auto refused = check_output_path("pull-test-piece", a.metrics, a.noClobber)) {
+            return *refused;
+        }
+        std::ofstream out(a.metrics, std::ios::binary);
+        out << stitch_generation::pull_metrics_csv(results);
+        if (!out) {
+            return cli_error("pull-test-piece", "Écriture impossible : " + a.metrics);
+        }
+        fmt::print("Tableau des mesures écrit : {}\n", a.metrics);
+    }
     return kExitOk;
 }
 
@@ -1737,6 +1808,23 @@ int main(int argc, char** argv) {
     pr_cmd->add_flag("--json", json_out, "JSON stable sur stdout");
     pr_cmd->add_flag("--no-clobber", pr.noClobber, "Refuse d'écraser un fichier existant");
 
+    PullTestPieceArgs ptp;
+    auto* ptp_cmd = app.add_subcommand(
+        "pull-test-piece",
+        "Pièce-test de calibration du tirage : DST à broder, tableau de mesures, ajustement");
+    ptp_cmd->group(kMain);
+    ptp_cmd->add_option("--output,-o", ptp.output, "Écrit la pièce-test (DST)");
+    ptp_cmd->add_option("--metrics", ptp.metrics,
+                        "Écrit le tableau CSV des distances à mesurer (colonne measured_mm à "
+                        "remplir)");
+    ptp_cmd->add_option("--measured", ptp.measured,
+                        "Relit le CSV rempli : écart prédit/mesuré par métrique");
+    ptp_cmd->add_option("--fabric", ptp.fabric, "Réglage de référence : default, linen ou stable");
+    ptp_cmd->add_flag("--fit", ptp.fit,
+                      "Avec --measured : ajuste gain, tassement et souplesse de trame (affiché, "
+                      "jamais enregistré)");
+    ptp_cmd->add_flag("--no-clobber", ptp.noClobber, "Refuse d'écraser un fichier existant");
+
     std::string svg_in;
     std::string svg_out;
     bool svg_noclobber = false;
@@ -1985,6 +2073,9 @@ int main(int argc, char** argv) {
     }
     if (render_cmd->parsed()) {
         return run_render(rnd);
+    }
+    if (ptp_cmd->parsed()) {
+        return run_pull_test_piece(ptp);
     }
     if (svg_cmd->parsed()) {
         return run_dst2svg(svg_in, svg_out, svg_noclobber);

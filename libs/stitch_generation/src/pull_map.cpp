@@ -27,7 +27,7 @@ std::vector<PullSource> collect_pull_sources(const stitch::StitchSequence& seque
         if (a.type == stitch::CommandType::Stitch && b.type == stitch::CommandType::Stitch &&
             a.source == b.source && b.pass != stitch::StitchPass::Travel &&
             b.pass != stitch::StitchPass::Lock && a.pos != b.pos) {
-            sources.push_back({a.pos, b.pos, 1.0});
+            sources.push_back({a.pos, b.pos, 1.0, static_cast<std::uint32_t>(i)});
         }
     }
     return sources;
@@ -161,49 +161,21 @@ PullRaster rasterize_pull_map(const PullMap& map, double scale_mm) {
 stitch::StitchSequence simulate_fabric_pull(const stitch::StitchSequence& sequence,
                                             const FabricResponse& fabric) {
     stitch::StitchSequence out = sequence;
+    std::vector<PullSource> sources = collect_pull_sources(sequence);
+    if (sources.empty()) {
+        return out;
+    }
+    const PullField field(std::move(sources), fabric);
     const auto& cmds = sequence.commands;
-    // Bloc de couleur de chaque commande : un ColorChange (ou un Stop) ouvre le bloc suivant.
-    std::vector<std::size_t> block(cmds.size(), 0);
-    std::size_t current = 0;
+    // Chaque point est posé sur un tissu déjà déformé par ce qui précède et suit ensuite le tissu :
+    // son décalage final est le tirage des segments de rang >= au sien (lui compris). Le premier
+    // point subit donc tout le champ, le dernier presque rien : un contour cousu après son
+    // remplissage retombe à sa place nominale alors que le bord du remplissage s'est rétracté.
     for (std::size_t i = 0; i < cmds.size(); ++i) {
-        if (cmds[i].type == stitch::CommandType::ColorChange ||
-            cmds[i].type == stitch::CommandType::Stop) {
-            ++current;
+        if (cmds[i].type == stitch::CommandType::Stitch) {
+            out.commands[i].pos =
+                cmds[i].pos + field.sample(cmds[i].pos, static_cast<std::uint32_t>(i)).displacement;
         }
-        block[i] = current;
-    }
-    if (current == 0) {
-        return out; // un seul bloc : rien n'a été cousu avant ses points
-    }
-    // Sources de chaque bloc (segments internes au bloc, un ColorChange casse la continuité).
-    std::vector<std::vector<PullSource>> perBlock(current + 1);
-    for (std::size_t i = 1; i < cmds.size(); ++i) {
-        const stitch::StitchCommand& a = cmds[i - 1];
-        const stitch::StitchCommand& b = cmds[i];
-        if (block[i] == block[i - 1] && a.type == stitch::CommandType::Stitch &&
-            b.type == stitch::CommandType::Stitch && a.source == b.source &&
-            b.pass != stitch::StitchPass::Travel && b.pass != stitch::StitchPass::Lock &&
-            a.pos != b.pos) {
-            perBlock[block[i]].push_back({a.pos, b.pos, 1.0});
-        }
-    }
-    std::vector<PullSource> earlier;
-    std::size_t first = 0;
-    for (std::size_t k = 0; k <= current; ++k) {
-        std::size_t last = first;
-        while (last < cmds.size() && block[last] == k) {
-            ++last;
-        }
-        if (!earlier.empty()) {
-            const PullField field(earlier, fabric);
-            for (std::size_t i = first; i < last; ++i) {
-                if (cmds[i].type == stitch::CommandType::Stitch) {
-                    out.commands[i].pos = cmds[i].pos + field.sample(cmds[i].pos).displacement;
-                }
-            }
-        }
-        earlier.insert(earlier.end(), perBlock[k].begin(), perBlock[k].end());
-        first = last;
     }
     return out;
 }

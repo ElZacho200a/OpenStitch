@@ -3,6 +3,7 @@
 
 #include <QColorDialog>
 #include <QComboBox>
+#include <QDoubleSpinBox>
 #include <QFont>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -108,6 +109,28 @@ ColorwayDialog::ColorwayDialog(QWidget* parent) : QDialog(parent) {
     stabilizer_->setPlaceholderText(tr("Stabilisateur (ex. cut-away)"));
     profileLayout->addWidget(stabilizer_, 1);
     fabricRoot->addLayout(profileLayout);
+    // Sens du tissu (prédiction du tirage) : direction des fils de chaîne et souplesse de trame.
+    auto* grainLayout = new QHBoxLayout();
+    grainLayout->addWidget(new QLabel(tr("Sens de la chaîne :"), fabricBox));
+    grainAngle_ = new QDoubleSpinBox(fabricBox);
+    grainAngle_->setObjectName(QStringLiteral("spin_fabric_grain_angle"));
+    grainAngle_->setRange(-90.0, 90.0);
+    grainAngle_->setDecimals(1);
+    grainAngle_->setSuffix(QStringLiteral(" °"));
+    grainAngle_->setToolTip(tr("Direction des fils de chaîne (0° = horizontal, 90° = vertical)."));
+    grainLayout->addWidget(grainAngle_);
+    grainLayout->addWidget(new QLabel(tr("Souplesse de trame :"), fabricBox));
+    weftSoftness_ = new QDoubleSpinBox(fabricBox);
+    weftSoftness_->setObjectName(QStringLiteral("spin_fabric_weft_softness"));
+    weftSoftness_->setRange(0.25, 4.0);
+    weftSoftness_->setDecimals(2);
+    weftSoftness_->setSingleStep(0.1);
+    weftSoftness_->setValue(1.0);
+    weftSoftness_->setToolTip(
+        tr("1 = tissu isotrope ; plus de 1 = la trame cède davantage que la chaîne."));
+    grainLayout->addWidget(weftSoftness_);
+    grainLayout->addStretch(1);
+    fabricRoot->addLayout(grainLayout);
     root->addWidget(fabricBox);
 
     connect(list_, &QListWidget::currentRowChanged, this, [this] { updateButtons(); });
@@ -145,13 +168,24 @@ ColorwayDialog::ColorwayDialog(QWidget* parent) : QDialog(parent) {
             emitFabric();
         }
     });
+    connect(grainAngle_, &QDoubleSpinBox::editingFinished, this, [this] {
+        if (!populating_) {
+            emitFabric();
+        }
+    });
+    connect(weftSoftness_, &QDoubleSpinBox::editingFinished, this, [this] {
+        if (!populating_) {
+            emitFabric();
+        }
+    });
     paintSwatch();
     updateButtons();
 }
 
 void ColorwayDialog::setState(const QStringList& names, int active, const QColor& fabric,
                               const QString& fabricName, const QString& material,
-                              const QString& stabilizer) {
+                              const QString& stabilizer, double grainAngleDeg,
+                              double weftSoftness) {
     populating_ = true;
     const int keep = list_->currentRow();
     list_->clear();
@@ -172,6 +206,8 @@ void ColorwayDialog::setState(const QStringList& names, int active, const QColor
     const int materialIndex = materialCombo_->findData(material);
     materialCombo_->setCurrentIndex(materialIndex >= 0 ? materialIndex : 0);
     stabilizer_->setText(stabilizer);
+    grainAngle_->setValue(grainAngleDeg);
+    weftSoftness_->setValue(weftSoftness);
     presetCombo_->setCurrentIndex(0);
     populating_ = false;
     paintSwatch();
@@ -211,9 +247,9 @@ void ColorwayDialog::applyPreset(int presetIndex) {
 }
 
 void ColorwayDialog::emitFabric() {
-    emit fabricChangeRequested(fabric_, fabricName_->text().trimmed(),
-                               materialCombo_->currentData().toString(),
-                               stabilizer_->text().trimmed());
+    emit fabricChangeRequested(
+        fabric_, fabricName_->text().trimmed(), materialCombo_->currentData().toString(),
+        stabilizer_->text().trimmed(), grainAngle_->value(), weftSoftness_->value());
 }
 
 } // namespace openstitch::desktop

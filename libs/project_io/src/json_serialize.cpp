@@ -1487,6 +1487,12 @@ json project_to_json(const document::Project& project) {
         if (!project.fabric.stabilizer.empty()) {
             fabric["stabilizer"] = project.fabric.stabilizer;
         }
+        if (project.fabric.grain_angle.radians != 0.0) {
+            fabric["grainAngleRad"] = project.fabric.grain_angle.radians;
+        }
+        if (project.fabric.weft_softness != 1.0) {
+            fabric["weftSoftness"] = project.fabric.weft_softness;
+        }
         j["fabric"] = std::move(fabric);
     }
 
@@ -1760,6 +1766,8 @@ Result<document::Project> project_from_json(const json& j) {
             project.fabric.name = fj.value("name", std::string{});
             project.fabric.material = fj.value("material", std::string{});
             project.fabric.stabilizer = fj.value("stabilizer", std::string{});
+            project.fabric.grain_angle = Angle{fj.value("grainAngleRad", 0.0)};
+            project.fabric.weft_softness = fj.value("weftSoftness", 1.0);
         }
 
         for (const auto& vo : j.at("vectorObjects")) {
