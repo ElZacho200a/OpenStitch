@@ -67,12 +67,13 @@ struct PullRaster {
 };
 [[nodiscard]] PullRaster rasterize_pull_map(const PullMap& map, double scale_mm = 0.0);
 
-// Copie de la séquence telle que le tissu la restituera : une pénétration cousue dans un bloc de
-// couleur est décalée du déplacement que les blocs cousus AVANT elle ont déjà imposé au tissu (les
-// positions d'origine servent de sources). C'est ce défaut de repérage entre couleurs (contour noir
-// qui ne retombe plus sur le remplissage) que l'on veut voir : le premier bloc reste en place, les
-// suivants suivent le tissu déformé. Sans segment cousu ni changement de couleur, la séquence est
-// rendue inchangée.
+// Copie de la séquence telle que le tissu la restituera. Le tirage dépend de l'ORDRE de couture :
+// une pénétration est posée sur un tissu déjà déformé par ce qui précède, puis suit le tissu ; son
+// décalage final est celui des segments de rang >= au sien (le sien compris). Le premier point
+// subit tout le champ, le dernier presque rien : le bord d'un remplissage se rétracte alors qu'un
+// contour cousu après lui reste à sa place nominale, d'où l'écart entre couleurs que l'on veut
+// voir. C'est l'inverse exact de `PullField::compensation_at(p, rang)`. Sans segment cousu, la
+// séquence est rendue inchangée.
 [[nodiscard]] stitch::StitchSequence simulate_fabric_pull(const stitch::StitchSequence& sequence,
                                                           const FabricResponse& fabric);
 

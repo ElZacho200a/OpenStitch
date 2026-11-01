@@ -1287,7 +1287,8 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   --pull-map --fabric`. Tests `test_pull_map.cpp`, `test_pull_preview_ui.cpp`. Reste : lecture du
   profil matière (#155), calibration (HP-ENG-001.a) ; l'aperçu n'est pas une mesure.
 
-### HP-ENG-001.a — Pièce-test de calibration et table de compensation par tissu [P1] — ☐ À faire
+### HP-ENG-001.a — Pièce-test de calibration et table de compensation par tissu [P1] — ◐ Partiel (2026-11-01)
+- Livré (2026-11-01) : générateur déterministe de pièce-test (`libs/stitch_generation/pull_test_piece`, croix de repérage, satins 3-12 mm, colonnes à 0/45/90° du grain, tatamis à 3 densités, remplissage + contour dans les deux ordres), tableau CSV prédit/mesuré, ajustement en grille de gain / tassement / souplesse de trame, commande `openstitch-cli pull-test-piece`. Théorie et protocole : `docs/theorie-tirage-tissu-2026-11.md`. Reste : brodage et mesures réelles (HP-PHYS-001), table par tissu persistante dans le `.osp`, application par le mode Auto.
 - Source : veille `docs/veille-innovations-2026-10.md` §V1. Aucune source lue ne
   fournit de modèle physique de l'étirement : les valeurs publiées sont des
   règles empiriques, dépendantes du tissu et non vérifiées. On mesure donc
@@ -4603,3 +4604,4 @@ ouvrant le lot (§0.1).
 | 2026-10-31 | Claude (HP-UX-064, HP-VIEW-015) | **Nouvelles entrées ◐** : surimpression des sauts à vide avec comparaison avant/après, et carte de risque tissu en surimpression. |
 | 2026-10-31 | Claude (HP-ENG-010) | **HP-ENG-010 ◐** : le « Trajet estimé » du panneau Ordre utilise les extrémités réelles de couture (comme « Appliquer » et l'op `optimize_order`), plus les centres ; infobulle et traduction alignées. Reste : sens `reversed` non appliqué, auto-numérisation par centres. |
 | 2026-11-01 | Claude (HP-OBJ-001) | **HP-OBJ-001 ◐** : règles de sélection (normalisation, invariants) extraites de `MainWindow` vers `apps/desktop/selection_model` (Qt-free, test QTest `test_selection_model`). Reste : déplacer les membres d'état eux-mêmes. |
+| 2026-11-01 | Claude (tirage prédit) | **Tirage du tissu : tassement, grain, ordre de couture** : champ saturant (`compression`, plafond doux `tanh`), souplesse selon l'angle du point par rapport au grain, rang de couture (`PullSource::order`) et raidissement par les segments voisins, compensation prédite à point fixe (3 passes), tous les remplissages suivent la prédiction du projet, sens du tissu réglable (`FabricSettings::grain_angle` / `weft_softness`, `.osp`, dialogue « Coloris et tissu »), correction du signe de `simulate_fabric_pull`, pièce-test de calibration (HP-ENG-001.a ◐). Théorie : `docs/theorie-tirage-tissu-2026-11.md`. Coefficients toujours empiriques, non mesurés. |

@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "openstitch/core/ids.hpp"
+#include "openstitch/core/units.hpp"
 #include "openstitch/thread_palette/thread.hpp"
 
 namespace openstitch::document {
@@ -43,6 +44,11 @@ struct FabricSettings {
     // Entoilage declare (cut-away, tear-away, etc.). Predicted peut l'utiliser
     // pour un ajustement exploratoire, jamais pour une calibration physique.
     std::string stabilizer;
+    // Sens du tissu pour la prédiction du tirage : direction des fils de chaîne (0 = axe X, Y vers
+    // le haut) et souplesse relative de la trame (1 = isotrope ; > 1 : la trame cède davantage).
+    // Défauts = comportement historique ; plage de souplesse bornée à [0,25 ; 4] à l'usage.
+    Angle grain_angle{};
+    double weft_softness{1.0};
 
     friend bool operator==(const FabricSettings&, const FabricSettings&) = default;
 };

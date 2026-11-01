@@ -22,6 +22,7 @@ add_executable(test_stitch
     test_adaptive_pull.cpp
     test_pull_field.cpp
     test_pull_map.cpp
+    test_pull_test_piece.cpp
     test_predicted_pull.cpp
     test_chunk_cache.cpp
     test_calques_generation.cpp

@@ -80,4 +80,14 @@ TEST_CASE("fabric : round-trip de la couleur et du nom, defaut = pas de cle") {
     CHECK(loaded.fabric.name == "Jean");
     CHECK(loaded.fabric.material == "denim");
     CHECK(loaded.fabric.stabilizer == "cut-away");
+    // Sens du tissu : absent = chaine sur X et tissu isotrope ; sinon aller-retour exact.
+    CHECK(loaded.fabric.grain_angle.radians == 0.0);
+    CHECK(loaded.fabric.weft_softness == 1.0);
+
+    project.fabric.grain_angle = Angle{0.5235987755982988}; // 30 degres
+    project.fabric.weft_softness = 1.4;
+    const auto grained = round_trip(project, "openstitch_fabric_grain.osp");
+    CHECK(grained.fabric.grain_angle.radians == project.fabric.grain_angle.radians);
+    CHECK(grained.fabric.weft_softness == 1.4);
+    CHECK(grained.fabric == project.fabric);
 }
