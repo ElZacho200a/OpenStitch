@@ -680,6 +680,9 @@ private:
                        std::optional<Vec2um> pivot = std::nullopt);
     // Poignée de rotation + pivot déplaçable de la sélection (main_window_rotation.cpp).
     void addRotationHandles();
+    // Repère du centre d'un remplissage radial / en spirale (main_window_fill_center.cpp).
+    void addFillCenterHandle();
+    void setFillCenter(ObjectId id, std::optional<Vec2um> center);
     [[nodiscard]] Vec2um rotationPivotFor(const std::vector<ObjectId>& ids,
                                           const commands::BoundsUm& box) const;
     void showRotationPreview(const commands::BoundsUm& box, Vec2um pivot, double degrees);

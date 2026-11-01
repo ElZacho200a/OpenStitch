@@ -11459,6 +11459,26 @@ Cliquez sur une zone de couleur de l&apos;image : elle devient un objet brodé (
         <source>Aucun fil cousu à analyser : pas de carte de risque.</source>
         <translation>No sewn thread to analyse: no risk map.</translation>
     </message>
+    <message>
+        <source>Centre : X %1 mm, Y %2 mm</source>
+        <translation>Center: X %1 mm, Y %2 mm</translation>
+    </message>
+    <message>
+        <source>Centre du remplissage — glisser pour le déplacer, clic droit : centre automatique</source>
+        <translation>Fill center — drag to move it, right-click: automatic center</translation>
+    </message>
+    <message>
+        <source>Centre automatique (milieu de la forme) — glisser pour le fixer ailleurs</source>
+        <translation>Automatic center (middle of the shape) — drag to pin it elsewhere</translation>
+    </message>
+    <message>
+        <source>Centre</source>
+        <translation>Center</translation>
+    </message>
+    <message>
+        <source>Centre automatique</source>
+        <translation>Automatic center</translation>
+    </message>
 </context>
 <context>
     <name>openstitch::desktop::MainWindowTest</name>
@@ -13665,6 +13685,10 @@ The stitch type below applies to all of them; deleting or moving (arrows) too, a
         <location filename="../properties_panel.cpp" line="2521"/>
         <source>Ces réglages n&apos;agissent que sur « %1 » (le premier objet du groupe), pas sur toute la sélection.</source>
         <translation>These settings only act on &quot;%1&quot; (the first object of the group), not on the whole selection.</translation>
+    </message>
+    <message>
+        <source>Le repère en croix sur le canevas se glisse pour déplacer le centre ; clic droit dessus : centre automatique.</source>
+        <translation>Drag the crosshair on the canvas to move the center; right-click it: automatic center.</translation>
     </message>
 </context>
 <context>
