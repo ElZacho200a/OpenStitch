@@ -122,7 +122,10 @@ predict_fabric_deformation(const document::Project& project,
                   "  Attention : ordres de grandeur empiriques, plis reels non simules.\n";
 
     if (options.heatmap) {
-        const stitch_analysis::SheetRaster raster = stitch_analysis::rasterize_wrinkle_index(d);
+        // Échelle : le seuil critique, ou le 99e centile s'il le dépasse (sinon un motif dense
+        // sature en rouge partout et la carte n'indique plus où ça comprime le plus).
+        const stitch_analysis::SheetRaster raster =
+            stitch_analysis::rasterize_wrinkle_index(d, std::max(1.0, d.p99_wrinkle_index));
         const int scale = static_cast<int>(std::lround(options.heatmap_px_per_cell));
         image::Image map;
         map.width = raster.width * scale;

@@ -44,6 +44,39 @@ plissement, jersey cède plus, JSON/PNG déterministes.
 - Bureau : `Analyse > Déformation prévue du tissu…` (rapport + carte de l'indice). Tissu, entoilage,
   sens du grain et souplesse de trame viennent du projet (« Coloris et tissu »).
 
+## Décalage entre couleurs et compensation
+
+Le solveur ci-dessus donne l'état final. Les décalages entre couleurs viennent de ce qui se passe
+**entre deux blocs** : une couleur est cousue sur un tissu déjà tiré par les précédentes.
+`stitch_analysis::measure_registration` (`sheet_registration.hpp`) rejoue donc le solveur sur les
+préfixes de la séquence, coupée aux `ColorChange`/`Stop` : état `U_k` = tissu après les blocs 1..k.
+
+- Pendant la couture du bloc k, le tissu est dans l'état `s_k = (1-f) U_{k-1} + f U_k` (`f` =
+  `own_block_fraction`, 0,5 par défaut). L'aiguille pique au point nominal P, le fil reste solidaire
+  du tissu, qui finit dans `U_final` : le point atterrit en `P + e_k(P)`, `e_k = U_final - s_k`.
+- Deux couleurs voisines sont décalées l'une par rapport à l'autre de `e_a - e_b = s_b - s_a`. Le
+  dernier bloc ne bouge presque pas ; les premiers sont entraînés par tout ce qui suit.
+- `gap_mm` par élément = plus grand écart entre deux blocs présents ; `visible_gap_mm` (0,3 mm,
+  empirique) borne ce qui se voit. Carte : échelle = pire décalage du motif (rouge = pire endroit).
+- **Compensation** (`compensate_registration`) : point fixe `C <- N - strength × e(C)`, où N est la
+  séquence nominale et e l'écart du tissu mesuré sur la séquence courante (2 itérations par défaut).
+  Le déplacement du tissu est ~0,1 à 0,4 mm, de déformation ~0,2 % : le point fixe converge en une
+  itération et l'écart « après » prévu tombe à ~0, ce qui ne dit que la cohérence interne du modèle,
+  pas la réalité.
+- La séquence compensée n'est **jamais stockée** dans le document (invariant « les points ne sont
+  jamais stockés ») : elle ne sert qu'à écrire un DST. Le projet et l'aperçu restent nominaux.
+
+Utilisation : `openstitch-cli project fabric-registration projet.osp [--heatmap carte.png]
+[--compensated-dst sortie.dst] [--strength 0..1] [--iterations n] [--json]` (schéma
+`openstitch.color-registration/1`) ; bureau : `Analyse > Décalage entre couleurs…` et
+`Analyse > Exporter un DST compensé du décalage…`. Tests :
+`tests/unit/stitch_analysis/test_sheet_registration.cpp`, `tests/unit/project_ops/test_analysis.cpp`.
+
+Limites : quasi statique (le bloc k est supposé cousu sur l'état moyen), superposition des couches
+et plis non simulés, ordre de couture dans un bloc ignoré, coefficients non calibrés. **Avant un vrai
+ouvrage** : coudre la pièce-test, mesurer le décalage réel entre deux couleurs, en déduire un facteur
+d'échelle (`thread_tension_n`, linéaire) et régler `--strength` ; comparer avec et sans compensation.
+
 ## Calibrer (HP-PHYS-001)
 
 La pièce-test (`pull-test-piece`) donne des mesures de rétrécissement de colonnes, de jour
@@ -54,6 +87,6 @@ lire les valeurs comme des mesures.
 
 ## Reste
 
-Surimpression de l'indice directement sur le canevas (cache comme le « Risque tissu »), couplage avec
-`PullField` (ordre de couture), cadre élastique / pré-tension, table de matériaux persistante dans le
+Surimpression de l'indice et du décalage directement sur le canevas (cache comme le « Risque tissu »),
+calibration du facteur d'échelle sur une pièce-test, cadre élastique / pré-tension, table de matériaux persistante dans le
 `.osp`, MCP.

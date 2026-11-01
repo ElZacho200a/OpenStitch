@@ -2722,7 +2722,13 @@ Aujourd'hui : un cadre **rectangulaire** de taille libre (10–500 mm), persist�
   indice de plissement), `stitch_analysis::solve_sheet_deformation`, `project_ops::predict_fabric_deformation`,
   `openstitch-cli project fabric-deformation`, `Analyse > Déformation prévue du tissu…`. Estimation non
   calibrée, plis réels (flambage) non simulés : `docs/deformation-tissu-solveur.md`. Reste : surimpression
-  canevas, couplage ordre de couture, calibration (HP-PHYS-001).
+  canevas, calibration (HP-PHYS-001).
+- Livré (2026-11-01) : **décalage prévu entre couleurs et DST compensé** : le solveur rejoué par bloc de
+  couleur dans l'ordre de couture (`stitch_analysis::measure_registration`, `compensate_registration`),
+  `project_ops::predict_color_registration`, `openstitch-cli project fabric-registration
+  [--compensated-dst]`, `Analyse > Décalage entre couleurs…` et `Exporter un DST compensé du décalage…`.
+  Séquence compensée jamais stockée dans le document. Non calibré : facteur d'échelle à mesurer sur la
+  pièce-test avant usage réel (`docs/deformation-tissu-solveur.md`).
 - IMPORTANT : score heuristique sans calibration, **pas** une mesure en newtons ni une
   prédiction de déformation ou de plis. Voir `docs/fabric-risk-heuristic.md`.
 - Reste : validation physique multi-tissus et stabilisateurs, paramètres mesurés,
@@ -4622,3 +4628,4 @@ ouvrant le lot (§0.1).
 | 2026-11-01 | Claude (HP-STI-008 / 009, HP-UX-042) | Repère du centre des remplissages radial et en spirale sur le canevas (glisser = commande annulable `SetStitchParamsCommand`, clic droit = centre automatique, aperçu des coordonnées dans la barre d'état) ; le filtre par type du panneau Document suit désormais le catalogue des types (radial, spirale, croisé, point de croix, concentrique, motif, blanket…) au lieu de 6 familles de glyphes. Tests QTest `radialFillCenterHandleFixesTheCenterAndUndoRestoresAuto`, `typeFilterListsEveryCatalogTypeAndSelectsTheNewOnes`. |
 | 2026-11-01 | Claude (HP-UX-065) | **HP-UX-065 ◐** (nouvelle entrée) : audit sélection/filtres puis livraison en un lot : requêtes de sélection pures, menu Édition ▸ Sélection (inverser, même type/fil/calque, voisines, ordre de couture, plage, lasso, retrouver, sélections nommées), filtres d'état et de couleur dans la liste Document, filtres d'affichage mémorisés avec indicateur de barre d'état. Tests QTest. |
 | 2026-11-01 | Claude (déformation tissu) | **Prédiction de la déformation du tissu** (HP-FAB-004) : solveur FEM 2D orthotrope à bord fixe, dipôles de tension, raidissement par la densité, indice de plissement ; CLI `project fabric-deformation`, action Analyse du bureau. Coefficients empiriques, non calibrés, plis non simulés. |
+| 2026-11-01 | Claude (décalage couleurs) | **Décalage entre couleurs et contre-compensation** (HP-FAB-004) : solveur de la feuille rejoué par bloc de couleur (états successifs), écart par bloc et carte du décalage entre couleurs voisines, point fixe de compensation, DST compensé (CLI `project fabric-registration`, actions Analyse du bureau). Non calibré. |

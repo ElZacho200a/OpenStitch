@@ -22,6 +22,7 @@
 #include "openstitch/formats/svg.hpp"
 #include "openstitch/project_io/machine_file.hpp"
 #include "openstitch/project_ops/analysis.hpp"
+#include "openstitch/project_ops/color_registration.hpp"
 #include "openstitch/project_ops/errors.hpp"
 #include "openstitch/project_ops/fabric_deformation.hpp"
 #include "openstitch/project_ops/factory.hpp"
@@ -1220,6 +1221,95 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
         if (!dfArgs->map.empty() && !write_bytes(dfArgs->map, report->heatmap_png, err)) {
             g_exit = fail_with("fabric-deformation", jsonOut, po::code::kIo, err);
             return;
+        }
+        fmt::print("{}", jsonOut ? report->json + "\n" : report->text);
+        g_exit = 0;
+    });
+
+    // Decalage prevu entre couleurs (solveur rejoue dans l'ordre de couture) et DST compense.
+    struct RegistrationArgs {
+        std::string osp, output, map, dst, material, stabilizer;
+        double cellMm{1.0}, tension{0.0}, visibleGap{0.0}, fraction{-1.0}, strength{1.0};
+        int iterations{2};
+        bool noClobber{false}, aroundStitches{false};
+    };
+    auto rgArgs = std::make_shared<RegistrationArgs>();
+    c = project->add_subcommand("fabric-registration",
+                                "Decalage prevu entre couleurs (solveur de la feuille tissu rejoue "
+                                "bloc par bloc, estimation non calibree) et DST compense");
+    c->add_option("osp", rgArgs->osp, "Projet .osp")->required();
+    c->add_option("--material", rgArgs->material,
+                  "woven, jersey ou felt (defaut : tissu du projet)");
+    c->add_option("--stabilizer", rgArgs->stabilizer,
+                  "none, tearaway ou cutaway (defaut : entoilage du projet)");
+    c->add_option("--cell-mm", rgArgs->cellMm, "Maille du solveur en mm (defaut 1)")
+        ->check(CLI::Range(0.2, 10.0));
+    c->add_option("--tension-n", rgArgs->tension, "Tension du fil par point, en N (defaut 0,2)")
+        ->check(CLI::Range(0.0, 10.0));
+    c->add_option("--visible-gap-mm", rgArgs->visibleGap,
+                  "Decalage visible entre deux couleurs, mm (defaut 0,3)")
+        ->check(CLI::Range(0.0, 10.0));
+    c->add_option("--own-block-fraction", rgArgs->fraction,
+                  "Part du tirage d'un bloc deja exercee pendant sa couture (defaut 0,5)")
+        ->check(CLI::Range(0.0, 1.0));
+    c->add_flag("--around-stitches", rgArgs->aroundStitches,
+                "Cadre = emprise des points + 10 mm au lieu du canevas du projet");
+    c->add_option(
+        "--compensated-dst", rgArgs->dst,
+        "Ecrit un DST dont les points sont decales de l'ecart prevu (contre-compensation)");
+    c->add_option("--strength", rgArgs->strength, "Force de la compensation, 0..1 (defaut 1)")
+        ->check(CLI::Range(0.0, 1.0));
+    c->add_option("--iterations", rgArgs->iterations, "Iterations de la compensation (defaut 2)")
+        ->check(CLI::Range(0, 6));
+    c->add_option("--heatmap", rgArgs->map, "Carte PNG du decalage entre couleurs");
+    c->add_option("--output,-o", rgArgs->output, "Ecrit le rapport JSON");
+    c->add_flag("--no-clobber", rgArgs->noClobber, "Refuse d'ecraser les fichiers de sortie");
+    c->add_flag("--json", jsonOut, "Rapport JSON (openstitch.color-registration/1) sur stdout");
+    c->callback([rgArgs, &jsonOut, write_bytes] {
+        for (const auto* p : {&rgArgs->map, &rgArgs->output, &rgArgs->dst}) {
+            if (const auto refused =
+                    check_output("fabric-registration", jsonOut, *p, rgArgs->noClobber)) {
+                g_exit = *refused;
+                return;
+            }
+        }
+        int rc = 0;
+        auto opened = load("fabric-registration", jsonOut, rgArgs->osp, rc);
+        if (!opened) {
+            g_exit = rc;
+            return;
+        }
+        po::ColorRegistrationOptions opt;
+        opt.material = rgArgs->material;
+        opt.stabilizer = rgArgs->stabilizer;
+        opt.cell_mm = rgArgs->cellMm;
+        opt.thread_tension_n = rgArgs->tension;
+        opt.visible_gap_mm = rgArgs->visibleGap;
+        opt.own_block_fraction = rgArgs->fraction;
+        opt.hoop_is_canvas = !rgArgs->aroundStitches;
+        opt.compensate = !rgArgs->dst.empty();
+        opt.strength = rgArgs->strength;
+        opt.iterations = rgArgs->iterations;
+        opt.heatmap = !rgArgs->map.empty();
+        const auto report = po::predict_color_registration(opened->project, opt);
+        if (!report) {
+            g_exit = fail_err("fabric-registration", jsonOut, po::code::kRefused, report.error());
+            return;
+        }
+        std::string err;
+        if (!rgArgs->output.empty() && !write_text(fs::path(rgArgs->output), report->json, err)) {
+            g_exit = fail_with("fabric-registration", jsonOut, po::code::kIo, err);
+            return;
+        }
+        if (!rgArgs->map.empty() && !write_bytes(rgArgs->map, report->heatmap_png, err)) {
+            g_exit = fail_with("fabric-registration", jsonOut, po::code::kIo, err);
+            return;
+        }
+        if (!rgArgs->dst.empty()) {
+            if (!write_bytes(rgArgs->dst, report->compensated_dst, err)) {
+                g_exit = fail_with("fabric-registration", jsonOut, po::code::kIo, err);
+                return;
+            }
         }
         fmt::print("{}", jsonOut ? report->json + "\n" : report->text);
         g_exit = 0;
