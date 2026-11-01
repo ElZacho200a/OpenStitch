@@ -23,10 +23,12 @@ FabricResponse sanitized(FabricResponse f) {
     f.sigma_along_mm = std::max(f.sigma_along_mm, 0.05);
     f.sigma_across_mm = std::max(f.sigma_across_mm, 0.05);
     f.grain_anisotropy = std::clamp(f.grain_anisotropy, 0.25, 4.0);
+    f.compression = std::clamp(f.compression, 0.0, 2.0);
     f.max_displacement_mm = std::clamp(f.max_displacement_mm, 0.0, 3.0);
     f.calibrated_confidence = std::clamp(f.calibrated_confidence, 0.0, 1.0);
     f.uncalibrated_confidence = std::clamp(f.uncalibrated_confidence, 0.0, 1.0);
     f.compensation_strength = std::clamp(f.compensation_strength, 0.0, 6.0);
+    f.compensation_passes = std::clamp(f.compensation_passes, 1, 6);
     return f;
 }
 
@@ -64,7 +66,7 @@ std::int64_t PullField::key_of(std::int64_t cx, std::int64_t cy) const {
            (cx + (std::int64_t{1} << 30));
 }
 
-PullSample PullField::sample(Vec2um p) const {
+PullSample PullField::sample(Vec2um p, std::uint32_t min_order) const {
     PullSample out;
     const auto cx = static_cast<std::int64_t>(std::floor(p.x.value / cell_um_));
     const auto cy = static_cast<std::int64_t>(std::floor(p.y.value / cell_um_));
@@ -79,6 +81,9 @@ PullSample PullField::sample(Vec2um p) const {
     double uy = 0.0;
     double overlap = 0.0;
     std::uint32_t count = 0;
+    // Direction des fils de chaîne : la souplesse du tissu dépend de l'angle de chaque segment.
+    const double gx = std::cos(fabric_.grain_angle_rad);
+    const double gy = std::sin(fabric_.grain_angle_rad);
 
     for (const std::uint32_t idx : it->second) { // indices croissants : ordre déterministe
         const PullSource& s = sources_[idx];
@@ -101,33 +106,45 @@ PullSample PullField::sample(Vec2um p) const {
         if (w < 1e-4) {
             continue;
         }
+        // Tout segment voisin, cousu avant ou après, raidit le tissu (densité de fil et de
+        // trous d'aiguille) : il compte dans le tassement et la confiance.
+        overlap += w;
+        if (s.order < min_order) {
+            continue; // cousu avant le point : le tissu avait déjà bougé quand il a été posé
+        }
+        // Souplesse selon l'angle du segment par rapport à la chaîne : le tissu cède dans le sens
+        // de la trame (facteur `grain_anisotropy`) et résiste dans celui de la chaîne. L'axe du
+        // segment et sa normale ne voient pas la même rigidité.
+        const double along_cos = dirx * gx + diry * gy;
+        const double c2 = along_cos * along_cos;
+        const double k_axial = c2 + fabric_.grain_anisotropy * (1.0 - c2);
+        const double k_lateral = (1.0 - c2) + fabric_.grain_anisotropy * c2;
         // Contraction axiale vers le centre + poussée latérale (Poisson), de même ordre de
         // grandeur.
-        const double axial = -fabric_.gain * std::clamp(along, -h, h) * w;
-        const double lateral = fabric_.poisson * fabric_.gain * h * std::tanh(across / sig_n) * w;
+        const double axial = -fabric_.gain * k_axial * std::clamp(along, -h, h) * w;
+        const double lateral =
+            fabric_.poisson * fabric_.gain * k_lateral * h * std::tanh(across / sig_n) * w;
         ux += axial * dirx - lateral * diry;
         uy += axial * diry + lateral * dirx;
-        overlap += w;
         ++count;
     }
     if (count == 0) {
         return out;
     }
 
-    // Anisotropie : le déplacement perpendiculaire aux fils de chaîne est multiplié par la
-    // souplesse relative de la trame.
-    const double gx = std::cos(fabric_.grain_angle_rad);
-    const double gy = std::sin(fabric_.grain_angle_rad);
-    const double ug = ux * gx + uy * gy;
-    const double up = (-ux * gy + uy * gx) * fabric_.grain_anisotropy;
-    ux = ug * gx - up * gy;
-    uy = ug * gy + up * gx;
+    // Tassement : la matière comprimée sous un amas de segments résiste de plus en plus, donc le
+    // déplacement cumulé sature au lieu de croître linéairement avec la densité.
+    const double packing = 1.0 / (1.0 + fabric_.compression * overlap);
+    ux *= packing;
+    uy *= packing;
 
+    // Plafond doux : tanh(norme / plafond) · plafond, sans écrêtage brutal.
     const double cap = fabric_.max_displacement_mm * kUmPerMm;
     const double norm = std::hypot(ux, uy);
-    if (norm > cap && norm > 0.0) {
-        ux *= cap / norm;
-        uy *= cap / norm;
+    if (norm > 0.0) {
+        const double soft = cap > 0.0 ? cap * std::tanh(norm / cap) : 0.0;
+        ux *= soft / norm;
+        uy *= soft / norm;
     }
 
     const double base =
@@ -138,8 +155,8 @@ PullSample PullField::sample(Vec2um p) const {
     return out;
 }
 
-Vec2um PullField::compensation_at(Vec2um p) const {
-    const PullSample s = sample(p);
+Vec2um PullField::compensation_at(Vec2um p, std::uint32_t min_order) const {
+    const PullSample s = sample(p, min_order);
     const double scale = s.confidence * fabric_.compensation_strength;
     double x = -static_cast<double>(s.displacement.x.value) * scale;
     double y = -static_cast<double>(s.displacement.y.value) * scale;

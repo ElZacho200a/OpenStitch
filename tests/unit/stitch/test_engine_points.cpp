@@ -743,6 +743,15 @@ TEST_CASE("longueurs : finitions desactivees -> aucun decoupage") {
 
 // --- HP-STI-004 : satin de bordure -----------------------------------------------------------
 
+TEST_CASE("bordure : le fractionnement des points longs est actif d'office") {
+    const auto ring = circle(0, 0, 20'000.0, 72);
+    document::BorderSatinSpec spec;
+    spec.width = Micrometers{12'000};
+    const auto params = border_satin_from_path(ring, spec, Micrometers{400}, true);
+    REQUIRE(params.has_value());
+    CHECK(params->split_stitch == document::SatinSplit::Staggered);
+}
+
 TEST_CASE("bordure : cercle centre, bande reguliere sans croisement") {
     const double r = 10'000.0;
     const auto ring = circle(0, 0, r, 72);

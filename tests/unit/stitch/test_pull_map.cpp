@@ -91,7 +91,8 @@ TEST_CASE("pull_map: determinisme octet pour octet", "[pull_map]") {
           simulate_fabric_pull(two, FabricResponse{}).commands);
 }
 
-TEST_CASE("pull_map: la simulation decale les blocs suivants, pas le premier", "[pull_map]") {
+TEST_CASE("pull_map: le remplissage se retracte, le contour cousu apres reste en place",
+          "[pull_map]") {
     stitch::StitchSequence seq = fill(); // bloc 1 : tatami de l'objet 1
     stitch::StitchCommand change;
     change.type = stitch::CommandType::ColorChange;
@@ -106,17 +107,47 @@ TEST_CASE("pull_map: la simulation decale les blocs suivants, pas le premier", "
     for (std::size_t i = 0; i < seq.commands.size(); ++i) {
         CHECK(sim.commands[i].type == seq.commands[i].type);
         CHECK(sim.commands[i].source == seq.commands[i].source);
-        if (i < secondStart) {
-            CHECK(sim.commands[i].pos == seq.commands[i].pos); // premier bloc : en place
-        }
     }
-    // Le contour, cousu apres, suit le tissu contracte par le remplissage (x diminue).
-    CHECK(sim.commands[secondStart].pos.x.value < 8000);
+    // Le bord droit du remplissage (2e point) s'est retracte vers le centre...
+    CHECK(sim.commands[1].pos.x.value < 8000);
+    // ... alors que le contour, cousu apres sur un tissu deja deforme, reste a sa place en X :
+    // un jour s'ouvre entre le remplissage et son contour.
+    CHECK(sim.commands[secondStart].pos.x.value == 8000);
 }
 
-TEST_CASE("pull_map: un seul bloc de couleur est rendu inchange", "[pull_map]") {
+TEST_CASE("pull_map: le premier point subit plus de tirage que le dernier", "[pull_map]") {
     const stitch::StitchSequence seq = fill();
-    CHECK(simulate_fabric_pull(seq, FabricResponse{}).commands == seq.commands);
+    const stitch::StitchSequence sim = simulate_fabric_pull(seq, FabricResponse{});
+    const auto shift = [&](std::size_t i) {
+        return std::hypot(
+            static_cast<double>(sim.commands[i].pos.x.value - seq.commands[i].pos.x.value),
+            static_cast<double>(sim.commands[i].pos.y.value - seq.commands[i].pos.y.value));
+    };
+    CHECK(shift(0) > 0.0);
+    CHECK(shift(0) > shift(seq.commands.size() - 1));
+}
+
+TEST_CASE("pull_map: compenser puis simuler rapproche du dessin d'origine", "[pull_map]") {
+    const stitch::StitchSequence seq = fill();
+    const FabricResponse fabric{};
+    const PullField field(collect_pull_sources(seq), fabric);
+    stitch::StitchSequence compensated = seq;
+    for (std::size_t i = 0; i < seq.commands.size(); ++i) {
+        compensated.commands[i].pos =
+            seq.commands[i].pos +
+            field.compensation_at(seq.commands[i].pos, static_cast<std::uint32_t>(i));
+    }
+    const auto error = [&](const stitch::StitchSequence& sewn) {
+        double sum = 0.0;
+        for (std::size_t i = 0; i < seq.commands.size(); ++i) {
+            sum += std::hypot(
+                static_cast<double>(sewn.commands[i].pos.x.value - seq.commands[i].pos.x.value),
+                static_cast<double>(sewn.commands[i].pos.y.value - seq.commands[i].pos.y.value));
+        }
+        return sum;
+    };
+    CHECK(error(simulate_fabric_pull(compensated, fabric)) <
+          error(simulate_fabric_pull(seq, fabric)));
 }
 
 TEST_CASE("pull_map: l'image de la carte est transparente hors influence", "[pull_map]") {

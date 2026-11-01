@@ -1287,7 +1287,8 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   --pull-map --fabric`. Tests `test_pull_map.cpp`, `test_pull_preview_ui.cpp`. Reste : lecture du
   profil matière (#155), calibration (HP-ENG-001.a) ; l'aperçu n'est pas une mesure.
 
-### HP-ENG-001.a — Pièce-test de calibration et table de compensation par tissu [P1] — ☐ À faire
+### HP-ENG-001.a — Pièce-test de calibration et table de compensation par tissu [P1] — ◐ Partiel (2026-11-01)
+- Livré (2026-11-01) : générateur déterministe de pièce-test (`libs/stitch_generation/pull_test_piece`, croix de repérage, satins 3-12 mm, colonnes à 0/45/90° du grain, tatamis à 3 densités, remplissage + contour dans les deux ordres), tableau CSV prédit/mesuré, ajustement en grille de gain / tassement / souplesse de trame, commande `openstitch-cli pull-test-piece`. Théorie et protocole : `docs/theorie-tirage-tissu-2026-11.md`. Reste : brodage et mesures réelles (HP-PHYS-001), table par tissu persistante dans le `.osp`, application par le mode Auto.
 - Source : veille `docs/veille-innovations-2026-10.md` §V1. Aucune source lue ne
   fournit de modèle physique de l'étirement : les valeurs publiées sont des
   règles empiriques, dépendantes du tissu et non vérifiées. On mesure donc
@@ -1345,7 +1346,7 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   (vérifié 2026-10).
 
 ### HP-ENG-004 — Découpe automatique des satins trop larges [P1] — ◐ Partiel
-- Livré (2026-10-25) : Colonne satin créée à la main : `split_stitch = Staggered` d'office. Reste : défaut de la struct, satins de bordure et sans barreaux.
+- Livré (2026-10-25) : Colonne satin créée à la main : `split_stitch = Staggered` d'office. Livré (2026-10-31) : satins de bordure (HP-STI-004) fractionnés d'office aussi ; l'auto-satin l'était déjà. Reste : défaut de la struct `SatinParams` (laissé à `Disabled` : changerait le rendu des tests et objets existants) et satins sans barreaux.
 - État OpenStitch : split stitch disponible mais désactivé par défaut ;
   avertissement > 9 mm.
 - Hatch : Auto split automatique au-delà de la longueur max.
@@ -4596,6 +4597,7 @@ ouvrant le lot (§0.1).
 | 2026-10-31 | Claude (PERF-012, PR #202) | Voir la ligne PERF-012 ci-dessus : non livré faute de gain mesuré. |
 | 2026-10-31 | Claude (agent, PR #209) | **HP-PERF-010 ◐** : `UndoStack::setMaxDepth` (0 = illimité, défaut), élimination des pas les plus anciens, pas conservés annulables exactement, état propre éliminé -> `isClean` faux ; 3 tests, `test_commands` vert. Reste : câblage bureau, commandes delta après mesure (HP-PERF-007), borne en octets, rejeu HP-QA-015. |
 | 2026-10-31 | Claude (agents ENG-009, VIEW-009) | **Aucun code livré.** ENG-009 bloquée par HP-STI-018 (satin tournant absent du dépôt) ; VIEW-009 : `DeviceCoordinateCache` mesuré et rejeté (régression au zoom fort). Constats consignés dans chaque entrée. |
+| 2026-10-31 | Claude | **HP-ENG-004** : satin de bordure créé avec `split_stitch = Staggered` (test `bordure : le fractionnement…`). Défaut de la struct inchangé. |
 | 2026-10-31 | Claude (HP-ENG-010) | **HP-ENG-010 ◐** : `stitch::object_endpoints` + extrémités réelles fournies à `plan_order`/`optimize_order` par l'op `optimize_order` et le bureau (test Catch2 `object_endpoints`). `reversible` et mesure sur corpus restent. |
 | 2026-10-31 | Claude (HP-OBJ-004) | **HP-OBJ-004 ◐** : saisie numérique du pivot de rotation (action « Centre de rotation… », `setRotationPivot`), test QTest. Reste de l'entrée : retouches manuelles des tatamis. |
 | 2026-10-31 | Claude (pinceau) | Pinceau fluide avec rendu réaliste : la couche points est suspendue pendant un coup de pinceau (plus de repeinture de la texture sous la forme à chaque touche), reconstruite à la fin ou à l'annulation. Test QTest `strokeSuspendsTheStitchLayerUntilItEnds`. Aucune entrée HP concernée. |
@@ -4604,3 +4606,4 @@ ouvrant le lot (§0.1).
 | 2026-10-31 | Claude (HP-UX-064, HP-VIEW-015) | **Nouvelles entrées ◐** : surimpression des sauts à vide avec comparaison avant/après, et carte de risque tissu en surimpression. |
 | 2026-10-31 | Claude (HP-ENG-010) | **HP-ENG-010 ◐** : le « Trajet estimé » du panneau Ordre utilise les extrémités réelles de couture (comme « Appliquer » et l'op `optimize_order`), plus les centres ; infobulle et traduction alignées. Reste : sens `reversed` non appliqué, auto-numérisation par centres. |
 | 2026-11-01 | Claude (HP-OBJ-001) | **HP-OBJ-001 ◐** : règles de sélection (normalisation, invariants) extraites de `MainWindow` vers `apps/desktop/selection_model` (Qt-free, test QTest `test_selection_model`). Reste : déplacer les membres d'état eux-mêmes. |
+| 2026-11-01 | Claude (tirage prédit) | **Tirage du tissu : tassement, grain, ordre de couture** : champ saturant (`compression`, plafond doux `tanh`), souplesse selon l'angle du point par rapport au grain, rang de couture (`PullSource::order`) et raidissement par les segments voisins, compensation prédite à point fixe (3 passes), tous les remplissages suivent la prédiction du projet, sens du tissu réglable (`FabricSettings::grain_angle` / `weft_softness`, `.osp`, dialogue « Coloris et tissu »), correction du signe de `simulate_fabric_pull`, pièce-test de calibration (HP-ENG-001.a ◐). Théorie : `docs/theorie-tirage-tissu-2026-11.md`. Coefficients toujours empiriques, non mesurés. |

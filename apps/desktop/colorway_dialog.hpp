@@ -7,6 +7,7 @@
 #include <QStringList>
 
 class QComboBox;
+class QDoubleSpinBox;
 class QLineEdit;
 class QListWidget;
 class QListWidgetItem;
@@ -25,7 +26,8 @@ public:
 
     // `names` : un coloris par ligne ; `active` : indice du coloris actif (-1 = aucun).
     void setState(const QStringList& names, int active, const QColor& fabric,
-                  const QString& fabricName, const QString& material, const QString& stabilizer);
+                  const QString& fabricName, const QString& material, const QString& stabilizer,
+                  double grainAngleDeg, double weftSoftness);
 
 signals:
     void addRequested(const QString& suggestedName);
@@ -33,7 +35,8 @@ signals:
     void removeRequested(int index);
     void renameRequested(int index, const QString& name);
     void fabricChangeRequested(const QColor& color, const QString& name, const QString& material,
-                               const QString& stabilizer);
+                               const QString& stabilizer, double grainAngleDeg,
+                               double weftSoftness);
 
 private:
     void updateButtons();
@@ -51,6 +54,8 @@ private:
     QLineEdit* fabricName_{nullptr};
     QComboBox* materialCombo_{nullptr};
     QLineEdit* stabilizer_{nullptr};
+    QDoubleSpinBox* grainAngle_{nullptr};
+    QDoubleSpinBox* weftSoftness_{nullptr};
     QColor fabric_{Qt::white};
     int active_{-1};
     bool populating_{false};

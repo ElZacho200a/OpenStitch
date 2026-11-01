@@ -177,6 +177,8 @@ std::optional<document::SatinParams> border_satin_from_path(const geometry::Path
     document::SatinParams params;
     params.density = density;
     params.border = spec;
+    // HP-ENG-004 : une bordure large est fractionnée d'office, comme une colonne tracée à la main.
+    params.split_stitch = document::SatinSplit::Staggered;
     params.max_width = Micrometers{
         std::max<std::int32_t>(params.max_width.value, static_cast<std::int32_t>(width) + 1)};
     const auto addNode = [](geometry::Path& rail, V p) {

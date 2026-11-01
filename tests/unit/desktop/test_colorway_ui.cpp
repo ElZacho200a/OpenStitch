@@ -3,12 +3,16 @@
 #include <QAction>
 #include <QApplication>
 #include <QComboBox>
+#include <QDoubleSpinBox>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTest>
+
+#include <cmath>
+#include <numbers>
 
 #include "canvas_view.hpp"
 #include "colorway_dialog.hpp"
@@ -122,6 +126,31 @@ private slots:
         QVERIFY(window.undoStack_.undo(window.project_));
         QCOMPARE(window.project_.fabric.stabilizer, std::string());
         QCOMPARE(window.project_.fabric.material, std::string("jersey"));
+    }
+
+    void fabricGrainIsUndoableAndFollowsTheDialog() {
+        MainWindow window;
+        window.show();
+        window.applyLoadedProject(twoObjects());
+        window.showColorwayDialog();
+        const auto* dialog = window.colorwayDialog_;
+        auto* angle = dialog->findChild<QDoubleSpinBox*>(QStringLiteral("spin_fabric_grain_angle"));
+        auto* softness =
+            dialog->findChild<QDoubleSpinBox*>(QStringLiteral("spin_fabric_weft_softness"));
+        QVERIFY(angle != nullptr && softness != nullptr);
+        angle->setValue(30.0);
+        emit angle->editingFinished();
+        QVERIFY(std::abs(window.project_.fabric.grain_angle.radians - std::numbers::pi / 6.0) <
+                1e-9);
+        softness->setValue(1.5);
+        emit softness->editingFinished();
+        QCOMPARE(window.project_.fabric.weft_softness, 1.5);
+        QVERIFY(window.undoStack_.undo(window.project_));
+        QCOMPARE(window.project_.fabric.weft_softness, 1.0);
+        QVERIFY(std::abs(window.project_.fabric.grain_angle.radians - std::numbers::pi / 6.0) <
+                1e-9);
+        window.updateActions();
+        QCOMPARE(angle->value(), 30.0);
     }
 
     void mergeDialogPreviewsAndBuildsPlan() {

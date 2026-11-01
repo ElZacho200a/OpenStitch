@@ -84,7 +84,8 @@ TEST_CASE("pull_field: anisotropie du sens des fils", "[pull_field]") {
     // Segment vertical : le deplacement axial est selon Y, perpendiculaire aux fils de chaine (X).
     const std::vector<PullSource> v{seg(0, -2000, 0, 2000)};
     FabricResponse iso;
-    FabricResponse aniso;
+    iso.compression = 0.0; // isole l'effet du grain de l'arrondi du tassement
+    FabricResponse aniso = iso;
     aniso.grain_anisotropy = 2.0;
     const PullSample a = PullField(v, iso).sample({{0}, {2000}});
     const PullSample b = PullField(v, aniso).sample({{0}, {2000}});
@@ -192,4 +193,97 @@ TEST_CASE("pull_field: entrees degenerees ne produisent ni NaN ni crash", "[pull
     const PullSample s = f.sample({{900}, {10}});
     CHECK(std::isfinite(s.confidence));
     CHECK(norm(s.displacement) <= 3000.0 + 1.0);
+}
+
+TEST_CASE("pull_field: le tassement fait saturer l'empilement de segments", "[pull_field]") {
+    const auto stack = [](int n) {
+        std::vector<PullSource> v;
+        for (int i = 0; i < n; ++i) {
+            v.push_back(seg(-3000, i * 100, 3000, i * 100));
+        }
+        return v;
+    };
+    FabricResponse linear;
+    linear.compression = 0.0;
+    linear.max_displacement_mm = 3.0;
+    FabricResponse packed = linear;
+    packed.compression = 0.2;
+    const Vec2um p{{3000}, {0}};
+    const auto mag = [&](int n, const FabricResponse& f) {
+        return norm(PullField(stack(n), f).sample(p).displacement);
+    };
+    // Sans tassement, l'empilement croit presque lineairement ; avec, il sature nettement.
+    const double linearGrowth = mag(8, linear) / mag(2, linear);
+    const double packedGrowth = mag(8, packed) / mag(2, packed);
+    CHECK(linearGrowth > 2.5);
+    CHECK(packedGrowth < linearGrowth);
+    CHECK(mag(8, packed) < mag(8, linear));
+    CHECK(mag(8, packed) > 0.0);
+}
+
+TEST_CASE("pull_field: le plafond doux ne depasse jamais le maximum", "[pull_field]") {
+    std::vector<PullSource> v;
+    for (int i = 0; i < 100; ++i) {
+        v.push_back(seg(-6000, i * 40, 6000, i * 40, 3.0));
+    }
+    FabricResponse fr;
+    fr.gain = 0.2;
+    fr.compression = 0.0;
+    fr.max_displacement_mm = 0.4;
+    const PullField f(v, fr);
+    for (int x = 0; x <= 6000; x += 1000) {
+        CHECK(norm(f.sample({{x}, {2000}}).displacement) < 400.0 + 1.0);
+    }
+}
+
+TEST_CASE("pull_field: la poussee laterale suit la souplesse du tissu selon l'angle",
+          "[pull_field]") {
+    // Segment le long de la chaine (X) : sa normale (Y) est dans le sens de la trame.
+    const std::vector<PullSource> alongWarp{seg(-2000, 0, 2000, 0)};
+    // Segment le long de la trame (Y) : son axe est le plus souple.
+    const std::vector<PullSource> alongWeft{seg(0, -2000, 0, 2000)};
+    FabricResponse iso;
+    iso.compression = 0.0;
+    FabricResponse soft = iso;
+    soft.grain_anisotropy = 2.0;
+    const double warpIso = norm(PullField(alongWarp, iso).sample({{1500}, {600}}).displacement);
+    const double warpSoft = norm(PullField(alongWarp, soft).sample({{1500}, {600}}).displacement);
+    const double weftIso = norm(PullField(alongWeft, iso).sample({{600}, {1500}}).displacement);
+    const double weftSoft = norm(PullField(alongWeft, soft).sample({{600}, {1500}}).displacement);
+    CHECK(warpSoft > warpIso);
+    CHECK(weftSoft > weftIso * 1.5);
+}
+
+TEST_CASE("pull_field: un point ne subit que le tirage des segments cousus apres lui",
+          "[pull_field]") {
+    PullSource early = seg(-2000, 0, 2000, 0);
+    early.order = 0;
+    PullSource late = seg(-2000, 300, 2000, 300);
+    late.order = 10;
+    FabricResponse fr;
+    fr.compression = 0.5;
+    const Vec2um p{{2000}, {150}};
+    const PullField both({early, late}, fr);
+    const PullField lateOnly({late}, fr);
+
+    const PullSample all = both.sample(p, 0);
+    const PullSample after = both.sample(p, 5); // seul `late` tire
+    const PullSample none = both.sample(p, 11);
+    CHECK(norm(after.displacement) < norm(all.displacement));
+    CHECK(none.displacement == Vec2um{});
+    CHECK(none.contributors == 0);
+    // `early`, cousu avant, raidit le tissu : le tirage de `late` est plus faible que s'il etait
+    // seul sur un tissu intact.
+    CHECK(norm(after.displacement) < norm(lateOnly.sample(p, 5).displacement));
+    CHECK(both.sample(p, 5).displacement == both.sample(p, 5).displacement);
+}
+
+TEST_CASE("pull_field: la compensation d'un point depend de son rang de couture", "[pull_field]") {
+    PullSource a = seg(-2000, 0, 2000, 0);
+    a.order = 1;
+    PullSource b = seg(-2000, 400, 2000, 400);
+    b.order = 20;
+    const PullField f({a, b}, FabricResponse{});
+    const Vec2um p{{2000}, {0}};
+    CHECK(norm(f.compensation_at(p, 1)) > norm(f.compensation_at(p, 20)));
 }

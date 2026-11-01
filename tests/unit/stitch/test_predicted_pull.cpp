@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <variant>
 #include <vector>
 
 #include "openstitch/stitch_generation/overrides.hpp"
@@ -45,6 +46,18 @@ void add_tatami(document::Project& project, std::int32_t x0, document::PullMode 
     emb.id = project.object_ids.next();
     emb.source_vector = vec.id;
     emb.params = params;
+    project.embroidery_objects.push_back(emb);
+}
+
+void add_contour(document::Project& project, std::int32_t x0) {
+    document::VectorObject vec;
+    vec.id = project.object_ids.next();
+    vec.paths.push_back(rect(x0, 20'000, 10'000));
+    project.vector_objects.push_back(vec);
+    document::EmbroideryObject emb;
+    emb.id = project.object_ids.next();
+    emb.source_vector = vec.id;
+    emb.params = document::ContourFillParams{};
     project.embroidery_objects.push_back(emb);
 }
 
@@ -213,4 +226,77 @@ TEST_CASE("predicted_pull: seuls les points de l'objet predit bougent", "[predic
             CHECK(seq.commands[i].pos == copy.commands[i].pos);
         }
     }
+}
+
+TEST_CASE("predicted_pull: un remplissage sans reglage de tirage suit la prediction du projet",
+          "[predicted_pull]") {
+    // Sans objet predit, le contour (pas de pull_mode) n'est jamais deplace.
+    document::Project plain;
+    add_tatami(plain, 0, document::PullMode::Manual);
+    add_contour(plain, 22'000);
+    // Avec un tatami predit, le contour tire le meme tissu : il est compense lui aussi.
+    document::Project predicted;
+    add_tatami(predicted, 0, document::PullMode::Predicted);
+    add_contour(predicted, 22'000);
+
+    const ObjectId contourPlain = plain.embroidery_objects.back().id;
+    const ObjectId contourPredicted = predicted.embroidery_objects.back().id;
+    const auto positions = [](const stitch::StitchSequence& s, ObjectId who) {
+        std::vector<Vec2um> out;
+        for (const auto& c : s.commands) {
+            if (c.type == stitch::CommandType::Stitch && c.source == who &&
+                c.pass == stitch::StitchPass::TopStitch) {
+                out.push_back(c.pos);
+            }
+        }
+        return out;
+    };
+    const auto pa = positions(effective(plain), contourPlain);
+    const auto pb = positions(effective(predicted), contourPredicted);
+    REQUIRE_FALSE(pa.empty());
+    REQUIRE(pa.size() == pb.size());
+    CHECK(pa != pb);
+}
+
+TEST_CASE("predicted_pull: les passes de compensation convergent", "[predicted_pull]") {
+    document::Project project;
+    add_tatami(project, 0, document::PullMode::Predicted);
+    add_tatami(project, 22'000, document::PullMode::Predicted);
+    const auto run = [&](int passes) {
+        FabricResponse fabric;
+        fabric.compensation_passes = passes;
+        // Sequence nominale : meme geometrie sans la passe predite (socle adaptatif).
+        document::Project nominal = project;
+        for (auto& o : nominal.embroidery_objects) {
+            std::visit(
+                [](auto& p) {
+                    if constexpr (requires { p.pull_mode; }) {
+                        p.pull_mode = document::PullMode::Adaptive;
+                    }
+                },
+                o.params);
+        }
+        auto seq = effective(nominal);
+        apply_predicted_pull(seq, project, fabric);
+        return seq;
+    };
+    const auto gap = [](const stitch::StitchSequence& a, const stitch::StitchSequence& b) {
+        double sum = 0.0;
+        for (std::size_t i = 0; i < a.commands.size(); ++i) {
+            sum += std::hypot(
+                static_cast<double>(a.commands[i].pos.x.value - b.commands[i].pos.x.value),
+                static_cast<double>(a.commands[i].pos.y.value - b.commands[i].pos.y.value));
+        }
+        return sum;
+    };
+    const auto p1 = run(1);
+    const auto p2 = run(2);
+    const auto p3 = run(3);
+    const auto p4 = run(4);
+    REQUIRE(p1.commands.size() == p4.commands.size());
+    // Chaque passe corrige moins que la precedente : le point fixe est contractant.
+    CHECK(gap(p1, p2) > 0.0);
+    CHECK(gap(p3, p4) < gap(p1, p2));
+    // Deterministe.
+    CHECK(run(3).commands == p3.commands);
 }
