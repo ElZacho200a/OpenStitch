@@ -133,6 +133,8 @@ void MainWindow::buildObjectEditActions(QMenu* editMenu) {
             }
         });
 
+    buildSelectionToolsMenu(editMenu);
+
     // Coller s'active dès qu'une autre instance (ou celle-ci) copie des formes.
     connect(QGuiApplication::clipboard(), &QClipboard::dataChanged, this,
             [this] { updateObjectEditActions(); });
@@ -159,6 +161,10 @@ void MainWindow::buildObjectEditActions(QMenu* editMenu) {
                 rotateSelection(degrees);
             }
         });
+    add(transform, rotationPivotAct_, tr("&Centre de rotation…"),
+        QStringLiteral("action_rotationPivot"), QKeySequence(),
+        tr("Fixe le centre de rotation de la sélection par ses coordonnées en millimètres."),
+        [this] { editRotationPivot(); });
     transform->addSeparator();
     add(transform, mirrorHorizontalAct_, tr("Miroir &horizontal"),
         QStringLiteral("action_mirrorHorizontal"), QKeySequence(),
@@ -208,7 +214,7 @@ void MainWindow::updateObjectEditActions() {
     const QString needDesign = tr("Le design ne contient aucune forme.");
     for (QAction* act :
          {cutAct_, copyAct_, duplicateWithStitchesAct_, rotateLeftAct_, rotateRightAct_,
-          rotateAngleAct_, mirrorHorizontalAct_, mirrorVerticalAct_}) {
+          rotateAngleAct_, rotationPivotAct_, mirrorHorizontalAct_, mirrorVerticalAct_}) {
         setEnabledWithReason(act, anyTarget, needShapes);
     }
     const QMimeData* mime = QGuiApplication::clipboard()->mimeData();
@@ -234,6 +240,7 @@ void MainWindow::updateObjectEditActions() {
                          designMirrorHorizontalAct_, designMirrorVerticalAct_}) {
         setEnabledWithReason(act, anyObject, needDesign);
     }
+    updateSelectionToolActions();
 }
 
 std::vector<ObjectId> MainWindow::transformTargets() const {

@@ -33,7 +33,7 @@ function(openstitch_add_qt_test name)
     # pour la cible `openstitch` (windeployqt) ; ici on ajoute simplement son
     # dossier bin au PATH plutôt que de dupliquer les DLL pour chaque test.
     set_tests_properties(${name} PROPERTIES
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;OPENSTITCH_NO_PERSISTED_FILTERS=1"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 endfunction()
 
@@ -77,6 +77,7 @@ target_compile_definitions(test_help_manual PRIVATE
     OPENSTITCH_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 openstitch_add_qt_test(test_selection_hit_test test_selection_hit_test.cpp)
 openstitch_add_qt_test(test_selection_model test_selection_model.cpp)
+openstitch_add_qt_test(test_selection_queries test_selection_queries.cpp)
 openstitch_add_qt_test(test_wsl_path_converter test_wsl_path_converter.cpp)
 openstitch_add_qt_test(test_generation_options test_generation_options.cpp)
 openstitch_add_qt_test(test_segmentation_workflow test_segmentation_workflow.cpp)

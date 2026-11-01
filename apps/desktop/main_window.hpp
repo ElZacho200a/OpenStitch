@@ -45,6 +45,7 @@
 #include "openstitch/thread_palette/thread_library.hpp"
 #include "realistic_view_state.hpp"
 #include "selection_model.hpp"
+#include "selection_queries.hpp"
 #include "tools.hpp"
 #include "view_display_state.hpp"
 
@@ -534,6 +535,11 @@ private:
     void isolateFilterType(int filterType);
     void isolateFilterColor(std::uint32_t colorKey);
     void showAllFilters();
+    // Filtres d'affichage : types et taille mémorisés entre sessions (QSettings) ; indicateur
+    // permanent de la barre d'état quand des objets sont masqués par un filtre.
+    void saveFilterSettings() const;
+    void updateFilterIndicator();
+    void setAllColorFilters(int mode); // 0 tout afficher, 1 tout masquer, 2 inverser
     // Couleurs distinctes des formes de l'image (première apparition), pour le sélecteur de fil.
     [[nodiscard]] std::vector<QColor> imageColors() const;
     // Sélecteur de couleur de fil : les couleurs de l'image y sont proposées en « Custom colors ».
@@ -671,6 +677,23 @@ private:
                              const QString& label, const QString& done);
     void selectAllObjects();
     void selectObjectsWithSameColor();
+    // Outils de sélection (main_window_selection_tools.cpp) : requêtes pures de
+    // `selection_queries.hpp`, ici seulement le câblage.
+    void buildSelectionToolsMenu(QMenu* editMenu);
+    void updateSelectionToolActions();
+    [[nodiscard]] ShapePredicate selectablePredicate() const;
+    void applyShapeSelection(std::vector<ObjectId> ids, const QString& what);
+    void invertShapeSelection();
+    void selectSameKind(int kind); // 0 type de point, 1 fil, 2 calque
+    void stepSelection(int step);
+    void selectSewingRangeDialog();
+    void selectTouchingShapes();
+    void selectByState(int kind);
+    void armLassoSelection();
+    void finishLassoSelection();
+    void storeNamedSelection();
+    void recallNamedSelection(const QString& name);
+    void rebuildNamedSelectionMenu();
     void setEmbroideryColorForSelection(std::array<std::uint8_t, 3> rgb);
     void runTransform(const std::vector<ObjectId>& ids, const commands::AffineTransform& transform,
                       const QString& label, const QString& done);
@@ -687,6 +710,9 @@ private:
                                           const commands::BoundsUm& box) const;
     void showRotationPreview(const commands::BoundsUm& box, Vec2um pivot, double degrees);
     void hideRotationPreview();
+    // Saisie numérique du pivot (mm, Y vers le haut) ; `setRotationPivot` est la partie testable.
+    void editRotationPivot();
+    void setRotationPivot(const std::vector<ObjectId>& ids, Vec2um pivot);
     std::optional<Vec2um> rotationPivot_; // pivot choisi, valable pour rotationPivotTargets_
     std::vector<ObjectId> rotationPivotTargets_;
     QGraphicsPolygonItem* rotationPreview_{nullptr};
@@ -1266,6 +1292,7 @@ private:
     QAction* rotateLeftAct_{nullptr};
     QAction* rotateRightAct_{nullptr};
     QAction* rotateAngleAct_{nullptr};
+    QAction* rotationPivotAct_{nullptr};
     QAction* mirrorHorizontalAct_{nullptr};
     QAction* mirrorVerticalAct_{nullptr};
     QAction* designCenterAct_{nullptr};
@@ -1298,6 +1325,12 @@ private:
     // pendant le glisser (repère modèle, µm) + aperçu (même cycle de vie que
     // le polygone). Simplifié (Douglas-Peucker) seulement à la fermeture.
     std::vector<Vec2um> pendingFreeformPoints_;
+    bool lassoSelectArmed_{false}; // le prochain tracé à main levée sélectionne (lasso)
+    // Sélections nommées de la session (ni enregistrées, ni annulables) : nom -> formes.
+    std::vector<std::pair<QString, std::vector<ObjectId>>> namedSelections_;
+    QMenu* namedSelectionMenu_{nullptr};
+    std::vector<QAction*> selectionToolActs_;       // actives dès qu'il y a des formes
+    std::vector<QAction*> selectionNeedsShapeActs_; // actives avec une forme sélectionnée
     QGraphicsPathItem* freeformPreviewItem_{nullptr};
 
     // Colonne satin manuelle en cours de tracé (outil DrawSatinColumn) :
@@ -1896,6 +1929,7 @@ private:
     // Filtres d'affichage de la broderie.
     QDockWidget* filterDock_{nullptr};
     std::array<QCheckBox*, 3> typeChecks_{nullptr, nullptr, nullptr}; // contour/tatami/satin
+    QPushButton* filterIndicator_{nullptr}; // « N objet(s) masqué(s) par un filtre » (barre d'état)
     QVBoxLayout* colorFilterLayout_{nullptr};
     QDoubleSpinBox* minAreaSpin_{nullptr};
     std::array<bool, 3> showType_{true, true, true};

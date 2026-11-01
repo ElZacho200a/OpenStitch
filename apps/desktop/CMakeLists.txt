@@ -28,6 +28,7 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_regions.cpp
     main_window_shapes.cpp
     main_window_objects.cpp
+    main_window_selection_tools.cpp
     main_window_arrange.cpp
     simulation_nav_bar.cpp
     stitch_type_catalog.cpp
@@ -177,6 +178,8 @@ main_window_help.cpp
     selection_hit_test.cpp
     selection_model.cpp
     selection_model.hpp
+    selection_queries.cpp
+    selection_queries.hpp
     selection_hit_test.hpp
     ui_icons.cpp
     ui_icons.hpp
