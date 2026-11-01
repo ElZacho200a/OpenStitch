@@ -128,6 +128,7 @@ constexpr int kGlyphRole = Qt::UserRole + 6;        // StitchGlyph (filtre par t
 constexpr int kTextFlagRole = Qt::UserRole + 7;     // objet issu du lettrage
 constexpr int kSourceVectorRole = Qt::UserRole + 8; // forme source d'une ligne de broderie
 constexpr int kVectorIdRole = Qt::UserRole + 9;     // ligne de forme vectorielle non cousue
+constexpr int kEditedRole = Qt::UserRole + 10;      // retouches manuelles (filtre par état)
 constexpr int kVisibleCol = 1;
 constexpr int kLockCol = 2;
 
@@ -334,6 +335,31 @@ DocumentPanel::DocumentPanel(QWidget* parent) : QWidget(parent) {
     filterRow->addWidget(typeFilter_);
     layout->addLayout(filterRow);
     connect(typeFilter_, &QComboBox::currentIndexChanged, this, [this] { applyFilter(); });
+    // Deuxième rangée : état et couleur de fil, cumulables avec la recherche et le type.
+    stateFilter_ = new QComboBox(this);
+    stateFilter_->setObjectName(QStringLiteral("combo_documentStateFilter"));
+    stateFilter_->setAccessibleName(tr("Filtrer par état"));
+    stateFilter_->setToolTip(tr("N'afficher que les objets masqués, à l'ordre figé ou retouchés."));
+    stateFilter_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    stateFilter_->setMinimumContentsLength(5);
+    stateFilter_->addItem(tr("Tous les états"), 0);
+    stateFilter_->addItem(tr("Masqués"), 1);
+    stateFilter_->addItem(tr("Ordre figé"), 2);
+    stateFilter_->addItem(tr("Retouchés"), 3);
+    colorFilter_ = new QComboBox(this);
+    colorFilter_->setObjectName(QStringLiteral("combo_documentColorFilter"));
+    colorFilter_->setAccessibleName(tr("Filtrer par couleur de fil"));
+    colorFilter_->setToolTip(tr("N'afficher que les objets d'une couleur de fil."));
+    colorFilter_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    colorFilter_->setMinimumContentsLength(5);
+    colorFilter_->addItem(tr("Toutes les couleurs"), QString());
+    auto* stateRow = new QHBoxLayout;
+    stateRow->setContentsMargins(0, 0, 0, 0);
+    stateRow->addWidget(stateFilter_, 1);
+    stateRow->addWidget(colorFilter_, 1);
+    layout->addLayout(stateRow);
+    connect(stateFilter_, &QComboBox::currentIndexChanged, this, [this] { applyFilter(); });
+    connect(colorFilter_, &QComboBox::currentIndexChanged, this, [this] { applyFilter(); });
     tabs_ = new QTabWidget(this);
     layout->addWidget(tabs_);
     // Créé APRÈS les onglets (ordre des enfants : les recherches `findChild<QTreeWidget*>()` des
@@ -611,6 +637,7 @@ void DocumentPanel::refresh(
         item->setIcon(0, glyph_icon(glyph)); // pictogramme de type ; la pastille de fil est peinte
         item->setData(0, kGlyphRole, static_cast<int>(glyph_of(e)));
         item->setData(0, kTextFlagRole, fromText);
+        item->setData(0, kEditedRole, state != stitch_generation::ObjectEditState::Clean);
         item->setData(0, kSourceVectorRole, static_cast<qulonglong>(e.source_vector.value));
         item->setData(0, kSwatchRole, QColor(e.rgb[0], e.rgb[1], e.rgb[2]));
         item->setData(0, kTypeRole, type_label(e));
@@ -724,8 +751,44 @@ void DocumentPanel::refresh(
     syncing_ = false;
     calquePanel_->refresh(project);
     updateAddLayerButton();
+    rebuildColorFilter();
     applyFilter();
     applyPlayback();
+}
+
+void DocumentPanel::rebuildColorFilter() {
+    if (colorFilter_ == nullptr) {
+        return;
+    }
+    // Teintes des lignes de broderie, première apparition d'abord ; le choix courant est gardé
+    // s'il existe encore (sinon retour à « toutes »).
+    const QString previous = colorFilter_->currentData().toString();
+    std::vector<QColor> colors;
+    const std::function<void(const QTreeWidgetItem*)> scan = [&](const QTreeWidgetItem* item) {
+        if (item->data(0, Qt::UserRole).isValid() && item->data(0, kSwatchRole).isValid()) {
+            const QColor color = item->data(0, kSwatchRole).value<QColor>();
+            if (std::find(colors.begin(), colors.end(), color) == colors.end()) {
+                colors.push_back(color);
+            }
+        }
+        for (int c = 0; c < item->childCount(); ++c) {
+            scan(item->child(c));
+        }
+    };
+    for (int i = 0; i < objectsList_->topLevelItemCount(); ++i) {
+        scan(objectsList_->topLevelItem(i));
+    }
+    const QSignalBlocker blocker(colorFilter_);
+    colorFilter_->clear();
+    colorFilter_->addItem(tr("Toutes les couleurs"), QString());
+    for (const QColor& color : colors) {
+        const std::array<std::uint8_t, 3> rgb{static_cast<std::uint8_t>(color.red()),
+                                              static_cast<std::uint8_t>(color.green()),
+                                              static_cast<std::uint8_t>(color.blue())};
+        colorFilter_->addItem(swatch(rgb), color.name(QColor::HexRgb), color.name(QColor::HexRgb));
+    }
+    const int again = colorFilter_->findData(previous);
+    colorFilter_->setCurrentIndex(again >= 0 ? again : 0);
 }
 
 void DocumentPanel::setPlaybackObject(std::optional<ObjectId> id) {
@@ -831,7 +894,10 @@ void DocumentPanel::applyFilter() {
     };
     // Type : la famille de point, « Texte » (objets issus du lettrage) ou « Vecteur » (formes non
     // cousues). Une ligne de groupe n'a pas de type propre : elle suit ses sections.
-    const auto typeMatches = [typeWanted](const QTreeWidgetItem* item) {
+    const int stateWanted = stateFilter_ != nullptr ? stateFilter_->currentData().toInt() : 0;
+    const QString colorWanted =
+        colorFilter_ != nullptr ? colorFilter_->currentData().toString() : QString();
+    const auto typeOnlyMatches = [typeWanted](const QTreeWidgetItem* item) {
         if (typeWanted < 0) {
             return true;
         }
@@ -841,13 +907,38 @@ void DocumentPanel::applyFilter() {
         return item->data(0, kGlyphRole).isValid() &&
                item->data(0, kGlyphRole).toInt() == typeWanted;
     };
+    // État et couleur ne concernent que les lignes de broderie (les formes non cousues n'ont ni
+    // ordre figé ni retouche ; une forme masquée se retrouve par sa propre ligne).
+    const auto stateColorMatches = [&](const QTreeWidgetItem* item) {
+        const bool embroidery = item->data(0, Qt::UserRole).isValid();
+        if (stateWanted != 0) {
+            if (!embroidery) {
+                return false;
+            }
+            const bool hit = stateWanted == 1   ? item->checkState(kVisibleCol) == Qt::Unchecked
+                             : stateWanted == 2 ? item->checkState(kLockCol) == Qt::Checked
+                                                : item->data(0, kEditedRole).toBool();
+            if (!hit) {
+                return false;
+            }
+        }
+        if (!colorWanted.isEmpty()) {
+            return embroidery &&
+                   item->data(0, kSwatchRole).value<QColor>().name(QColor::HexRgb) == colorWanted;
+        }
+        return true;
+    };
+    const auto typeMatches = [&](const QTreeWidgetItem* item) {
+        return typeOnlyMatches(item) && stateColorMatches(item);
+    };
+    const bool extraFilter = stateWanted != 0 || !colorWanted.isEmpty();
     for (int i = 0; i < objectsList_->topLevelItemCount(); ++i) {
         QTreeWidgetItem* top = objectsList_->topLevelItem(i);
         if (top->childCount() == 0) {
             top->setHidden(!(matches(top->text(0)) && typeMatches(top)));
             continue;
         }
-        bool any = typeWanted < 0 && matches(top->text(0));
+        bool any = typeWanted < 0 && !extraFilter && matches(top->text(0));
         for (int c = 0; c < top->childCount(); ++c) {
             QTreeWidgetItem* child = top->child(c);
             const bool childShown =

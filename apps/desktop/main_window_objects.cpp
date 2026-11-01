@@ -133,6 +133,8 @@ void MainWindow::buildObjectEditActions(QMenu* editMenu) {
             }
         });
 
+    buildSelectionToolsMenu(editMenu);
+
     // Coller s'active dès qu'une autre instance (ou celle-ci) copie des formes.
     connect(QGuiApplication::clipboard(), &QClipboard::dataChanged, this,
             [this] { updateObjectEditActions(); });
@@ -238,6 +240,7 @@ void MainWindow::updateObjectEditActions() {
                          designMirrorHorizontalAct_, designMirrorVerticalAct_}) {
         setEnabledWithReason(act, anyObject, needDesign);
     }
+    updateSelectionToolActions();
 }
 
 std::vector<ObjectId> MainWindow::transformTargets() const {

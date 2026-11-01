@@ -3581,6 +3581,10 @@ void MainWindow::finishFreeform() {
         finishCut();
         return;
     }
+    if (lassoSelectArmed_) {
+        finishLassoSelection(); // même geste que « main levée », mais il saisit au lieu de créer
+        return;
+    }
     // La simplification (Douglas-Peucker) peut retomber sous 3 sommets même
     // avec un tracé brut suffisant (points quasi colinéaires, jitter sous la
     // tolérance) : on vérifie le résultat RÉEL, pas seulement le nombre de
@@ -6381,6 +6385,19 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
                 [this, targetVecId] { deleteVectorObject(targetVecId); });
     }
 
+    // Outils de sélection (Édition ▸ Sélection) : mêmes actions, accessibles au clic droit.
+    if (const auto* selectionMenu = findChild<QMenu*>(QStringLiteral("menu_selection"))) {
+        if (!menu.isEmpty()) {
+            menu.addSeparator();
+        }
+        QMenu* shared = menu.addMenu(tr("Sélection"));
+        for (QAction* act : selectionMenu->actions()) {
+            if (act->menu() == nullptr) {
+                shared->addAction(act);
+            }
+        }
+    }
+
     // Filtres d'affichage actifs : toujours pouvoir tout réafficher, même sur le fond vide.
     const bool filtersActive =
         !hiddenColors_.empty() || minAreaMm2_ > 0.0 ||
@@ -7707,6 +7724,9 @@ void MainWindow::setTool(Tool tool) {
     if (leavingStroke) {
         cancelFreeformDraw();
     }
+    if (tool != Tool::DrawFreeform) {
+        lassoSelectArmed_ = false; // le lasso de sélection ne survit pas à un changement d'outil
+    }
     if (currentTool_ == Tool::DrawSatinColumn && tool != Tool::DrawSatinColumn) {
         cancelSatinColumnDraw();
     }
@@ -8920,11 +8940,32 @@ void MainWindow::buildFilterPanel() {
     connect(showAllBtn, &QPushButton::clicked, this, &MainWindow::showAllFilters);
     layout->addWidget(showAllBtn);
 
+    // Types et taille minimale reviennent d'une session à l'autre ; les couleurs masquées non
+    // (elles dépendent du projet ouvert).
+    if (!qEnvironmentVariableIsSet("OPENSTITCH_NO_PERSISTED_FILTERS")) {
+        QSettings settings;
+        for (std::size_t t = 0; t < showType_.size(); ++t) {
+            showType_[t] =
+                settings.value(QStringLiteral("filters/showType%1").arg(t), true).toBool();
+        }
+        minAreaMm2_ =
+            std::max(0.0, settings.value(QStringLiteral("filters/minAreaMm2"), 0.0).toDouble());
+    }
+    filterIndicator_ = new QPushButton(this);
+    filterIndicator_->setObjectName(QStringLiteral("button_filterIndicator"));
+    filterIndicator_->setFlat(true);
+    filterIndicator_->setCursor(Qt::PointingHandCursor);
+    filterIndicator_->setToolTip(tr("Des filtres d'affichage masquent des objets. Cliquer pour "
+                                    "tout réafficher."));
+    filterIndicator_->hide();
+    connect(filterIndicator_, &QPushButton::clicked, this, &MainWindow::showAllFilters);
+    statusBar()->addPermanentWidget(filterIndicator_);
+
     layout->addWidget(new QLabel(tr("Types de points :"), panel));
     const QString names[] = {tr("Contour"), tr("Tatami"), tr("Satin")};
     for (int t = 0; t < 3; ++t) {
         auto* check = new QCheckBox(names[t], panel);
-        check->setChecked(true);
+        check->setChecked(showType_[static_cast<std::size_t>(t)]);
         check->setContextMenuPolicy(Qt::CustomContextMenu);
         connect(check, &QCheckBox::customContextMenuRequested, this, [this, t, check](QPoint pos) {
             QMenu menu(this);
@@ -8936,6 +8977,8 @@ void MainWindow::buildFilterPanel() {
         });
         connect(check, &QCheckBox::toggled, this, [this, t](bool on) {
             showType_[static_cast<std::size_t>(t)] = on;
+            saveFilterSettings();
+            updateFilterIndicator();
             displayImage(processed_);
         });
         typeChecks_[static_cast<std::size_t>(t)] = check;
@@ -8948,15 +8991,28 @@ void MainWindow::buildFilterPanel() {
     minAreaSpin_->setRange(0.0, 10'000.0);
     minAreaSpin_->setDecimals(1);
     minAreaSpin_->setSuffix(tr(" mm²"));
-    minAreaSpin_->setValue(0.0);
+    minAreaSpin_->setValue(minAreaMm2_);
     connect(minAreaSpin_, &QDoubleSpinBox::valueChanged, this, [this](double v) {
         minAreaMm2_ = v;
+        saveFilterSettings();
+        updateFilterIndicator();
         displayImage(processed_);
     });
     layout->addWidget(minAreaSpin_);
 
     layout->addSpacing(6);
     layout->addWidget(new QLabel(tr("Couleurs de fil :"), panel));
+    auto* colorBulk = new QHBoxLayout;
+    const std::pair<QString, int> bulk[] = {
+        {tr("Toutes"), 0}, {tr("Aucune"), 1}, {tr("Inverser"), 2}};
+    for (const auto& [label, mode] : bulk) {
+        auto* button = new QPushButton(label, panel);
+        button->setObjectName(QStringLiteral("button_filterColors%1").arg(mode));
+        button->setToolTip(tr("Affiche, masque ou inverse toutes les couleurs de fil."));
+        connect(button, &QPushButton::clicked, this, [this, mode] { setAllColorFilters(mode); });
+        colorBulk->addWidget(button);
+    }
+    layout->addLayout(colorBulk);
     auto* colorContainer = new QWidget(panel);
     colorFilterLayout_ = new QVBoxLayout(colorContainer);
     colorFilterLayout_->setContentsMargins(0, 0, 0, 0);
@@ -8996,10 +9052,24 @@ void MainWindow::refreshFilterPanel() {
         auto* check = new QCheckBox();
         check->setChecked(hiddenColors_.count(key) == 0);
         check->setIcon(icons::colorSwatch(QColor(rgb[0], rgb[1], rgb[2])));
-        check->setText(QStringLiteral("#%1%2%3")
-                           .arg(rgb[0], 2, 16, QLatin1Char('0'))
-                           .arg(rgb[1], 2, 16, QLatin1Char('0'))
-                           .arg(rgb[2], 2, 16, QLatin1Char('0')));
+        // Nom du fil de nuancier s'il existe, sinon la teinte ; suivi du nombre d'objets.
+        int count = 0;
+        QString threadName;
+        for (const auto& emb : project_.embroidery_objects) {
+            if (emb.rgb == rgb) {
+                ++count;
+                if (threadName.isEmpty() && emb.thread) {
+                    threadName = QString::fromStdString(emb.thread->code);
+                }
+            }
+        }
+        check->setText(
+            tr("%1%2 — %n objet(s)", "", count)
+                .arg(QStringLiteral("#%1%2%3")
+                         .arg(rgb[0], 2, 16, QLatin1Char('0'))
+                         .arg(rgb[1], 2, 16, QLatin1Char('0'))
+                         .arg(rgb[2], 2, 16, QLatin1Char('0')),
+                     threadName.isEmpty() ? QString() : QStringLiteral(" (%1)").arg(threadName)));
         check->setContextMenuPolicy(Qt::CustomContextMenu);
         connect(check, &QCheckBox::customContextMenuRequested, this,
                 [this, key, check](QPoint pos) {
@@ -9016,11 +9086,63 @@ void MainWindow::refreshFilterPanel() {
             } else {
                 hiddenColors_.insert(key);
             }
+            updateFilterIndicator();
             displayImage(processed_);
         });
         colorFilterLayout_->addWidget(check);
     }
     setDockAutoVisible(filterDock_, !project_.embroidery_objects.empty());
+    updateFilterIndicator();
+}
+
+void MainWindow::saveFilterSettings() const {
+    if (qEnvironmentVariableIsSet("OPENSTITCH_NO_PERSISTED_FILTERS")) {
+        return; // tests : aucun état ne fuit d'une suite à l'autre ni vers les réglages de
+                // l'utilisateur
+    }
+    QSettings settings;
+    for (std::size_t t = 0; t < showType_.size(); ++t) {
+        settings.setValue(QStringLiteral("filters/showType%1").arg(t), showType_[t]);
+    }
+    settings.setValue(QStringLiteral("filters/minAreaMm2"), minAreaMm2_);
+}
+
+void MainWindow::updateFilterIndicator() {
+    if (filterIndicator_ == nullptr) {
+        return;
+    }
+    // Objets visibles que SEUL un filtre d'affichage cache : sans cet indicateur, ils semblent
+    // avoir disparu.
+    int hidden = 0;
+    for (const auto& emb : project_.embroidery_objects) {
+        if (emb.visible && project_.calqueVisible(emb) && !objectPassesFilter(emb)) {
+            ++hidden;
+        }
+    }
+    filterIndicator_->setVisible(hidden > 0);
+    filterIndicator_->setText(tr("Filtres : %n objet(s) masqué(s)", "", hidden));
+}
+
+void MainWindow::setAllColorFilters(int mode) {
+    std::set<std::uint32_t> present;
+    for (const auto& emb : project_.embroidery_objects) {
+        present.insert(colorKeyOf(emb.rgb));
+    }
+    if (mode == 0) {
+        hiddenColors_.clear();
+    } else {
+        for (const std::uint32_t key : present) {
+            const bool hiddenNow = hiddenColors_.count(key) != 0;
+            const bool hide = mode == 1 ? true : !hiddenNow;
+            if (hide) {
+                hiddenColors_.insert(key);
+            } else {
+                hiddenColors_.erase(key);
+            }
+        }
+    }
+    refreshFilterPanel(); // recoche les cases
+    displayImage(processed_);
 }
 
 void MainWindow::isolateFilterType(int filterType) {
@@ -9031,6 +9153,8 @@ void MainWindow::isolateFilterType(int filterType) {
             typeChecks_[t]->setChecked(showType_[t]);
         }
     }
+    saveFilterSettings();
+    updateFilterIndicator();
     displayImage(processed_);
 }
 
@@ -9059,6 +9183,7 @@ void MainWindow::showAllFilters() {
         const QSignalBlocker blocker(minAreaSpin_);
         minAreaSpin_->setValue(0.0);
     }
+    saveFilterSettings();
     refreshFilterPanel();
     displayImage(processed_);
 }

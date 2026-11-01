@@ -665,6 +665,13 @@ private slots:
     void addOfAlreadySelectedObjectIsNoOp();
     void clickOnEmptyReplaceDeselectsButModifiersKeepSelection();
     void rectangleSelectionHonoursModes();
+    void invertSelectionActionSelectsTheOthers();
+    void namedSelectionIsRecalledAndSkipsDeletedShapes();
+    void lassoSelectsShapesInsideAndDisarmsOnToolChange();
+    void selectionMenuIsInTheEditMenuWithUniqueShortcuts();
+    void filterIndicatorCountsHiddenObjectsAndResets();
+    void displayFiltersAreRestoredFromSettings();
+    void documentPanelStateAndColorFiltersCombine();
     void regionSelectionClearsMultiSelection();
     void embroiderySelectionClearsMultiSelection();
     void danglingIdsArePrunedAfterDeleteUndoRedo();
@@ -1203,6 +1210,159 @@ void MainWindowTest::rectangleSelectionHonoursModes() {
     window.applySelectionRectangle({}, SelectMode::Replace); // rectangle vide : désélectionne
     QVERIFY(window.selectedObjectIds().empty());
     QVERIFY(window.checkSelectionInvariants());
+}
+
+void MainWindowTest::invertSelectionActionSelectsTheOthers() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+    auto* invert = window.findChild<QAction*>(QStringLiteral("action_invertSelection"));
+    QVERIFY(invert != nullptr);
+    QVERIFY(invert->isEnabled());
+
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    invert->trigger();
+    QCOMPARE(window.selectedObjectIds(), (std::vector<ObjectId>{fx.b, fx.c}));
+    invert->trigger(); // inverser deux fois ne rend pas la sélection d'origine : tout le reste
+    QCOMPARE(window.selectedObjectIds(), (std::vector<ObjectId>{fx.a}));
+    QVERIFY(window.checkSelectionInvariants());
+}
+
+void MainWindowTest::namedSelectionIsRecalledAndSkipsDeletedShapes() {
+    MainWindow window;
+    TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+    auto* recall = window.findChild<QMenu*>(QStringLiteral("menu_recallSelection"));
+    QVERIFY(recall != nullptr);
+    QVERIFY(!recall->isEnabled()); // rien de mémorisé
+
+    ObjectId ghost{9999};
+    window.namedSelections_.emplace_back(QStringLiteral("duo"),
+                                         std::vector<ObjectId>{fx.a, ghost, fx.c});
+    window.rebuildNamedSelectionMenu();
+    QVERIFY(recall->isEnabled());
+    QCOMPARE(recall->actions().size(), 1);
+    window.recallNamedSelection(QStringLiteral("duo"));
+    QCOMPARE(window.selectedObjectIds(), (std::vector<ObjectId>{fx.a, fx.c}));
+}
+
+void MainWindowTest::lassoSelectsShapesInsideAndDisarmsOnToolChange() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+    auto* lasso = window.findChild<QAction*>(QStringLiteral("action_lassoSelect"));
+    QVERIFY(lasso != nullptr);
+
+    lasso->trigger();
+    QVERIFY(window.lassoSelectArmed_);
+    window.setTool(Tool::Select);
+    QVERIFY(!window.lassoSelectArmed_); // changer d'outil abandonne le lasso
+
+    lasso->trigger();
+    for (const auto& [x, y] :
+         {std::pair{-1000, -1000}, {5000, -1000}, {5000, 2000}, {-1000, 2000}}) {
+        window.pendingFreeformPoints_.push_back(Vec2um{Micrometers{x}, Micrometers{y}});
+    }
+    window.finishFreeform();
+    QVERIFY(!window.lassoSelectArmed_);
+    QCOMPARE(window.selectedObjectIds(), (std::vector<ObjectId>{fx.a, fx.b}));
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{3}); // aucune forme créée
+}
+
+void MainWindowTest::selectionMenuIsInTheEditMenuWithUniqueShortcuts() {
+    MainWindow window;
+    const auto* menu = window.findChild<QMenu*>(QStringLiteral("menu_selection"));
+    QVERIFY(menu != nullptr);
+    QMap<QString, QString> owners;
+    for (const QAction* act : window.findChildren<QAction*>()) {
+        if (act->shortcut().isEmpty()) {
+            continue;
+        }
+        const QString key = act->shortcut().toString();
+        // Deux actions identiques (menu et barre d'outils) peuvent partager une même instance ;
+        // deux actions DIFFÉRENTES avec le même raccourci rendent le raccourci ambigu.
+        if (owners.contains(key) && owners.value(key) != act->objectName() &&
+            (act->objectName().startsWith(QStringLiteral("action_select")) ||
+             act->objectName().startsWith(QStringLiteral("action_invert")))) {
+            QFAIL(qPrintable(QStringLiteral("raccourci en double : %1").arg(key)));
+        }
+        owners.insert(key, act->objectName());
+    }
+}
+
+void MainWindowTest::filterIndicatorCountsHiddenObjectsAndResets() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    QVERIFY(window.filterIndicator_ != nullptr);
+    QVERIFY(window.filterIndicator_->isHidden()); // aucun filtre : rien à signaler
+
+    window.typeChecks_[0]->setChecked(false); // le contour de la fixture disparaît
+    QVERIFY(!window.filterIndicator_->isHidden());
+    QVERIFY(window.filterIndicator_->text().contains(QLatin1Char('1')));
+
+    window.filterIndicator_->click(); // un clic sur l'indicateur réaffiche tout
+    QVERIFY(window.filterIndicator_->isHidden());
+    QVERIFY(window.typeChecks_[0]->isChecked());
+}
+
+void MainWindowTest::displayFiltersAreRestoredFromSettings() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QSettings::Format savedFormat = QSettings::defaultFormat();
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.path());
+    const QByteArray savedEnv = qgetenv("OPENSTITCH_NO_PERSISTED_FILTERS");
+    qunsetenv("OPENSTITCH_NO_PERSISTED_FILTERS");
+    {
+        MainWindow first;
+        first.typeChecks_[2]->setChecked(false); // satin masqué
+        first.minAreaSpin_->setValue(3.5);
+    }
+    {
+        MainWindow second;
+        QVERIFY(!second.typeChecks_[2]->isChecked());
+        QVERIFY(second.typeChecks_[0]->isChecked());
+        QCOMPARE(second.minAreaSpin_->value(), 3.5);
+        second.showAllFilters();
+    }
+    {
+        MainWindow third; // « Tout afficher » est mémorisé lui aussi
+        QVERIFY(third.typeChecks_[2]->isChecked());
+        QCOMPARE(third.minAreaSpin_->value(), 0.0);
+    }
+    if (!savedEnv.isNull()) {
+        qputenv("OPENSTITCH_NO_PERSISTED_FILTERS", savedEnv);
+    }
+    QSettings::setDefaultFormat(savedFormat);
+}
+
+void MainWindowTest::documentPanelStateAndColorFiltersCombine() {
+    MainWindow window;
+    Fixture fx = buildFixture();
+    fx.project.embroidery_objects[0].rgb = {10, 20, 30};
+    fx.project.embroidery_objects[0].locked = true;
+    window.applyLoadedProject(fx.project);
+    auto* panel = window.findChild<DocumentPanel*>();
+    QVERIFY(panel != nullptr);
+    auto* state = panel->findChild<QComboBox*>(QStringLiteral("combo_documentStateFilter"));
+    auto* color = panel->findChild<QComboBox*>(QStringLiteral("combo_documentColorFilter"));
+    auto* tree = panel->findChild<QTreeWidget*>(QStringLiteral("tree_documentObjects"));
+    QVERIFY(state != nullptr && color != nullptr && tree != nullptr);
+    QCOMPARE(color->count(), 2); // « toutes » + la teinte de la fixture
+    QVERIFY(!tree->topLevelItem(0)->isHidden());
+
+    state->setCurrentIndex(state->findData(2)); // ordre figé : l'objet l'est
+    QVERIFY(!tree->topLevelItem(0)->isHidden());
+    state->setCurrentIndex(state->findData(1)); // masqués : il est visible, donc caché de la liste
+    QVERIFY(tree->topLevelItem(0)->isHidden());
+    state->setCurrentIndex(0);
+    color->setCurrentIndex(1);
+    QVERIFY(!tree->topLevelItem(0)->isHidden());
+    color->setItemData(1, QStringLiteral("#ffffff")); // teinte absente : plus rien ne correspond
+    color->setCurrentIndex(0);
+    color->setCurrentIndex(1);
+    QVERIFY(tree->topLevelItem(0)->isHidden());
 }
 
 void MainWindowTest::regionSelectionClearsMultiSelection() {

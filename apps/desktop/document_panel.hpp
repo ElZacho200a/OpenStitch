@@ -139,7 +139,10 @@ private:
     std::optional<ObjectId> playbackId_; // HP-SIM-003
     void applyPlayback();
     QLineEdit* filterEdit_{nullptr};
-    QComboBox* typeFilter_{nullptr}; // filtre par type de point (HP-UX-042)
+    QComboBox* typeFilter_{nullptr};  // filtre par type de point (HP-UX-042)
+    QComboBox* stateFilter_{nullptr}; // filtre par état : masqué, ordre figé, retouché
+    QComboBox* colorFilter_{nullptr}; // filtre par couleur de fil (teintes présentes dans la liste)
+    void rebuildColorFilter();
     QListWidget* regionsList_{nullptr};
     // Masque les lignes qui ne contiennent pas le texte du champ de recherche.
     void applyFilter();
