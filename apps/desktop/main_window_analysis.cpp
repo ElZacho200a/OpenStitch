@@ -45,6 +45,7 @@
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/lettering/lettering.hpp"
 #include "openstitch/project_ops/analysis.hpp"
+#include "openstitch/project_ops/color_registration.hpp"
 #include "openstitch/project_ops/fabric_deformation.hpp"
 #include "openstitch/project_ops/render.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
@@ -512,6 +513,20 @@ void MainWindow::buildAnalysisPanel() {
                                   "fixe : déplacement et indice de plissement. Estimation non "
                                   "calibrée, pas une mesure."));
     connect(deformationAct, &QAction::triggered, this, &MainWindow::showFabricDeformationReport);
+    auto* registrationAct = analyseMenu->addAction(tr("Décalage entre &couleurs…"));
+    registrationAct->setObjectName(QStringLiteral("action_colorRegistrationReport"));
+    registrationAct->setToolTip(
+        tr("Rejoue le solveur du tissu dans l'ordre de couture : de combien "
+           "chaque couleur finit décalée par rapport aux autres. "
+           "Estimation non calibrée, pas une mesure."));
+    connect(registrationAct, &QAction::triggered, this, &MainWindow::showColorRegistrationReport);
+    auto* compensatedAct = analyseMenu->addAction(tr("E&xporter un DST compensé du décalage…"));
+    compensatedAct->setObjectName(QStringLiteral("action_exportCompensatedDst"));
+    compensatedAct->setToolTip(
+        tr("Écrit un DST dont chaque bloc de couleur est décalé de l'écart "
+           "prévu par le solveur du tissu. Non calibré : à essayer sur une "
+           "pièce-test avant un vrai ouvrage. Le projet n'est pas modifié."));
+    connect(compensatedAct, &QAction::triggered, this, &MainWindow::exportCompensatedDst);
     auto* diagnoseAct = analyseMenu->addAction(tr("&Diagnostic des défauts connus…"));
     diagnoseAct->setObjectName(QStringLiteral("action_diagnoseReport"));
     connect(diagnoseAct, &QAction::triggered, this, &MainWindow::showDiagnoseReport);
@@ -656,6 +671,58 @@ void MainWindow::showFabricDeformationReport() {
     }
     showReportDialog(this, title, QString::fromStdString(report->text), report->heatmap_png,
                      QStringLiteral("deformation_tissu.png"));
+}
+
+void MainWindow::showColorRegistrationReport() {
+    const QString title = tr("Décalage prévu entre couleurs (estimation)");
+    if (!requireEmbroideryForReport(title)) {
+        return;
+    }
+    project_ops::ColorRegistrationOptions options;
+    options.heatmap = true;
+    BusyIndicator busy(this, tr("Calcul du décalage entre couleurs…"), {autosaveTimer_, simTimer_});
+    const document::Project snapshot = project_;
+    auto report =
+        busy.run([&] { return project_ops::predict_color_registration(snapshot, options); });
+    if (!report) {
+        reportError(this, title, tr("L'estimation n'a pas pu être faite."), report.error().message);
+        return;
+    }
+    showReportDialog(this, title, QString::fromStdString(report->text), report->heatmap_png,
+                     QStringLiteral("decalage_couleurs.png"));
+}
+
+void MainWindow::exportCompensatedDst() {
+    const QString title = tr("Exporter un DST compensé du décalage");
+    if (!requireEmbroideryForReport(title)) {
+        return;
+    }
+    const QString path = QFileDialog::getSaveFileName(this, title, QStringLiteral("compense.dst"),
+                                                      tr("Broderie Tajima (*.dst)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    project_ops::ColorRegistrationOptions options;
+    options.compensate = true;
+    BusyIndicator busy(this, tr("Calcul de la compensation…"), {autosaveTimer_, simTimer_});
+    const document::Project snapshot = project_;
+    auto report =
+        busy.run([&] { return project_ops::predict_color_registration(snapshot, options); });
+    if (!report) {
+        reportError(this, title, tr("La compensation n'a pas pu être calculée."),
+                    report.error().message);
+        return;
+    }
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly) ||
+        file.write(reinterpret_cast<const char*>(report->compensated_dst.data()),
+                   static_cast<qint64>(report->compensated_dst.size())) !=
+            static_cast<qint64>(report->compensated_dst.size())) {
+        QMessageBox::warning(this, title, tr("Le fichier %1 n'a pas pu être écrit.").arg(path));
+        return;
+    }
+    statusBar()->showMessage(
+        tr("DST compensé enregistré : %1 (estimation non calibrée)").arg(path));
 }
 
 void MainWindow::showDiagnoseReport() {

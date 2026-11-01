@@ -12,6 +12,7 @@
 #include "openstitch/document/project.hpp"
 #include "openstitch/image/image.hpp"
 #include "openstitch/project_ops/analysis.hpp"
+#include "openstitch/project_ops/color_registration.hpp"
 #include "openstitch/project_ops/fabric_deformation.hpp"
 #include "openstitch/project_ops/factory.hpp"
 #include "openstitch/project_ops/sweep.hpp"
@@ -578,4 +579,51 @@ TEST_CASE("fabric deformation : tissu, entoilage, determinisme et parametres inv
     CHECK_FALSE(predict_fabric_deformation(project, options).has_value());
     document::Project empty;
     CHECK_FALSE(predict_fabric_deformation(empty, {}).has_value());
+}
+
+TEST_CASE(
+    "color registration : blocs de couleur, compensation, determinisme et parametres invalides",
+    "[project_ops][color-registration]") {
+    document::Project project;
+    add_square(project, 0, 0, 20'000, {200, 30, 30});
+    add_square(project, 4'000, 0, 20'000, {30, 30, 200});
+
+    ColorRegistrationOptions options;
+    options.heatmap = true;
+    options.stabilizer = "none";
+    const auto plain = predict_color_registration(project, options);
+    REQUIRE(plain.has_value());
+    CHECK(plain->registration.blocks.size() == 2);
+    CHECK(plain->registration.max_gap_mm > 0.0);
+    CHECK(has(plain->json, kColorRegistrationSchema));
+    CHECK_FALSE(plain->heatmap_png.empty());
+    CHECK(plain->compensated.commands.empty());
+    CHECK(plain->compensated_dst.empty());
+
+    options.compensate = true;
+    const auto compensated = predict_color_registration(project, options);
+    REQUIRE(compensated.has_value());
+    CHECK_FALSE(compensated->compensated_dst.empty());
+    CHECK(has(compensated->json, "max_gap_after_mm"));
+    CHECK(compensated->compensated.commands.size() > 0);
+
+    // Un entoilage rigide limite le decalage.
+    options.stabilizer = "cutaway";
+    const auto stable = predict_color_registration(project, options);
+    REQUIRE(stable.has_value());
+    CHECK(stable->registration.max_gap_mm < compensated->registration.max_gap_mm);
+
+    options.stabilizer = "none";
+    const auto repeat = predict_color_registration(project, options);
+    REQUIRE(repeat.has_value());
+    CHECK(repeat->json == compensated->json);
+    CHECK(repeat->compensated_dst == compensated->compensated_dst);
+
+    options.strength = 1.5;
+    CHECK_FALSE(predict_color_registration(project, options).has_value());
+    options.strength = 1.0;
+    options.cell_mm = 0.0;
+    CHECK_FALSE(predict_color_registration(project, options).has_value());
+    document::Project empty;
+    CHECK_FALSE(predict_color_registration(empty, {}).has_value());
 }

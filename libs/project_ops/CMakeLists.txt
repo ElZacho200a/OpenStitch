@@ -25,6 +25,7 @@ add_library(openstitch_project_ops
     src/analysis.cpp
     src/fabric_risk.cpp
     src/fabric_deformation.cpp
+    src/color_registration.cpp
     src/sweep.cpp
     src/debug_dump.cpp
     src/live_bridge.cpp
