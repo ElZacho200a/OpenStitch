@@ -1843,7 +1843,8 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
 - Livré (2026-10-25) : cadre commun en tirets de la sélection multiple. En PR (2026-10-29) : quatre poignées de redimensionnement du groupe, sans découper les formes. Reste : classe `selection_model`.
 - Constaté sur `main` (`1ab521a` et suivants) : Ctrl/Maj+clic, rectangle de sélection (fenêtre ou croisement), sélection multi-lignes depuis la liste Document, inspecteur de groupe ; tests `rectangleLeftToRightIsWindow…`, `shiftRectangleAddsToTheSelection`, `documentListMultiSelectionDrivesRegionSelection`. Les critères d'acceptation sont remplis.
 - Livré (PR #27, fusionnée le 2026-10-13 (`296ff34`)) : **Sélectionner tous les objets** (Ctrl+Maj+A ; Ctrl+A reste aux régions) et **Sélectionner les objets de même couleur** (`main_window_objects.cpp`).
-- Reste : modèle de sélection encore dans `MainWindow` (pas de classe `selection_model`) ; poignées communes en PR (2026-10-29).
+- Livré (2026-11-01) : `apps/desktop/selection_model.{hpp,cpp}`, sans Qt : type `Selection`, `normalize_selection` (doublons, principal, régions supplémentaires) et `selection_state_is_consistent`, appelés par `MainWindow::setSelection` / `checkSelectionInvariants` (comportement inchangé, garde `check_selection_single_mutator` verte) ; test QTest `test_selection_model`.
+- Reste : les membres d'état (`selectedObject_`, `multiSelection_`…) vivent encore dans `MainWindow` (≈ 130 sites de lecture, garde CTest dédiée) ; poignées communes en PR (2026-10-29).
 - À faire : Ctrl/Maj+clic, rectangle de sélection (glisser dans le vide),
   Ctrl+A, sélection depuis la liste Document (multi-lignes), sélection de
   tous les objets d'une couleur ; boîte englobante commune avec poignées ;
@@ -4601,3 +4602,4 @@ ouvrant le lot (§0.1).
 | 2026-10-31 | Claude (HP-STI-022) | **HP-STI-022 ◐** : bord irrégulier du satin et de l'auto-satin (`SatinJagged`, amplitude, graine), `.osp`, `set_params`, inspecteur. |
 | 2026-10-31 | Claude (HP-UX-064, HP-VIEW-015) | **Nouvelles entrées ◐** : surimpression des sauts à vide avec comparaison avant/après, et carte de risque tissu en surimpression. |
 | 2026-10-31 | Claude (HP-ENG-010) | **HP-ENG-010 ◐** : le « Trajet estimé » du panneau Ordre utilise les extrémités réelles de couture (comme « Appliquer » et l'op `optimize_order`), plus les centres ; infobulle et traduction alignées. Reste : sens `reversed` non appliqué, auto-numérisation par centres. |
+| 2026-11-01 | Claude (HP-OBJ-001) | **HP-OBJ-001 ◐** : règles de sélection (normalisation, invariants) extraites de `MainWindow` vers `apps/desktop/selection_model` (Qt-free, test QTest `test_selection_model`). Reste : déplacer les membres d'état eux-mêmes. |

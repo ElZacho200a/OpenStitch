@@ -174,6 +174,8 @@ help_manual.hpp
 help_manual.qrc
 main_window_help.cpp
     selection_hit_test.cpp
+    selection_model.cpp
+    selection_model.hpp
     selection_hit_test.hpp
     ui_icons.cpp
     ui_icons.hpp
