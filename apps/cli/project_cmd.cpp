@@ -23,6 +23,7 @@
 #include "openstitch/project_io/machine_file.hpp"
 #include "openstitch/project_ops/analysis.hpp"
 #include "openstitch/project_ops/errors.hpp"
+#include "openstitch/project_ops/fabric_deformation.hpp"
 #include "openstitch/project_ops/factory.hpp"
 #include "openstitch/project_ops/inspect.hpp"
 #include "openstitch/project_ops/operations.hpp"
@@ -1150,6 +1151,74 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
         }
         if (!frArgs->map.empty() && !write_bytes(frArgs->map, report->heatmap_png, err)) {
             g_exit = fail_with("fabric-risk", jsonOut, po::code::kIo, err);
+            return;
+        }
+        fmt::print("{}", jsonOut ? report->json + "\n" : report->text);
+        g_exit = 0;
+    });
+
+    // Deformation prevue du tissu : solveur 2D de la feuille, estimation NON calibree.
+    struct DeformArgs {
+        std::string osp, output, map, material, stabilizer;
+        double cellMm{1.0}, tension{0.0}, criticalStrain{0.0};
+        bool noClobber{false}, aroundStitches{false};
+    };
+    auto dfArgs = std::make_shared<DeformArgs>();
+    c = project->add_subcommand("fabric-deformation",
+                                "Deformation prevue du tissu (solveur mecanique 2D, cadre fixe) "
+                                "et indice de plissement (estimation non calibree)");
+    c->add_option("osp", dfArgs->osp, "Projet .osp")->required();
+    c->add_option("--material", dfArgs->material,
+                  "woven, jersey ou felt (defaut : tissu du projet)");
+    c->add_option("--stabilizer", dfArgs->stabilizer,
+                  "none, tearaway ou cutaway (defaut : entoilage du projet)");
+    c->add_option("--cell-mm", dfArgs->cellMm, "Maille du solveur en mm (defaut 1)")
+        ->check(CLI::Range(0.2, 10.0));
+    c->add_option("--tension-n", dfArgs->tension, "Tension du fil par point, en N (defaut 0,2)")
+        ->check(CLI::Range(0.0, 10.0));
+    c->add_option("--critical-strain", dfArgs->criticalStrain,
+                  "Compression critique de plissement (defaut selon le tissu)")
+        ->check(CLI::Range(0.0, 1.0));
+    c->add_flag("--around-stitches", dfArgs->aroundStitches,
+                "Cadre = emprise des points + 10 mm au lieu du canevas du projet");
+    c->add_option("--heatmap", dfArgs->map, "Carte PNG de l'indice de plissement");
+    c->add_option("--output,-o", dfArgs->output, "Ecrit le rapport JSON");
+    c->add_flag("--no-clobber", dfArgs->noClobber, "Refuse d'ecraser les fichiers de sortie");
+    c->add_flag("--json", jsonOut, "Rapport JSON (openstitch.fabric-deformation/1) sur stdout");
+    c->callback([dfArgs, &jsonOut, write_bytes] {
+        for (const auto* p : {&dfArgs->map, &dfArgs->output}) {
+            if (const auto refused =
+                    check_output("fabric-deformation", jsonOut, *p, dfArgs->noClobber)) {
+                g_exit = *refused;
+                return;
+            }
+        }
+        int rc = 0;
+        auto opened = load("fabric-deformation", jsonOut, dfArgs->osp, rc);
+        if (!opened) {
+            g_exit = rc;
+            return;
+        }
+        po::FabricDeformationOptions opt;
+        opt.material = dfArgs->material;
+        opt.stabilizer = dfArgs->stabilizer;
+        opt.cell_mm = dfArgs->cellMm;
+        opt.thread_tension_n = dfArgs->tension;
+        opt.critical_strain = dfArgs->criticalStrain;
+        opt.hoop_is_canvas = !dfArgs->aroundStitches;
+        opt.heatmap = !dfArgs->map.empty();
+        const auto report = po::predict_fabric_deformation(opened->project, opt);
+        if (!report) {
+            g_exit = fail_err("fabric-deformation", jsonOut, po::code::kRefused, report.error());
+            return;
+        }
+        std::string err;
+        if (!dfArgs->output.empty() && !write_text(fs::path(dfArgs->output), report->json, err)) {
+            g_exit = fail_with("fabric-deformation", jsonOut, po::code::kIo, err);
+            return;
+        }
+        if (!dfArgs->map.empty() && !write_bytes(dfArgs->map, report->heatmap_png, err)) {
+            g_exit = fail_with("fabric-deformation", jsonOut, po::code::kIo, err);
             return;
         }
         fmt::print("{}", jsonOut ? report->json + "\n" : report->text);

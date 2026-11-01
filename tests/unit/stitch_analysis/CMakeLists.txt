@@ -17,6 +17,7 @@ add_executable(test_stitch_analysis
     test_analyze_project.cpp
     test_thread_tools.cpp
     test_machine_checks.cpp
+    test_sheet_deformation.cpp
 )
 target_link_libraries(test_stitch_analysis
     PRIVATE openstitch::stitch_analysis openstitch::stitch_generation Catch2::Catch2WithMain openstitch::warnings)

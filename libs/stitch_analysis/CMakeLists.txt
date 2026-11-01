@@ -19,6 +19,7 @@ add_library(openstitch_stitch_analysis
     src/stitch_pick.cpp
     src/project_analysis.cpp
     src/machine_checks.cpp
+    src/sheet_deformation.cpp
 )
 add_library(openstitch::stitch_analysis ALIAS openstitch_stitch_analysis)
 

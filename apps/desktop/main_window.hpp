@@ -402,6 +402,7 @@ private:
     void showFidelityReport();
     void showDensityReport();
     void showFabricRiskReport();
+    void showFabricDeformationReport();
     void showDiagnoseReport();
     void exportRealisticPng();
     void activateAnalysisItem(QListWidgetItem* item, bool selectObject);
