@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <QCheckBox>
 #include <QDoubleSpinBox>
+#include <QLabel>
 #include <QListWidget>
 #include <QPushButton>
 #include <QSignalSpy>
@@ -60,6 +61,20 @@ private slots:
         // Aucune réduction active au départ : appliquer et annuler sont grisés.
         QVERIFY(!panel.findChild<QPushButton*>("segColorsApplyButton")->isEnabled());
         QVERIFY(!panel.findChild<QPushButton*>("segColorsMergeButton")->isEnabled());
+    }
+
+    void colorRoleIsExplicitAndNeverClaimsToAssignMachineThreads() {
+        SegmentationColorsPanel panel;
+        panel.setClasses(threeClasses(), 1000);
+        auto* hint = panel.findChild<QLabel*>(QStringLiteral("segColorsRoleHint"));
+        auto* list = panel.findChild<QListWidget*>(QStringLiteral("segColorsList"));
+        QVERIFY(hint != nullptr && list != nullptr);
+        QVERIFY(hint->wordWrap());
+        QVERIFY(hint->text().contains(QStringLiteral("pas les fils")));
+        QVERIFY(list->accessibleName().contains(QStringLiteral("sans référence de fil")));
+        QCOMPARE(list->count(), 3);
+        QVERIFY(list->item(0)->toolTip().contains(QStringLiteral("Aucun fil machine")));
+        QCOMPARE(panel.selectedColors().size(), std::size_t{0});
     }
 
     void selectingRowsEmitsColorsButRefreshDoesNot() {

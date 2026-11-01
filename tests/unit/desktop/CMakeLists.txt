@@ -76,6 +76,7 @@ openstitch_add_qt_test(test_help_manual test_help_manual.cpp)
 target_compile_definitions(test_help_manual PRIVATE
     OPENSTITCH_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 openstitch_add_qt_test(test_selection_hit_test test_selection_hit_test.cpp)
+openstitch_add_qt_test(test_selection_model test_selection_model.cpp)
 openstitch_add_qt_test(test_wsl_path_converter test_wsl_path_converter.cpp)
 openstitch_add_qt_test(test_generation_options test_generation_options.cpp)
 openstitch_add_qt_test(test_segmentation_workflow test_segmentation_workflow.cpp)
@@ -116,6 +117,8 @@ openstitch_add_qt_test(test_click_to_stitch_tool test_click_to_stitch_tool.cpp)
 openstitch_add_qt_test(test_thread_stock_ui test_thread_stock_ui.cpp)
 openstitch_add_qt_test(test_text_typography_ui test_text_typography_ui.cpp)
 openstitch_add_qt_test(test_text_bases_ui test_text_bases_ui.cpp)
+openstitch_add_qt_test(test_order_jumps_ui test_order_jumps_ui.cpp)
+openstitch_add_qt_test(test_fabric_risk_ui test_fabric_risk_ui.cpp)
 # [cablage-D:fin]
 # [cablage-E:debut]
 openstitch_add_qt_test(test_density_map_ui test_density_map_ui.cpp)

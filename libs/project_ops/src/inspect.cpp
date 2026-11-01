@@ -755,6 +755,13 @@ Result<json> build_project_doc(const document::Project& project, const InspectOp
         if (!project.fabric.stabilizer.empty()) {
             fabric["stabilizer"] = project.fabric.stabilizer;
         }
+        if (project.fabric.grain_angle.radians != 0.0) {
+            fabric["grain_angle_deg"] =
+                project.fabric.grain_angle.radians * 180.0 / std::numbers::pi;
+        }
+        if (project.fabric.weft_softness != 1.0) {
+            fabric["weft_softness"] = project.fabric.weft_softness;
+        }
         doc["fabric"] = std::move(fabric);
     }
 
@@ -797,6 +804,8 @@ const char* stitch_type_name(const document::EmbroideryObject& object) {
         return "spiral_fill";
     case 11:
         return "crosshatch_fill";
+    case 12:
+        return "cross_stitch";
     default:
         return "unknown";
     }

@@ -214,6 +214,13 @@ const EnumTable<document::SatinCorner>& satin_corner_table() {
                                                     {"cut", document::SatinCorner::Cut}};
     return t;
 }
+const EnumTable<document::SatinJagged>& satin_jagged_table() {
+    static const EnumTable<document::SatinJagged> t{{"none", document::SatinJagged::None},
+                                                    {"side_a", document::SatinJagged::SideA},
+                                                    {"side_b", document::SatinJagged::SideB},
+                                                    {"both", document::SatinJagged::Both}};
+    return t;
+}
 const EnumTable<document::SatinCap>& cap_table() {
     static const EnumTable<document::SatinCap> t{{"flat", document::SatinCap::Flat},
                                                  {"rounded", document::SatinCap::Rounded},
@@ -310,8 +317,9 @@ std::array<std::uint8_t, 3> parse_hex_color(const std::string& text) {
 
 const char* stitch_type_name(const document::StitchParams& p) {
     static constexpr const char* names[] = {
-        "running",      "tatami",    "satin",      "directional", "auto_satin",  "blanket",
-        "contour_fill", "motif_run", "motif_fill", "radial_fill", "spiral_fill", "crosshatch_fill"};
+        "running",     "tatami",          "satin",       "directional", "auto_satin",
+        "blanket",     "contour_fill",    "motif_run",   "motif_fill",  "radial_fill",
+        "spiral_fill", "crosshatch_fill", "cross_stitch"};
     return names[p.index()];
 }
 
@@ -776,6 +784,9 @@ template <class P> void add_satin_common(std::vector<Field<P>>& v) {
     v.push_back(bool_field<P>("auto_spacing", &P::auto_spacing));
     v.push_back(enum_field<P>("corner_mode", &P::corner_mode, satin_corner_table()));
     v.push_back(deg_field<P>("corner_threshold_deg", &P::corner_threshold, 15.0, 150.0));
+    v.push_back(enum_field<P>("jagged", &P::jagged, satin_jagged_table()));
+    v.push_back(mm_field<P>("jagged_amplitude_mm", &P::jagged_amplitude, 0.2, 6.0));
+    v.push_back(int_field<P>("jagged_seed", &P::jagged_seed, 0, 4294967295LL));
 }
 
 template <class P> const std::vector<Field<P>>& fields_of();
@@ -1007,6 +1018,21 @@ fields_of<document::CrosshatchFillParams>() {
     return fields;
 }
 
+template <>
+const std::vector<Field<document::CrossStitchParams>>& fields_of<document::CrossStitchParams>() {
+    using P = document::CrossStitchParams;
+    static const auto fields = [] {
+        std::vector<Field<P>> v;
+        v.push_back(mm_field<P>("cell_mm", &P::cell, 1.0, 8.0));
+        v.push_back(deg_field<P>("grid_angle_deg", &P::grid_angle, -360.0, 360.0));
+        v.push_back(bool_field<P>("full_cross", &P::full_cross));
+        v.push_back(int_field<P>("passes", &P::passes, 1, 3));
+        v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
+        return v;
+    }();
+    return fields;
+}
+
 // Types de points (noms) qui possèdent le champ `name`.
 std::vector<std::string> types_having(const std::string& name) {
     std::vector<std::string> out;
@@ -1046,6 +1072,9 @@ std::vector<std::string> types_having(const std::string& name) {
     if (find_field(fields_of<document::CrosshatchFillParams>(), name) != nullptr) {
         out.emplace_back("crosshatch_fill");
     }
+    if (find_field(fields_of<document::CrossStitchParams>(), name) != nullptr) {
+        out.emplace_back("cross_stitch");
+    }
     return out;
 }
 
@@ -1064,7 +1093,8 @@ std::string params_catalog_text() {
     out += "radial_fill : " + join(field_names(fields_of<document::RadialFillParams>())) + " ; ";
     out += "spiral_fill : " + join(field_names(fields_of<document::SpiralFillParams>())) + " ; ";
     out += "crosshatch_fill : " + join(field_names(fields_of<document::CrosshatchFillParams>())) +
-           ". ";
+           " ; ";
+    out += "cross_stitch : " + join(field_names(fields_of<document::CrossStitchParams>())) + ". ";
     out += "Suffixe _mm = millimètres, _deg = degrés ; énumérations en chaîne";
     return out;
 }
@@ -1317,12 +1347,13 @@ OpSpec op_set_connector() {
 OpSpec op_set_stitch_type() {
     OpSpec s;
     s.name = "set_stitch_type";
-    s.summary = "Change le type de points : running, tatami, directional ou spiral_fill "
-                "(spirale d'Archimède centrable par set_params.center_mm). "
+    s.summary = "Change le type de points : running, tatami, directional, spiral_fill "
+                "(spirale d'Archimède centrable par set_params.center_mm) ou cross_stitch "
+                "(point de croix, grille réglable par set_params). "
                 "Le satin passe par auto_satin.";
     s.args = {arg("object", "object_id", "objet de broderie", true),
-              arg("type", "string", "running | tatami | directional | spiral_fill", true, {},
-                  "running | tatami | directional | spiral_fill")};
+              arg("type", "string", "running | tatami | directional | spiral_fill | cross_stitch",
+                  true, {}, "running | tatami | directional | spiral_fill | cross_stitch")};
     s.example = R"({"op":"set_stitch_type","object":2,"type":"running"})";
     s.apply = guarded([](OpContext& ctx) {
         const auto& emb = need_emb(ctx, "object");
@@ -1333,9 +1364,9 @@ OpSpec op_set_stitch_type() {
                    "utilisez l'opération auto_satin");
         }
         if (type != "running" && type != "tatami" && type != "directional" &&
-            type != "spiral_fill") {
+            type != "spiral_fill" && type != "cross_stitch") {
             refuse(code::kOutOfRange, "type de points « " + type + " » inconnu",
-                   "valeurs valides : running, tatami, directional, spiral_fill "
+                   "valeurs valides : running, tatami, directional, spiral_fill, cross_stitch "
                    "(satin : opération auto_satin)");
         }
         const std::string from = stitch_type_name(emb.params);
@@ -1354,6 +1385,13 @@ OpSpec op_set_stitch_type() {
         } else if (type == "tatami") {
             params = document::TatamiParams{};
             label = "Type : tatami";
+        } else if (type == "cross_stitch") {
+            const auto* source = ctx.project.findObject(emb.source_vector);
+            if (source == nullptr || source->paths.empty()) {
+                refuse(code::kRefused, "aucun contour source pour le point de croix");
+            }
+            params = document::CrossStitchParams{};
+            label = "Type : point de croix";
         } else if (type == "spiral_fill") {
             const auto* source = ctx.project.findObject(emb.source_vector);
             if (source == nullptr || source->paths.empty()) {

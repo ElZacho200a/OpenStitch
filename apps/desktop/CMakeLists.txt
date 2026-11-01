@@ -84,6 +84,10 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_eyedropper.cpp
     # [cablage-C:fin]
     # [cablage-D:debut]
+    main_window_order_jumps.cpp
+    main_window_fabric_risk.cpp
+    fabric_risk_overlay.cpp
+    fabric_risk_overlay.hpp
     # [cablage-D:fin]
     # [cablage-E:debut]
     density_overlay.cpp
@@ -170,6 +174,8 @@ help_manual.hpp
 help_manual.qrc
 main_window_help.cpp
     selection_hit_test.cpp
+    selection_model.cpp
+    selection_model.hpp
     selection_hit_test.hpp
     ui_icons.cpp
     ui_icons.hpp

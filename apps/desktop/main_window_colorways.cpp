@@ -9,6 +9,8 @@
 #include <QStringList>
 #include <QTimer>
 
+#include <numbers>
+
 #include "canvas_view.hpp"
 #include "colorway_dialog.hpp"
 #include "main_window.hpp"
@@ -71,7 +73,7 @@ void MainWindow::showColorwayDialog() {
                 });
         connect(colorwayDialog_, &ColorwayDialog::fabricChangeRequested, this,
                 [this](const QColor& color, const QString& name, const QString& material,
-                       const QString& stabilizer) {
+                       const QString& stabilizer, double grainAngleDeg, double weftSoftness) {
                     document::FabricSettings fabric;
                     fabric.color = {static_cast<std::uint8_t>(color.red()),
                                     static_cast<std::uint8_t>(color.green()),
@@ -79,6 +81,8 @@ void MainWindow::showColorwayDialog() {
                     fabric.name = name.toStdString();
                     fabric.material = material.toStdString();
                     fabric.stabilizer = stabilizer.toStdString();
+                    fabric.grain_angle = Angle{grainAngleDeg * std::numbers::pi / 180.0};
+                    fabric.weft_softness = weftSoftness;
                     if (fabric == project_.fabric) {
                         return;
                     }
@@ -110,7 +114,8 @@ void MainWindow::syncColorwayUi() {
         const QString material = QString::fromStdString(f.material);
         const QString stabilizer = QString::fromStdString(f.stabilizer);
         colorwayDialog_->setState(names, project_.active_colorway, fabric, name, material,
-                                  stabilizer);
+                                  stabilizer, f.grain_angle.radians * 180.0 / std::numbers::pi,
+                                  f.weft_softness);
     }
 }
 

@@ -127,6 +127,9 @@ document::Project rich_project() {
     sp.auto_spacing = true;
     sp.corner_mode = document::SatinCorner::Overlap;
     sp.corner_threshold = Angle{1.5};
+    sp.jagged = document::SatinJagged::Both;
+    sp.jagged_amplitude = Micrometers{2'500};
+    sp.jagged_seed = 4242;
     sp.entry_point = Vec2um{Micrometers{1'234}, Micrometers{5'678}};
     sat.params = sp;
     project.embroidery_objects.push_back(sat);
@@ -412,6 +415,9 @@ TEST_CASE("projet complet : save puis load = memes donnees") {
     CHECK(loadedSatin.auto_spacing);
     CHECK(loadedSatin.corner_mode == document::SatinCorner::Overlap);
     CHECK(loadedSatin.corner_threshold == Angle{1.5});
+    CHECK(loadedSatin.jagged == document::SatinJagged::Both);
+    CHECK(loadedSatin.jagged_amplitude == Micrometers{2'500});
+    CHECK(loadedSatin.jagged_seed == 4242u);
     REQUIRE(loadedSatin.entry_point.has_value());
     CHECK(*loadedSatin.entry_point == Vec2um{Micrometers{1'234}, Micrometers{5'678}});
     CHECK_FALSE(loadedSatin.exit_point.has_value());
@@ -559,6 +565,9 @@ TEST_CASE("auto-satin : save puis load = memes parametres, guides compris") {
     sp.lock_passes = 3;
     sp.auto_spacing = true;
     sp.corner_mode = document::SatinCorner::Miter;
+    sp.jagged = document::SatinJagged::SideB;
+    sp.jagged_amplitude = Micrometers{900};
+    sp.jagged_seed = 99;
     sp.entry_point = um(10, 20);
     sp.exit_point = um(4'990, 4'980);
 
@@ -685,4 +694,30 @@ TEST_CASE("HP-ENG-013 stitch presets: roundtrip and tolerant read", "[stitch_pre
     const auto old = project_io::detail::project_from_json(legacy);
     REQUIRE(old);
     CHECK(old->stitch_presets.empty());
+}
+
+TEST_CASE("bord irregulier : defaut non ecrit, cles absentes relues au defaut") {
+    document::Project project;
+    document::EmbroideryObject sat;
+    sat.id = project.object_ids.next();
+    sat.params = document::SatinParams{};
+    document::EmbroideryObject autoSat;
+    autoSat.id = project.object_ids.next();
+    autoSat.params = document::AutoSatinParams{};
+    project.embroidery_objects = {sat, autoSat};
+    const auto json = project_io::detail::project_to_json(project);
+    CHECK(json.dump().find("jagged") == std::string::npos);
+
+    // Un .osp anterieur (sans la cle) se relit avec les valeurs par defaut.
+    const auto parsed = project_io::detail::project_from_json(json);
+    REQUIRE(parsed);
+    REQUIRE(parsed->embroidery_objects.size() == 2);
+    const auto& s = std::get<document::SatinParams>(parsed->embroidery_objects[0].params);
+    CHECK(s.jagged == document::SatinJagged::None);
+    CHECK(s.jagged_amplitude == Micrometers{1'500});
+    CHECK(s.jagged_seed == 1u);
+    const auto& a = std::get<document::AutoSatinParams>(parsed->embroidery_objects[1].params);
+    CHECK(a.jagged == document::SatinJagged::None);
+    CHECK(a.jagged_amplitude == Micrometers{1'500});
+    CHECK(a.jagged_seed == 1u);
 }

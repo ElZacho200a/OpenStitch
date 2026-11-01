@@ -28,6 +28,10 @@ std::string normalized(std::string value) {
     return value;
 }
 
+bool has_pull_mode(const document::StitchParams& params) {
+    return std::visit([](const auto& p) { return requires { p.pull_mode; }; }, params);
+}
+
 bool is_predicted(const document::StitchParams& params) {
     return std::visit(
         [](const auto& p) {
@@ -38,6 +42,17 @@ bool is_predicted(const document::StitchParams& params) {
             }
         },
         params);
+}
+
+// Les remplissages sans réglage de tirage propre (contour, motifs, radial, spirale, hachures,
+// point de croix) tirent le même tissu que les autres : dans un projet qui utilise la prédiction
+// ils sont compensés eux aussi, sinon ils déformeraient le champ sans jamais être corrigés. Les
+// lignes de point droit (point droit, bourdon, motif en ligne) restent exclues.
+bool follows_project_prediction(const document::StitchParams& params) {
+    return !has_pull_mode(params) &&
+           !std::holds_alternative<document::RunningStitchParams>(params) &&
+           !std::holds_alternative<document::BlanketStitchParams>(params) &&
+           !std::holds_alternative<document::MotifRunParams>(params);
 }
 
 // Modulation indicative : la densité locale découle déjà du nombre de segments.
@@ -79,7 +94,8 @@ std::vector<PullSource> predicted_sources(const stitch::StitchSequence& sequence
                                          static_cast<double>(b.pos.y.value - a.pos.y.value));
         const auto it = by_id.find(b.source.value);
         const double type_factor = it == by_id.end() ? 1.0 : it->second;
-        sources.push_back({a.pos, b.pos, segment_weight(b.pass, length) * type_factor});
+        sources.push_back({a.pos, b.pos, segment_weight(b.pass, length) * type_factor,
+                           static_cast<std::uint32_t>(i)});
     }
     return sources;
 }
@@ -89,6 +105,9 @@ std::vector<PullSource> predicted_sources(const stitch::StitchSequence& sequence
 FabricResponse predicted_fabric_response(const document::Project& project,
                                          const FabricResponse& base) {
     FabricResponse result = base;
+    // Le sens du tissu est un réglage du projet, valable aussi pour un tissu calibré.
+    result.grain_angle_rad = project.fabric.grain_angle.radians;
+    result.grain_anisotropy *= project.fabric.weft_softness;
     if (result.calibrated) {
         return result; // la mesure réelle prime sur toute catégorie indicative
     }
@@ -122,8 +141,13 @@ FabricResponse predicted_fabric_response(const document::Project& project,
 void apply_predicted_pull(stitch::StitchSequence& sequence, const document::Project& project,
                           const FabricResponse& fabric) {
     std::vector<ObjectId> predicted;
+    bool any_predicted = false;
     for (const document::EmbroideryObject& object : project.embroidery_objects) {
-        if (is_predicted(object.params)) {
+        any_predicted = any_predicted || is_predicted(object.params);
+    }
+    for (const document::EmbroideryObject& object : project.embroidery_objects) {
+        if (is_predicted(object.params) ||
+            (any_predicted && follows_project_prediction(object.params))) {
             predicted.push_back(object.id);
         }
     }
@@ -132,25 +156,42 @@ void apply_predicted_pull(stitch::StitchSequence& sequence, const document::Proj
     }
     std::sort(predicted.begin(), predicted.end());
 
-    const auto& cmds = sequence.commands;
-    std::vector<PullSource> sources = predicted_sources(sequence, project);
-    if (sources.empty()) {
-        return;
+    // Compensation à point fixe : la géométrie cousue compensée tire elle aussi le tissu, et
+    // chaque zone est décalée du tirage qu'elle subira au moment de sa couture (rang de
+    // couture). La passe k évalue le champ de la géométrie compensée à la passe k-1 ; la
+    // première passe part de la géométrie nominale. Les positions d'origine restent la cible.
+    const FabricResponse response = predicted_fabric_response(project, fabric);
+    const int passes = std::clamp(response.compensation_passes, 1, 6);
+    const std::size_t count = sequence.commands.size();
+    std::vector<Vec2um> nominal(count);
+    std::vector<bool> movable(count, false);
+    for (std::size_t i = 0; i < count; ++i) {
+        const stitch::StitchCommand& c = sequence.commands[i];
+        nominal[i] = c.pos;
+        movable[i] = c.type == stitch::CommandType::Stitch &&
+                     c.pass == stitch::StitchPass::TopStitch &&
+                     std::binary_search(predicted.begin(), predicted.end(), c.source);
     }
-    const PullField field(std::move(sources), predicted_fabric_response(project, fabric));
-
-    // Positions d'origine échantillonnées d'abord : le champ ne voit jamais un point déjà déplacé.
-    std::vector<Vec2um> shifted(cmds.size());
-    for (std::size_t i = 0; i < cmds.size(); ++i) {
-        const stitch::StitchCommand& c = cmds[i];
-        shifted[i] = c.pos;
-        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::TopStitch &&
-            std::binary_search(predicted.begin(), predicted.end(), c.source)) {
-            shifted[i] = c.pos + field.compensation_at(c.pos);
+    stitch::StitchSequence work = sequence;
+    for (int pass = 0; pass < passes; ++pass) {
+        std::vector<PullSource> sources = predicted_sources(work, project);
+        if (sources.empty()) {
+            return;
+        }
+        const PullField field(std::move(sources), response);
+        // Jacobi : toutes les évaluations lisent la géométrie de la passe précédente.
+        std::vector<Vec2um> next(count);
+        for (std::size_t i = 0; i < count; ++i) {
+            next[i] = movable[i] ? nominal[i] + field.compensation_at(work.commands[i].pos,
+                                                                      static_cast<std::uint32_t>(i))
+                                 : nominal[i];
+        }
+        for (std::size_t i = 0; i < count; ++i) {
+            work.commands[i].pos = next[i];
         }
     }
-    for (std::size_t i = 0; i < cmds.size(); ++i) {
-        sequence.commands[i].pos = shifted[i];
+    for (std::size_t i = 0; i < count; ++i) {
+        sequence.commands[i].pos = work.commands[i].pos;
     }
 }
 

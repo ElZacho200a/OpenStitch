@@ -477,6 +477,8 @@ MainWindow::MainWindow() {
     buildDetailZonesTool();
     // [cablage-C:fin]
     // [cablage-D:debut]
+    buildOrderJumpsFeature();
+    buildFabricRiskFeature();
     // [cablage-D:fin]
     // [cablage-E:debut]
     buildDensityFeature();
@@ -4749,10 +4751,13 @@ void MainWindow::renderStitches() {
     stitchItems_.clear();
     simMarker_ = nullptr;
     simWalkValid_ = false;
-    refreshDensityOverlay(); // HP-VIEW-005 (main_window_density.cpp)
-    refreshPullMapOverlay(); // tirage prédit (main_window_pull_preview.cpp)
+    refreshDensityOverlay();    // HP-VIEW-005 (main_window_density.cpp)
+    refreshPullMapOverlay();    // tirage prédit (main_window_pull_preview.cpp)
+    refreshOrderJumpsOverlay(); // sauts à vide du panneau Ordre (main_window_order_jumps.cpp)
+    refreshFabricRiskOverlay(); // risque tissu (main_window_fabric_risk.cpp)
 
-    if (showStitchesAct_ == nullptr || !showStitchesAct_->isChecked() || !sequence_) {
+    if (stitchLayerSuspended_ || showStitchesAct_ == nullptr || !showStitchesAct_->isChecked() ||
+        !sequence_) {
         return;
     }
     if (renderRealisticStitches()) {
@@ -6052,6 +6057,7 @@ int stitchFilterFamily(int typeIndex) {
     case 8:  // radial
     case 9:  // spirale
     case 10: // croisé
+    case 11: // point de croix (HP-STI-012)
         return 1;
     case 4:
     case 5: // blanket, motif le long du contour (HP-STI-002)
@@ -6105,6 +6111,10 @@ bool MainWindow::stitchParamsForType(const document::EmbroideryObject& emb, int 
     case 10: // remplissage croisé (HP-STI-014)
         params = document::CrosshatchFillParams{};
         label = "Type : remplissage croisé";
+        return true;
+    case 11: // point de croix (HP-STI-012)
+        params = document::CrossStitchParams{};
+        label = "Type : point de croix";
         return true;
     case 3: { // remplissage directionnel (réglages du tatami repris s'il y a lieu)
         auto directional = directionalParamsFor(emb);
@@ -8710,11 +8720,29 @@ void MainWindow::buildOrderPanel() {
     orderDock_->hide();
 }
 
+// HP-ENG-010 : objet à ordonner, avec ses extrémités réelles de couture (repli : le centre).
+static optimization::OrderItem
+makeOrderItem(const document::EmbroideryObject& obj, Vec2um centroid,
+              const std::vector<stitch::ObjectEndpoints>& endpoints) {
+    optimization::OrderItem item{obj.id, obj.rgb, centroid, obj.locked};
+    for (const auto& e : endpoints) {
+        if (e.id == obj.id) {
+            item.entry = e.first;
+            item.exit = e.last;
+            break;
+        }
+    }
+    return item;
+}
+
 void MainWindow::refreshOrderPanel() {
     if (orderList_ == nullptr) {
         return;
     }
     const int previousRow = orderList_->currentRow();
+    // Même coût que « Appliquer » : extrémités de la séquence affichée.
+    const auto endpoints =
+        sequence_ ? stitch::object_endpoints(*sequence_) : std::vector<stitch::ObjectEndpoints>{};
     std::vector<optimization::OrderItem> items;
     {
         // Signaux bloqués : clear() émettait currentRowChanged(-1), qui vidait la sélection de
@@ -8729,7 +8757,7 @@ void MainWindow::refreshOrderPanel() {
             auto* item = new QListWidgetItem(DocumentPanel::itemText(obj, ++rank));
             item->setIcon(icons::colorSwatch(QColor(obj.rgb[0], obj.rgb[1], obj.rgb[2])));
             orderList_->addItem(item);
-            items.push_back({obj.id, obj.rgb, embroideryCentroid(obj), obj.locked});
+            items.push_back(makeOrderItem(obj, embroideryCentroid(obj), endpoints));
         }
         // La ligne courante suit la sélection de broderie si elle existe, sinon l'ancienne.
         int row = previousRow;
@@ -8757,8 +8785,8 @@ void MainWindow::refreshOrderPanel() {
     orderCostLabel_->setText(tr("Trajet estimé : %1 mm — %2 changement(s) de fil")
                                  .arg(cost.travel_um / 1000.0, 0, 'f', 1)
                                  .arg(cost.color_changes));
-    orderCostLabel_->setToolTip(tr("Distance à vide entre objets successifs (estimation sur les "
-                                   "centres), hors points de couture."));
+    orderCostLabel_->setToolTip(tr("Distance à vide entre objets successifs (de la fin de l'un "
+                                   "au début du suivant), hors points de couture."));
     setDockAutoVisible(orderDock_, !project_.embroidery_objects.empty());
 }
 
@@ -9116,15 +9144,7 @@ void MainWindow::applyOrderStrategy() {
     const auto endpoints =
         sequence_ ? stitch::object_endpoints(*sequence_) : std::vector<stitch::ObjectEndpoints>{};
     const auto makeItem = [&](const document::EmbroideryObject& obj) {
-        optimization::OrderItem item{obj.id, obj.rgb, embroideryCentroid(obj), obj.locked};
-        for (const auto& e : endpoints) {
-            if (e.id == obj.id) {
-                item.entry = e.first;
-                item.exit = e.last;
-                break;
-            }
-        }
-        return item;
+        return makeOrderItem(obj, embroideryCentroid(obj), endpoints);
     };
     std::vector<optimization::OrderItem> items;
     for (const std::size_t index : project_.sewingOrder()) {
@@ -9144,6 +9164,7 @@ void MainWindow::applyOrderStrategy() {
     const auto before = optimization::compute_cost(items, options.start, options.end);
     const auto order =
         project_.groupedByCalque(optimization::optimize_order(items, strategy, options));
+    captureOrderJumpsBaseline(endpoints); // surimpression « Sauts à vide » : anciens sauts
 
     undoStack_.execute(std::make_unique<commands::ReorderEmbroideryCommand>(order), project_);
     refreshImage();
@@ -10825,36 +10846,12 @@ void MainWindow::onSelectBelow(QPointF posMm, QPoint globalPos, SelectMode mode)
 // multiSelection_ (garde tests/check_selection_single_mutator.cmake). Tout autre
 // site passe par setSelection()/editSelection().
 void MainWindow::setSelection(Selection selection) {
-    // Doublons : la DERNIÈRE occurrence est gardée (le dernier id reste le principal).
-    std::vector<ObjectId> objects;
-    objects.reserve(selection.objects.size());
-    for (std::size_t i = 0; i < selection.objects.size(); ++i) {
-        const bool later =
-            std::find(selection.objects.begin() + static_cast<std::ptrdiff_t>(i) + 1,
-                      selection.objects.end(), selection.objects[i]) != selection.objects.end();
-        if (!later) {
-            objects.push_back(selection.objects[i]);
-        }
-    }
-    // Sélectionner une région ou une broderie vide la multi-sélection (seul le
-    // principal peut subsister, ex. forme source d'une broderie choisie au dock).
-    if ((selection.region || selection.embroidery) && objects.size() > 1) {
-        objects = {objects.back()};
-    }
+    selection = desktop::normalize_selection(std::move(selection), [this](RegionId r) {
+        return project_.segmentation && project_.segmentation->find(r) != nullptr;
+    });
+    std::vector<ObjectId> objects = std::move(selection.objects);
     selectedRegion_ = selection.region;
-    // Régions supplémentaires : sans doublon, ni l'active, ni région disparue ; vides sans active.
-    extraRegions_.clear();
-    if (selection.region) {
-        for (const RegionId r : selection.extraRegions) {
-            const bool known = project_.segmentation && project_.segmentation->find(r) != nullptr;
-            const bool dup =
-                r == *selection.region ||
-                std::find(extraRegions_.begin(), extraRegions_.end(), r) != extraRegions_.end();
-            if (known && !dup) {
-                extraRegions_.push_back(r);
-            }
-        }
-    }
+    extraRegions_ = std::move(selection.extraRegions);
     selectedEmbroidery_ = selection.embroidery;
     if (objects.empty()) {
         selectedObject_.reset();
@@ -10949,23 +10946,9 @@ void MainWindow::pruneSelection() {
 }
 
 bool MainWindow::checkSelectionInvariants() const {
-    if (!multiSelection_.empty()) {
-        if (multiSelection_.size() < 2) {
-            return false; // un seul objet = cas legacy (multi vide)
-        }
-        if (!selectedObject_ || multiSelection_.back() != *selectedObject_) {
-            return false; // principal = dernier
-        }
-        if (selectedRegion_ || selectedEmbroidery_) {
-            return false; // région/broderie sélectionnée => multi vide
-        }
-        for (std::size_t i = 0; i < multiSelection_.size(); ++i) {
-            for (std::size_t j = i + 1; j < multiSelection_.size(); ++j) {
-                if (multiSelection_[i] == multiSelection_[j]) {
-                    return false;
-                }
-            }
-        }
+    if (!desktop::selection_state_is_consistent(selectedObject_, multiSelection_,
+                                                selectedRegion_ || selectedEmbroidery_)) {
+        return false;
     }
     for (const ObjectId id : selectedObjectIds()) {
         if (project_.findObject(id) == nullptr) {

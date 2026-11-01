@@ -16,6 +16,16 @@
 
 namespace openstitch::project_ops {
 
+FabricRiskLevel classify_fabric_risk(double score) {
+    if (!std::isfinite(score) || score <= 0.0) {
+        return FabricRiskLevel::None;
+    }
+    if (score >= kFabricRiskHighScore) {
+        return FabricRiskLevel::High;
+    }
+    return score >= kFabricRiskModerateScore ? FabricRiskLevel::Moderate : FabricRiskLevel::Low;
+}
+
 Result<FabricRiskReport> measure_fabric_risk(const document::Project& project,
                                              const FabricRiskOptions& options) {
     if (!std::isfinite(options.cell_mm) || options.cell_mm < 0.1 || options.cell_mm > 10.0 ||
@@ -130,6 +140,16 @@ Result<FabricRiskReport> measure_fabric_risk(const document::Project& project,
     report.p99_score =
         occupied.empty() ? 0.0 : occupied[static_cast<std::size_t>(0.99 * (occupied.size() - 1))];
     report.hotspot_area_mm2 = hotspots;
+    report.grid.cols = cols;
+    report.grid.rows = rows;
+    report.grid.cell = Micrometers{static_cast<std::int32_t>(std::lround(cell * 1000.0))};
+    report.grid.top_left =
+        Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(model->min_x * 1000.0))},
+               Micrometers{static_cast<std::int32_t>(std::lround(model->max_y * 1000.0))}};
+    report.grid.levels.reserve(count);
+    for (const double score : scores) {
+        report.grid.levels.push_back(classify_fabric_risk(score));
+    }
 
     nlohmann::json doc = {
         {"schema", kFabricRiskSchema},

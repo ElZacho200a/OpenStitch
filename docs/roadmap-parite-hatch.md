@@ -979,7 +979,8 @@ plus.
 - À faire : couple d'objets liés à dégradés complémentaires générés ensemble.
 - Dépend de : HP-STI-010.
 
-### HP-STI-012 — Point de croix [P2] — ☐ À faire
+### HP-STI-012 — Point de croix [P2] — ◐ Partiel (2026-10-31)
+- Livré (2026-10-31) : `CrossStitchParams` (cellule 1–8 mm, angle, croix complète / demi-croix, passes), `fill_cross_stitch` (grille ancrée à l'origine, cellule cousue si son centre est dans la région, rangs « / » à l'aller puis « \ » au retour), `.osp` `crossStitch`, CLI, type 11 « Point de croix » du bureau. Reste : bouton de conversion dédié, motif de croix depuis une image (pixel art), bordure en point arrière ; test desktop à valider en CI.
 - Hatch : outil point de croix sur grille (Hatch intègre un module Cross Stitch).
 - À faire : grille, cellules → croix (ordre des jambes cohérent), import d'une
   image pixélisée en grille, fil par cellule.
@@ -1136,7 +1137,8 @@ plus.
 - Hatch : bibliothèque de bordures (satin, motifs, feston) autour d'une forme.
 - Dépend de : HP-STI-002, HP-STI-004, HP-LIB-002.
 
-### HP-STI-022 — Bord irrégulier (fourrure, herbe) [P2] — ☐ À faire
+### HP-STI-022 — Bord irrégulier (fourrure, herbe) [P2] — ◐ Partiel (2026-10-31)
+- Livré (2026-10-31) : `SatinJagged` (aucun / côté A / côté B / deux) + amplitude 0,2–6 mm + graine sur satin et auto-satin ; raccourcissement déterministe des fils (hash de graine, indice, côté), largeur résiduelle ≥ 0,4 mm ; `.osp`, `set_params`, inspecteur. Reste : tatami et remplissage directionnel ; pas de test de bout en bout sur un auto-satin généré.
 - Hatch : « Jagged edge » : un côté du remplissage à longueurs aléatoires.
 - À faire : option tatami/satin avec longueur de pénétration aléatoire (graine
   fixe) côté A, B ou les deux.
@@ -1285,7 +1287,8 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   --pull-map --fabric`. Tests `test_pull_map.cpp`, `test_pull_preview_ui.cpp`. Reste : lecture du
   profil matière (#155), calibration (HP-ENG-001.a) ; l'aperçu n'est pas une mesure.
 
-### HP-ENG-001.a — Pièce-test de calibration et table de compensation par tissu [P1] — ☐ À faire
+### HP-ENG-001.a — Pièce-test de calibration et table de compensation par tissu [P1] — ◐ Partiel (2026-11-01)
+- Livré (2026-11-01) : générateur déterministe de pièce-test (`libs/stitch_generation/pull_test_piece`, croix de repérage, satins 3-12 mm, colonnes à 0/45/90° du grain, tatamis à 3 densités, remplissage + contour dans les deux ordres), tableau CSV prédit/mesuré, ajustement en grille de gain / tassement / souplesse de trame, commande `openstitch-cli pull-test-piece`. Théorie et protocole : `docs/theorie-tirage-tissu-2026-11.md`. Reste : brodage et mesures réelles (HP-PHYS-001), table par tissu persistante dans le `.osp`, application par le mode Auto.
 - Source : veille `docs/veille-innovations-2026-10.md` §V1. Aucune source lue ne
   fournit de modèle physique de l'étirement : les valeurs publiées sont des
   règles empiriques, dépendantes du tissu et non vérifiées. On mesure donc
@@ -1395,7 +1398,7 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   mieux (mesure : régularité de la direction des fils).
 
 ### HP-ENG-010 — Entrée et sortie automatiques au plus proche [P0] — ◐ Partiel
-- Livré (2026-10-25) : extrémités d'entrée/sortie et sens dans `libs/optimization` (`plan_order`), départ de contour fermé au sommet le plus proche (`join.cpp`). Reste : aucun appelant ne fournit encore les extrémités réelles des objets.
+- Livré (2026-10-25) : extrémités d'entrée/sortie et sens dans `libs/optimization` (`plan_order`), départ de contour fermé au sommet le plus proche (`join.cpp`). Livré (2026-10-31) : l'op `optimize_order` et « Appliquer » du bureau fournissent les extrémités réelles (`stitch::object_endpoints`) ; le « Trajet estimé » du panneau Ordre les utilise aussi (même coût avant/après application). Reste : le sens `reversed` de `plan_order` n'est pas appliqué aux objets (`optimize_order` ne rend que l'ordre), l'auto-numérisation ordonne encore par centres, mesure sur « marine » / `tentabrode`.
 - Livré 2026-10-10 : choix automatique du sens de couture de chaque objet
   (`auto_join` global + `join` par objet, `orient_chunk`), entrée des satins depuis la
   fin de l'objet précédent ; scène de référence : sauts 116,0 → 102,6 mm
@@ -1841,7 +1844,8 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
 - Livré (2026-10-25) : cadre commun en tirets de la sélection multiple. En PR (2026-10-29) : quatre poignées de redimensionnement du groupe, sans découper les formes. Reste : classe `selection_model`.
 - Constaté sur `main` (`1ab521a` et suivants) : Ctrl/Maj+clic, rectangle de sélection (fenêtre ou croisement), sélection multi-lignes depuis la liste Document, inspecteur de groupe ; tests `rectangleLeftToRightIsWindow…`, `shiftRectangleAddsToTheSelection`, `documentListMultiSelectionDrivesRegionSelection`. Les critères d'acceptation sont remplis.
 - Livré (PR #27, fusionnée le 2026-10-13 (`296ff34`)) : **Sélectionner tous les objets** (Ctrl+Maj+A ; Ctrl+A reste aux régions) et **Sélectionner les objets de même couleur** (`main_window_objects.cpp`).
-- Reste : modèle de sélection encore dans `MainWindow` (pas de classe `selection_model`) ; poignées communes en PR (2026-10-29).
+- Livré (2026-11-01) : `apps/desktop/selection_model.{hpp,cpp}`, sans Qt : type `Selection`, `normalize_selection` (doublons, principal, régions supplémentaires) et `selection_state_is_consistent`, appelés par `MainWindow::setSelection` / `checkSelectionInvariants` (comportement inchangé, garde `check_selection_single_mutator` verte) ; test QTest `test_selection_model`.
+- Reste : les membres d'état (`selectedObject_`, `multiSelection_`…) vivent encore dans `MainWindow` (≈ 130 sites de lecture, garde CTest dédiée) ; poignées communes en PR (2026-10-29).
 - À faire : Ctrl/Maj+clic, rectangle de sélection (glisser dans le vide),
   Ctrl+A, sélection depuis la liste Document (multi-lignes), sélection de
   tous les objets d'une couleur ; boîte englobante commune avec poignées ;
@@ -2457,6 +2461,12 @@ calques image/régions/vecteurs/broderie, filtres d'affichage, thème clair/somb
 ### HP-VIEW-013 — Info-bulle de survol d'un objet [P2] — ◐ Partiel (2026-10-21)
 - Livré (2026-10-21, PR) : info-bulle sur la forme vectorielle affichant nom, dimensions, type de points lié et fil de nuancier ou RGB ; test Qt et aucune mutation. Reste : nombre réel de points sans pénaliser le rendu, plusieurs broderies associées et validation visuelle.
 - À faire : type, fil, nombre de points, dimensions.
+
+### HP-UX-064 — Aperçu des sauts à vide du panneau Ordre [P2] — ◐ Partiel (2026-10-31)
+- Livré : `optimization::jump_segments` / `jump_length_um`, surimpression pointillée des sauts sur le canevas (action vue `action_orderJumps`, cases du panneau Ordre), comparaison avant/après « Optimiser l'ordre » (anciens sauts en gris, « −X mm »). Reste : sauts entre couleurs non distingués des sauts internes à un objet ; vérification visuelle non faite (tests headless).
+
+### HP-VIEW-015 — Carte de risque tissu en surimpression [P2] — ◐ Partiel (2026-10-31)
+- Livré : `FabricRiskReport::grid` + `classify_fabric_risk` (vert / orange / rouge, seuils 40 et 70), surimpression `action_fabricRisk` et section « Risque tissu » du panneau Analyse (profil tissé / jersey / feutrine, légende), calcul via `BusyIndicator::run`, cache à clé exacte. Reste : indice heuristique non calibré sur machine ; pas de liste de zones cliquables ; vérification visuelle non faite.
 
 ### HP-VIEW-014 — Carte d'épaisseur réactive [P2] — ◐ Partiel (2026-10-20, en PR)
 - Origine : roadmap nocturne du 2026-10-20 (« Épaisseur : carte d'épaisseur responsive »).
@@ -3368,7 +3378,7 @@ migration `.osp` pour ces seuls besoins ; la segmentation IA reste hors périmè
 - Reste pour fermeture : CI Windows Qt et tests complets à valider, enrichir
   les raisons de désactivation absentes des QAction et les alias métier.
 
-### HP-UX-047 — Différencier couleurs de régions, d'objets et fils [P1] — ☐ À faire
+### HP-UX-047 — Différencier couleurs de régions, d'objets et fils [P1] — ◐ Partiel (2026-10-27)
 - Besoin : fausses couleurs de segmentation, couleurs d'objets et références
   réelles des fils représentent trois informations distinctes. Les réglages
   de réduction des couleurs se retrouvent à plusieurs endroits (PAR-16 du
@@ -3387,6 +3397,13 @@ migration `.osp` pour ces seuls besoins ; la segmentation IA reste hors périmè
   un changement de fil est annulable par une seule `ICommand` et apparaît
   dans le récapitulatif d'export ; le rôle n'est pas signalé par la couleur
   seule ; tests Qt.
+- En PR (2026-10-27) : dock renommé « Couleurs de segmentation », légende
+  permanente explicitant qu'une teinte de région n'est pas une référence de
+  fil, info-bulles contextualisées et légende distincte dans l'onglet Projet
+  du panneau Fils. Deux QTests valident les libellés et leur accessibilité.
+- Reste : lier les trois rôles dans une vue contextuelle (région → couleur
+  d'objet → référence de fil) et vérifier le résultat visuellement ; aucune
+  transformation de points ni changement d'attribution dans ce premier lot.
 
 ### HP-UX-048 — Comparer original et aperçu avant transformation [P2] — ◐ Partiel (2026-10-27, branche feat/ux-048-segmentation-before-after-20261027)
 - Besoin : HP-VIEW-012 couvre l'aperçu direct mais ne pose pas un comportement
@@ -4471,6 +4488,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-10-27 | ChatGPT (audit UI/UX, PR 5) | HP-UX-047 ◐ : distinguer visuellement et textuellement teintes de segmentation, couleurs d'objets et références de fils ; QTests, sans modifier ni broderie ni export. |
 | 2026-10-30 | Claude (analyse multi-agents, passe 2) | **Seconde passe sans limite de tours** : six agents haiku `general-purpose` relisent les mêmes domaines en profondeur ; **+61 entrées** (§27ter, lots G à L) : écriture atomique et durable, fragments non migrés, trim VP3 perdu, mode contour « running » inopérant, refusion après limite de fils, vectorisation en O(régions × pixels), lignes cohérentes en série, compensation du tirage des autres remplissages, chevron/plume, CI (cache Qt, tests Python jamais lancés), UX presse-papiers/simulation. Entrées « à vérifier » non confirmées à l'exécution ; aucun code modifié ; HP-OBJ-017 et HP-OBJ-021 à recontrôler. |
 | 2026-10-30 | Claude (analyse multi-agents) | **Analyse complète des fonctionnalités et plan d'amélioration** : six agents haiku (IHM, pipeline image, génération de points, document/commandes/rendu, formats/lettrage, CLI/MCP/CI) ; **+51 entrées** HP-QA-011 à 020, HP-PERF-010 à 022, HP-AUTO-014 à 019, HP-UX-050 à 056, HP-TXT-016, HP-STI-027 à 032, HP-PROD-009, HP-FMT-023 à 026, HP-THR-013, HP-DIST-008, HP-HELP-005 (§27bis, lots A à F). Entrées non vérifiées à l'exécution (marquées « à vérifier »). Aucun code modifié ; HP-OBJ-021 à recontrôler (HP-UX-054). |
 | 2026-10-29 | ChatGPT (HP-OBJ-001/005) | **Redimensionnement collectif sur le canevas** : quatre poignées sur la boîte commune, Maj conserve les proportions, aperçu des dimensions ; une transformation et une annulation pour les formes et leurs paramètres de points. Tests QTest : cadre, glisser et restauration du groupe. En PR, CI à vérifier ; restent les poignées latérales et le redimensionnement autour du centre (Alt). |
@@ -4580,3 +4598,11 @@ ouvrant le lot (§0.1).
 | 2026-10-31 | Claude (agent, PR #209) | **HP-PERF-010 ◐** : `UndoStack::setMaxDepth` (0 = illimité, défaut), élimination des pas les plus anciens, pas conservés annulables exactement, état propre éliminé -> `isClean` faux ; 3 tests, `test_commands` vert. Reste : câblage bureau, commandes delta après mesure (HP-PERF-007), borne en octets, rejeu HP-QA-015. |
 | 2026-10-31 | Claude (agents ENG-009, VIEW-009) | **Aucun code livré.** ENG-009 bloquée par HP-STI-018 (satin tournant absent du dépôt) ; VIEW-009 : `DeviceCoordinateCache` mesuré et rejeté (régression au zoom fort). Constats consignés dans chaque entrée. |
 | 2026-10-31 | Claude | **HP-ENG-004** : satin de bordure créé avec `split_stitch = Staggered` (test `bordure : le fractionnement…`). Défaut de la struct inchangé. |
+| 2026-10-31 | Claude (HP-ENG-010) | **HP-ENG-010 ◐** : `stitch::object_endpoints` + extrémités réelles fournies à `plan_order`/`optimize_order` par l'op `optimize_order` et le bureau (test Catch2 `object_endpoints`). `reversible` et mesure sur corpus restent. |
+| 2026-10-31 | Claude (pinceau) | Pinceau fluide avec rendu réaliste : la couche points est suspendue pendant un coup de pinceau (plus de repeinture de la texture sous la forme à chaque touche), reconstruite à la fin ou à l'annulation. Test QTest `strokeSuspendsTheStitchLayerUntilItEnds`. Aucune entrée HP concernée. |
+| 2026-10-31 | Claude (HP-STI-012) | **HP-STI-012 ◐** : point de croix (`CrossStitchParams`, `fill_cross_stitch`, `.osp` `crossStitch`, CLI, type 11 du bureau). Tests stitch / project_io / project_ops. |
+| 2026-10-31 | Claude (HP-STI-022) | **HP-STI-022 ◐** : bord irrégulier du satin et de l'auto-satin (`SatinJagged`, amplitude, graine), `.osp`, `set_params`, inspecteur. |
+| 2026-10-31 | Claude (HP-UX-064, HP-VIEW-015) | **Nouvelles entrées ◐** : surimpression des sauts à vide avec comparaison avant/après, et carte de risque tissu en surimpression. |
+| 2026-10-31 | Claude (HP-ENG-010) | **HP-ENG-010 ◐** : le « Trajet estimé » du panneau Ordre utilise les extrémités réelles de couture (comme « Appliquer » et l'op `optimize_order`), plus les centres ; infobulle et traduction alignées. Reste : sens `reversed` non appliqué, auto-numérisation par centres. |
+| 2026-11-01 | Claude (HP-OBJ-001) | **HP-OBJ-001 ◐** : règles de sélection (normalisation, invariants) extraites de `MainWindow` vers `apps/desktop/selection_model` (Qt-free, test QTest `test_selection_model`). Reste : déplacer les membres d'état eux-mêmes. |
+| 2026-11-01 | Claude (tirage prédit) | **Tirage du tissu : tassement, grain, ordre de couture** : champ saturant (`compression`, plafond doux `tanh`), souplesse selon l'angle du point par rapport au grain, rang de couture (`PullSource::order`) et raidissement par les segments voisins, compensation prédite à point fixe (3 passes), tous les remplissages suivent la prédiction du projet, sens du tissu réglable (`FabricSettings::grain_angle` / `weft_softness`, `.osp`, dialogue « Coloris et tissu »), correction du signe de `simulate_fabric_pull`, pièce-test de calibration (HP-ENG-001.a ◐). Théorie : `docs/theorie-tirage-tissu-2026-11.md`. Coefficients toujours empiriques, non mesurés. |

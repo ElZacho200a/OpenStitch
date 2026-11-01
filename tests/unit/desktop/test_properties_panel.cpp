@@ -338,6 +338,32 @@ void PropertiesPanelTest::radialSpiralCrosshatchEditsEmitParamsAndConversionIsOf
         QVERIFY(std::abs(std::get<openstitch::document::CrosshatchFillParams>(*last).angle.radians -
                          std::numbers::pi / 4.0) < 1e-9);
     }
+    // Point de croix (HP-STI-012) : taille de cellule, angle, croix complete, passes.
+    {
+        PropertiesPanel panel;
+        EmbroideryObject e;
+        e.id = openstitch::ObjectId{35};
+        e.params = openstitch::document::CrossStitchParams{};
+        panel.showEmbroidery(e);
+        QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                         [&](openstitch::ObjectId, StitchParams params) { last = params; });
+        auto* cell = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_crossCell"));
+        auto* angle = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_crossAngle"));
+        auto* full = panel.findChild<QCheckBox*>(QStringLiteral("check_crossFull"));
+        auto* passes = panel.findChild<QSpinBox*>(QStringLiteral("spin_crossPasses"));
+        QVERIFY(cell != nullptr && angle != nullptr && full != nullptr && passes != nullptr);
+        QVERIFY(full->isChecked());
+        cell->setValue(3.5);
+        QCOMPARE(std::get<openstitch::document::CrossStitchParams>(*last).cell.value, 3'500);
+        full->setChecked(false);
+        QVERIFY(!std::get<openstitch::document::CrossStitchParams>(*last).full_cross);
+        passes->setValue(2);
+        QCOMPARE(std::get<openstitch::document::CrossStitchParams>(*last).passes, 2);
+        angle->setValue(90.0);
+        QVERIFY(
+            std::abs(std::get<openstitch::document::CrossStitchParams>(*last).grid_angle.radians -
+                     std::numbers::pi / 2.0) < 1e-9);
+    }
 }
 
 void PropertiesPanelTest::directionalEditKeepsGuidesAndSeed() {
@@ -847,6 +873,54 @@ void PropertiesPanelTest::satinSpacingAndCornersAreEditableOnBothSatinKinds() {
         QVERIFY(emitted.has_value());
         QVERIFY(std::get<AutoSatinParams>(*emitted).auto_spacing);
     }
+    {
+        // HP-STI-022 : bord irregulier (satin a rails puis auto-satin).
+        PropertiesPanel panel;
+        EmbroideryObject e;
+        e.id = openstitch::ObjectId{54};
+        e.params = doc::SatinParams{};
+        panel.showEmbroidery(e);
+        auto* jagged = panel.findChild<QComboBox*>(QStringLiteral("combo_satinJagged"));
+        auto* amp = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_satinJaggedAmplitude"));
+        auto* seed = panel.findChild<QSpinBox*>(QStringLiteral("spin_satinJaggedSeed"));
+        QVERIFY(jagged != nullptr && amp != nullptr && seed != nullptr);
+        QCOMPARE(jagged->currentIndex(), 0);
+        QCOMPARE(amp->value(), 1.5);
+        QCOMPARE(seed->value(), 1);
+        std::optional<StitchParams> emitted;
+        QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                         [&](openstitch::ObjectId, StitchParams params) { emitted = params; });
+        jagged->setCurrentIndex(2);
+        QVERIFY(emitted.has_value());
+        QCOMPARE(std::get<doc::SatinParams>(*emitted).jagged, doc::SatinJagged::SideB);
+        emitted.reset();
+        amp->setValue(3.0);
+        QVERIFY(emitted.has_value());
+        QCOMPARE(std::get<doc::SatinParams>(*emitted).jagged_amplitude,
+                 openstitch::Micrometers{3000});
+        emitted.reset();
+        seed->setValue(77);
+        QVERIFY(emitted.has_value());
+        QCOMPARE(std::get<doc::SatinParams>(*emitted).jagged_seed, 77u);
+    }
+    {
+        PropertiesPanel panel;
+        panel.showEmbroidery(autoSatinObject(55));
+        auto* jagged = panel.findChild<QComboBox*>(QStringLiteral("combo_autoSatinJagged"));
+        auto* seed = panel.findChild<QSpinBox*>(QStringLiteral("spin_autoSatinJaggedSeed"));
+        QVERIFY(jagged != nullptr && seed != nullptr);
+        QVERIFY(panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_autoSatinJaggedAmplitude")));
+        std::optional<StitchParams> emitted;
+        QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                         [&](openstitch::ObjectId, StitchParams params) { emitted = params; });
+        jagged->setCurrentIndex(3);
+        QVERIFY(emitted.has_value());
+        QCOMPARE(std::get<AutoSatinParams>(*emitted).jagged, doc::SatinJagged::Both);
+        emitted.reset();
+        seed->setValue(5);
+        QVERIFY(emitted.has_value());
+        QCOMPARE(std::get<AutoSatinParams>(*emitted).jagged_seed, 5u);
+    }
 }
 
 void PropertiesPanelTest::borderSatinInspectorEmitsRegenerationRequests() {
@@ -1123,8 +1197,8 @@ void PropertiesPanelTest::blanketInspectorEditsWidthSpacingStyleAndSide() {
 }
 
 void PropertiesPanelTest::stitchTypeMoreMenuOffersEveryOtherType() {
-    // Les types sans bouton direct (motifs, concentrique, radial, spirale, croise) passent par
-    // le menu « Plus » de la rangee de types : chacun emet son index.
+    // Les types sans bouton direct (motifs, concentrique, radial, spirale, croise, point de croix)
+    // passent par le menu « Plus » de la rangee de types : chacun emet son index.
     PropertiesPanel panel;
     EmbroideryObject e;
     e.id = openstitch::ObjectId{60};
@@ -1133,14 +1207,14 @@ void PropertiesPanelTest::stitchTypeMoreMenuOffersEveryOtherType() {
     auto* more = panel.findChild<QToolButton*>(QStringLiteral("button_stitchTypeMore"));
     QVERIFY(more != nullptr);
     QVERIFY(more->menu() != nullptr);
-    QCOMPARE(more->menu()->actions().size(), 6);
+    QCOMPARE(more->menu()->actions().size(), 7);
     std::vector<int> requested;
     QObject::connect(&panel, &PropertiesPanel::stitchTypeRequested, &panel,
                      [&](int type) { requested.push_back(type); });
     for (QAction* act : more->menu()->actions()) {
         act->trigger();
     }
-    QCOMPARE(requested, (std::vector<int>{5, 6, 7, 8, 9, 10}));
+    QCOMPARE(requested, (std::vector<int>{5, 6, 7, 8, 9, 10, 11}));
     // Un objet concentrique affiche son type dans le bouton « Plus ».
     EmbroideryObject c;
     c.id = openstitch::ObjectId{61};
