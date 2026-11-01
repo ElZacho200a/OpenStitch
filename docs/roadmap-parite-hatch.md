@@ -1346,7 +1346,7 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   (vérifié 2026-10).
 
 ### HP-ENG-004 — Découpe automatique des satins trop larges [P1] — ◐ Partiel
-- Livré (2026-10-25) : Colonne satin créée à la main : `split_stitch = Staggered` d'office. Reste : défaut de la struct, satins de bordure et sans barreaux.
+- Livré (2026-10-25) : Colonne satin créée à la main : `split_stitch = Staggered` d'office. Livré (2026-10-31) : satins de bordure (HP-STI-004) fractionnés d'office aussi ; l'auto-satin l'était déjà. Reste : défaut de la struct `SatinParams` (laissé à `Disabled` : changerait le rendu des tests et objets existants) et satins sans barreaux.
 - État OpenStitch : split stitch disponible mais désactivé par défaut ;
   avertissement > 9 mm.
 - Hatch : Auto split automatique au-delà de la longueur max.
@@ -4597,6 +4597,7 @@ ouvrant le lot (§0.1).
 | 2026-10-31 | Claude (PERF-012, PR #202) | Voir la ligne PERF-012 ci-dessus : non livré faute de gain mesuré. |
 | 2026-10-31 | Claude (agent, PR #209) | **HP-PERF-010 ◐** : `UndoStack::setMaxDepth` (0 = illimité, défaut), élimination des pas les plus anciens, pas conservés annulables exactement, état propre éliminé -> `isClean` faux ; 3 tests, `test_commands` vert. Reste : câblage bureau, commandes delta après mesure (HP-PERF-007), borne en octets, rejeu HP-QA-015. |
 | 2026-10-31 | Claude (agents ENG-009, VIEW-009) | **Aucun code livré.** ENG-009 bloquée par HP-STI-018 (satin tournant absent du dépôt) ; VIEW-009 : `DeviceCoordinateCache` mesuré et rejeté (régression au zoom fort). Constats consignés dans chaque entrée. |
+| 2026-10-31 | Claude | **HP-ENG-004** : satin de bordure créé avec `split_stitch = Staggered` (test `bordure : le fractionnement…`). Défaut de la struct inchangé. |
 | 2026-10-31 | Claude (HP-ENG-010) | **HP-ENG-010 ◐** : `stitch::object_endpoints` + extrémités réelles fournies à `plan_order`/`optimize_order` par l'op `optimize_order` et le bureau (test Catch2 `object_endpoints`). `reversible` et mesure sur corpus restent. |
 | 2026-10-31 | Claude (pinceau) | Pinceau fluide avec rendu réaliste : la couche points est suspendue pendant un coup de pinceau (plus de repeinture de la texture sous la forme à chaque touche), reconstruite à la fin ou à l'annulation. Test QTest `strokeSuspendsTheStitchLayerUntilItEnds`. Aucune entrée HP concernée. |
 | 2026-10-31 | Claude (HP-STI-012) | **HP-STI-012 ◐** : point de croix (`CrossStitchParams`, `fill_cross_stitch`, `.osp` `crossStitch`, CLI, type 11 du bureau). Tests stitch / project_io / project_ops. |
