@@ -193,6 +193,28 @@ private slots:
         QCOMPARE(window.rotationPivotFor({a}, *box), box->center()); // autre sélection : centre
     }
 
+    void numericPivotIsRememberedAndRotationUsesIt() {
+        MainWindow window;
+        window.show();
+        window.applyLoadedProject(twoBlocks());
+        const ObjectId a = window.project_.vector_objects[0].id;
+        const ObjectId b = window.project_.vector_objects[1].id;
+        window.setSelection(
+            {.region = std::nullopt, .embroidery = std::nullopt, .objects = {a, b}});
+        window.updateObjectEditActions();
+        QVERIFY(window.rotationPivotAct_->isEnabled());
+
+        const Vec2um origin{Micrometers{0}, Micrometers{0}};
+        window.setRotationPivot({a, b}, origin);
+        const auto box = commands::objects_bounds(window.project_, {a, b});
+        QVERIFY(box.has_value());
+        QCOMPARE(window.rotationPivotFor({a, b}, *box), origin);
+
+        window.rotateObjects({a, b}, 90.0, window.rotationPivotFor({a, b}, *box));
+        QCOMPARE(window.project_.vector_objects[0].paths[0].outer.nodes[1].pos,
+                 (Vec2um{Micrometers{0}, Micrometers{10'000}}));
+    }
+
     void rotationPreviewShowsTheRotatedBoxAndIsRemovable() {
         MainWindow window;
         window.show();
