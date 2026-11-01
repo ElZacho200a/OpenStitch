@@ -2570,6 +2570,13 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 form->addRow(tr("Longueur minimale :"), minl);
                 form->addRow(tr("Retrait du bord :"), inset);
                 form->addRow(QString(), autoCenter);
+                auto* centerHint = new QLabel(
+                    tr("Le repère en croix sur le canevas se glisse pour déplacer le centre ; "
+                       "clic droit dessus : centre automatique."),
+                    body_);
+                centerHint->setObjectName(QStringLiteral("label_%1CenterHint").arg(pfx));
+                centerHint->setWordWrap(true);
+                form->addRow(QString(), centerHint);
                 form->addRow(tr("Centre X :"), cx);
                 form->addRow(tr("Centre Y :"), cy);
                 bindMm(spacing, tr("Espacement"), &T::row_spacing);

@@ -4220,6 +4220,9 @@ void MainWindow::renderBase(const image::Image& img) {
     // Poignée de rotation + pivot de la sélection (une ou plusieurs formes), HP-OBJ-004.
     addRotationHandles();
 
+    // Centre du remplissage radial / en spirale sélectionné (HP-STI-008 / 009).
+    addFillCenterHandle();
+
     // Poignée de rotation du remplissage tatami sélectionné : un axe montrant
     // l'orientation des fils, avec un bouton à faire glisser. Le nouvel angle est
     // validé au relâchement (commande annulable) — pas de recalcul par pixel.

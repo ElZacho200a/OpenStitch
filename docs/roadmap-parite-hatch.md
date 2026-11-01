@@ -924,13 +924,13 @@ plus.
 - Livré (2026-10-24) : `ContourFillParams` + `contour_fill.cpp` (anneaux `inset_path_set`, spirale, trous contournés, longueurs min/max), `.osp` (`contourFill`), conversion annulable (`ConvertFillGroupCommand`, `main_window_contour.cpp`), panneau et menu, tests. **Reste** : régions multi-îlots (boucles au lieu de spirale), sous-couche, entrée propre dans le menu « Type de points », contrôle de longueur dans `limits.cpp`, docs.
 
 ### HP-STI-008 — Remplissage radial [P2] — ◐ Partiel (2026-10-25)
-- Livré (2026-10-25) : `RadialFillParams` + `radial_fill.cpp` (rayons plus nombreux vers l'extérieur, centre auto ou fixe), `.osp`, inspecteur, conversion depuis un tatami. Reste : poignée de centre au canevas, sous-couche.
+- Livré (2026-10-25) : `RadialFillParams` + `radial_fill.cpp` (rayons plus nombreux vers l'extérieur, centre auto ou fixe), `.osp`, inspecteur, conversion depuis un tatami. Livré (2026-11-01) : repère en croix du centre sur le canevas (glisser pour déplacer, clic droit : centre automatique, annulable) + indice dans l'inspecteur. Reste : sous-couche.
 - À faire : rayons depuis un centre déplaçable, densité constante à la
   périphérie (points raccourcis vers le centre).
 - Modules : `libs/stitch_generation`.
 
 ### HP-STI-009 — Remplissage en spirale [P2] — ◐ Partiel (2026-10-25)
-- Livré (2026-10-25) : `SpiralFillParams` + `spiral_fill.cpp` (spirale d'Archimède continue, sens horaire en option). Reste : sous-couche, poignée de centre.
+- Livré (2026-10-25) : `SpiralFillParams` + `spiral_fill.cpp` (spirale d'Archimède continue, sens horaire en option). Livré (2026-11-01) : repère de centre déplaçable au canevas (voir HP-STI-008). Reste : sous-couche.
 - À faire : spirale continue depuis un centre, sans coupe.
 - Modules : `libs/stitch_generation`.
 
@@ -4619,5 +4619,6 @@ ouvrant le lot (§0.1).
 | 2026-10-31 | Claude (HP-ENG-010) | **HP-ENG-010 ◐** : le « Trajet estimé » du panneau Ordre utilise les extrémités réelles de couture (comme « Appliquer » et l'op `optimize_order`), plus les centres ; infobulle et traduction alignées. Reste : sens `reversed` non appliqué, auto-numérisation par centres. |
 | 2026-11-01 | Claude (HP-OBJ-001) | **HP-OBJ-001 ◐** : règles de sélection (normalisation, invariants) extraites de `MainWindow` vers `apps/desktop/selection_model` (Qt-free, test QTest `test_selection_model`). Reste : déplacer les membres d'état eux-mêmes. |
 | 2026-11-01 | Claude (tirage prédit) | **Tirage du tissu : tassement, grain, ordre de couture** : champ saturant (`compression`, plafond doux `tanh`), souplesse selon l'angle du point par rapport au grain, rang de couture (`PullSource::order`) et raidissement par les segments voisins, compensation prédite à point fixe (3 passes), tous les remplissages suivent la prédiction du projet, sens du tissu réglable (`FabricSettings::grain_angle` / `weft_softness`, `.osp`, dialogue « Coloris et tissu »), correction du signe de `simulate_fabric_pull`, pièce-test de calibration (HP-ENG-001.a ◐). Théorie : `docs/theorie-tirage-tissu-2026-11.md`. Coefficients toujours empiriques, non mesurés. |
+| 2026-11-01 | Claude (HP-STI-008 / 009, HP-UX-042) | Repère du centre des remplissages radial et en spirale sur le canevas (glisser = commande annulable `SetStitchParamsCommand`, clic droit = centre automatique, aperçu des coordonnées dans la barre d'état) ; le filtre par type du panneau Document suit désormais le catalogue des types (radial, spirale, croisé, point de croix, concentrique, motif, blanket…) au lieu de 6 familles de glyphes. Tests QTest `radialFillCenterHandleFixesTheCenterAndUndoRestoresAuto`, `typeFilterListsEveryCatalogTypeAndSelectsTheNewOnes`. |
 | 2026-11-01 | Claude (HP-UX-065) | **HP-UX-065 ◐** (nouvelle entrée) : audit sélection/filtres puis livraison en un lot : requêtes de sélection pures, menu Édition ▸ Sélection (inverser, même type/fil/calque, voisines, ordre de couture, plage, lasso, retrouver, sélections nommées), filtres d'état et de couleur dans la liste Document, filtres d'affichage mémorisés avec indicateur de barre d'état. Tests QTest. |
 | 2026-11-01 | Claude (déformation tissu) | **Prédiction de la déformation du tissu** (HP-FAB-004) : solveur FEM 2D orthotrope à bord fixe, dipôles de tension, raidissement par la densité, indice de plissement ; CLI `project fabric-deformation`, action Analyse du bureau. Coefficients empiriques, non calibrés, plis non simulés. |
