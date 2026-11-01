@@ -32,6 +32,7 @@
 
 #include "app_theme.hpp"
 #include "calque_panel.hpp"
+#include "stitch_type_catalog.hpp"
 #include "ui_icons.hpp"
 
 namespace openstitch::desktop {
@@ -52,6 +53,7 @@ QString type_label(const document::EmbroideryObject& e) {
            : e.is_spiral_fill()                ? QObject::tr("Spirale")
            : e.is_crosshatch_fill()            ? QObject::tr("Croisé")
            : e.is_cross_stitch()               ? QObject::tr("Point de croix")
+           : e.is_blanket()                    ? QObject::tr("Blanket")
            : e.is_satin() || e.is_auto_satin() ? QObject::tr("Satin")
                                                : QObject::tr("Contour");
 }
@@ -59,11 +61,64 @@ QString type_label(const document::EmbroideryObject& e) {
 using icons::StitchGlyph;
 
 // Famille de point d'un objet de broderie (glyphe, pastille et filtre par type).
+// Filtre par type : une entrée par type du catalogue (stitch_type_catalog.hpp), donc tout type
+// ajouté au catalogue apparaît ici sans autre changement ; « Texte » et « Vecteur » restent à part.
+constexpr int kFilterText = 1000;
+constexpr int kFilterVector = 1001;
+
+QString filter_label(int typeIndex) {
+    switch (typeIndex) {
+    case 0:
+        return QObject::tr("Contour");
+    case 1:
+        return QObject::tr("Tatami");
+    case 2:
+        return QObject::tr("Satin");
+    case 3:
+        return QObject::tr("Directionnel");
+    case 4:
+        return QObject::tr("Blanket");
+    case 5:
+        return QObject::tr("Motif");
+    case 6:
+        return QObject::tr("Remplissage à motif");
+    case 7:
+        return QObject::tr("Concentrique");
+    case 8:
+        return QObject::tr("Radial");
+    case 9:
+        return QObject::tr("Spirale");
+    case 10:
+        return QObject::tr("Croisé");
+    case 11:
+        return QObject::tr("Point de croix");
+    default:
+        return stitchTypeLabel(typeIndex); // type futur sans libellé court : libellé du catalogue
+    }
+}
+
+// Pictogramme d'une entrée du filtre : la famille visuelle du type.
+StitchGlyph filter_glyph(int typeIndex) {
+    switch (typeIndex) {
+    case 1:
+    case 6:
+    case 7:
+    case 8:
+    case 9:
+    case 10:
+    case 11:
+        return StitchGlyph::Tatami;
+    case 2:
+        return StitchGlyph::Satin;
+    case 3:
+        return StitchGlyph::Directional;
+    default:
+        return StitchGlyph::Contour;
+    }
+}
+
 StitchGlyph glyph_of(const document::EmbroideryObject& e) {
-    return e.is_tatami()                       ? StitchGlyph::Tatami
-           : e.is_directional()                ? StitchGlyph::Directional
-           : e.is_satin() || e.is_auto_satin() ? StitchGlyph::Satin
-                                               : StitchGlyph::Contour;
+    return filter_glyph(stitchTypeIndexOf(e));
 }
 
 const QIcon& glyph_icon(StitchGlyph g) {
@@ -129,6 +184,7 @@ constexpr int kTextFlagRole = Qt::UserRole + 7;     // objet issu du lettrage
 constexpr int kSourceVectorRole = Qt::UserRole + 8; // forme source d'une ligne de broderie
 constexpr int kVectorIdRole = Qt::UserRole + 9;     // ligne de forme vectorielle non cousue
 constexpr int kEditedRole = Qt::UserRole + 10;      // retouches manuelles (filtre par état)
+constexpr int kStitchTypeRole = Qt::UserRole + 11;  // indice de type du catalogue (filtre)
 constexpr int kVisibleCol = 1;
 constexpr int kLockCol = 2;
 
@@ -322,13 +378,11 @@ DocumentPanel::DocumentPanel(QWidget* parent) : QWidget(parent) {
     typeFilter_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     typeFilter_->setMinimumContentsLength(5);
     typeFilter_->addItem(tr("Tous les types"), -1);
-    const std::pair<StitchGlyph, QString> typeEntries[] = {
-        {StitchGlyph::Tatami, tr("Tatami")},   {StitchGlyph::Satin, tr("Satin")},
-        {StitchGlyph::Contour, tr("Contour")}, {StitchGlyph::Directional, tr("Directionnel")},
-        {StitchGlyph::Text, tr("Texte")},      {StitchGlyph::Vector, tr("Vecteur")}};
-    for (const auto& [glyph, label] : typeEntries) {
-        typeFilter_->addItem(glyph_icon(glyph), label, static_cast<int>(glyph));
+    for (int type = 0; type < kStitchTypeCount; ++type) {
+        typeFilter_->addItem(glyph_icon(filter_glyph(type)), filter_label(type), type);
     }
+    typeFilter_->addItem(glyph_icon(StitchGlyph::Text), tr("Texte"), kFilterText);
+    typeFilter_->addItem(glyph_icon(StitchGlyph::Vector), tr("Vecteur"), kFilterVector);
     auto* filterRow = new QHBoxLayout;
     filterRow->setContentsMargins(0, 0, 0, 0);
     filterRow->addWidget(filterEdit_, 1);
@@ -636,6 +690,7 @@ void DocumentPanel::refresh(
         const StitchGlyph glyph = fromText ? StitchGlyph::Text : glyph_of(e);
         item->setIcon(0, glyph_icon(glyph)); // pictogramme de type ; la pastille de fil est peinte
         item->setData(0, kGlyphRole, static_cast<int>(glyph_of(e)));
+        item->setData(0, kStitchTypeRole, stitchTypeIndexOf(e));
         item->setData(0, kTextFlagRole, fromText);
         item->setData(0, kEditedRole, state != stitch_generation::ObjectEditState::Clean);
         item->setData(0, kSourceVectorRole, static_cast<qulonglong>(e.source_vector.value));
@@ -901,11 +956,15 @@ void DocumentPanel::applyFilter() {
         if (typeWanted < 0) {
             return true;
         }
-        if (typeWanted == static_cast<int>(StitchGlyph::Text)) {
+        if (typeWanted == kFilterText) {
             return item->data(0, kTextFlagRole).toBool();
         }
-        return item->data(0, kGlyphRole).isValid() &&
-               item->data(0, kGlyphRole).toInt() == typeWanted;
+        if (typeWanted == kFilterVector) {
+            return item->data(0, kGlyphRole).isValid() &&
+                   item->data(0, kGlyphRole).toInt() == static_cast<int>(StitchGlyph::Vector);
+        }
+        return item->data(0, kStitchTypeRole).isValid() &&
+               item->data(0, kStitchTypeRole).toInt() == typeWanted;
     };
     // État et couleur ne concernent que les lignes de broderie (les formes non cousues n'ont ni
     // ordre figé ni retouche ; une forme masquée se retrouve par sa propre ligne).

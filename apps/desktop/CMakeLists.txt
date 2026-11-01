@@ -34,6 +34,7 @@ add_library(openstitch_desktop_widgets STATIC
     stitch_type_catalog.cpp
     main_window_point_edit.cpp
     simulation_nav_bar.hpp
+    main_window_fill_center.cpp
     main_window_rotation.cpp
     main_window_workflow.cpp
     ui_memory.hpp

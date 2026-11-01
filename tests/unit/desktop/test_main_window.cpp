@@ -890,6 +890,7 @@ private slots:
     void manualSatinColumnDropsOrphanPointOnOddCountAtFinish();
     void switchingToolDuringSatinColumnDrawCancelsIt();
     void satinRailEditModeDragsNodeAndUndoRestoresIt();
+    void radialFillCenterHandleFixesTheCenterAndUndoRestoresAuto();
 
     // Réponses à l'audit UI (boutons "ne faisant rien", pas de courbes de
     // Bézier, menu contextuel pauvre, mode satin confus) : outil Bézier réel
@@ -4488,6 +4489,65 @@ void MainWindowTest::switchingToolDuringSatinColumnDrawCancelsIt() {
     QVERIFY(window.pendingSatinPoints_.empty());
     QVERIFY(window.satinPreviewItem_ == nullptr);
     QVERIFY(!window.undoStack_.canUndo()); // rien n'a été créé
+}
+
+void MainWindowTest::radialFillCenterHandleFixesTheCenterAndUndoRestoresAuto() {
+    MainWindow window;
+    Fixture fx = buildFixture();
+    fx.project.findEmbroidery(fx.embroideryId)->params = openstitch::document::RadialFillParams{};
+    window.applyLoadedProject(fx.project);
+    window.resize(900, 700);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.refreshImage();
+
+    const auto findHandle = [&window]() -> NodeHandleItem* {
+        for (QGraphicsItem* item : window.baseItems_) {
+            if (auto* handle = dynamic_cast<NodeHandleItem*>(item);
+                handle != nullptr &&
+                handle->data(0).toString() == QStringLiteral("fillCenterHandle")) {
+                return handle;
+            }
+        }
+        return nullptr;
+    };
+    NodeHandleItem* handle = findHandle();
+    QVERIFY2(handle != nullptr, "le centre automatique doit être visible sur le canevas");
+    const auto& autoParams = std::get<openstitch::document::RadialFillParams>(
+        window.project_.findEmbroidery(fx.embroideryId)->params);
+    QVERIFY(!autoParams.center.has_value());
+
+    window.view_->resetTransform();
+    window.view_->scale(40.0, 40.0);
+    window.view_->centerOn(handle->scenePos());
+    const QPoint start = window.view_->mapFromScene(handle->scenePos());
+    const int availableRight = window.view_->viewport()->width() - 1 - start.x();
+    const int direction = availableRight >= start.x() ? 1 : -1;
+    const QPoint end = start + QPoint(40 * direction, 0);
+    const QPoint middle = (start + end) / 2;
+    QCOMPARE(dynamic_cast<NodeHandleItem*>(window.view_->itemAt(start)), handle);
+    QTest::mousePress(window.view_->viewport(), Qt::LeftButton, Qt::NoModifier, start);
+    QTest::mouseMove(window.view_->viewport(), middle);
+    QTest::mouseMove(window.view_->viewport(), end);
+    QTest::mouseRelease(window.view_->viewport(), Qt::LeftButton, Qt::NoModifier, end);
+
+    QTRY_VERIFY_WITH_TIMEOUT(window.undoStack_.canUndo(), 1000);
+    const auto& fixedParams = std::get<openstitch::document::RadialFillParams>(
+        window.project_.findEmbroidery(fx.embroideryId)->params);
+    QVERIFY(fixedParams.center.has_value());
+    // Le repère est maintenant plein (centre fixé) et se retrouve à la nouvelle position.
+    handle = findHandle();
+    QVERIFY(handle != nullptr);
+    QVERIFY(handle->brush().style() != Qt::NoBrush);
+
+    window.undo();
+    QVERIFY(!std::get<openstitch::document::RadialFillParams>(
+                 window.project_.findEmbroidery(fx.embroideryId)->params)
+                 .center.has_value());
+    handle = findHandle();
+    QVERIFY(handle != nullptr);
+    QVERIFY(handle->brush().style() == Qt::NoBrush); // retour au centre automatique
 }
 
 void MainWindowTest::satinRailEditModeDragsNodeAndUndoRestoresIt() {

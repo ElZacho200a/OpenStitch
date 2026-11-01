@@ -18,6 +18,7 @@
 
 #include "document_panel.hpp"
 #include "openstitch/document/project.hpp"
+#include "stitch_type_catalog.hpp"
 
 using openstitch::desktop::DocumentPanel;
 using openstitch::document::Project;
@@ -157,6 +158,7 @@ private slots:
     void droppingARowOnAnotherRequestsTheNewSewingOrder();
     void rowContextMenuOffersHideLockAndDeleteAndEmitsRequests();
     void typeIconDiffersPerStitchTypeAndTheTypeFilterHidesOthers();
+    void typeFilterListsEveryCatalogTypeAndSelectsTheNewOnes();
     void layerGroupRowCountsLayersAndAggregatesTheCheckBoxes();
     void groupCheckBoxRequestsTheChangeForEveryLayer();
     void addLayerButtonFollowsTheSelectionAndTargetsTheTopLayer();
@@ -958,6 +960,53 @@ void DocumentPanelTest::typeIconDiffersPerStitchTypeAndTheTypeFilterHidesOthers(
     QVERIFY(!objects->topLevelItem(1)->isHidden());
     combo->setCurrentIndex(0);
     QVERIFY(!objects->topLevelItem(0)->isHidden());
+}
+
+void DocumentPanelTest::typeFilterListsEveryCatalogTypeAndSelectsTheNewOnes() {
+    using namespace openstitch::document;
+    Project project;
+    const StitchParams kinds[] = {RadialFillParams{},  SpiralFillParams{},  CrosshatchFillParams{},
+                                  CrossStitchParams{}, ContourFillParams{}, MotifFillParams{},
+                                  TatamiParams{}};
+    for (const StitchParams& params : kinds) {
+        VectorObject vec;
+        vec.id = project.object_ids.next();
+        project.vector_objects.push_back(vec);
+        EmbroideryObject e;
+        e.id = project.object_ids.next();
+        e.name = "Objet";
+        e.source_vector = vec.id;
+        e.params = params;
+        project.embroidery_objects.push_back(e);
+    }
+    DocumentPanel panel;
+    panel.refresh(project);
+    auto* objects = objectsList(panel);
+    auto* combo = panel.findChild<QComboBox*>(QStringLiteral("combo_documentTypeFilter"));
+    QVERIFY(combo != nullptr);
+
+    // Une entrée par type du catalogue (+ « Tous », « Texte », « Vecteur »).
+    QCOMPARE(combo->count(), openstitch::desktop::kStitchTypeCount + 3);
+    for (const QString& label : {QStringLiteral("Radial"), QStringLiteral("Spirale"),
+                                 QStringLiteral("Croisé"), QStringLiteral("Point de croix"),
+                                 QStringLiteral("Concentrique"), QStringLiteral("Blanket")}) {
+        QVERIFY2(combo->findText(label) > 0, qPrintable(label));
+    }
+
+    // Chaque filtre ne garde que son type : 0 radial, 1 spirale, 2 croisé, 3 croix, 4 concentrique.
+    const std::pair<const char*, int> expectedRow[] = {
+        {"Radial", 0}, {"Spirale", 1}, {"Croisé", 2}, {"Point de croix", 3}, {"Concentrique", 4}};
+    for (const auto& [label, row] : expectedRow) {
+        combo->setCurrentIndex(combo->findText(QString::fromUtf8(label)));
+        for (int i = 0; i < objects->topLevelItemCount(); ++i) {
+            QCOMPARE(objects->topLevelItem(i)->isHidden(), i != row);
+        }
+    }
+    // « Tatami » ne retient pas les nouveaux remplissages (ils avaient la même famille avant).
+    combo->setCurrentIndex(combo->findText(QStringLiteral("Tatami")));
+    for (int i = 0; i < objects->topLevelItemCount(); ++i) {
+        QCOMPARE(objects->topLevelItem(i)->isHidden(), i != 6);
+    }
 }
 
 QTEST_MAIN(DocumentPanelTest)
