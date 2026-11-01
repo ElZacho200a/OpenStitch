@@ -2,6 +2,10 @@
 // Poignée de rotation libre de la sélection (HP-OBJ-004) : une ou plusieurs formes, pivot
 // déplaçable, aperçu pendant le glisser. Câblage seulement : l'angle est validé au relâchement
 // par MainWindow::rotateObjects (une commande annulable, libs/commands/transform_ops).
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QDoubleSpinBox>
+#include <QFormLayout>
 #include <QGraphicsPolygonItem>
 #include <QGraphicsRectItem>
 #include <QGraphicsScene>
@@ -43,6 +47,44 @@ Vec2um MainWindow::rotationPivotFor(const std::vector<ObjectId>& ids,
         return *rotationPivot_;
     }
     return box.center();
+}
+
+void MainWindow::setRotationPivot(const std::vector<ObjectId>& ids, Vec2um pivot) {
+    rotationPivot_ = pivot;
+    rotationPivotTargets_ = ids;
+    refreshImage();
+}
+
+void MainWindow::editRotationPivot() {
+    const std::vector<ObjectId> ids = transformTargets();
+    const auto box = commands::objects_bounds(project_, ids);
+    if (ids.empty() || !box) {
+        return;
+    }
+    const Vec2um current = rotationPivotFor(ids, *box);
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Centre de rotation"));
+    auto* form = new QFormLayout(&dialog);
+    auto makeSpin = [&dialog](Micrometers value) {
+        auto* spin = new QDoubleSpinBox(&dialog);
+        spin->setRange(-10000.0, 10000.0);
+        spin->setDecimals(3);
+        spin->setSuffix(QStringLiteral(" mm"));
+        spin->setValue(to_millimeters(value).value);
+        return spin;
+    };
+    auto* xSpin = makeSpin(current.x);
+    auto* ySpin = makeSpin(current.y);
+    form->addRow(tr("X :"), xSpin);
+    form->addRow(tr("Y (vers le haut) :"), ySpin);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    form->addRow(buttons);
+    if (dialog.exec() == QDialog::Accepted) {
+        setRotationPivot(ids, Vec2um{to_micrometers(Millimeters{xSpin->value()}),
+                                     to_micrometers(Millimeters{ySpin->value()})});
+    }
 }
 
 void MainWindow::showRotationPreview(const commands::BoundsUm& box, Vec2um pivot, double degrees) {
