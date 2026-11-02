@@ -5764,8 +5764,7 @@ void MainWindow::autoDigitize() {
     std::size_t flowFillCount = 0;
     auto result = busy->run([&]() -> Result<autodigitize::AutoResult> {
         if (!hasSegmentation) {
-            return autodigitize::auto_digitize_vectors(project_.vector_objects, nextIds,
-                                                       opts);
+            return autodigitize::auto_digitize_vectors(project_.vector_objects, nextIds, opts);
         }
         // Même image que la segmentation (opérations appliquées) si les dimensions concordent,
         // sinon l'image d'origine (traits sombres et pointillé s'y appuient).
