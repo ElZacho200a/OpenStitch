@@ -372,6 +372,20 @@ void MainWindow::applyVectorBox(ObjectId id, QRectF want) {
     if (!resize && !move) {
         return;
     }
+    // Plusieurs frappes dans X ou Y représentent une seule édition : elles
+    // fusionnent sur le même objet ET le même champ, pas avec un changement de
+    // taille ni avec un mouvement sur l'autre axe (HP-UX-053).
+    if (!resize && move) {
+        auto command = std::make_unique<commands::TranslateVectorObjectCommand>(id, vec(dx, dy));
+        if (dx == 0 || dy == 0) {
+            command->setCoalescable(true);
+            command->setMergeField(dx != 0 ? "x" : "y");
+        }
+        undoStack_.execute(std::move(command), project_);
+        refreshImage();
+        updateActions();
+        return;
+    }
     auto composite = std::make_unique<commands::CompositeCommand>(
         resize ? (move ? tr("Modifier la taille et la position de la forme")
                        : tr("Modifier la taille de la forme"))

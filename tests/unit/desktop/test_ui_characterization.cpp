@@ -780,6 +780,30 @@ private slots:
         QCOMPARE(window.selectedObject_.value_or(ObjectId{}), first);
     }
 
+    void numericPositionChangesCoalesceByFieldAndUndoExactly() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        const ObjectId shape = addSquareVector(project);
+        window.applyLoadedProject(project);
+
+        window.applyVectorBox(shape, QRectF(1.0, 0.0, 10.0, 10.0));
+        window.applyVectorBox(shape, QRectF(2.0, 0.0, 10.0, 10.0));
+        QCOMPARE(window.undoStack_.undoNames().size(), std::size_t{1});
+
+        window.applyVectorBox(shape, QRectF(2.0, 1.0, 10.0, 10.0));
+        QCOMPARE(window.undoStack_.undoNames().size(), std::size_t{2});
+        QVERIFY(window.undoStack_.undo(window.project_));
+        const auto afterY = MainWindow::vectorBoxMm(*window.project_.findObject(shape));
+        QVERIFY(afterY.has_value());
+        QCOMPARE(afterY->x(), 2.0);
+        QCOMPARE(afterY->y(), 0.0);
+        QVERIFY(window.undoStack_.undo(window.project_));
+        const auto original = MainWindow::vectorBoxMm(*window.project_.findObject(shape));
+        QVERIFY(original.has_value());
+        QCOMPARE(original->x(), 0.0);
+        QCOMPARE(original->y(), 0.0);
+    }
+
     void contextToolbarDestroysRemovedWidgets() {
         MainWindow window;
         doc::Project project = imageOnlyProject();
