@@ -406,10 +406,13 @@ void MainWindow::segmentWithAi() {
     // Le moteur ne fournit pas encore de stop_token ici : Annuler rejette
     // atomiquement le résultat lorsque le calcul s'achève.
     auto nextIds = project_.object_ids;
-    BusyIndicator busy(this, tr("Numérisation automatique en cours…"),
-                       {autosaveTimer_, simTimer_}, true);
-    auto result = busy.run([&] { return autodigitize::auto_digitize(*seg, nextIds, opts); });
-    if (busy.cancelled()) {
+    std::optional<BusyIndicator> busy;
+    busy.emplace(this, tr("Numérisation automatique en cours…"),
+                 std::initializer_list<QTimer*>{autosaveTimer_, simTimer_}, true);
+    auto result = busy->run([&] { return autodigitize::auto_digitize(*seg, nextIds, opts); });
+    const bool cancelled = busy->cancelled();
+    busy.reset();
+    if (cancelled) {
         statusBar()->showMessage(tr("Numérisation annulée : aucune modification."), 6000);
         return;
     }
