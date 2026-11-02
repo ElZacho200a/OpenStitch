@@ -481,9 +481,12 @@ void MainWindow::updateSavedIndicator() {
         savedLabel_->setText(tr("Non enregistré"));
     } else if (currentProjectPath_.isEmpty()) {
         savedLabel_->setText(tr("Nouveau document"));
+    } else if (!savedAt_.isValid()) {
+        // Un projet ouvert depuis le disque n'a pas été « enregistré à l'heure
+        // courante » par cette session. Ne pas inventer une heure de sauvegarde.
+        savedLabel_->setText(tr("Projet ouvert"));
     } else {
-        const QTime at = savedAt_.isValid() ? savedAt_ : QTime::currentTime();
-        savedLabel_->setText(tr("Enregistré à %1").arg(at.toString(QStringLiteral("HH:mm"))));
+        savedLabel_->setText(tr("Enregistré à %1").arg(savedAt_.toString(QStringLiteral("HH:mm"))));
     }
 }
 

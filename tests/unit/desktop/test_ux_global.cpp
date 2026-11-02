@@ -394,6 +394,36 @@ private slots:
         QCOMPARE(window.savedLabel_->text(), QStringLiteral("Non enregistré"));
         window.currentProjectPath_ = QStringLiteral("C:/tmp/projet.osp");
         window.setWindowModified(false);
+        QCOMPARE(window.savedLabel_->text(), QStringLiteral("Projet ouvert"));
+    }
+
+    void savedIndicatorDoesNotInheritThePreviousProjectsTime() {
+        MainWindow window;
+        window.applyLoadedProject(imageOnlyProject());
+        window.setCurrentProjectPath(QStringLiteral("ancien.osp"));
+        window.savedAt_ = QTime(10, 30);
+        window.updateSavedIndicator();
+        QCOMPARE(window.savedLabel_->text(), QStringLiteral("Enregistré à 10:30"));
+
+        // Ouvrir un nouveau document efface l'heure de l'ancien.
+        window.applyLoadedProject(imageOnlyProject());
+        QVERIFY(!window.savedAt_.isValid());
+        QCOMPARE(window.savedLabel_->text(), QStringLiteral("Nouveau document"));
+
+        // Le fichier a été ouvert, pas enregistré à une heure inventée.
+        window.setCurrentProjectPath(QStringLiteral("nouveau.osp"));
+        QCOMPARE(window.savedLabel_->text(), QStringLiteral("Projet ouvert"));
+        window.setWindowModified(true);
+        QCOMPARE(window.savedLabel_->text(), QStringLiteral("Non enregistré"));
+        window.setWindowModified(false);
+        QCOMPARE(window.savedLabel_->text(), QStringLiteral("Projet ouvert"));
+
+        // Une vraie sauvegarde actualise immédiatement le libellé, y compris si le
+        // projet était déjà dans l'état « propre » avant l'écriture.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QVERIFY(window.saveProjectToPath(dir.filePath(QStringLiteral("nouveau.osp"))));
+        QVERIFY(window.savedAt_.isValid());
         QVERIFY(window.savedLabel_->text().startsWith(QStringLiteral("Enregistré à ")));
     }
 
