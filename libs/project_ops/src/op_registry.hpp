@@ -78,6 +78,8 @@ void register_geometry_ops(
     std::vector<OpSpec>& out); // op_geometry.cpp : forme, transformation, fusion, auto-satin
 void register_semantic_ops(
     std::vector<OpSpec>& out); // op_semantic.cpp : import / remplacement sémantique
+void register_cleanup_ops(
+    std::vector<OpSpec>& out); // op_cleanup.cpp  : nettoyage image / segmentation / formes
 void register_group_ops(
     std::vector<OpSpec>& out); // op_group.cpp    : groupes, empilement, position/taille
 
