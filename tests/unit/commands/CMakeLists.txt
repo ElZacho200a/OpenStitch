@@ -6,6 +6,7 @@ add_executable(test_commands
     test_composite_adversarial.cpp
     test_import_machine_design_command.cpp
     test_vector_ops.cpp
+    test_cleanup_ops.cpp
     test_transform_ops.cpp
     test_arrange_ops.cpp
     test_convert_ops.cpp
