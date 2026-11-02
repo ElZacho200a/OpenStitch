@@ -726,6 +726,32 @@ private slots:
         QVERIFY(!window.satinEditModeAct_->isChecked());
     }
 
+    void doubleClickOnSelectedSatinEntersRemodelingWithoutChangingTheDesign() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        const ObjectId embroidery = addSatinColumn(project);
+        window.applyLoadedProject(project);
+        window.selectedEmbroidery_ = embroidery;
+        window.updateActions();
+        const auto* object = window.project_.findEmbroidery(embroidery);
+        QVERIFY(object != nullptr);
+        const auto railNodes = std::get<doc::SatinParams>(object->params).rail_a.nodes.size();
+        const auto undoCount = window.undoStack_.undoNames().size();
+
+        QVERIFY(!window.satinEditModeAct_->isChecked());
+        window.onCanvasDoubleClicked(QPointF(5.0, -2.0));
+        QVERIFY(window.satinEditModeAct_->isChecked());
+        QVERIFY(window.railEditModeAct_->isChecked());
+        QCOMPARE(std::get<doc::SatinParams>(
+                     window.project_.findEmbroidery(embroidery)->params)
+                     .rail_a.nodes.size(),
+                 railNodes);
+        QCOMPARE(window.undoStack_.undoNames().size(), undoCount);
+        // Un second double-clic en mode rails ne doit pas relancer le mode.
+        window.satinEditModeAct_->setChecked(false);
+        QVERIFY(!window.satinEditModeAct_->isChecked());
+    }
+
     void contextToolbarDestroysRemovedWidgets() {
         MainWindow window;
         doc::Project project = imageOnlyProject();
