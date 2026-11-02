@@ -752,6 +752,33 @@ private slots:
         QVERIFY(!window.satinEditModeAct_->isChecked());
     }
 
+    void tabCyclesSewingOrderOnlyWhileCanvasHasFocus() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        const ObjectId first = addSquareVector(project);
+        addEmbroidery(project, first);
+        const ObjectId second = addSquareVector(project);
+        addEmbroidery(project, second);
+        window.applyLoadedProject(project);
+        activate(window);
+        window.view_->setFocus();
+        QVERIFY(QTest::qWaitFor([&] { return QApplication::focusWidget() == window.view_; }));
+
+        QTest::keyClick(window.view_, Qt::Key_Tab);
+        QCOMPARE(window.selectedObject_.value_or(ObjectId{}), first);
+        QTest::keyClick(window.view_, Qt::Key_Tab);
+        QCOMPARE(window.selectedObject_.value_or(ObjectId{}), second);
+        QTest::keyClick(window.view_, Qt::Key_Backtab);
+        QCOMPARE(window.selectedObject_.value_or(ObjectId{}), first);
+
+        // Dans les autres outils, Tab continue à naviguer entre contrôles.
+        auto* editor = window.findChild<QLineEdit*>();
+        QVERIFY(editor != nullptr);
+        editor->setFocus();
+        QTest::keyClick(editor, Qt::Key_Tab);
+        QCOMPARE(window.selectedObject_.value_or(ObjectId{}), first);
+    }
+
     void contextToolbarDestroysRemovedWidgets() {
         MainWindow window;
         doc::Project project = imageOnlyProject();

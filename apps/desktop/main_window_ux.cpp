@@ -248,6 +248,25 @@ void setPaletteColumns(QMainWindow* window, QToolBar* first, bool twoColumns) {
 } // namespace
 
 bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
+    // Tab parcourt les formes brodées quand le CANEVAS a le focus ; dans les
+    // inspecteurs et dialogues, Tab garde son rôle normal de navigation
+    // entre champs. L'ordre et le filtrage réutilisent l'action de menu.
+    if ((watched == view_ || watched == view_->viewport()) &&
+        event->type() == QEvent::KeyPress && currentTool_ == Tool::Select) {
+        const auto* keyEvent = static_cast<QKeyEvent*>(event);
+        const auto modifiers = keyEvent->modifiers() & ~Qt::KeypadModifier;
+        if (keyEvent->key() == Qt::Key_Tab && modifiers == Qt::NoModifier) {
+            stepSelection(+1);
+            event->accept();
+            return true;
+        }
+        if (keyEvent->key() == Qt::Key_Backtab ||
+            (keyEvent->key() == Qt::Key_Tab && modifiers == Qt::ShiftModifier)) {
+            stepSelection(-1);
+            event->accept();
+            return true;
+        }
+    }
     if (watched == this && event->type() == QEvent::Resize) {
         if (toolPalette_ != nullptr) {
             setPaletteColumns(this, toolPalette_, height() <= kTwoColumnPaletteMaxHeightPx);
