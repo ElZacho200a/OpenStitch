@@ -13,6 +13,7 @@
 #include <QDropEvent>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QInputDialog>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
@@ -23,6 +24,7 @@
 #include <QSettings>
 #include <QShortcut>
 #include <QSignalBlocker>
+#include <QStringList>
 #include <QSpinBox>
 #include <QStatusBar>
 #include <QTextEdit>
@@ -123,25 +125,66 @@ void MainWindow::dragEnterEvent(QDragEnterEvent* event) {
 }
 
 void MainWindow::dropEvent(QDropEvent* event) {
-    const QString path = event->mimeData() != nullptr
-                             ? firstOpenableLocalFile(event->mimeData()->urls())
-                             : QString();
-    if (path.isEmpty()) {
+    QStringList paths;
+    if (event->mimeData() != nullptr) {
+        for (const QUrl& url : event->mimeData()->urls()) {
+            if (!url.isLocalFile()) {
+                continue;
+            }
+            const QString path = url.toLocalFile();
+            if (isOpenableSuffix(QFileInfo(path).suffix().toLower()) && !paths.contains(path)) {
+                paths.push_back(path);
+            }
+        }
+    }
+    if (paths.isEmpty()) {
         QMainWindow::dropEvent(event);
         return;
     }
+    const bool insert = (event->modifiers() & Qt::ShiftModifier) != 0;
     event->acceptProposedAction();
-    // HP-FILE-007 : Maj + dépôt d'un .osp / fichier machine = insérer dans le projet ouvert
-    // plutôt que le remplacer.
-    const QString suffix = QFileInfo(path).suffix().toLower();
-    if ((event->modifiers() & Qt::ShiftModifier) != 0 &&
-        (suffix == QLatin1String("osp") || isMachineSuffix(suffix))) {
-        QTimer::singleShot(0, this, [this, path] { (void)insertDesignFile(path); });
-        return;
-    }
-    // Différé : ouvrir un dialogue (garde d'enregistrement, import) pendant le glisser bloquerait
-    // l'application source (l'Explorateur) tant qu'il reste ouvert.
-    QTimer::singleShot(0, this, [this, path] { openPath(path); });
+
+    // Différer toute boîte de dialogue : elle ne doit pas bloquer l'Explorateur
+    // qui nous a envoyé le glisser-déposer.
+    QTimer::singleShot(0, this, [this, paths, insert] {
+        const auto canInsert = [](const QString& path) {
+            const QString suffix = QFileInfo(path).suffix().toLower();
+            return suffix == QLatin1String("osp") || isMachineSuffix(suffix);
+        };
+        if (insert && paths.size() > 1 &&
+            std::all_of(paths.cbegin(), paths.cend(), canInsert)) {
+            int added = 0;
+            for (const QString& path : paths) {
+                if (insertDesignFile(path)) {
+                    ++added;
+                }
+            }
+            statusBar()->showMessage(
+                tr("%1 fichier(s) inséré(s) sur %2 déposé(s).").arg(added).arg(paths.size()),
+                8000);
+            return;
+        }
+
+        QString path = paths.front();
+        if (paths.size() > 1) {
+            // Ouvrir plusieurs projets ou images successivement remplacerait le
+            // travail au premier plan. L'utilisateur choisit explicitement.
+            bool accepted = false;
+            path = QInputDialog::getItem(
+                this, tr("Plusieurs fichiers déposés"),
+                tr("Choisissez le fichier à ouvrir. Pour insérer plusieurs broderies "
+                   "dans le projet, maintenez Maj pendant le dépôt."),
+                paths, 0, false, &accepted);
+            if (!accepted || path.isEmpty()) {
+                return;
+            }
+        }
+        if (insert && canInsert(path)) {
+            (void)insertDesignFile(path);
+        } else {
+            openPath(path);
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------
