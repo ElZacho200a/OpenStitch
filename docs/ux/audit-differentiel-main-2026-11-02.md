@@ -147,8 +147,8 @@ Le présent rapport a été établi avant les modifications de la branche unique
 | Productivité quotidienne | **Partielle, non intégrée à #226** | Historique cliquable **déjà existant** : seulement tests/statut ; presse-papiers bitmap/fils, favoris couleurs, navigation au clavier et meilleur retour d'annulation. HP-UX-054/057/058/062/063. |
 | Sélection avancée | **#219/#222 déjà fusionnées ; non à réimplémenter** | Sélections nommées limitées à la session, filtre par défauts Analyse, lasso de nœuds, rappel et menus Document. HP-UX-065. |
 | Compagnon Claude/MCP | **Dock et approbation déjà livrés ; #226 ne modifie pas son code** | Recette de l'agent réel, journaux d'actions fiables, erreurs, annulation, révision périmée, multi-instances ; garantir la parité des commandes avec l'application. docs/agent-mcp-audit-2026-10-28.md. |
-| Cartes dans les rapports | **PR #225 ouverte distinctement** | Intégrer ou réconcilier son affichage de cartes dans la PR unique après tests de redimensionnement, DPI et grands PNG, éviter deux PR concurrentes. |
-| Compagnon IA « automatique » | **PR #227 ouverte distinctement** | Choix produit à traiter explicitement : mode sans approbation (désactivé par défaut) qui déroge au contrat de validation. Examiner la protection du document, du contexte et de l'Undo avant éventuelle consolidation. |
+| Cartes dans les rapports | **#225 fusionnée dans main et synchronisée sur #226 ; adaptation responsive ajoutée** | Vérifier le redimensionnement à chaud, les grands PNG et DPI réels. |
+| Compagnon IA « automatique » | **#227 consolidée dans #226 et fermée comme doublon** | Choix produit à traiter explicitement : mode sans approbation (désactivé par défaut) qui déroge au contrat de validation. Examiner la protection du document, du contexte et de l'Undo avant éventuelle consolidation. |
 | Annulation CPU coopérative | **Non livrée : #226 rejette les résultats, mais les moteurs terminent le calcul** | Étendre TaskContext/stop_token au cœur autodigitize et project_ops, progrès réels, annulation atomique, retour clavier. HP-PERF-001/HP-UX-006. |
 | Réarchitecture MainWindow et tests d'usage | **Partiellement découpé, sans garantie pratique** | Réduire la responsabilité de main_window.cpp/hpp, tests transversaux des parcours et instrumentation de benchmark réel. HP-QA-001/008/010. |
 
@@ -163,3 +163,13 @@ Le présent rapport a été établi avant les modifications de la branche unique
 ### Critère d'exhaustivité
 
 Le simple regroupement de petits correctifs dans une PR ne constitue pas « tout faire ». Pour rester une PR unique, conserver les lots dans des commits cohérents et garder la PR non fusionnée tant que les fonctions retenues ne sont pas intégrées, testées et vérifiées. Chaque ligne de la matrice doit sortir avec une décision explicite **livré / déjà présent / écarté / reste**, et toute exception de recette matérielle doit être signalée.
+
+
+## Synchronisation d'intégration et travaux livrés depuis l'inventaire
+
+- **2026-11-02 — Synchronisation** : le changement #225 (cartes de rapport) était déjà fusionné dans main : parent main ajouté dans le merge commit `96967377`, évitant la duplication.
+- **Consolidation Claude** : #227 (companion autoApply opt-in, QTests) et #228 (12 opérations de nettoyage image/régions/formes, commandes C++ et tests Catch2) portées **dans #226** puis fermées comme doublons, et non mergées directement dans main.
+- **HP-UX-050** : Tab/Maj+Tab sur le canevas en mode Sélection parcourt l'ordre de couture déjà exposé par `stepSelection`; les autres champs conservent leurs Tab ; QTest.
+- **HP-UX-053 (partiel)** : une rafale de modifications de position X ou Y du même objet fusionne dans l'historique Undo ; deux champs différents ne fusionnent pas ; QTest. La fusion des changements de largeur/hauteur reste à traiter séparément.
+- **HP-UX-063 (partiel)** : cartes PNG de rapports accessibles et redimensionnées à la taille disponible ; leur contenu et les textes défilent avec le bouton Fermer fixé en bas via les outils `responsive.hpp`.
+- **CI** : `clang-format` passé sur la révision précédant le nouveau lot ; la validation du dernier SHA (Windows/MSVC, Linux/vcpkg, tests, packager) doit encore être vérifiée. Aucun essai Windows à DPI réels ou session Claude live n'est revendiqué ici.
