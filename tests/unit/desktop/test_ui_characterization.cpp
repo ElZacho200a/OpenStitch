@@ -12,6 +12,7 @@
 #include <QFile>
 #include <QKeySequence>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
 #include <QPointer>
