@@ -111,3 +111,15 @@ Liens : https://github.com/ElZacho200a/OpenStitch/actions/runs/41352256009 et ht
 Ordre de lancement : PR-00 ; reprise simultanée des PR existantes #162/#164 ; PR-03 et PR-04 indépendantes ; PR-05/06 ; PR-07/08 ensuite. Une PR n'est « terminée » qu'avec code intégré, tests utiles, CI sur la bonne branche, captures ou logs de recette si l'interaction est graphique, roadmap à jour et aucune régression dans S1–S6.
 
 Le premier benchmark utilisateur doit conserver des artefacts : projet .osp, export .dst, aperçu réel des points OpenStitch, segmentation technique, résultats qualité et rapport de changements. La comparaison doit porter autant sur les gestes et la compréhension que sur le temps de calcul.
+
+## État d'intégration sur la PR #226 (2026-11-02)
+
+Le présent rapport a été établi avant les modifications de la branche unique `docs/ux-audit-differentiel-20261102`. L'état ci-dessous concerne **cette branche**, pas encore `main` :
+
+- **Porté dans la PR** : correctif de l'indicateur de sauvegarde et ses tests (travail de #162), inspecteur avancé tatami/satins et ses tests (travail de #164, rebasé manuellement sur le formulaire enrichi), diagnostic Windows QTest.
+- **Porté dans la PR** : jobs Windows rattachés au runner `windows-2022` pour fournir le générateur Visual Studio 17 2022 ; nouvelle tentative de téléchargement vcpkg Linux en cas d'échec externe, sans neutraliser les échecs finaux.
+- **Porté dans la PR** : l'auto-numérisation directe depuis la segmentation IA est calculée hors du fil UI ; F8 et ce chemin utilisent un compteur d'identifiants de travail. L'annulation rejette **tout le résultat avant commit** ; le moteur ne reçoit **pas encore** de `TaskContext` et ne stoppe pas immédiatement sa consommation CPU.
+- **Porté dans la PR** : double-clic sur un satin sélectionné pour entrer dans le remodelage unifié rails/guides, sans commande ni mutation géométrique ; QTest associé.
+- **Porté dans la PR** : plusieurs fichiers déposés ne sont plus silencieusement réduits au premier ; choix explicite ou insertion séquentielle de plusieurs projets/broderies machine par Maj+glisser.
+- **Pas livré à ce stade** : annulation CPU coopérative complète des moteurs de numérisation, réorganisation profonde Document/Ordre, tests Windows interactifs/NVDA/DPI et recette en production de Claude Code/MCP. Ne pas annoncer ces critères comme validés.
+- **Validation** : compiler et faire passer la CI sur le **dernier SHA de cette PR** ; les journaux des anciens commits peuvent contenir des erreurs de format corrigées depuis. La recette utilisateur S1–S6 doit encore être exécutée avant une fusion.
