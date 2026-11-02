@@ -2771,6 +2771,21 @@ void MainWindow::onCanvasDoubleClicked(QPointF posMm) {
         editSelectedText();
         return;
     }
+    // Un double-clic sur un satin sélectionné entre directement dans le remodelage
+    // unifié (rails et guides). Il ne doit PAS insérer un nœud vectoriel par
+    // surprise : la création de nœud reste disponible une fois le mode activé.
+    if (currentTool_ == Tool::Select && satinEditModeAct_ != nullptr &&
+        !satinEditModeAct_->isChecked()) {
+        const auto* embroidery = resolveSelectedEmbroidery();
+        if (embroidery != nullptr && embroidery->is_satin()) {
+            satinEditModeAct_->setChecked(true);
+            if (satinEditModeAct_->isChecked()) {
+                statusBar()->showMessage(
+                    tr("Remodelage satin : rails et guides actifs. Échap pour quitter."), 6000);
+                return;
+            }
+        }
+    }
     // HP-VEC-001/005 : outil Sélection, double-clic sur le contour = nouveau nœud ; Alt +
     // double-clic dans un trou = supprimer ce trou (hors mode remodelage des rails).
     if (currentTool_ == Tool::Select &&
