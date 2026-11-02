@@ -6,6 +6,7 @@
 // Faux backend : aucun réseau, aucun fournisseur.
 #include <QApplication>
 #include <QBuffer>
+#include <QCheckBox>
 #include <QImage>
 #include <QLabel>
 #include <QListWidget>
@@ -108,6 +109,10 @@ private slots:
     void approvalHighlightsAffectedObjectsThenRestoresTheSelection();
     void agentQuestionIsAnsweredInThePanel();
     void agentQuestionDeclinedReturnsNoChoice();
+    void autoModeIsOffByDefaultAndKeepsManualValidation();
+    void autoModeAppliesBackendProposalsWithoutValidation();
+    void autoModeAppliesAgentChangeInOneUndoableStep();
+    void autoModeIsRememberedAndKeepsQuestionsManual();
 };
 
 void MainWindowTest::dockIsHiddenByDefaultAndReopensFromThePanelsMenu() {
@@ -533,6 +538,90 @@ void MainWindowTest::agentQuestionDeclinedReturnsNoChoice() {
         "{\"question\":\"Lequel ?\",\"options\":[{\"label\":\"A\"},{\"label\":\"B\"}]}";
     const std::string reply = w.liveService().call("live_ask_user", args);
     QVERIFY2(reply.find("chosen\\\":false") != std::string::npos, reply.c_str());
+}
+
+void MainWindowTest::autoModeIsOffByDefaultAndKeepsManualValidation() {
+    QSettings().clear();
+    MainWindow w;
+    MockBackend backend;
+    auto* dock = w.companionDock();
+    dock->setBackend(&backend);
+    dock->show();
+    auto* box = child<QCheckBox>(dock, "check_companionAutoApply");
+    QVERIFY(box != nullptr && !box->isChecked());
+    QVERIFY(!dock->autoApply());
+    CompanionProposal proposal;
+    proposal.summary = QStringLiteral("x");
+    emit backend.proposalReady(proposal);
+    QVERIFY(dock->hasPendingProposal()); // validation requise
+    QVERIFY(backend.decisions.isEmpty());
+    child<QPushButton>(dock, "button_companionConfirm")->click();
+    QCOMPARE(backend.decisions, QList<bool>{true});
+}
+
+void MainWindowTest::autoModeAppliesBackendProposalsWithoutValidation() {
+    QSettings().clear();
+    MainWindow w;
+    MockBackend backend;
+    auto* dock = w.companionDock();
+    dock->setBackend(&backend);
+    dock->show();
+    child<QCheckBox>(dock, "check_companionAutoApply")->setChecked(true);
+    QVERIFY(dock->autoApply());
+    CompanionProposal proposal;
+    proposal.summary = QStringLiteral("Recolorer");
+    emit backend.proposalReady(proposal);
+    QVERIFY(!dock->hasPendingProposal());
+    QCOMPARE(backend.decisions, QList<bool>{true});
+    QVERIFY(child<QTextBrowser>(dock, "browser_companionTranscript")
+                ->toPlainText()
+                .contains(QStringLiteral("Recolorer")));
+}
+
+void MainWindowTest::autoModeAppliesAgentChangeInOneUndoableStep() {
+    QSettings().clear();
+    MainWindow w;
+    auto f = oneShape();
+    const ObjectId first = f.first;
+    w.applyLoadedProject(std::move(f.project));
+    auto* dock = w.companionDock();
+    dock->setAutoApply(true);
+    // Aucun clic : l'agent applique directement, la modification reste annulable.
+    const std::string args =
+        "{\"operations\":[{\"op\":\"set_color\",\"object\":" + std::to_string(first.value) +
+        ",\"rgb\":\"#FF0000\"}]}";
+    const std::string reply = w.liveService().call("project_apply", args);
+    QVERIFY2(reply.find("\"applied\":true") != std::string::npos, reply.c_str());
+    QVERIFY(!dock->hasPendingProposal());
+    QCOMPARE(w.project_.embroidery_objects.front().rgb, (std::array<std::uint8_t, 3>{255, 0, 0}));
+    QVERIFY(w.undoAct_->isEnabled());
+    w.undoAct_->trigger();
+    QCOMPARE(w.project_.embroidery_objects.front().rgb, (std::array<std::uint8_t, 3>{60, 30, 30}));
+    QVERIFY(!w.undoAct_->isEnabled()); // une seule entrée d'annulation
+}
+
+void MainWindowTest::autoModeIsRememberedAndKeepsQuestionsManual() {
+    QSettings().clear();
+    {
+        MainWindow w;
+        w.companionDock()->setAutoApply(true);
+    }
+    MainWindow w;
+    auto* dock = w.companionDock();
+    QVERIFY(dock->autoApply());
+    QVERIFY(child<QCheckBox>(dock, "check_companionAutoApply")->isChecked());
+    // Une question de l'agent attend toujours une réponse de l'utilisateur.
+    QTimer::singleShot(30, &w, [dock] {
+        auto* group = dock->findChild<QWidget*>(QStringLiteral("group_companionProposal"));
+        if (group != nullptr && group->isVisibleTo(dock)) {
+            dock->findChild<QPushButton*>(QStringLiteral("button_companionReject"))->click();
+        }
+    });
+    const std::string args =
+        "{\"question\":\"Lequel ?\",\"options\":[{\"label\":\"A\"},{\"label\":\"B\"}]}";
+    const std::string reply = w.liveService().call("live_ask_user", args);
+    QVERIFY2(reply.find("chosen\\\":false") != std::string::npos, reply.c_str());
+    QSettings().clear();
 }
 
 } // namespace openstitch::desktop
