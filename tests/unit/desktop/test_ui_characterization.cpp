@@ -742,10 +742,10 @@ private slots:
         window.onCanvasDoubleClicked(QPointF(5.0, -2.0));
         QVERIFY(window.satinEditModeAct_->isChecked());
         QVERIFY(window.railEditModeAct_->isChecked());
-        QCOMPARE(std::get<doc::SatinParams>(
-                     window.project_.findEmbroidery(embroidery)->params)
-                     .rail_a.nodes.size(),
-                 railNodes);
+        const auto* after = window.project_.findEmbroidery(embroidery);
+        QVERIFY(after != nullptr);
+        const auto afterRailNodes = std::get<doc::SatinParams>(after->params).rail_a.nodes.size();
+        QCOMPARE(afterRailNodes, railNodes);
         QCOMPARE(window.undoStack_.undoNames().size(), undoCount);
         // Un second double-clic en mode rails ne doit pas relancer le mode.
         window.satinEditModeAct_->setChecked(false);
