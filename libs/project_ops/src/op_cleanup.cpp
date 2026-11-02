@@ -84,8 +84,8 @@ OpStatus parse_rgb(const json& j, const std::string& what, Rgb& out) {
     if (!s.empty() && s.front() == '#') {
         s.erase(0, 1);
     }
-    if (s.size() != 6 || !std::all_of(s.begin(), s.end(),
-                                      [](unsigned char c) { return std::isxdigit(c) != 0; })) {
+    if (s.size() != 6 ||
+        !std::all_of(s.begin(), s.end(), [](unsigned char c) { return std::isxdigit(c) != 0; })) {
         return out_of_range(what + " : format #RRGGBB attendu");
     }
     for (std::size_t i = 0; i < 3; ++i) {
@@ -150,8 +150,7 @@ OpStatus run_color_plan(OpContext& ctx, segmentation::ColorMergePlan plan) {
         return refused("rien à fusionner : aucune couleur ne change à ces réglages");
     }
     const json result = colors_json(plan);
-    ctx.stack.execute(std::make_unique<commands::MergeColorsCommand>(std::move(plan)),
-                      ctx.project);
+    ctx.stack.execute(std::make_unique<commands::MergeColorsCommand>(std::move(plan)), ctx.project);
     return OpStatus::success(result);
 }
 
@@ -184,8 +183,8 @@ OpStatus op_seg_merge_colors(OpContext& ctx) {
     }
     const auto classes = segmentation::color_classes(*ctx.project.segmentation);
     for (const Rgb& s : sources) {
-        const bool exists = std::any_of(classes.begin(), classes.end(),
-                                        [&](const auto& c) { return c.rgb == s; });
+        const bool exists =
+            std::any_of(classes.begin(), classes.end(), [&](const auto& c) { return c.rgb == s; });
         if (!exists) {
             return OpStatus::failure(code::kUnknownObject,
                                      "aucune région de couleur " + hex(s) + " dans la segmentation",
@@ -223,11 +222,11 @@ OpStatus op_seg_reduce_colors(OpContext& ctx) {
     if (auto st = read_rgb(ctx, "ignore_color", false, ignored, has_ignored); !st.ok) {
         return st;
     }
-    return run_color_plan(
-        ctx, segmentation::plan_reduce_colors(
-                 *ctx.project.segmentation, static_cast<std::size_t>(has_colors ? max_colors : 0),
-                 has_distance ? max_distance : 0.0, adjacent,
-                 has_ignored ? std::optional<Rgb>{ignored} : std::nullopt));
+    return run_color_plan(ctx, segmentation::plan_reduce_colors(
+                                   *ctx.project.segmentation,
+                                   static_cast<std::size_t>(has_colors ? max_colors : 0),
+                                   has_distance ? max_distance : 0.0, adjacent,
+                                   has_ignored ? std::optional<Rgb>{ignored} : std::nullopt));
 }
 
 OpStatus op_seg_clean_islands(OpContext& ctx) {
@@ -346,8 +345,7 @@ OpStatus op_image_denoise(OpContext& ctx) {
         return out_of_range("argument « method » = « " + method + " » inconnu",
                             "median | bilateral | flatten");
     }
-    ctx.stack.execute(std::make_unique<commands::AppendImageOpCommand>(std::move(op)),
-                      ctx.project);
+    ctx.stack.execute(std::make_unique<commands::AppendImageOpCommand>(std::move(op)), ctx.project);
     return OpStatus::success(
         json{{"method", method},
              {"strength", level},
@@ -502,9 +500,9 @@ OpStatus op_fill_small_holes(OpContext& ctx) {
 }
 
 ArgSpec objects_arg() {
-    return ArgSpec{"objects", "array", "id",
-                   "objets de broderie visés (défaut : toutes les formes du projet)", false,
-                   "1 à 1000 objets"};
+    return ArgSpec{"objects", "array",
+                   "id",      "objets de broderie visés (défaut : toutes les formes du projet)",
+                   false,     "1 à 1000 objets"};
 }
 
 ArgSpec region_arg(const char* name, const char* description) {
@@ -537,16 +535,16 @@ void register_cleanup_ops(std::vector<OpSpec>& out) {
         R"({"op":"segment_image","max_colors":6,"min_region_px":30})",
         op_segment_image});
 
-    out.push_back(OpSpec{
-        "seg_merge_colors",
-        "Segmentation : fait prendre à toutes les régions des couleurs `sources` la couleur "
-        "`target`, puis fusionne les voisines devenues identiques.",
-        {{"sources", "array", "", "couleurs « #RRGGBB » à absorber", true, "1 à 64"},
-         {"target", "string", "", "couleur « #RRGGBB » résultante", true, ""},
-         {"merge_adjacent", "boolean", "", "fusionner les régions voisines (défaut vrai)", false,
-          ""}},
-        R"({"op":"seg_merge_colors","sources":["#FE0000","#FD0101"],"target":"#FF0000"})",
-        op_seg_merge_colors});
+    out.push_back(
+        OpSpec{"seg_merge_colors",
+               "Segmentation : fait prendre à toutes les régions des couleurs `sources` la couleur "
+               "`target`, puis fusionne les voisines devenues identiques.",
+               {{"sources", "array", "", "couleurs « #RRGGBB » à absorber", true, "1 à 64"},
+                {"target", "string", "", "couleur « #RRGGBB » résultante", true, ""},
+                {"merge_adjacent", "boolean", "", "fusionner les régions voisines (défaut vrai)",
+                 false, ""}},
+               R"({"op":"seg_merge_colors","sources":["#FE0000","#FD0101"],"target":"#FF0000"})",
+               op_seg_merge_colors});
 
     out.push_back(OpSpec{
         "seg_reduce_colors",
@@ -595,24 +593,24 @@ void register_cleanup_ops(std::vector<OpSpec>& out) {
                          R"({"op":"seg_recolor_region","region":3,"rgb":"#C81E1E"})",
                          op_seg_recolor_region});
 
-    out.push_back(OpSpec{
-        "smooth_shapes",
-        "Formes : lisse les contours (moins de nœuds, parties arrondies en courbes) pour "
-        "effacer les dentelures de la vectorisation.",
-        {objects_arg(),
-         {"tolerance_mm", "number", "mm", "écart maximal au tracé d'origine (défaut 0.1)", false,
-          "[0.005 ; 5]"}},
-        R"({"op":"smooth_shapes","tolerance_mm":0.15})",
-        op_smooth_shapes});
+    out.push_back(
+        OpSpec{"smooth_shapes",
+               "Formes : lisse les contours (moins de nœuds, parties arrondies en courbes) pour "
+               "effacer les dentelures de la vectorisation.",
+               {objects_arg(),
+                {"tolerance_mm", "number", "mm", "écart maximal au tracé d'origine (défaut 0.1)",
+                 false, "[0.005 ; 5]"}},
+               R"({"op":"smooth_shapes","tolerance_mm":0.15})",
+               op_smooth_shapes});
 
-    out.push_back(OpSpec{
-        "simplify_shapes",
-        "Formes : simplifie les contours en polygones à moins de sommets (Douglas-Peucker).",
-        {objects_arg(),
-         {"tolerance_mm", "number", "mm", "écart maximal au tracé d'origine (défaut 0.1)", false,
-          "[0.005 ; 5]"}},
-        R"({"op":"simplify_shapes","objects":[1,2],"tolerance_mm":0.2})",
-        op_simplify_shapes});
+    out.push_back(
+        OpSpec{"simplify_shapes",
+               "Formes : simplifie les contours en polygones à moins de sommets (Douglas-Peucker).",
+               {objects_arg(),
+                {"tolerance_mm", "number", "mm", "écart maximal au tracé d'origine (défaut 0.1)",
+                 false, "[0.005 ; 5]"}},
+               R"({"op":"simplify_shapes","objects":[1,2],"tolerance_mm":0.2})",
+               op_simplify_shapes});
 
     out.push_back(OpSpec{
         "remove_small_pieces",
@@ -624,15 +622,15 @@ void register_cleanup_ops(std::vector<OpSpec>& out) {
         R"({"op":"remove_small_pieces","min_area_mm2":0.5})",
         op_remove_small_pieces});
 
-    out.push_back(OpSpec{
-        "fill_small_holes",
-        "Formes : comble les trous (tous, ou ceux dont l'aire ne dépasse pas un seuil) de "
-        "plusieurs objets d'un coup.",
-        {objects_arg(),
-         {"max_area_mm2", "number", "mm2", "seuil d'aire des trous comblés (défaut : tous)", false,
-          "[0.0001 ; 1000000]"}},
-        R"({"op":"fill_small_holes","max_area_mm2":1.0})",
-        op_fill_small_holes});
+    out.push_back(
+        OpSpec{"fill_small_holes",
+               "Formes : comble les trous (tous, ou ceux dont l'aire ne dépasse pas un seuil) de "
+               "plusieurs objets d'un coup.",
+               {objects_arg(),
+                {"max_area_mm2", "number", "mm2", "seuil d'aire des trous comblés (défaut : tous)",
+                 false, "[0.0001 ; 1000000]"}},
+               R"({"op":"fill_small_holes","max_area_mm2":1.0})",
+               op_fill_small_holes});
 }
 
 } // namespace openstitch::project_ops::detail

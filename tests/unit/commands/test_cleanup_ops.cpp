@@ -53,8 +53,8 @@ ObjectId add_object(document::Project& project, std::vector<geometry::PathSet> s
 TEST_CASE("cleanup ops: remove small pieces keeps big ones and undoes in one step",
           "[cleanup_ops]") {
     document::Project project;
-    const ObjectId id = add_object(
-        project, {rect(0, 0, 10000, 10000), rect(20000, 0, 20100, 100), rect(30000, 0, 30100, 100)});
+    const ObjectId id = add_object(project, {rect(0, 0, 10000, 10000), rect(20000, 0, 20100, 100),
+                                             rect(30000, 0, 30100, 100)});
     UndoStack stack;
     auto made = make_remove_small_pieces_command(project, {id}, 1.0e6);
     REQUIRE(made.command);
@@ -70,7 +70,8 @@ TEST_CASE("cleanup ops: remove small pieces never empties a shape and refuses a 
     document::Project project;
     const ObjectId tiny = add_object(project, {rect(0, 0, 100, 100), rect(500, 0, 600, 100)});
     CHECK_FALSE(make_remove_small_pieces_command(project, {tiny}, 1.0e9).command);
-    const ObjectId big = add_object(project, {rect(0, 0, 10000, 10000), rect(20000, 0, 30000, 10000)});
+    const ObjectId big =
+        add_object(project, {rect(0, 0, 10000, 10000), rect(20000, 0, 30000, 10000)});
     auto made = make_remove_small_pieces_command(project, {big}, 1.0);
     CHECK_FALSE(made.command);
     CHECK_FALSE(made.error.empty());
@@ -93,9 +94,9 @@ TEST_CASE("cleanup ops: smooth refuses an invalid tolerance and skips locked sha
           "[cleanup_ops]") {
     document::Project project;
     const ObjectId id = add_object(project, {noisy_rect()});
-    CHECK_FALSE(make_reshape_paths_command(project, {id}, ReshapeKind::Smooth, Micrometers{0})
-                    .command);
+    CHECK_FALSE(
+        make_reshape_paths_command(project, {id}, ReshapeKind::Smooth, Micrometers{0}).command);
     project.findObject(id)->locked = true;
-    CHECK_FALSE(make_reshape_paths_command(project, {id}, ReshapeKind::Simplify, Micrometers{50})
-                    .command);
+    CHECK_FALSE(
+        make_reshape_paths_command(project, {id}, ReshapeKind::Simplify, Micrometers{50}).command);
 }

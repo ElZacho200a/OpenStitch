@@ -55,9 +55,8 @@ VectorOpResult make_reshape_paths_command(const document::Project& project,
         std::vector<PathSet> paths;
         paths.reserve(object.paths.size());
         for (const PathSet& set : object.paths) {
-            paths.push_back(kind == ReshapeKind::Smooth
-                                ? geometry::smooth_path_set(set, tolerance)
-                                : simplified(set, tolerance));
+            paths.push_back(kind == ReshapeKind::Smooth ? geometry::smooth_path_set(set, tolerance)
+                                                        : simplified(set, tolerance));
         }
         if (paths != object.paths) {
             ++changed;

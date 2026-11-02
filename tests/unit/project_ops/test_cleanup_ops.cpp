@@ -8,7 +8,6 @@
 #include <string>
 #include <utility>
 
-
 #include "openstitch/document/project.hpp"
 #include "openstitch/project_ops/errors.hpp"
 #include "openstitch/project_ops/operations.hpp"
@@ -80,7 +79,10 @@ TEST_CASE("cleanup ops: seg_reduce_colors merges close hues and seg_merge_colors
     CHECK(reduce.segmentation->region_count() == 2);
 
     auto merge = seg_project();
-    REQUIRE(run(merge, R"({"op":"seg_merge_colors","sources":["#0000FF"],"target":"#FF0000","merge_adjacent":false})").ok);
+    REQUIRE(
+        run(merge,
+            R"({"op":"seg_merge_colors","sources":["#0000FF"],"target":"#FF0000","merge_adjacent":false})")
+            .ok);
     CHECK(merge.segmentation->find(RegionId{3})->rgb == std::array<std::uint8_t, 3>{255, 0, 0});
 
     auto unknown = seg_project();
@@ -90,7 +92,8 @@ TEST_CASE("cleanup ops: seg_reduce_colors merges close hues and seg_merge_colors
     CHECK(bad.outcomes.front().code == project_ops::code::kUnknownObject);
 }
 
-TEST_CASE("cleanup ops: region merge, removal and recolor with refusals", "[project_ops][cleanup]") {
+TEST_CASE("cleanup ops: region merge, removal and recolor with refusals",
+          "[project_ops][cleanup]") {
     auto project = seg_project();
     REQUIRE(run(project, R"({"op":"seg_recolor_region","region":3,"rgb":"#00FF00"})").ok);
     CHECK(project.segmentation->find(RegionId{3})->rgb == std::array<std::uint8_t, 3>{0, 255, 0});
@@ -117,8 +120,8 @@ TEST_CASE("cleanup ops: batch is transactional and a failing step leaves the pro
           "[project_ops][cleanup]") {
     auto project = seg_project();
     const auto before = project.segmentation->labels;
-    const auto report = project_ops::apply_batch(
-        project, R"({"schema":"openstitch.batch/1","operations":[
+    const auto report =
+        project_ops::apply_batch(project, R"({"schema":"openstitch.batch/1","operations":[
             {"op":"seg_clean_islands","min_px":2},
             {"op":"seg_remove_region","region":99}]})");
     CHECK_FALSE(report.ok);
@@ -132,7 +135,7 @@ TEST_CASE("cleanup ops: shape cleanup removes crumbs, simplifies, and refuses no
     REQUIRE(run(project, R"({"op":"remove_small_pieces","min_area_mm2":0.5})").ok);
     CHECK(project.vector_objects.front().paths.size() == 1);
     CHECK_FALSE(run(project, R"({"op":"remove_small_pieces","min_area_mm2":0.5})").ok);
-    CHECK_FALSE(run(project, R"({"op":"fill_small_holes"})").ok); // aucun trou
+    CHECK_FALSE(run(project, R"({"op":"fill_small_holes"})").ok);                // aucun trou
     CHECK_FALSE(run(project, R"({"op":"smooth_shapes","tolerance_mm":50})").ok); // hors plage
     CHECK_FALSE(run(project, R"({"op":"simplify_shapes","objects":[99]})").ok);
 }
