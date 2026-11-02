@@ -25,8 +25,8 @@
 #include <QShortcut>
 #include <QSignalBlocker>
 #include <QSpinBox>
-#include <QStringList>
 #include <QStatusBar>
+#include <QStringList>
 #include <QTextEdit>
 #include <QTime>
 #include <QTimer>
