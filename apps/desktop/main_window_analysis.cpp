@@ -42,7 +42,6 @@
 #include "document_panel.hpp"
 #include "font_catalog.hpp"
 #include "main_window.hpp"
-#include "responsive.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/finishing_commands.hpp"
 #include "openstitch/commands/project_commands.hpp"
@@ -549,15 +548,13 @@ void reportError(QWidget* parent, const QString& title, const QString& explanati
 // petit écran et reste floue lors du redimensionnement.
 class ReportMapLabel final : public QLabel {
 public:
-    ReportMapLabel(const QPixmap& original, QWidget* parent)
-        : QLabel(parent), original_(original) {
+    ReportMapLabel(const QPixmap& original, QWidget* parent) : QLabel(parent), original_(original) {
         setObjectName(QStringLiteral("reportMap"));
         setAccessibleName(QObject::tr("Carte d'analyse de la broderie"));
         setAlignment(Qt::AlignCenter);
         setMinimumSize(140, 90);
         setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
-        setPixmap(original_.scaled(QSize(680, 360), Qt::KeepAspectRatio,
-                                   Qt::SmoothTransformation));
+        setPixmap(original_.scaled(QSize(680, 360), Qt::KeepAspectRatio, Qt::SmoothTransformation));
     }
 
 protected:
