@@ -18,6 +18,7 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QPixmap>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QStatusBar>
@@ -546,14 +547,24 @@ void showReportDialog(QWidget* parent, const QString& title, const QString& text
                       const std::vector<std::uint8_t>& png, const QString& pngDefaultName) {
     QDialog dialog(parent);
     dialog.setWindowTitle(title);
-    dialog.resize(720, 520);
+    dialog.resize(720, png.empty() ? 520 : 760);
     auto* layout = new QVBoxLayout(&dialog);
+    QPixmap map;
+    if (!png.empty() && map.loadFromData(png.data(), static_cast<uint>(png.size()), "PNG")) {
+        auto* image = new QLabel(&dialog);
+        image->setObjectName(QStringLiteral("reportMap"));
+        image->setAlignment(Qt::AlignCenter);
+        image->setMinimumSize(200, 200);
+        image->setPixmap(
+            map.scaled(QSize(680, 360), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        layout->addWidget(image, 3);
+    }
     auto* view = new QPlainTextEdit(&dialog);
     view->setObjectName(QStringLiteral("reportText"));
     view->setReadOnly(true);
     view->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
     view->setPlainText(text);
-    layout->addWidget(view, 1);
+    layout->addWidget(view, 2);
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
     if (!png.empty()) {
         auto* saveBtn = buttons->addButton(QObject::tr("Enregistrer la carte (PNG)…"),
