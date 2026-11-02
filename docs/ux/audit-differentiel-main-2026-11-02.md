@@ -123,3 +123,43 @@ Le présent rapport a été établi avant les modifications de la branche unique
 - **Porté dans la PR** : plusieurs fichiers déposés ne sont plus silencieusement réduits au premier ; choix explicite ou insertion séquentielle de plusieurs projets/broderies machine par Maj+glisser.
 - **Pas livré à ce stade** : annulation CPU coopérative complète des moteurs de numérisation, réorganisation profonde Document/Ordre, tests Windows interactifs/NVDA/DPI et recette en production de Claude Code/MCP. Ne pas annoncer ces critères comme validés.
 - **Validation** : compiler et faire passer la CI sur le **dernier SHA de cette PR** ; les journaux des anciens commits peuvent contenir des erreurs de format corrigées depuis. La recette utilisateur S1–S6 doit encore être exécutée avant une fusion.
+
+
+## Revue complémentaire du périmètre de PR unique — 2026-11-02
+
+**Avertissement :** la liste initiale PR-00…PR-08 était un *plan d'intégration*, pas une liste de fonctionnalités déjà livrées. La PR #226 n'avait modifié que 11 fichiers et **ne prétend pas** couvrir tous les chantiers historiques. Les anciens audits ont des états parfois périmés : le statut ci-dessous est fondé sur les chemins de code/PR observés, pas sur le seul pictogramme de roadmap.
+
+### Travaux encore absents de #226, à réexaminer dans la branche unique
+
+| Domaine | Statut observé dans main | Complément requis et référence |
+| --- | --- | --- |
+| Palette d'outils par tâche et découvertabilité | **Non intégré à #226 ; roadmap ☐** | Grouper outils de création, dessin, retouche, satin et navigation, cohérence raccourcis/menu/étiquette active. HP-UX-001/004/014/016, sans renier la palette existante. |
+| Navigation clavier complète | **Non intégré à #226** | Tab/Maj+Tab entre objets, sélection écran et panneau Document, annonce lecteur d'écran, gestion des raccourcis de modes. HP-UX-050, 011. |
+| Undo des saisies numériques | **Non intégré à #226 ; coalescence partielle déjà disponible** | Vérifier X/Y/L/H/angle et propriétés de groupe : dix changements d'un même champ = un pas Undo sans fusionner deux gestes distincts. HP-UX-053. |
+| Document et Ordre | **Non intégré à #226 ; vues et tri déjà présents** | Conception d'un parcours unifié ou explicitement synchronisé (sélection, couches, visibilité, verrou, rang), avec tests, sans retirer les optimisations avancées. HP-UX-037/045. |
+| Assistant facultatif du premier motif | **Non intégré à #226 ; bandeau Workflow et aide déjà présents** | Aide contextuelle image → dimensions/cadre → palette → fond → numérisation → qualité → DST, sans wizard obligatoire. HP-UX-012, HP-UX-030/031. |
+| Édition/aperçu des images | **Non intégré à #226 ; quantification et prévisualisations partielles déjà présentes** | Avant/après pleine résolution, comparaison vectorisation/simplification et annulation explicite, cohérence des masques. HP-UX-048, HP-VIEW-012. |
+| Cohérence couleur région / objet / fil | **Non intégré à #226 ; première différenciation déjà livrée** | Parcours contextuel de traçabilité des couleurs entre segmentation, objets de couture et nuancier, légende persistante. HP-UX-047. |
+| Préférences et unités | **Non intégré à #226 ; dialog et conversion mm/pouces partiels** | Cadrer magnétisme, défauts de couture, cadre/machine, unités réellement affichées dans inspecteurs et dialogues, sans altérer le stockage µm. HP-UX-007/008. |
+| Retour d'état / erreurs persistantes | **Enregistrement repris de #162 ; reste absent de #226** | Révision des étapes Workflow, notification d'erreur persistante et actionnable, historique des opérations importantes, sans faux succès. HP-UX-013/039/061. |
+| Qualité, vues, simulation | **Fonctionnalités de base présentes ; pas de nouvelle intégration dans #226** | Cohérence Analyse ↔ simulation ↔ export ; raccourcis lecture/pause et boucle ; indicateur « aperçu réduit ». HP-UX-031/036/055/059. |
+| Accessibilité et petits écrans | **Tests headless préexistants ; aucun test réel exécuté pour #226** | Matrice DPI 100/125/150/200 %, FR/EN, contrastes, focus, cibles de poignée, NVDA/UIA, palette daltonisme. HP-UX-015/024–027/041/043/056 et HP-I18N-004. |
+| Productivité quotidienne | **Partielle, non intégrée à #226** | Historique cliquable **déjà existant** : seulement tests/statut ; presse-papiers bitmap/fils, favoris couleurs, navigation au clavier et meilleur retour d'annulation. HP-UX-054/057/058/062/063. |
+| Sélection avancée | **#219/#222 déjà fusionnées ; non à réimplémenter** | Sélections nommées limitées à la session, filtre par défauts Analyse, lasso de nœuds, rappel et menus Document. HP-UX-065. |
+| Compagnon Claude/MCP | **Dock et approbation déjà livrés ; #226 ne modifie pas son code** | Recette de l'agent réel, journaux d'actions fiables, erreurs, annulation, révision périmée, multi-instances ; garantir la parité des commandes avec l'application. docs/agent-mcp-audit-2026-10-28.md. |
+| Cartes dans les rapports | **PR #225 ouverte distinctement** | Intégrer ou réconcilier son affichage de cartes dans la PR unique après tests de redimensionnement, DPI et grands PNG, éviter deux PR concurrentes. |
+| Compagnon IA « automatique » | **PR #227 ouverte distinctement** | Choix produit à traiter explicitement : mode sans approbation (désactivé par défaut) qui déroge au contrat de validation. Examiner la protection du document, du contexte et de l'Undo avant éventuelle consolidation. |
+| Annulation CPU coopérative | **Non livrée : #226 rejette les résultats, mais les moteurs terminent le calcul** | Étendre TaskContext/stop_token au cœur autodigitize et project_ops, progrès réels, annulation atomique, retour clavier. HP-PERF-001/HP-UX-006. |
+| Réarchitecture MainWindow et tests d'usage | **Partiellement découpé, sans garantie pratique** | Réduire la responsabilité de main_window.cpp/hpp, tests transversaux des parcours et instrumentation de benchmark réel. HP-QA-001/008/010. |
+
+### À ne **pas** redévelopper sous prétexte d'une roadmap incomplète
+
+- F7 non modal, calcul hors UI et annulation atomique déjà disponibles ; seules les autres opérations restent à auditer.
+- Création directe contour/tatami/satin ; inspecteur multi-sélection ; restauration du focus et mode portable ; résumé qualité et export rapide ; panneaux Workflow et Analyse.
+- Centre draggable spiral/radial, redimensionnement collectif, sélection inversée/par type/par fil/lasso, et menu de sélection avancé.
+- Panneau Historique déjà cliquable via `jumpToHistory` (`main_window_editing.cpp`), malgré HP-UX-054 restée ouverte.
+- Compagnon IA avec propositions/approbation, aperçu et Undo (#188 et #192), **différent** de la nouvelle option sans validation de #227.
+
+### Critère d'exhaustivité
+
+Le simple regroupement de petits correctifs dans une PR ne constitue pas « tout faire ». Pour rester une PR unique, conserver les lots dans des commits cohérents et garder la PR non fusionnée tant que les fonctions retenues ne sont pas intégrées, testées et vérifiées. Chaque ligne de la matrice doit sortir avec une décision explicite **livré / déjà présent / écarté / reste**, et toute exception de recette matérielle doit être signalée.
