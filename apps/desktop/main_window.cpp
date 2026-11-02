@@ -5742,11 +5742,12 @@ void MainWindow::autoDigitize() {
     // résultat n'est pas appliqué. Un clic Annuler refuse le lot entier (l'arrêt
     // CPU coopératif demandera une évolution des API project_ops/autodigitize).
     auto nextIds = project_.object_ids;
-    BusyIndicator busy(this, tr("Numérisation automatique en cours…"),
-                       {autosaveTimer_, simTimer_}, true);
+    std::optional<BusyIndicator> busy;
+    busy.emplace(this, tr("Numérisation automatique en cours…"),
+                 std::initializer_list<QTimer*>{autosaveTimer_, simTimer_}, true);
     std::optional<autodigitize::ContourMetrics> contourMetrics;
     std::size_t flowFillCount = 0;
-    auto result = busy.run([&]() -> Result<autodigitize::AutoResult> {
+    auto result = busy->run([&]() -> Result<autodigitize::AutoResult> {
         if (!hasSegmentation) {
             return autodigitize::auto_digitize_vectors(project_.vector_objects, nextIds,
                                                        opts);
@@ -5767,7 +5768,9 @@ void MainWindow::autoDigitize() {
         flowFillCount = outcome->flow_fill;
         return std::move(outcome->objects);
     });
-    if (busy.cancelled()) {
+    const bool cancelled = busy->cancelled();
+    busy.reset();
+    if (cancelled) {
         statusBar()->showMessage(tr("Numérisation annulée : aucune modification."), 6000);
         return;
     }
