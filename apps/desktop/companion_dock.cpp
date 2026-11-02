@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "companion_dock.hpp"
 
+#include <QCheckBox>
 #include <QCoreApplication>
 #include <QDialog>
 #include <QEvent>
@@ -19,6 +20,7 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QSettings>
 #include <QStackedWidget>
 #include <QTextBrowser>
 #include <QTextCursor>
@@ -212,6 +214,14 @@ void CompanionDock::buildUi() {
     connect(undoLast_, &QPushButton::clicked, this, &CompanionDock::undoLastRequested);
     layout->addWidget(undoLast_);
 
+    // Mode auto : réglage mémorisé, désactivé par défaut.
+    autoApplyBox_ = new QCheckBox(root);
+    autoApplyBox_->setObjectName(QStringLiteral("check_companionAutoApply"));
+    autoApply_ = QSettings().value(QStringLiteral("companion/autoApply"), false).toBool();
+    autoApplyBox_->setChecked(autoApply_);
+    connect(autoApplyBox_, &QCheckBox::toggled, this, &CompanionDock::setAutoApply);
+    layout->addWidget(autoApplyBox_);
+
     connect(send_, &QPushButton::clicked, this, &CompanionDock::submit);
     connect(cancel_, &QPushButton::clicked, this, [this] {
         if (backend_ != nullptr) {
@@ -258,6 +268,10 @@ void CompanionDock::retranslate() {
     send_->setToolTip(tr("Envoyer le message (Entrée) — Maj+Entrée : saut de ligne"));
     cancel_->setText(tr("Interrompre"));
     input_->setPlaceholderText(tr("Demandez quelque chose sur le projet ouvert…"));
+    autoApplyBox_->setText(tr("Mode automatique (sans validation)"));
+    autoApplyBox_->setToolTip(
+        tr("Applique directement les changements proposés par l'IA, sans demander de validation. "
+           "Chaque application reste annulable en une étape (Ctrl+Z)."));
     proposalBox_->setTitle(tr("Changement proposé"));
     confirm_->setText(tr("Appliquer"));
     reject_->setText(tr("Rejeter"));
@@ -303,6 +317,11 @@ void CompanionDock::connectBackend() {
     connect(backend_, &CompanionBackend::proposalReady, this,
             [this](const CompanionProposal& proposal) {
                 QPointer<CompanionBackend> backend(backend_);
+                if (autoApply_) {
+                    noteAutoApplied(proposal);
+                    backend_->decide(true);
+                    return;
+                }
                 showProposal(proposal, [backend](bool approved) {
                     if (backend != nullptr) {
                         backend->decide(approved);
@@ -440,7 +459,32 @@ void CompanionDock::showProposal(const CompanionProposal& proposal,
     confirm_->setFocus();
 }
 
+void CompanionDock::setAutoApply(bool enabled) {
+    if (autoApply_ == enabled) {
+        return;
+    }
+    autoApply_ = enabled;
+    QSettings().setValue(QStringLiteral("companion/autoApply"), enabled);
+    autoApplyBox_->setChecked(enabled);
+    // Activé alors qu'une proposition attend : elle est appliquée tout de suite.
+    if (enabled && pendingDecision_) {
+        resolveProposal(true);
+    }
+}
+
+void CompanionDock::noteAutoApplied(const CompanionProposal& proposal) {
+    Entry note;
+    note.kind = Entry::Kind::Note;
+    note.text = tr("Appliqué automatiquement : %1")
+                    .arg(proposal.summary.isEmpty() ? proposal.title : proposal.summary);
+    addEntry(std::move(note));
+}
+
 bool CompanionDock::askApproval(const CompanionProposal& proposal) {
+    if (autoApply_) {
+        noteAutoApplied(proposal);
+        return true;
+    }
     QEventLoop loop;
     bool result = false;
     QPointer<CompanionDock> self(this);

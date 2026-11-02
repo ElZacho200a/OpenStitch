@@ -8,6 +8,7 @@
 
 #include "companion_backend.hpp"
 
+class QCheckBox;
 class QLabel;
 class QListWidget;
 class QPlainTextEdit;
@@ -68,6 +69,12 @@ public:
     [[nodiscard]] bool busy() const { return busy_; }
     [[nodiscard]] bool hasPendingProposal() const { return static_cast<bool>(pendingDecision_); }
 
+    // Mode automatique : les changements proposés par l'IA sont appliqués sans validation humaine
+    // (toujours par une commande annulable côté hôte). Désactivé par défaut, mémorisé dans les
+    // réglages. Les questions de l'agent (choix) restent manuelles.
+    [[nodiscard]] bool autoApply() const { return autoApply_; }
+    void setAutoApply(bool enabled);
+
 signals:
     void focusObjectRequested(quint64 objectId);
     void undoLastRequested();
@@ -97,6 +104,7 @@ private:
     void submit();
     void setBusy(bool busy);
     void resolveProposal(bool approved);
+    void noteAutoApplied(const CompanionProposal& proposal);
     void refreshHeader();
     void connectBackend();
 
@@ -117,6 +125,8 @@ private:
     QPushButton* chatClaudeCode_{nullptr};
     QPushButton* configure_{nullptr};
     bool fullyDisabled_{false};
+    bool autoApply_{false};
+    QCheckBox* autoApplyBox_{nullptr};
     quint64 usageIn_{0};
     quint64 usageOut_{0};
     QLabel* header_{nullptr};
