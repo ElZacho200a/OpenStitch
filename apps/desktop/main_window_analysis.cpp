@@ -21,6 +21,7 @@
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QTimer>
@@ -542,7 +543,33 @@ void reportError(QWidget* parent, const QString& title, const QString& explanati
     box.exec();
 }
 
-// Rapport texte (police fixe) et, si fournie, carte PNG enregistrable.
+// Carte redimensionnable : conserver le PNG original et recalculer uniquement
+// le pixmap affiché. Sans cela, une image 680x360 agrandit le dialogue sur
+// petit écran et reste floue lors du redimensionnement.
+class ReportMapLabel final : public QLabel {
+public:
+    ReportMapLabel(const QPixmap& original, QWidget* parent) : QLabel(parent), original_(original) {
+        setObjectName(QStringLiteral("reportMap"));
+        setAccessibleName(QObject::tr("Carte d'analyse de la broderie"));
+        setAlignment(Qt::AlignCenter);
+        setMinimumSize(140, 90);
+        setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
+        setPixmap(original_.scaled(QSize(680, 360), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    }
+
+protected:
+    void resizeEvent(QResizeEvent* event) override {
+        QLabel::resizeEvent(event);
+        if (!original_.isNull() && width() > 0 && height() > 0) {
+            setPixmap(original_.scaled(size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        }
+    }
+
+private:
+    QPixmap original_;
+};
+
+// Rapport texte (police fixe) et carte PNG consultable sans débordement d'écran.
 void showReportDialog(QWidget* parent, const QString& title, const QString& text,
                       const std::vector<std::uint8_t>& png, const QString& pngDefaultName) {
     QDialog dialog(parent);
@@ -551,12 +578,7 @@ void showReportDialog(QWidget* parent, const QString& title, const QString& text
     auto* layout = new QVBoxLayout(&dialog);
     QPixmap map;
     if (!png.empty() && map.loadFromData(png.data(), static_cast<uint>(png.size()), "PNG")) {
-        auto* image = new QLabel(&dialog);
-        image->setObjectName(QStringLiteral("reportMap"));
-        image->setAlignment(Qt::AlignCenter);
-        image->setMinimumSize(200, 200);
-        image->setPixmap(
-            map.scaled(QSize(680, 360), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        auto* image = new ReportMapLabel(map, &dialog);
         layout->addWidget(image, 3);
     }
     auto* view = new QPlainTextEdit(&dialog);
@@ -587,6 +609,9 @@ void showReportDialog(QWidget* parent, const QString& title, const QString& text
     }
     QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     layout->addWidget(buttons);
+    // La carte et le rapport peuvent défiler ; Fermer reste toujours visible.
+    scrollDialogBody(&dialog, buttons);
+    fitDialogToScreen(&dialog);
     dialog.exec();
 }
 

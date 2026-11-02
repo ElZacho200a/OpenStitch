@@ -51,30 +51,6 @@ Micrometers vectorize_tolerance_from_detail(int detail);
 
 namespace {
 
-// Calcul synchrone long : curseur d'attente et fenêtre « en cours » indéterminée (sans bouton
-// Annuler : ces calculs ne sont pas interruptibles).
-class WorkIndicator {
-public:
-    WorkIndicator(QWidget* parent, const QString& text) : dialog_(text, QString(), 0, 0, parent) {
-        dialog_.setWindowTitle(QObject::tr("Veuillez patienter"));
-        dialog_.setWindowModality(Qt::WindowModal);
-        dialog_.setCancelButton(nullptr);
-        dialog_.setMinimumDuration(0);
-        dialog_.show();
-        QGuiApplication::setOverrideCursor(Qt::WaitCursor);
-        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-    }
-    ~WorkIndicator() {
-        QGuiApplication::restoreOverrideCursor();
-        dialog_.close();
-    }
-    WorkIndicator(const WorkIndicator&) = delete;
-    WorkIndicator& operator=(const WorkIndicator&) = delete;
-
-private:
-    QProgressDialog dialog_;
-};
-
 // Même principe que setEnabledWithReason (main_window.cpp, mêmes propriétés mémorisées) : l'action
 // grisée dit, dans son info-bulle et son texte d'état, ce qu'il faut faire pour l'activer.
 void setActionEnabledWithReason(QAction* act, bool enabled, const QString& whyDisabled) {
@@ -425,10 +401,21 @@ void MainWindow::segmentWithAi() {
     opts.mm_per_px = project_.mm_per_px;
     opts.skip_largest_region = dialog.skipBackground();
     opts.simplify_tolerance = vectorize_tolerance_from_detail(dialog.vectorDetail());
-    std::optional<WorkIndicator> busy;
-    busy.emplace(this, tr("Numérisation automatique en cours…"));
-    auto result = autodigitize::auto_digitize(*seg, project_.object_ids, opts);
+    // Le calcul lourd se fait hors du fil Qt. Le compteur d'IDs reste local et
+    // n'est publié qu'après validation : une annulation ne consomme aucun ID.
+    // Le moteur ne fournit pas encore de stop_token ici : Annuler rejette
+    // atomiquement le résultat lorsque le calcul s'achève.
+    auto nextIds = project_.object_ids;
+    std::optional<BusyIndicator> busy;
+    busy.emplace(this, tr("Numérisation automatique en cours…"),
+                 std::initializer_list<QTimer*>{autosaveTimer_, simTimer_}, true);
+    auto result = busy->run([&] { return autodigitize::auto_digitize(*seg, nextIds, opts); });
+    const bool cancelled = busy->cancelled();
     busy.reset();
+    if (cancelled) {
+        statusBar()->showMessage(tr("Numérisation annulée : aucune modification."), 6000);
+        return;
+    }
     if (!result) {
         QMessageBox box(QMessageBox::Warning, tr("Numérisation impossible"),
                         tr("La numérisation des formes retenues a échoué."), QMessageBox::Ok, this);
@@ -440,6 +427,7 @@ void MainWindow::segmentWithAi() {
     const std::size_t embCount = result->embroideries.size();
     const std::vector<std::string> warnings = std::move(result->warnings);
 
+    project_.object_ids = nextIds;
     undoStack_.execute(
         std::make_unique<commands::AddObjectBatchCommand>(
             std::move(result->vectors), std::move(result->embroideries), "Segmentation IA"),

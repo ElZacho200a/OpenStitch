@@ -1366,6 +1366,8 @@ void MainWindow::resetDocumentState() {
     // après) : sans ça, un Ctrl+S après « Nouveau » écraserait le projet
     // précédent sans rien demander (HP-FILE-002).
     setCurrentProjectPath(QString());
+    savedAt_ = QTime{}; // l’heure de l’ancien projet ne concerne jamais le suivant
+    updateSavedIndicator();
     migratedFromVersion_ = 0;
     migratedFromPath_.clear();
     undoStack_.clear();
@@ -2768,6 +2770,21 @@ void MainWindow::onCanvasDoubleClicked(QPointF posMm) {
     if (currentTool_ == Tool::Select && selectedTextId()) {
         editSelectedText();
         return;
+    }
+    // Un double-clic sur un satin sélectionné entre directement dans le remodelage
+    // unifié (rails et guides). Il ne doit PAS insérer un nœud vectoriel par
+    // surprise : la création de nœud reste disponible une fois le mode activé.
+    if (currentTool_ == Tool::Select && satinEditModeAct_ != nullptr &&
+        !satinEditModeAct_->isChecked()) {
+        const auto* embroidery = resolveSelectedEmbroidery();
+        if (embroidery != nullptr && embroidery->is_satin()) {
+            satinEditModeAct_->setChecked(true);
+            if (satinEditModeAct_->isChecked()) {
+                statusBar()->showMessage(
+                    tr("Remodelage satin : rails et guides actifs. Échap pour quitter."), 6000);
+                return;
+            }
+        }
     }
     // HP-VEC-001/005 : outil Sélection, double-clic sur le contour = nouveau nœud ; Alt +
     // double-clic dans un trou = supprimer ce trou (hors mode remodelage des rails).
@@ -5736,15 +5753,18 @@ void MainWindow::autoDigitize() {
         opts = project_ops::make_auto_options(ds, project_.mm_per_px, skipLargest);
     }
 
+    // Le calcul asynchrone ne doit pas avancer le compteur du projet tant que le
+    // résultat n'est pas appliqué. Un clic Annuler refuse le lot entier (l'arrêt
+    // CPU coopératif demandera une évolution des API project_ops/autodigitize).
+    auto nextIds = project_.object_ids;
     std::optional<BusyIndicator> busy;
     busy.emplace(this, tr("Numérisation automatique en cours…"),
-                 std::initializer_list<QTimer*>{autosaveTimer_, simTimer_});
+                 std::initializer_list<QTimer*>{autosaveTimer_, simTimer_}, true);
     std::optional<autodigitize::ContourMetrics> contourMetrics;
     std::size_t flowFillCount = 0;
     auto result = busy->run([&]() -> Result<autodigitize::AutoResult> {
         if (!hasSegmentation) {
-            return autodigitize::auto_digitize_vectors(project_.vector_objects, project_.object_ids,
-                                                       opts);
+            return autodigitize::auto_digitize_vectors(project_.vector_objects, nextIds, opts);
         }
         // Même image que la segmentation (opérations appliquées) si les dimensions concordent,
         // sinon l'image d'origine (traits sombres et pointillé s'y appuient).
@@ -5754,7 +5774,7 @@ void MainWindow::autoDigitize() {
                                             : project_.original;
         const project_ops::DigitizeSource source{&*project_.segmentation, &workImage,
                                                  project_.mm_per_px, &project_.detail_mask};
-        auto outcome = project_ops::digitize_objects(source, project_.object_ids, ds, skipLargest);
+        auto outcome = project_ops::digitize_objects(source, nextIds, ds, skipLargest);
         if (!outcome) {
             return std::unexpected(outcome.error());
         }
@@ -5762,7 +5782,12 @@ void MainWindow::autoDigitize() {
         flowFillCount = outcome->flow_fill;
         return std::move(outcome->objects);
     });
+    const bool cancelled = busy->cancelled();
     busy.reset();
+    if (cancelled) {
+        statusBar()->showMessage(tr("Numérisation annulée : aucune modification."), 6000);
+        return;
+    }
     if (!result) {
         showFriendlyError(this, tr("Numérisation impossible"),
                           tr("L'image n'a pas pu être numérisée automatiquement."),
@@ -5773,6 +5798,7 @@ void MainWindow::autoDigitize() {
     const std::size_t embCount = result->embroideries.size();
     const std::vector<std::string> warnings = std::move(result->warnings);
 
+    project_.object_ids = nextIds;
     auto batch = std::make_unique<commands::AddObjectBatchCommand>(std::move(result->vectors),
                                                                    std::move(result->embroideries));
     if (replacePrevious) {
@@ -9803,6 +9829,7 @@ bool MainWindow::saveProjectToPath(const QString& file) {
     discardPendingRecoverySlot();
     statusBar()->showMessage(tr("Projet enregistré : %1").arg(QFileInfo(file).fileName()));
     setWindowModified(false);
+    updateSavedIndicator(); // la sauvegarde peut partir d’un état déjà « propre »
     return true;
 }
 
@@ -9880,6 +9907,7 @@ void MainWindow::setCurrentProjectPath(const QString& file) {
         saveRecentFiles(recentFiles_);
         refreshRecentFilesUi();
     }
+    updateSavedIndicator(); // chargement/sauvegarde sans changement d’état « modifié »
 }
 
 void MainWindow::openRecentFile(const QString& path) {

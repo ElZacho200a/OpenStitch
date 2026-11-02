@@ -23,7 +23,7 @@ env:
 
 jobs:
   publish-windows-mcp:
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 120
     concurrency:
       group: openstitch-latest-release

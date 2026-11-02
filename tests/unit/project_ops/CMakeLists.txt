@@ -4,6 +4,7 @@ add_executable(test_project_ops
     test_param_ops.cpp
     test_group_ops.cpp
     test_geometry_ops.cpp
+    test_cleanup_ops.cpp
     test_workflow.cpp
     test_params_geometry.cpp
     test_import_text.cpp

@@ -554,7 +554,8 @@ public:
     // Fusion : une rafale de pas aux flèches sur le même objet = un seul pas
     // (opt-in via `setCoalescable`, jamais pour un glisser souris).
     [[nodiscard]] std::string mergeKey() const override {
-        return coalescable_ ? "translate:" + std::to_string(object_.value) : std::string{};
+        return coalescable_ ? "translate:" + std::to_string(object_.value) + ":" + mergeField_
+                            : std::string{};
     }
     bool mergeWith(const ICommand& newer) override {
         const auto* other = dynamic_cast<const TranslateVectorObjectCommand*>(&newer);
@@ -566,6 +567,9 @@ public:
         return true;
     }
     void setCoalescable(bool on) { coalescable_ = on; }
+    // Les champs X et Y d'un inspecteur ne doivent pas fusionner entre eux.
+    // Champ vide : comportement historique des flèches (déplacements libres).
+    void setMergeField(std::string field) { mergeField_ = std::move(field); }
 
 private:
     void shift(document::Project& project, Vec2um delta) const {
@@ -641,6 +645,7 @@ private:
     ObjectId object_;
     Vec2um delta_;
     bool coalescable_{false};
+    std::string mergeField_;
 };
 
 // Redimensionne un objet vectoriel ENTIER autour d'un point d'ancrage FIXE

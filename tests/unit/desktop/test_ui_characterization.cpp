@@ -12,6 +12,7 @@
 #include <QFile>
 #include <QKeySequence>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
 #include <QPointer>
@@ -724,6 +725,83 @@ private slots:
         QVERIFY(window.railEditModeAct_->isChecked());
         QTest::keyClick(&window, Qt::Key_E, Qt::ShiftModifier);
         QVERIFY(!window.satinEditModeAct_->isChecked());
+    }
+
+    void doubleClickOnSelectedSatinEntersRemodelingWithoutChangingTheDesign() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        const ObjectId embroidery = addSatinColumn(project);
+        window.applyLoadedProject(project);
+        window.selectedEmbroidery_ = embroidery;
+        window.updateActions();
+        const auto* object = window.project_.findEmbroidery(embroidery);
+        QVERIFY(object != nullptr);
+        const auto railNodes = std::get<doc::SatinParams>(object->params).rail_a.nodes.size();
+        const auto undoCount = window.undoStack_.undoNames().size();
+
+        QVERIFY(!window.satinEditModeAct_->isChecked());
+        window.onCanvasDoubleClicked(QPointF(5.0, -2.0));
+        QVERIFY(window.satinEditModeAct_->isChecked());
+        QVERIFY(window.railEditModeAct_->isChecked());
+        const auto* after = window.project_.findEmbroidery(embroidery);
+        QVERIFY(after != nullptr);
+        const auto afterRailNodes = std::get<doc::SatinParams>(after->params).rail_a.nodes.size();
+        QCOMPARE(afterRailNodes, railNodes);
+        QCOMPARE(window.undoStack_.undoNames().size(), undoCount);
+        // Un second double-clic en mode rails ne doit pas relancer le mode.
+        window.satinEditModeAct_->setChecked(false);
+        QVERIFY(!window.satinEditModeAct_->isChecked());
+    }
+
+    void tabCyclesSewingOrderOnlyWhileCanvasHasFocus() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        const ObjectId first = addSquareVector(project);
+        addEmbroidery(project, first);
+        const ObjectId second = addSquareVector(project);
+        addEmbroidery(project, second);
+        window.applyLoadedProject(project);
+        activate(window);
+        window.view_->setFocus();
+        QVERIFY(QTest::qWaitFor([&] { return QApplication::focusWidget() == window.view_; }));
+
+        QTest::keyClick(window.view_, Qt::Key_Tab);
+        QCOMPARE(window.selectedObject_.value_or(ObjectId{}), first);
+        QTest::keyClick(window.view_, Qt::Key_Tab);
+        QCOMPARE(window.selectedObject_.value_or(ObjectId{}), second);
+        QTest::keyClick(window.view_, Qt::Key_Backtab);
+        QCOMPARE(window.selectedObject_.value_or(ObjectId{}), first);
+
+        // Dans les autres outils, Tab continue à naviguer entre contrôles.
+        auto* editor = window.findChild<QLineEdit*>();
+        QVERIFY(editor != nullptr);
+        editor->setFocus();
+        QTest::keyClick(editor, Qt::Key_Tab);
+        QCOMPARE(window.selectedObject_.value_or(ObjectId{}), first);
+    }
+
+    void numericPositionChangesCoalesceByFieldAndUndoExactly() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        const ObjectId shape = addSquareVector(project);
+        window.applyLoadedProject(project);
+
+        window.applyVectorBox(shape, QRectF(1.0, 0.0, 10.0, 10.0));
+        window.applyVectorBox(shape, QRectF(2.0, 0.0, 10.0, 10.0));
+        QCOMPARE(window.undoStack_.undoNames().size(), std::size_t{1});
+
+        window.applyVectorBox(shape, QRectF(2.0, 1.0, 10.0, 10.0));
+        QCOMPARE(window.undoStack_.undoNames().size(), std::size_t{2});
+        QVERIFY(window.undoStack_.undo(window.project_));
+        const auto afterY = MainWindow::vectorBoxMm(*window.project_.findObject(shape));
+        QVERIFY(afterY.has_value());
+        QCOMPARE(afterY->x(), 2.0);
+        QCOMPARE(afterY->y(), 0.0);
+        QVERIFY(window.undoStack_.undo(window.project_));
+        const auto original = MainWindow::vectorBoxMm(*window.project_.findObject(shape));
+        QVERIFY(original.has_value());
+        QCOMPARE(original->x(), 0.0);
+        QCOMPARE(original->y(), 0.0);
     }
 
     void contextToolbarDestroysRemovedWidgets() {
