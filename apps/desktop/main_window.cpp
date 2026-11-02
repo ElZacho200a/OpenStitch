@@ -5738,14 +5738,17 @@ void MainWindow::autoDigitize() {
         opts = project_ops::make_auto_options(ds, project_.mm_per_px, skipLargest);
     }
 
-    std::optional<BusyIndicator> busy;
-    busy.emplace(this, tr("Numérisation automatique en cours…"),
-                 std::initializer_list<QTimer*>{autosaveTimer_, simTimer_});
+    // Le calcul asynchrone ne doit pas avancer le compteur du projet tant que le
+    // résultat n'est pas appliqué. Un clic Annuler refuse le lot entier (l'arrêt
+    // CPU coopératif demandera une évolution des API project_ops/autodigitize).
+    auto nextIds = project_.object_ids;
+    BusyIndicator busy(this, tr("Numérisation automatique en cours…"),
+                       {autosaveTimer_, simTimer_}, true);
     std::optional<autodigitize::ContourMetrics> contourMetrics;
     std::size_t flowFillCount = 0;
-    auto result = busy->run([&]() -> Result<autodigitize::AutoResult> {
+    auto result = busy.run([&]() -> Result<autodigitize::AutoResult> {
         if (!hasSegmentation) {
-            return autodigitize::auto_digitize_vectors(project_.vector_objects, project_.object_ids,
+            return autodigitize::auto_digitize_vectors(project_.vector_objects, nextIds,
                                                        opts);
         }
         // Même image que la segmentation (opérations appliquées) si les dimensions concordent,
@@ -5756,7 +5759,7 @@ void MainWindow::autoDigitize() {
                                             : project_.original;
         const project_ops::DigitizeSource source{&*project_.segmentation, &workImage,
                                                  project_.mm_per_px, &project_.detail_mask};
-        auto outcome = project_ops::digitize_objects(source, project_.object_ids, ds, skipLargest);
+        auto outcome = project_ops::digitize_objects(source, nextIds, ds, skipLargest);
         if (!outcome) {
             return std::unexpected(outcome.error());
         }
@@ -5764,7 +5767,10 @@ void MainWindow::autoDigitize() {
         flowFillCount = outcome->flow_fill;
         return std::move(outcome->objects);
     });
-    busy.reset();
+    if (busy.cancelled()) {
+        statusBar()->showMessage(tr("Numérisation annulée : aucune modification."), 6000);
+        return;
+    }
     if (!result) {
         showFriendlyError(this, tr("Numérisation impossible"),
                           tr("L'image n'a pas pu être numérisée automatiquement."),
@@ -5775,6 +5781,7 @@ void MainWindow::autoDigitize() {
     const std::size_t embCount = result->embroideries.size();
     const std::vector<std::string> warnings = std::move(result->warnings);
 
+    project_.object_ids = nextIds;
     auto batch = std::make_unique<commands::AddObjectBatchCommand>(std::move(result->vectors),
                                                                    std::move(result->embroideries));
     if (replacePrevious) {
