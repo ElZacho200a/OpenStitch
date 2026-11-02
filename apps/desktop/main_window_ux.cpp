@@ -24,8 +24,8 @@
 #include <QSettings>
 #include <QShortcut>
 #include <QSignalBlocker>
-#include <QStringList>
 #include <QSpinBox>
+#include <QStringList>
 #include <QStatusBar>
 #include <QTextEdit>
 #include <QTime>
@@ -151,17 +151,16 @@ void MainWindow::dropEvent(QDropEvent* event) {
             const QString suffix = QFileInfo(path).suffix().toLower();
             return suffix == QLatin1String("osp") || isMachineSuffix(suffix);
         };
-        if (insert && paths.size() > 1 &&
-            std::all_of(paths.cbegin(), paths.cend(), canInsert)) {
+        if (insert && paths.size() > 1 && std::all_of(paths.cbegin(), paths.cend(), canInsert)) {
             int added = 0;
             for (const QString& path : paths) {
                 if (insertDesignFile(path)) {
                     ++added;
                 }
             }
-            statusBar()->showMessage(
-                tr("%1 fichier(s) inséré(s) sur %2 déposé(s).").arg(added).arg(paths.size()),
-                8000);
+            const QString message =
+                tr("%1 fichier(s) inséré(s) sur %2 déposé(s).").arg(added).arg(paths.size());
+            statusBar()->showMessage(message, 8000);
             return;
         }
 
