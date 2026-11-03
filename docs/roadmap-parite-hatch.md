@@ -4422,7 +4422,8 @@ ouvrant le lot (§0.1).
 - À faire : mesurer sur un scan à 600 dpi ; trait de 0,1 mm conservé ou signalé.
 - Acceptation : mesure consignée.
 
-### HP-STI-033 — Compensation du tirage pour radial, spirale, echo, motif, crosshatch [P1] — ☐ À faire
+### HP-STI-033 — Compensation du tirage pour radial, spirale, echo, motif, crosshatch [P1] — ☑ Fait (2026-11-03)
+- Livré : `pull_compensation` et `pull_mode` pour echo, motif, radial, spirale, crosshatch (radial : rayons prolongés ; crosshatch : tatamis des couches ; spirale/echo/motif : agrandissement isotrope du contour), mode Auto, `.osp`, CLI, inspecteur ; défaut 0 inchangé. Limite : pour spirale et motif le dépassement est borné par `pull` (±pas d'échantillonnage), pas exact.
 - État : `pull_compensation` seulement sur tatami, directionnel, satin, auto-satin (`embroidery_object.hpp:80/174/243/358`) (recoupe possible HP-ENG-001 : à vérifier).
 - À faire : étendre le champ et `pull_auto.cpp`. [`libs/stitch_generation`, `libs/document`]
 - Acceptation : l'extrémité des rangées dépasse du contour de exactement `pull` mm (test géométrique).
@@ -4479,7 +4480,8 @@ ouvrant le lot (§0.1).
 - État : le fil machine est choisi sans distance renvoyée (`machine_palettes.cpp:68-109`).
 - Acceptation : résumé d'export avec ΔE2000 par bloc et avertissement au-delà d'un seuil réglable.
 
-### HP-FMT-027 — VP3 : déplacement d'un Trim perdu [P1] — ☐ À faire
+### HP-FMT-027 — VP3 : déplacement d'un Trim perdu [P1] — ☑ Fait (2026-11-03)
+- Livré : l'encodeur VP3 écrit un saut (`0x80 0x02 dx dy`) avant le Trim déplacé ; aller-retour exact au pas natif de 10 µm. Un Trim déplacé relu donne un Jump de plus.
 - État : le `Trim` est écrit sans dx/dy et relu en {0,0} (`vp3.cpp:118/228`) alors que le modèle le porte (`machine.cpp:112`) (à vérifier par test).
 - Acceptation : aller-retour VP3 restitue chaque position au µm près.
 
@@ -4564,6 +4566,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-03 | Claude (lot P1-MOTEUR/FMT) | HP-STI-033 ☑ (tirage radial/spirale/echo/motif/crosshatch), HP-FMT-027 ☑ (VP3 Trim déplacé). HP-STI-018.a (PR de plan requise) et HP-ENG-009 (dépend de 018) non traités. |
 | 2026-11-03 | Claude (lot P1-PERF) | HP-PERF-020/024/025/028/032 ☑ : progression et annulation MCP, index de pixels par région, lignes cohérentes parallèles, réduction de couleurs sous-cubique, autosave hors fil UI. HP-PERF-004 et HP-VIEW-009 restent à faire. |
 | 2026-11-03 | Claude (lot P1-AUTO) | HP-AUTO-012/014/020/021 ☑ (EXIF, refusion après « Limiter à N fils », contour running, action « Convertir les vecteurs en broderie »), HP-AUTO-007/010 ◐ (cœur, exposition à câbler). HP-AUTO-011 non traitée (ONNX/packaging). |
 | 2026-11-03 | Claude (lot P1-QA) | HP-QA-012/013/014/017/018/020/022/023 ☑ ; HP-QA-011 et 021 ◐ : CI clang-format 18 et tests Python, UTF-8 sûr, RNG par fil, plafonds image/ZIP, écriture atomique, codes CLI et schémas JSON, outils MCP diff/validate, fuzz JSON, départage total des tris. |
