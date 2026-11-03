@@ -81,6 +81,7 @@ std::optional<QRectF> MainWindow::vectorBoxMm(const document::VectorObject& obje
 }
 
 void MainWindow::connectInspectorEditing() {
+    connectGradientPanel();
     connect(propertiesPanel_, &PropertiesPanel::editTextRequested, this,
             &MainWindow::editSelectedText);
     connect(propertiesPanel_, &PropertiesPanel::fillLayerSelected, this, [this](ObjectId id) {

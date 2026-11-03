@@ -531,6 +531,13 @@ void ColorBlendDialog::setComplementary(bool complementary) {
     profile_->setCurrentIndex(complementary ? 0 : 1);
 }
 
+void ColorBlendDialog::setTransition(double start, double end) {
+    const QSignalBlocker b1(zoneStart_), b2(zoneEnd_);
+    zoneStart_->setValue(start * 100.0);
+    zoneEnd_->setValue(end * 100.0);
+    settingsChanged();
+}
+
 void ColorBlendDialog::setEditing(bool editing) {
     editing_ = editing;
     setWindowTitle(editing ? tr("Modifier le fondu de couleurs · deux fils")

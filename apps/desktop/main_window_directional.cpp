@@ -193,6 +193,7 @@ void MainWindow::buildDirectionalActions(QMenu* embMenu) {
            "Sans image : couleurs manuelles. Avec image : analyse facultative et nuancier actif "
            "du panneau Fils. Annulable en une fois."));
     connect(twoColorBlendAct_, &QAction::triggered, this, &MainWindow::applyTwoColorBlend);
+    buildGradientActions(embMenu);
     addLayerAct_ = embMenu->addAction(tr("Ajouter une couche…"));
     addLayerAct_->setObjectName(QStringLiteral("action_addLayer"));
     addLayerAct_->setToolTip(

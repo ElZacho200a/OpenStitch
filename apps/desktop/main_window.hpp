@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "auto_satin_strategy_ui.hpp"
+#include "gradient_fill_panel.hpp"
 #include "interaction_map.hpp"
 #include "openstitch/commands/transform_ops.hpp"
 #include "openstitch/commands/undo_stack.hpp"
@@ -30,6 +31,7 @@
 #include "openstitch/document/object_fragment.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/path.hpp"
+#include "openstitch/project_ops/gradient_fill.hpp"
 #include "openstitch/segmentation/color_merge.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
@@ -601,6 +603,19 @@ private:
     void blendSelectedZones();
     [[nodiscard]] const document::EmbroideryObject* blendFillFor(ObjectId vector) const;
     void createColorBlend(ObjectId baseId, std::optional<ObjectId> secondId);
+    // Dégradé = remplissage logique (2 couches liées) : bascule Uni/Dégradé, réédition
+    // globale, poignées du canevas. Toute mutation passe par project_ops::gradient_fill.
+    void buildGradientActions(QMenu* embMenu);
+    void connectGradientPanel();
+    void updateGradientPanel();
+    void updateGradientActions();
+    void renderGradientHandles();
+    void setFillMode(bool gradient);
+    void applyGradientState(const GradientFillPanel::State& state);
+    void applyGradientSpec(ObjectId layer, const project_ops::GradientFillSpec& spec);
+    void editGradientWithAssistant(ObjectId layer);
+    void reeditColorBlend(ObjectId layer);
+    [[nodiscard]] std::unique_ptr<commands::ICommand> removeEmbroideryCommand(ObjectId id) const;
     void removeHolesOfSelection(double maxAreaMm2); // 0 : tous les trous
     // Combler les vides d'un bloc uni : demande l'écart et l'aire maximale, puis
     // `fillBlockHolesWith`.
@@ -1367,6 +1382,8 @@ private:
     QAction* drawDirectionGuideAct_{nullptr};
     QAction* drawBreakLineAct_{nullptr};
     std::optional<ObjectId> directionGuideTarget_;
+    QAction* gradientEditModeAct_{nullptr};
+    std::optional<ObjectId> gradientEditTarget_;
     AutoSatinSummaryCache autoSatinSummaryCache_;
     std::vector<Vec2um> pendingGuidePoints_;
     QGraphicsPathItem* guidePreviewItem_{nullptr};

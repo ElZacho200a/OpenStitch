@@ -34,6 +34,8 @@ public:
     [[nodiscard]] bool complementary() const;
     void setComplementary(bool complementary);
     void setEditing(bool editing);
+    // Zone de transition en fractions de l'axe (0 à 1), pour reprendre un dégradé existant.
+    void setTransition(double start, double end);
     // Le contrôleur fournit la séquence EFFECTIVE calculée sur un instantané.
     void setStitchPreview(const stitch::StitchSequence& sequence, ObjectId background,
                           ObjectId foreground, Rgb backgroundRgb, Rgb foregroundRgb);
