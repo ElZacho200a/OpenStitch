@@ -206,8 +206,7 @@ void GradientFillPanel::buildGradientControls() {
     box->addLayout(threadForm);
     connect(startThreadButton_, &QPushButton::clicked, this,
             [this] { emit threadRequested(true); });
-    connect(endThreadButton_, &QPushButton::clicked, this,
-            [this] { emit threadRequested(false); });
+    connect(endThreadButton_, &QPushButton::clicked, this, [this] { emit threadRequested(false); });
 
     auto* form = new QFormLayout;
     zoneStart_ = percentSpin(QStringLiteral("spin_gradientZoneStart"),
