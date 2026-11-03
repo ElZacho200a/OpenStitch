@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include <nlohmann/json.hpp>
 
@@ -342,4 +343,58 @@ TEST_CASE("mcp unsaved edits cannot be replaced silently", "[mcp][contract]") {
     REQUIRE(call(s, "project_close", {{"discard_changes", true}}).at("result").at("isError") ==
             false);
     CHECK(text_of(call(s, "project_status")).at("has_project") == false);
+}
+
+TEST_CASE("mcp progression et annulation de project_digitize", "[mcp][progress][slow]") {
+    const std::string image = std::string(OPENSTITCH_FIXTURES_DIR) + "/tentabrode.png";
+    const auto digitize = [&](const json& id) {
+        return json{{"jsonrpc", "2.0"},
+                    {"id", id},
+                    {"method", "tools/call"},
+                    {"params",
+                     {{"name", "project_digitize"},
+                      {"arguments", {{"image", image}, {"settings", {{"dpi", 284}}}}},
+                      {"_meta", {{"progressToken", "tok-1"}}}}}};
+    };
+
+    SECTION("au moins une progression, resultat inchange") {
+        Server server;
+        std::vector<json> notes;
+        server.set_notifier([&](const std::string& line) { notes.push_back(json::parse(line)); });
+        const auto r = rpc(server, digitize(7));
+        REQUIRE(r.at("result").at("isError") == false);
+        REQUIRE_FALSE(notes.empty());
+        CHECK(notes.front().at("method") == "notifications/progress");
+        CHECK(notes.front().at("params").at("progressToken") == "tok-1");
+        CHECK(notes.front().at("params").at("progress") == 1);
+        CHECK_FALSE(notes.front().contains("id"));
+    }
+
+    SECTION("sans jeton: aucune notification") {
+        Server server;
+        int count = 0;
+        server.set_notifier([&](const std::string&) { ++count; });
+        json request = digitize(8);
+        request["params"].erase("_meta");
+        REQUIRE(rpc(server, request).at("result").at("isError") == false);
+        CHECK(count == 0);
+    }
+
+    SECTION("annulation: arret propre, session intacte") {
+        Server server;
+        int count = 0;
+        server.set_notifier([&](const std::string&) {
+            if (++count == 1) {
+                (void)server.handle(json{{"jsonrpc", "2.0"},
+                                         {"method", "notifications/cancelled"},
+                                         {"params", {{"requestId", 9}}}}
+                                        .dump());
+            }
+        });
+        const auto r = rpc(server, digitize(9));
+        CHECK(r.at("result").at("isError") == true);
+        CHECK(text_of(r).at("error").at("code") == "E_CANCELLED");
+        CHECK(count == 1);
+        CHECK(text_of(call(server, "project_status")).at("has_project") == false);
+    }
 }

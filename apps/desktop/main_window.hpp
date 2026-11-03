@@ -375,6 +375,11 @@ private slots:
     // (autosave.hpp) si le document est modifié et non vide, sans jamais
     // toucher le fichier utilisateur ni `currentProjectPath_`.
     void onAutosaveTick();
+    // HP-PERF-032 : l'ecriture se fait dans un fil de travail sur un instantane du projet ;
+    // `finishAutosave` (fil d'interface) en applique le resultat. `flushAutosave` attend une
+    // ecriture en cours et la termine (fermeture, enregistrement, tests).
+    void finishAutosave();
+    void flushAutosave();
     // Appelé une fois, différé après le premier passage de la boucle
     // d'évènements qui suit la construction (après `window.show()`) : propose
     // de récupérer chaque créneau autosave orphelin laissé par un arrêt
@@ -1986,6 +1991,9 @@ private:
     // déclenche onAutosaveTick() -- construit dans le constructeur, démarré
     // immédiatement, arrêté par closeEvent() sur une fermeture acceptée.
     QTimer* autosaveTimer_{nullptr};
+    QThread* autosaveThread_{nullptr};           // ecriture en cours (nullptr = aucune)
+    std::shared_ptr<std::string> autosaveError_; // vide = succes ; ecrit par le fil, lu apres
+    QString autosaveOspPath_;                    // creneau de l'ecriture en cours
 
     [[nodiscard]] bool simulating() const { return simStep_ >= 0; }
 
