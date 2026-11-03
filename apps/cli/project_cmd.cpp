@@ -1020,7 +1020,7 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
 
     // Carte de risque de tirage : heuristique et profils de tissus NON calibres.
     struct FabricArgs {
-        std::string osp, output, map, fabric{"woven"};
+        std::string osp, output, map, fabric{"auto"};
         double cellMm{1.0};
         bool noClobber{false};
     };
@@ -1029,8 +1029,8 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
                                 "Indice relatif de risque de tirage du tissu (non calibre), "
                                 "orientation et concentration des points");
     c->add_option("osp", frArgs->osp, "Projet .osp")->required();
-    c->add_option("--fabric", frArgs->fabric, "Profil indicatif : woven, jersey, felt")
-        ->check(CLI::IsMember({"woven", "jersey", "felt"}));
+    c->add_option("--fabric", frArgs->fabric, "Profil indicatif : auto, woven, jersey, felt")
+        ->check(CLI::IsMember({"auto", "woven", "jersey", "felt"}));
     c->add_option("--cell-mm", frArgs->cellMm, "Cellule d'analyse en mm (defaut 1)")
         ->check(CLI::Range(0.1, 10.0));
     c->add_option("--heatmap", frArgs->map, "Carte PNG de l'indice relatif (0..100)");

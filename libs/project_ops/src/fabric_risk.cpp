@@ -26,15 +26,23 @@ Result<FabricRiskReport> measure_fabric_risk(const document::Project& project,
             Error{ErrorCategory::UserInput, "risque tissu : parametres de grille invalides", {}});
     }
 
-    // Coefficients exploratoires, sans signification metrologique : a calibrer sur machine.
+    // Le tissu du projet renseigne le mode auto ; aucune calibration physique impliquee.
+    // Les matieres sans profil heuristique explicite se replient sur le coton tisse.
+    std::string resolvedFabric = options.fabric;
+    if (resolvedFabric == "auto") {
+        resolvedFabric = project.fabric.material;
+        if (resolvedFabric != "jersey" && resolvedFabric != "felt" && resolvedFabric != "woven") {
+            resolvedFabric = "woven";
+        }
+    }
     double susceptibility = 1.0;
-    if (options.fabric == "jersey") {
+    if (resolvedFabric == "jersey") {
         susceptibility = 1.45;
-    } else if (options.fabric == "felt") {
+    } else if (resolvedFabric == "felt") {
         susceptibility = 0.75;
-    } else if (options.fabric != "woven") {
+    } else if (resolvedFabric != "woven") {
         return std::unexpected(
-            Error{ErrorCategory::UserInput, "risque tissu : choisir woven, jersey ou felt", {}});
+            Error{ErrorCategory::UserInput, "risque tissu : profil invalide", {}});
     }
 
     auto model = detail::build_thread_model(project);
@@ -134,7 +142,8 @@ Result<FabricRiskReport> measure_fabric_risk(const document::Project& project,
     nlohmann::json doc = {
         {"schema", kFabricRiskSchema},
         {"method", "relative_heuristic_v1"},
-        {"fabric", options.fabric},
+        {"fabric", resolvedFabric},
+        {"fabric_selection", options.fabric},
         {"cell_mm", cell},
         {"reference_spacing_mm", options.reference_spacing_mm},
         {"grid",
@@ -148,7 +157,7 @@ Result<FabricRiskReport> measure_fabric_risk(const document::Project& project,
     report.json = doc.dump(2);
     report.text = "Risque relatif de tirage du tissu (heuristique NON calibree)\n"
                   "  tissu : " +
-                  options.fabric + "\n" + "  indice max : " + std::to_string(report.max_score) +
+                  resolvedFabric + "\n" + "  indice max : " + std::to_string(report.max_score) +
                   " / 100\n" + "  indice p99 : " + std::to_string(report.p99_score) + " / 100\n" +
                   "  surface indice >= 70 : " + std::to_string(hotspots) + " mm2\n" +
                   "  Attention : aucune mesure de tension ni de deformation physique.\n";
