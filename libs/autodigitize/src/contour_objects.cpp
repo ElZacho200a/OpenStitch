@@ -44,7 +44,9 @@ SegmentPlan classify_segment(const ContourSegment& seg, ContourTechnique techniq
     const ContourStrategy run =
         w < minSatin / 2.0 ? ContourStrategy::SingleRun : ContourStrategy::TripleRun;
 
-    plan.strategy = run;
+    // HP-AUTO-021 : « Running » force le point droit simple sur tous les segments retenus,
+    // quelle que soit la largeur du trait (pas de triple).
+    plan.strategy = technique == ContourTechnique::Running ? ContourStrategy::SingleRun : run;
     if (technique == ContourTechnique::Satin) {
         plan.fallback = true;
         plan.reason = "satin automatique desactive : point droit";

@@ -152,6 +152,95 @@ Result<void> check_encoded_image(std::span<const std::uint8_t> bytes) {
     return {};
 }
 
+// HP-AUTO-014 : orientation EXIF (1..8) d'un JPEG, 1 si absente ou illisible. Analyse minimale
+// des segments APP1 « Exif » ; aucune dépendance (cv::imdecode avec IMREAD_UNCHANGED ignore
+// l'orientation).
+int exif_orientation(const std::vector<char>& data) {
+    const auto at = [&](std::size_t i) { return static_cast<std::uint8_t>(data[i]); };
+    const std::size_t n = data.size();
+    if (n < 4 || at(0) != 0xFF || at(1) != 0xD8) {
+        return 1;
+    }
+    std::size_t pos = 2;
+    while (pos + 4 <= n && at(pos) == 0xFF) {
+        const std::uint8_t marker = at(pos + 1);
+        if (marker == 0xDA || marker == 0xD9) {
+            break;
+        }
+        const std::size_t len = (static_cast<std::size_t>(at(pos + 2)) << 8) | at(pos + 3);
+        if (len < 2 || pos + 2 + len > n) {
+            break;
+        }
+        const std::size_t seg = pos + 4;
+        const std::size_t segEnd = pos + 2 + len;
+        if (marker == 0xE1 && segEnd - seg >= 14 && data[seg] == 'E' && data[seg + 1] == 'x' &&
+            data[seg + 2] == 'i' && data[seg + 3] == 'f' && at(seg + 4) == 0 && at(seg + 5) == 0) {
+            const std::size_t tiff = seg + 6;
+            const bool le = data[tiff] == 'I' && data[tiff + 1] == 'I';
+            if (!le && !(data[tiff] == 'M' && data[tiff + 1] == 'M')) {
+                return 1;
+            }
+            const auto u16 = [&](std::size_t o) -> std::size_t {
+                return le ? (at(o) | (static_cast<std::size_t>(at(o + 1)) << 8))
+                          : ((static_cast<std::size_t>(at(o)) << 8) | at(o + 1));
+            };
+            const auto u32 = [&](std::size_t o) -> std::size_t {
+                return le ? (u16(o) | (u16(o + 2) << 16)) : ((u16(o) << 16) | u16(o + 2));
+            };
+            if (tiff + 8 > segEnd) {
+                return 1;
+            }
+            const std::size_t ifd = tiff + u32(tiff + 4);
+            if (ifd + 2 > segEnd) {
+                return 1;
+            }
+            const std::size_t count = u16(ifd);
+            for (std::size_t i = 0; i < count; ++i) {
+                const std::size_t e = ifd + 2 + i * 12;
+                if (e + 12 > segEnd) {
+                    break;
+                }
+                if (u16(e) == 0x0112) {
+                    const std::size_t v = u16(e + 8);
+                    return v >= 1 && v <= 8 ? static_cast<int>(v) : 1;
+                }
+            }
+            return 1;
+        }
+        pos = segEnd;
+    }
+    return 1;
+}
+
+void apply_orientation(cv::Mat& mat, int orientation) {
+    switch (orientation) {
+    case 2:
+        cv::flip(mat, mat, 1);
+        break;
+    case 3:
+        cv::flip(mat, mat, -1);
+        break;
+    case 4:
+        cv::flip(mat, mat, 0);
+        break;
+    case 5:
+        cv::transpose(mat, mat);
+        break;
+    case 6:
+        cv::rotate(mat, mat, cv::ROTATE_90_CLOCKWISE);
+        break;
+    case 7:
+        cv::transpose(mat, mat);
+        cv::flip(mat, mat, -1);
+        break;
+    case 8:
+        cv::rotate(mat, mat, cv::ROTATE_90_COUNTERCLOCKWISE);
+        break;
+    default:
+        break;
+    }
+}
+
 // Lecture des octets puis cv::imdecode : contrairement à cv::imread, ce
 // chemin gère les chemins Windows non-ASCII (std::filesystem ouvre le
 // fichier, OpenCV ne voit que des octets).
@@ -192,6 +281,7 @@ Result<cv::Mat> decode_file(const std::filesystem::path& path) {
     if (auto ok = check_pixel_budget(mat.cols, mat.rows); !ok) {
         return std::unexpected(ok.error());
     }
+    apply_orientation(mat, exif_orientation(bytes));
     return mat;
 }
 

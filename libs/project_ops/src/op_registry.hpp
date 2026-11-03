@@ -83,6 +83,9 @@ void register_cleanup_ops(
 void register_group_ops(
     std::vector<OpSpec>& out); // op_group.cpp    : groupes, empilement, position/taille
 
+void register_convert_ops(
+    std::vector<OpSpec>& out); // op_convert.cpp : vecteurs -> broderie (HP-AUTO-012)
+
 // Aides communes (implémentées dans json_common.cpp).
 // Lit un identifiant d'objet de broderie existant dans `ctx.args[key]` ; refus nommé sinon.
 // Exécute une autre opération du registre dans le même contexte (même projet, même pile) :
