@@ -1394,6 +1394,35 @@ void MainWindow::refreshHints() {
     static_cast<ElidedLabel*>(hintsLabel_)->setFullText(hintsFullText_);
 }
 
+// SELECTION-MUTATOR:BEGIN
+// Seul bloc autorisé à écrire selectedObject_/selectedRegion_/selectedEmbroidery_/
+// multiSelection_ (garde tests/check_selection_single_mutator.cmake). Tout autre
+// site passe par setSelection()/editSelection().
+void MainWindow::setSelection(Selection selection) {
+    selection = desktop::normalize_selection(std::move(selection), [this](RegionId r) {
+        return project_.segmentation && project_.segmentation->find(r) != nullptr;
+    });
+    std::vector<ObjectId> objects = std::move(selection.objects);
+    selectedRegion_ = selection.region;
+    extraRegions_ = std::move(selection.extraRegions);
+    selectedEmbroidery_ = selection.embroidery;
+    if (objects.empty()) {
+        selectedObject_.reset();
+    } else {
+        selectedObject_ = objects.back();
+    }
+    if (objects.size() > 1) {
+        multiSelection_ = std::move(objects);
+    } else {
+        multiSelection_.clear(); // cas legacy : 0 ou 1 objet porté par selectedObject_
+    }
+    Q_ASSERT(multiSelection_.empty() ||
+             (selectedObject_ && multiSelection_.back() == *selectedObject_));
+    Q_ASSERT(multiSelection_.empty() || (!selectedRegion_ && !selectedEmbroidery_));
+}
+
+// SELECTION-MUTATOR:END
+
 namespace {
 
 // Active/désactive une action ET explique, dans l'info-bulle et la barre d'état, ce qu'il faut
