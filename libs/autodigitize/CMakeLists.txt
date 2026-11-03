@@ -9,6 +9,7 @@ add_library(openstitch_autodigitize
     src/ring_detect.cpp
     src/stipple_objects.cpp
     src/two_color_blend.cpp
+    src/vector_convert.cpp
 )
 add_library(openstitch::autodigitize ALIAS openstitch_autodigitize)
 

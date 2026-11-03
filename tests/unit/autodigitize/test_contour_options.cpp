@@ -3,6 +3,7 @@
 
 #include "openstitch/auto_satin/graph_cleanup.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
+#include "openstitch/autodigitize/contour_objects.hpp"
 #include "openstitch/autodigitize/contour_options.hpp"
 
 using namespace openstitch;
@@ -44,4 +45,26 @@ TEST_CASE("contour thresholds never go below the physical guards at detail 1") {
     CHECK(contour_thresholds(5.0).min_branch_length.value == t.min_branch_length.value);
     CHECK(contour_thresholds(-3.0).min_branch_length.value ==
           contour_thresholds(0.0).min_branch_length.value);
+}
+
+TEST_CASE("technique Running : point droit simple sur tous les segments retenus") {
+    const ContourLimits lim = contour_limits();
+    ContourSegment wide;
+    wide.length_um = 60'000.0;
+    wide.mean_width_um = 10'000.0; // trait large : Automatic donnerait un point triple
+    CHECK(classify_segment(wide, ContourTechnique::Automatic, lim).strategy ==
+          ContourStrategy::TripleRun);
+    const auto run = classify_segment(wide, ContourTechnique::Running, lim);
+    CHECK(run.strategy == ContourStrategy::SingleRun);
+    CHECK_FALSE(run.fallback);
+
+    ContourSegment thin = wide;
+    thin.mean_width_um = 100.0;
+    CHECK(classify_segment(thin, ContourTechnique::Running, lim).strategy ==
+          ContourStrategy::SingleRun);
+
+    ContourSegment tiny = wide;
+    tiny.length_um = 1.0; // physiquement impossible : toujours rejete
+    CHECK(classify_segment(tiny, ContourTechnique::Running, lim).strategy ==
+          ContourStrategy::Rejected);
 }
