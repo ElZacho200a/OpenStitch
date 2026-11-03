@@ -471,7 +471,6 @@ void MainWindow::renderGradientHandles() {
     limitPen.setCosmetic(true);
     limitPen.setWidthF(1.0);
     QLineF dir(from, to);
-    QLineF normal = dir.normalVector();
     double reach = 0.0;
     for (const auto& set : shape) {
         for (const auto& node : set.outer.nodes) {
@@ -480,18 +479,20 @@ void MainWindow::renderGradientHandles() {
                                   -to_millimeters(node.pos.y).value - (from.y() + to.y()) / 2));
         }
     }
-    const auto limit = [&](QPointF at) {
-        QLineF line = normal;
+    const auto limitLine = [reach](QPointF at, QLineF currentAxis) {
+        QLineF line = currentAxis.normalVector();
         line.setLength(reach + 2.0);
         line.translate(at - line.p1());
-        QLineF mirrored(at, at * 2 - line.p2());
-        auto* a = scene_->addLine(QLineF(line.p2(), mirrored.p2()), limitPen);
-        a->setZValue(97);
-        baseItems_.append(a);
-        return a;
+        return QLineF(line.p2(), at * 2 - line.p2());
     };
-    limit(from);
-    limit(to);
+    const auto limit = [&](QPointF at) {
+        auto* item = scene_->addLine(limitLine(at, dir), limitPen);
+        item->setZValue(97);
+        baseItems_.append(item);
+        return item;
+    };
+    auto* startLimit = limit(from);
+    auto* endLimit = limit(to);
 
     const auto commit = [this, target, generation, shape,
                          gradient](project_ops::GradientHandle kind, QPointF released,
@@ -516,10 +517,17 @@ void MainWindow::renderGradientHandles() {
                 applyGradientSpec(target, next);
             });
     };
-    const auto preview = [axis, shape, gradient](project_ops::GradientHandle kind, QPointF at) {
+    const auto preview = [axis, startLimit, endLimit, limitLine, shape,
+                          gradient](project_ops::GradientHandle kind, QPointF at) {
         if (const auto moved =
                 project_ops::drag_gradient_handle(shape, gradient, kind, toModel(at))) {
-            axis->setLine(QLineF(toScene(moved->from), toScene(moved->to)));
+            const QPointF start = toScene(moved->from);
+            const QPointF end = toScene(moved->to);
+            const QLineF currentAxis(start, end);
+            axis->setLine(currentAxis);
+            // L'utilisateur voit les limites du fondu pendant le geste, pas après.
+            startLimit->setLine(limitLine(start, currentAxis));
+            endLimit->setLine(limitLine(end, currentAxis));
         }
     };
     const auto addHandle = [&](QPointF at, project_ops::GradientHandle kind, const QString& tip,
