@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <utility>
 
+#include "openstitch/core/parallel.hpp"
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/image/ops.hpp"
 
@@ -317,7 +318,13 @@ std::vector<ColorSample> sample_region_colors(const image::Image& image, Millime
     const double boxPixels = static_cast<double>(x1 - x0 + 1) * static_cast<double>(y1 - y0 + 1);
     const int stride = std::max(
         1, static_cast<int>(std::ceil(std::sqrt(boxPixels / static_cast<double>(max_samples)))));
-    for (int py = y0; py <= y1; py += stride) {
+    // HP-PERF-025 : une tâche par ligne échantillonnée (lit l'image et les anneaux constants,
+    // écrit sa seule case) ; assemblage séquentiel dans l'ordre des lignes.
+    const auto rowCount = static_cast<std::size_t>((y1 - y0) / stride) + 1;
+    std::vector<std::vector<ColorSample>> rows(rowCount);
+    parallel_for(rowCount, [&](std::size_t r) {
+        const int py = y0 + static_cast<int>(r) * stride;
+        std::vector<ColorSample>& line = rows[r];
         for (int px = x0; px <= x1; px += stride) {
             const double xUm = (px + 0.5 - w / 2.0) * pxUm;
             const double yUm = (h / 2.0 - (py + 0.5)) * pxUm;
@@ -332,8 +339,11 @@ std::vector<ColorSample> sample_region_colors(const image::Image& image, Millime
             if (pixel[3] < 128) {
                 continue;
             }
-            out.push_back({to_um(xUm, yUm), {pixel[0], pixel[1], pixel[2]}});
+            line.push_back({to_um(xUm, yUm), {pixel[0], pixel[1], pixel[2]}});
         }
+    });
+    for (auto& line : rows) {
+        out.insert(out.end(), line.begin(), line.end());
     }
     return out;
 }

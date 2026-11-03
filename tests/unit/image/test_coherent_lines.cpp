@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 
 #include "openstitch/image/ops.hpp"
 
@@ -50,6 +53,44 @@ std::size_t line_count(const Image& img, int y0, int y1) {
         }
     }
     return n;
+}
+
+// Force le nombre de fils de `parallel_for` le temps d'un bloc (OPENSTITCH_THREADS).
+struct ThreadCountOverride {
+    explicit ThreadCountOverride(const char* value) {
+#ifdef _WIN32
+        _putenv_s("OPENSTITCH_THREADS", value);
+#else
+        setenv("OPENSTITCH_THREADS", value, 1);
+#endif
+    }
+    ~ThreadCountOverride() {
+#ifdef _WIN32
+        _putenv_s("OPENSTITCH_THREADS", "");
+#else
+        unsetenv("OPENSTITCH_THREADS");
+#endif
+    }
+    ThreadCountOverride(const ThreadCountOverride&) = delete;
+    ThreadCountOverride& operator=(const ThreadCountOverride&) = delete;
+};
+// Image synthetique bruitee avec des formes (tangentes variees), deterministe.
+Image synthetic_scene(int w, int h) {
+    Image img = make_flat(w, h, 235);
+    std::uint32_t s = 99U;
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            const int dx = x - w / 2;
+            const int dy = y - h / 2;
+            const bool disc = dx * dx + dy * dy < (h / 3) * (h / 3);
+            const bool bars = ((x + y / 2) / 9) % 4 == 0;
+            s = s * 1664525U + 1013904223U;
+            const int noise = static_cast<int>((s >> 24) % 24);
+            const int v = (disc ? 60 : (bars ? 120 : 230)) + noise - 12;
+            paint(img, x, y, static_cast<std::uint8_t>(std::clamp(v, 0, 255)));
+        }
+    }
+    return img;
 }
 
 } // namespace
@@ -140,4 +181,40 @@ TEST_CASE("lignes coherentes : parametres invalides refuses, nom lisible") {
     CHECK_FALSE(apply_op(img, CoherentLinesOp{.tau = 1.5}).has_value());
     CHECK_FALSE(apply_op(img, CoherentLinesOp{.etf_radius = 0}).has_value());
     CHECK(op_name(CoherentLinesOp{}) == "Lignes cohérentes");
+}
+
+TEST_CASE("lignes coherentes : meme resultat avec un seul fil et avec plusieurs (HP-PERF-025)") {
+    const Image img = synthetic_scene(150, 110);
+    CoherentLinesOp op;
+    op.sigma_m = 3.0;
+    Result<Image> single = fail(ErrorCategory::Internal, "non calcule");
+    Result<Image> many = fail(ErrorCategory::Internal, "non calcule");
+    {
+        const ThreadCountOverride one("1");
+        single = apply_op(img, op);
+    }
+    {
+        const ThreadCountOverride eight("8");
+        many = apply_op(img, op);
+    }
+    REQUIRE(single.has_value());
+    REQUIRE(many.has_value());
+    CHECK(single->rgba == many->rgba);
+    CHECK(line_count(*single, 0, img.height) > 0);
+}
+
+// HP-PERF-011 : mesure (cache : non lance par defaut ; aucun seuil, juste un temps affiche).
+TEST_CASE("lignes coherentes : mesure 1 fil / N fils [.bench]") {
+    const Image img = synthetic_scene(1600, 1200);
+    const CoherentLinesOp op{};
+    for (const char* threads : {"1", "8"}) {
+        const ThreadCountOverride guard(threads);
+        const auto t0 = std::chrono::steady_clock::now();
+        const auto out = apply_op(img, op);
+        const auto t1 = std::chrono::steady_clock::now();
+        REQUIRE(out.has_value());
+        WARN("fils=" << threads << " : "
+                     << std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count()
+                     << " ms");
+    }
 }
