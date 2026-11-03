@@ -4,6 +4,7 @@ find_package(OpenCV CONFIG REQUIRED COMPONENTS core imgcodecs)
 
 add_executable(test_image
     test_image_load.cpp
+    test_image_limits.cpp
     test_ops.cpp
     test_coherent_lines.cpp
 )

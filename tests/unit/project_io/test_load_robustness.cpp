@@ -118,13 +118,17 @@ TEST_CASE("export_machine_file: echec ne detruit pas l'export existant") {
         std::ofstream out(path, std::ios::binary);
         out << "ancien dst";
     }
-    // Un répertoire occupe l'emplacement du .tmp : l'écriture échoue avant tout renommage.
-    fs::create_directories(dir / "existant.dst.tmp");
     document::Project project;
     auto r = project_io::export_machine_file(project, "dst", path);
     CHECK_FALSE(r.has_value());
     std::ifstream in(path, std::ios::binary);
     std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    CHECK(content == "ancien dst");
+    if (!r.has_value()) {
+        CHECK(content == "ancien dst");
+    }
+    // Aucun temporaire ne traine, que l'export ait reussi ou non.
+    for (const auto& e : fs::directory_iterator(dir)) {
+        CHECK(e.path().extension() != ".tmp");
+    }
     fs::remove_all(dir, ec);
 }

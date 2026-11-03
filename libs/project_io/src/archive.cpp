@@ -6,7 +6,10 @@
 #include <mz_zip.h>
 #include <mz_zip_rw.h>
 
+#include <algorithm>
 #include <cstring>
+
+#include "openstitch/core/input_limits.hpp"
 
 namespace openstitch::project_io::detail {
 
@@ -67,30 +70,87 @@ Result<std::map<std::string, Blob>> read_zip(const std::filesystem::path& path) 
                     "Fichier projet illisible ou introuvable : " + path_utf8(path));
     }
 
-    std::map<std::string, Blob> entries;
+    // Passe 1 (HP-QA-013) : valide TOUS les en-têtes (nombre, tailles annoncées, total, doublons)
+    // avant de décompresser ou d'allouer quoi que ce soit.
+    std::map<std::string, std::int64_t> declared;
+    std::int64_t totalBytes = 0;
     std::int32_t err = mz_zip_reader_goto_first_entry(reader);
     while (err == MZ_OK) {
         mz_zip_file* info = nullptr;
         if (mz_zip_reader_entry_get_info(reader, &info) != MZ_OK || info == nullptr) {
             return fail(ErrorCategory::InvalidFile, "Entrée ZIP corrompue");
         }
+        if (declared.size() >= static_cast<std::size_t>(limits::kMaxZipEntries)) {
+            return fail_coded(ErrorCategory::InvalidFile, limits::code::kZipTooManyEntries,
+                              "Archive projet refusée : trop d'entrées (maximum " +
+                                  std::to_string(limits::kMaxZipEntries) + ")",
+                              "Le fichier n'est probablement pas un projet OpenStitch valide ; "
+                              "ne l'ouvrez que s'il provient d'une source de confiance.");
+        }
         const std::string name = info->filename;
         const std::int64_t size = info->uncompressed_size;
         if (size < 0) {
             return fail(ErrorCategory::InvalidFile, "Taille d'entrée ZIP invalide");
         }
-        Blob blob(static_cast<std::size_t>(size));
+        if (size > limits::kMaxZipEntryBytes) {
+            return fail_coded(
+                ErrorCategory::InvalidFile, limits::code::kZipEntryTooLarge,
+                "Archive projet refusée : l'entrée « " + name + " » annonce " +
+                    std::to_string(size / (1024 * 1024)) + " Mio décompressés (maximum " +
+                    std::to_string(limits::kMaxZipEntryBytes / (1024 * 1024)) + " Mio)",
+                "Archive corrompue ou malveillante (bombe de décompression) : "
+                "restaurez une sauvegarde du projet.");
+        }
+        totalBytes += size;
+        if (totalBytes > limits::kMaxZipTotalBytes) {
+            return fail_coded(ErrorCategory::InvalidFile, limits::code::kZipTotalTooLarge,
+                              "Archive projet refusée : taille décompressée totale supérieure à " +
+                                  std::to_string(limits::kMaxZipTotalBytes / (1024 * 1024)) +
+                                  " Mio",
+                              "Archive corrompue ou malveillante (bombe de décompression) : "
+                              "restaurez une sauvegarde du projet.");
+        }
+        if (!declared.emplace(name, size).second) {
+            return fail_coded(ErrorCategory::InvalidFile, limits::code::kZipDuplicateEntry,
+                              "Archive projet refusée : l'entrée « " + name +
+                                  " » apparaît plusieurs fois",
+                              "Le fichier a été modifié ou fabriqué à la main ; restaurez une "
+                              "sauvegarde du projet.");
+        }
+        err = mz_zip_reader_goto_next_entry(reader);
+    }
+    if (err != MZ_END_OF_LIST && err != MZ_OK) {
+        return fail(ErrorCategory::InvalidFile, "Archive projet corrompue");
+    }
+
+    // Passe 2 : lecture par blocs ; le tampon grandit avec les octets réellement décompressés, de
+    // sorte qu'une taille annoncée mensongère ne provoque aucune allocation disproportionnée.
+    std::map<std::string, Blob> entries;
+    constexpr std::size_t kChunk = std::size_t{4} * 1024 * 1024;
+    err = mz_zip_reader_goto_first_entry(reader);
+    while (err == MZ_OK) {
+        mz_zip_file* info = nullptr;
+        if (mz_zip_reader_entry_get_info(reader, &info) != MZ_OK || info == nullptr) {
+            return fail(ErrorCategory::InvalidFile, "Entrée ZIP corrompue");
+        }
+        const std::string name = info->filename;
+        const auto size = static_cast<std::size_t>(declared.at(name));
+        Blob blob;
         if (mz_zip_reader_entry_open(reader) != MZ_OK) {
             return fail(ErrorCategory::InvalidFile,
                         "Impossible d'ouvrir l'entrée « " + name + " »");
         }
-        if (size > 0) {
-            const std::int32_t read =
-                mz_zip_reader_entry_read(reader, blob.data(), static_cast<std::int32_t>(size));
-            if (read != static_cast<std::int32_t>(size)) {
+        while (blob.size() < size) {
+            const std::size_t want = std::min(kChunk, size - blob.size());
+            const std::size_t old = blob.size();
+            blob.resize(old + want);
+            const std::int32_t got = mz_zip_reader_entry_read(reader, blob.data() + old,
+                                                              static_cast<std::int32_t>(want));
+            if (got <= 0) {
                 mz_zip_reader_entry_close(reader);
                 return fail(ErrorCategory::InvalidFile, "Lecture incomplète de « " + name + " »");
             }
+            blob.resize(old + static_cast<std::size_t>(got));
         }
         mz_zip_reader_entry_close(reader);
         entries.emplace(name, std::move(blob));

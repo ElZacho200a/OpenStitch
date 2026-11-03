@@ -35,3 +35,9 @@ target_link_libraries(test_stitch
     PRIVATE openstitch::stitch openstitch::stitch_generation Catch2::Catch2WithMain
             openstitch::warnings)
 catch_discover_tests(test_stitch)
+
+# HP-QA-011 : tout tri instable des moteurs de points doit porter une annotation
+# `total-order-ok:` (cle totale) -- voir tests/check_sort_total_order.cmake.
+add_test(NAME check_sort_total_order
+    COMMAND ${CMAKE_COMMAND} -DSRC_DIR=${PROJECT_SOURCE_DIR}
+            -P ${PROJECT_SOURCE_DIR}/tests/check_sort_total_order.cmake)

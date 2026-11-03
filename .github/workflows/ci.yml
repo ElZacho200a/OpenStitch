@@ -203,8 +203,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: clang-format (vérification, sans modification)
         run: |
-          sudo apt-get update && sudo apt-get install -y clang-format
-          git ls-files '*.cpp' '*.hpp' | xargs clang-format --dry-run --Werror
+          sudo apt-get update && sudo apt-get install -y clang-format-18
+          v="$(clang-format-18 --version)"
+          echo "$v"
+          case "$v" in
+            *"version 18."*) ;;
+            *) echo "clang-format 18.x requis (règle du dépôt), obtenu : $v" >&2; exit 1 ;;
+          esac
+          git ls-files '*.cpp' '*.hpp' | xargs clang-format-18 --dry-run --Werror
 
   # Publie l'exécutable Windows sur une release GitHub "latest", uniquement
   # une fois que build + tests + garde-fou Linux + formatage sont tous verts

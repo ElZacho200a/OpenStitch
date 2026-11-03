@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/formats/color_companion.hpp"
+#include "openstitch/core/atomic_file.hpp"
 
 #include <charconv>
 #include <fstream>
@@ -199,16 +200,8 @@ Result<void> write_color_companion_file(const std::filesystem::path& design_path
         return std::unexpected(bytes.error());
     }
     const auto path = companion_path(design_path, kind);
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
-    if (!file) {
-        return fail(ErrorCategory::UserInput, "Écriture impossible : " + path.string());
-    }
-    file.write(reinterpret_cast<const char*>(bytes->data()),
-               static_cast<std::streamsize>(bytes->size()));
-    if (!file) {
-        return fail(ErrorCategory::UserInput, "Écriture impossible : " + path.string());
-    }
-    return {};
+    // HP-QA-021 : primitive atomique commune (tmp unique, flush disque, rename).
+    return write_file_atomic(path, std::span<const std::uint8_t>(*bytes));
 }
 
 Result<std::optional<std::vector<ThreadColor>>>
