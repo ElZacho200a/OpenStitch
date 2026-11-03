@@ -8,6 +8,7 @@
 #include "openstitch/formats/exp.hpp"
 #include "openstitch/formats/jef.hpp"
 #include "openstitch/formats/pes.hpp"
+#include "openstitch/formats/vp3.hpp"
 
 namespace openstitch::formats {
 
@@ -68,6 +69,16 @@ Result<stitch::StitchSequence> decode_jef_simple(std::span<const std::uint8_t> b
     }
     return std::move(d->sequence);
 }
+Result<std::vector<std::uint8_t>> encode_vp3_simple(const stitch::StitchSequence& s) {
+    return encode_vp3(s);
+}
+Result<stitch::StitchSequence> decode_vp3_simple(std::span<const std::uint8_t> bytes) {
+    auto d = decode_vp3(bytes);
+    if (!d) {
+        return std::unexpected(d.error());
+    }
+    return std::move(d->sequence);
+}
 Result<std::vector<std::uint8_t>> encode_exp_simple(const stitch::StitchSequence& s) {
     return encode_exp(s);
 }
@@ -118,6 +129,19 @@ const std::vector<FormatInfo>& all_formats() {
             .decode = &decode_jef_simple,
             .encode_ex = &encode_jef,
             .decode_ex = &decode_jef,
+            .carries_colors = true,
+        },
+        FormatInfo{
+            .id = "vp3",
+            .display_name = "Husqvarna/Pfaff VP3",
+            .extensions = {"vp3"},
+            .can_read = true,
+            .can_write = true,
+            .default_constraints = vp3_constraints(),
+            .encode = &encode_vp3_simple,
+            .decode = &decode_vp3_simple,
+            .encode_ex = &encode_vp3,
+            .decode_ex = &decode_vp3,
             .carries_colors = true,
         },
         FormatInfo{

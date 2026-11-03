@@ -17,11 +17,22 @@
 
 namespace openstitch::document {
 
+// Style du point de contour (HP-STI-001). `Run` : comportement historique piloté par
+// `repeats` (1 simple, 2 aller-retour, 3 triple). Les autres styles ignorent `repeats`.
+enum class RunningStyle : std::uint8_t {
+    Run,        // point droit, `repeats` passages
+    Bean,       // point « bean » : chaque intervalle cousu 3 fois
+    Backstitch, // point arrière : chaque point revient en arrière
+    Stem,       // point tige : pénétrations décalées latéralement (aspect torsadé)
+};
+
 // Paramètres du point droit de contour (§5.1).
 struct RunningStitchParams {
     Micrometers stitch_length{3'000}; // longueur cible (3 mm)
     Micrometers min_length{500};      // en dessous, les points sont fusionnés
     int repeats{1};                   // 1 simple, 2 aller-retour, 3 point triple
+    RunningStyle style{RunningStyle::Run};
+    Micrometers stem_offset{300}; // décalage latéral du point tige (0,3 mm)
 
     bool operator==(const RunningStitchParams&) const = default;
 };
@@ -33,13 +44,29 @@ struct RunningStitchParams {
 // réglages manuels étant alors ignorés. N'agit qu'à la génération.
 enum class UnderlayMode : std::uint8_t { Manual, Auto };
 
+// Choix de la compensation du tirage (HP-ENG-001.b). `Manual` (défaut, comportement
+// historique) : `pull_compensation` s'applique tel quel. `Auto` : le moteur calcule la
+// compensation selon la taille et la largeur de la forme (`stitch_generation::
+// resolve_pull_compensation`), le réglage manuel étant alors ignoré. `Adaptive`
+// (AdaptivePullCompensation, niveau 1 : géométrique) : la compensation est calculée
+// LOCALEMENT (par station de satin, par rangée de remplissage) avec lissage et bornes de
+// sécurité ; `Auto` reste la règle historique à largeur moyenne, inchangée. `Predicted`
+// (niveau 3) : le déplacement du tissu est prédit par un CHAMP sur tous les segments cousus voisins
+// (`stitch_generation::PullField`, anisotrope, avec confiance) et appliqué en passe finale de
+// `effective_sequence`, EN PLUS de la compensation locale Adaptive. N'agit qu'à la
+// génération. Valeurs persistées : ne pas réordonner.
+enum class PullMode : std::uint8_t { Manual, Auto, Adaptive, Predicted };
+
 // Paramètres du remplissage tatami (§5.4, §15).
 struct TatamiParams {
     Angle angle{0.0};                 // orientation des rangées (radians)
     Micrometers row_spacing{400};     // écart entre rangées (densité) — 0,4 mm
     Micrometers stitch_length{3'000}; // longueur de point le long d'une rangée
     Micrometers inset{200};           // retrait du bord (compensation de contour)
-    int stagger{2};                   // rangées avant répétition de la phase des pénétrations
+    // Rangées avant répétition de la phase des pénétrations. 3 (et non 2) : à 2, les
+    // pénétrations d'une rangée sur deux s'alignent en colonnes et la pièce brodée
+    // paraît « pointillée » ; 3 répartit les trous en briques (décalage de 1/3).
+    int stagger{3};
     // Tatami avancé (Lot 7) — désactivé par défaut, rétrocompatible.
     bool underlay_edge{false};           // sous-couche de contour (running rentré)
     bool underlay_parallel{false};       // sous-couche de rangées perpendiculaires espacées
@@ -51,7 +78,20 @@ struct TatamiParams {
     // longueur DANS L'AXE DU FIL (le fil tire dans sa direction : la forme cousue
     // rétrécit dans ce sens), 0 = aucune. Plage [0 ; 3] mm, 0,2 à 0,4 mm typique.
     Micrometers pull_compensation{0};
+    PullMode pull_mode{PullMode::Manual};             // HP-ENG-001.b
     UnderlayMode underlay_mode{UnderlayMode::Manual}; // HP-ENG-002
+    // HP-ENG-002 : sous-couche en zigzag (rangées diagonales à 45° des rangées de la couche
+    // supérieure, espacées de `underlay_spacing`) ; croisée avec les rangées perpendiculaires,
+    // elle stabilise un grand aplat. Faux = aucune (historique). Choisie par le mode Auto.
+    bool underlay_zigzag{false};
+    // Bords « effilochés » : sur un bord presque parallèle aux rangées, la fin de rangée saute
+    // d'une rangée à l'autre et des pointes isolées dépassent. `row_end_clip` > 0 rabat toute
+    // extrémité qui dépasse de plus de cette longueur les extrémités des deux rangées voisines
+    // (écrêtage, dans l'axe du fil). 0 = aucun (historique). Plage [0 ; 5] mm, ~1 mm typique.
+    Micrometers row_end_clip{0};
+    // Passe de contour cousue PAR-DESSUS le remplissage (point droit le long du bord et des
+    // trous) : masque les bouts de rangées. Faux = aucune (historique).
+    bool edge_outline{false};
 
     bool operator==(const TatamiParams&) const = default;
 };
@@ -124,6 +164,15 @@ struct DirectionalFillParams {
     int handmade_intensity{50}; // 0 à 100 %
     std::uint32_t seed{0};
     UnderlayMode underlay_mode{UnderlayMode::Manual}; // HP-ENG-002
+    bool underlay_zigzag{false};                      // comme `TatamiParams::underlay_zigzag`
+    // Passe de contour cousue PAR-DESSUS le remplissage (comme `TatamiParams::edge_outline`) :
+    // masque les bouts de lignes de couture qui effilochent le bord. Faux = aucune (historique).
+    bool edge_outline{false};
+    // HP-ENG-001 : compensation du tirage. Chaque ligne de couture est prolongée à ses deux
+    // extrémités de cette longueur, le long de sa tangente de bout (direction du fil). 0 =
+    // aucune (historique). Plage [0 ; 3] mm.
+    Micrometers pull_compensation{0};
+    PullMode pull_mode{PullMode::Manual}; // HP-ENG-001.b
 
     bool operator==(const DirectionalFillParams&) const = default;
 };
@@ -159,6 +208,12 @@ enum class SatinShortStitch { Disabled, RemoveAndRedistribute, SingleInset, Mult
 enum class SatinSplit { Disabled, Simple, Staggered, DeterministicJitter };
 enum class SatinCap { Flat, Rounded, Tapered, Automatic };
 enum class SatinLock { None, BackAndForth, Triangle, MicroZigzag };
+// Coins vifs de la colonne (HP-ENG-005) : onglet (une traversée en bissectrice), chevauchement
+// (les deux branches se croisent sans traversée intermédiaire) ou coupe (saut au coin).
+enum class SatinCorner : std::uint8_t { None, Miter, Overlap, Cut };
+// Bord irrégulier de la colonne (HP-STI-022, fourrure/herbe) : côté(s) dont les pénétrations sont
+// raccourcies d'une longueur pseudo-aléatoire DÉTERMINISTE (hash de graine + indice du barreau).
+enum class SatinJagged : std::uint8_t { None, SideA, SideB, Both };
 
 // Origine « satin de bordure » (HP-STI-004) : un satin de largeur fixe suivant un
 // contour. Les rails/barreaux de `SatinParams` restent la vérité de la génération ;
@@ -189,6 +244,7 @@ struct SatinParams {
     std::optional<SatinSectionTopology> topology; // absent = colonne indépendante/legacy
     Micrometers density{400};
     Micrometers pull_compensation{0};
+    PullMode pull_mode{PullMode::Manual}; // HP-ENG-001.b
     bool center_underlay{true};
     Micrometers max_width{9'000};       // au-delà, avertissement (satin trop large -> tatami)
     Micrometers max_width_hard{48'000}; // plafond géométrique avant refus du corridor
@@ -218,6 +274,13 @@ struct SatinParams {
 
     UnderlayMode underlay_mode{UnderlayMode::Manual}; // HP-ENG-002
     std::optional<BorderSatinSpec> border;            // HP-STI-004 : satin de bordure
+    bool auto_spacing{false};                         // HP-ENG-003 : pas selon la largeur locale
+    SatinCorner corner_mode{SatinCorner::None};       // HP-ENG-005 : coins vifs
+    // Changement de cap de l'axe au-delà duquel c'est un coin (radians, défaut 60° ; [15° ; 150°]).
+    Angle corner_threshold{1.0471975511965976};
+    SatinJagged jagged{SatinJagged::None}; // HP-STI-022 : bord irrégulier
+    Micrometers jagged_amplitude{1'500};   // raccourcissement max (1,5 mm), plage [0,2 ; 6] mm
+    std::uint32_t jagged_seed{1};          // graine du hasard déterministe
 
     bool operator==(const SatinParams&) const = default;
 };
@@ -233,6 +296,11 @@ struct AutoSatinGuide {
     // perpendiculaire. Absolu : angle dans le repère du modèle.
     Angle angle{0.0};
     bool absolute{false};
+    // Guide en courbe (polyligne, `anchor` compris comme premier point) : courbe de référence
+    // le long de laquelle les fils sont PERPENDICULAIRES à la tangente (comme sur une colonne
+    // satin), pour le BALAYAGE PARALLÈLE. Vide = guide droit (comportement historique : le trait
+    // est la direction des fils) ; le squelette n'utilise que `anchor` et `angle`.
+    std::vector<Vec2um> path;
 
     bool operator==(const AutoSatinGuide&) const = default;
 };
@@ -296,6 +364,7 @@ struct AutoSatinParams {
     // Finitions (mêmes réglages et mêmes générateurs que le satin à rails).
     SatinShortStitch short_stitch{SatinShortStitch::SingleInset};
     Micrometers pull_compensation{0};
+    PullMode pull_mode{PullMode::Manual}; // HP-ENG-001.b
     bool center_underlay{true};
     bool underlay_edge{false};
     bool underlay_zigzag{false};
@@ -315,8 +384,137 @@ struct AutoSatinParams {
     // Forme compacte (disque, pétale) : axe synthétique le long de l'axe principal
     // au lieu d'un refus (`SkeletonSatinParameters::compact_axis`). Faux par défaut.
     bool compact_axis{false};
+    bool auto_spacing{false};                   // HP-ENG-003 : pas selon la largeur locale
+    SatinCorner corner_mode{SatinCorner::None}; // HP-ENG-005 : coins vifs
+    Angle corner_threshold{1.0471975511965976}; // seuil de coin (radians, défaut 60°)
+    SatinJagged jagged{SatinJagged::None};      // HP-STI-022 : bord irrégulier
+    Micrometers jagged_amplitude{1'500};        // raccourcissement max (1,5 mm), [0,2 ; 6] mm
+    std::uint32_t jagged_seed{1};               // graine du hasard déterministe
 
     bool operator==(const AutoSatinParams&) const = default;
+};
+
+// Point de couverture « blanket / E-stitch » et zigzag simple le long d'un chemin (HP-STI-003).
+// `Blanket` : une ligne de base, avec à chaque station une dent perpendiculaire (aller-retour).
+// `Zigzag` : les points alternent entre deux bords de la bande de largeur `width`.
+enum class BlanketStyle : std::uint8_t { Blanket, Zigzag };
+// Côté de la bande par rapport au sens du chemin (Y vers le haut). `Center` : bande centrée
+// sur le chemin (dents alternées gauche/droite pour le blanket).
+enum class BlanketSide : std::uint8_t { Left, Right, Center };
+
+struct BlanketStitchParams {
+    BlanketStyle style{BlanketStyle::Blanket};
+    Micrometers width{3'000};   // largeur de la bande / longueur des dents (3 mm)
+    Micrometers spacing{2'000}; // écart entre stations le long du chemin (2 mm)
+    BlanketSide side{BlanketSide::Left};
+
+    bool operator==(const BlanketStitchParams&) const = default;
+};
+
+// Remplissage CONCENTRIQUE / contour (« echo », HP-STI-007) : anneaux successifs décalés vers
+// l'intérieur du contour de la région (trous respectés : un anneau grandit autour de chaque trou),
+// cousus de l'extérieur vers le centre. Les valeurs sont bornées à la génération.
+struct ContourFillParams {
+    Micrometers row_spacing{400};     // écart entre anneaux (densité) — 0,4 mm
+    Micrometers stitch_length{3'000}; // longueur MAXIMALE d'un point, bornée à [1 ; 7] mm
+    Micrometers min_length{500};      // longueur minimale d'un point (sauf coins), 0,5 mm
+    Micrometers inset{200};           // retrait du bord (compensation de contour)
+    // Vrai : les anneaux sont reliés en spirale continue (chaque tour glisse vers l'anneau
+    // suivant, sans saut). Faux : anneaux fermés indépendants, reliés par un court pas.
+    bool spiral{true};
+    bool hidden_underpath{true}; // liaisons longues cousues cachées (au lieu de sauts)
+
+    bool operator==(const ContourFillParams&) const = default;
+};
+
+// Motifs de base (HP-STI-002 / HP-STI-006) : petites séquences normalisées définies dans
+// `stitch_generation::motif_pattern`. Ajouter en fin seulement (valeur persistée dans le .osp).
+enum class MotifId : std::uint8_t { Wave, Zigzag, Leaf, Heart, Diamond, Scallop };
+
+// Motif le long d'un chemin (« motif run », HP-STI-002) : le motif est répété par abscisse
+// curviligne le long de chaque contour de la source, orienté selon la tangente.
+struct MotifRunParams {
+    MotifId motif{MotifId::Wave};
+    Micrometers size{3'000};          // hauteur du motif (perpendiculaire au tracé), 3 mm
+    Micrometers spacing{4'000};       // longueur d'une répétition le long du tracé, 4 mm
+    Micrometers stitch_length{2'000}; // longueur MAXIMALE d'un point, bornée à [1 ; 7] mm
+    Micrometers min_length{400};      // longueur minimale d'un point, 0,4 mm
+    bool alternate{false};            // miroir d'un motif sur deux (feuille, vague en opposition)
+
+    bool operator==(const MotifRunParams&) const = default;
+};
+
+// Remplissage à motif (« motif fill », HP-STI-006) : pavage de la région par un motif répété
+// sur une grille tournée de `angle` ; les tracés sont coupés au contour (trous respectés).
+struct MotifFillParams {
+    MotifId motif{MotifId::Diamond};
+    Micrometers size{4'000};          // taille du motif (carré), 4 mm
+    Micrometers spacing{5'000};       // pas de la grille entre centres, 5 mm
+    Angle angle{0.0};                 // orientation de la grille (radians)
+    bool stagger{true};               // une rangée sur deux décalée d'un demi-pas
+    Micrometers inset{200};           // retrait du bord
+    Micrometers stitch_length{2'000}; // longueur MAXIMALE d'un point, bornée à [1 ; 7] mm
+    Micrometers min_length{400};      // longueur minimale d'un point
+    bool hidden_underpath{true};      // liaisons longues cousues cachées (au lieu de sauts)
+
+    bool operator==(const MotifFillParams&) const = default;
+};
+
+// Remplissage RADIAL (HP-STI-008) : rayons depuis un centre (par défaut le centre de la boîte
+// englobante de la région). La densité reste constante à la périphérie : les rayons sont plus
+// nombreux vers l'extérieur (ils ne démarrent qu'à partir d'un rayon où l'écart reste supérieur
+// ou égal à `row_spacing`), les points raccourcissent vers le centre. Bornes à la génération.
+struct RadialFillParams {
+    Micrometers row_spacing{400};     // écart (arc) entre rayons à la périphérie — 0,4 mm
+    Micrometers stitch_length{3'000}; // longueur MAXIMALE d'un point, bornée à [1 ; 7] mm
+    Micrometers min_length{500};      // longueur minimale d'un point (sauf bout de rayon)
+    Micrometers inset{200};           // retrait du bord
+    std::optional<Vec2um> center;     // nullopt = centre de la boîte englobante
+    bool hidden_underpath{true};      // liaisons longues cousues cachées (au lieu de sauts)
+
+    bool operator==(const RadialFillParams&) const = default;
+};
+
+// Remplissage en SPIRALE (HP-STI-009) : spirale d'Archimède continue depuis un centre, pas de
+// `row_spacing` entre deux tours, rognée au contour de la région (sans coupe tant que la région
+// contient la spirale ; les trous et sorties sont reliés par un saut caché si possible).
+struct SpiralFillParams {
+    Micrometers row_spacing{400};     // écart entre deux tours — 0,4 mm
+    Micrometers stitch_length{3'000}; // longueur MAXIMALE d'un point, bornée à [1 ; 7] mm
+    Micrometers min_length{500};      // longueur minimale d'un point (hors rognage au bord)
+    Micrometers inset{200};           // retrait du bord
+    std::optional<Vec2um> center;     // nullopt = centre de la boîte englobante
+    bool clockwise{false};            // sens de rotation (faux = anti-horaire, Y vers le haut)
+    bool hidden_underpath{true};
+
+    bool operator==(const SpiralFillParams&) const = default;
+};
+
+// Remplissage CROISÉ / crosshatch (HP-STI-014) : 2 ou 3 tatamis très espacés à angles différents
+// (répartis sur 180°) dans un seul objet.
+struct CrosshatchFillParams {
+    Angle angle{0.0};                 // orientation de la première couche (radians)
+    int layers{2};                    // 2 (perpendiculaires) ou 3 (à 60°), borné à [2 ; 3]
+    Micrometers row_spacing{1'500};   // écart entre rangées d'UNE couche — 1,5 mm
+    Micrometers stitch_length{3'000}; // longueur de point le long d'une rangée
+    Micrometers inset{200};           // retrait du bord
+    bool hidden_underpath{true};
+
+    bool operator==(const CrosshatchFillParams&) const = default;
+};
+
+// Point de croix (HP-STI-012) : la région est remplie par une grille de croix (X) ; une cellule est
+// cousue si son centre est dans la région. Grille ancrée à l'origine du projet, tournée de
+// `grid_angle`. Valeurs bornées à la génération.
+struct CrossStitchParams {
+    Micrometers cell{2'500}; // côté d'une cellule, borné à [1 ; 8] mm — 2,5 mm
+    Angle grid_angle{0.0};   // orientation de la grille (radians)
+    bool full_cross{true}; // vrai : croix complète (« / » puis « \ ») ; faux : demi-croix « / »
+    int passes{1};         // nombre de passes de chaque tronçon de rangée, borné à [1 ; 3]
+    bool hidden_underpath{
+        true}; // liaisons longues entre tronçons cousues cachées (au lieu de sauts)
+
+    bool operator==(const CrossStitchParams&) const = default;
 };
 
 // Un objet de broderie porte un TYPE de point sous forme de variant. Chaque
@@ -325,8 +523,11 @@ struct AutoSatinParams {
 // intention/points (ADR-014) tient : les points sont régénérés à la demande.
 // Les alternatives directionnelle puis auto-satin sont AJOUTÉES en fin de
 // variant : les index des types historiques ne changent pas.
-using StitchParams = std::variant<RunningStitchParams, TatamiParams, SatinParams,
-                                  DirectionalFillParams, AutoSatinParams>;
+using StitchParams =
+    std::variant<RunningStitchParams, TatamiParams, SatinParams, DirectionalFillParams,
+                 AutoSatinParams, BlanketStitchParams, ContourFillParams, MotifRunParams,
+                 MotifFillParams, RadialFillParams, SpiralFillParams, CrosshatchFillParams,
+                 CrossStitchParams>;
 
 // Type de point autorisé après retouche manuelle (Lot 8 MVP, §2 du cadrage) :
 // seule transition permise, Stitch <-> Jump — pas de Trim/ColorChange/Stop,
@@ -347,8 +548,12 @@ struct StitchOverride {
     std::optional<Vec2um> moved_to;             // nullopt = position générée
     std::optional<StitchPointType> forced_type; // nullopt = type généré
     bool trim_after{false};                     // insère un Trim juste après ce point
+    // HP-EDIT-002 : suppression du point (Stitch ou Jump de passe TopStitch) et points Stitch
+    // insérés juste après lui (dans l'ordre), en deltas comme le reste (ADR-014).
+    bool deleted{false};
+    std::vector<Vec2um> inserted_after;
 
-    constexpr bool operator==(const StitchOverride&) const = default;
+    bool operator==(const StitchOverride&) const = default;
 };
 
 // §21/§24 du plan de refonte satin (2026-08-14) : distingue une
@@ -383,6 +588,16 @@ struct ColorBlendLink {
     bool operator==(const ColorBlendLink&) const = default;
 };
 
+// Interprétation visuelle enregistrée dans le fichier OSP, non dans le nom utilisateur.
+struct SemanticAnnotation {
+    std::string role;
+    std::string family;
+    double confidence{0.0};
+    std::uint64_t geometry_fingerprint{0};
+
+    bool operator==(const SemanticAnnotation&) const = default;
+};
+
 struct EmbroideryObject {
     ObjectId id;
     std::string name;
@@ -394,6 +609,12 @@ struct EmbroideryObject {
     EmbroideryIntent intent{EmbroideryIntent::AutoChoice};
     JoinMode join{JoinMode::Inherit};                // HP-ENG-010
     ConnectorMode connector{ConnectorMode::Inherit}; // HP-SEQ-005
+    // HP-ENG-011 (« Remove overlaps ») : un tatami / remplissage directionnel ne coud pas la partie
+    // cachée par un tatami / remplissage directionnel POSÉ APRÈS lui (ordre de couture). Les
+    // sous-couches suivent la forme réduite. `knockout_margin` : recouvrement conservé sous le bord
+    // de l'objet qui recouvre (0,3 mm par défaut) pour qu'aucun fil de fond ne perce.
+    bool knockout{false};
+    Micrometers knockout_margin{300};
 
     // Retouches manuelles (Lot 8 MVP) — deltas épars, jamais O(nombre de
     // points). Vide = comportement actuel inchangé (Clean, rétrocompatible).
@@ -411,6 +632,7 @@ struct EmbroideryObject {
     // l'affichage. Écrit/lu dans le .osp (schéma v6, champ `thread`).
     std::optional<thread_palette::ThreadKey> thread;
     std::optional<ColorBlendLink> color_blend;
+    std::optional<SemanticAnnotation> semantic; // reconnaissance persistée et facultative
 
     [[nodiscard]] bool is_tatami() const { return std::holds_alternative<TatamiParams>(params); }
     [[nodiscard]] bool is_satin() const { return std::holds_alternative<SatinParams>(params); }
@@ -419,6 +641,30 @@ struct EmbroideryObject {
     }
     [[nodiscard]] bool is_auto_satin() const {
         return std::holds_alternative<AutoSatinParams>(params);
+    }
+    [[nodiscard]] bool is_blanket() const {
+        return std::holds_alternative<BlanketStitchParams>(params);
+    }
+    [[nodiscard]] bool is_contour_fill() const {
+        return std::holds_alternative<ContourFillParams>(params);
+    }
+    [[nodiscard]] bool is_motif_run() const {
+        return std::holds_alternative<MotifRunParams>(params);
+    }
+    [[nodiscard]] bool is_motif_fill() const {
+        return std::holds_alternative<MotifFillParams>(params);
+    }
+    [[nodiscard]] bool is_radial_fill() const {
+        return std::holds_alternative<RadialFillParams>(params);
+    }
+    [[nodiscard]] bool is_spiral_fill() const {
+        return std::holds_alternative<SpiralFillParams>(params);
+    }
+    [[nodiscard]] bool is_crosshatch_fill() const {
+        return std::holds_alternative<CrosshatchFillParams>(params);
+    }
+    [[nodiscard]] bool is_cross_stitch() const {
+        return std::holds_alternative<CrossStitchParams>(params);
     }
 };
 

@@ -232,3 +232,21 @@ TEST_CASE("backstitch : progresse et couvre, sans mouvement nul") {
         CHECK(bs[i] != bs[i - 1]);
     }
 }
+
+TEST_CASE("point tige : decalage lateral alterne, extremites sur le trace, deterministe") {
+    const std::vector<Vec2um> pts = {{Micrometers{0}, Micrometers{0}},
+                                     {Micrometers{3'000}, Micrometers{0}},
+                                     {Micrometers{6'000}, Micrometers{0}},
+                                     {Micrometers{9'000}, Micrometers{0}},
+                                     {Micrometers{12'000}, Micrometers{0}}};
+    const auto a = apply_stem_stitch(pts, Micrometers{400});
+    REQUIRE(a.size() == pts.size());
+    CHECK(a.front() == pts.front());
+    CHECK(a.back() == pts.back());
+    CHECK(a[1].y.value == 400);
+    CHECK(a[2].y.value == -400);
+    CHECK(a[3].y.value == 400);
+    CHECK(a[1].x.value == 3'000);
+    CHECK(a == apply_stem_stitch(pts, Micrometers{400}));
+    CHECK(apply_stem_stitch(pts, Micrometers{0}) == pts);
+}

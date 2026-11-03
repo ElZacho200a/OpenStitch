@@ -6,6 +6,7 @@
 #include "app_settings.hpp"
 
 class QCheckBox;
+class QComboBox;
 class QDoubleSpinBox;
 class QSpinBox;
 
@@ -21,7 +22,13 @@ public:
     void setSettings(const EditSettings& settings);
     [[nodiscard]] EditSettings settings() const;
 
+    // Préférence de langue (« system », « fr » ou « en ») : persistée par l'appelant, prise en
+    // compte au prochain démarrage.
+    void setLanguage(const QString& preference);
+    [[nodiscard]] QString language() const;
+
 private:
+    QComboBox* language_{nullptr};
     QSpinBox* regionOpacityPercent_{nullptr};
     QSpinBox* longPressMs_{nullptr};
     QCheckBox* snapNodes_{nullptr};

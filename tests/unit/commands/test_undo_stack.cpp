@@ -2182,3 +2182,56 @@ TEST_CASE("marqueur propre: markClean, undo-redo et branche redo invalidee") {
     stack.clear();
     CHECK(stack.isClean());
 }
+
+TEST_CASE("pile bornee: elimine les plus anciens pas sans changer les pas conserves") {
+    document::Project project;
+    UndoStack stack;
+    stack.setMergeWindow(std::chrono::milliseconds{0});
+    stack.setMaxDepth(3);
+    for (int i = 0; i < 6; ++i) {
+        stack.execute(std::make_unique<AppendImageOpCommand>(image::GrayscaleOp{}), project);
+    }
+    REQUIRE(project.ops.size() == 6);
+    CHECK(stack.undoNames().size() == 3);
+    // Les 3 pas conserves s'annulent exactement, puis plus rien.
+    CHECK(stack.undo(project));
+    CHECK(stack.undo(project));
+    CHECK(stack.undo(project));
+    CHECK(project.ops.size() == 3);
+    CHECK_FALSE(stack.undo(project));
+    // Et se rejouent a l'identique.
+    CHECK(stack.redo(project));
+    CHECK(stack.redo(project));
+    CHECK(stack.redo(project));
+    CHECK(project.ops.size() == 6);
+}
+
+TEST_CASE("pile bornee: l'etat propre elimine devient inatteignable") {
+    document::Project project;
+    UndoStack stack;
+    stack.setMergeWindow(std::chrono::milliseconds{0});
+    stack.setMaxDepth(2);
+    stack.markClean();
+    for (int i = 0; i < 3; ++i) {
+        stack.execute(std::make_unique<AppendImageOpCommand>(image::GrayscaleOp{}), project);
+    }
+    CHECK_FALSE(stack.isClean());
+    stack.undo(project);
+    stack.undo(project);
+    CHECK_FALSE(stack.isClean());
+}
+
+TEST_CASE("pile bornee: reduire la borne elague, 0 = illimitee") {
+    document::Project project;
+    UndoStack stack;
+    stack.setMergeWindow(std::chrono::milliseconds{0});
+    for (int i = 0; i < 5; ++i) {
+        stack.execute(std::make_unique<AppendImageOpCommand>(image::GrayscaleOp{}), project);
+    }
+    CHECK(stack.undoNames().size() == 5);
+    stack.setMaxDepth(2);
+    CHECK(stack.undoNames().size() == 2);
+    stack.setMaxDepth(0);
+    stack.execute(std::make_unique<AppendImageOpCommand>(image::GrayscaleOp{}), project);
+    CHECK(stack.undoNames().size() == 3);
+}

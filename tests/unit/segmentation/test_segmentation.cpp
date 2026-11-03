@@ -237,6 +237,139 @@ TEST_CASE("lissage : les pixels transparents restent hors de toute region") {
     CHECK(region_at(*seg, 6, 1).has_value());
 }
 
+namespace {
+
+// 20x10 rouge ; un pixel bleu isole a gauche (x=3) et un a droite (x=16).
+image::Image two_specks() {
+    image::Image img = blank(20, 10);
+    for (int y = 0; y < 10; ++y) {
+        for (int x = 0; x < 20; ++x) {
+            set_px(img, x, y, 220, 30, 30);
+        }
+    }
+    set_px(img, 3, 5, 30, 30, 220);
+    set_px(img, 16, 5, 30, 30, 220);
+    return img;
+}
+
+DetailMask right_half_detail() {
+    DetailMask mask;
+    mask.width = 20;
+    mask.height = 10;
+    mask.weights.assign(200, 0);
+    for (int y = 0; y < 10; ++y) {
+        for (int x = 10; x < 20; ++x) {
+            mask.weights[static_cast<std::size_t>(y * 20 + x)] = 255;
+        }
+    }
+    return mask;
+}
+
+} // namespace
+
+TEST_CASE("zones de detail : le detail est garde, l'aplat est nettoye") {
+    const auto img = two_specks();
+    const auto mask = right_half_detail();
+    const auto seg = segment(img, {.max_colors = 2,
+                                   .min_region_px = 4,
+                                   .smoothing_radius_px = 0,
+                                   .detail_mask = &mask,
+                                   .detail_smoothing_radius_px = 0,
+                                   .detail_min_region_px = 1});
+    REQUIRE(seg.has_value());
+    const auto bleuAplat = region_at(*seg, 3, 5);
+    const auto bleuDetail = region_at(*seg, 16, 5);
+    REQUIRE(bleuAplat.has_value());
+    REQUIRE(bleuDetail.has_value());
+    CHECK(seg->find(*bleuAplat)->rgb == seg->find(*region_at(*seg, 0, 0))->rgb); // absorbe
+    CHECK(seg->find(*bleuDetail)->pixel_count == 1);                             // conserve
+}
+
+TEST_CASE("zones de detail : lissage different par zone") {
+    const auto img = two_specks();
+    const auto mask = right_half_detail();
+    const auto seg = segment(img, {.max_colors = 2,
+                                   .min_region_px = 1,
+                                   .smoothing_radius_px = 2,
+                                   .detail_mask = &mask,
+                                   .detail_smoothing_radius_px = 0,
+                                   .detail_min_region_px = 1});
+    REQUIRE(seg.has_value());
+    CHECK(seg->find(*region_at(*seg, 3, 5))->rgb ==
+          seg->find(*region_at(*seg, 0, 0))->rgb);               // lisse a gauche
+    CHECK(seg->find(*region_at(*seg, 16, 5))->pixel_count == 1); // intact a droite
+}
+
+TEST_CASE("zones de detail : masque vide ou absent = resultat historique") {
+    const auto img = two_specks();
+    DetailMask empty_mask;
+    empty_mask.width = 20;
+    empty_mask.height = 10;
+    empty_mask.weights.assign(200, 0);
+    const auto base = segment(img, {.max_colors = 2, .min_region_px = 4, .smoothing_radius_px = 1});
+    const auto withMask = segment(img, {.max_colors = 2,
+                                        .min_region_px = 4,
+                                        .smoothing_radius_px = 1,
+                                        .detail_mask = &empty_mask,
+                                        .detail_smoothing_radius_px = 0,
+                                        .detail_min_region_px = 1});
+    REQUIRE((base.has_value() && withMask.has_value()));
+    CHECK(base->labels == withMask->labels);
+}
+
+TEST_CASE("zones de detail : masque de mauvaise taille refuse, resultat deterministe") {
+    const auto img = two_specks();
+    DetailMask wrong;
+    wrong.width = 5;
+    wrong.height = 5;
+    wrong.weights.assign(25, 255);
+    CHECK_FALSE(segment(img, {.max_colors = 2, .detail_mask = &wrong}).has_value());
+
+    const auto mask = right_half_detail();
+    const SegmentationOptions options{.max_colors = 2,
+                                      .min_region_px = 4,
+                                      .smoothing_radius_px = 2,
+                                      .detail_mask = &mask,
+                                      .detail_smoothing_radius_px = 1,
+                                      .detail_min_region_px = 1};
+    const auto a = segment(img, options);
+    const auto b = segment(img, options);
+    REQUIRE((a.has_value() && b.has_value()));
+    CHECK(a->labels == b->labels);
+}
+
+TEST_CASE("pinceau de detail : peindre, effacer, annuler") {
+    DetailMask mask;
+    const auto changes = paint_detail_disc(mask, 20, 10, 10, 5, 3, 255, 1.0);
+    REQUIRE_FALSE(changes.empty());
+    CHECK(mask.matches(20, 10));
+    CHECK(mask.weights[5 * 20 + 10] == 255);
+    CHECK(mask.weights[0] == 0);
+    CHECK(mask.any_detail());
+
+    // Repeindre au meme endroit ne change rien.
+    CHECK(paint_detail_disc(mask, 20, 10, 10, 5, 3, 255, 1.0).empty());
+
+    const DetailMask painted = mask;
+    const auto erased = paint_detail_disc(mask, 20, 10, 10, 5, 1, 0, 1.0);
+    REQUIRE_FALSE(erased.empty());
+    CHECK(mask.weights[5 * 20 + 10] == 0);
+    revert_detail_changes(mask, erased);
+    CHECK(mask == painted);
+
+    revert_detail_changes(mask, changes);
+    CHECK_FALSE(mask.any_detail());
+}
+
+TEST_CASE("pinceau de detail : bord doux et hors image") {
+    DetailMask mask;
+    paint_detail_disc(mask, 20, 10, 0, 0, 6, 255, 0.0); // coin : ne deborde pas
+    CHECK(mask.weights[0] == 255);
+    CHECK(mask.weights[5] > 0);
+    CHECK(mask.weights[5] < 255); // degrade vers le bord
+    CHECK(mask.weights[19] == 0);
+}
+
 TEST_CASE("rendu de la carte : fond transparent, selection eclaircie") {
     auto seg = segment(quadrants(), {.max_colors = 4, .min_region_px = 1});
     REQUIRE(seg.has_value());

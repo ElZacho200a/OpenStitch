@@ -1046,10 +1046,18 @@ void MainWindowTest::altDuplicateOfMultiSelectionWithEmbroideryUndoRedoCyclesKee
     const std::string before = snap(window.project_);
     const auto embCount = window.project_.embroidery_objects.size();
     const auto vecCount = window.project_.vector_objects.size();
+    // Les couches de couture des formes dupliquées suivent leur forme (HP-OBJ-023).
+    std::size_t layersOfSelection = 0;
+    for (const auto& e : window.project_.embroidery_objects) {
+        for (int i = 0; i < 3; ++i) {
+            layersOfSelection +=
+                e.source_vector == big.squares[static_cast<std::size_t>(i)] ? 1 : 0;
+        }
+    }
 
     dragWith(view, vp(view, -15, 0), vp(view, -12, -2), Qt::AltModifier);
     QTRY_COMPARE_WITH_TIMEOUT(window.project_.vector_objects.size(), vecCount + 3, 2000);
-    QCOMPARE(window.project_.embroidery_objects.size(), embCount); // aucune broderie clonée
+    QCOMPARE(window.project_.embroidery_objects.size(), embCount + layersOfSelection);
     const std::string afterDup = snap(window.project_);
     QCOMPARE(window.multiSelection_.size(), std::size_t{3});
     QVERIFY(window.checkSelectionInvariants());
@@ -1077,12 +1085,19 @@ void MainWindowTest::duplicateVectorObjectDoesNotShareEmbroideryChildrenAndUndoI
     const Big big = buildBig();
     window.applyLoadedProject(big.project);
     const std::string before = snap(window.project_);
-    window.duplicateVectorObject(big.squares[1]); // 2 broderies enfants
-    QCOMPARE(window.project_.embroidery_objects.size(), big.project.embroidery_objects.size());
+    window.duplicateVectorObject(big.squares[1]); // 2 broderies enfants : clonées avec la copie
+    QCOMPARE(window.project_.embroidery_objects.size(), big.project.embroidery_objects.size() + 2);
     const ObjectId copy = window.project_.vector_objects.back().id;
-    for (const auto& e : window.project_.embroidery_objects) {
-        QVERIFY(e.source_vector != copy);
+    std::size_t onCopy = 0;
+    for (std::size_t i = 0; i < window.project_.embroidery_objects.size(); ++i) {
+        const auto& e = window.project_.embroidery_objects[i];
+        onCopy += e.source_vector == copy ? 1 : 0;
+        if (i < big.project.embroidery_objects.size()) {
+            // Les originaux gardent leur forme : les enfants ne sont jamais partagés.
+            QCOMPARE(e.source_vector, big.project.embroidery_objects[i].source_vector);
+        }
     }
+    QCOMPARE(onCopy, std::size_t{2});
     window.undo();
     QCOMPARE(QString::fromStdString(snap(window.project_)), QString::fromStdString(before));
     window.duplicateVectorObject(ObjectId{424242}); // inexistant : sans effet

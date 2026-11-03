@@ -268,7 +268,7 @@ divergence notable contre `libs/stitch_generation/src/tatami.cpp`.
 de rangées horizontales espacées de `row_spacing` (400 µm par défaut) →
 intersections pair-impair par rangée → pénétrations sur une grille de pas
 `stitch_length` (3 mm par défaut), déphasée d'une rangée à l'autre selon
-`stagger` (2 par défaut) → les segments de rangées voisines qui se chevauchent
+`stagger` (3 par défaut pour le tatami, 2 pour le remplissage directionnel) → les segments de rangées voisines qui se chevauchent
 en x sont les arêtes d'un graphe, parcouru par un algorithme glouton
 (`current` → voisin non visité le plus proche, sinon saut vers le segment non
 visité le plus proche) → rotation inverse. Chaque liaison cousue (dans une
@@ -704,6 +704,124 @@ Le retrait du contour de remplissage vaut un quart de l'épaisseur, borné à
 [0,3 ; 0,6] mm. En mode Auto, les cases manuelles sont ignorées (grisées dans
 l'inspecteur). Les nouveaux objets créés à la main restent en `Manual` : le
 mode Auto se choisit dans l'inspecteur (« Sous-couche : Automatique »).
+
+### Compensation du tirage automatique (HP-ENG-001.b)
+
+Symptôme : après broderie, les zones de couleurs voisines sont écartées (filet de tissu
+visible), parce que le fil tire dans sa direction et que la forme cousue rétrécit. Le réglage
+manuel `pull_compensation` existait, mais il fallait le trouver et le régler objet par objet.
+
+`PullMode::Auto` (tatami, directionnel, satin, auto-satin ; défaut `Manual`) fait calculer
+la compensation par le moteur à la génération (`pull_auto.cpp`, fonctions pures, déterministes,
+réglage manuel ignoré et grisé dans l'inspecteur). Elle est recalculée pour chaque région
+d'un objet multi-îlots, à partir de son épaisseur moyenne `2·aire/périmètre` (celle de la
+sous-couche automatique) :
+
+| Objet | Compensation | Bornes |
+|---|---|---|
+| Remplissage (tatami, directionnel) | dépassement de CHAQUE bout de rangée, `0,15 mm + 0,03 × épaisseur` | [0,15 ; 0,40] mm |
+| Satin, auto-satin | élargissement de CHAQUE côté de la colonne, `5 % de la largeur` | [0,10 ; 0,35] mm |
+
+Qui l'active : les objets créés à la main (comme la sous-couche automatique), et l'auto-numérisation
+(`AutoOptions::auto_pull_compensation`, vrai par défaut). Un `.osp` n'écrit `pullMode` que hors
+`Manual` : un fichier existant reste identique et produit les mêmes points.
+
+**Limites connues.** Les coefficients sont des règles empiriques, non mesurées sur tissu : aucun
+modèle physique de l'étirement n'est publié, et il dépend du tissu, de la sous-couche et de la
+tension. À recaler avec la pièce-test HP-ENG-001.a. Le mode Auto agit dans l'axe du fil
+seulement : le retrait de bord (`inset`, 0,2 mm par défaut) qui laisse ~0,4 mm entre deux
+tatamis voisins n'est pas modifié.
+
+### Compensation adaptative du tirage — niveau 1, satin (AdaptivePullCompensation)
+
+Troisième valeur de `PullMode` : **`Adaptive`** (index 2 ; `.osp` : `pullMode: 2`). Le mode `Auto`
+ci-dessus (largeur MOYENNE, une valeur par objet) reste inchangé et disponible ; `Adaptive`
+calcule la compensation **localement**. Trois niveaux sont distingués et ne doivent jamais être
+confondus :
+
+| Niveau | Contenu | État |
+|---|---|---|
+| 1 — géométrique | déterministe, selon les formes et les directions de couture | livré ici (satin) |
+| 2 — textile empirique | profil de tissu, calibration mesurée | à venir (`scale` du modèle en est le point d'entrée) |
+| 3 — prédiction | champ de déplacement estimé, avec confiance | livré : `pull_field` + `PullMode::Predicted` (passe finale) ; calibration à venir |
+
+**Satin.** `adaptive_pull.cpp` (`adaptive_satin_pull`, fonction pure) calcule, pour chaque station
+(couple de points rail A/rail B) de la colonne, un élargissement par côté :
+
+`C(s) = clamp(a + b · largeur(s), min, max) · scale · f_extrémité · f_jonction · f_pente`
+
+avec `a = 0,05 mm`, `b = 0,04`, `[min ; max] = [0,08 ; 0,40] mm` (règles empiriques, NON mesurées).
+Facteurs : `f_extrémité` (0,6 au tout bout → 1 à 1,5 mm), `f_jonction` (0,7 près d'un saut →
+1 à 1 mm), `f_pente = 1/(1 + 2·|d largeur / ds|)`. Puis lissage spatial (fenêtre triangulaire de
+rayon 1,5 mm, jamais à travers un saut) et **bornes de sécurité** : jamais plus de 20 % de la
+largeur par côté ; côté intérieur d'un virage limité à 40 % de son rayon intérieur (cercle
+circonscrit à trois stations) ; plafond absolu 0,6 mm et `pull_max`. Le réglage manuel
+`pull_compensation` est ignoré ; `pull_left/right` (fixe et proportionnel) restent additifs.
+
+Le calcul s'exécute dans `finish_satin_stations`, point de convergence du satin manuel, du satin à
+barreaux et de l'auto-satin par squelette, ainsi que dans `fill_satin` (rails sans barreaux). Il
+travaille sur la géométrie finale des fils (après terminaisons, points courts et push). Le profil
+station par station est exposé dans `SatinResult::pull_profile` (largeur, courbure, drapeaux).
+
+**Remplissages (tatami, directionnel).** `adaptive_fill_end_pull` calcule un dépassement PAR BOUT
+et PAR RANGÉE (tatami) ou PAR LIGNE (directionnel) :
+`clamp(0,12 + 0,012 × longueur, 0,08 ; 0,40) mm × f_densité × f_pointe × f_courbure`, avec
+`f_densité = clamp(0,4 mm / écart, 0,75 ; 1,25)`, `f_pointe = 0,5` quand le bout dépasse de plus de
+deux écarts les rangées voisines (pointe fine : on ne l'allonge pas), `f_courbure = 1/(1 + 0,5 × virage
+cumulé en rad)` (une ligne courbe a une corde de bout peu représentative). Bornes : au plus 15 % de la
+longueur de la rangée par bout ; pour le tatami, lissage entre rangées voisines puis plafond à la
+**moitié de l'intervalle libre** jusqu'au segment voisin d'une même rangée (trou, étranglement : aucune
+pénétration n'entre dans un trou ni ne croise sa voisine). La sous-couche n'hérite jamais du mode
+adaptatif. Le réglage manuel est ignoré.
+
+**Limites.** Aucune validation sur machine : la qualité de l'approximation géométrique n'est pas
+une preuve d'efficacité textile.
+
+**Niveau 3 — champ de déplacement (lot A, `pull_field`).** `PullField` (`pull_field.hpp/.cpp`,
+fonctions pures, sans Qt) estime en tout point le déplacement du tissu sous la traction de tous les
+segments cousus voisins, au lieu de compenser chaque objet isolément. Chaque segment (`PullSource`,
+poids = densité relative) contracte le tissu vers son centre le long de son axe
+(`-gain · s · w`, `s` borné à la demi-longueur) et le pousse latéralement (`poisson · gain · h ·
+tanh(t/σ) · w`) ; `w` décroît en gaussienne au-delà des bouts (`sigma_along_mm`) et en
+travers (`sigma_across_mm`). Les contributions s'additionnent ; **l'anisotropie du tissu** est
+appliquée à la somme : la composante perpendiculaire à la chaîne (`grain_angle_rad`) est multipliée
+par `grain_anisotropy` (souplesse trame / chaîne). La norme est plafonnée (`max_displacement_mm`).
+`PullSample` renvoie aussi une **confiance** [0 ; 1] : plafonnée à `uncalibrated_confidence` (0,3)
+tant que `FabricResponse::calibrated` est faux, et réduite par le recouvrement
+(`base / (1 + 0,15 · Σw)`) ; 1 hors de toute influence. `compensation_at` renvoie l'opposé du
+déplacement atténué par la confiance (prudent quand la prédiction est incertaine). Déterminisme :
+sources parcourues par indice croissant dans une grille à clé ordonnée ; entrées dégénérées bornées
+(`sanitized`). **Aucun coefficient n'est mesuré** (règles empiriques) ; le champ est une fonction
+continue de la géométrie cousue et ne reproduit aucune table largeur de bout × tissu (brevets
+Melco, voir `roadmap-rd-brevets.md`). 
+**Niveau 3 — branchement (`PullMode::Predicted`, index 3 ; `.osp` : `pullMode: 3` ; CLI/MCP :
+`pull_mode: predicted` ; inspecteur : « Prédite »).** `apply_predicted_pull`
+(`predicted_pull.cpp`) est appelée par `effective_sequence` APRÈS les retouches manuelles et AVANT
+les finitions (coupes, verrous : posés sur la matière déjà compensée). Les sources du champ sont
+TOUS les segments cousus de la séquence (deux pénétrations consécutives d'un même objet, sous-couche
+comprise, jamais à travers un saut ni une coupe) : un objet voisin, même en mode manuel, tire donc le
+tissu d'un objet prédit. Seuls les points de couche supérieure des objets `Predicted` sont déplacés
+(positions d'origine échantillonnées d'abord). Sans objet `Predicted`, la séquence est strictement
+inchangée. La compensation de bout d'objet (`pull_compensation`, rallonge de rangée, satin) est
+mise à zéro pour ces objets : le champ la remplace. Le profil de tissu est `FabricResponse{}`
+par défaut ; il sera lu depuis le profil matière du projet (HP-FAB, PR #155) quand celui-ci sera
+dans `main`. Non fait : visualisation du champ dans le canevas, calibration par la pièce-test
+(HP-ENG-001.a), `calibrated = true` (la confiance reste donc plafonnée à 0,3).
+
+**Niveau 3 — prévisualisation du tirage (`pull_map.hpp/.cpp`).** Deux lectures du MÊME `PullField`,
+en lecture seule (jamais écrites dans le document) : `compute_pull_map` (carte du déplacement prédit,
+grille bornée à 512 x 512 cases) et `simulate_fabric_pull` (la séquence « telle que le tissu la
+restituera »). La simulation est ordonnée : une pénétration d'un bloc de couleur est décalée du
+déplacement imposé au tissu par les blocs cousus AVANT elle ; le premier bloc reste en place. C'est
+ce défaut de repérage entre couleurs (contour qui ne retombe plus sur le remplissage, trous entre
+deux aplats) que l'on veut voir, pas un décalage global. Trois réglages de tissu nommés,
+EMPIRIQUES et non validés (`fabric_preset` : `default`, `linen` lin lâche, `stable` bien stabilisé).
+Côté bureau : `Affichage > Carte de tirage du tissu` (surimpression bleu → rouge, z = 26),
+`Affichage > Aperçu avec tirage du tissu` (rendu des points décalés, via le rendu réaliste, visible
+au zoom du rendu réaliste) et `Affichage > Tissu du tirage` ; réglages mémorisés
+(`main_window_pull_preview.cpp`). CLI : `openstitch-cli render IN OUT --simulate-pull | --pull-map
+--fabric linen`. Limite : un seul bloc de couleur ne produit aucun défaut de repérage simulé (le
+tirage d'un objet sur lui-même relève de la compensation, `PullMode::Predicted`).
 
 ### Entrée/sortie automatiques (HP-ENG-010)
 

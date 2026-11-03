@@ -1,0 +1,34 @@
+name: Proposer une fonctionnalité
+description: Suggérer un comportement vérifiable ou améliorer l'ergonomie.
+title: "[Feature] "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problème utilisateur
+      description: Décrire ce qui prend trop de temps ou est actuellement impossible.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Comportement proposé
+      description: Expliquer le résultat attendu, pas seulement l'implémentation technique.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Critères d'acceptation
+      description: Comment un contributeur pourra démontrer que la fonctionnalité fonctionne ?
+    validations:
+      required: true
+  - type: input
+    id: roadmap
+    attributes:
+      label: Entrée de roadmap (si connue)
+      placeholder: HP-UX-XXX, HP-VEC-XXX…
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives et captures (facultatif)

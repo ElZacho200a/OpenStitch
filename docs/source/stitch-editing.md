@@ -40,6 +40,61 @@ Sélectionnez un objet vectoriel : ses nœuds s'affichent en poignées. Un
 déplacement passe par `MoveNodeCommand` (annulable) et **régénère** les points de
 tout objet de broderie qui suit cet objet.
 
+### Remodeler un segment (HP-VEC-016)
+
+Dans l'outil Sélection, avec **une seule** forme sélectionnée, glisser sur son
+**contour** (à moins de 6 px) tire le segment visé ; glisser à l'**intérieur**
+déplace la forme entière comme avant. Les deux nœuds d'extrémité et le nombre de
+nœuds ne changent pas : seules les poignées de Bézier des deux extrémités du
+segment bougent, pondérées par la base de Bernstein au paramètre `t` saisi (borné
+à [0,15 ; 0,85] pour éviter l'emballement près d'un nœud), de sorte que le point
+saisi suit le curseur. Un segment droit devient une cubique. Un nœud *Lisse* garde
+sa tangente continue (la poignée opposée pivote, longueur conservée) ; un nœud
+*Coin* garde son angle. Alternative écartée : une déformation locale contrainte qui
+insère des nœuds, plus souple mais qui multiplie les nœuds et dégrade les courbes
+après plusieurs usages.
+
+L'aperçu est calculé par la même fonction pure que la commande
+(`geometry::reshape_path_set_segment`) ; il est rouge pointillé quand le résultat
+se croiserait lui-même (ou croiserait un trou), et le relâchement est alors
+refusé sans modifier le document. Maj verrouille l'axe, Échap annule (aucune
+commande, aucune trace d'historique). Un geste = une `ReshapeSegmentCommand`
+(instantané avant/après de l'objet, restitution exacte). Les points de broderie
+sont régénérés depuis la géométrie source ; type de point et réglages inchangés.
+Limite connue : sur un contour très dense en micro-segments, un seul segment est
+peu utile (voir le pinceau, HP-VEC-018).
+
+### Sélectionner et déplacer plusieurs nœuds (HP-VEC-017)
+
+Avec une forme sélectionnée : **Alt + cadre** (départ hors de la forme) sélectionne les
+nœuds contenus dans le cadre (Maj + Alt : ajouter, Ctrl + Alt : basculer) ; un **clic**
+sur une poignée la sélectionne (Maj : ajouter, Ctrl : basculer) ; les poignées
+sélectionnées sont pleines. Glisser l'une d'elles déplace **tout le groupe** (positions
+et relations entre nœuds conservées) en une seule `TransformNodesCommand`, avec aperçu du
+contour (rouge pointillé si le résultat se croiserait, le relâchement est alors refusé) ;
+Échap annule sans toucher au document. Menu Forme › *Transition douce des nœuds voisins* :
+les nœuds non sélectionnés à moins de 8 mm du groupe suivent avec une influence décroissante
+(lissage cubique `3u² − 2u³`, `u = 1 − d/rayon`) ; leurs tangentes ne changent pas. La
+sélection est limitée à un chemin (extérieur ou un trou). Le noyau
+(`geometry::transform_nodes`) sait aussi pivoter et mettre à l'échelle un groupe ; leur
+exposition dans l'interface reste à faire.
+
+### Pinceau de déformation (HP-VEC-018)
+
+Outil **Pinceau** (Maj+B, palette ; menu Forme › *Réglages du pinceau…* pour le
+rayon en mm et l'intensité, mémorisés ; `[` / `]` changent le rayon). Avec **une**
+forme sélectionnée, glisser pousse / tire son contour : chaque nœud à moins du rayon
+bouge du déplacement du curseur pondéré par `w = 3u² − 2u³` (`u = 1 − d/rayon`)
+multiplié par l'intensité ; **Maj** lisse (chaque nœud se rapproche du milieu de ses
+voisins). Les tangentes ne changent pas, les extrémités d'un tracé ouvert restent fixes.
+Pour que la zone ait de quoi se déformer sans que les nœuds prolifèrent, les segments
+trop longs de la zone sont subdivisés exactement (De Casteljau, 64 nœuds au plus par
+touche) et les nœuds droits devenus redondants sont retirés (écart à la corde ≤ 30 µm).
+Alternative écartée : rééchantillonner le contour à chaque touche, qui dégrade les courbes
+et multiplie les nœuds après quelques coups. Un coup de pinceau (appui → relâchement) est
+UNE `BrushStrokeCommand` ; le relâchement est refusé si le contour se croiserait ; Échap
+l'abandonne sans toucher au document.
+
 Limitation : l'ajout/suppression de nœuds, la conversion anguleux/lisse et
 l'édition de tangentes ne sont pas exposés (voir *Vectorisation*).
 

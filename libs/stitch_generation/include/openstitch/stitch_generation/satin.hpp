@@ -8,6 +8,7 @@
 
 #include "openstitch/core/units.hpp"
 #include "openstitch/geometry/path.hpp"
+#include "openstitch/stitch_generation/adaptive_pull.hpp"
 
 namespace openstitch::stitch_generation {
 
@@ -22,6 +23,14 @@ enum class ShortStitchMode { Disabled, RemoveAndRedistribute, SingleInset, Multi
 // Points de fractionnement pour les traversées trop longues (§8). Le point
 // intermédiaire est décalé (staggered/jitter) pour éviter une ligne centrale.
 enum class SplitStitchMode { Disabled, Simple, Staggered, DeterministicJitter };
+
+// Coins vifs de la colonne (HP-ENG-005, mêmes valeurs/ordre que `document::SatinCorner`) :
+// onglet (une seule traversée en bissectrice), chevauchement (les branches se croisent sans
+// traversée intermédiaire), coupe (saut au coin, la colonne repart sur la branche suivante).
+enum class SatinCornerMode { None, Miter, Overlap, Cut };
+
+// Bord irrégulier (HP-STI-022, mêmes valeurs/ordre que `document::SatinJagged`).
+enum class SatinJaggedMode { None, SideA, SideB, Both };
 
 // Terminaisons de colonne (§9).
 enum class SatinCapType { Flat, Rounded, Tapered, Automatic };
@@ -55,6 +64,21 @@ struct SatinConfig {
     double wide_throw_zigzag_amplitude{0.35};
     std::uint64_t split_seed{1}; // graine déterministe (jitter)
 
+    // --- Espacement automatique (HP-ENG-003) ---
+    // Vrai : le pas entre traversées dépend de la largeur locale (colonnes étroites plus lâches,
+    // larges plus serrées), `density` valant pour une largeur de 4 mm. Faux = inchangé.
+    bool auto_spacing{false};
+
+    // --- Coins vifs (HP-ENG-005) ---
+    SatinCornerMode corner_mode{SatinCornerMode::None};
+    double corner_angle_deg{60.0}; // changement de cap de l'axe au-delà duquel c'est un coin
+
+    // --- Bord irrégulier (HP-STI-022) : raccourcit un côté de chaque fil d'une longueur
+    // déterministe dans [0 ; amplitude] (hash de graine + indice) ; largeur résiduelle >= 0,4 mm.
+    SatinJaggedMode jagged{SatinJaggedMode::None};
+    Micrometers jagged_amplitude{1'500};
+    std::uint32_t jagged_seed{1};
+
     // --- Terminaisons ---
     SatinCapType cap_start{SatinCapType::Flat};
     SatinCapType cap_end{SatinCapType::Flat};
@@ -76,6 +100,13 @@ struct SatinConfig {
     Micrometers pull_max{5'000}; // borne de l'offset par côté
     Micrometers push_start{0};   // >0 étend la colonne au départ
     Micrometers push_end{0};     // >0 étend la colonne à la fin
+
+    // --- Compensation adaptative (`PullMode::Adaptive`, AdaptivePullCompensation niveau 1) ---
+    // Vrai : la pull latérale de base est calculée STATION PAR STATION (largeur, courbure,
+    // extrémités, jonctions, variation de largeur, lissage) au lieu de `pull_compensation`
+    // (ignoré). `pull_left`/`pull_right` et leurs parts proportionnelles restent additifs.
+    bool adaptive_pull{false};
+    AdaptiveSatinModel adaptive_model{};
 };
 
 // Une passe de couture (polyligne) — sous-couche ou trajet.
@@ -102,6 +133,9 @@ struct SatinResult {
     // masquer après coup. Vide dans le cas courant (ruban continu du début
     // à la fin, la grande majorité des colonnes).
     std::vector<std::size_t> jump_before;
+
+    // Compensation effective par station, remplie seulement en mode adaptatif (diagnostic).
+    std::vector<SatinPullSample> pull_profile;
 };
 
 // Station structurelle d'une colonne satin : un couple (point rail A, point

@@ -26,6 +26,9 @@ struct SkeletonSatinGuide {
     // Relatif : écart à la perpendiculaire à l'axe (0 = perpendiculaire).
     double angle_rad{0.0};
     bool absolute{false};
+    // Guide en courbe (polyligne, `anchor` compris) : fils perpendiculaires à sa tangente, voir
+    // `document::AutoSatinGuide::path`. Seul le balayage parallèle l'exploite ; vide = guide droit.
+    std::vector<Vec2um> path;
 };
 
 // Analyse par défaut de l'auto-satin : celle de `AutoSatinParameters` plus

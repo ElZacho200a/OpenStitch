@@ -7,6 +7,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSignalSpy>
 #include <QTest>
 #include <QTimer>
@@ -75,6 +76,7 @@ private slots:
     void proposalIsGroupedAndKeepsAnalyzedExtent();
     void transitionZoneDefaultsAndMinimumExtent();
     void transitionCurveDefaultsToLinearAndFollowsProposals();
+    void contentLivesInScrollBody();
     void stitchPreviewAndLayerFilter();
     void changesInvalidatePreviewAndInvalidColorsStopRequests();
     void previewMessageClearsCurrentDisplay();
@@ -259,6 +261,19 @@ void ColorBlendDialogTest::transitionCurveDefaultsToLinearAndFollowsProposals() 
     QCOMPARE(dialog.curve(), document::DensityCurve::Steep);
 }
 
+void ColorBlendDialogTest::contentLivesInScrollBody() {
+    ColorBlendDialog dialog(backgroundRgb, foregroundRgb, false, false);
+    auto* scroll = dialog.findChild<QScrollArea*>("dialogScrollBody");
+    QVERIFY(scroll != nullptr);
+    // Les widgets des sous-layouts (aperçu, listes...) doivent descendre du corps défilant, sinon
+    // le viewport les recouvre et ils ne sont jamais peints.
+    for (const char* name : {"blend_preview", "combo_blendPreviewLayer", "edit_blendBackground"}) {
+        auto* widget = dialog.findChild<QWidget*>(name);
+        QVERIFY2(widget != nullptr, name);
+        QVERIFY2(scroll->isAncestorOf(widget), name);
+    }
+}
+
 void ColorBlendDialogTest::stitchPreviewAndLayerFilter() {
     ColorBlendDialog dialog(backgroundRgb, foregroundRgb, false, false);
     auto* preview = dialog.findChild<QWidget*>("blend_preview");
@@ -272,6 +287,9 @@ void ColorBlendDialogTest::stitchPreviewAndLayerFilter() {
     connect(&dialog, &ColorBlendDialog::previewRequested, &dialog, [&] { supplyPreview(dialog); });
     dialog.show();
     QTRY_COMPARE(requests.count(), 1);
+    // Sur un petit écran le dialogue passe sous le seuil côte à côte : l'aperçu est alors sous les
+    // réglages, dans la zone défilante, et n'est peint qu'une fois amené dans le viewport.
+    dialog.findChild<QScrollArea*>("dialogScrollBody")->ensureWidgetVisible(preview);
     QTRY_VERIFY(paints.paints > 0);
     QVERIFY(preview->property("hasStitchPreview").toBool());
     QCOMPARE(preview->property("stitchCount").toULongLong(), qulonglong{7});

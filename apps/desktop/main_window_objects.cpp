@@ -6,11 +6,14 @@
 #include <QAction>
 #include <QClipboard>
 #include <QColorDialog>
+#include <QDir>
 #include <QGuiApplication>
+#include <QImage>
 #include <QInputDialog>
 #include <QLineF>
 #include <QMenu>
 #include <QMimeData>
+#include <QStandardPaths>
 #include <QStatusBar>
 
 #include <algorithm>
@@ -130,6 +133,8 @@ void MainWindow::buildObjectEditActions(QMenu* editMenu) {
             }
         });
 
+    buildSelectionToolsMenu(editMenu);
+
     // Coller s'active dès qu'une autre instance (ou celle-ci) copie des formes.
     connect(QGuiApplication::clipboard(), &QClipboard::dataChanged, this,
             [this] { updateObjectEditActions(); });
@@ -156,6 +161,10 @@ void MainWindow::buildObjectEditActions(QMenu* editMenu) {
                 rotateSelection(degrees);
             }
         });
+    add(transform, rotationPivotAct_, tr("&Centre de rotation…"),
+        QStringLiteral("action_rotationPivot"), QKeySequence(),
+        tr("Fixe le centre de rotation de la sélection par ses coordonnées en millimètres."),
+        [this] { editRotationPivot(); });
     transform->addSeparator();
     add(transform, mirrorHorizontalAct_, tr("Miroir &horizontal"),
         QStringLiteral("action_mirrorHorizontal"), QKeySequence(),
@@ -205,12 +214,13 @@ void MainWindow::updateObjectEditActions() {
     const QString needDesign = tr("Le design ne contient aucune forme.");
     for (QAction* act :
          {cutAct_, copyAct_, duplicateWithStitchesAct_, rotateLeftAct_, rotateRightAct_,
-          rotateAngleAct_, mirrorHorizontalAct_, mirrorVerticalAct_}) {
+          rotateAngleAct_, rotationPivotAct_, mirrorHorizontalAct_, mirrorVerticalAct_}) {
         setEnabledWithReason(act, anyTarget, needShapes);
     }
     const QMimeData* mime = QGuiApplication::clipboard()->mimeData();
     setEnabledWithReason(pasteAct_,
-                         mime != nullptr && mime->hasFormat(project_io::kFragmentMimeType),
+                         mime != nullptr &&
+                             (mime->hasFormat(project_io::kFragmentMimeType) || mime->hasImage()),
                          tr("Copiez d'abord des formes (Édition ▸ Copier)."));
     setEnabledWithReason(pasteInPlaceAct_, pasteAct_ != nullptr && pasteAct_->isEnabled(),
                          tr("Copiez d'abord des formes (Édition ▸ Copier)."));
@@ -230,6 +240,7 @@ void MainWindow::updateObjectEditActions() {
                          designMirrorHorizontalAct_, designMirrorVerticalAct_}) {
         setEnabledWithReason(act, anyObject, needDesign);
     }
+    updateSelectionToolActions();
 }
 
 std::vector<ObjectId> MainWindow::transformTargets() const {
@@ -293,6 +304,19 @@ void MainWindow::cutSelection() {
 
 void MainWindow::pasteClipboard(bool inPlace) {
     const QMimeData* mime = QGuiApplication::clipboard()->mimeData();
+    // HP-FMT-016 : une image du presse-papiers (capture, copie depuis un navigateur) s'ouvre comme
+    // une image importée, via un PNG temporaire.
+    if (mime != nullptr && !mime->hasFormat(project_io::kFragmentMimeType) && mime->hasImage()) {
+        const QImage clip = qvariant_cast<QImage>(mime->imageData());
+        const QString tmp = QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
+                                .filePath(QStringLiteral("openstitch-presse-papiers.png"));
+        if (!clip.isNull() && clip.save(tmp, "PNG")) {
+            openPath(tmp);
+        } else {
+            statusBar()->showMessage(tr("L'image du presse-papiers n'a pas pu être lue."), 6000);
+        }
+        return;
+    }
     if (mime == nullptr || !mime->hasFormat(project_io::kFragmentMimeType)) {
         statusBar()->showMessage(
             tr("Rien à coller : copiez d'abord des formes (Édition ▸ Copier)."), 6000);
@@ -317,7 +341,7 @@ void MainWindow::pasteClipboard(bool inPlace) {
 
 void MainWindow::duplicateSelectionWithStitches() {
     const auto fragment = commands::collect_fragment(project_, transformTargets());
-    applyPastedFragment(fragment, Vec2um{Micrometers{2'000}, Micrometers{-2'000}}, tr("Dupliquer"),
+    applyPastedFragment(fragment, duplicateOffset_, tr("Dupliquer"),
                         tr("%1 forme(s) dupliquée(s) avec leur broderie."));
 }
 
@@ -340,8 +364,9 @@ std::vector<ObjectId> MainWindow::selectableObjectsAt(QPointF posMm) const {
     const double pxPerMm = std::max(view_->pixelsPerMm(), 1e-6);
     const double toleranceMm = std::max(0.4, 4.0 / pxPerMm);
     return objectsAtPointMm(
-        project_, posMm, toleranceMm,
-        [this](const document::VectorObject& object) { return vectorPassesFilter(object); });
+        project_, posMm, toleranceMm, [this](const document::VectorObject& object) {
+            return vectorPassesFilter(object) && !project_.shapeEditLocked(object.id);
+        });
 }
 
 ObjectId MainWindow::cycleTarget(const std::vector<ObjectId>& under, QPointF posMm) {
@@ -472,6 +497,11 @@ void MainWindow::zoomToSelection() {
 }
 
 void MainWindow::selectAllObjects() {
+    // Mode « Éditer les points » : Ctrl+A sélectionne les points de l'objet, pas les objets.
+    if (stitchPointEditActive()) {
+        selectAllStitchPoints();
+        return;
+    }
     std::vector<ObjectId> ids;
     for (const auto& object : project_.vector_objects) {
         if (object.visible) {
@@ -575,13 +605,14 @@ double MainWindow::rotationDragDegrees(QPointF centerScene, QPointF handleScene,
     return std::abs(degrees) < 0.05 ? 0.0 : degrees;
 }
 
-void MainWindow::rotateObjects(const std::vector<ObjectId>& ids, double degrees) {
+void MainWindow::rotateObjects(const std::vector<ObjectId>& ids, double degrees,
+                               std::optional<Vec2um> pivot) {
     const auto box = commands::objects_bounds(project_, ids);
     if (!box) {
         return;
     }
     runTransform(ids,
-                 commands::AffineTransform::rotation(box->center(),
+                 commands::AffineTransform::rotation(pivot.value_or(box->center()),
                                                      Angle{degrees * std::numbers::pi / 180.0}),
                  tr("Pivoter"), tr("Sélection pivotée de %1°.").arg(degrees, 0, 'f', 1));
 }

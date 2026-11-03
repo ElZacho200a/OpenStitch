@@ -21,11 +21,19 @@ struct AutoOptions {
     // > 0 : contours des formes en courbes de Bézier (voir
     // `vectorization::VectorizeOptions::curve_tolerance`). 0 : polygones.
     Micrometers curve_tolerance{0};
+    // Zones de détail (voir `vectorization::VectorizeOptions::detail_mask`) : les régions de détail
+    // sont vectorisées plus finement. nullptr = aucune. Le pointeur doit rester valide pendant
+    // l'appel.
+    const segmentation::DetailMask* detail_mask{nullptr};
     // Largeur maximale d'une bande satinable (voir `satin_bands`). Ignoré
     // tant que `satin_bands` est faux.
     Micrometers satin_max_width{6'000};
     // Aire min (mm²) pour un remplissage ; en dessous, simple contour.
     double min_fill_area_mm2{4.0};
+    // Avec `detail_mask` : seuil de remplissage (mm²) des régions de détail, à la place de
+    // `min_fill_area_mm2` (si plus petit). Une petite forme de détail (oeil, lettre) est cousue en
+    // tatami plutôt qu'en simple contour. 0 ou >= min_fill_area_mm2 : sans effet.
+    double detail_min_fill_area_mm2{1.0};
     // Ignore le FOND présumé : la couleur du plus gros morceau segmenté, et
     // TOUTE autre région de cette même couleur exacte (pas seulement ce
     // morceau) -- un fond peut se fragmenter en plusieurs régions disjointes
@@ -33,6 +41,11 @@ struct AutoOptions {
     // image carrée). Particulièrement utile sur une image SANS canal alpha :
     // sans transparence, le fond devient une région opaque comme les autres.
     bool skip_largest_region{false};
+    // Avec `skip_largest_region` : n'ignore que les régions de la couleur de fond qui touchent le
+    // pourtour de l'image (le fond extérieur). Une région de même couleur enfermée dans le motif
+    // (nuage blanc, soleil) reste cousue. Un blanc relié au fond par la quantification fait partie
+    // du fond et reste ignoré.
+    bool skip_background_outer_only{false};
 
     // --- Satin sur les bandes (anneaux, rubans, traits épais) ---
     // Vrai : une région ÉTROITE et allongée (largeur moyenne >= 0,8 mm, largeur
@@ -77,6 +90,11 @@ struct AutoOptions {
     // Lot F : liaisons cousues cachées (underpath) plutôt que des sauts entre
     // les composantes de rangées d'un même tatami.
     bool fill_hidden_underpath{true};
+    // HP-ENG-001.b : les tatamis et auto-satins créés reçoivent la compensation du tirage
+    // AUTOMATIQUE (`PullMode::Auto`) : le moteur calcule le dépassement des rangées / la largeur
+    // de colonne à la génération, sans réglage manuel. Faux = `Manual` à 0 (comportement
+    // antérieur : zones voisines trop espacées après broderie).
+    bool auto_pull_compensation{true};
 
     // --- Chevauchement et ordre (Lot C) ---
     // Débord de chaque tatami sur ses voisins BRODÉS, uniquement le long des

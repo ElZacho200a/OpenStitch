@@ -216,3 +216,45 @@ TEST_CASE("merge_same_thread_blocks leaves hidden objects in place") {
     const auto order = merge_same_thread_blocks(p, film);
     CHECK(order == std::vector<ObjectId>{ObjectId{1}, ObjectId{2}, ObjectId{3}});
 }
+
+TEST_CASE("sequence_by_color without order equals merge_same_thread_blocks") {
+    const auto p = three_objects();
+    const auto film = color_film(p, sequence_for(p));
+    CHECK(sequence_by_color(p, film) == merge_same_thread_blocks(p, film));
+}
+
+TEST_CASE("sequence_by_color honours an explicit thread order and ignores unknown threads") {
+    const auto p = three_objects();
+    const auto film = color_film(p, sequence_for(p));
+    const ThreadIdentity blue{std::nullopt, kBlue};
+    const ThreadIdentity ghost{std::nullopt, {1, 2, 3}};
+    const auto order = sequence_by_color(p, film, {ghost, blue, blue});
+    // Bleu d'abord, puis le rouge regroupe ses deux objets.
+    CHECK(order == std::vector<ObjectId>{ObjectId{2}, ObjectId{1}, ObjectId{3}});
+    CHECK(sequence_by_color(p, film, {blue}) == order);
+}
+
+TEST_CASE("sequence_by_color keeps locked objects at their absolute place") {
+    auto p = three_objects();
+    p.embroidery_objects[0].locked = true;
+    const auto film = color_film(p, sequence_for(p));
+    const ThreadIdentity blue{std::nullopt, kBlue};
+    const auto order = sequence_by_color(p, film, {blue});
+    REQUIRE(order.size() == 3);
+    CHECK(order[0] == ObjectId{1});
+}
+
+TEST_CASE("thread_visibility lists fully hidden threads that the film no longer shows") {
+    auto p = three_objects();
+    p.embroidery_objects[1].visible = false; // seul objet bleu
+    p.embroidery_objects[2].visible = false; // un des deux rouges
+    const auto vis = thread_visibility(p);
+    REQUIRE(vis.size() == 2);
+    CHECK(vis[0].identity.rgb == kRed);
+    CHECK(vis[0].objects == std::vector<ObjectId>{ObjectId{1}, ObjectId{3}});
+    CHECK(vis[0].partly_hidden());
+    CHECK_FALSE(vis[0].fully_hidden());
+    CHECK(vis[1].identity.rgb == kBlue);
+    CHECK(vis[1].fully_hidden());
+    CHECK(thread_visibility(document::Project{}).empty());
+}

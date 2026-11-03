@@ -198,6 +198,140 @@ private slots:
         QVERIFY(!third.densityMapAct_->isChecked());
     }
 
+    // ---- HP-VIEW-014 : carte d'épaisseur estimée
+    // -------------------------------------------------
+
+    static QLabel* summaryLabel(MainWindow& window) {
+        return window.analysisDock_->findChild<QLabel*>(QStringLiteral("densitySummary"));
+    }
+
+    void thicknessActionIsOffByDefaultAndExclusiveWithDensity() {
+        MainWindow window;
+        QVERIFY(window.thicknessMapAct_ != nullptr);
+        QVERIFY(window.thicknessMapAct_->isCheckable());
+        QVERIFY(!window.thicknessMapAct_->isChecked());
+        bool inViewMenu = false;
+        for (const QMenu* menu : window.menuBar()->findChildren<QMenu*>()) {
+            if (menu->actions().contains(window.thicknessMapAct_)) {
+                inViewMenu = menu->title().contains(QStringLiteral("Affichage"));
+            }
+        }
+        QVERIFY(inViewMenu);
+
+        window.densityMapAct_->setChecked(true);
+        window.thicknessMapAct_->setChecked(true); // une seule surimpression à la fois
+        QVERIFY(window.thicknessMapAct_->isChecked());
+        QVERIFY(!window.densityMapAct_->isChecked());
+        window.densityMapAct_->setChecked(true);
+        QVERIFY(window.densityMapAct_->isChecked());
+        QVERIFY(!window.thicknessMapAct_->isChecked());
+    }
+
+    void thicknessOverlayShowsMillimetresAndTheThickestSpot() {
+        MainWindow window;
+        window.applyLoadedProject(denseProject());
+        window.thicknessMapAct_->setChecked(true);
+        QVERIFY(window.densityTimer_->isActive());
+        window.recomputeDensity();
+        QVERIFY(window.densityValid_);
+        QCOMPARE(window.densityComputeCount_, 1);
+        QCOMPARE(overlayCount(window), 1);
+
+        auto* legend = window.view_->viewport()->findChild<DensityLegend*>();
+        QVERIFY(legend != nullptr);
+        QVERIFY(legend->thicknessMode());
+        QVERIFY(!legend->isHidden());
+        QVERIFY(legend->scaleMax() >= 0.1);
+
+        // La ligne du pic : épaisseur en mm, objet nommé, cible = centre d'une case de l'aplat.
+        auto* list = hotspotList(window);
+        QCOMPARE(list->count(), 1);
+        QVERIFY(list->item(0)->text().contains(QStringLiteral("mm estimés")));
+        QVERIFY(list->item(0)->text().contains(QStringLiteral("Aplat")));
+        const QPointF target = list->item(0)->data(Qt::UserRole).toPointF();
+        QVERIFY(target.x() > 0.0 && target.x() < 10.0);
+        QVERIFY(target.y() < 0.0 && target.y() > -10.0);
+        // Résumé : c'est annoncé comme une estimation, jamais comme une mesure.
+        QVERIFY(summaryLabel(window)->text().contains(QStringLiteral("non mesurée")));
+
+        // Un simple redessin réutilise le cache.
+        window.renderStitches();
+        QCOMPARE(window.densityComputeCount_, 1);
+
+        window.thicknessMapAct_->setChecked(false);
+        QCOMPARE(overlayCount(window), 0);
+        QVERIFY(legend->isHidden());
+        QCOMPARE(hotspotList(window)->count(), 0);
+    }
+
+    void thicknessMapDoesNotChangeTheDocument() {
+        MainWindow window;
+        window.applyLoadedProject(denseProject());
+        const auto undoBefore = window.undoStack_.undoNames().size();
+        const auto objectsBefore = window.project_.embroidery_objects.size();
+        const auto commandsBefore = window.sequence_->commands.size();
+        window.thicknessMapAct_->setChecked(true);
+        window.recomputeDensity();
+        QCOMPARE(window.undoStack_.undoNames().size(), undoBefore);
+        QCOMPARE(window.project_.embroidery_objects.size(), objectsBefore);
+        QCOMPARE(window.sequence_->commands.size(), commandsBefore);
+    }
+
+    void thicknessMapFollowsTheZoom() {
+        MainWindow window;
+        window.applyLoadedProject(denseProject());
+        window.thicknessMapAct_->setChecked(true);
+        window.recomputeDensity();
+        const int cellBefore = window.densityCellUm_;
+        QCOMPARE(cellBefore, window.thicknessCellForView().value);
+
+        // Zoom avant : la case de la carte devient plus fine (jusqu'à 0,5 mm), le recalcul est
+        // planifié, et le calcul suivant utilise le nouveau côté.
+        for (int i = 0; i < 12 && window.thicknessCellForView().value >= cellBefore; ++i) {
+            window.view_->zoomIn();
+        }
+        const int wanted = window.thicknessCellForView().value;
+        QVERIFY2(wanted < cellBefore, "le zoom avant doit affiner la case");
+        QVERIFY(window.densityTimer_->isActive());
+        window.recomputeDensity();
+        QCOMPARE(window.densityCellUm_, wanted);
+        QCOMPARE(window.densityComputeCount_, 2);
+        QCOMPARE(overlayCount(window), 1);
+    }
+
+    void thicknessSettingsInvalidateTheCacheAndRescaleTheLegend() {
+        MainWindow window;
+        window.applyLoadedProject(denseProject());
+        window.thicknessMapAct_->setChecked(true);
+        window.recomputeDensity();
+        const double scaleBefore = window.densityScaleMax_;
+        auto* spin =
+            window.analysisDock_->findChild<QDoubleSpinBox*>(QStringLiteral("thicknessLayerSpin"));
+        QVERIFY(spin != nullptr);
+        QCOMPARE(spin->value(), 0.2); // valeur par défaut du cœur
+        window.densityTimer_->stop();
+        spin->setValue(0.4); // couche deux fois plus épaisse : l'échelle en mm double au moins
+        QVERIFY(!window.densityValid_);
+        QVERIFY(window.densityTimer_->isActive());
+        window.recomputeDensity();
+        QVERIFY(window.densityValid_);
+        QVERIFY(window.densityScaleMax_ > scaleBefore);
+        QCOMPARE(window.densityComputeCount_, 2);
+    }
+
+    void thicknessEnabledStateIsRemembered() {
+        {
+            MainWindow window;
+            window.thicknessMapAct_->setChecked(true);
+        }
+        MainWindow again;
+        QVERIFY(again.thicknessMapAct_->isChecked());
+        QVERIFY(!again.densityMapAct_->isChecked());
+        again.thicknessMapAct_->setChecked(false);
+        MainWindow third;
+        QVERIFY(!third.thicknessMapAct_->isChecked());
+    }
+
     void hotspotsAreListedAndClickCentersTheView() {
         MainWindow window;
         window.applyLoadedProject(denseProject());

@@ -18,8 +18,8 @@ class WorkflowPanel : public QWidget {
     Q_OBJECT
 
 public:
-    static constexpr int kStepCount = 6; // Image, Régions, Vecteurs, Broderie, Vérif, Export
-    enum class State { NotStarted, Available, InProgress, Done, Attention };
+    static constexpr int kStepCount = 6; // Source, Régions, Vecteurs, Broderie, Vérif, Export
+    enum class State { NotStarted, Available, InProgress, Done, Attention, Skipped };
 
     explicit WorkflowPanel(QWidget* parent = nullptr);
 

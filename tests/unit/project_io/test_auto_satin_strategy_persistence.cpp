@@ -70,6 +70,27 @@ TEST_CASE("auto-satin : la methode et l'angle de balayage font l'aller-retour") 
     }
 }
 
+TEST_CASE(
+    "auto-satin : un guide en courbe fait l'aller-retour, un guide droit n'ecrit pas de path") {
+    document::AutoSatinParams p;
+    p.strategy = document::AutoSatinStrategy::ParallelSweep;
+    const auto pt = [](std::int32_t x, std::int32_t y) {
+        return Vec2um{Micrometers{x}, Micrometers{y}};
+    };
+    p.guides.push_back({pt(1'000, 2'000), Angle{0.4}, true, {}});
+    p.guides.push_back(
+        {pt(5'000, 0), Angle{0.1}, true, {pt(5'000, 0), pt(9'000, 3'000), pt(12'000, 0)}});
+    const auto path = unique_path("openstitch_guide_curve_rt_");
+    REQUIRE(project_io::save_project(path, project_with(p)).has_value());
+    const auto loaded = project_io::load_project(path);
+    fs::remove(path);
+    REQUIRE(loaded.has_value());
+    const auto& back = std::get<document::AutoSatinParams>(loaded->embroidery_objects[0].params);
+    CHECK(back == p);
+    CHECK(back.guides[0].path.empty());
+    CHECK(back.guides[1].path.size() == 3);
+}
+
 TEST_CASE("auto-satin : le fichier reste en v6 tant que la methode est le squelette") {
     const auto path = unique_path("openstitch_strategy_v6_");
     REQUIRE(project_io::save_project(path, project_with({})).has_value());

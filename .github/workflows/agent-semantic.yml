@@ -1,0 +1,28 @@
+name: Agent semantic manifest
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/openstitch_semantic.py'
+      - 'tests/scripts/test_openstitch_semantic.py'
+      - '.github/workflows/agent-semantic.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/openstitch_semantic.py'
+      - 'tests/scripts/test_openstitch_semantic.py'
+      - '.github/workflows/agent-semantic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  python-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test semantic manifest without network
+        run: python3 -m unittest discover -s tests/scripts -p 'test_openstitch_semantic.py' -v

@@ -4,6 +4,7 @@
 #include <QPoint>
 #include <QWidget>
 
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -15,11 +16,14 @@ class QComboBox;
 class QLineEdit;
 class QListWidget;
 class QMenu;
+class QPushButton;
 class QTabWidget;
 class QTreeWidget;
 class QTreeWidgetItem;
 
 namespace openstitch::desktop {
+
+class CalquePanel;
 
 // Vue structurée du document : onglets Objets (broderie) et Régions
 // (segmentation). Sélectionner une ligne émet un signal ; MainWindow route la
@@ -34,6 +38,9 @@ public:
 
     explicit DocumentPanel(QWidget* parent = nullptr);
 
+    // Pile des calques (HP-OBJ-024), affichée au-dessus des onglets ; MainWindow s'y connecte.
+    [[nodiscard]] CalquePanel* calquePanel() const { return calquePanel_; }
+
     // Reconstruit les listes depuis le document. `editStates` (Lot 8.2) :
     // état Clean/ManuallyEdited/Dirty des objets retouchés (absents = Clean,
     // cf. `stitch_generation::classify_all_edit_states`) — affiché en suffixe
@@ -42,6 +49,10 @@ public:
     void refresh(const document::Project& project,
                  const std::vector<std::pair<ObjectId, stitch_generation::ObjectEditState>>&
                      editStates = {});
+    // HP-SIM-003 : objet en cours de couture pendant la simulation (surbrillance de sa ligne,
+    // sans toucher à la sélection ni émettre de signal) ; nullopt efface la surbrillance.
+    void setPlaybackObject(std::optional<ObjectId> id);
+    [[nodiscard]] std::optional<ObjectId> playbackObject() const { return playbackId_; }
     // Sélectionne la ligne correspondant à la sélection courante (sans réémettre).
     void syncSelection(Kind kind, std::uint64_t id);
     // Sélection multiple de régions : coche toutes les lignes de `ids` (l'active devient la
@@ -104,8 +115,19 @@ signals:
     void visibilityToggled(ObjectId id, bool visible);
     void orderLockToggled(ObjectId id, bool locked);
     void renameRequested(ObjectId id, QString name);
+    // Calques de couture (HP-OBJ-023) : « Ajouter une couche » (bouton « + » ou menu de ligne)
+    // et « Dupliquer la couche » ; `id` = objet de broderie visé. MainWindow exécute les commandes.
+    // `interactive` : choisir le type et la couleur (Maj + clic) au lieu des valeurs par défaut.
+    void addLayerRequested(ObjectId id, bool interactive);
+    void duplicateLayerRequested(ObjectId id);
 
 private:
+    CalquePanel* calquePanel_{nullptr};
+    QPushButton* addLayerBtn_{nullptr}; // « + Couche » : actif si une seule broderie est choisie
+    // Ligne de broderie visée par « ajouter une couche » : la ligne unique sélectionnée, ou la
+    // dernière couche (celle du dessus) d'un groupe sélectionné. nullptr sinon.
+    [[nodiscard]] QTreeWidgetItem* layerTargetItem() const;
+    void updateAddLayerButton();
     QTabWidget* tabs_{nullptr};
     // Arbre plutôt que liste plate (§21 du plan de refonte satin,
     // 2026-08-14) : les EmbroideryObject partageant le même `source_vector`
@@ -114,8 +136,13 @@ private:
     // plus d'une ; un objet seul reste un simple item de premier niveau,
     // visuellement identique à l'ancienne liste plate.
     QTreeWidget* objectsList_{nullptr};
+    std::optional<ObjectId> playbackId_; // HP-SIM-003
+    void applyPlayback();
     QLineEdit* filterEdit_{nullptr};
-    QComboBox* typeFilter_{nullptr}; // filtre par type de point (HP-UX-042)
+    QComboBox* typeFilter_{nullptr};  // filtre par type de point (HP-UX-042)
+    QComboBox* stateFilter_{nullptr}; // filtre par état : masqué, ordre figé, retouché
+    QComboBox* colorFilter_{nullptr}; // filtre par couleur de fil (teintes présentes dans la liste)
+    void rebuildColorFilter();
     QListWidget* regionsList_{nullptr};
     // Masque les lignes qui ne contiennent pas le texte du champ de recherche.
     void applyFilter();

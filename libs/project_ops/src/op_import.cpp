@@ -5,10 +5,13 @@
 // commandes existantes (`AddObjectBatchCommand`, `SetTextObjectCommand`).
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <numbers>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "op_registry.hpp"
@@ -16,6 +19,7 @@
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/text_commands.hpp"
 #include "openstitch/formats/svg_import.hpp"
+#include "openstitch/image/image.hpp"
 #include "openstitch/lettering/font.hpp"
 #include "openstitch/lettering/lettering.hpp"
 #include "openstitch/project_ops/inspect.hpp"
@@ -276,6 +280,101 @@ OpStatus read_text_fields(const json& args, document::TextObject& t, bool& origi
                                 "valeurs : auto, satin, tatami, contour");
         }
     }
+    if (args.contains("base")) {
+        const auto b = args.at("base").get<std::string>();
+        if (b == "line") {
+            t.base.kind = document::TextBaseKind::Line;
+        } else if (b == "arc") {
+            t.base.kind = document::TextBaseKind::Arc;
+        } else if (b == "circle") {
+            t.base.kind = document::TextBaseKind::Circle;
+        } else if (b == "path") {
+            t.base.kind = document::TextBaseKind::Path;
+        } else {
+            return out_of_range("base « " + b + " » inconnue", "valeurs : line, arc, circle, path");
+        }
+    }
+    if (args.contains("base_radius_mm")) {
+        if (auto s = number("base_radius_mm", 1.0, 1000.0, v); !s.ok) {
+            return s;
+        }
+        t.base.radius = to_micrometers(Millimeters{v});
+    }
+    if (args.contains("base_inside")) {
+        t.base.inside = args.at("base_inside").get<bool>();
+    }
+    if (args.contains("base_path_mm")) {
+        const auto& pts = args.at("base_path_mm");
+        if (!pts.is_array() || pts.size() > 500) {
+            return out_of_range("base_path_mm : tableau de [x, y] (500 points au plus) attendu");
+        }
+        t.base.path.clear();
+        for (const auto& pj : pts) {
+            Vec2um p;
+            if (!read_point(pj, p)) {
+                return out_of_range(
+                    "base_path_mm : points [x, y] en mm (|coord| <= 1000) attendus");
+            }
+            t.base.path.push_back(p);
+        }
+    }
+    if (t.base.kind == document::TextBaseKind::Path && t.base.path.size() < 2) {
+        return out_of_range("base path : base_path_mm doit contenir au moins 2 points");
+    }
+    for (const char* key : {"letter_connector", "word_connector"}) {
+        if (!args.contains(key)) {
+            continue;
+        }
+        const auto c = args.at(key).get<std::string>();
+        document::ConnectorMode mode = document::ConnectorMode::Inherit;
+        if (c == "trim") {
+            mode = document::ConnectorMode::AlwaysTrim;
+        } else if (c == "no_trim") {
+            mode = document::ConnectorMode::NeverTrim;
+        } else if (c != "inherit") {
+            return out_of_range(std::string(key) + " « " + c + " » inconnu",
+                                "valeurs : inherit, trim, no_trim");
+        }
+        (std::string_view(key) == "letter_connector" ? t.letter_connector : t.word_connector) =
+            mode;
+    }
+    if (args.contains("glyph_edits")) {
+        const auto& edits = args.at("glyph_edits");
+        if (!edits.is_array() || edits.size() > 2000) {
+            return out_of_range("glyph_edits : tableau d'objets {index, dx_mm, dy_mm, "
+                                "rotation_deg, scale, rgb} attendu");
+        }
+        t.glyph_edits.clear();
+        for (const auto& ej : edits) {
+            if (!ej.is_object() || !ej.contains("index") || !ej.at("index").is_number_integer() ||
+                ej.at("index").get<long long>() < 0) {
+                return out_of_range("glyph_edits : chaque entrée porte un `index` >= 0");
+            }
+            document::GlyphEdit e;
+            e.index = ej.at("index").get<std::uint32_t>();
+            e.dx = to_micrometers(Millimeters{ej.value("dx_mm", 0.0)});
+            e.dy = to_micrometers(Millimeters{ej.value("dy_mm", 0.0)});
+            e.rotation = Angle{ej.value("rotation_deg", 0.0) * std::numbers::pi / 180.0};
+            e.scale = ej.value("scale", 1.0);
+            if (!(e.scale >= 0.1 && e.scale <= 10.0)) {
+                return out_of_range("glyph_edits : scale hors plage [0.1 ; 10]");
+            }
+            if (ej.contains("rgb")) {
+                const auto parsed = rgb_from_hex(ej.at("rgb").get<std::string>());
+                if (!parsed) {
+                    return out_of_range("glyph_edits : rgb invalide", "format attendu : #RRGGBB");
+                }
+                e.rgb = *parsed;
+            }
+            t.glyph_edits.push_back(e);
+        }
+        std::sort(t.glyph_edits.begin(), t.glyph_edits.end(),
+                  [](const auto& a, const auto& b) { return a.index < b.index; });
+        t.glyph_edits.erase(
+            std::unique(t.glyph_edits.begin(), t.glyph_edits.end(),
+                        [](const auto& a, const auto& b) { return a.index == b.index; }),
+            t.glyph_edits.end());
+    }
     if (args.contains("rgb")) {
         const auto parsed = rgb_from_hex(args.at("rgb").get<std::string>());
         if (!parsed) {
@@ -379,7 +478,22 @@ std::vector<ArgSpec> text_style_args() {
         arg("density_mm", "number", "écart des traversées satin / rangées tatami (défaut 0.4)",
             false, "mm", "[0.2 ; 2]"),
         arg("max_satin_width_mm", "number", "au-delà, la lettre passe en tatami (défaut 6)", false,
-            "mm", "[1 ; 20]")};
+            "mm", "[1 ; 20]"),
+        arg("base", "string", "base du texte : line | arc | circle | path (défaut line)", false, {},
+            "line | arc | circle | path"),
+        arg("base_radius_mm", "number", "rayon de la base arc / circle (défaut 50)", false, "mm",
+            "[1 ; 1000]"),
+        arg("base_inside", "boolean", "arc / circle : texte en dessous, sommets vers le centre"),
+        arg("base_path_mm", "array", "base path : points [[x,y],...] relatifs à l'origine", false,
+            "mm", "2 à 500 points"),
+        arg("letter_connector", "string", "entre lettres d'un mot : inherit | trim | no_trim",
+            false, {}, "inherit | trim | no_trim"),
+        arg("word_connector", "string", "entre mots / lignes : inherit | trim | no_trim", false, {},
+            "inherit | trim | no_trim"),
+        arg("glyph_edits", "array",
+            "éditions par lettre [{index, dx_mm, dy_mm, rotation_deg, scale, rgb}] (index = rang "
+            "de la lettre, espaces exclus)",
+            false, {}, "scale [0.1 ; 10]")};
 }
 
 OpSpec op_add_text() {
@@ -501,9 +615,135 @@ OpSpec op_remove_text() {
     return s;
 }
 
+// --- set_source_image ---------------------------------------------------------------------
+
+// Remplace l'image source et la résolution de travail, rien d'autre : objets, vecteurs et
+// identifiants ne sont pas touchés. Annulable en un pas (état précédent restitué à l'identique).
+class SetSourceImageCommand final : public commands::ICommand {
+public:
+    SetSourceImageCommand(image::Image image, double mm_per_px)
+        : image_(std::move(image)), mm_per_px_(mm_per_px) {}
+
+    void apply(document::Project& project) override {
+        previous_image_ = std::move(project.original);
+        previous_mm_per_px_ = project.mm_per_px;
+        project.original = image_;
+        project.mm_per_px = Millimeters{mm_per_px_};
+    }
+    void revert(document::Project& project) override {
+        project.original = std::move(previous_image_);
+        project.mm_per_px = previous_mm_per_px_;
+        previous_image_ = image::Image{};
+    }
+    [[nodiscard]] std::string name() const override { return "Définir l'image source"; }
+
+private:
+    image::Image image_;
+    double mm_per_px_;
+    image::Image previous_image_;
+    Millimeters previous_mm_per_px_{};
+};
+
+} // namespace
+
+OpStatus load_source_image(const document::Project& project, const std::string& path,
+                           std::optional<double> mm_per_px, SourceImagePlan& out) {
+    if (path.empty()) {
+        return OpStatus::failure(code::kUsage, "chemin de l'image source vide");
+    }
+    const fs::path file(std::u8string(reinterpret_cast<const char8_t*>(path.data()), path.size()));
+    std::error_code ec;
+    if (!fs::is_regular_file(file, ec)) {
+        return OpStatus::failure(code::kIo, "image source introuvable : " + path,
+                                 "chemin relatif au dossier courant ou absolu (PNG, JPEG, BMP, "
+                                 "TIFF)");
+    }
+    auto loaded = image::load_image(file);
+    if (!loaded || loaded->empty()) {
+        return OpStatus::failure(code::kRefused,
+                                 "image source illisible : " +
+                                     (loaded ? std::string("image vide") : loaded.error().message),
+                                 "formats pris en charge : PNG, JPEG, BMP, TIFF");
+    }
+    double scale = 0.0;
+    if (mm_per_px) {
+        scale = *mm_per_px;
+        if (!std::isfinite(scale) || scale < 0.001 || scale > 100.0) {
+            return out_of_range("mm_per_px = " + std::to_string(scale) +
+                                " hors plage [0.001 ; 100]");
+        }
+    } else {
+        // L'image remplit le cadre sans déformation : plus grande échelle telle que l'image tienne
+        // dans les deux dimensions. Comparaison en entiers (µm x px), une seule division finale.
+        const std::int64_t cw = project.canvas.width.value;
+        const std::int64_t ch = project.canvas.height.value;
+        const std::int64_t w = loaded->width;
+        const std::int64_t h = loaded->height;
+        if (cw <= 0 || ch <= 0) {
+            return OpStatus::failure(code::kRefused, "le cadre du projet est de taille nulle",
+                                     "définir le cadre par set_canvas ou passer mm_per_px");
+        }
+        scale = cw * h <= ch * w ? static_cast<double>(cw) / (static_cast<double>(w) * 1000.0)
+                                 : static_cast<double>(ch) / (static_cast<double>(h) * 1000.0);
+    }
+    out.image = std::move(*loaded);
+    out.mm_per_px = scale;
+    return OpStatus::success();
+}
+
+OpStatus apply_source_image(OpContext& ctx, SourceImagePlan&& plan) {
+    json result{{"width_px", plan.image.width},
+                {"height_px", plan.image.height},
+                {"mm_per_px", plan.mm_per_px},
+                {"width_mm", plan.image.width * plan.mm_per_px},
+                {"height_mm", plan.image.height * plan.mm_per_px}};
+    ctx.stack.execute(
+        std::make_unique<SetSourceImageCommand>(std::move(plan.image), plan.mm_per_px),
+        ctx.project);
+    return OpStatus::success(std::move(result));
+}
+
+namespace {
+
+OpStatus set_source_image(OpContext& ctx) {
+    const auto& path = ctx.args.at("path");
+    if (!path.is_string()) {
+        return OpStatus::failure(code::kUsage, "argument « path » : chaîne attendue");
+    }
+    std::optional<double> mm_per_px;
+    if (const auto it = ctx.args.find("mm_per_px"); it != ctx.args.end() && !it->is_null()) {
+        if (!it->is_number()) {
+            return OpStatus::failure(code::kUsage,
+                                     "argument « mm_per_px » : un nombre est attendu");
+        }
+        mm_per_px = it->get<double>();
+    }
+    SourceImagePlan plan;
+    if (auto st = load_source_image(ctx.project, path.get<std::string>(), mm_per_px, plan);
+        !st.ok) {
+        return st;
+    }
+    return apply_source_image(ctx, std::move(plan));
+}
+
 } // namespace
 
 void register_import_ops(std::vector<OpSpec>& out) {
+    OpSpec src;
+    src.name = "set_source_image";
+    src.summary =
+        "Définit l'image source du projet (et sa résolution) sans toucher aux objets : permet de "
+        "mesurer la fidélité d'un projet construit à la main (import_svg, semantic_import). "
+        "Annulable.";
+    src.args = {arg("path", "string", "image PNG, JPEG, BMP ou TIFF", true),
+                arg("mm_per_px", "number",
+                    "taille d'un pixel (défaut : l'image remplit le cadre du projet sans "
+                    "déformation)",
+                    false, "mm", "[0.001 ; 100]")};
+    src.example = R"({"op":"set_source_image","path":"source.png"})";
+    src.apply = set_source_image;
+    out.push_back(std::move(src));
+
     OpSpec svg;
     svg.name = "import_svg";
     svg.summary = "Importe les formes d'un fichier SVG comme objets vectoriels et de broderie "

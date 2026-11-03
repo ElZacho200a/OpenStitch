@@ -1,491 +1,231 @@
 ---
 name: openstitch-digitize
-description: Numériser une image en broderie avec OpenStitch (image → objets → points → DST) de façon à obtenir un résultat brodable et fidèle, et diagnostiquer une numérisation décevante. À utiliser quand l'utilisateur fournit une image (illustration, logo, photo, dessin au trait) à broder, demande « numérise ça », « pourquoi c'est moche / lourd / plein de coupes », compare une numérisation automatique à une version retouchée à la main (.osp), ou quand on règle `digitize`, `--dark-lines`, `--satin-bands`, `--skip-background`, `--max-colors`, `--min-region-mm2`.
+description: Numériser, analyser et améliorer une broderie OpenStitch de façon interprétative, de l'image initiale aux objets sémantiques, au choix satin/tatami/contour, au projet OSP et au DST. Pour une image, un OSP existant, un motif trop simplifié, trop d'îlots/coupes, des satins inadaptés ou une broderie à retravailler.
 ---
 
-# Bien numériser une image en broderie
+# Numérisation textile interprétative — OpenStitch
 
-La numérisation automatique donne un **point de départ**, pas un résultat fini. La méthode
-ci-dessous vient d'un cas réel : une illustration plate de navire (1448 × 1086 px, 300 mm), où
-une version retouchée à la main par l'utilisateur était nettement meilleure que la sortie
-automatique. Chaque règle porte la mesure qui la justifie. Documentation de référence :
-`docs/source/auto-numerisation.md` (à lire par `search_docs`, voir le skill `openstitch-docs`).
+**Mission.** Produire la meilleure broderie raisonnablement réalisable avec OpenStitch, et pas simplement convertir des pixels en DST. L'agent analyse, reconstruit, segmente, choisit les points, rend, critique, modifie et re-teste. Le **projet .osp éditable est la source de vérité** ; le DST n'est qu'un export. Un rendu logiciel ne valide jamais un essai physique sur machine.
 
-## 1. Regarder l'image avant de lancer quoi que ce soit
+## Documents à consulter selon le besoin
 
-| Question | Pourquoi |
-|---|---|
-| **Plate (aplats, contours nets) ou photo ?** | Plate : mode `shapes` (défaut). Dessin au trait : `contours`. Photo : `stipple`, ou la réduire à 6–10 couleurs avant (une photo en `shapes` donne des milliers de petites régions). |
-| **Y a-t-il un fond ?** | Un fond (papier, crème, blanc) ne se brode pas. Voir §3. |
-| **Taille réelle voulue (mm) ?** | `--dpi` fixe l'échelle : mm/px = 25,4 / dpi. 1448 px pour 300 mm → `--dpi 122.6`. Sans `--dpi`, 96 est supposé et la pièce sort 1,3 fois trop grande. Les détails fins se jugent en mm, pas en pixels. |
-| **Combien de vraies couleurs de fil ?** | `--max-colors` (défaut 8). Compter les teintes distinctes visibles ; mettre 1 à 2 de plus que ce compte, jamais 64 : deux quasi-doublons = un changement de fil de plus pour rien. |
-| **Contours noirs fins (mâts, haubans, bords) ?** | `--dark-lines`, voir §4. |
+- [Segmentation sémantique et fusion raisonnée](references/segmentation-semantique.md) — masques, instances, structures porteuses, reconstructions et refus de fusion.
+- [Sélection expérimentale des trois satins](references/selection-satins.md) — squelette, balayage, axe médian, couverture et rendu.
+- [Planification textile, remplissages directionnels et portes de validation](references/directions-et-planification-textile.md) — rôle textile, guides, sous-couches/occlusions, protocole et retour d'expérience du navire.
+- [Prompt autonome pour une nouvelle session](references/prompt-session-autodigitize.md) — texte à fournir avec une image et des dimensions pour relancer ce workflow, sans prétendre aux étapes non exécutées.
+- [Audit des contours et retouches/validation](references/retouches-et-validation.md) — suppression, conversion, densité, coupes, tests et livrables.
+- [Cas chiffré des ruines V1 à V9](references/cas-ruines-v1-v9.md) — hypothèses, gains réels et échecs.
+- [Réglages](references/parametres.md), [diagnostic](references/diagnostic.md), [journal d'essais historiques](references/journal-essais.md).
+- Hors Claude Code, ce même texte est servi par le serveur MCP `openstitch-mcp` (outil `digitize_guide`, ressources, prompt `digitize` ; voir [mcp.md](../../../docs/source/mcp.md)) : modifier ce skill suffit, le serveur l'embarque au build.
+- [CLI projet](../../../docs/source/cli-project.md), [auto-numérisation](../../../docs/source/auto-numerisation.md), [satin-squelette](../../../docs/source/satin-squelette.md), [segmentation](../../../docs/source/segmentation.md), [workflow.sh](scripts/workflow.sh).
 
-## 2. Lancer, mesurer, regarder
+## Principes de décision
 
-Binaire : `openstitch-cli` (voir `openstitch-build-test` pour le build). Sorties dans le
-**scratchpad**, jamais à la racine du dépôt.
+1. **Rôle textile avant couleur et géométrie.** Une pierre, la lune et un reflet peuvent partager le même fil beige tout en étant trois objets totalement distincts. Deux zones de même teinte ne sont jamais fusionnées sur cette seule base.
+2. **Priorité à la lisibilité.** Préserver silhouettes, joints d'arches, nervures, épis, reflets, variation de feuillage. Ne pas réduire la complexité du dessin seulement pour faire baisser les coupes. Une simplification graphique trop forte est irréversible lors de la numérisation.
+3. **Séparer puis réunir intelligemment.** Identifier les familles, **instances** et structures porteuses avant de créer des régions brodables. Fusionner des fragments d'une même liane peut aider ; relier deux nénuphars indépendants serait une erreur.
+4. **Satin n'est pas un seul point.** Un objet admissible exige, si l'enjeu le justifie, une comparaison *skeleton / parallel_sweep / medial_axis*. Un satin techniquement produit peut rester laid, non couvert ou excessivement dense.
+5. **Zéro erreur OpenStitch n'est pas une preuve de brodabilité.** Les densités sont simulées ; la tension réelle et les déformations sur pull nécessitent des essais physiques. Une baisse du nombre de points ou de coupes ne suffit jamais à conclure.
+6. **Mesurer à échelle stable.** Les métriques de fidélité à la source ne sont directement comparables que si la source, la taille brodée, l'échelle et le fond considéré sont les mêmes ; le tissu non brodé intentionnel peut fausser un « manque de couverture » global.
+7. **Portes de validation obligatoires (A → B → C → D).** A : scène lisible et masques sémantiques distincts ; B : plan de points et directions par objet ; C : OSP généré par le vrai moteur et provenance vérifiée ; D : comparaison artistique, physique et technique. **Si A échoue, ne pas tenter de réparer en changeant la densité ou en ajoutant du satin.** Si D échoue, reprendre l'étape responsable, pas déclarer la livraison définitive.
 
-**Boucle de travail (tout est dans le CLI, déterministe, sans script maison) :**
+## Phase 0 — Entrées, sauvegardes, CLI
 
-1. **Comparer des réglages d'un coup** : `project sweep` (grille d'options → tableau objectif + planche de
-   zooms réalistes). C'est le point d'entrée, avant tout essai à la main.
-2. **Numériser la variante retenue** : `workflow.sh` (ci-dessous) ou `project digitize … --debug-dir`.
-3. **Chercher les défauts** : `project diagnose` (détecteurs avec objets et option conseillée), puis
-   `project fidelity --map`, `project density --heatmap`.
-4. **Voir comme l'utilisateur** : `project render` (réaliste, fond vert), zoom avec `--crop`.
-5. **Pourquoi cet endroit est-il ainsi ?** `project at --px X,Y` (quel objet, quel type, quels
-   paramètres) et `digitize --debug-dir` (`traits.png` : rouge = trait cousu, bleu = barre, vert =
-   séparation non cousue, orange = fragment trop court).
+L'utilisateur fournit l'image, éventuellement le projet existant, et la taille brodée. **Ne demander que la dimension si elle manque.** Si connues : tissu (extensible ou non), couleur du support, stabilisateur, palette, machine et cadre. Choisir et signaler les hypothèses restantes.
 
-```bash
-# 1. balayage : 8 variantes en ~40 s, tableau + planche
-openstitch-cli project sweep img.png --dpi 122.6 --max-colors 12 --dark-lines --dark-lines-bars 4 \
-    --min-region-mm2 1 --fill-inset 0 --satin-bands --vary island-cleanup=0,20 \
-    --vary curve-tolerance=0,0.4 --vary no-underpath=0,1 --sheet $SCRATCH/planche.png \
-    --sheet-crop 0.12,0.3,0.46,0.72 --journal docs/journal.md --title "Mon image"
-# 2. variante retenue, de bout en bout (cadre, contrôle, diagnostic, fidélité, densité, rendu)
-CLI=/chemin/openstitch-cli .claude/skills/openstitch-digitize/scripts/workflow.sh \
-    img.png $SCRATCH/v1 300 210 122.6 --max-colors 12 --dark-lines --dark-lines-bars 4 \
-    --dark-lines-min-length 6 --min-region-mm2 1 --fill-inset 0 --satin-bands \
-    --curve-tolerance 0.4 --no-underpath --hidden-travel
-```
+Conserver immuables original et projets témoins ; tous les essais dans un dossier temporaire **en dehors du dépôt**. Employer le binaire réel OpenStitch :
 
-`workflow.sh` : image, dossier de sortie, largeur et hauteur du cadre (mm), dpi, puis les options de
-`digitize`. Il écrit `p.osp`, `out.dst`, `debug/` (masques), `realiste.png`, `fidelite.png`,
-`densite.png` et imprime les chiffres. Une variante = un nouveau dossier.
+~~~bash
+command -v openstitch-cli || true
+# Si absent et sur Linux x86-64, depuis la racine du dépôt :
+bash scripts/install-cli-linux.sh
+~/.local/bin/openstitch-cli --version
+~/.local/bin/openstitch-cli --help
+~/.local/bin/openstitch-cli project --help
+~/.local/bin/openstitch-cli project operations --json
+~~~
 
-Commandes unitaires :
+L'installateur du dépôt vérifie SHA-256 et privilégie la release persistante ou une CI réussie de main. Ne pas exécuter d'artefacts inconnus issus d'une PR. Si indisponible, suivre la documentation d'installation ou compiler. Ne jamais prétendre avoir exécuté OpenStitch sans démarrer le binaire.
 
-```bash
-openstitch-cli stats sortie.dst        # points, sauts, coupes, changements de fil, dimensions
-openstitch-cli project digitize img.png -o p.osp --dst sortie.dst --dpi 122.6 --debug-dir dbg
-openstitch-cli project diagnose p.osp                # défauts connus
-openstitch-cli project fidelity p.osp --map err.png  # tissu visible, détails perdus
-openstitch-cli project density p.osp --heatmap d.png # épaisseurs de fil
-openstitch-cli project at p.osp --px 640,410         # qui a cousu ce point ?
-openstitch-cli project render p.osp -o r.png --px-per-mm 14 --crop 0.1,0.25,0.5,0.75
-```
+Calculer DPI = largeur_source_px × 25,4 / largeur_souhaitée_mm **si ces deux largeurs couvrent le même sujet**. Sinon mesurer la boîte englobante réellement brodée et recaler. Vérifier les dimensions du DST ; le cadre est plus grand que la dimension du motif et doit comporter une marge.
 
-**Ne jamais juger sur un rendu de script en lignes** (fausses alertes de l'essai 1 : crème « disparu »,
-trous invisibles) : `project render` est le moteur de l'aperçu de l'application.
+## Phase 1 — Lecture sémantique et reconstruction graphique
 
-Lire **dans cet ordre** :
+Avant toute quantification : inventorier les structures et leurs sous-structures, leurs recouvrements et leurs contours significatifs. Exemple des ruines :
 
-1. **Dimensions** : si elles dépassent la taille voulue, le fond a été brodé (§3).
-2. **Messages de `digitize`** : fond détecté ou non, `Surface non couverte`, nombre d'objets.
-3. **`stats`** : points, coupes, changements de fil. Repères observés sur une image de ~300 mm
-   à 12 couleurs : 80 000 à 120 000 points, 1 400 à 1 700 coupes. Au-delà de 3 000 coupes, un
-   nombre excessif d'objets séparés est en cause (voir §6).
-4. **Le rendu**, en regardant la lisibilité des mâts, des contours et des petites zones, pas
-   seulement les chiffres.
+- Architecture : arches, intrados/extrados, piliers, blocs, joints, ombres, pierres derrière lierre.
+- Végétation : lierre accroché à telle arche, masses de feuillage, touffes de roseaux avec tiges individuelles.
+- Ciel : lune, nuages et ciel qui traversent visuellement le soleil.
+- Eau : eau de fond, reflets de lune, reflets verticaux, nénuphars **individuels**.
+- Tissu visible : grandes ombres et interstices intentionnels à ne pas remplir.
 
-Le rendu du script est **approximatif** (une couleur par bloc, tatami en lignes pointillées) ;
-ce n'est pas le rendu réaliste de l'application. Ne jamais le présenter comme tel, et le dire.
-Si une version retouchée existe (`.osp`), lui passer `--palette` (couleurs des objets par ordre
-de couture) car sa boîte englobante ne correspond plus à l'image.
+Produire une reconstruction contrôlée avec des **aplats nets, régions fermées, bords propres, sans halos ni bavures**. Garder la source intacte. Important : ne pas refaire une illustration simplifiée « jolie » qui efface les petits joints, roseaux et reflets de l'original. Comparer au besoin une préparation *fidèle* et une préparation *allégée* au même gabarit.
 
-## 3. Le fond : la première cause d'échec
+Affecter des **identifiants techniques indépendants des fils** et une arborescence : scène → famille → instance → composant → objet brodable. Documenter instances, parents, sous-couches/occlusions et détails protégés. Ne jamais utiliser seulement le RGB comme identité.
 
-Détection automatique (`segmentation::background_candidate`, même règle CLI et bureau) :
+**Validation A, avant de digitizer :** isoler et inspecter les objets structurants en aplat, notamment le sujet central. Pour un navire : coque et proue, voiles individuelles, vergues/mâts/cordages, vagues porteuses, écume, nuages et ouverture lumineuse. Indiquer les formes volontairement absentes et les interstices où le tissu doit rester visible. Refuser une carte qui montre les bonnes couleurs mais plus les bons objets. La reconstruction IA est **une source de référence intermédiaire**, pas automatiquement une segmentation exploitable.
 
-- fond **clair** (L\* > 90) qui touche au moins 3 bords ; **ou**
-- fond **coloré** (crème, beige, aplat) qui occupe au moins 85 % du pourtour et touche les 4 bords.
+## Phase 2 — Segmentation sémantique puis technique
 
-Un ciel ou une mer plein cadre n'est **jamais** ignoré (ils ne remplissent pas tout le pourtour).
-Le CLI imprime `Région candidate au fond` et `Ignorer la plus grande région : oui/non`. Si ce
-n'est pas le bon choix : `--skip-background yes|no`. Cas vécu : fond beige non détecté
-(L\* 86) → 299 × 224 mm et +22 % de points, alors que le motif fait 290 × 200 mm.
+Créer des masques / objets logiques distincts pour les familles et les **instances**. Les fausses couleurs techniques servent à différencier deux régions à broder même si elles utilisent le même fil final.
 
-## 4. Choisir les options
+Puis découper techniquement selon les limites des points : sous-diviser lierre ramifié aux jonctions ; séparer bande satin de masse tatami ; distinguer pierre, joint de pierre, liane qui la recouvre ; préserver des trous et la transparence du tissu. Mesurer aires et largeurs **en mm**. Conserver les informations dans **carte_semantique.png**, **segmentation_technique.png**, **regions.csv** et **palette.json** avec un identifiant stable par objet. S'assurer qu'aucune région ne fuit, ne crée de halo ou ne se mélange avec une instance voisine. **Conserver la boîte englobante, la largeur locale et les branches** : une forme de 6 mm de large dans sa boîte peut être ramifiée ou étranglée et donc impropre à un satin unique. Consigner la relation `under/over` et la priorité de chaque objet avant import.
 
-| Besoin | Option | Réserve |
+La segmentation sémantique **n'est pas** une commande native promise par le CLI actuel : les masques peuvent être préparés en Python/OpenCV, SVG ou par un outil d'image, avec validation géométrique explicite.
+
+## Phase 3 — Fusion sémantique AVANT la vectorisation
+
+Créer un graphe de voisinage contenant : instance, famille, structure porteuse, distance en mm, continuité de direction, intersections/occlusions et rôle textile. Pour chaque fragment : conserver, rattacher, reconstruire une continuité, conserver comme trait, supprimer comme doublon, ou demander un réexamen.
+
+**Fusionner seulement** avec preuve que les deux morceaux appartiennent à une **même structure visuelle** et que la nouvelle forme demeure brodable : pas de passage à travers un autre objet, pas de jonction trop large pour le satin, pas de disparition de contour significatif. Tester les raccords sur copies, comptabiliser leur aire ajoutée et comparer rendu/coupes/densité. L'outil de nettoyage des îlots par proximité colorimétrique ne remplace pas cette analyse : il peut effacer une branche ou un joint.
+
+Si on part d'un OSP existant, la fusion native peut réunir des polygones **disjoints** sans les faire coudre en une seule traversée : ne pas promettre des coupes en moins. Le cas V8 mesuré le démontre ; une reconstruction *avant* segmentation est prioritaire pour les grosses réductions d'îlots.
+
+## Phase 4 — Intention de point et palette finale
+
+Attribuer **par fonction visuelle**, jamais par simple taille de région :
+
+| Intention | Candidats | Risques / réévaluation |
 |---|---|---|
-| Traits noirs fins lisibles (mâts, haubans, contours) | `--dark-lines` (`--dark-lines-width 1.6`, `--dark-lines-lightness 25`) ; dans l'application : case « Traits sombres cousus par-dessus » de la boîte *Numérisation automatique* | +40 à +60 % de coupes mesurées (1 181 → 1 675 ; 941 → 1 499) : chaque trait est un tracé séparé, cousu en dernier. Point droit seulement. |
-| **Îlots collés à de grands aplats** (enclaves) | `--island-cleanup MM2` (essayer 20 ; `--island-max-delta-e` pour limiter l'écart de couleur) ; dans l'application : *Segmentation → Nettoyer les petits îlots…* | Fusionne dans la voisine de **couleur** la plus proche. Mesuré : 344 → 173 objets, 887 → 681 coupes à 20 mm². Les traits fins sombres (haubans) sont aussi des îlots : **associer à `--dark-lines`**. |
-| Filets clairs entre zones jointives (interstices) | `--fill-inset 0` (défaut 0,2) | +16 % de points (91 755 -> 106 764), coupes inchangées ; `0.1` = compromis (+5 %). Mesure : §8 essai 2 |
-| Petites zones parasites | `--min-region-mm2` (défaut 3), `--min-feature-mm` (défaut 0 = désactivé ; une valeur retire les détails plus étroits que cette largeur, à essayer par petits pas) | Trop haut : on perd des détails voulus. |
-| Bandes étroites en satin (rayons de nuages, écume, rubans) | `--satin-bands` | **Désactivé par défaut volontairement** : la décision par génération d'essai est un point à faire relire au regard du brevet US8851001B2 (`docs/revue-brevets-optimisation-trajets-2026-10.md`). Ne pas l'activer par défaut sans cette relecture ; l'activer sur demande explicite de l'utilisateur pour son propre projet est possible. |
-| Moins de coupes avant export | `--hidden-travel` (et niveaux) | Gain surtout en longueur de saut, peu en nombre de coupes sur des régions juxtaposées. |
-| Dessin au trait, logo | `--mode contours --detail 0.5` (+ `--single-path`) | — |
-| Photo, rendu des tons | `--mode stipple --stipple-points N` | — |
-
-Règle d'or : **un réglage à la fois**, et mesurer avant/après avec `stats` (même `--dpi`, même
-`--max-colors`).
-
-## 4 bis. Ce qu'une retouche manuelle apporte (cas du navire)
-
-Comparaison de la sortie automatique à une version retouchée par l'utilisateur (344 objets
-contre ~500 en automatique) :
-
-1. **Fond supprimé** (voir §3).
-2. **Bandes étroites en satin** : ~80 % des objets étaient en auto-satin ; le tatami n'était
-   gardé que pour les grandes surfaces.
-3. **Régions fusionnées** : moins d'objets, plus grands ; les îlots et morceaux de même couleur
-   regroupés (`--island-cleanup` automatise cette passe).
-4. **Ordre des couleurs réfléchi** : la grande base sombre (bleu marine) d'abord, puis les
-   couleurs claires par-dessus, les traits quasi noirs en dernier. Une base sombre sous les
-   surfaces claires absorbe les interstices entre régions voisines (`fill_overlap` vaut 0 par
-   défaut : sans base, un interstice apparaît entre deux couleurs voisines).
-5. **Tatami étirés** pour recouvrir les écarts.
-
-Le coût de cette version : environ deux fois plus de coupes (3 000 contre 1 460) à cause des
-objets satin séparés. Meilleur visuellement, pas moins de coupes : le dire.
-
-## 5. Dans l'application
-
-La boîte *Numérisation automatique* reprend les mêmes réglages (fond, couleurs, satin des
-bandes, chevauchement). Ensuite, les retouches se font par commandes annulables : fusion de
-zones, étirement de tatami, ordre des couleurs. « Optimiser les trajets » se lance à la fin,
-juste avant l'export, jamais avant : il ne modifie ni l'ordre des couleurs ni la couche visible.
-
-## 6. Diagnostic rapide
-
-| Symptôme | Cause probable | Action |
-|---|---|---|
-| Pièce trop grande / bordure brodée | fond non ignoré ou `--dpi` oublié | §1 et §3 |
-| Mâts et contours fusionnés en blocs sombres | traits fins quantifiés comme des régions | `--dark-lines` |
-| Zones de ciel/nuage en lignes pointillées, aspect de grille | tatami sur bandes étroites | satin sur ces bandes (§4) |
-| Plus de 3 000 coupes | beaucoup d'objets séparés (satin, traits, îlots) | `--island-cleanup`, monter `--min-region-mm2`, baisser `--detail`, fusionner à la main |
-| Interstices entre couleurs voisines | `fill_overlap` = 0 | base sombre sous les couleurs claires (§4 bis), ou chevauchement dans la boîte de dialogue |
-| Beaucoup de changements de fil | `--max-colors` trop haut, quasi-doublons | le baisser |
-| Petits points parasites | îlots | `--min-region-mm2`, `--min-feature-mm` |
-
-## 7. Ce qu'il ne faut pas faire
-
-- Présenter le rendu du script comme le rendu final de l'application.
-- Annoncer « plus propre » sans avoir comparé `stats` avant/après au même `--dpi`.
-- Activer `--satin-bands` par défaut dans le code sans la relecture brevet.
-- Contourner la règle d'or des modules : toute logique de numérisation va dans `libs/autodigitize`
-  ou `libs/segmentation` (Qt-free), pas dans `apps/desktop`.
-- Écrire des fichiers de travail dans le dépôt (les `.dst`, `.png` d'essai vont au scratchpad).
-
-## 8. Journal d'apprentissage (erreurs faites, règles qui en sortent)
-
-> Les entrées ci-dessous citent des scripts Python écrits à la volée (`fidelity.py`, `green_holes.py`,
-> `render_dst.py` en lignes). Ils sont **remplacés par les commandes du CLI** (`project fidelity`,
-> `density`, `render`, `diagnose`, `sweep`, `digitize --debug-dir`), plus fiables : repère exact de
-> l'image source, plus de calage par boîte englobante.
-
-Chaque entrée : ce qui s'est passé, ce qui l'a corrigé, la mesure. Image de référence : le navire
-au soleil couchant (1448 × 1086 px, 7 teintes + fond beige `#E3D4BB`, `--dpi 122.6` → 290 × 201 mm).
-
-**Essai 1 (2026-10-15, environnement cloud Linux, CLI seul).**
-
-| # | Erreur / piège | Cause | Règle |
-|---|---|---|---|
-| 1 | Fausse alerte « le crème (soleil, écume) a disparu » : soleil rendu bleu, écume absente | Le rendu colorait les blocs par la **médiane de l'image source** ; le crème `#FCEEC2` était bien segmenté (7,7 %) et brodé (32 objets, 4 933 mm²) | Vérifier la palette réelle (`osp_palette.py --report`) **avant** de conclure à un défaut de numérisation, et rendre avec `--palette` |
-| 2 | `project check` : 50 erreurs « hors-cadre » | `project digitize` laisse le cadre à 100 × 100 mm | `project set --width-mm --height-mm` à la taille de la pièce (+ marge) avant tout contrôle ; `workflow.sh` le fait |
-| 3 | Pas de points/coupes dans la sortie de `project digitize` | Seul `digitize` imprime ces lignes | Passer `--dst` et lire `stats` ; c'est la source des chiffres comparés |
-| 4 | Le JSON de `digitize` ne dit pas quelles couleurs sont brodées ; le SVG de diagnostic n'a pas de couleurs | — | Passer par l'`.osp` (`project inspect --json`) |
-
-Mesures de l'essai 1 (même `--dpi 122.6`, `--max-colors 12`, fond ignoré automatiquement) :
-
-| Variante | Objets | Points | Coupes | Fils | Observation |
-|---|---|---|---|---|---|
-| base | 344 | 80 393 | 887 | 6 chg. | mâts/haubans/contours de nuages absents (~8 % non couvert) |
-| `--max-colors 8` | 300 | 80 285 | 893 | 5 chg. | le crème est quand même brodé (le défaut n'est pas la palette) |
-| `--island-cleanup 20` | 173 | 78 420 | 681 | 6 chg. | −49 % d'objets, −23 % de coupes |
-| `--dark-lines` | 492 | 92 698 | 1 459 | 7 chg. | gréement lisible, +64 % de coupes |
-| `--dark-lines --island-cleanup 20` | 369 | 91 755 | 1 359 | 7 chg. | **meilleur compromis visuel** ; 214 traits cousus en dernier |
-| idem `--hidden-travel` | — | 91 475 | 1 317 | 7 chg. | −3 % de coupes, 0 erreur de contrôle, **sortie déterministe** (octets identiques sur 2 exécutions) |
-| `--skip-background no` | 346 | 107 096 | 941 | 7 chg. | 299 × 224 mm : le fond beige est brodé (+33 % de points) |
-
-Constats à retenir :
-
-- `--dark-lines` ajoutait **un fil quasi noir distinct** (`#0C121C`) du noir déjà segmenté
-  (`#08080F`) : corrigé à l'essai 3 (ci-dessous).
-- `project check` plafonne l'affichage à 100 avertissements (sauts longs, points très courts) ;
-  seul le verdict de la première ligne est fiable pour un résumé.
-- Non testé volontairement : `--satin-bands` (point brevet, §4). À essayer sur demande explicite.
-- Non fait : comparaison pixel à pixel avec l'image source (pas d'outil de score de fidélité) ;
-  le jugement reste visuel. Idée : script qui reprojette les régions brodées et mesure l'écart ΔE.
-
-**Essai 2 (2026-10-16) : les interstices entre couleurs voisines.**
-
-Hypothèse (vérifiée) : chaque tatami est rétréci de `inset_mm` (0,2 mm par défaut), donc deux
-objets voisins laissent ~0,4 mm de vide, visible comme un filet clair autour de chaque zone.
-Test sur la variante `--dark-lines --island-cleanup 20` (151 tatami), lot `set_params` via
-`scripts/set_params_all.py`, mesure `project check --json` → `project_metrics.uncovered_ratio`
-(inclut la part du fond ignoré, ici 0,324 : seul l'écart à cette valeur compte) :
-
-| `inset_mm` | Points | Coupes | `uncovered_ratio` | Lecture |
-|---|---|---|---|---|
-| 0,2 (défaut) | 91 755 | 1 359 | 0,366 | ~4 % d'interstices, filets clairs visibles |
-| 0,1 | 96 706 | 1 362 | 0,342 | ~2 % |
-| **0,0** | 106 764 | 1 368 | **0,325** | interstices quasi nuls, rendu net (zoom navire) |
-| 0,0 + `pull_compensation_mm` 0,15 | 112 137 | 1 559 | 0,321 | recouvrement, +5 % de points et +14 % de coupes pour rien de plus |
-| −0,1 | — | — | — | refusé : `inset_mm` ≥ 0 |
-
-Règle : sur une numérisation multi-couleurs aux zones jointives, **`inset_mm = 0`** (≈ +16 % de
-points, coupes inchangées) ; `0,1` si le poids compte. Ne pas ajouter de compensation de tirage
-sans raison. À reporter à terme dans le défaut de `digitize` (point à décider avec l'utilisateur :
-cela change la sortie de toutes les numérisations).
-
-**Essai 3 (2026-10-16) : défauts corrigés dans le code, plus seulement contournés.**
-
-| Défaut | Cause racine | Correctif | Preuve |
-|---|---|---|---|
-| 8e fil : noir des traits `#0C121C` à côté de `#08080F` | `line_layer.cpp` : couleur des traits = moyenne des pixels de trait, jamais comparée à la palette ; et les remplissages noirs étaient cousus avant un bleu, donc le noir deux fois | couleur calée sur la région la plus proche (RGB <= 30) ; remplissages de cette couleur placés en dernier (`stable_partition`) | 7 -> 6 changements de fil, points/coupes identiques ; le test échoue sans le correctif (2 assertions) |
-| Filets clairs entre zones | `inset_mm` 0,2 sur chaque tatami | option `AutoOptions::fill_inset` + `--fill-inset` (défaut inchangé) | 106 764 points, non couvert 0,325 ; test `fill_inset regle le retrait` |
-
-Résultat de référence (navire, `--max-colors 12 --dark-lines --island-cleanup 20 --fill-inset 0`) :
-106 764 points, 1 368 coupes, 6 changements de fil, 290,6 x 200,9 mm, 0 erreur de contrôle.
-Suite complète en série (`ctest`) : 1 257 tests sur 1 258 ; seul `cli_help` échoue (environnement, ci-dessous).
-
-Pièges d'environnement (build apt, pas de régression) : `cli_help` attend `POSITIONALS` en
-majuscules, le CLI11 d'apt (2.4.1) écrit `Positionals` ; deux tests `project_ops` (`ops malformed
-or unknown batches…`, `param ops set_order modes`) ont échoué en `ctest -j4` et passent seuls et en
-série (cause non investiguée). Lancer `ctest` sans `-j` pour juger.
-
-**Essai 5 (2026-10-16) : retour de l'utilisateur sur le rendu de l'application (fond vert).**
-Défauts signalés : (a) des détails disparaissent, (b) les traits noirs sont posés même quand ils ne
-font que séparer deux zones.
-
-Nouvel outil `scripts/fidelity.py` (source contre couverture réelle des points, même échelle, vraie
-palette) : classe chaque pixel manquant / mauvaise couleur / en trop et liste les plus grosses
-composantes. Erreurs de méthode corrigées en chemin : (1) le crème est à ΔE 10,8 du beige : une
-tolérance de fond de 14 le prenait pour du fond (tolérance 6 requise) ; (2) un trou de la couleur
-exacte du tissu entre deux nuages n'est PAS un défaut (456 mm2 « manquants » = faux positif) ;
-(3) les pixels de transition anti-crénelés ne sont proches d'aucun fil : ne compter une erreur que si
-le pixel source est proche (ΔE < 18) d'une couleur de la palette et cousu avec une autre.
-
-Balayage (un réglage à la fois, base `--max-colors 12 --dark-lines --fill-inset 0 --satin-bands`) :
-
-| Variante | Objets | Points | Coupes | Manquant | Détails perdus |
-|---|---|---|---|---|---|
-| `--island-cleanup 20` | 369 | 114 623 | 1 675 | 0,29 % | 1,60 % |
-| `--island-cleanup 0` | 492 | 119 086 | 1 855 | 0,29 % | 0,90 % |
-| `--island-cleanup 5` | 458 | 118 526 | 1 865 | 0,29 % | 0,86 % |
-| `0` + `--min-region-mm2 1` | 587 | 121 698 | 1 989 | 0,30 % | **0,76 %** |
-| idem + `--smoothing-px 1` | 609 | 128 347 | 2 109 | 0,30 % | 0,92 % (pire : bruit) |
-
-Lecture : `--island-cleanup 20` DOUBLE les détails perdus (reflets du soleil sur la mer, petites
-formes) ; le gain en coupes (-10 %) se paie en fidélité, à ne pas utiliser par défaut sur une
-illustration riche en petits détails. Baisser `--smoothing-px` n'aide pas.
-Traits : `--dark-lines-objects-only` (séparation ou vrai objet, voir la doc) : objets de ligne
-327 -> 135, coupes -12 %, voiles plus propres ; détails perdus 0,76 % -> 2,31 % (traits non cousus
-par choix) et quelques haubans fins perdus. Défaut restant, commun aux deux : autour du mât et de la
-coque le noir devient un amas de passes superposées, plus épais que les traits de la source.
-
-**Essai 9 (2026-10-16) : les outils d'analyse sont dans le CLI.**
-Bilan demandé : qu'est-ce qui aurait simplifié ma tâche ? Les tâches répétées sont devenues des
-commandes (`project sweep`, `fidelity`, `density`, `at`, `diagnose`, `render`, `digitize --debug-dir`,
-`scripts/linux-core-setup.sh`) et le corpus `[invariants]`. Gain mesuré : le balayage de 8 variantes qui
-demandait une quinzaine d'allers-retours est UNE commande de 40 s.
-
-Ce que les outils ont trouvé immédiatement, sans effort :
-- `digitize --debug-dir` (`traits.png`) : en mode `--dark-lines-objects-only`, presque tous les cordages
-  étaient classés « séparation » (vert) : les pixels anti-crénelés d'un trait sont étiquetés dans la
-  région noire, donc « ciel + noir » = deux zones. **Défaut corrigé** (voir la doc), avec un test qui
-  échoue sans le correctif. Cela explique pourquoi ce mode « perdait trop de cordages » (essai 5).
-- `project density --heatmap` : les surépaisseurs (rouge) ne sont pas dans les aplats (vert = 1 épaisseur)
-  mais le long des frontières entre zones, dans le gréement et dans la mer : c'est la mesure objective
-  du « chaotique ». 1 007 mm2 à >= 4 épaisseurs sur le navire (objet 468, satin crème, en tête).
-- `project diagnose` sur les anciens projets défectueux : bug des 2 m (erreur), 8e fil noir (info),
-  réseau géant de barres (avertissement), liaisons visibles (1,58 % contre 0,00 % avec `--no-underpath`).
-
-Erreurs de méthode : (a) mon test de classification passait avec ET sans le correctif : toujours
-vérifier qu'un test échoue sans le correctif (remplacer temporairement la ligne) ; (b) mon corpus
-d'invariants (fixture + image synthétique) passait AVEC le bug des poignées réintroduit : il fallait une
-image de stress (centaines de petits contours) ; (c) lancer une tâche longue dans un sous-shell détaché
-(`( … ) &`) la tue quand la commande se termine : utiliser `run_in_background` directement.
-
-**Essai 8 (2026-10-16) : « c'est bien mais c'est pas mal chaotique » + rendu réaliste headless.**
-Je jugeais à l'aveugle (rendu de script en lignes, mesure de bord). Ajout de `openstitch-cli project
-render` (moteur `stitch_render` de l'application, fond vert) : on voit désormais ce que voit
-l'utilisateur, au niveau du fil. **Toujours regarder le rendu réaliste (`workflow.sh` le produit) avant
-de conclure.** Mesure : `scripts/green_holes.py` = tissu visible à l'INTÉRIEUR du motif (1,43 % du
-motif sur le navire, alors que `fidelity.py` n'en voyait que 0,03 %).
-
-Constat au fil : (1) dents de scie vertes le long des frontières (bouts de rangées de deux zones
-voisines qui ne se recouvrent pas) ; (2) gréement noir en amas : barres satin et triples passes
-superposées près des mâts ; (3) contours anguleux (polygones) ; (4) mosaïque d'angles dans la mer.
-
-BUG trouvé en testant `--curve-tolerance` : avec `--dark-lines`, un tatami envoyait des points à 2 m
-(DST de 2 130 mm de large). Cause racine : `fit_curves` (Schneider) sans borne haute sur la longueur des
-poignées (voir `docs/source/vectorization.md`). Corrigé, test de propriété. Méthode : bissection par
-`set_visible` des objets -> un seul tatami -> ses anneaux à 2 nœuds -> poignées.
-
-Compensation de tirage (`pull_compensation_mm`, tatami + satin) contre le vert intérieur : 0 -> 1,43 % ;
-0,1 -> 1,18 % ; 0,2 -> 1,24 % ; 0,35 -> 0,98 % (+4 % de points) : aide peu, ne ferme pas la dentelure.
-**Brins diagonaux dans les fills (cause du « chaotique » en vue normale)** : liaisons `hidden_underpath`
-cousues par-dessus. `--no-underpath --hidden-travel` : coupes 1 906 -> 2 653 (+39 %), fills propres
-(`--no-underpath` seul : 3 222). Leviers écartés par la mesure du vert intérieur : `--fill-overlap`
-(1,52 -> 1,30 % pour +13 % de points), compensation de tirage, filtre des points courts.
-Contours lisses (`--curve-tolerance`, base `--island-cleanup 0 --min-region-mm2 1 --dark-lines-bars 4
---dark-lines-min-length 6`) :
-
-| Variante | Points | Coupes | Vert intérieur | Détails perdus |
-|---|---|---|---|---|
-| polygones (défaut) | 129 844 | 2 282 | 1,43 % | 0,42 % |
-| `--curve-tolerance 0.4` | 117 553 | 1 906 | 1,52 % | 0,50 % |
-| `--curve-tolerance 0.8` | 109 219 | 1 758 | 2,20 % | 1,41 % |
-
-Lecture : 0,4 donne des bords de nuages plus lisses, -9 % de points et -16 % de coupes pour un peu plus
-de détails perdus ; 0,8 perd trop. Recommandé : 0,4. Non résolu : amas noir du gréement, dentelure verte,
-angles de la mer.
-
-**Essai 7 (2026-10-16) : capture de l'application (fond vert) de l'essai 6 : « pas besoin d'expliquer ».**
-Lecture de la capture (zoom navire et mer) : (1) taches noires rondes sur la coque ; (2) trous verts
-(tissu visible) partout, surtout dans la mer à côté des bouts de trait noir ; (3) tirets noirs plats
-dans la mer ; (4) mer en mosaïque d'angles de fil. La métrique de bord (0,3 % manquant) ne voyait RIEN :
-les trous sont à l'intérieur ; `fidelity.py` donne maintenant « trou interieur » (`--close 1 --open 0
---min-px 12 --thread-mm 0.6` pour voir les trous de 1 mm2 ; sans fermeture le tatami lui-même passe
-pour 11 % de trous, inutilisable).
-
-Cause racine commune de (1), (2), (3) : le seuil `--dark-lines-lightness` 25 englobait le bleu marine
-(L* ~ 16). Voir la doc (« Seuil de clarté des traits »). Correctif : seuil effectif = pixel le plus sombre
-de la palette + 8.
-
-| Variante (`--island-cleanup 0 --min-region-mm2 1 --dark-lines-bars 4`) | Objets | Points | Coupes | Détails perdus | Trous intérieurs |
-|---|---|---|---|---|---|
-| seuil 25 (avant) | 562 | 125 993 | 2 076 | 0,79 % | 522 px, 24 trous |
-| **seuil = noir + 8** | 558 | 130 319 | 2 319 | **0,35 %** | 330 px, 18 trous |
-| + `--dark-lines-min-length 6` | 521 | 129 844 | 2 282 | 0,42 % | — |
-| + `--dark-lines-min-length 10` | 492 | 129 358 | 2 251 | 0,53 % | — |
-
-Erreurs de méthode : (a) j'avais jugé « 0,3 % manquant » acceptable sans regarder où : toujours
-séparer bord et intérieur ; (b) mes zooms de script ne montraient pas les trous que l'application
-affiche (rendu réaliste + fond vert) : le fond vert de l'utilisateur est le meilleur révélateur de
-trous, le reproduire (`fidelity.py` ou rendu sur fond vert) avant d'annoncer un résultat.
-Non traité : (4) angles de remplissage (`AutoOptions::auto_fill_angle` suit l'axe de chaque forme : choix
-esthétique à trancher avec l'utilisateur) ; jonctions entre trois zones (<= 1,5 mm2).
-
-**Essai 6 (2026-10-16) : l'amas noir du mât, corrigé par un niveau « barres ».**
-
-Constat (comparaison source sombre / fil noir réel) : cordages fins corrects, mais le mât et les
-vergues (barres de 2 à 3 mm) sortaient en amas hachuré. Cause : plus larges que le trait (1,6 mm), donc
-laissées au remplissage noir (réseau mât + vergues + coque d'un seul bloc). Correctif :
-`--dark-lines-bars 4` (barres cousues en bandes, avant les traits). Voir la doc pour le détail.
-
-| Variante (base : `--island-cleanup 0 --min-region-mm2 1`) | Objets | Points | Coupes | Manquant | Détails perdus |
-|---|---|---|---|---|---|
-| tous les traits (avant) | 587 | 121 698 | 1 989 | 0,30 % | 0,76 % |
-| + `--dark-lines-bars 4` | 562 | 125 993 | 2 076 | 0,29 % | **0,79 %** |
-| + barres + `--dark-lines-objects-only` | 370 | 120 382 | 1 840 | 0,92 % | 2,35 % |
-| barres, seuil large L* <= 25 (essai raté) | 310 | 124 012 | 1 894 | 1,10 % | 5,53 % |
-| traits fins aussi au seuil serré (hypothèse écartée) | 631 | 129 959 | 2 318 | 0,33 % | 0,81 % |
-
-Erreurs de méthode : (1) un seuil « sombre » de L* <= 25 inclut le bleu marine : toute mesure de
-« noir » doit se faire au seuil du trait réel (noir, L* ~ 4) plus une marge ; (2) un score de fidélité
-baisse mécaniquement quand on retire des traits voulus (`--dark-lines-objects-only`) : ne jamais le
-comparer à une variante sans ce filtre sans le dire ; (3) un objet de 1 963 mm2 sur 290 mm de large
-est le signe d'un réseau connecté géant : toujours lister les objets les plus grands d'une couleur.
-Sur ce navire `--dark-lines-objects-only` perd trop de cordages : à réserver aux images où les
-séparations sont nombreuses ; le niveau barres est le gain net.
-
-**Essai 4 (2026-10-16) : les trois méthodes d'auto-satin de `main` (PR #50, #51).**
-
-Fusion de `main` sans conflit. `--satin-bands` (auto-numérisation) utilise **toujours le squelette**
-(`autodigitize::choose_satin`) : pour tester les autres méthodes, numériser avec `--satin-bands`
-puis convertir les objets `auto_satin` avec
-`scripts/set_params_all.py CLI p.osp auto_satin '{"strategy":"medial_axis"}'`
-(valeurs : `skeleton` | `parallel_sweep` | `medial_axis`). Un nom inconnu est refusé, document intact.
-Navire, `--max-colors 12 --dark-lines --island-cleanup 20 --fill-inset 0 --satin-bands`
-(71 objets auto-satin, 80 tatami, 218 traits) :
-
-| Méthode des 71 satin | Points | Coupes | Fil m | Non couvert | Points courts | Erreurs |
-|---|---|---|---|---|---|---|
-| (sans `--satin-bands`) | 106 764 | 1 368 | — | 0,325 | — | 0 |
-| `skeleton` | 114 623 | 1 675 | 211,8 | 0,3253 | 6 543 | 0 |
-| `parallel_sweep` | 104 077 | 1 469 | 199,9 | 0,3249 | 5 682 | 0 |
-| `medial_axis` | 105 822 | 1 429 | 204,4 | **0,3337** | 5 554 | 0 |
-
-Lecture : à couverture égale, `parallel_sweep` économise 9 % de points et 12 % de coupes sur le
-squelette ; `medial_axis` coupe le plus mais **couvre moins** (+0,8 point de non-couvert). Le rendu
-de script ne distingue presque pas les trois (le satin y ressemble à un aplat dense) : seules les
-mesures tranchent, pas de recommandation avant essai machine (consigne de la doc `satin-squelette.md`).
-`satin-compare` (corpus de formes) : `parallel_sweep` génère des fils très longs sur les formes
-ramifiées (36 à 40 mm sur `t`, `cross`, `h`) et couvre moins (95,7 à 98,6 %) ; `medial_axis` égale le
-squelette et couvre les formes compactes qu'il refuse (`circle`, `disc_15mm`, `petal` : 99,5 à 99,9 %).
-Pour des bandes étroites et régulières (rayons de nuages), `parallel_sweep` suffit ; pour des formes
-ramifiées ou compactes, `medial_axis`.
-
-### Essai 10 — traiter l'image avant la segmentation (`--pre`)
-
-Idée de l'utilisateur : OpenStitch sait déjà débruiter l'image avant la segmentation (pile `project.ops`
-du bureau). Le CLI l'ignorait : ajout de `--pre` (`median:1`, `bilateral:2+median:1`, `quantize:12`…),
-non destructif, et les outils d'analyse lisent désormais l'image de travail (un `crop` ne les désaligne plus).
-Mesure sur le navire (`project sweep --vary "pre=…"`, 12 couleurs, `--dark-lines --satin-bands`) :
-
-| pre | objets | points | coupes | tissu visible % | détails perdus % |
-|---|---|---|---|---|---|
-| aucun | 493 | 125 097 | 2 162 | 0,35 | 0,27 |
-| median:1 | 549 | 119 545 | 1 926 | 0,33 | 0,35 |
-| bilateral:2 | 482 | 121 543 | 1 962 | 0,40 | 0,31 |
-| bilateral:3 | 502 | 121 953 | 1 887 | 0,39 | 0,35 |
-| bilateral:2+median:1 | 545 | 120 145 | 1 930 | 0,45 | 0,37 |
-| quantize:12 | 429 | 124 643 | 2 006 | 0,38 | 0,48 |
-
-Lecture : l'image est déjà un aplat illustré (peu de bruit) ; le gain est modeste : −9 à −13 % de coupes,
-−3 à −4 % de points, mais détails perdus +0,04 à +0,2 point et tissu visible stable ou pire. `median:1`
-est le meilleur compromis (moins de coupes, tissu visible inchangé) ; `quantize` fait perdre des détails.
-Règle : prétraiter les photos / JPEG bruités ; sur une illustration propre, mesurer d'abord avec `sweep`.
-
-### Essai 11 — nouveaux prétraitements : `flatten`, `clahe`, `sharpen`
-
-Ajoutés à `image::ImageOp` (fin du variant, sérialisés dans le `.osp`, menu *Image* du bureau) puis mesurés
-sur le navire comme l'Essai 10 :
-
-| pre | points | coupes | tissu visible % | détails perdus % | surépaisseur mm² |
-|---|---|---|---|---|---|
-| aucun | 125 097 | 2 162 | 0,35 | 0,27 | 1 617 |
-| flatten:2 | 121 328 | 2 001 | 0,40 | 0,29 | 1 482 |
-| flatten:2+median:1 | 118 679 | 1 891 | 0,37 | 0,28 | 1 411 |
-| clahe:2 | 136 405 | 2 555 | 0,67 | 0,93 | 1 832 |
-| sharpen:1 | 137 829 | 2 647 | 0,67 | 0,81 | 1 656 |
-
-Lecture : `flatten:2+median:1` est le meilleur réglage mesuré (−12,5 % de coupes, −5 % de points, moins de
-surépaisseur, détails perdus au niveau de la référence). `clahe` et `sharpen` **dégradent** une illustration
-déjà contrastée (ils fabriquent des régions parasites : +300 objets) ; à réserver aux photos pâles ou floues,
-et toujours après mesure par `sweep`.
-
-### Essai 12 — fumée en remplissage directionnel (affiche rouge, fumée cyan)
-
-Besoin : la fumée suit sa forme, le reste en tatami. Manque trouvé : le CLI convertissait en directionnel
-(`set_stitch_type`) mais seulement avec un guide droit ; l'action « Générer un guide depuis la forme » du
-bureau n'avait pas d'équivalent. Ajout de l'opération `directional_guides`. Recette :
-`digitize … --pre flatten:2+median:1 --min-region-mm2 1`, repérer les couleurs de la fumée
-(`project inspect --json`, objets tatami cyan / bleu-gris), puis lot `directional_guides` sur ces objets
-(`scripts/directional_by_color.py CLI p.osp out.osp '#1C7F8F,#295C6C,…'`). Piège : les couleurs viennent de
-la quantification, les lire dans la palette du projet, ne pas les deviner.
-
-### Essai 13 — logo vectoriel (kraken + sous-marin, 3 couleurs, fond transparent)
-
-Premier jet « fidèle » aux réglages du navire : trop de petites erreurs (contours marine dentelés et
-interrompus, facettes sur les cercles, liserés verts, traits parasites, 2,6 % de tissu visible). Cause :
-les réglages du navire (illustration peinte) lissent trop un dessin vectoriel net. Balayages (`sweep`,
-planche zoomée sur la tête) → réglages retenus pour un logo / dessin à plats :
-`--smoothing-px 0` (le lissage de 3 px arrondissait et morcelait les contours épais : −60 % de tissu
-visible à lui seul), `--curve-tolerance 0.1` (cercles sans facettes), `--fill-overlap 0.15` (ferme les
-liserés sans perdre de détails ; 0,3 en perd 5 %), `--island-cleanup 6` (les pixels anti-crénelés
-créent 2 fils parasites : supprimés, 5 → 3 fils), pas de `--pre` (flatten/median n'aident pas un aplat
-déjà net), ni `--satin-bands` ni `--dark-lines-bars` (éventails radiaux aux coins sombres, +25–40 % de
-points, ×9 de surépaisseur). Résultat : 72 827 points, 1 861 coupes, 3 fils, 0,93 % de tissu visible.
-Règle : le lissage par défaut est calibré pour des peintures ; pour du vectoriel à bords nets, partir
-de `--smoothing-px 0` et vérifier le nombre de fils (`project inspect`) avant tout autre réglage.
-
-### Essai 14 — suivre le mouvement (`--flow-fill`) et les ronds en satin (`--rings-satin`)
-
-Retour : « les cercles se mettent en satin pour un joli rond ; la broderie doit suggérer le mouvement
-dans le sens de la couture ». Deux outils manquaient à `digitize` :
-- `--flow-fill` : tentacules, corps, rubans (forme allongée : plus long guide² / aire ≥ 2,5, aire ≥ 10 mm²)
-  passent en remplissage directionnel dont les guides suivent l'axe médian ; la couleur la plus sombre
-  (contours) reste en tatami. Avant : tout en tatami à un seul angle, aspect « tapis ».
-- `--rings-satin` (avec `--dark-lines`) : un trou enclos quasi elliptique entouré d'une bande sombre
-  d'épaisseur régulière est un anneau ; il est cousu en auto-satin avec une ellipse exacte (rond net,
-  pas un polygone facetté) et retiré des traits et du remplissage marine (sinon marine + satin + lignes =
-  surépaisseur). 75 anneaux sur le kraken (ventouses, bulles, hublot, œil). Un test géométrique sur les
-  trous des objets vectoriels (tentative 1) ne trouvait que 3 anneaux : les anneaux des ventouses touchent
-  le contour marine et ne sont jamais des trous isolés ; la détection se fait donc sur l'image.
-Piège évité : satin sur un « trou dans une grande zone » (halos en éventail autour des petits points) ;
-l'anneau doit avoir un bord extérieur net et une épaisseur bornée.
-
-## 9. Ce skill s'enrichit
-
-Quand une nouvelle image révèle un échec ou une règle (seuil, option, ordre), l'ajouter au
-journal (§8) avec **la mesure qui la justifie** (chiffre avant/après, image de référence), et
-l'écrire aussi dans `docs/source/auto-numerisation.md`. Ne pas y mettre d'hypothèse non vérifiée.
-Toute erreur de méthode (fausse alerte, option oubliée) va dans le tableau d'erreurs : c'est ce
-qui évite de la refaire.
+| Tissu visible | ombre, grande masse sombre | doit être compatible avec la couleur du support |
+| Tatami | ciel, eau, lune, surface de nénuphar, pierre large, grandes voiles | interstices, sous-couche et uniformité de direction |
+| Directionnel | vagues/nuages en mouvement, larges rubans de matière | directions absurdes si guides déduits d'une forme mal segmentée ; surcoût de points et coupes |
+| Auto-satin | branches, lianes, roseaux, bordures, rubans, reliefs de pierre | jonctions, largeurs, couvertures, éventails disgracieux |
+| Point droit | nervures, petites séparations, joints fins | faux « contours » issus de mini-régions de remplissage |
+| Supprimer | parasite ou doublon sans fonction propre | vérifier qu'aucun détail utile n'est perdu |
+
+Puis réduire la palette réelle de fils **sans écraser les identités techniques**. Une famille peut employer plusieurs fils, un fil peut servir dans plusieurs familles. Les « 5 fils » d'une illustration n'ont pas valeur universelle. Penser orientation locale, recouvrement, ordre de couture et zones protégées.
+
+**Validation B :** compléter pour chaque objet `semantic_id / famille / rôle / masque / point / direction souhaitée / guides envisagés / priorité / au-dessus-sous / sous-couche / tissu apparent / raison`. Les « guides envisagés » sont au départ des annotations de planification, **pas des paramètres automatiquement importés par le CLI**. Les larges masses restent a priori tatami, les vrais rubans étroits sont candidats satin, les traits fins running ; c'est la fonction visuelle et la topologie qui décident.
+
+## Phase 5 — Première numérisation OpenStitch
+
+Pour des aplats, utiliser le mode **shapes** ; mode **contours** pour un dessin de traits ; **stipple** pour certaines sources tonales. Les réglages se découvrent sur le binaire installé (voir documentation). Un balayage de quelques paramètres est pertinent **après** nettoyage sémantique, jamais comme remplacement de celui-ci.
+
+~~~bash
+# Exemple seulement : DPI, cadre et fond doivent être recalculés !
+openstitch-cli project sweep image_preparee.png --dpi 140 --max-colors 12 \
+  --vary island-cleanup=0,3 --vary fill-inset=0,0.1 --sheet sweep.png
+openstitch-cli project digitize image_preparee.png -o essai_01.osp \
+  --dst essai_01.dst --dpi 140 --skip-background no \
+  --debug-dir debug_01 --report digitize_01.json
+openstitch-cli project set essai_01.osp --width-mm 260 --height-mm 200
+openstitch-cli project inspect essai_01.osp --json > inspect_01.json
+~~~
+
+**Préférer le chemin sémantique** si les masques et le manifeste sont disponibles : `scripts/openstitch_semantic.py` pour valider, `scripts/openstitch_semantic_import.py` pour importer les objets avec leur nom `sem:<id>` et un sidecar, puis opérations natives pour les guides et types non couverts. Le pont actuel accepte tatami/running/auto_satin (ce dernier initialisé à **skeleton**) ; il ne sait pas importer directement un objet `directional` avec ses guides ou un satin à rails/traverses. **Contrôler `project inspect` après import.** Le chemin `project digitize image` reste utile comme témoin ou secours mais, seul, il ne satisfait pas la porte A : ce n'est pas une segmentation d'instances.
+
+**Attention au fond :** l'option auto peut parfois ignorer la lune ou une grande surface utile ; à l'inverse il faut exclure les zones transparentes/papier sans les coudre. Observer les décisions réelles et la palette d'objets de l'OSP. Le script [workflow.sh](scripts/workflow.sh) permet une première passe technique mais ne fait **pas automatiquement** la reconstruction et le classement sémantique.
+
+## Phase 5 bis — Planification et test des directions
+
+Pour les grandes vagues, nuages ou surfaces qui **doivent** évoquer un mouvement, comparer tatami classique et `directional` **sur la même forme et la même taille**. `project op … directional_guides --arg object=ID` utilise l'axe médian de l'objet ; ce n'est **pas** automatiquement une courbe dessinée par un humain. Examiner les changements de direction, les raccords entre rubans et le surcoût en coupes/surépaisseurs. Si la forme fusionne plusieurs courants, redécouper sémantiquement en bandes continues avant d'insister sur un algorithme de guides. Voir [directions-et-planification-textile.md](references/directions-et-planification-textile.md). En particulier, ne pas transformer toutes les régions d'un seul coup : l'essai « navire » avec 41 remplissages directionnels augmentait aussi les points et coupes.
+
+## Phase 6 — Tester les trois satins sur les objets pertinents
+
+Chaque candidat identifié en auto-satin et important visuellement doit être essayé, sur **trois copies/versionnements**, dans la mesure des capacités du moteur :
+
+- **skeleton** : cohérent sur certaines ramifications mais parfois dense ;
+- **parallel_sweep** : parfois moins dense, peut laisser une forme incomplète et produire des éventails ;
+- **medial_axis** : intéressant ponctuellement, mais peut produire **zéro point** ou une couverture faible.
+
+Ne pas décider de la méthode sur la seule famille, la seule largeur de **boîte englobante** ou le nombre de points. Étudier largeur **locale**, changements de section, embranchements, rails et traverses/guides possibles. Un convertisseur sans guides qui réussit techniquement peut encore détruire la lecture d'une vague. Comparer **couverture par objet, absence de points, refus, pertes de bord, direction du fil, aspect du rendu OpenStitch, densité et coupes**. Si aucune stratégie ne convient : scinder la géométrie, revenir au tatami/point droit ou laisser vide suivant le rôle.
+
+OpenStitch expose les trois stratégies via l'opération **auto_satin** ou les paramètres **strategy** des objets existants. **set_stitch_type ne convertit pas en auto-satin** ; employer auto_satin et vérifier son résultat. Lire [selection-satins.md](references/selection-satins.md), notamment les 11 objets où medial_axis n'avait produit aucun point dans une expérience réelle.
+
+## Phase 7 — Retouches, îlots, « Région en contour », densités
+
+Sur **une copie du projet** :
+
+1. Auditer **tous les running**. Conserver un trait volontaire ; tester en satin une petite zone de repli réellement allongée ; retirer seulement les satellites redondants (attention aux joints de pierre et aux tiges). Une conversion est refusée si non couverte ou inadaptée à la topologie.
+2. Auditer les îlots satin/tatami, chercher des structures porteuses **en amont**. La fusion native sans continuité de géométrie ne garantit aucune économie de coupe.
+3. Lire le heatmap de densité : alléger des sous-couches inutiles, espacements, recouvrements et ordre ; ne pas supprimer arbitrairement des détails. Vérifier les sous-couches **cumulées**, la compensation push/pull et les objets masqués par l'occlusion ; expérimenter une soustraction géométrique du dessous sur copie, **sans** présenter la CLI comme un « remove hidden stitches » automatique.
+4. Tester ordre et trajets cachés **après** le travail géométrique, sans mélanger les couleurs ou inverser les occlusions.
+5. Examiner **vraiment** le rendu global et les zooms. Si défaut de segmentation : retour à l'image et **nouveau .osp** ; si défaut de paramètre/type : retouche du .osp. Ne jamais inventer une commande pour remplacer la source d'un OSP.
+
+Effectuer plusieurs cycles *mesure → diagnostic de cause → correction → nouveau rendu → comparaison* pour un motif complexe. Conserver la meilleure version connue, et des journaux de décisions/rejets. Les 52 contours convertis et 38 supprimés du cas V9 sont un exemple **non universel**, pas une recette à recopier.
+
+## Phase 8 — Analyse reproductible et contrôle
+
+~~~bash
+openstitch-cli project check essai_01.osp --json > check_01.json
+openstitch-cli project diagnose essai_01.osp --json > diagnose_01.json
+openstitch-cli project fidelity essai_01.osp --map fidelite_01.png --json > fidelite_01.json
+openstitch-cli project density essai_01.osp --heatmap densite_01.png --json > densite_01.json
+openstitch-cli project render essai_01.osp -o preview_01.png --px-per-mm 7
+openstitch-cli project select essai_01.osp --where type=running --json > running_01.json
+openstitch-cli project at essai_01.osp --px 500,320
+openstitch-cli stats essai_01.dst
+openstitch-cli project diff essai_01.osp essai_02.osp --json > diff.json
+~~~
+
+Lire **project operations --json** pour les noms et schémas effectifs des opérations. Pour une retouche en lot, employer **project apply** avec le schéma **openstitch.batch/1** ; exécuter d'abord **--dry-run**, vérifier ses résultats transactionnels et les IDs (toujours issus de inspect), puis appliquer vers un nouveau fichier avec **-o nouvelle_version.osp**. Les erreurs de batch laissent le projet inchangé. Voir [retouches-et-validation.md](references/retouches-et-validation.md).
+
+**Validation D :** visualiser le rendu OpenStitch en plein motif **et** en zoom du sujet prioritaire, sur le tissu prévu, face à la reconstruction et à l'original. Rejeter une version si voiles, coque, courbes principales ou reliefs deviennent illisibles, même avec des métriques meilleures.
+
+Faire figurer côte à côte, à source identique : dimensions, objets par type, points, coupes, sauts, changements de fil, zones ≥ 4 couches, manques intentionnels, défauts de couverture, rendu sur couleur de tissu choisie. Les mesures de densité sont **simulées** ; la fidélité à l'image intégrée ne juge pas automatiquement de la justesse artistique. Nombre d'avertissements imprimés potentiellement plafonné ; **0 erreur bloquante ≠ validé machine**.
+
+## Phase 9 — Livrables et critères d'arrêt
+
+~~~text
+travail/
+  source_originale.png
+  source_reference.osp                   # si fournie
+  semantique/
+    scene.json                            # si format de manifeste pris en charge
+    masques/                              # fichiers par objet identifie
+    reconstruction_fidele.png
+    carte_semantique.png
+    segmentation_technique.png
+    regions.csv
+    palette.json
+  essais/
+    01_initial/{projet.osp,preview.png,mesures.json,notes.md}
+    02_satins/{projet.osp,preview.png,selection_satins.csv}
+    02b_directions/{projet.osp,preview.png,decisions_directions.csv}
+    03_fusions/{projet.osp,preview.png,fusions_semantiques.csv}
+    04_contours/{projet.osp,preview.png,decisions_contours.csv}
+  final/
+    broderie.osp
+    broderie.dst
+    preview.png
+    rapport.md
+  broderie_complete.zip
+~~~
+
+**Obligatoires** si la mission est complète : OSP éditable, DST exporté de **ce même OSP**, rendu **project render**, carte sémantique, segmentation technique, table de fils et régions, rapport des essais et limites, archive ZIP. Indiquer quelles étapes du workflow ont **réellement été exécutées**, notamment si le pont sémantique, `directional_guides`, les trois stratégies satin et les retouches ont été utilisés ; ne pas confondre essai global de quantification et reconstruction sémantique. Vérifier dimensions finales, cadre, points/coupes/fil et cohérence des sorties.
+
+S'arrêter si les silhouettes et détails structurants sont fidèles, si la majorité des îlots restant a une fonction, si aucune erreur bloquante n'est détectée, si les problèmes de densité sont compris et si des variantes ultérieures n'apportent plus de gain significatif. Ne pas promettre qu'un pull sera brodable sans **échantillon réel**, stabilisateur et vérification des tensions.
+
+## Phase 10 — Critique indépendante (si un apprentissage autonome est demandé)
+
+Quand le projet est utilisé dans une boucle d'optimisation ou par une tâche
+planifiée, **après** la phase 9 lire
+[openstitch-evaluate](../openstitch-evaluate/SKILL.md). Confier la revue
+visuelle et la note /20 à un juge distinct de l'agent qui a produit la version.
+Joindre la source, carte sémantique, OSP, rendu réel et diagnostics natifs.
+L'absence de preuve donne un état `incomplete`, **jamais une note inventée**.
+En cas d'échec, corriger la phase responsable (A/B/C/D), mesurer avant/après,
+et conserver la meilleure version. Les résultats légers et les échecs
+sont journalisés sur la branche `agent-trials` et **pas sur `main`** ;
+les binaires sont archivés séparément. Ne pas assimiler réussite en simulation
+et validation sur machine.
+
+## Retours des essais `agent-trials` (≈ 50 essais, aucun noté /20)
+
+- **Deux échecs consécutifs de la porte A : s'arrêter** et reprendre la reconstruction sémantique ; ne pas tuner densité, nombre de coupes ou satin comme substitut (vérifié sur une trentaine d'essais de peinture).
+- **Cadre et fond explicites** : `project new` a un cadre de 100×100 mm par défaut ; `project render` utilise `#00FF00` sans `--fabric` (les trous ressortent). `project check` signale `motif-hors-cadre`.
+- **Fidélité d'un projet construit à la main** : après `import_svg` / `semantic_import`, ajouter l'image d'origine avec l'opération `set_source_image` (ou `source_path` de `semantic_import`) sinon `project fidelity` refuse. La fidélité mesurée reste celle de l'image intégrée, pas celle de l'œuvre d'origine.
+- **`RequiresDecomposition`** sur un satin : lire `reason_code` et `suggestion` du résultat de `auto_satin` avant de réessayer les trois stratégies.
+- **Ne pas confondre** quantification de couleurs et segmentation d'instances ; le nombre d'objets n'est pas une métrique de qualité ; deux éléments de même couleur qui se touchent ne sont pas une même instance.
+- **Validation indépendante** : ne pas optimiser et prouver sur la même image sans lot de contrôle.
+
+## Frontières et sécurité de méthode
+
+- **Skill de workflow**, pas nouvelle commande OpenStitch : la segmentation sémantique et son graphe d'instances peuvent nécessiter OpenCV/Python/SVG.
+- Ne pas activer **--satin-bands** par défaut sans relire les réserves de brevet dans [parametres.md](references/parametres.md).
+- Ne jamais inventer métriques, exécutions, noms de commandes ou validation sur machine.
+- Ne pas présenter l'opération `directional_guides` comme l'import d'une courbe utilisateur, ni `merge --mode subtract` comme une suppression générale automatique des points cachés.
+- Si un paramétrage est refusé par le CLI, noter le refus et conserver la dernière version valide ; ne pas attribuer au rendu une opération non appliquée.
+- Ne pas modifier le code source ni ouvrir une PR au cours d'une simple mission de numérisation, sauf demande explicite.
+- Documenter toute nouvelle expérimentation (avant/après, dimensions, source) plutôt que transformer des heuristiques locales en règles universelles.

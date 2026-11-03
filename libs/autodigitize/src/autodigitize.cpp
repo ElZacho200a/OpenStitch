@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/autodigitize/autodigitize.hpp"
+#include "openstitch/autodigitize/quality_metrics.hpp"
 #include "openstitch/core/parallel.hpp"
 
 #include <algorithm>
@@ -76,7 +77,35 @@ struct RegionSource {
     ObjectId vec_id;
     std::array<std::uint8_t, 3> rgb;
     std::string label;
+    // Seuil de remplissage applicable à ce morceau (mm²) : celui des options, ou celui des zones
+    // de détail.
+    double min_fill_area_mm2{0.0};
 };
+
+// Une région est « de détail » si la moyenne du masque sur ses pixels est >= 128 (même critère
+// que la vectorisation et la segmentation).
+bool region_is_detail(const segmentation::Segmentation& seg, RegionId id,
+                      const segmentation::DetailMask* mask) {
+    if (mask == nullptr || !mask->matches(seg.width, seg.height)) {
+        return false;
+    }
+    const auto label = static_cast<std::uint32_t>(id.value);
+    std::uint64_t sum = 0;
+    std::uint64_t count = 0;
+    for (std::size_t i = 0; i < seg.labels.size(); ++i) {
+        if (seg.labels[i] == label) {
+            sum += mask->weights[i];
+            ++count;
+        }
+    }
+    return count > 0 && sum >= 128ULL * count;
+}
+
+double fill_threshold(const AutoOptions& options, bool detail) {
+    return detail && options.detail_min_fill_area_mm2 > 0.0
+               ? std::min(options.min_fill_area_mm2, options.detail_min_fill_area_mm2)
+               : options.min_fill_area_mm2;
+}
 
 // Résultat de l'essai de satin sur une région.
 struct SatinChoice {
@@ -95,33 +124,13 @@ SatinChoice choose_satin(const geometry::PathSet& region, const AutoOptions& opt
     if (region.holes.size() > 1) {
         return {}; // plusieurs trous : cas non couvert par le satin squelette
     }
-    auto_satin::SkeletonSatinParameters params;
-    const auto analysis = auto_satin::analyze_region(region, params.analysis);
-    if (!analysis) {
+    // Mesure partagée avec `measure_auto_quality` (le choix et sa métrique ne divergent pas).
+    const auto shape = measure_band_shape(region, options);
+    if (!shape) {
         return {};
     }
-    const auto& r = analysis->report;
-    // Le rapport de satinabilité ignore les trous dans le périmètre et n'a pas
-    // d'axe pour un anneau (squelette sans arête) : on mesure ici la bande
-    // elle-même. Une bande a deux bords de longueur ~L, d'où L = périmètre
-    // total / 2 ; W = diamètre inscrit maximal ; largeur moyenne = aire / L.
-    double perimeterUm = 0.0;
-    const auto addPerimeter = [&perimeterUm](const geometry::Path& path) {
-        for (std::size_t i = 0; i < path.nodes.size(); ++i) {
-            perimeterUm +=
-                length_um(path.nodes[(i + 1) % path.nodes.size()].pos - path.nodes[i].pos);
-        }
-    };
-    addPerimeter(region.outer);
-    for (const auto& hole : region.holes) {
-        addPerimeter(hole);
-    }
-    const double lengthUm = perimeterUm / 2.0;
-    const double widthUm = r.maximum_width_mm * 1000.0;
-    const double meanWidthUm = lengthUm > 0.0 ? r.area_mm2 * 1e6 / lengthUm : 0.0;
-    const double minWidth = static_cast<double>(params.analysis.thresholds.min_satin_width.value);
-    const double maxWidth = static_cast<double>(options.satin_max_width.value);
-    const double minElongation = params.analysis.thresholds.min_elongation;
+    const double widthUm = shape->max_width_um;
+    const double minWidth = shape->min_satin_width_um;
 
     const auto covered = [&](bool compact) {
         auto_satin::SkeletonSatinParameters p;
@@ -133,8 +142,7 @@ SatinChoice choose_satin(const geometry::PathSet& region, const AutoOptions& opt
                generated->diagnostics.coverage_ratio >= options.satin_min_coverage;
     };
 
-    const bool bandLike =
-        meanWidthUm >= minWidth && widthUm <= maxWidth && lengthUm >= minElongation * widthUm;
+    const bool bandLike = shape->band_like;
     if (bandLike && covered(false)) {
         return {true, false};
     }
@@ -155,10 +163,11 @@ SatinChoice choose_satin(const geometry::PathSet& region, const AutoOptions& opt
 // Essai de satin d'un morceau : la SEULE partie coûteuse de la classification (génération
 // d'essai + mesure de couverture). Fonction pure de (morceau, options) : calculée en parallèle
 // par les appelants, puis passée à `classify_and_build_embroidery`.
-SatinChoice satin_choice_for(const geometry::PathSet& main, const AutoOptions& options) {
+SatinChoice satin_choice_for(const geometry::PathSet& main, const AutoOptions& options,
+                             double minFillMm2) {
     const double areaMm2 = net_area_um2(main) / 1e6;
-    return areaMm2 >= options.min_fill_area_mm2 && options.satin_bands ? choose_satin(main, options)
-                                                                       : SatinChoice{};
+    return areaMm2 >= minFillMm2 && options.satin_bands ? choose_satin(main, options)
+                                                        : SatinChoice{};
 }
 
 void classify_and_build_embroidery(const geometry::PathSet& main, const RegionSource& source,
@@ -179,13 +188,19 @@ void classify_and_build_embroidery(const geometry::PathSet& main, const RegionSo
         // Bande étroite (anneau, ruban, arc) ou petit disque -> auto-satin.
         document::AutoSatinParams sp;
         sp.compact_axis = satin.compact_axis;
+        if (options.auto_pull_compensation) {
+            sp.pull_mode = document::PullMode::Auto;
+        }
         emb.params = sp;
         emb.name = "Satin " + source.label;
-    } else if (areaMm2 >= options.min_fill_area_mm2) {
+    } else if (areaMm2 >= source.min_fill_area_mm2) {
         // Toute zone remplissable -> tatami. L'orientation des fils reste
         // éditable ensuite.
         document::TatamiParams tp;
         tp.inset = options.fill_inset;
+        if (options.auto_pull_compensation) {
+            tp.pull_mode = document::PullMode::Auto;
+        }
         emb.params = tp;
         emb.name = "Remplissage " + source.label;
     } else {
@@ -602,13 +617,16 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
         segmentation::merge_small_regions(
             seg,
             static_cast<std::size_t>(std::ceil(options.min_region_area_mm2 / (mmPerPx * mmPerPx))),
-            backgroundRgb, kVectorizedBoundaryLoss);
+            backgroundRgb, kVectorizedBoundaryLoss, segmentation::MergeTarget::LongestBorder, 0.0,
+            options.detail_mask,
+            static_cast<std::size_t>(
+                std::ceil(fill_threshold(options, true) / (mmPerPx * mmPerPx))));
     }
 
     limit_thread_count(seg, options.max_threads, backgroundRgb);
 
     const vectorization::VectorizeOptions vecOpts{options.mm_per_px, options.simplify_tolerance,
-                                                  options.curve_tolerance};
+                                                  options.curve_tolerance, options.detail_mask};
     // Objet vectoriel principal de chaque région numérisée (Lot C) : une
     // région absente (fond ignoré, non vectorisable) n'est jamais une voisine
     // brodée.
@@ -621,12 +639,23 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
     struct Vectorized {
         std::vector<geometry::PathSet> sets; // vide : région ignorée
         SatinChoice satin;
+        double minFill{0.0};
     };
     const segmentation::Segmentation& constSeg = seg;
     std::vector<Vectorized> vectorized(regions.size());
+    const std::vector<RegionId> borderRegions =
+        options.skip_background_outer_only ? segmentation::border_touching_regions(constSeg)
+                                           : std::vector<RegionId>{};
+    const auto isSkippedBackground = [&](const segmentation::Region& r) {
+        if (!backgroundRgb || r.rgb != *backgroundRgb) {
+            return false;
+        }
+        return !options.skip_background_outer_only ||
+               std::binary_search(borderRegions.begin(), borderRegions.end(), r.id);
+    };
     parallel_for(regions.size(), [&](std::size_t i) {
         const auto* region = constSeg.find(regions[i]);
-        if (region == nullptr || (backgroundRgb && region->rgb == *backgroundRgb)) {
+        if (region == nullptr || isSkippedBackground(*region)) {
             return;
         }
         auto sets = vectorization::vectorize_region(constSeg, regions[i], vecOpts);
@@ -634,7 +663,10 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
             return; // région non vectorisable : ignorée sans erreur
         }
         vectorized[i].sets = std::move(*sets);
-        vectorized[i].satin = satin_choice_for(largest_piece(vectorized[i].sets), options);
+        vectorized[i].minFill =
+            fill_threshold(options, region_is_detail(constSeg, regions[i], options.detail_mask));
+        vectorized[i].satin =
+            satin_choice_for(largest_piece(vectorized[i].sets), options, vectorized[i].minFill);
     });
 
     for (std::size_t i = 0; i < regions.size(); ++i) {
@@ -659,7 +691,8 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
         // logique PARTAGÉE avec `auto_digitize_vectors` (§ classify_and_
         // build_embroidery ci-dessus), une région de segmentation n'étant
         // qu'une des deux sources possibles d'un morceau déjà vectorisé.
-        const RegionSource source{vecId, region->rgb, "Région " + std::to_string(id.value)};
+        const RegionSource source{vecId, region->rgb, "Région " + std::to_string(id.value),
+                                  vectorized[i].minFill};
         classify_and_build_embroidery(largest_piece(result.vectors.back().paths), source, ids,
                                       options, vectorized[i].satin, result);
     }
@@ -696,7 +729,8 @@ Result<AutoResult> auto_digitize_vectors(const std::vector<document::VectorObjec
     std::vector<SatinChoice> choices(vectors.size());
     parallel_for(vectors.size(), [&](std::size_t i) {
         if (!vectors[i].paths.empty()) {
-            choices[i] = satin_choice_for(largest_piece(vectors[i].paths), options);
+            choices[i] = satin_choice_for(largest_piece(vectors[i].paths), options,
+                                          options.min_fill_area_mm2);
         }
     });
     for (std::size_t i = 0; i < vectors.size(); ++i) {
@@ -707,7 +741,7 @@ Result<AutoResult> auto_digitize_vectors(const std::vector<document::VectorObjec
         }
         // Aucun nouvel objet vectoriel créé pour la géométrie d'entrée : elle
         // existe déjà (import SVG direct, § "skip segmentation").
-        const RegionSource source{vec.id, vec.rgb, vec.name};
+        const RegionSource source{vec.id, vec.rgb, vec.name, options.min_fill_area_mm2};
         classify_and_build_embroidery(largest_piece(vec.paths), source, ids, options, choices[i],
                                       result);
     }

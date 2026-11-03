@@ -1,0 +1,28 @@
+name: Agent CLI helpers
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/openstitch_agent.py'
+      - 'tests/scripts/test_openstitch_agent.py'
+      - '.github/workflows/agent-cli.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/openstitch_agent.py'
+      - 'tests/scripts/test_openstitch_agent.py'
+      - '.github/workflows/agent-cli.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  python-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test agent CLI without network
+        run: python3 -m unittest discover -s tests/scripts -p 'test_openstitch_agent.py' -v

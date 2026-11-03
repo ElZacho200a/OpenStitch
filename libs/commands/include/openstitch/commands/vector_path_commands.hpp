@@ -11,6 +11,8 @@
 #include "openstitch/core/ids.hpp"
 #include "openstitch/core/units.hpp"
 #include "openstitch/document/project.hpp"
+#include "openstitch/geometry/brush.hpp"
+#include "openstitch/geometry/node_transform.hpp"
 #include "openstitch/geometry/path.hpp"
 
 namespace openstitch::commands {
@@ -58,6 +60,56 @@ public:
     [[nodiscard]] std::string name() const override { return "Convertir en courbes"; }
 };
 
+// Remodelage interactif d'un segment (HP-VEC-016) : le résultat est calculé au relâchement par
+// `geometry::reshape_path_set_segment` ; UN pas d'annulation par geste.
+class ReshapeSegmentCommand final : public RewriteVectorPathsCommand {
+public:
+    explicit ReshapeSegmentCommand(std::vector<Entry> entries)
+        : RewriteVectorPathsCommand(std::move(entries)) {}
+    [[nodiscard]] std::string name() const override { return "Remodeler un segment"; }
+};
+
+// Translation d'une arête par ses deux extrémités (HP-VEC-016, variante Alt) : un geste, un pas.
+class TranslateEdgeCommand final : public RewriteVectorPathsCommand {
+public:
+    explicit TranslateEdgeCommand(std::vector<Entry> entries)
+        : RewriteVectorPathsCommand(std::move(entries)) {}
+    [[nodiscard]] std::string name() const override { return "Déplacer une arête"; }
+};
+
+// Déplacement / rotation / échelle d'un groupe de nœuds (HP-VEC-017) : un geste, un pas.
+class TransformNodesCommand final : public RewriteVectorPathsCommand {
+public:
+    explicit TransformNodesCommand(std::vector<Entry> entries)
+        : RewriteVectorPathsCommand(std::move(entries)) {}
+    [[nodiscard]] std::string name() const override { return "Transformer des nœuds"; }
+};
+
+// Coup de pinceau de déformation (HP-VEC-018) : toute la géométrie finale du geste, un seul pas.
+class BrushStrokeCommand final : public RewriteVectorPathsCommand {
+public:
+    explicit BrushStrokeCommand(std::vector<Entry> entries)
+        : RewriteVectorPathsCommand(std::move(entries)) {}
+    [[nodiscard]] std::string name() const override { return "Pinceau de déformation"; }
+};
+
+// Insertion d'un nœud sur un segment d'un objet vectoriel (HP-VEC-001) : subdivision de
+// De Casteljau EXACTE, la forme ne change pas.
+class InsertNodeCommand final : public RewriteVectorPathsCommand {
+public:
+    explicit InsertNodeCommand(std::vector<Entry> entries)
+        : RewriteVectorPathsCommand(std::move(entries)) {}
+    [[nodiscard]] std::string name() const override { return "Insérer un nœud"; }
+};
+
+// Suppression d'UN trou précis d'un objet vectoriel (HP-VEC-005).
+class RemoveHoleCommand final : public RewriteVectorPathsCommand {
+public:
+    explicit RemoveHoleCommand(std::vector<Entry> entries)
+        : RewriteVectorPathsCommand(std::move(entries)) {}
+    [[nodiscard]] std::string name() const override { return "Supprimer un trou"; }
+};
+
 // Tolérance de lissage par défaut : 0,2 mm.
 inline constexpr Micrometers kDefaultSmoothTolerance{200};
 
@@ -69,5 +121,48 @@ inline constexpr Micrometers kDefaultSmoothTolerance{200};
                                                  Micrometers tolerance = kDefaultSmoothTolerance);
 [[nodiscard]] VectorOpResult make_convert_to_curves_command(const document::Project& project,
                                                             const std::vector<ObjectId>& ids);
+
+// Supprime le trou de l'objet `id` qui contient le point `at` (µm). Commande nulle (avec `error`)
+// si l'objet n'existe pas ou si `at` n'est dans aucun trou.
+[[nodiscard]] VectorOpResult make_remove_hole_at_command(const document::Project& project,
+                                                         ObjectId id, Vec2um at);
+
+// Insère un nœud au paramètre `t` (0..1) du segment `segment` (index du nœud de départ) du chemin
+// `path_index` du morceau `set_index` de l'objet `id`. Commande nulle (avec `error`) si la cible
+// n'existe pas ou si `t` est trop proche d'une extrémité (nœud superposé).
+[[nodiscard]] VectorOpResult make_insert_node_command(const document::Project& project, ObjectId id,
+                                                      std::size_t set_index, std::size_t path_index,
+                                                      std::size_t segment, double t);
+
+// Remodèle le segment `segment` (index du nœud de départ) du chemin `path_index` (0 = extérieur,
+// i+1 = trou i) du morceau `set_index` de l'objet `id`, en tirant son point `t` de `delta`
+// (µm, repère du document). Commande nulle (avec `error`) si l'objet/segment n'existe pas, si
+// rien ne change ou si le résultat introduirait un croisement.
+[[nodiscard]] VectorOpResult
+make_reshape_segment_command(const document::Project& project, ObjectId id, std::size_t set_index,
+                             std::size_t path_index, std::size_t segment, double t, Vec2um delta);
+
+// Déplace de `delta` (µm) les deux nœuds du segment `segment` (`geometry::translate_segment`).
+// Mêmes refus que `make_reshape_segment_command`.
+[[nodiscard]] VectorOpResult make_translate_edge_command(const document::Project& project,
+                                                         ObjectId id, std::size_t set_index,
+                                                         std::size_t path_index,
+                                                         std::size_t segment, Vec2um delta);
+
+// Transforme les nœuds `selected` du chemin `path_index` du morceau `set_index` de l'objet `id`
+// (`geometry::transform_path_set_nodes`, transition douce si `soft_radius_um` > 0). Commande
+// nulle (avec `error`) si la cible n'existe pas, si rien ne change ou si un croisement
+// apparaîtrait.
+[[nodiscard]] VectorOpResult
+make_transform_nodes_command(const document::Project& project, ObjectId id, std::size_t set_index,
+                             std::size_t path_index, const std::vector<std::size_t>& selected,
+                             const geometry::NodeTransform& transform, double soft_radius_um);
+
+// Pose `after` (géométrie complète de l'objet `id` à la fin du coup de pinceau, calculée par
+// `geometry::apply_brush_dab`). Commande nulle (avec `error`) si l'objet n'existe pas, si rien
+// ne change ou si un contour se croiserait.
+[[nodiscard]] VectorOpResult make_brush_stroke_command(const document::Project& project,
+                                                       ObjectId id,
+                                                       std::vector<geometry::PathSet> after);
 
 } // namespace openstitch::commands

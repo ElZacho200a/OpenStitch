@@ -54,18 +54,27 @@ TEST_CASE("moteur : round-trip des nouveaux reglages (tatami, directionnel, sati
     project.finishing.split_long_stitches = true;
     project.finishing.max_stitch_length = Micrometers{6'000};
     project.finishing.auto_join = true;
+    project.finishing.design_start = Vec2um{Micrometers{1'500}, Micrometers{-2'000}};
+    project.finishing.design_end = Vec2um{Micrometers{10'000}, Micrometers{0}};
 
     document::TatamiParams tatami;
     tatami.pull_compensation = Micrometers{350};
     tatami.underlay_mode = document::UnderlayMode::Auto;
+    tatami.pull_mode = document::PullMode::Auto; // HP-ENG-001.b
+    tatami.row_end_clip = Micrometers{1'000};
+    tatami.edge_outline = true;
     document::DirectionalFillParams directional;
     directional.underlay_mode = document::UnderlayMode::Auto;
+    directional.pull_mode = document::PullMode::Adaptive; // AdaptivePullCompensation
+    directional.edge_outline = true;
     document::SatinParams satin;
     satin.underlay_mode = document::UnderlayMode::Auto;
+    satin.pull_mode = document::PullMode::Predicted; // niveau 3
     satin.border = document::BorderSatinSpec{Micrometers{4'500}, document::BorderSide::Outside,
                                              document::BorderCorner::Round, 2, 1};
     document::AutoSatinParams autoSatin;
     autoSatin.underlay_mode = document::UnderlayMode::Auto;
+    autoSatin.pull_mode = document::PullMode::Adaptive;
     autoSatin.compact_axis = true;
 
     std::uint64_t id = 10;
@@ -102,6 +111,32 @@ TEST_CASE("moteur : round-trip des nouveaux reglages (tatami, directionnel, sati
     fs::remove(second);
 }
 
+TEST_CASE("moteur : auto-satin conserve tous les modes de tirage dont Predicted",
+          "[project_io][predicted_pull]") {
+    for (const auto mode : {document::PullMode::Manual, document::PullMode::Auto,
+                            document::PullMode::Adaptive, document::PullMode::Predicted}) {
+        auto project = base_project();
+        document::EmbroideryObject object;
+        object.id = ObjectId{10};
+        document::AutoSatinParams params;
+        params.pull_mode = mode;
+        object.params = params;
+        project.embroidery_objects.push_back(object);
+
+        const auto suffix = std::to_string(static_cast<int>(mode));
+        const auto filename = "openstitch_auto_satin_pull_" + suffix + ".osp";
+        const auto path = fs::temp_directory_path() / filename;
+        REQUIRE(project_io::save_project(path, project).has_value());
+        const auto loaded = project_io::load_project(path);
+        fs::remove(path);
+        REQUIRE(loaded.has_value());
+        REQUIRE(loaded->embroidery_objects.size() == 1);
+        const auto& restored =
+            std::get<document::AutoSatinParams>(loaded->embroidery_objects.front().params);
+        CHECK(restored.pull_mode == mode);
+    }
+}
+
 TEST_CASE("moteur : un .osp anterieur est relu avec les defauts (comportement inchange)") {
     const auto project = load_from_json(
         R"({"id":2,"name":"t","sourceVector":1,"rgb":[1,2,3],"params":{"type":"tatami",)"
@@ -115,12 +150,17 @@ TEST_CASE("moteur : un .osp anterieur est relu avec les defauts (comportement in
     const auto& tatami = std::get<document::TatamiParams>(project.embroidery_objects[0].params);
     CHECK(tatami.pull_compensation.value == 0);
     CHECK(tatami.underlay_mode == document::UnderlayMode::Manual);
+    CHECK(tatami.pull_mode == document::PullMode::Manual);
+    CHECK(tatami.row_end_clip.value == 0);
+    CHECK_FALSE(tatami.edge_outline);
     const auto& satin = std::get<document::SatinParams>(project.embroidery_objects[1].params);
     CHECK(satin.underlay_mode == document::UnderlayMode::Manual);
+    CHECK(satin.pull_mode == document::PullMode::Manual);
     CHECK_FALSE(satin.border.has_value());
     const auto& autoSatin =
         std::get<document::AutoSatinParams>(project.embroidery_objects[2].params);
     CHECK(autoSatin.underlay_mode == document::UnderlayMode::Manual);
+    CHECK(autoSatin.pull_mode == document::PullMode::Manual);
     for (const auto& e : project.embroidery_objects) {
         CHECK(e.join == document::JoinMode::Inherit);
     }
@@ -141,10 +181,10 @@ TEST_CASE("moteur : valeurs aberrantes d'un fichier edite a la main sont bornees
     const auto project = load_from_json(
         R"({"id":2,"name":"t","sourceVector":1,"rgb":[1,2,3],"join":9,"params":{"type":"tatami",)"
         R"("angle":0,"rowSpacing":400,"stitchLength":3000,"inset":200,"stagger":2,)"
-        R"("pullCompensation":999999,"underlayMode":7}},)"
+        R"("pullCompensation":999999,"underlayMode":7,"rowEndClip":999999,"edgeOutline":true}},)"
         R"({"id":3,"name":"n","sourceVector":1,"rgb":[1,2,3],"params":{"type":"tatami",)"
         R"("angle":0,"rowSpacing":400,"stitchLength":3000,"inset":200,"stagger":2,)"
-        R"("pullCompensation":-50}},)"
+        R"("pullCompensation":-50,"rowEndClip":-7}},)"
         R"({"id":4,"name":"s","sourceVector":1,"rgb":[1,2,3],"params":{"type":"satin",)"
         R"("railA":{"closed":false,"nodes":[]},"railB":{"closed":false,"nodes":[]},)"
         R"("density":400,"pullCompensation":0,"centerUnderlay":true,"maxWidth":9000,)"
@@ -153,9 +193,12 @@ TEST_CASE("moteur : valeurs aberrantes d'un fichier edite a la main sont bornees
     const auto& big = std::get<document::TatamiParams>(project.embroidery_objects[0].params);
     CHECK(big.pull_compensation.value == 3'000);
     CHECK(big.underlay_mode == document::UnderlayMode::Auto);
+    CHECK(big.row_end_clip.value == 5'000);
+    CHECK(big.edge_outline);
     CHECK(project.embroidery_objects[0].join == document::JoinMode::Off);
     const auto& negative = std::get<document::TatamiParams>(project.embroidery_objects[1].params);
     CHECK(negative.pull_compensation.value == 0);
+    CHECK(negative.row_end_clip.value == 0);
     const auto& satin = std::get<document::SatinParams>(project.embroidery_objects[2].params);
     REQUIRE(satin.border.has_value());
     CHECK(satin.border->width.value == 500);
@@ -165,4 +208,45 @@ TEST_CASE("moteur : valeurs aberrantes d'un fichier edite a la main sont bornees
     CHECK(satin.border->ring == 5);
     CHECK(project.finishing.max_stitch_length.value == 12'100);
     CHECK(project.finishing.auto_join);
+}
+
+TEST_CASE(
+    "moteur : tirage du directionnel et sous-couche zigzag, aller-retour et anciens fichiers") {
+    auto project = base_project();
+    document::TatamiParams tatami;
+    tatami.underlay_zigzag = true;
+    document::DirectionalFillParams directional;
+    directional.pull_compensation = Micrometers{300};
+    directional.underlay_zigzag = true;
+    std::uint64_t id = 10;
+    for (const document::StitchParams& params :
+         std::vector<document::StitchParams>{tatami, directional}) {
+        document::EmbroideryObject e;
+        e.id = ObjectId{id++};
+        e.name = "o";
+        e.params = params;
+        project.embroidery_objects.push_back(e);
+    }
+    const auto path = fs::temp_directory_path() / "openstitch_engine_pull_zigzag.osp";
+    REQUIRE(project_io::save_project(path, project).has_value());
+    const auto loaded = project_io::load_project(path);
+    fs::remove(path);
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->embroidery_objects.size() == 2);
+    CHECK(loaded->embroidery_objects[0].params == project.embroidery_objects[0].params);
+    CHECK(loaded->embroidery_objects[1].params == project.embroidery_objects[1].params);
+
+    // Fichier anterieur (cles absentes) : defauts du modele ; valeur aberrante : bornee.
+    const auto legacy = load_from_json(
+        R"({"id":2,"name":"d","sourceVector":1,"rgb":[1,2,3],"params":{"type":"directional"}},)"
+        R"({"id":3,"name":"e","sourceVector":1,"rgb":[1,2,3],"params":{"type":"directional",)"
+        R"("pullCompensation":999999}})");
+    REQUIRE(legacy.embroidery_objects.size() == 2);
+    const auto& plain =
+        std::get<document::DirectionalFillParams>(legacy.embroidery_objects[0].params);
+    CHECK(plain.pull_compensation.value == 0);
+    CHECK_FALSE(plain.underlay_zigzag);
+    const auto& huge =
+        std::get<document::DirectionalFillParams>(legacy.embroidery_objects[1].params);
+    CHECK(huge.pull_compensation.value == 3'000);
 }

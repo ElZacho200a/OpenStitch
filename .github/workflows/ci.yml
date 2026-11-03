@@ -10,7 +10,7 @@ env:
 
 jobs:
   windows-msvc:
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
 
@@ -34,14 +34,11 @@ jobs:
           & "$env:RUNNER_TEMP/vcpkg/bootstrap-vcpkg.bat" -disableMetrics
           "VCPKG_ROOT=$env:RUNNER_TEMP/vcpkg" | Out-File -Append -FilePath $env:GITHUB_ENV
 
-      - name: Configure
+      - name: Configure and build Release
         shell: pwsh
         run: |
           $env:QT_ROOT = $env:QT_ROOT_DIR
-          cmake --preset msvc
-
-      - name: Build Release
-        run: cmake --build --preset msvc-release
+          ./scripts/build.ps1 -SkipBootstrap -Configuration Release
 
       # Disponible des la compilation, meme si les tests suivants echouent (build Release seul).
       # La publication stable reste conditionnee au succes de tous les jobs.
@@ -54,9 +51,31 @@ jobs:
           path: |
             build/msvc/apps/desktop/Release/
             build/msvc/apps/cli/Release/
+            build/msvc/apps/mcp/Release/
 
       - name: Test (Release)
         run: ctest --preset msvc-release
+
+      - name: Package and smoke-test Windows MCP (Release)
+        shell: pwsh
+        run: |
+          ./packaging/windows/package-mcp.ps1 -BinaryDir build/msvc/apps/mcp/Release -OutputDir dist/windows-mcp
+          $verify = Join-Path $env:RUNNER_TEMP "openstitch-mcp-smoke"
+          Expand-Archive -LiteralPath "dist/windows-mcp/openstitch-mcp-windows-x64.zip" -DestinationPath $verify -Force
+          $exe = Join-Path $verify "openstitch-mcp-windows-x64/openstitch-mcp.exe"
+          if (-not (Test-Path -LiteralPath $exe)) { throw "MCP exe missing from ZIP" }
+          & $exe --version
+          if ($LASTEXITCODE -ne 0) { throw "MCP --version failed" }
+          & $exe --doctor
+          if ($LASTEXITCODE -ne 0) { throw "MCP --doctor failed" }
+
+      - name: Upload Windows MCP ZIP + SHA256
+        uses: actions/upload-artifact@v4
+        with:
+          name: openstitch-mcp-windows-x64
+          if-no-files-found: error
+          retention-days: 30
+          path: dist/windows-mcp/*
 
       # Diagnostic : test_ui_action_workflows échoue par intermittence en Release sans aucun message
       # (ctest n'affiche que « Failed », ni sortie ni code de sortie). Quand un test échoue, on relance
@@ -71,20 +90,29 @@ jobs:
           ctest --preset msvc-release --rerun-failed -VV
           $env:PATH = "$env:QT_ROOT_DIR\bin;$env:PATH"
           $env:QT_QPA_PLATFORM = "offscreen"
-          $exe = "build/msvc/tests/unit/desktop/Release/test_ui_action_workflows.exe"
-          foreach ($i in 1..5) {
-            & $exe -o "diag-run$i.txt,txt" | Out-Null
-            $code = $LASTEXITCODE
-            "run ${i}: code de sortie $code (0x{0:X})" -f $code
-            if ($code -ne 0 -and (Test-Path "diag-run$i.txt")) {
-              Get-Content "diag-run$i.txt" -Tail 80
+          # PR #164: le test_properties_panel échoue sous Windows sans sortie CTest.
+          # Lancer directement les deux exécutables suspects et afficher le journal
+          # QTest même en cas de code de sortie non nul (assertion ou crash).
+          foreach ($testName in @("test_properties_panel", "test_ui_action_workflows")) {
+            $exe = "build/msvc/tests/unit/desktop/Release/$testName.exe"
+            foreach ($i in 1..2) {
+              $log = "diag-$testName-$i.txt"
+              & $exe -o "$log,txt"
+              $code = $LASTEXITCODE
+              "${testName} run ${i}: code de sortie $code (0x{0:X})" -f $code
+              if (Test-Path $log) {
+                Get-Content $log -Tail 120
+              } else {
+                "Journal QTest absent: $log"
+              }
             }
           }
 
   # Garde-fou de portabilité : le cœur et la CLI doivent compiler sans Qt
   # et sans dépendance Windows involontaire.
   linux-core:
-    runs-on: ubuntu-latest
+    # Pinned runner: avoids silently raising the glibc baseline of the binary.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -104,14 +132,70 @@ jobs:
       - name: System dependencies (OpenCV via vcpkg)
         run: sudo apt-get update && sudo apt-get install -y nasm
 
+      # Retry a temporary upstream vcpkg download outage (e.g. freetype GitLab SSL).
+      # Preserve failure on the last attempt; this is not a bypass of build/tests.
       - name: Configure
-        run: cmake --preset linux-core
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if cmake --preset linux-core; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo 'CMake/vcpkg configuration failed after 3 attempts' >&2
+              exit 1
+            fi
+            echo "Configure attempt $attempt failed; retrying external downloads…" >&2
+            sleep 15
+          done
 
       - name: Build
         run: cmake --build --preset linux-core -j "$(nproc)"
 
+      - name: Test malformed OSP with the compiled CLI
+        run: |
+          python3 -m unittest discover -s scripts/qa -p 'test_*.py' -v
+          python3 scripts/qa/fuzz_osp.py --cli build/linux-core/apps/cli/openstitch-cli
+
       - name: Test
         run: ctest --preset linux-core
+
+      - name: Test Linux CLI installer
+        run: bash tests/scripts/test-install-cli-linux.sh
+
+      # Keep the Debug/test build intact; create a separate Release CLI.
+      # The archive is uploaded only after the Linux tests and smoke checks succeed.
+      - name: Build Linux CLI (Release)
+        run: |
+          cmake -S . -B build/linux-cli-release \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DOPENSTITCH_BUILD_DESKTOP=OFF \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          cmake --build build/linux-cli-release --target openstitch-cli -j "$(nproc)"
+          bash packaging/linux/package-cli.sh \
+            build/linux-cli-release/apps/cli/openstitch-cli dist/linux-cli
+
+      - name: Build and package Linux MCP server (Release)
+        run: |
+          cmake --build build/linux-cli-release --target openstitch-mcp -j "$(nproc)"
+          bash packaging/linux/package-mcp.sh \
+            build/linux-cli-release/apps/mcp/openstitch-mcp dist/linux-mcp
+
+      - name: Upload Linux MCP binary and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: openstitch-mcp-linux-x86_64
+          if-no-files-found: error
+          retention-days: 30
+          path: dist/linux-mcp/*
+
+      - name: Upload Linux CLI binary and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: openstitch-cli-linux-x86_64
+          if-no-files-found: error
+          retention-days: 30
+          path: dist/linux-cli/*
 
   format:
     runs-on: ubuntu-latest
@@ -131,6 +215,9 @@ jobs:
     needs: [windows-msvc, linux-core, format]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    concurrency:
+      group: openstitch-latest-release
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:
@@ -142,6 +229,24 @@ jobs:
           name: openstitch-beta-windows-x64
           path: dist/openstitch-windows-x64
 
+      - name: Télécharger l'archive Windows MCP
+        uses: actions/download-artifact@v4
+        with:
+          name: openstitch-mcp-windows-x64
+          path: dist/windows-mcp
+
+      - name: Télécharger l'artefact Linux CLI
+        uses: actions/download-artifact@v4
+        with:
+          name: openstitch-cli-linux-x86_64
+          path: dist/linux-cli
+
+      - name: Télécharger l'artefact Linux MCP
+        uses: actions/download-artifact@v4
+        with:
+          name: openstitch-mcp-linux-x86_64
+          path: dist/linux-mcp
+
       - name: Empaqueter
         run: |
           cd dist
@@ -151,9 +256,28 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete latest --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
-          gh release create latest openstitch-windows-x64.zip \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "Dernier build (main)" \
-            --notes "Build automatique généré depuis le commit ${{ github.sha }}." \
-            --target "${{ github.sha }}"
+          # Never delete the release: download URLs must remain stable.
+          if gh release view latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload latest \
+              openstitch-windows-x64.zip \
+              dist/windows-mcp/openstitch-mcp-windows-x64.zip \
+              dist/windows-mcp/openstitch-mcp-windows-x64.zip.sha256 \
+              dist/linux-cli/openstitch-cli-linux-x86_64.tar.gz \
+              dist/linux-cli/openstitch-cli-linux-x86_64.tar.gz.sha256 \
+              dist/linux-mcp/openstitch-mcp-linux-x86_64.tar.gz \
+              dist/linux-mcp/openstitch-mcp-linux-x86_64.tar.gz.sha256 \
+              --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create latest \
+              openstitch-windows-x64.zip \
+              dist/windows-mcp/openstitch-mcp-windows-x64.zip \
+              dist/windows-mcp/openstitch-mcp-windows-x64.zip.sha256 \
+              dist/linux-cli/openstitch-cli-linux-x86_64.tar.gz \
+              dist/linux-cli/openstitch-cli-linux-x86_64.tar.gz.sha256 \
+              dist/linux-mcp/openstitch-mcp-linux-x86_64.tar.gz \
+              dist/linux-mcp/openstitch-mcp-linux-x86_64.tar.gz.sha256 \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Dernier build (main)" \
+              --notes "Build automatique généré depuis le commit ${{ github.sha }}." \
+              --target "${{ github.sha }}"
+          fi

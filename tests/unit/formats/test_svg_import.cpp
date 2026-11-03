@@ -199,3 +199,34 @@ TEST_CASE("svg : fichier sans geometrie exploitable -- erreur propre") {
     const auto result = decode_svg(to_bytes(svg));
     REQUIRE_FALSE(result.has_value());
 }
+
+TEST_CASE("svg : <defs> non rendu, <use> instancie avec decalage x/y et symbol (HP-FMT-014)") {
+    const std::string svg = R"svg(<svg viewBox="0 0 100 100" width="10mm" height="10mm">
+        <defs><rect id="r" x="0" y="0" width="10" height="10"/>
+              <symbol id="s"><rect x="0" y="0" width="5" height="5"/></symbol></defs>
+        <use href="#r" x="20" y="30"/>
+        <use xlink:href="#s" x="50" y="60"/>
+        <rect x="80" y="80" width="5" height="5" style="fill:red; display: none"/>
+    </svg>)svg";
+    const auto result = decode_svg(to_bytes(svg));
+    REQUIRE(result.has_value());
+    // Rien depuis <defs>, deux instances, le rectangle masque par style est ignore.
+    REQUIRE(result->objects.size() == 2);
+    CHECK(result->objects[0].outer.nodes.size() == 4);
+    CHECK(result->objects[1].outer.nodes.size() == 4);
+    const auto first_x = mm(result->objects[0].outer.nodes[0].pos.x);
+    const auto second_x = mm(result->objects[1].outer.nodes[0].pos.x);
+    CHECK(second_x - first_x == Catch::Approx(3.0).margin(0.01)); // 50 - 20 = 30 unites = 3 mm
+}
+
+TEST_CASE("svg : <use> circulaire ou sans cible ne boucle pas et est signale") {
+    const std::string svg = R"svg(<svg viewBox="0 0 100 100" width="10mm" height="10mm">
+        <g id="a"><use href="#a"/></g>
+        <use href="#absent"/>
+        <rect x="0" y="0" width="10" height="10"/>
+    </svg>)svg";
+    const auto result = decode_svg(to_bytes(svg));
+    REQUIRE(result.has_value());
+    CHECK(result->objects.size() == 1);
+    CHECK(result->warnings.size() >= 2);
+}

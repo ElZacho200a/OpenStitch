@@ -262,3 +262,49 @@ TEST_CASE("sweep: la facade route la strategie, y compris pour une forme compact
     REQUIRE(skeleton.has_value());
     CHECK(skeleton->columns.empty());
 }
+
+TEST_CASE("sweep: un guide en courbe fait tourner les fils selon sa tangente", "[parallel_sweep]") {
+    // Rectangle 40 x 5 mm. Courbe en cuvette de x = 35 a x = 5 : fils perpendiculaires a la
+    // tangente, donc inclines d'un cote au debut, de l'autre a la fin.
+    auto p = sweep_params();
+    as::SkeletonSatinGuide guide{at_mm(35.0, 6.0), 0.0, true, {}};
+    guide.path = {at_mm(35.0, 6.0), at_mm(28.0, 0.0), at_mm(20.0, -3.0), at_mm(12.0, 0.0),
+                  at_mm(5.0, 6.0)};
+    p.guides.push_back(guide);
+    const auto r = sweep("rectangle", p);
+    CHECK(r.diagnostics.orphan_guides == 0);
+    const auto angles = thread_angles(r);
+    REQUIRE(angles.size() > 20);
+    const double half = std::numbers::pi / 2.0;
+    CHECK(angles.front() > half + 0.3);
+    CHECK(angles.back() < half - 0.3);
+    const double mid = angles[angles.size() / 2];
+    CHECK(std::abs(mid - half) < 0.25);
+    const auto m = as::measure_result(r);
+    CHECK(m.crossing_pairs == 0);
+    CHECK(m.coverage_ratio > 0.95);
+    // Un guide droit equivalent (un seul point) ne change pas : meme resultat qu'avant.
+    auto straight = sweep_params();
+    straight.guides.push_back({at_mm(20.0, 0.0), 1.0, true});
+    for (const double a : thread_angles(sweep("rectangle", straight))) {
+        CHECK(std::abs(a - 1.0) < 1e-2);
+    }
+}
+
+TEST_CASE("sweep: un guide en courbe entierement hors forme est orphelin", "[parallel_sweep]") {
+    auto p = sweep_params();
+    as::SkeletonSatinGuide guide{at_mm(500.0, 0.0), 0.0, true, {}};
+    guide.path = {at_mm(500.0, 0.0), at_mm(520.0, 5.0), at_mm(540.0, 0.0)};
+    p.guides.push_back(guide);
+    const auto r = sweep("rectangle", p);
+    CHECK(r.diagnostics.orphan_guides == 1);
+    CHECK(thread_angles(r) == thread_angles(sweep("rectangle")));
+}
+
+TEST_CASE("sweep: le guide en courbe est deterministe", "[parallel_sweep]") {
+    auto p = sweep_params();
+    as::SkeletonSatinGuide guide{at_mm(35.0, 6.0), 0.0, true, {}};
+    guide.path = {at_mm(35.0, 6.0), at_mm(20.0, -3.0), at_mm(5.0, 6.0)};
+    p.guides.push_back(guide);
+    CHECK(thread_angles(sweep("capsule", p)) == thread_angles(sweep("capsule", p)));
+}

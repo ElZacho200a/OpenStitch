@@ -39,10 +39,13 @@ private slots:
         QCOMPARE(dialog.sheet().project_name, std::string("Mon projet"));
         QCOMPARE(dialog.sheet().stitches, std::size_t{3});
 
-        dialog.notesEdit()->setPlainText(QStringLiteral("Client : Dupont"));
+        dialog.clientEdit()->setText(QStringLiteral("Maison & <Dupont>"));
+        dialog.notesEdit()->setPlainText(QStringLiteral("Tissu : coton"));
         dialog.speedSpin()->setValue(600.0);
         dialog.refreshNow();
-        QCOMPARE(dialog.sheet().notes, std::string("Client : Dupont"));
+        QCOMPARE(dialog.sheet().client, std::string("Maison & <Dupont>"));
+        QCOMPARE(dialog.sheet().notes, std::string("Tissu : coton"));
+        QVERIFY(dialog.viewPlainText().contains(QStringLiteral("Maison & <Dupont>")));
         QCOMPARE(dialog.sheet().stitches_per_minute, 600.0);
 
         QTemporaryDir dir;

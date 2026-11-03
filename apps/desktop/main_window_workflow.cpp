@@ -34,6 +34,7 @@
 #include "canvas_view.hpp"
 #include "main_window.hpp"
 #include "ui_memory.hpp"
+#include "workflow_panel.hpp"
 
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/commands/composite_command.hpp"
@@ -49,30 +50,6 @@ namespace openstitch::desktop {
 Micrometers vectorize_tolerance_from_detail(int detail);
 
 namespace {
-
-// Calcul synchrone long : curseur d'attente et fenêtre « en cours » indéterminée (sans bouton
-// Annuler : ces calculs ne sont pas interruptibles).
-class WorkIndicator {
-public:
-    WorkIndicator(QWidget* parent, const QString& text) : dialog_(text, QString(), 0, 0, parent) {
-        dialog_.setWindowTitle(QObject::tr("Veuillez patienter"));
-        dialog_.setWindowModality(Qt::WindowModal);
-        dialog_.setCancelButton(nullptr);
-        dialog_.setMinimumDuration(0);
-        dialog_.show();
-        QGuiApplication::setOverrideCursor(Qt::WaitCursor);
-        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-    }
-    ~WorkIndicator() {
-        QGuiApplication::restoreOverrideCursor();
-        dialog_.close();
-    }
-    WorkIndicator(const WorkIndicator&) = delete;
-    WorkIndicator& operator=(const WorkIndicator&) = delete;
-
-private:
-    QProgressDialog dialog_;
-};
 
 // Même principe que setEnabledWithReason (main_window.cpp, mêmes propriétés mémorisées) : l'action
 // grisée dit, dans son info-bulle et son texte d'état, ce qu'il faut faire pour l'activer.
@@ -224,39 +201,52 @@ void MainWindow::vectorizeSelectedRegion(bool askDetail) {
 
     const Micrometers simplifyTolerance = vectorize_tolerance_from_detail(detail);
 
+    // L'interface peut recevoir « Annuler » pendant la vectorisation ; le calcul travaille
+    // exclusivement sur un instantané. Ni ID, ni commande Undo ne sont créés avant son retour.
+    std::vector<RegionId> present;
+    for (const RegionId id : todo) {
+        if (project_.segmentation->find(id) != nullptr) {
+            present.push_back(id);
+        }
+    }
+    const segmentation::Segmentation snapshot = *project_.segmentation;
+    const vectorization::VectorizeOptions options{.mm_per_px = project_.mm_per_px,
+                                                  .simplify_tolerance = simplifyTolerance,
+                                                  .detail_mask = &project_.detail_mask};
+    std::vector<Result<std::vector<geometry::PathSet>>> vectorized;
+    {
+        BusyIndicator busy(this, tr("Vectorisation en cours…"),
+                           {autosaveTimer_, simTimer_, analysisTimer_}, true);
+        vectorized = busy.run([&](const TaskContext& task) {
+            return vectorization::vectorize_regions(snapshot, present, options, task);
+        });
+        // Annulation atomique du résultat : ne pas créer un demi-lot d'objets.
+        if (busy.cancelled()) {
+            statusBar()->showMessage(tr("Vectorisation annulée : aucune modification."), 6000);
+            return;
+        }
+    }
+
     std::vector<document::VectorObject> objects;
     QStringList failures;
-    {
-        WorkIndicator busy(this, tr("Vectorisation en cours…"));
-        // Toutes les régions en parallèle (lib) ; les identifiants sont attribués ensuite, dans
-        // l'ordre des régions : même résultat qu'une boucle séquentielle.
-        std::vector<RegionId> present;
-        for (const RegionId id : todo) {
-            if (project_.segmentation->find(id) != nullptr) {
-                present.push_back(id);
-            }
+    // Résultat déterministe par indice : seul le fil Qt modifie le document et alloue les IDs.
+    for (std::size_t i = 0; i < present.size(); ++i) {
+        const RegionId id = present[i];
+        const auto* region = project_.segmentation->find(id);
+        auto& sets = vectorized[i];
+        if (!sets) {
+            failures << tr("Région %1 : %2")
+                            .arg(id.value)
+                            .arg(QString::fromStdString(sets.error().message));
+            continue;
         }
-        auto vectorized = vectorization::vectorize_regions(
-            *project_.segmentation, present,
-            {.mm_per_px = project_.mm_per_px, .simplify_tolerance = simplifyTolerance});
-        for (std::size_t i = 0; i < present.size(); ++i) {
-            const RegionId id = present[i];
-            const auto* region = project_.segmentation->find(id);
-            auto& sets = vectorized[i];
-            if (!sets) {
-                failures << tr("Région %1 : %2")
-                                .arg(id.value)
-                                .arg(QString::fromStdString(sets.error().message));
-                continue;
-            }
-            document::VectorObject object;
-            object.id = project_.object_ids.next();
-            object.name = tr("Région %1").arg(id.value).toStdString();
-            object.source_region = id;
-            object.rgb = region->rgb;
-            object.paths = std::move(*sets);
-            objects.push_back(std::move(object));
-        }
+        document::VectorObject object;
+        object.id = project_.object_ids.next();
+        object.name = tr("Région %1").arg(id.value).toStdString();
+        object.source_region = id;
+        object.rgb = region->rgb;
+        object.paths = std::move(*sets);
+        objects.push_back(std::move(object));
     }
     if (objects.empty()) {
         QString reason = tr("Aucune région à vectoriser.");
@@ -411,10 +401,21 @@ void MainWindow::segmentWithAi() {
     opts.mm_per_px = project_.mm_per_px;
     opts.skip_largest_region = dialog.skipBackground();
     opts.simplify_tolerance = vectorize_tolerance_from_detail(dialog.vectorDetail());
-    std::optional<WorkIndicator> busy;
-    busy.emplace(this, tr("Numérisation automatique en cours…"));
-    auto result = autodigitize::auto_digitize(*seg, project_.object_ids, opts);
+    // Le calcul lourd se fait hors du fil Qt. Le compteur d'IDs reste local et
+    // n'est publié qu'après validation : une annulation ne consomme aucun ID.
+    // Le moteur ne fournit pas encore de stop_token ici : Annuler rejette
+    // atomiquement le résultat lorsque le calcul s'achève.
+    auto nextIds = project_.object_ids;
+    std::optional<BusyIndicator> busy;
+    busy.emplace(this, tr("Numérisation automatique en cours…"),
+                 std::initializer_list<QTimer*>{autosaveTimer_, simTimer_}, true);
+    auto result = busy->run([&] { return autodigitize::auto_digitize(*seg, nextIds, opts); });
+    const bool cancelled = busy->cancelled();
     busy.reset();
+    if (cancelled) {
+        statusBar()->showMessage(tr("Numérisation annulée : aucune modification."), 6000);
+        return;
+    }
     if (!result) {
         QMessageBox box(QMessageBox::Warning, tr("Numérisation impossible"),
                         tr("La numérisation des formes retenues a échoué."), QMessageBox::Ok, this);
@@ -426,6 +427,7 @@ void MainWindow::segmentWithAi() {
     const std::size_t embCount = result->embroideries.size();
     const std::vector<std::string> warnings = std::move(result->warnings);
 
+    project_.object_ids = nextIds;
     undoStack_.execute(
         std::make_unique<commands::AddObjectBatchCommand>(
             std::move(result->vectors), std::move(result->embroideries), "Segmentation IA"),
@@ -521,7 +523,8 @@ void MainWindow::onWorkflowStepClicked(int step) {
         QString hint;
     };
     const std::array<Step, 6> steps{{
-        {openImageAct_, tr("Fichier ▸ Ouvrir une image… pour commencer.")},
+        {openAnyAct_, tr("Fichier ▸ Ouvrir… pour choisir une image, un SVG, un projet ou "
+                         "une broderie machine.")},
         {segmentAct_, tr("Segmentation ▸ Segmenter l'image… (F6), ou Segmentation ▸ Segmenter "
                          "avec l'IA…")},
         {vectorizeRegionAct_, tr("Sélectionnez une ou plusieurs régions (Ctrl+clic, ou glisser un "
@@ -532,6 +535,11 @@ void MainWindow::onWorkflowStepClicked(int step) {
         {exportDstAct_, tr("Fichier ▸ Exporter une broderie machine… (Ctrl+E).")},
     }};
     if (step < 0 || step >= static_cast<int>(steps.size())) {
+        return;
+    }
+    if (workflowPanel_ != nullptr &&
+        workflowPanel_->currentState(step) == WorkflowPanel::State::Skipped) {
+        statusBar()->showMessage(tr("Étape non requise pour le type de source ouvert."), 6000);
         return;
     }
     const Step& entry = steps[static_cast<std::size_t>(step)];

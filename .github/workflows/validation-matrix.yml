@@ -1,0 +1,35 @@
+name: Physical validation protocol
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/validation/**'
+      - 'docs/validation/**'
+      - '.github/workflows/validation-matrix.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/validation/**'
+      - 'docs/validation/**'
+      - '.github/workflows/validation-matrix.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  protocol-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test trial matrix and CSV validation
+        run: python -m unittest discover -s scripts/validation -p 'test_*.py' -v
+      - name: Check a generated but unmeasured register
+        shell: bash
+        run: |
+          tmp=$(mktemp -d)
+          trap 'rm -rf "$tmp"' EXIT
+          python scripts/validation/physical_matrix.py new "$tmp/essais.csv"
+          python scripts/validation/physical_matrix.py check "$tmp/essais.csv"

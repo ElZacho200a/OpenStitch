@@ -13,10 +13,12 @@
 #include <QDropEvent>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QInputDialog>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMenu>
 #include <QMimeData>
 #include <QScreen>
 #include <QSettings>
@@ -24,6 +26,7 @@
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStatusBar>
+#include <QStringList>
 #include <QTextEdit>
 #include <QTime>
 #include <QTimer>
@@ -51,7 +54,8 @@ constexpr int kUiLayoutVersion = 2;
 [[nodiscard]] bool isImageSuffix(const QString& suffix) {
     static const QStringList kImages{QStringLiteral("png"),  QStringLiteral("jpg"),
                                      QStringLiteral("jpeg"), QStringLiteral("bmp"),
-                                     QStringLiteral("tif"),  QStringLiteral("tiff")};
+                                     QStringLiteral("tif"),  QStringLiteral("tiff"),
+                                     QStringLiteral("gif"),  QStringLiteral("webp")};
     return kImages.contains(suffix);
 }
 
@@ -121,17 +125,65 @@ void MainWindow::dragEnterEvent(QDragEnterEvent* event) {
 }
 
 void MainWindow::dropEvent(QDropEvent* event) {
-    const QString path = event->mimeData() != nullptr
-                             ? firstOpenableLocalFile(event->mimeData()->urls())
-                             : QString();
-    if (path.isEmpty()) {
+    QStringList paths;
+    if (event->mimeData() != nullptr) {
+        for (const QUrl& url : event->mimeData()->urls()) {
+            if (!url.isLocalFile()) {
+                continue;
+            }
+            const QString path = url.toLocalFile();
+            if (isOpenableSuffix(QFileInfo(path).suffix().toLower()) && !paths.contains(path)) {
+                paths.push_back(path);
+            }
+        }
+    }
+    if (paths.isEmpty()) {
         QMainWindow::dropEvent(event);
         return;
     }
+    const bool insert = (event->modifiers() & Qt::ShiftModifier) != 0;
     event->acceptProposedAction();
-    // Différé : ouvrir un dialogue (garde d'enregistrement, import) pendant le glisser bloquerait
-    // l'application source (l'Explorateur) tant qu'il reste ouvert.
-    QTimer::singleShot(0, this, [this, path] { openPath(path); });
+
+    // Différer toute boîte de dialogue : elle ne doit pas bloquer l'Explorateur
+    // qui nous a envoyé le glisser-déposer.
+    QTimer::singleShot(0, this, [this, paths, insert] {
+        const auto canInsert = [](const QString& path) {
+            const QString suffix = QFileInfo(path).suffix().toLower();
+            return suffix == QLatin1String("osp") || isMachineSuffix(suffix);
+        };
+        if (insert && paths.size() > 1 && std::all_of(paths.cbegin(), paths.cend(), canInsert)) {
+            int added = 0;
+            for (const QString& path : paths) {
+                if (insertDesignFile(path)) {
+                    ++added;
+                }
+            }
+            const QString message =
+                tr("%1 fichier(s) inséré(s) sur %2 déposé(s).").arg(added).arg(paths.size());
+            statusBar()->showMessage(message, 8000);
+            return;
+        }
+
+        QString path = paths.front();
+        if (paths.size() > 1) {
+            // Ouvrir plusieurs projets ou images successivement remplacerait le
+            // travail au premier plan. L'utilisateur choisit explicitement.
+            bool accepted = false;
+            path = QInputDialog::getItem(
+                this, tr("Plusieurs fichiers déposés"),
+                tr("Choisissez le fichier à ouvrir. Pour insérer plusieurs broderies "
+                   "dans le projet, maintenez Maj pendant le dépôt."),
+                paths, 0, false, &accepted);
+            if (!accepted || path.isEmpty()) {
+                return;
+            }
+        }
+        if (insert && canInsert(path)) {
+            (void)insertDesignFile(path);
+        } else {
+            openPath(path);
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -196,6 +248,25 @@ void setPaletteColumns(QMainWindow* window, QToolBar* first, bool twoColumns) {
 } // namespace
 
 bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
+    // Tab parcourt les formes brodées quand le CANEVAS a le focus ; dans les
+    // inspecteurs et dialogues, Tab garde son rôle normal de navigation
+    // entre champs. L'ordre et le filtrage réutilisent l'action de menu.
+    if ((watched == view_ || watched == view_->viewport()) && event->type() == QEvent::KeyPress &&
+        currentTool_ == Tool::Select) {
+        const auto* keyEvent = static_cast<QKeyEvent*>(event);
+        const auto modifiers = keyEvent->modifiers() & ~Qt::KeypadModifier;
+        if (keyEvent->key() == Qt::Key_Tab && modifiers == Qt::NoModifier) {
+            stepSelection(+1);
+            event->accept();
+            return true;
+        }
+        if (keyEvent->key() == Qt::Key_Backtab ||
+            (keyEvent->key() == Qt::Key_Tab && modifiers == Qt::ShiftModifier)) {
+            stepSelection(-1);
+            event->accept();
+            return true;
+        }
+    }
     if (watched == this && event->type() == QEvent::Resize) {
         if (toolPalette_ != nullptr) {
             setPaletteColumns(this, toolPalette_, height() <= kTwoColumnPaletteMaxHeightPx);
@@ -233,7 +304,10 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
             // Une lettre seule dans une liste ou une liste déroulante sert à la recherche par
             // frappe : elle n'active pas l'outil du même nom (« S » = colonne satin...).
             // Entrée / Retour arrière dans un contrôle d'édition valident / effacent.
-            if (plain && ((letter && listLike) || (editKey && editorLike))) {
+            // Ctrl+K est un geste d'édition dans certains contrôles de texte :
+            // ne pas lancer la palette au milieu d'une saisie.
+            if ((mods == Qt::ControlModifier && key == Qt::Key_K && editorLike) ||
+                (plain && ((letter && listLike) || (editKey && editorLike)))) {
                 event->accept();
                 return false;
             }
@@ -339,6 +413,101 @@ void MainWindow::restoreUiLayout() {
 }
 
 // ---------------------------------------------------------------------------
+// Espaces de travail non destructifs (HP-UX-049)
+// ---------------------------------------------------------------------------
+
+void MainWindow::buildWorkspacesMenu() {
+    if (panelsMenu_ == nullptr) {
+        return;
+    }
+    QMenu* menu = panelsMenu_->addMenu(tr("Espaces de travail"));
+    menu->setObjectName(QStringLiteral("menu_workspaces"));
+
+    // Les presets agissent uniquement sur la disposition de l'IHM,
+    // jamais sur la sélection, les calques ou le contenu du projet.
+    const auto apply = [this](int mode) {
+        QSettings settings;
+        const QString previousKey = QStringLiteral("ui/workspaces/previous");
+        if (!settings.contains(previousKey)) {
+            settings.setValue(previousKey, saveState(kUiLayoutVersion));
+        }
+        const QList<QDockWidget*> docks{documentDock_, propertiesDock_, workflowDock_,
+                                        orderDock_,    filterDock_,     analysisDock_,
+                                        historyDock_,  threadDock_,     colorsDock_};
+        QList<QDockWidget*> visible{documentDock_};
+        QDockWidget* front = nullptr;
+        QString presetName;
+        switch (mode) {
+        case 0: // Numériser
+            visible << propertiesDock_ << workflowDock_ << colorsDock_;
+            front = propertiesDock_;
+            presetName = tr("Numériser");
+            break;
+        case 1: // Retoucher
+            visible << propertiesDock_ << historyDock_;
+            front = propertiesDock_;
+            presetName = tr("Retoucher");
+            break;
+        case 2: // Points
+            visible << propertiesDock_ << orderDock_ << threadDock_;
+            front = propertiesDock_;
+            presetName = tr("Points");
+            break;
+        case 3: // Vérifier / Exporter
+            visible << orderDock_ << analysisDock_ << threadDock_;
+            front = analysisDock_;
+            presetName = tr("Vérifier / Exporter");
+            break;
+        default:
+            return;
+        }
+        for (QDockWidget* dock : docks) {
+            if (dock != nullptr) {
+                dock->setVisible(visible.contains(dock));
+            }
+        }
+        if (front != nullptr) {
+            front->raise();
+        }
+        settings.setValue(QStringLiteral("ui/workspaces/active"), mode);
+        statusBar()->showMessage(tr("Espace de travail activé : %1").arg(presetName), 4000);
+    };
+
+    const auto addPreset = [this, menu, &apply](const QString& name, const char* objectName,
+                                                int mode) {
+        QAction* action = menu->addAction(name);
+        action->setObjectName(QLatin1String(objectName));
+        action->setStatusTip(tr("Adapte les panneaux au travail, sans modifier le motif."));
+        connect(action, &QAction::triggered, this, [apply, mode] { apply(mode); });
+    };
+    addPreset(tr("Numériser"), "action_workspaceDigitize", 0);
+    addPreset(tr("Retoucher"), "action_workspaceRetouch", 1);
+    addPreset(tr("Points"), "action_workspaceStitches", 2);
+    addPreset(tr("Vérifier / Exporter"), "action_workspaceQuality", 3);
+    menu->addSeparator();
+
+    QAction* restore = menu->addAction(tr("Restaurer la disposition précédente"));
+    restore->setObjectName(QStringLiteral("action_workspaceRestore"));
+    restore->setStatusTip(tr("Revient aux panneaux avant le premier changement d'espace."));
+    connect(restore, &QAction::triggered, this, [this] {
+        QSettings settings;
+        const QString key = QStringLiteral("ui/workspaces/previous");
+        const QByteArray previous = settings.value(key).toByteArray();
+        if (previous.isEmpty()) {
+            statusBar()->showMessage(tr("Aucune disposition précédente enregistrée."), 4000);
+            return;
+        }
+        if (!restoreState(previous, kUiLayoutVersion)) {
+            statusBar()->showMessage(tr("Disposition précédente incompatible."), 4000);
+            return;
+        }
+        settings.remove(key);
+        settings.remove(QStringLiteral("ui/workspaces/active"));
+        statusBar()->showMessage(tr("Disposition précédente restaurée."), 4000);
+    });
+}
+
+// ---------------------------------------------------------------------------
 // Accessibilité, ordre de tabulation, indicateur d'enregistrement
 // ---------------------------------------------------------------------------
 
@@ -373,9 +542,12 @@ void MainWindow::updateSavedIndicator() {
         savedLabel_->setText(tr("Non enregistré"));
     } else if (currentProjectPath_.isEmpty()) {
         savedLabel_->setText(tr("Nouveau document"));
+    } else if (!savedAt_.isValid()) {
+        // Un projet ouvert depuis le disque n'a pas été « enregistré à l'heure
+        // courante » par cette session. Ne pas inventer une heure de sauvegarde.
+        savedLabel_->setText(tr("Projet ouvert"));
     } else {
-        const QTime at = savedAt_.isValid() ? savedAt_ : QTime::currentTime();
-        savedLabel_->setText(tr("Enregistré à %1").arg(at.toString(QStringLiteral("HH:mm"))));
+        savedLabel_->setText(tr("Enregistré à %1").arg(savedAt_.toString(QStringLiteral("HH:mm"))));
     }
 }
 

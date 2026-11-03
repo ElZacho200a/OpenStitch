@@ -23,11 +23,16 @@
 #include "op_registry.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/finishing_commands.hpp"
+#include "openstitch/commands/machine_commands.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/thread_commands.hpp"
+#include "openstitch/document/hoop_library.hpp"
+#include "openstitch/document/machine_profile.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/optimization/order.hpp"
+#include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
 #include "openstitch/thread_palette/thread_library.hpp"
 
 namespace openstitch::project_ops::detail {
@@ -168,12 +173,52 @@ const EnumTable<document::SatinShortStitch>& short_stitch_table() {
         {"multi_level_inset", document::SatinShortStitch::MultiLevelInset}};
     return t;
 }
+const EnumTable<document::RunningStyle>& running_style_table() {
+    static const EnumTable<document::RunningStyle> t{
+        {"run", document::RunningStyle::Run},
+        {"bean", document::RunningStyle::Bean},
+        {"backstitch", document::RunningStyle::Backstitch},
+        {"stem", document::RunningStyle::Stem}};
+    return t;
+}
+const EnumTable<document::BlanketStyle>& blanket_style_table() {
+    static const EnumTable<document::BlanketStyle> t{{"blanket", document::BlanketStyle::Blanket},
+                                                     {"zigzag", document::BlanketStyle::Zigzag}};
+    return t;
+}
+const EnumTable<document::BlanketSide>& blanket_side_table() {
+    static const EnumTable<document::BlanketSide> t{{"left", document::BlanketSide::Left},
+                                                    {"right", document::BlanketSide::Right},
+                                                    {"center", document::BlanketSide::Center}};
+    return t;
+}
+const EnumTable<document::MotifId>& motif_table() {
+    static const EnumTable<document::MotifId> t{
+        {"wave", document::MotifId::Wave},       {"zigzag", document::MotifId::Zigzag},
+        {"leaf", document::MotifId::Leaf},       {"heart", document::MotifId::Heart},
+        {"diamond", document::MotifId::Diamond}, {"scallop", document::MotifId::Scallop}};
+    return t;
+}
 const EnumTable<document::SatinSplit>& split_table() {
     static const EnumTable<document::SatinSplit> t{
         {"disabled", document::SatinSplit::Disabled},
         {"simple", document::SatinSplit::Simple},
         {"staggered", document::SatinSplit::Staggered},
         {"deterministic_jitter", document::SatinSplit::DeterministicJitter}};
+    return t;
+}
+const EnumTable<document::SatinCorner>& satin_corner_table() {
+    static const EnumTable<document::SatinCorner> t{{"none", document::SatinCorner::None},
+                                                    {"miter", document::SatinCorner::Miter},
+                                                    {"overlap", document::SatinCorner::Overlap},
+                                                    {"cut", document::SatinCorner::Cut}};
+    return t;
+}
+const EnumTable<document::SatinJagged>& satin_jagged_table() {
+    static const EnumTable<document::SatinJagged> t{{"none", document::SatinJagged::None},
+                                                    {"side_a", document::SatinJagged::SideA},
+                                                    {"side_b", document::SatinJagged::SideB},
+                                                    {"both", document::SatinJagged::Both}};
     return t;
 }
 const EnumTable<document::SatinCap>& cap_table() {
@@ -186,6 +231,13 @@ const EnumTable<document::SatinCap>& cap_table() {
 const EnumTable<document::UnderlayMode>& underlay_mode_table() {
     static const EnumTable<document::UnderlayMode> t{{"manual", document::UnderlayMode::Manual},
                                                      {"auto", document::UnderlayMode::Auto}};
+    return t;
+}
+const EnumTable<document::PullMode>& pull_mode_table() {
+    static const EnumTable<document::PullMode> t{{"manual", document::PullMode::Manual},
+                                                 {"auto", document::PullMode::Auto},
+                                                 {"adaptive", document::PullMode::Adaptive},
+                                                 {"predicted", document::PullMode::Predicted}};
     return t;
 }
 const EnumTable<document::DensityCurve>& density_curve_table() {
@@ -264,8 +316,10 @@ std::array<std::uint8_t, 3> parse_hex_color(const std::string& text) {
 }
 
 const char* stitch_type_name(const document::StitchParams& p) {
-    static constexpr const char* names[] = {"running", "tatami", "satin", "directional",
-                                            "auto_satin"};
+    static constexpr const char* names[] = {
+        "running",     "tatami",          "satin",       "directional", "auto_satin",
+        "blanket",     "contour_fill",    "motif_run",   "motif_fill",  "radial_fill",
+        "spiral_fill", "crosshatch_fill", "cross_stitch"};
     return names[p.index()];
 }
 
@@ -708,6 +762,7 @@ const Field<P>* find_field(const std::vector<Field<P>>& fields, const std::strin
 // Champs communs au satin à rails et à l'auto-satin (mêmes noms, mêmes plages).
 template <class P> void add_satin_common(std::vector<Field<P>>& v) {
     v.push_back(mm_field<P>("pull_compensation_mm", &P::pull_compensation, 0.0, 2.0));
+    v.push_back(enum_field<P>("pull_mode", &P::pull_mode, pull_mode_table()));
     v.push_back(bool_field<P>("center_underlay", &P::center_underlay));
     v.push_back(bool_field<P>("underlay_edge", &P::underlay_edge));
     v.push_back(bool_field<P>("underlay_zigzag", &P::underlay_zigzag));
@@ -726,6 +781,12 @@ template <class P> void add_satin_common(std::vector<Field<P>>& v) {
     v.push_back(enum_field<P>("underlay_mode", &P::underlay_mode, underlay_mode_table()));
     v.push_back(enum_field<P>("short_stitch", &P::short_stitch, short_stitch_table()));
     v.push_back(enum_field<P>("split_stitch", &P::split_stitch, split_table()));
+    v.push_back(bool_field<P>("auto_spacing", &P::auto_spacing));
+    v.push_back(enum_field<P>("corner_mode", &P::corner_mode, satin_corner_table()));
+    v.push_back(deg_field<P>("corner_threshold_deg", &P::corner_threshold, 15.0, 150.0));
+    v.push_back(enum_field<P>("jagged", &P::jagged, satin_jagged_table()));
+    v.push_back(mm_field<P>("jagged_amplitude_mm", &P::jagged_amplitude, 0.2, 6.0));
+    v.push_back(int_field<P>("jagged_seed", &P::jagged_seed, 0, 4294967295LL));
 }
 
 template <class P> const std::vector<Field<P>>& fields_of();
@@ -739,6 +800,8 @@ fields_of<document::RunningStitchParams>() {
         v.push_back(mm_field<P>("stitch_length_mm", &P::stitch_length, 0.5, 20.0));
         v.push_back(mm_field<P>("min_length_mm", &P::min_length, 0.1, 20.0));
         v.push_back(int_field<P>("repeats", &P::repeats, 1, 3));
+        v.push_back(enum_field<P>("style", &P::style, running_style_table()));
+        v.push_back(mm_field<P>("stem_offset_mm", &P::stem_offset, 0.1, 2.0));
         return v;
     }();
     return fields;
@@ -755,11 +818,15 @@ template <> const std::vector<Field<document::TatamiParams>>& fields_of<document
         v.push_back(int_field<P>("stagger", &P::stagger, 1, 8));
         v.push_back(bool_field<P>("underlay_edge", &P::underlay_edge));
         v.push_back(bool_field<P>("underlay_parallel", &P::underlay_parallel));
+        v.push_back(bool_field<P>("underlay_zigzag", &P::underlay_zigzag));
         v.push_back(mm_field<P>("underlay_inset_mm", &P::underlay_inset, 0.0, 5.0));
         v.push_back(mm_field<P>("underlay_spacing_mm", &P::underlay_spacing, 0.1, 10.0));
         v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
         v.push_back(mm_field<P>("pull_compensation_mm", &P::pull_compensation, 0.0, 3.0));
+        v.push_back(enum_field<P>("pull_mode", &P::pull_mode, pull_mode_table()));
         v.push_back(enum_field<P>("underlay_mode", &P::underlay_mode, underlay_mode_table()));
+        v.push_back(mm_field<P>("row_end_clip_mm", &P::row_end_clip, 0.0, 5.0));
+        v.push_back(bool_field<P>("edge_outline", &P::edge_outline));
         v.push_back(point_field<P>("entry_point_mm", &P::entry_point));
         return v;
     }();
@@ -780,6 +847,9 @@ fields_of<document::DirectionalFillParams>() {
         v.push_back(int_field<P>("stagger", &P::stagger, 1, 8));
         v.push_back(bool_field<P>("underlay_edge", &P::underlay_edge));
         v.push_back(bool_field<P>("underlay_parallel", &P::underlay_parallel));
+        v.push_back(bool_field<P>("underlay_zigzag", &P::underlay_zigzag));
+        v.push_back(mm_field<P>("pull_compensation_mm", &P::pull_compensation, 0.0, 3.0));
+        v.push_back(enum_field<P>("pull_mode", &P::pull_mode, pull_mode_table()));
         v.push_back(mm_field<P>("underlay_inset_mm", &P::underlay_inset, 0.0, 5.0));
         v.push_back(mm_field<P>("underlay_spacing_mm", &P::underlay_spacing, 0.1, 10.0));
         v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
@@ -788,6 +858,7 @@ fields_of<document::DirectionalFillParams>() {
         v.push_back(int_field<P>("handmade_intensity", &P::handmade_intensity, 0, 100));
         v.push_back(int_field<P>("seed", &P::seed, 0, 4'294'967'295LL));
         v.push_back(enum_field<P>("underlay_mode", &P::underlay_mode, underlay_mode_table()));
+        v.push_back(bool_field<P>("edge_outline", &P::edge_outline));
         v.push_back(paths_field<P>("guides", &P::guides));
         v.push_back(paths_field<P>("break_lines", &P::break_lines));
         v.push_back(gradient_field<P>("density_gradient"));
@@ -831,6 +902,137 @@ const std::vector<Field<document::AutoSatinParams>>& fields_of<document::AutoSat
     return fields;
 }
 
+template <>
+const std::vector<Field<document::BlanketStitchParams>>&
+fields_of<document::BlanketStitchParams>() {
+    using P = document::BlanketStitchParams;
+    static const auto fields = [] {
+        std::vector<Field<P>> v;
+        v.push_back(enum_field<P>("style", &P::style, blanket_style_table()));
+        v.push_back(mm_field<P>("width_mm", &P::width, 0.2, 20.0));
+        v.push_back(mm_field<P>("spacing_mm", &P::spacing, 0.3, 20.0));
+        v.push_back(enum_field<P>("side", &P::side, blanket_side_table()));
+        return v;
+    }();
+    return fields;
+}
+
+template <>
+const std::vector<Field<document::ContourFillParams>>& fields_of<document::ContourFillParams>() {
+    using P = document::ContourFillParams;
+    static const auto fields = [] {
+        std::vector<Field<P>> v;
+        v.push_back(mm_field<P>("row_spacing_mm", &P::row_spacing, 0.1, 10.0));
+        v.push_back(mm_field<P>("stitch_length_mm", &P::stitch_length, 1.0, 7.0));
+        v.push_back(mm_field<P>("min_length_mm", &P::min_length, 0.0, 7.0));
+        v.push_back(mm_field<P>("inset_mm", &P::inset, 0.0, 10.0));
+        v.push_back(bool_field<P>("spiral", &P::spiral));
+        v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
+        return v;
+    }();
+    return fields;
+}
+
+template <>
+const std::vector<Field<document::MotifRunParams>>& fields_of<document::MotifRunParams>() {
+    using P = document::MotifRunParams;
+    static const auto fields = [] {
+        std::vector<Field<P>> v;
+        v.push_back(enum_field<P>("motif", &P::motif, motif_table()));
+        v.push_back(mm_field<P>("size_mm", &P::size, 0.5, 40.0));
+        v.push_back(mm_field<P>("spacing_mm", &P::spacing, 1.0, 100.0));
+        v.push_back(mm_field<P>("stitch_length_mm", &P::stitch_length, 1.0, 7.0));
+        v.push_back(mm_field<P>("min_length_mm", &P::min_length, 0.0, 7.0));
+        v.push_back(bool_field<P>("alternate", &P::alternate));
+        return v;
+    }();
+    return fields;
+}
+
+template <>
+const std::vector<Field<document::MotifFillParams>>& fields_of<document::MotifFillParams>() {
+    using P = document::MotifFillParams;
+    static const auto fields = [] {
+        std::vector<Field<P>> v;
+        v.push_back(enum_field<P>("motif", &P::motif, motif_table()));
+        v.push_back(mm_field<P>("size_mm", &P::size, 0.5, 40.0));
+        v.push_back(mm_field<P>("spacing_mm", &P::spacing, 1.0, 100.0));
+        v.push_back(deg_field<P>("angle_deg", &P::angle, -360.0, 360.0));
+        v.push_back(bool_field<P>("stagger", &P::stagger));
+        v.push_back(mm_field<P>("inset_mm", &P::inset, 0.0, 10.0));
+        v.push_back(mm_field<P>("stitch_length_mm", &P::stitch_length, 1.0, 7.0));
+        v.push_back(mm_field<P>("min_length_mm", &P::min_length, 0.0, 7.0));
+        v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
+        return v;
+    }();
+    return fields;
+}
+
+template <>
+const std::vector<Field<document::RadialFillParams>>& fields_of<document::RadialFillParams>() {
+    using P = document::RadialFillParams;
+    static const auto fields = [] {
+        std::vector<Field<P>> v;
+        v.push_back(mm_field<P>("row_spacing_mm", &P::row_spacing, 0.1, 10.0));
+        v.push_back(mm_field<P>("stitch_length_mm", &P::stitch_length, 1.0, 7.0));
+        v.push_back(mm_field<P>("min_length_mm", &P::min_length, 0.0, 7.0));
+        v.push_back(mm_field<P>("inset_mm", &P::inset, 0.0, 10.0));
+        v.push_back(point_field<P>("center_mm", &P::center));
+        v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
+        return v;
+    }();
+    return fields;
+}
+
+template <>
+const std::vector<Field<document::SpiralFillParams>>& fields_of<document::SpiralFillParams>() {
+    using P = document::SpiralFillParams;
+    static const auto fields = [] {
+        std::vector<Field<P>> v;
+        v.push_back(mm_field<P>("row_spacing_mm", &P::row_spacing, 0.1, 10.0));
+        v.push_back(mm_field<P>("stitch_length_mm", &P::stitch_length, 1.0, 7.0));
+        v.push_back(mm_field<P>("min_length_mm", &P::min_length, 0.0, 7.0));
+        v.push_back(mm_field<P>("inset_mm", &P::inset, 0.0, 10.0));
+        v.push_back(point_field<P>("center_mm", &P::center));
+        v.push_back(bool_field<P>("clockwise", &P::clockwise));
+        v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
+        return v;
+    }();
+    return fields;
+}
+
+template <>
+const std::vector<Field<document::CrosshatchFillParams>>&
+fields_of<document::CrosshatchFillParams>() {
+    using P = document::CrosshatchFillParams;
+    static const auto fields = [] {
+        std::vector<Field<P>> v;
+        v.push_back(deg_field<P>("angle_deg", &P::angle, -360.0, 360.0));
+        v.push_back(int_field<P>("layers", &P::layers, 2, 3));
+        v.push_back(mm_field<P>("row_spacing_mm", &P::row_spacing, 0.3, 10.0));
+        v.push_back(mm_field<P>("stitch_length_mm", &P::stitch_length, 1.0, 7.0));
+        v.push_back(mm_field<P>("inset_mm", &P::inset, 0.0, 10.0));
+        v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
+        return v;
+    }();
+    return fields;
+}
+
+template <>
+const std::vector<Field<document::CrossStitchParams>>& fields_of<document::CrossStitchParams>() {
+    using P = document::CrossStitchParams;
+    static const auto fields = [] {
+        std::vector<Field<P>> v;
+        v.push_back(mm_field<P>("cell_mm", &P::cell, 1.0, 8.0));
+        v.push_back(deg_field<P>("grid_angle_deg", &P::grid_angle, -360.0, 360.0));
+        v.push_back(bool_field<P>("full_cross", &P::full_cross));
+        v.push_back(int_field<P>("passes", &P::passes, 1, 3));
+        v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
+        return v;
+    }();
+    return fields;
+}
+
 // Types de points (noms) qui possèdent le champ `name`.
 std::vector<std::string> types_having(const std::string& name) {
     std::vector<std::string> out;
@@ -849,6 +1051,30 @@ std::vector<std::string> types_having(const std::string& name) {
     if (find_field(fields_of<document::AutoSatinParams>(), name) != nullptr) {
         out.emplace_back("auto_satin");
     }
+    if (find_field(fields_of<document::BlanketStitchParams>(), name) != nullptr) {
+        out.emplace_back("blanket");
+    }
+    if (find_field(fields_of<document::ContourFillParams>(), name) != nullptr) {
+        out.emplace_back("contour_fill");
+    }
+    if (find_field(fields_of<document::MotifRunParams>(), name) != nullptr) {
+        out.emplace_back("motif_run");
+    }
+    if (find_field(fields_of<document::MotifFillParams>(), name) != nullptr) {
+        out.emplace_back("motif_fill");
+    }
+    if (find_field(fields_of<document::RadialFillParams>(), name) != nullptr) {
+        out.emplace_back("radial_fill");
+    }
+    if (find_field(fields_of<document::SpiralFillParams>(), name) != nullptr) {
+        out.emplace_back("spiral_fill");
+    }
+    if (find_field(fields_of<document::CrosshatchFillParams>(), name) != nullptr) {
+        out.emplace_back("crosshatch_fill");
+    }
+    if (find_field(fields_of<document::CrossStitchParams>(), name) != nullptr) {
+        out.emplace_back("cross_stitch");
+    }
     return out;
 }
 
@@ -859,7 +1085,16 @@ std::string params_catalog_text() {
     out +=
         "directional : " + join(field_names(fields_of<document::DirectionalFillParams>())) + " ; ";
     out += "satin : " + join(field_names(fields_of<document::SatinParams>())) + " ; ";
-    out += "auto_satin : " + join(field_names(fields_of<document::AutoSatinParams>())) + ". ";
+    out += "auto_satin : " + join(field_names(fields_of<document::AutoSatinParams>())) + " ; ";
+    out += "blanket : " + join(field_names(fields_of<document::BlanketStitchParams>())) + " ; ";
+    out += "contour_fill : " + join(field_names(fields_of<document::ContourFillParams>())) + " ; ";
+    out += "motif_run : " + join(field_names(fields_of<document::MotifRunParams>())) + " ; ";
+    out += "motif_fill : " + join(field_names(fields_of<document::MotifFillParams>())) + " ; ";
+    out += "radial_fill : " + join(field_names(fields_of<document::RadialFillParams>())) + " ; ";
+    out += "spiral_fill : " + join(field_names(fields_of<document::SpiralFillParams>())) + " ; ";
+    out += "crosshatch_fill : " + join(field_names(fields_of<document::CrosshatchFillParams>())) +
+           " ; ";
+    out += "cross_stitch : " + join(field_names(fields_of<document::CrossStitchParams>())) + ". ";
     out += "Suffixe _mm = millimètres, _deg = degrés ; énumérations en chaîne";
     return out;
 }
@@ -870,16 +1105,24 @@ json apply_fields(P& target, const json& req, const std::vector<Field<P>>& field
                   const std::string& type_label) {
     for (const auto& [key, value] : req.items()) {
         if (find_field(fields, key) == nullptr) {
-            const auto owners = types_having(key);
+            const bool isFinishing = type_label == "finition";
+            const auto owners = isFinishing ? std::vector<std::string>{} : types_having(key);
             std::string hint =
                 "champs valides pour « " + type_label + " » : " + join(field_names(fields));
+            std::string message =
+                "champ « " + key + " » inexistant pour le type de points « " + type_label + " »";
             if (!owners.empty()) {
-                hint += " ; « " + key + " » existe pour : " + join(owners) +
-                        " (changez d'abord le type avec set_stitch_type)";
+                // Le message (seul texte relayé par certains clients) nomme les types porteurs
+                // de la clé et l'opération à utiliser ; la clé n'est PAS acceptée pour autant.
+                const std::string ownerText = "« " + key + " » existe pour : " + join(owners) +
+                                              " (changez d'abord le type avec set_stitch_type)";
+                message += " ; " + ownerText + " ; champs valides pour « " + type_label +
+                           " » : " + join(field_names(fields));
+                hint += " ; " + ownerText;
+            } else {
+                message += " ; champs valides : " + join(field_names(fields));
             }
-            refuse(code::kWrongType,
-                   "champ « " + key + " » inexistant pour le type de points « " + type_label + " »",
-                   hint);
+            refuse(code::kWrongType, message, hint);
         }
     }
     json changes = json::object();
@@ -979,6 +1222,42 @@ OpSpec op_rename() {
     return s;
 }
 
+OpSpec op_set_semantic() {
+    OpSpec s;
+    s.name = "set_semantic";
+    s.summary = "Enregistre l'identité visuelle dans le OSP, sans nouvelle analyse "
+                "tant que le contour source ne change pas.";
+    s.args = {arg("object", "object_id", "objet de broderie", true),
+              arg("role", "string", "identité visuelle (ex. voile, phare, reflet)"),
+              arg("family", "string", "famille (ex. bateau, architecture)"),
+              arg("confidence", "number", "confiance 0..1 (défaut 0.5)", false, {}, "[0 ; 1]"),
+              arg("clear", "boolean", "effacer l'annotation")};
+    s.example = R"({"op":"set_semantic","object":2,"role":"voile",)"
+                R"("family":"bateau","confidence":0.9})";
+    s.apply = guarded([](OpContext& ctx) {
+        const auto& emb = need_emb(ctx, "object");
+        const ObjectId id = emb.id;
+        const bool clear = ctx.args.value("clear", false);
+        std::optional<document::SemanticAnnotation> annotation;
+        if (!clear) {
+            const std::string role = need_string(ctx.args, "role");
+            const std::string family = ctx.args.value("family", std::string{});
+            const double confidence = ctx.args.value("confidence", 0.5);
+            const auto* shape = ctx.project.findObject(emb.source_vector);
+            if (!shape || role.empty() || role.size() > 200 || family.size() > 120 ||
+                !std::isfinite(confidence) || confidence < 0.0 || confidence > 1.0) {
+                refuse(code::kUsage, "annotation invalide : role, famille et confiance 0..1");
+            }
+            annotation = document::SemanticAnnotation{
+                role, family, confidence, document::semantic_geometry_fingerprint(*shape)};
+        }
+        ctx.stack.execute(std::make_unique<commands::SetEmbroiderySemanticCommand>(id, annotation),
+                          ctx.project);
+        return OpStatus::success({{"id", id.value}, {"cached", annotation.has_value()}});
+    });
+    return s;
+}
+
 OpSpec op_set_visible() {
     OpSpec s;
     s.name = "set_visible";
@@ -1068,11 +1347,13 @@ OpSpec op_set_connector() {
 OpSpec op_set_stitch_type() {
     OpSpec s;
     s.name = "set_stitch_type";
-    s.summary = "Change le type de points d'un objet : contour (running), tatami ou directionnel. "
-                "Le satin passe par l'opération auto_satin.";
+    s.summary = "Change le type de points : running, tatami, directional, spiral_fill "
+                "(spirale d'Archimède centrable par set_params.center_mm) ou cross_stitch "
+                "(point de croix, grille réglable par set_params). "
+                "Le satin passe par auto_satin.";
     s.args = {arg("object", "object_id", "objet de broderie", true),
-              arg("type", "string", "running | tatami | directional", true, {},
-                  "running | tatami | directional")};
+              arg("type", "string", "running | tatami | directional | spiral_fill | cross_stitch",
+                  true, {}, "running | tatami | directional | spiral_fill | cross_stitch")};
     s.example = R"({"op":"set_stitch_type","object":2,"type":"running"})";
     s.apply = guarded([](OpContext& ctx) {
         const auto& emb = need_emb(ctx, "object");
@@ -1082,9 +1363,11 @@ OpSpec op_set_stitch_type() {
             refuse(code::kRefused, "le type « " + type + " » n'est pas disponible ici",
                    "utilisez l'opération auto_satin");
         }
-        if (type != "running" && type != "tatami" && type != "directional") {
+        if (type != "running" && type != "tatami" && type != "directional" &&
+            type != "spiral_fill" && type != "cross_stitch") {
             refuse(code::kOutOfRange, "type de points « " + type + " » inconnu",
-                   "valeurs valides : running, tatami, directional (satin : opération auto_satin)");
+                   "valeurs valides : running, tatami, directional, spiral_fill, cross_stitch "
+                   "(satin : opération auto_satin)");
         }
         const std::string from = stitch_type_name(emb.params);
         if (from == type) {
@@ -1102,6 +1385,27 @@ OpSpec op_set_stitch_type() {
         } else if (type == "tatami") {
             params = document::TatamiParams{};
             label = "Type : tatami";
+        } else if (type == "cross_stitch") {
+            const auto* source = ctx.project.findObject(emb.source_vector);
+            if (source == nullptr || source->paths.empty()) {
+                refuse(code::kRefused, "aucun contour source pour le point de croix");
+            }
+            params = document::CrossStitchParams{};
+            label = "Type : point de croix";
+        } else if (type == "spiral_fill") {
+            const auto* source = ctx.project.findObject(emb.source_vector);
+            if (source == nullptr || source->paths.empty()) {
+                refuse(code::kRefused, "aucun contour source pour le remplissage en spirale");
+            }
+            document::SpiralFillParams spiral;
+            if (const auto* tatami = std::get_if<document::TatamiParams>(&emb.params)) {
+                spiral.row_spacing = tatami->row_spacing;
+                spiral.stitch_length = tatami->stitch_length;
+                spiral.inset = tatami->inset;
+                spiral.hidden_underpath = tatami->hidden_underpath;
+            }
+            params = spiral;
+            label = "Type : remplissage en spirale";
         } else {
             const auto* source = ctx.project.findObject(emb.source_vector);
             if (source == nullptr || source->paths.empty()) {
@@ -1348,12 +1652,24 @@ Vec2um embroidery_centroid(const document::Project& project,
 
 std::vector<optimization::OrderItem> order_items(const document::Project& project) {
     std::vector<optimization::OrderItem> items;
+    // HP-ENG-010 : extrémités réelles de couture (séquence effective) ; absentes en cas d'échec,
+    // le centre sert alors de repli.
+    std::vector<stitch::ObjectEndpoints> endpoints;
+    if (auto seq = stitch_generation::effective_sequence(project); seq) {
+        endpoints = stitch::object_endpoints(*seq);
+    }
     for (const auto& obj : project.embroidery_objects) {
         optimization::OrderItem item;
         item.id = obj.id;
         item.rgb = obj.rgb;
         item.centroid = embroidery_centroid(project, obj);
         item.locked = obj.locked;
+        if (const auto it = std::find_if(endpoints.begin(), endpoints.end(),
+                                         [&](const auto& e) { return e.id == obj.id; });
+            it != endpoints.end()) {
+            item.entry = it->first;
+            item.exit = it->last;
+        }
         if (const auto* vec =
                 project.findObject(obj.source_vector)) { // aire : stratégie « layered »
             for (const auto& set : vec->paths) {
@@ -1376,7 +1692,10 @@ OpSpec op_optimize_order() {
                 "verrouillés ne bougent pas).";
     s.args = {arg("strategy", "string",
                   "document | by_color | by_proximity | color_then_proximity | layered", true, {},
-                  "document | by_color | by_proximity | color_then_proximity | layered")};
+                  "document | by_color | by_proximity | color_then_proximity | layered"),
+              arg("improve", "boolean",
+                  "amélioration locale 2-opt / Or-opt après la stratégie (borne déterministe)",
+                  false, {}, "true | false (défaut false)")};
     s.example = R"({"op":"optimize_order","strategy":"color_then_proximity"})";
     s.apply = guarded([](OpContext& ctx) {
         const std::string name = need_string(ctx.args, "strategy");
@@ -1384,7 +1703,16 @@ OpSpec op_optimize_order() {
         const auto items_before = order_items(ctx.project);
         const auto cost_before = optimization::compute_cost(items_before);
         const std::vector<ObjectId> before = current_order(ctx.project);
-        const std::vector<ObjectId> next = optimization::optimize_order(items_before, strategy);
+        // HP-SEQ-001/008 : amélioration locale optionnelle ; départ / arrivée du design.
+        optimization::OrderOptions options;
+        if (ctx.args.value("improve", false)) {
+            options.improve_budget = optimization::kDefaultImproveBudget;
+        }
+        options.start = ctx.project.finishing.design_start;
+        options.end = ctx.project.finishing.design_end;
+        // Calques (HP-OBJ-024) : l'optimisation ne franchit pas les calques.
+        const std::vector<ObjectId> next = ctx.project.groupedByCalque(
+            optimization::optimize_order(items_before, strategy, options));
         const bool changed = !next.empty() && next != before;
         if (changed) {
             ctx.stack.execute(std::make_unique<commands::ReorderEmbroideryCommand>(next),
@@ -1478,7 +1806,11 @@ OpSpec op_discard_overrides() {
 json canvas_json(const document::Canvas& c) {
     return {{"width_mm", to_millimeters(c.width).value},
             {"height_mm", to_millimeters(c.height).value},
-            {"margin_mm", to_millimeters(c.margin).value}};
+            {"margin_mm", to_millimeters(c.margin).value},
+            {"shape", c.shape == document::HoopShape::Ellipse            ? "ellipse"
+                      : c.shape == document::HoopShape::RoundedRectangle ? "rounded"
+                                                                         : "rectangle"},
+            {"corner_radius_mm", to_millimeters(c.corner_radius).value}};
 }
 
 OpSpec op_set_canvas() {
@@ -1489,15 +1821,56 @@ OpSpec op_set_canvas() {
     s.args = {arg("width_mm", "number", "largeur du cadre", false, "mm", "]0 ; 2000]"),
               arg("height_mm", "number", "hauteur du cadre", false, "mm", "]0 ; 2000]"),
               arg("margin_mm", "number", "marge de sécurité sur chaque côté", false, "mm",
-                  "[0 ; 500], 2 x marge < min(largeur, hauteur)")};
+                  "[0 ; 500], 2 x marge < min(largeur, hauteur)"),
+              arg("hoop", "string",
+                  "identifiant d'un cadre de la bibliothèque (taille et forme), ex. round-150 ; "
+                  "width_mm / height_mm / shape donnés en plus l'emportent",
+                  false, "", "voir document::hoop_library()"),
+              arg("shape", "string", "forme du cadre : rectangle, ellipse (rond ou ovale), rounded",
+                  false, "", "rectangle | ellipse | rounded"),
+              arg("corner_radius_mm", "number", "rayon des coins (forme rounded)", false, "mm",
+                  "[0 ; 500]")};
     s.example = R"({"op":"set_canvas","width_mm":160,"height_mm":260,"margin_mm":5})";
     s.apply = guarded([](OpContext& ctx) {
         if (!ctx.args.contains("width_mm") && !ctx.args.contains("height_mm") &&
-            !ctx.args.contains("margin_mm")) {
-            refuse(code::kUsage, "indiquez au moins un de : width_mm, height_mm, margin_mm");
+            !ctx.args.contains("margin_mm") && !ctx.args.contains("hoop") &&
+            !ctx.args.contains("shape") && !ctx.args.contains("corner_radius_mm")) {
+            refuse(code::kUsage,
+                   "indiquez au moins un de : hoop, width_mm, height_mm, margin_mm, shape, "
+                   "corner_radius_mm");
         }
         const document::Canvas before = ctx.project.canvas;
         document::Canvas next = before;
+        if (const auto it = ctx.args.find("hoop"); it != ctx.args.end()) {
+            const std::string id = it->get<std::string>();
+            const document::HoopSpec* spec = document::find_hoop(id);
+            if (spec == nullptr) {
+                refuse(code::kOutOfRange, "cadre inconnu : « " + id + " »",
+                       "voir la bibliothèque de cadres (hoop_library)");
+            }
+            next = document::canvas_from_hoop(*spec, before.margin);
+        }
+        if (const auto it = ctx.args.find("shape"); it != ctx.args.end()) {
+            const std::string shape = it->get<std::string>();
+            if (shape == "rectangle") {
+                next.shape = document::HoopShape::Rectangle;
+            } else if (shape == "ellipse") {
+                next.shape = document::HoopShape::Ellipse;
+            } else if (shape == "rounded") {
+                next.shape = document::HoopShape::RoundedRectangle;
+            } else {
+                refuse(code::kOutOfRange, "« shape » : « " + shape + " » inconnue",
+                       "rectangle, ellipse ou rounded");
+            }
+        }
+        if (const auto it = ctx.args.find("corner_radius_mm"); it != ctx.args.end()) {
+            const double d = it->get<double>();
+            if (!(d >= 0.0 && d <= 500.0)) {
+                refuse(code::kOutOfRange,
+                       "« corner_radius_mm » : " + num(d) + " hors plage [0 ; 500] mm");
+            }
+            next.corner_radius = to_micrometers(Millimeters{d});
+        }
         const auto dimension = [&](const char* key, Micrometers& target) {
             if (const auto it = ctx.args.find(key); it != ctx.args.end()) {
                 const double d = it->get<double>();
@@ -1531,6 +1904,27 @@ OpSpec op_set_canvas() {
         }
         ctx.stack.execute(std::make_unique<commands::SetCanvasCommand>(next), ctx.project);
         return OpStatus::success({{"before", canvas_json(before)}, {"after", canvas_json(next)}});
+    });
+    return s;
+}
+
+OpSpec op_set_machine() {
+    OpSpec s;
+    s.name = "set_machine";
+    s.summary = "Choisit le profil machine du projet (champ, cadres, aiguilles, formats : sert aux "
+                "vérifications avant export). Chaîne vide = aucune machine.";
+    s.args = {arg("machine", "string", "identifiant du profil, ex. generic-multi-6 ; vide = aucune",
+                  true, "", "voir document::machine_profiles()")};
+    s.example = R"({"op":"set_machine","machine":"generic-multi-6"})";
+    s.apply = guarded([](OpContext& ctx) {
+        const std::string id = ctx.args.at("machine").get<std::string>();
+        if (!id.empty() && document::find_machine(id) == nullptr) {
+            refuse(code::kOutOfRange, "machine inconnue : « " + id + " »",
+                   "voir les profils machine disponibles (machine_profiles)");
+        }
+        const std::string before = ctx.project.machine_id;
+        ctx.stack.execute(std::make_unique<commands::SetMachineCommand>(id), ctx.project);
+        return OpStatus::success({{"before", before}, {"after", id}});
     });
     return s;
 }
@@ -1607,11 +2001,73 @@ OpSpec op_set_finishing() {
     return s;
 }
 
+// HP-SEQ-008 : points de départ / d'arrivée du design (mm, repère document, Y vers le haut).
+OpSpec op_set_design_points() {
+    OpSpec s;
+    s.name = "set_design_points";
+    s.summary = "Définit (ou efface) les points de départ et d'arrivée du design, utilisés par "
+                "l'optimisation de l'ordre de couture. Au moins un argument.";
+    s.args = {arg("start_x_mm", "number", "départ X", false, "mm", "-1000..1000"),
+              arg("start_y_mm", "number", "départ Y", false, "mm", "-1000..1000"),
+              arg("end_x_mm", "number", "arrivée X", false, "mm", "-1000..1000"),
+              arg("end_y_mm", "number", "arrivée Y", false, "mm", "-1000..1000"),
+              arg("clear", "string", "start | end | both : efface ce point", false, {},
+                  "start | end | both")};
+    s.example = R"({"op":"set_design_points","start_x_mm":0,"start_y_mm":0,"end_x_mm":10,)"
+                R"("end_y_mm":0})";
+    s.apply = guarded([](OpContext& ctx) {
+        document::SequenceFinishing next = ctx.project.finishing;
+        const auto read_point = [&](const char* kx, const char* ky,
+                                    std::optional<Vec2um>& target) -> bool {
+            const bool hasX = ctx.args.contains(kx);
+            const bool hasY = ctx.args.contains(ky);
+            if (!hasX && !hasY) {
+                return false;
+            }
+            if (!hasX || !hasY) {
+                refuse(code::kUsage, std::string("indiquez ") + kx + " ET " + ky,
+                       "un point se donne par ses deux coordonnées");
+            }
+            const double x = ctx.args.at(kx).get<double>();
+            const double y = ctx.args.at(ky).get<double>();
+            if (!(x >= -1000.0 && x <= 1000.0 && y >= -1000.0 && y <= 1000.0)) {
+                refuse(code::kOutOfRange, "coordonnée hors de -1000..1000 mm", "valeurs en mm");
+            }
+            target = Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(x * 1000.0))},
+                            Micrometers{static_cast<std::int32_t>(std::lround(y * 1000.0))}};
+            return true;
+        };
+        bool any = read_point("start_x_mm", "start_y_mm", next.design_start);
+        any = read_point("end_x_mm", "end_y_mm", next.design_end) || any;
+        if (ctx.args.contains("clear")) {
+            const std::string c = ctx.args.at("clear").get<std::string>();
+            if (c != "start" && c != "end" && c != "both") {
+                refuse(code::kOutOfRange, "clear : « " + c + " » inconnu", "start | end | both");
+            }
+            if (c != "end") {
+                next.design_start.reset();
+            }
+            if (c != "start") {
+                next.design_end.reset();
+            }
+            any = true;
+        }
+        if (!any) {
+            refuse(code::kUsage, "indiquez un point à définir ou clear", "voir les arguments");
+        }
+        ctx.stack.execute(std::make_unique<commands::SetFinishingCommand>(next), ctx.project);
+        return OpStatus::success({{"has_start", next.design_start.has_value()},
+                                  {"has_end", next.design_end.has_value()}});
+    });
+    return s;
+}
+
 } // namespace
 
 void register_param_ops(std::vector<OpSpec>& out) {
     out.push_back(op_set_color());
     out.push_back(op_rename());
+    out.push_back(op_set_semantic());
     out.push_back(op_set_visible());
     out.push_back(op_set_locked());
     out.push_back(op_set_join());
@@ -1624,7 +2080,9 @@ void register_param_ops(std::vector<OpSpec>& out) {
     out.push_back(op_remove_object());
     out.push_back(op_discard_overrides());
     out.push_back(op_set_canvas());
+    out.push_back(op_set_machine());
     out.push_back(op_set_finishing());
+    out.push_back(op_set_design_points());
 }
 
 } // namespace openstitch::project_ops::detail

@@ -27,6 +27,12 @@ enum class AiErrorCode {
     InvalidWorkerResponse,
     WorkerCrashed,
     Cancelled,
+    // Contrat générique `openstitch.ai.backend/1` (PR-02).
+    ProtocolMismatch,
+    UnsupportedPrompt,
+    BackendBusy,
+    BackendTimeout,
+    BackendUnavailable,
 };
 
 struct AiError {

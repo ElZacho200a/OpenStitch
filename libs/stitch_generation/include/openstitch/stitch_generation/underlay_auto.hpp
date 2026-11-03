@@ -28,11 +28,14 @@ struct ShapeMetrics {
 //    déforme moins que ce que coûte la sous-couche) ;
 //  - aire < 60 mm²                        : contour seul ;
 //  - sinon                                : contour + rangées perpendiculaires
-//    (espacement 2 mm, 2,5 mm au-delà de 400 mm²).
+//    (espacement 2 mm, 2,5 mm au-delà de 400 mm²) ;
+//  - aire >= 400 mm²                      : + zigzag (rangées diagonales à 45°,
+//    croisées avec les perpendiculaires).
 // Le retrait du contour vaut un quart de l'épaisseur, borné à [0,3 ; 0,6] mm.
 struct FillUnderlayChoice {
     bool edge{false};
     bool parallel{false};
+    bool zigzag{false};
     Micrometers inset{600};
     Micrometers spacing{2'000};
 };

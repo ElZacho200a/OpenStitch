@@ -137,6 +137,42 @@ Result<QualityReport> build_quality_report(const document::Project& project,
         }
     }
 
+    // Motif plus grand que le cadre : un constat global, avec la boîte réelle et le cadre à
+    // demander (le cadre est centré sur l'origine ; `project new` crée 100 x 100 mm par défaut).
+    if (!empty && !options.only_object.valid() &&
+        (stats.bounds.min.x.value < hoop.min.x.value ||
+         stats.bounds.min.y.value < hoop.min.y.value ||
+         stats.bounds.max.x.value > hoop.max.x.value ||
+         stats.bounds.max.y.value > hoop.max.y.value)) {
+        const auto& b = stats.bounds;
+        const auto extent = [](std::int32_t lo, std::int32_t hi) {
+            return std::max(std::abs(static_cast<std::int64_t>(lo)),
+                            std::abs(static_cast<std::int64_t>(hi)));
+        };
+        const auto upMm = [](std::int64_t halfUm, std::int64_t marginUm) {
+            return static_cast<long long>(
+                std::ceil(static_cast<double>(2 * halfUm + 2 * marginUm) / 1000.0));
+        };
+        const auto margin = project.canvas.margin.value;
+        stitch_analysis::Finding f;
+        f.severity = stitch_analysis::Severity::Warning;
+        f.category = "motif-hors-cadre";
+        f.message = std::format(
+            "Le motif ({:.1f} x {:.1f} mm, de x={:.1f} à {:.1f} et y={:.1f} à {:.1f} mm autour de "
+            "l'origine) dépasse le cadre utile de {:.1f} x {:.1f} mm (cadre {:.1f} x {:.1f} mm, "
+            "marge {:.1f} mm).",
+            mm(b.max.x) - mm(b.min.x), mm(b.max.y) - mm(b.min.y), mm(b.min.x), mm(b.max.x),
+            mm(b.min.y), mm(b.max.y), mm(project.canvas.usable_width()),
+            mm(project.canvas.usable_height()), mm(project.canvas.width), mm(project.canvas.height),
+            mm(project.canvas.margin));
+        f.hint =
+            std::format("Cadre suggéré : au moins {} x {} mm (`set_canvas` width_mm/height_mm, ou "
+                        "`project new --width/--height`).",
+                        upMm(extent(b.min.x.value, b.max.x.value), margin),
+                        upMm(extent(b.min.y.value, b.max.y.value), margin));
+        findings.push_back(std::move(f));
+    }
+
     std::size_t errors = 0, warnings = 0, infos = 0;
     for (const auto* list : {&findings, &paramChecks}) {
         for (const auto& f : *list) {

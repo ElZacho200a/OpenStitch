@@ -20,11 +20,16 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <unordered_set>
 #include <vector>
 
 #include "auto_satin_strategy_ui.hpp"
 #include "gradient_fill_panel.hpp"
+#include "claude_backend.hpp"
+#include "companion_dock.hpp"
+#include "companion_launcher.hpp"
 #include "interaction_map.hpp"
+#include "live_server.hpp"
 #include "openstitch/commands/transform_ops.hpp"
 #include "openstitch/commands/undo_stack.hpp"
 #include "openstitch/commands/vector_ops.hpp"
@@ -32,19 +37,29 @@
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/project_ops/gradient_fill.hpp"
+#include "openstitch/optimization/order.hpp"
+#include "openstitch/project_ops/analysis.hpp"
+#include "openstitch/project_ops/live_bridge.hpp"
 #include "openstitch/segmentation/color_merge.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
+#include "openstitch/stitch_generation/pull_field.hpp"
 #include "openstitch/thread_palette/thread_library.hpp"
 #include "realistic_view_state.hpp"
+#include "selection_model.hpp"
+#include "selection_queries.hpp"
 #include "tools.hpp"
+#include "view_display_state.hpp"
 
 class QGraphicsScene;
+class QAbstractGraphicsShapeItem;
+class QGraphicsEllipseItem;
 class QGraphicsItem;
 class QGraphicsPathItem;
 class QGraphicsPixmapItem;
 class QGraphicsEllipseItem;
 class QGraphicsRectItem;
+class QGraphicsPolygonItem;
 class QLabel;
 class QToolButton;
 class QAction;
@@ -68,16 +83,26 @@ class QDropEvent;
 class QListWidgetItem;
 class QUrl;
 
+namespace openstitch::commands {
+class CompositeCommand;
+}
+
 namespace openstitch::desktop {
 
+class SimulationNavBar;
+class ClaudeCodeProcessBackend;
+
 class CanvasView;
+struct DensityRaster; // density_overlay.hpp
 class GesturesDialog;
 class QuickStartDialog;
+class ManualDialog;
 class PropertiesPanel;
 class DocumentPanel;
 class SegmentationColorsPanel;
 class SegmentationDialog;
 class ThreadPanel;
+class ColorwayDialog;
 class ThreadStrip;
 class WorkflowPanel;
 class EmptyStateWidget;
@@ -98,6 +123,7 @@ class MainWindow : public QMainWindow {
     Q_OBJECT
     friend class MainWindowTest;
     friend class CreationFlowTest;
+    friend class HelpManualTest;
 
 public:
     MainWindow();
@@ -108,6 +134,34 @@ public:
     // machine), .svg et images. Passe par les mêmes gardes « modifications non
     // enregistrées » que les menus ; reporté tant qu'un dialogue modal est ouvert.
     void openPath(const QString& path);
+
+    // Pont « projet vivant » (ADR 0001) : un agent local lit et modifie CE document, jamais une
+    // copie. `commitLiveBatch` applique un lot validé en UNE étape d'annulation de la pile du
+    // desktop puis rafraîchit canevas, inspecteur, état « modifié » et actions.
+    [[nodiscard]] project_ops::LiveBridge& liveBridge() { return liveBridge_; }
+    // Ouvre / ferme le pont IA local (tube nommé + fichier de découverte `dir`, défaut
+    // `mcp::live_directory()`). Faux si l'ouverture échoue (message dans `error`).
+    bool setLiveBridgeEnabled(bool on, const std::filesystem::path& dir = {},
+                              QString* error = nullptr);
+    [[nodiscard]] mcp::LiveService& liveService() { return liveService_; }
+    [[nodiscard]] mcp::LiveDocumentInfo liveDocumentInfo() const;
+    void afterLiveCommit();
+    // Dock « Compagnon IA » (masqué par défaut) ; `focusEmbroideryObject` sélectionne un objet.
+    void buildCompanionDock();
+    void applyCompanionSettings();
+    void showCompanionSettings();
+    void openClaudeCode();
+    void useClaudeCodeInDock();
+    // Analyse sémantique automatique au lancement de Claude (une fois par projet ouvert).
+    void maybeStartSemanticAnalysis();
+    std::uint64_t semanticAnalysisGeneration_{~0ULL};
+    void updateCompanionContext();
+    void focusEmbroideryObject(quint64 id);
+    [[nodiscard]] CompanionDock* companionDock() const { return companionDock_; }
+    project_ops::LiveBridge::Result commitLiveBatch(const std::string& sessionId,
+                                                    std::uint64_t revision,
+                                                    const std::string& batchJson,
+                                                    const std::string& label, bool approved);
 
 protected:
     void closeEvent(QCloseEvent* event) override;
@@ -172,6 +226,11 @@ private slots:
     void warnAboutSkippedSvgFeatures(const std::vector<std::string>& warnings);
     void openAiPreferences();
     void openSettings(); // onglet « Paramètres » (EditSettings, fichier INI)
+    // HP-UX-007/008 : préférences générales (unités, grille, autosave, dossier de travail).
+    void openGeneralPreferences();
+    // HP-FILE-007 : insère un .osp / une broderie machine dans le projet ouvert (une ICommand).
+    void insertDesign();
+    bool insertDesignFile(const QString& file);
     // HP-UX-002 : création DIRECTE (sans dialogue) d'un objet par forme sélectionnée, au dernier
     // réglage mémorisé (`ui_memory::creation`). Les variantes `…WithSettings` gardent le dialogue
     // de saisie (« Créer avec réglages… »).
@@ -255,18 +314,46 @@ private slots:
     // Conversion d'un objet en remplissage directionnel (paramètres
     // équivalents calculés par le cœur, ConvertFillGroupCommand annulable).
     void convertToDirectional(ObjectId embroideryId);
+    // Remplissage concentrique / contour (HP-STI-007, main_window_contour.cpp) : conversion
+    // d'un remplissage en anneaux concentriques, ConvertFillGroupCommand annulable.
+    void convertToContourFill(ObjectId embroideryId);
+    // Radial (0), spirale (1), croisé (2) : HP-STI-008 / 009 / 014 (main_window_contour.cpp).
+    void convertToFillKind(ObjectId embroideryId, int kind);
     // Moteur de points (main_window_engine.cpp) : satin de bordure (HP-STI-004) et
     // entrée/sortie automatiques par objet (HP-ENG-010), commandes annulables.
     void createBorderSatin(ObjectId vectorId, double widthMm, int side, int corner);
     void editBorderSatin(ObjectId id, double widthMm, int side, int corner);
     void setJoinMode(ObjectId id, int mode);
     void setConnectorMode(ObjectId id, int mode);
+    void setKnockout(ObjectId id, bool enabled, double marginMm);
     void setDensityGradient(ObjectId embroideryId, bool enabled, double angleDeg,
                             double endSpacingMm);
     void applyTwoColorBlend();
     // « Ajouter une couche… » : demande le type (contour, tatami, satin, directionnel) puis la
     // couleur de fil, et empile une nouvelle couche sur la forme de l'objet de broderie `baseId`.
     void addLayerInteractive(ObjectId baseId);
+    // Ajout en un geste (bouton « + Couche », menu de ligne) : même famille de points que `baseId`,
+    // fil complémentaire, aucun dialogue. Un seul pas d'annulation.
+    bool addLayerQuick(ObjectId baseId);
+    // Copie la couche `id` (mêmes réglages, même forme) juste au-dessus d'elle. Un pas
+    // d'annulation.
+    bool duplicateLayer(ObjectId id);
+    // Calques du document (HP-OBJ-024) : chaque geste = une commande annulable.
+    void addCalque();
+    void removeCalque(ObjectId id);
+    void renameCalqueInteractive(ObjectId id);
+    void moveSelectionToCalque(ObjectId id);
+    // Échange le rang de couture de la couche `id` avec sa voisine de la même forme (+1 = vers le
+    // dessus). Faux au bout de la pile. Un pas d'annulation.
+    bool moveLayer(ObjectId id, int direction);
+    // Dialogue de nom puis RenameEmbroideryCommand.
+    void renameLayerInteractive(ObjectId id);
+    // Ajoute à `composite` une copie de chaque objet de broderie de `sourceId`, rattachée à la
+    // forme `copyId` (nouveaux ids, ordre conservé). Renvoie le nombre de couches copiées.
+    int addEmbroideryCopies(commands::CompositeCommand& composite, ObjectId sourceId,
+                            ObjectId copyId);
+    // « <racine> – couche N » avec N = premier numéro libre parmi les couches de la même forme.
+    [[nodiscard]] QString nextLayerName(const document::EmbroideryObject& base) const;
     // Construit la couche (paramètres par défaut du type, nom « <base> – couche N », même forme
     // source, fil `rgb`) et la pousse via AddLayerCommand, juste après la base. Faux si impossible.
     bool addLayer(ObjectId baseId, int type, const std::array<std::uint8_t, 3>& rgb);
@@ -316,6 +403,10 @@ private:
     bool requireEmbroideryForReport(const QString& title);
     void showFidelityReport();
     void showDensityReport();
+    void showFabricRiskReport();
+    void showFabricDeformationReport();
+    void showColorRegistrationReport();
+    void exportCompensatedDst();
     void showDiagnoseReport();
     void exportRealisticPng();
     void activateAnalysisItem(QListWidgetItem* item, bool selectObject);
@@ -416,6 +507,7 @@ private:
     // seule d'un résultat déjà produit par le cœur.
     [[nodiscard]] stitch_generation::ObjectEditState editStateOf(ObjectId id) const;
     void buildMenus();
+    void buildWorkspacesMenu(); // HP-UX-049 : dispositions de panneaux non destructives
     void buildHelpMenu();
     void buildMainToolbar();
     void buildContextToolbar();
@@ -448,6 +540,11 @@ private:
     void isolateFilterType(int filterType);
     void isolateFilterColor(std::uint32_t colorKey);
     void showAllFilters();
+    // Filtres d'affichage : types et taille mémorisés entre sessions (QSettings) ; indicateur
+    // permanent de la barre d'état quand des objets sont masqués par un filtre.
+    void saveFilterSettings() const;
+    void updateFilterIndicator();
+    void setAllColorFilters(int mode); // 0 tout afficher, 1 tout masquer, 2 inverser
     // Couleurs distinctes des formes de l'image (première apparition), pour le sélecteur de fil.
     [[nodiscard]] std::vector<QColor> imageColors() const;
     // Sélecteur de couleur de fil : les couleurs de l'image y sont proposées en « Custom colors ».
@@ -486,6 +583,8 @@ private:
     [[nodiscard]] document::EmbroideryObject* currentFillObject();
     // Objet vectoriel visible sous un point (mm, scène). Le dernier dessiné gagne.
     [[nodiscard]] std::optional<ObjectId> objectAt(QPointF posMm) const;
+    // Le calque de la forme est affiché (HP-OBJ-024) ; faux = ni dessinée, ni saisissable.
+    [[nodiscard]] bool calqueShowsShape(const document::VectorObject& object) const;
     // Objet de broderie satin dont le RUBAN (rail_a + rail_b) contient le
     // point donné — repli utilisé quand `objectAt` ne trouve rien : un satin
     // manuel a un objet vectoriel source délibérément invisible (cf. §
@@ -497,7 +596,8 @@ private:
     [[nodiscard]] QString buildDebugDump(ObjectId embroideryId) const;
     // Affiche `buildDebugDump` dans une boîte de dialogue (copier/enregistrer).
     void showDebugDump(ObjectId embroideryId);
-    // Objet de broderie rattaché à un objet vectoriel (nullptr si aucun).
+    // Objet de broderie rattaché à un objet vectoriel : la couche du DESSUS s'il y en a plusieurs
+    // (nullptr si aucun).
     [[nodiscard]] document::EmbroideryObject* embroideryForVector(ObjectId vectorId);
     // Ouverture d'un SVG comme NOUVEAU document, directement en objets
     // vectoriels éditables -- saute entièrement image/segmentation/
@@ -582,11 +682,46 @@ private:
                              const QString& label, const QString& done);
     void selectAllObjects();
     void selectObjectsWithSameColor();
+    // Outils de sélection (main_window_selection_tools.cpp) : requêtes pures de
+    // `selection_queries.hpp`, ici seulement le câblage.
+    void buildSelectionToolsMenu(QMenu* editMenu);
+    void updateSelectionToolActions();
+    [[nodiscard]] ShapePredicate selectablePredicate() const;
+    void applyShapeSelection(std::vector<ObjectId> ids, const QString& what);
+    void invertShapeSelection();
+    void selectSameKind(int kind); // 0 type de point, 1 fil, 2 calque
+    void stepSelection(int step);
+    void selectSewingRangeDialog();
+    void selectTouchingShapes();
+    void selectByState(int kind);
+    void armLassoSelection();
+    void finishLassoSelection();
+    void storeNamedSelection();
+    void recallNamedSelection(const QString& name);
+    void rebuildNamedSelectionMenu();
     void setEmbroideryColorForSelection(std::array<std::uint8_t, 3> rgb);
     void runTransform(const std::vector<ObjectId>& ids, const commands::AffineTransform& transform,
                       const QString& label, const QString& done);
     void rotateSelection(double degrees); // positif : anti-horaire
-    void rotateObjects(const std::vector<ObjectId>& ids, double degrees);
+    // `pivot` absent : centre de la boîte des objets. Une seule commande annulable.
+    void rotateObjects(const std::vector<ObjectId>& ids, double degrees,
+                       std::optional<Vec2um> pivot = std::nullopt);
+    // Poignée de rotation + pivot déplaçable de la sélection (main_window_rotation.cpp).
+    void addRotationHandles();
+    // Repère du centre d'un remplissage radial / en spirale (main_window_fill_center.cpp).
+    void addFillCenterHandle();
+    void setFillCenter(ObjectId id, std::optional<Vec2um> center);
+    [[nodiscard]] Vec2um rotationPivotFor(const std::vector<ObjectId>& ids,
+                                          const commands::BoundsUm& box) const;
+    void showRotationPreview(const commands::BoundsUm& box, Vec2um pivot, double degrees);
+    void hideRotationPreview();
+    // Saisie numérique du pivot (mm, Y vers le haut) ; `setRotationPivot` est la partie testable.
+    void editRotationPivot();
+    void setRotationPivot(const std::vector<ObjectId>& ids, Vec2um pivot);
+    std::optional<Vec2um> rotationPivot_; // pivot choisi, valable pour rotationPivotTargets_
+    std::vector<ObjectId> rotationPivotTargets_;
+    QGraphicsPolygonItem* rotationPreview_{nullptr};
+    QGraphicsRectItem* commonBox_{nullptr}; // cadre commun d'une sélection multiple
     // Angle (degrés, positif = anti-horaire) d'un glisser de la poignée de rotation : de
     // `handleScene` à `releasedScene` autour de `centerScene` (repère scène, Y vers le bas).
     // `snap` (Maj) arrondit au multiple de 15° ; un mouvement négligeable donne 0.
@@ -719,7 +854,13 @@ private:
     void createTatamiObjectImpl(bool askSettings);
     void applyAutoSatinEdit(ObjectId id, document::AutoSatinParams params, const QString& label,
                             const QString& mergeTag = {});
-    void addAutoSatinGuideFromStroke(ObjectId id, Vec2um from, Vec2um to);
+    // Tracé de >= 2 points : le premier fixe l'ancre, le dernier la direction (guide droit). À
+    // partir de 3 points le tracé est conservé comme guide en courbe (balayage parallèle :
+    // tangente).
+    void addAutoSatinGuideFromStroke(ObjectId id, const std::vector<Vec2um>& stroke);
+    void addAutoSatinGuideFromStroke(ObjectId id, Vec2um from, Vec2um to) {
+        addAutoSatinGuideFromStroke(id, std::vector<Vec2um>{from, to});
+    }
     void changeAutoSatinGuide(ObjectId id, int index, double angleDeg, bool absolute);
     // Clic sur un guide de la liste de l'inspecteur : cercle temporaire sur son ancre.
     void highlightAutoSatinGuide(ObjectId id, int index);
@@ -754,6 +895,21 @@ private:
     QDockWidget* historyDock_{nullptr};
     QListWidget* historyList_{nullptr};
     QList<QAction*> alignActs_;
+    // Organiser les objets (main_window_arrange.cpp) : référence d'alignement, répartition,
+    // verrou d'édition, redimensionnement numérique, décalage de duplication, conversions.
+    void buildArrangeMenu(QMenu* editMenu);
+    void updateArrangeActions();
+    void alignShapes(int mode);
+    void distributeShapes(bool horizontal);
+    void setShapesLocked(const std::vector<ObjectId>& ids, bool locked);
+    void resizeSelectionByFactors(double sx, double sy, bool fromCenter);
+    void resizeSelectionDialog();
+    void duplicateWithOffsetDialog();
+    void convertSelectionType(int kind);
+    int alignReference_{0}; // 0 sélection, 1 premier objet, 2 cadre
+    Vec2um duplicateOffset_{Micrometers{2'000}, Micrometers{-2'000}};
+    QList<QAction*> arrangeActs_;
+    QList<QAction*> convertActs_;
     // Aperçus de glisser (poignées) : repère d'accroche, cadre de redimensionnement.
     void showNodeDragFeedback(QPointF sceneMm, ObjectId objectId);
     void hideNodeDragFeedback();
@@ -761,6 +917,64 @@ private:
     void hideResizePreview();
     QGraphicsItem* snapIndicator_{nullptr};
     QGraphicsRectItem* resizePreview_{nullptr};
+    // Remodelage direct d'un segment du contour (HP-VEC-016, main_window_reshape.cpp). Le geste
+    // vit dans `reshape_` jusqu'au relâchement (une commande) ou à Échap (aucune commande) ;
+    // l'aperçu est une copie du tracé recalculée par `geometry::reshape_path_set_segment`.
+    struct ReshapeGesture {
+        ObjectId object;
+        std::size_t set{0};
+        std::size_t path{0};
+        std::size_t segment{0};
+        double t{0.0};
+        QPointF startSceneMm;
+        geometry::PathSet base;
+    };
+    [[nodiscard]] bool canBeginSegmentReshape(ObjectId object, QPointF sceneMm) const;
+    bool beginSegmentReshape(ObjectId object, QPointF sceneMm);
+    void updateSegmentReshape(QPointF sceneMm, Qt::KeyboardModifiers mods);
+    void commitSegmentReshape(QPointF sceneMm, Qt::KeyboardModifiers mods);
+    void cancelSegmentReshape();
+    [[nodiscard]] QPointF reshapeDragPoint(QPointF sceneMm, Qt::KeyboardModifiers mods) const;
+    std::optional<ReshapeGesture> reshape_;
+    // Édition vectorielle (HP-VEC-001/005/006, main_window_vector_edit.cpp).
+    void buildVectorEditActions();
+    void updateVectorEditActions();
+    bool insertNodeAt(QPointF sceneMm);
+    bool removeHoleAt(QPointF sceneMm);
+    void outlineSelection(int kind, double gapMm, double satinWidthMm, bool aroundHoles);
+    void outlineSelectionDialog();
+    // Magnétisme à la grille (HP-VEC-009) : point de grille le plus proche si activé et à moins
+    // de `radiusMm` du curseur.
+    [[nodiscard]] std::optional<QPointF> gridSnapPointMm(QPointF cursorSceneMm,
+                                                         double radiusMm) const;
+    QAction* gridSnapAct_{nullptr};
+    QAction* gridStepAct_{nullptr};
+    QAction* insertDesignAct_{nullptr};
+    double gridStepMm_{1.0};
+    // Affichage par passe, zoom rectangle / 1:1 étalonné, grille et guides, aperçu en direct
+    // (HP-VIEW-003/007/010/012, main_window_view_display.cpp).
+    void buildViewDisplayMenu(QMenu* viewMenu);
+    void applyViewDisplay();
+    void addFunctionMarkers();
+    ViewDisplayState viewDisplay_;
+    QAction* zoomRectAct_{nullptr};
+    QAction* outlineAct_{nullptr};
+    // Sélection de nœuds et déplacement groupé (HP-VEC-017, main_window_node_select.cpp). Tous
+    // les nœuds sélectionnés appartiennent au même chemin (set, path) de `nodeSelObject_`.
+    void buildNodeSelectionActions();
+    [[nodiscard]] bool isNodeSelected(const document::NodeRef& ref) const;
+    void selectNodes(ObjectId object, const std::vector<document::NodeRef>& nodes, SelectMode mode);
+    void clearNodeSelection();
+    void onNodeRectangle(QRectF rectMm, SelectMode mode);
+    void previewGroupMove(ObjectId object, Vec2um delta);
+    void hideGroupPreview();
+    void restyleNodeHandles();
+    void commitGroupMove(ObjectId object, Vec2um delta);
+    std::optional<ObjectId> nodeSelObject_;
+    std::vector<document::NodeRef> selectedNodes_;
+    QAction* softNodesAct_{nullptr};
+    std::vector<std::pair<document::NodeRef, QAbstractGraphicsShapeItem*>> nodeHandles_;
+    QGraphicsPathItem* reshapePreview_{nullptr};
     void removeAutoSatinGuide(ObjectId id, int index);
     void renderAutoSatinOverlay(const document::EmbroideryObject& obj,
                                 const document::AutoSatinParams& params,
@@ -808,14 +1022,8 @@ private:
     // État de sélection complet. `objects` : objets vectoriels dans l'ordre de
     // sélection, le DERNIER est le principal. Un seul élément = cas legacy
     // (multiSelection_ reste vide, selectedObject_ porte l'objet).
-    struct Selection {
-        std::optional<RegionId> region; // région ACTIVE (la dernière cliquée)
-        std::optional<ObjectId> embroidery;
-        std::vector<ObjectId> objects;
-        // Autres régions sélectionnées avec la région active (sélection multiple de régions).
-        // Vide sans région active ; l'active n'y figure jamais.
-        std::vector<RegionId> extraRegions;
-    };
+    // Type et règles de normalisation : selection_model.hpp (HP-OBJ-001).
+    using Selection = desktop::Selection;
     // SEUL écrivain de selectedObject_/selectedRegion_/selectedEmbroidery_/
     // multiSelection_ (garde CTest check_selection_single_mutator). Normalise :
     // doublons retirés (dernière occurrence gardée), région/broderie
@@ -823,6 +1031,9 @@ private:
     // multiSelection_ vide. Ne rafraîchit rien (l'appelant appelle
     // displayImage/refreshImage + updateActions).
     void setSelection(Selection selection);
+    // Mode fantôme (approbation d'un agent) : met en évidence les objets visés, puis restaure.
+    void showGhostSelection(const std::vector<quint64>& embroideryIds);
+    void restoreGhostSelection(Selection saved);
     // Modification partielle : copie l'état courant, applique `edit`, puis passe
     // par setSelection (jamais d'écriture directe des membres).
     void editSelection(const std::function<void(Selection&)>& edit);
@@ -897,6 +1108,8 @@ private:
     void hideRegionHover();
     // Opacité de la carte des régions (0,2 – 1,0) : réglable pour voir la photo dessous.
     void setRegionMapOpacity(double opacity);
+    void setImageOpacity(double opacity);
+    void buildImageOpacityControls(QMenu* viewMenu);
     void buildRegionViewControls(QMenu* segMenu);
     // Fusion de COULEURS (panneau « Couleurs », main_window_colors.cpp) : le panneau liste les
     // teintes de la segmentation ; les plans (`segmentation::plan_*`) sont prévisualisés sur une
@@ -965,6 +1178,22 @@ private:
     QStringList recentFiles_;
     QMenu* recentMenu_{nullptr};
     commands::UndoStack undoStack_;
+    project_ops::LiveBridge liveBridge_{project_, undoStack_};
+    // Pont IA local (ADR 0001) : désactivé par défaut ; ne s'ouvre que sur action explicite.
+    DialogApprovalGate liveGate_{this};
+    mcp::LiveService liveService_{liveBridge_, liveGate_, [this] { return liveDocumentInfo(); },
+                                  [this] { afterLiveCommit(); }};
+    std::unique_ptr<LiveServer> liveServer_;
+    QAction* liveBridgeAct_{nullptr};
+    CompanionDock* companionDock_{nullptr};
+    std::unique_ptr<agent::ISecretStore> secretStore_;
+    agent::DiagnosticLog companionLog_;
+    ClaudeCompanionBackend* claudeBackend_{nullptr};
+    ClaudeCodeProcessBackend* codeBackend_{nullptr};
+    QAction* companionSettingsAct_{nullptr};
+    QAction* openClaudeCodeAct_{nullptr};
+    // Environnement système du lanceur Claude Code (remplaçable par les tests).
+    ClaudeCodeLauncher::Env launcherEnv_{ClaudeCodeLauncher::systemEnv()};
     image::Image processed_; // dernier résultat du pipeline (pour l'affichage)
     // Entrées exactes ayant produit `processed_` (clé de contenu du cache,
     // cf. refreshImage) : `processed_` n'est recalculée que si l'image source
@@ -1005,6 +1234,7 @@ private:
     std::shared_ptr<const image::Image> segmentSnapshot_; // image de travail à l'ouverture
     std::optional<segmentation::SegmentationOptions> segmentCachedOptions_;
     std::optional<segmentation::Segmentation> segmentCached_; // dernier aperçu calculé
+    segmentation::DetailMask segmentCachedMask_;              // masque de détail de ce calcul
     double segmentCachedSeconds_{0.0};                        // durée de ce calcul
     std::uint64_t segmentGeneration_{0};
     bool segmentAutoShownMap_{false}; // l'aperçu a affiché la carte (à masquer à la fermeture)
@@ -1080,6 +1310,7 @@ private:
     QAction* rotateLeftAct_{nullptr};
     QAction* rotateRightAct_{nullptr};
     QAction* rotateAngleAct_{nullptr};
+    QAction* rotationPivotAct_{nullptr};
     QAction* mirrorHorizontalAct_{nullptr};
     QAction* mirrorVerticalAct_{nullptr};
     QAction* designCenterAct_{nullptr};
@@ -1112,6 +1343,12 @@ private:
     // pendant le glisser (repère modèle, µm) + aperçu (même cycle de vie que
     // le polygone). Simplifié (Douglas-Peucker) seulement à la fermeture.
     std::vector<Vec2um> pendingFreeformPoints_;
+    bool lassoSelectArmed_{false}; // le prochain tracé à main levée sélectionne (lasso)
+    // Sélections nommées de la session (ni enregistrées, ni annulables) : nom -> formes.
+    std::vector<std::pair<QString, std::vector<ObjectId>>> namedSelections_;
+    QMenu* namedSelectionMenu_{nullptr};
+    std::vector<QAction*> selectionToolActs_;       // actives dès qu'il y a des formes
+    std::vector<QAction*> selectionNeedsShapeActs_; // actives avec une forme sélectionnée
     QGraphicsPathItem* freeformPreviewItem_{nullptr};
 
     // Colonne satin manuelle en cours de tracé (outil DrawSatinColumn) :
@@ -1179,6 +1416,11 @@ private:
     [[nodiscard]] QString hintsText() const { return hintsFullText_; }
     void showGesturesDialog();
     void showQuickStartDialog();
+    // Manuel en ligne (help_manual.hpp, main_window_help.cpp) : section selon le contexte.
+    void showManual(const QString& heading = {});
+    void showContextualHelp();
+    [[nodiscard]] QString contextualHelpHeading() const;
+    void startGuidedTour();
     void buildNavigationMenu(QMenu* viewMenu);
     // Rendu réaliste des points (main_window_realistic.cpp) : sous-menu
     // Affichage > Rendu réaliste, fenêtre de réglages et peinture du cache.
@@ -1194,6 +1436,23 @@ private:
     void buildProductionMenu(QMenu* fileMenu);
     void showProductionSheet();
     QAction* productionAct_{nullptr};
+    // Coloris, tissu, fusion de fils (HP-THR-006/008/011, main_window_colorways.cpp).
+    void buildColorwayMenu(QMenu* viewMenu);
+    void showColorwayDialog();
+    void showThreadMergeDialog();
+    void syncColorwayUi();
+    ColorwayDialog* colorwayDialog_{nullptr};
+    QAction* colorwayAct_{nullptr};
+    QAction* threadMergeAct_{nullptr};
+    // Préréglages de points (HP-ENG-013, main_window_stitch_presets.cpp).
+    void buildStitchPresetMenu(QMenu* embMenu);
+    void rebuildStitchPresetMenu();
+    void saveStitchPreset(const QString& name);
+    void applyStitchPreset(int index);
+    void deleteStitchPreset(int index);
+    void saveStitchPresetFromSelection(); // demande le nom puis enregistre
+    QMenu* stitchPresetMenu_{nullptr};
+    QAction* stitchPresetSaveAct_{nullptr};
     // Zones réservées au câblage des entrées livrées en cœur (une zone par lot, ne pas mélanger).
     // [cablage-A:debut]
     // Exporter l'image (HP-FMT-011, main_window_export_image.cpp).
@@ -1234,6 +1493,92 @@ private:
     void eyedropperAt(QPointF posMm);
     void assignEyedropperChoice(const std::optional<thread_palette::ThreadKey>& key,
                                 std::array<std::uint8_t, 3> rgb, const QString& label);
+    // Pinceau de déformation (HP-VEC-018, main_window_brush.cpp).
+    struct BrushStroke {
+        ObjectId object;
+        std::vector<geometry::PathSet> working; // géométrie courante du coup de pinceau
+        QPointF lastSceneMm;
+    };
+    void buildBrushTool();
+    void attachBrushTool();
+    void syncBrushTool(Tool tool);
+    void setBrushSettings(double radiusMm, double strength);
+    void updateBrushRing(QPointF sceneMm);
+    void hideBrushRing();
+    void beginBrushStroke(QPointF sceneMm);
+    void moveBrushStroke(QPointF sceneMm, Qt::KeyboardModifiers mods);
+    void endBrushStroke(QPointF sceneMm);
+    void cancelBrushStroke();
+    // Pot de peinture (main_window_bucket.cpp) : le calcul est dans
+    // commands::make_fill_gap_command.
+    void buildBucketTool();
+    void attachBucketTool();
+    void syncBucketTool(Tool tool);
+    void bucketFillAt(QPointF posMm);
+    QAction* toolBucketAct_{nullptr};
+    // Clic-pour-broder (HP-AUTO-003, main_window_click_to_stitch.cpp) : le calcul est dans
+    // segmentation::grow_region et commands::make_click_to_stitch_command ; ici le câblage
+    // (outil, barre de réglages, aperçu, clic -> commande annulable).
+    void buildClickToStitchTool();
+    void attachClickToStitchTool();
+    void syncClickToStitchTool(Tool tool);
+    void clickToStitchAt(QPointF sceneMm);
+    void updateClickToStitchPreview(QPointF sceneMm);
+    void hideClickToStitchPreview();
+    void setClickToStitchTolerance(int tolerance);
+    void setClickToStitchKind(int kindIndex);
+    QAction* toolClickToStitchAct_{nullptr};
+    QToolBar* clickToStitchBar_{nullptr};
+    QSlider* clickToStitchToleranceSlider_{nullptr};
+    QSpinBox* clickToStitchToleranceSpin_{nullptr};
+    QComboBox* clickToStitchKindCombo_{nullptr};
+    QGraphicsPixmapItem* clickToStitchPreviewItem_{nullptr};
+    QTimer* clickToStitchPreviewTimer_{nullptr};
+    std::optional<QPointF> clickToStitchHoverMm_;
+    int clickToStitchTolerance_{12}; // ΔE76 maximal à la couleur cliquée
+    int clickToStitchKind_{0};       // index de commands::ClickToStitchKind
+    std::size_t clickToStitchPreviewPixels_{0};
+    // Zones de détail (main_window_detail_zones.cpp) : pinceau de masque « détail / aplat » qui
+    // pilote le lissage et le nettoyage de la segmentation. Réutilise le geste du pinceau.
+    void buildDetailZonesTool();
+    void attachDetailZonesTool();
+    void syncDetailZonesTool(Tool tool);
+    void refreshDetailZonesOverlay();
+    void updateDetailRing(QPointF sceneMm);
+    void hideDetailRing();
+    void beginDetailStroke(QPointF sceneMm);
+    void moveDetailStroke(QPointF sceneMm);
+    void endDetailStroke();
+    void cancelDetailStroke();
+    void clearDetailZones();
+    void setDetailRadiusMm(double radiusMm);
+    struct DetailStroke {
+        std::vector<std::pair<int, int>> centers; // centres des disques, en pixels
+        QPointF lastSceneMm;
+        bool erase{false};
+    };
+    QMenu* segmentMenu_{nullptr};
+    QAction* toolDetailAct_{nullptr};
+    QAction* clearDetailAct_{nullptr};
+    QToolBar* detailBar_{nullptr};
+    QDoubleSpinBox* detailRadiusSpin_{nullptr};
+    QCheckBox* detailEraseCheck_{nullptr};
+    QGraphicsEllipseItem* detailRing_{nullptr};
+    QGraphicsPixmapItem* detailOverlayItem_{nullptr};
+    std::optional<DetailStroke> detailStroke_;
+    segmentation::DetailMask detailLive_; // masque + trait en cours, pour l'aperçu
+    double detailRadiusMm_{4.0};
+    QAction* toolBrushAct_{nullptr};
+    QAction* brushSettingsAct_{nullptr};
+    QGraphicsEllipseItem* brushRing_{nullptr};
+    std::optional<BrushStroke> brushStroke_;
+    // Couche points suspendue pendant un coup de pinceau : les points affichés seraient périmés
+    // et chaque touche repeindrait la texture réaliste sous la forme ; `renderStitches` la
+    // reconstruit à la fin (ou à l'annulation).
+    bool stitchLayerSuspended_{false};
+    void suspendStitchLayer(bool suspended);
+    double brushRadiusMm_{5.0};
+    double brushStrength_{0.6};
     QAction* toolMeasureAct_{nullptr};
     QAction* copyMeasureAct_{nullptr};
     QAction* toolEyedropperAct_{nullptr};
@@ -1243,6 +1588,40 @@ private:
     std::array<std::uint8_t, 3> eyedropperRgb_{};
     // [cablage-C:fin]
     // [cablage-D:debut]
+    // Surimpression « Sauts à vide » du panneau Ordre (main_window_order_jumps.cpp) : segments
+    // entre la fin d'un objet et le début du suivant (optimization::jump_segments), avec une
+    // comparaison avant / après « Optimiser l'ordre ». Ne modifie jamais le document.
+    void buildOrderJumpsFeature();
+    void refreshOrderJumpsOverlay(); // appelée par renderStitches()
+    void setOrderJumpsEnabled(bool on);
+    // Mémorise les sauts d'avant une optimisation ; valable pour le prochain refreshImage
+    // seulement.
+    void captureOrderJumpsBaseline(const std::vector<stitch::ObjectEndpoints>& endpoints);
+    QAction* orderJumpsAct_{nullptr};
+    QCheckBox* orderJumpsCheck_{nullptr};
+    QCheckBox* orderJumpsCompareCheck_{nullptr};
+    QLabel* orderJumpsLabel_{nullptr};
+    std::vector<optimization::JumpSegment> orderJumps_;       // sauts de la séquence affichée
+    std::vector<optimization::JumpSegment> orderJumpsBefore_; // sauts avant l'optimisation
+    bool orderJumpsHasBefore_{false};
+    int orderJumpsBeforeRefresh_{-1}; // valeur de refreshCount_ pour laquelle la base est valable
+    QString orderJumpsDeltaText_; // libellé « −X mm » dessiné sur le canevas (vide : aucun)
+    // Risque tissu en surimpression (main_window_fabric_risk.cpp) : grille de cases classées
+    // calculée par project_ops::measure_fabric_risk (la même analyse que le CLI), hors du fil UI,
+    // mise en cache sous une clé exacte (séquence + profil de tissu).
+    void buildFabricRiskFeature();
+    void refreshFabricRiskOverlay(); // appelée par renderStitches() (pose le cache ou planifie)
+    void recomputeFabricRisk();
+    void setFabricRiskEnabled(bool on);
+    [[nodiscard]] int fabricRiskProfile() const; // 0 tissé, 1 jersey, 2 feutrine
+    QAction* fabricRiskAct_{nullptr};
+    QTimer* fabricRiskTimer_{nullptr};
+    QPixmap fabricRiskPixmap_;
+    QRectF fabricRiskRect_; // zone couverte par l'image, mm (repère scène)
+    project_ops::FabricRiskGrid fabricRiskGrid_;
+    std::uint64_t fabricRiskKey_{0};
+    bool fabricRiskValid_{false};
+    int fabricRiskComputeCount_{0}; // calculs réellement faits (tests)
     // [cablage-D:fin]
     // [cablage-E:debut]
     // HP-VIEW-005 : carte de densité (main_window_density.cpp). Image mise en cache sous une
@@ -1253,6 +1632,18 @@ private:
     void setDensityMapEnabled(bool on);
     [[nodiscard]] double densityThresholdValue() const;
     QAction* densityMapAct_{nullptr};
+    // HP-VIEW-014 : carte d'épaisseur estimée, même surimpression que la densité (exclusives).
+    QAction* thicknessMapAct_{nullptr};
+    int densityCellUm_{0}; // côté de case du dernier calcul d'épaisseur (suit le zoom)
+    [[nodiscard]] bool thicknessMode() const {
+        return thicknessMapAct_ != nullptr && thicknessMapAct_->isChecked();
+    }
+    // Côté de case adapté au zoom courant de la vue (stitch_analysis::adaptive_cell).
+    [[nodiscard]] Micrometers thicknessCellForView() const;
+    void setThicknessMapEnabled(bool on);
+    void recomputeThickness();
+    // Pose le raster calculé comme image de surimpression (partagé densité / épaisseur).
+    void adoptOverlayRaster(const DensityRaster& raster, Vec2um origin, Micrometers cell);
     QTimer* densityTimer_{nullptr};
     QPixmap densityPixmap_;
     QRectF densityRect_; // zone couverte par l'image, mm (repère scène)
@@ -1260,7 +1651,30 @@ private:
     bool densityValid_{false};
     double densityScaleMax_{1.0};
     int densityComputeCount_{0}; // calculs réellement faits (tests)
+    // Prévisualisation du tirage du tissu, niveau 3 (main_window_pull_preview.cpp) : carte du
+    // déplacement prédit + aperçu des points décalés. Jamais écrit dans le document.
+    void buildPullPreviewFeature();
+    void refreshPullMapOverlay(); // appelée par renderStitches()
+    [[nodiscard]] stitch_generation::FabricResponse pullFabric() const;
+    // Séquence décalée du tirage (en cache), nulle si l'aperçu est éteint.
+    [[nodiscard]] const stitch::StitchSequence* pullPreviewSequence();
+    QAction* pullMapAct_{nullptr};
+    QAction* pullPreviewAct_{nullptr};
+    QPixmap pullMapPixmap_;
+    QRectF pullMapRect_;
+    std::uint64_t pullMapKey_{0};
+    bool pullMapValid_{false};
+    stitch::StitchSequence pullPreviewSeq_;
+    std::uint64_t pullPreviewKey_{0};
+    bool pullPreviewValid_{false};
+    int pullComputeCount_{0}; // calculs réellement faits (tests)
     // [cablage-E:fin]
+    // [cablage-HOOP:debut]
+    // Machine du projet (HP-HOOP-002, main_window_machine.cpp).
+    void chooseMachine();
+    void applyMachineChoice(const QString& machineId, const QString& hoopId);
+    QAction* machineAct_{nullptr};
+    // [cablage-HOOP:fin]
     void applyNavigationPreset(Preset preset);
     // Duplique `ids` (copies exactes, même position) puis translate les COPIES de
     // `delta`, en un seul pas d'annulation (CompositeCommand) ; les copies deviennent
@@ -1302,6 +1716,7 @@ private:
                                                         ObjectId exclude) const;
     QPointer<GesturesDialog> gesturesDialog_;
     QPointer<QuickStartDialog> quickStartDialog_;
+    QPointer<ManualDialog> manualDialog_;
     QPointer<QMenu> selectBelowMenu_;
     std::vector<ObjectId> isolatedIds_;
     std::optional<document::StitchParams> styleClipboard_;
@@ -1319,6 +1734,9 @@ private:
     QAction* navTouchpadAct_{nullptr};
     QAction* helpQuickStartAct_{nullptr};
     QAction* helpGesturesAct_{nullptr};
+    QAction* helpManualAct_{nullptr};
+    QAction* helpContextAct_{nullptr};
+    QAction* helpTourAct_{nullptr};
     QAction* aboutAct_{nullptr};
     // Actions du guide de prise en main (étapes construites à partir d'elles).
     QAction* openImageAct_{nullptr};
@@ -1333,6 +1751,7 @@ private:
     QGraphicsPixmapItem* regionHoverItem_{nullptr};
     std::optional<RegionId> regionHoverId_;
     double regionMapOpacity_{0.9};
+    double imageOpacity_{1.0}; // opacité de l'image originale, réglage purement visuel
 
     std::optional<RegionId> selectedRegion_;
     // Régions sélectionnées EN PLUS de selectedRegion_ (sélection multiple). Écrit uniquement
@@ -1356,6 +1775,31 @@ private:
     QAction* stitchEditModeAct_{nullptr};
     std::optional<ObjectId> stitchEditTarget_;
     std::optional<stitch_generation::ObjectEditView> stitchEditView_;
+    // --- Édition de points : sélection, suppression, insertion (HP-EDIT-001/002/003) ---------
+    // Indices bruts (`base_index`) des points sélectionnés ; remise à zéro dès que la vue brute
+    // de l'objet change (empreinte) ou que le mode se ferme.
+    std::set<std::size_t> stitchSelection_;
+    std::uint64_t stitchSelectionFingerprint_{0};
+    QAction* selectAllStitchPointsAct_{nullptr};
+    std::array<QAction*, 6> stitchPointActs_{};
+    [[nodiscard]] bool stitchPointEditActive() const;
+    Vec2um stitchPointDisplayPos(std::size_t index);
+    std::unordered_set<std::size_t> deletedStitchPoints();
+    void addStitchPointHandle(std::size_t baseIndex, Vec2um pos, bool selected, bool deleted);
+    void clickStitchPoint(std::size_t index, Qt::KeyboardModifiers mods);
+    void restyleStitchPointHandles();
+    void addInsertedPointHandle(std::size_t baseIndex, std::size_t slot, Vec2um pos);
+    void moveInsertedStitchPoint(ObjectId id, std::size_t baseIndex, std::size_t slot, Vec2um to,
+                                 std::uint64_t fingerprint, std::uint32_t pointCount);
+    void selectAllStitchPoints();
+    void selectStitchPointsInRect(QRectF rectMm, SelectMode mode);
+    void moveStitchPoints(ObjectId targetId, std::size_t anchor, Vec2um from, Vec2um to,
+                          std::uint64_t fingerprint, std::uint32_t pointCount);
+    bool editSelectedStitchPoints(int action);
+    bool insertStitchPointAt(QPointF sceneMm);
+    void showStitchPointMenu(std::size_t index, QPoint screenPos);
+    void buildStitchPointEditActions(QMenu* menu);
+    void updateStitchPointActions();
     // Mode unifié (rails + guides ensemble) — voir buildMenus() pour le
     // détail ; simple agrégateur au-dessus des deux modes ci-dessous.
     QAction* satinEditModeAct_{nullptr};
@@ -1494,6 +1938,10 @@ private:
     QPushButton* orderUpBtn_{nullptr};
     QPushButton* orderDownBtn_{nullptr};
     QPushButton* orderLockBtn_{nullptr};
+    // Ligne du panneau Ordre -> indice dans `embroidery_objects` (ordre de couture réel, calques
+    // inclus : cf. `Project::sewingOrder`). Reconstruit par refreshOrderPanel.
+    std::vector<std::size_t> orderRows_;
+    [[nodiscard]] const document::EmbroideryObject* orderRowObject(int row) const;
     void updateOrderButtons();
     QLabel* orderCostLabel_{nullptr};
     QComboBox* orderStrategyCombo_{nullptr};
@@ -1501,6 +1949,7 @@ private:
     // Filtres d'affichage de la broderie.
     QDockWidget* filterDock_{nullptr};
     std::array<QCheckBox*, 3> typeChecks_{nullptr, nullptr, nullptr}; // contour/tatami/satin
+    QPushButton* filterIndicator_{nullptr}; // « N objet(s) masqué(s) par un filtre » (barre d'état)
     QVBoxLayout* colorFilterLayout_{nullptr};
     QDoubleSpinBox* minAreaSpin_{nullptr};
     std::array<bool, 3> showType_{true, true, true};
@@ -1511,6 +1960,10 @@ private:
     // montre les points que jusqu'à cet index.
     QToolBar* simToolbar_{nullptr};
     QSlider* simSlider_{nullptr};
+    // HP-SIM-003 : objet en cours de couture, surligné dans les listes et le film couleur.
+    std::optional<ObjectId> simHighlightId_;
+    void applySimulationHighlight();
+    SimulationNavBar* simNavBar_{nullptr}; // HP-SIM-002/004 : pas à pas, objet, temps
     QLabel* simLabel_{nullptr};
     QLabel* simSwatch_{nullptr};      // pastille de la couleur du fil courant
     QLabel* simObjectLabel_{nullptr}; // objet courant

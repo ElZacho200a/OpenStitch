@@ -18,7 +18,6 @@
 #     but less common, so not worth shipping the matcher entry either.
 #     See TECH_DEBT.md.
 #
-# Not gated on LIZA_AGENT_ID: the failure mode hits Pairing sessions too.
 # Portable across Linux and macOS: uses bash 3.2+ regex + string compare,
 # no GNU-only grep -P. No external dependencies (no jq).
 

@@ -42,8 +42,14 @@ inline constexpr int kSchemaVersionAutoSatinStrategy = 7;
 // il garde sa version antérieure, octet pour octet.
 inline constexpr int kSchemaVersionTextTypography = 8;
 
+// v8 -> v9 : calques du document (clé `calques` et `calque` sur les objets vectoriels,
+// HP-OBJ-024). Un lecteur v8 ignorerait les calques et coudrait dans un AUTRE ordre : le fichier
+// n'est écrit en v9 QUE s'il définit des calques ; sinon il garde sa version antérieure, octet
+// pour octet.
+inline constexpr int kSchemaVersionCalques = 9;
+
 // Plus récente version que cette version sait lire.
-inline constexpr int kMaxReadableSchemaVersion = kSchemaVersionTextTypography;
+inline constexpr int kMaxReadableSchemaVersion = kSchemaVersionCalques;
 
 // Enregistre le projet dans une archive .osp (ZIP : project.json + image
 // originale PNG + carte de segmentation binaire). Écriture atomique :

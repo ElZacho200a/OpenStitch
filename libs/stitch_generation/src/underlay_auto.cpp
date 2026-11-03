@@ -59,6 +59,7 @@ FillUnderlayChoice choose_fill_underlay(const ShapeMetrics& shape) {
     }
     c.edge = true;
     c.parallel = shape.area_mm2 >= 60.0;
+    c.zigzag = shape.area_mm2 >= 400.0;
     c.spacing = Micrometers{shape.area_mm2 >= 400.0 ? 2'500 : 2'000};
     const double inset = std::clamp(shape.mean_width_mm * 0.25, 0.3, 0.6) * 1000.0;
     c.inset = Micrometers{static_cast<std::int32_t>(std::lround(inset))};
@@ -108,6 +109,7 @@ document::TatamiParams resolve_underlay(const document::TatamiParams& params,
     document::TatamiParams out = params;
     out.underlay_edge = c.edge;
     out.underlay_parallel = c.parallel;
+    out.underlay_zigzag = c.zigzag;
     out.underlay_inset = c.inset;
     out.underlay_spacing = c.spacing;
     return out;
@@ -122,6 +124,7 @@ document::DirectionalFillParams resolve_underlay(const document::DirectionalFill
     document::DirectionalFillParams out = params;
     out.underlay_edge = c.edge;
     out.underlay_parallel = c.parallel;
+    out.underlay_zigzag = c.zigzag;
     out.underlay_inset = c.inset;
     out.underlay_spacing = c.spacing;
     return out;

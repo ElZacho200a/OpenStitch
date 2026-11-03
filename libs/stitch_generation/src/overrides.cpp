@@ -6,6 +6,7 @@
 
 #include "openstitch/stitch_generation/finish.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
+#include "openstitch/stitch_generation/predicted_pull.hpp"
 
 namespace openstitch::stitch_generation {
 
@@ -143,6 +144,11 @@ std::vector<ObjectId> apply_manual_overrides(stitch::StitchSequence& sequence,
         ObjectId source;
     };
     std::vector<TrimInsertion> trims;
+    struct StructuralEdit {
+        bool deleted;
+        const std::vector<Vec2um>* inserted;
+    };
+    std::unordered_map<std::size_t, StructuralEdit> structural;
 
     static const std::vector<std::size_t> kEmptyIndices;
 
@@ -198,17 +204,44 @@ std::vector<ObjectId> apply_manual_overrides(stitch::StitchSequence& sequence,
             if (ov->trim_after && can_trim_after(original)) {
                 trims.push_back({seq_index, cmd.pos, obj.id});
             }
+            // HP-EDIT-002 : suppression et insertion, mêmes éligibilités que la coupe.
+            if ((ov->deleted || !ov->inserted_after.empty()) && can_trim_after(original)) {
+                structural.emplace(seq_index, StructuralEdit{ov->deleted, &ov->inserted_after});
+            }
         }
     }
 
-    std::sort(trims.begin(), trims.end(), [](const TrimInsertion& a, const TrimInsertion& b) {
-        return a.seq_index > b.seq_index;
-    });
-    for (const auto& t : trims) {
-        sequence.commands.insert(sequence.commands.begin() +
-                                     static_cast<std::ptrdiff_t>(t.seq_index) + 1,
-                                 stitch::StitchCommand{t.pos, stitch::CommandType::Trim, t.source,
-                                                       stitch::StitchPass::Manual});
+    if (!trims.empty() || !structural.empty()) {
+        // Reconstruction en un passage (indices de la séquence brute stables pendant la lecture) :
+        // point (sauf supprimé), points insérés, puis coupe. Déterministe : lookup par index.
+        std::unordered_map<std::size_t, const TrimInsertion*> trimAt;
+        for (const auto& t : trims) {
+            trimAt.emplace(t.seq_index, &t);
+        }
+        std::vector<stitch::StitchCommand> rebuilt;
+        rebuilt.reserve(sequence.commands.size() + trims.size() + structural.size());
+        for (std::size_t i = 0; i < sequence.commands.size(); ++i) {
+            const stitch::StitchCommand& cmd = sequence.commands[i];
+            const auto st = structural.find(i);
+            const bool removed = st != structural.end() && st->second.deleted;
+            if (!removed) {
+                rebuilt.push_back(cmd);
+            }
+            Vec2um last = cmd.pos;
+            if (st != structural.end()) {
+                for (const Vec2um& p : *st->second.inserted) {
+                    rebuilt.push_back(stitch::StitchCommand{
+                        p, stitch::CommandType::Stitch, cmd.source, stitch::StitchPass::Manual});
+                    last = p;
+                }
+            }
+            if (const auto tr = trimAt.find(i); tr != trimAt.end() && !removed) {
+                rebuilt.push_back(stitch::StitchCommand{last, stitch::CommandType::Trim,
+                                                        tr->second->source,
+                                                        stitch::StitchPass::Manual});
+            }
+        }
+        sequence.commands = std::move(rebuilt);
     }
 
     std::sort(dirty.begin(),
@@ -224,17 +257,34 @@ Result<stitch::StitchSequence> effective_sequence(const document::Project& proje
     return std::move(result->sequence);
 }
 
+Result<stitch::StitchSequence> effective_sequence(const document::Project& project,
+                                                  const TaskContext& task) {
+    auto result = effective_sequence_report(project, nullptr, &task);
+    if (!result) {
+        return std::unexpected(result.error());
+    }
+    return std::move(result->sequence);
+}
+
 Result<FinishResult> effective_sequence_report(const document::Project& project,
-                                               const document::HiddenTravel* hiddenTravel) {
-    auto sequence = generate_sequence(project);
+                                               const document::HiddenTravel* hiddenTravel,
+                                               const TaskContext* task) {
+    auto sequence =
+        task != nullptr ? generate_sequence(project, *task) : generate_sequence(project);
     if (!sequence) {
         return std::unexpected(sequence.error());
+    }
+    if (task != nullptr && task->cancelled()) {
+        return cancelled_error();
     }
     // Liste des objets Dirty volontairement ignorée ici : effective_sequence
     // est un point d'entree "au mieux" (apercu/export/...), pas un canal de
     // notification -- un consommateur qui a besoin de detecter/signaler l'etat
     // Dirty doit appeler apply_manual_overrides directement (UI, hors Lot 8.1).
     (void)apply_manual_overrides(*sequence, project);
+    // Tirage de niveau 3 (`PullMode::Predicted`) : champ de déplacement sur tous les segments,
+    // appliqué avant les finitions, sans effet si aucun objet n'est en mode prédit.
+    apply_predicted_pull(*sequence, project);
     // Finitions (Lots E/F : coupes, points d'arrêt, points courts) en DERNIER,
     // après les retouches : elles ne touchent jamais la vue brute (raw_slice)
     // à laquelle les index des retouches se réfèrent.
@@ -316,10 +366,11 @@ Result<RefreshContext> refresh_context(const document::Project& project,
     if (target) {
         ctx.target_view = edit_view_from_sequence(project, *target, *sequence);
     }
-    // Mêmes deux passes, dans le même ordre, que `effective_sequence` : ne
-    // JAMAIS diverger de ce que produirait `effective_sequence(project)` pour
-    // le contenu affiché/exporté (cf. tests/check_no_raw_sequence_bypass.cmake).
+    // Mêmes passes et même ordre que `effective_sequence_report` : les vues brutes
+    // d'édition restent inchangées, mais la séquence effective affichée doit inclure
+    // le tirage prédit, comme l'export machine (cf. test_predicted_pull.cpp).
     (void)apply_manual_overrides(*sequence, project);
+    apply_predicted_pull(*sequence, project);
     ctx.effective = finish_sequence(*sequence, project);
     return ctx;
 }

@@ -209,3 +209,32 @@ Lecture : sur le fond, Hatch n'a pas d'outil que nous ne couvririons pas déjà 
 planifié ; son avantage tient à **Branching** (réordonner et fusionner) et à l'**affichage des
 connecteurs**. Les deux demandent une décision : Branching sort du cadre « à la toute fin », et
 l'affichage est du travail d'interface.
+
+## 7. Extension du 29 octobre 2026 — coût de coupe et recherche locale
+
+Cette branche complète les ponts cachés sans changer la géométrie des objets :
+
+- `region_order.cpp` utilise désormais, dans le **mode avancé existant**,
+  la longueur de liaison plus une pénalité de 50 mm *équivalents de score*
+  lorsqu'une coupe serait demandée par la règle réelle de `finish_sequence` :
+  source différente avec distance non nulle, ou distance au-dessus du seuil.
+  C'est une pondération heuristique **non calibrée en temps machine**.
+  Elle peut allonger les sauts pour supprimer une coupe ; le rapport de
+  distance économisée peut alors être négatif (gain de coupes, perte de distance).
+  Les commandes `Manual` et `Trim` épinglent leur région.
+- `underlay_order.cpp` garde la recherche exacte jusqu'à six passes. Pour
+  plus de six passes, le parcours glouton est suivi d'une recherche locale
+  déterministe avec retournement, 2-opt et insertion Or-opt, bornée à
+  4 096 propositions et huit passes ; le choix final ne peut pas augmenter
+  le coût heuristique par rapport au glouton précédent.
+- Les réglages desktop préexistants « réordonner les zones » et « sous-couche »
+  donnent accès aux deux améliorations. Les optimisations restent optionnelles,
+  et les projets anciens et les trajectoires sans option conservent leur rendu.
+
+**Limites et validations attendues** : lancer les tests C++/Qt et les benchmarks
+avec les profils machines ; mesurer séparément les coupes, les mètres de sauts,
+les points de verrou, le temps machine et le surcroît de fil. Conserver le
+routage sûr (pas de lien visible supprimé sans preuve de recouvrement). Cette
+branche n'implémente pas le branching multi-objets ni un modèle physique de
+vitesse de coupe. Les statistiques historiques de la §5 ne doivent pas être
+présentées comme des gains de cette modification.

@@ -517,6 +517,10 @@ TEST_CASE("auto_satin refuse un disque avec le refus du moteur",
     CHECK_FALSE(r.ok);
     CHECK(r.error.code == "E_REFUSED");
     CHECK(r.error.message.find("Aucune colonne satin") != std::string::npos);
+    // La piste structurée (`hint`) est la suggestion du plan, aussi reprise dans le message.
+    CHECK_FALSE(r.error.hint.empty());
+    CHECK(r.error.message.find("[reason_code=") != std::string::npos);
+    CHECK(r.error.message.find(r.error.hint) != std::string::npos);
     CHECK(signature(env.project) == original); // jamais de repli silencieux
     CHECK(env.project.findEmbroidery(ObjectId{id})->is_tatami());
 

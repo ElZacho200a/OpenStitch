@@ -1,0 +1,36 @@
+name: AI benchmark (offline)
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/openstitch_ai_bench.py'
+      - 'scripts/ai_bench/**'
+      - 'tests/fixtures/ai-benchmark/**'
+      - 'tests/scripts/test_openstitch_ai_bench.py'
+      - 'tests/scripts/ai_bench_fake_worker.py'
+      - '.github/workflows/ai-bench.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/openstitch_ai_bench.py'
+      - 'scripts/ai_bench/**'
+      - 'tests/fixtures/ai-benchmark/**'
+      - 'tests/scripts/test_openstitch_ai_bench.py'
+      - 'tests/scripts/ai_bench_fake_worker.py'
+      - '.github/workflows/ai-bench.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  python-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Fixtures match their generator
+        run: python3 scripts/ai_bench/fixtures.py --check tests/fixtures/ai-benchmark
+      - name: Benchmark tests (no model, no download, no OpenCV)
+        run: python3 -m unittest discover -s tests/scripts -p 'test_openstitch_ai_bench.py' -v

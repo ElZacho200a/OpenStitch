@@ -13,6 +13,7 @@
 #include "busy_indicator.hpp"
 #include "export_image.hpp"
 #include "export_image_dialog.hpp"
+#include "fabric_params.hpp"
 #include "main_window.hpp"
 
 namespace openstitch::desktop {
@@ -37,7 +38,8 @@ void MainWindow::exportImage() {
     const double widthMm = (stats.bounds.max.x.value - stats.bounds.min.x.value) / 1000.0;
     const double heightMm = (stats.bounds.max.y.value - stats.bounds.min.y.value) / 1000.0;
 
-    ExportImageDialog dialog(widthMm, heightMm, realistic_.prefs.params, this);
+    ExportImageDialog dialog(widthMm, heightMm,
+                             withProjectFabric(realistic_.prefs.params, project_), this);
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }

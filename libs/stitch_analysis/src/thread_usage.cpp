@@ -313,6 +313,62 @@ std::vector<ObjectId> merge_same_thread_blocks(const document::Project& project,
     return redistribute(project, film, desired);
 }
 
+std::vector<ObjectId> sequence_by_color(const document::Project& project,
+                                        const std::vector<ColorFilmBlock>& film,
+                                        const std::vector<ThreadIdentity>& thread_order) {
+    // Fils distincts du film dans l'ordre de première apparition.
+    std::vector<ThreadIdentity> threads;
+    for (const auto& b : film) {
+        if (std::find(threads.begin(), threads.end(), b.identity) == threads.end()) {
+            threads.push_back(b.identity);
+        }
+    }
+    std::vector<ThreadIdentity> ordered;
+    for (const auto& id : thread_order) {
+        if (std::find(threads.begin(), threads.end(), id) != threads.end() &&
+            std::find(ordered.begin(), ordered.end(), id) == ordered.end()) {
+            ordered.push_back(id);
+        }
+    }
+    for (const auto& id : threads) {
+        if (std::find(ordered.begin(), ordered.end(), id) == ordered.end()) {
+            ordered.push_back(id);
+        }
+    }
+    std::vector<ObjectId> desired;
+    for (const auto& id : ordered) {
+        for (const auto& b : film) {
+            if (b.identity == id) {
+                desired.insert(desired.end(), b.objects.begin(), b.objects.end());
+            }
+        }
+    }
+    return redistribute(project, film, desired);
+}
+
+std::vector<ThreadVisibility> thread_visibility(const document::Project& project) {
+    std::vector<ThreadVisibility> out;
+    for (const auto& obj : project.embroidery_objects) {
+        const ThreadIdentity id{obj.thread, obj.rgb};
+        ThreadVisibility* entry = nullptr;
+        for (auto& e : out) {
+            if (e.identity == id) {
+                entry = &e;
+                break;
+            }
+        }
+        if (entry == nullptr) {
+            out.push_back(ThreadVisibility{id, {}, 0});
+            entry = &out.back();
+        }
+        entry->objects.push_back(obj.id);
+        if (!obj.visible) {
+            ++entry->hidden;
+        }
+    }
+    return out;
+}
+
 std::size_t color_change_count(const std::vector<ColorFilmBlock>& film) {
     std::size_t changes = 0;
     for (std::size_t i = 1; i < film.size(); ++i) {

@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <limits>
 #include <optional>
 #include <unordered_map>
@@ -201,7 +202,9 @@ json params_to_json(const document::StitchParams& params) {
                 j = {{"type", "running"},
                      {"stitchLength", p.stitch_length.value},
                      {"minLength", p.min_length.value},
-                     {"repeats", p.repeats}};
+                     {"repeats", p.repeats},
+                     {"style", static_cast<int>(p.style)},
+                     {"stemOffset", p.stem_offset.value}};
             } else if constexpr (std::is_same_v<T, document::TatamiParams>) {
                 j = {{"type", "tatami"},
                      {"angle", p.angle.radians},
@@ -220,6 +223,19 @@ json params_to_json(const document::StitchParams& params) {
                 }
                 if (p.underlay_mode != document::UnderlayMode::Manual) {
                     j["underlayMode"] = static_cast<int>(p.underlay_mode);
+                }
+                // HP-ENG-001.b : écrit seulement hors défaut (un .osp inchangé reste inchangé).
+                if (p.pull_mode != document::PullMode::Manual) {
+                    j["pullMode"] = static_cast<int>(p.pull_mode);
+                }
+                if (p.underlay_zigzag) {
+                    j["underlayZigzag"] = true;
+                }
+                if (p.row_end_clip.value != 0) {
+                    j["rowEndClip"] = p.row_end_clip.value;
+                }
+                if (p.edge_outline) {
+                    j["edgeOutline"] = true;
                 }
                 if (p.entry_point) {
                     j["entryPoint"] = {{"x", p.entry_point->x.value},
@@ -271,6 +287,29 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.underlay_mode != document::UnderlayMode::Manual) {
                     j["underlayMode"] = static_cast<int>(p.underlay_mode);
                 }
+                // HP-ENG-001.b : écrit seulement hors défaut (un .osp inchangé reste inchangé).
+                if (p.pull_mode != document::PullMode::Manual) {
+                    j["pullMode"] = static_cast<int>(p.pull_mode);
+                }
+                if (p.auto_spacing) {
+                    j["autoSpacing"] = true;
+                }
+                if (p.corner_mode != document::SatinCorner::None) {
+                    j["cornerMode"] = static_cast<int>(p.corner_mode);
+                }
+                if (p.corner_threshold != document::SatinParams{}.corner_threshold) {
+                    j["cornerThreshold"] = p.corner_threshold.radians;
+                }
+                // HP-STI-022 : bord irrégulier, écrit seulement hors défaut.
+                if (p.jagged != document::SatinJagged::None) {
+                    j["jagged"] = static_cast<int>(p.jagged);
+                }
+                if (p.jagged_amplitude != document::SatinParams{}.jagged_amplitude) {
+                    j["jaggedAmplitude"] = p.jagged_amplitude.value;
+                }
+                if (p.jagged_seed != document::SatinParams{}.jagged_seed) {
+                    j["jaggedSeed"] = p.jagged_seed;
+                }
                 if (p.border) {
                     j["border"] = {{"width", p.border->width.value},
                                    {"side", static_cast<int>(p.border->side)},
@@ -318,6 +357,19 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.underlay_mode != document::UnderlayMode::Manual) {
                     j["underlayMode"] = static_cast<int>(p.underlay_mode);
                 }
+                // HP-ENG-001.b : écrit seulement hors défaut (un .osp inchangé reste inchangé).
+                if (p.pull_mode != document::PullMode::Manual) {
+                    j["pullMode"] = static_cast<int>(p.pull_mode);
+                }
+                if (p.edge_outline) {
+                    j["edgeOutline"] = true;
+                }
+                if (p.pull_compensation.value != 0) {
+                    j["pullCompensation"] = p.pull_compensation.value;
+                }
+                if (p.underlay_zigzag) {
+                    j["underlayZigzag"] = true;
+                }
                 if (p.spacing_regularity != 0.0) {
                     j["spacingRegularity"] = p.spacing_regularity;
                 }
@@ -340,10 +392,19 @@ json params_to_json(const document::StitchParams& params) {
             } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
                 json guides = json::array();
                 for (const auto& g : p.guides) {
-                    guides.push_back({{"x", g.anchor.x.value},
-                                      {"y", g.anchor.y.value},
-                                      {"angle", g.angle.radians},
-                                      {"absolute", g.absolute}});
+                    json guide = {{"x", g.anchor.x.value},
+                                  {"y", g.anchor.y.value},
+                                  {"angle", g.angle.radians},
+                                  {"absolute", g.absolute}};
+                    // Absent = guide droit : un .osp sans courbe reste identique octet pour octet.
+                    if (!g.path.empty()) {
+                        json path = json::array();
+                        for (const Vec2um& point : g.path) {
+                            path.push_back(json::array({point.x.value, point.y.value}));
+                        }
+                        guide["path"] = std::move(path);
+                    }
+                    guides.push_back(std::move(guide));
                 }
                 j = {{"type", "autoSatin"},
                      {"guides", std::move(guides)},
@@ -369,8 +430,31 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.underlay_mode != document::UnderlayMode::Manual) {
                     j["underlayMode"] = static_cast<int>(p.underlay_mode);
                 }
+                // HP-ENG-001.b : écrit seulement hors défaut (un .osp inchangé reste inchangé).
+                if (p.pull_mode != document::PullMode::Manual) {
+                    j["pullMode"] = static_cast<int>(p.pull_mode);
+                }
                 if (p.compact_axis) {
                     j["compactAxis"] = true;
+                }
+                if (p.auto_spacing) {
+                    j["autoSpacing"] = true;
+                }
+                if (p.corner_mode != document::SatinCorner::None) {
+                    j["cornerMode"] = static_cast<int>(p.corner_mode);
+                }
+                if (p.corner_threshold != document::AutoSatinParams{}.corner_threshold) {
+                    j["cornerThreshold"] = p.corner_threshold.radians;
+                }
+                // HP-STI-022 : bord irrégulier, écrit seulement hors défaut.
+                if (p.jagged != document::SatinJagged::None) {
+                    j["jagged"] = static_cast<int>(p.jagged);
+                }
+                if (p.jagged_amplitude != document::AutoSatinParams{}.jagged_amplitude) {
+                    j["jaggedAmplitude"] = p.jagged_amplitude.value;
+                }
+                if (p.jagged_seed != document::AutoSatinParams{}.jagged_seed) {
+                    j["jaggedSeed"] = p.jagged_seed;
                 }
                 // Méthode : par nom, seulement si elle n'est pas le défaut (le fichier reste
                 // lisible par une version antérieure tant que le squelette est utilisé).
@@ -387,6 +471,70 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.exit_point) {
                     j["exitPoint"] = {{"x", p.exit_point->x.value}, {"y", p.exit_point->y.value}};
                 }
+            } else if constexpr (std::is_same_v<T, document::BlanketStitchParams>) {
+                j = {{"type", "blanket"},
+                     {"style", static_cast<int>(p.style)},
+                     {"width", p.width.value},
+                     {"spacing", p.spacing.value},
+                     {"side", static_cast<int>(p.side)}};
+            } else if constexpr (std::is_same_v<T, document::ContourFillParams>) {
+                j = {{"type", "contourFill"},
+                     {"rowSpacing", p.row_spacing.value},
+                     {"stitchLength", p.stitch_length.value},
+                     {"minLength", p.min_length.value},
+                     {"inset", p.inset.value},
+                     {"spiral", p.spiral},
+                     {"hiddenUnderpath", p.hidden_underpath}};
+            } else if constexpr (std::is_same_v<T, document::MotifRunParams>) {
+                j = {{"type", "motifRun"},
+                     {"motif", static_cast<int>(p.motif)},
+                     {"size", p.size.value},
+                     {"spacing", p.spacing.value},
+                     {"stitchLength", p.stitch_length.value},
+                     {"minLength", p.min_length.value},
+                     {"alternate", p.alternate}};
+            } else if constexpr (std::is_same_v<T, document::MotifFillParams>) {
+                j = {{"type", "motifFill"},
+                     {"motif", static_cast<int>(p.motif)},
+                     {"size", p.size.value},
+                     {"spacing", p.spacing.value},
+                     {"angle", p.angle.radians},
+                     {"stagger", p.stagger},
+                     {"inset", p.inset.value},
+                     {"stitchLength", p.stitch_length.value},
+                     {"minLength", p.min_length.value},
+                     {"hiddenUnderpath", p.hidden_underpath}};
+            } else if constexpr (std::is_same_v<T, document::RadialFillParams> ||
+                                 std::is_same_v<T, document::SpiralFillParams>) {
+                // HP-STI-008 / 009 : mêmes clés, `type` distinct.
+                j = {{"type",
+                      std::is_same_v<T, document::RadialFillParams> ? "radialFill" : "spiralFill"},
+                     {"rowSpacing", p.row_spacing.value},
+                     {"stitchLength", p.stitch_length.value},
+                     {"minLength", p.min_length.value},
+                     {"inset", p.inset.value},
+                     {"hiddenUnderpath", p.hidden_underpath}};
+                if (p.center) {
+                    j["center"] = {{"x", p.center->x.value}, {"y", p.center->y.value}};
+                }
+                if constexpr (std::is_same_v<T, document::SpiralFillParams>) {
+                    j["clockwise"] = p.clockwise;
+                }
+            } else if constexpr (std::is_same_v<T, document::CrosshatchFillParams>) {
+                j = {{"type", "crosshatchFill"},
+                     {"angle", p.angle.radians},
+                     {"layers", p.layers},
+                     {"rowSpacing", p.row_spacing.value},
+                     {"stitchLength", p.stitch_length.value},
+                     {"inset", p.inset.value},
+                     {"hiddenUnderpath", p.hidden_underpath}};
+            } else if constexpr (std::is_same_v<T, document::CrossStitchParams>) {
+                j = {{"type", "crossStitch"},
+                     {"cell", p.cell.value},
+                     {"gridAngle", p.grid_angle.radians},
+                     {"fullCross", p.full_cross},
+                     {"passes", p.passes},
+                     {"hiddenUnderpath", p.hidden_underpath}};
             }
             return j;
         },
@@ -400,6 +548,11 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.stitch_length = Micrometers{j.at("stitchLength")};
         p.min_length = Micrometers{j.at("minLength")};
         p.repeats = j.at("repeats");
+        // HP-STI-001 : champs optionnels (anciens .osp : point droit, décalage par défaut).
+        const int style = j.value("style", 0);
+        p.style = (style >= 0 && style <= 3) ? static_cast<document::RunningStyle>(style)
+                                             : document::RunningStyle::Run;
+        p.stem_offset = Micrometers{j.value("stemOffset", p.stem_offset.value)};
         return document::StitchParams{p};
     }
     if (type == "tatami") {
@@ -420,6 +573,10 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.pull_compensation = Micrometers{std::clamp(j.value("pullCompensation", 0), 0, 3'000)};
         p.underlay_mode =
             static_cast<document::UnderlayMode>(std::clamp(j.value("underlayMode", 0), 0, 1));
+        p.pull_mode = static_cast<document::PullMode>(std::clamp(j.value("pullMode", 0), 0, 3));
+        p.underlay_zigzag = j.value("underlayZigzag", false);
+        p.row_end_clip = Micrometers{std::clamp(j.value("rowEndClip", 0), 0, 5'000)};
+        p.edge_outline = j.value("edgeOutline", false);
         if (j.contains("entryPoint")) {
             p.entry_point = Vec2um{Micrometers{j.at("entryPoint").at("x")},
                                    Micrometers{j.at("entryPoint").at("y")}};
@@ -468,6 +625,17 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.lock_passes = j.value("lockPasses", 2);
         p.underlay_mode =
             static_cast<document::UnderlayMode>(std::clamp(j.value("underlayMode", 0), 0, 1));
+        p.pull_mode = static_cast<document::PullMode>(std::clamp(j.value("pullMode", 0), 0, 3));
+        p.auto_spacing = j.value("autoSpacing", false);
+        p.corner_mode =
+            static_cast<document::SatinCorner>(std::clamp(j.value("cornerMode", 0), 0, 3));
+        p.corner_threshold =
+            Angle{std::clamp(j.value("cornerThreshold", p.corner_threshold.radians),
+                             0.2617993877991494, 2.6179938779914940)};
+        p.jagged = static_cast<document::SatinJagged>(std::clamp(j.value("jagged", 0), 0, 3));
+        p.jagged_amplitude = Micrometers{std::clamp<std::int32_t>(
+            j.value("jaggedAmplitude", p.jagged_amplitude.value), 200, 6'000)};
+        p.jagged_seed = j.value("jaggedSeed", p.jagged_seed);
         if (j.contains("border") && j.at("border").is_object()) {
             const auto& bj = j.at("border");
             document::BorderSatinSpec spec;
@@ -553,6 +721,10 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.handmade_intensity = j.value("handmadeIntensity", 50);
         p.underlay_mode =
             static_cast<document::UnderlayMode>(std::clamp(j.value("underlayMode", 0), 0, 1));
+        p.pull_mode = static_cast<document::PullMode>(std::clamp(j.value("pullMode", 0), 0, 3));
+        p.edge_outline = j.value("edgeOutline", false);
+        p.pull_compensation = Micrometers{std::clamp(j.value("pullCompensation", 0), 0, 3'000)};
+        p.underlay_zigzag = j.value("underlayZigzag", false);
         // Valeur hors [0 ; 1] ou non finie : bornée (fichier édité à la main).
         p.spacing_regularity = std::clamp(j.value("spacingRegularity", 0.0), 0.0, 1.0);
         if (j.contains("densityGradient") && j.at("densityGradient").is_object()) {
@@ -622,7 +794,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
               Range{"lockLength", 0, 20'000}, Range{"pullCompensation", -5'000, 5'000},
               Range{"pullLeft", -5'000, 5'000}, Range{"pullRight", -5'000, 5'000},
               Range{"pushStart", -5'000, 5'000}, Range{"pushEnd", -5'000, 5'000},
-              Range{"underlayMode", 0, 1}}) {
+              Range{"underlayMode", 0, 1}, Range{"pullMode", 0, 3}, Range{"cornerMode", 0, 3}}) {
             if (const auto err = badNumber(field(r.name), r.name, r.lo, r.hi)) {
                 return fail(ErrorCategory::InvalidFile, *err);
             }
@@ -643,6 +815,12 @@ Result<document::StitchParams> params_from_json(const json& j) {
                 guide.anchor = Vec2um{Micrometers{g.at("x")}, Micrometers{g.at("y")}};
                 guide.angle = Angle{g.value("angle", 0.0)};
                 guide.absolute = g.value("absolute", false);
+                if (g.contains("path")) {
+                    for (const auto& point : g.at("path")) {
+                        guide.path.push_back(
+                            Vec2um{Micrometers{point.at(0)}, Micrometers{point.at(1)}});
+                    }
+                }
                 p.guides.push_back(guide);
             }
         }
@@ -668,7 +846,18 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.lock_length = Micrometers{j.value("lockLength", 800)};
         p.lock_passes = j.value("lockPasses", 2);
         p.underlay_mode = static_cast<document::UnderlayMode>(j.value("underlayMode", 0));
+        p.pull_mode = static_cast<document::PullMode>(std::clamp(j.value("pullMode", 0), 0, 3));
         p.compact_axis = j.value("compactAxis", false);
+        p.auto_spacing = j.value("autoSpacing", false);
+        p.corner_mode =
+            static_cast<document::SatinCorner>(std::clamp(j.value("cornerMode", 0), 0, 3));
+        p.corner_threshold =
+            Angle{std::clamp(j.value("cornerThreshold", p.corner_threshold.radians),
+                             0.2617993877991494, 2.6179938779914940)};
+        p.jagged = static_cast<document::SatinJagged>(std::clamp(j.value("jagged", 0), 0, 3));
+        p.jagged_amplitude = Micrometers{std::clamp<std::int32_t>(
+            j.value("jaggedAmplitude", p.jagged_amplitude.value), 200, 6'000)};
+        p.jagged_seed = j.value("jaggedSeed", p.jagged_seed);
         if (j.contains("strategy")) {
             // Une méthode inconnue (fichier d'une version plus récente) est REFUSÉE : la
             // remplacer par le squelette ferait changer le satin à l'insu de l'utilisateur.
@@ -701,6 +890,117 @@ Result<document::StitchParams> params_from_json(const json& j) {
             p.exit_point = Vec2um{Micrometers{j.at("exitPoint").at("x")},
                                   Micrometers{j.at("exitPoint").at("y")}};
         }
+        return document::StitchParams{p};
+    }
+    if (type == "blanket") {
+        // Blanket / zigzag (HP-STI-003) : toutes les clés sauf `type` sont optionnelles.
+        document::BlanketStitchParams p;
+        const int style = j.value("style", static_cast<int>(p.style));
+        const int side = j.value("side", static_cast<int>(p.side));
+        if (style < 0 || style > 1 || side < 0 || side > 2) {
+            return fail(ErrorCategory::InvalidFile, "blanket : style ou côté hors limites");
+        }
+        p.style = static_cast<document::BlanketStyle>(style);
+        p.side = static_cast<document::BlanketSide>(side);
+        p.width = Micrometers{j.value("width", p.width.value)};
+        p.spacing = Micrometers{j.value("spacing", p.spacing.value)};
+        return document::StitchParams{p};
+    }
+    if (type == "contourFill") {
+        // Remplissage concentrique : toutes les clés sauf `type` sont optionnelles (défauts du
+        // modèle) ; valeurs bornées (fichier édité à la main).
+        document::ContourFillParams p;
+        p.row_spacing = Micrometers{std::clamp(j.value("rowSpacing", 400), 100, 10'000)};
+        p.stitch_length = Micrometers{std::clamp(j.value("stitchLength", 3'000), 1'000, 7'000)};
+        p.min_length = Micrometers{std::clamp(j.value("minLength", 500), 0, 7'000)};
+        p.inset = Micrometers{std::clamp(j.value("inset", 200), 0, 10'000)};
+        p.spiral = j.value("spiral", true);
+        p.hidden_underpath = j.value("hiddenUnderpath", true);
+        return document::StitchParams{p};
+    }
+    if (type == "motifRun") {
+        // Motif le long d'un chemin (HP-STI-002) : clés optionnelles, valeurs bornées.
+        document::MotifRunParams p;
+        const int motif = j.value("motif", static_cast<int>(p.motif));
+        if (motif < 0 || motif > static_cast<int>(document::MotifId::Scallop)) {
+            return fail(ErrorCategory::InvalidFile, "motifRun : motif inconnu");
+        }
+        p.motif = static_cast<document::MotifId>(motif);
+        p.size = Micrometers{std::clamp(j.value("size", p.size.value), 500, 40'000)};
+        p.spacing = Micrometers{std::clamp(j.value("spacing", p.spacing.value), 1'000, 100'000)};
+        p.stitch_length =
+            Micrometers{std::clamp(j.value("stitchLength", p.stitch_length.value), 1'000, 7'000)};
+        p.min_length = Micrometers{std::clamp(j.value("minLength", p.min_length.value), 0, 7'000)};
+        p.alternate = j.value("alternate", p.alternate);
+        return document::StitchParams{p};
+    }
+    if (type == "motifFill") {
+        // Remplissage à motif (HP-STI-006) : clés optionnelles, valeurs bornées.
+        document::MotifFillParams p;
+        const int motif = j.value("motif", static_cast<int>(p.motif));
+        if (motif < 0 || motif > static_cast<int>(document::MotifId::Scallop)) {
+            return fail(ErrorCategory::InvalidFile, "motifFill : motif inconnu");
+        }
+        p.motif = static_cast<document::MotifId>(motif);
+        p.size = Micrometers{std::clamp(j.value("size", p.size.value), 500, 40'000)};
+        p.spacing = Micrometers{std::clamp(j.value("spacing", p.spacing.value), 1'000, 100'000)};
+        p.angle = Angle{j.value("angle", p.angle.radians)};
+        p.stagger = j.value("stagger", p.stagger);
+        p.inset = Micrometers{std::clamp(j.value("inset", p.inset.value), 0, 10'000)};
+        p.stitch_length =
+            Micrometers{std::clamp(j.value("stitchLength", p.stitch_length.value), 1'000, 7'000)};
+        p.min_length = Micrometers{std::clamp(j.value("minLength", p.min_length.value), 0, 7'000)};
+        p.hidden_underpath = j.value("hiddenUnderpath", p.hidden_underpath);
+        return document::StitchParams{p};
+    }
+    if (type == "radialFill" || type == "spiralFill") {
+        // HP-STI-008 / 009 : clés optionnelles (défauts du modèle), valeurs bornées.
+        const auto common = [&](auto& p) {
+            p.row_spacing = Micrometers{std::clamp(j.value("rowSpacing", 400), 100, 10'000)};
+            p.stitch_length = Micrometers{std::clamp(j.value("stitchLength", 3'000), 1'000, 7'000)};
+            p.min_length = Micrometers{std::clamp(j.value("minLength", 500), 0, 7'000)};
+            p.inset = Micrometers{std::clamp(j.value("inset", 200), 0, 10'000)};
+            p.hidden_underpath = j.value("hiddenUnderpath", true);
+            if (j.contains("center")) {
+                p.center = Vec2um{Micrometers{j.at("center").at("x")},
+                                  Micrometers{j.at("center").at("y")}};
+            }
+        };
+        if (type == "radialFill") {
+            document::RadialFillParams p;
+            common(p);
+            return document::StitchParams{p};
+        }
+        document::SpiralFillParams p;
+        common(p);
+        p.clockwise = j.value("clockwise", false);
+        return document::StitchParams{p};
+    }
+    if (type == "crosshatchFill") {
+        document::CrosshatchFillParams p;
+        const double angle = j.value("angle", 0.0);
+        if (!std::isfinite(angle)) {
+            return fail(ErrorCategory::InvalidFile, "crosshatchFill : angle invalide");
+        }
+        p.angle = Angle{angle};
+        p.layers = std::clamp(j.value("layers", 2), 2, 3);
+        p.row_spacing = Micrometers{std::clamp(j.value("rowSpacing", 1'500), 300, 10'000)};
+        p.stitch_length = Micrometers{std::clamp(j.value("stitchLength", 3'000), 1'000, 7'000)};
+        p.inset = Micrometers{std::clamp(j.value("inset", 200), 0, 10'000)};
+        p.hidden_underpath = j.value("hiddenUnderpath", true);
+        return document::StitchParams{p};
+    }
+    if (type == "crossStitch") {
+        document::CrossStitchParams p;
+        const double angle = j.value("gridAngle", 0.0);
+        if (!std::isfinite(angle)) {
+            return fail(ErrorCategory::InvalidFile, "crossStitch : gridAngle invalide");
+        }
+        p.grid_angle = Angle{angle};
+        p.cell = Micrometers{std::clamp(j.value("cell", 2'500), 1'000, 8'000)};
+        p.full_cross = j.value("fullCross", true);
+        p.passes = std::clamp(j.value("passes", 1), 1, 3);
+        p.hidden_underpath = j.value("hiddenUnderpath", true);
         return document::StitchParams{p};
     }
     return fail(ErrorCategory::InvalidFile, "Type de point inconnu : " + type);
@@ -814,6 +1114,15 @@ json override_to_json(const document::StitchOverride& ov) {
         j["type"] = (*ov.forced_type == document::StitchPointType::Jump) ? "jump" : "stitch";
     }
     j["trimAfter"] = ov.trim_after;
+    if (ov.deleted) {
+        j["deleted"] = true;
+    }
+    if (!ov.inserted_after.empty()) {
+        j["insertedAfter"] = json::array();
+        for (const Vec2um& p : ov.inserted_after) {
+            j["insertedAfter"].push_back({{"x", p.x.value}, {"y", p.y.value}});
+        }
+    }
     return j;
 }
 
@@ -885,7 +1194,30 @@ Result<std::vector<document::StitchOverride>> overrides_from_json(const json& ar
         // aucune commande du Lot 8.1 n'en produit (cf. Point 5,
         // `SetStitchTrimCommand`), donc seul un JSON malformé/hand-écrit peut
         // en contenir un -- refusé plutôt que silencieusement absorbé.
-        if (!ov.moved_to.has_value() && !ov.forced_type.has_value() && !ov.trim_after) {
+        if (entry.contains("deleted")) {
+            const auto& d = entry.at("deleted");
+            if (!d.is_boolean()) {
+                return fail(ErrorCategory::InvalidFile, "Retouche invalide : deleted non booléen");
+            }
+            ov.deleted = d.get<bool>();
+        }
+        if (entry.contains("insertedAfter")) {
+            const auto& ins = entry.at("insertedAfter");
+            if (!ins.is_array()) {
+                return fail(ErrorCategory::InvalidFile,
+                            "Retouche invalide : insertedAfter doit être un tableau");
+            }
+            for (const auto& p : ins) {
+                auto pos = override_pos_from_json(p);
+                if (!pos) {
+                    return std::unexpected(pos.error());
+                }
+                ov.inserted_after.push_back(*pos);
+            }
+        }
+
+        if (!ov.moved_to.has_value() && !ov.forced_type.has_value() && !ov.trim_after &&
+            !ov.deleted && ov.inserted_after.empty()) {
             return fail(ErrorCategory::InvalidFile,
                         "Retouche invalide : entrée sans modification effective (index " +
                             std::to_string(*idx) + ")");
@@ -933,6 +1265,42 @@ json text_to_json(const document::TextObject& t) {
     if (t.ligatures) {
         j["ligatures"] = true;
     }
+    // Bases de texte, éditions par lettre et connecteurs (HP-TXT-005/008/014) : mêmes règles.
+    if (t.base.kind != document::TextBaseKind::Line) {
+        json base;
+        base["kind"] = static_cast<int>(t.base.kind);
+        base["radius"] = t.base.radius.value;
+        base["inside"] = t.base.inside;
+        if (!t.base.path.empty()) {
+            json pts = json::array();
+            for (const auto& p : t.base.path) {
+                pts.push_back(vec_to_json(p));
+            }
+            base["path"] = std::move(pts);
+        }
+        j["base"] = std::move(base);
+    }
+    if (!t.glyph_edits.empty()) {
+        json edits = json::array();
+        for (const auto& e : t.glyph_edits) {
+            json ej{{"index", e.index},
+                    {"dx", e.dx.value},
+                    {"dy", e.dy.value},
+                    {"rotation", e.rotation.radians},
+                    {"scale", e.scale}};
+            if (e.rgb) {
+                ej["rgb"] = rgb_to_json(*e.rgb);
+            }
+            edits.push_back(std::move(ej));
+        }
+        j["glyphEdits"] = std::move(edits);
+    }
+    if (t.letter_connector != document::ConnectorMode::Inherit) {
+        j["letterConnector"] = static_cast<int>(t.letter_connector);
+    }
+    if (t.word_connector != document::ConnectorMode::Inherit) {
+        j["wordConnector"] = static_cast<int>(t.word_connector);
+    }
     return j;
 }
 
@@ -974,6 +1342,35 @@ document::TextObject text_from_json(const json& j) {
         }
     }
     t.ligatures = j.value("ligatures", d.ligatures);
+    if (const auto it = j.find("base"); it != j.end() && it->is_object()) {
+        t.base.kind = static_cast<document::TextBaseKind>(std::clamp(it->value("kind", 0), 0, 3));
+        t.base.radius = Micrometers{std::max(1, it->value("radius", d.base.radius.value))};
+        t.base.inside = it->value("inside", false);
+        if (const auto pit = it->find("path"); pit != it->end() && pit->is_array()) {
+            for (const auto& pj : *pit) {
+                t.base.path.push_back(vec_from_json(pj));
+            }
+        }
+    }
+    if (const auto it = j.find("glyphEdits"); it != j.end() && it->is_array()) {
+        for (const auto& ej : *it) {
+            document::GlyphEdit e;
+            e.index = ej.value("index", 0U);
+            e.dx = Micrometers{ej.value("dx", 0)};
+            e.dy = Micrometers{ej.value("dy", 0)};
+            e.rotation = Angle{ej.value("rotation", 0.0)};
+            e.scale = ej.value("scale", 1.0);
+            if (ej.contains("rgb")) {
+                e.rgb = rgb_from_json(ej.at("rgb"));
+            }
+            t.glyph_edits.push_back(e);
+        }
+    }
+    const auto connector = [&](const char* key) {
+        return static_cast<document::ConnectorMode>(std::clamp(j.value(key, 0), 0, 2));
+    };
+    t.letter_connector = connector("letterConnector");
+    t.word_connector = connector("wordConnector");
     return t;
 }
 
@@ -986,6 +1383,18 @@ json project_to_json(const document::Project& project) {
     j["canvas"] = {{"width", project.canvas.width.value}, {"height", project.canvas.height.value}};
     if (project.canvas.margin.value > 0) {
         j["canvas"]["margin"] = project.canvas.margin.value; // absente = 0 (projets antérieurs)
+    }
+    // HP-HOOP-001/002 : forme du cadre et profil machine, absents = rectangle / aucune machine
+    // (les .osp antérieurs se relisent à l'identique, et un rectangle s'écrit comme avant).
+    if (project.canvas.shape != document::HoopShape::Rectangle) {
+        j["canvas"]["shape"] =
+            project.canvas.shape == document::HoopShape::Ellipse ? "ellipse" : "rounded";
+        if (project.canvas.shape == document::HoopShape::RoundedRectangle) {
+            j["canvas"]["cornerRadius"] = project.canvas.corner_radius.value;
+        }
+    }
+    if (!project.machine_id.empty()) {
+        j["machine"] = project.machine_id;
     }
 
     j["ops"] = json::array();
@@ -1011,6 +1420,82 @@ json project_to_json(const document::Project& project) {
         j["segmentation"] = s;
     }
 
+    if (!project.calques.empty()) {
+        j["calques"] = json::array();
+        for (const auto& calque : project.calques) {
+            json co;
+            co["id"] = calque.id.value;
+            co["name"] = calque.name;
+            co["visible"] = calque.visible;
+            co["locked"] = calque.locked;
+            j["calques"].push_back(std::move(co));
+        }
+    }
+
+    if (!project.groups.empty()) {
+        // Groupes d'objets (HP-OBJ-009) : clé facultative sans montée de schéma ; un lecteur
+        // plus ancien l'ignore (les formes restent présentes, simplement non groupées).
+        j["groups"] = json::array();
+        for (const auto& group : project.groups) {
+            json go;
+            go["id"] = group.id.value;
+            go["name"] = group.name;
+            if (group.parent.valid()) {
+                go["parent"] = group.parent.value;
+            }
+            j["groups"].push_back(std::move(go));
+        }
+    }
+
+    if (!project.colorways.empty()) {
+        // Coloris multiples (HP-THR-006) : clé facultative, un lecteur plus ancien l'ignore (les
+        // objets portent déjà les couleurs du coloris actif).
+        json cw;
+        cw["active"] = project.active_colorway;
+        cw["items"] = json::array();
+        for (const auto& colorway : project.colorways) {
+            json item;
+            item["name"] = colorway.name;
+            item["entries"] = json::array();
+            for (const auto& entry : colorway.entries) {
+                json e;
+                e["object"] = entry.object.value;
+                e["rgb"] = rgb_to_json(entry.rgb);
+                if (entry.thread) {
+                    e["thread"] = {{"chart", entry.thread->chart_id}, {"code", entry.thread->code}};
+                }
+                item["entries"].push_back(std::move(e));
+            }
+            cw["items"].push_back(std::move(item));
+        }
+        j["colorways"] = std::move(cw);
+    }
+    if (!project.stitch_presets.empty()) {
+        // Préréglages de points (HP-ENG-013) : clé facultative, absente = aucun préréglage.
+        json presets = json::array();
+        for (const auto& preset : project.stitch_presets) {
+            presets.push_back({{"name", preset.name}, {"params", params_to_json(preset.params)}});
+        }
+        j["stitchPresets"] = std::move(presets);
+    }
+    if (!(project.fabric == document::FabricSettings{})) {
+        // Tissu de fond (HP-THR-008) : clé facultative, absente = blanc.
+        json fabric = {{"rgb", rgb_to_json(project.fabric.color)}, {"name", project.fabric.name}};
+        if (!project.fabric.material.empty()) {
+            fabric["material"] = project.fabric.material;
+        }
+        if (!project.fabric.stabilizer.empty()) {
+            fabric["stabilizer"] = project.fabric.stabilizer;
+        }
+        if (project.fabric.grain_angle.radians != 0.0) {
+            fabric["grainAngleRad"] = project.fabric.grain_angle.radians;
+        }
+        if (project.fabric.weft_softness != 1.0) {
+            fabric["weftSoftness"] = project.fabric.weft_softness;
+        }
+        j["fabric"] = std::move(fabric);
+    }
+
     j["vectorObjects"] = json::array();
     for (const auto& v : project.vector_objects) {
         json vo;
@@ -1018,11 +1503,20 @@ json project_to_json(const document::Project& project) {
         vo["name"] = v.name;
         vo["rgb"] = rgb_to_json(v.rgb);
         vo["visible"] = v.visible;
+        if (v.locked) { // clé absente quand déverrouillé : les anciens fichiers restent identiques
+            vo["locked"] = true;
+        }
         if (v.source_region) {
             vo["sourceRegion"] = v.source_region->value;
         }
         if (v.text_owner) {
             vo["textOwner"] = v.text_owner->value;
+        }
+        if (v.calque.valid()) {
+            vo["calque"] = v.calque.value;
+        }
+        if (v.group.valid()) {
+            vo["group"] = v.group.value;
         }
         vo["paths"] = json::array();
         for (const auto& ps : v.paths) {
@@ -1044,6 +1538,12 @@ json project_to_json(const document::Project& project) {
         json eo;
         eo["id"] = e.id.value;
         eo["name"] = e.name;
+        if (e.semantic) {
+            eo["semantic"] = {{"role", e.semantic->role},
+                              {"family", e.semantic->family},
+                              {"confidence", e.semantic->confidence},
+                              {"geometryFingerprint", e.semantic->geometry_fingerprint}};
+        }
         eo["sourceVector"] = e.source_vector.value;
         eo["rgb"] = rgb_to_json(e.rgb);
         eo["visible"] = e.visible;
@@ -1056,6 +1556,10 @@ json project_to_json(const document::Project& project) {
         }
         if (e.connector != document::ConnectorMode::Inherit) {
             eo["connector"] = static_cast<int>(e.connector); // HP-SEQ-005 : absent = Inherit
+        }
+        if (e.knockout) { // HP-ENG-011 : absent = désactivé
+            eo["knockout"] = true;
+            eo["knockoutMargin"] = e.knockout_margin.value;
         }
         eo["params"] = params_to_json(e.params);
         // Schéma v6 (HP-THR-004) : fil de nuancier assigné, écrit seulement s'il existe.
@@ -1103,6 +1607,13 @@ json project_to_json(const document::Project& project) {
                         {"withinObject", f.hidden_travel.within_object},
                         {"reorderUnderlay", f.hidden_travel.reorder_underlay},
                         {"reorderRegions", f.hidden_travel.reorder_regions}}}};
+    // HP-SEQ-008 : écrits seulement s'ils existent (fichier identique sinon).
+    if (f.design_start) {
+        j["finishing"]["designStart"] = vec_to_json(*f.design_start);
+    }
+    if (f.design_end) {
+        j["finishing"]["designEnd"] = vec_to_json(*f.design_end);
+    }
 
     // AD-04 : design importé (DST aujourd'hui) -- donnée source immuable,
     // absente d'un projet qui n'en a pas (comportement historique inchangé).
@@ -1145,7 +1656,13 @@ Result<document::Project> project_from_json(const json& j) {
             project.canvas.width = Micrometers{c.value("width", 100'000)};
             project.canvas.height = Micrometers{c.value("height", 100'000)};
             project.canvas.margin = Micrometers{c.value("margin", 0)};
+            const std::string shape = c.value("shape", std::string("rectangle"));
+            project.canvas.shape = shape == "ellipse"   ? document::HoopShape::Ellipse
+                                   : shape == "rounded" ? document::HoopShape::RoundedRectangle
+                                                        : document::HoopShape::Rectangle;
+            project.canvas.corner_radius = Micrometers{c.value("cornerRadius", 0)};
         }
+        project.machine_id = j.value("machine", std::string());
 
         for (const auto& op : j.at("ops")) {
             auto parsed = op_from_json(op);
@@ -1175,17 +1692,102 @@ Result<document::Project> project_from_json(const json& j) {
             project.segmentation = std::move(seg);
         }
 
+        if (j.contains("groups")) {
+            for (const auto& go : j.at("groups")) {
+                document::ObjectGroup group;
+                group.id = ObjectId{go.at("id").get<std::uint64_t>()};
+                group.name = go.value("name", std::string{});
+                group.parent = ObjectId{go.value("parent", std::uint64_t{0})};
+                project.groups.push_back(std::move(group));
+            }
+        }
+        if (j.contains("calques")) {
+            for (const auto& co : j.at("calques")) {
+                document::Calque calque;
+                calque.id = ObjectId{co.at("id").get<std::uint64_t>()};
+                calque.name = co.value("name", std::string{});
+                calque.visible = co.value("visible", true);
+                calque.locked = co.value("locked", false);
+                project.calques.push_back(std::move(calque));
+            }
+        }
+
+        if (j.contains("colorways")) {
+            const auto& cw = j.at("colorways");
+            if (cw.contains("items")) {
+                for (const auto& item : cw.at("items")) {
+                    document::Colorway colorway;
+                    colorway.name = item.value("name", std::string{});
+                    for (const auto& e : item.at("entries")) {
+                        document::ColorwayEntry entry;
+                        entry.object = ObjectId{e.at("object").get<std::uint64_t>()};
+                        entry.rgb = rgb_from_json(e.at("rgb"));
+                        if (e.contains("thread")) {
+                            const auto& tj = e.at("thread");
+                            if (!tj.is_object() || !tj.contains("chart") || !tj.contains("code") ||
+                                !tj.at("chart").is_string() || !tj.at("code").is_string()) {
+                                return fail(ErrorCategory::InvalidFile,
+                                            "Coloris invalide : « thread » doit porter « chart » "
+                                            "et « code »");
+                            }
+                            entry.thread =
+                                thread_palette::ThreadKey{tj.at("chart").get<std::string>(),
+                                                          tj.at("code").get<std::string>()};
+                        }
+                        colorway.entries.push_back(std::move(entry));
+                    }
+                    project.colorways.push_back(std::move(colorway));
+                }
+            }
+            const int active = cw.value("active", -1);
+            project.active_colorway =
+                (active >= 0 && static_cast<std::size_t>(active) < project.colorways.size())
+                    ? active
+                    : -1;
+        }
+        if (j.contains("stitchPresets") && j.at("stitchPresets").is_array()) {
+            for (const auto& pj : j.at("stitchPresets")) {
+                if (!pj.is_object() || !pj.contains("params")) {
+                    continue; // entrée illisible : ignorée (lecture tolérante)
+                }
+                auto params = params_from_json(pj.at("params"));
+                if (!params) {
+                    continue;
+                }
+                document::StitchPreset preset;
+                preset.name = pj.value("name", std::string{});
+                preset.params = std::move(*params);
+                project.stitch_presets.push_back(std::move(preset));
+            }
+        }
+        if (j.contains("fabric")) {
+            const auto& fj = j.at("fabric");
+            project.fabric.color = rgb_from_json(fj.at("rgb"));
+            project.fabric.name = fj.value("name", std::string{});
+            project.fabric.material = fj.value("material", std::string{});
+            project.fabric.stabilizer = fj.value("stabilizer", std::string{});
+            project.fabric.grain_angle = Angle{fj.value("grainAngleRad", 0.0)};
+            project.fabric.weft_softness = fj.value("weftSoftness", 1.0);
+        }
+
         for (const auto& vo : j.at("vectorObjects")) {
             document::VectorObject v;
             v.id = ObjectId{vo.at("id").get<std::uint64_t>()};
             v.name = vo.at("name");
             v.rgb = rgb_from_json(vo.at("rgb"));
             v.visible = vo.value("visible", true);
+            v.locked = vo.value("locked", false);
             if (vo.contains("sourceRegion")) {
                 v.source_region = RegionId{vo.at("sourceRegion").get<std::uint64_t>()};
             }
             if (vo.contains("textOwner")) {
                 v.text_owner = ObjectId{vo.at("textOwner").get<std::uint64_t>()};
+            }
+            if (vo.contains("group")) {
+                v.group = ObjectId{vo.at("group").get<std::uint64_t>()};
+            }
+            if (vo.contains("calque")) {
+                v.calque = ObjectId{vo.at("calque").get<std::uint64_t>()};
             }
             for (const auto& ps : vo.at("paths")) {
                 v.paths.push_back(path_set_from_json(ps));
@@ -1203,6 +1805,32 @@ Result<document::Project> project_from_json(const json& j) {
             document::EmbroideryObject e;
             e.id = ObjectId{eo.at("id").get<std::uint64_t>()};
             e.name = eo.at("name");
+            if (eo.contains("semantic")) {
+                const auto& semantic = eo.at("semantic");
+                if (!semantic.is_object() || !semantic.contains("role") ||
+                    !semantic.at("role").is_string() || !semantic.contains("family") ||
+                    !semantic.at("family").is_string() || !semantic.contains("confidence") ||
+                    !semantic.at("confidence").is_number() ||
+                    !semantic.contains("geometryFingerprint")) {
+                    return fail(ErrorCategory::InvalidFile, "Mémoire sémantique invalide");
+                }
+                document::SemanticAnnotation annotation;
+                annotation.role = semantic.at("role").get<std::string>();
+                annotation.family = semantic.at("family").get<std::string>();
+                annotation.confidence = semantic.at("confidence").get<double>();
+                if (annotation.role.empty() || annotation.role.size() > 200 ||
+                    annotation.family.size() > 120 || !std::isfinite(annotation.confidence) ||
+                    annotation.confidence < 0.0 || annotation.confidence > 1.0) {
+                    return fail(ErrorCategory::InvalidFile, "Champs sémantiques hors limites");
+                }
+                auto fingerprint = strict_uint64(semantic.at("geometryFingerprint"),
+                                                 "semantic.geometryFingerprint");
+                if (!fingerprint) {
+                    return std::unexpected(fingerprint.error());
+                }
+                annotation.geometry_fingerprint = *fingerprint;
+                e.semantic = std::move(annotation);
+            }
             e.source_vector = ObjectId{eo.at("sourceVector").get<std::uint64_t>()};
             e.rgb = rgb_from_json(eo.at("rgb"));
             e.visible = eo.value("visible", true);
@@ -1212,6 +1840,8 @@ Result<document::Project> project_from_json(const json& j) {
             e.join = static_cast<document::JoinMode>(std::clamp(eo.value("join", 0), 0, 2));
             e.connector =
                 static_cast<document::ConnectorMode>(std::clamp(eo.value("connector", 0), 0, 2));
+            e.knockout = eo.value("knockout", false);
+            e.knockout_margin = Micrometers{std::clamp(eo.value("knockoutMargin", 300), 0, 5'000)};
             auto params = params_from_json(eo.at("params"));
             if (!params) {
                 return std::unexpected(params.error());
@@ -1335,6 +1965,12 @@ Result<document::Project> project_from_json(const json& j) {
                 h.within_object = hj.value("withinObject", hd.within_object);
                 h.reorder_underlay = hj.value("reorderUnderlay", hd.reorder_underlay);
                 h.reorder_regions = hj.value("reorderRegions", hd.reorder_regions);
+            }
+            if (fj.contains("designStart")) {
+                f.design_start = vec_from_json(fj.at("designStart"));
+            }
+            if (fj.contains("designEnd")) {
+                f.design_end = vec_from_json(fj.at("designEnd"));
             }
         } else {
             project.finishing = document::SequenceFinishing::legacy();

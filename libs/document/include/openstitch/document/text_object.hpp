@@ -3,11 +3,13 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "openstitch/core/ids.hpp"
 #include "openstitch/core/units.hpp"
+#include "openstitch/document/embroidery_object.hpp"
 
 namespace openstitch::document {
 
@@ -43,6 +45,40 @@ struct TextFontRef {
     int face_index{0};   // visage dans une collection (.ttc)
 
     bool operator==(const TextFontRef&) const = default;
+};
+
+// Base du texte (HP-TXT-005) : courbe le long de laquelle les lettres sont posées.
+//   Line   : ligne droite (historique) ;
+//   Arc    : arc de cercle de rayon `radius`, la ligne de base démarre à `origin` ;
+//   Circle : cercle complet de rayon `radius` ; les lettres sont réparties sur toute la
+//            circonférence (espacement ajouté pour boucler) ;
+//   Path   : polyligne `path` (µm, relatifs à `origin`), abscisse curviligne.
+enum class TextBaseKind : std::uint8_t { Line, Arc, Circle, Path };
+
+struct TextBase {
+    TextBaseKind kind{TextBaseKind::Line};
+    Micrometers radius{50'000}; // Arc / Circle (> 0)
+    // Faux : texte sur le dessus (convexe, sommets des lettres vers l'extérieur, lecture
+    // horaire). Vrai : texte en dessous (concave, sommets vers le centre, lecture
+    // antihoraire).
+    bool inside{false};
+    std::vector<Vec2um> path; // Path : points relatifs à `origin`
+
+    bool operator==(const TextBase&) const = default;
+};
+
+// Édition individuelle d'une lettre (HP-TXT-008) : écarts appliqués à la lettre
+// d'index `index` (ordre de lecture, espaces exclus) APRÈS la mise en page ; le reste
+// du texte reste régénéré. Rotation et échelle autour du centre de la boîte de la lettre.
+struct GlyphEdit {
+    std::uint32_t index{0};
+    Micrometers dx{};
+    Micrometers dy{};
+    Angle rotation{0.0};
+    double scale{1.0};
+    std::optional<std::array<std::uint8_t, 3>> rgb; // couleur propre à la lettre
+
+    bool operator==(const GlyphEdit&) const = default;
 };
 
 // Crénage manuel d'une paire de caractères (HP-TXT-007). `adjust` REMPLACE le crénage de
@@ -85,6 +121,15 @@ struct TextObject {
     // texte autour de `origin` (sens antihoraire, repère Y vers le haut).
     Vec2um origin{};
     Angle rotation{0.0};
+
+    // Base courbe (HP-TXT-005) ; Line = comportement historique.
+    TextBase base;
+    // Éditions par lettre (HP-TXT-008), triées par index, une entrée par index.
+    std::vector<GlyphEdit> glyph_edits;
+    // Connecteurs (HP-TXT-014) : coupe entre deux lettres d'un même mot / entre deux mots
+    // (ou lignes). Inherit = règle générale des finitions.
+    ConnectorMode letter_connector{ConnectorMode::Inherit};
+    ConnectorMode word_connector{ConnectorMode::Inherit};
 
     std::array<std::uint8_t, 3> rgb{0, 0, 0};
     TextFill fill{TextFill::Auto};

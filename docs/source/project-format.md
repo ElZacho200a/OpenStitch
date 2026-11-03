@@ -44,6 +44,10 @@ Compression (2026-10) : l'image PNG, déjà compressée, est stockée telle quel
   `sectionIndex`, `sectionCount` et les identifiants optionnels
   `startJunction`/`endJunction`. Ces identifiants sont locaux au réseau défini
   par `sourceVector`; l'absence de `topology` désigne un satin isolé/historique.
+  Le variant `crossStitch` (HP-STI-012, point de croix) porte `cell` (µm, [1000 ; 8000], défaut
+  2500), `gridAngle` (radians, défaut 0), `fullCross` (booléen, défaut vrai ; faux = demi-croix),
+  `passes` ([1 ; 3], défaut 1) et `hiddenUnderpath` (défaut vrai) — toutes les clés optionnelles ;
+  un lecteur sans ce type refuse le fichier (« Type de point inconnu »), `schemaVersion` inchangé.
   Le `tatami` porte de même ses réglages avancés (Lot 7) : `underlayEdge`,
   `underlayParallel`, `underlayInset`, `underlaySpacing`, `hiddenUnderpath` et
   `entryPoint` — optionnels et rétrocompatibles. Le `directional`
@@ -89,12 +93,16 @@ Compression (2026-10) : l'image PNG, déjà compressée, est stockée telle quel
   l'optimisation des trajets), `reorderRegions` (bool, défaut faux : mode avancé).
 - Lot « moteur de points », clés additives d'un objet de broderie, écrites
   seulement hors défaut et bornées à la lecture : `join` (0 hérite du projet, 1
-  automatique, 2 désactivé) ; `connector` (HP-SEQ-005 : 0 hérite, 1 toujours couper, 2 ne jamais couper) ; dans `params` : tatami `pullCompensation` (µm,
-  [0 ; 3000], HP-ENG-001) et, pour tatami, directionnel, satin et auto-satin,
+  automatique, 2 désactivé) ; `knockout` / `knockoutMargin` (HP-ENG-011 : absent = désactivé ; booléen, recouvrement conservé en µm, défaut 300) ; `connector` (HP-SEQ-005 : 0 hérite, 1 toujours couper, 2 ne jamais couper) ; dans `params` : tatami `pullCompensation` (µm,
+  [0 ; 3000], HP-ENG-001), tatami `rowEndClip` (µm, [0 ; 5000], écrêtage des bouts de rangée) et `edgeOutline` (booléen, contour cousu par-dessus ; aussi pour le directionnel) et, pour tatami, directionnel, satin et auto-satin,
   `underlayMode` (0 manuelle, 1 automatique, HP-ENG-002) ; satin `border`
   (`width` µm [500 ; 20000], `side` 0 centré / 1 intérieur / 2 extérieur,
   `corner` 0 vifs / 1 arrondis, `pathSet`, `ring` : anneau suivi du vecteur
-  source, HP-STI-004). Aucun changement de `schemaVersion` : un ancien lecteur
+  source, HP-STI-004) ; satin et auto-satin `cornerMode` (0 aucun, 1 onglet, 2 chevauchement, 3 coupe)
+  et `cornerThreshold` (radians, [15° ; 150°], défaut 60° ; HP-ENG-005) ; satin et auto-satin
+  `jagged` (0 aucun, 1 côté A, 2 côté B, 3 les deux), `jaggedAmplitude` (µm, [200 ; 6000], défaut 1500)
+  et `jaggedSeed` (entier non signé, défaut 1) : bord irrégulier, écrits hors défaut seulement
+  (HP-STI-022). Aucun changement de `schemaVersion` : un ancien lecteur
   ignore ces clés.
 
 ### Fil de nuancier d'un objet (schéma v6)
@@ -149,9 +157,29 @@ la prochaine édition ; mieux vaut qu'il refuse le fichier v8. Les points ne son
 stockés : les mêmes champs vides redonnent exactement les mêmes points qu'avant
 (`tests/unit/lettering/test_text_typography.cpp`).
 
+### Calques du document (schéma v9, conditionnel)
+
+Le document peut définir des calques (HP-OBJ-024) : une clé `calques` au niveau du document,
+tableau ordonné du **fond vers le dessus** de `{id, name, visible, locked}`, et une clé `calque`
+(identifiant) sur les objets vectoriels. Un objet sans `calque`, ou dont le calque est inconnu,
+appartient au calque du fond ; sans clé `calques`, le document a un seul calque implicite. Le rang
+du calque est la clé principale de l'ordre de couture, l'ordre des `embroideryObjects` ne
+départageant que les objets d'un même calque.
+
+Le fichier n'est écrit en **v9 que si le document définit des calques** ; sinon il garde sa
+version antérieure, octet pour octet. Raison : un lecteur v8 ignorerait les calques et coudrait
+dans un autre ordre (`tests/unit/project_io/test_calque_persistence.cpp`).
+
+### Préréglages de points (HP-ENG-013)
+
+Clé facultative `stitchPresets` au niveau du document : tableau de `{name, params}` où `params`
+a exactement la forme du champ `params` d'un objet de broderie. Absente = aucun préréglage ; une
+entrée sans `params` lisible est ignorée. Aucune montée de `schemaVersion` : un lecteur plus ancien
+ignore la clé sans conséquence sur la couture.
+
 ## Versionnement et validation
 
-`schemaVersion` vaut **6**, **7** si un auto-satin utilise une méthode autre que le squelette, ou **8** si un texte porte un crénage manuel ou des ligatures (v7 → v8 : `kerningPairs` et `ligatures` d'un texte, voir plus haut ; v6 → v7 : clé `strategy` et `sweepAngle` de l'auto-satin, voir plus haut ; v5 → v6 : fil de nuancier `thread` des objets de broderie (`{chart, code}`, voir *Palettes et fils*) ; objets texte du lettrage, clé `textObjects`
+`schemaVersion` vaut **6**, **7** si un auto-satin utilise une méthode autre que le squelette, ou **8** si un texte porte un crénage manuel ou des ligatures, ou **9** si le document définit des calques (v8 → v9 : clés `calques` et `calque`, voir plus haut ; v7 → v8 : `kerningPairs` et `ligatures` d'un texte, voir plus haut ; v6 → v7 : clé `strategy` et `sweepAngle` de l'auto-satin, voir plus haut ; v5 → v6 : fil de nuancier `thread` des objets de broderie (`{chart, code}`, voir *Palettes et fils*) ; objets texte du lettrage, clé `textObjects`
 (id, text, fontFamily/fontFile/fontBuiltin/faceIndex, capHeight, letterSpacing, wordSpacing,
 lineSpacing, kerning, align, justifyWidth, origin, rotation, rgb, fill, maxSatinWidth, density ;
 µm entiers, rotation en radians) et `textOwner` sur les objets vectoriels, voir `lettering.md` ;
@@ -190,12 +218,13 @@ déjà à jour ne subit aucune étape (idempotent) ; la sortie est déterministe
 | v5 → v6 | aucune (absence de `thread` / `textObjects` = aucun) |
 | v6 → v7 | aucune (absence de `strategy` = squelette) |
 | v7 → v8 | aucune (absence de `kerningPairs` / `ligatures` = pas de crénage manuel, pas de ligatures) |
+| v8 → v9 | aucune (absence de `calques` / `calque` = un seul calque implicite) |
 
 Les étapes « aucune » existent quand même : la table reste sans trou et une future version
 n'a qu'à ajouter une ligne. Un fichier d'une version **future** (> `kMaxReadableSchemaVersion`)
 est refusé en `UnsupportedFormat` avec un message nommant les deux versions. Tests :
 `tests/unit/project_io/test_schema_migrations.cpp` construit un `project.json` par version
-(v1 à v8) et le relit. `tests/fixtures/osp/` n'existe pas : les anciens fichiers sont forgés
+(v1 à v9) et le relit. `tests/fixtures/osp/` n'existe pas : les anciens fichiers sont forgés
 en test, plus lisibles qu'un binaire figé.
 
 ## Sauvegarde atomique

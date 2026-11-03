@@ -68,11 +68,11 @@ TEST_CASE("migrations : v7 -> v8 est documentee et ne reecrit pas un document sa
     REQUIRE(steps.size() >= 7);
     CHECK(steps[6].from == 7);
     CHECK(steps[6].to == 8);
-    CHECK(project_io::kMaxReadableSchemaVersion == project_io::kSchemaVersionTextTypography);
+    CHECK(project_io::kSchemaVersionTextTypography == 8);
     const auto migrated = project_io::migrate_project_json(satin_document(7, ""));
     REQUIRE(migrated.has_value());
     const auto root = nlohmann::json::parse(*migrated);
-    CHECK(root.at("schemaVersion") == 8);
+    CHECK(root.at("schemaVersion") == project_io::kMaxReadableSchemaVersion);
     CHECK_FALSE(root.at("document").contains("textObjects"));
 }
 
@@ -93,6 +93,36 @@ TEST_CASE("migrations : chaque version lisible se relit et reporte sa version") 
         CHECK(satin.max_width_hard.value == (version >= 4 ? 30000 : 48000));
         fs::remove(path);
     }
+}
+
+TEST_CASE("migrations : un fragment du presse-papiers v3 se colle comme un .osp migre") {
+    document::ObjectFragment source;
+    document::VectorObject vec;
+    vec.id = ObjectId{1};
+    source.vectors.push_back(vec);
+    document::EmbroideryObject emb;
+    emb.id = ObjectId{2};
+    emb.source_vector = vec.id;
+    emb.params = document::SatinParams{};
+    source.embroideries.push_back(emb);
+
+    // Fragment ecrit par une version v3 : ni maxWidthHard, ni version courante.
+    auto root = nlohmann::json::parse(project_io::fragment_to_json(source));
+    root["schemaVersion"] = 3;
+    for (auto& eo : root["document"]["embroideryObjects"]) {
+        eo["params"].erase("maxWidthHard");
+    }
+    const auto back = project_io::fragment_from_json(root.dump());
+    REQUIRE(back.has_value());
+    REQUIRE(back->embroideries.size() == 1);
+    const auto* satin = std::get_if<document::SatinParams>(&back->embroideries[0].params);
+    REQUIRE(satin != nullptr);
+    CHECK(satin->max_width_hard.value == 48000);
+
+    root["schemaVersion"] = project_io::kMaxReadableSchemaVersion + 1;
+    CHECK_FALSE(project_io::fragment_from_json(root.dump()).has_value());
+    root["schemaVersion"] = 0;
+    CHECK_FALSE(project_io::fragment_from_json(root.dump()).has_value());
 }
 
 TEST_CASE("migrations : v1 -> v2 materialise rungs et canvas par defaut") {

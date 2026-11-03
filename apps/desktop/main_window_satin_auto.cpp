@@ -101,6 +101,10 @@ std::uint64_t summary_key(const document::VectorObject& source,
         mix(g.anchor.y.value);
         mix(static_cast<std::int64_t>(std::llround(g.angle.radians * 1e6)));
         mix(g.absolute ? 1 : 0);
+        for (const Vec2um& point : g.path) {
+            mix(point.x.value);
+            mix(point.y.value);
+        }
     }
     return h;
 }
@@ -366,16 +370,9 @@ MainWindow::pristineSatinContour(const document::VectorObject& vector) const {
     if (!raw || raw->empty()) {
         return std::nullopt;
     }
-    double current = 0.0;
-    for (const auto& set : vector.paths) {
-        current += geometry::path_set_area_um2(set);
-    }
-    double pristine = 0.0;
-    for (const auto& set : *raw) {
-        pristine += geometry::path_set_area_um2(set);
-    }
-    // Moins de 3 % de plus : le contour est déjà celui de la région (ou retouché à la main).
-    if (pristine <= 0.0 || current <= pristine * 1.03) {
+    // Seul un contour élargi par le recouvrement des tatamis (bande fine) est ramené à celui de
+    // la région ; une forme fusionnée ou retouchée est gardée telle quelle.
+    if (!vectorization::is_overlap_grown_contour(vector.paths, *raw)) {
         return std::nullopt;
     }
     return *raw;
@@ -694,7 +691,12 @@ void MainWindow::applyAutoSatinEdit(ObjectId id, document::AutoSatinParams param
     updateActions();
 }
 
-void MainWindow::addAutoSatinGuideFromStroke(ObjectId id, Vec2um from, Vec2um to) {
+void MainWindow::addAutoSatinGuideFromStroke(ObjectId id, const std::vector<Vec2um>& stroke) {
+    if (stroke.size() < 2) {
+        return;
+    }
+    const Vec2um from = stroke.front();
+    const Vec2um to = stroke.back();
     const auto* emb = project_.findEmbroidery(id);
     const auto* sat =
         emb != nullptr ? std::get_if<document::AutoSatinParams>(&emb->params) : nullptr;
@@ -709,7 +711,11 @@ void MainWindow::addAutoSatinGuideFromStroke(ObjectId id, Vec2um from, Vec2um to
     }
     document::AutoSatinParams params = *sat;
     // Trait tracé = direction des fils voulue, en absolu (repère du dessin).
-    params.guides.push_back({from, Angle{wrap_half_pi(std::atan2(dy, dx))}, true});
+    document::AutoSatinGuide guide{from, Angle{wrap_half_pi(std::atan2(dy, dx))}, true, {}};
+    if (stroke.size() >= 3) {
+        guide.path = stroke; // courbe : exploitée par le balayage parallèle
+    }
+    params.guides.push_back(std::move(guide));
     applyAutoSatinEdit(id, std::move(params), tr("Ajouter un guide d'orientation"));
 }
 
@@ -859,8 +865,15 @@ void MainWindow::renderAutoSatinOverlay(const document::EmbroideryObject& obj,
         const double half = 5.0; // mm
         const QPointF d(std::cos(direction) * half, -std::sin(direction) * half);
         QPainterPath arrow;
-        arrow.moveTo(c - d);
-        arrow.lineTo(c + d);
+        if (guide.path.size() >= 2) { // guide en courbe : le tracé lui-même
+            arrow.moveTo(toScene(guide.path.front()));
+            for (std::size_t i = 1; i < guide.path.size(); ++i) {
+                arrow.lineTo(toScene(guide.path[i]));
+            }
+        } else {
+            arrow.moveTo(c - d);
+            arrow.lineTo(c + d);
+        }
         QPen pen(tokens.warning);
         pen.setCosmetic(true);
         pen.setWidthF(2.4);

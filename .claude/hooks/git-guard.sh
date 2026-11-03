@@ -3,11 +3,6 @@
 # Compensates for Bash(git:*) permission — forces manual execution for dangerous commands.
 # No external dependencies (no jq). Portable across Linux and macOS.
 
-# Only active for Liza agents (pairing sessions have human oversight).
-brand_agent_id_var="LIZA""_AGENT_ID"
-agent_id_value="${!brand_agent_id_var:-${LIZA_AGENT_ID:-}}"
-[[ -z "$agent_id_value" ]] && exit 0
-
 input=$(cat)
 
 # Extract JSON string values without jq — matches "key": "value" patterns.

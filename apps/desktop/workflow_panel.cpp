@@ -15,7 +15,7 @@ namespace {
 const char* step_name(int i) {
     switch (i) {
     case 0:
-        return "Image";
+        return "Source";
     case 1:
         return "Régions";
     case 2:
@@ -41,6 +41,8 @@ QString state_word(WorkflowPanel::State s) {
         return QObject::tr("terminé");
     case WorkflowPanel::State::Attention:
         return QObject::tr("attention");
+    case WorkflowPanel::State::Skipped:
+        return QObject::tr("non requis");
     }
     return {};
 }
@@ -57,6 +59,8 @@ const char* state_key(WorkflowPanel::State s) {
         return "done";
     case WorkflowPanel::State::Attention:
         return "attention";
+    case WorkflowPanel::State::Skipped:
+        return "todo"; // état neutre : étape volontairement sautée
     }
     return "todo";
 }
@@ -113,9 +117,17 @@ void WorkflowPanel::applyTheme() {
     // Les couleurs viennent de la feuille de style (propriété « state ») : rien à peindre ici.
     for (int i = 0; i < kStepCount; ++i) {
         const char* key = state_key(current_[i]);
-        dots_[i]->setText(current_[i] == State::Done ? QStringLiteral("✓")
-                                                     : QString::number(i + 1));
+        if (current_[i] == State::Done) {
+            dots_[i]->setText(QStringLiteral("✓"));
+        } else if (current_[i] == State::Skipped) {
+            dots_[i]->setText(QStringLiteral("–"));
+        } else {
+            dots_[i]->setText(QString::number(i + 1));
+        }
         states_[i]->setText(state_word(current_[i]));
+        buttons_[i]->setToolTip(current_[i] == State::Skipped
+                                    ? tr("Cette étape n’est pas nécessaire pour cette source.")
+                                    : QString());
         set_state_property(dots_[i], key);
         set_state_property(states_[i], key);
     }

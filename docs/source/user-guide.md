@@ -162,7 +162,11 @@ entre les deux marqueurs.
 | N2b | Édition de nœuds | Ctrl + glisser | Suspendre l'accroche |
 | N4 | Édition de nœuds | Suppr | Supprimer les nœuds sélectionnés |
 | V1 | Règle | Glisser | Mesurer une distance (règle temporaire) |
+| V3 | Pinceau | Glisser | Pousser / tirer le contour de la forme sélectionnée (Maj : lisser) |
 | V2 | Pipette | Clic | Échantillonner la couleur et choisir un fil |
+| V4 | Pot de peinture | Clic | Remplir le vide fermé entre les formes |
+| V5 | Clic-pour-broder | Clic | Broder la zone de couleur sous le curseur |
+| V6 | Zones de détail | Glisser | Peindre (ou gommer) une zone de détail pour la segmentation |
 <!-- GESTURES:END -->
 
 ### Outils Règle et Pipette
@@ -646,7 +650,7 @@ La variable d'environnement `OPENSTITCH_THREADS=1` force le calcul séquentiel (
   estimée, et **refuse avec une raison** les formes qui ne s'y prêtent pas (disque,
   forme compacte) en proposant un tatami. Le contour utilisé est celui de la région
   segmentée. **Non validé sur machine** : vérifiez le résultat avant de broder ;
-- **Convertir automatiquement en satin (expérimental)…** — **même moteur, sans fenêtre de
+- **Convertir en satin automatiquement…** — **même moteur, sans fenêtre de
   réglages** : réglages par défaut et une seule confirmation (« Créer le satin ?
   annulable »). *Choisissez « Créer un satin automatique » pour régler, « Convertir
   automatiquement » pour aller vite* ;
@@ -714,9 +718,11 @@ seuil plus bas ou signalez le modèle.
 
 ## Menu Affichage
 
-Le sous-menu **Calques** regroupe des interrupteurs indépendants :
+Le sous-menu **Plans d'affichage** (ex-« Calques ») regroupe des interrupteurs indépendants.
+Il choisit seulement ce que le canevas montre ; les *couches de couture* d'une forme
+se gèrent dans la liste Document (voir « Couches de couture » ci-dessous) :
 
-| Calque | Effet |
+| Plan | Effet |
 |---|---|
 | Image | Affiche/masque l'image de travail |
 | Carte des régions | Affiche/masque la segmentation |
@@ -731,6 +737,7 @@ Le sous-menu **Calques** regroupe des interrupteurs indépendants :
 | Rendu réaliste ▸ Activer | Ctrl+Maj+R | Dessine chaque point comme un fil texturé (voir ci-dessous) |
 | Rendu réaliste ▸ Réglages… | — | Épaisseur du fil, relief, brillance, torsion, ombre, tissu, qualité |
 | Carte de densité | — | Surimpression colorée de la densité de points (voir ci-dessous) |
+| Carte d'épaisseur | — | Surimpression colorée de l'épaisseur estimée du fil, en mm (voir ci-dessous) |
 | Taille du cadre… | — | Définit la zone physique de broderie (voir ci-dessous) |
 | Thème | — | Clair / Sombre |
 | Densité | — | Confortable / Compact |
@@ -815,6 +822,30 @@ sur-dense** (4,0 pén./mm² par défaut, une heuristique d'ingénierie non mesur
 corpus ; mémorisé) et liste les **zones sur-denses** : un clic (ou Entrée) sur une
 zone **centre la vue** dessus.
 
+### Carte d'épaisseur
+
+**Affichage ▸ Carte d'épaisseur** (case à cocher, mémorisée, **exclusive** avec la carte de
+densité : une seule surimpression à la fois) colore chaque zone selon l'**épaisseur estimée du
+fil**, en millimètres, toutes passes comprises (sous-couche + dessus). Même palette que la
+densité, du **bleu** (mince) au **rouge** (épais) ; les zones au-delà du seuil sont plus opaques.
+La **légende** en bas à gauche donne l'échelle en mm et le repère du seuil.
+
+**C'est une estimation, pas une mesure.** OpenStitch connaît la longueur de fil déposée par zone ;
+il la convertit en millimètres avec une épaisseur supposée de **0,20 mm par couche dense** et
+suppose que les couches s'empilent linéairement (en réalité elles se tassent : l'estimation est
+plutôt optimiste). Ces valeurs viennent d'une veille documentaire et d'un calcul sur les données
+du fil, **pas d'un relevé sur machine** (`docs/veille-epaisseur-2026-10.md`).
+
+La carte **suit le zoom** : la case est plus fine en zoom avant (jusqu'à 0,5 mm), plus grossière
+et donc plus rapide en zoom arrière (jusqu'à 8 mm). Le recalcul se fait hors du fil d'interface,
+après un court délai qui regroupe une rafale de molette ; le résultat est mis en cache.
+
+Dans le panneau **Analyse**, la section *Carte de densité* règle aussi l'**épaisseur d'une couche**
+(0,20 mm par défaut) et le **seuil d'épaisseur** (3 couches par défaut, comme la règle
+`couches-superposees`), tous deux mémorisés. Quand la carte d'épaisseur est active, la liste montre
+la **zone la plus épaisse** (épaisseur, nombre de couches, objet) : un clic **centre la vue** dessus.
+La carte ne modifie jamais le document.
+
 ## Menu contextuel (clic droit)
 
 Un **clic droit** sur une forme ouvre un menu :
@@ -822,7 +853,7 @@ Un **clic droit** sur une forme ouvre un menu :
 - **Type de points** ▸ Contour cousu / Remplissage tatami / Colonne satin (le
   type courant est coché) — bascule instantanée et annulable ;
 - **Orientation du remplissage…** (si la forme est un tatami) ;
-- **Calques** — les mêmes interrupteurs que le menu Affichage.
+- **Plans d'affichage** — les mêmes interrupteurs que le menu Affichage.
 
 ## Poignée de rotation (orientation à la souris)
 
@@ -1043,8 +1074,19 @@ un terminal (`.\openstitch.exe 2> journal.txt` pour les garder). Pour les
 
 ## Menu Aide
 
-Le menu **Aide** compte trois entrées, chacune avec une infobulle et un texte
+Le menu **Aide** compte six entrées, chacune avec une infobulle et un texte
 d'aide dans la barre d'état :
+
+- **Tutoriel : de l'image à la broderie…** : génère une image d'exemple (un disque,
+  un rectangle et un triangle de trois couleurs, créés par le logiciel, sans fichier
+  ni droit d'auteur), l'ouvre par l'import habituel et affiche le *Guide de prise en
+  main* pour la suivre pas à pas jusqu'au fichier de broderie.
+- **Manuel d'utilisation** : ce guide, affiché dans l'application avec un champ de
+  recherche (Entrée lance la recherche).
+- **Aide sur l'outil ou le panneau actif** (**Maj+F1**) : ouvre le manuel directement à
+  la section du panneau où se trouve le focus (Propriétés, Document, Fils, Ordre de
+  couture, Analyse, Filtres, Workflow, Historique) ou, à défaut, de l'outil actif
+  (dessin, texte, règle, pipette…). **F1** reste réservé aux gestes ci-dessous.
 
 - **Guide de prise en main** : une fenêtre **non modale** (elle reste ouverte
   pendant que vous travaillez, une seule à la fois) qui déroule les six étapes de
@@ -1111,6 +1153,7 @@ la liste complète et filtrable est dans **Aide ▸ Gestes souris et clavier** (
 | I | Outil Pipette : échantillonner une couleur de l'image et choisir un fil |
 | U | Option « Tracé ouvert » (polygone et courbe non fermés) |
 | F1 | Ouvrir « Gestes souris et clavier » |
+| Maj+F1 | Aide sur l'outil ou le panneau actif (ouvre le manuel à la bonne section) |
 | Ctrl+Shift+P | Masquer / afficher les panneaux |
 | Ctrl+Shift+R | Activer / désactiver le rendu réaliste des points |
 | Ctrl+Q | Quitter |

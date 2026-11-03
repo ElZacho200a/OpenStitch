@@ -19,6 +19,7 @@
 #include <QImage>
 #include <QLabel>
 #include <QMessageBox>
+#include <QPainter>
 #include <QPixmap>
 #include <QProgressBar>
 #include <QPushButton>
@@ -26,6 +27,7 @@
 #include <QResizeEvent>
 #include <QScopeGuard>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QSlider>
 #include <QSpinBox>
 #include <QStandardPaths>
@@ -34,11 +36,15 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <filesystem>
 #include <functional>
+#include <stop_token>
 
 #include "app_theme.hpp"
+#include "busy_indicator.hpp"
+#include "openstitch/ai_segmentation/backend_run.hpp"
 #include "openstitch/ai_segmentation/color_refine.hpp"
 #include "openstitch/ai_segmentation/label_map.hpp"
 #include "openstitch/ai_segmentation/topology_cleanup.hpp"
@@ -118,7 +124,7 @@ const QString kSettingsPrefix = QStringLiteral("ui/aiSegmentation/");
 AiSegmentationDialog::AiSegmentationDialog(image::Image sourceImage, Millimeters mmPerPx,
                                            AiPreferences prefs, QWidget* parent)
     : QDialog(parent), sourceImage_(std::move(sourceImage)), mmPerPx_(mmPerPx),
-      prefs_(std::move(prefs)) {
+      prefs_(std::move(prefs)), transportFactory_(ai_segmentation::process_transport_factory()) {
     setupUi();
 }
 
@@ -150,6 +156,21 @@ void AiSegmentationDialog::setupUi() {
     explainer->setWordWrap(true);
     markSecondaryText(explainer); // texte atténué : information, pas une alerte
     mainLayout->addWidget(explainer);
+
+    auto* engineRow = new QHBoxLayout;
+    engineCombo_ = new QComboBox(this);
+    engineCombo_->setObjectName(QStringLiteral("aiEngineCombo"));
+    engineCombo_->setToolTip(
+        tr("Moteur de segmentation : le worker SAM 2 historique, un backend IA déclaré dans les "
+           "préférences, ou la segmentation par couleur (sans IA, toujours disponible)."));
+    engineRow->addWidget(new QLabel(tr("Moteur :"), this));
+    engineRow->addWidget(engineCombo_, 1);
+    mainLayout->addLayout(engineRow);
+    engineInfoLabel_ = new QLabel(this);
+    engineInfoLabel_->setObjectName(QStringLiteral("aiEngineInfo"));
+    engineInfoLabel_->setWordWrap(true);
+    markSecondaryText(engineInfoLabel_);
+    mainLayout->addWidget(engineInfoLabel_);
 
     auto* topRow = new QHBoxLayout;
     modelCombo_ = new QComboBox(this);
@@ -350,6 +371,67 @@ void AiSegmentationDialog::setupUi() {
     fitDialogToScreen(this);
 
     restoreChoices();
+    connect(engineCombo_, &QComboBox::currentIndexChanged, this, [this] { onEngineChanged(); });
+    populateEngines(AiEngine::fromString(prefs_.engine));
+}
+
+void AiSegmentationDialog::setTransportFactory(ai_segmentation::TransportFactory factory) {
+    transportFactory_ = std::move(factory);
+}
+
+AiEngine AiSegmentationDialog::engine() const {
+    return AiEngine::fromString(engineCombo_ != nullptr ? engineCombo_->currentData().toString()
+                                                        : QString());
+}
+
+void AiSegmentationDialog::populateEngines(const AiEngine& wanted) {
+    QString error;
+    backendSettings_ = loadBackendSettings(prefs_, &error);
+    {
+        const QSignalBlocker blocker(engineCombo_);
+        engineCombo_->clear();
+        engineCombo_->addItem(tr("SAM 2.1 — worker historique (WSL/Python)"),
+                              AiEngine{AiEngine::Kind::Legacy, {}}.toString());
+        for (const auto& backend : backendSettings_.backends) {
+            const QString name = QString::fromStdString(
+                backend.display_name.empty() ? backend.id : backend.display_name);
+            engineCombo_->addItem(
+                backend.enabled ? name : tr("%1 (désactivé)").arg(name),
+                AiEngine{AiEngine::Kind::Backend, QString::fromStdString(backend.id)}.toString());
+        }
+        engineCombo_->addItem(tr("Segmentation couleur (CIELAB, sans IA)"),
+                              AiEngine{AiEngine::Kind::Classical, {}}.toString());
+        int index = engineCombo_->findData(wanted.toString());
+        if (index < 0) {
+            index = 0; // choix devenu introuvable (backend retiré du fichier) : worker historique
+        }
+        engineCombo_->setCurrentIndex(index);
+    }
+    onEngineChanged();
+    if (!error.isEmpty()) {
+        engineInfoLabel_->setText(error);
+    }
+}
+
+void AiSegmentationDialog::onEngineChanged() {
+    const AiEngine chosen = engine();
+    modelCombo_->setEnabled(chosen.kind == AiEngine::Kind::Legacy); // un backend porte son modèle
+    profileCombo_->setEnabled(chosen.kind != AiEngine::Kind::Classical);
+    switch (chosen.kind) {
+    case AiEngine::Kind::Legacy:
+        engineInfoLabel_->setText(tr("Modèle SAM 2.1 choisi ci-dessous ; poids dans le dossier "
+                                     "des préférences (OpenStitch ne télécharge rien)."));
+        break;
+    case AiEngine::Kind::Backend:
+        engineInfoLabel_->setText(
+            tr("Le modèle est celui déclaré par ce backend (« Sonder les backends » dans les "
+               "préférences affiche l'état des poids, l'empreinte et les licences). Si le backend "
+               "est absent ou échoue, la segmentation couleur prend le relais, avec la raison."));
+        break;
+    case AiEngine::Kind::Classical:
+        engineInfoLabel_->setText(tr("Quantification CIELAB déterministe, aucun modèle requis."));
+        break;
+    }
 }
 
 void AiSegmentationDialog::restoreChoices() {
@@ -424,6 +506,7 @@ void AiSegmentationDialog::setPreferences(AiPreferences prefs) {
     if (client_ != nullptr) {
         client_->configure(toWorkerConfig(prefs_));
     }
+    populateEngines(engine());
     clearError();
     setStatus(tr("Préférences mises à jour — cliquez sur Analyser."));
 }
@@ -458,7 +541,7 @@ QString AiSegmentationDialog::jobDirPath() const {
 }
 
 void AiSegmentationDialog::onAnalyzeClicked() {
-    if (maskTable_->rowCount() > 0) {
+    if (maskTable_->rowCount() > 0 || fallbackSegmentation_) {
         // Une nouvelle analyse remplace les masques : choix décochés, protections et fusions
         // seraient perdus sans le dire.
         const auto answer = QMessageBox::question(
@@ -481,6 +564,7 @@ void AiSegmentationDialog::onAnalyzeClicked() {
     maskTable_->setRowCount(0);
     maskPixels_.clear();
     masks_ = {};
+    fallbackSegmentation_.reset();
     previewLabel_->clear();
     selectionPreviewLabel_->clear();
     previewPixmap_ = QPixmap();
@@ -510,6 +594,16 @@ void AiSegmentationDialog::onAnalyzeClicked() {
         analyzeButton_->setEnabled(true);
         cancelButton_->setEnabled(false);
         progressBar_->setVisible(false);
+        return;
+    }
+
+    const AiEngine chosen = engine();
+    if (chosen.kind == AiEngine::Kind::Classical) {
+        analyzeClassical({}, {}, false);
+        return;
+    }
+    if (chosen.kind == AiEngine::Kind::Backend) {
+        analyzeWithBackend(chosen.backendId);
         return;
     }
 
@@ -559,6 +653,156 @@ void AiSegmentationDialog::onAnalyzeClicked() {
         setStatus(tr("Démarrage du worker de segmentation…"));
         client_->start();
     }
+}
+
+void AiSegmentationDialog::finishAnalysis() {
+    phase_ = Phase::Idle;
+    activeRequestId_.clear();
+    analyzeButton_->setEnabled(true);
+    cancelButton_->setEnabled(false);
+    progressBar_->setVisible(false);
+}
+
+void AiSegmentationDialog::analyzeWithBackend(const QString& backendId) {
+    const auto found =
+        std::find_if(backendSettings_.backends.begin(), backendSettings_.backends.end(),
+                     [&](const auto& b) { return QString::fromStdString(b.id) == backendId; });
+    if (found == backendSettings_.backends.end()) {
+        analyzeClassical(tr("Backend IA « %1 » non déclaré dans le fichier de backends — repli "
+                            "sur la segmentation couleur (CIELAB).")
+                             .arg(backendId),
+                         {}, true);
+        return;
+    }
+    ai_segmentation::BackendRunRequest request;
+    request.backend = *found;
+    request.prompt = ai_segmentation::PromptKind::Automatic;
+    request.job_dir = std::filesystem::path(jobDirPath().toStdString());
+    request.options = {{"profile", profileCombo_->currentData().toString().toStdString()},
+                       {"max_resolution", std::to_string(prefs_.maxAnalysisResolution)}};
+    request.expected_size = std::pair{sourceImage_.width, sourceImage_.height};
+    // Le chargement de PyTorch et des poids précède le `hello` : délai de démarrage large.
+    request.session.start_timeout = std::chrono::seconds{180};
+
+    const QString name =
+        QString::fromStdString(found->display_name.empty() ? found->id : found->display_name);
+    setStatus(tr("Analyse avec %1… (la fenêtre d'attente permet d'annuler)").arg(name));
+    std::atomic<bool> cancel{false};
+    ai_segmentation::BackendRunOutcome outcome;
+    {
+        BusyIndicator busy(this, tr("Analyse avec %1…").arg(name), {}, true);
+        outcome = busy.run([&](const TaskContext& task) {
+            const std::stop_callback onStop(task.stop, [&cancel] { cancel = true; });
+            return ai_segmentation::run_backend_segmentation(request, transportFactory_, {},
+                                                             &cancel);
+        });
+    }
+
+    switch (outcome.status) {
+    case ai_segmentation::BackendRunStatus::Cancelled:
+        finishAnalysis();
+        setStatus(tr("Analyse annulée."));
+        return;
+    case ai_segmentation::BackendRunStatus::FellBack: {
+        const bool configIssue =
+            outcome.error_code &&
+            (isConfigurationIssue(*outcome.error_code) ||
+             *outcome.error_code == ai_segmentation::AiErrorCode::BackendUnavailable);
+        analyzeClassical(QString::fromStdString(outcome.fallback_reason),
+                         QString::fromStdString(outcome.detail), configIssue);
+        return;
+    }
+    case ai_segmentation::BackendRunStatus::Completed:
+        break;
+    }
+    finishAnalysis();
+    masks_ = std::move(outcome.masks);
+    const auto& report = outcome.report;
+    QString traced = tr("%1 masque(s) proposé(s) par %2 (modèle %3")
+                         .arg(masks_.masks.size())
+                         .arg(name, QString::fromStdString(report.model_id));
+    if (report.model_hash) {
+        traced +=
+            tr(", empreinte %1…").arg(QString::fromStdString(report.model_hash->substr(0, 12)));
+    }
+    traced += tr(") — cochez ceux à conserver puis validez.");
+    setStatus(traced);
+    loadMasksIntoTable();
+    showOverlayPreview();
+    rescalePreviews();
+}
+
+void AiSegmentationDialog::analyzeClassical(const QString& reason, const QString& detail,
+                                            bool configurationIssue) {
+    segmentation::SegmentationOptions options;
+    options.max_colors = colorRefineColorsSpin_->value();
+    options.min_region_px = colorRefineMinSizeSpin_->value();
+    segmentation::Segmentation seg;
+    QString failure;
+    {
+        BusyIndicator busy(this, tr("Segmentation couleur…"));
+        auto result = busy.run([&] { return segmentation::segment(sourceImage_, options); });
+        if (result) {
+            seg = std::move(*result);
+        } else {
+            failure = QString::fromStdString(result.error().message);
+        }
+    }
+    finishAnalysis();
+    if (!failure.isEmpty()) {
+        setError(tr("Segmentation couleur impossible : %1").arg(failure), detail, false);
+        return;
+    }
+    const auto regions = seg.region_count();
+    const auto overlay = segmentation::render_map(seg);
+    fallbackSegmentation_ = std::move(seg);
+    maskTable_->setRowCount(0);
+    maskPixels_.clear();
+    masks_ = {};
+    const QImage map(overlay.rgba.data(), overlay.width, overlay.height, overlay.width * 4,
+                     QImage::Format_RGBA8888);
+    previewPixmap_ = QPixmap::fromImage(map.copy());
+    selectionPreviewLabel_->clear();
+    selectionPreviewPixmap_ = QPixmap();
+    rescalePreviews();
+    validateButton_->setEnabled(true);
+    const QString summary = tr("%1 régions couleur (CIELAB) — « Valider » les crée comme "
+                               "régions éditables.")
+                                .arg(regions);
+    if (reason.isEmpty()) {
+        clearError();
+        setStatus(summary);
+    } else {
+        setError(reason + QLatin1Char(' ') + summary, detail, configurationIssue);
+    }
+}
+
+void AiSegmentationDialog::showOverlayPreview() {
+    if (sourceImage_.empty()) {
+        return;
+    }
+    const QImage base(sourceImage_.rgba.data(), sourceImage_.width, sourceImage_.height,
+                      sourceImage_.width * 4, QImage::Format_RGBA8888);
+    QImage canvas = base.convertToFormat(QImage::Format_ARGB32);
+    for (const auto& entry : masks_.masks) {
+        const auto it = maskPixels_.constFind(entry.id);
+        if (it == maskPixels_.constEnd() || it->size() != canvas.width() * canvas.height()) {
+            continue;
+        }
+        const QRgb tint = qRgb((entry.id * 53) % 180 + 60, (entry.id * 97) % 180 + 60,
+                               (entry.id * 151) % 180 + 60);
+        for (int y = 0; y < canvas.height(); ++y) {
+            auto* row = reinterpret_cast<QRgb*>(canvas.scanLine(y));
+            for (int x = 0; x < canvas.width(); ++x) {
+                if ((*it)[y * canvas.width() + x] != 0) {
+                    row[x] =
+                        qRgb((qRed(row[x]) + qRed(tint)) / 2, (qGreen(row[x]) + qGreen(tint)) / 2,
+                             (qBlue(row[x]) + qBlue(tint)) / 2);
+                }
+            }
+        }
+    }
+    previewPixmap_ = QPixmap::fromImage(canvas);
 }
 
 void AiSegmentationDialog::onCancelClicked() {
@@ -708,8 +952,12 @@ void AiSegmentationDialog::loadMasksIntoTable() {
         maskTable_->setItem(r, kColId, makeMaskIdItem(entry.id));
         maskTable_->setItem(r, 2,
                             makeNumberItem(static_cast<double>(entry.area_pixels) * mm2PerPx, 2));
-        maskTable_->setItem(r, 3, makeNumberItem(entry.predicted_iou, 2));
-        maskTable_->setItem(r, 4, makeNumberItem(entry.stability_score, 2));
+        maskTable_->setItem(r, 3,
+                            entry.iou_reported ? makeNumberItem(entry.predicted_iou, 2)
+                                               : new NumericItem(QStringLiteral("—"), -1.0));
+        maskTable_->setItem(r, 4,
+                            entry.stability_reported ? makeNumberItem(entry.stability_score, 2)
+                                                     : new NumericItem(QStringLiteral("—"), -1.0));
         maskTable_->setItem(r, 5, makeCheckableItem(Qt::Unchecked));
     }
     maskTable_->setSortingEnabled(true);
@@ -914,6 +1162,13 @@ void AiSegmentationDialog::onValidateClicked() {
     }
     // Le calcul tourne sur le fil de l'interface : bouton grisé, curseur d'attente et message
     // AVANT de commencer (sinon la fenêtre semble gelée, et un second clic relance le calcul).
+    if (fallbackSegmentation_) {
+        validatedSegmentation_ = std::move(fallbackSegmentation_);
+        fallbackSegmentation_.reset();
+        saveChoices();
+        accept();
+        return;
+    }
     validating_ = true;
     validateButton_->setEnabled(false);
     QGuiApplication::setOverrideCursor(Qt::WaitCursor);

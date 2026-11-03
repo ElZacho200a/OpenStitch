@@ -1,0 +1,53 @@
+name: Weekly performance snapshot
+
+on:
+  schedule:
+    - cron: '15 3 * * 3'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'scripts/performance/**'
+      - '.github/workflows/performance-trends.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  performance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test benchmark report parser
+        run: python -m unittest discover -s scripts/performance -p 'test_*.py' -v
+      - name: Export GitHub Actions vcpkg cache environment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nasm
+          git clone https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/vcpkg"
+          "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+      - name: Configure and build benchmark (no Qt)
+        run: |
+          cmake --preset linux-core
+          cmake --build --preset linux-core --target openstitch-bench -j 4
+      - name: Record reproducible corpus
+        shell: bash
+        run: |
+          mkdir -p benchmark-output
+          ./build/linux-core/tests/bench/openstitch-bench tests/fixtures/tentabrode.png --reps 2 >benchmark-output/bench.log
+          python scripts/performance/benchmark_report.py benchmark-output/bench.log --json benchmark-output/bench.json --markdown benchmark-output/bench.md
+          cat benchmark-output/bench.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: perf-snapshot-${{ github.sha }}
+          path: benchmark-output/
+          retention-days: 90

@@ -56,6 +56,8 @@ associée** listant les fichiers, classes, fonctions et tests réels.
 - [Guide utilisateur détaillé](user-guide.md)
 - [Ligne de commande (openstitch-cli)](cli.md)
 - [Projets .osp en ligne de commande, lots et agents](cli-project.md)
+- [Serveur MCP pour agents IA (openstitch-mcp)](mcp.md)
+- [Compagnon IA (pont local, dock, Claude, données, dépannage)](ai-companion.md)
 - [Dépannage](troubleshooting.md)
 - [Glossaire](glossary.md)
 
@@ -74,6 +76,7 @@ associée** listant les fichiers, classes, fonctions et tests réels.
 - [Palettes et fils](palettes-and-threads.md), [simulation](simulation.md),
   [analyse et validation](analysis-and-validation.md),
   [fiche de production](production-sheet.md)
+- [Langues de l'interface](i18n.md) (traduction, français source)
 
 **Formats, architecture et développement**
 

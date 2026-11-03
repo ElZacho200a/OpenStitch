@@ -31,11 +31,13 @@ struct ProductionOptions {
     // Date d'édition « AAAA-MM-JJ », fournie par l'appelant : la bibliothèque ne
     // lit jamais l'horloge (sortie déterministe).
     std::string date;
-    std::string notes; // notes libres de l'utilisateur, reprises telles quelles
+    std::string notes;  // notes libres de l'utilisateur, reprises telles quelles
+    std::string client; // destinataire facultatif, sans effet sur le design
 
     double stitches_per_minute{700.0}; // plage usuelle 600-800 points/min
     double color_change_seconds{30.0}; // temps d'un changement de fil
     double trim_seconds{2.0};          // temps d'une coupe
+    double jump_seconds{0.0};          // HP-PROD-002 : temps d'un saut (0 : non compté)
 
     // Vrai : le cadre est `project.canvas` et sert aussi de zone d'analyse
     // (« hors cadre »). Faux (DST relu, aucun cadre connu) : pas de cadre.
@@ -94,6 +96,7 @@ struct ProductionSheet {
     std::string project_name;
     std::string date;
     std::string notes;
+    std::string client;
 
     double width_mm{0.0}; // boîte englobante des points cousus
     double height_mm{0.0};
@@ -109,7 +112,13 @@ struct ProductionSheet {
     double stitches_per_minute{700.0};
     double color_change_seconds{30.0};
     double trim_seconds{2.0};
+    double jump_seconds{0.0};
     double estimated_minutes{0.0};
+    // HP-PROD-002 : décomposition de `estimated_minutes` (leur somme la reproduit).
+    double stitch_minutes{0.0};
+    double color_change_minutes{0.0};
+    double trim_minutes{0.0};
+    double jump_minutes{0.0};
 
     std::vector<ProductionBlock> blocks;
     // HP-PROD-005 : consommation de fil (ordres de grandeur, cf. ThreadConsumptionOptions).

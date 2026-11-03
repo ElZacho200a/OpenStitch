@@ -2,7 +2,9 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <atomic>
 #include <cmath>
+#include <stop_token>
 
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
@@ -234,6 +236,70 @@ TEST_CASE("courbes : un anneau garde son trou, resultat deterministe, defaut inc
     }
 }
 
+TEST_CASE("vectorize_region : annulation avant calcul sans geometrie partielle", "[task]") {
+    const auto seg = segmentation::segment(ring_image(), {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    const auto red = segmentation::region_at(*seg, 2, 2);
+    REQUIRE(red.has_value());
+
+    std::stop_source stop;
+    stop.request_stop();
+    const TaskContext task{.stop = stop.get_token()};
+    const auto result = vectorize_region(*seg, *red, {}, task);
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error().category == ErrorCategory::Cancelled);
+}
+
+TEST_CASE("vectorize_regions : annulation batch et progres deterministe", "[task]") {
+    const auto seg = segmentation::segment(ring_image(), {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    std::vector<RegionId> ids;
+    for (const auto& slot : seg->region_slots) {
+        if (slot) {
+            ids.push_back(slot->id);
+        }
+    }
+    REQUIRE(ids.size() >= 2);
+    const VectorizeOptions options{.mm_per_px = Millimeters{1.0},
+                                   .simplify_tolerance = Micrometers{200}};
+    std::stop_source stop;
+    stop.request_stop();
+    std::atomic<std::size_t> reports{0};
+    std::atomic<std::size_t> totalReported{0};
+    TaskContext cancelled;
+    cancelled.stop = stop.get_token();
+    cancelled.progress = [&](std::size_t, std::size_t total) {
+        ++reports;
+        totalReported = total;
+    };
+    const auto batch = vectorize_regions(*seg, ids, options, cancelled);
+    REQUIRE(batch.size() == ids.size());
+    for (const auto& result : batch) {
+        REQUIRE_FALSE(result.has_value());
+        CHECK(result.error().category == ErrorCategory::Cancelled);
+    }
+    CHECK(reports.load() == ids.size() + 1); // initialisation + une fin par region
+    CHECK(totalReported.load() == ids.size());
+
+    std::atomic<std::size_t> completed{0};
+    TaskContext progress;
+    progress.progress = [&](std::size_t done, std::size_t total) {
+        if (done > 0 && total == ids.size()) {
+            ++completed;
+        }
+    };
+    const auto withProgress = vectorize_regions(*seg, ids, options, progress);
+    const auto legacy = vectorize_regions(*seg, ids, options);
+    REQUIRE(withProgress.size() == legacy.size());
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+        REQUIRE(withProgress[i].has_value() == legacy[i].has_value());
+        if (legacy[i]) {
+            CHECK(*withProgress[i] == *legacy[i]);
+        }
+    }
+    CHECK(completed.load() == ids.size());
+}
+
 TEST_CASE("vectorize_regions : meme resultat que la boucle sequentielle, dans l'ordre demande") {
     const auto seg = segmentation::segment(ring_image(), {.max_colors = 2, .min_region_px = 1});
     REQUIRE(seg.has_value());
@@ -259,4 +325,117 @@ TEST_CASE("vectorize_regions : meme resultat que la boucle sequentielle, dans l'
     }
     CHECK_FALSE(batch[1].has_value());
     CHECK(vectorize_regions(*seg, {}, options).empty());
+}
+
+namespace {
+
+// Carre axis-aligned [x0,x1]x[y0,y1] en mm.
+geometry::PathSet square_mm(double x0, double y0, double x1, double y1) {
+    const auto node = [](double x, double y) {
+        return geometry::PathNode{
+            Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(x * 1000.0))},
+                   Micrometers{static_cast<std::int32_t>(std::lround(y * 1000.0))}},
+            geometry::NodeType::Corner, std::nullopt, std::nullopt};
+    };
+    geometry::PathSet set;
+    set.outer.closed = true;
+    set.outer.nodes = {node(x0, y0), node(x1, y0), node(x1, y1), node(x0, y1)};
+    return set;
+}
+
+} // namespace
+
+TEST_CASE("is_overlap_grown_contour : bande fine oui, fusion ou retouche non") {
+    const std::vector<geometry::PathSet> raw{square_mm(0, 0, 20, 20)};
+
+    // Identique ou quasi : rien a restaurer.
+    CHECK_FALSE(is_overlap_grown_contour(raw, raw));
+    // Recouvrement des voisins : 0,4 mm de plus tout autour -> contour brut a restaurer.
+    CHECK(is_overlap_grown_contour({square_mm(-0.4, -0.4, 20.4, 20.4)}, raw));
+    // Fusion de deux zones : la region d'origine + une zone voisine de meme taille. Le contour
+    // fusionne est voulu, il ne doit jamais redevenir la forme premiere.
+    CHECK_FALSE(is_overlap_grown_contour({square_mm(0, 0, 40, 20)}, raw));
+    // Meme chose avec une zone voisine plus petite (surface ajoutee > 3 %).
+    CHECK_FALSE(is_overlap_grown_contour({square_mm(0, 0, 26, 20)}, raw));
+    // Agrandissement homothetique par l'utilisateur.
+    CHECK_FALSE(is_overlap_grown_contour({square_mm(-5, -5, 25, 25)}, raw));
+    // Forme retouchee plus petite : jamais restauree.
+    CHECK_FALSE(is_overlap_grown_contour({square_mm(2, 2, 18, 18)}, raw));
+}
+
+namespace {
+
+// Disque rouge (rayon 40 px) sur fond blanc, 100x100.
+image::Image disc_image() {
+    image::Image img;
+    img.width = 100;
+    img.height = 100;
+    img.rgba.assign(100 * 100 * 4, 0);
+    for (int y = 0; y < 100; ++y) {
+        for (int x = 0; x < 100; ++x) {
+            const bool in = (x - 50) * (x - 50) + (y - 50) * (y - 50) <= 40 * 40;
+            if (in) {
+                set_px(img, x, y, 220, 30, 30);
+            } else {
+                set_px(img, x, y, 250, 250, 250);
+            }
+        }
+    }
+    return img;
+}
+
+std::size_t node_count(const std::vector<geometry::PathSet>& sets) {
+    std::size_t n = 0;
+    for (const auto& set : sets) {
+        n += set.outer.nodes.size();
+    }
+    return n;
+}
+
+segmentation::DetailMask uniform_mask(std::uint8_t value) {
+    segmentation::DetailMask mask;
+    mask.width = 100;
+    mask.height = 100;
+    mask.weights.assign(100 * 100, value);
+    return mask;
+}
+
+} // namespace
+
+TEST_CASE("zones de detail : une region de detail est vectorisee plus finement") {
+    const auto seg = segmentation::segment(disc_image(), {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    const auto red = segmentation::region_at(*seg, 50, 50);
+    REQUIRE(red.has_value());
+
+    const auto detail = uniform_mask(255);
+    const auto flat = uniform_mask(0);
+    VectorizeOptions options{.mm_per_px = Millimeters{0.25},
+                             .simplify_tolerance = Micrometers{400}};
+    const auto base = vectorize_region(*seg, *red, options);
+    options.detail_mask = &detail;
+    const auto fine = vectorize_region(*seg, *red, options);
+    options.detail_mask = &flat;
+    const auto stillFlat = vectorize_region(*seg, *red, options);
+    REQUIRE((base.has_value() && fine.has_value() && stillFlat.has_value()));
+
+    CHECK(node_count(*fine) > node_count(*base));       // contour plus fidele en detail
+    CHECK(node_count(*stillFlat) == node_count(*base)); // aplat : inchange
+}
+
+TEST_CASE("zones de detail : masque de mauvaise taille ignore") {
+    const auto seg = segmentation::segment(disc_image(), {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    const auto red = segmentation::region_at(*seg, 50, 50);
+    segmentation::DetailMask wrong;
+    wrong.width = 10;
+    wrong.height = 10;
+    wrong.weights.assign(100, 255);
+    VectorizeOptions options{.mm_per_px = Millimeters{0.25},
+                             .simplify_tolerance = Micrometers{400}};
+    const auto base = vectorize_region(*seg, *red, options);
+    options.detail_mask = &wrong;
+    const auto ignored = vectorize_region(*seg, *red, options);
+    REQUIRE((base.has_value() && ignored.has_value()));
+    CHECK(node_count(*ignored) == node_count(*base));
 }

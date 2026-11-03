@@ -1,4 +1,4 @@
-# Formats PES, JEF et EXP
+﻿# Formats PES, JEF et EXP
 
 Public : utilisateur avancé, développeur, mainteneur. État : **Implémenté, non validé
 sur machine réelle** (HP-FMT-002 à 005). Les codecs sont testés en aller-retour et sur des
@@ -106,6 +106,16 @@ le précédent est donc relu comme arrêt. Lecture : PES de toute version (le d�
 du bloc PEC est lu dans l'en-tête ; la section PES n'est pas interprétée, les couleurs
 viennent de la table PEC). Pas d'écriture PES v6 (couleurs RGB, noms de fils).
 
+## VP3 (Husqvarna Viking / Pfaff, HP-FMT-006)
+
+Codec `libs/formats/src/vp3.cpp`, écrit sans reprise de code tiers. Marqueur `%vsm%\0`, chaînes
+précédées d'une longueur 16 bits grand-boutiste, entiers grand-boutistes, unité 0,01 mm (10 um),
+un segment par couleur (départ, RVB, nom `#RRGGBB`, flux). Flux : paires d'octets signés (dx, dy) ;
+`0x80 0x01` point long (deux entiers 16 bits), `0x80 0x02` saut long (convention de cette
+implémentation, VP3 n'ayant pas de saut distinct), `0x80 0x03` coupe. Arrêt et changement de
+couleur ne se distinguent pas (un arrêt revient en changement). Décodeur tolérant (troncature,
+codes inconnus). **Non validé sur un visualiseur tiers ni une machine** : à vérifier par un humain.
+VIP et HUS (compression propre) ne sont pas faits.
 ## Aller-retour et déterminisme
 
 Sortie octet-exacte d'une exécution à l'autre. Aller-retour **exact** (types et positions

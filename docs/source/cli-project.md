@@ -1,6 +1,6 @@
 # Interface programmatique : projets `.osp` en ligne de commande
 
-Public : intégrateur, script, agent IA. Ce chapitre décrit le groupe de
+Public : intégrateur, script, agent IA (pour un agent, préférer le serveur MCP : `mcp.md`). Ce chapitre décrit le groupe de
 commandes `openstitch-cli project …` : numériser une image **directement en
 projet `.osp` natif et éditable**, l'inspecter, le modifier objet par objet ou
 par lots, contrôler sa qualité et l'exporter, sans interface graphique. Le DST
@@ -102,6 +102,17 @@ et `at --px` travaillent sur l'image de travail ; axe de balayage `pre=none,medi
 `--report rapport.json` (rapport de numérisation, schéma
 `openstitch.digitize-report/1`), `--no-clobber`.
 
+`--settings profil.json` (HP-FILE-014, aussi pour `digitize`, `digitize-batch` et les
+commandes de balayage) : profil de réglages, objet JSON dont les clés sont les noms longs des
+options de numérisation sans `--`, par exemple
+`{"max-colors": 6, "dark-lines": true, "no-underpath": true, "hidden-travel-levels": ["between","within"]}`
+(drapeau = booléen, `false` = absent, liste de chaînes jointe par des virgules). Le profil est
+traduit en options équivalentes avant l'analyse de la ligne : mêmes bornes, mêmes octets que
+les options passées à la main ; une option donnée explicitement l'emporte sur le profil. Une
+clé inconnue est refusée (code 1, `E_USAGE` avec `--json`) avec la liste des clés admises et la
+plus proche suggérée. Le rapport de numérisation cite le profil (`settings.profile`), le
+rapport de lot aussi (`settings_profile`).
+
 Le `.osp` contient l'image source, la segmentation, les objets vectoriels
 (contours éditables) et les objets de broderie dans l'ordre de couture. Rien
 n'est écrit si aucun objet ou aucun point n'est produit (`E_NOTHING_TO_DO`).
@@ -134,6 +145,25 @@ littéral JSON (nombre, booléen, tableau, objet) sinon comme chaîne :
 ### `project set <projet.osp> [--width-mm --height-mm --margin-mm --trim-threshold --lock]`
 
 Cadre et finitions générales (sucre pour `set_canvas` / `set_finishing`).
+
+Retours d'essais d'agents (branche `agent-trials`) :
+
+- **`set_source_image`** : définit l'image source (`path` : PNG/JPEG/BMP/TIFF) et `mm_per_px`
+  (optionnel ; défaut : l'image remplit le cadre `canvas` sans déformation) d'un projet bâti sans
+  image (`import_svg`, `semantic_import`). Les objets et leurs identifiants ne changent pas ;
+  l'opération est annulable. Elle rend `project fidelity` utilisable sur ces projets.
+  `semantic_import` accepte aussi `source_path` (mêmes dimensions que le manifeste, échelle du
+  manifeste) : même effet en une seule opération.
+- **`project render`** : le JSON contient `fabric` (fond utilisé) ; sans `--fabric`, stderr rappelle
+  que le défaut est `#00FF00`.
+- **`set_params`** : une clé inconnue ou non applicable au type refuse avec la liste des clés
+  valides ; si elle existe pour un autre type, le message nomme ce type et `set_stitch_type`.
+- **`auto_satin` refusé** : le message se termine par ` [reason_code=<code>] Suggestion : <piste>`
+  et `hint` porte la suggestion. Codes : `no_source_contour`, `self_intersecting_contour`,
+  `contour_too_complex`, `branched_shape`, `compact_shape`, `has_holes`, `too_narrow`,
+  `width_out_of_range`, `invalid_geometry`, `engine_no_column`. Les pistes ne citent que des
+  opérations du registre (`split`, `break_apart`, `set_geometry`, `remove_holes`,
+  `set_stitch_type`).
 
 ### `project operations [--json]`
 
@@ -187,6 +217,7 @@ les objets en cause, la position et l'option conseillée :
 | Code | Niveau | Détecte |
 |---|---|---|
 | `motif-hors-image` | erreur | points à plus de 3 mm de l'image source (géométrie aberrante, ex. poignées de Bézier non bornées) |
+| `motif-hors-cadre` | avertissement | la boîte des points dépasse le cadre `project.canvas` (marge incluse) ; le message donne la boîte réelle et le cadre minimal à demander (`set_canvas`) |
 | `objet-etale` | avertissement | objet de plus de 300 mm² à moins de 8 % de remplissage de sa boîte et d'au moins 45 % de la diagonale du motif (réseau de barres relié en un objet) |
 | `fils-quasi-identiques` | info | deux fils à ΔE < 12 : un changement de fil pour rien |
 | `tissu-visible` | info ≥ 0,15 %, avertissement > 0,8 % | tissu visible à l'intérieur du motif |

@@ -168,3 +168,58 @@ TEST_CASE("auto_satin_service : l'angle de balayage est transmis a l'objet",
     REQUIRE(plan->params.sweep_angle.has_value());
     CHECK(plan->params.sweep_angle->radians == 0.5);
 }
+
+TEST_CASE("auto_satin_service : un contour auto-secant donne un refus actionnable",
+          "[project_ops][auto_satin]") {
+    // Noeud papillon (deux tiges fines qui se croisent) : l'axe median refuse un contour qui se
+    // coupe lui-meme ; le refus doit dire quoi faire, avec des operations du registre.
+    document::Project project;
+    document::VectorObject vec;
+    vec.id = project.object_ids.next();
+    const auto pt = [](double x, double y) {
+        return Vec2um{to_micrometers(Millimeters{x}), to_micrometers(Millimeters{y})};
+    };
+    vec.paths.push_back(
+        geometry::PathSet{geometry::polygon_path({pt(0, 0), pt(20, 3), pt(20, 0), pt(0, 3)}), {}});
+    const ObjectId id = vec.id;
+    project.vector_objects.push_back(std::move(vec));
+
+    project_ops::AutoSatinPlanRequest request;
+    request.strategy = document::AutoSatinStrategy::MedialAxis;
+    const auto plan = project_ops::plan_auto_satin(project, id, request);
+    REQUIRE(plan.has_value());
+    CHECK_FALSE(plan->accepted);
+    CHECK(plan->reason_code == "self_intersecting_contour");
+    CHECK(plan->suggestion.find("`split`") != std::string::npos);
+    CHECK(plan->suggestion.find("`set_geometry`") != std::string::npos);
+    CHECK(plan->suggestion.find("`set_stitch_type`") != std::string::npos);
+    CHECK(plan->refusal.find("Aucune colonne satin") != std::string::npos); // debut inchange
+    CHECK(plan->refusal.find("reason_code=self_intersecting_contour") != std::string::npos);
+    CHECK(plan->refusal.find(plan->suggestion) != std::string::npos);
+}
+
+TEST_CASE("auto_satin_service : un disque refuse par le squelette est explique",
+          "[project_ops][auto_satin]") {
+    document::Project project;
+    const ObjectId vec = add_vector(project, true, 10.0, 10.0);
+    project_ops::AutoSatinPlanRequest request;
+    request.strategy = document::AutoSatinStrategy::Skeleton;
+    const auto plan = project_ops::plan_auto_satin(project, vec, request);
+    REQUIRE(plan.has_value());
+    REQUIRE_FALSE(plan->accepted);
+    CHECK_FALSE(plan->reason_code.empty());
+    CHECK_FALSE(plan->suggestion.empty());
+    CHECK(plan->max_width_mm.has_value()); // mesure du rapport, jamais inventee
+}
+
+TEST_CASE("auto_satin_service : un plan accepte n'a ni raison ni suggestion",
+          "[project_ops][auto_satin]") {
+    document::Project project;
+    const ObjectId vec = add_vector(project, false, 30.0, 2.0);
+    const auto plan = project_ops::plan_auto_satin(project, vec);
+    REQUIRE(plan.has_value());
+    REQUIRE(plan->accepted);
+    CHECK(plan->reason_code.empty());
+    CHECK(plan->suggestion.empty());
+    CHECK(plan->refusal.empty());
+}

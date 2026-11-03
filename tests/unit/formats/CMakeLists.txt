@@ -8,6 +8,7 @@ add_executable(test_formats
     test_svg_import.cpp
     test_pes.cpp
     test_jef.cpp
+    test_vp3.cpp
     test_exp.cpp
     test_export_limits.cpp
     test_color_companion.cpp

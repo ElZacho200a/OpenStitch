@@ -42,3 +42,26 @@ TEST_CASE("stats : sequence vide") {
     CHECK(stats.stitches == 0);
     CHECK(stats.thread_length_um == 0.0);
 }
+
+TEST_CASE("object_endpoints : premier et dernier point cousu par objet") {
+    StitchSequence seq;
+    seq.commands = {
+        {um(0, 0), CommandType::Jump, ObjectId{2}},
+        {um(1'000, 0), CommandType::Stitch, ObjectId{2}},
+        {um(2'000, 0), CommandType::Stitch, ObjectId{2}},
+        {um(9'000, 0), CommandType::Trim, ObjectId{2}},
+        {um(5'000, 5'000), CommandType::Stitch, ObjectId{1}},
+        {um(6'000, 5'000), CommandType::Stitch, ObjectId{1}},
+        {um(7'000, 0), CommandType::Stitch, ObjectId{0}},
+        {um(3'000, 0), CommandType::Stitch, ObjectId{2}},
+    };
+    const auto ends = object_endpoints(seq);
+    REQUIRE(ends.size() == 2);
+    CHECK(ends[0].id == ObjectId{2});
+    CHECK(ends[0].first == um(1'000, 0));
+    CHECK(ends[0].last == um(3'000, 0));
+    CHECK(ends[1].id == ObjectId{1});
+    CHECK(ends[1].first == um(5'000, 5'000));
+    CHECK(ends[1].last == um(6'000, 5'000));
+    CHECK(object_endpoints(StitchSequence{}).empty());
+}

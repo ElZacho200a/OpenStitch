@@ -20,6 +20,7 @@
 #include <numbers>
 #include <vector>
 
+#include "ai_cmd.hpp"
 #include "openstitch/auto_satin/auto_satin.hpp"
 #include "openstitch/auto_satin/satin_strategy.hpp"
 #include "openstitch/auto_satin/shapes.hpp"
@@ -45,6 +46,8 @@
 #include "openstitch/segmentation/segmentation.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_analysis/metrics.hpp"
+#include "openstitch/stitch_analysis/placement_template.hpp"
+#include "openstitch/stitch_analysis/production_pdf.hpp"
 #include "openstitch/stitch_analysis/production_sheet.hpp"
 #include "openstitch/stitch_analysis/project_metrics.hpp"
 #include "openstitch/stitch_generation/border_satin.hpp"
@@ -52,6 +55,8 @@
 #include "openstitch/stitch_generation/join.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
+#include "openstitch/stitch_generation/pull_map.hpp"
+#include "openstitch/stitch_generation/pull_test_piece.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
@@ -376,6 +381,76 @@ int run_dst2svg(const std::string& input, const std::string& output, bool noClob
     return kExitOk;
 }
 
+// Pièce-test de calibration du tirage (HP-ENG-001.a) : motif DST à broder sur le tissu réel,
+// tableau CSV des distances à mesurer, comparaison prédit / mesuré et ajustement des coefficients.
+struct PullTestPieceArgs {
+    std::string output;   // DST de la pièce-test
+    std::string metrics;  // CSV des métriques (modèle à remplir)
+    std::string measured; // CSV relu avec la colonne measured_mm remplie
+    std::string fabric{"default"};
+    bool fit{false};
+    bool noClobber{false};
+};
+
+int run_pull_test_piece(const PullTestPieceArgs& a) {
+    using namespace openstitch;
+    const auto& presets = stitch_generation::fabric_preset_names();
+    if (std::find(presets.begin(), presets.end(), a.fabric) == presets.end()) {
+        return cli_error("pull-test-piece",
+                         "Tissu inconnu : " + a.fabric + " (default, linen, stable)");
+    }
+    const stitch_generation::FabricResponse fabric = stitch_generation::fabric_preset(a.fabric);
+    const stitch_generation::PullTestPiece piece = stitch_generation::build_pull_test_piece();
+    if (!a.output.empty()) {
+        if (const auto refused = check_output_path("pull-test-piece", a.output, a.noClobber)) {
+            return *refused;
+        }
+        const auto written =
+            formats::write_dst_file(std::filesystem::path(a.output), piece.sequence);
+        if (!written) {
+            return cli_error("pull-test-piece", written.error().message);
+        }
+        fmt::print("Pièce-test écrite : {} (X du dessin = sens de la chaîne)\n", a.output);
+    }
+    auto results = stitch_generation::predict_pull_metrics(piece, fabric);
+    if (!a.measured.empty()) {
+        std::ifstream in(a.measured, std::ios::binary);
+        if (!in) {
+            return cli_error("pull-test-piece", "Lecture impossible : " + a.measured);
+        }
+        std::ostringstream text;
+        text << in.rdbuf();
+        const std::size_t kept = stitch_generation::apply_measurements_csv(results, text.str());
+        fmt::print("Mesures retenues : {} / {}\n", kept, results.size());
+        if (kept == 0) {
+            return cli_error("pull-test-piece", "Aucune mesure exploitable (colonne measured_mm)",
+                             "remplissez measured_mm (mm) dans le CSV produit par --metrics");
+        }
+        fmt::print("Écart quadratique moyen prédit/mesuré : {:.3f} mm\n",
+                   stitch_generation::pull_metrics_rms(results));
+        if (a.fit) {
+            const auto fit = stitch_generation::fit_pull_response(piece, results, fabric);
+            fmt::print("Ajustement : gain={:.3f} tassement={:.2f} souplesse de trame={:.2f}  "
+                       "(écart {:.3f} -> {:.3f} mm, {} mesures{})\n",
+                       fit.response.gain, fit.response.compression, fit.response.grain_anisotropy,
+                       fit.rms_before_mm, fit.rms_after_mm, fit.used,
+                       fit.enough_data ? "" : " : INSUFFISANT, au moins 6 mesures requises");
+        }
+    }
+    if (!a.metrics.empty()) {
+        if (const auto refused = check_output_path("pull-test-piece", a.metrics, a.noClobber)) {
+            return *refused;
+        }
+        std::ofstream out(a.metrics, std::ios::binary);
+        out << stitch_generation::pull_metrics_csv(results);
+        if (!out) {
+            return cli_error("pull-test-piece", "Écriture impossible : " + a.metrics);
+        }
+        fmt::print("Tableau des mesures écrit : {}\n", a.metrics);
+    }
+    return kExitOk;
+}
+
 // Export PNG du rendu brodé réaliste (HP-FMT-011) : un fichier machine (couleurs de repli par
 // bloc de fil) ou un projet .osp (couleurs des objets, séquence effective).
 struct RenderArgs {
@@ -387,6 +462,9 @@ struct RenderArgs {
     bool fast{false};
     bool noClobber{false};
     bool json{false};
+    bool simulatePull{false}; // décale chaque point du déplacement prédit du tissu (niveau 3)
+    bool pullMap{false};      // carte de déplacement prédit (PNG) au lieu du rendu brodé
+    std::string fabric{"default"}; // réglage de tissu empirique : default, linen, stable
 };
 
 int run_render(const RenderArgs& a) {
@@ -399,6 +477,42 @@ int run_render(const RenderArgs& a) {
     options.margin_mm = a.marginMm;
     options.params.fabric_opaque = !a.transparent;
     options.params.quality = a.fast ? stitch_render::Quality::Fast : stitch_render::Quality::High;
+
+    const auto& presets = stitch_generation::fabric_preset_names();
+    if (std::find(presets.begin(), presets.end(), a.fabric) == presets.end()) {
+        return cli_error("render", "Tissu inconnu : " + a.fabric + " (default, linen, stable)");
+    }
+    const stitch_generation::FabricResponse fabric = stitch_generation::fabric_preset(a.fabric);
+    // Carte de déplacement : PNG de la carte seule (pas de rendu brodé).
+    const auto write_pull_map = [&](const stitch::StitchSequence& seq) {
+        const auto map = stitch_generation::compute_pull_map(seq, fabric, Micrometers{500});
+        const auto pr = stitch_generation::rasterize_pull_map(map);
+        if (pr.width <= 0) {
+            return cli_error("render", "Aucun point cousu : rien à dessiner");
+        }
+        image::Image img;
+        img.width = pr.width;
+        img.height = pr.height;
+        img.source_had_alpha = true;
+        img.rgba = pr.rgba;
+        const auto png = image::encode_png(img);
+        if (!png) {
+            return cli_error("render", png.error().message);
+        }
+        std::ofstream file(std::filesystem::path(a.output), std::ios::binary);
+        file.write(reinterpret_cast<const char*>(png->data()),
+                   static_cast<std::streamsize>(png->size()));
+        file.close();
+        if (!file) {
+            return cli_error("render", "Écriture impossible : " + a.output);
+        }
+        const auto peak = stitch_generation::find_pull_peak(map);
+        fmt::print(
+            "Carte de déplacement écrite : {} ({} x {} cases de {:.2f} mm, maximum {:.2f} mm "
+            "estimés, non calibré)\n",
+            a.output, pr.width, pr.height, map.cell.value / 1000.0, peak.magnitude_mm);
+        return kExitOk;
+    };
 
     stitch_render::RasterImage raster;
     std::string ext = std::filesystem::path(a.input).extension().string();
@@ -413,12 +527,17 @@ int run_render(const RenderArgs& a) {
         if (!seq) {
             return cli_error("render", seq.error().message);
         }
+        if (a.pullMap) {
+            return write_pull_map(*seq);
+        }
+        const stitch::StitchSequence shown =
+            a.simulatePull ? stitch_generation::simulate_fabric_pull(*seq, fabric) : *seq;
         std::map<std::uint64_t, std::array<std::uint8_t, 3>> colors;
         for (const auto& emb : project->embroidery_objects) {
             colors[emb.id.value] = emb.rgb;
         }
         raster = stitch_render::render_sequence(
-            *seq,
+            shown,
             [&](ObjectId id) -> std::optional<std::array<std::uint8_t, 3>> {
                 const auto it = colors.find(id.value);
                 if (it == colors.end()) {
@@ -432,7 +551,11 @@ int run_render(const RenderArgs& a) {
         if (!seq) {
             return cli_error("render", seq.error().message, kDstHint);
         }
-        raster = stitch_render::render_machine_sequence(*seq, options);
+        if (a.pullMap) {
+            return write_pull_map(*seq);
+        }
+        raster = stitch_render::render_machine_sequence(
+            a.simulatePull ? stitch_generation::simulate_fabric_pull(*seq, fabric) : *seq, options);
     }
     if (raster.width <= 0 || raster.height <= 0) {
         return cli_error("render", "Aucun point cousu : rien à dessiner");
@@ -1450,7 +1573,14 @@ struct ProductionArgs {
     std::string name;
     std::string date;
     std::string notes;
+    std::string client;
     double speed{700.0};
+    double colorChangeSeconds{30.0};
+    double trimSeconds{2.0};
+    double jumpSeconds{0.0};
+    std::string placementTemplate; // HP-PROD-003 : gabarit 1:1 en PDF
+    std::string paper{"a4"};       // a4 | letter
+    bool landscape{false};
     bool json{false};
     bool noClobber{false};
 };
@@ -1506,16 +1636,49 @@ int run_production(const ProductionArgs& a) {
         opts.date = a.date;
     }
     opts.notes = a.notes;
+    opts.client = a.client;
     opts.stitches_per_minute = a.speed;
+    opts.color_change_seconds = a.colorChangeSeconds;
+    opts.trim_seconds = a.trimSeconds;
+    opts.jump_seconds = a.jumpSeconds;
     const auto sheet = stitch_analysis::make_production_sheet(project, sequence, opts);
 
+    if (!a.placementTemplate.empty()) {
+        if (const auto refused =
+                check_output_path("production", a.placementTemplate, a.noClobber)) {
+            return *refused;
+        }
+        stitch_analysis::PlacementTemplateOptions tplOpt;
+        if (a.paper == "letter") {
+            tplOpt.paper_width = Micrometers{215'900};
+            tplOpt.paper_height = Micrometers{279'400};
+        }
+        tplOpt.landscape = a.landscape;
+        tplOpt.title = opts.project_name;
+        const auto tpl = stitch_analysis::make_placement_template(sequence, tplOpt);
+        std::ofstream tout(a.placementTemplate, std::ios::binary);
+        tout << stitch_analysis::placement_template_to_pdf(tpl);
+        if (!tout) {
+            return cli_error("production",
+                             fmt::format("écriture impossible : {}", a.placementTemplate));
+        }
+        fmt::print(stderr, "Gabarit 1:1 écrit : {} ({} page(s), {} x {})\n", a.placementTemplate,
+                   tpl.pages.size(), tpl.columns, tpl.rows);
+    }
+
     if (!a.output.empty()) {
+        std::string outExt = std::filesystem::path(a.output).extension().string();
+        std::transform(outExt.begin(), outExt.end(), outExt.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        const bool asPdf = outExt == ".pdf";
         std::ofstream out(a.output, std::ios::binary);
-        out << stitch_analysis::production_to_html(sheet);
+        out << (asPdf ? stitch_analysis::production_to_pdf(sheet)
+                      : stitch_analysis::production_to_html(sheet));
         if (!out) {
             return cli_error("production", fmt::format("écriture impossible : {}", a.output));
         }
-        fmt::print(a.json ? stderr : stdout, "Fiche de production (HTML) écrite : {}\n", a.output);
+        fmt::print(a.json ? stderr : stdout, "Fiche de production ({}) écrite : {}\n",
+                   asPdf ? "PDF" : "HTML", a.output);
         if (!a.json) {
             return kExitOk;
         }
@@ -1541,6 +1704,11 @@ int run_production(const ProductionArgs& a) {
     fmt::print("Temps estimé       : {} ({:g} points/min)\n",
                stitch_analysis::format_duration_fr(sheet.estimated_minutes),
                sheet.stitches_per_minute);
+    fmt::print("  dont couture {} / changements de fil {} / coupes {} / sauts {}\n",
+               stitch_analysis::format_duration_fr(sheet.stitch_minutes),
+               stitch_analysis::format_duration_fr(sheet.color_change_minutes),
+               stitch_analysis::format_duration_fr(sheet.trim_minutes),
+               stitch_analysis::format_duration_fr(sheet.jump_minutes));
     fmt::print("Blocs de couleur   :\n");
     for (const auto& b : sheet.blocks) {
         fmt::print("  {:>2}. #{:02x}{:02x}{:02x}  {:>8} points  {:>5} sauts  {}\n", b.number,
@@ -1614,14 +1782,48 @@ int main(int argc, char** argv) {
     pr_cmd->group(kMain);
     pr_cmd->add_option("fichier", pr.file, "Projet .osp ou fichier .dst")->required();
     pr_cmd->add_option("--output,-o", pr.output,
-                       "Écrit la fiche en page HTML autonome (le PDF s'exporte depuis le bureau)");
+                       "Écrit la fiche : PDF A4 si l'extension est .pdf, sinon page HTML autonome");
+    pr_cmd->add_option("--client", pr.client, "Client / destinataire (facultatif)");
     pr_cmd->add_option("--name", pr.name, "Nom du projet (défaut : nom du fichier)");
     pr_cmd->add_option("--date", pr.date, "Date AAAA-MM-JJ (défaut : aujourd'hui)");
     pr_cmd->add_option("--notes", pr.notes, "Notes libres");
     pr_cmd->add_option("--speed", pr.speed, "Vitesse supposée en points/min (défaut : 700)")
         ->check(CLI::Range(100.0, 2000.0));
+    pr_cmd
+        ->add_option("--color-change-seconds", pr.colorChangeSeconds,
+                     "Durée d'un changement de fil en secondes (défaut : 30)")
+        ->check(CLI::Range(0.0, 600.0));
+    pr_cmd
+        ->add_option("--trim-seconds", pr.trimSeconds, "Durée d'une coupe en secondes (défaut : 2)")
+        ->check(CLI::Range(0.0, 600.0));
+    pr_cmd
+        ->add_option("--jump-seconds", pr.jumpSeconds,
+                     "Durée d'un saut en secondes (défaut : 0, non compté)")
+        ->check(CLI::Range(0.0, 600.0));
+    pr_cmd->add_option("--placement-template", pr.placementTemplate,
+                       "Écrit un gabarit de placement PDF à l'échelle 1:1 (multi-pages)");
+    pr_cmd->add_option("--paper", pr.paper, "Papier du gabarit : a4 (défaut) ou letter")
+        ->check(CLI::IsMember({"a4", "letter"}));
+    pr_cmd->add_flag("--landscape", pr.landscape, "Gabarit en paysage");
     pr_cmd->add_flag("--json", json_out, "JSON stable sur stdout");
     pr_cmd->add_flag("--no-clobber", pr.noClobber, "Refuse d'écraser un fichier existant");
+
+    PullTestPieceArgs ptp;
+    auto* ptp_cmd = app.add_subcommand(
+        "pull-test-piece",
+        "Pièce-test de calibration du tirage : DST à broder, tableau de mesures, ajustement");
+    ptp_cmd->group(kMain);
+    ptp_cmd->add_option("--output,-o", ptp.output, "Écrit la pièce-test (DST)");
+    ptp_cmd->add_option("--metrics", ptp.metrics,
+                        "Écrit le tableau CSV des distances à mesurer (colonne measured_mm à "
+                        "remplir)");
+    ptp_cmd->add_option("--measured", ptp.measured,
+                        "Relit le CSV rempli : écart prédit/mesuré par métrique");
+    ptp_cmd->add_option("--fabric", ptp.fabric, "Réglage de référence : default, linen ou stable");
+    ptp_cmd->add_flag("--fit", ptp.fit,
+                      "Avec --measured : ajuste gain, tassement et souplesse de trame (affiché, "
+                      "jamais enregistré)");
+    ptp_cmd->add_flag("--no-clobber", ptp.noClobber, "Refuse d'écraser un fichier existant");
 
     std::string svg_in;
     std::string svg_out;
@@ -1651,6 +1853,13 @@ int main(int argc, char** argv) {
         ->check(CLI::Range(0.0, 50.0));
     render_cmd->add_flag("--transparent", rnd.transparent, "Fond transparent (sans tissu)");
     render_cmd->add_flag("--fast", rnd.fast, "Rendu rapide (sans torsion ni ombre portée)");
+    render_cmd->add_flag("--simulate-pull", rnd.simulatePull,
+                         "Décale chaque point du tirage prédit du tissu (niveau 3, non calibré) "
+                         "pour voir les trous entre couleurs");
+    render_cmd->add_flag("--pull-map", rnd.pullMap,
+                         "Écrit la carte du déplacement prédit du tissu au lieu du rendu brodé");
+    render_cmd->add_option("--fabric", rnd.fabric,
+                           "Réglage de tissu empirique : default, linen (lin lâche), stable");
     render_cmd->add_flag("--json", rnd.json, "JSON stable sur stdout");
     render_cmd->add_flag("--no-clobber", rnd.noClobber, "Refuse d'écraser un fichier existant");
 
@@ -1828,11 +2037,28 @@ int main(int argc, char** argv) {
 
     auto* project_cmd = openstitch_cli::register_project_commands(app, json_out);
     auto* commands_cmd = openstitch_cli::register_commands_listing(app, json_out);
+    auto* ai_cmd = openstitch_cli::register_ai_commands(app);
 
-    CLI11_PARSE(app, argc, argv);
+    // HP-FILE-014 : `--settings profil.json` est développé en options équivalentes avant le parse.
+    {
+        argv = app.ensure_utf8(argv);
+        std::vector<std::string> args(argv + 1, argv + argc);
+        if (const auto refused = openstitch_cli::expand_settings_profile(app, args)) {
+            return *refused;
+        }
+        std::ranges::reverse(args); // CLI11 attend les arguments en ordre inverse
+        try {
+            app.parse(args);
+        } catch (const CLI::ParseError& e) {
+            return app.exit(e);
+        }
+    }
 
     if (project_cmd->parsed() || commands_cmd->parsed()) {
         return openstitch_cli::project_exit_code();
+    }
+    if (ai_cmd->parsed()) {
+        return openstitch_cli::ai_exit_code();
     }
 
     if (info_cmd->parsed()) {
@@ -1847,6 +2073,9 @@ int main(int argc, char** argv) {
     }
     if (render_cmd->parsed()) {
         return run_render(rnd);
+    }
+    if (ptp_cmd->parsed()) {
+        return run_pull_test_piece(ptp);
     }
     if (svg_cmd->parsed()) {
         return run_dst2svg(svg_in, svg_out, svg_noclobber);

@@ -8,6 +8,7 @@ add_library(openstitch_stitch_generation
     src/lock.cpp
     src/routing.cpp
     src/finish.cpp
+    src/length_bounds.cpp
     src/hidden_travel.cpp
     src/underlay_order.cpp
     src/region_order.cpp
@@ -15,8 +16,22 @@ add_library(openstitch_stitch_generation
     src/chunk_cache.cpp
     src/overrides.cpp
     src/underlay_auto.cpp
+    src/adaptive_pull.cpp
+    src/pull_auto.cpp
+    src/pull_field.cpp
+    src/pull_map.cpp
+    src/pull_test_piece.cpp
+    src/predicted_pull.cpp
     src/join.cpp
     src/border_satin.cpp
+    src/blanket_stitch.cpp
+    src/contour_fill.cpp
+    src/motif_run.cpp
+    src/motif_fill.cpp
+    src/radial_fill.cpp
+    src/spiral_fill.cpp
+    src/crosshatch_fill.cpp
+    src/cross_stitch.cpp
 )
 add_library(openstitch::stitch_generation ALIAS openstitch_stitch_generation)
 

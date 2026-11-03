@@ -11,6 +11,7 @@
 #include <QListWidget>
 #include <QMenu>
 #include <QMessageBox>
+#include <QRegularExpression>
 #include <QSignalBlocker>
 #include <QStatusBar>
 
@@ -18,15 +19,18 @@
 #include <cmath>
 #include <limits>
 #include <numbers>
+#include <set>
 
 #include <QColorDialog>
 
 #include "main_window.hpp"
+#include "openstitch/commands/calque_commands.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/thread_commands.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 #include "properties_panel.hpp"
+#include "stitch_type_catalog.hpp"
 #include "ui_memory.hpp"
 
 namespace openstitch::desktop {
@@ -369,6 +373,20 @@ void MainWindow::applyVectorBox(ObjectId id, QRectF want) {
     if (!resize && !move) {
         return;
     }
+    // Plusieurs frappes dans X ou Y représentent une seule édition : elles
+    // fusionnent sur le même objet ET le même champ, pas avec un changement de
+    // taille ni avec un mouvement sur l'autre axe (HP-UX-053).
+    if (!resize && move) {
+        auto command = std::make_unique<commands::TranslateVectorObjectCommand>(id, vec(dx, dy));
+        if (dx == 0 || dy == 0) {
+            command->setCoalescable(true);
+            command->setMergeField(dx != 0 ? "x" : "y");
+        }
+        undoStack_.execute(std::move(command), project_);
+        refreshImage();
+        updateActions();
+        return;
+    }
     auto composite = std::make_unique<commands::CompositeCommand>(
         resize ? (move ? tr("Modifier la taille et la position de la forme")
                        : tr("Modifier la taille de la forme"))
@@ -396,9 +414,8 @@ void MainWindow::setStitchTypeForSelection(
         }
         return;
     }
-    const QString typeNames[] = {tr("Contour cousu"), tr("Remplissage tatami"), tr("Colonne satin"),
-                                 tr("Remplissage directionnel")};
-    const QString typeName = type >= 0 && type < 4 ? typeNames[type] : tr("Type de points");
+    const QString typeName =
+        type >= 0 && type < kStitchTypeCount ? stitchTypeLabel(type) : tr("Type de points");
     auto group = std::make_unique<commands::CompositeCommand>(
         tr("Type : %1 (%2 formes)").arg(typeName).arg(ids.size()).toStdString());
     QStringList skipped;
@@ -630,70 +647,7 @@ void MainWindow::updateAlignActions() {
 }
 
 void MainWindow::alignSelection(int mode) {
-    const std::vector<ObjectId> ids = selectedObjectIds();
-    if (ids.size() < 2) {
-        return;
-    }
-    std::vector<std::pair<ObjectId, BoundsUm>> boxes;
-    BoundsUm all;
-    for (const ObjectId id : ids) {
-        const auto* object = project_.findObject(id);
-        if (object == nullptr) {
-            continue;
-        }
-        const BoundsUm b = boundsOf(*object);
-        if (!b.valid) {
-            continue;
-        }
-        boxes.emplace_back(id, b);
-        all.minX = std::min(all.minX, b.minX);
-        all.maxX = std::max(all.maxX, b.maxX);
-        all.minY = std::min(all.minY, b.minY);
-        all.maxY = std::max(all.maxY, b.maxY);
-        all.valid = true;
-    }
-    if (boxes.size() < 2) {
-        return;
-    }
-    auto composite = std::make_unique<commands::CompositeCommand>(
-        tr("Aligner %1 objets").arg(boxes.size()).toStdString());
-    for (const auto& [id, b] : boxes) {
-        std::int64_t dx = 0;
-        std::int64_t dy = 0;
-        switch (mode) {
-        case 0:
-            dx = all.minX - b.minX;
-            break;
-        case 1:
-            dx = (all.minX + all.maxX) / 2 - (b.minX + b.maxX) / 2;
-            break;
-        case 2:
-            dx = all.maxX - b.maxX;
-            break;
-        case 3: // Y vers le haut : « en haut » = Y maximal
-            dy = all.maxY - b.maxY;
-            break;
-        case 4:
-            dy = (all.minY + all.maxY) / 2 - (b.minY + b.maxY) / 2;
-            break;
-        case 5:
-            dy = all.minY - b.minY;
-            break;
-        default:
-            return;
-        }
-        if (dx != 0 || dy != 0) {
-            composite->add(
-                std::make_unique<commands::TranslateVectorObjectCommand>(id, vec(dx, dy)));
-        }
-    }
-    if (composite->empty()) {
-        statusBar()->showMessage(tr("Les objets sont déjà alignés."));
-        return;
-    }
-    undoStack_.execute(std::move(composite), project_);
-    refreshImage();
-    updateActions();
+    alignShapes(mode); // référence d'alignement et commande : main_window_arrange.cpp
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -785,6 +739,182 @@ std::array<std::uint8_t, 3> MainWindow::defaultLayerColor(const std::array<std::
     return rgb;
 }
 
+QString MainWindow::nextLayerName(const document::EmbroideryObject& base) const {
+    // Racine = nom de la base sans son éventuel suffixe « – couche N » (ajouter une couche
+    // depuis une couche ne doit pas empiler les suffixes) ; N = premier numéro libre parmi les
+    // couches de la même forme, donc stable après une suppression.
+    const QRegularExpression suffix(QRegularExpression::escape(tr(" – couche ")) +
+                                    QStringLiteral("\\d+$"));
+    QString root = QString::fromStdString(base.name);
+    root.remove(suffix);
+    std::set<QString> used;
+    for (const auto& e : project_.embroidery_objects) {
+        if (e.source_vector == base.source_vector) {
+            used.insert(QString::fromStdString(e.name));
+        }
+    }
+    for (int n = 2;; ++n) {
+        const QString candidate = tr("%1 – couche %2").arg(root).arg(n);
+        if (used.count(candidate) == 0) {
+            return candidate;
+        }
+    }
+}
+
+bool MainWindow::addLayerQuick(ObjectId baseId) {
+    const auto* base = project_.findEmbroidery(baseId);
+    if (base == nullptr) {
+        return false;
+    }
+    // Un geste, aucun dialogue : même famille de points que la couche visée, fil complémentaire.
+    return addLayer(baseId, stitchTypeIndex(*base), defaultLayerColor(base->rgb));
+}
+
+bool MainWindow::duplicateLayer(ObjectId id) {
+    const auto* source = project_.findEmbroidery(id);
+    if (source == nullptr) {
+        return false;
+    }
+    document::EmbroideryObject copy = *source;
+    copy.id = project_.object_ids.next();
+    copy.name = nextLayerName(*source).toStdString();
+    const ObjectId copyId = copy.id;
+    const ObjectId sourceId = source->source_vector;
+    undoStack_.execute(std::make_unique<commands::AddLayerCommand>(id, std::move(copy)), project_);
+    setSelection({.embroidery = copyId, .objects = {sourceId}});
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(tr("Couche dupliquée."));
+    return true;
+}
+
+void MainWindow::addCalque() {
+    // Premier calque ajouté : le calque implicite du fond est matérialisé d'abord (« Calque 1 »),
+    // toutes les formes existantes y restent.
+    const ObjectId firstId = project_.calques.empty() ? project_.object_ids.next() : ObjectId{};
+    const ObjectId newId = project_.object_ids.next();
+    const auto number = static_cast<int>(std::max<std::size_t>(project_.calques.size(), 1)) + 1;
+    undoStack_.execute(std::make_unique<commands::AddCalqueCommand>(
+                           newId, tr("Calque %1").arg(number).toStdString(), firstId,
+                           tr("Calque 1").toStdString()),
+                       project_);
+    project_.active_calque = newId; // le nouveau calque reçoit les prochaines formes
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(tr("Calque ajouté : il reçoit les formes créées."));
+}
+
+void MainWindow::removeCalque(ObjectId id) {
+    const document::Calque* calque = project_.findCalque(id);
+    if (calque == nullptr || project_.calques.size() <= 1) {
+        return;
+    }
+    const QString name = QString::fromStdString(calque->name);
+    undoStack_.execute(std::make_unique<commands::RemoveCalqueCommand>(id), project_);
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(
+        tr("Calque « %1 » supprimé : ses formes sont passées dans le calque en dessous.")
+            .arg(name));
+}
+
+void MainWindow::renameCalqueInteractive(ObjectId id) {
+    const document::Calque* calque = project_.findCalque(id);
+    if (calque == nullptr) {
+        return;
+    }
+    bool ok = false;
+    const QString name =
+        QInputDialog::getText(this, tr("Renommer le calque"), tr("Nom du calque :"),
+                              QLineEdit::Normal, QString::fromStdString(calque->name), &ok)
+            .trimmed();
+    if (!ok || name.isEmpty() || project_.findCalque(id) == nullptr) {
+        return;
+    }
+    undoStack_.execute(std::make_unique<commands::RenameCalqueCommand>(id, name.toStdString()),
+                       project_);
+    refreshImage();
+    updateActions();
+}
+
+void MainWindow::moveSelectionToCalque(ObjectId id) {
+    if (project_.findCalque(id) == nullptr) {
+        return;
+    }
+    // Les formes sélectionnées au canevas, ou à défaut la forme de la couche choisie : dans les
+    // deux cas toutes leurs couches de couture suivent.
+    std::vector<ObjectId> shapes = selectedObjectIds();
+    if (shapes.empty() && selectedEmbroidery_) {
+        if (const auto* emb = project_.findEmbroidery(*selectedEmbroidery_)) {
+            shapes.push_back(emb->source_vector);
+        }
+    }
+    shapes.erase(std::remove_if(shapes.begin(), shapes.end(),
+                                [this](ObjectId s) { return project_.findObject(s) == nullptr; }),
+                 shapes.end());
+    if (shapes.empty()) {
+        statusBar()->showMessage(tr("Sélectionnez d'abord une forme à déplacer."));
+        return;
+    }
+    undoStack_.execute(std::make_unique<commands::SetShapesCalqueCommand>(shapes, id), project_);
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(
+        tr("%n forme(s) déplacée(s) dans le calque.", nullptr, static_cast<int>(shapes.size())));
+}
+
+bool MainWindow::moveLayer(ObjectId id, int direction) {
+    auto& all = project_.embroidery_objects;
+    const auto it = std::find_if(all.begin(), all.end(), [&](const auto& e) { return e.id == id; });
+    if (it == all.end() || direction == 0) {
+        return false;
+    }
+    // Voisin = la couche de la MÊME forme la plus proche dans le sens demandé : on échange leurs
+    // rangs de couture, les objets des autres formes ne bougent pas.
+    const auto index = static_cast<std::ptrdiff_t>(it - all.begin());
+    const auto step = direction > 0 ? 1 : -1;
+    auto j = index + step;
+    while (j >= 0 && j < static_cast<std::ptrdiff_t>(all.size()) &&
+           all[static_cast<std::size_t>(j)].source_vector != it->source_vector) {
+        j += step;
+    }
+    if (j < 0 || j >= static_cast<std::ptrdiff_t>(all.size())) {
+        return false; // déjà au bout de la pile
+    }
+    std::vector<ObjectId> order;
+    order.reserve(all.size());
+    for (const auto& e : all) {
+        order.push_back(e.id);
+    }
+    std::swap(order[static_cast<std::size_t>(index)], order[static_cast<std::size_t>(j)]);
+    undoStack_.execute(std::make_unique<commands::ReorderEmbroideryCommand>(order), project_);
+    refreshImage();
+    refreshOrderPanel();
+    updateActions();
+    statusBar()->showMessage(direction > 0 ? tr("Couche montée.") : tr("Couche descendue."));
+    return true;
+}
+
+void MainWindow::renameLayerInteractive(ObjectId id) {
+    const auto* layer = project_.findEmbroidery(id);
+    if (layer == nullptr) {
+        return;
+    }
+    bool ok = false;
+    const QString name =
+        QInputDialog::getText(this, tr("Renommer la couche"), tr("Nom de la couche :"),
+                              QLineEdit::Normal, QString::fromStdString(layer->name), &ok)
+            .trimmed();
+    // Les dialogues pompent la boucle d'événements : l'objet est re-résolu avant d'agir.
+    if (!ok || name.isEmpty() || project_.findEmbroidery(id) == nullptr) {
+        return;
+    }
+    undoStack_.execute(std::make_unique<commands::RenameEmbroideryCommand>(id, name.toStdString()),
+                       project_);
+    refreshImage();
+    updateActions();
+}
+
 bool MainWindow::addLayer(ObjectId baseId, int type, const std::array<std::uint8_t, 3>& rgb) {
     const auto* base = project_.findEmbroidery(baseId);
     if (base == nullptr) {
@@ -799,16 +929,9 @@ bool MainWindow::addLayer(ObjectId baseId, int type, const std::array<std::uint8
         return false;
     }
     ui_memory::creation::apply(params); // dernier réglage de création, comme une forme neuve
-    // Numéro : la base est la couche 1 de sa forme.
-    const auto sameShape =
-        std::count_if(project_.embroidery_objects.begin(), project_.embroidery_objects.end(),
-                      [&](const auto& e) { return e.source_vector == base->source_vector; });
     document::EmbroideryObject layer;
     layer.id = project_.object_ids.next();
-    layer.name = tr("%1 – couche %2")
-                     .arg(QString::fromStdString(base->name))
-                     .arg(sameShape + 1)
-                     .toStdString();
+    layer.name = nextLayerName(*base).toStdString();
     layer.source_vector = base->source_vector;
     layer.rgb = rgb;
     layer.params = std::move(params);

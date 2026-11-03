@@ -23,6 +23,10 @@ std::string format_from_extension(const std::filesystem::path& path) {
         return "JPEG";
     if (ext == ".bmp")
         return "BMP";
+    if (ext == ".gif")
+        return "GIF";
+    if (ext == ".webp")
+        return "WebP";
     if (ext == ".tif" || ext == ".tiff")
         return "TIFF";
     return ext.empty() ? "inconnu" : ext.substr(1);

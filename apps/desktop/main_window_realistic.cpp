@@ -21,7 +21,9 @@
 #include <cmath>
 #include <unordered_map>
 
+#include "busy_indicator.hpp"
 #include "canvas_view.hpp"
+#include "fabric_params.hpp"
 #include "main_window.hpp"
 #include "openstitch/stitch_render/raster.hpp"
 #include "realistic_render_dialog.hpp"
@@ -46,6 +48,10 @@ constexpr double kPpmHigh = 1.35;
 // Plafond de mémoire de l'image (pixels) selon la qualité.
 constexpr std::size_t kMaxPixelsHigh = 12'000'000;
 constexpr std::size_t kMaxPixelsFast = 6'000'000;
+
+// Au-delà de ce nombre de brins, le calcul est fait hors du fil d'interface
+// (BusyIndicator::run) : en dessous, il tient dans un battement d'image.
+constexpr std::size_t kAsyncSegmentThreshold = 30'000;
 
 std::uint64_t combine(std::uint64_t a, std::uint64_t b) {
     return (a ^ (b + 0x9e3779b97f4a7c15ULL + (a << 6) + (a >> 2))) * 1099511628211ULL;
@@ -137,8 +143,14 @@ void MainWindow::showRealisticDialog() {
 }
 
 bool MainWindow::renderRealisticStitches() {
-    if (!realistic_.prefs.enabled || !sequence_ || simulating() || view_ == nullptr) {
+    // L'aperçu avec tirage passe par ce rendu même quand le rendu réaliste est éteint.
+    const stitch::StitchSequence* shown = pullPreviewSequence();
+    if ((!realistic_.prefs.enabled && shown == nullptr) || !sequence_ || simulating() ||
+        view_ == nullptr) {
         return false;
+    }
+    if (shown == nullptr) {
+        shown = &*sequence_;
     }
 
     // Couleur de fil par objet ; un objet masqué par les filtres n'est pas peint.
@@ -156,7 +168,7 @@ bool MainWindow::renderRealisticStitches() {
             blocks.empty() ? std::array<std::uint8_t, 3>{0, 0, 0} : blocks.front().rgb;
     }
     const auto segments = stitch_render::build_thread_segments(
-        *sequence_, sequence_->commands.size(),
+        *shown, shown->commands.size(),
         [&colorOf](ObjectId id) -> std::optional<std::array<std::uint8_t, 3>> {
             const auto it = colorOf.find(id.value);
             if (it == colorOf.end()) {
@@ -168,7 +180,8 @@ bool MainWindow::renderRealisticStitches() {
         return false;
     }
 
-    const stitch_render::RenderParams params = stitch_render::sanitized(realistic_.prefs.params);
+    const stitch_render::RenderParams params =
+        stitch_render::sanitized(withProjectFabric(realistic_.prefs.params, project_));
     const double ppm = view_->pixelsPerMm() * view_->devicePixelRatioF();
     if (stitch_render::choose_detail(ppm, params) == stitch_render::Detail::Lines) {
         return false; // dézoom fort : lignes épaisses colorées
@@ -202,8 +215,15 @@ bool MainWindow::renderRealisticStitches() {
         if (rasterView.width <= 0) {
             return true;
         }
-        const stitch_render::RasterImage image =
-            stitch_render::render_threads(segments, params, rasterView);
+        stitch_render::RasterImage image;
+        if (segments.size() > kAsyncSegmentThreshold) {
+            BusyIndicator busy(this, tr("Rendu réaliste des points…"), {autosaveTimer_, simTimer_});
+            image = busy.run([&segments, &params, &rasterView] {
+                return stitch_render::render_threads(segments, params, rasterView);
+            });
+        } else {
+            image = stitch_render::render_threads(segments, params, rasterView);
+        }
         const QImage qimage(image.rgba.data(), image.width, image.height, image.width * 4,
                             QImage::Format_RGBA8888_Premultiplied);
         realistic_.pixmap = QPixmap::fromImage(qimage); // copie : `image` est locale

@@ -10,6 +10,7 @@
 #include <optional>
 
 #include "ai_preferences.hpp"
+#include "openstitch/ai_segmentation/backend_run.hpp"
 #include "openstitch/ai_segmentation/mask_result.hpp"
 #include "openstitch/ai_segmentation/topology_cleanup.hpp"
 #include "openstitch/core/units.hpp"
@@ -66,6 +67,13 @@ public:
     // Préférences IA modifiées pendant que le dialogue est ouvert (bouton « Ouvrir les
     // préférences ») : le worker est reconfiguré, la prochaine analyse les utilise.
     void setPreferences(AiPreferences prefs);
+    // Fabrique de transports des backends (tests : backend factice en mémoire). Par défaut, le
+    // processus réel décrit par le fichier de backends.
+    void setTransportFactory(ai_segmentation::TransportFactory factory);
+    // Moteur effectivement choisi dans le sélecteur.
+    [[nodiscard]] AiEngine engine() const;
+    // Vrai quand le résultat courant vient du repli CIELAB (backend absent, en échec ou choisi).
+    [[nodiscard]] bool usedClassicalFallback() const { return fallbackSegmentation_.has_value(); }
 
 signals:
     // Demandé quand une erreur de configuration se règle dans les préférences : la fenêtre
@@ -95,6 +103,17 @@ private:
     enum class Phase { Idle, StartingWorker, LoadingModel, Segmenting };
 
     void setupUi();
+    // Remplit le sélecteur de moteur (worker historique, backends déclarés, segmentation
+    // couleur) depuis les préférences, en conservant le choix courant s'il existe encore.
+    void populateEngines(const AiEngine& wanted);
+    void onEngineChanged();
+    // Analyse par un backend du registre (BusyIndicator::run, annulable) ; tout échec bascule
+    // explicitement sur la segmentation couleur.
+    void analyzeWithBackend(const QString& backendId);
+    // Repli (ou choix) CIELAB : `reason` vide = choix explicite de l'utilisateur.
+    void analyzeClassical(const QString& reason, const QString& detail, bool configurationIssue);
+    void finishAnalysis();
+    void showOverlayPreview();
     void setStatus(const QString& text);
     // Erreur : message coloré, détail technique en infobulle et derrière « Afficher le détail »,
     // et « Ouvrir les préférences… » quand la cause se règle là.
@@ -126,6 +145,11 @@ private:
     ai_segmentation::MaskCollection masks_;
     QHash<int, QVector<std::uint8_t>> maskPixels_; // mask id -> bitmap 0/1 (width*height)
 
+    QComboBox* engineCombo_{nullptr};
+    QLabel* engineInfoLabel_{nullptr};
+    ai_segmentation::BackendSettings backendSettings_;
+    ai_segmentation::TransportFactory transportFactory_;
+    std::optional<segmentation::Segmentation> fallbackSegmentation_;
     QComboBox* modelCombo_{nullptr};
     QComboBox* profileCombo_{nullptr};
     QPushButton* analyzeButton_{nullptr};

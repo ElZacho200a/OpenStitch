@@ -41,8 +41,10 @@ par `C:\Users\zache\...`). Ne lire un fichier entier que s'il est petit
 
 Si les outils `mcp__mesh-mcp__*` sont absents ou en erreur (serveur non
 démarré → `/mcp` pour le reconnecter), ou si `search_docs` ne trouve rien
-de pertinent après 2–3 reformulations : `Grep` sur `docs/` (mode `content`,
-`-C 3`), puis `Read` ciblé comme ci-dessus. Signaler à l'utilisateur que le
+de pertinent après 2–3 reformulations : `Grep` sur `docs/` (outil Grep ; `rg` n'est pas dans
+le PATH du shell Bash) : d'abord les titres (`^#+ .*mot`, numéros de ligne), puis `Read` avec
+`offset`/`limit` sur la plage de la section (jusqu'au titre suivant). Jamais de lecture intégrale des
+chapitres de plus de 15 Ko. Signaler à l'utilisateur que le
 MCP était indisponible.
 
 ## 4. Modifier la doc

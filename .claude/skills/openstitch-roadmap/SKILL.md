@@ -1,6 +1,6 @@
 ---
 name: openstitch-roadmap
-description: Roadmap de parité avec Hatch Embroidery (docs/roadmap-parite-hatch.md) à suivre quand Claude est piloté sans consigne précise sur OpenStitch. À utiliser dès que l'utilisateur dit « continue », « fais la suite », « avance », « prochaine tâche », « qu'est-ce qu'il reste à faire », « travaille en autonomie », lance un /loop ou une routine sans tâche précise, demande ce qui manque par rapport à Hatch, ou quand une tâche vient d'être terminée et qu'il faut choisir la suivante.
+description: Roadmap de parité avec Hatch Embroidery (docs/roadmap-parite-hatch.md) à suivre quand Claude est piloté sans consigne précise sur OpenStitch. À utiliser dès que l'utilisateur dit « continue », « fais la suite », « avance », « prochaine tâche », « qu'est-ce qu'il reste à faire », « travaille en autonomie », lance un /loop ou une routine sans tâche précise, demande ce qui manque par rapport à Hatch. Ne pas l'utiliser pour enchaîner de sa propre initiative après une mission ciblée.
 ---
 
 # Suivre la roadmap de parité Hatch
@@ -90,7 +90,10 @@ et rappelée par le hook de session). Dans le même commit que le code :
 
 ## 5. Enchaîner
 
-Entrée terminée, tests verts, commit fait → rendre compte en quelques lignes
-(entrée livrée, preuve, prochaine entrée prévue). En mode `/loop` ou si
-l'utilisateur a demandé d'enchaîner, reprendre au §1 ; sinon s'arrêter et
-proposer la suivante.
+Entrée terminée, tests verts, commit et PR faits → rendre compte en quelques lignes
+(entrée livrée, preuve, prochaine entrée prévue). Reprendre au §1 **uniquement en mode
+autonomie continue** (l'utilisateur a demandé d'enchaîner : « continue », « travaille en
+autonomie », `/loop`) ; en mission ciblée, s'arrêter et proposer la suivante en une ligne
+(modes : `openstitch-commit`). Pour chaque lot enchaîné : un seul `Grep` de statuts (pas de
+relecture du fichier), et si le contexte devient lourd, point de reprise
+(`openstitch-token-efficiency` §4) plutôt que d'accumuler.

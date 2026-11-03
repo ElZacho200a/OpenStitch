@@ -23,6 +23,11 @@
 #ifndef SourceDir
   #define SourceDir "..\..\build\msvc\apps\desktop\Release"
 #endif
+; Serveur MCP (mode autonome et `--live`, relais vers le pont IA local) : livré à côté de
+; l'application, sans environnement développeur. Aucun agent externe n'est embarqué.
+#ifndef McpDir
+  #define McpDir "..\..\build\msvc\apps\mcp\Release"
+#endif
 
 [Setup]
 ; GUID FIXE (ne jamais régénérer) : identifie cette application à travers
@@ -43,6 +48,7 @@ PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+ChangesAssociations=yes
 OutputDir=dist
 OutputBaseFilename=OpenStitchStudio-Setup-{#MyAppVersion}
 Compression=lzma2
@@ -58,11 +64,36 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
+; HP-FILE-005 : association des projets .osp (double-clic = ouverture ; le chemin est passé en
+; argument de ligne de commande, lu par main.cpp). Case cochée par défaut ; les formats machine
+; (.dst, .pes...) ne sont jamais associés d'office -- ils appartiennent souvent à un autre logiciel.
+Name: "associatefiles"; Description: "Associer les projets OpenStitch (.osp) à {#MyAppName}"; GroupDescription: "Associations de fichiers :"
+
+[Registry]
+Root: HKA; Subkey: "Software\Classes\.osp"; ValueType: string; ValueName: ""; ValueData: "OpenStitchStudio.Project"; Flags: uninsdeletevalue; Tasks: associatefiles
+Root: HKA; Subkey: "Software\Classes\OpenStitchStudio.Project"; ValueType: string; ValueName: ""; ValueData: "Projet OpenStitch Studio"; Flags: uninsdeletekey; Tasks: associatefiles
+Root: HKA; Subkey: "Software\Classes\OpenStitchStudio.Project\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Tasks: associatefiles
+Root: HKA; Subkey: "Software\Classes\OpenStitchStudio.Project\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: associatefiles
+
 [Files]
 ; Tout le contenu déployé par windeployqt (exe + DLL Qt/plugins) --
 ; recursif, jamais une liste de fichiers maintenue à la main (fragile dès
 ; qu'une dépendance Qt change).
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+
+; Compagnon IA : serveur MCP et notice (données transmises, licences). Optionnels côté usage : sans
+; eux, OpenStitch Studio fonctionne à l'identique.
+Source: "{#McpDir}\openstitch-mcp.exe"; DestDir: "{app}\mcp"; Flags: ignoreversion
+Source: "..\..\LICENSE"; DestDir: "{app}\mcp"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "ai-companion-readme.txt"; DestDir: "{app}\mcp"; Flags: ignoreversion
+
+[UninstallDelete]
+; Suppression propre : fichiers de découverte du pont IA local (jeton) laissés par l'application.
+Type: filesandordirs; Name: "{localappdata}\OpenStitch\live"
+
+[UninstallRun]
+; La clé API Anthropic vit dans le Gestionnaire d'identifiants Windows : retirée à la désinstallation.
+Filename: "{sys}\cmdkey.exe"; Parameters: "/delete:OpenStitch/anthropic-api-key"; Flags: runhidden; RunOnceId: "RemoveAnthropicKey"
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

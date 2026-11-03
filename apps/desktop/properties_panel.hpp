@@ -112,6 +112,8 @@ public:
     // l'objet montré ; sinon ignoré. Sans reconstruction ni émission.
     void setJoinMode(std::optional<ObjectId> id, document::JoinMode mode);
     void setConnectorMode(std::optional<ObjectId> id, document::ConnectorMode mode);
+    // HP-ENG-011 : état de la case « Retirer les points cachés » (suit annulation/rétablissement).
+    void setKnockout(std::optional<ObjectId> id, bool enabled, double marginMm);
 
     // Lettrage : bandeau « Texte « … » » + bouton « Modifier le texte… » en tête de l'inspecteur
     // quand la sélection est une lettre d'un texte (`summary` vide = masqué). Persistant comme
@@ -131,6 +133,7 @@ public:
         ObjectId id;
         QString name;
         QColor color;
+        bool visible{true};
     };
     // Contexte transitoire des couches d'une même forme, non persistant.
     void setFillLayers(const QList<FillLayer>& layers, std::optional<ObjectId> selected);
@@ -146,6 +149,11 @@ signals:
     void reapplyOverridesRequested(ObjectId id);
     void fillLayerSelected(ObjectId id);
     void fillColorRequested(ObjectId id);
+    // Barre du sélecteur de couches (HP-OBJ-023) : `direction` +1 = vers le dessus de la pile
+    // (cousue plus tard), -1 = vers le fond. MainWindow exécute les commandes annulables.
+    void layerMoveRequested(ObjectId id, int direction);
+    void layerVisibilityRequested(ObjectId id, bool visible);
+    void layerRenameRequested(ObjectId id);
     // Bouton « Modifier le texte… » du bandeau lettrage (cf. setTextInfo) : MainWindow rouvre
     // le dialogue de texte (même chemin que le double-clic et F2).
     void editTextRequested();
@@ -179,6 +187,10 @@ signals:
     // Bouton « Convertir en remplissage directionnel » d'un tatami : MainWindow
     // construit les paramètres équivalents (cœur) et exécute la commande.
     void convertToDirectionalRequested(ObjectId id);
+    // Bouton « Convertir en remplissage concentrique » (HP-STI-007).
+    void convertToContourFillRequested(ObjectId id);
+    // Radial (0), spirale (1) ou croisé (2) : HP-STI-008 / 009 / 014.
+    void convertToFillKindRequested(ObjectId id, int kind);
     // Bouton « Éditer les guides » d'un remplissage directionnel : active
     // l'outil de guides du canevas sur cet objet.
     void editDirectionGuidesRequested(ObjectId id);
@@ -202,6 +214,8 @@ signals:
     // HP-SEQ-005 : connecteur après l'objet (0 = suit le projet, 1 = toujours couper, 2 = ne
     // jamais couper) ; MainWindow exécute SetEmbroideryConnectorModeCommand.
     void connectorModeEdited(ObjectId id, int mode);
+    // HP-ENG-011 : retirer les points cachés par les remplissages posés après (marge en mm).
+    void knockoutEdited(ObjectId id, bool enabled, double marginMm);
     // HP-STI-004 : bordure satin. `createBorderSatinRequested` : depuis un objet vectoriel,
     // largeur (mm), côté (0 centré, 1 intérieur, 2 extérieur), coins (0 vifs, 1 arrondis).
     // `borderSatinEdited` : changement de ces réglages d'un satin de bordure existant
@@ -236,6 +250,11 @@ private:
     QPushButton* textEditButton_{nullptr};
     QWidget* layerRow_{nullptr};
     QComboBox* fillLayers_{nullptr};
+    QPushButton* layerUp_{nullptr};
+    QPushButton* layerDown_{nullptr};
+    QPushButton* layerVisible_{nullptr};
+    QPushButton* layerRename_{nullptr};
+    void updateLayerTools(); // activation Monter/Descendre, libellé Masquer/Afficher
     QPushButton* fillColor_{nullptr};
     GradientFillPanel* gradientPanel_{nullptr};
     QToolButton* blendSingle_{nullptr};
@@ -260,6 +279,8 @@ private:
     QPointer<QPushButton> satinGuideRemove_;
     QPointer<QComboBox> joinCombo_;
     QPointer<QComboBox> connectorCombo_;
+    QPointer<QCheckBox> knockoutCheck_;
+    QPointer<QDoubleSpinBox> knockoutMargin_;
 };
 
 } // namespace openstitch::desktop

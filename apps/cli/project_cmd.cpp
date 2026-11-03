@@ -12,7 +12,9 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <map>
 #include <optional>
+#include <set>
 #include <sstream>
 
 #include "openstitch/formats/format_registry.hpp"
@@ -20,7 +22,9 @@
 #include "openstitch/formats/svg.hpp"
 #include "openstitch/project_io/machine_file.hpp"
 #include "openstitch/project_ops/analysis.hpp"
+#include "openstitch/project_ops/color_registration.hpp"
 #include "openstitch/project_ops/errors.hpp"
+#include "openstitch/project_ops/fabric_deformation.hpp"
 #include "openstitch/project_ops/factory.hpp"
 #include "openstitch/project_ops/inspect.hpp"
 #include "openstitch/project_ops/operations.hpp"
@@ -28,6 +32,7 @@
 #include "openstitch/project_ops/quality.hpp"
 #include "openstitch/project_ops/render.hpp"
 #include "openstitch/project_ops/report.hpp"
+#include "openstitch/project_ops/settings_profile.hpp"
 #include "openstitch/project_ops/sweep.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
@@ -40,6 +45,12 @@ namespace fs = std::filesystem;
 namespace {
 
 int g_exit = 0;
+
+// Options de numérisation (clés admises d'un profil `--settings`) par commande.
+std::map<const CLI::App*, std::vector<po::ProfileKey>>& profile_keys() {
+    static std::map<const CLI::App*, std::vector<po::ProfileKey>> keys;
+    return keys;
+}
 
 constexpr int kExitInput = 1;
 constexpr int kExitQuality = 2;
@@ -329,6 +340,7 @@ int run_batch_flow(const BatchFlow& f, const std::string& text, bool single) {
 // ---------------------------------------------------------------------------------------
 void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
     auto& s = v.settings;
+    const std::size_t firstOption = cmd->get_options().size();
     cmd->add_option("--dpi", s.dpi, "Résolution supposée pour l'échelle mm/px (défaut : 96)")
         ->check(CLI::PositiveNumber);
     cmd->add_option("--max-colors", s.max_colors, "Nombre maximal de couleurs (défaut : 8)")
@@ -340,8 +352,11 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
         ->check(CLI::NonNegativeNumber);
     cmd->add_option("--skip-background", v.skipBackground,
                     "Ignorer la plus grande région (le fond) : auto (défaut : seulement si c'est "
-                    "un fond quasi blanc touchant au moins 3 bords) | yes | no")
-        ->check(CLI::IsMember({"auto", "yes", "no", "-1", "0", "1"}));
+                    "un fond quasi blanc touchant au moins 3 bords) | yes | no | outer (seulement "
+                    "les régions "
+                    "de cette couleur qui touchent le pourtour de l'image : un blanc enfermé dans "
+                    "le motif reste cousu)")
+        ->check(CLI::IsMember({"auto", "yes", "no", "outer", "-1", "0", "1", "2"}));
     cmd->add_option("--min-feature-mm", s.min_feature_mm,
                     "Mode formes : les détails plus étroits que cette largeur (mm) sont rendus à "
                     "leur voisin avant numérisation ; 0 = désactivé (défaut : 0)")
@@ -483,11 +498,84 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
         "(fidelite.png) et decisions.json");
     cmd->add_option("--lock", s.lock, "Point d'arrêt : none|backforth|triangle|zigzag")
         ->check(CLI::IsMember({"none", "backforth", "triangle", "zigzag"}));
+    // Clés d'un profil : les options ci-dessus (pas `--settings` lui-même).
+    auto& keys = profile_keys()[cmd];
+    keys.clear();
+    const auto& options = cmd->get_options();
+    for (std::size_t i = firstOption; i < options.size(); ++i) {
+        if (!options[i]->get_lnames().empty()) {
+            keys.push_back({options[i]->get_lnames().front(), options[i]->get_expected_max() == 0});
+        }
+    }
+    cmd->add_option("--settings", v.settingsPath,
+                    "Profil de réglages JSON {\"nom-d-option\": valeur} (clés = options de "
+                    "numérisation sans « -- » ; une option de la ligne de commande l'emporte)");
+}
+
+std::optional<int> expand_settings_profile(CLI::App& app, std::vector<std::string>& args) {
+    // Commande visée : descente dans les sous-commandes citées avant tout argument inconnu.
+    CLI::App* sub = &app;
+    for (const auto& a : args) {
+        if (a.starts_with("-")) {
+            continue;
+        }
+        if (auto* next = sub->get_subcommand_no_throw(a)) {
+            sub = next;
+        }
+    }
+    const auto keys = profile_keys().find(sub);
+    if (keys == profile_keys().end()) {
+        return std::nullopt;
+    }
+    std::string path;
+    std::set<std::string> explicitNames;
+    bool json = false;
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        const std::string& a = args[i];
+        if (a == "--json") {
+            json = true;
+        } else if (a == "--settings" && i + 1 < args.size()) {
+            path = args[++i];
+        } else if (a.starts_with("--settings=")) {
+            path = a.substr(11);
+        } else if (a.starts_with("--")) {
+            explicitNames.insert(a.substr(2, a.find('=') == std::string::npos ? std::string::npos
+                                                                              : a.find('=') - 2));
+        }
+    }
+    if (path.empty()) {
+        return std::nullopt;
+    }
+    auto refuse = [&](const std::string& message, const std::string& hint) {
+        fmt::print(stderr, "openstitch-cli : --settings : {}\n", message);
+        if (!hint.empty()) {
+            fmt::print(stderr, "  Piste : {}\n", hint);
+        }
+        if (json) {
+            fmt::print("{}\n", po::error_json("settings", po::code::kUsage, message, hint));
+        }
+        return std::optional<int>(kExitInput);
+    };
+    std::string text;
+    std::string readError;
+    if (!read_all(path, text, readError)) {
+        return refuse(readError, "chemin du profil JSON (--settings profil.json)");
+    }
+    const auto extra = po::settings_profile_args(text, keys->second, explicitNames);
+    if (!extra) {
+        return refuse(extra.error().message, extra.error().detail);
+    }
+    args.insert(args.end(), extra->begin(), extra->end());
+    return std::nullopt;
 }
 
 void finalize_digitize_options(DigitizeOptionValues& v) {
+    v.settings.profile_path = v.settingsPath;
     const auto& b = v.skipBackground;
-    v.settings.skip_background = (b == "auto" || b == "-1") ? -1 : (b == "yes" || b == "1") ? 1 : 0;
+    v.settings.skip_background = (b == "auto" || b == "-1")   ? -1
+                                 : (b == "yes" || b == "1")   ? 1
+                                 : (b == "outer" || b == "2") ? 2
+                                                              : 0;
 }
 
 int project_exit_code() {
@@ -583,9 +671,13 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
                             rc == 0 ? "true" : "false", rc, rc == 0 ? report : "null");
         }
         if (jsonOut) {
-            fmt::print("{{\"schema\":\"openstitch.digitize-batch/1\",\"ok\":{},\"failed\":{},"
+            const std::string profile = bdValues->settingsPath.empty()
+                                            ? std::string()
+                                            : fmt::format("\"settings_profile\":{},",
+                                                          po::json_quote(bdValues->settingsPath));
+            fmt::print("{{\"schema\":\"openstitch.digitize-batch/1\",\"ok\":{},\"failed\":{},{}"
                        "\"items\":[{}]}}\n",
-                       failures == 0 ? "true" : "false", failures, items);
+                       failures == 0 ? "true" : "false", failures, profile, items);
         } else {
             fmt::print("{} image(s), {} échec(s)\n", bdArgs->images.size(), failures);
         }
@@ -755,14 +847,15 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
         std::uint64_t only{0};
     };
     auto exArgs = std::make_shared<ExportArgs>();
-    c = project->add_subcommand("export", "Exporte un projet en broderie machine (dst, pes, jef, "
-                                          "exp) ou en SVG ; les points sont régénérés depuis le "
-                                          ".osp (mêmes octets que osp2dst)");
+    c = project->add_subcommand("export",
+                                "Exporte un projet en broderie machine (dst, pes, jef, vp3, "
+                                "exp) ou en SVG ; les points sont régénérés depuis le "
+                                ".osp (mêmes octets que osp2dst)");
     c->add_option("osp", exArgs->osp, "Projet .osp")->required();
     c->add_option("--output,-o", exArgs->out, "Fichier à produire (format déduit de l'extension)")
         ->required();
     c->add_option("--format", exArgs->format, "Force le format : dst|pes|jef|exp|svg")
-        ->check(CLI::IsMember({"dst", "pes", "jef", "exp", "svg"}));
+        ->check(CLI::IsMember({"dst", "pes", "jef", "vp3", "exp", "svg"}));
     c->add_flag("--no-trims", exArgs->noTrims, "Supprime les coupes (elles deviennent des sauts)");
     c->add_flag("--no-color-changes", exArgs->noColorChanges,
                 "Supprime les changements de couleur");
@@ -802,7 +895,7 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
         if (format != "svg" && (info == nullptr || !info->can_write)) {
             g_exit = fail_with("export", jsonOut, po::code::kUsage,
                                "format de sortie « " + format + " » non pris en charge",
-                               "extensions : .dst .pes .jef .exp .svg (ou --format)");
+                               "extensions : .dst .pes .jef .vp3 .exp .svg (ou --format)");
             return;
         }
         int rc = 0;
@@ -1006,6 +1099,217 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
         if (!deArgs->map.empty() && !write_bytes(deArgs->map, report->heatmap_png, err)) {
             g_exit = fail_with("density", jsonOut, po::code::kIo, err);
             return;
+        }
+        fmt::print("{}", jsonOut ? report->json + "\n" : report->text);
+        g_exit = 0;
+    });
+
+    // Carte de risque de tirage : heuristique et profils de tissus NON calibres.
+    struct FabricArgs {
+        std::string osp, output, map, fabric{"woven"};
+        double cellMm{1.0};
+        bool noClobber{false};
+    };
+    auto frArgs = std::make_shared<FabricArgs>();
+    c = project->add_subcommand("fabric-risk",
+                                "Indice relatif de risque de tirage du tissu (non calibre), "
+                                "orientation et concentration des points");
+    c->add_option("osp", frArgs->osp, "Projet .osp")->required();
+    c->add_option("--fabric", frArgs->fabric, "Profil indicatif : woven, jersey, felt")
+        ->check(CLI::IsMember({"woven", "jersey", "felt"}));
+    c->add_option("--cell-mm", frArgs->cellMm, "Cellule d'analyse en mm (defaut 1)")
+        ->check(CLI::Range(0.1, 10.0));
+    c->add_option("--heatmap", frArgs->map, "Carte PNG de l'indice relatif (0..100)");
+    c->add_option("--output,-o", frArgs->output, "Ecrit le rapport JSON");
+    c->add_flag("--no-clobber", frArgs->noClobber, "Refuse d'ecraser les fichiers de sortie");
+    c->add_flag("--json", jsonOut, "Rapport JSON (openstitch.fabric-risk/1) sur stdout");
+    c->callback([frArgs, &jsonOut, write_bytes] {
+        for (const auto* p : {&frArgs->map, &frArgs->output}) {
+            if (const auto refused = check_output("fabric-risk", jsonOut, *p, frArgs->noClobber)) {
+                g_exit = *refused;
+                return;
+            }
+        }
+        int rc = 0;
+        auto opened = load("fabric-risk", jsonOut, frArgs->osp, rc);
+        if (!opened) {
+            g_exit = rc;
+            return;
+        }
+        po::FabricRiskOptions opt;
+        opt.fabric = frArgs->fabric;
+        opt.cell_mm = frArgs->cellMm;
+        opt.heatmap = !frArgs->map.empty();
+        const auto report = po::measure_fabric_risk(opened->project, opt);
+        if (!report) {
+            g_exit = fail_err("fabric-risk", jsonOut, po::code::kRefused, report.error());
+            return;
+        }
+        std::string err;
+        if (!frArgs->output.empty() && !write_text(fs::path(frArgs->output), report->json, err)) {
+            g_exit = fail_with("fabric-risk", jsonOut, po::code::kIo, err);
+            return;
+        }
+        if (!frArgs->map.empty() && !write_bytes(frArgs->map, report->heatmap_png, err)) {
+            g_exit = fail_with("fabric-risk", jsonOut, po::code::kIo, err);
+            return;
+        }
+        fmt::print("{}", jsonOut ? report->json + "\n" : report->text);
+        g_exit = 0;
+    });
+
+    // Deformation prevue du tissu : solveur 2D de la feuille, estimation NON calibree.
+    struct DeformArgs {
+        std::string osp, output, map, material, stabilizer;
+        double cellMm{1.0}, tension{0.0}, criticalStrain{0.0};
+        bool noClobber{false}, aroundStitches{false};
+    };
+    auto dfArgs = std::make_shared<DeformArgs>();
+    c = project->add_subcommand("fabric-deformation",
+                                "Deformation prevue du tissu (solveur mecanique 2D, cadre fixe) "
+                                "et indice de plissement (estimation non calibree)");
+    c->add_option("osp", dfArgs->osp, "Projet .osp")->required();
+    c->add_option("--material", dfArgs->material,
+                  "woven, jersey ou felt (defaut : tissu du projet)");
+    c->add_option("--stabilizer", dfArgs->stabilizer,
+                  "none, tearaway ou cutaway (defaut : entoilage du projet)");
+    c->add_option("--cell-mm", dfArgs->cellMm, "Maille du solveur en mm (defaut 1)")
+        ->check(CLI::Range(0.2, 10.0));
+    c->add_option("--tension-n", dfArgs->tension, "Tension du fil par point, en N (defaut 0,2)")
+        ->check(CLI::Range(0.0, 10.0));
+    c->add_option("--critical-strain", dfArgs->criticalStrain,
+                  "Compression critique de plissement (defaut selon le tissu)")
+        ->check(CLI::Range(0.0, 1.0));
+    c->add_flag("--around-stitches", dfArgs->aroundStitches,
+                "Cadre = emprise des points + 10 mm au lieu du canevas du projet");
+    c->add_option("--heatmap", dfArgs->map, "Carte PNG de l'indice de plissement");
+    c->add_option("--output,-o", dfArgs->output, "Ecrit le rapport JSON");
+    c->add_flag("--no-clobber", dfArgs->noClobber, "Refuse d'ecraser les fichiers de sortie");
+    c->add_flag("--json", jsonOut, "Rapport JSON (openstitch.fabric-deformation/1) sur stdout");
+    c->callback([dfArgs, &jsonOut, write_bytes] {
+        for (const auto* p : {&dfArgs->map, &dfArgs->output}) {
+            if (const auto refused =
+                    check_output("fabric-deformation", jsonOut, *p, dfArgs->noClobber)) {
+                g_exit = *refused;
+                return;
+            }
+        }
+        int rc = 0;
+        auto opened = load("fabric-deformation", jsonOut, dfArgs->osp, rc);
+        if (!opened) {
+            g_exit = rc;
+            return;
+        }
+        po::FabricDeformationOptions opt;
+        opt.material = dfArgs->material;
+        opt.stabilizer = dfArgs->stabilizer;
+        opt.cell_mm = dfArgs->cellMm;
+        opt.thread_tension_n = dfArgs->tension;
+        opt.critical_strain = dfArgs->criticalStrain;
+        opt.hoop_is_canvas = !dfArgs->aroundStitches;
+        opt.heatmap = !dfArgs->map.empty();
+        const auto report = po::predict_fabric_deformation(opened->project, opt);
+        if (!report) {
+            g_exit = fail_err("fabric-deformation", jsonOut, po::code::kRefused, report.error());
+            return;
+        }
+        std::string err;
+        if (!dfArgs->output.empty() && !write_text(fs::path(dfArgs->output), report->json, err)) {
+            g_exit = fail_with("fabric-deformation", jsonOut, po::code::kIo, err);
+            return;
+        }
+        if (!dfArgs->map.empty() && !write_bytes(dfArgs->map, report->heatmap_png, err)) {
+            g_exit = fail_with("fabric-deformation", jsonOut, po::code::kIo, err);
+            return;
+        }
+        fmt::print("{}", jsonOut ? report->json + "\n" : report->text);
+        g_exit = 0;
+    });
+
+    // Decalage prevu entre couleurs (solveur rejoue dans l'ordre de couture) et DST compense.
+    struct RegistrationArgs {
+        std::string osp, output, map, dst, material, stabilizer;
+        double cellMm{1.0}, tension{0.0}, visibleGap{0.0}, fraction{-1.0}, strength{1.0};
+        int iterations{2};
+        bool noClobber{false}, aroundStitches{false};
+    };
+    auto rgArgs = std::make_shared<RegistrationArgs>();
+    c = project->add_subcommand("fabric-registration",
+                                "Decalage prevu entre couleurs (solveur de la feuille tissu rejoue "
+                                "bloc par bloc, estimation non calibree) et DST compense");
+    c->add_option("osp", rgArgs->osp, "Projet .osp")->required();
+    c->add_option("--material", rgArgs->material,
+                  "woven, jersey ou felt (defaut : tissu du projet)");
+    c->add_option("--stabilizer", rgArgs->stabilizer,
+                  "none, tearaway ou cutaway (defaut : entoilage du projet)");
+    c->add_option("--cell-mm", rgArgs->cellMm, "Maille du solveur en mm (defaut 1)")
+        ->check(CLI::Range(0.2, 10.0));
+    c->add_option("--tension-n", rgArgs->tension, "Tension du fil par point, en N (defaut 0,2)")
+        ->check(CLI::Range(0.0, 10.0));
+    c->add_option("--visible-gap-mm", rgArgs->visibleGap,
+                  "Decalage visible entre deux couleurs, mm (defaut 0,3)")
+        ->check(CLI::Range(0.0, 10.0));
+    c->add_option("--own-block-fraction", rgArgs->fraction,
+                  "Part du tirage d'un bloc deja exercee pendant sa couture (defaut 0,5)")
+        ->check(CLI::Range(0.0, 1.0));
+    c->add_flag("--around-stitches", rgArgs->aroundStitches,
+                "Cadre = emprise des points + 10 mm au lieu du canevas du projet");
+    c->add_option(
+        "--compensated-dst", rgArgs->dst,
+        "Ecrit un DST dont les points sont decales de l'ecart prevu (contre-compensation)");
+    c->add_option("--strength", rgArgs->strength, "Force de la compensation, 0..1 (defaut 1)")
+        ->check(CLI::Range(0.0, 1.0));
+    c->add_option("--iterations", rgArgs->iterations, "Iterations de la compensation (defaut 2)")
+        ->check(CLI::Range(0, 6));
+    c->add_option("--heatmap", rgArgs->map, "Carte PNG du decalage entre couleurs");
+    c->add_option("--output,-o", rgArgs->output, "Ecrit le rapport JSON");
+    c->add_flag("--no-clobber", rgArgs->noClobber, "Refuse d'ecraser les fichiers de sortie");
+    c->add_flag("--json", jsonOut, "Rapport JSON (openstitch.color-registration/1) sur stdout");
+    c->callback([rgArgs, &jsonOut, write_bytes] {
+        for (const auto* p : {&rgArgs->map, &rgArgs->output, &rgArgs->dst}) {
+            if (const auto refused =
+                    check_output("fabric-registration", jsonOut, *p, rgArgs->noClobber)) {
+                g_exit = *refused;
+                return;
+            }
+        }
+        int rc = 0;
+        auto opened = load("fabric-registration", jsonOut, rgArgs->osp, rc);
+        if (!opened) {
+            g_exit = rc;
+            return;
+        }
+        po::ColorRegistrationOptions opt;
+        opt.material = rgArgs->material;
+        opt.stabilizer = rgArgs->stabilizer;
+        opt.cell_mm = rgArgs->cellMm;
+        opt.thread_tension_n = rgArgs->tension;
+        opt.visible_gap_mm = rgArgs->visibleGap;
+        opt.own_block_fraction = rgArgs->fraction;
+        opt.hoop_is_canvas = !rgArgs->aroundStitches;
+        opt.compensate = !rgArgs->dst.empty();
+        opt.strength = rgArgs->strength;
+        opt.iterations = rgArgs->iterations;
+        opt.heatmap = !rgArgs->map.empty();
+        const auto report = po::predict_color_registration(opened->project, opt);
+        if (!report) {
+            g_exit = fail_err("fabric-registration", jsonOut, po::code::kRefused, report.error());
+            return;
+        }
+        std::string err;
+        if (!rgArgs->output.empty() && !write_text(fs::path(rgArgs->output), report->json, err)) {
+            g_exit = fail_with("fabric-registration", jsonOut, po::code::kIo, err);
+            return;
+        }
+        if (!rgArgs->map.empty() && !write_bytes(rgArgs->map, report->heatmap_png, err)) {
+            g_exit = fail_with("fabric-registration", jsonOut, po::code::kIo, err);
+            return;
+        }
+        if (!rgArgs->dst.empty()) {
+            if (!write_bytes(rgArgs->dst, report->compensated_dst, err)) {
+                g_exit = fail_with("fabric-registration", jsonOut, po::code::kIo, err);
+                return;
+            }
         }
         fmt::print("{}", jsonOut ? report->json + "\n" : report->text);
         g_exit = 0;
@@ -1233,7 +1537,8 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
     c->add_option("--output,-o", rdArgs->out, "PNG à produire")->required();
     c->add_option("--px-per-mm", rdArgs->pxPerMm, "Résolution en pixels par mm (défaut : 5)")
         ->check(CLI::Range(0.5, 40.0));
-    c->add_option("--fabric", rdArgs->fabric, "Couleur du tissu #RRGGBB (défaut : #00FF00)");
+    CLI::Option* fabricOpt =
+        c->add_option("--fabric", rdArgs->fabric, "Couleur du tissu #RRGGBB (défaut : #00FF00)");
     c->add_option("--thread-mm", rdArgs->thread, "Diamètre apparent du fil en mm (défaut : 0.35)")
         ->check(CLI::Range(0.1, 1.0));
     c->add_option("--crop", rdArgs->crop,
@@ -1241,7 +1546,7 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
                   "gauche (défaut : 0,0,1,1 = tout)");
     c->add_flag("--no-clobber", rdArgs->noClobber, "Refuse d'écraser le fichier de sortie");
     c->add_flag("--json", jsonOut, "Rapport JSON sur stdout");
-    c->callback([rdArgs, &jsonOut] {
+    c->callback([rdArgs, fabricOpt, &jsonOut] {
         const auto& a = *rdArgs;
         if (const auto refused = check_output("render", jsonOut, a.out, a.noClobber)) {
             g_exit = *refused;
@@ -1287,12 +1592,19 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
         }
         if (jsonOut) {
             fmt::print("{{\"schema\":\"openstitch.render/1\",\"ok\":true,\"output\":{},"
-                       "\"width\":{},\"height\":{},\"px_per_mm\":{}}}\n",
+                       "\"width\":{},\"height\":{},\"px_per_mm\":{},\"fabric\":{}}}\n",
                        po::json_quote(a.out), rendered->width, rendered->height,
-                       rendered->px_per_mm);
+                       rendered->px_per_mm, po::json_quote(a.fabric));
         } else {
             fmt::print("Rendu écrit : {} ({} x {} px, {:.2f} px/mm)\n", a.out, rendered->width,
                        rendered->height, rendered->px_per_mm);
+            if (fabricOpt->count() == 0) {
+                fmt::print(
+                    stderr,
+                    "Info : fond par défaut {} (vert franc : les trous du motif ressortent) ;"
+                    " --fabric #RRGGBB pour une autre couleur de tissu.\n",
+                    a.fabric);
+            }
         }
         g_exit = 0;
     });

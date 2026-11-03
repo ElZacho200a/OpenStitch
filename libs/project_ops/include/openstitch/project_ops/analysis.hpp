@@ -19,6 +19,7 @@ namespace openstitch::project_ops {
 
 inline constexpr const char* kFidelitySchema = "openstitch.fidelity/1";
 inline constexpr const char* kDensitySchema = "openstitch.density/1";
+inline constexpr const char* kFabricRiskSchema = "openstitch.fabric-risk/1";
 inline constexpr const char* kLocateSchema = "openstitch.locate/1";
 inline constexpr const char* kDiagnoseSchema = "openstitch.diagnose/1";
 
@@ -72,6 +73,60 @@ struct DensityReport {
 
 [[nodiscard]] Result<DensityReport> measure_density(const document::Project& project,
                                                     const DensityOptions& options = {});
+
+// Estimation relative (0..100) : pas une tension en N, ni une simulation de deformations.
+struct FabricRiskOptions {
+    // Profils indicatifs non calibres ; aucun changement des reglages de couture.
+    std::string fabric{"woven"}; // woven | jersey | felt
+    double cell_mm{1.0};
+    double reference_spacing_mm{0.4};
+    double heatmap_px_per_cell{4.0};
+    bool heatmap{false};
+};
+
+// Classes de risque d'une case de la grille, pour la surimpression du bureau (vert / orange /
+// rouge). Les seuils sont ceux de l'indice relatif 0..100 : 70 est aussi la borne de
+// `hotspot_area_mm2`. Heuristique non calibree, comme l'indice dont elle derive.
+enum class FabricRiskLevel : std::uint8_t {
+    None = 0,     // aucun fil dans la case
+    Low = 1,      // indice < 40
+    Moderate = 2, // 40 <= indice < 70
+    High = 3,     // indice >= 70
+};
+inline constexpr double kFabricRiskModerateScore = 40.0;
+inline constexpr double kFabricRiskHighScore = 70.0;
+
+// Pure et deterministe. Un indice <= 0 (ou non fini) donne `None`.
+[[nodiscard]] FabricRiskLevel classify_fabric_risk(double score);
+
+// Grille spatiale de cases classees, dans le repere du modele (µm, Y vers le haut) : la case
+// (col, row) couvre x dans [top_left.x + col*cell, +cell] et y dans
+// [top_left.y - (row+1)*cell, top_left.y - row*cell] (rangee 0 = haut).
+struct FabricRiskGrid {
+    int cols{0};
+    int rows{0};
+    Micrometers cell{0};
+    Vec2um top_left{};
+    std::vector<FabricRiskLevel> levels; // rangee par rangee, taille cols * rows
+
+    [[nodiscard]] FabricRiskLevel at(int col, int row) const {
+        return levels[static_cast<std::size_t>(row) * static_cast<std::size_t>(cols) +
+                      static_cast<std::size_t>(col)];
+    }
+};
+
+struct FabricRiskReport {
+    std::string json; // openstitch.fabric-risk/1
+    std::string text;
+    std::vector<std::uint8_t> heatmap_png;
+    FabricRiskGrid grid; // memes cases que la carte PNG et que le JSON
+    double max_score{0.0};
+    double p99_score{0.0};
+    double hotspot_area_mm2{0.0}; // score >= 70
+};
+
+[[nodiscard]] Result<FabricRiskReport> measure_fabric_risk(const document::Project& project,
+                                                           const FabricRiskOptions& options = {});
 
 // Dimensions (px) de l'image de travail (source passée par `project.ops`) : le repère de la
 // segmentation et de tous les outils d'analyse. {0, 0} sans image.

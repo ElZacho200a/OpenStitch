@@ -19,6 +19,7 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPainter>
+#include <QProgressDialog>
 #include <QPushButton>
 #include <QSettings>
 #include <QShortcut>
@@ -266,6 +267,42 @@ private slots:
     void init() { QSettings().clear(); }
 
     // ---- vectorisation de toute la sélection (audit A4/A5) --------------------------------
+
+    // HP-PERF-001 : une annulation depuis le vrai bouton du dialogue ne doit produire
+    // ni objet, ni commande dans l'historique, ni identifiant consommé.
+    void cancelVectorizationLeavesTheDocumentUnchanged() {
+        MainWindow window;
+        window.applyLoadedProject(threeBandProject());
+        window.selectRegions({regionAt(window, 5, 5), regionAt(window, 30, 5)},
+                             SelectMode::Replace);
+        const std::size_t before = window.project_.vector_objects.size();
+
+        bool cancelClicked = false;
+        QTimer::singleShot(0, &window, [&] {
+            auto* progress = qobject_cast<QProgressDialog*>(QApplication::activeModalWidget());
+            if (progress == nullptr) {
+                return;
+            }
+            for (QPushButton* button : progress->findChildren<QPushButton*>()) {
+                if (button->text() == QStringLiteral("Annuler")) {
+                    button->click();
+                    cancelClicked = true;
+                    break;
+                }
+            }
+        });
+        window.vectorizeSelectedRegion(false);
+        QVERIFY(cancelClicked);
+        QCOMPARE(window.project_.vector_objects.size(), before);
+        QVERIFY(window.statusBar()->currentMessage().contains(QStringLiteral("annulée")));
+        QVERIFY(window.undoStack_.isClean());
+
+        // Le calcul suivant doit fonctionner avec les mêmes données et rester annulable.
+        window.vectorizeSelectedRegion(false);
+        QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
+        window.undo();
+        QCOMPARE(window.project_.vector_objects.size(), before);
+    }
 
     void vectorizeAllSelectedRegionsInOneUndoStep() {
         MainWindow window;
@@ -621,6 +658,91 @@ private slots:
         window.segmentDialog_->close();
         QTRY_VERIFY(!window.previewSegmentation_.has_value()); // fermer abandonne l'aperçu
         QVERIFY(!window.project_.segmentation.has_value());
+    }
+
+    // HP-UX-048 : la comparaison est une lecture de miniatures, jamais
+    // une deuxième numérisation ni une mutation du document.
+    void segmentationDialogComparesSourceAndResultWithoutMutation() {
+        MainWindow window;
+        auto project = threeBandProject();
+        project.segmentation.reset();
+        window.applyLoadedProject(project);
+        window.segmentImage();
+        QVERIFY(!window.segmentDialog_.isNull());
+
+        auto* before = window.segmentDialog_->findChild<QLabel*>("segmentSourceThumbnail");
+        auto* after = window.segmentDialog_->findChild<QLabel*>("segmentResultThumbnail");
+        QVERIFY(before != nullptr && after != nullptr);
+        QVERIFY(before->accessibleName().contains(QStringLiteral("avant segmentation")));
+        QVERIFY(after->accessibleName().contains(QStringLiteral("Résultat")));
+        QVERIFY(!before->pixmap().isNull());
+        QVERIFY(before->pixmap().width() <= 176);
+        QVERIFY(before->pixmap().height() <= 112);
+
+        QTRY_VERIFY_WITH_TIMEOUT(window.previewSegmentation_.has_value(), 20000);
+        QTRY_VERIFY_WITH_TIMEOUT(!after->pixmap().isNull(), 20000);
+        QVERIFY(after->pixmap().width() <= 176);
+        QVERIFY(after->pixmap().height() <= 112);
+        QVERIFY(!window.project_.segmentation.has_value());
+        QVERIFY(window.undoStack_.isClean());
+
+        // Basculer vers la source sur le canevas ne retire pas la comparaison.
+        auto* canvasPreview =
+            window.segmentDialog_->findChild<QCheckBox*>(QStringLiteral("segmentPreviewCheck"));
+        QVERIFY(canvasPreview != nullptr);
+        canvasPreview->setChecked(false);
+        QVERIFY(!window.previewSegmentation_.has_value());
+        QVERIFY(!before->pixmap().isNull());
+        QVERIFY(!after->pixmap().isNull());
+        QVERIFY(window.undoStack_.isClean());
+
+        canvasPreview->setChecked(true);
+        QTRY_VERIFY_WITH_TIMEOUT(window.previewSegmentation_.has_value(), 20000);
+        window.segmentDialog_->close();
+    }
+
+    // Régression : un calcul lancé avant un clic « source » ne peut pas
+    // faire réapparaître la carte en fin de traitement.
+    void turningOffPreviewDuringCalculationKeepsCanvasOnSource() {
+        MainWindow window;
+        auto project = threeBandProject();
+        project.segmentation.reset();
+        window.applyLoadedProject(project);
+        window.segmentImage();
+        QVERIFY(!window.segmentDialog_.isNull());
+        QVERIFY(window.segmentThread_ != nullptr);
+
+        auto* toggle = window.segmentDialog_->findChild<QCheckBox*>("segmentPreviewCheck");
+        QVERIFY(toggle != nullptr);
+        toggle->setChecked(false);
+        QTRY_VERIFY_WITH_TIMEOUT(window.segmentThread_ == nullptr, 20000);
+        QVERIFY(!window.previewSegmentation_.has_value());
+        QVERIFY(!window.showSegAct_->isChecked());
+        QVERIFY(!window.project_.segmentation.has_value());
+        QVERIFY(window.undoStack_.isClean());
+        window.segmentDialog_->close();
+    }
+
+    void segmentationThumbnailsRejectInvalidInput() {
+        openstitch::desktop::SegmentationDialog dialog(0.1);
+        auto* before = dialog.findChild<QLabel*>(QStringLiteral("segmentSourceThumbnail"));
+        auto* after = dialog.findChild<QLabel*>(QStringLiteral("segmentResultThumbnail"));
+        QVERIFY(before != nullptr && after != nullptr);
+
+        openstitch::image::Image malformed;
+        malformed.width = 100;
+        malformed.height = 100;
+        malformed.rgba.assign(4, 255);
+        dialog.setSourceThumbnail(malformed);
+        QVERIFY(before->pixmap().isNull());
+        QVERIFY(!before->text().isEmpty());
+
+        openstitch::segmentation::Segmentation invalid;
+        invalid.width = 100;
+        invalid.height = 100;
+        dialog.setSegmentationThumbnail(invalid);
+        QVERIFY(after->pixmap().isNull());
+        QVERIFY(!after->text().isEmpty());
     }
 
     void changingASettingRecomputesThePreview() {

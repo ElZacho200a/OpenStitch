@@ -41,6 +41,17 @@ enum class Tool {
     // Pipette (HP-THR-012) : un clic échantillonne la couleur de l'image et propose les fils
     // les plus proches du nuancier courant.
     Eyedropper,
+    // Pinceau de déformation (HP-VEC-018) : glisser = pousser / tirer le contour de la forme
+    // sélectionnée ; un coup de pinceau = une commande.
+    Brush,
+    // Pot de peinture : un clic dans un vide fermé entre des formes crée une forme qui le remplit.
+    Bucket,
+    // Clic-pour-broder (HP-AUTO-003) : un clic sur une zone de couleur de l'image crée l'objet
+    // brodé (région par croissance, tolérance réglable).
+    ClickToStitch,
+    // Zones de détail (Segmentation) : glisser = peindre (ou gommer) les zones où la segmentation
+    // doit préserver les petites formes ; le reste est traité en aplat.
+    DetailBrush,
 };
 
 } // namespace openstitch::desktop

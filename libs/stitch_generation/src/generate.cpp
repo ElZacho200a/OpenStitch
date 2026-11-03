@@ -2,23 +2,36 @@
 #include "openstitch/stitch_generation/generate.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
+#include <deque>
 #include <memory>
+#include <numbers>
 #include <variant>
 
 #include "chunk_cache.hpp"
 #include "openstitch/auto_satin/satin_strategy.hpp"
 #include "openstitch/auto_satin/skeleton_satin.hpp"
 #include "openstitch/core/parallel.hpp"
+#include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/stitch_generation/auto_satin_engine.hpp"
+#include "openstitch/stitch_generation/blanket_stitch.hpp"
+#include "openstitch/stitch_generation/contour_fill.hpp"
+#include "openstitch/stitch_generation/cross_stitch.hpp"
+#include "openstitch/stitch_generation/crosshatch_fill.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 #include "openstitch/stitch_generation/join.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
+#include "openstitch/stitch_generation/motif_fill.hpp"
+#include "openstitch/stitch_generation/motif_run.hpp"
+#include "openstitch/stitch_generation/pull_auto.hpp"
+#include "openstitch/stitch_generation/radial_fill.hpp"
 #include "openstitch/stitch_generation/routing.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
+#include "openstitch/stitch_generation/spiral_fill.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
 #include "openstitch/stitch_generation/underlay_auto.hpp"
 
@@ -224,7 +237,21 @@ void generate_running(stitch::StitchSequence& sequence, const document::VectorOb
                       const document::RunningStitchParams& params) {
     const auto stitchContour = [&](const geometry::Path& path) {
         const auto sampled = sample_path(path, params.stitch_length, params.min_length);
-        const auto points = apply_repeats(sampled, params.repeats);
+        std::vector<Vec2um> points;
+        switch (params.style) {
+        case document::RunningStyle::Bean:
+            points = apply_repeat_mode(sampled, RepeatMode::BeanStitch, 3);
+            break;
+        case document::RunningStyle::Backstitch:
+            points = apply_repeat_mode(sampled, RepeatMode::Backstitch);
+            break;
+        case document::RunningStyle::Stem:
+            points = apply_stem_stitch(sampled, params.stem_offset);
+            break;
+        case document::RunningStyle::Run:
+            points = apply_repeats(sampled, params.repeats);
+            break;
+        }
         emit_polyline(sequence, points, object.id);
     };
     for (const geometry::PathSet& set : source.paths) {
@@ -255,6 +282,12 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
     config.pull_right = params.pull_right;
     config.push_start = params.push_start;
     config.push_end = params.push_end;
+    config.auto_spacing = params.auto_spacing;
+    config.corner_mode = static_cast<SatinCornerMode>(static_cast<int>(params.corner_mode));
+    config.corner_angle_deg = params.corner_threshold.radians * 180.0 / std::numbers::pi;
+    config.jagged = static_cast<SatinJaggedMode>(static_cast<int>(params.jagged));
+    config.jagged_amplitude = params.jagged_amplitude;
+    config.jagged_seed = params.jagged_seed;
     // Sous-couche automatique (HP-ENG-002) : selon la largeur réelle de la colonne.
     if (params.underlay_mode == document::UnderlayMode::Auto) {
         const SatinUnderlayChoice c =
@@ -262,6 +295,17 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
         config.center_underlay = c.center;
         config.underlay_edge = c.edge;
         config.underlay_zigzag = c.zigzag;
+    }
+    // Compensation du tirage automatique (HP-ENG-001.b) : selon la largeur réelle de la colonne.
+    if (params.pull_mode == document::PullMode::Auto) {
+        config.pull_compensation =
+            choose_satin_pull(satin_mean_width_mm(params.rail_a, params.rail_b));
+    } else if (params.pull_mode == document::PullMode::Adaptive ||
+               params.pull_mode == document::PullMode::Predicted) {
+        // Le modèle prédictif corrige les interactions entre points ; la largeur
+        // géométrique de base reste protégée par Adaptive (sans cumul manuel).
+        config.pull_compensation = Micrometers{0};
+        config.adaptive_pull = true;
     }
     // Avec barreaux (satin auto) : correspondance par sections + espacement
     // perpendiculaire. Sans barreaux (satin manuel/legacy) : ré-échantillonnage
@@ -359,8 +403,16 @@ void generate_auto_satin(stitch::StitchSequence& sequence, const document::Vecto
     config.pull_right = params.pull_right;
     config.push_start = params.push_start;
     config.push_end = params.push_end;
-    // Sous-couche automatique (HP-ENG-002) : largeur moyenne de la région source.
-    if (params.underlay_mode == document::UnderlayMode::Auto) {
+    config.auto_spacing = params.auto_spacing;
+    config.corner_mode = static_cast<SatinCornerMode>(static_cast<int>(params.corner_mode));
+    config.corner_angle_deg = params.corner_threshold.radians * 180.0 / std::numbers::pi;
+    config.jagged = static_cast<SatinJaggedMode>(static_cast<int>(params.jagged));
+    config.jagged_amplitude = params.jagged_amplitude;
+    config.jagged_seed = params.jagged_seed;
+    // Réglages automatiques (HP-ENG-002 sous-couche, HP-ENG-001.b tirage) : largeur moyenne de
+    // la région source.
+    if (params.underlay_mode == document::UnderlayMode::Auto ||
+        params.pull_mode == document::PullMode::Auto) {
         double area = 0.0;
         double perimeter = 0.0;
         for (const geometry::PathSet& rawSet : source.paths) {
@@ -369,11 +421,22 @@ void generate_auto_satin(stitch::StitchSequence& sequence, const document::Vecto
             area += m.area_mm2;
             perimeter += m.perimeter_mm;
         }
-        const SatinUnderlayChoice c =
-            choose_satin_underlay(perimeter > 1e-9 ? 2.0 * area / perimeter : 0.0);
-        config.center_underlay = c.center;
-        config.underlay_edge = c.edge;
-        config.underlay_zigzag = c.zigzag;
+        const double widthMm = perimeter > 1e-9 ? 2.0 * area / perimeter : 0.0;
+        if (params.underlay_mode == document::UnderlayMode::Auto) {
+            const SatinUnderlayChoice c = choose_satin_underlay(widthMm);
+            config.center_underlay = c.center;
+            config.underlay_edge = c.edge;
+            config.underlay_zigzag = c.zigzag;
+        }
+        if (params.pull_mode == document::PullMode::Auto) {
+            config.pull_compensation = choose_satin_pull(widthMm);
+        }
+    }
+    if (params.pull_mode == document::PullMode::Adaptive ||
+        params.pull_mode == document::PullMode::Predicted) {
+        // Auto-satin : même socle local qu'Adaptive, prédiction en passe finale.
+        config.pull_compensation = Micrometers{0};
+        config.adaptive_pull = true;
     }
 
     std::vector<std::vector<SatinStation>> columns;
@@ -688,6 +751,49 @@ std::vector<geometry::PathSet> fill_regions_in_sewing_order(const stitch::Stitch
     return ordered;
 }
 
+// Passe de contour d'un tatami (`edge_outline`) : point droit le long du bord de la région et de
+// ses trous, cousu PAR-DESSUS le remplissage pour masquer les bouts de rangées (bords
+// « effilochés »). Chaque boucle démarre au plus près de l'aiguille et lui est reliée par un
+// trajet caché dans la région quand il existe (sinon saut).
+constexpr std::int32_t kEdgeOutlineStitchUm = 2'000;
+constexpr std::int32_t kEdgeOutlineMinUm = 500;
+
+void emit_edge_outline(stitch::StitchSequence& sequence, const geometry::PathSet& region,
+                       ObjectId source, Micrometers underlay_inset) {
+    FillLinker linker(region, Micrometers{kEdgeOutlineStitchUm}, underlay_inset);
+    const auto outline = [&](const geometry::Path& path) {
+        if (path.nodes.size() < 3) {
+            return;
+        }
+        RunningConfig cfg;
+        cfg.target_length = Micrometers{kEdgeOutlineStitchUm};
+        cfg.min_length = Micrometers{kEdgeOutlineMinUm};
+        if (!sequence.commands.empty()) {
+            cfg.start = sequence.commands.back().pos;
+        }
+        const std::vector<Vec2um> points = run_stitch(path, cfg).points;
+        if (points.size() < 2) {
+            return;
+        }
+        if (!sequence.commands.empty() &&
+            sequence.commands.back().type == stitch::CommandType::Stitch) {
+            linker.set_tail(sequence.commands.back().pos);
+        }
+        if (linker.link_to(sequence, points.front(), source)) {
+            for (std::size_t i = 1; i < points.size(); ++i) {
+                sequence.commands.push_back({points[i], stitch::CommandType::Stitch, source,
+                                             stitch::StitchPass::TopStitch});
+            }
+        } else {
+            emit_polyline(sequence, points, source);
+        }
+    };
+    outline(region.outer);
+    for (const geometry::Path& hole : region.holes) {
+        outline(hole);
+    }
+}
+
 void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObject& source,
                      const document::EmbroideryObject& object,
                      const document::TatamiParams& params) {
@@ -703,7 +809,11 @@ void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObj
         for (const auto& up : underlay) {
             emit_underlay_pass(sequence, up, object.id, linker ? &*linker : nullptr);
         }
-        emit_fill(sequence, fill_tatami(region, params), object.id, linker ? &*linker : nullptr);
+        emit_fill(sequence, fill_tatami(region, resolve_pull_compensation(params, region)),
+                  object.id, linker ? &*linker : nullptr);
+        if (params.edge_outline) {
+            emit_edge_outline(sequence, region, object.id, params.underlay_inset);
+        }
     }
 }
 
@@ -723,7 +833,61 @@ void generate_directional(stitch::StitchSequence& sequence, const document::Vect
         for (const auto& up : underlay) {
             emit_underlay_pass(sequence, up, object.id, linker ? &*linker : nullptr);
         }
-        emit_fill(sequence, fill_directional(region, params), object.id,
+        emit_fill(sequence, fill_directional(region, resolve_pull_compensation(params, region)),
+                  object.id, linker ? &*linker : nullptr);
+        if (params.edge_outline) {
+            emit_edge_outline(sequence, region, object.id, params.underlay_inset);
+        }
+    }
+}
+
+// Remplissage concentrique (HP-STI-007) : même enveloppe que le tatami (retrait de bord, îlots
+// dans l'ordre de couture, liaisons longues cachées), sans sous-couche.
+void generate_contour(stitch::StitchSequence& sequence, const document::VectorObject& source,
+                      const document::EmbroideryObject& object,
+                      const document::ContourFillParams& params) {
+    for (const geometry::PathSet& region :
+         fill_regions_in_sewing_order(sequence, source, params.inset)) {
+        std::optional<FillLinker> linker;
+        if (params.hidden_underpath) {
+            linker.emplace(region,
+                           Micrometers{std::clamp(params.stitch_length.value, 1'000, 7'000)},
+                           Micrometers{600});
+        }
+        emit_fill(sequence, fill_contour(region, params), object.id, linker ? &*linker : nullptr);
+    }
+}
+
+// Remplissages radial / spirale / croisé (HP-STI-008/009/014) : même enveloppe que le concentrique
+// (retrait de bord, îlots dans l'ordre de couture, liaisons longues cachées), sans sous-couche.
+template <class Params, class Fill>
+void generate_simple_fill(stitch::StitchSequence& sequence, const document::VectorObject& source,
+                          const document::EmbroideryObject& object, const Params& params,
+                          Fill&& fill) {
+    for (const geometry::PathSet& region :
+         fill_regions_in_sewing_order(sequence, source, params.inset)) {
+        std::optional<FillLinker> linker;
+        if (params.hidden_underpath) {
+            linker.emplace(region,
+                           Micrometers{std::clamp(params.stitch_length.value, 1'000, 7'000)},
+                           Micrometers{600});
+        }
+        emit_fill(sequence, fill(region, params), object.id, linker ? &*linker : nullptr);
+    }
+}
+
+// Point de croix (HP-STI-012) : pas de retrait de bord (les cellules sont choisies par leur
+// centre), îlots dans l'ordre de couture, liaisons longues cachées.
+void generate_cross_stitch(stitch::StitchSequence& sequence, const document::VectorObject& source,
+                           const document::EmbroideryObject& object,
+                           const document::CrossStitchParams& params) {
+    for (const geometry::PathSet& region :
+         fill_regions_in_sewing_order(sequence, source, Micrometers{0})) {
+        std::optional<FillLinker> linker;
+        if (params.hidden_underpath) {
+            linker.emplace(region, Micrometers{3'000}, Micrometers{600});
+        }
+        emit_fill(sequence, fill_cross_stitch(region, params), object.id,
                   linker ? &*linker : nullptr);
     }
 }
@@ -746,7 +910,65 @@ bool is_routable_satin(const document::EmbroideryObject& o) {
 
 } // namespace
 
+namespace {
+
+// Remplissage opaque (HP-ENG-011) : couvre entièrement sa forme, donc cache ce qui est dessous.
+bool covers_opaquely(const document::EmbroideryObject& o) {
+    return o.visible && (o.is_tatami() || o.is_directional());
+}
+
+// Forme de `objects[index]` privée de la partie cachée par les remplissages opaques posés après
+// elle, chacun rétréci de `knockout_margin` (le recouvrement garde le fond couvert). `nullopt` :
+// rien à retirer ou calcul impossible -> la forme d'origine est cousue (jamais moins que avant).
+std::optional<document::VectorObject>
+knocked_out_source(const document::Project& project,
+                   const std::vector<document::EmbroideryObject>& objects, std::size_t index,
+                   const document::VectorObject& source) {
+    const document::EmbroideryObject& self = objects[index];
+    std::vector<geometry::PathSet> covers;
+    for (std::size_t j = index + 1; j < objects.size(); ++j) {
+        const document::EmbroideryObject& above = objects[j];
+        if (!covers_opaquely(above) || above.source_vector == self.source_vector) {
+            continue;
+        }
+        const document::VectorObject* vec = nullptr;
+        for (const auto& candidate : project.vector_objects) {
+            if (candidate.id == above.source_vector) {
+                vec = &candidate;
+                break;
+            }
+        }
+        if (vec == nullptr) {
+            continue;
+        }
+        for (const geometry::PathSet& set : vec->paths) {
+            if (self.knockout_margin.value <= 0) {
+                covers.push_back(set);
+            } else if (auto shrunk = geometry::inset_path_set(set, self.knockout_margin)) {
+                covers.insert(covers.end(), shrunk->begin(), shrunk->end());
+            }
+        }
+    }
+    if (covers.empty()) {
+        return std::nullopt;
+    }
+    auto remaining = geometry::difference_polygons(source.paths, covers);
+    if (!remaining) {
+        return std::nullopt;
+    }
+    document::VectorObject copy = source;
+    copy.paths = std::move(*remaining);
+    return copy;
+}
+
+} // namespace
+
 Result<stitch::StitchSequence> generate_sequence(const document::Project& project) {
+    return generate_sequence(project, TaskContext{});
+}
+
+Result<stitch::StitchSequence> generate_sequence(const document::Project& project,
+                                                 const TaskContext& task) {
     // S2a (AD-04) : un design importé est une donnée SOURCE, jamais
     // régénérée par objet -- restituée telle quelle, avant toute
     // construction depuis `embroidery_objects` (vide pour un projet
@@ -758,7 +980,31 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
         return project.imported_design->sequence;
     }
     stitch::StitchSequence sequence;
-    const auto& objects = project.embroidery_objects;
+    // Calques (HP-OBJ-024) : le rang du calque de la forme est la clé principale de l'ordre de
+    // couture, l'ordre du document départage les objets d'un même calque ; un calque masqué n'est
+    // pas cousu. Le cas courant (aucun calque, ou déjà dans l'ordre et tous visibles) lit
+    // `embroidery_objects` tel quel, sans copie.
+    const std::vector<document::EmbroideryObject>* objectsSource = &project.embroidery_objects;
+    std::vector<document::EmbroideryObject> calqueOrdered;
+    if (!project.calques.empty()) {
+        const std::vector<std::size_t> order = project.sewingOrder();
+        bool needsCopy = false;
+        for (std::size_t i = 0; i < order.size(); ++i) {
+            needsCopy =
+                needsCopy || order[i] != i || !project.calqueVisible(project.embroidery_objects[i]);
+        }
+        if (needsCopy) {
+            calqueOrdered.reserve(order.size());
+            for (const std::size_t index : order) {
+                calqueOrdered.push_back(project.embroidery_objects[index]);
+                if (!project.calqueVisible(project.embroidery_objects[index])) {
+                    calqueOrdered.back().visible = false;
+                }
+            }
+            objectsSource = &calqueOrdered;
+        }
+    }
+    const auto& objects = *objectsSource;
 
     // Phase 1 -- plan : les « unités » de génération, dans l'ordre de couture. Une unité est un
     // objet seul, ou un groupe contigu de colonnes satin routées ensemble (§13).
@@ -770,6 +1016,7 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
         Kind kind{Kind::Sequential};
     };
     std::vector<Unit> units;
+    std::deque<document::VectorObject> knockedSources; // adresses stables (HP-ENG-011)
     for (std::size_t idx = 0; idx < objects.size();) {
         const document::EmbroideryObject& object = objects[idx];
         if (!object.visible) {
@@ -790,6 +1037,12 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                 return fail(ErrorCategory::Internal,
                             "Objet vectoriel source introuvable pour « " + object.name + " »",
                             "source_vector=" + std::to_string(object.source_vector.value));
+            }
+        }
+        if (object.knockout && covers_opaquely(object) && unit.source != nullptr) {
+            if (auto knocked = knocked_out_source(project, objects, idx, *unit.source)) {
+                knockedSources.push_back(std::move(*knocked));
+                unit.source = &knockedSources.back();
             }
         }
         if (is_routable_satin(object)) {
@@ -824,8 +1077,19 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
         }
     }
     std::vector<stitch::StitchSequence> chunks(units.size());
+    std::atomic<std::size_t> unitsDone{0};
+    const std::size_t unitsTotal = units.size();
     parallel_for(parallelUnits.size(), [&](std::size_t k) {
+        if (task.cancelled()) {
+            return; // annulation coopérative : le résultat partiel est écarté après la phase
+        }
         const std::size_t u = parallelUnits[k];
+        struct Progress {
+            const TaskContext& task;
+            std::atomic<std::size_t>& done;
+            std::size_t total;
+            ~Progress() { task.report(done.fetch_add(1) + 1, total); }
+        } const progress{task, unitsDone, unitsTotal};
         const Unit& unit = units[u];
         const document::EmbroideryObject& object = objects[unit.first];
         if (unit.kind == Kind::AutoSatin) {
@@ -856,6 +1120,34 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                     generate_tatami(chunk, *unit.source, object, params);
                 } else if constexpr (std::is_same_v<T, document::DirectionalFillParams>) {
                     generate_directional(chunk, *unit.source, object, params);
+                } else if constexpr (std::is_same_v<T, document::BlanketStitchParams>) {
+                    // HP-STI-003 : blanket / zigzag le long de chaque contour de la source.
+                    for (const geometry::PathSet& set : unit.source->paths) {
+                        emit_polyline(chunk, blanket_stitch_points(set.outer, params), object.id);
+                        for (const geometry::Path& hole : set.holes) {
+                            emit_polyline(chunk, blanket_stitch_points(hole, params), object.id);
+                        }
+                    }
+                } else if constexpr (std::is_same_v<T, document::ContourFillParams>) {
+                    generate_contour(chunk, *unit.source, object, params);
+                } else if constexpr (std::is_same_v<T, document::MotifRunParams>) {
+                    // HP-STI-002 : motif répété le long de chaque contour de la source.
+                    for (const geometry::PathSet& set : unit.source->paths) {
+                        emit_polyline(chunk, motif_run_points(set.outer, params), object.id);
+                        for (const geometry::Path& hole : set.holes) {
+                            emit_polyline(chunk, motif_run_points(hole, params), object.id);
+                        }
+                    }
+                } else if constexpr (std::is_same_v<T, document::MotifFillParams>) {
+                    generate_simple_fill(chunk, *unit.source, object, params, fill_motif);
+                } else if constexpr (std::is_same_v<T, document::RadialFillParams>) {
+                    generate_simple_fill(chunk, *unit.source, object, params, fill_radial);
+                } else if constexpr (std::is_same_v<T, document::SpiralFillParams>) {
+                    generate_simple_fill(chunk, *unit.source, object, params, fill_spiral);
+                } else if constexpr (std::is_same_v<T, document::CrosshatchFillParams>) {
+                    generate_simple_fill(chunk, *unit.source, object, params, fill_crosshatch);
+                } else if constexpr (std::is_same_v<T, document::CrossStitchParams>) {
+                    generate_cross_stitch(chunk, *unit.source, object, params);
                 }
             },
             object.params);
@@ -863,9 +1155,16 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                           std::make_shared<const stitch::StitchSequence>(chunk));
     });
 
+    if (task.cancelled()) {
+        return cancelled_error();
+    }
+
     // Phase 3 -- assemblage séquentiel, dans l'ordre de couture.
     const document::EmbroideryObject* previous = nullptr;
     for (std::size_t u = 0; u < units.size(); ++u) {
+        if (task.cancelled()) {
+            return cancelled_error();
+        }
         const Unit& unit = units[u];
         const document::EmbroideryObject& object = objects[unit.first];
         if (previous != nullptr && previous->rgb != object.rgb && !sequence.commands.empty()) {
@@ -875,6 +1174,9 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
 
         // Routage (§13) : un groupe **contigu** de colonnes satin auto de même
         // couleur et même source est ordonné/orienté ensemble, liaisons cachées.
+        if (unit.kind == Kind::Sequential) {
+            task.report(unitsDone.fetch_add(1) + 1, unitsTotal);
+        }
         if (is_routable_satin(object)) {
             std::vector<const document::EmbroideryObject*> group;
             for (std::size_t j = unit.first; j < unit.first + unit.count; ++j) {
@@ -971,7 +1273,7 @@ auto_satin::SkeletonSatinParameters auto_satin_engine(const document::AutoSatinP
         engine.sweep_angle_rad = params.sweep_angle->radians;
     }
     for (const auto& g : params.guides) {
-        engine.guides.push_back({g.anchor, g.angle.radians, g.absolute});
+        engine.guides.push_back({g.anchor, g.angle.radians, g.absolute, g.path});
     }
     return engine;
 }

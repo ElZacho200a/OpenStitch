@@ -350,6 +350,7 @@ autodigitize::AutoOptions make_auto_options(const DigitizeSettings& s, Millimete
     autodigitize::AutoOptions opts;
     opts.mm_per_px = mm_per_px;
     opts.skip_largest_region = skipLargest;
+    opts.skip_background_outer_only = s.skip_background == 2;
     opts.satin_bands = s.satin_bands;
     opts.curve_tolerance = mm_to_um(s.curve_tolerance_mm);
     if (s.simplify_tolerance_um) {
@@ -390,7 +391,8 @@ Result<DigitizedObjects> digitize_objects(const DigitizeSource& source, IdGenera
         return fail(ErrorCategory::OperationImpossible,
                     "numérisation impossible : segmentation ou image de travail manquante");
     }
-    const autodigitize::AutoOptions opts = make_auto_options(s, source.mm_per_px, skipLargest);
+    autodigitize::AutoOptions opts = make_auto_options(s, source.mm_per_px, skipLargest);
+    opts.detail_mask = source.detail_mask;
 
     // Stratégie « contours / dessin au trait » : lignes médianes cousues en point droit
     // (satin legacy dégradé en point droit).

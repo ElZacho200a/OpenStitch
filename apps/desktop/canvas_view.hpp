@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <QColor>
 #include <QCursor>
 #include <QGraphicsView>
 #include <QPoint>
 #include <QTimer>
 
+#include <vector>
+
 #include "interaction_map.hpp"
+#include "openstitch/document/canvas.hpp"
+#include "openstitch/stitch_render/view_display.hpp"
 
 class QRubberBand;
 
@@ -27,9 +32,15 @@ public:
 
     void setCanvasSizeMm(QSizeF sizeMm);
     [[nodiscard]] QSizeF canvasSizeMm() const { return canvasMm_; }
+    // Couleur du tissu de fond (HP-THR-008) ; blanc par défaut.
+    void setFabricColor(const QColor& color);
+    [[nodiscard]] QColor fabricColor() const { return fabricColor_; }
     // Marge de sécurité (mm) entre le cadre et la zone réellement brodable ; 0 = pas de marge.
     void setUsableMarginMm(double marginMm);
     [[nodiscard]] double usableMarginMm() const { return marginMm_; }
+    // Forme du cadre dessiné (HP-HOOP-001) ; surcouche de dessin seule, sans capture de clic.
+    void setHoopShape(document::HoopShape shape, double cornerRadiusMm);
+    [[nodiscard]] document::HoopShape hoopShape() const { return hoopShape_; }
 
     // Échelle courante en pixels d'écran par millimètre.
     [[nodiscard]] double pixelsPerMm() const;
@@ -40,8 +51,30 @@ public:
     // Cadre la vue sur un rectangle de scène (mm) ; mémorise la vue précédente (HP-UX-023).
     void zoomToRectMm(const QRectF& sceneRectMm);
     void zoomToPreviousView();
-    // 100 % réel : 1 mm affiché = 1 mm à l'écran (selon la densité logique de l'écran).
+    // 100 % réel : 1 mm affiché = 1 mm à l'écran. Échelle = étalonnage utilisateur s'il existe,
+    // sinon densité PHYSIQUE de l'écran (repli : densité logique si la valeur est incohérente).
     void zoomActualSize();
+    // Pixels d'écran par mm de la taille réelle (HP-VIEW-007).
+    [[nodiscard]] double actualSizePxPerMm() const;
+    // Étalonnage : pixels par mm mesurés par l'utilisateur ; 0 = automatique.
+    void setActualSizeCalibration(double pxPerMm);
+    [[nodiscard]] double actualSizeCalibration() const { return actualSizeCalibration_; }
+    // Zoom rectangle (HP-VIEW-007) : le prochain glisser gauche cadre la vue sur le rectangle,
+    // puis le mode s'éteint (ou Échap). La vue seule gère le geste : rien n'est transmis à la
+    // scène.
+    void setZoomRectMode(bool enabled);
+    [[nodiscard]] bool zoomRectMode() const { return zoomRectMode_; }
+
+    // Grille et guides configurables (HP-VIEW-010) : dessinés dans drawBackground/drawForeground,
+    // jamais en items de scène, donc sans capter ni clic ni survol.
+    void setGridSettings(const stitch_render::GridSettings& settings);
+    [[nodiscard]] const stitch_render::GridSettings& gridSettings() const { return grid_; }
+    void setGuides(std::vector<stitch_render::Guide> guides);
+    [[nodiscard]] const std::vector<stitch_render::Guide>& guides() const { return guides_; }
+    void setGuidesVisible(bool visible);
+    [[nodiscard]] bool guidesVisible() const { return guidesVisible_; }
+    void setGuideColor(const QColor& color);
+    [[nodiscard]] QColor guideColor() const { return guideColor_; }
     // Zoom ancré : le point de la scène situé sous `viewportPos` (coordonnées du
     // viewport) y reste après le zoom. Ancrage manuel (NoAnchor) : indépendant
     // de QCursor::pos(), donc valable avec des évènements synthétiques et un
@@ -107,9 +140,21 @@ public:
     // `measureFinishedMm`. Aucune sélection ni déplacement de vue ; le canevas ne mesure rien
     // lui-même (le calcul est dans libs/geometry, l'affichage dans MainWindow).
     void setMeasureMode(bool enabled);
+    // Mode pinceau (HP-VEC-018) : un glisser gauche émet appui / déplacements / relâchement ;
+    // aucune sélection ni déplacement de vue. Échap émet `brushCancelled`.
+    // `context` : contexte de gestes annoncé tant que le mode est actif (Pinceau ou Zones de
+    // détail).
+    void setBrushMode(bool enabled, Context context = Context::Brush);
+    [[nodiscard]] bool brushMode() const { return brushMode_; }
     [[nodiscard]] bool measureMode() const { return measureMode_; }
 
 signals:
+    // Le zoom rectangle s'est terminé (cadre appliqué, annulé ou trop petit).
+    void zoomRectModeEnded();
+    void brushPressedMm(QPointF posMm);
+    void brushMovedMm(QPointF posMm, Qt::KeyboardModifiers modifiers);
+    void brushReleasedMm(QPointF posMm);
+    void brushCancelled();
     // Règle : glisser en cours (début fixe, position courante), puis fin au relâchement ;
     // `measureCancelled` si Échap interrompt le geste. Coordonnées scène (mm).
     void measureDragMm(QPointF startMm, QPointF currentMm);
@@ -155,6 +200,12 @@ signals:
     void nudgeRequestedMm(QPointF deltaMm);
     // Sélection (contexte Select, setSelectionRectangleEnabled(true)). Rectangle
     // en mm scène ; `crossing` = glissé vers la gauche (croise) sinon englobe.
+    // Alt + cadre (HP-VEC-017) : sélection de NŒUDS de la forme courante (Maj : ajouter,
+    // Ctrl : basculer, sinon remplacer).
+    void nodeRectangleMm(QRectF rectMm, openstitch::desktop::SelectMode mode);
+    // HP-EDIT-003 : cadre de sélection de points en mode « Éditer les points »
+    // (Maj : ajouter, Ctrl : basculer, Alt : remplacer).
+    void stitchRectangleMm(QRectF rectMm, openstitch::desktop::SelectMode mode);
     void selectionRectangleMm(QRectF rectMm, openstitch::desktop::SelectMode mode, bool crossing);
     // Clic avec Maj/Ctrl (mode != Replace) ; le clic simple reste canvasClickedMm.
     void selectionClickedMm(QPointF posMm, openstitch::desktop::SelectMode mode);
@@ -222,8 +273,23 @@ private:
     void fireLongPress();
     void queueSelectBelow(QPointF posMm, QPoint globalPos);
 
+    void finishZoomRect(bool apply, const QPoint& releasePos);
+
+    stitch_render::GridSettings grid_;
+    std::vector<stitch_render::Guide> guides_;
+    bool guidesVisible_{true};
+    QColor guideColor_{0x00, 0xA8, 0xC8};
+    double actualSizeCalibration_{0.0};
+    bool zoomRectMode_{false};
+    bool zoomRectActive_{false};
+    QPoint zoomRectStart_;
+    QCursor zoomRectSavedCursor_;
+
     QSizeF canvasMm_{100.0, 100.0};
+    QColor fabricColor_{Qt::white};
     double marginMm_{0.0};
+    document::HoopShape hoopShape_{document::HoopShape::Rectangle};
+    double cornerRadiusMm_{0.0};
     bool cropMode_{false};
     bool boxDrawMode_{false};
     bool polygonDrawMode_{false};
@@ -232,6 +298,9 @@ private:
     bool bezierDrawMode_{false};
     bool measureMode_{false};
     bool measureActive_{false};
+    bool brushMode_{false};
+    Context brushContext_{Context::Brush};
+    bool brushActive_{false};
     QPointF measureStartMm_;
     bool freeformActive_{false};
     bool bezierPressActive_{false};

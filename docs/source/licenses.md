@@ -54,6 +54,14 @@ La documentation est générée avec `python-markdown` (BSD), `xhtml2pdf` (Apach
 et `reportlab` (BSD), `svglib` (LGPL, utilisée comme outil externe, non liée au
 produit). Ces outils ne sont pas distribués avec le logiciel.
 
+## Compagnon IA
+
+Le compagnon n'ajoute **aucune dépendance tierce** : le fournisseur Claude parle à l'API
+Messages d'Anthropic en HTTPS avec Qt Network (déjà livré avec l'application) et nlohmann/json
+(MIT, déjà utilisé). Aucun SDK Anthropic ni agent externe n'est embarqué ; `openstitch-mcp.exe`
+est du code Apache-2.0 du dépôt. L'utilisation de l'API est soumise aux conditions d'Anthropic
+et à la clé API de l'utilisateur. Voir [Compagnon IA](ai-companion.md) et l'ADR 0002.
+
 ## Implémentation associée
 
 - `LICENSE`, `THIRD_PARTY_LICENSES.md`.

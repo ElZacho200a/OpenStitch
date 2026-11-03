@@ -4,12 +4,16 @@
 // noir.
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 
 #include "openstitch/document/project.hpp"
 #include "openstitch/image/image.hpp"
 #include "openstitch/project_ops/analysis.hpp"
+#include "openstitch/project_ops/color_registration.hpp"
+#include "openstitch/project_ops/fabric_deformation.hpp"
 #include "openstitch/project_ops/factory.hpp"
 #include "openstitch/project_ops/sweep.hpp"
 
@@ -177,6 +181,100 @@ TEST_CASE("density : deux objets superposes epaississent le fil", "[project_ops]
     const auto hot = measure_density(two, options);
     REQUIRE(hot.has_value());
     CHECK(hot->hotspot_area_mm2 > 100.0);
+}
+
+TEST_CASE("fabric risk : couches, profils, determinisme et parametres invalides",
+          "[project_ops][fabric-risk]") {
+    document::Project one;
+    add_square(one, 0, 0, 10'000, {200, 30, 30});
+    document::Project two;
+    add_square(two, 0, 0, 10'000, {200, 30, 30});
+    add_square(two, 0, 0, 10'000, {30, 30, 200});
+
+    FabricRiskOptions options;
+    options.heatmap = true;
+    const auto single = measure_fabric_risk(one, options);
+    const auto doubled = measure_fabric_risk(two, options);
+    REQUIRE(single.has_value());
+    REQUIRE(doubled.has_value());
+    CHECK(doubled->p99_score > single->p99_score);
+    CHECK_FALSE(doubled->heatmap_png.empty());
+    CHECK(has(doubled->json, kFabricRiskSchema));
+    const auto repeat = measure_fabric_risk(two, options);
+    REQUIRE(repeat.has_value());
+    CHECK(repeat->json == doubled->json);
+    CHECK(repeat->heatmap_png == doubled->heatmap_png);
+
+    options.fabric = "jersey";
+    const auto jersey = measure_fabric_risk(one, options);
+    REQUIRE(jersey.has_value());
+    CHECK(jersey->p99_score > single->p99_score);
+
+    options.fabric = "felt";
+    const auto felt = measure_fabric_risk(one, options);
+    REQUIRE(felt.has_value());
+    CHECK(felt->p99_score < single->p99_score);
+
+    options.fabric = "unknown";
+    CHECK_FALSE(measure_fabric_risk(one, options).has_value());
+    options.fabric = "woven";
+    options.cell_mm = 0.0;
+    CHECK_FALSE(measure_fabric_risk(one, options).has_value());
+
+    document::Project empty;
+    CHECK_FALSE(measure_fabric_risk(empty).has_value());
+}
+
+TEST_CASE("fabric risk : classes de risque et grille spatiale", "[project_ops][fabric-risk]") {
+    CHECK(classify_fabric_risk(0.0) == FabricRiskLevel::None);
+    CHECK(classify_fabric_risk(-3.0) == FabricRiskLevel::None);
+    CHECK(classify_fabric_risk(std::nan("")) == FabricRiskLevel::None);
+    CHECK(classify_fabric_risk(0.5) == FabricRiskLevel::Low);
+    CHECK(classify_fabric_risk(39.99) == FabricRiskLevel::Low);
+    CHECK(classify_fabric_risk(40.0) == FabricRiskLevel::Moderate);
+    CHECK(classify_fabric_risk(69.99) == FabricRiskLevel::Moderate);
+    CHECK(classify_fabric_risk(70.0) == FabricRiskLevel::High);
+    CHECK(classify_fabric_risk(100.0) == FabricRiskLevel::High);
+
+    document::Project one;
+    add_square(one, 0, 0, 10'000, {200, 30, 30});
+    document::Project two;
+    add_square(two, 0, 0, 10'000, {200, 30, 30});
+    add_square(two, 0, 0, 10'000, {30, 30, 200});
+    add_square(two, 0, 0, 10'000, {30, 200, 30});
+    const auto a = measure_fabric_risk(one);
+    const auto b = measure_fabric_risk(two);
+    REQUIRE(a.has_value());
+    REQUIRE(b.has_value());
+
+    const auto count = [](const FabricRiskGrid& grid, FabricRiskLevel level) {
+        return std::count(grid.levels.begin(), grid.levels.end(), level);
+    };
+    for (const auto* report : {&*a, &*b}) {
+        const FabricRiskGrid& grid = report->grid;
+        REQUIRE(grid.cols > 0);
+        REQUIRE(grid.rows > 0);
+        CHECK(grid.cell.value == 1000); // cellule par defaut : 1 mm
+        CHECK(grid.levels.size() == static_cast<std::size_t>(grid.cols) * grid.rows);
+        CHECK(grid.levels.size() - count(grid, FabricRiskLevel::None) > 0);
+        // Le coin haut-gauche de la grille est celui du motif cousu (carre de 10 mm, legerement
+        // rentre par la generation des points).
+        CHECK(grid.top_left.x.value >= -12'000);
+        CHECK(grid.top_left.x.value <= 1'000);
+        CHECK(grid.top_left.y.value >= 9'000);
+        CHECK(grid.top_left.y.value <= 10'500);
+    }
+    // Plus de couches : au moins autant de cases au niveau eleve, et davantage de cases non basses.
+    CHECK(count(b->grid, FabricRiskLevel::High) >= count(a->grid, FabricRiskLevel::High));
+    CHECK(count(b->grid, FabricRiskLevel::High) + count(b->grid, FabricRiskLevel::Moderate) >
+          count(a->grid, FabricRiskLevel::High) + count(a->grid, FabricRiskLevel::Moderate));
+    // Les cases tres hautes recoupent la surface signalee par le rapport (indice >= 70).
+    CHECK((count(b->grid, FabricRiskLevel::High) > 0) == (b->hotspot_area_mm2 > 0.0));
+
+    const auto repeat = measure_fabric_risk(two);
+    REQUIRE(repeat.has_value());
+    CHECK(repeat->grid.levels == b->grid.levels);
+    CHECK(repeat->grid.top_left == b->grid.top_left);
 }
 
 TEST_CASE("locate : le dernier objet cousu est celui qu'on voit", "[project_ops][analysis]") {
@@ -440,4 +538,92 @@ TEST_CASE("flow fill converts elongated fills to directional with guides",
     }
     const auto [strict, strictCount] = digitize(true, 1e9);
     CHECK(strictCount == 0);
+}
+
+TEST_CASE("fabric deformation : tissu, entoilage, determinisme et parametres invalides",
+          "[project_ops][fabric-deformation]") {
+    document::Project project;
+    add_square(project, 0, 0, 20'000, {200, 30, 30});
+
+    FabricDeformationOptions options;
+    options.heatmap = true;
+    options.stabilizer = "none";
+    const auto soft = predict_fabric_deformation(project, options);
+    REQUIRE(soft.has_value());
+    CHECK(soft->deformation.converged);
+    CHECK(soft->deformation.max_displacement_mm > 0.0);
+    CHECK(has(soft->json, kFabricDeformationSchema));
+    CHECK_FALSE(soft->heatmap_png.empty());
+
+    // Un entoilage rigide limite le deplacement et le plissement.
+    options.stabilizer = "cutaway";
+    const auto stable = predict_fabric_deformation(project, options);
+    REQUIRE(stable.has_value());
+    CHECK(stable->deformation.max_displacement_mm < soft->deformation.max_displacement_mm);
+    CHECK(stable->deformation.max_wrinkle_index < soft->deformation.max_wrinkle_index);
+
+    // Un jersey cede davantage qu'un tissu serre.
+    options.stabilizer = "none";
+    options.material = "jersey";
+    const auto jersey = predict_fabric_deformation(project, options);
+    REQUIRE(jersey.has_value());
+    CHECK(jersey->deformation.max_displacement_mm > soft->deformation.max_displacement_mm);
+
+    options.material.clear();
+    const auto repeat = predict_fabric_deformation(project, options);
+    REQUIRE(repeat.has_value());
+    CHECK(repeat->json == soft->json);
+    CHECK(repeat->heatmap_png == soft->heatmap_png);
+
+    options.cell_mm = 0.0;
+    CHECK_FALSE(predict_fabric_deformation(project, options).has_value());
+    document::Project empty;
+    CHECK_FALSE(predict_fabric_deformation(empty, {}).has_value());
+}
+
+TEST_CASE(
+    "color registration : blocs de couleur, compensation, determinisme et parametres invalides",
+    "[project_ops][color-registration]") {
+    document::Project project;
+    add_square(project, 0, 0, 20'000, {200, 30, 30});
+    add_square(project, 4'000, 0, 20'000, {30, 30, 200});
+
+    ColorRegistrationOptions options;
+    options.heatmap = true;
+    options.stabilizer = "none";
+    const auto plain = predict_color_registration(project, options);
+    REQUIRE(plain.has_value());
+    CHECK(plain->registration.blocks.size() == 2);
+    CHECK(plain->registration.max_gap_mm > 0.0);
+    CHECK(has(plain->json, kColorRegistrationSchema));
+    CHECK_FALSE(plain->heatmap_png.empty());
+    CHECK(plain->compensated.commands.empty());
+    CHECK(plain->compensated_dst.empty());
+
+    options.compensate = true;
+    const auto compensated = predict_color_registration(project, options);
+    REQUIRE(compensated.has_value());
+    CHECK_FALSE(compensated->compensated_dst.empty());
+    CHECK(has(compensated->json, "max_gap_after_mm"));
+    CHECK(compensated->compensated.commands.size() > 0);
+
+    // Un entoilage rigide limite le decalage.
+    options.stabilizer = "cutaway";
+    const auto stable = predict_color_registration(project, options);
+    REQUIRE(stable.has_value());
+    CHECK(stable->registration.max_gap_mm < compensated->registration.max_gap_mm);
+
+    options.stabilizer = "none";
+    const auto repeat = predict_color_registration(project, options);
+    REQUIRE(repeat.has_value());
+    CHECK(repeat->json == compensated->json);
+    CHECK(repeat->compensated_dst == compensated->compensated_dst);
+
+    options.strength = 1.5;
+    CHECK_FALSE(predict_color_registration(project, options).has_value());
+    options.strength = 1.0;
+    options.cell_mm = 0.0;
+    CHECK_FALSE(predict_color_registration(project, options).has_value());
+    document::Project empty;
+    CHECK_FALSE(predict_color_registration(empty, {}).has_value());
 }

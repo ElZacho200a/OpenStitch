@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include <string>
+#include <variant>
 
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/project_io/machine_file.hpp"
@@ -381,4 +382,20 @@ TEST_CASE("digitize_objects rejects an unknown mode and a missing segmentation",
     settings.mode = "shapes";
     const po::DigitizeSource none{nullptr, &project.original, project.mm_per_px};
     CHECK_FALSE(po::digitize_objects(none, ids, settings, false));
+}
+
+TEST_CASE("inspect exposes auto pull reference without claiming a physical prediction",
+          "[project_ops]") {
+    auto project = digitized();
+    auto& params = std::get<document::TatamiParams>(project.embroidery_objects.front().params);
+    params.pull_mode = document::PullMode::Auto;
+    const ObjectId id = project.embroidery_objects.front().id;
+    const auto automatic = po::inspect_object_json(project, id, {.with_stitches = false});
+    REQUIRE(automatic);
+    CHECK(contains(*automatic, "\"pull_auto_reference_mm\""));
+    CHECK(contains(*automatic, "\"pull_auto_reference_only\": true"));
+    params.pull_mode = document::PullMode::Manual;
+    const auto manual = po::inspect_object_json(project, id, {.with_stitches = false});
+    REQUIRE(manual);
+    CHECK_FALSE(contains(*manual, "\"pull_auto_reference_mm\""));
 }

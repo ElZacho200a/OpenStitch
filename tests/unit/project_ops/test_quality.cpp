@@ -118,6 +118,19 @@ TEST_CASE("quality report : forme plus grande que le canevas, erreurs hors cadre
     CHECK(has(report->json, "\"passed\": false"));
     CHECK(has(report->json, "\"fits\": false"));
     CHECK(has(report->json, "\"category\": \"hors-cadre\""));
+    // Constat global (avertissement) avec la boite reelle et le cadre a demander.
+    CHECK(has(report->json, "\"category\": \"motif-hors-cadre\""));
+    CHECK(has(report->json, "Cadre sugg"));
+    CHECK(has(report->json, "au moins "));
+    CHECK(has(report->json, "set_canvas"));
+}
+
+TEST_CASE("quality report : motif dans le cadre, pas de constat motif-hors-cadre") {
+    document::Project project;
+    add_square(project, 5'000);
+    const auto report = build_quality_report(project);
+    REQUIRE(report.has_value());
+    CHECK_FALSE(has(report->json, "motif-hors-cadre"));
 }
 
 TEST_CASE("quality report : projet sans point, erreur vide") {

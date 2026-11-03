@@ -31,6 +31,7 @@
 #include "openstitch/thread_palette/chart_import.hpp"
 #include "openstitch/thread_palette/color_reduction.hpp"
 #include "responsive.hpp"
+#include "simulation_nav_bar.hpp"
 #include "thread_panel.hpp"
 #include "thread_strip.hpp"
 
@@ -509,12 +510,26 @@ void MainWindow::buildThreadPanel() {
                 }
             });
 
+    // Masquer / réafficher tous les objets d'un fil (HP-THR-005) : un seul pas d'annulation.
+    connect(threadPanel_, &ThreadPanel::threadVisibilityToggled, this,
+            [this](const stitch_analysis::ThreadIdentity& identity, bool visible) {
+                const auto ids = stitch_analysis::objects_using_thread(project_, identity);
+                if (ids.empty()) {
+                    return;
+                }
+                undoStack_.execute(
+                    std::make_unique<commands::SetThreadVisibleCommand>(ids, visible), project_);
+                refreshImage();
+                updateActions();
+            });
+
+    // « Séquencer par couleur » (HP-SEQ-003) : tous les objets d'un même fil cousus d'un trait.
     connect(threadPanel_, &ThreadPanel::mergeFilmBlocksRequested, this, [this] {
         if (!sequence_) {
             return;
         }
         const auto film = stitch_analysis::color_film(project_, *sequence_);
-        const auto order = stitch_analysis::merge_same_thread_blocks(project_, film);
+        const auto order = stitch_analysis::sequence_by_color(project_, film);
         std::vector<ObjectId> current;
         for (const auto& obj : project_.embroidery_objects) {
             current.push_back(obj.id);
@@ -612,7 +627,7 @@ void MainWindow::refreshThreadStrip() {
     threadStrip_->setThreads(std::move(swatches), summary);
     // Rangée du bas (simulation + fils) visible seulement quand une séquence existe
     // (HP-UX-026), sauf si l'utilisateur a masqué la barre lui-même.
-    for (QToolBar* bar : {simToolbar_, threadStripBar_}) {
+    for (QToolBar* bar : {simToolbar_, static_cast<QToolBar*>(simNavBar_), threadStripBar_}) {
         if (bar != nullptr) {
             bar->setVisible(sequence_.has_value() && !bar->property("userHidden").toBool());
         }
@@ -624,6 +639,7 @@ void MainWindow::refreshThreadPanel() {
     if (threadPanel_ == nullptr || threadDock_ == nullptr || !threadDock_->isVisible()) {
         return;
     }
+    threadPanel_->setVisibility(stitch_analysis::thread_visibility(project_));
     if (sequence_) {
         threadPanel_->setUsage(
             stitch_analysis::thread_usage(project_, *sequence_, &threadLibrary_));

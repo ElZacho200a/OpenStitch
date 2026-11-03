@@ -1,4 +1,4 @@
-find_package(Qt6 COMPONENTS Widgets PrintSupport QUIET)
+find_package(Qt6 COMPONENTS Widgets PrintSupport Network LinguistTools QUIET)
 if(NOT Qt6_FOUND)
     message(WARNING
         "Qt6 introuvable : l'application desktop ne sera pas construite. "
@@ -15,7 +15,10 @@ set(CMAKE_AUTORCC ON) # polices intégrées du lettrage (lettering_fonts.qrc)
 # les tests.
 add_library(openstitch_desktop_widgets STATIC
     main_window.cpp
+    command_palette_dialog.cpp
+    command_palette_dialog.hpp
     main_window_directional.cpp
+    main_window_contour.cpp
     main_window_color_blend.cpp
     color_blend_dialog.cpp
     gradient_fill_panel.cpp
@@ -28,12 +31,42 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_regions.cpp
     main_window_shapes.cpp
     main_window_objects.cpp
+    main_window_selection_tools.cpp
+    main_window_arrange.cpp
+    simulation_nav_bar.cpp
+    stitch_type_catalog.cpp
+    main_window_point_edit.cpp
+    simulation_nav_bar.hpp
+    main_window_fill_center.cpp
+    main_window_rotation.cpp
     main_window_workflow.cpp
     ui_memory.hpp
     main_window_ux.cpp
+    live_server.cpp
+    companion_dock.cpp
+    companion_launcher.cpp
+    companion_launcher.hpp
+    claude_code_process_backend.cpp
+    claude_code_process_backend.hpp
+    companion_backend.hpp
+    claude_backend.cpp
+    claude_backend.hpp
+    companion_settings_dialog.cpp
+    companion_settings_dialog.hpp
+    main_window_preferences.cpp
+    general_preferences_dialog.cpp
+    general_preferences_dialog.hpp
+    length_units.hpp
     main_window_analysis.cpp
     main_window_realistic.cpp
     main_window_production.cpp
+    main_window_colorways.cpp
+    main_window_stitch_presets.cpp
+    colorway_dialog.cpp
+    colorway_dialog.hpp
+    thread_merge_dialog.cpp
+    thread_merge_dialog.hpp
+    fabric_params.hpp
     # [cablage-A:debut]
     main_window_export_image.cpp
     export_image.cpp
@@ -44,19 +77,44 @@ add_library(openstitch_desktop_widgets STATIC
     # [cablage-B:debut]
     main_window_vector_tools.cpp
     # [cablage-B:fin]
+    main_window_vector_edit.cpp
     # [cablage-C:debut]
     main_window_measure.cpp
+    main_window_reshape.cpp
+    main_window_brush.cpp
+    main_window_node_select.cpp
+    main_window_bucket.cpp
+    main_window_click_to_stitch.cpp
+    main_window_detail_zones.cpp
     main_window_eyedropper.cpp
     # [cablage-C:fin]
     # [cablage-D:debut]
+    main_window_order_jumps.cpp
+    main_window_fabric_risk.cpp
+    fabric_risk_overlay.cpp
+    fabric_risk_overlay.hpp
     # [cablage-D:fin]
     # [cablage-E:debut]
     density_overlay.cpp
     density_overlay.hpp
     main_window_density.cpp
+    main_window_pull_preview.cpp
+    grid_settings_dialog.cpp
+    grid_settings_dialog.hpp
+    main_window_view_display.cpp
+    view_display_state.hpp
     # [cablage-E:fin]
+    # [cablage-HOOP:debut]
+    machine_dialog.cpp
+    machine_dialog.hpp
+    main_window_machine.cpp
+    # [cablage-HOOP:fin]
     production_dialog.cpp
     production_dialog.hpp
+    placement_template_dialog.cpp
+    placement_template_dialog.hpp
+    print_preview.cpp
+    print_preview.hpp
     realistic_preferences.cpp
     realistic_preferences.hpp
     realistic_render_dialog.cpp
@@ -73,10 +131,14 @@ add_library(openstitch_desktop_widgets STATIC
     font_catalog.hpp
     text_dialog.cpp
     text_dialog.hpp
+    text_advanced_panel.cpp
+    text_advanced_panel.hpp
     lettering_fonts.qrc
     main_window.hpp
     app_settings.cpp
     app_settings.hpp
+    app_language.cpp
+    app_language.hpp
     settings_dialog.cpp
     settings_dialog.hpp
     app_theme.cpp
@@ -87,8 +149,12 @@ add_library(openstitch_desktop_widgets STATIC
     canvas_view.hpp
     properties_panel.cpp
     properties_panel.hpp
+    calque_panel.cpp
+    calque_panel.hpp
     document_panel.cpp
     document_panel.hpp
+    order_list_widget.cpp
+    order_list_widget.hpp
     segmentation_colors_panel.cpp
     segmentation_colors_panel.hpp
     main_window_colors.cpp
@@ -108,7 +174,15 @@ add_library(openstitch_desktop_widgets STATIC
     interaction_map.hpp
     help_dialogs.cpp
     help_dialogs.hpp
+help_manual.cpp
+help_manual.hpp
+help_manual.qrc
+main_window_help.cpp
     selection_hit_test.cpp
+    selection_model.cpp
+    selection_model.hpp
+    selection_queries.cpp
+    selection_queries.hpp
     selection_hit_test.hpp
     ui_icons.cpp
     ui_icons.hpp
@@ -136,16 +210,30 @@ machine_export_dialog.hpp
     ai_segmentation_dialog.hpp
 )
 add_library(openstitch::desktop_widgets ALIAS openstitch_desktop_widgets)
+
+# Traductions (HP-I18N-001) : le français est la langue source (chaînes de `tr()`), donc seul
+# l'anglais a un fichier. `.ts` -> `.qm` embarqués sous `:/i18n/`. Mise à jour des `.ts` depuis
+# les sources : `cmake --build <dir> --target update_translations`.
+if(NOT Qt6LinguistTools_FOUND)
+    message(FATAL_ERROR "Qt6 LinguistTools introuvable (lrelease/lupdate) : requis pour les traductions.")
+endif()
+qt_add_translations(openstitch_desktop_widgets
+    TS_FILES i18n/openstitch_en.ts
+    RESOURCE_PREFIX /i18n)
 target_include_directories(openstitch_desktop_widgets PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(openstitch_desktop_widgets
-    PUBLIC Qt6::Widgets Qt6::PrintSupport openstitch::core openstitch::image openstitch::document
+    PUBLIC Qt6::Widgets Qt6::Network Qt6::PrintSupport openstitch::core openstitch::image openstitch::document
            openstitch::commands openstitch::vectorization openstitch::stitch openstitch::stitch_render
            openstitch::stitch_generation openstitch::formats openstitch::project_io
            openstitch::stitch_analysis openstitch::optimization openstitch::autodigitize
            openstitch::auto_satin openstitch::segmentation openstitch::lettering
-           openstitch::ai_segmentation openstitch::project_ops
+           openstitch::ai_segmentation openstitch::project_ops openstitch::mcp openstitch::agent
     PRIVATE openstitch::warnings
 )
+
+if(WIN32)
+    target_link_libraries(openstitch_desktop_widgets PRIVATE advapi32)
+endif()
 
 add_executable(openstitch WIN32 main.cpp)
 target_link_libraries(openstitch PRIVATE openstitch_desktop_widgets openstitch::warnings)
@@ -154,7 +242,7 @@ target_link_libraries(openstitch PRIVATE openstitch_desktop_widgets openstitch::
 # (Les DLL vcpkg — OpenCV, etc. — sont déjà copiées par VCPKG_APPLOCAL_DEPS.)
 if(WIN32 AND TARGET Qt6::windeployqt)
     add_custom_command(TARGET openstitch POST_BUILD
-        COMMAND Qt6::windeployqt --translations fr --no-system-d3d-compiler
+        COMMAND Qt6::windeployqt --translations fr,en --no-system-d3d-compiler
                 "$<TARGET_FILE:openstitch>"
         COMMENT "Déploiement des DLL Qt (windeployqt)")
 endif()

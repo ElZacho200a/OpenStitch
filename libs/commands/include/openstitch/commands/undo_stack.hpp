@@ -2,6 +2,8 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -25,6 +27,11 @@ public:
     [[nodiscard]] std::string redoName() const;
 
     void clear();
+
+    // Compteur monotone des changements du document pilotés par la pile (execute, fusion, undo,
+    // redo) : base de la révision du pont live (ADR 0001). `clear` l'incrémente aussi, jamais
+    // de retour en arrière.
+    [[nodiscard]] std::uint64_t version() const { return version_; }
 
     // Marqueur « document propre » (état enregistré). markClean() mémorise la
     // position courante ; isClean() reste vrai après undo+redo qui y reviennent
@@ -53,12 +60,20 @@ public:
     // (à appeler à l'enregistrement, au changement de sélection, etc.). Undo,
     // redo et clear la coupent d'eux-mêmes.
     void breakMergeChain() { mergeable_ = false; }
+    // Profondeur maximale de la branche « annuler » (HP-PERF-010) : au-delà, les pas les plus
+    // anciens sont éliminés (leur état n'est plus atteignable ; les pas conservés gardent leur
+    // sémantique). 0 = illimitée (défaut). Réduire la borne élague immédiatement.
+    void setMaxDepth(std::size_t maxDepth);
+    [[nodiscard]] std::size_t maxDepth() const { return maxDepth_; }
     // Noms des pas d'annulation (du plus ancien au plus récent) et de
     // rétablissement (du prochain à rétablir au plus lointain) : panneau Historique.
     [[nodiscard]] std::vector<std::string> undoNames() const;
     [[nodiscard]] std::vector<std::string> redoNames() const;
 
 private:
+    void trimToDepth();
+    std::size_t maxDepth_{0};
+    std::uint64_t version_{0};
     std::chrono::milliseconds mergeWindow_{600};
     std::chrono::steady_clock::time_point lastExecute_{};
     bool mergeable_{false};

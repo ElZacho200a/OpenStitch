@@ -17,8 +17,11 @@
 #include <QToolBar>
 #include <QToolButton>
 
+#include <set>
+
 #include "color_blend_dialog.hpp"
 #include "main_window.hpp"
+#include "openstitch/commands/project_commands.hpp"
 #include "openstitch/geometry/primitives.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "properties_panel.hpp"
@@ -100,7 +103,162 @@ private slots:
     void dialogPreviewShowsTheStitchesOfBothLayers();
     void createdLayersFollowTheChosenProfile();
     void addLayerInsertsAfterBaseAndUndoes();
+    void addLayerQuickIsOneUndoableStepWithoutDialog();
+    void layerNamesStayUniqueAfterADeletionAndDoNotStackSuffixes();
+    void duplicateLayerInsertsACopyAboveAndUndoes();
+    void duplicatingAShapeCarriesAllItsLayersInOneStep();
+    void moveLayerSwapsWithTheNeighbourOfTheSameShapeAndUndoes();
+    void aShapeSelectedAtTheCanvasTargetsItsTopLayer();
+    void layerToolbarMovesHidesAndFollowsTheChosenLayer();
 };
+
+void MainWindowTest::moveLayerSwapsWithTheNeighbourOfTheSameShapeAndUndoes() {
+    MainWindow w;
+    w.applyLoadedProject(blendFixture(false, true)); // Fond puis Dessus
+    const ObjectId base = w.project_.embroidery_objects.front().id;
+    const ObjectId top = w.project_.embroidery_objects.back().id;
+    QVERIFY(!w.moveLayer(top, +1));  // déjà tout en haut
+    QVERIFY(!w.moveLayer(base, -1)); // déjà au fond
+    QVERIFY(w.moveLayer(base, +1));
+    QCOMPARE(w.project_.embroidery_objects.front().id, top);
+    QCOMPARE(w.project_.embroidery_objects.back().id, base);
+    w.undoAct_->trigger();
+    QCOMPARE(w.project_.embroidery_objects.front().id, base);
+    QCOMPARE(w.project_.embroidery_objects.back().id, top);
+}
+
+void MainWindowTest::aShapeSelectedAtTheCanvasTargetsItsTopLayer() {
+    MainWindow w;
+    w.applyLoadedProject(blendFixture(false, true));
+    const auto shape = w.project_.embroidery_objects.front().source_vector;
+    w.setSelection({.objects = {shape}});
+    const auto* target = w.resolveSelectedEmbroidery();
+    QVERIFY(target != nullptr);
+    QCOMPARE(target->id, w.project_.embroidery_objects.back().id); // « Dessus »
+}
+
+void MainWindowTest::layerToolbarMovesHidesAndFollowsTheChosenLayer() {
+    MainWindow w;
+    w.applyLoadedProject(blendFixture(false, true));
+    const ObjectId base = w.project_.embroidery_objects.front().id;
+    const ObjectId top = w.project_.embroidery_objects.back().id;
+    w.setSelection({.embroidery = base});
+    w.updateActions();
+    auto* up = w.propertiesPanel_->findChild<QPushButton*>(QStringLiteral("button_layerUp"));
+    auto* down = w.propertiesPanel_->findChild<QPushButton*>(QStringLiteral("button_layerDown"));
+    auto* vis = w.propertiesPanel_->findChild<QPushButton*>(QStringLiteral("button_layerVisible"));
+    QVERIFY(up != nullptr && down != nullptr && vis != nullptr);
+    QVERIFY(up->isEnabled());    // la couche du fond peut monter
+    QVERIFY(!down->isEnabled()); // mais pas descendre
+    QCOMPARE(vis->text(), QStringLiteral("Masquer"));
+
+    vis->click();
+    QVERIFY(!w.project_.findEmbroidery(base)->visible);
+    w.updateActions();
+    QCOMPARE(vis->text(), QStringLiteral("Afficher"));
+    w.undoAct_->trigger();
+    QVERIFY(w.project_.findEmbroidery(base)->visible);
+
+    up->click();
+    QCOMPARE(w.project_.embroidery_objects.front().id, top);
+    w.updateActions();
+    QVERIFY(!up->isEnabled()); // la couche choisie est maintenant tout en haut
+    QVERIFY(down->isEnabled());
+}
+
+void MainWindowTest::addLayerQuickIsOneUndoableStepWithoutDialog() {
+    MainWindow w;
+    w.applyLoadedProject(blendFixture(false, true));
+    const auto base = w.project_.embroidery_objects.front();
+    const auto before = w.project_.embroidery_objects.size();
+    const auto steps = w.undoStack_.undoNames().size();
+    QVERIFY(w.addLayerQuick(base.id));
+    QCOMPARE(w.project_.embroidery_objects.size(), before + 1);
+    QCOMPARE(w.undoStack_.undoNames().size(), steps + 1);
+    const auto& layer = w.project_.embroidery_objects[1]; // juste après la base
+    QCOMPARE(layer.source_vector, base.source_vector);
+    QCOMPARE(MainWindow::stitchTypeIndex(layer), MainWindow::stitchTypeIndex(base));
+    QVERIFY(layer.rgb != base.rgb);
+    QVERIFY(w.selectedEmbroidery_.has_value());
+    QCOMPARE(w.selectedEmbroidery_->value, layer.id.value); // la nouvelle couche est choisie
+    w.undoAct_->trigger();
+    QCOMPARE(w.project_.embroidery_objects.size(), before);
+}
+
+void MainWindowTest::layerNamesStayUniqueAfterADeletionAndDoNotStackSuffixes() {
+    MainWindow w;
+    w.applyLoadedProject(blendFixture(false, false)); // une seule broderie
+    const ObjectId baseId = w.project_.embroidery_objects.front().id;
+    QVERIFY(w.addLayerQuick(baseId));
+    const ObjectId second = w.project_.embroidery_objects[1].id;
+    QVERIFY(w.addLayerQuick(second)); // ajoutée depuis une couche : pas de suffixe empilé
+    const auto nameOf = [&w](std::size_t i) {
+        return QString::fromStdString(w.project_.embroidery_objects[i].name);
+    };
+    QCOMPARE(w.project_.embroidery_objects.size(), std::size_t{3});
+    QVERIFY(nameOf(1).endsWith(QStringLiteral("couche 3")) ||
+            nameOf(1).endsWith(QStringLiteral("couche 2")));
+    QCOMPARE(nameOf(1).count(QStringLiteral("couche")), 1);
+    QCOMPARE(nameOf(2).count(QStringLiteral("couche")), 1);
+    QVERIFY(nameOf(1) != nameOf(2));
+    // Suppression de « couche 2 » puis nouvel ajout : le numéro libre est réutilisé, pas de
+    // doublon.
+    for (std::size_t i = 0; i < w.project_.embroidery_objects.size(); ++i) {
+        if (nameOf(i).endsWith(QStringLiteral("couche 2"))) {
+            w.undoStack_.execute(std::make_unique<commands::RemoveEmbroideryObjectCommand>(
+                                     w.project_.embroidery_objects[i].id),
+                                 w.project_);
+            break;
+        }
+    }
+    QVERIFY(w.addLayerQuick(baseId));
+    std::set<QString> names;
+    for (std::size_t i = 0; i < w.project_.embroidery_objects.size(); ++i) {
+        names.insert(nameOf(i));
+    }
+    QCOMPARE(names.size(), w.project_.embroidery_objects.size());
+}
+
+void MainWindowTest::duplicateLayerInsertsACopyAboveAndUndoes() {
+    MainWindow w;
+    w.applyLoadedProject(blendFixture(false, true));
+    const auto base = w.project_.embroidery_objects.front();
+    const auto top = w.project_.embroidery_objects.back();
+    QVERIFY(w.duplicateLayer(base.id));
+    QCOMPARE(w.project_.embroidery_objects.size(), std::size_t{3});
+    const auto& copy = w.project_.embroidery_objects[1];
+    QCOMPARE(w.project_.embroidery_objects[0].id, base.id);
+    QCOMPARE(w.project_.embroidery_objects[2].id, top.id);
+    QVERIFY(copy.id != base.id);
+    QCOMPARE(copy.source_vector, base.source_vector);
+    QCOMPARE(copy.rgb, base.rgb);
+    QCOMPARE(copy.params.index(), base.params.index());
+    QVERIFY(copy.name != base.name);
+    w.undoAct_->trigger();
+    QCOMPARE(w.project_.embroidery_objects.size(), std::size_t{2});
+}
+
+void MainWindowTest::duplicatingAShapeCarriesAllItsLayersInOneStep() {
+    MainWindow w;
+    w.applyLoadedProject(blendFixture(false, true)); // deux couches sur une forme
+    const ObjectId shape = w.project_.embroidery_objects.front().source_vector;
+    const auto vectors = w.project_.vector_objects.size();
+    const auto embroideries = w.project_.embroidery_objects.size();
+    const auto steps = w.undoStack_.undoNames().size();
+    w.duplicateVectorObject(shape);
+    QCOMPARE(w.project_.vector_objects.size(), vectors + 1);
+    QCOMPARE(w.project_.embroidery_objects.size(), embroideries * 2);
+    QCOMPARE(w.undoStack_.undoNames().size(), steps + 1);
+    const ObjectId copyId = w.project_.vector_objects.back().id;
+    std::size_t onCopy = 0;
+    for (const auto& e : w.project_.embroidery_objects) {
+        onCopy += e.source_vector == copyId ? 1 : 0;
+    }
+    QCOMPARE(onCopy, embroideries);
+    w.undoAct_->trigger();
+    QCOMPARE(w.project_.vector_objects.size(), vectors);
+    QCOMPARE(w.project_.embroidery_objects.size(), embroideries);
+}
 
 void MainWindowTest::addLayerInsertsAfterBaseAndUndoes() {
     MainWindow w;
@@ -276,6 +434,9 @@ void MainWindowTest::inspectorOffersExplicitLayerSelection() {
     QVERIFY2(layers != nullptr, "Les deux couches doivent etre accessibles dans l'inspecteur.");
     QCOMPARE(layers->count(), 2);
     const auto original = w.project_.findEmbroidery(base)->params;
+    QCOMPARE(layers->currentIndex(), 1); // la forme choisie au canevas vise la couche du dessus
+    layers->setCurrentIndex(0);
+    QCOMPARE(w.selectedEmbroidery_.value_or(ObjectId{}), base);
     layers->setCurrentIndex(1);
     QCOMPARE(w.selectedEmbroidery_.value_or(ObjectId{}), top);
     auto* spacing =

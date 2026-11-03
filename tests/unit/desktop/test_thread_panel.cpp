@@ -4,6 +4,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QDockWidget>
+#include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
@@ -75,6 +76,17 @@ private slots:
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir_.path());
         QStandardPaths::setTestModeEnabled(true);
         qRegisterMetaType<thread_palette::Thread>();
+    }
+
+    void panelExplainsThreadRoleWithoutMixingSegmentation() {
+        ThreadPanel panel;
+        auto* hint = panel.findChild<QLabel*>(QStringLiteral("threadColorRoleHint"));
+        auto* catalog = panel.findChild<QListWidget*>(QStringLiteral("threadCatalogList"));
+        QVERIFY(hint != nullptr && catalog != nullptr);
+        QVERIFY(hint->wordWrap());
+        QVERIFY(hint->text().contains(QStringLiteral("références")));
+        QVERIFY(hint->text().contains(QStringLiteral("segmentation")));
+        QVERIFY(catalog->toolTip().contains(QStringLiteral("sans modifier")));
     }
 
     void panelListsCatalogAndFiltersBySearch() {
@@ -359,6 +371,33 @@ private slots:
         window.findChild<QAction*>("action_undo")->trigger();
         QApplication::processEvents();
         QCOMPARE(usage->count(), 2);
+    }
+
+    void hidingAThreadFromTheVisibilityTabKeepsItListedAndIsOneUndoStep() {
+        MainWindow window;
+        window.show();
+        window.applyLoadedProject(twoTrianglesProject());
+        auto* dock = window.findChild<QDockWidget*>("threadDock");
+        auto* panel = window.findChild<ThreadPanel*>();
+        dock->show();
+        QApplication::processEvents();
+        auto* usage = panel->findChild<QListWidget*>("threadUsageList");
+        auto* visibility = panel->findChild<QListWidget*>("threadVisibilityList");
+        QVERIFY(visibility != nullptr);
+        QCOMPARE(usage->count(), 2);
+        QCOMPARE(visibility->count(), 2);
+        QCOMPARE(visibility->item(0)->checkState(), Qt::Checked);
+
+        visibility->item(0)->setCheckState(Qt::Unchecked); // masque le rouge
+        QApplication::processEvents();
+        QCOMPARE(usage->count(), 1);      // sorti de la sequence et du film
+        QCOMPARE(visibility->count(), 2); // mais toujours liste pour etre reaffiche
+        QCOMPARE(visibility->item(0)->checkState(), Qt::Unchecked);
+
+        window.findChild<QAction*>("action_undo")->trigger(); // un seul pas d'annulation
+        QApplication::processEvents();
+        QCOMPARE(usage->count(), 2);
+        QCOMPARE(visibility->item(0)->checkState(), Qt::Checked);
     }
 };
 

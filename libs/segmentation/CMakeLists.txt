@@ -3,6 +3,7 @@ find_package(OpenCV CONFIG REQUIRED COMPONENTS core imgproc)
 add_library(openstitch_segmentation
     src/segmentation.cpp
     src/color_merge.cpp
+    src/region_growing.cpp
 )
 add_library(openstitch::segmentation ALIAS openstitch_segmentation)
 

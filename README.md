@@ -23,6 +23,21 @@ Détails, emplacement des préférences et de la sauvegarde automatique, désins
 tests échouent ensuite). Décompressez **tout** le ZIP et lancez `desktop/Release/openstitch.exe` (les DLL et plugins
 voisins sont nécessaires). Ces builds ne sont pas forcément validés par les tests.
 
+**CLI Linux x86-64 sans compilation** : pour installer automatiquement la version publiée,
+téléchargez puis lancez
+[`scripts/install-cli-linux.sh`](scripts/install-cli-linux.sh) (`~/.local/bin` par défaut,
+SHA-256 et démarrage vérifiés). La release [Dernier build (main)](https://github.com/ElZacho200a/OpenStitch/releases/tag/latest)
+fournit `openstitch-cli-linux-x86_64.tar.gz` et son `.sha256` après une publication Linux
+réussie (via CI ou via le workflow indépendant « Publish Linux CLI », quotidien ou manuel).
+En secours, l'installateur peut récupérer un artefact **main/push** avec un `gh` authentifié.
+Le même tarball est aussi disponible dans **Actions → CI → Artifacts**
+(`openstitch-cli-linux-x86_64`, conservé 30 jours après un run réussi).
+Il contient l'exécutable `openstitch-cli`, ses dépendances dynamiques listées dans
+`dependencies.txt`, les licences et les instructions. C'est la **CLI seule**, pas
+l'application graphique ; construit sur Ubuntu 24.04, il nécessite un Linux x86-64
+compatible (la compatibilité exacte, notamment glibc, se vérifie avec `ldd`).
+Voir [Installer le client Linux](docs/source/installation.md#client-cli-linux-x86-64).
+
 ## État du projet
 
 **Chaîne complète fonctionnelle, de l'image au fichier DST**, avec contrôle manuel à chaque étape :
@@ -66,7 +81,14 @@ utilisateur `VCPKG_ROOT` et `QT_ROOT` — puis configure et compile Debug **et**
 .\scripts\build.ps1 -Test                 # ... puis lancer les tests
 .\scripts\build.ps1 -Yes                  # confirme d'avance (aucune invite)
 .\scripts\build.ps1 -SkipBootstrap -Configuration Debug -Test   # poste déjà configuré : n'installe rien
+.\scripts\build.ps1 -SkipBootstrap -Configuration Release -Jobs 4  # limite la compilation à 4 tâches parallèles
 ```
+
+La compilation utilise par défaut tous les processeurs logiques disponibles,
+entre projets et entre fichiers C++ d'un même projet. `-Jobs N` règle le nombre
+maximal de tâches de compilation simultanées ; `-Jobs 1` permet de compiler en série.
+Les workflows Windows CI et Release utilisent le même script ; le build Linux
+utilise déjà `-j "$(nproc)"`.
 
 **Voie manuelle** (vous installez vous-même l'outillage) :
 

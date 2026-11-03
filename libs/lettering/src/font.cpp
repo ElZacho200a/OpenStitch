@@ -9,6 +9,9 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include FT_OUTLINE_H
+#include FT_TRUETYPE_TABLES_H
+
+#include "openstitch/lettering/gpos.hpp"
 
 namespace openstitch::lettering {
 
@@ -17,6 +20,7 @@ struct Font::Impl {
     FT_Face face{nullptr};
     std::vector<std::uint8_t> bytes; // FT_New_Memory_Face ne copie pas
     double cap_units{0.0};
+    std::unique_ptr<GposKerning> gpos; // crénage GPOS (nullptr : repli sur `kern`)
 
     ~Impl() {
         if (face != nullptr) {
@@ -187,6 +191,15 @@ Result<Font> Font::from_memory(std::vector<std::uint8_t> bytes, int face_index) 
             impl->cap_units = static_cast<double>(box.yMax);
         }
     }
+    // Table GPOS (crénage par paires/classes), absente des polices anciennes.
+    FT_ULong gpos_len = 0;
+    constexpr FT_ULong kGposTag = FT_MAKE_TAG('G', 'P', 'O', 'S');
+    if (FT_Load_Sfnt_Table(impl->face, kGposTag, 0, nullptr, &gpos_len) == 0 && gpos_len > 0) {
+        std::vector<std::uint8_t> table(gpos_len);
+        if (FT_Load_Sfnt_Table(impl->face, kGposTag, 0, table.data(), &gpos_len) == 0) {
+            impl->gpos = GposKerning::parse(std::move(table));
+        }
+    }
     return Font(std::move(impl));
 }
 
@@ -252,12 +265,17 @@ GlyphOutline Font::outline(char32_t code_point, double tolerance_units) const {
 }
 
 double Font::kerning(char32_t left, char32_t right) const {
-    if (!FT_HAS_KERNING(impl_->face)) {
-        return 0.0;
-    }
     const FT_UInt l = FT_Get_Char_Index(impl_->face, static_cast<FT_ULong>(left));
     const FT_UInt r = FT_Get_Char_Index(impl_->face, static_cast<FT_ULong>(right));
     if (l == 0 || r == 0) {
+        return 0.0;
+    }
+    // GPOS d'abord (polices modernes) ; la table `kern` ne sert que sans GPOS « kern ».
+    if (impl_->gpos != nullptr) {
+        return impl_->gpos->pair_adjustment(static_cast<std::uint16_t>(l),
+                                            static_cast<std::uint16_t>(r));
+    }
+    if (!FT_HAS_KERNING(impl_->face)) {
         return 0.0;
     }
     FT_Vector delta{};

@@ -76,4 +76,38 @@ private:
     std::string label_;
 };
 
+// HP-THR-005 : affiche ou masque d'un coup tous les objets d'un fil (case « visible » du
+// film couleur). Un seul pas d'annulation ; l'état précédent de chaque objet est restitué
+// exactement. Les identifiants inconnus sont ignorés.
+class SetThreadVisibleCommand final : public ICommand {
+public:
+    SetThreadVisibleCommand(std::vector<ObjectId> ids, bool visible)
+        : ids_(std::move(ids)), visible_(visible) {}
+
+    void apply(document::Project& project) override {
+        previous_.clear();
+        for (const ObjectId id : ids_) {
+            if (auto* obj = project.findEmbroidery(id)) {
+                previous_.emplace_back(id, obj->visible);
+                obj->visible = visible_;
+            }
+        }
+    }
+    void revert(document::Project& project) override {
+        for (auto it = previous_.rbegin(); it != previous_.rend(); ++it) {
+            if (auto* obj = project.findEmbroidery(it->first)) {
+                obj->visible = it->second;
+            }
+        }
+    }
+    [[nodiscard]] std::string name() const override {
+        return visible_ ? "Afficher le fil" : "Masquer le fil";
+    }
+
+private:
+    std::vector<ObjectId> ids_;
+    bool visible_;
+    std::vector<std::pair<ObjectId, bool>> previous_;
+};
+
 } // namespace openstitch::commands

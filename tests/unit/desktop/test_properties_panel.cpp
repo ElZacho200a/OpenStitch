@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <numbers>
+
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QLabel>
 #include <QListWidget>
+#include <QMenu>
 #include <QPushButton>
+#include <QSettings>
 #include <QSpinBox>
+#include <QTemporaryDir>
 #include <QTest>
+#include <QToolButton>
 #include <QWheelEvent>
 
 #include <cmath>
@@ -16,6 +22,7 @@
 
 #include "openstitch/document/embroidery_object.hpp"
 #include "properties_panel.hpp"
+#include "ui_memory.hpp"
 
 using openstitch::Micrometers;
 using openstitch::Millimeters;
@@ -62,13 +69,28 @@ EmbroideryObject autoSatinObject(std::uint64_t id) {
 class PropertiesPanelTest : public QObject {
     Q_OBJECT
 
+    QTemporaryDir settingsDir_;
+
 private slots:
+    void initTestCase() {
+        QVERIFY(settingsDir_.isValid());
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenStitchUITest"));
+        QCoreApplication::setApplicationName(QStringLiteral("PropertiesPanelTest"));
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir_.path());
+    }
+
     void showEmbroideryPopulatesSpinBoxesWithoutEmittingWhileBuilding();
     void headerShowsColorDotAndTypePillOnlyForAnEmbroideryObject();
     void editingASpinBoxEmitsParamsEditedWithUpdatedValueAndPreservesOthers();
     void switchingToInfoRemovesThePreviousFormControls();
     void tatamiOffersConversionToDirectionalFill();
     void directionalEditKeepsGuidesAndSeed();
+    void runningStyleComboEmitsStyleAndStemOffset();
+    void contourFillEditsEmitParamsAndConversionIsOffered();
+    void motifPanelsEmitEditedParams();
+    void stitchTypeMoreMenuOffersEveryOtherType();
+    void radialSpiralCrosshatchEditsEmitParamsAndConversionIsOffered();
     void directionalGradientControlsRequestMainWindow();
     void directionalSpacingRegularityIsEditable();
     void autoSatinInspectorListsGuidesAndEditsScalars();
@@ -76,7 +98,9 @@ private slots:
     void autoSatinStateRefreshUpdatesListWithoutRebuildingTheForm();
     void tatamiEditChangesOnlyTheTouchedFieldWithoutRounding();
     void engineSettingsEmitDedicatedEdits();
+    void directionalPullAndZigzagUnderlayAreEditable();
     void borderSatinInspectorEmitsRegenerationRequests();
+    void satinSpacingAndCornersAreEditableOnBothSatinKinds();
     void rowSpacingAndLengthsAreBoundedWithRangeTooltips();
     void wheelDoesNotChangeAnUnfocusedField();
     void underlayFieldsAreGreyedWhenTheirBoxIsUnchecked();
@@ -86,7 +110,118 @@ private slots:
     void autoSatinMethodChoiceEmitsTheStrategy();
     void autoSatinSweepAngleIsOnlyEditableForTheSweepMethod();
     void autoSatinCompareButtonAsksMainWindowAndIsAbsentForAGroup();
+    void blanketInspectorEditsWidthSpacingStyleAndSide();
+    void advancedTatamiPreservesValuesAndUndoSignals();
+    void advancedSatinModesRememberSeparatePreferences();
+    void advancedAutoSatinKeepsGuidesAndComparisonVisible();
 };
+
+// HP-UX : options avancées, sans duplication ni modification des paramètres.
+void PropertiesPanelTest::advancedTatamiPreservesValuesAndUndoSignals() {
+    using namespace openstitch::desktop;
+    ui_memory::setBoolValue(QStringLiteral("inspector/advanced/tatami"), false);
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{171};
+    e.params = openstitch::document::TatamiParams{};
+    panel.showEmbroidery(e);
+    panel.show();
+
+    auto* toggle = panel.findChild<QToolButton*>(QStringLiteral("button_inspectorAdvanced"));
+    auto* spacing = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_rowSpacing"));
+    auto* inset = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_underlayInset"));
+    auto* zig = panel.findChild<QCheckBox*>(QStringLiteral("check_underlayZigzag"));
+    QVERIFY(toggle && spacing && inset && zig);
+    QVERIFY(!toggle->isChecked());
+    QVERIFY(spacing->isVisible());
+    QVERIFY(inset->isHidden() && zig->isHidden());
+
+    int edits = 0;
+    std::optional<StitchParams> latest;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams params) {
+                         ++edits;
+                         latest = params;
+                     });
+    toggle->click();
+    QVERIFY(toggle->isChecked());
+    QVERIFY(ui_memory::boolValue(QStringLiteral("inspector/advanced/tatami"), false));
+    QVERIFY(inset->isVisible() && zig->isVisible());
+    QCOMPARE(edits, 0); // ouvrir le volet ne change pas la broderie
+    zig->setChecked(true);
+    QCOMPARE(edits, 1);
+    QVERIFY(latest.has_value());
+    QVERIFY(std::get<openstitch::document::TatamiParams>(*latest).underlay_zigzag);
+    toggle->click();
+    QVERIFY(zig->isHidden());
+    QCOMPARE(edits, 1);
+    ui_memory::setBoolValue(QStringLiteral("inspector/advanced/tatami"), false);
+}
+
+void PropertiesPanelTest::advancedSatinModesRememberSeparatePreferences() {
+    using namespace openstitch::desktop;
+    ui_memory::setBoolValue(QStringLiteral("inspector/advanced/satin"), false);
+    ui_memory::setBoolValue(QStringLiteral("inspector/advanced/autoSatin"), false);
+    PropertiesPanel panel;
+    EmbroideryObject satin;
+    satin.id = openstitch::ObjectId{172};
+    satin.params = openstitch::document::SatinParams{};
+    panel.showEmbroidery(satin);
+    panel.show();
+
+    auto* toggle = panel.findChild<QToolButton*>(QStringLiteral("button_inspectorAdvanced"));
+    auto* corner = panel.findChild<QComboBox*>(QStringLiteral("combo_satinCorner"));
+    QVERIFY(toggle && corner);
+    QVERIFY(!toggle->isChecked());
+    QVERIFY(corner->isHidden());
+    toggle->click();
+    QVERIFY(toggle->isChecked());
+    QVERIFY(ui_memory::boolValue(QStringLiteral("inspector/advanced/satin"), false));
+    QVERIFY(corner->isVisible());
+
+    panel.showEmbroidery(autoSatinObject(173));
+    auto* autoToggle = panel.findChild<QToolButton*>(QStringLiteral("button_inspectorAdvanced"));
+    auto* autoCorner = panel.findChild<QComboBox*>(QStringLiteral("combo_autoSatinCorner"));
+    QVERIFY(autoToggle && autoCorner);
+    QVERIFY(!autoToggle->isChecked());
+    QVERIFY(autoCorner->isHidden());
+
+    panel.showEmbroidery(satin);
+    auto* restored = panel.findChild<QToolButton*>(QStringLiteral("button_inspectorAdvanced"));
+    QVERIFY(restored && restored->isChecked());
+    corner = panel.findChild<QComboBox*>(QStringLiteral("combo_satinCorner"));
+    // Le layout Qt peut différer l'affichage après remplacement du formulaire
+    // (notamment avec le plugin offscreen sous Windows) : attendre son activation.
+    QTRY_VERIFY(corner && corner->isVisible());
+    ui_memory::setBoolValue(QStringLiteral("inspector/advanced/satin"), false);
+}
+
+void PropertiesPanelTest::advancedAutoSatinKeepsGuidesAndComparisonVisible() {
+    using namespace openstitch::desktop;
+    ui_memory::setBoolValue(QStringLiteral("inspector/advanced/autoSatin"), false);
+    PropertiesPanel panel;
+    panel.showEmbroidery(autoSatinObject(174));
+    panel.show();
+
+    auto* toggle = panel.findChild<QToolButton*>(QStringLiteral("button_inspectorAdvanced"));
+    auto* method = panel.findChild<QComboBox*>(QStringLiteral("combo_autoSatinStrategy"));
+    auto* threshold = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_autoSatinThreshold"));
+    auto* guides = panel.findChild<QListWidget*>(QStringLiteral("list_satinGuides"));
+    auto* compare = panel.findChild<QPushButton*>(QStringLiteral("button_autoSatinCompare"));
+    QVERIFY(toggle && method && threshold && guides && compare);
+    QVERIFY(method->isVisible() && guides->isVisible() && compare->isVisible());
+    QVERIFY(threshold->isHidden());
+
+    int edits = 0;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams) { ++edits; });
+    toggle->click();
+    QCOMPARE(edits, 0);
+    QVERIFY(threshold->isVisible());
+    threshold->setValue(threshold->value() + 0.5);
+    QVERIFY(edits >= 1);
+    ui_memory::setBoolValue(QStringLiteral("inspector/advanced/autoSatin"), false);
+}
 
 void PropertiesPanelTest::showEmbroideryPopulatesSpinBoxesWithoutEmittingWhileBuilding() {
     PropertiesPanel panel;
@@ -98,7 +233,7 @@ void PropertiesPanelTest::showEmbroideryPopulatesSpinBoxesWithoutEmittingWhileBu
 
     QCOMPARE(emitCount, 0); // peuplement initial : pas d'édit émis
     const auto spins = panel.findChildren<QDoubleSpinBox*>();
-    QCOMPARE(spins.size(), 2); // longueur de point, longueur minimale
+    QCOMPARE(spins.size(), 3); // longueur de point, longueur minimale, decalage du point tige
     QCOMPARE(spins.at(0)->value(), 3.0);
     QCOMPARE(spins.at(1)->value(), 0.5);
 }
@@ -135,7 +270,7 @@ void PropertiesPanelTest::editingASpinBoxEmitsParamsEditedWithUpdatedValueAndPre
 void PropertiesPanelTest::switchingToInfoRemovesThePreviousFormControls() {
     PropertiesPanel panel;
     panel.showEmbroidery(runningStitchObject(3));
-    QCOMPARE(panel.findChildren<QDoubleSpinBox*>().size(), 2);
+    QCOMPARE(panel.findChildren<QDoubleSpinBox*>().size(), 3);
 
     panel.showInfo(QStringLiteral("Région"), QStringLiteral("détails"));
 
@@ -159,6 +294,199 @@ void PropertiesPanelTest::tatamiOffersConversionToDirectionalFill() {
     button->click();
     QCOMPARE(requested.value_or(0), static_cast<std::uint64_t>(11));
     QCOMPARE(edits, 0); // la conversion passe par MainWindow, jamais par un edit direct
+}
+
+void PropertiesPanelTest::contourFillEditsEmitParamsAndConversionIsOffered() {
+    // Le tatami propose la conversion, jamais par un edit direct.
+    {
+        PropertiesPanel panel;
+        EmbroideryObject e;
+        e.id = openstitch::ObjectId{21};
+        e.params = openstitch::document::TatamiParams{};
+        panel.showEmbroidery(e);
+        auto* button = panel.findChild<QPushButton*>(QStringLiteral("button_convertToContourFill"));
+        QVERIFY(button != nullptr);
+        std::optional<std::uint64_t> requested;
+        QObject::connect(&panel, &PropertiesPanel::convertToContourFillRequested, &panel,
+                         [&](openstitch::ObjectId id) { requested = id.value; });
+        button->click();
+        QCOMPARE(requested.value_or(0), static_cast<std::uint64_t>(21));
+    }
+    // Le panneau du remplissage concentrique émet les réglages modifiés (µm entiers).
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{22};
+    e.params = openstitch::document::ContourFillParams{};
+    panel.showEmbroidery(e);
+    auto* spacing = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_contourSpacing"));
+    auto* spiral = panel.findChild<QCheckBox*>(QStringLiteral("check_contourSpiral"));
+    QVERIFY(spacing != nullptr);
+    QVERIFY(spiral != nullptr);
+    QVERIFY(spiral->isChecked());
+    std::optional<StitchParams> last;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams params) { last = params; });
+    spacing->setValue(0.6);
+    QVERIFY(last.has_value());
+    QCOMPARE(std::get<openstitch::document::ContourFillParams>(*last).row_spacing.value, 600);
+    spiral->setChecked(false);
+    QVERIFY(!std::get<openstitch::document::ContourFillParams>(*last).spiral);
+}
+
+void PropertiesPanelTest::motifPanelsEmitEditedParams() {
+    // HP-STI-002 : motif le long du contour.
+    {
+        PropertiesPanel panel;
+        EmbroideryObject e;
+        e.id = openstitch::ObjectId{31};
+        e.params = openstitch::document::MotifRunParams{};
+        panel.showEmbroidery(e);
+        auto* size = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_motifRunSize"));
+        auto* alt = panel.findChild<QCheckBox*>(QStringLiteral("check_motifRunAlternate"));
+        auto* motif = panel.findChild<QComboBox*>(QStringLiteral("combo_motifRunMotif"));
+        QVERIFY(size != nullptr && alt != nullptr && motif != nullptr);
+        std::optional<StitchParams> last;
+        QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                         [&](openstitch::ObjectId, StitchParams params) { last = params; });
+        size->setValue(5.5);
+        QVERIFY(last.has_value());
+        QCOMPARE(std::get<openstitch::document::MotifRunParams>(*last).size.value, 5500);
+        alt->setChecked(true);
+        QVERIFY(std::get<openstitch::document::MotifRunParams>(*last).alternate);
+        motif->setCurrentIndex(2);
+        QVERIFY(std::get<openstitch::document::MotifRunParams>(*last).motif ==
+                openstitch::document::MotifId::Leaf);
+    }
+    // HP-STI-006 : remplissage a motif.
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{32};
+    e.params = openstitch::document::MotifFillParams{};
+    panel.showEmbroidery(e);
+    auto* spacing = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_motifFillSpacing"));
+    auto* angle = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_motifFillAngle"));
+    auto* stagger = panel.findChild<QCheckBox*>(QStringLiteral("check_motifFillStagger"));
+    QVERIFY(spacing != nullptr && angle != nullptr && stagger != nullptr);
+    std::optional<StitchParams> last;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams params) { last = params; });
+    spacing->setValue(7.0);
+    QVERIFY(last.has_value());
+    QCOMPARE(std::get<openstitch::document::MotifFillParams>(*last).spacing.value, 7000);
+    angle->setValue(30.0);
+    QVERIFY(std::abs(std::get<openstitch::document::MotifFillParams>(*last).angle.radians -
+                     30.0 * 3.14159265358979 / 180.0) < 1e-6);
+    stagger->setChecked(false);
+    QVERIFY(!std::get<openstitch::document::MotifFillParams>(*last).stagger);
+}
+
+void PropertiesPanelTest::radialSpiralCrosshatchEditsEmitParamsAndConversionIsOffered() {
+    // Le tatami propose les trois conversions (jamais d'edit direct).
+    {
+        PropertiesPanel panel;
+        EmbroideryObject e;
+        e.id = openstitch::ObjectId{31};
+        e.params = openstitch::document::TatamiParams{};
+        panel.showEmbroidery(e);
+        std::vector<int> kinds;
+        QObject::connect(&panel, &PropertiesPanel::convertToFillKindRequested, &panel,
+                         [&](openstitch::ObjectId id, int kind) {
+                             QCOMPARE(id.value, static_cast<std::uint64_t>(31));
+                             kinds.push_back(kind);
+                         });
+        const char* names[] = {"button_convertToRadialFill", "button_convertToSpiralFill",
+                               "button_convertToCrosshatchFill"};
+        for (const char* n : names) {
+            auto* button = panel.findChild<QPushButton*>(QString::fromLatin1(n));
+            QVERIFY(button != nullptr);
+            button->click();
+        }
+        QCOMPARE(kinds, (std::vector<int>{0, 1, 2}));
+    }
+    std::optional<StitchParams> last;
+    // Radial : espacement et centre fixe (mm -> um entiers).
+    {
+        PropertiesPanel panel;
+        EmbroideryObject e;
+        e.id = openstitch::ObjectId{32};
+        e.params = openstitch::document::RadialFillParams{};
+        panel.showEmbroidery(e);
+        QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                         [&](openstitch::ObjectId, StitchParams params) { last = params; });
+        auto* spacing = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_radialSpacing"));
+        auto* autoCenter = panel.findChild<QCheckBox*>(QStringLiteral("check_radialAutoCenter"));
+        auto* cx = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_radialCenterX"));
+        QVERIFY(spacing != nullptr && autoCenter != nullptr && cx != nullptr);
+        QVERIFY(autoCenter->isChecked());
+        QVERIFY(!cx->isEnabled());
+        spacing->setValue(0.7);
+        QCOMPARE(std::get<openstitch::document::RadialFillParams>(*last).row_spacing.value, 700);
+        autoCenter->setChecked(false);
+        QVERIFY(cx->isEnabled());
+        QVERIFY(std::get<openstitch::document::RadialFillParams>(*last).center.has_value());
+        cx->setValue(12.5);
+        QCOMPARE(std::get<openstitch::document::RadialFillParams>(*last).center->x.value, 12'500);
+        autoCenter->setChecked(true);
+        QVERIFY(!std::get<openstitch::document::RadialFillParams>(*last).center.has_value());
+    }
+    // Spirale : sens horaire.
+    {
+        PropertiesPanel panel;
+        EmbroideryObject e;
+        e.id = openstitch::ObjectId{33};
+        e.params = openstitch::document::SpiralFillParams{};
+        panel.showEmbroidery(e);
+        QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                         [&](openstitch::ObjectId, StitchParams params) { last = params; });
+        auto* cw = panel.findChild<QCheckBox*>(QStringLiteral("check_spiralClockwise"));
+        QVERIFY(cw != nullptr);
+        cw->setChecked(true);
+        QVERIFY(std::get<openstitch::document::SpiralFillParams>(*last).clockwise);
+    }
+    // Croise : couches et angle.
+    {
+        PropertiesPanel panel;
+        EmbroideryObject e;
+        e.id = openstitch::ObjectId{34};
+        e.params = openstitch::document::CrosshatchFillParams{};
+        panel.showEmbroidery(e);
+        QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                         [&](openstitch::ObjectId, StitchParams params) { last = params; });
+        auto* layers = panel.findChild<QSpinBox*>(QStringLiteral("spin_crosshatchLayers"));
+        auto* angle = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_crosshatchAngle"));
+        QVERIFY(layers != nullptr && angle != nullptr);
+        layers->setValue(3);
+        QCOMPARE(std::get<openstitch::document::CrosshatchFillParams>(*last).layers, 3);
+        angle->setValue(45.0);
+        QVERIFY(std::abs(std::get<openstitch::document::CrosshatchFillParams>(*last).angle.radians -
+                         std::numbers::pi / 4.0) < 1e-9);
+    }
+    // Point de croix (HP-STI-012) : taille de cellule, angle, croix complete, passes.
+    {
+        PropertiesPanel panel;
+        EmbroideryObject e;
+        e.id = openstitch::ObjectId{35};
+        e.params = openstitch::document::CrossStitchParams{};
+        panel.showEmbroidery(e);
+        QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                         [&](openstitch::ObjectId, StitchParams params) { last = params; });
+        auto* cell = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_crossCell"));
+        auto* angle = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_crossAngle"));
+        auto* full = panel.findChild<QCheckBox*>(QStringLiteral("check_crossFull"));
+        auto* passes = panel.findChild<QSpinBox*>(QStringLiteral("spin_crossPasses"));
+        QVERIFY(cell != nullptr && angle != nullptr && full != nullptr && passes != nullptr);
+        QVERIFY(full->isChecked());
+        cell->setValue(3.5);
+        QCOMPARE(std::get<openstitch::document::CrossStitchParams>(*last).cell.value, 3'500);
+        full->setChecked(false);
+        QVERIFY(!std::get<openstitch::document::CrossStitchParams>(*last).full_cross);
+        passes->setValue(2);
+        QCOMPARE(std::get<openstitch::document::CrossStitchParams>(*last).passes, 2);
+        angle->setValue(90.0);
+        QVERIFY(
+            std::abs(std::get<openstitch::document::CrossStitchParams>(*last).grid_angle.radians -
+                     std::numbers::pi / 2.0) < 1e-9);
+    }
 }
 
 void PropertiesPanelTest::directionalEditKeepsGuidesAndSeed() {
@@ -203,6 +531,15 @@ void PropertiesPanelTest::directionalEditKeepsGuidesAndSeed() {
     const auto& reseeded = std::get<openstitch::document::DirectionalFillParams>(*emitted);
     QVERIFY(reseeded.seed != 77U);
     QVERIFY(reseeded.handmade);
+
+    // Bords effilochés : contour cousu par-dessus, guides et graine conservés.
+    auto* outline = panel.findChild<QCheckBox*>(QStringLiteral("check_directionalEdgeOutline"));
+    QVERIFY(outline != nullptr);
+    QVERIFY(!outline->isChecked());
+    outline->setChecked(true);
+    const auto& outlined = std::get<openstitch::document::DirectionalFillParams>(*emitted);
+    QVERIFY(outlined.edge_outline);
+    QCOMPARE(outlined.guides.size(), std::size_t{1});
 }
 
 void PropertiesPanelTest::directionalGradientControlsRequestMainWindow() {
@@ -415,6 +752,29 @@ void PropertiesPanelTest::tatamiEditChangesOnlyTheTouchedFieldWithoutRounding() 
              45.5 * 3.14159265358979323846 / 180.0);
 }
 
+void PropertiesPanelTest::runningStyleComboEmitsStyleAndStemOffset() {
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{41};
+    e.params = openstitch::document::RunningStitchParams{};
+    panel.showEmbroidery(e);
+
+    std::optional<StitchParams> emitted;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams p, QString) { emitted = p; });
+    auto* style = panel.findChild<QComboBox*>(QStringLiteral("combo_runningStyle"));
+    QVERIFY(style != nullptr);
+    QCOMPARE(style->count(), 4);
+    style->setCurrentIndex(3);
+    QVERIFY(emitted.has_value());
+    QVERIFY(std::get<openstitch::document::RunningStitchParams>(*emitted).style ==
+            openstitch::document::RunningStyle::Stem);
+    auto* off = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_stemOffset"));
+    QVERIFY(off != nullptr);
+    off->setValue(0.5);
+    QCOMPARE(std::get<openstitch::document::RunningStitchParams>(*emitted).stem_offset.value, 500);
+}
+
 void PropertiesPanelTest::engineSettingsEmitDedicatedEdits() {
     PropertiesPanel panel;
     EmbroideryObject e;
@@ -432,6 +792,35 @@ void PropertiesPanelTest::engineSettingsEmitDedicatedEdits() {
     pull->setValue(0.3);
     QVERIFY(emitted.has_value());
     QCOMPARE(std::get<openstitch::document::TatamiParams>(*emitted).pull_compensation.value, 300);
+
+    // HP-ENG-001.b : le mode Automatique grise la compensation manuelle.
+    auto* pullMode = panel.findChild<QComboBox*>(QStringLiteral("combo_pullMode"));
+    QVERIFY(pullMode != nullptr);
+    QCOMPARE(pullMode->currentIndex(), 0);
+    QVERIFY(pull->isEnabled());
+    pullMode->setCurrentIndex(1);
+    QCOMPARE(std::get<openstitch::document::TatamiParams>(*emitted).pull_mode,
+             openstitch::document::PullMode::Auto);
+    QVERIFY(!pull->isEnabled());
+    // Mode Adaptatif : compensation locale, le réglage manuel est aussi grisé.
+    pullMode->setCurrentIndex(2);
+    QCOMPARE(std::get<openstitch::document::TatamiParams>(*emitted).pull_mode,
+             openstitch::document::PullMode::Adaptive);
+    QVERIFY(!pull->isEnabled());
+    pullMode->setCurrentIndex(0);
+    QVERIFY(pull->isEnabled());
+
+    // Bords effilochés : écrêtage des bouts de rangée et contour cousu par-dessus.
+    auto* clip = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_tatamiRowEndClip"));
+    QVERIFY(clip != nullptr);
+    QCOMPARE(clip->maximum(), 5.0);
+    clip->setValue(1.0);
+    QCOMPARE(std::get<openstitch::document::TatamiParams>(*emitted).row_end_clip.value, 1'000);
+    auto* outline = panel.findChild<QCheckBox*>(QStringLiteral("check_tatamiEdgeOutline"));
+    QVERIFY(outline != nullptr);
+    QVERIFY(!outline->isChecked());
+    outline->setChecked(true);
+    QVERIFY(std::get<openstitch::document::TatamiParams>(*emitted).edge_outline);
 
     auto* mode = panel.findChild<QComboBox*>(QStringLiteral("combo_underlayMode"));
     QVERIFY(mode != nullptr);
@@ -464,6 +853,192 @@ void PropertiesPanelTest::engineSettingsEmitDedicatedEdits() {
     panel.setConnectorMode(e.id, openstitch::document::ConnectorMode::AlwaysTrim);
     QCOMPARE(connectorMode, -1);
     QCOMPARE(connector->currentIndex(), 1);
+
+    // HP-ENG-011 : « Retirer les points cachés » (tatami), marge activée avec la case.
+    e.params = openstitch::document::TatamiParams{};
+    panel.showEmbroidery(e);
+    auto* knockout = panel.findChild<QCheckBox*>(QStringLiteral("check_knockout"));
+    auto* margin = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_knockoutMargin"));
+    QVERIFY(knockout != nullptr);
+    QVERIFY(margin != nullptr);
+    QVERIFY(!knockout->isChecked());
+    QVERIFY(!margin->isEnabled());
+    QCOMPARE(margin->value(), 0.3);
+    bool knockoutOn = false;
+    double knockoutMm = -1.0;
+    QObject::connect(&panel, &PropertiesPanel::knockoutEdited, &panel,
+                     [&](openstitch::ObjectId, bool on, double mm) {
+                         knockoutOn = on;
+                         knockoutMm = mm;
+                     });
+    knockout->setChecked(true);
+    QVERIFY(knockoutOn);
+    QCOMPARE(knockoutMm, 0.3);
+    QVERIFY(margin->isEnabled());
+    // Resynchronisation sans émission (annulation).
+    knockoutOn = true;
+    panel.setKnockout(e.id, false, 0.5);
+    QVERIFY(knockoutOn);
+    QVERIFY(!knockout->isChecked());
+    QCOMPARE(margin->value(), 0.5);
+    // Un contour n'a rien à retirer : pas de case.
+    e.params = openstitch::document::RunningStitchParams{};
+    panel.showEmbroidery(e);
+    QVERIFY(panel.findChild<QCheckBox*>(QStringLiteral("check_knockout")) == nullptr);
+}
+
+// HP-ENG-001 / HP-ENG-002 : tirage du directionnel et sous-couche en zigzag dans l'inspecteur.
+void PropertiesPanelTest::directionalPullAndZigzagUnderlayAreEditable() {
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{41};
+    e.params = openstitch::document::DirectionalFillParams{};
+    panel.showEmbroidery(e);
+    std::optional<StitchParams> emitted;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams p, QString) { emitted = p; });
+
+    auto* pull = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_directionalPull"));
+    QVERIFY(pull != nullptr);
+    QCOMPARE(pull->maximum(), 3.0);
+    pull->setValue(0.3);
+    QVERIFY(emitted.has_value());
+    QCOMPARE(
+        std::get<openstitch::document::DirectionalFillParams>(*emitted).pull_compensation.value,
+        300);
+
+    auto* zig = panel.findChild<QCheckBox*>(QStringLiteral("check_directionalUnderlayZigzag"));
+    QVERIFY(zig != nullptr);
+    QVERIFY(!zig->isChecked());
+    zig->setChecked(true);
+    QVERIFY(std::get<openstitch::document::DirectionalFillParams>(*emitted).underlay_zigzag);
+    // Mode automatique : le zigzag manuel est ignore, donc grise.
+    auto* mode = panel.findChild<QComboBox*>(QStringLiteral("combo_underlayMode"));
+    QVERIFY(mode != nullptr);
+    mode->setCurrentIndex(1);
+    QVERIFY(!zig->isEnabled());
+
+    PropertiesPanel tatamiPanel;
+    EmbroideryObject t;
+    t.id = openstitch::ObjectId{42};
+    t.params = openstitch::document::TatamiParams{};
+    tatamiPanel.showEmbroidery(t);
+    std::optional<StitchParams> tatamiEmitted;
+    QObject::connect(&tatamiPanel, &PropertiesPanel::paramsEdited, &tatamiPanel,
+                     [&](openstitch::ObjectId, StitchParams p, QString) { tatamiEmitted = p; });
+    auto* tzig = tatamiPanel.findChild<QCheckBox*>(QStringLiteral("check_underlayZigzag"));
+    QVERIFY(tzig != nullptr);
+    tzig->setChecked(true);
+    QVERIFY(tatamiEmitted.has_value());
+    QVERIFY(std::get<openstitch::document::TatamiParams>(*tatamiEmitted).underlay_zigzag);
+}
+
+void PropertiesPanelTest::satinSpacingAndCornersAreEditableOnBothSatinKinds() {
+    namespace doc = openstitch::document;
+    {
+        PropertiesPanel panel;
+        EmbroideryObject e;
+        e.id = openstitch::ObjectId{52};
+        e.params = doc::SatinParams{};
+        panel.showEmbroidery(e);
+        auto* spacing = panel.findChild<QCheckBox*>(QStringLiteral("chk_satinAutoSpacing"));
+        auto* corner = panel.findChild<QComboBox*>(QStringLiteral("combo_satinCorner"));
+        QVERIFY(spacing != nullptr && corner != nullptr);
+        QVERIFY(!spacing->isChecked());
+        QCOMPARE(corner->currentIndex(), 0);
+        std::optional<StitchParams> emitted;
+        QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                         [&](openstitch::ObjectId, StitchParams params) { emitted = params; });
+        spacing->setChecked(true);
+        QVERIFY(emitted.has_value());
+        QVERIFY(std::get<doc::SatinParams>(*emitted).auto_spacing);
+        emitted.reset();
+        corner->setCurrentIndex(3);
+        QVERIFY(emitted.has_value());
+        QCOMPARE(std::get<doc::SatinParams>(*emitted).corner_mode, doc::SatinCorner::Cut);
+        auto* threshold =
+            panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_satinCornerThreshold"));
+        QVERIFY(threshold != nullptr);
+        QCOMPARE(threshold->value(), 60.0);
+        emitted.reset();
+        threshold->setValue(100.0);
+        QVERIFY(emitted.has_value());
+        QVERIFY(std::abs(std::get<doc::SatinParams>(*emitted).corner_threshold.radians -
+                         100.0 * std::numbers::pi / 180.0) < 1e-9);
+    }
+    {
+        PropertiesPanel panel;
+        panel.showEmbroidery(autoSatinObject(53));
+        auto* spacing = panel.findChild<QCheckBox*>(QStringLiteral("chk_autoSatinAutoSpacing"));
+        auto* corner = panel.findChild<QComboBox*>(QStringLiteral("combo_autoSatinCorner"));
+        QVERIFY(spacing != nullptr && corner != nullptr);
+        std::optional<StitchParams> emitted;
+        QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                         [&](openstitch::ObjectId, StitchParams params) { emitted = params; });
+        corner->setCurrentIndex(1);
+        QVERIFY(emitted.has_value());
+        QCOMPARE(std::get<AutoSatinParams>(*emitted).corner_mode, doc::SatinCorner::Miter);
+        auto* threshold =
+            panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_autoSatinCornerThreshold"));
+        QVERIFY(threshold != nullptr);
+        emitted.reset();
+        threshold->setValue(80.0);
+        QVERIFY(emitted.has_value());
+        QVERIFY(std::abs(std::get<AutoSatinParams>(*emitted).corner_threshold.radians -
+                         80.0 * std::numbers::pi / 180.0) < 1e-9);
+        emitted.reset();
+        spacing->setChecked(true);
+        QVERIFY(emitted.has_value());
+        QVERIFY(std::get<AutoSatinParams>(*emitted).auto_spacing);
+    }
+    {
+        // HP-STI-022 : bord irregulier (satin a rails puis auto-satin).
+        PropertiesPanel panel;
+        EmbroideryObject e;
+        e.id = openstitch::ObjectId{54};
+        e.params = doc::SatinParams{};
+        panel.showEmbroidery(e);
+        auto* jagged = panel.findChild<QComboBox*>(QStringLiteral("combo_satinJagged"));
+        auto* amp = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_satinJaggedAmplitude"));
+        auto* seed = panel.findChild<QSpinBox*>(QStringLiteral("spin_satinJaggedSeed"));
+        QVERIFY(jagged != nullptr && amp != nullptr && seed != nullptr);
+        QCOMPARE(jagged->currentIndex(), 0);
+        QCOMPARE(amp->value(), 1.5);
+        QCOMPARE(seed->value(), 1);
+        std::optional<StitchParams> emitted;
+        QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                         [&](openstitch::ObjectId, StitchParams params) { emitted = params; });
+        jagged->setCurrentIndex(2);
+        QVERIFY(emitted.has_value());
+        QCOMPARE(std::get<doc::SatinParams>(*emitted).jagged, doc::SatinJagged::SideB);
+        emitted.reset();
+        amp->setValue(3.0);
+        QVERIFY(emitted.has_value());
+        QCOMPARE(std::get<doc::SatinParams>(*emitted).jagged_amplitude,
+                 openstitch::Micrometers{3000});
+        emitted.reset();
+        seed->setValue(77);
+        QVERIFY(emitted.has_value());
+        QCOMPARE(std::get<doc::SatinParams>(*emitted).jagged_seed, 77u);
+    }
+    {
+        PropertiesPanel panel;
+        panel.showEmbroidery(autoSatinObject(55));
+        auto* jagged = panel.findChild<QComboBox*>(QStringLiteral("combo_autoSatinJagged"));
+        auto* seed = panel.findChild<QSpinBox*>(QStringLiteral("spin_autoSatinJaggedSeed"));
+        QVERIFY(jagged != nullptr && seed != nullptr);
+        QVERIFY(panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_autoSatinJaggedAmplitude")));
+        std::optional<StitchParams> emitted;
+        QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                         [&](openstitch::ObjectId, StitchParams params) { emitted = params; });
+        jagged->setCurrentIndex(3);
+        QVERIFY(emitted.has_value());
+        QCOMPARE(std::get<AutoSatinParams>(*emitted).jagged, doc::SatinJagged::Both);
+        emitted.reset();
+        seed->setValue(5);
+        QVERIFY(emitted.has_value());
+        QCOMPARE(std::get<AutoSatinParams>(*emitted).jagged_seed, 5u);
+    }
 }
 
 void PropertiesPanelTest::borderSatinInspectorEmitsRegenerationRequests() {
@@ -696,6 +1271,77 @@ void PropertiesPanelTest::autoSatinCompareButtonAsksMainWindowAndIsAbsentForAGro
     compare->click();
     QVERIFY(asked.has_value());
     QCOMPARE(asked->value, std::uint64_t{42});
+}
+
+// HP-STI-003 : l'inspecteur du blanket / zigzag émet des StitchParams complets (champ touché
+// seulement), sans rien muter lui-même.
+void PropertiesPanelTest::blanketInspectorEditsWidthSpacingStyleAndSide() {
+    namespace doc = openstitch::document;
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{77};
+    e.name = "blanket";
+    e.params = doc::BlanketStitchParams{};
+    panel.showEmbroidery(e);
+
+    std::optional<doc::BlanketStitchParams> last;
+    int count = 0;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams params) {
+                         ++count;
+                         last = std::get<doc::BlanketStitchParams>(params);
+                     });
+
+    auto* width = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_blanketWidth"));
+    auto* spacing = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_blanketSpacing"));
+    auto* style = panel.findChild<QComboBox*>(QStringLiteral("combo_blanketStyle"));
+    auto* side = panel.findChild<QComboBox*>(QStringLiteral("combo_blanketSide"));
+    QVERIFY(width != nullptr && spacing != nullptr && style != nullptr && side != nullptr);
+    QCOMPARE(width->value(), 3.0);
+    QCOMPARE(spacing->value(), 2.0);
+    QCOMPARE(count, 0);
+
+    width->setValue(4.5);
+    QCOMPARE(count, 1);
+    QCOMPARE(last->width.value, 4'500);
+    QCOMPARE(last->spacing.value, 2'000); // le reste est conservé
+    spacing->setValue(1.2);
+    QCOMPARE(last->spacing.value, 1'200);
+    style->setCurrentIndex(1);
+    QVERIFY(last->style == doc::BlanketStyle::Zigzag);
+    side->setCurrentIndex(2);
+    QVERIFY(last->side == doc::BlanketSide::Center);
+    QCOMPARE(last->width.value, 4'500);
+}
+
+void PropertiesPanelTest::stitchTypeMoreMenuOffersEveryOtherType() {
+    // Les types sans bouton direct (motifs, concentrique, radial, spirale, croise, point de croix)
+    // passent par le menu « Plus » de la rangee de types : chacun emet son index.
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{60};
+    e.params = openstitch::document::TatamiParams{};
+    panel.showEmbroidery(e);
+    auto* more = panel.findChild<QToolButton*>(QStringLiteral("button_stitchTypeMore"));
+    QVERIFY(more != nullptr);
+    QVERIFY(more->menu() != nullptr);
+    QCOMPARE(more->menu()->actions().size(), 7);
+    std::vector<int> requested;
+    QObject::connect(&panel, &PropertiesPanel::stitchTypeRequested, &panel,
+                     [&](int type) { requested.push_back(type); });
+    for (QAction* act : more->menu()->actions()) {
+        act->trigger();
+    }
+    QCOMPARE(requested, (std::vector<int>{5, 6, 7, 8, 9, 10, 11}));
+    // Un objet concentrique affiche son type dans le bouton « Plus ».
+    EmbroideryObject c;
+    c.id = openstitch::ObjectId{61};
+    c.params = openstitch::document::ContourFillParams{};
+    panel.showEmbroidery(c);
+    more = panel.findChild<QToolButton*>(QStringLiteral("button_stitchTypeMore"));
+    QVERIFY(more != nullptr);
+    QVERIFY(more->isChecked());
+    QVERIFY(more->text().contains(QStringLiteral("concentrique")));
 }
 
 QTEST_MAIN(PropertiesPanelTest)

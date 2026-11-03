@@ -11,6 +11,7 @@
 #include <QDropEvent>
 #include <QFile>
 #include <QGraphicsPathItem>
+#include <QGraphicsPixmapItem>
 #include <QGraphicsScene>
 #include <QKeyEvent>
 #include <QLabel>
@@ -18,6 +19,7 @@
 #include <QMimeData>
 #include <QSettings>
 #include <QShortcut>
+#include <QSlider>
 #include <QStatusBar>
 #include <QTemporaryDir>
 #include <QTest>
@@ -130,6 +132,35 @@ private slots:
 
     void init() { QSettings().clear(); }
 
+    void imageOpacitySliderUpdatesOnlyBackgroundAndPersistsAcrossRender() {
+        MainWindow window;
+        window.applyLoadedProject(imageOnlyProject());
+        auto* slider = window.findChild<QSlider*>(QStringLiteral("imageOpacitySlider"));
+        QVERIFY(slider != nullptr);
+        QCOMPARE(slider->value(), 100);
+        auto background = [&window]() -> QGraphicsItem* {
+            for (QGraphicsItem* item : window.baseItems_) {
+                if (item->data(0).toString() == QStringLiteral("backgroundImage")) {
+                    return item;
+                }
+            }
+            return nullptr;
+        };
+        QVERIFY(background() != nullptr);
+        QCOMPARE(background()->opacity(), 1.0);
+        slider->setValue(30);
+        QCOMPARE(background()->opacity(), 0.3);
+        QCOMPARE(QSettings().value(QStringLiteral("ui/imageOpacity")).toDouble(), 0.3);
+        window.refreshImage();
+        QVERIFY(background() != nullptr);
+        QCOMPARE(background()->opacity(), 0.3);
+        slider->setValue(0);
+        QCOMPARE(background()->opacity(), 0.0);
+        slider->setValue(100);
+        QCOMPARE(background()->opacity(), 1.0);
+        QVERIFY(!window.undoStack_.canUndo()); // réglage visuel, pas une mutation du projet
+    }
+
     // ---- contrastes ---------------------------------------------------------------
 
     void textTokensMeetContrastInBothThemes() {
@@ -178,6 +209,29 @@ private slots:
                                         .arg(contrast(composite, background))));
             }
         }
+    }
+
+    void vectorHoverTooltipContainsSizeStitchTypeAndThreadColor() {
+        doc::Project project = imageOnlyProject();
+        const ObjectId vector = addSquareVector(project);
+        addEmbroidery(project, vector);
+        MainWindow window;
+        window.applyLoadedProject(project);
+        int tooltips = 0;
+        for (const QGraphicsItem* item : window.baseItems_) {
+            if (item->data(0).toString() != QStringLiteral("vectorShape")) {
+                continue;
+            }
+            const QString info = item->toolTip();
+            QVERIFY(info.contains(QStringLiteral("Square")));
+            QVERIFY(info.contains(QStringLiteral("10.0")));
+            QVERIFY(info.contains(QStringLiteral("mm")));
+            QVERIFY(info.contains(QStringLiteral("Point droit")));
+            QVERIFY(info.contains(QStringLiteral("RVB")));
+            ++tooltips;
+        }
+        QCOMPARE(tooltips, 1);
+        QVERIFY(!window.undoStack_.canUndo());
     }
 
     // ---- raccourcis ---------------------------------------------------------------
@@ -316,8 +370,8 @@ private slots:
         // L'état enregistré est versionné et se restaure sans repli.
         const QByteArray state = QSettings().value(QStringLiteral("ui/windowState")).toByteArray();
         QVERIFY(!state.isEmpty());
-        QVERIFY(window.restoreState(state, 1));
-        QVERIFY(!window.restoreState(state, 2)); // version différente : refusée
+        QVERIFY(window.restoreState(state, 2));
+        QVERIFY(!window.restoreState(state, 3)); // version différente : refusée
     }
 
     void corruptedSavedLayoutFallsBackToDefault() {
@@ -340,6 +394,36 @@ private slots:
         QCOMPARE(window.savedLabel_->text(), QStringLiteral("Non enregistré"));
         window.currentProjectPath_ = QStringLiteral("C:/tmp/projet.osp");
         window.setWindowModified(false);
+        QCOMPARE(window.savedLabel_->text(), QStringLiteral("Projet ouvert"));
+    }
+
+    void savedIndicatorDoesNotInheritThePreviousProjectsTime() {
+        MainWindow window;
+        window.applyLoadedProject(imageOnlyProject());
+        window.setCurrentProjectPath(QStringLiteral("ancien.osp"));
+        window.savedAt_ = QTime(10, 30);
+        window.updateSavedIndicator();
+        QCOMPARE(window.savedLabel_->text(), QStringLiteral("Enregistré à 10:30"));
+
+        // Ouvrir un nouveau document efface l'heure de l'ancien.
+        window.applyLoadedProject(imageOnlyProject());
+        QVERIFY(!window.savedAt_.isValid());
+        QCOMPARE(window.savedLabel_->text(), QStringLiteral("Nouveau document"));
+
+        // Le fichier a été ouvert, pas enregistré à une heure inventée.
+        window.setCurrentProjectPath(QStringLiteral("nouveau.osp"));
+        QCOMPARE(window.savedLabel_->text(), QStringLiteral("Projet ouvert"));
+        window.setWindowModified(true);
+        QCOMPARE(window.savedLabel_->text(), QStringLiteral("Non enregistré"));
+        window.setWindowModified(false);
+        QCOMPARE(window.savedLabel_->text(), QStringLiteral("Projet ouvert"));
+
+        // Une vraie sauvegarde actualise immédiatement le libellé, y compris si le
+        // projet était déjà dans l'état « propre » avant l'écriture.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QVERIFY(window.saveProjectToPath(dir.filePath(QStringLiteral("nouveau.osp"))));
+        QVERIFY(window.savedAt_.isValid());
         QVERIFY(window.savedLabel_->text().startsWith(QStringLiteral("Enregistré à ")));
     }
 
@@ -485,7 +569,7 @@ private slots:
         addEmbroidery(project, addSquareVector(project));
         window.applyLoadedProject(project);
         QVERIFY(window.sequence_.has_value());
-        QCOMPARE(window.simSpeedCombo_->count(), 4);
+        QCOMPARE(window.simSpeedCombo_->count(), 6);
         QCOMPARE(window.simSpeedCombo_->itemData(0).toDouble(), 0.25);
         QCOMPARE(window.simSpeedCombo_->itemData(3).toDouble(), 16.0);
         window.simSlider_->setValue(3); // déplace le curseur : objet et couleur courants

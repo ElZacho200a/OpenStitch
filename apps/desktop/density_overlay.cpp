@@ -97,6 +97,94 @@ DensityResult computeDensity(const stitch::StitchSequence& sequence, double thre
     return result;
 }
 
+DensityRaster rasterizeThickness(const stitch_analysis::DensityMap& map,
+                                 const stitch_analysis::ThicknessOptions& options) {
+    DensityRaster raster;
+    if (map.empty() || map.columns == 0 || map.rows == 0) {
+        return raster;
+    }
+    raster.width = static_cast<int>(map.columns);
+    raster.height = static_cast<int>(map.rows);
+    // Sommet de la palette : le plus grand de l'épaisseur maximale mesurée et du seuil, jamais en
+    // dessous de 0,1 mm (une carte presque vide ne doit pas s'échelonner sur du bruit).
+    double maxLayers = 0.0;
+    for (std::size_t row = 0; row < map.rows; ++row) {
+        for (std::size_t col = 0; col < map.columns; ++col) {
+            maxLayers = std::max(maxLayers, map.thickness_layers(col, row, options.thread_width));
+        }
+    }
+    const double limitMm = stitch_analysis::layers_to_mm(options.max_layers, options);
+    raster.scale_max = std::max({stitch_analysis::layers_to_mm(maxLayers, options), limitMm, 0.1});
+    raster.rgba.assign(static_cast<std::size_t>(raster.width) * raster.height * 4, 0);
+    for (std::size_t row = 0; row < map.rows; ++row) {
+        const std::size_t imageRow = map.rows - 1 - row; // Y vers le haut -> ligne 0 en haut
+        for (std::size_t col = 0; col < map.columns; ++col) {
+            const double layers = map.thickness_layers(col, row, options.thread_width);
+            if (layers <= 0.0) {
+                continue;
+            }
+            const double mm = stitch_analysis::layers_to_mm(layers, options);
+            const auto rgb = densityColor(mm / raster.scale_max);
+            const std::size_t at = (imageRow * map.columns + col) * 4;
+            raster.rgba[at] = rgb[0];
+            raster.rgba[at + 1] = rgb[1];
+            raster.rgba[at + 2] = rgb[2];
+            raster.rgba[at + 3] = (options.max_layers > 0.0 && layers > options.max_layers)
+                                      ? kAlphaHot
+                                      : kAlphaNormal;
+        }
+    }
+    return raster;
+}
+
+ThicknessResult computeThickness(const stitch::StitchSequence& sequence,
+                                 const stitch_analysis::ThicknessOptions& options) {
+    ThicknessResult result;
+    const stitch_analysis::DensityMap grid =
+        stitch_analysis::compute_thickness_grid(sequence, options);
+    result.origin = grid.origin;
+    result.cell = grid.cell;
+    result.raster = rasterizeThickness(grid, options);
+    result.peak = stitch_analysis::find_thickness_peak(sequence, grid, options);
+    return result;
+}
+
+std::uint64_t thicknessKey(const stitch::StitchSequence& sequence,
+                           const stitch_analysis::ThicknessOptions& options) {
+    std::uint64_t h = densityKey(sequence, 0.0);
+    h = fnv(h, static_cast<std::uint64_t>(options.cell.value));
+    h = fnv(h, static_cast<std::uint64_t>(options.thread_width.value));
+    h = fnv(h, static_cast<std::uint64_t>(options.layer_thickness.value));
+    h = fnv(h, std::bit_cast<std::uint64_t>(options.max_layers));
+    return fnv(h, 0x7468696bULL); // « thik » : distingue cette clé de celle de la densité
+}
+
+ThicknessSettings ThicknessSettings::load() {
+    ThicknessSettings s;
+    const QSettings q;
+    bool ok = false;
+    const double layer = q.value(QStringLiteral("ui/thickness/layerMm"), s.layerMm).toDouble(&ok);
+    s.layerMm = (ok && layer >= 0.05 && layer <= 0.6) ? layer : s.layerMm;
+    const double maxLayers =
+        q.value(QStringLiteral("ui/thickness/maxLayers"), s.maxLayers).toDouble(&ok);
+    s.maxLayers = (ok && maxLayers >= 0.5 && maxLayers <= 20.0) ? maxLayers : s.maxLayers;
+    return s;
+}
+
+void ThicknessSettings::save() const {
+    QSettings q;
+    q.setValue(QStringLiteral("ui/thickness/layerMm"), layerMm);
+    q.setValue(QStringLiteral("ui/thickness/maxLayers"), maxLayers);
+}
+
+stitch_analysis::ThicknessOptions ThicknessSettings::options(Micrometers cell) const {
+    stitch_analysis::ThicknessOptions o;
+    o.cell = cell;
+    o.layer_thickness = Micrometers{static_cast<std::int32_t>(std::lround(layerMm * 1000.0))};
+    o.max_layers = maxLayers;
+    return o;
+}
+
 std::uint64_t densityKey(const stitch::StitchSequence& sequence, double threshold) {
     std::uint64_t h = 14695981039346656037ULL;
     h = fnv(h, std::bit_cast<std::uint64_t>(threshold));
@@ -156,11 +244,26 @@ DensityLegend::DensityLegend(QWidget* parent) : QWidget(parent) {
 }
 
 void DensityLegend::setRange(double scaleMax, double threshold) {
-    scaleMax_ = std::max(scaleMax, 1.0);
+    // Densité : au moins 1 pén./mm² ; épaisseur : au moins 0,1 mm (échelle en millimètres).
+    scaleMax_ = std::max(scaleMax, thicknessMode_ ? 0.1 : 1.0);
     threshold_ = threshold;
-    setToolTip(tr("Densité en pénétrations d'aiguille par mm² (0 à %1 ; seuil %2)")
-                   .arg(scaleMax_, 0, 'f', 1)
-                   .arg(threshold_, 0, 'f', 1));
+    if (thicknessMode_) {
+        setToolTip(tr("Épaisseur estimée du fil en mm (0 à %1 ; seuil %2). Estimation à partir de "
+                      "la longueur de fil par zone, non mesurée sur machine.")
+                       .arg(scaleMax_, 0, 'f', 2)
+                       .arg(threshold_, 0, 'f', 2));
+    } else {
+        setToolTip(tr("Densité en pénétrations d'aiguille par mm² (0 à %1 ; seuil %2)")
+                       .arg(scaleMax_, 0, 'f', 1)
+                       .arg(threshold_, 0, 'f', 1));
+    }
+    update();
+}
+
+void DensityLegend::setThicknessMode(bool thickness) {
+    thicknessMode_ = thickness;
+    setAccessibleName(thickness ? tr("Légende de la carte d'épaisseur")
+                                : tr("Légende de la carte de densité"));
     update();
 }
 
@@ -189,7 +292,7 @@ void DensityLegend::paintEvent(QPaintEvent*) {
     p.setFont(f);
     p.setPen(QColor(30, 30, 30));
     p.drawText(QRect(6, 3, width() - 12, 14), Qt::AlignLeft | Qt::AlignVCenter,
-               tr("Densité (pén./mm²)"));
+               thicknessMode_ ? tr("Épaisseur estimée (mm)") : tr("Densité (pén./mm²)"));
     const QRect bar(8, 22, width() - 16, 14);
     QLinearGradient grad(bar.left(), 0, bar.right(), 0);
     for (const auto& stop : kStops) {
@@ -208,10 +311,10 @@ void DensityLegend::paintEvent(QPaintEvent*) {
     p.drawText(QRect(bar.left(), 40, 50, 14), Qt::AlignLeft | Qt::AlignVCenter,
                QStringLiteral("0"));
     p.drawText(QRect(bar.right() - 60, 40, 60, 14), Qt::AlignRight | Qt::AlignVCenter,
-               QString::number(scaleMax_, 'f', 1));
+               QString::number(scaleMax_, 'f', thicknessMode_ ? 2 : 1));
     if (threshold_ > 0.0 && threshold_ <= scaleMax_) {
         p.drawText(QRect(bar.left() + 50, 40, bar.width() - 110, 14), Qt::AlignCenter,
-                   tr("seuil %1").arg(threshold_, 0, 'f', 1));
+                   tr("seuil %1").arg(threshold_, 0, 'f', thicknessMode_ ? 2 : 1));
     }
 }
 

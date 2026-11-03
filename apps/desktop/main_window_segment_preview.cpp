@@ -25,6 +25,7 @@ namespace openstitch::desktop {
 // écrit par le fil de calcul puis lu par le fil d'interface une fois le fil terminé.
 struct MainWindow::SegmentationJob {
     segmentation::SegmentationOptions options;
+    segmentation::DetailMask mask; // copie du masque de détail à la demande (le fil la lit)
     std::uint64_t generation{0};
     std::optional<Result<segmentation::Segmentation>> result;
     double seconds{0.0};
@@ -35,7 +36,26 @@ namespace {
 bool sameOptions(const segmentation::SegmentationOptions& a,
                  const segmentation::SegmentationOptions& b) {
     return a.max_colors == b.max_colors && a.min_region_px == b.min_region_px &&
-           a.smoothing_radius_px == b.smoothing_radius_px;
+           a.smoothing_radius_px == b.smoothing_radius_px &&
+           a.detail_smoothing_radius_px == b.detail_smoothing_radius_px &&
+           a.detail_min_region_px == b.detail_min_region_px;
+}
+
+// Image de l'instantané, ou une image vide si le dialogue vient de se fermer (instantané libéré).
+const image::Image& snapshotOf(const std::shared_ptr<const image::Image>& snapshot) {
+    static const image::Image none;
+    return snapshot ? *snapshot : none;
+}
+
+// Le masque du projet n'est utilisable que s'il a la taille de l'image segmentée.
+segmentation::DetailMask usableMask(const segmentation::DetailMask& mask, const image::Image& img) {
+    return mask.matches(img.width, img.height) ? mask : segmentation::DetailMask{};
+}
+
+segmentation::SegmentationOptions withMask(segmentation::SegmentationOptions options,
+                                           const segmentation::DetailMask& mask) {
+    options.detail_mask = mask.any_detail() ? &mask : nullptr;
+    return options;
 }
 
 bool sameImage(const image::Image& a, const image::Image& b) {
@@ -56,23 +76,31 @@ void MainWindow::openSegmentationDialog() {
     segmentSnapshot_ = std::make_shared<const image::Image>(processed_);
     segmentCached_.reset();
     segmentCachedOptions_.reset();
+    segmentCachedMask_ = {};
     segmentPending_.reset();
     auto* dialog = new SegmentationDialog(project_.mm_per_px.value, this);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     segmentDialog_ = dialog;
+    dialog->setSourceThumbnail(*segmentSnapshot_);
     connect(dialog, &SegmentationDialog::optionsChanged, this,
             &MainWindow::requestSegmentationPreview);
     connect(dialog, &SegmentationDialog::previewToggled, this, [this](bool enabled) {
         if (enabled && segmentDialog_ != nullptr) {
             requestSegmentationPreview(segmentDialog_->options());
         } else {
+            // Un résultat encore en vol ne doit jamais réafficher la carte
+            // après que l'utilisateur a choisi de voir la source.
+            segmentPending_.reset();
             hideSegmentationPreview();
         }
     });
     connect(dialog, &SegmentationDialog::applyRequested, this,
             &MainWindow::applySegmentationFromDialog);
+    connect(dialog, &SegmentationDialog::paintDetailRequested, this,
+            [this] { setTool(Tool::DetailBrush); });
     connect(dialog, &QDialog::finished, this, [this] { onSegmentationDialogClosed(); });
     dialog->show();
+    refreshDetailZonesOverlay(); // les zones déjà peintes apparaissent avec le dialogue
     requestSegmentationPreview(dialog->options());
 }
 
@@ -80,7 +108,8 @@ void MainWindow::requestSegmentationPreview(const segmentation::SegmentationOpti
     if (segmentDialog_ == nullptr || !segmentDialog_->previewEnabled()) {
         return;
     }
-    if (segmentCached_ && segmentCachedOptions_ && sameOptions(*segmentCachedOptions_, options)) {
+    if (segmentCached_ && segmentCachedOptions_ && sameOptions(*segmentCachedOptions_, options) &&
+        segmentCachedMask_ == usableMask(project_.detail_mask, snapshotOf(segmentSnapshot_))) {
         showSegmentationPreview(*segmentCached_, segmentCachedSeconds_); // déjà calculé
         return;
     }
@@ -94,6 +123,8 @@ void MainWindow::requestSegmentationPreview(const segmentation::SegmentationOpti
 void MainWindow::startSegmentationPreview(const segmentation::SegmentationOptions& options) {
     auto job = std::make_shared<SegmentationJob>();
     job->options = options;
+    job->mask = usableMask(project_.detail_mask, snapshotOf(segmentSnapshot_));
+    job->options.detail_mask = job->mask.any_detail() ? &job->mask : nullptr;
     job->generation = ++segmentGeneration_;
     segmentJob_ = job;
     segmentDialog_->setBusy(true);
@@ -127,15 +158,20 @@ void MainWindow::onSegmentationPreviewReady() {
         segmentDialog_->setFailed(tr("Aperçu impossible avec ces réglages."));
     } else {
         segmentCachedOptions_ = job->options;
+        segmentCachedOptions_->detail_mask = nullptr; // le pointeur ne survit pas au job
+        segmentCachedMask_ = job->mask;
         segmentCachedSeconds_ = job->seconds;
         segmentCached_ = std::move(**job->result);
-        if (!pending && sameOptions(job->options, segmentDialog_->options())) {
+        if (!pending && segmentDialog_->previewEnabled() &&
+            sameOptions(job->options, segmentDialog_->options()) &&
+            job->mask == usableMask(project_.detail_mask, snapshotOf(segmentSnapshot_))) {
             showSegmentationPreview(*segmentCached_, job->seconds);
         }
     }
-    if (pending) {
+    if (pending && segmentDialog_->previewEnabled()) {
         if (segmentCached_ && segmentCachedOptions_ &&
-            sameOptions(*segmentCachedOptions_, *pending)) {
+            sameOptions(*segmentCachedOptions_, *pending) &&
+            segmentCachedMask_ == usableMask(project_.detail_mask, snapshotOf(segmentSnapshot_))) {
             requestSegmentationPreview(*pending);
         } else {
             // Le fil précédent a émis `finished` : il n'est plus en cours.
@@ -160,6 +196,7 @@ void MainWindow::showSegmentationPreview(const segmentation::Segmentation& seg, 
                                   .colors = segmentation::color_classes(seg).size(),
                                   .smallRegions = small,
                                   .seconds = seconds});
+        segmentDialog_->setSegmentationThumbnail(seg);
     }
     previewSegmentation_ = seg;
     if (!showSegAct_->isChecked()) {
@@ -194,7 +231,8 @@ void MainWindow::applySegmentationFromDialog(const segmentation::SegmentationOpt
     std::optional<segmentation::Segmentation> seg;
     const bool reusable = segmentCached_ && segmentCachedOptions_ &&
                           sameOptions(*segmentCachedOptions_, options) && segmentSnapshot_ &&
-                          sameImage(*segmentSnapshot_, processed_);
+                          sameImage(*segmentSnapshot_, processed_) &&
+                          segmentCachedMask_ == usableMask(project_.detail_mask, processed_);
     if (reusable) {
         seg = std::move(segmentCached_); // l'aperçu EST le résultat : pas de second calcul
         segmentCached_.reset();
@@ -202,7 +240,9 @@ void MainWindow::applySegmentationFromDialog(const segmentation::SegmentationOpt
         std::optional<BusyIndicator> busy;
         busy.emplace(this, tr("Segmentation de l'image en cours…"),
                      std::initializer_list<QTimer*>{autosaveTimer_, simTimer_});
-        auto computed = busy->run([&] { return segmentation::segment(processed_, options); });
+        const segmentation::DetailMask mask = usableMask(project_.detail_mask, processed_);
+        const segmentation::SegmentationOptions withDetail = withMask(options, mask);
+        auto computed = busy->run([&] { return segmentation::segment(processed_, withDetail); });
         busy.reset();
         if (!computed) {
             QMessageBox::warning(this, tr("Segmentation impossible"),
@@ -232,7 +272,9 @@ void MainWindow::onSegmentationDialogClosed() {
     segmentPending_.reset();
     segmentCached_.reset();
     segmentCachedOptions_.reset();
+    segmentCachedMask_ = {};
     segmentSnapshot_.reset();
+    refreshDetailZonesOverlay();
     if (previewSegmentation_) {
         hideSegmentationPreview();
     }

@@ -73,6 +73,66 @@ private:
     std::optional<segmentation::Segmentation> previous_;
 };
 
+// Un trait de pinceau « zones de détail » (suite de disques peints ou effacés). Ne touche ni la
+// segmentation ni les objets : le masque n'agit qu'à la prochaine segmentation. L'annulation
+// rétablit les pixels modifiés (indices + anciennes valeurs, pas de copie du masque entier).
+class PaintDetailMaskCommand final : public ICommand {
+public:
+    PaintDetailMaskCommand(int width, int height, std::vector<std::pair<int, int>> centers,
+                           int radius_px, bool erase, double hardness)
+        : width_(width), height_(height), centers_(std::move(centers)), radius_(radius_px),
+          erase_(erase), hardness_(hardness) {}
+
+    void apply(document::Project& project) override {
+        wasEmpty_ = project.detail_mask.empty();
+        changes_.clear();
+        for (const auto& [cx, cy] : centers_) {
+            auto step = segmentation::paint_detail_disc(project.detail_mask, width_, height_, cx,
+                                                        cy, radius_, erase_ ? 0 : 255, hardness_);
+            changes_.insert(changes_.end(), step.begin(), step.end());
+        }
+    }
+    void revert(document::Project& project) override {
+        // Ordre inverse : un pixel touché par plusieurs disques retrouve sa valeur d'origine.
+        for (auto it = changes_.rbegin(); it != changes_.rend(); ++it) {
+            project.detail_mask.weights[it->index] = it->before;
+        }
+        if (wasEmpty_) {
+            project.detail_mask = {}; // le masque a été créé par ce trait : on le retire
+        }
+    }
+    [[nodiscard]] std::string name() const override {
+        return erase_ ? "Effacer une zone de détail" : "Peindre une zone de détail";
+    }
+
+private:
+    int width_;
+    int height_;
+    std::vector<std::pair<int, int>> centers_;
+    int radius_;
+    bool erase_;
+    double hardness_;
+    bool wasEmpty_{false};
+    std::vector<segmentation::DetailMaskChange> changes_;
+};
+
+// Efface toutes les zones de détail (annulable : le masque est restitué tel quel).
+class ClearDetailMaskCommand final : public ICommand {
+public:
+    void apply(document::Project& project) override {
+        previous_ = std::move(project.detail_mask);
+        project.detail_mask = {};
+    }
+    void revert(document::Project& project) override {
+        project.detail_mask = std::move(previous_);
+        previous_ = {};
+    }
+    [[nodiscard]] std::string name() const override { return "Effacer les zones de détail"; }
+
+private:
+    segmentation::DetailMask previous_;
+};
+
 // Fusionne une région dans une autre. L'annulation restaure les pixels
 // réétiquetés (stockés par indices, pas par copie de la carte entière).
 class MergeRegionsCommand final : public ICommand {
@@ -255,12 +315,23 @@ class AddVectorObjectCommand final : public ICommand {
 public:
     explicit AddVectorObjectCommand(document::VectorObject object) : object_(std::move(object)) {}
 
-    void apply(document::Project& project) override { project.vector_objects.push_back(object_); }
+    void apply(document::Project& project) override {
+        // La forme neuve entre dans le calque actif (HP-OBJ-024), figé à la première application
+        // pour qu'un redo la remette dans le même calque.
+        if (!adopted_) {
+            if (!object_.calque.valid()) {
+                object_.calque = project.active_calque;
+            }
+            adopted_ = true;
+        }
+        project.vector_objects.push_back(object_);
+    }
     void revert(document::Project& project) override { project.vector_objects.pop_back(); }
     [[nodiscard]] std::string name() const override { return "Ajouter un objet vectoriel"; }
 
 private:
     document::VectorObject object_;
+    bool adopted_{false};
 };
 
 // Ajoute un objet de broderie (id généré par l'appelant, comme pour
@@ -483,7 +554,8 @@ public:
     // Fusion : une rafale de pas aux flèches sur le même objet = un seul pas
     // (opt-in via `setCoalescable`, jamais pour un glisser souris).
     [[nodiscard]] std::string mergeKey() const override {
-        return coalescable_ ? "translate:" + std::to_string(object_.value) : std::string{};
+        return coalescable_ ? "translate:" + std::to_string(object_.value) + ":" + mergeField_
+                            : std::string{};
     }
     bool mergeWith(const ICommand& newer) override {
         const auto* other = dynamic_cast<const TranslateVectorObjectCommand*>(&newer);
@@ -495,6 +567,9 @@ public:
         return true;
     }
     void setCoalescable(bool on) { coalescable_ = on; }
+    // Les champs X et Y d'un inspecteur ne doivent pas fusionner entre eux.
+    // Champ vide : comportement historique des flèches (déplacements libres).
+    void setMergeField(std::string field) { mergeField_ = std::move(field); }
 
 private:
     void shift(document::Project& project, Vec2um delta) const {
@@ -570,6 +645,7 @@ private:
     ObjectId object_;
     Vec2um delta_;
     bool coalescable_{false};
+    std::string mergeField_;
 };
 
 // Redimensionne un objet vectoriel ENTIER autour d'un point d'ancrage FIXE
@@ -866,6 +942,14 @@ public:
           label_(std::move(label)) {}
 
     void apply(document::Project& project) override {
+        if (!adopted_) {
+            for (auto& v : vectors_) {
+                if (!v.calque.valid()) {
+                    v.calque = project.active_calque; // calque actif (HP-OBJ-024)
+                }
+            }
+            adopted_ = true;
+        }
         for (const auto& v : vectors_) {
             project.vector_objects.push_back(v);
         }
@@ -883,6 +967,7 @@ private:
     std::vector<document::VectorObject> vectors_;
     std::vector<document::EmbroideryObject> embroideries_;
     std::string label_;
+    bool adopted_{false};
 };
 
 // Réordonne les objets de broderie selon une permutation d'ObjectId.
@@ -996,6 +1081,49 @@ private:
     document::ConnectorMode previous_{document::ConnectorMode::Inherit};
 };
 
+// « Ne pas coudre sous les objets qui recouvrent » (HP-ENG-011) : active/désactive l'option et fixe
+// le recouvrement conservé. Annulable ; sans effet si l'objet a disparu.
+class SetEmbroideryKnockoutCommand final : public ICommand {
+public:
+    SetEmbroideryKnockoutCommand(ObjectId id, bool enabled, Micrometers margin)
+        : id_(id), enabled_(enabled), margin_(margin) {}
+
+    void apply(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            previousEnabled_ = obj->knockout;
+            previousMargin_ = obj->knockout_margin;
+            obj->knockout = enabled_;
+            obj->knockout_margin = margin_;
+        }
+    }
+    void revert(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            obj->knockout = previousEnabled_;
+            obj->knockout_margin = previousMargin_;
+        }
+    }
+    [[nodiscard]] std::string name() const override { return "Retirer les points cachés"; }
+    [[nodiscard]] std::string mergeKey() const override {
+        return "knockout:" + std::to_string(id_.value);
+    }
+    bool mergeWith(const ICommand& newer) override {
+        const auto* other = dynamic_cast<const SetEmbroideryKnockoutCommand*>(&newer);
+        if (other == nullptr || other->id_.value != id_.value) {
+            return false;
+        }
+        enabled_ = other->enabled_; // `previous*` restent l'état d'avant la première frappe
+        margin_ = other->margin_;
+        return true;
+    }
+
+private:
+    ObjectId id_;
+    bool enabled_;
+    Micrometers margin_;
+    bool previousEnabled_{false};
+    Micrometers previousMargin_{300};
+};
+
 // Affiche/masque un objet de broderie (case « visible » du panneau Document). Un objet
 // masqué n'est ni dessiné ni cousu : annulable comme toute mutation du document.
 class SetEmbroideryVisibleCommand final : public ICommand {
@@ -1021,6 +1149,31 @@ private:
     ObjectId id_;
     bool visible_;
     bool previous_{true};
+};
+
+// Modification atomique et annulable de la mémoire sémantique.
+class SetEmbroiderySemanticCommand final : public ICommand {
+public:
+    SetEmbroiderySemanticCommand(ObjectId id, std::optional<document::SemanticAnnotation> next)
+        : id_(id), next_(std::move(next)) {}
+
+    void apply(document::Project& project) override {
+        if (auto* object = project.findEmbroidery(id_)) {
+            previous_ = object->semantic;
+            object->semantic = next_;
+        }
+    }
+    void revert(document::Project& project) override {
+        if (auto* object = project.findEmbroidery(id_)) {
+            object->semantic = previous_;
+        }
+    }
+    [[nodiscard]] std::string name() const override { return "Mémoire sémantique"; }
+
+private:
+    ObjectId id_;
+    std::optional<document::SemanticAnnotation> next_;
+    std::optional<document::SemanticAnnotation> previous_;
 };
 
 // Renomme un objet de broderie (double-clic dans le panneau Document).
@@ -1498,7 +1651,8 @@ begin_stitch_edit(document::Project& project, ObjectId id, std::size_t base_inde
 // seul champ effectif) -- Move/SetType posent toujours un champ a valeur non
 // vide, jamais de retour a l'etat vide par ce chemin.
 [[nodiscard]] inline bool is_override_empty(const document::StitchOverride& o) {
-    return !o.moved_to.has_value() && !o.forced_type.has_value() && !o.trim_after;
+    return !o.moved_to.has_value() && !o.forced_type.has_value() && !o.trim_after && !o.deleted &&
+           o.inserted_after.empty();
 }
 
 // Annule exactement l'effet de `begin_stitch_edit` (entree restauree ou

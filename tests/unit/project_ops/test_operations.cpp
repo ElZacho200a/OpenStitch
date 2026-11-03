@@ -2,6 +2,7 @@
 // Dispatcher transactionnel : lots, validation, alias, dry-run, rapports, catalogue.
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -65,9 +66,13 @@ document::Project make_project() {
 
 // Sérialisation .osp (fichier temporaire) : comparaison stricte avant/après.
 std::string serialize(const document::Project& project) {
+    // `ctest -j` lance chaque cas dans son propre processus : le compteur seul donne le même nom
+    // à tous (collision sur le fichier). Le nonce horaire est propre au processus.
+    static const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
     static std::atomic<int> counter{0};
-    const auto path = std::filesystem::temp_directory_path() /
-                      ("openstitch_ops_test_" + std::to_string(counter++) + ".osp");
+    const auto path =
+        std::filesystem::temp_directory_path() /
+        ("openstitch_ops_test_" + std::to_string(nonce) + "_" + std::to_string(counter++) + ".osp");
     const auto saved = project_io::save_project(path, project);
     REQUIRE(saved.has_value());
     std::ifstream in(path, std::ios::binary);
@@ -90,6 +95,38 @@ std::string batch(const std::string& operations) {
 TEST_CASE("ops serialization is deterministic for the comparison helper", "[project_ops][ops]") {
     const auto p = make_project();
     REQUIRE(serialize(p) == serialize(p));
+}
+
+TEST_CASE("spiral_fill is a native stitch type with a shared configurable center",
+          "[project_ops][spiral]") {
+    auto project = make_project();
+    json actions = json::array();
+    for (const int id : {2, 6}) {
+        actions.push_back({{"op", "set_stitch_type"}, {"object", id}, {"type", "spiral_fill"}});
+        actions.push_back({{"op", "set_params"},
+                           {"object", id},
+                           {"params", {{"center_mm", {18, 12}}, {"row_spacing_mm", 0.7}}}});
+    }
+    const json envelope{{"schema", "openstitch.batch/1"}, {"operations", actions}};
+    const auto report = project_ops::apply_batch(project, envelope.dump());
+    REQUIRE(report.ok);
+    REQUIRE(report.applied);
+    for (const ObjectId id : {ObjectId{2}, ObjectId{6}}) {
+        const auto* object = project.findEmbroidery(id);
+        REQUIRE(object != nullptr);
+        REQUIRE(object->is_spiral_fill());
+        const auto* spiral = std::get_if<document::SpiralFillParams>(&object->params);
+        REQUIRE(spiral != nullptr);
+        REQUIRE(spiral->center);
+        CHECK(spiral->center->x.value == 18000);
+        CHECK(spiral->center->y.value == 12000);
+        CHECK(spiral->row_spacing.value == 700);
+    }
+    auto invalid = make_project();
+    const auto refused = project_ops::apply_batch(
+        invalid, batch(R"({"op":"set_stitch_type","object":2,"type":"spiral_wrong"})"));
+    CHECK_FALSE(refused.ok);
+    CHECK(invalid.findEmbroidery(ObjectId{2})->is_tatami());
 }
 
 TEST_CASE("ops batch applies operations in order and reports each one", "[project_ops][ops]") {

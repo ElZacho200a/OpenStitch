@@ -211,7 +211,7 @@ TEST_CASE("text operations refuse bad fonts and bad arguments", "[project_ops][t
     CHECK(project.text_objects.empty());
 }
 
-TEST_CASE("auto_satin restores the raw region contour of a really digitized project",
+TEST_CASE("auto_satin keeps an edited contour instead of restoring the raw region one",
           "[project_ops][pristine]") {
     auto project = empty_project();
     const auto digitized = po::digitize_image_into(
@@ -228,32 +228,20 @@ TEST_CASE("auto_satin restores the raw region contour of a really digitized proj
     REQUIRE(plain);
     CHECK_FALSE(plain->restored_contour.has_value());
 
-    // Le contour grossit de 50 % (recouvrement de voisins, edition) : le contour brut de la
-    // region est restitue, comme au bureau, avant la conversion.
+    // L'utilisateur agrandit la forme de 50 % (retouche, fusion...) : ce n'est PAS le recouvrement
+    // des tatamis voisins, le contour est voulu et ne doit jamais redevenir celui de la region
+    // d'origine (defaut : apres fusion de deux zones, le satin revenait a la forme premiere).
     const std::string id = std::to_string(embId.value);
     REQUIRE(
         po::apply_operation(project, R"({"op":"scale","object":)" + id + R"(,"factor":1.5})").ok);
     const double enlarged = area_mm2(*project.findObject(vectorId));
     const auto plan = po::plan_auto_satin(project, vectorId, {.compact_axis = true});
     REQUIRE(plan);
-    REQUIRE(plan->restored_contour.has_value());
-    double restored = 0.0;
-    for (const auto& set : *plan->restored_contour) {
-        restored += geometry::path_set_area_um2(set) / 1e6;
-    }
-    CHECK(restored < enlarged / 1.3);
+    CHECK_FALSE(plan->restored_contour.has_value());
 
-    // Via l'operation : conversion en auto-satin ET contour restaure, en un seul pas.
+    // Via l'operation : si la conversion aboutit, la forme retouchee est conservee.
     const auto report = po::apply_operation(
         project, R"({"op":"auto_satin","compact_axis":true,"object":)" + id + "}");
     INFO(report.to_json());
-    if (report.ok) {
-        CHECK(report.outcomes[0].result_json.find("\"contour_restored\":true") !=
-              std::string::npos);
-        CHECK(area_mm2(*project.findObject(vectorId)) < enlarged / 1.3);
-    } else {
-        // Refus du moteur : le projet reste intact (pas de contour restaure a moitie).
-        CHECK(report.to_json().find("E_REFUSED") != std::string::npos);
-        CHECK(area_mm2(*project.findObject(vectorId)) == enlarged);
-    }
+    CHECK(area_mm2(*project.findObject(vectorId)) == enlarged);
 }

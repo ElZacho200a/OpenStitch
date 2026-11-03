@@ -246,10 +246,9 @@ private slots:
                                         std::make_unique<SegmentationDialog>(0.2));
         checkDialog<SettingsDialog>(failures, "dialogue Reglages", kDialogMaxW, kDialogMaxH,
                                     std::make_unique<SettingsDialog>());
-        // Hors périmètre du lot B (ai_preferences_dialog.cpp) : mesuré à 802 x 523, plafond
-        // provisoire de hauteur relevé à 560 en attendant une zone défilante (cf. rapport).
-        checkDialog<AiPreferencesDialog>(failures, "dialogue Preferences IA", kDialogMaxW, 560,
-                                         std::make_unique<AiPreferencesDialog>());
+        // Contenu défilant (scrollDialogBody) : la hauteur minimale tient dans l'écran de travail.
+        checkDialog<AiPreferencesDialog>(failures, "dialogue Preferences IA", kDialogMaxW,
+                                         kDialogMaxH, std::make_unique<AiPreferencesDialog>());
         checkDialog<RealisticRenderDialog>(
             failures, "dialogue Rendu realiste", kDialogMaxW, kDialogMaxH,
             std::make_unique<RealisticRenderDialog>(RealisticPreferences{}));

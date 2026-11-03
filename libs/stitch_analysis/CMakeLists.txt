@@ -6,12 +6,21 @@ add_library(openstitch_stitch_analysis
     src/project_metrics.cpp
     src/color_blocks.cpp
     src/production_sheet.cpp
+    src/production_pdf.cpp
+    src/placement_template.cpp
     src/thread_usage.cpp
     src/thread_consumption.cpp
     src/density_map.cpp
+    src/thickness_map.cpp
     src/uncovered_pockets.cpp
     src/text_rules.cpp
+    src/fabric_rules.cpp
+    src/thread_reduction.cpp
+    src/stitch_pick.cpp
     src/project_analysis.cpp
+    src/machine_checks.cpp
+    src/sheet_deformation.cpp
+    src/sheet_registration.cpp
 )
 add_library(openstitch::stitch_analysis ALIAS openstitch_stitch_analysis)
 

@@ -39,6 +39,20 @@ struct AutoSatinPlan {
     bool coverage_measured{false};
     std::vector<std::string> messages; // refus et avertissements nommés du moteur
     std::string refusal;               // phrase de refus (vide si accepté)
+
+    // Refus ACTIONNABLE (renseigné seulement si `accepted == false`) : raison structurée, mesures
+    // du rapport de satinabilité (omises si non calculées) et piste de correction ne citant que
+    // des opérations du registre. `refusal` les reprend en texte. Information seule : aucun
+    // algorithme de génération n'en dépend.
+    // reason_code : no_source_contour | self_intersecting_contour | contour_too_complex |
+    //               branched_shape | compact_shape | has_holes | too_narrow | width_out_of_range |
+    //               invalid_geometry | engine_no_column
+    std::string reason_code;
+    std::string suggestion;
+    std::optional<double> min_width_mm;
+    std::optional<double> max_width_mm;
+    std::optional<int> branch_count;
+    std::optional<int> junction_count;
 };
 
 // `vector_object` = objet VECTORIEL source de l'objet de broderie visé. Erreur

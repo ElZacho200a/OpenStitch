@@ -249,6 +249,32 @@ sont cousus du plus proche au plus loin (boîte englobante) et non dans l'ordre 
 stockage. Limite restante : au-delà de `underpathCap` on saute ; les coutures
 cachées jusqu'à 16 mm sont plus longues donc plus visibles que celles de 8 mm.
 
+### Liaisons de bord : tolérance de 0,15 mm (audit Possible.osp, 2026-10-18)
+
+Un projet réel (`Possible.osp`, 202 objets) produisait 928 coupes. Un compteur
+temporaire dans `fill_tatami` a donné la cause : **973 des 1 459 sauts de
+tatami** étaient des liaisons entre deux rangées voisines (arête du graphe) que
+`connector_invalid` refusait, presque toutes de moins de 1 mm. Au bord d'une
+fente ou d'un coin rentrant courbe, la corde qui relie deux fins de rangée
+consécutives sort du polygone de quelques micromètres ; le test strict la
+rejetait et la liaison devenait un saut, puis une coupe au-delà de
+`trim_threshold`. Exemple : le disque du soleil (30 x 22 mm, un seul contour,
+sans trou) faisait **141 sauts**.
+
+`connector_invalid` prend désormais une tolérance au bord `edgeTol` (µm) : un
+sous-segment dont le milieu est dehors reste admis si ses échantillons (quart,
+milieu, trois quarts) sont tous à moins de `edgeTol` du contour. Les liaisons de
+rangées l'utilisent avec `kLinkEdgeTol = 150 µm` (bien sous l'écartement de
+0,4 mm : le fil reste sous la bordure). Les liaisons qui traversent un trou
+restent refusées, et `segment_stays_in_region` (utilisé par la sous-couche, le
+satin…) garde le test strict. Mesure sur `Possible.osp` : soleil 141 → 4 sauts ;
+sauts 2 862 → 1 525, coupes 928 → 792. Test : `tatami : carre mordu par un arc`
+(échoue sans la tolérance : 16 sauts, passe à 0).
+
+Limites restantes : le parcours reste glouton (une branche laissée de côté coûte
+toujours un saut) et le moteur directionnel garde sa propre copie du test strict
+(`directional_fill.cpp`).
+
 ## Paramètres
 
 Valeurs par défaut lues dans `TatamiParams`
@@ -260,7 +286,7 @@ Valeurs par défaut lues dans `TatamiParams`
 | `stitch_length` | mm | 3,0 | points plus longs le long des rangées | points plus courts, plus de pénétrations |
 | `angle` | ° (rad interne) | 0 | oriente les rangées | — |
 | `inset` (retrait de bord) | mm | 0,2 | remplissage plus rentré | remplissage plus au bord (risque de débord) |
-| `stagger` | rangées | 2 | pénétrations décalées sur plus de rangées | sillon plus visible |
+| `stagger` | rangées | 3 | pénétrations décalées sur plus de rangées | sillon plus visible (à 2, les trous s’alignent : aspect « pointillé » une fois brodé) |
 | `underlay_edge` | bool | off | sous-couche de contour (Lot 7) | — |
 | `underlay_inset` | mm | 0,6 | contour de sous-couche plus rentré (échec/disparition → aucune sous-couche émise, jamais le bord brut ; 0 = bord brut voulu) | contour plus proche du bord final |
 | `underlay_parallel` | bool | off | sous-couche perpendiculaire espacée (Lot 7) | — |
@@ -269,6 +295,8 @@ Valeurs par défaut lues dans `TatamiParams`
 | `entry_point` | µm | — | démarre le remplissage près de ce point (Lot 7) | — |
 | `pull_compensation` | mm | 0 | chaque rangée dépasse du contour de cette longueur, dans l'axe du fil (HP-ENG-001) ; plage [0 ; 3] mm | aucune compensation |
 | `underlay_mode` | Manuelle / Automatique | Manuelle | Automatique : le moteur choisit la sous-couche (voir *Moteur de génération de points*), les réglages `underlay_*` sont ignorés | réglages manuels appliqués tels quels |
+| `row_end_clip` | mm | 0 | rabat les pointes de fin de rangée qui dépassent de plus de cette longueur les deux rangées voisines (bords « effilochés »), plage [0 ; 5] mm, ~1 mm courant | aucun écrêtage |
+| `edge_outline` | bool | off | coud un point droit (2 mm) le long du bord et des trous, par-dessus le remplissage | aucun contour |
 
 ### Compensation du tirage (HP-ENG-001)
 
@@ -286,6 +314,33 @@ est bornée à 3 mm à la génération et à la lecture du .osp. Il n'existe pas
 notion de tissu dans le modèle : le réglage est manuel (0,2 à 0,4 mm est courant).
 Le remplissage directionnel n'a pas encore cette compensation (HP-ENG-001
 reste partiel). Tests : `tests/unit/stitch/test_engine_points.cpp` (« tirage : … »).
+
+### Bords effilochés : écrêtage et contour (2026-10-19)
+
+Sur un bord presque parallèle aux rangées, la fin de rangée saute d'une rangée à
+l'autre de `row_spacing / tan(θ)` et le moindre bruit du contour (nœuds
+vectorisés serrés) produit des pointes isolées : le bord ressemble à un peigne
+(« effiloché »). Deux remèdes, indépendants et sans effet par défaut :
+
+- **Écrêtage des bouts** (`row_end_clip`, étape 1 bis de `fill_tatami`) : une
+  extrémité de rangée qui dépasse de plus de `clip` les extrémités de **toutes**
+  les rangées voisines (au-dessus *et* au-dessous, segments se chevauchant en x)
+  est ramenée à `max(voisines) + clip` (idem côté gauche). Calcul sur les bornes
+  d'origine, donc indépendant de l'ordre de visite ; une extrémité qui n'a de
+  voisine que d'un côté (pointe réelle de la forme, première/dernière rangée) n'est
+  jamais touchée. Les pénétrations, l'adjacence et la compensation du tirage
+  partent des bornes écrêtées. Limite : une pointe aiguë dont le pas entre rangées
+  dépasse `clip` est raccourcie — activer alors le contour.
+- **Contour cousu par-dessus** (`edge_outline`, `emit_edge_outline` dans
+  `generate.cpp`) : après le remplissage de chaque région, point droit de 2 mm le
+  long du bord extérieur puis des trous (au retrait `inset` près), chaque boucle
+  démarrant au plus près de l'aiguille et reliée par un trajet caché dans la
+  région quand il existe (sinon saut).
+
+Clés `.osp` facultatives `rowEndClip` (µm, [0 ; 5000]) et `edgeOutline`, écrites
+hors défaut. Inspecteur : « Écrêtage des bouts » et « Contour cousu par-dessus ».
+Le remplissage directionnel n'a que le contour (`edge_outline`, même `emit_edge_outline`) : ses lignes suivent un champ de directions, pas des rangées voisines, donc l'écrêtage n'y a pas de sens. CLI projet : `row_end_clip_mm`, `edge_outline`. Tests : `test_engine_points.cpp`
+(« bords : … »), `test_engine_persistence.cpp`, `test_properties_panel.cpp`.
 
 Le paramètre principal de **densité** est `row_spacing` (entre rangées) — à ne
 pas confondre avec `stitch_length` (le long d'une rangée). Le retrait de bord

@@ -6,15 +6,19 @@
 #include <cstdio>
 #include <map>
 #include <numbers>
+#include <type_traits>
 #include <variant>
 
 #include <nlohmann/json.hpp>
 
 #include "openstitch/geometry/boolean.hpp"
+#include "openstitch/geometry/polyline.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
+#include "openstitch/stitch_generation/pull_auto.hpp"
+#include "openstitch/stitch_generation/underlay_auto.hpp"
 
 namespace openstitch::project_ops {
 
@@ -52,6 +56,19 @@ json paths_mm(const std::vector<geometry::Path>& paths) {
 }
 json rgb_json(const std::array<std::uint8_t, 3>& rgb) {
     return rgb_to_hex(rgb);
+}
+
+const char* pull_mode_name(document::PullMode m) {
+    switch (m) {
+    case document::PullMode::Auto:
+        return "auto";
+    case document::PullMode::Adaptive:
+        return "adaptive";
+    case document::PullMode::Predicted:
+        return "predicted";
+    default:
+        return "manual";
+    }
 }
 
 const char* underlay_mode_name(document::UnderlayMode m) {
@@ -93,6 +110,19 @@ const char* split_name(document::SatinSplit v) {
         return "deterministic_jitter";
     }
     return "disabled";
+}
+const char* corner_name(document::SatinCorner v) {
+    switch (v) {
+    case document::SatinCorner::None:
+        return "none";
+    case document::SatinCorner::Miter:
+        return "miter";
+    case document::SatinCorner::Overlap:
+        return "overlap";
+    case document::SatinCorner::Cut:
+        return "cut";
+    }
+    return "none";
 }
 const char* cap_name(document::SatinCap v) {
     switch (v) {
@@ -194,6 +224,9 @@ json params_json(const document::StitchParams& params, bool full) {
                 j["hidden_underpath"] = p.hidden_underpath;
                 j["pull_compensation_mm"] = mm(p.pull_compensation);
                 j["underlay_mode"] = underlay_mode_name(p.underlay_mode);
+                j["pull_mode"] = pull_mode_name(p.pull_mode);
+                j["row_end_clip_mm"] = mm(p.row_end_clip);
+                j["edge_outline"] = p.edge_outline;
                 if (p.entry_point) {
                     j["entry_point_mm"] = point_mm(*p.entry_point);
                 }
@@ -219,6 +252,9 @@ json params_json(const document::StitchParams& params, bool full) {
                 j["lock_length_mm"] = mm(p.lock_length);
                 j["lock_passes"] = p.lock_passes;
                 j["underlay_mode"] = underlay_mode_name(p.underlay_mode);
+                j["pull_mode"] = pull_mode_name(p.pull_mode);
+                j["auto_spacing"] = p.auto_spacing;
+                j["corner_mode"] = corner_name(p.corner_mode);
                 j["rail_a"] = polyline_mm(p.rail_a);
                 j["rail_b"] = polyline_mm(p.rail_b);
                 json rungs = json::array();
@@ -246,6 +282,8 @@ json params_json(const document::StitchParams& params, bool full) {
                 j["handmade_intensity"] = p.handmade_intensity;
                 j["seed"] = p.seed;
                 j["underlay_mode"] = underlay_mode_name(p.underlay_mode);
+                j["pull_mode"] = pull_mode_name(p.pull_mode);
+                j["edge_outline"] = p.edge_outline;
                 j["guides"] = paths_mm(p.guides);
                 j["break_lines"] = paths_mm(p.break_lines);
                 if (p.density_gradient) {
@@ -280,7 +318,10 @@ json params_json(const document::StitchParams& params, bool full) {
                 j["lock_length_mm"] = mm(p.lock_length);
                 j["lock_passes"] = p.lock_passes;
                 j["underlay_mode"] = underlay_mode_name(p.underlay_mode);
+                j["pull_mode"] = pull_mode_name(p.pull_mode);
                 j["compact_axis"] = p.compact_axis;
+                j["auto_spacing"] = p.auto_spacing;
+                j["corner_mode"] = corner_name(p.corner_mode);
                 j["strategy"] = std::string(document::auto_satin_strategy_id(p.strategy));
                 j["sweep_angle_deg"] = p.sweep_angle ? json(deg(*p.sweep_angle)) : json(nullptr);
                 json guides = json::array();
@@ -423,6 +464,51 @@ json embroidery_json(const document::Project& project, const document::Embroider
     j["join"] = join_name(e.join);
     j["connector"] = connector_name(e.connector);
     j["params"] = params_json(e.params, options.full_params);
+    // Reference de l'heuristique Auto visible par CLI/MCP, mais PAS une prediction physique.
+    // Les versions a compensation par rangee/station peuvent varier autour de cette reference.
+    std::visit(
+        [&](const auto& params) {
+            using T = std::decay_t<decltype(params)>;
+            if constexpr (std::is_same_v<T, document::TatamiParams> ||
+                          std::is_same_v<T, document::DirectionalFillParams> ||
+                          std::is_same_v<T, document::AutoSatinParams>) {
+                if (params.pull_mode != document::PullMode::Auto) {
+                    return;
+                }
+                const auto* source = project.findObject(e.source_vector);
+                if (source == nullptr) {
+                    return;
+                }
+                double area = 0.0;
+                double perimeter = 0.0;
+                for (const auto& raw : source->paths) {
+                    const auto flattened = geometry::flatten_to_polygon(raw, Micrometers{50});
+                    const auto metrics = stitch_generation::measure_shape(flattened);
+                    area += metrics.area_mm2;
+                    perimeter += metrics.perimeter_mm;
+                }
+                if (perimeter > 1e-9) {
+                    const double width = 2.0 * area / perimeter;
+                    if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
+                        j["pull_auto_reference_mm"] =
+                            mm(stitch_generation::choose_satin_pull(width));
+                    } else {
+                        j["pull_auto_reference_mm"] =
+                            mm(stitch_generation::choose_fill_pull(width));
+                    }
+                    j["pull_auto_reference_only"] = true;
+                }
+            } else if constexpr (std::is_same_v<T, document::SatinParams>) {
+                if (params.pull_mode == document::PullMode::Auto) {
+                    const double width =
+                        stitch_generation::satin_mean_width_mm(params.rail_a, params.rail_b);
+                    j["pull_auto_reference_mm"] = mm(stitch_generation::choose_satin_pull(width));
+                    j["pull_auto_reference_only"] = true;
+                }
+            }
+        },
+        e.params);
+
     j["manual_overrides"] = e.overrides.size();
     if (e.color_blend) {
         j["color_blend"] = json{{"partner", e.color_blend->partner.value},
@@ -459,7 +545,12 @@ json canvas_json(const document::Project& project) {
                 {"height_mm", mm(c.height)},
                 {"margin_mm", mm(c.margin)},
                 {"usable_width_mm", mm(c.usable_width())},
-                {"usable_height_mm", mm(c.usable_height())}};
+                {"usable_height_mm", mm(c.usable_height())},
+                {"shape", c.shape == document::HoopShape::Ellipse            ? "ellipse"
+                          : c.shape == document::HoopShape::RoundedRectangle ? "rounded"
+                                                                             : "rectangle"},
+                {"corner_radius_mm", mm(c.corner_radius)},
+                {"machine", project.machine_id}};
 }
 
 json finishing_json(const document::SequenceFinishing& f) {
@@ -531,9 +622,23 @@ Result<json> build_project_doc(const document::Project& project, const InspectOp
         }
         vj["holes"] = holes;
         vj["nodes"] = nodes;
+        if (v.group.valid()) {
+            vj["group"] = v.group.value; // HP-OBJ-009 : absent hors groupe (sortie inchangée)
+        }
         vectors.push_back(std::move(vj));
     }
     doc["vector_objects"] = vectors;
+    if (!project.groups.empty()) {
+        json groups = json::array();
+        for (const auto& g : project.groups) {
+            groups.push_back(
+                json{{"id", g.id.value},
+                     {"name", g.name},
+                     {"parent", g.parent.valid() ? json(g.parent.value) : json(nullptr)},
+                     {"shapes", json(project.shapesOfGroup(g.id).size())}});
+        }
+        doc["groups"] = groups;
+    }
 
     json texts = json::array();
     for (const auto& t : project.text_objects) {
@@ -551,6 +656,17 @@ Result<json> build_project_doc(const document::Project& project, const InspectOp
                            : t.fill == document::TextFill::Tatami  ? "tatami"
                            : t.fill == document::TextFill::Contour ? "contour"
                                                                    : "auto";
+        const auto base_name = [](document::TextBaseKind k) {
+            return k == document::TextBaseKind::Arc      ? "arc"
+                   : k == document::TextBaseKind::Circle ? "circle"
+                   : k == document::TextBaseKind::Path   ? "path"
+                                                         : "line";
+        };
+        const auto connector_name = [](document::ConnectorMode m) {
+            return m == document::ConnectorMode::AlwaysTrim  ? "trim"
+                   : m == document::ConnectorMode::NeverTrim ? "no_trim"
+                                                             : "inherit";
+        };
         texts.push_back(json{{"id", t.id.value},
                              {"text", t.text},
                              {"font", json{{"family", t.font.family},
@@ -568,6 +684,13 @@ Result<json> build_project_doc(const document::Project& project, const InspectOp
                              {"color", rgb_json(t.rgb)},
                              {"fill", fill},
                              {"density_mm", mm(t.density)},
+                             {"base", base_name(t.base.kind)},
+                             {"base_radius_mm", mm(t.base.radius)},
+                             {"base_inside", t.base.inside},
+                             {"base_path_points", t.base.path.size()},
+                             {"letter_connector", connector_name(t.letter_connector)},
+                             {"word_connector", connector_name(t.word_connector)},
+                             {"glyph_edit_count", t.glyph_edits.size()},
                              {"letter_vector_ids", letters}});
     }
     doc["text_objects"] = texts;
@@ -611,6 +734,37 @@ Result<json> build_project_doc(const document::Project& project, const InspectOp
     }
     doc["embroidery_objects"] = embroideries;
 
+    // Coloris (HP-THR-006) et tissu (HP-THR-008) : clés présentes seulement si le document les
+    // utilise, pour ne pas modifier la sortie des documents existants.
+    if (!project.colorways.empty()) {
+        json colorways = json::array();
+        for (std::size_t i = 0; i < project.colorways.size(); ++i) {
+            colorways.push_back(json{{"name", project.colorways[i].name},
+                                     {"active", static_cast<int>(i) == project.active_colorway},
+                                     {"objects", project.colorways[i].entries.size()}});
+        }
+        doc["colorways"] = colorways;
+    }
+    if (!(project.fabric == document::FabricSettings{})) {
+        json fabric = json{{"rgb", json::array({project.fabric.color[0], project.fabric.color[1],
+                                                project.fabric.color[2]})},
+                           {"name", project.fabric.name}};
+        if (!project.fabric.material.empty()) {
+            fabric["material"] = project.fabric.material;
+        }
+        if (!project.fabric.stabilizer.empty()) {
+            fabric["stabilizer"] = project.fabric.stabilizer;
+        }
+        if (project.fabric.grain_angle.radians != 0.0) {
+            fabric["grain_angle_deg"] =
+                project.fabric.grain_angle.radians * 180.0 / std::numbers::pi;
+        }
+        if (project.fabric.weft_softness != 1.0) {
+            fabric["weft_softness"] = project.fabric.weft_softness;
+        }
+        doc["fabric"] = std::move(fabric);
+    }
+
     json warnings = json::array();
     for (const auto& f : stitch_analysis::check_stitch_limits(project)) {
         warnings.push_back(finding_json(f));
@@ -636,6 +790,22 @@ const char* stitch_type_name(const document::EmbroideryObject& object) {
         return "directional";
     case 4:
         return "auto_satin";
+    case 5:
+        return "blanket";
+    case 6:
+        return "contour_fill";
+    case 7:
+        return "motif_run";
+    case 8:
+        return "motif_fill";
+    case 9:
+        return "radial_fill";
+    case 10:
+        return "spiral_fill";
+    case 11:
+        return "crosshatch_fill";
+    case 12:
+        return "cross_stitch";
     default:
         return "unknown";
     }

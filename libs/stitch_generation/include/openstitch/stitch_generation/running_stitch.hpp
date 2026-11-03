@@ -78,4 +78,11 @@ enum class RepeatMode {
 // >= 3 = bean à `repeats` passages.
 [[nodiscard]] std::vector<Vec2um> apply_repeats(const std::vector<Vec2um>& points, int repeats);
 
+// Point tige (HP-STI-001) : les pénétrations intérieures sont décalées latéralement de
+// `offset`, alternativement à gauche puis à droite du tracé (normale locale), ce qui
+// donne un aspect torsadé. Premier et dernier points restent sur le tracé. Arrondi
+// entier déterministe ; `offset <= 0` ou moins de 3 points : points inchangés.
+[[nodiscard]] std::vector<Vec2um> apply_stem_stitch(const std::vector<Vec2um>& points,
+                                                    Micrometers offset);
+
 } // namespace openstitch::stitch_generation

@@ -143,3 +143,125 @@ TEST_CASE("convert to curves command is refused on sharp polygons", "[commands][
     CHECK(result.command == nullptr);
     CHECK_FALSE(result.error.empty());
 }
+
+TEST_CASE("reshape segment command is one exact undo step and touches only its object",
+          "[commands][reshape]") {
+    document::Project project;
+    const ObjectId a = addObject(project, square(10'000));
+    const ObjectId b = addObject(project, square(5'000));
+    const auto beforeA = project.findObject(a)->paths;
+    const auto beforeB = project.findObject(b)->paths;
+
+    auto result = make_reshape_segment_command(project, a, 0, 0, 0, 0.5,
+                                               Vec2um{Micrometers{0}, Micrometers{-2'000}});
+    REQUIRE(result.command != nullptr);
+    CHECK(result.command->name() == "Remodeler un segment");
+    CHECK(project.findObject(a)->paths == beforeA); // la fabrique ne touche pas au document
+
+    UndoStack stack;
+    stack.execute(std::move(result.command), project);
+    const auto afterA = project.findObject(a)->paths;
+    CHECK(afterA != beforeA);
+    CHECK(afterA.front().outer.nodes.size() == 4);
+    CHECK(project.findObject(b)->paths == beforeB);
+
+    REQUIRE(stack.undo(project));
+    CHECK(project.findObject(a)->paths == beforeA);
+    CHECK_FALSE(stack.canUndo());
+    REQUIRE(stack.redo(project));
+    CHECK(project.findObject(a)->paths == afterA);
+}
+
+TEST_CASE("reshape segment command refuses no-ops, crossings and unknown targets",
+          "[commands][reshape]") {
+    document::Project project;
+    const ObjectId a = addObject(project, square(10'000));
+    CHECK(make_reshape_segment_command(project, a, 0, 0, 0, 0.5, Vec2um{}).command == nullptr);
+    CHECK(make_reshape_segment_command(project, a, 0, 0, 0, 0.5,
+                                       Vec2um{Micrometers{0}, Micrometers{40'000}})
+              .command == nullptr);
+    CHECK(make_reshape_segment_command(project, ObjectId{999}, 0, 0, 0, 0.5,
+                                       Vec2um{Micrometers{1}, Micrometers{1}})
+              .command == nullptr);
+    CHECK(make_reshape_segment_command(project, a, 4, 0, 0, 0.5,
+                                       Vec2um{Micrometers{1}, Micrometers{1}})
+              .command == nullptr);
+}
+
+TEST_CASE("transform nodes command is one exact undo step", "[commands][nodes]") {
+    document::Project project;
+    const ObjectId a = addObject(project, square(10'000));
+    const ObjectId b = addObject(project, square(5'000));
+    const auto beforeA = project.findObject(a)->paths;
+    const auto beforeB = project.findObject(b)->paths;
+    geometry::NodeTransform t;
+    t.translation = Vec2um{Micrometers{500}, Micrometers{500}};
+    auto result = make_transform_nodes_command(project, a, 0, 0, {0, 1}, t, 0.0);
+    REQUIRE(result.command != nullptr);
+    CHECK(project.findObject(a)->paths == beforeA);
+    UndoStack stack;
+    stack.execute(std::move(result.command), project);
+    const auto afterA = project.findObject(a)->paths;
+    CHECK(afterA != beforeA);
+    CHECK(afterA.front().outer.nodes.size() == 4);
+    CHECK(project.findObject(b)->paths == beforeB);
+    REQUIRE(stack.undo(project));
+    CHECK(project.findObject(a)->paths == beforeA);
+    CHECK_FALSE(stack.canUndo());
+    REQUIRE(stack.redo(project));
+    CHECK(project.findObject(a)->paths == afterA);
+    CHECK(make_transform_nodes_command(project, a, 0, 0, {}, t, 0.0).command == nullptr);
+    CHECK(make_transform_nodes_command(project, ObjectId{999}, 0, 0, {0}, t, 0.0).command ==
+          nullptr);
+}
+
+TEST_CASE("brush stroke command is one exact undo step and refuses crossings",
+          "[commands][brush]") {
+    document::Project project;
+    const ObjectId a = addObject(project, polygonCircle(0, 10'000, 48));
+    const auto before = project.findObject(a)->paths;
+    geometry::BrushDab dab;
+    dab.center = Vec2um{Micrometers{10'000}, Micrometers{0}};
+    dab.radius_um = 4'000.0;
+    dab.delta = Vec2um{Micrometers{1'500}, Micrometers{0}};
+    std::vector<geometry::PathSet> after = {geometry::apply_brush_dab(before.front(), dab)};
+    auto result = make_brush_stroke_command(project, a, after);
+    REQUIRE(result.command != nullptr);
+    CHECK(project.findObject(a)->paths == before);
+    UndoStack stack;
+    stack.execute(std::move(result.command), project);
+    CHECK(project.findObject(a)->paths == after);
+    REQUIRE(stack.undo(project));
+    CHECK(project.findObject(a)->paths == before);
+    CHECK_FALSE(stack.canUndo());
+    CHECK(make_brush_stroke_command(project, a, before).command == nullptr);
+    CHECK(make_brush_stroke_command(project, ObjectId{999}, after).command == nullptr);
+    // Pousser le bord droit au-delà du bord gauche : contour croisé, refusé.
+    geometry::BrushDab huge = dab;
+    huge.radius_um = 6'000.0;
+    huge.delta = Vec2um{Micrometers{-30'000}, Micrometers{0}};
+    CHECK(make_brush_stroke_command(project, a, {geometry::apply_brush_dab(before.front(), huge)})
+              .command == nullptr);
+}
+
+TEST_CASE("translate edge command is one exact undo step", "[commands][reshape]") {
+    document::Project project;
+    const ObjectId a = addObject(project, square(10'000));
+    const auto before = project.findObject(a)->paths;
+    auto result = make_translate_edge_command(project, a, 0, 0, 0,
+                                              Vec2um{Micrometers{0}, Micrometers{-2'000}});
+    REQUIRE(result.command != nullptr);
+    CHECK(project.findObject(a)->paths == before);
+    UndoStack stack;
+    stack.execute(std::move(result.command), project);
+    const auto& nodes = project.findObject(a)->paths.front().outer.nodes;
+    CHECK(nodes[0].pos.y.value == before.front().outer.nodes[0].pos.y.value - 2'000);
+    CHECK(nodes[1].pos.y.value == before.front().outer.nodes[1].pos.y.value - 2'000);
+    CHECK(nodes[2].pos == before.front().outer.nodes[2].pos);
+    REQUIRE(stack.undo(project));
+    CHECK(project.findObject(a)->paths == before);
+    CHECK_FALSE(stack.canUndo());
+    CHECK(make_translate_edge_command(project, a, 0, 0, 0, Vec2um{}).command == nullptr);
+    CHECK(make_translate_edge_command(project, a, 0, 0, 9, Vec2um{Micrometers{1}, Micrometers{1}})
+              .command == nullptr);
+}

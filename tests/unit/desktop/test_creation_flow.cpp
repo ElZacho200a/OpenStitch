@@ -109,6 +109,7 @@ private slots:
     // HP-UX-038
     void mixedSpacingIsIndeterminateAndAngleEditKeepsEachSpacing();
     void mixedCheckboxAndComboAreIndeterminate();
+    void newlyCreatedFillsGetTheAutomaticUnderlay();
     void mixedTypeGroupHasIndeterminateLiveFields();
 
     // HP-PERF-009
@@ -358,7 +359,9 @@ void CreationFlowTest::contextMenuOfAnUnsewnShapeOffersTheFourTypes() {
         }
     });
     window.onCanvasContextMenu(QPointF(0.0, 0.0), QPoint(10, 10));
-    QCOMPARE(found, 4);
+    // Les quatre types historiques, puis blanket, motifs, concentrique, radial, spirale, croise,
+    // point de croix.
+    QCOMPARE(found, 12);
 }
 
 // --- HP-UX-029 ----------------------------------------------------------------------------
@@ -503,6 +506,25 @@ void CreationFlowTest::mixedSpacingIsIndeterminateAndAngleEditKeepsEachSpacing()
     QCOMPARE(std::get<doc::TatamiParams>(window.project_.findEmbroidery(fx.embB)->params)
                  .row_spacing.value,
              400);
+}
+
+// HP-ENG-002 : un objet cree a la main recoit la sous-couche automatique ; les parametres
+// charges depuis un projet (defaut du modele) restent en Manual.
+void CreationFlowTest::newlyCreatedFillsGetTheAutomaticUnderlay() {
+    doc::TatamiParams tatami;
+    doc::DirectionalFillParams directional;
+    doc::AutoSatinParams autoSatin;
+    QCOMPARE(tatami.underlay_mode, doc::UnderlayMode::Manual);
+    ui_memory::creation::apply(tatami);
+    ui_memory::creation::apply(directional);
+    ui_memory::creation::apply(autoSatin);
+    QCOMPARE(tatami.underlay_mode, doc::UnderlayMode::Auto);
+    QCOMPARE(directional.underlay_mode, doc::UnderlayMode::Auto);
+    QCOMPARE(autoSatin.underlay_mode, doc::UnderlayMode::Auto);
+    // HP-ENG-001.b : et la compensation du tirage automatique.
+    QCOMPARE(tatami.pull_mode, doc::PullMode::Auto);
+    QCOMPARE(directional.pull_mode, doc::PullMode::Auto);
+    QCOMPARE(autoSatin.pull_mode, doc::PullMode::Auto);
 }
 
 void CreationFlowTest::mixedCheckboxAndComboAreIndeterminate() {

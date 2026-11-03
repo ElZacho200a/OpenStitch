@@ -18,6 +18,7 @@
 #include "openstitch/formats/jef.hpp"
 #include "openstitch/formats/pes.hpp"
 #include "openstitch/formats/svg_import.hpp"
+#include "openstitch/formats/vp3.hpp"
 
 using namespace openstitch;
 using namespace openstitch::formats;
@@ -49,6 +50,9 @@ Bytes valid_pes() {
 }
 Bytes valid_jef() {
     return *encode_jef(rich_long_jump());
+}
+Bytes valid_vp3() {
+    return *encode_vp3(rich_long_jump());
 }
 Bytes valid_exp() {
     return *encode_exp(rich_long_jump());
@@ -83,6 +87,9 @@ void run_pes(const Bytes& b) {
 void run_jef(const Bytes& b) {
     (void)decode_jef(b);
 }
+void run_vp3(const Bytes& b) {
+    (void)decode_vp3(b);
+}
 void run_exp(const Bytes& b) {
     (void)decode_exp(b);
 }
@@ -103,10 +110,11 @@ struct Target {
 };
 
 std::vector<Target> targets() {
-    return {{"dst", valid_dst, run_dst},       {"pes", valid_pes, run_pes},
-            {"jef", valid_jef, run_jef},       {"exp", valid_exp, run_exp},
-            {"svg", valid_svg, run_svg},       {"dxf", valid_dxf, run_dxf},
-            {"inf", valid_inf, run_companion}, {"csv", valid_csv, run_companion}};
+    return {{"dst", valid_dst, run_dst},      {"pes", valid_pes, run_pes},
+            {"jef", valid_jef, run_jef},      {"vp3", valid_vp3, run_vp3},
+            {"exp", valid_exp, run_exp},      {"svg", valid_svg, run_svg},
+            {"dxf", valid_dxf, run_dxf},      {"inf", valid_inf, run_companion},
+            {"csv", valid_csv, run_companion}};
 }
 
 } // namespace
@@ -115,6 +123,7 @@ TEST_CASE("fuzz : le corpus valide est bien decode (garde-fou du corpus)") {
     CHECK(decode_dst(valid_dst()).has_value());
     CHECK(decode_pes(valid_pes()).has_value());
     CHECK(decode_jef(valid_jef()).has_value());
+    CHECK(decode_vp3(valid_vp3()).has_value());
     CHECK(decode_exp(valid_exp()).has_value());
     CHECK(decode_svg(valid_svg()).has_value());
     CHECK(decode_dxf(valid_dxf()).has_value());

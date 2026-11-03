@@ -49,6 +49,7 @@ public:
     [[nodiscard]] QPlainTextEdit* notesEdit() const { return notes_; }
     [[nodiscard]] QDoubleSpinBox* speedSpin() const { return speed_; }
     [[nodiscard]] QLineEdit* nameEdit() const { return name_; }
+    [[nodiscard]] QLineEdit* clientEdit() const { return client_; }
     [[nodiscard]] QDoubleSpinBox* bobbinSpin() const { return bobbin_; }
     // Texte brut de la fiche affichée (pour les tests).
     [[nodiscard]] QString viewPlainText() const;
@@ -69,6 +70,7 @@ private:
     QImage previewImage_;
 
     QLineEdit* name_{nullptr};
+    QLineEdit* client_{nullptr};
     QDateEdit* date_{nullptr};
     QDoubleSpinBox* speed_{nullptr};
     QDoubleSpinBox* bobbin_{nullptr};

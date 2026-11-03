@@ -179,6 +179,15 @@ des ponts cousus prouvés cachés sous des points cousus plus tard (voir *Moteur
 points*, « Ponts cachés ») ; le projet n'est pas modifié et la commande affiche le
 nombre de coupes supprimées. Sans le drapeau, le fichier est identique à avant.
 
+## ai backends : backends de vision IA
+
+`openstitch-cli ai backends [--config F] [--prefer ID] [--prompt automatic|box|point|text|exemplar] [--json]`
+sonde les backends déclarés dans un fichier `openstitch.ai.backends/1` (ou la variable
+`OPENSTITCH_AI_BACKENDS`) : découverte, capacités, licences du code et des poids, santé, puis le
+choix ou le **repli sur la segmentation classique** avec sa raison. Sans réglages, rien n'est lancé.
+Codes de sortie : 0 ; 1 réglages ou invite invalides ; 2 avec `--require-available` si repli.
+Protocole et sécurité : `docs/ai/backend-protocol.md`.
+
 ## Sous-commandes de diagnostic
 
 ### osp2svg

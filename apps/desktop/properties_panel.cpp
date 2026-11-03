@@ -5,8 +5,11 @@
 
 #include "app_theme.hpp"
 #include "auto_satin_strategy_ui.hpp"
+#include "stitch_type_catalog.hpp"
 #include "ui_icons.hpp"
+#include "ui_memory.hpp"
 
+#include <QAction>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
@@ -16,6 +19,7 @@
 #include <QIcon>
 #include <QLabel>
 #include <QListWidget>
+#include <QMenu>
 #include <QPixmap>
 #include <QPushButton>
 #include <QSignalBlocker>
@@ -66,6 +70,16 @@ QStringList lockItems() {
             QObject::tr("Micro-zigzag")};
 }
 
+QStringList cornerItems() {
+    return {QObject::tr("Aucun traitement"), QObject::tr("Onglet"), QObject::tr("Chevauchement"),
+            QObject::tr("Coupe (saut)")};
+}
+
+QStringList jaggedItems() {
+    return {QObject::tr("Aucun"), QObject::tr("Côté A"), QObject::tr("Côté B"),
+            QObject::tr("Les deux côtés")};
+}
+
 QStringList borderSideItems() {
     return {QObject::tr("Centré sur le contour"), QObject::tr("Intérieur"),
             QObject::tr("Extérieur")};
@@ -94,6 +108,37 @@ void setRowEnabled(QFormLayout* form, QWidget* field, bool on) {
     if (QWidget* label = form->labelForField(field)) {
         label->setEnabled(on);
     }
+}
+
+// Choix « Manuelle / Automatique » de la compensation du tirage (HP-ENG-001.b).
+QComboBox* makePullModeCombo(QWidget* parent, document::PullMode mode) {
+    auto* combo = new QComboBox(parent);
+    combo->setObjectName(QStringLiteral("combo_pullMode"));
+    combo->addItems({QObject::tr("Manuelle"), QObject::tr("Automatique"), QObject::tr("Adaptative"),
+                     QObject::tr("Prédite")});
+    combo->setCurrentIndex(static_cast<int>(mode));
+    combo->setToolTip(QObject::tr(
+        "Manuelle : la valeur saisie s'applique telle quelle.\n"
+        "Automatique (historique) : le moteur compense le tirage du fil selon la largeur "
+        "moyenne de la forme.\n"
+        "Adaptative : la compensation est calculée localement (station par station pour le "
+        "satin : largeur, courbure, extrémités, jonctions, avec lissage). Règle géométrique, "
+        "non validée sur machine.\n"
+        "Prédite : un champ de déplacement du tissu, calculé sur tous les segments cousus voisins "
+        "(anisotrope selon le sens des fils, avec indice de confiance), est appliqué en dernière "
+        "passe. Coefficients empiriques, non validés sur machine. Le réglage manuel est ignoré "
+        "dans ces trois modes."));
+    return combo;
+}
+
+// Grise la compensation manuelle quand le mode est Automatique ; à appeler une fois les deux
+// champs ajoutés au formulaire.
+void syncPullMode(QFormLayout* form, QComboBox* mode, QWidget* manualField) {
+    const auto sync = [form, mode, manualField] {
+        setRowEnabled(form, manualField, mode->currentIndex() == 0);
+    };
+    sync();
+    QObject::connect(mode, &QComboBox::currentIndexChanged, mode, [sync](int) { sync(); });
 }
 
 // Adapte une modification typée (un champ de T) en modification de StitchParams : sans effet si
@@ -433,7 +478,57 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
     fillLayers_->setToolTip(tr("Chaque couche garde sa couleur et ses réglages. "
                                "La liste suit l'ordre de couture, fond puis dessus."));
     layersLayout->addWidget(fillLayers_);
+    // Barre de la couche choisie : monter / descendre dans la pile, masquer, renommer.
+    auto* toolsRow = new QHBoxLayout;
+    toolsRow->setContentsMargins(0, 0, 0, 0);
+    const auto makeTool = [&](const QString& text, const QString& name, const QString& tip) {
+        auto* b = new QPushButton(text, layerRow_);
+        b->setObjectName(name);
+        b->setToolTip(tip);
+        b->setAccessibleName(tip);
+        toolsRow->addWidget(b);
+        return b;
+    };
+    layerUp_ = makeTool(tr("▲"), QStringLiteral("button_layerUp"),
+                        tr("Monter la couche : cousue plus tard, donc par-dessus."));
+    layerDown_ = makeTool(tr("▼"), QStringLiteral("button_layerDown"),
+                          tr("Descendre la couche vers le fond : cousue plus tôt."));
+    layerVisible_ =
+        makeTool(tr("Masquer"), QStringLiteral("button_layerVisible"),
+                 tr("Masquer ou afficher la couche (un objet masqué n'est pas cousu)."));
+    layerRename_ =
+        makeTool(tr("Renommer…"), QStringLiteral("button_layerRename"), tr("Renommer la couche."));
+    layersLayout->addLayout(toolsRow);
+    const auto currentLayerId = [this]() -> std::optional<ObjectId> {
+        const int index = fillLayers_->currentIndex();
+        if (index < 0) {
+            return std::nullopt;
+        }
+        return ObjectId{fillLayers_->itemData(index).toULongLong()};
+    };
+    connect(layerUp_, &QPushButton::clicked, this, [this, currentLayerId] {
+        if (const auto id = currentLayerId()) {
+            emit layerMoveRequested(*id, +1);
+        }
+    });
+    connect(layerDown_, &QPushButton::clicked, this, [this, currentLayerId] {
+        if (const auto id = currentLayerId()) {
+            emit layerMoveRequested(*id, -1);
+        }
+    });
+    connect(layerVisible_, &QPushButton::clicked, this, [this, currentLayerId] {
+        if (const auto id = currentLayerId()) {
+            const bool nowVisible = fillLayers_->currentData(Qt::UserRole + 1).toBool();
+            emit layerVisibilityRequested(*id, !nowVisible);
+        }
+    });
+    connect(layerRename_, &QPushButton::clicked, this, [this, currentLayerId] {
+        if (const auto id = currentLayerId()) {
+            emit layerRenameRequested(*id);
+        }
+    });
     connect(fillLayers_, &QComboBox::currentIndexChanged, this, [this](int index) {
+        updateLayerTools();
         if (index >= 0) {
             emit fillLayerSelected(ObjectId{fillLayers_->itemData(index).toULongLong()});
         }
@@ -490,13 +585,16 @@ void PropertiesPanel::setFillLayers(const QList<FillLayer>& layers,
         same = fillLayers_->itemData(static_cast<int>(i)).toULongLong() == layers[i].id.value &&
                fillLayers_->itemText(static_cast<int>(i)) == layers[i].name &&
                fillLayers_->itemData(static_cast<int>(i), Qt::DecorationRole).value<QColor>() ==
-                   layers[i].color;
+                   layers[i].color &&
+               fillLayers_->itemData(static_cast<int>(i), Qt::UserRole + 1).toBool() ==
+                   layers[i].visible;
     }
     if (!same) {
         fillLayers_->clear();
         for (const auto& layer : layers) {
             fillLayers_->addItem(layer.name, QVariant::fromValue<qulonglong>(layer.id.value));
             fillLayers_->setItemData(fillLayers_->count() - 1, layer.color, Qt::DecorationRole);
+            fillLayers_->setItemData(fillLayers_->count() - 1, layer.visible, Qt::UserRole + 1);
         }
     }
     if (selected) {
@@ -505,6 +603,17 @@ void PropertiesPanel::setFillLayers(const QList<FillLayer>& layers,
     }
     layerRow_->setVisible(layers.size() > 1);
     fillColor_->setVisible(!layers.empty());
+    updateLayerTools();
+}
+
+void PropertiesPanel::updateLayerTools() {
+    const int index = fillLayers_->currentIndex();
+    layerUp_->setEnabled(index >= 0 && index + 1 < fillLayers_->count());
+    layerDown_->setEnabled(index > 0);
+    layerVisible_->setEnabled(index >= 0);
+    layerRename_->setEnabled(index >= 0);
+    const bool visible = index < 0 || fillLayers_->currentData(Qt::UserRole + 1).toBool();
+    layerVisible_->setText(visible ? tr("Masquer") : tr("Afficher"));
 }
 
 void PropertiesPanel::setBlendActions(QAction* single, QAction* zones, bool singleContext,
@@ -549,8 +658,9 @@ void PropertiesPanel::addStitchTypeRow(int current) {
     auto* layout = new QHBoxLayout(row);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(4);
-    const QString names[] = {tr("Contour"), tr("Tatami"), tr("Satin"), tr("Directionnel")};
-    for (int t = 0; t < 4; ++t) {
+    const QString names[] = {tr("Contour"), tr("Tatami"), tr("Satin"), tr("Directionnel"),
+                             tr("Blanket")};
+    for (int t = 0; t < 5; ++t) {
         auto* button = new QToolButton(row);
         button->setObjectName(QStringLiteral("button_stitchType%1").arg(t));
         button->setText(names[t]);
@@ -565,6 +675,28 @@ void PropertiesPanel::addStitchTypeRow(int current) {
             emit stitchTypeRequested(t);
         });
         layout->addWidget(button);
+    }
+    // Types sans bouton direct (motifs, concentrique, radial, spirale, croisé) : menu « Plus ».
+    {
+        auto* more = new QToolButton(row);
+        more->setObjectName(QStringLiteral("button_stitchTypeMore"));
+        more->setPopupMode(QToolButton::InstantPopup);
+        more->setCheckable(true);
+        more->setChecked(current >= 5);
+        more->setText(current >= 5 ? stitchTypeLabel(current) + QStringLiteral(" ▾")
+                                   : tr("Plus ▾"));
+        more->setAccessibleName(tr("Autres types de points"));
+        more->setToolTip(tr("Autres types de points : motifs, remplissages concentrique, radial, "
+                            "spirale et croisé."));
+        auto* moreMenu = new QMenu(more);
+        for (int t = 5; t < kStitchTypeCount; ++t) {
+            auto* act = moreMenu->addAction(stitchTypeLabel(t));
+            act->setCheckable(true);
+            act->setChecked(t == current);
+            connect(act, &QAction::triggered, this, [this, t] { emit stitchTypeRequested(t); });
+        }
+        more->setMenu(moreMenu);
+        layout->addWidget(more);
     }
     layout->addStretch(1);
     body_->layout()->addWidget(row);
@@ -593,9 +725,9 @@ void PropertiesPanel::clearBody() {
 QDoubleSpinBox* PropertiesPanel::mmSpin(double valueMm, double maxMm, double minMm,
                                         const QString& tip) {
     auto* spin = new QDoubleSpinBox(body_);
-    // Frappe au clavier : une seule modification à la validation, pas une par chiffre
-    // (chaque modification régénère les points).
-    spin->setKeyboardTracking(false);
+    // HP-VIEW-012 : par défaut l'aperçu suit la frappe (la commande se fusionne en un seul pas
+    // d'annulation et la régénération est débouncée) ; décochable dans Affichage.
+    spin->setKeyboardTracking(ui_memory::boolValue(QStringLiteral("view/liveTyping"), true));
     spin->setRange(minMm, maxMm);
     spin->setDecimals(2);
     spin->setSingleStep(0.1);
@@ -775,6 +907,18 @@ void PropertiesPanel::setConnectorMode(std::optional<ObjectId> id, document::Con
     connectorCombo_->setCurrentIndex(static_cast<int>(mode));
 }
 
+void PropertiesPanel::setKnockout(std::optional<ObjectId> id, bool enabled, double marginMm) {
+    if (!id || !currentId_ || *id != *currentId_ || knockoutCheck_ == nullptr ||
+        knockoutMargin_ == nullptr) {
+        return;
+    }
+    const QSignalBlocker blockCheck(knockoutCheck_);
+    const QSignalBlocker blockMargin(knockoutMargin_);
+    knockoutCheck_->setChecked(enabled);
+    knockoutMargin_->setValue(marginMm);
+    knockoutMargin_->setEnabled(enabled);
+}
+
 bool PropertiesPanel::showsVectorBox(ObjectId id, QRectF boxMm) const {
     if (!vectorId_ || *vectorId_ != id) {
         return false;
@@ -808,10 +952,7 @@ void PropertiesPanel::showMultiSelection(int objectCount, int embroideryCount,
     // (en direct, une commande composite par édition) -- plus de bouton « Appliquer à N ».
     int commonType = -1;
     if (groupRep != nullptr && groupCount >= 2) {
-        commonType = groupRep->is_tatami()                                 ? 1
-                     : groupRep->is_directional()                          ? 3
-                     : (groupRep->is_satin() || groupRep->is_auto_satin()) ? 2
-                                                                           : 0;
+        commonType = stitchTypeIndexOf(*groupRep);
     }
     addStitchTypeRow(commonType);
 
@@ -1000,14 +1141,13 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
     if (!group) {
         // HP-UX-028 : les quatre types en tête de l'inspecteur (en groupe : posés par
         // showMultiSelection).
-        addStitchTypeRow(object.is_tatami()                              ? 1
-                         : object.is_directional()                       ? 3
-                         : (object.is_satin() || object.is_auto_satin()) ? 2
-                                                                         : 0);
+        addStitchTypeRow(stitchTypeIndexOf(object));
     }
 
     auto* form = new QFormLayout();
     styleForm(form);
+    // Une ligne avancée reste dans le vrai formulaire : aucun doublon de champs ni signal.
+    std::vector<QWidget*> advancedRows;
     // HP-UX-038 : en groupe, les contrôles à portée INDIVIDUELLE (ils n'agissent que sur l'objet
     // actif, jamais sur toute la sélection) sont isolés sous « Objet actif seulement ».
     QFormLayout* activeForm = nullptr;
@@ -1022,8 +1162,16 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
         return activeForm;
     };
 
-    const QString typeName = object.is_tatami()        ? tr("Remplissage tatami")
-                             : object.is_directional() ? tr("Remplissage directionnel")
+    const QString typeName = object.is_tatami()            ? tr("Remplissage tatami")
+                             : object.is_directional()     ? tr("Remplissage directionnel")
+                             : object.is_blanket()         ? tr("Blanket / zigzag")
+                             : object.is_contour_fill()    ? tr("Remplissage concentrique")
+                             : object.is_motif_run()       ? tr("Motif le long du contour")
+                             : object.is_motif_fill()      ? tr("Remplissage à motif")
+                             : object.is_radial_fill()     ? tr("Remplissage radial")
+                             : object.is_spiral_fill()     ? tr("Remplissage en spirale")
+                             : object.is_crosshatch_fill() ? tr("Remplissage croisé")
+                             : object.is_cross_stitch()    ? tr("Point de croix")
                              : object.is_auto_satin()
                                  ? tr("Satin automatique (traversées orientées)")
                              : object.is_satin() ? tr("Colonne satin à rails (manuelle)")
@@ -1162,9 +1310,32 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 rep->setRange(1, 3);
                 rep->setValue(p.repeats);
                 rep->setToolTip(tr("1 = simple, 2 = aller-retour, 3 = point triple"));
+                auto* runStyle = new QComboBox(body_);
+                runStyle->setObjectName(QStringLiteral("combo_runningStyle"));
+                runStyle->addItems(
+                    {tr("Point droit"), tr("Point bean"), tr("Point arrière"), tr("Point tige")});
+                runStyle->setCurrentIndex(static_cast<int>(p.style));
+                runStyle->setToolTip(tr("Droit : passages ci-dessous. Bean : trois passages par "
+                                        "intervalle. Arrière : chaque point revient en arrière. "
+                                        "Tige : pénétrations décalées latéralement."));
+                auto* stemOff = mmSpin(to_millimeters(p.stem_offset).value, 3.0, 0.1,
+                                       tr("Décalage latéral du point tige."));
+                stemOff->setObjectName(QStringLiteral("spin_stemOffset"));
+                form->addRow(tr("Style :"), runStyle);
                 form->addRow(tr("Longueur de point :"), len);
                 form->addRow(tr("Longueur minimale :"), minl);
                 form->addRow(tr("Passages :"), rep);
+                form->addRow(tr("Décalage du point tige :"), stemOff);
+                const auto syncRunStyle = [form, runStyle, rep, stemOff] {
+                    const int s = runStyle->currentIndex();
+                    setRowEnabled(form, rep, s == 0);
+                    setRowEnabled(form, stemOff, s == 3);
+                };
+                syncRunStyle();
+                connect(runStyle, &QComboBox::currentIndexChanged, this,
+                        [syncRunStyle](int) { syncRunStyle(); });
+                bindEnumField<T>(this, edit, runStyle, tr("Style de point"), &T::style, members);
+                bindMm(stemOff, tr("Décalage du point tige"), &T::stem_offset);
                 bindMm(len, tr("Longueur de point"), &T::stitch_length);
                 bindMm(minl, tr("Longueur minimale"), &T::min_length);
                 bindInt(rep, tr("Passages"), &T::repeats);
@@ -1205,6 +1376,12 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 uSpacing->setObjectName(QStringLiteral("spin_underlaySpacing"));
                 auto* underpath = new QCheckBox(tr("Liaisons cousues cachées"), body_);
                 underpath->setChecked(p.hidden_underpath);
+                auto* uZig = new QCheckBox(tr("Sous-couche en zigzag"), body_);
+                uZig->setObjectName(QStringLiteral("check_underlayZigzag"));
+                uZig->setToolTip(tr("Rangées diagonales à 45° des rangées de la couche "
+                                    "supérieure, croisées avec la sous-couche perpendiculaire : "
+                                    "stabilise un grand aplat."));
+                uZig->setChecked(p.underlay_zigzag);
                 // HP-ENG-001 : compensation du tirage (allongement des rangées dans l'axe du fil).
                 auto* pull =
                     mmSpin(to_millimeters(p.pull_compensation).value, 3.0, 0.0,
@@ -1212,26 +1389,57 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                               "du fil : le fil tire dans sa direction et la forme cousue "
                               "rétrécit. 0,2 à 0,4 mm est courant ; 0 = aucune."));
                 pull->setObjectName(QStringLiteral("spin_tatamiPull"));
+                // Bords effilochés : écrêtage des bouts de rangée et passe de contour.
+                auto* rowClip =
+                    mmSpin(to_millimeters(p.row_end_clip).value, 5.0, 0.0,
+                           tr("Rabat les pointes : une fin de rangée qui dépasse de plus que "
+                              "cette longueur les rangées voisines est raccourcie (bords "
+                              "effilochés sur un bord presque parallèle aux rangées). 1 mm est "
+                              "courant ; 0 = aucun."));
+                rowClip->setObjectName(QStringLiteral("spin_tatamiRowEndClip"));
+                auto* outline = new QCheckBox(tr("Contour cousu par-dessus"), body_);
+                outline->setObjectName(QStringLiteral("check_tatamiEdgeOutline"));
+                outline->setToolTip(tr("Coud un point droit le long du bord (et des trous) après "
+                                       "le remplissage, pour masquer les bouts de rangées."));
+                outline->setChecked(p.edge_outline);
                 auto* uMode = makeUnderlayModeCombo(body_, p.underlay_mode);
                 form->addRow(tr("Espacement des rangées :"), spacing);
                 form->addRow(tr("Longueur de point :"), len);
                 form->addRow(tr("Angle (orientation) :"), angle);
                 form->addRow(tr("Retrait de bord :"), inset);
+                auto* pMode = makePullModeCombo(body_, p.pull_mode);
+                form->addRow(tr("Tirage :"), pMode);
                 form->addRow(tr("Compensation du tirage :"), pull);
+                syncPullMode(form, pMode, pull);
+                bindEnumField<T>(this, edit, pMode, tr("Tirage"), &T::pull_mode, members);
+                form->addRow(tr("Écrêtage des bouts :"), rowClip);
+                form->addRow(QString(), outline);
                 form->addRow(tr("Décalage (stagger) :"), stagger);
                 form->addRow(tr("Sous-couche :"), uMode);
                 form->addRow(QString(), uEdge);
                 form->addRow(tr("Retrait de la sous-couche :"), uInset);
                 form->addRow(QString(), uPar);
                 form->addRow(tr("Espacement de la sous-couche :"), uSpacing);
+                form->addRow(QString(), uZig);
                 form->addRow(QString(), underpath);
+                advancedRows.push_back(inset);
+                advancedRows.push_back(rowClip);
+                advancedRows.push_back(outline);
+                advancedRows.push_back(stagger);
+                advancedRows.push_back(uEdge);
+                advancedRows.push_back(uInset);
+                advancedRows.push_back(uPar);
+                advancedRows.push_back(uSpacing);
+                advancedRows.push_back(uZig);
+                advancedRows.push_back(underpath);
                 dependOn(uEdge, uInset);
                 dependOn(uPar, uSpacing);
                 // Mode automatique : les réglages manuels sont ignorés, donc grisés.
-                const auto syncUnderlay = [form, uMode, uEdge, uInset, uPar, uSpacing] {
+                const auto syncUnderlay = [form, uMode, uEdge, uInset, uPar, uSpacing, uZig] {
                     const bool manual = uMode->currentIndex() == 0;
                     uEdge->setEnabled(manual);
                     uPar->setEnabled(manual);
+                    uZig->setEnabled(manual);
                     setRowEnabled(form, uInset, manual && uEdge->isChecked());
                     setRowEnabled(form, uSpacing, manual && uPar->isChecked());
                 };
@@ -1240,6 +1448,9 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                         [syncUnderlay](int) { syncUnderlay(); });
                 bindEnumField<T>(this, edit, uMode, tr("Sous-couche"), &T::underlay_mode, members);
                 bindMm(pull, tr("Compensation du tirage"), &T::pull_compensation);
+                bindBool(uZig, tr("Sous-couche en zigzag"), &T::underlay_zigzag);
+                bindMm(rowClip, tr("Écrêtage des bouts de rangée"), &T::row_end_clip);
+                bindBool(outline, tr("Contour cousu par-dessus"), &T::edge_outline);
                 bindMm(spacing, tr("Espacement des rangées"), &T::row_spacing);
                 bindMm(len, tr("Longueur de point"), &T::stitch_length);
                 connect(angle, &QDoubleSpinBox::valueChanged, this, [edit, angle](double v) {
@@ -1274,8 +1485,41 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                     delete toDirectional; // conversion de type : bloc « Type de points »
                 } else {
                     form->addRow(QString(), toDirectional);
+                    advancedRows.push_back(toDirectional);
                     connect(toDirectional, &QPushButton::clicked, this,
                             [this, id] { emit convertToDirectionalRequested(id); });
+                    auto* toContour =
+                        new QPushButton(tr("Convertir en remplissage concentrique"), body_);
+                    toContour->setObjectName(QStringLiteral("button_convertToContourFill"));
+                    toContour->setToolTip(tr("Remplace les rangées par des anneaux concentriques "
+                                             "qui suivent le bord (echo). Annulable (Ctrl+Z)."));
+                    form->addRow(QString(), toContour);
+                    advancedRows.push_back(toContour);
+                    connect(toContour, &QPushButton::clicked, this,
+                            [this, id] { emit convertToContourFillRequested(id); });
+                    // HP-STI-008 / 009 / 014 : radial, spirale, croisé (kind 0 / 1 / 2).
+                    const struct {
+                        const char* name;
+                        QString label;
+                        QString tip;
+                    } extra[] = {
+                        {"button_convertToRadialFill", tr("Convertir en remplissage radial"),
+                         tr("Rayons depuis un centre, densité constante à la périphérie. "
+                            "Annulable (Ctrl+Z).")},
+                        {"button_convertToSpiralFill", tr("Convertir en remplissage en spirale"),
+                         tr("Spirale continue depuis un centre. Annulable (Ctrl+Z).")},
+                        {"button_convertToCrosshatchFill", tr("Convertir en remplissage croisé"),
+                         tr("Deux ou trois tatamis espacés à angles différents. "
+                            "Annulable (Ctrl+Z).")}};
+                    for (int kind = 0; kind < 3; ++kind) {
+                        auto* b = new QPushButton(extra[kind].label, body_);
+                        b->setObjectName(QString::fromLatin1(extra[kind].name));
+                        b->setToolTip(extra[kind].tip);
+                        form->addRow(QString(), b);
+                        advancedRows.push_back(b);
+                        connect(b, &QPushButton::clicked, this,
+                                [this, id, kind] { emit convertToFillKindRequested(id, kind); });
+                    }
                 }
             } else if constexpr (std::is_same_v<T, document::DirectionalFillParams>) {
                 // Guides et ruptures ne s'éditent pas ici (canevas) : jamais touchés.
@@ -1328,6 +1572,22 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 uSpacing->setObjectName(QStringLiteral("spin_underlaySpacing"));
                 auto* underpath = new QCheckBox(tr("Liaisons cousues cachées"), body_);
                 underpath->setChecked(p.hidden_underpath);
+                auto* outline = new QCheckBox(tr("Contour cousu par-dessus"), body_);
+                outline->setObjectName(QStringLiteral("check_directionalEdgeOutline"));
+                outline->setToolTip(tr("Coud un point droit le long du bord (et des trous) après "
+                                       "le remplissage, pour masquer les bouts de lignes "
+                                       "(bords effilochés)."));
+                outline->setChecked(p.edge_outline);
+                // HP-ENG-001 : prolonge chaque ligne de couture à ses deux bouts.
+                auto* dirPull =
+                    mmSpin(to_millimeters(p.pull_compensation).value, 3.0, 0.0,
+                           tr("Chaque ligne de couture dépasse du contour de cette longueur, dans "
+                              "sa direction de bout : le fil tire dans sa direction et la forme "
+                              "cousue rétrécit. 0,2 à 0,4 mm est courant ; 0 = aucune."));
+                dirPull->setObjectName(QStringLiteral("spin_directionalPull"));
+                auto* dirZig = new QCheckBox(tr("Sous-couche en zigzag"), body_);
+                dirZig->setObjectName(QStringLiteral("check_directionalUnderlayZigzag"));
+                dirZig->setChecked(p.underlay_zigzag);
                 auto* handmade = new QCheckBox(tr("Aspect fait main"), body_);
                 handmade->setObjectName(QStringLiteral("check_handmade"));
                 handmade->setChecked(p.handmade);
@@ -1447,16 +1707,24 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 form->addRow(tr("Retrait de la sous-couche :"), uInset);
                 form->addRow(QString(), uPar);
                 form->addRow(tr("Espacement de la sous-couche :"), uSpacing);
+                form->addRow(QString(), dirZig);
                 form->addRow(QString(), underpath);
+                form->addRow(QString(), outline);
+                auto* pMode = makePullModeCombo(body_, p.pull_mode);
+                form->addRow(tr("Tirage :"), pMode);
+                form->addRow(tr("Compensation du tirage :"), dirPull);
+                syncPullMode(form, pMode, dirPull);
+                bindEnumField<T>(this, edit, pMode, tr("Tirage"), &T::pull_mode, members);
                 form->addRow(QString(), handmade);
                 form->addRow(tr("Intensité :"), intensity);
                 form->addRow(QString(), reseed);
                 dependOn(uEdge, uInset);
                 dependOn(uPar, uSpacing);
-                const auto syncUnderlay = [form, uMode, uEdge, uInset, uPar, uSpacing] {
+                const auto syncUnderlay = [form, uMode, uEdge, uInset, uPar, uSpacing, dirZig] {
                     const bool manual = uMode->currentIndex() == 0;
                     uEdge->setEnabled(manual);
                     uPar->setEnabled(manual);
+                    dirZig->setEnabled(manual);
                     setRowEnabled(form, uInset, manual && uEdge->isChecked());
                     setRowEnabled(form, uSpacing, manual && uPar->isChecked());
                 };
@@ -1518,6 +1786,9 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 bindBool(uPar, tr("Sous-couche perpendiculaire"), &T::underlay_parallel);
                 bindMm(uSpacing, tr("Espacement de la sous-couche"), &T::underlay_spacing);
                 bindBool(underpath, tr("Liaisons cousues cachées"), &T::hidden_underpath);
+                bindBool(outline, tr("Contour cousu par-dessus"), &T::edge_outline);
+                bindMm(dirPull, tr("Compensation du tirage"), &T::pull_compensation);
+                bindBool(dirZig, tr("Sous-couche en zigzag"), &T::underlay_zigzag);
                 bindInt(intensity, tr("Intensité"), &T::handmade_intensity);
                 connect(handmade, &QCheckBox::toggled, this, [intensity, reseed](bool on) {
                     intensity->setEnabled(on);
@@ -1600,7 +1871,11 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 }
                 auto* uMode = makeUnderlayModeCombo(body_, p.underlay_mode);
                 form->addRow(tr("Espacement :"), density);
+                auto* pMode = makePullModeCombo(body_, p.pull_mode);
+                form->addRow(tr("Tirage :"), pMode);
                 form->addRow(tr("Compensation de tirage :"), comp);
+                syncPullMode(form, pMode, comp);
+                bindEnumField<T>(this, edit, pMode, tr("Tirage"), &T::pull_mode, members);
                 form->addRow(tr("Sous-couche :"), uMode);
                 form->addRow(QString(), underlay);
                 form->addRow(QString(), edgeU);
@@ -1625,6 +1900,74 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 form->addRow(tr("Forme du bout (fin) :"), capEnd);
                 form->addRow(tr("Point d'arrêt (début) :"), lockStart);
                 form->addRow(tr("Point d'arrêt (fin) :"), lockEnd);
+                auto* autoSpacing =
+                    new QCheckBox(tr("Espacement automatique selon la largeur"), body_);
+                autoSpacing->setObjectName(QStringLiteral("chk_satinAutoSpacing"));
+                autoSpacing->setChecked(p.auto_spacing);
+                autoSpacing->setToolTip(tr("Colonnes étroites plus lâches, larges plus serrées."));
+                auto* corner = new QComboBox(body_);
+                corner->setObjectName(QStringLiteral("combo_satinCorner"));
+                corner->addItems(cornerItems());
+                corner->setCurrentIndex(static_cast<int>(p.corner_mode));
+                corner->setToolTip(tr("Traitement des coins vifs de la colonne."));
+                form->addRow(QString(), autoSpacing);
+                form->addRow(tr("Coins vifs :"), corner);
+                advancedRows.push_back(underlay);
+                advancedRows.push_back(edgeU);
+                advancedRows.push_back(zigU);
+                advancedRows.push_back(pullL);
+                advancedRows.push_back(pullR);
+                advancedRows.push_back(shortCombo);
+                advancedRows.push_back(splitCombo);
+                advancedRows.push_back(maxLen);
+                advancedRows.push_back(maxHard);
+                advancedRows.push_back(capStart);
+                advancedRows.push_back(capEnd);
+                advancedRows.push_back(lockStart);
+                advancedRows.push_back(lockEnd);
+                advancedRows.push_back(autoSpacing);
+                advancedRows.push_back(corner);
+                bindBool(autoSpacing, tr("Espacement automatique"), &T::auto_spacing);
+                bindEnumField<T>(this, edit, corner, tr("Coins vifs"), &T::corner_mode, members);
+                auto* cornerAngle = new QDoubleSpinBox(body_);
+                cornerAngle->setObjectName(QStringLiteral("spin_satinCornerThreshold"));
+                cornerAngle->setKeyboardTracking(false);
+                cornerAngle->setRange(15.0, 150.0);
+                cornerAngle->setDecimals(0);
+                cornerAngle->setSuffix(tr(" °"));
+                cornerAngle->setToolTip(
+                    tr("Changement de cap de l'axe au-delà duquel la colonne a un coin vif."));
+                cornerAngle->setValue(to_deg(p.corner_threshold));
+                form->addRow(tr("Seuil de coin :"), cornerAngle);
+                connect(cornerAngle, &QDoubleSpinBox::valueChanged, this, [edit](double v) {
+                    edit(tr("Seuil de coin"), [v](T& t) { t.corner_threshold = from_deg(v); });
+                });
+                auto* jagged = new QComboBox(body_);
+                jagged->setObjectName(QStringLiteral("combo_satinJagged"));
+                jagged->addItems(jaggedItems());
+                jagged->setCurrentIndex(static_cast<int>(p.jagged));
+                jagged->setToolTip(tr("Raccourcit au hasard (reproductible) un ou deux côtés de "
+                                      "la colonne : fourrure, herbe."));
+                form->addRow(tr("Bord irrégulier :"), jagged);
+                bindEnumField<T>(this, edit, jagged, tr("Bord irrégulier"), &T::jagged, members);
+                auto* jaggedAmp =
+                    mmSpin(to_millimeters(p.jagged_amplitude).value, 6.0, 0.2,
+                           tr("Raccourcissement maximal d'un fil du bord irrégulier."));
+                jaggedAmp->setObjectName(QStringLiteral("spin_satinJaggedAmplitude"));
+                jaggedAmp->setKeyboardTracking(false);
+                form->addRow(tr("Amplitude du bord :"), jaggedAmp);
+                bindMm(jaggedAmp, tr("Amplitude du bord irrégulier"), &T::jagged_amplitude);
+                auto* jaggedSeed = new QSpinBox(body_);
+                jaggedSeed->setObjectName(QStringLiteral("spin_satinJaggedSeed"));
+                jaggedSeed->setKeyboardTracking(false);
+                jaggedSeed->setRange(0, 999'999);
+                jaggedSeed->setValue(static_cast<int>(p.jagged_seed));
+                jaggedSeed->setToolTip(tr("Graine du hasard : change le motif du bord."));
+                form->addRow(tr("Graine du bord :"), jaggedSeed);
+                connect(jaggedSeed, &QSpinBox::valueChanged, this, [edit](int v) {
+                    edit(tr("Graine du bord irrégulier"),
+                         [v](T& t) { t.jagged_seed = static_cast<std::uint32_t>(v); });
+                });
                 bindMm(density, tr("Espacement"), &T::density);
                 bindMm(comp, tr("Compensation de tirage"), &T::pull_compensation);
                 bindBool(underlay, tr("Sous-couche centrale"), &T::center_underlay);
@@ -1646,6 +1989,32 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                                  members);
                 bindEnumField<T>(this, edit, lockEnd, tr("Point d'arrêt (fin)"), &T::lock_end,
                                  members);
+            } else if constexpr (std::is_same_v<T, document::BlanketStitchParams>) {
+                // HP-STI-003 : blanket stitch / zigzag le long du contour.
+                auto* style = new QComboBox(body_);
+                style->setObjectName(QStringLiteral("combo_blanketStyle"));
+                style->addItems({tr("Blanket (dents perpendiculaires)"), tr("Zigzag")});
+                style->setCurrentIndex(static_cast<int>(p.style));
+                auto* side = new QComboBox(body_);
+                side->setObjectName(QStringLiteral("combo_blanketSide"));
+                side->addItems({tr("Gauche du tracé"), tr("Droite du tracé"), tr("Centré")});
+                side->setCurrentIndex(static_cast<int>(p.side));
+                side->setToolTip(tr("Côté de la bande par rapport au sens du chemin."));
+                auto* width = mmSpin(to_millimeters(p.width).value, 20.0, 0.2,
+                                     tr("Largeur de la bande (longueur des dents). 0,2 – 20 mm."));
+                width->setObjectName(QStringLiteral("spin_blanketWidth"));
+                auto* spacing = mmSpin(to_millimeters(p.spacing).value, 20.0, 0.3,
+                                       tr("Écart entre deux dents/points le long du chemin. "
+                                          "0,3 – 20 mm."));
+                spacing->setObjectName(QStringLiteral("spin_blanketSpacing"));
+                form->addRow(tr("Style :"), style);
+                form->addRow(tr("Côté :"), side);
+                form->addRow(tr("Largeur :"), width);
+                form->addRow(tr("Espacement :"), spacing);
+                bindEnumField<T>(this, edit, style, tr("Style blanket"), &T::style, members);
+                bindEnumField<T>(this, edit, side, tr("Côté du blanket"), &T::side, members);
+                bindMm(width, tr("Largeur du blanket"), &T::width);
+                bindMm(spacing, tr("Espacement du blanket"), &T::spacing);
             } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
                 // Guides : édités par signaux dédiés (liste ci-dessous, rafraîchie par
                 // setAutoSatinState). Les réglages scalaires passent par paramsEdited ;
@@ -1781,7 +2150,9 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
 
                 // Intertitres : 20 champs à plat sont illisibles ; on les regroupe par sujet.
                 const auto section = [this, form](const QString& title) {
-                    form->addRow(makeSectionLabel(title, body_));
+                    auto* heading = makeSectionLabel(title, body_);
+                    form->addRow(heading);
+                    return heading;
                 };
                 if (!group) {
                     form->addRow(QString(), summary);
@@ -1852,7 +2223,11 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 form->addRow(tr("Longueur max des segments (y ≤ Lmax) :"), splitLen);
                 form->addRow(tr("Points courts dans les virages :"), shortCombo);
                 section(tr("Compensation"));
+                auto* pMode = makePullModeCombo(body_, p.pull_mode);
+                form->addRow(tr("Tirage :"), pMode);
                 form->addRow(tr("Compensation de tirage :"), comp);
+                syncPullMode(form, pMode, comp);
+                bindEnumField<T>(this, edit, pMode, tr("Tirage"), &T::pull_mode, members);
                 form->addRow(tr("Compensation gauche :"), pullL);
                 form->addRow(tr("Compensation droite :"), pullR);
                 section(tr("Sous-couches"));
@@ -1871,11 +2246,69 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 connect(uMode, &QComboBox::currentIndexChanged, this,
                         [syncUnderlay](int) { syncUnderlay(); });
                 bindEnumField<T>(this, edit, uMode, tr("Sous-couche"), &T::underlay_mode, members);
-                section(tr("Extrémités"));
+                auto* endsTitle = section(tr("Extrémités"));
+                advancedRows.push_back(endsTitle);
                 form->addRow(tr("Forme du bout (début) :"), capStart);
                 form->addRow(tr("Forme du bout (fin) :"), capEnd);
                 form->addRow(tr("Point d'arrêt (début) :"), lockStart);
                 form->addRow(tr("Point d'arrêt (fin) :"), lockEnd);
+                auto* autoSpacing =
+                    new QCheckBox(tr("Espacement automatique selon la largeur"), body_);
+                autoSpacing->setObjectName(QStringLiteral("chk_autoSatinAutoSpacing"));
+                autoSpacing->setChecked(p.auto_spacing);
+                autoSpacing->setToolTip(tr("Colonnes étroites plus lâches, larges plus serrées."));
+                auto* corner = new QComboBox(body_);
+                corner->setObjectName(QStringLiteral("combo_autoSatinCorner"));
+                corner->addItems(cornerItems());
+                corner->setCurrentIndex(static_cast<int>(p.corner_mode));
+                corner->setToolTip(tr("Traitement des coins vifs de la colonne."));
+                form->addRow(QString(), autoSpacing);
+                form->addRow(tr("Coins vifs :"), corner);
+                advancedRows.insert(advancedRows.end(),
+                                    {splitCombo, threshold, splitLen, shortCombo, pullL, pullR,
+                                     underlay, edgeU, zigU, capStart, capEnd, lockStart, lockEnd,
+                                     autoSpacing, corner});
+                bindBool(autoSpacing, tr("Espacement automatique"), &T::auto_spacing);
+                bindEnumField<T>(this, edit, corner, tr("Coins vifs"), &T::corner_mode, members);
+                auto* cornerAngle = new QDoubleSpinBox(body_);
+                cornerAngle->setObjectName(QStringLiteral("spin_autoSatinCornerThreshold"));
+                cornerAngle->setKeyboardTracking(false);
+                cornerAngle->setRange(15.0, 150.0);
+                cornerAngle->setDecimals(0);
+                cornerAngle->setSuffix(tr(" °"));
+                cornerAngle->setToolTip(
+                    tr("Changement de cap de l'axe au-delà duquel la colonne a un coin vif."));
+                cornerAngle->setValue(to_deg(p.corner_threshold));
+                form->addRow(tr("Seuil de coin :"), cornerAngle);
+                connect(cornerAngle, &QDoubleSpinBox::valueChanged, this, [edit](double v) {
+                    edit(tr("Seuil de coin"), [v](T& t) { t.corner_threshold = from_deg(v); });
+                });
+                auto* jagged = new QComboBox(body_);
+                jagged->setObjectName(QStringLiteral("combo_autoSatinJagged"));
+                jagged->addItems(jaggedItems());
+                jagged->setCurrentIndex(static_cast<int>(p.jagged));
+                jagged->setToolTip(tr("Raccourcit au hasard (reproductible) un ou deux côtés de "
+                                      "la colonne : fourrure, herbe."));
+                form->addRow(tr("Bord irrégulier :"), jagged);
+                bindEnumField<T>(this, edit, jagged, tr("Bord irrégulier"), &T::jagged, members);
+                auto* jaggedAmp =
+                    mmSpin(to_millimeters(p.jagged_amplitude).value, 6.0, 0.2,
+                           tr("Raccourcissement maximal d'un fil du bord irrégulier."));
+                jaggedAmp->setObjectName(QStringLiteral("spin_autoSatinJaggedAmplitude"));
+                jaggedAmp->setKeyboardTracking(false);
+                form->addRow(tr("Amplitude du bord :"), jaggedAmp);
+                bindMm(jaggedAmp, tr("Amplitude du bord irrégulier"), &T::jagged_amplitude);
+                auto* jaggedSeed = new QSpinBox(body_);
+                jaggedSeed->setObjectName(QStringLiteral("spin_autoSatinJaggedSeed"));
+                jaggedSeed->setKeyboardTracking(false);
+                jaggedSeed->setRange(0, 999'999);
+                jaggedSeed->setValue(static_cast<int>(p.jagged_seed));
+                jaggedSeed->setToolTip(tr("Graine du hasard : change le motif du bord."));
+                form->addRow(tr("Graine du bord :"), jaggedSeed);
+                connect(jaggedSeed, &QSpinBox::valueChanged, this, [edit](int v) {
+                    edit(tr("Graine du bord irrégulier"),
+                         [v](T& t) { t.jagged_seed = static_cast<std::uint32_t>(v); });
+                });
                 section(tr("Orientation des fils"));
                 if (group) {
                     // Guides en lot : un même angle pour toutes les formes du groupe.
@@ -2030,14 +2463,356 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 if (!group) {
                     setAutoSatinState(id, &p, QString());
                 }
+            } else if constexpr (std::is_same_v<T, document::ContourFillParams>) {
+                // HP-STI-007 : remplissage concentrique ; tout passe par `paramsEdited`.
+                auto* spacing =
+                    mmSpin(to_millimeters(p.row_spacing).value, 10.0, 0.1,
+                           tr("Écart entre deux anneaux (densité). Plage : 0,1 – 10 mm."));
+                spacing->setObjectName(QStringLiteral("spin_contourSpacing"));
+                auto* len = mmSpin(to_millimeters(p.stitch_length).value, 7.0, 1.0,
+                                   tr("Longueur MAXIMALE d'un point, bornée entre 1 et 7 mm."));
+                len->setObjectName(QStringLiteral("spin_contourStitchLength"));
+                auto* minl = mmSpin(to_millimeters(p.min_length).value, 7.0, 0.0,
+                                    tr("Longueur minimale d'un point (hors coins)."));
+                minl->setObjectName(QStringLiteral("spin_contourMinLength"));
+                auto* inset = mmSpin(to_millimeters(p.inset).value, 5.0, 0.0,
+                                     tr("Retrait du premier anneau par rapport au bord."));
+                inset->setObjectName(QStringLiteral("spin_contourInset"));
+                auto* spiral = new QCheckBox(tr("Liaison en spirale"), body_);
+                spiral->setObjectName(QStringLiteral("check_contourSpiral"));
+                spiral->setToolTip(tr("Chaque tour glisse vers l'anneau suivant, sans saut. "
+                                      "Décochée : anneaux fermés reliés par un court pas."));
+                spiral->setChecked(p.spiral);
+                auto* underpath = new QCheckBox(tr("Liaisons cousues cachées"), body_);
+                underpath->setObjectName(QStringLiteral("check_contourUnderpath"));
+                underpath->setChecked(p.hidden_underpath);
+                form->addRow(tr("Espacement des anneaux :"), spacing);
+                form->addRow(tr("Longueur de point :"), len);
+                form->addRow(tr("Longueur minimale :"), minl);
+                form->addRow(tr("Retrait du bord :"), inset);
+                form->addRow(QString(), spiral);
+                form->addRow(QString(), underpath);
+                bindMm(spacing, tr("Espacement des anneaux"), &T::row_spacing);
+                bindMm(len, tr("Longueur de point"), &T::stitch_length);
+                bindMm(minl, tr("Longueur minimale"), &T::min_length);
+                bindMm(inset, tr("Retrait du bord"), &T::inset);
+                bindBool(spiral, tr("Liaison en spirale"), &T::spiral);
+                bindBool(underpath, tr("Liaisons cousues cachées"), &T::hidden_underpath);
+            } else if constexpr (std::is_same_v<T, document::MotifRunParams> ||
+                                 std::is_same_v<T, document::MotifFillParams>) {
+                // HP-STI-002 / HP-STI-006 : motif répété le long du contour ou pavant la région.
+                const bool isFill = std::is_same_v<T, document::MotifFillParams>;
+                const QString pfx =
+                    isFill ? QStringLiteral("motifFill") : QStringLiteral("motifRun");
+                auto* motif = new QComboBox(body_);
+                motif->setObjectName(QStringLiteral("combo_%1Motif").arg(pfx));
+                motif->addItems({tr("Vague"), tr("Zigzag"), tr("Feuille"), tr("Cœur"),
+                                 tr("Losange"), tr("Feston")});
+                motif->setCurrentIndex(static_cast<int>(p.motif));
+                auto* size = mmSpin(to_millimeters(p.size).value, 40.0, 0.5,
+                                    tr("Hauteur du motif (carré en remplissage). 0,5 – 40 mm."));
+                size->setObjectName(QStringLiteral("spin_%1Size").arg(pfx));
+                auto* spacing = mmSpin(to_millimeters(p.spacing).value, 100.0, 1.0,
+                                       isFill ? tr("Pas de la grille entre centres de motifs. "
+                                                   "1 – 100 mm.")
+                                              : tr("Longueur d'une répétition le long du tracé. "
+                                                   "1 – 100 mm."));
+                spacing->setObjectName(QStringLiteral("spin_%1Spacing").arg(pfx));
+                auto* len = mmSpin(to_millimeters(p.stitch_length).value, 7.0, 1.0,
+                                   tr("Longueur MAXIMALE d'un point, bornée entre 1 et 7 mm."));
+                len->setObjectName(QStringLiteral("spin_%1StitchLength").arg(pfx));
+                auto* minl = mmSpin(to_millimeters(p.min_length).value, 7.0, 0.0,
+                                    tr("Longueur minimale d'un point."));
+                minl->setObjectName(QStringLiteral("spin_%1MinLength").arg(pfx));
+                form->addRow(tr("Motif :"), motif);
+                form->addRow(tr("Taille :"), size);
+                form->addRow(isFill ? tr("Pas de la grille :") : tr("Répétition :"), spacing);
+                form->addRow(tr("Longueur de point :"), len);
+                form->addRow(tr("Longueur minimale :"), minl);
+                bindEnumField<T>(this, edit, motif, tr("Motif"), &T::motif, members);
+                bindMm(size, tr("Taille du motif"), &T::size);
+                bindMm(spacing, tr("Pas du motif"), &T::spacing);
+                bindMm(len, tr("Longueur de point"), &T::stitch_length);
+                bindMm(minl, tr("Longueur minimale"), &T::min_length);
+                if constexpr (std::is_same_v<T, document::MotifRunParams>) {
+                    auto* alt = new QCheckBox(tr("Alterner (miroir un sur deux)"), body_);
+                    alt->setObjectName(QStringLiteral("check_motifRunAlternate"));
+                    alt->setChecked(p.alternate);
+                    form->addRow(QString(), alt);
+                    bindBool(alt, tr("Alternance du motif"), &T::alternate);
+                } else {
+                    auto* angle = new QDoubleSpinBox(body_);
+                    angle->setObjectName(QStringLiteral("spin_motifFillAngle"));
+                    angle->setKeyboardTracking(false);
+                    angle->setRange(0.0, 179.9);
+                    angle->setDecimals(1);
+                    angle->setWrapping(true);
+                    angle->setSuffix(tr(" °"));
+                    angle->setToolTip(tr("Orientation de la grille : 0° = horizontal."));
+                    angle->setValue(std::fmod(std::fmod(to_deg(p.angle), 180.0) + 180.0, 180.0));
+                    auto* inset = mmSpin(to_millimeters(p.inset).value, 5.0, 0.0,
+                                         tr("Retrait des motifs par rapport au bord."));
+                    inset->setObjectName(QStringLiteral("spin_motifFillInset"));
+                    auto* stagger = new QCheckBox(tr("Rangées décalées"), body_);
+                    stagger->setObjectName(QStringLiteral("check_motifFillStagger"));
+                    stagger->setChecked(p.stagger);
+                    auto* underpath = new QCheckBox(tr("Liaisons cousues cachées"), body_);
+                    underpath->setObjectName(QStringLiteral("check_motifFillUnderpath"));
+                    underpath->setChecked(p.hidden_underpath);
+                    form->addRow(tr("Angle :"), angle);
+                    form->addRow(tr("Retrait du bord :"), inset);
+                    form->addRow(QString(), stagger);
+                    form->addRow(QString(), underpath);
+                    connect(angle, &QDoubleSpinBox::valueChanged, this, [edit](double v) {
+                        edit(tr("Angle du motif"), [v](T& t) { t.angle = from_deg(v); });
+                    });
+                    bindMm(inset, tr("Retrait du bord"), &T::inset);
+                    bindBool(stagger, tr("Rangées décalées"), &T::stagger);
+                    bindBool(underpath, tr("Liaisons cousues cachées"), &T::hidden_underpath);
+                }
+            } else if constexpr (std::is_same_v<T, document::RadialFillParams> ||
+                                 std::is_same_v<T, document::SpiralFillParams>) {
+                // HP-STI-008 / 009 : radial et spirale partagent densité, longueurs et centre.
+                constexpr bool kSpiral = std::is_same_v<T, document::SpiralFillParams>;
+                const QString pfx = kSpiral ? QStringLiteral("spiral") : QStringLiteral("radial");
+                auto* spacing = mmSpin(to_millimeters(p.row_spacing).value, 10.0, 0.1,
+                                       kSpiral ? tr("Écart entre deux tours. Plage : 0,1 – 10 mm.")
+                                               : tr("Écart d'arc entre rayons à la périphérie. "
+                                                    "Plage : 0,1 – 10 mm."));
+                spacing->setObjectName(QStringLiteral("spin_%1Spacing").arg(pfx));
+                auto* len = mmSpin(to_millimeters(p.stitch_length).value, 7.0, 1.0,
+                                   tr("Longueur MAXIMALE d'un point, bornée entre 1 et 7 mm."));
+                len->setObjectName(QStringLiteral("spin_%1StitchLength").arg(pfx));
+                auto* minl = mmSpin(to_millimeters(p.min_length).value, 7.0, 0.0,
+                                    tr("Longueur minimale d'un point."));
+                minl->setObjectName(QStringLiteral("spin_%1MinLength").arg(pfx));
+                auto* inset = mmSpin(to_millimeters(p.inset).value, 5.0, 0.0,
+                                     tr("Retrait par rapport au bord."));
+                inset->setObjectName(QStringLiteral("spin_%1Inset").arg(pfx));
+                auto* autoCenter = new QCheckBox(tr("Centre automatique"), body_);
+                autoCenter->setObjectName(QStringLiteral("check_%1AutoCenter").arg(pfx));
+                autoCenter->setToolTip(
+                    tr("Décochée : le centre est fixé aux coordonnées ci-dessous "
+                       "(repère du document, en mm)."));
+                autoCenter->setChecked(!p.center.has_value());
+                const Vec2um c0 = p.center.value_or(Vec2um{});
+                auto* cx = mmSpin(to_millimeters(c0.x).value, 5000.0, -5000.0,
+                                  tr("Abscisse du centre (mm)."));
+                cx->setObjectName(QStringLiteral("spin_%1CenterX").arg(pfx));
+                auto* cy = mmSpin(to_millimeters(c0.y).value, 5000.0, -5000.0,
+                                  tr("Ordonnée du centre (mm), Y vers le haut."));
+                cy->setObjectName(QStringLiteral("spin_%1CenterY").arg(pfx));
+                cx->setEnabled(p.center.has_value());
+                cy->setEnabled(p.center.has_value());
+                auto* underpath = new QCheckBox(tr("Liaisons cousues cachées"), body_);
+                underpath->setObjectName(QStringLiteral("check_%1Underpath").arg(pfx));
+                underpath->setChecked(p.hidden_underpath);
+                form->addRow(kSpiral ? tr("Écart des tours :") : tr("Écart des rayons :"), spacing);
+                form->addRow(tr("Longueur de point :"), len);
+                form->addRow(tr("Longueur minimale :"), minl);
+                form->addRow(tr("Retrait du bord :"), inset);
+                form->addRow(QString(), autoCenter);
+                auto* centerHint = new QLabel(
+                    tr("Le repère en croix sur le canevas se glisse pour déplacer le centre ; "
+                       "clic droit dessus : centre automatique."),
+                    body_);
+                centerHint->setObjectName(QStringLiteral("label_%1CenterHint").arg(pfx));
+                centerHint->setWordWrap(true);
+                form->addRow(QString(), centerHint);
+                form->addRow(tr("Centre X :"), cx);
+                form->addRow(tr("Centre Y :"), cy);
+                bindMm(spacing, tr("Espacement"), &T::row_spacing);
+                bindMm(len, tr("Longueur de point"), &T::stitch_length);
+                bindMm(minl, tr("Longueur minimale"), &T::min_length);
+                bindMm(inset, tr("Retrait du bord"), &T::inset);
+                bindBool(underpath, tr("Liaisons cousues cachées"), &T::hidden_underpath);
+                // Centre : un seul gestionnaire ; l'état des cases/valeurs est relu à chaque fois.
+                const auto editCenter = [edit, autoCenter, cx, cy, this] {
+                    const bool useAuto = autoCenter->isChecked();
+                    const Micrometers x = to_um(cx->value());
+                    const Micrometers y = to_um(cy->value());
+                    cx->setEnabled(!useAuto);
+                    cy->setEnabled(!useAuto);
+                    edit(tr("Centre"), [useAuto, x, y](T& t) {
+                        if (useAuto) {
+                            t.center.reset();
+                        } else {
+                            t.center = Vec2um{x, y};
+                        }
+                    });
+                };
+                connect(autoCenter, &QCheckBox::toggled, this, editCenter);
+                connect(cx, &QDoubleSpinBox::valueChanged, this, editCenter);
+                connect(cy, &QDoubleSpinBox::valueChanged, this, editCenter);
+                if constexpr (kSpiral) {
+                    auto* cw = new QCheckBox(tr("Sens horaire"), body_);
+                    cw->setObjectName(QStringLiteral("check_spiralClockwise"));
+                    cw->setChecked(p.clockwise);
+                    form->addRow(QString(), cw);
+                    bindBool(cw, tr("Sens de la spirale"), &T::clockwise);
+                }
+                form->addRow(QString(), underpath);
+            } else if constexpr (std::is_same_v<T, document::CrosshatchFillParams>) {
+                // HP-STI-014 : 2 ou 3 tatamis espacés à angles répartis sur 180°.
+                auto* spacing =
+                    mmSpin(to_millimeters(p.row_spacing).value, 10.0, 0.3,
+                           tr("Écart entre rangées d'UNE couche. Plage : 0,3 – 10 mm."));
+                spacing->setObjectName(QStringLiteral("spin_crosshatchSpacing"));
+                auto* len = mmSpin(to_millimeters(p.stitch_length).value, 7.0, 1.0,
+                                   tr("Longueur de point le long d'une rangée (1 – 7 mm)."));
+                len->setObjectName(QStringLiteral("spin_crosshatchStitchLength"));
+                auto* inset = mmSpin(to_millimeters(p.inset).value, 5.0, 0.0,
+                                     tr("Retrait par rapport au bord."));
+                inset->setObjectName(QStringLiteral("spin_crosshatchInset"));
+                auto* layers = new QSpinBox(body_);
+                layers->setObjectName(QStringLiteral("spin_crosshatchLayers"));
+                layers->setKeyboardTracking(false);
+                layers->setRange(2, 3);
+                layers->setValue(p.layers);
+                layers->setToolTip(tr("2 = rangées perpendiculaires, 3 = trois directions à 60°."));
+                auto* angle = new QDoubleSpinBox(body_);
+                angle->setObjectName(QStringLiteral("spin_crosshatchAngle"));
+                angle->setKeyboardTracking(false);
+                angle->setRange(0.0, 179.9);
+                angle->setDecimals(1);
+                angle->setWrapping(true);
+                angle->setSuffix(tr(" °"));
+                angle->setToolTip(tr("Orientation de la première couche : 0° = horizontal, sens "
+                                     "trigonométrique."));
+                angle->setValue(std::fmod(std::fmod(to_deg(p.angle), 180.0) + 180.0, 180.0));
+                auto* underpath = new QCheckBox(tr("Liaisons cousues cachées"), body_);
+                underpath->setObjectName(QStringLiteral("check_crosshatchUnderpath"));
+                underpath->setChecked(p.hidden_underpath);
+                form->addRow(tr("Écart des rangées :"), spacing);
+                form->addRow(tr("Longueur de point :"), len);
+                form->addRow(tr("Couches :"), layers);
+                form->addRow(tr("Angle :"), angle);
+                form->addRow(tr("Retrait du bord :"), inset);
+                form->addRow(QString(), underpath);
+                bindMm(spacing, tr("Écart des rangées"), &T::row_spacing);
+                bindMm(len, tr("Longueur de point"), &T::stitch_length);
+                bindMm(inset, tr("Retrait du bord"), &T::inset);
+                bindInt(layers, tr("Couches"), &T::layers);
+                bindBool(underpath, tr("Liaisons cousues cachées"), &T::hidden_underpath);
+                connect(angle, &QDoubleSpinBox::valueChanged, this, [edit, angle](double v) {
+                    if (!takeMixed(angle, v)) {
+                        return;
+                    }
+                    edit(tr("Angle"), [v](T& t) { t.angle = from_deg(v); });
+                });
+            } else if constexpr (std::is_same_v<T, document::CrossStitchParams>) {
+                // HP-STI-012 : grille de croix (taille de cellule, angle, croix complète, passes).
+                auto* cell = mmSpin(to_millimeters(p.cell).value, 8.0, 1.0,
+                                    tr("Côté d'une cellule de la grille. Plage : 1 – 8 mm."));
+                cell->setObjectName(QStringLiteral("spin_crossCell"));
+                auto* angle = new QDoubleSpinBox(body_);
+                angle->setObjectName(QStringLiteral("spin_crossAngle"));
+                angle->setKeyboardTracking(false);
+                angle->setRange(0.0, 359.9);
+                angle->setDecimals(1);
+                angle->setWrapping(true);
+                angle->setSuffix(tr(" °"));
+                angle->setToolTip(tr("Orientation de la grille : 0° = rangées horizontales, sens "
+                                     "trigonométrique."));
+                angle->setValue(std::fmod(std::fmod(to_deg(p.grid_angle), 360.0) + 360.0, 360.0));
+                auto* full = new QCheckBox(tr("Croix complète"), body_);
+                full->setObjectName(QStringLiteral("check_crossFull"));
+                full->setToolTip(tr("Décochée : demi-croix (une seule jambe « / » par cellule)."));
+                full->setChecked(p.full_cross);
+                auto* passes = new QSpinBox(body_);
+                passes->setObjectName(QStringLiteral("spin_crossPasses"));
+                passes->setKeyboardTracking(false);
+                passes->setRange(1, 3);
+                passes->setValue(p.passes);
+                passes->setToolTip(tr("Nombre de passes de chaque rangée de croix (1 – 3)."));
+                auto* underpath = new QCheckBox(tr("Liaisons cousues cachées"), body_);
+                underpath->setObjectName(QStringLiteral("check_crossUnderpath"));
+                underpath->setChecked(p.hidden_underpath);
+                form->addRow(tr("Taille de cellule :"), cell);
+                form->addRow(tr("Angle de la grille :"), angle);
+                form->addRow(tr("Passes :"), passes);
+                form->addRow(QString(), full);
+                form->addRow(QString(), underpath);
+                bindMm(cell, tr("Taille de cellule"), &T::cell);
+                bindInt(passes, tr("Passes"), &T::passes);
+                bindBool(full, tr("Croix complète"), &T::full_cross);
+                bindBool(underpath, tr("Liaisons cousues cachées"), &T::hidden_underpath);
+                connect(angle, &QDoubleSpinBox::valueChanged, this, [edit, angle](double v) {
+                    if (!takeMixed(angle, v)) {
+                        return;
+                    }
+                    edit(tr("Angle de la grille"), [v](T& t) { t.grid_angle = from_deg(v); });
+                });
             }
         },
         object.params);
     building_ = false;
 
+    // HP-ENG-011 : ne pas coudre sous les remplissages posés après (tatami / directionnel).
+    if (object.is_tatami() || object.is_directional()) {
+        auto* knockoutCheck = new QCheckBox(tr("Retirer les points cachés"), body_);
+        knockoutCheck->setObjectName(QStringLiteral("check_knockout"));
+        knockoutCheck->setChecked(object.knockout);
+        knockoutCheck->setToolTip(
+            tr("Ne coud pas la partie de ce remplissage cachée par un tatami ou un remplissage "
+               "posé après lui (moins de points, moins d'épaisseur). La marge garde un "
+               "recouvrement sous le bord de l'objet du dessus."));
+        auto* knockoutMargin =
+            mmSpin(object.knockout_margin.value / 1000.0, 5.0, 0.0,
+                   tr("Recouvrement conservé sous le bord de l'objet du dessus."));
+        knockoutMargin->setObjectName(QStringLiteral("spin_knockoutMargin"));
+        knockoutMargin->setEnabled(object.knockout);
+        knockoutCheck_ = knockoutCheck;
+        knockoutMargin_ = knockoutMargin;
+        scoped()->addRow(knockoutCheck);
+        scoped()->addRow(tr("Recouvrement :"), knockoutMargin);
+        const auto emitKnockout = [this, id] {
+            if (!building_ && knockoutCheck_ != nullptr && knockoutMargin_ != nullptr) {
+                knockoutMargin_->setEnabled(knockoutCheck_->isChecked());
+                emit knockoutEdited(id, knockoutCheck_->isChecked(), knockoutMargin_->value());
+            }
+        };
+        connect(knockoutCheck, &QCheckBox::toggled, this, emitKnockout);
+        connect(knockoutMargin, &QDoubleSpinBox::valueChanged, this, emitKnockout);
+    }
+
     auto* holder = new QWidget(body_);
     holder->setLayout(form);
     body_->layout()->addWidget(holder);
+
+    // Les réglages détaillés restent câblés au document : replier leur ligne
+    // réduit seulement l'encombrement visuel. État mémorisé par type de points.
+    if (!advancedRows.empty()) {
+        QString kind = QStringLiteral("autoSatin");
+        if (std::holds_alternative<document::TatamiParams>(object.params)) {
+            kind = QStringLiteral("tatami");
+        } else if (std::holds_alternative<document::SatinParams>(object.params)) {
+            kind = QStringLiteral("satin");
+        }
+        const QString key = QStringLiteral("inspector/advanced/") + kind;
+        const bool expanded = ui_memory::boolValue(key, false);
+        auto* toggle = new QToolButton(body_);
+        toggle->setObjectName(QStringLiteral("button_inspectorAdvanced"));
+        toggle->setText(tr("Réglages avancés"));
+        toggle->setAccessibleName(tr("Afficher ou masquer les réglages avancés"));
+        toggle->setToolTip(tr("Affiche les paramètres détaillés sans changer la broderie."));
+        toggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        toggle->setCheckable(true);
+        toggle->setChecked(expanded);
+        body_->layout()->addWidget(toggle);
+
+        const auto applyAdvanced = [form, advancedRows, toggle](bool on) {
+            toggle->setArrowType(on ? Qt::DownArrow : Qt::RightArrow);
+            for (QWidget* field : advancedRows) {
+                form->setRowVisible(field, on);
+            }
+        };
+        connect(toggle, &QToolButton::toggled, this, [applyAdvanced, key](bool on) {
+            applyAdvanced(on);
+            ui_memory::setBoolValue(key, on);
+        });
+        applyAdvanced(expanded);
+    }
     if (activeForm != nullptr) {
         auto* title = makeSectionLabel(tr("Objet actif seulement"), body_);
         title->setToolTip(tr("Ces réglages n'agissent que sur « %1 » (le premier objet du groupe), "

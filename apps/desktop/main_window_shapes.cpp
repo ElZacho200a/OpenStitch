@@ -108,6 +108,7 @@ void MainWindow::buildShapeMenu() {
     if (toolCutAct_ != nullptr) {
         shapeMenu_->addAction(toolCutAct_);
     }
+    buildVectorEditActions();
 }
 
 void MainWindow::updateShapeActions() {
@@ -147,6 +148,7 @@ void MainWindow::updateShapeActions() {
     setShapeActionEnabled(toolCutAct_, !project_.vector_objects.empty(),
                           tr("Aucune forme vectorielle à découper."));
     updateVectorToolActions();
+    updateVectorEditActions();
 }
 
 void MainWindow::applyShapeCommand(commands::VectorOpResult result, const QString& done,

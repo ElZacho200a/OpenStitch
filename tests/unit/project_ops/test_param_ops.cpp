@@ -2,6 +2,7 @@
 // Opérations de style, de paramètres de couture, d'ordre et de projet.
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -65,9 +66,13 @@ document::Project make_project() {
 }
 
 std::string serialize(const document::Project& project) {
+    // `ctest -j` lance chaque cas dans son propre processus : le compteur seul donne le même nom
+    // à tous (collision sur le fichier). Le nonce horaire est propre au processus.
+    static const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
     static std::atomic<int> counter{0};
-    const auto path = std::filesystem::temp_directory_path() /
-                      ("openstitch_param_test_" + std::to_string(counter++) + ".osp");
+    const auto path =
+        std::filesystem::temp_directory_path() / ("openstitch_param_test_" + std::to_string(nonce) +
+                                                  "_" + std::to_string(counter++) + ".osp");
     const auto saved = project_io::save_project(path, project);
     REQUIRE(saved.has_value());
     std::ifstream in(path, std::ios::binary);
@@ -227,6 +232,25 @@ TEST_CASE("param ops set_stitch_type follows the desktop rules", "[project_ops][
         CHECK(result_of(r)["changed"] == false);
         CHECK(serialize(p) == before);
     }
+    SECTION("cross_stitch converts and set_params edits its grid") {
+        const auto r = run(p, R"({"op":"set_stitch_type","object":2,"type":"cross_stitch"})");
+        REQUIRE(r.ok);
+        CHECK(result_of(r)["to"] == "cross_stitch");
+        const auto* cross =
+            std::get_if<document::CrossStitchParams>(&p.findEmbroidery(ObjectId{2})->params);
+        REQUIRE(cross != nullptr);
+        CHECK(*cross == document::CrossStitchParams{});
+        REQUIRE(run(p, R"({"op":"set_params","object":2,"params":{"cell_mm":3.5,)"
+                       R"("grid_angle_deg":45,"full_cross":false,"passes":2}})")
+                    .ok);
+        cross = std::get_if<document::CrossStitchParams>(&p.findEmbroidery(ObjectId{2})->params);
+        REQUIRE(cross != nullptr);
+        CHECK(cross->cell == Micrometers{3'500});
+        CHECK(cross->full_cross == false);
+        CHECK(cross->passes == 2);
+        expect_refused(p, R"({"op":"set_params","object":2,"params":{"cell_mm":12}})",
+                       project_ops::code::kOutOfRange);
+    }
     SECTION("satin and auto_satin are refused with the auto_satin hint") {
         for (const char* type : {"satin", "auto_satin"}) {
             const auto o = expect_refused(
@@ -299,6 +323,25 @@ TEST_CASE("param ops set_params refusals leave the project untouched", "[project
         CHECK_THAT(o.message, ContainsSubstring("repeats"));
         CHECK_THAT(o.hint, ContainsSubstring("row_spacing_mm"));
         CHECK_THAT(o.hint, ContainsSubstring("running"));
+    }
+    SECTION("field of another type: message names owners, valid keys and set_stitch_type") {
+        const auto o =
+            expect_refused(p, R"({"op":"set_params","object":2,"params":{"edge_weight":0.25}})",
+                           project_ops::code::kWrongType);
+        CHECK_THAT(o.message, ContainsSubstring("tatami"));
+        CHECK_THAT(o.message, ContainsSubstring("row_spacing_mm"));
+        CHECK_THAT(o.message, ContainsSubstring("existe pour"));
+        CHECK_THAT(o.message, ContainsSubstring("directional"));
+        CHECK_THAT(o.message, ContainsSubstring("set_stitch_type"));
+        // La cle n'est pas acceptee pour autant.
+        const auto* t = std::get_if<document::TatamiParams>(&p.findEmbroidery(ObjectId{2})->params);
+        CHECK(t != nullptr);
+    }
+    SECTION("unknown field lists valid keys in the message") {
+        const auto o = expect_refused(p, R"({"op":"set_params","object":2,"params":{"colour":1}})",
+                                      project_ops::code::kWrongType);
+        CHECK_THAT(o.message, ContainsSubstring("champs valides"));
+        CHECK_THAT(o.message, ContainsSubstring("row_spacing_mm"));
     }
     SECTION("unknown field is never silently ignored") {
         const auto o =
@@ -383,6 +426,33 @@ TEST_CASE("param ops set_params on satin types", "[project_ops][params]") {
     REQUIRE(s != nullptr);
     CHECK(s->density == Micrometers{300});
     CHECK(s->underlay_zigzag);
+    REQUIRE(run(p, R"({"op":"set_params","object":4,"params":{"auto_spacing":true,)"
+                   R"("corner_mode":"miter"}})")
+                .ok);
+    s = std::get_if<document::SatinParams>(&p.findEmbroidery(ObjectId{4})->params);
+    REQUIRE(s != nullptr);
+    CHECK(s->auto_spacing);
+    CHECK(s->corner_mode == document::SatinCorner::Miter);
+    REQUIRE(run(p, R"({"op":"set_params","object":4,"params":{"corner_threshold_deg":90}})").ok);
+    s = std::get_if<document::SatinParams>(&p.findEmbroidery(ObjectId{4})->params);
+    REQUIRE(s != nullptr);
+    CHECK(std::abs(s->corner_threshold.radians - std::numbers::pi / 2.0) < 1e-9);
+    expect_refused(p, R"({"op":"set_params","object":4,"params":{"corner_threshold_deg":200}})",
+                   project_ops::code::kOutOfRange);
+    expect_refused(p, R"({"op":"set_params","object":4,"params":{"corner_mode":"round"}})",
+                   project_ops::code::kOutOfRange);
+    REQUIRE(run(p, R"({"op":"set_params","object":4,"params":{"jagged":"side_b",)"
+                   R"("jagged_amplitude_mm":2.5,"jagged_seed":42}})")
+                .ok);
+    s = std::get_if<document::SatinParams>(&p.findEmbroidery(ObjectId{4})->params);
+    REQUIRE(s != nullptr);
+    CHECK(s->jagged == document::SatinJagged::SideB);
+    CHECK(s->jagged_amplitude == Micrometers{2'500});
+    CHECK(s->jagged_seed == 42u);
+    expect_refused(p, R"({"op":"set_params","object":4,"params":{"jagged_amplitude_mm":9}})",
+                   project_ops::code::kOutOfRange);
+    expect_refused(p, R"({"op":"set_params","object":4,"params":{"jagged":"left"}})",
+                   project_ops::code::kOutOfRange);
     // La topologie et la bordure ne sont pas modifiables ici : refus nommé.
     expect_refused(p, R"({"op":"set_params","object":4,"params":{"topology":{}}})",
                    project_ops::code::kWrongType);
@@ -636,4 +706,44 @@ TEST_CASE("param ops directional_guides converts and guides a long shape",
     SECTION("a running object is refused") {
         expect_refused(p, R"({"op":"directional_guides","object":4})", project_ops::code::kRefused);
     }
+}
+
+TEST_CASE("param ops set_canvas hoop library and set_machine", "[project_ops][params]") {
+    auto p = make_project();
+    REQUIRE(run(p, R"({"op":"set_canvas","hoop":"round-150","margin_mm":4})").ok);
+    CHECK(p.canvas.shape == document::HoopShape::Ellipse);
+    CHECK(p.canvas.width == Micrometers{150'000});
+    CHECK(p.canvas.margin == Micrometers{4'000});
+
+    REQUIRE(run(p, R"({"op":"set_canvas","shape":"rounded","corner_radius_mm":12})").ok);
+    CHECK(p.canvas.shape == document::HoopShape::RoundedRectangle);
+    CHECK(p.canvas.corner_radius == Micrometers{12'000});
+
+    expect_refused(p, R"({"op":"set_canvas","hoop":"nope"})", project_ops::code::kOutOfRange);
+    expect_refused(p, R"({"op":"set_canvas","shape":"star"})", project_ops::code::kOutOfRange);
+
+    REQUIRE(run(p, R"({"op":"set_machine","machine":"generic-multi-6"})").ok);
+    CHECK(p.machine_id == "generic-multi-6");
+    expect_refused(p, R"({"op":"set_machine","machine":"nope"})", project_ops::code::kOutOfRange);
+    REQUIRE(run(p, R"({"op":"set_machine","machine":""})").ok);
+    CHECK(p.machine_id.empty());
+}
+
+TEST_CASE("param ops set_design_points and optimize_order improve", "[project_ops][params]") {
+    auto p = make_project();
+    const auto r = run(p, R"({"op":"set_design_points","start_x_mm":1.5,"start_y_mm":-2,)"
+                          R"("end_x_mm":10,"end_y_mm":0})");
+    REQUIRE(r.ok);
+    REQUIRE(p.finishing.design_start.has_value());
+    CHECK(p.finishing.design_start->x == Micrometers{1500});
+    CHECK(p.finishing.design_start->y == Micrometers{-2000});
+    CHECK(p.finishing.design_end.has_value());
+    CHECK(run(p, R"({"op":"optimize_order","strategy":"by_proximity","improve":true})").ok);
+    REQUIRE(run(p, R"({"op":"set_design_points","clear":"start"})").ok);
+    CHECK_FALSE(p.finishing.design_start.has_value());
+    CHECK(p.finishing.design_end.has_value());
+    expect_refused(p, R"({"op":"set_design_points"})", project_ops::code::kUsage);
+    expect_refused(p, R"({"op":"set_design_points","start_x_mm":1})", project_ops::code::kUsage);
+    expect_refused(p, R"({"op":"set_design_points","start_x_mm":1,"start_y_mm":5000})",
+                   project_ops::code::kOutOfRange);
 }

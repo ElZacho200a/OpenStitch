@@ -366,6 +366,192 @@ double cap_factor(SatinCapType type, int stepsFromEnd, int len) {
     }
 }
 
+// Facteur du pas selon la largeur locale (HP-ENG-003) : 1 à 4 mm, 1,25 (plus lâche) à 2 mm et
+// moins, 0,8 (plus serré) à 6 mm et plus, linéaire entre les deux.
+double auto_spacing_factor(double widthUm) {
+    return std::clamp(1.0 + (4'000.0 - widthUm) * 0.125 / 1'000.0, 0.8, 1.25);
+}
+
+// Rééchantillonne les fils entre deux fils « forcés » (barreaux, sauts, fils d'éventail à
+// avance nulle, premier et dernier) au pas `density * auto_spacing_factor(largeur)`. Les fils
+// forcés sont conservés tels quels ; les fils intermédiaires sont interpolés linéairement.
+void apply_auto_spacing(std::vector<Thread>& threads, double density) {
+    const std::size_t n = threads.size();
+    if (n < 3) {
+        return;
+    }
+    std::vector<double> cum(n, 0.0);
+    for (std::size_t i = 1; i < n; ++i) {
+        cum[i] = cum[i - 1] +
+                 dist(midP(threads[i].a, threads[i].b), midP(threads[i - 1].a, threads[i - 1].b));
+    }
+    const auto forced = [&](std::size_t i) {
+        if (i == 0 || i + 1 == n || threads[i].anchor || threads[i].jump_before) {
+            return true;
+        }
+        return cum[i] - cum[i - 1] < 1e-6 || cum[i + 1] - cum[i] < 1e-6;
+    };
+    std::vector<Thread> out;
+    out.reserve(n);
+    out.push_back(threads[0]);
+    std::size_t start = 0;
+    for (std::size_t e = 1; e < n; ++e) {
+        if (!forced(e)) {
+            continue;
+        }
+        if (!threads[e].jump_before && cum[e] - cum[start] > 1e-6) {
+            double pos = cum[start];
+            std::size_t j = start;
+            while (true) {
+                const double w = dist(threads[j].a, threads[j].b);
+                const double s = density * auto_spacing_factor(w);
+                pos += s;
+                if (cum[e] - pos < 0.5 * s) {
+                    break;
+                }
+                while (j + 1 < e && cum[j + 1] <= pos) {
+                    ++j;
+                }
+                const double span = cum[j + 1] - cum[j];
+                const double t = span > 1e-9 ? std::clamp((pos - cum[j]) / span, 0.0, 1.0) : 0.0;
+                Thread th;
+                th.a = lerpP(threads[j].a, threads[j + 1].a, t);
+                th.b = lerpP(threads[j].b, threads[j + 1].b, t);
+                out.push_back(th);
+            }
+        }
+        out.push_back(threads[e]);
+        start = e;
+    }
+    threads = std::move(out);
+}
+
+// Coins vifs (HP-ENG-005). Un coin est un cap de l'axe (ligne des milieux) qui change de plus de
+// `corner_angle_deg` sur une fenêtre de la demi-largeur locale. Dans la fenêtre de largeur
+// totale autour du coin, les fils « d'éventail » (non perpendiculaires à la branche voisine)
+// sont retirés (onglet : on garde le fil en bissectrice ; chevauchement : on le retire aussi), ou
+// la colonne est coupée par un saut (coupe). Les barreaux et les sauts ne sont jamais touchés.
+void apply_corners(std::vector<Thread>& threads, const SatinConfig& config) {
+    const std::size_t n = threads.size();
+    if (config.corner_mode == SatinCornerMode::None || n < 6) {
+        return;
+    }
+    std::vector<PointD> mids(n);
+    std::vector<double> cum(n, 0.0);
+    for (std::size_t i = 0; i < n; ++i) {
+        mids[i] = midP(threads[i].a, threads[i].b);
+        if (i > 0) {
+            cum[i] = cum[i - 1] + dist(mids[i], mids[i - 1]);
+        }
+    }
+    const double thr = config.corner_angle_deg * std::numbers::pi / 180.0;
+    std::vector<double> ang(n, 0.0);
+    std::vector<PointD> h1(n);
+    std::vector<PointD> h2(n);
+    for (std::size_t i = 1; i + 1 < n; ++i) {
+        if (threads[i].jump_before) {
+            continue;
+        }
+        const double w = dist(threads[i].a, threads[i].b);
+        const double reach = std::max(w * 0.5, 300.0);
+        std::size_t j = i;
+        while (j > 0 && cum[i] - cum[j] < reach) {
+            --j;
+        }
+        std::size_t k = i;
+        while (k + 1 < n && cum[k] - cum[i] < reach) {
+            ++k;
+        }
+        if (cum[i] - cum[j] < reach || cum[k] - cum[i] < reach) {
+            continue;
+        }
+        const PointD v1{mids[i].x - mids[j].x, mids[i].y - mids[j].y};
+        const PointD v2{mids[k].x - mids[i].x, mids[k].y - mids[i].y};
+        const double n1 = std::hypot(v1.x, v1.y);
+        const double n2 = std::hypot(v2.x, v2.y);
+        if (n1 < 1e-6 || n2 < 1e-6) {
+            continue;
+        }
+        h1[i] = {v1.x / n1, v1.y / n1};
+        h2[i] = {v2.x / n2, v2.y / n2};
+        ang[i] = std::acos(std::clamp(h1[i].x * h2[i].x + h1[i].y * h2[i].y, -1.0, 1.0));
+    }
+    std::vector<bool> remove(n, false);
+    std::size_t i = 1;
+    while (i + 1 < n) {
+        if (ang[i] < thr) {
+            ++i;
+            continue;
+        }
+        std::size_t last = i;
+        while (last + 2 < n && ang[last + 1] >= thr) {
+            ++last;
+        }
+        double best = 0.0;
+        for (std::size_t q = i; q <= last; ++q) {
+            best = std::max(best, ang[q]);
+        }
+        // Parmi les fils de cap maximal, celui qui est le plus proche de la bissectrice (le plus
+        // perpendiculaire au cap moyen) ; à égalité, le premier : déterministe.
+        std::size_t c = i;
+        double bestScore = 2.0;
+        for (std::size_t q = i; q <= last; ++q) {
+            if (ang[q] < best - 1e-9) {
+                continue;
+            }
+            const double hx = h1[q].x + h2[q].x;
+            const double hy = h1[q].y + h2[q].y;
+            const double hn = std::hypot(hx, hy);
+            const double tl = dist(threads[q].a, threads[q].b);
+            double score = 1.0;
+            if (hn > 1e-6 && tl > 1e-6) {
+                score = std::abs(((threads[q].b.x - threads[q].a.x) * hx +
+                                  (threads[q].b.y - threads[q].a.y) * hy) /
+                                 (hn * tl));
+            }
+            if (score < bestScore - 1e-9) {
+                bestScore = score;
+                c = q;
+            }
+        }
+        if (config.corner_mode == SatinCornerMode::Cut) {
+            threads[c + 1].jump_before = true;
+        } else {
+            const double radius = dist(threads[c].a, threads[c].b);
+            constexpr double kFanSin = 0.17; // ~10 degrés d'écart à la perpendiculaire
+            for (std::size_t q = 1; q + 1 < n; ++q) {
+                if (std::abs(cum[q] - cum[c]) > radius || threads[q].anchor ||
+                    threads[q].jump_before) {
+                    continue;
+                }
+                if (q == c) {
+                    remove[q] = config.corner_mode == SatinCornerMode::Overlap;
+                    continue;
+                }
+                const double len = dist(threads[q].a, threads[q].b);
+                if (len < 1e-6) {
+                    continue;
+                }
+                const PointD tv{(threads[q].b.x - threads[q].a.x) / len,
+                                (threads[q].b.y - threads[q].a.y) / len};
+                const PointD& h = q < c ? h1[c] : h2[c];
+                if (std::abs(tv.x * h.x + tv.y * h.y) > kFanSin) {
+                    remove[q] = true;
+                }
+            }
+        }
+        i = last + 1;
+    }
+    std::vector<Thread> out;
+    out.reserve(n);
+    for (std::size_t q = 0; q < n; ++q) {
+        if (!remove[q]) {
+            out.push_back(threads[q]);
+        }
+    }
+    threads = std::move(out);
+}
+
 } // namespace
 
 std::vector<SatinStation> satin_stations(const geometry::Path& rail_a, const geometry::Path& rail_b,
@@ -467,6 +653,44 @@ std::vector<SatinStation> satin_stations(const geometry::Path& rail_a, const geo
     return stations;
 }
 
+// Bord irrégulier (HP-STI-022) : raccourcit côté A et/ou B de chaque fil d'une longueur issue d'un
+// hash entier de (graine, indice, côté) dans [0 ; amplitude], sans jamais laisser moins de 0,4 mm.
+void apply_jagged(std::vector<Thread>& threads, const SatinConfig& config) {
+    if (config.jagged == SatinJaggedMode::None) {
+        return;
+    }
+    constexpr double kMinWidth = 400.0;
+    const double amp =
+        std::clamp(static_cast<double>(config.jagged_amplitude.value), 200.0, 6'000.0);
+    const bool doA =
+        config.jagged == SatinJaggedMode::SideA || config.jagged == SatinJaggedMode::Both;
+    const bool doB =
+        config.jagged == SatinJaggedMode::SideB || config.jagged == SatinJaggedMode::Both;
+    for (std::size_t i = 0; i < threads.size(); ++i) {
+        auto& t = threads[i];
+        const double w = dist(t.a, t.b);
+        if (w <= kMinWidth) {
+            continue;
+        }
+        double room = w - kMinWidth;
+        const auto key = [&](std::uint64_t side) {
+            return (static_cast<std::uint64_t>(config.jagged_seed) << 33) ^
+                   (static_cast<std::uint64_t>(i) << 1) ^ side;
+        };
+        double cutA = doA ? jitter01(key(0)) * amp : 0.0;
+        double cutB = doB ? jitter01(key(1)) * amp : 0.0;
+        if (cutA + cutB > room) {
+            const double f = room / (cutA + cutB);
+            cutA *= f;
+            cutB *= f;
+        }
+        const PointD a0 = t.a;
+        const PointD b0 = t.b;
+        t.a = lerpP(a0, b0, cutA / w);
+        t.b = lerpP(b0, a0, cutB / w);
+    }
+}
+
 SatinResult finish_satin_stations(const std::vector<SatinStation>& stations,
                                   const SatinConfig& config) {
     SatinResult result;
@@ -480,6 +704,12 @@ SatinResult finish_satin_stations(const std::vector<SatinStation>& stations,
     for (const auto& st : stations) {
         threads.push_back({toD(st.a), toD(st.b), st.anchor, false, st.jump_before});
     }
+    // Coins vifs puis espacement automatique (HP-ENG-005, HP-ENG-003) : inchangés si désactivés.
+    apply_corners(threads, config);
+    if (config.auto_spacing) {
+        apply_auto_spacing(threads, density);
+    }
+    apply_jagged(threads, config);
     const int nThreads = static_cast<int>(threads.size());
 
     // --- Terminaisons (§9) : réduit la largeur des fils aux deux bouts. ---
@@ -657,6 +887,18 @@ SatinResult finish_satin_stations(const std::vector<SatinStation>& stations,
     const double maxLen =
         static_cast<double>(std::max<std::int32_t>(1, config.max_stitch_length.value));
     const double pmax = static_cast<double>(config.pull_max.value);
+    // Compensation adaptative : profil station par station sur la géométrie FINALE des fils
+    // (après terminaisons, points courts et push), calculé une fois avant l'émission.
+    std::vector<SatinPullSample> adaptive;
+    if (config.adaptive_pull) {
+        std::vector<SatinPullInput> in;
+        in.reserve(threads.size());
+        for (const auto& t : threads) {
+            in.push_back({t.a.x, t.a.y, t.b.x, t.b.y, t.jump_before});
+        }
+        adaptive = adaptive_satin_pull(in, config.adaptive_model, pmax);
+        result.pull_profile = adaptive;
+    }
     int emitted = 0;
     PointD prevB{0.0, 0.0};
     for (int i = 0; i < nThreads; ++i) {
@@ -672,10 +914,14 @@ SatinResult finish_satin_stations(const std::vector<SatinStation>& stations,
         const double w = dist(pa, pb);
         result.max_width_um = std::max(result.max_width_um, w);
         // Pull latérale : base symétrique (pull_compensation) + fixe + proportionnelle par côté.
+        const double baseA =
+            config.adaptive_pull ? adaptive[static_cast<std::size_t>(i)].left_um : comp;
+        const double baseB =
+            config.adaptive_pull ? adaptive[static_cast<std::size_t>(i)].right_um : comp;
         const double offA =
-            std::clamp(comp + config.pull_left.value + config.pull_left_prop * w, 0.0, pmax);
+            std::clamp(baseA + config.pull_left.value + config.pull_left_prop * w, 0.0, pmax);
         const double offB =
-            std::clamp(comp + config.pull_right.value + config.pull_right_prop * w, 0.0, pmax);
+            std::clamp(baseB + config.pull_right.value + config.pull_right_prop * w, 0.0, pmax);
         if (w > 1e-6) {
             const double ux = (pa.x - pb.x) / w;
             const double uy = (pa.y - pb.y) / w;
@@ -817,11 +1063,32 @@ SatinResult fill_satin(const geometry::Path& rail_a, const geometry::Path& rail_
 
     // Satin : zigzag A0, B0, B1, A1, A2, B2, … en avançant sur la correspondance.
     const auto resampled = resample_by_medial_spacing(ladder, a, cumA, b, cumB, density);
+    // Compensation adaptative (`PullMode::Adaptive`) : profil local sur les stations du ruban.
+    if (config.adaptive_pull) {
+        std::vector<SatinPullInput> in;
+        in.reserve(resampled.size());
+        for (const auto& cp : resampled) {
+            in.push_back({cp.pa.x, cp.pa.y, cp.pb.x, cp.pb.y, false});
+        }
+        result.pull_profile = adaptive_satin_pull(in, config.adaptive_model,
+                                                  static_cast<double>(config.pull_max.value));
+    }
     for (std::size_t i = 0; i < resampled.size(); ++i) {
         PointD pa = resampled[i].pa;
         PointD pb = resampled[i].pb;
         result.max_width_um = std::max(result.max_width_um, dist(pa, pb));
-        std::tie(pa, pb) = compensate(pa, pb, comp);
+        if (config.adaptive_pull) {
+            const double w = dist(pa, pb);
+            if (w > 1e-6) {
+                const double ux = (pa.x - pb.x) / w;
+                const double uy = (pa.y - pb.y) / w;
+                const SatinPullSample& p = result.pull_profile[i];
+                pa = {pa.x + ux * p.left_um, pa.y + uy * p.left_um};
+                pb = {pb.x - ux * p.right_um, pb.y - uy * p.right_um};
+            }
+        } else {
+            std::tie(pa, pb) = compensate(pa, pb, comp);
+        }
         // Alternance du bord de départ pour former le zigzag.
         if (i % 2 == 0) {
             result.satin.push_back(toUm(pa));

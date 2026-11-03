@@ -295,4 +295,30 @@ std::vector<Vec2um> apply_repeats(const std::vector<Vec2um>& points, int repeats
     return apply_repeat_mode(points, RepeatMode::BeanStitch, repeats);
 }
 
+std::vector<Vec2um> apply_stem_stitch(const std::vector<Vec2um>& points, Micrometers offset) {
+    if (points.size() < 3 || offset.value <= 0) {
+        return points;
+    }
+    std::vector<Vec2um> out = points;
+    const double off = static_cast<double>(offset.value);
+    for (std::size_t i = 1; i + 1 < points.size(); ++i) {
+        const double tx =
+            static_cast<double>(points[i + 1].x.value) - static_cast<double>(points[i - 1].x.value);
+        const double ty =
+            static_cast<double>(points[i + 1].y.value) - static_cast<double>(points[i - 1].y.value);
+        const double len = std::hypot(tx, ty);
+        if (len <= 0.0) {
+            continue;
+        }
+        const double side = (i % 2 == 1) ? 1.0 : -1.0;
+        const double nx = -ty / len * off * side;
+        const double ny = tx / len * off * side;
+        out[i] = Vec2um{Micrometers{static_cast<std::int32_t>(
+                            std::llround(static_cast<double>(points[i].x.value) + nx))},
+                        Micrometers{static_cast<std::int32_t>(
+                            std::llround(static_cast<double>(points[i].y.value) + ny))}};
+    }
+    return out;
+}
+
 } // namespace openstitch::stitch_generation

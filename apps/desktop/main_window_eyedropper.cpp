@@ -24,6 +24,7 @@
 #include "canvas_view.hpp"
 #include "main_window.hpp"
 #include "openstitch/commands/thread_commands.hpp"
+#include "openstitch/stitch_analysis/stitch_pick.hpp"
 #include "openstitch/thread_palette/chart_import.hpp"
 #include "openstitch/thread_palette/eyedropper.hpp"
 #include "thread_panel.hpp"
@@ -217,6 +218,32 @@ void MainWindow::eyedropperAt(QPointF posMm) {
             connect(take, &QAction::triggered, this,
                     [this, key, objRgb, what] { assignEyedropperChoice(key, objRgb, what); });
             break;
+        }
+    }
+
+    // HP-THR-012 : pipette sur le rendu des points -- le fil réellement cousu sous le clic.
+    if (sequence_) {
+        const auto sceneUm =
+            Vec2um{to_micrometers(Millimeters{posMm.x()}), to_micrometers(Millimeters{-posMm.y()})};
+        if (const auto stitched =
+                stitch_analysis::stitch_object_at(*sequence_, sceneUm, Micrometers{400})) {
+            if (const auto* emb = project_.findEmbroidery(*stitched)) {
+                menu->addSeparator();
+                const QString what =
+                    emb->thread
+                        ? tr("fil %1").arg(QString::fromStdString(emb->thread->code))
+                        : tr("couleur %1")
+                              .arg(QString::fromStdString(thread_palette::to_hex_color(emb->rgb)));
+                QAction* take = menu->addAction(swatch(emb->rgb),
+                                                tr("Reprendre le %1 du point cousu").arg(what));
+                take->setObjectName(QStringLiteral("action_eyedropper_stitch"));
+                take->setEnabled(haveTarget);
+                const auto key = emb->thread;
+                const auto stitchRgb = emb->rgb;
+                connect(take, &QAction::triggered, this, [this, key, stitchRgb, what] {
+                    assignEyedropperChoice(key, stitchRgb, what);
+                });
+            }
         }
     }
 

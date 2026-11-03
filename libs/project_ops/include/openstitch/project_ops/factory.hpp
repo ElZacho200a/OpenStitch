@@ -53,7 +53,10 @@ struct DigitizeSettings {
     int max_colors{8};
     int min_region_px{16};
     int smoothing_px{3};
-    int skip_background{-1}; // -1 auto (segmentation::background_candidate), 0 non, 1 oui
+    // -1 auto (segmentation::background_candidate), 0 non, 1 oui (toute région de la couleur du
+    // fond), 2 extérieur seulement (les régions de cette couleur qui touchent le pourtour de
+    // l'image ; un blanc enfermé dans le motif reste cousu)
+    int skip_background{-1};
     std::optional<double> min_feature_mm;
     std::optional<double> min_region_mm2;
     double trim_threshold_mm{3.0};
@@ -118,6 +121,9 @@ struct DigitizeSettings {
     int stipple_points{2000};
     int stipple_seed{1};
     bool stipple_invert{false};
+    // HP-FILE-014 : chemin du profil de réglages (`--settings`) cité dans le rapport ; vide =
+    // aucun. Sans effet sur la numérisation.
+    std::string profile_path;
 };
 
 // Valide la grammaire de `DigitizeSettings::pre` sans toucher d'image.
@@ -153,6 +159,8 @@ struct DigitizeSource {
     const segmentation::Segmentation* segmentation{nullptr};
     const image::Image* image{nullptr};
     Millimeters mm_per_px{25.4 / 96.0};
+    // Zones de détail du projet (facultatif) : vectorisation plus fine dans ces zones.
+    const segmentation::DetailMask* detail_mask{nullptr};
 };
 
 struct DigitizedObjects {

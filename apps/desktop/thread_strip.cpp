@@ -126,6 +126,13 @@ void ThreadStrip::endDrag() {
     unsetCursor();
 }
 
+void ThreadStrip::setCurrent(int index) {
+    if (current_ != index) {
+        current_ = index;
+        update();
+    }
+}
+
 void ThreadStrip::paintEvent(QPaintEvent*) {
     const Tokens& t = AppTheme::instance().tokens();
     QPainter p(this);
@@ -152,6 +159,11 @@ void ThreadStrip::paintEvent(QPaintEvent*) {
             p.setPen(QPen(t.accent, 2));
             p.setBrush(Qt::NoBrush);
             p.drawEllipse(r.adjusted(-3, -3, 3, 3));
+        }
+        if (i == current_) {
+            p.setPen(QPen(t.text, 2));
+            p.setBrush(Qt::NoBrush);
+            p.drawEllipse(r.adjusted(-5, -5, 5, 5));
         }
         const bool lifted = dragging_ && i == pressed_;
         p.setOpacity(lifted ? 0.3 : 1.0);

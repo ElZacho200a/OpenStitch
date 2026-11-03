@@ -18,6 +18,7 @@
 #include <QFileInfo>
 #include <QImage>
 #include <QLabel>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPlainTextEdit>
@@ -54,6 +55,7 @@
 #include "openstitch/project_io/machine_file.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
+#include "workflow_panel.hpp"
 
 namespace {
 
@@ -232,6 +234,11 @@ ModalStep fileChoice(const QString& path) {
         }
         file->setDirectory(QFileInfo(path).absolutePath());
         file->selectFile(QFileInfo(path).fileName());
+        // selectFile ne touche pas au champ de nom quand il a le focus (fenêtre active) : le nom
+        // dépendait du timing d'activation. On le fixe directement.
+        if (auto* name = file->findChild<QLineEdit*>(QStringLiteral("fileNameEdit"))) {
+            name->setText(QFileInfo(path).fileName());
+        }
         return clickDialogRole(file, QDialogButtonBox::AcceptRole);
     };
 }
@@ -359,6 +366,64 @@ private slots:
     }
 
     void init() { QSettings().clear(); }
+
+    // HP-UX-039 : le workflow décrit la source réelle (raster, SVG, fichier machine),
+    // sans faire croire qu'une segmentation est nécessaire pour un SVG ou un DST.
+    void workflowMarksInapplicableStagesAsSkipped() {
+        using S = WorkflowPanel::State;
+        MainWindow window;
+        QCOMPARE(window.workflowPanel_->currentState(0), S::NotStarted);
+
+        doc::Project raster;
+        raster.original.width = 2;
+        raster.original.height = 2;
+        raster.original.rgba.assign(16, 255);
+        window.applyLoadedProject(std::move(raster));
+        QCOMPARE(window.workflowPanel_->currentState(0), S::Done);
+        QCOMPARE(window.workflowPanel_->currentState(1), S::Available);
+        QCOMPARE(window.workflowPanel_->currentState(2), S::NotStarted);
+
+        doc::Project svg;
+        addSquare(svg, 0, 1'000, 10'000);
+        svg.embroidery_objects.clear(); // SVG : formes sans couture, pas de raster
+        window.applyLoadedProject(std::move(svg));
+        QCOMPARE(window.workflowPanel_->currentState(0), S::Done);
+        QCOMPARE(window.workflowPanel_->currentState(1), S::Skipped);
+        QCOMPARE(window.workflowPanel_->currentState(2), S::Done);
+        QCOMPARE(window.workflowPanel_->currentState(3), S::Available);
+        window.onWorkflowStepClicked(1);
+        QVERIFY(window.statusBar()->currentMessage().contains(QStringLiteral("non requise")));
+
+        doc::Project machine;
+        doc::ImportedDesign design;
+        design.source_format = "dst";
+        design.sequence.commands.push_back({.pos = Vec2um{Micrometers{0}, Micrometers{0}},
+                                            .type = openstitch::stitch::CommandType::Stitch});
+        machine.imported_design = std::move(design);
+        window.applyLoadedProject(std::move(machine));
+        QCOMPARE(window.workflowPanel_->currentState(0), S::Done);
+        QCOMPARE(window.workflowPanel_->currentState(1), S::Skipped);
+        QCOMPARE(window.workflowPanel_->currentState(2), S::Skipped);
+        QCOMPARE(window.workflowPanel_->currentState(3), S::Done);
+        QCOMPARE(window.workflowPanel_->currentState(4), S::Available);
+        QCOMPARE(window.workflowPanel_->currentState(5), S::Available);
+    }
+
+    void workflowSourceActionAndLabelsAreContextual() {
+        MainWindow window;
+        auto buttons = window.workflowPanel_->findChildren<QToolButton*>();
+        QCOMPARE(buttons.size(), WorkflowPanel::kStepCount);
+        QCOMPARE(buttons[0]->text(), QStringLiteral("Source"));
+        QCOMPARE(window.openAnyAct_->shortcut(), QKeySequence(QKeySequence::Open));
+
+        doc::Project svg;
+        addSquare(svg, 0, 1'000, 10'000);
+        svg.embroidery_objects.clear();
+        window.applyLoadedProject(std::move(svg));
+        QCOMPARE(buttons[1]->toolTip(),
+                 QStringLiteral("Cette étape n’est pas nécessaire pour cette source."));
+        QVERIFY(buttons[2]->toolTip().isEmpty());
+    }
 
     // ---- HP-UX-033 : cadre dans l'import et en barre d'état ---------------------------------
 

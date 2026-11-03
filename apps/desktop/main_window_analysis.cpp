@@ -12,13 +12,16 @@
 #include <QFileDialog>
 #include <QFontDatabase>
 #include <QHBoxLayout>
+#include <QInputDialog>
 #include <QLabel>
 #include <QListWidget>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QPixmap>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QTimer>
@@ -44,6 +47,8 @@
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/lettering/lettering.hpp"
 #include "openstitch/project_ops/analysis.hpp"
+#include "openstitch/project_ops/color_registration.hpp"
+#include "openstitch/project_ops/fabric_deformation.hpp"
 #include "openstitch/project_ops/render.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
 #include "openstitch/stitch_analysis/text_rules.hpp"
@@ -501,6 +506,29 @@ void MainWindow::buildAnalysisPanel() {
     auto* densityAct = analyseMenu->addAction(tr("&Épaisseurs de fil (densité)…"));
     densityAct->setObjectName(QStringLiteral("action_densityReport"));
     connect(densityAct, &QAction::triggered, this, &MainWindow::showDensityReport);
+    auto* fabricRiskAct = analyseMenu->addAction(tr("Risque de tirage du &tissu…"));
+    fabricRiskAct->setObjectName(QStringLiteral("action_fabricRiskReport"));
+    connect(fabricRiskAct, &QAction::triggered, this, &MainWindow::showFabricRiskReport);
+    auto* deformationAct = analyseMenu->addAction(tr("Déformation &prévue du tissu…"));
+    deformationAct->setObjectName(QStringLiteral("action_fabricDeformationReport"));
+    deformationAct->setToolTip(tr("Solveur mécanique 2D de la feuille tissu + entoilage, cadre "
+                                  "fixe : déplacement et indice de plissement. Estimation non "
+                                  "calibrée, pas une mesure."));
+    connect(deformationAct, &QAction::triggered, this, &MainWindow::showFabricDeformationReport);
+    auto* registrationAct = analyseMenu->addAction(tr("Décalage entre &couleurs…"));
+    registrationAct->setObjectName(QStringLiteral("action_colorRegistrationReport"));
+    registrationAct->setToolTip(
+        tr("Rejoue le solveur du tissu dans l'ordre de couture : de combien "
+           "chaque couleur finit décalée par rapport aux autres. "
+           "Estimation non calibrée, pas une mesure."));
+    connect(registrationAct, &QAction::triggered, this, &MainWindow::showColorRegistrationReport);
+    auto* compensatedAct = analyseMenu->addAction(tr("E&xporter un DST compensé du décalage…"));
+    compensatedAct->setObjectName(QStringLiteral("action_exportCompensatedDst"));
+    compensatedAct->setToolTip(
+        tr("Écrit un DST dont chaque bloc de couleur est décalé de l'écart "
+           "prévu par le solveur du tissu. Non calibré : à essayer sur une "
+           "pièce-test avant un vrai ouvrage. Le projet n'est pas modifié."));
+    connect(compensatedAct, &QAction::triggered, this, &MainWindow::exportCompensatedDst);
     auto* diagnoseAct = analyseMenu->addAction(tr("&Diagnostic des défauts connus…"));
     diagnoseAct->setObjectName(QStringLiteral("action_diagnoseReport"));
     connect(diagnoseAct, &QAction::triggered, this, &MainWindow::showDiagnoseReport);
@@ -515,19 +543,50 @@ void reportError(QWidget* parent, const QString& title, const QString& explanati
     box.exec();
 }
 
-// Rapport texte (police fixe) et, si fournie, carte PNG enregistrable.
+// Carte redimensionnable : conserver le PNG original et recalculer uniquement
+// le pixmap affiché. Sans cela, une image 680x360 agrandit le dialogue sur
+// petit écran et reste floue lors du redimensionnement.
+class ReportMapLabel final : public QLabel {
+public:
+    ReportMapLabel(const QPixmap& original, QWidget* parent) : QLabel(parent), original_(original) {
+        setObjectName(QStringLiteral("reportMap"));
+        setAccessibleName(QObject::tr("Carte d'analyse de la broderie"));
+        setAlignment(Qt::AlignCenter);
+        setMinimumSize(140, 90);
+        setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
+        setPixmap(original_.scaled(QSize(680, 360), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    }
+
+protected:
+    void resizeEvent(QResizeEvent* event) override {
+        QLabel::resizeEvent(event);
+        if (!original_.isNull() && width() > 0 && height() > 0) {
+            setPixmap(original_.scaled(size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        }
+    }
+
+private:
+    QPixmap original_;
+};
+
+// Rapport texte (police fixe) et carte PNG consultable sans débordement d'écran.
 void showReportDialog(QWidget* parent, const QString& title, const QString& text,
                       const std::vector<std::uint8_t>& png, const QString& pngDefaultName) {
     QDialog dialog(parent);
     dialog.setWindowTitle(title);
-    dialog.resize(720, 520);
+    dialog.resize(720, png.empty() ? 520 : 760);
     auto* layout = new QVBoxLayout(&dialog);
+    QPixmap map;
+    if (!png.empty() && map.loadFromData(png.data(), static_cast<uint>(png.size()), "PNG")) {
+        auto* image = new ReportMapLabel(map, &dialog);
+        layout->addWidget(image, 3);
+    }
     auto* view = new QPlainTextEdit(&dialog);
     view->setObjectName(QStringLiteral("reportText"));
     view->setReadOnly(true);
     view->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
     view->setPlainText(text);
-    layout->addWidget(view, 1);
+    layout->addWidget(view, 2);
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
     if (!png.empty()) {
         auto* saveBtn = buttons->addButton(QObject::tr("Enregistrer la carte (PNG)…"),
@@ -550,6 +609,9 @@ void showReportDialog(QWidget* parent, const QString& title, const QString& text
     }
     QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     layout->addWidget(buttons);
+    // La carte et le rapport peuvent défiler ; Fermer reste toujours visible.
+    scrollDialogBody(&dialog, buttons);
+    fitDialogToScreen(&dialog);
     dialog.exec();
 }
 
@@ -597,6 +659,106 @@ void MainWindow::showDensityReport() {
     }
     showReportDialog(this, title, QString::fromStdString(report->text), report->heatmap_png,
                      QStringLiteral("densite.png"));
+}
+
+void MainWindow::showFabricRiskReport() {
+    const QString title = tr("Risque de tirage du tissu (estimation)");
+    if (!requireEmbroideryForReport(title)) {
+        return;
+    }
+    const QStringList profiles{tr("Coton tissé"), tr("Jersey"), tr("Feutrine")};
+    bool accepted = false;
+    const QString selected = QInputDialog::getItem(
+        this, title, tr("Profil indicatif de tissu (sans calibration physique) :"), profiles, 0,
+        false, &accepted);
+    if (!accepted) {
+        return;
+    }
+    project_ops::FabricRiskOptions options;
+    const int index = profiles.indexOf(selected);
+    options.fabric = index == 1 ? "jersey" : index == 2 ? "felt" : "woven";
+    options.heatmap = true;
+    BusyIndicator busy(this, tr("Calcul de l'indice de tirage…"), {autosaveTimer_, simTimer_});
+    const document::Project snapshot = project_;
+    auto report = busy.run([&] { return project_ops::measure_fabric_risk(snapshot, options); });
+    if (!report) {
+        reportError(this, title, tr("L'estimation n'a pas pu être faite."), report.error().message);
+        return;
+    }
+    showReportDialog(this, title, QString::fromStdString(report->text), report->heatmap_png,
+                     QStringLiteral("risque_tissu.png"));
+}
+
+void MainWindow::showFabricDeformationReport() {
+    const QString title = tr("Déformation prévue du tissu (estimation)");
+    if (!requireEmbroideryForReport(title)) {
+        return;
+    }
+    // Tissu, entoilage et sens du grain viennent du projet (« Coloris et tissu »).
+    project_ops::FabricDeformationOptions options;
+    options.heatmap = true;
+    BusyIndicator busy(this, tr("Calcul de la déformation du tissu…"), {autosaveTimer_, simTimer_});
+    const document::Project snapshot = project_;
+    auto report =
+        busy.run([&] { return project_ops::predict_fabric_deformation(snapshot, options); });
+    if (!report) {
+        reportError(this, title, tr("L'estimation n'a pas pu être faite."), report.error().message);
+        return;
+    }
+    showReportDialog(this, title, QString::fromStdString(report->text), report->heatmap_png,
+                     QStringLiteral("deformation_tissu.png"));
+}
+
+void MainWindow::showColorRegistrationReport() {
+    const QString title = tr("Décalage prévu entre couleurs (estimation)");
+    if (!requireEmbroideryForReport(title)) {
+        return;
+    }
+    project_ops::ColorRegistrationOptions options;
+    options.heatmap = true;
+    BusyIndicator busy(this, tr("Calcul du décalage entre couleurs…"), {autosaveTimer_, simTimer_});
+    const document::Project snapshot = project_;
+    auto report =
+        busy.run([&] { return project_ops::predict_color_registration(snapshot, options); });
+    if (!report) {
+        reportError(this, title, tr("L'estimation n'a pas pu être faite."), report.error().message);
+        return;
+    }
+    showReportDialog(this, title, QString::fromStdString(report->text), report->heatmap_png,
+                     QStringLiteral("decalage_couleurs.png"));
+}
+
+void MainWindow::exportCompensatedDst() {
+    const QString title = tr("Exporter un DST compensé du décalage");
+    if (!requireEmbroideryForReport(title)) {
+        return;
+    }
+    const QString path = QFileDialog::getSaveFileName(this, title, QStringLiteral("compense.dst"),
+                                                      tr("Broderie Tajima (*.dst)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    project_ops::ColorRegistrationOptions options;
+    options.compensate = true;
+    BusyIndicator busy(this, tr("Calcul de la compensation…"), {autosaveTimer_, simTimer_});
+    const document::Project snapshot = project_;
+    auto report =
+        busy.run([&] { return project_ops::predict_color_registration(snapshot, options); });
+    if (!report) {
+        reportError(this, title, tr("La compensation n'a pas pu être calculée."),
+                    report.error().message);
+        return;
+    }
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly) ||
+        file.write(reinterpret_cast<const char*>(report->compensated_dst.data()),
+                   static_cast<qint64>(report->compensated_dst.size())) !=
+            static_cast<qint64>(report->compensated_dst.size())) {
+        QMessageBox::warning(this, title, tr("Le fichier %1 n'a pas pu être écrit.").arg(path));
+        return;
+    }
+    statusBar()->showMessage(
+        tr("DST compensé enregistré : %1 (estimation non calibrée)").arg(path));
 }
 
 void MainWindow::showDiagnoseReport() {

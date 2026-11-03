@@ -743,6 +743,15 @@ TEST_CASE("longueurs : finitions desactivees -> aucun decoupage") {
 
 // --- HP-STI-004 : satin de bordure -----------------------------------------------------------
 
+TEST_CASE("bordure : le fractionnement des points longs est actif d'office") {
+    const auto ring = circle(0, 0, 20'000.0, 72);
+    document::BorderSatinSpec spec;
+    spec.width = Micrometers{12'000};
+    const auto params = border_satin_from_path(ring, spec, Micrometers{400}, true);
+    REQUIRE(params.has_value());
+    CHECK(params->split_stitch == document::SatinSplit::Staggered);
+}
+
 TEST_CASE("bordure : cercle centre, bande reguliere sans croisement") {
     const double r = 10'000.0;
     const auto ring = circle(0, 0, r, 72);
@@ -991,4 +1000,226 @@ TEST_CASE("bordure : un satin de bordure n'est jamais route avec ses voisins") {
     REQUIRE(seq.has_value());
     // Pas de liaison cousue cachee entre les deux anneaux.
     CHECK(count_pass(*seq, Pass::Travel) == 0);
+}
+
+// --- Bords effilochés : écrêtage des bouts de rangée et passe de contour --------------------
+
+namespace {
+
+// Rectangle 20 x 10 mm dont le bord droit porte une pointe d'une seule rangée (rangées à
+// y = 200 + 400 k : seule celle de y = 1 000 la rencontre) qui dépasse jusqu'à x = 25 mm.
+geometry::PathSet spiked_region() {
+    geometry::Path p;
+    p.closed = true;
+    p.nodes = {node(0, 0),          node(20'000, 0),      node(20'000, 800), node(25'000, 1'000),
+               node(20'000, 1'200), node(20'000, 10'000), node(0, 10'000)};
+    return geometry::PathSet{p, {}};
+}
+
+std::int32_t max_x(const std::vector<FillStitch>& fill) {
+    std::int32_t m = -1'000'000;
+    for (const auto& fs : fill) {
+        m = std::max(m, fs.pos.x.value);
+    }
+    return m;
+}
+
+} // namespace
+
+TEST_CASE("bords : sans ecretage la pointe isolee est cousue (comportement historique)") {
+    const auto fill = fill_tatami(spiked_region(), tatami());
+    CHECK(max_x(fill) > 24'000);
+}
+
+TEST_CASE("bords : l'ecretage rabat la pointe isolee a la longueur voulue") {
+    auto p = tatami();
+    p.row_end_clip = Micrometers{1'000};
+    const auto fill = fill_tatami(spiked_region(), p);
+    // Voisines à 20 mm + 1 mm d'écrêtage.
+    CHECK(max_x(fill) == 21'000);
+    CHECK(fill == fill_tatami(spiked_region(), p)); // déterministe
+}
+
+TEST_CASE("bords : l'ecretage ne touche pas un bord droit ni une vraie pointe de forme") {
+    const geometry::PathSet rect{rect_at(0, 0, 20'000, 10'000), {}};
+    auto p = tatami();
+    p.row_end_clip = Micrometers{500};
+    CHECK(fill_tatami(rect, p) == fill_tatami(rect, tatami()));
+
+    // Triangle pointant vers la droite : la dernière rangée n'a de voisine que d'un côté ou
+    // des voisines plus courtes de moins que le pas -> aucune extrémité coupée.
+    geometry::Path tri;
+    tri.closed = true;
+    tri.nodes = {node(0, 0), node(20'000, 5'000), node(0, 10'000)};
+    const geometry::PathSet triangle{tri, {}};
+    const auto base = fill_tatami(triangle, tatami());
+    auto clipped = tatami();
+    clipped.row_end_clip = Micrometers{5'000};
+    CHECK(fill_tatami(triangle, clipped) == base);
+}
+
+TEST_CASE("bords : l'ecretage est borne et sans effet sous 0") {
+    auto p = tatami();
+    p.row_end_clip = Micrometers{-5};
+    CHECK(fill_tatami(spiked_region(), p) == fill_tatami(spiked_region(), tatami()));
+}
+
+TEST_CASE("bords : contour cousu par-dessus le remplissage, trous compris") {
+    geometry::Path hole = rect_at(6'000, 3'000, 4'000, 4'000);
+    std::reverse(hole.nodes.begin(), hole.nodes.end());
+    const geometry::PathSet region{rect_at(0, 0, 20'000, 10'000), {hole}};
+
+    auto base = tatami();
+    base.underlay_edge = false;
+    base.underlay_parallel = false;
+    document::Project off;
+    add_object(off, region, base);
+    auto withOutline = base;
+    withOutline.edge_outline = true;
+    document::Project on;
+    add_object(on, region, withOutline);
+
+    const auto seqOff = generate_sequence(off);
+    const auto seqOn = generate_sequence(on);
+    REQUIRE(seqOff.has_value());
+    REQUIRE(seqOn.has_value());
+    REQUIRE(seqOn->commands.size() > seqOff->commands.size());
+    // Le remplissage est inchangé : le contour n'est qu'AJOUTÉ à la fin.
+    // (la séquence se termine par une commande End, qui suit le dernier point.)
+    const std::size_t fillEnd = seqOff->commands.size() - 1;
+    REQUIRE(seqOff->commands.back().type == CmdType::End);
+    for (std::size_t i = 0; i < fillEnd; ++i) {
+        CHECK(seqOn->commands[i].pos == seqOff->commands[i].pos);
+    }
+    const std::vector<Vec2um> outer = {um(0, 0), um(20'000, 0), um(20'000, 10'000), um(0, 10'000)};
+    const std::vector<Vec2um> inner = {um(6'000, 3'000), um(10'000, 3'000), um(10'000, 7'000),
+                                       um(6'000, 7'000)};
+    std::size_t onOuter = 0;
+    std::size_t onHole = 0;
+    for (std::size_t i = fillEnd; i < seqOn->commands.size(); ++i) {
+        const auto& c = seqOn->commands[i];
+        if (c.type != CmdType::Stitch || c.pass != Pass::TopStitch) {
+            continue;
+        }
+        if (dist_to_polyline(outer, true, c.pos) <= 1.0) {
+            ++onOuter;
+        } else if (dist_to_polyline(inner, true, c.pos) <= 1.0) {
+            ++onHole;
+        } else {
+            FAIL("point de contour hors du bord : " << c.pos.x.value << "," << c.pos.y.value);
+        }
+    }
+    CHECK(onOuter >= 20); // 60 mm de périmètre / 2 mm
+    CHECK(onHole >= 6);   // 16 mm de périmètre du trou
+    // Déterminisme.
+    CHECK(same_sequence(*seqOn, *generate_sequence(on)));
+}
+
+TEST_CASE("bords : le remplissage directionnel peut aussi coudre un contour par-dessus") {
+    const geometry::PathSet region{rect_at(0, 0, 20'000, 10'000), {}};
+    document::DirectionalFillParams base;
+    base.inset = Micrometers{0};
+    base.underlay_edge = false;
+    base.underlay_parallel = false;
+    document::Project off;
+    add_object(off, region, base);
+    auto withOutline = base;
+    withOutline.edge_outline = true;
+    document::Project on;
+    add_object(on, region, withOutline);
+
+    const auto seqOff = generate_sequence(off);
+    const auto seqOn = generate_sequence(on);
+    REQUIRE(seqOff.has_value());
+    REQUIRE(seqOn.has_value());
+    REQUIRE(seqOn->commands.size() > seqOff->commands.size());
+    const std::size_t fillEnd = seqOff->commands.size() - 1; // dernière commande : End
+    for (std::size_t i = 0; i < fillEnd; ++i) {
+        CHECK(seqOn->commands[i].pos == seqOff->commands[i].pos);
+    }
+    const std::vector<Vec2um> outer = {um(0, 0), um(20'000, 0), um(20'000, 10'000), um(0, 10'000)};
+    std::size_t onEdge = 0;
+    for (std::size_t i = fillEnd; i < seqOn->commands.size(); ++i) {
+        const auto& c = seqOn->commands[i];
+        if (c.type == CmdType::Stitch && c.pass == Pass::TopStitch) {
+            CHECK(dist_to_polyline(outer, true, c.pos) <= 1.0);
+            ++onEdge;
+        }
+    }
+    CHECK(onEdge >= 20);
+    CHECK(same_sequence(*seqOn, *generate_sequence(on)));
+}
+
+// --- HP-ENG-002 : sous-couche en zigzag des grands aplats ------------------------------------
+
+TEST_CASE("sous-couche auto : le zigzag n'apparait qu'a partir de 400 mm2") {
+    const auto choose = [](std::int32_t w, std::int32_t h) {
+        return choose_fill_underlay(measure_shape(geometry::PathSet{rect_at(0, 0, w, h), {}}));
+    };
+    CHECK_FALSE(choose(19'000, 19'000).zigzag); // 361 mm2
+    CHECK(choose(20'000, 20'000).zigzag);       // 400 mm2
+    CHECK(choose(40'000, 40'000).zigzag);
+    CHECK_FALSE(choose(5'000, 5'000).zigzag);
+}
+
+TEST_CASE("sous-couche zigzag : rangees diagonales a 45 degres dans la forme") {
+    const geometry::PathSet region{rect_at(0, 0, 30'000, 30'000), {}};
+    auto p = tatami();
+    p.underlay_zigzag = true;
+    p.underlay_spacing = Micrometers{3'000};
+    const auto passes = tatami_underlay(region, p);
+    REQUIRE_FALSE(passes.empty());
+    std::size_t diagonal = 0;
+    for (const auto& pass : passes) {
+        for (std::size_t i = 1; i < pass.size(); ++i) {
+            const auto d = pass[i] - pass[i - 1];
+            const double len = length_um(d);
+            // Les liaisons entre rangees ne sont pas diagonales : on compte seulement les pas
+            // de rangee (pente +-1 au micrometre pres).
+            if (len > 1'000.0 &&
+                std::abs(std::abs(static_cast<double>(d.x.value)) -
+                         std::abs(static_cast<double>(d.y.value))) <= 0.02 * len + 2.0) {
+                ++diagonal;
+            }
+        }
+        for (const Vec2um v : pass) {
+            CHECK(v.x.value >= 0);
+            CHECK(v.x.value <= 30'000);
+            CHECK(v.y.value >= 0);
+            CHECK(v.y.value <= 30'000);
+        }
+    }
+    CHECK(diagonal > 0);
+    CHECK(tatami_underlay(region, p) == passes); // deterministe
+}
+
+TEST_CASE("sous-couche zigzag : desactive, la sous-couche est inchangee") {
+    const geometry::PathSet region{rect_at(0, 0, 30'000, 30'000), {}};
+    auto p = tatami();
+    p.underlay_edge = true;
+    p.underlay_parallel = true;
+    const auto base = tatami_underlay(region, p);
+    p.underlay_zigzag = true;
+    const auto withZigzag = tatami_underlay(region, p);
+    REQUIRE(withZigzag.size() > base.size());
+    for (std::size_t i = 0; i < base.size(); ++i) {
+        CHECK(withZigzag[i] == base[i]); // le zigzag s'ajoute apres les passes existantes
+    }
+}
+
+TEST_CASE(
+    "sous-couche auto : un grand tatami recoit le zigzag, les reglages manuels sont ignores") {
+    document::Project project;
+    add_object(project, {rect_at(0, 0, 30'000, 30'000), {}}, tatami());
+    auto& tp = std::get<document::TatamiParams>(project.embroidery_objects[0].params);
+    tp.underlay_mode = document::UnderlayMode::Auto;
+    const auto autoSeq = generate_sequence(project);
+    REQUIRE(autoSeq.has_value());
+    const auto resolved = resolve_underlay(tp, {rect_at(0, 0, 30'000, 30'000), {}});
+    CHECK(resolved.underlay_zigzag);
+    CHECK(resolved.underlay_parallel);
+    tp.underlay_zigzag = true; // ignore en mode Auto : meme resultat qu'avec zigzag decoche
+    const auto again = generate_sequence(project);
+    REQUIRE(again.has_value());
+    CHECK(same_sequence(*again, *autoSeq));
 }

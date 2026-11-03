@@ -623,6 +623,7 @@ private slots:
     void regionRectangleSelectionHonoursWindowAndCrossing();
     void documentListMultiSelectionDrivesRegionSelection();
     void shapeUnionActionIsOneUndoStep();
+    void shapeBreakApartActionSplitsPiecesInOneUndoStep();
     void blendZonesActionMakesBaseAndGradedTopInOneUndoStep();
     void displayFiltersApplyToVectorShapes();
     void displayFilterShortcutsIsolateAndRestore();
@@ -664,6 +665,13 @@ private slots:
     void addOfAlreadySelectedObjectIsNoOp();
     void clickOnEmptyReplaceDeselectsButModifiersKeepSelection();
     void rectangleSelectionHonoursModes();
+    void invertSelectionActionSelectsTheOthers();
+    void namedSelectionIsRecalledAndSkipsDeletedShapes();
+    void lassoSelectsShapesInsideAndDisarmsOnToolChange();
+    void selectionMenuIsInTheEditMenuWithUniqueShortcuts();
+    void filterIndicatorCountsHiddenObjectsAndResets();
+    void displayFiltersAreRestoredFromSettings();
+    void documentPanelStateAndColorFiltersCombine();
     void regionSelectionClearsMultiSelection();
     void embroiderySelectionClearsMultiSelection();
     void danglingIdsArePrunedAfterDeleteUndoRedo();
@@ -722,6 +730,9 @@ private slots:
 
     // Remplissage directionnel : conversion, outil de guides, undo/redo.
     void convertingTatamiToDirectionalIsUndoable();
+    void knockoutOptionIsUndoableAndRegenerates();
+    void convertingTatamiToContourFillIsUndoable();
+    void convertingTatamiToRadialSpiralCrosshatchIsUndoable();
     void densityGradientIsUndoableAndSpansTheShape();
     void editingGradientEndSpacingKeepsTheInspectorAlive();
     void gradientEndSpacingKeepsNarrowedZoneUntilTheAngleChanges();
@@ -833,6 +844,7 @@ private slots:
     // affichés dans les deux cas.
     void autoDigitizeDialogDoesNotSkipColoredFullFrameRegion();
     void autoDigitizeDialogOffersDarkLinesAndIslandCleanup();
+    void autoDigitizeDialogOuterBackgroundKeepsEnclosedWhite();
     void autoDigitizeDialogSkipsBeigeFramingBackground();
     void autoDigitizeDialogSkipsNearWhiteFramingBackground();
     // Strategie « Contours » : choix de strategie, curseur de detail (defaut
@@ -846,6 +858,7 @@ private slots:
     // Guides d'orientation de l'auto-satin : un trait tracé fixe l'ancre et l'angle
     // (absolu), tout geste est une commande annulable, un trait trop court est ignoré.
     void autoSatinGuideFromStrokeIsAbsoluteAndUndoable();
+    void autoSatinCurvedGuideStrokeKeepsItsPathAndIsUndoable();
     void autoSatinGuideTooShortStrokeIsIgnored();
     void autoSatinGuideChangeAndRemoveAreUndoable();
 
@@ -877,6 +890,7 @@ private slots:
     void manualSatinColumnDropsOrphanPointOnOddCountAtFinish();
     void switchingToolDuringSatinColumnDrawCancelsIt();
     void satinRailEditModeDragsNodeAndUndoRestoresIt();
+    void radialFillCenterHandleFixesTheCenterAndUndoRestoresAuto();
 
     // Réponses à l'audit UI (boutons "ne faisant rien", pas de courbes de
     // Bézier, menu contextuel pauvre, mode satin confus) : outil Bézier réel
@@ -1016,8 +1030,10 @@ void MainWindowTest::initTestCase() {
 
 void MainWindowTest::qualityReportActionsExistAndNeedEmbroidery() {
     MainWindow window;
-    for (const char* name : {"action_fidelityReport", "action_densityReport",
-                             "action_diagnoseReport", "action_exportRealisticPng"}) {
+    for (const char* name :
+         {"action_fidelityReport", "action_densityReport", "action_fabricRiskReport",
+          "action_fabricDeformationReport", "action_colorRegistrationReport",
+          "action_exportCompensatedDst", "action_diagnoseReport", "action_exportRealisticPng"}) {
         QVERIFY2(window.findChild<QAction*>(QString::fromLatin1(name)) != nullptr, name);
     }
 }
@@ -1196,6 +1212,159 @@ void MainWindowTest::rectangleSelectionHonoursModes() {
     window.applySelectionRectangle({}, SelectMode::Replace); // rectangle vide : désélectionne
     QVERIFY(window.selectedObjectIds().empty());
     QVERIFY(window.checkSelectionInvariants());
+}
+
+void MainWindowTest::invertSelectionActionSelectsTheOthers() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+    auto* invert = window.findChild<QAction*>(QStringLiteral("action_invertSelection"));
+    QVERIFY(invert != nullptr);
+    QVERIFY(invert->isEnabled());
+
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    invert->trigger();
+    QCOMPARE(window.selectedObjectIds(), (std::vector<ObjectId>{fx.b, fx.c}));
+    invert->trigger(); // inverser deux fois ne rend pas la sélection d'origine : tout le reste
+    QCOMPARE(window.selectedObjectIds(), (std::vector<ObjectId>{fx.a}));
+    QVERIFY(window.checkSelectionInvariants());
+}
+
+void MainWindowTest::namedSelectionIsRecalledAndSkipsDeletedShapes() {
+    MainWindow window;
+    TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+    auto* recall = window.findChild<QMenu*>(QStringLiteral("menu_recallSelection"));
+    QVERIFY(recall != nullptr);
+    QVERIFY(!recall->isEnabled()); // rien de mémorisé
+
+    ObjectId ghost{9999};
+    window.namedSelections_.emplace_back(QStringLiteral("duo"),
+                                         std::vector<ObjectId>{fx.a, ghost, fx.c});
+    window.rebuildNamedSelectionMenu();
+    QVERIFY(recall->isEnabled());
+    QCOMPARE(recall->actions().size(), 1);
+    window.recallNamedSelection(QStringLiteral("duo"));
+    QCOMPARE(window.selectedObjectIds(), (std::vector<ObjectId>{fx.a, fx.c}));
+}
+
+void MainWindowTest::lassoSelectsShapesInsideAndDisarmsOnToolChange() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+    auto* lasso = window.findChild<QAction*>(QStringLiteral("action_lassoSelect"));
+    QVERIFY(lasso != nullptr);
+
+    lasso->trigger();
+    QVERIFY(window.lassoSelectArmed_);
+    window.setTool(Tool::Select);
+    QVERIFY(!window.lassoSelectArmed_); // changer d'outil abandonne le lasso
+
+    lasso->trigger();
+    for (const auto& [x, y] :
+         {std::pair{-1000, -1000}, {5000, -1000}, {5000, 2000}, {-1000, 2000}}) {
+        window.pendingFreeformPoints_.push_back(Vec2um{Micrometers{x}, Micrometers{y}});
+    }
+    window.finishFreeform();
+    QVERIFY(!window.lassoSelectArmed_);
+    QCOMPARE(window.selectedObjectIds(), (std::vector<ObjectId>{fx.a, fx.b}));
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{3}); // aucune forme créée
+}
+
+void MainWindowTest::selectionMenuIsInTheEditMenuWithUniqueShortcuts() {
+    MainWindow window;
+    const auto* menu = window.findChild<QMenu*>(QStringLiteral("menu_selection"));
+    QVERIFY(menu != nullptr);
+    QMap<QString, QString> owners;
+    for (const QAction* act : window.findChildren<QAction*>()) {
+        if (act->shortcut().isEmpty()) {
+            continue;
+        }
+        const QString key = act->shortcut().toString();
+        // Deux actions identiques (menu et barre d'outils) peuvent partager une même instance ;
+        // deux actions DIFFÉRENTES avec le même raccourci rendent le raccourci ambigu.
+        if (owners.contains(key) && owners.value(key) != act->objectName() &&
+            (act->objectName().startsWith(QStringLiteral("action_select")) ||
+             act->objectName().startsWith(QStringLiteral("action_invert")))) {
+            QFAIL(qPrintable(QStringLiteral("raccourci en double : %1").arg(key)));
+        }
+        owners.insert(key, act->objectName());
+    }
+}
+
+void MainWindowTest::filterIndicatorCountsHiddenObjectsAndResets() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    QVERIFY(window.filterIndicator_ != nullptr);
+    QVERIFY(window.filterIndicator_->isHidden()); // aucun filtre : rien à signaler
+
+    window.typeChecks_[0]->setChecked(false); // le contour de la fixture disparaît
+    QVERIFY(!window.filterIndicator_->isHidden());
+    QVERIFY(window.filterIndicator_->text().contains(QLatin1Char('1')));
+
+    window.filterIndicator_->click(); // un clic sur l'indicateur réaffiche tout
+    QVERIFY(window.filterIndicator_->isHidden());
+    QVERIFY(window.typeChecks_[0]->isChecked());
+}
+
+void MainWindowTest::displayFiltersAreRestoredFromSettings() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QSettings::Format savedFormat = QSettings::defaultFormat();
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.path());
+    const QByteArray savedEnv = qgetenv("OPENSTITCH_NO_PERSISTED_FILTERS");
+    qunsetenv("OPENSTITCH_NO_PERSISTED_FILTERS");
+    {
+        MainWindow first;
+        first.typeChecks_[2]->setChecked(false); // satin masqué
+        first.minAreaSpin_->setValue(3.5);
+    }
+    {
+        MainWindow second;
+        QVERIFY(!second.typeChecks_[2]->isChecked());
+        QVERIFY(second.typeChecks_[0]->isChecked());
+        QCOMPARE(second.minAreaSpin_->value(), 3.5);
+        second.showAllFilters();
+    }
+    {
+        MainWindow third; // « Tout afficher » est mémorisé lui aussi
+        QVERIFY(third.typeChecks_[2]->isChecked());
+        QCOMPARE(third.minAreaSpin_->value(), 0.0);
+    }
+    if (!savedEnv.isNull()) {
+        qputenv("OPENSTITCH_NO_PERSISTED_FILTERS", savedEnv);
+    }
+    QSettings::setDefaultFormat(savedFormat);
+}
+
+void MainWindowTest::documentPanelStateAndColorFiltersCombine() {
+    MainWindow window;
+    Fixture fx = buildFixture();
+    fx.project.embroidery_objects[0].rgb = {10, 20, 30};
+    fx.project.embroidery_objects[0].locked = true;
+    window.applyLoadedProject(fx.project);
+    auto* panel = window.findChild<DocumentPanel*>();
+    QVERIFY(panel != nullptr);
+    auto* state = panel->findChild<QComboBox*>(QStringLiteral("combo_documentStateFilter"));
+    auto* color = panel->findChild<QComboBox*>(QStringLiteral("combo_documentColorFilter"));
+    auto* tree = panel->findChild<QTreeWidget*>(QStringLiteral("tree_documentObjects"));
+    QVERIFY(state != nullptr && color != nullptr && tree != nullptr);
+    QCOMPARE(color->count(), 2); // « toutes » + la teinte de la fixture
+    QVERIFY(!tree->topLevelItem(0)->isHidden());
+
+    state->setCurrentIndex(state->findData(2)); // ordre figé : l'objet l'est
+    QVERIFY(!tree->topLevelItem(0)->isHidden());
+    state->setCurrentIndex(state->findData(1)); // masqués : il est visible, donc caché de la liste
+    QVERIFY(tree->topLevelItem(0)->isHidden());
+    state->setCurrentIndex(0);
+    color->setCurrentIndex(1);
+    QVERIFY(!tree->topLevelItem(0)->isHidden());
+    color->setItemData(1, QStringLiteral("#ffffff")); // teinte absente : plus rien ne correspond
+    color->setCurrentIndex(0);
+    color->setCurrentIndex(1);
+    QVERIFY(tree->topLevelItem(0)->isHidden());
 }
 
 void MainWindowTest::regionSelectionClearsMultiSelection() {
@@ -2998,6 +3167,56 @@ void MainWindowTest::autoDigitizeDialogOffersDarkLinesAndIslandCleanup() {
     QVERIFY(islandOffByDefault);
 }
 
+void MainWindowTest::autoDigitizeDialogOuterBackgroundKeepsEnclosedWhite() {
+    // Anneau rouge sur fond blanc : le centre blanc n'est pas relié au pourtour.
+    const auto makeProject = [] {
+        auto project = opaqueSegmentedProject({250, 250, 250}, {200, 30, 30}, 5, 4, 35, 26);
+        constexpr int kW = 40;
+        for (int y = 10; y < 20; ++y) {
+            for (int x = 14; x < 26; ++x) {
+                auto* px =
+                    project.original.rgba.data() + (std::size_t(y) * kW + std::size_t(x)) * 4;
+                px[0] = px[1] = px[2] = 250;
+            }
+        }
+        auto seg = openstitch::segmentation::segment(project.original,
+                                                     {.max_colors = 2, .min_region_px = 1});
+        project.segmentation = std::move(*seg);
+        return project;
+    };
+    const auto digitizedCount = [&](bool outer, bool& optionSeen, bool& enabledWhenSkipOff) {
+        MainWindow window;
+        window.applyLoadedProject(makeProject());
+        QTimer::singleShot(0, &window, [&] {
+            auto* dlg = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+            if (dlg == nullptr) {
+                return;
+            }
+            auto* skip = dlg->findChild<QCheckBox*>("skipBackgroundCheck");
+            auto* outerCheck = dlg->findChild<QCheckBox*>("skipBackgroundOuterCheck");
+            if (skip == nullptr || outerCheck == nullptr) {
+                dlg->reject();
+                return;
+            }
+            optionSeen = true;
+            skip->setChecked(false);
+            enabledWhenSkipOff = outerCheck->isEnabled();
+            skip->setChecked(true);
+            outerCheck->setChecked(outer);
+            dlg->accept();
+        });
+        window.autoDigitize();
+        return window.project_.embroidery_objects.size();
+    };
+    bool seen = false;
+    bool enabledWhenOff = true;
+    const std::size_t all = digitizedCount(false, seen, enabledWhenOff);
+    QVERIFY(seen);
+    QVERIFY(!enabledWhenOff); // sans « ignorer le fond », l'option n'a pas de sens
+    const std::size_t outer = digitizedCount(true, seen, enabledWhenOff);
+    QVERIFY(outer > all); // le centre blanc est cousu en plus de l'anneau
+}
+
 void MainWindowTest::autoDigitizeDialogSkipsNearWhiteFramingBackground() {
     MainWindow window;
     window.applyLoadedProject(
@@ -3297,6 +3516,45 @@ void MainWindowTest::autoSatinGuideFromStrokeIsAbsoluteAndUndoable() {
         std::get<openstitch::document::AutoSatinParams>(window.project_.findEmbroidery(id)->params)
             .guides.size(),
         std::size_t{1});
+}
+
+void MainWindowTest::autoSatinCurvedGuideStrokeKeepsItsPathAndIsUndoable() {
+    MainWindow window;
+    const Fixture fx = buildRunningRectangleFixture();
+    window.applyLoadedProject(fx.project);
+    window.setStitchType(fx.embroideryId, /*type=*/2);
+    const ObjectId id = fx.embroideryId;
+    const auto pt = [](int x, int y) { return Vec2um{Micrometers{x}, Micrometers{y}}; };
+    const std::vector<Vec2um> stroke{pt(5'000, 2'500), pt(12'000, 5'000), pt(20'000, 2'500)};
+
+    const std::size_t stepsBefore = window.undoStack_.undoNames().size();
+    window.addAutoSatinGuideFromStroke(id, stroke);
+    const auto& sat =
+        std::get<openstitch::document::AutoSatinParams>(window.project_.findEmbroidery(id)->params);
+    QCOMPARE(sat.guides.size(), std::size_t{1});
+    QVERIFY(sat.guides[0].absolute);
+    QCOMPARE(sat.guides[0].anchor.x.value, 5'000);
+    QCOMPARE(sat.guides[0].path.size(), std::size_t{3});
+    QCOMPARE(window.undoStack_.undoNames().size(), stepsBefore + 1); // un seul pas
+
+    // Un trait droit (2 points) ne stocke pas de courbe : comportement historique.
+    window.addAutoSatinGuideFromStroke(id, pt(10'000, 2'500), pt(15'000, 2'500));
+    const auto& after =
+        std::get<openstitch::document::AutoSatinParams>(window.project_.findEmbroidery(id)->params);
+    QCOMPARE(after.guides.size(), std::size_t{2});
+    QVERIFY(after.guides[1].path.empty());
+
+    window.undo();
+    window.undo();
+    QVERIFY(
+        std::get<openstitch::document::AutoSatinParams>(window.project_.findEmbroidery(id)->params)
+            .guides.empty());
+    window.redo();
+    QCOMPARE(
+        std::get<openstitch::document::AutoSatinParams>(window.project_.findEmbroidery(id)->params)
+            .guides[0]
+            .path.size(),
+        std::size_t{3});
 }
 
 void MainWindowTest::autoSatinGuideTooShortStrokeIsIgnored() {
@@ -4234,6 +4492,65 @@ void MainWindowTest::switchingToolDuringSatinColumnDrawCancelsIt() {
     QVERIFY(!window.undoStack_.canUndo()); // rien n'a été créé
 }
 
+void MainWindowTest::radialFillCenterHandleFixesTheCenterAndUndoRestoresAuto() {
+    MainWindow window;
+    Fixture fx = buildFixture();
+    fx.project.findEmbroidery(fx.embroideryId)->params = openstitch::document::RadialFillParams{};
+    window.applyLoadedProject(fx.project);
+    window.resize(900, 700);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.refreshImage();
+
+    const auto findHandle = [&window]() -> NodeHandleItem* {
+        for (QGraphicsItem* item : window.baseItems_) {
+            if (auto* handle = dynamic_cast<NodeHandleItem*>(item);
+                handle != nullptr &&
+                handle->data(0).toString() == QStringLiteral("fillCenterHandle")) {
+                return handle;
+            }
+        }
+        return nullptr;
+    };
+    NodeHandleItem* handle = findHandle();
+    QVERIFY2(handle != nullptr, "le centre automatique doit être visible sur le canevas");
+    const auto& autoParams = std::get<openstitch::document::RadialFillParams>(
+        window.project_.findEmbroidery(fx.embroideryId)->params);
+    QVERIFY(!autoParams.center.has_value());
+
+    window.view_->resetTransform();
+    window.view_->scale(40.0, 40.0);
+    window.view_->centerOn(handle->scenePos());
+    const QPoint start = window.view_->mapFromScene(handle->scenePos());
+    const int availableRight = window.view_->viewport()->width() - 1 - start.x();
+    const int direction = availableRight >= start.x() ? 1 : -1;
+    const QPoint end = start + QPoint(40 * direction, 0);
+    const QPoint middle = (start + end) / 2;
+    QCOMPARE(dynamic_cast<NodeHandleItem*>(window.view_->itemAt(start)), handle);
+    QTest::mousePress(window.view_->viewport(), Qt::LeftButton, Qt::NoModifier, start);
+    QTest::mouseMove(window.view_->viewport(), middle);
+    QTest::mouseMove(window.view_->viewport(), end);
+    QTest::mouseRelease(window.view_->viewport(), Qt::LeftButton, Qt::NoModifier, end);
+
+    QTRY_VERIFY_WITH_TIMEOUT(window.undoStack_.canUndo(), 1000);
+    const auto& fixedParams = std::get<openstitch::document::RadialFillParams>(
+        window.project_.findEmbroidery(fx.embroideryId)->params);
+    QVERIFY(fixedParams.center.has_value());
+    // Le repère est maintenant plein (centre fixé) et se retrouve à la nouvelle position.
+    handle = findHandle();
+    QVERIFY(handle != nullptr);
+    QVERIFY(handle->brush().style() != Qt::NoBrush);
+
+    window.undo();
+    QVERIFY(!std::get<openstitch::document::RadialFillParams>(
+                 window.project_.findEmbroidery(fx.embroideryId)->params)
+                 .center.has_value());
+    handle = findHandle();
+    QVERIFY(handle != nullptr);
+    QVERIFY(handle->brush().style() == Qt::NoBrush); // retour au centre automatique
+}
+
 void MainWindowTest::satinRailEditModeDragsNodeAndUndoRestoresIt() {
     MainWindow window;
     const Fixture fx = buildSatinGuideFixture();
@@ -4753,6 +5070,36 @@ Fixture buildTatamiSquareFixture() {
 
 namespace openstitch::desktop {
 
+// HP-ENG-011 : « Retirer les points cachés » -- un pas d'annulation, la génération tourne.
+void MainWindowTest::knockoutOptionIsUndoableAndRegenerates() {
+    MainWindow window;
+    const Fixture fx = buildTatamiSquareFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+
+    window.setKnockout(fx.embroideryId, true, 0.5);
+    const auto* emb = window.project_.findEmbroidery(fx.embroideryId);
+    QVERIFY(emb != nullptr && emb->knockout);
+    QCOMPARE(emb->knockout_margin.value, 500);
+    QCOMPARE(window.undoStack_.undoNames().size(), std::size_t{1});
+    QVERIFY(window.sequence_.has_value());
+
+    window.setKnockout(fx.embroideryId, true, 0.5); // identique : aucun pas d'annulation de plus
+    QCOMPARE(window.undoStack_.undoNames().size(), std::size_t{1});
+
+    // Saisie en direct de la marge : les changements successifs fusionnent en un seul pas.
+    window.setKnockout(fx.embroideryId, true, 0.6);
+    window.setKnockout(fx.embroideryId, true, 0.7);
+    QCOMPARE(window.undoStack_.undoNames().size(), std::size_t{1});
+    QCOMPARE(window.project_.findEmbroidery(fx.embroideryId)->knockout_margin.value, 700);
+
+    window.undo();
+    emb = window.project_.findEmbroidery(fx.embroideryId);
+    QVERIFY(!emb->knockout);
+    QCOMPARE(emb->knockout_margin.value, 300);
+}
+
 void MainWindowTest::convertingTatamiToDirectionalIsUndoable() {
     MainWindow window;
     const Fixture fx = buildTatamiSquareFixture();
@@ -4771,6 +5118,54 @@ void MainWindowTest::convertingTatamiToDirectionalIsUndoable() {
              QStringLiteral("Type : remplissage directionnel"));
     QVERIFY(window.sequence_.has_value()); // la génération a bien tourné
 
+    window.undo();
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId)->is_tatami());
+}
+
+void MainWindowTest::convertingTatamiToContourFillIsUndoable() {
+    MainWindow window;
+    const Fixture fx = buildTatamiSquareFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+
+    window.convertToContourFill(fx.embroideryId);
+    const auto* emb = window.project_.findEmbroidery(fx.embroideryId);
+    QVERIFY(emb != nullptr && emb->is_contour_fill());
+    const auto& cp = std::get<openstitch::document::ContourFillParams>(emb->params);
+    QCOMPARE(cp.row_spacing.value, 450); // réglages du tatami repris
+    QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
+             QStringLiteral("Type : remplissage concentrique"));
+    QVERIFY(window.sequence_.has_value()); // la génération a bien tourné
+
+    window.undo();
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId)->is_tatami());
+}
+
+void MainWindowTest::convertingTatamiToRadialSpiralCrosshatchIsUndoable() {
+    MainWindow window;
+    const Fixture fx = buildTatamiSquareFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+
+    window.convertToFillKind(fx.embroideryId, 0);
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId)->is_radial_fill());
+    QVERIFY(window.sequence_.has_value());
+    window.convertToFillKind(fx.embroideryId, 1);
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId)->is_spiral_fill());
+    window.convertToFillKind(fx.embroideryId, 2);
+    const auto* emb = window.project_.findEmbroidery(fx.embroideryId);
+    QVERIFY(emb != nullptr && emb->is_crosshatch_fill());
+    QVERIFY(std::get<openstitch::document::CrosshatchFillParams>(emb->params).row_spacing.value >=
+            1'500);
+    QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
+             QStringLiteral("Type : remplissage croisé"));
+
+    window.undo();
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId)->is_spiral_fill());
+    window.undo();
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId)->is_radial_fill());
     window.undo();
     QVERIFY(window.project_.findEmbroidery(fx.embroideryId)->is_tatami());
 }
@@ -5816,8 +6211,12 @@ void MainWindowTest::helpMenuHasThreeEntriesAndF1OpensGestures() {
         }
     }
     QCOMPARE(names,
-             (QStringList{QStringLiteral("action_help_quickstart"),
-                          QStringLiteral("action_help_gestures"), QStringLiteral("action_about")}));
+             (QStringList{
+                 QStringLiteral("action_help_quickstart"), QStringLiteral("action_live_bridge"),
+                 QStringLiteral("action_companion_settings"),
+                 QStringLiteral("action_open_claude_code"), QStringLiteral("action_help_gestures"),
+                 QStringLiteral("action_help_tutorial"), QStringLiteral("action_help_manual"),
+                 QStringLiteral("action_help_context"), QStringLiteral("action_about")}));
     for (const QAction* act : helpMenu->actions()) {
         QVERIFY2(!act->toolTip().isEmpty() && !act->statusTip().isEmpty(),
                  qPrintable(act->objectName()));
@@ -7003,7 +7402,7 @@ void MainWindowTest::groupInspectorEditsOneFieldOnEveryObjectInOneStep() {
     window.setStitchTypeForSelection(1); // un tatami chacun
     // Réglages DIFFÉRENTS au départ : le champ commun ne doit pas écraser les autres.
     std::get<openstitch::document::TatamiParams>(window.project_.embroidery_objects[0].params)
-        .stagger = 3;
+        .stagger = 4;
     window.updateActions();
     window.updateInspector();
 
@@ -7020,7 +7419,7 @@ void MainWindowTest::groupInspectorEditsOneFieldOnEveryObjectInOneStep() {
     QCOMPARE(
         std::get<openstitch::document::TatamiParams>(window.project_.embroidery_objects[0].params)
             .stagger,
-        3);
+        4);
     QCOMPARE(
         std::get<openstitch::document::TatamiParams>(window.project_.embroidery_objects[1].params)
             .stagger,
@@ -7100,6 +7499,38 @@ void MainWindowTest::shapeUnionActionIsOneUndoStep() {
 
     window.undo();
     QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
+}
+
+void MainWindowTest::shapeBreakApartActionSplitsPiecesInOneUndoStep() {
+    auto project = twoOverlappingRectangles();
+    // Un seul objet à deux morceaux disjoints (HP-VEC-013).
+    auto far = project.vector_objects[0].paths.front();
+    for (auto& node : far.outer.nodes) {
+        node.pos.x = Micrometers{node.pos.x.value + 50'000};
+    }
+    project.vector_objects[0].paths.push_back(far);
+    MainWindow window;
+    window.applyLoadedProject(std::move(project));
+    QAction* apart = window.findChild<QAction*>(QStringLiteral("action_shapeBreakApart"));
+    QVERIFY(apart != nullptr);
+    window.updateActions();
+    QVERIFY(!apart->isEnabled()); // rien de sélectionné
+
+    const ObjectId a = window.project_.vector_objects[0].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a}});
+    window.updateActions();
+    QVERIFY(apart->isEnabled());
+
+    apart->trigger();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{3});
+    for (const auto& object : window.project_.vector_objects) {
+        QCOMPARE(object.paths.size(), std::size_t{1});
+    }
+    QVERIFY(window.checkSelectionInvariants());
+
+    window.undo();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
+    QCOMPARE(window.project_.vector_objects[0].paths.size(), std::size_t{2});
 }
 
 void MainWindowTest::blendZonesActionMakesBaseAndGradedTopInOneUndoStep() {

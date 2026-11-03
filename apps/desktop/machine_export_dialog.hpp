@@ -6,6 +6,7 @@
 
 #include <functional>
 #include <optional>
+#include <vector>
 
 #include "openstitch/formats/format_registry.hpp"
 #include "openstitch/formats/machine_design.hpp"
@@ -15,6 +16,7 @@ class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;
 class QLabel;
+class QListWidget;
 class QPlainTextEdit;
 class QPushButton;
 class QToolButton;
@@ -36,6 +38,12 @@ public:
         bool blocking{false};            // limite du format dépassée : l'export serait refusé
         bool has_warnings{false};        // avertissements (analyse, cadre, limites du format)
         QString problems;                // liste des problèmes, montrée sans fermer le dialogue
+        // HP-FMT-022 : blocs de couleur dans l'ordre où ils seront cousus (pastille + texte).
+        struct BlockRow {
+            unsigned rgb{0}; // 0xRRGGBB
+            QString text;
+        };
+        std::vector<BlockRow> blocks;
     };
     using SummaryFn =
         std::function<Summary(const formats::FormatInfo&, const formats::MachineExportOptions&,
@@ -102,6 +110,8 @@ private:
     QCheckBox* sameColour_{nullptr};
     QDoubleSpinBox* maxBridge_{nullptr};
     QLabel* summary_{nullptr};
+    QLabel* blocksTitle_{nullptr};
+    QListWidget* blocks_{nullptr};
     QPushButton* chooseBtn_{nullptr};
     QPushButton* problemsBtn_{nullptr};
     QPushButton* openAnalysisBtn_{nullptr};

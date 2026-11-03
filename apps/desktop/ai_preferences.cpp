@@ -21,6 +21,8 @@ constexpr auto kDefaultDevice = "ai/defaultDevice";
 constexpr auto kMaxResolution = "ai/maxAnalysisResolution";
 constexpr auto kKeepDiagnostics = "ai/keepDiagnosticFiles";
 constexpr auto kLogLevel = "ai/logLevel";
+constexpr auto kBackendsFile = "ai/backendsFile";
+constexpr auto kEngine = "ai/engine";
 
 // Remonte depuis le dossier de l'exécutable (build/msvc/apps/desktop/<Config>
 // en dev) à la recherche de la racine du dépôt (repérée par la présence de
@@ -80,6 +82,8 @@ AiPreferences loadAiPreferences() {
     prefs.maxAnalysisResolution = s.value(kMaxResolution, prefs.maxAnalysisResolution).toInt();
     prefs.keepDiagnosticFiles = s.value(kKeepDiagnostics, prefs.keepDiagnosticFiles).toBool();
     prefs.logLevel = s.value(kLogLevel, prefs.logLevel).toString();
+    prefs.backendsFile = s.value(kBackendsFile, prefs.backendsFile).toString();
+    prefs.engine = s.value(kEngine, prefs.engine).toString();
     return prefs;
 }
 
@@ -96,6 +100,59 @@ void saveAiPreferences(const AiPreferences& prefs) {
     s.setValue(kMaxResolution, prefs.maxAnalysisResolution);
     s.setValue(kKeepDiagnostics, prefs.keepDiagnosticFiles);
     s.setValue(kLogLevel, prefs.logLevel);
+    s.setValue(kBackendsFile, prefs.backendsFile);
+    s.setValue(kEngine, prefs.engine);
+}
+
+QString AiEngine::toString() const {
+    switch (kind) {
+    case Kind::Classical:
+        return QStringLiteral("classical");
+    case Kind::Backend:
+        return QStringLiteral("backend:") + backendId;
+    case Kind::Legacy:
+        break;
+    }
+    return QStringLiteral("legacy");
+}
+
+AiEngine AiEngine::fromString(const QString& text) {
+    if (text == QLatin1String("classical")) {
+        return {Kind::Classical, {}};
+    }
+    if (text.startsWith(QLatin1String("backend:")) && text.size() > 8) {
+        return {Kind::Backend, text.mid(8)};
+    }
+    return {}; // inconnu ou « legacy » : comportement historique
+}
+
+QString effectiveBackendsFile(const AiPreferences& prefs) {
+    if (!prefs.backendsFile.trimmed().isEmpty()) {
+        return prefs.backendsFile.trimmed();
+    }
+    return QString::fromStdString(ai_segmentation::backend_settings_env_path());
+}
+
+ai_segmentation::BackendSettings loadBackendSettings(const AiPreferences& prefs,
+                                                     QString* errorMessage) {
+    if (errorMessage != nullptr) {
+        errorMessage->clear();
+    }
+    const QString file = effectiveBackendsFile(prefs);
+    if (file.isEmpty()) {
+        return {};
+    }
+    auto loaded = ai_segmentation::load_backend_settings(file.toStdString());
+    if (!loaded) {
+        if (errorMessage != nullptr) {
+            *errorMessage = QObject::tr("Fichier de backends IA illisible (%1) : %2 %3")
+                                .arg(QDir::toNativeSeparators(file),
+                                     QString::fromStdString(loaded.error().message),
+                                     QString::fromStdString(loaded.error().detail));
+        }
+        return {};
+    }
+    return std::move(*loaded);
 }
 
 SamWorkerConfig toWorkerConfig(const AiPreferences& prefs) {

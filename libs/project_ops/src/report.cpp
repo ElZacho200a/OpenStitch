@@ -121,6 +121,9 @@ Result<std::string> digitize_report_json(const document::Project& project,
                          {"technique", settings.technique},
                          {"curve_tolerance_mm", settings.curve_tolerance_mm},
                          {"satin_bands", settings.satin_bands}};
+    if (!settings.profile_path.empty()) {
+        j["settings"]["profile"] = settings.profile_path;
+    }
     json background = json::object();
     background["skipped"] = report.background_skipped;
     background["decision"] = report.background_auto ? "automatic" : "explicit";

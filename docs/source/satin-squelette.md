@@ -411,6 +411,21 @@ persistance par nom et la version v7 conditionnelle).
 - **Clés de cache** : le résumé de l'inspecteur inclut désormais la méthode, l'angle et
   `compact_axis` (ce dernier en était absent).
 
+**Guides en courbe (balayage parallèle, 2026-10-19).** Un guide d'orientation tracé avec **3 points
+ou plus** (outil « Guide de direction » sur un auto-satin) est conservé comme polyligne
+(`AutoSatinGuide::path`, clé JSON facultative `path` : un `.osp` sans courbe est inchangé octet
+pour octet, pas de nouvelle version de schéma). Contrairement au trait droit (2 points = direction
+des fils), la courbe est une **courbe de référence** : les fils lui sont *perpendiculaires* (comme
+sur une colonne satin). Le balayage en tire un arrêt par sommet (angle absolu = perpendiculaire à
+la tangente moyenne des deux segments voisins, modulo π), puis applique les mêmes bornes que pour les
+guides droits (±60°, taux de rotation limité). Un sommet hors de l'étendue de la forme est ignoré ;
+une courbe sans aucun sommet dans la forme compte pour un guide orphelin. Le squelette et l'axe
+médian ignorent la courbe (ils n'utilisent que l'ancre et l'angle premier→dernier point).
+Limite : l'angle reste fonction de la seule position le long de l'axe de balayage (champ 1D) ; une
+courbe qui revient sur elle-même selon cet axe n'est pas suivie fidèlement. Tests :
+`test_parallel_sweep` (courbe, orphelin, déterminisme), `test_auto_satin_strategy_persistence`
+(aller-retour), `test_main_window` (un pas d'annulation).
+
 Limites : l'auto-numérisation (`autodigitize::choose_satin`) et le lettrage continuent
 d'utiliser le squelette ; non validé sur machine.
 
@@ -451,3 +466,24 @@ Garantie testée : sur tout le corpus, aucune paire de traversées d'une même c
 coupe (`crossing_pairs == 0`). Coût mesuré : `s` passe de 0,99 à 0,975 et `two_holes` de
 0,985 à 0,980 de couverture estimée (planchers abaissés en conséquence). Non validé sur
 machine.
+
+## Contour brut restauré à tort après fusion ou retouche (2026-10-19)
+
+**Symptôme.** Après avoir fusionné ou retouché des zones, convertir la zone en satin la
+ramenait à sa forme d'origine, comme si la fusion n'avait pas eu lieu.
+
+**Cause racine.** Avant de construire un satin, le bureau (`MainWindow::pristineSatinContour`)
+et la CLI (`pristine_contour`, `auto_satin_service.cpp`) remplacent le contour de l'objet par le
+contour brut de sa `source_region`, afin d'annuler le recouvrement ajouté par les tatamis voisins.
+Le critère était « aire courante > 103 % de l'aire brute ». Une fusion, une union ou un
+agrandissement le satisfont aussi, et `source_region` survit à ces opérations : la forme voulue
+par l'utilisateur était donc écrasée par celle de la région première.
+
+**Correctif.** `vectorization::is_overlap_grown_contour` ne rend le contour brut que si l'écart
+avec le contour courant tient dans une bande fine (périmètre × 1,25 mm), dans les deux sens.
+Le recouvrement reste restauré ; une fusion, une retouche ou un agrandissement sont conservés.
+Tests : `is_overlap_grown_contour : bande fine oui, fusion ou retouche non` et
+`auto_satin keeps an edited contour instead of restoring the raw region one`.
+
+**Hypothèse écartée.** Un défaut de `ConvertFillGroupCommand` (sections soeurs) : il ne change
+que le type de points, pas le contour.

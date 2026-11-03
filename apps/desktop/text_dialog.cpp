@@ -24,6 +24,7 @@
 #include "font_catalog.hpp"
 #include "openstitch/lettering/lettering.hpp"
 #include "responsive.hpp"
+#include "text_advanced_panel.hpp"
 #include "wheel_guard.hpp"
 
 namespace openstitch::desktop {
@@ -256,6 +257,8 @@ TextDialog::TextDialog(const document::TextObject& initial, bool isNew, QWidget*
                                  "(valeur négative = lettres plus proches)."));
     kerningPairs_->setPlainText(formatKerningPairs(initial.kerning_pairs));
 
+    advanced_ = new TextAdvancedPanel(initial, this);
+
     posX_ = mmSpin(this, QStringLiteral("pos_x_spin"), -2000.0, 2000.0, 1.0);
     posX_->setValue(toMm(initial.origin.x));
     posY_ = mmSpin(this, QStringLiteral("pos_y_spin"), -2000.0, 2000.0, 1.0);
@@ -304,6 +307,7 @@ TextDialog::TextDialog(const document::TextObject& initial, bool isNew, QWidget*
     form->addRow(tr("Position X"), posX_);
     form->addRow(tr("Position Y"), posY_);
     form->addRow(tr("Rotation"), rotation_);
+    form->addRow(advanced_);
 
     auto* left = new QVBoxLayout;
     left->addWidget(new QLabel(tr("Texte :"), this));
@@ -344,6 +348,7 @@ TextDialog::TextDialog(const document::TextObject& initial, bool isNew, QWidget*
     connect(kerning_, &QCheckBox::toggled, this, &TextDialog::scheduleRefresh);
     connect(ligatures_, &QCheckBox::toggled, this, &TextDialog::scheduleRefresh);
     connect(kerningPairs_, &QPlainTextEdit::textChanged, this, &TextDialog::scheduleRefresh);
+    connect(advanced_, &TextAdvancedPanel::changed, this, &TextDialog::scheduleRefresh);
     for (QDoubleSpinBox* s : {height_, letterSpacing_, wordSpacing_, lineSpacing_, justifyWidth_,
                               maxSatin_, density_, posX_, posY_, rotation_}) {
         connect(s, &QDoubleSpinBox::valueChanged, this, &TextDialog::scheduleRefresh);
@@ -415,6 +420,7 @@ document::TextObject TextDialog::textObject() const {
     t.fill = static_cast<document::TextFill>(fill_->currentData().toInt());
     t.max_satin_width = fromMm(maxSatin_->value());
     t.density = fromMm(density_->value());
+    advanced_->applyTo(t);
     return t;
 }
 
@@ -430,6 +436,7 @@ void TextDialog::refresh() {
 
     warnings_.clear();
     warnings_ << parseKerningPairs(kerningPairs_->toPlainText()).errors;
+    warnings_ << advanced_->errors();
     QPainterPath shape;
     QString summary;
     bool ok = false;

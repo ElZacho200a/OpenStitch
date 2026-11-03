@@ -1,0 +1,128 @@
+name: Safe PR maintenance
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: openstitch-pr-maintenance
+  cancel-in-progress: false
+
+jobs:
+  maintain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Update safe branches and enable auto-merge
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            const pulls = await github.paginate(github.rest.pulls.list, {
+              owner, repo, state: 'open', base: 'main', per_page: 100
+            });
+            const outcomes = [];
+            for (const pr of pulls) {
+              const label = `#${pr.number}`;
+              try {
+                if (pr.draft || pr.base.ref !== 'main') {
+                  outcomes.push(`${label}: skipped (draft or wrong base)`);
+                  continue;
+                }
+                // GitHub computes protection/mergeability against the current base.
+                const data = await github.graphql(`
+                  query($owner: String!, $repo: String!, $number: Int!) {
+                    repository(owner: $owner, name: $repo) {
+                      pullRequest(number: $number) {
+                        id
+                        isDraft
+                        mergeStateStatus
+                        reviewDecision
+                        autoMergeRequest { enabledAt }
+                        reviewThreads(first: 100) {
+                          pageInfo { hasNextPage }
+                          nodes { isResolved }
+                        }
+                        commits(last: 1) {
+                          nodes {
+                            commit {
+                              oid
+                              statusCheckRollup {
+                                state
+                                contexts(first: 100) {
+                                  pageInfo { hasNextPage }
+                                  nodes {
+                                    __typename
+                                    ... on CheckRun { status conclusion }
+                                    ... on StatusContext { state }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }`,
+                  { owner, repo, number: pr.number });
+                const p = data.repository.pullRequest;
+                if (!p || p.isDraft || p.reviewThreads.pageInfo.hasNextPage ||
+                    p.reviewThreads.nodes.some(t => !t.isResolved) ||
+                    p.reviewDecision === 'CHANGES_REQUESTED') {
+                  outcomes.push(`${label}: blocked by draft, reviews or unresolved threads`);
+                  continue;
+                }
+                const commit = p.commits.nodes[0]?.commit;
+                const rollup = commit?.statusCheckRollup;
+                const checks = rollup?.contexts;
+                if (!commit || commit.oid !== pr.head.sha || !rollup ||
+                    rollup.state !== 'SUCCESS' || !checks ||
+                    checks.pageInfo.hasNextPage || checks.nodes.length === 0 ||
+                    checks.nodes.some(c => c.__typename === 'CheckRun'
+                      ? c.status !== 'COMPLETED' || !['SUCCESS','NEUTRAL','SKIPPED'].includes(c.conclusion)
+                      : c.state !== 'SUCCESS')) {
+                  outcomes.push(`${label}: CI missing, pending, failed or changed head`);
+                  continue;
+                }
+                if (p.mergeStateStatus === 'BEHIND') {
+                  try {
+                    await github.rest.pulls.updateBranch({
+                      owner, repo, pull_number: pr.number,
+                      expected_head_sha: pr.head.sha
+                    });
+                    outcomes.push(`${label}: branch updated; awaiting fresh CI`);
+                  } catch (e) {
+                    outcomes.push(`${label}: update blocked (${e.status || 'error'})`);
+                  }
+                } else if (p.mergeStateStatus === 'CLEAN') {
+                  if (p.autoMergeRequest) {
+                    outcomes.push(`${label}: auto-merge already enabled`);
+                    continue;
+                  }
+                  try {
+                    await github.graphql(`
+                      mutation($id: ID!) {
+                        enablePullRequestAutoMerge(input: {
+                          pullRequestId: $id, mergeMethod: SQUASH
+                        }) { pullRequest { number } }
+                      }`, { id: p.id });
+                    outcomes.push(`${label}: auto-merge enabled`);
+                  } catch (e) {
+                    outcomes.push(`${label}: auto-merge blocked (${String(e.message).slice(0,120)})`);
+                  }
+                } else {
+                  outcomes.push(`${label}: blocked (${p.mergeStateStatus})`);
+                }
+              } catch (e) {
+                outcomes.push(`${label}: inspection error (${String(e.message).slice(0,120)})`);
+              }
+            }
+            const report = outcomes.length ? outcomes.join('\n') : 'No open PR targeting main.';
+            core.summary.addHeading('OpenStitch PR maintenance').addCodeBlock(report).write();
+            console.log(report);

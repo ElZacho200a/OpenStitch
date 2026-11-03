@@ -11,6 +11,7 @@
 #include <QPainterPath>
 #include <QPixmap>
 #include <QRubberBand>
+#include <QScreen>
 #include <QScrollBar>
 #include <QWheelEvent>
 
@@ -107,16 +108,6 @@ QCursor makeModifierCursor(QChar symbol, qreal dpr) {
     return QCursor(pm, 1, 1);
 }
 
-// Plus petit pas « rond » (en mm) dont la taille à l'écran atteint minPixels.
-double niceStepMm(double pxPerMm, double minPixels) {
-    static constexpr double steps[] = {0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500};
-    for (const double s : steps) {
-        if (s * pxPerMm >= minPixels) {
-            return s;
-        }
-    }
-    return 1000.0;
-}
 } // namespace
 
 // Filtre applicatif : Espace (panoramique) et Alt seul. Pas de setFocus dans
@@ -215,6 +206,9 @@ Context CanvasView::currentContext() const {
     if (measureMode_) {
         return Context::Measure;
     }
+    if (brushMode_) {
+        return brushContext_;
+    }
     if (polygonDrawMode_ || satinPairDrawMode_) {
         return Context::DrawClicks;
     }
@@ -266,7 +260,7 @@ void CanvasView::updateDragMode() {
     if (cropMode_ || boxDrawMode_) {
         setDragMode(QGraphicsView::RubberBandDrag);
     } else if (polygonDrawMode_ || freeformDrawMode_ || satinPairDrawMode_ || bezierDrawMode_ ||
-               measureMode_) {
+               measureMode_ || brushMode_) {
         setDragMode(QGraphicsView::NoDrag);
     } else {
         // Vue isolée (aucun setBaseContext) : comportement historique.
@@ -330,6 +324,17 @@ void CanvasView::setMeasureMode(bool enabled) {
     applyModeCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
 }
 
+void CanvasView::setBrushMode(bool enabled, Context context) {
+    if (brushActive_) {
+        brushActive_ = false;
+        emit brushCancelled();
+    }
+    brushMode_ = enabled;
+    brushContext_ = enabled ? context : Context::Brush;
+    updateDragMode();
+    applyModeCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
+}
+
 void CanvasView::updateSceneRect() {
     // Marge de travail autour du canevas : la moitié de sa taille de chaque côté.
     const QSizeF sizeMm = canvasMm_;
@@ -346,12 +351,30 @@ void CanvasView::setCanvasSizeMm(QSizeF sizeMm) {
     emit viewChanged();
 }
 
+void CanvasView::setFabricColor(const QColor& color) {
+    if (color == fabricColor_) {
+        return;
+    }
+    fabricColor_ = color;
+    viewport()->update();
+}
+
 void CanvasView::setUsableMarginMm(double marginMm) {
     marginMm = std::max(0.0, marginMm);
     if (marginMm == marginMm_) {
         return;
     }
     marginMm_ = marginMm;
+    viewport()->update();
+}
+
+void CanvasView::setHoopShape(document::HoopShape shape, double cornerRadiusMm) {
+    cornerRadiusMm = std::max(0.0, cornerRadiusMm);
+    if (shape == hoopShape_ && cornerRadiusMm == cornerRadiusMm_) {
+        return;
+    }
+    hoopShape_ = shape;
+    cornerRadiusMm_ = cornerRadiusMm;
     viewport()->update();
 }
 
@@ -406,14 +429,91 @@ void CanvasView::zoomToPreviousView() {
     emit viewChanged();
 }
 
+double CanvasView::actualSizePxPerMm() const {
+    if (actualSizeCalibration_ > 0.0) {
+        return actualSizeCalibration_;
+    }
+    // Densité physique si l'écran la déclare de façon plausible, sinon densité logique.
+    if (const QScreen* s = screen(); s != nullptr) {
+        const double physical = s->physicalDotsPerInchX();
+        if (physical >= 48.0 && physical <= 600.0) {
+            return physical / 25.4;
+        }
+    }
+    return logicalDpiX() / 25.4;
+}
+
+void CanvasView::setActualSizeCalibration(double pxPerMm) {
+    actualSizeCalibration_ = (pxPerMm >= 1.0 && pxPerMm <= 100.0) ? pxPerMm : 0.0;
+}
+
 void CanvasView::zoomActualSize() {
     const double current = pixelsPerMm();
-    const double target = logicalDpiX() / 25.4;
+    const double target = actualSizePxPerMm();
     if (!(current > 0.0) || !(target > 0.0)) {
         return;
     }
     rememberView();
     applyCenterZoom(target / current);
+}
+
+void CanvasView::setZoomRectMode(bool enabled) {
+    if (zoomRectMode_ == enabled) {
+        return;
+    }
+    zoomRectMode_ = enabled;
+    zoomRectActive_ = false;
+    if (rubberBand_ != nullptr) {
+        rubberBand_->hide();
+    }
+    if (enabled) {
+        zoomRectSavedCursor_ = viewport()->cursor();
+        viewport()->setCursor(Qt::CrossCursor);
+    } else {
+        viewport()->setCursor(zoomRectSavedCursor_);
+    }
+}
+
+// Termine le geste : `apply` cadre la vue sur le rectangle glissé (si assez grand), puis le mode
+// s'éteint dans tous les cas.
+void CanvasView::finishZoomRect(bool apply, const QPoint& releasePos) {
+    const bool wasActive = zoomRectActive_;
+    const QPoint start = zoomRectStart_;
+    zoomRectActive_ = false;
+    if (rubberBand_ != nullptr) {
+        rubberBand_->hide();
+    }
+    setZoomRectMode(false);
+    if (apply && wasActive && (releasePos - start).manhattanLength() > 4) {
+        zoomToRectMm(mapToScene(QRect(start, releasePos).normalized()).boundingRect());
+    }
+    emit zoomRectModeEnded();
+}
+
+void CanvasView::setGridSettings(const stitch_render::GridSettings& settings) {
+    grid_ = stitch_render::sanitized(settings);
+    resetCachedContent();
+    viewport()->update();
+}
+
+void CanvasView::setGuides(std::vector<stitch_render::Guide> guides) {
+    guides_ = stitch_render::normalized(std::move(guides));
+    if (guides_.size() > stitch_render::kMaxGuides) {
+        guides_.resize(stitch_render::kMaxGuides);
+    }
+    viewport()->update();
+}
+
+void CanvasView::setGuidesVisible(bool visible) {
+    guidesVisible_ = visible;
+    viewport()->update();
+}
+
+void CanvasView::setGuideColor(const QColor& color) {
+    if (color.isValid()) {
+        guideColor_ = color;
+        viewport()->update();
+    }
 }
 
 void CanvasView::applyCenterZoom(double factor) {
@@ -642,6 +742,10 @@ void CanvasView::resetTransientInput(bool cursorLeft) {
         measureActive_ = false;
         emit measureCancelled();
     }
+    if (brushActive_) {
+        brushActive_ = false;
+        emit brushCancelled();
+    }
     if (panning_ || zoomDragging_) {
         endGesture();
     }
@@ -839,6 +943,16 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
             return;
         }
     }
+    if (zoomRectMode_ && event->button() == Qt::LeftButton) {
+        // Zoom rectangle (HP-VIEW-007) : geste propre à la vue, rien n'est transmis à la scène.
+        zoomRectActive_ = true;
+        zoomRectStart_ = viewportPos;
+        ensureRubberBand();
+        rubberBand_->setGeometry(QRect(viewportPos, QSize()));
+        rubberBand_->show();
+        event->accept();
+        return;
+    }
     if (event->button() == Qt::LeftButton && boxDrawMode_) {
         boxPressMm_ = mapToScene(viewportPos); // vrai point d'appui (Alt = depuis le centre)
     }
@@ -846,6 +960,13 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
         freeformActive_ = true;
         emit freeformPointMm(mapToScene(viewportPos));
         QGraphicsView::mousePressEvent(event);
+        return;
+    }
+    if (event->button() == Qt::LeftButton && brushMode_) {
+        // Pinceau : le geste n'appartient qu'à la vue (pas de transmission à la scène).
+        brushActive_ = true;
+        emit brushPressedMm(mapToScene(viewportPos));
+        event->accept();
         return;
     }
     if (event->button() == Qt::LeftButton && measureMode_) {
@@ -885,6 +1006,20 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
                 }
             }
         }
+    }
+    // HP-EDIT-003 : « Éditer les points » — Maj (ajouter), Ctrl (basculer) ou Alt (remplacer) +
+    // glisser dans le vide trace un cadre de sélection de points ; sans modificateur, glisser
+    // déplace toujours la vue. Une poignée sous le curseur garde son propre glisser.
+    if (event->button() == Qt::LeftButton && ctx == Context::StitchEdit && !onHandle &&
+        (mods & (Qt::ShiftModifier | Qt::ControlModifier | Qt::AltModifier)) != 0) {
+        selectionPress_ = true;
+        rectActive_ = false;
+        longPressFired_ = false;
+        pressViewportPos_ = viewportPos;
+        pressGlobalPos_ = event->globalPosition().toPoint();
+        pressMods_ = mods;
+        event->accept();
+        return;
     }
     if (event->button() == Qt::LeftButton && inputModelEnabled_ && selectionRectEnabled_ &&
         ctx == Context::Select && !onHandle) {
@@ -976,6 +1111,13 @@ void CanvasView::mouseMoveEvent(QMouseEvent* event) {
         event->accept();
         return;
     }
+    if (zoomRectActive_) {
+        rubberBand_->setGeometry(QRect(zoomRectStart_, viewportPos).normalized());
+        const QPointF p = mapToScene(viewportPos);
+        emit cursorMovedMm(QPointF(p.x(), -p.y()));
+        event->accept();
+        return;
+    }
     QGraphicsView::mouseMoveEvent(event);
     const QPointF scenePos = mapToScene(viewportPos);
     // Passage scène (Y bas) -> repère physique (Y haut).
@@ -986,6 +1128,9 @@ void CanvasView::mouseMoveEvent(QMouseEvent* event) {
     if (measureActive_) {
         emit measureDragMm(measureStartMm_, scenePos);
     }
+    if (brushActive_) {
+        emit brushMovedMm(scenePos, event->modifiers());
+    }
     if (bezierPressActive_) {
         emit bezierPointDraggingMm(bezierAnchorMm_, scenePos);
     }
@@ -993,13 +1138,9 @@ void CanvasView::mouseMoveEvent(QMouseEvent* event) {
         if (!rectActive_ && (viewportPos - pressViewportPos_).manhattanLength() >
                                 QApplication::startDragDistance()) {
             longPressTimer_.stop();
-            if ((pressMods_ & Qt::AltModifier) != 0) {
-                cancelSelectionPress(); // Alt + glisser : aucun geste défini
-            } else {
-                rectActive_ = true;
-                ensureRubberBand();
-                rubberBand_->show();
-            }
+            rectActive_ = true; // Alt + cadre : sélection de nœuds (relâchement)
+            ensureRubberBand();
+            rubberBand_->show();
         }
         if (rectActive_) {
             rubberBand_->setGeometry(QRect(pressViewportPos_, viewportPos).normalized());
@@ -1018,6 +1159,11 @@ void CanvasView::mouseReleaseEvent(QMouseEvent* event) {
     }
     if (event->button() == Qt::MiddleButton && middleDoubleClickPending_) {
         middleDoubleClickPending_ = false;
+        event->accept();
+        return;
+    }
+    if (zoomRectActive_ && event->button() == Qt::LeftButton) {
+        finishZoomRect(true, event->position().toPoint());
         event->accept();
         return;
     }
@@ -1047,6 +1193,22 @@ void CanvasView::mouseReleaseEvent(QMouseEvent* event) {
         if (wasRect) {
             const QRectF rectMm =
                 mapToScene(QRect(pressPos, releasePos).normalized()).boundingRect();
+            if (baseContext_ == Context::StitchEdit) {
+                emit stitchRectangleMm(rectMm, (mods & Qt::ControlModifier) != 0
+                                                   ? SelectMode::Toggle
+                                                   : ((mods & Qt::ShiftModifier) != 0
+                                                          ? SelectMode::Add
+                                                          : SelectMode::Replace));
+                return;
+            }
+            if ((mods & Qt::AltModifier) != 0) {
+                emit nodeRectangleMm(rectMm,
+                                     (mods & Qt::ControlModifier) != 0
+                                         ? SelectMode::Toggle
+                                         : ((mods & Qt::ShiftModifier) != 0 ? SelectMode::Add
+                                                                            : SelectMode::Replace));
+                return;
+            }
             emit selectionRectangleMm(rectMm, InteractionMap::selectModeFor(mods),
                                       releasePos.x() < pressPos.x());
             return;
@@ -1061,6 +1223,10 @@ void CanvasView::mouseReleaseEvent(QMouseEvent* event) {
     // offscreen, cf. Maj = cercle).
     const Qt::KeyboardModifiers modifiers = event->modifiers();
     QGraphicsView::mouseReleaseEvent(event);
+    if (brushActive_ && event->button() == Qt::LeftButton) {
+        brushActive_ = false;
+        emit brushReleasedMm(mapToScene(event->position().toPoint()));
+    }
     if (measureActive_ && event->button() == Qt::LeftButton) {
         measureActive_ = false;
         emit measureFinishedMm(measureStartMm_, mapToScene(event->position().toPoint()));
@@ -1091,6 +1257,17 @@ void CanvasView::keyPressEvent(QKeyEvent* event) {
         if (!event->isAutoRepeat()) {
             setSpaceHeld(true);
         }
+        event->accept();
+        return;
+    }
+    if (event->key() == Qt::Key_Escape && zoomRectMode_) {
+        finishZoomRect(false, QPoint());
+        event->accept();
+        return;
+    }
+    if (event->key() == Qt::Key_Escape && brushActive_) {
+        brushActive_ = false; // Échap abandonne le coup de pinceau en cours
+        emit brushCancelled();
         event->accept();
         return;
     }
@@ -1170,34 +1347,36 @@ void CanvasView::scrollContentsBy(int dx, int dy) {
 void CanvasView::drawBackground(QPainter* painter, const QRectF& rect) {
     QGraphicsView::drawBackground(painter, rect);
 
-    // Zone du canevas en blanc.
+    // Zone du canevas : couleur du tissu (blanc par défaut).
     const QRectF canvas(-canvasMm_.width() / 2.0, -canvasMm_.height() / 2.0, canvasMm_.width(),
                         canvasMm_.height());
-    painter->fillRect(canvas, Qt::white);
+    painter->fillRect(canvas, fabricColor_);
 
-    // Grille adaptative : pas fin >= 8 px à l'écran, pas majeur = 5x ou 10x.
-    const double pxPerMm = pixelsPerMm();
-    const double fine = niceStepMm(pxPerMm, 8.0);
-    const double major = niceStepMm(pxPerMm, 40.0);
-
+    // Grille (HP-VIEW-010) : automatique (pas fin >= 8 px à l'écran) ou pas réglé par
+    // l'utilisateur, avec couleur et masquage. Le plan vient de libs/stitch_render.
+    const stitch_render::GridPlan plan = stitch_render::plan_grid(grid_, pixelsPerMm());
     const auto drawGrid = [&](double step, const QColor& color) {
+        if (!(step > 0.0)) {
+            return;
+        }
         QPen pen(color);
         pen.setCosmetic(true);
         painter->setPen(pen);
-        const double x0 = std::floor(rect.left() / step) * step;
-        const double y0 = std::floor(rect.top() / step) * step;
-        for (double x = x0; x <= rect.right(); x += step) {
+        for (const double x : stitch_render::grid_positions(step, rect.left(), rect.right())) {
             painter->drawLine(QLineF(x, rect.top(), x, rect.bottom()));
         }
-        for (double y = y0; y <= rect.bottom(); y += step) {
+        for (const double y : stitch_render::grid_positions(step, rect.top(), rect.bottom())) {
             painter->drawLine(QLineF(rect.left(), y, rect.right(), y));
         }
     };
-    const QColor gridMajor = AppTheme::instance().tokens().canvasGrid;
+    QColor gridMajor = AppTheme::instance().tokens().canvasGrid;
+    if (grid_.rgba[3] > 0) {
+        gridMajor = QColor(grid_.rgba[0], grid_.rgba[1], grid_.rgba[2], grid_.rgba[3]);
+    }
     QColor gridFine = gridMajor;
     gridFine.setAlpha(gridMajor.alpha() / 2);
-    drawGrid(fine, gridFine);
-    drawGrid(major, gridMajor);
+    drawGrid(plan.minor_mm, gridFine);
+    drawGrid(plan.major_mm, gridMajor);
 
     // Axes du repère (origine au centre du canevas).
     QPen axisPen(AppTheme::instance().tokens().canvasAxis);
@@ -1219,7 +1398,42 @@ void CanvasView::drawForeground(QPainter* painter, const QRectF& rect) {
     pen.setStyle(Qt::DashLine);
     painter->setPen(pen);
     painter->setBrush(Qt::NoBrush);
-    painter->drawRect(canvas);
+    // Contour de la forme du cadre (rectangle, rond / ovale, coins arrondis).
+    const auto shapePath = [this](const QRectF& r, double radius) {
+        QPainterPath path;
+        switch (hoopShape_) {
+        case document::HoopShape::Ellipse:
+            path.addEllipse(r);
+            break;
+        case document::HoopShape::RoundedRectangle: {
+            const double rr = std::clamp(radius, 0.0, std::min(r.width(), r.height()) / 2.0);
+            path.addRoundedRect(r, rr, rr);
+            break;
+        }
+        default:
+            path.addRect(r);
+            break;
+        }
+        return path;
+    };
+    painter->drawPath(shapePath(canvas, cornerRadiusMm_));
+
+    // Guides (HP-VIEW-010) : traits fins cosmétiques, dessinés ici donc jamais cliquables.
+    if (guidesVisible_ && !guides_.empty()) {
+        QPen guidePen(guideColor_);
+        guidePen.setCosmetic(true);
+        guidePen.setStyle(Qt::DashDotLine);
+        painter->setPen(guidePen);
+        for (const stitch_render::Guide& g : guides_) {
+            const double mm = static_cast<double>(g.position.value) / 1000.0;
+            if (g.axis == stitch_render::GuideAxis::Vertical) {
+                painter->drawLine(QLineF(mm, rect.top(), mm, rect.bottom()));
+            } else {
+                painter->drawLine(QLineF(rect.left(), -mm, rect.right(), -mm)); // Y haut -> scène
+            }
+        }
+        painter->setPen(pen);
+    }
 
     // Zone brodable : le cadre moins la marge de sécurité. La bande entre les deux est
     // hachurée (le motif ne doit pas y passer), le contour de la zone brodable est plein.
@@ -1229,8 +1443,8 @@ void CanvasView::drawForeground(QPainter* painter, const QRectF& rect) {
         QColor hatch = AppTheme::instance().tokens().canvasHoop;
         hatch.setAlpha(110);
         QPainterPath band;
-        band.addRect(canvas);
-        band.addRect(usable);
+        band.addPath(shapePath(canvas, cornerRadiusMm_));
+        band.addPath(shapePath(usable, cornerRadiusMm_ - m));
         band.setFillRule(Qt::OddEvenFill);
         painter->setPen(Qt::NoPen);
         painter->setBrush(QBrush(hatch, Qt::BDiagPattern));
@@ -1240,7 +1454,7 @@ void CanvasView::drawForeground(QPainter* painter, const QRectF& rect) {
         usablePen.setWidth(1);
         painter->setPen(usablePen);
         painter->setBrush(Qt::NoBrush);
-        painter->drawRect(usable);
+        painter->drawPath(shapePath(usable, cornerRadiusMm_ - m));
     }
 }
 
