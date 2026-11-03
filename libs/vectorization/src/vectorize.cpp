@@ -69,10 +69,12 @@ Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segm
     return vectorize_region(seg, id, options, TaskContext{});
 }
 
-Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segmentation& seg,
-                                                        RegionId id,
-                                                        const VectorizeOptions& options,
-                                                        const TaskContext& task) {
+namespace {
+
+Result<std::vector<geometry::PathSet>> vectorize_impl(const segmentation::Segmentation& seg,
+                                                      RegionId id, const VectorizeOptions& options,
+                                                      const TaskContext& task,
+                                                      const RegionPixelIndex* index) {
     if (task.cancelled()) {
         return cancelled_error();
     }
@@ -91,48 +93,80 @@ Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segm
     // contenait que des zéros : même parcours de `findContours` (même ordre
     // de balayage relatif), points ramenés au repère image par `offset`.
     const auto label = static_cast<std::uint32_t>(id.value);
-    int minX = seg.width, minY = seg.height, maxX = -1, maxY = -1;
-    for (int y = 0; y < seg.height; ++y) {
-        if ((y % 32) == 0 && task.cancelled()) {
-            return cancelled_error();
-        }
-        const std::uint32_t* row =
-            seg.labels.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(seg.width);
-        for (int x = 0; x < seg.width; ++x) {
-            if (row[x] == label) {
-                minX = std::min(minX, x);
-                maxX = std::max(maxX, x);
-                minY = std::min(minY, y);
-                maxY = y;
-            }
-        }
-    }
-    if (maxX < 0) {
-        return fail(ErrorCategory::Internal, "La région n'a produit aucun contour");
-    }
-    const int x0 = minX - 1;
-    const int y0 = minY - 1;
-    cv::Mat mask(maxY - minY + 3, maxX - minX + 3, CV_8U, cv::Scalar(0));
     const bool useDetail =
         options.detail_mask != nullptr && options.detail_mask->matches(seg.width, seg.height);
+    const auto width = static_cast<std::size_t>(seg.width);
+    int minX = seg.width, minY = seg.height, maxX = -1, maxY = -1;
     std::uint64_t detailSum = 0;
     std::uint64_t regionPixels = 0;
-    for (int y = minY; y <= maxY; ++y) {
-        if ((y % 32) == 0 && task.cancelled()) {
+    cv::Mat mask;
+    int x0 = 0;
+    int y0 = 0;
+    if (index != nullptr && index->matches(seg)) {
+        // Voie indexée : coût proportionnel aux pixels de la région (HP-PERF-024).
+        const auto px = index->pixels(label);
+        for (const std::uint32_t p : px) {
+            const int x = static_cast<int>(p % width);
+            const int y = static_cast<int>(p / width);
+            minX = std::min(minX, x);
+            maxX = std::max(maxX, x);
+            minY = std::min(minY, y);
+            maxY = std::max(maxY, y);
+        }
+        if (maxX < 0) {
+            return fail(ErrorCategory::Internal, "La région n'a produit aucun contour");
+        }
+        x0 = minX - 1;
+        y0 = minY - 1;
+        mask = cv::Mat(maxY - minY + 3, maxX - minX + 3, CV_8U, cv::Scalar(0));
+        for (const std::uint32_t p : px) {
+            const int x = static_cast<int>(p % width);
+            const int y = static_cast<int>(p / width);
+            mask.ptr<std::uint8_t>(y - y0)[x - x0] = 255;
+            if (useDetail) {
+                detailSum += options.detail_mask->weights[p];
+                ++regionPixels;
+            }
+        }
+        if (task.cancelled()) {
             return cancelled_error();
         }
-        const std::uint32_t* row =
-            seg.labels.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(seg.width);
-        auto* dst = mask.ptr<std::uint8_t>(y - y0);
-        for (int x = minX; x <= maxX; ++x) {
-            if (row[x] == label) {
-                dst[x - x0] = 255;
-                if (useDetail) {
-                    detailSum +=
-                        options.detail_mask->weights[static_cast<std::size_t>(y) *
-                                                         static_cast<std::size_t>(seg.width) +
-                                                     static_cast<std::size_t>(x)];
-                    ++regionPixels;
+    } else {
+        for (int y = 0; y < seg.height; ++y) {
+            if ((y % 32) == 0 && task.cancelled()) {
+                return cancelled_error();
+            }
+            const std::uint32_t* row = seg.labels.data() + static_cast<std::size_t>(y) * width;
+            for (int x = 0; x < seg.width; ++x) {
+                if (row[x] == label) {
+                    minX = std::min(minX, x);
+                    maxX = std::max(maxX, x);
+                    minY = std::min(minY, y);
+                    maxY = y;
+                }
+            }
+        }
+        if (maxX < 0) {
+            return fail(ErrorCategory::Internal, "La région n'a produit aucun contour");
+        }
+        x0 = minX - 1;
+        y0 = minY - 1;
+        mask = cv::Mat(maxY - minY + 3, maxX - minX + 3, CV_8U, cv::Scalar(0));
+        for (int y = minY; y <= maxY; ++y) {
+            if ((y % 32) == 0 && task.cancelled()) {
+                return cancelled_error();
+            }
+            const std::uint32_t* row = seg.labels.data() + static_cast<std::size_t>(y) * width;
+            auto* dst = mask.ptr<std::uint8_t>(y - y0);
+            for (int x = minX; x <= maxX; ++x) {
+                if (row[x] == label) {
+                    dst[x - x0] = 255;
+                    if (useDetail) {
+                        detailSum +=
+                            options.detail_mask->weights[static_cast<std::size_t>(y) * width +
+                                                         static_cast<std::size_t>(x)];
+                        ++regionPixels;
+                    }
                 }
             }
         }
@@ -230,6 +264,59 @@ Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segm
     return sets;
 }
 
+} // namespace
+
+RegionPixelIndex::RegionPixelIndex(const segmentation::Segmentation& seg)
+    : width_(seg.width), height_(seg.height), labelCount_(seg.labels.size()) {
+    std::uint32_t maxLabel = 0;
+    for (const std::uint32_t l : seg.labels) {
+        maxLabel = std::max(maxLabel, l);
+    }
+    offsets_.assign(static_cast<std::size_t>(maxLabel) + 2, 0);
+    for (const std::uint32_t l : seg.labels) {
+        if (l != 0) {
+            ++offsets_[l + 1];
+        }
+    }
+    for (std::size_t i = 1; i < offsets_.size(); ++i) {
+        offsets_[i] += offsets_[i - 1];
+    }
+    pixels_.resize(offsets_.back());
+    std::vector<std::uint32_t> cursor(offsets_.begin(), offsets_.end() - 1);
+    for (std::size_t p = 0; p < seg.labels.size(); ++p) {
+        const std::uint32_t l = seg.labels[p];
+        if (l != 0) {
+            pixels_[cursor[l]++] = static_cast<std::uint32_t>(p);
+        }
+    }
+}
+
+bool RegionPixelIndex::matches(const segmentation::Segmentation& seg) const {
+    return seg.width == width_ && seg.height == height_ && seg.labels.size() == labelCount_;
+}
+
+std::span<const std::uint32_t> RegionPixelIndex::pixels(std::uint32_t label) const {
+    if (label == 0 || static_cast<std::size_t>(label) + 1 >= offsets_.size()) {
+        return {};
+    }
+    return {pixels_.data() + offsets_[label], offsets_[label + 1] - offsets_[label]};
+}
+
+Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segmentation& seg,
+                                                        RegionId id,
+                                                        const VectorizeOptions& options,
+                                                        const TaskContext& task) {
+    return vectorize_impl(seg, id, options, task, nullptr);
+}
+
+Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segmentation& seg,
+                                                        RegionId id,
+                                                        const VectorizeOptions& options,
+                                                        const TaskContext& task,
+                                                        const RegionPixelIndex& index) {
+    return vectorize_impl(seg, id, options, task, &index);
+}
+
 std::vector<Result<std::vector<geometry::PathSet>>>
 vectorize_regions(const segmentation::Segmentation& seg, const std::vector<RegionId>& ids,
                   const VectorizeOptions& options) {
@@ -240,11 +327,12 @@ std::vector<Result<std::vector<geometry::PathSet>>>
 vectorize_regions(const segmentation::Segmentation& seg, const std::vector<RegionId>& ids,
                   const VectorizeOptions& options, const TaskContext& task) {
     task.report(0, ids.size());
+    const RegionPixelIndex index(seg); // une passe, partagée en lecture seule
     std::atomic<std::size_t> completed{0};
     // Result<T> n'est pas constructible par défaut : cases optionnelles remplies en parallèle.
     std::vector<std::optional<Result<std::vector<geometry::PathSet>>>> slots(ids.size());
     parallel_for(ids.size(), [&](std::size_t i) {
-        slots[i] = vectorize_region(seg, ids[i], options, task);
+        slots[i] = vectorize_impl(seg, ids[i], options, task, &index);
         task.report(completed.fetch_add(1, std::memory_order_relaxed) + 1, ids.size());
     });
     std::vector<Result<std::vector<geometry::PathSet>>> out;

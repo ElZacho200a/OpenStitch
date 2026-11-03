@@ -1140,11 +1140,20 @@ Result<ContourNetwork> analyze_contours(const segmentation::Segmentation& seg,
 
     std::map<std::array<std::uint8_t, 3>, std::vector<geometry::PathSet>> byColour;
     std::map<std::array<std::uint8_t, 3>, std::set<std::uint32_t>> thinLabels;
+    std::vector<const segmentation::Region*> todo;
+    std::vector<RegionId> todoIds;
     for (const auto& slot : seg.region_slots) {
         if (!slot || (background && slot->rgb == *background)) {
             continue;
         }
-        auto sets = vectorization::vectorize_region(seg, slot->id, vecOpts);
+        todo.push_back(&*slot);
+        todoIds.push_back(slot->id);
+    }
+    // Parallele (HP-PERF-024) ; assemblage sequentiel dans l'ordre des slots.
+    auto vectorized = vectorization::vectorize_regions(seg, todoIds, vecOpts);
+    for (std::size_t i = 0; i < todo.size(); ++i) {
+        const auto* slot = todo[i];
+        auto& sets = vectorized[i];
         if (!sets || sets->empty()) {
             // Trait de 1-2 px : voie pixel (cf. analyze_pixel_strokes).
             thinLabels[slot->rgb].insert(static_cast<std::uint32_t>(slot->id.value));

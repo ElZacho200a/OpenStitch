@@ -652,12 +652,14 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
         return !options.skip_background_outer_only ||
                std::binary_search(borderRegions.begin(), borderRegions.end(), r.id);
     };
+    const vectorization::RegionPixelIndex pixelIndex(constSeg); // HP-PERF-024 : une passe
     parallel_for(regions.size(), [&](std::size_t i) {
         const auto* region = constSeg.find(regions[i]);
         if (region == nullptr || isSkippedBackground(*region)) {
             return;
         }
-        auto sets = vectorization::vectorize_region(constSeg, regions[i], vecOpts);
+        auto sets = vectorization::vectorize_region(constSeg, regions[i], vecOpts, TaskContext{},
+                                                    pixelIndex);
         if (!sets || sets->empty()) {
             return; // région non vectorisable : ignorée sans erreur
         }

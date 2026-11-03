@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <cstdint>
+#include <span>
 #include <vector>
 
 #include "openstitch/core/error.hpp"
@@ -29,6 +31,25 @@ struct VectorizeOptions {
     double detail_tolerance_factor{0.5};
 };
 
+// Index des pixels de chaque région, construit en UNE passe sur `labels` (tri par comptage ;
+// pixels de chaque région en ordre de balayage). Permet à `vectorize_region` de ne toucher que
+// les pixels de la région au lieu de balayer l'image deux fois (HP-PERF-024). Lecture seule
+// après construction : partageable entre fils. Invalide si la segmentation change.
+class RegionPixelIndex {
+public:
+    explicit RegionPixelIndex(const segmentation::Segmentation& seg);
+    [[nodiscard]] bool matches(const segmentation::Segmentation& seg) const;
+    // Indices linéaires (y*width+x) des pixels portant `label` (slot+1) ; vide si absent ou 0.
+    [[nodiscard]] std::span<const std::uint32_t> pixels(std::uint32_t label) const;
+
+private:
+    int width_{0};
+    int height_{0};
+    std::size_t labelCount_{0};
+    std::vector<std::uint32_t> offsets_;
+    std::vector<std::uint32_t> pixels_;
+};
+
 // Transforme une région segmentée en contours vectoriels propres :
 // extraction des contours et des trous (Suzuki-Abe via OpenCV), conversion
 // en coordonnées physiques (µm, origine au centre de l'image, Y vers le
@@ -43,6 +64,12 @@ vectorize_region(const segmentation::Segmentation& seg, RegionId id,
 [[nodiscard]] Result<std::vector<geometry::PathSet>>
 vectorize_region(const segmentation::Segmentation& seg, RegionId id,
                  const VectorizeOptions& options, const TaskContext& task);
+
+// Même résultat que la variante sans index, mais O(pixels de la région) au lieu de O(image).
+[[nodiscard]] Result<std::vector<geometry::PathSet>>
+vectorize_region(const segmentation::Segmentation& seg, RegionId id,
+                 const VectorizeOptions& options, const TaskContext& task,
+                 const RegionPixelIndex& index);
 
 // Vectorise plusieurs régions EN PARALLÈLE (`parallel_for`) : `out[i]` est le résultat de
 // `vectorize_region(seg, ids[i], options)`, exactement. Chaque région est indépendante et la
