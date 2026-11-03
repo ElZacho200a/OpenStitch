@@ -741,6 +741,10 @@ Result<document::StitchParams> params_from_json(const json& j) {
                              ? document::DensityCurve::Smooth
                          : curve == static_cast<int>(document::DensityCurve::Steep)
                              ? document::DensityCurve::Steep
+                         : curve == static_cast<int>(document::DensityCurve::EaseIn)
+                             ? document::DensityCurve::EaseIn
+                         : curve == static_cast<int>(document::DensityCurve::EaseOut)
+                             ? document::DensityCurve::EaseOut
                              : document::DensityCurve::Linear;
             p.density_gradient = grad;
         }
