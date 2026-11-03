@@ -14,6 +14,7 @@
 
 #include "guide.hpp"
 #include "openstitch/ai_segmentation/backend_registry.hpp"
+#include "openstitch/core/atomic_file.hpp"
 #include "openstitch/project_io/machine_file.hpp"
 #include "openstitch/project_ops/analysis.hpp"
 #include "openstitch/project_ops/auto_satin_service.hpp"
@@ -803,12 +804,8 @@ ToolResult tool_export(Session& s, const json& a) {
         if (!svg) {
             return engine_error("project_export", po::code::kRefused, svg.error());
         }
-        std::ofstream out(target, std::ios::binary | std::ios::trunc);
-        out << *svg;
-        out.flush();
-        if (!out) {
-            return error_result("project_export", po::code::kIo,
-                                "écriture impossible : " + path_text(target));
+        if (const auto w = write_file_atomic(target, std::string_view(*svg)); !w) {
+            return engine_error("project_export", po::code::kIo, w.error());
         }
     } else if (auto w = project_io::export_machine_file(project, format, target); !w) {
         return engine_error("project_export", po::code::kIo, w.error());

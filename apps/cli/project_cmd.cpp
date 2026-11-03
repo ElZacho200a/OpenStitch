@@ -15,8 +15,10 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <span>
 #include <sstream>
 
+#include "openstitch/core/atomic_file.hpp"
 #include "openstitch/formats/format_registry.hpp"
 #include "openstitch/formats/machine_design.hpp"
 #include "openstitch/formats/svg.hpp"
@@ -69,26 +71,10 @@ int fail_err(const std::string& cmd, bool json, const char* code, const openstit
     return fail_with(cmd, json, code, e.message, hint.empty() ? e.detail : hint, exitCode);
 }
 
-// Écriture atomique d'un fichier texte (temporaire puis renommage).
+// Écriture atomique d'un fichier texte (primitive commune `write_file_atomic`, HP-QA-021).
 bool write_text(const fs::path& path, const std::string& text, std::string& error) {
-    const fs::path tmp = path.string() + ".tmp";
-    {
-        std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
-        if (!out) {
-            error = "écriture impossible : " + path.string();
-            return false;
-        }
-        out << text;
-        if (!out) {
-            error = "écriture incomplète : " + path.string();
-            return false;
-        }
-    }
-    std::error_code ec;
-    fs::rename(tmp, path, ec);
-    if (ec) {
-        fs::remove(tmp, ec);
-        error = "renommage impossible vers " + path.string();
+    if (const auto w = openstitch::write_file_atomic(path, std::string_view(text)); !w) {
+        error = "écriture impossible : " + path.string() + " (" + w.error().message + ")";
         return false;
     }
     return true;
@@ -988,11 +974,10 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
     };
     const auto write_bytes = [](const std::string& path, const std::vector<std::uint8_t>& bytes,
                                 std::string& err) {
-        std::ofstream f(path, std::ios::binary);
-        f.write(reinterpret_cast<const char*>(bytes.data()),
-                static_cast<std::streamsize>(bytes.size()));
-        if (!f) {
-            err = "écriture impossible : " + path;
+        if (const auto w =
+                openstitch::write_file_atomic(fs::path(path), std::span<const std::uint8_t>(bytes));
+            !w) {
+            err = "écriture impossible : " + path + " (" + w.error().message + ")";
             return false;
         }
         return true;
@@ -1580,11 +1565,11 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
             g_exit = fail_err("render", jsonOut, po::code::kRefused, rendered.error());
             return;
         }
-        std::ofstream file(a.out, std::ios::binary);
-        file.write(reinterpret_cast<const char*>(rendered->png.data()),
-                   static_cast<std::streamsize>(rendered->png.size()));
-        if (!file) {
-            g_exit = fail_with("render", jsonOut, po::code::kIo, "écriture impossible : " + a.out);
+        if (const auto w = openstitch::write_file_atomic(
+                fs::path(a.out), std::span<const std::uint8_t>(rendered->png));
+            !w) {
+            g_exit = fail_with("render", jsonOut, po::code::kIo,
+                               "écriture impossible : " + a.out + " (" + w.error().message + ")");
             return;
         }
         if (jsonOut) {
