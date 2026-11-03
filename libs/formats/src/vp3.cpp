@@ -116,6 +116,11 @@ Result<std::vector<std::uint8_t>> encode_vp3(const stitch::StitchSequence& seque
             put_move(s, 0x02, rec.dx, rec.dy);
             break;
         case MachineRecordType::Trim:
+            // Le code de coupe 0x80 0x03 n'a pas d'operandes : le deplacement du Trim est
+            // porte par un saut precedent, sinon la position d'arrivee serait perdue.
+            if (rec.dx != 0 || rec.dy != 0) {
+                put_move(s, 0x02, rec.dx, rec.dy);
+            }
             detail::put_u8(s, 0x80);
             detail::put_u8(s, 0x03);
             break;
