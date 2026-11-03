@@ -8,6 +8,8 @@
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QDockWidget>
+#include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -192,6 +194,15 @@ void MainWindow::connectGradientPanel() {
     connect(panel, &GradientFillPanel::edited, this, &MainWindow::applyGradientState);
     connect(panel, &GradientFillPanel::handlesToggled, this,
             [this](bool shown) { gradientEditModeAct_->setChecked(shown); });
+    connect(panel, &GradientFillPanel::densityRequested, this, [this] {
+        if (densityMapAct_ != nullptr && !densityMapAct_->isChecked()) {
+            densityMapAct_->trigger();
+        }
+        if (analysisDock_ != nullptr) {
+            analysisDock_->show();
+            analysisDock_->raise();
+        }
+    });
     connect(panel, &GradientFillPanel::threadRequested, this, [this](bool start) {
         const auto* emb = resolveSelectedEmbroidery();
         if (emb == nullptr) return;
