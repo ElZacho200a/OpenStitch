@@ -398,7 +398,7 @@ void MainWindowTest::threadReferenceIsVisibleAndNewControlsAreAvailable() {
     const auto saved = project_ops::describe_gradient_fill(w.project_, fill.id);
     QVERIFY(saved.has_value());
     QVERIFY(saved->background_thread.has_value());
-    QCOMPARE(*saved->background_thread, thread.key);
+    QVERIFY(*saved->background_thread == thread.key);
 
     auto* panel = w.propertiesPanel_->gradientPanel();
     auto* label = panel->findChild<QLabel*>(QStringLiteral("label_gradientStartThread"));
