@@ -27,6 +27,7 @@
 #include <array>
 #include <memory>
 #include <optional>
+#include <set>
 
 #include "ai_preferences.hpp"
 #include "ai_segmentation_dialog.hpp"
@@ -494,6 +495,17 @@ void MainWindow::updateSegmentationWorkflowActions() {
     setActionEnabledWithReason(
         autoDigitizeAct_, hasSegmentation || !project_.vector_objects.empty(),
         tr("Segmentez d'abord l'image (menu Segmentation, F6) ou importez un fichier SVG."));
+    {
+        std::set<ObjectId> sewn;
+        for (const auto& e : project_.embroidery_objects) {
+            sewn.insert(e.source_vector);
+        }
+        const bool unsewn =
+            std::any_of(project_.vector_objects.begin(), project_.vector_objects.end(),
+                        [&](const auto& v) { return sewn.count(v.id) == 0; });
+        setActionEnabledWithReason(convertVectorsAct_, unsewn,
+                                   tr("Aucune forme vectorielle sans broderie (importez un SVG)."));
+    }
     setActionEnabledWithReason(aiSegmentAct_, project_.hasImage(), tr("Ouvrez d'abord une image."));
 
     if (regionCountLabel_ == nullptr) {
