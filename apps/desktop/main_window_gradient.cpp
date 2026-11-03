@@ -69,9 +69,7 @@ pickGradientThread(QWidget* parent, const thread_palette::ThreadLibrary& library
     dialog.resize(450, 480);
     auto* layout = new QVBoxLayout(&dialog);
     auto* note =
-        new QLabel(QObject::tr("Choisissez une référence du nuancier. Les couleurs RGB ne "
-                               "garantissent pas un résultat identique sur tissu."),
-                   &dialog);
+        new QLabel(QObject::tr("Les fils réels peuvent différer du RGB affiché."), &dialog);
     note->setWordWrap(true);
     layout->addWidget(note);
     auto* chart = new QComboBox(&dialog);
@@ -126,8 +124,7 @@ pickGradientThread(QWidget* parent, const thread_palette::ThreadLibrary& library
         ok->setEnabled(false);
     };
     QObject::connect(chart, &QComboBox::currentIndexChanged, &dialog, [&](int) { refresh(); });
-    QObject::connect(search, &QLineEdit::textChanged, &dialog,
-                     [&](const QString&) { refresh(); });
+    QObject::connect(search, &QLineEdit::textChanged, &dialog, [&](const QString&) { refresh(); });
     QObject::connect(all, &QCheckBox::toggled, &dialog, [&](bool) { refresh(); });
     QObject::connect(list, &QListWidget::currentRowChanged, &dialog,
                      [&](int row) { ok->setEnabled(row >= 0); });
@@ -153,8 +150,8 @@ QString gradientThreadLabel(const thread_palette::ThreadLibrary& library,
                QString::fromStdString(thread->key.code) + " · " +
                QString::fromStdString(thread->name);
     }
-    return QString::fromStdString(key->chart_id) + " · " +
-           QString::fromStdString(key->code) + QObject::tr(" (nuancier absent)");
+    return QString::fromStdString(key->chart_id) + " · " + QString::fromStdString(key->code) +
+           QObject::tr(" (nuancier absent)");
 }
 
 } // namespace
