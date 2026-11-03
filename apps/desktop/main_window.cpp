@@ -1093,7 +1093,7 @@ void MainWindow::buildMenus() {
     autoDigitizeAct_->setShortcut(QKeySequence(Qt::Key_F8));
     auto* autoAct = autoDigitizeAct_;
     connect(autoAct, &QAction::triggered, this, &MainWindow::autoDigitize);
-    convertVectorsAct_ = embMenu->addAction(tr("Convertir les &vecteurs en broderie"));
+    convertVectorsAct_ = embMenu->addAction(tr("&Convertir les vecteurs en broderie"));
     convertVectorsAct_->setObjectName(QStringLiteral("action_convertVectors"));
     convertVectorsAct_->setToolTip(
         tr("Choisit automatiquement tatami ou contour pour chaque forme vectorielle sans broderie "
