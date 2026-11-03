@@ -346,4 +346,8 @@ private:
     RunnerOptions options_;
 };
 
+// Préfixe de `text` d'au plus `max_bytes` octets, coupé à une frontière de caractère UTF-8 :
+// le résultat reste valide et sérialisable (JSON `dump()`).
+[[nodiscard]] std::string truncate_utf8(const std::string& text, std::size_t max_bytes);
+
 } // namespace openstitch::agent

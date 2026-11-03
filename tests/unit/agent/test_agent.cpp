@@ -596,3 +596,17 @@ TEST_CASE("workspace files are written relative to the workspace and traversal i
     CHECK_FALSE(std::filesystem::exists(dir.parent_path() / "evil.txt"));
     std::filesystem::remove_all(dir);
 }
+
+TEST_CASE("truncate_utf8 coupe a une frontiere de caractere", "[agent][utf8]") {
+    const std::string text = "a\xC3\xA9"; // 'a' (1 octet) + e accent aigu (2 octets)
+    CHECK(openstitch::agent::truncate_utf8(text, 3) == text);
+    // Limite au milieu du caractere de 2 octets : il est retire en entier.
+    const std::string cut = openstitch::agent::truncate_utf8(text, 2);
+    CHECK(cut == "a");
+    CHECK_NOTHROW(nlohmann::json(cut).dump());
+    CHECK(openstitch::agent::truncate_utf8(text, 0).empty());
+    const std::string emoji = "\xF0\x9F\x98\x80x"; // 4 octets + 'x'
+    for (std::size_t n = 0; n < emoji.size(); ++n) {
+        CHECK_NOTHROW(nlohmann::json(openstitch::agent::truncate_utf8(emoji, n)).dump());
+    }
+}

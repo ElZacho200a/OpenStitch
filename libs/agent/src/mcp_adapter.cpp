@@ -67,7 +67,7 @@ std::string describe_arguments(const std::string& args_json, std::size_t limit) 
         }
         out += key + "=" + (value.is_string() ? value.get<std::string>() : value.dump());
         if (out.size() > limit) {
-            out.resize(limit);
+            out = truncate_utf8(out, limit);
             out += "…";
             break;
         }

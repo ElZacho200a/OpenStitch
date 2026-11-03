@@ -77,7 +77,7 @@ void DiagnosticLog::record_content(const std::string& event, const std::string& 
     if (!content_consent()) {
         return;
     }
-    record(event, content.size() > 2000 ? content.substr(0, 2000) + "…" : content);
+    record(event, content.size() > 2000 ? truncate_utf8(content, 2000) + "…" : content);
 }
 
 std::string DiagnosticLog::dump() const {
