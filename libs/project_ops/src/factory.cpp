@@ -438,7 +438,9 @@ Result<DigitizedObjects> digitize_objects(const DigitizeSource& source, IdGenera
             lo.min_line_length_mm = s.dark_lines_min_length_mm;
             lo.rings_satin = s.rings_satin;
             lo.masks = debugMasks;
-            co.technique = autodigitize::ContourTechnique::Running;
+            // Classification automatique (simple/triple selon la largeur) : `Running` (point droit
+            // simple partout, HP-AUTO-021) changerait la sortie historique des traits sombres.
+            co.technique = autodigitize::ContourTechnique::Automatic;
             // Un réseau de traits se coud en parcours eulérien : moins de polylignes, donc moins
             // de coupes, au prix d'un court repassage.
             co.routing = autodigitize::ContourRouting::SinglePath;
