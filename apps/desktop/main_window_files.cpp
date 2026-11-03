@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-// Fichiers et projet : nouveau, ouvrir, importer, taille du cercle, enregistrer, autosauvegarde, exports DST/DXF.
-// Membres de MainWindow extraits de main_window.cpp (HP-QA-001) : déplacement pur.
+// Fichiers et projet : nouveau, ouvrir, importer, taille du cercle, enregistrer, autosauvegarde,
+// exports DST/DXF. Membres de MainWindow extraits de main_window.cpp (HP-QA-001) : déplacement pur.
 #include "main_window.hpp"
 #include "simulation_nav_bar.hpp"
 #include "stitch_type_catalog.hpp"
