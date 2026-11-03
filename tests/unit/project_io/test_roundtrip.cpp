@@ -239,8 +239,7 @@ TEST_CASE("density curve is persisted only when not linear", "[blend_core]") {
     CHECK(project_io::detail::project_to_json(*loaded) == json);
 
     // Les profils asymétriques sont persistés sans changer la compatibilité des anciens fichiers.
-    for (const auto curve : {document::DensityCurve::EaseIn,
-                             document::DensityCurve::EaseOut}) {
+    for (const auto curve : {document::DensityCurve::EaseIn, document::DensityCurve::EaseOut}) {
         std::get<document::DirectionalFillParams>(project.embroidery_objects[1].params)
             .density_gradient->curve = curve;
         const auto variantJson = project_io::detail::project_to_json(project);
