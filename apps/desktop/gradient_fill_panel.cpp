@@ -75,8 +75,9 @@ protected:
         const auto blend = [&](double t) {
             const double v = std::clamp((t - start) / (end - start), 0.0, 1.0);
             if (state_.curve == 1) return v * v * (3.0 - 2.0 * v);
-            if (state_.curve == 2)
-                return v < 0.5 ? 2.0 * v * v : 1.0 - 2.0 * (1.0 - v) * (1.0 - v);
+            if (state_.curve == 2) return v * v * v * (v * (6.0 * v - 15.0) + 10.0);
+            if (state_.curve == 3) return v * v;
+            if (state_.curve == 4) return v * (2.0 - v);
             return v;
         };
         QPainterPath base, top;
@@ -201,6 +202,8 @@ void GradientFillPanel::buildGradientControls() {
     curve_->addItem(tr("Linéaire"), 0);
     curve_->addItem(tr("Douce"), 1);
     curve_->addItem(tr("Marquée"), 2);
+    curve_->addItem(tr("Départ lent"), 3);
+    curve_->addItem(tr("Départ rapide"), 4);
     form->addRow(tr("Début"), zoneStart_);
     form->addRow(tr("Fin"), zoneEnd_);
     form->addRow(tr("Courbe"), curve_);
