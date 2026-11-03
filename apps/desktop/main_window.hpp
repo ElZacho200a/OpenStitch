@@ -211,6 +211,8 @@ private slots:
     void vectorizeSelectedRegion(bool askDetail = true);
     [[nodiscard]] std::optional<int> askVectorizeDetail(qsizetype regionCount);
     void autoDigitize();
+    // HP-AUTO-012 : numérise les formes vectorielles sans broderie (SVG importé), sans image.
+    void convertVectorsToEmbroidery();
     void segmentWithAi();
     // Rend visibles les rejets internes de l'auto-satin (ex. branche de
     // squelette trop large pour du satin) : la zone concernée reçoit un
@@ -1744,6 +1746,7 @@ private:
     QAction* segmentAct_{nullptr};
     QAction* vectorizeRegionAct_{nullptr};
     QAction* autoDigitizeAct_{nullptr};
+    QAction* convertVectorsAct_{nullptr};
     QAction* aiSegmentAct_{nullptr};
     // Segmentation : nombre de régions (barre d'état permanente), surbrillance de survol d'une
     // région (un seul item, réutilisé) et opacité de la carte des régions.
