@@ -16,6 +16,8 @@ namespace openstitch::desktop {
 // Section « Remplissage : Uni / Dégradé » de l'inspecteur. Pure présentation : elle
 // affiche un `State` fourni par MainWindow (relu du document) et émet l'état souhaité ;
 // aucune règle de dégradé ici, tout part en commandes annulables via le cœur.
+class GradientProfilePreview;
+
 class GradientFillPanel : public QWidget {
     Q_OBJECT
 public:
@@ -26,6 +28,8 @@ public:
         bool gradient{false};
         QColor start;
         QColor end;
+        QString startThread; // référence exacte ou « Couleur libre »
+        QString endThread;
         double zoneStartPercent{0.0};
         double zoneEndPercent{100.0};
         int curve{0}; // DensityCurve
@@ -47,6 +51,9 @@ signals:
     void edited(openstitch::desktop::GradientFillPanel::State state);
     void handlesToggled(bool shown);
     void assistantRequested();
+    // Choix d'une référence de fil dans le nuancier (et pas seulement d'un RGB).
+    void threadRequested(bool start);
+    void densityRequested();
 
 private:
     void buildGradientControls();
@@ -64,6 +71,14 @@ private:
     QPushButton* startButton_;
     QPushButton* endButton_;
     QPushButton* invert_;
+    QPushButton* startThreadButton_;
+    QPushButton* endThreadButton_;
+    QLabel* startThreadLabel_;
+    QLabel* endThreadLabel_;
+    GradientProfilePreview* profilePreview_;
+    QPushButton* previewButton_;
+    QPushButton* densityButton_;
+    QLabel* densityNote_;
     QDoubleSpinBox* zoneStart_;
     QDoubleSpinBox* zoneEnd_;
     QComboBox* curve_;

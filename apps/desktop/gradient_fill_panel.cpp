@@ -8,10 +8,16 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QPaintEvent>
+#include <QPainter>
+#include <QPainterPath>
 #include <QPushButton>
 #include <QSignalBlocker>
+#include <QSizePolicy>
 #include <QToolButton>
 #include <QVBoxLayout>
+
+#include <algorithm>
 
 namespace openstitch::desktop {
 
@@ -41,6 +47,81 @@ QDoubleSpinBox* spacingSpin(const QString& name, const QString& tip) {
 }
 
 } // namespace
+
+// Diagramme conceptuel du mélange des couches, distinct des points réels.
+class GradientProfilePreview final : public QWidget {
+public:
+    explicit GradientProfilePreview(QWidget* parent = nullptr) : QWidget(parent) {
+        setObjectName(QStringLiteral("widget_gradientProfile"));
+        setAccessibleName(tr("Profil théorique du fondu"));
+        setMinimumHeight(104);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    }
+    void setState(const GradientFillPanel::State& state) {
+        state_ = state;
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent*) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        const QRectF area = QRectF(rect()).adjusted(9, 9, -9, -9);
+        if (area.width() < 20 || area.height() < 20) {
+            return;
+        }
+        p.setPen(QPen(palette().color(QPalette::Mid), 1.0));
+        p.drawRoundedRect(area, 4, 4);
+        const QRectF graph = area.adjusted(5, 5, -5, -5);
+        const double start = std::clamp(state_.zoneStartPercent / 100.0, 0.0, 0.999);
+        const double end = std::clamp(state_.zoneEndPercent / 100.0, start + 0.001, 1.0);
+        const auto blend = [&](double t) {
+            const double v = std::clamp((t - start) / (end - start), 0.0, 1.0);
+            if (state_.curve == 1) {
+                return v * v * (3.0 - 2.0 * v);
+            }
+            if (state_.curve == 2) {
+                return v * v * v * (v * (6.0 * v - 15.0) + 10.0);
+            }
+            if (state_.curve == 3) {
+                return v * v;
+            }
+            if (state_.curve == 4) {
+                return v * (2.0 - v);
+            }
+            return v;
+        };
+        QPainterPath base, top;
+        for (int i = 0; i <= 100; ++i) {
+            const double t = static_cast<double>(i) / 100.0;
+            const double f = blend(t);
+            const double a = state_.complementary ? 1.0 - f : 1.0;
+            const double x = graph.left() + graph.width() * t;
+            const QPointF one(x, graph.bottom() - graph.height() * a);
+            const QPointF two(x, graph.bottom() - graph.height() * f);
+            if (i == 0) {
+                base.moveTo(one);
+                top.moveTo(two);
+            } else {
+                base.lineTo(one);
+                top.lineTo(two);
+            }
+        }
+        p.setClipRect(area);
+        p.setPen(QPen(state_.start, 2.5));
+        p.drawPath(base);
+        p.setPen(QPen(state_.end, 2.5));
+        p.drawPath(top);
+        p.setPen(QPen(palette().color(QPalette::Text), 1, Qt::DashLine));
+        for (const double t : {start, end}) {
+            const double x = graph.left() + graph.width() * t;
+            p.drawLine(QPointF(x, graph.top()), QPointF(x, graph.bottom()));
+        }
+    }
+
+private:
+    GradientFillPanel::State state_;
+};
 
 GradientFillPanel::GradientFillPanel(QWidget* parent) : QWidget(parent) {
     setObjectName(QStringLiteral("panel_gradientFill"));
@@ -99,6 +180,34 @@ void GradientFillPanel::buildGradientControls() {
     colors->addWidget(endButton_);
     box->addLayout(colors);
 
+    auto* threadForm = new QFormLayout;
+    startThreadButton_ = new QPushButton(tr("Choisir dans les nuanciers…"));
+    startThreadButton_->setObjectName(QStringLiteral("button_gradientStartThread"));
+    endThreadButton_ = new QPushButton(tr("Choisir dans les nuanciers…"));
+    endThreadButton_->setObjectName(QStringLiteral("button_gradientEndThread"));
+    startThreadLabel_ = new QLabel;
+    startThreadLabel_->setObjectName(QStringLiteral("label_gradientStartThread"));
+    startThreadLabel_->setWordWrap(true);
+    endThreadLabel_ = new QLabel;
+    endThreadLabel_->setObjectName(QStringLiteral("label_gradientEndThread"));
+    endThreadLabel_->setWordWrap(true);
+    auto* a = new QWidget(gradientBox_);
+    auto* ar = new QVBoxLayout(a);
+    ar->setContentsMargins(0, 0, 0, 0);
+    ar->addWidget(startThreadButton_);
+    ar->addWidget(startThreadLabel_);
+    auto* b = new QWidget(gradientBox_);
+    auto* br = new QVBoxLayout(b);
+    br->setContentsMargins(0, 0, 0, 0);
+    br->addWidget(endThreadButton_);
+    br->addWidget(endThreadLabel_);
+    threadForm->addRow(tr("Fil A"), a);
+    threadForm->addRow(tr("Fil B"), b);
+    box->addLayout(threadForm);
+    connect(startThreadButton_, &QPushButton::clicked, this,
+            [this] { emit threadRequested(true); });
+    connect(endThreadButton_, &QPushButton::clicked, this, [this] { emit threadRequested(false); });
+
     auto* form = new QFormLayout;
     zoneStart_ = percentSpin(QStringLiteral("spin_gradientZoneStart"),
                              tr("Début de la transition, en % de la forme le long de l'axe"));
@@ -109,10 +218,31 @@ void GradientFillPanel::buildGradientControls() {
     curve_->addItem(tr("Linéaire"), 0);
     curve_->addItem(tr("Douce"), 1);
     curve_->addItem(tr("Marquée"), 2);
+    curve_->addItem(tr("Départ lent"), 3);
+    curve_->addItem(tr("Départ rapide"), 4);
     form->addRow(tr("Début"), zoneStart_);
     form->addRow(tr("Fin"), zoneEnd_);
     form->addRow(tr("Courbe"), curve_);
     box->addLayout(form);
+
+    profilePreview_ = new GradientProfilePreview(gradientBox_);
+    box->addWidget(profilePreview_);
+    auto* profileDescription =
+        new QLabel(tr("Profil théorique des couches ; ce schéma n'est pas un rendu de points."));
+    profileDescription->setObjectName(QStringLiteral("label_gradientProfileDescription"));
+    profileDescription->setWordWrap(true);
+    box->addWidget(profileDescription);
+    previewButton_ = new QPushButton(tr("Voir les points réels…"), gradientBox_);
+    previewButton_->setObjectName(QStringLiteral("button_gradientLivePreview"));
+    previewButton_->setToolTip(tr("Ouvre l'aperçu calculé des deux couches."));
+    box->addWidget(previewButton_);
+    densityButton_ = new QPushButton(tr("Voir la carte de densité…"), gradientBox_);
+    densityButton_->setObjectName(QStringLiteral("button_gradientDensityMap"));
+    densityButton_->setToolTip(tr("Affiche la densité des pénétrations sur le canevas "
+                                  "et ses zones de vigilance dans Analyse."));
+    box->addWidget(densityButton_);
+    connect(densityButton_, &QPushButton::clicked, this, &GradientFillPanel::densityRequested);
+    connect(previewButton_, &QPushButton::clicked, this, &GradientFillPanel::assistantRequested);
 
     handles_ = new QPushButton(tr("Poignées sur le canevas"));
     handles_->setObjectName(QStringLiteral("button_gradientHandles"));
@@ -158,10 +288,15 @@ void GradientFillPanel::buildGradientControls() {
         advanced_->setVisible(open);
     });
     box->addWidget(advanced_);
+    densityNote_ = new QLabel;
+    densityNote_->setObjectName(QStringLiteral("label_gradientDensityNote"));
+    densityNote_->setWordWrap(true);
+    box->addWidget(densityNote_);
     connect(startButton_, &QPushButton::clicked, this, [this] { pickColor(true); });
     connect(endButton_, &QPushButton::clicked, this, [this] { pickColor(false); });
     connect(invert_, &QPushButton::clicked, this, [this] {
         std::swap(state_.start, state_.end);
+        std::swap(state_.startThread, state_.endThread);
         emitEdited();
     });
     for (auto* spin : {zoneStart_, zoneEnd_, spacingStart_, spacingEnd_}) {
@@ -212,6 +347,16 @@ void GradientFillPanel::setState(const State& state) {
     if (state.gradient) {
         paintSwatch(startButton_, state.start);
         paintSwatch(endButton_, state.end);
+        startThreadLabel_->setText(state.startThread.isEmpty() ? tr("Couleur libre (RGB)")
+                                                               : state.startThread);
+        endThreadLabel_->setText(state.endThread.isEmpty() ? tr("Couleur libre (RGB)")
+                                                           : state.endThread);
+        profilePreview_->setState(state);
+        densityNote_->setText(state.complementary
+                                  ? tr("Densités complémentaires : validez la couverture "
+                                       "et la tension du tissu sur une broderie test.")
+                                  : tr("Fond uniforme et dessus variable : les couches "
+                                       "se superposent. Vérifiez la surcharge de points."));
         zoneStart_->setValue(state.zoneStartPercent);
         zoneEnd_->setValue(state.zoneEndPercent);
         curve_->setCurrentIndex(std::max(0, curve_->findData(state.curve)));

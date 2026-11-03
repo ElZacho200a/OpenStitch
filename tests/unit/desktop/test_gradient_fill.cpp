@@ -84,6 +84,7 @@ private slots:
     void deletingOneLayerDeletesTheWholeGradient();
     void panelAndHandlesStayReadableInBothThemes();
     void advancedSectionIsCollapsedAndEditsSpacingInOneStep();
+    void threadReferenceIsVisibleAndNewControlsAreAvailable();
 };
 
 void MainWindowTest::uniToGradientAndBackWithUndoRedo() {
@@ -377,6 +378,43 @@ void MainWindowTest::advancedSectionIsCollapsedAndEditsSpacingInOneStep() {
     const auto spec = *project_ops::describe_gradient_fill(w.project_, fill.id);
     QCOMPARE(spec.gradient.spacing_to.value, 600);
     QCOMPARE(w.project_.embroidery_objects.size(), std::size_t{2});
+}
+
+void MainWindowTest::threadReferenceIsVisibleAndNewControlsAreAvailable() {
+    MainWindow w;
+    w.applyLoadedProject(fillFixture());
+    const auto fill = w.project_.embroidery_objects.front();
+    w.setSelection({.embroidery = fill.id, .objects = {fill.source_vector}});
+    w.setFillMode(true);
+
+    const auto& charts = w.threadLibrary_.charts();
+    QVERIFY(!charts.empty());
+    QVERIFY(!charts.front().threads.empty());
+    const auto& thread = charts.front().threads.front();
+    auto spec = *project_ops::describe_gradient_fill(w.project_, fill.id);
+    spec.background = thread.rgb;
+    spec.background_thread = thread.key;
+    w.applyGradientSpec(fill.id, spec);
+    const auto saved = project_ops::describe_gradient_fill(w.project_, fill.id);
+    QVERIFY(saved.has_value());
+    QVERIFY(saved->background_thread.has_value());
+    QVERIFY(*saved->background_thread == thread.key);
+
+    auto* panel = w.propertiesPanel_->gradientPanel();
+    auto* label = panel->findChild<QLabel*>(QStringLiteral("label_gradientStartThread"));
+    QVERIFY(label != nullptr);
+    QVERIFY(label->text().contains(QString::fromStdString(thread.key.code)));
+    QVERIFY(panel->findChild<QPushButton*>(QStringLiteral("button_gradientStartThread")));
+    QVERIFY(panel->findChild<QPushButton*>(QStringLiteral("button_gradientEndThread")));
+    QVERIFY(panel->findChild<QPushButton*>(QStringLiteral("button_gradientLivePreview")));
+    QVERIFY(panel->findChild<QPushButton*>(QStringLiteral("button_gradientDensityMap")));
+    QVERIFY(panel->findChild<QWidget*>(QStringLiteral("widget_gradientProfile")));
+
+    spec.complementary = false;
+    w.applyGradientSpec(fill.id, spec);
+    auto* note = panel->findChild<QLabel*>(QStringLiteral("label_gradientDensityNote"));
+    QVERIFY(note != nullptr);
+    QVERIFY(note->text().contains(QStringLiteral("se superposent")));
 }
 
 void MainWindowTest::panelAndHandlesStayReadableInBothThemes() {

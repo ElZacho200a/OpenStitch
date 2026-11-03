@@ -303,6 +303,8 @@ ColorBlendDialog::ColorBlendDialog(Rgb background, Rgb foreground, bool canAnaly
     curve_->addItem(tr("Linéaire"), static_cast<int>(document::DensityCurve::Linear));
     curve_->addItem(tr("Douce"), static_cast<int>(document::DensityCurve::Smooth));
     curve_->addItem(tr("Marquée"), static_cast<int>(document::DensityCurve::Steep));
+    curve_->addItem(tr("Départ lent"), static_cast<int>(document::DensityCurve::EaseIn));
+    curve_->addItem(tr("Départ rapide"), static_cast<int>(document::DensityCurve::EaseOut));
     curve_->setToolTip(tr("Forme de la transition entre les deux écarts. Linéaire : régulière. "
                           "Douce : départ et arrivée adoucis. Marquée : aplats plus longs, "
                           "changement plus rapide au milieu."));

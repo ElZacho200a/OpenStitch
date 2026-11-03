@@ -101,7 +101,13 @@ struct TatamiParams {
 // historique) : t. `Smooth` : 3t² − 2t³ (départ et arrivée adoucis). `Steep` :
 // 6t⁵ − 15t⁴ + 10t³ (aplats plus longs, transition plus resserrée au milieu).
 // Les trois valent 0, 0,5 et 1 en t = 0, 0,5 et 1. Valeurs persistées : ne pas réordonner.
-enum class DensityCurve : std::uint8_t { Linear = 0, Smooth = 1, Steep = 2 };
+enum class DensityCurve : std::uint8_t {
+    Linear = 0,
+    Smooth = 1,
+    Steep = 2,
+    EaseIn = 3,  // départ lent, arrivée rapide
+    EaseOut = 4, // départ rapide, arrivée lente
+};
 
 // Dégradé de densité d'un remplissage directionnel : l'écart entre lignes de
 // couture varie le long de l'axe `from` → `to` (repère du modèle,
