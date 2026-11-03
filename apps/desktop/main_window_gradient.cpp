@@ -9,20 +9,20 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDockWidget>
+#include <QGraphicsLineItem>
+#include <QGraphicsScene>
 #include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
-#include <QPixmap>
-#include <QPushButton>
-#include <QVBoxLayout>
-#include <QGraphicsLineItem>
-#include <QGraphicsScene>
 #include <QMenu>
 #include <QPen>
+#include <QPixmap>
+#include <QPushButton>
 #include <QSignalBlocker>
 #include <QStatusBar>
 #include <QTimer>
+#include <QVBoxLayout>
 
 #include <algorithm>
 #include <cmath>
@@ -68,9 +68,10 @@ pickGradientThread(QWidget* parent, const thread_palette::ThreadLibrary& library
     dialog.setWindowTitle(QObject::tr("Choisir une référence de fil"));
     dialog.resize(450, 480);
     auto* layout = new QVBoxLayout(&dialog);
-    auto* note = new QLabel(QObject::tr(
-        "Choisissez une référence du nuancier. Les couleurs RGB ne garantissent "
-        "pas un résultat identique sur tissu."), &dialog);
+    auto* note =
+        new QLabel(QObject::tr("Choisissez une référence du nuancier. Les couleurs RGB ne "
+                               "garantissent pas un résultat identique sur tissu."),
+                   &dialog);
     note->setWordWrap(true);
     layout->addWidget(note);
     auto* chart = new QComboBox(&dialog);
@@ -85,8 +86,8 @@ pickGradientThread(QWidget* parent, const thread_palette::ThreadLibrary& library
     search->setObjectName(QStringLiteral("edit_gradientThreadSearch"));
     search->setPlaceholderText(QObject::tr("Chercher par marque, gamme, nom ou code…"));
     layout->addWidget(search);
-    auto* all = new QCheckBox(QObject::tr("Parcourir tous les fils (au lieu des plus proches)"),
-                              &dialog);
+    auto* all =
+        new QCheckBox(QObject::tr("Parcourir tous les fils (au lieu des plus proches)"), &dialog);
     all->setObjectName(QStringLiteral("check_gradientThreadAll"));
     layout->addWidget(all);
     auto* list = new QListWidget(&dialog);
@@ -124,8 +125,7 @@ pickGradientThread(QWidget* parent, const thread_palette::ThreadLibrary& library
         }
         ok->setEnabled(false);
     };
-    QObject::connect(chart, &QComboBox::currentIndexChanged, &dialog,
-                     [&](int) { refresh(); });
+    QObject::connect(chart, &QComboBox::currentIndexChanged, &dialog, [&](int) { refresh(); });
     QObject::connect(search, &QLineEdit::textChanged, &dialog,
                      [&](const QString&) { refresh(); });
     QObject::connect(all, &QCheckBox::toggled, &dialog, [&](bool) { refresh(); });
@@ -145,7 +145,9 @@ pickGradientThread(QWidget* parent, const thread_palette::ThreadLibrary& library
 
 QString gradientThreadLabel(const thread_palette::ThreadLibrary& library,
                             const std::optional<thread_palette::ThreadKey>& key) {
-    if (!key) return {};
+    if (!key) {
+        return {};
+    }
     if (const auto thread = library.find(*key)) {
         return QString::fromStdString(thread->brand) + " · " +
                QString::fromStdString(thread->key.code) + " · " +
@@ -205,13 +207,19 @@ void MainWindow::connectGradientPanel() {
     });
     connect(panel, &GradientFillPanel::threadRequested, this, [this](bool start) {
         const auto* emb = resolveSelectedEmbroidery();
-        if (emb == nullptr) return;
+        if (emb == nullptr) {
+            return;
+        }
         const ObjectId id = emb->id;
         const auto current = project_ops::describe_gradient_fill(project_, id);
-        if (!current) return;
+        if (!current) {
+            return;
+        }
         const auto wanted = start ? current->background : current->foreground;
         const auto selected = pickGradientThread(this, threadLibrary_, wanted);
-        if (!selected) return;
+        if (!selected) {
+            return;
+        }
         // La commande conserve explicitement la référence catalogue et le RGB.
         auto changed = *current;
         if (start) {
