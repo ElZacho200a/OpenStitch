@@ -4,6 +4,16 @@
 // sont reconstruites par le cœur (project_ops::gradient_fill) à chaque modification,
 // donc aucun calcul de dégradé n'a lieu ici : seulement des commandes annulables.
 #include <QAction>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QLabel>
+#include <QLineEdit>
+#include <QListWidget>
+#include <QPixmap>
+#include <QPushButton>
+#include <QVBoxLayout>
 #include <QGraphicsLineItem>
 #include <QGraphicsScene>
 #include <QMenu>
@@ -46,6 +56,103 @@ std::array<std::uint8_t, 3> toRgb(const QColor& color) {
             static_cast<std::uint8_t>(color.blue())};
 }
 
+// Choisir un VRAI fil avec identifiant de nuancier (plutôt qu'un simple RGB).
+// Les couleurs génériques restent disponibles mais sont explicitement nommées.
+std::optional<thread_palette::Thread>
+pickGradientThread(QWidget* parent, const thread_palette::ThreadLibrary& library,
+                   std::array<std::uint8_t, 3> wanted) {
+    QDialog dialog(parent);
+    dialog.setObjectName(QStringLiteral("dialog_gradientThreadPicker"));
+    dialog.setWindowTitle(QObject::tr("Choisir une référence de fil"));
+    dialog.resize(450, 480);
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* note = new QLabel(QObject::tr(
+        "Choisissez une référence du nuancier. Les couleurs RGB ne garantissent "
+        "pas un résultat identique sur tissu."), &dialog);
+    note->setWordWrap(true);
+    layout->addWidget(note);
+    auto* chart = new QComboBox(&dialog);
+    chart->setObjectName(QStringLiteral("combo_gradientThreadChart"));
+    chart->addItem(QObject::tr("Tous les nuanciers"), QString());
+    for (const auto& item : library.charts()) {
+        chart->addItem(QString::fromStdString(item.display_name),
+                       QString::fromStdString(item.chart_id));
+    }
+    layout->addWidget(chart);
+    auto* search = new QLineEdit(&dialog);
+    search->setObjectName(QStringLiteral("edit_gradientThreadSearch"));
+    search->setPlaceholderText(QObject::tr("Chercher par marque, gamme, nom ou code…"));
+    layout->addWidget(search);
+    auto* all = new QCheckBox(QObject::tr("Parcourir tous les fils (au lieu des plus proches)"),
+                              &dialog);
+    all->setObjectName(QStringLiteral("check_gradientThreadAll"));
+    layout->addWidget(all);
+    auto* list = new QListWidget(&dialog);
+    list->setObjectName(QStringLiteral("list_gradientThreads"));
+    list->setAccessibleName(QObject::tr("Références de fils disponibles"));
+    layout->addWidget(list, 1);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    layout->addWidget(buttons);
+    auto* ok = buttons->button(QDialogButtonBox::Ok);
+    ok->setText(QObject::tr("Choisir ce fil"));
+    ok->setEnabled(false);
+
+    std::vector<thread_palette::Thread> visible;
+    const auto refresh = [&] {
+        visible.clear();
+        const auto chartId = chart->currentData().toString().toStdString();
+        const auto query = search->text().trimmed().toStdString();
+        if (query.empty() && !all->isChecked()) {
+            for (const auto& match : library.nearest(wanted, chartId, 30)) {
+                if (const auto thread = library.find(match.key)) {
+                    visible.push_back(*thread);
+                }
+            }
+        } else {
+            visible = library.search(query, chartId, 500);
+        }
+        list->clear();
+        for (const auto& t : visible) {
+            QPixmap swatch(20, 20);
+            swatch.fill(QColor(t.rgb[0], t.rgb[1], t.rgb[2]));
+            const QString label = QString::fromStdString(t.brand) + " · " +
+                                  QString::fromStdString(t.key.code) + " · " +
+                                  QString::fromStdString(t.name);
+            list->addItem(new QListWidgetItem(QIcon(swatch), label));
+        }
+        ok->setEnabled(false);
+    };
+    QObject::connect(chart, &QComboBox::currentIndexChanged, &dialog,
+                     [&](int) { refresh(); });
+    QObject::connect(search, &QLineEdit::textChanged, &dialog,
+                     [&](const QString&) { refresh(); });
+    QObject::connect(all, &QCheckBox::toggled, &dialog, [&](bool) { refresh(); });
+    QObject::connect(list, &QListWidget::currentRowChanged, &dialog,
+                     [&](int row) { ok->setEnabled(row >= 0); });
+    QObject::connect(list, &QListWidget::itemDoubleClicked, &dialog,
+                     [&](QListWidgetItem*) { dialog.accept(); });
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    refresh();
+    if (dialog.exec() != QDialog::Accepted || list->currentRow() < 0 ||
+        static_cast<std::size_t>(list->currentRow()) >= visible.size()) {
+        return std::nullopt;
+    }
+    return visible[static_cast<std::size_t>(list->currentRow())];
+}
+
+QString gradientThreadLabel(const thread_palette::ThreadLibrary& library,
+                            const std::optional<thread_palette::ThreadKey>& key) {
+    if (!key) return {};
+    if (const auto thread = library.find(*key)) {
+        return QString::fromStdString(thread->brand) + " · " +
+               QString::fromStdString(thread->key.code) + " · " +
+               QString::fromStdString(thread->name);
+    }
+    return QString::fromStdString(key->chart_id) + " · " +
+           QString::fromStdString(key->code) + QObject::tr(" (nuancier absent)");
+}
+
 } // namespace
 
 void MainWindow::buildGradientActions(QMenu* embMenu) {
@@ -85,6 +192,26 @@ void MainWindow::connectGradientPanel() {
     connect(panel, &GradientFillPanel::edited, this, &MainWindow::applyGradientState);
     connect(panel, &GradientFillPanel::handlesToggled, this,
             [this](bool shown) { gradientEditModeAct_->setChecked(shown); });
+    connect(panel, &GradientFillPanel::threadRequested, this, [this](bool start) {
+        const auto* emb = resolveSelectedEmbroidery();
+        if (emb == nullptr) return;
+        const ObjectId id = emb->id;
+        const auto current = project_ops::describe_gradient_fill(project_, id);
+        if (!current) return;
+        const auto wanted = start ? current->background : current->foreground;
+        const auto selected = pickGradientThread(this, threadLibrary_, wanted);
+        if (!selected) return;
+        // La commande conserve explicitement la référence catalogue et le RGB.
+        auto changed = *current;
+        if (start) {
+            changed.background = selected->rgb;
+            changed.background_thread = selected->key;
+        } else {
+            changed.foreground = selected->rgb;
+            changed.foreground_thread = selected->key;
+        }
+        applyGradientSpec(id, changed);
+    });
     connect(panel, &GradientFillPanel::assistantRequested, this, [this] {
         // L'assistant garde ses propositions image/aperçu : il réutilise le même chemin
         // (couches reconstruites par le cœur) et ne crée jamais de couche de plus.
@@ -112,6 +239,8 @@ void MainWindow::updateGradientPanel() {
             state.available = true;
             state.start = toColor(spec->background);
             state.end = toColor(spec->foreground);
+            state.startThread = gradientThreadLabel(threadLibrary_, spec->background_thread);
+            state.endThread = gradientThreadLabel(threadLibrary_, spec->foreground_thread);
             state.curve = static_cast<int>(spec->gradient.curve);
             state.spacingStartMm = to_millimeters(spec->gradient.spacing_from).value;
             state.spacingEndMm = to_millimeters(spec->gradient.spacing_to).value;
