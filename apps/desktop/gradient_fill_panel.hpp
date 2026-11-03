@@ -53,6 +53,7 @@ signals:
     void assistantRequested();
     // Choix d'une référence de fil dans le nuancier (et pas seulement d'un RGB).
     void threadRequested(bool start);
+    void densityRequested();
 
 private:
     void buildGradientControls();
@@ -76,6 +77,7 @@ private:
     QLabel* endThreadLabel_;
     GradientProfilePreview* profilePreview_;
     QPushButton* previewButton_;
+    QPushButton* densityButton_;
     QLabel* densityNote_;
     QDoubleSpinBox* zoneStart_;
     QDoubleSpinBox* zoneEnd_;
