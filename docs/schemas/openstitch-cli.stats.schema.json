@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openstitch-cli.stats",
+  "type": "object",
+  "properties": {
+    "file": {
+      "type": "string"
+    },
+    "stitches": {
+      "type": "integer"
+    },
+    "jumps": {
+      "type": "integer"
+    },
+    "trims": {
+      "type": "integer"
+    },
+    "color_changes": {
+      "type": "integer"
+    },
+    "width_mm": {
+      "type": "number"
+    },
+    "height_mm": {
+      "type": "number"
+    },
+    "thread_m": {
+      "type": "number"
+    },
+    "moves": {
+      "type": "integer"
+    },
+    "long_moves_without_trim": {
+      "type": "integer"
+    },
+    "short_stitches": {
+      "type": "integer"
+    },
+    "short_lock_stitches": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "file",
+    "stitches",
+    "jumps",
+    "trims",
+    "color_changes",
+    "width_mm",
+    "height_mm",
+    "thread_m",
+    "moves",
+    "long_moves_without_trim",
+    "short_stitches",
+    "short_lock_stitches"
+  ],
+  "additionalProperties": false
+}

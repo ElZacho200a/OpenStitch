@@ -5,6 +5,7 @@ add_executable(test_formats
     test_format_registry.cpp
     test_dxf.cpp
     test_svg.cpp
+    test_atomic_outputs.cpp
     test_svg_import.cpp
     test_pes.cpp
     test_jef.cpp
@@ -13,6 +14,7 @@ add_executable(test_formats
     test_export_limits.cpp
     test_color_companion.cpp
     test_fuzz_decoders.cpp
+    test_thread_determinism_dst.cpp
 )
 target_link_libraries(test_formats
     PRIVATE openstitch::formats openstitch::stitch_generation Catch2::Catch2WithMain

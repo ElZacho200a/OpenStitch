@@ -15,8 +15,10 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <span>
 #include <sstream>
 
+#include "openstitch/core/atomic_file.hpp"
 #include "openstitch/formats/format_registry.hpp"
 #include "openstitch/formats/machine_design.hpp"
 #include "openstitch/formats/svg.hpp"
@@ -52,9 +54,6 @@ std::map<const CLI::App*, std::vector<po::ProfileKey>>& profile_keys() {
     return keys;
 }
 
-constexpr int kExitInput = 1;
-constexpr int kExitQuality = 2;
-
 int fail_with(const std::string& cmd, bool json, const char* code, const std::string& message,
               const std::string& hint = {}, int exitCode = kExitInput) {
     fmt::print(stderr, "openstitch-cli project {} : {}\n", cmd, message);
@@ -72,26 +71,10 @@ int fail_err(const std::string& cmd, bool json, const char* code, const openstit
     return fail_with(cmd, json, code, e.message, hint.empty() ? e.detail : hint, exitCode);
 }
 
-// Écriture atomique d'un fichier texte (temporaire puis renommage).
+// Écriture atomique d'un fichier texte (primitive commune `write_file_atomic`, HP-QA-021).
 bool write_text(const fs::path& path, const std::string& text, std::string& error) {
-    const fs::path tmp = path.string() + ".tmp";
-    {
-        std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
-        if (!out) {
-            error = "écriture impossible : " + path.string();
-            return false;
-        }
-        out << text;
-        if (!out) {
-            error = "écriture incomplète : " + path.string();
-            return false;
-        }
-    }
-    std::error_code ec;
-    fs::rename(tmp, path, ec);
-    if (ec) {
-        fs::remove(tmp, ec);
-        error = "renommage impossible vers " + path.string();
+    if (const auto w = openstitch::write_file_atomic(path, std::string_view(text)); !w) {
+        error = "écriture impossible : " + path.string() + " (" + w.error().message + ")";
         return false;
     }
     return true;
@@ -991,11 +974,10 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
     };
     const auto write_bytes = [](const std::string& path, const std::vector<std::uint8_t>& bytes,
                                 std::string& err) {
-        std::ofstream f(path, std::ios::binary);
-        f.write(reinterpret_cast<const char*>(bytes.data()),
-                static_cast<std::streamsize>(bytes.size()));
-        if (!f) {
-            err = "écriture impossible : " + path;
+        if (const auto w =
+                openstitch::write_file_atomic(fs::path(path), std::span<const std::uint8_t>(bytes));
+            !w) {
+            err = "écriture impossible : " + path + " (" + w.error().message + ")";
             return false;
         }
         return true;
@@ -1583,11 +1565,11 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
             g_exit = fail_err("render", jsonOut, po::code::kRefused, rendered.error());
             return;
         }
-        std::ofstream file(a.out, std::ios::binary);
-        file.write(reinterpret_cast<const char*>(rendered->png.data()),
-                   static_cast<std::streamsize>(rendered->png.size()));
-        if (!file) {
-            g_exit = fail_with("render", jsonOut, po::code::kIo, "écriture impossible : " + a.out);
+        if (const auto w = openstitch::write_file_atomic(
+                fs::path(a.out), std::span<const std::uint8_t>(rendered->png));
+            !w) {
+            g_exit = fail_with("render", jsonOut, po::code::kIo,
+                               "écriture impossible : " + a.out + " (" + w.error().message + ")");
             return;
         }
         if (jsonOut) {
@@ -1778,26 +1760,19 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
             g_exit = rc;
             return;
         }
-        const auto problems = po::check_integrity(opened->project);
-        const auto quality = po::build_quality_report(opened->project, {});
-        if (!quality) {
-            g_exit = fail_err("validate", jsonOut, po::code::kRefused, quality.error());
+        const auto validation = po::build_validation_report(opened->project);
+        if (!validation) {
+            g_exit = fail_err("validate", jsonOut, po::code::kRefused, validation.error());
             return;
         }
-        const bool valid = problems.empty() && quality->passed();
+        const bool valid = validation->valid;
         if (jsonOut) {
-            std::string list;
-            for (const auto& p : problems) {
-                list += (list.empty() ? "" : ",") + po::json_quote(p);
-            }
-            fmt::print("{{\"schema\":\"openstitch.validation/1\",\"valid\":{},\"integrity\":[{}],"
-                       "\"quality\":{}}}\n",
-                       valid ? "true" : "false", list, quality->json);
+            fmt::print("{}\n", validation->json);
         } else {
-            for (const auto& p : problems) {
+            for (const auto& p : validation->integrity) {
                 fmt::print("intégrité : {}\n", p);
             }
-            if (const auto text = po::quality_report_text(quality->json)) {
+            if (const auto text = po::quality_report_text(validation->quality.json)) {
                 fmt::print("{}", *text);
             }
             fmt::print("{}\n", valid ? "Projet valide" : "Projet INVALIDE");

@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openstitch.locate/1",
+  "type": "object",
+  "properties": {
+    "objects": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "query": {
+      "type": "object",
+      "properties": {
+        "radius_mm": {
+          "type": "number"
+        },
+        "x_mm": {
+          "type": "number"
+        },
+        "x_px": {
+          "type": "number"
+        },
+        "y_mm": {
+          "type": "number"
+        },
+        "y_px": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "radius_mm",
+        "x_mm",
+        "x_px",
+        "y_mm",
+        "y_px"
+      ],
+      "additionalProperties": false
+    },
+    "schema": {
+      "const": "openstitch.locate/1"
+    },
+    "top_object": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "objects",
+    "query",
+    "schema",
+    "top_object"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openstitch.export/1",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "openstitch.export/1"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "format": {
+      "type": "string"
+    },
+    "output": {
+      "type": "string"
+    },
+    "bytes": {
+      "type": "integer"
+    },
+    "trims_removed": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema",
+    "ok",
+    "format",
+    "output",
+    "bytes"
+  ],
+  "additionalProperties": false
+}

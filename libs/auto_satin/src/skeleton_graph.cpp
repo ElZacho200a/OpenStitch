@@ -209,7 +209,8 @@ SkeletonGraph build_skeleton_graph(const RasterMask& s, const DistanceField& d) 
     for (auto& [root, cluster] : clustersByRoot) {
         ordered.push_back(&cluster);
     }
-    std::sort(ordered.begin(), ordered.end(), [](const Cluster* a, const Cluster* b) {
+    // HP-QA-011 : stable_sort (depart = ordre de la std::map, deterministe).
+    std::stable_sort(ordered.begin(), ordered.end(), [](const Cluster* a, const Cluster* b) {
         if (a->repY != b->repY)
             return a->repY < b->repY;
         return a->repX < b->repX;
@@ -443,13 +444,15 @@ SkeletonGraph build_skeleton_graph(const RasterMask& s, const DistanceField& d) 
     }
 
     // 3) Ordre déterministe stable des arêtes.
-    std::sort(g.edges.begin(), g.edges.end(), [](const SkeletonEdge& a, const SkeletonEdge& b) {
-        if (a.from != b.from)
-            return a.from < b.from;
-        if (a.to != b.to)
-            return a.to < b.to;
-        return a.length_um < b.length_um;
-    });
+    // HP-QA-011 : stable_sort, des aretes paralleles de meme longueur peuvent coexister.
+    std::stable_sort(g.edges.begin(), g.edges.end(),
+                     [](const SkeletonEdge& a, const SkeletonEdge& b) {
+                         if (a.from != b.from)
+                             return a.from < b.from;
+                         if (a.to != b.to)
+                             return a.to < b.to;
+                         return a.length_um < b.length_um;
+                     });
     return g;
 }
 

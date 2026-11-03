@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openstitch.fabric-risk/1",
+  "type": "object",
+  "properties": {
+    "area_score_ge_70_mm2": {
+      "type": "number"
+    },
+    "cell_mm": {
+      "type": "number"
+    },
+    "fabric": {
+      "type": "string"
+    },
+    "grid": {
+      "type": "object",
+      "properties": {
+        "cols": {
+          "type": "integer"
+        },
+        "max_y_mm": {
+          "type": "number"
+        },
+        "min_x_mm": {
+          "type": "number"
+        },
+        "rows": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cols",
+        "max_y_mm",
+        "min_x_mm",
+        "rows"
+      ],
+      "additionalProperties": false
+    },
+    "max_score": {
+      "type": "number"
+    },
+    "method": {
+      "type": "string"
+    },
+    "p99_score": {
+      "type": "number"
+    },
+    "reference_spacing_mm": {
+      "type": "number"
+    },
+    "schema": {
+      "const": "openstitch.fabric-risk/1"
+    },
+    "warning": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "area_score_ge_70_mm2",
+    "cell_mm",
+    "fabric",
+    "grid",
+    "max_score",
+    "method",
+    "p99_score",
+    "reference_spacing_mm",
+    "schema",
+    "warning"
+  ],
+  "additionalProperties": false
+}

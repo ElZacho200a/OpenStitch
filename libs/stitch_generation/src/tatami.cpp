@@ -257,6 +257,7 @@ bool connector_invalid(const EdgeIndex& index, PointD a, PointD b, double edgeTo
             ts.push_back(t);
         }
     });
+    // total-order-ok: cle (h, indice) ou (rangee, borne, indice) totale
     std::sort(ts.begin(), ts.end());
     for (std::size_t i = 0; i + 1 < ts.size(); ++i) {
         const double tm = (ts[i] + ts[i + 1]) / 2.0;
@@ -353,6 +354,7 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
         for (const auto& poly : polys) {
             scan_polygon(poly, y, xs);
         }
+        // total-order-ok: cle (h, indice) ou (rangee, borne, indice) totale
         std::sort(xs.begin(), xs.end());
         for (std::size_t i = 0; i + 1 < xs.size(); i += 2) {
             const double lo = xs[i];
@@ -571,10 +573,13 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
     for (int i = 0; i < n; ++i) {
         order[static_cast<std::size_t>(i)] = i;
     }
+    // total-order-ok: cle (h, indice) ou (rangee, borne, indice) totale
     std::sort(order.begin(), order.end(), [&](int a, int b) {
         if (segs[a].row != segs[b].row)
             return segs[a].row < segs[b].row;
-        return segs[a].lo < segs[b].lo;
+        if (segs[a].lo != segs[b].lo)
+            return segs[a].lo < segs[b].lo;
+        return a < b; // HP-QA-011 : cle totale (indice stable)
     });
 
     std::vector<char> visited(static_cast<std::size_t>(n), 0);
@@ -1044,6 +1049,7 @@ std::vector<Vec2um> HiddenRouter::route(Vec2um a, Vec2um b) const {
                 candidates.push_back({detour, i});
             }
         }
+        // total-order-ok: cle (h, indice) ou (rangee, borne, indice) totale
         std::sort(candidates.begin(), candidates.end(), [](const Candidate& l, const Candidate& r) {
             return l.detour != r.detour ? l.detour < r.detour : l.index < r.index;
         });

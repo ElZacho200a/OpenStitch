@@ -254,6 +254,7 @@ public:
                     xs.push_back(e.a.x + t * (e.b.x - e.a.x));
                 }
             }
+            // total-order-ok: valeurs scalaires ou entiers : les egalites sont indiscernables
             std::sort(xs.begin(), xs.end());
             std::size_t crossed = 0;
             for (int i = 0; i < nx_; ++i) {
@@ -310,6 +311,7 @@ public:
             const auto& list = cells_[static_cast<std::size_t>(c)];
             ids.insert(ids.end(), list.begin(), list.end());
         }
+        // total-order-ok: valeurs scalaires ou entiers : les egalites sont indiscernables
         std::sort(ids.begin(), ids.end());
         ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
         std::vector<double> ts{0.0, 1.0};
@@ -326,6 +328,7 @@ public:
                 ts.push_back(t);
             }
         }
+        // total-order-ok: valeurs scalaires ou entiers : les egalites sont indiscernables
         std::sort(ts.begin(), ts.end());
         for (std::size_t i = 0; i + 1 < ts.size(); ++i) {
             if (!inside(a + ab * ((ts[i] + ts[i + 1]) / 2.0))) {
@@ -1278,6 +1281,7 @@ std::vector<P2> place_stitches(const Traced& line, const StitchPlan& plan, std::
             pos.push_back(x);
         }
     }
+    // total-order-ok: valeurs scalaires ou entiers : les egalites sont indiscernables
     std::sort(pos.begin(), pos.end());
 
     // Aspect fait main : alternance court/long du PREMIER et du DERNIER point
@@ -1656,6 +1660,7 @@ void regularize_lines(std::vector<Traced>& lines, const Sector& sector, const Sp
                 }
             }
         }
+        // total-order-ok: valeurs scalaires ou entiers : les egalites sont indiscernables
         std::sort(pairs.begin(), pairs.end());
         pairs.erase(std::unique(pairs.begin(), pairs.end()), pairs.end());
         for (const auto& [a, b] : pairs) {

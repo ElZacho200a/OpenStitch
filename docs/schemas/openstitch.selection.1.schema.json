@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openstitch.selection/1",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "openstitch.selection/1"
+    },
+    "count": {
+      "type": "integer"
+    },
+    "ids": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "count",
+    "ids"
+  ],
+  "additionalProperties": false
+}

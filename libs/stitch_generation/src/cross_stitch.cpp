@@ -74,6 +74,7 @@ std::vector<FillStitch> fill_cross_stitch(const geometry::PathSet& region,
                 xs.push_back(e.a.x + (yc - e.a.y) / (e.b.y - e.a.y) * (e.b.x - e.a.x));
             }
         }
+        // total-order-ok: valeurs scalaires ou entiers : les egalites sont indiscernables
         std::sort(xs.begin(), xs.end());
         std::vector<Run> runs;
         for (std::size_t k = 0; k + 1 < xs.size(); k += 2) {

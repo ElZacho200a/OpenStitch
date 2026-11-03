@@ -6,13 +6,25 @@
 
 namespace openstitch::agent {
 
+std::string truncate_utf8(const std::string& text, std::size_t max_bytes) {
+    if (text.size() <= max_bytes) {
+        return text;
+    }
+    std::size_t cut = max_bytes;
+    // Recule tant que l'octet suivant la coupe est un octet de continuation (10xxxxxx).
+    while (cut > 0 && (static_cast<unsigned char>(text[cut]) & 0xC0U) == 0x80U) {
+        --cut;
+    }
+    return text.substr(0, cut);
+}
+
 namespace {
 
 std::string truncated(const std::string& text, std::size_t limit) {
     if (text.size() <= limit) {
         return text;
     }
-    return text.substr(0, limit) + "\n… (résultat tronqué : " + std::to_string(text.size()) +
+    return truncate_utf8(text, limit) + "\n… (résultat tronqué : " + std::to_string(text.size()) +
            " caractères)";
 }
 

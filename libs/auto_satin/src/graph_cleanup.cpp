@@ -111,6 +111,7 @@ GraphCleanupResult prune_graph(const SkeletonGraph& graph, const GraphCleanupPar
             if (candidates.empty()) {
                 break;
             }
+            // total-order-ok: cle (h, indice d arete) totale
             std::sort(candidates.begin(), candidates.end(),
                       [](const Candidate& a, const Candidate& b) {
                           return a.h != b.h ? a.h < b.h : a.edge < b.edge;

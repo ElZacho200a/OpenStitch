@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openstitch-cli.digitize",
+  "type": "object",
+  "properties": {
+    "image": {
+      "type": "string"
+    },
+    "dst": {
+      "type": "string"
+    },
+    "svg": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "image_width_px": {
+      "type": "integer"
+    },
+    "image_height_px": {
+      "type": "integer"
+    },
+    "regions": {
+      "type": "integer"
+    },
+    "background_skipped": {
+      "type": "boolean"
+    },
+    "objects": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer"
+        },
+        "satin": {
+          "type": "integer"
+        },
+        "tatami": {
+          "type": "integer"
+        },
+        "running": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total",
+        "satin",
+        "tatami",
+        "running"
+      ],
+      "additionalProperties": false
+    },
+    "stitches": {
+      "type": "integer"
+    },
+    "jumps": {
+      "type": "integer"
+    },
+    "trims": {
+      "type": "integer"
+    },
+    "color_changes": {
+      "type": "integer"
+    },
+    "width_mm": {
+      "type": "number"
+    },
+    "height_mm": {
+      "type": "number"
+    },
+    "thread_m": {
+      "type": "number"
+    },
+    "moves": {
+      "type": "integer"
+    },
+    "long_moves_without_trim": {
+      "type": "integer"
+    },
+    "short_stitches": {
+      "type": "integer"
+    },
+    "small_objects": {
+      "type": "integer"
+    },
+    "uncovered_ratio": {
+      "type": [
+        "number",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "image",
+    "dst",
+    "svg",
+    "image_width_px",
+    "image_height_px",
+    "regions",
+    "background_skipped",
+    "objects",
+    "stitches",
+    "jumps",
+    "trims",
+    "color_changes",
+    "width_mm",
+    "height_mm",
+    "thread_m",
+    "moves",
+    "long_moves_without_trim",
+    "short_stitches",
+    "small_objects",
+    "uncovered_ratio"
+  ],
+  "additionalProperties": false
+}
