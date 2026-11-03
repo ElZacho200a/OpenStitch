@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <map>
 #include <optional>
+#include <thread>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -899,6 +900,36 @@ TEST_CASE("segmentation : meme resultat avec un seul fil et avec plusieurs") {
                 CHECK(single->region_slots[s]->pixel_count == many->region_slots[s]->pixel_count);
             }
         }
+    }
+}
+
+TEST_CASE("segmentation : deux segment() concurrents donnent chacun le resultat isole") {
+    // HP-QA-012 : cv::kmeans lit l'etat RNG par fil d'OpenCV ; la graine fixee par un appel ne
+    // doit ni dependre ni perturber un appel simultane sur un autre fil.
+    const auto imgA = noisy_image(160, 120, 4242u);
+    const auto imgB = noisy_image(140, 100, 777u);
+    const SegmentationOptions options{.max_colors = 8, .min_region_px = 16};
+    const auto isolatedA = segment(imgA, options);
+    const auto isolatedB = segment(imgB, options);
+    REQUIRE(isolatedA.has_value());
+    REQUIRE(isolatedB.has_value());
+
+    for (int round = 0; round < 4; ++round) {
+        Result<Segmentation> a = fail(ErrorCategory::Internal, "non calcule");
+        Result<Segmentation> b = fail(ErrorCategory::Internal, "non calcule");
+        Result<Segmentation> a2 = fail(ErrorCategory::Internal, "non calcule");
+        std::thread ta([&] { a = segment(imgA, options); });
+        std::thread tb([&] { b = segment(imgB, options); });
+        std::thread ta2([&] { a2 = segment(imgA, options); });
+        ta.join();
+        tb.join();
+        ta2.join();
+        REQUIRE(a.has_value());
+        REQUIRE(b.has_value());
+        REQUIRE(a2.has_value());
+        CHECK(a->labels == isolatedA->labels);
+        CHECK(a2->labels == isolatedA->labels);
+        CHECK(b->labels == isolatedB->labels);
     }
 }
 

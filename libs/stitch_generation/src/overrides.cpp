@@ -244,6 +244,7 @@ std::vector<ObjectId> apply_manual_overrides(stitch::StitchSequence& sequence,
         sequence.commands = std::move(rebuilt);
     }
 
+    // total-order-ok: valeurs scalaires ou entiers : les egalites sont indiscernables
     std::sort(dirty.begin(),
               dirty.end()); // résultat déterministe (ordre d'itération de la map non garanti)
     return dirty;

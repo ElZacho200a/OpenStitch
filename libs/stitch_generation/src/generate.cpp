@@ -346,6 +346,7 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
             for (std::size_t& idx : result.jump_before) {
                 idx = n - idx;
             }
+            // total-order-ok: valeurs scalaires ou entiers : les egalites sont indiscernables
             std::sort(result.jump_before.begin(), result.jump_before.end());
         }
     }

@@ -20,6 +20,22 @@ namespace {
 
 constexpr std::uint8_t kAlphaOpaque = 128; // seuil : en dessous, pixel de fond
 
+// HP-QA-011/012 : `cv::kmeans` n'accepte pas de generateur : il lit `cv::theRNG()`, qui est un
+// etat PAR FIL (TLS de OpenCV >= 4, verifie dans core/src/rand.cpp et system.cpp : 4.12). Deux
+// `segment()` sur des fils distincts ne partagent donc rien. Cette garde fixe la graine pour la
+// duree de l'appel (determinisme) puis restaure l'etat du fil : le service appelant ne voit
+// pas son generateur modifie.
+class ScopedThreadRng {
+public:
+    explicit ScopedThreadRng(int seed) : saved_(cv::theRNG()) { cv::setRNGSeed(seed); }
+    ~ScopedThreadRng() { cv::theRNG() = saved_; }
+    ScopedThreadRng(const ScopedThreadRng&) = delete;
+    ScopedThreadRng& operator=(const ScopedThreadRng&) = delete;
+
+private:
+    cv::RNG saved_;
+};
+
 std::size_t slot_of(RegionId id) {
     return static_cast<std::size_t>(id.value - 1);
 }
@@ -183,10 +199,12 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
     cv::Mat samples(static_cast<int>(samplesVec.size()), 3, CV_32F, samplesVec.data());
     cv::Mat kmLabels;
     cv::Mat centers;
-    cv::setRNGSeed(12345);
-    cv::kmeans(samples, k, kmLabels,
-               cv::TermCriteria(cv::TermCriteria::EPS + cv::TermCriteria::MAX_ITER, 20, 1.0), 3,
-               cv::KMEANS_PP_CENTERS, centers);
+    {
+        const ScopedThreadRng rng(12345);
+        cv::kmeans(samples, k, kmLabels,
+                   cv::TermCriteria(cv::TermCriteria::EPS + cv::TermCriteria::MAX_ITER, 20, 1.0), 3,
+                   cv::KMEANS_PP_CENTERS, centers);
+    }
 
     // Couleur RGB représentative de chaque centre Lab.
     cv::Mat centersLab8(1, k, CV_8UC3);
