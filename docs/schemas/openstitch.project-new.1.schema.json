@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openstitch.project-new/1",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "openstitch.project-new/1"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "project": {
+      "type": "string"
+    },
+    "width_mm": {
+      "type": "number"
+    },
+    "height_mm": {
+      "type": "number"
+    },
+    "margin_mm": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "schema",
+    "ok",
+    "project",
+    "width_mm",
+    "height_mm",
+    "margin_mm"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,241 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openstitch.digitize-report/1",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "openstitch.digitize-report/1"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "image": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "width_px": {
+          "type": "integer"
+        },
+        "height_px": {
+          "type": "integer"
+        },
+        "had_alpha": {
+          "type": "boolean"
+        },
+        "dpi": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "path",
+        "width_px",
+        "height_px",
+        "had_alpha",
+        "dpi"
+      ],
+      "additionalProperties": false
+    },
+    "project": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false
+    },
+    "settings": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string"
+        },
+        "max_colors": {
+          "type": "integer"
+        },
+        "min_region_px": {
+          "type": "integer"
+        },
+        "smoothing_px": {
+          "type": "integer"
+        },
+        "skip_background": {
+          "type": "integer"
+        },
+        "trim_threshold_mm": {
+          "type": "number"
+        },
+        "lock": {
+          "type": "string"
+        },
+        "hidden_travel": {
+          "type": "boolean"
+        },
+        "detail": {
+          "type": "number"
+        },
+        "technique": {
+          "type": "string"
+        },
+        "curve_tolerance_mm": {
+          "type": "number"
+        },
+        "satin_bands": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "mode",
+        "max_colors",
+        "min_region_px",
+        "smoothing_px",
+        "skip_background",
+        "trim_threshold_mm",
+        "lock",
+        "hidden_travel",
+        "detail",
+        "technique",
+        "curve_tolerance_mm",
+        "satin_bands"
+      ],
+      "additionalProperties": false
+    },
+    "segmentation": {
+      "type": "object",
+      "properties": {
+        "regions": {
+          "type": "integer"
+        },
+        "background": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "regions",
+        "background"
+      ],
+      "additionalProperties": false
+    },
+    "objects": {
+      "type": "object",
+      "properties": {
+        "vector": {
+          "type": "integer"
+        },
+        "total": {
+          "type": "integer"
+        },
+        "satin": {
+          "type": "integer"
+        },
+        "tatami": {
+          "type": "integer"
+        },
+        "running": {
+          "type": "integer"
+        },
+        "ids_by_type": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "vector",
+        "total",
+        "satin",
+        "tatami",
+        "running",
+        "ids_by_type"
+      ],
+      "additionalProperties": false
+    },
+    "sequence": {
+      "type": "object",
+      "properties": {
+        "stitches": {
+          "type": "integer"
+        },
+        "jumps": {
+          "type": "integer"
+        },
+        "trims": {
+          "type": "integer"
+        },
+        "color_changes": {
+          "type": "integer"
+        },
+        "width_mm": {
+          "type": "number"
+        },
+        "height_mm": {
+          "type": "number"
+        },
+        "thread_m": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "stitches",
+        "jumps",
+        "trims",
+        "color_changes",
+        "width_mm",
+        "height_mm",
+        "thread_m"
+      ],
+      "additionalProperties": false
+    },
+    "quality": {
+      "type": "object",
+      "properties": {
+        "moves": {
+          "type": "integer"
+        },
+        "long_moves_without_trim": {
+          "type": "integer"
+        },
+        "short_stitches": {
+          "type": "integer"
+        },
+        "small_objects": {
+          "type": "integer"
+        },
+        "uncovered_ratio": {
+          "type": "number"
+        },
+        "fill_angles_deg": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "moves",
+        "long_moves_without_trim",
+        "short_stitches",
+        "small_objects",
+        "uncovered_ratio",
+        "fill_angles_deg"
+      ],
+      "additionalProperties": false
+    },
+    "warnings": {
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "ok",
+    "image",
+    "project",
+    "settings",
+    "segmentation",
+    "objects",
+    "sequence",
+    "quality",
+    "warnings"
+  ],
+  "additionalProperties": false
+}

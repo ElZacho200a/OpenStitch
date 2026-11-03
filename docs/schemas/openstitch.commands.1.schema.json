@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openstitch.commands/1",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "openstitch.commands/1"
+    },
+    "cli": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "options": {
+          "type": "array"
+        },
+        "subcommands": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "options",
+        "subcommands"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema",
+    "cli"
+  ],
+  "additionalProperties": false
+}

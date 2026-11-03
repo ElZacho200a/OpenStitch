@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openstitch-cli.render",
+  "type": "object",
+  "properties": {
+    "file": {
+      "type": "string"
+    },
+    "width_px": {
+      "type": "integer"
+    },
+    "height_px": {
+      "type": "integer"
+    },
+    "bytes": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "file",
+    "width_px",
+    "height_px",
+    "bytes"
+  ],
+  "additionalProperties": false
+}

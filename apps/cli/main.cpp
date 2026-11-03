@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "ai_cmd.hpp"
+#include "exit_codes.hpp"
 #include "openstitch/auto_satin/auto_satin.hpp"
 #include "openstitch/auto_satin/satin_strategy.hpp"
 #include "openstitch/auto_satin/shapes.hpp"
@@ -121,13 +122,10 @@ void print_sequence_metrics(std::FILE* out, const openstitch::stitch::StitchSequ
     fmt::print(out, "\n");
 }
 
-// Codes de sortie (documentés dans `openstitch-cli --help` et docs/source/cli.md) :
-// 0 succès ; 1 entrée ou E/S (fichier illisible, option incohérente, rien à produire) ;
-// 2 contrôle qualité non satisfait (stitchdebug --shape ring). Les erreurs d'usage de
-// la ligne de commande (option inconnue, valeur hors plage…) gardent les codes de CLI11.
-constexpr int kExitOk = 0;
-constexpr int kExitInput = 1;
-constexpr int kExitQuality = 2;
+// Codes de sortie : voir exit_codes.hpp (source unique, HP-QA-018).
+using openstitch_cli::kExitInput;
+using openstitch_cli::kExitOk;
+using openstitch_cli::kExitQuality;
 
 // Message d'erreur homogène : « openstitch-cli <sous-commande> : message », suivi
 // d'une piste de correction optionnelle. Renvoie kExitInput pour `return cli_error(...)`.

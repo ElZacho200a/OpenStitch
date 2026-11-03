@@ -15,6 +15,7 @@ add_executable(test_project_ops
     test_gradient_fill.cpp
     test_live_bridge.cpp
     test_settings_profile.cpp
+    test_fuzz_batches.cpp
 )
 target_link_libraries(test_project_ops
     PRIVATE openstitch::project_ops openstitch::project_io openstitch::commands openstitch::stitch_generation

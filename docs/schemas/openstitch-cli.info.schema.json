@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openstitch-cli.info",
+  "type": "object",
+  "properties": {
+    "file": {
+      "type": "string"
+    },
+    "format": {
+      "type": "string"
+    },
+    "width_px": {
+      "type": "integer"
+    },
+    "height_px": {
+      "type": "integer"
+    },
+    "channels": {
+      "type": "integer"
+    },
+    "has_alpha": {
+      "type": "boolean"
+    },
+    "dpi": {
+      "type": "number"
+    },
+    "dpi_source": {
+      "type": "string"
+    },
+    "width_mm": {
+      "type": "number"
+    },
+    "height_mm": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "file",
+    "format",
+    "width_px",
+    "height_px",
+    "channels",
+    "has_alpha",
+    "dpi",
+    "dpi_source",
+    "width_mm",
+    "height_mm"
+  ],
+  "additionalProperties": false
+}

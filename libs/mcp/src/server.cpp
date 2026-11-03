@@ -57,31 +57,36 @@ struct Server::Impl {
     json list_tools() const {
         json list = json::array();
         const auto add = [&](const char* name, const char* description, const char* schema,
-                             bool read_only) {
-            list.push_back(json{{"name", name},
-                                {"description", description},
-                                {"inputSchema", json::parse(schema)},
-                                {"annotations",
-                                 {{"readOnlyHint", read_only},
-                                  {"destructiveHint", !read_only},
-                                  {"openWorldHint", false}}}});
+                             bool read_only, const char* output_schema = nullptr) {
+            json entry{{"name", name},
+                       {"description", description},
+                       {"inputSchema", json::parse(schema)},
+                       {"annotations",
+                        {{"readOnlyHint", read_only},
+                         {"destructiveHint", !read_only},
+                         {"openWorldHint", false}}}};
+            if (output_schema != nullptr) {
+                entry["outputSchema"] = json::parse(output_schema);
+            }
+            list.push_back(std::move(entry));
         };
         for (const auto& tool : tools()) {
             if (relay != nullptr && live_policy(tool.name) == LivePolicy::Denied) {
                 continue;
             }
             const std::string_view name = tool.name;
-            const bool readonly = name == "project_status" || name == "project_operations" ||
-                                  name == "digitize_guide" || name == "project_inspect" ||
-                                  name == "project_select" || name == "project_palette" ||
-                                  name == "semantic_validate" || name == "semantic_map" ||
-                                  name == "ai_backends" || name == "project_report" ||
-                                  name == "project_diagnose" || name == "project_density" ||
-                                  name == "project_fidelity" || name == "project_fabric_risk" ||
-                                  name == "project_locate" || name == "project_check" ||
-                                  name == "project_render" || name == "project_compare" ||
-                                  name == "project_checkpoints" || name == "project_satin_compare";
-            add(tool.name, tool.description, tool.input_schema, readonly);
+            const bool readonly =
+                name == "project_status" || name == "project_operations" ||
+                name == "digitize_guide" || name == "project_inspect" || name == "project_select" ||
+                name == "project_palette" || name == "semantic_validate" ||
+                name == "semantic_map" || name == "ai_backends" || name == "project_report" ||
+                name == "project_diagnose" || name == "project_density" ||
+                name == "project_fidelity" || name == "project_fabric_risk" ||
+                name == "project_locate" || name == "project_check" || name == "project_render" ||
+                name == "project_compare" || name == "project_checkpoints" ||
+                name == "project_satin_compare" || name == "project_diff" ||
+                name == "project_validate";
+            add(tool.name, tool.description, tool.input_schema, readonly, tool.output_schema);
         }
         if (relay != nullptr) {
             for (const auto& extra : live_extra_tools()) {
@@ -169,7 +174,23 @@ struct Server::Impl {
             return json::parse(relay->call(name, args.dump()));
         }
         const ToolResult result = call_tool(session, name, args);
-        return json{{"content", result.content}, {"isError", result.is_error}};
+        json out{{"content", result.content}, {"isError", result.is_error}};
+        // Outil à `outputSchema` : le JSON du premier bloc texte est aussi renvoyé en
+        // `structuredContent` (spécification MCP) ; jamais pour une erreur.
+        if (!result.is_error && !result.content.empty()) {
+            for (const auto& tool : tools()) {
+                if (name == tool.name && tool.output_schema != nullptr) {
+                    const json structured =
+                        json::parse(result.content.front().value("text", std::string{}), nullptr,
+                                    /*allow_exceptions=*/false);
+                    if (structured.is_object()) {
+                        out["structuredContent"] = structured;
+                    }
+                    break;
+                }
+            }
+        }
+        return out;
     }
 };
 

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openstitch.render/1",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "openstitch.render/1"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "output": {
+      "type": "string"
+    },
+    "width": {
+      "type": "integer"
+    },
+    "height": {
+      "type": "integer"
+    },
+    "px_per_mm": {
+      "type": "number"
+    },
+    "fabric": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "ok",
+    "output",
+    "width",
+    "height",
+    "px_per_mm",
+    "fabric"
+  ],
+  "additionalProperties": false
+}

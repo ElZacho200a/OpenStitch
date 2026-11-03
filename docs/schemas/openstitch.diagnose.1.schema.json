@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openstitch.diagnose/1",
+  "type": "object",
+  "properties": {
+    "findings": {
+      "type": "array"
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "color_changes": {
+          "type": "integer"
+        },
+        "connector_percent": {
+          "type": "number"
+        },
+        "hotspot_area_mm2": {
+          "type": "number"
+        },
+        "interior_hole_percent": {
+          "type": "number"
+        },
+        "jumps": {
+          "type": "integer"
+        },
+        "layers_max": {
+          "type": "number"
+        },
+        "lost_detail_percent": {
+          "type": "number"
+        },
+        "motif_height_mm": {
+          "type": "number"
+        },
+        "motif_width_mm": {
+          "type": "number"
+        },
+        "stitches": {
+          "type": "integer"
+        },
+        "thread_m": {
+          "type": "number"
+        },
+        "trims": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "color_changes",
+        "connector_percent",
+        "hotspot_area_mm2",
+        "interior_hole_percent",
+        "jumps",
+        "layers_max",
+        "lost_detail_percent",
+        "motif_height_mm",
+        "motif_width_mm",
+        "stitches",
+        "thread_m",
+        "trims"
+      ],
+      "additionalProperties": false
+    },
+    "schema": {
+      "const": "openstitch.diagnose/1"
+    },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "integer"
+        },
+        "infos": {
+          "type": "integer"
+        },
+        "warnings": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "errors",
+        "infos",
+        "warnings"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "findings",
+    "metrics",
+    "schema",
+    "summary"
+  ],
+  "additionalProperties": false
+}

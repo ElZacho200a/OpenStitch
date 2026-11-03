@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "openstitch/core/error.hpp"
 #include "openstitch/core/ids.hpp"
@@ -35,6 +36,20 @@ struct QualityReport {
 // balayée par les points, et part des points qui sortent de la région. Déterministe.
 [[nodiscard]] Result<QualityReport> build_quality_report(const document::Project& project,
                                                          const QualityOptions& options = {});
+
+inline constexpr const char* kValidationSchema = "openstitch.validation/1";
+
+struct ValidationReport {
+    std::string json; // schéma `openstitch.validation/1`
+    bool valid{false};
+    std::vector<std::string> integrity; // problèmes d'intégrité (vide = intègre)
+    QualityReport quality;
+};
+
+// Validation automatisée = intégrité des références (`check_integrity`) + contrôle qualité sans
+// erreur. Source UNIQUE du JSON `openstitch.validation/1` de `project validate` (CLI) et de
+// l'outil MCP `project_validate` (HP-QA-020).
+[[nodiscard]] Result<ValidationReport> build_validation_report(const document::Project& project);
 
 struct QualitySvgOptions {
     bool outlines{true};    // contour des régions d'origine (vecteurs sources), en gris

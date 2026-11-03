@@ -30,6 +30,8 @@ inline constexpr const char* kSessionClosed =
 inline constexpr const char* kApprovalRequired = "E_APPROVAL_REQUIRED"; // mutation sans approbation
 inline constexpr const char* kApprovalDenied = "E_APPROVAL_DENIED"; // refusée par l'utilisateur
 inline constexpr const char* kBusy = "E_BUSY";                      // commit déjà en cours
+// Serveur MCP (HP-QA-020) : format d'export hors de l'énumération DST/PES/JEF/EXP/SVG.
+inline constexpr const char* kUnsupportedFormat = "E_UNSUPPORTED_FORMAT";
 } // namespace code
 
 // Erreur structurée montrable telle quelle (texte) ou en JSON.

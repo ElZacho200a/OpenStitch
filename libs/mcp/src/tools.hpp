@@ -37,6 +37,10 @@ struct Tool {
     const char* description;
     const char* input_schema; // JSON Schema (objet) sous forme de texte
     ToolResult (*run)(Session&, const json& args);
+    // `outputSchema` MCP (JSON Schema objet, texte) des outils au résultat stable ; nullptr =
+    // résultat non contractuel. Un résultat sans erreur d'un tel outil est aussi renvoyé en
+    // `structuredContent` (HP-QA-020).
+    const char* output_schema{nullptr};
 };
 
 [[nodiscard]] const std::vector<Tool>& tools();

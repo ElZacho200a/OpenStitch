@@ -1,0 +1,215 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openstitch.quality/1",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "openstitch.quality/1"
+    },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "integer"
+        },
+        "warnings": {
+          "type": "integer"
+        },
+        "infos": {
+          "type": "integer"
+        },
+        "passed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "errors",
+        "warnings",
+        "infos",
+        "passed"
+      ],
+      "additionalProperties": false
+    },
+    "sequence": {
+      "type": "object",
+      "properties": {
+        "stitches": {
+          "type": "integer"
+        },
+        "jumps": {
+          "type": "integer"
+        },
+        "trims": {
+          "type": "integer"
+        },
+        "color_changes": {
+          "type": "integer"
+        },
+        "width_mm": {
+          "type": "number"
+        },
+        "height_mm": {
+          "type": "number"
+        },
+        "thread_m": {
+          "type": "number"
+        },
+        "moves": {
+          "type": "integer"
+        },
+        "long_moves_without_trim": {
+          "type": "integer"
+        },
+        "short_stitches": {
+          "type": "integer"
+        },
+        "short_lock_stitches": {
+          "type": "integer"
+        },
+        "direction_histogram_5deg": {
+          "type": "array"
+        },
+        "moves_between": {
+          "type": "object"
+        },
+        "moves_within": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "stitches",
+        "jumps",
+        "trims",
+        "color_changes",
+        "width_mm",
+        "height_mm",
+        "thread_m",
+        "moves",
+        "long_moves_without_trim",
+        "short_stitches",
+        "short_lock_stitches",
+        "direction_histogram_5deg",
+        "moves_between",
+        "moves_within"
+      ],
+      "additionalProperties": false
+    },
+    "frame": {
+      "type": "object",
+      "properties": {
+        "width_mm": {
+          "type": "number"
+        },
+        "height_mm": {
+          "type": "number"
+        },
+        "margin_mm": {
+          "type": "number"
+        },
+        "fits": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "width_mm",
+        "height_mm",
+        "margin_mm",
+        "fits"
+      ],
+      "additionalProperties": false
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "suppressed": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "project_metrics": {
+      "type": "object",
+      "properties": {
+        "small_objects": {
+          "type": "integer"
+        },
+        "uncovered_ratio": {
+          "type": "number"
+        },
+        "fill_angles_deg": {
+          "type": "object"
+        },
+        "moves_by_kind": {
+          "type": "object"
+        },
+        "short_stitches_by_kind": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "small_objects",
+        "uncovered_ratio",
+        "fill_angles_deg",
+        "moves_by_kind",
+        "short_stitches_by_kind"
+      ],
+      "additionalProperties": false
+    },
+    "objects": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "fill_params_checks": {
+      "type": "array"
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "min_stitch_mm": {
+          "type": "number"
+        },
+        "max_stitch_mm": {
+          "type": "number"
+        },
+        "max_jump_mm": {
+          "type": "number"
+        },
+        "trim_threshold_mm": {
+          "type": "number"
+        },
+        "max_layer_thickness": {
+          "type": "number"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "min_stitch_mm",
+        "max_stitch_mm",
+        "max_jump_mm",
+        "trim_threshold_mm",
+        "max_layer_thickness",
+        "source"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema",
+    "summary",
+    "sequence",
+    "frame",
+    "findings",
+    "suppressed",
+    "project_metrics",
+    "objects",
+    "fill_params_checks",
+    "limits"
+  ],
+  "additionalProperties": false
+}

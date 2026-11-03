@@ -2,10 +2,12 @@
 #include "tools.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <exception>
 #include <format>
+#include <fstream>
 #include <map>
 #include <set>
 #include <string_view>
@@ -788,11 +790,71 @@ ToolResult tool_save(Session& s, const json& a) {
 ToolResult tool_export(Session& s, const json& a) {
     const auto& project = need_project(s);
     const fs::path target = to_path(req_string(a, "path"));
-    const std::string format = opt_string(a, "format", "dst");
-    if (auto w = project_io::export_machine_file(project, format, target); !w) {
+    // Format : énumération fermée (DST, PES, JEF, EXP, SVG ; minuscules acceptées), refusée
+    // sinon avec E_UNSUPPORTED_FORMAT par validate_args (HP-QA-020).
+    std::string format = opt_string(a, "format", "dst");
+    std::transform(format.begin(), format.end(), format.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (format == "svg") {
+        po::QualitySvgOptions options;
+        options.directions = false;
+        options.findings = false;
+        const auto svg = po::render_quality_svg(project, options);
+        if (!svg) {
+            return engine_error("project_export", po::code::kRefused, svg.error());
+        }
+        std::ofstream out(target, std::ios::binary | std::ios::trunc);
+        out << *svg;
+        out.flush();
+        if (!out) {
+            return error_result("project_export", po::code::kIo,
+                                "écriture impossible : " + path_text(target));
+        }
+    } else if (auto w = project_io::export_machine_file(project, format, target); !w) {
         return engine_error("project_export", po::code::kIo, w.error());
     }
     return text_result(json{{"ok", true}, {"format", format}, {"path", path_text(target)}}.dump());
+}
+
+// ---- Comparaison et validation (mêmes JSON que `project diff` / `project validate`) ------
+
+// Projet d'une des entrées : fichier `path` s'il est donné, sinon projet de la session.
+const document::Project& project_or_file(Session& s, const json& a, const char* key,
+                                         std::optional<po::OpenedProject>& holder) {
+    if (a.contains(key) && !a.at(key).is_null()) {
+        auto opened = po::open_project(to_path(req_string(a, key)));
+        if (!opened) {
+            throw UsageError{opened.error().message, "chemin d'un .osp lisible",
+                             po::code::kInvalidProject};
+        }
+        holder = std::move(*opened);
+        return holder->project;
+    }
+    return need_project(s);
+}
+
+ToolResult tool_diff(Session& s, const json& a) {
+    std::optional<po::OpenedProject> holder_a;
+    std::optional<po::OpenedProject> holder_b;
+    const auto& pa = project_or_file(s, a, "a", holder_a);
+    const auto& pb = project_or_file(s, a, "b", holder_b);
+    const auto diff = po::diff_projects_json(pa, pb);
+    if (!diff) {
+        return engine_error("project_diff", po::code::kRefused, diff.error());
+    }
+    return text_result(*diff);
+}
+
+ToolResult tool_validate(Session& s, const json& a) {
+    std::optional<po::OpenedProject> holder;
+    const auto& project = project_or_file(s, a, "path", holder);
+    const auto report = po::build_validation_report(project);
+    if (!report) {
+        return engine_error("project_validate", po::code::kRefused, report.error());
+    }
+    // Contrairement à la CLI (code 2), un projet invalide reste une réponse normale : le
+    // verdict est dans « valid ».
+    return text_result(report->json);
 }
 
 // ---- Sémantique ----------------------------------------------------------------------------
@@ -1380,6 +1442,31 @@ ToolResult tool_satin_compare(Session& s, const json& a) {
                            .dump(2));
 }
 
+// `outputSchema` des outils stables (HP-QA-020) : contrat MINIMAL (schéma versionné + champs
+// toujours présents) ; les schémas complets de la CLI sont dans docs/schemas/. Les résultats
+// d'erreur (isError) portent l'enveloppe openstitch.error/1 et ne portent pas de
+// structuredContent.
+constexpr const char* kOutExport =
+    R"({"type":"object","required":["ok","format","path"],"properties":{"ok":{"const":true},)"
+    R"("format":{"enum":["dst","pes","jef","exp","svg"]},"path":{"type":"string"}}})";
+constexpr const char* kOutDiff =
+    R"({"type":"object","required":["schema","identical"],"properties":{)"
+    R"("schema":{"const":"openstitch.project-diff/1"},"identical":{"type":"boolean"}}})";
+constexpr const char* kOutValidate =
+    R"({"type":"object","required":["schema","valid","integrity","quality"],"properties":{)"
+    R"("schema":{"const":"openstitch.validation/1"},"valid":{"type":"boolean"},)"
+    R"("integrity":{"type":"array","items":{"type":"string"}},"quality":{"type":"object"}}})";
+constexpr const char* kOutCheck = R"({"type":"object","required":["schema"],"properties":{)"
+                                  R"("schema":{"const":"openstitch.quality/1"}}})";
+constexpr const char* kOutSelect =
+    R"({"type":"object","required":["schema","count","ids"],"properties":{)"
+    R"("schema":{"const":"openstitch.selection/1"},"count":{"type":"integer"},)"
+    R"("ids":{"type":"array","items":{"type":"integer"}}}})";
+constexpr const char* kOutOperations = R"({"type":"object","required":["schema"],"properties":{)"
+                                       R"("schema":{"const":"openstitch.operations/1"}}})";
+constexpr const char* kOutDiagnose = R"({"type":"object","required":["schema"],"properties":{)"
+                                     R"("schema":{"const":"openstitch.diagnose/1"}}})";
+
 const std::vector<Tool> kTools = {
     {"project_status", "Statut compact de la session, modifications non sauvegardees et variantes.",
      R"({"type":"object","properties":{}})", tool_status},
@@ -1394,7 +1481,7 @@ const std::vector<Tool> kTools = {
     {"project_operations",
      "Catalogue des opérations de modification (nom, arguments, unités, plages, exemple). À lire "
      "avant project_apply.",
-     R"({"type":"object","properties":{}})", tool_operations},
+     R"({"type":"object","properties":{}})", tool_operations, kOutOperations},
     {"project_new", "Crée un projet vide en mémoire (écrit sur disque si « path » est donné).",
      R"({"type":"object","properties":{"path":{"type":"string","description":"fichier .osp à écrire"},)"
      R"("width_mm":{"type":"number"},"height_mm":{"type":"number"},"margin_mm":{"type":"number"},)"
@@ -1437,7 +1524,7 @@ const std::vector<Tool> kTools = {
      "(mm²), within=x0,y0,x1,y1 (mm). Sert à cibler un lot project_apply.",
      R"({"type":"object","properties":{"where":{"type":"array","items":{"type":"string"}}},)"
      R"("required":["where"]})",
-     tool_select},
+     tool_select, kOutSelect},
     {"project_palette",
      "Palette réellement cousue dans l'ordre de couture (blocs de couleur), avec par couleur le "
      "nombre d'objets, l'aire et la part de la segmentation. À lire avant de juger un rendu.",
@@ -1491,7 +1578,7 @@ const std::vector<Tool> kTools = {
      tool_report},
     {"project_diagnose",
      "Constats détaillés avec suggestions et localisation par objet (openstitch.diagnose/1).",
-     R"({"type":"object","properties":{}})", tool_diagnose},
+     R"({"type":"object","properties":{}})", tool_diagnose, kOutDiagnose},
     {"project_density",
      "Épaisseur de fil par zone (couches, surépaisseurs) ; heatmap=true joint la carte PNG.",
      R"({"type":"object","properties":{"cell_mm":{"type":"number"},"heatmap":{"type":"boolean"}}})",
@@ -1562,7 +1649,8 @@ const std::vector<Tool> kTools = {
      "Contrôle qualité (points trop courts/longs, sauts, hors cadre…) : constats par objet. "
      "Appeler "
      "après chaque lot de modifications.",
-     R"({"type":"object","properties":{"object":{"type":"integer","minimum":1}}})", tool_check},
+     R"({"type":"object","properties":{"object":{"type":"integer","minimum":1}}})", tool_check,
+     kOutCheck},
     {"project_render",
      "Rendu réaliste du projet (image PNG) pour VOIR le résultat. crop = [x0,y0,x1,y1] dans [0,1] "
      "pour zoomer sur une zone ; px_per_mm (défaut 3) est abaissé si l'image dépasse 1,5 Mpx.",
@@ -1574,10 +1662,25 @@ const std::vector<Tool> kTools = {
      "Écrit le projet de la session en .osp (atomique). Sans « path » : le chemin d'ouverture.",
      R"({"type":"object","properties":{"path":{"type":"string"},"no_clobber":{"type":"boolean"}}})",
      tool_save},
-    {"project_export", "Exporte le projet en fichier machine (format « dst » par défaut).",
-     R"({"type":"object","properties":{"path":{"type":"string"},"format":{"type":"string"}},)"
-     R"("required":["path"]})",
-     tool_export},
+    {"project_export",
+     "Exporte le projet en fichier machine (format « DST » par défaut ; DST, PES, JEF, EXP ou "
+     "SVG). Tout autre format est refusé (E_UNSUPPORTED_FORMAT).",
+     R"({"type":"object","properties":{"path":{"type":"string"},"format":{"type":"string",)"
+     R"("enum":["DST","PES","JEF","EXP","SVG","dst","pes","jef","exp","svg"],)"
+     R"("x-error-code":"E_UNSUPPORTED_FORMAT"}},"required":["path"]})",
+     tool_export, kOutExport},
+    {"project_diff",
+     "Différences entre deux projets (cadre, finitions, objets, paramètres, séquence) : même JSON "
+     "openstitch.project-diff/1 que `openstitch-cli project diff`. « b » : .osp à comparer ; « a » "
+     ": .osp de référence (défaut : le projet de la session). Lecture seule.",
+     R"({"type":"object","properties":{"a":{"type":"string"},"b":{"type":"string"}},)"
+     R"("required":["b"]})",
+     tool_diff, kOutDiff},
+    {"project_validate",
+     "Validation automatisée (intégrité des références + contrôle qualité) : même JSON "
+     "openstitch.validation/1 que `openstitch-cli project validate` ; le verdict est dans « valid "
+     "». « path » : .osp à valider (défaut : le projet de la session). Lecture seule.",
+     R"({"type":"object","properties":{"path":{"type":"string"}}})", tool_validate, kOutValidate},
 };
 
 } // namespace
@@ -1613,7 +1716,9 @@ void validate_args(const Tool& tool, const json& args) {
         }
         if (field.contains("enum") && std::find(field.at("enum").begin(), field.at("enum").end(),
                                                 v) == field.at("enum").end()) {
-            throw UsageError{"valeur invalide : " + key, field.at("enum").dump()};
+            // « x-error-code » : code d'erreur stable propre au champ (ex. E_UNSUPPORTED_FORMAT).
+            throw UsageError{"valeur invalide : " + key, field.at("enum").dump(),
+                             field.value("x-error-code", std::string(po::code::kUsage))};
         }
         if (v.is_number() && field.contains("minimum") &&
             v.get<double>() < field.at("minimum").get<double>()) {

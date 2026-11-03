@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openstitch.ai.backends-report/1",
+  "type": "object",
+  "properties": {
+    "backends": {
+      "type": "array"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "resolution": {
+      "type": "object",
+      "properties": {
+        "backend_id": {
+          "type": "null"
+        },
+        "classical_fallback": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "backend_id",
+        "classical_fallback",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "schema": {
+      "const": "openstitch.ai.backends-report/1"
+    }
+  },
+  "required": [
+    "backends",
+    "protocol",
+    "resolution",
+    "schema"
+  ],
+  "additionalProperties": false
+}

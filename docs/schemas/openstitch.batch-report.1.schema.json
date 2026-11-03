@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openstitch.batch-report/1",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "openstitch.batch-report/1"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "applied": {
+      "type": "boolean"
+    },
+    "dry_run": {
+      "type": "boolean"
+    },
+    "operation_count": {
+      "type": "integer"
+    },
+    "error": {
+      "type": [
+        "null",
+        "object"
+      ]
+    },
+    "outcomes": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "ok",
+    "applied",
+    "dry_run",
+    "operation_count",
+    "error",
+    "outcomes"
+  ],
+  "additionalProperties": false
+}

@@ -52,9 +52,6 @@ std::map<const CLI::App*, std::vector<po::ProfileKey>>& profile_keys() {
     return keys;
 }
 
-constexpr int kExitInput = 1;
-constexpr int kExitQuality = 2;
-
 int fail_with(const std::string& cmd, bool json, const char* code, const std::string& message,
               const std::string& hint = {}, int exitCode = kExitInput) {
     fmt::print(stderr, "openstitch-cli project {} : {}\n", cmd, message);
@@ -1778,26 +1775,19 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
             g_exit = rc;
             return;
         }
-        const auto problems = po::check_integrity(opened->project);
-        const auto quality = po::build_quality_report(opened->project, {});
-        if (!quality) {
-            g_exit = fail_err("validate", jsonOut, po::code::kRefused, quality.error());
+        const auto validation = po::build_validation_report(opened->project);
+        if (!validation) {
+            g_exit = fail_err("validate", jsonOut, po::code::kRefused, validation.error());
             return;
         }
-        const bool valid = problems.empty() && quality->passed();
+        const bool valid = validation->valid;
         if (jsonOut) {
-            std::string list;
-            for (const auto& p : problems) {
-                list += (list.empty() ? "" : ",") + po::json_quote(p);
-            }
-            fmt::print("{{\"schema\":\"openstitch.validation/1\",\"valid\":{},\"integrity\":[{}],"
-                       "\"quality\":{}}}\n",
-                       valid ? "true" : "false", list, quality->json);
+            fmt::print("{}\n", validation->json);
         } else {
-            for (const auto& p : problems) {
+            for (const auto& p : validation->integrity) {
                 fmt::print("intégrité : {}\n", p);
             }
-            if (const auto text = po::quality_report_text(quality->json)) {
+            if (const auto text = po::quality_report_text(validation->quality.json)) {
                 fmt::print("{}", *text);
             }
             fmt::print("{}\n", valid ? "Projet valide" : "Projet INVALIDE");

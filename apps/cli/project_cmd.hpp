@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "exit_codes.hpp"
 #include "openstitch/project_ops/factory.hpp"
 
 namespace openstitch_cli {
@@ -33,11 +34,6 @@ struct DigitizeOptionValues {
 void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& values);
 // À appeler après le parse : traduit `skipBackground` en `settings.skip_background`.
 void finalize_digitize_options(DigitizeOptionValues& values);
-
-// Codes de sortie des commandes `project` (en plus de ceux de la CLI) : 0 succès ; 1 entrée,
-// fichier ou erreur interne ; 2 contrôle qualité / validation non satisfait ; 3 lot ou
-// opération refusé (aucune écriture).
-inline constexpr int kExitRefused = 3;
 
 // Enregistre le groupe `project` et `commands`. Renvoie le sous-commande `project`.
 CLI::App* register_project_commands(CLI::App& app, bool& jsonOut);
