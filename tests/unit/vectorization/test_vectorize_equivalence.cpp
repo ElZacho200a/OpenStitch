@@ -9,6 +9,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -181,4 +182,82 @@ TEST_CASE("vectorize_region (boite englobante) : region collee aux quatre bords 
                reference_vectorize(seg, RegionId{1}, opts));
     check_same(vectorization::vectorize_region(seg, RegionId{2}, opts),
                reference_vectorize(seg, RegionId{2}, opts));
+}
+
+TEST_CASE("RegionPixelIndex : chemin indexe identique a la reference", "[vectorization][perf]") {
+    const auto seg = noisy_segmentation(97, 61, 11u);
+    const vectorization::RegionPixelIndex index(seg);
+    const vectorization::VectorizeOptions opts{Millimeters{0.2}, Micrometers{200}};
+    for (const auto& slot : seg.region_slots) {
+        INFO("label " << slot->id.value);
+        check_same(vectorization::vectorize_region(seg, slot->id, opts, TaskContext{}, index),
+                   reference_vectorize(seg, slot->id, opts));
+    }
+    const std::vector<RegionId> ids{RegionId{1}, RegionId{3}, RegionId{6}, RegionId{99}};
+    const auto batch = vectorization::vectorize_regions(seg, ids, opts);
+    REQUIRE(batch.size() == ids.size());
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+        check_same(batch[i], vectorization::vectorize_region(seg, ids[i], opts));
+    }
+}
+
+TEST_CASE("HP-PERF-024 : mesure 300 regions sur 10 Mpx", "[vectorization][perf]") {
+    // Grille 20 x 15 = 300 disques sur 3200 x 3120 px (10 Mpx), fond = label 0.
+    constexpr int w = 3200;
+    constexpr int h = 3120;
+    constexpr int cols = 20;
+    constexpr int rows = 15;
+    segmentation::Segmentation seg;
+    seg.width = w;
+    seg.height = h;
+    seg.labels.assign(static_cast<std::size_t>(w) * static_cast<std::size_t>(h), 0);
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            const int cx = x / (w / cols);
+            const int cy = y / (h / rows);
+            if (cx >= cols || cy >= rows) {
+                continue;
+            }
+            const int dx = x - (cx * (w / cols) + (w / cols) / 2);
+            const int dy = y - (cy * (h / rows) + (h / rows) / 2);
+            if (dx * dx + dy * dy < 60 * 60) {
+                seg.labels[static_cast<std::size_t>(y) * static_cast<std::size_t>(w) +
+                           static_cast<std::size_t>(x)] =
+                    static_cast<std::uint32_t>(cy * cols + cx + 1);
+            }
+        }
+    }
+    std::vector<RegionId> ids;
+    for (std::uint32_t l = 1; l <= cols * rows; ++l) {
+        segmentation::Region r;
+        r.id = RegionId{l};
+        seg.region_slots.push_back(r);
+        ids.push_back(RegionId{l});
+    }
+    const vectorization::VectorizeOptions opts{Millimeters{0.1}, Micrometers{200}};
+    using Clock = std::chrono::steady_clock;
+    const auto t0 = Clock::now();
+    std::vector<Result<std::vector<geometry::PathSet>>> old;
+    for (const RegionId id : ids) {
+        old.push_back(vectorization::vectorize_region(seg, id, opts));
+    }
+    const auto t1 = Clock::now();
+    const vectorization::RegionPixelIndex index(seg);
+    std::vector<Result<std::vector<geometry::PathSet>>> indexed;
+    for (const RegionId id : ids) {
+        indexed.push_back(vectorization::vectorize_region(seg, id, opts, TaskContext{}, index));
+    }
+    const auto t2 = Clock::now();
+    const auto par = vectorization::vectorize_regions(seg, ids, opts);
+    const auto t3 = Clock::now();
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+        check_same(old[i], indexed[i]);
+        check_same(old[i], par[i]);
+    }
+    const auto ms = [](auto a, auto b) {
+        return std::chrono::duration<double, std::milli>(b - a).count();
+    };
+    WARN("300 regions / 10 Mpx : balayage par region " << ms(t0, t1) << " ms, index (serie) "
+                                                       << ms(t1, t2) << " ms, vectorize_regions "
+                                                       << ms(t2, t3) << " ms");
 }
