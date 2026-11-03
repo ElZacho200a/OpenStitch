@@ -17,6 +17,7 @@
 
 #include "archive.hpp"
 #include "json_serialize.hpp"
+#include "openstitch/core/atomic_file.hpp"
 #include "openstitch/image/image.hpp"
 #include "openstitch/project_io/migrations.hpp"
 
@@ -198,46 +199,9 @@ Result<void> save_project(const std::filesystem::path& path, const document::Pro
         entries.emplace(kDetailMaskEntry, detail_mask_to_bytes(project.detail_mask));
     }
 
-    // Écriture atomique : fichier temporaire puis renommage.
-    std::filesystem::path tmp = path;
-    tmp += ".tmp";
-    if (auto written = detail::write_zip(tmp, entries); !written) {
-        std::error_code ec;
-        std::filesystem::remove(tmp, ec);
-        return std::unexpected(written.error());
-    }
-    std::error_code ec;
-    std::filesystem::rename(tmp, path, ec);
-    if (ec) {
-        // Sur certains systèmes, rename échoue si la cible existe : on remplace
-        // via un fichier de repli, pour ne jamais perdre l'ancien projet.
-        std::filesystem::path old = path;
-        old += ".old";
-        std::error_code ec2;
-        std::filesystem::remove(old, ec2);
-        std::filesystem::rename(path, old, ec2);
-        if (ec2) {
-            // Cible verrouillée : le .tmp (complet) est conservé et cité.
-            return fail(ErrorCategory::Internal,
-                        "Impossible de finaliser l'enregistrement : " + detail::path_utf8(path) +
-                            " (fichier ouvert ailleurs ?). Vos données sont conservées dans " +
-                            detail::path_utf8(tmp),
-                        ec2.message());
-        }
-        std::error_code ec3;
-        std::filesystem::rename(tmp, path, ec3);
-        if (ec3) {
-            // On restaure l'ancien projet ; le .tmp reste disponible.
-            std::error_code ec4;
-            std::filesystem::rename(old, path, ec4);
-            return fail(ErrorCategory::Internal,
-                        "Impossible de finaliser l'enregistrement : " + detail::path_utf8(path) +
-                            ". Vos données sont conservées dans " + detail::path_utf8(tmp),
-                        ec3.message());
-        }
-        std::filesystem::remove(old, ec2);
-    }
-    return {};
+    // Écriture atomique et durable (HP-QA-021) : primitive commune de libs/core.
+    return write_file_atomic_with(
+        path, [&](const std::filesystem::path& tmp) { return detail::write_zip(tmp, entries); });
 }
 
 std::filesystem::path migration_backup_path(const std::filesystem::path& path, int fromVersion) {

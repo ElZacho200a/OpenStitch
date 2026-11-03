@@ -80,6 +80,7 @@ inside_intervals(const geometry::PathSet& region, P2 a, P2 b) {
             ts.push_back(t);
         }
     });
+    // total-order-ok: valeurs scalaires ou entiers : les egalites sont indiscernables
     std::sort(ts.begin(), ts.end());
     std::vector<std::pair<double, double>> out;
     for (std::size_t i = 0; i + 1 < ts.size(); ++i) {

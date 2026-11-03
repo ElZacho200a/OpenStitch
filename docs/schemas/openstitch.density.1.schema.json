@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openstitch.density/1",
+  "type": "object",
+  "properties": {
+    "area_over_mm2": {
+      "type": "object",
+      "properties": {
+        "2_layers": {
+          "type": "number"
+        },
+        "3_layers": {
+          "type": "number"
+        },
+        "4_layers": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "2_layers",
+        "3_layers",
+        "4_layers"
+      ],
+      "additionalProperties": false
+    },
+    "cell_mm": {
+      "type": "number"
+    },
+    "hotspot_area_mm2": {
+      "type": "number"
+    },
+    "hotspot_count": {
+      "type": "integer"
+    },
+    "hotspot_layers": {
+      "type": "number"
+    },
+    "hotspots": {
+      "type": "array"
+    },
+    "layers_max": {
+      "type": "number"
+    },
+    "layers_mean": {
+      "type": "number"
+    },
+    "layers_p99": {
+      "type": "number"
+    },
+    "reference_spacing_mm": {
+      "type": "number"
+    },
+    "schema": {
+      "const": "openstitch.density/1"
+    }
+  },
+  "required": [
+    "area_over_mm2",
+    "cell_mm",
+    "hotspot_area_mm2",
+    "hotspot_count",
+    "hotspot_layers",
+    "hotspots",
+    "layers_max",
+    "layers_mean",
+    "layers_p99",
+    "reference_spacing_mm",
+    "schema"
+  ],
+  "additionalProperties": false
+}

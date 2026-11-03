@@ -5,10 +5,19 @@ set(OPENSTITCH_CLI_CASES
     info_json digitize_json digitize_nothing legacy_technique_alias
     project_new_inspect project_cycle project_introspection ai_backends render_png settings_profile)
 
+# HP-QA-018 : validateur JSON Schema minimal ; chaque sortie --json des cas ci-dessous est
+# validee contre docs/schemas/ (un champ change sans le schema fait echouer le cas).
+find_package(nlohmann_json CONFIG REQUIRED)
+add_executable(json_schema_check json_schema_check.cpp)
+target_link_libraries(json_schema_check PRIVATE nlohmann_json::nlohmann_json)
+add_test(NAME cli_json_schema_selftest COMMAND json_schema_check --selftest)
+
 foreach(case IN LISTS OPENSTITCH_CLI_CASES)
     add_test(NAME cli_${case}
         COMMAND ${CMAKE_COMMAND}
                 -DCLI=$<TARGET_FILE:openstitch-cli>
+                -DVALIDATOR=$<TARGET_FILE:json_schema_check>
+                -DSCHEMAS=${PROJECT_SOURCE_DIR}/docs/schemas
                 -DFIXTURES=${PROJECT_SOURCE_DIR}/tests/fixtures/cli
                 -DWORK=${CMAKE_CURRENT_BINARY_DIR}/work_${case}
                 -DCASE=${case}

@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openstitch.validation/1",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "openstitch.validation/1"
+    },
+    "valid": {
+      "type": "boolean"
+    },
+    "integrity": {
+      "type": "array"
+    },
+    "quality": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "openstitch.quality/1"
+        },
+        "summary": {
+          "type": "object"
+        },
+        "sequence": {
+          "type": "object"
+        },
+        "frame": {
+          "type": "object"
+        },
+        "findings": {
+          "type": "array"
+        },
+        "suppressed": {
+          "type": "object"
+        },
+        "project_metrics": {
+          "type": "object"
+        },
+        "objects": {
+          "type": "array"
+        },
+        "fill_params_checks": {
+          "type": "array"
+        },
+        "limits": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "schema",
+        "summary",
+        "sequence",
+        "frame",
+        "findings",
+        "suppressed",
+        "project_metrics",
+        "objects",
+        "fill_params_checks",
+        "limits"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema",
+    "valid",
+    "integrity",
+    "quality"
+  ],
+  "additionalProperties": false
+}

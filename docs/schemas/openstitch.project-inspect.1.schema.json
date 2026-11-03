@@ -1,0 +1,237 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openstitch.project-inspect/1",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "openstitch.project-inspect/1"
+    },
+    "osp_schema_version": {
+      "type": "integer"
+    },
+    "canvas": {
+      "type": "object",
+      "properties": {
+        "width_mm": {
+          "type": "number"
+        },
+        "height_mm": {
+          "type": "number"
+        },
+        "margin_mm": {
+          "type": "number"
+        },
+        "usable_width_mm": {
+          "type": "number"
+        },
+        "usable_height_mm": {
+          "type": "number"
+        },
+        "shape": {
+          "type": "string"
+        },
+        "corner_radius_mm": {
+          "type": "number"
+        },
+        "machine": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "width_mm",
+        "height_mm",
+        "margin_mm",
+        "usable_width_mm",
+        "usable_height_mm",
+        "shape",
+        "corner_radius_mm",
+        "machine"
+      ],
+      "additionalProperties": false
+    },
+    "resolution": {
+      "type": "object",
+      "properties": {
+        "mm_per_px": {
+          "type": "number"
+        },
+        "dpi": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "mm_per_px",
+        "dpi"
+      ],
+      "additionalProperties": false
+    },
+    "image": {
+      "type": "object",
+      "properties": {
+        "present": {
+          "type": "boolean"
+        },
+        "width_px": {
+          "type": "integer"
+        },
+        "height_px": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "present",
+        "width_px",
+        "height_px"
+      ],
+      "additionalProperties": false
+    },
+    "finishing": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "trim_threshold_mm": {
+          "type": "number"
+        },
+        "trim_before_color_change": {
+          "type": "boolean"
+        },
+        "lock": {
+          "type": "string"
+        },
+        "lock_length_mm": {
+          "type": "number"
+        },
+        "lock_passes": {
+          "type": "integer"
+        },
+        "filter_short_stitches": {
+          "type": "boolean"
+        },
+        "min_stitch_length_mm": {
+          "type": "number"
+        },
+        "split_long_stitches": {
+          "type": "boolean"
+        },
+        "max_stitch_length_mm": {
+          "type": "number"
+        },
+        "auto_join": {
+          "type": "boolean"
+        },
+        "hidden_travel": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "enabled",
+        "trim_threshold_mm",
+        "trim_before_color_change",
+        "lock",
+        "lock_length_mm",
+        "lock_passes",
+        "filter_short_stitches",
+        "min_stitch_length_mm",
+        "split_long_stitches",
+        "max_stitch_length_mm",
+        "auto_join",
+        "hidden_travel"
+      ],
+      "additionalProperties": false
+    },
+    "imported_design": {
+      "type": "boolean"
+    },
+    "segmentation": {
+      "type": "object",
+      "properties": {
+        "region_count": {
+          "type": "integer"
+        },
+        "regions": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "region_count",
+        "regions"
+      ],
+      "additionalProperties": false
+    },
+    "vector_objects": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "text_objects": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "sequence": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "embroidery_objects": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "warnings": {
+      "type": "array"
+    },
+    "counts": {
+      "type": "object",
+      "properties": {
+        "vector_objects": {
+          "type": "integer"
+        },
+        "embroidery_objects": {
+          "type": "integer"
+        },
+        "text_objects": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "vector_objects",
+        "embroidery_objects",
+        "text_objects"
+      ],
+      "additionalProperties": false
+    },
+    "groups": {
+      "type": "array"
+    },
+    "colorways": {
+      "type": "array"
+    },
+    "fabric": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema",
+    "osp_schema_version",
+    "canvas",
+    "resolution",
+    "image",
+    "finishing",
+    "imported_design",
+    "segmentation",
+    "vector_objects",
+    "text_objects",
+    "sequence",
+    "embroidery_objects",
+    "warnings",
+    "counts"
+  ],
+  "additionalProperties": false
+}

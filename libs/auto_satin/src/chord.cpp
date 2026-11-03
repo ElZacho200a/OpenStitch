@@ -37,6 +37,7 @@ std::vector<ChordInterval> line_intervals(const std::vector<Poly>& polys, P2 p, 
             ts.push_back(dot(u, q - p));
         }
     }
+    // total-order-ok: valeurs scalaires ou entiers : les egalites sont indiscernables
     std::sort(ts.begin(), ts.end());
     std::vector<ChordInterval> out;
     out.reserve(ts.size() / 2);

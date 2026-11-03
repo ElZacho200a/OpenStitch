@@ -16,6 +16,8 @@
 #include "openstitch/formats/svg.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/polyline.hpp"
+#include "openstitch/project_ops/project_file.hpp"
+#include "openstitch/project_ops/report.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
 #include "openstitch/stitch_analysis/metrics.hpp"
@@ -567,6 +569,25 @@ Result<std::string> render_quality_svg(const document::Project& project,
         svg.insert(close, extra);
     }
     return svg;
+}
+
+Result<ValidationReport> build_validation_report(const document::Project& project) {
+    ValidationReport report;
+    report.integrity = check_integrity(project);
+    auto quality = build_quality_report(project, {});
+    if (!quality) {
+        return std::unexpected(quality.error());
+    }
+    report.quality = std::move(*quality);
+    report.valid = report.integrity.empty() && report.quality.passed();
+    std::string list;
+    for (const auto& p : report.integrity) {
+        list += (list.empty() ? "" : ",") + json_quote(p);
+    }
+    report.json =
+        std::format("{{\"schema\":\"{}\",\"valid\":{},\"integrity\":[{}],\"quality\":{}}}",
+                    kValidationSchema, report.valid ? "true" : "false", list, report.quality.json);
+    return report;
 }
 
 } // namespace openstitch::project_ops

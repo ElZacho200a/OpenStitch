@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openstitch.error/1",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "openstitch.error/1"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "command": {
+      "type": "string"
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "hint": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "hint"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema",
+    "ok",
+    "command",
+    "error"
+  ],
+  "additionalProperties": false
+}

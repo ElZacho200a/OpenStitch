@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openstitch.project-diff/1",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "openstitch.project-diff/1"
+    },
+    "project": {
+      "type": "object",
+      "properties": {
+        "sequence": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "sequence"
+      ],
+      "additionalProperties": false
+    },
+    "objects": {
+      "type": "object",
+      "properties": {
+        "added": {
+          "type": "array"
+        },
+        "removed": {
+          "type": "array"
+        },
+        "changed": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "added",
+        "removed",
+        "changed"
+      ],
+      "additionalProperties": false
+    },
+    "identical": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema",
+    "project",
+    "objects",
+    "identical"
+  ],
+  "additionalProperties": false
+}

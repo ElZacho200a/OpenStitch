@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openstitch-cli.production",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "integer"
+    },
+    "project": {
+      "type": "string"
+    },
+    "date": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "client": {
+      "type": "string"
+    },
+    "size_mm": {
+      "type": "object",
+      "properties": {
+        "width": {
+          "type": "number"
+        },
+        "height": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "width",
+        "height"
+      ],
+      "additionalProperties": false
+    },
+    "frame_mm": {
+      "type": "object",
+      "properties": {
+        "width": {
+          "type": "number"
+        },
+        "height": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "width",
+        "height"
+      ],
+      "additionalProperties": false
+    },
+    "fits_frame": {
+      "type": "boolean"
+    },
+    "totals": {
+      "type": "object",
+      "properties": {
+        "stitches": {
+          "type": "integer"
+        },
+        "jumps": {
+          "type": "integer"
+        },
+        "trims": {
+          "type": "integer"
+        },
+        "color_changes": {
+          "type": "integer"
+        },
+        "colors": {
+          "type": "integer"
+        },
+        "thread_length_m": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "stitches",
+        "jumps",
+        "trims",
+        "color_changes",
+        "colors",
+        "thread_length_m"
+      ],
+      "additionalProperties": false
+    },
+    "estimate": {
+      "type": "object",
+      "properties": {
+        "stitches_per_minute": {
+          "type": "number"
+        },
+        "color_change_seconds": {
+          "type": "number"
+        },
+        "trim_seconds": {
+          "type": "number"
+        },
+        "minutes": {
+          "type": "number"
+        },
+        "jump_seconds": {
+          "type": "number"
+        },
+        "stitch_minutes": {
+          "type": "number"
+        },
+        "color_change_minutes": {
+          "type": "number"
+        },
+        "trim_minutes": {
+          "type": "number"
+        },
+        "jump_minutes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "stitches_per_minute",
+        "color_change_seconds",
+        "trim_seconds",
+        "minutes",
+        "jump_seconds",
+        "stitch_minutes",
+        "color_change_minutes",
+        "trim_minutes",
+        "jump_minutes"
+      ],
+      "additionalProperties": false
+    },
+    "blocks": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "suppressed": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "consumption": {
+      "type": "object",
+      "properties": {
+        "total_top_m": {
+          "type": "number"
+        },
+        "total_bobbin_m": {
+          "type": "number"
+        },
+        "bobbin_capacity_m": {
+          "type": "number"
+        },
+        "bobbins_needed": {
+          "type": "integer"
+        },
+        "last_bobbin_fill": {
+          "type": "number"
+        },
+        "threads": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "total_top_m",
+        "total_bobbin_m",
+        "bobbin_capacity_m",
+        "bobbins_needed",
+        "last_bobbin_fill",
+        "threads"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema",
+    "project",
+    "date",
+    "notes",
+    "client",
+    "size_mm",
+    "frame_mm",
+    "fits_frame",
+    "totals",
+    "estimate",
+    "blocks",
+    "findings",
+    "suppressed",
+    "consumption"
+  ],
+  "additionalProperties": false
+}

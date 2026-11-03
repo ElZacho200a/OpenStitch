@@ -4,6 +4,7 @@ find_package(Threads REQUIRED)
 
 add_library(openstitch_core
     src/log.cpp
+    src/atomic_file.cpp
 )
 add_library(openstitch::core ALIAS openstitch_core)
 

@@ -3904,7 +3904,8 @@ une entrée P0 ouverte (§0.4).
 
 ### 27bis.2 Robustesse, déterminisme et CI (QA)
 
-### HP-QA-011 — Départage total des tris et test de déterminisme multi-fils [P1] — ☐ À faire
+### HP-QA-011 — Départage total des tris et test de déterminisme multi-fils [P1] — ◐ Partiel (2026-11-03)
+- Livré : tris de stitch_generation/auto_satin totalisés ou annotés `total-order-ok:`, garde CTest `check_sort_total_order`, test DST identique à 1 et 8 fils. Reste : `autodigitize`, `stipple`, `project_ops` (mêmes audits) .
 - État OpenStitch : `tatami.cpp` trie `(row, lo)` sans clé de départage (≈ l.574) ; plusieurs `std::sort` de `satin_guides.cpp` et `directional_fill.cpp` à relire **(à vérifier : égalités possibles ?)**. `parallel_for` suit le nombre de fils matériel ; aucun test ne compare 1 fil et N fils.
 - Hatch : sans objet (garantie propre à OpenStitch, voir §27).
 - À faire : auditer chaque tri de `stitch_generation`/`auto_satin`/`optimization` ; clé finale = indice stable ou `std::stable_sort` ; test CTest qui génère le même projet avec `OPENSTITCH_THREADS=1` et `=8` et compare les octets du DST (corpus de `tests/golden`).
@@ -3912,33 +3913,33 @@ une entrée P0 ouverte (§0.4).
 - Dépend de : —
 - Acceptation : octets identiques à 1 et 8 fils ; un test échoue si un nouveau tri n'a pas de clé totale (garde CTest sur le motif `std::sort(` hors liste annotée).
 
-### HP-QA-012 — Graine RNG OpenCV non globale [P1] — ☐ À faire
+### HP-QA-012 — Graine RNG OpenCV non globale [P1] — ☑ Fait (2026-11-03)
 - État OpenStitch : `cv::setRNGSeed(12345)` dans `segmentation.cpp` (≈ l.186) et `ops.cpp` (≈ l.200) ; état possiblement partagé entre aperçu et tâche de fond **(à vérifier : `cv::theRNG` est-il par fil dans la version vcpkg ?)**.
 - À faire : si l'état est partagé, passer un `cv::RNG` local à `kmeans` ; sinon documenter et tester la concurrence.
 - Modules : `libs/segmentation`, `libs/image`.
 - Acceptation : deux `segment()` concurrents (fils distincts) donnent chacun le résultat de l'appel isolé, testé.
 
-### HP-QA-013 — Entrées hostiles : taille des images et entrées ZIP [P1] — ☐ À faire
+### HP-QA-013 — Entrées hostiles : taille des images et entrées ZIP [P1] — ☑ Fait (2026-11-03)
 - État OpenStitch : `load.cpp` lit tout le fichier puis `cv::imdecode` sans plafond de pixels ; `static_cast<int>(bytes.size())` sans garde (≈ l.44-51). `project_io/archive.cpp` alloue chaque entrée d'après `uncompressed_size` déclarée, sans plafond de taille ni de nombre d'entrées ; une entrée en double garde silencieusement la première (≈ l.70-96).
 - À faire : plafonds (pixels, octets, nombre d'entrées, taille décompressée) avec code `E_*` et `hint` ; refus explicite des doublons ZIP ; tests avec fichiers forgés (bombe de décompression, dimensions géantes).
 - Modules : `libs/image`, `libs/project_io`.
 - Dépend de : —
 - Acceptation : un `.osp` annonçant plusieurs Go et une image de dimensions démesurées sont refusés sans allocation notable ; `.osp` à deux `project.json` refusé avec message clair.
 
-### HP-QA-014 — Fuzzing des entrées JSON (lots `apply` et trames MCP) [P1] — ☐ À faire
+### HP-QA-014 — Fuzzing des entrées JSON (lots `apply` et trames MCP) [P1] — ☑ Fait (2026-11-03)
 - État OpenStitch : fuzz `.osp` en CI (`ci.yml`) et décodeurs (`test_fuzz_decoders.cpp`) ; les opérations JSON de `project_ops` et les trames JSON-RPC du MCP n'ont qu'un cas « garbage » (`test_server.cpp`).
 - À faire : mutations déterministes (graine fixe) de lots d'opérations et de trames ; contrat : seulement des erreurs codées, jamais de crash ni de blocage.
 - Modules : `libs/project_ops`, `libs/mcp`, `scripts/qa`.
 - Dépend de : — (complète HP-QA-003).
 - Acceptation : N mutations en CTest sans crash ni timeout ; chaque refus porte un `E_*`.
 
-### HP-QA-017 — Épingler clang-format 18 dans la CI [P1] — ☐ À faire
+### HP-QA-017 — Épingler clang-format 18 dans la CI [P1] — ☑ Fait (2026-11-03)
 - État OpenStitch : le job `format` fait `apt-get install clang-format` sans version (≈ `ci.yml:184`), contraire à la règle du dépôt (18 exactement).
 - À faire : installer `clang-format-18` ou échouer si `--version` n'est pas 18.x.
 - Modules : `.github/workflows/ci.yml`.
 - Acceptation : le job échoue explicitement avec une autre version.
 
-### HP-QA-018 — Contrat CLI : codes de sortie centralisés et schémas JSON publiés [P1] — ☐ À faire
+### HP-QA-018 — Contrat CLI : codes de sortie centralisés et schémas JSON publiés [P1] — ☑ Fait (2026-11-03)
 - État OpenStitch : codes 0/1/2/3 définis à trois endroits (`apps/cli/main.cpp:127-129`, `project_cmd.hpp:29`, `project_cmd.cpp:44-45`), absents de `docs/source/cli-project.md` ; une vingtaine de sorties `--json` versionnées `openstitch.*/1` sans fichier de schéma.
 - À faire : un seul en-tête de codes + table dans la doc ; schémas JSON dans `docs/schemas/` ; test qui valide chaque sortie `--json` de `tests/cli` contre son schéma.
 - Modules : `apps/cli`, `tests/cli`, `docs/`.
@@ -3950,7 +3951,7 @@ une entrée P0 ouverte (§0.4).
 - Modules : `apps/cli`, `apps/mcp`, `libs/core`.
 - Acceptation : test de forme du JSON.
 
-### HP-QA-020 — Serveur MCP : outils manquants et schéma de sortie [P1] — ☐ À faire
+### HP-QA-020 — Serveur MCP : outils manquants et schéma de sortie [P1] — ☑ Fait (2026-11-03)
 - État OpenStitch : 32 outils (`libs/mcp/src/tools.cpp`) ; `project diff` et `project validate` n'existent qu'en CLI ; `project_export.format` est une chaîne libre ; pas d'`outputSchema`.
 - À faire : outils `project_diff` et `project_validate` (mêmes JSON que la CLI) ; `format` en énumération (DST, PES, JEF, EXP, SVG) avec refus `E_*` ; `outputSchema` pour les outils stables.
 - Modules : `libs/mcp`, `libs/project_ops`.
@@ -4245,17 +4246,18 @@ ouvrant le lot (§0.1).
 
 ### 27ter.2 Défauts et robustesse
 
-### HP-QA-021 — Écriture atomique et durable de toutes les sorties [P1] — ☐ À faire
+### HP-QA-021 — Écriture atomique et durable de toutes les sorties [P1] — ◐ Partiel (2026-11-03)
+- Livré : `core/atomic_file.hpp` (tmp unique, flush, rename) pour .osp, DST/SVG/DXF/compagnon, machine, CLI project. Reste : `project_ops/debug_dump.cpp`, `agent/workspace.cpp`, `mcp/live_transport.cpp`.
 - État : seul le `.osp` est écrit via tmp puis rename (`project_io.cpp:201-232`) ; DST, SVG, PNG, PDF, DXF et le compagnon de couleurs sont écrits directement (`dst.cpp:268`, `svg.cpp:86`, `dxf.cpp:401`, `color_companion.cpp:202`, `apps/cli/project_cmd.cpp:906`) ; aucun `fsync`/`FlushFileBuffers` avant le renommage ; suffixe `.tmp` fixe.
 - À faire : une primitive unique d'écriture (tmp à nom unique, flush disque, rename) pour toutes les sorties ; un échec (cible verrouillée, disque plein) laisse l'ancien fichier intact. [`libs/formats`, `libs/project_io`, `apps/cli`]
 - Acceptation : test CTest qui force l'échec ; deux exports simultanés vers la même cible ne se corrompent pas.
 
-### HP-QA-022 — Exécuter tous les tests Python en CI [P1] — ☐ À faire
+### HP-QA-022 — Exécuter tous les tests Python en CI [P1] — ☑ Fait (2026-11-03)
 - État : `tests/scripts/test_openstitch_semantic_{bulk,import,replace,review}.py` (10 tests) ne sont lancés par aucun workflow ; les autres workflows ne lancent qu'un fichier chacun.
 - À faire : un job `unittest discover -s tests/scripts`. [`.github/workflows`]
 - Acceptation : le job échoue si un `test_*.py` casse.
 
-### HP-QA-023 — Troncature UTF-8 sûre dans l'agent [P1] — ☐ À faire
+### HP-QA-023 — Troncature UTF-8 sûre dans l'agent [P1] — ☑ Fait (2026-11-03)
 - État : `libs/agent/src/runner.cpp:11-17`, `mcp_adapter.cpp:69-70`, `diagnostics.cpp:80` coupent en octets ; un « é » à la frontière donne de l'UTF-8 invalide (la sérialisation `dump()` peut lever : à vérifier).
 - À faire : couper à une frontière de caractère. [`libs/agent`]
 - Acceptation : texte tronqué toujours UTF-8 valide et sérialisable (test à la frontière).
@@ -4555,6 +4557,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-03 | Claude (lot P1-QA) | HP-QA-012/013/014/017/018/020/022/023 ☑ ; HP-QA-011 et 021 ◐ : CI clang-format 18 et tests Python, UTF-8 sûr, RNG par fil, plafonds image/ZIP, écriture atomique, codes CLI et schémas JSON, outils MCP diff/validate, fuzz JSON, départage total des tris. |
 | 2026-10-27 | ChatGPT (audit UI/UX, PR 5) | HP-UX-047 ◐ : distinguer visuellement et textuellement teintes de segmentation, couleurs d'objets et références de fils ; QTests, sans modifier ni broderie ni export. |
 | 2026-10-30 | Claude (analyse multi-agents, passe 2) | **Seconde passe sans limite de tours** : six agents haiku `general-purpose` relisent les mêmes domaines en profondeur ; **+61 entrées** (§27ter, lots G à L) : écriture atomique et durable, fragments non migrés, trim VP3 perdu, mode contour « running » inopérant, refusion après limite de fils, vectorisation en O(régions × pixels), lignes cohérentes en série, compensation du tirage des autres remplissages, chevron/plume, CI (cache Qt, tests Python jamais lancés), UX presse-papiers/simulation. Entrées « à vérifier » non confirmées à l'exécution ; aucun code modifié ; HP-OBJ-017 et HP-OBJ-021 à recontrôler. |
 | 2026-10-30 | Claude (analyse multi-agents) | **Analyse complète des fonctionnalités et plan d'amélioration** : six agents haiku (IHM, pipeline image, génération de points, document/commandes/rendu, formats/lettrage, CLI/MCP/CI) ; **+51 entrées** HP-QA-011 à 020, HP-PERF-010 à 022, HP-AUTO-014 à 019, HP-UX-050 à 056, HP-TXT-016, HP-STI-027 à 032, HP-PROD-009, HP-FMT-023 à 026, HP-THR-013, HP-DIST-008, HP-HELP-005 (§27bis, lots A à F). Entrées non vérifiées à l'exécution (marquées « à vérifier »). Aucun code modifié ; HP-OBJ-021 à recontrôler (HP-UX-054). |

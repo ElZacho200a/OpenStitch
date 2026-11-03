@@ -41,6 +41,10 @@ Règles tenues par la CLI :
 
 ## Codes de sortie
 
+Source unique dans le code : `apps/cli/exit_codes.hpp` (`kExitOk`, `kExitInput`,
+`kExitQuality`, `kExitRefused`) ; la CLI historique et les commandes `project` l'incluent,
+aucun code n'est redéfini ailleurs (HP-QA-018).
+
 | Code | Sens |
 |---|---|
 | 0 | succès |
@@ -72,6 +76,39 @@ Chaque refus porte un `code` machine-lisible (enveloppe d'erreur ou rapport de l
 | `E_INVALID_PROJECT` | `.osp` illisible ou invalide |
 | `E_NOTHING_TO_DO` | rien produit (aucun objet, aucun point) |
 | `E_INTERNAL` | défaut interne |
+| `E_UNSUPPORTED_FORMAT` | *(serveur MCP, `project_export`)* format hors de l'énumération `DST`, `PES`, `JEF`, `EXP`, `SVG` |
+
+### Schémas JSON publiés (`docs/schemas/`)
+
+Chaque sortie `--json` est décrite par un schéma JSON dans `docs/schemas/`. Le schéma est
+désigné par le champ `schema` du document (`openstitch.batch/1` ->
+`openstitch.batch.1.schema.json`) ; les sorties sans champ `schema` (anciennes commandes :
+`info`, `digitize`, `stats`, `render`, `production`, `project new`…) ont un schéma
+`openstitch-cli.<commande>.schema.json`. Les schémas déclarent tous les champs au niveau
+supérieur (`additionalProperties: false`) : **ajouter, renommer ou retirer un champ sans mettre
+à jour le schéma fait échouer CTest** (`cli_*`, qui valident chaque sortie `--json` avec
+`tests/cli/json_schema_check.cpp`, un validateur JSON Schema minimal sans dépendance). Un
+champ ajouté de façon compatible reste une évolution mineure : on l'ajoute au schéma dans le
+même commit.
+
+### Serveur MCP (`openstitch-mcp`)
+
+Les outils `project_diff` et `project_validate` renvoient les mêmes JSON que
+`project diff` et `project validate` (`openstitch.project-diff/1`, `openstitch.validation/1` ;
+un projet invalide n'est pas une erreur d'outil : le verdict est dans `valid`). `project_export.format`
+est une énumération (`DST`, `PES`, `JEF`, `EXP`, `SVG`, minuscules acceptées) ; toute autre
+valeur est refusée avec `E_UNSUPPORTED_FORMAT`. Les outils au résultat stable (`project_check`,
+`project_select`, `project_operations`, `project_diagnose`, `project_export`, `project_diff`,
+`project_validate`) publient un `outputSchema` dans `tools/list` et renvoient en plus le résultat
+en `structuredContent` ; une erreur (`isError`) n'a pas de `structuredContent`.
+
+### Fuzzing déterministe (HP-QA-014)
+
+`test_fuzz_batches.cpp` (lots `apply`) et `test_fuzz_frames.cpp` (trames JSON-RPC du MCP)
+mutent à graine fixe les exemples du catalogue et des trames valides (mutateur
+`tests/unit/project_ops/fuzz_mutator.hpp`, générateur SplitMix64 : mêmes mutations partout).
+Contrat : jamais de crash, d'exception ni de blocage ; tout refus porte un `E_*` ; un lot refusé
+laisse le projet inchangé.
 
 ## Commandes
 
