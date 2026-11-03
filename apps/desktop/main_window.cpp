@@ -96,6 +96,7 @@
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/autodigitize/contour_objects.hpp"
 #include "openstitch/autodigitize/line_layer.hpp"
+#include "openstitch/autodigitize/vector_convert.hpp"
 #include "openstitch/commands/calque_commands.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/finishing_commands.hpp"
@@ -1092,6 +1093,12 @@ void MainWindow::buildMenus() {
     autoDigitizeAct_->setShortcut(QKeySequence(Qt::Key_F8));
     auto* autoAct = autoDigitizeAct_;
     connect(autoAct, &QAction::triggered, this, &MainWindow::autoDigitize);
+    convertVectorsAct_ = embMenu->addAction(tr("&Convertir les vecteurs en broderie"));
+    convertVectorsAct_->setObjectName(QStringLiteral("action_convertVectors"));
+    convertVectorsAct_->setToolTip(
+        tr("Choisit automatiquement tatami ou contour pour chaque forme vectorielle sans broderie "
+           "(SVG importé), sans passer par l'image."));
+    connect(convertVectorsAct_, &QAction::triggered, this, &MainWindow::convertVectorsToEmbroidery);
     aiSegmentAct_ = segMenu->addAction(icons::aiSegment(), tr("Segmenter avec l'&IA…"));
     aiSegmentAct_->setObjectName(QStringLiteral("action_segmentWithAi"));
     aiSegmentAct_->setToolTip(
@@ -1695,6 +1702,47 @@ void MainWindow::openSvg(const QString& file) {
     updateActions();
     setWindowModified(false); // nouveau document propre
     warnAboutSkippedSvgFeatures(imported->warnings);
+}
+
+void MainWindow::convertVectorsToEmbroidery() {
+    // HP-AUTO-012 : toute la classification (tatami / contour) vient de libs/autodigitize ;
+    // ici seulement le déclenchement, le calcul hors du fil d'interface et la commande annulable.
+    auto nextIds = project_.object_ids;
+    autodigitize::AutoOptions opts;
+    opts.mm_per_px = project_.mm_per_px;
+    std::optional<BusyIndicator> busy;
+    busy.emplace(this, tr("Conversion des formes en broderie…"),
+                 std::initializer_list<QTimer*>{autosaveTimer_, simTimer_}, true);
+    auto result = busy->run([&]() -> Result<autodigitize::VectorConversion> {
+        return autodigitize::convert_vectors_to_embroidery(project_, nextIds, opts);
+    });
+    const bool cancelled = busy->cancelled();
+    busy.reset();
+    if (cancelled) {
+        statusBar()->showMessage(tr("Conversion annulée : aucune modification."), 6000);
+        return;
+    }
+    if (!result) {
+        showFriendlyError(this, tr("Conversion impossible"),
+                          tr("Aucune forme vectorielle sans broderie à convertir."),
+                          result.error().message);
+        return;
+    }
+    const std::size_t tatami = result->tatami;
+    const std::size_t contour = result->contour;
+    project_.object_ids = nextIds;
+    undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
+                           std::vector<document::VectorObject>{}, std::move(result->embroideries),
+                           "Convertir les vecteurs en broderie"),
+                       project_);
+    showStitchesAct_->setChecked(true);
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(tr("%1 forme(s) converties en broderie : %2 tatami, %3 contour(s)")
+                                 .arg(tatami + contour + result->other)
+                                 .arg(tatami)
+                                 .arg(contour),
+                             8000);
 }
 
 void MainWindow::executeOp(image::ImageOp op) {

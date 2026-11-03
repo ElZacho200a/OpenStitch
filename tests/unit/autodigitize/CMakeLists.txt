@@ -4,6 +4,7 @@ add_executable(test_autodigitize
     test_two_color_blend.cpp
     test_line_layer.cpp
     test_quality_metrics.cpp
+    test_vector_convert.cpp
 )
 target_link_libraries(test_autodigitize
     PRIVATE openstitch::autodigitize openstitch::segmentation Catch2::Catch2WithMain

@@ -19,7 +19,7 @@
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/geometry/simplify.hpp"
 #include "openstitch/optimization/order.hpp"
-#include "openstitch/thread_palette/color_reduction.hpp"
+#include "openstitch/segmentation/color_merge.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 
 namespace openstitch::autodigitize {
@@ -31,24 +31,21 @@ namespace {
 // plus grosse région l'emportant. Les régions du fond ignoré ne comptent pas et
 // gardent leur couleur. Recolore seulement : la géométrie des régions est
 // intacte (les objets de même couleur restent contigus au routage).
-void limit_thread_count(segmentation::Segmentation& seg, std::size_t maxThreads,
+// HP-AUTO-020 : les régions voisines devenues de même couleur sont refusionnées
+// (`merge_adjacent`). HP-AUTO-007 : `maxDistance` > 0 fusionne aussi les teintes
+// quasi identiques (CIEDE2000), quel que soit leur nombre.
+void limit_thread_count(segmentation::Segmentation& seg, std::size_t maxThreads, double maxDistance,
                         const std::optional<std::array<std::uint8_t, 3>>& background) {
-    if (maxThreads == 0) {
+    if (maxThreads == 0 && !(maxDistance > 0.0)) {
         return;
     }
-    std::vector<segmentation::Region*> regions;
-    std::vector<thread_palette::WeightedColor> colors;
-    for (auto& slot : seg.region_slots) {
-        if (!slot || (background && slot->rgb == *background)) {
-            continue;
-        }
-        regions.push_back(&*slot);
-        colors.push_back({slot->rgb, static_cast<double>(slot->pixel_count)});
+    const auto plan =
+        segmentation::plan_reduce_colors(seg, maxThreads, maxDistance, true, background);
+    if (plan.empty()) {
+        return;
     }
-    const auto reduction = thread_palette::reduce_colors(colors, maxThreads);
-    for (std::size_t i = 0; i < regions.size(); ++i) {
-        regions[i]->rgb = reduction.palette[reduction.mapping[i]];
-    }
+    // Plan calculé sur cette même segmentation : l'application ne peut échouer.
+    (void)segmentation::apply_color_merge(seg, plan);
 }
 
 // Aire nette d'un PathSet (extérieur moins trous), en µm².
@@ -202,6 +199,8 @@ void classify_and_build_embroidery(const geometry::PathSet& main, const RegionSo
             tp.pull_mode = document::PullMode::Auto;
         }
         emb.params = tp;
+        // HP-AUTO-010 : ne pas coudre sous les objets posés après (HP-ENG-011).
+        emb.knockout = options.remove_overlaps;
         emb.name = "Remplissage " + source.label;
     } else {
         // Trop petite pour un bloc : simple contour cousu.
@@ -623,7 +622,7 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
                 std::ceil(fill_threshold(options, true) / (mmPerPx * mmPerPx))));
     }
 
-    limit_thread_count(seg, options.max_threads, backgroundRgb);
+    limit_thread_count(seg, options.max_threads, options.merge_color_distance, backgroundRgb);
 
     const vectorization::VectorizeOptions vecOpts{options.mm_per_px, options.simplify_tolerance,
                                                   options.curve_tolerance, options.detail_mask};

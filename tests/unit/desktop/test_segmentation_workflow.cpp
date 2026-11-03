@@ -599,6 +599,42 @@ private slots:
         QCOMPARE(window.regionCountLabel_->text(), QStringLiteral("3 région(s)"));
     }
 
+    // ---- HP-AUTO-012 : convertir les vecteurs en broderie (SVG importé, sans image) ---------
+
+    void convertVectorsActionClassifiesAndIsUndoable() {
+        MainWindow window;
+        QVERIFY(window.convertVectorsAct_ != nullptr);
+        QVERIFY(!window.convertVectorsAct_->isEnabled());
+
+        document::Project project;
+        for (const int size : {30'000, 1'000}) {
+            document::VectorObject v;
+            v.id = project.object_ids.next();
+            geometry::Path p;
+            p.closed = true;
+            for (const auto& [x, y] :
+                 {std::pair{0, 0}, std::pair{size, 0}, std::pair{size, size}, std::pair{0, size}}) {
+                p.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{x}, Micrometers{y}},
+                                                     geometry::NodeType::Corner, std::nullopt,
+                                                     std::nullopt});
+            }
+            v.paths.push_back(geometry::PathSet{std::move(p), {}});
+            project.vector_objects.push_back(std::move(v));
+        }
+        window.applyLoadedProject(project);
+        window.updateActions();
+        QVERIFY(window.convertVectorsAct_->isEnabled());
+        QVERIFY(window.project_.embroidery_objects.empty());
+
+        window.convertVectorsAct_->trigger();
+        QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{2});
+        QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
+        QVERIFY(!window.convertVectorsAct_->isEnabled());
+
+        QVERIFY(window.undoStack_.undo(window.project_));
+        QVERIFY(window.project_.embroidery_objects.empty());
+    }
+
     void workflowStepsRunTheActionOrExplainWhy() {
         MainWindow window;
         // Étape « Broderie » sans rien de segmenté : la raison, avec le vrai nom du menu.

@@ -1586,7 +1586,8 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
 - À faire : choix « ne pas broder cette couleur » par couleur. Dialogue « Numérisation automatique » du
   bureau : case « Seulement le fond extérieur » (`test_main_window`).
 
-### HP-AUTO-007 — Fusion automatique des couleurs proches [P1] — ☐ À faire
+### HP-AUTO-007 — Fusion automatique des couleurs proches [P1] — ◐ Partiel (2026-11-03)
+- Livré : `AutoOptions::merge_color_distance` (ΔE2000, défaut 0) réutilisant `plan_reduce_colors`, testé. Reste : exposer le réglage dans `project_ops::AutoSettings`, le CLI et le dialogue d\'auto-numérisation.
 - Voir HP-THR-011, déclenché à la fin de l'auto-numérisation.
 
 ### HP-AUTO-008 — Nettoyage des micro-détails [P2] — ◐ Partiel
@@ -1613,7 +1614,8 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
   vérifiée) ne doit pas être embarqué. Contrainte brevet : voir HP-FAB-001
   (mesurer sur la géométrie, pas sur des points temporaires).
 
-### HP-AUTO-010 — Suppression des recouvrements après numérisation [P1] — ☐ À faire
+### HP-AUTO-010 — Suppression des recouvrements après numérisation [P1] — ◐ Partiel (2026-11-03)
+- Livré : `AutoOptions::remove_overlaps` (défaut faux) pose `knockout` sur les tatamis créés, testé. Reste : exposition dans `AutoSettings`, CLI et dialogue.
 - Voir HP-ENG-011, appliqué automatiquement aux objets auto-numérisés.
 
 ### HP-AUTO-011 — Segmentation IA sans WSL [P1] — ☐ À faire
@@ -1624,7 +1626,7 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
   à la demande ; plus de dépendance WSL/Python pour l'utilisateur final.
 - Modules : `libs/ai_segmentation`, `apps/desktop`, `packaging/`.
 
-### HP-AUTO-012 — Numériser automatiquement un graphisme vectoriel [P1] — ☐ À faire
+### HP-AUTO-012 — Numériser automatiquement un graphisme vectoriel [P1] — ☑ Fait (2026-11-03)
 - État OpenStitch : import SVG et `auto_digitize_vectors` (classification AutoChoice sur
   objets vectoriels existants) présents dans `libs/autodigitize` ; manque l'action de bout en
   bout « SVG importé → broderie » côté utilisateur.
@@ -4062,7 +4064,7 @@ une entrée P0 ouverte (§0.4).
 
 ### 27bis.4 Numérisation d'images réelles (AUTO)
 
-### HP-AUTO-014 — Orientation EXIF des photos [P1] — ☐ À faire
+### HP-AUTO-014 — Orientation EXIF des photos [P1] — ☑ Fait (2026-11-03)
 - État OpenStitch : `load.cpp` lit en `IMREAD_UNCHANGED` ; l'orientation EXIF est possiblement ignorée **(à vérifier sur fixture)**.
 - À faire : appliquer l'orientation (rotation/miroir) au chargement, dimensions cohérentes avec l'import.
 - Modules : `libs/image`.
@@ -4385,12 +4387,12 @@ ouvrant le lot (§0.1).
 
 ### 27ter.4 Qualité de numérisation (AUTO) et points (STI)
 
-### HP-AUTO-020 — « Limiter à N fils » refusionne les voisines de même couleur [P1] — ☐ À faire
+### HP-AUTO-020 — « Limiter à N fils » refusionne les voisines de même couleur [P1] — ☑ Fait (2026-11-03)
 - État : la limite recolore sans refusionner (`autodigitize.cpp:626`, `color_merge.hpp:36` prévoit `merge_adjacent`) ; interstice de 0,4 mm entre voisins.
 - À faire : refusionner les régions adjacentes devenues de même couleur. [`libs/autodigitize`, `libs/thread_palette`]
 - Acceptation : aucune paire d'objets adjacents de même couleur après limitation (compteur de test).
 
-### HP-AUTO-021 — Mode contour « running » sans effet [P1] — ☐ À faire
+### HP-AUTO-021 — Mode contour « running » sans effet [P1] — ☑ Fait (2026-11-03)
 - État : `ContourTechnique::Running` mappé par `project_ops` (`factory.cpp:405/441`) mais jamais lu (`contour_objects.cpp:44`, seul Satin testé).
 - À faire : implémenter un point droit simple sur tous les segments, ou retirer l'option.
 - Acceptation : test Catch2 du mode.
@@ -4557,6 +4559,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-03 | Claude (lot P1-AUTO) | HP-AUTO-012/014/020/021 ☑ (EXIF, refusion après « Limiter à N fils », contour running, action « Convertir les vecteurs en broderie »), HP-AUTO-007/010 ◐ (cœur, exposition à câbler). HP-AUTO-011 non traitée (ONNX/packaging). |
 | 2026-11-03 | Claude (lot P1-QA) | HP-QA-012/013/014/017/018/020/022/023 ☑ ; HP-QA-011 et 021 ◐ : CI clang-format 18 et tests Python, UTF-8 sûr, RNG par fil, plafonds image/ZIP, écriture atomique, codes CLI et schémas JSON, outils MCP diff/validate, fuzz JSON, départage total des tris. |
 | 2026-10-27 | ChatGPT (audit UI/UX, PR 5) | HP-UX-047 ◐ : distinguer visuellement et textuellement teintes de segmentation, couleurs d'objets et références de fils ; QTests, sans modifier ni broderie ni export. |
 | 2026-10-30 | Claude (analyse multi-agents, passe 2) | **Seconde passe sans limite de tours** : six agents haiku `general-purpose` relisent les mêmes domaines en profondeur ; **+61 entrées** (§27ter, lots G à L) : écriture atomique et durable, fragments non migrés, trim VP3 perdu, mode contour « running » inopérant, refusion après limite de fils, vectorisation en O(régions × pixels), lignes cohérentes en série, compensation du tirage des autres remplissages, chevron/plume, CI (cache Qt, tests Python jamais lancés), UX presse-papiers/simulation. Entrées « à vérifier » non confirmées à l'exécution ; aucun code modifié ; HP-OBJ-017 et HP-OBJ-021 à recontrôler. |
