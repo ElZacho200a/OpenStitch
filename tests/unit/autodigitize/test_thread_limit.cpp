@@ -81,3 +81,87 @@ TEST_CASE("max_threads fusionne les couleurs proches et reste deterministe") {
         CHECK(again->embroideries[i].rgb == two->embroideries[i].rgb);
     }
 }
+
+namespace {
+
+// Quatre blocs JOINTIFS : deux rouges proches puis deux bleus proches.
+segmentation::Segmentation touching_blocks() {
+    image::Image img;
+    img.width = 64;
+    img.height = 16;
+    img.rgba.assign(64 * 16 * 4, 0);
+    const std::array<std::array<std::uint8_t, 3>, 4> colors = {
+        {{220, 30, 30}, {210, 50, 40}, {30, 30, 220}, {40, 50, 210}}};
+    for (std::size_t block = 0; block < 4; ++block) {
+        for (std::size_t y = 0; y < 16; ++y) {
+            for (std::size_t x = block * 16; x < block * 16 + 16; ++x) {
+                std::uint8_t* px = img.rgba.data() + (y * 64 + x) * 4;
+                px[0] = colors[block][0];
+                px[1] = colors[block][1];
+                px[2] = colors[block][2];
+                px[3] = 255;
+            }
+        }
+    }
+    auto seg = segmentation::segment(img, {.max_colors = 4, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    return *seg;
+}
+
+} // namespace
+
+TEST_CASE("max_threads refusionne les regions adjacentes de meme couleur") {
+    const auto seg = touching_blocks();
+    IdGenerator<ObjectId> ids;
+    const auto unlimited = auto_digitize(seg, ids, opts());
+    REQUIRE(unlimited.has_value());
+    CHECK(unlimited->embroideries.size() == 4);
+
+    AutoOptions limited = opts();
+    limited.max_threads = 2;
+    IdGenerator<ObjectId> ids2;
+    const auto two = auto_digitize(seg, ids2, limited);
+    REQUIRE(two.has_value());
+    CHECK(distinct_colors(*two) == 2);
+    // Plus aucune paire d'objets voisins de meme couleur : un objet par bloc de couleur.
+    CHECK(two->embroideries.size() == 2);
+}
+
+TEST_CASE("merge_color_distance fusionne les teintes proches, 0 ne change rien") {
+    const auto seg = touching_blocks();
+    AutoOptions merged = opts();
+    merged.merge_color_distance = 12.0;
+    IdGenerator<ObjectId> ids;
+    const auto r = auto_digitize(seg, ids, merged);
+    REQUIRE(r.has_value());
+    CHECK(distinct_colors(*r) == 2);
+    CHECK(r->embroideries.size() == 2);
+
+    IdGenerator<ObjectId> ids2;
+    const auto none = auto_digitize(seg, ids2, opts());
+    REQUIRE(none.has_value());
+    CHECK(distinct_colors(*none) == 4);
+}
+
+TEST_CASE("remove_overlaps active le knockout des tatamis, desactive par defaut") {
+    const auto seg = touching_blocks();
+    IdGenerator<ObjectId> ids;
+    const auto off = auto_digitize(seg, ids, opts());
+    REQUIRE(off.has_value());
+    for (const auto& e : off->embroideries) {
+        CHECK_FALSE(e.knockout);
+    }
+    AutoOptions o = opts();
+    o.remove_overlaps = true;
+    IdGenerator<ObjectId> ids2;
+    const auto on = auto_digitize(seg, ids2, o);
+    REQUIRE(on.has_value());
+    bool any = false;
+    for (const auto& e : on->embroideries) {
+        if (std::holds_alternative<document::TatamiParams>(e.params)) {
+            CHECK(e.knockout);
+            any = true;
+        }
+    }
+    CHECK(any);
+}

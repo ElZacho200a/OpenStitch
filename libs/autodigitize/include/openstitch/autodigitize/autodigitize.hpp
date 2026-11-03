@@ -146,6 +146,13 @@ struct AutoOptions {
     // garde sa teinte) jusqu'à n'en garder que `max_threads`. Le fond ignoré ne
     // compte pas. 0 = pas de limite (comportement historique).
     std::size_t max_threads{0};
+    // HP-AUTO-007 : fusion automatique des couleurs proches en fin de segmentation (ΔE2000 <=
+    // cette valeur, ex. 6) ; 0 = désactivée (défaut, sortie inchangée). Les régions voisines
+    // devenues de même couleur (ici comme avec `max_threads`, HP-AUTO-020) sont refusionnées.
+    double merge_color_distance{0.0};
+    // HP-AUTO-010 : les tatamis créés ne cousent pas sous les objets posés après (HP-ENG-011,
+    // `EmbroideryObject::knockout`). Faux (défaut) : sortie inchangée.
+    bool remove_overlaps{false};
 };
 
 // Mode « bloc uni » : le résultat doit former une seule pièce où seules les couleurs changent,
