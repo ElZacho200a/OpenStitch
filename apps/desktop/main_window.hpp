@@ -24,10 +24,10 @@
 #include <vector>
 
 #include "auto_satin_strategy_ui.hpp"
-#include "gradient_fill_panel.hpp"
 #include "claude_backend.hpp"
 #include "companion_dock.hpp"
 #include "companion_launcher.hpp"
+#include "gradient_fill_panel.hpp"
 #include "interaction_map.hpp"
 #include "live_server.hpp"
 #include "openstitch/commands/transform_ops.hpp"
@@ -36,9 +36,9 @@
 #include "openstitch/document/object_fragment.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/path.hpp"
-#include "openstitch/project_ops/gradient_fill.hpp"
 #include "openstitch/optimization/order.hpp"
 #include "openstitch/project_ops/analysis.hpp"
+#include "openstitch/project_ops/gradient_fill.hpp"
 #include "openstitch/project_ops/live_bridge.hpp"
 #include "openstitch/segmentation/color_merge.hpp"
 #include "openstitch/stitch/sequence.hpp"
