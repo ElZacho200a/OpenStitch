@@ -640,6 +640,10 @@ struct SpacingField {
             return t * t * (3.0 - 2.0 * t);
         case document::DensityCurve::Steep:
             return t * t * t * (t * (6.0 * t - 15.0) + 10.0);
+        case document::DensityCurve::EaseIn:
+            return t * t;
+        case document::DensityCurve::EaseOut:
+            return t * (2.0 - t);
         case document::DensityCurve::Linear:
             break;
         }
