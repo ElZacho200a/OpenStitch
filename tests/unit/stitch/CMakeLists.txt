@@ -19,6 +19,7 @@ add_executable(test_stitch
     test_point_insert_delete.cpp
     test_engine_points.cpp
     test_pull_auto.cpp
+    test_pull_other_fills.cpp
     test_adaptive_pull.cpp
     test_pull_field.cpp
     test_pull_map.cpp

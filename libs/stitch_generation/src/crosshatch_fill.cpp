@@ -17,6 +17,7 @@ std::vector<FillStitch> fill_crosshatch(const geometry::PathSet& region,
         layer.stitch_length = Micrometers{std::clamp(params.stitch_length.value, 1'000, 7'000)};
         layer.inset = Micrometers{0};
         layer.hidden_underpath = params.hidden_underpath;
+        layer.pull_compensation = params.pull_compensation; // HP-STI-033
         std::vector<FillStitch> part = fill_tatami(region, layer);
         if (part.empty()) {
             continue;

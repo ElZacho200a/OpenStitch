@@ -428,7 +428,9 @@ struct ContourFillParams {
     // Vrai : les anneaux sont reliés en spirale continue (chaque tour glisse vers l'anneau
     // suivant, sans saut). Faux : anneaux fermés indépendants, reliés par un court pas.
     bool spiral{true};
-    bool hidden_underpath{true}; // liaisons longues cousues cachées (au lieu de sauts)
+    bool hidden_underpath{true};          // liaisons longues cousues cachées (au lieu de sauts)
+    Micrometers pull_compensation{0};     // HP-STI-033 : depassement du contour, 0-3 mm (defaut 0)
+    PullMode pull_mode{PullMode::Manual}; // HP-STI-033 : Manual ou Auto
 
     bool operator==(const ContourFillParams&) const = default;
 };
@@ -454,14 +456,16 @@ struct MotifRunParams {
 // sur une grille tournée de `angle` ; les tracés sont coupés au contour (trous respectés).
 struct MotifFillParams {
     MotifId motif{MotifId::Diamond};
-    Micrometers size{4'000};          // taille du motif (carré), 4 mm
-    Micrometers spacing{5'000};       // pas de la grille entre centres, 5 mm
-    Angle angle{0.0};                 // orientation de la grille (radians)
-    bool stagger{true};               // une rangée sur deux décalée d'un demi-pas
-    Micrometers inset{200};           // retrait du bord
-    Micrometers stitch_length{2'000}; // longueur MAXIMALE d'un point, bornée à [1 ; 7] mm
-    Micrometers min_length{400};      // longueur minimale d'un point
-    bool hidden_underpath{true};      // liaisons longues cousues cachées (au lieu de sauts)
+    Micrometers size{4'000};              // taille du motif (carré), 4 mm
+    Micrometers spacing{5'000};           // pas de la grille entre centres, 5 mm
+    Angle angle{0.0};                     // orientation de la grille (radians)
+    bool stagger{true};                   // une rangée sur deux décalée d'un demi-pas
+    Micrometers inset{200};               // retrait du bord
+    Micrometers stitch_length{2'000};     // longueur MAXIMALE d'un point, bornée à [1 ; 7] mm
+    Micrometers min_length{400};          // longueur minimale d'un point
+    bool hidden_underpath{true};          // liaisons longues cousues cachées (au lieu de sauts)
+    Micrometers pull_compensation{0};     // HP-STI-033 : depassement du contour, 0-3 mm (defaut 0)
+    PullMode pull_mode{PullMode::Manual}; // HP-STI-033 : Manual ou Auto
 
     bool operator==(const MotifFillParams&) const = default;
 };
@@ -471,12 +475,14 @@ struct MotifFillParams {
 // nombreux vers l'extérieur (ils ne démarrent qu'à partir d'un rayon où l'écart reste supérieur
 // ou égal à `row_spacing`), les points raccourcissent vers le centre. Bornes à la génération.
 struct RadialFillParams {
-    Micrometers row_spacing{400};     // écart (arc) entre rayons à la périphérie — 0,4 mm
-    Micrometers stitch_length{3'000}; // longueur MAXIMALE d'un point, bornée à [1 ; 7] mm
-    Micrometers min_length{500};      // longueur minimale d'un point (sauf bout de rayon)
-    Micrometers inset{200};           // retrait du bord
-    std::optional<Vec2um> center;     // nullopt = centre de la boîte englobante
-    bool hidden_underpath{true};      // liaisons longues cousues cachées (au lieu de sauts)
+    Micrometers row_spacing{400};         // écart (arc) entre rayons à la périphérie — 0,4 mm
+    Micrometers stitch_length{3'000};     // longueur MAXIMALE d'un point, bornée à [1 ; 7] mm
+    Micrometers min_length{500};          // longueur minimale d'un point (sauf bout de rayon)
+    Micrometers inset{200};               // retrait du bord
+    std::optional<Vec2um> center;         // nullopt = centre de la boîte englobante
+    bool hidden_underpath{true};          // liaisons longues cousues cachées (au lieu de sauts)
+    Micrometers pull_compensation{0};     // HP-STI-033 : depassement du contour, 0-3 mm (defaut 0)
+    PullMode pull_mode{PullMode::Manual}; // HP-STI-033 : Manual ou Auto
 
     bool operator==(const RadialFillParams&) const = default;
 };
@@ -492,6 +498,8 @@ struct SpiralFillParams {
     std::optional<Vec2um> center;     // nullopt = centre de la boîte englobante
     bool clockwise{false};            // sens de rotation (faux = anti-horaire, Y vers le haut)
     bool hidden_underpath{true};
+    Micrometers pull_compensation{0};     // HP-STI-033 : depassement du contour, 0-3 mm (defaut 0)
+    PullMode pull_mode{PullMode::Manual}; // HP-STI-033 : Manual ou Auto
 
     bool operator==(const SpiralFillParams&) const = default;
 };
@@ -505,6 +513,8 @@ struct CrosshatchFillParams {
     Micrometers stitch_length{3'000}; // longueur de point le long d'une rangée
     Micrometers inset{200};           // retrait du bord
     bool hidden_underpath{true};
+    Micrometers pull_compensation{0};     // HP-STI-033 : depassement du contour, 0-3 mm (defaut 0)
+    PullMode pull_mode{PullMode::Manual}; // HP-STI-033 : Manual ou Auto
 
     bool operator==(const CrosshatchFillParams&) const = default;
 };

@@ -855,7 +855,8 @@ void generate_contour(stitch::StitchSequence& sequence, const document::VectorOb
                            Micrometers{std::clamp(params.stitch_length.value, 1'000, 7'000)},
                            Micrometers{600});
         }
-        emit_fill(sequence, fill_contour(region, params), object.id, linker ? &*linker : nullptr);
+        emit_fill(sequence, fill_contour(region, resolve_pull_compensation(params, region)),
+                  object.id, linker ? &*linker : nullptr);
     }
 }
 
@@ -873,7 +874,8 @@ void generate_simple_fill(stitch::StitchSequence& sequence, const document::Vect
                            Micrometers{std::clamp(params.stitch_length.value, 1'000, 7'000)},
                            Micrometers{600});
         }
-        emit_fill(sequence, fill(region, params), object.id, linker ? &*linker : nullptr);
+        emit_fill(sequence, fill(region, resolve_pull_compensation(params, region)), object.id,
+                  linker ? &*linker : nullptr);
     }
 }
 
