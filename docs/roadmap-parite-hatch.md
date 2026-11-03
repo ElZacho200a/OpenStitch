@@ -2700,6 +2700,23 @@ Aujourd'hui : un cadre **rectangulaire** de taille libre (10–500 mm), persist�
   des facteurs (densité, compensation). Mesure de taille sur la géométrie
   (transformée de distance). Analyse non juridique : faire relire. Les
   revendications de US9702070B2 n'ont pas pu être lues.
+- Constat Hatch/Wilcom (2026-11-03, sources publiques : docs.wilcom.com
+  « Apply automatic pull compensation », « Manage fabrics ») : la compensation
+  est un « overstitch allowance » en mm, par défaut identique des deux côtés de
+  la forme (option à deux côtés depuis Wilcom 28), cuite dans les points à
+  la génération. Les valeurs auto viennent d'une **table par tissu et par type
+  d'objet** (tatami/program split, satin large, satin étroit, lettrage), pas
+  d'une formule ; indicatif : coton/drill 0,20 mm, t-shirt 0,35, polaire 0,40,
+  lettrage 0,2 à 0,3. Surcharge manuelle par objet. À faire : table
+  « tissu × type d'objet → compensation par côté (µm) » dans `FabricProfile`,
+  valeurs à valider (HP-PHYS-001), distincte du solveur HP-FAB-004.
+- Limites de l'analyse : `LionRouge.EMB` (Hatch) est un conteneur OLE ;
+  `Contents` (zlib) est lisible, mais `DesignDocument` (objets et points) est
+  chiffré ou compressé en propriétaire, donc compensation non lue ; le DST
+  exporté est recentré sur l'origine (boîte symétrique, départ et fin en 0,0).
+  Valeurs exactes de Hatch non mesurées : il faudrait des DST de test (satin
+  10 mm à compensation 0 / 0,2 / 0,4 / 0,8, tatami 20 mm, deux tissus).
+  À vérifier : recentrage du DST côté `libs/formats` / `project_ops`.
 - Modules : `libs/document`, `libs/stitch_generation`.
 - Dépend de : HP-ENG-002, HP-ENG-001.a (table de compensation).
 
@@ -4645,3 +4662,4 @@ ouvrant le lot (§0.1).
 | 2026-11-01 | Claude (HP-UX-065) | **HP-UX-065 ◐** (nouvelle entrée) : audit sélection/filtres puis livraison en un lot : requêtes de sélection pures, menu Édition ▸ Sélection (inverser, même type/fil/calque, voisines, ordre de couture, plage, lasso, retrouver, sélections nommées), filtres d'état et de couleur dans la liste Document, filtres d'affichage mémorisés avec indicateur de barre d'état. Tests QTest. |
 | 2026-11-01 | Claude (déformation tissu) | **Prédiction de la déformation du tissu** (HP-FAB-004) : solveur FEM 2D orthotrope à bord fixe, dipôles de tension, raidissement par la densité, indice de plissement ; CLI `project fabric-deformation`, action Analyse du bureau. Coefficients empiriques, non calibrés, plis non simulés. |
 | 2026-11-01 | Claude (décalage couleurs) | **Décalage entre couleurs et contre-compensation** (HP-FAB-004) : solveur de la feuille rejoué par bloc de couleur (états successifs), écart par bloc et carte du décalage entre couleurs voisines, point fixe de compensation, DST compensé (CLI `project fabric-registration`, actions Analyse du bureau). Non calibré. |
+| 2026-11-03 | Claude (rétro-ingénierie EMB/DST Hatch) | **HP-FAB-001** : constat sur la compensation de tirage de Hatch (table par tissu et type d'objet, mm par côté, cuite dans les points), DST Hatch recentré sur l'origine, `DesignDocument` de l'EMB illisible ; table de compensation et mesures par DST de test restant à faire. Documentation seule. |
