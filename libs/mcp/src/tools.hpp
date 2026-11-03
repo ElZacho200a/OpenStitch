@@ -2,13 +2,16 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <nlohmann/json.hpp>
 
+#include "openstitch/core/task_control.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/project_io/project_io.hpp"
 
@@ -24,6 +27,10 @@ struct Session {
     bool dirty{false};                        // modifié depuis la dernière ouverture/sauvegarde
     // Variantes nommées gardées en mémoire (project_checkpoint / project_restore).
     std::map<std::string, document::Project> checkpoints;
+    // Appel en cours (HP-PERF-020) : jeton d'annulation coopératif posé par le serveur et rappel
+    // d'avancement (un message court par étape) ; vides hors d'un `tools/call`.
+    TaskContext task;
+    std::function<void(std::string_view message)> on_status;
 };
 
 // Résultat d'un outil : blocs `content` MCP (texte, image) et indicateur d'erreur.

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -31,6 +32,16 @@ public:
     // Traite UN message JSON-RPC (une ligne). Retourne la réponse à émettre, ou `nullopt` pour
     // une notification (aucune réponse attendue).
     [[nodiscard]] std::optional<std::string> handle(std::string_view message);
+
+    // Émetteur des notifications serveur -> client (`notifications/progress`, HP-PERF-020), une
+    // ligne JSON-RPC par appel. Il peut être appelé depuis le fil qui exécute l'outil : il doit
+    // être sûr vis-à-vis des fils. Sans émetteur, aucune progression n'est produite.
+    using Notifier = std::function<void(const std::string& line)>;
+    void set_notifier(Notifier notifier);
+
+    // `notifications/cancelled` est traité par `handle` ; celui-ci peut être appelé depuis un
+    // AUTRE fil que celui qui exécute un `tools/call` en cours (transport qui lit en continu) :
+    // seul l'arrêt coopératif de la requête visée est demandé, sans état partiel.
 
 private:
     struct Impl;

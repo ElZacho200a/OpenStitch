@@ -5,6 +5,11 @@
 #include "openstitch/mcp/live.hpp"
 #include "tools.hpp"
 
+#include <atomic>
+#include <map>
+#include <mutex>
+#include <stop_token>
+
 namespace openstitch::mcp {
 
 namespace {
@@ -53,6 +58,34 @@ json ok_response(const json& id, json result) {
 struct Server::Impl {
     Session session;
     LiveRelay* relay{nullptr}; // mode live : appels relayés au desktop
+
+    // Requêtes `tools/call` en cours (clé : id JSON-RPC sérialisé) et émetteur de notifications
+    // (HP-PERF-020). Le mutex protège ces deux champs ; il n'est jamais tenu pendant un appel
+    // d'outil ni pendant l'émission d'une notification.
+    std::mutex mutex;
+    std::map<std::string, std::stop_source> inflight;
+    Server::Notifier notifier;
+
+    void cancel(const json& params) {
+        if (!params.is_object() || !params.contains("requestId")) {
+            return;
+        }
+        const std::lock_guard lock(mutex);
+        if (const auto it = inflight.find(params.at("requestId").dump()); it != inflight.end()) {
+            it->second.request_stop();
+        }
+    }
+
+    void notify(const json& message) {
+        Server::Notifier copy;
+        {
+            const std::lock_guard lock(mutex);
+            copy = notifier;
+        }
+        if (copy) {
+            copy(message.dump());
+        }
+    }
 
     json list_tools() const {
         json list = json::array();
@@ -167,13 +200,43 @@ struct Server::Impl {
                                {"content", json{{"type", "text"}, {"text", task + guide}}}}})}};
     }
 
-    json call(const json& params) {
+    json call(const json& id, const json& params) {
         const std::string name = params.at("name").get<std::string>();
         const json args = params.value("arguments", json::object());
         if (relay != nullptr) {
             return json::parse(relay->call(name, args.dump()));
         }
+        // Annulation (`notifications/cancelled`) et progression (`_meta.progressToken`).
+        const std::string key = id.dump();
+        std::stop_source source;
+        {
+            const std::lock_guard lock(mutex);
+            inflight[key] = source;
+        }
+        json token;
+        if (params.contains("_meta") && params.at("_meta").is_object()) {
+            token = params.at("_meta").value("progressToken", json{});
+        }
+        session.task.stop = source.get_token();
+        session.on_status = nullptr;
+        if (token.is_string() || token.is_number()) {
+            auto step = std::make_shared<std::size_t>(0);
+            session.on_status = [this, token, step](std::string_view message) {
+                notify(json{{"jsonrpc", "2.0"},
+                            {"method", "notifications/progress"},
+                            {"params",
+                             {{"progressToken", token},
+                              {"progress", ++*step},
+                              {"message", std::string(message)}}}});
+            };
+        }
         const ToolResult result = call_tool(session, name, args);
+        session.task = {};
+        session.on_status = nullptr;
+        {
+            const std::lock_guard lock(mutex);
+            inflight.erase(key);
+        }
         json out{{"content", result.content}, {"isError", result.is_error}};
         // Outil à `outputSchema` : le JSON du premier bloc texte est aussi renvoyé en
         // `structuredContent` (spécification MCP) ; jamais pour une erreur.
@@ -199,6 +262,11 @@ Server::Server(LiveRelay* relay) : impl_(std::make_unique<Impl>()) {
     impl_->relay = relay;
 }
 Server::~Server() = default;
+
+void Server::set_notifier(Notifier notifier) {
+    const std::lock_guard lock(impl_->mutex);
+    impl_->notifier = std::move(notifier);
+}
 
 std::optional<std::string> Server::handle(std::string_view message) {
     if (message.size() > kMaxRequestBytes) {
@@ -226,6 +294,9 @@ std::optional<std::string> Server::handle(std::string_view message) {
     const json params = request.value("params", json::object());
 
     if (is_notification) {
+        if (method == "notifications/cancelled") {
+            impl_->cancel(params);
+        }
         return std::nullopt; // notifications/initialized, notifications/cancelled… : rien à
                              // répondre
     }
@@ -281,7 +352,7 @@ std::optional<std::string> Server::handle(std::string_view message) {
             if (!params.is_object() || !params.contains("name") || !params.at("name").is_string()) {
                 return error_response(id, kInvalidParams, "« name » (chaîne) obligatoire").dump();
             }
-            return ok_response(id, impl_->call(params)).dump();
+            return ok_response(id, impl_->call(id, params)).dump();
         }
     } catch (const json::exception& e) {
         return error_response(id, kInvalidParams, e.what()).dump();
