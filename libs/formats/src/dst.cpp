@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/formats/dst.hpp"
+#include "openstitch/core/atomic_file.hpp"
 
 #include <fmt/format.h>
 
@@ -265,16 +266,8 @@ Result<void> write_dst_file(const std::filesystem::path& path,
     if (!bytes) {
         return std::unexpected(bytes.error());
     }
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
-    if (!file) {
-        return fail(ErrorCategory::UserInput, "Impossible d'écrire le fichier : " + path.string());
-    }
-    file.write(reinterpret_cast<const char*>(bytes->data()),
-               static_cast<std::streamsize>(bytes->size()));
-    if (!file) {
-        return fail(ErrorCategory::Internal, "Échec d'écriture : " + path.string());
-    }
-    return {};
+    // HP-QA-021 : primitive atomique commune (tmp unique, flush disque, rename).
+    return write_file_atomic(path, std::span<const std::uint8_t>(*bytes));
 }
 
 Result<stitch::StitchSequence> read_dst_file(const std::filesystem::path& path) {

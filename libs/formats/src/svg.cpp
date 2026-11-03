@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/formats/svg.hpp"
+#include "openstitch/core/atomic_file.hpp"
 
 #include <fmt/format.h>
 
@@ -83,16 +84,8 @@ std::string to_diagnostic_svg(const stitch::StitchSequence& sequence) {
 
 Result<void> write_svg_file(const std::filesystem::path& path,
                             const stitch::StitchSequence& sequence) {
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
-    if (!file) {
-        return fail(ErrorCategory::UserInput, "Impossible d'écrire le fichier : " + path.string());
-    }
-    const std::string svg = to_diagnostic_svg(sequence);
-    file << svg;
-    if (!file) {
-        return fail(ErrorCategory::Internal, "Échec d'écriture : " + path.string());
-    }
-    return {};
+    // HP-QA-021 : primitive atomique commune (tmp unique, flush disque, rename).
+    return write_file_atomic(path, std::string_view(to_diagnostic_svg(sequence)));
 }
 
 } // namespace openstitch::formats

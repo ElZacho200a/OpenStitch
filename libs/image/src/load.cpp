@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/image/image.hpp"
 
+#include "openstitch/core/input_limits.hpp"
+
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
+#include <cstring>
 #include <fstream>
+#include <optional>
+#include <span>
 
 namespace openstitch::image {
 
@@ -32,6 +38,120 @@ std::string format_from_extension(const std::filesystem::path& path) {
     return ext.empty() ? "inconnu" : ext.substr(1);
 }
 
+// --- HP-QA-013 : dimensions lues dans l'en-tête, AVANT tout décodage ---------------------------
+
+struct Dims {
+    std::int64_t width{0};
+    std::int64_t height{0};
+};
+
+std::uint32_t be32(std::span<const std::uint8_t> b, std::size_t i) {
+    return (std::uint32_t{b[i]} << 24) | (std::uint32_t{b[i + 1]} << 16) |
+           (std::uint32_t{b[i + 2]} << 8) | std::uint32_t{b[i + 3]};
+}
+std::uint32_t le32(std::span<const std::uint8_t> b, std::size_t i) {
+    return (std::uint32_t{b[i + 3]} << 24) | (std::uint32_t{b[i + 2]} << 16) |
+           (std::uint32_t{b[i + 1]} << 8) | std::uint32_t{b[i]};
+}
+std::uint32_t le16(std::span<const std::uint8_t> b, std::size_t i) {
+    return (std::uint32_t{b[i + 1]} << 8) | std::uint32_t{b[i]};
+}
+
+// PNG, JPEG, BMP, GIF, WebP : en-têtes lus à la main (quelques octets). Autres formats (TIFF...) :
+// `nullopt`, le contrôle se fait alors sur la matrice décodée.
+std::optional<Dims> probe_dimensions(std::span<const std::uint8_t> b) {
+    if (b.size() >= 24 && b[0] == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G') {
+        return Dims{be32(b, 16), be32(b, 20)};
+    }
+    if (b.size() >= 26 && b[0] == 'B' && b[1] == 'M') {
+        const auto dibSize = le32(b, 14);
+        if (dibSize == 12) {
+            return Dims{le16(b, 18), le16(b, 20)};
+        }
+        const auto h = static_cast<std::int32_t>(le32(b, 22));
+        return Dims{le32(b, 18), h < 0 ? -std::int64_t{h} : std::int64_t{h}};
+    }
+    if (b.size() >= 10 && b[0] == 'G' && b[1] == 'I' && b[2] == 'F') {
+        return Dims{le16(b, 6), le16(b, 8)};
+    }
+    if (b.size() >= 30 && std::memcmp(b.data(), "RIFF", 4) == 0 &&
+        std::memcmp(b.data() + 8, "WEBP", 4) == 0) {
+        if (std::memcmp(b.data() + 12, "VP8X", 4) == 0) {
+            const auto w = 1 + (le32(b, 24) & 0xffffffU);
+            const auto h = 1 + (le32(b, 27) & 0xffffffU);
+            return Dims{w, h};
+        }
+        if (std::memcmp(b.data() + 12, "VP8L", 4) == 0 && b[20] == 0x2f) {
+            const auto bits = le32(b, 21);
+            return Dims{1 + (bits & 0x3fffU), 1 + ((bits >> 14) & 0x3fffU)};
+        }
+        if (std::memcmp(b.data() + 12, "VP8 ", 4) == 0) {
+            return Dims{le16(b, 26) & 0x3fffU, le16(b, 28) & 0x3fffU};
+        }
+        return std::nullopt;
+    }
+    if (b.size() >= 4 && b[0] == 0xff && b[1] == 0xd8) {
+        std::size_t i = 2;
+        while (i + 9 < b.size()) {
+            if (b[i] != 0xff) {
+                ++i;
+                continue;
+            }
+            const std::uint8_t marker = b[i + 1];
+            if (marker == 0xff) {
+                ++i;
+                continue;
+            }
+            if (marker == 0xd8 || marker == 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+                i += 2;
+                continue;
+            }
+            const std::size_t len = (std::size_t{b[i + 2]} << 8) | b[i + 3];
+            const bool sof = marker >= 0xc0 && marker <= 0xcf && marker != 0xc4 && marker != 0xc8 &&
+                             marker != 0xcc;
+            if (sof) {
+                return Dims{(std::int64_t{b[i + 7]} << 8) | b[i + 8],
+                            (std::int64_t{b[i + 5]} << 8) | b[i + 6]};
+            }
+            if (len < 2) {
+                return std::nullopt;
+            }
+            i += 2 + len;
+        }
+    }
+    return std::nullopt;
+}
+
+Result<void> check_pixel_budget(std::int64_t width, std::int64_t height) {
+    if (width <= 0 || height <= 0 || width > limits::kMaxImagePixels ||
+        height > limits::kMaxImagePixels || width * height > limits::kMaxImagePixels) {
+        if (width > 0 && height > 0) {
+            return fail_coded(ErrorCategory::InvalidFile, limits::code::kImageTooManyPixels,
+                              "Image refusée : " + std::to_string(width) + " x " +
+                                  std::to_string(height) + " pixels dépasse le maximum de " +
+                                  std::to_string(limits::kMaxImagePixels / 1'000'000) +
+                                  " millions de pixels",
+                              "Réduisez l'image (par exemple à 8000 px de côté) avant de "
+                              "l'importer.");
+        }
+        return fail(ErrorCategory::InvalidFile, "Dimensions d'image invalides");
+    }
+    return {};
+}
+
+Result<void> check_encoded_image(std::span<const std::uint8_t> bytes) {
+    if (bytes.size() > static_cast<std::uint64_t>(limits::kMaxImageFileBytes)) {
+        return fail_coded(ErrorCategory::InvalidFile, limits::code::kImageFileTooLarge,
+                          "Image refusée : fichier de plus de " +
+                              std::to_string(limits::kMaxImageFileBytes / (1024 * 1024)) + " Mio",
+                          "Utilisez une version plus légère de l'image.");
+    }
+    if (const auto dims = probe_dimensions(bytes)) {
+        return check_pixel_budget(dims->width, dims->height);
+    }
+    return {};
+}
+
 // Lecture des octets puis cv::imdecode : contrairement à cv::imread, ce
 // chemin gère les chemins Windows non-ASCII (std::filesystem ouvre le
 // fichier, OpenCV ne voit que des octets).
@@ -41,10 +161,24 @@ Result<cv::Mat> decode_file(const std::filesystem::path& path) {
         return fail(ErrorCategory::UserInput,
                     "Fichier introuvable ou illisible : " + path.string());
     }
+    // Taille connue avant toute lecture : un fichier énorme est refusé sans être chargé.
+    std::error_code sizeEc;
+    const auto fileSize = std::filesystem::file_size(path, sizeEc);
+    if (!sizeEc && fileSize > static_cast<std::uintmax_t>(limits::kMaxImageFileBytes)) {
+        return fail_coded(ErrorCategory::InvalidFile, limits::code::kImageFileTooLarge,
+                          "Image refusée : fichier de plus de " +
+                              std::to_string(limits::kMaxImageFileBytes / (1024 * 1024)) + " Mio",
+                          "Utilisez une version plus légère de l'image.");
+    }
     std::vector<char> bytes((std::istreambuf_iterator<char>(file)),
                             std::istreambuf_iterator<char>());
     if (bytes.empty()) {
         return fail(ErrorCategory::InvalidFile, "Le fichier est vide : " + path.string());
+    }
+    if (auto ok = check_encoded_image(std::span<const std::uint8_t>(
+            reinterpret_cast<const std::uint8_t*>(bytes.data()), bytes.size()));
+        !ok) {
+        return std::unexpected(ok.error());
     }
 
     const cv::Mat raw(1, static_cast<int>(bytes.size()), CV_8U, bytes.data());
@@ -53,6 +187,10 @@ Result<cv::Mat> decode_file(const std::filesystem::path& path) {
         return fail(ErrorCategory::InvalidFile,
                     "Format d'image non reconnu ou fichier corrompu : " + path.string(),
                     "cv::imdecode a renvoyé une matrice vide");
+    }
+    // Formats sans sonde d'en-tête (TIFF...) : contrôle sur la matrice décodée.
+    if (auto ok = check_pixel_budget(mat.cols, mat.rows); !ok) {
+        return std::unexpected(ok.error());
     }
     return mat;
 }
@@ -132,6 +270,9 @@ Result<std::vector<std::uint8_t>> encode_png(const Image& image) {
 Result<Image> decode_image(std::span<const std::uint8_t> bytes) {
     if (bytes.empty()) {
         return fail(ErrorCategory::InvalidFile, "Données d'image vides");
+    }
+    if (auto ok = check_encoded_image(bytes); !ok) {
+        return std::unexpected(ok.error());
     }
     const cv::Mat raw(1, static_cast<int>(bytes.size()), CV_8U,
                       const_cast<std::uint8_t*>(bytes.data()));

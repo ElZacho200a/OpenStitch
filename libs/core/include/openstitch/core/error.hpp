@@ -24,6 +24,10 @@ struct Error {
     ErrorCategory category{ErrorCategory::Internal};
     std::string message;
     std::string detail;
+    // Code stable lisible par machine (« E_ZIP_DUPLICATE_ENTRY »...) et conseil de correction ;
+    // vides pour les erreurs historiques sans code (HP-QA-013).
+    std::string code;
+    std::string hint;
 };
 
 // Les API publiques des bibliothèques retournent Result<T> ; les exceptions
@@ -33,6 +37,14 @@ template <typename T> using Result = std::expected<T, Error>;
 [[nodiscard]] inline std::unexpected<Error> fail(ErrorCategory category, std::string message,
                                                  std::string detail = {}) {
     return std::unexpected(Error{category, std::move(message), std::move(detail)});
+}
+
+// Erreur codée : `code` (préfixe « E_ ») stable, `hint` = que faire pour s'en sortir.
+[[nodiscard]] inline std::unexpected<Error> fail_coded(ErrorCategory category, std::string code,
+                                                       std::string message, std::string hint,
+                                                       std::string detail = {}) {
+    return std::unexpected(
+        Error{category, std::move(message), std::move(detail), std::move(code), std::move(hint)});
 }
 
 } // namespace openstitch
