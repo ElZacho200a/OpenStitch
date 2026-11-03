@@ -9,15 +9,20 @@
 //   openstitch-mcp --live [--pid N]
 //                             mode live : les outils s'exécutent sur le projet OUVERT dans
 //                             OpenStitch Desktop (tube nommé local, jeton ; aucun port réseau)
+#include <condition_variable>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <exception>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
+#include <utility>
 
 #ifdef _WIN32
 #include <fcntl.h>
@@ -127,6 +132,53 @@ int main(int argc, char** argv) {
     openstitch::mcp::LiveRelay relay(transport, [&transport] { return transport.token(); });
     openstitch::mcp::Server server(live ? &relay : nullptr);
     constexpr std::size_t kMaxRequestBytes = 8 * 1024 * 1024;
+
+    // Un fil lit stdin en continu ; un fil de travail execute les requetes dans l'ordre. Ainsi un
+    // `notifications/cancelled` recu pendant un outil long est traite aussitot (HP-PERF-020).
+    std::mutex out_mutex;
+    const auto emit = [&](const std::string& message) {
+        const std::lock_guard lock(out_mutex);
+        std::fwrite(message.data(), 1, message.size(), protocol);
+        std::fputc('\n', protocol);
+        std::fflush(protocol);
+    };
+    server.set_notifier(emit);
+
+    std::mutex queue_mutex;
+    std::condition_variable queue_ready;
+    std::deque<std::pair<std::string, bool>> queue; // (ligne, trop grande)
+    bool closed = false;
+    std::thread worker([&] {
+        while (true) {
+            std::pair<std::string, bool> job;
+            {
+                std::unique_lock lock(queue_mutex);
+                queue_ready.wait(lock, [&] { return closed || !queue.empty(); });
+                if (queue.empty()) {
+                    return;
+                }
+                job = std::move(queue.front());
+                queue.pop_front();
+            }
+            std::optional<std::string> response;
+            try {
+                response =
+                    job.second
+                        ? std::optional<std::string>(
+                              R"({"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"requete de plus de 8 Mio"}})")
+                        : server.handle(job.first);
+            } catch (const std::exception& e) { // dernier rempart : le serveur ne doit pas mourir
+                response = std::string(R"({"jsonrpc":"2.0","id":null,"error":{"code":-32603,)"
+                                       R"("message":"erreur interne du serveur"}})");
+                std::fputs(e.what(), stderr);
+                std::fputc('\n', stderr);
+            }
+            if (response) {
+                emit(*response);
+            }
+        }
+    });
+
     std::string line;
     while (true) {
         line.clear();
@@ -151,27 +203,28 @@ int main(int argc, char** argv) {
             }
             continue;
         }
-        std::optional<std::string> response;
-        try {
-            response =
-                too_large
-                    ? std::optional<std::string>(
-                          R"({"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"requete de plus de 8 Mio"}})")
-                    : server.handle(line);
-        } catch (const std::exception& e) { // dernier rempart : le serveur ne doit pas mourir
-            response = std::string(R"({"jsonrpc":"2.0","id":null,"error":{"code":-32603,)"
-                                   R"("message":"erreur interne du serveur"}})");
-            std::fputs(e.what(), stderr);
-            std::fputc('\n', stderr);
-        }
-        if (response) {
-            std::fwrite(response->data(), 1, response->size(), protocol);
-            std::fputc('\n', protocol);
-            std::fflush(protocol);
+        // Annulation : traitee tout de suite, hors file (notification : pas de reponse).
+        if (!too_large && line.find("notifications/cancelled") != std::string::npos) {
+            try {
+                (void)server.handle(line);
+            } catch (const std::exception&) {
+            }
+        } else {
+            {
+                const std::lock_guard lock(queue_mutex);
+                queue.emplace_back(line, too_large);
+            }
+            queue_ready.notify_one();
         }
         if (next == std::char_traits<char>::eof()) {
             break;
         }
     }
+    {
+        const std::lock_guard lock(queue_mutex);
+        closed = true;
+    }
+    queue_ready.notify_one();
+    worker.join();
     return 0;
 }

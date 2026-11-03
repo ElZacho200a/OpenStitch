@@ -4043,7 +4043,8 @@ une entrée P0 ouverte (§0.4).
 - Modules : `apps/cli`, `libs/project_ops`.
 - Acceptation : `--jobs N` produit des `.osp` identiques octet pour octet à l'exécution séquentielle.
 
-### HP-PERF-020 — MCP : progression et annulation des opérations longues [P1] — ☐ À faire
+### HP-PERF-020 — MCP : progression et annulation des opérations longues [P1] — ☑ Fait (2026-11-03)
+- Livré : `notifications/progress` (jeton `_meta.progressToken`) et `notifications/cancelled` ; `project_digitize` annulable (`E_CANCELLED`, session intacte). Limite : granularité = messages de log du moteur (~6 par numérisation).
 - État OpenStitch : aucune notification de progression ; opérations (`project_digitize`…) bloquantes.
 - À faire : jeton de progression, notifications, prise en charge de `notifications/cancelled` via `core::TaskContext`.
 - Dépend de : HP-PERF-001.
@@ -4312,7 +4313,8 @@ ouvrant le lot (§0.1).
 - Reste : lecture du même profil côté bureau (HP-UX-030).
 - Acceptation : mêmes octets que les options équivalentes.
 
-### HP-PERF-032 — Sauvegarde automatique hors fil d'interface [P1] — ☐ À faire
+### HP-PERF-032 — Sauvegarde automatique hors fil d'interface [P1] — ☑ Fait (2026-11-03)
+- Livré : instantané du projet puis écriture dans un `QThread` (tick ignoré pendant une écriture, `flushAutosave()` à la fermeture) ; QTest. Limites : la copie du projet reste sur le fil UI ; `save_project` + sidecar `QSaveFile` conservés.
 - État : `onAutosaveTick` écrit sur le fil UI (`main_window.cpp:9764`, `autosave.cpp:72`) ; HP-FILE-004 prévoyait « hors thread UI si lourd » (durée réelle à mesurer).
 - À faire : instantané du projet puis écriture en fil de travail. [`apps/desktop`]
 - Acceptation : aucun événement UI bloqué plus de 100 ms pendant l'écriture (QTest).
@@ -4324,12 +4326,14 @@ ouvrant le lot (§0.1).
 - À faire : cache Qt, annulation des runs obsolètes, timeouts, workflow réutilisable, vcpkg et actions épinglés par SHA (Dependabot), `ctest -j`. [`.github/workflows`, `CMakePresets.json`]
 - Acceptation : durée des jobs relevée avant/après ; aucun `uses:` non épinglé.
 
-### HP-PERF-024 — Vectorisation : index des pixels par région et analyse parallèle [P1] — ☐ À faire
+### HP-PERF-024 — Vectorisation : index des pixels par région et analyse parallèle [P1] — ☑ Fait (2026-11-03)
+- Livré : `RegionPixelIndex` (une passe, tri par comptage) partagé par `vectorize_regions`, utilisé par l'auto-numérisation et `analyze_contours`. Mesuré en Debug, 300 régions sur 10 Mpx : 2574 ms → 124 ms, sorties identiques.
 - État : chaque vectorisation de région balaie l'image deux fois (`vectorize.cpp:94-139`, appelé par région `autodigitize.cpp:661`) ; `analyze_contours` vectorise en série (`contour_analysis.cpp:1143`) alors que `vectorize_regions` existe.
 - À faire : index pixels par région en une passe ; passer par `vectorize_regions`. [`libs/vectorization`, `libs/autodigitize`]
 - Acceptation : 300 régions sur 10 Mpx, coût proportionnel aux pixels de chaque région, sorties identiques.
 
-### HP-PERF-025 — Lignes cohérentes (ETF/DoG) parallèles [P1] — ☐ À faire
+### HP-PERF-025 — Lignes cohérentes (ETF/DoG) parallèles [P1] — ☑ Fait (2026-11-03)
+- Livré : `parallel_for` par ligne (ETF, DoG, flux, séparation, fermeture, échantillonnage), sortie identique 1 fil / N fils testée. Mesuré en Release à 1,9 Mpx : 5889 ms → 962 ms. Non mesuré à 10 Mpx.
 - État : `coherent_lines.cpp:134-281` (rayon jusqu'à 15, 10 itérations, `tanh` par pixel) sans `parallel_for` ; idem `line_layer.cpp`, `two_color_blend.cpp`.
 - À faire : `parallel_for` par ligne (tâches lisant des données constantes, écrivant leur case). [`libs/image`, `libs/autodigitize`]
 - Acceptation : 10 Mpx, sortie identique octet pour octet, temps mesuré avant/après.
@@ -4344,7 +4348,8 @@ ouvrant le lot (§0.1).
 - À faire : cache à clé exacte (source, opérations) ; une analyse par morceau ; au plus deux copies de labels. [`libs/image`, `libs/project_ops`, `libs/autodigitize`]
 - Acceptation : compteurs de test ; sorties identiques.
 
-### HP-PERF-028 — Réduction de couleurs de coût cubique [P1] — ☐ À faire
+### HP-PERF-028 — Réduction de couleurs de coût cubique [P1] — ☑ Fait (2026-11-03)
+- Livré : voisin le plus proche mémorisé par ligne, doublons par table ordonnée, pipette par pointeur de ligne ; palette et mapping identiques à l'ancien algorithme (test de référence). 2000 → 16 couleurs : 1,4 s en Debug.
 - État : recherche de la paire la plus proche sur toutes les paires à chaque fusion en CIEDE2000, doublons en O(n²) (`color_reduction.cpp:54-86`) ; moyenne de pipette O(r²) sans plafond (`eyedropper.cpp:27-60`).
 - À faire : file de priorité / voisinage, déduplication par hachage, plafond de rayon ou table intégrale. [`libs/thread_palette`]
 - Acceptation : 2 000 couleurs → 16 mesuré ; palette et mapping identiques aux cas existants.
@@ -4559,6 +4564,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-03 | Claude (lot P1-PERF) | HP-PERF-020/024/025/028/032 ☑ : progression et annulation MCP, index de pixels par région, lignes cohérentes parallèles, réduction de couleurs sous-cubique, autosave hors fil UI. HP-PERF-004 et HP-VIEW-009 restent à faire. |
 | 2026-11-03 | Claude (lot P1-AUTO) | HP-AUTO-012/014/020/021 ☑ (EXIF, refusion après « Limiter à N fils », contour running, action « Convertir les vecteurs en broderie »), HP-AUTO-007/010 ◐ (cœur, exposition à câbler). HP-AUTO-011 non traitée (ONNX/packaging). |
 | 2026-11-03 | Claude (lot P1-QA) | HP-QA-012/013/014/017/018/020/022/023 ☑ ; HP-QA-011 et 021 ◐ : CI clang-format 18 et tests Python, UTF-8 sûr, RNG par fil, plafonds image/ZIP, écriture atomique, codes CLI et schémas JSON, outils MCP diff/validate, fuzz JSON, départage total des tris. |
 | 2026-10-27 | ChatGPT (audit UI/UX, PR 5) | HP-UX-047 ◐ : distinguer visuellement et textuellement teintes de segmentation, couleurs d'objets et références de fils ; QTests, sans modifier ni broderie ni export. |

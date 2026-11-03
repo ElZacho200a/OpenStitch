@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <map>
 
 #include "openstitch/thread_palette/color_distance.hpp"
 
@@ -36,55 +37,119 @@ ColorReduction reduce_colors(std::span<const WeightedColor> colors, std::size_t 
         clusters.push_back(std::move(c));
     }
 
-    const auto merge = [&clusters](std::size_t keep, std::size_t drop) {
+    // Les grappes gardent leur emplacement d'origine ; l'ordre des emplacements vivants est
+    // exactement l'ordre de l'ancien vecteur (l'effacement conservait l'ordre relatif), donc le
+    // départage « première paire (i, j) rencontrée » est inchangé (HP-PERF-028).
+    std::vector<char> alive(clusters.size(), 1);
+    std::size_t aliveCount = clusters.size();
+
+    const auto merge = [&clusters, &alive, &aliveCount](std::size_t keep, std::size_t drop) {
         Cluster& a = clusters[keep];
-        const Cluster b = clusters[drop];
+        Cluster& b = clusters[drop];
+        bool labChanged = false;
         if (b.top_weight > a.top_weight) {
             a.rgb = b.rgb;
             a.lab = b.lab;
             a.top_weight = b.top_weight;
+            labChanged = true;
         }
         a.weight += b.weight;
         a.first = std::min(a.first, b.first);
         a.members.insert(a.members.end(), b.members.begin(), b.members.end());
-        clusters.erase(clusters.begin() + static_cast<std::ptrdiff_t>(drop));
+        b.members.clear();
+        alive[drop] = 0;
+        --aliveCount;
+        return labChanged;
     };
 
-    // Doublons exacts d'abord (toujours, même sans limite).
-    for (std::size_t i = 0; i < clusters.size(); ++i) {
-        for (std::size_t j = i + 1; j < clusters.size();) {
-            if (clusters[j].rgb == clusters[i].rgb) {
-                merge(i, j);
-            } else {
-                ++j;
+    // Doublons exacts d'abord (toujours, même sans limite) : table ordonnée sur la couleur,
+    // fusion dans l'ordre croissant des indices dans la première occurrence.
+    {
+        std::map<std::array<std::uint8_t, 3>, std::size_t> firstOf;
+        for (std::size_t j = 0; j < clusters.size(); ++j) {
+            const auto [it, inserted] = firstOf.emplace(clusters[j].rgb, j);
+            if (!inserted) {
+                merge(it->second, j);
             }
         }
     }
 
-    while (clusters.size() > 1) {
-        const bool tooMany = max_colors > 0 && clusters.size() > max_colors;
+    // Voisin le plus proche par ligne : plus petit j > i de distance minimale (strict).
+    constexpr double kInf = std::numeric_limits<double>::infinity();
+    const std::size_t n = clusters.size();
+    constexpr std::size_t kNone = std::numeric_limits<std::size_t>::max();
+    std::vector<double> nnDist(n, kInf);
+    std::vector<std::size_t> nnIdx(n, kNone);
+    const auto recomputeRow = [&](std::size_t i) {
+        nnDist[i] = kInf;
+        nnIdx[i] = kNone;
+        for (std::size_t j = i + 1; j < n; ++j) {
+            if (alive[j] == 0) {
+                continue;
+            }
+            const double d = ciede2000(clusters[i].lab, clusters[j].lab);
+            if (d < nnDist[i]) {
+                nnDist[i] = d;
+                nnIdx[i] = j;
+            }
+        }
+    };
+    if (aliveCount > 1 && (max_colors > 0 || max_distance > 0.0)) {
+        for (std::size_t i = 0; i < n; ++i) {
+            if (alive[i] != 0) {
+                recomputeRow(i);
+            }
+        }
+    }
+
+    while (aliveCount > 1) {
+        const bool tooMany = max_colors > 0 && aliveCount > max_colors;
         if (!tooMany && max_distance <= 0.0) {
             break;
         }
-        double best = std::numeric_limits<double>::infinity();
-        std::size_t bi = 0;
-        std::size_t bj = 1;
-        for (std::size_t i = 0; i < clusters.size(); ++i) {
-            for (std::size_t j = i + 1; j < clusters.size(); ++j) {
-                const double d = ciede2000(clusters[i].lab, clusters[j].lab);
-                if (d < best) { // strict : égalité -> première paire (i, j) rencontrée
-                    best = d;
-                    bi = i;
-                    bj = j;
-                }
+        double best = kInf;
+        std::size_t bi = kNone;
+        for (std::size_t i = 0; i < n; ++i) {
+            if (alive[i] != 0 && nnIdx[i] != kNone && nnDist[i] < best) {
+                best = nnDist[i];
+                bi = i;
             }
         }
+        if (bi == kNone) {
+            break; // distances toutes non finies : ancien comportement indéfini, on s'arrête
+        }
+        const std::size_t bj = nnIdx[bi];
         if (!tooMany && best > max_distance) {
             break; // plus de paire assez proche
         }
-        merge(bi, bj);
+        const bool labChanged = merge(bi, bj);
+        for (std::size_t i = 0; i < bj; ++i) {
+            if (alive[i] == 0) {
+                continue;
+            }
+            if (i == bi || nnIdx[i] == bi || nnIdx[i] == bj) {
+                recomputeRow(i);
+            } else if (labChanged && i < bi) {
+                const double d = ciede2000(clusters[i].lab, clusters[bi].lab);
+                if (d < nnDist[i] || (d == nnDist[i] && bi < nnIdx[i])) {
+                    nnDist[i] = d;
+                    nnIdx[i] = bi;
+                }
+            }
+        }
     }
 
+    // Compactage des grappes vivantes (ordre conservé).
+    {
+        std::vector<Cluster> kept;
+        kept.reserve(aliveCount);
+        for (std::size_t i = 0; i < n; ++i) {
+            if (alive[i] != 0) {
+                kept.push_back(std::move(clusters[i]));
+            }
+        }
+        clusters = std::move(kept);
+    }
     // Ordre de sortie : première apparition dans l'entrée.
     std::vector<std::size_t> order(clusters.size());
     for (std::size_t i = 0; i < order.size(); ++i) {

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstdlib>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -336,4 +338,47 @@ TEST_CASE("blend: the density ramp drives the directional fill") {
     REQUIRE(!dense.empty());
     REQUIRE(!sparse.empty());
     CHECK(sparse.size() < dense.size());
+}
+
+namespace {
+struct BlendThreadOverride {
+    explicit BlendThreadOverride(const char* value) {
+#ifdef _WIN32
+        _putenv_s("OPENSTITCH_THREADS", value);
+#else
+        setenv("OPENSTITCH_THREADS", value, 1);
+#endif
+    }
+    ~BlendThreadOverride() {
+#ifdef _WIN32
+        _putenv_s("OPENSTITCH_THREADS", "");
+#else
+        unsetenv("OPENSTITCH_THREADS");
+#endif
+    }
+    BlendThreadOverride(const BlendThreadOverride&) = delete;
+    BlendThreadOverride& operator=(const BlendThreadOverride&) = delete;
+};
+} // namespace
+
+TEST_CASE("region blend: same samples with one thread and with several (HP-PERF-025)") {
+    const auto img = gradient_image();
+    const std::vector<geometry::PathSet> shape{rect_um(-10'000, -5'000, 10'000, 5'000)};
+    std::vector<ColorSample> one;
+    std::vector<ColorSample> many;
+    {
+        const BlendThreadOverride guard("1");
+        one = sample_region_colors(img, Millimeters{0.5}, shape);
+    }
+    {
+        const BlendThreadOverride guard("8");
+        many = sample_region_colors(img, Millimeters{0.5}, shape);
+    }
+    REQUIRE(!one.empty());
+    REQUIRE(one.size() == many.size());
+    for (std::size_t i = 0; i < one.size(); ++i) {
+        CHECK(one[i].pos.x.value == many[i].pos.x.value);
+        CHECK(one[i].pos.y.value == many[i].pos.y.value);
+        CHECK(one[i].rgb == many[i].rgb);
+    }
 }

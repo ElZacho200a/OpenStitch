@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <limits>
+#include <utility>
+#include <vector>
+
 #include "openstitch/thread_palette/chart_import.hpp"
 #include "openstitch/thread_palette/color_reduction.hpp"
 #include "openstitch/thread_palette/thread_library.hpp"
@@ -177,4 +182,127 @@ TEST_CASE("reduce_colors is deterministic") {
     CHECK(a.palette == b.palette);
     CHECK(a.mapping == b.mapping);
     CHECK(a.palette.size() == 5);
+}
+
+// HP-PERF-028 : reference naive (ancien algorithme, toutes les paires a chaque fusion) ; la
+// version rapide doit donner la meme palette et le meme mapping.
+namespace {
+ColorReduction reduce_colors_reference(std::span<const WeightedColor> colors,
+                                       std::size_t max_colors, double max_distance) {
+    struct C {
+        std::array<std::uint8_t, 3> rgb;
+        CieLab lab;
+        double weight, top;
+        std::size_t first;
+        std::vector<std::size_t> members;
+    };
+    std::vector<C> cl;
+    for (std::size_t i = 0; i < colors.size(); ++i) {
+        cl.push_back(
+            {colors[i].rgb, to_cielab(colors[i].rgb), colors[i].weight, colors[i].weight, i, {i}});
+    }
+    const auto merge = [&cl](std::size_t k, std::size_t d) {
+        C b = cl[d];
+        if (b.top > cl[k].top) {
+            cl[k].rgb = b.rgb;
+            cl[k].lab = b.lab;
+            cl[k].top = b.top;
+        }
+        cl[k].weight += b.weight;
+        cl[k].first = std::min(cl[k].first, b.first);
+        cl[k].members.insert(cl[k].members.end(), b.members.begin(), b.members.end());
+        cl.erase(cl.begin() + static_cast<std::ptrdiff_t>(d));
+    };
+    for (std::size_t i = 0; i < cl.size(); ++i) {
+        for (std::size_t j = i + 1; j < cl.size();) {
+            if (cl[j].rgb == cl[i].rgb) {
+                merge(i, j);
+            } else {
+                ++j;
+            }
+        }
+    }
+    while (cl.size() > 1) {
+        const bool many = max_colors > 0 && cl.size() > max_colors;
+        if (!many && max_distance <= 0.0) {
+            break;
+        }
+        double best = std::numeric_limits<double>::infinity();
+        std::size_t bi = 0, bj = 1;
+        for (std::size_t i = 0; i < cl.size(); ++i) {
+            for (std::size_t j = i + 1; j < cl.size(); ++j) {
+                const double d = ciede2000(cl[i].lab, cl[j].lab);
+                if (d < best) {
+                    best = d;
+                    bi = i;
+                    bj = j;
+                }
+            }
+        }
+        if (!many && best > max_distance) {
+            break;
+        }
+        merge(bi, bj);
+    }
+    std::vector<std::size_t> order(cl.size());
+    for (std::size_t i = 0; i < order.size(); ++i) {
+        order[i] = i;
+    }
+    std::stable_sort(order.begin(), order.end(),
+                     [&cl](std::size_t a, std::size_t b) { return cl[a].first < cl[b].first; });
+    ColorReduction out;
+    out.mapping.assign(colors.size(), 0);
+    for (std::size_t r = 0; r < order.size(); ++r) {
+        out.palette.push_back(cl[order[r]].rgb);
+        for (const auto m : cl[order[r]].members) {
+            out.mapping[m] = r;
+        }
+    }
+    return out;
+}
+} // namespace
+
+TEST_CASE("reduce_colors matches the naive reference on many colors") {
+    std::uint32_t s = 12345U;
+    const auto rnd = [&s](std::uint32_t mod) {
+        s = s * 1664525U + 1013904223U;
+        return (s >> 8) % mod;
+    };
+    for (const std::size_t n : {std::size_t{120}, std::size_t{250}}) {
+        std::vector<WeightedColor> in;
+        for (std::size_t i = 0; i < n; ++i) {
+            WeightedColor w;
+            // palette restreinte : doublons exacts et egalites de poids frequents
+            w.rgb = {static_cast<std::uint8_t>(rnd(24) * 10),
+                     static_cast<std::uint8_t>(rnd(24) * 10),
+                     static_cast<std::uint8_t>(rnd(24) * 10)};
+            w.weight = static_cast<double>(1 + rnd(5));
+            in.push_back(w);
+        }
+        for (const auto& [maxc, maxd] :
+             {std::pair<std::size_t, double>{16, 0.0}, std::pair<std::size_t, double>{0, 12.0},
+              std::pair<std::size_t, double>{40, 5.0}, std::pair<std::size_t, double>{0, 0.0}}) {
+            const auto fast = reduce_colors(in, maxc, maxd);
+            const auto ref = reduce_colors_reference(in, maxc, maxd);
+            CHECK(fast.palette == ref.palette);
+            CHECK(fast.mapping == ref.mapping);
+        }
+    }
+}
+// HP-PERF-028 : mesure (2000 couleurs -> 16), aucun seuil de temps dans le test.
+TEST_CASE("reduce_colors 2000 colors to 16 (HP-PERF-028 : mesure)") {
+    std::uint32_t s = 777U;
+    std::vector<WeightedColor> in;
+    for (int i = 0; i < 2000; ++i) {
+        WeightedColor w;
+        for (auto& c : w.rgb) {
+            s = s * 1664525U + 1013904223U;
+            c = static_cast<std::uint8_t>(s >> 24);
+        }
+        w.weight = 1.0 + static_cast<double>(i % 7);
+        in.push_back(w);
+    }
+    const auto r = reduce_colors(in, 16);
+    CHECK(r.palette.size() == 16);
+    CHECK(r.mapping.size() == 2000);
 }

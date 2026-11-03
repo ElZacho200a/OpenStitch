@@ -399,6 +399,10 @@ void read_settings(const json& j, po::DigitizeSettings& s) {
     }
 }
 
+// Levée par le rappel d'état de la numérisation quand l'appel est annulé (HP-PERF-020) : elle
+// traverse le moteur, dont le projet est local à l'outil, donc la session reste intacte.
+struct CancelledSignal {};
+
 ToolResult tool_digitize(Session& s, const json& a) {
     check_discard(s, a);
     const std::string image = req_string(a, "image");
@@ -431,7 +435,30 @@ ToolResult tool_digitize(Session& s, const json& a) {
         return engine_error("project_digitize", po::code::kInternal, created.error());
     }
     document::Project project = std::move(*created);
-    auto report = po::digitize_image_into(project, to_path(image), settings);
+    const auto status = [&s](std::string_view line) {
+        if (s.on_status) {
+            s.on_status(line);
+        }
+        if (s.task.cancelled()) {
+            throw CancelledSignal{};
+        }
+    };
+    const auto cancelled_result = [] {
+        return error_result("project_digitize", "E_CANCELLED", "numérisation annulée",
+                            "aucun changement : le projet de la session est intact");
+    };
+    if (s.task.cancelled()) {
+        return cancelled_result();
+    }
+    Result<po::DigitizeReport> report = std::unexpected(Error{});
+    try {
+        report = po::digitize_image_into(project, to_path(image), settings, status);
+    } catch (const CancelledSignal&) {
+        return cancelled_result();
+    }
+    if (s.task.cancelled()) {
+        return cancelled_result();
+    }
     if (!report) {
         return engine_error("project_digitize", po::code::kRefused, report.error());
     }

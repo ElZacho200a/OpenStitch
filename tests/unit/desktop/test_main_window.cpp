@@ -9,6 +9,7 @@
 #include <QDir>
 #include <QDockWidget>
 #include <QDoubleSpinBox>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QGraphicsItem>
@@ -33,6 +34,7 @@
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QThread>
 #include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
@@ -940,6 +942,7 @@ private slots:
     // temporaire laisse ce fichier strictement inchangé et produit un
     // fichier distinct sous le dossier autosave.
     void autosaveTickWritesASeparateFileAndLeavesTheUserFileUntouched();
+    void autosaveTickWritesOffTheUiThread();
     void autosaveTickSkipsWhenDocumentUnmodifiedOrEmpty();
     // Un candidat orphelin (écrit directement via writeAutosave(), comme un
     // VRAI plantage -- aucun MainWindow vivant à ce moment) déclenche le
@@ -4963,6 +4966,7 @@ void MainWindowTest::importedOnlyModifiedDocumentIsAutosavedAndReloadable() {
     window.updateActions();
     QVERIFY(window.isWindowModified());
     window.onAutosaveTick();
+    window.flushAutosave();
     const auto slot = slotFor(QString());
     QVERIFY(QFile::exists(slot.osp_path));
     const auto loaded =
@@ -5817,6 +5821,7 @@ void MainWindowTest::autosaveTickWritesASeparateFileAndLeavesTheUserFileUntouche
     const QDateTime beforeModified = QFileInfo(userFile).lastModified();
 
     window.onAutosaveTick();
+    window.flushAutosave();
 
     // (a) Le fichier utilisateur est strictement inchangé (contenu et date).
     QFile after(userFile);
@@ -5840,6 +5845,37 @@ void MainWindowTest::autosaveTickWritesASeparateFileAndLeavesTheUserFileUntouche
     clearAutosaveDir();
 }
 
+// HP-PERF-032 : l'ecriture part dans un fil de travail ; le tick rend la main vite, un second tick
+// pendant l'ecriture n'en lance pas une autre, et le resultat est applique sur le fil d'interface.
+void MainWindowTest::autosaveTickWritesOffTheUiThread() {
+    clearAutosaveDir();
+
+    MainWindow window;
+    QCoreApplication::processEvents();
+
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    window.setWindowModified(true);
+
+    QElapsedTimer tick;
+    tick.start();
+    window.onAutosaveTick();
+    const qint64 blockedMs = tick.elapsed();
+    QVERIFY2(blockedMs < 100, qPrintable(QStringLiteral("tick bloque %1 ms").arg(blockedMs)));
+
+    // Une ecriture est en cours (ou deja finie) : un second tick ne doit jamais empiler un fil.
+    QThread* const first = window.autosaveThread_;
+    window.onAutosaveTick();
+    QVERIFY(window.autosaveThread_ == first);
+
+    QTRY_VERIFY_WITH_TIMEOUT(window.autosaveThread_ == nullptr, 10000);
+    QVERIFY(QFile::exists(slotFor(window.currentProjectPath_).osp_path));
+    QVERIFY(
+        window.statusBar()->currentMessage().contains(QStringLiteral("Sauvegarde automatique")));
+
+    clearAutosaveDir();
+}
+
 void MainWindowTest::autosaveTickSkipsWhenDocumentUnmodifiedOrEmpty() {
     clearAutosaveDir();
 
@@ -5849,12 +5885,14 @@ void MainWindowTest::autosaveTickSkipsWhenDocumentUnmodifiedOrEmpty() {
     // Document vierge (vide) et non modifié : rien à protéger, rien écrit.
     QVERIFY(!window.isWindowModified());
     window.onAutosaveTick();
+    window.flushAutosave();
     QVERIFY(scanForRecoverableAutosaves().empty());
 
     // Document encore vide mais marqué "modifié" (cas limite) : la garde
     // porte sur le contenu, pas seulement sur isWindowModified().
     window.setWindowModified(true);
     window.onAutosaveTick();
+    window.flushAutosave();
     QVERIFY(scanForRecoverableAutosaves().empty());
 
     // Document non vide mais PAS modifié (cas réel : juste après un
@@ -5863,6 +5901,7 @@ void MainWindowTest::autosaveTickSkipsWhenDocumentUnmodifiedOrEmpty() {
     window.applyLoadedProject(fx.project);
     QVERIFY(!window.isWindowModified());
     window.onAutosaveTick();
+    window.flushAutosave();
     QVERIFY(scanForRecoverableAutosaves().empty());
 
     clearAutosaveDir();
@@ -5901,6 +5940,7 @@ void MainWindowTest::autosaveRecoveryAcceptLoadsAsUntitledDocumentAndPurgesSlot(
     // Premier tick reussi : le creneau est reecrit (meme chemin d'origine) et plus
     // aucune suppression en attente.
     window.onAutosaveTick();
+    window.flushAutosave();
     QVERIFY(QFile::exists(slot.osp_path));
     QVERIFY(window.pendingRecoveryOsp_.isEmpty());
 
@@ -6140,7 +6180,8 @@ void MainWindowTest::cleanCloseDiscardsTheCurrentAutosaveSlot() {
     window.applyLoadedProject(fx.project);
     QVERIFY(window.saveProjectToPath(userFile));
     window.setWindowModified(true);
-    window.onAutosaveTick(); // laisse un créneau, comme si l'app allait planter juste après
+    window.onAutosaveTick();
+    window.flushAutosave(); // laisse un créneau, comme si l'app allait planter juste après
 
     const auto slot = slotFor(userFile);
     QVERIFY(QFile::exists(slot.osp_path));

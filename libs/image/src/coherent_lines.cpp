@@ -3,14 +3,18 @@
 // Lignes cohérentes — implémentation d'après la publication :
 //   H. Kang, S. Lee, C. K. Chui, « Coherent Line Drawing », NPAR 2007
 //   (champ de flux de tangentes + DoG orientée, FDoG).
-// Écrite à partir de l'article (aucun code tiers repris). Calcul séquentiel en
-// virgule flottante simple précision : sortie déterministe octet pour octet.
+// Écrite à partir de l'article (aucun code tiers repris). Calcul en virgule
+// flottante simple précision, réparti par ligne (HP-PERF-025) : chaque tâche lit des champs
+// constants et n'écrit que sa ligne, donc sortie identique octet pour octet quel que soit le
+// nombre de fils.
 #include "coherent_lines.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <vector>
+
+#include "openstitch/core/parallel.hpp"
 
 namespace openstitch::image::detail {
 
@@ -132,10 +136,12 @@ std::vector<Vec> build_etf(const Field& gx, const Field& gy, const Field& mag, i
     constexpr float kEta = 1.0F;
     std::vector<Vec> next = t;
     for (int it = 0; it < iterations; ++it) {
-        for (int y = 0; y < h; ++y) {
+        const std::vector<Vec>& tc = t;
+        parallel_for(static_cast<std::size_t>(h), [&](std::size_t row) {
+            const int y = static_cast<int>(row);
             for (int x = 0; x < w; ++x) {
                 const std::size_t i = mag.idx(x, y);
-                const Vec tx = t[i];
+                const Vec tx = tc[i];
                 float sumX = 0.0F;
                 float sumY = 0.0F;
                 const int y0 = std::max(0, y - radius);
@@ -150,7 +156,7 @@ std::vector<Vec> build_etf(const Field& gx, const Field& gy, const Field& mag, i
                             continue; // w_s : disque
                         }
                         const std::size_t j = mag.idx(xx, yy);
-                        const Vec ty = t[j];
+                        const Vec ty = tc[j];
                         const float dot = tx.x * ty.x + tx.y * ty.y;
                         const float phi = dot >= 0.0F ? 1.0F : -1.0F;
                         const float wm = (1.0F + std::tanh(kEta * (mag.v[j] - mag.v[i]))) * 0.5F;
@@ -165,7 +171,7 @@ std::vector<Vec> build_etf(const Field& gx, const Field& gy, const Field& mag, i
                 // si elle existe, sinon le champ reste nul.
                 next[i] = n > 1e-6F ? Vec{sumX / n, sumY / n} : Vec{0.0F, 0.0F};
             }
-        }
+        });
         t.swap(next);
     }
     return t;
@@ -212,7 +218,8 @@ Result<Image> apply_coherent_lines(const Image& in, const CoherentLinesOp& op) {
     }
 
     Field H(w, h);
-    for (int y = 0; y < h; ++y) {
+    parallel_for(static_cast<std::size_t>(h), [&](std::size_t row) {
+        const int y = static_cast<int>(row);
         for (int x = 0; x < w; ++x) {
             const Vec t = etf[H.idx(x, y)];
             if (t.x == 0.0F && t.y == 0.0F) {
@@ -231,7 +238,7 @@ Result<Image> apply_coherent_lines(const Image& in, const CoherentLinesOp& op) {
             }
             H.v[H.idx(x, y)] = acc;
         }
-    }
+    });
 
     // --- Lissage de H le long du flux (courbe de flux, pas de 1 px) ----------
     Field F = H;
@@ -244,7 +251,8 @@ Result<Image> apply_coherent_lines(const Image& in, const CoherentLinesOp& op) {
             wk[static_cast<std::size_t>(s)] = gauss(static_cast<float>(s), sigmaM);
         }
         wk[0] = norm;
-        for (int y = 0; y < h; ++y) {
+        parallel_for(static_cast<std::size_t>(h), [&](std::size_t row) {
+            const int y = static_cast<int>(row);
             for (int x = 0; x < w; ++x) {
                 const Vec t0 = etf[H.idx(x, y)];
                 if (t0.x == 0.0F && t0.y == 0.0F) {
@@ -278,7 +286,7 @@ Result<Image> apply_coherent_lines(const Image& in, const CoherentLinesOp& op) {
                 }
                 F.v[H.idx(x, y)] = acc / sum;
             }
-        }
+        });
     }
 
     // --- Seuillage (éq. 9 de l'article) : trait noir si F < 0 et 1 + tanh(F) < tau.
