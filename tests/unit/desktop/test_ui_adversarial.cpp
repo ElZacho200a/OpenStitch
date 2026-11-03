@@ -2194,6 +2194,7 @@ void MainWindowTest::autosaveTickWithMultiSelectionIsHarmless() {
     const std::string before = snap(window.project_);
     const auto selBefore = window.selectedObjectIds();
     window.onAutosaveTick();
+    window.flushAutosave();
     QCOMPARE(QString::fromStdString(snap(window.project_)), QString::fromStdString(before));
     QVERIFY(window.selectedObjectIds() == selBefore);
     QVERIFY(window.checkSelectionInvariants());

@@ -781,6 +781,7 @@ MainWindow::~MainWindow() {
     }
     // Rend le créneau à la récupération (sans le supprimer) : une fenêtre qui
     // disparaît sans passer par closeEvent ressemble à un arrêt anormal.
+    flushAutosave();
     releaseAutosaveSlot(slotFor(currentProjectPath_));
 }
 
@@ -2462,6 +2463,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
             liveServer_->stop();
         }
         autosaveTimer_->stop();
+        flushAutosave();
         discardAutosave(slotFor(currentProjectPath_));
         discardPendingRecoverySlot();
     }
@@ -9955,6 +9957,7 @@ void MainWindow::setCurrentProjectPath(const QString& file) {
     // est pure, recalculée depuis currentProjectPath_ à chaque usage, donc
     // rien à recalculer pour la nouvelle avant qu'un tick n'en ait besoin).
     // Doit lire l'ANCIEN chemin avant qu'il soit écrasé ci-dessous.
+    flushAutosave();
     discardAutosave(slotFor(currentProjectPath_));
     currentProjectPath_ = file;
     updateWindowTitle();
@@ -10024,21 +10027,65 @@ void MainWindow::onAutosaveTick() {
     if (!isWindowModified() || !hasDocumentContent()) {
         return;
     }
+    if (autosaveThread_ != nullptr) {
+        return; // l'ecriture precedente n'est pas finie : le prochain tick reprendra
+    }
     const AutosaveSlot slot = slotFor(currentProjectPath_);
     // Revendique le créneau : une autre instance vivante ne le proposera pas à la
     // récupération comme s'il s'agissait d'un reste de plantage.
     claimAutosaveSlot(slot);
-    const auto written = writeAutosave(slot, project_, currentProjectPath_);
-    if (!written) {
+    // Instantané (copie) pris sur le fil d'interface ; l'écriture (sérialisation, zip, disque)
+    // se fait dans un fil de travail, sans jamais lire `project_` (HP-PERF-032).
+    auto snapshot = std::make_shared<const document::Project>(project_);
+    auto error = std::make_shared<std::string>();
+    const QString original = currentProjectPath_;
+    autosaveError_ = error;
+    autosaveOspPath_ = slot.osp_path;
+    QThread* thread = QThread::create([slot, snapshot, original, error] {
+        const auto written = writeAutosave(slot, *snapshot, original);
+        if (!written) {
+            *error = written.error().message.empty() ? std::string("erreur d'écriture")
+                                                     : written.error().message;
+        }
+    });
+    autosaveThread_ = thread;
+    connect(thread, &QThread::finished, this, [this, thread] {
+        if (thread == autosaveThread_) {
+            finishAutosave();
+        }
+    });
+    thread->start();
+}
+
+void MainWindow::flushAutosave() {
+    if (autosaveThread_ == nullptr) {
+        return;
+    }
+    QThread* thread = autosaveThread_;
+    thread->wait();
+    disconnect(thread, nullptr, this, nullptr);
+    finishAutosave();
+}
+
+void MainWindow::finishAutosave() {
+    QThread* thread = autosaveThread_;
+    autosaveThread_ = nullptr;
+    if (thread != nullptr) {
+        thread->wait();
+        thread->deleteLater();
+    }
+    const QString ospPath = autosaveOspPath_;
+    const std::string error = autosaveError_ ? *autosaveError_ : std::string{};
+    if (!error.empty()) {
         // Best-effort (jamais bloquant) : message transitoire, même gabarit
         // que saveProjectToPath pour un échec d'enregistrement normal.
-        statusBar()->showMessage(tr("Sauvegarde automatique impossible : %1")
-                                     .arg(QString::fromStdString(written.error().message)));
+        statusBar()->showMessage(
+            tr("Sauvegarde automatique impossible : %1").arg(QString::fromStdString(error)));
         return;
     }
     // Première sauvegarde automatique réussie depuis une récupération : les données
     // récupérées sont désormais couvertes par le créneau courant, l'ancien peut partir.
-    if (QDir::cleanPath(pendingRecoveryOsp_) != QDir::cleanPath(slot.osp_path)) {
+    if (QDir::cleanPath(pendingRecoveryOsp_) != QDir::cleanPath(ospPath)) {
         discardPendingRecoverySlot();
     } else {
         pendingRecoveryOsp_.clear();
