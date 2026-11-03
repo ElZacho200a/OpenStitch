@@ -8,12 +8,12 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QPaintEvent>
 #include <QPainter>
 #include <QPainterPath>
-#include <QPaintEvent>
-#include <QSizePolicy>
 #include <QPushButton>
 #include <QSignalBlocker>
+#include <QSizePolicy>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -61,12 +61,15 @@ public:
         state_ = state;
         update();
     }
+
 protected:
     void paintEvent(QPaintEvent*) override {
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
         const QRectF area = QRectF(rect()).adjusted(9, 9, -9, -9);
-        if (area.width() < 20 || area.height() < 20) return;
+        if (area.width() < 20 || area.height() < 20) {
+            return;
+        }
         p.setPen(QPen(palette().color(QPalette::Mid), 1.0));
         p.drawRoundedRect(area, 4, 4);
         const QRectF graph = area.adjusted(5, 5, -5, -5);
@@ -74,10 +77,18 @@ protected:
         const double end = std::clamp(state_.zoneEndPercent / 100.0, start + 0.001, 1.0);
         const auto blend = [&](double t) {
             const double v = std::clamp((t - start) / (end - start), 0.0, 1.0);
-            if (state_.curve == 1) return v * v * (3.0 - 2.0 * v);
-            if (state_.curve == 2) return v * v * v * (v * (6.0 * v - 15.0) + 10.0);
-            if (state_.curve == 3) return v * v;
-            if (state_.curve == 4) return v * (2.0 - v);
+            if (state_.curve == 1) {
+                return v * v * (3.0 - 2.0 * v);
+            }
+            if (state_.curve == 2) {
+                return v * v * v * (v * (6.0 * v - 15.0) + 10.0);
+            }
+            if (state_.curve == 3) {
+                return v * v;
+            }
+            if (state_.curve == 4) {
+                return v * (2.0 - v);
+            }
             return v;
         };
         QPainterPath base, top;
@@ -88,8 +99,13 @@ protected:
             const double x = graph.left() + graph.width() * t;
             const QPointF one(x, graph.bottom() - graph.height() * a);
             const QPointF two(x, graph.bottom() - graph.height() * f);
-            if (i == 0) { base.moveTo(one); top.moveTo(two); }
-            else { base.lineTo(one); top.lineTo(two); }
+            if (i == 0) {
+                base.moveTo(one);
+                top.moveTo(two);
+            } else {
+                base.lineTo(one);
+                top.lineTo(two);
+            }
         }
         p.setClipRect(area);
         p.setPen(QPen(state_.start, 2.5));
@@ -102,6 +118,7 @@ protected:
             p.drawLine(QPointF(x, graph.top()), QPointF(x, graph.bottom()));
         }
     }
+
 private:
     GradientFillPanel::State state_;
 };
@@ -211,8 +228,8 @@ void GradientFillPanel::buildGradientControls() {
 
     profilePreview_ = new GradientProfilePreview(gradientBox_);
     box->addWidget(profilePreview_);
-    auto* profileDescription = new QLabel(
-        tr("Profil théorique des couches ; ce schéma n'est pas un rendu de points."));
+    auto* profileDescription =
+        new QLabel(tr("Profil théorique des couches ; ce schéma n'est pas un rendu de points."));
     profileDescription->setObjectName(QStringLiteral("label_gradientProfileDescription"));
     profileDescription->setWordWrap(true);
     box->addWidget(profileDescription);
@@ -225,10 +242,8 @@ void GradientFillPanel::buildGradientControls() {
     densityButton_->setToolTip(tr("Affiche la densité des pénétrations sur le canevas "
                                   "et ses zones de vigilance dans Analyse."));
     box->addWidget(densityButton_);
-    connect(densityButton_, &QPushButton::clicked, this,
-            &GradientFillPanel::densityRequested);
-    connect(previewButton_, &QPushButton::clicked, this,
-            &GradientFillPanel::assistantRequested);
+    connect(densityButton_, &QPushButton::clicked, this, &GradientFillPanel::densityRequested);
+    connect(previewButton_, &QPushButton::clicked, this, &GradientFillPanel::assistantRequested);
 
     handles_ = new QPushButton(tr("Poignées sur le canevas"));
     handles_->setObjectName(QStringLiteral("button_gradientHandles"));
@@ -334,9 +349,9 @@ void GradientFillPanel::setState(const State& state) {
         paintSwatch(startButton_, state.start);
         paintSwatch(endButton_, state.end);
         startThreadLabel_->setText(state.startThread.isEmpty() ? tr("Couleur libre (RGB)")
-                                                              : state.startThread);
+                                                               : state.startThread);
         endThreadLabel_->setText(state.endThread.isEmpty() ? tr("Couleur libre (RGB)")
-                                                          : state.endThread);
+                                                           : state.endThread);
         profilePreview_->setState(state);
         densityNote_->setText(state.complementary
                                   ? tr("Densités complémentaires : validez la couverture "
