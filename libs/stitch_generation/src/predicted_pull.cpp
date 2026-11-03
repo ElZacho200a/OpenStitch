@@ -154,6 +154,7 @@ void apply_predicted_pull(stitch::StitchSequence& sequence, const document::Proj
     if (predicted.empty()) {
         return; // aucun objet concerné : séquence strictement inchangée
     }
+    // total-order-ok: valeurs scalaires ou entiers : les egalites sont indiscernables
     std::sort(predicted.begin(), predicted.end());
 
     // Compensation à point fixe : la géométrie cousue compensée tire elle aussi le tissu, et

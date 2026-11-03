@@ -17,6 +17,19 @@ namespace {
 using detail::image_from_mat_rgba;
 using detail::mat_view_rgba;
 
+// HP-QA-012 : `cv::kmeans` lit `cv::theRNG()`, etat PAR FIL (TLS d'OpenCV 4.12). Fixe la graine
+// le temps de l'appel (determinisme des goldens) puis restaure l'etat du fil appelant.
+class ScopedThreadRng {
+public:
+    explicit ScopedThreadRng(int seed) : saved_(cv::theRNG()) { cv::setRNGSeed(seed); }
+    ~ScopedThreadRng() { cv::theRNG() = saved_; }
+    ScopedThreadRng(const ScopedThreadRng&) = delete;
+    ScopedThreadRng& operator=(const ScopedThreadRng&) = delete;
+
+private:
+    cv::RNG saved_;
+};
+
 Result<Image> apply_crop(const Image& in, const CropOp& op) {
     const cv::Rect wanted(op.x, op.y, op.width, op.height);
     const cv::Rect bounds(0, 0, in.width, in.height);
@@ -197,8 +210,10 @@ Result<Image> apply_quantize(const Image& in, const QuantizeOp& op) {
     cv::Mat labels;
     cv::Mat centers;
     cv::TermCriteria criteria(cv::TermCriteria::EPS + cv::TermCriteria::MAX_ITER, 20, 1.0);
-    cv::setRNGSeed(12345); // déterminisme (tests golden)
-    cv::kmeans(samples, k, labels, criteria, 3, cv::KMEANS_PP_CENTERS, centers);
+    {
+        const ScopedThreadRng rng(12345); // déterminisme (tests golden)
+        cv::kmeans(samples, k, labels, criteria, 3, cv::KMEANS_PP_CENTERS, centers);
+    }
 
     // Affecte chaque pixel au centre le plus proche.
     Image out = in;

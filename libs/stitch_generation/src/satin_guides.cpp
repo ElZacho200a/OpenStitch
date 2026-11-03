@@ -162,6 +162,7 @@ std::vector<SatinJunctionGuideRef> satin_junction_guides(const document::Project
     if (!sectionCount || sectionIndices.size() != *sectionCount) {
         return {};
     }
+    // total-order-ok: cle (section, objet, guide) totale
     std::sort(result.begin(), result.end(), [](const auto& lhs, const auto& rhs) {
         if (lhs.section_index != rhs.section_index) {
             return lhs.section_index < rhs.section_index;
@@ -219,6 +220,7 @@ std::vector<SatinJunctionGuideRef> satin_linked_guides(const document::Project& 
     if (!sectionCount || sectionIndices.size() != *sectionCount || result.size() < 2) {
         return {}; // un groupe lie relie au moins deux sections
     }
+    // total-order-ok: cle (section, objet, guide) totale
     std::sort(result.begin(), result.end(), [](const auto& lhs, const auto& rhs) {
         if (lhs.section_index != rhs.section_index) {
             return lhs.section_index < rhs.section_index;
