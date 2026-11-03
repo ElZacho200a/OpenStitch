@@ -239,13 +239,17 @@ void ColorBlendDialogTest::transitionCurveDefaultsToLinearAndFollowsProposals() 
     ColorBlendDialog dialog(backgroundRgb, foregroundRgb, false, false);
     auto* curve = dialog.findChild<QComboBox*>("combo_blendCurve");
     QVERIFY(curve != nullptr);
-    QCOMPARE(curve->count(), 3);
+    QCOMPARE(curve->count(), 5);
     QCOMPARE(dialog.curve(), document::DensityCurve::Linear);
 
     curve->setCurrentIndex(2);
     QCOMPARE(dialog.curve(), document::DensityCurve::Steep);
     curve->setCurrentIndex(1);
     QCOMPARE(dialog.curve(), document::DensityCurve::Smooth);
+    curve->setCurrentIndex(3);
+    QCOMPARE(dialog.curve(), document::DensityCurve::EaseIn);
+    curve->setCurrentIndex(4);
+    QCOMPARE(dialog.curve(), document::DensityCurve::EaseOut);
 
     // Une proposition (analyse, fondre deux zones) impose sa courbe.
     document::DensityGradient gradient{
