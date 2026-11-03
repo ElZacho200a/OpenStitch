@@ -17,6 +17,8 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
+#include <algorithm>
+
 namespace openstitch::desktop {
 
 namespace {
@@ -68,7 +70,7 @@ protected:
         p.setPen(QPen(palette().color(QPalette::Mid), 1.0));
         p.drawRoundedRect(area, 4, 4);
         const QRectF graph = area.adjusted(5, 5, -5, -5);
-        const double start = std::clamp(state_.zoneStartPercent / 100.0, 0.0, 1.0);
+        const double start = std::clamp(state_.zoneStartPercent / 100.0, 0.0, 0.999);
         const double end = std::clamp(state_.zoneEndPercent / 100.0, start + 0.001, 1.0);
         const auto blend = [&](double t) {
             const double v = std::clamp((t - start) / (end - start), 0.0, 1.0);
@@ -215,6 +217,13 @@ void GradientFillPanel::buildGradientControls() {
     previewButton_->setObjectName(QStringLiteral("button_gradientLivePreview"));
     previewButton_->setToolTip(tr("Ouvre l'aperçu calculé des deux couches."));
     box->addWidget(previewButton_);
+    densityButton_ = new QPushButton(tr("Voir la carte de densité…"), gradientBox_);
+    densityButton_->setObjectName(QStringLiteral("button_gradientDensityMap"));
+    densityButton_->setToolTip(tr("Affiche la densité des pénétrations sur le canevas "
+                                  "et ses zones de vigilance dans Analyse."));
+    box->addWidget(densityButton_);
+    connect(densityButton_, &QPushButton::clicked, this,
+            &GradientFillPanel::densityRequested);
     connect(previewButton_, &QPushButton::clicked, this,
             &GradientFillPanel::assistantRequested);
 
