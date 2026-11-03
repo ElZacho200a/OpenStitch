@@ -68,6 +68,25 @@ std::size_t count_rgb(const AutoResult& r, std::array<std::uint8_t, 3> rgb) {
         }));
 }
 
+// Force le nombre de fils de `parallel_for` le temps d'un bloc (OPENSTITCH_THREADS).
+struct ThreadCountOverride {
+    explicit ThreadCountOverride(const char* value) {
+#ifdef _WIN32
+        _putenv_s("OPENSTITCH_THREADS", value);
+#else
+        setenv("OPENSTITCH_THREADS", value, 1);
+#endif
+    }
+    ~ThreadCountOverride() {
+#ifdef _WIN32
+        _putenv_s("OPENSTITCH_THREADS", "");
+#else
+        unsetenv("OPENSTITCH_THREADS");
+#endif
+    }
+    ThreadCountOverride(const ThreadCountOverride&) = delete;
+    ThreadCountOverride& operator=(const ThreadCountOverride&) = delete;
+};
 } // namespace
 
 TEST_CASE("dark_thin_mask : le trait fin est trouve, le bloc epais non") {
@@ -496,4 +515,32 @@ TEST_CASE("couche de traits : un anneau sombre devient un auto-satin, un disque 
     REQUIRE(second.has_value());
     CHECK(second->embroideries.size() == result->embroideries.size());
     CHECK(second->vectors.back().paths == result->vectors.back().paths);
+}
+
+TEST_CASE("couche de traits : meme resultat avec un seul fil et avec plusieurs (HP-PERF-025)") {
+    const auto img = scene();
+    const auto seg = segmentation::segment(img, {.max_colors = 4, .min_region_px = 4});
+    REQUIRE(seg.has_value());
+    LineLayerOptions lines;
+    lines.enabled = true;
+    ContourOptions co;
+    co.technique = ContourTechnique::Running;
+    const auto run = [&](const char* threads, LineLayerMetrics& metrics) {
+        const ThreadCountOverride guard(threads);
+        IdGenerator<ObjectId> ids;
+        return auto_digitize_with_lines(*seg, img, ids, options(), lines, co, &metrics);
+    };
+    LineLayerMetrics m1;
+    LineLayerMetrics m8;
+    const auto one = run("1", m1);
+    const auto many = run("8", m8);
+    REQUIRE(one.has_value());
+    REQUIRE(many.has_value());
+    CHECK(m1.line_pixels == m8.line_pixels);
+    CHECK(m1.line_objects == m8.line_objects);
+    REQUIRE(one->embroideries.size() == many->embroideries.size());
+    for (std::size_t i = 0; i < one->embroideries.size(); ++i) {
+        CHECK(one->embroideries[i].rgb == many->embroideries[i].rgb);
+        CHECK(one->embroideries[i].params.index() == many->embroideries[i].params.index());
+    }
 }

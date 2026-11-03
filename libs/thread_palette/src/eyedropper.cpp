@@ -24,16 +24,18 @@ Result<std::array<std::uint8_t, 3>> average_rect(const RgbImageView& image, long
     if (x1 <= x0 || y1 <= y0) {
         return fail(ErrorCategory::UserInput, "Zone d'échantillonnage vide ou hors de l'image");
     }
+    // Le rectangle est borné à l'image : le coût est au plus celui de l'image (HP-PERF-028).
+    // Une ligne à la fois, par pointeur, sans recalcul d'indice par pixel.
     std::uint64_t sum[3] = {0, 0, 0};
     for (long y = y0; y < y1; ++y) {
-        for (long x = x0; x < x1; ++x) {
-            const std::size_t i =
-                (static_cast<std::size_t>(y) * static_cast<std::size_t>(image.width) +
-                 static_cast<std::size_t>(x)) *
-                3U;
-            sum[0] += image.data[i];
-            sum[1] += image.data[i + 1];
-            sum[2] += image.data[i + 2];
+        const std::uint8_t* p = image.data.data() + (static_cast<std::size_t>(y) *
+                                                         static_cast<std::size_t>(image.width) +
+                                                     static_cast<std::size_t>(x0)) *
+                                                        3U;
+        for (long x = x0; x < x1; ++x, p += 3) {
+            sum[0] += p[0];
+            sum[1] += p[1];
+            sum[2] += p[2];
         }
     }
     const std::uint64_t count =

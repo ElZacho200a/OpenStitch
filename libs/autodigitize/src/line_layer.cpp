@@ -6,6 +6,7 @@
 #include <cmath>
 #include <numbers>
 
+#include "openstitch/core/parallel.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "ring_detect.hpp"
 
@@ -48,8 +49,10 @@ std::vector<char> separation_mask(const segmentation::Segmentation& seg,
                 0x1000000u | (std::uint32_t{c[0]} << 16) | (std::uint32_t{c[1]} << 8) | c[2];
         }
     }
+    // HP-PERF-025 : une tâche par ligne (lit seg/mask/colour constants, écrit ses seuls octets).
     std::vector<char> sep(mask.size(), 0);
-    for (int y = 0; y < h; ++y) {
+    parallel_for(static_cast<std::size_t>(h), [&](std::size_t row) {
+        const int y = static_cast<int>(row);
         for (int x = 0; x < w; ++x) {
             const std::size_t idx = static_cast<std::size_t>(y) * w + x;
             if (mask[idx] == 0) {
@@ -83,7 +86,7 @@ std::vector<char> separation_mask(const segmentation::Segmentation& seg,
             }
             sep[idx] = found ? 1 : 0;
         }
-    }
+    });
     return sep;
 }
 
@@ -148,7 +151,8 @@ std::vector<char> close_within(const std::vector<char>& m, const std::vector<cha
                                int h, int r) {
     const auto pass = [&](const std::vector<char>& in, bool dilate) {
         std::vector<char> out(in.size(), dilate ? 0 : 1);
-        for (int y = 0; y < h; ++y) {
+        parallel_for(static_cast<std::size_t>(h), [&](std::size_t row) {
+            const int y = static_cast<int>(row);
             for (int x = 0; x < w; ++x) {
                 bool any = false;
                 bool all = true;
@@ -164,7 +168,7 @@ std::vector<char> close_within(const std::vector<char>& m, const std::vector<cha
                 }
                 out[static_cast<std::size_t>(y) * w + x] = (dilate ? any : all) ? 1 : 0;
             }
-        }
+        });
         return out;
     };
     std::vector<char> closed = pass(pass(m, true), false);
