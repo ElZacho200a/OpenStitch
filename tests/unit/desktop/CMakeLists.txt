@@ -51,6 +51,7 @@ openstitch_add_qt_test(test_segmentation_colors_panel test_segmentation_colors_p
 openstitch_add_qt_test(test_segmentation_dialog test_segmentation_dialog.cpp)
 openstitch_add_qt_test(test_main_window test_main_window.cpp)
 openstitch_add_qt_test(test_color_blend test_color_blend.cpp)
+openstitch_add_qt_test(test_gradient_fill test_gradient_fill.cpp)
 openstitch_add_qt_test(test_calques test_calques.cpp)
 openstitch_add_qt_test(test_live_bridge_ui test_live_bridge_ui.cpp)
 openstitch_add_qt_test(test_live_server test_live_server.cpp)

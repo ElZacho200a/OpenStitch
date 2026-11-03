@@ -29,6 +29,7 @@ add_library(openstitch_project_ops
     src/color_registration.cpp
     src/sweep.cpp
     src/debug_dump.cpp
+    src/gradient_fill.cpp
     src/live_bridge.cpp
     src/settings_profile.cpp
 )

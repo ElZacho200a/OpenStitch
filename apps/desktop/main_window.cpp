@@ -649,7 +649,7 @@ MainWindow::MainWindow() {
     }
     // Les bascules des modes d'édition changent le contexte d'interaction du canevas.
     for (QAction* act : {stitchEditModeAct_, satinEditModeAct_, satinGuideModeAct_,
-                         railEditModeAct_, directionGuideModeAct_}) {
+                         railEditModeAct_, directionGuideModeAct_, gradientEditModeAct_}) {
         if (act != nullptr) {
             connect(act, &QAction::toggled, this, [this] {
                 updateInteractionContext();
@@ -1399,7 +1399,7 @@ void MainWindow::resetDocumentState() {
     // displayImage() y serait prématuré ; le refreshImage() de l'appelant s'en
     // charge), puis cibles relâchées.
     for (QAction* mode : {stitchEditModeAct_, satinEditModeAct_, satinGuideModeAct_,
-                          railEditModeAct_, directionGuideModeAct_}) {
+                          railEditModeAct_, directionGuideModeAct_, gradientEditModeAct_}) {
         if (mode != nullptr && mode->isChecked()) {
             QSignalBlocker block(mode);
             mode->setChecked(false);
@@ -2106,6 +2106,9 @@ void MainWindow::onStitchEditModeToggled(bool on) {
         }
         if (directionGuideModeAct_ != nullptr && directionGuideModeAct_->isChecked()) {
             directionGuideModeAct_->setChecked(false);
+        }
+        if (gradientEditModeAct_ != nullptr && gradientEditModeAct_->isChecked()) {
+            gradientEditModeAct_->setChecked(false);
         }
         // Modes exclusifs : le mode rails (et le bouton unifié qui l'agrège) cède la place.
         // Décochés SANS passer par leur slot : onSatinRailEditModeToggled(false) relancerait
@@ -4306,6 +4309,7 @@ void MainWindow::renderBase(const image::Image& img) {
 
     // Remplissage directionnel : champ, guides et ruptures (mode guides).
     renderDirectionGuides();
+    renderGradientHandles();
 
     // Guides satin paramétriques. Chaque extrémité est indépendante mais reste
     // contrainte à son rail ; la validation monotone est partagée avec les
@@ -6471,7 +6475,7 @@ void MainWindow::deleteVectorObject(ObjectId id) {
 void MainWindow::deleteEmbroideryObjectOnly(ObjectId id) {
     const auto* obj = project_.findEmbroidery(id);
     const QString name = obj != nullptr ? QString::fromStdString(obj->name) : tr("objet");
-    undoStack_.execute(std::make_unique<commands::RemoveEmbroideryObjectCommand>(id), project_);
+    undoStack_.execute(removeEmbroideryCommand(id), project_);
     editSelection([id](Selection& sel) {
         if (sel.embroidery == id) {
             sel.embroidery.reset();
@@ -7170,7 +7174,8 @@ Context MainWindow::interactionContext() const {
         (satinEditModeAct_ != nullptr && satinEditModeAct_->isChecked()) ||
         (satinGuideModeAct_ != nullptr && satinGuideModeAct_->isChecked()) ||
         (railEditModeAct_ != nullptr && railEditModeAct_->isChecked()) ||
-        (directionGuideModeAct_ != nullptr && directionGuideModeAct_->isChecked());
+        (directionGuideModeAct_ != nullptr && directionGuideModeAct_->isChecked()) ||
+        (gradientEditModeAct_ != nullptr && gradientEditModeAct_->isChecked());
     const bool stitchEdit = stitchEditModeAct_ != nullptr && stitchEditModeAct_->isChecked();
     return InteractionMap::contextFor(Tool::Select, nodeEdit, stitchEdit);
 }
@@ -7292,15 +7297,18 @@ void MainWindow::updateContextToolbar() {
         // Etat retouche (Lot 8.2) et mode d'edition inclus dans la signature :
         // sans eux, la barre ne se reconstruirait pas quand seul l'un des deux
         // change (meme objet/type toujours selectionne).
-        sig = QStringLiteral("E%1t%2s%3m%4g%5i%6r%7")
-                  .arg(emb->id.value)
-                  .arg(stitchTypeIndex(*emb))
-                  .arg(static_cast<int>(editStateOf(emb->id)))
-                  .arg(stitchEditModeAct_->isChecked() ? 1 : 0)
-                  .arg(satinGuideModeAct_->isChecked() ? 1 : 0)
-                  .arg(selectedSatinGuide_ ? static_cast<qlonglong>(*selectedSatinGuide_) : -1)
-                  .arg(railEditModeAct_->isChecked() ? 1 : 0) +
-              QStringLiteral("d%1").arg(directionGuideModeAct_->isChecked() ? 1 : 0);
+        sig =
+            QStringLiteral("E%1t%2s%3m%4g%5i%6r%7")
+                .arg(emb->id.value)
+                .arg(stitchTypeIndex(*emb))
+                .arg(static_cast<int>(editStateOf(emb->id)))
+                .arg(stitchEditModeAct_->isChecked() ? 1 : 0)
+                .arg(satinGuideModeAct_->isChecked() ? 1 : 0)
+                .arg(selectedSatinGuide_ ? static_cast<qlonglong>(*selectedSatinGuide_) : -1)
+                .arg(railEditModeAct_->isChecked() ? 1 : 0) +
+            QStringLiteral("d%1g%2")
+                .arg(directionGuideModeAct_->isChecked() ? 1 : 0)
+                .arg(gradientEditModeAct_ != nullptr && gradientEditModeAct_->isChecked() ? 1 : 0);
     } else if (hasMulti) {
         sig = QStringLiteral("M%1").arg(multiSelection_.size());
     } else if (hasVec) {
@@ -7393,11 +7401,13 @@ void MainWindow::updateContextToolbar() {
             connect(rot, &QAction::triggered, this, &MainWindow::changeFillAngle);
             contextToolbar_->addAction(autoDirectionGuideAct_);
             contextToolbar_->addAction(twoColorBlendAct_);
+            contextToolbar_->addAction(gradientEditModeAct_);
         }
         if (emb->is_directional()) {
             contextToolbar_->addSeparator();
             contextToolbar_->addAction(autoDirectionGuideAct_);
             contextToolbar_->addAction(twoColorBlendAct_);
+            contextToolbar_->addAction(gradientEditModeAct_);
             contextToolbar_->addAction(directionGuideModeAct_);
             if (directionGuideModeAct_->isChecked()) {
                 contextToolbar_->addAction(drawDirectionGuideAct_);
@@ -8173,7 +8183,7 @@ void MainWindow::buildDocumentPanel() {
                 auto composite = std::make_unique<commands::CompositeCommand>(
                     tr("Supprimer %1 objets").arg(total).toStdString());
                 for (const ObjectId id : removeEmbroideries) {
-                    composite->add(std::make_unique<commands::RemoveEmbroideryObjectCommand>(id));
+                    composite->add(removeEmbroideryCommand(id)); // un dégradé part en entier
                 }
                 for (std::size_t i = 0; i < removeVectors.size(); ++i) {
                     if (std::find(removeVectors.begin(),
@@ -8435,6 +8445,7 @@ void MainWindow::updateInspector() {
     propertiesPanel_->setFillLayers(layers, emb ? std::optional<ObjectId>{emb->id} : std::nullopt);
     propertiesPanel_->setBlendActions(twoColorBlendAct_, blendZonesAct_, !layers.empty(),
                                       hasMultiSelection());
+    updateGradientPanel();
 
     int kind = -1;
     std::uint64_t id = 0;
@@ -11235,8 +11246,7 @@ void MainWindow::deleteSelection() {
             undoStack_.execute(std::make_unique<commands::RemoveVectorObjectCommand>(source->id),
                                project_);
         } else {
-            undoStack_.execute(std::make_unique<commands::RemoveEmbroideryObjectCommand>(emb->id),
-                               project_);
+            undoStack_.execute(removeEmbroideryCommand(emb->id), project_);
         }
         setSelection({});
         refreshImage();
@@ -11500,6 +11510,7 @@ void MainWindow::updateActions() {
                                      selectedSatin->rungs.size() > 2 && !structuralJunctionGuide);
 
     updateDirectionGuideActions();
+    updateGradientActions();
 
     document::EmbroideryObject* railEditEmb = resolveSelectedEmbroidery();
     const bool railEditContext = railEditEmb != nullptr && railEditEmb->is_satin();

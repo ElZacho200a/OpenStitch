@@ -403,6 +403,79 @@ inversion, ordre, choix de couche, couleur, conversion, undo/redo et relecture
 cas mixte fond + sections satin. Aucun champ persistant ni algorithme de
 génération n'a été ajouté pour cette intégration UI.
 
+## Remplissage en dégradé (Uni / Dégradé)
+
+Pour l'utilisateur, un dégradé est **un seul remplissage** d'une forme, choisi
+dans **Propriétés ▸ Remplissage : Uni / Dégradé** ; pour la machine, ce sont les
+deux couches du fondu décrit plus haut (fond + dessus). Aucun second moteur :
+tout passe par `make_color_blend_layers`.
+
+**Représentation persistante : aucune donnée nouvelle.** Le couple est déjà
+défini par `ColorBlendLink` (liens réciproques, rôle fond/dessus, même
+`source_vector`, `.osp` inchangé). La description logique
+(`project_ops::GradientFillSpec` : deux couleurs et fils, `DensityGradient` de
+la couche de dessus — axe, écarts, courbe —, profil complémentaire ou fond
+uniforme) est **relue** des deux couches par `describe_gradient_fill` ; les
+anciens couples, créés par le dialogue avant cette version, sont donc
+rééditables tels quels. Une métadonnée enregistrée à part aurait pu diverger
+des couches ; relire garantit la cohérence. Un lien invalide ou orphelin ne se
+résout pas (`find_color_blend`) : le remplissage redevient ordinaire, aucun
+autre objet n'est touché.
+
+La zone de transition n'est pas stockée non plus : c'est la position de `from`
+et `to` le long de l'axe, en fraction de l'étendue de la forme mesurée sur cet
+axe (`gradient_zone` / `gradient_with_zone`). Elle suit donc déplacements,
+rotations et mises à l'échelle (le gradient est transformé avec la forme).
+
+Service Qt-free `libs/project_ops/gradient_fill.hpp` (aucune logique de dégradé
+dans les widgets) :
+
+| Fonction | Rôle |
+|---|---|
+| `describe_gradient_fill` | relit le dégradé depuis l'une ou l'autre couche |
+| `default_gradient_fill` | valeurs par défaut : 4 → 0,4 mm, axe horizontal, deux couleurs distinctes, profil complémentaire |
+| `gradient_incompatibility` | motif affiché dans l'inspecteur (satin/contour, plusieurs remplissages sur la forme…) |
+| `make_create_gradient_fill_command` | Uni → Dégradé en une commande (fond, dessus inséré juste après, lien, ordre) |
+| `make_edit_gradient_fill_command` | réédition globale : mêmes ids, même rang de couture, **aucune** couche créée |
+| `make_remove_gradient_fill_command` | retour à l'uni (couleur du fond), une annulation |
+| `drag_gradient_handle` | calcul pur des poignées Début, Fin, Axe entier, Orientation |
+
+Les points d'entrée existants convergent : le dialogue « Fondu de couleurs à deux
+fils… » et « Fondre deux zones » créent via `make_create_gradient_fill_command`
+(avec, pour deux zones, l'union placée avant dans la même commande composite) ;
+le dialogue en mode édition (`setEditing`, bouton *Assistant* de l'inspecteur,
+`MainWindow::reeditColorBlend`) rebâtit le **même** couple. L'aperçu des points
+du dialogue et la validation utilisent la même construction
+(`blendGradientFor` + `make_color_blend_layers`) ; un test vérifie que la
+commande applique exactement les paramètres construits par le moteur.
+
+**Cohérence du couple** : sélectionner l'une des couches affiche le dégradé
+entier ; supprimer une couche supprime le couple (`removeEmbroideryCommand`, une
+annulation) ; copier/coller et dupliquer remappent les liens et laissent
+l'original intact ; déplacer, tourner, mettre à l'échelle transforment `from`/`to`
+(déjà le cas). **Limite** : une mise à l'échelle non uniforme déforme l'axe et le
+guide perpendiculaire séparément ; ouvrir l'assistant ou toucher une poignée
+recalcule le guide.
+
+**Poignées du canevas** (`Broderie ▸ Poignées du dégradé`, bouton de l'inspecteur,
+barre contextuelle) : contexte d'édition explicite, un mode à la fois avec les
+autres modes d'édition. *Début* et *Fin* glissent le long de l'axe (Maj : les deux
+bords bougent symétriquement, ce qui règle l'étendue), *Axe entier* translate
+l'axe en gardant l'étendue et sans sortir de la forme, *Orientation* tourne l'axe
+autour de son centre (les rangées restent perpendiculaires à l'axe : l'axe du
+dégradé n'est pas l'angle des rangées d'un tatami). Pendant le glisser seule
+la ligne d'axe est redessinée ; au relâchement UNE commande est exécutée (Échap
+annule le geste) et les points sont régénérés par le chemin habituel
+(`effective_sequence`). L'aperçu des points n'est **pas** une simulation
+fidèle du tissu.
+
+Tests : `tests/unit/project_ops/test_gradient_fill.cpp` (cœur : aller-retour,
+réédition sans nouvelle couche, zone, poignées, déplacement, collage, `.osp`,
+lien orphelin, déterminisme) et `tests/unit/desktop/test_gradient_fill.cpp` (bascule
+Uni ↔ Dégradé avec undo/redo, réédition en un pas, inversion, zone invalide,
+glissés réels souris sur les poignées, suppression du couple, capture des deux
+thèmes).
+
 ## Interface
 
 - **Conversion** : bouton « Convertir en remplissage directionnel » de

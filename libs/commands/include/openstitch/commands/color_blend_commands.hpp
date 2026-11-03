@@ -57,4 +57,40 @@ private:
     bool applied_{false};
 };
 
+// Délie les deux couches d'un dégradé (retour à un remplissage uni) sans toucher à
+// leurs paramètres. Undo restaure exactement les liens précédents.
+class ClearColorBlendLinkCommand final : public ICommand {
+public:
+    ClearColorBlendLinkCommand(ObjectId first, ObjectId second) : first_(first), second_(second) {}
+
+    void apply(document::Project& project) override {
+        previousFirst_ = previousSecond_ = std::nullopt;
+        if (auto* first = project.findEmbroidery(first_)) {
+            previousFirst_ = first->color_blend;
+            first->color_blend.reset();
+        }
+        if (auto* second = project.findEmbroidery(second_)) {
+            previousSecond_ = second->color_blend;
+            second->color_blend.reset();
+        }
+    }
+
+    void revert(document::Project& project) override {
+        if (auto* first = project.findEmbroidery(first_)) {
+            first->color_blend = previousFirst_;
+        }
+        if (auto* second = project.findEmbroidery(second_)) {
+            second->color_blend = previousSecond_;
+        }
+    }
+
+    [[nodiscard]] std::string name() const override { return "Délier les couches du dégradé"; }
+
+private:
+    ObjectId first_;
+    ObjectId second_;
+    std::optional<document::ColorBlendLink> previousFirst_;
+    std::optional<document::ColorBlendLink> previousSecond_;
+};
+
 } // namespace openstitch::commands

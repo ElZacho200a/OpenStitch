@@ -21,6 +21,9 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_contour.cpp
     main_window_color_blend.cpp
     color_blend_dialog.cpp
+    gradient_fill_panel.cpp
+    gradient_fill_panel.hpp
+    main_window_gradient.cpp
     color_blend_dialog.hpp
     busy_indicator.hpp
     main_window_engine.cpp

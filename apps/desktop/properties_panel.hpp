@@ -13,6 +13,7 @@
 #include "openstitch/document/project.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 
+#include "gradient_fill_panel.hpp"
 #include "wheel_guard.hpp"
 
 class QCheckBox;
@@ -137,6 +138,8 @@ public:
     // Contexte transitoire des couches d'une même forme, non persistant.
     void setFillLayers(const QList<FillLayer>& layers, std::optional<ObjectId> selected);
     void setBlendActions(QAction* single, QAction* zones, bool singleContext, bool zonesContext);
+    // Section « Remplissage : Uni / Dégradé » (relue du document par MainWindow).
+    [[nodiscard]] GradientFillPanel* gradientPanel() const { return gradientPanel_; }
 
 signals:
     // HP-UX-028 : un des quatre boutons « Type de points » (0 contour, 1 tatami, 2 satin,
@@ -253,6 +256,7 @@ private:
     QPushButton* layerRename_{nullptr};
     void updateLayerTools(); // activation Monter/Descendre, libellé Masquer/Afficher
     QPushButton* fillColor_{nullptr};
+    GradientFillPanel* gradientPanel_{nullptr};
     QToolButton* blendSingle_{nullptr};
     QToolButton* blendZones_{nullptr};
     QWidget* body_{nullptr};

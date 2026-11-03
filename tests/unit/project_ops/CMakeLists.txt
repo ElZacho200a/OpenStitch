@@ -12,11 +12,12 @@ add_executable(test_project_ops
     test_render.cpp
     test_analysis.cpp
     test_auto_satin_service.cpp
+    test_gradient_fill.cpp
     test_live_bridge.cpp
     test_settings_profile.cpp
 )
 target_link_libraries(test_project_ops
-    PRIVATE openstitch::project_ops openstitch::project_io openstitch::stitch_generation
+    PRIVATE openstitch::project_ops openstitch::project_io openstitch::commands openstitch::stitch_generation
             openstitch::autodigitize openstitch::segmentation openstitch::image
             Catch2::Catch2WithMain openstitch::warnings)
 target_compile_definitions(test_project_ops

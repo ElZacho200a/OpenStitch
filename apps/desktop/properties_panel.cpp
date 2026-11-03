@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "properties_panel.hpp"
 
+#include "gradient_fill_panel.hpp"
+
 #include "app_theme.hpp"
 #include "auto_satin_strategy_ui.hpp"
 #include "stitch_type_catalog.hpp"
@@ -552,6 +554,9 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
     root_->addWidget(blendZones_);
     blendSingle_->hide();
     blendZones_->hide();
+    gradientPanel_ = new GradientFillPanel(this);
+    root_->addWidget(gradientPanel_);
+    gradientPanel_->hide();
 
     auto* line = new QFrame(this);
     line->setFrameShape(QFrame::HLine);

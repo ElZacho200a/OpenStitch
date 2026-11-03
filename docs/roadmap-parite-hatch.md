@@ -934,12 +934,21 @@ plus.
 - À faire : spirale continue depuis un centre, sans coupe.
 - Modules : `libs/stitch_generation`.
 
-### HP-STI-010 — Remplissage en dégradé (densité variable) [P1] — ◐ Partiel (directionnel)
+### HP-STI-010 — Remplissage en dégradé (densité variable) [P1] — ◐ Partiel (directionnel, dégradé logique)
 - Fait : `DirectionalFillParams::density_gradient` (axe + écart de début/fin,
   interpolation linéaire, borné à [0,1 ; 4] mm), tracé Jobard & Lefer à
   écart local, `.osp`, déplacement/échelle, inspecteur (case, écart de fin,
   angle). Reste : tatami à espacement variable, satin, plusieurs points de
-  contrôle, poignée d'axe sur le canevas.
+  contrôle.
+- 2026-11-03 : **le dégradé est un remplissage ordinaire** : choix
+  **Uni / Dégradé** dans Propriétés (valeurs par défaut utilisables, sans image),
+  deux couleurs + inversion, début/fin de transition et courbe, section Avancé
+  (écarts, profil), **poignées sur le canevas** (début, fin, axe entier,
+  orientation ; un glissement = une annulation, Maj symétrique, Échap annule).
+  Aucune donnée persistante nouvelle : le dégradé est relu des deux couches liées
+  (`project_ops::gradient_fill`). Reste : dégradé radial/multicolore, satin à
+  densité variable, aperçu des points pendant le glisser (seul l'axe se redessine),
+  essai réel sur machine et tissu (non fait).
 - Source de la méthode : Liu et al., *Directionality-Aware Design of
   Embroidery Patterns*, CGF 42(2), 2023 (DOI 10.1111/cgf.14770), reprise de
   l'idée sans code tiers.
@@ -953,7 +962,7 @@ plus.
   schématique, couleurs manuelles sans raster et proposition depuis l'image,
   angle/écarts/inversion ; dessus inséré après le fond ; choix et édition des
   couches dans Propriétés. Tests des gestes, conversion et round-trip `.osp`.
-  Le couple à dégradés complémentaires liés reste à faire.
+  Le couple à dégradés complémentaires liés est livré (voir 2026-11-03).
 - 2026-10-17 : **zone de transition réglable** (début / fin en % de l'axe, aplats
   aux extrémités ; `narrow_gradient_zone`, dialogue du fondu ; l'inspecteur
   conserve l'axe quand seul l'écart de fin change). Aucun changement du `.osp`.
@@ -975,8 +984,16 @@ plus.
   à deux fils** (fond + remplissage de dessus, fils du nuancier du panneau Fils,
   une seule annulation). Reste : liaison entre les deux objets, dégradés non
   linéaires, réglage de la largeur de fil.
+- 2026-11-03 : **un seul remplissage logique** (`ColorBlendLink` + description
+  relue, `docs/source/directional-fill.md` § *Remplissage en dégradé*) :
+  « Fondu de couleurs à deux fils », « Fondre deux zones » et la proposition
+  depuis l'image créent via `make_create_gradient_fill_command` ; la réédition
+  globale (couleurs, courbe, zone, écarts, profil) modifie les deux couches en une
+  annulation sans créer de couche ni changer l'ordre ; supprimer une couche supprime
+  le couple ; copier/coller, déplacer, `.osp` testés. Reste : détection automatique
+  des dégradés dans la numérisation (hors périmètre), réglage de la largeur de fil.
 - Hatch : deux couches de dégradés inverses qui se mélangent.
-- À faire : couple d'objets liés à dégradés complémentaires générés ensemble.
+- À faire : détection automatique dans la numérisation ; validation sur machine.
 - Dépend de : HP-STI-010.
 
 ### HP-STI-012 — Point de croix [P2] — ◐ Partiel (2026-10-31)
@@ -4663,3 +4680,4 @@ ouvrant le lot (§0.1).
 | 2026-11-01 | Claude (déformation tissu) | **Prédiction de la déformation du tissu** (HP-FAB-004) : solveur FEM 2D orthotrope à bord fixe, dipôles de tension, raidissement par la densité, indice de plissement ; CLI `project fabric-deformation`, action Analyse du bureau. Coefficients empiriques, non calibrés, plis non simulés. |
 | 2026-11-01 | Claude (décalage couleurs) | **Décalage entre couleurs et contre-compensation** (HP-FAB-004) : solveur de la feuille rejoué par bloc de couleur (états successifs), écart par bloc et carte du décalage entre couleurs voisines, point fixe de compensation, DST compensé (CLI `project fabric-registration`, actions Analyse du bureau). Non calibré. |
 | 2026-11-03 | Claude (rétro-ingénierie EMB/DST Hatch) | **HP-FAB-001** : constat sur la compensation de tirage de Hatch (table par tissu et type d'objet, mm par côté, cuite dans les points), DST Hatch recentré sur l'origine, `DesignDocument` de l'EMB illisible ; table de compensation et mesures par DST de test restant à faire. Documentation seule. |
+| 2026-11-03 | Claude (dégradés) | HP-STI-010 et HP-STI-011 ◐ : le dégradé devient un remplissage logique rééditable (Uni/Dégradé, poignées canevas, réédition globale, couple supprimé/dupliqué ensemble) ; non validé sur machine ni tissu. |

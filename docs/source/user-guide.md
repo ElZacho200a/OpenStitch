@@ -605,9 +605,25 @@ La variable d'environnement `OPENSTITCH_THREADS=1` force le calcul séquentiel (
 
 ## Menu Broderie
 
+- **Remplissage Uni / Dégradé** (Propriétés) : sélectionnez une forme remplie
+  (tatami ou directionnel), choisissez **Dégradé**, puis réglez les deux couleurs
+  (boutons de couleur, **⇄ Inverser**), le **début** et la **fin** de la
+  transition (en % de la forme) et la **courbe** (linéaire, douce, marquée).
+  Sans image ni dialogue. Cochez **Poignées sur le canevas** (ou **Broderie ▸
+  Poignées du dégradé**) pour déplacer le début et la fin, tourner l'axe ou le
+  déplacer ; Maj garde début et fin symétriques, Échap annule un glissement, un
+  glissement = une annulation. Le dégradé est **un seul remplissage** : sélectionner
+  l'une de ses deux couches suffit, déplacer, copier ou supprimer traite l'ensemble.
+  La section **Avancé** donne les écarts, le profil (densités complémentaires ou
+  fond uniforme) et l'assistant avec aperçu des points (non fidèle au tissu).
+  **Uni** revient à un remplissage ordinaire (couleur de départ conservée). Si la
+  forme ne peut pas devenir un dégradé (satin, contour, plusieurs remplissages),
+  l'inspecteur explique pourquoi. L'ordre réel de couture reste visible dans
+  *Couches de couture*.
 - **Fondu de couleurs à deux fils…** : sélectionnez un remplissage tatami ou
   directionnel unique, puis choisissez deux couleurs, l'angle et les écarts
-  début/fin dans un dialogue avec aperçu. Avec ou sans image ; l'analyse raster
+  début/fin dans un dialogue avec aperçu (même résultat que le choix Dégradé,
+  rééditable par l'inspecteur). Avec ou sans image ; l'analyse raster
   est facultative. Valider crée fond puis dessus, annulables en une fois.
   **Propriétés ▸ Couches de couture** permet ensuite de choisir et d'éditer
   chaque couche séparément. Voir [Remplissage directionnel](directional-fill.md).
