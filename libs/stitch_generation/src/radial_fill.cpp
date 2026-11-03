@@ -8,6 +8,7 @@
 #include <numbers>
 
 #include "fill_geometry.hpp"
+#include "pull_grow.hpp"
 
 namespace openstitch::stitch_generation {
 
@@ -38,7 +39,10 @@ std::vector<FillStitch> fill_radial(const geometry::PathSet& region,
     }
     const std::uint32_t total = std::uint32_t{1} << m;
 
-    FillEmitter emit(region, maxLen, minLen);
+    // HP-STI-033 : chaque rayon est prolonge de pull au-dela du contour (dans l'axe du rayon).
+    const double pull = double(clamp_pull(params.pull_compensation));
+    const geometry::PathSet linkRegion = grown_for_pull(region, params.pull_compensation);
+    FillEmitter emit(linkRegion, maxLen, minLen);
     bool outward = true;
     for (std::uint32_t i = 0; i < total; ++i) {
         // Niveau du rayon : 0 pour i = 0, sinon m - ctz(i) (les rayons de niveau c sont au nombre
@@ -57,8 +61,10 @@ std::vector<FillStitch> fill_radial(const geometry::PathSet& region,
         // Distances le long du rayon, bornées au rayon de départ du niveau.
         std::vector<std::pair<double, double>> runs;
         for (const auto& [t0, t1] : spans) {
-            const double s0 = std::max(t0 * frame.radius, startRadius);
-            const double s1 = t1 * frame.radius;
+            // Pas de prolongement du cote du centre (t0 = 0) ni au rayon de depart du niveau.
+            const double rawS0 = t0 * frame.radius - (t0 > 0.0 ? pull : 0.0);
+            const double s0 = std::max(rawS0, startRadius);
+            const double s1 = t1 * frame.radius + (t1 < 1.0 ? pull : 0.0);
             if (s1 - s0 >= kMinSegmentUm) {
                 runs.emplace_back(s0, s1);
             }

@@ -108,3 +108,43 @@ TEST_CASE("radial spiral crosshatch: missing keys fall back to the model default
     CHECK(std::get<document::CrosshatchFillParams>(from_json_type(
               "crosshatchFill", "os_crosshatch_def.osp")) == document::CrosshatchFillParams{});
 }
+
+TEST_CASE("pull compensation HP-STI-033: osp round-trip of the five fills and legacy default") {
+    document::RadialFillParams radial;
+    radial.pull_compensation = Micrometers{300};
+    radial.pull_mode = document::PullMode::Auto;
+    CHECK(std::get<document::RadialFillParams>(round_trip(radial, "os_pull_radial.osp")) == radial);
+
+    document::SpiralFillParams spiral;
+    spiral.pull_compensation = Micrometers{450};
+    CHECK(std::get<document::SpiralFillParams>(round_trip(spiral, "os_pull_spiral.osp")) == spiral);
+
+    document::ContourFillParams contour;
+    contour.pull_compensation = Micrometers{200};
+    CHECK(std::get<document::ContourFillParams>(round_trip(contour, "os_pull_contour.osp")) ==
+          contour);
+
+    document::MotifFillParams motif;
+    motif.pull_compensation = Micrometers{100};
+    motif.pull_mode = document::PullMode::Auto;
+    CHECK(std::get<document::MotifFillParams>(round_trip(motif, "os_pull_motif.osp")) == motif);
+
+    document::CrosshatchFillParams hatch;
+    hatch.pull_compensation = Micrometers{3'000};
+    CHECK(std::get<document::CrosshatchFillParams>(round_trip(hatch, "os_pull_hatch.osp")) ==
+          hatch);
+
+    // Fichier anterieur : cles absentes -> defauts (0, Manual).
+    for (const char* type :
+         {"radialFill", "spiralFill", "contourFill", "motifFill", "crosshatchFill"}) {
+        const auto p = from_json_type(type, "os_pull_legacy.osp");
+        std::visit(
+            [](const auto& v) {
+                if constexpr (requires { v.pull_compensation; }) {
+                    CHECK(v.pull_compensation.value == 0);
+                    CHECK(v.pull_mode == document::PullMode::Manual);
+                }
+            },
+            p);
+    }
+}

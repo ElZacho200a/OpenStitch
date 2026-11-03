@@ -66,4 +66,39 @@ resolve_pull_compensation(const document::DirectionalFillParams& params,
     return out;
 }
 
+namespace {
+
+template <class P> P resolve_simple_pull(const P& params, const geometry::PathSet& region) {
+    if (params.pull_mode != document::PullMode::Auto) {
+        return params;
+    }
+    P out = params;
+    out.pull_compensation = choose_fill_pull(measure_shape(region).mean_width_mm);
+    return out;
+}
+
+} // namespace
+
+document::RadialFillParams resolve_pull_compensation(const document::RadialFillParams& params,
+                                                     const geometry::PathSet& region) {
+    return resolve_simple_pull(params, region);
+}
+document::SpiralFillParams resolve_pull_compensation(const document::SpiralFillParams& params,
+                                                     const geometry::PathSet& region) {
+    return resolve_simple_pull(params, region);
+}
+document::ContourFillParams resolve_pull_compensation(const document::ContourFillParams& params,
+                                                      const geometry::PathSet& region) {
+    return resolve_simple_pull(params, region);
+}
+document::MotifFillParams resolve_pull_compensation(const document::MotifFillParams& params,
+                                                    const geometry::PathSet& region) {
+    return resolve_simple_pull(params, region);
+}
+document::CrosshatchFillParams
+resolve_pull_compensation(const document::CrosshatchFillParams& params,
+                          const geometry::PathSet& region) {
+    return resolve_simple_pull(params, region);
+}
+
 } // namespace openstitch::stitch_generation

@@ -5,6 +5,7 @@
 #include <cmath>
 
 #include "openstitch/stitch_generation/motif_run.hpp"
+#include "pull_grow.hpp"
 
 namespace openstitch::stitch_generation {
 
@@ -47,9 +48,11 @@ Vec2um to_um(double x, double y) {
 
 } // namespace
 
-std::vector<FillStitch> fill_motif(const geometry::PathSet& region,
+std::vector<FillStitch> fill_motif(const geometry::PathSet& baseRegion,
                                    const document::MotifFillParams& params) {
     std::vector<FillStitch> out;
+    // HP-STI-033 : le contour est agrandi de pull_compensation (0 = region inchangee).
+    const geometry::PathSet region = detail::grown_for_pull(baseRegion, params.pull_compensation);
     if (region.outer.nodes.size() < 3) {
         return out;
     }

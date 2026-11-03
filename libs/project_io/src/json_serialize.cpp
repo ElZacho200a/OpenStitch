@@ -536,9 +536,32 @@ json params_to_json(const document::StitchParams& params) {
                      {"passes", p.passes},
                      {"hiddenUnderpath", p.hidden_underpath}};
             }
+            // HP-STI-033 : compensation du tirage (clés écrites seulement hors défaut).
+            if constexpr (std::is_same_v<T, document::ContourFillParams> ||
+                          std::is_same_v<T, document::MotifFillParams> ||
+                          std::is_same_v<T, document::RadialFillParams> ||
+                          std::is_same_v<T, document::SpiralFillParams> ||
+                          std::is_same_v<T, document::CrosshatchFillParams>) {
+                if (p.pull_compensation.value != 0) {
+                    j["pullCompensation"] = p.pull_compensation.value;
+                }
+                if (p.pull_mode != document::PullMode::Manual) {
+                    j["pullMode"] = static_cast<int>(p.pull_mode);
+                }
+            }
             return j;
         },
         params);
+}
+
+// HP-STI-033 : lecture de la compensation du tirage des remplissages radial, spirale, concentrique,
+// motif et croisé (clés optionnelles ; Adaptive/Predicted n'existent pas ici : repli Manual).
+template <class P> void read_simple_pull(const json& j, P& p) {
+    p.pull_compensation =
+        Micrometers{std::clamp(j.value("pullCompensation", p.pull_compensation.value), 0, 3'000)};
+    const int mode = std::clamp(j.value("pullMode", 0), 0, 3);
+    p.pull_mode = mode == static_cast<int>(document::PullMode::Auto) ? document::PullMode::Auto
+                                                                     : document::PullMode::Manual;
 }
 
 Result<document::StitchParams> params_from_json(const json& j) {
@@ -920,6 +943,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.inset = Micrometers{std::clamp(j.value("inset", 200), 0, 10'000)};
         p.spiral = j.value("spiral", true);
         p.hidden_underpath = j.value("hiddenUnderpath", true);
+        read_simple_pull(j, p);
         return document::StitchParams{p};
     }
     if (type == "motifRun") {
@@ -955,6 +979,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
             Micrometers{std::clamp(j.value("stitchLength", p.stitch_length.value), 1'000, 7'000)};
         p.min_length = Micrometers{std::clamp(j.value("minLength", p.min_length.value), 0, 7'000)};
         p.hidden_underpath = j.value("hiddenUnderpath", p.hidden_underpath);
+        read_simple_pull(j, p);
         return document::StitchParams{p};
     }
     if (type == "radialFill" || type == "spiralFill") {
@@ -965,6 +990,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
             p.min_length = Micrometers{std::clamp(j.value("minLength", 500), 0, 7'000)};
             p.inset = Micrometers{std::clamp(j.value("inset", 200), 0, 10'000)};
             p.hidden_underpath = j.value("hiddenUnderpath", true);
+            read_simple_pull(j, p);
             if (j.contains("center")) {
                 p.center = Vec2um{Micrometers{j.at("center").at("x")},
                                   Micrometers{j.at("center").at("y")}};
@@ -992,6 +1018,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.stitch_length = Micrometers{std::clamp(j.value("stitchLength", 3'000), 1'000, 7'000)};
         p.inset = Micrometers{std::clamp(j.value("inset", 200), 0, 10'000)};
         p.hidden_underpath = j.value("hiddenUnderpath", true);
+        read_simple_pull(j, p);
         return document::StitchParams{p};
     }
     if (type == "crossStitch") {

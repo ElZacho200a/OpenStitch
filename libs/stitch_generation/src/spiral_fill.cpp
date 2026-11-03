@@ -6,6 +6,7 @@
 #include <numbers>
 
 #include "fill_geometry.hpp"
+#include "pull_grow.hpp"
 
 namespace openstitch::stitch_generation {
 
@@ -17,9 +18,11 @@ constexpr double kMinSegmentUm = 100.0;
 
 } // namespace
 
-std::vector<FillStitch> fill_spiral(const geometry::PathSet& region,
+std::vector<FillStitch> fill_spiral(const geometry::PathSet& baseRegion,
                                     const document::SpiralFillParams& params) {
     using namespace detail;
+    // HP-STI-033 : le contour est agrandi de pull_compensation (0 = region inchangee).
+    const geometry::PathSet region = grown_for_pull(baseRegion, params.pull_compensation);
     const double spacing = std::clamp(double(params.row_spacing.value), 100.0, 10'000.0);
     const double maxLen = std::clamp(double(params.stitch_length.value), 1'000.0, 7'000.0);
     const double minLen = std::clamp(double(params.min_length.value), 0.0, maxLen);
