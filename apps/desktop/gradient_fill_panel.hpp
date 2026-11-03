@@ -28,7 +28,7 @@ public:
         bool gradient{false};
         QColor start;
         QColor end;
-        QString startThread;  // référence exacte ou « Couleur libre »
+        QString startThread; // référence exacte ou « Couleur libre »
         QString endThread;
         double zoneStartPercent{0.0};
         double zoneEndPercent{100.0};
