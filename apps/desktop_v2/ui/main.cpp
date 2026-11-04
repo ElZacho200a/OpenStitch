@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QMessageBox>
+#include <QStandardPaths>
 #include <filesystem>
 
 #include "openstitch/core/app_info.hpp"
@@ -43,6 +45,20 @@ int main(int argc, char** argv) {
 
     openstitch::desktop_v2::ShellWindow window;
     window.show();
+    const auto stateDir = std::filesystem::path(
+        QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation).toStdU16String());
+    window.setStateDirectory(stateDir);
+    if (window.hasRecovery() && parser.positionalArguments().isEmpty() && !parser.isSet(shot)) {
+        const auto answer = QMessageBox::question(
+            &window, QObject::tr("Récupération"),
+            QObject::tr("Une session précédente s'est terminée sans enregistrer. "
+                        "Récupérer le document ?"));
+        if (answer == QMessageBox::Yes) {
+            (void)window.recoverAutosave();
+        } else {
+            window.discardRecovery();
+        }
+    }
     if (!parser.positionalArguments().isEmpty()) {
         const QString file = parser.positionalArguments().front();
         const std::filesystem::path path(file.toStdU16String());

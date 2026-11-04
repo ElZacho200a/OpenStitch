@@ -17,6 +17,7 @@ add_executable(test_desktop_v2_core
     test_view_tools.cpp
     test_document_services.cpp
     test_fade_service.cpp
+    test_workspace_state.cpp
     test_satin_column.cpp
     test_point_edit.cpp
     test_source_image_tools.cpp

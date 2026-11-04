@@ -315,3 +315,11 @@ encore le desktop principal.
   déplacement / insertion de nœud de rail), outil `satin.column` (clics par paires, Entrée). Catch2 `[satin]` (4 cas), QTest
   `theSatinColumnToolBuildsRailsFromPairsOfClicks`. Matrice : ✅ 2 · 🟡 41 · ⬜ 1 (seule la famille 9, IA, reste ⬜).
 
+## 2026-11-04 — Session 1 (suite 16) : persistance de l'espace de travail (branche `feat/desktop-v2-persistence`)
+
+- `core/workspace_state` (Qt-free) : liste des fichiers récents (`pushRecent`, `pruneMissingRecent`, `loadRecentList` /
+  `saveRecentList`) et `AutosaveStore` (écriture atomique `.tmp` puis renommage, `load`, `clear`). Catch2 `[workspace]`.
+- Interface : `ShellWindow::setStateDirectory` (appelé par `main.cpp`, jamais par les tests), sous-menu Fichier > Fichiers
+  récents, minuterie d'autosave 60 s, récupération proposée au démarrage, effacée à l'enregistrement et à la sortie
+  propre ; Édition > Historique (annule k+1 étapes). QTest `autosaveRecoveryRecentFilesAndHistoryMenuWork`.
+- Familles 2, 4 et 34 : restent 🟡 (migration de schéma, rapport de plantage).

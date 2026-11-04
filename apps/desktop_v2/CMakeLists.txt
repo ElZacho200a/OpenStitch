@@ -24,6 +24,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/view_tools.cpp
     core/document_services.cpp
     core/fade_service.cpp
+    core/workspace_state.cpp
     core/satin_column.cpp
     core/point_edit.cpp
     core/source_image_tools.cpp
@@ -36,7 +37,7 @@ target_compile_definitions(openstitch_desktop_v2_core PRIVATE
 target_link_libraries(openstitch_desktop_v2_core
     PUBLIC openstitch::core openstitch::document openstitch::commands openstitch::project_ops
            openstitch::stitch openstitch::stitch_generation openstitch::stitch_render openstitch::formats openstitch::image
-           openstitch::autodigitize openstitch::segmentation openstitch::stipple
+           openstitch::autodigitize openstitch::segmentation openstitch::stipple openstitch::project_io
     PRIVATE openstitch::warnings)
 
 # Interface Qt Widgets. Désactivée avec OPENSTITCH_BUILD_DESKTOP=OFF (CI linux-core) ou sans Qt6.

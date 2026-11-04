@@ -171,6 +171,9 @@ ShellWindow::~ShellWindow() {
     // on annule les tâches avant que la session (membre) soit détruite.
     pump_->stop();
     previewDebounce_->stop();
+    if (autosave_ && !session_.dirty()) {
+        autosave_->clear(); // sortie propre : rien à récupérer au prochain démarrage
+    }
     tasks_.cancelAll();
     // Les widgets enfants sont détruits APRÈS les membres de cette classe : ceux qui référencent la
     // session (l'inspecteur) doivent disparaître tant qu'elle existe.
@@ -192,6 +195,8 @@ void ShellWindow::buildMenus() {
     auto* open = file->addAction(tr("&Ouvrir une image ou un projet…"));
     open->setShortcut(QKeySequence::Open);
     connect(open, &QAction::triggered, this, &ShellWindow::chooseAndOpen);
+    recentMenu_ = file->addMenu(tr("Fichiers &récents"));
+    recentMenu_->setObjectName(QStringLiteral("menu_recent"));
     saveAction_ = file->addAction(tr("&Enregistrer"));
     saveAction_->setShortcut(QKeySequence::Save);
     connect(saveAction_, &QAction::triggered, this, [this] {
@@ -238,6 +243,9 @@ void ShellWindow::buildMenus() {
     redoAction_ = edit->addAction(tr("&Rétablir"));
     redoAction_->setShortcut(QKeySequence::Redo);
     connect(redoAction_, &QAction::triggered, this, [this] { session_.redo(); });
+    historyMenu_ = edit->addMenu(tr("&Historique"));
+    historyMenu_->setObjectName(QStringLiteral("menu_history"));
+    connect(historyMenu_, &QMenu::aboutToShow, this, [this] { rebuildHistoryMenu(); });
     edit->addSeparator();
     auto* all = edit->addAction(tr("Tout &sélectionner"));
     all->setShortcut(QKeySequence::SelectAll);
@@ -843,6 +851,7 @@ void ShellWindow::openProject(const std::filesystem::path& osp) {
             session_.selection().clear();
             documentOpen_ = true;
             session_.replaceProject(std::move(*r), true);
+            noteRecent(osp);
             setNotice(
                 tr("Projet ouvert (%1 objets).").arg(session_.project().embroidery_objects.size()),
                 false);
@@ -857,8 +866,97 @@ bool ShellWindow::saveProject(const std::filesystem::path& osp) {
     }
     currentPath_ = osp;
     session_.markSaved();
+    noteRecent(osp);
+    if (autosave_) {
+        autosave_->clear(); // le document est enregistré : plus rien à récupérer
+    }
     setNotice(tr("Projet enregistré."), false);
     return true;
+}
+
+void ShellWindow::setStateDirectory(const std::filesystem::path& dir) {
+    stateDir_ = dir;
+    autosave_ = std::make_unique<AutosaveStore>(dir);
+    recent_ = pruneMissingRecent(loadRecentList(dir / "recent.txt"));
+    rebuildRecentMenu();
+    if (autosaveTimer_ == nullptr) {
+        autosaveTimer_ = new QTimer(this);
+        autosaveTimer_->setInterval(60000);
+        connect(autosaveTimer_, &QTimer::timeout, this, [this] { (void)autosaveNow(); });
+    }
+    autosaveTimer_->start();
+}
+
+bool ShellWindow::autosaveNow() {
+    if (!autosave_ || !documentOpen_ || !session_.dirty()) {
+        return false;
+    }
+    return autosave_->write(session_.project()).has_value();
+}
+
+bool ShellWindow::recoverAutosave() {
+    if (!hasRecovery()) {
+        return false;
+    }
+    auto loaded = autosave_->load();
+    if (!loaded) {
+        setNotice(tr("Récupération impossible : %1").arg(fromUtf8(loaded.error().message)), true);
+        return false;
+    }
+    currentPath_.clear();
+    documentOpen_ = true;
+    session_.selection().clear();
+    session_.replaceProject(std::move(*loaded), false); // non enregistré : reste « modifié »
+    setNotice(tr("Document récupéré : pensez à l'enregistrer."), false);
+    return true;
+}
+
+void ShellWindow::discardRecovery() {
+    if (autosave_) {
+        autosave_->clear();
+    }
+}
+
+void ShellWindow::noteRecent(const std::filesystem::path& osp) {
+    const auto u8 = osp.u8string();
+    recent_ = pushRecent(std::move(recent_),
+                         std::string(reinterpret_cast<const char*>(u8.data()), u8.size()));
+    if (!stateDir_.empty()) {
+        (void)saveRecentList(stateDir_ / "recent.txt", recent_);
+    }
+    rebuildRecentMenu();
+}
+
+void ShellWindow::rebuildRecentMenu() {
+    if (recentMenu_ == nullptr) {
+        return;
+    }
+    recentMenu_->clear();
+    for (const auto& entry : recent_) {
+        const QString text = QString::fromUtf8(entry.data(), static_cast<int>(entry.size()));
+        auto* a = recentMenu_->addAction(text);
+        connect(a, &QAction::triggered, this,
+                [this, text] { openProject(std::filesystem::path(text.toStdU16String())); });
+    }
+    recentMenu_->setEnabled(!recent_.empty());
+}
+
+void ShellWindow::rebuildHistoryMenu() {
+    historyMenu_->clear();
+    const auto names = session_.undoNames();
+    // Du plus récent au plus ancien ; choisir l'entrée k annule k + 1 étapes.
+    for (std::size_t k = 0; k < names.size() && k < 30; ++k) {
+        const auto& name = names[names.size() - 1 - k];
+        auto* a = historyMenu_->addAction(fromUtf8(name));
+        connect(a, &QAction::triggered, this, [this, k] {
+            for (std::size_t i = 0; i <= k; ++i) {
+                if (!session_.undo()) {
+                    break;
+                }
+            }
+        });
+    }
+    historyMenu_->setEnabled(!names.empty());
 }
 
 void ShellWindow::exportDst(const std::filesystem::path& dst) {

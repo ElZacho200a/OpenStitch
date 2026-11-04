@@ -1326,6 +1326,54 @@ private slots:
         QVERIFY(w.findChild<QAction*>("action_view_source") != nullptr);
     }
 
+    void autosaveRecoveryRecentFilesAndHistoryMenuWork() {
+        const auto dir = std::filesystem::temp_directory_path() / "openstitch_v2_shell_state";
+        std::filesystem::remove_all(dir);
+        const auto osp = dir / "demo.osp";
+        {
+            ShellWindow w;
+            w.setStateDirectory(dir);
+            QVERIFY(!w.hasRecovery());
+            w.newProject();
+            (void)w.session().applyBatch(batchAddRect({0, 0}, 20, 10), "Rectangle");
+            (void)w.session().applyBatch(batchAddEllipse({10, 10}, 8, 8), "Ellipse");
+            QVERIFY(w.autosaveNow());
+            QVERIFY(w.hasRecovery());
+            // historique : 2 entrées, la plus récente d'abord ; choisir la 2e annule 2 étapes
+            auto* history = w.findChild<QMenu*>("menu_history");
+            QVERIFY(history != nullptr);
+            emit history->aboutToShow();
+            QCOMPARE(history->actions().size(), 2);
+            QCOMPARE(history->actions()[0]->text(), QStringLiteral("Ellipse"));
+            history->actions()[1]->trigger();
+            QCOMPARE(w.session().project().embroidery_objects.size(), size_t(0));
+            (void)w.session().redo();
+            (void)w.session().redo();
+            QVERIFY(w.autosaveNow());
+        } // fermeture « sale » : la sauvegarde reste
+        {
+            ShellWindow w;
+            w.setStateDirectory(dir);
+            QVERIFY(w.hasRecovery());
+            QVERIFY(w.recoverAutosave());
+            QCOMPARE(w.session().project().embroidery_objects.size(), size_t(2));
+            QVERIFY(w.session().dirty());
+            QVERIFY(w.saveProject(osp)); // enregistrer : plus rien à récupérer, récents mis à jour
+            QVERIFY(!w.hasRecovery());
+            QCOMPARE(w.recentFiles().size(), size_t(1));
+            auto* recent = w.findChild<QMenu*>("menu_recent");
+            QVERIFY(recent != nullptr);
+            QCOMPARE(recent->actions().size(), 1);
+        }
+        {
+            ShellWindow w; // nouvelle session : la liste persiste
+            w.setStateDirectory(dir);
+            QCOMPARE(w.recentFiles().size(), size_t(1));
+            QVERIFY(!w.hasRecovery());
+        }
+        std::filesystem::remove_all(dir);
+    }
+
     void inspectorEditsAllSelectedObjectsInOneUndoStep() {
         ShellWindow w;
         w.openImage(tentabrode(), 80.0);

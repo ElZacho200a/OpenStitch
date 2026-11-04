@@ -10,6 +10,7 @@
 #include <QPointF>
 #include <QRectF>
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -28,6 +29,7 @@
 #include "task_manager.hpp"
 #include "tool_registry.hpp"
 #include "view_tools.hpp"
+#include "workspace_state.hpp"
 
 class QAction;
 class QActionGroup;
@@ -63,6 +65,16 @@ public:
     void openImage(const std::filesystem::path& image, double heightMm);
     void openProject(const std::filesystem::path& osp);
     bool saveProject(const std::filesystem::path& osp);
+    // Dossier d'état utilisateur : liste des récents + sauvegarde automatique (toutes les
+    // 60 s si le document est modifié). Sans appel, rien n'est écrit (tests, mode recette).
+    void setStateDirectory(const std::filesystem::path& dir);
+    // Écrit la sauvegarde automatique maintenant si le document est ouvert et modifié.
+    bool autosaveNow();
+    [[nodiscard]] bool hasRecovery() const { return autosave_ && autosave_->exists(); }
+    // Charge la sauvegarde automatique (document non enregistré) ; faux si absente / illisible.
+    bool recoverAutosave();
+    void discardRecovery();
+    [[nodiscard]] const std::vector<std::string>& recentFiles() const { return recent_; }
     // Calcule la séquence EFFECTIVE du document courant puis écrit le DST, en tâche annulable.
     void exportDst(const std::filesystem::path& dst);
 
@@ -238,6 +250,15 @@ private:
     bool previewShown_{false};
     bool documentOpen_{false}; // un projet est ouvert (même vide) : l'aperçu montre son cadre
     std::filesystem::path currentPath_;
+    std::filesystem::path stateDir_;
+    std::vector<std::string> recent_;
+    std::unique_ptr<AutosaveStore> autosave_;
+    QTimer* autosaveTimer_{nullptr};
+    QMenu* recentMenu_{nullptr};
+    QMenu* historyMenu_{nullptr};
+    void noteRecent(const std::filesystem::path& osp);
+    void rebuildRecentMenu();
+    void rebuildHistoryMenu();
 };
 
 } // namespace openstitch::desktop_v2
