@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+﻿// SPDX-License-Identifier: Apache-2.0
 #include <QAction>
 #include <QApplication>
 #include <QTest>
@@ -7,6 +7,7 @@
 #include <QWheelEvent>
 #include <filesystem>
 
+#include "command_palette.hpp"
 #include "inspector_panel.hpp"
 #include "preview_canvas.hpp"
 #include "shell_window.hpp"
@@ -206,7 +207,7 @@ private slots:
         QVERIFY(w.session().selection().empty());
     }
 
-    void aDragOnTheCanvasPansInsteadOfSelecting() {
+    void aDragIsARubberBandNotAClick() {
         ShellWindow w;
         w.show();
         w.openImage(tentabrode(), 80.0);
@@ -225,6 +226,110 @@ private slots:
         QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
                             viewPos + QPoint(30, 30));
         QVERIFY(w.session().selection().empty()); // un glisser n'est pas un clic
+    }
+
+    void rubberBandSelectsWholeObjectsOnly() {
+        ShellWindow w;
+        w.show();
+        w.openImage(tentabrode(), 80.0);
+        w.waitForIdle();
+        auto* canvas = w.canvas();
+        QVERIFY(canvas->hasImage());
+        const QRectF image = canvas->sceneRect().adjusted(40, 40, -40, -40);
+        // Cadre autour de toute l'image : tous les objets visibles sont dedans.
+        const QPoint from = canvas->mapFromScene(image.topLeft() + QPointF(-5, -5));
+        const QPoint to = canvas->mapFromScene(image.bottomRight() + QPointF(5, 5));
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, from);
+        QTest::mouseMove(canvas->viewport(), from + QPoint(20, 20));
+        QTest::mouseMove(canvas->viewport(), to);
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, to);
+        // Un objet sans aucun point cousu n'a pas d'emprise : il n'est pas sélectionnable au
+        // canevas.
+        size_t stitched = 0;
+        for (const auto& o : w.session().project().embroidery_objects) {
+            stitched += w.objectCentrePx(o.id.value).has_value() ? 1 : 0;
+        }
+        QVERIFY(stitched > 0);
+        QCOMPARE(w.session().selection().targets().size(), stitched);
+
+        // Petit cadre au milieu : aucun objet entier (les remplissages dépassent) -> sélection
+        // vide.
+        const QPoint c = canvas->viewport()->rect().center();
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, c);
+        QTest::mouseMove(canvas->viewport(), c + QPoint(10, 10));
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, c + QPoint(10, 10));
+        QVERIFY(w.session().selection().empty());
+    }
+
+    void panToolDragsTheViewInsteadOfARubberBand() {
+        ShellWindow w;
+        QVERIFY(w.runCommand("tool.pan"));
+        QCOMPARE(w.activeToolId(), QString("pan"));
+        QCOMPARE(w.canvas()->dragMode(), QGraphicsView::ScrollHandDrag);
+        QVERIFY(!w.canvas()->rubberBandSelection());
+        QVERIFY(w.runCommand("tool.select"));
+        QVERIFY(w.canvas()->rubberBandSelection());
+    }
+
+    void commandsCoverToolsWorkspacesAndEditing() {
+        ShellWindow w;
+        const auto entries = w.commandEntries();
+        const auto has = [&](const char* id) {
+            for (const auto& e : entries) {
+                if (e.id == id) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        QVERIFY(has("file.open") && has("edit.undo") && has("workspace.produce"));
+        // Les 20 outils du registre sont tous atteignables par la palette.
+        int tools = 0;
+        for (const auto& e : entries) {
+            tools += e.id.rfind("tool.", 0) == 0 ? 1 : 0;
+        }
+        QCOMPARE(tools, 20);
+        // Un outil non migré est listé mais refusé, sans effet de bord.
+        QVERIFY(!w.runCommand("tool.draw.ellipse"));
+        QCOMPARE(w.activeToolId(), QString("select"));
+        QVERIFY(!w.runCommand("nope"));
+        // Sans document, enregistrer / exporter / annuler sont désactivés.
+        QVERIFY(!w.runCommand("file.save"));
+        QVERIFY(!w.runCommand("edit.undo"));
+        QVERIFY(w.runCommand("workspace.optimize"));
+        QCOMPARE(w.workspace(), Workspace::Optimize);
+    }
+
+    void selectAllAndClearThroughCommands() {
+        ShellWindow w;
+        w.openImage(tentabrode(), 80.0);
+        w.waitForIdle();
+        QVERIFY(w.runCommand("selection.all"));
+        QCOMPARE(w.session().selection().targets().size(),
+                 w.session().project().embroidery_objects.size());
+        QVERIFY(w.runCommand("selection.clear"));
+        QVERIFY(w.session().selection().empty());
+        QVERIFY(!w.runCommand("selection.clear")); // plus rien à désélectionner : désactivée
+    }
+
+    void paletteFiltersAndRunsTheChosenCommand() {
+        ShellWindow w;
+        CommandPalette palette;
+        palette.setEntries(w.commandEntries());
+        palette.setQuery("espace numerisation");
+        QCOMPARE(palette.visibleIds(), QStringList{"workspace.digitize"});
+        QString chosen;
+        QObject::connect(&palette, &CommandPalette::chosen,
+                         [&](const QString& id) { chosen = id; });
+        QVERIFY(palette.activateCurrent());
+        QCOMPARE(chosen, QString("workspace.digitize"));
+        QVERIFY(w.runCommand(chosen));
+        QCOMPARE(w.workspace(), Workspace::Digitize);
+
+        // Une commande désactivée ne se valide pas.
+        palette.setQuery("ellipse");
+        QCOMPARE(palette.visibleIds().size(), 1);
+        QVERIFY(!palette.activateCurrent());
     }
 
     void inspectorEditsAllSelectedObjectsInOneUndoStep() {

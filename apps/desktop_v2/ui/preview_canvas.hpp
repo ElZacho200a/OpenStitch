@@ -15,6 +15,7 @@
 class QGraphicsPixmapItem;
 class QGraphicsRectItem;
 class QGraphicsScene;
+class QRubberBand;
 
 namespace openstitch::desktop_v2 {
 
@@ -36,7 +37,13 @@ public:
         return mapToScene(viewportPos);
     }
 
+    // Mode « sélection » : le glisser trace un cadre élastique (sinon, le glisser déplace la vue).
+    void setRubberBandSelection(bool on);
+    [[nodiscard]] bool rubberBandSelection() const { return bandMode_; }
+
 signals:
+    // Cadre élastique terminé (glisser avec l'outil Sélection). Rectangle en pixels de l'image.
+    void rectPx(QRectF scenePx, Qt::KeyboardModifiers modifiers);
     // Clic gauche sans glisser (un glisser déplace la vue). Position en pixels de l'image.
     void clickedPx(QPointF scenePx, Qt::KeyboardModifiers modifiers);
 
@@ -48,6 +55,7 @@ protected:
     void keyPressEvent(QKeyEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
 
 private:
@@ -55,6 +63,10 @@ private:
     QGraphicsPixmapItem* item_{nullptr};
     QVector<QGraphicsRectItem*> boxItems_;
     QPoint pressPos_;
+    QRubberBand* band_{nullptr};
+    QPoint bandOrigin_;
+    bool bandMode_{false};
+    bool bandDragging_{false};
     bool pressing_{false};
     bool userZoomed_{false}; // tant que faux, un redimensionnement re-ajuste l'image
 };

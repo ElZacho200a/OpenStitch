@@ -22,6 +22,7 @@
 #include <QVBoxLayout>
 #include <algorithm>
 
+#include "command_palette.hpp"
 #include "inspector_panel.hpp"
 #include "object_labels.hpp"
 #include "openstitch/project_io/project_io.hpp"
@@ -38,6 +39,14 @@ constexpr double kPreviewPxPerMm = 3.0;
 QString fromUtf8(const std::string& s) {
     return QString::fromUtf8(s.data(), static_cast<qsizetype>(s.size()));
 }
+
+// Outils réellement migrés : les autres sont déclarés dans le registre mais désactivés.
+bool isToolImplemented(const std::string& id) {
+    return id == "select" || id == "pan";
+}
+
+constexpr Workspace kWorkspaces[] = {Workspace::Design, Workspace::Digitize, Workspace::Optimize,
+                                     Workspace::Produce};
 
 QString workspaceLabel(Workspace w) {
     switch (w) {
@@ -104,6 +113,8 @@ ShellWindow::ShellWindow(QWidget* parent)
         updateSelectionBoxes();
     });
     connect(canvas_, &PreviewCanvas::clickedPx, this, &ShellWindow::onCanvasClick);
+    connect(canvas_, &PreviewCanvas::rectPx, this, &ShellWindow::onCanvasRect);
+    applyToolToCanvas();
 
     // Un aperçu par rafale de modifications, pas un par modification (le rendu n'est pas
     // interruptible en cours de calcul).
@@ -178,6 +189,17 @@ void ShellWindow::buildMenus() {
     redoAction_ = edit->addAction(tr("&Rétablir"));
     redoAction_->setShortcut(QKeySequence::Redo);
     connect(redoAction_, &QAction::triggered, this, [this] { session_.redo(); });
+    edit->addSeparator();
+    auto* all = edit->addAction(tr("Tout &sélectionner"));
+    all->setShortcut(QKeySequence::SelectAll);
+    connect(all, &QAction::triggered, this, &ShellWindow::selectAllObjects);
+    auto* none = edit->addAction(tr("&Désélectionner"));
+    none->setShortcut(QKeySequence(QStringLiteral("Ctrl+D")));
+    connect(none, &QAction::triggered, this, [this] { session_.selection().clear(); });
+    edit->addSeparator();
+    auto* palette = edit->addAction(tr("&Palette de commandes…"));
+    palette->setShortcut(QKeySequence(QStringLiteral("Ctrl+K")));
+    connect(palette, &QAction::triggered, this, &ShellWindow::showCommandPalette);
 
     auto* view = menuBar()->addMenu(tr("&Affichage"));
     auto* fit = view->addAction(tr("&Ajuster à la fenêtre"));
@@ -349,7 +371,7 @@ void ShellWindow::rebuildToolRail() {
     for (const auto* tool : registry_.forWorkspace(workspace_)) {
         // Seuls Sélection et Déplacer la vue sont migrés dans ce lot : les autres sont AFFICHÉS
         // mais désactivés, avec la raison, pour ne pas faire croire à une parité qui n'existe pas.
-        const bool implemented = tool->id == "select" || tool->id == "pan";
+        const bool implemented = isToolImplemented(tool->id);
         const QString label = fromUtf8(tool->label);
         // Rail compact : le bouton porte la touche du raccourci (ou les initiales), le libellé
         // complet est dans l'infobulle et le nom accessible.
@@ -381,10 +403,7 @@ void ShellWindow::rebuildToolRail() {
         }
         connect(a, &QAction::triggered, this, [this, a] {
             activeTool_ = a->data().toString();
-            canvas_->setDragMode(activeTool_ == QStringLiteral("pan") ||
-                                         activeTool_ == QStringLiteral("select")
-                                     ? QGraphicsView::ScrollHandDrag
-                                     : QGraphicsView::NoDrag);
+            applyToolToCanvas();
         });
     }
     if (!activeStillThere) {
@@ -649,6 +668,138 @@ void ShellWindow::refreshTaskStatus() {
     progress_->setFormat(QString::fromStdString(t.label));
     progress_->show();
     cancelButton_->show();
+}
+
+void ShellWindow::applyToolToCanvas() {
+    // Sélection : cadre élastique au glisser ; Déplacer la vue : panoramique.
+    canvas_->setRubberBandSelection(activeTool_ != QStringLiteral("pan"));
+}
+
+void ShellWindow::selectAllObjects() {
+    std::vector<Target> all;
+    for (const auto& o : session_.project().embroidery_objects) {
+        if (o.visible) { // un objet masqué n'est pas sélectionnable au canevas : cohérent ici
+            all.push_back({TargetKind::EmbroideryObject, o.id.value});
+        }
+    }
+    session_.selection().replace(std::move(all));
+}
+
+void ShellWindow::onCanvasRect(QRectF scenePx, Qt::KeyboardModifiers modifiers) {
+    if (activeTool_ != QStringLiteral("select") || frame_.hits == nullptr) {
+        return;
+    }
+    const BoxMm box{frame_.pxToMmX(scenePx.left()), frame_.pxToMmY(scenePx.top()),
+                    frame_.pxToMmX(scenePx.right()), frame_.pxToMmY(scenePx.bottom())};
+    std::vector<Target> targets;
+    if (modifiers & (Qt::ControlModifier | Qt::ShiftModifier)) {
+        targets = session_.selection().targets(); // ajoute à la sélection existante
+    }
+    for (const auto id : frame_.hits->inside(box)) { // sélection « fenêtre » : objets entiers
+        const Target t{TargetKind::EmbroideryObject, id};
+        if (std::find(targets.begin(), targets.end(), t) == targets.end()) {
+            targets.push_back(t);
+        }
+    }
+    session_.selection().replace(std::move(targets));
+}
+
+std::vector<CommandEntry> ShellWindow::commandEntries() const {
+    std::vector<CommandEntry> out;
+    const bool hasObjects = !session_.project().embroidery_objects.empty();
+    const auto q = [](const QString& s) { return s.toStdString(); };
+    out.push_back(
+        {"file.open", q(tr("Ouvrir une image ou un projet…")), q(tr("Fichier")), "Ctrl+O", true});
+    out.push_back({"file.save", q(tr("Enregistrer")), q(tr("Fichier")), "Ctrl+S", hasObjects});
+    out.push_back(
+        {"file.export", q(tr("Exporter en DST…")), q(tr("Fichier")), "Ctrl+E", hasObjects});
+    out.push_back({"edit.undo", q(tr("Annuler")), q(tr("Édition")), "Ctrl+Z", session_.canUndo()});
+    out.push_back({"edit.redo", q(tr("Rétablir")), q(tr("Édition")), "Ctrl+Y", session_.canRedo()});
+    out.push_back(
+        {"selection.all", q(tr("Tout sélectionner")), q(tr("Sélection")), "Ctrl+A", hasObjects});
+    out.push_back({"selection.clear", q(tr("Désélectionner")), q(tr("Sélection")), "Ctrl+D",
+                   !session_.selection().empty()});
+    out.push_back(
+        {"view.fit", q(tr("Ajuster à la fenêtre")), q(tr("Affichage")), "F", canvas_->hasImage()});
+    int n = 1;
+    for (const auto w : kWorkspaces) {
+        out.push_back({"workspace." + std::string(workspaceId(w)),
+                       q(tr("Espace : %1").arg(workspaceLabel(w))), q(tr("Espace")),
+                       "Ctrl+" + std::to_string(n++), true});
+    }
+    // Tout outil est atteignable depuis n'importe quel espace (principe B) ; ceux qui ne sont pas
+    // encore migrés sont listés désactivés, avec la raison.
+    for (const auto& t : registry_.tools()) {
+        const bool ok = isToolImplemented(t.id);
+        out.push_back({"tool." + t.id, t.label + (ok ? "" : q(tr(" — pas encore migré"))),
+                       q(tr("Outil")), t.shortcut, ok});
+    }
+    return out;
+}
+
+bool ShellWindow::runCommand(const QString& id) {
+    for (const auto& e : commandEntries()) {
+        if (QString::fromStdString(e.id) != id) {
+            continue;
+        }
+        if (!e.enabled) {
+            return false;
+        }
+        if (id == QLatin1String("file.open")) {
+            chooseAndOpen();
+        } else if (id == QLatin1String("file.save")) {
+            saveAction_->trigger();
+        } else if (id == QLatin1String("file.export")) {
+            exportAction_->trigger();
+        } else if (id == QLatin1String("edit.undo")) {
+            session_.undo();
+        } else if (id == QLatin1String("edit.redo")) {
+            session_.redo();
+        } else if (id == QLatin1String("selection.all")) {
+            selectAllObjects();
+        } else if (id == QLatin1String("selection.clear")) {
+            session_.selection().clear();
+        } else if (id == QLatin1String("view.fit")) {
+            canvas_->fitAll();
+        } else if (id.startsWith(QLatin1String("workspace."))) {
+            for (const auto w : kWorkspaces) {
+                if (id == QString::fromStdString("workspace." + std::string(workspaceId(w)))) {
+                    setWorkspace(w);
+                }
+            }
+        } else if (id.startsWith(QLatin1String("tool."))) {
+            const std::string toolId = id.mid(5).toStdString();
+            const auto* tool = registry_.find(toolId);
+            if (tool == nullptr) {
+                return false;
+            }
+            // Outil absent de l'espace courant : on bascule vers le premier espace qui le montre.
+            if ((tool->workspaces & workspaceBit(workspace_)) == 0) {
+                for (const auto w : kWorkspaces) {
+                    if ((tool->workspaces & workspaceBit(w)) != 0) {
+                        setWorkspace(w);
+                        break;
+                    }
+                }
+            }
+            for (auto* a : toolGroup_->actions()) {
+                if (a->data().toString() == id.mid(5) && a->isEnabled()) {
+                    a->setChecked(true);
+                    a->trigger();
+                }
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+void ShellWindow::showCommandPalette() {
+    auto* palette = new CommandPalette(this);
+    palette->setAttribute(Qt::WA_DeleteOnClose);
+    palette->setEntries(commandEntries());
+    connect(palette, &CommandPalette::chosen, this, [this](const QString& id) { runCommand(id); });
+    palette->open();
 }
 
 void ShellWindow::updateSelectionBoxes() {

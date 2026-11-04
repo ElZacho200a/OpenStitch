@@ -38,6 +38,9 @@ public:
     [[nodiscard]] std::optional<std::uint64_t> pick(double xMm, double yMm, double tolMm) const;
     // Objets dont l'emprise rencontre le rectangle, par identifiant croissant.
     [[nodiscard]] std::vector<std::uint64_t> inRect(const BoxMm& box) const;
+    // Objets dont l'emprise est ENTIÈREMENT dans le rectangle (sélection « fenêtre »), id
+    // croissant.
+    [[nodiscard]] std::vector<std::uint64_t> inside(const BoxMm& box) const;
     [[nodiscard]] std::optional<BoxMm> boundsOf(std::uint64_t id) const;
     // Milieu du DERNIER brin cousu de l'objet : un point qui lui appartient (le centre de son
     // emprise peut tomber dans un trou).

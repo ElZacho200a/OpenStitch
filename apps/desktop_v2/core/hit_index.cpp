@@ -93,6 +93,16 @@ std::vector<std::uint64_t> HitIndex::inRect(const BoxMm& box) const {
     return out;
 }
 
+std::vector<std::uint64_t> HitIndex::inside(const BoxMm& box) const {
+    std::vector<std::uint64_t> out;
+    for (const auto& [id, b] : bounds_) {
+        if (b.x0 >= box.x0 && b.y0 >= box.y0 && b.x1 <= box.x1 && b.y1 <= box.y1) {
+            out.push_back(id);
+        }
+    }
+    return out;
+}
+
 std::optional<std::pair<double, double>> HitIndex::samplePoint(std::uint64_t id) const {
     const auto it = lastSegment_.find(id);
     if (it == lastSegment_.end()) {

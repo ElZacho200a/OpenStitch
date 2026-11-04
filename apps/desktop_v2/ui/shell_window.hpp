@@ -8,10 +8,12 @@
 
 #include <QMainWindow>
 #include <QPointF>
+#include <QRectF>
 #include <filesystem>
 #include <optional>
 #include <vector>
 
+#include "command_catalog.hpp"
 #include "digitize_pipeline.hpp"
 #include "document_session.hpp"
 #include "preview_service.hpp"
@@ -48,6 +50,12 @@ public:
     // Calcule la séquence EFFECTIVE du document courant puis écrit le DST, en tâche annulable.
     void exportDst(const std::filesystem::path& dst);
 
+    // Commandes (palette Ctrl+K, menus, tests) : un identifiant stable par intention.
+    [[nodiscard]] std::vector<CommandEntry> commandEntries() const;
+    bool runCommand(const QString& id); // faux si inconnue ou désactivée
+    void showCommandPalette();
+    void selectAllObjects();
+
     void setWorkspace(Workspace workspace);
     [[nodiscard]] Workspace workspace() const { return workspace_; }
     void waitForIdle(); // bloque jusqu'à la fin des tâches et livre leurs résultats (tests)
@@ -81,6 +89,8 @@ private:
     void refreshTaskStatus();
     void chooseAndOpen();
     void updateSelectionBoxes();
+    void onCanvasRect(QRectF scenePx, Qt::KeyboardModifiers modifiers);
+    void applyToolToCanvas();
     void onCanvasClick(QPointF scenePx, Qt::KeyboardModifiers modifiers);
 
     DocumentSession session_;
