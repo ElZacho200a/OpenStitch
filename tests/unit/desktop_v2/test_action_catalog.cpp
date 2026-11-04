@@ -53,7 +53,7 @@ TEST_CASE("action ids are unique and every field has a valid default", "[desktop
         seen.push_back(a.id);
         CHECK_FALSE(a.label.empty());
         CHECK_FALSE(a.group.empty());
-        CHECK(static_cast<bool>(a.build));
+        CHECK(static_cast<bool>(a.build) != static_cast<bool>(a.run)); // un lot OU une commande
         for (const auto& f : a.fields) {
             CHECK_FALSE(f.key.empty());
             if (f.kind == FieldKind::Choice) {
@@ -67,7 +67,7 @@ TEST_CASE("action ids are unique and every field has a valid default", "[desktop
             }
         }
     }
-    CHECK(actionCatalog().size() >= 19);
+    CHECK(actionCatalog().size() >= 21);
 }
 
 TEST_CASE("validation refuses out-of-range, unknown, missing and unselected input",

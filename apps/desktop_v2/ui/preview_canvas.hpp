@@ -36,7 +36,8 @@ public:
     // DrawPolygon : clics successifs, double-clic ou Entrée = terminer, Échap = annuler,
     //               Retour arrière = retirer le dernier sommet.
     // Measure : glisser = règle (le résultat est affiché par `showMeasure`).
-    enum class Mode { Select, Pan, DrawBox, DrawPolygon, Measure };
+    // Pick : un clic échantillonne (pipette) ; ni cadre élastique ni déplacement.
+    enum class Mode { Select, Pan, DrawBox, DrawPolygon, Measure, Pick };
 
     explicit PreviewCanvas(QWidget* parent = nullptr);
 

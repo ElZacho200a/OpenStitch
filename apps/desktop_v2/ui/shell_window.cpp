@@ -56,7 +56,7 @@ QString fromUtf8(const std::string& s) {
 // Outils réellement migrés : les autres sont déclarés dans le registre mais désactivés.
 bool isToolImplemented(const std::string& id) {
     return id == "select" || id == "pan" || id == "draw.rectangle" || id == "draw.ellipse" ||
-           id == "draw.polygon" || id == "measure";
+           id == "draw.polygon" || id == "measure" || id == "eyedropper";
 }
 
 constexpr Workspace kWorkspaces[] = {Workspace::Design, Workspace::Digitize, Workspace::Optimize,
@@ -1106,6 +1106,8 @@ void ShellWindow::applyToolToCanvas() {
         canvas_->setMode(Mode::DrawPolygon);
     } else if (activeTool_ == QStringLiteral("measure")) {
         canvas_->setMode(Mode::Measure);
+    } else if (activeTool_ == QStringLiteral("eyedropper")) {
+        canvas_->setMode(Mode::Pick);
     } else {
         canvas_->setMode(Mode::Select); // sélection : clic, cadre élastique
     }
@@ -1269,6 +1271,20 @@ bool ShellWindow::runActionWith(const QString& id, const Values& values) {
     ctx.centre = selectionCentreModel();
     ctx.project = &session_.project();
     std::string error;
+    if (def->run) { // action adossée à une ICommand : validation puis exécution directe
+        Values checked = values;
+        if (!validateAction(*def, checked, ctx, error)) {
+            setNotice(fromUtf8(def->label).remove(QStringLiteral("…")) + QStringLiteral(" : ") +
+                          fromUtf8(error),
+                      true);
+            return false;
+        }
+        const auto r = def->run(session_, checked, ctx);
+        setNotice(fromUtf8(def->label).remove(QStringLiteral("…")) +
+                      (r.ok ? tr(" : fait.") : QStringLiteral(" : ") + fromUtf8(r.message)),
+                  !r.ok);
+        return r.ok;
+    }
     const std::string batch = buildAction(*def, values, ctx, error);
     if (batch.empty()) {
         setNotice(fromUtf8(def->label).remove(QStringLiteral("…")) + QStringLiteral(" : ") +
@@ -1582,6 +1598,32 @@ void ShellWindow::onScaleDragged(QPointF pivotPx, double factor) {
 }
 
 void ShellWindow::onCanvasClick(QPointF scenePx, Qt::KeyboardModifiers modifiers) {
+    if (activeTool_ == QStringLiteral("eyedropper") && frame_.hits != nullptr) {
+        // Pipette : prélève le fil de l'objet cousu sous le curseur et l'applique à la sélection
+        // courante (une annulation) ; sans sélection, la couleur est seulement annoncée.
+        const auto hit = pickAtPx(scenePx);
+        if (!hit) {
+            setNotice(tr("Pipette : aucun fil sous le curseur."), false);
+            return;
+        }
+        for (const auto& o : session_.project().embroidery_objects) {
+            if (o.id.value != *hit) {
+                continue;
+            }
+            const QColor c(o.rgb[0], o.rgb[1], o.rgb[2]);
+            const auto state = inspect(session_.project(), session_.selection().targets());
+            if (!state.ids.empty() && !(state.ids.size() == 1 && state.ids.front() == *hit)) {
+                inspector_->applyColor(c);
+                setNotice(tr("Pipette : %1 appliqué à la sélection.").arg(c.name().toUpper()),
+                          false);
+            } else {
+                setNotice(tr("Pipette : %1 (« %2 »).").arg(c.name().toUpper(), fromUtf8(o.name)),
+                          false);
+            }
+            return;
+        }
+        return;
+    }
     if (activeTool_ != QStringLiteral("select") || frame_.hits == nullptr) {
         return;
     }

@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <filesystem>
 
+#include "fade_service.hpp"
 #include "openstitch/document/machine_profile.hpp"
 
 namespace openstitch::desktop_v2 {
@@ -124,13 +125,29 @@ FieldDef fileField(std::string key, std::string label, std::string def) {
     return f;
 }
 
+std::string envVar(const char* name) {
+#ifdef _MSC_VER
+    char* value = nullptr;
+    std::size_t length = 0;
+    if (_dupenv_s(&value, &length, name) != 0 || value == nullptr) {
+        return {};
+    }
+    std::string out(value);
+    std::free(value);
+    return out;
+#else
+    const char* value = std::getenv(name);
+    return value != nullptr ? std::string(value) : std::string();
+#endif
+}
+
 // Police par défaut : variable d'environnement, puis chemin de développement compilé, puis dossier
 // `resources/fonts` du répertoire courant. Vide si introuvable (l'utilisateur choisit alors un
 // fichier).
 std::string defaultFont() {
     namespace fs = std::filesystem;
     std::vector<fs::path> candidates;
-    if (const char* dir = std::getenv("OPENSTITCH_FONTS_DIR")) {
+    if (const std::string dir = envVar("OPENSTITCH_FONTS_DIR"); !dir.empty()) {
         candidates.push_back(fs::path(dir) / "VeraBd.ttf");
     }
 #ifdef OPENSTITCH_DEFAULT_FONT
@@ -467,6 +484,56 @@ std::vector<ActionDef> makeCatalog() {
         };
         out.push_back(std::move(a));
     }
+
+    // --- Fondu de deux fils (ICommand : `run`, pas de lot JSON) ----------------------------
+    {
+        ActionDef a;
+        a.id = "fade.create";
+        a.label = "Fondu de deux fils…";
+        a.group = "Fondu";
+        a.needsSelection = true;
+        a.fields = {textField("foreground", "Fil du dessus (#RRGGBB)", "#FF8800", true),
+                    boolField("complementary", "Rampes de densité opposées", true)};
+        a.run = [](DocumentSession& session, const Values& v, const ActionContext& c) {
+            const std::string& hex = v.at("foreground");
+            unsigned channel[3] = {0, 0, 0};
+            bool valid = hex.size() == 7 && hex[0] == '#';
+            for (int i = 0; valid && i < 3; ++i) {
+                const char* begin = hex.data() + 1 + 2 * i;
+                const auto [end, ec] = std::from_chars(begin, begin + 2, channel[i], 16);
+                valid = ec == std::errc() && end == begin + 2;
+            }
+            if (!valid) {
+                return ServiceResult{false, "Fil du dessus : couleur au format #RRGGBB attendue."};
+            }
+            const unsigned r = channel[0];
+            const unsigned g = channel[1];
+            const unsigned b = channel[2];
+            if (c.ids.size() != 1) {
+                return ServiceResult{false, "Sélectionnez UN remplissage pour y créer un fondu."};
+            }
+            FadeSettings settings;
+            settings.foreground = {static_cast<std::uint8_t>(r), static_cast<std::uint8_t>(g),
+                                   static_cast<std::uint8_t>(b)};
+            settings.complementary = flag(v, "complementary");
+            return createFade(session, c.ids.front(), settings);
+        };
+        out.push_back(std::move(a));
+    }
+    {
+        ActionDef a;
+        a.id = "fade.remove";
+        a.label = "Supprimer le fondu";
+        a.group = "Fondu";
+        a.needsSelection = true;
+        a.run = [](DocumentSession& session, const Values&, const ActionContext& c) {
+            if (c.ids.size() != 1) {
+                return ServiceResult{false, "Sélectionnez UNE couche du fondu à supprimer."};
+            }
+            return removeFade(session, c.ids.front());
+        };
+        out.push_back(std::move(a));
+    }
     return out;
 }
 
@@ -494,12 +561,12 @@ Values defaultValues(const ActionDef& action) {
     return v;
 }
 
-std::string buildAction(const ActionDef& action, Values values, const ActionContext& context,
-                        std::string& error) {
+bool validateAction(const ActionDef& action, Values& values, const ActionContext& context,
+                    std::string& error) {
     error.clear();
     if (action.needsSelection && context.ids.empty()) {
         error = "Sélectionnez d'abord un ou plusieurs objets.";
-        return {};
+        return false;
     }
     for (const auto& f : action.fields) {
         if (!values.contains(f.key)) {
@@ -516,37 +583,49 @@ std::string buildAction(const ActionDef& action, Values values, const ActionCont
                 (f.kind == FieldKind::Integer && std::abs(x - std::round(x)) > 1e-9)) {
                 error = f.label + " : valeur entre " + num(f.min) + " et " + num(f.max) +
                         (f.kind == FieldKind::Integer ? " (entier)" : "") + " attendue.";
-                return {};
+                return false;
             }
             break;
         }
         case FieldKind::Bool:
             if (text != "0" && text != "1" && text != "true" && text != "false") {
                 error = f.label + " : oui ou non attendu.";
-                return {};
+                return false;
             }
             break;
         case FieldKind::Choice:
             if (std::ranges::none_of(f.choices, [&](const Choice& c) { return c.value == text; })) {
                 error = f.label + " : choix inconnu.";
-                return {};
+                return false;
             }
             break;
         case FieldKind::Text:
         case FieldKind::File:
             if (f.required && text.empty()) {
                 error = f.label + " : obligatoire.";
-                return {};
+                return false;
             }
             if (f.kind == FieldKind::File) {
                 std::error_code ec;
                 if (!std::filesystem::exists(std::filesystem::path(text), ec)) {
                     error = f.label + " : fichier introuvable.";
-                    return {};
+                    return false;
                 }
             }
             break;
         }
+    }
+    return true;
+}
+
+std::string buildAction(const ActionDef& action, Values values, const ActionContext& context,
+                        std::string& error) {
+    if (!validateAction(action, values, context, error)) {
+        return {};
+    }
+    if (!action.build) {
+        error = "Cette action s'exécute directement (pas de lot).";
+        return {};
     }
     const std::string batch = action.build(values, context, error);
     if (batch.empty() && error.empty()) {

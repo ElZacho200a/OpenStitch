@@ -96,7 +96,8 @@ void PreviewCanvas::setMode(Mode mode) {
     if (mode != Mode::Measure) {
         clearMeasure();
     }
-    setCursor(mode == Mode::DrawBox || mode == Mode::DrawPolygon || mode == Mode::Measure
+    setCursor(mode == Mode::DrawBox || mode == Mode::DrawPolygon || mode == Mode::Measure ||
+                      mode == Mode::Pick
                   ? Qt::CrossCursor
                   : Qt::ArrowCursor);
 }
@@ -492,7 +493,7 @@ void PreviewCanvas::mouseReleaseEvent(QMouseEvent* event) {
         if (mode_ == Mode::DrawPolygon) {
             polyPts_.push_back(mapToScene(event->pos()));
             updatePolygonItem(nullptr);
-        } else if (mode_ == Mode::Select) {
+        } else if (mode_ == Mode::Select || mode_ == Mode::Pick) {
             emit clickedPx(mapToScene(event->pos()), event->modifiers());
         }
     }

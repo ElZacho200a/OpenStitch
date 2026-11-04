@@ -23,6 +23,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/action_catalog.cpp
     core/view_tools.cpp
     core/document_services.cpp
+    core/fade_service.cpp
 )
 add_library(openstitch::desktop_v2_core ALIAS openstitch_desktop_v2_core)
 target_include_directories(openstitch_desktop_v2_core PUBLIC core)

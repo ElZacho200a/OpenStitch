@@ -66,7 +66,7 @@ private slots:
                 QVERIFY(a->toolTip().contains("pas encore migré"));
             }
         }
-        QCOMPARE(enabled, 6); // Sélection, Déplacer la vue, Rectangle, Ellipse, Polygone, Règle
+        QCOMPARE(enabled, 7); // Sélection, Vue, Rectangle, Ellipse, Polygone, Règle, Pipette
         QVERIFY(disabled > 0);
     }
 
@@ -739,6 +739,11 @@ private slots:
             ActionContext ctx;
             ctx.ids = {1, 2}; // contexte fictif : seul le contrôle des champs nous intéresse
             std::string error;
+            if (def.run) { // actions adossées à une commande : seule la validation est contrôlée
+                auto checked = values;
+                QVERIFY2(validateAction(def, checked, ctx, error), def.id.c_str());
+                continue;
+            }
             const auto batch = buildAction(def, values, ctx, error);
             QVERIFY2(!batch.empty() || def.id == "file.import_svg", def.id.c_str());
             if (def.id == "file.import_svg") {
@@ -1018,6 +1023,59 @@ private slots:
         QVERIFY(panel->setRowVisible(0, true));
         w.waitForIdle();
         QVERIFY(w.previewFrame().hits->boundsOf(id).has_value());
+    }
+
+    void aFadeIsCreatedFromTheToolsMenuActionAndUndone() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        const auto id =
+            *createdObjectId(w.session().applyBatch(batchAddRect({0, 0}, 30, 20), "R").report);
+        w.waitForIdle();
+        QVERIFY(!w.runCommand("action.fade.create")); // rien de sélectionné
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        QVERIFY(!w.runActionWith("fade.create", {{"foreground", "orange"}})); // format refusé
+        QVERIFY(w.lastNotice().contains("#RRGGBB"));
+        const auto before = w.session().project().embroidery_objects.size();
+        QVERIFY(
+            w.runActionWith("fade.create", {{"foreground", "#FF8800"}, {"complementary", "1"}}));
+        QVERIFY(w.session().project().embroidery_objects.size() > before);
+        QVERIFY(w.lastNotice().contains("fait"));
+        QVERIFY(w.session().undo());
+        QCOMPARE(w.session().project().embroidery_objects.size(), before);
+        w.waitForIdle();
+        QVERIFY(w.previewShown());
+    }
+
+    void theEyedropperCopiesAThreadColourOntoTheSelection() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        const auto a =
+            *createdObjectId(w.session().applyBatch(batchAddRect({-20, 0}, 20, 20), "A").report);
+        const auto b =
+            *createdObjectId(w.session().applyBatch(batchAddRect({20, 0}, 20, 20), "B").report);
+        w.session().applyBatch(batchSetColor({a}, {200, 30, 40}), "Couleur");
+        w.waitForIdle();
+        w.session().selection().replace({{TargetKind::EmbroideryObject, b}});
+        QVERIFY(w.runCommand("tool.eyedropper"));
+        QVERIFY(w.canvas()->mode() == PreviewCanvas::Mode::Pick);
+        const auto depth = w.session().undoNames().size();
+        QTest::mouseClick(w.canvas()->viewport(), Qt::LeftButton, Qt::NoModifier,
+                          w.canvas()->mapFromScene(*w.objectCentrePx(a)));
+        QCOMPARE(w.session().project().embroidery_objects[1].rgb,
+                 (std::array<std::uint8_t, 3>{200, 30, 40}));
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QVERIFY(w.lastNotice().contains("#C81E28"));
+        // Un clic sur le tissu ne change rien.
+        QTest::mouseClick(w.canvas()->viewport(), Qt::LeftButton, Qt::NoModifier,
+                          w.canvas()->mapFromScene(QPointF(2, 2)));
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QVERIFY(w.lastNotice().contains("aucun fil"));
+        // La sélection reste celle de l'utilisateur.
+        QCOMPARE(w.session().selection().targets().size(), size_t(1));
     }
 
     void inspectorEditsAllSelectedObjectsInOneUndoStep() {

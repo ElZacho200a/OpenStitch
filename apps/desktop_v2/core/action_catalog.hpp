@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include "document_services.hpp"
 #include "openstitch/document/project.hpp"
 #include "shape_batch.hpp"
 
@@ -51,6 +52,9 @@ struct ActionDef {
     std::string group; // « Fichier », « Satin », « Texte »…
     std::vector<FieldDef> fields;
     bool needsSelection{false};
+    // Actions qui passent par une ICommand (et non un lot JSON) : exécutées par cette fonction,
+    // après validation des champs. `build` reste vide pour elles.
+    std::function<ServiceResult(DocumentSession&, const Values&, const ActionContext&)> run;
     // Construit le lot ; chaîne vide + `error` si le contexte ne convient pas.
     std::function<std::string(const Values&, const ActionContext&, std::string& error)> build;
 };
@@ -63,6 +67,10 @@ struct ActionDef {
 
 // Valide `values` (valeurs absentes = défaut) puis construit le lot. Erreur lisible dans `error`,
 // chaîne vide en retour : aucune valeur n'est jamais « corrigée » en silence.
+// Valide les champs et le contexte (valeurs absentes = défaut) SANS rien construire ni exécuter.
+[[nodiscard]] bool validateAction(const ActionDef& action, Values& values,
+                                  const ActionContext& context, std::string& error);
+
 [[nodiscard]] std::string buildAction(const ActionDef& action, Values values,
                                       const ActionContext& context, std::string& error);
 
