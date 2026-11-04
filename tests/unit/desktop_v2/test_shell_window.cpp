@@ -207,25 +207,21 @@ private slots:
         QVERIFY(w.session().selection().empty());
     }
 
-    void aDragIsARubberBandNotAClick() {
+    void aDragOnEmptyFabricIsARubberBandNotAClick() {
         ShellWindow w;
         w.show();
         w.openImage(tentabrode(), 80.0);
         w.waitForIdle();
         auto* canvas = w.canvas();
-        std::optional<QPointF> point;
-        for (const auto& o : w.session().project().embroidery_objects) {
-            if ((point = w.objectCentrePx(o.id.value))) {
-                break;
-            }
-        }
-        QVERIFY(point.has_value());
-        const QPoint viewPos = canvas->mapFromScene(*point);
+        // Coin du tissu (hors de tout fil) : un glisser y trace un cadre, il ne déplace rien.
+        const QPoint viewPos = canvas->mapFromScene(QPointF(2, 2));
+        const auto depth = w.session().undoNames().size();
         QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, viewPos);
         QTest::mouseMove(canvas->viewport(), viewPos + QPoint(30, 30));
         QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
                             viewPos + QPoint(30, 30));
         QVERIFY(w.session().selection().empty()); // un glisser n'est pas un clic
+        QCOMPARE(w.session().undoNames().size(), depth);
     }
 
     void rubberBandSelectsWholeObjectsOnly() {
@@ -254,7 +250,7 @@ private slots:
 
         // Petit cadre au milieu : aucun objet entier (les remplissages dépassent) -> sélection
         // vide.
-        const QPoint c = canvas->viewport()->rect().center();
+        const QPoint c = canvas->mapFromScene(QPointF(2, 2)); // tissu vide
         QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, c);
         QTest::mouseMove(canvas->viewport(), c + QPoint(10, 10));
         QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, c + QPoint(10, 10));
@@ -452,6 +448,109 @@ private slots:
         QVERIFY(!enabled("file.export")); // rien à exporter
         QVERIFY(enabled("tool.draw.rectangle"));
         QVERIFY(!enabled("tool.draw.bezier")); // pas encore migré
+    }
+
+    void draggingAnObjectMovesTheSelectionInOneUndoStep() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        const auto r = w.session().applyBatch(batchAddRect({0, 0}, 30, 20), "Rectangle");
+        const auto id = *createdObjectId(r.report);
+        w.waitForIdle();
+        auto* canvas = w.canvas();
+        const auto before = *w.previewFrame().hits->boundsOf(id);
+        const auto depth = w.session().undoNames().size();
+
+        // Appui sur l'objet NON sélectionné puis glisser : il est sélectionné puis déplacé.
+        const auto point = w.objectCentrePx(id);
+        QVERIFY(point.has_value());
+        const QPoint from = canvas->mapFromScene(*point);
+        const QPoint to = from + QPoint(60, -30);
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, from);
+        QTest::mouseMove(canvas->viewport(), from + QPoint(20, -10));
+        QTest::mouseMove(canvas->viewport(), to);
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, to);
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QCOMPARE(QString::fromStdString(w.session().undoName()), QString("Déplacer"));
+        QVERIFY(w.session().selection().contains({TargetKind::EmbroideryObject, id}));
+        w.waitForIdle();
+        const auto after = *w.previewFrame().hits->boundsOf(id);
+        const double expectedDx = (to - from).x() / canvas->zoom() / w.previewFrame().px_per_mm;
+        const double expectedDy = (to - from).y() / canvas->zoom() / w.previewFrame().px_per_mm;
+        QVERIFY(qAbs((after.x0 - before.x0) - expectedDx) < 0.8);
+        QVERIFY(qAbs((after.y0 - before.y0) - expectedDy) < 0.8);
+
+        QVERIFY(w.session().undo());
+        w.waitForIdle();
+        QVERIFY(qAbs(w.previewFrame().hits->boundsOf(id)->x0 - before.x0) < 0.1);
+    }
+
+    void aPlainClickOnAnObjectDoesNotMoveIt() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        const auto r = w.session().applyBatch(batchAddRect({0, 0}, 30, 20), "Rectangle");
+        const auto id = *createdObjectId(r.report);
+        w.waitForIdle();
+        auto* canvas = w.canvas();
+        const auto depth = w.session().undoNames().size();
+        const QPoint at = canvas->mapFromScene(*w.objectCentrePx(id));
+        QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, at);
+        QCOMPARE(w.session().undoNames().size(), depth); // aucune étape d'annulation
+        QCOMPARE(w.session().selection().targets().size(), size_t(1));
+    }
+
+    void draggingACornerHandleScalesAboutTheOppositeCorner() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        const auto r = w.session().applyBatch(batchAddRect({0, 0}, 30, 20), "Rectangle");
+        const auto id = *createdObjectId(r.report);
+        w.waitForIdle();
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        auto* canvas = w.canvas();
+        const auto& frame = w.previewFrame();
+        const auto before = *frame.hits->boundsOf(id);
+        // Coin bas-droit de l'emprise affichée (cadre de sélection = emprise + 3 px de marge).
+        const QPointF corner(frame.mmToPxX(before.x1) + 3, frame.mmToPxY(before.y1) + 3);
+        const QPoint from = canvas->mapFromScene(corner);
+        const QPoint to = from + QPoint(40, 40);
+        const auto depth = w.session().undoNames().size();
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, from);
+        QTest::mouseMove(canvas->viewport(), from + QPoint(15, 15));
+        QTest::mouseMove(canvas->viewport(), to);
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, to);
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QCOMPARE(QString::fromStdString(w.session().undoName()), QString("Mettre à l'échelle"));
+        w.waitForIdle();
+        const auto after = *w.previewFrame().hits->boundsOf(id);
+        QVERIFY((after.x1 - after.x0) > 1.2 * (before.x1 - before.x0)); // plus grand
+        QVERIFY(qAbs(after.x0 - before.x0) < 1.0); // coin opposé (haut-gauche) fixe
+        QVERIFY(qAbs(after.y0 - before.y0) < 1.0);
+        // Rapport d'aspect conservé (échelle uniforme).
+        const double ratioBefore = (before.x1 - before.x0) / (before.y1 - before.y0);
+        const double ratioAfter = (after.x1 - after.x0) / (after.y1 - after.y0);
+        QVERIFY(qAbs(ratioBefore - ratioAfter) < 0.1);
+    }
+
+    void aDragOnEmptyFabricStillMakesARubberBandWhenObjectsExist() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        w.session().applyBatch(batchAddRect({0, 0}, 20, 20), "Rectangle");
+        w.waitForIdle();
+        auto* canvas = w.canvas();
+        const auto depth = w.session().undoNames().size();
+        const QPoint a = canvas->mapFromScene(QPointF(5, 5)); // coin du tissu, hors objet
+        const QPoint b = a + QPoint(25, 25);
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, a);
+        QTest::mouseMove(canvas->viewport(), b);
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, b);
+        QCOMPARE(w.session().undoNames().size(), depth); // rien n'a été déplacé
     }
 
     void inspectorEditsAllSelectedObjectsInOneUndoStep() {

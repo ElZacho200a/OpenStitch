@@ -28,7 +28,8 @@ std::string batchTranslate(const std::vector<std::uint64_t>& ids, double dxMm, d
     std::string ops;
     for (std::size_t i = 0; i < ids.size(); ++i) {
         ops += std::string(i == 0 ? "" : ",") + R"({"op":"translate","object":)" +
-               std::to_string(ids[i]) + R"(,"dx_mm":)" + num(dxMm) + R"(,"dy_mm":)" + num(dyMm) + "}";
+               std::to_string(ids[i]) + R"(,"dx_mm":)" + num(dxMm) + R"(,"dy_mm":)" + num(dyMm) +
+               "}";
     }
     return wrap(ops);
 }

@@ -70,6 +70,8 @@ public:
     [[nodiscard]] bool previewShown() const;
     [[nodiscard]] PreviewCanvas* canvas() const { return canvas_; }
     [[nodiscard]] InspectorPanel* inspector() const { return inspector_; }
+    // Repère mm <-> pixels et index de sélection de l'aperçu affiché (tests, diagnostics).
+    [[nodiscard]] const PreviewImage& previewFrame() const { return frame_; }
     // Un point (pixels de l'image d'aperçu) qui appartient à l'objet : pour piloter le canevas en
     // test.
     [[nodiscard]] std::optional<QPointF> objectCentrePx(std::uint64_t id) const;
@@ -93,6 +95,11 @@ private:
     void updateSelectionBoxes();
     void onCanvasRect(QRectF scenePx, Qt::KeyboardModifiers modifiers);
     void applyToolToCanvas();
+    [[nodiscard]] std::optional<std::uint64_t> pickAtPx(QPointF scenePx) const;
+    void onMoveStart(QPointF scenePx);
+    void onMoveDragged(QPointF deltaPx);
+    void onScaleDragged(QPointF pivotPx, double factor);
+    void applyTransform(const std::string& batch, const QString& label);
     void createShape(const std::string& batch, const QString& label);
     void onBoxDrawn(QRectF scenePx, Qt::KeyboardModifiers modifiers);
     void onPolygonDrawn(QVector<QPointF> scenePx);

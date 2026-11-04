@@ -88,7 +88,8 @@ TEST_CASE("a scale about a pivot keeps the pivot fixed", "[desktop_v2][transform
     const auto after = boundsOf(p.session, p.id);
     CHECK(after.x1 - after.x0 == Catch::Approx(2.0 * (before.x1 - before.x0)).margin(1.0));
     CHECK(after.y1 - after.y0 == Catch::Approx(2.0 * (before.y1 - before.y0)).margin(1.0));
-    // Le pivot (-10, -5 modèle) = (-10, +5 écran) est le coin gauche / BAS à l'écran : x0 et y1 fixes.
+    // Le pivot (-10, -5 modèle) = (-10, +5 écran) est le coin gauche / BAS à l'écran : x0 et y1
+    // fixes.
     CHECK(after.x0 == Catch::Approx(before.x0).margin(0.6));
     CHECK(after.y1 == Catch::Approx(before.y1).margin(0.6));
 }
