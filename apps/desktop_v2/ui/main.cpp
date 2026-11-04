@@ -28,6 +28,10 @@ int main(int argc, char** argv) {
                             QStringLiteral("Enregistre une capture PNG puis quitte."),
                             QStringLiteral("png"));
     parser.addOption(shot);
+    QCommandLineOption select(QStringList{QStringLiteral("select-objects")},
+                              QStringLiteral("Recette : sélectionne les N premiers objets."),
+                              QStringLiteral("n"), QStringLiteral("0"));
+    parser.addOption(select);
     parser.process(app);
 
     openstitch::desktop_v2::ShellWindow window;
@@ -43,6 +47,14 @@ int main(int argc, char** argv) {
     }
     if (parser.isSet(shot)) {
         window.waitForIdle();
+        std::vector<openstitch::desktop_v2::Target> picked;
+        const auto& objects = window.session().project().embroidery_objects;
+        for (int i = 0; i < parser.value(select).toInt() && i < static_cast<int>(objects.size());
+             ++i) {
+            picked.push_back({openstitch::desktop_v2::TargetKind::EmbroideryObject,
+                              objects[static_cast<std::size_t>(i)].id.value});
+        }
+        window.session().selection().replace(std::move(picked));
         window.grab().save(parser.value(shot));
         return 0;
     }

@@ -12,12 +12,14 @@ add_library(openstitch_desktop_v2_core STATIC
     core/digitize_pipeline.cpp
     core/preview_service.cpp
     core/object_labels.cpp
+    core/hit_index.cpp
+    core/inspector_model.cpp
 )
 add_library(openstitch::desktop_v2_core ALIAS openstitch_desktop_v2_core)
 target_include_directories(openstitch_desktop_v2_core PUBLIC core)
 target_link_libraries(openstitch_desktop_v2_core
     PUBLIC openstitch::core openstitch::document openstitch::commands openstitch::project_ops
-           openstitch::stitch openstitch::stitch_generation openstitch::formats openstitch::image
+           openstitch::stitch openstitch::stitch_generation openstitch::stitch_render openstitch::formats openstitch::image
            openstitch::autodigitize openstitch::segmentation openstitch::stipple
     PRIVATE openstitch::warnings)
 
@@ -35,6 +37,8 @@ add_library(openstitch_desktop_v2_ui STATIC
     ui/shell_window.cpp
     ui/shell_window.hpp
     ui/preview_canvas.cpp
+    ui/inspector_panel.cpp
+    ui/inspector_panel.hpp
     ui/preview_canvas.hpp
 )
 add_library(openstitch::desktop_v2_ui ALIAS openstitch_desktop_v2_ui)

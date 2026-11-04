@@ -7,6 +7,7 @@
 #include <QWheelEvent>
 #include <filesystem>
 
+#include "inspector_panel.hpp"
 #include "preview_canvas.hpp"
 #include "shell_window.hpp"
 
@@ -167,6 +168,122 @@ private slots:
         if (pristine) {
             QVERIFY(!w.session().dirty());
         }
+    }
+
+    void clickingTheCanvasSelectsTheObjectUnderTheCursor() {
+        ShellWindow w;
+        w.show();
+        w.openImage(tentabrode(), 80.0);
+        w.waitForIdle();
+        auto* canvas = w.canvas();
+        QVERIFY(canvas && canvas->hasImage());
+        // Un point appartenant à un objet (milieu de son dernier brin).
+        std::optional<QPointF> point;
+        std::uint64_t id = 0;
+        for (const auto& o : w.session().project().embroidery_objects) {
+            if ((point = w.objectCentrePx(o.id.value))) {
+                id = o.id.value;
+                break;
+            }
+        }
+        QVERIFY(point.has_value());
+        const QPoint viewPos = canvas->mapFromScene(*point);
+        QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, viewPos);
+        QCOMPARE(w.session().selection().targets().size(), size_t(1));
+        QCOMPARE(canvas->selectionBoxCount(), 1);
+        (void)id;
+
+        // Ctrl+clic au même endroit : bascule (désélectionne).
+        QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::ControlModifier, viewPos);
+        QVERIFY(w.session().selection().empty());
+        QCOMPARE(canvas->selectionBoxCount(), 0);
+
+        // Clic dans le vide (coin de l'image) : sélection vide.
+        QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, viewPos);
+        QVERIFY(!w.session().selection().empty());
+        QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                          canvas->mapFromScene(QPointF(1, 1)));
+        QVERIFY(w.session().selection().empty());
+    }
+
+    void aDragOnTheCanvasPansInsteadOfSelecting() {
+        ShellWindow w;
+        w.show();
+        w.openImage(tentabrode(), 80.0);
+        w.waitForIdle();
+        auto* canvas = w.canvas();
+        std::optional<QPointF> point;
+        for (const auto& o : w.session().project().embroidery_objects) {
+            if ((point = w.objectCentrePx(o.id.value))) {
+                break;
+            }
+        }
+        QVERIFY(point.has_value());
+        const QPoint viewPos = canvas->mapFromScene(*point);
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, viewPos);
+        QTest::mouseMove(canvas->viewport(), viewPos + QPoint(30, 30));
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                            viewPos + QPoint(30, 30));
+        QVERIFY(w.session().selection().empty()); // un glisser n'est pas un clic
+    }
+
+    void inspectorEditsAllSelectedObjectsInOneUndoStep() {
+        ShellWindow w;
+        w.openImage(tentabrode(), 80.0);
+        w.waitForIdle();
+        const auto& objects = w.session().project().embroidery_objects;
+        QVERIFY(objects.size() >= 2);
+        w.session().selection().replace({{TargetKind::EmbroideryObject, objects[0].id.value},
+                                         {TargetKind::EmbroideryObject, objects[1].id.value}});
+        auto* panel = w.inspector();
+        QVERIFY(panel->applyColor(QColor(12, 200, 34)));
+        QCOMPARE(w.session().project().embroidery_objects[0].rgb,
+                 (std::array<std::uint8_t, 3>{12, 200, 34}));
+        QCOMPARE(w.session().project().embroidery_objects[1].rgb,
+                 (std::array<std::uint8_t, 3>{12, 200, 34}));
+        QCOMPARE(w.session().undoNames().size(), size_t(1));
+        QVERIFY(panel->applyStitchType("running"));
+        QVERIFY(panel->applyLocked(true));
+        QVERIFY(w.session().project().embroidery_objects[1].locked);
+        // Un type refusé par le moteur n'empile rien.
+        const auto depth = w.session().undoNames().size();
+        QVERIFY(!panel->applyStitchType("satin"));
+        QCOMPARE(w.session().undoNames().size(), depth);
+        w.waitForIdle();
+        QVERIFY(w.previewShown());
+    }
+
+    void inspectorWithoutSelectionDoesNothing() {
+        ShellWindow w;
+        w.openImage(tentabrode(), 80.0);
+        w.waitForIdle();
+        w.session().selection().clear();
+        QVERIFY(!w.inspector()->applyColor(QColor(1, 2, 3)));
+        QVERIFY(!w.session().canUndo());
+    }
+
+    void burstsOfEditsRenderFewerPreviewsThanEdits() {
+        ShellWindow w;
+        w.openImage(tentabrode(), 80.0);
+        w.waitForIdle();
+        const auto countPreviews = [&] {
+            int n = 0;
+            for (const auto& t : w.tasks().history()) {
+                n += t.label == "Aperçu" ? 1 : 0;
+            }
+            return n;
+        };
+        const int before = countPreviews();
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        for (int i = 0; i < 6; ++i) {
+            const std::string batch =
+                R"({"schema":"openstitch.batch/1","operations":[{"op":"set_color","object":)" +
+                std::to_string(id) + R"(,"rgb":"#0000)" + (i % 2 ? "FF" : "EE") + R"("}]})";
+            QVERIFY(w.session().applyBatch(batch, "Couleur").committed);
+        }
+        w.waitForIdle();
+        QVERIFY(countPreviews() - before <= 2);
+        QVERIFY(w.previewShown());
     }
 
     void canvasZoomAnchorsUnderTheCursorAndFitRestores() {

@@ -22,6 +22,7 @@
 #include <QVBoxLayout>
 #include <algorithm>
 
+#include "inspector_panel.hpp"
 #include "object_labels.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "preview_canvas.hpp"
@@ -100,7 +101,16 @@ ShellWindow::ShellWindow(QWidget* parent)
         if (!syncingTree_) {
             syncTreeFromSelection();
         }
+        updateSelectionBoxes();
     });
+    connect(canvas_, &PreviewCanvas::clickedPx, this, &ShellWindow::onCanvasClick);
+
+    // Un aperçu par rafale de modifications, pas un par modification (le rendu n'est pas
+    // interruptible en cours de calcul).
+    previewDebounce_ = new QTimer(this);
+    previewDebounce_->setSingleShot(true);
+    previewDebounce_->setInterval(120);
+    connect(previewDebounce_, &QTimer::timeout, this, &ShellWindow::requestPreview);
 
     pump_ = new QTimer(this);
     pump_->setInterval(33);
@@ -117,7 +127,13 @@ ShellWindow::ShellWindow(QWidget* parent)
 ShellWindow::~ShellWindow() {
     // Les abonnements pointent vers `this` : on les retire avant que les widgets disparaissent, et
     // on annule les tâches avant que la session (membre) soit détruite.
+    pump_->stop();
+    previewDebounce_->stop();
     tasks_.cancelAll();
+    // Les widgets enfants sont détruits APRÈS les membres de cette classe : ceux qui référencent la
+    // session (l'inspecteur) doivent disparaître tant qu'elle existe.
+    delete inspector_;
+    inspector_ = nullptr;
     session_.unsubscribe(sessionToken_);
     session_.selection().unsubscribe(selectionToken_);
 }
@@ -225,6 +241,10 @@ void ShellWindow::buildInspector() {
     objectTree_->setAccessibleName(tr("Objets de broderie"));
     objectTree_->header()->setSectionResizeMode(0, QHeaderView::Stretch);
     layout->addWidget(objectTree_, 1);
+    inspector_ = new InspectorPanel(session_, body);
+    connect(inspector_, &InspectorPanel::refused, this,
+            [this](const QString& message) { setNotice(message, true); });
+    layout->addWidget(inspector_);
     summary_ = new QLabel(body);
     summary_->setObjectName(QStringLiteral("summary"));
     summary_->setWordWrap(true);
@@ -380,7 +400,7 @@ void ShellWindow::rebuildToolRail() {
 void ShellWindow::onDocumentChanged(ChangeKind) {
     rebuildObjectList();
     refreshActionStates();
-    requestPreview();
+    previewDebounce_->start(); // aperçu regroupé ; waitForIdle() le déclenche sans attendre
 }
 
 void ShellWindow::refreshActionStates() {
@@ -470,6 +490,7 @@ void ShellWindow::requestPreview() {
     if (session_.project().embroidery_objects.empty()) {
         canvas_->clearImage();
         previewShown_ = false;
+        frame_ = PreviewImage{};
         return;
     }
     const auto snapshot = session_.snapshot();
@@ -492,6 +513,10 @@ void ShellWindow::requestPreview() {
             if (image.loadFromData(r->png.data(), static_cast<int>(r->png.size()), "PNG")) {
                 canvas_->setImage(image);
                 previewShown_ = true;
+                frame_ = std::move(*r);
+                frame_.png.clear(); // seul le repère et l'index sont conservés
+                frame_.png.shrink_to_fit();
+                updateSelectionBoxes();
             }
         });
 }
@@ -626,8 +651,71 @@ void ShellWindow::refreshTaskStatus() {
     cancelButton_->show();
 }
 
+void ShellWindow::updateSelectionBoxes() {
+    QVector<QRectF> boxes;
+    if (frame_.hits != nullptr) {
+        for (const auto& t : session_.selection().targets()) {
+            if (t.kind != TargetKind::EmbroideryObject) {
+                continue;
+            }
+            if (const auto b = frame_.hits->boundsOf(t.id)) {
+                const double x0 = frame_.mmToPxX(b->x0);
+                const double y0 = frame_.mmToPxY(b->y0);
+                boxes.push_back(
+                    QRectF(QPointF(x0, y0), QPointF(frame_.mmToPxX(b->x1), frame_.mmToPxY(b->y1)))
+                        .adjusted(-3, -3, 3, 3));
+            }
+        }
+    }
+    canvas_->setSelectionBoxes(boxes);
+}
+
+std::optional<QPointF> ShellWindow::objectCentrePx(std::uint64_t id) const {
+    if (frame_.hits == nullptr) {
+        return std::nullopt;
+    }
+    const auto p = frame_.hits->samplePoint(id);
+    if (!p) {
+        return std::nullopt;
+    }
+    return QPointF(frame_.mmToPxX(p->first), frame_.mmToPxY(p->second));
+}
+
+void ShellWindow::onCanvasClick(QPointF scenePx, Qt::KeyboardModifiers modifiers) {
+    if (activeTool_ != QStringLiteral("select") || frame_.hits == nullptr) {
+        return;
+    }
+    const double xMm = frame_.pxToMmX(scenePx.x());
+    const double yMm = frame_.pxToMmY(scenePx.y());
+    // Tolérance : 5 pixels d'écran, au moins 0,5 mm (petits fils fins faciles à viser).
+    const double zoom = std::max(canvas_->zoom(), 1e-6);
+    const double tolMm = std::max(0.5, 5.0 / zoom / frame_.px_per_mm);
+    const auto hit = frame_.hits->pick(xMm, yMm, tolMm);
+    if (!hit) {
+        if (!(modifiers & (Qt::ControlModifier | Qt::ShiftModifier))) {
+            session_.selection().clear();
+        }
+        return;
+    }
+    const Target target{TargetKind::EmbroideryObject, *hit};
+    if (modifiers & Qt::ControlModifier) {
+        session_.selection().toggle(target);
+    } else if (modifiers & Qt::ShiftModifier) {
+        session_.selection().add(target);
+    } else {
+        session_.selection().replace({target});
+    }
+}
+
 void ShellWindow::waitForIdle() {
-    tasks_.waitIdle();
+    // Une tâche terminée peut relancer le minuteur d'aperçu : on boucle jusqu'à stabilité.
+    do {
+        if (previewDebounce_->isActive()) {
+            previewDebounce_->stop();
+            requestPreview();
+        }
+        tasks_.waitIdle();
+    } while (previewDebounce_->isActive());
     QApplication::processEvents();
     refreshTaskStatus();
 }

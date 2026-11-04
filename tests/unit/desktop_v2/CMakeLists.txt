@@ -5,6 +5,7 @@ add_executable(test_desktop_v2_core
     test_tool_registry.cpp
     test_session_and_pipeline.cpp
     test_preview_service.cpp
+    test_hit_and_inspector.cpp
 )
 target_link_libraries(test_desktop_v2_core
     PRIVATE openstitch::desktop_v2_core openstitch::project_ops openstitch::commands

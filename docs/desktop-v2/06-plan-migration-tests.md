@@ -6,7 +6,7 @@
 |---|---|---|---|
 | **V2-0** | architecture et contrats : docs, ADR 0003/0004, `core/` (session, sélection, tâches, registre d'outils, chaîne image → DST, aperçu), squelette `ui/` (shell, arbre, canevas d'aperçu), tests | `main` | **cette branche** (`feat/desktop-v2-foundation`) |
 | V2-1 | infrastructure d'interface : design system (tokens, thème, icônes), docks et espaces persistants, palette de commandes, i18n FR/EN, centre de notifications | V2-0 | ⬜ |
-| V2-2 | canevas et interactions : calque `QGraphicsItem`, sélection au canevas, poignées, outils de dessin, banc de mesure (déclencheurs de l'ADR 0003) | V2-1 | ⬜ |
+| V2-2 | canevas et interactions : calque `QGraphicsItem`, sélection au canevas, poignées, outils de dessin, banc de mesure (déclencheurs de l'ADR 0003) | V2-1 | 🟡 **tranche livrée dans `feat/desktop-v2-canvas-inspector`** : sélection au clic, cadres, inspecteur 4 réglages, debounce d'aperçu ; poignées, dessin, banc de mesure ⬜ |
 | V2-3 | workflows de conception : prétraitement, segmentation, régions, vectorisation | V2-2 | ⬜ |
 | V2-4 | workflows de numérisation : inspecteur contextuel, types de points, satin/auto-satin, remplissages spéciaux, fondus | V2-2 | ⬜ |
 | V2-5 | analyse et production : ordre/coupes, densité, tirage prédictif, simulation, rendu, cadres, nuancier, exports | V2-4 | ⬜ |
@@ -36,7 +36,7 @@ Aucun indicateur n'est annoncé « meilleur que l'ancien » tant que la ligne de
 |---|---|---|---|
 | 1 | Numérisation complète de Tentabrode à 300 mm | 🟡 | 139 objets, 43 562 points, 401 sauts, 372 coupes, 5 changements de couleur (`max_colors=6`) ; **emprise cousue 230,0 × 276,9 mm** (le fond blanc ignoré n'est pas cousu ; le cadre d'import fait 300 mm de haut) ; DST relu (`read_dst_file`) ; deux exécutions → DST identiques octet pour octet ; capture `captures/shell-tentabrode-300mm.png`. **Question ouverte** : si « 300 mm » désigne la hauteur du *dessin cousu*, il faut un mode « hauteur du motif » (recadrage sur l'emprise) — voir journal |
 | 2 | Création et édition d'un satin complexe | ⬜ | |
-| 3 | Modification simultanée de plusieurs objets | 🟡 | sélection multiple ✅ ; édition multiple ⬜ |
+| 3 | Modification simultanée de plusieurs objets | 🟡 | sélection multiple (arbre + clic) ✅ ; édition simultanée type/couleur/visibilité/verrou en **une** annulation ✅ (test `inspectorEditsAllSelectedObjectsInOneUndoStep`) ; autres paramètres ⬜ |
 | 4 | Fondu de deux fils | ⬜ | |
 | 5 | Compensation prédictive | ⬜ | |
 | 6 | Optimisation de l'ordre et des coupes | ⬜ | (appliquée à la numérisation, pas pilotable) |
