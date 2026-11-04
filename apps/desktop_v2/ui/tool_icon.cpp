@@ -46,8 +46,8 @@ QIcon toolIcon(std::string_view id, const QColor& foreground) {
         p.drawEllipse(QRectF(4, 4, 16, 16));
     } else if (id == "draw.polygon" || id == "draw.polygon-regular") {
         QPolygonF poly;
-        poly << QPointF(12, 3) << QPointF(21, 11) << QPointF(17, 21)
-             << QPointF(5, 19) << QPointF(3, 10);
+        poly << QPointF(12, 3) << QPointF(21, 11) << QPointF(17, 21) << QPointF(5, 19)
+             << QPointF(3, 10);
         p.drawPolygon(poly);
     } else if (id == "measure") {
         p.drawRect(QRectF(3, 8, 18, 8));
@@ -67,8 +67,7 @@ QIcon toolIcon(std::string_view id, const QColor& foreground) {
         p.drawLine(QPointF(5, 19), QPointF(17, 7));
         p.drawEllipse(QRectF(14, 3, 6, 7));
         p.drawEllipse(QRectF(3, 17, 4, 4));
-    } else if (id == "satin.column" || id == "fill.direction-guide" ||
-               id == "fill.break-line") {
+    } else if (id == "satin.column" || id == "fill.direction-guide" || id == "fill.break-line") {
         p.drawLine(QPointF(5, 3), QPointF(8, 21));
         p.drawLine(QPointF(18, 3), QPointF(15, 21));
         for (int y = 6; y <= 18; y += 4) {
