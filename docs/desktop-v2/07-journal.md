@@ -87,3 +87,26 @@ d'abonnement (problème ouvert n° 5), banc de mesure Widgets/QML (déclencheurs
 Le sélecteur de couleur utilise `QColorDialog` (modal, comme un sélecteur de fichier) ; sa logique est testée sans dialogue.
 Un objet **entièrement recouvert** par un autre n'a pas de point cliquable (seul le dernier cousu est retourné) :
 il reste sélectionnable dans l'arbre.
+
+
+## 2026-11-04 — Session 1 (suite 2) : cadre élastique et palette de commandes (branche `feat/desktop-v2-palette-rubberband`, empilée sur #239)
+
+### Fait, avec preuve
+
+| Élément | Preuve |
+|---|---|
+| Cadre élastique (outil Sélection) : sélection « fenêtre » = objets ENTIERS dans le cadre ; Ctrl/Maj ajoutent ; l'outil Déplacer la vue garde le panoramique | `HitIndex::inside`, `PreviewCanvas` (`QRubberBand` géré à la main : le cadre natif de `QGraphicsView` n'émettait rien sous QTest) ; tests `rubberBandSelectsWholeObjectsOnly`, `panToolDragsTheViewInsteadOfARubberBand`, `inside selects only objects fully within the rectangle` |
+| Tout sélectionner (Ctrl+A) / Désélectionner (Ctrl+D) | test `selectAllAndClearThroughCommands` |
+| Palette de commandes (Ctrl+K) : `CommandEntry` + `filterCommands` Qt-free (insensible à la casse et aux accents, tous les mots, rang libellé > reste, activées d'abord, ordre stable) ; chaque commande a un identifiant stable (`tool.*`, `workspace.*`, `file.*`, `edit.*`, `selection.*`, `view.*`) exécuté par `ShellWindow::runCommand` | tests `palette filter…`, `commandsCoverToolsWorkspacesAndEditing` (20 outils atteignables, un outil non migré est listé mais refusé), `paletteFiltersAndRunsTheChosenCommand` |
+| Un outil absent de l'espace courant est atteignable : la commande bascule vers le premier espace qui le montre (principe B) | `runCommand("tool.…")` |
+| Totaux locaux (Windows, Debug) | Catch2 : 46 cas / 546 assertions ; QTest : 22 fonctions ; 0 avertissement |
+
+### Constat
+
+Sur Tentabrode à 80 mm, **12 objets sur 90 n'ont aucun point cousu** (le cadre autour de toute l'image en sélectionne 78) :
+ils existent dans le document mais n'ont pas d'emprise au canevas. Ils restent sélectionnables dans l'arbre. À
+expliquer côté moteur (objets de séparation vides ? objets entièrement recouverts ?) avant d'afficher un indicateur.
+
+### Non fait
+
+Poignées de nœuds, outils de dessin, design system, i18n EN, centre de notifications, banc de mesure Widgets/QML.

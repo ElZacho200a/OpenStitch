@@ -6,7 +6,7 @@
 |---|---|---|---|
 | **V2-0** | architecture et contrats : docs, ADR 0003/0004, `core/` (session, sélection, tâches, registre d'outils, chaîne image → DST, aperçu), squelette `ui/` (shell, arbre, canevas d'aperçu), tests | `main` | **cette branche** (`feat/desktop-v2-foundation`) |
 | V2-1 | infrastructure d'interface : design system (tokens, thème, icônes), docks et espaces persistants, palette de commandes, i18n FR/EN, centre de notifications | V2-0 | ⬜ |
-| V2-2 | canevas et interactions : calque `QGraphicsItem`, sélection au canevas, poignées, outils de dessin, banc de mesure (déclencheurs de l'ADR 0003) | V2-1 | 🟡 **tranche livrée dans `feat/desktop-v2-canvas-inspector`** : sélection au clic, cadres, inspecteur 4 réglages, debounce d'aperçu ; poignées, dessin, banc de mesure ⬜ |
+| V2-2 | canevas et interactions : calque `QGraphicsItem`, sélection au canevas, poignées, outils de dessin, banc de mesure (déclencheurs de l'ADR 0003) | V2-1 | 🟡 **tranche livrée dans `feat/desktop-v2-canvas-inspector`** : sélection au clic et au cadre élastique, inspecteur 4 réglages, debounce d'aperçu, palette de commandes ; poignées, dessin, banc de mesure ⬜ |
 | V2-3 | workflows de conception : prétraitement, segmentation, régions, vectorisation | V2-2 | ⬜ |
 | V2-4 | workflows de numérisation : inspecteur contextuel, types de points, satin/auto-satin, remplissages spéciaux, fondus | V2-2 | ⬜ |
 | V2-5 | analyse et production : ordre/coupes, densité, tirage prédictif, simulation, rendu, cadres, nuancier, exports | V2-4 | ⬜ |

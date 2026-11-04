@@ -8,6 +8,7 @@
 #include <QMouseEvent>
 #include <QPen>
 #include <QPixmap>
+#include <QRubberBand>
 #include <QWheelEvent>
 #include <cmath>
 
@@ -98,16 +99,53 @@ void PreviewCanvas::setSelectionBoxes(const QVector<QRectF>& boxesPx) {
     }
 }
 
+void PreviewCanvas::setRubberBandSelection(bool on) {
+    bandMode_ = on;
+    bandDragging_ = false;
+    if (band_ != nullptr) {
+        band_->hide();
+    }
+    setDragMode(on ? QGraphicsView::NoDrag : QGraphicsView::ScrollHandDrag);
+}
+
 void PreviewCanvas::mousePressEvent(QMouseEvent* event) {
     pressing_ = event->button() == Qt::LeftButton;
     pressPos_ = event->pos();
+    if (bandMode_ && pressing_) {
+        bandOrigin_ = event->pos();
+        bandDragging_ = true;
+    }
     QGraphicsView::mousePressEvent(event);
 }
 
+void PreviewCanvas::mouseMoveEvent(QMouseEvent* event) {
+    if (bandDragging_) {
+        if (band_ == nullptr) {
+            band_ = new QRubberBand(QRubberBand::Rectangle, viewport());
+        }
+        band_->setGeometry(QRect(bandOrigin_, event->pos()).normalized());
+        band_->show();
+        event->accept();
+        return;
+    }
+    QGraphicsView::mouseMoveEvent(event);
+}
+
 void PreviewCanvas::mouseReleaseEvent(QMouseEvent* event) {
-    const bool click = pressing_ && event->button() == Qt::LeftButton &&
-                       (event->pos() - pressPos_).manhattanLength() <= 4;
+    const bool leftRelease = pressing_ && event->button() == Qt::LeftButton;
+    const bool click = leftRelease && (event->pos() - pressPos_).manhattanLength() <= 4;
     pressing_ = false;
+    if (bandDragging_ && event->button() == Qt::LeftButton) {
+        bandDragging_ = false;
+        if (band_ != nullptr) {
+            band_->hide();
+        }
+        if (!click && item_ != nullptr) {
+            const QRect px = QRect(bandOrigin_, event->pos()).normalized();
+            emit rectPx(mapToScene(px).boundingRect(), event->modifiers());
+            return;
+        }
+    }
     QGraphicsView::mouseReleaseEvent(event);
     if (click && item_ != nullptr) {
         emit clickedPx(mapToScene(event->pos()), event->modifiers());

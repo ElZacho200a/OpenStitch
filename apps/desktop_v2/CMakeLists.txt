@@ -14,6 +14,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/object_labels.cpp
     core/hit_index.cpp
     core/inspector_model.cpp
+    core/command_catalog.cpp
 )
 add_library(openstitch::desktop_v2_core ALIAS openstitch_desktop_v2_core)
 target_include_directories(openstitch_desktop_v2_core PUBLIC core)
@@ -38,6 +39,8 @@ add_library(openstitch_desktop_v2_ui STATIC
     ui/shell_window.hpp
     ui/preview_canvas.cpp
     ui/inspector_panel.cpp
+    ui/command_palette.cpp
+    ui/command_palette.hpp
     ui/inspector_panel.hpp
     ui/preview_canvas.hpp
 )
