@@ -299,3 +299,16 @@ Catch2 `a knife line splits a shape…`, QTest `theKnifeCutsTheSelectedShapeAlon
 interactifs adossés à des `ICommand` (zones de détail / clic-pour-broder, colonnes de satin à rails, retouche point à
 point), non faits. **Aucune famille n'est ✅** : toutes les 🟡 ont un reste explicite dans la matrice. Desktop V2 n'est donc pas
 encore le desktop principal.
+
+
+## 2026-11-04 — Session 1 (suite 15) : clic-pour-broder, zones de détail, retouche de points (branche `feat/desktop-v2-last-families`)
+
+- **Famille 10** : `core/source_image_tools` (clic-pour-broder : `grow_region` + `make_click_to_stitch_command` ; pinceau :
+  `PaintDetailMaskCommand` / `ClearDetailMaskCommand`), image source en calque semi-transparent et masque de détail en
+  surimpression, barre « Outils d'image » (tolérance, type, rayon). Catch2 `[source]` (6 cas), QTest ×4.
+- **Famille 26** : `core/point_edit` (vue des points d'un objet, déplacer / supprimer / rétablir / insérer / tout effacer via
+  `EditStitchPointsCommand` et `DiscardOverridesCommand`, avec l'empreinte du moteur : un objet périmé est refusé), outil
+  `stitch.points` (nouveau en V2, 21 outils au registre), poignées sur le canevas. Catch2 `[points]` (4 cas), QTest
+  `thePointToolMovesDeletesAndDiscardsStitchEdits`.
+- État de la matrice : ✅ 2 · 🟡 40 · ⬜ 2 (restent : 9 IA, exception justifiée ; 19 colonnes de satin à rails).
+

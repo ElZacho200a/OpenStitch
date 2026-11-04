@@ -17,6 +17,8 @@ add_executable(test_desktop_v2_core
     test_view_tools.cpp
     test_document_services.cpp
     test_fade_service.cpp
+    test_point_edit.cpp
+    test_source_image_tools.cpp
 )
 target_link_libraries(test_desktop_v2_core
     PRIVATE openstitch::desktop_v2_core openstitch::project_ops openstitch::commands

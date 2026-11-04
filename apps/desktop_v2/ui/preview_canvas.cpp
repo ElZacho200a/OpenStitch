@@ -63,6 +63,12 @@ void PreviewCanvas::clearImage() {
     boxItems_.clear();
     item_ = nullptr;
     hoopItem_ = nullptr;
+    pointItems_.clear();
+    sourceItem_ = nullptr;
+    detailItem_ = nullptr;
+    strokeItem_ = nullptr;
+    strokePts_.clear();
+    stroking_ = false;
     gridItem_ = nullptr;
     measureLine_ = nullptr;
     measureText_ = nullptr;
@@ -97,7 +103,7 @@ void PreviewCanvas::setMode(Mode mode) {
         clearMeasure();
     }
     setCursor(mode == Mode::DrawBox || mode == Mode::DrawPolygon || mode == Mode::Measure ||
-                      mode == Mode::Pick || mode == Mode::Cut
+                      mode == Mode::Pick || mode == Mode::Cut || mode == Mode::Stroke
                   ? Qt::CrossCursor
                   : Qt::ArrowCursor);
 }
@@ -225,6 +231,79 @@ void PreviewCanvas::setHoopRect(const QRectF& rectPx) {
     hoopItem_->setVisible(hoopVisible_);
 }
 
+void PreviewCanvas::setSourceImage(const QImage& image, const QRectF& rectPx) {
+    if (sourceItem_ != nullptr) {
+        scene_->removeItem(sourceItem_);
+        delete sourceItem_;
+        sourceItem_ = nullptr;
+    }
+    if (item_ == nullptr || image.isNull()) {
+        return;
+    }
+    sourceItem_ = scene_->addPixmap(QPixmap::fromImage(image));
+    sourceItem_->setTransformationMode(Qt::SmoothTransformation);
+    sourceItem_->setOpacity(0.55);
+    sourceItem_->setZValue(3);
+    // L'image est posée à `rectPx` : mise à l'échelle depuis ses pixels propres.
+    sourceItem_->setTransform(
+        QTransform::fromScale(rectPx.width() / image.width(), rectPx.height() / image.height()));
+    sourceItem_->setPos(rectPx.topLeft());
+    sourceItem_->setVisible(sourceVisible_);
+    // La scène doit contenir l'image même quand elle déborde de l'aperçu (clic hors des points).
+    scene_->setSceneRect(item_->boundingRect().united(rectPx).adjusted(-40, -40, 40, 40));
+}
+
+void PreviewCanvas::setPointMarkers(const QVector<QPointF>& scenePx, int selected) {
+    for (QGraphicsItem* it : pointItems_) {
+        scene_->removeItem(it);
+        delete it;
+    }
+    pointItems_.clear();
+    if (item_ == nullptr) {
+        return;
+    }
+    pointItems_.reserve(scenePx.size());
+    for (int i = 0; i < scenePx.size(); ++i) {
+        const bool sel = i == selected;
+        const double r = sel ? 4.0 : 2.5;
+        auto* dot = scene_->addEllipse(
+            -r, -r, 2 * r, 2 * r,
+            cosmeticPen(sel ? QColor(230, 60, 60) : QColor(20, 110, 200), Qt::SolidLine, 1),
+            QBrush(sel ? QColor(255, 200, 60) : QColor(255, 255, 255)));
+        dot->setPos(scenePx[i]);
+        dot->setZValue(sel ? 16 : 15);
+        dot->setFlag(QGraphicsItem::ItemIgnoresTransformations, true);
+        pointItems_.push_back(dot);
+    }
+}
+
+void PreviewCanvas::setSourceVisible(bool visible) {
+    sourceVisible_ = visible;
+    if (sourceItem_ != nullptr) {
+        sourceItem_->setVisible(visible);
+    }
+    if (detailItem_ != nullptr) {
+        detailItem_->setVisible(visible);
+    }
+}
+
+void PreviewCanvas::setDetailOverlay(const QImage& image, const QRectF& rectPx) {
+    if (detailItem_ != nullptr) {
+        scene_->removeItem(detailItem_);
+        delete detailItem_;
+        detailItem_ = nullptr;
+    }
+    if (item_ == nullptr || image.isNull()) {
+        return;
+    }
+    detailItem_ = scene_->addPixmap(QPixmap::fromImage(image));
+    detailItem_->setZValue(3.5);
+    detailItem_->setTransform(
+        QTransform::fromScale(rectPx.width() / image.width(), rectPx.height() / image.height()));
+    detailItem_->setPos(rectPx.topLeft());
+    detailItem_->setVisible(sourceVisible_);
+}
+
 void PreviewCanvas::setHoopVisible(bool visible) {
     hoopVisible_ = visible;
     if (hoopItem_ != nullptr) {
@@ -329,6 +408,12 @@ void PreviewCanvas::cancelPolygon() {
 void PreviewCanvas::mousePressEvent(QMouseEvent* event) {
     pressing_ = event->button() == Qt::LeftButton;
     pressPos_ = event->pos();
+    if (mode_ == Mode::Stroke && pressing_ && item_ != nullptr) {
+        stroking_ = true;
+        strokePts_ = {mapToScene(event->pos())};
+        event->accept();
+        return;
+    }
     if ((mode_ == Mode::Measure || mode_ == Mode::Cut) && pressing_ && item_ != nullptr) {
         clearMeasure();
         measureFrom_ = mapToScene(event->pos());
@@ -370,6 +455,23 @@ void PreviewCanvas::mousePressEvent(QMouseEvent* event) {
 }
 
 void PreviewCanvas::mouseMoveEvent(QMouseEvent* event) {
+    if (stroking_) {
+        strokePts_.push_back(mapToScene(event->pos()));
+        QPainterPath path;
+        path.moveTo(strokePts_.first());
+        for (int i = 1; i < strokePts_.size(); ++i) {
+            path.lineTo(strokePts_[i]);
+        }
+        if (strokeItem_ == nullptr) {
+            strokeItem_ =
+                scene_->addPath(path, cosmeticPen(QColor(230, 60, 60, 200), Qt::SolidLine, 3));
+            strokeItem_->setZValue(14);
+        } else {
+            strokeItem_->setPath(path);
+        }
+        event->accept();
+        return;
+    }
     if (measuring_) {
         const QPointF cur = mapToScene(event->pos());
         if (measureLine_ == nullptr) {
@@ -424,6 +526,21 @@ void PreviewCanvas::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void PreviewCanvas::mouseReleaseEvent(QMouseEvent* event) {
+    if (stroking_ && event->button() == Qt::LeftButton) {
+        stroking_ = false;
+        pressing_ = false;
+        strokePts_.push_back(mapToScene(event->pos()));
+        if (strokeItem_ != nullptr) {
+            scene_->removeItem(strokeItem_);
+            delete strokeItem_;
+            strokeItem_ = nullptr;
+        }
+        const QVector<QPointF> done = strokePts_;
+        strokePts_.clear();
+        emit strokeDrawnPx(done, event->modifiers());
+        event->accept();
+        return;
+    }
     if (measuring_ && event->button() == Qt::LeftButton) {
         measuring_ = false;
         pressing_ = false;
