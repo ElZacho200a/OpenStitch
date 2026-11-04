@@ -684,8 +684,7 @@ void ShellWindow::buildStatusArea() {
 
 void ShellWindow::setCompactToolRail(bool compact) {
     compactTools_ = compact;
-    toolRail_->setToolButtonStyle(compact ? Qt::ToolButtonIconOnly
-                                         : Qt::ToolButtonTextBesideIcon);
+    toolRail_->setToolButtonStyle(compact ? Qt::ToolButtonIconOnly : Qt::ToolButtonTextBesideIcon);
     toolRail_->setFixedWidth(compact ? 52 : 180);
     if (compactToolsAction_ != nullptr) {
         compactToolsAction_->setChecked(compact);
