@@ -1,6 +1,7 @@
 ﻿// SPDX-License-Identifier: Apache-2.0
 #include <QAction>
 #include <QApplication>
+#include <QColor>
 #include <QFile>
 #include <QMenu>
 #include <QMenuBar>
@@ -22,6 +23,7 @@
 #include "satin_column.hpp"
 #include "shell_window.hpp"
 #include "source_image_tools.hpp"
+#include "thread_panel.hpp"
 #include <array>
 
 using namespace openstitch::desktop_v2;
@@ -1005,6 +1007,47 @@ private slots:
         QVERIFY(!panel->removeCurrent()); // le dernier calque reste
         QVERIFY(w.session().undo());
         QCOMPARE(panel->rowCount(), 2);
+    }
+
+    void threadPanelListsThreadsOrderAndColorways() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        (void)w.session().applyBatch(batchAddRect({-30, 0}, 10, 10), "A");
+        (void)w.session().applyBatch(batchAddRect({0, 0}, 10, 10), "B");
+        (void)w.session().applyBatch(batchAddRect({30, 0}, 10, 10), "C");
+        w.waitForIdle();
+        auto* panel = w.threadPanel();
+        QVERIFY(panel != nullptr);
+        QCOMPARE(panel->orderCount(), 3);
+        QVERIFY(panel->threadCount() >= 1);
+        // Fils : sélectionner puis recolorer.
+        panel->setCurrentThread(0);
+        QVERIFY(panel->selectCurrentThread());
+        QVERIFY(!w.session().selection().empty());
+        QVERIFY(panel->recolorCurrentThread(QColor(255, 0, 0)));
+        QVERIFY(panel->threadText(0).contains("#ff0000"));
+        QVERIFY(w.session().undo());
+        QVERIFY(!panel->threadText(0).contains("#ff0000"));
+        // Ordre de couture : déplacer le premier plus tard, refuser de dépasser la fin.
+        const QString firstBefore = panel->orderText(0);
+        panel->setCurrentOrder(0);
+        QVERIFY(panel->moveCurrentOrder(+1));
+        QVERIFY(panel->orderText(1).contains(firstBefore.mid(firstBefore.indexOf(". ") + 2)));
+        panel->setCurrentOrder(2);
+        QVERIFY(!panel->moveCurrentOrder(+1));
+        // Coloris : ajouter, activer l'original, supprimer l'inactif.
+        QVERIFY(!panel->addColorwayNamed("  "));
+        QVERIFY(panel->addColorwayNamed("Hiver"));
+        QCOMPARE(panel->colorwayCount(), 2);
+        QVERIFY(panel->colorwayText(1).contains("actif"));
+        panel->setCurrentColorway(0);
+        QVERIFY(panel->activateCurrentColorway());
+        QVERIFY(panel->colorwayText(0).contains("actif"));
+        panel->setCurrentColorway(1);
+        QVERIFY(panel->renameCurrentColorway("Ete"));
+        QVERIFY(panel->removeCurrentColorway());
+        QCOMPARE(panel->colorwayCount(), 1);
     }
 
     void hidingACalqueHidesItsObjectsFromThePreview() {

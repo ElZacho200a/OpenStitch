@@ -23,6 +23,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/action_catalog.cpp
     core/view_tools.cpp
     core/document_services.cpp
+    core/thread_plan.cpp
     core/fade_service.cpp
     core/workspace_state.cpp
     core/arrange_batch.cpp
@@ -60,6 +61,8 @@ add_library(openstitch_desktop_v2_ui STATIC
     ui/inspector_panel.cpp
     ui/calque_panel.cpp
     ui/calque_panel.hpp
+    ui/thread_panel.cpp
+    ui/thread_panel.hpp
     ui/action_dialog.cpp
     ui/action_dialog.hpp
     ui/command_palette.cpp

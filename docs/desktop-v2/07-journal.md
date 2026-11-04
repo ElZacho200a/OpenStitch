@@ -339,3 +339,8 @@ encore le desktop principal.
   Fichier > Fiche de production (PDF) met en page l'aperçu et le plan de fils (QPdfWriter, tâche annulable). Catch2 `[sheet]`.
 - Aide > Raccourcis et commandes (texte généré depuis `commandEntries`) et À propos.
 - Constat : l'ancien bureau n'importe pas le DST (seulement la CLI) ; la ligne 3 n'est donc pas un écart de parité.
+
+## 2026-11-04 — Session 1 (suite 19) : parité avec l'ancien bureau, lot « fils, ordre, coloris »
+
+- `core/thread_plan` : plan de fils (objets groupés par fil dans l'ordre de couture), fusion, recoloration, visibilité, déplacement dans l'ordre de couture (refus si l'ordre des calques casse), coloris (ajout, activation, renommage, suppression) ; tout via `ICommand`, une étape d'annulation par action. Catch2 `[threads]`.
+- Interface : dock « Fils » à trois onglets (Fils / Ordre / Coloris). QTest `threadPanelListsThreadsOrderAndColorways`.

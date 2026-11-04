@@ -56,6 +56,7 @@ class PreviewCanvas;
 class InspectorPanel;
 class DiagnosticsPanel;
 class CalquePanel;
+class ThreadPanel;
 
 class ShellWindow : public QMainWindow {
     Q_OBJECT
@@ -152,6 +153,7 @@ public:
     [[nodiscard]] InspectorPanel* inspector() const { return inspector_; }
     [[nodiscard]] DiagnosticsPanel* diagnostics() const { return diagnostics_; }
     [[nodiscard]] CalquePanel* calquePanel() const { return calques_; }
+    [[nodiscard]] ThreadPanel* threadPanel() const { return threads_; }
     // Repère mm <-> pixels et index de sélection de l'aperçu affiché (tests, diagnostics).
     [[nodiscard]] const PreviewImage& previewFrame() const { return frame_; }
     // Un point (pixels de l'image d'aperçu) qui appartient à l'objet : pour piloter le canevas en
@@ -250,6 +252,7 @@ private:
     QString themeMode_{QStringLiteral("system")};
     DiagnosticsPanel* diagnostics_{nullptr};
     CalquePanel* calques_{nullptr};
+    ThreadPanel* threads_{nullptr};
     QMenu* presetMenu_{nullptr};
     QDockWidget* docDock_{nullptr};
     QDockWidget* diagDock_{nullptr};
