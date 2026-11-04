@@ -4,9 +4,12 @@
 #include <QAction>
 #include <QActionGroup>
 #include <QApplication>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QDockWidget>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
+#include <QFormLayout>
 #include <QHeaderView>
 #include <QImage>
 #include <QInputDialog>
@@ -25,6 +28,8 @@
 #include <QVBoxLayout>
 #include <algorithm>
 #include <map>
+
+#include "openstitch/commands/placement_ops.hpp"
 
 #include "action_dialog.hpp"
 #include "calque_panel.hpp"
@@ -273,6 +278,20 @@ void ShellWindow::buildMenus() {
     addEdit(transform, tr("Pivoter de 90° à &gauche"), "transform.rotate.ccw");
     addEdit(transform, tr("Miroir &horizontal"), "transform.mirror.h");
     addEdit(transform, tr("Miroir &vertical"), "transform.mirror.v");
+    auto* arrange = edit->addMenu(tr("&Aligner"));
+    addEdit(arrange, tr("À &gauche"), "arrange.align.left");
+    addEdit(arrange, tr("Centrer &horizontalement"), "arrange.align.centerh");
+    addEdit(arrange, tr("À &droite"), "arrange.align.right");
+    addEdit(arrange, tr("En &haut"), "arrange.align.top");
+    addEdit(arrange, tr("Centrer &verticalement"), "arrange.align.centerv");
+    addEdit(arrange, tr("En &bas"), "arrange.align.bottom");
+    auto* distribute = edit->addMenu(tr("&Répartir"));
+    addEdit(distribute, tr("&Horizontalement"), "arrange.distribute.h");
+    addEdit(distribute, tr("&Verticalement"), "arrange.distribute.v");
+    addEdit(edit, tr("&Grouper"), "arrange.group", QKeySequence(QStringLiteral("Ctrl+G")));
+    addEdit(edit, tr("Dé&grouper"), "arrange.ungroup",
+            QKeySequence(QStringLiteral("Ctrl+Shift+G")));
+    addEdit(edit, tr("Position et &taille…"), "arrange.place");
     auto* order = edit->addMenu(tr("&Ordre de couture"));
     addEdit(order, tr("Premier plan"), "order.front");
     addEdit(order, tr("Avancer"), "order.forward");
@@ -1622,6 +1641,37 @@ void ShellWindow::editSelection(const QString& command) {
     } else if (command == QLatin1String("transform.mirror.v")) {
         batch = batchMirror(state.ids, MirrorAxis::Vertical, centre);
         label = tr("Miroir vertical");
+    } else if (command == QLatin1String("arrange.place")) {
+        showPlaceDialog();
+        return;
+    } else if (command.startsWith(QLatin1String("arrange."))) {
+        static const std::map<QString, AlignMode> aligns{
+            {QStringLiteral("arrange.align.left"), AlignMode::Left},
+            {QStringLiteral("arrange.align.centerh"), AlignMode::CenterH},
+            {QStringLiteral("arrange.align.right"), AlignMode::Right},
+            {QStringLiteral("arrange.align.top"), AlignMode::Top},
+            {QStringLiteral("arrange.align.centerv"), AlignMode::CenterV},
+            {QStringLiteral("arrange.align.bottom"), AlignMode::Bottom}};
+        if (const auto it = aligns.find(command); it != aligns.end()) {
+            batch = batchAlign(session_.project(), state.ids, it->second);
+            label = tr("Aligner");
+        } else if (command == QLatin1String("arrange.distribute.h")) {
+            batch = batchDistribute(session_.project(), state.ids, DistributeAxis::Horizontal);
+            label = tr("Répartir horizontalement");
+        } else if (command == QLatin1String("arrange.distribute.v")) {
+            batch = batchDistribute(session_.project(), state.ids, DistributeAxis::Vertical);
+            label = tr("Répartir verticalement");
+        } else if (command == QLatin1String("arrange.group")) {
+            batch = batchGroup(state.ids, {});
+            label = tr("Grouper");
+        } else if (command == QLatin1String("arrange.ungroup")) {
+            batch = batchUngroup(session_.project(), state.ids);
+            label = tr("Dégrouper");
+        }
+        if (batch.empty()) {
+            setNotice(tr("%1 : rien à faire pour cette sélection.").arg(label), false);
+            return;
+        }
     } else if (command.startsWith(QLatin1String("order."))) {
         const std::string move = command.mid(6).toStdString();
         batch = batchStack(state.ids, move);
@@ -1787,6 +1837,17 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
     edit("transform.rotate.ccw", tr("Pivoter de 90° à gauche"), "Transformer", "");
     edit("transform.mirror.h", tr("Miroir horizontal"), "Transformer", "");
     edit("transform.mirror.v", tr("Miroir vertical"), "Transformer", "");
+    edit("arrange.align.left", tr("Aligner à gauche"), "Aligner", "");
+    edit("arrange.align.centerh", tr("Centrer horizontalement"), "Aligner", "");
+    edit("arrange.align.right", tr("Aligner à droite"), "Aligner", "");
+    edit("arrange.align.top", tr("Aligner en haut"), "Aligner", "");
+    edit("arrange.align.centerv", tr("Centrer verticalement"), "Aligner", "");
+    edit("arrange.align.bottom", tr("Aligner en bas"), "Aligner", "");
+    edit("arrange.distribute.h", tr("Répartir horizontalement"), "Aligner", "");
+    edit("arrange.distribute.v", tr("Répartir verticalement"), "Aligner", "");
+    edit("arrange.group", tr("Grouper"), "Édition", "Ctrl+G");
+    edit("arrange.ungroup", tr("Dégrouper"), "Édition", "Ctrl+Maj+G");
+    edit("arrange.place", tr("Position et taille…"), "Transformer", "");
     edit("order.front", tr("Premier plan"), "Ordre de couture", "");
     edit("order.forward", tr("Avancer d'un cran"), "Ordre de couture", "");
     edit("order.backward", tr("Reculer d'un cran"), "Ordre de couture", "");
@@ -1846,6 +1907,7 @@ bool ShellWindow::runCommand(const QString& id) {
             session_.redo();
         } else if (id == QLatin1String("edit.delete") || id == QLatin1String("edit.duplicate") ||
                    id.startsWith(QLatin1String("transform.")) ||
+                   id.startsWith(QLatin1String("arrange.")) ||
                    id.startsWith(QLatin1String("order."))) {
             editSelection(id);
         } else if (id.startsWith(QLatin1String("action."))) {
@@ -1956,6 +2018,73 @@ void ShellWindow::onMoveStart(QPointF scenePx) {
     if (hit && !session_.selection().contains({TargetKind::EmbroideryObject, *hit})) {
         session_.selection().replace({{TargetKind::EmbroideryObject, *hit}});
     }
+}
+
+void ShellWindow::showPlaceDialog() {
+    const auto state = inspect(session_.project(), session_.selection().targets());
+    if (state.ids.empty()) {
+        return;
+    }
+    std::vector<ObjectId> shapes;
+    for (const auto id : state.ids) {
+        if (const auto* emb = session_.project().findEmbroidery(ObjectId{id})) {
+            shapes.push_back(emb->source_vector);
+        }
+    }
+    const auto geometry = commands::selection_geometry(session_.project(), shapes);
+    if (!geometry) {
+        return;
+    }
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Position et taille"));
+    auto* form = new QFormLayout(&dialog);
+    const auto spin = [&](double value, double lo, double hi, const QString& suffix) {
+        auto* s = new QDoubleSpinBox(&dialog);
+        s->setRange(lo, hi);
+        s->setDecimals(2);
+        s->setSuffix(suffix);
+        s->setValue(value);
+        return s;
+    };
+    auto* x = spin(to_millimeters(geometry->center.x).value, -1000, 1000, QStringLiteral(" mm"));
+    auto* y = spin(to_millimeters(geometry->center.y).value, -1000, 1000, QStringLiteral(" mm"));
+    auto* w = spin(to_millimeters(geometry->width).value, 0.1, 2000, QStringLiteral(" mm"));
+    auto* h = spin(to_millimeters(geometry->height).value, 0.1, 2000, QStringLiteral(" mm"));
+    auto* angle = spin(0.0, -360, 360, QStringLiteral(" °"));
+    form->addRow(tr("Centre X"), x);
+    form->addRow(tr("Centre Y (vers le haut)"), y);
+    form->addRow(tr("Largeur"), w);
+    form->addRow(tr("Hauteur"), h);
+    form->addRow(tr("Rotation (anti-horaire)"), angle);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    form->addRow(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    placeSelection(x->value(), y->value(), w->value(), h->value(), angle->value());
+}
+
+bool ShellWindow::placeSelection(double xMm, double yMm, double widthMm, double heightMm,
+                                 double rotateDeg) {
+    const auto state = inspect(session_.project(), session_.selection().targets());
+    PlaceRequest request;
+    request.xMm = xMm;
+    request.yMm = yMm;
+    request.widthMm = widthMm;
+    request.heightMm = heightMm;
+    request.rotateDeg = rotateDeg;
+    const auto batch = batchPlace(state.ids, request);
+    if (batch.empty()) {
+        setNotice(tr("Position et taille : valeurs hors limites."), true);
+        return false;
+    }
+    const auto result = session_.applyBatch(batch, tr("Position et taille").toStdString());
+    if (!result.committed) {
+        setNotice(tr("Position et taille refusées."), true);
+    }
+    return result.committed;
 }
 
 void ShellWindow::applyTransform(const std::string& batch, const QString& label) {

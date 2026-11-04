@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "action_catalog.hpp"
+#include "arrange_batch.hpp"
 #include "command_catalog.hpp"
 #include "diagnostics_service.hpp"
 #include "digitize_pipeline.hpp"
@@ -83,6 +84,8 @@ public:
     bool runCommand(const QString& id); // faux si inconnue ou désactivée
     void showCommandPalette();
     void selectAllObjects();
+    bool placeSelection(double xMm, double yMm, double widthMm, double heightMm, double rotateDeg);
+    void showPlaceDialog(); // position, taille et rotation numériques de la sélection
 
     // --- Image source : clic-pour-broder et zones de détail -----------------------------------
     void setSourceVisible(bool visible); // calque semi-transparent sous les fils

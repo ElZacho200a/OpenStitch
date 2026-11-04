@@ -1374,6 +1374,26 @@ private slots:
         std::filesystem::remove_all(dir);
     }
 
+    void alignGroupAndNumericPlacementWorkFromTheEditMenu() {
+        ShellWindow w;
+        w.newProject();
+        auto& session = w.session();
+        (void)session.applyBatch(batchAddRect({-30, 0}, 10, 10), "A");
+        (void)session.applyBatch(batchAddRect({0, 15}, 20, 6), "B");
+        (void)session.applyBatch(batchAddRect({25, -8}, 8, 12), "C");
+        w.selectAllObjects();
+        const auto depth = session.undoNames().size();
+        QVERIFY(w.runCommand(QStringLiteral("arrange.align.left")));
+        QCOMPARE(session.undoNames().size(), depth + 1);
+        QVERIFY(w.runCommand(QStringLiteral("arrange.group")));
+        QCOMPARE(session.project().groups.size(), size_t(1));
+        QVERIFY(w.runCommand(QStringLiteral("arrange.ungroup")));
+        QCOMPARE(session.project().groups.size(), size_t(0));
+        QVERIFY(w.placeSelection(0.0, 0.0, 30.0, 30.0, 0.0));
+        QVERIFY(!w.placeSelection(5000.0, 0.0, 30.0, 30.0, 0.0));
+        QVERIFY(w.findChild<QMenu*>() != nullptr);
+    }
+
     void inspectorEditsAllSelectedObjectsInOneUndoStep() {
         ShellWindow w;
         w.openImage(tentabrode(), 80.0);

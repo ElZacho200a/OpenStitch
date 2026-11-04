@@ -323,3 +323,10 @@ encore le desktop principal.
   récents, minuterie d'autosave 60 s, récupération proposée au démarrage, effacée à l'enregistrement et à la sortie
   propre ; Édition > Historique (annule k+1 étapes). QTest `autosaveRecoveryRecentFilesAndHistoryMenuWork`.
 - Familles 2, 4 et 34 : restent 🟡 (migration de schéma, rapport de plantage).
+
+## 2026-11-04 — Session 1 (suite 17) : parité avec l'ancien bureau, lot « disposition »
+
+- `core/arrange_batch` : aligner (6 modes sur la boîte de l'ensemble), répartir (espaces égaux, H/V), grouper, dégrouper,
+  position / taille / rotation libre numériques, tous par lots `project_ops` (`place`, `group`, `ungroup`). Catch2 `[arrange]`.
+- Interface : Édition > Aligner, Répartir, Grouper (Ctrl+G), Dégrouper (Ctrl+Maj+G), Position et taille… ; mêmes entrées
+  dans la palette Ctrl+K. QTest `alignGroupAndNumericPlacementWorkFromTheEditMenu`.
