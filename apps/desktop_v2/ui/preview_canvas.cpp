@@ -2,6 +2,7 @@
 #include "preview_canvas.hpp"
 
 #include <QContextMenuEvent>
+#include <QFocusEvent>
 #include <QGraphicsItemGroup>
 #include <QGraphicsLineItem>
 #include <QGraphicsPathItem>
@@ -15,6 +16,7 @@
 #include <QPen>
 #include <QPixmap>
 #include <QRubberBand>
+#include <QScrollBar>
 #include <QWheelEvent>
 #include <algorithm>
 #include <cmath>
@@ -79,6 +81,9 @@ void PreviewCanvas::clearImage() {
     polyPts_.clear();
     unionPx_ = QRectF();
     userZoomed_ = false;
+    spaceDragging_ = false;
+    middlePanning_ = false;
+    updateNavigationCursor();
 }
 
 void PreviewCanvas::fitAll() {
@@ -98,14 +103,26 @@ void PreviewCanvas::setMode(Mode mode) {
     if (band_ != nullptr) {
         band_->hide();
     }
-    setDragMode(mode == Mode::Pan ? QGraphicsView::ScrollHandDrag : QGraphicsView::NoDrag);
     if (mode != Mode::Measure && mode != Mode::Cut) {
         clearMeasure();
     }
-    setCursor(mode == Mode::DrawBox || mode == Mode::DrawPolygon || mode == Mode::Measure ||
-                      mode == Mode::Pick || mode == Mode::Cut || mode == Mode::Stroke
-                  ? Qt::CrossCursor
-                  : Qt::ArrowCursor);
+    updateNavigationCursor();
+}
+
+void PreviewCanvas::updateNavigationCursor() {
+    const bool panning = mode_ == Mode::Pan || spacePanning_ || spaceDragging_;
+    setDragMode(panning ? QGraphicsView::ScrollHandDrag : QGraphicsView::NoDrag);
+    if (middlePanning_) {
+        viewport()->setCursor(Qt::ClosedHandCursor);
+    } else if (panning) {
+        viewport()->setCursor(Qt::OpenHandCursor);
+    } else {
+        viewport()->setCursor(mode_ == Mode::DrawBox || mode_ == Mode::DrawPolygon ||
+                                     mode_ == Mode::Measure || mode_ == Mode::Pick ||
+                                     mode_ == Mode::Cut || mode_ == Mode::Stroke
+                                 ? Qt::CrossCursor
+                                 : Qt::ArrowCursor);
+    }
 }
 
 void PreviewCanvas::wheelEvent(QWheelEvent* event) {
@@ -114,16 +131,33 @@ void PreviewCanvas::wheelEvent(QWheelEvent* event) {
     }
     // Zoom ancré sous le curseur, calculé depuis la position de l'ÉVÉNEMENT (pas QCursor::pos()) :
     // correct avec des événements synthétiques (tests) et des pavés tactiles.
+    const int delta = event->angleDelta().y();
+    if (delta == 0) {
+        event->ignore();
+        return;
+    }
     const QPointF before = mapToScene(event->position().toPoint());
-    const double step = std::pow(1.0015, event->angleDelta().y());
-    scale(step, step);
-    const QPointF after = mapToScene(event->position().toPoint());
-    translate(after.x() - before.x(), after.y() - before.y());
-    userZoomed_ = true;
+    const double current = zoom();
+    const double target = std::clamp(current * std::pow(1.0015, delta), 0.02, 80.0);
+    if (current > 0.0 && target != current) {
+        const double ratio = target / current;
+        scale(ratio, ratio);
+        const QPointF after = mapToScene(event->position().toPoint());
+        translate(after.x() - before.x(), after.y() - before.y());
+        userZoomed_ = true;
+    }
     event->accept();
 }
 
 void PreviewCanvas::keyPressEvent(QKeyEvent* event) {
+    if (event->key() == Qt::Key_Space) {
+        if (!event->isAutoRepeat()) {
+            spacePanning_ = true;
+            updateNavigationCursor();
+        }
+        event->accept();
+        return;
+    }
     if (mode_ == Mode::DrawPolygon) {
         switch (event->key()) {
         case Qt::Key_Return:
@@ -180,6 +214,28 @@ void PreviewCanvas::keyPressEvent(QKeyEvent* event) {
         return;
     }
     QGraphicsView::keyPressEvent(event);
+}
+
+void PreviewCanvas::keyReleaseEvent(QKeyEvent* event) {
+    if (event->key() == Qt::Key_Space) {
+        if (!event->isAutoRepeat()) {
+            spacePanning_ = false;
+            if (!spaceDragging_) {
+                updateNavigationCursor();
+            }
+        }
+        event->accept();
+        return;
+    }
+    QGraphicsView::keyReleaseEvent(event);
+}
+
+void PreviewCanvas::focusOutEvent(QFocusEvent* event) {
+    spacePanning_ = false;
+    if (!spaceDragging_) {
+        updateNavigationCursor();
+    }
+    QGraphicsView::focusOutEvent(event);
 }
 
 void PreviewCanvas::setSelectionBoxes(const QVector<QRectF>& boxesPx) {
@@ -406,6 +462,20 @@ void PreviewCanvas::cancelPolygon() {
 }
 
 void PreviewCanvas::mousePressEvent(QMouseEvent* event) {
+    if (event->button() == Qt::MiddleButton) {
+        middlePanning_ = true;
+        middlePanPos_ = event->pos();
+        updateNavigationCursor();
+        event->accept();
+        return;
+    }
+    if (spacePanning_ && event->button() == Qt::LeftButton) {
+        spaceDragging_ = true;
+        updateNavigationCursor();
+        QGraphicsView::mousePressEvent(event);
+        event->accept();
+        return;
+    }
     pressing_ = event->button() == Qt::LeftButton;
     pressPos_ = event->pos();
     if (mode_ == Mode::Stroke && pressing_ && item_ != nullptr) {
@@ -455,6 +525,19 @@ void PreviewCanvas::mousePressEvent(QMouseEvent* event) {
 }
 
 void PreviewCanvas::mouseMoveEvent(QMouseEvent* event) {
+    if (middlePanning_) {
+        const QPoint move = event->pos() - middlePanPos_;
+        horizontalScrollBar()->setValue(horizontalScrollBar()->value() - move.x());
+        verticalScrollBar()->setValue(verticalScrollBar()->value() - move.y());
+        middlePanPos_ = event->pos();
+        event->accept();
+        return;
+    }
+    if (spaceDragging_) {
+        QGraphicsView::mouseMoveEvent(event);
+        event->accept();
+        return;
+    }
     if (stroking_) {
         strokePts_.push_back(mapToScene(event->pos()));
         QPainterPath path;
@@ -526,6 +609,19 @@ void PreviewCanvas::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void PreviewCanvas::mouseReleaseEvent(QMouseEvent* event) {
+    if (middlePanning_ && event->button() == Qt::MiddleButton) {
+        middlePanning_ = false;
+        updateNavigationCursor();
+        event->accept();
+        return;
+    }
+    if (spaceDragging_ && event->button() == Qt::LeftButton) {
+        QGraphicsView::mouseReleaseEvent(event);
+        spaceDragging_ = false;
+        updateNavigationCursor();
+        event->accept();
+        return;
+    }
     if (stroking_ && event->button() == Qt::LeftButton) {
         stroking_ = false;
         pressing_ = false;
@@ -623,7 +719,8 @@ void PreviewCanvas::mouseReleaseEvent(QMouseEvent* event) {
 }
 
 void PreviewCanvas::mouseDoubleClickEvent(QMouseEvent* event) {
-    if (mode_ == Mode::DrawPolygon && event->button() == Qt::LeftButton) {
+    if (!spacePanning_ && !spaceDragging_ && mode_ == Mode::DrawPolygon &&
+        event->button() == Qt::LeftButton) {
         finishPolygon(); // le premier clic du double-clic a déjà posé le dernier sommet
         event->accept();
         return;
