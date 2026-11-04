@@ -3647,7 +3647,8 @@ de référence. Restent : progression et annulation, régénération de toute la
 ## 23. Robustesse et qualité logicielle (QA)
 - Livré : `scheduleParamsRefresh()` (débounce 150 ms), régénération hors fil UI sur un instantané du projet (`std::async` + timer de scrutation ; `BusyIndicator::run` écarté car modal), résultat périmé rejeté par numéro de série (incrémenté à chaque édition et à chaque `refreshImage`), `flushPendingRefresh()` avant export, analyse, statistiques, simulation, image et fiche de production, éditions de groupe incluses. Tests : cinq éditions en moins de 150 ms = une régénération, séquence différée identique à `effective_sequence`, événement UI traité pendant le calcul, résultat périmé rejeté, undo restaure paramètres et aperçu. Reste : mesure de latence sur un très gros remplissage ; échec intermittent de `test_main_window` sous charge (watchdog 300 s) observé aussi sans ce lot.
 
-### HP-QA-001 — Découper `main_window.cpp` [P1] — ☐ À faire
+### HP-QA-001 — Découper `main_window.cpp` [P1] — ☑ Fait (2026-11-04)
+- Livré : `main_window.cpp` passe de 11 653 à 1 674 lignes ; 15 fichiers `main_window_<responsabilité>.cpp` (fichiers, barres d'outils, panneaux, rendu, simulation, création, outils de dessin, modes d'édition, menu contextuel, aide, assistant, débogage, filtre/ordre, état de sélection) + `main_window_internal.hpp` ; déplacement pur (222 définitions `MainWindow::` conservées), tests desktop et gardes verts. Reste : `main_window_files.cpp` (1 592 lignes) à scinder, blocs d'includes dupliqués à élaguer.
 - État OpenStitch : `apps/desktop/main_window.cpp` ≈ 324 Ko (2026-10-06), un seul fichier
   pour menus, outils, modes d'édition, rendu, simulation. Chaque nouvelle
   fonctionnalité UI de cette liste l'alourdit et ralentit tout le monde.
@@ -4422,7 +4423,8 @@ ouvrant le lot (§0.1).
 - À faire : mesurer sur un scan à 600 dpi ; trait de 0,1 mm conservé ou signalé.
 - Acceptation : mesure consignée.
 
-### HP-STI-033 — Compensation du tirage pour radial, spirale, echo, motif, crosshatch [P1] — ☐ À faire
+### HP-STI-033 — Compensation du tirage pour radial, spirale, echo, motif, crosshatch [P1] — ☑ Fait (2026-11-03)
+- Livré : `pull_compensation` et `pull_mode` pour echo, motif, radial, spirale, crosshatch (radial : rayons prolongés ; crosshatch : tatamis des couches ; spirale/echo/motif : agrandissement isotrope du contour), mode Auto, `.osp`, CLI, inspecteur ; défaut 0 inchangé. Limite : pour spirale et motif le dépassement est borné par `pull` (±pas d'échantillonnage), pas exact.
 - État : `pull_compensation` seulement sur tatami, directionnel, satin, auto-satin (`embroidery_object.hpp:80/174/243/358`) (recoupe possible HP-ENG-001 : à vérifier).
 - À faire : étendre le champ et `pull_auto.cpp`. [`libs/stitch_generation`, `libs/document`]
 - Acceptation : l'extrémité des rangées dépasse du contour de exactement `pull` mm (test géométrique).
@@ -4479,7 +4481,8 @@ ouvrant le lot (§0.1).
 - État : le fil machine est choisi sans distance renvoyée (`machine_palettes.cpp:68-109`).
 - Acceptation : résumé d'export avec ΔE2000 par bloc et avertissement au-delà d'un seuil réglable.
 
-### HP-FMT-027 — VP3 : déplacement d'un Trim perdu [P1] — ☐ À faire
+### HP-FMT-027 — VP3 : déplacement d'un Trim perdu [P1] — ☑ Fait (2026-11-03)
+- Livré : l'encodeur VP3 écrit un saut (`0x80 0x02 dx dy`) avant le Trim déplacé ; aller-retour exact au pas natif de 10 µm. Un Trim déplacé relu donne un Jump de plus.
 - État : le `Trim` est écrit sans dx/dy et relu en {0,0} (`vp3.cpp:118/228`) alors que le modèle le porte (`machine.cpp:112`) (à vérifier par test).
 - Acceptation : aller-retour VP3 restitue chaque position au µm près.
 
@@ -4564,6 +4567,8 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-04 | Claude (lot P1-QA-001) | HP-QA-001 ☑ : découpage de `main_window.cpp` en 15 fichiers par responsabilité, sans changement de comportement. |
+| 2026-11-03 | Claude (lot P1-MOTEUR/FMT) | HP-STI-033 ☑ (tirage radial/spirale/echo/motif/crosshatch), HP-FMT-027 ☑ (VP3 Trim déplacé). HP-STI-018.a (PR de plan requise) et HP-ENG-009 (dépend de 018) non traités. |
 | 2026-11-03 | Claude (lot P1-PERF) | HP-PERF-020/024/025/028/032 ☑ : progression et annulation MCP, index de pixels par région, lignes cohérentes parallèles, réduction de couleurs sous-cubique, autosave hors fil UI. HP-PERF-004 et HP-VIEW-009 restent à faire. |
 | 2026-11-03 | Claude (lot P1-AUTO) | HP-AUTO-012/014/020/021 ☑ (EXIF, refusion après « Limiter à N fils », contour running, action « Convertir les vecteurs en broderie »), HP-AUTO-007/010 ◐ (cœur, exposition à câbler). HP-AUTO-011 non traitée (ONNX/packaging). |
 | 2026-11-03 | Claude (lot P1-QA) | HP-QA-012/013/014/017/018/020/022/023 ☑ ; HP-QA-011 et 021 ◐ : CI clang-format 18 et tests Python, UTF-8 sûr, RNG par fil, plafonds image/ZIP, écriture atomique, codes CLI et schémas JSON, outils MCP diff/validate, fuzz JSON, départage total des tris. |

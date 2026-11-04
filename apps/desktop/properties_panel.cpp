@@ -111,11 +111,22 @@ void setRowEnabled(QFormLayout* form, QWidget* field, bool on) {
 }
 
 // Choix « Manuelle / Automatique » de la compensation du tirage (HP-ENG-001.b).
-QComboBox* makePullModeCombo(QWidget* parent, document::PullMode mode) {
+// simple : seulement Manuelle / Automatique (remplissages sans mode adaptatif ni prédit,
+// HP-STI-033).
+QComboBox* makePullModeCombo(QWidget* parent, document::PullMode mode, bool simple = false) {
     auto* combo = new QComboBox(parent);
     combo->setObjectName(QStringLiteral("combo_pullMode"));
     combo->addItems({QObject::tr("Manuelle"), QObject::tr("Automatique"), QObject::tr("Adaptative"),
                      QObject::tr("Prédite")});
+    if (simple) {
+        combo->removeItem(3);
+        combo->removeItem(2);
+        combo->setCurrentIndex(mode == document::PullMode::Auto ? 1 : 0);
+        combo->setToolTip(QObject::tr(
+            "Manuelle : la valeur saisie s'applique telle quelle.\nAutomatique : le moteur "
+            "compense selon la largeur moyenne de la forme."));
+        return combo;
+    }
     combo->setCurrentIndex(static_cast<int>(mode));
     combo->setToolTip(QObject::tr(
         "Manuelle : la valeur saisie s'applique telle quelle.\n"
@@ -2498,6 +2509,22 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 bindMm(inset, tr("Retrait du bord"), &T::inset);
                 bindBool(spiral, tr("Liaison en spirale"), &T::spiral);
                 bindBool(underpath, tr("Liaisons cousues cachées"), &T::hidden_underpath);
+                // HP-STI-033 : compensation du tirage (le tracé dépasse du contour de cette
+                // longueur).
+                {
+                    auto* pull =
+                        mmSpin(to_millimeters(p.pull_compensation).value, 3.0, 0.0,
+                               tr("Les extrémités du tracé dépassent du contour de cette "
+                                  "longueur : le fil tire et la forme cousue rétrécit. 0,2 à "
+                                  "0,4 mm est courant ; 0 = aucune."));
+                    pull->setObjectName(QStringLiteral("spin_otherFillPull"));
+                    auto* pMode = makePullModeCombo(body_, p.pull_mode, true);
+                    form->addRow(tr("Tirage :"), pMode);
+                    form->addRow(tr("Compensation du tirage :"), pull);
+                    syncPullMode(form, pMode, pull);
+                    bindEnumField<T>(this, edit, pMode, tr("Tirage"), &T::pull_mode, members);
+                    bindMm(pull, tr("Compensation du tirage"), &T::pull_compensation);
+                }
             } else if constexpr (std::is_same_v<T, document::MotifRunParams> ||
                                  std::is_same_v<T, document::MotifFillParams>) {
                 // HP-STI-002 / HP-STI-006 : motif répété le long du contour ou pavant la région.
@@ -2569,6 +2596,22 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                     bindMm(inset, tr("Retrait du bord"), &T::inset);
                     bindBool(stagger, tr("Rangées décalées"), &T::stagger);
                     bindBool(underpath, tr("Liaisons cousues cachées"), &T::hidden_underpath);
+                    // HP-STI-033 : compensation du tirage (le tracé dépasse du contour de cette
+                    // longueur).
+                    {
+                        auto* pull =
+                            mmSpin(to_millimeters(p.pull_compensation).value, 3.0, 0.0,
+                                   tr("Les extrémités du tracé dépassent du contour de cette "
+                                      "longueur : le fil tire et la forme cousue rétrécit. 0,2 à "
+                                      "0,4 mm est courant ; 0 = aucune."));
+                        pull->setObjectName(QStringLiteral("spin_otherFillPull"));
+                        auto* pMode = makePullModeCombo(body_, p.pull_mode, true);
+                        form->addRow(tr("Tirage :"), pMode);
+                        form->addRow(tr("Compensation du tirage :"), pull);
+                        syncPullMode(form, pMode, pull);
+                        bindEnumField<T>(this, edit, pMode, tr("Tirage"), &T::pull_mode, members);
+                        bindMm(pull, tr("Compensation du tirage"), &T::pull_compensation);
+                    }
                 }
             } else if constexpr (std::is_same_v<T, document::RadialFillParams> ||
                                  std::is_same_v<T, document::SpiralFillParams>) {
@@ -2652,6 +2695,22 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                     bindBool(cw, tr("Sens de la spirale"), &T::clockwise);
                 }
                 form->addRow(QString(), underpath);
+                // HP-STI-033 : compensation du tirage (le tracé dépasse du contour de cette
+                // longueur).
+                {
+                    auto* pull =
+                        mmSpin(to_millimeters(p.pull_compensation).value, 3.0, 0.0,
+                               tr("Les extrémités du tracé dépassent du contour de cette "
+                                  "longueur : le fil tire et la forme cousue rétrécit. 0,2 à "
+                                  "0,4 mm est courant ; 0 = aucune."));
+                    pull->setObjectName(QStringLiteral("spin_otherFillPull"));
+                    auto* pMode = makePullModeCombo(body_, p.pull_mode, true);
+                    form->addRow(tr("Tirage :"), pMode);
+                    form->addRow(tr("Compensation du tirage :"), pull);
+                    syncPullMode(form, pMode, pull);
+                    bindEnumField<T>(this, edit, pMode, tr("Tirage"), &T::pull_mode, members);
+                    bindMm(pull, tr("Compensation du tirage"), &T::pull_compensation);
+                }
             } else if constexpr (std::is_same_v<T, document::CrosshatchFillParams>) {
                 // HP-STI-014 : 2 ou 3 tatamis espacés à angles répartis sur 180°.
                 auto* spacing =
@@ -2700,6 +2759,22 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                     }
                     edit(tr("Angle"), [v](T& t) { t.angle = from_deg(v); });
                 });
+                // HP-STI-033 : compensation du tirage (le tracé dépasse du contour de cette
+                // longueur).
+                {
+                    auto* pull =
+                        mmSpin(to_millimeters(p.pull_compensation).value, 3.0, 0.0,
+                               tr("Les extrémités du tracé dépassent du contour de cette "
+                                  "longueur : le fil tire et la forme cousue rétrécit. 0,2 à "
+                                  "0,4 mm est courant ; 0 = aucune."));
+                    pull->setObjectName(QStringLiteral("spin_otherFillPull"));
+                    auto* pMode = makePullModeCombo(body_, p.pull_mode, true);
+                    form->addRow(tr("Tirage :"), pMode);
+                    form->addRow(tr("Compensation du tirage :"), pull);
+                    syncPullMode(form, pMode, pull);
+                    bindEnumField<T>(this, edit, pMode, tr("Tirage"), &T::pull_mode, members);
+                    bindMm(pull, tr("Compensation du tirage"), &T::pull_compensation);
+                }
             } else if constexpr (std::is_same_v<T, document::CrossStitchParams>) {
                 // HP-STI-012 : grille de croix (taille de cellule, angle, croix complète, passes).
                 auto* cell = mmSpin(to_millimeters(p.cell).value, 8.0, 1.0,

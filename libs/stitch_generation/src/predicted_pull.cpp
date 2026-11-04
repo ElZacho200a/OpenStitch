@@ -48,8 +48,28 @@ bool is_predicted(const document::StitchParams& params) {
 // point de croix) tirent le même tissu que les autres : dans un projet qui utilise la prédiction
 // ils sont compensés eux aussi, sinon ils déformeraient le champ sans jamais être corrigés. Les
 // lignes de point droit (point droit, bourdon, motif en ligne) restent exclues.
+// HP-STI-033 : echo, motif, radial, spirale et hachures ont désormais un réglage de tirage, mais
+// laissé à Manuel/0 (défaut) il équivaut à « pas de réglage » et ils suivent la prédiction comme
+// avant.
+bool has_untouched_pull_setting(const document::StitchParams& params) {
+    return std::visit(
+        [](const auto& p) {
+            using T = std::decay_t<decltype(p)>;
+            if constexpr (std::is_same_v<T, document::ContourFillParams> ||
+                          std::is_same_v<T, document::MotifFillParams> ||
+                          std::is_same_v<T, document::RadialFillParams> ||
+                          std::is_same_v<T, document::SpiralFillParams> ||
+                          std::is_same_v<T, document::CrosshatchFillParams>) {
+                return p.pull_mode == document::PullMode::Manual && p.pull_compensation.value == 0;
+            } else {
+                return false;
+            }
+        },
+        params);
+}
+
 bool follows_project_prediction(const document::StitchParams& params) {
-    return !has_pull_mode(params) &&
+    return (!has_pull_mode(params) || has_untouched_pull_setting(params)) &&
            !std::holds_alternative<document::RunningStitchParams>(params) &&
            !std::holds_alternative<document::BlanketStitchParams>(params) &&
            !std::holds_alternative<document::MotifRunParams>(params);

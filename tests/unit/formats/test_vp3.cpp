@@ -127,3 +127,41 @@ TEST_CASE("vp3 : decodage tolerant -- fichiers tronques ou corrompus ne plantent
     REQUIRE_FALSE(tiny.has_value());
     CHECK(tiny.error().category == ErrorCategory::InvalidFile);
 }
+
+TEST_CASE("vp3 : un Trim deplace conserve sa position au pas natif de 10 um (HP-FMT-027)") {
+    // Le Trim porte un deplacement non nul ; la resolution native VP3 est de 10 um.
+    const auto seq = make({
+        {um(0, 0), CommandType::Stitch},
+        {um(3'000, 0), CommandType::Stitch},
+        {um(5'000, 2'000), CommandType::Trim},
+        {um(5'000, 2'000), CommandType::Stitch},
+        {um(6'000, 2'500), CommandType::Stitch},
+        {um(6'000, 2'500), CommandType::End},
+    });
+    const auto bytes = encode_vp3(seq);
+    REQUIRE(bytes.has_value());
+    const auto decoded = decode_vp3(*bytes);
+    REQUIRE(decoded.has_value());
+    const auto& cmds = decoded->sequence.commands;
+    const auto origin = cmds.front().pos;
+    bool sawTrim = false;
+    bool lastStitch = false;
+    for (const auto& c : cmds) {
+        if (c.type == CommandType::Trim) {
+            sawTrim = true;
+            CHECK(c.pos - origin == um(5'000, 2'000));
+        }
+        if (c.type == CommandType::Stitch && c.pos - origin == um(6'000, 2'500)) {
+            lastStitch = true;
+        }
+    }
+    CHECK(sawTrim);
+    CHECK(lastStitch);
+    // Idempotence : un second tour restitue les memes octets.
+    MachineExportOptions options;
+    options.design_name = decoded->name;
+    options.block_colors = decoded->block_colors;
+    const auto again = encode_vp3(decoded->sequence, options);
+    REQUIRE(again.has_value());
+    CHECK(*again == *bytes);
+}

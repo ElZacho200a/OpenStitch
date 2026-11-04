@@ -40,6 +40,20 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_fill_center.cpp
     main_window_rotation.cpp
     main_window_workflow.cpp
+    main_window_files.cpp
+    main_window_companion.cpp
+    main_window_edit_modes.cpp
+    main_window_draw_tools.cpp
+    main_window_render.cpp
+    main_window_simulation.cpp
+    main_window_create.cpp
+    main_window_context_menu.cpp
+    main_window_debug.cpp
+    main_window_help_menu.cpp
+    main_window_toolbars.cpp
+    main_window_panels.cpp
+    main_window_order_filter.cpp
+    main_window_selection_state.cpp
     ui_memory.hpp
     main_window_ux.cpp
     live_server.cpp
