@@ -35,6 +35,7 @@
 #include "workspace_state.hpp"
 
 class QAction;
+class QCloseEvent;
 class QActionGroup;
 class QComboBox;
 class QDockWidget;
@@ -160,7 +161,14 @@ public:
     // test.
     [[nodiscard]] std::optional<QPointF> objectCentrePx(std::uint64_t id) const;
 
+protected:
+    void closeEvent(QCloseEvent* event) override;
+
 private:
+    bool confirmDiscardOrSave();
+    bool saveCurrentProject();
+    void cancelPendingDocumentLoad();
+    void refreshWindowTitle();
     void buildMenus();
     void buildWorkspaceBar();
     void buildToolRail();
@@ -262,6 +270,8 @@ private:
     SelectionModel::Token selectionToken_{0};
     bool syncingTree_{false};
     TaskId previewTask_{0};
+    TaskId documentLoadTask_{0};
+    std::uint64_t loadGeneration_{0};
     std::uint64_t previewRevision_{0};
     bool previewShown_{false};
     bool documentOpen_{false}; // un projet est ouvert (même vide) : l'aperçu montre son cadre

@@ -2,11 +2,13 @@
 #include <QAction>
 #include <QApplication>
 #include <QColor>
+#include <QMessageBox>
 #include <QFile>
 #include <QMenu>
 #include <QMenuBar>
 #include <QTest>
 #include <QToolBar>
+#include <QTimer>
 #include <QTreeWidget>
 #include <QWheelEvent>
 #include <filesystem>
@@ -74,6 +76,69 @@ private slots:
         }
         QCOMPARE(enabled, 9); // …, Pipette, Couteau, Zones de détail
         QVERIFY(disabled > 0);
+    }
+
+
+    void modifiedDocumentCanCancelNewProjectAndClose() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 20, 20), "Rectangle").committed);
+        const auto revision = w.session().revision();
+        QVERIFY(w.session().dirty());
+        QVERIFY(w.isWindowModified());
+
+        int dialogs = 0;
+        const auto cancelPrompt = [&] {
+            auto* dialog = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+            if (dialog != nullptr) {
+                ++dialogs;
+                dialog->done(QMessageBox::Cancel);
+            }
+        };
+        QTimer::singleShot(0, &w, cancelPrompt);
+        w.newProject();
+        QCOMPARE(w.session().revision(), revision);
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(1));
+
+        QTimer::singleShot(0, &w, cancelPrompt);
+        QVERIFY(!w.close());
+        QVERIFY(w.isVisible());
+        QCOMPARE(dialogs, 2);
+
+        QTimer::singleShot(0, &w, [&] {
+            auto* dialog = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+            if (dialog != nullptr) {
+                dialog->done(QMessageBox::Discard);
+            }
+        });
+        QVERIFY(w.close());
+    }
+
+    void discardReplacesTheDocumentAndKeepsUndoConsistent() {
+        ShellWindow w;
+        w.newProject();
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 20, 20), "Rectangle").committed);
+        QTimer::singleShot(0, &w, [&] {
+            auto* dialog = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+            if (dialog != nullptr) {
+                dialog->done(QMessageBox::Discard);
+            }
+        });
+        w.newProject();
+        QVERIFY(w.session().project().embroidery_objects.empty());
+        QVERIFY(!w.session().canUndo());
+        QVERIFY(w.session().dirty());
+    }
+
+    void laterImageOpenWinsOverAnEarlierRequest() {
+        ShellWindow w;
+        w.openImage(tentabrode(), 300.0);
+        w.openImage(tentabrode(), 120.0);
+        w.waitForIdle();
+        QVERIFY(!w.session().project().embroidery_objects.empty());
+        const double height = w.session().project().canvas.height.value / 1000.0;
+        QVERIFY2(height < 150.0, "Le résultat d'un ancien chargement a écrasé le dernier.");
     }
 
     void imageToDstEndToEnd() {
