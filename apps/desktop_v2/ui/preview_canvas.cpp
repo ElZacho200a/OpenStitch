@@ -120,12 +120,14 @@ void PreviewCanvas::setMode(Mode mode) {
     if (mode != Mode::Measure && mode != Mode::Cut) {
         clearMeasure();
     }
-    setCursor(mode == Mode::Pan
-                  ? Qt::OpenHandCursor
-                  : (mode == Mode::DrawBox || mode == Mode::DrawPolygon || mode == Mode::Measure ||
-                     mode == Mode::Pick || mode == Mode::Cut || mode == Mode::Stroke
-                         ? Qt::CrossCursor
-                         : Qt::ArrowCursor));
+    Qt::CursorShape cursor = Qt::ArrowCursor;
+    if (mode == Mode::Pan) {
+        cursor = Qt::OpenHandCursor;
+    } else if (mode == Mode::DrawBox || mode == Mode::DrawPolygon || mode == Mode::Measure ||
+               mode == Mode::Pick || mode == Mode::Cut || mode == Mode::Stroke) {
+        cursor = Qt::CrossCursor;
+    }
+    setCursor(cursor);
 }
 
 void PreviewCanvas::wheelEvent(QWheelEvent* event) {
