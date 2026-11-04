@@ -40,7 +40,8 @@ const document::Project& tentabrode80() {
 } // namespace
 
 TEST_CASE("object ids round-trip through the colour encoding", "[desktop_v2][hit]") {
-    for (const std::uint64_t id : {1ULL, 255ULL, 256ULL, 65535ULL, 65536ULL, kMaxEncodableId}) {
+    for (const std::uint64_t id :
+         std::vector<std::uint64_t>{1, 255, 256, 65535, 65536, kMaxEncodableId}) {
         CHECK(decode_id(encode_id(id)) == id);
     }
 }
