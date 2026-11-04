@@ -128,6 +128,34 @@ void PreviewCanvas::keyPressEvent(QKeyEvent* event) {
             break;
         }
     }
+    if (mode_ == Mode::Select) {
+        const auto mods = event->modifiers() & ~Qt::KeypadModifier;
+        if (mods == Qt::NoModifier || mods == Qt::ShiftModifier) {
+            int sx = 0;
+            int sy = 0;
+            switch (event->key()) {
+            case Qt::Key_Left:
+                sx = -1;
+                break;
+            case Qt::Key_Right:
+                sx = 1;
+                break;
+            case Qt::Key_Up:
+                sy = 1;
+                break;
+            case Qt::Key_Down:
+                sy = -1;
+                break;
+            default:
+                break;
+            }
+            if (sx != 0 || sy != 0) {
+                emit nudgeRequested(sx, sy, mods == Qt::ShiftModifier);
+                event->accept();
+                return;
+            }
+        }
+    }
     if (event->key() == Qt::Key_F && event->modifiers() == Qt::NoModifier) {
         fitAll();
         event->accept();

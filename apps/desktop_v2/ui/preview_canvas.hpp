@@ -63,6 +63,8 @@ signals:
     void rectPx(QRectF scenePx, Qt::KeyboardModifiers modifiers);
     // Cadre de création terminé en mode DrawBox.
     void boxDrawnPx(QRectF scenePx, Qt::KeyboardModifiers modifiers);
+    // Flèche pressée en mode Select : pas (-1, 0 ou 1) selon X (droite) et Y (haut) ; `big` = Maj.
+    void nudgeRequested(int stepX, int stepUp, bool big);
     // Un déplacement va démarrer sur l'objet sous `scenePx` (la fenêtre l'ajoute à la sélection).
     void moveStartRequested(QPointF scenePx);
     // Glisser terminé sur la sélection : décalage en pixels de l'image.

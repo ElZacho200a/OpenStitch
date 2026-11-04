@@ -553,6 +553,83 @@ private slots:
         QCOMPARE(w.session().undoNames().size(), depth); // rien n'a été déplacé
     }
 
+    void editingCommandsActOnTheSelectionOnly() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        const auto a =
+            *createdObjectId(w.session().applyBatch(batchAddRect({-20, 0}, 10, 10), "R").report);
+        const auto b =
+            *createdObjectId(w.session().applyBatch(batchAddRect({20, 0}, 10, 10), "R").report);
+        w.waitForIdle();
+        // Sans sélection : toutes ces commandes sont désactivées.
+        w.session().selection().clear();
+        for (const char* id :
+             {"edit.delete", "edit.duplicate", "transform.rotate.cw", "order.front"}) {
+            QVERIFY2(!w.runCommand(id), id);
+        }
+        // Dupliquer : les copies deviennent la sélection.
+        w.session().selection().replace({{TargetKind::EmbroideryObject, a}});
+        QVERIFY(w.runCommand("edit.duplicate"));
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(3));
+        QCOMPARE(w.session().selection().targets().size(), size_t(1));
+        QVERIFY(w.session().selection().primary()->id != a);
+        // Supprimer la copie sélectionnée : une annulation la ramène.
+        QVERIFY(w.runCommand("edit.delete"));
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(2));
+        QVERIFY(w.session().selection().empty()); // la cible a disparu : sélection élaguée
+        QVERIFY(w.session().undo());
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(3));
+        // Ordre : « premier plan » met b en dernier.
+        w.session().selection().replace({{TargetKind::EmbroideryObject, b}});
+        QVERIFY(w.runCommand("order.front"));
+        QCOMPARE(w.session().project().embroidery_objects.back().id.value, b);
+        QCOMPARE(QString::fromStdString(w.session().undoName()), QString("Premier plan"));
+    }
+
+    void rotateAndMirrorUseTheSelectionCentre() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        const auto id =
+            *createdObjectId(w.session().applyBatch(batchAddRect({30, 10}, 30, 10), "R").report);
+        w.waitForIdle();
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        const auto before = *w.previewFrame().hits->boundsOf(id);
+        QVERIFY(w.runCommand("transform.rotate.ccw"));
+        w.waitForIdle();
+        const auto rotated = *w.previewFrame().hits->boundsOf(id);
+        // Pivot = centre de l'objet : le centre ne bouge pas, largeur et hauteur s'échangent.
+        QVERIFY(qAbs((rotated.x0 + rotated.x1) / 2 - (before.x0 + before.x1) / 2) < 0.8);
+        QVERIFY(qAbs((rotated.y0 + rotated.y1) / 2 - (before.y0 + before.y1) / 2) < 0.8);
+        QVERIFY(qAbs((rotated.x1 - rotated.x0) - (before.y1 - before.y0)) < 1.5);
+        QVERIFY(w.runCommand("transform.mirror.h"));
+        QCOMPARE(QString::fromStdString(w.session().undoName()), QString("Miroir horizontal"));
+    }
+
+    void arrowKeysNudgeTheSelectionByOneOrTenMillimetres() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        const auto id =
+            *createdObjectId(w.session().applyBatch(batchAddRect({0, 0}, 20, 20), "R").report);
+        w.waitForIdle();
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        const auto before = *w.previewFrame().hits->boundsOf(id);
+        QTest::keyClick(w.canvas(), Qt::Key_Right);
+        w.waitForIdle();
+        const auto right = *w.previewFrame().hits->boundsOf(id);
+        QVERIFY(qAbs((right.x0 - before.x0) - 1.0) < 0.3);
+        QTest::keyClick(w.canvas(), Qt::Key_Up, Qt::ShiftModifier); // 10 mm vers le haut
+        w.waitForIdle();
+        const auto up = *w.previewFrame().hits->boundsOf(id);
+        QVERIFY(qAbs((up.y0 - right.y0) + 10.0) < 0.5);              // haut = y écran décroissant
+        QCOMPARE(w.session().undoNames().size(), size_t(1 + 1 + 1)); // création + 2 déplacements
+    }
+
     void inspectorEditsAllSelectedObjectsInOneUndoStep() {
         ShellWindow w;
         w.openImage(tentabrode(), 80.0);
