@@ -90,18 +90,21 @@ private slots:
     void compactRailPreferenceSurvivesRestartWithoutChangingShortcuts() {
         QTemporaryDir home;
         QVERIFY(home.isValid());
+        const auto dir = fs::path(home.path().toStdU16String()) / "ui-state";
+        QVERIFY(!fs::exists(dir));
         {
             ShellWindow w;
-            w.setStateDirectory(fs::path(home.path().toStdU16String()));
+            w.setStateDirectory(dir);
             w.setCompactToolRail(true);
             auto* rail = w.findChild<QToolBar*>("toolRail");
             QVERIFY(rail);
             QVERIFY(!rail->actions().isEmpty());
             QCOMPARE(rail->actions().front()->shortcut(), QKeySequence("V"));
         }
+        QVERIFY(fs::exists(dir / "ui.ini"));
         {
             ShellWindow reopened;
-            reopened.setStateDirectory(fs::path(home.path().toStdU16String()));
+            reopened.setStateDirectory(dir);
             QVERIFY(reopened.compactToolRail());
             auto* rail = reopened.findChild<QToolBar*>("toolRail");
             QCOMPARE(rail->toolButtonStyle(), Qt::ToolButtonIconOnly);
