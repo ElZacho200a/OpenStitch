@@ -24,7 +24,12 @@ Result<PreviewImage> render_preview(std::shared_ptr<const document::Project> pro
     stitch::StitchSequence emptySequence;
     stitch::StitchSequence* sequence = &emptySequence;
     Result<stitch::StitchSequence> computed = fail(ErrorCategory::Internal, "non calculée");
-    if (!project->embroidery_objects.empty()) {
+    // Aucun objet visible (tous masqués, ou dans des calques masqués) : le moteur refuse de générer
+    // ; l'aperçu montre alors simplement le cadre vide, jamais une image périmée.
+    const bool anyVisible = std::ranges::any_of(project->embroidery_objects, [&](const auto& o) {
+        return o.visible && project->calqueVisible(o);
+    });
+    if (anyVisible) {
         computed = stitch_generation::effective_sequence(*project, task);
         if (!computed) {
             return std::unexpected(computed.error());

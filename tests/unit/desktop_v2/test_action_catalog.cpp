@@ -67,7 +67,7 @@ TEST_CASE("action ids are unique and every field has a valid default", "[desktop
             }
         }
     }
-    CHECK(actionCatalog().size() >= 9);
+    CHECK(actionCatalog().size() >= 19);
 }
 
 TEST_CASE("validation refuses out-of-range, unknown, missing and unselected input",
@@ -166,4 +166,76 @@ TEST_CASE("image actions run on a digitized document", "[desktop_v2][actions]") 
     s.replaceProject(std::move(digitized->project), true);
     CHECK(run(s, "image.denoise", {{"method", "median"}, {"strength", "1"}}).committed);
     CHECK(run(s, "image.segment", {{"max_colors", "6"}}).committed);
+}
+
+TEST_CASE("geometry actions edit the selected shapes through the engine", "[desktop_v2][actions]") {
+    auto s = blank();
+    const auto a = *createdObjectId(s.applyBatch(batchAddRect({-5, 0}, 20, 20), "A").report);
+    const auto b = *createdObjectId(s.applyBatch(batchAddRect({5, 0}, 20, 20), "B").report);
+
+    // Fusion : il faut au moins deux formes, puis l'union laisse un seul objet principal.
+    std::string error;
+    ActionContext one;
+    one.ids = {a};
+    CHECK(buildAction(*findAction("shape.merge"), {}, one, error).empty());
+    CHECK(error.find("deux") != std::string::npos);
+    REQUIRE(run(s, "shape.merge", {{"mode", "union"}}, {a, b}).committed);
+    CHECK(s.project().embroidery_objects.size() == 1);
+
+    const auto id = s.project().embroidery_objects.front().id.value;
+    CHECK(run(s, "shape.simplify", {{"tolerance_mm", "0.2"}}, {id}).committed);
+
+    // Lissage : une ellipse a assez de sommets pour être lissée.
+    auto e = blank();
+    const auto ell = *createdObjectId(e.applyBatch(batchAddEllipse({0, 0}, 30, 20), "E").report);
+    CHECK(run(e, "shape.smooth", {{"tolerance_mm", "0.3"}}, {ell}).committed);
+
+    // Trous : grand rectangle moins petit rectangle = un trou, que l'action comble.
+    auto h = blank();
+    const auto big = *createdObjectId(h.applyBatch(batchAddRect({0, 0}, 30, 30), "G").report);
+    const auto small = *createdObjectId(h.applyBatch(batchAddRect({0, 0}, 6, 6), "P").report);
+    REQUIRE(run(h, "shape.merge", {{"mode", "subtract"}}, {big, small}).committed);
+    const auto ring = h.project().embroidery_objects.front().id.value;
+    CHECK(run(h, "shape.fill_holes", {{"max_area_mm2", "100"}}, {ring}).committed);
+
+    // Miettes : une grande forme et une toute petite, unies, puis la petite est supprimée.
+    auto m = blank();
+    const auto g = *createdObjectId(m.applyBatch(batchAddRect({0, 0}, 30, 30), "G").report);
+    const auto t = *createdObjectId(m.applyBatch(batchAddRect({40, 0}, 2, 2), "T").report);
+    REQUIRE(run(m, "shape.merge", {{"mode", "union"}}, {g, t}).committed);
+    const auto both = m.project().embroidery_objects.front().id.value;
+    CHECK(run(m, "shape.remove_small", {{"min_area_mm2", "10"}}, {both}).committed);
+
+    // Une action sans effet possible est REFUSÉE par le moteur, jamais empilée.
+    auto n = blank();
+    const auto lone = *createdObjectId(n.applyBatch(batchAddRect({0, 0}, 30, 30), "L").report);
+    const auto depth = n.undoNames().size();
+    const ActionDef* def = findAction("shape.fill_holes");
+    ActionContext ctx;
+    ctx.ids = {lone};
+    std::string error2;
+    const auto batch = buildAction(*def, {{"max_area_mm2", "5"}}, ctx, error2);
+    REQUIRE_FALSE(batch.empty());
+    CHECK_FALSE(n.applyBatch(batch, "x").committed); // aucun trou à combler
+    CHECK(n.undoNames().size() == depth);
+}
+
+TEST_CASE("order, connector and palette actions are accepted by the engine",
+          "[desktop_v2][actions]") {
+    DigitizeRequest request;
+    request.image = fs::path(OPENSTITCH_FIXTURES_DIR) / "tentabrode.png";
+    request.target_height_mm = 60.0;
+    request.settings.max_colors = 4;
+    auto digitized = run_digitize(request, TaskContext{});
+    REQUIRE(digitized.has_value());
+    DocumentSession s;
+    s.replaceProject(std::move(digitized->project), true);
+    const auto first = s.project().embroidery_objects.front().id.value;
+
+    CHECK(run(s, "order.optimize", {{"strategy", "by_color"}, {"improve", "0"}}).committed);
+    CHECK(run(s, "order.connector", {{"mode", "always_trim"}}, {first}).committed);
+    CHECK(run(s, "order.join", {{"mode", "off"}}, {first}).committed);
+    CHECK(run(s, "image.reduce_colors", {{"max_colors", "3"}}).committed);
+    // Les trois premières ont été empilées une à une, annulables dans l'ordre inverse.
+    CHECK(s.undoNames().size() >= 4);
 }

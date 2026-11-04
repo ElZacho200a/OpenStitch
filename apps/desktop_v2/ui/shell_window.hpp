@@ -17,6 +17,7 @@
 #include "command_catalog.hpp"
 #include "diagnostics_service.hpp"
 #include "digitize_pipeline.hpp"
+#include "document_services.hpp"
 #include "document_session.hpp"
 #include "edit_batch.hpp"
 #include "preview_service.hpp"
@@ -44,6 +45,7 @@ namespace openstitch::desktop_v2 {
 class PreviewCanvas;
 class InspectorPanel;
 class DiagnosticsPanel;
+class CalquePanel;
 
 class ShellWindow : public QMainWindow {
     Q_OBJECT
@@ -64,6 +66,11 @@ public:
     bool runCommand(const QString& id); // faux si inconnue ou désactivée
     void showCommandPalette();
     void selectAllObjects();
+
+    // Préréglages de points : enregistrés dans le projet (.osp), appliqués à la sélection.
+    bool savePresetNamed(const QString& name); // réglages de l'objet principal de la sélection
+    bool applyPresetIndex(int index);
+    bool removePresetIndex(int index);
 
     // --- Affichage, simulation, contexte -------------------------------------------------------
     void setGridSpacing(double mm); // 0 = pas de grille
@@ -100,6 +107,7 @@ public:
     [[nodiscard]] PreviewCanvas* canvas() const { return canvas_; }
     [[nodiscard]] InspectorPanel* inspector() const { return inspector_; }
     [[nodiscard]] DiagnosticsPanel* diagnostics() const { return diagnostics_; }
+    [[nodiscard]] CalquePanel* calquePanel() const { return calques_; }
     // Repère mm <-> pixels et index de sélection de l'aperçu affiché (tests, diagnostics).
     [[nodiscard]] const PreviewImage& previewFrame() const { return frame_; }
     // Un point (pixels de l'image d'aperçu) qui appartient à l'objet : pour piloter le canevas en
@@ -125,6 +133,7 @@ private:
     void updateSelectionBoxes();
     void onCanvasRect(QRectF scenePx, Qt::KeyboardModifiers modifiers);
     void applyToolToCanvas();
+    void rebuildPresetMenu();
     void onMeasured(QPointF a, QPointF b);
     void updateGrid();
     void refreshSimulationBar();
@@ -176,6 +185,8 @@ private:
     double gridSpacingMm_{0.0};
     QString themeMode_{QStringLiteral("system")};
     DiagnosticsPanel* diagnostics_{nullptr};
+    CalquePanel* calques_{nullptr};
+    QMenu* presetMenu_{nullptr};
     QDockWidget* docDock_{nullptr};
     QDockWidget* diagDock_{nullptr};
     PreviewImage frame_; // repère mm/pixels et index de sélection de l'aperçu affiché

@@ -9,6 +9,7 @@
 #include <QFileDialog>
 #include <QHeaderView>
 #include <QImage>
+#include <QInputDialog>
 #include <QKeySequence>
 #include <QLabel>
 #include <QMenu>
@@ -26,6 +27,7 @@
 #include <map>
 
 #include "action_dialog.hpp"
+#include "calque_panel.hpp"
 #include "command_palette.hpp"
 #include "diagnostics_panel.hpp"
 #include "inspector_model.hpp"
@@ -166,6 +168,8 @@ ShellWindow::~ShellWindow() {
     // session (l'inspecteur) doivent disparaître tant qu'elle existe.
     delete inspector_;
     inspector_ = nullptr;
+    delete calques_;
+    calques_ = nullptr;
     session_.unsubscribe(sessionToken_);
     session_.selection().unsubscribe(selectionToken_);
 }
@@ -275,6 +279,8 @@ void ShellWindow::buildMenus() {
         const QString id = fromUtf8(def.id);
         connect(a, &QAction::triggered, this, [this, id] { runAction(id); });
     }
+    presetMenu_ = menuBar()->addMenu(tr("&Préréglages"));
+    connect(presetMenu_, &QMenu::aboutToShow, this, &ShellWindow::rebuildPresetMenu);
     auto* fit = view->addAction(tr("&Ajuster à la fenêtre"));
     connect(fit, &QAction::triggered, canvas_, &PreviewCanvas::fitAll);
     auto* hoop = view->addAction(tr("Cadre de &broderie"));
@@ -391,6 +397,14 @@ void ShellWindow::buildInspector() {
     diagDock_->setWidget(diagnostics_);
     addDockWidget(Qt::RightDockWidgetArea, diagDock_);
     tabifyDockWidget(docDock_, diagDock_);
+    auto* calqueDock = new QDockWidget(tr("Calques"), this);
+    calqueDock->setObjectName(QStringLiteral("calqueDock"));
+    calques_ = new CalquePanel(session_, calqueDock);
+    calqueDock->setWidget(calques_);
+    addDockWidget(Qt::RightDockWidgetArea, calqueDock);
+    tabifyDockWidget(diagDock_, calqueDock);
+    connect(calques_, &CalquePanel::refused, this,
+            [this](const QString& message) { setNotice(message, true); });
     docDock_->raise();
     connect(diagnostics_, &DiagnosticsPanel::analyseRequested, this, &ShellWindow::runDiagnostics);
     connect(diagnostics_, &DiagnosticsPanel::findingActivated, this,
@@ -967,8 +981,9 @@ void ShellWindow::refreshSimulationBar() {
 QMenu* ShellWindow::buildContextMenu() {
     auto* menu = new QMenu(this);
     menu->setObjectName(QStringLiteral("canvasContextMenu"));
-    static const char* const kPrefixes[] = {"edit.",      "transform.",    "order.",
-                                            "selection.", "action.satin.", "action.fill."};
+    static const char* const kPrefixes[] = {"edit.",         "transform.",    "order.",
+                                            "selection.",    "action.satin.", "action.fill.",
+                                            "preset.apply.", "preset.save"};
     std::string lastGroup;
     for (const auto& e : commandEntries()) {
         bool wanted = false;
@@ -1031,6 +1046,53 @@ void ShellWindow::exportImage(const std::filesystem::path& png, double pxPerMm) 
             setNotice(tr("Image écrite : %1").arg(QString::fromStdString(png.filename().string())),
                       false);
         });
+}
+
+bool ShellWindow::savePresetNamed(const QString& name) {
+    const auto state = inspect(session_.project(), session_.selection().targets());
+    const auto r =
+        savePreset(session_, name.toStdString(), state.ids.empty() ? 0 : state.ids.back());
+    if (!r.ok) {
+        setNotice(fromUtf8(r.message), true);
+        return false;
+    }
+    setNotice(tr("Préréglage « %1 » enregistré.").arg(name.trimmed()), false);
+    return true;
+}
+
+bool ShellWindow::applyPresetIndex(int index) {
+    const auto state = inspect(session_.project(), session_.selection().targets());
+    const auto r = applyPreset(session_, index, state.ids);
+    if (!r.ok) {
+        setNotice(fromUtf8(r.message), true);
+    }
+    return r.ok;
+}
+
+bool ShellWindow::removePresetIndex(int index) {
+    const auto r = removePreset(session_, index);
+    if (!r.ok) {
+        setNotice(fromUtf8(r.message), true);
+    }
+    return r.ok;
+}
+
+void ShellWindow::rebuildPresetMenu() {
+    presetMenu_->clear();
+    bool any = false;
+    for (const auto& e : commandEntries()) {
+        if (e.id.rfind("preset.", 0) != 0) {
+            continue;
+        }
+        any = true;
+        auto* a = presetMenu_->addAction(fromUtf8(e.label));
+        a->setEnabled(e.enabled);
+        const QString id = fromUtf8(e.id);
+        connect(a, &QAction::triggered, this, [this, id] { runCommand(id); });
+    }
+    if (!any) {
+        presetMenu_->addAction(tr("Aucun préréglage"))->setEnabled(false);
+    }
 }
 
 void ShellWindow::applyToolToCanvas() {
@@ -1320,6 +1382,17 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
         out.push_back(
             {"action." + def.id, def.label, def.group, "", !def.needsSelection || hasSel});
     }
+    out.push_back({"preset.save", q(tr("Enregistrer les réglages de l'objet comme préréglage…")),
+                   q(tr("Préréglages")), "", hasSel});
+    for (std::size_t i = 0; i < session_.project().stitch_presets.size(); ++i) {
+        const auto& name = session_.project().stitch_presets[i].name;
+        out.push_back({"preset.apply." + std::to_string(i),
+                       q(tr("Appliquer le préréglage « %1 »").arg(fromUtf8(name))),
+                       q(tr("Préréglages")), "", hasSel});
+        out.push_back({"preset.remove." + std::to_string(i),
+                       q(tr("Supprimer le préréglage « %1 »").arg(fromUtf8(name))),
+                       q(tr("Préréglages")), "", true});
+    }
     out.push_back({"analysis.run", q(tr("Analyser le document (diagnostic)")), q(tr("Analyse")), "",
                    !session_.project().embroidery_objects.empty()});
     int n = 1;
@@ -1364,6 +1437,17 @@ bool ShellWindow::runCommand(const QString& id) {
             editSelection(id);
         } else if (id.startsWith(QLatin1String("action."))) {
             runAction(id.mid(7));
+        } else if (id == QLatin1String("preset.save")) {
+            bool ok = false;
+            const QString name = QInputDialog::getText(this, tr("Nouveau préréglage"), tr("Nom :"),
+                                                       QLineEdit::Normal, QString(), &ok);
+            if (ok) {
+                savePresetNamed(name);
+            }
+        } else if (id.startsWith(QLatin1String("preset.apply."))) {
+            applyPresetIndex(id.mid(13).toInt());
+        } else if (id.startsWith(QLatin1String("preset.remove."))) {
+            removePresetIndex(id.mid(14).toInt());
         } else if (id == QLatin1String("analysis.run")) {
             setWorkspace(Workspace::Optimize);
             runDiagnostics();

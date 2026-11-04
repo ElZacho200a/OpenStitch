@@ -17,7 +17,7 @@
 
 namespace openstitch::desktop_v2 {
 
-enum class ParamKind { Number, Integer, Bool };
+enum class ParamKind { Number, Integer, Bool, Choice };
 
 struct ParamSpec {
     std::string_view type;  // identifiant de type (`stitchTypeId`) auquel le réglage s'applique
@@ -28,7 +28,12 @@ struct ParamSpec {
     double max{0};
     double step{0.1};
     std::string_view unit; // « mm », « ° », « » ; affichage seulement
+    // Choice : « valeur|libellé;valeur|libellé » ; la valeur lue / écrite est l'INDEX (0 .. n-1).
+    std::string_view options;
 };
+
+// Options d'un réglage de nature Choice : (valeur envoyée au moteur, libellé).
+[[nodiscard]] std::vector<std::pair<std::string, std::string>> paramOptions(const ParamSpec& spec);
 
 // Réglages essentiels du type ; vide si le type n'en expose pas (encore).
 [[nodiscard]] std::vector<ParamSpec> paramSpecs(std::string_view typeId);

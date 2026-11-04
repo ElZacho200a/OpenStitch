@@ -10,10 +10,12 @@
 #include <filesystem>
 
 #include "action_dialog.hpp"
+#include "calque_panel.hpp"
 #include "command_palette.hpp"
 #include "diagnostics_panel.hpp"
 #include "inspector_model.hpp"
 #include "inspector_panel.hpp"
+#include "param_spec.hpp"
 #include "preview_canvas.hpp"
 #include "shell_window.hpp"
 #include <array>
@@ -735,7 +737,7 @@ private slots:
             ActionDialog dialog(def, defaultValues(def));
             const auto values = dialog.values();
             ActionContext ctx;
-            ctx.ids = {1}; // contexte fictif : seul le contrôle des champs nous intéresse
+            ctx.ids = {1, 2}; // contexte fictif : seul le contrôle des champs nous intéresse
             std::string error;
             const auto batch = buildAction(def, values, ctx, error);
             QVERIFY2(!batch.empty() || def.id == "file.import_svg", def.id.c_str());
@@ -937,6 +939,85 @@ private slots:
         QVERIFY(fs::file_size(png) > 500);
         QVERIFY(w.lastNotice().contains("Image"));
         fs::remove(png);
+    }
+
+    void presetsAreSavedAppliedAndListedInTheMenuAndPalette() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        const auto a =
+            *createdObjectId(w.session().applyBatch(batchAddRect({-20, 0}, 10, 10), "R").report);
+        const auto b =
+            *createdObjectId(w.session().applyBatch(batchAddRect({20, 0}, 10, 10), "R").report);
+        w.waitForIdle();
+        QVERIFY(!w.runCommand("preset.save")); // rien de sélectionné : désactivée
+        w.session().applyBatch(batchSetParam({a}, "tatami", "row_spacing_mm", 0.8), "Écart");
+        w.session().selection().replace({{TargetKind::EmbroideryObject, a}});
+        QVERIFY(w.savePresetNamed("Trame lâche"));
+        QVERIFY(!w.savePresetNamed("   ")); // nom vide refusé, message affiché
+        QVERIFY(w.lastNotice().contains("nom"));
+        const auto entries = w.commandEntries();
+        bool apply = false;
+        for (const auto& e : entries) {
+            apply = apply || (e.id == "preset.apply.0" && e.enabled);
+        }
+        QVERIFY(apply);
+        w.session().selection().replace({{TargetKind::EmbroideryObject, b}});
+        QVERIFY(w.runCommand("preset.apply.0"));
+        QVERIFY(qAbs(*readParam(w.session().project().embroidery_objects[1], "row_spacing_mm") -
+                     0.8) < 0.01);
+        QVERIFY(w.runCommand("preset.remove.0"));
+        QVERIFY(w.session().project().stitch_presets.empty());
+        QVERIFY(!w.runCommand("preset.apply.0")); // plus de préréglage
+    }
+
+    void calquePanelEditsLayersThroughUndoableCommands() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        auto* panel = w.calquePanel();
+        QVERIFY(panel != nullptr);
+        QCOMPARE(panel->rowCount(), 0);
+        QVERIFY(panel->addNamed("Fond"));
+        QCOMPARE(panel->rowCount(), 2);               // « Calque 1 » matérialisé + « Fond »
+        QCOMPARE(panel->rowText(0), QString("Fond")); // le dessus d'abord
+        QVERIFY(!panel->addNamed("  "));              // refus, message
+        panel->setCurrentRow(0);
+        QVERIFY(panel->renameCurrent("Dessus"));
+        QCOMPARE(panel->rowText(0), QString("Dessus"));
+        QVERIFY(panel->toggleLockCurrent());
+        QVERIFY(panel->rowText(0).contains("🔒"));
+        QVERIFY(panel->moveCurrent(-1)); // descend
+        QVERIFY(panel->removeCurrent());
+        QCOMPARE(panel->rowCount(), 1);
+        panel->setCurrentRow(0);
+        QVERIFY(!panel->removeCurrent()); // le dernier calque reste
+        QVERIFY(w.session().undo());
+        QCOMPARE(panel->rowCount(), 2);
+    }
+
+    void hidingACalqueHidesItsObjectsFromThePreview() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        auto* panel = w.calquePanel();
+        QVERIFY(panel->addNamed("Haut"));
+        const auto id =
+            *createdObjectId(w.session().applyBatch(batchAddRect({0, 0}, 20, 20), "R").report);
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        panel->setCurrentRow(0); // « Haut » est au-dessus
+        QVERIFY(panel->moveSelectionHere());
+        w.waitForIdle();
+        QVERIFY(w.previewFrame().hits->boundsOf(id).has_value());
+        QVERIFY(panel->setRowVisible(0, false)); // masquer le calque
+        w.waitForIdle();
+        QVERIFY(!w.previewFrame().hits->boundsOf(id).has_value()); // ni dessiné ni cousu
+        QVERIFY(panel->setRowVisible(0, true));
+        w.waitForIdle();
+        QVERIFY(w.previewFrame().hits->boundsOf(id).has_value());
     }
 
     void inspectorEditsAllSelectedObjectsInOneUndoStep() {

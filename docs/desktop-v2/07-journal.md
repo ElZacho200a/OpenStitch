@@ -248,3 +248,29 @@ compilé, puis `resources/fonts` ; une application installée devra embarquer se
 | 36 Thème | système / clair / sombre (`QStyleHints::setColorScheme`) ; valeur invalide → système | QTest `themeModeIsValidatedAndRestorable` |
 
 Non fait : mémorisation des réglages d'affichage, langue anglaise, PDF / impression, magnétisme, passes de couture.
+
+
+## 2026-11-04 — Session 1 (suite 11) : géométrie, ordre, sous-couches, tirage prédictif, remplissages spéciaux (branche `feat/desktop-v2-families-3`)
+
+| Famille | Fait | Preuve |
+|---|---|---|
+| 13 Géométrie | 10 actions de plus au catalogue : fusion (4 modes), simplifier, lisser, combler les trous, supprimer les miettes, séparer, numériser les formes, optimiser l'ordre (5 stratégies + 2-opt), coupe après l'objet, entrée / sortie automatiques, réduire la palette | Catch2 sur de vraies géométries : union de deux rectangles, **soustraction → trou → comblé**, union avec miette → miette supprimée, ellipse lissée ; une action **sans effet possible est refusée par le moteur et rien n'est empilé** |
+| 24 / 25 | `ParamSpec` passe à la nature **Choice** : mode de compensation du tirage manuel / auto / adaptatif / **prédictif**, mode de sous-couche, zigzag, retrait, écart, liaisons cachées | tests Catch2 `choice settings write the engine keyword…` (l'index 3 écrit `predicted`, relu = 3 ; index hors plage et « mixte » refusés) |
+| 21 | réglages de la spirale, du point de croix, de l'appliqué | tests `special fills expose their own essential settings` ; chaque clé de la table est lisible sur son type et sa valeur par défaut est dans la plage, pour 6 types |
+
+**Incident de session** : un correctif de `readParam` n'avait pas été appliqué (remplacement textuel silencieux sur du code
+reformaté) ; le test lisait un `optional` vide et se figeait. Corrigé en réécrivant la fonction ; les scripts de patch
+de cette session vérifient désormais chaque remplacement.
+
+
+## 2026-11-04 — Session 1 (suite 12) : calques et préréglages (branche `feat/desktop-v2-families-4`)
+
+| Famille | Fait | Preuve |
+|---|---|---|
+| 42 Préréglages | `core/document_services` : enregistrer (nom nettoyé, remplace un homonyme), appliquer à N objets, supprimer — chacun **une `ICommand`** annulable ; menu « Préréglages » (reconstruit à l'ouverture), palette, menu contextuel | Catch2 (réglages relus sur l'objet cible, annulation, refus avec raison : nom vide / trop long / objet inconnu / indice hors plage) ; QTest `presetsAreSavedAppliedAndListedInTheMenuAndPalette` |
+| 14 Calques | panneau « Calques » (onglet du dock) : liste du dessus vers le fond avec case de visibilité, ajout, renommage, suppression (le dernier reste), monter / descendre, verrou, « sélection ici » ; une annulation par action | Catch2 `calques: add, rename, hide, lock…` ; QTest `calquePanelEditsLayersThroughUndoableCommands`, `hidingACalqueHidesItsObjectsFromThePreview` |
+
+**Défaut trouvé par les tests** : quand tous les objets étaient masqués (ou dans des calques masqués), le moteur refuse de
+générer (« Aucun objet de broderie visible ») et l'aperçu **gardait l'ancienne image** avec son index de sélection (on pouvait
+cliquer un objet invisible). L'aperçu montre désormais le cadre vide dans ce cas.
+`DocumentSession::allocateObjectId()` est la seule écriture hors commande (compteur d'identifiants, jamais réutilisés).

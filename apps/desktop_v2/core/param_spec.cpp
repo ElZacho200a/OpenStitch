@@ -12,7 +12,11 @@ namespace {
 
 using K = ParamKind;
 
-// type, clé, libellé, nature, min, max, pas, unité
+constexpr std::string_view kPull =
+    "manual|Manuelle;auto|Automatique;adaptive|Adaptative;predicted|Prédictive";
+constexpr std::string_view kUnderlay = "manual|Manuelle;auto|Automatique";
+
+// type, clé, libellé, nature, min, max, pas, unité[, options]
 const std::vector<ParamSpec>& table() {
     static const std::vector<ParamSpec> kTable{
         {"running", "stitch_length_mm", "Longueur de point", K::Number, 0.5, 12.0, 0.1, "mm"},
@@ -40,6 +44,43 @@ const std::vector<ParamSpec>& table() {
         {"satin", "max_width_mm", "Largeur maximale", K::Number, 1.0, 48.0, 0.5, "mm"},
         {"satin", "center_underlay", "Sous-couche centrale", K::Bool, 0, 1, 1, ""},
         {"satin", "underlay_edge", "Sous-couche de bord", K::Bool, 0, 1, 1, ""},
+
+        // Sous-couches et compensation de tirage (modes manuel / auto / adaptatif / PRÉDICTIF).
+        {"tatami", "pull_mode", "Mode de compensation", K::Choice, 0, 3, 1, "", kPull},
+        {"tatami", "underlay_mode", "Sous-couche", K::Choice, 0, 1, 1, "", kUnderlay},
+        {"tatami", "underlay_zigzag", "Sous-couche en zigzag", K::Bool, 0, 1, 1, ""},
+        {"tatami", "underlay_inset_mm", "Retrait de la sous-couche", K::Number, 0.0, 3.0, 0.1,
+         "mm"},
+        {"tatami", "underlay_spacing_mm", "Écart de la sous-couche", K::Number, 0.5, 6.0, 0.1,
+         "mm"},
+        {"tatami", "hidden_underpath", "Liaisons cachées", K::Bool, 0, 1, 1, ""},
+        {"directional", "pull_mode", "Mode de compensation", K::Choice, 0, 3, 1, "", kPull},
+        {"directional", "underlay_mode", "Sous-couche", K::Choice, 0, 1, 1, "", kUnderlay},
+        {"directional", "underlay_parallel", "Sous-couche de rangées", K::Bool, 0, 1, 1, ""},
+        {"directional", "hidden_underpath", "Liaisons cachées", K::Bool, 0, 1, 1, ""},
+        {"satin", "pull_mode", "Mode de compensation", K::Choice, 0, 3, 1, "", kPull},
+        {"satin", "underlay_mode", "Sous-couche", K::Choice, 0, 1, 1, "", kUnderlay},
+        {"satin", "underlay_zigzag", "Sous-couche en zigzag", K::Bool, 0, 1, 1, ""},
+
+        // Remplissages spéciaux.
+        {"spiral", "row_spacing_mm", "Écart entre tours", K::Number, 0.1, 2.0, 0.05, "mm"},
+        {"spiral", "stitch_length_mm", "Longueur de point", K::Number, 1.0, 7.0, 0.1, "mm"},
+        {"spiral", "inset_mm", "Retrait du bord", K::Number, 0.0, 2.0, 0.05, "mm"},
+        {"spiral", "clockwise", "Sens horaire", K::Bool, 0, 1, 1, ""},
+        {"spiral", "pull_mode", "Mode de compensation", K::Choice, 0, 3, 1, "", kPull},
+        {"cross_stitch", "cell_mm", "Côté d'une cellule", K::Number, 1.0, 8.0, 0.25, "mm"},
+        {"cross_stitch", "grid_angle_deg", "Angle de la grille", K::Number, -360.0, 360.0, 5.0,
+         "°"},
+        {"cross_stitch", "full_cross", "Croix complète", K::Bool, 0, 1, 1, ""},
+        {"cross_stitch", "passes", "Passes", K::Integer, 1, 3, 1, ""},
+        {"applique", "placement_length_mm", "Point de placement", K::Number, 1.0, 7.0, 0.25, "mm"},
+        {"applique", "tack_width_mm", "Largeur du maintien", K::Number, 0.2, 20.0, 0.25, "mm"},
+        {"applique", "tack_spacing_mm", "Écart du maintien", K::Number, 0.3, 20.0, 0.25, "mm"},
+        {"applique", "cover_width_mm", "Largeur du satin de couverture", K::Number, 0.5, 20.0, 0.25,
+         "mm"},
+        {"applique", "cover_density_mm", "Densité de la couverture", K::Number, 0.2, 1.5, 0.05,
+         "mm"},
+        {"applique", "stops", "Arrêts machine", K::Bool, 0, 1, 1, ""},
     };
     return kTable;
 }
@@ -56,6 +97,21 @@ std::string num(double v) {
 
 } // namespace
 
+std::vector<std::pair<std::string, std::string>> paramOptions(const ParamSpec& spec) {
+    std::vector<std::pair<std::string, std::string>> out;
+    std::string_view rest = spec.options;
+    while (!rest.empty()) {
+        const auto semi = rest.find(';');
+        const std::string_view item = rest.substr(0, semi);
+        const auto bar = item.find('|');
+        out.emplace_back(std::string(item.substr(0, bar)), bar == std::string_view::npos
+                                                               ? std::string(item)
+                                                               : std::string(item.substr(bar + 1)));
+        rest = semi == std::string_view::npos ? std::string_view{} : rest.substr(semi + 1);
+    }
+    return out;
+}
+
 std::vector<ParamSpec> paramSpecs(std::string_view typeId) {
     std::vector<ParamSpec> out;
     for (const auto& s : table()) {
@@ -68,6 +124,8 @@ std::vector<ParamSpec> paramSpecs(std::string_view typeId) {
 
 std::optional<double> readParam(const document::EmbroideryObject& o, std::string_view key) {
     using namespace document;
+    const auto b2d = [](bool v) { return v ? 1.0 : 0.0; };
+    const auto deg = [](Angle a) { return a.radians * 180.0 / std::numbers::pi; };
     if (const auto* p = std::get_if<RunningStitchParams>(&o.params)) {
         if (key == "stitch_length_mm")
             return mm(p->stitch_length);
@@ -75,7 +133,7 @@ std::optional<double> readParam(const document::EmbroideryObject& o, std::string
             return static_cast<double>(p->repeats);
     } else if (const auto* t = std::get_if<TatamiParams>(&o.params)) {
         if (key == "angle_deg")
-            return t->angle.radians * 180.0 / std::numbers::pi;
+            return deg(t->angle);
         if (key == "row_spacing_mm")
             return mm(t->row_spacing);
         if (key == "stitch_length_mm")
@@ -85,9 +143,21 @@ std::optional<double> readParam(const document::EmbroideryObject& o, std::string
         if (key == "pull_compensation_mm")
             return mm(t->pull_compensation);
         if (key == "underlay_edge")
-            return t->underlay_edge ? 1.0 : 0.0;
+            return b2d(t->underlay_edge);
         if (key == "underlay_parallel")
-            return t->underlay_parallel ? 1.0 : 0.0;
+            return b2d(t->underlay_parallel);
+        if (key == "pull_mode")
+            return static_cast<double>(t->pull_mode);
+        if (key == "underlay_mode")
+            return static_cast<double>(t->underlay_mode);
+        if (key == "underlay_zigzag")
+            return b2d(t->underlay_zigzag);
+        if (key == "underlay_inset_mm")
+            return mm(t->underlay_inset);
+        if (key == "underlay_spacing_mm")
+            return mm(t->underlay_spacing);
+        if (key == "hidden_underpath")
+            return b2d(t->hidden_underpath);
     } else if (const auto* d = std::get_if<DirectionalFillParams>(&o.params)) {
         if (key == "row_spacing_mm")
             return mm(d->row_spacing);
@@ -98,7 +168,15 @@ std::optional<double> readParam(const document::EmbroideryObject& o, std::string
         if (key == "pull_compensation_mm")
             return mm(d->pull_compensation);
         if (key == "underlay_edge")
-            return d->underlay_edge ? 1.0 : 0.0;
+            return b2d(d->underlay_edge);
+        if (key == "pull_mode")
+            return static_cast<double>(d->pull_mode);
+        if (key == "underlay_mode")
+            return static_cast<double>(d->underlay_mode);
+        if (key == "underlay_parallel")
+            return b2d(d->underlay_parallel);
+        if (key == "hidden_underpath")
+            return b2d(d->hidden_underpath);
     } else if (const auto* s = std::get_if<SatinParams>(&o.params)) {
         if (key == "density_mm")
             return mm(s->density);
@@ -107,9 +185,48 @@ std::optional<double> readParam(const document::EmbroideryObject& o, std::string
         if (key == "max_width_mm")
             return mm(s->max_width);
         if (key == "center_underlay")
-            return s->center_underlay ? 1.0 : 0.0;
+            return b2d(s->center_underlay);
         if (key == "underlay_edge")
-            return s->underlay_edge ? 1.0 : 0.0;
+            return b2d(s->underlay_edge);
+        if (key == "pull_mode")
+            return static_cast<double>(s->pull_mode);
+        if (key == "underlay_mode")
+            return static_cast<double>(s->underlay_mode);
+        if (key == "underlay_zigzag")
+            return b2d(s->underlay_zigzag);
+    } else if (const auto* sp = std::get_if<SpiralFillParams>(&o.params)) {
+        if (key == "row_spacing_mm")
+            return mm(sp->row_spacing);
+        if (key == "stitch_length_mm")
+            return mm(sp->stitch_length);
+        if (key == "inset_mm")
+            return mm(sp->inset);
+        if (key == "clockwise")
+            return b2d(sp->clockwise);
+        if (key == "pull_mode")
+            return static_cast<double>(sp->pull_mode);
+    } else if (const auto* cs = std::get_if<CrossStitchParams>(&o.params)) {
+        if (key == "cell_mm")
+            return mm(cs->cell);
+        if (key == "grid_angle_deg")
+            return deg(cs->grid_angle);
+        if (key == "full_cross")
+            return b2d(cs->full_cross);
+        if (key == "passes")
+            return static_cast<double>(cs->passes);
+    } else if (const auto* ap = std::get_if<AppliqueParams>(&o.params)) {
+        if (key == "placement_length_mm")
+            return mm(ap->placement_length);
+        if (key == "tack_width_mm")
+            return mm(ap->tack_width);
+        if (key == "tack_spacing_mm")
+            return mm(ap->tack_spacing);
+        if (key == "cover_width_mm")
+            return mm(ap->cover_width);
+        if (key == "cover_density_mm")
+            return mm(ap->cover_density);
+        if (key == "stops")
+            return b2d(ap->stops);
     }
     return std::nullopt;
 }
@@ -135,6 +252,15 @@ std::string batchSetParam(const std::vector<std::uint64_t>& ids, std::string_vie
     case K::Number:
         literal = num(value);
         break;
+    case K::Choice: {
+        const auto options = paramOptions(*it);
+        const auto index = static_cast<std::size_t>(std::llround(value));
+        if (value < -1e-9 || index >= options.size()) {
+            return {};
+        }
+        literal = "\"" + options[index].first + "\"";
+        break;
+    }
     }
     std::string ops;
     for (std::size_t i = 0; i < ids.size(); ++i) {
