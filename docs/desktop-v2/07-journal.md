@@ -359,3 +359,7 @@ encore le desktop principal.
 ## 2026-11-05 — Session 1 (suite 23) : finalisation V2, tranche 2 (rails de satin)
 
 - L'outil « Nœuds du contour » gère aussi les colonnes satin : poignées des deux rails (rail A/B), glisser un ou plusieurs nœuds d'un même rail (UNE `CompositeCommand` annulable, aperçu des deux rails), double-clic pour insérer un nœud (`InsertSatinRailNodeCommand`), barreaux dessinés en repères discrets, largeur aux barreaux annoncée avec conseil tatami au-delà de `max_width`. Pas de segment de retour sur un rail ouvert. Limite connue : les barreaux ne suivent pas les rails, la largeur affichée est celle des barreaux stockés.
+## 2026-11-04 — Session 1 (suite 20) : parcours guidé
+
+- Retour utilisateur : « le parcours n'est pas clair ». Ajout d'un écran d'accueil (ouvrir une image ou un projet, projet vierge, projets récents, explication des quatre étapes) affiché tant qu'aucun projet n'est ouvert.
+- `core/workflow_guide` : bandeau Importer › Retoucher › Contrôler › Exporter calculé depuis l'état du document (objets, analyse à jour, erreurs, export à jour) avec un bouton « étape suivante » ; une modification rouvre l'étape de contrôle. Catch2 `[guide]`, QTest `theWelcomePageExplainsTheJourneyAndTheGuideFollowsTheDocument`.
