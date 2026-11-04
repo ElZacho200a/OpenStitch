@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "preview_service.hpp"
 
+#include <algorithm>
 #include <map>
 
 #include "openstitch/image/image.hpp"
@@ -19,9 +20,16 @@ Result<PreviewImage> render_preview(std::shared_ptr<const document::Project> pro
     if (task.cancelled()) {
         return cancelled_error();
     }
-    auto sequence = stitch_generation::effective_sequence(*project, task);
-    if (!sequence) {
-        return std::unexpected(sequence.error());
+    // Document sans objet (création à partir de zéro) : pas de séquence, seulement le cadre.
+    stitch::StitchSequence emptySequence;
+    stitch::StitchSequence* sequence = &emptySequence;
+    Result<stitch::StitchSequence> computed = fail(ErrorCategory::Internal, "non calculée");
+    if (!project->embroidery_objects.empty()) {
+        computed = stitch_generation::effective_sequence(*project, task);
+        if (!computed) {
+            return std::unexpected(computed.error());
+        }
+        sequence = &*computed;
     }
     std::map<std::uint64_t, std::array<std::uint8_t, 3>> colours;
     bool encodable = true;
@@ -40,13 +48,27 @@ Result<PreviewImage> render_preview(std::shared_ptr<const document::Project> pro
     };
     const auto segments =
         stitch_render::build_thread_segments(*sequence, sequence->commands.size(), colourOf);
-    const stitch_render::RectMm bounds = stitch_render::segments_bounds(segments);
-    if (bounds.empty()) {
-        return fail(ErrorCategory::OperationImpossible, "Aucun point cousu visible");
-    }
+    // Fenêtre = cadre de broderie ∪ points cousus : le motif est toujours vu dans son cadre, et un
+    // document sans point (création à partir de zéro) a quand même un aperçu.
+    const double hoopHalfW = project->canvas.width.value / 2000.0;
+    const double hoopHalfH = project->canvas.height.value / 2000.0;
+    stitch_render::RectMm region{-hoopHalfW, -hoopHalfH, hoopHalfW, hoopHalfH};
     constexpr double kThreadMm = 0.35;
-    const stitch_render::RectMm region{bounds.x0 - kThreadMm, bounds.y0 - kThreadMm,
-                                       bounds.x1 + kThreadMm, bounds.y1 + kThreadMm};
+    if (const stitch_render::RectMm bounds = stitch_render::segments_bounds(segments);
+        !bounds.empty()) {
+        if (region.empty()) {
+            region = {bounds.x0 - kThreadMm, bounds.y0 - kThreadMm, bounds.x1 + kThreadMm,
+                      bounds.y1 + kThreadMm};
+        } else {
+            region.x0 = std::min(region.x0, bounds.x0 - kThreadMm);
+            region.y0 = std::min(region.y0, bounds.y0 - kThreadMm);
+            region.x1 = std::max(region.x1, bounds.x1 + kThreadMm);
+            region.y1 = std::max(region.y1, bounds.y1 + kThreadMm);
+        }
+    }
+    if (region.empty()) {
+        return fail(ErrorCategory::OperationImpossible, "Aucun cadre ni point à afficher");
+    }
     const auto view = stitch_render::plan_view(region, pxPerMm, 40'000'000);
     if (view.width <= 0 || view.height <= 0) {
         return fail(ErrorCategory::OperationImpossible, "Fenêtre d'aperçu vide");
@@ -80,6 +102,8 @@ Result<PreviewImage> render_preview(std::shared_ptr<const document::Project> pro
     out.px_per_mm = view.px_per_mm;
     out.origin_x_mm = view.rect.x0;
     out.origin_y_mm = view.rect.y0;
+    out.hoop_half_w_mm = hoopHalfW;
+    out.hoop_half_h_mm = hoopHalfH;
     out.revision = revision;
     if (encodable) {
         // Second jeu de segments : la « couleur » porte l'identifiant de l'objet (même géométrie).

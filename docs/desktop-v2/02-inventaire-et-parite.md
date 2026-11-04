@@ -26,7 +26,7 @@ liste qui bougera. C'est une limite assumée de cette première livraison.
 | 8 | Segmentation (couleurs, régions, nettoyage) | `segmentation_dialog`, `segmentation_colors_panel`, `main_window_regions`, `segment_preview` | `segmentation::*`, ops `seg_*`, `segment_image` | C | 🟡 | exécutée **dans** la numérisation automatique ✅ ; pas de pilotage manuel ⬜ |
 | 9 | Segmentation IA (SAM) | `ai_segmentation_dialog`, `sam_worker_client`, `ai_preferences*` | `ai_segmentation` | C | ⬜ | hors priorité produit (mémoire projet) : portée en dernier |
 | 10 | Zones de détail, clic-pour-broder | `main_window_detail_zones`, `main_window_click_to_stitch` | `click_to_stitch_commands` | C/N | ⬜ | outils `detail-brush`, `click-to-stitch` déclarés, désactivés |
-| 11 | Dessin vectoriel (formes, polygone, Bézier, main levée) | `main_window_draw_tools`, `_shapes`, `_vector_tools` | `vector_ops`, `vector_path_commands`, op `add_shape` | C | ⬜ | outils déclarés dans le registre, désactivés |
+| 11 | Dessin vectoriel (formes, polygone, Bézier, main levée) | `main_window_draw_tools`, `_shapes`, `_vector_tools` | `vector_ops`, `vector_path_commands`, op `add_shape` | C | 🟡 | **rectangle, ellipse (Maj = cercle), polygone ✅** par `add_shape` (une annulation par forme, forme refusée = document intact) ; Bézier, main levée, polygone régulier, satin ⬜ |
 | 12 | Édition de nœuds, reshape, pinceau, pot de peinture, couteau | `main_window_vector_edit`, `_node_select`, `_reshape`, `_brush`, `_bucket`, `node_handle.hpp` | `vector_ops`, `outline_ops` | C | ⬜ | |
 | 13 | Opérations géométriques (fusion, découpe, simplifier, lisser, trous) | `main_window_objects`, `_regions`, menu Forme | ops `merge`, `split`, `simplify_shapes`, `smooth_shapes`, `remove_holes`… | C | ⬜ | **moteur ✅ (lot)** ; interface ⬜ |
 | 14 | Calques | `calque_panel` | `calque_commands` | C | ⬜ | |
@@ -61,14 +61,14 @@ liste qui bougera. C'est une limite assumée de cette première livraison.
 | 43 | Vues d'affichage (passes, plans, densité, risques) | `main_window_view_display`, `view_display_state.hpp` | `stitch_render/view_display` | T | ⬜ | |
 | 44 | Espaces de travail / disposition des panneaux | `main_window_ux`, `ui_memory.hpp` | — | T | 🟡 | 4 espaces filtrant le rail d'outils ✅ ; panneaux par espace, mémorisation ⬜ |
 
-**Décompte au 2026-11-04** : 44 familles — ✅ 2 · 🟡 13 · ⬜ 29. Aucune exception (« non migré volontairement ») n'est
+**Décompte au 2026-11-04** : 44 familles — ✅ 2 · 🟡 14 · ⬜ 28. Aucune exception (« non migré volontairement ») n'est
 prononcée à ce stade ; la seule candidate argumentée est la segmentation IA (ligne 9), décalée en dernier mais pas supprimée.
 
 ## Parité des outils de canevas (vérifiée par test)
 
 Les 20 énumérateurs de `apps/desktop/tools.hpp::Tool` ont chacun un équivalent déclaré dans
 `ToolRegistry::builtin()` (test `every legacy canvas tool has a V2 equivalent`). **Déclaré ≠ fonctionnel** : seuls
-`select` et `pan` sont activés ; les 18 autres sont affichés **désactivés** avec la raison dans l'infobulle.
+`select`, `pan`, `draw.rectangle`, `draw.ellipse` et `draw.polygon` sont activés ; les 15 autres sont affichés **désactivés** avec la raison dans l'infobulle.
 
 ## Écart manuel / agent (à fermer)
 

@@ -58,7 +58,7 @@ private slots:
                 QVERIFY(a->toolTip().contains("pas encore migré"));
             }
         }
-        QCOMPARE(enabled, 2); // Sélection + Déplacer la vue
+        QCOMPARE(enabled, 5); // Sélection, Déplacer la vue, Rectangle, Ellipse, Polygone
         QVERIFY(disabled > 0);
     }
 
@@ -266,9 +266,9 @@ private slots:
         QVERIFY(w.runCommand("tool.pan"));
         QCOMPARE(w.activeToolId(), QString("pan"));
         QCOMPARE(w.canvas()->dragMode(), QGraphicsView::ScrollHandDrag);
-        QVERIFY(!w.canvas()->rubberBandSelection());
+        QVERIFY(w.canvas()->mode() == PreviewCanvas::Mode::Pan);
         QVERIFY(w.runCommand("tool.select"));
-        QVERIFY(w.canvas()->rubberBandSelection());
+        QVERIFY(w.canvas()->mode() == PreviewCanvas::Mode::Select);
     }
 
     void commandsCoverToolsWorkspacesAndEditing() {
@@ -290,7 +290,7 @@ private slots:
         }
         QCOMPARE(tools, 20);
         // Un outil non migré est listé mais refusé, sans effet de bord.
-        QVERIFY(!w.runCommand("tool.draw.ellipse"));
+        QVERIFY(!w.runCommand("tool.draw.bezier"));
         QCOMPARE(w.activeToolId(), QString("select"));
         QVERIFY(!w.runCommand("nope"));
         // Sans document, enregistrer / exporter / annuler sont désactivés.
@@ -327,9 +327,131 @@ private slots:
         QCOMPARE(w.workspace(), Workspace::Digitize);
 
         // Une commande désactivée ne se valide pas.
-        palette.setQuery("ellipse");
+        palette.setQuery("plume");
         QCOMPARE(palette.visibleIds().size(), 1);
         QVERIFY(!palette.activateCurrent());
+    }
+
+    void drawingToolsCreateObjectsFromMouseGestures() {
+        ShellWindow w;
+        w.show();
+        QVERIFY(w.runCommand("file.new"));
+        w.waitForIdle();
+        auto* canvas = w.canvas();
+        QVERIFY(canvas->hasImage());
+        QVERIFY(canvas->hasHoop()); // le cadre de broderie est dessiné
+        QVERIFY(w.session().project().embroidery_objects.empty());
+
+        // Rectangle : glisser dans le cadre.
+        QVERIFY(w.runCommand("tool.draw.rectangle"));
+        QVERIFY(canvas->mode() == PreviewCanvas::Mode::DrawBox);
+        const QRectF scene = canvas->sceneRect().adjusted(40, 40, -40, -40);
+        const QPoint a = canvas->mapFromScene(scene.center() - QPointF(60, 40));
+        const QPoint b = canvas->mapFromScene(scene.center() + QPointF(60, 40));
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, a);
+        QTest::mouseMove(canvas->viewport(), b);
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, b);
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(1));
+        QCOMPARE(QString::fromStdString(w.session().undoName()), QString("Rectangle"));
+        QCOMPARE(w.session().selection().targets().size(),
+                 size_t(1)); // l'objet créé est sélectionné
+        w.waitForIdle();
+
+        // Ellipse avec Maj : cercle (largeur = hauteur).
+        QVERIFY(w.runCommand("tool.draw.ellipse"));
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::ShiftModifier, a);
+        QTest::mouseMove(canvas->viewport(), b, 1);
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::ShiftModifier, b);
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(2));
+        QCOMPARE(QString::fromStdString(w.session().undoName()), QString("Ellipse"));
+
+        // Un seul Annuler par forme.
+        QVERIFY(w.session().undo());
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(1));
+        w.waitForIdle();
+        QVERIFY(w.previewShown());
+    }
+
+    void polygonToolClicksThenEnterAndEscapeCancels() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        auto* canvas = w.canvas();
+        QVERIFY(w.runCommand("tool.draw.polygon"));
+        QVERIFY(canvas->mode() == PreviewCanvas::Mode::DrawPolygon);
+        const QPointF c = canvas->sceneRect().center();
+        const auto click = [&](QPointF p) {
+            QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                              canvas->mapFromScene(p));
+        };
+        click(c + QPointF(-50, 40));
+        click(c + QPointF(50, 40));
+        click(c + QPointF(0, -50));
+        QCOMPARE(canvas->polygonInProgress().size(), 3);
+        QTest::keyClick(canvas, Qt::Key_Backspace); // retire le dernier sommet
+        QCOMPARE(canvas->polygonInProgress().size(), 2);
+        QTest::keyClick(canvas, Qt::Key_Escape); // annule tout
+        QCOMPARE(canvas->polygonInProgress().size(), 0);
+        QVERIFY(w.session().project().embroidery_objects.empty());
+
+        click(c + QPointF(-50, 40));
+        click(c + QPointF(50, 40));
+        click(c + QPointF(0, -50));
+        QTest::keyClick(canvas, Qt::Key_Return);
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(1));
+        QCOMPARE(QString::fromStdString(w.session().undoName()), QString("Polygone"));
+        QCOMPARE(canvas->polygonInProgress().size(), 0);
+
+        // Changer d'outil abandonne un polygone en cours.
+        click(c + QPointF(-30, 30));
+        click(c + QPointF(30, 30));
+        QCOMPARE(canvas->polygonInProgress().size(), 2);
+        QVERIFY(w.runCommand("tool.select"));
+        QCOMPARE(canvas->polygonInProgress().size(), 0);
+    }
+
+    void aRefusedShapeShowsAnErrorAndLeavesTheDocumentUntouched() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        auto* canvas = w.canvas();
+        QVERIFY(w.runCommand("tool.draw.polygon"));
+        const QPointF c = canvas->sceneRect().center();
+        const auto click = [&](QPointF p) {
+            QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                              canvas->mapFromScene(p));
+        };
+        // « Papillon » : les côtés se croisent, le moteur refuse la forme.
+        click(c + QPointF(-40, -40));
+        click(c + QPointF(40, 40));
+        click(c + QPointF(40, -40));
+        click(c + QPointF(-40, 40));
+        const auto revision = w.session().revision();
+        QTest::keyClick(canvas, Qt::Key_Return);
+        QVERIFY(w.session().project().embroidery_objects.empty());
+        QCOMPARE(w.session().revision(), revision);
+        QVERIFY(w.lastNotice().contains("refusé"));
+    }
+
+    void saveIsAvailableOnANewProjectButExportNeedsStitches() {
+        ShellWindow w;
+        QVERIFY(!w.runCommand("file.save")); // aucun projet ouvert
+        QVERIFY(w.runCommand("file.new"));
+        const auto entries = w.commandEntries();
+        const auto enabled = [&](const char* id) {
+            for (const auto& e : entries) {
+                if (e.id == id) {
+                    return e.enabled;
+                }
+            }
+            return false;
+        };
+        QVERIFY(enabled("file.save"));
+        QVERIFY(!enabled("file.export")); // rien à exporter
+        QVERIFY(enabled("tool.draw.rectangle"));
+        QVERIFY(!enabled("tool.draw.bezier")); // pas encore migré
     }
 
     void inspectorEditsAllSelectedObjectsInOneUndoStep() {

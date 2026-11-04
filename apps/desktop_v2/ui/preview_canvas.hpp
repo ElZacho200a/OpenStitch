@@ -1,17 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
-// Desktop V2 -- canevas d'aperçu : AFFICHAGE seulement (zoom à la molette ancré sous le curseur,
-// panoramique au glisser, « ajuster » avec F). Aucune logique métier ; les outils de dessin et la
-// manipulation directe arriveront dans le lot « canevas et interactions » (voir le plan).
+// Desktop V2 -- canevas d'aperçu : AFFICHAGE et GESTES seulement. Zoom à la molette ancré sous le
+// curseur, « ajuster » avec F, et quatre modes de glisser/clic (`Mode`). Le canevas ne connaît ni
+// le document ni le moteur : il émet des gestes en pixels de l'image d'aperçu, que `ShellWindow`
+// convertit en intentions (sélection, création de forme…).
 
 #include <QGraphicsView>
 #include <QImage>
 #include <QPoint>
+#include <QPointF>
+#include <QPolygonF>
 #include <QRectF>
 #include <QVector>
-#include <Qt>
 
+class QGraphicsPathItem;
 class QGraphicsPixmapItem;
 class QGraphicsRectItem;
 class QGraphicsScene;
@@ -22,6 +25,13 @@ namespace openstitch::desktop_v2 {
 class PreviewCanvas : public QGraphicsView {
     Q_OBJECT
 public:
+    // Select : clic = sélection, glisser = cadre élastique (sélection fenêtre).
+    // Pan : glisser = déplacer la vue.
+    // DrawBox : glisser = cadre de création (rectangle, ellipse).
+    // DrawPolygon : clics successifs, double-clic ou Entrée = terminer, Échap = annuler,
+    //               Retour arrière = retirer le dernier sommet.
+    enum class Mode { Select, Pan, DrawBox, DrawPolygon };
+
     explicit PreviewCanvas(QWidget* parent = nullptr);
 
     void setImage(const QImage& image);
@@ -29,23 +39,27 @@ public:
     [[nodiscard]] bool hasImage() const { return item_ != nullptr; }
     [[nodiscard]] double zoom() const { return transform().m11(); }
 
+    void setMode(Mode mode);
+    [[nodiscard]] Mode mode() const { return mode_; }
+
     // Cadres de sélection (pixels de l'image d'aperçu) dessinés au-dessus de l'image.
     void setSelectionBoxes(const QVector<QRectF>& boxesPx);
     [[nodiscard]] int selectionBoxCount() const { return static_cast<int>(boxItems_.size()); }
-    // Coordonnées de la scène (pixels de l'image) sous un point du viewport.
-    [[nodiscard]] QPointF scenePos(const QPoint& viewportPos) const {
-        return mapToScene(viewportPos);
-    }
-
-    // Mode « sélection » : le glisser trace un cadre élastique (sinon, le glisser déplace la vue).
-    void setRubberBandSelection(bool on);
-    [[nodiscard]] bool rubberBandSelection() const { return bandMode_; }
+    // Cadre de broderie (pixels de l'image) ; rectangle nul = aucun.
+    void setHoopRect(const QRectF& rectPx);
+    [[nodiscard]] bool hasHoop() const { return hoopItem_ != nullptr; }
+    // Sommets du polygone en cours de tracé (pixels de l'image).
+    [[nodiscard]] QVector<QPointF> polygonInProgress() const { return polyPts_; }
 
 signals:
-    // Cadre élastique terminé (glisser avec l'outil Sélection). Rectangle en pixels de l'image.
-    void rectPx(QRectF scenePx, Qt::KeyboardModifiers modifiers);
-    // Clic gauche sans glisser (un glisser déplace la vue). Position en pixels de l'image.
+    // Clic gauche sans glisser, en mode Select. Position en pixels de l'image.
     void clickedPx(QPointF scenePx, Qt::KeyboardModifiers modifiers);
+    // Cadre élastique terminé en mode Select.
+    void rectPx(QRectF scenePx, Qt::KeyboardModifiers modifiers);
+    // Cadre de création terminé en mode DrawBox.
+    void boxDrawnPx(QRectF scenePx, Qt::KeyboardModifiers modifiers);
+    // Polygone terminé en mode DrawPolygon (au moins 3 sommets).
+    void polygonDrawnPx(QVector<QPointF> scenePx);
 
 public slots:
     void fitAll();
@@ -57,15 +71,23 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
 
 private:
+    void updatePolygonItem(const QPointF* cursor);
+    void finishPolygon();
+    void cancelPolygon();
+
     QGraphicsScene* scene_;
     QGraphicsPixmapItem* item_{nullptr};
+    QGraphicsRectItem* hoopItem_{nullptr};
+    QGraphicsPathItem* polyItem_{nullptr};
     QVector<QGraphicsRectItem*> boxItems_;
+    QVector<QPointF> polyPts_;
     QPoint pressPos_;
     QRubberBand* band_{nullptr};
     QPoint bandOrigin_;
-    bool bandMode_{false};
+    Mode mode_{Mode::Select};
     bool bandDragging_{false};
     bool pressing_{false};
     bool userZoomed_{false}; // tant que faux, un redimensionnement re-ajuste l'image

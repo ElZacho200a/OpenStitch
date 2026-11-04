@@ -24,6 +24,8 @@ struct PreviewImage {
     double px_per_mm{0.0};
     double origin_x_mm{0.0}; // coin haut-gauche de l'image, repère mm « écran » (Y vers le bas)
     double origin_y_mm{0.0};
+    double hoop_half_w_mm{0.0}; // cadre de broderie, centré sur l'origine (symétrique : sans axe Y)
+    double hoop_half_h_mm{0.0};
     std::uint64_t revision{0}; // révision du document rendue : l'UI écarte un aperçu périmé
     std::shared_ptr<const HitIndex> hits; // objets VISIBLES cousus ; nul si un id dépasse 24 bits
 
