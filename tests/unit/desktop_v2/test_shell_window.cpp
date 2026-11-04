@@ -60,35 +60,26 @@ private slots:
         QCOMPARE(rail->actions().size(), design);
     }
 
-    void unmigratedToolsAreVisibleButDisabledWithAReason() {
-        ShellWindow w;
-        auto* rail = w.findChild<QToolBar*>("toolRail");
-        int enabled = 0;
-        int disabled = 0;
-        for (auto* a : rail->actions()) {
-            if (a->isEnabled()) {
-                ++enabled;
-            } else {
-                ++disabled;
-                QVERIFY(a->toolTip().contains("pas encore migré"));
-            }
-        }
-        QCOMPARE(enabled, 9); // …, Pipette, Couteau, Zones de détail
-        QVERIFY(disabled > 0);
-    }
-
     void namedToolsAreDiscoverableAndCanBeCollapsedWithoutLosingActions() {
         ShellWindow w;
         auto* rail = w.findChild<QToolBar*>("toolRail");
         auto* toggle = w.findChild<QAction*>("action_view_tool_labels");
         QVERIFY(rail && toggle);
         w.setToolLabelsVisible(true);
-        auto* selection = w.findChild<QAction*>("tool_select");
+        const auto toolSelection = [&]() -> QAction* {
+            for (auto* action : rail->actions()) {
+                if (action->objectName() == QStringLiteral("tool_select")) {
+                    return action;
+                }
+            }
+            return nullptr;
+        };
+        auto* selection = toolSelection();
         QVERIFY(selection);
         QVERIFY(selection->text().contains(QStringLiteral("Sélection")));
         const int count = rail->actions().size();
         w.setToolLabelsVisible(false);
-        selection = w.findChild<QAction*>("tool_select");
+        selection = toolSelection();
         QVERIFY(selection);
         QCOMPARE(selection->text(), QStringLiteral("V"));
         QCOMPARE(rail->actions().size(), count);
@@ -109,6 +100,23 @@ private slots:
         auto* label = w.findChild<QLabel*>("activeToolLabel");
         QVERIFY(label);
         QVERIFY(label->text().contains(QStringLiteral("Sélection")));
+    }
+
+    void unmigratedToolsAreVisibleButDisabledWithAReason() {
+        ShellWindow w;
+        auto* rail = w.findChild<QToolBar*>("toolRail");
+        int enabled = 0;
+        int disabled = 0;
+        for (auto* a : rail->actions()) {
+            if (a->isEnabled()) {
+                ++enabled;
+            } else {
+                ++disabled;
+                QVERIFY(a->toolTip().contains("pas encore migré"));
+            }
+        }
+        QCOMPARE(enabled, 9); // …, Pipette, Couteau, Zones de détail
+        QVERIFY(disabled > 0);
     }
 
     void imageToDstEndToEnd() {
