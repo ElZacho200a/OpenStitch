@@ -361,7 +361,7 @@ void CreationFlowTest::contextMenuOfAnUnsewnShapeOffersTheFourTypes() {
     window.onCanvasContextMenu(QPointF(0.0, 0.0), QPoint(10, 10));
     // Les quatre types historiques, puis blanket, motifs, concentrique, radial, spirale, croise,
     // point de croix.
-    QCOMPARE(found, 12);
+    QCOMPARE(found, 13); // + appliqué (HP-SPEC-001)
 }
 
 // --- HP-UX-029 ----------------------------------------------------------------------------

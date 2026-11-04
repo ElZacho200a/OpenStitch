@@ -72,6 +72,7 @@ bool follows_project_prediction(const document::StitchParams& params) {
     return (!has_pull_mode(params) || has_untouched_pull_setting(params)) &&
            !std::holds_alternative<document::RunningStitchParams>(params) &&
            !std::holds_alternative<document::BlanketStitchParams>(params) &&
+           !std::holds_alternative<document::AppliqueParams>(params) &&
            !std::holds_alternative<document::MotifRunParams>(params);
 }
 

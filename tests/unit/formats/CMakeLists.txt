@@ -5,6 +5,7 @@ add_executable(test_formats
     test_format_registry.cpp
     test_dxf.cpp
     test_svg.cpp
+    test_applique_export.cpp
     test_atomic_outputs.cpp
     test_svg_import.cpp
     test_pes.cpp

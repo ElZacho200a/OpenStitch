@@ -15,6 +15,7 @@ add_library(openstitch_formats
     src/export_limits.cpp
     src/dxf.cpp
     src/svg.cpp
+    src/cut_svg.cpp
     src/svg_import.cpp
 )
 add_library(openstitch::formats ALIAS openstitch_formats)

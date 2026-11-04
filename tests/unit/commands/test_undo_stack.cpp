@@ -2235,3 +2235,25 @@ TEST_CASE("pile bornee: reduire la borne elague, 0 = illimitee") {
     stack.execute(std::make_unique<AppendImageOpCommand>(image::GrayscaleOp{}), project);
     CHECK(stack.undoNames().size() == 3);
 }
+
+TEST_CASE("SetStitchParamsCommand : passage a un applique et retour exacts (HP-SPEC-001)") {
+    document::Project project;
+    UndoStack stack;
+    document::EmbroideryObject e;
+    e.id = project.object_ids.next();
+    e.params = document::TatamiParams{};
+    stack.execute(std::make_unique<AddEmbroideryObjectCommand>(e), project);
+    const ObjectId id = project.embroidery_objects[0].id;
+
+    document::AppliqueParams ap;
+    ap.cover_width = Micrometers{5'000};
+    ap.stops = false;
+    stack.execute(std::make_unique<SetStitchParamsCommand>(id, ap), project);
+    CHECK(project.findEmbroidery(id)->is_applique());
+    CHECK(std::get<document::AppliqueParams>(project.findEmbroidery(id)->params) == ap);
+
+    CHECK(stack.undo(project));
+    CHECK(project.findEmbroidery(id)->params == document::StitchParams{document::TatamiParams{}});
+    CHECK(stack.redo(project));
+    CHECK(std::get<document::AppliqueParams>(project.findEmbroidery(id)->params) == ap);
+}

@@ -48,6 +48,13 @@ Compression (2026-10) : l'image PNG, déjà compressée, est stockée telle quel
   2500), `gridAngle` (radians, défaut 0), `fullCross` (booléen, défaut vrai ; faux = demi-croix),
   `passes` ([1 ; 3], défaut 1) et `hiddenUnderpath` (défaut vrai) — toutes les clés optionnelles ;
   un lecteur sans ce type refuse le fichier (« Type de point inconnu »), `schemaVersion` inchangé.
+  Le variant `applique` (HP-SPEC-001, objet appliqué) porte `placementLength` (µm, [1000 ; 7000],
+  défaut 2000), `tack` (0 point droit, 1 zigzag — défaut —, 2 feston), `tackWidth` (µm, [200 ; 20000],
+  défaut 1500), `tackSpacing` (µm, [300 ; 20000], défaut 2000), `coverWidth` (µm, [500 ; 20000], défaut
+  3000), `coverDensity` (µm, [200 ; 1500], défaut 400), `cutOffset` (µm, [-5000 ; 5000], défaut 0 ;
+  positif = contour de découpe vers l'extérieur) et `stops` (booléen, défaut vrai : deux arrêts
+  machine). Toutes les clés sont optionnelles et bornées à la lecture ; un `tack` hors [0 ; 2] est refusé.
+  Un lecteur sans ce type refuse le fichier, `schemaVersion` inchangé.
   Le `tatami` porte de même ses réglages avancés (Lot 7) : `underlayEdge`,
   `underlayParallel`, `underlayInset`, `underlaySpacing`, `hiddenUnderpath` et
   `entryPoint` — optionnels et rétrocompatibles. Le `directional`

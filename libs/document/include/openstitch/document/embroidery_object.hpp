@@ -533,6 +533,28 @@ struct CrossStitchParams {
     bool operator==(const CrossStitchParams&) const = default;
 };
 
+// Point de maintien (tack-down) d'un appliqué (HP-SPEC-001).
+enum class AppliqueTack : std::uint8_t { Straight, Zigzag, Blanket };
+
+// Objet APPLIQUÉ (HP-SPEC-001) : suit le contour de la forme source et produit, dans l'ordre,
+//   1. la ligne de placement (point droit) -> ARRÊT machine (poser le tissu),
+//   2. le point de maintien (droit, zigzag ou feston) -> ARRÊT machine (couper l'excédent),
+//   3. la couverture en satin de bordure centrée sur le contour.
+// Les ARRÊTS sont de vrais `Stop` de la séquence (désactivables par `stops`). Le contour de
+// découpe du tissu (exportable en SVG/DXF) est le contour source décalé de `cut_offset`.
+struct AppliqueParams {
+    Micrometers placement_length{2'000}; // point de la ligne de placement (2 mm), [1 ; 7] mm
+    AppliqueTack tack{AppliqueTack::Zigzag};
+    Micrometers tack_width{1'500};   // largeur du zigzag / longueur des dents (1,5 mm), [0,2 ; 20]
+    Micrometers tack_spacing{2'000}; // écart entre stations du maintien (2 mm), [0,3 ; 20]
+    Micrometers cover_width{3'000};  // largeur du satin de couverture (3 mm), [0,5 ; 20]
+    Micrometers cover_density{400};  // espacement des barreaux du satin (0,4 mm), [0,2 ; 1,5]
+    Micrometers cut_offset{0};       // décalage du contour de découpe (>0 : vers l'extérieur)
+    bool stops{true};                // émet les deux arrêts machine
+
+    bool operator==(const AppliqueParams&) const = default;
+};
+
 // Un objet de broderie porte un TYPE de point sous forme de variant. Chaque
 // type suit la géométrie d'un objet vectoriel source (contour pour running,
 // région pleine pour tatami) ou porte la sienne (satin). La séparation
@@ -543,7 +565,7 @@ using StitchParams =
     std::variant<RunningStitchParams, TatamiParams, SatinParams, DirectionalFillParams,
                  AutoSatinParams, BlanketStitchParams, ContourFillParams, MotifRunParams,
                  MotifFillParams, RadialFillParams, SpiralFillParams, CrosshatchFillParams,
-                 CrossStitchParams>;
+                 CrossStitchParams, AppliqueParams>;
 
 // Type de point autorisé après retouche manuelle (Lot 8 MVP, §2 du cadrage) :
 // seule transition permise, Stitch <-> Jump — pas de Trim/ColorChange/Stop,
@@ -660,6 +682,9 @@ struct EmbroideryObject {
     }
     [[nodiscard]] bool is_blanket() const {
         return std::holds_alternative<BlanketStitchParams>(params);
+    }
+    [[nodiscard]] bool is_applique() const {
+        return std::holds_alternative<AppliqueParams>(params);
     }
     [[nodiscard]] bool is_contour_fill() const {
         return std::holds_alternative<ContourFillParams>(params);

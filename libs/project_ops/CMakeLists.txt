@@ -33,6 +33,7 @@ add_library(openstitch_project_ops
     src/gradient_fill.cpp
     src/live_bridge.cpp
     src/settings_profile.cpp
+    src/applique_cut.cpp
 )
 add_library(openstitch::project_ops ALIAS openstitch_project_ops)
 

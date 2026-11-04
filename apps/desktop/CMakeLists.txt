@@ -40,6 +40,23 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_fill_center.cpp
     main_window_rotation.cpp
     main_window_workflow.cpp
+    main_window_files.cpp
+    main_window_companion.cpp
+    main_window_edit_modes.cpp
+    main_window_draw_tools.cpp
+    main_window_render.cpp
+    main_window_simulation.cpp
+    main_window_create.cpp
+    main_window_context_menu.cpp
+    main_window_debug.cpp
+    main_window_help_menu.cpp
+    main_window_crash_report.cpp
+    crash_report.cpp
+    crash_report_ticket.cpp
+    main_window_toolbars.cpp
+    main_window_panels.cpp
+    main_window_order_filter.cpp
+    main_window_selection_state.cpp
     ui_memory.hpp
     main_window_ux.cpp
     live_server.cpp
@@ -69,6 +86,7 @@ add_library(openstitch_desktop_widgets STATIC
     fabric_params.hpp
     # [cablage-A:debut]
     main_window_export_image.cpp
+    main_window_applique.cpp
     export_image.cpp
     export_image.hpp
     export_image_dialog.cpp
@@ -232,7 +250,7 @@ target_link_libraries(openstitch_desktop_widgets
 )
 
 if(WIN32)
-    target_link_libraries(openstitch_desktop_widgets PRIVATE advapi32)
+    target_link_libraries(openstitch_desktop_widgets PRIVATE advapi32 dbghelp)
 endif()
 
 add_executable(openstitch WIN32 main.cpp)

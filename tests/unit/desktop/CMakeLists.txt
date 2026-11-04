@@ -73,6 +73,7 @@ openstitch_add_qt_test(test_interaction_map test_interaction_map.cpp)
 openstitch_add_qt_test(test_app_settings test_app_settings.cpp)
 openstitch_add_qt_test(test_app_language test_app_language.cpp)
 openstitch_add_qt_test(test_help_dialogs test_help_dialogs.cpp)
+openstitch_add_qt_test(test_crash_report test_crash_report.cpp)
 openstitch_add_qt_test(test_help_manual test_help_manual.cpp)
 target_compile_definitions(test_help_manual PRIVATE
     OPENSTITCH_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
@@ -109,6 +110,7 @@ openstitch_add_qt_test(test_vector_tools test_vector_tools.cpp)
 # [cablage-B:fin]
 openstitch_add_qt_test(test_colorway_ui test_colorway_ui.cpp)
 openstitch_add_qt_test(test_stitch_preset_ui test_stitch_preset_ui.cpp)
+openstitch_add_qt_test(test_applique_ui test_applique_ui.cpp)
 # [cablage-C:debut]
 openstitch_add_qt_test(test_measure_tool test_measure_tool.cpp)
 openstitch_add_qt_test(test_eyedropper_tool test_eyedropper_tool.cpp)

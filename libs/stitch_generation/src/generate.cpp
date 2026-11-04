@@ -16,8 +16,10 @@
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/geometry/polyline.hpp"
+#include "openstitch/stitch_generation/applique.hpp"
 #include "openstitch/stitch_generation/auto_satin_engine.hpp"
 #include "openstitch/stitch_generation/blanket_stitch.hpp"
+#include "openstitch/stitch_generation/border_satin.hpp"
 #include "openstitch/stitch_generation/contour_fill.hpp"
 #include "openstitch/stitch_generation/cross_stitch.hpp"
 #include "openstitch/stitch_generation/crosshatch_fill.hpp"
@@ -370,6 +372,47 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
                                       static_cast<LockType>(static_cast<int>(params.lock_end)),
                                       params.lock_length, params.lock_passes);
         emit_polyline(sequence, lk, object.id, stitch::StitchPass::Lock);
+    }
+}
+
+// Appliqué (HP-SPEC-001) : ligne de placement -> ARRÊT -> point de maintien -> ARRÊT -> satin de
+// couverture centré sur le contour. Les anneaux (extérieur puis trous) de chaque région sont
+// cousus passe par passe, pour que chaque ARRÊT sépare réellement deux étapes.
+void generate_applique(stitch::StitchSequence& sequence, const document::VectorObject& source,
+                       const document::EmbroideryObject& object,
+                       const document::AppliqueParams& rawParams) {
+    const document::AppliqueParams params = clamp_applique(rawParams);
+    const auto emitStop = [&]() {
+        if (params.stops && !sequence.commands.empty()) {
+            sequence.commands.push_back(
+                {sequence.commands.back().pos, stitch::CommandType::Stop, object.id});
+        }
+    };
+    const auto forEachRing = [&](const auto& fn) {
+        for (const geometry::PathSet& set : source.paths) {
+            fn(set.outer);
+            for (const geometry::Path& hole : set.holes) {
+                fn(hole);
+            }
+        }
+    };
+    forEachRing([&](const geometry::Path& ring) {
+        emit_polyline(sequence, applique_placement_points(ring, params), object.id);
+    });
+    emitStop();
+    forEachRing([&](const geometry::Path& ring) {
+        emit_polyline(sequence, applique_tack_points(ring, params), object.id);
+    });
+    emitStop();
+    document::BorderSatinSpec spec;
+    spec.width = params.cover_width;
+    spec.side = document::BorderSide::Centered;
+    spec.corner = document::BorderCorner::Sharp;
+    for (std::size_t i = 0; i < source.paths.size(); ++i) {
+        for (const document::SatinParams& cover : border_satin_from_region(
+                 source.paths[i], spec, params.cover_density, static_cast<std::uint32_t>(i))) {
+            generate_satin(sequence, object, cover);
+        }
     }
 }
 
@@ -1131,6 +1174,8 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                             emit_polyline(chunk, blanket_stitch_points(hole, params), object.id);
                         }
                     }
+                } else if constexpr (std::is_same_v<T, document::AppliqueParams>) {
+                    generate_applique(chunk, *unit.source, object, params);
                 } else if constexpr (std::is_same_v<T, document::ContourFillParams>) {
                     generate_contour(chunk, *unit.source, object, params);
                 } else if constexpr (std::is_same_v<T, document::MotifRunParams>) {

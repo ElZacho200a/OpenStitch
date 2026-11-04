@@ -2781,7 +2781,8 @@ Aujourd'hui : un cadre **rectangulaire** de taille libre (10–500 mm), persist�
 
 Aujourd'hui : rien (aucune occurrence « appliqué » dans le code métier).
 
-### HP-SPEC-001 — Appliqué [P1] — ☐ À faire
+### HP-SPEC-001 — Appliqué [P1] — ☑ Fait (2026-11-04)
+- Livré : `AppliqueParams` (placement → Stop → maintien droit/zigzag/feston → Stop → satin de couverture), `.osp`, op project_ops, CLI `project applique-cut` (SVG/DXF), actions « Convertir en appliqué » et « Exporter le contour de découpe… », bloc d'inspecteur, QTest. Limites : conversion du premier objet sélectionné seulement, satin de couverture de la couleur de l'objet, recouvrement non contrôlé visuellement, appliqués multiples = HP-SPEC-002.
 - Hatch : objet appliqué : ligne de placement → arrêt → point de maintien
   (tack-down, zigzag ou E-stitch) → arrêt → couverture satin ; appliqué
   depuis une forme ; export du contour de découpe (SVG/DXF pour plotter,
@@ -3647,7 +3648,8 @@ de référence. Restent : progression et annulation, régénération de toute la
 ## 23. Robustesse et qualité logicielle (QA)
 - Livré : `scheduleParamsRefresh()` (débounce 150 ms), régénération hors fil UI sur un instantané du projet (`std::async` + timer de scrutation ; `BusyIndicator::run` écarté car modal), résultat périmé rejeté par numéro de série (incrémenté à chaque édition et à chaque `refreshImage`), `flushPendingRefresh()` avant export, analyse, statistiques, simulation, image et fiche de production, éditions de groupe incluses. Tests : cinq éditions en moins de 150 ms = une régénération, séquence différée identique à `effective_sequence`, événement UI traité pendant le calcul, résultat périmé rejeté, undo restaure paramètres et aperçu. Reste : mesure de latence sur un très gros remplissage ; échec intermittent de `test_main_window` sous charge (watchdog 300 s) observé aussi sans ce lot.
 
-### HP-QA-001 — Découper `main_window.cpp` [P1] — ☐ À faire
+### HP-QA-001 — Découper `main_window.cpp` [P1] — ☑ Fait (2026-11-04)
+- Livré : `main_window.cpp` passe de 11 653 à 1 674 lignes ; 15 fichiers `main_window_<responsabilité>.cpp` (fichiers, barres d'outils, panneaux, rendu, simulation, création, outils de dessin, modes d'édition, menu contextuel, aide, assistant, débogage, filtre/ordre, état de sélection) + `main_window_internal.hpp` ; déplacement pur (222 définitions `MainWindow::` conservées), tests desktop et gardes verts. Reste : `main_window_files.cpp` (1 592 lignes) à scinder, blocs d'includes dupliqués à élaguer.
 - État OpenStitch : `apps/desktop/main_window.cpp` ≈ 324 Ko (2026-10-06), un seul fichier
   pour menus, outils, modes d'édition, rendu, simulation. Chaque nouvelle
   fonctionnalité UI de cette liste l'alourdit et ralentit tout le monde.
@@ -3657,7 +3659,8 @@ de référence. Restent : progression et annulation, régénération de toute la
   aucun changement de comportement, tests QTest verts à chaque étape.
 - Faire **tôt** : avant HP-OBJ-001 idéalement.
 
-### HP-QA-002 — Journal et rapport de plantage [P1] — ☐ À faire
+### HP-QA-002 — Journal et rapport de plantage [P1] — ◐ Partiel (2026-11-04)
+- Livré : journal fichier avec rotation (`%LOCALAPPDATA%/OpenStitch/logs`, XDG ailleurs), minidump Windows (`MiniDumpNormal`, sans donnée de projet), action « Aide ▸ Envoyer un rapport de plantage… » (ticket GitHub prérempli, chemins masqués, jamais d'envoi silencieux), proposition au démarrage suivant. Reste : minidump non éprouvé par un vrai plantage, journal fichier seulement dans le bureau (pas la CLI).
 - État OpenStitch : `libs/core/src/log.cpp` n'a qu'un sink console (pas de journal fichier ni de
   minidump) ; la récupération après plantage existe côté autosave (HP-FILE-004), sans rapport.
 - À faire : journal fichier (spdlog déjà présent) dans le dossier applicatif,
@@ -4566,6 +4569,8 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-04 | Claude (lot P1-lourds) | HP-QA-002 ◐ (journal, minidump, rapport de plantage), HP-SPEC-001 ☑ (appliqué + contour de découpe). |
+| 2026-11-04 | Claude (lot P1-QA-001) | HP-QA-001 ☑ : découpage de `main_window.cpp` en 15 fichiers par responsabilité, sans changement de comportement. |
 | 2026-11-03 | Claude (lot P1-MOTEUR/FMT) | HP-STI-033 ☑ (tirage radial/spirale/echo/motif/crosshatch), HP-FMT-027 ☑ (VP3 Trim déplacé). HP-STI-018.a (PR de plan requise) et HP-ENG-009 (dépend de 018) non traités. |
 | 2026-11-03 | Claude (lot P1-PERF) | HP-PERF-020/024/025/028/032 ☑ : progression et annulation MCP, index de pixels par région, lignes cohérentes parallèles, réduction de couleurs sous-cubique, autosave hors fil UI. HP-PERF-004 et HP-VIEW-009 restent à faire. |
 | 2026-11-03 | Claude (lot P1-AUTO) | HP-AUTO-012/014/020/021 ☑ (EXIF, refusion après « Limiter à N fils », contour running, action « Convertir les vecteurs en broderie »), HP-AUTO-007/010 ◐ (cœur, exposition à câbler). HP-AUTO-011 non traitée (ONNX/packaging). |

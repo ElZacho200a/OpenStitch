@@ -17,6 +17,7 @@ add_executable(test_project_io
     test_calque_persistence.cpp
 test_group_persistence.cpp
     test_blanket_persistence.cpp
+    test_applique_persistence.cpp
     test_contour_fill_persistence.cpp
     test_motif_persistence.cpp
     test_radial_spiral_crosshatch_persistence.cpp
