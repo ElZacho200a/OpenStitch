@@ -7,8 +7,8 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QTest>
-#include <QToolBar>
 #include <QTimer>
+#include <QToolBar>
 #include <QTreeWidget>
 #include <QWheelEvent>
 #include <filesystem>
