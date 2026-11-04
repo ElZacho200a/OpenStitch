@@ -1555,8 +1555,10 @@ private slots:
         const QPoint at = canvas->viewport()->rect().center();
         const QPointF local(at);
         const QPointF global(canvas->viewport()->mapToGlobal(at));
-        QWheelEvent fine(local, global, QPoint(0, 24), QPoint(), Qt::NoButton,
-                         Qt::NoModifier, Qt::NoScrollPhase, false);
+        const auto buttons = Qt::NoButton;
+        const auto modifiers = Qt::NoModifier;
+        const auto phase = Qt::NoScrollPhase;
+        QWheelEvent fine(local, global, QPoint(0, 24), QPoint(), buttons, modifiers, phase, false);
         QApplication::sendEvent(canvas->viewport(), &fine);
         QVERIFY(canvas->zoom() > initial); // trackpad : pixelDelta sans angleDelta
         const double afterTrackpad = canvas->zoom();
