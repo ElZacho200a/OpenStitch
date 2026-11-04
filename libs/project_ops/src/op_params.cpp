@@ -928,6 +928,8 @@ const std::vector<Field<document::ContourFillParams>>& fields_of<document::Conto
         v.push_back(mm_field<P>("inset_mm", &P::inset, 0.0, 10.0));
         v.push_back(bool_field<P>("spiral", &P::spiral));
         v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
+        v.push_back(mm_field<P>("pull_compensation_mm", &P::pull_compensation, 0.0, 3.0));
+        v.push_back(enum_field<P>("pull_mode", &P::pull_mode, pull_mode_table()));
         return v;
     }();
     return fields;
@@ -963,6 +965,8 @@ const std::vector<Field<document::MotifFillParams>>& fields_of<document::MotifFi
         v.push_back(mm_field<P>("stitch_length_mm", &P::stitch_length, 1.0, 7.0));
         v.push_back(mm_field<P>("min_length_mm", &P::min_length, 0.0, 7.0));
         v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
+        v.push_back(mm_field<P>("pull_compensation_mm", &P::pull_compensation, 0.0, 3.0));
+        v.push_back(enum_field<P>("pull_mode", &P::pull_mode, pull_mode_table()));
         return v;
     }();
     return fields;
@@ -979,6 +983,8 @@ const std::vector<Field<document::RadialFillParams>>& fields_of<document::Radial
         v.push_back(mm_field<P>("inset_mm", &P::inset, 0.0, 10.0));
         v.push_back(point_field<P>("center_mm", &P::center));
         v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
+        v.push_back(mm_field<P>("pull_compensation_mm", &P::pull_compensation, 0.0, 3.0));
+        v.push_back(enum_field<P>("pull_mode", &P::pull_mode, pull_mode_table()));
         return v;
     }();
     return fields;
@@ -996,6 +1002,8 @@ const std::vector<Field<document::SpiralFillParams>>& fields_of<document::Spiral
         v.push_back(point_field<P>("center_mm", &P::center));
         v.push_back(bool_field<P>("clockwise", &P::clockwise));
         v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
+        v.push_back(mm_field<P>("pull_compensation_mm", &P::pull_compensation, 0.0, 3.0));
+        v.push_back(enum_field<P>("pull_mode", &P::pull_mode, pull_mode_table()));
         return v;
     }();
     return fields;
@@ -1013,6 +1021,8 @@ fields_of<document::CrosshatchFillParams>() {
         v.push_back(mm_field<P>("stitch_length_mm", &P::stitch_length, 1.0, 7.0));
         v.push_back(mm_field<P>("inset_mm", &P::inset, 0.0, 10.0));
         v.push_back(bool_field<P>("hidden_underpath", &P::hidden_underpath));
+        v.push_back(mm_field<P>("pull_compensation_mm", &P::pull_compensation, 0.0, 3.0));
+        v.push_back(enum_field<P>("pull_mode", &P::pull_mode, pull_mode_table()));
         return v;
     }();
     return fields;

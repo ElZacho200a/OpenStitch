@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/stitch_generation/contour_fill.hpp"
 
+#include "pull_grow.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -325,8 +327,10 @@ private:
 
 } // namespace
 
-std::vector<FillStitch> fill_contour(const geometry::PathSet& region,
+std::vector<FillStitch> fill_contour(const geometry::PathSet& baseRegion,
                                      const document::ContourFillParams& params) {
+    // HP-STI-033 : le contour est agrandi de pull_compensation (0 = region inchangee).
+    const geometry::PathSet region = detail::grown_for_pull(baseRegion, params.pull_compensation);
     const std::int32_t spacingUm = std::clamp(params.row_spacing.value, 100, 10'000);
     const double maxLen = std::clamp(params.stitch_length.value, 1'000, 7'000);
     const double minLen = std::clamp(double(params.min_length.value), 0.0, maxLen);

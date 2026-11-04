@@ -31,4 +31,21 @@ namespace openstitch::stitch_generation {
 resolve_pull_compensation(const document::DirectionalFillParams& params,
                           const geometry::PathSet& region);
 
+// HP-STI-033 : radial, spirale, concentrique (echo), motif, croise. Memes regles ; Adaptive et
+// Predicted n'existent pas pour ces remplissages (traites comme Manual).
+[[nodiscard]] document::RadialFillParams
+resolve_pull_compensation(const document::RadialFillParams& params,
+                          const geometry::PathSet& region);
+[[nodiscard]] document::SpiralFillParams
+resolve_pull_compensation(const document::SpiralFillParams& params,
+                          const geometry::PathSet& region);
+[[nodiscard]] document::ContourFillParams
+resolve_pull_compensation(const document::ContourFillParams& params,
+                          const geometry::PathSet& region);
+[[nodiscard]] document::MotifFillParams
+resolve_pull_compensation(const document::MotifFillParams& params, const geometry::PathSet& region);
+[[nodiscard]] document::CrosshatchFillParams
+resolve_pull_compensation(const document::CrosshatchFillParams& params,
+                          const geometry::PathSet& region);
+
 } // namespace openstitch::stitch_generation

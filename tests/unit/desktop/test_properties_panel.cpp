@@ -428,6 +428,18 @@ void PropertiesPanelTest::radialSpiralCrosshatchEditsEmitParamsAndConversionIsOf
         QCOMPARE(std::get<openstitch::document::RadialFillParams>(*last).center->x.value, 12'500);
         autoCenter->setChecked(true);
         QVERIFY(!std::get<openstitch::document::RadialFillParams>(*last).center.has_value());
+        // HP-STI-033 : compensation du tirage (mm -> um) et mode Automatique.
+        auto* pull = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_otherFillPull"));
+        auto* pullMode = panel.findChild<QComboBox*>(QStringLiteral("combo_pullMode"));
+        QVERIFY(pull != nullptr && pullMode != nullptr);
+        QCOMPARE(pullMode->count(), 2);
+        pull->setValue(0.3);
+        QCOMPARE(std::get<openstitch::document::RadialFillParams>(*last).pull_compensation.value,
+                 300);
+        pullMode->setCurrentIndex(1);
+        QVERIFY(std::get<openstitch::document::RadialFillParams>(*last).pull_mode ==
+                openstitch::document::PullMode::Auto);
+        QVERIFY(!pull->isEnabled());
     }
     // Spirale : sens horaire.
     {
@@ -457,6 +469,12 @@ void PropertiesPanelTest::radialSpiralCrosshatchEditsEmitParamsAndConversionIsOf
         QVERIFY(layers != nullptr && angle != nullptr);
         layers->setValue(3);
         QCOMPARE(std::get<openstitch::document::CrosshatchFillParams>(*last).layers, 3);
+        auto* hatchPull = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_otherFillPull"));
+        QVERIFY(hatchPull != nullptr);
+        hatchPull->setValue(0.25);
+        QCOMPARE(
+            std::get<openstitch::document::CrosshatchFillParams>(*last).pull_compensation.value,
+            250);
         angle->setValue(45.0);
         QVERIFY(std::abs(std::get<openstitch::document::CrosshatchFillParams>(*last).angle.radians -
                          std::numbers::pi / 4.0) < 1e-9);
