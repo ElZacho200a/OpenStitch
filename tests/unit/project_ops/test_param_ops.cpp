@@ -17,6 +17,7 @@
 
 #include "openstitch/document/project.hpp"
 #include "openstitch/project_io/project_io.hpp"
+#include "openstitch/project_ops/applique_cut.hpp"
 #include "openstitch/project_ops/errors.hpp"
 #include "openstitch/project_ops/operations.hpp"
 #include "openstitch/thread_palette/thread_library.hpp"
@@ -746,4 +747,34 @@ TEST_CASE("param ops set_design_points and optimize_order improve", "[project_op
     expect_refused(p, R"({"op":"set_design_points","start_x_mm":1})", project_ops::code::kUsage);
     expect_refused(p, R"({"op":"set_design_points","start_x_mm":1,"start_y_mm":5000})",
                    project_ops::code::kOutOfRange);
+}
+
+TEST_CASE("param ops applique : set_stitch_type, set_params et export de decoupe",
+          "[project_ops][params][applique]") {
+    auto p = make_project();
+    const auto r = run(p, R"({"op":"set_stitch_type","object":2,"type":"applique"})");
+    REQUIRE(r.ok);
+    CHECK(result_of(r)["to"] == "applique");
+    REQUIRE(p.findEmbroidery(ObjectId{2})->is_applique());
+    REQUIRE(run(p, R"({"op":"set_params","object":2,"params":{"cover_width_mm":4.5,)"
+                   R"("tack":"blanket","stops":false}})")
+                .ok);
+    const auto* ap = std::get_if<document::AppliqueParams>(&p.findEmbroidery(ObjectId{2})->params);
+    REQUIRE(ap != nullptr);
+    CHECK(ap->cover_width == Micrometers{4500});
+    CHECK(ap->tack == document::AppliqueTack::Blanket);
+    CHECK_FALSE(ap->stops);
+    expect_refused(p, R"({"op":"set_params","object":2,"params":{"cover_width_mm":99}})",
+                   project_ops::code::kOutOfRange);
+
+    const auto dir = std::filesystem::temp_directory_path();
+    const auto svg = dir / "openstitch_applique_cut_test.svg";
+    const auto report = project_ops::export_applique_cut(p, svg);
+    REQUIRE(report.has_value());
+    CHECK(report->objects == 1);
+    CHECK(report->paths == 1);
+    CHECK(std::filesystem::exists(svg));
+    std::filesystem::remove(svg);
+    CHECK_FALSE(project_ops::export_applique_cut(p, dir / "x.png").has_value());
+    CHECK_FALSE(project_ops::export_applique_cut(p, dir / "x.svg", ObjectId{4}).has_value());
 }
