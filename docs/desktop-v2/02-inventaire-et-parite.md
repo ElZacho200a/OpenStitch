@@ -30,10 +30,10 @@ liste qui bougera. C'est une limite assumée de cette première livraison.
 | 12 | Édition de nœuds, reshape, pinceau, pot de peinture, couteau | `main_window_vector_edit`, `_node_select`, `_reshape`, `_brush`, `_bucket`, `node_handle.hpp` | `vector_ops`, `outline_ops` | C | ⬜ | |
 | 13 | Opérations géométriques (fusion, découpe, simplifier, lisser, trous) | `main_window_objects`, `_regions`, menu Forme | ops `merge`, `split`, `simplify_shapes`, `smooth_shapes`, `remove_holes`… | C | ⬜ | **moteur ✅ (lot)** ; interface ⬜ |
 | 14 | Calques | `calque_panel` | `calque_commands` | C | ⬜ | |
-| 15 | Sélection (clic, rectangle, nommée, retrouver) | `main_window_selection_*`, `selection_model`, `selection_queries` | — | T | 🟡 | **modèle unique ✅** (`SelectionModel`) + liste ✅ ; sélection au canevas ⬜, nommées ⬜, « retrouver » ⬜ |
+| 15 | Sélection (clic, rectangle, nommée, retrouver) | `main_window_selection_*`, `selection_model`, `selection_queries` | — | T | 🟡 | **modèle unique ✅** (`SelectionModel`) + liste ✅ + **clic au canevas ✅** (Ctrl = bascule, Maj = ajoute, vide = désélectionne, `HitIndex` sur les brins cousus) ; cadre élastique ⬜, nommées ⬜, « retrouver » ⬜ |
 | 16 | Transformations (déplacer, tourner, miroir, aligner, répartir) | `main_window_objects`, `_rotation`, `_arrange`, `_editing` | `transform_ops`, `arrange_ops`, ops `translate/rotate/scale/mirror` | C/N | ⬜ | |
 | 17 | Groupes, ordre d'empilement | `document_panel` | `group_commands`, ops `group/ungroup/stack_order` | T | ⬜ | |
-| 18 | Type de point et paramètres (inspecteur) | `properties_panel` (2 951 l.), `stitch_type_catalog` | `convert_ops`, ops `set_stitch_type`, `set_params` | N | 🟡 | **type affiché ✅** ; édition ⬜ |
+| 18 | Type de point et paramètres (inspecteur) | `properties_panel` (2 951 l.), `stitch_type_catalog` | `convert_ops`, ops `set_stitch_type`, `set_params` | N | 🟡 | **inspecteur contextuel ✅ pour 4 réglages** (type parmi 6, couleur, visible, verrouillé ; valeurs communes/mixtes, un lot = une annulation) ; satin, paramètres par type, densités ⬜ |
 | 19 | Satin : colonnes, rails, guides | `main_window_draw_tools`, `satin_guide_item.hpp` | `SatinParams`, op `set_geometry` | N | ⬜ | |
 | 20 | Auto-satin et variantes | `main_window_satin_auto`, `auto_satin_strategy_ui.hpp` | `auto_satin`, op `auto_satin` | N | ⬜ | |
 | 21 | Remplissages spéciaux (directionnel, motif, radial, spirale, croisé, point de croix, appliqué) | `main_window_directional`, `_fill_center`, `_applique` | `DirectionalFillParams`…, op `directional_guides` | N | ⬜ | |
@@ -42,7 +42,7 @@ liste qui bougera. C'est une limite assumée de cette première livraison.
 | 24 | Sous-couches, densités, compensations | `properties_panel`, `density_overlay`, `main_window_density` | params d'objet | N/O | ⬜ | |
 | 25 | Compensation de tirage prédictive | `main_window_pull_preview`, `fabric_params.hpp`, `fabric_risk_overlay` | `project_ops/fabric_deformation`, `color_registration` | O | ⬜ | |
 | 26 | Édition manuelle de points | `main_window_point_edit` | `stitch_point_edit_commands` | N | ⬜ | |
-| 27 | Fils, nuanciers, coloris | `thread_panel`, `thread_strip`, `colorway_dialog`, `main_window_threads/_colors/_colorways` | `thread_commands`, `colorway_commands`, `thread_palette` | N/P | 🟡 | **couleur de fil affichée ✅** (pastille) ; palette et coloris ⬜ |
+| 27 | Fils, nuanciers, coloris | `thread_panel`, `thread_strip`, `colorway_dialog`, `main_window_threads/_colors/_colorways` | `thread_commands`, `colorway_commands`, `thread_palette` | N/P | 🟡 | **couleur libre éditable ✅** (inspecteur) ; fil de nuancier (`chart`/`code`), palette et coloris ⬜ |
 | 28 | Ordre de broderie, sauts, coupes, optimisation | `main_window_order_filter`, `_order_jumps`, `order_list_widget` | `sewing_order_commands`, `optimization`, op `optimize_order`, `set_order` | O | 🟡 | optimisation **appliquée** à la numérisation ✅ ; pilotage et liste d'ordre ⬜ |
 | 29 | Simulation de couture | `main_window_simulation`, `simulation_nav_bar` | `stitch_render/simulation` | P | ⬜ | |
 | 30 | Rendu réaliste | `main_window_realistic`, `realistic_*` | `stitch_render`, `render_realistic_png` | P | 🟡 | aperçu ✅ (non interactif, instantané, révision étiquetée) ; options de rendu ⬜ |

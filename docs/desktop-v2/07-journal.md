@@ -63,3 +63,27 @@ par défaut du shell (`max_colors = 8`) : 138 objets, 43 670 points.
 Lot **V2-1 + V2-2** (infrastructure d'interface puis canevas), en commençant par le banc de mesure du calque
 d'interaction (déclencheurs ADR 0003) et la sélection au canevas, qui débloquent tous les lots d'édition. Les lots
 V2-3 et V2-4 sont ensuite parallélisables (sous-agents en worktrees, périmètres de fichiers disjoints).
+
+## 2026-11-04 — Session 1 (suite) : tranche canevas + inspecteur (branche `feat/desktop-v2-canvas-inspector`, empilée sur #238)
+
+### Fait, avec preuve
+
+| Élément | Preuve |
+|---|---|
+| `HitIndex` (index à grille sur les brins cousus, dernier cousu = dessus, emprises, point d'échantillon) ; l'identifiant d'objet est encodé dans la « couleur » des segments pour réutiliser `build_thread_segments` sans dupliquer unités ni axe Y | `core/hit_index.*` ; tests `pick…`, `inRect…`, `preview carries a coherent mm/pixel frame…`, `hidden objects are neither rendered nor selectable…` |
+| Aperçu avec repère mm↔pixels et index ; l'aperçu ne recalcule plus la séquence deux fois (moteur `stitch_render` appelé directement, mêmes paramètres que `render_realistic_png`) | `core/preview_service.*` |
+| Sélection au clic sur le canevas (Ctrl = bascule, Maj = ajoute, vide = désélectionne, glisser = déplacer la vue) + cadres de sélection | tests QTest `clickingTheCanvasSelectsTheObjectUnderTheCursor`, `aDragOnTheCanvasPansInsteadOfSelecting` |
+| Inspecteur contextuel : valeurs communes / mixtes ; type (6 types), couleur, visible, verrouillé ; **un lot = une annulation quel que soit le nombre d'objets** ; type refusé (satin) = rien d'empilé | `core/inspector_model.*`, `ui/inspector_panel.*` ; tests `inspector…` (Catch2 + QTest) |
+| Aperçu regroupé (debounce 120 ms) : 6 modifications rapides → ≤ 2 rendus | test `burstsOfEditsRenderFewerPreviewsThanEdits` (ferme le problème ouvert n° 3) |
+| Capture avec 3 objets sélectionnés | `captures/shell-selection-inspector.png` |
+| Totaux locaux (Windows, Debug) | Catch2 : 41 cas / 527 assertions ; QTest : 17 fonctions ; 0 avertissement |
+
+Un défaut de destruction trouvé par les tests (inspecteur détruit après la session) est corrigé.
+
+### Non fait
+
+Cadre élastique, poignées, outils de dessin, palette de commandes, centre de notifications, design system, i18n EN, RAII
+d'abonnement (problème ouvert n° 5), banc de mesure Widgets/QML (déclencheurs ADR 0003 toujours non évalués).
+Le sélecteur de couleur utilise `QColorDialog` (modal, comme un sélecteur de fichier) ; sa logique est testée sans dialogue.
+Un objet **entièrement recouvert** par un autre n'a pas de point cliquable (seul le dernier cousu est retourné) :
+il reste sélectionnable dans l'arbre.

@@ -35,8 +35,9 @@ n'a pas, et fait de chaque widget un *abonné* de ces modèles plutôt qu'un por
 | **Task Manager** | tâches nommées, `stop_token`, progression, résultat livré sur le fil d'interface, jamais si annulée | `core/task_manager.*` | ✅ |
 | **Tool System** | registre d'outils × espaces × raccourcis ; gestes de canevas par outil | `core/tool_registry.*` | 🟡 registre ✅, exécution des outils ⬜ |
 | **Workspace Management** | espaces = filtres d'attention sur un même document | `ToolRegistry::forWorkspace`, `ShellWindow::setWorkspace` | 🟡 rail ✅, panneaux par espace ⬜ |
-| **Canvas Rendering** | aperçu raster d'un instantané ; zoom ancré au curseur ; pan | `ui/preview_canvas.*`, `core/preview_service.*` | 🟡 aperçu ✅, calque d'interaction vectoriel ⬜ |
-| **Property Editors** | inspecteur contextuel par type d'objet | — | ⬜ |
+| **Canvas Rendering** | aperçu raster d'un instantané avec repère mm↔pixels ; zoom ancré au curseur ; pan ; clic = sélection ; cadres de sélection | `ui/preview_canvas.*`, `core/preview_service.*` | 🟡 aperçu + sélection ✅, poignées et outils de dessin ⬜ |
+| **Property Editors** | inspecteur contextuel : valeurs communes / mixtes, édition par lots `project_ops` | `core/inspector_model.*`, `ui/inspector_panel.*` | 🟡 4 réglages ✅, éditeurs par type de point ⬜ |
+| **Hit-testing** | objet sous le curseur, emprise, point d'échantillon, à partir des brins cousus (index à grille, dernier cousu = dessus) | `core/hit_index.*` | ✅ |
 | **Notifications / Diagnostics** | ligne d'état persistante (erreur rouge, accessible), progression + annulation | `ShellWindow` | 🟡 minimal ; centre de notifications ⬜ |
 | **AI Companion Integration** | session live, aperçu avant/après, approbation | — | ⬜ (la primitive de lot est prête) |
 | **Services moteur** | image → DST, aperçu réaliste, export | `core/digitize_pipeline.*`, `core/preview_service.*` | ✅ |

@@ -2,8 +2,11 @@
 #include "preview_canvas.hpp"
 
 #include <QGraphicsPixmapItem>
+#include <QGraphicsRectItem>
 #include <QGraphicsScene>
 #include <QKeyEvent>
+#include <QMouseEvent>
+#include <QPen>
 #include <QPixmap>
 #include <QWheelEvent>
 #include <cmath>
@@ -38,6 +41,7 @@ void PreviewCanvas::setImage(const QImage& image) {
 
 void PreviewCanvas::clearImage() {
     scene_->clear();
+    boxItems_.clear(); // détruits avec la scène
     item_ = nullptr;
     userZoomed_ = false;
 }
@@ -72,6 +76,42 @@ void PreviewCanvas::keyPressEvent(QKeyEvent* event) {
         return;
     }
     QGraphicsView::keyPressEvent(event);
+}
+
+void PreviewCanvas::setSelectionBoxes(const QVector<QRectF>& boxesPx) {
+    for (auto* item : boxItems_) {
+        scene_->removeItem(item);
+        delete item;
+    }
+    boxItems_.clear();
+    if (item_ == nullptr) {
+        return;
+    }
+    QPen pen(QColor(255, 64, 160));
+    pen.setCosmetic(true); // épaisseur constante quel que soit le zoom
+    pen.setWidth(2);
+    pen.setStyle(Qt::DashLine);
+    for (const QRectF& box : boxesPx) {
+        auto* rect = scene_->addRect(box, pen);
+        rect->setZValue(10);
+        boxItems_.push_back(rect);
+    }
+}
+
+void PreviewCanvas::mousePressEvent(QMouseEvent* event) {
+    pressing_ = event->button() == Qt::LeftButton;
+    pressPos_ = event->pos();
+    QGraphicsView::mousePressEvent(event);
+}
+
+void PreviewCanvas::mouseReleaseEvent(QMouseEvent* event) {
+    const bool click = pressing_ && event->button() == Qt::LeftButton &&
+                       (event->pos() - pressPos_).manhattanLength() <= 4;
+    pressing_ = false;
+    QGraphicsView::mouseReleaseEvent(event);
+    if (click && item_ != nullptr) {
+        emit clickedPx(mapToScene(event->pos()), event->modifiers());
+    }
 }
 
 void PreviewCanvas::resizeEvent(QResizeEvent* event) {

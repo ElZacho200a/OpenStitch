@@ -7,11 +7,14 @@
 // se synchroniser entre eux (principe I : une sélection, une source de vérité).
 
 #include <QMainWindow>
+#include <QPointF>
 #include <filesystem>
+#include <optional>
 #include <vector>
 
 #include "digitize_pipeline.hpp"
 #include "document_session.hpp"
+#include "preview_service.hpp"
 #include "task_manager.hpp"
 #include "tool_registry.hpp"
 
@@ -29,6 +32,7 @@ class QTreeWidgetItem;
 namespace openstitch::desktop_v2 {
 
 class PreviewCanvas;
+class InspectorPanel;
 
 class ShellWindow : public QMainWindow {
     Q_OBJECT
@@ -54,6 +58,11 @@ public:
     [[nodiscard]] QString lastNotice() const;
     [[nodiscard]] QString activeToolId() const { return activeTool_; }
     [[nodiscard]] bool previewShown() const;
+    [[nodiscard]] PreviewCanvas* canvas() const { return canvas_; }
+    [[nodiscard]] InspectorPanel* inspector() const { return inspector_; }
+    // Un point (pixels de l'image d'aperçu) qui appartient à l'objet : pour piloter le canevas en
+    // test.
+    [[nodiscard]] std::optional<QPointF> objectCentrePx(std::uint64_t id) const;
 
 private:
     void buildMenus();
@@ -71,6 +80,8 @@ private:
     void refreshActionStates();
     void refreshTaskStatus();
     void chooseAndOpen();
+    void updateSelectionBoxes();
+    void onCanvasClick(QPointF scenePx, Qt::KeyboardModifiers modifiers);
 
     DocumentSession session_;
     TaskManager tasks_;
@@ -95,6 +106,9 @@ private:
     QAction* saveAction_{nullptr};
     QAction* exportAction_{nullptr};
     QTimer* pump_{nullptr};
+    QTimer* previewDebounce_{nullptr};
+    InspectorPanel* inspector_{nullptr};
+    PreviewImage frame_; // repère mm/pixels et index de sélection de l'aperçu affiché
 
     DocumentSession::Token sessionToken_{0};
     SelectionModel::Token selectionToken_{0};
