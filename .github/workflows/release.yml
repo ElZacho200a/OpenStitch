@@ -70,6 +70,7 @@ jobs:
           retention-days: 30
           path: |
             build/msvc/apps/desktop/Release/
+            build/msvc/apps/desktop_v2/Release/openstitch_v2.exe
             build/msvc/apps/cli/Release/
             build/msvc/apps/mcp/Release/
 

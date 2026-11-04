@@ -25,6 +25,12 @@
 #endif
 ; Serveur MCP (mode autonome et `--live`, relais vers le pont IA local) : livré à côté de
 ; l'application, sans environnement développeur. Aucun agent externe n'est embarqué.
+; Desktop V2 (apercu en parallele de l'ancienne interface) : memes DLL Qt que l'ancien bureau
+; (Widgets seulement), donc un seul exe en plus dans le meme dossier.
+#ifndef V2Dir
+  #define V2Dir "..\..\build\msvc\apps\desktop_v2\Release"
+#endif
+
 #ifndef McpDir
   #define McpDir "..\..\build\msvc\apps\mcp\Release"
 #endif
@@ -81,6 +87,8 @@ Root: HKA; Subkey: "Software\Classes\OpenStitchStudio.Project\shell\open\command
 ; qu'une dépendance Qt change).
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
+Source: "{#V2Dir}\openstitch_v2.exe"; DestDir: "{app}"; Flags: ignoreversion
+
 ; Compagnon IA : serveur MCP et notice (données transmises, licences). Optionnels côté usage : sans
 ; eux, OpenStitch Studio fonctionne à l'identique.
 Source: "{#McpDir}\openstitch-mcp.exe"; DestDir: "{app}\mcp"; Flags: ignoreversion
@@ -97,6 +105,7 @@ Filename: "{sys}\cmdkey.exe"; Parameters: "/delete:OpenStitch/anthropic-api-key"
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{group}\{#MyAppName} (interface V2, apercu)"; Filename: "{app}\openstitch_v2.exe"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
