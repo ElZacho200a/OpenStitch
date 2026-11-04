@@ -56,7 +56,7 @@ QString fromUtf8(const std::string& s) {
 // Outils réellement migrés : les autres sont déclarés dans le registre mais désactivés.
 bool isToolImplemented(const std::string& id) {
     return id == "select" || id == "pan" || id == "draw.rectangle" || id == "draw.ellipse" ||
-           id == "draw.polygon" || id == "measure" || id == "eyedropper";
+           id == "draw.polygon" || id == "measure" || id == "eyedropper" || id == "knife";
 }
 
 constexpr Workspace kWorkspaces[] = {Workspace::Design, Workspace::Digitize, Workspace::Optimize,
@@ -130,6 +130,7 @@ ShellWindow::ShellWindow(QWidget* parent)
     connect(canvas_, &PreviewCanvas::rectPx, this, &ShellWindow::onCanvasRect);
     connect(canvas_, &PreviewCanvas::boxDrawnPx, this, &ShellWindow::onBoxDrawn);
     connect(canvas_, &PreviewCanvas::measuredPx, this, &ShellWindow::onMeasured);
+    connect(canvas_, &PreviewCanvas::lineDrawnPx, this, &ShellWindow::onKnife);
     connect(canvas_, &PreviewCanvas::contextMenuRequested, this, &ShellWindow::showContextMenu);
     connect(canvas_, &PreviewCanvas::moveStartRequested, this, &ShellWindow::onMoveStart);
     connect(canvas_, &PreviewCanvas::nudgeRequested, this, &ShellWindow::nudgeSelection);
@@ -936,6 +937,36 @@ void ShellWindow::setThemeMode(const QString& mode) {
     QGuiApplication::styleHints()->setColorScheme(scheme);
 }
 
+void ShellWindow::onKnife(QPointF a, QPointF b) {
+    const auto state = inspect(session_.project(), session_.selection().targets());
+    if (state.ids.empty()) {
+        setNotice(tr("Couteau : sélectionnez d'abord la ou les formes à découper."), true);
+        return;
+    }
+    const PointMm p0 = screenToModel(frame_.pxToMmX(a.x()), frame_.pxToMmY(a.y()));
+    const PointMm p1 = screenToModel(frame_.pxToMmX(b.x()), frame_.pxToMmY(b.y()));
+    const std::string batch = batchSplit(state.ids, p0, p1);
+    if (batch.empty()) {
+        return;
+    }
+    const auto result = session_.applyBatch(batch, tr("Découper").toStdString());
+    if (!result.committed) {
+        const auto& outcomes = result.report.outcomes;
+        setNotice(tr("Découpe refusée : %1")
+                      .arg(outcomes.empty() ? tr("la ligne ne traverse aucune forme sélectionnée")
+                                            : fromUtf8(outcomes.back().message)),
+                  true);
+        return;
+    }
+    std::vector<Target> pieces;
+    for (const auto id : createdObjectIds(result.report)) {
+        pieces.push_back({TargetKind::EmbroideryObject, id});
+    }
+    if (!pieces.empty()) {
+        session_.selection().replace(std::move(pieces));
+    }
+}
+
 void ShellWindow::onMeasured(QPointF a, QPointF b) {
     const PointMm from = screenToModel(frame_.pxToMmX(a.x()), frame_.pxToMmY(a.y()));
     const PointMm to = screenToModel(frame_.pxToMmX(b.x()), frame_.pxToMmY(b.y()));
@@ -1108,6 +1139,8 @@ void ShellWindow::applyToolToCanvas() {
         canvas_->setMode(Mode::Measure);
     } else if (activeTool_ == QStringLiteral("eyedropper")) {
         canvas_->setMode(Mode::Pick);
+    } else if (activeTool_ == QStringLiteral("knife")) {
+        canvas_->setMode(Mode::Cut);
     } else {
         canvas_->setMode(Mode::Select); // sélection : clic, cadre élastique
     }

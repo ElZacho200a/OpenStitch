@@ -27,7 +27,7 @@ liste qui bougera. C'est une limite assumée de cette première livraison.
 | 9 | Segmentation IA (SAM) | `ai_segmentation_dialog`, `sam_worker_client`, `ai_preferences*` | `ai_segmentation` | C | ⬜ | hors priorité produit (mémoire projet) : portée en dernier |
 | 10 | Zones de détail, clic-pour-broder | `main_window_detail_zones`, `main_window_click_to_stitch` | `click_to_stitch_commands` | C/N | ⬜ | outils `detail-brush`, `click-to-stitch` déclarés, désactivés |
 | 11 | Dessin vectoriel (formes, polygone, Bézier, main levée) | `main_window_draw_tools`, `_shapes`, `_vector_tools` | `vector_ops`, `vector_path_commands`, op `add_shape` | C | 🟡 | **rectangle, ellipse (Maj = cercle), polygone ✅** par `add_shape` (une annulation par forme, forme refusée = document intact) ; Bézier, main levée, polygone régulier, satin ⬜ |
-| 12 | Édition de nœuds, reshape, pinceau, pot de peinture, couteau | `main_window_vector_edit`, `_node_select`, `_reshape`, `_brush`, `_bucket`, `node_handle.hpp` | `vector_ops`, `outline_ops` | C | ⬜ | |
+| 12 | Édition de nœuds, reshape, pinceau, pot de peinture, couteau | `main_window_vector_edit`, `_node_select`, `_reshape`, `_brush`, `_bucket`, `node_handle.hpp` | `vector_ops`, `outline_ops` | C | 🟡 | **couteau ✅** (ligne tracée sur les formes sélectionnées, chaque morceau devient un objet, une annulation ; une ligne qui ne traverse rien est refusée par le moteur) ; poignées de nœuds, reshape, pinceau de déformation, pot de peinture ⬜ |
 | 13 | Opérations géométriques (fusion, découpe, simplifier, lisser, trous) | `main_window_objects`, `_regions`, menu Forme | ops `merge`, `split`, `simplify_shapes`, `smooth_shapes`, `remove_holes`… | C | 🟡 | **fusion (union / soustraction / intersection / exclusion), simplifier, lisser, combler les trous, supprimer les miettes, séparer, numériser les formes ✅** (sur la sélection, une annulation chacun) ; découpe au couteau, pinceau de déformation ⬜ ; **moteur ✅ (lot)** ; interface ⬜ |
 | 14 | Calques | `calque_panel` | `calque_commands` | C | 🟡 | **panneau des calques ✅** (ajouter, renommer, supprimer, monter / descendre, visibilité, verrou, déplacer la sélection ; un calque masqué n'est ni dessiné ni cousu ; une annulation par action) ; calque actif de création, drag & drop ⬜ |
 | 15 | Sélection (clic, rectangle, nommée, retrouver) | `main_window_selection_*`, `selection_model`, `selection_queries` | — | T | 🟡 | **modèle unique ✅** (`SelectionModel`) + liste ✅ + **clic au canevas ✅** (Ctrl = bascule, Maj = ajoute, vide = désélectionne, `HitIndex` sur les brins cousus) ; **cadre élastique ✅** (sélection « fenêtre » : objets entiers ; Ctrl/Maj ajoutent), **Tout sélectionner / Désélectionner ✅** ; nommées ⬜, « retrouver » ⬜ |
@@ -61,14 +61,14 @@ liste qui bougera. C'est une limite assumée de cette première livraison.
 | 43 | Vues d'affichage (passes, plans, densité, risques) | `main_window_view_display`, `view_display_state.hpp` | `stitch_render/view_display` | T | 🟡 | **cadre de broderie et grille affichables ✅** ; passes de couture, plans d'affichage, cartes de densité / risque ⬜ |
 | 44 | Espaces de travail / disposition des panneaux | `main_window_ux`, `ui_memory.hpp` | — | T | 🟡 | 4 espaces filtrant le rail d'outils ✅ ; panneaux par espace, mémorisation ⬜ |
 
-**Décompte au 2026-11-04** : 44 familles — ✅ 2 · 🟡 37 · ⬜ 5. Aucune exception (« non migré volontairement ») n'est
+**Décompte au 2026-11-04** : 44 familles — ✅ 2 · 🟡 38 · ⬜ 4. Aucune exception (« non migré volontairement ») n'est
 prononcée à ce stade ; la seule candidate argumentée est la segmentation IA (ligne 9), décalée en dernier mais pas supprimée.
 
 ## Parité des outils de canevas (vérifiée par test)
 
 Les 20 énumérateurs de `apps/desktop/tools.hpp::Tool` ont chacun un équivalent déclaré dans
 `ToolRegistry::builtin()` (test `every legacy canvas tool has a V2 equivalent`). **Déclaré ≠ fonctionnel** : seuls
-`select`, `pan`, `draw.rectangle`, `draw.ellipse`, `draw.polygon`, `measure` et `eyedropper` sont activés ; les 13 autres sont affichés **désactivés** avec la raison dans l'infobulle.
+`select`, `pan`, `draw.rectangle`, `draw.ellipse`, `draw.polygon`, `measure`, `eyedropper` et `knife` sont activés ; les 12 autres sont affichés **désactivés** avec la raison dans l'infobulle.
 
 ## Écart manuel / agent (à fermer)
 
@@ -76,3 +76,13 @@ Le catalogue de lot compte 55 opérations (`openstitch-cli project operations`).
 exister **comme opération de lot** (ou en être une composition) avant d'être branchée à l'interface : c'est la règle
 « une seule architecture pour l'utilisateur et pour Claude » (ADR 0004). Les gestes manuels sans équivalent de lot
 sont listés dans le journal au fur et à mesure de leur découverte.
+
+
+## Familles encore ⬜ au 2026-11-04 et pourquoi
+
+| # | Famille | Raison |
+|---|---|---|
+| 9 | Segmentation IA (SAM) | **Exception justifiée** : hors priorité produit (décision du propriétaire du projet, voir mémoire du projet) ; l'ancien desktop reste disponible pour cette fonction |
+| 10 | Zones de détail, clic-pour-broder | demande des commandes interactives (`click_to_stitch_commands`, pinceau de zones) qui ne passent pas par une opération de lot : outils canevas à écrire |
+| 19 | Satin : colonnes, rails, guides | création de colonnes à deux rails et édition des rails / guides par `ICommand` (`MoveSatinRailNodeCommand`…) : outils canevas à écrire (le satin automatique, lui, est disponible : famille 20) |
+| 26 | Édition manuelle de points | `EditStitchPointsCommand` + vue des points par objet : interface de retouche point à point à écrire |

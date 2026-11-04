@@ -66,7 +66,8 @@ private slots:
                 QVERIFY(a->toolTip().contains("pas encore migré"));
             }
         }
-        QCOMPARE(enabled, 7); // Sélection, Vue, Rectangle, Ellipse, Polygone, Règle, Pipette
+        QCOMPARE(enabled,
+                 8); // Sélection, Vue, Rectangle, Ellipse, Polygone, Règle, Pipette, Couteau
         QVERIFY(disabled > 0);
     }
 
@@ -1076,6 +1077,36 @@ private slots:
         QVERIFY(w.lastNotice().contains("aucun fil"));
         // La sélection reste celle de l'utilisateur.
         QCOMPARE(w.session().selection().targets().size(), size_t(1));
+    }
+
+    void theKnifeCutsTheSelectedShapeAlongTheDraggedLine() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        const auto id =
+            *createdObjectId(w.session().applyBatch(batchAddRect({0, 0}, 40, 20), "R").report);
+        w.waitForIdle();
+        QVERIFY(w.runCommand("tool.knife"));
+        QVERIFY(w.canvas()->mode() == PreviewCanvas::Mode::Cut);
+        const auto& f = w.previewFrame();
+        const QPoint a = w.canvas()->mapFromScene(QPointF(f.mmToPxX(0), f.mmToPxY(-18)));
+        const QPoint b = w.canvas()->mapFromScene(QPointF(f.mmToPxX(0), f.mmToPxY(18)));
+        // Sans sélection : message, rien ne change.
+        QTest::mousePress(w.canvas()->viewport(), Qt::LeftButton, Qt::NoModifier, a);
+        QTest::mouseMove(w.canvas()->viewport(), (a + b) / 2);
+        QTest::mouseRelease(w.canvas()->viewport(), Qt::LeftButton, Qt::NoModifier, b);
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(1));
+        QVERIFY(w.lastNotice().contains("sélectionnez"));
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        QTest::mousePress(w.canvas()->viewport(), Qt::LeftButton, Qt::NoModifier, a);
+        QTest::mouseMove(w.canvas()->viewport(), (a + b) / 2);
+        QTest::mouseRelease(w.canvas()->viewport(), Qt::LeftButton, Qt::NoModifier, b);
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(2));
+        QCOMPARE(QString::fromStdString(w.session().undoName()), QString("Découper"));
+        QVERIFY(!w.canvas()->hasMeasure()); // la ligne de coupe disparaît après le geste
+        QVERIFY(w.session().undo());
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(1));
     }
 
     void inspectorEditsAllSelectedObjectsInOneUndoStep() {

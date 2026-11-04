@@ -29,6 +29,10 @@ enum class MirrorAxis { Horizontal, Vertical };
 // `move` : "front" | "back" | "forward" | "backward" (ordre de couture, donc de recouvrement).
 [[nodiscard]] std::string batchStack(const std::vector<std::uint64_t>& ids, std::string_view move);
 
+// Découpe chaque objet le long de la droite (p0, p1) (mm modèle, deux points distincts, |coord| <=
+// 1000) : chaque morceau devient un objet.
+[[nodiscard]] std::string batchSplit(const std::vector<std::uint64_t>& ids, PointMm p0, PointMm p1);
+
 // Identifiants créés par chaque opération du rapport (un par opération qui en crée un).
 [[nodiscard]] std::vector<std::uint64_t> createdObjectIds(const project_ops::BatchReport& report);
 

@@ -286,3 +286,16 @@ cliquer un objet invisible). L'aperçu montre désormais le cadre vide dans ce c
 Mécanisme : `ActionDef` accepte désormais `run` (commande documentaire) en plus de `build` (lot JSON) ; `validateAction`
 valide les champs sans rien exécuter. `DocumentSession::projectForIdAllocation()` sert aux fabriques du moteur qui
 réservent des identifiants (jamais autre chose). Avertissements MSVC `getenv`/`sscanf` supprimés (0 avertissement).
+
+
+## 2026-11-04 — Session 1 (suite 14) : couteau (branche `feat/desktop-v2-families-5`)
+
+Outil Couteau (`Mode::Cut`) : ligne tracée au glisser, `split` sur les formes sélectionnées (chaque morceau devient un objet, une
+annulation) ; sans sélection : message ; ligne qui ne traverse rien : refusée par le moteur, rien n'est empilé. Preuves :
+Catch2 `a knife line splits a shape…`, QTest `theKnifeCutsTheSelectedShapeAlongTheDraggedLine`.
+
+**Bilan de la demande « terminer les 25 familles »** : 21 familles sont passées de ⬜ à 🟡 pendant cette session (état :
+✅ 2 · 🟡 38 · ⬜ 4). Quatre restent ⬜ : une exception justifiée (IA, famille 9) et trois qui exigent des outils de canevas
+interactifs adossés à des `ICommand` (zones de détail / clic-pour-broder, colonnes de satin à rails, retouche point à
+point), non faits. **Aucune famille n'est ✅** : toutes les 🟡 ont un reste explicite dans la matrice. Desktop V2 n'est donc pas
+encore le desktop principal.

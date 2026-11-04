@@ -112,3 +112,22 @@ TEST_CASE("stack order moves an object to the front of the sewing order", "[desk
     REQUIRE(s.applyBatch(batchStack({c}, "back"), "Arrière-plan").committed);
     CHECK(s.project().embroidery_objects.front().id.value == c);
 }
+
+TEST_CASE("a knife line splits a shape into independent objects in one undo step",
+          "[desktop_v2][edit]") {
+    auto s = newSession();
+    const auto id = addRect(s, {0, 0}, 40, 20);
+    CHECK(batchSplit({id}, {0, 0}, {0, 0}).empty()); // points confondus
+    CHECK(batchSplit({id}, {0, 0}, {5000, 0}).empty());
+    CHECK(batchSplit({}, {0, -20}, {0, 20}).empty());
+    const auto depth = s.undoNames().size();
+    const auto r = s.applyBatch(batchSplit({id}, {0, -20}, {0, 20}), "Découper");
+    REQUIRE(r.committed);
+    CHECK(s.undoNames().size() == depth + 1);
+    CHECK(s.project().embroidery_objects.size() == 2);
+    REQUIRE(s.undo());
+    CHECK(s.project().embroidery_objects.size() == 1);
+    // Une ligne qui ne traverse rien est refusée par le moteur : rien n'est empilé.
+    const auto miss = s.applyBatch(batchSplit({id}, {100, -20}, {100, 20}), "Découper");
+    CHECK_FALSE(miss.committed);
+}

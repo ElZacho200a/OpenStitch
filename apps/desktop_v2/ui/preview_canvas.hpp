@@ -37,7 +37,8 @@ public:
     //               Retour arrière = retirer le dernier sommet.
     // Measure : glisser = règle (le résultat est affiché par `showMeasure`).
     // Pick : un clic échantillonne (pipette) ; ni cadre élastique ni déplacement.
-    enum class Mode { Select, Pan, DrawBox, DrawPolygon, Measure, Pick };
+    // Cut : glisser = ligne de coupe (couteau), émise par `lineDrawnPx`.
+    enum class Mode { Select, Pan, DrawBox, DrawPolygon, Measure, Pick, Cut };
 
     explicit PreviewCanvas(QWidget* parent = nullptr);
 
@@ -75,6 +76,8 @@ public:
 signals:
     // Règle : segment tracé (pixels de l'image).
     void measuredPx(QPointF a, QPointF b);
+    // Couteau : ligne tracée (pixels de l'image).
+    void lineDrawnPx(QPointF a, QPointF b);
     // Clic droit : position globale (pour le menu) et position dans l'image.
     void contextMenuRequested(QPoint globalPos, QPointF scenePx);
     // Clic gauche sans glisser, en mode Select. Position en pixels de l'image.
