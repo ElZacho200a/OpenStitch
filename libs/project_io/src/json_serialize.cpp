@@ -477,6 +477,16 @@ json params_to_json(const document::StitchParams& params) {
                      {"width", p.width.value},
                      {"spacing", p.spacing.value},
                      {"side", static_cast<int>(p.side)}};
+            } else if constexpr (std::is_same_v<T, document::AppliqueParams>) {
+                j = {{"type", "applique"},
+                     {"placementLength", p.placement_length.value},
+                     {"tack", static_cast<int>(p.tack)},
+                     {"tackWidth", p.tack_width.value},
+                     {"tackSpacing", p.tack_spacing.value},
+                     {"coverWidth", p.cover_width.value},
+                     {"coverDensity", p.cover_density.value},
+                     {"cutOffset", p.cut_offset.value},
+                     {"stops", p.stops}};
             } else if constexpr (std::is_same_v<T, document::ContourFillParams>) {
                 j = {{"type", "contourFill"},
                      {"rowSpacing", p.row_spacing.value},
@@ -931,6 +941,29 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.side = static_cast<document::BlanketSide>(side);
         p.width = Micrometers{j.value("width", p.width.value)};
         p.spacing = Micrometers{j.value("spacing", p.spacing.value)};
+        return document::StitchParams{p};
+    }
+    if (type == "applique") {
+        // Appliqué (HP-SPEC-001) : toutes les clés sauf `type` sont optionnelles ; valeurs bornées.
+        document::AppliqueParams p;
+        const int tack = j.value("tack", static_cast<int>(p.tack));
+        if (tack < 0 || tack > 2) {
+            return fail(ErrorCategory::InvalidFile, "applique : point de maintien hors limites");
+        }
+        p.tack = static_cast<document::AppliqueTack>(tack);
+        p.placement_length = Micrometers{
+            std::clamp(j.value("placementLength", p.placement_length.value), 1'000, 7'000)};
+        p.tack_width =
+            Micrometers{std::clamp(j.value("tackWidth", p.tack_width.value), 200, 20'000)};
+        p.tack_spacing =
+            Micrometers{std::clamp(j.value("tackSpacing", p.tack_spacing.value), 300, 20'000)};
+        p.cover_width =
+            Micrometers{std::clamp(j.value("coverWidth", p.cover_width.value), 500, 20'000)};
+        p.cover_density =
+            Micrometers{std::clamp(j.value("coverDensity", p.cover_density.value), 200, 1'500)};
+        p.cut_offset =
+            Micrometers{std::clamp(j.value("cutOffset", p.cut_offset.value), -5'000, 5'000)};
+        p.stops = j.value("stops", p.stops);
         return document::StitchParams{p};
     }
     if (type == "contourFill") {

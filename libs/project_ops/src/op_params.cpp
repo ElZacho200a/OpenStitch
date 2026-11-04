@@ -186,6 +186,12 @@ const EnumTable<document::BlanketStyle>& blanket_style_table() {
                                                      {"zigzag", document::BlanketStyle::Zigzag}};
     return t;
 }
+const EnumTable<document::AppliqueTack>& applique_tack_table() {
+    static const EnumTable<document::AppliqueTack> t{{"straight", document::AppliqueTack::Straight},
+                                                     {"zigzag", document::AppliqueTack::Zigzag},
+                                                     {"blanket", document::AppliqueTack::Blanket}};
+    return t;
+}
 const EnumTable<document::BlanketSide>& blanket_side_table() {
     static const EnumTable<document::BlanketSide> t{{"left", document::BlanketSide::Left},
                                                     {"right", document::BlanketSide::Right},
@@ -317,9 +323,9 @@ std::array<std::uint8_t, 3> parse_hex_color(const std::string& text) {
 
 const char* stitch_type_name(const document::StitchParams& p) {
     static constexpr const char* names[] = {
-        "running",     "tatami",          "satin",       "directional", "auto_satin",
-        "blanket",     "contour_fill",    "motif_run",   "motif_fill",  "radial_fill",
-        "spiral_fill", "crosshatch_fill", "cross_stitch"};
+        "running",     "tatami",          "satin",        "directional", "auto_satin",
+        "blanket",     "contour_fill",    "motif_run",    "motif_fill",  "radial_fill",
+        "spiral_fill", "crosshatch_fill", "cross_stitch", "applique"};
     return names[p.index()];
 }
 
@@ -918,6 +924,24 @@ fields_of<document::BlanketStitchParams>() {
 }
 
 template <>
+const std::vector<Field<document::AppliqueParams>>& fields_of<document::AppliqueParams>() {
+    using P = document::AppliqueParams;
+    static const auto fields = [] {
+        std::vector<Field<P>> v;
+        v.push_back(mm_field<P>("placement_length_mm", &P::placement_length, 1.0, 7.0));
+        v.push_back(enum_field<P>("tack", &P::tack, applique_tack_table()));
+        v.push_back(mm_field<P>("tack_width_mm", &P::tack_width, 0.2, 20.0));
+        v.push_back(mm_field<P>("tack_spacing_mm", &P::tack_spacing, 0.3, 20.0));
+        v.push_back(mm_field<P>("cover_width_mm", &P::cover_width, 0.5, 20.0));
+        v.push_back(mm_field<P>("cover_density_mm", &P::cover_density, 0.2, 1.5));
+        v.push_back(mm_field<P>("cut_offset_mm", &P::cut_offset, -5.0, 5.0));
+        v.push_back(bool_field<P>("stops", &P::stops));
+        return v;
+    }();
+    return fields;
+}
+
+template <>
 const std::vector<Field<document::ContourFillParams>>& fields_of<document::ContourFillParams>() {
     using P = document::ContourFillParams;
     static const auto fields = [] {
@@ -1085,6 +1109,9 @@ std::vector<std::string> types_having(const std::string& name) {
     if (find_field(fields_of<document::CrossStitchParams>(), name) != nullptr) {
         out.emplace_back("cross_stitch");
     }
+    if (find_field(fields_of<document::AppliqueParams>(), name) != nullptr) {
+        out.emplace_back("applique");
+    }
     return out;
 }
 
@@ -1104,7 +1131,8 @@ std::string params_catalog_text() {
     out += "spiral_fill : " + join(field_names(fields_of<document::SpiralFillParams>())) + " ; ";
     out += "crosshatch_fill : " + join(field_names(fields_of<document::CrosshatchFillParams>())) +
            " ; ";
-    out += "cross_stitch : " + join(field_names(fields_of<document::CrossStitchParams>())) + ". ";
+    out += "cross_stitch : " + join(field_names(fields_of<document::CrossStitchParams>())) + " ; ";
+    out += "applique : " + join(field_names(fields_of<document::AppliqueParams>())) + ". ";
     out += "Suffixe _mm = millimètres, _deg = degrés ; énumérations en chaîne";
     return out;
 }
@@ -1359,11 +1387,13 @@ OpSpec op_set_stitch_type() {
     s.name = "set_stitch_type";
     s.summary = "Change le type de points : running, tatami, directional, spiral_fill "
                 "(spirale d'Archimède centrable par set_params.center_mm) ou cross_stitch "
-                "(point de croix, grille réglable par set_params). "
+                "(point de croix, grille réglable par set_params) ou applique "
+                "(placement, arrêt, maintien, arrêt, satin de couverture ; HP-SPEC-001). "
                 "Le satin passe par auto_satin.";
     s.args = {arg("object", "object_id", "objet de broderie", true),
-              arg("type", "string", "running | tatami | directional | spiral_fill | cross_stitch",
-                  true, {}, "running | tatami | directional | spiral_fill | cross_stitch")};
+              arg("type", "string",
+                  "running | tatami | directional | spiral_fill | cross_stitch | applique", true,
+                  {}, "running | tatami | directional | spiral_fill | cross_stitch | applique")};
     s.example = R"({"op":"set_stitch_type","object":2,"type":"running"})";
     s.apply = guarded([](OpContext& ctx) {
         const auto& emb = need_emb(ctx, "object");
@@ -1374,9 +1404,10 @@ OpSpec op_set_stitch_type() {
                    "utilisez l'opération auto_satin");
         }
         if (type != "running" && type != "tatami" && type != "directional" &&
-            type != "spiral_fill" && type != "cross_stitch") {
+            type != "spiral_fill" && type != "cross_stitch" && type != "applique") {
             refuse(code::kOutOfRange, "type de points « " + type + " » inconnu",
-                   "valeurs valides : running, tatami, directional, spiral_fill, cross_stitch "
+                   "valeurs valides : running, tatami, directional, spiral_fill, cross_stitch, "
+                   "applique "
                    "(satin : opération auto_satin)");
         }
         const std::string from = stitch_type_name(emb.params);
@@ -1395,6 +1426,13 @@ OpSpec op_set_stitch_type() {
         } else if (type == "tatami") {
             params = document::TatamiParams{};
             label = "Type : tatami";
+        } else if (type == "applique") {
+            const auto* source = ctx.project.findObject(emb.source_vector);
+            if (source == nullptr || source->paths.empty()) {
+                refuse(code::kRefused, "aucun contour source pour l'appliqué");
+            }
+            params = document::AppliqueParams{};
+            label = "Type : appliqué";
         } else if (type == "cross_stitch") {
             const auto* source = ctx.project.findObject(emb.source_vector);
             if (source == nullptr || source->paths.empty()) {

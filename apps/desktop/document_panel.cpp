@@ -54,6 +54,7 @@ QString type_label(const document::EmbroideryObject& e) {
            : e.is_crosshatch_fill()            ? QObject::tr("Croisé")
            : e.is_cross_stitch()               ? QObject::tr("Point de croix")
            : e.is_blanket()                    ? QObject::tr("Blanket")
+           : e.is_applique()                   ? QObject::tr("Appliqué")
            : e.is_satin() || e.is_auto_satin() ? QObject::tr("Satin")
                                                : QObject::tr("Contour");
 }
@@ -92,6 +93,8 @@ QString filter_label(int typeIndex) {
         return QObject::tr("Croisé");
     case 11:
         return QObject::tr("Point de croix");
+    case 12:
+        return QObject::tr("Appliqué");
     default:
         return stitchTypeLabel(typeIndex); // type futur sans libellé court : libellé du catalogue
     }

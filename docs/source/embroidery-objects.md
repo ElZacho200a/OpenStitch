@@ -34,6 +34,7 @@ Le satin est particulier : il **porte sa propre géométrie** (deux rails
 | Directionnel | `fill_directional` | `guides`, `break_lines`, `row_spacing`, `stitch_length`, `handmade` | Expérimental |
 
 | Point de croix (HP-STI-012) | `fill_cross_stitch` | `cell`, `grid_angle`, `full_cross`, `passes`, `hidden_underpath` | Nouveau |
+| Appliqué (HP-SPEC-001) | `generate_applique` | `placement_length`, `tack`, `tack_width`, `tack_spacing`, `cover_width`, `cover_density`, `cut_offset`, `stops` | Nouveau |
 
 Le remplissage directionnel est détaillé dans son chapitre (*Remplissage
 directionnel*) ; il se crée par conversion d'un tatami (inspecteur) ou via
@@ -52,6 +53,22 @@ traitement de séquence commun (`SequenceFinishing`). Exposé dans le bureau («
 menu *Type de points*, inspecteur : taille de cellule, angle, passes, croix complète) et au CLI
 (`set_stitch_type` avec `cross_stitch`, `set_params` avec `cell_mm`, `grid_angle_deg`,
 `full_cross`, `passes`, `hidden_underpath`).
+
+**Appliqué** (`AppliqueParams`, HP-SPEC-001, dernière alternative du variant). L'objet suit le
+contour de sa forme source (extérieur et trous) et coud, dans cet ordre : (1) la **ligne de
+placement** en points droits (`placement_length`), (2) un **arrêt machine** (`Stop`) pour poser le
+tissu, (3) le **point de maintien** (`tack` : droit, zigzag ou feston centré sur le contour,
+`tack_width`, `tack_spacing`), (4) un second `Stop` pour couper l'excédent, (5) le **satin de
+couverture** (`cover_width`, `cover_density`), un satin de bordure centré sur le contour qui passe
+par le moteur satin. `stops = false` supprime les deux arrêts. Les `Stop` sont de vraies commandes
+de la séquence : ils survivent aux codecs DST, PES, JEF et EXP (selon les options machine, un arrêt
+peut être fondu en changement de couleur). Le **contour de découpe** du tissu est le contour source
+décalé de `cut_offset` ; il s'exporte en SVG (mm) ou DXF. Bureau : menu *Broderie* (« Convertir en
+appliqué », « Exporter le contour de découpe… »), type « Appliqué » du menu *Type de points* et
+inspecteur. CLI : `set_stitch_type` avec `applique`, `set_params` (`placement_length_mm`, `tack`,
+`tack_width_mm`, `tack_spacing_mm`, `cover_width_mm`, `cover_density_mm`, `cut_offset_mm`, `stops`)
+et `openstitch-cli project applique-cut <osp> -o fichier.svg|dxf`. Reste : plusieurs tissus
+(HP-SPEC-002), couleur de fil propre à chaque étape.
 
 Le tableau reflète la **qualité métier**, pas seulement la présence de code : le
 running stitch est solide ; le tatami est fonctionnel, sa sous-couche et son

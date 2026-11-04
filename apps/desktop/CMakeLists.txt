@@ -86,6 +86,7 @@ add_library(openstitch_desktop_widgets STATIC
     fabric_params.hpp
     # [cablage-A:debut]
     main_window_export_image.cpp
+    main_window_applique.cpp
     export_image.cpp
     export_image.hpp
     export_image_dialog.cpp

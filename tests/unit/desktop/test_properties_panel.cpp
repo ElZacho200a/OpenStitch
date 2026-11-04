@@ -1330,6 +1330,31 @@ void PropertiesPanelTest::blanketInspectorEditsWidthSpacingStyleAndSide() {
     side->setCurrentIndex(2);
     QVERIFY(last->side == doc::BlanketSide::Center);
     QCOMPARE(last->width.value, 4'500);
+
+    // HP-SPEC-001 : l'inspecteur de l'appliqué émet des StitchParams complets.
+    PropertiesPanel appliquePanel;
+    EmbroideryObject a;
+    a.id = openstitch::ObjectId{78};
+    a.params = doc::AppliqueParams{};
+    appliquePanel.showEmbroidery(a);
+    std::optional<doc::AppliqueParams> lastA;
+    QObject::connect(&appliquePanel, &PropertiesPanel::paramsEdited, &appliquePanel,
+                     [&](openstitch::ObjectId, StitchParams params) {
+                         lastA = std::get<doc::AppliqueParams>(params);
+                     });
+    auto* cover =
+        appliquePanel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_appliqueCoverWidth"));
+    auto* tack = appliquePanel.findChild<QComboBox*>(QStringLiteral("combo_appliqueTack"));
+    auto* stops = appliquePanel.findChild<QCheckBox*>(QStringLiteral("check_appliqueStops"));
+    QVERIFY(cover != nullptr && tack != nullptr && stops != nullptr);
+    QCOMPARE(cover->value(), 3.0);
+    cover->setValue(5.0);
+    QCOMPARE(lastA->cover_width.value, 5'000);
+    tack->setCurrentIndex(2);
+    QVERIFY(lastA->tack == doc::AppliqueTack::Blanket);
+    stops->setChecked(false);
+    QVERIFY(!lastA->stops);
+    QCOMPARE(lastA->cover_width.value, 5'000);
 }
 
 void PropertiesPanelTest::stitchTypeMoreMenuOffersEveryOtherType() {
@@ -1343,14 +1368,14 @@ void PropertiesPanelTest::stitchTypeMoreMenuOffersEveryOtherType() {
     auto* more = panel.findChild<QToolButton*>(QStringLiteral("button_stitchTypeMore"));
     QVERIFY(more != nullptr);
     QVERIFY(more->menu() != nullptr);
-    QCOMPARE(more->menu()->actions().size(), 7);
+    QCOMPARE(more->menu()->actions().size(), 8);
     std::vector<int> requested;
     QObject::connect(&panel, &PropertiesPanel::stitchTypeRequested, &panel,
                      [&](int type) { requested.push_back(type); });
     for (QAction* act : more->menu()->actions()) {
         act->trigger();
     }
-    QCOMPARE(requested, (std::vector<int>{5, 6, 7, 8, 9, 10, 11}));
+    QCOMPARE(requested, (std::vector<int>{5, 6, 7, 8, 9, 10, 11, 12}));
     // Un objet concentrique affiche son type dans le bouton « Plus ».
     EmbroideryObject c;
     c.id = openstitch::ObjectId{61};

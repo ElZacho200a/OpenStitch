@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openstitch.applique_cut/1",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "openstitch.applique_cut/1"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "output": {
+      "type": "string"
+    },
+    "objects": {
+      "type": "integer"
+    },
+    "paths": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema",
+    "ok",
+    "output",
+    "objects",
+    "paths"
+  ],
+  "additionalProperties": false
+}

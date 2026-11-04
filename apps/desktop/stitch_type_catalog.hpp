@@ -11,8 +11,9 @@
 namespace openstitch::desktop {
 
 // 0 contour, 1 tatami, 2 satin, 3 directionnel, 4 blanket, 5 motif le long du contour,
-// 6 remplissage à motif, 7 concentrique, 8 radial, 9 spirale, 10 croisé, 11 point de croix.
-inline constexpr int kStitchTypeCount = 12;
+// 6 remplissage à motif, 7 concentrique, 8 radial, 9 spirale, 10 croisé, 11 point de croix,
+// 12 appliqué (HP-SPEC-001).
+inline constexpr int kStitchTypeCount = 13;
 
 // Nombre de types ayant un bouton direct (les suivants passent par le bouton « Plus »).
 inline constexpr int kStitchTypeDirectButtons = 4;
@@ -29,6 +30,7 @@ inline constexpr int kStitchTypeDirectButtons = 4;
            : object.is_spiral_fill()                     ? 9
            : object.is_crosshatch_fill()                 ? 10
            : object.is_cross_stitch()                    ? 11
+           : object.is_applique()                        ? 12
                                                          : 0;
 }
 

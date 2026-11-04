@@ -25,6 +25,7 @@ add_library(openstitch_stitch_generation
     src/join.cpp
     src/border_satin.cpp
     src/blanket_stitch.cpp
+    src/applique.cpp
     src/contour_fill.cpp
     src/motif_run.cpp
     src/motif_fill.cpp

@@ -214,6 +214,10 @@ bool MainWindow::stitchParamsForType(const document::EmbroideryObject& emb, int 
         params = document::CrossStitchParams{};
         label = "Type : point de croix";
         return true;
+    case 12: // appliqué (HP-SPEC-001)
+        params = document::AppliqueParams{};
+        label = "Type : appliqué";
+        return true;
     case 3: { // remplissage directionnel (réglages du tatami repris s'il y a lieu)
         auto directional = directionalParamsFor(emb);
         if (!directional) {
