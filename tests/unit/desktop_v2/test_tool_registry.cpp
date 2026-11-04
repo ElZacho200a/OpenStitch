@@ -78,7 +78,7 @@ TEST_CASE("every legacy canvas tool has a V2 equivalent", "[desktop_v2][tools][p
         REQUIRE_FALSE(name.empty());
         CHECK(registry.findByLegacy(name) != nullptr);
     }
-    CHECK(registry.tools().size() == 20);
+    CHECK(registry.tools().size() == 21); // + la retouche de points, propre à la V2
 }
 
 TEST_CASE("workspaces always expose selection and pan", "[desktop_v2][tools]") {

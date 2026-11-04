@@ -299,3 +299,43 @@ Catch2 `a knife line splits a shape…`, QTest `theKnifeCutsTheSelectedShapeAlon
 interactifs adossés à des `ICommand` (zones de détail / clic-pour-broder, colonnes de satin à rails, retouche point à
 point), non faits. **Aucune famille n'est ✅** : toutes les 🟡 ont un reste explicite dans la matrice. Desktop V2 n'est donc pas
 encore le desktop principal.
+
+
+## 2026-11-04 — Session 1 (suite 15) : clic-pour-broder, zones de détail, retouche de points (branche `feat/desktop-v2-last-families`)
+
+- **Famille 10** : `core/source_image_tools` (clic-pour-broder : `grow_region` + `make_click_to_stitch_command` ; pinceau :
+  `PaintDetailMaskCommand` / `ClearDetailMaskCommand`), image source en calque semi-transparent et masque de détail en
+  surimpression, barre « Outils d'image » (tolérance, type, rayon). Catch2 `[source]` (6 cas), QTest ×4.
+- **Famille 26** : `core/point_edit` (vue des points d'un objet, déplacer / supprimer / rétablir / insérer / tout effacer via
+  `EditStitchPointsCommand` et `DiscardOverridesCommand`, avec l'empreinte du moteur : un objet périmé est refusé), outil
+  `stitch.points` (nouveau en V2, 21 outils au registre), poignées sur le canevas. Catch2 `[points]` (4 cas), QTest
+  `thePointToolMovesDeletesAndDiscardsStitchEdits`.
+- État de la matrice : ✅ 2 · 🟡 40 · ⬜ 2 (restent : 9 IA, exception justifiée ; 19 colonnes de satin à rails).
+- **Famille 19** : `core/satin_column` (création d'une colonne à deux rails depuis des paires de points, rails croisés signalés,
+  déplacement / insertion de nœud de rail), outil `satin.column` (clics par paires, Entrée). Catch2 `[satin]` (4 cas), QTest
+  `theSatinColumnToolBuildsRailsFromPairsOfClicks`. Matrice : ✅ 2 · 🟡 41 · ⬜ 1 (seule la famille 9, IA, reste ⬜).
+
+## 2026-11-04 — Session 1 (suite 16) : persistance de l'espace de travail (branche `feat/desktop-v2-persistence`)
+
+- `core/workspace_state` (Qt-free) : liste des fichiers récents (`pushRecent`, `pruneMissingRecent`, `loadRecentList` /
+  `saveRecentList`) et `AutosaveStore` (écriture atomique `.tmp` puis renommage, `load`, `clear`). Catch2 `[workspace]`.
+- Interface : `ShellWindow::setStateDirectory` (appelé par `main.cpp`, jamais par les tests), sous-menu Fichier > Fichiers
+  récents, minuterie d'autosave 60 s, récupération proposée au démarrage, effacée à l'enregistrement et à la sortie
+  propre ; Édition > Historique (annule k+1 étapes). QTest `autosaveRecoveryRecentFilesAndHistoryMenuWork`.
+- Familles 2, 4 et 34 : restent 🟡 (migration de schéma, rapport de plantage).
+
+## 2026-11-04 — Session 1 (suite 17) : parité avec l'ancien bureau, lot « disposition »
+
+- `core/arrange_batch` : aligner (6 modes sur la boîte de l'ensemble), répartir (espaces égaux, H/V), grouper, dégrouper,
+  position / taille / rotation libre numériques, tous par lots `project_ops` (`place`, `group`, `ungroup`). Catch2 `[arrange]`.
+- Interface : Édition > Aligner, Répartir, Grouper (Ctrl+G), Dégrouper (Ctrl+Maj+G), Position et taille… ; mêmes entrées
+  dans la palette Ctrl+K. QTest `alignGroupAndNumericPlacementWorkFromTheEditMenu`.
+
+## 2026-11-04 — Session 1 (suite 18) : parité avec l'ancien bureau, lots « image », « production » et « aide »
+
+- `core/image_prep` : luminosité / contraste, niveaux de gris, netteté, CLAHE, rotations, retournements, recadrage, chacun une
+  `AppendImageOpCommand` annulable (la segmentation est invalidée par le moteur). Menu Image + palette. Catch2 `[imageprep]`.
+- `core/production_sheet` : fiche de production (séquence effective : dimensions, comptes, plan de fils par bloc, durée).
+  Fichier > Fiche de production (PDF) met en page l'aperçu et le plan de fils (QPdfWriter, tâche annulable). Catch2 `[sheet]`.
+- Aide > Raccourcis et commandes (texte généré depuis `commandEntries`) et À propos.
+- Constat : l'ancien bureau n'importe pas le DST (seulement la CLI) ; la ligne 3 n'est donc pas un écart de parité.

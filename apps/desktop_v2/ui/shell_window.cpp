@@ -4,9 +4,12 @@
 #include <QAction>
 #include <QActionGroup>
 #include <QApplication>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QDockWidget>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
+#include <QFormLayout>
 #include <QHeaderView>
 #include <QImage>
 #include <QInputDialog>
@@ -14,10 +17,16 @@
 #include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMessageBox>
+#include <QPageSize>
+#include <QPainter>
+#include <QPdfWriter>
 #include <QPixmap>
 #include <QProgressBar>
 #include <QScrollArea>
+#include <QSpinBox>
 #include <QStatusBar>
+#include <QTextBrowser>
 #include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
@@ -25,6 +34,8 @@
 #include <QVBoxLayout>
 #include <algorithm>
 #include <map>
+
+#include "openstitch/commands/placement_ops.hpp"
 
 #include "action_dialog.hpp"
 #include "calque_panel.hpp"
@@ -38,8 +49,11 @@
 #include "preview_canvas.hpp"
 #include "preview_service.hpp"
 #include "transform_batch.hpp"
+#include <QComboBox>
 #include <QGuiApplication>
+#include <QSignalBlocker>
 #include <QSlider>
+#include <QSpinBox>
 #include <QStyleHints>
 
 namespace openstitch::desktop_v2 {
@@ -56,7 +70,9 @@ QString fromUtf8(const std::string& s) {
 // Outils réellement migrés : les autres sont déclarés dans le registre mais désactivés.
 bool isToolImplemented(const std::string& id) {
     return id == "select" || id == "pan" || id == "draw.rectangle" || id == "draw.ellipse" ||
-           id == "draw.polygon" || id == "measure" || id == "eyedropper" || id == "knife";
+           id == "draw.polygon" || id == "measure" || id == "eyedropper" || id == "knife" ||
+           id == "click-to-stitch" || id == "detail-brush" || id == "stitch.points" ||
+           id == "satin.column";
 }
 
 constexpr Workspace kWorkspaces[] = {Workspace::Design, Workspace::Digitize, Workspace::Optimize,
@@ -125,12 +141,14 @@ ShellWindow::ShellWindow(QWidget* parent)
             syncTreeFromSelection();
         }
         updateSelectionBoxes();
+        updatePointMarkers();
     });
     connect(canvas_, &PreviewCanvas::clickedPx, this, &ShellWindow::onCanvasClick);
     connect(canvas_, &PreviewCanvas::rectPx, this, &ShellWindow::onCanvasRect);
     connect(canvas_, &PreviewCanvas::boxDrawnPx, this, &ShellWindow::onBoxDrawn);
     connect(canvas_, &PreviewCanvas::measuredPx, this, &ShellWindow::onMeasured);
     connect(canvas_, &PreviewCanvas::lineDrawnPx, this, &ShellWindow::onKnife);
+    connect(canvas_, &PreviewCanvas::strokeDrawnPx, this, &ShellWindow::onStroke);
     connect(canvas_, &PreviewCanvas::contextMenuRequested, this, &ShellWindow::showContextMenu);
     connect(canvas_, &PreviewCanvas::moveStartRequested, this, &ShellWindow::onMoveStart);
     connect(canvas_, &PreviewCanvas::nudgeRequested, this, &ShellWindow::nudgeSelection);
@@ -164,6 +182,9 @@ ShellWindow::~ShellWindow() {
     // on annule les tâches avant que la session (membre) soit détruite.
     pump_->stop();
     previewDebounce_->stop();
+    if (autosave_ && !session_.dirty()) {
+        autosave_->clear(); // sortie propre : rien à récupérer au prochain démarrage
+    }
     tasks_.cancelAll();
     // Les widgets enfants sont détruits APRÈS les membres de cette classe : ceux qui référencent la
     // session (l'inspecteur) doivent disparaître tant qu'elle existe.
@@ -185,6 +206,8 @@ void ShellWindow::buildMenus() {
     auto* open = file->addAction(tr("&Ouvrir une image ou un projet…"));
     open->setShortcut(QKeySequence::Open);
     connect(open, &QAction::triggered, this, &ShellWindow::chooseAndOpen);
+    recentMenu_ = file->addMenu(tr("Fichiers &récents"));
+    recentMenu_->setObjectName(QStringLiteral("menu_recent"));
     saveAction_ = file->addAction(tr("&Enregistrer"));
     saveAction_->setShortcut(QKeySequence::Save);
     connect(saveAction_, &QAction::triggered, this, [this] {
@@ -219,6 +242,15 @@ void ShellWindow::buildMenus() {
             exportImage(std::filesystem::path(path.toStdU16String()));
         }
     });
+    auto* sheetAction = file->addAction(tr("&Fiche de production (PDF)…"));
+    sheetAction->setObjectName(QStringLiteral("action_file_production_sheet"));
+    connect(sheetAction, &QAction::triggered, this, [this] {
+        const QString path = QFileDialog::getSaveFileName(this, tr("Fiche de production"),
+                                                          QString(), tr("Document PDF (*.pdf)"));
+        if (!path.isEmpty()) {
+            exportProductionSheet(std::filesystem::path(path.toStdU16String()));
+        }
+    });
     file->addSeparator();
     auto* quit = file->addAction(tr("&Quitter"));
     quit->setShortcut(QKeySequence::Quit);
@@ -231,6 +263,9 @@ void ShellWindow::buildMenus() {
     redoAction_ = edit->addAction(tr("&Rétablir"));
     redoAction_->setShortcut(QKeySequence::Redo);
     connect(redoAction_, &QAction::triggered, this, [this] { session_.redo(); });
+    historyMenu_ = edit->addMenu(tr("&Historique"));
+    historyMenu_->setObjectName(QStringLiteral("menu_history"));
+    connect(historyMenu_, &QMenu::aboutToShow, this, [this] { rebuildHistoryMenu(); });
     edit->addSeparator();
     auto* all = edit->addAction(tr("Tout &sélectionner"));
     all->setShortcut(QKeySequence::SelectAll);
@@ -250,11 +285,28 @@ void ShellWindow::buildMenus() {
     };
     addEdit(edit, tr("&Supprimer"), "edit.delete", QKeySequence::Delete);
     addEdit(edit, tr("D&upliquer"), "edit.duplicate", QKeySequence(QStringLiteral("Ctrl+D")));
+    auto* discard = edit->addAction(tr("Effacer les retouches de &points"));
+    discard->setObjectName(QStringLiteral("action_discard_points"));
+    connect(discard, &QAction::triggered, this, [this] { discardPointEdits(); });
     auto* transform = edit->addMenu(tr("&Transformer"));
     addEdit(transform, tr("Pivoter de 90° à &droite"), "transform.rotate.cw");
     addEdit(transform, tr("Pivoter de 90° à &gauche"), "transform.rotate.ccw");
     addEdit(transform, tr("Miroir &horizontal"), "transform.mirror.h");
     addEdit(transform, tr("Miroir &vertical"), "transform.mirror.v");
+    auto* arrange = edit->addMenu(tr("&Aligner"));
+    addEdit(arrange, tr("À &gauche"), "arrange.align.left");
+    addEdit(arrange, tr("Centrer &horizontalement"), "arrange.align.centerh");
+    addEdit(arrange, tr("À &droite"), "arrange.align.right");
+    addEdit(arrange, tr("En &haut"), "arrange.align.top");
+    addEdit(arrange, tr("Centrer &verticalement"), "arrange.align.centerv");
+    addEdit(arrange, tr("En &bas"), "arrange.align.bottom");
+    auto* distribute = edit->addMenu(tr("&Répartir"));
+    addEdit(distribute, tr("&Horizontalement"), "arrange.distribute.h");
+    addEdit(distribute, tr("&Verticalement"), "arrange.distribute.v");
+    addEdit(edit, tr("&Grouper"), "arrange.group", QKeySequence(QStringLiteral("Ctrl+G")));
+    addEdit(edit, tr("Dé&grouper"), "arrange.ungroup",
+            QKeySequence(QStringLiteral("Ctrl+Shift+G")));
+    addEdit(edit, tr("Position et &taille…"), "arrange.place");
     auto* order = edit->addMenu(tr("&Ordre de couture"));
     addEdit(order, tr("Premier plan"), "order.front");
     addEdit(order, tr("Avancer"), "order.forward");
@@ -280,10 +332,55 @@ void ShellWindow::buildMenus() {
         const QString id = fromUtf8(def.id);
         connect(a, &QAction::triggered, this, [this, id] { runAction(id); });
     }
+    auto* imageMenu = menuBar()->addMenu(tr("&Image"));
+    const auto addPrep = [this, imageMenu](const QString& text, const char* id) {
+        auto* a = imageMenu->addAction(text);
+        a->setObjectName(QStringLiteral("action_") + QString::fromLatin1(id));
+        connect(a, &QAction::triggered, this,
+                [this, id] { runImagePrep(QString::fromLatin1(id)); });
+    };
+    addPrep(tr("&Luminosité et contraste…"), "image.prep.bc");
+    addPrep(tr("&Niveaux de gris"), "image.prep.gray");
+    addPrep(tr("N&etteté…"), "image.prep.sharpen");
+    addPrep(tr("Contraste &local (CLAHE)…"), "image.prep.clahe");
+    imageMenu->addSeparator();
+    addPrep(tr("Pivoter à &droite"), "image.prep.rotate.r");
+    addPrep(tr("Pivoter à &gauche"), "image.prep.rotate.l");
+    addPrep(tr("Pivoter de 180°"), "image.prep.rotate.180");
+    addPrep(tr("Retourner &horizontalement"), "image.prep.flip.h");
+    addPrep(tr("Retourner &verticalement"), "image.prep.flip.v");
+    addPrep(tr("&Recadrer…"), "image.prep.crop");
     presetMenu_ = menuBar()->addMenu(tr("&Préréglages"));
+    auto* helpMenu = menuBar()->addMenu(tr("A&ide"));
+    auto* shortcuts = helpMenu->addAction(tr("&Raccourcis et commandes…"));
+    shortcuts->setShortcut(QKeySequence::HelpContents);
+    shortcuts->setObjectName(QStringLiteral("action_help_shortcuts"));
+    connect(shortcuts, &QAction::triggered, this, [this] {
+        QDialog dialog(this);
+        dialog.setWindowTitle(tr("Raccourcis et commandes"));
+        auto* layout = new QVBoxLayout(&dialog);
+        auto* browser = new QTextBrowser(&dialog);
+        browser->setPlainText(helpText());
+        browser->setMinimumSize(520, 480);
+        layout->addWidget(browser);
+        auto* close = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+        connect(close, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+        layout->addWidget(close);
+        dialog.exec();
+    });
+    auto* about = helpMenu->addAction(tr("À &propos…"));
+    connect(about, &QAction::triggered, this, [this] {
+        QMessageBox::about(this, tr("À propos"),
+                           tr("OpenStitch Studio — numérisation de broderie machine libre "
+                              "(Apache-2.0).\nDesktop V2."));
+    });
     connect(presetMenu_, &QMenu::aboutToShow, this, &ShellWindow::rebuildPresetMenu);
     auto* fit = view->addAction(tr("&Ajuster à la fenêtre"));
     connect(fit, &QAction::triggered, canvas_, &PreviewCanvas::fitAll);
+    auto* source = view->addAction(tr("&Image source"));
+    source->setCheckable(true);
+    source->setObjectName(QStringLiteral("action_view_source"));
+    connect(source, &QAction::toggled, this, [this](bool on) { setSourceVisible(on); });
     auto* hoop = view->addAction(tr("Cadre de &broderie"));
     hoop->setCheckable(true);
     hoop->setChecked(true);
@@ -505,6 +602,37 @@ void ShellWindow::buildStatusArea() {
         }
     });
     simBar_->hide();
+
+    // Réglages des outils d'image (clic-pour-broder : tolérance, type ; pinceau : rayon).
+    imageBar_ = addToolBar(tr("Outils d'image"));
+    imageBar_->setObjectName(QStringLiteral("imageToolBar"));
+    imageBar_->setMovable(false);
+    imageBar_->addWidget(new QLabel(tr(" Tolérance : "), imageBar_));
+    tolSpin_ = new QSpinBox(imageBar_);
+    tolSpin_->setObjectName(QStringLiteral("clickTolerance"));
+    tolSpin_->setRange(0, 100);
+    tolSpin_->setValue(clickTol_);
+    tolSpin_->setToolTip(tr("Écart de couleur accepté autour du pixel cliqué (CIELAB)."));
+    imageBar_->addWidget(tolSpin_);
+    imageBar_->addWidget(new QLabel(tr("  Type : "), imageBar_));
+    kindCombo_ = new QComboBox(imageBar_);
+    kindCombo_->setObjectName(QStringLiteral("clickKind"));
+    kindCombo_->addItems({tr("Automatique"), tr("Remplissage"), tr("Satin"), tr("Contour seul")});
+    imageBar_->addWidget(kindCombo_);
+    imageBar_->addWidget(new QLabel(tr("  Pinceau : "), imageBar_));
+    auto* radius = new QDoubleSpinBox(imageBar_);
+    radius->setObjectName(QStringLiteral("brushRadius"));
+    radius->setRange(0.2, 50.0);
+    radius->setValue(brushMm_);
+    radius->setSuffix(tr(" mm"));
+    radius->setToolTip(tr("Rayon du pinceau des zones de détail (Ctrl = gomme)."));
+    imageBar_->addWidget(radius);
+    connect(tolSpin_, &QSpinBox::valueChanged, this,
+            [this](int v) { setClickToStitch(v, clickKind_); });
+    connect(kindCombo_, &QComboBox::currentIndexChanged, this,
+            [this](int i) { setClickToStitch(clickTol_, static_cast<ClickKind>(i)); });
+    connect(radius, &QDoubleSpinBox::valueChanged, this, [this](double v) { setBrushRadiusMm(v); });
+    imageBar_->hide();
     notice_ = new QLabel(this);
     notice_->setObjectName(QStringLiteral("notice"));
     notice_->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -724,6 +852,8 @@ void ShellWindow::requestPreview() {
                                             QPointF(frame_.mmToPxX(frame_.hoop_half_w_mm),
                                                     frame_.mmToPxY(frame_.hoop_half_h_mm))));
                 updateGrid();
+                updateSourceOverlay();
+                updatePointMarkers();
                 refreshSimulationBar();
                 updateSelectionBoxes();
             }
@@ -796,6 +926,7 @@ void ShellWindow::openProject(const std::filesystem::path& osp) {
             session_.selection().clear();
             documentOpen_ = true;
             session_.replaceProject(std::move(*r), true);
+            noteRecent(osp);
             setNotice(
                 tr("Projet ouvert (%1 objets).").arg(session_.project().embroidery_objects.size()),
                 false);
@@ -810,8 +941,97 @@ bool ShellWindow::saveProject(const std::filesystem::path& osp) {
     }
     currentPath_ = osp;
     session_.markSaved();
+    noteRecent(osp);
+    if (autosave_) {
+        autosave_->clear(); // le document est enregistré : plus rien à récupérer
+    }
     setNotice(tr("Projet enregistré."), false);
     return true;
+}
+
+void ShellWindow::setStateDirectory(const std::filesystem::path& dir) {
+    stateDir_ = dir;
+    autosave_ = std::make_unique<AutosaveStore>(dir);
+    recent_ = pruneMissingRecent(loadRecentList(dir / "recent.txt"));
+    rebuildRecentMenu();
+    if (autosaveTimer_ == nullptr) {
+        autosaveTimer_ = new QTimer(this);
+        autosaveTimer_->setInterval(60000);
+        connect(autosaveTimer_, &QTimer::timeout, this, [this] { (void)autosaveNow(); });
+    }
+    autosaveTimer_->start();
+}
+
+bool ShellWindow::autosaveNow() {
+    if (!autosave_ || !documentOpen_ || !session_.dirty()) {
+        return false;
+    }
+    return autosave_->write(session_.project()).has_value();
+}
+
+bool ShellWindow::recoverAutosave() {
+    if (!hasRecovery()) {
+        return false;
+    }
+    auto loaded = autosave_->load();
+    if (!loaded) {
+        setNotice(tr("Récupération impossible : %1").arg(fromUtf8(loaded.error().message)), true);
+        return false;
+    }
+    currentPath_.clear();
+    documentOpen_ = true;
+    session_.selection().clear();
+    session_.replaceProject(std::move(*loaded), false); // non enregistré : reste « modifié »
+    setNotice(tr("Document récupéré : pensez à l'enregistrer."), false);
+    return true;
+}
+
+void ShellWindow::discardRecovery() {
+    if (autosave_) {
+        autosave_->clear();
+    }
+}
+
+void ShellWindow::noteRecent(const std::filesystem::path& osp) {
+    const auto u8 = osp.u8string();
+    recent_ = pushRecent(std::move(recent_),
+                         std::string(reinterpret_cast<const char*>(u8.data()), u8.size()));
+    if (!stateDir_.empty()) {
+        (void)saveRecentList(stateDir_ / "recent.txt", recent_);
+    }
+    rebuildRecentMenu();
+}
+
+void ShellWindow::rebuildRecentMenu() {
+    if (recentMenu_ == nullptr) {
+        return;
+    }
+    recentMenu_->clear();
+    for (const auto& entry : recent_) {
+        const QString text = QString::fromUtf8(entry.data(), static_cast<int>(entry.size()));
+        auto* a = recentMenu_->addAction(text);
+        connect(a, &QAction::triggered, this,
+                [this, text] { openProject(std::filesystem::path(text.toStdU16String())); });
+    }
+    recentMenu_->setEnabled(!recent_.empty());
+}
+
+void ShellWindow::rebuildHistoryMenu() {
+    historyMenu_->clear();
+    const auto names = session_.undoNames();
+    // Du plus récent au plus ancien ; choisir l'entrée k annule k + 1 étapes.
+    for (std::size_t k = 0; k < names.size() && k < 30; ++k) {
+        const auto& name = names[names.size() - 1 - k];
+        auto* a = historyMenu_->addAction(fromUtf8(name));
+        connect(a, &QAction::triggered, this, [this, k] {
+            for (std::size_t i = 0; i <= k; ++i) {
+                if (!session_.undo()) {
+                    break;
+                }
+            }
+        });
+    }
+    historyMenu_->setEnabled(!names.empty());
 }
 
 void ShellWindow::exportDst(const std::filesystem::path& dst) {
@@ -1126,14 +1346,204 @@ void ShellWindow::rebuildPresetMenu() {
     }
 }
 
+void ShellWindow::setSourceVisible(bool visible) {
+    sourceShown_ = visible;
+    canvas_->setSourceVisible(visible);
+    updateSourceOverlay();
+}
+
+void ShellWindow::setClickToStitch(int tolerance, ClickKind kind) {
+    clickTol_ = std::clamp(tolerance, 0, 100);
+    clickKind_ = kind;
+    if (tolSpin_ != nullptr && tolSpin_->value() != clickTol_) {
+        QSignalBlocker block(tolSpin_);
+        tolSpin_->setValue(clickTol_);
+    }
+    if (kindCombo_ != nullptr && kindCombo_->currentIndex() != static_cast<int>(kind)) {
+        QSignalBlocker block(kindCombo_);
+        kindCombo_->setCurrentIndex(static_cast<int>(kind));
+    }
+}
+
+void ShellWindow::setBrushRadiusMm(double mm) {
+    brushMm_ = std::clamp(mm, 0.2, 50.0);
+}
+
+const image::Image* ShellWindow::ensureProcessed() {
+    if (!documentOpen_) {
+        return nullptr;
+    }
+    if (!processedValid_ || processedRevision_ != session_.revision()) {
+        auto image = processedImage(session_.project());
+        processedValid_ = image.has_value();
+        processedRevision_ = session_.revision();
+        if (!image) {
+            processed_ = {};
+            setNotice(fromUtf8(image.error().message) + QStringLiteral(". ") +
+                          fromUtf8(image.error().detail),
+                      true);
+            return nullptr;
+        }
+        processed_ = std::move(*image);
+    }
+    return &processed_;
+}
+
+std::optional<std::uint64_t> ShellWindow::pointTarget() const {
+    const auto state = inspect(session_.project(), session_.selection().targets());
+    if (state.ids.size() != 1) {
+        return std::nullopt;
+    }
+    return state.ids.front();
+}
+
+void ShellWindow::updatePointMarkers() {
+    const auto target = activeTool_ == QStringLiteral("stitch.points") && documentOpen_
+                            ? pointTarget()
+                            : std::nullopt;
+    pointHandles_.clear();
+    if (!target || frame_.px_per_mm <= 0.0) {
+        pointSel_ = -1;
+        pointObject_ = 0;
+        pointView_ = {};
+        canvas_->setPointMarkers({}, -1);
+        return;
+    }
+    if (pointObject_ != *target) {
+        pointSel_ = -1;
+    }
+    pointObject_ = *target;
+    auto view = stitchPoints(session_.project(), *target);
+    if (!view) {
+        pointView_ = {};
+        pointSel_ = -1;
+        canvas_->setPointMarkers({}, -1);
+        setNotice(fromUtf8(view.error().message), true);
+        return;
+    }
+    pointView_ = std::move(*view);
+    QVector<QPointF> pts;
+    for (std::size_t i = 0; i < pointView_.points.size(); ++i) {
+        const auto& p = pointView_.points[i];
+        if (!p.movable || p.deleted) {
+            continue;
+        }
+        pointHandles_.push_back(i);
+        pts.push_back({frame_.mmToPxX(p.pos.x), frame_.mmToPxY(-p.pos.y)});
+    }
+    if (pointSel_ >= static_cast<int>(pts.size())) {
+        pointSel_ = -1;
+    }
+    canvas_->setPointMarkers(pts, pointSel_);
+}
+
+bool ShellWindow::deleteSelectedPoint() {
+    if (pointSel_ < 0 || pointSel_ >= static_cast<int>(pointHandles_.size()) || !pointTarget()) {
+        return false;
+    }
+    const auto index = pointView_.points[pointHandles_[static_cast<std::size_t>(pointSel_)]].index;
+    const auto r = deleteStitchPoints(session_, *pointTarget(), {index});
+    if (!r.ok) {
+        setNotice(tr("Retouche de points : %1").arg(fromUtf8(r.message)), true);
+        return false;
+    }
+    pointSel_ = -1;
+    setNotice(tr("Point supprimé."), false);
+    return true;
+}
+
+bool ShellWindow::discardPointEdits() {
+    const auto target = pointTarget();
+    if (!target) {
+        setNotice(tr("Sélectionnez un seul objet brodé."), false);
+        return false;
+    }
+    const auto r = discardStitchEdits(session_, *target);
+    if (!r.ok) {
+        setNotice(fromUtf8(r.message), false);
+        return false;
+    }
+    pointSel_ = -1;
+    setNotice(tr("Retouches effacées."), false);
+    return true;
+}
+
+void ShellWindow::updateSourceOverlay() {
+    if (!sourceShown_ || frame_.px_per_mm <= 0.0 || !documentOpen_) {
+        canvas_->setSourceImage({}, {});
+        canvas_->setDetailOverlay({}, {});
+        return;
+    }
+    const image::Image* img = ensureProcessed();
+    if (img == nullptr) {
+        canvas_->setSourceImage({}, {});
+        canvas_->setDetailOverlay({}, {});
+        return;
+    }
+    const double mmpp = session_.project().mm_per_px.value;
+    const double wMm = img->width * mmpp;
+    const double hMm = img->height * mmpp;
+    const QRectF rect(QPointF(frame_.mmToPxX(-wMm / 2.0), frame_.mmToPxY(-hMm / 2.0)),
+                      QSizeF(wMm * frame_.px_per_mm, hMm * frame_.px_per_mm));
+    const QImage view(img->rgba.data(), img->width, img->height, img->width * 4,
+                      QImage::Format_RGBA8888);
+    canvas_->setSourceImage(view.copy(), rect); // copie : `processed_` peut être recalculée
+    const auto& mask = session_.project().detail_mask;
+    if (mask.matches(img->width, img->height) && mask.any_detail()) {
+        QImage overlay(img->width, img->height, QImage::Format_ARGB32);
+        for (int y = 0; y < img->height; ++y) {
+            for (int x = 0; x < img->width; ++x) {
+                const int w = mask.weights[static_cast<std::size_t>(y) * img->width + x];
+                overlay.setPixel(x, y, qRgba(230, 60, 60, w * 150 / 255));
+            }
+        }
+        canvas_->setDetailOverlay(overlay, rect);
+    } else {
+        canvas_->setDetailOverlay({}, {});
+    }
+}
+
+void ShellWindow::onStroke(QVector<QPointF> scenePx, Qt::KeyboardModifiers modifiers) {
+    if (activeTool_ != QStringLiteral("detail-brush") || frame_.px_per_mm <= 0.0) {
+        return;
+    }
+    const image::Image* img = ensureProcessed();
+    if (img == nullptr) {
+        return;
+    }
+    std::vector<std::pair<double, double>> centres;
+    centres.reserve(static_cast<std::size_t>(scenePx.size()));
+    for (const QPointF& p : scenePx) {
+        centres.emplace_back(frame_.pxToMmX(p.x()), frame_.pxToMmY(p.y()));
+    }
+    const bool erase = modifiers & Qt::ControlModifier;
+    const auto r = paintDetail(session_, *img, centres, brushMm_, erase);
+    if (!r.ok) {
+        setNotice(fromUtf8(r.message), true);
+        return;
+    }
+    setNotice(erase ? tr("Zone de détail effacée.") : tr("Zone de détail peinte."), false);
+    updateSourceOverlay();
+}
+
 void ShellWindow::applyToolToCanvas() {
     using Mode = PreviewCanvas::Mode;
+    updatePointMarkers();
+    const bool imageTool = activeTool_ == QStringLiteral("click-to-stitch") ||
+                           activeTool_ == QStringLiteral("detail-brush");
+    if (imageBar_ != nullptr) {
+        imageBar_->setVisible(imageTool);
+    }
+    if (imageTool && !sourceShown_ && documentOpen_) {
+        setSourceVisible(true); // on ne peut pas cliquer une image qu'on ne voit pas
+    }
     if (activeTool_ == QStringLiteral("pan")) {
         canvas_->setMode(Mode::Pan);
     } else if (activeTool_ == QStringLiteral("draw.rectangle") ||
                activeTool_ == QStringLiteral("draw.ellipse")) {
         canvas_->setMode(Mode::DrawBox);
-    } else if (activeTool_ == QStringLiteral("draw.polygon")) {
+    } else if (activeTool_ == QStringLiteral("draw.polygon") ||
+               activeTool_ == QStringLiteral("satin.column")) {
         canvas_->setMode(Mode::DrawPolygon);
     } else if (activeTool_ == QStringLiteral("measure")) {
         canvas_->setMode(Mode::Measure);
@@ -1141,6 +1551,11 @@ void ShellWindow::applyToolToCanvas() {
         canvas_->setMode(Mode::Pick);
     } else if (activeTool_ == QStringLiteral("knife")) {
         canvas_->setMode(Mode::Cut);
+    } else if (activeTool_ == QStringLiteral("click-to-stitch") ||
+               activeTool_ == QStringLiteral("stitch.points")) {
+        canvas_->setMode(Mode::Pick);
+    } else if (activeTool_ == QStringLiteral("detail-brush")) {
+        canvas_->setMode(Mode::Stroke);
     } else {
         canvas_->setMode(Mode::Select); // sélection : clic, cadre élastique
     }
@@ -1209,6 +1624,25 @@ void ShellWindow::onPolygonDrawn(QVector<QPointF> scenePx) {
     for (const QPointF& p : scenePx) {
         points.push_back(screenToModel(frame_.pxToMmX(p.x()), frame_.pxToMmY(p.y())));
     }
+    if (activeTool_ == QStringLiteral("satin.column")) {
+        // Points pris deux par deux : (rail A, rail B) pour chaque barreau ; un point seul est
+        // ignoré.
+        std::vector<std::pair<PointMm, PointMm>> rungs;
+        for (std::size_t i = 0; i + 1 < points.size(); i += 2) {
+            rungs.emplace_back(points[i], points[i + 1]);
+        }
+        const auto r = createSatinColumn(session_, rungs);
+        if (!r.ok) {
+            setNotice(tr("Colonne satin : %1").arg(fromUtf8(r.message)), true);
+            return;
+        }
+        session_.selection().replace({{TargetKind::EmbroideryObject, r.objectId}});
+        setNotice(r.railsCross
+                      ? tr("Colonne satin créée, mais les rails se croisent : corrigez-les.")
+                      : tr("Colonne satin créée."),
+                  r.railsCross);
+        return;
+    }
     createShape(batchAddPolygon(points), tr("Polygone"));
 }
 
@@ -1233,6 +1667,11 @@ PointMm ShellWindow::selectionCentreModel() const {
 }
 
 void ShellWindow::editSelection(const QString& command) {
+    if (command == QLatin1String("edit.delete") && activeTool_ == QStringLiteral("stitch.points") &&
+        pointSel_ >= 0) {
+        deleteSelectedPoint();
+        return;
+    }
     const auto state = inspect(session_.project(), session_.selection().targets());
     if (state.ids.empty()) {
         return;
@@ -1258,6 +1697,37 @@ void ShellWindow::editSelection(const QString& command) {
     } else if (command == QLatin1String("transform.mirror.v")) {
         batch = batchMirror(state.ids, MirrorAxis::Vertical, centre);
         label = tr("Miroir vertical");
+    } else if (command == QLatin1String("arrange.place")) {
+        showPlaceDialog();
+        return;
+    } else if (command.startsWith(QLatin1String("arrange."))) {
+        static const std::map<QString, AlignMode> aligns{
+            {QStringLiteral("arrange.align.left"), AlignMode::Left},
+            {QStringLiteral("arrange.align.centerh"), AlignMode::CenterH},
+            {QStringLiteral("arrange.align.right"), AlignMode::Right},
+            {QStringLiteral("arrange.align.top"), AlignMode::Top},
+            {QStringLiteral("arrange.align.centerv"), AlignMode::CenterV},
+            {QStringLiteral("arrange.align.bottom"), AlignMode::Bottom}};
+        if (const auto it = aligns.find(command); it != aligns.end()) {
+            batch = batchAlign(session_.project(), state.ids, it->second);
+            label = tr("Aligner");
+        } else if (command == QLatin1String("arrange.distribute.h")) {
+            batch = batchDistribute(session_.project(), state.ids, DistributeAxis::Horizontal);
+            label = tr("Répartir horizontalement");
+        } else if (command == QLatin1String("arrange.distribute.v")) {
+            batch = batchDistribute(session_.project(), state.ids, DistributeAxis::Vertical);
+            label = tr("Répartir verticalement");
+        } else if (command == QLatin1String("arrange.group")) {
+            batch = batchGroup(state.ids, {});
+            label = tr("Grouper");
+        } else if (command == QLatin1String("arrange.ungroup")) {
+            batch = batchUngroup(session_.project(), state.ids);
+            label = tr("Dégrouper");
+        }
+        if (batch.empty()) {
+            setNotice(tr("%1 : rien à faire pour cette sélection.").arg(label), false);
+            return;
+        }
     } else if (command.startsWith(QLatin1String("order."))) {
         const std::string move = command.mid(6).toStdString();
         batch = batchStack(state.ids, move);
@@ -1423,10 +1893,35 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
     edit("transform.rotate.ccw", tr("Pivoter de 90° à gauche"), "Transformer", "");
     edit("transform.mirror.h", tr("Miroir horizontal"), "Transformer", "");
     edit("transform.mirror.v", tr("Miroir vertical"), "Transformer", "");
+    edit("arrange.align.left", tr("Aligner à gauche"), "Aligner", "");
+    edit("arrange.align.centerh", tr("Centrer horizontalement"), "Aligner", "");
+    edit("arrange.align.right", tr("Aligner à droite"), "Aligner", "");
+    edit("arrange.align.top", tr("Aligner en haut"), "Aligner", "");
+    edit("arrange.align.centerv", tr("Centrer verticalement"), "Aligner", "");
+    edit("arrange.align.bottom", tr("Aligner en bas"), "Aligner", "");
+    edit("arrange.distribute.h", tr("Répartir horizontalement"), "Aligner", "");
+    edit("arrange.distribute.v", tr("Répartir verticalement"), "Aligner", "");
+    edit("arrange.group", tr("Grouper"), "Édition", "Ctrl+G");
+    edit("arrange.ungroup", tr("Dégrouper"), "Édition", "Ctrl+Maj+G");
+    edit("arrange.place", tr("Position et taille…"), "Transformer", "");
     edit("order.front", tr("Premier plan"), "Ordre de couture", "");
     edit("order.forward", tr("Avancer d'un cran"), "Ordre de couture", "");
     edit("order.backward", tr("Reculer d'un cran"), "Ordre de couture", "");
     edit("order.back", tr("Arrière-plan"), "Ordre de couture", "");
+    const bool hasImage = session_.project().hasImage();
+    const auto prep = [&](const char* id, const QString& label) {
+        out.push_back({id, q(label), q(tr("Image")), "", hasImage});
+    };
+    prep("image.prep.bc", tr("Luminosité et contraste…"));
+    prep("image.prep.gray", tr("Image en niveaux de gris"));
+    prep("image.prep.sharpen", tr("Netteté de l'image…"));
+    prep("image.prep.clahe", tr("Contraste local de l'image (CLAHE)…"));
+    prep("image.prep.rotate.r", tr("Pivoter l'image à droite"));
+    prep("image.prep.rotate.l", tr("Pivoter l'image à gauche"));
+    prep("image.prep.rotate.180", tr("Pivoter l'image de 180°"));
+    prep("image.prep.flip.h", tr("Retourner l'image horizontalement"));
+    prep("image.prep.flip.v", tr("Retourner l'image verticalement"));
+    prep("image.prep.crop", tr("Recadrer l'image…"));
     for (const auto& def : actionCatalog()) {
         out.push_back(
             {"action." + def.id, def.label, def.group, "", !def.needsSelection || hasSel});
@@ -1482,8 +1977,11 @@ bool ShellWindow::runCommand(const QString& id) {
             session_.redo();
         } else if (id == QLatin1String("edit.delete") || id == QLatin1String("edit.duplicate") ||
                    id.startsWith(QLatin1String("transform.")) ||
+                   id.startsWith(QLatin1String("arrange.")) ||
                    id.startsWith(QLatin1String("order."))) {
             editSelection(id);
+        } else if (id.startsWith(QLatin1String("image.prep."))) {
+            runImagePrep(id);
         } else if (id.startsWith(QLatin1String("action."))) {
             runAction(id.mid(7));
         } else if (id == QLatin1String("preset.save")) {
@@ -1594,6 +2092,312 @@ void ShellWindow::onMoveStart(QPointF scenePx) {
     }
 }
 
+QString ShellWindow::helpText() const {
+    QString out;
+    std::string group;
+    for (const auto& e : commandEntries()) {
+        if (e.group != group) {
+            group = e.group;
+            out += QStringLiteral("\n== %1 ==\n").arg(fromUtf8(group));
+        }
+        out += QStringLiteral("  %1").arg(fromUtf8(e.label));
+        if (!e.shortcut.empty()) {
+            out += QStringLiteral("    [%1]").arg(fromUtf8(e.shortcut));
+        }
+        out += QLatin1Char('\n');
+    }
+    out += tr("\n== Souris ==\n  Molette : zoom · Clic milieu / outil Main : déplacer la vue\n"
+              "  Clic : sélectionner · Maj / Ctrl : ajouter / basculer · Glisser : cadre de "
+              "sélection\n");
+    return out;
+}
+
+namespace {
+struct SheetJob {
+    ProductionSheet sheet;
+    std::filesystem::path png;
+};
+
+void layoutProductionPdf(const QString& pdfPath, const ProductionSheet& s, const QImage& preview,
+                         const QString& title) {
+    QPdfWriter writer(pdfPath);
+    writer.setPageSize(QPageSize(QPageSize::A4));
+    writer.setResolution(120);
+    writer.setTitle(title);
+    QPainter p(&writer);
+    const int margin = 60;
+    int y = margin;
+    QFont f = p.font();
+    f.setPointSize(16);
+    f.setBold(true);
+    p.setFont(f);
+    p.drawText(margin, y + 24, title);
+    y += 60;
+    f.setPointSize(10);
+    f.setBold(false);
+    p.setFont(f);
+    const auto line = [&](const QString& text) {
+        p.drawText(margin, y, text);
+        y += 22;
+    };
+    line(QObject::tr("Motif : %1 × %2 mm — cadre : %3 × %4 mm%5")
+             .arg(s.designWidthMm, 0, 'f', 1)
+             .arg(s.designHeightMm, 0, 'f', 1)
+             .arg(s.hoopWidthMm, 0, 'f', 0)
+             .arg(s.hoopHeightMm, 0, 'f', 0)
+             .arg(s.fitsHoop ? QString() : QObject::tr("  ⚠ dépasse la zone brodable")));
+    line(QObject::tr("%1 objets · %2 points · %3 sauts · %4 coupes · %5 changements de fil")
+             .arg(s.objects)
+             .arg(s.stitches)
+             .arg(s.jumps)
+             .arg(s.trims)
+             .arg(s.colorChanges));
+    line(QObject::tr("Fil : %1 m · durée estimée : %2 min (800 points/min)")
+             .arg(s.threadMetres, 0, 'f', 1)
+             .arg(s.minutesAt800spm, 0, 'f', 0));
+    y += 10;
+    if (!preview.isNull()) {
+        const int maxW = writer.width() - 2 * margin;
+        const QImage scaled =
+            preview.scaled(maxW, 520, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        p.drawImage(margin, y, scaled);
+        y += scaled.height() + 20;
+    }
+    f.setBold(true);
+    p.setFont(f);
+    line(QObject::tr("Plan de fils (ordre de couture)"));
+    f.setBold(false);
+    p.setFont(f);
+    int n = 1;
+    for (const auto& b : s.blocks) {
+        if (y > writer.height() - margin) {
+            writer.newPage();
+            y = margin;
+        }
+        p.fillRect(margin, y - 14, 18, 14, QColor(b.rgb[0], b.rgb[1], b.rgb[2]));
+        p.drawRect(margin, y - 14, 18, 14);
+        p.drawText(margin + 28, y,
+                   QObject::tr("%1. #%2%3%4 — %5 points, %6 mm — %7")
+                       .arg(n++)
+                       .arg(b.rgb[0], 2, 16, QLatin1Char('0'))
+                       .arg(b.rgb[1], 2, 16, QLatin1Char('0'))
+                       .arg(b.rgb[2], 2, 16, QLatin1Char('0'))
+                       .arg(b.stitches)
+                       .arg(b.lengthMm, 0, 'f', 0)
+                       .arg(QString::fromStdString(b.objects)));
+        y += 22;
+    }
+    p.end();
+}
+} // namespace
+
+void ShellWindow::exportProductionSheet(const std::filesystem::path& pdf) {
+    const auto snapshot = session_.snapshot();
+    const auto png = std::filesystem::temp_directory_path() / "openstitch_v2_sheet_preview.png";
+    setNotice(tr("Fiche de production en cours…"), false);
+    tasks_.submit<SheetJob>(
+        tr("Fiche de production").toStdString(),
+        [snapshot, png](const TaskContext& ctx) -> Result<SheetJob> {
+            auto sheet = buildProductionSheet(*snapshot, ctx);
+            if (!sheet) {
+                return std::unexpected(sheet.error());
+            }
+            SheetJob job{std::move(*sheet), {}};
+            if (job.sheet.stitches > 0) {
+                if (export_preview_png(snapshot, png, 8.0, ctx)) {
+                    job.png = png;
+                }
+            }
+            return job;
+        },
+        [this, pdf](Result<SheetJob>&& r) {
+            if (!r) {
+                setNotice(tr("Fiche impossible : %1").arg(fromUtf8(r.error().message)), true);
+                return;
+            }
+            QImage preview;
+            if (!r->png.empty()) {
+                preview.load(QString::fromStdU16String(r->png.u16string()));
+                std::error_code ec;
+                std::filesystem::remove(r->png, ec);
+            }
+            layoutProductionPdf(QString::fromStdU16String(pdf.u16string()), r->sheet, preview,
+                                tr("Fiche de production — OpenStitch"));
+            setNotice(tr("Fiche écrite : %1").arg(QString::fromStdString(pdf.filename().string())),
+                      false);
+        });
+}
+
+bool ShellWindow::applyPrep(const PrepRequest& request) {
+    const auto result = applyImagePrep(session_, request);
+    if (!result.ok) {
+        setNotice(tr("Prétraitement refusé : %1").arg(fromUtf8(result.message)), true);
+        return false;
+    }
+    setNotice(tr("Étape d'image ajoutée. Relancez « Segmenter l'image… » pour la prendre en "
+                 "compte."),
+              false);
+    return true;
+}
+
+void ShellWindow::runImagePrep(const QString& id) {
+    if (!session_.project().hasImage()) {
+        setNotice(tr("Le projet n'a pas d'image source."), true);
+        return;
+    }
+    PrepRequest r;
+    const QString kind = id.mid(QStringLiteral("image.prep.").size());
+    if (kind == QLatin1String("gray")) {
+        r.kind = PrepKind::Grayscale;
+    } else if (kind == QLatin1String("rotate.r")) {
+        r.kind = PrepKind::RotateRight;
+    } else if (kind == QLatin1String("rotate.l")) {
+        r.kind = PrepKind::RotateLeft;
+    } else if (kind == QLatin1String("rotate.180")) {
+        r.kind = PrepKind::Rotate180;
+    } else if (kind == QLatin1String("flip.h")) {
+        r.kind = PrepKind::FlipHorizontal;
+    } else if (kind == QLatin1String("flip.v")) {
+        r.kind = PrepKind::FlipVertical;
+    } else if (kind == QLatin1String("sharpen") || kind == QLatin1String("clahe")) {
+        const bool sharpen = kind == QLatin1String("sharpen");
+        bool ok = false;
+        const double v = QInputDialog::getDouble(
+            this, sharpen ? tr("Netteté") : tr("Contraste local"),
+            sharpen ? tr("Force (0,05 à 3) :") : tr("Limite (1 à 8) :"), sharpen ? 1.0 : 2.0,
+            sharpen ? 0.05 : 1.0, sharpen ? 3.0 : 8.0, 2, &ok);
+        if (!ok) {
+            return;
+        }
+        r.kind = sharpen ? PrepKind::Sharpen : PrepKind::Clahe;
+        r.a = v;
+    } else if (kind == QLatin1String("bc")) {
+        QDialog dialog(this);
+        dialog.setWindowTitle(tr("Luminosité et contraste"));
+        auto* form = new QFormLayout(&dialog);
+        auto* brightness = new QSpinBox(&dialog);
+        auto* contrast = new QSpinBox(&dialog);
+        for (auto* s : {brightness, contrast}) {
+            s->setRange(-100, 100);
+        }
+        form->addRow(tr("Luminosité"), brightness);
+        form->addRow(tr("Contraste"), contrast);
+        auto* buttons =
+            new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+        form->addRow(buttons);
+        connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+        if (dialog.exec() != QDialog::Accepted) {
+            return;
+        }
+        r.kind = PrepKind::BrightnessContrast;
+        r.a = brightness->value();
+        r.b = contrast->value();
+    } else if (kind == QLatin1String("crop")) {
+        const auto size = workingImageSize(session_.project());
+        QDialog dialog(this);
+        dialog.setWindowTitle(tr("Recadrer l'image (%1 × %2 px)").arg(size.width).arg(size.height));
+        auto* form = new QFormLayout(&dialog);
+        auto* x = new QSpinBox(&dialog);
+        auto* y = new QSpinBox(&dialog);
+        auto* w = new QSpinBox(&dialog);
+        auto* h = new QSpinBox(&dialog);
+        x->setRange(0, size.width);
+        y->setRange(0, size.height);
+        w->setRange(8, size.width);
+        h->setRange(8, size.height);
+        w->setValue(size.width);
+        h->setValue(size.height);
+        form->addRow(tr("Gauche (px)"), x);
+        form->addRow(tr("Haut (px)"), y);
+        form->addRow(tr("Largeur (px)"), w);
+        form->addRow(tr("Hauteur (px)"), h);
+        auto* buttons =
+            new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+        form->addRow(buttons);
+        connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+        if (dialog.exec() != QDialog::Accepted) {
+            return;
+        }
+        r.kind = PrepKind::Crop;
+        r.x = x->value();
+        r.y = y->value();
+        r.w = w->value();
+        r.h = h->value();
+    } else {
+        return;
+    }
+    (void)applyPrep(r);
+}
+
+void ShellWindow::showPlaceDialog() {
+    const auto state = inspect(session_.project(), session_.selection().targets());
+    if (state.ids.empty()) {
+        return;
+    }
+    std::vector<ObjectId> shapes;
+    for (const auto id : state.ids) {
+        if (const auto* emb = session_.project().findEmbroidery(ObjectId{id})) {
+            shapes.push_back(emb->source_vector);
+        }
+    }
+    const auto geometry = commands::selection_geometry(session_.project(), shapes);
+    if (!geometry) {
+        return;
+    }
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Position et taille"));
+    auto* form = new QFormLayout(&dialog);
+    const auto spin = [&](double value, double lo, double hi, const QString& suffix) {
+        auto* s = new QDoubleSpinBox(&dialog);
+        s->setRange(lo, hi);
+        s->setDecimals(2);
+        s->setSuffix(suffix);
+        s->setValue(value);
+        return s;
+    };
+    auto* x = spin(to_millimeters(geometry->center.x).value, -1000, 1000, QStringLiteral(" mm"));
+    auto* y = spin(to_millimeters(geometry->center.y).value, -1000, 1000, QStringLiteral(" mm"));
+    auto* w = spin(to_millimeters(geometry->width).value, 0.1, 2000, QStringLiteral(" mm"));
+    auto* h = spin(to_millimeters(geometry->height).value, 0.1, 2000, QStringLiteral(" mm"));
+    auto* angle = spin(0.0, -360, 360, QStringLiteral(" °"));
+    form->addRow(tr("Centre X"), x);
+    form->addRow(tr("Centre Y (vers le haut)"), y);
+    form->addRow(tr("Largeur"), w);
+    form->addRow(tr("Hauteur"), h);
+    form->addRow(tr("Rotation (anti-horaire)"), angle);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    form->addRow(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    placeSelection(x->value(), y->value(), w->value(), h->value(), angle->value());
+}
+
+bool ShellWindow::placeSelection(double xMm, double yMm, double widthMm, double heightMm,
+                                 double rotateDeg) {
+    const auto state = inspect(session_.project(), session_.selection().targets());
+    PlaceRequest request;
+    request.xMm = xMm;
+    request.yMm = yMm;
+    request.widthMm = widthMm;
+    request.heightMm = heightMm;
+    request.rotateDeg = rotateDeg;
+    const auto batch = batchPlace(state.ids, request);
+    if (batch.empty()) {
+        setNotice(tr("Position et taille : valeurs hors limites."), true);
+        return false;
+    }
+    const auto result = session_.applyBatch(batch, tr("Position et taille").toStdString());
+    if (!result.committed) {
+        setNotice(tr("Position et taille refusées."), true);
+    }
+    return result.committed;
+}
+
 void ShellWindow::applyTransform(const std::string& batch, const QString& label) {
     if (batch.empty()) {
         updateSelectionBoxes(); // geste hors limites ou nul : on rétablit l'affichage
@@ -1631,6 +2435,66 @@ void ShellWindow::onScaleDragged(QPointF pivotPx, double factor) {
 }
 
 void ShellWindow::onCanvasClick(QPointF scenePx, Qt::KeyboardModifiers modifiers) {
+    if (activeTool_ == QStringLiteral("stitch.points") && frame_.px_per_mm > 0.0) {
+        const auto target = pointTarget();
+        if (!target) {
+            setNotice(tr("Retouche de points : sélectionnez un seul objet brodé."), false);
+            return;
+        }
+        if (pointHandles_.empty() || pointObject_ != *target) {
+            updatePointMarkers();
+        }
+        // Poignée sous le clic (rayon de capture de 8 px de vue).
+        const double captureScene = 8.0 / std::max(0.01, canvas_->transform().m11());
+        int hit = -1;
+        double best = captureScene * captureScene;
+        for (std::size_t h = 0; h < pointHandles_.size(); ++h) {
+            const auto& p = pointView_.points[pointHandles_[h]];
+            const double dx = frame_.mmToPxX(p.pos.x) - scenePx.x();
+            const double dy = frame_.mmToPxY(-p.pos.y) - scenePx.y();
+            const double d = dx * dx + dy * dy;
+            if (d <= best) {
+                best = d;
+                hit = static_cast<int>(h);
+            }
+        }
+        if (hit >= 0) {
+            pointSel_ = hit;
+            updatePointMarkers();
+            return;
+        }
+        if (pointSel_ < 0 || pointSel_ >= static_cast<int>(pointHandles_.size())) {
+            setNotice(tr("Cliquez d'abord sur un point à retoucher."), false);
+            return;
+        }
+        const auto& sel = pointView_.points[pointHandles_[static_cast<std::size_t>(pointSel_)]];
+        const PointMm dest =
+            screenToModel(frame_.pxToMmX(scenePx.x()), frame_.pxToMmY(scenePx.y()));
+        const bool insert = modifiers & Qt::ShiftModifier;
+        const auto r = insert ? insertStitchPoint(session_, *target, sel.index, dest)
+                              : moveStitchPoints(session_, *target, {{sel.index, dest}});
+        if (!r.ok) {
+            setNotice(tr("Retouche de points : %1").arg(fromUtf8(r.message)), true);
+        } else {
+            setNotice(insert ? tr("Point inséré.") : tr("Point déplacé."), false);
+        }
+        return;
+    }
+    if (activeTool_ == QStringLiteral("click-to-stitch") && frame_.px_per_mm > 0.0) {
+        const image::Image* img = ensureProcessed();
+        if (img == nullptr) {
+            return;
+        }
+        const auto r = clickToStitch(session_, *img, frame_.pxToMmX(scenePx.x()),
+                                     frame_.pxToMmY(scenePx.y()), clickTol_, clickKind_);
+        if (!r.ok) {
+            setNotice(tr("Clic-pour-broder : %1").arg(fromUtf8(r.message)), true);
+            return;
+        }
+        session_.selection().replace({{TargetKind::EmbroideryObject, r.objectId}});
+        setNotice(tr("Clic-pour-broder : zone brodée."), false);
+        return;
+    }
     if (activeTool_ == QStringLiteral("eyedropper") && frame_.hits != nullptr) {
         // Pipette : prélève le fil de l'objet cousu sous le curseur et l'applique à la sélection
         // courante (une annulation) ; sans sélection, la couleur est seulement annoncée.

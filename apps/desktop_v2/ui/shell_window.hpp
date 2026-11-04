@@ -10,25 +10,35 @@
 #include <QPointF>
 #include <QRectF>
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <vector>
 
 #include "action_catalog.hpp"
+#include "arrange_batch.hpp"
 #include "command_catalog.hpp"
 #include "diagnostics_service.hpp"
 #include "digitize_pipeline.hpp"
 #include "document_services.hpp"
 #include "document_session.hpp"
 #include "edit_batch.hpp"
+#include "image_prep.hpp"
+#include "point_edit.hpp"
 #include "preview_service.hpp"
+#include "production_sheet.hpp"
+#include "satin_column.hpp"
 #include "shape_batch.hpp"
+#include "source_image_tools.hpp"
 #include "task_manager.hpp"
 #include "tool_registry.hpp"
 #include "view_tools.hpp"
+#include "workspace_state.hpp"
 
 class QAction;
 class QActionGroup;
+class QComboBox;
 class QDockWidget;
+class QSpinBox;
 class QMenu;
 class QSlider;
 class QDoubleSpinBox;
@@ -58,6 +68,16 @@ public:
     void openImage(const std::filesystem::path& image, double heightMm);
     void openProject(const std::filesystem::path& osp);
     bool saveProject(const std::filesystem::path& osp);
+    // Dossier d'état utilisateur : liste des récents + sauvegarde automatique (toutes les
+    // 60 s si le document est modifié). Sans appel, rien n'est écrit (tests, mode recette).
+    void setStateDirectory(const std::filesystem::path& dir);
+    // Écrit la sauvegarde automatique maintenant si le document est ouvert et modifié.
+    bool autosaveNow();
+    [[nodiscard]] bool hasRecovery() const { return autosave_ && autosave_->exists(); }
+    // Charge la sauvegarde automatique (document non enregistré) ; faux si absente / illisible.
+    bool recoverAutosave();
+    void discardRecovery();
+    [[nodiscard]] const std::vector<std::string>& recentFiles() const { return recent_; }
     // Calcule la séquence EFFECTIVE du document courant puis écrit le DST, en tâche annulable.
     void exportDst(const std::filesystem::path& dst);
 
@@ -66,6 +86,30 @@ public:
     bool runCommand(const QString& id); // faux si inconnue ou désactivée
     void showCommandPalette();
     void selectAllObjects();
+    bool placeSelection(double xMm, double yMm, double widthMm, double heightMm, double rotateDeg);
+    void showPlaceDialog();
+    // Prétraitement de l'image source (menu Image) : une étape annulable par appel.
+    bool applyPrep(const PrepRequest& request);
+    void runImagePrep(const QString& id);
+    // Fiche de production (PDF A4) : dimensions, comptes, plan de fils et aperçu. Tâche annulable.
+    void exportProductionSheet(const std::filesystem::path& pdf);
+    // Texte d'aide (raccourcis et commandes) construit depuis le registre : une seule source.
+    [[nodiscard]] QString
+    helpText() const; // position, taille et rotation numériques de la sélection
+
+    // --- Image source : clic-pour-broder et zones de détail -----------------------------------
+    void setSourceVisible(bool visible); // calque semi-transparent sous les fils
+    [[nodiscard]] bool sourceVisible() const { return sourceShown_; }
+    void setClickToStitch(int tolerance, ClickKind kind);
+    void setBrushRadiusMm(double mm);
+    [[nodiscard]] int clickTolerance() const { return clickTol_; }
+
+    // --- Retouche de points (outil « stitch.points », un seul objet sélectionné) --------------
+    [[nodiscard]] int selectedPoint() const {
+        return pointSel_;
+    } // indice dans les poignées, -1 = aucun
+    bool deleteSelectedPoint();
+    bool discardPointEdits();
 
     // Préréglages de points : enregistrés dans le projet (.osp), appliqués à la sélection.
     bool savePresetNamed(const QString& name); // réglages de l'objet principal de la sélection
@@ -133,6 +177,11 @@ private:
     void updateSelectionBoxes();
     void onCanvasRect(QRectF scenePx, Qt::KeyboardModifiers modifiers);
     void applyToolToCanvas();
+    void updateSourceOverlay();
+    void updatePointMarkers();
+    [[nodiscard]] std::optional<std::uint64_t> pointTarget() const;
+    const image::Image* ensureProcessed();
+    void onStroke(QVector<QPointF> scenePx, Qt::KeyboardModifiers modifiers);
     void rebuildPresetMenu();
     void onMeasured(QPointF a, QPointF b);
     void onKnife(QPointF a, QPointF b);
@@ -179,6 +228,20 @@ private:
     QTimer* previewDebounce_{nullptr};
     InspectorPanel* inspector_{nullptr};
     QToolBar* simBar_{nullptr};
+    QToolBar* imageBar_{nullptr};
+    PointView pointView_;
+    std::vector<std::size_t> pointHandles_; // poignées -> indice dans pointView_.points
+    std::uint64_t pointObject_{0};
+    int pointSel_{-1};
+    QSpinBox* tolSpin_{nullptr};
+    QComboBox* kindCombo_{nullptr};
+    image::Image processed_;
+    std::uint64_t processedRevision_{0};
+    bool processedValid_{false};
+    bool sourceShown_{false};
+    int clickTol_{20};
+    ClickKind clickKind_{ClickKind::Auto};
+    double brushMm_{3.0};
     QSlider* simSlider_{nullptr};
     QLabel* simLabel_{nullptr};
     QTimer* simTimer_{nullptr};
@@ -200,6 +263,15 @@ private:
     bool previewShown_{false};
     bool documentOpen_{false}; // un projet est ouvert (même vide) : l'aperçu montre son cadre
     std::filesystem::path currentPath_;
+    std::filesystem::path stateDir_;
+    std::vector<std::string> recent_;
+    std::unique_ptr<AutosaveStore> autosave_;
+    QTimer* autosaveTimer_{nullptr};
+    QMenu* recentMenu_{nullptr};
+    QMenu* historyMenu_{nullptr};
+    void noteRecent(const std::filesystem::path& osp);
+    void rebuildRecentMenu();
+    void rebuildHistoryMenu();
 };
 
 } // namespace openstitch::desktop_v2
