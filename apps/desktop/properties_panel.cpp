@@ -1183,6 +1183,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                              : object.is_spiral_fill()     ? tr("Remplissage en spirale")
                              : object.is_crosshatch_fill() ? tr("Remplissage croisé")
                              : object.is_cross_stitch()    ? tr("Point de croix")
+                             : object.is_applique()        ? tr("Appliqué")
                              : object.is_auto_satin()
                                  ? tr("Satin automatique (traversées orientées)")
                              : object.is_satin() ? tr("Colonne satin à rails (manuelle)")
@@ -2026,6 +2027,50 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 bindEnumField<T>(this, edit, side, tr("Côté du blanket"), &T::side, members);
                 bindMm(width, tr("Largeur du blanket"), &T::width);
                 bindMm(spacing, tr("Espacement du blanket"), &T::spacing);
+            } else if constexpr (std::is_same_v<T, document::AppliqueParams>) {
+                // HP-SPEC-001 : placement -> arrêt -> maintien -> arrêt -> satin de couverture.
+                auto* tack = new QComboBox(body_);
+                tack->setObjectName(QStringLiteral("combo_appliqueTack"));
+                tack->addItems({tr("Point droit"), tr("Zigzag"), tr("Feston")});
+                tack->setCurrentIndex(static_cast<int>(p.tack));
+                auto* placement = mmSpin(to_millimeters(p.placement_length).value, 7.0, 1.0,
+                                         tr("Longueur des points de la ligne de placement."));
+                placement->setObjectName(QStringLiteral("spin_appliquePlacement"));
+                auto* tackWidth = mmSpin(to_millimeters(p.tack_width).value, 20.0, 0.2,
+                                         tr("Largeur du zigzag ou du feston de maintien."));
+                tackWidth->setObjectName(QStringLiteral("spin_appliqueTackWidth"));
+                auto* tackSpacing = mmSpin(to_millimeters(p.tack_spacing).value, 20.0, 0.3,
+                                           tr("Écart entre deux stations du maintien."));
+                tackSpacing->setObjectName(QStringLiteral("spin_appliqueTackSpacing"));
+                auto* cover = mmSpin(to_millimeters(p.cover_width).value, 20.0, 0.5,
+                                     tr("Largeur du satin de couverture. 0,5 – 20 mm."));
+                cover->setObjectName(QStringLiteral("spin_appliqueCoverWidth"));
+                auto* density = mmSpin(to_millimeters(p.cover_density).value, 1.5, 0.2,
+                                       tr("Espacement des barreaux du satin. 0,2 – 1,5 mm."));
+                density->setObjectName(QStringLiteral("spin_appliqueCoverDensity"));
+                auto* cut = mmSpin(to_millimeters(p.cut_offset).value, 5.0, -5.0,
+                                   tr("Décalage du contour de découpe du tissu (positif : vers "
+                                      "l'extérieur)."));
+                cut->setObjectName(QStringLiteral("spin_appliqueCutOffset"));
+                auto* stops = new QCheckBox(tr("Arrêts machine (poser le tissu, couper)"), body_);
+                stops->setObjectName(QStringLiteral("check_appliqueStops"));
+                stops->setChecked(p.stops);
+                form->addRow(tr("Maintien :"), tack);
+                form->addRow(tr("Placement :"), placement);
+                form->addRow(tr("Largeur du maintien :"), tackWidth);
+                form->addRow(tr("Espacement du maintien :"), tackSpacing);
+                form->addRow(tr("Largeur de couverture :"), cover);
+                form->addRow(tr("Densité de couverture :"), density);
+                form->addRow(tr("Décalage de découpe :"), cut);
+                form->addRow(stops);
+                bindEnumField<T>(this, edit, tack, tr("Maintien de l'appliqué"), &T::tack, members);
+                bindMm(placement, tr("Placement de l'appliqué"), &T::placement_length);
+                bindMm(tackWidth, tr("Largeur du maintien"), &T::tack_width);
+                bindMm(tackSpacing, tr("Espacement du maintien"), &T::tack_spacing);
+                bindMm(cover, tr("Largeur de couverture"), &T::cover_width);
+                bindMm(density, tr("Densité de couverture"), &T::cover_density);
+                bindMm(cut, tr("Décalage de découpe"), &T::cut_offset);
+                bindBool(stops, tr("Arrêts de l'appliqué"), &T::stops);
             } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
                 // Guides : édités par signaux dédiés (liste ci-dessous, rafraîchie par
                 // setAutoSatinState). Les réglages scalaires passent par paramsEdited ;

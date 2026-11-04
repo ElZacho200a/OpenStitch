@@ -1460,6 +1460,13 @@ private:
     void saveStitchPresetFromSelection(); // demande le nom puis enregistre
     QMenu* stitchPresetMenu_{nullptr};
     QAction* stitchPresetSaveAct_{nullptr};
+    // Objet appliqué (HP-SPEC-001, main_window_applique.cpp).
+    void buildAppliqueMenu(QMenu* embMenu);
+    bool convertSelectionToApplique();
+    void exportAppliqueCut();
+    bool exportAppliqueCutTo(const QString& path);
+    QAction* appliqueConvertAct_{nullptr};
+    QAction* appliqueCutAct_{nullptr};
     // Zones réservées au câblage des entrées livrées en cœur (une zone par lot, ne pas mélanger).
     // [cablage-A:debut]
     // Exporter l'image (HP-FMT-011, main_window_export_image.cpp).

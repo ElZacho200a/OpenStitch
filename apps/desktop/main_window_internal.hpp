@@ -55,7 +55,8 @@ inline int stitchFilterFamily(int typeIndex) {
     case 11: // point de croix (HP-STI-012)
         return 1;
     case 4:
-    case 5: // blanket, motif le long du contour (HP-STI-002)
+    case 5:  // blanket, motif le long du contour (HP-STI-002)
+    case 12: // appliqué (HP-SPEC-001)
         return 0;
     default:
         return typeIndex;
