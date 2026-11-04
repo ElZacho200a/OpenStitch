@@ -681,6 +681,51 @@ private slots:
         QCOMPARE(w.session().selection().targets().size(), size_t(2));
     }
 
+    void theInspectorShowsEssentialStitchSettingsOfTheCommonType() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        const auto a =
+            *createdObjectId(w.session().applyBatch(batchAddRect({-20, 0}, 10, 10), "R").report);
+        const auto b =
+            *createdObjectId(w.session().applyBatch(batchAddRect({20, 0}, 10, 10), "R").report);
+        w.waitForIdle();
+        auto* panel = w.inspector();
+        w.session().selection().clear();
+        QVERIFY(panel->paramKeys().isEmpty()); // rien de sélectionné : pas de réglages
+
+        w.session().selection().replace({{TargetKind::EmbroideryObject, a}});
+        QVERIFY(panel->paramKeys().contains("row_spacing_mm"));
+        QVERIFY(panel->paramKeys().contains("angle_deg"));
+        const auto depth = w.session().undoNames().size();
+        QVERIFY(panel->applyParam("row_spacing_mm", 0.6));
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QVERIFY(qAbs(*panel->paramValue("row_spacing_mm") - 0.6) <
+                0.01); // l'éditeur suit le document
+
+        // Deux objets, valeurs différentes : l'éditeur affiche « mixte » ; un réglage applique aux
+        // deux.
+        w.session().selection().replace(
+            {{TargetKind::EmbroideryObject, a}, {TargetKind::EmbroideryObject, b}});
+        QVERIFY(panel->paramMixed("row_spacing_mm"));
+        QVERIFY(panel->applyParam("row_spacing_mm", 0.45));
+        QVERIFY(!panel->paramMixed("row_spacing_mm"));
+        QVERIFY(qAbs(*panel->paramValue("row_spacing_mm") - 0.45) < 0.01);
+
+        // Valeur hors plage ou réglage d'un autre type : refusé, rien d'empilé.
+        const auto before = w.session().undoNames().size();
+        QVERIFY(!panel->applyParam("row_spacing_mm", 9.0));
+        QVERIFY(!panel->applyParam("repeats", 2));
+        QCOMPARE(w.session().undoNames().size(), before);
+
+        // Types différents : plus de réglages communs.
+        QVERIFY(panel->applyStitchType("running")); // les deux passent en contour
+        QVERIFY(panel->paramKeys().contains("repeats"));
+        w.session().applyBatch(batchSetStitchType({a}, "tatami"), "Type");
+        QVERIFY(panel->paramKeys().isEmpty()); // sélection de types mixtes
+    }
+
     void inspectorEditsAllSelectedObjectsInOneUndoStep() {
         ShellWindow w;
         w.openImage(tentabrode(), 80.0);

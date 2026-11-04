@@ -15,6 +15,7 @@
 #include <QMenuBar>
 #include <QPixmap>
 #include <QProgressBar>
+#include <QScrollArea>
 #include <QStatusBar>
 #include <QTimer>
 #include <QToolBar>
@@ -309,7 +310,18 @@ void ShellWindow::buildInspector() {
     inspector_ = new InspectorPanel(session_, body);
     connect(inspector_, &InspectorPanel::refused, this,
             [this](const QString& message) { setNotice(message, true); });
-    layout->addWidget(inspector_);
+    // L'inspecteur peut changer de hauteur selon la sélection (réglages par type de point) : dans
+    // une zone défilante, il ne modifie jamais la taille minimale de la fenêtre, donc ne
+    // redimensionne pas le canevas en plein geste (un clic qui fait « sauter » la vue serait
+    // inutilisable).
+    auto* inspectorScroll = new QScrollArea(body);
+    inspectorScroll->setObjectName(QStringLiteral("inspectorScroll"));
+    inspectorScroll->setWidgetResizable(true);
+    inspectorScroll->setFrameShape(QFrame::NoFrame);
+    inspectorScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    inspectorScroll->setMinimumHeight(160);
+    inspectorScroll->setWidget(inspector_);
+    layout->addWidget(inspectorScroll, 1);
     summary_ = new QLabel(body);
     summary_->setObjectName(QStringLiteral("summary"));
     summary_->setWordWrap(true);

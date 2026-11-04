@@ -200,3 +200,15 @@ surimpression, mesure de fidélité à l'image source, compensation de tirage, d
 
 Non fait : options machine (point de départ, coupes, arrêts, horodatage), contrôle des contraintes machine à l'export,
 fiche de production, impression.
+
+
+## 2026-11-04 — Session 1 (suite 8) : réglages de couture dans l'inspecteur (branche `feat/desktop-v2-params`)
+
+| Élément | Preuve |
+|---|---|
+| Table `ParamSpec` (type de point → réglages essentiels : libellé, nature, plage, pas, unité) ; lecture dans l'unité d'affichage (µm → mm, radians → degrés), écriture par `set_params` (mise à jour partielle) ; valeur hors plage, clé étrangère au type, non finie : refusée **avant** envoi | `core/param_spec.*` ; 4 cas Catch2 (chaque clé de la table est lisible sur son type et sa valeur par défaut est dans la plage ; une annulation pour N objets ; entiers arrondis) |
+| Éditeur généré depuis la table dans l'inspecteur : numérique, entier, case ; valeur **mixte** affichée « — » quand les objets diffèrent ; champs reconstruits seulement si le type commun change | `ui/inspector_panel.*` ; QTest `theInspectorShowsEssentialStitchSettingsOfTheCommonType` |
+| **Défaut d'ergonomie trouvé par les tests** : l'inspecteur plus haut agrandissait la fenêtre et redimensionnait le canevas **en plein clic** (la vue sautait, le clic tombait à côté). L'inspecteur est maintenant dans une zone défilante : il ne modifie plus la taille minimale de la fenêtre | trois tests de canevas échouaient, verts après correction |
+
+Non fait : les ≈ 150 autres champs du moteur (la table est extensible sans toucher l'interface), réglages par objet vectoriel,
+préréglages de points.
