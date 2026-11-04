@@ -2,12 +2,11 @@
 #include <QAction>
 #include <QApplication>
 #include <QColor>
-#include <QFileInfo>
-#include <QLabel>
-#include <QTemporaryDir>
 #include <QFile>
+#include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
+#include <QTemporaryDir>
 #include <QTest>
 #include <QToolBar>
 #include <QTreeWidget>
@@ -61,7 +60,6 @@ private slots:
         w.setWorkspace(Workspace::Design);
         QCOMPARE(rail->actions().size(), design);
     }
-
 
     void toolRailUsesDescriptiveNamesAndKeepsAllToolsInBothModes() {
         ShellWindow w;
