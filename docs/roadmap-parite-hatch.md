@@ -3647,7 +3647,8 @@ de référence. Restent : progression et annulation, régénération de toute la
 ## 23. Robustesse et qualité logicielle (QA)
 - Livré : `scheduleParamsRefresh()` (débounce 150 ms), régénération hors fil UI sur un instantané du projet (`std::async` + timer de scrutation ; `BusyIndicator::run` écarté car modal), résultat périmé rejeté par numéro de série (incrémenté à chaque édition et à chaque `refreshImage`), `flushPendingRefresh()` avant export, analyse, statistiques, simulation, image et fiche de production, éditions de groupe incluses. Tests : cinq éditions en moins de 150 ms = une régénération, séquence différée identique à `effective_sequence`, événement UI traité pendant le calcul, résultat périmé rejeté, undo restaure paramètres et aperçu. Reste : mesure de latence sur un très gros remplissage ; échec intermittent de `test_main_window` sous charge (watchdog 300 s) observé aussi sans ce lot.
 
-### HP-QA-001 — Découper `main_window.cpp` [P1] — ☐ À faire
+### HP-QA-001 — Découper `main_window.cpp` [P1] — ☑ Fait (2026-11-04)
+- Livré : `main_window.cpp` passe de 11 653 à 1 674 lignes ; 15 fichiers `main_window_<responsabilité>.cpp` (fichiers, barres d'outils, panneaux, rendu, simulation, création, outils de dessin, modes d'édition, menu contextuel, aide, assistant, débogage, filtre/ordre, état de sélection) + `main_window_internal.hpp` ; déplacement pur (222 définitions `MainWindow::` conservées), tests desktop et gardes verts. Reste : `main_window_files.cpp` (1 592 lignes) à scinder, blocs d'includes dupliqués à élaguer.
 - État OpenStitch : `apps/desktop/main_window.cpp` ≈ 324 Ko (2026-10-06), un seul fichier
   pour menus, outils, modes d'édition, rendu, simulation. Chaque nouvelle
   fonctionnalité UI de cette liste l'alourdit et ralentit tout le monde.
@@ -4566,6 +4567,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-04 | Claude (lot P1-QA-001) | HP-QA-001 ☑ : découpage de `main_window.cpp` en 15 fichiers par responsabilité, sans changement de comportement. |
 | 2026-11-03 | Claude (lot P1-MOTEUR/FMT) | HP-STI-033 ☑ (tirage radial/spirale/echo/motif/crosshatch), HP-FMT-027 ☑ (VP3 Trim déplacé). HP-STI-018.a (PR de plan requise) et HP-ENG-009 (dépend de 018) non traités. |
 | 2026-11-03 | Claude (lot P1-PERF) | HP-PERF-020/024/025/028/032 ☑ : progression et annulation MCP, index de pixels par région, lignes cohérentes parallèles, réduction de couleurs sous-cubique, autosave hors fil UI. HP-PERF-004 et HP-VIEW-009 restent à faire. |
 | 2026-11-03 | Claude (lot P1-AUTO) | HP-AUTO-012/014/020/021 ☑ (EXIF, refusion après « Limiter à N fils », contour running, action « Convertir les vecteurs en broderie »), HP-AUTO-007/010 ◐ (cœur, exposition à câbler). HP-AUTO-011 non traitée (ONNX/packaging). |
