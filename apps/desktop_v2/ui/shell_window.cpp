@@ -11,6 +11,7 @@
 #include <QImage>
 #include <QKeySequence>
 #include <QLabel>
+#include <QMenu>
 #include <QMenuBar>
 #include <QPixmap>
 #include <QProgressBar>
@@ -120,6 +121,7 @@ ShellWindow::ShellWindow(QWidget* parent)
     connect(canvas_, &PreviewCanvas::rectPx, this, &ShellWindow::onCanvasRect);
     connect(canvas_, &PreviewCanvas::boxDrawnPx, this, &ShellWindow::onBoxDrawn);
     connect(canvas_, &PreviewCanvas::moveStartRequested, this, &ShellWindow::onMoveStart);
+    connect(canvas_, &PreviewCanvas::nudgeRequested, this, &ShellWindow::nudgeSelection);
     connect(canvas_, &PreviewCanvas::moveDraggedPx, this, &ShellWindow::onMoveDragged);
     connect(canvas_, &PreviewCanvas::scaleDraggedPx, this, &ShellWindow::onScaleDragged);
     canvas_->setMoveHitTest([this](const QPointF& p) { return pickAtPx(p).has_value(); });
@@ -207,8 +209,30 @@ void ShellWindow::buildMenus() {
     all->setShortcut(QKeySequence::SelectAll);
     connect(all, &QAction::triggered, this, &ShellWindow::selectAllObjects);
     auto* none = edit->addAction(tr("&Désélectionner"));
-    none->setShortcut(QKeySequence(QStringLiteral("Ctrl+D")));
+    none->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+A")));
     connect(none, &QAction::triggered, this, [this] { session_.selection().clear(); });
+    edit->addSeparator();
+    const auto addEdit = [this](QMenu* menu, const QString& text, const char* id,
+                                const QKeySequence& key = QKeySequence()) {
+        auto* a = menu->addAction(text);
+        if (!key.isEmpty()) {
+            a->setShortcut(key);
+        }
+        connect(a, &QAction::triggered, this,
+                [this, id] { editSelection(QString::fromLatin1(id)); });
+    };
+    addEdit(edit, tr("&Supprimer"), "edit.delete", QKeySequence::Delete);
+    addEdit(edit, tr("D&upliquer"), "edit.duplicate", QKeySequence(QStringLiteral("Ctrl+D")));
+    auto* transform = edit->addMenu(tr("&Transformer"));
+    addEdit(transform, tr("Pivoter de 90° à &droite"), "transform.rotate.cw");
+    addEdit(transform, tr("Pivoter de 90° à &gauche"), "transform.rotate.ccw");
+    addEdit(transform, tr("Miroir &horizontal"), "transform.mirror.h");
+    addEdit(transform, tr("Miroir &vertical"), "transform.mirror.v");
+    auto* order = edit->addMenu(tr("&Ordre de couture"));
+    addEdit(order, tr("Premier plan"), "order.front");
+    addEdit(order, tr("Avancer"), "order.forward");
+    addEdit(order, tr("Reculer"), "order.backward");
+    addEdit(order, tr("Arrière-plan"), "order.back");
     edit->addSeparator();
     auto* palette = edit->addAction(tr("&Palette de commandes…"));
     palette->setShortcut(QKeySequence(QStringLiteral("Ctrl+K")));
@@ -769,6 +793,87 @@ void ShellWindow::onPolygonDrawn(QVector<QPointF> scenePx) {
     createShape(batchAddPolygon(points), tr("Polygone"));
 }
 
+PointMm ShellWindow::selectionCentreModel() const {
+    // Centre de l'emprise commune des objets sélectionnés (mm modèle, Y vers le haut).
+    bool any = false;
+    BoxMm box;
+    if (frame_.hits != nullptr) {
+        for (const auto& t : session_.selection().targets()) {
+            if (t.kind != TargetKind::EmbroideryObject) {
+                continue;
+            }
+            if (const auto b = frame_.hits->boundsOf(t.id)) {
+                box = !any ? *b
+                           : BoxMm{std::min(box.x0, b->x0), std::min(box.y0, b->y0),
+                                   std::max(box.x1, b->x1), std::max(box.y1, b->y1)};
+                any = true;
+            }
+        }
+    }
+    return any ? screenToModel((box.x0 + box.x1) / 2.0, (box.y0 + box.y1) / 2.0) : PointMm{0, 0};
+}
+
+void ShellWindow::editSelection(const QString& command) {
+    const auto state = inspect(session_.project(), session_.selection().targets());
+    if (state.ids.empty()) {
+        return;
+    }
+    const PointMm centre = selectionCentreModel();
+    std::string batch;
+    QString label;
+    if (command == QLatin1String("edit.delete")) {
+        batch = batchRemove(state.ids);
+        label = tr("Supprimer");
+    } else if (command == QLatin1String("edit.duplicate")) {
+        batch = batchDuplicate(state.ids, {5.0, -5.0});
+        label = tr("Dupliquer");
+    } else if (command == QLatin1String("transform.rotate.cw")) {
+        batch = batchRotate(state.ids, -90.0, centre); // horaire : angle négatif, Y vers le haut
+        label = tr("Pivoter à droite");
+    } else if (command == QLatin1String("transform.rotate.ccw")) {
+        batch = batchRotate(state.ids, 90.0, centre);
+        label = tr("Pivoter à gauche");
+    } else if (command == QLatin1String("transform.mirror.h")) {
+        batch = batchMirror(state.ids, MirrorAxis::Horizontal, centre);
+        label = tr("Miroir horizontal");
+    } else if (command == QLatin1String("transform.mirror.v")) {
+        batch = batchMirror(state.ids, MirrorAxis::Vertical, centre);
+        label = tr("Miroir vertical");
+    } else if (command.startsWith(QLatin1String("order."))) {
+        const std::string move = command.mid(6).toStdString();
+        batch = batchStack(state.ids, move);
+        label = move == "front"     ? tr("Premier plan")
+                : move == "back"    ? tr("Arrière-plan")
+                : move == "forward" ? tr("Avancer")
+                                    : tr("Reculer");
+    }
+    if (batch.empty()) {
+        return;
+    }
+    const auto result = session_.applyBatch(batch, label.toStdString());
+    if (!result.committed) {
+        const auto& outcomes = result.report.outcomes;
+        setNotice(tr("%1 refusé : %2")
+                      .arg(label, outcomes.empty() ? tr("opération invalide")
+                                                   : fromUtf8(outcomes.back().message)),
+                  true);
+        return;
+    }
+    if (command == QLatin1String("edit.duplicate")) {
+        std::vector<Target> copies; // les copies deviennent la sélection
+        for (const auto id : createdObjectIds(result.report)) {
+            copies.push_back({TargetKind::EmbroideryObject, id});
+        }
+        session_.selection().replace(std::move(copies));
+    }
+}
+
+void ShellWindow::nudgeSelection(int stepX, int stepUp, bool big) {
+    const auto state = inspect(session_.project(), session_.selection().targets());
+    const double mm = big ? 10.0 : 1.0;
+    applyTransform(batchTranslate(state.ids, stepX * mm, stepUp * mm), tr("Déplacer"));
+}
+
 void ShellWindow::selectAllObjects() {
     std::vector<Target> all;
     for (const auto& o : session_.project().embroidery_objects) {
@@ -812,10 +917,25 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
     out.push_back({"edit.redo", q(tr("Rétablir")), q(tr("Édition")), "Ctrl+Y", session_.canRedo()});
     out.push_back(
         {"selection.all", q(tr("Tout sélectionner")), q(tr("Sélection")), "Ctrl+A", hasObjects});
-    out.push_back({"selection.clear", q(tr("Désélectionner")), q(tr("Sélection")), "Ctrl+D",
+    out.push_back({"selection.clear", q(tr("Désélectionner")), q(tr("Sélection")), "Ctrl+Maj+A",
                    !session_.selection().empty()});
     out.push_back(
         {"view.fit", q(tr("Ajuster à la fenêtre")), q(tr("Affichage")), "F", canvas_->hasImage()});
+    const bool hasSel = !inspect(session_.project(), session_.selection().targets()).ids.empty();
+    const auto edit = [&](const char* id, const QString& label, const char* group,
+                          const char* key) {
+        out.push_back({id, q(label), q(tr(group)), key, hasSel});
+    };
+    edit("edit.delete", tr("Supprimer la sélection"), "Édition", "Suppr");
+    edit("edit.duplicate", tr("Dupliquer la sélection"), "Édition", "Ctrl+D");
+    edit("transform.rotate.cw", tr("Pivoter de 90° à droite"), "Transformer", "");
+    edit("transform.rotate.ccw", tr("Pivoter de 90° à gauche"), "Transformer", "");
+    edit("transform.mirror.h", tr("Miroir horizontal"), "Transformer", "");
+    edit("transform.mirror.v", tr("Miroir vertical"), "Transformer", "");
+    edit("order.front", tr("Premier plan"), "Ordre de couture", "");
+    edit("order.forward", tr("Avancer d'un cran"), "Ordre de couture", "");
+    edit("order.backward", tr("Reculer d'un cran"), "Ordre de couture", "");
+    edit("order.back", tr("Arrière-plan"), "Ordre de couture", "");
     int n = 1;
     for (const auto w : kWorkspaces) {
         out.push_back({"workspace." + std::string(workspaceId(w)),
@@ -852,6 +972,10 @@ bool ShellWindow::runCommand(const QString& id) {
             session_.undo();
         } else if (id == QLatin1String("edit.redo")) {
             session_.redo();
+        } else if (id == QLatin1String("edit.delete") || id == QLatin1String("edit.duplicate") ||
+                   id.startsWith(QLatin1String("transform.")) ||
+                   id.startsWith(QLatin1String("order."))) {
+            editSelection(id);
         } else if (id == QLatin1String("selection.all")) {
             selectAllObjects();
         } else if (id == QLatin1String("selection.clear")) {

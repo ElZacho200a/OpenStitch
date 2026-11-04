@@ -155,3 +155,20 @@ défaut de portabilité Linux (liste d'initialisation de `uint64_t` mixte avec `
 ### Non fait
 
 Rotation, miroir, alignement, flèches clavier, Bézier, main levée, nœuds, taille du cadre, design system, i18n EN.
+
+
+## 2026-11-04 — Session 1 (suite 5) : opérations d'édition (branche `feat/desktop-v2-edit-ops`)
+
+### Fait, avec preuve
+
+| Élément | Preuve |
+|---|---|
+| Supprimer (Suppr), dupliquer (Ctrl+D, les copies deviennent la sélection), pivoter ±90°, miroir horizontal / vertical (pivot = centre de l'emprise de la sélection), ordre de couture (4 commandes), flèches (1 mm ; Maj = 10 mm) : tout passe par des lots `project_ops` (`remove_object`, `duplicate_object`, `rotate`, `mirror`, `stack_order`, `translate`), une annulation chacun | `core/edit_batch.*` ; 8 cas Catch2 (rotation 90° échange largeur/hauteur, centre inchangé ; miroir ; copies décalées et identifiants rapportés ; ordre) ; QTest `editingCommandsActOnTheSelectionOnly`, `rotateAndMirrorUseTheSelectionCentre`, `arrowKeysNudgeTheSelectionByOneOrTenMillimetres` |
+| Menu Édition : Supprimer, Dupliquer, Transformer, Ordre de couture ; palette : 10 commandes de plus, désactivées sans sélection | `commandEntries` |
+| Raccourci « Désélectionner » déplacé de Ctrl+D à **Ctrl+Maj+A** (Ctrl+D = dupliquer, convention) | menu, palette |
+| Totaux locaux (Windows, Debug) | Catch2 : 64 cas ; QTest : 34 lignes ; 0 avertissement |
+
+### Non fait
+
+Angle de rotation libre et poignée de rotation, alignement / répartition, groupes, Bézier, main levée, nœuds, taille du
+cadre, design system, i18n EN.

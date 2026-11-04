@@ -31,8 +31,8 @@ liste qui bougera. C'est une limite assumée de cette première livraison.
 | 13 | Opérations géométriques (fusion, découpe, simplifier, lisser, trous) | `main_window_objects`, `_regions`, menu Forme | ops `merge`, `split`, `simplify_shapes`, `smooth_shapes`, `remove_holes`… | C | ⬜ | **moteur ✅ (lot)** ; interface ⬜ |
 | 14 | Calques | `calque_panel` | `calque_commands` | C | ⬜ | |
 | 15 | Sélection (clic, rectangle, nommée, retrouver) | `main_window_selection_*`, `selection_model`, `selection_queries` | — | T | 🟡 | **modèle unique ✅** (`SelectionModel`) + liste ✅ + **clic au canevas ✅** (Ctrl = bascule, Maj = ajoute, vide = désélectionne, `HitIndex` sur les brins cousus) ; **cadre élastique ✅** (sélection « fenêtre » : objets entiers ; Ctrl/Maj ajoutent), **Tout sélectionner / Désélectionner ✅** ; nommées ⬜, « retrouver » ⬜ |
-| 16 | Transformations (déplacer, tourner, miroir, aligner, répartir) | `main_window_objects`, `_rotation`, `_arrange`, `_editing` | `transform_ops`, `arrange_ops`, ops `translate/rotate/scale/mirror` | C/N | 🟡 | **déplacer au glisser et mettre à l'échelle (poignées de coin, pivot = coin opposé) ✅**, sélection multiple, une annulation ; rotation, miroir, aligner, répartir, flèches clavier ⬜ |
-| 17 | Groupes, ordre d'empilement | `document_panel` | `group_commands`, ops `group/ungroup/stack_order` | T | ⬜ | |
+| 16 | Transformations (déplacer, tourner, miroir, aligner, répartir) | `main_window_objects`, `_rotation`, `_arrange`, `_editing` | `transform_ops`, `arrange_ops`, ops `translate/rotate/scale/mirror` | C/N | 🟡 | **déplacer au glisser, flèches (1 mm, Maj = 10 mm), mettre à l'échelle (poignées de coin), pivoter ±90°, miroir H/V, dupliquer, supprimer ✅**, sélection multiple, une annulation ; angle libre, aligner, répartir ⬜ |
+| 17 | Groupes, ordre d'empilement | `document_panel` | `group_commands`, ops `group/ungroup/stack_order` | T | 🟡 | **ordre de couture (premier plan / avancer / reculer / arrière-plan) ✅** ; groupes ⬜ |
 | 18 | Type de point et paramètres (inspecteur) | `properties_panel` (2 951 l.), `stitch_type_catalog` | `convert_ops`, ops `set_stitch_type`, `set_params` | N | 🟡 | **inspecteur contextuel ✅ pour 4 réglages** (type parmi 6, couleur, visible, verrouillé ; valeurs communes/mixtes, un lot = une annulation) ; satin, paramètres par type, densités ⬜ |
 | 19 | Satin : colonnes, rails, guides | `main_window_draw_tools`, `satin_guide_item.hpp` | `SatinParams`, op `set_geometry` | N | ⬜ | |
 | 20 | Auto-satin et variantes | `main_window_satin_auto`, `auto_satin_strategy_ui.hpp` | `auto_satin`, op `auto_satin` | N | ⬜ | |
@@ -61,7 +61,7 @@ liste qui bougera. C'est une limite assumée de cette première livraison.
 | 43 | Vues d'affichage (passes, plans, densité, risques) | `main_window_view_display`, `view_display_state.hpp` | `stitch_render/view_display` | T | ⬜ | |
 | 44 | Espaces de travail / disposition des panneaux | `main_window_ux`, `ui_memory.hpp` | — | T | 🟡 | 4 espaces filtrant le rail d'outils ✅ ; panneaux par espace, mémorisation ⬜ |
 
-**Décompte au 2026-11-04** : 44 familles — ✅ 2 · 🟡 15 · ⬜ 27. Aucune exception (« non migré volontairement ») n'est
+**Décompte au 2026-11-04** : 44 familles — ✅ 2 · 🟡 16 · ⬜ 26. Aucune exception (« non migré volontairement ») n'est
 prononcée à ce stade ; la seule candidate argumentée est la segmentation IA (ligne 9), décalée en dernier mais pas supprimée.
 
 ## Parité des outils de canevas (vérifiée par test)

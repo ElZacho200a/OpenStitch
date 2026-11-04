@@ -16,6 +16,7 @@
 #include "command_catalog.hpp"
 #include "digitize_pipeline.hpp"
 #include "document_session.hpp"
+#include "edit_batch.hpp"
 #include "preview_service.hpp"
 #include "shape_batch.hpp"
 #include "task_manager.hpp"
@@ -95,6 +96,9 @@ private:
     void updateSelectionBoxes();
     void onCanvasRect(QRectF scenePx, Qt::KeyboardModifiers modifiers);
     void applyToolToCanvas();
+    [[nodiscard]] PointMm selectionCentreModel() const;
+    void editSelection(const QString& command); // delete / duplicate / rotate / mirror / ordre
+    void nudgeSelection(int stepX, int stepUp, bool big);
     [[nodiscard]] std::optional<std::uint64_t> pickAtPx(QPointF scenePx) const;
     void onMoveStart(QPointF scenePx);
     void onMoveDragged(QPointF deltaPx);
