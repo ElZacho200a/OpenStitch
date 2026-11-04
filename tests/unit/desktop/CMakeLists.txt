@@ -73,6 +73,7 @@ openstitch_add_qt_test(test_interaction_map test_interaction_map.cpp)
 openstitch_add_qt_test(test_app_settings test_app_settings.cpp)
 openstitch_add_qt_test(test_app_language test_app_language.cpp)
 openstitch_add_qt_test(test_help_dialogs test_help_dialogs.cpp)
+openstitch_add_qt_test(test_crash_report test_crash_report.cpp)
 openstitch_add_qt_test(test_help_manual test_help_manual.cpp)
 target_compile_definitions(test_help_manual PRIVATE
     OPENSTITCH_SOURCE_DIR="${PROJECT_SOURCE_DIR}")

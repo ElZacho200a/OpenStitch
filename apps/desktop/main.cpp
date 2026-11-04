@@ -6,6 +6,8 @@
 #include "app_language.hpp"
 #include "app_settings.hpp"
 #include "app_theme.hpp"
+#include "crash_report.hpp"
+#include "crash_report_ticket.hpp"
 #include "main_window.hpp"
 #include "openstitch/core/app_info.hpp"
 #include "openstitch/core/log.hpp"
@@ -13,6 +15,11 @@
 
 int main(int argc, char** argv) {
     openstitch::init_logging();
+    // Journal fichier à rotation bornée + minidump en cas de crash (HP-QA-002) ; locaux, jamais
+    // transmis. Sans effet sur les sorties de broderie.
+    openstitch::init_file_logging(openstitch::user_log_directory());
+    openstitch::desktop::installCrashHandler(openstitch::desktop::crashDumpDirectory());
+    spdlog::info("{} {} demarre", openstitch::kAppName, openstitch::kAppVersion);
 
     QApplication app(argc, argv);
     QApplication::setOrganizationName(QStringLiteral("OpenStitch"));
@@ -37,6 +44,9 @@ int main(int argc, char** argv) {
     window.show();
     // Fichier passé en argument (double-clic sur un .osp, « Ouvrir avec ») : ouvert une fois la
     // fenêtre affichée, par les mêmes gardes que les menus.
+    // Dump récent d'un lancement précédent : propose le rapport (une seule fois).
+    QTimer::singleShot(0, &window,
+                       [&window] { openstitch::desktop::proposeCrashReportIfRecent(&window); });
     const QStringList args = QApplication::arguments();
     if (args.size() > 1) {
         const QString path = args.at(1);
