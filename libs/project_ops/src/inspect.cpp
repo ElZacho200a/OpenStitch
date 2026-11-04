@@ -806,6 +806,8 @@ const char* stitch_type_name(const document::EmbroideryObject& object) {
         return "crosshatch_fill";
     case 12:
         return "cross_stitch";
+    case 13:
+        return "applique";
     default:
         return "unknown";
     }
