@@ -21,6 +21,7 @@ add_executable(test_desktop_v2_core
     test_arrange_batch.cpp
     test_image_prep.cpp
     test_production_sheet.cpp
+    test_thread_plan.cpp
     test_satin_column.cpp
     test_point_edit.cpp
     test_source_image_tools.cpp

@@ -48,6 +48,7 @@
 #include "openstitch/project_ops/factory.hpp"
 #include "preview_canvas.hpp"
 #include "preview_service.hpp"
+#include "thread_panel.hpp"
 #include "transform_batch.hpp"
 #include <QComboBox>
 #include <QGuiApplication>
@@ -192,6 +193,8 @@ ShellWindow::~ShellWindow() {
     inspector_ = nullptr;
     delete calques_;
     calques_ = nullptr;
+    delete threads_;
+    threads_ = nullptr;
     session_.unsubscribe(sessionToken_);
     session_.selection().unsubscribe(selectionToken_);
 }
@@ -502,6 +505,14 @@ void ShellWindow::buildInspector() {
     addDockWidget(Qt::RightDockWidgetArea, calqueDock);
     tabifyDockWidget(diagDock_, calqueDock);
     connect(calques_, &CalquePanel::refused, this,
+            [this](const QString& message) { setNotice(message, true); });
+    auto* threadDock = new QDockWidget(tr("Fils"), this);
+    threadDock->setObjectName(QStringLiteral("threadDock"));
+    threads_ = new ThreadPanel(session_, threadDock);
+    threadDock->setWidget(threads_);
+    addDockWidget(Qt::RightDockWidgetArea, threadDock);
+    tabifyDockWidget(calqueDock, threadDock);
+    connect(threads_, &ThreadPanel::refused, this,
             [this](const QString& message) { setNotice(message, true); });
     docDock_->raise();
     connect(diagnostics_, &DiagnosticsPanel::analyseRequested, this, &ShellWindow::runDiagnostics);
