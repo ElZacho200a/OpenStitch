@@ -2781,7 +2781,8 @@ Aujourd'hui : un cadre **rectangulaire** de taille libre (10–500 mm), persist�
 
 Aujourd'hui : rien (aucune occurrence « appliqué » dans le code métier).
 
-### HP-SPEC-001 — Appliqué [P1] — ☐ À faire
+### HP-SPEC-001 — Appliqué [P1] — ☑ Fait (2026-11-04)
+- Livré : `AppliqueParams` (placement → Stop → maintien droit/zigzag/feston → Stop → satin de couverture), `.osp`, op project_ops, CLI `project applique-cut` (SVG/DXF), actions « Convertir en appliqué » et « Exporter le contour de découpe… », bloc d'inspecteur, QTest. Limites : conversion du premier objet sélectionné seulement, satin de couverture de la couleur de l'objet, recouvrement non contrôlé visuellement, appliqués multiples = HP-SPEC-002.
 - Hatch : objet appliqué : ligne de placement → arrêt → point de maintien
   (tack-down, zigzag ou E-stitch) → arrêt → couverture satin ; appliqué
   depuis une forme ; export du contour de découpe (SVG/DXF pour plotter,
@@ -3658,7 +3659,8 @@ de référence. Restent : progression et annulation, régénération de toute la
   aucun changement de comportement, tests QTest verts à chaque étape.
 - Faire **tôt** : avant HP-OBJ-001 idéalement.
 
-### HP-QA-002 — Journal et rapport de plantage [P1] — ☐ À faire
+### HP-QA-002 — Journal et rapport de plantage [P1] — ◐ Partiel (2026-11-04)
+- Livré : journal fichier avec rotation (`%LOCALAPPDATA%/OpenStitch/logs`, XDG ailleurs), minidump Windows (`MiniDumpNormal`, sans donnée de projet), action « Aide ▸ Envoyer un rapport de plantage… » (ticket GitHub prérempli, chemins masqués, jamais d'envoi silencieux), proposition au démarrage suivant. Reste : minidump non éprouvé par un vrai plantage, journal fichier seulement dans le bureau (pas la CLI).
 - État OpenStitch : `libs/core/src/log.cpp` n'a qu'un sink console (pas de journal fichier ni de
   minidump) ; la récupération après plantage existe côté autosave (HP-FILE-004), sans rapport.
 - À faire : journal fichier (spdlog déjà présent) dans le dossier applicatif,
@@ -4567,6 +4569,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-04 | Claude (lot P1-lourds) | HP-QA-002 ◐ (journal, minidump, rapport de plantage), HP-SPEC-001 ☑ (appliqué + contour de découpe). |
 | 2026-11-04 | Claude (lot P1-QA-001) | HP-QA-001 ☑ : découpage de `main_window.cpp` en 15 fichiers par responsabilité, sans changement de comportement. |
 | 2026-11-03 | Claude (lot P1-MOTEUR/FMT) | HP-STI-033 ☑ (tirage radial/spirale/echo/motif/crosshatch), HP-FMT-027 ☑ (VP3 Trim déplacé). HP-STI-018.a (PR de plan requise) et HP-ENG-009 (dépend de 018) non traités. |
 | 2026-11-03 | Claude (lot P1-PERF) | HP-PERF-020/024/025/028/032 ☑ : progression et annulation MCP, index de pixels par région, lignes cohérentes parallèles, réduction de couleurs sous-cubique, autosave hors fil UI. HP-PERF-004 et HP-VIEW-009 restent à faire. |

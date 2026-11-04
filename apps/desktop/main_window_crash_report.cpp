@@ -63,7 +63,7 @@ void runReportDialog(QWidget* parent, bool startup) {
 } // namespace
 
 void installCrashReportAction(QMainWindow* window, QMenu* helpMenu) {
-    QAction* act = helpMenu->addAction(QObject::tr("Envoyer un rapport de &plantage…"));
+    QAction* act = helpMenu->addAction(QObject::tr("Envoyer un &rapport de plantage…"));
     act->setObjectName(QStringLiteral("action_crash_report"));
     act->setToolTip(QObject::tr("Ouvre un ticket GitHub prérempli, sans aucun envoi automatique"));
     act->setStatusTip(act->toolTip());
