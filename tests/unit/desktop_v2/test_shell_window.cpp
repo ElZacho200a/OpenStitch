@@ -1553,9 +1553,10 @@ private slots:
         auto* canvas = w.canvas();
         const double initial = canvas->zoom();
         const QPoint at = canvas->viewport()->rect().center();
-        QWheelEvent fine(QPointF(at), QPointF(canvas->viewport()->mapToGlobal(at)),
-                         QPoint(0, 24), QPoint(), Qt::NoButton, Qt::NoModifier,
-                         Qt::NoScrollPhase, false);
+        const QPointF local(at);
+        const QPointF global(canvas->viewport()->mapToGlobal(at));
+        QWheelEvent fine(local, global, QPoint(0, 24), QPoint(), Qt::NoButton,
+                         Qt::NoModifier, Qt::NoScrollPhase, false);
         QApplication::sendEvent(canvas->viewport(), &fine);
         QVERIFY(canvas->zoom() > initial); // trackpad : pixelDelta sans angleDelta
         const double afterTrackpad = canvas->zoom();
@@ -1581,8 +1582,8 @@ private slots:
         w.waitForIdle();
         auto& objects = w.session().project().embroidery_objects;
         QVERIFY(!objects.empty());
-        w.session().selection().replace(
-            {{TargetKind::EmbroideryObject, objects.front().id.value}});
+        const auto id = objects.front().id.value;
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
         const auto revision = w.session().revision();
         const double whole = w.canvas()->zoom();
         QTest::keyClick(w.canvas(), Qt::Key_F, Qt::ShiftModifier);
