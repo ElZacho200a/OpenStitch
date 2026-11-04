@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QColor>
 #include <QFileInfo>
+#include <QLabel>
 #include <QTemporaryDir>
 #include <QFile>
 #include <QMenu>
