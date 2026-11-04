@@ -2,10 +2,10 @@
 #include <QAction>
 #include <QApplication>
 #include <QColor>
-#include <QMessageBox>
 #include <QFile>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMessageBox>
 #include <QTest>
 #include <QToolBar>
 #include <QTimer>
@@ -77,7 +77,6 @@ private slots:
         QCOMPARE(enabled, 9); // …, Pipette, Couteau, Zones de détail
         QVERIFY(disabled > 0);
     }
-
 
     void modifiedDocumentCanCancelNewProjectAndClose() {
         ShellWindow w;
