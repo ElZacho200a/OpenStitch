@@ -722,10 +722,13 @@ void ShellWindow::rebuildToolRail() {
         if (shortText.isEmpty()) {
             shortText = label.left(2);
         }
-        const QString text = toolLabelsVisible_
-                                 ? (label.size() > 22 ? label.left(21) + QStringLiteral("…")
-                                                      : label)
-                                 : shortText;
+        QString text = shortText;
+        if (toolLabelsVisible_) {
+            text = label;
+            if (text.size() > 22) {
+                text = text.left(21) + QStringLiteral("…");
+            }
+        }
         auto* a = new QAction(text, toolGroup_);
         a->setObjectName(QStringLiteral("tool_") + fromUtf8(tool->id));
         a->setCheckable(true);
@@ -772,8 +775,9 @@ void ShellWindow::updateActiveToolLabel() {
         activeToolLabel_->clear();
         return;
     }
-    activeToolLabel_->setText(tr("Outil : %1 (%2)").arg(fromUtf8(tool->label),
-                                                       fromUtf8(tool->shortcut)));
+    const QString label = fromUtf8(tool->label);
+    const QString shortcut = fromUtf8(tool->shortcut);
+    activeToolLabel_->setText(tr("Outil : %1 (%2)").arg(label, shortcut));
 }
 
 // --- Document, sélection, aperçu -------------------------------------------------------------
