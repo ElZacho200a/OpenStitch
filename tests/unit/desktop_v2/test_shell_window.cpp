@@ -1546,7 +1546,6 @@ private slots:
         QVERIFY(w.previewShown());
     }
 
-
     void spaceTemporarilyPansWithoutInterruptingPolygonDrawing() {
         ShellWindow w;
         w.show();
