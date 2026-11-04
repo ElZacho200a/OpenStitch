@@ -45,6 +45,8 @@ public:
 
     void setImage(const QImage& image);
     void clearImage();
+    // F = vue entière, Maj+F = cadrer la sélection ; sans sélection, ne change rien.
+    void fitSelection();
     [[nodiscard]] bool hasImage() const { return item_ != nullptr; }
     [[nodiscard]] double zoom() const { return transform().m11(); }
 

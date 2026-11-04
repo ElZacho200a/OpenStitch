@@ -1545,6 +1545,53 @@ private slots:
         QVERIFY(w.previewShown());
     }
 
+    void canvasTrackpadZoomAndKeyboardNavigationRemainBounded() {
+        ShellWindow w;
+        w.show();
+        w.openImage(tentabrode(), 80.0);
+        w.waitForIdle();
+        auto* canvas = w.canvas();
+        const double initial = canvas->zoom();
+        const QPoint at = canvas->viewport()->rect().center();
+        QWheelEvent fine(QPointF(at), QPointF(canvas->viewport()->mapToGlobal(at)),
+                         QPoint(0, 24), QPoint(), Qt::NoButton, Qt::NoModifier,
+                         Qt::NoScrollPhase, false);
+        QApplication::sendEvent(canvas->viewport(), &fine);
+        QVERIFY(canvas->zoom() > initial); // trackpad : pixelDelta sans angleDelta
+        const double afterTrackpad = canvas->zoom();
+        QTest::keyClick(canvas, Qt::Key_Plus);
+        QVERIFY(canvas->zoom() > afterTrackpad);
+        QTest::keyClick(canvas, Qt::Key_Minus);
+        QVERIFY(canvas->zoom() < afterTrackpad * 1.26);
+        QWheelEvent huge(QPointF(at), QPointF(canvas->viewport()->mapToGlobal(at)),
+                         QPoint(0, 50000), QPoint(), Qt::NoButton, Qt::NoModifier,
+                         Qt::NoScrollPhase, false);
+        QApplication::sendEvent(canvas->viewport(), &huge);
+        QVERIFY(canvas->zoom() <= 32.0 + 1e-6);
+        QTest::keyClick(canvas, Qt::Key_F);
+        QVERIFY(qAbs(canvas->zoom() - initial) < 1e-6);
+    }
+
+    void shiftFFramesSelectedObjectWithoutChangingTheProject() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        const auto r = w.session().applyBatch(batchAddRect({0, 0}, 8, 8), "Petit carré");
+        QVERIFY(r.committed);
+        w.waitForIdle();
+        auto& objects = w.session().project().embroidery_objects;
+        QVERIFY(!objects.empty());
+        w.session().selection().replace(
+            {{TargetKind::EmbroideryObject, objects.front().id.value}});
+        const auto revision = w.session().revision();
+        const double whole = w.canvas()->zoom();
+        QTest::keyClick(w.canvas(), Qt::Key_F, Qt::ShiftModifier);
+        QVERIFY(w.canvas()->zoom() > whole);
+        QCOMPARE(w.session().revision(), revision); // zoom = affichage uniquement
+        QTest::keyClick(w.canvas(), Qt::Key_F);
+        QVERIFY(qAbs(w.canvas()->zoom() - whole) < 1e-6);
+    }
+
     void canvasZoomAnchorsUnderTheCursorAndFitRestores() {
         ShellWindow w;
         w.show();

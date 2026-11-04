@@ -22,6 +22,9 @@
 namespace openstitch::desktop_v2 {
 
 namespace {
+constexpr double kMinCanvasZoom = 0.05;
+constexpr double kMaxCanvasZoom = 32.0;
+
 QPen cosmeticPen(const QColor& colour, Qt::PenStyle style, int width) {
     QPen pen(colour);
     pen.setCosmetic(true); // épaisseur constante quel que soit le zoom
@@ -89,6 +92,21 @@ void PreviewCanvas::fitAll() {
     userZoomed_ = false;
 }
 
+void PreviewCanvas::fitSelection() {
+    if (item_ == nullptr || unionPx_.isEmpty()) {
+        return;
+    }
+    // Un peu d'air autour de la sélection ; les très petits objets ne deviennent pas
+    // des pixels géants. Le cadrage reste indépendant du moteur et du type de point.
+    const QRectF bounds = unionPx_.adjusted(-24, -24, 24, 24);
+    fitInView(bounds, Qt::KeepAspectRatio);
+    if (zoom() > kMaxCanvasZoom) {
+        scale(kMaxCanvasZoom / zoom(), kMaxCanvasZoom / zoom());
+        centerOn(bounds.center());
+    }
+    userZoomed_ = true;
+}
+
 void PreviewCanvas::setMode(Mode mode) {
     if (mode_ == Mode::DrawPolygon && mode != Mode::DrawPolygon) {
         cancelPolygon();
@@ -102,21 +120,32 @@ void PreviewCanvas::setMode(Mode mode) {
     if (mode != Mode::Measure && mode != Mode::Cut) {
         clearMeasure();
     }
-    setCursor(mode == Mode::DrawBox || mode == Mode::DrawPolygon || mode == Mode::Measure ||
-                      mode == Mode::Pick || mode == Mode::Cut || mode == Mode::Stroke
-                  ? Qt::CrossCursor
-                  : Qt::ArrowCursor);
+    setCursor(mode == Mode::Pan
+                  ? Qt::OpenHandCursor
+                  : (mode == Mode::DrawBox || mode == Mode::DrawPolygon || mode == Mode::Measure ||
+                     mode == Mode::Pick || mode == Mode::Cut || mode == Mode::Stroke
+                         ? Qt::CrossCursor
+                         : Qt::ArrowCursor));
 }
 
 void PreviewCanvas::wheelEvent(QWheelEvent* event) {
     if (item_ == nullptr) {
+        event->ignore();
         return;
     }
-    // Zoom ancré sous le curseur, calculé depuis la position de l'ÉVÉNEMENT (pas QCursor::pos()) :
-    // correct avec des événements synthétiques (tests) et des pavés tactiles.
+    // Trackpads haute résolution : pixelDelta est prioritaire ; une molette ordinaire
+    // fournit angleDelta. Garder le pixel sous le curseur immobile pendant le zoom.
+    const double delta = event->pixelDelta().y() != 0
+                             ? static_cast<double>(event->pixelDelta().y()) * 2.0
+                             : static_cast<double>(event->angleDelta().y());
+    if (delta == 0.0) {
+        QGraphicsView::wheelEvent(event);
+        return;
+    }
     const QPointF before = mapToScene(event->position().toPoint());
-    const double step = std::pow(1.0015, event->angleDelta().y());
-    scale(step, step);
+    const double step = std::pow(1.0015, delta);
+    const double actual = std::clamp(zoom() * step, kMinCanvasZoom, kMaxCanvasZoom) / zoom();
+    scale(actual, actual);
     const QPointF after = mapToScene(event->position().toPoint());
     translate(after.x() - before.x(), after.y() - before.y());
     userZoomed_ = true;
@@ -174,10 +203,32 @@ void PreviewCanvas::keyPressEvent(QKeyEvent* event) {
             }
         }
     }
-    if (event->key() == Qt::Key_F && event->modifiers() == Qt::NoModifier) {
-        fitAll();
-        event->accept();
-        return;
+    if (event->key() == Qt::Key_F) {
+        if (event->modifiers() == Qt::ShiftModifier) {
+            fitSelection();
+            event->accept();
+            return;
+        }
+        if (event->modifiers() == Qt::NoModifier) {
+            fitAll();
+            event->accept();
+            return;
+        }
+    }
+    if (item_ != nullptr && event->modifiers() == Qt::NoModifier) {
+        const bool zoomIn = event->key() == Qt::Key_Plus || event->key() == Qt::Key_Equal;
+        const bool zoomOut = event->key() == Qt::Key_Minus || event->key() == Qt::Key_Underscore;
+        if (zoomIn || zoomOut) {
+            const QPointF centre = mapToScene(viewport()->rect().center());
+            const double factor = zoomIn ? 1.25 : 0.8;
+            const double actual =
+                std::clamp(zoom() * factor, kMinCanvasZoom, kMaxCanvasZoom) / zoom();
+            scale(actual, actual);
+            centerOn(centre);
+            userZoomed_ = true;
+            event->accept();
+            return;
+        }
     }
     QGraphicsView::keyPressEvent(event);
 }
