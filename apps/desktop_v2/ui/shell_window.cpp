@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+﻿// SPDX-License-Identifier: Apache-2.0
 #include "shell_window.hpp"
 
 #include <QAction>
@@ -23,7 +23,9 @@
 #include <QTreeWidget>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <map>
 
+#include "action_dialog.hpp"
 #include "command_palette.hpp"
 #include "diagnostics_panel.hpp"
 #include "inspector_model.hpp"
@@ -34,6 +36,9 @@
 #include "preview_canvas.hpp"
 #include "preview_service.hpp"
 #include "transform_batch.hpp"
+#include <QGuiApplication>
+#include <QSlider>
+#include <QStyleHints>
 
 namespace openstitch::desktop_v2 {
 
@@ -49,7 +54,7 @@ QString fromUtf8(const std::string& s) {
 // Outils réellement migrés : les autres sont déclarés dans le registre mais désactivés.
 bool isToolImplemented(const std::string& id) {
     return id == "select" || id == "pan" || id == "draw.rectangle" || id == "draw.ellipse" ||
-           id == "draw.polygon";
+           id == "draw.polygon" || id == "measure";
 }
 
 constexpr Workspace kWorkspaces[] = {Workspace::Design, Workspace::Digitize, Workspace::Optimize,
@@ -122,6 +127,8 @@ ShellWindow::ShellWindow(QWidget* parent)
     connect(canvas_, &PreviewCanvas::clickedPx, this, &ShellWindow::onCanvasClick);
     connect(canvas_, &PreviewCanvas::rectPx, this, &ShellWindow::onCanvasRect);
     connect(canvas_, &PreviewCanvas::boxDrawnPx, this, &ShellWindow::onBoxDrawn);
+    connect(canvas_, &PreviewCanvas::measuredPx, this, &ShellWindow::onMeasured);
+    connect(canvas_, &PreviewCanvas::contextMenuRequested, this, &ShellWindow::showContextMenu);
     connect(canvas_, &PreviewCanvas::moveStartRequested, this, &ShellWindow::onMoveStart);
     connect(canvas_, &PreviewCanvas::nudgeRequested, this, &ShellWindow::nudgeSelection);
     connect(canvas_, &PreviewCanvas::moveDraggedPx, this, &ShellWindow::onMoveDragged);
@@ -199,6 +206,14 @@ void ShellWindow::buildMenus() {
             exportDst(std::filesystem::path(path.toStdU16String()));
         }
     });
+    auto* exportImageAction = file->addAction(tr("Exporter l'&image (PNG)…"));
+    connect(exportImageAction, &QAction::triggered, this, [this] {
+        const QString path = QFileDialog::getSaveFileName(this, tr("Exporter l'image"), QString(),
+                                                          tr("Image PNG (*.png)"));
+        if (!path.isEmpty()) {
+            exportImage(std::filesystem::path(path.toStdU16String()));
+        }
+    });
     file->addSeparator();
     auto* quit = file->addAction(tr("&Quitter"));
     quit->setShortcut(QKeySequence::Quit);
@@ -246,8 +261,47 @@ void ShellWindow::buildMenus() {
     connect(palette, &QAction::triggered, this, &ShellWindow::showCommandPalette);
 
     auto* view = menuBar()->addMenu(tr("&Affichage"));
+    // Menu « Outils » : une entrée par action du catalogue, groupées ; le dialogue de réglages est
+    // généré depuis les champs de l'action.
+    auto* toolsMenu = menuBar()->addMenu(tr("&Outils"));
+    std::map<std::string, QMenu*> groups;
+    for (const auto& def : actionCatalog()) {
+        QMenu*& group = groups[def.group];
+        if (group == nullptr) {
+            group = toolsMenu->addMenu(fromUtf8(def.group));
+        }
+        auto* a = group->addAction(fromUtf8(def.label));
+        a->setObjectName(QStringLiteral("action_") + fromUtf8(def.id));
+        const QString id = fromUtf8(def.id);
+        connect(a, &QAction::triggered, this, [this, id] { runAction(id); });
+    }
     auto* fit = view->addAction(tr("&Ajuster à la fenêtre"));
     connect(fit, &QAction::triggered, canvas_, &PreviewCanvas::fitAll);
+    auto* hoop = view->addAction(tr("Cadre de &broderie"));
+    hoop->setCheckable(true);
+    hoop->setChecked(true);
+    connect(hoop, &QAction::toggled, this, [this](bool on) { canvas_->setHoopVisible(on); });
+    auto* gridMenu = view->addMenu(tr("&Grille"));
+    auto* gridGroup = new QActionGroup(this);
+    for (const double mm : {0.0, 5.0, 10.0, 20.0}) {
+        auto* g = gridMenu->addAction(mm == 0.0 ? tr("Aucune") : tr("%1 mm").arg(mm, 0, 'f', 0));
+        g->setCheckable(true);
+        g->setChecked(mm == 0.0);
+        gridGroup->addAction(g);
+        connect(g, &QAction::triggered, this, [this, mm] { setGridSpacing(mm); });
+    }
+    auto* themeMenu = view->addMenu(tr("&Thème"));
+    auto* themeGroup = new QActionGroup(this);
+    for (const auto& [mode, label] :
+         {std::pair{"system", tr("Système")}, std::pair{"light", tr("Clair")},
+          std::pair{"dark", tr("Sombre")}}) {
+        auto* t = themeMenu->addAction(label);
+        t->setCheckable(true);
+        t->setChecked(QLatin1String(mode) == QLatin1String("system"));
+        themeGroup->addAction(t);
+        connect(t, &QAction::triggered, this,
+                [this, mode] { setThemeMode(QString::fromLatin1(mode)); });
+    }
 }
 
 void ShellWindow::buildWorkspaceBar() {
@@ -398,6 +452,44 @@ void ShellWindow::buildInspector() {
 }
 
 void ShellWindow::buildStatusArea() {
+    // Simulation de couture (espace Production) : curseur sur la séquence, lecture automatique.
+    simBar_ = addToolBar(tr("Simulation"));
+    simBar_->setObjectName(QStringLiteral("simulationBar"));
+    simBar_->setMovable(false);
+    simBar_->addWidget(new QLabel(tr("Simulation : "), simBar_));
+    simSlider_ = new QSlider(Qt::Horizontal, simBar_);
+    simSlider_->setObjectName(QStringLiteral("simulationSlider"));
+    simSlider_->setAccessibleName(tr("Position dans la séquence de couture"));
+    simSlider_->setMinimumWidth(320);
+    simBar_->addWidget(simSlider_);
+    simLabel_ = new QLabel(simBar_);
+    simLabel_->setObjectName(QStringLiteral("simulationLabel"));
+    simLabel_->setMinimumWidth(110);
+    simBar_->addWidget(simLabel_);
+    auto* play = simBar_->addAction(tr("Lecture"));
+    play->setCheckable(true);
+    simTimer_ = new QTimer(this);
+    simTimer_->setInterval(120);
+    connect(simSlider_, &QSlider::valueChanged, this, [this](int v) { setSimulationPosition(v); });
+    connect(play, &QAction::toggled, this, [this](bool on) {
+        if (on) {
+            if (!simLimit_ || simulationPosition() >= simulationTotal()) {
+                setSimulationPosition(0); // repart du début
+            }
+            simTimer_->start();
+        } else {
+            simTimer_->stop();
+        }
+    });
+    connect(simTimer_, &QTimer::timeout, this, [this, play] {
+        const int step = std::max(1, simulationTotal() / 150);
+        const int next = simulationPosition() + step;
+        setSimulationPosition(next);
+        if (next >= simulationTotal()) {
+            play->setChecked(false);
+        }
+    });
+    simBar_->hide();
     notice_ = new QLabel(this);
     notice_->setObjectName(QStringLiteral("notice"));
     notice_->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -427,6 +519,10 @@ void ShellWindow::setWorkspace(Workspace workspace) {
     }
     rebuildToolRail();
     (workspace == Workspace::Optimize ? diagDock_ : docDock_)->raise();
+    simBar_->setVisible(workspace == Workspace::Produce);
+    if (workspace != Workspace::Produce && simLimit_) {
+        setSimulationPosition(simulationTotal()); // quitter Production termine la simulation
+    }
     setWindowTitle(tr("OpenStitch V2 — %1").arg(workspaceLabel(workspace)));
 }
 
@@ -587,10 +683,11 @@ void ShellWindow::requestPreview() {
     const auto snapshot = session_.snapshot();
     const auto revision = session_.revision();
     previewRevision_ = revision;
+    const auto limit = simLimit_; // simulation : nombre de commandes à dessiner
     previewTask_ = tasks_.submit<PreviewImage>(
         tr("Aperçu").toStdString(),
-        [snapshot, revision](const TaskContext& ctx) {
-            return render_preview(snapshot, revision, kPreviewPxPerMm, ctx);
+        [snapshot, revision, limit](const TaskContext& ctx) {
+            return render_preview(snapshot, revision, kPreviewPxPerMm, ctx, limit);
         },
         [this](Result<PreviewImage>&& r) {
             if (!r) {
@@ -611,6 +708,8 @@ void ShellWindow::requestPreview() {
                                                     frame_.mmToPxY(-frame_.hoop_half_h_mm)),
                                             QPointF(frame_.mmToPxX(frame_.hoop_half_w_mm),
                                                     frame_.mmToPxY(frame_.hoop_half_h_mm))));
+                updateGrid();
+                refreshSimulationBar();
                 updateSelectionBoxes();
             }
         });
@@ -793,6 +892,147 @@ void ShellWindow::onFindingActivated(const project_ops::Finding& finding) {
     }
 }
 
+void ShellWindow::setGridSpacing(double mm) {
+    gridSpacingMm_ = mm > 0.0 ? mm : 0.0;
+    updateGrid();
+}
+
+void ShellWindow::updateGrid() {
+    if (frame_.px_per_mm <= 0.0 || gridSpacingMm_ <= 0.0) {
+        canvas_->setGrid({}, {}, {});
+        return;
+    }
+    const auto g = gridLines(frame_, gridSpacingMm_);
+    QVector<double> xs(g.verticalPx.begin(), g.verticalPx.end());
+    QVector<double> ys(g.horizontalPx.begin(), g.horizontalPx.end());
+    canvas_->setGrid(xs, ys, QRectF(0, 0, frame_.width, frame_.height));
+}
+
+void ShellWindow::setThemeMode(const QString& mode) {
+    themeMode_ = (mode == QLatin1String("light") || mode == QLatin1String("dark"))
+                     ? mode
+                     : QStringLiteral("system");
+    // Qt 6.8 : le schéma de couleurs de l'application suit le choix (« unknown » = le système).
+    Qt::ColorScheme scheme = Qt::ColorScheme::Unknown;
+    if (themeMode_ == QLatin1String("light")) {
+        scheme = Qt::ColorScheme::Light;
+    } else if (themeMode_ == QLatin1String("dark")) {
+        scheme = Qt::ColorScheme::Dark;
+    }
+    QGuiApplication::styleHints()->setColorScheme(scheme);
+}
+
+void ShellWindow::onMeasured(QPointF a, QPointF b) {
+    const PointMm from = screenToModel(frame_.pxToMmX(a.x()), frame_.pxToMmY(a.y()));
+    const PointMm to = screenToModel(frame_.pxToMmX(b.x()), frame_.pxToMmY(b.y()));
+    const Measurement m = measure(from, to);
+    const QString text = tr("%1 mm   Δx %2   Δy %3   %4°")
+                             .arg(m.distanceMm, 0, 'f', 2)
+                             .arg(m.dxMm, 0, 'f', 2)
+                             .arg(m.dyMm, 0, 'f', 2)
+                             .arg(m.angleDeg, 0, 'f', 1);
+    canvas_->showMeasure(a, b, text);
+    setNotice(tr("Mesure : ") + text, false);
+}
+
+int ShellWindow::simulationTotal() const {
+    return static_cast<int>(frame_.command_count);
+}
+
+int ShellWindow::simulationPosition() const {
+    return simLimit_ ? static_cast<int>(*simLimit_) : simulationTotal();
+}
+
+void ShellWindow::setSimulationPosition(int position) {
+    const int total = simulationTotal();
+    if (total <= 0) {
+        return;
+    }
+    const int p = std::clamp(position, 0, total);
+    simLimit_ = p < total ? std::optional<std::size_t>(static_cast<std::size_t>(p)) : std::nullopt;
+    refreshSimulationBar();
+    previewDebounce_->start();
+}
+
+void ShellWindow::refreshSimulationBar() {
+    const int total = simulationTotal();
+    simSlider_->blockSignals(true);
+    simSlider_->setRange(0, std::max(total, 1));
+    simSlider_->setValue(simulationPosition());
+    simSlider_->blockSignals(false);
+    simSlider_->setEnabled(total > 0);
+    simLabel_->setText(total > 0 ? tr("%1 / %2").arg(simulationPosition()).arg(total) : QString());
+}
+
+QMenu* ShellWindow::buildContextMenu() {
+    auto* menu = new QMenu(this);
+    menu->setObjectName(QStringLiteral("canvasContextMenu"));
+    static const char* const kPrefixes[] = {"edit.",      "transform.",    "order.",
+                                            "selection.", "action.satin.", "action.fill."};
+    std::string lastGroup;
+    for (const auto& e : commandEntries()) {
+        bool wanted = false;
+        for (const char* p : kPrefixes) {
+            wanted = wanted || e.id.rfind(p, 0) == 0;
+        }
+        if (!wanted || !e.enabled || e.id == "edit.undo" || e.id == "edit.redo") {
+            continue;
+        }
+        if (!lastGroup.empty() && e.group != lastGroup) {
+            menu->addSeparator();
+        }
+        lastGroup = e.group;
+        const QString id = fromUtf8(e.id);
+        auto* a = menu->addAction(fromUtf8(e.label));
+        if (!e.shortcut.empty()) {
+            a->setShortcut(QKeySequence(fromUtf8(e.shortcut)));
+            a->setShortcutVisibleInContextMenu(true);
+        }
+        a->setData(id);
+        connect(a, &QAction::triggered, this, [this, id] { runCommand(id); });
+    }
+    return menu;
+}
+
+void ShellWindow::showContextMenu(const QPoint& globalPos, QPointF scenePx) {
+    // Clic droit sur un objet non sélectionné : il devient la sélection (comme la plupart des
+    // éditeurs).
+    if (const auto hit = pickAtPx(scenePx);
+        hit && !session_.selection().contains({TargetKind::EmbroideryObject, *hit})) {
+        session_.selection().replace({{TargetKind::EmbroideryObject, *hit}});
+    }
+    auto* menu = buildContextMenu();
+    if (menu->isEmpty()) {
+        delete menu;
+        return;
+    }
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+    menu->popup(globalPos);
+}
+
+void ShellWindow::exportImage(const std::filesystem::path& png, double pxPerMm) {
+    const auto snapshot = session_.snapshot();
+    setNotice(tr("Export de l'image en cours…"), false);
+    tasks_.submit<int>(
+        tr("Export image").toStdString(),
+        [snapshot, png, pxPerMm](const TaskContext& ctx) -> Result<int> {
+            if (auto r = export_preview_png(snapshot, png, pxPerMm, ctx); !r) {
+                return std::unexpected(r.error());
+            }
+            return 0;
+        },
+        [this, png](Result<int>&& r) {
+            if (!r) {
+                setNotice(tr("Export impossible : %1 %2")
+                              .arg(fromUtf8(r.error().message), fromUtf8(r.error().detail)),
+                          true);
+                return;
+            }
+            setNotice(tr("Image écrite : %1").arg(QString::fromStdString(png.filename().string())),
+                      false);
+        });
+}
+
 void ShellWindow::applyToolToCanvas() {
     using Mode = PreviewCanvas::Mode;
     if (activeTool_ == QStringLiteral("pan")) {
@@ -802,6 +1042,8 @@ void ShellWindow::applyToolToCanvas() {
         canvas_->setMode(Mode::DrawBox);
     } else if (activeTool_ == QStringLiteral("draw.polygon")) {
         canvas_->setMode(Mode::DrawPolygon);
+    } else if (activeTool_ == QStringLiteral("measure")) {
+        canvas_->setMode(Mode::Measure);
     } else {
         canvas_->setMode(Mode::Select); // sélection : clic, cadre élastique
     }
@@ -954,6 +1196,64 @@ void ShellWindow::nudgeSelection(int stepX, int stepUp, bool big) {
     applyTransform(batchTranslate(state.ids, stepX * mm, stepUp * mm), tr("Déplacer"));
 }
 
+bool ShellWindow::runActionWith(const QString& id, const Values& values) {
+    const ActionDef* def = findAction(id.toStdString());
+    if (def == nullptr) {
+        return false;
+    }
+    const auto state = inspect(session_.project(), session_.selection().targets());
+    ActionContext ctx;
+    ctx.ids = state.ids;
+    ctx.centre = selectionCentreModel();
+    ctx.project = &session_.project();
+    std::string error;
+    const std::string batch = buildAction(*def, values, ctx, error);
+    if (batch.empty()) {
+        setNotice(fromUtf8(def->label).remove(QStringLiteral("…")) + QStringLiteral(" : ") +
+                      fromUtf8(error),
+                  true);
+        return false;
+    }
+    const auto result = session_.applyBatch(batch, def->label);
+    if (!result.committed) {
+        const auto& outcomes = result.report.outcomes;
+        setNotice(tr("%1 refusé : %2")
+                      .arg(fromUtf8(def->label).remove(QStringLiteral("…")),
+                           outcomes.empty() ? tr("opération invalide")
+                                            : fromUtf8(outcomes.back().message)),
+                  true);
+        return false;
+    }
+    if (!documentOpen_) {
+        documentOpen_ = true;
+    }
+    std::vector<Target> created;
+    for (const auto newId : createdObjectIds(result.report)) {
+        created.push_back({TargetKind::EmbroideryObject, newId});
+    }
+    if (!created.empty()) {
+        session_.selection().replace(std::move(created));
+    }
+    setNotice(fromUtf8(def->label).remove(QStringLiteral("…")) + tr(" : fait."), false);
+    return true;
+}
+
+void ShellWindow::runAction(const QString& id) {
+    const ActionDef* def = findAction(id.toStdString());
+    if (def == nullptr) {
+        return;
+    }
+    if (def->fields.empty()) {
+        runActionWith(id, {});
+        return;
+    }
+    auto* dialog = new ActionDialog(*def, defaultValues(*def), this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dialog, &QDialog::accepted, this,
+            [this, id, dialog] { runActionWith(id, dialog->values()); });
+    dialog->open();
+}
+
 void ShellWindow::selectAllObjects() {
     std::vector<Target> all;
     for (const auto& o : session_.project().embroidery_objects) {
@@ -1016,6 +1316,10 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
     edit("order.forward", tr("Avancer d'un cran"), "Ordre de couture", "");
     edit("order.backward", tr("Reculer d'un cran"), "Ordre de couture", "");
     edit("order.back", tr("Arrière-plan"), "Ordre de couture", "");
+    for (const auto& def : actionCatalog()) {
+        out.push_back(
+            {"action." + def.id, def.label, def.group, "", !def.needsSelection || hasSel});
+    }
     out.push_back({"analysis.run", q(tr("Analyser le document (diagnostic)")), q(tr("Analyse")), "",
                    !session_.project().embroidery_objects.empty()});
     int n = 1;
@@ -1058,6 +1362,8 @@ bool ShellWindow::runCommand(const QString& id) {
                    id.startsWith(QLatin1String("transform.")) ||
                    id.startsWith(QLatin1String("order."))) {
             editSelection(id);
+        } else if (id.startsWith(QLatin1String("action."))) {
+            runAction(id.mid(7));
         } else if (id == QLatin1String("analysis.run")) {
             setWorkspace(Workspace::Optimize);
             runDiagnostics();

@@ -16,11 +16,14 @@
 #include <functional>
 
 class QGraphicsItemGroup;
+class QGraphicsLineItem;
 class QGraphicsPathItem;
+class QGraphicsSimpleTextItem;
 class QGraphicsPixmapItem;
 class QGraphicsRectItem;
 class QGraphicsScene;
 class QRubberBand;
+class QContextMenuEvent;
 
 namespace openstitch::desktop_v2 {
 
@@ -32,7 +35,8 @@ public:
     // DrawBox : glisser = cadre de création (rectangle, ellipse).
     // DrawPolygon : clics successifs, double-clic ou Entrée = terminer, Échap = annuler,
     //               Retour arrière = retirer le dernier sommet.
-    enum class Mode { Select, Pan, DrawBox, DrawPolygon };
+    // Measure : glisser = règle (le résultat est affiché par `showMeasure`).
+    enum class Mode { Select, Pan, DrawBox, DrawPolygon, Measure };
 
     explicit PreviewCanvas(QWidget* parent = nullptr);
 
@@ -51,6 +55,16 @@ public:
     // Test « y a-t-il un objet sous ce point ? » (pixels de l'image) fourni par la fenêtre : il
     // décide si un appui en mode Select démarre un déplacement plutôt qu'un cadre élastique.
     void setMoveHitTest(std::function<bool(const QPointF&)> test) { moveHit_ = std::move(test); }
+    // Grille : traits verticaux (x) et horizontaux (y) en pixels de l'image, sur le rectangle
+    // donné.
+    void setGrid(const QVector<double>& xsPx, const QVector<double>& ysPx, const QRectF& imageRect);
+    [[nodiscard]] bool hasGrid() const { return gridItem_ != nullptr; }
+    // Règle : segment et texte affichés jusqu'à `clearMeasure` / prochain appui en mode Measure.
+    void showMeasure(const QPointF& a, const QPointF& b, const QString& text);
+    void clearMeasure();
+    [[nodiscard]] bool hasMeasure() const { return measureLine_ != nullptr; }
+    void setHoopVisible(bool visible);
+    [[nodiscard]] bool hoopVisible() const { return hoopVisible_; }
     // Cadre de broderie (pixels de l'image) ; rectangle nul = aucun.
     void setHoopRect(const QRectF& rectPx);
     [[nodiscard]] bool hasHoop() const { return hoopItem_ != nullptr; }
@@ -58,6 +72,10 @@ public:
     [[nodiscard]] QVector<QPointF> polygonInProgress() const { return polyPts_; }
 
 signals:
+    // Règle : segment tracé (pixels de l'image).
+    void measuredPx(QPointF a, QPointF b);
+    // Clic droit : position globale (pour le menu) et position dans l'image.
+    void contextMenuRequested(QPoint globalPos, QPointF scenePx);
     // Clic gauche sans glisser, en mode Select. Position en pixels de l'image.
     void clickedPx(QPointF scenePx, Qt::KeyboardModifiers modifiers);
     // Cadre élastique terminé en mode Select.
@@ -86,6 +104,7 @@ protected:
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void mouseDoubleClickEvent(QMouseEvent* event) override;
+    void contextMenuEvent(QContextMenuEvent* event) override;
 
 private:
     void updatePolygonItem(const QPointF* cursor);
@@ -95,6 +114,12 @@ private:
     QGraphicsScene* scene_;
     QGraphicsPixmapItem* item_{nullptr};
     QGraphicsRectItem* hoopItem_{nullptr};
+    QGraphicsPathItem* gridItem_{nullptr};
+    QGraphicsLineItem* measureLine_{nullptr};
+    QGraphicsSimpleTextItem* measureText_{nullptr};
+    QPointF measureFrom_;
+    bool measuring_{false};
+    bool hoopVisible_{true};
     QGraphicsItemGroup* selGroup_{nullptr}; // cadres + poignées de la sélection
     QGraphicsRectItem* scaleOutline_{nullptr};
     QRectF unionPx_;
