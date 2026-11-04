@@ -32,6 +32,7 @@
 #include "task_manager.hpp"
 #include "tool_registry.hpp"
 #include "view_tools.hpp"
+#include "workflow_guide.hpp"
 #include "workspace_state.hpp"
 
 class QAction;
@@ -43,6 +44,8 @@ class QMenu;
 class QSlider;
 class QDoubleSpinBox;
 class QLabel;
+class QPushButton;
+class QStackedWidget;
 class QProgressBar;
 class QTimer;
 class QToolBar;
@@ -53,6 +56,7 @@ class QTreeWidgetItem;
 namespace openstitch::desktop_v2 {
 
 class PreviewCanvas;
+class WelcomePage;
 class InspectorPanel;
 class DiagnosticsPanel;
 class CalquePanel;
@@ -153,6 +157,13 @@ public:
     [[nodiscard]] InspectorPanel* inspector() const { return inspector_; }
     [[nodiscard]] DiagnosticsPanel* diagnostics() const { return diagnostics_; }
     [[nodiscard]] CalquePanel* calquePanel() const { return calques_; }
+    // Parcours guidé : écran d'accueil sans projet, bandeau d'étapes avec projet.
+    [[nodiscard]] WelcomePage* welcomePage() const { return welcome_; }
+    [[nodiscard]] bool welcomeVisible() const;
+    [[nodiscard]] QString guideHeadline() const;
+    [[nodiscard]] int guideCurrentStep() const { return guide_.currentIndex; }
+    [[nodiscard]] NextAction guideNext() const { return guide_.next; }
+    bool runGuideNext(); // vrai si une action a été lancée
     [[nodiscard]] ThreadPanel* threadPanel() const { return threads_; }
     // Repère mm <-> pixels et index de sélection de l'aperçu affiché (tests, diagnostics).
     [[nodiscard]] const PreviewImage& previewFrame() const { return frame_; }
@@ -252,6 +263,18 @@ private:
     QString themeMode_{QStringLiteral("system")};
     DiagnosticsPanel* diagnostics_{nullptr};
     CalquePanel* calques_{nullptr};
+    WelcomePage* welcome_{nullptr};
+    QStackedWidget* stack_{nullptr};
+    QWidget* guideStrip_{nullptr};
+    QLabel* guideSteps_{nullptr};
+    QLabel* guideHeadline_{nullptr};
+    QPushButton* guideNext_{nullptr};
+    Guide guide_;
+    std::optional<std::uint64_t> analysedRevision_;
+    std::optional<std::uint64_t> exportedRevision_;
+    int analysisErrors_{0};
+    void buildCentral();
+    void updateGuide();
     ThreadPanel* threads_{nullptr};
     QMenu* presetMenu_{nullptr};
     QDockWidget* docDock_{nullptr};

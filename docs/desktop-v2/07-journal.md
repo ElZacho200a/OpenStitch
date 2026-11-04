@@ -344,3 +344,8 @@ encore le desktop principal.
 
 - `core/thread_plan` : plan de fils (objets groupés par fil dans l'ordre de couture), fusion, recoloration, visibilité, déplacement dans l'ordre de couture (refus si l'ordre des calques casse), coloris (ajout, activation, renommage, suppression) ; tout via `ICommand`, une étape d'annulation par action. Catch2 `[threads]`.
 - Interface : dock « Fils » à trois onglets (Fils / Ordre / Coloris). QTest `threadPanelListsThreadsOrderAndColorways`.
+
+## 2026-11-04 — Session 1 (suite 20) : parcours guidé
+
+- Retour utilisateur : « le parcours n'est pas clair ». Ajout d'un écran d'accueil (ouvrir une image ou un projet, projet vierge, projets récents, explication des quatre étapes) affiché tant qu'aucun projet n'est ouvert.
+- `core/workflow_guide` : bandeau Importer › Retoucher › Contrôler › Exporter calculé depuis l'état du document (objets, analyse à jour, erreurs, export à jour) avec un bouton « étape suivante » ; une modification rouvre l'étape de contrôle. Catch2 `[guide]`, QTest `theWelcomePageExplainsTheJourneyAndTheGuideFollowsTheDocument`.

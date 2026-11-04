@@ -23,8 +23,10 @@
 #include <QPdfWriter>
 #include <QPixmap>
 #include <QProgressBar>
+#include <QPushButton>
 #include <QScrollArea>
 #include <QSpinBox>
+#include <QStackedWidget>
 #include <QStatusBar>
 #include <QTextBrowser>
 #include <QTimer>
@@ -50,6 +52,7 @@
 #include "preview_service.hpp"
 #include "thread_panel.hpp"
 #include "transform_batch.hpp"
+#include "welcome_page.hpp"
 #include <QComboBox>
 #include <QGuiApplication>
 #include <QSignalBlocker>
@@ -128,7 +131,7 @@ ShellWindow::ShellWindow(QWidget* parent)
 
     canvas_ = new PreviewCanvas(this);
     canvas_->setObjectName(QStringLiteral("previewCanvas"));
-    setCentralWidget(canvas_);
+    buildCentral();
 
     buildMenus();
     buildWorkspaceBar();
@@ -735,6 +738,124 @@ void ShellWindow::rebuildToolRail() {
 
 // --- Document, sélection, aperçu -------------------------------------------------------------
 
+void ShellWindow::buildCentral() {
+    auto* container = new QWidget(this);
+    container->setObjectName(QStringLiteral("centralContainer"));
+    auto* column = new QVBoxLayout(container);
+    column->setContentsMargins(0, 0, 0, 0);
+    column->setSpacing(0);
+
+    guideStrip_ = new QWidget(container);
+    guideStrip_->setObjectName(QStringLiteral("guideStrip"));
+    auto* stripColumn = new QVBoxLayout(guideStrip_);
+    stripColumn->setContentsMargins(10, 6, 10, 6);
+    stripColumn->setSpacing(2);
+    auto* row = new QHBoxLayout;
+    guideSteps_ = new QLabel(guideStrip_);
+    guideSteps_->setObjectName(QStringLiteral("guideSteps"));
+    guideSteps_->setTextFormat(Qt::RichText);
+    guideHeadline_ = new QLabel(guideStrip_);
+    guideHeadline_->setObjectName(QStringLiteral("guideHeadline"));
+    guideHeadline_->setWordWrap(true);
+    guideNext_ = new QPushButton(guideStrip_);
+    guideNext_->setObjectName(QStringLiteral("guideNext"));
+    guideNext_->setDefault(true);
+    row->addWidget(guideSteps_);
+    row->addStretch(1);
+    row->addWidget(guideNext_);
+    stripColumn->addLayout(row);
+    stripColumn->addWidget(guideHeadline_);
+    column->addWidget(guideStrip_);
+
+    stack_ = new QStackedWidget(container);
+    welcome_ = new WelcomePage(stack_);
+    stack_->addWidget(welcome_);
+    stack_->addWidget(canvas_);
+    column->addWidget(stack_, 1);
+    setCentralWidget(container);
+
+    connect(welcome_, &WelcomePage::openRequested, this,
+            [this] { runCommand(QStringLiteral("file.open")); });
+    connect(welcome_, &WelcomePage::newRequested, this,
+            [this] { runCommand(QStringLiteral("file.new")); });
+    connect(welcome_, &WelcomePage::recentRequested, this, [this](const QString& path) {
+        openProject(std::filesystem::path(path.toStdU16String()));
+    });
+    connect(guideNext_, &QPushButton::clicked, this, [this] { runGuideNext(); });
+    updateGuide();
+}
+
+void ShellWindow::updateGuide() {
+    if (guideSteps_ == nullptr) {
+        return;
+    }
+    GuideInput in;
+    in.documentOpen = documentOpen_;
+    in.hasObjects = !session_.project().embroidery_objects.empty();
+    in.analysedCurrent = analysedRevision_ && *analysedRevision_ == session_.revision();
+    in.analysisErrors = in.analysedCurrent ? analysisErrors_ : 0;
+    in.exportedCurrent = exportedRevision_ && *exportedRevision_ == session_.revision();
+    guide_ = buildGuide(in);
+
+    const QColor dim = palette().color(QPalette::Disabled, QPalette::WindowText);
+    QStringList parts;
+    int n = 1;
+    for (const auto& s : guide_.steps) {
+        const QString title = fromUtf8(s.title);
+        switch (s.state) {
+        case StepState::Done:
+            parts << QStringLiteral("<span style='color:%1'>✓ %2</span>").arg(dim.name(), title);
+            break;
+        case StepState::Current:
+            parts << QStringLiteral("<b>%1. %2</b>").arg(n).arg(title);
+            break;
+        case StepState::Todo:
+            parts << QStringLiteral("<span style='color:%1'>%2. %3</span>")
+                         .arg(dim.name())
+                         .arg(n)
+                         .arg(title);
+            break;
+        }
+        ++n;
+    }
+    guideSteps_->setText(parts.join(QStringLiteral("  ›  ")));
+    guideHeadline_->setText(fromUtf8(guide_.headline));
+    guideNext_->setText(fromUtf8(guide_.nextLabel));
+    guideNext_->setVisible(guide_.next != NextAction::None);
+    guideStrip_->setVisible(documentOpen_);
+    stack_->setCurrentWidget(documentOpen_ ? static_cast<QWidget*>(canvas_)
+                                           : static_cast<QWidget*>(welcome_));
+    QStringList recent;
+    for (const auto& r : recent_) {
+        recent << QString::fromUtf8(r.data(), static_cast<qsizetype>(r.size()));
+    }
+    welcome_->setRecent(recent);
+}
+
+bool ShellWindow::welcomeVisible() const {
+    return stack_ != nullptr && stack_->currentWidget() == welcome_;
+}
+
+QString ShellWindow::guideHeadline() const {
+    return guideHeadline_ != nullptr ? guideHeadline_->text() : QString();
+}
+
+bool ShellWindow::runGuideNext() {
+    switch (guide_.next) {
+    case NextAction::OpenImage:
+        return runCommand(QStringLiteral("file.open"));
+    case NextAction::Analyse:
+        setWorkspace(Workspace::Optimize);
+        runDiagnostics();
+        return true;
+    case NextAction::Export:
+        return runCommand(QStringLiteral("file.export"));
+    case NextAction::None:
+        break;
+    }
+    return false;
+}
+
 void ShellWindow::onDocumentChanged(ChangeKind) {
     rebuildObjectList();
     refreshActionStates();
@@ -756,6 +877,7 @@ void ShellWindow::refreshActionStates() {
                              : tr("&Rétablir"));
     saveAction_->setEnabled(documentOpen_);
     exportAction_->setEnabled(hasObjects);
+    updateGuide();
 }
 
 void ShellWindow::rebuildObjectList() {
@@ -1047,17 +1169,20 @@ void ShellWindow::rebuildHistoryMenu() {
 
 void ShellWindow::exportDst(const std::filesystem::path& dst) {
     const auto snapshot = session_.snapshot();
+    const auto exportRevision = session_.revision();
     setNotice(tr("Export DST en cours…"), false);
     tasks_.submit<stitch::StitchStats>(
         tr("Export DST").toStdString(),
         [snapshot, dst](const TaskContext& ctx) { return export_project_file(snapshot, dst, ctx); },
-        [this, dst](Result<stitch::StitchStats>&& r) {
+        [this, dst, exportRevision](Result<stitch::StitchStats>&& r) {
             if (!r) {
                 setNotice(tr("Export impossible : %1 %2")
                               .arg(fromUtf8(r.error().message), fromUtf8(r.error().detail)),
                           true);
                 return;
             }
+            exportedRevision_ = exportRevision;
+            updateGuide();
             setNotice(tr("DST écrit : %1 (%2 points)")
                           .arg(QString::fromStdString(dst.filename().string()))
                           .arg(r->stitches),
@@ -1113,6 +1238,9 @@ void ShellWindow::runDiagnostics() {
                 return;
             }
             diagnostics_->setResult(*r);
+            analysedRevision_ = r->revision;
+            analysisErrors_ = static_cast<int>(r->errors);
+            updateGuide();
             diagnostics_->setStale(r->revision != session_.revision());
             setNotice(
                 tr("Analyse : %1 erreur(s), %2 avertissement(s).").arg(r->errors).arg(r->warnings),

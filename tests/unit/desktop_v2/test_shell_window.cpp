@@ -5,6 +5,8 @@
 #include <QFile>
 #include <QMenu>
 #include <QMenuBar>
+#include <QPushButton>
+#include <QRegularExpression>
 #include <QTest>
 #include <QToolBar>
 #include <QTreeWidget>
@@ -820,9 +822,12 @@ private slots:
         QTest::mouseMove(canvas->viewport(), (a + b) / 2);
         QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, b);
         QVERIFY(canvas->hasMeasure());
-        QVERIFY2(w.lastNotice().contains("30.0") || w.lastNotice().contains("30,0") ||
-                     w.lastNotice().contains("29.9") || w.lastNotice().contains("30.1"),
-                 qPrintable(w.lastNotice()));
+        // Les pixels entiers arrondissent selon la taille du canevas : tolérance de 0,5 mm.
+        const auto match =
+            QRegularExpression(QStringLiteral("(\\d+)[.,](\\d+) mm")).match(w.lastNotice());
+        QVERIFY2(match.hasMatch(), qPrintable(w.lastNotice()));
+        const double measured = (match.captured(1) + "." + match.captured(2)).toDouble();
+        QVERIFY2(std::abs(measured - 30.0) < 0.5, qPrintable(w.lastNotice()));
         QVERIFY(w.session().undoNames().empty()); // la règle ne modifie jamais le document
         QVERIFY(w.runCommand("tool.select"));
         QVERIFY(!canvas->hasMeasure()); // changer d'outil efface la mesure
@@ -1048,6 +1053,37 @@ private slots:
         QVERIFY(panel->renameCurrentColorway("Ete"));
         QVERIFY(panel->removeCurrentColorway());
         QCOMPARE(panel->colorwayCount(), 1);
+    }
+
+    void theWelcomePageExplainsTheJourneyAndTheGuideFollowsTheDocument() {
+        ShellWindow w;
+        w.show();
+        // Sans projet : accueil, pas de bandeau d'étapes.
+        QVERIFY(w.welcomeVisible());
+        QCOMPARE(w.guideNext(), NextAction::OpenImage);
+        QVERIFY(w.findChild<QPushButton*>("welcomeOpen") != nullptr);
+        QVERIFY(w.findChild<QPushButton*>("welcomeNew") != nullptr);
+        QVERIFY(!w.findChild<QWidget*>("guideStrip")->isVisible());
+        // Le bouton « Nouveau projet vierge » ouvre un projet vide : le bandeau apparaît.
+        w.findChild<QPushButton*>("welcomeNew")->click();
+        w.waitForIdle();
+        QVERIFY(!w.welcomeVisible());
+        QVERIFY(w.findChild<QWidget*>("guideStrip")->isVisible());
+        QCOMPARE(w.guideCurrentStep(), 0);
+        QVERIFY(w.guideHeadline().contains("vide"));
+        // Des objets : étape « Retoucher », le bouton principal contrôle le motif.
+        (void)w.session().applyBatch(batchAddRect({-10, 0}, 20, 10), "A");
+        w.waitForIdle();
+        QCOMPARE(w.guideCurrentStep(), 1);
+        QCOMPARE(w.guideNext(), NextAction::Analyse);
+        QVERIFY(w.runGuideNext());
+        w.waitForIdle();
+        // Analyse faite sans erreur : l'export est proposé ; une modification le retire.
+        QCOMPARE(w.guideNext(), NextAction::Export);
+        QCOMPARE(w.guideCurrentStep(), 3);
+        (void)w.session().applyBatch(batchAddEllipse({15, 0}, 12, 12), "B");
+        w.waitForIdle();
+        QCOMPARE(w.guideNext(), NextAction::Analyse);
     }
 
     void hidingACalqueHidesItsObjectsFromThePreview() {
