@@ -311,4 +311,7 @@ encore le desktop principal.
   `stitch.points` (nouveau en V2, 21 outils au registre), poignées sur le canevas. Catch2 `[points]` (4 cas), QTest
   `thePointToolMovesDeletesAndDiscardsStitchEdits`.
 - État de la matrice : ✅ 2 · 🟡 40 · ⬜ 2 (restent : 9 IA, exception justifiée ; 19 colonnes de satin à rails).
+- **Famille 19** : `core/satin_column` (création d'une colonne à deux rails depuis des paires de points, rails croisés signalés,
+  déplacement / insertion de nœud de rail), outil `satin.column` (clics par paires, Entrée). Catch2 `[satin]` (4 cas), QTest
+  `theSatinColumnToolBuildsRailsFromPairsOfClicks`. Matrice : ✅ 2 · 🟡 41 · ⬜ 1 (seule la famille 9, IA, reste ⬜).
 

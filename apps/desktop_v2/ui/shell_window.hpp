@@ -22,6 +22,7 @@
 #include "edit_batch.hpp"
 #include "point_edit.hpp"
 #include "preview_service.hpp"
+#include "satin_column.hpp"
 #include "shape_batch.hpp"
 #include "source_image_tools.hpp"
 #include "task_manager.hpp"

@@ -18,6 +18,7 @@
 #include "param_spec.hpp"
 #include "point_edit.hpp"
 #include "preview_canvas.hpp"
+#include "satin_column.hpp"
 #include "shell_window.hpp"
 #include "source_image_tools.hpp"
 #include <array>
@@ -1176,6 +1177,32 @@ private slots:
         QVERIFY(w.runCommand("tool.select"));
         w.waitForIdle();
         QCOMPARE(w.canvas()->pointMarkerCount(), 0);
+    }
+
+    void theSatinColumnToolBuildsRailsFromPairsOfClicks() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        QVERIFY(w.runCommand("workspace.digitize"));
+        QVERIFY(w.runCommand("tool.satin.column"));
+        QVERIFY(w.canvas()->mode() == PreviewCanvas::Mode::DrawPolygon);
+        const auto& f = w.previewFrame();
+        auto at = [&](double x, double y) {
+            return w.canvas()->mapFromScene(QPointF(f.mmToPxX(x), f.mmToPxY(y)));
+        };
+        const auto before = w.session().project().embroidery_objects.size();
+        // Quatre clics = deux barreaux ; Entrée termine.
+        for (const QPoint p : {at(-10, -2), at(-10, 2), at(10, -2), at(10, 2)}) {
+            QTest::mouseClick(w.canvas()->viewport(), Qt::LeftButton, Qt::NoModifier, p);
+        }
+        QTest::keyClick(w.canvas()->viewport(), Qt::Key_Return);
+        QCOMPARE(w.session().project().embroidery_objects.size(), before + 1);
+        QCOMPARE(w.session().selection().targets().size(), size_t(1));
+        const auto id = w.session().selection().targets().front().id;
+        QCOMPARE(railNodeCount(w.session().project(), id, RailSide::A), 2);
+        QVERIFY(w.session().undo());
+        QCOMPARE(w.session().project().embroidery_objects.size(), before);
     }
 
     void clickToStitchEmbroidersAColourAreaOfTheSourceImage() {

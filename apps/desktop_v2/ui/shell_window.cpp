@@ -60,7 +60,8 @@ QString fromUtf8(const std::string& s) {
 bool isToolImplemented(const std::string& id) {
     return id == "select" || id == "pan" || id == "draw.rectangle" || id == "draw.ellipse" ||
            id == "draw.polygon" || id == "measure" || id == "eyedropper" || id == "knife" ||
-           id == "click-to-stitch" || id == "detail-brush" || id == "stitch.points";
+           id == "click-to-stitch" || id == "detail-brush" || id == "stitch.points" ||
+           id == "satin.column";
 }
 
 constexpr Workspace kWorkspaces[] = {Workspace::Design, Workspace::Digitize, Workspace::Optimize,
@@ -1368,7 +1369,8 @@ void ShellWindow::applyToolToCanvas() {
     } else if (activeTool_ == QStringLiteral("draw.rectangle") ||
                activeTool_ == QStringLiteral("draw.ellipse")) {
         canvas_->setMode(Mode::DrawBox);
-    } else if (activeTool_ == QStringLiteral("draw.polygon")) {
+    } else if (activeTool_ == QStringLiteral("draw.polygon") ||
+               activeTool_ == QStringLiteral("satin.column")) {
         canvas_->setMode(Mode::DrawPolygon);
     } else if (activeTool_ == QStringLiteral("measure")) {
         canvas_->setMode(Mode::Measure);
@@ -1448,6 +1450,25 @@ void ShellWindow::onPolygonDrawn(QVector<QPointF> scenePx) {
     points.reserve(static_cast<std::size_t>(scenePx.size()));
     for (const QPointF& p : scenePx) {
         points.push_back(screenToModel(frame_.pxToMmX(p.x()), frame_.pxToMmY(p.y())));
+    }
+    if (activeTool_ == QStringLiteral("satin.column")) {
+        // Points pris deux par deux : (rail A, rail B) pour chaque barreau ; un point seul est
+        // ignoré.
+        std::vector<std::pair<PointMm, PointMm>> rungs;
+        for (std::size_t i = 0; i + 1 < points.size(); i += 2) {
+            rungs.emplace_back(points[i], points[i + 1]);
+        }
+        const auto r = createSatinColumn(session_, rungs);
+        if (!r.ok) {
+            setNotice(tr("Colonne satin : %1").arg(fromUtf8(r.message)), true);
+            return;
+        }
+        session_.selection().replace({{TargetKind::EmbroideryObject, r.objectId}});
+        setNotice(r.railsCross
+                      ? tr("Colonne satin créée, mais les rails se croisent : corrigez-les.")
+                      : tr("Colonne satin créée."),
+                  r.railsCross);
+        return;
     }
     createShape(batchAddPolygon(points), tr("Polygone"));
 }
