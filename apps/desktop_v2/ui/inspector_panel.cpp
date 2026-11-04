@@ -169,6 +169,20 @@ void InspectorPanel::rebuildParams(const InspectorState& state) {
                     }
                 });
                 editor = box;
+            } else if (spec.kind == ParamKind::Choice) {
+                auto* combo = new QComboBox(paramsBox_);
+                combo->addItem(QStringLiteral("—"), -1); // « mixte » : objets différents
+                int n = 0;
+                for (const auto& [value, optionLabel] : paramOptions(spec)) {
+                    (void)value;
+                    combo->addItem(fromUtf8(optionLabel), n++);
+                }
+                connect(combo, &QComboBox::activated, this, [this, key, combo](int row) {
+                    if (!refreshing_ && row > 0) {
+                        applyParam(key, combo->itemData(row).toInt());
+                    }
+                });
+                editor = combo;
             } else if (spec.kind == ParamKind::Integer) {
                 auto* spin = new QSpinBox(paramsBox_);
                 spin->setKeyboardTracking(false);
@@ -229,7 +243,9 @@ void InspectorPanel::rebuildParams(const InspectorState& state) {
                 }
             }
         }
-        if (auto* box = qobject_cast<QCheckBox*>(editor)) {
+        if (auto* combo = qobject_cast<QComboBox*>(editor)) {
+            combo->setCurrentIndex(mixed || !first ? 0 : static_cast<int>(std::lround(*first)) + 1);
+        } else if (auto* box = qobject_cast<QCheckBox*>(editor)) {
             box->setCheckState(mixed ? Qt::PartiallyChecked
                                      : (first && *first >= 0.5 ? Qt::Checked : Qt::Unchecked));
         } else if (auto* ispin = qobject_cast<QSpinBox*>(editor)) {
@@ -244,6 +260,9 @@ void InspectorPanel::rebuildParams(const InspectorState& state) {
 
 std::optional<double> InspectorPanel::paramValue(const QString& key) const {
     auto* editor = paramsBox_->findChild<QWidget*>(QStringLiteral("param_") + key);
+    if (auto* combo = qobject_cast<QComboBox*>(editor)) {
+        return combo->currentIndex() - 1.0;
+    }
     if (auto* box = qobject_cast<QCheckBox*>(editor)) {
         return box->checkState() == Qt::Checked ? 1.0 : 0.0;
     }
@@ -258,6 +277,9 @@ std::optional<double> InspectorPanel::paramValue(const QString& key) const {
 
 bool InspectorPanel::paramMixed(const QString& key) const {
     auto* editor = paramsBox_->findChild<QWidget*>(QStringLiteral("param_") + key);
+    if (auto* combo = qobject_cast<QComboBox*>(editor)) {
+        return combo->currentIndex() == 0;
+    }
     if (auto* box = qobject_cast<QCheckBox*>(editor)) {
         return box->checkState() == Qt::PartiallyChecked;
     }

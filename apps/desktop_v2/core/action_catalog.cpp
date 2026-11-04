@@ -58,6 +58,14 @@ std::string perObject(const ActionContext& c, const std::string& op, const std::
     return wrap(ops);
 }
 
+std::string idList(const ActionContext& c) {
+    std::string out = "[";
+    for (std::size_t i = 0; i < c.ids.size(); ++i) {
+        out += (i == 0 ? "" : ",") + std::to_string(c.ids[i]);
+    }
+    return out + "]";
+}
+
 FieldDef numberField(std::string key, std::string label, double min, double max, std::string def,
                      std::string unit = "") {
     FieldDef f;
@@ -303,6 +311,159 @@ std::vector<ActionDef> makeCatalog() {
                         R"(,"trim_threshold_mm":)" + num(number(v, "trim_threshold_mm")) +
                         R"(,"lock":")" + v.at("lock") + R"(","hidden_travel":)" +
                         std::string(flag(v, "hidden_travel") ? "true" : "false") + "}");
+        };
+        out.push_back(std::move(a));
+    }
+
+    // --- Formes (géométrie vectorielle) ---------------------------------------------------
+    {
+        ActionDef a;
+        a.id = "shape.merge";
+        a.label = "Fusionner les formes…";
+        a.group = "Formes";
+        a.needsSelection = true;
+        a.fields = {choiceField("mode", "Opération",
+                                {{"union", "Union"},
+                                 {"subtract", "Soustraction"},
+                                 {"intersect", "Intersection"},
+                                 {"exclude", "Exclusion"}})};
+        a.build = [](const Values& v, const ActionContext& c, std::string& error) {
+            if (c.ids.size() < 2) {
+                error = "Sélectionnez au moins deux formes (la dernière est la principale).";
+                return std::string();
+            }
+            return wrap(R"({"op":"merge","objects":)" + idList(c) + R"(,"mode":")" + v.at("mode") +
+                        "\"}");
+        };
+        out.push_back(std::move(a));
+    }
+    for (const char* kind : {"simplify", "smooth"}) {
+        ActionDef a;
+        const bool simplify = std::string(kind) == "simplify";
+        a.id = std::string("shape.") + kind;
+        a.label = simplify ? "Simplifier les contours…" : "Lisser les contours…";
+        a.group = "Formes";
+        a.needsSelection = true;
+        a.fields = {
+            numberField("tolerance_mm", "Tolérance", 0.005, 5, simplify ? "0.1" : "0.15", "mm")};
+        a.build = [simplify](const Values& v, const ActionContext& c, std::string&) {
+            return wrap(std::string(R"({"op":")") +
+                        (simplify ? "simplify_shapes" : "smooth_shapes") + R"(","objects":)" +
+                        idList(c) + R"(,"tolerance_mm":)" + num(number(v, "tolerance_mm")) + "}");
+        };
+        out.push_back(std::move(a));
+    }
+    {
+        ActionDef a;
+        a.id = "shape.fill_holes";
+        a.label = "Combler les trous…";
+        a.group = "Formes";
+        a.needsSelection = true;
+        a.fields = {numberField("max_area_mm2", "Aire maximale des trous comblés", 0.0001, 1000000,
+                                "4", "mm²")};
+        a.build = [](const Values& v, const ActionContext& c, std::string&) {
+            return wrap(R"({"op":"fill_small_holes","objects":)" + idList(c) +
+                        R"(,"max_area_mm2":)" + num(number(v, "max_area_mm2")) + "}");
+        };
+        out.push_back(std::move(a));
+    }
+    {
+        ActionDef a;
+        a.id = "shape.remove_small";
+        a.label = "Supprimer les petits morceaux…";
+        a.group = "Formes";
+        a.needsSelection = true;
+        a.fields = {
+            numberField("min_area_mm2", "Aire minimale conservée", 0.0001, 1000000, "1", "mm²")};
+        a.build = [](const Values& v, const ActionContext& c, std::string&) {
+            return wrap(R"({"op":"remove_small_pieces","objects":)" + idList(c) +
+                        R"(,"min_area_mm2":)" + num(number(v, "min_area_mm2")) + "}");
+        };
+        out.push_back(std::move(a));
+    }
+    {
+        ActionDef a;
+        a.id = "shape.break_apart";
+        a.label = "Séparer les morceaux disjoints";
+        a.group = "Formes";
+        a.needsSelection = true;
+        a.build = [](const Values&, const ActionContext& c, std::string&) {
+            return perObject(c, "break_apart", "");
+        };
+        out.push_back(std::move(a));
+    }
+    {
+        ActionDef a;
+        a.id = "shape.convert_vectors";
+        a.label = "Numériser les formes vectorielles";
+        a.group = "Formes";
+        a.build = [](const Values&, const ActionContext&, std::string&) {
+            return wrap(R"({"op":"convert_vectors"})");
+        };
+        out.push_back(std::move(a));
+    }
+    // --- Ordre et enchaînements -----------------------------------------------------------
+    {
+        ActionDef a;
+        a.id = "order.optimize";
+        a.label = "Optimiser l'ordre de broderie…";
+        a.group = "Ordre de couture";
+        a.fields = {choiceField("strategy", "Stratégie",
+                                {{"color_then_proximity", "Couleur puis proximité"},
+                                 {"by_color", "Par couleur"},
+                                 {"by_proximity", "Par proximité"},
+                                 {"layered", "Par couches"},
+                                 {"document", "Ordre du document"}}),
+                    boolField("improve", "Amélioration locale (2-opt)", true)};
+        a.build = [](const Values& v, const ActionContext&, std::string&) {
+            return wrap(R"({"op":"optimize_order","strategy":")" + v.at("strategy") +
+                        R"(","improve":)" + std::string(flag(v, "improve") ? "true" : "false") +
+                        "}");
+        };
+        out.push_back(std::move(a));
+    }
+    {
+        ActionDef a;
+        a.id = "order.connector";
+        a.label = "Coupe après l'objet…";
+        a.group = "Ordre de couture";
+        a.needsSelection = true;
+        a.fields = {choiceField("mode", "Connecteur",
+                                {{"inherit", "Règles du projet"},
+                                 {"always_trim", "Toujours couper"},
+                                 {"never_trim", "Ne jamais couper"}})};
+        a.build = [](const Values& v, const ActionContext& c, std::string&) {
+            return perObject(c, "set_connector", R"(,"mode":")" + v.at("mode") + "\"");
+        };
+        out.push_back(std::move(a));
+    }
+    {
+        ActionDef a;
+        a.id = "order.join";
+        a.label = "Entrée / sortie automatiques…";
+        a.group = "Ordre de couture";
+        a.needsSelection = true;
+        a.fields = {choiceField(
+            "mode", "Mode",
+            {{"inherit", "Règles du projet"}, {"auto", "Automatiques"}, {"off", "Désactivées"}})};
+        a.build = [](const Values& v, const ActionContext& c, std::string&) {
+            return perObject(c, "set_join", R"(,"mode":")" + v.at("mode") + "\"");
+        };
+        out.push_back(std::move(a));
+    }
+    // --- Segmentation ---------------------------------------------------------------------
+    {
+        ActionDef a;
+        a.id = "image.reduce_colors";
+        a.label = "Réduire la palette de l'image…";
+        a.group = "Image";
+        a.fields = {intField("max_colors", "Couleurs maximum", 1, 256, "6"),
+                    boolField("merge_adjacent", "Fusionner les régions voisines", true)};
+        a.build = [](const Values& v, const ActionContext&, std::string&) {
+            return wrap(R"({"op":"seg_reduce_colors","max_colors":)" +
+                        std::to_string(static_cast<int>(number(v, "max_colors"))) +
+                        R"(,"merge_adjacent":)" +
+                        std::string(flag(v, "merge_adjacent") ? "true" : "false") + "}");
         };
         out.push_back(std::move(a));
     }

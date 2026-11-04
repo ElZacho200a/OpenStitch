@@ -248,3 +248,16 @@ compilé, puis `resources/fonts` ; une application installée devra embarquer se
 | 36 Thème | système / clair / sombre (`QStyleHints::setColorScheme`) ; valeur invalide → système | QTest `themeModeIsValidatedAndRestorable` |
 
 Non fait : mémorisation des réglages d'affichage, langue anglaise, PDF / impression, magnétisme, passes de couture.
+
+
+## 2026-11-04 — Session 1 (suite 11) : géométrie, ordre, sous-couches, tirage prédictif, remplissages spéciaux (branche `feat/desktop-v2-families-3`)
+
+| Famille | Fait | Preuve |
+|---|---|---|
+| 13 Géométrie | 10 actions de plus au catalogue : fusion (4 modes), simplifier, lisser, combler les trous, supprimer les miettes, séparer, numériser les formes, optimiser l'ordre (5 stratégies + 2-opt), coupe après l'objet, entrée / sortie automatiques, réduire la palette | Catch2 sur de vraies géométries : union de deux rectangles, **soustraction → trou → comblé**, union avec miette → miette supprimée, ellipse lissée ; une action **sans effet possible est refusée par le moteur et rien n'est empilé** |
+| 24 / 25 | `ParamSpec` passe à la nature **Choice** : mode de compensation du tirage manuel / auto / adaptatif / **prédictif**, mode de sous-couche, zigzag, retrait, écart, liaisons cachées | tests Catch2 `choice settings write the engine keyword…` (l'index 3 écrit `predicted`, relu = 3 ; index hors plage et « mixte » refusés) |
+| 21 | réglages de la spirale, du point de croix, de l'appliqué | tests `special fills expose their own essential settings` ; chaque clé de la table est lisible sur son type et sa valeur par défaut est dans la plage, pour 6 types |
+
+**Incident de session** : un correctif de `readParam` n'avait pas été appliqué (remplacement textuel silencieux sur du code
+reformaté) ; le test lisait un `optional` vide et se figeait. Corrigé en réécrivant la fonction ; les scripts de patch
+de cette session vérifient désormais chaque remplacement.

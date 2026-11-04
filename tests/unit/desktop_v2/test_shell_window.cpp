@@ -735,7 +735,7 @@ private slots:
             ActionDialog dialog(def, defaultValues(def));
             const auto values = dialog.values();
             ActionContext ctx;
-            ctx.ids = {1}; // contexte fictif : seul le contrôle des champs nous intéresse
+            ctx.ids = {1, 2}; // contexte fictif : seul le contrôle des champs nous intéresse
             std::string error;
             const auto batch = buildAction(def, values, ctx, error);
             QVERIFY2(!batch.empty() || def.id == "file.import_svg", def.id.c_str());
