@@ -948,8 +948,9 @@ void ShellWindow::openImage(const std::filesystem::path& image, double heightMm)
     DigitizeRequest request;
     request.image = image;
     request.target_height_mm = heightMm;
-    setNotice(tr("Numérisation de %1…").arg(QString::fromStdU16String(image.filename().u16string())),
-              false);
+    setNotice(
+        tr("Numérisation de %1…").arg(QString::fromStdU16String(image.filename().u16string())),
+        false);
     documentLoadTask_ = tasks_.submit<DigitizeOutput>(
         tr("Numérisation").toStdString(),
         [request](const TaskContext& ctx) { return run_digitize(request, ctx); },
