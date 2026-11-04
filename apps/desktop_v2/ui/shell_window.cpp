@@ -24,6 +24,7 @@
 #include <QPixmap>
 #include <QProgressBar>
 #include <QScrollArea>
+#include <QSettings>
 #include <QSpinBox>
 #include <QStatusBar>
 #include <QTextBrowser>
@@ -125,6 +126,8 @@ ShellWindow::ShellWindow(QWidget* parent)
     setObjectName(QStringLiteral("ShellWindow"));
     setWindowTitle(tr("OpenStitch Desktop V2"));
     resize(1280, 800);
+    QSettings settings(QStringLiteral("OpenStitch"), QStringLiteral("OpenStitch Desktop V2"));
+    toolLabelsVisible_ = settings.value(QStringLiteral("ui/tool_labels"), true).toBool();
 
     canvas_ = new PreviewCanvas(this);
     canvas_->setObjectName(QStringLiteral("previewCanvas"));
@@ -378,6 +381,11 @@ void ShellWindow::buildMenus() {
                               "(Apache-2.0).\nDesktop V2."));
     });
     connect(presetMenu_, &QMenu::aboutToShow, this, &ShellWindow::rebuildPresetMenu);
+    auto* labels = view->addAction(tr("Afficher les &noms des outils"));
+    labels->setObjectName(QStringLiteral("action_view_tool_labels"));
+    labels->setCheckable(true);
+    labels->setChecked(toolLabelsVisible_);
+    connect(labels, &QAction::toggled, this, &ShellWindow::setToolLabelsVisible);
     auto* fit = view->addAction(tr("&Ajuster à la fenêtre"));
     connect(fit, &QAction::triggered, canvas_, &PreviewCanvas::fitAll);
     auto* source = view->addAction(tr("&Image source"));
@@ -447,7 +455,7 @@ void ShellWindow::buildToolRail() {
     toolRail_->setOrientation(Qt::Vertical);
     toolRail_->setMovable(false);
     toolRail_->setToolButtonStyle(Qt::ToolButtonTextOnly);
-    toolRail_->setMaximumWidth(56);
+    toolRail_->setMaximumWidth(toolLabelsVisible_ ? 180 : 56);
     addToolBar(Qt::LeftToolBarArea, toolRail_);
     toolGroup_ = new QActionGroup(this);
     toolGroup_->setExclusive(true);
@@ -648,6 +656,10 @@ void ShellWindow::buildStatusArea() {
     notice_->setObjectName(QStringLiteral("notice"));
     notice_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     statusBar()->addWidget(notice_, 1);
+    activeToolLabel_ = new QLabel(this);
+    activeToolLabel_->setObjectName(QStringLiteral("activeToolLabel"));
+    activeToolLabel_->setAccessibleName(tr("Outil actif"));
+    statusBar()->addPermanentWidget(activeToolLabel_);
     progress_ = new QProgressBar(this);
     progress_->setObjectName(QStringLiteral("taskProgress"));
     progress_->setMaximumWidth(220);
@@ -666,12 +678,24 @@ void ShellWindow::buildStatusArea() {
 
 // --- Espaces et outils -----------------------------------------------------------------------
 
+void ShellWindow::setToolLabelsVisible(bool visible) {
+    if (toolLabelsVisible_ == visible) {
+        return;
+    }
+    toolLabelsVisible_ = visible;
+    QSettings settings(QStringLiteral("OpenStitch"), QStringLiteral("OpenStitch Desktop V2"));
+    settings.setValue(QStringLiteral("ui/tool_labels"), visible);
+    toolRail_->setMaximumWidth(visible ? 180 : 56);
+    rebuildToolRail();
+}
+
 void ShellWindow::setWorkspace(Workspace workspace) {
     workspace_ = workspace;
     for (auto* a : workspaceActions_) {
         a->setChecked(a->data().toInt() == static_cast<int>(workspace));
     }
     rebuildToolRail();
+    applyToolToCanvas(); // réinitialise aussi le mode du canevas si l'ancien outil n'existe plus
     (workspace == Workspace::Optimize ? diagDock_ : docDock_)->raise();
     simBar_->setVisible(workspace == Workspace::Produce);
     if (workspace != Workspace::Produce && simLimit_) {
@@ -688,18 +712,22 @@ void ShellWindow::rebuildToolRail() {
     }
     bool activeStillThere = false;
     for (const auto* tool : registry_.forWorkspace(workspace_)) {
-        // Seuls Sélection et Déplacer la vue sont migrés dans ce lot : les autres sont AFFICHÉS
-        // mais désactivés, avec la raison, pour ne pas faire croire à une parité qui n'existe pas.
+        // Les outils non migrés restent découvrables, mais explicitement désactivés.
         const bool implemented = isToolImplemented(tool->id);
         const QString label = fromUtf8(tool->label);
-        // Rail compact : le bouton porte la touche du raccourci (ou les initiales), le libellé
-        // complet est dans l'infobulle et le nom accessible.
+        // Afficher les noms par défaut ; garder un mode compact pour les petits écrans.
+        // L'étiquette courte ne remplace jamais l'infobulle ni le nom accessible.
         QString shortText = fromUtf8(tool->shortcut);
         shortText.replace(QStringLiteral("Maj+"), QStringLiteral("⇧"));
         if (shortText.isEmpty()) {
             shortText = label.left(2);
         }
-        auto* a = new QAction(shortText, toolGroup_);
+        const QString text = toolLabelsVisible_
+                                 ? (label.size() > 22 ? label.left(21) + QStringLiteral("…")
+                                                      : label)
+                                 : shortText;
+        auto* a = new QAction(text, toolGroup_);
+        a->setObjectName(QStringLiteral("tool_") + fromUtf8(tool->id));
         a->setCheckable(true);
         a->setData(fromUtf8(tool->id));
         a->setEnabled(implemented);
@@ -712,6 +740,7 @@ void ShellWindow::rebuildToolRail() {
             a->setShortcut(keyFor(tool->shortcut));
         }
         a->setToolTip(tip);
+        a->setStatusTip(tip);
         toolRail_->addAction(a);
         if (auto* button = toolRail_->widgetForAction(a)) {
             button->setAccessibleName(label);
@@ -731,6 +760,20 @@ void ShellWindow::rebuildToolRail() {
             a->setChecked(a->data().toString() == activeTool_);
         }
     }
+    updateActiveToolLabel();
+}
+
+void ShellWindow::updateActiveToolLabel() {
+    if (activeToolLabel_ == nullptr) {
+        return;
+    }
+    const auto* tool = registry_.find(activeTool_.toStdString());
+    if (tool == nullptr) {
+        activeToolLabel_->clear();
+        return;
+    }
+    activeToolLabel_->setText(tr("Outil : %1 (%2)").arg(fromUtf8(tool->label),
+                                                       fromUtf8(tool->shortcut)));
 }
 
 // --- Document, sélection, aperçu -------------------------------------------------------------
@@ -1538,6 +1581,7 @@ void ShellWindow::onStroke(QVector<QPointF> scenePx, Qt::KeyboardModifiers modif
 }
 
 void ShellWindow::applyToolToCanvas() {
+    updateActiveToolLabel();
     using Mode = PreviewCanvas::Mode;
     updatePointMarkers();
     const bool imageTool = activeTool_ == QStringLiteral("click-to-stitch") ||

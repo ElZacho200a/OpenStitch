@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QColor>
 #include <QFile>
+#include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
 #include <QTest>
@@ -74,6 +75,40 @@ private slots:
         }
         QCOMPARE(enabled, 9); // …, Pipette, Couteau, Zones de détail
         QVERIFY(disabled > 0);
+    }
+
+    void namedToolsAreDiscoverableAndCanBeCollapsedWithoutLosingActions() {
+        ShellWindow w;
+        auto* rail = w.findChild<QToolBar*>("toolRail");
+        auto* toggle = w.findChild<QAction*>("action_view_tool_labels");
+        QVERIFY(rail && toggle);
+        w.setToolLabelsVisible(true);
+        auto* selection = w.findChild<QAction*>("tool_select");
+        QVERIFY(selection);
+        QVERIFY(selection->text().contains(QStringLiteral("Sélection")));
+        const int count = rail->actions().size();
+        w.setToolLabelsVisible(false);
+        selection = w.findChild<QAction*>("tool_select");
+        QVERIFY(selection);
+        QCOMPARE(selection->text(), QStringLiteral("V"));
+        QCOMPARE(rail->actions().size(), count);
+        QVERIFY(selection->toolTip().contains(QStringLiteral("Sélection")));
+        QCOMPARE(w.activeToolId(), QStringLiteral("select"));
+        w.setToolLabelsVisible(true);
+    }
+
+    void switchingWorkspaceResetsUnavailableCanvasModeWithoutLosingSelection() {
+        ShellWindow w;
+        w.newProject();
+        w.setWorkspace(Workspace::Digitize);
+        QVERIFY(w.runCommand(QStringLiteral("tool.satin.column")));
+        QCOMPARE(w.canvas()->mode(), PreviewCanvas::Mode::DrawPolygon);
+        w.setWorkspace(Workspace::Produce);
+        QCOMPARE(w.activeToolId(), QStringLiteral("select"));
+        QCOMPARE(w.canvas()->mode(), PreviewCanvas::Mode::Select);
+        auto* label = w.findChild<QLabel*>("activeToolLabel");
+        QVERIFY(label);
+        QVERIFY(label->text().contains(QStringLiteral("Sélection")));
     }
 
     void imageToDstEndToEnd() {

@@ -139,6 +139,8 @@ public:
     bool runActionWith(const QString& id, const Values& values);
     void newProject(); // projet vierge à cadre par défaut : point de départ du dessin
 
+    void setToolLabelsVisible(bool visible);
+    [[nodiscard]] bool toolLabelsVisible() const { return toolLabelsVisible_; }
     void setWorkspace(Workspace workspace);
     [[nodiscard]] Workspace workspace() const { return workspace_; }
     void waitForIdle(); // bloque jusqu'à la fin des tâches et livre leurs résultats (tests)
@@ -167,6 +169,7 @@ private:
     void buildInspector();
     void buildStatusArea();
     void rebuildToolRail();
+    void updateActiveToolLabel();
     void rebuildObjectList();
     void syncTreeFromSelection();
     void onSelectionChangedInTree();
@@ -209,6 +212,7 @@ private:
     ToolRegistry registry_;
     Workspace workspace_{Workspace::Design};
     QString activeTool_{QStringLiteral("select")};
+    bool toolLabelsVisible_{true};
 
     PreviewCanvas* canvas_{nullptr};
     QToolBar* workspaceBar_{nullptr};
@@ -220,6 +224,7 @@ private:
     QTreeWidget* objectTree_{nullptr};
     QLabel* summary_{nullptr};
     QLabel* notice_{nullptr};
+    QLabel* activeToolLabel_{nullptr};
     QProgressBar* progress_{nullptr};
     QToolButton* cancelButton_{nullptr};
     QAction* undoAction_{nullptr};
