@@ -1,0 +1,128 @@
+// SPDX-License-Identifier: Apache-2.0
+#include "document_session.hpp"
+
+#include <algorithm>
+
+#include "openstitch/commands/replace_project_command.hpp"
+#include "openstitch/segmentation/segmentation.hpp"
+
+namespace openstitch::desktop_v2 {
+
+DocumentSession::DocumentSession() {
+    undo_.markClean();
+}
+
+std::shared_ptr<const document::Project> DocumentSession::snapshot() const {
+    if (!cachedSnapshot_ || cachedRevision_ != revision_) {
+        cachedSnapshot_ = std::make_shared<const document::Project>(project_);
+        cachedRevision_ = revision_;
+    }
+    return cachedSnapshot_;
+}
+
+bool DocumentSession::exists(const Target& target) const {
+    switch (target.kind) {
+    case TargetKind::EmbroideryObject:
+        return std::ranges::any_of(project_.embroidery_objects,
+                                   [&](const auto& o) { return o.id.value == target.id; });
+    case TargetKind::VectorObject:
+        return std::ranges::any_of(project_.vector_objects,
+                                   [&](const auto& o) { return o.id.value == target.id; });
+    case TargetKind::Region:
+        if (!project_.segmentation) {
+            return false;
+        }
+        for (const RegionId r : segmentation::all_regions(*project_.segmentation)) {
+            if (r.value == target.id) {
+                return true;
+            }
+        }
+        return false;
+    }
+    return false;
+}
+
+void DocumentSession::changed(ChangeKind kind) {
+    ++revision_;
+    // La sélection ne doit jamais pointer un objet disparu (undo d'une création, remplacement…).
+    selection_.prune([this](const Target& t) { return exists(t); });
+    notify(kind);
+}
+
+void DocumentSession::notify(ChangeKind kind) {
+    const auto snapshotListeners = listeners_;
+    for (const auto& [token, listener] : snapshotListeners) {
+        (void)token;
+        listener(kind);
+    }
+}
+
+void DocumentSession::execute(std::unique_ptr<commands::ICommand> command) {
+    if (!command) {
+        return;
+    }
+    undo_.execute(std::move(command), project_);
+    changed(ChangeKind::Edited);
+}
+
+bool DocumentSession::undo() {
+    if (!undo_.undo(project_)) {
+        return false;
+    }
+    changed(ChangeKind::Undone);
+    return true;
+}
+
+bool DocumentSession::redo() {
+    if (!undo_.redo(project_)) {
+        return false;
+    }
+    changed(ChangeKind::Redone);
+    return true;
+}
+
+DocumentSession::BatchResult DocumentSession::previewBatch(std::string_view batchJson) const {
+    document::Project scratch = project_;
+    project_ops::BatchOptions options;
+    options.dry_run = true;
+    return {project_ops::apply_batch(scratch, batchJson, options), false};
+}
+
+DocumentSession::BatchResult DocumentSession::applyBatch(std::string_view batchJson,
+                                                         const std::string& label) {
+    auto before = std::make_shared<const document::Project>(project_);
+    document::Project work = project_;
+    BatchResult result;
+    result.report = project_ops::apply_batch(work, batchJson);
+    if (!result.report.ok || !result.report.applied) {
+        return result;
+    }
+    auto after = std::make_shared<const document::Project>(std::move(work));
+    execute(std::make_unique<commands::ReplaceProjectCommand>(label, std::move(before),
+                                                              std::move(after)));
+    result.committed = true;
+    return result;
+}
+
+void DocumentSession::replaceProject(document::Project project, bool clean) {
+    project_ = std::move(project);
+    undo_.clear();
+    if (clean) {
+        undo_.markClean();
+    } else {
+        undo_.markDirty();
+    }
+    changed(ChangeKind::Replaced);
+}
+
+DocumentSession::Token DocumentSession::subscribe(Listener listener) {
+    const Token token = nextToken_++;
+    listeners_.emplace_back(token, std::move(listener));
+    return token;
+}
+
+void DocumentSession::unsubscribe(Token token) {
+    std::erase_if(listeners_, [token](const auto& entry) { return entry.first == token; });
+}
+
+} // namespace openstitch::desktop_v2
