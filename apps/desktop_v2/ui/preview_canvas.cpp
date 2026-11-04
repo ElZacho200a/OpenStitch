@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "preview_canvas.hpp"
 
+#include <QGraphicsPathItem>
 #include <QGraphicsPixmapItem>
 #include <QGraphicsRectItem>
 #include <QGraphicsScene>
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include <QPainterPath>
 #include <QPen>
 #include <QPixmap>
 #include <QRubberBand>
@@ -14,15 +16,26 @@
 
 namespace openstitch::desktop_v2 {
 
+namespace {
+QPen cosmeticPen(const QColor& colour, Qt::PenStyle style, int width) {
+    QPen pen(colour);
+    pen.setCosmetic(true); // épaisseur constante quel que soit le zoom
+    pen.setWidth(width);
+    pen.setStyle(style);
+    return pen;
+}
+} // namespace
+
 PreviewCanvas::PreviewCanvas(QWidget* parent)
     : QGraphicsView(parent), scene_(new QGraphicsScene(this)) {
     setScene(scene_);
-    setDragMode(QGraphicsView::ScrollHandDrag);
+    setDragMode(QGraphicsView::NoDrag);
     setTransformationAnchor(QGraphicsView::NoAnchor); // ancrage géré à la main (cf. wheelEvent)
     setResizeAnchor(QGraphicsView::NoAnchor);
     setRenderHint(QPainter::SmoothPixmapTransform, true);
     setFrameShape(QFrame::NoFrame);
     setFocusPolicy(Qt::StrongFocus);
+    setMouseTracking(true); // aperçu du segment en cours dans le mode polygone
     setAccessibleName(tr("Canevas d'aperçu"));
 }
 
@@ -41,9 +54,12 @@ void PreviewCanvas::setImage(const QImage& image) {
 }
 
 void PreviewCanvas::clearImage() {
-    scene_->clear();
-    boxItems_.clear(); // détruits avec la scène
+    scene_->clear(); // détruit aussi cadres, cadre de broderie et polygone en cours
+    boxItems_.clear();
     item_ = nullptr;
+    hoopItem_ = nullptr;
+    polyItem_ = nullptr;
+    polyPts_.clear();
     userZoomed_ = false;
 }
 
@@ -53,6 +69,20 @@ void PreviewCanvas::fitAll() {
     }
     fitInView(item_, Qt::KeepAspectRatio);
     userZoomed_ = false;
+}
+
+void PreviewCanvas::setMode(Mode mode) {
+    if (mode_ == Mode::DrawPolygon && mode != Mode::DrawPolygon) {
+        cancelPolygon();
+    }
+    mode_ = mode;
+    bandDragging_ = false;
+    if (band_ != nullptr) {
+        band_->hide();
+    }
+    setDragMode(mode == Mode::Pan ? QGraphicsView::ScrollHandDrag : QGraphicsView::NoDrag);
+    setCursor(mode == Mode::DrawBox || mode == Mode::DrawPolygon ? Qt::CrossCursor
+                                                                 : Qt::ArrowCursor);
 }
 
 void PreviewCanvas::wheelEvent(QWheelEvent* event) {
@@ -71,6 +101,28 @@ void PreviewCanvas::wheelEvent(QWheelEvent* event) {
 }
 
 void PreviewCanvas::keyPressEvent(QKeyEvent* event) {
+    if (mode_ == Mode::DrawPolygon) {
+        switch (event->key()) {
+        case Qt::Key_Return:
+        case Qt::Key_Enter:
+            finishPolygon();
+            event->accept();
+            return;
+        case Qt::Key_Escape:
+            cancelPolygon();
+            event->accept();
+            return;
+        case Qt::Key_Backspace:
+            if (!polyPts_.isEmpty()) {
+                polyPts_.removeLast();
+                updatePolygonItem(nullptr);
+            }
+            event->accept();
+            return;
+        default:
+            break;
+        }
+    }
     if (event->key() == Qt::Key_F && event->modifiers() == Qt::NoModifier) {
         fitAll();
         event->accept();
@@ -88,10 +140,7 @@ void PreviewCanvas::setSelectionBoxes(const QVector<QRectF>& boxesPx) {
     if (item_ == nullptr) {
         return;
     }
-    QPen pen(QColor(255, 64, 160));
-    pen.setCosmetic(true); // épaisseur constante quel que soit le zoom
-    pen.setWidth(2);
-    pen.setStyle(Qt::DashLine);
+    const QPen pen = cosmeticPen(QColor(255, 64, 160), Qt::DashLine, 2);
     for (const QRectF& box : boxesPx) {
         auto* rect = scene_->addRect(box, pen);
         rect->setZValue(10);
@@ -99,19 +148,59 @@ void PreviewCanvas::setSelectionBoxes(const QVector<QRectF>& boxesPx) {
     }
 }
 
-void PreviewCanvas::setRubberBandSelection(bool on) {
-    bandMode_ = on;
-    bandDragging_ = false;
-    if (band_ != nullptr) {
-        band_->hide();
+void PreviewCanvas::setHoopRect(const QRectF& rectPx) {
+    if (hoopItem_ != nullptr) {
+        scene_->removeItem(hoopItem_);
+        delete hoopItem_;
+        hoopItem_ = nullptr;
     }
-    setDragMode(on ? QGraphicsView::NoDrag : QGraphicsView::ScrollHandDrag);
+    if (item_ == nullptr || rectPx.isNull()) {
+        return;
+    }
+    hoopItem_ = scene_->addRect(rectPx, cosmeticPen(QColor(120, 120, 130), Qt::DashDotLine, 1));
+    hoopItem_->setZValue(5);
+}
+
+void PreviewCanvas::updatePolygonItem(const QPointF* cursor) {
+    if (polyItem_ == nullptr) {
+        polyItem_ =
+            scene_->addPath(QPainterPath(), cosmeticPen(QColor(255, 64, 160), Qt::SolidLine, 2));
+        polyItem_->setZValue(11);
+    }
+    QPainterPath path;
+    if (!polyPts_.isEmpty()) {
+        path.moveTo(polyPts_.first());
+        for (int i = 1; i < polyPts_.size(); ++i) {
+            path.lineTo(polyPts_[i]);
+        }
+        if (cursor != nullptr) {
+            path.lineTo(*cursor); // segment élastique jusqu'au curseur
+        }
+    }
+    polyItem_->setPath(path);
+}
+
+void PreviewCanvas::finishPolygon() {
+    if (polyPts_.size() >= 3) {
+        const QVector<QPointF> done = polyPts_;
+        cancelPolygon();
+        emit polygonDrawnPx(done);
+    }
+}
+
+void PreviewCanvas::cancelPolygon() {
+    polyPts_.clear();
+    if (polyItem_ != nullptr) {
+        scene_->removeItem(polyItem_);
+        delete polyItem_;
+        polyItem_ = nullptr;
+    }
 }
 
 void PreviewCanvas::mousePressEvent(QMouseEvent* event) {
     pressing_ = event->button() == Qt::LeftButton;
     pressPos_ = event->pos();
-    if (bandMode_ && pressing_) {
+    if ((mode_ == Mode::Select || mode_ == Mode::DrawBox) && pressing_) {
         bandOrigin_ = event->pos();
         bandDragging_ = true;
     }
@@ -128,6 +217,10 @@ void PreviewCanvas::mouseMoveEvent(QMouseEvent* event) {
         event->accept();
         return;
     }
+    if (mode_ == Mode::DrawPolygon && !polyPts_.isEmpty()) {
+        const QPointF cursor = mapToScene(event->pos());
+        updatePolygonItem(&cursor);
+    }
     QGraphicsView::mouseMoveEvent(event);
 }
 
@@ -141,15 +234,34 @@ void PreviewCanvas::mouseReleaseEvent(QMouseEvent* event) {
             band_->hide();
         }
         if (!click && item_ != nullptr) {
-            const QRect px = QRect(bandOrigin_, event->pos()).normalized();
-            emit rectPx(mapToScene(px).boundingRect(), event->modifiers());
+            const QRectF px =
+                mapToScene(QRect(bandOrigin_, event->pos()).normalized()).boundingRect();
+            if (mode_ == Mode::DrawBox) {
+                emit boxDrawnPx(px, event->modifiers());
+            } else {
+                emit rectPx(px, event->modifiers());
+            }
             return;
         }
     }
     QGraphicsView::mouseReleaseEvent(event);
     if (click && item_ != nullptr) {
-        emit clickedPx(mapToScene(event->pos()), event->modifiers());
+        if (mode_ == Mode::DrawPolygon) {
+            polyPts_.push_back(mapToScene(event->pos()));
+            updatePolygonItem(nullptr);
+        } else if (mode_ == Mode::Select) {
+            emit clickedPx(mapToScene(event->pos()), event->modifiers());
+        }
     }
+}
+
+void PreviewCanvas::mouseDoubleClickEvent(QMouseEvent* event) {
+    if (mode_ == Mode::DrawPolygon && event->button() == Qt::LeftButton) {
+        finishPolygon(); // le premier clic du double-clic a déjà posé le dernier sommet
+        event->accept();
+        return;
+    }
+    QGraphicsView::mouseDoubleClickEvent(event);
 }
 
 void PreviewCanvas::resizeEvent(QResizeEvent* event) {

@@ -17,6 +17,7 @@
 #include "digitize_pipeline.hpp"
 #include "document_session.hpp"
 #include "preview_service.hpp"
+#include "shape_batch.hpp"
 #include "task_manager.hpp"
 #include "tool_registry.hpp"
 
@@ -55,6 +56,7 @@ public:
     bool runCommand(const QString& id); // faux si inconnue ou désactivée
     void showCommandPalette();
     void selectAllObjects();
+    void newProject(); // projet vierge à cadre par défaut : point de départ du dessin
 
     void setWorkspace(Workspace workspace);
     [[nodiscard]] Workspace workspace() const { return workspace_; }
@@ -91,6 +93,9 @@ private:
     void updateSelectionBoxes();
     void onCanvasRect(QRectF scenePx, Qt::KeyboardModifiers modifiers);
     void applyToolToCanvas();
+    void createShape(const std::string& batch, const QString& label);
+    void onBoxDrawn(QRectF scenePx, Qt::KeyboardModifiers modifiers);
+    void onPolygonDrawn(QVector<QPointF> scenePx);
     void onCanvasClick(QPointF scenePx, Qt::KeyboardModifiers modifiers);
 
     DocumentSession session_;
@@ -126,6 +131,7 @@ private:
     TaskId previewTask_{0};
     std::uint64_t previewRevision_{0};
     bool previewShown_{false};
+    bool documentOpen_{false}; // un projet est ouvert (même vide) : l'aperçu montre son cadre
     std::filesystem::path currentPath_;
 };
 

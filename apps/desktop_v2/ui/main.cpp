@@ -32,6 +32,13 @@ int main(int argc, char** argv) {
                               QStringLiteral("Recette : sélectionne les N premiers objets."),
                               QStringLiteral("n"), QStringLiteral("0"));
     parser.addOption(select);
+    QCommandLineOption fresh(QStringList{QStringLiteral("new")},
+                             QStringLiteral("Démarre sur un projet vierge."));
+    parser.addOption(fresh);
+    QCommandLineOption demo(
+        QStringList{QStringLiteral("demo-shapes")},
+        QStringLiteral("Recette : dessine un rectangle, une ellipse et un polygone."));
+    parser.addOption(demo);
     parser.process(app);
 
     openstitch::desktop_v2::ShellWindow window;
@@ -44,6 +51,17 @@ int main(int argc, char** argv) {
         } else {
             window.openImage(path, parser.value(height).toDouble());
         }
+    }
+    if (parser.isSet(fresh) || parser.isSet(demo)) {
+        window.newProject();
+    }
+    if (parser.isSet(demo)) {
+        using namespace openstitch::desktop_v2;
+        auto& session = window.session();
+        (void)session.applyBatch(batchAddRect({-20, 10}, 30, 20), "Rectangle");
+        (void)session.applyBatch(batchAddEllipse({18, 12}, 26, 26), "Ellipse");
+        (void)session.applyBatch(
+            batchAddPolygon({{-30, -30}, {0, -12}, {30, -30}, {10, -8}, {-10, -8}}), "Polygone");
     }
     if (parser.isSet(shot)) {
         window.waitForIdle();

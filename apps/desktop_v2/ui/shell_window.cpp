@@ -26,6 +26,7 @@
 #include "inspector_panel.hpp"
 #include "object_labels.hpp"
 #include "openstitch/project_io/project_io.hpp"
+#include "openstitch/project_ops/factory.hpp"
 #include "preview_canvas.hpp"
 #include "preview_service.hpp"
 
@@ -42,7 +43,8 @@ QString fromUtf8(const std::string& s) {
 
 // Outils réellement migrés : les autres sont déclarés dans le registre mais désactivés.
 bool isToolImplemented(const std::string& id) {
-    return id == "select" || id == "pan";
+    return id == "select" || id == "pan" || id == "draw.rectangle" || id == "draw.ellipse" ||
+           id == "draw.polygon";
 }
 
 constexpr Workspace kWorkspaces[] = {Workspace::Design, Workspace::Digitize, Workspace::Optimize,
@@ -114,6 +116,8 @@ ShellWindow::ShellWindow(QWidget* parent)
     });
     connect(canvas_, &PreviewCanvas::clickedPx, this, &ShellWindow::onCanvasClick);
     connect(canvas_, &PreviewCanvas::rectPx, this, &ShellWindow::onCanvasRect);
+    connect(canvas_, &PreviewCanvas::boxDrawnPx, this, &ShellWindow::onBoxDrawn);
+    connect(canvas_, &PreviewCanvas::polygonDrawnPx, this, &ShellWindow::onPolygonDrawn);
     applyToolToCanvas();
 
     // Un aperçu par rafale de modifications, pas un par modification (le rendu n'est pas
@@ -153,6 +157,9 @@ ShellWindow::~ShellWindow() {
 
 void ShellWindow::buildMenus() {
     auto* file = menuBar()->addMenu(tr("&Fichier"));
+    auto* newDoc = file->addAction(tr("&Nouveau projet"));
+    newDoc->setShortcut(QKeySequence::New);
+    connect(newDoc, &QAction::triggered, this, &ShellWindow::newProject);
     auto* open = file->addAction(tr("&Ouvrir une image ou un projet…"));
     open->setShortcut(QKeySequence::Open);
     connect(open, &QAction::triggered, this, &ShellWindow::chooseAndOpen);
@@ -432,7 +439,7 @@ void ShellWindow::refreshActionStates() {
     redoAction_->setText(session_.canRedo()
                              ? tr("&Rétablir « %1 »").arg(fromUtf8(session_.redoName()))
                              : tr("&Rétablir"));
-    saveAction_->setEnabled(hasObjects);
+    saveAction_->setEnabled(documentOpen_);
     exportAction_->setEnabled(hasObjects);
 }
 
@@ -506,7 +513,7 @@ void ShellWindow::requestPreview() {
     if (previewTask_ != 0) {
         tasks_.cancel(previewTask_); // un aperçu périmé n'est jamais livré
     }
-    if (session_.project().embroidery_objects.empty()) {
+    if (!documentOpen_) {
         canvas_->clearImage();
         previewShown_ = false;
         frame_ = PreviewImage{};
@@ -535,6 +542,10 @@ void ShellWindow::requestPreview() {
                 frame_ = std::move(*r);
                 frame_.png.clear(); // seul le repère et l'index sont conservés
                 frame_.png.shrink_to_fit();
+                canvas_->setHoopRect(QRectF(QPointF(frame_.mmToPxX(-frame_.hoop_half_w_mm),
+                                                    frame_.mmToPxY(-frame_.hoop_half_h_mm)),
+                                            QPointF(frame_.mmToPxX(frame_.hoop_half_w_mm),
+                                                    frame_.mmToPxY(frame_.hoop_half_h_mm))));
                 updateSelectionBoxes();
             }
         });
@@ -581,6 +592,7 @@ void ShellWindow::openImage(const std::filesystem::path& image, double heightMm)
             currentPath_ = image;
             session_.selection().clear();
             const auto stats = r->stats;
+            documentOpen_ = true;
             session_.replaceProject(std::move(r->project), false);
             setNotice(tr("%1 objets, %2 points, %3 × %4 mm")
                           .arg(r->report.embroidery_objects)
@@ -603,6 +615,7 @@ void ShellWindow::openProject(const std::filesystem::path& osp) {
             }
             currentPath_ = osp;
             session_.selection().clear();
+            documentOpen_ = true;
             session_.replaceProject(std::move(*r), true);
             setNotice(
                 tr("Projet ouvert (%1 objets).").arg(session_.project().embroidery_objects.size()),
@@ -671,8 +684,83 @@ void ShellWindow::refreshTaskStatus() {
 }
 
 void ShellWindow::applyToolToCanvas() {
-    // Sélection : cadre élastique au glisser ; Déplacer la vue : panoramique.
-    canvas_->setRubberBandSelection(activeTool_ != QStringLiteral("pan"));
+    using Mode = PreviewCanvas::Mode;
+    if (activeTool_ == QStringLiteral("pan")) {
+        canvas_->setMode(Mode::Pan);
+    } else if (activeTool_ == QStringLiteral("draw.rectangle") ||
+               activeTool_ == QStringLiteral("draw.ellipse")) {
+        canvas_->setMode(Mode::DrawBox);
+    } else if (activeTool_ == QStringLiteral("draw.polygon")) {
+        canvas_->setMode(Mode::DrawPolygon);
+    } else {
+        canvas_->setMode(Mode::Select); // sélection : clic, cadre élastique
+    }
+}
+
+void ShellWindow::newProject() {
+    auto created = project_ops::create_empty_project({});
+    if (!created) {
+        setNotice(tr("Création du projet impossible : %1").arg(fromUtf8(created.error().message)),
+                  true);
+        return;
+    }
+    currentPath_.clear();
+    documentOpen_ = true;
+    session_.selection().clear();
+    session_.replaceProject(std::move(*created), false);
+    setNotice(tr("Nouveau projet (cadre %1 × %2 mm). Choisissez un outil de dessin (R, E, Y).")
+                  .arg(session_.project().canvas.width.value / 1000.0, 0, 'f', 0)
+                  .arg(session_.project().canvas.height.value / 1000.0, 0, 'f', 0),
+              false);
+}
+
+void ShellWindow::createShape(const std::string& batch, const QString& label) {
+    if (batch.empty()) {
+        setNotice(tr("Forme hors limites (0,1 à 2000 mm, à moins de 1000 mm du centre)."), true);
+        return;
+    }
+    const auto result = session_.applyBatch(batch, label.toStdString());
+    if (!result.committed) {
+        const auto& outcomes = result.report.outcomes;
+        setNotice(tr("%1 refusé : %2")
+                      .arg(label, outcomes.empty() ? tr("opération invalide")
+                                                   : fromUtf8(outcomes.back().message)),
+                  true);
+        return;
+    }
+    if (const auto id = createdObjectId(result.report)) {
+        session_.selection().replace({{TargetKind::EmbroideryObject, *id}}); // l'objet créé
+    }
+}
+
+void ShellWindow::onBoxDrawn(QRectF scenePx, Qt::KeyboardModifiers modifiers) {
+    if (!documentOpen_ || frame_.px_per_mm <= 0.0) {
+        return;
+    }
+    double w = scenePx.width() / frame_.px_per_mm;
+    double h = scenePx.height() / frame_.px_per_mm;
+    if (modifiers & Qt::ShiftModifier) {
+        w = h = std::max(w, h); // contrainte : carré / cercle
+    }
+    const PointMm centre =
+        screenToModel(frame_.pxToMmX(scenePx.center().x()), frame_.pxToMmY(scenePx.center().y()));
+    if (activeTool_ == QStringLiteral("draw.ellipse")) {
+        createShape(batchAddEllipse(centre, w, h), tr("Ellipse"));
+    } else {
+        createShape(batchAddRect(centre, w, h), tr("Rectangle"));
+    }
+}
+
+void ShellWindow::onPolygonDrawn(QVector<QPointF> scenePx) {
+    if (!documentOpen_ || frame_.px_per_mm <= 0.0) {
+        return;
+    }
+    std::vector<PointMm> points;
+    points.reserve(static_cast<std::size_t>(scenePx.size()));
+    for (const QPointF& p : scenePx) {
+        points.push_back(screenToModel(frame_.pxToMmX(p.x()), frame_.pxToMmY(p.y())));
+    }
+    createShape(batchAddPolygon(points), tr("Polygone"));
 }
 
 void ShellWindow::selectAllObjects() {
@@ -708,9 +796,10 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
     std::vector<CommandEntry> out;
     const bool hasObjects = !session_.project().embroidery_objects.empty();
     const auto q = [](const QString& s) { return s.toStdString(); };
+    out.push_back({"file.new", q(tr("Nouveau projet")), q(tr("Fichier")), "Ctrl+N", true});
     out.push_back(
         {"file.open", q(tr("Ouvrir une image ou un projet…")), q(tr("Fichier")), "Ctrl+O", true});
-    out.push_back({"file.save", q(tr("Enregistrer")), q(tr("Fichier")), "Ctrl+S", hasObjects});
+    out.push_back({"file.save", q(tr("Enregistrer")), q(tr("Fichier")), "Ctrl+S", documentOpen_});
     out.push_back(
         {"file.export", q(tr("Exporter en DST…")), q(tr("Fichier")), "Ctrl+E", hasObjects});
     out.push_back({"edit.undo", q(tr("Annuler")), q(tr("Édition")), "Ctrl+Z", session_.canUndo()});
@@ -745,7 +834,9 @@ bool ShellWindow::runCommand(const QString& id) {
         if (!e.enabled) {
             return false;
         }
-        if (id == QLatin1String("file.open")) {
+        if (id == QLatin1String("file.new")) {
+            newProject();
+        } else if (id == QLatin1String("file.open")) {
             chooseAndOpen();
         } else if (id == QLatin1String("file.save")) {
             saveAction_->trigger();

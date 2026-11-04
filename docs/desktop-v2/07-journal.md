@@ -110,3 +110,25 @@ expliquer côté moteur (objets de séparation vides ? objets entièrement recou
 ### Non fait
 
 Poignées de nœuds, outils de dessin, design system, i18n EN, centre de notifications, banc de mesure Widgets/QML.
+
+
+## 2026-11-04 — Session 1 (suite 3) : outils de dessin (branche `feat/desktop-v2-draw-shapes`, empilée sur #240)
+
+### Fait, avec preuve
+
+| Élément | Preuve |
+|---|---|
+| Nouveau projet (Ctrl+N) à cadre par défaut 100 × 100 mm ; l'aperçu montre **toujours le cadre de broderie** (fenêtre = cadre ∪ points) et fonctionne sur un document sans point | `file.new`, `render_preview` ; tests `a document without stitches still has a preview of its hoop`, `drawingTools…` |
+| Outils **rectangle**, **ellipse** (Maj = cercle), **polygone** (clics, Entrée / double-clic termine, Retour arrière retire un sommet, Échap annule) : chaque forme = un lot `add_shape` = une annulation ; l'objet créé est sélectionné ; changer d'outil abandonne un polygone en cours | `core/shape_batch.*` (limites du catalogue vérifiées avant l'envoi, nom échappé), `PreviewCanvas::Mode` ; tests `a drawn rectangle becomes one object… at the right place` (emprise réelle contrôlée, axe Y retourné), `ellipse and polygon creation…`, `polygonToolClicksThenEnterAndEscapeCancels` |
+| Forme refusée (polygone en papillon) : notice d'erreur, document et historique inchangés | tests `aRefusedShapeShowsAnError…`, `ellipse and polygon creation…` |
+| Capture | `captures/shell-draw-shapes.png` |
+| Totaux locaux (Windows, Debug) | Catch2 : 52 cas / 586 assertions ; QTest : 27 fonctions ; 0 avertissement |
+
+Un défaut trouvé par les tests : `effective_sequence` refuse un projet **sans objet** (« Aucun objet de broderie ») ; l'aperçu
+traite désormais ce cas lui-même (cadre seul). L'identifiant d'un objet créé par `add_shape` est dans `{"id":N,…}` (et
+`{"created":[…]}` pour duplication/découpe) : `createdObjectId` lit les deux.
+
+### Non fait
+
+Bézier, main levée, polygone régulier, édition de nœuds / poignées, déplacement et mise à l'échelle à la souris (les ops
+`translate`, `scale`, `set_geometry` existent), taille du cadre (`set_canvas`), design system, i18n EN, banc de mesure.

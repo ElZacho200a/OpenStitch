@@ -6,7 +6,7 @@ Pour chaque parcours : intention, interaction **cible** (idéal, sans les limite
 | # | Parcours | Interaction cible | État V2 | Mesure |
 |---|---|---|---|---|
 | 1 | Image → broderie | Ctrl+O (ou glisser-déposer) → hauteur visée dans la barre → numérisation automatique en tâche annulable → aperçu réaliste → correction dans l'arbre → Ctrl+E | ✅ | 3 actions utilisateur (ouvrir, [régler la hauteur], exporter), **0 dialogue bloquant** hors sélecteurs de fichiers (ancien desktop : dialogues d'import et de numérisation décrits par l'audit UX du 18/10 ; **non re-mesuré ici**) |
-| 2 | Créer à partir de zéro | outil de dessin → objet vectoriel → type de point par défaut → points immédiats | ⬜ | outils déclarés, désactivés |
+| 2 | Créer à partir de zéro | Ctrl+N → outil de dessin → objet vectoriel → type de point par défaut → points immédiats | 🟡 | **Nouveau projet, rectangle / ellipse / polygone au glisser ou aux clics, points immédiats (tatami), sélection, inspecteur, annulation ✅** (tests `drawingToolsCreateObjectsFromMouseGestures`, `polygonToolClicks…`) ; Bézier, main levée, édition de nœuds ⬜ |
 | 3 | Importer un vectoriel et numériser | glisser un SVG → objets → choix du type par lot → aperçu | ⬜ | opération `import_svg` existe côté lot |
 | 4 | Modifier une broderie existante | ouvrir `.osp` → sélectionner au canevas ou dans l'arbre → inspecteur | 🟡 | ouverture ✅, arbre ✅, **sélection au canevas ✅**, **inspecteur (4 réglages) ✅** ; paramètres de points ⬜ |
 | 5 | Optimisation automatique | un bouton « Optimiser » avec aperçu avant/après (`previewBatch`) puis application = 1 annulation | ⬜ | op `optimize_order` existe ; `previewBatch` prêt |
