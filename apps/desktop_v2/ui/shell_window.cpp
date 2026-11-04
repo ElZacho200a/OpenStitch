@@ -992,6 +992,8 @@ bool ShellWindow::saveProject(const std::filesystem::path& osp) {
 
 void ShellWindow::setStateDirectory(const std::filesystem::path& dir) {
     stateDir_ = dir;
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
     QSettings settings(QString::fromStdU16String((dir / "ui.ini").u16string()),
                        QSettings::IniFormat);
     setCompactToolRail(settings.value(QStringLiteral("tools/compact"), false).toBool());
