@@ -1,0 +1,47 @@
+# OpenStitch Desktop V2 (docs/desktop-v2/). Coexiste avec apps/desktop jusqu'à la parité
+# fonctionnelle démontrée (docs/desktop-v2/06-plan-migration.md).
+#
+# `core` : couche Qt-FREE (session documentaire, sélection, tâches, registre d'outils, chaîne de
+# numérisation). Construite et testée partout, y compris en CI `linux-core` : c'est la garantie que
+# la logique de l'application ne dépend d'aucun widget.
+add_library(openstitch_desktop_v2_core STATIC
+    core/selection_model.cpp
+    core/task_manager.cpp
+    core/document_session.cpp
+    core/tool_registry.cpp
+    core/digitize_pipeline.cpp
+    core/preview_service.cpp
+    core/object_labels.cpp
+)
+add_library(openstitch::desktop_v2_core ALIAS openstitch_desktop_v2_core)
+target_include_directories(openstitch_desktop_v2_core PUBLIC core)
+target_link_libraries(openstitch_desktop_v2_core
+    PUBLIC openstitch::core openstitch::document openstitch::commands openstitch::project_ops
+           openstitch::stitch openstitch::stitch_generation openstitch::formats openstitch::image
+           openstitch::autodigitize openstitch::segmentation openstitch::stipple
+    PRIVATE openstitch::warnings)
+
+# Interface Qt Widgets. Désactivée avec OPENSTITCH_BUILD_DESKTOP=OFF (CI linux-core) ou sans Qt6.
+if(NOT OPENSTITCH_BUILD_DESKTOP)
+    return()
+endif()
+find_package(Qt6 COMPONENTS Widgets QUIET)
+if(NOT Qt6_FOUND)
+    return()
+endif()
+
+set(CMAKE_AUTOMOC ON)
+add_library(openstitch_desktop_v2_ui STATIC
+    ui/shell_window.cpp
+    ui/shell_window.hpp
+    ui/preview_canvas.cpp
+    ui/preview_canvas.hpp
+)
+add_library(openstitch::desktop_v2_ui ALIAS openstitch_desktop_v2_ui)
+target_include_directories(openstitch_desktop_v2_ui PUBLIC ui)
+target_link_libraries(openstitch_desktop_v2_ui
+    PUBLIC Qt6::Widgets openstitch::desktop_v2_core openstitch::project_io
+    PRIVATE openstitch::warnings)
+
+add_executable(openstitch_v2 WIN32 ui/main.cpp)
+target_link_libraries(openstitch_v2 PRIVATE openstitch::desktop_v2_ui openstitch::warnings)
