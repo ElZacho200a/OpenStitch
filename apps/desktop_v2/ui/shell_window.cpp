@@ -23,12 +23,14 @@
 #include <algorithm>
 
 #include "command_palette.hpp"
+#include "inspector_model.hpp"
 #include "inspector_panel.hpp"
 #include "object_labels.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/project_ops/factory.hpp"
 #include "preview_canvas.hpp"
 #include "preview_service.hpp"
+#include "transform_batch.hpp"
 
 namespace openstitch::desktop_v2 {
 
@@ -117,6 +119,10 @@ ShellWindow::ShellWindow(QWidget* parent)
     connect(canvas_, &PreviewCanvas::clickedPx, this, &ShellWindow::onCanvasClick);
     connect(canvas_, &PreviewCanvas::rectPx, this, &ShellWindow::onCanvasRect);
     connect(canvas_, &PreviewCanvas::boxDrawnPx, this, &ShellWindow::onBoxDrawn);
+    connect(canvas_, &PreviewCanvas::moveStartRequested, this, &ShellWindow::onMoveStart);
+    connect(canvas_, &PreviewCanvas::moveDraggedPx, this, &ShellWindow::onMoveDragged);
+    connect(canvas_, &PreviewCanvas::scaleDraggedPx, this, &ShellWindow::onScaleDragged);
+    canvas_->setMoveHitTest([this](const QPointF& p) { return pickAtPx(p).has_value(); });
     connect(canvas_, &PreviewCanvas::polygonDrawnPx, this, &ShellWindow::onPolygonDrawn);
     applyToolToCanvas();
 
@@ -923,16 +929,64 @@ std::optional<QPointF> ShellWindow::objectCentrePx(std::uint64_t id) const {
     return QPointF(frame_.mmToPxX(p->first), frame_.mmToPxY(p->second));
 }
 
+std::optional<std::uint64_t> ShellWindow::pickAtPx(QPointF scenePx) const {
+    if (frame_.hits == nullptr) {
+        return std::nullopt;
+    }
+    // Tolérance : 5 pixels d'écran, au moins 0,5 mm (petits fils fins faciles à viser).
+    const double zoom = std::max(canvas_->zoom(), 1e-6);
+    const double tolMm = std::max(0.5, 5.0 / zoom / frame_.px_per_mm);
+    return frame_.hits->pick(frame_.pxToMmX(scenePx.x()), frame_.pxToMmY(scenePx.y()), tolMm);
+}
+
+void ShellWindow::onMoveStart(QPointF scenePx) {
+    const auto hit = pickAtPx(scenePx);
+    if (hit && !session_.selection().contains({TargetKind::EmbroideryObject, *hit})) {
+        session_.selection().replace({{TargetKind::EmbroideryObject, *hit}});
+    }
+}
+
+void ShellWindow::applyTransform(const std::string& batch, const QString& label) {
+    if (batch.empty()) {
+        updateSelectionBoxes(); // geste hors limites ou nul : on rétablit l'affichage
+        return;
+    }
+    const auto result = session_.applyBatch(batch, label.toStdString());
+    if (!result.committed) {
+        const auto& outcomes = result.report.outcomes;
+        setNotice(tr("%1 refusé : %2")
+                      .arg(label, outcomes.empty() ? tr("opération invalide")
+                                                   : fromUtf8(outcomes.back().message)),
+                  true);
+        updateSelectionBoxes();
+    }
+}
+
+void ShellWindow::onMoveDragged(QPointF deltaPx) {
+    if (frame_.px_per_mm <= 0.0) {
+        return;
+    }
+    const auto state = inspect(session_.project(), session_.selection().targets());
+    // Axe Y : l'image descend, le modèle monte.
+    applyTransform(
+        batchTranslate(state.ids, deltaPx.x() / frame_.px_per_mm, -deltaPx.y() / frame_.px_per_mm),
+        tr("Déplacer"));
+}
+
+void ShellWindow::onScaleDragged(QPointF pivotPx, double factor) {
+    if (frame_.px_per_mm <= 0.0) {
+        return;
+    }
+    const auto state = inspect(session_.project(), session_.selection().targets());
+    const PointMm pivot = screenToModel(frame_.pxToMmX(pivotPx.x()), frame_.pxToMmY(pivotPx.y()));
+    applyTransform(batchScale(state.ids, factor, pivot), tr("Mettre à l'échelle"));
+}
+
 void ShellWindow::onCanvasClick(QPointF scenePx, Qt::KeyboardModifiers modifiers) {
     if (activeTool_ != QStringLiteral("select") || frame_.hits == nullptr) {
         return;
     }
-    const double xMm = frame_.pxToMmX(scenePx.x());
-    const double yMm = frame_.pxToMmY(scenePx.y());
-    // Tolérance : 5 pixels d'écran, au moins 0,5 mm (petits fils fins faciles à viser).
-    const double zoom = std::max(canvas_->zoom(), 1e-6);
-    const double tolMm = std::max(0.5, 5.0 / zoom / frame_.px_per_mm);
-    const auto hit = frame_.hits->pick(xMm, yMm, tolMm);
+    const auto hit = pickAtPx(scenePx);
     if (!hit) {
         if (!(modifiers & (Qt::ControlModifier | Qt::ShiftModifier))) {
             session_.selection().clear();

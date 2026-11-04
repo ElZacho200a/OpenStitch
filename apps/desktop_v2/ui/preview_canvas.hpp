@@ -13,7 +13,9 @@
 #include <QPolygonF>
 #include <QRectF>
 #include <QVector>
+#include <functional>
 
+class QGraphicsItemGroup;
 class QGraphicsPathItem;
 class QGraphicsPixmapItem;
 class QGraphicsRectItem;
@@ -45,6 +47,9 @@ public:
     // Cadres de sélection (pixels de l'image d'aperçu) dessinés au-dessus de l'image.
     void setSelectionBoxes(const QVector<QRectF>& boxesPx);
     [[nodiscard]] int selectionBoxCount() const { return static_cast<int>(boxItems_.size()); }
+    // Test « y a-t-il un objet sous ce point ? » (pixels de l'image) fourni par la fenêtre : il
+    // décide si un appui en mode Select démarre un déplacement plutôt qu'un cadre élastique.
+    void setMoveHitTest(std::function<bool(const QPointF&)> test) { moveHit_ = std::move(test); }
     // Cadre de broderie (pixels de l'image) ; rectangle nul = aucun.
     void setHoopRect(const QRectF& rectPx);
     [[nodiscard]] bool hasHoop() const { return hoopItem_ != nullptr; }
@@ -58,6 +63,12 @@ signals:
     void rectPx(QRectF scenePx, Qt::KeyboardModifiers modifiers);
     // Cadre de création terminé en mode DrawBox.
     void boxDrawnPx(QRectF scenePx, Qt::KeyboardModifiers modifiers);
+    // Un déplacement va démarrer sur l'objet sous `scenePx` (la fenêtre l'ajoute à la sélection).
+    void moveStartRequested(QPointF scenePx);
+    // Glisser terminé sur la sélection : décalage en pixels de l'image.
+    void moveDraggedPx(QPointF deltaPx);
+    // Poignée de coin tirée : pivot (coin opposé, pixels de l'image) et facteur d'échelle uniforme.
+    void scaleDraggedPx(QPointF pivotPx, double factor);
     // Polygone terminé en mode DrawPolygon (au moins 3 sommets).
     void polygonDrawnPx(QVector<QPointF> scenePx);
 
@@ -81,6 +92,9 @@ private:
     QGraphicsScene* scene_;
     QGraphicsPixmapItem* item_{nullptr};
     QGraphicsRectItem* hoopItem_{nullptr};
+    QGraphicsItemGroup* selGroup_{nullptr}; // cadres + poignées de la sélection
+    QGraphicsRectItem* scaleOutline_{nullptr};
+    QRectF unionPx_;
     QGraphicsPathItem* polyItem_{nullptr};
     QVector<QGraphicsRectItem*> boxItems_;
     QVector<QPointF> polyPts_;
@@ -88,6 +102,12 @@ private:
     QRubberBand* band_{nullptr};
     QPoint bandOrigin_;
     Mode mode_{Mode::Select};
+    std::function<bool(const QPointF&)> moveHit_;
+    QPointF moveOrigin_;
+    QPointF scalePivot_;
+    QPointF scaleCorner_;
+    int scaleHandle_{-1};
+    bool moving_{false};
     bool bandDragging_{false};
     bool pressing_{false};
     bool userZoomed_{false}; // tant que faux, un redimensionnement re-ajuste l'image

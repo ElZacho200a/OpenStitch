@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "preview_canvas.hpp"
 
+#include <QGraphicsItemGroup>
 #include <QGraphicsPathItem>
 #include <QGraphicsPixmapItem>
 #include <QGraphicsRectItem>
@@ -12,6 +13,7 @@
 #include <QPixmap>
 #include <QRubberBand>
 #include <QWheelEvent>
+#include <algorithm>
 #include <cmath>
 
 namespace openstitch::desktop_v2 {
@@ -54,12 +56,15 @@ void PreviewCanvas::setImage(const QImage& image) {
 }
 
 void PreviewCanvas::clearImage() {
-    scene_->clear(); // détruit aussi cadres, cadre de broderie et polygone en cours
+    scene_->clear(); // détruit aussi cadres, poignées, cadre de broderie et polygone en cours
     boxItems_.clear();
     item_ = nullptr;
     hoopItem_ = nullptr;
     polyItem_ = nullptr;
+    selGroup_ = nullptr;
+    scaleOutline_ = nullptr;
     polyPts_.clear();
+    unionPx_ = QRectF();
     userZoomed_ = false;
 }
 
@@ -132,19 +137,37 @@ void PreviewCanvas::keyPressEvent(QKeyEvent* event) {
 }
 
 void PreviewCanvas::setSelectionBoxes(const QVector<QRectF>& boxesPx) {
-    for (auto* item : boxItems_) {
-        scene_->removeItem(item);
-        delete item;
+    if (selGroup_ != nullptr) {
+        scene_->removeItem(selGroup_);
+        delete selGroup_; // détruit aussi ses enfants
+        selGroup_ = nullptr;
     }
     boxItems_.clear();
-    if (item_ == nullptr) {
+    unionPx_ = QRectF();
+    if (item_ == nullptr || boxesPx.isEmpty()) {
         return;
     }
+    selGroup_ = scene_->createItemGroup({});
+    selGroup_->setZValue(10);
     const QPen pen = cosmeticPen(QColor(255, 64, 160), Qt::DashLine, 2);
     for (const QRectF& box : boxesPx) {
-        auto* rect = scene_->addRect(box, pen);
-        rect->setZValue(10);
+        auto* rect = new QGraphicsRectItem(box);
+        rect->setPen(pen);
+        selGroup_->addToGroup(rect);
         boxItems_.push_back(rect);
+        unionPx_ = unionPx_.isNull() ? box : unionPx_.united(box);
+    }
+    // Poignées de mise à l'échelle aux quatre coins de l'emprise commune (taille constante à
+    // l'écran).
+    const QPointF corners[4] = {unionPx_.topLeft(), unionPx_.topRight(), unionPx_.bottomRight(),
+                                unionPx_.bottomLeft()};
+    for (const QPointF& c : corners) {
+        auto* handle = new QGraphicsRectItem(-4, -4, 8, 8);
+        handle->setFlag(QGraphicsItem::ItemIgnoresTransformations, true);
+        handle->setBrush(QColor(255, 255, 255));
+        handle->setPen(cosmeticPen(QColor(255, 64, 160), Qt::SolidLine, 2));
+        handle->setPos(c);
+        selGroup_->addToGroup(handle);
     }
 }
 
@@ -200,6 +223,32 @@ void PreviewCanvas::cancelPolygon() {
 void PreviewCanvas::mousePressEvent(QMouseEvent* event) {
     pressing_ = event->button() == Qt::LeftButton;
     pressPos_ = event->pos();
+    const bool plain = !(event->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier));
+    if (mode_ == Mode::Select && pressing_ && plain && item_ != nullptr) {
+        const QPointF scenePos = mapToScene(event->pos());
+        // 1) poignée de coin ? (8 pixels d'écran de tolérance)
+        if (selGroup_ != nullptr && !unionPx_.isNull()) {
+            const QPointF corners[4] = {unionPx_.topLeft(), unionPx_.topRight(),
+                                        unionPx_.bottomRight(), unionPx_.bottomLeft()};
+            for (int i = 0; i < 4; ++i) {
+                if ((mapFromScene(corners[i]) - event->pos()).manhattanLength() <= 8) {
+                    scaleHandle_ = i;
+                    scaleCorner_ = corners[i];
+                    scalePivot_ = corners[(i + 2) % 4]; // le coin opposé reste fixe
+                    event->accept();
+                    return;
+                }
+            }
+        }
+        // 2) objet sous le curseur : déplacement de la sélection
+        if (moveHit_ && moveHit_(scenePos)) {
+            emit moveStartRequested(scenePos); // la fenêtre l'ajoute à la sélection si besoin
+            moving_ = true;
+            moveOrigin_ = scenePos;
+            event->accept();
+            return;
+        }
+    }
     if ((mode_ == Mode::Select || mode_ == Mode::DrawBox) && pressing_) {
         bandOrigin_ = event->pos();
         bandDragging_ = true;
@@ -208,6 +257,31 @@ void PreviewCanvas::mousePressEvent(QMouseEvent* event) {
 }
 
 void PreviewCanvas::mouseMoveEvent(QMouseEvent* event) {
+    if (moving_) {
+        if (selGroup_ != nullptr) {
+            selGroup_->setPos(mapToScene(event->pos()) - moveOrigin_); // retour visuel immédiat
+        }
+        event->accept();
+        return;
+    }
+    if (scaleHandle_ >= 0) {
+        const QPointF cur = mapToScene(event->pos());
+        const double d0 =
+            std::hypot(scaleCorner_.x() - scalePivot_.x(), scaleCorner_.y() - scalePivot_.y());
+        const double d1 = std::hypot(cur.x() - scalePivot_.x(), cur.y() - scalePivot_.y());
+        const double factor = d0 > 0.0 ? d1 / d0 : 1.0;
+        const QRectF scaled(scalePivot_ + (unionPx_.topLeft() - scalePivot_) * factor,
+                            scalePivot_ + (unionPx_.bottomRight() - scalePivot_) * factor);
+        if (scaleOutline_ == nullptr) {
+            scaleOutline_ =
+                scene_->addRect(scaled, cosmeticPen(QColor(255, 64, 160), Qt::SolidLine, 2));
+            scaleOutline_->setZValue(12);
+        } else {
+            scaleOutline_->setRect(scaled.normalized());
+        }
+        event->accept();
+        return;
+    }
     if (bandDragging_) {
         if (band_ == nullptr) {
             band_ = new QRubberBand(QRubberBand::Rectangle, viewport());
@@ -228,6 +302,39 @@ void PreviewCanvas::mouseReleaseEvent(QMouseEvent* event) {
     const bool leftRelease = pressing_ && event->button() == Qt::LeftButton;
     const bool click = leftRelease && (event->pos() - pressPos_).manhattanLength() <= 4;
     pressing_ = false;
+    if (scaleHandle_ >= 0 && event->button() == Qt::LeftButton) {
+        const QPointF cur = mapToScene(event->pos());
+        const double d0 =
+            std::hypot(scaleCorner_.x() - scalePivot_.x(), scaleCorner_.y() - scalePivot_.y());
+        const double d1 = std::hypot(cur.x() - scalePivot_.x(), cur.y() - scalePivot_.y());
+        scaleHandle_ = -1;
+        if (scaleOutline_ != nullptr) {
+            scene_->removeItem(scaleOutline_);
+            delete scaleOutline_;
+            scaleOutline_ = nullptr;
+        }
+        if (!click && d0 > 0.0) {
+            emit scaleDraggedPx(scalePivot_, d1 / d0);
+        }
+        event->accept();
+        return;
+    }
+    if (moving_ && event->button() == Qt::LeftButton) {
+        moving_ = false;
+        const QPointF delta = mapToScene(event->pos()) - moveOrigin_;
+        if (selGroup_ != nullptr) {
+            selGroup_->setPos(click ? QPointF() : delta); // un simple clic ne déplace rien
+        }
+        if (!click) {
+            emit moveDraggedPx(delta);
+            event->accept();
+            return;
+        }
+        // Clic sans glisser : retombe sur la sélection au clic.
+        emit clickedPx(mapToScene(event->pos()), event->modifiers());
+        event->accept();
+        return;
+    }
     if (bandDragging_ && event->button() == Qt::LeftButton) {
         bandDragging_ = false;
         if (band_ != nullptr) {

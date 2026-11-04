@@ -132,3 +132,26 @@ traite désormais ce cas lui-même (cadre seul). L'identifiant d'un objet créé
 
 Bézier, main levée, polygone régulier, édition de nœuds / poignées, déplacement et mise à l'échelle à la souris (les ops
 `translate`, `scale`, `set_geometry` existent), taille du cadre (`set_canvas`), design system, i18n EN, banc de mesure.
+
+
+## 2026-11-04 — Session 1 (suite 4) : déplacer et mettre à l'échelle à la souris (branche `feat/desktop-v2-move-scale`)
+
+### Fait, avec preuve
+
+| Élément | Preuve |
+|---|---|
+| Déplacer : appui sur un objet (sélectionné ou non) puis glisser ; la sélection suit en direct (cadres décalés), au relâchement un lot `translate` (une annulation pour toute la sélection) ; un simple clic ne déplace rien | `core/transform_batch.*` (limites du catalogue, déplacement/échelle nuls refusés) ; tests `draggingAnObjectMovesTheSelectionInOneUndoStep`, `aPlainClickOnAnObjectDoesNotMoveIt`, `a move is one undo step for the whole selection and lands where asked` (axe Y contrôlé sur le rendu) |
+| Mettre à l'échelle : 4 poignées aux coins de l'emprise commune (taille constante à l'écran), pivot = coin opposé, facteur uniforme, contour de prévisualisation pendant le glisser, un lot `scale` | tests `draggingACornerHandleScalesAboutTheOppositeCorner` (taille ×, coin opposé fixe, rapport d'aspect conservé), `a scale about a pivot keeps the pivot fixed` |
+| Un glisser sur le tissu vide reste un cadre élastique | tests `aDragOnEmptyFabricIsARubberBandNotAClick`, `rubberBandSelectsWholeObjectsOnly` |
+| Totaux locaux (Windows, Debug) | Catch2 : 56 cas / 631 assertions ; QTest : 31 lignes ; 0 avertissement |
+
+### Intégration
+
+Sur demande de l'utilisateur, **plus rien n'est fusionné dans `main`** : les PR V2 sont fusionnées dans la branche
+d'intégration `integration/desktop-v2` (créée depuis `main`). #238 y est fusionnée ; #239–#241 y sont retargetées. Un
+défaut de portabilité Linux (liste d'initialisation de `uint64_t` mixte avec `unsigned long long`) détecté par la CI
+`linux-core` a été corrigé.
+
+### Non fait
+
+Rotation, miroir, alignement, flèches clavier, Bézier, main levée, nœuds, taille du cadre, design system, i18n EN.
