@@ -95,7 +95,10 @@ ToolRegistry ToolRegistry::builtin() {
     r.add({"bucket", "Pot de peinture", "G", D, Gesture::Pick, "Bucket"});
     r.add({"click-to-stitch", "Clic-pour-broder", "A", N, Gesture::Pick, "ClickToStitch"});
     r.add({"detail-brush", "Zones de détail", "Q", D, Gesture::Stroke, "DetailBrush"});
-    (void)O;
+    // Nouveau en V2 (pas d'équivalent dans l'ancien enum) : retouche point à point.
+    r.add({"stitch.points", "Retouche de points", "J", static_cast<std::uint8_t>(N | O),
+           Gesture::Pick, ""});
+    (void)P;
     return r;
 }
 

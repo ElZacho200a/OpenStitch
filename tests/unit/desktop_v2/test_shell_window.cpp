@@ -16,8 +16,11 @@
 #include "inspector_model.hpp"
 #include "inspector_panel.hpp"
 #include "param_spec.hpp"
+#include "point_edit.hpp"
 #include "preview_canvas.hpp"
+#include "satin_column.hpp"
 #include "shell_window.hpp"
+#include "source_image_tools.hpp"
 #include <array>
 
 using namespace openstitch::desktop_v2;
@@ -66,8 +69,7 @@ private slots:
                 QVERIFY(a->toolTip().contains("pas encore migré"));
             }
         }
-        QCOMPARE(enabled,
-                 8); // Sélection, Vue, Rectangle, Ellipse, Polygone, Règle, Pipette, Couteau
+        QCOMPARE(enabled, 9); // …, Pipette, Couteau, Zones de détail
         QVERIFY(disabled > 0);
     }
 
@@ -288,12 +290,12 @@ private slots:
             return false;
         };
         QVERIFY(has("file.open") && has("edit.undo") && has("workspace.produce"));
-        // Les 20 outils du registre sont tous atteignables par la palette.
+        // Les 21 outils du registre sont tous atteignables par la palette.
         int tools = 0;
         for (const auto& e : entries) {
             tools += e.id.rfind("tool.", 0) == 0 ? 1 : 0;
         }
-        QCOMPARE(tools, 20);
+        QCOMPARE(tools, 21);
         // Un outil non migré est listé mais refusé, sans effet de bord.
         QVERIFY(!w.runCommand("tool.draw.bezier"));
         QCOMPARE(w.activeToolId(), QString("select"));
@@ -1107,6 +1109,221 @@ private slots:
         QVERIFY(!w.canvas()->hasMeasure()); // la ligne de coupe disparaît après le geste
         QVERIFY(w.session().undo());
         QCOMPARE(w.session().project().embroidery_objects.size(), size_t(1));
+    }
+
+    void thePointToolMovesDeletesAndDiscardsStitchEdits() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        const auto id =
+            *createdObjectId(w.session().applyBatch(batchAddRect({0, 0}, 30, 16), "R").report);
+        w.waitForIdle();
+        QVERIFY(w.runCommand("workspace.digitize"));
+        QVERIFY(w.runCommand("tool.stitch.points"));
+        // Sans sélection : pas de poignées.
+        w.waitForIdle();
+        QCOMPARE(w.canvas()->pointMarkerCount(), 0);
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        w.waitForIdle();
+        QVERIFY(w.canvas()->pointMarkerCount() > 10);
+        QCOMPARE(w.selectedPoint(), -1);
+        // Cliquer sur la première poignée la sélectionne.
+        const auto view = stitchPoints(w.session().project(), id);
+        QVERIFY(view.has_value());
+        const auto first = std::find_if(view->points.begin(), view->points.end(),
+                                        [](const EditablePoint& p) { return p.movable; });
+        QVERIFY(first != view->points.end());
+        const auto& f = w.previewFrame();
+        const QPoint at =
+            w.canvas()->mapFromScene(QPointF(f.mmToPxX(first->pos.x), f.mmToPxY(-first->pos.y)));
+        QTest::mouseClick(w.canvas()->viewport(), Qt::LeftButton, Qt::NoModifier, at);
+        QCOMPARE(w.selectedPoint(), 0);
+        // Cliquer ailleurs la déplace : une étape d'annulation.
+        const auto depth = w.session().undoNames().size();
+        // Destination loin de toute poignée (sinon le clic sélectionnerait une autre poignée).
+        QPoint dest;
+        PointMm destMm{};
+        for (const double cx : {-60.0, 60.0, -40.0, 40.0}) {
+            const QPoint cand = w.canvas()->mapFromScene(QPointF(f.mmToPxX(cx), f.mmToPxY(0)));
+            bool far = w.canvas()->viewport()->rect().contains(cand);
+            for (const auto& p : view->points) {
+                const QPoint q =
+                    w.canvas()->mapFromScene(QPointF(f.mmToPxX(p.pos.x), f.mmToPxY(-p.pos.y)));
+                far = far && (q - cand).manhattanLength() > 30;
+            }
+            if (far) {
+                dest = cand;
+                destMm = {cx, 0};
+                break;
+            }
+        }
+        QVERIFY2(!dest.isNull(), "no free spot on the canvas");
+        QTest::mouseClick(w.canvas()->viewport(), Qt::LeftButton, Qt::NoModifier, dest);
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QCOMPARE(stitchPoints(w.session().project(), id)->state, PointEditState::ManuallyEdited);
+        w.waitForIdle();
+        // Suppression du point sélectionné.
+        QTest::mouseClick(w.canvas()->viewport(), Qt::LeftButton, Qt::NoModifier,
+                          w.canvas()->mapFromScene(QPointF(f.mmToPxX(destMm.x), f.mmToPxY(0))));
+        QCOMPARE(w.selectedPoint() >= 0, true);
+        QVERIFY(w.deleteSelectedPoint());
+        QCOMPARE(w.session().undoNames().size(), depth + 2);
+        // Effacer les retouches : retour à l'état propre.
+        QVERIFY(w.discardPointEdits());
+        QCOMPARE(stitchPoints(w.session().project(), id)->state, PointEditState::Clean);
+        QVERIFY(!w.discardPointEdits()); // plus rien à effacer
+        // Quitter l'outil retire les poignées.
+        QVERIFY(w.runCommand("tool.select"));
+        w.waitForIdle();
+        QCOMPARE(w.canvas()->pointMarkerCount(), 0);
+    }
+
+    void theSatinColumnToolBuildsRailsFromPairsOfClicks() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        QVERIFY(w.runCommand("workspace.digitize"));
+        QVERIFY(w.runCommand("tool.satin.column"));
+        QVERIFY(w.canvas()->mode() == PreviewCanvas::Mode::DrawPolygon);
+        const auto& f = w.previewFrame();
+        auto at = [&](double x, double y) {
+            return w.canvas()->mapFromScene(QPointF(f.mmToPxX(x), f.mmToPxY(y)));
+        };
+        const auto before = w.session().project().embroidery_objects.size();
+        // Quatre clics = deux barreaux ; Entrée termine.
+        for (const QPoint p : {at(-10, -2), at(-10, 2), at(10, -2), at(10, 2)}) {
+            QTest::mouseClick(w.canvas()->viewport(), Qt::LeftButton, Qt::NoModifier, p);
+        }
+        QTest::keyClick(w.canvas()->viewport(), Qt::Key_Return);
+        QCOMPARE(w.session().project().embroidery_objects.size(), before + 1);
+        QCOMPARE(w.session().selection().targets().size(), size_t(1));
+        const auto id = w.session().selection().targets().front().id;
+        QCOMPARE(railNodeCount(w.session().project(), id, RailSide::A), 2);
+        QVERIFY(w.session().undo());
+        QCOMPARE(w.session().project().embroidery_objects.size(), before);
+    }
+
+    void clickToStitchEmbroidersAColourAreaOfTheSourceImage() {
+        ShellWindow w;
+        w.show();
+        w.openImage(tentabrode(), 80.0);
+        w.waitForIdle();
+        QVERIFY(!w.sourceVisible());
+        QVERIFY(w.runCommand("workspace.digitize")); // l'outil vit dans la Numérisation
+        QVERIFY(w.runCommand("tool.click-to-stitch"));
+        QVERIFY(w.sourceVisible()); // on ne clique pas une image invisible
+        w.waitForIdle();
+        QVERIFY(w.canvas()->hasSource());
+        auto processed = processedImage(w.session().project());
+        QVERIFY(processed.has_value());
+        // Un pixel opaque sombre au milieu du motif.
+        const double mmpp = w.session().project().mm_per_px.value;
+        std::optional<std::pair<double, double>> mm;
+        // Le clic passe par un pixel d'écran entier : on vise le milieu d'un bloc 15 x 15 sombre et
+        // opaque, pas le bord d'une zone.
+        const auto solid = [&](int cx, int cy) {
+            for (int dy = -7; dy <= 7; ++dy) {
+                for (int dx = -7; dx <= 7; ++dx) {
+                    const int x = cx + dx;
+                    const int y = cy + dy;
+                    if (x < 0 || y < 0 || x >= processed->width || y >= processed->height) {
+                        return false;
+                    }
+                    const auto* px =
+                        &processed->rgba[(static_cast<size_t>(y) * processed->width + x) * 4];
+                    if (!(px[3] > 250 && px[0] < 60 && px[1] < 80 && px[2] < 100)) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        };
+        for (int y = processed->height / 2; y < processed->height && !mm; y += 3) {
+            for (int x = processed->width / 3; x < 2 * processed->width / 3 && !mm; x += 3) {
+                if (solid(x, y)) {
+                    mm = pixelCentreMm(*processed, mmpp, {x, y});
+                }
+            }
+        }
+        QVERIFY(mm.has_value());
+        const auto& f = w.previewFrame();
+        const QPoint at =
+            w.canvas()->mapFromScene(QPointF(f.mmToPxX(mm->first), f.mmToPxY(mm->second)));
+        const auto before = w.session().project().embroidery_objects.size();
+        const auto depth = w.session().undoNames().size();
+        w.setClickToStitch(20, ClickKind::Fill);
+        QTest::mouseClick(w.canvas()->viewport(), Qt::LeftButton, Qt::NoModifier, at);
+        QVERIFY2(w.session().project().embroidery_objects.size() == before + 1,
+                 qPrintable(w.lastNotice()));
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QCOMPARE(w.session().selection().targets().size(),
+                 size_t(1)); // la zone brodée est sélectionnée
+        QVERIFY(w.session().undo());
+        QCOMPARE(w.session().project().embroidery_objects.size(), before);
+        // Hors de l'image : message, rien d'empilé.
+        QTest::mouseClick(w.canvas()->viewport(), Qt::LeftButton, Qt::NoModifier,
+                          w.canvas()->mapFromScene(QPointF(f.mmToPxX(5000), f.mmToPxY(5000))));
+        QVERIFY(w.lastNotice().contains("Clic-pour-broder"));
+        QCOMPARE(w.session().project().embroidery_objects.size(), before);
+    }
+
+    void clickToStitchNeedsASourceImage() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new"); // projet vierge : pas d'image
+        w.waitForIdle();
+        w.runCommand("workspace.digitize");
+        QVERIFY(w.runCommand("tool.click-to-stitch"));
+        QTest::mouseClick(w.canvas()->viewport(), Qt::LeftButton, Qt::NoModifier,
+                          w.canvas()->viewport()->rect().center());
+        QVERIFY(w.lastNotice().contains("image"));
+        QVERIFY(w.session().project().embroidery_objects.empty());
+    }
+
+    void theDetailBrushPaintsAndErasesWithOneUndoStepPerStroke() {
+        ShellWindow w;
+        w.show();
+        w.openImage(tentabrode(), 80.0);
+        w.waitForIdle();
+        QVERIFY(w.runCommand("tool.detail-brush"));
+        QVERIFY(w.sourceVisible());
+        w.waitForIdle();
+        QVERIFY(w.session().project().detail_mask.empty());
+        auto* canvas = w.canvas();
+        const QPoint a = canvas->viewport()->rect().center();
+        const QPoint b = a + QPoint(40, 0);
+        const auto depth = w.session().undoNames().size();
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, a);
+        QTest::mouseMove(canvas->viewport(), a + QPoint(20, 0));
+        QTest::mouseMove(canvas->viewport(), b);
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, b);
+        QVERIFY(w.session().project().detail_mask.any_detail());
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        w.waitForIdle();
+        QVERIFY(canvas->hasDetailOverlay()); // le masque est dessiné sur l'image
+        // Ctrl + trait au même endroit : gomme.
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::ControlModifier, a);
+        QTest::mouseMove(canvas->viewport(), b, 1);
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::ControlModifier, b);
+        QCOMPARE(w.session().undoNames().size(), depth + 2);
+        QVERIFY(w.session().undo());
+        QVERIFY(w.session().project().detail_mask.any_detail());
+        w.setBrushRadiusMm(100.0); // borné à 50 mm
+    }
+
+    void theSourceImageCanBeShownAndHiddenFromTheViewMenu() {
+        ShellWindow w;
+        w.show();
+        w.openImage(tentabrode(), 80.0);
+        w.waitForIdle();
+        w.setSourceVisible(true);
+        QVERIFY(w.canvas()->hasSource());
+        QVERIFY(w.canvas()->sourceVisible());
+        w.setSourceVisible(false);
+        QVERIFY(!w.canvas()->hasSource() || !w.canvas()->sourceVisible());
+        QVERIFY(w.findChild<QAction*>("action_view_source") != nullptr);
     }
 
     void inspectorEditsAllSelectedObjectsInOneUndoStep() {

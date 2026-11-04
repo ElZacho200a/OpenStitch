@@ -24,6 +24,9 @@ add_library(openstitch_desktop_v2_core STATIC
     core/view_tools.cpp
     core/document_services.cpp
     core/fade_service.cpp
+    core/satin_column.cpp
+    core/point_edit.cpp
+    core/source_image_tools.cpp
 )
 add_library(openstitch::desktop_v2_core ALIAS openstitch_desktop_v2_core)
 target_include_directories(openstitch_desktop_v2_core PUBLIC core)

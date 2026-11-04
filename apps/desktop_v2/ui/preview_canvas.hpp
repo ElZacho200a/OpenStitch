@@ -38,7 +38,8 @@ public:
     // Measure : glisser = règle (le résultat est affiché par `showMeasure`).
     // Pick : un clic échantillonne (pipette) ; ni cadre élastique ni déplacement.
     // Cut : glisser = ligne de coupe (couteau), émise par `lineDrawnPx`.
-    enum class Mode { Select, Pan, DrawBox, DrawPolygon, Measure, Pick, Cut };
+    // Stroke : glisser = trait de pinceau (zones de détail), émis par `strokeDrawnPx`.
+    enum class Mode { Select, Pan, DrawBox, DrawPolygon, Measure, Pick, Cut, Stroke };
 
     explicit PreviewCanvas(QWidget* parent = nullptr);
 
@@ -67,6 +68,18 @@ public:
     [[nodiscard]] bool hasMeasure() const { return measureLine_ != nullptr; }
     void setHoopVisible(bool visible);
     [[nodiscard]] bool hoopVisible() const { return hoopVisible_; }
+    // Image source affichée sous forme de calque semi-transparent (pixels de l'image d'aperçu).
+    void setSourceImage(const QImage& image, const QRectF& rectPx);
+    void setSourceVisible(bool visible);
+    [[nodiscard]] bool hasSource() const { return sourceItem_ != nullptr; }
+    [[nodiscard]] bool sourceVisible() const { return sourceVisible_; }
+    // Masque de détail (ARGB) superposé à l'image source ; image nulle = aucun.
+    void setDetailOverlay(const QImage& image, const QRectF& rectPx);
+    [[nodiscard]] bool hasDetailOverlay() const { return detailItem_ != nullptr; }
+    // Poignées des points d'un objet (pixels de l'image) ; `selected` = indice mis en évidence, -1
+    // = aucun. Liste vide = aucune poignée.
+    void setPointMarkers(const QVector<QPointF>& scenePx, int selected);
+    [[nodiscard]] int pointMarkerCount() const { return static_cast<int>(pointItems_.size()); }
     // Cadre de broderie (pixels de l'image) ; rectangle nul = aucun.
     void setHoopRect(const QRectF& rectPx);
     [[nodiscard]] bool hasHoop() const { return hoopItem_ != nullptr; }
@@ -76,6 +89,8 @@ public:
 signals:
     // Règle : segment tracé (pixels de l'image).
     void measuredPx(QPointF a, QPointF b);
+    // Trait de pinceau terminé (pixels de l'image), Ctrl = gomme.
+    void strokeDrawnPx(QVector<QPointF> scenePx, Qt::KeyboardModifiers modifiers);
     // Couteau : ligne tracée (pixels de l'image).
     void lineDrawnPx(QPointF a, QPointF b);
     // Clic droit : position globale (pour le menu) et position dans l'image.
@@ -118,6 +133,13 @@ private:
     QGraphicsScene* scene_;
     QGraphicsPixmapItem* item_{nullptr};
     QGraphicsRectItem* hoopItem_{nullptr};
+    QVector<QGraphicsItem*> pointItems_;
+    QGraphicsPixmapItem* sourceItem_{nullptr};
+    QGraphicsPixmapItem* detailItem_{nullptr};
+    QGraphicsPathItem* strokeItem_{nullptr};
+    QVector<QPointF> strokePts_;
+    bool stroking_{false};
+    bool sourceVisible_{true};
     QGraphicsPathItem* gridItem_{nullptr};
     QGraphicsLineItem* measureLine_{nullptr};
     QGraphicsSimpleTextItem* measureText_{nullptr};

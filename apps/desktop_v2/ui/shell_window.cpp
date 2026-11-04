@@ -38,8 +38,11 @@
 #include "preview_canvas.hpp"
 #include "preview_service.hpp"
 #include "transform_batch.hpp"
+#include <QComboBox>
 #include <QGuiApplication>
+#include <QSignalBlocker>
 #include <QSlider>
+#include <QSpinBox>
 #include <QStyleHints>
 
 namespace openstitch::desktop_v2 {
@@ -56,7 +59,9 @@ QString fromUtf8(const std::string& s) {
 // Outils réellement migrés : les autres sont déclarés dans le registre mais désactivés.
 bool isToolImplemented(const std::string& id) {
     return id == "select" || id == "pan" || id == "draw.rectangle" || id == "draw.ellipse" ||
-           id == "draw.polygon" || id == "measure" || id == "eyedropper" || id == "knife";
+           id == "draw.polygon" || id == "measure" || id == "eyedropper" || id == "knife" ||
+           id == "click-to-stitch" || id == "detail-brush" || id == "stitch.points" ||
+           id == "satin.column";
 }
 
 constexpr Workspace kWorkspaces[] = {Workspace::Design, Workspace::Digitize, Workspace::Optimize,
@@ -125,12 +130,14 @@ ShellWindow::ShellWindow(QWidget* parent)
             syncTreeFromSelection();
         }
         updateSelectionBoxes();
+        updatePointMarkers();
     });
     connect(canvas_, &PreviewCanvas::clickedPx, this, &ShellWindow::onCanvasClick);
     connect(canvas_, &PreviewCanvas::rectPx, this, &ShellWindow::onCanvasRect);
     connect(canvas_, &PreviewCanvas::boxDrawnPx, this, &ShellWindow::onBoxDrawn);
     connect(canvas_, &PreviewCanvas::measuredPx, this, &ShellWindow::onMeasured);
     connect(canvas_, &PreviewCanvas::lineDrawnPx, this, &ShellWindow::onKnife);
+    connect(canvas_, &PreviewCanvas::strokeDrawnPx, this, &ShellWindow::onStroke);
     connect(canvas_, &PreviewCanvas::contextMenuRequested, this, &ShellWindow::showContextMenu);
     connect(canvas_, &PreviewCanvas::moveStartRequested, this, &ShellWindow::onMoveStart);
     connect(canvas_, &PreviewCanvas::nudgeRequested, this, &ShellWindow::nudgeSelection);
@@ -250,6 +257,9 @@ void ShellWindow::buildMenus() {
     };
     addEdit(edit, tr("&Supprimer"), "edit.delete", QKeySequence::Delete);
     addEdit(edit, tr("D&upliquer"), "edit.duplicate", QKeySequence(QStringLiteral("Ctrl+D")));
+    auto* discard = edit->addAction(tr("Effacer les retouches de &points"));
+    discard->setObjectName(QStringLiteral("action_discard_points"));
+    connect(discard, &QAction::triggered, this, [this] { discardPointEdits(); });
     auto* transform = edit->addMenu(tr("&Transformer"));
     addEdit(transform, tr("Pivoter de 90° à &droite"), "transform.rotate.cw");
     addEdit(transform, tr("Pivoter de 90° à &gauche"), "transform.rotate.ccw");
@@ -284,6 +294,10 @@ void ShellWindow::buildMenus() {
     connect(presetMenu_, &QMenu::aboutToShow, this, &ShellWindow::rebuildPresetMenu);
     auto* fit = view->addAction(tr("&Ajuster à la fenêtre"));
     connect(fit, &QAction::triggered, canvas_, &PreviewCanvas::fitAll);
+    auto* source = view->addAction(tr("&Image source"));
+    source->setCheckable(true);
+    source->setObjectName(QStringLiteral("action_view_source"));
+    connect(source, &QAction::toggled, this, [this](bool on) { setSourceVisible(on); });
     auto* hoop = view->addAction(tr("Cadre de &broderie"));
     hoop->setCheckable(true);
     hoop->setChecked(true);
@@ -505,6 +519,37 @@ void ShellWindow::buildStatusArea() {
         }
     });
     simBar_->hide();
+
+    // Réglages des outils d'image (clic-pour-broder : tolérance, type ; pinceau : rayon).
+    imageBar_ = addToolBar(tr("Outils d'image"));
+    imageBar_->setObjectName(QStringLiteral("imageToolBar"));
+    imageBar_->setMovable(false);
+    imageBar_->addWidget(new QLabel(tr(" Tolérance : "), imageBar_));
+    tolSpin_ = new QSpinBox(imageBar_);
+    tolSpin_->setObjectName(QStringLiteral("clickTolerance"));
+    tolSpin_->setRange(0, 100);
+    tolSpin_->setValue(clickTol_);
+    tolSpin_->setToolTip(tr("Écart de couleur accepté autour du pixel cliqué (CIELAB)."));
+    imageBar_->addWidget(tolSpin_);
+    imageBar_->addWidget(new QLabel(tr("  Type : "), imageBar_));
+    kindCombo_ = new QComboBox(imageBar_);
+    kindCombo_->setObjectName(QStringLiteral("clickKind"));
+    kindCombo_->addItems({tr("Automatique"), tr("Remplissage"), tr("Satin"), tr("Contour seul")});
+    imageBar_->addWidget(kindCombo_);
+    imageBar_->addWidget(new QLabel(tr("  Pinceau : "), imageBar_));
+    auto* radius = new QDoubleSpinBox(imageBar_);
+    radius->setObjectName(QStringLiteral("brushRadius"));
+    radius->setRange(0.2, 50.0);
+    radius->setValue(brushMm_);
+    radius->setSuffix(tr(" mm"));
+    radius->setToolTip(tr("Rayon du pinceau des zones de détail (Ctrl = gomme)."));
+    imageBar_->addWidget(radius);
+    connect(tolSpin_, &QSpinBox::valueChanged, this,
+            [this](int v) { setClickToStitch(v, clickKind_); });
+    connect(kindCombo_, &QComboBox::currentIndexChanged, this,
+            [this](int i) { setClickToStitch(clickTol_, static_cast<ClickKind>(i)); });
+    connect(radius, &QDoubleSpinBox::valueChanged, this, [this](double v) { setBrushRadiusMm(v); });
+    imageBar_->hide();
     notice_ = new QLabel(this);
     notice_->setObjectName(QStringLiteral("notice"));
     notice_->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -724,6 +769,8 @@ void ShellWindow::requestPreview() {
                                             QPointF(frame_.mmToPxX(frame_.hoop_half_w_mm),
                                                     frame_.mmToPxY(frame_.hoop_half_h_mm))));
                 updateGrid();
+                updateSourceOverlay();
+                updatePointMarkers();
                 refreshSimulationBar();
                 updateSelectionBoxes();
             }
@@ -1126,14 +1173,204 @@ void ShellWindow::rebuildPresetMenu() {
     }
 }
 
+void ShellWindow::setSourceVisible(bool visible) {
+    sourceShown_ = visible;
+    canvas_->setSourceVisible(visible);
+    updateSourceOverlay();
+}
+
+void ShellWindow::setClickToStitch(int tolerance, ClickKind kind) {
+    clickTol_ = std::clamp(tolerance, 0, 100);
+    clickKind_ = kind;
+    if (tolSpin_ != nullptr && tolSpin_->value() != clickTol_) {
+        QSignalBlocker block(tolSpin_);
+        tolSpin_->setValue(clickTol_);
+    }
+    if (kindCombo_ != nullptr && kindCombo_->currentIndex() != static_cast<int>(kind)) {
+        QSignalBlocker block(kindCombo_);
+        kindCombo_->setCurrentIndex(static_cast<int>(kind));
+    }
+}
+
+void ShellWindow::setBrushRadiusMm(double mm) {
+    brushMm_ = std::clamp(mm, 0.2, 50.0);
+}
+
+const image::Image* ShellWindow::ensureProcessed() {
+    if (!documentOpen_) {
+        return nullptr;
+    }
+    if (!processedValid_ || processedRevision_ != session_.revision()) {
+        auto image = processedImage(session_.project());
+        processedValid_ = image.has_value();
+        processedRevision_ = session_.revision();
+        if (!image) {
+            processed_ = {};
+            setNotice(fromUtf8(image.error().message) + QStringLiteral(". ") +
+                          fromUtf8(image.error().detail),
+                      true);
+            return nullptr;
+        }
+        processed_ = std::move(*image);
+    }
+    return &processed_;
+}
+
+std::optional<std::uint64_t> ShellWindow::pointTarget() const {
+    const auto state = inspect(session_.project(), session_.selection().targets());
+    if (state.ids.size() != 1) {
+        return std::nullopt;
+    }
+    return state.ids.front();
+}
+
+void ShellWindow::updatePointMarkers() {
+    const auto target = activeTool_ == QStringLiteral("stitch.points") && documentOpen_
+                            ? pointTarget()
+                            : std::nullopt;
+    pointHandles_.clear();
+    if (!target || frame_.px_per_mm <= 0.0) {
+        pointSel_ = -1;
+        pointObject_ = 0;
+        pointView_ = {};
+        canvas_->setPointMarkers({}, -1);
+        return;
+    }
+    if (pointObject_ != *target) {
+        pointSel_ = -1;
+    }
+    pointObject_ = *target;
+    auto view = stitchPoints(session_.project(), *target);
+    if (!view) {
+        pointView_ = {};
+        pointSel_ = -1;
+        canvas_->setPointMarkers({}, -1);
+        setNotice(fromUtf8(view.error().message), true);
+        return;
+    }
+    pointView_ = std::move(*view);
+    QVector<QPointF> pts;
+    for (std::size_t i = 0; i < pointView_.points.size(); ++i) {
+        const auto& p = pointView_.points[i];
+        if (!p.movable || p.deleted) {
+            continue;
+        }
+        pointHandles_.push_back(i);
+        pts.push_back({frame_.mmToPxX(p.pos.x), frame_.mmToPxY(-p.pos.y)});
+    }
+    if (pointSel_ >= static_cast<int>(pts.size())) {
+        pointSel_ = -1;
+    }
+    canvas_->setPointMarkers(pts, pointSel_);
+}
+
+bool ShellWindow::deleteSelectedPoint() {
+    if (pointSel_ < 0 || pointSel_ >= static_cast<int>(pointHandles_.size()) || !pointTarget()) {
+        return false;
+    }
+    const auto index = pointView_.points[pointHandles_[static_cast<std::size_t>(pointSel_)]].index;
+    const auto r = deleteStitchPoints(session_, *pointTarget(), {index});
+    if (!r.ok) {
+        setNotice(tr("Retouche de points : %1").arg(fromUtf8(r.message)), true);
+        return false;
+    }
+    pointSel_ = -1;
+    setNotice(tr("Point supprimé."), false);
+    return true;
+}
+
+bool ShellWindow::discardPointEdits() {
+    const auto target = pointTarget();
+    if (!target) {
+        setNotice(tr("Sélectionnez un seul objet brodé."), false);
+        return false;
+    }
+    const auto r = discardStitchEdits(session_, *target);
+    if (!r.ok) {
+        setNotice(fromUtf8(r.message), false);
+        return false;
+    }
+    pointSel_ = -1;
+    setNotice(tr("Retouches effacées."), false);
+    return true;
+}
+
+void ShellWindow::updateSourceOverlay() {
+    if (!sourceShown_ || frame_.px_per_mm <= 0.0 || !documentOpen_) {
+        canvas_->setSourceImage({}, {});
+        canvas_->setDetailOverlay({}, {});
+        return;
+    }
+    const image::Image* img = ensureProcessed();
+    if (img == nullptr) {
+        canvas_->setSourceImage({}, {});
+        canvas_->setDetailOverlay({}, {});
+        return;
+    }
+    const double mmpp = session_.project().mm_per_px.value;
+    const double wMm = img->width * mmpp;
+    const double hMm = img->height * mmpp;
+    const QRectF rect(QPointF(frame_.mmToPxX(-wMm / 2.0), frame_.mmToPxY(-hMm / 2.0)),
+                      QSizeF(wMm * frame_.px_per_mm, hMm * frame_.px_per_mm));
+    const QImage view(img->rgba.data(), img->width, img->height, img->width * 4,
+                      QImage::Format_RGBA8888);
+    canvas_->setSourceImage(view.copy(), rect); // copie : `processed_` peut être recalculée
+    const auto& mask = session_.project().detail_mask;
+    if (mask.matches(img->width, img->height) && mask.any_detail()) {
+        QImage overlay(img->width, img->height, QImage::Format_ARGB32);
+        for (int y = 0; y < img->height; ++y) {
+            for (int x = 0; x < img->width; ++x) {
+                const int w = mask.weights[static_cast<std::size_t>(y) * img->width + x];
+                overlay.setPixel(x, y, qRgba(230, 60, 60, w * 150 / 255));
+            }
+        }
+        canvas_->setDetailOverlay(overlay, rect);
+    } else {
+        canvas_->setDetailOverlay({}, {});
+    }
+}
+
+void ShellWindow::onStroke(QVector<QPointF> scenePx, Qt::KeyboardModifiers modifiers) {
+    if (activeTool_ != QStringLiteral("detail-brush") || frame_.px_per_mm <= 0.0) {
+        return;
+    }
+    const image::Image* img = ensureProcessed();
+    if (img == nullptr) {
+        return;
+    }
+    std::vector<std::pair<double, double>> centres;
+    centres.reserve(static_cast<std::size_t>(scenePx.size()));
+    for (const QPointF& p : scenePx) {
+        centres.emplace_back(frame_.pxToMmX(p.x()), frame_.pxToMmY(p.y()));
+    }
+    const bool erase = modifiers & Qt::ControlModifier;
+    const auto r = paintDetail(session_, *img, centres, brushMm_, erase);
+    if (!r.ok) {
+        setNotice(fromUtf8(r.message), true);
+        return;
+    }
+    setNotice(erase ? tr("Zone de détail effacée.") : tr("Zone de détail peinte."), false);
+    updateSourceOverlay();
+}
+
 void ShellWindow::applyToolToCanvas() {
     using Mode = PreviewCanvas::Mode;
+    updatePointMarkers();
+    const bool imageTool = activeTool_ == QStringLiteral("click-to-stitch") ||
+                           activeTool_ == QStringLiteral("detail-brush");
+    if (imageBar_ != nullptr) {
+        imageBar_->setVisible(imageTool);
+    }
+    if (imageTool && !sourceShown_ && documentOpen_) {
+        setSourceVisible(true); // on ne peut pas cliquer une image qu'on ne voit pas
+    }
     if (activeTool_ == QStringLiteral("pan")) {
         canvas_->setMode(Mode::Pan);
     } else if (activeTool_ == QStringLiteral("draw.rectangle") ||
                activeTool_ == QStringLiteral("draw.ellipse")) {
         canvas_->setMode(Mode::DrawBox);
-    } else if (activeTool_ == QStringLiteral("draw.polygon")) {
+    } else if (activeTool_ == QStringLiteral("draw.polygon") ||
+               activeTool_ == QStringLiteral("satin.column")) {
         canvas_->setMode(Mode::DrawPolygon);
     } else if (activeTool_ == QStringLiteral("measure")) {
         canvas_->setMode(Mode::Measure);
@@ -1141,6 +1378,11 @@ void ShellWindow::applyToolToCanvas() {
         canvas_->setMode(Mode::Pick);
     } else if (activeTool_ == QStringLiteral("knife")) {
         canvas_->setMode(Mode::Cut);
+    } else if (activeTool_ == QStringLiteral("click-to-stitch") ||
+               activeTool_ == QStringLiteral("stitch.points")) {
+        canvas_->setMode(Mode::Pick);
+    } else if (activeTool_ == QStringLiteral("detail-brush")) {
+        canvas_->setMode(Mode::Stroke);
     } else {
         canvas_->setMode(Mode::Select); // sélection : clic, cadre élastique
     }
@@ -1209,6 +1451,25 @@ void ShellWindow::onPolygonDrawn(QVector<QPointF> scenePx) {
     for (const QPointF& p : scenePx) {
         points.push_back(screenToModel(frame_.pxToMmX(p.x()), frame_.pxToMmY(p.y())));
     }
+    if (activeTool_ == QStringLiteral("satin.column")) {
+        // Points pris deux par deux : (rail A, rail B) pour chaque barreau ; un point seul est
+        // ignoré.
+        std::vector<std::pair<PointMm, PointMm>> rungs;
+        for (std::size_t i = 0; i + 1 < points.size(); i += 2) {
+            rungs.emplace_back(points[i], points[i + 1]);
+        }
+        const auto r = createSatinColumn(session_, rungs);
+        if (!r.ok) {
+            setNotice(tr("Colonne satin : %1").arg(fromUtf8(r.message)), true);
+            return;
+        }
+        session_.selection().replace({{TargetKind::EmbroideryObject, r.objectId}});
+        setNotice(r.railsCross
+                      ? tr("Colonne satin créée, mais les rails se croisent : corrigez-les.")
+                      : tr("Colonne satin créée."),
+                  r.railsCross);
+        return;
+    }
     createShape(batchAddPolygon(points), tr("Polygone"));
 }
 
@@ -1233,6 +1494,11 @@ PointMm ShellWindow::selectionCentreModel() const {
 }
 
 void ShellWindow::editSelection(const QString& command) {
+    if (command == QLatin1String("edit.delete") && activeTool_ == QStringLiteral("stitch.points") &&
+        pointSel_ >= 0) {
+        deleteSelectedPoint();
+        return;
+    }
     const auto state = inspect(session_.project(), session_.selection().targets());
     if (state.ids.empty()) {
         return;
@@ -1631,6 +1897,66 @@ void ShellWindow::onScaleDragged(QPointF pivotPx, double factor) {
 }
 
 void ShellWindow::onCanvasClick(QPointF scenePx, Qt::KeyboardModifiers modifiers) {
+    if (activeTool_ == QStringLiteral("stitch.points") && frame_.px_per_mm > 0.0) {
+        const auto target = pointTarget();
+        if (!target) {
+            setNotice(tr("Retouche de points : sélectionnez un seul objet brodé."), false);
+            return;
+        }
+        if (pointHandles_.empty() || pointObject_ != *target) {
+            updatePointMarkers();
+        }
+        // Poignée sous le clic (rayon de capture de 8 px de vue).
+        const double captureScene = 8.0 / std::max(0.01, canvas_->transform().m11());
+        int hit = -1;
+        double best = captureScene * captureScene;
+        for (std::size_t h = 0; h < pointHandles_.size(); ++h) {
+            const auto& p = pointView_.points[pointHandles_[h]];
+            const double dx = frame_.mmToPxX(p.pos.x) - scenePx.x();
+            const double dy = frame_.mmToPxY(-p.pos.y) - scenePx.y();
+            const double d = dx * dx + dy * dy;
+            if (d <= best) {
+                best = d;
+                hit = static_cast<int>(h);
+            }
+        }
+        if (hit >= 0) {
+            pointSel_ = hit;
+            updatePointMarkers();
+            return;
+        }
+        if (pointSel_ < 0 || pointSel_ >= static_cast<int>(pointHandles_.size())) {
+            setNotice(tr("Cliquez d'abord sur un point à retoucher."), false);
+            return;
+        }
+        const auto& sel = pointView_.points[pointHandles_[static_cast<std::size_t>(pointSel_)]];
+        const PointMm dest =
+            screenToModel(frame_.pxToMmX(scenePx.x()), frame_.pxToMmY(scenePx.y()));
+        const bool insert = modifiers & Qt::ShiftModifier;
+        const auto r = insert ? insertStitchPoint(session_, *target, sel.index, dest)
+                              : moveStitchPoints(session_, *target, {{sel.index, dest}});
+        if (!r.ok) {
+            setNotice(tr("Retouche de points : %1").arg(fromUtf8(r.message)), true);
+        } else {
+            setNotice(insert ? tr("Point inséré.") : tr("Point déplacé."), false);
+        }
+        return;
+    }
+    if (activeTool_ == QStringLiteral("click-to-stitch") && frame_.px_per_mm > 0.0) {
+        const image::Image* img = ensureProcessed();
+        if (img == nullptr) {
+            return;
+        }
+        const auto r = clickToStitch(session_, *img, frame_.pxToMmX(scenePx.x()),
+                                     frame_.pxToMmY(scenePx.y()), clickTol_, clickKind_);
+        if (!r.ok) {
+            setNotice(tr("Clic-pour-broder : %1").arg(fromUtf8(r.message)), true);
+            return;
+        }
+        session_.selection().replace({{TargetKind::EmbroideryObject, r.objectId}});
+        setNotice(tr("Clic-pour-broder : zone brodée."), false);
+        return;
+    }
     if (activeTool_ == QStringLiteral("eyedropper") && frame_.hits != nullptr) {
         // Pipette : prélève le fil de l'objet cousu sous le curseur et l'applique à la sélection
         // courante (une annulation) ; sans sélection, la couleur est seulement annoncée.

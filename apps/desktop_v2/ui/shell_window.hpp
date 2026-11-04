@@ -20,15 +20,20 @@
 #include "document_services.hpp"
 #include "document_session.hpp"
 #include "edit_batch.hpp"
+#include "point_edit.hpp"
 #include "preview_service.hpp"
+#include "satin_column.hpp"
 #include "shape_batch.hpp"
+#include "source_image_tools.hpp"
 #include "task_manager.hpp"
 #include "tool_registry.hpp"
 #include "view_tools.hpp"
 
 class QAction;
 class QActionGroup;
+class QComboBox;
 class QDockWidget;
+class QSpinBox;
 class QMenu;
 class QSlider;
 class QDoubleSpinBox;
@@ -66,6 +71,20 @@ public:
     bool runCommand(const QString& id); // faux si inconnue ou désactivée
     void showCommandPalette();
     void selectAllObjects();
+
+    // --- Image source : clic-pour-broder et zones de détail -----------------------------------
+    void setSourceVisible(bool visible); // calque semi-transparent sous les fils
+    [[nodiscard]] bool sourceVisible() const { return sourceShown_; }
+    void setClickToStitch(int tolerance, ClickKind kind);
+    void setBrushRadiusMm(double mm);
+    [[nodiscard]] int clickTolerance() const { return clickTol_; }
+
+    // --- Retouche de points (outil « stitch.points », un seul objet sélectionné) --------------
+    [[nodiscard]] int selectedPoint() const {
+        return pointSel_;
+    } // indice dans les poignées, -1 = aucun
+    bool deleteSelectedPoint();
+    bool discardPointEdits();
 
     // Préréglages de points : enregistrés dans le projet (.osp), appliqués à la sélection.
     bool savePresetNamed(const QString& name); // réglages de l'objet principal de la sélection
@@ -133,6 +152,11 @@ private:
     void updateSelectionBoxes();
     void onCanvasRect(QRectF scenePx, Qt::KeyboardModifiers modifiers);
     void applyToolToCanvas();
+    void updateSourceOverlay();
+    void updatePointMarkers();
+    [[nodiscard]] std::optional<std::uint64_t> pointTarget() const;
+    const image::Image* ensureProcessed();
+    void onStroke(QVector<QPointF> scenePx, Qt::KeyboardModifiers modifiers);
     void rebuildPresetMenu();
     void onMeasured(QPointF a, QPointF b);
     void onKnife(QPointF a, QPointF b);
@@ -179,6 +203,20 @@ private:
     QTimer* previewDebounce_{nullptr};
     InspectorPanel* inspector_{nullptr};
     QToolBar* simBar_{nullptr};
+    QToolBar* imageBar_{nullptr};
+    PointView pointView_;
+    std::vector<std::size_t> pointHandles_; // poignées -> indice dans pointView_.points
+    std::uint64_t pointObject_{0};
+    int pointSel_{-1};
+    QSpinBox* tolSpin_{nullptr};
+    QComboBox* kindCombo_{nullptr};
+    image::Image processed_;
+    std::uint64_t processedRevision_{0};
+    bool processedValid_{false};
+    bool sourceShown_{false};
+    int clickTol_{20};
+    ClickKind clickKind_{ClickKind::Auto};
+    double brushMm_{3.0};
     QSlider* simSlider_{nullptr};
     QLabel* simLabel_{nullptr};
     QTimer* simTimer_{nullptr};
