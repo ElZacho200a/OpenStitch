@@ -212,3 +212,25 @@ fiche de production, impression.
 
 Non fait : les ≈ 150 autres champs du moteur (la table est extensible sans toucher l'interface), réglages par objet vectoriel,
 préréglages de points.
+
+
+## 2026-11-04 — Session 1 (suite 9) : catalogue d'actions et 6 familles (branche `feat/desktop-v2-families-1`)
+
+Nouveau mécanisme : `core/action_catalog.*`. Chaque capacité exposée par une opération de lot est déclarée **une fois**
+(champs, plages, défauts, validation, construction du lot) ; l'interface en tire un dialogue, une entrée du menu
+**Outils** et une entrée de palette ; aucune valeur n'est « corrigée » en silence (`buildAction` refuse). Ajouter une
+famille = une définition + un test.
+
+| Action | Opération moteur | État |
+|---|---|---|
+| Importer un SVG | `import_svg` | ✅ (test : SVG réel → objets ; fichier absent refusé avant tout lot) |
+| Ajouter du texte | `add_text` | ✅ (police, hauteur, remplissage, alignement, rotation) |
+| Cadre de broderie / Machine | `set_canvas`, `set_machine` | ✅ |
+| Finitions (coupes, arrêt, ponts cachés) | `set_finishing` | ✅ |
+| Satin automatique / Guides de direction | `auto_satin`, `directional_guides` | ✅ |
+| Réduire le bruit / Segmenter l'image | `image_denoise`, `segment_image` | ✅ sur Tentabrode |
+
+Preuves locales : 7 cas Catch2 `[actions]` (159 assertions : identifiants uniques, défauts valides, validations, chaque action
+acceptée par le moteur), 4 QTest (dialogues générés → valeurs acceptées, menu + palette, refus avec message sans changement,
+texte). Limite connue : la police par défaut du texte est cherchée via `OPENSTITCH_FONTS_DIR`, un chemin de développement
+compilé, puis `resources/fonts` ; une application installée devra embarquer ses polices (champ « Police » modifiable).
