@@ -78,6 +78,15 @@ private slots:
         QVERIFY(disabled > 0);
     }
 
+    void aFreshEmptyProjectDoesNotTriggerAnUnnecessarySavePrompt() {
+        ShellWindow w;
+        w.newProject();
+        QVERIFY(!w.session().dirty());
+        QVERIFY(w.session().project().embroidery_objects.empty());
+        w.newProject(); // sans modification, aucun dialogue
+        QVERIFY(!w.session().dirty());
+    }
+
     void cancellingDocumentReplacementRetainsTheEditedProject() {
         ShellWindow w;
         w.newProject();
