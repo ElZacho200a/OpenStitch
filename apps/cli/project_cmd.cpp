@@ -24,6 +24,7 @@
 #include "openstitch/formats/svg.hpp"
 #include "openstitch/project_io/machine_file.hpp"
 #include "openstitch/project_ops/analysis.hpp"
+#include "openstitch/project_ops/applique_cut.hpp"
 #include "openstitch/project_ops/color_registration.hpp"
 #include "openstitch/project_ops/errors.hpp"
 #include "openstitch/project_ops/fabric_deformation.hpp"
@@ -1587,6 +1588,53 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
                     " --fabric #RRGGBB pour une autre couleur de tissu.\n",
                     a.fabric);
             }
+        }
+        g_exit = 0;
+    });
+
+    // applique-cut ----------------------------------------------------------------------
+    struct CutArgs {
+        std::string osp, out;
+        std::int64_t object{0};
+        bool noClobber{false};
+    };
+    auto cutArgs = std::make_shared<CutArgs>();
+    c = project->add_subcommand("applique-cut", "Exporte le contour de découpe du tissu des objets "
+                                                "appliqués (HP-SPEC-001) : .svg (mm) ou .dxf, "
+                                                "pour un traceur ou un cutter (ScanNCut)");
+    c->add_option("osp", cutArgs->osp, "Projet .osp")->required();
+    c->add_option("--output,-o", cutArgs->out, "Fichier .svg ou .dxf à produire")->required();
+    c->add_option("--object", cutArgs->object, "Un seul objet appliqué (défaut : tous)");
+    c->add_flag("--no-clobber", cutArgs->noClobber, "Refuse d'écraser le fichier de sortie");
+    c->add_flag("--json", jsonOut, "Rapport JSON sur stdout");
+    c->callback([cutArgs, &jsonOut] {
+        const auto& a = *cutArgs;
+        if (const auto refused = check_output("applique-cut", jsonOut, a.out, a.noClobber)) {
+            g_exit = *refused;
+            return;
+        }
+        int rc = 0;
+        auto opened = load("applique-cut", jsonOut, a.osp, rc);
+        if (!opened) {
+            g_exit = rc;
+            return;
+        }
+        std::optional<openstitch::ObjectId> only;
+        if (a.object != 0) {
+            only = openstitch::ObjectId{static_cast<std::uint64_t>(a.object)};
+        }
+        const auto report = po::export_applique_cut(opened->project, fs::path(a.out), only);
+        if (!report) {
+            g_exit = fail_err("applique-cut", jsonOut, po::code::kRefused, report.error());
+            return;
+        }
+        if (jsonOut) {
+            fmt::print("{{\"schema\":\"openstitch.applique_cut/1\",\"ok\":true,\"output\":{},"
+                       "\"objects\":{},\"paths\":{}}}\n",
+                       po::json_quote(a.out), report->objects, report->paths);
+        } else {
+            fmt::print("Contour de découpe écrit : {} ({} objet(s), {} contour(s))\n", a.out,
+                       report->objects, report->paths);
         }
         g_exit = 0;
     });
