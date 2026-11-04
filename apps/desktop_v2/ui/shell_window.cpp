@@ -4,6 +4,7 @@
 #include <QAction>
 #include <QActionGroup>
 #include <QApplication>
+#include <QCloseEvent>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDockWidget>
@@ -213,16 +214,7 @@ void ShellWindow::buildMenus() {
     recentMenu_->setObjectName(QStringLiteral("menu_recent"));
     saveAction_ = file->addAction(tr("&Enregistrer"));
     saveAction_->setShortcut(QKeySequence::Save);
-    connect(saveAction_, &QAction::triggered, this, [this] {
-        QString path = QString::fromStdString(currentPath_.string());
-        if (path.isEmpty() || !path.endsWith(QStringLiteral(".osp"))) {
-            path = QFileDialog::getSaveFileName(this, tr("Enregistrer le projet"), QString(),
-                                                tr("Projet OpenStitch (*.osp)"));
-        }
-        if (!path.isEmpty()) {
-            saveProject(std::filesystem::path(path.toStdU16String()));
-        }
-    });
+    connect(saveAction_, &QAction::triggered, this, [this] { (void)saveCurrentDocument(); });
     exportAction_ = file->addAction(tr("E&xporter pour la machine…"));
     exportAction_->setShortcut(QKeySequence(QStringLiteral("Ctrl+E")));
     connect(exportAction_, &QAction::triggered, this, [this] {
@@ -877,6 +869,54 @@ bool ShellWindow::previewShown() const {
 
 // --- Fichiers --------------------------------------------------------------------------------
 
+bool ShellWindow::saveCurrentDocument() {
+    std::filesystem::path target = currentPath_;
+    if (target.extension() != ".osp" && target.extension() != ".OSP") {
+        const QString chosen = QFileDialog::getSaveFileName(
+            this, tr("Enregistrer le projet"), QString(), tr("Projet OpenStitch (*.osp)"));
+        if (chosen.isEmpty()) {
+            return false; // annuler « Enregistrer sous » interdit de perdre le document
+        }
+        target = std::filesystem::path(chosen.toStdU16String());
+    }
+    return saveProject(target);
+}
+
+bool ShellWindow::maybeSaveChanges() {
+    if (!documentOpen_ || !session_.dirty()) {
+        return true;
+    }
+    const auto choice = QMessageBox::warning(
+        this, tr("Modifications non enregistrées"),
+        tr("Enregistrer les modifications avant de continuer ?"),
+        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
+    if (choice == QMessageBox::Save) {
+        return saveCurrentDocument(); // échec ou annulation => garder le document
+    }
+    return choice == QMessageBox::Discard;
+}
+
+std::uint64_t ShellWindow::beginDocumentReplacement() {
+    ++documentLoadVersion_;
+    if (documentLoadTask_ != 0) {
+        tasks_.cancel(documentLoadTask_);
+        documentLoadTask_ = 0;
+    }
+    return documentLoadVersion_;
+}
+
+void ShellWindow::closeEvent(QCloseEvent* event) {
+    if (!maybeSaveChanges()) {
+        event->ignore();
+        return;
+    }
+    beginDocumentReplacement();
+    if (autosave_) {
+        autosave_->clear(); // sortie volontaire : aucune proposition de récupération périmée
+    }
+    event->accept();
+}
+
 void ShellWindow::chooseAndOpen() {
     const QString path =
         QFileDialog::getOpenFileName(this, tr("Ouvrir"), QString(),
@@ -894,15 +934,29 @@ void ShellWindow::chooseAndOpen() {
 }
 
 void ShellWindow::openImage(const std::filesystem::path& image, double heightMm) {
+    if (!maybeSaveChanges()) {
+        return;
+    }
+    const auto version = beginDocumentReplacement();
+    const auto originalRevision = session_.revision();
     DigitizeRequest request;
     request.image = image;
     request.target_height_mm = heightMm;
     setNotice(tr("Numérisation de %1…").arg(QString::fromStdString(image.filename().string())),
               false);
-    tasks_.submit<DigitizeOutput>(
+    documentLoadTask_ = tasks_.submit<DigitizeOutput>(
         tr("Numérisation").toStdString(),
         [request](const TaskContext& ctx) { return run_digitize(request, ctx); },
-        [this, image](Result<DigitizeOutput>&& r) {
+        [this, image, version, originalRevision](Result<DigitizeOutput>&& r) {
+            if (version != documentLoadVersion_) {
+                return; // un chargement plus récent a pris la priorité
+            }
+            documentLoadTask_ = 0;
+            if (session_.revision() != originalRevision) {
+                setNotice(tr("Ouverture ignorée : le document a changé pendant le chargement."),
+                          true);
+                return;
+            }
             if (!r) {
                 setNotice(tr("Numérisation impossible : %1 %2")
                               .arg(fromUtf8(r.error().message), fromUtf8(r.error().hint)),
@@ -924,11 +978,25 @@ void ShellWindow::openImage(const std::filesystem::path& image, double heightMm)
 }
 
 void ShellWindow::openProject(const std::filesystem::path& osp) {
+    if (!maybeSaveChanges()) {
+        return;
+    }
+    const auto version = beginDocumentReplacement();
+    const auto originalRevision = session_.revision();
     setNotice(tr("Ouverture de %1…").arg(QString::fromStdString(osp.filename().string())), false);
-    tasks_.submit<document::Project>(
+    documentLoadTask_ = tasks_.submit<document::Project>(
         tr("Ouverture").toStdString(),
         [osp](const TaskContext&) { return project_io::load_project(osp); },
-        [this, osp](Result<document::Project>&& r) {
+        [this, osp, version, originalRevision](Result<document::Project>&& r) {
+            if (version != documentLoadVersion_) {
+                return;
+            }
+            documentLoadTask_ = 0;
+            if (session_.revision() != originalRevision) {
+                setNotice(tr("Ouverture ignorée : le document a changé pendant le chargement."),
+                          true);
+                return;
+            }
             if (!r) {
                 setNotice(tr("Ouverture impossible : %1").arg(fromUtf8(r.error().message)), true);
                 return;
@@ -981,7 +1049,7 @@ bool ShellWindow::autosaveNow() {
 }
 
 bool ShellWindow::recoverAutosave() {
-    if (!hasRecovery()) {
+    if (!hasRecovery() || !maybeSaveChanges()) {
         return false;
     }
     auto loaded = autosave_->load();
@@ -989,6 +1057,7 @@ bool ShellWindow::recoverAutosave() {
         setNotice(tr("Récupération impossible : %1").arg(fromUtf8(loaded.error().message)), true);
         return false;
     }
+    beginDocumentReplacement();
     currentPath_.clear();
     documentOpen_ = true;
     session_.selection().clear();
@@ -1573,12 +1642,16 @@ void ShellWindow::applyToolToCanvas() {
 }
 
 void ShellWindow::newProject() {
+    if (!maybeSaveChanges()) {
+        return;
+    }
     auto created = project_ops::create_empty_project({});
     if (!created) {
         setNotice(tr("Création du projet impossible : %1").arg(fromUtf8(created.error().message)),
                   true);
         return;
     }
+    beginDocumentReplacement();
     currentPath_.clear();
     documentOpen_ = true;
     session_.selection().clear();

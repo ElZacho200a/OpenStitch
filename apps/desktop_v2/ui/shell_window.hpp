@@ -38,6 +38,7 @@ class QAction;
 class QActionGroup;
 class QComboBox;
 class QDockWidget;
+class QCloseEvent;
 class QSpinBox;
 class QMenu;
 class QSlider;
@@ -160,7 +161,13 @@ public:
     // test.
     [[nodiscard]] std::optional<QPointF> objectCentrePx(std::uint64_t id) const;
 
+protected:
+    void closeEvent(QCloseEvent* event) override;
+
 private:
+    bool saveCurrentDocument();
+    bool maybeSaveChanges();
+    std::uint64_t beginDocumentReplacement();
     void buildMenus();
     void buildWorkspaceBar();
     void buildToolRail();
@@ -262,6 +269,8 @@ private:
     SelectionModel::Token selectionToken_{0};
     bool syncingTree_{false};
     TaskId previewTask_{0};
+    TaskId documentLoadTask_{0};
+    std::uint64_t documentLoadVersion_{0};
     std::uint64_t previewRevision_{0};
     bool previewShown_{false};
     bool documentOpen_{false}; // un projet est ouvert (même vide) : l'aperçu montre son cadre

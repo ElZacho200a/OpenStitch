@@ -5,7 +5,9 @@
 #include <QFile>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMessageBox>
 #include <QTest>
+#include <QTimer>
 #include <QToolBar>
 #include <QTreeWidget>
 #include <QWheelEvent>
@@ -74,6 +76,58 @@ private slots:
         }
         QCOMPARE(enabled, 9); // …, Pipette, Couteau, Zones de détail
         QVERIFY(disabled > 0);
+    }
+
+    void cancellingDocumentReplacementRetainsTheEditedProject() {
+        ShellWindow w;
+        w.newProject();
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 20, 10), "Rectangle").committed);
+        const auto revision = w.session().revision();
+        QTimer::singleShot(0, [] {
+            if (auto* prompt = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) {
+                prompt->done(QMessageBox::Cancel);
+            }
+        });
+        w.newProject();
+        QCOMPARE(w.session().revision(), revision);
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(1));
+        QTimer::singleShot(0, [] {
+            if (auto* prompt = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) {
+                prompt->done(QMessageBox::Discard);
+            }
+        });
+        w.newProject();
+        QVERIFY(w.session().revision() > revision);
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(0));
+    }
+
+    void cancellingCloseRetainsUnsavedWork() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 20, 10), "Rectangle").committed);
+        QTimer::singleShot(0, [] {
+            if (auto* prompt = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) {
+                prompt->done(QMessageBox::Cancel);
+            }
+        });
+        QVERIFY(!w.close());
+        QVERIFY(w.isVisible());
+        QVERIFY(w.session().dirty());
+        QTimer::singleShot(0, [] {
+            if (auto* prompt = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) {
+                prompt->done(QMessageBox::Discard);
+            }
+        });
+        QVERIFY(w.close());
+    }
+
+    void newDocumentMakesOlderAsyncImportObsolete() {
+        ShellWindow w;
+        w.openImage(tentabrode(), 80.0);
+        w.newProject(); // annule le chargement antérieur, même si le moteur finit plus tard
+        w.waitForIdle();
+        QVERIFY(w.session().project().embroidery_objects.empty());
     }
 
     void imageToDstEndToEnd() {
