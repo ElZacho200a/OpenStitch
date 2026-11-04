@@ -23,10 +23,13 @@
 #include "shape_batch.hpp"
 #include "task_manager.hpp"
 #include "tool_registry.hpp"
+#include "view_tools.hpp"
 
 class QAction;
 class QActionGroup;
 class QDockWidget;
+class QMenu;
+class QSlider;
 class QDoubleSpinBox;
 class QLabel;
 class QProgressBar;
@@ -61,6 +64,22 @@ public:
     bool runCommand(const QString& id); // faux si inconnue ou désactivée
     void showCommandPalette();
     void selectAllObjects();
+
+    // --- Affichage, simulation, contexte -------------------------------------------------------
+    void setGridSpacing(double mm); // 0 = pas de grille
+    [[nodiscard]] double gridSpacing() const { return gridSpacingMm_; }
+    void setThemeMode(const QString& mode); // "system" | "light" | "dark"
+    [[nodiscard]] QString themeMode() const { return themeMode_; }
+    // Simulation de couture : `position` = nombre de commandes cousues ; >= total = tout. Marche
+    // seulement avec un aperçu affiché (le total vient de la séquence complète).
+    void setSimulationPosition(int position);
+    [[nodiscard]] int simulationPosition() const;
+    [[nodiscard]] int simulationTotal() const;
+    [[nodiscard]] bool simulating() const { return simLimit_.has_value(); }
+    // Menu contextuel du canevas : commandes de sélection actives (appartient à la fenêtre).
+    [[nodiscard]] QMenu* buildContextMenu();
+    void showContextMenu(const QPoint& globalPos, QPointF scenePx);
+    void exportImage(const std::filesystem::path& png, double pxPerMm = 6.0);
     // Action du catalogue (`actionCatalog`) : avec dialogue de réglages, ou directement avec des
     // valeurs (tests, scripts). Faux si inconnue, désactivée, valeurs refusées ou lot refusé par le
     // moteur.
@@ -106,6 +125,9 @@ private:
     void updateSelectionBoxes();
     void onCanvasRect(QRectF scenePx, Qt::KeyboardModifiers modifiers);
     void applyToolToCanvas();
+    void onMeasured(QPointF a, QPointF b);
+    void updateGrid();
+    void refreshSimulationBar();
     void runDiagnostics();
     void onFindingActivated(const project_ops::Finding& finding);
     [[nodiscard]] PointMm selectionCentreModel() const;
@@ -146,6 +168,13 @@ private:
     QTimer* pump_{nullptr};
     QTimer* previewDebounce_{nullptr};
     InspectorPanel* inspector_{nullptr};
+    QToolBar* simBar_{nullptr};
+    QSlider* simSlider_{nullptr};
+    QLabel* simLabel_{nullptr};
+    QTimer* simTimer_{nullptr};
+    std::optional<std::size_t> simLimit_;
+    double gridSpacingMm_{0.0};
+    QString themeMode_{QStringLiteral("system")};
     DiagnosticsPanel* diagnostics_{nullptr};
     QDockWidget* docDock_{nullptr};
     QDockWidget* diagDock_{nullptr};

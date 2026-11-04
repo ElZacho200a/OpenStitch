@@ -234,3 +234,17 @@ Preuves locales : 7 cas Catch2 `[actions]` (159 assertions : identifiants unique
 acceptée par le moteur), 4 QTest (dialogues générés → valeurs acceptées, menu + palette, refus avec message sans changement,
 texte). Limite connue : la police par défaut du texte est cherchée via `OPENSTITCH_FONTS_DIR`, un chemin de développement
 compilé, puis `resources/fonts` ; une application installée devra embarquer ses polices (champ « Police » modifiable).
+
+
+## 2026-11-04 — Session 1 (suite 10) : affichage, règle, simulation, contexte (branche `feat/desktop-v2-families-2`)
+
+| Famille | Fait | Preuve |
+|---|---|---|
+| 38 Règle / grille | outil Règle (Mode::Measure) : distance, Δx, Δy, angle antihoraire, **sans jamais modifier le document** ; grille 5 / 10 / 20 mm alignée sur l'origine du modèle (rien n'est tracé si trop dense) | `core/view_tools.*` (4 cas Catch2 dont angle ±90°/180° et traits sur les multiples) ; QTest `theRulerMeasuresADragInMillimetres`, `gridAndHoopToggles` |
+| 29 Simulation | curseur sur la séquence de couture + lecture automatique, dans l'espace Production ; `render_preview(…, upToCommand)` : le **cadre et l'index restent ceux de la séquence complète**, la vue ne bouge pas ; quitter Production termine la simulation ; le document n'est jamais modifié | test Catch2 `simulation renders a prefix…` ; QTest `simulationScrubsThroughTheSewingOrderOnlyInProduction` |
+| 40 Menu contextuel | clic droit : commandes de sélection actives seulement (pas de redite d'Annuler/Rétablir) ; un objet non sélectionné le devient d'abord | QTest `contextMenuListsOnlyActiveSelectionCommands`, `rightClickOnAnObjectSelectsItBeforeTheMenuOpens` |
+| 43 Affichage | cadre de broderie et grille commutables | menu Affichage |
+| 6 Export image | PNG de l'aperçu réaliste à 1–20 px/mm, écriture atomique, annulable | Catch2 (signature PNG, résolutions refusées, annulation) ; QTest `exportImageWritesAPng` |
+| 36 Thème | système / clair / sombre (`QStyleHints::setColorScheme`) ; valeur invalide → système | QTest `themeModeIsValidatedAndRestorable` |
+
+Non fait : mémorisation des réglages d'affichage, langue anglaise, PDF / impression, magnétisme, passes de couture.

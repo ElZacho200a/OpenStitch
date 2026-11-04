@@ -14,6 +14,7 @@ add_executable(test_desktop_v2_core
     test_export_formats.cpp
     test_param_spec.cpp
     test_action_catalog.cpp
+    test_view_tools.cpp
 )
 target_link_libraries(test_desktop_v2_core
     PRIVATE openstitch::desktop_v2_core openstitch::project_ops openstitch::commands

@@ -64,7 +64,7 @@ private slots:
                 QVERIFY(a->toolTip().contains("pas encore migré"));
             }
         }
-        QCOMPARE(enabled, 5); // Sélection, Déplacer la vue, Rectangle, Ellipse, Polygone
+        QCOMPARE(enabled, 6); // Sélection, Déplacer la vue, Rectangle, Ellipse, Polygone, Règle
         QVERIFY(disabled > 0);
     }
 
@@ -789,6 +789,154 @@ private slots:
         QVERIFY(w.runActionWith(
             "text.add", {{"text", "OK"}, {"font_file", OPENSTITCH_FONTS_DIR "/VeraBd.ttf"}}));
         QVERIFY(!w.session().project().embroidery_objects.empty());
+    }
+
+    void theRulerMeasuresADragInMillimetres() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        QVERIFY(w.runCommand("tool.measure"));
+        QVERIFY(w.canvas()->mode() == PreviewCanvas::Mode::Measure);
+        auto* canvas = w.canvas();
+        const auto& f = w.previewFrame();
+        // 30 mm à l'horizontale : de (-15, 0) à (15, 0) du modèle.
+        const QPoint a = canvas->mapFromScene(QPointF(f.mmToPxX(-15), f.mmToPxY(0)));
+        const QPoint b = canvas->mapFromScene(QPointF(f.mmToPxX(15), f.mmToPxY(0)));
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, a);
+        QTest::mouseMove(canvas->viewport(), (a + b) / 2);
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, b);
+        QVERIFY(canvas->hasMeasure());
+        QVERIFY2(w.lastNotice().contains("30.0") || w.lastNotice().contains("30,0") ||
+                     w.lastNotice().contains("29.9") || w.lastNotice().contains("30.1"),
+                 qPrintable(w.lastNotice()));
+        QVERIFY(w.session().undoNames().empty()); // la règle ne modifie jamais le document
+        QVERIFY(w.runCommand("tool.select"));
+        QVERIFY(!canvas->hasMeasure()); // changer d'outil efface la mesure
+    }
+
+    void gridAndHoopToggles() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        QVERIFY(!w.canvas()->hasGrid());
+        w.setGridSpacing(10.0);
+        QVERIFY(w.canvas()->hasGrid());
+        w.setGridSpacing(0.0);
+        QVERIFY(!w.canvas()->hasGrid());
+        w.setGridSpacing(0.05); // trop dense : rien n'est tracé
+        QVERIFY(!w.canvas()->hasGrid());
+        QVERIFY(w.canvas()->hoopVisible());
+        w.canvas()->setHoopVisible(false);
+        QVERIFY(!w.canvas()->hoopVisible());
+    }
+
+    void contextMenuListsOnlyActiveSelectionCommands() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        auto* none = w.buildContextMenu();
+        for (auto* a : none->actions()) {
+            QVERIFY(a->data().toString() != "edit.delete"); // rien de sélectionné
+        }
+        delete none;
+        const auto id =
+            *createdObjectId(w.session().applyBatch(batchAddRect({0, 0}, 20, 20), "R").report);
+        w.waitForIdle();
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        auto* menu = w.buildContextMenu();
+        QStringList ids;
+        for (auto* a : menu->actions()) {
+            ids << a->data().toString();
+        }
+        QVERIFY(ids.contains("edit.delete"));
+        QVERIFY(ids.contains("transform.rotate.cw"));
+        QVERIFY(ids.contains("order.front"));
+        QVERIFY(!ids.contains("edit.undo")); // pas de redites du menu Édition
+        // Une commande du menu agit comme le menu principal.
+        for (auto* a : menu->actions()) {
+            if (a->data().toString() == "edit.duplicate") {
+                a->trigger();
+            }
+        }
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(2));
+        delete menu;
+    }
+
+    void rightClickOnAnObjectSelectsItBeforeTheMenuOpens() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        const auto id =
+            *createdObjectId(w.session().applyBatch(batchAddRect({0, 0}, 30, 30), "R").report);
+        w.waitForIdle();
+        QVERIFY(w.session().selection().empty());
+        w.showContextMenu(QPoint(10, 10), *w.objectCentrePx(id));
+        QVERIFY(w.session().selection().contains({TargetKind::EmbroideryObject, id}));
+        for (auto* menu : w.findChildren<QMenu*>("canvasContextMenu")) {
+            menu->close();
+        }
+    }
+
+    void simulationScrubsThroughTheSewingOrderOnlyInProduction() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        w.session().applyBatch(batchAddRect({0, 0}, 40, 30), "R");
+        w.waitForIdle();
+        auto* bar = w.findChild<QToolBar*>("simulationBar");
+        QVERIFY(bar != nullptr);
+        QVERIFY(!bar->isVisible());
+        QVERIFY(w.runCommand("workspace.produce"));
+        QVERIFY(bar->isVisible());
+        const int total = w.simulationTotal();
+        QVERIFY(total > 50);
+        QVERIFY(!w.simulating());
+        w.setSimulationPosition(total / 2);
+        QVERIFY(w.simulating());
+        QCOMPARE(w.simulationPosition(), total / 2);
+        w.waitForIdle();
+        QCOMPARE(w.simulationTotal(), total); // le total vient de la séquence complète
+        QVERIFY(w.previewShown());
+        w.setSimulationPosition(total + 10); // au-delà : tout
+        QVERIFY(!w.simulating());
+        w.setSimulationPosition(0);
+        QVERIFY(w.simulating());
+        QVERIFY(w.runCommand("workspace.design")); // quitter Production termine la simulation
+        QVERIFY(!w.simulating());
+        QVERIFY(w.session().undoNames().size() == 1); // la simulation ne modifie jamais le document
+    }
+
+    void themeModeIsValidatedAndRestorable() {
+        ShellWindow w;
+        w.setThemeMode("dark");
+        QCOMPARE(w.themeMode(), QString("dark"));
+        w.setThemeMode("light");
+        QCOMPARE(w.themeMode(), QString("light"));
+        w.setThemeMode("bogus");
+        QCOMPARE(w.themeMode(), QString("system"));
+        w.setThemeMode("system");
+    }
+
+    void exportImageWritesAPng() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        w.session().applyBatch(batchAddRect({0, 0}, 20, 20), "R");
+        w.waitForIdle();
+        const auto png = fs::temp_directory_path() / "openstitch_v2_shell_image.png";
+        fs::remove(png);
+        w.exportImage(png, 3.0);
+        w.waitForIdle();
+        QVERIFY2(fs::exists(png), qPrintable(w.lastNotice()));
+        QVERIFY(fs::file_size(png) > 500);
+        QVERIFY(w.lastNotice().contains("Image"));
+        fs::remove(png);
     }
 
     void inspectorEditsAllSelectedObjectsInOneUndoStep() {

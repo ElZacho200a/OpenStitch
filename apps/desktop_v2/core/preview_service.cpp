@@ -12,8 +12,8 @@
 namespace openstitch::desktop_v2 {
 
 Result<PreviewImage> render_preview(std::shared_ptr<const document::Project> project,
-                                    std::uint64_t revision, double pxPerMm,
-                                    const TaskContext& task) {
+                                    std::uint64_t revision, double pxPerMm, const TaskContext& task,
+                                    std::optional<std::size_t> upToCommand) {
     if (!project) {
         return fail(ErrorCategory::Internal, "Aperçu demandé sans projet");
     }
@@ -76,6 +76,11 @@ Result<PreviewImage> render_preview(std::shared_ptr<const document::Project> pro
     if (task.cancelled()) {
         return cancelled_error();
     }
+    // Simulation : seuls les premiers points sont dessinés (cadre et sélection : séquence
+    // complète).
+    const auto drawn = upToCommand && *upToCommand < sequence->commands.size()
+                           ? stitch_render::build_thread_segments(*sequence, *upToCommand, colourOf)
+                           : segments;
     stitch_render::RenderParams params;
     params.thread_width_mm = kThreadMm;
     params.fabric_rgb = {245, 243, 238}; // toile écrue, lisible en thèmes clair et sombre
@@ -83,7 +88,7 @@ Result<PreviewImage> render_preview(std::shared_ptr<const document::Project> pro
     params.fabric_texture = stitch_render::FabricTexture::Plain;
     params.quality = stitch_render::Quality::High;
     const auto raster =
-        stitch_render::render_threads(segments, stitch_render::sanitized(params), view);
+        stitch_render::render_threads(drawn, stitch_render::sanitized(params), view);
     image::Image img;
     img.width = raster.width;
     img.height = raster.height;
@@ -104,6 +109,7 @@ Result<PreviewImage> render_preview(std::shared_ptr<const document::Project> pro
     out.origin_y_mm = view.rect.y0;
     out.hoop_half_w_mm = hoopHalfW;
     out.hoop_half_h_mm = hoopHalfH;
+    out.command_count = sequence->commands.size();
     out.revision = revision;
     if (encodable) {
         // Second jeu de segments : la « couleur » porte l'identifiant de l'objet (même géométrie).

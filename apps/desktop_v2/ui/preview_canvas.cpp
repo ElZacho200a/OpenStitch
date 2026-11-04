@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "preview_canvas.hpp"
 
+#include <QContextMenuEvent>
 #include <QGraphicsItemGroup>
+#include <QGraphicsLineItem>
 #include <QGraphicsPathItem>
 #include <QGraphicsPixmapItem>
 #include <QGraphicsRectItem>
 #include <QGraphicsScene>
+#include <QGraphicsSimpleTextItem>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainterPath>
@@ -60,6 +63,10 @@ void PreviewCanvas::clearImage() {
     boxItems_.clear();
     item_ = nullptr;
     hoopItem_ = nullptr;
+    gridItem_ = nullptr;
+    measureLine_ = nullptr;
+    measureText_ = nullptr;
+    measuring_ = false;
     polyItem_ = nullptr;
     selGroup_ = nullptr;
     scaleOutline_ = nullptr;
@@ -86,8 +93,12 @@ void PreviewCanvas::setMode(Mode mode) {
         band_->hide();
     }
     setDragMode(mode == Mode::Pan ? QGraphicsView::ScrollHandDrag : QGraphicsView::NoDrag);
-    setCursor(mode == Mode::DrawBox || mode == Mode::DrawPolygon ? Qt::CrossCursor
-                                                                 : Qt::ArrowCursor);
+    if (mode != Mode::Measure) {
+        clearMeasure();
+    }
+    setCursor(mode == Mode::DrawBox || mode == Mode::DrawPolygon || mode == Mode::Measure
+                  ? Qt::CrossCursor
+                  : Qt::ArrowCursor);
 }
 
 void PreviewCanvas::wheelEvent(QWheelEvent* event) {
@@ -210,6 +221,72 @@ void PreviewCanvas::setHoopRect(const QRectF& rectPx) {
     }
     hoopItem_ = scene_->addRect(rectPx, cosmeticPen(QColor(120, 120, 130), Qt::DashDotLine, 1));
     hoopItem_->setZValue(5);
+    hoopItem_->setVisible(hoopVisible_);
+}
+
+void PreviewCanvas::setHoopVisible(bool visible) {
+    hoopVisible_ = visible;
+    if (hoopItem_ != nullptr) {
+        hoopItem_->setVisible(visible);
+    }
+}
+
+void PreviewCanvas::setGrid(const QVector<double>& xsPx, const QVector<double>& ysPx,
+                            const QRectF& imageRect) {
+    if (gridItem_ != nullptr) {
+        scene_->removeItem(gridItem_);
+        delete gridItem_;
+        gridItem_ = nullptr;
+    }
+    if (item_ == nullptr || (xsPx.isEmpty() && ysPx.isEmpty())) {
+        return;
+    }
+    QPainterPath path;
+    for (const double x : xsPx) {
+        path.moveTo(x, imageRect.top());
+        path.lineTo(x, imageRect.bottom());
+    }
+    for (const double y : ysPx) {
+        path.moveTo(imageRect.left(), y);
+        path.lineTo(imageRect.right(), y);
+    }
+    gridItem_ = scene_->addPath(path, cosmeticPen(QColor(90, 110, 140, 110), Qt::SolidLine, 1));
+    gridItem_->setZValue(4);
+}
+
+void PreviewCanvas::showMeasure(const QPointF& a, const QPointF& b, const QString& text) {
+    clearMeasure();
+    if (item_ == nullptr) {
+        return;
+    }
+    measureLine_ = scene_->addLine(QLineF(a, b), cosmeticPen(QColor(0, 150, 255), Qt::DashLine, 2));
+    measureLine_->setZValue(13);
+    measureText_ = scene_->addSimpleText(text);
+    measureText_->setBrush(QColor(0, 120, 220));
+    measureText_->setFlag(QGraphicsItem::ItemIgnoresTransformations, true);
+    measureText_->setPos((a + b) / 2.0);
+    measureText_->setZValue(14);
+}
+
+void PreviewCanvas::clearMeasure() {
+    for (QGraphicsItem* it :
+         {static_cast<QGraphicsItem*>(measureLine_), static_cast<QGraphicsItem*>(measureText_)}) {
+        if (it != nullptr) {
+            scene_->removeItem(it);
+            delete it;
+        }
+    }
+    measureLine_ = nullptr;
+    measureText_ = nullptr;
+}
+
+void PreviewCanvas::contextMenuEvent(QContextMenuEvent* event) {
+    if (item_ != nullptr && mode_ == Mode::Select) {
+        emit contextMenuRequested(event->globalPos(), mapToScene(event->pos()));
+        event->accept();
+        return;
+    }
+    QGraphicsView::contextMenuEvent(event);
 }
 
 void PreviewCanvas::updatePolygonItem(const QPointF* cursor) {
@@ -251,6 +328,13 @@ void PreviewCanvas::cancelPolygon() {
 void PreviewCanvas::mousePressEvent(QMouseEvent* event) {
     pressing_ = event->button() == Qt::LeftButton;
     pressPos_ = event->pos();
+    if (mode_ == Mode::Measure && pressing_ && item_ != nullptr) {
+        clearMeasure();
+        measureFrom_ = mapToScene(event->pos());
+        measuring_ = true;
+        event->accept();
+        return;
+    }
     const bool plain = !(event->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier));
     if (mode_ == Mode::Select && pressing_ && plain && item_ != nullptr) {
         const QPointF scenePos = mapToScene(event->pos());
@@ -285,6 +369,18 @@ void PreviewCanvas::mousePressEvent(QMouseEvent* event) {
 }
 
 void PreviewCanvas::mouseMoveEvent(QMouseEvent* event) {
+    if (measuring_) {
+        const QPointF cur = mapToScene(event->pos());
+        if (measureLine_ == nullptr) {
+            measureLine_ = scene_->addLine(QLineF(measureFrom_, cur),
+                                           cosmeticPen(QColor(0, 150, 255), Qt::DashLine, 2));
+            measureLine_->setZValue(13);
+        } else {
+            measureLine_->setLine(QLineF(measureFrom_, cur));
+        }
+        event->accept();
+        return;
+    }
     if (moving_) {
         if (selGroup_ != nullptr) {
             selGroup_->setPos(mapToScene(event->pos()) - moveOrigin_); // retour visuel immédiat
@@ -327,6 +423,18 @@ void PreviewCanvas::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void PreviewCanvas::mouseReleaseEvent(QMouseEvent* event) {
+    if (measuring_ && event->button() == Qt::LeftButton) {
+        measuring_ = false;
+        pressing_ = false;
+        const QPointF end = mapToScene(event->pos());
+        if ((event->pos() - mapFromScene(measureFrom_)).manhattanLength() > 4) {
+            emit measuredPx(measureFrom_, end);
+        } else {
+            clearMeasure();
+        }
+        event->accept();
+        return;
+    }
     const bool leftRelease = pressing_ && event->button() == Qt::LeftButton;
     const bool click = leftRelease && (event->pos() - pressPos_).manhattanLength() <= 4;
     pressing_ = false;

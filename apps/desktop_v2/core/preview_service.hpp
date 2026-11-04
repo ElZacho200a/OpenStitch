@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "hit_index.hpp"
@@ -26,7 +27,8 @@ struct PreviewImage {
     double origin_y_mm{0.0};
     double hoop_half_w_mm{0.0}; // cadre de broderie, centré sur l'origine (symétrique : sans axe Y)
     double hoop_half_h_mm{0.0};
-    std::uint64_t revision{0}; // révision du document rendue : l'UI écarte un aperçu périmé
+    std::size_t command_count{0}; // commandes de la séquence COMPLÈTE (borne de la simulation)
+    std::uint64_t revision{0};    // révision du document rendue : l'UI écarte un aperçu périmé
     std::shared_ptr<const HitIndex> hits; // objets VISIBLES cousus ; nul si un id dépasse 24 bits
 
     [[nodiscard]] double pxToMmX(double px) const { return origin_x_mm + px / px_per_mm; }
@@ -35,8 +37,12 @@ struct PreviewImage {
     [[nodiscard]] double mmToPxY(double mm) const { return (mm - origin_y_mm) * px_per_mm; }
 };
 
-[[nodiscard]] Result<PreviewImage> render_preview(std::shared_ptr<const document::Project> project,
-                                                  std::uint64_t revision, double pxPerMm,
-                                                  const TaskContext& task);
+// `upToCommand` : simulation de couture -- ne rend que les `upToCommand` premières commandes de la
+// séquence ; le cadre de l'image et l'index de sélection restent ceux de la séquence complète, si
+// bien que la vue ne bouge pas quand on fait glisser le curseur de simulation.
+[[nodiscard]] Result<PreviewImage>
+render_preview(std::shared_ptr<const document::Project> project, std::uint64_t revision,
+               double pxPerMm, const TaskContext& task,
+               std::optional<std::size_t> upToCommand = std::nullopt);
 
 } // namespace openstitch::desktop_v2
