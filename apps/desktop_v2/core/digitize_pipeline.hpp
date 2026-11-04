@@ -54,4 +54,21 @@ inline constexpr std::size_t kDigitizeSteps = 3;
 export_project_dst(std::shared_ptr<const document::Project> project,
                    const std::filesystem::path& path, const TaskContext& task);
 
+// Formats machine inscrits dans `formats::registered_formats()` qui savent ÉCRIRE : (extension sans
+// point, libellé), dans l'ordre du registre. Source unique pour le sélecteur de fichier et les
+// tests.
+struct ExportFormat {
+    std::string extension;
+    std::string label;
+    bool carriesColors{false};
+};
+[[nodiscard]] std::vector<ExportFormat> exportFormats();
+
+// Export machine selon l'extension de `path` (dst, pes, jef, exp, vp3…) : séquence EFFECTIVE du
+// projet, couleurs des blocs dérivées du projet (`stitch_analysis::color_blocks`), nom de motif
+// tiré du nom de fichier (ASCII, 16 caractères), écriture atomique. Instantané immuable, annulable.
+[[nodiscard]] Result<stitch::StitchStats>
+export_project_file(std::shared_ptr<const document::Project> project,
+                    const std::filesystem::path& path, const TaskContext& task);
+
 } // namespace openstitch::desktop_v2

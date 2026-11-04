@@ -184,11 +184,16 @@ void ShellWindow::buildMenus() {
             saveProject(std::filesystem::path(path.toStdU16String()));
         }
     });
-    exportAction_ = file->addAction(tr("E&xporter en DST…"));
+    exportAction_ = file->addAction(tr("E&xporter pour la machine…"));
     exportAction_->setShortcut(QKeySequence(QStringLiteral("Ctrl+E")));
     connect(exportAction_, &QAction::triggered, this, [this] {
-        const QString path = QFileDialog::getSaveFileName(this, tr("Exporter en DST"), QString(),
-                                                          tr("Tajima DST (*.dst)"));
+        // Un filtre par format machine inscrit (DST, PES, JEF, EXP, VP3…), le DST en premier.
+        QStringList filters;
+        for (const auto& f : exportFormats()) {
+            filters << QStringLiteral("%1 (*.%2)").arg(fromUtf8(f.label), fromUtf8(f.extension));
+        }
+        const QString path = QFileDialog::getSaveFileName(this, tr("Exporter pour la machine"),
+                                                          QString(), filters.join(";;"));
         if (!path.isEmpty()) {
             exportDst(std::filesystem::path(path.toStdU16String()));
         }
@@ -688,7 +693,7 @@ void ShellWindow::exportDst(const std::filesystem::path& dst) {
     setNotice(tr("Export DST en cours…"), false);
     tasks_.submit<stitch::StitchStats>(
         tr("Export DST").toStdString(),
-        [snapshot, dst](const TaskContext& ctx) { return export_project_dst(snapshot, dst, ctx); },
+        [snapshot, dst](const TaskContext& ctx) { return export_project_file(snapshot, dst, ctx); },
         [this, dst](Result<stitch::StitchStats>&& r) {
             if (!r) {
                 setNotice(tr("Export impossible : %1 %2")

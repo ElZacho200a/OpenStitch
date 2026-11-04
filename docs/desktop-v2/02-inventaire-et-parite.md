@@ -20,7 +20,7 @@ liste qui bougera. C'est une limite assumée de cette première livraison.
 | 2 | Ouvrir un projet `.osp` | `main_window_files`, `recent_files` | `project_io::load_project` | T | 🟡 | ouverture ✅ (tâche d'arrière-plan, test aller-retour enregistrement → ouverture) ; **récents ⬜**, migration de schéma signalée ⬜ |
 | 3 | Importer DST / SVG / formats machine | `main_window_files`, `import_dialog` | `formats::read_*`, op `import_svg` | T | ⬜ | |
 | 4 | Enregistrer `.osp`, autosave, récupération | `main_window_files`, `autosave`, `crash_report*` | `project_io::save_project` | T | 🟡 | enregistrement ✅ ; **autosave ⬜, récupération ⬜, rapport de plantage ⬜** |
-| 5 | Exporter DST | `machine_export_dialog`, `production_dialog` | `effective_sequence` + `write_dst_file` | P | ✅ | tâche annulable sur instantané ; autres formats machine ⬜ |
+| 5 | Exporter pour la machine | `machine_export_dialog`, `production_dialog` | `effective_sequence` + `formats::registered_formats()` | P | ✅ | **tous les formats inscrits qui savent écrire (DST, PES, JEF, EXP, VP3…)**, couleurs de blocs dérivées du projet, nom de motif, écriture atomique, tâche annulable ; options machine avancées (départ, coupes, arrêts) ⬜ |
 | 6 | Exporter image / PDF / imprimer | `export_image*`, `print_preview` | — | P | ⬜ | |
 | 7 | Prétraitement d'image (luminosité, rotation, recadrage…) | menu Image, `brightness_dialog`, `main_window_rotation` | `image::ImageOp`, op `image_denoise` | C | ⬜ | |
 | 8 | Segmentation (couleurs, régions, nettoyage) | `segmentation_dialog`, `segmentation_colors_panel`, `main_window_regions`, `segment_preview` | `segmentation::*`, ops `seg_*`, `segment_image` | C | 🟡 | exécutée **dans** la numérisation automatique ✅ ; pas de pilotage manuel ⬜ |
