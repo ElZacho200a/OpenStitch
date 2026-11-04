@@ -172,3 +172,43 @@ Rotation, miroir, alignement, flèches clavier, Bézier, main levée, nœuds, ta
 
 Angle de rotation libre et poignée de rotation, alignement / répartition, groupes, Bézier, main levée, nœuds, taille du
 cadre, design system, i18n EN.
+
+
+## 2026-11-04 — Session 1 (suite 6) : diagnostic de brodabilité (branche `feat/desktop-v2-diagnostics`)
+
+### Fait, avec preuve
+
+| Élément | Preuve |
+|---|---|
+| Diagnostic : `project_ops::diagnose_project` (même contrôle que la CLI et l'agent) exécuté sur un instantané, en tâche annulable ; le résultat porte la révision analysée | `core/diagnostics_service.*` ; tests Catch2 `diagnostics of a digitized document…`, `diagnostics refuse an empty document and honour cancellation` |
+| Panneau « Diagnostic » (onglet du dock de droite, mis en avant dans l'espace Optimisation) : synthèse (erreurs / avertissements / infos, points, sauts, coupes, couleurs, fil, emprise), constats colorés, **double-clic = sélection des objets concernés + centrage de la vue** ; objets disparus ignorés ; résultat marqué **périmé** dès qu'une modification arrive | `ui/diagnostics_panel.*` ; QTest `diagnosticsRunInTheBackgroundAndGoStaleOnEdit`, `clickingAFindingSelectsItsObjectsAndSkipsVanishedOnes` |
+| Commande de palette « Analyser le document » (bascule vers l'espace Optimisation) ; désactivée sans objet | `analysis.run` |
+| Totaux locaux (Windows, Debug) | Catch2 : 64 cas / 710 assertions ; QTest : 36 lignes ; 0 avertissement |
+
+### Non fait
+
+Correctifs proposés en un clic (les constats portent une suggestion textuelle), cartes de densité et de risque tissu en
+surimpression, mesure de fidélité à l'image source, compensation de tirage, design system, i18n EN.
+
+
+## 2026-11-04 — Session 1 (suite 7) : export multi-formats (branche `feat/desktop-v2-diagnostics`)
+
+| Élément | Preuve |
+|---|---|
+| Export machine par extension (liste tirée de `formats::registered_formats()`, aucun format codé en dur) : séquence effective, couleurs de blocs (`stitch_analysis::color_blocks`), nom de motif ASCII 16 caractères, écriture atomique, annulable ; extension inconnue = erreur actionnable | `export_project_file`, `exportFormats` ; tests `every writable format exports Tentabrode to a non-empty readable file` (relecture, et **nombre de blocs de couleur identique** pour les formats qui portent les couleurs), `an unsupported or missing extension is refused…`, `the export list comes from the format registry…` |
+| Sélecteur de fichier : un filtre par format écrivable | `ShellWindow` |
+
+Non fait : options machine (point de départ, coupes, arrêts, horodatage), contrôle des contraintes machine à l'export,
+fiche de production, impression.
+
+
+## 2026-11-04 — Session 1 (suite 8) : réglages de couture dans l'inspecteur (branche `feat/desktop-v2-params`)
+
+| Élément | Preuve |
+|---|---|
+| Table `ParamSpec` (type de point → réglages essentiels : libellé, nature, plage, pas, unité) ; lecture dans l'unité d'affichage (µm → mm, radians → degrés), écriture par `set_params` (mise à jour partielle) ; valeur hors plage, clé étrangère au type, non finie : refusée **avant** envoi | `core/param_spec.*` ; 4 cas Catch2 (chaque clé de la table est lisible sur son type et sa valeur par défaut est dans la plage ; une annulation pour N objets ; entiers arrondis) |
+| Éditeur généré depuis la table dans l'inspecteur : numérique, entier, case ; valeur **mixte** affichée « — » quand les objets diffèrent ; champs reconstruits seulement si le type commun change | `ui/inspector_panel.*` ; QTest `theInspectorShowsEssentialStitchSettingsOfTheCommonType` |
+| **Défaut d'ergonomie trouvé par les tests** : l'inspecteur plus haut agrandissait la fenêtre et redimensionnait le canevas **en plein clic** (la vue sautait, le clic tombait à côté). L'inspecteur est maintenant dans une zone défilante : il ne modifie plus la taille minimale de la fenêtre | trois tests de canevas échouaient, verts après correction |
+
+Non fait : les ≈ 150 autres champs du moteur (la table est extensible sans toucher l'interface), réglages par objet vectoriel,
+préréglages de points.

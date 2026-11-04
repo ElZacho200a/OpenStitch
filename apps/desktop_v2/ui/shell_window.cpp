@@ -15,6 +15,7 @@
 #include <QMenuBar>
 #include <QPixmap>
 #include <QProgressBar>
+#include <QScrollArea>
 #include <QStatusBar>
 #include <QTimer>
 #include <QToolBar>
@@ -24,6 +25,7 @@
 #include <algorithm>
 
 #include "command_palette.hpp"
+#include "diagnostics_panel.hpp"
 #include "inspector_model.hpp"
 #include "inspector_panel.hpp"
 #include "object_labels.hpp"
@@ -183,11 +185,16 @@ void ShellWindow::buildMenus() {
             saveProject(std::filesystem::path(path.toStdU16String()));
         }
     });
-    exportAction_ = file->addAction(tr("E&xporter en DST…"));
+    exportAction_ = file->addAction(tr("E&xporter pour la machine…"));
     exportAction_->setShortcut(QKeySequence(QStringLiteral("Ctrl+E")));
     connect(exportAction_, &QAction::triggered, this, [this] {
-        const QString path = QFileDialog::getSaveFileName(this, tr("Exporter en DST"), QString(),
-                                                          tr("Tajima DST (*.dst)"));
+        // Un filtre par format machine inscrit (DST, PES, JEF, EXP, VP3…), le DST en premier.
+        QStringList filters;
+        for (const auto& f : exportFormats()) {
+            filters << QStringLiteral("%1 (*.%2)").arg(fromUtf8(f.label), fromUtf8(f.extension));
+        }
+        const QString path = QFileDialog::getSaveFileName(this, tr("Exporter pour la machine"),
+                                                          QString(), filters.join(";;"));
         if (!path.isEmpty()) {
             exportDst(std::filesystem::path(path.toStdU16String()));
         }
@@ -303,13 +310,37 @@ void ShellWindow::buildInspector() {
     inspector_ = new InspectorPanel(session_, body);
     connect(inspector_, &InspectorPanel::refused, this,
             [this](const QString& message) { setNotice(message, true); });
-    layout->addWidget(inspector_);
+    // L'inspecteur peut changer de hauteur selon la sélection (réglages par type de point) : dans
+    // une zone défilante, il ne modifie jamais la taille minimale de la fenêtre, donc ne
+    // redimensionne pas le canevas en plein geste (un clic qui fait « sauter » la vue serait
+    // inutilisable).
+    auto* inspectorScroll = new QScrollArea(body);
+    inspectorScroll->setObjectName(QStringLiteral("inspectorScroll"));
+    inspectorScroll->setWidgetResizable(true);
+    inspectorScroll->setFrameShape(QFrame::NoFrame);
+    inspectorScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    inspectorScroll->setMinimumHeight(160);
+    inspectorScroll->setWidget(inspector_);
+    layout->addWidget(inspectorScroll, 1);
     summary_ = new QLabel(body);
     summary_->setObjectName(QStringLiteral("summary"));
     summary_->setWordWrap(true);
     layout->addWidget(summary_);
     dock->setWidget(body);
     addDockWidget(Qt::RightDockWidgetArea, dock);
+    docDock_ = dock;
+
+    // Diagnostic : second onglet du même dock, mis en avant dans l'espace Optimisation.
+    diagDock_ = new QDockWidget(tr("Diagnostic"), this);
+    diagDock_->setObjectName(QStringLiteral("diagnosticDock"));
+    diagnostics_ = new DiagnosticsPanel(diagDock_);
+    diagDock_->setWidget(diagnostics_);
+    addDockWidget(Qt::RightDockWidgetArea, diagDock_);
+    tabifyDockWidget(docDock_, diagDock_);
+    docDock_->raise();
+    connect(diagnostics_, &DiagnosticsPanel::analyseRequested, this, &ShellWindow::runDiagnostics);
+    connect(diagnostics_, &DiagnosticsPanel::findingActivated, this,
+            &ShellWindow::onFindingActivated);
 
     connect(objectTree_, &QTreeWidget::itemSelectionChanged, this,
             &ShellWindow::onSelectionChangedInTree);
@@ -395,6 +426,7 @@ void ShellWindow::setWorkspace(Workspace workspace) {
         a->setChecked(a->data().toInt() == static_cast<int>(workspace));
     }
     rebuildToolRail();
+    (workspace == Workspace::Optimize ? diagDock_ : docDock_)->raise();
     setWindowTitle(tr("OpenStitch V2 — %1").arg(workspaceLabel(workspace)));
 }
 
@@ -456,6 +488,9 @@ void ShellWindow::rebuildToolRail() {
 void ShellWindow::onDocumentChanged(ChangeKind) {
     rebuildObjectList();
     refreshActionStates();
+    if (diagnostics_ != nullptr) {
+        diagnostics_->setStale(true); // l'analyse affichée ne correspond plus au document
+    }
     previewDebounce_->start(); // aperçu regroupé ; waitForIdle() le déclenche sans attendre
 }
 
@@ -670,7 +705,7 @@ void ShellWindow::exportDst(const std::filesystem::path& dst) {
     setNotice(tr("Export DST en cours…"), false);
     tasks_.submit<stitch::StitchStats>(
         tr("Export DST").toStdString(),
-        [snapshot, dst](const TaskContext& ctx) { return export_project_dst(snapshot, dst, ctx); },
+        [snapshot, dst](const TaskContext& ctx) { return export_project_file(snapshot, dst, ctx); },
         [this, dst](Result<stitch::StitchStats>&& r) {
             if (!r) {
                 setNotice(tr("Export impossible : %1 %2")
@@ -711,6 +746,51 @@ void ShellWindow::refreshTaskStatus() {
     progress_->setFormat(QString::fromStdString(t.label));
     progress_->show();
     cancelButton_->show();
+}
+
+void ShellWindow::runDiagnostics() {
+    if (session_.project().embroidery_objects.empty()) {
+        setNotice(tr("Rien à analyser : le document ne contient aucun objet brodé."), true);
+        return;
+    }
+    diagnostics_->setBusy(true);
+    const auto snapshot = session_.snapshot();
+    const auto revision = session_.revision();
+    tasks_.submit<DiagnosticsResult>(
+        tr("Diagnostic").toStdString(),
+        [snapshot, revision](const TaskContext& ctx) {
+            return run_diagnostics(snapshot, revision, ctx);
+        },
+        [this](Result<DiagnosticsResult>&& r) {
+            diagnostics_->setBusy(false);
+            if (!r) {
+                setNotice(tr("Analyse impossible : %1").arg(fromUtf8(r.error().message)), true);
+                return;
+            }
+            diagnostics_->setResult(*r);
+            diagnostics_->setStale(r->revision != session_.revision());
+            setNotice(
+                tr("Analyse : %1 erreur(s), %2 avertissement(s).").arg(r->errors).arg(r->warnings),
+                r->errors > 0);
+        });
+}
+
+void ShellWindow::onFindingActivated(const project_ops::Finding& finding) {
+    std::vector<Target> targets;
+    for (const auto id : finding.objects) {
+        const Target t{TargetKind::EmbroideryObject, id};
+        if (session_.exists(t)) { // un constat ancien peut citer un objet supprimé depuis
+            targets.push_back(t);
+        }
+    }
+    if (!targets.empty()) {
+        session_.selection().replace(std::move(targets));
+    }
+    if (finding.at_mm && frame_.px_per_mm > 0.0) {
+        // Le constat est en mm modèle (Y vers le haut) ; l'aperçu est en mm écran (Y vers le bas).
+        canvas_->centreOnPx(
+            QPointF(frame_.mmToPxX((*finding.at_mm)[0]), frame_.mmToPxY(-(*finding.at_mm)[1])));
+    }
 }
 
 void ShellWindow::applyToolToCanvas() {
@@ -936,6 +1016,8 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
     edit("order.forward", tr("Avancer d'un cran"), "Ordre de couture", "");
     edit("order.backward", tr("Reculer d'un cran"), "Ordre de couture", "");
     edit("order.back", tr("Arrière-plan"), "Ordre de couture", "");
+    out.push_back({"analysis.run", q(tr("Analyser le document (diagnostic)")), q(tr("Analyse")), "",
+                   !session_.project().embroidery_objects.empty()});
     int n = 1;
     for (const auto w : kWorkspaces) {
         out.push_back({"workspace." + std::string(workspaceId(w)),
@@ -976,6 +1058,9 @@ bool ShellWindow::runCommand(const QString& id) {
                    id.startsWith(QLatin1String("transform.")) ||
                    id.startsWith(QLatin1String("order."))) {
             editSelection(id);
+        } else if (id == QLatin1String("analysis.run")) {
+            setWorkspace(Workspace::Optimize);
+            runDiagnostics();
         } else if (id == QLatin1String("selection.all")) {
             selectAllObjects();
         } else if (id == QLatin1String("selection.clear")) {

@@ -4,11 +4,15 @@
 #include <QCheckBox>
 #include <QColorDialog>
 #include <QComboBox>
+#include <QDoubleSpinBox>
 #include <QFormLayout>
+#include <QGroupBox>
 #include <QLabel>
 #include <QPushButton>
+#include <QSpinBox>
 
 #include "inspector_model.hpp"
+#include "param_spec.hpp"
 
 namespace openstitch::desktop_v2 {
 
@@ -48,6 +52,11 @@ InspectorPanel::InspectorPanel(DocumentSession& session, QWidget* parent)
     form->addRow(tr("Couleur du fil"), colour_);
     form->addRow(visible_);
     form->addRow(locked_);
+    paramsBox_ = new QGroupBox(tr("Réglages de couture"), this);
+    paramsBox_->setObjectName(QStringLiteral("inspectorParams"));
+    paramsForm_ = new QFormLayout(paramsBox_);
+    paramsBox_->hide();
+    form->addRow(paramsBox_);
 
     connect(type_, &QComboBox::activated, this, [this](int index) {
         if (!refreshing_ && index > 0) {
@@ -85,6 +94,7 @@ InspectorPanel::~InspectorPanel() {
 void InspectorPanel::refresh() {
     refreshing_ = true;
     const auto state = inspect(session_.project(), session_.selection().targets());
+    rebuildParams(state);
     const bool any = state.count > 0;
     type_->setEnabled(any);
     colour_->setEnabled(any);
@@ -119,6 +129,154 @@ void InspectorPanel::refresh() {
                                    : (state.locked.value ? Qt::Checked : Qt::Unchecked));
     }
     refreshing_ = false;
+}
+
+void InspectorPanel::rebuildParams(const InspectorState& state) {
+    const bool show = state.count > 0 && !state.typeId.mixed;
+    const auto specs = show ? paramSpecs(state.typeId.value) : std::vector<ParamSpec>{};
+    const QString type = show ? fromUtf8(state.typeId.value) : QString();
+    if (specs.empty()) {
+        paramsBox_->hide();
+        paramKeys_.clear();
+        paramType_.clear();
+        while (paramsForm_->rowCount() > 0) {
+            paramsForm_->removeRow(0);
+        }
+        return;
+    }
+    // Les champs sont reconstruits seulement quand le type commun change ; sinon on met à jour les
+    // valeurs sur place (un widget en cours d'édition n'est jamais détruit sous le curseur).
+    if (type != paramType_) {
+        while (paramsForm_->rowCount() > 0) {
+            paramsForm_->removeRow(0);
+        }
+        paramKeys_.clear();
+        paramType_ = type;
+        for (const auto& spec : specs) {
+            const QString key =
+                QString::fromUtf8(spec.key.data(), static_cast<qsizetype>(spec.key.size()));
+            const QString label =
+                QString::fromUtf8(spec.label.data(), static_cast<qsizetype>(spec.label.size()));
+            const QString unit =
+                QString::fromUtf8(spec.unit.data(), static_cast<qsizetype>(spec.unit.size()));
+            QWidget* editor = nullptr;
+            if (spec.kind == ParamKind::Bool) {
+                auto* box = new QCheckBox(paramsBox_);
+                box->setTristate(true);
+                connect(box, &QCheckBox::clicked, this, [this, key](bool on) {
+                    if (!refreshing_) {
+                        applyParam(key, on ? 1.0 : 0.0);
+                    }
+                });
+                editor = box;
+            } else if (spec.kind == ParamKind::Integer) {
+                auto* spin = new QSpinBox(paramsBox_);
+                spin->setKeyboardTracking(false);
+                spin->setRange(static_cast<int>(spec.min) - 1, static_cast<int>(spec.max));
+                spin->setSpecialValueText(QStringLiteral("—")); // valeur « mixte » : minimum - 1
+                connect(spin, &QSpinBox::valueChanged, this, [this, key, spin](int v) {
+                    if (!refreshing_ && v >= spin->minimum() + 1) {
+                        applyParam(key, v);
+                    }
+                });
+                editor = spin;
+            } else {
+                auto* spin = new QDoubleSpinBox(paramsBox_);
+                spin->setKeyboardTracking(false);
+                spin->setDecimals(spec.step < 0.1 ? 2 : 1);
+                spin->setSingleStep(spec.step);
+                spin->setRange(spec.min - spec.step, spec.max);
+                spin->setSpecialValueText(QStringLiteral("—"));
+                if (!unit.isEmpty()) {
+                    spin->setSuffix(QStringLiteral(" ") + unit);
+                }
+                connect(spin, &QDoubleSpinBox::valueChanged, this, [this, key, spin](double v) {
+                    if (!refreshing_ && v > spin->minimum() + 1e-9) {
+                        applyParam(key, v);
+                    }
+                });
+                editor = spin;
+            }
+            editor->setObjectName(QStringLiteral("param_") + key);
+            editor->setAccessibleName(label);
+            paramsForm_->addRow(label, editor);
+            paramKeys_ << key;
+        }
+    }
+    // Valeurs : commune, ou « mixte » (état intermédiaire / minimum - 1) si les objets diffèrent.
+    for (const auto& spec : specs) {
+        const QString key =
+            QString::fromUtf8(spec.key.data(), static_cast<qsizetype>(spec.key.size()));
+        auto* editor = paramsBox_->findChild<QWidget*>(QStringLiteral("param_") + key);
+        if (editor == nullptr) {
+            continue;
+        }
+        bool mixed = false;
+        std::optional<double> first;
+        for (const auto id : state.ids) {
+            for (const auto& o : session_.project().embroidery_objects) {
+                if (o.id.value != id) {
+                    continue;
+                }
+                const auto v = readParam(o, spec.key);
+                if (!v) {
+                    continue;
+                }
+                if (!first) {
+                    first = v;
+                } else if (std::abs(*first - *v) > 1e-6) {
+                    mixed = true;
+                }
+            }
+        }
+        if (auto* box = qobject_cast<QCheckBox*>(editor)) {
+            box->setCheckState(mixed ? Qt::PartiallyChecked
+                                     : (first && *first >= 0.5 ? Qt::Checked : Qt::Unchecked));
+        } else if (auto* ispin = qobject_cast<QSpinBox*>(editor)) {
+            ispin->setValue(mixed || !first ? ispin->minimum()
+                                            : static_cast<int>(std::lround(*first)));
+        } else if (auto* dspin = qobject_cast<QDoubleSpinBox*>(editor)) {
+            dspin->setValue(mixed || !first ? dspin->minimum() : *first);
+        }
+    }
+    paramsBox_->show();
+}
+
+std::optional<double> InspectorPanel::paramValue(const QString& key) const {
+    auto* editor = paramsBox_->findChild<QWidget*>(QStringLiteral("param_") + key);
+    if (auto* box = qobject_cast<QCheckBox*>(editor)) {
+        return box->checkState() == Qt::Checked ? 1.0 : 0.0;
+    }
+    if (auto* ispin = qobject_cast<QSpinBox*>(editor)) {
+        return ispin->value();
+    }
+    if (auto* dspin = qobject_cast<QDoubleSpinBox*>(editor)) {
+        return dspin->value();
+    }
+    return std::nullopt;
+}
+
+bool InspectorPanel::paramMixed(const QString& key) const {
+    auto* editor = paramsBox_->findChild<QWidget*>(QStringLiteral("param_") + key);
+    if (auto* box = qobject_cast<QCheckBox*>(editor)) {
+        return box->checkState() == Qt::PartiallyChecked;
+    }
+    if (auto* ispin = qobject_cast<QSpinBox*>(editor)) {
+        return ispin->value() == ispin->minimum();
+    }
+    if (auto* dspin = qobject_cast<QDoubleSpinBox*>(editor)) {
+        return dspin->value() <= dspin->minimum() + 1e-9;
+    }
+    return false;
+}
+
+bool InspectorPanel::applyParam(const QString& key, double value) {
+    const auto state = inspect(session_.project(), session_.selection().targets());
+    if (state.count == 0 || state.typeId.mixed) {
+        return false;
+    }
+    return run(batchSetParam(state.ids, state.typeId.value, key.toStdString(), value),
+               tr("Réglage de couture"));
 }
 
 bool InspectorPanel::run(const std::string& batch, const QString& label) {

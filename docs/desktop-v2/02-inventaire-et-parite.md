@@ -20,7 +20,7 @@ liste qui bougera. C'est une limite assumée de cette première livraison.
 | 2 | Ouvrir un projet `.osp` | `main_window_files`, `recent_files` | `project_io::load_project` | T | 🟡 | ouverture ✅ (tâche d'arrière-plan, test aller-retour enregistrement → ouverture) ; **récents ⬜**, migration de schéma signalée ⬜ |
 | 3 | Importer DST / SVG / formats machine | `main_window_files`, `import_dialog` | `formats::read_*`, op `import_svg` | T | ⬜ | |
 | 4 | Enregistrer `.osp`, autosave, récupération | `main_window_files`, `autosave`, `crash_report*` | `project_io::save_project` | T | 🟡 | enregistrement ✅ ; **autosave ⬜, récupération ⬜, rapport de plantage ⬜** |
-| 5 | Exporter DST | `machine_export_dialog`, `production_dialog` | `effective_sequence` + `write_dst_file` | P | ✅ | tâche annulable sur instantané ; autres formats machine ⬜ |
+| 5 | Exporter pour la machine | `machine_export_dialog`, `production_dialog` | `effective_sequence` + `formats::registered_formats()` | P | ✅ | **tous les formats inscrits qui savent écrire (DST, PES, JEF, EXP, VP3…)**, couleurs de blocs dérivées du projet, nom de motif, écriture atomique, tâche annulable ; options machine avancées (départ, coupes, arrêts) ⬜ |
 | 6 | Exporter image / PDF / imprimer | `export_image*`, `print_preview` | — | P | ⬜ | |
 | 7 | Prétraitement d'image (luminosité, rotation, recadrage…) | menu Image, `brightness_dialog`, `main_window_rotation` | `image::ImageOp`, op `image_denoise` | C | ⬜ | |
 | 8 | Segmentation (couleurs, régions, nettoyage) | `segmentation_dialog`, `segmentation_colors_panel`, `main_window_regions`, `segment_preview` | `segmentation::*`, ops `seg_*`, `segment_image` | C | 🟡 | exécutée **dans** la numérisation automatique ✅ ; pas de pilotage manuel ⬜ |
@@ -33,7 +33,7 @@ liste qui bougera. C'est une limite assumée de cette première livraison.
 | 15 | Sélection (clic, rectangle, nommée, retrouver) | `main_window_selection_*`, `selection_model`, `selection_queries` | — | T | 🟡 | **modèle unique ✅** (`SelectionModel`) + liste ✅ + **clic au canevas ✅** (Ctrl = bascule, Maj = ajoute, vide = désélectionne, `HitIndex` sur les brins cousus) ; **cadre élastique ✅** (sélection « fenêtre » : objets entiers ; Ctrl/Maj ajoutent), **Tout sélectionner / Désélectionner ✅** ; nommées ⬜, « retrouver » ⬜ |
 | 16 | Transformations (déplacer, tourner, miroir, aligner, répartir) | `main_window_objects`, `_rotation`, `_arrange`, `_editing` | `transform_ops`, `arrange_ops`, ops `translate/rotate/scale/mirror` | C/N | 🟡 | **déplacer au glisser, flèches (1 mm, Maj = 10 mm), mettre à l'échelle (poignées de coin), pivoter ±90°, miroir H/V, dupliquer, supprimer ✅**, sélection multiple, une annulation ; angle libre, aligner, répartir ⬜ |
 | 17 | Groupes, ordre d'empilement | `document_panel` | `group_commands`, ops `group/ungroup/stack_order` | T | 🟡 | **ordre de couture (premier plan / avancer / reculer / arrière-plan) ✅** ; groupes ⬜ |
-| 18 | Type de point et paramètres (inspecteur) | `properties_panel` (2 951 l.), `stitch_type_catalog` | `convert_ops`, ops `set_stitch_type`, `set_params` | N | 🟡 | **inspecteur contextuel ✅ pour 4 réglages** (type parmi 6, couleur, visible, verrouillé ; valeurs communes/mixtes, un lot = une annulation) ; satin, paramètres par type, densités ⬜ |
+| 18 | Type de point et paramètres (inspecteur) | `properties_panel` (2 951 l.), `stitch_type_catalog` | `convert_ops`, ops `set_stitch_type`, `set_params` | N | 🟡 | **inspecteur contextuel ✅** : type parmi 6, couleur, visible, verrouillé, **et réglages de couture essentiels par type (contour 2, tatami 7, directionnel 5, satin 5 ; table `paramSpecs`, `set_params`, valeurs communes / mixtes, une annulation)** ; autres réglages (≈ 150 champs du moteur : sous-couches fines, motifs, appliqué, guides…) ⬜ |
 | 19 | Satin : colonnes, rails, guides | `main_window_draw_tools`, `satin_guide_item.hpp` | `SatinParams`, op `set_geometry` | N | ⬜ | |
 | 20 | Auto-satin et variantes | `main_window_satin_auto`, `auto_satin_strategy_ui.hpp` | `auto_satin`, op `auto_satin` | N | ⬜ | |
 | 21 | Remplissages spéciaux (directionnel, motif, radial, spirale, croisé, point de croix, appliqué) | `main_window_directional`, `_fill_center`, `_applique` | `DirectionalFillParams`…, op `directional_guides` | N | ⬜ | |
@@ -46,7 +46,7 @@ liste qui bougera. C'est une limite assumée de cette première livraison.
 | 28 | Ordre de broderie, sauts, coupes, optimisation | `main_window_order_filter`, `_order_jumps`, `order_list_widget` | `sewing_order_commands`, `optimization`, op `optimize_order`, `set_order` | O | 🟡 | optimisation **appliquée** à la numérisation ✅ ; pilotage et liste d'ordre ⬜ |
 | 29 | Simulation de couture | `main_window_simulation`, `simulation_nav_bar` | `stitch_render/simulation` | P | ⬜ | |
 | 30 | Rendu réaliste | `main_window_realistic`, `realistic_*` | `stitch_render`, `render_realistic_png` | P | 🟡 | aperçu ✅ (non interactif, instantané, révision étiquetée) ; options de rendu ⬜ |
-| 31 | Analyse : brodabilité, densité, risques, tissu | `main_window_analysis`, `_density`, `_fabric_risk` | `stitch_analysis`, `project_ops/analysis`, `quality` | O | ⬜ | |
+| 31 | Analyse : brodabilité, densité, risques, tissu | `main_window_analysis`, `_density`, `_fabric_risk` | `stitch_analysis`, `project_ops/analysis`, `quality` | O | 🟡 | **diagnostic de brodabilité ✅** (`diagnose_project` en tâche annulable, constats cliquables → sélection + centrage, résultat marqué périmé après modification) ; cartes de densité / risque tissu, fidélité, correctifs proposés ⬜ |
 | 32 | Cadres et machine | `machine_dialog`, `main_window_machine` | `machine_commands`, op `set_machine`, `set_canvas` | P | ⬜ | |
 | 33 | Lettrage / texte | `text_dialog`, `text_advanced_panel`, `main_window_lettering`, `font_catalog` | `text_commands`, `lettering`, ops `add_text/set_text` | C/N | ⬜ | |
 | 34 | Historique (annuler / rétablir) | menu Édition | `UndoStack` | T | 🟡 | annuler/rétablir ✅ (libellé de l'étape) ; **liste d'historique ⬜** |
@@ -61,7 +61,7 @@ liste qui bougera. C'est une limite assumée de cette première livraison.
 | 43 | Vues d'affichage (passes, plans, densité, risques) | `main_window_view_display`, `view_display_state.hpp` | `stitch_render/view_display` | T | ⬜ | |
 | 44 | Espaces de travail / disposition des panneaux | `main_window_ux`, `ui_memory.hpp` | — | T | 🟡 | 4 espaces filtrant le rail d'outils ✅ ; panneaux par espace, mémorisation ⬜ |
 
-**Décompte au 2026-11-04** : 44 familles — ✅ 2 · 🟡 16 · ⬜ 26. Aucune exception (« non migré volontairement ») n'est
+**Décompte au 2026-11-04** : 44 familles — ✅ 2 · 🟡 17 · ⬜ 25. Aucune exception (« non migré volontairement ») n'est
 prononcée à ce stade ; la seule candidate argumentée est la segmentation IA (ligne 9), décalée en dernier mais pas supprimée.
 
 ## Parité des outils de canevas (vérifiée par test)
