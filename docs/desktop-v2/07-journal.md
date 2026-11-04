@@ -330,3 +330,12 @@ encore le desktop principal.
   position / taille / rotation libre numériques, tous par lots `project_ops` (`place`, `group`, `ungroup`). Catch2 `[arrange]`.
 - Interface : Édition > Aligner, Répartir, Grouper (Ctrl+G), Dégrouper (Ctrl+Maj+G), Position et taille… ; mêmes entrées
   dans la palette Ctrl+K. QTest `alignGroupAndNumericPlacementWorkFromTheEditMenu`.
+
+## 2026-11-04 — Session 1 (suite 18) : parité avec l'ancien bureau, lots « image », « production » et « aide »
+
+- `core/image_prep` : luminosité / contraste, niveaux de gris, netteté, CLAHE, rotations, retournements, recadrage, chacun une
+  `AppendImageOpCommand` annulable (la segmentation est invalidée par le moteur). Menu Image + palette. Catch2 `[imageprep]`.
+- `core/production_sheet` : fiche de production (séquence effective : dimensions, comptes, plan de fils par bloc, durée).
+  Fichier > Fiche de production (PDF) met en page l'aperçu et le plan de fils (QPdfWriter, tâche annulable). Catch2 `[sheet]`.
+- Aide > Raccourcis et commandes (texte généré depuis `commandEntries`) et À propos.
+- Constat : l'ancien bureau n'importe pas le DST (seulement la CLI) ; la ligne 3 n'est donc pas un écart de parité.

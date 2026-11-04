@@ -22,8 +22,10 @@
 #include "document_services.hpp"
 #include "document_session.hpp"
 #include "edit_batch.hpp"
+#include "image_prep.hpp"
 #include "point_edit.hpp"
 #include "preview_service.hpp"
+#include "production_sheet.hpp"
 #include "satin_column.hpp"
 #include "shape_batch.hpp"
 #include "source_image_tools.hpp"
@@ -85,7 +87,15 @@ public:
     void showCommandPalette();
     void selectAllObjects();
     bool placeSelection(double xMm, double yMm, double widthMm, double heightMm, double rotateDeg);
-    void showPlaceDialog(); // position, taille et rotation numériques de la sélection
+    void showPlaceDialog();
+    // Prétraitement de l'image source (menu Image) : une étape annulable par appel.
+    bool applyPrep(const PrepRequest& request);
+    void runImagePrep(const QString& id);
+    // Fiche de production (PDF A4) : dimensions, comptes, plan de fils et aperçu. Tâche annulable.
+    void exportProductionSheet(const std::filesystem::path& pdf);
+    // Texte d'aide (raccourcis et commandes) construit depuis le registre : une seule source.
+    [[nodiscard]] QString
+    helpText() const; // position, taille et rotation numériques de la sélection
 
     // --- Image source : clic-pour-broder et zones de détail -----------------------------------
     void setSourceVisible(bool visible); // calque semi-transparent sous les fils

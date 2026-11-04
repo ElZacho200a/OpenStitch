@@ -26,6 +26,8 @@ add_library(openstitch_desktop_v2_core STATIC
     core/fade_service.cpp
     core/workspace_state.cpp
     core/arrange_batch.cpp
+    core/image_prep.cpp
+    core/production_sheet.cpp
     core/satin_column.cpp
     core/point_edit.cpp
     core/source_image_tools.cpp

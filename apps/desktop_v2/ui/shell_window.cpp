@@ -17,10 +17,16 @@
 #include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMessageBox>
+#include <QPageSize>
+#include <QPainter>
+#include <QPdfWriter>
 #include <QPixmap>
 #include <QProgressBar>
 #include <QScrollArea>
+#include <QSpinBox>
 #include <QStatusBar>
+#include <QTextBrowser>
 #include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
@@ -236,6 +242,15 @@ void ShellWindow::buildMenus() {
             exportImage(std::filesystem::path(path.toStdU16String()));
         }
     });
+    auto* sheetAction = file->addAction(tr("&Fiche de production (PDF)…"));
+    sheetAction->setObjectName(QStringLiteral("action_file_production_sheet"));
+    connect(sheetAction, &QAction::triggered, this, [this] {
+        const QString path = QFileDialog::getSaveFileName(this, tr("Fiche de production"),
+                                                          QString(), tr("Document PDF (*.pdf)"));
+        if (!path.isEmpty()) {
+            exportProductionSheet(std::filesystem::path(path.toStdU16String()));
+        }
+    });
     file->addSeparator();
     auto* quit = file->addAction(tr("&Quitter"));
     quit->setShortcut(QKeySequence::Quit);
@@ -317,7 +332,48 @@ void ShellWindow::buildMenus() {
         const QString id = fromUtf8(def.id);
         connect(a, &QAction::triggered, this, [this, id] { runAction(id); });
     }
+    auto* imageMenu = menuBar()->addMenu(tr("&Image"));
+    const auto addPrep = [this, imageMenu](const QString& text, const char* id) {
+        auto* a = imageMenu->addAction(text);
+        a->setObjectName(QStringLiteral("action_") + QString::fromLatin1(id));
+        connect(a, &QAction::triggered, this,
+                [this, id] { runImagePrep(QString::fromLatin1(id)); });
+    };
+    addPrep(tr("&Luminosité et contraste…"), "image.prep.bc");
+    addPrep(tr("&Niveaux de gris"), "image.prep.gray");
+    addPrep(tr("N&etteté…"), "image.prep.sharpen");
+    addPrep(tr("Contraste &local (CLAHE)…"), "image.prep.clahe");
+    imageMenu->addSeparator();
+    addPrep(tr("Pivoter à &droite"), "image.prep.rotate.r");
+    addPrep(tr("Pivoter à &gauche"), "image.prep.rotate.l");
+    addPrep(tr("Pivoter de 180°"), "image.prep.rotate.180");
+    addPrep(tr("Retourner &horizontalement"), "image.prep.flip.h");
+    addPrep(tr("Retourner &verticalement"), "image.prep.flip.v");
+    addPrep(tr("&Recadrer…"), "image.prep.crop");
     presetMenu_ = menuBar()->addMenu(tr("&Préréglages"));
+    auto* helpMenu = menuBar()->addMenu(tr("A&ide"));
+    auto* shortcuts = helpMenu->addAction(tr("&Raccourcis et commandes…"));
+    shortcuts->setShortcut(QKeySequence::HelpContents);
+    shortcuts->setObjectName(QStringLiteral("action_help_shortcuts"));
+    connect(shortcuts, &QAction::triggered, this, [this] {
+        QDialog dialog(this);
+        dialog.setWindowTitle(tr("Raccourcis et commandes"));
+        auto* layout = new QVBoxLayout(&dialog);
+        auto* browser = new QTextBrowser(&dialog);
+        browser->setPlainText(helpText());
+        browser->setMinimumSize(520, 480);
+        layout->addWidget(browser);
+        auto* close = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+        connect(close, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+        layout->addWidget(close);
+        dialog.exec();
+    });
+    auto* about = helpMenu->addAction(tr("À &propos…"));
+    connect(about, &QAction::triggered, this, [this] {
+        QMessageBox::about(this, tr("À propos"),
+                           tr("OpenStitch Studio — numérisation de broderie machine libre "
+                              "(Apache-2.0).\nDesktop V2."));
+    });
     connect(presetMenu_, &QMenu::aboutToShow, this, &ShellWindow::rebuildPresetMenu);
     auto* fit = view->addAction(tr("&Ajuster à la fenêtre"));
     connect(fit, &QAction::triggered, canvas_, &PreviewCanvas::fitAll);
@@ -1852,6 +1908,20 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
     edit("order.forward", tr("Avancer d'un cran"), "Ordre de couture", "");
     edit("order.backward", tr("Reculer d'un cran"), "Ordre de couture", "");
     edit("order.back", tr("Arrière-plan"), "Ordre de couture", "");
+    const bool hasImage = session_.project().hasImage();
+    const auto prep = [&](const char* id, const QString& label) {
+        out.push_back({id, q(label), q(tr("Image")), "", hasImage});
+    };
+    prep("image.prep.bc", tr("Luminosité et contraste…"));
+    prep("image.prep.gray", tr("Image en niveaux de gris"));
+    prep("image.prep.sharpen", tr("Netteté de l'image…"));
+    prep("image.prep.clahe", tr("Contraste local de l'image (CLAHE)…"));
+    prep("image.prep.rotate.r", tr("Pivoter l'image à droite"));
+    prep("image.prep.rotate.l", tr("Pivoter l'image à gauche"));
+    prep("image.prep.rotate.180", tr("Pivoter l'image de 180°"));
+    prep("image.prep.flip.h", tr("Retourner l'image horizontalement"));
+    prep("image.prep.flip.v", tr("Retourner l'image verticalement"));
+    prep("image.prep.crop", tr("Recadrer l'image…"));
     for (const auto& def : actionCatalog()) {
         out.push_back(
             {"action." + def.id, def.label, def.group, "", !def.needsSelection || hasSel});
@@ -1910,6 +1980,8 @@ bool ShellWindow::runCommand(const QString& id) {
                    id.startsWith(QLatin1String("arrange.")) ||
                    id.startsWith(QLatin1String("order."))) {
             editSelection(id);
+        } else if (id.startsWith(QLatin1String("image.prep."))) {
+            runImagePrep(id);
         } else if (id.startsWith(QLatin1String("action."))) {
             runAction(id.mid(7));
         } else if (id == QLatin1String("preset.save")) {
@@ -2018,6 +2090,245 @@ void ShellWindow::onMoveStart(QPointF scenePx) {
     if (hit && !session_.selection().contains({TargetKind::EmbroideryObject, *hit})) {
         session_.selection().replace({{TargetKind::EmbroideryObject, *hit}});
     }
+}
+
+QString ShellWindow::helpText() const {
+    QString out;
+    std::string group;
+    for (const auto& e : commandEntries()) {
+        if (e.group != group) {
+            group = e.group;
+            out += QStringLiteral("\n== %1 ==\n").arg(fromUtf8(group));
+        }
+        out += QStringLiteral("  %1").arg(fromUtf8(e.label));
+        if (!e.shortcut.empty()) {
+            out += QStringLiteral("    [%1]").arg(fromUtf8(e.shortcut));
+        }
+        out += QLatin1Char('\n');
+    }
+    out += tr("\n== Souris ==\n  Molette : zoom · Clic milieu / outil Main : déplacer la vue\n"
+              "  Clic : sélectionner · Maj / Ctrl : ajouter / basculer · Glisser : cadre de "
+              "sélection\n");
+    return out;
+}
+
+namespace {
+struct SheetJob {
+    ProductionSheet sheet;
+    std::filesystem::path png;
+};
+
+void layoutProductionPdf(const QString& pdfPath, const ProductionSheet& s, const QImage& preview,
+                         const QString& title) {
+    QPdfWriter writer(pdfPath);
+    writer.setPageSize(QPageSize(QPageSize::A4));
+    writer.setResolution(120);
+    writer.setTitle(title);
+    QPainter p(&writer);
+    const int margin = 60;
+    int y = margin;
+    QFont f = p.font();
+    f.setPointSize(16);
+    f.setBold(true);
+    p.setFont(f);
+    p.drawText(margin, y + 24, title);
+    y += 60;
+    f.setPointSize(10);
+    f.setBold(false);
+    p.setFont(f);
+    const auto line = [&](const QString& text) {
+        p.drawText(margin, y, text);
+        y += 22;
+    };
+    line(QObject::tr("Motif : %1 × %2 mm — cadre : %3 × %4 mm%5")
+             .arg(s.designWidthMm, 0, 'f', 1)
+             .arg(s.designHeightMm, 0, 'f', 1)
+             .arg(s.hoopWidthMm, 0, 'f', 0)
+             .arg(s.hoopHeightMm, 0, 'f', 0)
+             .arg(s.fitsHoop ? QString() : QObject::tr("  ⚠ dépasse la zone brodable")));
+    line(QObject::tr("%1 objets · %2 points · %3 sauts · %4 coupes · %5 changements de fil")
+             .arg(s.objects)
+             .arg(s.stitches)
+             .arg(s.jumps)
+             .arg(s.trims)
+             .arg(s.colorChanges));
+    line(QObject::tr("Fil : %1 m · durée estimée : %2 min (800 points/min)")
+             .arg(s.threadMetres, 0, 'f', 1)
+             .arg(s.minutesAt800spm, 0, 'f', 0));
+    y += 10;
+    if (!preview.isNull()) {
+        const int maxW = writer.width() - 2 * margin;
+        const QImage scaled =
+            preview.scaled(maxW, 520, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        p.drawImage(margin, y, scaled);
+        y += scaled.height() + 20;
+    }
+    f.setBold(true);
+    p.setFont(f);
+    line(QObject::tr("Plan de fils (ordre de couture)"));
+    f.setBold(false);
+    p.setFont(f);
+    int n = 1;
+    for (const auto& b : s.blocks) {
+        if (y > writer.height() - margin) {
+            writer.newPage();
+            y = margin;
+        }
+        p.fillRect(margin, y - 14, 18, 14, QColor(b.rgb[0], b.rgb[1], b.rgb[2]));
+        p.drawRect(margin, y - 14, 18, 14);
+        p.drawText(margin + 28, y,
+                   QObject::tr("%1. #%2%3%4 — %5 points, %6 mm — %7")
+                       .arg(n++)
+                       .arg(b.rgb[0], 2, 16, QLatin1Char('0'))
+                       .arg(b.rgb[1], 2, 16, QLatin1Char('0'))
+                       .arg(b.rgb[2], 2, 16, QLatin1Char('0'))
+                       .arg(b.stitches)
+                       .arg(b.lengthMm, 0, 'f', 0)
+                       .arg(QString::fromStdString(b.objects)));
+        y += 22;
+    }
+    p.end();
+}
+} // namespace
+
+void ShellWindow::exportProductionSheet(const std::filesystem::path& pdf) {
+    const auto snapshot = session_.snapshot();
+    const auto png = std::filesystem::temp_directory_path() / "openstitch_v2_sheet_preview.png";
+    setNotice(tr("Fiche de production en cours…"), false);
+    tasks_.submit<SheetJob>(
+        tr("Fiche de production").toStdString(),
+        [snapshot, png](const TaskContext& ctx) -> Result<SheetJob> {
+            auto sheet = buildProductionSheet(*snapshot, ctx);
+            if (!sheet) {
+                return std::unexpected(sheet.error());
+            }
+            SheetJob job{std::move(*sheet), {}};
+            if (job.sheet.stitches > 0) {
+                if (export_preview_png(snapshot, png, 8.0, ctx)) {
+                    job.png = png;
+                }
+            }
+            return job;
+        },
+        [this, pdf](Result<SheetJob>&& r) {
+            if (!r) {
+                setNotice(tr("Fiche impossible : %1").arg(fromUtf8(r.error().message)), true);
+                return;
+            }
+            QImage preview;
+            if (!r->png.empty()) {
+                preview.load(QString::fromStdU16String(r->png.u16string()));
+                std::error_code ec;
+                std::filesystem::remove(r->png, ec);
+            }
+            layoutProductionPdf(QString::fromStdU16String(pdf.u16string()), r->sheet, preview,
+                                tr("Fiche de production — OpenStitch"));
+            setNotice(tr("Fiche écrite : %1").arg(QString::fromStdString(pdf.filename().string())),
+                      false);
+        });
+}
+
+bool ShellWindow::applyPrep(const PrepRequest& request) {
+    const auto result = applyImagePrep(session_, request);
+    if (!result.ok) {
+        setNotice(tr("Prétraitement refusé : %1").arg(fromUtf8(result.message)), true);
+        return false;
+    }
+    setNotice(tr("Étape d'image ajoutée. Relancez « Segmenter l'image… » pour la prendre en "
+                 "compte."),
+              false);
+    return true;
+}
+
+void ShellWindow::runImagePrep(const QString& id) {
+    if (!session_.project().hasImage()) {
+        setNotice(tr("Le projet n'a pas d'image source."), true);
+        return;
+    }
+    PrepRequest r;
+    const QString kind = id.mid(QStringLiteral("image.prep.").size());
+    if (kind == QLatin1String("gray")) {
+        r.kind = PrepKind::Grayscale;
+    } else if (kind == QLatin1String("rotate.r")) {
+        r.kind = PrepKind::RotateRight;
+    } else if (kind == QLatin1String("rotate.l")) {
+        r.kind = PrepKind::RotateLeft;
+    } else if (kind == QLatin1String("rotate.180")) {
+        r.kind = PrepKind::Rotate180;
+    } else if (kind == QLatin1String("flip.h")) {
+        r.kind = PrepKind::FlipHorizontal;
+    } else if (kind == QLatin1String("flip.v")) {
+        r.kind = PrepKind::FlipVertical;
+    } else if (kind == QLatin1String("sharpen") || kind == QLatin1String("clahe")) {
+        const bool sharpen = kind == QLatin1String("sharpen");
+        bool ok = false;
+        const double v = QInputDialog::getDouble(
+            this, sharpen ? tr("Netteté") : tr("Contraste local"),
+            sharpen ? tr("Force (0,05 à 3) :") : tr("Limite (1 à 8) :"), sharpen ? 1.0 : 2.0,
+            sharpen ? 0.05 : 1.0, sharpen ? 3.0 : 8.0, 2, &ok);
+        if (!ok) {
+            return;
+        }
+        r.kind = sharpen ? PrepKind::Sharpen : PrepKind::Clahe;
+        r.a = v;
+    } else if (kind == QLatin1String("bc")) {
+        QDialog dialog(this);
+        dialog.setWindowTitle(tr("Luminosité et contraste"));
+        auto* form = new QFormLayout(&dialog);
+        auto* brightness = new QSpinBox(&dialog);
+        auto* contrast = new QSpinBox(&dialog);
+        for (auto* s : {brightness, contrast}) {
+            s->setRange(-100, 100);
+        }
+        form->addRow(tr("Luminosité"), brightness);
+        form->addRow(tr("Contraste"), contrast);
+        auto* buttons =
+            new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+        form->addRow(buttons);
+        connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+        if (dialog.exec() != QDialog::Accepted) {
+            return;
+        }
+        r.kind = PrepKind::BrightnessContrast;
+        r.a = brightness->value();
+        r.b = contrast->value();
+    } else if (kind == QLatin1String("crop")) {
+        const auto size = workingImageSize(session_.project());
+        QDialog dialog(this);
+        dialog.setWindowTitle(tr("Recadrer l'image (%1 × %2 px)").arg(size.width).arg(size.height));
+        auto* form = new QFormLayout(&dialog);
+        auto* x = new QSpinBox(&dialog);
+        auto* y = new QSpinBox(&dialog);
+        auto* w = new QSpinBox(&dialog);
+        auto* h = new QSpinBox(&dialog);
+        x->setRange(0, size.width);
+        y->setRange(0, size.height);
+        w->setRange(8, size.width);
+        h->setRange(8, size.height);
+        w->setValue(size.width);
+        h->setValue(size.height);
+        form->addRow(tr("Gauche (px)"), x);
+        form->addRow(tr("Haut (px)"), y);
+        form->addRow(tr("Largeur (px)"), w);
+        form->addRow(tr("Hauteur (px)"), h);
+        auto* buttons =
+            new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+        form->addRow(buttons);
+        connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+        if (dialog.exec() != QDialog::Accepted) {
+            return;
+        }
+        r.kind = PrepKind::Crop;
+        r.x = x->value();
+        r.y = y->value();
+        r.w = w->value();
+        r.h = h->value();
+    } else {
+        return;
+    }
+    (void)applyPrep(r);
 }
 
 void ShellWindow::showPlaceDialog() {

@@ -1,6 +1,7 @@
 ﻿// SPDX-License-Identifier: Apache-2.0
 #include <QAction>
 #include <QApplication>
+#include <QFile>
 #include <QMenu>
 #include <QMenuBar>
 #include <QTest>
@@ -1392,6 +1393,54 @@ private slots:
         QVERIFY(w.placeSelection(0.0, 0.0, 30.0, 30.0, 0.0));
         QVERIFY(!w.placeSelection(5000.0, 0.0, 30.0, 30.0, 0.0));
         QVERIFY(w.findChild<QMenu*>() != nullptr);
+    }
+
+    void imagePreparationStepsComeFromTheImageMenuAndTheCommandPalette() {
+        ShellWindow w;
+        w.openImage(tentabrode(), 80.0);
+        w.waitForIdle();
+        const auto depth = w.session().project().ops.size();
+        PrepRequest bc;
+        bc.kind = PrepKind::BrightnessContrast;
+        bc.a = 15;
+        bc.b = 10;
+        QVERIFY(w.applyPrep(bc));
+        QVERIFY(w.runCommand(QStringLiteral("image.prep.gray")));
+        QVERIFY(w.runCommand(QStringLiteral("image.prep.flip.h")));
+        QCOMPARE(w.session().project().ops.size(), depth + 3);
+        PrepRequest nothing;
+        nothing.kind = PrepKind::BrightnessContrast;
+        QVERIFY(!w.applyPrep(nothing));
+        QCOMPARE(w.session().project().ops.size(), depth + 3);
+        QVERIFY(w.findChild<QAction*>("action_image.prep.crop") != nullptr);
+        ShellWindow empty;
+        empty.newProject();
+        QVERIFY(!empty.runCommand(QStringLiteral("image.prep.gray"))); // désactivée sans image
+    }
+
+    void theProductionSheetIsAPdfAndTheHelpListsTheCommands() {
+        ShellWindow w;
+        w.newProject();
+        (void)w.session().applyBatch(batchAddRect({-10, 0}, 20, 10), "A");
+        (void)w.session().applyBatch(batchAddEllipse({15, 0}, 12, 12), "B");
+        w.waitForIdle();
+        const auto pdf = std::filesystem::temp_directory_path() / "openstitch_v2_sheet_test.pdf";
+        std::filesystem::remove(pdf);
+        w.exportProductionSheet(pdf);
+        w.waitForIdle();
+        QVERIFY(std::filesystem::exists(pdf));
+        QVERIFY(std::filesystem::file_size(pdf) > 1000);
+        QFile file(QString::fromStdU16String(pdf.u16string()));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QCOMPARE(file.read(4), QByteArray("%PDF"));
+        file.close();
+        std::filesystem::remove(pdf);
+        const QString help = w.helpText();
+        QVERIFY(help.contains(QStringLiteral("Annuler")));
+        QVERIFY(help.contains(QStringLiteral("Ctrl+Z")));
+        QVERIFY(help.contains(QStringLiteral("Aligner")));
+        QVERIFY(w.findChild<QAction*>("action_help_shortcuts") != nullptr);
+        QVERIFY(w.findChild<QAction*>("action_file_production_sheet") != nullptr);
     }
 
     void inspectorEditsAllSelectedObjectsInOneUndoStep() {
