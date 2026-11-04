@@ -14,7 +14,7 @@ Pour chaque parcours : intention, interaction **cible** (idéal, sans les limite
 | 7 | Satin complexe | rails et guides en manipulation directe, aperçu du satin en direct | ⬜ | |
 | 8 | Fondu entre deux fils | outil de transition visuel sur le canevas, paramètres en inspecteur | ⬜ | voir `docs/audit-fondu-ux-2026-11-03.md` |
 | 9 | Déformation / tirage | carte de compensation en surimpression, curseurs, aperçu non destructif | ⬜ | |
-| 10 | Diagnostic de brodabilité | liste de défauts cliquables → sélection + zoom sur l'objet → correction proposée | ⬜ | |
+| 10 | Diagnostic de brodabilité | liste de défauts cliquables → sélection + zoom sur l'objet → correction proposée | 🟡 | **liste de constats cliquables (sélection + centrage), synthèse chiffrée, péremption après modification ✅** ; correction proposée en un clic ⬜ |
 | 11 | Préparer la production | espace Production : simulation, rendu, cadre, fils, export multi-format | 🟡 | rendu réaliste ✅ (aperçu), export DST ✅ ; reste ⬜ |
 | 12 | Claude modifie en direct | session live, aperçu avant/après, approbation, annulation en un pas | 🟡 | primitive `previewBatch`/`applyBatch` ✅ ; panneau et session ⬜ |
 

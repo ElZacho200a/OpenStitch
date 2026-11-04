@@ -24,6 +24,7 @@
 #include <algorithm>
 
 #include "command_palette.hpp"
+#include "diagnostics_panel.hpp"
 #include "inspector_model.hpp"
 #include "inspector_panel.hpp"
 #include "object_labels.hpp"
@@ -310,6 +311,19 @@ void ShellWindow::buildInspector() {
     layout->addWidget(summary_);
     dock->setWidget(body);
     addDockWidget(Qt::RightDockWidgetArea, dock);
+    docDock_ = dock;
+
+    // Diagnostic : second onglet du même dock, mis en avant dans l'espace Optimisation.
+    diagDock_ = new QDockWidget(tr("Diagnostic"), this);
+    diagDock_->setObjectName(QStringLiteral("diagnosticDock"));
+    diagnostics_ = new DiagnosticsPanel(diagDock_);
+    diagDock_->setWidget(diagnostics_);
+    addDockWidget(Qt::RightDockWidgetArea, diagDock_);
+    tabifyDockWidget(docDock_, diagDock_);
+    docDock_->raise();
+    connect(diagnostics_, &DiagnosticsPanel::analyseRequested, this, &ShellWindow::runDiagnostics);
+    connect(diagnostics_, &DiagnosticsPanel::findingActivated, this,
+            &ShellWindow::onFindingActivated);
 
     connect(objectTree_, &QTreeWidget::itemSelectionChanged, this,
             &ShellWindow::onSelectionChangedInTree);
@@ -395,6 +409,7 @@ void ShellWindow::setWorkspace(Workspace workspace) {
         a->setChecked(a->data().toInt() == static_cast<int>(workspace));
     }
     rebuildToolRail();
+    (workspace == Workspace::Optimize ? diagDock_ : docDock_)->raise();
     setWindowTitle(tr("OpenStitch V2 — %1").arg(workspaceLabel(workspace)));
 }
 
@@ -456,6 +471,9 @@ void ShellWindow::rebuildToolRail() {
 void ShellWindow::onDocumentChanged(ChangeKind) {
     rebuildObjectList();
     refreshActionStates();
+    if (diagnostics_ != nullptr) {
+        diagnostics_->setStale(true); // l'analyse affichée ne correspond plus au document
+    }
     previewDebounce_->start(); // aperçu regroupé ; waitForIdle() le déclenche sans attendre
 }
 
@@ -713,6 +731,51 @@ void ShellWindow::refreshTaskStatus() {
     cancelButton_->show();
 }
 
+void ShellWindow::runDiagnostics() {
+    if (session_.project().embroidery_objects.empty()) {
+        setNotice(tr("Rien à analyser : le document ne contient aucun objet brodé."), true);
+        return;
+    }
+    diagnostics_->setBusy(true);
+    const auto snapshot = session_.snapshot();
+    const auto revision = session_.revision();
+    tasks_.submit<DiagnosticsResult>(
+        tr("Diagnostic").toStdString(),
+        [snapshot, revision](const TaskContext& ctx) {
+            return run_diagnostics(snapshot, revision, ctx);
+        },
+        [this](Result<DiagnosticsResult>&& r) {
+            diagnostics_->setBusy(false);
+            if (!r) {
+                setNotice(tr("Analyse impossible : %1").arg(fromUtf8(r.error().message)), true);
+                return;
+            }
+            diagnostics_->setResult(*r);
+            diagnostics_->setStale(r->revision != session_.revision());
+            setNotice(
+                tr("Analyse : %1 erreur(s), %2 avertissement(s).").arg(r->errors).arg(r->warnings),
+                r->errors > 0);
+        });
+}
+
+void ShellWindow::onFindingActivated(const project_ops::Finding& finding) {
+    std::vector<Target> targets;
+    for (const auto id : finding.objects) {
+        const Target t{TargetKind::EmbroideryObject, id};
+        if (session_.exists(t)) { // un constat ancien peut citer un objet supprimé depuis
+            targets.push_back(t);
+        }
+    }
+    if (!targets.empty()) {
+        session_.selection().replace(std::move(targets));
+    }
+    if (finding.at_mm && frame_.px_per_mm > 0.0) {
+        // Le constat est en mm modèle (Y vers le haut) ; l'aperçu est en mm écran (Y vers le bas).
+        canvas_->centreOnPx(
+            QPointF(frame_.mmToPxX((*finding.at_mm)[0]), frame_.mmToPxY(-(*finding.at_mm)[1])));
+    }
+}
+
 void ShellWindow::applyToolToCanvas() {
     using Mode = PreviewCanvas::Mode;
     if (activeTool_ == QStringLiteral("pan")) {
@@ -936,6 +999,8 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
     edit("order.forward", tr("Avancer d'un cran"), "Ordre de couture", "");
     edit("order.backward", tr("Reculer d'un cran"), "Ordre de couture", "");
     edit("order.back", tr("Arrière-plan"), "Ordre de couture", "");
+    out.push_back({"analysis.run", q(tr("Analyser le document (diagnostic)")), q(tr("Analyse")), "",
+                   !session_.project().embroidery_objects.empty()});
     int n = 1;
     for (const auto w : kWorkspaces) {
         out.push_back({"workspace." + std::string(workspaceId(w)),
@@ -976,6 +1041,9 @@ bool ShellWindow::runCommand(const QString& id) {
                    id.startsWith(QLatin1String("transform.")) ||
                    id.startsWith(QLatin1String("order."))) {
             editSelection(id);
+        } else if (id == QLatin1String("analysis.run")) {
+            setWorkspace(Workspace::Optimize);
+            runDiagnostics();
         } else if (id == QLatin1String("selection.all")) {
             selectAllObjects();
         } else if (id == QLatin1String("selection.clear")) {

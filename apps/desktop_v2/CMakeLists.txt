@@ -18,6 +18,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/shape_batch.cpp
     core/transform_batch.cpp
     core/edit_batch.cpp
+    core/diagnostics_service.cpp
 )
 add_library(openstitch::desktop_v2_core ALIAS openstitch_desktop_v2_core)
 target_include_directories(openstitch_desktop_v2_core PUBLIC core)
@@ -43,6 +44,8 @@ add_library(openstitch_desktop_v2_ui STATIC
     ui/preview_canvas.cpp
     ui/inspector_panel.cpp
     ui/command_palette.cpp
+    ui/diagnostics_panel.cpp
+    ui/diagnostics_panel.hpp
     ui/command_palette.hpp
     ui/inspector_panel.hpp
     ui/preview_canvas.hpp

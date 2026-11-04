@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "command_catalog.hpp"
+#include "diagnostics_service.hpp"
 #include "digitize_pipeline.hpp"
 #include "document_session.hpp"
 #include "edit_batch.hpp"
@@ -24,6 +25,7 @@
 
 class QAction;
 class QActionGroup;
+class QDockWidget;
 class QDoubleSpinBox;
 class QLabel;
 class QProgressBar;
@@ -37,6 +39,7 @@ namespace openstitch::desktop_v2 {
 
 class PreviewCanvas;
 class InspectorPanel;
+class DiagnosticsPanel;
 
 class ShellWindow : public QMainWindow {
     Q_OBJECT
@@ -71,6 +74,7 @@ public:
     [[nodiscard]] bool previewShown() const;
     [[nodiscard]] PreviewCanvas* canvas() const { return canvas_; }
     [[nodiscard]] InspectorPanel* inspector() const { return inspector_; }
+    [[nodiscard]] DiagnosticsPanel* diagnostics() const { return diagnostics_; }
     // Repère mm <-> pixels et index de sélection de l'aperçu affiché (tests, diagnostics).
     [[nodiscard]] const PreviewImage& previewFrame() const { return frame_; }
     // Un point (pixels de l'image d'aperçu) qui appartient à l'objet : pour piloter le canevas en
@@ -96,6 +100,8 @@ private:
     void updateSelectionBoxes();
     void onCanvasRect(QRectF scenePx, Qt::KeyboardModifiers modifiers);
     void applyToolToCanvas();
+    void runDiagnostics();
+    void onFindingActivated(const project_ops::Finding& finding);
     [[nodiscard]] PointMm selectionCentreModel() const;
     void editSelection(const QString& command); // delete / duplicate / rotate / mirror / ordre
     void nudgeSelection(int stepX, int stepUp, bool big);
@@ -134,6 +140,9 @@ private:
     QTimer* pump_{nullptr};
     QTimer* previewDebounce_{nullptr};
     InspectorPanel* inspector_{nullptr};
+    DiagnosticsPanel* diagnostics_{nullptr};
+    QDockWidget* docDock_{nullptr};
+    QDockWidget* diagDock_{nullptr};
     PreviewImage frame_; // repère mm/pixels et index de sélection de l'aperçu affiché
 
     DocumentSession::Token sessionToken_{0};

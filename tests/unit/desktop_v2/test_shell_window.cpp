@@ -8,9 +8,12 @@
 #include <filesystem>
 
 #include "command_palette.hpp"
+#include "diagnostics_panel.hpp"
+#include "inspector_model.hpp"
 #include "inspector_panel.hpp"
 #include "preview_canvas.hpp"
 #include "shell_window.hpp"
+#include <array>
 
 using namespace openstitch::desktop_v2;
 namespace fs = std::filesystem;
@@ -628,6 +631,54 @@ private slots:
         const auto up = *w.previewFrame().hits->boundsOf(id);
         QVERIFY(qAbs((up.y0 - right.y0) + 10.0) < 0.5);              // haut = y écran décroissant
         QCOMPARE(w.session().undoNames().size(), size_t(1 + 1 + 1)); // création + 2 déplacements
+    }
+
+    void diagnosticsRunInTheBackgroundAndGoStaleOnEdit() {
+        ShellWindow w;
+        w.show();
+        w.openImage(tentabrode(), 80.0);
+        w.waitForIdle();
+        auto* panel = w.diagnostics();
+        QCOMPARE(panel->findingCount(), 0);
+        QVERIFY(w.runCommand("analysis.run"));
+        QCOMPARE(w.workspace(), Workspace::Optimize); // l'analyse bascule vers son espace
+        w.waitForIdle();
+        QVERIFY(!panel->isStale());
+        QVERIFY(w.lastNotice().contains("Analyse"));
+        // Toute modification rend l'analyse affichée périmée.
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        w.session().applyBatch(batchSetVisible({id}, false), "Masquer");
+        QVERIFY(panel->isStale());
+        // Rien à analyser sans objet.
+        ShellWindow empty;
+        empty.runCommand("file.new");
+        QVERIFY(!empty.runCommand("analysis.run")); // commande désactivée
+    }
+
+    void clickingAFindingSelectsItsObjectsAndSkipsVanishedOnes() {
+        ShellWindow w;
+        w.show();
+        w.openImage(tentabrode(), 80.0);
+        w.waitForIdle();
+        const auto& objects = w.session().project().embroidery_objects;
+        QVERIFY(objects.size() >= 2);
+        DiagnosticsResult fake;
+        openstitch::project_ops::Finding f;
+        f.severity = "warning";
+        f.code = "TEST";
+        f.message = "Constat de test";
+        f.objects = {objects[0].id.value, objects[1].id.value,
+                     987654321ULL}; // le dernier n'existe pas
+        f.at_mm = std::array<double, 2>{0.0, 0.0};
+        fake.findings = {f};
+        fake.warnings = 1;
+        fake.revision = w.session().revision();
+        w.diagnostics()->setResult(fake);
+        QCOMPARE(w.diagnostics()->findingCount(), 1);
+        w.diagnostics()->activateRow(0);
+        QCOMPARE(w.session().selection().targets().size(), size_t(2));
+        w.diagnostics()->activateRow(5); // ligne inexistante : sans effet
+        QCOMPARE(w.session().selection().targets().size(), size_t(2));
     }
 
     void inspectorEditsAllSelectedObjectsInOneUndoStep() {

@@ -172,3 +172,20 @@ Rotation, miroir, alignement, flèches clavier, Bézier, main levée, nœuds, ta
 
 Angle de rotation libre et poignée de rotation, alignement / répartition, groupes, Bézier, main levée, nœuds, taille du
 cadre, design system, i18n EN.
+
+
+## 2026-11-04 — Session 1 (suite 6) : diagnostic de brodabilité (branche `feat/desktop-v2-diagnostics`)
+
+### Fait, avec preuve
+
+| Élément | Preuve |
+|---|---|
+| Diagnostic : `project_ops::diagnose_project` (même contrôle que la CLI et l'agent) exécuté sur un instantané, en tâche annulable ; le résultat porte la révision analysée | `core/diagnostics_service.*` ; tests Catch2 `diagnostics of a digitized document…`, `diagnostics refuse an empty document and honour cancellation` |
+| Panneau « Diagnostic » (onglet du dock de droite, mis en avant dans l'espace Optimisation) : synthèse (erreurs / avertissements / infos, points, sauts, coupes, couleurs, fil, emprise), constats colorés, **double-clic = sélection des objets concernés + centrage de la vue** ; objets disparus ignorés ; résultat marqué **périmé** dès qu'une modification arrive | `ui/diagnostics_panel.*` ; QTest `diagnosticsRunInTheBackgroundAndGoStaleOnEdit`, `clickingAFindingSelectsItsObjectsAndSkipsVanishedOnes` |
+| Commande de palette « Analyser le document » (bascule vers l'espace Optimisation) ; désactivée sans objet | `analysis.run` |
+| Totaux locaux (Windows, Debug) | Catch2 : 64 cas / 710 assertions ; QTest : 36 lignes ; 0 avertissement |
+
+### Non fait
+
+Correctifs proposés en un clic (les constats portent une suggestion textuelle), cartes de densité et de risque tissu en
+surimpression, mesure de fidélité à l'image source, compensation de tirage, design system, i18n EN.

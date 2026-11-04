@@ -46,7 +46,7 @@ liste qui bougera. C'est une limite assumée de cette première livraison.
 | 28 | Ordre de broderie, sauts, coupes, optimisation | `main_window_order_filter`, `_order_jumps`, `order_list_widget` | `sewing_order_commands`, `optimization`, op `optimize_order`, `set_order` | O | 🟡 | optimisation **appliquée** à la numérisation ✅ ; pilotage et liste d'ordre ⬜ |
 | 29 | Simulation de couture | `main_window_simulation`, `simulation_nav_bar` | `stitch_render/simulation` | P | ⬜ | |
 | 30 | Rendu réaliste | `main_window_realistic`, `realistic_*` | `stitch_render`, `render_realistic_png` | P | 🟡 | aperçu ✅ (non interactif, instantané, révision étiquetée) ; options de rendu ⬜ |
-| 31 | Analyse : brodabilité, densité, risques, tissu | `main_window_analysis`, `_density`, `_fabric_risk` | `stitch_analysis`, `project_ops/analysis`, `quality` | O | ⬜ | |
+| 31 | Analyse : brodabilité, densité, risques, tissu | `main_window_analysis`, `_density`, `_fabric_risk` | `stitch_analysis`, `project_ops/analysis`, `quality` | O | 🟡 | **diagnostic de brodabilité ✅** (`diagnose_project` en tâche annulable, constats cliquables → sélection + centrage, résultat marqué périmé après modification) ; cartes de densité / risque tissu, fidélité, correctifs proposés ⬜ |
 | 32 | Cadres et machine | `machine_dialog`, `main_window_machine` | `machine_commands`, op `set_machine`, `set_canvas` | P | ⬜ | |
 | 33 | Lettrage / texte | `text_dialog`, `text_advanced_panel`, `main_window_lettering`, `font_catalog` | `text_commands`, `lettering`, ops `add_text/set_text` | C/N | ⬜ | |
 | 34 | Historique (annuler / rétablir) | menu Édition | `UndoStack` | T | 🟡 | annuler/rétablir ✅ (libellé de l'étape) ; **liste d'historique ⬜** |
@@ -61,7 +61,7 @@ liste qui bougera. C'est une limite assumée de cette première livraison.
 | 43 | Vues d'affichage (passes, plans, densité, risques) | `main_window_view_display`, `view_display_state.hpp` | `stitch_render/view_display` | T | ⬜ | |
 | 44 | Espaces de travail / disposition des panneaux | `main_window_ux`, `ui_memory.hpp` | — | T | 🟡 | 4 espaces filtrant le rail d'outils ✅ ; panneaux par espace, mémorisation ⬜ |
 
-**Décompte au 2026-11-04** : 44 familles — ✅ 2 · 🟡 16 · ⬜ 26. Aucune exception (« non migré volontairement ») n'est
+**Décompte au 2026-11-04** : 44 familles — ✅ 2 · 🟡 17 · ⬜ 25. Aucune exception (« non migré volontairement ») n'est
 prononcée à ce stade ; la seule candidate argumentée est la segmentation IA (ligne 9), décalée en dernier mais pas supprimée.
 
 ## Parité des outils de canevas (vérifiée par test)

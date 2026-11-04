@@ -42,6 +42,7 @@ public:
     [[nodiscard]] double zoom() const { return transform().m11(); }
 
     void setMode(Mode mode);
+    void centreOnPx(const QPointF& scenePx) { centerOn(scenePx); }
     [[nodiscard]] Mode mode() const { return mode_; }
 
     // Cadres de sélection (pixels de l'image d'aperçu) dessinés au-dessus de l'image.
