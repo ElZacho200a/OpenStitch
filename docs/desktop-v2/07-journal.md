@@ -261,3 +261,16 @@ Non fait : mémorisation des réglages d'affichage, langue anglaise, PDF / impre
 **Incident de session** : un correctif de `readParam` n'avait pas été appliqué (remplacement textuel silencieux sur du code
 reformaté) ; le test lisait un `optional` vide et se figeait. Corrigé en réécrivant la fonction ; les scripts de patch
 de cette session vérifient désormais chaque remplacement.
+
+
+## 2026-11-04 — Session 1 (suite 12) : calques et préréglages (branche `feat/desktop-v2-families-4`)
+
+| Famille | Fait | Preuve |
+|---|---|---|
+| 42 Préréglages | `core/document_services` : enregistrer (nom nettoyé, remplace un homonyme), appliquer à N objets, supprimer — chacun **une `ICommand`** annulable ; menu « Préréglages » (reconstruit à l'ouverture), palette, menu contextuel | Catch2 (réglages relus sur l'objet cible, annulation, refus avec raison : nom vide / trop long / objet inconnu / indice hors plage) ; QTest `presetsAreSavedAppliedAndListedInTheMenuAndPalette` |
+| 14 Calques | panneau « Calques » (onglet du dock) : liste du dessus vers le fond avec case de visibilité, ajout, renommage, suppression (le dernier reste), monter / descendre, verrou, « sélection ici » ; une annulation par action | Catch2 `calques: add, rename, hide, lock…` ; QTest `calquePanelEditsLayersThroughUndoableCommands`, `hidingACalqueHidesItsObjectsFromThePreview` |
+
+**Défaut trouvé par les tests** : quand tous les objets étaient masqués (ou dans des calques masqués), le moteur refuse de
+générer (« Aucun objet de broderie visible ») et l'aperçu **gardait l'ancienne image** avec son index de sélection (on pouvait
+cliquer un objet invisible). L'aperçu montre désormais le cadre vide dans ce cas.
+`DocumentSession::allocateObjectId()` est la seule écriture hors commande (compteur d'identifiants, jamais réutilisés).

@@ -49,6 +49,10 @@ public:
     [[nodiscard]] const SelectionModel& selection() const { return selection_; }
     [[nodiscard]] bool exists(const Target& target) const;
 
+    // Réserve l'identifiant suivant (jamais réutilisé). Ce n'est PAS une modification du document :
+    // le compteur n'est ni annulable ni visible ; c'est la seule écriture hors commande.
+    [[nodiscard]] ObjectId allocateObjectId() { return project_.object_ids.next(); }
+
     // --- Mutations --------------------------------------------------------------------------
     void execute(std::unique_ptr<commands::ICommand> command);
     bool undo();

@@ -29,7 +29,7 @@ liste qui bougera. C'est une limite assumée de cette première livraison.
 | 11 | Dessin vectoriel (formes, polygone, Bézier, main levée) | `main_window_draw_tools`, `_shapes`, `_vector_tools` | `vector_ops`, `vector_path_commands`, op `add_shape` | C | 🟡 | **rectangle, ellipse (Maj = cercle), polygone ✅** par `add_shape` (une annulation par forme, forme refusée = document intact) ; Bézier, main levée, polygone régulier, satin ⬜ |
 | 12 | Édition de nœuds, reshape, pinceau, pot de peinture, couteau | `main_window_vector_edit`, `_node_select`, `_reshape`, `_brush`, `_bucket`, `node_handle.hpp` | `vector_ops`, `outline_ops` | C | ⬜ | |
 | 13 | Opérations géométriques (fusion, découpe, simplifier, lisser, trous) | `main_window_objects`, `_regions`, menu Forme | ops `merge`, `split`, `simplify_shapes`, `smooth_shapes`, `remove_holes`… | C | 🟡 | **fusion (union / soustraction / intersection / exclusion), simplifier, lisser, combler les trous, supprimer les miettes, séparer, numériser les formes ✅** (sur la sélection, une annulation chacun) ; découpe au couteau, pinceau de déformation ⬜ ; **moteur ✅ (lot)** ; interface ⬜ |
-| 14 | Calques | `calque_panel` | `calque_commands` | C | ⬜ | |
+| 14 | Calques | `calque_panel` | `calque_commands` | C | 🟡 | **panneau des calques ✅** (ajouter, renommer, supprimer, monter / descendre, visibilité, verrou, déplacer la sélection ; un calque masqué n'est ni dessiné ni cousu ; une annulation par action) ; calque actif de création, drag & drop ⬜ |
 | 15 | Sélection (clic, rectangle, nommée, retrouver) | `main_window_selection_*`, `selection_model`, `selection_queries` | — | T | 🟡 | **modèle unique ✅** (`SelectionModel`) + liste ✅ + **clic au canevas ✅** (Ctrl = bascule, Maj = ajoute, vide = désélectionne, `HitIndex` sur les brins cousus) ; **cadre élastique ✅** (sélection « fenêtre » : objets entiers ; Ctrl/Maj ajoutent), **Tout sélectionner / Désélectionner ✅** ; nommées ⬜, « retrouver » ⬜ |
 | 16 | Transformations (déplacer, tourner, miroir, aligner, répartir) | `main_window_objects`, `_rotation`, `_arrange`, `_editing` | `transform_ops`, `arrange_ops`, ops `translate/rotate/scale/mirror` | C/N | 🟡 | **déplacer au glisser, flèches (1 mm, Maj = 10 mm), mettre à l'échelle (poignées de coin), pivoter ±90°, miroir H/V, dupliquer, supprimer ✅**, sélection multiple, une annulation ; angle libre, aligner, répartir ⬜ |
 | 17 | Groupes, ordre d'empilement | `document_panel` | `group_commands`, ops `group/ungroup/stack_order` | T | 🟡 | **ordre de couture (premier plan / avancer / reculer / arrière-plan) ✅** ; groupes ⬜ |
@@ -57,11 +57,11 @@ liste qui bougera. C'est une limite assumée de cette première livraison.
 | 39 | Pipette | `main_window_eyedropper` | — | C/N | ⬜ | |
 | 40 | Menus contextuels | `main_window_context_menu` | — | T | 🟡 | **menu contextuel du canevas (suppression, duplication, transformations, ordre, satin auto, guides ; le clic droit sélectionne l'objet) ✅** ; menus par type d'objet dans l'arbre ⬜ |
 | 41 | Réglages de numérisation automatique | `generation_options_dialog`, `autodigitize_presets.hpp` | `DigitizeSettings` | N | 🟡 | réglages par défaut + hauteur visée ✅ ; options avancées, préréglages ⬜ |
-| 42 | Préréglages de points | `main_window_stitch_presets` | `stitch_preset_commands` | N | ⬜ | |
+| 42 | Préréglages de points | `main_window_stitch_presets` | `stitch_preset_commands` | N | 🟡 | **préréglages de points ✅** (enregistrer les réglages d'un objet sous un nom, les appliquer à la sélection, supprimer ; stockés dans le projet ; menu, palette, menu contextuel) ; préréglages globaux entre projets, import / export ⬜ |
 | 43 | Vues d'affichage (passes, plans, densité, risques) | `main_window_view_display`, `view_display_state.hpp` | `stitch_render/view_display` | T | 🟡 | **cadre de broderie et grille affichables ✅** ; passes de couture, plans d'affichage, cartes de densité / risque ⬜ |
 | 44 | Espaces de travail / disposition des panneaux | `main_window_ux`, `ui_memory.hpp` | — | T | 🟡 | 4 espaces filtrant le rail d'outils ✅ ; panneaux par espace, mémorisation ⬜ |
 
-**Décompte au 2026-11-04** : 44 familles — ✅ 2 · 🟡 33 · ⬜ 9. Aucune exception (« non migré volontairement ») n'est
+**Décompte au 2026-11-04** : 44 familles — ✅ 2 · 🟡 35 · ⬜ 7. Aucune exception (« non migré volontairement ») n'est
 prononcée à ce stade ; la seule candidate argumentée est la segmentation IA (ligne 9), décalée en dernier mais pas supprimée.
 
 ## Parité des outils de canevas (vérifiée par test)
