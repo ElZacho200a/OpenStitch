@@ -50,6 +50,9 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_context_menu.cpp
     main_window_debug.cpp
     main_window_help_menu.cpp
+    main_window_crash_report.cpp
+    crash_report.cpp
+    crash_report_ticket.cpp
     main_window_toolbars.cpp
     main_window_panels.cpp
     main_window_order_filter.cpp
@@ -246,7 +249,7 @@ target_link_libraries(openstitch_desktop_widgets
 )
 
 if(WIN32)
-    target_link_libraries(openstitch_desktop_widgets PRIVATE advapi32)
+    target_link_libraries(openstitch_desktop_widgets PRIVATE advapi32 dbghelp)
 endif()
 
 add_executable(openstitch WIN32 main.cpp)

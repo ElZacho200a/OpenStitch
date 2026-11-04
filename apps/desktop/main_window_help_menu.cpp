@@ -77,6 +77,7 @@
 #include "busy_indicator.hpp"
 #include "canvas_view.hpp"
 #include "command_palette_dialog.hpp"
+#include "crash_report_ticket.hpp"
 #include "document_panel.hpp"
 #include "empty_state_widget.hpp"
 #include "general_preferences_dialog.hpp"
@@ -261,6 +262,8 @@ void MainWindow::buildHelpMenu() {
     aboutAct_->setStatusTip(tr("Version, licence et code source d'OpenStitch"));
     connect(aboutAct_, &QAction::triggered, this,
             [this] { QMessageBox::about(this, tr("À propos"), aboutText()); });
+
+    installCrashReportAction(this, helpMenu); // HP-QA-002
 }
 
 void MainWindow::showGesturesDialog() {
