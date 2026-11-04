@@ -23,7 +23,9 @@
 #include <QTreeWidget>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <map>
 
+#include "action_dialog.hpp"
 #include "command_palette.hpp"
 #include "diagnostics_panel.hpp"
 #include "inspector_model.hpp"
@@ -246,6 +248,20 @@ void ShellWindow::buildMenus() {
     connect(palette, &QAction::triggered, this, &ShellWindow::showCommandPalette);
 
     auto* view = menuBar()->addMenu(tr("&Affichage"));
+    // Menu « Outils » : une entrée par action du catalogue, groupées ; le dialogue de réglages est
+    // généré depuis les champs de l'action.
+    auto* toolsMenu = menuBar()->addMenu(tr("&Outils"));
+    std::map<std::string, QMenu*> groups;
+    for (const auto& def : actionCatalog()) {
+        QMenu*& group = groups[def.group];
+        if (group == nullptr) {
+            group = toolsMenu->addMenu(fromUtf8(def.group));
+        }
+        auto* a = group->addAction(fromUtf8(def.label));
+        a->setObjectName(QStringLiteral("action_") + fromUtf8(def.id));
+        const QString id = fromUtf8(def.id);
+        connect(a, &QAction::triggered, this, [this, id] { runAction(id); });
+    }
     auto* fit = view->addAction(tr("&Ajuster à la fenêtre"));
     connect(fit, &QAction::triggered, canvas_, &PreviewCanvas::fitAll);
 }
@@ -954,6 +970,64 @@ void ShellWindow::nudgeSelection(int stepX, int stepUp, bool big) {
     applyTransform(batchTranslate(state.ids, stepX * mm, stepUp * mm), tr("Déplacer"));
 }
 
+bool ShellWindow::runActionWith(const QString& id, const Values& values) {
+    const ActionDef* def = findAction(id.toStdString());
+    if (def == nullptr) {
+        return false;
+    }
+    const auto state = inspect(session_.project(), session_.selection().targets());
+    ActionContext ctx;
+    ctx.ids = state.ids;
+    ctx.centre = selectionCentreModel();
+    ctx.project = &session_.project();
+    std::string error;
+    const std::string batch = buildAction(*def, values, ctx, error);
+    if (batch.empty()) {
+        setNotice(fromUtf8(def->label).remove(QStringLiteral("…")) + QStringLiteral(" : ") +
+                      fromUtf8(error),
+                  true);
+        return false;
+    }
+    const auto result = session_.applyBatch(batch, def->label);
+    if (!result.committed) {
+        const auto& outcomes = result.report.outcomes;
+        setNotice(tr("%1 refusé : %2")
+                      .arg(fromUtf8(def->label).remove(QStringLiteral("…")),
+                           outcomes.empty() ? tr("opération invalide")
+                                            : fromUtf8(outcomes.back().message)),
+                  true);
+        return false;
+    }
+    if (!documentOpen_) {
+        documentOpen_ = true;
+    }
+    std::vector<Target> created;
+    for (const auto newId : createdObjectIds(result.report)) {
+        created.push_back({TargetKind::EmbroideryObject, newId});
+    }
+    if (!created.empty()) {
+        session_.selection().replace(std::move(created));
+    }
+    setNotice(fromUtf8(def->label).remove(QStringLiteral("…")) + tr(" : fait."), false);
+    return true;
+}
+
+void ShellWindow::runAction(const QString& id) {
+    const ActionDef* def = findAction(id.toStdString());
+    if (def == nullptr) {
+        return;
+    }
+    if (def->fields.empty()) {
+        runActionWith(id, {});
+        return;
+    }
+    auto* dialog = new ActionDialog(*def, defaultValues(*def), this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dialog, &QDialog::accepted, this,
+            [this, id, dialog] { runActionWith(id, dialog->values()); });
+    dialog->open();
+}
+
 void ShellWindow::selectAllObjects() {
     std::vector<Target> all;
     for (const auto& o : session_.project().embroidery_objects) {
@@ -1016,6 +1090,10 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
     edit("order.forward", tr("Avancer d'un cran"), "Ordre de couture", "");
     edit("order.backward", tr("Reculer d'un cran"), "Ordre de couture", "");
     edit("order.back", tr("Arrière-plan"), "Ordre de couture", "");
+    for (const auto& def : actionCatalog()) {
+        out.push_back(
+            {"action." + def.id, def.label, def.group, "", !def.needsSelection || hasSel});
+    }
     out.push_back({"analysis.run", q(tr("Analyser le document (diagnostic)")), q(tr("Analyse")), "",
                    !session_.project().embroidery_objects.empty()});
     int n = 1;
@@ -1058,6 +1136,8 @@ bool ShellWindow::runCommand(const QString& id) {
                    id.startsWith(QLatin1String("transform.")) ||
                    id.startsWith(QLatin1String("order."))) {
             editSelection(id);
+        } else if (id.startsWith(QLatin1String("action."))) {
+            runAction(id.mid(7));
         } else if (id == QLatin1String("analysis.run")) {
             setWorkspace(Workspace::Optimize);
             runDiagnostics();

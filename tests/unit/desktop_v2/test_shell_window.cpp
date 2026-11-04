@@ -1,12 +1,15 @@
 ﻿// SPDX-License-Identifier: Apache-2.0
 #include <QAction>
 #include <QApplication>
+#include <QMenu>
+#include <QMenuBar>
 #include <QTest>
 #include <QToolBar>
 #include <QTreeWidget>
 #include <QWheelEvent>
 #include <filesystem>
 
+#include "action_dialog.hpp"
 #include "command_palette.hpp"
 #include "diagnostics_panel.hpp"
 #include "inspector_model.hpp"
@@ -724,6 +727,68 @@ private slots:
         QVERIFY(panel->paramKeys().contains("repeats"));
         w.session().applyBatch(batchSetStitchType({a}, "tatami"), "Type");
         QVERIFY(panel->paramKeys().isEmpty()); // sélection de types mixtes
+    }
+
+    void everyActionDialogYieldsValuesTheCatalogAccepts() {
+        ShellWindow w;
+        for (const auto& def : actionCatalog()) {
+            ActionDialog dialog(def, defaultValues(def));
+            const auto values = dialog.values();
+            ActionContext ctx;
+            ctx.ids = {1}; // contexte fictif : seul le contrôle des champs nous intéresse
+            std::string error;
+            const auto batch = buildAction(def, values, ctx, error);
+            QVERIFY2(!batch.empty() || def.id == "file.import_svg", def.id.c_str());
+            if (def.id == "file.import_svg") {
+                QVERIFY(error.find("obligatoire") != std::string::npos ||
+                        error.find("introuvable") != std::string::npos);
+            }
+        }
+    }
+
+    void actionsAreInTheToolsMenuAndThePalette() {
+        ShellWindow w;
+        auto* menu = w.menuBar()->findChild<QMenu*>();
+        QVERIFY(menu != nullptr);
+        for (const auto& def : actionCatalog()) {
+            QVERIFY2(w.findChild<QAction*>(QString::fromStdString("action_" + def.id)) != nullptr,
+                     def.id.c_str());
+        }
+        const auto entries = w.commandEntries();
+        int actions = 0;
+        for (const auto& e : entries) {
+            actions += e.id.rfind("action.", 0) == 0 ? 1 : 0;
+        }
+        QCOMPARE(static_cast<size_t>(actions), actionCatalog().size());
+        // « Satin automatique » exige une sélection : désactivée sans objet.
+        QVERIFY(!w.runCommand("action.satin.auto"));
+    }
+
+    void runningAnActionAppliesItAndRefusesBadValuesWithAMessage() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        QVERIFY(w.runActionWith("canvas.set", {{"width_mm", "160"}, {"height_mm", "90"}}));
+        QCOMPARE(w.session().project().canvas.width.value, 160'000);
+        QCOMPARE(QString::fromStdString(w.session().undoName()), QString("Cadre de broderie…"));
+        const auto revision = w.session().revision();
+        QVERIFY(!w.runActionWith("canvas.set", {{"width_mm", "99999"}}));
+        QVERIFY(w.lastNotice().contains("Largeur"));
+        QCOMPARE(w.session().revision(), revision); // rien n'a changé
+        QVERIFY(!w.runActionWith("no.such.action", {}));
+        w.waitForIdle();
+        QVERIFY(w.previewShown()); // l'aperçu suit le nouveau cadre
+    }
+
+    void textActionCreatesSelectedObjects() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        QVERIFY(w.runActionWith(
+            "text.add", {{"text", "OK"}, {"font_file", OPENSTITCH_FONTS_DIR "/VeraBd.ttf"}}));
+        QVERIFY(!w.session().project().embroidery_objects.empty());
     }
 
     void inspectorEditsAllSelectedObjectsInOneUndoStep() {

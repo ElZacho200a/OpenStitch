@@ -13,6 +13,7 @@
 #include <optional>
 #include <vector>
 
+#include "action_catalog.hpp"
 #include "command_catalog.hpp"
 #include "diagnostics_service.hpp"
 #include "digitize_pipeline.hpp"
@@ -60,6 +61,11 @@ public:
     bool runCommand(const QString& id); // faux si inconnue ou désactivée
     void showCommandPalette();
     void selectAllObjects();
+    // Action du catalogue (`actionCatalog`) : avec dialogue de réglages, ou directement avec des
+    // valeurs (tests, scripts). Faux si inconnue, désactivée, valeurs refusées ou lot refusé par le
+    // moteur.
+    void runAction(const QString& id);
+    bool runActionWith(const QString& id, const Values& values);
     void newProject(); // projet vierge à cadre par défaut : point de départ du dessin
 
     void setWorkspace(Workspace workspace);

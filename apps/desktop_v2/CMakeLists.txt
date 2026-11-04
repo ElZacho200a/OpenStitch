@@ -20,9 +20,13 @@ add_library(openstitch_desktop_v2_core STATIC
     core/edit_batch.cpp
     core/diagnostics_service.cpp
     core/param_spec.cpp
+    core/action_catalog.cpp
 )
 add_library(openstitch::desktop_v2_core ALIAS openstitch_desktop_v2_core)
 target_include_directories(openstitch_desktop_v2_core PUBLIC core)
+# Police de développement : repli de l'action « Ajouter du texte » quand rien d'autre n'est trouvé.
+target_compile_definitions(openstitch_desktop_v2_core PRIVATE
+    OPENSTITCH_DEFAULT_FONT="${PROJECT_SOURCE_DIR}/resources/fonts/VeraBd.ttf")
 target_link_libraries(openstitch_desktop_v2_core
     PUBLIC openstitch::core openstitch::document openstitch::commands openstitch::project_ops
            openstitch::stitch openstitch::stitch_generation openstitch::stitch_render openstitch::formats openstitch::image
@@ -44,6 +48,8 @@ add_library(openstitch_desktop_v2_ui STATIC
     ui/shell_window.hpp
     ui/preview_canvas.cpp
     ui/inspector_panel.cpp
+    ui/action_dialog.cpp
+    ui/action_dialog.hpp
     ui/command_palette.cpp
     ui/diagnostics_panel.cpp
     ui/diagnostics_panel.hpp
