@@ -27,7 +27,7 @@ liste qui bougera. C'est une limite assumée de cette première livraison.
 | 9 | Segmentation IA (SAM) | `ai_segmentation_dialog`, `sam_worker_client`, `ai_preferences*` | `ai_segmentation` | C | ⬜ | hors priorité produit (mémoire projet) : portée en dernier |
 | 10 | Zones de détail, clic-pour-broder | `main_window_detail_zones`, `main_window_click_to_stitch` | `click_to_stitch_commands` | C/N | ⬜ | outils `detail-brush`, `click-to-stitch` déclarés, désactivés |
 | 11 | Dessin vectoriel (formes, polygone, Bézier, main levée) | `main_window_draw_tools`, `_shapes`, `_vector_tools` | `vector_ops`, `vector_path_commands`, op `add_shape` | C | 🟡 | **rectangle, ellipse (Maj = cercle), polygone ✅** par `add_shape` (une annulation par forme, forme refusée = document intact) ; Bézier, main levée, polygone régulier, satin ⬜ |
-| 12 | Édition de nœuds, reshape, pinceau, pot de peinture, couteau | `main_window_vector_edit`, `_node_select`, `_reshape`, `_brush`, `_bucket`, `node_handle.hpp` | `vector_ops`, `outline_ops` | C | ⬜ | |
+| 12 | Édition de nœuds, reshape, pinceau, pot de peinture, couteau | `main_window_vector_edit`, `_node_select`, `_reshape`, `_brush`, `_bucket`, `node_handle.hpp` | `vector_ops`, `outline_ops` | C | 🟡 | **couteau ✅** (ligne tracée sur les formes sélectionnées, chaque morceau devient un objet, une annulation ; une ligne qui ne traverse rien est refusée par le moteur) ; poignées de nœuds, reshape, pinceau de déformation, pot de peinture ⬜ |
 | 13 | Opérations géométriques (fusion, découpe, simplifier, lisser, trous) | `main_window_objects`, `_regions`, menu Forme | ops `merge`, `split`, `simplify_shapes`, `smooth_shapes`, `remove_holes`… | C | 🟡 | **fusion (union / soustraction / intersection / exclusion), simplifier, lisser, combler les trous, supprimer les miettes, séparer, numériser les formes ✅** (sur la sélection, une annulation chacun) ; découpe au couteau, pinceau de déformation ⬜ ; **moteur ✅ (lot)** ; interface ⬜ |
 | 14 | Calques | `calque_panel` | `calque_commands` | C | 🟡 | **panneau des calques ✅** (ajouter, renommer, supprimer, monter / descendre, visibilité, verrou, déplacer la sélection ; un calque masqué n'est ni dessiné ni cousu ; une annulation par action) ; calque actif de création, drag & drop ⬜ |
 | 15 | Sélection (clic, rectangle, nommée, retrouver) | `main_window_selection_*`, `selection_model`, `selection_queries` | — | T | 🟡 | **modèle unique ✅** (`SelectionModel`) + liste ✅ + **clic au canevas ✅** (Ctrl = bascule, Maj = ajoute, vide = désélectionne, `HitIndex` sur les brins cousus) ; **cadre élastique ✅** (sélection « fenêtre » : objets entiers ; Ctrl/Maj ajoutent), **Tout sélectionner / Désélectionner ✅** ; nommées ⬜, « retrouver » ⬜ |
@@ -37,7 +37,7 @@ liste qui bougera. C'est une limite assumée de cette première livraison.
 | 19 | Satin : colonnes, rails, guides | `main_window_draw_tools`, `satin_guide_item.hpp` | `SatinParams`, op `set_geometry` | N | ⬜ | |
 | 20 | Auto-satin et variantes | `main_window_satin_auto`, `auto_satin_strategy_ui.hpp` | `auto_satin`, op `auto_satin` | N | 🟡 | **satin automatique ✅** (écart, 3 stratégies, sur la sélection) ; guides imposés, variantes fines ⬜ |
 | 21 | Remplissages spéciaux (directionnel, motif, radial, spirale, croisé, point de croix, appliqué) | `main_window_directional`, `_fill_center`, `_applique` | `DirectionalFillParams`…, op `directional_guides` | N | 🟡 | **réglages essentiels de la spirale, du point de croix et de l'appliqué dans l'inspecteur ✅** ; motifs, radial, croisé, contour concentrique : réglages ⬜ |
-| 22 | Dégradés et fondus entre fils | `color_blend_dialog`, `gradient_fill_panel`, `main_window_color_blend`, `_gradient` | `color_blend_commands`, `project_ops/gradient_fill` | N | ⬜ | audit dédié : `docs/audit-fondu-ux-2026-11-03.md` |
+| 22 | Dégradés et fondus entre fils | `color_blend_dialog`, `gradient_fill_panel`, `main_window_color_blend`, `_gradient` | `color_blend_commands`, `project_ops/gradient_fill` | N | 🟡 | **fondu de deux fils créé / édité / supprimé ✅** (`project_ops::gradient_fill` : deux couches, fil du dessus, rampes complémentaires ou non ; le moteur refuse un remplissage incompatible avec son message ; une annulation) ; poignées de transition au canevas, courbes de densité, fil de nuancier ⬜ ; audit dédié : `docs/audit-fondu-ux-2026-11-03.md` |
 | 23 | Directions de points / guides de direction | `main_window_directional` | outil `fill.direction-guide` | N | 🟡 | **guides de direction automatiques ✅** ; tracé manuel des guides et lignes de rupture ⬜ |
 | 24 | Sous-couches, densités, compensations | `properties_panel`, `density_overlay`, `main_window_density` | params d'objet | N/O | 🟡 | **sous-couches (mode manuel / auto, zigzag, retrait, écart, rangées), liaisons cachées ✅** dans l'inspecteur ; densité par zone, cartes de densité ⬜ |
 | 25 | Compensation de tirage prédictive | `main_window_pull_preview`, `fabric_params.hpp`, `fabric_risk_overlay` | `project_ops/fabric_deformation`, `color_registration` | O | 🟡 | **mode de compensation manuel / auto / adaptatif / PRÉDICTIF choisi dans l'inspecteur ✅** (tatami, directionnel, satin, spirale) ; carte de déformation en surimpression, étalonnage sur pièce-test, solveur interactif ⬜ |
@@ -54,21 +54,21 @@ liste qui bougera. C'est une limite assumée de cette première livraison.
 | 36 | Préférences, thèmes, langues, densité d'UI | `app_theme`, `app_language`, `general_preferences_dialog`, `responsive.hpp`, `design_tokens` | — | T | 🟡 | **thème système / clair / sombre ✅** ; langue (EN), densité d'interface, mémorisation des réglages ⬜ ; V2 suit le thème système ; tokens et i18n EN ⬜ |
 | 37 | Aide, palette de commandes, raccourcis | `help_dialogs`, `help_manual`, `command_palette_dialog`, `interaction_map` | — | T | 🟡 | registre d'outils + raccourcis uniques testés ✅ ; **palette de commandes Ctrl+K ✅** (recherche insensible aux accents, 20 outils + espaces + fichier/édition/sélection) ; aide ⬜ |
 | 38 | Mesure, règles, grille, guides | `main_window_measure`, `ruler`, `grid_settings_dialog` | — | C | 🟡 | **règle (distance, Δx, Δy, angle ; ne modifie jamais le document) et grille 5 / 10 / 20 mm alignée sur l'origine ✅** ; guides aimantés, magnétisme ⬜ |
-| 39 | Pipette | `main_window_eyedropper` | — | C/N | ⬜ | |
+| 39 | Pipette | `main_window_eyedropper` | — | C/N | 🟡 | **pipette ✅** : prélève le fil de l'objet cousu sous le curseur et l'applique à la sélection (une annulation) ; échantillonnage de l'image source et fils de nuancier proches ⬜ |
 | 40 | Menus contextuels | `main_window_context_menu` | — | T | 🟡 | **menu contextuel du canevas (suppression, duplication, transformations, ordre, satin auto, guides ; le clic droit sélectionne l'objet) ✅** ; menus par type d'objet dans l'arbre ⬜ |
 | 41 | Réglages de numérisation automatique | `generation_options_dialog`, `autodigitize_presets.hpp` | `DigitizeSettings` | N | 🟡 | réglages par défaut + hauteur visée ✅ ; options avancées, préréglages ⬜ |
 | 42 | Préréglages de points | `main_window_stitch_presets` | `stitch_preset_commands` | N | 🟡 | **préréglages de points ✅** (enregistrer les réglages d'un objet sous un nom, les appliquer à la sélection, supprimer ; stockés dans le projet ; menu, palette, menu contextuel) ; préréglages globaux entre projets, import / export ⬜ |
 | 43 | Vues d'affichage (passes, plans, densité, risques) | `main_window_view_display`, `view_display_state.hpp` | `stitch_render/view_display` | T | 🟡 | **cadre de broderie et grille affichables ✅** ; passes de couture, plans d'affichage, cartes de densité / risque ⬜ |
 | 44 | Espaces de travail / disposition des panneaux | `main_window_ux`, `ui_memory.hpp` | — | T | 🟡 | 4 espaces filtrant le rail d'outils ✅ ; panneaux par espace, mémorisation ⬜ |
 
-**Décompte au 2026-11-04** : 44 familles — ✅ 2 · 🟡 35 · ⬜ 7. Aucune exception (« non migré volontairement ») n'est
+**Décompte au 2026-11-04** : 44 familles — ✅ 2 · 🟡 38 · ⬜ 4. Aucune exception (« non migré volontairement ») n'est
 prononcée à ce stade ; la seule candidate argumentée est la segmentation IA (ligne 9), décalée en dernier mais pas supprimée.
 
 ## Parité des outils de canevas (vérifiée par test)
 
 Les 20 énumérateurs de `apps/desktop/tools.hpp::Tool` ont chacun un équivalent déclaré dans
 `ToolRegistry::builtin()` (test `every legacy canvas tool has a V2 equivalent`). **Déclaré ≠ fonctionnel** : seuls
-`select`, `pan`, `draw.rectangle`, `draw.ellipse`, `draw.polygon` et `measure` sont activés ; les 14 autres sont affichés **désactivés** avec la raison dans l'infobulle.
+`select`, `pan`, `draw.rectangle`, `draw.ellipse`, `draw.polygon`, `measure`, `eyedropper` et `knife` sont activés ; les 12 autres sont affichés **désactivés** avec la raison dans l'infobulle.
 
 ## Écart manuel / agent (à fermer)
 
@@ -76,3 +76,13 @@ Le catalogue de lot compte 55 opérations (`openstitch-cli project operations`).
 exister **comme opération de lot** (ou en être une composition) avant d'être branchée à l'interface : c'est la règle
 « une seule architecture pour l'utilisateur et pour Claude » (ADR 0004). Les gestes manuels sans équivalent de lot
 sont listés dans le journal au fur et à mesure de leur découverte.
+
+
+## Familles encore ⬜ au 2026-11-04 et pourquoi
+
+| # | Famille | Raison |
+|---|---|---|
+| 9 | Segmentation IA (SAM) | **Exception justifiée** : hors priorité produit (décision du propriétaire du projet, voir mémoire du projet) ; l'ancien desktop reste disponible pour cette fonction |
+| 10 | Zones de détail, clic-pour-broder | demande des commandes interactives (`click_to_stitch_commands`, pinceau de zones) qui ne passent pas par une opération de lot : outils canevas à écrire |
+| 19 | Satin : colonnes, rails, guides | création de colonnes à deux rails et édition des rails / guides par `ICommand` (`MoveSatinRailNodeCommand`…) : outils canevas à écrire (le satin automatique, lui, est disponible : famille 20) |
+| 26 | Édition manuelle de points | `EditStitchPointsCommand` + vue des points par objet : interface de retouche point à point à écrire |

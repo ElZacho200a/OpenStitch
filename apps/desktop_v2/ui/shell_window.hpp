@@ -135,6 +135,7 @@ private:
     void applyToolToCanvas();
     void rebuildPresetMenu();
     void onMeasured(QPointF a, QPointF b);
+    void onKnife(QPointF a, QPointF b);
     void updateGrid();
     void refreshSimulationBar();
     void runDiagnostics();

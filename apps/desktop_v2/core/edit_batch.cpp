@@ -94,6 +94,20 @@ std::string batchStack(const std::vector<std::uint64_t>& ids, std::string_view m
                 "\"}");
 }
 
+std::string batchSplit(const std::vector<std::uint64_t>& ids, PointMm p0, PointMm p1) {
+    if (ids.empty() || !pivotOk(p0) || !pivotOk(p1) ||
+        std::hypot(p1.x - p0.x, p1.y - p0.y) < 1e-3) {
+        return {};
+    }
+    std::string ops;
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+        ops += std::string(i == 0 ? "" : ",") + R"({"op":"split","object":)" +
+               std::to_string(ids[i]) + R"(,"line_mm":[[)" + num(p0.x) + "," + num(p0.y) + "],[" +
+               num(p1.x) + "," + num(p1.y) + "]]}";
+    }
+    return wrap(ops);
+}
+
 std::vector<std::uint64_t> createdObjectIds(const project_ops::BatchReport& report) {
     std::vector<std::uint64_t> out;
     for (const auto& o : report.outcomes) {

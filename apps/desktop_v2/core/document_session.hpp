@@ -51,6 +51,9 @@ public:
 
     // Réserve l'identifiant suivant (jamais réutilisé). Ce n'est PAS une modification du document :
     // le compteur n'est ni annulable ni visible ; c'est la seule écriture hors commande.
+    // Pour les fabriques du moteur qui RÉSERVENT des identifiants avant de rendre une commande
+    // (fondus) : ne jamais modifier autre chose que le compteur d'identifiants par ce biais.
+    [[nodiscard]] document::Project& projectForIdAllocation() { return project_; }
     [[nodiscard]] ObjectId allocateObjectId() { return project_.object_ids.next(); }
 
     // --- Mutations --------------------------------------------------------------------------

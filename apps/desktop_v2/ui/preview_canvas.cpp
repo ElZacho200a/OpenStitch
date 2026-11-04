@@ -93,10 +93,11 @@ void PreviewCanvas::setMode(Mode mode) {
         band_->hide();
     }
     setDragMode(mode == Mode::Pan ? QGraphicsView::ScrollHandDrag : QGraphicsView::NoDrag);
-    if (mode != Mode::Measure) {
+    if (mode != Mode::Measure && mode != Mode::Cut) {
         clearMeasure();
     }
-    setCursor(mode == Mode::DrawBox || mode == Mode::DrawPolygon || mode == Mode::Measure
+    setCursor(mode == Mode::DrawBox || mode == Mode::DrawPolygon || mode == Mode::Measure ||
+                      mode == Mode::Pick || mode == Mode::Cut
                   ? Qt::CrossCursor
                   : Qt::ArrowCursor);
 }
@@ -328,7 +329,7 @@ void PreviewCanvas::cancelPolygon() {
 void PreviewCanvas::mousePressEvent(QMouseEvent* event) {
     pressing_ = event->button() == Qt::LeftButton;
     pressPos_ = event->pos();
-    if (mode_ == Mode::Measure && pressing_ && item_ != nullptr) {
+    if ((mode_ == Mode::Measure || mode_ == Mode::Cut) && pressing_ && item_ != nullptr) {
         clearMeasure();
         measureFrom_ = mapToScene(event->pos());
         measuring_ = true;
@@ -428,7 +429,13 @@ void PreviewCanvas::mouseReleaseEvent(QMouseEvent* event) {
         pressing_ = false;
         const QPointF end = mapToScene(event->pos());
         if ((event->pos() - mapFromScene(measureFrom_)).manhattanLength() > 4) {
-            emit measuredPx(measureFrom_, end);
+            if (mode_ == Mode::Cut) {
+                const QPointF from = measureFrom_;
+                clearMeasure();
+                emit lineDrawnPx(from, end);
+            } else {
+                emit measuredPx(measureFrom_, end);
+            }
         } else {
             clearMeasure();
         }
@@ -492,7 +499,7 @@ void PreviewCanvas::mouseReleaseEvent(QMouseEvent* event) {
         if (mode_ == Mode::DrawPolygon) {
             polyPts_.push_back(mapToScene(event->pos()));
             updatePolygonItem(nullptr);
-        } else if (mode_ == Mode::Select) {
+        } else if (mode_ == Mode::Select || mode_ == Mode::Pick) {
             emit clickedPx(mapToScene(event->pos()), event->modifiers());
         }
     }
