@@ -1655,7 +1655,7 @@ void ShellWindow::newProject() {
     currentPath_.clear();
     documentOpen_ = true;
     session_.selection().clear();
-    session_.replaceProject(std::move(*created), false);
+    session_.replaceProject(std::move(*created), true); // projet vierge : rien à perdre
     setNotice(tr("Nouveau projet (cadre %1 × %2 mm). Choisissez un outil de dessin (R, E, Y).")
                   .arg(session_.project().canvas.width.value / 1000.0, 0, 'f', 0)
                   .arg(session_.project().canvas.height.value / 1000.0, 0, 'f', 0),
