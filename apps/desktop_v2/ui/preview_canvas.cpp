@@ -116,12 +116,10 @@ void PreviewCanvas::updateNavigationCursor() {
         viewport()->setCursor(Qt::ClosedHandCursor);
     } else if (panning) {
         viewport()->setCursor(Qt::OpenHandCursor);
+    } else if (mode_ == Mode::Select) {
+        viewport()->setCursor(Qt::ArrowCursor);
     } else {
-        viewport()->setCursor(mode_ == Mode::DrawBox || mode_ == Mode::DrawPolygon ||
-                                     mode_ == Mode::Measure || mode_ == Mode::Pick ||
-                                     mode_ == Mode::Cut || mode_ == Mode::Stroke
-                                 ? Qt::CrossCursor
-                                 : Qt::ArrowCursor);
+        viewport()->setCursor(Qt::CrossCursor);
     }
 }
 
