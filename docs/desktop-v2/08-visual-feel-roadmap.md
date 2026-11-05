@@ -131,3 +131,15 @@ Les valeurs sont des **hypothèses de design à tester** sur Windows clair/sombr
 - Qt 6 — [Animation framework](https://doc.qt.io/qt-6/animation-overview.html) : animation des propriétés GUI / objets, courbes et chronologie.
 - Apple HIG — [Motion](https://developer.apple.com/design/human-interface-guidelines/motion) : fonction plutôt que décoration, feedback bref et mouvement optionnel.
 - Code OpenStitch : `apps/desktop_v2/ui/`, `docs/desktop-v2/02-inventaire-et-parite.md`, `04-ux-design-system.md`.
+
+## Essai agent UI — accès permanent aux outils (2026-11-05)
+
+**Constat vérifié dans le code :** le rail vertical liste tous les outils de l'espace mais une petite hauteur de fenêtre peut masquer les dernières entrées. Son mode compact économise de la largeur, pas de la hauteur. Le menu « Outils » classique regroupe des actions métier et n'est pas l'inventaire du rail.
+
+**Correction :** bouton « Tous les outils » dans la barre des espaces, sans remplacement du rail ni mutation du document. Son menu reflète les outils de l'espace courant, garde icône, libellé complet et raccourci dans l'infobulle, affiche mais désactive avec justification les outils non migrés. Chaque choix réutilise la commande `tool.<id>` : pas de seconde logique de sélection et aucun nouveau raccourci clavier concurrent.
+
+**User story :** en tant qu'utilisateur sur écran de faible hauteur (ou avec l'inspecteur déployé), je veux accéder à n'importe quel outil disponible sans agrandir la fenêtre ni mémoriser les raccourcis, afin de poursuivre ma correction de broderie sans friction.
+
+**Critères d'acceptation :** le bouton reste dans la barre supérieure ; chaque espace offre exactement ses outils ; « Régions » est accessible dans Conception ; les outils non migrés sont désactivés et expliqués ; changer d'outil ne modifie pas la révision du projet ; changement d'espace restaure « Sélection » si l'outil précédent est absent. Test : `allToolsMenuKeepsLowRailToolsAccessibleWithoutEditingTheDocument`.
+
+**À vérifier manuellement :** capture réelle Windows à 1024×520 et 1280×720 (clair/sombre), comportement des menus sous DPI 200 %, focus clavier et contraste. Aucune capture n'a été produite durant cet essai de l'agent.
