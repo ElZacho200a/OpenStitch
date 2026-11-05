@@ -296,3 +296,50 @@ TEST_CASE("smoothing rounds the contour and is one undo step", "[desktop_v2][nod
         CHECK(f.session.undoNames().size() == depth);
     }
 }
+
+TEST_CASE("deleting nodes is one undo step and keeps a valid contour",
+          "[desktop_v2][nodes][delete]") {
+    OctagonFixture f;
+    const auto view = nodeView(f.session.project(), f.id);
+    REQUIRE(view.has_value());
+    REQUIRE(view->nodes.size() == 8);
+    const auto depth = f.session.undoNames().size();
+
+    // Deux nœuds d'un coup : un seul pas d'annulation, 6 nœuds restants.
+    REQUIRE(deleteNodes(f.session, f.id, {view->nodes[1].ref, view->nodes[5].ref}).ok);
+    CHECK(f.session.undoNames().size() == depth + 1);
+    const auto after = nodeView(f.session.project(), f.id);
+    REQUIRE(after.has_value());
+    CHECK(after->nodes.size() == 6);
+    f.session.undo();
+    const auto undone = nodeView(f.session.project(), f.id);
+    REQUIRE(undone.has_value());
+    REQUIRE(undone->nodes.size() == 8);
+    for (std::size_t i = 0; i < 8; ++i) { // exactement la forme d'origine
+        CHECK(std::abs(undone->nodes[i].pos.x - view->nodes[i].pos.x) < 0.001);
+        CHECK(std::abs(undone->nodes[i].pos.y - view->nodes[i].pos.y) < 0.001);
+    }
+}
+
+TEST_CASE("deleting is refused below three nodes, for nothing, and on satin rails",
+          "[desktop_v2][nodes][delete]") {
+    Fixture f; // rectangle : 4 nœuds
+    const auto view = nodeView(f.session.project(), f.id);
+    REQUIRE(view.has_value());
+    const auto depth = f.session.undoNames().size();
+    CHECK_FALSE(deleteNodes(f.session, f.id, {}).ok);
+    // Retirer 3 des 4 nœuds laisserait moins d'un triangle : refusé, rien ne change.
+    const auto r =
+        deleteNodes(f.session, f.id, {view->nodes[0].ref, view->nodes[1].ref, view->nodes[2].ref});
+    CHECK_FALSE(r.ok);
+    CHECK_FALSE(r.message.empty());
+    CHECK(f.session.undoNames().size() == depth);
+    // Un seul nœud sur 4 : autorisé (il reste un triangle).
+    CHECK(deleteNodes(f.session, f.id, {view->nodes[0].ref}).ok);
+
+    auto s = emptySession();
+    const auto made =
+        createSatinColumn(s, {{{0, 0}, {0, 4}}, {{10, 0}, {10, 4}}, {{20, 0}, {20, 4}}});
+    REQUIRE(made.ok);
+    CHECK_FALSE(deleteNodes(s, made.objectId, {NodeRef{0, 0, 1}}).ok);
+}

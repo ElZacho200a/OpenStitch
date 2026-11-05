@@ -410,3 +410,7 @@ encore le desktop principal.
 ## 2026-11-05 — Session 1 (suite 34) : finalisation V2, tranche 13 (Plume)
 
 - Outil Plume (`draw.bezier`, P) : `core/pen_shape` construit le contour (nœuds d'angle, nœuds lisses à tangentes symétriques) et crée l'objet vectoriel ET l'objet de broderie en UNE commande (`AddObjectBatchCommand`, mêmes réglages que `add_shape`) ; refus clairs sans trace dans l'historique. Canevas : aperçu élastique avec nœuds et poignées, fermeture par clic sur le premier nœud. Les tests qui prenaient `draw.bezier` comme exemple d'outil non migré utilisent désormais `bucket`.
+
+## 2026-11-05 — Session 1 (suite 35) : finalisation V2, tranche 14 (suppression de nœuds)
+
+- Suppr dans l'outil Nœuds retire les nœuds choisis (jamais l'objet) : simulation sur une copie (3 nœuds minimum pour un contour fermé, aucun croisement introduit), puis UNE commande composite de `RemoveNodeCommand` en ordre décroissant ; annulation exacte de la forme d'origine (testée nœud par nœud). Refusé sur les rails de satin.

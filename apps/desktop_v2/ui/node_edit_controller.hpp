@@ -48,6 +48,8 @@ public:
     void refresh();
     // Retire la sélection de nœuds (clic sur le fond).
     void clearSelection();
+    // Supprime les nœuds choisis (touche Suppr) ; faux si rien n'est choisi ou si c'est refusé.
+    bool deleteSelected();
 
     [[nodiscard]] int handleCount() const;
     [[nodiscard]] int selectedCount() const { return static_cast<int>(nodeSel_.size()); }

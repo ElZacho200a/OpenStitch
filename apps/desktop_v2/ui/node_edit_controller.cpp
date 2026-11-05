@@ -58,6 +58,24 @@ void NodeEditController::connectCanvas() {
             &NodeEditController::onNodeInsert);
 }
 
+bool NodeEditController::deleteSelected() {
+    if (nodeSel_.empty() || fadeView_) {
+        return false;
+    }
+    std::vector<NodeRef> refs;
+    for (const int i : nodeSel_) {
+        refs.push_back(nodeView_.nodes[static_cast<std::size_t>(i)].ref);
+    }
+    const auto r = deleteNodes(host_.session, nodeObject_, refs);
+    if (!r.ok) {
+        host_.notice(tr("Nœuds : %1").arg(fromUtf8(r.message)), true);
+        return false;
+    }
+    nodeSel_.clear();
+    host_.notice(tr("%n nœud(s) supprimé(s).", "", static_cast<int>(refs.size())), false);
+    return true;
+}
+
 void NodeEditController::clearSelection() {
     if (!nodeSel_.empty()) {
         nodeSel_.clear();

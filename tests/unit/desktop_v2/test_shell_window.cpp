@@ -1795,6 +1795,39 @@ private slots:
         QVERIFY(w.session().project().embroidery_objects.empty());
     }
 
+    void deleteKeyRemovesTheChosenNodesNotTheObject() {
+        ShellWindow w;
+        w.resize(1400, 900);
+        w.show();
+        w.newProject();
+        std::vector<PointMm> octagon;
+        for (int k = 0; k < 8; ++k) {
+            const double a = (22.5 + 45.0 * k) * 3.14159265358979323846 / 180.0;
+            octagon.push_back({10.0 * std::cos(a), 10.0 * std::sin(a)});
+        }
+        QVERIFY(w.session().applyBatch(batchAddPolygon(octagon), "Octogone").committed);
+        w.waitForIdle();
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        QVERIFY(w.runCommand("tool.node.edit"));
+        w.waitForIdle();
+        QCOMPARE(w.nodeHandleCount(), 8);
+
+        auto* canvas = w.canvas();
+        const QPoint at = canvas->mapFromScene(w.nodeHandlePx(3));
+        QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, at);
+        QCOMPARE(w.selectedNodeCount(), 1);
+        const auto depth = w.session().undoNames().size();
+        QVERIFY(w.runCommand("edit.delete"));
+        w.waitForIdle();
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(1)); // l'objet reste
+        QCOMPARE(w.nodeHandleCount(), 7);
+        QVERIFY(w.session().undo());
+        w.waitForIdle();
+        QCOMPARE(w.nodeHandleCount(), 8);
+    }
+
     void nodeToolEditsSatinRailsAndShowsTheRungs() {
         ShellWindow w;
         w.show();

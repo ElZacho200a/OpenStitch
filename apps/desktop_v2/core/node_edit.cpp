@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <tuple>
 
 #include "document_session.hpp"
 #include "openstitch/commands/composite_command.hpp"
@@ -403,6 +404,58 @@ ServiceResult smoothContours(DocumentSession& session,
         return {false, made.error.empty() ? "Lissage impossible." : made.error};
     }
     session.execute(std::move(made.command));
+    return {true, {}};
+}
+
+ServiceResult deleteNodes(DocumentSession& session, std::uint64_t objectId,
+                          const std::vector<NodeRef>& nodes) {
+    if (satinOf(session.project(), objectId) != nullptr) {
+        return {false, "Les rails d'une colonne satin ne perdent pas de nœud ici."};
+    }
+    const auto* vector = sourceOf(session.project(), objectId);
+    if (vector == nullptr) {
+        return {false, "Cet objet n'a pas de contour éditable."};
+    }
+    if (nodes.empty()) {
+        return {false, "Sélectionnez d'abord les nœuds à supprimer."};
+    }
+    // Simulation sur une copie : minimum de nœuds par contour, aucun croisement introduit.
+    std::vector<geometry::PathSet> sets = vector->paths;
+    auto sorted = nodes;
+    std::sort(sorted.begin(), sorted.end(), [](const NodeRef& a, const NodeRef& b) {
+        return std::tie(a.set, a.path, b.node) < std::tie(b.set, b.path, a.node);
+    });
+    sorted.erase(std::unique(sorted.begin(), sorted.end()), sorted.end());
+    for (const auto& n : sorted) {
+        if (n.set >= sets.size()) {
+            return {false, "Nœud inconnu."};
+        }
+        auto& set = sets[n.set];
+        auto* path = n.path == 0
+                         ? &set.outer
+                         : (n.path - 1 < set.holes.size() ? &set.holes[n.path - 1] : nullptr);
+        if (path == nullptr || n.node >= path->nodes.size()) {
+            return {false, "Nœud inconnu."};
+        }
+        const std::size_t minNodes = path->closed ? 3 : 2;
+        if (path->nodes.size() <= minNodes) {
+            return {false, "Un contour fermé garde au moins trois nœuds."};
+        }
+        path->nodes.erase(path->nodes.begin() + static_cast<std::ptrdiff_t>(n.node));
+    }
+    for (std::size_t s = 0; s < sets.size(); ++s) {
+        if (geometry::path_set_has_crossings(sets[s], kCrossingTolerance) &&
+            !geometry::path_set_has_crossings(vector->paths[s], kCrossingTolerance)) {
+            return {false, "Supprimer ces nœuds ferait croiser le contour."};
+        }
+    }
+    auto composite = std::make_unique<commands::CompositeCommand>(
+        sorted.size() == 1 ? "Supprimer un nœud" : "Supprimer des nœuds");
+    for (const auto& n : sorted) { // ordre décroissant : les indices restent valables
+        composite->add(std::make_unique<commands::RemoveNodeCommand>(
+            vector->id, document::NodeRef{n.set, n.path, n.node}));
+    }
+    session.execute(std::move(composite));
     return {true, {}};
 }
 

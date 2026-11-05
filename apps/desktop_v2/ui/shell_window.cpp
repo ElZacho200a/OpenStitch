@@ -2260,6 +2260,11 @@ void ShellWindow::editSelection(const QString& command) {
         deleteSelectedPoint();
         return;
     }
+    if (command == QLatin1String("edit.delete") && activeTool_ == QStringLiteral("node.edit") &&
+        nodes_->selectedCount() > 0) {
+        (void)nodes_->deleteSelected(); // Suppr retire les nœuds choisis, pas l'objet entier
+        return;
+    }
     const auto state = inspect(session_.project(), session_.selection().targets());
     if (state.ids.empty()) {
         return;

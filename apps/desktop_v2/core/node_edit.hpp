@@ -95,6 +95,12 @@ ServiceResult convertToCurves(DocumentSession& session,
                               const std::vector<std::uint64_t>& objectIds);
 ServiceResult smoothContours(DocumentSession& session, const std::vector<std::uint64_t>& objectIds);
 
+// Supprime des nœuds du contour (même chemin ou non) en UNE commande annulable. Refus clairs : un
+// contour fermé garde au moins 3 nœuds, la suppression ne doit pas faire croiser le contour, les
+// rails de satin se modifient autrement.
+ServiceResult deleteNodes(DocumentSession& session, std::uint64_t objectId,
+                          const std::vector<NodeRef>& nodes);
+
 // Tire le segment au point `hit.t` de `deltaMm` (remodelage d'un segment en UNE commande).
 ServiceResult reshapeSegment(DocumentSession& session, std::uint64_t objectId,
                              const SegmentHit& hit, PointMm deltaMm);
