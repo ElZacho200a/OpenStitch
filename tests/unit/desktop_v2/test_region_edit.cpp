@@ -208,6 +208,39 @@ TEST_CASE("merging two whole color classes is one undo step with exact restorati
     CHECK_FALSE(mergeRegionColors(empty, source.id, target->id).ok);
 }
 
+TEST_CASE("small enclosed transparent holes can be repaired and undone",
+          "[desktop_v2][regions]") {
+    document::Project project;
+    segmentation::Segmentation seg;
+    seg.width = 5;
+    seg.height = 5;
+    seg.labels.assign(25, 1);
+    seg.labels[12] = 0; // trou intérieur
+    seg.labels[0] = 0;  // fond extérieur : ne doit jamais être rempli
+    seg.region_slots.emplace_back(
+        segmentation::Region{RegionId{1}, {130, 40, 75}, 23});
+    project.segmentation = std::move(seg);
+    DocumentSession session;
+    session.replaceProject(std::move(project), true);
+
+    CHECK_FALSE(fillSmallHoles(session, 0).ok);
+    const auto depth = session.undoNames().size();
+    REQUIRE(fillSmallHoles(session, 1).ok);
+    CHECK(session.undoNames().size() == depth + 1);
+    CHECK(session.project().segmentation->labels[12] == 1);
+    CHECK(session.project().segmentation->labels[0] == 0);
+    CHECK(session.project().segmentation->find(RegionId{1})->pixel_count == 24);
+    CHECK_FALSE(fillSmallHoles(session, 1).ok);
+    REQUIRE(session.undo());
+    CHECK(session.project().segmentation->labels[12] == 0);
+    CHECK(session.project().segmentation->find(RegionId{1})->pixel_count == 23);
+    REQUIRE(session.redo());
+    CHECK(session.project().segmentation->labels[12] == 1);
+
+    DocumentSession empty;
+    CHECK_FALSE(fillSmallHoles(empty, 1).ok);
+}
+
 TEST_CASE("a regeneration computed for an older document is refused", "[desktop_v2][regions]") {
     Digitized d;
     TaskContext task;
