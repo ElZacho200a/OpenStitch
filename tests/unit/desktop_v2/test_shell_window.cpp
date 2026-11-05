@@ -29,6 +29,7 @@
 #include "command_palette.hpp"
 #include "companion_panel.hpp"
 #include "diagnostics_panel.hpp"
+#include "digitize_pipeline.hpp"
 #include "fade_service.hpp"
 #include "feedback_cue.hpp"
 #include "import_dialog.hpp"
@@ -43,6 +44,7 @@
 #include "source_image_tools.hpp"
 #include "studio_theme.hpp"
 #include "thread_panel.hpp"
+#include "transform_batch.hpp"
 #include <array>
 
 using namespace openstitch::desktop_v2;
@@ -1863,6 +1865,52 @@ private slots:
         QVERIFY(w.session().selection().contains({TargetKind::EmbroideryObject, id}));
         QVERIFY(w.session().undo());
         QVERIFY(w.session().project().embroidery_objects.empty());
+    }
+
+    void savedProjectReopensToTheSameMachineFileByteForByte() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const auto base = std::filesystem::path(dir.path().toStdU16String());
+        const auto exportBytes = [](ShellWindow& window, const std::filesystem::path& file) {
+            openstitch::TaskContext task;
+            const auto stats = export_project_dst(window.session().snapshot(), file, task);
+            if (!stats) {
+                return QByteArray();
+            }
+            QFile f(QString::fromStdU16String(file.u16string()));
+            return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+        };
+
+        QByteArray original;
+        {
+            ShellWindow w;
+            w.openImage(tentabrode(), 80.0);
+            w.waitForIdle();
+            QVERIFY(!w.session().project().embroidery_objects.empty());
+            // Une retouche manuelle avant l'enregistrement : elle aussi doit survivre.
+            const auto id = w.session().project().embroidery_objects.front().id.value;
+            QVERIFY(w.session().applyBatch(batchTranslate({id}, 2.0, -1.0), "Déplacer").committed);
+            original = exportBytes(w, base / "avant.dst");
+            QVERIFY(original.size() > 512);
+            QVERIFY(w.saveProject(base / "projet.osp"));
+        }
+        ShellWindow reopened;
+        reopened.openProject(base / "projet.osp");
+        reopened.waitForIdle();
+        QVERIFY(!reopened.session().project().embroidery_objects.empty());
+        QVERIFY(
+            !reopened.session().dirty()); // un projet qu'on vient d'ouvrir n'est pas « modifié »
+        const QByteArray again = exportBytes(reopened, base / "apres.dst");
+        QCOMPARE(again.size(), original.size());
+        QVERIFY2(again == original, "le fichier machine doit être identique octet pour octet");
+
+        // Modifier puis annuler revient exactement au même fichier.
+        const auto id = reopened.session().project().embroidery_objects.front().id.value;
+        QVERIFY(
+            reopened.session().applyBatch(batchTranslate({id}, 5.0, 5.0), "Déplacer").committed);
+        QVERIFY(exportBytes(reopened, base / "modifie.dst") != original);
+        QVERIFY(reopened.session().undo());
+        QVERIFY(exportBytes(reopened, base / "annule.dst") == original);
     }
 
     void nodeToolEditsSatinRailsAndShowsTheRungs() {
