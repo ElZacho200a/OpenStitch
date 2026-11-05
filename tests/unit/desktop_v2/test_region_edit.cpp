@@ -149,6 +149,66 @@ TEST_CASE("regenerating objects follows the corrected regions and is one undo st
     CHECK(d.session.project().embroidery_objects.size() == objectsBefore);
 }
 
+
+TEST_CASE("recoloring a region is undoable and rejects unchanged or missing colors",
+          "[desktop_v2][regions]") {
+    Digitized d;
+    const auto original = listRegions(d.session.project()).front();
+    std::array<std::uint8_t, 3> changed{23, 67, 119};
+    if (changed == original.rgb) {
+        changed = {119, 67, 23};
+    }
+    const auto depth = d.session.undoNames().size();
+    REQUIRE(recolorRegion(d.session, original.id, changed).ok);
+    CHECK(d.session.undoNames().size() == depth + 1);
+    REQUIRE(d.session.project().segmentation.has_value());
+    REQUIRE(d.session.project().segmentation->find(RegionId{original.id}) != nullptr);
+    CHECK(d.session.project().segmentation->find(RegionId{original.id})->rgb == changed);
+    CHECK_FALSE(recolorRegion(d.session, original.id, changed).ok);
+    CHECK_FALSE(recolorRegion(d.session, 999999, changed).ok);
+    CHECK(d.session.undoNames().size() == depth + 1);
+    REQUIRE(d.session.undo());
+    CHECK(d.session.project().segmentation->find(RegionId{original.id})->rgb == original.rgb);
+    REQUIRE(d.session.redo());
+    CHECK(d.session.project().segmentation->find(RegionId{original.id})->rgb == changed);
+    DocumentSession empty;
+    CHECK_FALSE(recolorRegion(empty, original.id, changed).ok);
+}
+
+TEST_CASE("merging two whole color classes is one undo step with exact restoration",
+          "[desktop_v2][regions]") {
+    Digitized d;
+    const auto before = listRegions(d.session.project());
+    REQUIRE(before.size() >= 2);
+    const auto source = before.front();
+    const auto target = std::find_if(before.begin(), before.end(),
+                                     [&](const RegionInfo& r) { return r.rgb != source.rgb; });
+    REQUIRE(target != before.end());
+
+    const auto depth = d.session.undoNames().size();
+    REQUIRE(mergeRegionColors(d.session, source.id, target->id).ok);
+    CHECK(d.session.undoNames().size() == depth + 1);
+    const auto after = listRegions(d.session.project());
+    CHECK(std::none_of(after.begin(), after.end(),
+                       [&](const RegionInfo& r) { return r.rgb == source.rgb; }));
+    CHECK(std::any_of(after.begin(), after.end(),
+                      [&](const RegionInfo& r) { return r.rgb == target->rgb; }));
+    CHECK_FALSE(mergeRegionColors(d.session, target->id, target->id).ok);
+    CHECK_FALSE(mergeRegionColors(d.session, 999999, target->id).ok);
+    CHECK(d.session.undoNames().size() == depth + 1);
+
+    REQUIRE(d.session.undo());
+    const auto restored = listRegions(d.session.project());
+    REQUIRE(restored.size() == before.size());
+    for (std::size_t i = 0; i < before.size(); ++i) {
+        CHECK(restored[i].id == before[i].id);
+        CHECK(restored[i].rgb == before[i].rgb);
+        CHECK(restored[i].pixels == before[i].pixels);
+    }
+    DocumentSession empty;
+    CHECK_FALSE(mergeRegionColors(empty, source.id, target->id).ok);
+}
+
 TEST_CASE("a regeneration computed for an older document is refused", "[desktop_v2][regions]") {
     Digitized d;
     TaskContext task;
