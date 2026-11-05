@@ -172,10 +172,16 @@ TEST_CASE("spiral fill: holes are skipped and the clockwise flag mirrors the pat
 // forme en U ne doit jamais être traversée par un faux raccord, même si deux
 // morceaux de la spirale sont spatialement proches à travers le vide.
 TEST_CASE("spiral fill: fragment routing never stitches across a concavity") {
-    const geometry::PathSet u{
-        polygon({um(-35, -25), um(35, -25), um(35, 25), um(25, 25),
-                 um(25, -10), um(-25, -10), um(-25, 25), um(-35, 25)}),
-        {}};
+    std::vector<Vec2um> points;
+    points.push_back(um(-35, -25));
+    points.push_back(um(35, -25));
+    points.push_back(um(35, 25));
+    points.push_back(um(25, 25));
+    points.push_back(um(25, -10));
+    points.push_back(um(-25, -10));
+    points.push_back(um(-25, 25));
+    points.push_back(um(-35, 25));
+    const geometry::PathSet u{polygon(points), {}};
     document::SpiralFillParams p;
     p.center = um(0, 0);
     p.row_spacing = Micrometers{400};
