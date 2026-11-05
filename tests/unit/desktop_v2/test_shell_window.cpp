@@ -20,6 +20,7 @@
 #include <QTest>
 #include <QTimer>
 #include <QToolBar>
+#include <QToolButton>
 #include <QTreeWidget>
 #include <QWheelEvent>
 #include <filesystem>
@@ -165,6 +166,49 @@ private slots:
         QCOMPARE(w.activeToolId(), QString("select"));
         w.setWorkspace(Workspace::Design);
         QCOMPARE(rail->actions().size(), design);
+    }
+
+    void allToolsMenuKeepsLowRailToolsAccessibleWithoutEditingTheDocument() {
+        ShellWindow w;
+        w.resize(1024, 520);
+        w.show();
+        auto* chooser = w.findChild<QToolButton*>(QStringLiteral("allToolsButton"));
+        auto* menu = w.findChild<QMenu*>(QStringLiteral("allToolsMenu"));
+        QVERIFY(chooser != nullptr);
+        QVERIFY(menu != nullptr);
+        QVERIFY(chooser->isVisibleTo(&w));
+        QCOMPARE(chooser->menu(), menu);
+        QCOMPARE(menu->actions().size(),
+                 static_cast<qsizetype>(w.tools().forWorkspace(Workspace::Design).size()));
+        const auto revision = w.session().revision();
+
+        const auto findTool = [menu](const QString& id) -> QAction* {
+            for (auto* action : menu->actions()) {
+                if (action->data().toString() == id) {
+                    return action;
+                }
+            }
+            return nullptr;
+        };
+        auto* regions = findTool(QStringLiteral("region.edit"));
+        QVERIFY(regions != nullptr);
+        QVERIFY(regions->isEnabled());
+        QVERIFY(regions->text().contains(QStringLiteral("Régions")));
+        regions->trigger();
+        QCOMPARE(w.activeToolId(), QStringLiteral("region.edit"));
+        QCOMPARE(w.session().revision(), revision);
+
+        auto* unavailable = findTool(QStringLiteral("bucket"));
+        QVERIFY(unavailable != nullptr);
+        QVERIFY(!unavailable->isEnabled());
+        QVERIFY(unavailable->toolTip().contains(QStringLiteral("pas encore migré")));
+
+        w.setWorkspace(Workspace::Produce);
+        QCOMPARE(menu->actions().size(),
+                 static_cast<qsizetype>(w.tools().forWorkspace(Workspace::Produce).size()));
+        QVERIFY(findTool(QStringLiteral("region.edit")) == nullptr);
+        QVERIFY(findTool(QStringLiteral("select")) != nullptr);
+        QCOMPARE(w.activeToolId(), QStringLiteral("select"));
     }
 
     void toolRailUsesDescriptiveNamesAndKeepsAllToolsInBothModes() {
