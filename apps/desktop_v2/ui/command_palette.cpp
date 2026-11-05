@@ -117,6 +117,9 @@ bool CommandPalette::eventFilter(QObject* watched, QEvent* event) {
                 return true;
             }
             int row = list_->currentRow();
+            if (row < 0) {
+                row = step > 0 ? -1 : 0;
+            }
             // Lignes désactivées ignorées ; si aucune commande n'est exécutable,
             // la sélection reste vide et Entrée ne fait rien.
             for (int n = 0; n < list_->count(); ++n) {
