@@ -19,7 +19,8 @@ automatisé qui l'exerce. Une ligne ne passe à ✅ que si le test existe et pas
 | B | Repères intelligents, magnétisme, cotes pendant le glisser | ⬜ | — | ⬜ | ⬜ | ⬜ | à faire |
 | B | Navigation trackpad / zoom / pan | ✅ | — | ✅ | ✅ | ✅ | #257 |
 | C | Satin : création par colonne à deux rails | ✅ | ✅ | ✅ (outil `satin.column`) | 🟡 tracé, pas d'édition des rails | ✅ | `satin_column` |
-| C | Satin : rails/tangentes/barreaux éditables au canevas | ✅ (`SatinParams`) | 🟡 | ⬜ | ⬜ | ⬜ | gros lot à faire |
+| C | Satin : rails éditables au canevas (déplacement de nœuds d'un rail en 1 pas d'annulation, insertion de nœud, barreaux dessinés, largeur aux barreaux avec avertissement « trop large ») | ✅ | 🟡 services `satin_column` | ✅ | ✅ | ✅ | outil Nœuds (B) ; Catch2 `[satin]`, QTest `nodeToolEditsSatinRails…` |
+| C | Satin : tangentes Bézier des rails, édition des barreaux, suppression de nœud, diagnostic des jonctions/croisements | ✅ (`SatinParams`) | 🟡 | ⬜ | ⬜ | ⬜ | les barreaux restent ceux de la génération : la largeur affichée est celle aux barreaux, pas recalculée après déplacement des rails |
 | C | Auto-satin (squelette / balayage / axe médian) | ✅ | ✅ | 🟡 exécuté dans la numérisation | ⬜ | 🟡 | pas de pilotage manuel des stratégies |
 | C | Correction de segmentation (fusion, îlots, trous, comparaison) | ✅ | 🟡 | ⬜ | ⬜ | ⬜ | seul le pinceau « zones de détail » existe |
 | C | Segmentation IA / SAM | ✅ (V1) | 🟡 | ⬜ | ⬜ | ⬜ | hors priorité produit ; état de disponibilité à afficher |

@@ -1647,6 +1647,7 @@ void ShellWindow::updateNodeMarkers() {
         nodeSel_.clear();
         nodeObject_ = 0;
         canvas_->setNodeHandles({}, {});
+        canvas_->setNodeGuides({});
         return;
     }
     auto view = nodeView(session_.project(), *target);
@@ -1669,6 +1670,12 @@ void ShellWindow::updateNodeMarkers() {
         pts.push_back(nodeHandlePx(static_cast<int>(i)));
     }
     canvas_->setNodeHandles(pts, QVector<int>(nodeSel_.begin(), nodeSel_.end()));
+    QVector<QLineF> rungs;
+    for (const auto& [a, b] : nodeView_.rungs) {
+        rungs.push_back(QLineF(frame_.mmToPxX(a.x), frame_.mmToPxY(-a.y), frame_.mmToPxX(b.x),
+                               frame_.mmToPxY(-b.y)));
+    }
+    canvas_->setNodeGuides(rungs);
 }
 
 void ShellWindow::onNodePressed(int index, Qt::KeyboardModifiers modifiers) {
@@ -1699,10 +1706,13 @@ void ShellWindow::onNodePressed(int index, Qt::KeyboardModifiers modifiers) {
         pts.push_back(nodeHandlePx(static_cast<int>(i)));
     }
     canvas_->setNodeHandles(pts, QVector<int>(nodeSel_.begin(), nodeSel_.end()));
-    setNotice(tr("%n nœud(s) sélectionné(s). Glissez pour déplacer, double-cliquez un segment "
-                 "pour insérer un nœud.",
-                 "", static_cast<int>(nodeSel_.size())),
-              false);
+    QString message = tr("%n nœud(s) sélectionné(s). Glissez pour déplacer, double-cliquez un "
+                         "segment pour insérer un nœud.",
+                         "", static_cast<int>(nodeSel_.size()));
+    if (const auto width = satinWidthSummary(nodeView_); !width.empty()) {
+        message += QStringLiteral(" ") + fromUtf8(width) + QLatin1Char('.');
+    }
+    setNotice(message, false);
 }
 
 void ShellWindow::onNodeDragMoved(QPointF deltaPx) {

@@ -8,6 +8,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "document_services.hpp"
@@ -31,6 +33,7 @@ struct NodeHandle {
     PointMm pos;        // mm « modèle » (Y vers le haut)
     bool smooth{false}; // nœud lisse (tangentes liées)
     bool curved{false}; // porte au moins une tangente de Bézier
+    bool open{false};   // le chemin ne se referme pas (rail de satin) : pas de segment de retour
 };
 
 struct NodeView {
@@ -38,7 +41,16 @@ struct NodeView {
     std::vector<NodeHandle> nodes;
     // Contours aplatis (courbes comprises), un par chemin, en mm modèle : tracé de l'aperçu.
     std::vector<std::vector<PointMm>> outlines;
+    // Colonne satin : `ref.set` vaut 0 pour le rail A et 1 pour le rail B (`ref.path` = 0).
+    bool satin{false};
+    std::vector<std::pair<PointMm, PointMm>> rungs; // barreaux (rail A, rail B), mm modèle
+    double widthMinMm{0.0};                         // largeur de la colonne aux barreaux
+    double widthMaxMm{0.0};
+    double recommendedMaxMm{0.0};                   // au-delà : satin trop large
 };
+
+// Phrase de diagnostic de la largeur d'une colonne satin (vide si ce n'est pas un satin).
+[[nodiscard]] std::string satinWidthSummary(const NodeView& view);
 
 // Nœuds du contour de l'objet de broderie `objectId`, ou erreur (objet absent, sans forme source).
 [[nodiscard]] Result<NodeView> nodeView(const document::Project& project, std::uint64_t objectId);

@@ -1268,6 +1268,42 @@ private slots:
         }
     }
 
+    void nodeToolEditsSatinRailsAndShowsTheRungs() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        const auto made = createSatinColumn(
+            w.session(), {{{-10, -3}, {-10, 3}}, {{0, -3}, {0, 3}}, {{10, -3}, {10, 3}}});
+        QVERIFY(made.ok);
+        w.waitForIdle();
+        w.session().selection().replace({{TargetKind::EmbroideryObject, made.objectId}});
+        QVERIFY(w.runCommand("tool.node.edit"));
+        w.waitForIdle();
+        QCOMPARE(w.nodeHandleCount(), 6); // trois nœuds par rail
+        auto* canvas = w.canvas();
+        QVERIFY(canvas->hasNodeGuides()); // les barreaux sont dessinés
+
+        const auto before = nodeView(w.session().project(), made.objectId);
+        QVERIFY(before.has_value());
+        const auto depth = w.session().undoNames().size();
+        const QPoint from = canvas->mapFromScene(w.nodeHandlePx(1)); // milieu du rail A
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, from);
+        QTest::mouseMove(canvas->viewport(), from + QPoint(0, 15));
+        QTest::mouseMove(canvas->viewport(), from + QPoint(0, 30));
+        QVERIFY(canvas->hasNodeOutline());
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                            from + QPoint(0, 30));
+        w.waitForIdle();
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        const auto after = nodeView(w.session().project(), made.objectId);
+        QVERIFY(after.has_value());
+        QVERIFY(std::abs(after->nodes[1].pos.y - before->nodes[1].pos.y) > 0.5);
+        QVERIFY(std::abs(after->nodes[4].pos.y - before->nodes[4].pos.y) < 0.01); // l'autre rail
+        w.session().undo();
+        w.waitForIdle();
+        QCOMPARE(w.nodeHandleCount(), 6);
+    }
+
     void escapeCancelsANodeDragWithoutChangingTheDocument() {
         ShellWindow w;
         w.show();

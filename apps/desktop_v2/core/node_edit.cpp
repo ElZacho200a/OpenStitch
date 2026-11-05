@@ -3,11 +3,15 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 #include "document_session.hpp"
+#include "openstitch/commands/composite_command.hpp"
+#include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/vector_path_commands.hpp"
 #include "openstitch/geometry/node_transform.hpp"
 #include "openstitch/geometry/polyline.hpp"
+#include "satin_column.hpp"
 
 namespace openstitch::desktop_v2 {
 
@@ -55,6 +59,20 @@ constexpr double kMaxCoordMm = 1000.0;
     });
 }
 
+[[nodiscard]] const document::SatinParams* satinOf(const document::Project& project,
+                                                   std::uint64_t objectId) {
+    const auto* object = project.findEmbroidery(ObjectId{objectId});
+    return object != nullptr ? std::get_if<document::SatinParams>(&object->params) : nullptr;
+}
+
+[[nodiscard]] const geometry::Path& railOf(const document::SatinParams& s, std::size_t set) {
+    return set == 0 ? s.rail_a : s.rail_b;
+}
+
+[[nodiscard]] commands::SatinRailSide sideOf(std::size_t set) {
+    return set == 0 ? commands::SatinRailSide::RailA : commands::SatinRailSide::RailB;
+}
+
 [[nodiscard]] bool withinBounds(PointMm d) {
     return std::abs(d.x) <= kMaxCoordMm && std::abs(d.y) <= kMaxCoordMm;
 }
@@ -62,6 +80,35 @@ constexpr double kMaxCoordMm = 1000.0;
 } // namespace
 
 Result<NodeView> nodeView(const document::Project& project, std::uint64_t objectId) {
+    if (const auto* satin = satinOf(project, objectId);
+        satin != nullptr && !satin->rail_a.nodes.empty() && !satin->rail_b.nodes.empty()) {
+        NodeView view;
+        view.satin = true;
+        view.recommendedMaxMm = satin->max_width.value / 1000.0;
+        for (std::size_t side = 0; side < 2; ++side) {
+            const auto& rail = railOf(*satin, side);
+            view.outlines.push_back(outline(rail));
+            for (std::size_t n = 0; n < rail.nodes.size(); ++n) {
+                const auto& node = rail.nodes[n];
+                view.nodes.push_back({{side, 0, n},
+                                      toMm(node.pos),
+                                      node.type == geometry::NodeType::Smooth,
+                                      node.tan_in.has_value() || node.tan_out.has_value(),
+                                      !rail.closed});
+            }
+        }
+        bool first = true;
+        for (const auto& rung : satin->rungs) {
+            view.rungs.emplace_back(toMm(rung.a), toMm(rung.b));
+            const double w =
+                std::hypot(rung.a.x.value - rung.b.x.value, rung.a.y.value - rung.b.y.value) /
+                1000.0;
+            view.widthMinMm = first ? w : std::min(view.widthMinMm, w);
+            view.widthMaxMm = first ? w : std::max(view.widthMaxMm, w);
+            first = false;
+        }
+        return view;
+    }
     const auto* vector = sourceOf(project, objectId);
     if (vector == nullptr) {
         return fail(ErrorCategory::OperationImpossible, "Cet objet n'a pas de contour éditable",
@@ -79,17 +126,52 @@ Result<NodeView> nodeView(const document::Project& project, std::uint64_t object
                 view.nodes.push_back({{s, p, n},
                                       toMm(node.pos),
                                       node.type == geometry::NodeType::Smooth,
-                                      node.tan_in.has_value() || node.tan_out.has_value()});
+                                      node.tan_in.has_value() || node.tan_out.has_value(),
+                                      !path.closed});
             }
         }
     }
     return view;
 }
 
+std::string satinWidthSummary(const NodeView& view) {
+    if (!view.satin || view.rungs.empty()) {
+        return {};
+    }
+    char buffer[160];
+    std::snprintf(buffer, sizeof buffer, "Largeur du satin : %.1f à %.1f mm", view.widthMinMm,
+                  view.widthMaxMm);
+    std::string out = buffer;
+    if (view.recommendedMaxMm > 0.0 && view.widthMaxMm > view.recommendedMaxMm) {
+        std::snprintf(buffer, sizeof buffer,
+                      " (au-delà de %.1f mm : le fil risque de ballonner, un tatami convient "
+                      "mieux)",
+                      view.recommendedMaxMm);
+        out += buffer;
+    }
+    return out;
+}
+
 std::optional<std::vector<std::vector<PointMm>>> previewNodeMove(const document::Project& project,
                                                                  std::uint64_t objectId,
                                                                  const std::vector<NodeRef>& nodes,
                                                                  PointMm deltaMm, bool soft) {
+    if (const auto* satin = satinOf(project, objectId); satin != nullptr) {
+        if (!sameChain(nodes) || !withinBounds(deltaMm) || nodes.front().set > 1) {
+            return std::nullopt;
+        }
+        geometry::Path rails[2] = {satin->rail_a, satin->rail_b};
+        auto& moving = rails[nodes.front().set];
+        for (const auto& n : nodes) {
+            if (n.node >= moving.nodes.size()) {
+                return std::nullopt;
+            }
+            auto& pos = moving.nodes[n.node].pos;
+            pos.x.value += toUm(deltaMm).x.value;
+            pos.y.value += toUm(deltaMm).y.value;
+        }
+        return std::vector<std::vector<PointMm>>{outline(rails[0]), outline(rails[1])};
+    }
     const auto* vector = sourceOf(project, objectId);
     if (vector == nullptr || !sameChain(nodes) || !withinBounds(deltaMm)) {
         return std::nullopt;
@@ -123,6 +205,30 @@ std::optional<std::vector<std::vector<PointMm>>> previewNodeMove(const document:
 
 ServiceResult moveNodes(DocumentSession& session, std::uint64_t objectId,
                         const std::vector<NodeRef>& nodes, PointMm deltaMm, bool soft) {
+    if (const auto* satin = satinOf(session.project(), objectId); satin != nullptr) {
+        if (!sameChain(nodes) || nodes.front().set > 1) {
+            return {false, "Sélectionnez des nœuds d'un même rail."};
+        }
+        if (!withinBounds(deltaMm)) {
+            return {false, "Déplacement hors de la zone de travail."};
+        }
+        const auto& rail = railOf(*satin, nodes.front().set);
+        const Vec2um shift = toUm(deltaMm);
+        auto composite = std::make_unique<commands::CompositeCommand>(
+            nodes.size() == 1 ? "Déplacer un nœud de rail satin" : "Déplacer des nœuds de rail");
+        for (const auto& n : nodes) {
+            if (n.node >= rail.nodes.size()) {
+                return {false, "Nœud inconnu."};
+            }
+            const Vec2um from = rail.nodes[n.node].pos;
+            const Vec2um to{Micrometers{from.x.value + shift.x.value},
+                            Micrometers{from.y.value + shift.y.value}};
+            composite->add(std::make_unique<commands::MoveSatinRailNodeCommand>(
+                ObjectId{objectId}, sideOf(nodes.front().set), n.node, from, to));
+        }
+        session.execute(std::move(composite));
+        return {true, {}};
+    }
     const auto* vector = sourceOf(session.project(), objectId);
     if (vector == nullptr) {
         return {false, "Cet objet n'a pas de contour éditable."};
@@ -159,6 +265,8 @@ std::optional<SegmentHit> nearestSegment(const NodeView& view, PointMm at, doubl
         if (i + 1 < view.nodes.size() && view.nodes[i + 1].ref.set == a.ref.set &&
             view.nodes[i + 1].ref.path == a.ref.path) {
             b = &view.nodes[i + 1];
+        } else if (a.open) {
+            continue; // dernier nœud d'un rail ouvert : pas de segment de retour
         } else {
             std::size_t k = i;
             while (k > 0 && view.nodes[k - 1].ref.set == a.ref.set &&
@@ -188,6 +296,11 @@ std::optional<SegmentHit> nearestSegment(const NodeView& view, PointMm at, doubl
 }
 
 ServiceResult insertNode(DocumentSession& session, std::uint64_t objectId, const SegmentHit& hit) {
+    if (satinOf(session.project(), objectId) != nullptr) {
+        return insertSatinRailNode(session, objectId,
+                                   hit.start.set == 0 ? RailSide::A : RailSide::B, hit.start.node,
+                                   hit.t);
+    }
     const auto* vector = sourceOf(session.project(), objectId);
     if (vector == nullptr) {
         return {false, "Cet objet n'a pas de contour éditable."};

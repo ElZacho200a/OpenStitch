@@ -75,6 +75,7 @@ void PreviewCanvas::clearImage() {
     nodeItems_.clear();
     nodePts_.clear();
     nodeOutline_ = nullptr;
+    nodeGuides_ = nullptr;
     nodeDragIndex_ = -1;
     nodeDragActive_ = false;
     strokeItem_ = nullptr;
@@ -479,6 +480,25 @@ void PreviewCanvas::setNodeOutline(const QVector<QVector<QPointF>>& polylinesPx,
                                           valid ? Qt::SolidLine : Qt::DashLine, 2));
     nodeOutline_->setZValue(16);
     nodeOutline_->setAcceptedMouseButtons(Qt::NoButton);
+}
+
+void PreviewCanvas::setNodeGuides(const QVector<QLineF>& linesPx) {
+    if (nodeGuides_ != nullptr) {
+        scene_->removeItem(nodeGuides_);
+        delete nodeGuides_;
+        nodeGuides_ = nullptr;
+    }
+    if (item_ == nullptr || linesPx.isEmpty()) {
+        return;
+    }
+    QPainterPath path;
+    for (const QLineF& line : linesPx) {
+        path.moveTo(line.p1());
+        path.lineTo(line.p2());
+    }
+    nodeGuides_ = scene_->addPath(path, cosmeticPen(QColor(110, 118, 135, 150), Qt::SolidLine, 1));
+    nodeGuides_->setZValue(15.5);
+    nodeGuides_->setAcceptedMouseButtons(Qt::NoButton);
 }
 
 int PreviewCanvas::nodeAt(const QPoint& viewPos) const {

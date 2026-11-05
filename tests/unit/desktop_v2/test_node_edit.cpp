@@ -7,6 +7,7 @@
 #include "document_session.hpp"
 #include "node_edit.hpp"
 #include "openstitch/project_ops/factory.hpp"
+#include "satin_column.hpp"
 #include "shape_batch.hpp"
 
 using namespace openstitch;
@@ -109,4 +110,79 @@ TEST_CASE("a node can be inserted on a segment without changing the shape", "[de
     REQUIRE(after.has_value());
     CHECK(after->nodes.size() == 5);
     CHECK_FALSE(nearestSegment(*view, {0.0, 50.0}, 1.0).has_value()); // trop loin d'un bord
+}
+
+namespace {
+DocumentSession emptySession() {
+    DocumentSession s;
+    auto created = project_ops::create_empty_project({});
+    REQUIRE(created.has_value());
+    s.replaceProject(std::move(*created), true);
+    return s;
+}
+} // namespace
+
+TEST_CASE("a satin column exposes both rails and moves a rail node in one undo step",
+          "[desktop_v2][nodes][satin]") {
+    auto s = emptySession();
+    const auto made =
+        createSatinColumn(s, {{{0, 0}, {0, 4}}, {{10, 0}, {10, 4}}, {{20, 0}, {20, 4}}});
+    REQUIRE(made.ok);
+    const auto view = nodeView(s.project(), made.objectId);
+    REQUIRE(view.has_value());
+    CHECK(view->satin);
+    CHECK(view->nodes.size() == 6);
+    CHECK(view->outlines.size() == 2);
+    CHECK(view->rungs.size() == 3);
+    CHECK(satinWidthSummary(*view).find("4.0") != std::string::npos);
+
+    const auto depth = s.undoNames().size();
+    const NodeRef a1{0, 0, 1};
+    const NodeRef a2{0, 0, 2};
+    REQUIRE(previewNodeMove(s.project(), made.objectId, {a1, a2}, {0.0, 1.5}, false).has_value());
+    CHECK(s.undoNames().size() == depth); // l'aperçu n'écrit rien
+    REQUIRE(moveNodes(s, made.objectId, {a1, a2}, {0.0, 1.5}, false).ok);
+    CHECK(s.undoNames().size() == depth + 1); // deux nœuds, un seul pas d'annulation
+    const auto moved = nodeView(s.project(), made.objectId);
+    REQUIRE(moved.has_value());
+    CHECK(std::abs(moved->nodes[1].pos.y - (view->nodes[1].pos.y + 1.5)) < 0.01);
+    CHECK(std::abs(moved->nodes[2].pos.y - (view->nodes[2].pos.y + 1.5)) < 0.01);
+    CHECK(std::abs(moved->nodes[0].pos.y - view->nodes[0].pos.y) < 0.01);
+    s.undo();
+    const auto restored = nodeView(s.project(), made.objectId);
+    REQUIRE(restored.has_value());
+    CHECK(std::abs(restored->nodes[1].pos.y - view->nodes[1].pos.y) < 0.01);
+
+    // Deux rails à la fois dans un même geste : refusé (un geste = un rail).
+    CHECK_FALSE(
+        moveNodes(s, made.objectId, {NodeRef{0, 0, 0}, NodeRef{1, 0, 0}}, {1, 1}, false).ok);
+}
+
+TEST_CASE("a node can be inserted on an open rail but not past its last node",
+          "[desktop_v2][nodes][satin]") {
+    auto s = emptySession();
+    const auto made = createSatinColumn(s, {{{0, 0}, {0, 4}}, {{10, 0}, {10, 4}}});
+    REQUIRE(made.ok);
+    const auto view = nodeView(s.project(), made.objectId);
+    REQUIRE(view.has_value());
+    const auto hit = nearestSegment(*view, {5.0, 0.0}, 1.0);
+    REQUIRE(hit.has_value());
+    CHECK(hit->start.set == 0);
+    REQUIRE(insertNode(s, made.objectId, *hit).ok);
+    const auto after = nodeView(s.project(), made.objectId);
+    REQUIRE(after.has_value());
+    CHECK(after->nodes.size() == 5);
+    // Au-delà de l'extrémité d'un rail ouvert, aucun segment « de retour » ne doit être proposé.
+    CHECK_FALSE(nearestSegment(*after, {-6.0, 0.0}, 1.0).has_value());
+}
+
+TEST_CASE("a too wide satin is reported with advice", "[desktop_v2][nodes][satin]") {
+    auto s = emptySession();
+    const auto made = createSatinColumn(s, {{{0, 0}, {0, 14}}, {{10, 0}, {10, 14}}});
+    REQUIRE(made.ok);
+    const auto view = nodeView(s.project(), made.objectId);
+    REQUIRE(view.has_value());
+    const auto summary = satinWidthSummary(*view);
+    CHECK(summary.find("tatami") != std::string::npos);
+    CHECK(satinWidthSummary(NodeView{}).empty()); // pas un satin : rien à dire
 }

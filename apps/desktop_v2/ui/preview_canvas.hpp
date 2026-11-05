@@ -100,6 +100,9 @@ public:
     // quand le déplacement est refusé (tracé rouge pointillé). Liste vide = aucun aperçu.
     void setNodeOutline(const QVector<QVector<QPointF>>& polylinesPx, bool valid);
     [[nodiscard]] bool hasNodeOutline() const { return nodeOutline_ != nullptr; }
+    // Repères discrets (barreaux d'une colonne satin) en pixels de l'image ; liste vide = aucun.
+    void setNodeGuides(const QVector<QLineF>& linesPx);
+    [[nodiscard]] bool hasNodeGuides() const { return nodeGuides_ != nullptr; }
     [[nodiscard]] bool nodeDragging() const { return nodeDragActive_; }
 
 signals:
@@ -169,6 +172,7 @@ private:
     QVector<QGraphicsItem*> nodeItems_;
     QVector<QPointF> nodePts_;
     QGraphicsPathItem* nodeOutline_{nullptr};
+    QGraphicsPathItem* nodeGuides_{nullptr};
     int nodeDragIndex_{-1};
     bool nodeDragActive_{false};
     QPointF nodeDragOrigin_;
