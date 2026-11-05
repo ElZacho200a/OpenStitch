@@ -149,7 +149,6 @@ TEST_CASE("regenerating objects follows the corrected regions and is one undo st
     CHECK(d.session.project().embroidery_objects.size() == objectsBefore);
 }
 
-
 TEST_CASE("recoloring a region is undoable and rejects unchanged or missing colors",
           "[desktop_v2][regions]") {
     Digitized d;
