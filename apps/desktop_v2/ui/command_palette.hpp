@@ -11,6 +11,7 @@
 #include "command_catalog.hpp"
 
 class QLineEdit;
+class QLabel;
 class QListWidget;
 
 namespace openstitch::desktop_v2 {
@@ -38,6 +39,7 @@ private:
 
     std::vector<CommandEntry> entries_;
     QLineEdit* query_;
+    QLabel* hint_;
     QListWidget* list_;
 };
 

@@ -2,6 +2,7 @@
 #include "command_palette.hpp"
 
 #include <QKeyEvent>
+#include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QVBoxLayout>
@@ -16,7 +17,8 @@ QString qs(const std::string& s) {
 } // namespace
 
 CommandPalette::CommandPalette(QWidget* parent)
-    : QDialog(parent), query_(new QLineEdit(this)), list_(new QListWidget(this)) {
+    : QDialog(parent), query_(new QLineEdit(this)), hint_(new QLabel(this)),
+      list_(new QListWidget(this)) {
     setObjectName(QStringLiteral("commandPalette"));
     setWindowTitle(tr("Palette de commandes"));
     setWindowFlag(Qt::FramelessWindowHint, true);
@@ -29,6 +31,11 @@ CommandPalette::CommandPalette(QWidget* parent)
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(6, 6, 6, 6);
     layout->addWidget(query_);
+    hint_->setObjectName(QStringLiteral("paletteHint"));
+    hint_->setWordWrap(true);
+    hint_->setAccessibleName(tr("État de la recherche"));
+    hint_->hide();
+    layout->addWidget(hint_);
     layout->addWidget(list_, 1);
     setFocusProxy(query_);
     query_->installEventFilter(this); // flèches / Entrée / Échap depuis le champ de saisie
@@ -56,13 +63,27 @@ void CommandPalette::refill() {
         }
         auto* item = new QListWidgetItem(text, list_);
         item->setData(kIdRole, qs(e->id));
-        item->setToolTip(qs(e->group));
         if (!e->enabled) {
             item->setFlags(item->flags() & ~Qt::ItemIsEnabled);
+            item->setText(text + tr(" — indisponible"));
+            item->setToolTip(tr("%1 — commande indisponible dans ce contexte").arg(qs(e->group)));
+        } else {
+            item->setToolTip(qs(e->group));
         }
     }
-    if (list_->count() > 0) {
-        list_->setCurrentRow(0);
+    int firstEnabled = -1;
+    for (int row = 0; row < list_->count(); ++row) {
+        if (list_->item(row)->flags() & Qt::ItemIsEnabled) {
+            firstEnabled = row;
+            break;
+        }
+    }
+    list_->setCurrentRow(firstEnabled);
+    hint_->setVisible(firstEnabled < 0);
+    if (list_->count() == 0) {
+        hint_->setText(tr("Aucune commande trouvée. Essayez un autre terme."));
+    } else if (firstEnabled < 0) {
+        hint_->setText(tr("Les commandes trouvées sont indisponibles dans ce contexte."));
     }
 }
 
@@ -92,15 +113,22 @@ bool CommandPalette::eventFilter(QObject* watched, QEvent* event) {
         case Qt::Key_Down:
         case Qt::Key_Up: {
             const int step = key->key() == Qt::Key_Down ? 1 : -1;
+            if (list_->count() == 0) {
+                return true;
+            }
             int row = list_->currentRow();
-            // Saute les lignes désactivées.
+            if (row < 0) {
+                row = step > 0 ? -1 : 0;
+            }
+            // Lignes désactivées ignorées ; si aucune commande n'est exécutable,
+            // la sélection reste vide et Entrée ne fait rien.
             for (int n = 0; n < list_->count(); ++n) {
                 row = (row + step + list_->count()) % list_->count();
                 if (list_->item(row)->flags() & Qt::ItemIsEnabled) {
+                    list_->setCurrentRow(row);
                     break;
                 }
             }
-            list_->setCurrentRow(row);
             return true;
         }
         case Qt::Key_Return:
