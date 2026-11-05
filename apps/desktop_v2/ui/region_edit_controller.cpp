@@ -50,6 +50,8 @@ RegionEditController::RegionEditController(Host host, RegionPanel* panel, QObjec
     });
     connect(panel_, &RegionPanel::mergeColorsRequested, this,
             [this](std::uint64_t target) { (void)mergeSelectedColorInto(target); });
+    connect(panel_, &RegionPanel::fillHolesRequested, this,
+            [this](int px) { (void)fillHoles(px); });
     connect(panel_, &RegionPanel::regenerateRequested, this, [this] { regenerate(); });
 }
 
@@ -255,6 +257,18 @@ bool RegionEditController::cleanIslands(int minPixels) {
     dirty_ = true;
     refresh();
     host_.notice(QObject::tr("Îlots nettoyés. Régénérez les objets pour appliquer."), false);
+    return true;
+}
+
+bool RegionEditController::fillHoles(int maxPixels) {
+    const auto result = fillSmallHoles(host_.session, static_cast<std::size_t>(std::max(1, maxPixels)));
+    if (!result.ok) {
+        host_.notice(QObject::tr("Régions : %1").arg(fromUtf8(result.message)), true);
+        return false;
+    }
+    dirty_ = true;
+    refresh();
+    host_.notice(QObject::tr("Petits trous rebouchés. Régénérez les objets pour appliquer."), false);
     return true;
 }
 
