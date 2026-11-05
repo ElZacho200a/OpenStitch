@@ -2,6 +2,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QColor>
+#include <QDoubleSpinBox>
 #include <QFile>
 #include <QMenu>
 #include <QMenuBar>
@@ -736,6 +737,47 @@ private slots:
         QVERIFY(panel->paramKeys().contains("repeats"));
         w.session().applyBatch(batchSetStitchType({a}, "tatami"), "Type");
         QVERIFY(panel->paramKeys().isEmpty()); // sélection de types mixtes
+    }
+
+    void rapidInspectorNumericChangesMakeOneUndoStep() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        const auto id =
+            *createdObjectId(w.session().applyBatch(batchAddRect({0, 0}, 20, 20), "Rectangle").report);
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        auto* spin = w.inspector()->findChild<QDoubleSpinBox*>("param_row_spacing_mm");
+        QVERIFY(spin != nullptr);
+        const auto beforeUndo = w.session().undoNames().size();
+        const auto beforeRevision = w.session().revision();
+        spin->setValue(0.65);
+        spin->setValue(0.70);
+        spin->setValue(0.75);
+        QCOMPARE(w.session().revision(), beforeRevision);
+        QTRY_COMPARE_WITH_TIMEOUT(w.session().revision(), beforeRevision + 1, 1500);
+        QCOMPARE(w.session().undoNames().size(), beforeUndo + 1);
+        QVERIFY(qAbs(*readParam(w.session().project().embroidery_objects.front(),
+                                "row_spacing_mm") - 0.75) < 0.01);
+        QVERIFY(w.session().undo());
+        QCOMPARE(w.session().undoNames().size(), beforeUndo);
+    }
+
+    void pendingInspectorNumericEditIsDiscardedWhenSelectionChanges() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        const auto a =
+            *createdObjectId(w.session().applyBatch(batchAddRect({-20, 0}, 10, 10), "A").report);
+        const auto b =
+            *createdObjectId(w.session().applyBatch(batchAddRect({20, 0}, 10, 10), "B").report);
+        w.session().selection().replace({{TargetKind::EmbroideryObject, a}});
+        auto* spin = w.inspector()->findChild<QDoubleSpinBox*>("param_row_spacing_mm");
+        QVERIFY(spin != nullptr);
+        const auto beforeRevision = w.session().revision();
+        spin->setValue(0.85);
+        w.session().selection().replace({{TargetKind::EmbroideryObject, b}});
+        QTest::qWait(330);
+        QCOMPARE(w.session().revision(), beforeRevision);
     }
 
     void everyActionDialogYieldsValuesTheCatalogAccepts() {
