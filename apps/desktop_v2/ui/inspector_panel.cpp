@@ -10,6 +10,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QTimer>
 
 #include "inspector_model.hpp"
 #include "param_spec.hpp"
@@ -188,11 +189,33 @@ void InspectorPanel::rebuildParams(const InspectorState& state) {
                 spin->setKeyboardTracking(false);
                 spin->setRange(static_cast<int>(spec.min) - 1, static_cast<int>(spec.max));
                 spin->setSpecialValueText(QStringLiteral("—")); // valeur « mixte » : minimum - 1
-                connect(spin, &QSpinBox::valueChanged, this, [this, key, spin](int v) {
-                    if (!refreshing_ && v >= spin->minimum() + 1) {
-                        applyParam(key, v);
+                // Un glisser sur les flèches ou plusieurs pressions successives forment une
+                // seule intention : on attend la fin de la rafale avant de créer l'annulation.
+                auto* commitTimer = new QTimer(spin);
+                commitTimer->setSingleShot(true);
+                commitTimer->setInterval(220);
+                const auto commit = [this, key, spin, commitTimer] {
+                    if (!commitTimer->isActive() || refreshing_) {
+                        return;
+                    }
+                    commitTimer->stop();
+                    const int value = spin->value();
+                    if (value > spin->minimum()) {
+                        applyParam(key, value);
+                    }
+                };
+                connect(spin, &QSpinBox::valueChanged, spin,
+                        [this, spin, commitTimer](int v) {
+                            if (!refreshing_ && v > spin->minimum()) {
+                                commitTimer->start();
+                            }
+                        });
+                connect(commitTimer, &QTimer::timeout, spin, [this, key, spin] {
+                    if (!refreshing_ && spin->value() > spin->minimum()) {
+                        applyParam(key, spin->value());
                     }
                 });
+                connect(spin, &QSpinBox::editingFinished, spin, commit);
                 editor = spin;
             } else {
                 auto* spin = new QDoubleSpinBox(paramsBox_);
@@ -204,11 +227,31 @@ void InspectorPanel::rebuildParams(const InspectorState& state) {
                 if (!unit.isEmpty()) {
                     spin->setSuffix(QStringLiteral(" ") + unit);
                 }
-                connect(spin, &QDoubleSpinBox::valueChanged, this, [this, key, spin](double v) {
-                    if (!refreshing_ && v > spin->minimum() + 1e-9) {
-                        applyParam(key, v);
+                auto* commitTimer = new QTimer(spin);
+                commitTimer->setSingleShot(true);
+                commitTimer->setInterval(220);
+                const auto commit = [this, key, spin, commitTimer] {
+                    if (!commitTimer->isActive() || refreshing_) {
+                        return;
+                    }
+                    commitTimer->stop();
+                    const double value = spin->value();
+                    if (value > spin->minimum() + 1e-9) {
+                        applyParam(key, value);
+                    }
+                };
+                connect(spin, &QDoubleSpinBox::valueChanged, spin,
+                        [this, spin, commitTimer](double v) {
+                            if (!refreshing_ && v > spin->minimum() + 1e-9) {
+                                commitTimer->start();
+                            }
+                        });
+                connect(commitTimer, &QTimer::timeout, spin, [this, key, spin] {
+                    if (!refreshing_ && spin->value() > spin->minimum() + 1e-9) {
+                        applyParam(key, spin->value());
                     }
                 });
+                connect(spin, &QDoubleSpinBox::editingFinished, spin, commit);
                 editor = spin;
             }
             editor->setObjectName(QStringLiteral("param_") + key);
