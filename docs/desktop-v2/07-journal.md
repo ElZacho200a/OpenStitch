@@ -382,3 +382,7 @@ encore le desktop principal.
 ## 2026-11-05 — Session 1 (suite 27) : finalisation V2, tranche 6 (déformation du tissu)
 
 - `core/fabric_risk` : solveur mécanique 2D du moteur sur la séquence effective, en tâche annulable ; carte RGBA de l'indice de plissement (1 = seuil critique), flèches de déplacement prévu (≤ 12 × 12, amplifiées ×20 à l'écran et annoncées comme telles), verdict chiffré. Le modèle n'est pas calibré : `calibrated` reste faux et le verdict l'écrit explicitement (test dédié). Commande `analysis.fabric` (afficher / masquer), recalcul automatique après modification.
+
+## 2026-11-05 — Session 1 (suite 28) : finalisation V2, tranche 7 (mesures de performance)
+
+- Banc `[.perf]` (1 / 100 / 500 / 1 000 objets) et rapport `10-performances.md`. Résultats Debug : retour visuel local p95 0,02 ms ; gestes ordinaires (+1 objet, déplacer, copie) ≤ 9,3 ms à 1 000 objets ; séquence effective 270 ms et aperçu réaliste 506 ms à 1 000 objets (en tâche de fond) ; ajout d'un lot de 1 000 objets 276 ms sur le fil d'interface (reste à déplacer en tâche). Le plafond de 50 ms du retour local est contrôlé par un test ; rien d'autre n'est affirmé sans mesure.

@@ -39,7 +39,7 @@ automatisé qui l'exerce. Une ligne ne passe à ✅ que si le test existe et pas
 | E | Boîte d'approbation avec rendu avant/après, opérations, mesures et réserves | ✅ (`ApprovalRequest`) | ✅ | ✅ `askAgentApproval` | — | 🟡 réponse imposée en test, rendu des images non vérifié | |
 | E | Chat intégré à V2 (envoyer un message à Claude depuis l'application) | 🟡 V1 : `claude_backend`, `claude_code_process_backend` | — | ⬜ | — | ⬜ | **non fait** : l'agent se branche aujourd'hui via un client MCP externe ; aucun faux dialogue n'a été ajouté |
 | F | Identité visuelle « Atelier » | — | — | 🟡 | — | 🟡 | #262 ouverte : bloque les tests (cf. journal) ; #263 micro-interactions |
-| G | Benchmarks 1 / 100 / 500 / 1 000 objets | — | — | ⬜ | — | ⬜ | aucune mesure à ce jour : à produire avant toute affirmation de performance |
+| G | Benchmarks 1 / 100 / 500 / 1 000 objets | — | — | ✅ | — | ✅ | `test_perf_budget.cpp` (`[.perf]`) + `10-performances.md` : mesures **Debug** ; retour local p95 0,02 ms ; gestes ordinaires ≤ 9 ms à 1 000 objets ; lot de 1 000 objets 276 ms sur le fil d'interface (non corrigé). Release à remesurer |
 
 ## Ce qui reste avant la PR finale
 Voir la colonne « Direct/Testé » : les lignes ⬜ sont du travail restant, pas des promesses.

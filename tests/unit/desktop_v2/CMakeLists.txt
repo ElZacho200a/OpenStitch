@@ -27,6 +27,7 @@ add_executable(test_desktop_v2_core
     test_fade_axis.cpp
     test_path_optimizer.cpp
     test_fabric_risk.cpp
+    test_perf_budget.cpp
     test_density_service.cpp
     test_workflow_guide.cpp
     test_satin_column.cpp
