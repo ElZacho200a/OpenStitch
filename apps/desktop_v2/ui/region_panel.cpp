@@ -83,6 +83,20 @@ RegionPanel::RegionPanel(QWidget* parent) : QWidget(parent) {
     cleanRow->addWidget(minPixels_);
     column->addLayout(cleanRow);
 
+    auto* holesRow = new QHBoxLayout;
+    fillHoles_ = new QPushButton(tr("Boucher les petits trous"), this);
+    fillHoles_->setObjectName(QStringLiteral("regionFillHoles"));
+    fillHoles_->setToolTip(tr("Ne remplit que les trous de fond fermés ; "
+                             "les ouvertures vers le bord restent intactes."));
+    maxHolePixels_ = new QSpinBox(this);
+    maxHolePixels_->setObjectName(QStringLiteral("regionMaxHolePixels"));
+    maxHolePixels_->setRange(1, 100000);
+    maxHolePixels_->setValue(30);
+    maxHolePixels_->setSuffix(tr(" px"));
+    holesRow->addWidget(fillHoles_, 1);
+    holesRow->addWidget(maxHolePixels_);
+    column->addLayout(holesRow);
+
     banner_ = new QLabel(this);
     banner_->setObjectName(QStringLiteral("regionBanner"));
     banner_->setWordWrap(true);
@@ -115,6 +129,8 @@ RegionPanel::RegionPanel(QWidget* parent) : QWidget(parent) {
     });
     connect(clean_, &QPushButton::clicked, this,
             [this] { emit cleanRequested(minPixels_->value()); });
+    connect(fillHoles_, &QPushButton::clicked, this,
+            [this] { emit fillHolesRequested(maxHolePixels_->value()); });
     connect(regenerate_, &QPushButton::clicked, this, &RegionPanel::regenerateRequested);
     setDirty(false);
     updateButtons();
@@ -197,6 +213,7 @@ void RegionPanel::updateButtons() {
     recolor_->setEnabled(has);
     mergeColors_->setEnabled(has && colorTargets_->count() > 0);
     clean_->setEnabled(!busy_ && list_->count() > 0);
+    fillHoles_->setEnabled(!busy_ && list_->count() > 0);
     regenerate_->setEnabled(dirty_ && !busy_);
 }
 
