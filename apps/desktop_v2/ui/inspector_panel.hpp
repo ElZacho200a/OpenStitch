@@ -15,6 +15,7 @@
 #include "inspector_model.hpp"
 
 class QCheckBox;
+class QLineEdit;
 class QGroupBox;
 class QFormLayout;
 class QWidget;
@@ -42,6 +43,12 @@ public:
     [[nodiscard]] QStringList paramKeys() const { return paramKeys_; }
     [[nodiscard]] std::optional<double> paramValue(const QString& key) const;
     [[nodiscard]] bool paramMixed(const QString& key) const;
+    // Recherche et niveaux : les réglages essentiels sont toujours visibles ; les avancés se
+    // révèlent par la case « Réglages avancés » ou dès qu'une recherche les trouve.
+    void setSearch(const QString& text);
+    void setAdvancedShown(bool shown);
+    [[nodiscard]] QStringList visibleParamKeys() const; // clés des réglages actuellement affichés
+    [[nodiscard]] int hiddenAdvancedCount() const { return hiddenAdvanced_; }
 
 signals:
     void refused(const QString& message); // lot refusé par le moteur : document inchangé
@@ -59,6 +66,12 @@ private:
     QCheckBox* locked_;
     QGroupBox* paramsBox_{nullptr};
     QFormLayout* paramsForm_{nullptr};
+    QLineEdit* search_{nullptr};
+    QCheckBox* advanced_{nullptr};
+    QVector<bool> paramAdvanced_; // parallèle à paramKeys_ : réglage avancé ?
+    QStringList paramLabels_;     // parallèle à paramKeys_
+    int hiddenAdvanced_{0};
+    void applyParamFilter();
     QStringList paramKeys_;
     QString paramType_;
     DocumentSession::Token sessionToken_{0};

@@ -17,6 +17,7 @@
 #include "openstitch/commands/command.hpp"
 #include "openstitch/commands/undo_stack.hpp"
 #include "openstitch/document/project.hpp"
+#include "openstitch/project_ops/live_bridge.hpp"
 #include "openstitch/project_ops/operations.hpp"
 #include "selection_model.hpp"
 
@@ -74,6 +75,13 @@ public:
     // Ouverture / numérisation terminée : installe un projet et repart d'un historique vierge
     // (`clean` : le document est considéré comme enregistré).
     void replaceProject(document::Project project, bool clean);
+    // Pont « projet vivant » (ADR 0001) lié à CE projet et à CETTE pile d'annulation : un agent
+    // (MCP) modifie le même document que l'utilisateur, avec le même historique. Créé à la
+    // demande ; renouvelé (nouvelle session) quand le document est remplacé.
+    [[nodiscard]] project_ops::LiveBridge& liveBridge();
+    // À appeler après une modification installée par le pont : révision, sélection et abonnés
+    // suivent comme pour un Annuler / Rétablir.
+    void notifyExternalChange() { changed(ChangeKind::Edited); }
     void markSaved() {
         undo_.markClean();
         notify(ChangeKind::Edited);
@@ -95,6 +103,7 @@ private:
     mutable std::uint64_t cachedRevision_{0};
     std::vector<std::pair<Token, Listener>> listeners_;
     Token nextToken_{1};
+    std::unique_ptr<project_ops::LiveBridge> bridge_;
 };
 
 } // namespace openstitch::desktop_v2

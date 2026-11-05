@@ -56,3 +56,9 @@ desktop en a un (`design_tokens.*`, `app_theme.*`, `ui_icons.*`) qui sera **repr
 
 **Ce qui n'est pas fait** : maquettes de parcours, thème personnalisé, icônes, mode tactile, fenêtres < 1000 px
 (non testées), anglais (aucune chaîne V2 n'est dans `i18n/openstitch_en.ts` : les `tr()` existent mais ne sont pas extraits).
+
+## Thème « Atelier », magnétisme et retours (état de la finalisation)
+
+- **Thème** : jetons clair/sombre (`ui/studio_theme`) appliqués par feuille de style ; le focus clavier est visible ; la bascule clair / sombre / système est immédiate. Les couleurs de fils ne sont jamais décoratives. Le rendu n'a pas été vérifié à l'écran (captures hors police).
+- **Magnétisme** : 6 px de vue convertis en mm selon le zoom, Alt le suspend, repères roses en pointillé ; la valeur validée est celle qui était affichée.
+- **Retours** : 90-200 ms, jamais de recalcul de points ; un aperçu de glisser est de la géométrie pure (nœuds, rails, axe de fondu, courbes). Mesures : `10-performances.md`.

@@ -32,6 +32,14 @@ struct ParamSpec {
     std::string_view options;
 };
 
+// Niveau d'un réglage : les essentiels sont toujours visibles ; les avancés se révèlent à la
+// demande (case « Réglages avancés ») ou par la recherche. Dérivé de la clé, pas stocké par ligne.
+enum class ParamLevel { Essential, Advanced };
+[[nodiscard]] ParamLevel paramLevel(const ParamSpec& spec);
+
+// Vrai si `query` (sans accent ni casse) apparaît dans le libellé ou la clé du réglage.
+[[nodiscard]] bool paramMatches(const ParamSpec& spec, std::string_view query);
+
 // Options d'un réglage de nature Choice : (valeur envoyée au moteur, libellé).
 [[nodiscard]] std::vector<std::pair<std::string, std::string>> paramOptions(const ParamSpec& spec);
 

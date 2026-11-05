@@ -41,6 +41,10 @@ int main(int argc, char** argv) {
         QStringList{QStringLiteral("demo-shapes")},
         QStringLiteral("Recette : dessine un rectangle, une ellipse et un polygone."));
     parser.addOption(demo);
+    QCommandLineOption tool(QStringList{QStringLiteral("tool")},
+                            QStringLiteral("Recette : active l'outil d'identifiant donné."),
+                            QStringLiteral("id"));
+    parser.addOption(tool);
     parser.process(app);
 
     openstitch::desktop_v2::ShellWindow window;
@@ -78,6 +82,10 @@ int main(int argc, char** argv) {
         (void)session.applyBatch(batchAddEllipse({18, 12}, 26, 26), "Ellipse");
         (void)session.applyBatch(
             batchAddPolygon({{-30, -30}, {0, -12}, {30, -30}, {10, -8}, {-10, -8}}), "Polygone");
+    }
+    if (parser.isSet(tool)) {
+        window.waitForIdle();
+        (void)window.runCommand(QStringLiteral("tool.") + parser.value(tool));
     }
     if (parser.isSet(shot)) {
         window.waitForIdle();

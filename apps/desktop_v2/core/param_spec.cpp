@@ -2,8 +2,10 @@
 #include "param_spec.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <iterator>
 #include <numbers>
 
 namespace openstitch::desktop_v2 {
@@ -30,6 +32,29 @@ const std::vector<ParamSpec>& table() {
          "mm"},
         {"tatami", "underlay_edge", "Sous-couche de contour", K::Bool, 0, 1, 1, ""},
         {"tatami", "underlay_parallel", "Sous-couche de rangées", K::Bool, 0, 1, 1, ""},
+
+        // Réglages avancés (clés et plages du registre de champs de `set_params`).
+        {"tatami", "stagger", "Décalage des rangées (motif en quinconce)", K::Integer, 1, 8, 1, ""},
+        {"tatami", "row_end_clip_mm", "Raccourcissement des fins de rangée", K::Number, 0.0, 5.0,
+         0.1, "mm"},
+        {"tatami", "edge_outline", "Contour de bordure", K::Bool, 0, 1, 1, ""},
+        {"directional", "stagger", "Décalage des rangées (motif en quinconce)", K::Integer, 1, 8, 1,
+         ""},
+        {"directional", "spacing_regularity", "Régularité de l'écart", K::Number, 0.0, 1.0, 0.05,
+         ""},
+        {"directional", "edge_weight", "Poids des bords", K::Number, 0.0, 1.0, 0.05, ""},
+        {"directional", "underlay_inset_mm", "Retrait de la sous-couche", K::Number, 0.0, 5.0, 0.1,
+         "mm"},
+        {"directional", "underlay_spacing_mm", "Écart de la sous-couche", K::Number, 0.1, 10.0, 0.1,
+         "mm"},
+        {"directional", "underlay_zigzag", "Sous-couche en zigzag", K::Bool, 0, 1, 1, ""},
+        {"directional", "sector_overlap_mm", "Recouvrement des secteurs", K::Number, 0.0, 1.0, 0.05,
+         "mm"},
+        {"directional", "edge_outline", "Contour de bordure", K::Bool, 0, 1, 1, ""},
+        {"satin", "max_stitch_length_mm", "Longueur maximale d'un point", K::Number, 1.0, 15.0, 0.5,
+         "mm"},
+        {"satin", "max_width_hard_mm", "Largeur au-delà de laquelle la colonne est refusée",
+         K::Number, 1.0, 60.0, 0.5, "mm"},
 
         {"directional", "row_spacing_mm", "Écart entre rangées", K::Number, 0.1, 2.0, 0.05, "mm"},
         {"directional", "stitch_length_mm", "Longueur de point", K::Number, 1.0, 7.0, 0.1, "mm"},
@@ -122,6 +147,54 @@ std::vector<ParamSpec> paramSpecs(std::string_view typeId) {
     return out;
 }
 
+namespace {
+// Minuscules sans accents pour la recherche : « sous-couche » trouve « Sous-couche », « ecart »
+// trouve « Écart ». Couvre les lettres accentuées du français ; le reste est copié tel quel.
+std::string foldForSearch(std::string_view text) {
+    static const std::pair<std::string_view, char> kMap[] = {
+        {"é", 'e'}, {"è", 'e'}, {"ê", 'e'}, {"ë", 'e'}, {"à", 'a'}, {"â", 'a'},
+        {"î", 'i'}, {"ï", 'i'}, {"ô", 'o'}, {"ù", 'u'}, {"û", 'u'}, {"ç", 'c'},
+        {"É", 'e'}, {"È", 'e'}, {"À", 'a'}, {"Ê", 'e'}, {"Ç", 'c'}};
+    std::string out;
+    for (std::size_t i = 0; i < text.size();) {
+        bool mapped = false;
+        for (const auto& [from, to] : kMap) {
+            if (text.compare(i, from.size(), from) == 0) {
+                out.push_back(to);
+                i += from.size();
+                mapped = true;
+                break;
+            }
+        }
+        if (!mapped) {
+            out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(text[i]))));
+            ++i;
+        }
+    }
+    return out;
+}
+} // namespace
+
+ParamLevel paramLevel(const ParamSpec& spec) {
+    static constexpr std::string_view kAdvanced[] = {
+        "underlay_inset_mm", "underlay_spacing_mm", "underlay_zigzag",      "hidden_underpath",
+        "stagger",           "row_end_clip_mm",     "edge_outline",         "spacing_regularity",
+        "edge_weight",       "sector_overlap_mm",   "max_stitch_length_mm", "max_width_hard_mm",
+        "underlay_mode"};
+    return std::find(std::begin(kAdvanced), std::end(kAdvanced), spec.key) != std::end(kAdvanced)
+               ? ParamLevel::Advanced
+               : ParamLevel::Essential;
+}
+
+bool paramMatches(const ParamSpec& spec, std::string_view query) {
+    const std::string needle = foldForSearch(query);
+    if (needle.empty()) {
+        return true;
+    }
+    return foldForSearch(spec.label).find(needle) != std::string::npos ||
+           foldForSearch(spec.key).find(needle) != std::string::npos;
+}
+
 std::optional<double> readParam(const document::EmbroideryObject& o, std::string_view key) {
     using namespace document;
     const auto b2d = [](bool v) { return v ? 1.0 : 0.0; };
@@ -158,6 +231,12 @@ std::optional<double> readParam(const document::EmbroideryObject& o, std::string
             return mm(t->underlay_spacing);
         if (key == "hidden_underpath")
             return b2d(t->hidden_underpath);
+        if (key == "stagger")
+            return static_cast<double>(t->stagger);
+        if (key == "row_end_clip_mm")
+            return mm(t->row_end_clip);
+        if (key == "edge_outline")
+            return b2d(t->edge_outline);
     } else if (const auto* d = std::get_if<DirectionalFillParams>(&o.params)) {
         if (key == "row_spacing_mm")
             return mm(d->row_spacing);
@@ -177,6 +256,22 @@ std::optional<double> readParam(const document::EmbroideryObject& o, std::string
             return b2d(d->underlay_parallel);
         if (key == "hidden_underpath")
             return b2d(d->hidden_underpath);
+        if (key == "stagger")
+            return static_cast<double>(d->stagger);
+        if (key == "spacing_regularity")
+            return d->spacing_regularity;
+        if (key == "edge_weight")
+            return d->edge_weight;
+        if (key == "underlay_inset_mm")
+            return mm(d->underlay_inset);
+        if (key == "underlay_spacing_mm")
+            return mm(d->underlay_spacing);
+        if (key == "underlay_zigzag")
+            return b2d(d->underlay_zigzag);
+        if (key == "sector_overlap_mm")
+            return mm(d->sector_overlap);
+        if (key == "edge_outline")
+            return b2d(d->edge_outline);
     } else if (const auto* s = std::get_if<SatinParams>(&o.params)) {
         if (key == "density_mm")
             return mm(s->density);
@@ -194,6 +289,10 @@ std::optional<double> readParam(const document::EmbroideryObject& o, std::string
             return static_cast<double>(s->underlay_mode);
         if (key == "underlay_zigzag")
             return b2d(s->underlay_zigzag);
+        if (key == "max_stitch_length_mm")
+            return mm(s->max_stitch_length);
+        if (key == "max_width_hard_mm")
+            return mm(s->max_width_hard);
     } else if (const auto* sp = std::get_if<SpiralFillParams>(&o.params)) {
         if (key == "row_spacing_mm")
             return mm(sp->row_spacing);

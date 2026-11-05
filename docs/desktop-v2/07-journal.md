@@ -349,3 +349,97 @@ encore le desktop principal.
 
 - Fusion dans main des PR V2 #253 (protection des documents), #255 (outils lisibles, icônes) et #257 (navigation précise) après résolution de conflits ; #254 et #256 fermées (doublons). Les tests `Ignorer` cliquent désormais le vrai bouton : `QMessageBox::done(Discard)` sans clic renvoie le bouton d'échappement.
 - `core/density_service` : `run_density` (séquence effective → `stitch_analysis::compute_density_map` + zones sur-denses) sur un instantané, en tâche annulable ; image RGBA d'une case par pixel, révision analysée. Interface : commande Analyse › Afficher/Masquer la carte de densité, surimpression non cliquable, recalcul automatique après modification. Catch2 `[density]`, QTest `densityMapOverlaysThePreviewAndFollowsTheDocument`.
+
+## 2026-11-05 — Session 1 (suite 22) : finalisation V2, tranche 1 (nœuds du contour)
+
+- Début de la mission « finalisation V2 » sur une branche unique `feat/desktop-v2-finalisation` ; matrice de suivi factuelle dans `09-matrice-finalisation.md`.
+- `core/node_edit` : poignées des nœuds du contour de l'objet sélectionné, aperçu pur géométrie d'un glisser (aucune régénération de points), déplacement validé en UNE commande (`TransformNodesCommand`, refus si le contour se croiserait), insertion exacte par double-clic (`InsertNodeCommand`), service de remodelage de segment. Outil « Nœuds du contour » (B) avec poignées carrées, contour d'aperçu (rouge pointillé si refusé), Échap pour annuler. Catch2 `[nodes]` (5 cas), QTest `nodeToolDragsInsertsAndUndoesThroughTheCanvas` et `escapeCancelsANodeDragWithoutChangingTheDocument`.
+- Constat d'intégration : un build incrémental raté (erreur de compilation ignorée) avait fait tester un ancien binaire et simuler des « blocages » ; vérifier `grep ' error '` dans le journal de build avant de conclure. #262 (thème) reste à valider : son blocage s'est reproduit après reconstruction propre.
+
+## 2026-11-05 — Session 1 (suite 23) : finalisation V2, tranche 2 (rails de satin)
+
+- L'outil « Nœuds du contour » gère aussi les colonnes satin : poignées des deux rails (rail A/B), glisser un ou plusieurs nœuds d'un même rail (UNE `CompositeCommand` annulable, aperçu des deux rails), double-clic pour insérer un nœud (`InsertSatinRailNodeCommand`), barreaux dessinés en repères discrets, largeur aux barreaux annoncée avec conseil tatami au-delà de `max_width`. Pas de segment de retour sur un rail ouvert. Limite connue : les barreaux ne suivent pas les rails, la largeur affichée est celle des barreaux stockés.
+## 2026-11-04 — Session 1 (suite 20) : parcours guidé
+
+- Retour utilisateur : « le parcours n'est pas clair ». Ajout d'un écran d'accueil (ouvrir une image ou un projet, projet vierge, projets récents, explication des quatre étapes) affiché tant qu'aucun projet n'est ouvert.
+- `core/workflow_guide` : bandeau Importer › Retoucher › Contrôler › Exporter calculé depuis l'état du document (objets, analyse à jour, erreurs, export à jour) avec un bouton « étape suivante » ; une modification rouvre l'étape de contrôle. Catch2 `[guide]`, QTest `theWelcomePageExplainsTheJourneyAndTheGuideFollowsTheDocument`.
+
+## 2026-11-05 — Session 1 (suite 24) : finalisation V2, tranche 3 (compagnon IA)
+
+- Constat : la PR #252 avait été fusionnée à son premier commit ; l'écran d'accueil et le parcours guidé n'étaient pas dans main. Réintégrés dans cette branche (commit empty de l'installateur ignoré : déjà présent).
+- Pont live pour la V2 : `DocumentSession::liveBridge()` lie le pont au projet ET à la pile d'annulation de l'utilisateur (un seul modèle documentaire, un seul historique) ; `core/live_companion` (journal des demandes, passerelle d'approbation, notification de l'interface après chaque modification d'agent) ; `ui/live_server` (socket locale accessible à l'utilisateur seul, jeton aléatoire, fichier de découverte) ; `ui/companion_panel` (dock « Compagnon IA » : état, mode d'emploi, journal appliqué/refusé, annulation) et boîte d'approbation avant/après. Désactivé au démarrage ; la désactivation invalide les calculs d'agent en cours.
+- Tests : Catch2 `[companion]` (approbation → une étape annulable avec l'historique de l'utilisateur ; refus → document inchangé ; dry-run sans approbation ; remplacement du document → session périmée ; pont fermé) et QTest `agentChangesTheOpenProjectThroughTheLiveBridgeAfterApproval` (vraie socket : mauvais jeton, refus, accord, annulation, désactivation).
+
+## 2026-11-05 — Session 1 (suite 25) : finalisation V2, tranche 4 (axe du fondu)
+
+- `core/fade_axis` + outil « Axe du fondu » (L) : quatre poignées au canevas (début et fin de la transition, déplacement de l'axe, rotation à 90°), aperçu de l'axe pendant le glisser (géométrie pure, aucune régénération de points), Maj = extrémités symétriques, validation en UNE commande (`make_edit_gradient_fill_command`), résumé « Transition de x % à y % de la forme ». La rotation conserve la zone de transition (fraction de la forme), pas la longueur : comportement du moteur, testé. Réutilise le mode canevas des nœuds. Touche L (Maj+F est déjà « cadrer la sélection »).
+
+## 2026-11-05 — Session 1 (suite 26) : finalisation V2, tranche 5 (optimisation avec preuve)
+
+- `core/path_optimizer` : propose un nouvel ordre (4 stratégies, affinage 2-opt optionnel, départ/arrivée du motif) calculé sur une copie, puis MESURE la séquence réelle (`effective_sequence`) avant et après : changements de fil, sauts, coupes, distance à vide entre objets d'après les extrémités réelles, points. Le test vérifie que la séquence obtenue après acceptation correspond aux mesures annoncées. Un compromis (moins de changements de fil mais plus de déplacements) est signalé comme tel et non présenté comme une amélioration. Acceptation = `ReorderEmbroideryCommand`, un pas d'annulation ; proposition périmée refusée (révision).
+- Interface : dock « Optimisation » (stratégie, affinage, mesures avant → après, verdict, Accepter / Refuser), tâche annulable hors fil d'interface, commande `optimize.order`.
+
+## 2026-11-05 — Session 1 (suite 27) : finalisation V2, tranche 6 (déformation du tissu)
+
+- `core/fabric_risk` : solveur mécanique 2D du moteur sur la séquence effective, en tâche annulable ; carte RGBA de l'indice de plissement (1 = seuil critique), flèches de déplacement prévu (≤ 12 × 12, amplifiées ×20 à l'écran et annoncées comme telles), verdict chiffré. Le modèle n'est pas calibré : `calibrated` reste faux et le verdict l'écrit explicitement (test dédié). Commande `analysis.fabric` (afficher / masquer), recalcul automatique après modification.
+
+## 2026-11-05 — Session 1 (suite 28) : finalisation V2, tranche 7 (mesures de performance)
+
+- Banc `[.perf]` (1 / 100 / 500 / 1 000 objets) et rapport `10-performances.md`. Résultats Debug : retour visuel local p95 0,02 ms ; gestes ordinaires (+1 objet, déplacer, copie) ≤ 9,3 ms à 1 000 objets ; séquence effective 270 ms et aperçu réaliste 506 ms à 1 000 objets (en tâche de fond) ; ajout d'un lot de 1 000 objets 276 ms sur le fil d'interface (reste à déplacer en tâche). Le plafond de 50 ms du retour local est contrôlé par un test ; rien d'autre n'est affirmé sans mesure.
+
+## 2026-11-05 — Session 1 (suite 29) : finalisation V2, tranche 8 (import avec segmentation en aperçu)
+
+- Constat : la V2 numérisait toujours avec les réglages par défaut (8 couleurs…), sans aucune interface de réglage. Nouvelle fenêtre d'import : hauteur, nombre de couleurs, plus petite région, lissage, fond, style ; l'image d'origine et la segmentation qui en résultera sont affichées côte à côte (`core/segmentation_preview`, même fonction que la numérisation, tâche annulable, résultat calculé pour d'autres réglages jamais affiché). La validation numérise avec ces réglages. `openImage` accepte désormais des `DigitizeSettings` ; l'option `--image` de la ligne de commande garde le comportement par défaut.
+
+## 2026-11-05 — Session 1 (suite 30) : finalisation V2, tranche 9 (magnétisme)
+
+- `core/snap` : accrochage des bords et du centre de la sélection sur les bords, centres des autres objets et l'axe du motif, avec repères d'alignement ; seuil de 6 pixels de vue converti en mm selon le zoom ; Alt suspend l'accrochage. Le canevas appelle le fournisseur pendant le glisser (retour visuel immédiat, repères roses en pointillé) et la valeur validée est celle qui était affichée (une seule commande de déplacement). Ne touche que le déplacement d'objets pour l'instant.
+
+## 2026-11-05 — Session 1 (suite 31) : finalisation V2, tranche 10 (courbes)
+
+- Commandes « Convertir les contours en courbes » et « Lisser les contours » (une commande annulable pour toute la sélection) ; remodelage direct d'un segment : un appui sur le tracé (hors poignée) saisit le segment de la VRAIE courbe (abscisse sur la cubique, pas sur la corde), aperçu pendant le glisser, refus si le contour se croiserait, nœuds immobiles, un pas d'annulation. Un rectangle n'a que des coins francs (> 60°) : le refus « rien à convertir » est le comportement du moteur et reste affiché tel quel. Les tests utilisent un octogone.
+
+## 2026-11-05 — Session 1 (suite 32) : finalisation V2, tranche 11 (extraction de ShellWindow)
+
+- `ui/node_edit_controller` : l'état et la logique des gestes d'édition directe (poignées, sélection de nœuds, segment saisi, axe de fondu) quittent `ShellWindow` ; le contrôleur ne reçoit qu'un contexte (`Host` : session, canevas, repère, outil actif, cible, message) et passe par les services du cœur. `ui/analysis_overlays` : cartes de densité et de risque du tissu (tâches, révisions, recalcul). Extraction mécanique : aucune ligne de comportement modifiée, les tests existants servent de filet (92 QTest, 179 cas Catch2 verts). `core/` reste indépendant de Qt.
+
+## 2026-11-05 — Session 1 (suite 33) : finalisation V2, tranche 12 (thème Atelier)
+
+- Fusion de la branche du thème « Atelier » (#262) dans la finalisation. Le blocage à 100 % de processeur observé en la testant seule contre l'ancien main ne se reproduit pas sur la branche actuelle : la suite complète (93 QTest) passe en moins de deux minutes. Cause exacte non isolée ; je ne prétends donc pas l'avoir corrigée. #262 devient redondante avec la PR finale.
+
+## 2026-11-05 — Session 1 (suite 34) : finalisation V2, tranche 13 (Plume)
+
+- Outil Plume (`draw.bezier`, P) : `core/pen_shape` construit le contour (nœuds d'angle, nœuds lisses à tangentes symétriques) et crée l'objet vectoriel ET l'objet de broderie en UNE commande (`AddObjectBatchCommand`, mêmes réglages que `add_shape`) ; refus clairs sans trace dans l'historique. Canevas : aperçu élastique avec nœuds et poignées, fermeture par clic sur le premier nœud. Les tests qui prenaient `draw.bezier` comme exemple d'outil non migré utilisent désormais `bucket`.
+
+## 2026-11-05 — Session 1 (suite 35) : finalisation V2, tranche 14 (suppression de nœuds)
+
+- Suppr dans l'outil Nœuds retire les nœuds choisis (jamais l'objet) : simulation sur une copie (3 nœuds minimum pour un contour fermé, aucun croisement introduit), puis UNE commande composite de `RemoveNodeCommand` en ordre décroissant ; annulation exacte de la forme d'origine (testée nœud par nœud). Refusé sur les rails de satin.
+
+## 2026-11-05 — Session 1 (suite 36) : finalisation V2, tranche 15 (Crayon)
+
+- Outil Crayon (`draw.freeform`) : le trait est dédoublonné, refermé, contrôlé (aire, croisements) puis ajusté par `fit_curves` ; la tolérance suit la taille du dessin (2 % de la diagonale, entre 0,3 et 3 mm) et se resserre jusqu'à obtenir au moins quatre nœuds (une courbe fermée à deux nœuds est valide mais difficile à retoucher). Création partagée avec la Plume (`commitShape`, une commande). Premier essai à tolérance fixe (0,3 mm) : 47 nœuds pour 90 points, c'est-à-dire du bruit ajusté ; corrigé.
+
+## 2026-11-05 — Session 1 (suite 37) : finalisation V2, tranche 16 (inspecteur : niveaux et recherche)
+
+- Inspecteur : champ de recherche (sans casse ni accents, sur le libellé et la clé du réglage) et case « Réglages avancés (N) » ; 13 réglages avancés ajoutés à la table `param_spec` avec les clés et plages du registre de champs du moteur, chacun relu (`readParam`) et testé. Les essentiels restent seuls visibles par défaut ; une recherche révèle les avancés qui correspondent. Niveau « expert » non traité.
+- Aussi : test d'identité octet pour octet du fichier machine après enregistrement et réouverture d'un projet numérisé et retouché (puis modification suivie d'une annulation).
+
+## 2026-11-05 — Session 1 (suite 38) : finalisation V2, tranche 17 (poignées de tangentes)
+
+- Les nœuds courbes exposent leurs poignées de tangente (positions absolues) ; l'interface n'affiche que celles des nœuds choisis (cercles + tige), pour ne pas noyer le canevas. Glisser une poignée : aperçu géométrique pur, validation en UNE commande composite (`SetNodeHandleCommand` / `MoveSatinRailHandleCommand`), nœud immobile, poignée opposée d'un nœud lisse gardée colinéaire avec sa longueur. Une poignée tirée sur un rail droit en crée une.
+
+## 2026-11-05 — Session 1 (suite 39) : finalisation V2, tranche 18 (courbe du fondu, compagnon, correctif MSVC)
+
+- Courbe de transition du fondu : cinq courbes (mêmes formules que le moteur, testées monotones de 0 à 1), commandes « Courbe du fondu : … », résumé de transition qui nomme la courbe.
+- Compagnon : bouton « Copier la commande de connexion (Claude Code) » (`claude mcp add openstitch -- <chemin>/mcp/openstitch-mcp --live`, chemin de l'installateur, repli sur le dossier de l'exécutable).
+- **Correctif CI MSVC** : `QPointer<ImportDialog>` sur un type incomplet cassait la cible `openstitch_v2` (main.cpp) alors que les tests compilaient. Leçon : construire AUSSI l'exécutable avant de pousser ; c'est désormais fait à chaque lot.
+
+## 2026-11-05 — Session 1 (suite 40) : retour visuel réel et correctifs d'interface
+
+- **Le retour visuel est possible** : lancer `openstitch_v2 --demo-shapes --screenshot out.png` avec `QT_QPA_PLATFORM=windows` (plateforme native) donne une vraie capture avec polices, thème et fils cousus ; la plateforme `offscreen` des tests, elle, n'a pas de police (d'où les carrés des captures précédentes, que j'avais acceptés sans chercher). Première capture réelle : libellés du rail tronqués (« Recadr…tangle »), largeurs irrégulières, onglets des panneaux de droite écrasés (« C… »). Corrigés : noms courts dans le rail (nom complet en infobulle et dans la barre d'état), largeur régulière, onglets jamais tronqués (défilement). Captures avant/après dans `captures/v2-avant-rail-onglets.png` et `v2-apres-rail-onglets.png`.
+
+## 2026-11-05 — Session 1 (suite 41) : correction de la segmentation après numérisation
+
+- Retour utilisateur : « plus la main sur la segmentation (supprimer / fusionner des régions) ». Nouvel outil **Régions** (X, menu Outils › Corriger la segmentation) : carte des régions à plat sur le motif, clic pour choisir, panneau dédié (liste, Supprimer, Fusionner dans, Nettoyer les îlots, Régénérer).
+- Cœur `region_edit` (sans Qt, 5 cas Catch2) ; contrôleur `region_edit_controller` ; chaque correction = une commande du moteur ; la régénération refait les objets depuis la segmentation corrigée en tâche, refusée si la révision a changé, **une seule étape d'annulation**.
+- Limite : la régénération remplace les objets (retouches manuelles perdues, annulable) ; recoloration de région, fusion de couleurs et frontières non faits.

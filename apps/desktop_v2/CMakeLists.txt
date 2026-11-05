@@ -19,12 +19,22 @@ add_library(openstitch_desktop_v2_core STATIC
     core/transform_batch.cpp
     core/edit_batch.cpp
     core/diagnostics_service.cpp
+    core/live_companion.cpp
+    core/fade_axis.cpp
+    core/path_optimizer.cpp
+    core/fabric_risk.cpp
+    core/segmentation_preview.cpp
+    core/snap.cpp
+    core/region_edit.cpp
+    core/pen_shape.cpp
+    core/node_edit.cpp
     core/density_service.cpp
     core/param_spec.cpp
     core/action_catalog.cpp
     core/view_tools.cpp
     core/document_services.cpp
     core/thread_plan.cpp
+    core/workflow_guide.cpp
     core/fade_service.cpp
     core/workspace_state.cpp
     core/arrange_batch.cpp
@@ -42,14 +52,14 @@ target_compile_definitions(openstitch_desktop_v2_core PRIVATE
 target_link_libraries(openstitch_desktop_v2_core
     PUBLIC openstitch::core openstitch::document openstitch::commands openstitch::project_ops
            openstitch::stitch openstitch::stitch_generation openstitch::stitch_render openstitch::formats openstitch::image
-           openstitch::stitch_analysis openstitch::autodigitize openstitch::segmentation openstitch::stipple openstitch::project_io
+           openstitch::mcp openstitch::optimization openstitch::stitch_analysis openstitch::autodigitize openstitch::segmentation openstitch::stipple openstitch::project_io
     PRIVATE openstitch::warnings)
 
 # Interface Qt Widgets. Désactivée avec OPENSTITCH_BUILD_DESKTOP=OFF (CI linux-core) ou sans Qt6.
 if(NOT OPENSTITCH_BUILD_DESKTOP)
     return()
 endif()
-find_package(Qt6 COMPONENTS Widgets QUIET)
+find_package(Qt6 COMPONENTS Widgets Network QUIET)
 if(NOT Qt6_FOUND)
     return()
 endif()
@@ -60,6 +70,8 @@ add_library(openstitch_desktop_v2_ui STATIC
     ui/shell_window.hpp
     ui/feedback_cue.cpp
     ui/feedback_cue.hpp
+    ui/studio_theme.cpp
+    ui/studio_theme.hpp
     ui/preview_canvas.cpp
     ui/tool_icon.cpp
     ui/tool_icon.hpp
@@ -67,7 +79,25 @@ add_library(openstitch_desktop_v2_ui STATIC
     ui/calque_panel.cpp
     ui/calque_panel.hpp
     ui/thread_panel.cpp
+    ui/analysis_overlays.cpp
+    ui/analysis_overlays.hpp
+    ui/node_edit_controller.cpp
+    ui/node_edit_controller.hpp
+    ui/region_panel.cpp
+    ui/region_panel.hpp
+    ui/region_edit_controller.cpp
+    ui/region_edit_controller.hpp
+    ui/import_dialog.cpp
+    ui/import_dialog.hpp
+    ui/optimize_panel.cpp
+    ui/optimize_panel.hpp
+    ui/companion_panel.cpp
+    ui/companion_panel.hpp
+    ui/live_server.cpp
+    ui/live_server.hpp
     ui/thread_panel.hpp
+    ui/welcome_page.cpp
+    ui/welcome_page.hpp
     ui/action_dialog.cpp
     ui/action_dialog.hpp
     ui/command_palette.cpp
@@ -80,7 +110,7 @@ add_library(openstitch_desktop_v2_ui STATIC
 add_library(openstitch::desktop_v2_ui ALIAS openstitch_desktop_v2_ui)
 target_include_directories(openstitch_desktop_v2_ui PUBLIC ui)
 target_link_libraries(openstitch_desktop_v2_ui
-    PUBLIC Qt6::Widgets openstitch::desktop_v2_core openstitch::project_io
+    PUBLIC Qt6::Widgets Qt6::Network openstitch::desktop_v2_core openstitch::project_io
     PRIVATE openstitch::warnings)
 
 add_executable(openstitch_v2 WIN32 ui/main.cpp)

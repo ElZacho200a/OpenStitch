@@ -10,6 +10,9 @@
 #include <QPointF>
 #include <QRectF>
 #include <filesystem>
+#include <functional>
+
+#include <QPointer>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -23,16 +26,25 @@
 #include "document_services.hpp"
 #include "document_session.hpp"
 #include "edit_batch.hpp"
+#include "fabric_risk.hpp"
+#include "fade_axis.hpp"
 #include "image_prep.hpp"
+#include "import_dialog.hpp"
+#include "live_companion.hpp"
+#include "node_edit.hpp"
+#include "path_optimizer.hpp"
+#include "pen_shape.hpp"
 #include "point_edit.hpp"
 #include "preview_service.hpp"
 #include "production_sheet.hpp"
 #include "satin_column.hpp"
 #include "shape_batch.hpp"
+#include "snap.hpp"
 #include "source_image_tools.hpp"
 #include "task_manager.hpp"
 #include "tool_registry.hpp"
 #include "view_tools.hpp"
+#include "workflow_guide.hpp"
 #include "workspace_state.hpp"
 
 class QAction;
@@ -45,6 +57,8 @@ class QMenu;
 class QSlider;
 class QDoubleSpinBox;
 class QLabel;
+class QPushButton;
+class QStackedWidget;
 class QProgressBar;
 class QTimer;
 class QToolBar;
@@ -55,10 +69,19 @@ class QTreeWidgetItem;
 namespace openstitch::desktop_v2 {
 
 class PreviewCanvas;
+class WelcomePage;
 class InspectorPanel;
 class DiagnosticsPanel;
 class CalquePanel;
 class ThreadPanel;
+class CompanionPanel;
+class OptimizePanel;
+
+class NodeEditController;
+class RegionEditController;
+class RegionPanel;
+class AnalysisOverlays;
+class LiveServer;
 class FeedbackCue;
 
 class ShellWindow : public QMainWindow {
@@ -69,7 +92,15 @@ public:
 
     // --- Actions de haut niveau (menus, ligne de commande, tests) ---------------------------
     // Numérise une image (tâche d'arrière-plan). `heightMm` <= 0 : résolution native.
-    void openImage(const std::filesystem::path& image, double heightMm);
+    void openImage(const std::filesystem::path& image, double heightMm,
+                   const project_ops::DigitizeSettings& settings = {});
+    // Ouvre la fenêtre d'import (réglages + segmentation en aperçu) puis numérise à la validation.
+    void importImage(const std::filesystem::path& image);
+    // Magnétisme du déplacement d'objets (bords, centres, axe du motif) : actif par défaut,
+    // suspendu tant qu'Alt est maintenu.
+    void setSnapEnabled(bool on) { snapEnabled_ = on; }
+    [[nodiscard]] bool snapEnabled() const { return snapEnabled_; }
+    [[nodiscard]] ImportDialog* importDialog() const { return importDialog_; }
     void openProject(const std::filesystem::path& osp);
     bool saveProject(const std::filesystem::path& osp);
     // Dossier d'état utilisateur : liste des récents + sauvegarde automatique (toutes les
@@ -115,6 +146,14 @@ public:
     bool deleteSelectedPoint();
     bool discardPointEdits();
 
+    // --- Édition de nœuds (outil « node.edit », un seul objet sélectionné) ------------------
+    [[nodiscard]] int nodeHandleCount() const;
+    [[nodiscard]] int selectedNodeCount() const;
+    // Position de la poignée `index` dans le repère des pixels de l'aperçu (tests, accessibilité).
+    [[nodiscard]] QPointF nodeHandlePx(int index) const;
+    [[nodiscard]] int tangentHandleCount() const;
+    [[nodiscard]] QPointF tangentHandlePx(int index) const;
+
     // Préréglages de points : enregistrés dans le projet (.osp), appliqués à la sélection.
     bool savePresetNamed(const QString& name); // réglages de l'objet principal de la sélection
     bool applyPresetIndex(int index);
@@ -158,13 +197,48 @@ public:
     [[nodiscard]] InspectorPanel* inspector() const { return inspector_; }
     [[nodiscard]] DiagnosticsPanel* diagnostics() const { return diagnostics_; }
     [[nodiscard]] CalquePanel* calquePanel() const { return calques_; }
+    // Parcours guidé : écran d'accueil sans projet, bandeau d'étapes avec projet.
+    [[nodiscard]] WelcomePage* welcomePage() const { return welcome_; }
+    [[nodiscard]] bool welcomeVisible() const;
+    [[nodiscard]] QString guideHeadline() const;
+    [[nodiscard]] int guideCurrentStep() const { return guide_.currentIndex; }
+    [[nodiscard]] NextAction guideNext() const { return guide_.next; }
+    bool runGuideNext(); // vrai si une action a été lancée
     [[nodiscard]] ThreadPanel* threadPanel() const { return threads_; }
+
+    // --- Compagnon IA : pont « projet vivant » (un agent MCP modifie CE document) -------------
+    // Désactivé au démarrage ; activé par l'utilisateur seul. Chaque modification d'agent exige
+    // son approbation et forme UNE étape de l'historique d'annulation de l'utilisateur.
+    bool setLiveBridgeEnabled(bool on, QString* error = nullptr);
+    [[nodiscard]] bool liveBridgeEnabled() const;
+    [[nodiscard]] QString liveEndpoint() const;
+    [[nodiscard]] std::string liveToken() const;
+    [[nodiscard]] CompanionPanel* companionPanel() const { return companionPanel_; }
+
+    // --- Optimisation de l'ordre de couture, avec mesures avant / après ---------------------
+    [[nodiscard]] OptimizePanel* optimizePanel() const { return optimizePanel_; }
+    // Correction de la segmentation après numérisation (outil « Régions », X).
+    [[nodiscard]] RegionPanel* regionPanel() const { return regionPanel_; }
+    [[nodiscard]] RegionEditController* regionController() const { return regions_.get(); }
+
+    // --- Risque de plissement et déformation prévue du tissu (estimation non calibrée) -------
+    [[nodiscard]] bool fabricRiskActive() const;
+    [[nodiscard]] bool fabricRiskShown() const;
+    [[nodiscard]] const std::optional<FabricRisk>& fabricRisk() const;
+    void runOptimization(PathStrategy strategy, bool improve);
+    bool acceptOptimization();
+    void refuseOptimization();
+    [[nodiscard]] LiveCompanion* companion() const { return companion_.get(); }
+    // Dossier du fichier de découverte (défaut : dossier utilisateur de `libs/mcp`) et réponse
+    // d'approbation imposée (tests headless) : sans elle, une boîte de dialogue est affichée.
+    void setLiveDirectory(const std::filesystem::path& dir) { liveDir_ = dir; }
+    void setApprovalOverride(std::function<bool(const mcp::ApprovalRequest&)> fn) {
+        approvalOverride_ = std::move(fn);
+    }
     // Carte de densité (surimpression) : affichée, et zones sur-denses de la dernière analyse.
     [[nodiscard]] bool densityShown() const;
-    [[nodiscard]] bool densityActive() const { return densityActive_; }
-    [[nodiscard]] const std::vector<DensityHotspotInfo>& densityHotspots() const {
-        return densityHotspots_;
-    }
+    [[nodiscard]] bool densityActive() const;
+    [[nodiscard]] const std::vector<DensityHotspotInfo>& densityHotspots() const;
     // Repère mm <-> pixels et index de sélection de l'aperçu affiché (tests, diagnostics).
     [[nodiscard]] const PreviewImage& previewFrame() const { return frame_; }
     // Un point (pixels de l'image d'aperçu) qui appartient à l'objet : pour piloter le canevas en
@@ -198,10 +272,7 @@ private:
     void onCanvasRect(QRectF scenePx, Qt::KeyboardModifiers modifiers);
     void applyToolToCanvas();
     void updateSourceOverlay();
-    void toggleDensity();
-    void requestDensity();
-    void applyDensity(const DensityOverlay& overlay);
-    void hideDensity();
+    void polishDockTabs();
     void updatePointMarkers();
     [[nodiscard]] std::optional<std::uint64_t> pointTarget() const;
     const image::Image* ensureProcessed();
@@ -279,7 +350,36 @@ private:
     QString themeMode_{QStringLiteral("system")};
     DiagnosticsPanel* diagnostics_{nullptr};
     CalquePanel* calques_{nullptr};
+    WelcomePage* welcome_{nullptr};
+    QStackedWidget* stack_{nullptr};
+    QWidget* guideStrip_{nullptr};
+    QLabel* guideSteps_{nullptr};
+    QLabel* guideHeadline_{nullptr};
+    QPushButton* guideNext_{nullptr};
+    Guide guide_;
+    std::optional<std::uint64_t> analysedRevision_;
+    std::optional<std::uint64_t> exportedRevision_;
+    int analysisErrors_{0};
+    void buildCentral();
+    void updateGuide();
     ThreadPanel* threads_{nullptr};
+    CompanionPanel* companionPanel_{nullptr};
+    OptimizePanel* optimizePanel_{nullptr};
+    QPointer<ImportDialog> importDialog_;
+    std::unique_ptr<NodeEditController> nodes_;
+    std::unique_ptr<RegionEditController> regions_;
+    RegionPanel* regionPanel_{nullptr};
+    project_ops::DigitizeSettings lastDigitizeSettings_; // réglages de la dernière numérisation
+    std::unique_ptr<AnalysisOverlays> overlays_;
+    std::uint64_t importPreviewTask_{0};
+    bool snapEnabled_{true};
+    QPointF snapDelta(QPointF deltaPx);
+    std::optional<PathProposal> proposal_;
+    std::uint64_t optimizeTask_{0};
+    std::unique_ptr<LiveCompanion> companion_;
+    std::unique_ptr<LiveServer> liveServer_;
+    std::filesystem::path liveDir_;
+    std::function<bool(const mcp::ApprovalRequest&)> approvalOverride_;
     QMenu* presetMenu_{nullptr};
     QDockWidget* docDock_{nullptr};
     QDockWidget* diagDock_{nullptr};
@@ -292,10 +392,6 @@ private:
     TaskId documentLoadTask_{0};
     std::uint64_t loadGeneration_{0};
     std::uint64_t previewRevision_{0};
-    bool densityActive_{false};
-    std::uint64_t densityRevision_{0}; // révision de la carte affichée ; 0 = aucune
-    std::uint64_t densityTask_{0};
-    std::vector<DensityHotspotInfo> densityHotspots_;
     bool previewShown_{false};
     bool documentOpen_{false}; // un projet est ouvert (même vide) : l'aperçu montre son cadre
     std::filesystem::path currentPath_;

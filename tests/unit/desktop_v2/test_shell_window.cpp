@@ -2,14 +2,19 @@
 #include <QAbstractButton>
 #include <QAction>
 #include <QApplication>
+#include <QClipboard>
 #include <QColor>
 #include <QDoubleSpinBox>
 #include <QFile>
+#include <QGuiApplication>
 #include <QLabel>
 #include <QListWidget>
+#include <QLocalSocket>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QPushButton>
+#include <QRegularExpression>
 #include <QScrollBar>
 #include <QTemporaryDir>
 #include <QTest>
@@ -18,21 +23,33 @@
 #include <QTreeWidget>
 #include <QWheelEvent>
 #include <filesystem>
+#include <nlohmann/json.hpp>
+#include <set>
 
 #include "action_dialog.hpp"
 #include "calque_panel.hpp"
 #include "command_palette.hpp"
+#include "companion_panel.hpp"
 #include "diagnostics_panel.hpp"
+#include "digitize_pipeline.hpp"
+#include "fade_service.hpp"
 #include "feedback_cue.hpp"
+#include "import_dialog.hpp"
 #include "inspector_model.hpp"
 #include "inspector_panel.hpp"
+#include "optimize_panel.hpp"
 #include "param_spec.hpp"
 #include "point_edit.hpp"
 #include "preview_canvas.hpp"
+#include "region_edit.hpp"
+#include "region_edit_controller.hpp"
+#include "region_panel.hpp"
 #include "satin_column.hpp"
 #include "shell_window.hpp"
 #include "source_image_tools.hpp"
+#include "studio_theme.hpp"
 #include "thread_panel.hpp"
+#include "transform_batch.hpp"
 #include <array>
 
 using namespace openstitch::desktop_v2;
@@ -109,6 +126,24 @@ private slots:
         reopened.setStateDirectory(path);
         QVERIFY(reopened.findChild<FeedbackCue*>()->reducedMotion());
         QVERIFY(reopened.findChild<QAction*>("reduceMotion")->isChecked());
+    }
+
+    void studioThemeUsesAccessibleFocusAndPreservesModeSwitching() {
+        const auto dark = studioColors(StudioScheme::Dark);
+        const auto light = studioColors(StudioScheme::Light);
+        QVERIFY(dark.background != light.background);
+        QVERIFY(dark.accent != light.accent);
+        QVERIFY(studioStyleSheet(StudioScheme::Dark).contains(dark.accent));
+        QVERIFY(studioStyleSheet(StudioScheme::Light).contains(light.accent));
+        QVERIFY(studioStyleSheet(StudioScheme::Dark).contains("QToolButton:focus"));
+        ShellWindow w;
+        w.setThemeMode("dark");
+        QCOMPARE(w.themeMode(), QString("dark"));
+        QVERIFY(qApp->styleSheet().contains(dark.background));
+        w.setThemeMode("light");
+        QVERIFY(qApp->styleSheet().contains(light.background));
+        w.setThemeMode("system");
+        QCOMPARE(w.themeMode(), QString("system"));
     }
 
     void emptyShellHasNoObjectsAndNoPreview() {
@@ -195,7 +230,7 @@ private slots:
                 QVERIFY(a->toolTip().contains("pas encore migré"));
             }
         }
-        QCOMPARE(enabled, 9); // …, Pipette, Couteau, Zones de détail
+        QCOMPARE(enabled, 14); // …, Pipette, Couteau, Zones de détail, Nœuds
         QVERIFY(disabled > 0);
     }
 
@@ -478,14 +513,14 @@ private slots:
             return false;
         };
         QVERIFY(has("file.open") && has("edit.undo") && has("workspace.produce"));
-        // Les 21 outils du registre sont tous atteignables par la palette.
+        // Les 22 outils du registre sont tous atteignables par la palette.
         int tools = 0;
         for (const auto& e : entries) {
             tools += e.id.rfind("tool.", 0) == 0 ? 1 : 0;
         }
-        QCOMPARE(tools, 21);
+        QCOMPARE(tools, 24);
         // Un outil non migré est listé mais refusé, sans effet de bord.
-        QVERIFY(!w.runCommand("tool.draw.bezier"));
+        QVERIFY(!w.runCommand("tool.bucket"));
         QCOMPARE(w.activeToolId(), QString("select"));
         QVERIFY(!w.runCommand("nope"));
         // Sans document, enregistrer / exporter / annuler sont désactivés.
@@ -522,7 +557,7 @@ private slots:
         QCOMPARE(w.workspace(), Workspace::Digitize);
 
         // Une commande désactivée ne se valide pas.
-        palette.setQuery("plume");
+        palette.setQuery("peinture");
         QCOMPARE(palette.visibleIds().size(), 1);
         QVERIFY(!palette.activateCurrent());
     }
@@ -673,7 +708,7 @@ private slots:
         QVERIFY(enabled("file.save"));
         QVERIFY(!enabled("file.export")); // rien à exporter
         QVERIFY(enabled("tool.draw.rectangle"));
-        QVERIFY(!enabled("tool.draw.bezier")); // pas encore migré
+        QVERIFY(!enabled("tool.bucket")); // pas encore migré
     }
 
     void draggingAnObjectMovesTheSelectionInOneUndoStep() {
@@ -1075,9 +1110,12 @@ private slots:
         QTest::mouseMove(canvas->viewport(), (a + b) / 2);
         QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, b);
         QVERIFY(canvas->hasMeasure());
-        QVERIFY2(w.lastNotice().contains("30.0") || w.lastNotice().contains("30,0") ||
-                     w.lastNotice().contains("29.9") || w.lastNotice().contains("30.1"),
-                 qPrintable(w.lastNotice()));
+        // Les pixels entiers arrondissent selon la taille du canevas : tolérance de 0,5 mm.
+        const auto match =
+            QRegularExpression(QStringLiteral("(\\d+)[.,](\\d+) mm")).match(w.lastNotice());
+        QVERIFY2(match.hasMatch(), qPrintable(w.lastNotice()));
+        const double measured = (match.captured(1) + "." + match.captured(2)).toDouble();
+        QVERIFY2(std::abs(measured - 30.0) < 0.5, qPrintable(w.lastNotice()));
         QVERIFY(w.session().undoNames().empty()); // la règle ne modifie jamais le document
         QVERIFY(w.runCommand("tool.select"));
         QVERIFY(!canvas->hasMeasure()); // changer d'outil efface la mesure
@@ -1264,6 +1302,904 @@ private slots:
         QCOMPARE(panel->rowCount(), 2);
     }
 
+    void nodeToolDragsInsertsAndUndoesThroughTheCanvas() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 20, 10), "Rectangle").committed);
+        w.waitForIdle();
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        QVERIFY(w.runCommand("tool.node.edit"));
+        w.waitForIdle();
+        QCOMPARE(w.nodeHandleCount(), 4);
+        auto* canvas = w.canvas();
+        QCOMPARE(canvas->mode(), PreviewCanvas::Mode::Nodes);
+
+        // Le coin le plus à droite et en haut de l'écran.
+        int corner = 0;
+        for (int i = 1; i < w.nodeHandleCount(); ++i) {
+            const auto a = w.nodeHandlePx(i);
+            const auto b = w.nodeHandlePx(corner);
+            if (a.x() - a.y() > b.x() - b.y()) {
+                corner = i;
+            }
+        }
+        const auto before = nodeView(w.session().project(), id);
+        QVERIFY(before.has_value());
+        const auto depth = w.session().undoNames().size();
+        const QPoint from = canvas->mapFromScene(w.nodeHandlePx(corner));
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, from);
+        QTest::mouseMove(canvas->viewport(), from + QPoint(20, 10));
+        QTest::mouseMove(canvas->viewport(), from + QPoint(40, 20));
+        QVERIFY(canvas->hasNodeOutline());               // aperçu pendant le glisser
+        QCOMPARE(w.session().undoNames().size(), depth); // rien n'est écrit avant le relâchement
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                            from + QPoint(40, 20));
+        w.waitForIdle();
+        QVERIFY(!canvas->hasNodeOutline());
+        QCOMPARE(w.session().undoNames().size(), depth + 1); // un geste = un pas d'annulation
+        const auto after = nodeView(w.session().project(), id);
+        QVERIFY(after.has_value());
+        QVERIFY(after->nodes.size() == 4);
+        double moved = 0.0;
+        for (std::size_t i = 0; i < 4; ++i) {
+            moved += std::abs(after->nodes[i].pos.x - before->nodes[i].pos.x) +
+                     std::abs(after->nodes[i].pos.y - before->nodes[i].pos.y);
+        }
+        QVERIFY2(moved > 0.5, "le contour doit avoir bougé");
+
+        // Double-clic au milieu d'un côté : un nœud de plus, sans changer la forme.
+        const auto mid = nearestSegment(*after, {0.0, 5.0}, 50.0);
+        QVERIFY(mid.has_value());
+        const auto& a = after->nodes[mid->start.node];
+        const auto& b = after->nodes[(mid->start.node + 1) % 4];
+        const QPointF midMm{(a.pos.x + b.pos.x) / 2.0, (a.pos.y + b.pos.y) / 2.0};
+        const QPoint midPx = canvas->mapFromScene(
+            QPointF(w.previewFrame().mmToPxX(midMm.x()), w.previewFrame().mmToPxY(-midMm.y())));
+        QTest::mouseDClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, midPx);
+        w.waitForIdle();
+        QCOMPARE(w.nodeHandleCount(), 5);
+
+        w.session().undo();
+        w.session().undo();
+        w.waitForIdle();
+        const auto restored = nodeView(w.session().project(), id);
+        QVERIFY(restored.has_value());
+        for (std::size_t i = 0; i < 4; ++i) {
+            QVERIFY(std::abs(restored->nodes[i].pos.x - before->nodes[i].pos.x) < 0.01);
+        }
+    }
+
+    void companionPanelCopiesTheClaudeCodeConnectionCommand() {
+        ShellWindow w;
+        w.show();
+        auto* button = w.companionPanel()->findChild<QPushButton*>("companionCopy");
+        QVERIFY(button != nullptr);
+        QGuiApplication::clipboard()->clear();
+        button->click();
+        const QString text = QGuiApplication::clipboard()->text();
+        QVERIFY2(text.startsWith("claude mcp add openstitch --"), qPrintable(text));
+        QVERIFY(text.contains("--live"));
+        QVERIFY(text.contains("openstitch-mcp"));
+        QCOMPARE(text, CompanionPanel::connectionCommand());
+    }
+
+    void agentChangesTheOpenProjectThroughTheLiveBridgeAfterApproval() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 20, 10), "Rectangle").committed);
+        w.waitForIdle();
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        const auto before = w.session().project().embroidery_objects.front().rgb;
+
+        w.setLiveDirectory(std::filesystem::path(dir.path().toStdU16String()));
+        int asked = 0;
+        bool answer = true;
+        w.setApprovalOverride([&](const openstitch::mcp::ApprovalRequest&) {
+            ++asked;
+            return answer;
+        });
+        QVERIFY(!w.liveBridgeEnabled()); // jamais activé sans l'utilisateur
+        QVERIFY(w.runCommand("companion.toggle"));
+        QVERIFY(w.liveBridgeEnabled());
+        QVERIFY(w.companionPanel()->active());
+
+        QLocalSocket socket;
+        socket.connectToServer(w.liveEndpoint());
+        QTRY_VERIFY_WITH_TIMEOUT(socket.state() == QLocalSocket::ConnectedState, 5000);
+
+        const auto send = [&](const std::string& token, const nlohmann::json& args) {
+            nlohmann::json request = {{"v", 1},
+                                      {"id", 1},
+                                      {"token", token},
+                                      {"op", "call"},
+                                      {"tool", "project_apply"},
+                                      {"args", args}};
+            QByteArray line = QByteArray::fromStdString(request.dump());
+            line.append(char(10));
+            socket.write(line);
+            socket.flush();
+        };
+        const nlohmann::json batch = {
+            {"operations", {{{"op", "set_color"}, {"object", id}, {"rgb", "#FF0000"}}}},
+            {"dry_run", false}};
+
+        // Mauvais jeton : refusé, rien ne change.
+        send("faux-jeton", batch);
+        QTRY_VERIFY_WITH_TIMEOUT(socket.canReadLine(), 15000);
+        const auto bad = nlohmann::json::parse(socket.readLine().toStdString());
+        QVERIFY(!bad["ok"].get<bool>());
+        QCOMPARE(asked, 0);
+        QCOMPARE(w.session().project().embroidery_objects.front().rgb, before);
+
+        // Refus de l'utilisateur : le document reste identique.
+        answer = false;
+        send(w.liveToken(), batch);
+        QTRY_VERIFY_WITH_TIMEOUT(socket.canReadLine(), 15000);
+        const auto refused = nlohmann::json::parse(socket.readLine().toStdString());
+        QVERIFY(refused["result"]["isError"].get<bool>());
+        QCOMPARE(w.session().project().embroidery_objects.front().rgb, before);
+
+        // Accord : appliqué, en UNE étape de l'historique de l'utilisateur.
+        answer = true;
+        const auto depth = w.session().undoNames().size();
+        send(w.liveToken(), batch);
+        QTRY_VERIFY_WITH_TIMEOUT(socket.canReadLine(), 15000);
+        const auto ok = nlohmann::json::parse(socket.readLine().toStdString());
+        QVERIFY(!ok["result"]["isError"].get<bool>());
+        const std::array<std::uint8_t, 3> red{255, 0, 0};
+        QCOMPARE(w.session().project().embroidery_objects.front().rgb, red);
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        w.waitForIdle();
+        QVERIFY(w.companionPanel()->eventCount() >= 2); // le journal montre refus et application
+
+        // L'utilisateur annule la modification de l'agent, comme n'importe laquelle des siennes.
+        QVERIFY(w.session().undo());
+        QCOMPARE(w.session().project().embroidery_objects.front().rgb, before);
+
+        // Désactivation : le point d'accès disparaît et un nouvel appel est impossible.
+        QVERIFY(w.runCommand("companion.toggle"));
+        QVERIFY(!w.liveBridgeEnabled());
+        QVERIFY(w.liveEndpoint().isEmpty());
+    }
+
+    void fadeAxisToolMovesAndRotatesTheTransitionThroughTheCanvas() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 40, 20), "Rectangle").committed);
+        w.waitForIdle();
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        QVERIFY(w.runCommand("tool.fade.axis"));
+        w.waitForIdle();
+        QCOMPARE(w.nodeHandleCount(), 0); // pas de fondu : aucune poignée, rien d'inventé
+
+        QVERIFY(createFade(w.session(), id, FadeSettings{{200, 30, 30}, true}).ok);
+        w.waitForIdle();
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        w.waitForIdle();
+        QCOMPARE(w.nodeHandleCount(), 4); // début, fin, déplacement, rotation
+        auto* canvas = w.canvas();
+        QCOMPARE(canvas->mode(), PreviewCanvas::Mode::Nodes);
+        QVERIFY(canvas->hasNodeGuides()); // l'axe est tracé
+
+        const auto before = fadeAxisView(w.session().project(), id);
+        QVERIFY(before.has_value());
+        const auto depth = w.session().undoNames().size();
+        const QPoint from = canvas->mapFromScene(w.nodeHandlePx(2)); // poignée de déplacement
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, from);
+        QTest::mouseMove(canvas->viewport(), from + QPoint(10, 5));
+        QTest::mouseMove(canvas->viewport(), from + QPoint(25, 10));
+        QVERIFY(canvas->hasNodeOutline());               // aperçu de l'axe pendant le glisser
+        QCOMPARE(w.session().undoNames().size(), depth); // rien d'écrit avant le relâchement
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                            from + QPoint(25, 10));
+        w.waitForIdle();
+        QVERIFY(!canvas->hasNodeOutline());
+        QCOMPARE(w.session().undoNames().size(), depth + 1); // un geste = un pas d'annulation
+        const auto after = fadeAxisView(w.session().project(), id);
+        QVERIFY(after.has_value());
+        QVERIFY(std::abs(after->centre.x - before->centre.x) +
+                    std::abs(after->centre.y - before->centre.y) >
+                0.5);
+
+        // Annuler remet l'axe exactement où il était.
+        QVERIFY(w.session().undo());
+        w.waitForIdle();
+        const auto undone = fadeAxisView(w.session().project(), id);
+        QVERIFY(undone.has_value());
+        QVERIFY(std::abs(undone->centre.x - before->centre.x) < 0.01);
+
+        // Échap abandonne un glisser sans rien écrire.
+        const auto revision = w.session().revision();
+        const QPoint start = canvas->mapFromScene(w.nodeHandlePx(1));
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, start);
+        QTest::mouseMove(canvas->viewport(), start + QPoint(-20, 0));
+        QTest::keyClick(canvas, Qt::Key_Escape);
+        QVERIFY(!canvas->hasNodeOutline());
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                            start + QPoint(-20, 0));
+        QCOMPARE(w.session().revision(), revision);
+    }
+
+    void orderOptimisationShowsMeasuresThenAcceptsAsOneUndoStep() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        const double xs[4] = {0.0, 60.0, 30.0, 90.0};
+        const char* colours[4] = {"#FF0000", "#0000FF", "#FF0000", "#0000FF"};
+        for (int i = 0; i < 4; ++i) {
+            QVERIFY(w.session().applyBatch(batchAddRect({xs[i], 0}, 10, 10), "Carré").committed);
+        }
+        for (int i = 0; i < 4; ++i) {
+            const auto id =
+                w.session().project().embroidery_objects[static_cast<std::size_t>(i)].id.value;
+            const std::string batch = "{\"schema\":\"openstitch.batch/1\",\"operations\":[{\"op\":"
+                                      "\"set_color\",\"object\":" +
+                                      std::to_string(id) + ",\"rgb\":\"" + colours[i] + "\"}]}";
+            QVERIFY(w.session().applyBatch(batch, "Couleur").committed);
+        }
+        w.waitForIdle();
+        auto* panel = w.optimizePanel();
+        QVERIFY(panel != nullptr);
+        QVERIFY(!panel->hasProposal());
+        QVERIFY(!panel->canAccept());
+
+        std::vector<std::uint64_t> order;
+        for (const auto& o : w.session().project().embroidery_objects) {
+            order.push_back(o.id.value);
+        }
+        const auto revision = w.session().revision();
+        w.runOptimization(PathStrategy::ByColor, false);
+        w.waitForIdle();
+        QVERIFY(panel->hasProposal());
+        QCOMPARE(panel->metricCount(), 5);
+        QVERIFY2(panel->metricText(0).contains("→"), qPrintable(panel->metricText(0)));
+        QVERIFY(panel->canAccept());
+        QCOMPARE(w.session().revision(), revision); // une proposition ne modifie rien
+
+        // Un document modifié rend la proposition périmée : elle ne peut plus être acceptée.
+        QVERIFY(w.session().applyBatch(batchAddRect({200, 0}, 5, 5), "Autre").committed);
+        w.waitForIdle();
+        QVERIFY(!panel->canAccept());
+        QVERIFY(!w.acceptOptimization());
+
+        // Nouvelle proposition, acceptée : un seul pas d'annulation.
+        w.runOptimization(PathStrategy::ByColor, false);
+        w.waitForIdle();
+        QVERIFY(panel->canAccept());
+        const auto depth = w.session().undoNames().size();
+        QVERIFY(w.acceptOptimization());
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QVERIFY(!panel->hasProposal());
+        QVERIFY(w.session().undo());
+
+        // Refuser ne change rien.
+        w.runOptimization(PathStrategy::ByColor, false);
+        w.waitForIdle();
+        const auto after = w.session().undoNames().size();
+        w.refuseOptimization();
+        QVERIFY(!panel->hasProposal());
+        QCOMPARE(w.session().undoNames().size(), after);
+    }
+
+    void fabricRiskOverlayShowsAnHonestEstimateAndFollowsTheDocument() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 40, 30), "Rectangle").committed);
+        w.waitForIdle();
+        QVERIFY(!w.fabricRiskShown());
+
+        QVERIFY(w.runCommand("analysis.fabric"));
+        w.waitForIdle();
+        QVERIFY(w.fabricRiskActive());
+        QVERIFY(w.fabricRiskShown());
+        QVERIFY(w.canvas()->hasFabricArrows());
+        QVERIFY(w.fabricRisk().has_value());
+        QVERIFY(!w.fabricRisk()->calibrated); // jamais présenté comme une mesure
+        QVERIFY2(w.lastNotice().contains("NON calibrée"), qPrintable(w.lastNotice()));
+        const auto revision = w.session().revision();
+        QCOMPARE(w.fabricRisk()->revision, revision);
+
+        // Une modification recalcule la carte sans action de l'utilisateur.
+        QVERIFY(w.session().applyBatch(batchAddRect({60, 0}, 20, 20), "Autre").committed);
+        w.waitForIdle();
+        QVERIFY(w.fabricRiskShown());
+        QCOMPARE(w.fabricRisk()->revision, w.session().revision());
+
+        QVERIFY(w.runCommand("analysis.fabric")); // second appel : masque
+        QVERIFY(!w.fabricRiskActive());
+        QVERIFY(!w.fabricRiskShown());
+        QVERIFY(!w.canvas()->hasFabricArrows());
+    }
+
+    void importDialogShowsTheSegmentationThenAppliesTheChosenColours() {
+        ShellWindow w;
+        w.show();
+        w.importImage(tentabrode());
+        auto* dialog = w.importDialog();
+        QVERIFY(dialog != nullptr);
+        QVERIFY(dialog->sourceShown()); // l'image d'origine est visible
+        const auto settled = [&] {
+            w.waitForIdle();
+            return dialog->previewShown();
+        };
+        QTRY_VERIFY_WITH_TIMEOUT(settled(), 30000);
+        QVERIFY(dialog->paletteCount() >= 2);
+        const int many = dialog->paletteCount();
+
+        // Moins de couleurs : l'aperçu se recalcule et montre moins de régions.
+        dialog->setColors(3);
+        QVERIFY(!dialog->previewShown()); // l'ancien aperçu n'est plus présenté comme actuel
+        QTRY_VERIFY_WITH_TIMEOUT(settled(), 30000);
+        QVERIFY(dialog->paletteCount() <= many);
+        QVERIFY2(dialog->summary().contains("3"), qPrintable(dialog->summary()));
+        QCOMPARE(dialog->settings().max_colors, 3);
+
+        // Valider numérise avec CES réglages : au plus trois fils différents.
+        dialog->accept();
+        w.waitForIdle();
+        const auto& objects = w.session().project().embroidery_objects;
+        QVERIFY(!objects.empty());
+        std::set<std::array<std::uint8_t, 3>> threads;
+        for (const auto& o : objects) {
+            threads.insert(o.rgb);
+        }
+        QVERIFY2(threads.size() <= 3, qPrintable(QString::number(threads.size())));
+    }
+
+    void draggingAnObjectSnapsOntoANeighbourEdgeAndShowsAGuide() {
+        const auto drag = [](bool snap, double wantedMm) {
+            ShellWindow w;
+            w.show();
+            w.newProject();
+            const auto a = w.session().applyBatch(batchAddRect({0, 0}, 20, 20), "A");
+            const auto b = w.session().applyBatch(batchAddRect({50, 0}, 20, 20), "B");
+            if (!(a.committed && b.committed)) {
+                qFatal("setup");
+            }
+            w.waitForIdle();
+            w.setSnapEnabled(snap);
+            const auto idB = w.session().project().embroidery_objects[1].id.value;
+            const auto idA = w.session().project().embroidery_objects[0].id.value;
+            w.session().selection().replace({{TargetKind::EmbroideryObject, idB}});
+            w.waitForIdle();
+            const auto before = *w.previewFrame().hits->boundsOf(idB);
+            const auto neighbour = *w.previewFrame().hits->boundsOf(idA);
+            auto* canvas = w.canvas();
+            const double viewPerMm = w.previewFrame().px_per_mm * canvas->transform().m11();
+            const QPointF centrePx(w.previewFrame().mmToPxX((before.x0 + before.x1) / 2.0),
+                                   w.previewFrame().mmToPxY((before.y0 + before.y1) / 2.0));
+            const QPoint from = canvas->mapFromScene(centrePx);
+            const QPoint to = from + QPoint(qRound(wantedMm * viewPerMm), 0);
+            QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, from);
+            QTest::mouseMove(canvas->viewport(), from + (to - from) / 2);
+            QTest::mouseMove(canvas->viewport(), to);
+            const bool guide = canvas->hasSnapGuides();
+            QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, to);
+            w.waitForIdle();
+            const auto after = *w.previewFrame().hits->boundsOf(idB);
+            struct Out {
+                double moved;
+                double gap;
+                bool guide;
+            };
+            return Out{after.x0 - before.x0, after.x0 - neighbour.x1, guide};
+        };
+
+        // B est à 30 mm du bord droit de A : un glisser de -29,55 mm (0,45 mm trop court)…
+        const auto snapped = drag(true, -29.55);
+        QVERIFY2(std::abs(snapped.gap) < 0.05, qPrintable(QString::number(snapped.gap)));
+        QVERIFY(snapped.guide); // …s'accroche au bord de A et trace un repère
+        const auto free = drag(false, -29.55);
+        QVERIFY2(std::abs(free.gap) > 0.2, qPrintable(QString::number(free.gap)));
+        QVERIFY(!free.guide);
+    }
+
+    void curvesCanBeCreatedAndBentByDraggingASegment() {
+        ShellWindow w;
+        w.resize(1400, 900);
+        w.show();
+        w.newProject();
+        std::vector<PointMm> octagon;
+        for (int k = 0; k < 8; ++k) {
+            const double a = (22.5 + 45.0 * k) * 3.14159265358979323846 / 180.0;
+            octagon.push_back({10.0 * std::cos(a), 10.0 * std::sin(a)});
+        }
+        QVERIFY(w.session().applyBatch(batchAddPolygon(octagon), "Octogone").committed);
+        w.waitForIdle();
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        w.waitForIdle();
+
+        // Conversion en courbes par la commande : un pas d'annulation, des nœuds à tangentes.
+        const auto depth = w.session().undoNames().size();
+        QVERIFY(w.runCommand("vector.curves"));
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QVERIFY(w.runCommand("tool.node.edit"));
+        w.waitForIdle();
+        QCOMPARE(w.nodeHandleCount(), 8);
+
+        const auto before = nodeView(w.session().project(), id);
+        QVERIFY(before.has_value());
+        auto* canvas = w.canvas();
+        // Milieu du bord supérieur : loin de tout nœud, c'est le segment qui est saisi.
+        const auto& frame = w.previewFrame();
+        const QPointF topPx(frame.mmToPxX(0.0), frame.mmToPxY(-9.24));
+        const QPoint from = canvas->mapFromScene(topPx);
+        for (int i = 0; i < w.nodeHandleCount(); ++i) {
+            QVERIFY((canvas->mapFromScene(w.nodeHandlePx(i)) - from).manhattanLength() > 12);
+        }
+        const auto steps = w.session().undoNames().size();
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, from);
+        QTest::mouseMove(canvas->viewport(), from + QPoint(0, -15));
+        QTest::mouseMove(canvas->viewport(), from + QPoint(0, -35));
+        QVERIFY(canvas->hasNodeOutline());               // aperçu de la courbe pendant le glisser
+        QCOMPARE(w.session().undoNames().size(), steps); // rien d'écrit avant le relâchement
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                            from + QPoint(0, -35));
+        w.waitForIdle();
+        QVERIFY(!canvas->hasNodeOutline());
+        QCOMPARE(w.session().undoNames().size(), steps + 1);
+        const auto after = nodeView(w.session().project(), id);
+        QVERIFY(after.has_value());
+        QCOMPARE(after->nodes.size(), before->nodes.size()); // les nœuds n'ont pas bougé
+        for (std::size_t i = 0; i < before->nodes.size(); ++i) {
+            QVERIFY(std::abs(after->nodes[i].pos.x - before->nodes[i].pos.x) < 0.01);
+            QVERIFY(std::abs(after->nodes[i].pos.y - before->nodes[i].pos.y) < 0.01);
+        }
+        double topBefore = -1e9;
+        double topAfter = -1e9;
+        for (const auto& p : before->outlines.front()) {
+            topBefore = std::max(topBefore, p.y);
+        }
+        for (const auto& p : after->outlines.front()) {
+            topAfter = std::max(topAfter, p.y);
+        }
+        QVERIFY2(topAfter > topBefore + 0.5, "le bord doit être tiré vers le haut");
+        QVERIFY(w.session().undo());
+    }
+
+    void penToolDrawsACurvedShapeInOneUndoStepAndEscapeAbandonsIt() {
+        ShellWindow w;
+        w.resize(1400, 900);
+        w.show();
+        w.newProject();
+        w.waitForIdle();
+        QVERIFY(w.runCommand("tool.draw.bezier"));
+        auto* canvas = w.canvas();
+        QCOMPARE(canvas->mode(), PreviewCanvas::Mode::Pen);
+        const auto before = w.session().undoNames().size();
+
+        const QPoint centre = canvas->viewport()->rect().center();
+        const QPoint a = centre + QPoint(-120, 90);
+        const QPoint b = centre + QPoint(120, 90);
+        const QPoint c = centre + QPoint(0, -110);
+        // Premier nœud : clic-glisser (nœud lisse), les deux autres : simples clics.
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, a);
+        QTest::mouseMove(canvas->viewport(), a + QPoint(15, -25));
+        QTest::mouseMove(canvas->viewport(), a + QPoint(30, -50));
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                            a + QPoint(30, -50));
+        QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, b);
+        QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, c);
+        QCOMPARE(canvas->penNodeCount(), 3);
+        QCOMPARE(w.session().undoNames().size(), before); // rien n'est écrit avant la fin
+        QTest::keyClick(canvas, Qt::Key_Return);
+        w.waitForIdle();
+        QCOMPARE(canvas->penNodeCount(), 0);
+        QCOMPARE(w.session().undoNames().size(), before + 1); // une forme = un pas d'annulation
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(1));
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        const auto view = nodeView(w.session().project(), id);
+        QVERIFY(view.has_value());
+        QCOMPARE(view->nodes.size(), size_t(3));
+        QVERIFY(view->nodes.front().curved); // le nœud glissé porte une poignée
+        QVERIFY(!view->nodes.back().curved); // les clics simples restent des angles
+        QVERIFY(w.session().selection().contains({TargetKind::EmbroideryObject, id}));
+
+        // Échap abandonne une forme en cours sans rien créer.
+        QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, a);
+        QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, b);
+        QCOMPARE(canvas->penNodeCount(), 2);
+        QTest::keyClick(canvas, Qt::Key_Escape);
+        QCOMPARE(canvas->penNodeCount(), 0);
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(1));
+
+        QVERIFY(w.session().undo());
+        QVERIFY(w.session().project().embroidery_objects.empty());
+    }
+
+    void deleteKeyRemovesTheChosenNodesNotTheObject() {
+        ShellWindow w;
+        w.resize(1400, 900);
+        w.show();
+        w.newProject();
+        std::vector<PointMm> octagon;
+        for (int k = 0; k < 8; ++k) {
+            const double a = (22.5 + 45.0 * k) * 3.14159265358979323846 / 180.0;
+            octagon.push_back({10.0 * std::cos(a), 10.0 * std::sin(a)});
+        }
+        QVERIFY(w.session().applyBatch(batchAddPolygon(octagon), "Octogone").committed);
+        w.waitForIdle();
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        QVERIFY(w.runCommand("tool.node.edit"));
+        w.waitForIdle();
+        QCOMPARE(w.nodeHandleCount(), 8);
+
+        auto* canvas = w.canvas();
+        const QPoint at = canvas->mapFromScene(w.nodeHandlePx(3));
+        QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, at);
+        QCOMPARE(w.selectedNodeCount(), 1);
+        const auto depth = w.session().undoNames().size();
+        QVERIFY(w.runCommand("edit.delete"));
+        w.waitForIdle();
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(1)); // l'objet reste
+        QCOMPARE(w.nodeHandleCount(), 7);
+        QVERIFY(w.session().undo());
+        w.waitForIdle();
+        QCOMPARE(w.nodeHandleCount(), 8);
+    }
+
+    void pencilTurnsAHandDrawnLoopIntoASmoothShape() {
+        ShellWindow w;
+        w.resize(1400, 900);
+        w.show();
+        w.newProject();
+        w.waitForIdle();
+        QVERIFY(w.runCommand("tool.draw.freeform"));
+        auto* canvas = w.canvas();
+        QCOMPARE(canvas->mode(), PreviewCanvas::Mode::Stroke);
+        const auto before = w.session().undoNames().size();
+
+        const QPoint centre = canvas->viewport()->rect().center();
+        const double radius = 110.0; // pixels de vue
+        const auto at = [&](int deg) {
+            const double a = deg * 3.14159265358979323846 / 180.0;
+            const double wobble = 2.0 * std::sin(deg * 0.7); // tremblement de la main
+            return centre + QPoint(qRound((radius + wobble) * std::cos(a)),
+                                   qRound((radius + wobble) * std::sin(a)));
+        };
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, at(0));
+        for (int deg = 4; deg < 360; deg += 4) {
+            QTest::mouseMove(canvas->viewport(), at(deg));
+        }
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, at(358));
+        w.waitForIdle();
+        QCOMPARE(w.session().undoNames().size(), before + 1); // un trait = un pas d'annulation
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(1));
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        const auto view = nodeView(w.session().project(), id);
+        QVERIFY(view.has_value());
+        QVERIFY2(view->nodes.size() < 40, qPrintable(QString::number(view->nodes.size())));
+        QVERIFY(view->nodes.size() >= 3);
+        QVERIFY(w.session().selection().contains({TargetKind::EmbroideryObject, id}));
+        QVERIFY(w.session().undo());
+        QVERIFY(w.session().project().embroidery_objects.empty());
+    }
+
+    void savedProjectReopensToTheSameMachineFileByteForByte() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const auto base = std::filesystem::path(dir.path().toStdU16String());
+        const auto exportBytes = [](ShellWindow& window, const std::filesystem::path& file) {
+            openstitch::TaskContext task;
+            const auto stats = export_project_dst(window.session().snapshot(), file, task);
+            if (!stats) {
+                return QByteArray();
+            }
+            QFile f(QString::fromStdU16String(file.u16string()));
+            return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+        };
+
+        QByteArray original;
+        {
+            ShellWindow w;
+            w.openImage(tentabrode(), 80.0);
+            w.waitForIdle();
+            QVERIFY(!w.session().project().embroidery_objects.empty());
+            // Une retouche manuelle avant l'enregistrement : elle aussi doit survivre.
+            const auto id = w.session().project().embroidery_objects.front().id.value;
+            QVERIFY(w.session().applyBatch(batchTranslate({id}, 2.0, -1.0), "Déplacer").committed);
+            original = exportBytes(w, base / "avant.dst");
+            QVERIFY(original.size() > 512);
+            QVERIFY(w.saveProject(base / "projet.osp"));
+        }
+        ShellWindow reopened;
+        reopened.openProject(base / "projet.osp");
+        reopened.waitForIdle();
+        QVERIFY(!reopened.session().project().embroidery_objects.empty());
+        QVERIFY(
+            !reopened.session().dirty()); // un projet qu'on vient d'ouvrir n'est pas « modifié »
+        const QByteArray again = exportBytes(reopened, base / "apres.dst");
+        QCOMPARE(again.size(), original.size());
+        QVERIFY2(again == original, "le fichier machine doit être identique octet pour octet");
+
+        // Modifier puis annuler revient exactement au même fichier.
+        const auto id = reopened.session().project().embroidery_objects.front().id.value;
+        QVERIFY(
+            reopened.session().applyBatch(batchTranslate({id}, 5.0, 5.0), "Déplacer").committed);
+        QVERIFY(exportBytes(reopened, base / "modifie.dst") != original);
+        QVERIFY(reopened.session().undo());
+        QVERIFY(exportBytes(reopened, base / "annule.dst") == original);
+    }
+
+    void inspectorHidesAdvancedSettingsUntilAskedOrSearched() {
+        ShellWindow w;
+        w.resize(1400, 900);
+        w.show();
+        w.newProject();
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 20, 10), "Rectangle").committed);
+        w.waitForIdle();
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        w.waitForIdle();
+        auto* inspector = w.inspector();
+        QVERIFY(inspector != nullptr);
+
+        // Par défaut : les essentiels seulement.
+        auto keys = inspector->visibleParamKeys();
+        QVERIFY(keys.contains("row_spacing_mm"));
+        QVERIFY(keys.contains("angle_deg"));
+        QVERIFY(!keys.contains("stagger"));
+        QVERIFY(!keys.contains("underlay_inset_mm"));
+        QVERIFY(inspector->hiddenAdvancedCount() >= 2);
+
+        // La case « Réglages avancés » les révèle tous.
+        inspector->setAdvancedShown(true);
+        keys = inspector->visibleParamKeys();
+        QVERIFY(keys.contains("stagger"));
+        QVERIFY(keys.contains("underlay_inset_mm"));
+        inspector->setAdvancedShown(false);
+
+        // La recherche (sans accent ni casse) ne montre que ce qui correspond, avancés compris.
+        inspector->setSearch("SOUS-COUCHE");
+        keys = inspector->visibleParamKeys();
+        QVERIFY(keys.contains("underlay_edge"));
+        QVERIFY(keys.contains("underlay_inset_mm")); // avancé, révélé par la recherche
+        QVERIFY(!keys.contains("angle_deg"));
+        inspector->setSearch("ecart");
+        keys = inspector->visibleParamKeys();
+        QVERIFY(keys.contains("row_spacing_mm")); // « Écart entre rangées »
+        QVERIFY(!keys.contains("pull_compensation_mm"));
+        inspector->setSearch("zzz-inconnu");
+        QVERIFY(inspector->visibleParamKeys().isEmpty());
+        inspector->setSearch(QString());
+        QVERIFY(inspector->visibleParamKeys().contains("angle_deg"));
+
+        // Un réglage avancé modifié est bien appliqué (une étape d'annulation) et relu.
+        inspector->setAdvancedShown(true);
+        const auto depth = w.session().undoNames().size();
+        QVERIFY(inspector->applyParam("stagger", 5.0));
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QVERIFY(w.session().undo());
+    }
+
+    void tangentHandlesAppearForChosenCurvedNodesAndBendTheCurve() {
+        ShellWindow w;
+        w.resize(1400, 900);
+        w.show();
+        w.newProject();
+        std::vector<PointMm> octagon;
+        for (int k = 0; k < 8; ++k) {
+            const double a = (22.5 + 45.0 * k) * 3.14159265358979323846 / 180.0;
+            octagon.push_back({10.0 * std::cos(a), 10.0 * std::sin(a)});
+        }
+        QVERIFY(w.session().applyBatch(batchAddPolygon(octagon), "Octogone").committed);
+        w.waitForIdle();
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        QVERIFY(w.runCommand("vector.curves"));
+        QVERIFY(w.runCommand("tool.node.edit"));
+        w.waitForIdle();
+        auto* canvas = w.canvas();
+        QCOMPARE(w.tangentHandleCount(), 0); // aucune poignée tant qu'aucun nœud n'est choisi
+
+        QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                          canvas->mapFromScene(w.nodeHandlePx(2)));
+        QCOMPARE(w.selectedNodeCount(), 1);
+        QCOMPARE(w.tangentHandleCount(), 2); // les deux poignées du nœud lisse choisi
+
+        const auto before = nodeView(w.session().project(), id);
+        QVERIFY(before.has_value());
+        const auto depth = w.session().undoNames().size();
+        const QPoint from = canvas->mapFromScene(w.tangentHandlePx(0));
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, from);
+        QTest::mouseMove(canvas->viewport(), from + QPoint(10, 10));
+        QTest::mouseMove(canvas->viewport(), from + QPoint(25, 20));
+        QVERIFY(canvas->hasNodeOutline()); // aperçu de la courbe pendant le glisser
+        QCOMPARE(w.session().undoNames().size(), depth);
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                            from + QPoint(25, 20));
+        w.waitForIdle();
+        QCOMPARE(w.session().undoNames().size(), depth + 1); // un geste = un pas d'annulation
+        const auto after = nodeView(w.session().project(), id);
+        QVERIFY(after.has_value());
+        QCOMPARE(after->nodes.size(), before->nodes.size());
+        for (std::size_t i = 0; i < before->nodes.size(); ++i) { // les nœuds n'ont pas bougé
+            QVERIFY(std::abs(after->nodes[i].pos.x - before->nodes[i].pos.x) < 0.01);
+        }
+        bool changed = false;
+        for (std::size_t i = 0; i < before->tangents.size(); ++i) {
+            changed = changed ||
+                      std::abs(after->tangents[i].pos.x - before->tangents[i].pos.x) > 0.3 ||
+                      std::abs(after->tangents[i].pos.y - before->tangents[i].pos.y) > 0.3;
+        }
+        QVERIFY2(changed, "au moins une poignée doit avoir bougé");
+        QVERIFY(w.session().undo());
+    }
+
+    void fadeCurveCommandsChangeTheTransitionShapeInOneStep() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 40, 20), "Rectangle").committed);
+        w.waitForIdle();
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        QVERIFY(!w.runCommand("fade.curve.steep")); // pas de fondu : commande indisponible
+        QVERIFY(createFade(w.session(), id, FadeSettings{{200, 30, 30}, true}).ok);
+        w.waitForIdle();
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        const auto depth = w.session().undoNames().size();
+        QVERIFY(w.runCommand("fade.curve.steep"));
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QVERIFY(fadeAxisView(w.session().project(), id)->curve == FadeCurve::Steep);
+        QVERIFY(w.lastNotice().contains("Resserrée"));
+        QVERIFY(w.runCommand("fade.curve.easein"));
+        QVERIFY(fadeAxisView(w.session().project(), id)->curve == FadeCurve::EaseIn);
+        QVERIFY(w.session().undo());
+        QVERIFY(fadeAxisView(w.session().project(), id)->curve == FadeCurve::Steep);
+    }
+
+    void regionToolDeletesMergesAndRegeneratesTheObjects() {
+        ShellWindow w;
+        w.resize(1400, 900);
+        w.show();
+        openstitch::project_ops::DigitizeSettings settings;
+        settings.max_colors = 5;
+        w.openImage(tentabrode(), 60.0, settings);
+        w.waitForIdle();
+        QVERIFY(!w.session().project().embroidery_objects.empty());
+        auto* panel = w.regionPanel();
+        QVERIFY(panel != nullptr);
+        auto* canvas = w.canvas();
+
+        QVERIFY(w.runCommand("tool.region.edit"));
+        w.waitForIdle();
+        QVERIFY(panel->regionCount() >= 3);
+        QVERIFY(canvas->hasRegionOverlay()); // la carte des régions est montrée sur le motif
+
+        // Un clic sur le motif choisit la région dessous.
+        const auto& frame = w.previewFrame();
+        const QPoint centre = canvas->mapFromScene(QPointF(frame.mmToPxX(0.0), frame.mmToPxY(0.0)));
+        QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, centre);
+        if (panel->selectedRegion() == 0) {
+            // Le centre tombe sur le fond : on choisit une région dans la liste à la place.
+            w.regionController()->selectRegion(listRegions(w.session().project()).front().id);
+        }
+        QVERIFY(panel->selectedRegion() != 0);
+        QVERIFY(!panel->regenerateEnabled()); // rien à régénérer tant que rien n'est corrigé
+
+        // Supprimer une région : une étape d'annulation, les objets ne bougent pas encore.
+        std::vector<std::uint64_t> idsBefore;
+        for (const auto& o : w.session().project().embroidery_objects) {
+            idsBefore.push_back(o.id.value);
+        }
+        const int regionsBefore = panel->regionCount();
+        const auto depth = w.session().undoNames().size();
+        auto* del = panel->findChild<QPushButton*>("regionDelete");
+        QVERIFY(del != nullptr && del->isEnabled());
+        del->click();
+        QCOMPARE(panel->regionCount(), regionsBefore - 1);
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        std::vector<std::uint64_t> idsAfterDelete;
+        for (const auto& o : w.session().project().embroidery_objects) {
+            idsAfterDelete.push_back(o.id.value);
+        }
+        QVERIFY(idsAfterDelete == idsBefore); // les objets ne suivent pas encore
+        QVERIFY(panel->regenerateEnabled());  // et le panneau le dit
+
+        // Fusionner deux voisines : une région de moins, encore une étape.
+        w.regionController()->selectRegion(listRegions(w.session().project()).front().id);
+        QVERIFY(panel->neighbourCount() > 0);
+        auto* merge = panel->findChild<QPushButton*>("regionMerge");
+        QVERIFY(merge != nullptr && merge->isEnabled());
+        merge->click();
+        QCOMPARE(panel->regionCount(), regionsBefore - 2);
+        QCOMPARE(w.session().undoNames().size(), depth + 2);
+
+        // Régénérer : les objets sont refaits depuis les régions corrigées, en UNE étape.
+        auto* regen = panel->findChild<QPushButton*>("regionRegenerate");
+        QVERIFY(regen != nullptr && regen->isEnabled());
+        regen->click();
+        w.waitForIdle();
+        QVERIFY(!panel->regenerateEnabled()); // plus rien en attente
+        QCOMPARE(w.session().undoNames().size(), depth + 3);
+        std::vector<std::uint64_t> idsAfterRegen;
+        for (const auto& o : w.session().project().embroidery_objects) {
+            idsAfterRegen.push_back(o.id.value);
+        }
+        QVERIFY(idsAfterRegen != idsBefore); // de nouveaux objets
+        QVERIFY(!idsAfterRegen.empty());
+
+        // Annuler la régénération rend exactement les objets d'avant.
+        QVERIFY(w.session().undo());
+        w.waitForIdle();
+        std::vector<std::uint64_t> idsUndone;
+        for (const auto& o : w.session().project().embroidery_objects) {
+            idsUndone.push_back(o.id.value);
+        }
+        QVERIFY(idsUndone == idsBefore);
+    }
+
+    void nodeToolEditsSatinRailsAndShowsTheRungs() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        const auto made = createSatinColumn(
+            w.session(), {{{-10, -3}, {-10, 3}}, {{0, -3}, {0, 3}}, {{10, -3}, {10, 3}}});
+        QVERIFY(made.ok);
+        w.waitForIdle();
+        w.session().selection().replace({{TargetKind::EmbroideryObject, made.objectId}});
+        QVERIFY(w.runCommand("tool.node.edit"));
+        w.waitForIdle();
+        QCOMPARE(w.nodeHandleCount(), 6); // trois nœuds par rail
+        auto* canvas = w.canvas();
+        QVERIFY(canvas->hasNodeGuides()); // les barreaux sont dessinés
+
+        const auto before = nodeView(w.session().project(), made.objectId);
+        QVERIFY(before.has_value());
+        const auto depth = w.session().undoNames().size();
+        const QPoint from = canvas->mapFromScene(w.nodeHandlePx(1)); // milieu du rail A
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, from);
+        QTest::mouseMove(canvas->viewport(), from + QPoint(0, 15));
+        QTest::mouseMove(canvas->viewport(), from + QPoint(0, 30));
+        QVERIFY(canvas->hasNodeOutline());
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                            from + QPoint(0, 30));
+        w.waitForIdle();
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        const auto after = nodeView(w.session().project(), made.objectId);
+        QVERIFY(after.has_value());
+        QVERIFY(std::abs(after->nodes[1].pos.y - before->nodes[1].pos.y) > 0.5);
+        QVERIFY(std::abs(after->nodes[4].pos.y - before->nodes[4].pos.y) < 0.01); // l'autre rail
+        w.session().undo();
+        w.waitForIdle();
+        QCOMPARE(w.nodeHandleCount(), 6);
+    }
+
+    void escapeCancelsANodeDragWithoutChangingTheDocument() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 20, 10), "Rectangle").committed);
+        w.waitForIdle();
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        QVERIFY(w.runCommand("tool.node.edit"));
+        w.waitForIdle();
+        auto* canvas = w.canvas();
+        const auto revision = w.session().revision();
+        const QPoint from = canvas->mapFromScene(w.nodeHandlePx(0));
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, from);
+        QTest::mouseMove(canvas->viewport(), from + QPoint(30, 30));
+        QVERIFY(canvas->hasNodeOutline());
+        QTest::keyClick(canvas, Qt::Key_Escape);
+        QVERIFY(!canvas->hasNodeOutline());
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                            from + QPoint(30, 30));
+        QCOMPARE(w.session().revision(), revision);
+    }
+
     void densityMapOverlaysThePreviewAndFollowsTheDocument() {
         ShellWindow w;
         w.show();
@@ -1330,6 +2266,37 @@ private slots:
         QVERIFY(panel->renameCurrentColorway("Ete"));
         QVERIFY(panel->removeCurrentColorway());
         QCOMPARE(panel->colorwayCount(), 1);
+    }
+
+    void theWelcomePageExplainsTheJourneyAndTheGuideFollowsTheDocument() {
+        ShellWindow w;
+        w.show();
+        // Sans projet : accueil, pas de bandeau d'étapes.
+        QVERIFY(w.welcomeVisible());
+        QCOMPARE(w.guideNext(), NextAction::OpenImage);
+        QVERIFY(w.findChild<QPushButton*>("welcomeOpen") != nullptr);
+        QVERIFY(w.findChild<QPushButton*>("welcomeNew") != nullptr);
+        QVERIFY(!w.findChild<QWidget*>("guideStrip")->isVisible());
+        // Le bouton « Nouveau projet vierge » ouvre un projet vide : le bandeau apparaît.
+        w.findChild<QPushButton*>("welcomeNew")->click();
+        w.waitForIdle();
+        QVERIFY(!w.welcomeVisible());
+        QVERIFY(w.findChild<QWidget*>("guideStrip")->isVisible());
+        QCOMPARE(w.guideCurrentStep(), 0);
+        QVERIFY(w.guideHeadline().contains("vide"));
+        // Des objets : étape « Retoucher », le bouton principal contrôle le motif.
+        (void)w.session().applyBatch(batchAddRect({-10, 0}, 20, 10), "A");
+        w.waitForIdle();
+        QCOMPARE(w.guideCurrentStep(), 1);
+        QCOMPARE(w.guideNext(), NextAction::Analyse);
+        QVERIFY(w.runGuideNext());
+        w.waitForIdle();
+        // Analyse faite sans erreur : l'export est proposé ; une modification le retire.
+        QCOMPARE(w.guideNext(), NextAction::Export);
+        QCOMPARE(w.guideCurrentStep(), 3);
+        (void)w.session().applyBatch(batchAddEllipse({15, 0}, 12, 12), "B");
+        w.waitForIdle();
+        QCOMPARE(w.guideNext(), NextAction::Analyse);
     }
 
     void hidingACalqueHidesItsObjectsFromThePreview() {

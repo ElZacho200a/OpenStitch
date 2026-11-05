@@ -40,7 +40,12 @@ public:
     // Pick : un clic échantillonne (pipette) ; ni cadre élastique ni déplacement.
     // Cut : glisser = ligne de coupe (couteau), émise par `lineDrawnPx`.
     // Stroke : glisser = trait de pinceau (zones de détail), émis par `strokeDrawnPx`.
-    enum class Mode { Select, Pan, DrawBox, DrawPolygon, Measure, Pick, Cut, Stroke };
+    // Pen : clic = nœud d'angle, clic-glisser = nœud lisse (la poignée suit la souris) ; Entrée,
+    //       double-clic ou clic sur le premier nœud = fermer et terminer, Échap = annuler,
+    //       Retour arrière = retirer le dernier nœud.
+    // Nodes : poignées de nœuds du contour de l'objet sélectionné (glisser = déplacer, double-clic
+    //         sur un segment = insérer un nœud) ; la fenêtre décide quoi en faire.
+    enum class Mode { Select, Pan, DrawBox, DrawPolygon, Measure, Pick, Cut, Stroke, Nodes, Pen };
 
     explicit PreviewCanvas(QWidget* parent = nullptr);
 
@@ -86,6 +91,22 @@ public:
     // Carte de densité (RGBA, un pixel par case) posée sur l'aperçu ; image nulle = aucune.
     void setDensityOverlay(const QImage& image, const QRectF& rectPx);
     [[nodiscard]] bool hasDensityOverlay() const { return densityItem_ != nullptr; }
+    // Risque de plissement du tissu (RGBA, un pixel par élément) et flèches de déplacement prévu
+    // (pixels de l'image, déjà amplifiées par l'appelant) ; image nulle / liste vide = aucun.
+    void setFabricOverlay(const QImage& image, const QRectF& rectPx);
+    void setFabricArrows(const QVector<QLineF>& linesPx);
+    [[nodiscard]] bool hasFabricOverlay() const { return fabricItem_ != nullptr; }
+    // Carte des régions de la segmentation (RGBA, fond transparent) sur l'aperçu ; image nulle =
+    // aucune.
+    void setRegionOverlay(const QImage& image, const QRectF& rectPx);
+    [[nodiscard]] bool hasRegionOverlay() const { return regionItem_ != nullptr; }
+    // Magnétisme du déplacement : reçoit le décalage brut (pixels de l'image) et rend le décalage
+    // à afficher et à valider. Vide = pas de magnétisme.
+    void setMoveSnap(std::function<QPointF(QPointF)> snap) { moveSnap_ = std::move(snap); }
+    // Repères d'alignement (pixels de l'image) tracés pendant un déplacement ; liste vide = aucun.
+    void setSnapGuides(const QVector<QLineF>& linesPx);
+    [[nodiscard]] bool hasSnapGuides() const { return snapGuides_ != nullptr; }
+    [[nodiscard]] bool hasFabricArrows() const { return fabricArrows_ != nullptr; }
     // Poignées des points d'un objet (pixels de l'image) ; `selected` = indice mis en évidence, -1
     // = aucun. Liste vide = aucune poignée.
     void setPointMarkers(const QVector<QPointF>& scenePx, int selected);
@@ -95,6 +116,26 @@ public:
     [[nodiscard]] bool hasHoop() const { return hoopItem_ != nullptr; }
     // Sommets du polygone en cours de tracé (pixels de l'image).
     [[nodiscard]] QVector<QPointF> polygonInProgress() const { return polyPts_; }
+    [[nodiscard]] int penNodeCount() const { return static_cast<int>(penNodes_.size()); }
+    // Poignées de nœuds (pixels de l'image) ; `selected` = indices mis en évidence.
+    // Les poignées d'indice >= `tangentStart` (si >= 0) sont des poignées de tangente Bézier :
+    // dessinées en cercles, saisies comme les nœuds.
+    void setNodeHandles(const QVector<QPointF>& scenePx, const QVector<int>& selected,
+                        int tangentStart = -1);
+    [[nodiscard]] int nodeHandleCount() const { return static_cast<int>(nodePts_.size()); }
+    // Aperçu du contour pendant un glisser (polylignes en pixels de l'image) ; `valid` = false
+    // quand le déplacement est refusé (tracé rouge pointillé). Liste vide = aucun aperçu.
+    void setNodeOutline(const QVector<QVector<QPointF>>& polylinesPx, bool valid);
+    [[nodiscard]] bool hasNodeOutline() const { return nodeOutline_ != nullptr; }
+    // Repères discrets (barreaux d'une colonne satin) en pixels de l'image ; liste vide = aucun.
+    void setNodeGuides(const QVector<QLineF>& linesPx);
+    [[nodiscard]] bool hasNodeGuides() const { return nodeGuides_ != nullptr; }
+    [[nodiscard]] bool nodeDragging() const { return nodeDragActive_; }
+    // Test de saisie d'un segment de courbe (mode Nodes) : si vrai, un appui hors poignée démarre
+    // le remodelage de ce segment (mêmes signaux de glisser que les nœuds).
+    void setSegmentHitTest(std::function<bool(const QPointF&)> test) {
+        segmentHit_ = std::move(test);
+    }
 
 signals:
     // Règle : segment tracé (pixels de l'image).
@@ -121,6 +162,19 @@ signals:
     void scaleDraggedPx(QPointF pivotPx, double factor);
     // Polygone terminé en mode DrawPolygon (au moins 3 sommets).
     void polygonDrawnPx(QVector<QPointF> scenePx);
+    // Forme terminée en mode Pen : position de chaque nœud et poignée sortante (= la position si le
+    // nœud est un angle), en pixels de l'image.
+    void penShapeDrawnPx(QVector<QPointF> positions, QVector<QPointF> handlesOut);
+    // Mode Nodes : poignée `index` pressée (la fenêtre met à jour la sélection de nœuds).
+    void nodePressed(int index, Qt::KeyboardModifiers modifiers);
+    // Glisser d'une poignée : décalage courant puis final, en pixels de l'image ; annulé par Échap.
+    void nodeDragMovedPx(QPointF deltaPx);
+    void nodeDragFinishedPx(QPointF deltaPx);
+    void nodeDragCancelled();
+    // Mode Nodes : un segment (et non un nœud) est saisi en `scenePx`.
+    void segmentPressed(QPointF scenePx);
+    // Double-clic en mode Nodes (insertion d'un nœud sous le curseur).
+    void nodeInsertRequestedPx(QPointF scenePx);
 
 public slots:
     void fitAll();
@@ -139,6 +193,8 @@ protected:
 
 private:
     void updateNavigationCursor();
+    [[nodiscard]] int nodeAt(const QPoint& viewPos) const;
+    void endNodeDrag();
     void updatePolygonItem(const QPointF* cursor);
     void finishPolygon();
     void cancelPolygon();
@@ -150,6 +206,30 @@ private:
     QGraphicsPixmapItem* sourceItem_{nullptr};
     QGraphicsPixmapItem* detailItem_{nullptr};
     QGraphicsPixmapItem* densityItem_{nullptr};
+    QGraphicsPixmapItem* fabricItem_{nullptr};
+    QGraphicsPixmapItem* regionItem_{nullptr};
+    QGraphicsPathItem* snapGuides_{nullptr};
+    std::function<QPointF(QPointF)> moveSnap_;
+    QGraphicsPathItem* fabricArrows_{nullptr};
+    QVector<QGraphicsItem*> nodeItems_;
+    QVector<QPointF> nodePts_;
+    QGraphicsPathItem* nodeOutline_{nullptr};
+    QGraphicsPathItem* nodeGuides_{nullptr};
+    int nodeDragIndex_{-1};
+    struct PenNodePx {
+        QPointF pos;
+        QPointF handle;
+        bool hasHandle{false};
+    };
+    std::vector<PenNodePx> penNodes_;
+    QGraphicsPathItem* penItem_{nullptr};
+    bool penDragging_{false};
+    void updatePenItem(const QPointF* cursor);
+    void finishPen();
+    void cancelPen();
+    std::function<bool(const QPointF&)> segmentHit_;
+    bool nodeDragActive_{false};
+    QPointF nodeDragOrigin_;
     QGraphicsPathItem* strokeItem_{nullptr};
     QVector<QPointF> strokePts_;
     bool stroking_{false};

@@ -1,5 +1,6 @@
 ﻿// SPDX-License-Identifier: Apache-2.0
 #include "shell_window.hpp"
+#include "studio_theme.hpp"
 
 #include <QAction>
 #include <QActionGroup>
@@ -24,10 +25,13 @@
 #include <QPdfWriter>
 #include <QPixmap>
 #include <QProgressBar>
+#include <QPushButton>
 #include <QScrollArea>
 #include <QSettings>
 #include <QSpinBox>
+#include <QStackedWidget>
 #include <QStatusBar>
+#include <QTabBar>
 #include <QTextBrowser>
 #include <QTimer>
 #include <QToolBar>
@@ -41,20 +45,30 @@
 #include "openstitch/commands/placement_ops.hpp"
 
 #include "action_dialog.hpp"
+#include "analysis_overlays.hpp"
 #include "calque_panel.hpp"
 #include "command_palette.hpp"
+#include "companion_panel.hpp"
 #include "diagnostics_panel.hpp"
 #include "feedback_cue.hpp"
+#include "import_dialog.hpp"
 #include "inspector_model.hpp"
 #include "inspector_panel.hpp"
+#include "live_server.hpp"
+#include "node_edit_controller.hpp"
 #include "object_labels.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/project_ops/factory.hpp"
+#include "optimize_panel.hpp"
 #include "preview_canvas.hpp"
 #include "preview_service.hpp"
+#include "region_edit_controller.hpp"
+#include "region_panel.hpp"
+#include "segmentation_preview.hpp"
 #include "thread_panel.hpp"
 #include "tool_icon.hpp"
 #include "transform_batch.hpp"
+#include "welcome_page.hpp"
 #include <QComboBox>
 #include <QGuiApplication>
 #include <QSettings>
@@ -79,7 +93,8 @@ bool isToolImplemented(const std::string& id) {
     return id == "select" || id == "pan" || id == "draw.rectangle" || id == "draw.ellipse" ||
            id == "draw.polygon" || id == "measure" || id == "eyedropper" || id == "knife" ||
            id == "click-to-stitch" || id == "detail-brush" || id == "stitch.points" ||
-           id == "satin.column";
+           id == "satin.column" || id == "node.edit" || id == "fade.axis" || id == "draw.bezier" ||
+           id == "draw.freeform" || id == "region.edit";
 }
 
 constexpr Workspace kWorkspaces[] = {Workspace::Design, Workspace::Digitize, Workspace::Optimize,
@@ -134,7 +149,7 @@ ShellWindow::ShellWindow(QWidget* parent)
 
     canvas_ = new PreviewCanvas(this);
     canvas_->setObjectName(QStringLiteral("previewCanvas"));
-    setCentralWidget(canvas_);
+    buildCentral();
 
     buildMenus();
     buildWorkspaceBar();
@@ -150,6 +165,23 @@ ShellWindow::ShellWindow(QWidget* parent)
         updateSelectionBoxes();
         updatePointMarkers();
     });
+    regions_ = std::make_unique<RegionEditController>(
+        RegionEditController::Host{
+            session_, *canvas_, frame_, tasks_, [this] { return activeTool_; },
+            [this](const QString& message, bool error) { setNotice(message, error); },
+            [this]() -> const image::Image* { return ensureProcessed(); },
+            [this] { return lastDigitizeSettings_; }},
+        regionPanel_, this);
+    overlays_ = std::make_unique<AnalysisOverlays>(AnalysisOverlays::Host{
+        session_, *canvas_, frame_, tasks_,
+        [this](const QString& message, bool error) { setNotice(message, error); }});
+    nodes_ = std::make_unique<NodeEditController>(
+        NodeEditController::Host{
+            session_, *canvas_, frame_, [this] { return activeTool_; },
+            [this] { return documentOpen_; }, [this] { return pointTarget(); },
+            [this](const QString& message, bool error) { setNotice(message, error); }},
+        this);
+    nodes_->connectCanvas();
     connect(canvas_, &PreviewCanvas::clickedPx, this, &ShellWindow::onCanvasClick);
     connect(canvas_, &PreviewCanvas::rectPx, this, &ShellWindow::onCanvasRect);
     connect(canvas_, &PreviewCanvas::boxDrawnPx, this, &ShellWindow::onBoxDrawn);
@@ -162,7 +194,35 @@ ShellWindow::ShellWindow(QWidget* parent)
     connect(canvas_, &PreviewCanvas::moveDraggedPx, this, &ShellWindow::onMoveDragged);
     connect(canvas_, &PreviewCanvas::scaleDraggedPx, this, &ShellWindow::onScaleDragged);
     canvas_->setMoveHitTest([this](const QPointF& p) { return pickAtPx(p).has_value(); });
+    canvas_->setMoveSnap([this](QPointF delta) { return snapDelta(delta); });
     connect(canvas_, &PreviewCanvas::polygonDrawnPx, this, &ShellWindow::onPolygonDrawn);
+    connect(canvas_, &PreviewCanvas::penShapeDrawnPx, this,
+            [this](QVector<QPointF> positions, QVector<QPointF> handles) {
+                if (frame_.px_per_mm <= 0.0) {
+                    return;
+                }
+                const auto toModel = [this](const QPointF& p) {
+                    return screenToModel(frame_.pxToMmX(p.x()), frame_.pxToMmY(p.y()));
+                };
+                std::vector<PenNode> nodes;
+                for (qsizetype i = 0; i < positions.size(); ++i) {
+                    PenNode node;
+                    node.pos = toModel(positions[i]);
+                    if (handles[i] != positions[i]) {
+                        node.handleOut = toModel(handles[i]);
+                    }
+                    nodes.push_back(node);
+                }
+                const auto r = createPenShape(session_, nodes);
+                if (!r.ok) {
+                    setNotice(tr("Plume : %1").arg(fromUtf8(r.message)), true);
+                    return;
+                }
+                session_.selection().replace({{TargetKind::EmbroideryObject, r.objectId}});
+                setNotice(r.curved ? tr("Courbe créée : modifiez-la avec l'outil Nœuds (B).")
+                                   : tr("Forme créée."),
+                          false);
+            });
     applyToolToCanvas();
 
     // Un aperçu par rafale de modifications, pas un par modification (le rendu n'est pas
@@ -181,6 +241,13 @@ ShellWindow::ShellWindow(QWidget* parent)
     pump_->start();
 
     setWorkspace(Workspace::Design);
+    setThemeMode(QStringLiteral("system"));
+    connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this,
+            [this](Qt::ColorScheme) {
+                if (themeMode_ == QLatin1String("system")) {
+                    applyStudioTheme(*qApp, themeMode_);
+                }
+            });
     refreshActionStates();
 }
 
@@ -189,6 +256,10 @@ ShellWindow::~ShellWindow() {
     // on annule les tâches avant que la session (membre) soit détruite.
     pump_->stop();
     previewDebounce_->stop();
+    liveServer_.reset(); // plus aucun agent ne peut atteindre le document
+    if (companion_) {
+        companion_->close();
+    }
     if (autosave_ && !session_.dirty()) {
         autosave_->clear(); // sortie propre : rien à récupérer au prochain démarrage
     }
@@ -332,6 +403,13 @@ void ShellWindow::buildMenus() {
         const QString id = fromUtf8(def.id);
         connect(a, &QAction::triggered, this, [this, id] { runAction(id); });
     }
+    toolsMenu->addSeparator();
+    // Correction de la segmentation après numérisation : supprimer / fusionner des régions, puis
+    // régénérer les objets. Le bouton du rail d'outils est loin en bas : ce menu le rend trouvable.
+    auto* regionsAction = toolsMenu->addAction(tr("Corriger la segmentation (régions)… [X]"));
+    regionsAction->setObjectName(QStringLiteral("action_region_edit"));
+    connect(regionsAction, &QAction::triggered, this,
+            [this] { (void)runCommand(QStringLiteral("tool.region.edit")); });
     auto* imageMenu = menuBar()->addMenu(tr("&Image"));
     const auto addPrep = [this, imageMenu](const QString& text, const char* id) {
         auto* a = imageMenu->addAction(text);
@@ -535,7 +613,40 @@ void ShellWindow::buildInspector() {
     tabifyDockWidget(calqueDock, threadDock);
     connect(threads_, &ThreadPanel::refused, this,
             [this](const QString& message) { setNotice(message, true); });
+    auto* optimizeDock = new QDockWidget(tr("Optimisation"), this);
+    optimizeDock->setObjectName(QStringLiteral("optimizeDock"));
+    optimizePanel_ = new OptimizePanel(optimizeDock);
+    optimizeDock->setWidget(optimizePanel_);
+    addDockWidget(Qt::RightDockWidgetArea, optimizeDock);
+    tabifyDockWidget(calqueDock, optimizeDock);
+    connect(optimizePanel_, &OptimizePanel::proposeRequested, this,
+            [this](PathStrategy strategy, bool improve) { runOptimization(strategy, improve); });
+    connect(optimizePanel_, &OptimizePanel::acceptRequested, this,
+            [this] { (void)acceptOptimization(); });
+    connect(optimizePanel_, &OptimizePanel::refuseRequested, this,
+            [this] { refuseOptimization(); });
+    auto* regionDock = new QDockWidget(tr("Régions"), this);
+    regionDock->setObjectName(QStringLiteral("regionDock"));
+    regionPanel_ = new RegionPanel(regionDock);
+    regionDock->setWidget(regionPanel_);
+    addDockWidget(Qt::RightDockWidgetArea, regionDock);
+    tabifyDockWidget(calqueDock, regionDock);
+    auto* companionDock = new QDockWidget(tr("Compagnon IA"), this);
+    companionDock->setObjectName(QStringLiteral("companionDock"));
+    companionPanel_ = new CompanionPanel(companionDock);
+    companionDock->setWidget(companionPanel_);
+    addDockWidget(Qt::RightDockWidgetArea, companionDock);
+    tabifyDockWidget(calqueDock, companionDock);
+    connect(companionPanel_, &CompanionPanel::toggleRequested, this, [this](bool enable) {
+        QString error;
+        if (!setLiveBridgeEnabled(enable, &error)) {
+            companionPanel_->setError(error);
+            setNotice(tr("Compagnon IA : %1").arg(error), true);
+        }
+    });
+    connect(companionPanel_, &CompanionPanel::undoRequested, this, [this] { session_.undo(); });
     docDock_->raise();
+    polishDockTabs();
     connect(diagnostics_, &DiagnosticsPanel::analyseRequested, this, &ShellWindow::runDiagnostics);
     connect(diagnostics_, &DiagnosticsPanel::findingActivated, this,
             &ShellWindow::onFindingActivated);
@@ -735,9 +846,31 @@ void ShellWindow::rebuildToolRail() {
         const QString label = fromUtf8(tool->label);
         // Les libellés sont visibles en mode étendu, et les pictogrammes restent présents
         // en mode compact. Les raccourcis sont des commandes, jamais les seuls noms d'outils.
+        // Nom court dans le rail (le nom complet reste dans l'infobulle et la palette de
+        // commandes).
+        static const std::pair<const char*, const char*> kShort[] = {
+            {"crop", "Recadrer"},
+            {"draw.polygon-regular", "Polyg. régulier"},
+            {"draw.bezier", "Plume"},
+            {"draw.freeform", "Crayon"},
+            {"warp-brush", "Déformation"},
+            {"node.edit", "Nœuds"},
+            {"fade.axis", "Axe du fondu"},
+            {"stitch.points", "Points"},
+            {"click-to-stitch", "Clic-broder"},
+            {"detail-brush", "Zones détail"},
+            {"fill.direction-guide", "Guide direction"},
+            {"fill.break-line", "Ligne rupture"}};
+        QString railLabel = label;
+        for (const auto& [id, text] : kShort) {
+            if (tool->id == id) {
+                railLabel = QString::fromUtf8(text);
+            }
+        }
         auto* a = new QAction(toolIcon(tool->id, toolRail_->palette().color(QPalette::ButtonText)),
-                              label, toolGroup_);
+                              railLabel, toolGroup_);
         a->setCheckable(true);
+        a->setProperty("fullLabel", label);
         a->setData(fromUtf8(tool->id));
         a->setEnabled(implemented);
         QString tip = tool->shortcut.empty()
@@ -752,6 +885,11 @@ void ShellWindow::rebuildToolRail() {
         toolRail_->addAction(a);
         if (auto* button = toolRail_->widgetForAction(a)) {
             button->setAccessibleName(label);
+            if (!compactTools_) {
+                // Colonne régulière : tous les boutons ont la même largeur (le rail fait 180 px).
+                button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+                button->setMinimumWidth(164);
+            }
         }
         if (fromUtf8(tool->id) == activeTool_ && implemented) {
             a->setChecked(true);
@@ -759,7 +897,7 @@ void ShellWindow::rebuildToolRail() {
         }
         connect(a, &QAction::triggered, this, [this, a] {
             activeTool_ = a->data().toString();
-            activeToolStatus_->setText(a->text());
+            activeToolStatus_->setText(a->property("fullLabel").toString());
             applyToolToCanvas();
         });
     }
@@ -776,9 +914,258 @@ void ShellWindow::rebuildToolRail() {
 
 // --- Document, sélection, aperçu -------------------------------------------------------------
 
+void ShellWindow::buildCentral() {
+    auto* container = new QWidget(this);
+    container->setObjectName(QStringLiteral("centralContainer"));
+    auto* column = new QVBoxLayout(container);
+    column->setContentsMargins(0, 0, 0, 0);
+    column->setSpacing(0);
+
+    guideStrip_ = new QWidget(container);
+    guideStrip_->setObjectName(QStringLiteral("guideStrip"));
+    auto* stripColumn = new QVBoxLayout(guideStrip_);
+    stripColumn->setContentsMargins(10, 6, 10, 6);
+    stripColumn->setSpacing(2);
+    auto* row = new QHBoxLayout;
+    guideSteps_ = new QLabel(guideStrip_);
+    guideSteps_->setObjectName(QStringLiteral("guideSteps"));
+    guideSteps_->setTextFormat(Qt::RichText);
+    guideHeadline_ = new QLabel(guideStrip_);
+    guideHeadline_->setObjectName(QStringLiteral("guideHeadline"));
+    guideHeadline_->setWordWrap(true);
+    guideNext_ = new QPushButton(guideStrip_);
+    guideNext_->setObjectName(QStringLiteral("guideNext"));
+    guideNext_->setDefault(true);
+    row->addWidget(guideSteps_);
+    row->addStretch(1);
+    row->addWidget(guideNext_);
+    stripColumn->addLayout(row);
+    stripColumn->addWidget(guideHeadline_);
+    column->addWidget(guideStrip_);
+
+    stack_ = new QStackedWidget(container);
+    welcome_ = new WelcomePage(stack_);
+    stack_->addWidget(welcome_);
+    stack_->addWidget(canvas_);
+    column->addWidget(stack_, 1);
+    setCentralWidget(container);
+
+    connect(welcome_, &WelcomePage::openRequested, this,
+            [this] { runCommand(QStringLiteral("file.open")); });
+    connect(welcome_, &WelcomePage::newRequested, this,
+            [this] { runCommand(QStringLiteral("file.new")); });
+    connect(welcome_, &WelcomePage::recentRequested, this, [this](const QString& path) {
+        openProject(std::filesystem::path(path.toStdU16String()));
+    });
+    connect(guideNext_, &QPushButton::clicked, this, [this] { runGuideNext(); });
+    updateGuide();
+}
+
+void ShellWindow::updateGuide() {
+    if (guideSteps_ == nullptr) {
+        return;
+    }
+    GuideInput in;
+    in.documentOpen = documentOpen_;
+    in.hasObjects = !session_.project().embroidery_objects.empty();
+    in.analysedCurrent = analysedRevision_ && *analysedRevision_ == session_.revision();
+    in.analysisErrors = in.analysedCurrent ? analysisErrors_ : 0;
+    in.exportedCurrent = exportedRevision_ && *exportedRevision_ == session_.revision();
+    guide_ = buildGuide(in);
+
+    const QColor dim = palette().color(QPalette::Disabled, QPalette::WindowText);
+    QStringList parts;
+    int n = 1;
+    for (const auto& s : guide_.steps) {
+        const QString title = fromUtf8(s.title);
+        switch (s.state) {
+        case StepState::Done:
+            parts << QStringLiteral("<span style='color:%1'>✓ %2</span>").arg(dim.name(), title);
+            break;
+        case StepState::Current:
+            parts << QStringLiteral("<b>%1. %2</b>").arg(n).arg(title);
+            break;
+        case StepState::Todo:
+            parts << QStringLiteral("<span style='color:%1'>%2. %3</span>")
+                         .arg(dim.name())
+                         .arg(n)
+                         .arg(title);
+            break;
+        }
+        ++n;
+    }
+    guideSteps_->setText(parts.join(QStringLiteral("  ›  ")));
+    guideHeadline_->setText(fromUtf8(guide_.headline));
+    guideNext_->setText(fromUtf8(guide_.nextLabel));
+    guideNext_->setVisible(guide_.next != NextAction::None);
+    guideStrip_->setVisible(documentOpen_);
+    stack_->setCurrentWidget(documentOpen_ ? static_cast<QWidget*>(canvas_)
+                                           : static_cast<QWidget*>(welcome_));
+    QStringList recent;
+    for (const auto& r : recent_) {
+        recent << QString::fromUtf8(r.data(), static_cast<qsizetype>(r.size()));
+    }
+    welcome_->setRecent(recent);
+}
+
+bool ShellWindow::welcomeVisible() const {
+    return stack_ != nullptr && stack_->currentWidget() == welcome_;
+}
+
+QString ShellWindow::guideHeadline() const {
+    return guideHeadline_ != nullptr ? guideHeadline_->text() : QString();
+}
+
+bool ShellWindow::runGuideNext() {
+    switch (guide_.next) {
+    case NextAction::OpenImage:
+        return runCommand(QStringLiteral("file.open"));
+    case NextAction::Analyse:
+        setWorkspace(Workspace::Optimize);
+        runDiagnostics();
+        return true;
+    case NextAction::Export:
+        return runCommand(QStringLiteral("file.export"));
+    case NextAction::None:
+        break;
+    }
+    return false;
+}
+void ShellWindow::runOptimization(PathStrategy strategy, bool improve) {
+    if (session_.project().embroidery_objects.size() < 2) {
+        optimizePanel_->showMessage(tr("Il faut au moins deux objets brodés pour optimiser."));
+        return;
+    }
+    if (optimizeTask_ != 0) {
+        (void)tasks_.cancel(optimizeTask_); // une proposition périmée n'est jamais livrée
+    }
+    proposal_.reset();
+    optimizePanel_->setBusy(true);
+    const auto snapshot = session_.snapshot();
+    const auto revision = session_.revision();
+    optimizeTask_ = tasks_.submit<PathProposal>(
+        tr("Optimisation de l'ordre").toStdString(),
+        [snapshot, revision, strategy, improve](const TaskContext& ctx) {
+            return proposeOrder(snapshot, revision, strategy, improve, ctx);
+        },
+        [this](Result<PathProposal>&& r) {
+            optimizeTask_ = 0;
+            if (!r) {
+                optimizePanel_->showMessage(
+                    tr("Optimisation impossible : %1").arg(fromUtf8(r.error().message)));
+                return;
+            }
+            proposal_ = std::move(*r);
+            optimizePanel_->showProposal(*proposal_);
+            optimizePanel_->setStale(proposal_->revision != session_.revision());
+            setNotice(tr("Proposition d'ordre calculée : vérifiez les mesures puis acceptez ou "
+                         "refusez."),
+                      false);
+        });
+}
+
+bool ShellWindow::acceptOptimization() {
+    if (!proposal_) {
+        return false;
+    }
+    const auto r = applyProposal(session_, *proposal_);
+    if (!r.ok) {
+        optimizePanel_->setStale(true);
+        setNotice(tr("Optimisation : %1").arg(fromUtf8(r.message)), true);
+        return false;
+    }
+    proposal_.reset();
+    optimizePanel_->showMessage(tr("Ordre appliqué. Annulable en une étape (Ctrl+Z)."));
+    setNotice(tr("Ordre de couture optimisé."), false);
+    return true;
+}
+
+void ShellWindow::refuseOptimization() {
+    proposal_.reset();
+    optimizePanel_->clearProposal();
+    setNotice(tr("Proposition refusée : le document n'a pas changé."), false);
+}
+
+bool ShellWindow::setLiveBridgeEnabled(bool on, QString* error) {
+    if (!on) {
+        if (liveServer_) {
+            // Invalide aussi les calculs d'agent déjà en cours : après la désactivation, plus
+            // rien ne peut être appliqué, même une demande déjà approuvée à l'écran.
+            session_.liveBridge().reset();
+            liveServer_.reset();
+        }
+        companionPanel_->setActive(false, {});
+        setNotice(tr("Compagnon IA : pont désactivé."), false);
+        return true;
+    }
+    if (liveServer_) {
+        return true;
+    }
+    if (!companion_) {
+        companion_ = std::make_unique<LiveCompanion>(
+            session_,
+            [this](const mcp::ApprovalRequest& request) {
+                return approvalOverride_ ? approvalOverride_(request)
+                                         : askAgentApproval(this, request);
+            },
+            [this] {
+                return currentPath_.empty() ? std::string("(sans titre)")
+                                            : currentPath_.filename().string();
+            });
+        companion_->setOnChanged([this] {
+            companionPanel_->setEvents(companion_->events());
+            companionPanel_->setCanUndo(session_.canUndo(), fromUtf8(session_.undoName()));
+        });
+    }
+    auto server = std::make_unique<LiveServer>(companion_->service(), this);
+    QString why;
+    const auto dir = liveDir_.empty() ? mcp::live_directory() : liveDir_;
+    if (!server->start(dir, &why)) {
+        if (error != nullptr) {
+            *error = why;
+        }
+        return false;
+    }
+    liveServer_ = std::move(server);
+    companionPanel_->setActive(true, liveServer_->endpoint());
+    companionPanel_->setCanUndo(session_.canUndo(), fromUtf8(session_.undoName()));
+    setNotice(tr("Compagnon IA : pont activé. Chaque modification demandera votre accord."), false);
+    return true;
+}
+
+bool ShellWindow::liveBridgeEnabled() const {
+    return liveServer_ != nullptr && liveServer_->running();
+}
+
+QString ShellWindow::liveEndpoint() const {
+    return liveServer_ ? liveServer_->endpoint() : QString();
+}
+
+std::string ShellWindow::liveToken() const {
+    return liveServer_ ? liveServer_->token() : std::string();
+}
+
 void ShellWindow::onDocumentChanged(ChangeKind kind) {
+    overlays_->onDocumentChanged();
+    if (regions_) {
+        if (kind == ChangeKind::Replaced) {
+            regions_->onDocumentReplaced(); // nouveau document : ni région choisie ni correction en
+                                            // attente
+        } else {
+            regions_->refresh();
+        }
+    }
+    if (optimizePanel_ != nullptr) {
+        optimizePanel_->setEnabledForDocument(session_.project().embroidery_objects.size() >= 2);
+        if (proposal_ && proposal_->revision != session_.revision()) {
+            optimizePanel_->setStale(true);
+        }
+    }
     if (kind != ChangeKind::Replaced && feedbackCue_ != nullptr) {
         feedbackCue_->pulse();
+    }
+    if (companionPanel_ != nullptr) {
+        companionPanel_->setCanUndo(session_.canUndo(), fromUtf8(session_.undoName()));
     }
     refreshWindowTitle();
     rebuildObjectList();
@@ -801,6 +1188,7 @@ void ShellWindow::refreshActionStates() {
                              : tr("&Rétablir"));
     saveAction_->setEnabled(documentOpen_);
     exportAction_->setEnabled(hasObjects);
+    updateGuide();
 }
 
 void ShellWindow::rebuildObjectList() {
@@ -912,9 +1300,7 @@ void ShellWindow::requestPreview() {
                 updatePointMarkers();
                 refreshSimulationBar();
                 updateSelectionBoxes();
-                if (densityActive_ && densityRevision_ != session_.revision()) {
-                    requestDensity(); // la carte affichée date d'avant la dernière modification
-                }
+                overlays_->onPreviewReady();
             }
         });
 }
@@ -989,11 +1375,52 @@ void ShellWindow::chooseAndOpen() {
     if (path.endsWith(QStringLiteral(".osp"), Qt::CaseInsensitive)) {
         openProject(p);
     } else {
-        openImage(p, heightSpin_->value());
+        importImage(p);
     }
 }
 
-void ShellWindow::openImage(const std::filesystem::path& image, double heightMm) {
+void ShellWindow::importImage(const std::filesystem::path& image) {
+    if (importDialog_ != nullptr) {
+        importDialog_->close();
+    }
+    auto* dialog =
+        new ImportDialog(QString::fromStdU16String(image.u16string()), heightSpin_->value(), this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    importDialog_ = dialog;
+    QPointer<ImportDialog> guard(dialog);
+    connect(dialog, &ImportDialog::previewRequested, this,
+            [this, guard, image](segmentation::SegmentationOptions options) {
+                if (importPreviewTask_ != 0) {
+                    (void)tasks_.cancel(importPreviewTask_); // un aperçu périmé n'est jamais livré
+                }
+                importPreviewTask_ = tasks_.submit<SegmentationPreview>(
+                    tr("Aperçu de la segmentation").toStdString(),
+                    [image, options](const TaskContext& ctx) {
+                        return previewSegmentation(image, options, ctx);
+                    },
+                    [this, guard](Result<SegmentationPreview>&& r) {
+                        importPreviewTask_ = 0;
+                        if (guard == nullptr) {
+                            return; // la fenêtre a été fermée pendant le calcul
+                        }
+                        if (!r) {
+                            guard->setPreviewError(fromUtf8(r.error().message));
+                            return;
+                        }
+                        guard->setPreview(*r);
+                    });
+            });
+    connect(dialog, &QDialog::accepted, this, [this, guard, image] {
+        if (guard == nullptr) {
+            return;
+        }
+        openImage(image, guard->heightMm(), guard->settings());
+    });
+    dialog->open();
+}
+
+void ShellWindow::openImage(const std::filesystem::path& image, double heightMm,
+                            const project_ops::DigitizeSettings& settings) {
     if (!confirmDiscardOrSave()) {
         return;
     }
@@ -1003,6 +1430,8 @@ void ShellWindow::openImage(const std::filesystem::path& image, double heightMm)
     DigitizeRequest request;
     request.image = image;
     request.target_height_mm = heightMm;
+    request.settings = settings;
+    lastDigitizeSettings_ = settings; // la régénération des objets réutilise ces réglages
     setNotice(
         tr("Numérisation de %1…").arg(QString::fromStdU16String(image.filename().u16string())),
         false);
@@ -1196,17 +1625,20 @@ void ShellWindow::rebuildHistoryMenu() {
 
 void ShellWindow::exportDst(const std::filesystem::path& dst) {
     const auto snapshot = session_.snapshot();
+    const auto exportRevision = session_.revision();
     setNotice(tr("Export DST en cours…"), false);
     tasks_.submit<stitch::StitchStats>(
         tr("Export DST").toStdString(),
         [snapshot, dst](const TaskContext& ctx) { return export_project_file(snapshot, dst, ctx); },
-        [this, dst](Result<stitch::StitchStats>&& r) {
+        [this, dst, exportRevision](Result<stitch::StitchStats>&& r) {
             if (!r) {
                 setNotice(tr("Export impossible : %1 %2")
                               .arg(fromUtf8(r.error().message), fromUtf8(r.error().detail)),
                           true);
                 return;
             }
+            exportedRevision_ = exportRevision;
+            updateGuide();
             setNotice(tr("DST écrit : %1 (%2 points)")
                           .arg(QString::fromStdString(dst.filename().string()))
                           .arg(r->stitches),
@@ -1263,100 +1695,15 @@ void ShellWindow::runDiagnostics() {
                 return;
             }
             diagnostics_->setResult(*r);
+            analysedRevision_ = r->revision;
+            analysisErrors_ = static_cast<int>(r->errors);
+            updateGuide();
             diagnostics_->setStale(r->revision != session_.revision());
             setNotice(
                 tr("Analyse : %1 erreur(s), %2 avertissement(s).").arg(r->errors).arg(r->warnings),
                 r->errors > 0);
         });
 }
-
-void ShellWindow::toggleDensity() {
-    if (densityActive_) {
-        hideDensity();
-        setNotice(tr("Carte de densité masquée."), false);
-        return;
-    }
-    if (session_.project().embroidery_objects.empty()) {
-        setNotice(tr("Rien à analyser : le document ne contient aucun objet brodé."), true);
-        return;
-    }
-    densityActive_ = true;
-    requestDensity();
-}
-
-bool ShellWindow::densityShown() const {
-    return canvas_->hasDensityOverlay();
-}
-
-void ShellWindow::hideDensity() {
-    densityActive_ = false;
-    densityRevision_ = 0;
-    densityHotspots_.clear();
-    if (densityTask_ != 0) {
-        (void)tasks_.cancel(densityTask_);
-        densityTask_ = 0;
-    }
-    canvas_->setDensityOverlay(QImage(), QRectF());
-}
-
-void ShellWindow::requestDensity() {
-    if (densityTask_ != 0) {
-        (void)tasks_.cancel(densityTask_); // une carte périmée n'est jamais livrée
-    }
-    const auto snapshot = session_.snapshot();
-    const auto revision = session_.revision();
-    densityTask_ = tasks_.submit<DensityOverlay>(
-        tr("Carte de densité").toStdString(),
-        [snapshot, revision](const TaskContext& ctx) {
-            return run_density(snapshot, revision, ctx);
-        },
-        [this](Result<DensityOverlay>&& r) {
-            densityTask_ = 0;
-            if (!densityActive_) {
-                return;
-            }
-            if (!r) {
-                densityActive_ = false;
-                setNotice(tr("Carte de densité impossible : %1").arg(fromUtf8(r.error().message)),
-                          true);
-                return;
-            }
-            if (r->revision != session_.revision()) {
-                return; // le document a changé depuis : une autre carte est en route
-            }
-            applyDensity(*r);
-        });
-}
-
-void ShellWindow::applyDensity(const DensityOverlay& overlay) {
-    densityRevision_ = overlay.revision;
-    densityHotspots_ = overlay.hotspots;
-    if (frame_.px_per_mm <= 0.0) {
-        return; // pas d'aperçu : la carte sera posée au prochain aperçu
-    }
-    QImage image(overlay.columns, overlay.rows, QImage::Format_RGBA8888);
-    for (int y = 0; y < overlay.rows; ++y) {
-        std::memcpy(image.scanLine(y),
-                    overlay.rgba.data() + static_cast<std::size_t>(y) * overlay.columns * 4,
-                    static_cast<std::size_t>(overlay.columns) * 4);
-    }
-    // Repère modèle (Y vers le haut) -> pixels de l'aperçu (Y vers le bas).
-    const QRectF rect(
-        QPointF(frame_.mmToPxX(overlay.minXmm),
-                frame_.mmToPxY(-(overlay.minYmm + overlay.heightMm))),
-        QPointF(frame_.mmToPxX(overlay.minXmm + overlay.widthMm), frame_.mmToPxY(-overlay.minYmm)));
-    canvas_->setDensityOverlay(image, rect);
-    const auto zones = static_cast<int>(overlay.hotspots.size());
-    setNotice(zones == 0 ? tr("Densité maximale %1 piqûres/mm² : aucune zone sur-dense.")
-                               .arg(overlay.maxPenetrationsPerMm2, 0, 'f', 1)
-                         : tr("Densité maximale %1 piqûres/mm² : %2 zone(s) sur-dense(s) "
-                              "(seuil %3).")
-                               .arg(overlay.maxPenetrationsPerMm2, 0, 'f', 1)
-                               .arg(zones)
-                               .arg(overlay.thresholdPerMm2, 0, 'f', 1),
-              zones > 0);
-}
-
 void ShellWindow::onFindingActivated(const project_ops::Finding& finding) {
     std::vector<Target> targets;
     for (const auto id : finding.objects) {
@@ -1403,6 +1750,7 @@ void ShellWindow::setThemeMode(const QString& mode) {
         scheme = Qt::ColorScheme::Dark;
     }
     QGuiApplication::styleHints()->setColorScheme(scheme);
+    applyStudioTheme(*qApp, themeMode_);
     rebuildToolRail(); // régénère les icônes avec les couleurs du thème courant
 }
 
@@ -1647,7 +1995,66 @@ std::optional<std::uint64_t> ShellWindow::pointTarget() const {
     return state.ids.front();
 }
 
+bool ShellWindow::densityActive() const {
+    return overlays_ && overlays_->densityActive();
+}
+
+bool ShellWindow::densityShown() const {
+    return overlays_ && overlays_->densityShown();
+}
+
+const std::vector<DensityHotspotInfo>& ShellWindow::densityHotspots() const {
+    static const std::vector<DensityHotspotInfo> none;
+    return overlays_ ? overlays_->densityHotspots() : none;
+}
+
+bool ShellWindow::fabricRiskActive() const {
+    return overlays_ && overlays_->fabricActive();
+}
+
+bool ShellWindow::fabricRiskShown() const {
+    return overlays_ && overlays_->fabricShown();
+}
+
+const std::optional<FabricRisk>& ShellWindow::fabricRisk() const {
+    static const std::optional<FabricRisk> none;
+    return overlays_ ? overlays_->fabricRisk() : none;
+}
+
+int ShellWindow::nodeHandleCount() const {
+    return nodes_ ? nodes_->handleCount() : 0;
+}
+
+void ShellWindow::polishDockTabs() {
+    // Les onglets des panneaux de droite (Document, Diagnostic, Calques, Fils, Optimisation,
+    // Compagnon) ne sont jamais tronqués en « C… » : ils défilent si la place manque.
+    for (auto* bar : findChildren<QTabBar*>()) {
+        bar->setElideMode(Qt::ElideNone);
+        bar->setUsesScrollButtons(true);
+    }
+}
+
+int ShellWindow::tangentHandleCount() const {
+    return nodes_ ? nodes_->tangentCount() : 0;
+}
+
+QPointF ShellWindow::tangentHandlePx(int index) const {
+    return nodes_ ? nodes_->tangentPx(index) : QPointF();
+}
+
+int ShellWindow::selectedNodeCount() const {
+    return nodes_ ? nodes_->selectedCount() : 0;
+}
+
+QPointF ShellWindow::nodeHandlePx(int index) const {
+    return nodes_ ? nodes_->handlePx(index) : QPointF();
+}
+
 void ShellWindow::updatePointMarkers() {
+    nodes_->refresh();
+    if (regions_) {
+        regions_->refresh();
+    }
     const auto target = activeTool_ == QStringLiteral("stitch.points") && documentOpen_
                             ? pointTarget()
                             : std::nullopt;
@@ -1754,6 +2161,21 @@ void ShellWindow::updateSourceOverlay() {
 }
 
 void ShellWindow::onStroke(QVector<QPointF> scenePx, Qt::KeyboardModifiers modifiers) {
+    if (activeTool_ == QStringLiteral("draw.freeform") && frame_.px_per_mm > 0.0) {
+        std::vector<PointMm> stroke;
+        stroke.reserve(static_cast<std::size_t>(scenePx.size()));
+        for (const QPointF& p : scenePx) {
+            stroke.push_back(screenToModel(frame_.pxToMmX(p.x()), frame_.pxToMmY(p.y())));
+        }
+        const auto r = createFreehandShape(session_, stroke);
+        if (!r.ok) {
+            setNotice(tr("Crayon : %1").arg(fromUtf8(r.message)), true);
+            return;
+        }
+        session_.selection().replace({{TargetKind::EmbroideryObject, r.objectId}});
+        setNotice(tr("Forme dessinée : ajustez-la avec l'outil Nœuds (B)."), false);
+        return;
+    }
     if (activeTool_ != QStringLiteral("detail-brush") || frame_.px_per_mm <= 0.0) {
         return;
     }
@@ -1779,6 +2201,13 @@ void ShellWindow::onStroke(QVector<QPointF> scenePx, Qt::KeyboardModifiers modif
 void ShellWindow::applyToolToCanvas() {
     using Mode = PreviewCanvas::Mode;
     updatePointMarkers();
+    if (activeTool_ == QStringLiteral("region.edit") && regionPanel_ != nullptr) {
+        // L'outil « Régions » a besoin de son panneau : on le montre au premier plan.
+        if (auto* dock = qobject_cast<QDockWidget*>(regionPanel_->parentWidget())) {
+            dock->show();
+            dock->raise();
+        }
+    }
     const bool imageTool = activeTool_ == QStringLiteral("click-to-stitch") ||
                            activeTool_ == QStringLiteral("detail-brush");
     if (imageBar_ != nullptr) {
@@ -1802,10 +2231,17 @@ void ShellWindow::applyToolToCanvas() {
     } else if (activeTool_ == QStringLiteral("knife")) {
         canvas_->setMode(Mode::Cut);
     } else if (activeTool_ == QStringLiteral("click-to-stitch") ||
-               activeTool_ == QStringLiteral("stitch.points")) {
+               activeTool_ == QStringLiteral("stitch.points") ||
+               activeTool_ == QStringLiteral("region.edit")) {
         canvas_->setMode(Mode::Pick);
-    } else if (activeTool_ == QStringLiteral("detail-brush")) {
+    } else if (activeTool_ == QStringLiteral("detail-brush") ||
+               activeTool_ == QStringLiteral("draw.freeform")) {
         canvas_->setMode(Mode::Stroke);
+    } else if (activeTool_ == QStringLiteral("node.edit") ||
+               activeTool_ == QStringLiteral("fade.axis")) {
+        canvas_->setMode(Mode::Nodes);
+    } else if (activeTool_ == QStringLiteral("draw.bezier")) {
+        canvas_->setMode(Mode::Pen);
     } else {
         canvas_->setMode(Mode::Select); // sélection : clic, cadre élastique
     }
@@ -1927,6 +2363,11 @@ void ShellWindow::editSelection(const QString& command) {
     if (command == QLatin1String("edit.delete") && activeTool_ == QStringLiteral("stitch.points") &&
         pointSel_ >= 0) {
         deleteSelectedPoint();
+        return;
+    }
+    if (command == QLatin1String("edit.delete") && activeTool_ == QStringLiteral("node.edit") &&
+        nodes_->selectedCount() > 0) {
+        (void)nodes_->deleteSelected(); // Suppr retire les nœuds choisis, pas l'objet entier
         return;
     }
     const auto state = inspect(session_.project(), session_.selection().targets());
@@ -2194,12 +2635,43 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
                        q(tr("Supprimer le préréglage « %1 »").arg(fromUtf8(name))),
                        q(tr("Préréglages")), "", true});
     }
+    out.push_back({"analysis.fabric",
+                   q(overlays_->fabricActive() ? tr("Masquer le risque de plissement du tissu")
+                                               : tr("Afficher le risque de plissement du tissu")),
+                   q(tr("Analyse")), "",
+                   overlays_->fabricActive() || !session_.project().embroidery_objects.empty()});
+    {
+        // Courbe de transition d'un fondu : disponible quand un seul objet porte un fondu.
+        const auto target = pointTarget();
+        const bool hasFade = target && fadeAxisView(session_.project(), *target).has_value();
+        const std::pair<const char*, FadeCurve> curves[] = {
+            {"fade.curve.linear", FadeCurve::Linear},
+            {"fade.curve.smooth", FadeCurve::Smooth},
+            {"fade.curve.steep", FadeCurve::Steep},
+            {"fade.curve.easein", FadeCurve::EaseIn},
+            {"fade.curve.easeout", FadeCurve::EaseOut}};
+        for (const auto& [id, curve] : curves) {
+            out.push_back({id, q(tr("Courbe du fondu : %1").arg(fromUtf8(fadeCurveLabel(curve)))),
+                           q(tr("Fondu")), "", hasFade});
+        }
+    }
+    out.push_back({"vector.curves", q(tr("Convertir les contours en courbes")), q(tr("Contour")),
+                   "", hasObjects});
+    out.push_back(
+        {"vector.smooth", q(tr("Lisser les contours")), q(tr("Contour")), "", hasObjects});
+    out.push_back({"optimize.order", q(tr("Optimiser l'ordre de couture…")), q(tr("Analyse")), "",
+                   session_.project().embroidery_objects.size() >= 2});
+    out.push_back({"companion.toggle",
+                   q(liveBridgeEnabled() ? tr("Désactiver le pont du compagnon IA")
+                                         : tr("Activer le pont du compagnon IA")),
+                   q(tr("Compagnon IA")), "", true});
     out.push_back({"analysis.run", q(tr("Analyser le document (diagnostic)")), q(tr("Analyse")), "",
                    !session_.project().embroidery_objects.empty()});
-    out.push_back(
-        {"analysis.density",
-         q(densityActive_ ? tr("Masquer la carte de densité") : tr("Afficher la carte de densité")),
-         q(tr("Analyse")), "", densityActive_ || !session_.project().embroidery_objects.empty()});
+    out.push_back({"analysis.density",
+                   q(overlays_->densityActive() ? tr("Masquer la carte de densité")
+                                                : tr("Afficher la carte de densité")),
+                   q(tr("Analyse")), "",
+                   overlays_->densityActive() || !session_.project().embroidery_objects.empty()});
     int n = 1;
     for (const auto w : kWorkspaces) {
         out.push_back({"workspace." + std::string(workspaceId(w)),
@@ -2256,11 +2728,58 @@ bool ShellWindow::runCommand(const QString& id) {
             applyPresetIndex(id.mid(13).toInt());
         } else if (id.startsWith(QLatin1String("preset.remove."))) {
             removePresetIndex(id.mid(14).toInt());
+        } else if (id == QLatin1String("analysis.fabric")) {
+            overlays_->toggleFabricRisk();
+        } else if (id.startsWith(QLatin1String("fade.curve."))) {
+            const auto target = pointTarget();
+            if (!target) {
+                setNotice(tr("Sélectionnez un seul objet portant un fondu."), true);
+                return false;
+            }
+            static const std::pair<const char*, FadeCurve> kCurves[] = {
+                {"linear", FadeCurve::Linear},
+                {"smooth", FadeCurve::Smooth},
+                {"steep", FadeCurve::Steep},
+                {"easein", FadeCurve::EaseIn},
+                {"easeout", FadeCurve::EaseOut}};
+            for (const auto& [name, curve] : kCurves) {
+                if (id.mid(11) == QLatin1String(name)) {
+                    const auto r = setFadeCurve(session_, *target, curve);
+                    if (!r.ok) {
+                        setNotice(fromUtf8(r.message), true);
+                        return false;
+                    }
+                    setNotice(tr("Courbe du fondu : %1.").arg(fromUtf8(fadeCurveLabel(curve))),
+                              false);
+                    break;
+                }
+            }
+        } else if (id == QLatin1String("vector.curves") || id == QLatin1String("vector.smooth")) {
+            const auto selected = inspect(session_.project(), session_.selection().targets());
+            const auto r = id == QLatin1String("vector.curves")
+                               ? convertToCurves(session_, selected.ids)
+                               : smoothContours(session_, selected.ids);
+            if (!r.ok) {
+                setNotice(fromUtf8(r.message), true);
+                return false;
+            }
+            setNotice(id == QLatin1String("vector.curves") ? tr("Contours convertis en courbes.")
+                                                           : tr("Contours lissés."),
+                      false);
+        } else if (id == QLatin1String("optimize.order")) {
+            runOptimization(optimizePanel_->strategy(), optimizePanel_->improve());
+        } else if (id == QLatin1String("companion.toggle")) {
+            QString error;
+            if (!setLiveBridgeEnabled(!liveBridgeEnabled(), &error)) {
+                companionPanel_->setError(error);
+                setNotice(tr("Compagnon IA : %1").arg(error), true);
+                return false;
+            }
         } else if (id == QLatin1String("analysis.run")) {
             setWorkspace(Workspace::Optimize);
             runDiagnostics();
         } else if (id == QLatin1String("analysis.density")) {
-            toggleDensity();
+            overlays_->toggleDensity();
         } else if (id == QLatin1String("selection.all")) {
             selectAllObjects();
         } else if (id == QLatin1String("selection.clear")) {
@@ -2677,6 +3196,72 @@ void ShellWindow::applyTransform(const std::string& batch, const QString& label)
     }
 }
 
+QPointF ShellWindow::snapDelta(QPointF deltaPx) {
+    canvas_->setSnapGuides({});
+    if (frame_.px_per_mm <= 0.0 || frame_.hits == nullptr) {
+        return deltaPx;
+    }
+    const auto selection = inspect(session_.project(), session_.selection().targets());
+    if (selection.ids.empty()) {
+        return deltaPx;
+    }
+    // Boîte d'un objet cousu en mm « modèle » (Y vers le haut), depuis l'index de sélection.
+    const auto boxOf = [&](std::uint64_t id) -> std::optional<SnapBox> {
+        const auto b = frame_.hits->boundsOf(id);
+        if (!b) {
+            return std::nullopt;
+        }
+        // Emprises de l'index en mm « écran » (Y vers le bas) -> mm « modèle » (Y vers le haut).
+        return SnapBox{b->x0, -b->y1, b->x1, -b->y0};
+    };
+    std::optional<SnapBox> moving;
+    for (const auto id : selection.ids) {
+        if (const auto b = boxOf(id)) {
+            moving = moving ? SnapBox{std::min(moving->x0, b->x0), std::min(moving->y0, b->y0),
+                                      std::max(moving->x1, b->x1), std::max(moving->y1, b->y1)}
+                            : *b;
+        }
+    }
+    if (!moving) {
+        return deltaPx;
+    }
+    std::vector<SnapBox> others;
+    for (const auto& object : session_.project().embroidery_objects) {
+        if (std::find(selection.ids.begin(), selection.ids.end(), object.id.value) !=
+            selection.ids.end()) {
+            continue;
+        }
+        if (const auto b = boxOf(object.id.value)) {
+            others.push_back(*b);
+        }
+    }
+    const bool altHeld = QGuiApplication::keyboardModifiers() & Qt::AltModifier;
+    // Seuil de 6 pixels de vue, converti en mm (zoom du canevas compris).
+    const double zoom = std::max(0.01, canvas_->transform().m11());
+    const double thresholdMm = (snapEnabled_ && !altHeld) ? 6.0 / (zoom * frame_.px_per_mm) : 0.0;
+    const PointMm requested{deltaPx.x() / frame_.px_per_mm, -deltaPx.y() / frame_.px_per_mm};
+    const auto snapped = snapMove(*moving, requested, others, thresholdMm, true);
+    QVector<QLineF> lines;
+    for (const auto& g : snapped.guides) {
+        if (g.vertical) {
+            lines.push_back(QLineF(frame_.mmToPxX(g.positionMm), frame_.mmToPxY(-g.fromMm),
+                                   frame_.mmToPxX(g.positionMm), frame_.mmToPxY(-g.toMm)));
+        } else {
+            lines.push_back(QLineF(frame_.mmToPxX(g.fromMm), frame_.mmToPxY(-g.positionMm),
+                                   frame_.mmToPxX(g.toMm), frame_.mmToPxY(-g.positionMm)));
+        }
+    }
+    canvas_->setSnapGuides(lines);
+    setNotice(tr("Déplacement : %1 mm, %2 mm%3")
+                  .arg(snapped.delta.x, 0, 'f', 1)
+                  .arg(snapped.delta.y, 0, 'f', 1)
+                  .arg(snapped.snappedX || snapped.snappedY
+                           ? tr("  (aimanté — Alt pour désactiver)")
+                           : QString()),
+              false);
+    return QPointF(snapped.delta.x * frame_.px_per_mm, -snapped.delta.y * frame_.px_per_mm);
+}
+
 void ShellWindow::onMoveDragged(QPointF deltaPx) {
     if (frame_.px_per_mm <= 0.0) {
         return;
@@ -2698,6 +3283,20 @@ void ShellWindow::onScaleDragged(QPointF pivotPx, double factor) {
 }
 
 void ShellWindow::onCanvasClick(QPointF scenePx, Qt::KeyboardModifiers modifiers) {
+    if (regions_ && regions_->onCanvasClick(scenePx)) {
+        return; // l'outil « Régions » a traité le clic
+    }
+    if ((activeTool_ == QStringLiteral("node.edit") ||
+         activeTool_ == QStringLiteral("fade.axis")) &&
+        frame_.px_per_mm > 0.0) {
+        // Clic hors poignée : choisit l'objet sous le curseur (ses nœuds apparaissent) ou, sur le
+        // fond, retire seulement la sélection de nœuds.
+        nodes_->clearSelection();
+        if (const auto hit = pickAtPx(scenePx)) {
+            session_.selection().replace({{TargetKind::EmbroideryObject, *hit}});
+        }
+        return;
+    }
     if (activeTool_ == QStringLiteral("stitch.points") && frame_.px_per_mm > 0.0) {
         const auto target = pointTarget();
         if (!target) {

@@ -152,3 +152,67 @@ TEST_CASE("special fills expose their own essential settings", "[desktop_v2][par
                 .committed);
     CHECK(*readParam(spiral.session.project().embroidery_objects.front(), "clockwise") == 1.0);
 }
+
+TEST_CASE("settings are split into essentials and advanced ones", "[desktop_v2][params][levels]") {
+    for (const char* type : {"tatami", "directional", "satin"}) {
+        const auto specs = paramSpecs(type);
+        std::size_t essentials = 0;
+        std::size_t advanced = 0;
+        for (const auto& spec : specs) {
+            (paramLevel(spec) == ParamLevel::Essential ? essentials : advanced) += 1;
+        }
+        INFO(type);
+        CHECK(essentials >= 4); // une vue de base lisible
+        CHECK(advanced >= 2);   // et des réglages fins à la demande
+    }
+    // Les réglages que l'utilisateur change tous les jours restent visibles sans effort.
+    for (const auto& spec : paramSpecs("tatami")) {
+        if (spec.key == "row_spacing_mm" || spec.key == "angle_deg" ||
+            spec.key == "pull_compensation_mm") {
+            CHECK(paramLevel(spec) == ParamLevel::Essential);
+        }
+        if (spec.key == "stagger" || spec.key == "underlay_inset_mm") {
+            CHECK(paramLevel(spec) == ParamLevel::Advanced);
+        }
+    }
+}
+
+TEST_CASE("search ignores case and accents and looks at the label and the key",
+          "[desktop_v2][params][levels]") {
+    const auto specs = paramSpecs("tatami");
+    const auto find = [&](std::string_view key) {
+        for (const auto& s : specs) {
+            if (s.key == key) {
+                return s;
+            }
+        }
+        FAIL("réglage introuvable : " << key);
+        return specs.front();
+    };
+    CHECK(paramMatches(find("row_spacing_mm"), "ECART")); // « Écart entre rangées »
+    CHECK(paramMatches(find("row_spacing_mm"), "écart"));
+    CHECK(paramMatches(find("underlay_edge"), "sous-couche")); // libellé
+    CHECK(paramMatches(find("underlay_edge"), "underlay"));    // clé
+    CHECK(paramMatches(find("angle_deg"), ""));                // requête vide : tout correspond
+    CHECK_FALSE(paramMatches(find("angle_deg"), "sous-couche"));
+}
+
+TEST_CASE("the new advanced settings are readable, settable within range, and undoable",
+          "[desktop_v2][params][levels]") {
+    DocumentSession s;
+    auto created = project_ops::create_empty_project({});
+    REQUIRE(created.has_value());
+    s.replaceProject(std::move(*created), true);
+    REQUIRE(s.applyBatch(batchAddRect({0, 0}, 20, 10), "Rectangle").committed);
+    const auto id = s.project().embroidery_objects.front().id.value;
+    const auto& object = s.project().embroidery_objects.front();
+
+    const auto batch = batchSetParam({id}, "tatami", "stagger", 5.0);
+    REQUIRE_FALSE(batch.empty());
+    REQUIRE(s.applyBatch(batch, "Décalage").committed);
+    CHECK(readParam(s.project().embroidery_objects.front(), "stagger") == 5.0);
+    CHECK(batchSetParam({id}, "tatami", "stagger", 9.0).empty()); // hors plage [1 ; 8]
+    CHECK(batchSetParam({id}, "tatami", "row_end_clip_mm", 2.5) != "");
+    REQUIRE(s.undo());
+    CHECK(readParam(object, "stagger") != 5.0);
+}
