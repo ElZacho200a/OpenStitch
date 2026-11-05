@@ -20,7 +20,7 @@ dit honnêtement ce qui bloque, ce qui est prêt et comment le vérifier.
 ## Bloquant avant bascule (non fait)
 
 - [ ] Correction de segmentation APRÈS numérisation (fusion / suppression / recoloration de régions, nettoyage des îlots, régénération des objets). Les commandes du moteur existent, l'interface non.
-- [ ] Plume Bézier, poignées de tangentes visibles, suppression de nœud, main levée (`draw.bezier`, `draw.freeform` déclarés, non migrés).
+- [ ] Poignées de tangentes visibles et déplaçables après création, suppression de nœud, main levée (`draw.freeform` non migré). La Plume (`draw.bezier`) est faite.
 - [ ] Édition des barreaux et tangentes des rails de satin ; diagnostic des croisements de rails.
 - [ ] Comparaison nominal ↔ prédit de la compensation de tirage et assistant d'étalonnage sur pièce-test.
 - [ ] Options machine avancées d'export (départ, coupes, arrêts), bibliothèque de cadres.

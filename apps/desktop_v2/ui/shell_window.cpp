@@ -90,7 +90,7 @@ bool isToolImplemented(const std::string& id) {
     return id == "select" || id == "pan" || id == "draw.rectangle" || id == "draw.ellipse" ||
            id == "draw.polygon" || id == "measure" || id == "eyedropper" || id == "knife" ||
            id == "click-to-stitch" || id == "detail-brush" || id == "stitch.points" ||
-           id == "satin.column" || id == "node.edit" || id == "fade.axis";
+           id == "satin.column" || id == "node.edit" || id == "fade.axis" || id == "draw.bezier";
 }
 
 constexpr Workspace kWorkspaces[] = {Workspace::Design, Workspace::Digitize, Workspace::Optimize,
@@ -185,6 +185,33 @@ ShellWindow::ShellWindow(QWidget* parent)
     canvas_->setMoveHitTest([this](const QPointF& p) { return pickAtPx(p).has_value(); });
     canvas_->setMoveSnap([this](QPointF delta) { return snapDelta(delta); });
     connect(canvas_, &PreviewCanvas::polygonDrawnPx, this, &ShellWindow::onPolygonDrawn);
+    connect(canvas_, &PreviewCanvas::penShapeDrawnPx, this,
+            [this](QVector<QPointF> positions, QVector<QPointF> handles) {
+                if (frame_.px_per_mm <= 0.0) {
+                    return;
+                }
+                const auto toModel = [this](const QPointF& p) {
+                    return screenToModel(frame_.pxToMmX(p.x()), frame_.pxToMmY(p.y()));
+                };
+                std::vector<PenNode> nodes;
+                for (qsizetype i = 0; i < positions.size(); ++i) {
+                    PenNode node;
+                    node.pos = toModel(positions[i]);
+                    if (handles[i] != positions[i]) {
+                        node.handleOut = toModel(handles[i]);
+                    }
+                    nodes.push_back(node);
+                }
+                const auto r = createPenShape(session_, nodes);
+                if (!r.ok) {
+                    setNotice(tr("Plume : %1").arg(fromUtf8(r.message)), true);
+                    return;
+                }
+                session_.selection().replace({{TargetKind::EmbroideryObject, r.objectId}});
+                setNotice(r.curved ? tr("Courbe créée : modifiez-la avec l'outil Nœuds (B).")
+                                   : tr("Forme créée."),
+                          false);
+            });
     applyToolToCanvas();
 
     // Un aperçu par rafale de modifications, pas un par modification (le rendu n'est pas
@@ -2108,6 +2135,8 @@ void ShellWindow::applyToolToCanvas() {
     } else if (activeTool_ == QStringLiteral("node.edit") ||
                activeTool_ == QStringLiteral("fade.axis")) {
         canvas_->setMode(Mode::Nodes);
+    } else if (activeTool_ == QStringLiteral("draw.bezier")) {
+        canvas_->setMode(Mode::Pen);
     } else {
         canvas_->setMode(Mode::Select); // sélection : clic, cadre élastique
     }

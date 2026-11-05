@@ -32,6 +32,7 @@
 #include "live_companion.hpp"
 #include "node_edit.hpp"
 #include "path_optimizer.hpp"
+#include "pen_shape.hpp"
 #include "point_edit.hpp"
 #include "preview_service.hpp"
 #include "production_sheet.hpp"

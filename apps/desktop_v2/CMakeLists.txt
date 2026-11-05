@@ -25,6 +25,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/fabric_risk.cpp
     core/segmentation_preview.cpp
     core/snap.cpp
+    core/pen_shape.cpp
     core/node_edit.cpp
     core/density_service.cpp
     core/param_spec.cpp

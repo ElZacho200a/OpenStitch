@@ -406,3 +406,7 @@ encore le desktop principal.
 ## 2026-11-05 — Session 1 (suite 33) : finalisation V2, tranche 12 (thème Atelier)
 
 - Fusion de la branche du thème « Atelier » (#262) dans la finalisation. Le blocage à 100 % de processeur observé en la testant seule contre l'ancien main ne se reproduit pas sur la branche actuelle : la suite complète (93 QTest) passe en moins de deux minutes. Cause exacte non isolée ; je ne prétends donc pas l'avoir corrigée. #262 devient redondante avec la PR finale.
+
+## 2026-11-05 — Session 1 (suite 34) : finalisation V2, tranche 13 (Plume)
+
+- Outil Plume (`draw.bezier`, P) : `core/pen_shape` construit le contour (nœuds d'angle, nœuds lisses à tangentes symétriques) et crée l'objet vectoriel ET l'objet de broderie en UNE commande (`AddObjectBatchCommand`, mêmes réglages que `add_shape`) ; refus clairs sans trace dans l'historique. Canevas : aperçu élastique avec nœuds et poignées, fermeture par clic sur le premier nœud. Les tests qui prenaient `draw.bezier` comme exemple d'outil non migré utilisent désormais `bucket`.

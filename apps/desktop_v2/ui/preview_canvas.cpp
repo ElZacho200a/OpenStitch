@@ -91,6 +91,9 @@ void PreviewCanvas::clearImage() {
     nodeItems_.clear();
     nodePts_.clear();
     nodeOutline_ = nullptr;
+    penItem_ = nullptr;
+    penNodes_.clear();
+    penDragging_ = false;
     nodeGuides_ = nullptr;
     nodeDragIndex_ = -1;
     nodeDragActive_ = false;
@@ -138,6 +141,9 @@ void PreviewCanvas::fitSelection() {
 void PreviewCanvas::setMode(Mode mode) {
     if (mode_ == Mode::DrawPolygon && mode != Mode::DrawPolygon) {
         cancelPolygon();
+    }
+    if (mode_ == Mode::Pen && mode != Mode::Pen) {
+        cancelPen(); // une forme à la plume non terminée est abandonnée en quittant l'outil
     }
     mode_ = mode;
     bandDragging_ = false;
@@ -196,6 +202,28 @@ void PreviewCanvas::keyPressEvent(QKeyEvent* event) {
         }
         event->accept();
         return;
+    }
+    if (mode_ == Mode::Pen) {
+        switch (event->key()) {
+        case Qt::Key_Return:
+        case Qt::Key_Enter:
+            finishPen();
+            event->accept();
+            return;
+        case Qt::Key_Escape:
+            cancelPen();
+            event->accept();
+            return;
+        case Qt::Key_Backspace:
+            if (!penNodes_.empty()) {
+                penNodes_.pop_back();
+                updatePenItem(nullptr);
+            }
+            event->accept();
+            return;
+        default:
+            break;
+        }
     }
     if (nodeDragIndex_ >= 0 && event->key() == Qt::Key_Escape) {
         endNodeDrag();
@@ -572,6 +600,75 @@ void PreviewCanvas::setFabricArrows(const QVector<QLineF>& linesPx) {
     fabricArrows_->setAcceptedMouseButtons(Qt::NoButton);
 }
 
+void PreviewCanvas::updatePenItem(const QPointF* cursor) {
+    if (penItem_ != nullptr) {
+        scene_->removeItem(penItem_);
+        delete penItem_;
+        penItem_ = nullptr;
+    }
+    if (penNodes_.empty() || item_ == nullptr) {
+        return;
+    }
+    QPainterPath path;
+    path.moveTo(penNodes_.front().pos);
+    for (std::size_t i = 1; i < penNodes_.size(); ++i) {
+        const auto& a = penNodes_[i - 1];
+        const auto& b = penNodes_[i];
+        if (a.hasHandle || b.hasHandle) {
+            const QPointF c1 = a.pos + (a.hasHandle ? a.handle - a.pos : QPointF());
+            const QPointF c2 = b.pos - (b.hasHandle ? b.handle - b.pos : QPointF());
+            path.cubicTo(c1, c2, b.pos);
+        } else {
+            path.lineTo(b.pos);
+        }
+    }
+    if (cursor != nullptr) {
+        const auto& last = penNodes_.back();
+        if (last.hasHandle) {
+            path.cubicTo(last.pos + (last.handle - last.pos), *cursor, *cursor);
+        } else {
+            path.lineTo(*cursor);
+        }
+    }
+    penItem_ = scene_->addPath(path, cosmeticPen(QColor(169, 45, 102), Qt::SolidLine, 2));
+    penItem_->setZValue(14);
+    penItem_->setAcceptedMouseButtons(Qt::NoButton);
+    // Nœuds et poignées visibles : carrés pour les nœuds, tige + point pour la poignée.
+    QPainterPath marks;
+    for (const auto& n : penNodes_) {
+        marks.addRect(QRectF(n.pos.x() - 2.0, n.pos.y() - 2.0, 4.0, 4.0));
+        if (n.hasHandle) {
+            marks.moveTo(n.pos);
+            marks.lineTo(n.handle);
+            marks.addEllipse(n.handle, 1.5, 1.5);
+        }
+    }
+    auto* marksItem = new QGraphicsPathItem(marks, penItem_);
+    marksItem->setPen(cosmeticPen(QColor(40, 44, 52), Qt::SolidLine, 1));
+    marksItem->setBrush(QColor(255, 255, 255));
+}
+
+void PreviewCanvas::finishPen() {
+    if (penNodes_.size() >= 3) {
+        QVector<QPointF> positions;
+        QVector<QPointF> handles;
+        for (const auto& n : penNodes_) {
+            positions.push_back(n.pos);
+            handles.push_back(n.hasHandle ? n.handle : n.pos);
+        }
+        cancelPen();
+        emit penShapeDrawnPx(positions, handles);
+        return;
+    }
+    cancelPen(); // moins de trois nœuds : rien à créer
+}
+
+void PreviewCanvas::cancelPen() {
+    penNodes_.clear();
+    penDragging_ = false;
+    updatePenItem(nullptr);
+}
+
 void PreviewCanvas::setSnapGuides(const QVector<QLineF>& linesPx) {
     if (snapGuides_ != nullptr) {
         scene_->removeItem(snapGuides_);
@@ -760,6 +857,19 @@ void PreviewCanvas::mousePressEvent(QMouseEvent* event) {
         event->accept();
         return;
     }
+    if (mode_ == Mode::Pen && pressing_ && item_ != nullptr) {
+        const QPointF at = mapToScene(event->pos());
+        if (penNodes_.size() >= 3 &&
+            (mapFromScene(penNodes_.front().pos) - event->pos()).manhattanLength() <= 8) {
+            finishPen(); // clic sur le premier nœud : fermer
+        } else {
+            penNodes_.push_back({at, at, false});
+            penDragging_ = true;
+            updatePenItem(&at);
+        }
+        event->accept();
+        return;
+    }
     if (mode_ == Mode::Nodes && pressing_ && item_ != nullptr) {
         const int index = nodeAt(event->pos());
         if (index >= 0) {
@@ -824,6 +934,19 @@ void PreviewCanvas::mouseMoveEvent(QMouseEvent* event) {
     }
     if (spaceDragging_) {
         QGraphicsView::mouseMoveEvent(event);
+        event->accept();
+        return;
+    }
+    if (mode_ == Mode::Pen && !penNodes_.empty()) {
+        const QPointF at = mapToScene(event->pos());
+        if (penDragging_) {
+            auto& node = penNodes_.back();
+            node.handle = at;
+            node.hasHandle = (mapFromScene(node.pos) - event->pos()).manhattanLength() > 3;
+            updatePenItem(nullptr);
+        } else {
+            updatePenItem(&at); // segment élastique jusqu'au curseur
+        }
         event->accept();
         return;
     }
@@ -923,6 +1046,12 @@ void PreviewCanvas::mouseReleaseEvent(QMouseEvent* event) {
         QGraphicsView::mouseReleaseEvent(event);
         spaceDragging_ = false;
         updateNavigationCursor();
+        event->accept();
+        return;
+    }
+    if (mode_ == Mode::Pen && event->button() == Qt::LeftButton) {
+        penDragging_ = false;
+        pressing_ = false;
         event->accept();
         return;
     }
@@ -1037,6 +1166,11 @@ void PreviewCanvas::mouseReleaseEvent(QMouseEvent* event) {
 }
 
 void PreviewCanvas::mouseDoubleClickEvent(QMouseEvent* event) {
+    if (mode_ == Mode::Pen && event->button() == Qt::LeftButton) {
+        finishPen();
+        event->accept();
+        return;
+    }
     if (mode_ == Mode::Nodes && event->button() == Qt::LeftButton && item_ != nullptr &&
         nodeAt(event->pos()) < 0) {
         emit nodeInsertRequestedPx(mapToScene(event->pos()));

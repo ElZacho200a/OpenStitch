@@ -223,7 +223,7 @@ private slots:
                 QVERIFY(a->toolTip().contains("pas encore migré"));
             }
         }
-        QCOMPARE(enabled, 11); // …, Pipette, Couteau, Zones de détail, Nœuds
+        QCOMPARE(enabled, 12); // …, Pipette, Couteau, Zones de détail, Nœuds
         QVERIFY(disabled > 0);
     }
 
@@ -513,7 +513,7 @@ private slots:
         }
         QCOMPARE(tools, 23);
         // Un outil non migré est listé mais refusé, sans effet de bord.
-        QVERIFY(!w.runCommand("tool.draw.bezier"));
+        QVERIFY(!w.runCommand("tool.bucket"));
         QCOMPARE(w.activeToolId(), QString("select"));
         QVERIFY(!w.runCommand("nope"));
         // Sans document, enregistrer / exporter / annuler sont désactivés.
@@ -550,7 +550,7 @@ private slots:
         QCOMPARE(w.workspace(), Workspace::Digitize);
 
         // Une commande désactivée ne se valide pas.
-        palette.setQuery("plume");
+        palette.setQuery("peinture");
         QCOMPARE(palette.visibleIds().size(), 1);
         QVERIFY(!palette.activateCurrent());
     }
@@ -701,7 +701,7 @@ private slots:
         QVERIFY(enabled("file.save"));
         QVERIFY(!enabled("file.export")); // rien à exporter
         QVERIFY(enabled("tool.draw.rectangle"));
-        QVERIFY(!enabled("tool.draw.bezier")); // pas encore migré
+        QVERIFY(!enabled("tool.bucket")); // pas encore migré
     }
 
     void draggingAnObjectMovesTheSelectionInOneUndoStep() {
@@ -1743,6 +1743,56 @@ private slots:
         }
         QVERIFY2(topAfter > topBefore + 0.5, "le bord doit être tiré vers le haut");
         QVERIFY(w.session().undo());
+    }
+
+    void penToolDrawsACurvedShapeInOneUndoStepAndEscapeAbandonsIt() {
+        ShellWindow w;
+        w.resize(1400, 900);
+        w.show();
+        w.newProject();
+        w.waitForIdle();
+        QVERIFY(w.runCommand("tool.draw.bezier"));
+        auto* canvas = w.canvas();
+        QCOMPARE(canvas->mode(), PreviewCanvas::Mode::Pen);
+        const auto before = w.session().undoNames().size();
+
+        const QPoint centre = canvas->viewport()->rect().center();
+        const QPoint a = centre + QPoint(-120, 90);
+        const QPoint b = centre + QPoint(120, 90);
+        const QPoint c = centre + QPoint(0, -110);
+        // Premier nœud : clic-glisser (nœud lisse), les deux autres : simples clics.
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, a);
+        QTest::mouseMove(canvas->viewport(), a + QPoint(15, -25));
+        QTest::mouseMove(canvas->viewport(), a + QPoint(30, -50));
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                            a + QPoint(30, -50));
+        QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, b);
+        QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, c);
+        QCOMPARE(canvas->penNodeCount(), 3);
+        QCOMPARE(w.session().undoNames().size(), before); // rien n'est écrit avant la fin
+        QTest::keyClick(canvas, Qt::Key_Return);
+        w.waitForIdle();
+        QCOMPARE(canvas->penNodeCount(), 0);
+        QCOMPARE(w.session().undoNames().size(), before + 1); // une forme = un pas d'annulation
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(1));
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        const auto view = nodeView(w.session().project(), id);
+        QVERIFY(view.has_value());
+        QCOMPARE(view->nodes.size(), size_t(3));
+        QVERIFY(view->nodes.front().curved); // le nœud glissé porte une poignée
+        QVERIFY(!view->nodes.back().curved); // les clics simples restent des angles
+        QVERIFY(w.session().selection().contains({TargetKind::EmbroideryObject, id}));
+
+        // Échap abandonne une forme en cours sans rien créer.
+        QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, a);
+        QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, b);
+        QCOMPARE(canvas->penNodeCount(), 2);
+        QTest::keyClick(canvas, Qt::Key_Escape);
+        QCOMPARE(canvas->penNodeCount(), 0);
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(1));
+
+        QVERIFY(w.session().undo());
+        QVERIFY(w.session().project().embroidery_objects.empty());
     }
 
     void nodeToolEditsSatinRailsAndShowsTheRungs() {

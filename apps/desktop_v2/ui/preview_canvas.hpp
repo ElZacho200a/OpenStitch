@@ -40,9 +40,12 @@ public:
     // Pick : un clic échantillonne (pipette) ; ni cadre élastique ni déplacement.
     // Cut : glisser = ligne de coupe (couteau), émise par `lineDrawnPx`.
     // Stroke : glisser = trait de pinceau (zones de détail), émis par `strokeDrawnPx`.
+    // Pen : clic = nœud d'angle, clic-glisser = nœud lisse (la poignée suit la souris) ; Entrée,
+    //       double-clic ou clic sur le premier nœud = fermer et terminer, Échap = annuler,
+    //       Retour arrière = retirer le dernier nœud.
     // Nodes : poignées de nœuds du contour de l'objet sélectionné (glisser = déplacer, double-clic
     //         sur un segment = insérer un nœud) ; la fenêtre décide quoi en faire.
-    enum class Mode { Select, Pan, DrawBox, DrawPolygon, Measure, Pick, Cut, Stroke, Nodes };
+    enum class Mode { Select, Pan, DrawBox, DrawPolygon, Measure, Pick, Cut, Stroke, Nodes, Pen };
 
     explicit PreviewCanvas(QWidget* parent = nullptr);
 
@@ -109,6 +112,7 @@ public:
     [[nodiscard]] bool hasHoop() const { return hoopItem_ != nullptr; }
     // Sommets du polygone en cours de tracé (pixels de l'image).
     [[nodiscard]] QVector<QPointF> polygonInProgress() const { return polyPts_; }
+    [[nodiscard]] int penNodeCount() const { return static_cast<int>(penNodes_.size()); }
     // Poignées de nœuds (pixels de l'image) ; `selected` = indices mis en évidence.
     void setNodeHandles(const QVector<QPointF>& scenePx, const QVector<int>& selected);
     [[nodiscard]] int nodeHandleCount() const { return static_cast<int>(nodePts_.size()); }
@@ -151,6 +155,9 @@ signals:
     void scaleDraggedPx(QPointF pivotPx, double factor);
     // Polygone terminé en mode DrawPolygon (au moins 3 sommets).
     void polygonDrawnPx(QVector<QPointF> scenePx);
+    // Forme terminée en mode Pen : position de chaque nœud et poignée sortante (= la position si le
+    // nœud est un angle), en pixels de l'image.
+    void penShapeDrawnPx(QVector<QPointF> positions, QVector<QPointF> handlesOut);
     // Mode Nodes : poignée `index` pressée (la fenêtre met à jour la sélection de nœuds).
     void nodePressed(int index, Qt::KeyboardModifiers modifiers);
     // Glisser d'une poignée : décalage courant puis final, en pixels de l'image ; annulé par Échap.
@@ -201,6 +208,17 @@ private:
     QGraphicsPathItem* nodeOutline_{nullptr};
     QGraphicsPathItem* nodeGuides_{nullptr};
     int nodeDragIndex_{-1};
+    struct PenNodePx {
+        QPointF pos;
+        QPointF handle;
+        bool hasHandle{false};
+    };
+    std::vector<PenNodePx> penNodes_;
+    QGraphicsPathItem* penItem_{nullptr};
+    bool penDragging_{false};
+    void updatePenItem(const QPointF* cursor);
+    void finishPen();
+    void cancelPen();
     std::function<bool(const QPointF&)> segmentHit_;
     bool nodeDragActive_{false};
     QPointF nodeDragOrigin_;
