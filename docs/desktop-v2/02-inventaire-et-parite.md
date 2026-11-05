@@ -4,6 +4,8 @@ Cette matrice est **la** liste de suivi jusqu'à la bascule. Source : `apps/desk
 responsabilité par fichier), panneaux et dialogues de `apps/desktop/`, `tools.hpp`, catalogue `project_ops`.
 Elle est à mettre à jour à chaque PR (règle de revue : une PR V2 qui change un statut modifie ce fichier).
 
+> **Suivi détaillé de la finalisation** : `09-matrice-finalisation.md` distingue, pour chaque capacité, moteur / opérations / V2 / manipulation directe / test. Les statuts de cette matrice par famille sont mis à jour par les lots listés au journal (`07`) ; en cas de divergence, `09` est la référence la plus récente.
+
 Légende — **✅** équivalent V2 fonctionnel et testé · **🟡** partiel (précisé) · **⬜** à migrer.
 Espace cible : **C** Conception · **N** Numérisation · **O** Optimisation/Analyse · **P** Production · **T** transverse.
 
