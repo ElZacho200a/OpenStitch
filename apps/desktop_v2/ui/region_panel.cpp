@@ -86,8 +86,7 @@ RegionPanel::RegionPanel(QWidget* parent) : QWidget(parent) {
     auto* holesRow = new QHBoxLayout;
     fillHoles_ = new QPushButton(tr("Boucher les petits trous"), this);
     fillHoles_->setObjectName(QStringLiteral("regionFillHoles"));
-    fillHoles_->setToolTip(tr("Ne remplit que les trous de fond fermés ; "
-                             "les ouvertures vers le bord restent intactes."));
+    fillHoles_->setToolTip(tr("Remplit les trous fermés sans toucher au fond extérieur."));
     maxHolePixels_ = new QSpinBox(this);
     maxHolePixels_->setObjectName(QStringLiteral("regionMaxHolePixels"));
     maxHolePixels_->setRange(1, 100000);
