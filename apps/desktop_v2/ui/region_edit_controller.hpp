@@ -5,6 +5,7 @@
 // sur l'aperçu, choix d'une région au clic, corrections (supprimer, fusionner, nettoyer les îlots)
 // et régénération des objets en tâche annulable. N'agit que par `core/region_edit`.
 
+#include <array>
 #include <cstdint>
 #include <functional>
 
@@ -51,6 +52,8 @@ public:
     bool deleteSelected();
     bool mergeSelectedInto(std::uint64_t target);
     bool cleanIslands(int minPixels);
+    bool recolorSelected(std::array<std::uint8_t, 3> color);
+    bool mergeSelectedColorInto(std::uint64_t target);
     void regenerate();
 
     [[nodiscard]] std::uint64_t selected() const { return selected_; }
