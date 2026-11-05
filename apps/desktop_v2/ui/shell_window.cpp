@@ -53,8 +53,8 @@
 #include "transform_batch.hpp"
 #include <QComboBox>
 #include <QGuiApplication>
-#include <QSignalBlocker>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QSlider>
 #include <QSpinBox>
 #include <QStyleHints>
