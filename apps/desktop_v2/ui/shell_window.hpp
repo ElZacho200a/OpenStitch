@@ -17,6 +17,7 @@
 #include "action_catalog.hpp"
 #include "arrange_batch.hpp"
 #include "command_catalog.hpp"
+#include "density_service.hpp"
 #include "diagnostics_service.hpp"
 #include "digitize_pipeline.hpp"
 #include "document_services.hpp"
@@ -157,6 +158,12 @@ public:
     [[nodiscard]] DiagnosticsPanel* diagnostics() const { return diagnostics_; }
     [[nodiscard]] CalquePanel* calquePanel() const { return calques_; }
     [[nodiscard]] ThreadPanel* threadPanel() const { return threads_; }
+    // Carte de densité (surimpression) : affichée, et zones sur-denses de la dernière analyse.
+    [[nodiscard]] bool densityShown() const;
+    [[nodiscard]] bool densityActive() const { return densityActive_; }
+    [[nodiscard]] const std::vector<DensityHotspotInfo>& densityHotspots() const {
+        return densityHotspots_;
+    }
     // Repère mm <-> pixels et index de sélection de l'aperçu affiché (tests, diagnostics).
     [[nodiscard]] const PreviewImage& previewFrame() const { return frame_; }
     // Un point (pixels de l'image d'aperçu) qui appartient à l'objet : pour piloter le canevas en
@@ -190,6 +197,10 @@ private:
     void onCanvasRect(QRectF scenePx, Qt::KeyboardModifiers modifiers);
     void applyToolToCanvas();
     void updateSourceOverlay();
+    void toggleDensity();
+    void requestDensity();
+    void applyDensity(const DensityOverlay& overlay);
+    void hideDensity();
     void updatePointMarkers();
     [[nodiscard]] std::optional<std::uint64_t> pointTarget() const;
     const image::Image* ensureProcessed();
@@ -278,6 +289,10 @@ private:
     TaskId documentLoadTask_{0};
     std::uint64_t loadGeneration_{0};
     std::uint64_t previewRevision_{0};
+    bool densityActive_{false};
+    std::uint64_t densityRevision_{0}; // révision de la carte affichée ; 0 = aucune
+    std::uint64_t densityTask_{0};
+    std::vector<DensityHotspotInfo> densityHotspots_;
     bool previewShown_{false};
     bool documentOpen_{false}; // un projet est ouvert (même vide) : l'aperçu montre son cadre
     std::filesystem::path currentPath_;

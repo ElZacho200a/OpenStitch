@@ -71,6 +71,7 @@ void PreviewCanvas::clearImage() {
     pointItems_.clear();
     sourceItem_ = nullptr;
     detailItem_ = nullptr;
+    densityItem_ = nullptr;
     strokeItem_ = nullptr;
     strokePts_.clear();
     stroking_ = false;
@@ -396,6 +397,24 @@ void PreviewCanvas::setDetailOverlay(const QImage& image, const QRectF& rectPx) 
         QTransform::fromScale(rectPx.width() / image.width(), rectPx.height() / image.height()));
     detailItem_->setPos(rectPx.topLeft());
     detailItem_->setVisible(sourceVisible_);
+}
+
+void PreviewCanvas::setDensityOverlay(const QImage& image, const QRectF& rectPx) {
+    if (densityItem_ != nullptr) {
+        scene_->removeItem(densityItem_);
+        delete densityItem_;
+        densityItem_ = nullptr;
+    }
+    if (item_ == nullptr || image.isNull()) {
+        return;
+    }
+    densityItem_ = scene_->addPixmap(QPixmap::fromImage(image));
+    densityItem_->setTransformationMode(Qt::FastTransformation); // cases nettes, pas lissées
+    densityItem_->setZValue(3.2);
+    densityItem_->setTransform(
+        QTransform::fromScale(rectPx.width() / image.width(), rectPx.height() / image.height()));
+    densityItem_->setPos(rectPx.topLeft());
+    densityItem_->setAcceptedMouseButtons(Qt::NoButton); // ne gêne ni la sélection ni les outils
 }
 
 void PreviewCanvas::setHoopVisible(bool visible) {
