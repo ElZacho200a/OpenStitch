@@ -195,11 +195,20 @@ TEST_CASE("spiral fill: fragment routing never stitches across a concavity") {
         if (stitches[i].jump) {
             ++jumps;
         } else {
-            CHECK(inside.stays_inside(stitches[i - 1].pos, stitches[i].pos));
+            CHECK(inside.stays_inside(stitches[i - 1].pos, stitches[i].pos,
+                                      Micrometers{25}));
             CHECK(dist_um(stitches[i - 1], stitches[i]) <= 3'000.0 + 1.0);
         }
     }
     CHECK(jumps > 0); // les traversées de l'espace vide restent des sauts
+}
+
+TEST_CASE("spiral fill: a 25 um edge tolerance is not a shortcut through blank fabric") {
+    const RegionSegmentTester box(square(20));
+    const Vec2um inner = um(1, 10);
+    CHECK_FALSE(box.stays_inside(um(-0.01, 10), inner));
+    CHECK(box.stays_inside(um(-0.01, 10), inner, Micrometers{25}));
+    CHECK_FALSE(box.stays_inside(um(-1, 10), inner, Micrometers{25}));
 }
 
 TEST_CASE("crosshatch fill: layers add up and stay in the region") {
