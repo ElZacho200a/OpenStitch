@@ -306,6 +306,7 @@ private:
     PreviewCanvas* canvas_{nullptr};
     QToolBar* workspaceBar_{nullptr};
     QToolBar* toolRail_{nullptr};
+    QMenu* allToolsMenu_{nullptr};
     QAction* compactToolsAction_{nullptr};
     bool compactTools_{false};
     QActionGroup* workspaceGroup_{nullptr};

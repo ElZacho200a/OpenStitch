@@ -526,6 +526,26 @@ void ShellWindow::buildWorkspaceBar() {
         workspaceActions_.push_back(a);
         connect(a, &QAction::triggered, this, [this, w] { setWorkspace(w); });
     }
+    // Accès permanent à tous les outils, y compris ceux cachés lorsque le rail vertical
+    // déborde sur un écran peu haut. Le menu suit l'espace actif, sans raccourcis doublés.
+    auto* allToolsButton = new QToolButton(workspaceBar_);
+    allToolsButton->setObjectName(QStringLiteral("allToolsButton"));
+    allToolsButton->setText(tr("Tous les outils"));
+    allToolsButton->setIcon(toolIcon("select", palette().color(QPalette::ButtonText)));
+    allToolsButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    allToolsButton->setPopupMode(QToolButton::InstantPopup);
+    allToolsButton->setToolTip(tr("Tous les outils de cet espace, même si le rail est tronqué"));
+    allToolsButton->setAccessibleName(tr("Afficher tous les outils de l'espace courant"));
+    allToolsMenu_ = new QMenu(allToolsButton);
+    allToolsMenu_->setObjectName(QStringLiteral("allToolsMenu"));
+    allToolsButton->setMenu(allToolsMenu_);
+    workspaceBar_->addWidget(allToolsButton);
+    connect(allToolsMenu_, &QMenu::aboutToShow, this, [this] {
+        for (auto* action : allToolsMenu_->actions()) {
+            action->setChecked(action->data().toString() == activeTool_);
+        }
+    });
+
     auto* spacer = new QWidget(workspaceBar_);
     spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     workspaceBar_->addWidget(spacer);
@@ -833,6 +853,7 @@ void ShellWindow::setWorkspace(Workspace workspace) {
 }
 
 void ShellWindow::rebuildToolRail() {
+    allToolsMenu_->clear();
     for (auto* a : toolGroup_->actions()) {
         toolGroup_->removeAction(a);
         toolRail_->removeAction(a);
@@ -882,6 +903,15 @@ void ShellWindow::rebuildToolRail() {
             a->setShortcut(keyFor(tool->shortcut));
         }
         a->setToolTip(tip);
+        auto* menuAction = allToolsMenu_->addAction(a->icon(), label);
+        menuAction->setObjectName(QStringLiteral("allTools_") + fromUtf8(tool->id));
+        menuAction->setData(a->data());
+        menuAction->setEnabled(implemented);
+        menuAction->setToolTip(tip);
+        menuAction->setStatusTip(tip);
+        connect(menuAction, &QAction::triggered, this, [this, id = fromUtf8(tool->id)] {
+            (void)runCommand(QStringLiteral("tool.") + id);
+        });
         toolRail_->addAction(a);
         if (auto* button = toolRail_->widgetForAction(a)) {
             button->setAccessibleName(label);
@@ -909,6 +939,10 @@ void ShellWindow::rebuildToolRail() {
     }
     if (const auto* tool = registry_.find(activeTool_.toStdString())) {
         activeToolStatus_->setText(fromUtf8(tool->label));
+    }
+    for (auto* action : allToolsMenu_->actions()) {
+        action->setCheckable(true);
+        action->setChecked(action->data().toString() == activeTool_);
     }
 }
 
