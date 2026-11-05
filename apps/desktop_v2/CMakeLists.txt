@@ -21,6 +21,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/diagnostics_service.cpp
     core/live_companion.cpp
     core/fade_axis.cpp
+    core/path_optimizer.cpp
     core/node_edit.cpp
     core/density_service.cpp
     core/param_spec.cpp
@@ -46,7 +47,7 @@ target_compile_definitions(openstitch_desktop_v2_core PRIVATE
 target_link_libraries(openstitch_desktop_v2_core
     PUBLIC openstitch::core openstitch::document openstitch::commands openstitch::project_ops
            openstitch::stitch openstitch::stitch_generation openstitch::stitch_render openstitch::formats openstitch::image
-           openstitch::mcp openstitch::stitch_analysis openstitch::autodigitize openstitch::segmentation openstitch::stipple openstitch::project_io
+           openstitch::mcp openstitch::optimization openstitch::stitch_analysis openstitch::autodigitize openstitch::segmentation openstitch::stipple openstitch::project_io
     PRIVATE openstitch::warnings)
 
 # Interface Qt Widgets. Désactivée avec OPENSTITCH_BUILD_DESKTOP=OFF (CI linux-core) ou sans Qt6.
@@ -71,6 +72,8 @@ add_library(openstitch_desktop_v2_ui STATIC
     ui/calque_panel.cpp
     ui/calque_panel.hpp
     ui/thread_panel.cpp
+    ui/optimize_panel.cpp
+    ui/optimize_panel.hpp
     ui/companion_panel.cpp
     ui/companion_panel.hpp
     ui/live_server.cpp

@@ -32,6 +32,7 @@
 #include "feedback_cue.hpp"
 #include "inspector_model.hpp"
 #include "inspector_panel.hpp"
+#include "optimize_panel.hpp"
 #include "param_spec.hpp"
 #include "point_edit.hpp"
 #include "preview_canvas.hpp"
@@ -1482,6 +1483,67 @@ private slots:
         QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
                             start + QPoint(-20, 0));
         QCOMPARE(w.session().revision(), revision);
+    }
+
+    void orderOptimisationShowsMeasuresThenAcceptsAsOneUndoStep() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        const double xs[4] = {0.0, 60.0, 30.0, 90.0};
+        const char* colours[4] = {"#FF0000", "#0000FF", "#FF0000", "#0000FF"};
+        for (int i = 0; i < 4; ++i) {
+            QVERIFY(w.session().applyBatch(batchAddRect({xs[i], 0}, 10, 10), "Carré").committed);
+        }
+        for (int i = 0; i < 4; ++i) {
+            const auto id =
+                w.session().project().embroidery_objects[static_cast<std::size_t>(i)].id.value;
+            const std::string batch = "{\"schema\":\"openstitch.batch/1\",\"operations\":[{\"op\":"
+                                      "\"set_color\",\"object\":" +
+                                      std::to_string(id) + ",\"rgb\":\"" + colours[i] + "\"}]}";
+            QVERIFY(w.session().applyBatch(batch, "Couleur").committed);
+        }
+        w.waitForIdle();
+        auto* panel = w.optimizePanel();
+        QVERIFY(panel != nullptr);
+        QVERIFY(!panel->hasProposal());
+        QVERIFY(!panel->canAccept());
+
+        std::vector<std::uint64_t> order;
+        for (const auto& o : w.session().project().embroidery_objects) {
+            order.push_back(o.id.value);
+        }
+        const auto revision = w.session().revision();
+        w.runOptimization(PathStrategy::ByColor, false);
+        w.waitForIdle();
+        QVERIFY(panel->hasProposal());
+        QCOMPARE(panel->metricCount(), 5);
+        QVERIFY2(panel->metricText(0).contains("→"), qPrintable(panel->metricText(0)));
+        QVERIFY(panel->canAccept());
+        QCOMPARE(w.session().revision(), revision); // une proposition ne modifie rien
+
+        // Un document modifié rend la proposition périmée : elle ne peut plus être acceptée.
+        QVERIFY(w.session().applyBatch(batchAddRect({200, 0}, 5, 5), "Autre").committed);
+        w.waitForIdle();
+        QVERIFY(!panel->canAccept());
+        QVERIFY(!w.acceptOptimization());
+
+        // Nouvelle proposition, acceptée : un seul pas d'annulation.
+        w.runOptimization(PathStrategy::ByColor, false);
+        w.waitForIdle();
+        QVERIFY(panel->canAccept());
+        const auto depth = w.session().undoNames().size();
+        QVERIFY(w.acceptOptimization());
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QVERIFY(!panel->hasProposal());
+        QVERIFY(w.session().undo());
+
+        // Refuser ne change rien.
+        w.runOptimization(PathStrategy::ByColor, false);
+        w.waitForIdle();
+        const auto after = w.session().undoNames().size();
+        w.refuseOptimization();
+        QVERIFY(!panel->hasProposal());
+        QCOMPARE(w.session().undoNames().size(), after);
     }
 
     void nodeToolEditsSatinRailsAndShowsTheRungs() {

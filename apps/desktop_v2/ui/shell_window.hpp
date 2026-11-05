@@ -28,6 +28,7 @@
 #include "image_prep.hpp"
 #include "live_companion.hpp"
 #include "node_edit.hpp"
+#include "path_optimizer.hpp"
 #include "point_edit.hpp"
 #include "preview_service.hpp"
 #include "production_sheet.hpp"
@@ -68,6 +69,7 @@ class DiagnosticsPanel;
 class CalquePanel;
 class ThreadPanel;
 class CompanionPanel;
+class OptimizePanel;
 class LiveServer;
 class FeedbackCue;
 
@@ -191,6 +193,12 @@ public:
     [[nodiscard]] QString liveEndpoint() const;
     [[nodiscard]] std::string liveToken() const;
     [[nodiscard]] CompanionPanel* companionPanel() const { return companionPanel_; }
+
+    // --- Optimisation de l'ordre de couture, avec mesures avant / après ---------------------
+    [[nodiscard]] OptimizePanel* optimizePanel() const { return optimizePanel_; }
+    void runOptimization(PathStrategy strategy, bool improve);
+    bool acceptOptimization();
+    void refuseOptimization();
     [[nodiscard]] LiveCompanion* companion() const { return companion_.get(); }
     // Dossier du fichier de découverte (défaut : dossier utilisateur de `libs/mcp`) et réponse
     // d'approbation imposée (tests headless) : sans elle, une boîte de dialogue est affichée.
@@ -343,6 +351,9 @@ private:
     void updateGuide();
     ThreadPanel* threads_{nullptr};
     CompanionPanel* companionPanel_{nullptr};
+    OptimizePanel* optimizePanel_{nullptr};
+    std::optional<PathProposal> proposal_;
+    std::uint64_t optimizeTask_{0};
     std::unique_ptr<LiveCompanion> companion_;
     std::unique_ptr<LiveServer> liveServer_;
     std::filesystem::path liveDir_;

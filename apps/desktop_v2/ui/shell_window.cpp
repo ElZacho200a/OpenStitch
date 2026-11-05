@@ -54,6 +54,7 @@
 #include "object_labels.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/project_ops/factory.hpp"
+#include "optimize_panel.hpp"
 #include "preview_canvas.hpp"
 #include "preview_service.hpp"
 #include "thread_panel.hpp"
@@ -552,6 +553,18 @@ void ShellWindow::buildInspector() {
     tabifyDockWidget(calqueDock, threadDock);
     connect(threads_, &ThreadPanel::refused, this,
             [this](const QString& message) { setNotice(message, true); });
+    auto* optimizeDock = new QDockWidget(tr("Optimisation"), this);
+    optimizeDock->setObjectName(QStringLiteral("optimizeDock"));
+    optimizePanel_ = new OptimizePanel(optimizeDock);
+    optimizeDock->setWidget(optimizePanel_);
+    addDockWidget(Qt::RightDockWidgetArea, optimizeDock);
+    tabifyDockWidget(calqueDock, optimizeDock);
+    connect(optimizePanel_, &OptimizePanel::proposeRequested, this,
+            [this](PathStrategy strategy, bool improve) { runOptimization(strategy, improve); });
+    connect(optimizePanel_, &OptimizePanel::acceptRequested, this,
+            [this] { (void)acceptOptimization(); });
+    connect(optimizePanel_, &OptimizePanel::refuseRequested, this,
+            [this] { refuseOptimization(); });
     auto* companionDock = new QDockWidget(tr("Compagnon IA"), this);
     companionDock->setObjectName(QStringLiteral("companionDock"));
     companionPanel_ = new CompanionPanel(companionDock);
@@ -925,6 +938,61 @@ bool ShellWindow::runGuideNext() {
     return false;
 }
 
+void ShellWindow::runOptimization(PathStrategy strategy, bool improve) {
+    if (session_.project().embroidery_objects.size() < 2) {
+        optimizePanel_->showMessage(tr("Il faut au moins deux objets brodés pour optimiser."));
+        return;
+    }
+    if (optimizeTask_ != 0) {
+        (void)tasks_.cancel(optimizeTask_); // une proposition périmée n'est jamais livrée
+    }
+    proposal_.reset();
+    optimizePanel_->setBusy(true);
+    const auto snapshot = session_.snapshot();
+    const auto revision = session_.revision();
+    optimizeTask_ = tasks_.submit<PathProposal>(
+        tr("Optimisation de l'ordre").toStdString(),
+        [snapshot, revision, strategy, improve](const TaskContext& ctx) {
+            return proposeOrder(snapshot, revision, strategy, improve, ctx);
+        },
+        [this](Result<PathProposal>&& r) {
+            optimizeTask_ = 0;
+            if (!r) {
+                optimizePanel_->showMessage(
+                    tr("Optimisation impossible : %1").arg(fromUtf8(r.error().message)));
+                return;
+            }
+            proposal_ = std::move(*r);
+            optimizePanel_->showProposal(*proposal_);
+            optimizePanel_->setStale(proposal_->revision != session_.revision());
+            setNotice(tr("Proposition d'ordre calculée : vérifiez les mesures puis acceptez ou "
+                         "refusez."),
+                      false);
+        });
+}
+
+bool ShellWindow::acceptOptimization() {
+    if (!proposal_) {
+        return false;
+    }
+    const auto r = applyProposal(session_, *proposal_);
+    if (!r.ok) {
+        optimizePanel_->setStale(true);
+        setNotice(tr("Optimisation : %1").arg(fromUtf8(r.message)), true);
+        return false;
+    }
+    proposal_.reset();
+    optimizePanel_->showMessage(tr("Ordre appliqué. Annulable en une étape (Ctrl+Z)."));
+    setNotice(tr("Ordre de couture optimisé."), false);
+    return true;
+}
+
+void ShellWindow::refuseOptimization() {
+    proposal_.reset();
+    optimizePanel_->clearProposal();
+    setNotice(tr("Proposition refusée : le document n'a pas changé."), false);
+}
+
 bool ShellWindow::setLiveBridgeEnabled(bool on, QString* error) {
     if (!on) {
         if (liveServer_) {
@@ -985,6 +1053,12 @@ std::string ShellWindow::liveToken() const {
 }
 
 void ShellWindow::onDocumentChanged(ChangeKind kind) {
+    if (optimizePanel_ != nullptr) {
+        optimizePanel_->setEnabledForDocument(session_.project().embroidery_objects.size() >= 2);
+        if (proposal_ && proposal_->revision != session_.revision()) {
+            optimizePanel_->setStale(true);
+        }
+    }
     if (kind != ChangeKind::Replaced && feedbackCue_ != nullptr) {
         feedbackCue_->pulse();
     }
@@ -2668,6 +2742,8 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
                        q(tr("Supprimer le préréglage « %1 »").arg(fromUtf8(name))),
                        q(tr("Préréglages")), "", true});
     }
+    out.push_back({"optimize.order", q(tr("Optimiser l'ordre de couture…")), q(tr("Analyse")), "",
+                   session_.project().embroidery_objects.size() >= 2});
     out.push_back({"companion.toggle",
                    q(liveBridgeEnabled() ? tr("Désactiver le pont du compagnon IA")
                                          : tr("Activer le pont du compagnon IA")),
@@ -2734,6 +2810,8 @@ bool ShellWindow::runCommand(const QString& id) {
             applyPresetIndex(id.mid(13).toInt());
         } else if (id.startsWith(QLatin1String("preset.remove."))) {
             removePresetIndex(id.mid(14).toInt());
+        } else if (id == QLatin1String("optimize.order")) {
+            runOptimization(optimizePanel_->strategy(), optimizePanel_->improve());
         } else if (id == QLatin1String("companion.toggle")) {
             QString error;
             if (!setLiveBridgeEnabled(!liveBridgeEnabled(), &error)) {

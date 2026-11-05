@@ -373,3 +373,8 @@ encore le desktop principal.
 ## 2026-11-05 — Session 1 (suite 25) : finalisation V2, tranche 4 (axe du fondu)
 
 - `core/fade_axis` + outil « Axe du fondu » (L) : quatre poignées au canevas (début et fin de la transition, déplacement de l'axe, rotation à 90°), aperçu de l'axe pendant le glisser (géométrie pure, aucune régénération de points), Maj = extrémités symétriques, validation en UNE commande (`make_edit_gradient_fill_command`), résumé « Transition de x % à y % de la forme ». La rotation conserve la zone de transition (fraction de la forme), pas la longueur : comportement du moteur, testé. Réutilise le mode canevas des nœuds. Touche L (Maj+F est déjà « cadrer la sélection »).
+
+## 2026-11-05 — Session 1 (suite 26) : finalisation V2, tranche 5 (optimisation avec preuve)
+
+- `core/path_optimizer` : propose un nouvel ordre (4 stratégies, affinage 2-opt optionnel, départ/arrivée du motif) calculé sur une copie, puis MESURE la séquence réelle (`effective_sequence`) avant et après : changements de fil, sauts, coupes, distance à vide entre objets d'après les extrémités réelles, points. Le test vérifie que la séquence obtenue après acceptation correspond aux mesures annoncées. Un compromis (moins de changements de fil mais plus de déplacements) est signalé comme tel et non présenté comme une amélioration. Acceptation = `ReorderEmbroideryCommand`, un pas d'annulation ; proposition périmée refusée (révision).
+- Interface : dock « Optimisation » (stratégie, affinage, mesures avant → après, verdict, Accepter / Refuser), tâche annulable hors fil d'interface, commande `optimize.order`.
