@@ -48,6 +48,7 @@
 #include "companion_panel.hpp"
 #include "diagnostics_panel.hpp"
 #include "feedback_cue.hpp"
+#include "import_dialog.hpp"
 #include "inspector_model.hpp"
 #include "inspector_panel.hpp"
 #include "live_server.hpp"
@@ -57,6 +58,7 @@
 #include "optimize_panel.hpp"
 #include "preview_canvas.hpp"
 #include "preview_service.hpp"
+#include "segmentation_preview.hpp"
 #include "thread_panel.hpp"
 #include "tool_icon.hpp"
 #include "transform_batch.hpp"
@@ -1366,11 +1368,52 @@ void ShellWindow::chooseAndOpen() {
     if (path.endsWith(QStringLiteral(".osp"), Qt::CaseInsensitive)) {
         openProject(p);
     } else {
-        openImage(p, heightSpin_->value());
+        importImage(p);
     }
 }
 
-void ShellWindow::openImage(const std::filesystem::path& image, double heightMm) {
+void ShellWindow::importImage(const std::filesystem::path& image) {
+    if (importDialog_ != nullptr) {
+        importDialog_->close();
+    }
+    auto* dialog =
+        new ImportDialog(QString::fromStdU16String(image.u16string()), heightSpin_->value(), this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    importDialog_ = dialog;
+    QPointer<ImportDialog> guard(dialog);
+    connect(dialog, &ImportDialog::previewRequested, this,
+            [this, guard, image](segmentation::SegmentationOptions options) {
+                if (importPreviewTask_ != 0) {
+                    (void)tasks_.cancel(importPreviewTask_); // un aperçu périmé n'est jamais livré
+                }
+                importPreviewTask_ = tasks_.submit<SegmentationPreview>(
+                    tr("Aperçu de la segmentation").toStdString(),
+                    [image, options](const TaskContext& ctx) {
+                        return previewSegmentation(image, options, ctx);
+                    },
+                    [this, guard](Result<SegmentationPreview>&& r) {
+                        importPreviewTask_ = 0;
+                        if (guard == nullptr) {
+                            return; // la fenêtre a été fermée pendant le calcul
+                        }
+                        if (!r) {
+                            guard->setPreviewError(fromUtf8(r.error().message));
+                            return;
+                        }
+                        guard->setPreview(*r);
+                    });
+            });
+    connect(dialog, &QDialog::accepted, this, [this, guard, image] {
+        if (guard == nullptr) {
+            return;
+        }
+        openImage(image, guard->heightMm(), guard->settings());
+    });
+    dialog->open();
+}
+
+void ShellWindow::openImage(const std::filesystem::path& image, double heightMm,
+                            const project_ops::DigitizeSettings& settings) {
     if (!confirmDiscardOrSave()) {
         return;
     }
@@ -1380,6 +1423,7 @@ void ShellWindow::openImage(const std::filesystem::path& image, double heightMm)
     DigitizeRequest request;
     request.image = image;
     request.target_height_mm = heightMm;
+    request.settings = settings;
     setNotice(
         tr("Numérisation de %1…").arg(QString::fromStdU16String(image.filename().u16string())),
         false);

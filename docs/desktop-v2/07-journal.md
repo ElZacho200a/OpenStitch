@@ -386,3 +386,7 @@ encore le desktop principal.
 ## 2026-11-05 — Session 1 (suite 28) : finalisation V2, tranche 7 (mesures de performance)
 
 - Banc `[.perf]` (1 / 100 / 500 / 1 000 objets) et rapport `10-performances.md`. Résultats Debug : retour visuel local p95 0,02 ms ; gestes ordinaires (+1 objet, déplacer, copie) ≤ 9,3 ms à 1 000 objets ; séquence effective 270 ms et aperçu réaliste 506 ms à 1 000 objets (en tâche de fond) ; ajout d'un lot de 1 000 objets 276 ms sur le fil d'interface (reste à déplacer en tâche). Le plafond de 50 ms du retour local est contrôlé par un test ; rien d'autre n'est affirmé sans mesure.
+
+## 2026-11-05 — Session 1 (suite 29) : finalisation V2, tranche 8 (import avec segmentation en aperçu)
+
+- Constat : la V2 numérisait toujours avec les réglages par défaut (8 couleurs…), sans aucune interface de réglage. Nouvelle fenêtre d'import : hauteur, nombre de couleurs, plus petite région, lissage, fond, style ; l'image d'origine et la segmentation qui en résultera sont affichées côte à côte (`core/segmentation_preview`, même fonction que la numérisation, tâche annulable, résultat calculé pour d'autres réglages jamais affiché). La validation numérise avec ces réglages. `openImage` accepte désormais des `DigitizeSettings` ; l'option `--image` de la ligne de commande garde le comportement par défaut.

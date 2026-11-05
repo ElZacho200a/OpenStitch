@@ -11,6 +11,8 @@
 #include <QRectF>
 #include <filesystem>
 #include <functional>
+
+#include <QPointer>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -71,6 +73,7 @@ class CalquePanel;
 class ThreadPanel;
 class CompanionPanel;
 class OptimizePanel;
+class ImportDialog;
 class LiveServer;
 class FeedbackCue;
 
@@ -82,7 +85,11 @@ public:
 
     // --- Actions de haut niveau (menus, ligne de commande, tests) ---------------------------
     // Numérise une image (tâche d'arrière-plan). `heightMm` <= 0 : résolution native.
-    void openImage(const std::filesystem::path& image, double heightMm);
+    void openImage(const std::filesystem::path& image, double heightMm,
+                   const project_ops::DigitizeSettings& settings = {});
+    // Ouvre la fenêtre d'import (réglages + segmentation en aperçu) puis numérise à la validation.
+    void importImage(const std::filesystem::path& image);
+    [[nodiscard]] ImportDialog* importDialog() const { return importDialog_; }
     void openProject(const std::filesystem::path& osp);
     bool saveProject(const std::filesystem::path& osp);
     // Dossier d'état utilisateur : liste des récents + sauvegarde automatique (toutes les
@@ -359,6 +366,8 @@ private:
     ThreadPanel* threads_{nullptr};
     CompanionPanel* companionPanel_{nullptr};
     OptimizePanel* optimizePanel_{nullptr};
+    QPointer<ImportDialog> importDialog_;
+    std::uint64_t importPreviewTask_{0};
     bool fabricActive_{false};
     std::uint64_t fabricTask_{0};
     std::optional<FabricRisk> fabricRisk_;

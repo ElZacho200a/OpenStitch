@@ -23,6 +23,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/fade_axis.cpp
     core/path_optimizer.cpp
     core/fabric_risk.cpp
+    core/segmentation_preview.cpp
     core/node_edit.cpp
     core/density_service.cpp
     core/param_spec.cpp
@@ -73,6 +74,8 @@ add_library(openstitch_desktop_v2_ui STATIC
     ui/calque_panel.cpp
     ui/calque_panel.hpp
     ui/thread_panel.cpp
+    ui/import_dialog.cpp
+    ui/import_dialog.hpp
     ui/optimize_panel.cpp
     ui/optimize_panel.hpp
     ui/companion_panel.cpp

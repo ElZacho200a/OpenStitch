@@ -22,6 +22,7 @@
 #include <QWheelEvent>
 #include <filesystem>
 #include <nlohmann/json.hpp>
+#include <set>
 
 #include "action_dialog.hpp"
 #include "calque_panel.hpp"
@@ -30,6 +31,7 @@
 #include "diagnostics_panel.hpp"
 #include "fade_service.hpp"
 #include "feedback_cue.hpp"
+#include "import_dialog.hpp"
 #include "inspector_model.hpp"
 #include "inspector_panel.hpp"
 #include "optimize_panel.hpp"
@@ -1575,6 +1577,41 @@ private slots:
         QVERIFY(!w.fabricRiskActive());
         QVERIFY(!w.fabricRiskShown());
         QVERIFY(!w.canvas()->hasFabricArrows());
+    }
+
+    void importDialogShowsTheSegmentationThenAppliesTheChosenColours() {
+        ShellWindow w;
+        w.show();
+        w.importImage(tentabrode());
+        auto* dialog = w.importDialog();
+        QVERIFY(dialog != nullptr);
+        QVERIFY(dialog->sourceShown()); // l'image d'origine est visible
+        const auto settled = [&] {
+            w.waitForIdle();
+            return dialog->previewShown();
+        };
+        QTRY_VERIFY_WITH_TIMEOUT(settled(), 30000);
+        QVERIFY(dialog->paletteCount() >= 2);
+        const int many = dialog->paletteCount();
+
+        // Moins de couleurs : l'aperçu se recalcule et montre moins de régions.
+        dialog->setColors(3);
+        QVERIFY(!dialog->previewShown()); // l'ancien aperçu n'est plus présenté comme actuel
+        QTRY_VERIFY_WITH_TIMEOUT(settled(), 30000);
+        QVERIFY(dialog->paletteCount() <= many);
+        QVERIFY2(dialog->summary().contains("3"), qPrintable(dialog->summary()));
+        QCOMPARE(dialog->settings().max_colors, 3);
+
+        // Valider numérise avec CES réglages : au plus trois fils différents.
+        dialog->accept();
+        w.waitForIdle();
+        const auto& objects = w.session().project().embroidery_objects;
+        QVERIFY(!objects.empty());
+        std::set<std::array<std::uint8_t, 3>> threads;
+        for (const auto& o : objects) {
+            threads.insert(o.rgb);
+        }
+        QVERIFY2(threads.size() <= 3, qPrintable(QString::number(threads.size())));
     }
 
     void nodeToolEditsSatinRailsAndShowsTheRungs() {
