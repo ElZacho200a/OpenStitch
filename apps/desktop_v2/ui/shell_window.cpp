@@ -428,8 +428,7 @@ void ShellWindow::buildMenus() {
             settings.setValue(QStringLiteral("visual/reducedMotion"), reduced);
         }
     });
-    connect(reducedMotionAction_, &QAction::triggered, canvas_,
-            &PreviewCanvas::setReducedMotion);
+    connect(reducedMotionAction_, &QAction::triggered, canvas_, &PreviewCanvas::setReducedMotion);
 }
 
 void ShellWindow::buildWorkspaceBar() {
