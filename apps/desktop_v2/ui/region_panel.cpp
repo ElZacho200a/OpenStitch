@@ -55,6 +55,22 @@ RegionPanel::RegionPanel(QWidget* parent) : QWidget(parent) {
     mergeRow->addWidget(neighbours_, 1);
     column->addLayout(mergeRow);
 
+    recolor_ = new QPushButton(tr("Recolorer cette région…"), this);
+    recolor_->setObjectName(QStringLiteral("regionRecolor"));
+    recolor_->setToolTip(tr("Change uniquement la couleur de la région choisie ; annulable."));
+    column->addWidget(recolor_);
+
+    auto* colorsRow = new QHBoxLayout;
+    colorTargets_ = new QComboBox(this);
+    colorTargets_->setObjectName(QStringLiteral("regionColorTargets"));
+    mergeColors_ = new QPushButton(tr("Fusionner les couleurs"), this);
+    mergeColors_->setObjectName(QStringLiteral("regionMergeColors"));
+    mergeColors_->setToolTip(tr("Toutes les régions de cette couleur prennent la teinte choisie. "
+                                "Une seule étape d'annulation."));
+    colorsRow->addWidget(mergeColors_);
+    colorsRow->addWidget(colorTargets_, 1);
+    column->addLayout(colorsRow);
+
     auto* cleanRow = new QHBoxLayout;
     minPixels_ = new QSpinBox(this);
     minPixels_->setObjectName(QStringLiteral("regionMinPixels"));
@@ -91,6 +107,12 @@ RegionPanel::RegionPanel(QWidget* parent) : QWidget(parent) {
             emit mergeRequested(neighbours_->currentData().toULongLong());
         }
     });
+    connect(recolor_, &QPushButton::clicked, this, &RegionPanel::recolorRequested);
+    connect(mergeColors_, &QPushButton::clicked, this, [this] {
+        if (colorTargets_->currentIndex() >= 0) {
+            emit mergeColorsRequested(colorTargets_->currentData().toULongLong());
+        }
+    });
     connect(clean_, &QPushButton::clicked, this,
             [this] { emit cleanRequested(minPixels_->value()); });
     connect(regenerate_, &QPushButton::clicked, this, &RegionPanel::regenerateRequested);
@@ -120,6 +142,14 @@ void RegionPanel::setNeighbours(const std::vector<RegionInfo>& neighbours) {
     neighbours_->clear();
     for (const auto& n : neighbours) {
         neighbours_->addItem(swatch(n.rgb), describe(n), static_cast<qulonglong>(n.id));
+    }
+    updateButtons();
+}
+
+void RegionPanel::setColorTargets(const std::vector<RegionInfo>& targets) {
+    colorTargets_->clear();
+    for (const auto& t : targets) {
+        colorTargets_->addItem(swatch(t.rgb), describe(t), static_cast<qulonglong>(t.id));
     }
     updateButtons();
 }
@@ -164,6 +194,8 @@ void RegionPanel::updateButtons() {
     const bool has = selected_ != 0 && !busy_;
     delete_->setEnabled(has && list_->count() > 1);
     merge_->setEnabled(has && neighbours_->count() > 0);
+    recolor_->setEnabled(has);
+    mergeColors_->setEnabled(has && colorTargets_->count() > 0);
     clean_->setEnabled(!busy_ && list_->count() > 0);
     regenerate_->setEnabled(dirty_ && !busy_);
 }
