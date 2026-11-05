@@ -414,3 +414,7 @@ encore le desktop principal.
 ## 2026-11-05 — Session 1 (suite 35) : finalisation V2, tranche 14 (suppression de nœuds)
 
 - Suppr dans l'outil Nœuds retire les nœuds choisis (jamais l'objet) : simulation sur une copie (3 nœuds minimum pour un contour fermé, aucun croisement introduit), puis UNE commande composite de `RemoveNodeCommand` en ordre décroissant ; annulation exacte de la forme d'origine (testée nœud par nœud). Refusé sur les rails de satin.
+
+## 2026-11-05 — Session 1 (suite 36) : finalisation V2, tranche 15 (Crayon)
+
+- Outil Crayon (`draw.freeform`) : le trait est dédoublonné, refermé, contrôlé (aire, croisements) puis ajusté par `fit_curves` ; la tolérance suit la taille du dessin (2 % de la diagonale, entre 0,3 et 3 mm) et se resserre jusqu'à obtenir au moins quatre nœuds (une courbe fermée à deux nœuds est valide mais difficile à retoucher). Création partagée avec la Plume (`commitShape`, une commande). Premier essai à tolérance fixe (0,3 mm) : 47 nœuds pour 90 points, c'est-à-dire du bruit ajusté ; corrigé.

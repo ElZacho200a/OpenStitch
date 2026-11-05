@@ -32,4 +32,9 @@ struct PenResult {
 // coordonnées hors zone de travail, contour qui se croise, aire trop petite.
 PenResult createPenShape(DocumentSession& session, const std::vector<PenNode>& nodes);
 
+// Crayon : un trait à main levée, refermé puis ajusté par des courbes de Bézier (peu de nœuds,
+// forme lisse) ; mêmes garanties que la plume. Refus clairs : trait trop court, forme trop petite,
+// contour qui se croise (une boucle dessinée à la main).
+PenResult createFreehandShape(DocumentSession& session, const std::vector<PointMm>& stroke);
+
 } // namespace openstitch::desktop_v2

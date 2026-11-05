@@ -223,7 +223,7 @@ private slots:
                 QVERIFY(a->toolTip().contains("pas encore migré"));
             }
         }
-        QCOMPARE(enabled, 12); // …, Pipette, Couteau, Zones de détail, Nœuds
+        QCOMPARE(enabled, 13); // …, Pipette, Couteau, Zones de détail, Nœuds
         QVERIFY(disabled > 0);
     }
 
@@ -1826,6 +1826,43 @@ private slots:
         QVERIFY(w.session().undo());
         w.waitForIdle();
         QCOMPARE(w.nodeHandleCount(), 8);
+    }
+
+    void pencilTurnsAHandDrawnLoopIntoASmoothShape() {
+        ShellWindow w;
+        w.resize(1400, 900);
+        w.show();
+        w.newProject();
+        w.waitForIdle();
+        QVERIFY(w.runCommand("tool.draw.freeform"));
+        auto* canvas = w.canvas();
+        QCOMPARE(canvas->mode(), PreviewCanvas::Mode::Stroke);
+        const auto before = w.session().undoNames().size();
+
+        const QPoint centre = canvas->viewport()->rect().center();
+        const double radius = 110.0; // pixels de vue
+        const auto at = [&](int deg) {
+            const double a = deg * 3.14159265358979323846 / 180.0;
+            const double wobble = 2.0 * std::sin(deg * 0.7); // tremblement de la main
+            return centre + QPoint(qRound((radius + wobble) * std::cos(a)),
+                                   qRound((radius + wobble) * std::sin(a)));
+        };
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, at(0));
+        for (int deg = 4; deg < 360; deg += 4) {
+            QTest::mouseMove(canvas->viewport(), at(deg));
+        }
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, at(358));
+        w.waitForIdle();
+        QCOMPARE(w.session().undoNames().size(), before + 1); // un trait = un pas d'annulation
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(1));
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        const auto view = nodeView(w.session().project(), id);
+        QVERIFY(view.has_value());
+        QVERIFY2(view->nodes.size() < 40, qPrintable(QString::number(view->nodes.size())));
+        QVERIFY(view->nodes.size() >= 3);
+        QVERIFY(w.session().selection().contains({TargetKind::EmbroideryObject, id}));
+        QVERIFY(w.session().undo());
+        QVERIFY(w.session().project().embroidery_objects.empty());
     }
 
     void nodeToolEditsSatinRailsAndShowsTheRungs() {

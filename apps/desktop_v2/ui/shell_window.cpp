@@ -90,7 +90,8 @@ bool isToolImplemented(const std::string& id) {
     return id == "select" || id == "pan" || id == "draw.rectangle" || id == "draw.ellipse" ||
            id == "draw.polygon" || id == "measure" || id == "eyedropper" || id == "knife" ||
            id == "click-to-stitch" || id == "detail-brush" || id == "stitch.points" ||
-           id == "satin.column" || id == "node.edit" || id == "fade.axis" || id == "draw.bezier";
+           id == "satin.column" || id == "node.edit" || id == "fade.axis" || id == "draw.bezier" ||
+           id == "draw.freeform";
 }
 
 constexpr Workspace kWorkspaces[] = {Workspace::Design, Workspace::Digitize, Workspace::Optimize,
@@ -2080,6 +2081,21 @@ void ShellWindow::updateSourceOverlay() {
 }
 
 void ShellWindow::onStroke(QVector<QPointF> scenePx, Qt::KeyboardModifiers modifiers) {
+    if (activeTool_ == QStringLiteral("draw.freeform") && frame_.px_per_mm > 0.0) {
+        std::vector<PointMm> stroke;
+        stroke.reserve(static_cast<std::size_t>(scenePx.size()));
+        for (const QPointF& p : scenePx) {
+            stroke.push_back(screenToModel(frame_.pxToMmX(p.x()), frame_.pxToMmY(p.y())));
+        }
+        const auto r = createFreehandShape(session_, stroke);
+        if (!r.ok) {
+            setNotice(tr("Crayon : %1").arg(fromUtf8(r.message)), true);
+            return;
+        }
+        session_.selection().replace({{TargetKind::EmbroideryObject, r.objectId}});
+        setNotice(tr("Forme dessinée : ajustez-la avec l'outil Nœuds (B)."), false);
+        return;
+    }
     if (activeTool_ != QStringLiteral("detail-brush") || frame_.px_per_mm <= 0.0) {
         return;
     }
@@ -2130,7 +2146,8 @@ void ShellWindow::applyToolToCanvas() {
     } else if (activeTool_ == QStringLiteral("click-to-stitch") ||
                activeTool_ == QStringLiteral("stitch.points")) {
         canvas_->setMode(Mode::Pick);
-    } else if (activeTool_ == QStringLiteral("detail-brush")) {
+    } else if (activeTool_ == QStringLiteral("detail-brush") ||
+               activeTool_ == QStringLiteral("draw.freeform")) {
         canvas_->setMode(Mode::Stroke);
     } else if (activeTool_ == QStringLiteral("node.edit") ||
                activeTool_ == QStringLiteral("fade.axis")) {

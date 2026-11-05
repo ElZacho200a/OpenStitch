@@ -6,7 +6,9 @@
 
 #include "document_session.hpp"
 #include "openstitch/commands/project_commands.hpp"
+#include "openstitch/geometry/curve_fit.hpp"
 #include "openstitch/geometry/path.hpp"
+#include "openstitch/geometry/primitives.hpp"
 #include "openstitch/geometry/reshape.hpp"
 
 namespace openstitch::desktop_v2 {
@@ -35,6 +37,12 @@ PenResult refuse(std::string why) {
 }
 
 } // namespace
+
+// Pose un contour fermé comme nouvel objet (vectoriel + broderie) en UNE commande.
+static PenResult commitShape(DocumentSession& session, geometry::Path path,
+                             const std::string& name);
+
+namespace {} // namespace
 
 PenResult createPenShape(DocumentSession& session, const std::vector<PenNode>& nodes) {
     if (nodes.size() < 3) {
@@ -76,11 +84,85 @@ PenResult createPenShape(DocumentSession& session, const std::vector<PenNode>& n
         return refuse("Le contour se croise : déplacez un nœud pour le dégager.");
     }
 
+    PenResult made = commitShape(session, std::move(path), curved ? "Courbe" : "Forme");
+    made.curved = curved;
+    return made;
+}
+
+PenResult createFreehandShape(DocumentSession& session, const std::vector<PointMm>& stroke) {
+    // Points de trop près (tremblement de la main) écartés avant l'ajustement.
+    std::vector<Vec2um> points;
+    for (const auto& p : stroke) {
+        if (!inRange(p)) {
+            return refuse("Le trait sort de la zone de travail (±1000 mm).");
+        }
+        const Vec2um u = toUm(p.x, p.y);
+        if (points.empty() ||
+            std::hypot(static_cast<double>(u.x.value - points.back().x.value),
+                       static_cast<double>(u.y.value - points.back().y.value)) >= 150.0) {
+            points.push_back(u);
+        }
+    }
+    // Le dernier point revenu sur le premier ne doit pas doubler un sommet.
+    if (points.size() > 2 &&
+        std::hypot(static_cast<double>(points.front().x.value - points.back().x.value),
+                   static_cast<double>(points.front().y.value - points.back().y.value)) < 600.0) {
+        points.pop_back();
+    }
+    if (points.size() < 8) {
+        return refuse("Trait trop court : dessinez une forme plus grande.");
+    }
+    geometry::Path polygon = geometry::polygon_path(points);
+    if (std::abs(geometry::signed_area_um2(polygon)) / 1e6 < 4.0) {
+        return refuse("Forme trop petite ou plate (aire inférieure à 4 mm²).");
+    }
+    if (geometry::path_self_intersects(polygon, kCrossingTolerance)) {
+        return refuse("Le trait se croise : dessinez un contour sans boucle.");
+    }
+    // Tolérance proportionnelle à la taille du dessin (le tremblement de la main grandit avec lui)
+    // : 2 % de la diagonale, bornée entre 0,3 et 3 mm.
+    std::int64_t minX = points.front().x.value;
+    std::int64_t maxX = minX;
+    std::int64_t minY = points.front().y.value;
+    std::int64_t maxY = minY;
+    for (const auto& p : points) {
+        minX = std::min<std::int64_t>(minX, p.x.value);
+        maxX = std::max<std::int64_t>(maxX, p.x.value);
+        minY = std::min<std::int64_t>(minY, p.y.value);
+        maxY = std::max<std::int64_t>(maxY, p.y.value);
+    }
+    const double diagonalUm =
+        std::hypot(static_cast<double>(maxX - minX), static_cast<double>(maxY - minY));
+    // Une courbe fermée à deux nœuds serait valide mais difficile à retoucher : on resserre la
+    // tolérance jusqu'à obtenir au moins quatre nœuds (ou le tracé brut en dernier recours).
+    geometry::Path fitted = polygon;
+    double toleranceUm = std::clamp(diagonalUm * 0.02, 300.0, 3000.0);
+    for (int attempt = 0; attempt < 6; ++attempt) {
+        geometry::CurveFitOptions options;
+        options.tolerance = Micrometers{static_cast<std::int32_t>(toleranceUm)};
+        geometry::Path candidate = geometry::fit_curves(polygon, options);
+        if (candidate.nodes.size() >= 4 &&
+            !geometry::path_self_intersects(candidate, kCrossingTolerance)) {
+            fitted = std::move(candidate);
+            break;
+        }
+        toleranceUm /= 2.0;
+    }
+    bool curved = false;
+    for (const auto& n : fitted.nodes) {
+        curved = curved || n.tan_in.has_value() || n.tan_out.has_value();
+    }
+    PenResult made = commitShape(session, std::move(fitted), "Dessin");
+    made.curved = curved;
+    return made;
+}
+
+PenResult commitShape(DocumentSession& session, geometry::Path path, const std::string& name) {
     // Même recette que l'opération `add_shape` : objet vectoriel + objet de broderie (tatami),
     // posés par une seule commande. Les identifiants viennent du compteur du document.
     document::VectorObject vector;
     vector.id = session.allocateObjectId();
-    vector.name = curved ? "Courbe" : "Forme";
+    vector.name = name;
     vector.rgb = {80, 120, 200};
     vector.paths.push_back(geometry::PathSet{std::move(path), {}});
 
@@ -95,12 +177,10 @@ PenResult createPenShape(DocumentSession& session, const std::vector<PenNode>& n
     const auto objectId = object.id.value;
     session.execute(std::make_unique<commands::AddObjectBatchCommand>(
         std::vector<document::VectorObject>{std::move(vector)},
-        std::vector<document::EmbroideryObject>{std::move(object)},
-        "Ajouter une forme à la plume"));
+        std::vector<document::EmbroideryObject>{std::move(object)}, "Ajouter : " + name));
     PenResult r;
     r.ok = true;
     r.objectId = objectId;
-    r.curved = curved;
     return r;
 }
 
