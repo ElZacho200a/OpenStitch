@@ -168,6 +168,34 @@ TEST_CASE("spiral fill: holes are skipped and the clockwise flag mirrors the pat
     CHECK(fill_spiral(square_with_hole(), p) == cw); // deterministe
 }
 
+// Les liaisons cousues du nouveau routeur doivent rester dans la région : une
+// forme en U ne doit jamais être traversée par un faux raccord, même si deux
+// morceaux de la spirale sont spatialement proches à travers le vide.
+TEST_CASE("spiral fill: fragment routing never stitches across a concavity") {
+    const geometry::PathSet u{
+        polygon({um(-35, -25), um(35, -25), um(35, 25), um(25, 25),
+                 um(25, -10), um(-25, -10), um(-25, 25), um(-35, 25)}),
+        {}};
+    document::SpiralFillParams p;
+    p.center = um(0, 0);
+    p.row_spacing = Micrometers{400};
+    p.inset = Micrometers{0};
+    const auto stitches = fill_spiral(u, p);
+    REQUIRE(stitches.size() > 100);
+    CHECK(fill_spiral(u, p) == stitches); // routage déterministe
+    const RegionSegmentTester inside(u);
+    std::size_t jumps = 0;
+    for (std::size_t i = 1; i < stitches.size(); ++i) {
+        if (stitches[i].jump) {
+            ++jumps;
+        } else {
+            CHECK(inside.stays_inside(stitches[i - 1].pos, stitches[i].pos));
+            CHECK(dist_um(stitches[i - 1], stitches[i]) <= 3'000.0 + 1.0);
+        }
+    }
+    CHECK(jumps > 0); // les traversées de l'espace vide restent des sauts
+}
+
 TEST_CASE("crosshatch fill: layers add up and stay in the region") {
     document::CrosshatchFillParams two;
     two.layers = 2;
