@@ -3,6 +3,8 @@
 
 #include <algorithm>
 #include <array>
+#include <limits>
+#include <map>
 
 #include "openstitch/segmentation/color_merge.hpp"
 
@@ -20,6 +22,105 @@ constexpr double kIslandMaxDeltaE = 25.0; // un îlot ne fusionne que dans une c
 [[nodiscard]] const segmentation::Segmentation* segmentationOf(const document::Project& p) {
     return p.segmentation ? &*p.segmentation : nullptr;
 }
+
+struct HoleFix {
+    RegionId target;
+    std::vector<std::uint32_t> pixels;
+};
+
+// Un trou est un composant de fond (label 0) entièrement intérieur à l'image.
+// On choisit la région qui partage le plus de bord, puis l'identifiant le plus petit.
+std::vector<HoleFix> planSmallHoles(const segmentation::Segmentation& seg,
+                                    std::size_t maxPixels) {
+    std::vector<HoleFix> fixes;
+    if (seg.width <= 0 || seg.height <= 0 || maxPixels == 0) {
+        return fixes;
+    }
+    const auto w = static_cast<std::size_t>(seg.width);
+    const auto h = static_cast<std::size_t>(seg.height);
+    if (h > std::numeric_limits<std::uint32_t>::max() / w ||
+        seg.labels.size() != w * h) {
+        return fixes;
+    }
+    std::vector<std::uint8_t> seen(seg.labels.size(), 0);
+    for (std::size_t first = 0; first < seg.labels.size(); ++first) {
+        if (seg.labels[first] != 0 || seen[first]) {
+            continue;
+        }
+        std::vector<std::uint32_t> cluster{static_cast<std::uint32_t>(first)};
+        std::map<std::uint32_t, std::size_t> borders;
+        bool outside = false;
+        seen[first] = 1;
+        for (std::size_t cursor = 0; cursor < cluster.size(); ++cursor) {
+            const auto at = cluster[cursor];
+            const auto x = static_cast<int>(at % w);
+            const auto y = static_cast<int>(at / w);
+            if (x == 0 || y == 0 || x == seg.width - 1 || y == seg.height - 1) {
+                outside = true;
+            }
+            const auto visit = [&](int nx, int ny) {
+                if (nx < 0 || ny < 0 || nx >= seg.width || ny >= seg.height) {
+                    return;
+                }
+                const auto next = static_cast<std::size_t>(ny) * w + nx;
+                const auto label = seg.labels[next];
+                if (label == 0 && !seen[next]) {
+                    seen[next] = 1;
+                    cluster.push_back(static_cast<std::uint32_t>(next));
+                } else if (label != 0 && seg.find(RegionId{label}) != nullptr) {
+                    ++borders[label];
+                }
+            };
+            visit(x - 1, y);
+            visit(x + 1, y);
+            visit(x, y - 1);
+            visit(x, y + 1);
+        }
+        if (outside || cluster.size() > maxPixels) {
+            continue;
+        }
+        RegionId target;
+        std::size_t bestBorder = 0;
+        for (const auto& [label, length] : borders) {
+            if (length > bestBorder) {
+                bestBorder = length;
+                target = RegionId{label};
+            }
+        }
+        if (target.valid()) {
+            fixes.push_back({target, std::move(cluster)});
+        }
+    }
+    return fixes;
+}
+
+class FillSmallHolesCommand final : public commands::ICommand {
+public:
+    explicit FillSmallHolesCommand(std::vector<HoleFix> holes) : holes_(std::move(holes)) {}
+
+    void apply(document::Project& project) override {
+        auto& seg = *project.segmentation;
+        for (const auto& hole : holes_) {
+            for (const auto pixel : hole.pixels) {
+                seg.labels[pixel] = static_cast<std::uint32_t>(hole.target.value);
+            }
+            seg.find(hole.target)->pixel_count += hole.pixels.size();
+        }
+    }
+    void revert(document::Project& project) override {
+        auto& seg = *project.segmentation;
+        for (const auto& hole : holes_) {
+            for (const auto pixel : hole.pixels) {
+                seg.labels[pixel] = 0;
+            }
+            seg.find(hole.target)->pixel_count -= hole.pixels.size();
+        }
+    }
+    [[nodiscard]] std::string name() const override { return "Boucher les petits trous"; }
+
+private:
+    std::vector<HoleFix> holes_;
+};
 
 ServiceResult noSegmentation() {
     return {false, "Ce projet n'a pas de segmentation : numérisez d'abord une image."};
@@ -160,6 +261,22 @@ ServiceResult mergeRegionColors(DocumentSession& session, std::uint64_t source,
         return {false, "Aucune couleur à fusionner."};
     }
     session.execute(std::make_unique<commands::MergeColorsCommand>(std::move(plan)));
+    return {true, {}};
+}
+
+ServiceResult fillSmallHoles(DocumentSession& session, std::size_t maxPixels) {
+    const auto* seg = segmentationOf(session.project());
+    if (seg == nullptr) {
+        return noSegmentation();
+    }
+    if (maxPixels == 0) {
+        return {false, "La taille maximale doit être au moins un pixel."};
+    }
+    auto plan = planSmallHoles(*seg, maxPixels);
+    if (plan.empty()) {
+        return {false, "Aucun petit trou fermé à boucher (les ouvertures extérieures sont gardées)."};
+    }
+    session.execute(std::make_unique<FillSmallHolesCommand>(std::move(plan)));
     return {true, {}};
 }
 
