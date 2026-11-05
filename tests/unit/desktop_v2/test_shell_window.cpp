@@ -50,6 +50,7 @@
 #include "studio_theme.hpp"
 #include "thread_panel.hpp"
 #include "transform_batch.hpp"
+#include <algorithm>
 #include <array>
 
 using namespace openstitch::desktop_v2;
@@ -2088,11 +2089,9 @@ private slots:
         QVERIFY(controller->recolorSelected(newColor));
         QCOMPARE(w.session().undoNames().size(), depth + 1);
         QVERIFY(panel->regenerateEnabled());
-        QCOMPARE(w.session().project().segmentation->find(RegionId{regions.front().id})->rgb,
-                 newColor);
+        QVERIFY(w.session().project().segmentation->find(openstitch::RegionId{regions.front().id})->rgb == newColor);
         QVERIFY(w.session().undo());
-        QCOMPARE(w.session().project().segmentation->find(RegionId{regions.front().id})->rgb,
-                 regions.front().rgb);
+        QVERIFY(w.session().project().segmentation->find(openstitch::RegionId{regions.front().id})->rgb == regions.front().rgb);
 
         controller->selectRegion(regions.front().id);
         const auto target = std::find_if(regions.begin(), regions.end(),
