@@ -1,4 +1,5 @@
 ﻿// SPDX-License-Identifier: Apache-2.0
+#include <QAbstractButton>
 #include <QAction>
 #include <QApplication>
 #include <QColor>
@@ -6,6 +7,7 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QScrollBar>
 #include <QTest>
 #include <QTimer>
 #include <QToolBar>
@@ -108,7 +110,7 @@ private slots:
         QTimer::singleShot(0, &w, [&] {
             auto* dialog = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
             if (dialog != nullptr) {
-                dialog->done(QMessageBox::Discard);
+                dialog->button(QMessageBox::Discard)->click();
             }
         });
         QVERIFY(w.close());
@@ -121,7 +123,7 @@ private slots:
         QTimer::singleShot(0, &w, [&] {
             auto* dialog = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
             if (dialog != nullptr) {
-                dialog->done(QMessageBox::Discard);
+                dialog->button(QMessageBox::Discard)->click();
             }
         });
         w.newProject();
@@ -1607,6 +1609,58 @@ private slots:
         w.waitForIdle();
         QVERIFY(countPreviews() - before <= 2);
         QVERIFY(w.previewShown());
+    }
+
+    void spaceTemporarilyPansWithoutInterruptingPolygonDrawing() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        w.waitForIdle();
+        auto* canvas = w.canvas();
+        QVERIFY(canvas->hasImage());
+        canvas->setMode(PreviewCanvas::Mode::DrawPolygon);
+        const QPoint start = canvas->viewport()->rect().center();
+        QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, start);
+        QCOMPARE(canvas->polygonInProgress().size(), qsizetype(1));
+        const auto depth = w.session().undoNames().size();
+
+        QTest::keyPress(canvas, Qt::Key_Space);
+        QVERIFY(canvas->temporaryPanActive());
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, start);
+        QTest::mouseMove(canvas->viewport(), start + QPoint(30, 15));
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                            start + QPoint(30, 15));
+        QTest::keyRelease(canvas, Qt::Key_Space);
+        QVERIFY(!canvas->temporaryPanActive());
+        QCOMPARE(canvas->mode(), PreviewCanvas::Mode::DrawPolygon);
+        QCOMPARE(canvas->polygonInProgress().size(), qsizetype(1));
+        QCOMPARE(w.session().undoNames().size(), depth);
+
+        QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, start);
+        QCOMPARE(canvas->polygonInProgress().size(), qsizetype(2));
+    }
+
+    void middleMousePansInAnyToolWithoutModifyingDocument() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        w.waitForIdle();
+        auto* canvas = w.canvas();
+        canvas->setMode(PreviewCanvas::Mode::DrawBox);
+        canvas->scale(4.0, 4.0); // rend la scène plus large que le viewport
+        auto* horizontal = canvas->horizontalScrollBar();
+        QVERIFY(horizontal->maximum() > horizontal->minimum());
+        horizontal->setValue((horizontal->maximum() + horizontal->minimum()) / 2);
+        const auto before = horizontal->value();
+        const auto depth = w.session().undoNames().size();
+        const QPoint start = canvas->viewport()->rect().center();
+        QTest::mousePress(canvas->viewport(), Qt::MiddleButton, Qt::NoModifier, start);
+        QTest::mouseMove(canvas->viewport(), start - QPoint(40, 20));
+        QTest::mouseRelease(canvas->viewport(), Qt::MiddleButton, Qt::NoModifier,
+                            start - QPoint(40, 20));
+        QVERIFY(horizontal->value() != before);
+        QCOMPARE(canvas->mode(), PreviewCanvas::Mode::DrawBox);
+        QCOMPARE(w.session().undoNames().size(), depth);
     }
 
     void canvasZoomAnchorsUnderTheCursorAndFitRestores() {
