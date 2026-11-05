@@ -3,8 +3,8 @@
 
 #include <algorithm>
 #include <cmath>
-#include <numbers>
 #include <limits>
+#include <numbers>
 #include <utility>
 #include <vector>
 
@@ -25,8 +25,9 @@ constexpr double kMaxBridgeUm = 5'000.0; // Limiter les traversées cousues, sur
 // Réordonne les portions déjà rognées de la spirale, sans modifier leurs trajets internes.
 // Une liaison courte est cousue seulement si le segment complet reste dans la région ;
 // sinon elle reste un saut. L'ordre angulaire de construction n'impose pas l'ordre de couture.
-std::vector<FillStitch> route_spiral_fragments(const geometry::PathSet& region, double maxLen,
-                                                std::vector<FillStitch> raw) {
+using FillStitches = std::vector<FillStitch>;
+
+FillStitches route_parts(const geometry::PathSet& region, double maxLen, FillStitches raw) {
     struct Run {
         std::size_t begin;
         std::size_t end; // exclusif
@@ -55,9 +56,7 @@ std::vector<FillStitch> route_spiral_fragments(const geometry::PathSet& region, 
         const double dy = double(a.y.value) - double(b.y.value);
         return dx * dx + dy * dy;
     };
-    const auto point = [](Vec2um v) {
-        return detail::P2{double(v.x.value), double(v.y.value)};
-    };
+    const auto point = [](Vec2um v) { return detail::P2{double(v.x.value), double(v.y.value)}; };
     const double bridge = std::min(kMaxBridgeUm, 2.0 * maxLen);
     const double bridge2 = bridge * bridge;
     const RegionSegmentTester tester(region);
@@ -96,8 +95,7 @@ std::vector<FillStitch> route_spiral_fragments(const geometry::PathSet& region, 
             }
             for (int side = 0; side != 2; ++side) {
                 const bool reversed = side == 1;
-                const Vec2um target =
-                    raw[reversed ? runs[j].end - 1 : runs[j].begin].pos;
+                const Vec2um target = raw[reversed ? runs[j].end - 1 : runs[j].begin].pos;
                 const double d2 = distance2(current, target);
                 if (d2 < nearest.distance2) {
                     nearest = {d2, j, reversed, true};
@@ -126,7 +124,6 @@ std::vector<FillStitch> route_spiral_fragments(const geometry::PathSet& region, 
     // Ne jamais dégrader un motif dont le parcours initial serait déjà meilleur.
     return jumps(routed) < jumps(raw) ? std::move(routed) : std::move(raw);
 }
-
 
 } // namespace
 
@@ -190,7 +187,7 @@ std::vector<FillStitch> fill_spiral(const geometry::PathSet& baseRegion,
         prev = next;
         theta = nextTheta;
     }
-    return route_spiral_fragments(region, maxLen, emit.take());
+    return route_parts(region, maxLen, emit.take());
 }
 
 } // namespace openstitch::stitch_generation
