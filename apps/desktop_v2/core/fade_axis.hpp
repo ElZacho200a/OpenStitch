@@ -9,6 +9,8 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "document_services.hpp"
 #include "shape_batch.hpp"
@@ -16,6 +18,16 @@
 namespace openstitch::desktop_v2 {
 
 enum class FadeHandle : std::uint8_t { Start, End, Move, Rotate };
+
+// Courbe de transition de la densité entre les deux fils (mêmes formules que le moteur) : le profil
+// 0 → 1 le long de l'axe, de « fond pur » à « dessus pur ».
+enum class FadeCurve : std::uint8_t { Linear = 0, Smooth = 1, Steep = 2, EaseIn = 3, EaseOut = 4 };
+
+[[nodiscard]] std::string fadeCurveLabel(FadeCurve curve);
+// Valeur de la courbe en t ∈ [0 ; 1] (0 → 0, 1 → 1, monotone).
+[[nodiscard]] double fadeCurveValue(FadeCurve curve, double t);
+// `samples` valeurs régulièrement espacées de t = 0 à t = 1 : de quoi tracer la courbe.
+[[nodiscard]] std::vector<double> fadeCurveProfile(FadeCurve curve, int samples);
 
 struct FadeAxisView {
     PointMm start;         // début de la transition (fil du fond pur avant ce point)
@@ -26,6 +38,7 @@ struct FadeAxisView {
     double zoneEnd{1.0};   // ... et où elle finit
     std::array<std::uint8_t, 3> background{};
     std::array<std::uint8_t, 3> foreground{};
+    FadeCurve curve{FadeCurve::Linear};
 };
 
 // Axe du fondu dont `objectId` est une couche ; rien si l'objet ne porte pas de fondu valide.
@@ -41,6 +54,10 @@ struct FadeAxisView {
 // Valide le glisser en UNE commande. Refus clair si le moteur refuse le nouveau fondu.
 ServiceResult dragFadeHandle(DocumentSession& session, std::uint64_t objectId, FadeHandle handle,
                              PointMm pointer, bool symmetric);
+
+// Change la courbe de transition en UNE commande annulable ; refus si l'objet ne porte pas de
+// fondu.
+ServiceResult setFadeCurve(DocumentSession& session, std::uint64_t objectId, FadeCurve curve);
 
 // Phrase décrivant la transition (« Transition de 20 % à 80 % de la forme, 4 mm de long »).
 [[nodiscard]] std::string fadeSummary(const FadeAxisView& view);

@@ -2560,6 +2560,21 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
                                                : tr("Afficher le risque de plissement du tissu")),
                    q(tr("Analyse")), "",
                    overlays_->fabricActive() || !session_.project().embroidery_objects.empty()});
+    {
+        // Courbe de transition d'un fondu : disponible quand un seul objet porte un fondu.
+        const auto target = pointTarget();
+        const bool hasFade = target && fadeAxisView(session_.project(), *target).has_value();
+        const std::pair<const char*, FadeCurve> curves[] = {
+            {"fade.curve.linear", FadeCurve::Linear},
+            {"fade.curve.smooth", FadeCurve::Smooth},
+            {"fade.curve.steep", FadeCurve::Steep},
+            {"fade.curve.easein", FadeCurve::EaseIn},
+            {"fade.curve.easeout", FadeCurve::EaseOut}};
+        for (const auto& [id, curve] : curves) {
+            out.push_back({id, q(tr("Courbe du fondu : %1").arg(fromUtf8(fadeCurveLabel(curve)))),
+                           q(tr("Fondu")), "", hasFade});
+        }
+    }
     out.push_back({"vector.curves", q(tr("Convertir les contours en courbes")), q(tr("Contour")),
                    "", hasObjects});
     out.push_back(
@@ -2635,6 +2650,30 @@ bool ShellWindow::runCommand(const QString& id) {
             removePresetIndex(id.mid(14).toInt());
         } else if (id == QLatin1String("analysis.fabric")) {
             overlays_->toggleFabricRisk();
+        } else if (id.startsWith(QLatin1String("fade.curve."))) {
+            const auto target = pointTarget();
+            if (!target) {
+                setNotice(tr("Sélectionnez un seul objet portant un fondu."), true);
+                return false;
+            }
+            static const std::pair<const char*, FadeCurve> kCurves[] = {
+                {"linear", FadeCurve::Linear},
+                {"smooth", FadeCurve::Smooth},
+                {"steep", FadeCurve::Steep},
+                {"easein", FadeCurve::EaseIn},
+                {"easeout", FadeCurve::EaseOut}};
+            for (const auto& [name, curve] : kCurves) {
+                if (id.mid(11) == QLatin1String(name)) {
+                    const auto r = setFadeCurve(session_, *target, curve);
+                    if (!r.ok) {
+                        setNotice(fromUtf8(r.message), true);
+                        return false;
+                    }
+                    setNotice(tr("Courbe du fondu : %1.").arg(fromUtf8(fadeCurveLabel(curve))),
+                              false);
+                    break;
+                }
+            }
         } else if (id == QLatin1String("vector.curves") || id == QLatin1String("vector.smooth")) {
             const auto selected = inspect(session_.project(), session_.selection().targets());
             const auto r = id == QLatin1String("vector.curves")

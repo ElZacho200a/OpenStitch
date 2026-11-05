@@ -2034,6 +2034,29 @@ private slots:
         QVERIFY(w.session().undo());
     }
 
+    void fadeCurveCommandsChangeTheTransitionShapeInOneStep() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 40, 20), "Rectangle").committed);
+        w.waitForIdle();
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        QVERIFY(!w.runCommand("fade.curve.steep")); // pas de fondu : commande indisponible
+        QVERIFY(createFade(w.session(), id, FadeSettings{{200, 30, 30}, true}).ok);
+        w.waitForIdle();
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        const auto depth = w.session().undoNames().size();
+        QVERIFY(w.runCommand("fade.curve.steep"));
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QVERIFY(fadeAxisView(w.session().project(), id)->curve == FadeCurve::Steep);
+        QVERIFY(w.lastNotice().contains("Resserrée"));
+        QVERIFY(w.runCommand("fade.curve.easein"));
+        QVERIFY(fadeAxisView(w.session().project(), id)->curve == FadeCurve::EaseIn);
+        QVERIFY(w.session().undo());
+        QVERIFY(fadeAxisView(w.session().project(), id)->curve == FadeCurve::Steep);
+    }
+
     void nodeToolEditsSatinRailsAndShowsTheRungs() {
         ShellWindow w;
         w.show();

@@ -427,3 +427,9 @@ encore le desktop principal.
 ## 2026-11-05 — Session 1 (suite 38) : finalisation V2, tranche 17 (poignées de tangentes)
 
 - Les nœuds courbes exposent leurs poignées de tangente (positions absolues) ; l'interface n'affiche que celles des nœuds choisis (cercles + tige), pour ne pas noyer le canevas. Glisser une poignée : aperçu géométrique pur, validation en UNE commande composite (`SetNodeHandleCommand` / `MoveSatinRailHandleCommand`), nœud immobile, poignée opposée d'un nœud lisse gardée colinéaire avec sa longueur. Une poignée tirée sur un rail droit en crée une.
+
+## 2026-11-05 — Session 1 (suite 39) : finalisation V2, tranche 18 (courbe du fondu, compagnon, correctif MSVC)
+
+- Courbe de transition du fondu : cinq courbes (mêmes formules que le moteur, testées monotones de 0 à 1), commandes « Courbe du fondu : … », résumé de transition qui nomme la courbe.
+- Compagnon : bouton « Copier la commande de connexion (Claude Code) » (`claude mcp add openstitch -- <chemin>/mcp/openstitch-mcp --live`, chemin de l'installateur, repli sur le dossier de l'exécutable).
+- **Correctif CI MSVC** : `QPointer<ImportDialog>` sur un type incomplet cassait la cible `openstitch_v2` (main.cpp) alors que les tests compilaient. Leçon : construire AUSSI l'exécutable avant de pousser ; c'est désormais fait à chaque lot.

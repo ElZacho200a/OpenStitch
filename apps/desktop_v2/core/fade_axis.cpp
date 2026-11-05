@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "fade_axis.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 
@@ -32,6 +33,38 @@ constexpr double kMaxCoordMm = 1000.0;
     return vector != nullptr ? &vector->paths : nullptr;
 }
 
+[[nodiscard]] FadeCurve curveOf(document::DensityCurve c) {
+    switch (c) {
+    case document::DensityCurve::Smooth:
+        return FadeCurve::Smooth;
+    case document::DensityCurve::Steep:
+        return FadeCurve::Steep;
+    case document::DensityCurve::EaseIn:
+        return FadeCurve::EaseIn;
+    case document::DensityCurve::EaseOut:
+        return FadeCurve::EaseOut;
+    case document::DensityCurve::Linear:
+        break;
+    }
+    return FadeCurve::Linear;
+}
+
+[[nodiscard]] document::DensityCurve engineCurve(FadeCurve c) {
+    switch (c) {
+    case FadeCurve::Smooth:
+        return document::DensityCurve::Smooth;
+    case FadeCurve::Steep:
+        return document::DensityCurve::Steep;
+    case FadeCurve::EaseIn:
+        return document::DensityCurve::EaseIn;
+    case FadeCurve::EaseOut:
+        return document::DensityCurve::EaseOut;
+    case FadeCurve::Linear:
+        break;
+    }
+    return document::DensityCurve::Linear;
+}
+
 [[nodiscard]] FadeAxisView viewOf(const project_ops::GradientFillSpec& spec,
                                   const std::vector<geometry::PathSet>& shape) {
     FadeAxisView view;
@@ -54,6 +87,7 @@ constexpr double kMaxCoordMm = 1000.0;
     }
     view.background = spec.background;
     view.foreground = spec.foreground;
+    view.curve = curveOf(spec.gradient.curve);
     return view;
 }
 
@@ -135,12 +169,74 @@ ServiceResult dragFadeHandle(DocumentSession& session, std::uint64_t objectId, F
     return {true, {}};
 }
 
+std::string fadeCurveLabel(FadeCurve curve) {
+    switch (curve) {
+    case FadeCurve::Linear:
+        return "Linéaire";
+    case FadeCurve::Smooth:
+        return "Adoucie";
+    case FadeCurve::Steep:
+        return "Resserrée";
+    case FadeCurve::EaseIn:
+        return "Départ lent";
+    case FadeCurve::EaseOut:
+        return "Départ rapide";
+    }
+    return {};
+}
+
+double fadeCurveValue(FadeCurve curve, double t) {
+    t = std::clamp(t, 0.0, 1.0);
+    switch (curve) {
+    case FadeCurve::Smooth:
+        return t * t * (3.0 - 2.0 * t);
+    case FadeCurve::Steep:
+        return t * t * t * (t * (6.0 * t - 15.0) + 10.0);
+    case FadeCurve::EaseIn:
+        return t * t;
+    case FadeCurve::EaseOut:
+        return t * (2.0 - t);
+    case FadeCurve::Linear:
+        break;
+    }
+    return t;
+}
+
+std::vector<double> fadeCurveProfile(FadeCurve curve, int samples) {
+    std::vector<double> out;
+    samples = std::max(2, samples);
+    out.reserve(static_cast<std::size_t>(samples));
+    for (int i = 0; i < samples; ++i) {
+        out.push_back(fadeCurveValue(curve, static_cast<double>(i) / (samples - 1)));
+    }
+    return out;
+}
+
+ServiceResult setFadeCurve(DocumentSession& session, std::uint64_t objectId, FadeCurve curve) {
+    auto spec = project_ops::describe_gradient_fill(session.project(), ObjectId{objectId});
+    if (!spec) {
+        return {false, "Cet objet ne porte pas de fondu."};
+    }
+    if (spec->gradient.curve == engineCurve(curve)) {
+        return {true, {}}; // déjà cette courbe : aucun pas d'annulation inutile
+    }
+    spec->gradient.curve = engineCurve(curve);
+    auto command =
+        project_ops::make_edit_gradient_fill_command(session.project(), ObjectId{objectId}, *spec);
+    if (!command) {
+        return {false, command.error().message};
+    }
+    session.execute(std::move(*command));
+    return {true, {}};
+}
+
 std::string fadeSummary(const FadeAxisView& view) {
     const double length = std::hypot(view.end.x - view.start.x, view.end.y - view.start.y);
     char buffer[160];
     std::snprintf(buffer, sizeof buffer,
-                  "Transition de %.0f %% à %.0f %% de la forme, sur %.1f mm.",
-                  view.zoneStart * 100.0, view.zoneEnd * 100.0, length);
+                  "Transition de %.0f %% à %.0f %% de la forme, sur %.1f mm (courbe %s).",
+                  view.zoneStart * 100.0, view.zoneEnd * 100.0, length,
+                  fadeCurveLabel(view.curve).c_str());
     return buffer;
 }
 

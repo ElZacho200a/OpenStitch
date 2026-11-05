@@ -123,3 +123,50 @@ TEST_CASE("an out-of-range drag is refused and changes nothing", "[desktop_v2][f
     CHECK_FALSE(dragFadeHandle(f.session, f.id, FadeHandle::Move, {5000.0, 0.0}, false).ok);
     CHECK(f.session.undoNames().size() == depth);
 }
+
+TEST_CASE("every fade curve runs from 0 to 1 monotonically and has a label",
+          "[desktop_v2][fade][curve]") {
+    for (const auto curve : {FadeCurve::Linear, FadeCurve::Smooth, FadeCurve::Steep,
+                             FadeCurve::EaseIn, FadeCurve::EaseOut}) {
+        INFO(fadeCurveLabel(curve));
+        CHECK_FALSE(fadeCurveLabel(curve).empty());
+        CHECK(fadeCurveValue(curve, 0.0) == 0.0);
+        CHECK(std::abs(fadeCurveValue(curve, 1.0) - 1.0) < 1e-12);
+        const auto profile = fadeCurveProfile(curve, 33);
+        REQUIRE(profile.size() == 33);
+        for (std::size_t i = 1; i < profile.size(); ++i) {
+            CHECK(profile[i] >= profile[i - 1]); // monotone
+        }
+    }
+    // Formes caractéristiques au milieu de l'axe.
+    CHECK(std::abs(fadeCurveValue(FadeCurve::Linear, 0.5) - 0.5) < 1e-12);
+    CHECK(std::abs(fadeCurveValue(FadeCurve::Smooth, 0.5) - 0.5) < 1e-12);
+    CHECK(fadeCurveValue(FadeCurve::EaseIn, 0.5) < 0.5);  // départ lent
+    CHECK(fadeCurveValue(FadeCurve::EaseOut, 0.5) > 0.5); // départ rapide
+}
+
+TEST_CASE("changing the fade curve is one undo step and is read back",
+          "[desktop_v2][fade][curve]") {
+    Fixture f;
+    CHECK_FALSE(setFadeCurve(f.session, f.id, FadeCurve::Steep).ok); // pas de fondu
+    f.makeFade();
+    const auto before = fadeAxisView(f.session.project(), f.id);
+    REQUIRE(before.has_value());
+    CHECK(before->curve == FadeCurve::Linear);
+
+    const auto depth = f.session.undoNames().size();
+    REQUIRE(setFadeCurve(f.session, f.id, FadeCurve::Steep).ok);
+    CHECK(f.session.undoNames().size() == depth + 1);
+    const auto after = fadeAxisView(f.session.project(), f.id);
+    REQUIRE(after.has_value());
+    CHECK(after->curve == FadeCurve::Steep);
+    CHECK(fadeSummary(*after).find("Resserrée") != std::string::npos);
+    // La même courbe encore une fois ne crée aucun pas d'annulation.
+    REQUIRE(setFadeCurve(f.session, f.id, FadeCurve::Steep).ok);
+    CHECK(f.session.undoNames().size() == depth + 1);
+    // L'axe n'a pas bougé en changeant la courbe.
+    CHECK(std::abs(after->start.x - before->start.x) < 0.01);
+    CHECK(std::abs(after->end.x - before->end.x) < 0.01);
+    REQUIRE(f.session.undo());
+    CHECK(fadeAxisView(f.session.project(), f.id)->curve == FadeCurve::Linear);
+}
