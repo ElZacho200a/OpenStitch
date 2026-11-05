@@ -1,5 +1,6 @@
 ﻿// SPDX-License-Identifier: Apache-2.0
 #include "shell_window.hpp"
+#include "studio_theme.hpp"
 
 #include <QAction>
 #include <QActionGroup>
@@ -175,6 +176,13 @@ ShellWindow::ShellWindow(QWidget* parent)
     pump_->start();
 
     setWorkspace(Workspace::Design);
+    setThemeMode(QStringLiteral("system"));
+    connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this,
+            [this](Qt::ColorScheme) {
+                if (themeMode_ == QLatin1String("system")) {
+                    applyStudioTheme(*qApp, themeMode_);
+                }
+            });
     refreshActionStates();
 }
 
@@ -1166,6 +1174,7 @@ void ShellWindow::setThemeMode(const QString& mode) {
         scheme = Qt::ColorScheme::Dark;
     }
     QGuiApplication::styleHints()->setColorScheme(scheme);
+    applyStudioTheme(*qApp, themeMode_);
 }
 
 void ShellWindow::onKnife(QPointF a, QPointF b) {
