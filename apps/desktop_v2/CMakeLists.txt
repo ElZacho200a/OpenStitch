@@ -22,6 +22,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/live_companion.cpp
     core/fade_axis.cpp
     core/path_optimizer.cpp
+    core/fabric_risk.cpp
     core/node_edit.cpp
     core/density_service.cpp
     core/param_spec.cpp

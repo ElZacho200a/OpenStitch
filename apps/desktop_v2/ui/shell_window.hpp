@@ -24,6 +24,7 @@
 #include "document_services.hpp"
 #include "document_session.hpp"
 #include "edit_batch.hpp"
+#include "fabric_risk.hpp"
 #include "fade_axis.hpp"
 #include "image_prep.hpp"
 #include "live_companion.hpp"
@@ -196,6 +197,12 @@ public:
 
     // --- Optimisation de l'ordre de couture, avec mesures avant / après ---------------------
     [[nodiscard]] OptimizePanel* optimizePanel() const { return optimizePanel_; }
+
+    // --- Risque de plissement et déformation prévue du tissu (estimation non calibrée) -------
+    void toggleFabricRisk();
+    [[nodiscard]] bool fabricRiskActive() const { return fabricActive_; }
+    [[nodiscard]] bool fabricRiskShown() const;
+    [[nodiscard]] const std::optional<FabricRisk>& fabricRisk() const { return fabricRisk_; }
     void runOptimization(PathStrategy strategy, bool improve);
     bool acceptOptimization();
     void refuseOptimization();
@@ -352,6 +359,12 @@ private:
     ThreadPanel* threads_{nullptr};
     CompanionPanel* companionPanel_{nullptr};
     OptimizePanel* optimizePanel_{nullptr};
+    bool fabricActive_{false};
+    std::uint64_t fabricTask_{0};
+    std::optional<FabricRisk> fabricRisk_;
+    void requestFabricRisk();
+    void applyFabricRisk(const FabricRisk& risk);
+    void hideFabricRisk();
     std::optional<PathProposal> proposal_;
     std::uint64_t optimizeTask_{0};
     std::unique_ptr<LiveCompanion> companion_;

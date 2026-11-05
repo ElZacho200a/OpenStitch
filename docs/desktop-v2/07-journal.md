@@ -378,3 +378,7 @@ encore le desktop principal.
 
 - `core/path_optimizer` : propose un nouvel ordre (4 stratégies, affinage 2-opt optionnel, départ/arrivée du motif) calculé sur une copie, puis MESURE la séquence réelle (`effective_sequence`) avant et après : changements de fil, sauts, coupes, distance à vide entre objets d'après les extrémités réelles, points. Le test vérifie que la séquence obtenue après acceptation correspond aux mesures annoncées. Un compromis (moins de changements de fil mais plus de déplacements) est signalé comme tel et non présenté comme une amélioration. Acceptation = `ReorderEmbroideryCommand`, un pas d'annulation ; proposition périmée refusée (révision).
 - Interface : dock « Optimisation » (stratégie, affinage, mesures avant → après, verdict, Accepter / Refuser), tâche annulable hors fil d'interface, commande `optimize.order`.
+
+## 2026-11-05 — Session 1 (suite 27) : finalisation V2, tranche 6 (déformation du tissu)
+
+- `core/fabric_risk` : solveur mécanique 2D du moteur sur la séquence effective, en tâche annulable ; carte RGBA de l'indice de plissement (1 = seuil critique), flèches de déplacement prévu (≤ 12 × 12, amplifiées ×20 à l'écran et annoncées comme telles), verdict chiffré. Le modèle n'est pas calibré : `calibrated` reste faux et le verdict l'écrit explicitement (test dédié). Commande `analysis.fabric` (afficher / masquer), recalcul automatique après modification.

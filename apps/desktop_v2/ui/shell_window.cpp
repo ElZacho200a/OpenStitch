@@ -938,6 +938,94 @@ bool ShellWindow::runGuideNext() {
     return false;
 }
 
+bool ShellWindow::fabricRiskShown() const {
+    return canvas_->hasFabricOverlay();
+}
+
+void ShellWindow::toggleFabricRisk() {
+    if (fabricActive_) {
+        hideFabricRisk();
+        setNotice(tr("Risque de plissement masqué."), false);
+        return;
+    }
+    if (session_.project().embroidery_objects.empty()) {
+        setNotice(tr("Rien à analyser : le document ne contient aucun objet brodé."), true);
+        return;
+    }
+    fabricActive_ = true;
+    requestFabricRisk();
+}
+
+void ShellWindow::hideFabricRisk() {
+    fabricActive_ = false;
+    fabricRisk_.reset();
+    if (fabricTask_ != 0) {
+        (void)tasks_.cancel(fabricTask_);
+        fabricTask_ = 0;
+    }
+    canvas_->setFabricOverlay(QImage(), QRectF());
+    canvas_->setFabricArrows({});
+}
+
+void ShellWindow::requestFabricRisk() {
+    if (fabricTask_ != 0) {
+        (void)tasks_.cancel(fabricTask_); // un résultat périmé n'est jamais livré
+    }
+    const auto snapshot = session_.snapshot();
+    const auto revision = session_.revision();
+    fabricTask_ = tasks_.submit<FabricRisk>(
+        tr("Déformation du tissu").toStdString(),
+        [snapshot, revision](const TaskContext& ctx) {
+            return runFabricRisk(snapshot, revision, ctx);
+        },
+        [this](Result<FabricRisk>&& r) {
+            fabricTask_ = 0;
+            if (!fabricActive_) {
+                return;
+            }
+            if (!r) {
+                fabricActive_ = false;
+                setNotice(tr("Analyse du tissu impossible : %1").arg(fromUtf8(r.error().message)),
+                          true);
+                return;
+            }
+            if (r->revision != session_.revision()) {
+                return; // le document a changé : un autre calcul est en route
+            }
+            applyFabricRisk(*r);
+        });
+}
+
+void ShellWindow::applyFabricRisk(const FabricRisk& risk) {
+    fabricRisk_ = risk;
+    if (frame_.px_per_mm <= 0.0) {
+        return; // pas d'aperçu : la carte sera posée au prochain aperçu
+    }
+    QImage image(risk.columns, risk.rows, QImage::Format_RGBA8888);
+    for (int y = 0; y < risk.rows; ++y) {
+        std::memcpy(image.scanLine(y),
+                    risk.rgba.data() + static_cast<std::size_t>(y) * risk.columns * 4,
+                    static_cast<std::size_t>(risk.columns) * 4);
+    }
+    const QRectF rect(
+        QPointF(frame_.mmToPxX(risk.minXmm), frame_.mmToPxY(-(risk.minYmm + risk.heightMm))),
+        QPointF(frame_.mmToPxX(risk.minXmm + risk.widthMm), frame_.mmToPxY(-risk.minYmm)));
+    canvas_->setFabricOverlay(image, rect);
+    // Flèches : le déplacement réel (< 1 mm) est invisible tel quel, il est amplifié ×20 et le
+    // message le dit : jamais une déformation présentée comme à l'échelle.
+    constexpr double kAmplify = 20.0;
+    QVector<QLineF> arrows;
+    for (const auto& a : risk.arrows) {
+        const QPointF from(frame_.mmToPxX(a.xMm), frame_.mmToPxY(-a.yMm));
+        const QPointF to(frame_.mmToPxX(a.xMm + a.dxMm * kAmplify),
+                         frame_.mmToPxY(-(a.yMm + a.dyMm * kAmplify)));
+        arrows.push_back(QLineF(from, to));
+    }
+    canvas_->setFabricArrows(arrows);
+    setNotice(fromUtf8(risk.verdict()) + tr(" Flèches amplifiées ×20."),
+              risk.maxWrinkleIndex >= 1.0);
+}
+
 void ShellWindow::runOptimization(PathStrategy strategy, bool improve) {
     if (session_.project().embroidery_objects.size() < 2) {
         optimizePanel_->showMessage(tr("Il faut au moins deux objets brodés pour optimiser."));
@@ -1053,6 +1141,9 @@ std::string ShellWindow::liveToken() const {
 }
 
 void ShellWindow::onDocumentChanged(ChangeKind kind) {
+    if (fabricActive_ && fabricRisk_ && fabricRisk_->revision != session_.revision()) {
+        requestFabricRisk(); // la carte affichée date d'avant la dernière modification
+    }
     if (optimizePanel_ != nullptr) {
         optimizePanel_->setEnabledForDocument(session_.project().embroidery_objects.size() >= 2);
         if (proposal_ && proposal_->revision != session_.revision()) {
@@ -2742,6 +2833,11 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
                        q(tr("Supprimer le préréglage « %1 »").arg(fromUtf8(name))),
                        q(tr("Préréglages")), "", true});
     }
+    out.push_back({"analysis.fabric",
+                   q(fabricActive_ ? tr("Masquer le risque de plissement du tissu")
+                                   : tr("Afficher le risque de plissement du tissu")),
+                   q(tr("Analyse")), "",
+                   fabricActive_ || !session_.project().embroidery_objects.empty()});
     out.push_back({"optimize.order", q(tr("Optimiser l'ordre de couture…")), q(tr("Analyse")), "",
                    session_.project().embroidery_objects.size() >= 2});
     out.push_back({"companion.toggle",
@@ -2810,6 +2906,8 @@ bool ShellWindow::runCommand(const QString& id) {
             applyPresetIndex(id.mid(13).toInt());
         } else if (id.startsWith(QLatin1String("preset.remove."))) {
             removePresetIndex(id.mid(14).toInt());
+        } else if (id == QLatin1String("analysis.fabric")) {
+            toggleFabricRisk();
         } else if (id == QLatin1String("optimize.order")) {
             runOptimization(optimizePanel_->strategy(), optimizePanel_->improve());
         } else if (id == QLatin1String("companion.toggle")) {

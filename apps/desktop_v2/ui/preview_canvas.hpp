@@ -88,6 +88,12 @@ public:
     // Carte de densité (RGBA, un pixel par case) posée sur l'aperçu ; image nulle = aucune.
     void setDensityOverlay(const QImage& image, const QRectF& rectPx);
     [[nodiscard]] bool hasDensityOverlay() const { return densityItem_ != nullptr; }
+    // Risque de plissement du tissu (RGBA, un pixel par élément) et flèches de déplacement prévu
+    // (pixels de l'image, déjà amplifiées par l'appelant) ; image nulle / liste vide = aucun.
+    void setFabricOverlay(const QImage& image, const QRectF& rectPx);
+    void setFabricArrows(const QVector<QLineF>& linesPx);
+    [[nodiscard]] bool hasFabricOverlay() const { return fabricItem_ != nullptr; }
+    [[nodiscard]] bool hasFabricArrows() const { return fabricArrows_ != nullptr; }
     // Poignées des points d'un objet (pixels de l'image) ; `selected` = indice mis en évidence, -1
     // = aucun. Liste vide = aucune poignée.
     void setPointMarkers(const QVector<QPointF>& scenePx, int selected);
@@ -173,6 +179,8 @@ private:
     QGraphicsPixmapItem* sourceItem_{nullptr};
     QGraphicsPixmapItem* detailItem_{nullptr};
     QGraphicsPixmapItem* densityItem_{nullptr};
+    QGraphicsPixmapItem* fabricItem_{nullptr};
+    QGraphicsPathItem* fabricArrows_{nullptr};
     QVector<QGraphicsItem*> nodeItems_;
     QVector<QPointF> nodePts_;
     QGraphicsPathItem* nodeOutline_{nullptr};

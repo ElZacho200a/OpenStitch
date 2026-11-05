@@ -1546,6 +1546,37 @@ private slots:
         QCOMPARE(w.session().undoNames().size(), after);
     }
 
+    void fabricRiskOverlayShowsAnHonestEstimateAndFollowsTheDocument() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 40, 30), "Rectangle").committed);
+        w.waitForIdle();
+        QVERIFY(!w.fabricRiskShown());
+
+        QVERIFY(w.runCommand("analysis.fabric"));
+        w.waitForIdle();
+        QVERIFY(w.fabricRiskActive());
+        QVERIFY(w.fabricRiskShown());
+        QVERIFY(w.canvas()->hasFabricArrows());
+        QVERIFY(w.fabricRisk().has_value());
+        QVERIFY(!w.fabricRisk()->calibrated); // jamais présenté comme une mesure
+        QVERIFY2(w.lastNotice().contains("NON calibrée"), qPrintable(w.lastNotice()));
+        const auto revision = w.session().revision();
+        QCOMPARE(w.fabricRisk()->revision, revision);
+
+        // Une modification recalcule la carte sans action de l'utilisateur.
+        QVERIFY(w.session().applyBatch(batchAddRect({60, 0}, 20, 20), "Autre").committed);
+        w.waitForIdle();
+        QVERIFY(w.fabricRiskShown());
+        QCOMPARE(w.fabricRisk()->revision, w.session().revision());
+
+        QVERIFY(w.runCommand("analysis.fabric")); // second appel : masque
+        QVERIFY(!w.fabricRiskActive());
+        QVERIFY(!w.fabricRiskShown());
+        QVERIFY(!w.canvas()->hasFabricArrows());
+    }
+
     void nodeToolEditsSatinRailsAndShowsTheRungs() {
         ShellWindow w;
         w.show();

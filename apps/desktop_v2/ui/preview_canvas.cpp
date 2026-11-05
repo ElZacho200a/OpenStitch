@@ -85,6 +85,8 @@ void PreviewCanvas::clearImage() {
     sourceItem_ = nullptr;
     detailItem_ = nullptr;
     densityItem_ = nullptr;
+    fabricItem_ = nullptr;
+    fabricArrows_ = nullptr;
     nodeItems_.clear();
     nodePts_.clear();
     nodeOutline_ = nullptr;
@@ -518,6 +520,55 @@ void PreviewCanvas::setNodeOutline(const QVector<QVector<QPointF>>& polylinesPx,
                                           valid ? Qt::SolidLine : Qt::DashLine, 2));
     nodeOutline_->setZValue(16);
     nodeOutline_->setAcceptedMouseButtons(Qt::NoButton);
+}
+
+void PreviewCanvas::setFabricOverlay(const QImage& image, const QRectF& rectPx) {
+    if (fabricItem_ != nullptr) {
+        scene_->removeItem(fabricItem_);
+        delete fabricItem_;
+        fabricItem_ = nullptr;
+    }
+    if (item_ == nullptr || image.isNull()) {
+        return;
+    }
+    fabricItem_ = scene_->addPixmap(QPixmap::fromImage(image));
+    fabricItem_->setTransformationMode(Qt::FastTransformation);
+    fabricItem_->setZValue(3.3);
+    fabricItem_->setTransform(
+        QTransform::fromScale(rectPx.width() / image.width(), rectPx.height() / image.height()));
+    fabricItem_->setPos(rectPx.topLeft());
+    fabricItem_->setAcceptedMouseButtons(Qt::NoButton);
+}
+
+void PreviewCanvas::setFabricArrows(const QVector<QLineF>& linesPx) {
+    if (fabricArrows_ != nullptr) {
+        scene_->removeItem(fabricArrows_);
+        delete fabricArrows_;
+        fabricArrows_ = nullptr;
+    }
+    if (item_ == nullptr || linesPx.isEmpty()) {
+        return;
+    }
+    QPainterPath path;
+    for (const QLineF& line : linesPx) {
+        path.moveTo(line.p1());
+        path.lineTo(line.p2());
+        // Pointe de flèche : deux petits traits à 150° de part et d'autre de la direction.
+        const double len = line.length();
+        if (len > 0.5) {
+            const QLineF back(line.p2(), line.p1());
+            for (const double angle : {25.0, -25.0}) {
+                QLineF head = back;
+                head.setLength(std::min(len * 0.35, 3.0));
+                head.setAngle(head.angle() + angle);
+                path.moveTo(line.p2());
+                path.lineTo(head.p2());
+            }
+        }
+    }
+    fabricArrows_ = scene_->addPath(path, cosmeticPen(QColor(20, 90, 200, 220), Qt::SolidLine, 1));
+    fabricArrows_->setZValue(3.4);
+    fabricArrows_->setAcceptedMouseButtons(Qt::NoButton);
 }
 
 void PreviewCanvas::setNodeGuides(const QVector<QLineF>& linesPx) {
