@@ -9,12 +9,27 @@
 namespace openstitch::desktop_v2 {
 
 StudioColors studioColors(StudioScheme scheme) {
+    StudioColors colors;
     if (scheme == StudioScheme::Dark) {
-        return {"#191B21", "#242731", "#2D313D", "#414653", "#ECECF2", "#B6BBC8",
-                "#F08CB7", "#483141"};
+        colors.background = QStringLiteral("#191B21");
+        colors.surface = QStringLiteral("#242731");
+        colors.surfaceRaised = QStringLiteral("#2D313D");
+        colors.border = QStringLiteral("#414653");
+        colors.text = QStringLiteral("#ECECF2");
+        colors.muted = QStringLiteral("#B6BBC8");
+        colors.accent = QStringLiteral("#F08CB7");
+        colors.accentSoft = QStringLiteral("#483141");
+    } else {
+        colors.background = QStringLiteral("#F7F6F3");
+        colors.surface = QStringLiteral("#FFFFFF");
+        colors.surfaceRaised = QStringLiteral("#F1EFEB");
+        colors.border = QStringLiteral("#D8D4CF");
+        colors.text = QStringLiteral("#22252D");
+        colors.muted = QStringLiteral("#575D69");
+        colors.accent = QStringLiteral("#A92D66");
+        colors.accentSoft = QStringLiteral("#F8E2EB");
     }
-    return {"#F7F6F3", "#FFFFFF", "#F1EFEB", "#D8D4CF", "#22252D", "#575D69",
-            "#A92D66", "#F8E2EB"};
+    return colors;
 }
 
 QString studioStyleSheet(StudioScheme scheme) {
