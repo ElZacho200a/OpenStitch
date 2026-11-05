@@ -53,6 +53,7 @@ public:
     void setMode(Mode mode);
     void centreOnPx(const QPointF& scenePx) { centerOn(scenePx); }
     [[nodiscard]] Mode mode() const { return mode_; }
+    [[nodiscard]] bool temporaryPanActive() const { return spacePanning_ || spaceDragging_; }
 
     // Cadres de sélection (pixels de l'image d'aperçu) dessinés au-dessus de l'image.
     void setSelectionBoxes(const QVector<QRectF>& boxesPx);
@@ -120,6 +121,8 @@ public slots:
 protected:
     void wheelEvent(QWheelEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
+    void keyReleaseEvent(QKeyEvent* event) override;
+    void focusOutEvent(QFocusEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
@@ -128,6 +131,7 @@ protected:
     void contextMenuEvent(QContextMenuEvent* event) override;
 
 private:
+    void updateNavigationCursor();
     void updatePolygonItem(const QPointF* cursor);
     void finishPolygon();
     void cancelPolygon();
@@ -166,6 +170,10 @@ private:
     bool moving_{false};
     bool bandDragging_{false};
     bool pressing_{false};
+    bool spacePanning_{false};
+    bool spaceDragging_{false};
+    bool middlePanning_{false};
+    QPoint middlePanPos_;
     bool userZoomed_{false}; // tant que faux, un redimensionnement re-ajuste l'image
 };
 
