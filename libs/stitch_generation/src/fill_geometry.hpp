@@ -139,6 +139,17 @@ public:
         }
     }
 
+    // Commence une nouvelle portion sans coudre la liaison (même si elle est géométriquement
+    // à l'intérieur). Le routeur de spirale évite ainsi les traversées trop longues.
+    void jump_to(P2 p) {
+        const Vec2um q = to_um(p);
+        if (out_.empty()) {
+            out_.push_back({q, false, false});
+        } else if (out_.back().pos != q) {
+            out_.push_back({q, true, false});
+        }
+    }
+
     // Segment cousu de la dernière position à `p`, subdivisé (<= max, >= min si possible).
     void line_to(P2 p) {
         const Vec2um q = to_um(p);
