@@ -69,6 +69,7 @@ class CalquePanel;
 class ThreadPanel;
 class CompanionPanel;
 class LiveServer;
+class FeedbackCue;
 
 class ShellWindow : public QMainWindow {
     Q_OBJECT
@@ -287,6 +288,8 @@ private:
     QTreeWidget* objectTree_{nullptr};
     QLabel* summary_{nullptr};
     QLabel* notice_{nullptr};
+    FeedbackCue* feedbackCue_{nullptr};
+    QAction* reducedMotionAction_{nullptr};
     QLabel* activeToolStatus_{nullptr};
     QProgressBar* progress_{nullptr};
     QToolButton* cancelButton_{nullptr};

@@ -24,6 +24,7 @@ class QGraphicsRectItem;
 class QGraphicsScene;
 class QRubberBand;
 class QContextMenuEvent;
+class QVariantAnimation;
 
 namespace openstitch::desktop_v2 {
 
@@ -60,6 +61,9 @@ public:
     // Cadres de sélection (pixels de l'image d'aperçu) dessinés au-dessus de l'image.
     void setSelectionBoxes(const QVector<QRectF>& boxesPx);
     [[nodiscard]] int selectionBoxCount() const { return static_cast<int>(boxItems_.size()); }
+    void setReducedMotion(bool reduced);
+    [[nodiscard]] bool reducedMotion() const { return reducedMotion_; }
+    [[nodiscard]] bool selectionFeedbackActive() const;
     // Test « y a-t-il un objet sous ce point ? » (pixels de l'image) fourni par la fenêtre : il
     // décide si un appui en mode Select démarre un déplacement plutôt qu'un cadre élastique.
     void setMoveHitTest(std::function<bool(const QPointF&)> test) { moveHit_ = std::move(test); }
@@ -189,6 +193,9 @@ private:
     QGraphicsItemGroup* selGroup_{nullptr}; // cadres + poignées de la sélection
     QGraphicsRectItem* scaleOutline_{nullptr};
     QRectF unionPx_;
+    QVector<QRectF> lastSelectionBoxes_;
+    QVariantAnimation* selectionFeedback_{nullptr};
+    bool reducedMotion_{false};
     QGraphicsPathItem* polyItem_{nullptr};
     QVector<QGraphicsRectItem*> boxItems_;
     QVector<QPointF> polyPts_;

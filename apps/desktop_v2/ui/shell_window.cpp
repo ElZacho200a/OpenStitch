@@ -47,6 +47,7 @@
 #include "command_palette.hpp"
 #include "companion_panel.hpp"
 #include "diagnostics_panel.hpp"
+#include "feedback_cue.hpp"
 #include "inspector_model.hpp"
 #include "inspector_panel.hpp"
 #include "live_server.hpp"
@@ -61,6 +62,7 @@
 #include "welcome_page.hpp"
 #include <QComboBox>
 #include <QGuiApplication>
+#include <QSettings>
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QSpinBox>
@@ -430,6 +432,20 @@ void ShellWindow::buildMenus() {
         connect(t, &QAction::triggered, this,
                 [this, mode] { setThemeMode(QString::fromLatin1(mode)); });
     }
+    reducedMotionAction_ = view->addAction(tr("Réduire les animations"));
+    reducedMotionAction_->setObjectName(QStringLiteral("reduceMotion"));
+    reducedMotionAction_->setToolTip(
+        tr("Affiche immédiatement les confirmations, sans animation ni effet continu."));
+    reducedMotionAction_->setCheckable(true);
+    connect(reducedMotionAction_, &QAction::triggered, this, [this](bool reduced) {
+        feedbackCue_->setReducedMotion(reduced);
+        if (!stateDir_.empty()) {
+            QSettings settings(QString::fromStdU16String((stateDir_ / "motion.ini").u16string()),
+                               QSettings::IniFormat);
+            settings.setValue(QStringLiteral("visual/reducedMotion"), reduced);
+        }
+    });
+    connect(reducedMotionAction_, &QAction::triggered, canvas_, &PreviewCanvas::setReducedMotion);
 }
 
 void ShellWindow::buildWorkspaceBar() {
@@ -680,6 +696,8 @@ void ShellWindow::buildStatusArea() {
             [this](int i) { setClickToStitch(clickTol_, static_cast<ClickKind>(i)); });
     connect(radius, &QDoubleSpinBox::valueChanged, this, [this](double v) { setBrushRadiusMm(v); });
     imageBar_->hide();
+    feedbackCue_ = new FeedbackCue(this);
+    statusBar()->addWidget(feedbackCue_);
     notice_ = new QLabel(this);
     notice_->setObjectName(QStringLiteral("notice"));
     notice_->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -966,7 +984,10 @@ std::string ShellWindow::liveToken() const {
     return liveServer_ ? liveServer_->token() : std::string();
 }
 
-void ShellWindow::onDocumentChanged(ChangeKind) {
+void ShellWindow::onDocumentChanged(ChangeKind kind) {
+    if (kind != ChangeKind::Replaced && feedbackCue_ != nullptr) {
+        feedbackCue_->pulse();
+    }
     if (companionPanel_ != nullptr) {
         companionPanel_->setCanUndo(session_.canUndo(), fromUtf8(session_.undoName()));
     }
@@ -1285,16 +1306,22 @@ bool ShellWindow::saveProject(const std::filesystem::path& osp) {
         autosave_->clear(); // le document est enregistré : plus rien à récupérer
     }
     setNotice(tr("Projet enregistré."), false);
+    feedbackCue_->pulse();
     return true;
 }
 
 void ShellWindow::setStateDirectory(const std::filesystem::path& dir) {
     stateDir_ = dir;
+    QSettings settings(QString::fromStdU16String((dir / "motion.ini").u16string()),
+                       QSettings::IniFormat);
+    const bool reduced = settings.value(QStringLiteral("visual/reducedMotion"), false).toBool();
+    reducedMotionAction_->setChecked(reduced);
+    feedbackCue_->setReducedMotion(reduced);
     std::error_code ec;
     std::filesystem::create_directories(dir, ec);
-    QSettings settings(QString::fromStdU16String((dir / "ui.ini").u16string()),
-                       QSettings::IniFormat);
-    setCompactToolRail(settings.value(QStringLiteral("tools/compact"), false).toBool());
+    QSettings uiSettings(QString::fromStdU16String((dir / "ui.ini").u16string()),
+                         QSettings::IniFormat);
+    setCompactToolRail(uiSettings.value(QStringLiteral("tools/compact"), false).toBool());
     autosave_ = std::make_unique<AutosaveStore>(dir);
     recent_ = pruneMissingRecent(loadRecentList(dir / "recent.txt"));
     rebuildRecentMenu();
@@ -1399,6 +1426,7 @@ void ShellWindow::exportDst(const std::filesystem::path& dst) {
                           .arg(QString::fromStdString(dst.filename().string()))
                           .arg(r->stitches),
                       false);
+            feedbackCue_->pulse();
         });
 }
 
@@ -1735,6 +1763,7 @@ void ShellWindow::exportImage(const std::filesystem::path& png, double pxPerMm) 
             }
             setNotice(tr("Image écrite : %1").arg(QString::fromStdString(png.filename().string())),
                       false);
+            feedbackCue_->pulse();
         });
 }
 
