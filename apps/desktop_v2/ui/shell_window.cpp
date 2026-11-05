@@ -25,6 +25,7 @@
 #include <QPixmap>
 #include <QProgressBar>
 #include <QScrollArea>
+#include <QSettings>
 #include <QSpinBox>
 #include <QStatusBar>
 #include <QTextBrowser>
@@ -50,6 +51,7 @@
 #include "preview_canvas.hpp"
 #include "preview_service.hpp"
 #include "thread_panel.hpp"
+#include "tool_icon.hpp"
 #include "transform_batch.hpp"
 #include <QComboBox>
 #include <QGuiApplication>
@@ -389,6 +391,15 @@ void ShellWindow::buildMenus() {
         gridGroup->addAction(g);
         connect(g, &QAction::triggered, this, [this, mm] { setGridSpacing(mm); });
     }
+    view->addSeparator();
+    compactToolsAction_ = view->addAction(tr("Barre d'outils compacte"));
+    compactToolsAction_->setObjectName(QStringLiteral("action_view_compact_tools"));
+    compactToolsAction_->setCheckable(true);
+    compactToolsAction_->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+T")));
+    compactToolsAction_->setToolTip(
+        tr("Réduire le rail pour laisser davantage d'espace au canevas"));
+    connect(compactToolsAction_, &QAction::toggled, this,
+            [this](bool compact) { setCompactToolRail(compact); });
     auto* themeMenu = view->addMenu(tr("&Thème"));
     auto* themeGroup = new QActionGroup(this);
     for (const auto& [mode, label] :
@@ -438,8 +449,9 @@ void ShellWindow::buildToolRail() {
     toolRail_->setObjectName(QStringLiteral("toolRail"));
     toolRail_->setOrientation(Qt::Vertical);
     toolRail_->setMovable(false);
-    toolRail_->setToolButtonStyle(Qt::ToolButtonTextOnly);
-    toolRail_->setMaximumWidth(56);
+    toolRail_->setIconSize(QSize(20, 20));
+    toolRail_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    toolRail_->setFixedWidth(180);
     addToolBar(Qt::LeftToolBarArea, toolRail_);
     toolGroup_ = new QActionGroup(this);
     toolGroup_->setExclusive(true);
@@ -640,6 +652,10 @@ void ShellWindow::buildStatusArea() {
     notice_->setObjectName(QStringLiteral("notice"));
     notice_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     statusBar()->addWidget(notice_, 1);
+    activeToolStatus_ = new QLabel(tr("Sélection"), this);
+    activeToolStatus_->setObjectName(QStringLiteral("activeToolStatus"));
+    activeToolStatus_->setAccessibleName(tr("Outil actif"));
+    statusBar()->addPermanentWidget(activeToolStatus_);
     progress_ = new QProgressBar(this);
     progress_->setObjectName(QStringLiteral("taskProgress"));
     progress_->setMaximumWidth(220);
@@ -657,6 +673,20 @@ void ShellWindow::buildStatusArea() {
 }
 
 // --- Espaces et outils -----------------------------------------------------------------------
+
+void ShellWindow::setCompactToolRail(bool compact) {
+    compactTools_ = compact;
+    toolRail_->setToolButtonStyle(compact ? Qt::ToolButtonIconOnly : Qt::ToolButtonTextBesideIcon);
+    toolRail_->setFixedWidth(compact ? 52 : 180);
+    if (compactToolsAction_ != nullptr) {
+        compactToolsAction_->setChecked(compact);
+    }
+    if (!stateDir_.empty()) {
+        QSettings settings(QString::fromStdU16String((stateDir_ / "ui.ini").u16string()),
+                           QSettings::IniFormat);
+        settings.setValue(QStringLiteral("tools/compact"), compact);
+    }
+}
 
 void ShellWindow::setWorkspace(Workspace workspace) {
     workspace_ = workspace;
@@ -684,14 +714,10 @@ void ShellWindow::rebuildToolRail() {
         // mais désactivés, avec la raison, pour ne pas faire croire à une parité qui n'existe pas.
         const bool implemented = isToolImplemented(tool->id);
         const QString label = fromUtf8(tool->label);
-        // Rail compact : le bouton porte la touche du raccourci (ou les initiales), le libellé
-        // complet est dans l'infobulle et le nom accessible.
-        QString shortText = fromUtf8(tool->shortcut);
-        shortText.replace(QStringLiteral("Maj+"), QStringLiteral("⇧"));
-        if (shortText.isEmpty()) {
-            shortText = label.left(2);
-        }
-        auto* a = new QAction(shortText, toolGroup_);
+        // Les libellés sont visibles en mode étendu, et les pictogrammes restent présents
+        // en mode compact. Les raccourcis sont des commandes, jamais les seuls noms d'outils.
+        auto* a = new QAction(toolIcon(tool->id, toolRail_->palette().color(QPalette::ButtonText)),
+                              label, toolGroup_);
         a->setCheckable(true);
         a->setData(fromUtf8(tool->id));
         a->setEnabled(implemented);
@@ -714,6 +740,7 @@ void ShellWindow::rebuildToolRail() {
         }
         connect(a, &QAction::triggered, this, [this, a] {
             activeTool_ = a->data().toString();
+            activeToolStatus_->setText(a->text());
             applyToolToCanvas();
         });
     }
@@ -722,6 +749,9 @@ void ShellWindow::rebuildToolRail() {
         for (auto* a : toolGroup_->actions()) {
             a->setChecked(a->data().toString() == activeTool_);
         }
+    }
+    if (const auto* tool = registry_.find(activeTool_.toStdString())) {
+        activeToolStatus_->setText(fromUtf8(tool->label));
     }
 }
 
@@ -1044,6 +1074,11 @@ bool ShellWindow::saveProject(const std::filesystem::path& osp) {
 
 void ShellWindow::setStateDirectory(const std::filesystem::path& dir) {
     stateDir_ = dir;
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    QSettings settings(QString::fromStdU16String((dir / "ui.ini").u16string()),
+                       QSettings::IniFormat);
+    setCompactToolRail(settings.value(QStringLiteral("tools/compact"), false).toBool());
     autosave_ = std::make_unique<AutosaveStore>(dir);
     recent_ = pruneMissingRecent(loadRecentList(dir / "recent.txt"));
     rebuildRecentMenu();
@@ -1249,6 +1284,7 @@ void ShellWindow::setThemeMode(const QString& mode) {
         scheme = Qt::ColorScheme::Dark;
     }
     QGuiApplication::styleHints()->setColorScheme(scheme);
+    rebuildToolRail(); // régénère les icônes avec les couleurs du thème courant
 }
 
 void ShellWindow::onKnife(QPointF a, QPointF b) {
