@@ -42,6 +42,7 @@ signals:
     void deleteRequested();
     void mergeRequested(std::uint64_t absorbIntoThis); // fusionne la région choisie DANS celle-ci
     void cleanRequested(int minPixels);
+    void fillHolesRequested(int maxPixels);
     void recolorRequested();
     void mergeColorsRequested(std::uint64_t targetRegion);
     void regenerateRequested();
@@ -58,6 +59,8 @@ private:
     QPushButton* mergeColors_{nullptr};
     QSpinBox* minPixels_{nullptr};
     QPushButton* clean_{nullptr};
+    QSpinBox* maxHolePixels_{nullptr};
+    QPushButton* fillHoles_{nullptr};
     QPushButton* regenerate_{nullptr};
     QLabel* banner_{nullptr};
     QLabel* status_{nullptr};
