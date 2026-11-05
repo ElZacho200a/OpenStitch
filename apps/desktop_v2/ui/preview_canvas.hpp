@@ -79,6 +79,9 @@ public:
     // Masque de détail (ARGB) superposé à l'image source ; image nulle = aucun.
     void setDetailOverlay(const QImage& image, const QRectF& rectPx);
     [[nodiscard]] bool hasDetailOverlay() const { return detailItem_ != nullptr; }
+    // Carte de densité (RGBA, un pixel par case) posée sur l'aperçu ; image nulle = aucune.
+    void setDensityOverlay(const QImage& image, const QRectF& rectPx);
+    [[nodiscard]] bool hasDensityOverlay() const { return densityItem_ != nullptr; }
     // Poignées des points d'un objet (pixels de l'image) ; `selected` = indice mis en évidence, -1
     // = aucun. Liste vide = aucune poignée.
     void setPointMarkers(const QVector<QPointF>& scenePx, int selected);
@@ -142,6 +145,7 @@ private:
     QVector<QGraphicsItem*> pointItems_;
     QGraphicsPixmapItem* sourceItem_{nullptr};
     QGraphicsPixmapItem* detailItem_{nullptr};
+    QGraphicsPixmapItem* densityItem_{nullptr};
     QGraphicsPathItem* strokeItem_{nullptr};
     QVector<QPointF> strokePts_;
     bool stroking_{false};

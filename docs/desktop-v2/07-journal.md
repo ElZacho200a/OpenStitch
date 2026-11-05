@@ -344,3 +344,8 @@ encore le desktop principal.
 
 - `core/thread_plan` : plan de fils (objets groupés par fil dans l'ordre de couture), fusion, recoloration, visibilité, déplacement dans l'ordre de couture (refus si l'ordre des calques casse), coloris (ajout, activation, renommage, suppression) ; tout via `ICommand`, une étape d'annulation par action. Catch2 `[threads]`.
 - Interface : dock « Fils » à trois onglets (Fils / Ordre / Coloris). QTest `threadPanelListsThreadsOrderAndColorways`.
+
+## 2026-11-05 — Session 1 (suite 21) : carte de densité
+
+- Fusion dans main des PR V2 #253 (protection des documents), #255 (outils lisibles, icônes) et #257 (navigation précise) après résolution de conflits ; #254 et #256 fermées (doublons). Les tests `Ignorer` cliquent désormais le vrai bouton : `QMessageBox::done(Discard)` sans clic renvoie le bouton d'échappement.
+- `core/density_service` : `run_density` (séquence effective → `stitch_analysis::compute_density_map` + zones sur-denses) sur un instantané, en tâche annulable ; image RGBA d'une case par pixel, révision analysée. Interface : commande Analyse › Afficher/Masquer la carte de densité, surimpression non cliquable, recalcul automatique après modification. Catch2 `[density]`, QTest `densityMapOverlaysThePreviewAndFollowsTheDocument`.

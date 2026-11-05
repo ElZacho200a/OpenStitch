@@ -35,6 +35,7 @@
 #include <QTreeWidget>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <cstring>
 #include <map>
 
 #include "openstitch/commands/placement_ops.hpp"
@@ -890,6 +891,9 @@ void ShellWindow::requestPreview() {
                 updatePointMarkers();
                 refreshSimulationBar();
                 updateSelectionBoxes();
+                if (densityActive_ && densityRevision_ != session_.revision()) {
+                    requestDensity(); // la carte affichée date d'avant la dernière modification
+                }
             }
         });
 }
@@ -1236,6 +1240,93 @@ void ShellWindow::runDiagnostics() {
                 tr("Analyse : %1 erreur(s), %2 avertissement(s).").arg(r->errors).arg(r->warnings),
                 r->errors > 0);
         });
+}
+
+void ShellWindow::toggleDensity() {
+    if (densityActive_) {
+        hideDensity();
+        setNotice(tr("Carte de densité masquée."), false);
+        return;
+    }
+    if (session_.project().embroidery_objects.empty()) {
+        setNotice(tr("Rien à analyser : le document ne contient aucun objet brodé."), true);
+        return;
+    }
+    densityActive_ = true;
+    requestDensity();
+}
+
+bool ShellWindow::densityShown() const {
+    return canvas_->hasDensityOverlay();
+}
+
+void ShellWindow::hideDensity() {
+    densityActive_ = false;
+    densityRevision_ = 0;
+    densityHotspots_.clear();
+    if (densityTask_ != 0) {
+        (void)tasks_.cancel(densityTask_);
+        densityTask_ = 0;
+    }
+    canvas_->setDensityOverlay(QImage(), QRectF());
+}
+
+void ShellWindow::requestDensity() {
+    if (densityTask_ != 0) {
+        (void)tasks_.cancel(densityTask_); // une carte périmée n'est jamais livrée
+    }
+    const auto snapshot = session_.snapshot();
+    const auto revision = session_.revision();
+    densityTask_ = tasks_.submit<DensityOverlay>(
+        tr("Carte de densité").toStdString(),
+        [snapshot, revision](const TaskContext& ctx) {
+            return run_density(snapshot, revision, ctx);
+        },
+        [this](Result<DensityOverlay>&& r) {
+            densityTask_ = 0;
+            if (!densityActive_) {
+                return;
+            }
+            if (!r) {
+                densityActive_ = false;
+                setNotice(tr("Carte de densité impossible : %1").arg(fromUtf8(r.error().message)),
+                          true);
+                return;
+            }
+            if (r->revision != session_.revision()) {
+                return; // le document a changé depuis : une autre carte est en route
+            }
+            applyDensity(*r);
+        });
+}
+
+void ShellWindow::applyDensity(const DensityOverlay& overlay) {
+    densityRevision_ = overlay.revision;
+    densityHotspots_ = overlay.hotspots;
+    if (frame_.px_per_mm <= 0.0) {
+        return; // pas d'aperçu : la carte sera posée au prochain aperçu
+    }
+    QImage image(overlay.columns, overlay.rows, QImage::Format_RGBA8888);
+    for (int y = 0; y < overlay.rows; ++y) {
+        std::memcpy(image.scanLine(y),
+                    overlay.rgba.data() + static_cast<std::size_t>(y) * overlay.columns * 4,
+                    static_cast<std::size_t>(overlay.columns) * 4);
+    }
+    // Repère modèle (Y vers le haut) -> pixels de l'aperçu (Y vers le bas).
+    const QRectF rect(
+        QPointF(frame_.mmToPxX(overlay.minXmm),
+                frame_.mmToPxY(-(overlay.minYmm + overlay.heightMm))),
+        QPointF(frame_.mmToPxX(overlay.minXmm + overlay.widthMm), frame_.mmToPxY(-overlay.minYmm)));
+    canvas_->setDensityOverlay(image, rect);
+    const auto zones = static_cast<int>(overlay.hotspots.size());
+    setNotice(zones == 0 ? tr("Densité maximale %1 piqûres/mm² : aucune zone sur-dense.")
+                               .arg(overlay.maxPenetrationsPerMm2, 0, 'f', 1)
+                         : tr("Densité maximale %1 piqûres/mm² : %2 zone(s) sur-dense(s) "
+                              "(seuil %3).")
+                               .arg(overlay.maxPenetrationsPerMm2, 0, 'f', 1)
+                               .arg(zones)
+                               .arg(overlay.thresholdPerMm2, 0, 'f', 1),
+              zones > 0);
 }
 
 void ShellWindow::onFindingActivated(const project_ops::Finding& finding) {
@@ -2076,6 +2167,10 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
     }
     out.push_back({"analysis.run", q(tr("Analyser le document (diagnostic)")), q(tr("Analyse")), "",
                    !session_.project().embroidery_objects.empty()});
+    out.push_back(
+        {"analysis.density",
+         q(densityActive_ ? tr("Masquer la carte de densité") : tr("Afficher la carte de densité")),
+         q(tr("Analyse")), "", densityActive_ || !session_.project().embroidery_objects.empty()});
     int n = 1;
     for (const auto w : kWorkspaces) {
         out.push_back({"workspace." + std::string(workspaceId(w)),
@@ -2135,6 +2230,8 @@ bool ShellWindow::runCommand(const QString& id) {
         } else if (id == QLatin1String("analysis.run")) {
             setWorkspace(Workspace::Optimize);
             runDiagnostics();
+        } else if (id == QLatin1String("analysis.density")) {
+            toggleDensity();
         } else if (id == QLatin1String("selection.all")) {
             selectAllObjects();
         } else if (id == QLatin1String("selection.clear")) {

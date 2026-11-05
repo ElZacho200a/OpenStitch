@@ -1127,6 +1127,33 @@ private slots:
         QCOMPARE(panel->rowCount(), 2);
     }
 
+    void densityMapOverlaysThePreviewAndFollowsTheDocument() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 20, 10), "Rectangle").committed);
+        w.waitForIdle();
+        QVERIFY(w.previewShown());
+        QVERIFY(!w.densityShown());
+
+        QVERIFY(w.runCommand("analysis.density"));
+        w.waitForIdle();
+        QVERIFY(w.densityActive());
+        QVERIFY(w.densityShown());
+        QVERIFY(w.canvas()->hasDensityOverlay());
+        const auto revision = w.session().revision();
+        QCOMPARE(w.session().revision(), revision); // analyse = lecture seule
+
+        // Une modification recalcule la carte sans l'intervention de l'utilisateur.
+        QVERIFY(w.session().applyBatch(batchAddRect({40, 0}, 10, 10), "Autre").committed);
+        w.waitForIdle();
+        QVERIFY(w.densityShown());
+
+        QVERIFY(w.runCommand("analysis.density")); // second appel : masque
+        QVERIFY(!w.densityActive());
+        QVERIFY(!w.densityShown());
+    }
+
     void threadPanelListsThreadsOrderAndColorways() {
         ShellWindow w;
         w.show();
