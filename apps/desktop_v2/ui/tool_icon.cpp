@@ -73,6 +73,10 @@ QIcon toolIcon(std::string_view id, const QColor& foreground) {
         for (int y = 6; y <= 18; y += 4) {
             p.drawLine(QPointF(6, y), QPointF(17, y));
         }
+    } else if (id == "region.edit") {
+        p.drawRect(QRectF(3, 4, 9, 16));
+        p.drawRect(QRectF(12, 4, 9, 7));
+        p.drawRect(QRectF(12, 11, 9, 9));
     } else if (id == "fade.axis") {
         p.drawLine(QPointF(4, 19), QPointF(20, 5));
         p.drawRect(QRectF(2, 17, 4, 4));

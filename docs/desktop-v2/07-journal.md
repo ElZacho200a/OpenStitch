@@ -437,3 +437,9 @@ encore le desktop principal.
 ## 2026-11-05 — Session 1 (suite 40) : retour visuel réel et correctifs d'interface
 
 - **Le retour visuel est possible** : lancer `openstitch_v2 --demo-shapes --screenshot out.png` avec `QT_QPA_PLATFORM=windows` (plateforme native) donne une vraie capture avec polices, thème et fils cousus ; la plateforme `offscreen` des tests, elle, n'a pas de police (d'où les carrés des captures précédentes, que j'avais acceptés sans chercher). Première capture réelle : libellés du rail tronqués (« Recadr…tangle »), largeurs irrégulières, onglets des panneaux de droite écrasés (« C… »). Corrigés : noms courts dans le rail (nom complet en infobulle et dans la barre d'état), largeur régulière, onglets jamais tronqués (défilement). Captures avant/après dans `captures/v2-avant-rail-onglets.png` et `v2-apres-rail-onglets.png`.
+
+## 2026-11-05 — Session 1 (suite 41) : correction de la segmentation après numérisation
+
+- Retour utilisateur : « plus la main sur la segmentation (supprimer / fusionner des régions) ». Nouvel outil **Régions** (X, menu Outils › Corriger la segmentation) : carte des régions à plat sur le motif, clic pour choisir, panneau dédié (liste, Supprimer, Fusionner dans, Nettoyer les îlots, Régénérer).
+- Cœur `region_edit` (sans Qt, 5 cas Catch2) ; contrôleur `region_edit_controller` ; chaque correction = une commande du moteur ; la régénération refait les objets depuis la segmentation corrigée en tâche, refusée si la révision a changé, **une seule étape d'annulation**.
+- Limite : la régénération remplace les objets (retouches manuelles perdues, annulable) ; recoloration de région, fusion de couleurs et frontières non faits.

@@ -19,7 +19,7 @@ dit honnêtement ce qui bloque, ce qui est prêt et comment le vérifier.
 
 ## Bloquant avant bascule (non fait)
 
-- [ ] Correction de segmentation APRÈS numérisation (fusion / suppression / recoloration de régions, nettoyage des îlots, régénération des objets). Les commandes du moteur existent, l'interface non.
+- [x] Correction de segmentation APRÈS numérisation : outil « Régions » (X, menu Outils) : choisir une région au clic ou dans la liste, la supprimer, la fusionner dans une voisine, nettoyer les îlots, régénérer les objets (une étape d'annulation). Reste non fait : recoloration d'une région, fusion de couleurs, retouche des frontières.
 - [x] Plume, Crayon, suppression de nœuds, poignées de tangentes Bézier (contours et rails de satin).
 - [ ] Édition des barreaux des rails de satin ; diagnostic des croisements de rails.
 - [ ] Comparaison nominal ↔ prédit de la compensation de tirage et assistant d'étalonnage sur pièce-test.

@@ -96,6 +96,10 @@ public:
     void setFabricOverlay(const QImage& image, const QRectF& rectPx);
     void setFabricArrows(const QVector<QLineF>& linesPx);
     [[nodiscard]] bool hasFabricOverlay() const { return fabricItem_ != nullptr; }
+    // Carte des régions de la segmentation (RGBA, fond transparent) sur l'aperçu ; image nulle =
+    // aucune.
+    void setRegionOverlay(const QImage& image, const QRectF& rectPx);
+    [[nodiscard]] bool hasRegionOverlay() const { return regionItem_ != nullptr; }
     // Magnétisme du déplacement : reçoit le décalage brut (pixels de l'image) et rend le décalage
     // à afficher et à valider. Vide = pas de magnétisme.
     void setMoveSnap(std::function<QPointF(QPointF)> snap) { moveSnap_ = std::move(snap); }
@@ -203,6 +207,7 @@ private:
     QGraphicsPixmapItem* detailItem_{nullptr};
     QGraphicsPixmapItem* densityItem_{nullptr};
     QGraphicsPixmapItem* fabricItem_{nullptr};
+    QGraphicsPixmapItem* regionItem_{nullptr};
     QGraphicsPathItem* snapGuides_{nullptr};
     std::function<QPointF(QPointF)> moveSnap_;
     QGraphicsPathItem* fabricArrows_{nullptr};

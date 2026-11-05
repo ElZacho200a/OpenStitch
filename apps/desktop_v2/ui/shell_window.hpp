@@ -78,6 +78,8 @@ class CompanionPanel;
 class OptimizePanel;
 
 class NodeEditController;
+class RegionEditController;
+class RegionPanel;
 class AnalysisOverlays;
 class LiveServer;
 class FeedbackCue;
@@ -215,6 +217,9 @@ public:
 
     // --- Optimisation de l'ordre de couture, avec mesures avant / après ---------------------
     [[nodiscard]] OptimizePanel* optimizePanel() const { return optimizePanel_; }
+    // Correction de la segmentation après numérisation (outil « Régions », X).
+    [[nodiscard]] RegionPanel* regionPanel() const { return regionPanel_; }
+    [[nodiscard]] RegionEditController* regionController() const { return regions_.get(); }
 
     // --- Risque de plissement et déformation prévue du tissu (estimation non calibrée) -------
     [[nodiscard]] bool fabricRiskActive() const;
@@ -362,6 +367,9 @@ private:
     OptimizePanel* optimizePanel_{nullptr};
     QPointer<ImportDialog> importDialog_;
     std::unique_ptr<NodeEditController> nodes_;
+    std::unique_ptr<RegionEditController> regions_;
+    RegionPanel* regionPanel_{nullptr};
+    project_ops::DigitizeSettings lastDigitizeSettings_; // réglages de la dernière numérisation
     std::unique_ptr<AnalysisOverlays> overlays_;
     std::uint64_t importPreviewTask_{0};
     bool snapEnabled_{true};

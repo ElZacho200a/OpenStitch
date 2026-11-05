@@ -41,6 +41,9 @@
 #include "param_spec.hpp"
 #include "point_edit.hpp"
 #include "preview_canvas.hpp"
+#include "region_edit.hpp"
+#include "region_edit_controller.hpp"
+#include "region_panel.hpp"
 #include "satin_column.hpp"
 #include "shell_window.hpp"
 #include "source_image_tools.hpp"
@@ -227,7 +230,7 @@ private slots:
                 QVERIFY(a->toolTip().contains("pas encore migré"));
             }
         }
-        QCOMPARE(enabled, 13); // …, Pipette, Couteau, Zones de détail, Nœuds
+        QCOMPARE(enabled, 14); // …, Pipette, Couteau, Zones de détail, Nœuds
         QVERIFY(disabled > 0);
     }
 
@@ -515,7 +518,7 @@ private slots:
         for (const auto& e : entries) {
             tools += e.id.rfind("tool.", 0) == 0 ? 1 : 0;
         }
-        QCOMPARE(tools, 23);
+        QCOMPARE(tools, 24);
         // Un outil non migré est listé mais refusé, sans effet de bord.
         QVERIFY(!w.runCommand("tool.bucket"));
         QCOMPARE(w.activeToolId(), QString("select"));
@@ -2055,6 +2058,87 @@ private slots:
         QVERIFY(fadeAxisView(w.session().project(), id)->curve == FadeCurve::EaseIn);
         QVERIFY(w.session().undo());
         QVERIFY(fadeAxisView(w.session().project(), id)->curve == FadeCurve::Steep);
+    }
+
+    void regionToolDeletesMergesAndRegeneratesTheObjects() {
+        ShellWindow w;
+        w.resize(1400, 900);
+        w.show();
+        openstitch::project_ops::DigitizeSettings settings;
+        settings.max_colors = 5;
+        w.openImage(tentabrode(), 60.0, settings);
+        w.waitForIdle();
+        QVERIFY(!w.session().project().embroidery_objects.empty());
+        auto* panel = w.regionPanel();
+        QVERIFY(panel != nullptr);
+        auto* canvas = w.canvas();
+
+        QVERIFY(w.runCommand("tool.region.edit"));
+        w.waitForIdle();
+        QVERIFY(panel->regionCount() >= 3);
+        QVERIFY(canvas->hasRegionOverlay()); // la carte des régions est montrée sur le motif
+
+        // Un clic sur le motif choisit la région dessous.
+        const auto& frame = w.previewFrame();
+        const QPoint centre = canvas->mapFromScene(QPointF(frame.mmToPxX(0.0), frame.mmToPxY(0.0)));
+        QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, centre);
+        if (panel->selectedRegion() == 0) {
+            // Le centre tombe sur le fond : on choisit une région dans la liste à la place.
+            w.regionController()->selectRegion(listRegions(w.session().project()).front().id);
+        }
+        QVERIFY(panel->selectedRegion() != 0);
+        QVERIFY(!panel->regenerateEnabled()); // rien à régénérer tant que rien n'est corrigé
+
+        // Supprimer une région : une étape d'annulation, les objets ne bougent pas encore.
+        std::vector<std::uint64_t> idsBefore;
+        for (const auto& o : w.session().project().embroidery_objects) {
+            idsBefore.push_back(o.id.value);
+        }
+        const int regionsBefore = panel->regionCount();
+        const auto depth = w.session().undoNames().size();
+        auto* del = panel->findChild<QPushButton*>("regionDelete");
+        QVERIFY(del != nullptr && del->isEnabled());
+        del->click();
+        QCOMPARE(panel->regionCount(), regionsBefore - 1);
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        std::vector<std::uint64_t> idsAfterDelete;
+        for (const auto& o : w.session().project().embroidery_objects) {
+            idsAfterDelete.push_back(o.id.value);
+        }
+        QVERIFY(idsAfterDelete == idsBefore); // les objets ne suivent pas encore
+        QVERIFY(panel->regenerateEnabled());  // et le panneau le dit
+
+        // Fusionner deux voisines : une région de moins, encore une étape.
+        w.regionController()->selectRegion(listRegions(w.session().project()).front().id);
+        QVERIFY(panel->neighbourCount() > 0);
+        auto* merge = panel->findChild<QPushButton*>("regionMerge");
+        QVERIFY(merge != nullptr && merge->isEnabled());
+        merge->click();
+        QCOMPARE(panel->regionCount(), regionsBefore - 2);
+        QCOMPARE(w.session().undoNames().size(), depth + 2);
+
+        // Régénérer : les objets sont refaits depuis les régions corrigées, en UNE étape.
+        auto* regen = panel->findChild<QPushButton*>("regionRegenerate");
+        QVERIFY(regen != nullptr && regen->isEnabled());
+        regen->click();
+        w.waitForIdle();
+        QVERIFY(!panel->regenerateEnabled()); // plus rien en attente
+        QCOMPARE(w.session().undoNames().size(), depth + 3);
+        std::vector<std::uint64_t> idsAfterRegen;
+        for (const auto& o : w.session().project().embroidery_objects) {
+            idsAfterRegen.push_back(o.id.value);
+        }
+        QVERIFY(idsAfterRegen != idsBefore); // de nouveaux objets
+        QVERIFY(!idsAfterRegen.empty());
+
+        // Annuler la régénération rend exactement les objets d'avant.
+        QVERIFY(w.session().undo());
+        w.waitForIdle();
+        std::vector<std::uint64_t> idsUndone;
+        for (const auto& o : w.session().project().embroidery_objects) {
+            idsUndone.push_back(o.id.value);
+        }
+        QVERIFY(idsUndone == idsBefore);
     }
 
     void nodeToolEditsSatinRailsAndShowsTheRungs() {

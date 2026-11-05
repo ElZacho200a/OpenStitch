@@ -86,6 +86,7 @@ void PreviewCanvas::clearImage() {
     detailItem_ = nullptr;
     densityItem_ = nullptr;
     fabricItem_ = nullptr;
+    regionItem_ = nullptr;
     fabricArrows_ = nullptr;
     snapGuides_ = nullptr;
     nodeItems_.clear();
@@ -555,6 +556,24 @@ void PreviewCanvas::setNodeOutline(const QVector<QVector<QPointF>>& polylinesPx,
                                           valid ? Qt::SolidLine : Qt::DashLine, 2));
     nodeOutline_->setZValue(16);
     nodeOutline_->setAcceptedMouseButtons(Qt::NoButton);
+}
+
+void PreviewCanvas::setRegionOverlay(const QImage& image, const QRectF& rectPx) {
+    if (regionItem_ != nullptr) {
+        scene_->removeItem(regionItem_);
+        delete regionItem_;
+        regionItem_ = nullptr;
+    }
+    if (item_ == nullptr || image.isNull()) {
+        return;
+    }
+    regionItem_ = scene_->addPixmap(QPixmap::fromImage(image));
+    regionItem_->setTransformationMode(Qt::FastTransformation);
+    regionItem_->setZValue(3.1);
+    regionItem_->setTransform(
+        QTransform::fromScale(rectPx.width() / image.width(), rectPx.height() / image.height()));
+    regionItem_->setPos(rectPx.topLeft());
+    regionItem_->setAcceptedMouseButtons(Qt::NoButton);
 }
 
 void PreviewCanvas::setFabricOverlay(const QImage& image, const QRectF& rectPx) {

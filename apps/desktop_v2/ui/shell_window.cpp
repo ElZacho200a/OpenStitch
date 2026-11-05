@@ -62,6 +62,8 @@
 #include "optimize_panel.hpp"
 #include "preview_canvas.hpp"
 #include "preview_service.hpp"
+#include "region_edit_controller.hpp"
+#include "region_panel.hpp"
 #include "segmentation_preview.hpp"
 #include "thread_panel.hpp"
 #include "tool_icon.hpp"
@@ -92,7 +94,7 @@ bool isToolImplemented(const std::string& id) {
            id == "draw.polygon" || id == "measure" || id == "eyedropper" || id == "knife" ||
            id == "click-to-stitch" || id == "detail-brush" || id == "stitch.points" ||
            id == "satin.column" || id == "node.edit" || id == "fade.axis" || id == "draw.bezier" ||
-           id == "draw.freeform";
+           id == "draw.freeform" || id == "region.edit";
 }
 
 constexpr Workspace kWorkspaces[] = {Workspace::Design, Workspace::Digitize, Workspace::Optimize,
@@ -163,6 +165,13 @@ ShellWindow::ShellWindow(QWidget* parent)
         updateSelectionBoxes();
         updatePointMarkers();
     });
+    regions_ = std::make_unique<RegionEditController>(
+        RegionEditController::Host{
+            session_, *canvas_, frame_, tasks_, [this] { return activeTool_; },
+            [this](const QString& message, bool error) { setNotice(message, error); },
+            [this]() -> const image::Image* { return ensureProcessed(); },
+            [this] { return lastDigitizeSettings_; }},
+        regionPanel_, this);
     overlays_ = std::make_unique<AnalysisOverlays>(AnalysisOverlays::Host{
         session_, *canvas_, frame_, tasks_,
         [this](const QString& message, bool error) { setNotice(message, error); }});
@@ -394,6 +403,13 @@ void ShellWindow::buildMenus() {
         const QString id = fromUtf8(def.id);
         connect(a, &QAction::triggered, this, [this, id] { runAction(id); });
     }
+    toolsMenu->addSeparator();
+    // Correction de la segmentation après numérisation : supprimer / fusionner des régions, puis
+    // régénérer les objets. Le bouton du rail d'outils est loin en bas : ce menu le rend trouvable.
+    auto* regionsAction = toolsMenu->addAction(tr("Corriger la segmentation (régions)… [X]"));
+    regionsAction->setObjectName(QStringLiteral("action_region_edit"));
+    connect(regionsAction, &QAction::triggered, this,
+            [this] { (void)runCommand(QStringLiteral("tool.region.edit")); });
     auto* imageMenu = menuBar()->addMenu(tr("&Image"));
     const auto addPrep = [this, imageMenu](const QString& text, const char* id) {
         auto* a = imageMenu->addAction(text);
@@ -609,6 +625,12 @@ void ShellWindow::buildInspector() {
             [this] { (void)acceptOptimization(); });
     connect(optimizePanel_, &OptimizePanel::refuseRequested, this,
             [this] { refuseOptimization(); });
+    auto* regionDock = new QDockWidget(tr("Régions"), this);
+    regionDock->setObjectName(QStringLiteral("regionDock"));
+    regionPanel_ = new RegionPanel(regionDock);
+    regionDock->setWidget(regionPanel_);
+    addDockWidget(Qt::RightDockWidgetArea, regionDock);
+    tabifyDockWidget(calqueDock, regionDock);
     auto* companionDock = new QDockWidget(tr("Compagnon IA"), this);
     companionDock->setObjectName(QStringLiteral("companionDock"));
     companionPanel_ = new CompanionPanel(companionDock);
@@ -1125,6 +1147,14 @@ std::string ShellWindow::liveToken() const {
 
 void ShellWindow::onDocumentChanged(ChangeKind kind) {
     overlays_->onDocumentChanged();
+    if (regions_) {
+        if (kind == ChangeKind::Replaced) {
+            regions_->onDocumentReplaced(); // nouveau document : ni région choisie ni correction en
+                                            // attente
+        } else {
+            regions_->refresh();
+        }
+    }
     if (optimizePanel_ != nullptr) {
         optimizePanel_->setEnabledForDocument(session_.project().embroidery_objects.size() >= 2);
         if (proposal_ && proposal_->revision != session_.revision()) {
@@ -1401,6 +1431,7 @@ void ShellWindow::openImage(const std::filesystem::path& image, double heightMm,
     request.image = image;
     request.target_height_mm = heightMm;
     request.settings = settings;
+    lastDigitizeSettings_ = settings; // la régénération des objets réutilise ces réglages
     setNotice(
         tr("Numérisation de %1…").arg(QString::fromStdU16String(image.filename().u16string())),
         false);
@@ -2021,6 +2052,9 @@ QPointF ShellWindow::nodeHandlePx(int index) const {
 
 void ShellWindow::updatePointMarkers() {
     nodes_->refresh();
+    if (regions_) {
+        regions_->refresh();
+    }
     const auto target = activeTool_ == QStringLiteral("stitch.points") && documentOpen_
                             ? pointTarget()
                             : std::nullopt;
@@ -2167,6 +2201,13 @@ void ShellWindow::onStroke(QVector<QPointF> scenePx, Qt::KeyboardModifiers modif
 void ShellWindow::applyToolToCanvas() {
     using Mode = PreviewCanvas::Mode;
     updatePointMarkers();
+    if (activeTool_ == QStringLiteral("region.edit") && regionPanel_ != nullptr) {
+        // L'outil « Régions » a besoin de son panneau : on le montre au premier plan.
+        if (auto* dock = qobject_cast<QDockWidget*>(regionPanel_->parentWidget())) {
+            dock->show();
+            dock->raise();
+        }
+    }
     const bool imageTool = activeTool_ == QStringLiteral("click-to-stitch") ||
                            activeTool_ == QStringLiteral("detail-brush");
     if (imageBar_ != nullptr) {
@@ -2190,7 +2231,8 @@ void ShellWindow::applyToolToCanvas() {
     } else if (activeTool_ == QStringLiteral("knife")) {
         canvas_->setMode(Mode::Cut);
     } else if (activeTool_ == QStringLiteral("click-to-stitch") ||
-               activeTool_ == QStringLiteral("stitch.points")) {
+               activeTool_ == QStringLiteral("stitch.points") ||
+               activeTool_ == QStringLiteral("region.edit")) {
         canvas_->setMode(Mode::Pick);
     } else if (activeTool_ == QStringLiteral("detail-brush") ||
                activeTool_ == QStringLiteral("draw.freeform")) {
@@ -3241,6 +3283,9 @@ void ShellWindow::onScaleDragged(QPointF pivotPx, double factor) {
 }
 
 void ShellWindow::onCanvasClick(QPointF scenePx, Qt::KeyboardModifiers modifiers) {
+    if (regions_ && regions_->onCanvasClick(scenePx)) {
+        return; // l'outil « Régions » a traité le clic
+    }
     if ((activeTool_ == QStringLiteral("node.edit") ||
          activeTool_ == QStringLiteral("fade.axis")) &&
         frame_.px_per_mm > 0.0) {

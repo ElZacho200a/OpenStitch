@@ -25,6 +25,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/fabric_risk.cpp
     core/segmentation_preview.cpp
     core/snap.cpp
+    core/region_edit.cpp
     core/pen_shape.cpp
     core/node_edit.cpp
     core/density_service.cpp
@@ -82,6 +83,10 @@ add_library(openstitch_desktop_v2_ui STATIC
     ui/analysis_overlays.hpp
     ui/node_edit_controller.cpp
     ui/node_edit_controller.hpp
+    ui/region_panel.cpp
+    ui/region_panel.hpp
+    ui/region_edit_controller.cpp
+    ui/region_edit_controller.hpp
     ui/import_dialog.cpp
     ui/import_dialog.hpp
     ui/optimize_panel.cpp
