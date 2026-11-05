@@ -2080,6 +2080,8 @@ private slots:
         auto* mergeColors = panel->findChild<QPushButton*>("regionMergeColors");
         QVERIFY(recolor != nullptr && recolor->isEnabled());
         QVERIFY(mergeColors != nullptr && mergeColors->isEnabled());
+        auto* fillHoles = panel->findChild<QPushButton*>("regionFillHoles");
+        QVERIFY(fillHoles != nullptr && fillHoles->isEnabled());
 
         auto newColor = std::array<std::uint8_t, 3>{31, 71, 137};
         if (newColor == regions.front().rgb) {
