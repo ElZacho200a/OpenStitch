@@ -422,7 +422,6 @@ void ShellWindow::buildMenus() {
     reducedMotionAction_->setCheckable(true);
     connect(reducedMotionAction_, &QAction::triggered, this, [this](bool reduced) {
         feedbackCue_->setReducedMotion(reduced);
-    canvas_->setReducedMotion(reduced);
         canvas_->setReducedMotion(reduced);
         if (!stateDir_.empty()) {
             QSettings settings(QString::fromStdU16String((stateDir_ / "motion.ini").u16string()),
