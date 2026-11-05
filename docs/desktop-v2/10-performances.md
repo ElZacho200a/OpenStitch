@@ -1,8 +1,10 @@
 # Performances de la V2 : mesures réelles
 
+> **Mise à jour : mesures Release ajoutées** (section « Release » ci-dessous). Les conclusions de la section Debug restent valables mais pessimistes.
+
 Mesuré le 2026-11-05 avec `test_desktop_v2_core "[perf]"` (test caché `[.perf]`, source
 `tests/unit/desktop_v2/test_perf_budget.cpp`). **Configuration Debug (MSVC, `msvc-debug`)** : les
-chiffres Release seront plus bas, mais ne sont pas encore mesurés — ils ne sont donc pas cités.
+chiffres Release, mesurés plus bas, sont nettement meilleurs.
 Machine de développement Windows 11, un seul exemplaire du programme, rectangles de 8 × 8 mm remplis
 (tatami) sur une grille, ajoutés par UN lot.
 
@@ -30,11 +32,25 @@ Machine de développement Windows 11, un seul exemplaire du programme, rectangle
 - **Séquence effective (jusqu'à 270 ms) et aperçu réaliste (jusqu'à 506 ms à 1 000 objets)** : ces
   calculs tournent déjà hors du fil d'interface (`TaskManager`), avec rejet des résultats périmés ;
   l'utilisateur voit l'ancien aperçu pendant le calcul au lieu d'une interface gelée.
-- Les chiffres Debug surestiment le coût Release. À remesurer en Release avant toute affirmation de
-  performance dans la PR finale.
+- Les chiffres Debug surestiment le coût Release : voir la section Release en fin de document.
 
 ## Non mesuré à ce jour
 
 - Sélection de nombreux objets (select-all à 1 000 objets) et rafales de réglages.
 - Fluidité réelle du rendu du canevas (images par seconde) : aucune mesure sur écran.
 - Consommation mémoire.
+
+## Release (MSVC `msvc-release`, même banc, même machine)
+
+| Objets | Ajout du lot (ms) | Copie du projet (ms) | Séquence effective (ms) | Aperçu réaliste (ms) | Nœud p95 (ms) | Nœud max (ms) | +1 objet (ms) | Déplacer (ms) |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 0,8 | 0,0 | 0,3 | 9,8 | 0,001 | 0,018 | 0,1 | 0,0 |
+| 100 | 0,9 | 0,0 | 2,8 | 23,3 | 0,002 | 0,007 | 0,2 | 0,1 |
+| 500 | 4,3 | 0,1 | 6,5 | 49,7 | 0,001 | 0,003 | 0,7 | 0,4 |
+| 1 000 | 8,9 | 0,2 | 12,1 | 97,8 | 0,003 | 0,006 | 1,8 | 0,9 |
+
+Lecture : en Release, **tout** passe sous 10 ms sur le fil d'interface à 1 000 objets, y compris l'ajout d'un
+lot de 1 000 objets (8,9 ms) que le Debug montrait à 276 ms ; l'aperçu réaliste (98 ms) et la séquence
+effective (12 ms) restent en tâche de fond. Le point « lot de 1 000 objets > 100 ms » de la section Debug
+**ne se confirme pas en Release** et n'est plus un problème. Toujours non mesuré : fluidité d'affichage
+(images par seconde), sélection massive, mémoire.

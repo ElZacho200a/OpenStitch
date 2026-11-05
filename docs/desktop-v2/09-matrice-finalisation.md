@@ -43,7 +43,7 @@ automatisé qui l'exerce. Une ligne ne passe à ✅ que si le test existe et pas
 | E | Chat intégré à V2 (envoyer un message à Claude depuis l'application) | 🟡 V1 : `claude_backend`, `claude_code_process_backend` | — | ⬜ | — | ⬜ | **non fait** : l'agent se branche aujourd'hui via un client MCP externe ; aucun faux dialogue n'a été ajouté |
 | F | Identité visuelle « Atelier » (jetons clair/sombre, feuille de style, focus accessible, bascule de thème en direct) | — | — | ✅ intégrée depuis #262 | — | ✅ | QTest `studioThemeUses…` ; le « blocage » observé sur #262 seule ne se reproduit pas une fois fusionnée avec la branche actuelle (93 QTest verts). **Rendu visuel jamais vérifié à l'écran** |
 | F | Micro-interactions (confirmation d'enregistrement, sélection tactile, mouvement réduit) | — | — | ✅ #263 | — | ✅ | |
-| G | Benchmarks 1 / 100 / 500 / 1 000 objets | — | — | ✅ | — | ✅ | `test_perf_budget.cpp` (`[.perf]`) + `10-performances.md` : mesures **Debug** ; retour local p95 0,02 ms ; gestes ordinaires ≤ 9 ms à 1 000 objets ; lot de 1 000 objets 276 ms sur le fil d'interface (non corrigé). Release à remesurer |
+| G | Benchmarks 1 / 100 / 500 / 1 000 objets | — | — | ✅ | — | ✅ | `test_perf_budget.cpp` (`[.perf]`) + `10-performances.md` : Debug ET Release : retour local p95 ≤ 0,03 ms ; en Release tous les gestes ≤ 9 ms à 1 000 objets, aperçu réaliste 98 ms en tâche de fond ; le lot de 1 000 objets (276 ms en Debug) vaut 8,9 ms en Release |
 
 ## Ce qui reste avant la PR finale
 Voir la colonne « Direct/Testé » : les lignes ⬜ sont du travail restant, pas des promesses.
