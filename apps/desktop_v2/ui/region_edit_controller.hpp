@@ -52,6 +52,7 @@ public:
     bool deleteSelected();
     bool mergeSelectedInto(std::uint64_t target);
     bool cleanIslands(int minPixels);
+    bool fillHoles(int maxPixels);
     bool recolorSelected(std::array<std::uint8_t, 3> color);
     bool mergeSelectedColorInto(std::uint64_t target);
     void regenerate();
