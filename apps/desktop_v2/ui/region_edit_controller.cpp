@@ -40,8 +40,8 @@ RegionEditController::RegionEditController(Host host, RegionPanel* panel, QObjec
         if (it == regions.end()) {
             return;
         }
-        const auto chosen = QColorDialog::getColor(
-            QColor(it->rgb[0], it->rgb[1], it->rgb[2]), panel_, tr("Couleur de la région"));
+        const QColor initial(it->rgb[0], it->rgb[1], it->rgb[2]);
+        const auto chosen = QColorDialog::getColor(initial, panel_, tr("Couleur de la région"));
         if (chosen.isValid()) {
             (void)recolorSelected({static_cast<std::uint8_t>(chosen.red()),
                                    static_cast<std::uint8_t>(chosen.green()),
@@ -88,8 +88,8 @@ void RegionEditController::refresh() {
     panel_->setNeighbours(neighbours);
     std::vector<RegionInfo> otherColors;
     if (selected_ != 0) {
-        const auto selected = std::find_if(regions.begin(), regions.end(),
-                                           [this](const RegionInfo& r) { return r.id == selected_; });
+        const auto isSelected = [this](const RegionInfo& r) { return r.id == selected_; };
+        const auto selected = std::find_if(regions.begin(), regions.end(), isSelected);
         if (selected != regions.end()) {
             std::vector<std::array<std::uint8_t, 3>> seen;
             for (const auto& r : regions) {
