@@ -961,8 +961,7 @@ bool RegionSegmentTester::stays_inside(Vec2um a, Vec2um b, Micrometers edge_tole
     }
     const PointD pa{static_cast<double>(a.x.value), static_cast<double>(a.y.value)};
     const PointD pb{static_cast<double>(b.x.value), static_cast<double>(b.y.value)};
-    return !connector_invalid(impl_->index, pa, pb,
-                              std::max(0.0, double(edge_tolerance.value)));
+    return !connector_invalid(impl_->index, pa, pb, std::max(0.0, double(edge_tolerance.value)));
 }
 
 struct HiddenRouter::Impl {
