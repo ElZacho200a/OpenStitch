@@ -58,6 +58,8 @@ set(CMAKE_AUTOMOC ON)
 add_library(openstitch_desktop_v2_ui STATIC
     ui/shell_window.cpp
     ui/shell_window.hpp
+    ui/feedback_cue.cpp
+    ui/feedback_cue.hpp
     ui/preview_canvas.cpp
     ui/tool_icon.cpp
     ui/tool_icon.hpp

@@ -17,6 +17,7 @@
 #include <QPixmap>
 #include <QRubberBand>
 #include <QScrollBar>
+#include <QVariantAnimation>
 #include <QWheelEvent>
 #include <algorithm>
 #include <cmath>
@@ -47,6 +48,16 @@ PreviewCanvas::PreviewCanvas(QWidget* parent)
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true); // aperçu du segment en cours dans le mode polygone
     setAccessibleName(tr("Canevas d'aperçu"));
+    selectionFeedback_ = new QVariantAnimation(this);
+    selectionFeedback_->setDuration(140);
+    selectionFeedback_->setStartValue(0.65);
+    selectionFeedback_->setEndValue(1.0);
+    selectionFeedback_->setEasingCurve(QEasingCurve::OutCubic);
+    connect(selectionFeedback_, &QVariantAnimation::valueChanged, this, [this](const QVariant& v) {
+        if (selGroup_ != nullptr) {
+            selGroup_->setOpacity(v.toReal());
+        }
+    });
 }
 
 void PreviewCanvas::setImage(const QImage& image) {
@@ -64,6 +75,8 @@ void PreviewCanvas::setImage(const QImage& image) {
 }
 
 void PreviewCanvas::clearImage() {
+    selectionFeedback_->stop();
+    lastSelectionBoxes_.clear();
     scene_->clear(); // détruit aussi cadres, poignées, cadre de broderie et polygone en cours
     boxItems_.clear();
     item_ = nullptr;
@@ -278,6 +291,12 @@ void PreviewCanvas::focusOutEvent(QFocusEvent* event) {
 }
 
 void PreviewCanvas::setSelectionBoxes(const QVector<QRectF>& boxesPx) {
+    // No flashing on repeated refreshes of the same selection or old rendered frames.
+    if (boxesPx == lastSelectionBoxes_ && selGroup_ != nullptr) {
+        return;
+    }
+    selectionFeedback_->stop();
+    lastSelectionBoxes_ = boxesPx;
     if (selGroup_ != nullptr) {
         scene_->removeItem(selGroup_);
         delete selGroup_; // détruit aussi ses enfants
@@ -310,6 +329,25 @@ void PreviewCanvas::setSelectionBoxes(const QVector<QRectF>& boxesPx) {
         handle->setPos(c);
         selGroup_->addToGroup(handle);
     }
+    // Feedback lives in the Qt overlay only. No stitch regeneration or project mutation.
+    if (!reducedMotion_ && boxesPx.size() <= 20) {
+        selGroup_->setOpacity(0.65);
+        selectionFeedback_->start();
+    }
+}
+
+void PreviewCanvas::setReducedMotion(bool reduced) {
+    reducedMotion_ = reduced;
+    if (reduced) {
+        selectionFeedback_->stop();
+        if (selGroup_ != nullptr) {
+            selGroup_->setOpacity(1.0);
+        }
+    }
+}
+
+bool PreviewCanvas::selectionFeedbackActive() const {
+    return selectionFeedback_->state() == QAbstractAnimation::Running;
 }
 
 void PreviewCanvas::setHoopRect(const QRectF& rectPx) {
