@@ -34,6 +34,9 @@ public:
     void setError(const QString& message);
 
     [[nodiscard]] bool active() const { return active_; }
+    // Commande qui branche Claude Code sur ce programme (`claude mcp add … openstitch-mcp --live`),
+    // avec le chemin réel du serveur MCP installé à côté de l'application.
+    [[nodiscard]] static QString connectionCommand();
     [[nodiscard]] int eventCount() const;
     [[nodiscard]] QString statusText() const;
 
@@ -47,6 +50,7 @@ private:
     QLabel* howTo_{nullptr};
     QPushButton* toggle_{nullptr};
     QPushButton* undo_{nullptr};
+    QPushButton* copy_{nullptr};
     QListWidget* log_{nullptr};
 };
 

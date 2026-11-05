@@ -2,9 +2,11 @@
 #include <QAbstractButton>
 #include <QAction>
 #include <QApplication>
+#include <QClipboard>
 #include <QColor>
 #include <QDoubleSpinBox>
 #include <QFile>
+#include <QGuiApplication>
 #include <QLabel>
 #include <QListWidget>
 #include <QLocalSocket>
@@ -1364,6 +1366,20 @@ private slots:
         for (std::size_t i = 0; i < 4; ++i) {
             QVERIFY(std::abs(restored->nodes[i].pos.x - before->nodes[i].pos.x) < 0.01);
         }
+    }
+
+    void companionPanelCopiesTheClaudeCodeConnectionCommand() {
+        ShellWindow w;
+        w.show();
+        auto* button = w.companionPanel()->findChild<QPushButton*>("companionCopy");
+        QVERIFY(button != nullptr);
+        QGuiApplication::clipboard()->clear();
+        button->click();
+        const QString text = QGuiApplication::clipboard()->text();
+        QVERIFY2(text.startsWith("claude mcp add openstitch --"), qPrintable(text));
+        QVERIFY(text.contains("--live"));
+        QVERIFY(text.contains("openstitch-mcp"));
+        QCOMPARE(text, CompanionPanel::connectionCommand());
     }
 
     void agentChangesTheOpenProjectThroughTheLiveBridgeAfterApproval() {

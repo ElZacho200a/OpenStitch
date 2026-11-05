@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "companion_panel.hpp"
 
+#include <QClipboard>
+#include <QCoreApplication>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QDir>
+#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QListWidget>
@@ -89,6 +93,17 @@ bool askAgentApproval(QWidget* parent, const mcp::ApprovalRequest& request) {
     return dialog.exec() == QDialog::Accepted;
 }
 
+QString CompanionPanel::connectionCommand() {
+#ifdef Q_OS_WIN
+    const QString server = QStringLiteral("openstitch-mcp.exe");
+#else
+    const QString server = QStringLiteral("openstitch-mcp");
+#endif
+    const QString path =
+        QDir::toNativeSeparators(QDir(QCoreApplication::applicationDirPath()).filePath(server));
+    return QStringLiteral("claude mcp add openstitch -- \"%1\" --live").arg(path);
+}
+
 CompanionPanel::CompanionPanel(QWidget* parent) : QWidget(parent) {
     setObjectName(QStringLiteral("companionPanel"));
     auto* column = new QVBoxLayout(this);
@@ -106,6 +121,13 @@ CompanionPanel::CompanionPanel(QWidget* parent) : QWidget(parent) {
     howTo_->setWordWrap(true);
     howTo_->setTextFormat(Qt::RichText);
     column->addWidget(howTo_);
+
+    copy_ = new QPushButton(tr("Copier la commande de connexion (Claude Code)"), this);
+    copy_->setObjectName(QStringLiteral("companionCopy"));
+    copy_->setToolTip(connectionCommand());
+    column->addWidget(copy_);
+    connect(copy_, &QPushButton::clicked, this,
+            [] { QGuiApplication::clipboard()->setText(connectionCommand()); });
 
     column->addWidget(new QLabel(tr("<b>Journal de l'agent</b>"), this));
     log_ = new QListWidget(this);
