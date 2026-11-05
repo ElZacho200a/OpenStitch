@@ -6,6 +6,7 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -99,8 +100,12 @@ QString CompanionPanel::connectionCommand() {
 #else
     const QString server = QStringLiteral("openstitch-mcp");
 #endif
-    const QString path =
-        QDir::toNativeSeparators(QDir(QCoreApplication::applicationDirPath()).filePath(server));
+    // L'installateur place le serveur dans « mcp/ » à côté de l'application ; en développement il
+    // est dans le même dossier que l'exécutable.
+    const QDir appDir(QCoreApplication::applicationDirPath());
+    const QString installed = appDir.filePath(QStringLiteral("mcp/") + server);
+    const QString path = QDir::toNativeSeparators(
+        QFileInfo::exists(installed) ? installed : appDir.filePath(server));
     return QStringLiteral("claude mcp add openstitch -- \"%1\" --live").arg(path);
 }
 
