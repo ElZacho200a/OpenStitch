@@ -6,6 +6,7 @@
 #include <QDoubleSpinBox>
 #include <QFile>
 #include <QLabel>
+#include <QListWidget>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -459,6 +460,33 @@ private slots:
         palette.setQuery("plume");
         QCOMPARE(palette.visibleIds().size(), 1);
         QVERIFY(!palette.activateCurrent());
+    }
+
+    void commandPaletteExplainsEmptyOrUnavailableResults() {
+        CommandPalette palette;
+        palette.setEntries({{"disabled", "Outil indisponible", "Outil", "", false},
+                            {"enabled", "Outil disponible", "Outil", "", true}});
+        auto* hint = palette.findChild<QLabel*>("paletteHint");
+        auto* list = palette.findChild<QListWidget*>("paletteList");
+        QVERIFY(hint != nullptr);
+        QVERIFY(list != nullptr);
+
+        palette.setQuery("outil indisponible");
+        QVERIFY(hint->isVisibleTo(&palette) || !hint->isHidden());
+        QVERIFY(hint->text().contains("indisponibles"));
+        QCOMPARE(list->currentRow(), -1);
+        QVERIFY(!palette.activateCurrent());
+
+        palette.setQuery("aucun-resultat-possible");
+        QCOMPARE(list->count(), 0);
+        QVERIFY(hint->text().contains("Aucune commande"));
+        QVERIFY(!palette.activateCurrent());
+
+        palette.setQuery("outil");
+        QCOMPARE(list->count(), 2);
+        QVERIFY(list->currentItem() != nullptr);
+        QCOMPARE(list->currentItem()->data(Qt::UserRole + 1).toString(), QString("enabled"));
+        QVERIFY(hint->isHidden());
     }
 
     void drawingToolsCreateObjectsFromMouseGestures() {
