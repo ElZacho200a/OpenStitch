@@ -41,7 +41,8 @@ automatisé qui l'exerce. Une ligne ne passe à ✅ que si le test existe et pas
 | E | Pont live : un agent MCP modifie le document OUVERT (approbation obligatoire, une étape d'annulation, refus si le document a changé, session close au remplacement) | ✅ `LiveBridge` | ✅ `openstitch-mcp --live` | ✅ dock « Compagnon IA » + commande `companion.toggle` | — | ✅ | `core/live_companion` (Catch2 `[companion]`, 5 cas) + `ui/live_server` ; QTest bout en bout sur une vraie socket locale. Désactivé par défaut |
 | E | Boîte d'approbation avec rendu avant/après, opérations, mesures et réserves | ✅ (`ApprovalRequest`) | ✅ | ✅ `askAgentApproval` | — | 🟡 réponse imposée en test, rendu des images non vérifié | |
 | E | Chat intégré à V2 (envoyer un message à Claude depuis l'application) | 🟡 V1 : `claude_backend`, `claude_code_process_backend` | — | ⬜ | — | ⬜ | **non fait** : l'agent se branche aujourd'hui via un client MCP externe ; aucun faux dialogue n'a été ajouté |
-| F | Identité visuelle « Atelier » | — | — | 🟡 | — | 🟡 | #262 ouverte : bloque les tests (cf. journal) ; #263 micro-interactions |
+| F | Identité visuelle « Atelier » (jetons clair/sombre, feuille de style, focus accessible, bascule de thème en direct) | — | — | ✅ intégrée depuis #262 | — | ✅ | QTest `studioThemeUses…` ; le « blocage » observé sur #262 seule ne se reproduit pas une fois fusionnée avec la branche actuelle (93 QTest verts). **Rendu visuel jamais vérifié à l'écran** |
+| F | Micro-interactions (confirmation d'enregistrement, sélection tactile, mouvement réduit) | — | — | ✅ #263 | — | ✅ | |
 | G | Benchmarks 1 / 100 / 500 / 1 000 objets | — | — | ✅ | — | ✅ | `test_perf_budget.cpp` (`[.perf]`) + `10-performances.md` : mesures **Debug** ; retour local p95 0,02 ms ; gestes ordinaires ≤ 9 ms à 1 000 objets ; lot de 1 000 objets 276 ms sur le fil d'interface (non corrigé). Release à remesurer |
 
 ## Ce qui reste avant la PR finale

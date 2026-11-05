@@ -402,3 +402,7 @@ encore le desktop principal.
 ## 2026-11-05 — Session 1 (suite 32) : finalisation V2, tranche 11 (extraction de ShellWindow)
 
 - `ui/node_edit_controller` : l'état et la logique des gestes d'édition directe (poignées, sélection de nœuds, segment saisi, axe de fondu) quittent `ShellWindow` ; le contrôleur ne reçoit qu'un contexte (`Host` : session, canevas, repère, outil actif, cible, message) et passe par les services du cœur. `ui/analysis_overlays` : cartes de densité et de risque du tissu (tâches, révisions, recalcul). Extraction mécanique : aucune ligne de comportement modifiée, les tests existants servent de filet (92 QTest, 179 cas Catch2 verts). `core/` reste indépendant de Qt.
+
+## 2026-11-05 — Session 1 (suite 33) : finalisation V2, tranche 12 (thème Atelier)
+
+- Fusion de la branche du thème « Atelier » (#262) dans la finalisation. Le blocage à 100 % de processeur observé en la testant seule contre l'ancien main ne se reproduit pas sur la branche actuelle : la suite complète (93 QTest) passe en moins de deux minutes. Cause exacte non isolée ; je ne prétends donc pas l'avoir corrigée. #262 devient redondante avec la PR finale.
