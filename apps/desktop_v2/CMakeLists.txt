@@ -19,6 +19,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/transform_batch.cpp
     core/edit_batch.cpp
     core/diagnostics_service.cpp
+    core/live_companion.cpp
     core/node_edit.cpp
     core/density_service.cpp
     core/param_spec.cpp
@@ -43,7 +44,7 @@ target_compile_definitions(openstitch_desktop_v2_core PRIVATE
 target_link_libraries(openstitch_desktop_v2_core
     PUBLIC openstitch::core openstitch::document openstitch::commands openstitch::project_ops
            openstitch::stitch openstitch::stitch_generation openstitch::stitch_render openstitch::formats openstitch::image
-           openstitch::stitch_analysis openstitch::autodigitize openstitch::segmentation openstitch::stipple openstitch::project_io
+           openstitch::mcp openstitch::stitch_analysis openstitch::autodigitize openstitch::segmentation openstitch::stipple openstitch::project_io
     PRIVATE openstitch::warnings)
 
 # Interface Qt Widgets. Désactivée avec OPENSTITCH_BUILD_DESKTOP=OFF (CI linux-core) ou sans Qt6.

@@ -112,7 +112,17 @@ void DocumentSession::replaceProject(document::Project project, bool clean) {
     } else {
         undo_.markDirty();
     }
+    if (bridge_) {
+        bridge_->reset(); // nouvelle session pour l'agent : l'ancienne est close
+    }
     changed(ChangeKind::Replaced);
+}
+
+project_ops::LiveBridge& DocumentSession::liveBridge() {
+    if (!bridge_) {
+        bridge_ = std::make_unique<project_ops::LiveBridge>(project_, undo_);
+    }
+    return *bridge_;
 }
 
 DocumentSession::Token DocumentSession::subscribe(Listener listener) {

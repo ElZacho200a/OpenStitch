@@ -23,6 +23,7 @@ add_executable(test_desktop_v2_core
     test_production_sheet.cpp
     test_thread_plan.cpp
     test_node_edit.cpp
+    test_live_companion.cpp
     test_density_service.cpp
     test_satin_column.cpp
     test_point_edit.cpp
