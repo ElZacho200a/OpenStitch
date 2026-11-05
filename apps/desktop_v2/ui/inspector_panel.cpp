@@ -93,6 +93,11 @@ InspectorPanel::~InspectorPanel() {
 }
 
 void InspectorPanel::refresh() {
+    // L'ancienne saisie ne doit jamais être appliquée à une nouvelle sélection. Un changement
+    // de document ou de sélection invalide les commits différés avant de rafraîchir les champs.
+    for (auto* timer : paramsBox_->findChildren<QTimer*>()) {
+        timer->stop();
+    }
     refreshing_ = true;
     const auto state = inspect(session_.project(), session_.selection().targets());
     rebuildParams(state);
