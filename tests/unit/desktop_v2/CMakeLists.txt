@@ -24,6 +24,7 @@ add_executable(test_desktop_v2_core
     test_thread_plan.cpp
     test_node_edit.cpp
     test_live_companion.cpp
+    test_fade_axis.cpp
     test_density_service.cpp
     test_workflow_guide.cpp
     test_satin_column.cpp

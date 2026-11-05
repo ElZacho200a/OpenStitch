@@ -20,6 +20,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/edit_batch.cpp
     core/diagnostics_service.cpp
     core/live_companion.cpp
+    core/fade_axis.cpp
     core/node_edit.cpp
     core/density_service.cpp
     core/param_spec.cpp

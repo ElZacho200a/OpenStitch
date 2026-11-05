@@ -28,6 +28,7 @@
 #include "command_palette.hpp"
 #include "companion_panel.hpp"
 #include "diagnostics_panel.hpp"
+#include "fade_service.hpp"
 #include "inspector_model.hpp"
 #include "inspector_panel.hpp"
 #include "param_spec.hpp"
@@ -135,7 +136,7 @@ private slots:
                 QVERIFY(a->toolTip().contains("pas encore migré"));
             }
         }
-        QCOMPARE(enabled, 10); // …, Pipette, Couteau, Zones de détail, Nœuds
+        QCOMPARE(enabled, 11); // …, Pipette, Couteau, Zones de détail, Nœuds
         QVERIFY(disabled > 0);
     }
 
@@ -423,7 +424,7 @@ private slots:
         for (const auto& e : entries) {
             tools += e.id.rfind("tool.", 0) == 0 ? 1 : 0;
         }
-        QCOMPARE(tools, 22);
+        QCOMPARE(tools, 23);
         // Un outil non migré est listé mais refusé, sans effet de bord.
         QVERIFY(!w.runCommand("tool.draw.bezier"));
         QCOMPARE(w.activeToolId(), QString("select"));
@@ -1356,6 +1357,66 @@ private slots:
         QVERIFY(w.runCommand("companion.toggle"));
         QVERIFY(!w.liveBridgeEnabled());
         QVERIFY(w.liveEndpoint().isEmpty());
+    }
+
+    void fadeAxisToolMovesAndRotatesTheTransitionThroughTheCanvas() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 40, 20), "Rectangle").committed);
+        w.waitForIdle();
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        QVERIFY(w.runCommand("tool.fade.axis"));
+        w.waitForIdle();
+        QCOMPARE(w.nodeHandleCount(), 0); // pas de fondu : aucune poignée, rien d'inventé
+
+        QVERIFY(createFade(w.session(), id, FadeSettings{{200, 30, 30}, true}).ok);
+        w.waitForIdle();
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        w.waitForIdle();
+        QCOMPARE(w.nodeHandleCount(), 4); // début, fin, déplacement, rotation
+        auto* canvas = w.canvas();
+        QCOMPARE(canvas->mode(), PreviewCanvas::Mode::Nodes);
+        QVERIFY(canvas->hasNodeGuides()); // l'axe est tracé
+
+        const auto before = fadeAxisView(w.session().project(), id);
+        QVERIFY(before.has_value());
+        const auto depth = w.session().undoNames().size();
+        const QPoint from = canvas->mapFromScene(w.nodeHandlePx(2)); // poignée de déplacement
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, from);
+        QTest::mouseMove(canvas->viewport(), from + QPoint(10, 5));
+        QTest::mouseMove(canvas->viewport(), from + QPoint(25, 10));
+        QVERIFY(canvas->hasNodeOutline());               // aperçu de l'axe pendant le glisser
+        QCOMPARE(w.session().undoNames().size(), depth); // rien d'écrit avant le relâchement
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                            from + QPoint(25, 10));
+        w.waitForIdle();
+        QVERIFY(!canvas->hasNodeOutline());
+        QCOMPARE(w.session().undoNames().size(), depth + 1); // un geste = un pas d'annulation
+        const auto after = fadeAxisView(w.session().project(), id);
+        QVERIFY(after.has_value());
+        QVERIFY(std::abs(after->centre.x - before->centre.x) +
+                    std::abs(after->centre.y - before->centre.y) >
+                0.5);
+
+        // Annuler remet l'axe exactement où il était.
+        QVERIFY(w.session().undo());
+        w.waitForIdle();
+        const auto undone = fadeAxisView(w.session().project(), id);
+        QVERIFY(undone.has_value());
+        QVERIFY(std::abs(undone->centre.x - before->centre.x) < 0.01);
+
+        // Échap abandonne un glisser sans rien écrire.
+        const auto revision = w.session().revision();
+        const QPoint start = canvas->mapFromScene(w.nodeHandlePx(1));
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, start);
+        QTest::mouseMove(canvas->viewport(), start + QPoint(-20, 0));
+        QTest::keyClick(canvas, Qt::Key_Escape);
+        QVERIFY(!canvas->hasNodeOutline());
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                            start + QPoint(-20, 0));
+        QCOMPARE(w.session().revision(), revision);
     }
 
     void nodeToolEditsSatinRailsAndShowsTheRungs() {

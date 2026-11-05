@@ -73,6 +73,12 @@ QIcon toolIcon(std::string_view id, const QColor& foreground) {
         for (int y = 6; y <= 18; y += 4) {
             p.drawLine(QPointF(6, y), QPointF(17, y));
         }
+    } else if (id == "fade.axis") {
+        p.drawLine(QPointF(4, 19), QPointF(20, 5));
+        p.drawRect(QRectF(2, 17, 4, 4));
+        p.drawRect(QRectF(18, 3, 4, 4));
+        p.drawEllipse(QPointF(12, 12), 2.2, 2.2);
+        p.drawLine(QPointF(12, 12), QPointF(6, 6));
     } else if (id == "node.edit") {
         QPainterPath curve;
         curve.moveTo(4, 18);

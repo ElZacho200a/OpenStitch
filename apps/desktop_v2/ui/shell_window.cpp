@@ -82,7 +82,7 @@ bool isToolImplemented(const std::string& id) {
     return id == "select" || id == "pan" || id == "draw.rectangle" || id == "draw.ellipse" ||
            id == "draw.polygon" || id == "measure" || id == "eyedropper" || id == "knife" ||
            id == "click-to-stitch" || id == "detail-brush" || id == "stitch.points" ||
-           id == "satin.column" || id == "node.edit";
+           id == "satin.column" || id == "node.edit" || id == "fade.axis";
 }
 
 constexpr Workspace kWorkspaces[] = {Workspace::Design, Workspace::Digitize, Workspace::Optimize,
@@ -1836,11 +1836,33 @@ std::optional<std::uint64_t> ShellWindow::pointTarget() const {
     return state.ids.front();
 }
 
+namespace {
+PointMm fadeHandleMm(const FadeAxisView& v, int index) {
+    switch (index) {
+    case 0:
+        return v.start;
+    case 1:
+        return v.end;
+    case 2:
+        return v.centre;
+    default:
+        return v.rotate;
+    }
+}
+} // namespace
+
 int ShellWindow::nodeHandleCount() const {
-    return static_cast<int>(nodeView_.nodes.size());
+    return fadeView_ ? 4 : static_cast<int>(nodeView_.nodes.size());
 }
 
 QPointF ShellWindow::nodeHandlePx(int index) const {
+    if (fadeView_) {
+        if (index < 0 || index > 3) {
+            return {};
+        }
+        const auto p = fadeHandleMm(*fadeView_, index);
+        return {frame_.mmToPxX(p.x), frame_.mmToPxY(-p.y)};
+    }
     if (index < 0 || index >= static_cast<int>(nodeView_.nodes.size())) {
         return {};
     }
@@ -1849,6 +1871,31 @@ QPointF ShellWindow::nodeHandlePx(int index) const {
 }
 
 void ShellWindow::updateNodeMarkers() {
+    fadeView_.reset();
+    if (activeTool_ == QStringLiteral("fade.axis") && documentOpen_ && frame_.px_per_mm > 0.0) {
+        nodeView_ = {};
+        nodeSel_.clear();
+        canvas_->setNodeOutline({}, true);
+        const auto target = pointTarget();
+        if (target) {
+            fadeView_ = fadeAxisView(session_.project(), *target);
+        }
+        if (!fadeView_) {
+            canvas_->setNodeHandles({}, {});
+            canvas_->setNodeGuides({});
+            return;
+        }
+        fadeObject_ = *target;
+        QVector<QPointF> pts;
+        for (int i = 0; i < 4; ++i) {
+            pts.push_back(nodeHandlePx(i));
+        }
+        canvas_->setNodeHandles(pts, {});
+        const QPointF a = pts[0];
+        const QPointF b = pts[1];
+        canvas_->setNodeGuides({QLineF(a, b), QLineF(pts[2], pts[3])});
+        return;
+    }
     const auto target =
         activeTool_ == QStringLiteral("node.edit") && documentOpen_ ? pointTarget() : std::nullopt;
     canvas_->setNodeOutline({}, true);
@@ -1889,6 +1936,17 @@ void ShellWindow::updateNodeMarkers() {
 }
 
 void ShellWindow::onNodePressed(int index, Qt::KeyboardModifiers modifiers) {
+    if (fadeView_) {
+        fadeHandle_ = index;
+        static const char* const names[] = {"début de la transition", "fin de la transition",
+                                            "déplacement de l'axe", "rotation de l'axe"};
+        if (index >= 0 && index <= 3) {
+            setNotice(tr("Fondu : %1. Maj = extrémités symétriques. %2")
+                          .arg(QString::fromUtf8(names[index]), fromUtf8(fadeSummary(*fadeView_))),
+                      false);
+        }
+        return;
+    }
     if (index < 0 || index >= static_cast<int>(nodeView_.nodes.size())) {
         return;
     }
@@ -1926,6 +1984,29 @@ void ShellWindow::onNodePressed(int index, Qt::KeyboardModifiers modifiers) {
 }
 
 void ShellWindow::onNodeDragMoved(QPointF deltaPx) {
+    if (fadeView_) {
+        if (fadeHandle_ < 0 || frame_.px_per_mm <= 0.0) {
+            return;
+        }
+        const QPointF at = nodeHandlePx(fadeHandle_) + deltaPx;
+        const PointMm pointer = screenToModel(frame_.pxToMmX(at.x()), frame_.pxToMmY(at.y()));
+        const bool symmetric = QGuiApplication::keyboardModifiers() & Qt::ShiftModifier;
+        const auto preview =
+            previewFadeDrag(session_.project(), fadeObject_, static_cast<FadeHandle>(fadeHandle_),
+                            pointer, symmetric);
+        QVector<QVector<QPointF>> lines;
+        const auto px = [&](PointMm p) {
+            return QPointF(frame_.mmToPxX(p.x), frame_.mmToPxY(-p.y));
+        };
+        const FadeAxisView& shown = preview ? *preview : *fadeView_;
+        lines.push_back({px(shown.start), px(shown.end)});
+        lines.push_back({px(shown.centre), px(shown.rotate)});
+        canvas_->setNodeOutline(lines, preview.has_value());
+        setNotice(preview ? fromUtf8(fadeSummary(shown))
+                          : tr("Déplacement impossible : l'axe deviendrait inutilisable."),
+                  !preview);
+        return;
+    }
     if (nodeSel_.empty() || frame_.px_per_mm <= 0.0) {
         return;
     }
@@ -1953,6 +2034,27 @@ void ShellWindow::onNodeDragMoved(QPointF deltaPx) {
 }
 
 void ShellWindow::onNodeDragFinished(QPointF deltaPx) {
+    if (fadeView_) {
+        canvas_->setNodeOutline({}, true);
+        if (fadeHandle_ < 0 || frame_.px_per_mm <= 0.0) {
+            return;
+        }
+        const QPointF at = nodeHandlePx(fadeHandle_) + deltaPx;
+        const PointMm pointer = screenToModel(frame_.pxToMmX(at.x()), frame_.pxToMmY(at.y()));
+        const bool symmetric = QGuiApplication::keyboardModifiers() & Qt::ShiftModifier;
+        const auto r = dragFadeHandle(session_, fadeObject_, static_cast<FadeHandle>(fadeHandle_),
+                                      pointer, symmetric);
+        fadeHandle_ = -1;
+        if (!r.ok) {
+            setNotice(tr("Fondu : %1").arg(fromUtf8(r.message)), true);
+            updateNodeMarkers(); // les poignées reviennent à leur place
+            return;
+        }
+        if (const auto view = fadeAxisView(session_.project(), fadeObject_)) {
+            setNotice(fromUtf8(fadeSummary(*view)), false);
+        }
+        return;
+    }
     canvas_->setNodeOutline({}, true);
     if (nodeSel_.empty() || frame_.px_per_mm <= 0.0) {
         return;
@@ -2146,7 +2248,8 @@ void ShellWindow::applyToolToCanvas() {
         canvas_->setMode(Mode::Pick);
     } else if (activeTool_ == QStringLiteral("detail-brush")) {
         canvas_->setMode(Mode::Stroke);
-    } else if (activeTool_ == QStringLiteral("node.edit")) {
+    } else if (activeTool_ == QStringLiteral("node.edit") ||
+               activeTool_ == QStringLiteral("fade.axis")) {
         canvas_->setMode(Mode::Nodes);
     } else {
         canvas_->setMode(Mode::Select); // sélection : clic, cadre élastique
@@ -3051,7 +3154,9 @@ void ShellWindow::onScaleDragged(QPointF pivotPx, double factor) {
 }
 
 void ShellWindow::onCanvasClick(QPointF scenePx, Qt::KeyboardModifiers modifiers) {
-    if (activeTool_ == QStringLiteral("node.edit") && frame_.px_per_mm > 0.0) {
+    if ((activeTool_ == QStringLiteral("node.edit") ||
+         activeTool_ == QStringLiteral("fade.axis")) &&
+        frame_.px_per_mm > 0.0) {
         // Clic hors poignée : choisit l'objet sous le curseur (ses nœuds apparaissent) ou, sur le
         // fond, retire seulement la sélection de nœuds.
         if (!nodeSel_.empty()) {

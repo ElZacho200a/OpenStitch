@@ -99,6 +99,8 @@ ToolRegistry ToolRegistry::builtin() {
     // Édition directe des nœuds du contour (poignées, glisser, insertion par double-clic).
     r.add({"node.edit", "Nœuds du contour", "B", static_cast<std::uint8_t>(D | N), Gesture::Pick,
            ""});
+    // Axe d'un fondu de deux fils : début et fin de la transition, déplacement, rotation.
+    r.add({"fade.axis", "Axe du fondu", "L", static_cast<std::uint8_t>(D | N), Gesture::Pick, ""});
     r.add({"stitch.points", "Retouche de points", "J", static_cast<std::uint8_t>(N | O),
            Gesture::Pick, ""});
     (void)P;

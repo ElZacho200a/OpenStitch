@@ -24,6 +24,7 @@
 #include "document_services.hpp"
 #include "document_session.hpp"
 #include "edit_batch.hpp"
+#include "fade_axis.hpp"
 #include "image_prep.hpp"
 #include "live_companion.hpp"
 #include "node_edit.hpp"
@@ -303,6 +304,9 @@ private:
     std::uint64_t pointObject_{0};
     int pointSel_{-1};
     NodeView nodeView_;
+    std::optional<FadeAxisView> fadeView_; // outil « fade.axis » : axe du fondu sélectionné
+    std::uint64_t fadeObject_{0};
+    int fadeHandle_{-1};
     std::vector<int> nodeSel_; // indices dans nodeView_.nodes (tous dans le même contour)
     std::uint64_t nodeObject_{0};
     QSpinBox* tolSpin_{nullptr};

@@ -26,7 +26,9 @@ automatisé qui l'exerce. Une ligne ne passe à ✅ que si le test existe et pas
 | C | Segmentation IA / SAM | ✅ (V1) | 🟡 | ⬜ | ⬜ | ⬜ | hors priorité produit ; état de disponibilité à afficher |
 | C | Inspecteur piloté par métadonnées | ✅ | ✅ | 🟡 (`param_spec`) | — | ✅ | niveaux essentiel/avancé/expert, recherche, valeurs mixtes à finir |
 | C | Retouche de points | ✅ | ⬜ | ✅ (clic-clic) | 🟡 | ✅ | pas de glisser direct, pas de sélection multiple |
-| D | Fondu entre fils | ✅ | ✅ | 🟡 action `fade.create` | ⬜ | ✅ | poignées, courbe de densité, avant/après à faire |
+| D | Fondu entre fils : création, fils, rampes | ✅ | ✅ | ✅ action `fade.create` | — | ✅ | |
+| D | Fondu : axe manipulable au canevas (début/fin de transition, déplacement, rotation, aperçu pendant le glisser, Maj = symétrique, 1 pas d'annulation, résumé « de x % à y % ») | ✅ `drag_gradient_handle` | ✅ | ✅ outil « Axe du fondu » (L) | ✅ | ✅ | `core/fade_axis` (Catch2 `[fade]`), QTest `fadeAxisToolMovesAndRotates…` |
+| D | Fondu : courbe de densité éditable, aperçu des deux fils côte à côte, comparaison avant/après | ✅ (`DensityCurve`) | 🟡 | ⬜ | ⬜ | ⬜ | à faire |
 | D | Compensation de tirage (manuelle, auto, prédictive) | ✅ | ✅ | ⬜ | ⬜ | ✅ (moteur) | visualisation à faire ; modèle prédictif non validé physiquement |
 | D | Optimisation des parcours avec mesures avant/après | ✅ | ✅ | 🟡 appliquée à la numérisation | ⬜ | 🟡 | pilotage et prévisualisation à faire |
 | D | Carte de densité | ✅ | ⬜ | ✅ | — | ✅ | #265 |
