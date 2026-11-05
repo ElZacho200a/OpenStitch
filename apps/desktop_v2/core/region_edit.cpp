@@ -30,16 +30,14 @@ struct HoleFix {
 
 // Un trou est un composant de fond (label 0) entièrement intérieur à l'image.
 // On choisit la région qui partage le plus de bord, puis l'identifiant le plus petit.
-std::vector<HoleFix> planSmallHoles(const segmentation::Segmentation& seg,
-                                    std::size_t maxPixels) {
+std::vector<HoleFix> planSmallHoles(const segmentation::Segmentation& seg, std::size_t maxPixels) {
     std::vector<HoleFix> fixes;
     if (seg.width <= 0 || seg.height <= 0 || maxPixels == 0) {
         return fixes;
     }
     const auto w = static_cast<std::size_t>(seg.width);
     const auto h = static_cast<std::size_t>(seg.height);
-    if (h > std::numeric_limits<std::uint32_t>::max() / w ||
-        seg.labels.size() != w * h) {
+    if (h > std::numeric_limits<std::uint32_t>::max() / w || seg.labels.size() != w * h) {
         return fixes;
     }
     std::vector<std::uint8_t> seen(seg.labels.size(), 0);
@@ -274,7 +272,7 @@ ServiceResult fillSmallHoles(DocumentSession& session, std::size_t maxPixels) {
     }
     auto plan = planSmallHoles(*seg, maxPixels);
     if (plan.empty()) {
-        return {false, "Aucun petit trou fermé à boucher (les ouvertures extérieures sont gardées)."};
+        return {false, "Aucun petit trou fermé : le fond extérieur reste intact."};
     }
     session.execute(std::make_unique<FillSmallHolesCommand>(std::move(plan)));
     return {true, {}};
