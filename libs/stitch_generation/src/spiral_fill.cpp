@@ -67,8 +67,12 @@ FillStitches route_parts(const geometry::PathSet& region, double maxLen, FillSti
         const std::size_t start = reversed ? run.end - 1 : run.begin;
         if (jump) {
             output.jump_to(point(raw[start].pos));
-        } else {
+        } else if (output.empty()) {
             output.start_at(point(raw[start].pos));
+        } else {
+            // Déjà validé avec tolérance de frontière de 25 µm : le linker
+            // générique (strict) rejetterait à tort un rognage arrondi au bord.
+            output.line_to(point(raw[start].pos));
         }
         if (reversed) {
             for (std::size_t i = run.end - 1; i-- > run.begin;) {
@@ -102,7 +106,7 @@ FillStitches route_parts(const geometry::PathSet& region, double maxLen, FillSti
                 }
                 // Tester l'intérieur uniquement sur les candidats de proximité.
                 if (d2 <= bridge2 && d2 < inside.distance2 &&
-                    tester.stays_inside(current, target)) {
+                    tester.stays_inside(current, target, Micrometers{25})) {
                     inside = {d2, j, reversed, true};
                 }
             }
