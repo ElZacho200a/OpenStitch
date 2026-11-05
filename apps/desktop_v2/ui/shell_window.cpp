@@ -1,6 +1,5 @@
 ﻿// SPDX-License-Identifier: Apache-2.0
 #include "shell_window.hpp"
-#include "feedback_cue.hpp"
 
 #include <QAction>
 #include <QActionGroup>
@@ -42,6 +41,7 @@
 #include "calque_panel.hpp"
 #include "command_palette.hpp"
 #include "diagnostics_panel.hpp"
+#include "feedback_cue.hpp"
 #include "inspector_model.hpp"
 #include "inspector_panel.hpp"
 #include "object_labels.hpp"
@@ -54,8 +54,8 @@
 #include <QComboBox>
 #include <QGuiApplication>
 #include <QSignalBlocker>
-#include <QSlider>
 #include <QSettings>
+#include <QSlider>
 #include <QSpinBox>
 #include <QStyleHints>
 
@@ -419,9 +419,8 @@ void ShellWindow::buildMenus() {
     connect(reducedMotionAction_, &QAction::triggered, this, [this](bool reduced) {
         feedbackCue_->setReducedMotion(reduced);
         if (!stateDir_.empty()) {
-            QSettings settings(
-                QString::fromStdU16String((stateDir_ / "motion.ini").u16string()),
-                QSettings::IniFormat);
+            QSettings settings(QString::fromStdU16String((stateDir_ / "motion.ini").u16string()),
+                               QSettings::IniFormat);
             settings.setValue(QStringLiteral("visual/reducedMotion"), reduced);
         }
     });
