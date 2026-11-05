@@ -195,8 +195,9 @@ TEST_CASE("spiral fill: fragment routing never stitches across a concavity") {
         if (stitches[i].jump) {
             ++jumps;
         } else {
-            CHECK(inside.stays_inside(stitches[i - 1].pos, stitches[i].pos,
-                                      Micrometers{25}));
+            const Vec2um from = stitches[i - 1].pos;
+            const Vec2um to = stitches[i].pos;
+            CHECK(inside.stays_inside(from, to, Micrometers{25}));
             CHECK(dist_um(stitches[i - 1], stitches[i]) <= 3'000.0 + 1.0);
         }
     }
