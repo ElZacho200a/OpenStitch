@@ -57,6 +57,7 @@ class InspectorPanel;
 class DiagnosticsPanel;
 class CalquePanel;
 class ThreadPanel;
+class FeedbackCue;
 
 class ShellWindow : public QMainWindow {
     Q_OBJECT
@@ -220,6 +221,8 @@ private:
     QTreeWidget* objectTree_{nullptr};
     QLabel* summary_{nullptr};
     QLabel* notice_{nullptr};
+    FeedbackCue* feedbackCue_{nullptr};
+    QAction* reducedMotionAction_{nullptr};
     QProgressBar* progress_{nullptr};
     QToolButton* cancelButton_{nullptr};
     QAction* undoAction_{nullptr};
