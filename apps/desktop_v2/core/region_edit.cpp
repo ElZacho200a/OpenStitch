@@ -2,6 +2,9 @@
 #include "region_edit.hpp"
 
 #include <algorithm>
+#include <array>
+
+#include "openstitch/segmentation/color_merge.hpp"
 
 #include "document_session.hpp"
 #include "openstitch/commands/project_commands.hpp"
@@ -117,6 +120,46 @@ ServiceResult deleteRegion(DocumentSession& session, std::uint64_t id) {
         return {false, "C'est la dernière région : il ne resterait rien à broder."};
     }
     session.execute(std::make_unique<commands::RemoveRegionCommand>(RegionId{id}));
+    return {true, {}};
+}
+
+ServiceResult recolorRegion(DocumentSession& session, std::uint64_t id,
+                            std::array<std::uint8_t, 3> rgb) {
+    const auto* seg = segmentationOf(session.project());
+    if (seg == nullptr) {
+        return noSegmentation();
+    }
+    const auto* region = seg->find(RegionId{id});
+    if (region == nullptr) {
+        return {false, "Région introuvable (déjà fusionnée ou supprimée)."};
+    }
+    if (region->rgb == rgb) {
+        return {false, "Cette région a déjà cette couleur."};
+    }
+    session.execute(std::make_unique<commands::RecolorRegionCommand>(RegionId{id}, rgb));
+    return {true, {}};
+}
+
+ServiceResult mergeRegionColors(DocumentSession& session, std::uint64_t source,
+                                std::uint64_t target) {
+    const auto* seg = segmentationOf(session.project());
+    if (seg == nullptr) {
+        return noSegmentation();
+    }
+    const auto* from = seg->find(RegionId{source});
+    const auto* into = seg->find(RegionId{target});
+    if (from == nullptr || into == nullptr) {
+        return {false, "Couleur introuvable : choisissez deux régions existantes."};
+    }
+    if (from->rgb == into->rgb) {
+        return {false, "Les régions portent déjà la même couleur."};
+    }
+    const std::array<std::array<std::uint8_t, 3>, 1> sources{from->rgb};
+    auto plan = segmentation::plan_merge_colors(*seg, sources, into->rgb, true);
+    if (plan.empty()) {
+        return {false, "Aucune couleur à fusionner."};
+    }
+    session.execute(std::make_unique<commands::MergeColorsCommand>(std::move(plan)));
     return {true, {}};
 }
 
