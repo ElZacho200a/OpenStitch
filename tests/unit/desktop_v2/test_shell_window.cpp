@@ -23,8 +23,8 @@
 #include "preview_canvas.hpp"
 #include "satin_column.hpp"
 #include "shell_window.hpp"
-#include "studio_theme.hpp"
 #include "source_image_tools.hpp"
+#include "studio_theme.hpp"
 #include "thread_panel.hpp"
 #include <array>
 
