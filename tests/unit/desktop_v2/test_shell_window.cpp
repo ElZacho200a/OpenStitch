@@ -743,8 +743,8 @@ private slots:
         ShellWindow w;
         w.show();
         w.newProject();
-        const auto id =
-            *createdObjectId(w.session().applyBatch(batchAddRect({0, 0}, 20, 20), "Rectangle").report);
+        const auto added = w.session().applyBatch(batchAddRect({0, 0}, 20, 20), "Rectangle");
+        const auto id = *createdObjectId(added.report);
         w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
         auto* spin = w.inspector()->findChild<QDoubleSpinBox*>("param_row_spacing_mm");
         QVERIFY(spin != nullptr);
@@ -756,8 +756,10 @@ private slots:
         QCOMPARE(w.session().revision(), beforeRevision);
         QTRY_COMPARE_WITH_TIMEOUT(w.session().revision(), beforeRevision + 1, 1500);
         QCOMPARE(w.session().undoNames().size(), beforeUndo + 1);
-        QVERIFY(qAbs(*readParam(w.session().project().embroidery_objects.front(),
-                                "row_spacing_mm") - 0.75) < 0.01);
+        const auto value =
+            readParam(w.session().project().embroidery_objects.front(), "row_spacing_mm");
+        QVERIFY(value.has_value());
+        QVERIFY(qAbs(*value - 0.75) < 0.01);
         QVERIFY(w.session().undo());
         QCOMPARE(w.session().undoNames().size(), beforeUndo);
     }
