@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "region_edit_controller.hpp"
 
+#include <QColorDialog>
 #include <QImage>
 #include <QRectF>
 
@@ -29,6 +30,28 @@ RegionEditController::RegionEditController(Host host, RegionPanel* panel, QObjec
     connect(panel_, &RegionPanel::mergeRequested, this,
             [this](std::uint64_t target) { (void)mergeSelectedInto(target); });
     connect(panel_, &RegionPanel::cleanRequested, this, [this](int px) { (void)cleanIslands(px); });
+    connect(panel_, &RegionPanel::recolorRequested, this, [this] {
+        if (selected_ == 0) {
+            return;
+        }
+        const auto regions = listRegions(host_.session.project());
+        const auto it = std::find_if(regions.begin(), regions.end(),
+                                     [this](const RegionInfo& r) { return r.id == selected_; });
+        if (it == regions.end()) {
+            return;
+        }
+        const QColor initial(it->rgb[0], it->rgb[1], it->rgb[2]);
+        const auto chosen = QColorDialog::getColor(initial, panel_, tr("Couleur de la région"));
+        if (chosen.isValid()) {
+            (void)recolorSelected({static_cast<std::uint8_t>(chosen.red()),
+                                   static_cast<std::uint8_t>(chosen.green()),
+                                   static_cast<std::uint8_t>(chosen.blue())});
+        }
+    });
+    connect(panel_, &RegionPanel::mergeColorsRequested, this,
+            [this](std::uint64_t target) { (void)mergeSelectedColorInto(target); });
+    connect(panel_, &RegionPanel::fillHolesRequested, this,
+            [this](int px) { (void)fillHoles(px); });
     connect(panel_, &RegionPanel::regenerateRequested, this, [this] { regenerate(); });
 }
 
@@ -43,6 +66,7 @@ void RegionEditController::refresh() {
         selected_ = 0;
         panel_->setRegions({}, 0);
         panel_->setNeighbours({});
+        panel_->setColorTargets({});
         panel_->setMessage(QObject::tr("Ce projet n'a pas de segmentation : numérisez une image "
                                        "pour corriger ses régions."));
         host_.canvas.setRegionOverlay(QImage(), QRectF());
@@ -64,6 +88,22 @@ void RegionEditController::refresh() {
         }
     }
     panel_->setNeighbours(neighbours);
+    std::vector<RegionInfo> otherColors;
+    if (selected_ != 0) {
+        const auto isSelected = [this](const RegionInfo& r) { return r.id == selected_; };
+        const auto selected = std::find_if(regions.begin(), regions.end(), isSelected);
+        if (selected != regions.end()) {
+            std::vector<std::array<std::uint8_t, 3>> seen;
+            for (const auto& r : regions) {
+                if (r.rgb != selected->rgb &&
+                    std::find(seen.begin(), seen.end(), r.rgb) == seen.end()) {
+                    seen.push_back(r.rgb);
+                    otherColors.push_back(r);
+                }
+            }
+        }
+    }
+    panel_->setColorTargets(otherColors);
     panel_->setDirty(dirty_);
     if (active()) {
         panel_->setMessage(selected_ == 0
@@ -172,6 +212,41 @@ bool RegionEditController::mergeSelectedInto(std::uint64_t target) {
     return true;
 }
 
+bool RegionEditController::recolorSelected(std::array<std::uint8_t, 3> color) {
+    if (selected_ == 0) {
+        host_.notice(QObject::tr("Choisissez d'abord une région."), false);
+        return false;
+    }
+    const auto result = recolorRegion(host_.session, selected_, color);
+    if (!result.ok) {
+        host_.notice(QObject::tr("Régions : %1").arg(fromUtf8(result.message)), true);
+        return false;
+    }
+    dirty_ = true;
+    refresh();
+    host_.notice(QObject::tr("Région recolorée. Régénérez les objets pour appliquer."), false);
+    return true;
+}
+
+bool RegionEditController::mergeSelectedColorInto(std::uint64_t target) {
+    if (selected_ == 0) {
+        host_.notice(QObject::tr("Choisissez d'abord une région."), false);
+        return false;
+    }
+    const auto result = mergeRegionColors(host_.session, selected_, target);
+    if (!result.ok) {
+        host_.notice(QObject::tr("Régions : %1").arg(fromUtf8(result.message)), true);
+        return false;
+    }
+    dirty_ = true;
+    selected_ = target;
+    refresh();
+    host_.notice(QObject::tr("Couleurs fusionnées dans toutes les régions concernées. "
+                             "Régénérez les objets pour appliquer."),
+                 false);
+    return true;
+}
+
 bool RegionEditController::cleanIslands(int minPixels) {
     const auto r =
         cleanSmallIslands(host_.session, static_cast<std::size_t>(std::max(1, minPixels)));
@@ -182,6 +257,19 @@ bool RegionEditController::cleanIslands(int minPixels) {
     dirty_ = true;
     refresh();
     host_.notice(QObject::tr("Îlots nettoyés. Régénérez les objets pour appliquer."), false);
+    return true;
+}
+
+bool RegionEditController::fillHoles(int maxPixels) {
+    const auto limit = static_cast<std::size_t>(std::max(1, maxPixels));
+    const auto result = fillSmallHoles(host_.session, limit);
+    if (!result.ok) {
+        host_.notice(QObject::tr("Régions : %1").arg(fromUtf8(result.message)), true);
+        return false;
+    }
+    dirty_ = true;
+    refresh();
+    host_.notice(QObject::tr("Trous rebouchés. Régénérez les objets pour appliquer."), false);
     return true;
 }
 

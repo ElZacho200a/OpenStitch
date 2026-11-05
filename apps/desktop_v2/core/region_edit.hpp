@@ -54,8 +54,17 @@ struct RegionMapImage {
 // Corrections (une commande annulable chacune ; refus clair sinon).
 ServiceResult mergeRegionInto(DocumentSession& session, std::uint64_t keep, std::uint64_t absorb);
 ServiceResult deleteRegion(DocumentSession& session, std::uint64_t id);
+// Recolore une seule région sans changer ses pixels ; refuse une couleur inchangée.
+ServiceResult recolorRegion(DocumentSession& session, std::uint64_t id,
+                            std::array<std::uint8_t, 3> rgb);
+// Fusionne toutes les régions de la couleur source dans la couleur de la région cible.
+// Les régions adjacentes de couleur identique sont réunies en une commande annulable.
+ServiceResult mergeRegionColors(DocumentSession& session, std::uint64_t source,
+                                std::uint64_t target);
 // Fusionne chaque région de moins de `minPixels` dans sa voisine de couleur la plus proche.
 ServiceResult cleanSmallIslands(DocumentSession& session, std::size_t minPixels);
+// Rebouche uniquement les composants transparents enclavés de taille <= maxPixels.
+ServiceResult fillSmallHoles(DocumentSession& session, std::size_t maxPixels);
 
 // Régénération des objets depuis la segmentation courante. `working` : image de travail que la
 // segmentation a lue ; `settings` : réglages de numérisation (types de points, fond, lissage…).

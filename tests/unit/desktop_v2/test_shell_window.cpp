@@ -50,6 +50,7 @@
 #include "studio_theme.hpp"
 #include "thread_panel.hpp"
 #include "transform_batch.hpp"
+#include <algorithm>
 #include <array>
 
 using namespace openstitch::desktop_v2;
@@ -2058,6 +2059,59 @@ private slots:
         QVERIFY(fadeAxisView(w.session().project(), id)->curve == FadeCurve::EaseIn);
         QVERIFY(w.session().undo());
         QVERIFY(fadeAxisView(w.session().project(), id)->curve == FadeCurve::Steep);
+    }
+
+    void regionToolRecolorsAndMergesWholeColorClasses() {
+        ShellWindow w;
+        w.resize(1400, 900);
+        w.show();
+        openstitch::project_ops::DigitizeSettings settings;
+        settings.max_colors = 5;
+        w.openImage(tentabrode(), 60.0, settings);
+        w.waitForIdle();
+        QVERIFY(w.runCommand("tool.region.edit"));
+        auto* panel = w.regionPanel();
+        auto* controller = w.regionController();
+        QVERIFY(panel != nullptr && controller != nullptr);
+        const auto regions = listRegions(w.session().project());
+        QVERIFY(regions.size() >= 2);
+        controller->selectRegion(regions.front().id);
+        auto* recolor = panel->findChild<QPushButton*>("regionRecolor");
+        auto* mergeColors = panel->findChild<QPushButton*>("regionMergeColors");
+        QVERIFY(recolor != nullptr && recolor->isEnabled());
+        QVERIFY(mergeColors != nullptr && mergeColors->isEnabled());
+        auto* fillHoles = panel->findChild<QPushButton*>("regionFillHoles");
+        QVERIFY(fillHoles != nullptr && fillHoles->isEnabled());
+
+        auto newColor = std::array<std::uint8_t, 3>{31, 71, 137};
+        if (newColor == regions.front().rgb) {
+            newColor = {137, 71, 31};
+        }
+        const auto depth = w.session().undoNames().size();
+        QVERIFY(controller->recolorSelected(newColor));
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QVERIFY(panel->regenerateEnabled());
+        const auto* recolored =
+            w.session().project().segmentation->find(openstitch::RegionId{regions.front().id});
+        QVERIFY(recolored != nullptr);
+        QVERIFY(recolored->rgb == newColor);
+        QVERIFY(w.session().undo());
+        const auto* restored =
+            w.session().project().segmentation->find(openstitch::RegionId{regions.front().id});
+        QVERIFY(restored != nullptr);
+        QVERIFY(restored->rgb == regions.front().rgb);
+
+        controller->selectRegion(regions.front().id);
+        const auto otherColor = [&regions](const RegionInfo& r) {
+            return r.rgb != regions.front().rgb;
+        };
+        const auto target = std::find_if(regions.begin(), regions.end(), otherColor);
+        QVERIFY(target != regions.end());
+        QVERIFY(controller->mergeSelectedColorInto(target->id));
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        const auto merged = listRegions(w.session().project());
+        QVERIFY(std::none_of(merged.begin(), merged.end(),
+                             [&](const RegionInfo& r) { return r.rgb == regions.front().rgb; }));
     }
 
     void regionToolDeletesMergesAndRegeneratesTheObjects() {
