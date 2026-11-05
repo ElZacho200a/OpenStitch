@@ -41,6 +41,7 @@
 #include "satin_column.hpp"
 #include "shell_window.hpp"
 #include "source_image_tools.hpp"
+#include "studio_theme.hpp"
 #include "thread_panel.hpp"
 #include <array>
 
@@ -118,6 +119,24 @@ private slots:
         reopened.setStateDirectory(path);
         QVERIFY(reopened.findChild<FeedbackCue*>()->reducedMotion());
         QVERIFY(reopened.findChild<QAction*>("reduceMotion")->isChecked());
+    }
+
+    void studioThemeUsesAccessibleFocusAndPreservesModeSwitching() {
+        const auto dark = studioColors(StudioScheme::Dark);
+        const auto light = studioColors(StudioScheme::Light);
+        QVERIFY(dark.background != light.background);
+        QVERIFY(dark.accent != light.accent);
+        QVERIFY(studioStyleSheet(StudioScheme::Dark).contains(dark.accent));
+        QVERIFY(studioStyleSheet(StudioScheme::Light).contains(light.accent));
+        QVERIFY(studioStyleSheet(StudioScheme::Dark).contains("QToolButton:focus"));
+        ShellWindow w;
+        w.setThemeMode("dark");
+        QCOMPARE(w.themeMode(), QString("dark"));
+        QVERIFY(qApp->styleSheet().contains(dark.background));
+        w.setThemeMode("light");
+        QVERIFY(qApp->styleSheet().contains(light.background));
+        w.setThemeMode("system");
+        QCOMPARE(w.themeMode(), QString("system"));
     }
 
     void emptyShellHasNoObjectsAndNoPreview() {
