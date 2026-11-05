@@ -130,7 +130,7 @@ private slots:
                 QVERIFY(a->toolTip().contains("pas encore migré"));
             }
         }
-        QCOMPARE(enabled, 9); // …, Pipette, Couteau, Zones de détail
+        QCOMPARE(enabled, 10); // …, Pipette, Couteau, Zones de détail, Nœuds
         QVERIFY(disabled > 0);
     }
 
@@ -413,12 +413,12 @@ private slots:
             return false;
         };
         QVERIFY(has("file.open") && has("edit.undo") && has("workspace.produce"));
-        // Les 21 outils du registre sont tous atteignables par la palette.
+        // Les 22 outils du registre sont tous atteignables par la palette.
         int tools = 0;
         for (const auto& e : entries) {
             tools += e.id.rfind("tool.", 0) == 0 ? 1 : 0;
         }
-        QCOMPARE(tools, 21);
+        QCOMPARE(tools, 22);
         // Un outil non migré est listé mais refusé, sans effet de bord.
         QVERIFY(!w.runCommand("tool.draw.bezier"));
         QCOMPARE(w.activeToolId(), QString("select"));
@@ -1197,6 +1197,98 @@ private slots:
         QVERIFY(!panel->removeCurrent()); // le dernier calque reste
         QVERIFY(w.session().undo());
         QCOMPARE(panel->rowCount(), 2);
+    }
+
+    void nodeToolDragsInsertsAndUndoesThroughTheCanvas() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 20, 10), "Rectangle").committed);
+        w.waitForIdle();
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        QVERIFY(w.runCommand("tool.node.edit"));
+        w.waitForIdle();
+        QCOMPARE(w.nodeHandleCount(), 4);
+        auto* canvas = w.canvas();
+        QCOMPARE(canvas->mode(), PreviewCanvas::Mode::Nodes);
+
+        // Le coin le plus à droite et en haut de l'écran.
+        int corner = 0;
+        for (int i = 1; i < w.nodeHandleCount(); ++i) {
+            const auto a = w.nodeHandlePx(i);
+            const auto b = w.nodeHandlePx(corner);
+            if (a.x() - a.y() > b.x() - b.y()) {
+                corner = i;
+            }
+        }
+        const auto before = nodeView(w.session().project(), id);
+        QVERIFY(before.has_value());
+        const auto depth = w.session().undoNames().size();
+        const QPoint from = canvas->mapFromScene(w.nodeHandlePx(corner));
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, from);
+        QTest::mouseMove(canvas->viewport(), from + QPoint(20, 10));
+        QTest::mouseMove(canvas->viewport(), from + QPoint(40, 20));
+        QVERIFY(canvas->hasNodeOutline());               // aperçu pendant le glisser
+        QCOMPARE(w.session().undoNames().size(), depth); // rien n'est écrit avant le relâchement
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                            from + QPoint(40, 20));
+        w.waitForIdle();
+        QVERIFY(!canvas->hasNodeOutline());
+        QCOMPARE(w.session().undoNames().size(), depth + 1); // un geste = un pas d'annulation
+        const auto after = nodeView(w.session().project(), id);
+        QVERIFY(after.has_value());
+        QVERIFY(after->nodes.size() == 4);
+        double moved = 0.0;
+        for (std::size_t i = 0; i < 4; ++i) {
+            moved += std::abs(after->nodes[i].pos.x - before->nodes[i].pos.x) +
+                     std::abs(after->nodes[i].pos.y - before->nodes[i].pos.y);
+        }
+        QVERIFY2(moved > 0.5, "le contour doit avoir bougé");
+
+        // Double-clic au milieu d'un côté : un nœud de plus, sans changer la forme.
+        const auto mid = nearestSegment(*after, {0.0, 5.0}, 50.0);
+        QVERIFY(mid.has_value());
+        const auto& a = after->nodes[mid->start.node];
+        const auto& b = after->nodes[(mid->start.node + 1) % 4];
+        const QPointF midMm{(a.pos.x + b.pos.x) / 2.0, (a.pos.y + b.pos.y) / 2.0};
+        const QPoint midPx = canvas->mapFromScene(
+            QPointF(w.previewFrame().mmToPxX(midMm.x()), w.previewFrame().mmToPxY(-midMm.y())));
+        QTest::mouseDClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, midPx);
+        w.waitForIdle();
+        QCOMPARE(w.nodeHandleCount(), 5);
+
+        w.session().undo();
+        w.session().undo();
+        w.waitForIdle();
+        const auto restored = nodeView(w.session().project(), id);
+        QVERIFY(restored.has_value());
+        for (std::size_t i = 0; i < 4; ++i) {
+            QVERIFY(std::abs(restored->nodes[i].pos.x - before->nodes[i].pos.x) < 0.01);
+        }
+    }
+
+    void escapeCancelsANodeDragWithoutChangingTheDocument() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 20, 10), "Rectangle").committed);
+        w.waitForIdle();
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        QVERIFY(w.runCommand("tool.node.edit"));
+        w.waitForIdle();
+        auto* canvas = w.canvas();
+        const auto revision = w.session().revision();
+        const QPoint from = canvas->mapFromScene(w.nodeHandlePx(0));
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, from);
+        QTest::mouseMove(canvas->viewport(), from + QPoint(30, 30));
+        QVERIFY(canvas->hasNodeOutline());
+        QTest::keyClick(canvas, Qt::Key_Escape);
+        QVERIFY(!canvas->hasNodeOutline());
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                            from + QPoint(30, 30));
+        QCOMPARE(w.session().revision(), revision);
     }
 
     void densityMapOverlaysThePreviewAndFollowsTheDocument() {

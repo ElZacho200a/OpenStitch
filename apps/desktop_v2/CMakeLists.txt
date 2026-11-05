@@ -19,6 +19,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/transform_batch.cpp
     core/edit_batch.cpp
     core/diagnostics_service.cpp
+    core/node_edit.cpp
     core/density_service.cpp
     core/param_spec.cpp
     core/action_catalog.cpp

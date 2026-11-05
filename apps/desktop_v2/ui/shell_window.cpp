@@ -77,7 +77,7 @@ bool isToolImplemented(const std::string& id) {
     return id == "select" || id == "pan" || id == "draw.rectangle" || id == "draw.ellipse" ||
            id == "draw.polygon" || id == "measure" || id == "eyedropper" || id == "knife" ||
            id == "click-to-stitch" || id == "detail-brush" || id == "stitch.points" ||
-           id == "satin.column";
+           id == "satin.column" || id == "node.edit";
 }
 
 constexpr Workspace kWorkspaces[] = {Workspace::Design, Workspace::Digitize, Workspace::Optimize,
@@ -149,6 +149,14 @@ ShellWindow::ShellWindow(QWidget* parent)
         updatePointMarkers();
     });
     connect(canvas_, &PreviewCanvas::clickedPx, this, &ShellWindow::onCanvasClick);
+    connect(canvas_, &PreviewCanvas::nodePressed, this, &ShellWindow::onNodePressed);
+    connect(canvas_, &PreviewCanvas::nodeDragMovedPx, this, &ShellWindow::onNodeDragMoved);
+    connect(canvas_, &PreviewCanvas::nodeDragFinishedPx, this, &ShellWindow::onNodeDragFinished);
+    connect(canvas_, &PreviewCanvas::nodeDragCancelled, this, [this] {
+        canvas_->setNodeOutline({}, true);
+        setNotice(tr("Déplacement de nœuds annulé."), false);
+    });
+    connect(canvas_, &PreviewCanvas::nodeInsertRequestedPx, this, &ShellWindow::onNodeInsert);
     connect(canvas_, &PreviewCanvas::rectPx, this, &ShellWindow::onCanvasRect);
     connect(canvas_, &PreviewCanvas::boxDrawnPx, this, &ShellWindow::onBoxDrawn);
     connect(canvas_, &PreviewCanvas::measuredPx, this, &ShellWindow::onMeasured);
@@ -1618,7 +1626,148 @@ std::optional<std::uint64_t> ShellWindow::pointTarget() const {
     return state.ids.front();
 }
 
+int ShellWindow::nodeHandleCount() const {
+    return static_cast<int>(nodeView_.nodes.size());
+}
+
+QPointF ShellWindow::nodeHandlePx(int index) const {
+    if (index < 0 || index >= static_cast<int>(nodeView_.nodes.size())) {
+        return {};
+    }
+    const auto& p = nodeView_.nodes[static_cast<std::size_t>(index)].pos;
+    return {frame_.mmToPxX(p.x), frame_.mmToPxY(-p.y)};
+}
+
+void ShellWindow::updateNodeMarkers() {
+    const auto target =
+        activeTool_ == QStringLiteral("node.edit") && documentOpen_ ? pointTarget() : std::nullopt;
+    canvas_->setNodeOutline({}, true);
+    if (!target || frame_.px_per_mm <= 0.0) {
+        nodeView_ = {};
+        nodeSel_.clear();
+        nodeObject_ = 0;
+        canvas_->setNodeHandles({}, {});
+        return;
+    }
+    auto view = nodeView(session_.project(), *target);
+    if (!view) {
+        nodeView_ = {};
+        nodeSel_.clear();
+        nodeObject_ = 0;
+        canvas_->setNodeHandles({}, {});
+        setNotice(fromUtf8(view.error().message), true);
+        return;
+    }
+    if (nodeObject_ != *target || view->nodes.size() != nodeView_.nodes.size()) {
+        nodeSel_.clear(); // autre objet ou contour modifié : l'ancienne sélection n'a plus de sens
+    }
+    nodeObject_ = *target;
+    nodeView_ = std::move(*view);
+    QVector<QPointF> pts;
+    pts.reserve(static_cast<qsizetype>(nodeView_.nodes.size()));
+    for (std::size_t i = 0; i < nodeView_.nodes.size(); ++i) {
+        pts.push_back(nodeHandlePx(static_cast<int>(i)));
+    }
+    canvas_->setNodeHandles(pts, QVector<int>(nodeSel_.begin(), nodeSel_.end()));
+}
+
+void ShellWindow::onNodePressed(int index, Qt::KeyboardModifiers modifiers) {
+    if (index < 0 || index >= static_cast<int>(nodeView_.nodes.size())) {
+        return;
+    }
+    const bool additive = modifiers & (Qt::ShiftModifier | Qt::ControlModifier);
+    const auto inSel = std::find(nodeSel_.begin(), nodeSel_.end(), index);
+    const auto sameChain = [&](int other) {
+        const auto& a = nodeView_.nodes[static_cast<std::size_t>(other)].ref;
+        const auto& b = nodeView_.nodes[static_cast<std::size_t>(index)].ref;
+        return a.set == b.set && a.path == b.path;
+    };
+    if (additive) {
+        if (inSel != nodeSel_.end()) {
+            nodeSel_.erase(inSel); // Maj/Ctrl + clic sur un nœud déjà choisi le retire
+        } else {
+            if (!nodeSel_.empty() && !sameChain(nodeSel_.front())) {
+                nodeSel_.clear(); // un déplacement groupé reste dans un seul contour
+            }
+            nodeSel_.push_back(index);
+        }
+    } else if (inSel == nodeSel_.end()) {
+        nodeSel_ = {index}; // sur un nœud déjà choisi, on garde le groupe pour le glisser
+    }
+    QVector<QPointF> pts;
+    for (std::size_t i = 0; i < nodeView_.nodes.size(); ++i) {
+        pts.push_back(nodeHandlePx(static_cast<int>(i)));
+    }
+    canvas_->setNodeHandles(pts, QVector<int>(nodeSel_.begin(), nodeSel_.end()));
+    setNotice(tr("%n nœud(s) sélectionné(s). Glissez pour déplacer, double-cliquez un segment "
+                 "pour insérer un nœud.",
+                 "", static_cast<int>(nodeSel_.size())),
+              false);
+}
+
+void ShellWindow::onNodeDragMoved(QPointF deltaPx) {
+    if (nodeSel_.empty() || frame_.px_per_mm <= 0.0) {
+        return;
+    }
+    std::vector<NodeRef> refs;
+    for (const int i : nodeSel_) {
+        refs.push_back(nodeView_.nodes[static_cast<std::size_t>(i)].ref);
+    }
+    const PointMm delta{deltaPx.x() / frame_.px_per_mm, -deltaPx.y() / frame_.px_per_mm};
+    const auto preview = previewNodeMove(session_.project(), nodeObject_, refs, delta, false);
+    const auto& outlines = preview ? *preview : nodeView_.outlines;
+    QVector<QVector<QPointF>> polylines;
+    for (const auto& line : outlines) {
+        QVector<QPointF> px;
+        px.reserve(static_cast<qsizetype>(line.size()));
+        for (const auto& p : line) {
+            px.push_back({frame_.mmToPxX(p.x), frame_.mmToPxY(-p.y)});
+        }
+        polylines.push_back(std::move(px));
+    }
+    canvas_->setNodeOutline(polylines, preview.has_value());
+    setNotice(preview
+                  ? tr("Déplacement : %1 mm, %2 mm").arg(delta.x, 0, 'f', 1).arg(delta.y, 0, 'f', 1)
+                  : tr("Déplacement impossible : le contour se croiserait."),
+              !preview);
+}
+
+void ShellWindow::onNodeDragFinished(QPointF deltaPx) {
+    canvas_->setNodeOutline({}, true);
+    if (nodeSel_.empty() || frame_.px_per_mm <= 0.0) {
+        return;
+    }
+    std::vector<NodeRef> refs;
+    for (const int i : nodeSel_) {
+        refs.push_back(nodeView_.nodes[static_cast<std::size_t>(i)].ref);
+    }
+    const PointMm delta{deltaPx.x() / frame_.px_per_mm, -deltaPx.y() / frame_.px_per_mm};
+    const auto r = moveNodes(session_, nodeObject_, refs, delta, false);
+    if (!r.ok) {
+        setNotice(tr("Nœuds : %1").arg(fromUtf8(r.message)), true);
+        updateNodeMarkers(); // les poignées reviennent à leur place
+        return;
+    }
+    setNotice(tr("%n nœud(s) déplacé(s).", "", static_cast<int>(refs.size())), false);
+}
+
+void ShellWindow::onNodeInsert(QPointF scenePx) {
+    if (nodeView_.nodes.empty() || frame_.px_per_mm <= 0.0) {
+        return;
+    }
+    const PointMm at = screenToModel(frame_.pxToMmX(scenePx.x()), frame_.pxToMmY(scenePx.y()));
+    const double zoom = std::max(0.01, canvas_->transform().m11());
+    const auto hit = nearestSegment(nodeView_, at, 8.0 / (zoom * frame_.px_per_mm));
+    if (!hit) {
+        setNotice(tr("Double-cliquez sur un segment du contour pour insérer un nœud."), false);
+        return;
+    }
+    const auto r = insertNode(session_, nodeObject_, *hit);
+    setNotice(r.ok ? tr("Nœud inséré.") : tr("Nœuds : %1").arg(fromUtf8(r.message)), !r.ok);
+}
+
 void ShellWindow::updatePointMarkers() {
+    updateNodeMarkers();
     const auto target = activeTool_ == QStringLiteral("stitch.points") && documentOpen_
                             ? pointTarget()
                             : std::nullopt;
@@ -1777,6 +1926,8 @@ void ShellWindow::applyToolToCanvas() {
         canvas_->setMode(Mode::Pick);
     } else if (activeTool_ == QStringLiteral("detail-brush")) {
         canvas_->setMode(Mode::Stroke);
+    } else if (activeTool_ == QStringLiteral("node.edit")) {
+        canvas_->setMode(Mode::Nodes);
     } else {
         canvas_->setMode(Mode::Select); // sélection : clic, cadre élastique
     }
@@ -2669,6 +2820,18 @@ void ShellWindow::onScaleDragged(QPointF pivotPx, double factor) {
 }
 
 void ShellWindow::onCanvasClick(QPointF scenePx, Qt::KeyboardModifiers modifiers) {
+    if (activeTool_ == QStringLiteral("node.edit") && frame_.px_per_mm > 0.0) {
+        // Clic hors poignée : choisit l'objet sous le curseur (ses nœuds apparaissent) ou, sur le
+        // fond, retire seulement la sélection de nœuds.
+        if (!nodeSel_.empty()) {
+            nodeSel_.clear();
+            updateNodeMarkers();
+        }
+        if (const auto hit = pickAtPx(scenePx)) {
+            session_.selection().replace({{TargetKind::EmbroideryObject, *hit}});
+        }
+        return;
+    }
     if (activeTool_ == QStringLiteral("stitch.points") && frame_.px_per_mm > 0.0) {
         const auto target = pointTarget();
         if (!target) {

@@ -73,6 +73,15 @@ QIcon toolIcon(std::string_view id, const QColor& foreground) {
         for (int y = 6; y <= 18; y += 4) {
             p.drawLine(QPointF(6, y), QPointF(17, y));
         }
+    } else if (id == "node.edit") {
+        QPainterPath curve;
+        curve.moveTo(4, 18);
+        curve.cubicTo(6, 4, 16, 4, 20, 16);
+        p.drawPath(curve);
+        for (const QPointF pt : {QPointF(4, 18), QPointF(20, 16)}) {
+            p.drawRect(QRectF(pt.x() - 2, pt.y() - 2, 4, 4));
+        }
+        p.drawEllipse(QPointF(12, 7.5), 2.0, 2.0);
     } else if (id == "stitch.points") {
         p.drawLine(QPointF(5, 18), QPointF(12, 5));
         p.drawLine(QPointF(12, 5), QPointF(19, 17));

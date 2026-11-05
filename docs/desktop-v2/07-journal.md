@@ -349,3 +349,9 @@ encore le desktop principal.
 
 - Fusion dans main des PR V2 #253 (protection des documents), #255 (outils lisibles, icônes) et #257 (navigation précise) après résolution de conflits ; #254 et #256 fermées (doublons). Les tests `Ignorer` cliquent désormais le vrai bouton : `QMessageBox::done(Discard)` sans clic renvoie le bouton d'échappement.
 - `core/density_service` : `run_density` (séquence effective → `stitch_analysis::compute_density_map` + zones sur-denses) sur un instantané, en tâche annulable ; image RGBA d'une case par pixel, révision analysée. Interface : commande Analyse › Afficher/Masquer la carte de densité, surimpression non cliquable, recalcul automatique après modification. Catch2 `[density]`, QTest `densityMapOverlaysThePreviewAndFollowsTheDocument`.
+
+## 2026-11-05 — Session 1 (suite 22) : finalisation V2, tranche 1 (nœuds du contour)
+
+- Début de la mission « finalisation V2 » sur une branche unique `feat/desktop-v2-finalisation` ; matrice de suivi factuelle dans `09-matrice-finalisation.md`.
+- `core/node_edit` : poignées des nœuds du contour de l'objet sélectionné, aperçu pur géométrie d'un glisser (aucune régénération de points), déplacement validé en UNE commande (`TransformNodesCommand`, refus si le contour se croiserait), insertion exacte par double-clic (`InsertNodeCommand`), service de remodelage de segment. Outil « Nœuds du contour » (B) avec poignées carrées, contour d'aperçu (rouge pointillé si refusé), Échap pour annuler. Catch2 `[nodes]` (5 cas), QTest `nodeToolDragsInsertsAndUndoesThroughTheCanvas` et `escapeCancelsANodeDragWithoutChangingTheDocument`.
+- Constat d'intégration : un build incrémental raté (erreur de compilation ignorée) avait fait tester un ancien binaire et simuler des « blocages » ; vérifier `grep ' error '` dans le journal de build avant de conclure. #262 (thème) reste à valider : son blocage s'est reproduit après reconstruction propre.

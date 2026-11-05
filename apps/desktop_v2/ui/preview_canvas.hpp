@@ -39,7 +39,9 @@ public:
     // Pick : un clic échantillonne (pipette) ; ni cadre élastique ni déplacement.
     // Cut : glisser = ligne de coupe (couteau), émise par `lineDrawnPx`.
     // Stroke : glisser = trait de pinceau (zones de détail), émis par `strokeDrawnPx`.
-    enum class Mode { Select, Pan, DrawBox, DrawPolygon, Measure, Pick, Cut, Stroke };
+    // Nodes : poignées de nœuds du contour de l'objet sélectionné (glisser = déplacer, double-clic
+    //         sur un segment = insérer un nœud) ; la fenêtre décide quoi en faire.
+    enum class Mode { Select, Pan, DrawBox, DrawPolygon, Measure, Pick, Cut, Stroke, Nodes };
 
     explicit PreviewCanvas(QWidget* parent = nullptr);
 
@@ -91,6 +93,14 @@ public:
     [[nodiscard]] bool hasHoop() const { return hoopItem_ != nullptr; }
     // Sommets du polygone en cours de tracé (pixels de l'image).
     [[nodiscard]] QVector<QPointF> polygonInProgress() const { return polyPts_; }
+    // Poignées de nœuds (pixels de l'image) ; `selected` = indices mis en évidence.
+    void setNodeHandles(const QVector<QPointF>& scenePx, const QVector<int>& selected);
+    [[nodiscard]] int nodeHandleCount() const { return static_cast<int>(nodePts_.size()); }
+    // Aperçu du contour pendant un glisser (polylignes en pixels de l'image) ; `valid` = false
+    // quand le déplacement est refusé (tracé rouge pointillé). Liste vide = aucun aperçu.
+    void setNodeOutline(const QVector<QVector<QPointF>>& polylinesPx, bool valid);
+    [[nodiscard]] bool hasNodeOutline() const { return nodeOutline_ != nullptr; }
+    [[nodiscard]] bool nodeDragging() const { return nodeDragActive_; }
 
 signals:
     // Règle : segment tracé (pixels de l'image).
@@ -117,6 +127,14 @@ signals:
     void scaleDraggedPx(QPointF pivotPx, double factor);
     // Polygone terminé en mode DrawPolygon (au moins 3 sommets).
     void polygonDrawnPx(QVector<QPointF> scenePx);
+    // Mode Nodes : poignée `index` pressée (la fenêtre met à jour la sélection de nœuds).
+    void nodePressed(int index, Qt::KeyboardModifiers modifiers);
+    // Glisser d'une poignée : décalage courant puis final, en pixels de l'image ; annulé par Échap.
+    void nodeDragMovedPx(QPointF deltaPx);
+    void nodeDragFinishedPx(QPointF deltaPx);
+    void nodeDragCancelled();
+    // Double-clic en mode Nodes (insertion d'un nœud sous le curseur).
+    void nodeInsertRequestedPx(QPointF scenePx);
 
 public slots:
     void fitAll();
@@ -135,6 +153,8 @@ protected:
 
 private:
     void updateNavigationCursor();
+    [[nodiscard]] int nodeAt(const QPoint& viewPos) const;
+    void endNodeDrag();
     void updatePolygonItem(const QPointF* cursor);
     void finishPolygon();
     void cancelPolygon();
@@ -146,6 +166,12 @@ private:
     QGraphicsPixmapItem* sourceItem_{nullptr};
     QGraphicsPixmapItem* detailItem_{nullptr};
     QGraphicsPixmapItem* densityItem_{nullptr};
+    QVector<QGraphicsItem*> nodeItems_;
+    QVector<QPointF> nodePts_;
+    QGraphicsPathItem* nodeOutline_{nullptr};
+    int nodeDragIndex_{-1};
+    bool nodeDragActive_{false};
+    QPointF nodeDragOrigin_;
     QGraphicsPathItem* strokeItem_{nullptr};
     QVector<QPointF> strokePts_;
     bool stroking_{false};

@@ -24,6 +24,7 @@
 #include "document_session.hpp"
 #include "edit_batch.hpp"
 #include "image_prep.hpp"
+#include "node_edit.hpp"
 #include "point_edit.hpp"
 #include "preview_service.hpp"
 #include "production_sheet.hpp"
@@ -114,6 +115,12 @@ public:
     bool deleteSelectedPoint();
     bool discardPointEdits();
 
+    // --- Édition de nœuds (outil « node.edit », un seul objet sélectionné) ------------------
+    [[nodiscard]] int nodeHandleCount() const;
+    [[nodiscard]] int selectedNodeCount() const { return static_cast<int>(nodeSel_.size()); }
+    // Position de la poignée `index` dans le repère des pixels de l'aperçu (tests, accessibilité).
+    [[nodiscard]] QPointF nodeHandlePx(int index) const;
+
     // Préréglages de points : enregistrés dans le projet (.osp), appliqués à la sélection.
     bool savePresetNamed(const QString& name); // réglages de l'objet principal de la sélection
     bool applyPresetIndex(int index);
@@ -202,6 +209,11 @@ private:
     void applyDensity(const DensityOverlay& overlay);
     void hideDensity();
     void updatePointMarkers();
+    void updateNodeMarkers();
+    void onNodePressed(int index, Qt::KeyboardModifiers modifiers);
+    void onNodeDragMoved(QPointF deltaPx);
+    void onNodeDragFinished(QPointF deltaPx);
+    void onNodeInsert(QPointF scenePx);
     [[nodiscard]] std::optional<std::uint64_t> pointTarget() const;
     const image::Image* ensureProcessed();
     void onStroke(QVector<QPointF> scenePx, Qt::KeyboardModifiers modifiers);
@@ -259,6 +271,9 @@ private:
     std::vector<std::size_t> pointHandles_; // poignées -> indice dans pointView_.points
     std::uint64_t pointObject_{0};
     int pointSel_{-1};
+    NodeView nodeView_;
+    std::vector<int> nodeSel_; // indices dans nodeView_.nodes (tous dans le même contour)
+    std::uint64_t nodeObject_{0};
     QSpinBox* tolSpin_{nullptr};
     QComboBox* kindCombo_{nullptr};
     image::Image processed_;
