@@ -11,6 +11,7 @@
 #include "openstitch/commands/vector_path_commands.hpp"
 #include "openstitch/geometry/node_transform.hpp"
 #include "openstitch/geometry/polyline.hpp"
+#include "openstitch/geometry/reshape.hpp"
 #include "satin_column.hpp"
 
 namespace openstitch::desktop_v2 {
@@ -309,6 +310,97 @@ ServiceResult insertNode(DocumentSession& session, std::uint64_t objectId, const
                                                    hit.start.path, hit.start.node, hit.t);
     if (!made.command) {
         return {false, made.error.empty() ? "Insertion impossible." : made.error};
+    }
+    session.execute(std::move(made.command));
+    return {true, {}};
+}
+
+std::optional<SegmentHit> curveSegmentAt(const document::Project& project, std::uint64_t objectId,
+                                         PointMm at, double maxDistMm) {
+    if (satinOf(project, objectId) != nullptr) {
+        return std::nullopt;
+    }
+    const auto* vector = sourceOf(project, objectId);
+    if (vector == nullptr) {
+        return std::nullopt;
+    }
+    std::optional<SegmentHit> best;
+    double bestDistance = maxDistMm * 1000.0;
+    for (std::size_t s = 0; s < vector->paths.size(); ++s) {
+        const auto& set = vector->paths[s];
+        for (std::size_t p = 0; p <= set.holes.size(); ++p) {
+            const auto& path = p == 0 ? set.outer : set.holes[p - 1];
+            const auto hit = geometry::nearest_segment(path, toUm(at), bestDistance);
+            if (hit && hit->distance_um <= bestDistance) {
+                bestDistance = hit->distance_um;
+                best = SegmentHit{{s, p, hit->segment}, hit->t};
+            }
+        }
+    }
+    return best;
+}
+
+std::optional<std::vector<std::vector<PointMm>>>
+previewSegmentReshape(const document::Project& project, std::uint64_t objectId,
+                      const SegmentHit& hit, PointMm deltaMm) {
+    const auto* vector = sourceOf(project, objectId);
+    if (vector == nullptr || hit.start.set >= vector->paths.size() || !withinBounds(deltaMm)) {
+        return std::nullopt;
+    }
+    const auto moved = geometry::reshape_path_set_segment(vector->paths[hit.start.set],
+                                                          hit.start.path, hit.start.node, hit.t,
+                                                          toUm(deltaMm), kCrossingTolerance);
+    if (!moved) {
+        return std::nullopt;
+    }
+    std::vector<std::vector<PointMm>> out;
+    for (std::size_t s = 0; s < vector->paths.size(); ++s) {
+        const auto& set = s == hit.start.set ? *moved : vector->paths[s];
+        out.push_back(outline(set.outer));
+        for (const auto& hole : set.holes) {
+            out.push_back(outline(hole));
+        }
+    }
+    return out;
+}
+
+namespace {
+[[nodiscard]] std::vector<ObjectId> vectorIdsOf(const document::Project& project,
+                                                const std::vector<std::uint64_t>& objectIds) {
+    std::vector<ObjectId> out;
+    for (const auto id : objectIds) {
+        const auto* vector = sourceOf(project, id);
+        if (vector != nullptr && std::find(out.begin(), out.end(), vector->id) == out.end()) {
+            out.push_back(vector->id);
+        }
+    }
+    return out;
+}
+} // namespace
+
+ServiceResult convertToCurves(DocumentSession& session,
+                              const std::vector<std::uint64_t>& objectIds) {
+    const auto ids = vectorIdsOf(session.project(), objectIds);
+    if (ids.empty()) {
+        return {false, "Sélectionnez au moins un objet issu d'une forme vectorielle."};
+    }
+    auto made = commands::make_convert_to_curves_command(session.project(), ids);
+    if (!made.command) {
+        return {false, made.error.empty() ? "Conversion impossible." : made.error};
+    }
+    session.execute(std::move(made.command));
+    return {true, {}};
+}
+
+ServiceResult smoothContours(DocumentSession& session,
+                             const std::vector<std::uint64_t>& objectIds) {
+    const auto ids = vectorIdsOf(session.project(), objectIds);
+    if (ids.empty()) {
+        return {false, "Sélectionnez au moins un objet issu d'une forme vectorielle."};
+    }
+    auto made = commands::make_smooth_command(session.project(), ids);
+    if (!made.command) {
+        return {false, made.error.empty() ? "Lissage impossible." : made.error};
     }
     session.execute(std::move(made.command));
     return {true, {}};

@@ -334,7 +334,8 @@ private:
     std::uint64_t pointObject_{0};
     int pointSel_{-1};
     NodeView nodeView_;
-    std::optional<FadeAxisView> fadeView_; // outil « fade.axis » : axe du fondu sélectionné
+    std::optional<SegmentHit> segmentDrag_; // segment de courbe en cours de remodelage
+    std::optional<FadeAxisView> fadeView_;  // outil « fade.axis » : axe du fondu sélectionné
     std::uint64_t fadeObject_{0};
     int fadeHandle_{-1};
     std::vector<int> nodeSel_; // indices dans nodeView_.nodes (tous dans le même contour)

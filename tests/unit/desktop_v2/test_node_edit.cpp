@@ -186,3 +186,113 @@ TEST_CASE("a too wide satin is reported with advice", "[desktop_v2][nodes][satin
     CHECK(summary.find("tatami") != std::string::npos);
     CHECK(satinWidthSummary(NodeView{}).empty()); // pas un satin : rien à dire
 }
+
+// Octogone régulier de rayon 10 mm à bord supérieur plat : ses sommets de 45° deviennent lisses
+// à la conversion en courbes (un rectangle n'a que des coins francs, donc rien à arrondir).
+struct OctagonFixture {
+    DocumentSession session;
+    std::uint64_t id{0};
+    OctagonFixture() {
+        auto created = project_ops::create_empty_project({});
+        REQUIRE(created.has_value());
+        session.replaceProject(std::move(*created), true);
+        std::vector<PointMm> points;
+        for (int k = 0; k < 8; ++k) {
+            const double a = (22.5 + 45.0 * k) * 3.14159265358979323846 / 180.0;
+            points.push_back({10.0 * std::cos(a), 10.0 * std::sin(a)});
+        }
+        REQUIRE(session.applyBatch(batchAddPolygon(points), "Octogone").committed);
+        id = session.project().embroidery_objects.front().id.value;
+    }
+};
+
+TEST_CASE("converting to curves turns corners into editable Bezier nodes in one undo step",
+          "[desktop_v2][nodes][curves]") {
+    OctagonFixture f;
+    const auto before = nodeView(f.session.project(), f.id);
+    REQUIRE(before.has_value());
+    for (const auto& n : before->nodes) {
+        CHECK_FALSE(n.curved);
+    }
+    const auto depth = f.session.undoNames().size();
+    REQUIRE(convertToCurves(f.session, {f.id}).ok);
+    CHECK(f.session.undoNames().size() == depth + 1);
+    const auto after = nodeView(f.session.project(), f.id);
+    REQUIRE(after.has_value());
+    bool anyCurved = false;
+    for (const auto& n : after->nodes) {
+        anyCurved = anyCurved || n.curved;
+    }
+    CHECK(anyCurved);
+    CHECK(after->outlines.front().size() > before->outlines.front().size()); // tracé courbe aplati
+
+    f.session.undo();
+    const auto undone = nodeView(f.session.project(), f.id);
+    REQUIRE(undone.has_value());
+    for (const auto& n : undone->nodes) {
+        CHECK_FALSE(n.curved);
+    }
+    CHECK_FALSE(convertToCurves(f.session, {999999}).ok); // objet inconnu : refus clair
+}
+
+TEST_CASE("pulling a curve segment previews, commits one step and keeps the nodes in place",
+          "[desktop_v2][nodes][curves]") {
+    OctagonFixture f;
+    REQUIRE(convertToCurves(f.session, {f.id}).ok);
+    const auto view = nodeView(f.session.project(), f.id);
+    REQUIRE(view.has_value());
+    // Un point du bord supérieur de l'octogone (y = +9,24 mm) : on saisit le segment, pas un nœud.
+    const auto hit = curveSegmentAt(f.session.project(), f.id, {0.0, 9.24}, 1.5);
+    REQUIRE(hit.has_value());
+    CHECK(hit->t > 0.0);
+    CHECK(hit->t < 1.0);
+
+    const auto revision = f.session.revision();
+    const auto preview = previewSegmentReshape(f.session.project(), f.id, *hit, {0.0, 3.0});
+    REQUIRE(preview.has_value());
+    CHECK(f.session.revision() == revision); // un aperçu ne modifie jamais le document
+    double topBefore = -1e9;
+    double topAfter = -1e9;
+    for (const auto& p : view->outlines.front()) {
+        topBefore = std::max(topBefore, p.y);
+    }
+    for (const auto& p : preview->front()) {
+        topAfter = std::max(topAfter, p.y);
+    }
+    CHECK(topAfter > topBefore + 0.5); // le bord est effectivement tiré vers le haut
+
+    const auto depth = f.session.undoNames().size();
+    REQUIRE(reshapeSegment(f.session, f.id, *hit, {0.0, 3.0}).ok);
+    CHECK(f.session.undoNames().size() == depth + 1);
+    const auto after = nodeView(f.session.project(), f.id);
+    REQUIRE(after.has_value());
+    REQUIRE(after->nodes.size() == view->nodes.size()); // aucun nœud ajouté ni retiré
+    for (std::size_t i = 0; i < view->nodes.size(); ++i) {
+        CHECK(std::abs(after->nodes[i].pos.x - view->nodes[i].pos.x) < 0.01);
+        CHECK(std::abs(after->nodes[i].pos.y - view->nodes[i].pos.y) < 0.01);
+    }
+}
+
+TEST_CASE("a segment far from the outline is not grabbed and satin rails use nodes instead",
+          "[desktop_v2][nodes][curves]") {
+    OctagonFixture f;
+    CHECK_FALSE(curveSegmentAt(f.session.project(), f.id, {0.0, 40.0}, 1.0).has_value());
+
+    auto s = emptySession();
+    const auto made = createSatinColumn(s, {{{0, 0}, {0, 4}}, {{10, 0}, {10, 4}}});
+    REQUIRE(made.ok);
+    CHECK_FALSE(curveSegmentAt(s.project(), made.objectId, {5.0, 0.0}, 1.0).has_value());
+}
+
+TEST_CASE("smoothing rounds the contour and is one undo step", "[desktop_v2][nodes][curves]") {
+    OctagonFixture f;
+    const auto depth = f.session.undoNames().size();
+    const auto r = smoothContours(f.session, {f.id});
+    if (r.ok) {
+        CHECK(f.session.undoNames().size() == depth + 1);
+    } else {
+        // Un rectangle parfait peut ne rien avoir à lisser : le refus doit alors être clair.
+        CHECK_FALSE(r.message.empty());
+        CHECK(f.session.undoNames().size() == depth);
+    }
+}

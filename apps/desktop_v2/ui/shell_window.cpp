@@ -162,7 +162,27 @@ ShellWindow::ShellWindow(QWidget* parent)
     connect(canvas_, &PreviewCanvas::nodePressed, this, &ShellWindow::onNodePressed);
     connect(canvas_, &PreviewCanvas::nodeDragMovedPx, this, &ShellWindow::onNodeDragMoved);
     connect(canvas_, &PreviewCanvas::nodeDragFinishedPx, this, &ShellWindow::onNodeDragFinished);
+    canvas_->setSegmentHitTest([this](const QPointF& scenePx) {
+        if (activeTool_ != QStringLiteral("node.edit") || nodeObject_ == 0 ||
+            frame_.px_per_mm <= 0.0 || fadeView_) {
+            return false;
+        }
+        const PointMm at = screenToModel(frame_.pxToMmX(scenePx.x()), frame_.pxToMmY(scenePx.y()));
+        const double zoom = std::max(0.01, canvas_->transform().m11());
+        return curveSegmentAt(session_.project(), nodeObject_, at, 8.0 / (zoom * frame_.px_per_mm))
+            .has_value();
+    });
+    connect(canvas_, &PreviewCanvas::segmentPressed, this, [this](QPointF scenePx) {
+        const PointMm at = screenToModel(frame_.pxToMmX(scenePx.x()), frame_.pxToMmY(scenePx.y()));
+        const double zoom = std::max(0.01, canvas_->transform().m11());
+        segmentDrag_ =
+            curveSegmentAt(session_.project(), nodeObject_, at, 8.0 / (zoom * frame_.px_per_mm));
+        nodeSel_.clear();
+        setNotice(tr("Segment saisi : tirez pour courber le contour sans déplacer les nœuds."),
+                  false);
+    });
     connect(canvas_, &PreviewCanvas::nodeDragCancelled, this, [this] {
+        segmentDrag_.reset();
         canvas_->setNodeOutline({}, true);
         setNotice(tr("Déplacement de nœuds annulé."), false);
     });
@@ -2175,6 +2195,7 @@ void ShellWindow::updateNodeMarkers() {
 }
 
 void ShellWindow::onNodePressed(int index, Qt::KeyboardModifiers modifiers) {
+    segmentDrag_.reset();
     if (fadeView_) {
         fadeHandle_ = index;
         static const char* const names[] = {"début de la transition", "fin de la transition",
@@ -2223,6 +2244,27 @@ void ShellWindow::onNodePressed(int index, Qt::KeyboardModifiers modifiers) {
 }
 
 void ShellWindow::onNodeDragMoved(QPointF deltaPx) {
+    if (segmentDrag_ && frame_.px_per_mm > 0.0) {
+        const PointMm delta{deltaPx.x() / frame_.px_per_mm, -deltaPx.y() / frame_.px_per_mm};
+        const auto preview =
+            previewSegmentReshape(session_.project(), nodeObject_, *segmentDrag_, delta);
+        const auto& outlines = preview ? *preview : nodeView_.outlines;
+        QVector<QVector<QPointF>> polylines;
+        for (const auto& line : outlines) {
+            QVector<QPointF> px;
+            px.reserve(static_cast<qsizetype>(line.size()));
+            for (const auto& p : line) {
+                px.push_back({frame_.mmToPxX(p.x), frame_.mmToPxY(-p.y)});
+            }
+            polylines.push_back(std::move(px));
+        }
+        canvas_->setNodeOutline(polylines, preview.has_value());
+        setNotice(
+            preview ? tr("Courbure : %1 mm, %2 mm").arg(delta.x, 0, 'f', 1).arg(delta.y, 0, 'f', 1)
+                    : tr("Remodelage impossible : le contour se croiserait."),
+            !preview);
+        return;
+    }
     if (fadeView_) {
         if (fadeHandle_ < 0 || frame_.px_per_mm <= 0.0) {
             return;
@@ -2273,6 +2315,21 @@ void ShellWindow::onNodeDragMoved(QPointF deltaPx) {
 }
 
 void ShellWindow::onNodeDragFinished(QPointF deltaPx) {
+    if (segmentDrag_) {
+        const auto hit = *segmentDrag_;
+        segmentDrag_.reset();
+        canvas_->setNodeOutline({}, true);
+        if (frame_.px_per_mm <= 0.0) {
+            return;
+        }
+        const PointMm delta{deltaPx.x() / frame_.px_per_mm, -deltaPx.y() / frame_.px_per_mm};
+        const auto r = reshapeSegment(session_, nodeObject_, hit, delta);
+        setNotice(r.ok ? tr("Segment courbé.") : tr("Nœuds : %1").arg(fromUtf8(r.message)), !r.ok);
+        if (!r.ok) {
+            updateNodeMarkers();
+        }
+        return;
+    }
     if (fadeView_) {
         canvas_->setNodeOutline({}, true);
         if (fadeHandle_ < 0 || frame_.px_per_mm <= 0.0) {
@@ -2883,6 +2940,10 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
                                    : tr("Afficher le risque de plissement du tissu")),
                    q(tr("Analyse")), "",
                    fabricActive_ || !session_.project().embroidery_objects.empty()});
+    out.push_back({"vector.curves", q(tr("Convertir les contours en courbes")), q(tr("Contour")),
+                   "", hasObjects});
+    out.push_back(
+        {"vector.smooth", q(tr("Lisser les contours")), q(tr("Contour")), "", hasObjects});
     out.push_back({"optimize.order", q(tr("Optimiser l'ordre de couture…")), q(tr("Analyse")), "",
                    session_.project().embroidery_objects.size() >= 2});
     out.push_back({"companion.toggle",
@@ -2953,6 +3014,18 @@ bool ShellWindow::runCommand(const QString& id) {
             removePresetIndex(id.mid(14).toInt());
         } else if (id == QLatin1String("analysis.fabric")) {
             toggleFabricRisk();
+        } else if (id == QLatin1String("vector.curves") || id == QLatin1String("vector.smooth")) {
+            const auto selected = inspect(session_.project(), session_.selection().targets());
+            const auto r = id == QLatin1String("vector.curves")
+                               ? convertToCurves(session_, selected.ids)
+                               : smoothContours(session_, selected.ids);
+            if (!r.ok) {
+                setNotice(fromUtf8(r.message), true);
+                return false;
+            }
+            setNotice(id == QLatin1String("vector.curves") ? tr("Contours convertis en courbes.")
+                                                           : tr("Contours lissés."),
+                      false);
         } else if (id == QLatin1String("optimize.order")) {
             runOptimization(optimizePanel_->strategy(), optimizePanel_->improve());
         } else if (id == QLatin1String("companion.toggle")) {

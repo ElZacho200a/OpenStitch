@@ -14,8 +14,9 @@ automatisé qui l'exerce. Une ligne ne passe à ✅ que si le test existe et pas
 | A | Extraction de `ShellWindow` (≈ 3 000 lignes) | — | — | 🟡 | — | 🟡 | `core/` reste Qt-free ; l'UI reste concentrée dans `shell_window.cpp` : à découper |
 | B | Déplacement de nœuds au canevas (aperçu pendant le glisser, 1 pas d'annulation) | ✅ `TransformNodesCommand` | ⬜ | ✅ | ✅ | ✅ | `node_edit` + outil « Nœuds du contour » (B) ; Catch2 `[nodes]`, QTest `nodeToolDrags…` |
 | B | Insertion de nœud (double-clic sur un segment, subdivision exacte) | ✅ `InsertNodeCommand` | ⬜ | ✅ | ✅ | ✅ | idem |
-| B | Remodelage d'un segment (`ReshapeSegmentCommand`) | ✅ | ⬜ | 🟡 service `reshapeSegment` | ⬜ | ⬜ | service prêt, geste canevas à câbler |
-| B | Suppression de nœud, tangentes Bézier, plume, main levée | 🟡 (tangentes dans `PathNode`) | ⬜ | ⬜ | ⬜ | ⬜ | outils `draw.bezier` / `draw.freeform` déclarés mais non migrés |
+| B | Remodelage direct d'un segment de courbe au canevas (saisie sur le tracé, aperçu, refus si croisement, nœuds immobiles, 1 pas d'annulation) | ✅ `ReshapeSegmentCommand` | ⬜ | ✅ outil Nœuds | ✅ | ✅ | Catch2 `[curves]` (4 cas), QTest `curvesCanBeCreatedAndBent…` |
+| B | Conversion des contours en courbes de Bézier et lissage (commandes `vector.curves`, `vector.smooth`), refus clair quand il n'y a rien à arrondir (ex. rectangle à coins francs) | ✅ | ⬜ | ✅ | — | ✅ | |
+| B | Suppression de nœud, poignées de tangentes Bézier visibles et déplaçables, outil Plume (clic-glisser), main levée | 🟡 (tangentes dans `PathNode`) | ⬜ | ⬜ | ⬜ | ⬜ | **non fait** : `draw.bezier` / `draw.freeform` restent déclarés mais non migrés ; la courbure s'obtient en convertissant puis en tirant un segment |
 | B | Magnétisme des bords, centres et axe du motif pendant le déplacement d'objets (seuil 6 px de vue, Alt le suspend), repères d'alignement tracés, décalage annoncé en mm, valeur validée = valeur affichée | ✅ (calcul pur) | — | ✅ | ✅ | ✅ | `core/snap` (Catch2 `[snap]`, 7 cas), QTest `draggingAnObjectSnaps…` (vrai glisser à la souris : l'écart au voisin tombe à < 0,05 mm, contre > 0,2 mm sans magnétisme) |
 | B | Cotes entre objets (distances), angle de rotation affiché, magnétisme des nœuds et du redimensionnement | ⬜ | — | ⬜ | ⬜ | ⬜ | à faire : seul le déplacement d'objets est aimanté |
 | B | Navigation trackpad / zoom / pan | ✅ | — | ✅ | ✅ | ✅ | #257 |

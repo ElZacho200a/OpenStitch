@@ -120,6 +120,11 @@ public:
     void setNodeGuides(const QVector<QLineF>& linesPx);
     [[nodiscard]] bool hasNodeGuides() const { return nodeGuides_ != nullptr; }
     [[nodiscard]] bool nodeDragging() const { return nodeDragActive_; }
+    // Test de saisie d'un segment de courbe (mode Nodes) : si vrai, un appui hors poignée démarre
+    // le remodelage de ce segment (mêmes signaux de glisser que les nœuds).
+    void setSegmentHitTest(std::function<bool(const QPointF&)> test) {
+        segmentHit_ = std::move(test);
+    }
 
 signals:
     // Règle : segment tracé (pixels de l'image).
@@ -152,6 +157,8 @@ signals:
     void nodeDragMovedPx(QPointF deltaPx);
     void nodeDragFinishedPx(QPointF deltaPx);
     void nodeDragCancelled();
+    // Mode Nodes : un segment (et non un nœud) est saisi en `scenePx`.
+    void segmentPressed(QPointF scenePx);
     // Double-clic en mode Nodes (insertion d'un nœud sous le curseur).
     void nodeInsertRequestedPx(QPointF scenePx);
 
@@ -194,6 +201,7 @@ private:
     QGraphicsPathItem* nodeOutline_{nullptr};
     QGraphicsPathItem* nodeGuides_{nullptr};
     int nodeDragIndex_{-1};
+    std::function<bool(const QPointF&)> segmentHit_;
     bool nodeDragActive_{false};
     QPointF nodeDragOrigin_;
     QGraphicsPathItem* strokeItem_{nullptr};

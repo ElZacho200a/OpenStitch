@@ -770,6 +770,15 @@ void PreviewCanvas::mousePressEvent(QMouseEvent* event) {
             event->accept();
             return;
         }
+        const QPointF scenePos = mapToScene(event->pos());
+        if (segmentHit_ && segmentHit_(scenePos)) {
+            emit segmentPressed(scenePos);
+            nodeDragIndex_ = 1'000'000; // glisser d'un segment : même mécanique que les nœuds
+            nodeDragActive_ = false;
+            nodeDragOrigin_ = scenePos;
+            event->accept();
+            return;
+        }
     }
     const bool plain = !(event->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier));
     if (mode_ == Mode::Select && pressing_ && plain && item_ != nullptr) {

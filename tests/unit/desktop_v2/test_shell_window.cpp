@@ -1662,6 +1662,70 @@ private slots:
         QVERIFY(!free.guide);
     }
 
+    void curvesCanBeCreatedAndBentByDraggingASegment() {
+        ShellWindow w;
+        w.resize(1400, 900);
+        w.show();
+        w.newProject();
+        std::vector<PointMm> octagon;
+        for (int k = 0; k < 8; ++k) {
+            const double a = (22.5 + 45.0 * k) * 3.14159265358979323846 / 180.0;
+            octagon.push_back({10.0 * std::cos(a), 10.0 * std::sin(a)});
+        }
+        QVERIFY(w.session().applyBatch(batchAddPolygon(octagon), "Octogone").committed);
+        w.waitForIdle();
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        w.waitForIdle();
+
+        // Conversion en courbes par la commande : un pas d'annulation, des nœuds à tangentes.
+        const auto depth = w.session().undoNames().size();
+        QVERIFY(w.runCommand("vector.curves"));
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QVERIFY(w.runCommand("tool.node.edit"));
+        w.waitForIdle();
+        QCOMPARE(w.nodeHandleCount(), 8);
+
+        const auto before = nodeView(w.session().project(), id);
+        QVERIFY(before.has_value());
+        auto* canvas = w.canvas();
+        // Milieu du bord supérieur : loin de tout nœud, c'est le segment qui est saisi.
+        const auto& frame = w.previewFrame();
+        const QPointF topPx(frame.mmToPxX(0.0), frame.mmToPxY(-9.24));
+        const QPoint from = canvas->mapFromScene(topPx);
+        for (int i = 0; i < w.nodeHandleCount(); ++i) {
+            QVERIFY((canvas->mapFromScene(w.nodeHandlePx(i)) - from).manhattanLength() > 12);
+        }
+        const auto steps = w.session().undoNames().size();
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, from);
+        QTest::mouseMove(canvas->viewport(), from + QPoint(0, -15));
+        QTest::mouseMove(canvas->viewport(), from + QPoint(0, -35));
+        QVERIFY(canvas->hasNodeOutline());               // aperçu de la courbe pendant le glisser
+        QCOMPARE(w.session().undoNames().size(), steps); // rien d'écrit avant le relâchement
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                            from + QPoint(0, -35));
+        w.waitForIdle();
+        QVERIFY(!canvas->hasNodeOutline());
+        QCOMPARE(w.session().undoNames().size(), steps + 1);
+        const auto after = nodeView(w.session().project(), id);
+        QVERIFY(after.has_value());
+        QCOMPARE(after->nodes.size(), before->nodes.size()); // les nœuds n'ont pas bougé
+        for (std::size_t i = 0; i < before->nodes.size(); ++i) {
+            QVERIFY(std::abs(after->nodes[i].pos.x - before->nodes[i].pos.x) < 0.01);
+            QVERIFY(std::abs(after->nodes[i].pos.y - before->nodes[i].pos.y) < 0.01);
+        }
+        double topBefore = -1e9;
+        double topAfter = -1e9;
+        for (const auto& p : before->outlines.front()) {
+            topBefore = std::max(topBefore, p.y);
+        }
+        for (const auto& p : after->outlines.front()) {
+            topAfter = std::max(topAfter, p.y);
+        }
+        QVERIFY2(topAfter > topBefore + 0.5, "le bord doit être tiré vers le haut");
+        QVERIFY(w.session().undo());
+    }
+
     void nodeToolEditsSatinRailsAndShowsTheRungs() {
         ShellWindow w;
         w.show();

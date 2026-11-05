@@ -46,7 +46,7 @@ struct NodeView {
     std::vector<std::pair<PointMm, PointMm>> rungs; // barreaux (rail A, rail B), mm modèle
     double widthMinMm{0.0};                         // largeur de la colonne aux barreaux
     double widthMaxMm{0.0};
-    double recommendedMaxMm{0.0};                   // au-delà : satin trop large
+    double recommendedMaxMm{0.0}; // au-delà : satin trop large
 };
 
 // Phrase de diagnostic de la largeur d'une colonne satin (vide si ce n'est pas un satin).
@@ -75,6 +75,25 @@ struct SegmentHit {
 
 // Insère un nœud sur le segment (subdivision exacte : la forme ne change pas).
 ServiceResult insertNode(DocumentSession& session, std::uint64_t objectId, const SegmentHit& hit);
+
+// Segment de courbe (droit OU cubique) le plus proche de `at`, à moins de `maxDistMm` : l'abscisse
+// `t` est celle de la vraie courbe (pas de la corde), donc adaptée au remodelage direct.
+// Rien pour une colonne satin (ses rails se manipulent nœud par nœud).
+[[nodiscard]] std::optional<SegmentHit> curveSegmentAt(const document::Project& project,
+                                                       std::uint64_t objectId, PointMm at,
+                                                       double maxDistMm);
+
+// Contours aplatis APRÈS remodelage du segment (tiré de `deltaMm`), sans toucher au document.
+// `nullopt` si le résultat se croiserait ou si le segment n'existe pas.
+[[nodiscard]] std::optional<std::vector<std::vector<PointMm>>>
+previewSegmentReshape(const document::Project& project, std::uint64_t objectId,
+                      const SegmentHit& hit, PointMm deltaMm);
+
+// Convertit les contours des objets en courbes de Bézier / les lisse : UNE commande annulable pour
+// tous les objets. Refus clair si rien ne change.
+ServiceResult convertToCurves(DocumentSession& session,
+                              const std::vector<std::uint64_t>& objectIds);
+ServiceResult smoothContours(DocumentSession& session, const std::vector<std::uint64_t>& objectIds);
 
 // Tire le segment au point `hit.t` de `deltaMm` (remodelage d'un segment en UNE commande).
 ServiceResult reshapeSegment(DocumentSession& session, std::uint64_t objectId,

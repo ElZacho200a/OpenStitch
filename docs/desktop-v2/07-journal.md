@@ -394,3 +394,7 @@ encore le desktop principal.
 ## 2026-11-05 — Session 1 (suite 30) : finalisation V2, tranche 9 (magnétisme)
 
 - `core/snap` : accrochage des bords et du centre de la sélection sur les bords, centres des autres objets et l'axe du motif, avec repères d'alignement ; seuil de 6 pixels de vue converti en mm selon le zoom ; Alt suspend l'accrochage. Le canevas appelle le fournisseur pendant le glisser (retour visuel immédiat, repères roses en pointillé) et la valeur validée est celle qui était affichée (une seule commande de déplacement). Ne touche que le déplacement d'objets pour l'instant.
+
+## 2026-11-05 — Session 1 (suite 31) : finalisation V2, tranche 10 (courbes)
+
+- Commandes « Convertir les contours en courbes » et « Lisser les contours » (une commande annulable pour toute la sélection) ; remodelage direct d'un segment : un appui sur le tracé (hors poignée) saisit le segment de la VRAIE courbe (abscisse sur la cubique, pas sur la corde), aperçu pendant le glisser, refus si le contour se croiserait, nœuds immobiles, un pas d'annulation. Un rectangle n'a que des coins francs (> 60°) : le refus « rien à convertir » est le comportement du moteur et reste affiché tel quel. Les tests utilisent un octogone.
