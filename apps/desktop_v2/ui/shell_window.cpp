@@ -418,6 +418,7 @@ void ShellWindow::buildMenus() {
     reducedMotionAction_->setCheckable(true);
     connect(reducedMotionAction_, &QAction::triggered, this, [this](bool reduced) {
         feedbackCue_->setReducedMotion(reduced);
+        canvas_->setReducedMotion(reduced);
         if (!stateDir_.empty()) {
             QSettings settings(QString::fromStdU16String((stateDir_ / "motion.ini").u16string()),
                                QSettings::IniFormat);
@@ -988,6 +989,7 @@ void ShellWindow::setStateDirectory(const std::filesystem::path& dir) {
     const bool reduced = settings.value(QStringLiteral("visual/reducedMotion"), false).toBool();
     reducedMotionAction_->setChecked(reduced);
     feedbackCue_->setReducedMotion(reduced);
+    canvas_->setReducedMotion(reduced);
     autosave_ = std::make_unique<AutosaveStore>(dir);
     recent_ = pruneMissingRecent(loadRecentList(dir / "recent.txt"));
     rebuildRecentMenu();
