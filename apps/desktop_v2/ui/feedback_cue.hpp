@@ -13,6 +13,7 @@ class QTimer;
 namespace openstitch::desktop_v2 {
 
 class FeedbackCue : public QLabel {
+    Q_OBJECT
 public:
     explicit FeedbackCue(QWidget* parent = nullptr);
 
