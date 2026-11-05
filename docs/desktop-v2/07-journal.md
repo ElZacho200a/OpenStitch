@@ -418,3 +418,8 @@ encore le desktop principal.
 ## 2026-11-05 — Session 1 (suite 36) : finalisation V2, tranche 15 (Crayon)
 
 - Outil Crayon (`draw.freeform`) : le trait est dédoublonné, refermé, contrôlé (aire, croisements) puis ajusté par `fit_curves` ; la tolérance suit la taille du dessin (2 % de la diagonale, entre 0,3 et 3 mm) et se resserre jusqu'à obtenir au moins quatre nœuds (une courbe fermée à deux nœuds est valide mais difficile à retoucher). Création partagée avec la Plume (`commitShape`, une commande). Premier essai à tolérance fixe (0,3 mm) : 47 nœuds pour 90 points, c'est-à-dire du bruit ajusté ; corrigé.
+
+## 2026-11-05 — Session 1 (suite 37) : finalisation V2, tranche 16 (inspecteur : niveaux et recherche)
+
+- Inspecteur : champ de recherche (sans casse ni accents, sur le libellé et la clé du réglage) et case « Réglages avancés (N) » ; 13 réglages avancés ajoutés à la table `param_spec` avec les clés et plages du registre de champs du moteur, chacun relu (`readParam`) et testé. Les essentiels restent seuls visibles par défaut ; une recherche révèle les avancés qui correspondent. Niveau « expert » non traité.
+- Aussi : test d'identité octet pour octet du fichier machine après enregistrement et réouverture d'un projet numérisé et retouché (puis modification suivie d'une annulation).

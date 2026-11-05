@@ -1913,6 +1913,57 @@ private slots:
         QVERIFY(exportBytes(reopened, base / "annule.dst") == original);
     }
 
+    void inspectorHidesAdvancedSettingsUntilAskedOrSearched() {
+        ShellWindow w;
+        w.resize(1400, 900);
+        w.show();
+        w.newProject();
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 20, 10), "Rectangle").committed);
+        w.waitForIdle();
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        w.waitForIdle();
+        auto* inspector = w.inspector();
+        QVERIFY(inspector != nullptr);
+
+        // Par défaut : les essentiels seulement.
+        auto keys = inspector->visibleParamKeys();
+        QVERIFY(keys.contains("row_spacing_mm"));
+        QVERIFY(keys.contains("angle_deg"));
+        QVERIFY(!keys.contains("stagger"));
+        QVERIFY(!keys.contains("underlay_inset_mm"));
+        QVERIFY(inspector->hiddenAdvancedCount() >= 2);
+
+        // La case « Réglages avancés » les révèle tous.
+        inspector->setAdvancedShown(true);
+        keys = inspector->visibleParamKeys();
+        QVERIFY(keys.contains("stagger"));
+        QVERIFY(keys.contains("underlay_inset_mm"));
+        inspector->setAdvancedShown(false);
+
+        // La recherche (sans accent ni casse) ne montre que ce qui correspond, avancés compris.
+        inspector->setSearch("SOUS-COUCHE");
+        keys = inspector->visibleParamKeys();
+        QVERIFY(keys.contains("underlay_edge"));
+        QVERIFY(keys.contains("underlay_inset_mm")); // avancé, révélé par la recherche
+        QVERIFY(!keys.contains("angle_deg"));
+        inspector->setSearch("ecart");
+        keys = inspector->visibleParamKeys();
+        QVERIFY(keys.contains("row_spacing_mm")); // « Écart entre rangées »
+        QVERIFY(!keys.contains("pull_compensation_mm"));
+        inspector->setSearch("zzz-inconnu");
+        QVERIFY(inspector->visibleParamKeys().isEmpty());
+        inspector->setSearch(QString());
+        QVERIFY(inspector->visibleParamKeys().contains("angle_deg"));
+
+        // Un réglage avancé modifié est bien appliqué (une étape d'annulation) et relu.
+        inspector->setAdvancedShown(true);
+        const auto depth = w.session().undoNames().size();
+        QVERIFY(inspector->applyParam("stagger", 5.0));
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QVERIFY(w.session().undo());
+    }
+
     void nodeToolEditsSatinRailsAndShowsTheRungs() {
         ShellWindow w;
         w.show();

@@ -8,9 +8,11 @@
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QTimer>
+#include <QVBoxLayout>
 
 #include "inspector_model.hpp"
 #include "param_spec.hpp"
@@ -55,7 +57,22 @@ InspectorPanel::InspectorPanel(DocumentSession& session, QWidget* parent)
     form->addRow(locked_);
     paramsBox_ = new QGroupBox(tr("Réglages de couture"), this);
     paramsBox_->setObjectName(QStringLiteral("inspectorParams"));
-    paramsForm_ = new QFormLayout(paramsBox_);
+    auto* boxLayout = new QVBoxLayout(paramsBox_);
+    search_ = new QLineEdit(paramsBox_);
+    search_->setObjectName(QStringLiteral("inspectorSearch"));
+    search_->setPlaceholderText(tr("Rechercher un réglage…"));
+    search_->setClearButtonEnabled(true);
+    search_->setAccessibleName(tr("Rechercher un réglage"));
+    advanced_ = new QCheckBox(tr("Réglages avancés"), paramsBox_);
+    advanced_->setObjectName(QStringLiteral("inspectorAdvanced"));
+    auto* inner = new QWidget(paramsBox_);
+    paramsForm_ = new QFormLayout(inner);
+    paramsForm_->setContentsMargins(0, 0, 0, 0);
+    boxLayout->addWidget(search_);
+    boxLayout->addWidget(advanced_);
+    boxLayout->addWidget(inner);
+    connect(search_, &QLineEdit::textChanged, this, [this](const QString&) { applyParamFilter(); });
+    connect(advanced_, &QCheckBox::toggled, this, [this](bool) { applyParamFilter(); });
     paramsBox_->hide();
     form->addRow(paramsBox_);
 
@@ -137,6 +154,56 @@ void InspectorPanel::refresh() {
     refreshing_ = false;
 }
 
+void InspectorPanel::setSearch(const QString& text) {
+    search_->setText(text);
+}
+
+void InspectorPanel::setAdvancedShown(bool shown) {
+    advanced_->setChecked(shown);
+}
+
+QStringList InspectorPanel::visibleParamKeys() const {
+    QStringList out;
+    for (int i = 0; i < paramKeys_.size() && i < paramsForm_->rowCount(); ++i) {
+        const auto* field = paramsForm_->itemAt(i, QFormLayout::FieldRole);
+        if (field != nullptr && field->widget() != nullptr && !field->widget()->isHidden()) {
+            out << paramKeys_[i];
+        }
+    }
+    return out;
+}
+
+void InspectorPanel::applyParamFilter() {
+    const std::string query = search_->text().toStdString();
+    const bool showAdvanced = advanced_->isChecked();
+    int hidden = 0;
+    int advancedTotal = 0;
+    for (int row = 0; row < paramKeys_.size() && row < paramsForm_->rowCount(); ++row) {
+        const bool advanced = paramAdvanced_[row];
+        advancedTotal += advanced ? 1 : 0;
+        bool matches = true;
+        if (!query.empty()) {
+            // La recherche porte sur le libellé ET sur la clé ; elle révèle aussi les avancés.
+            const auto specs = paramSpecs(paramType_.toStdString());
+            matches = false;
+            for (const auto& spec : specs) {
+                if (QString::fromUtf8(spec.key.data(), static_cast<qsizetype>(spec.key.size())) ==
+                    paramKeys_[row]) {
+                    matches = paramMatches(spec, query);
+                    break;
+                }
+            }
+        }
+        const bool visible = matches && (!advanced || showAdvanced || !query.empty());
+        paramsForm_->setRowVisible(row, visible);
+        hidden += (advanced && !visible && matches) ? 1 : 0;
+    }
+    hiddenAdvanced_ = hidden;
+    advanced_->setText(advancedTotal > 0 ? tr("Réglages avancés (%1)").arg(advancedTotal)
+                                         : tr("Réglages avancés"));
+    advanced_->setVisible(advancedTotal > 0);
+}
+
 void InspectorPanel::rebuildParams(const InspectorState& state) {
     const bool show = state.count > 0 && !state.typeId.mixed;
     const auto specs = show ? paramSpecs(state.typeId.value) : std::vector<ParamSpec>{};
@@ -144,6 +211,8 @@ void InspectorPanel::rebuildParams(const InspectorState& state) {
     if (specs.empty()) {
         paramsBox_->hide();
         paramKeys_.clear();
+        paramAdvanced_.clear();
+        paramLabels_.clear();
         paramType_.clear();
         while (paramsForm_->rowCount() > 0) {
             paramsForm_->removeRow(0);
@@ -157,6 +226,8 @@ void InspectorPanel::rebuildParams(const InspectorState& state) {
             paramsForm_->removeRow(0);
         }
         paramKeys_.clear();
+        paramAdvanced_.clear();
+        paramLabels_.clear();
         paramType_ = type;
         for (const auto& spec : specs) {
             const QString key =
@@ -262,7 +333,10 @@ void InspectorPanel::rebuildParams(const InspectorState& state) {
             editor->setAccessibleName(label);
             paramsForm_->addRow(label, editor);
             paramKeys_ << key;
+            paramLabels_ << label;
+            paramAdvanced_.push_back(paramLevel(spec) == ParamLevel::Advanced);
         }
+        applyParamFilter();
     }
     // Valeurs : commune, ou « mixte » (état intermédiaire / minimum - 1) si les objets diffèrent.
     for (const auto& spec : specs) {
