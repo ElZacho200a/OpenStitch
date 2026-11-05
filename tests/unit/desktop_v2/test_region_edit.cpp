@@ -208,8 +208,7 @@ TEST_CASE("merging two whole color classes is one undo step with exact restorati
     CHECK_FALSE(mergeRegionColors(empty, source.id, target->id).ok);
 }
 
-TEST_CASE("small enclosed transparent holes can be repaired and undone",
-          "[desktop_v2][regions]") {
+TEST_CASE("small enclosed transparent holes can be repaired and undone", "[desktop_v2][regions]") {
     document::Project project;
     segmentation::Segmentation seg;
     seg.width = 5;
@@ -217,8 +216,7 @@ TEST_CASE("small enclosed transparent holes can be repaired and undone",
     seg.labels.assign(25, 1);
     seg.labels[12] = 0; // trou intérieur
     seg.labels[0] = 0;  // fond extérieur : ne doit jamais être rempli
-    seg.region_slots.emplace_back(
-        segmentation::Region{RegionId{1}, {130, 40, 75}, 23});
+    seg.region_slots.emplace_back(segmentation::Region{RegionId{1}, {130, 40, 75}, 23});
     project.segmentation = std::move(seg);
     DocumentSession session;
     session.replaceProject(std::move(project), true);
