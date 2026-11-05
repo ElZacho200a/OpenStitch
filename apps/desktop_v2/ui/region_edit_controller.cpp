@@ -261,14 +261,15 @@ bool RegionEditController::cleanIslands(int minPixels) {
 }
 
 bool RegionEditController::fillHoles(int maxPixels) {
-    const auto result = fillSmallHoles(host_.session, static_cast<std::size_t>(std::max(1, maxPixels)));
+    const auto limit = static_cast<std::size_t>(std::max(1, maxPixels));
+    const auto result = fillSmallHoles(host_.session, limit);
     if (!result.ok) {
         host_.notice(QObject::tr("Régions : %1").arg(fromUtf8(result.message)), true);
         return false;
     }
     dirty_ = true;
     refresh();
-    host_.notice(QObject::tr("Petits trous rebouchés. Régénérez les objets pour appliquer."), false);
+    host_.notice(QObject::tr("Trous rebouchés. Régénérez les objets pour appliquer."), false);
     return true;
 }
 
