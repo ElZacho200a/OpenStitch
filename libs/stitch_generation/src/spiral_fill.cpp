@@ -4,6 +4,9 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <limits>
+#include <utility>
+#include <vector>
 
 #include "fill_geometry.hpp"
 #include "pull_grow.hpp"
@@ -15,6 +18,115 @@ namespace {
 constexpr double kMaxStepRad = 0.35;
 constexpr std::size_t kMaxSamples = 3'000'000; // garde-fou (région démesurée, espacement mini)
 constexpr double kMinSegmentUm = 100.0;
+
+constexpr std::size_t kMaxRoutedRuns = 2'048;
+constexpr double kMaxBridgeUm = 5'000.0; // Limiter les traversées cousues, surtout sur tissu fin.
+
+// Réordonne les portions déjà rognées de la spirale, sans modifier leurs trajets internes.
+// Une liaison courte est cousue seulement si le segment complet reste dans la région ;
+// sinon elle reste un saut. L'ordre angulaire de construction n'impose pas l'ordre de couture.
+std::vector<FillStitch> route_spiral_fragments(const geometry::PathSet& region, double maxLen,
+                                                std::vector<FillStitch> raw) {
+    struct Run {
+        std::size_t begin;
+        std::size_t end; // exclusif
+    };
+    std::vector<Run> runs;
+    for (std::size_t i = 0; i < raw.size(); ++i) {
+        if (i == 0 || raw[i].jump) {
+            runs.push_back({i, i + 1});
+        } else {
+            runs.back().end = i + 1;
+        }
+    }
+    // Une spirale convexe est déjà continue ; pas de bruit ni de coût quadratique.
+    if (runs.size() < 4 || runs.size() > kMaxRoutedRuns) {
+        return raw;
+    }
+
+    struct Choice {
+        double distance2 = std::numeric_limits<double>::infinity();
+        std::size_t run = 0;
+        bool reverse = false;
+        bool found = false;
+    };
+    const auto distance2 = [](Vec2um a, Vec2um b) {
+        const double dx = double(a.x.value) - double(b.x.value);
+        const double dy = double(a.y.value) - double(b.y.value);
+        return dx * dx + dy * dy;
+    };
+    const auto point = [](Vec2um v) {
+        return detail::P2{double(v.x.value), double(v.y.value)};
+    };
+    const double bridge = std::min(kMaxBridgeUm, 2.0 * maxLen);
+    const double bridge2 = bridge * bridge;
+    const RegionSegmentTester tester(region);
+    detail::FillEmitter output(region, maxLen, 0.0);
+    std::vector<bool> used(runs.size(), false);
+
+    const auto append = [&](const Run& run, bool reversed, bool jump) {
+        const std::size_t start = reversed ? run.end - 1 : run.begin;
+        if (jump) {
+            output.jump_to(point(raw[start].pos));
+        } else {
+            output.start_at(point(raw[start].pos));
+        }
+        if (reversed) {
+            for (std::size_t i = run.end - 1; i-- > run.begin;) {
+                output.line_to(point(raw[i].pos));
+            }
+        } else {
+            for (std::size_t i = run.begin + 1; i < run.end; ++i) {
+                output.line_to(point(raw[i].pos));
+            }
+        }
+    };
+
+    // Conserver le départ au centre : seules les portions suivantes sont réordonnées.
+    append(runs.front(), false, false);
+    used.front() = true;
+    Vec2um current = raw[runs.front().end - 1].pos;
+
+    for (std::size_t remaining = 1; remaining < runs.size(); ++remaining) {
+        Choice nearest;
+        Choice inside;
+        for (std::size_t j = 1; j < runs.size(); ++j) {
+            if (used[j]) {
+                continue;
+            }
+            for (int side = 0; side != 2; ++side) {
+                const bool reversed = side == 1;
+                const Vec2um target =
+                    raw[reversed ? runs[j].end - 1 : runs[j].begin].pos;
+                const double d2 = distance2(current, target);
+                if (d2 < nearest.distance2) {
+                    nearest = {d2, j, reversed, true};
+                }
+                // Tester l'intérieur uniquement sur les candidats de proximité.
+                if (d2 <= bridge2 && d2 < inside.distance2 &&
+                    tester.stays_inside(current, target)) {
+                    inside = {d2, j, reversed, true};
+                }
+            }
+        }
+        const Choice best = inside.found ? inside : nearest;
+        if (!best.found) {
+            break;
+        }
+        append(runs[best.run], best.reverse, !inside.found);
+        used[best.run] = true;
+        current = raw[best.reverse ? runs[best.run].begin : runs[best.run].end - 1].pos;
+    }
+
+    std::vector<FillStitch> routed = output.take();
+    const auto jumps = [](const std::vector<FillStitch>& stitches) {
+        return std::count_if(stitches.begin(), stitches.end(),
+                             [](const FillStitch& s) { return s.jump; });
+    };
+    // Ne jamais dégrader un motif dont le parcours initial serait déjà meilleur.
+    return jumps(routed) < jumps(raw) ? std::move(routed) : std::move(raw);
+}
+
 
 } // namespace
 
@@ -78,7 +190,7 @@ std::vector<FillStitch> fill_spiral(const geometry::PathSet& baseRegion,
         prev = next;
         theta = nextTheta;
     }
-    return emit.take();
+    return route_spiral_fragments(region, maxLen, emit.take());
 }
 
 } // namespace openstitch::stitch_generation
