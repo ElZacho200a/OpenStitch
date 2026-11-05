@@ -29,6 +29,7 @@
 #include "fabric_risk.hpp"
 #include "fade_axis.hpp"
 #include "image_prep.hpp"
+#include "import_dialog.hpp"
 #include "live_companion.hpp"
 #include "node_edit.hpp"
 #include "path_optimizer.hpp"
@@ -75,7 +76,7 @@ class CalquePanel;
 class ThreadPanel;
 class CompanionPanel;
 class OptimizePanel;
-class ImportDialog;
+
 class NodeEditController;
 class AnalysisOverlays;
 class LiveServer;
