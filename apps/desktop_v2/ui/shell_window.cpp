@@ -4,6 +4,7 @@
 #include <QAction>
 #include <QActionGroup>
 #include <QApplication>
+#include <QCloseEvent>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDockWidget>
@@ -24,6 +25,7 @@
 #include <QPixmap>
 #include <QProgressBar>
 #include <QScrollArea>
+#include <QSettings>
 #include <QSpinBox>
 #include <QStatusBar>
 #include <QTextBrowser>
@@ -33,6 +35,7 @@
 #include <QTreeWidget>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <cstring>
 #include <map>
 
 #include "openstitch/commands/placement_ops.hpp"
@@ -50,6 +53,7 @@
 #include "preview_canvas.hpp"
 #include "preview_service.hpp"
 #include "thread_panel.hpp"
+#include "tool_icon.hpp"
 #include "transform_batch.hpp"
 #include <QComboBox>
 #include <QGuiApplication>
@@ -215,16 +219,7 @@ void ShellWindow::buildMenus() {
     recentMenu_->setObjectName(QStringLiteral("menu_recent"));
     saveAction_ = file->addAction(tr("&Enregistrer"));
     saveAction_->setShortcut(QKeySequence::Save);
-    connect(saveAction_, &QAction::triggered, this, [this] {
-        QString path = QString::fromStdString(currentPath_.string());
-        if (path.isEmpty() || !path.endsWith(QStringLiteral(".osp"))) {
-            path = QFileDialog::getSaveFileName(this, tr("Enregistrer le projet"), QString(),
-                                                tr("Projet OpenStitch (*.osp)"));
-        }
-        if (!path.isEmpty()) {
-            saveProject(std::filesystem::path(path.toStdU16String()));
-        }
-    });
+    connect(saveAction_, &QAction::triggered, this, [this] { (void)saveCurrentProject(); });
     exportAction_ = file->addAction(tr("E&xporter pour la machine…"));
     exportAction_->setShortcut(QKeySequence(QStringLiteral("Ctrl+E")));
     connect(exportAction_, &QAction::triggered, this, [this] {
@@ -399,6 +394,15 @@ void ShellWindow::buildMenus() {
         gridGroup->addAction(g);
         connect(g, &QAction::triggered, this, [this, mm] { setGridSpacing(mm); });
     }
+    view->addSeparator();
+    compactToolsAction_ = view->addAction(tr("Barre d'outils compacte"));
+    compactToolsAction_->setObjectName(QStringLiteral("action_view_compact_tools"));
+    compactToolsAction_->setCheckable(true);
+    compactToolsAction_->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+T")));
+    compactToolsAction_->setToolTip(
+        tr("Réduire le rail pour laisser davantage d'espace au canevas"));
+    connect(compactToolsAction_, &QAction::toggled, this,
+            [this](bool compact) { setCompactToolRail(compact); });
     auto* themeMenu = view->addMenu(tr("&Thème"));
     auto* themeGroup = new QActionGroup(this);
     for (const auto& [mode, label] :
@@ -461,8 +465,9 @@ void ShellWindow::buildToolRail() {
     toolRail_->setObjectName(QStringLiteral("toolRail"));
     toolRail_->setOrientation(Qt::Vertical);
     toolRail_->setMovable(false);
-    toolRail_->setToolButtonStyle(Qt::ToolButtonTextOnly);
-    toolRail_->setMaximumWidth(56);
+    toolRail_->setIconSize(QSize(20, 20));
+    toolRail_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    toolRail_->setFixedWidth(180);
     addToolBar(Qt::LeftToolBarArea, toolRail_);
     toolGroup_ = new QActionGroup(this);
     toolGroup_->setExclusive(true);
@@ -665,6 +670,10 @@ void ShellWindow::buildStatusArea() {
     notice_->setObjectName(QStringLiteral("notice"));
     notice_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     statusBar()->addWidget(notice_, 1);
+    activeToolStatus_ = new QLabel(tr("Sélection"), this);
+    activeToolStatus_->setObjectName(QStringLiteral("activeToolStatus"));
+    activeToolStatus_->setAccessibleName(tr("Outil actif"));
+    statusBar()->addPermanentWidget(activeToolStatus_);
     progress_ = new QProgressBar(this);
     progress_->setObjectName(QStringLiteral("taskProgress"));
     progress_->setMaximumWidth(220);
@@ -683,6 +692,20 @@ void ShellWindow::buildStatusArea() {
 
 // --- Espaces et outils -----------------------------------------------------------------------
 
+void ShellWindow::setCompactToolRail(bool compact) {
+    compactTools_ = compact;
+    toolRail_->setToolButtonStyle(compact ? Qt::ToolButtonIconOnly : Qt::ToolButtonTextBesideIcon);
+    toolRail_->setFixedWidth(compact ? 52 : 180);
+    if (compactToolsAction_ != nullptr) {
+        compactToolsAction_->setChecked(compact);
+    }
+    if (!stateDir_.empty()) {
+        QSettings settings(QString::fromStdU16String((stateDir_ / "ui.ini").u16string()),
+                           QSettings::IniFormat);
+        settings.setValue(QStringLiteral("tools/compact"), compact);
+    }
+}
+
 void ShellWindow::setWorkspace(Workspace workspace) {
     workspace_ = workspace;
     for (auto* a : workspaceActions_) {
@@ -694,7 +717,7 @@ void ShellWindow::setWorkspace(Workspace workspace) {
     if (workspace != Workspace::Produce && simLimit_) {
         setSimulationPosition(simulationTotal()); // quitter Production termine la simulation
     }
-    setWindowTitle(tr("OpenStitch V2 — %1").arg(workspaceLabel(workspace)));
+    refreshWindowTitle();
 }
 
 void ShellWindow::rebuildToolRail() {
@@ -709,14 +732,10 @@ void ShellWindow::rebuildToolRail() {
         // mais désactivés, avec la raison, pour ne pas faire croire à une parité qui n'existe pas.
         const bool implemented = isToolImplemented(tool->id);
         const QString label = fromUtf8(tool->label);
-        // Rail compact : le bouton porte la touche du raccourci (ou les initiales), le libellé
-        // complet est dans l'infobulle et le nom accessible.
-        QString shortText = fromUtf8(tool->shortcut);
-        shortText.replace(QStringLiteral("Maj+"), QStringLiteral("⇧"));
-        if (shortText.isEmpty()) {
-            shortText = label.left(2);
-        }
-        auto* a = new QAction(shortText, toolGroup_);
+        // Les libellés sont visibles en mode étendu, et les pictogrammes restent présents
+        // en mode compact. Les raccourcis sont des commandes, jamais les seuls noms d'outils.
+        auto* a = new QAction(toolIcon(tool->id, toolRail_->palette().color(QPalette::ButtonText)),
+                              label, toolGroup_);
         a->setCheckable(true);
         a->setData(fromUtf8(tool->id));
         a->setEnabled(implemented);
@@ -739,6 +758,7 @@ void ShellWindow::rebuildToolRail() {
         }
         connect(a, &QAction::triggered, this, [this, a] {
             activeTool_ = a->data().toString();
+            activeToolStatus_->setText(a->text());
             applyToolToCanvas();
         });
     }
@@ -748,6 +768,9 @@ void ShellWindow::rebuildToolRail() {
             a->setChecked(a->data().toString() == activeTool_);
         }
     }
+    if (const auto* tool = registry_.find(activeTool_.toStdString())) {
+        activeToolStatus_->setText(fromUtf8(tool->label));
+    }
 }
 
 // --- Document, sélection, aperçu -------------------------------------------------------------
@@ -756,6 +779,7 @@ void ShellWindow::onDocumentChanged(ChangeKind kind) {
     if (kind != ChangeKind::Replaced && feedbackCue_ != nullptr) {
         feedbackCue_->pulse();
     }
+    refreshWindowTitle();
     rebuildObjectList();
     refreshActionStates();
     if (diagnostics_ != nullptr) {
@@ -887,6 +911,9 @@ void ShellWindow::requestPreview() {
                 updatePointMarkers();
                 refreshSimulationBar();
                 updateSelectionBoxes();
+                if (densityActive_ && densityRevision_ != session_.revision()) {
+                    requestDensity(); // la carte affichée date d'avant la dernière modification
+                }
             }
         });
 }
@@ -896,6 +923,58 @@ bool ShellWindow::previewShown() const {
 }
 
 // --- Fichiers --------------------------------------------------------------------------------
+
+void ShellWindow::refreshWindowTitle() {
+    const QString name = currentPath_.empty()
+                             ? tr("Sans titre")
+                             : QString::fromStdU16String(currentPath_.filename().u16string());
+    setWindowTitle(tr("OpenStitch V2 — %1 — %2[*]").arg(name, workspaceLabel(workspace_)));
+    setWindowModified(documentOpen_ && session_.dirty());
+}
+
+bool ShellWindow::saveCurrentProject() {
+    QString path;
+    if (!currentPath_.empty() && currentPath_.extension() == ".osp") {
+        path = QString::fromStdU16String(currentPath_.u16string());
+    }
+    if (path.isEmpty()) {
+        path = QFileDialog::getSaveFileName(this, tr("Enregistrer le projet"), QString(),
+                                            tr("Projet OpenStitch (*.osp)"));
+    }
+    return !path.isEmpty() && saveProject(std::filesystem::path(path.toStdU16String()));
+}
+
+bool ShellWindow::confirmDiscardOrSave() {
+    if (!documentOpen_ || !session_.dirty()) {
+        return true;
+    }
+    const auto answer = QMessageBox::warning(
+        this, tr("Modifications non enregistrées"),
+        tr("Ce projet contient des modifications non enregistrées. Voulez-vous les enregistrer "
+           "avant de continuer ?"),
+        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Cancel);
+    if (answer == QMessageBox::Save) {
+        return saveCurrentProject();
+    }
+    return answer == QMessageBox::Discard;
+}
+
+void ShellWindow::cancelPendingDocumentLoad() {
+    ++loadGeneration_;
+    if (documentLoadTask_ != 0) {
+        (void)tasks_.cancel(documentLoadTask_);
+        documentLoadTask_ = 0;
+    }
+}
+
+void ShellWindow::closeEvent(QCloseEvent* event) {
+    if (!confirmDiscardOrSave()) {
+        event->ignore();
+        return;
+    }
+    cancelPendingDocumentLoad();
+    QMainWindow::closeEvent(event);
+}
 
 void ShellWindow::chooseAndOpen() {
     const QString path =
@@ -914,15 +993,30 @@ void ShellWindow::chooseAndOpen() {
 }
 
 void ShellWindow::openImage(const std::filesystem::path& image, double heightMm) {
+    if (!confirmDiscardOrSave()) {
+        return;
+    }
+    cancelPendingDocumentLoad();
+    const auto generation = loadGeneration_;
+    const auto revision = session_.revision();
     DigitizeRequest request;
     request.image = image;
     request.target_height_mm = heightMm;
-    setNotice(tr("Numérisation de %1…").arg(QString::fromStdString(image.filename().string())),
-              false);
-    tasks_.submit<DigitizeOutput>(
+    setNotice(
+        tr("Numérisation de %1…").arg(QString::fromStdU16String(image.filename().u16string())),
+        false);
+    documentLoadTask_ = tasks_.submit<DigitizeOutput>(
         tr("Numérisation").toStdString(),
         [request](const TaskContext& ctx) { return run_digitize(request, ctx); },
-        [this, image](Result<DigitizeOutput>&& r) {
+        [this, image, generation, revision](Result<DigitizeOutput>&& r) {
+            if (generation != loadGeneration_) {
+                return; // un chargement plus récent a remplacé cette demande
+            }
+            documentLoadTask_ = 0;
+            if (revision != session_.revision()) {
+                setNotice(tr("Document modifié pendant l'import : résultat ignoré."), true);
+                return;
+            }
             if (!r) {
                 setNotice(tr("Numérisation impossible : %1 %2")
                               .arg(fromUtf8(r.error().message), fromUtf8(r.error().hint)),
@@ -933,6 +1027,9 @@ void ShellWindow::openImage(const std::filesystem::path& image, double heightMm)
             session_.selection().clear();
             const auto stats = r->stats;
             documentOpen_ = true;
+            if (autosave_) {
+                autosave_->clear();
+            }
             session_.replaceProject(std::move(r->project), false);
             setNotice(tr("%1 objets, %2 points, %3 × %4 mm")
                           .arg(r->report.embroidery_objects)
@@ -944,11 +1041,26 @@ void ShellWindow::openImage(const std::filesystem::path& image, double heightMm)
 }
 
 void ShellWindow::openProject(const std::filesystem::path& osp) {
-    setNotice(tr("Ouverture de %1…").arg(QString::fromStdString(osp.filename().string())), false);
-    tasks_.submit<document::Project>(
+    if (!confirmDiscardOrSave()) {
+        return;
+    }
+    cancelPendingDocumentLoad();
+    const auto generation = loadGeneration_;
+    const auto revision = session_.revision();
+    setNotice(tr("Ouverture de %1…").arg(QString::fromStdU16String(osp.filename().u16string())),
+              false);
+    documentLoadTask_ = tasks_.submit<document::Project>(
         tr("Ouverture").toStdString(),
         [osp](const TaskContext&) { return project_io::load_project(osp); },
-        [this, osp](Result<document::Project>&& r) {
+        [this, osp, generation, revision](Result<document::Project>&& r) {
+            if (generation != loadGeneration_) {
+                return;
+            }
+            documentLoadTask_ = 0;
+            if (revision != session_.revision()) {
+                setNotice(tr("Document modifié pendant l'ouverture : résultat ignoré."), true);
+                return;
+            }
             if (!r) {
                 setNotice(tr("Ouverture impossible : %1").arg(fromUtf8(r.error().message)), true);
                 return;
@@ -956,6 +1068,9 @@ void ShellWindow::openProject(const std::filesystem::path& osp) {
             currentPath_ = osp;
             session_.selection().clear();
             documentOpen_ = true;
+            if (autosave_) {
+                autosave_->clear();
+            }
             session_.replaceProject(std::move(*r), true);
             noteRecent(osp);
             setNotice(
@@ -972,6 +1087,7 @@ bool ShellWindow::saveProject(const std::filesystem::path& osp) {
     }
     currentPath_ = osp;
     session_.markSaved();
+    refreshWindowTitle();
     noteRecent(osp);
     if (autosave_) {
         autosave_->clear(); // le document est enregistré : plus rien à récupérer
@@ -988,6 +1104,11 @@ void ShellWindow::setStateDirectory(const std::filesystem::path& dir) {
     const bool reduced = settings.value(QStringLiteral("visual/reducedMotion"), false).toBool();
     reducedMotionAction_->setChecked(reduced);
     feedbackCue_->setReducedMotion(reduced);
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    QSettings settings(QString::fromStdU16String((dir / "ui.ini").u16string()),
+                       QSettings::IniFormat);
+    setCompactToolRail(settings.value(QStringLiteral("tools/compact"), false).toBool());
     autosave_ = std::make_unique<AutosaveStore>(dir);
     recent_ = pruneMissingRecent(loadRecentList(dir / "recent.txt"));
     rebuildRecentMenu();
@@ -1007,7 +1128,7 @@ bool ShellWindow::autosaveNow() {
 }
 
 bool ShellWindow::recoverAutosave() {
-    if (!hasRecovery()) {
+    if (!hasRecovery() || !confirmDiscardOrSave()) {
         return false;
     }
     auto loaded = autosave_->load();
@@ -1015,6 +1136,7 @@ bool ShellWindow::recoverAutosave() {
         setNotice(tr("Récupération impossible : %1").arg(fromUtf8(loaded.error().message)), true);
         return false;
     }
+    cancelPendingDocumentLoad();
     currentPath_.clear();
     documentOpen_ = true;
     session_.selection().clear();
@@ -1147,6 +1269,93 @@ void ShellWindow::runDiagnostics() {
         });
 }
 
+void ShellWindow::toggleDensity() {
+    if (densityActive_) {
+        hideDensity();
+        setNotice(tr("Carte de densité masquée."), false);
+        return;
+    }
+    if (session_.project().embroidery_objects.empty()) {
+        setNotice(tr("Rien à analyser : le document ne contient aucun objet brodé."), true);
+        return;
+    }
+    densityActive_ = true;
+    requestDensity();
+}
+
+bool ShellWindow::densityShown() const {
+    return canvas_->hasDensityOverlay();
+}
+
+void ShellWindow::hideDensity() {
+    densityActive_ = false;
+    densityRevision_ = 0;
+    densityHotspots_.clear();
+    if (densityTask_ != 0) {
+        (void)tasks_.cancel(densityTask_);
+        densityTask_ = 0;
+    }
+    canvas_->setDensityOverlay(QImage(), QRectF());
+}
+
+void ShellWindow::requestDensity() {
+    if (densityTask_ != 0) {
+        (void)tasks_.cancel(densityTask_); // une carte périmée n'est jamais livrée
+    }
+    const auto snapshot = session_.snapshot();
+    const auto revision = session_.revision();
+    densityTask_ = tasks_.submit<DensityOverlay>(
+        tr("Carte de densité").toStdString(),
+        [snapshot, revision](const TaskContext& ctx) {
+            return run_density(snapshot, revision, ctx);
+        },
+        [this](Result<DensityOverlay>&& r) {
+            densityTask_ = 0;
+            if (!densityActive_) {
+                return;
+            }
+            if (!r) {
+                densityActive_ = false;
+                setNotice(tr("Carte de densité impossible : %1").arg(fromUtf8(r.error().message)),
+                          true);
+                return;
+            }
+            if (r->revision != session_.revision()) {
+                return; // le document a changé depuis : une autre carte est en route
+            }
+            applyDensity(*r);
+        });
+}
+
+void ShellWindow::applyDensity(const DensityOverlay& overlay) {
+    densityRevision_ = overlay.revision;
+    densityHotspots_ = overlay.hotspots;
+    if (frame_.px_per_mm <= 0.0) {
+        return; // pas d'aperçu : la carte sera posée au prochain aperçu
+    }
+    QImage image(overlay.columns, overlay.rows, QImage::Format_RGBA8888);
+    for (int y = 0; y < overlay.rows; ++y) {
+        std::memcpy(image.scanLine(y),
+                    overlay.rgba.data() + static_cast<std::size_t>(y) * overlay.columns * 4,
+                    static_cast<std::size_t>(overlay.columns) * 4);
+    }
+    // Repère modèle (Y vers le haut) -> pixels de l'aperçu (Y vers le bas).
+    const QRectF rect(
+        QPointF(frame_.mmToPxX(overlay.minXmm),
+                frame_.mmToPxY(-(overlay.minYmm + overlay.heightMm))),
+        QPointF(frame_.mmToPxX(overlay.minXmm + overlay.widthMm), frame_.mmToPxY(-overlay.minYmm)));
+    canvas_->setDensityOverlay(image, rect);
+    const auto zones = static_cast<int>(overlay.hotspots.size());
+    setNotice(zones == 0 ? tr("Densité maximale %1 piqûres/mm² : aucune zone sur-dense.")
+                               .arg(overlay.maxPenetrationsPerMm2, 0, 'f', 1)
+                         : tr("Densité maximale %1 piqûres/mm² : %2 zone(s) sur-dense(s) "
+                              "(seuil %3).")
+                               .arg(overlay.maxPenetrationsPerMm2, 0, 'f', 1)
+                               .arg(zones)
+                               .arg(overlay.thresholdPerMm2, 0, 'f', 1),
+              zones > 0);
+}
+
 void ShellWindow::onFindingActivated(const project_ops::Finding& finding) {
     std::vector<Target> targets;
     for (const auto id : finding.objects) {
@@ -1193,6 +1402,7 @@ void ShellWindow::setThemeMode(const QString& mode) {
         scheme = Qt::ColorScheme::Dark;
     }
     QGuiApplication::styleHints()->setColorScheme(scheme);
+    rebuildToolRail(); // régénère les icônes avec les couleurs du thème courant
 }
 
 void ShellWindow::onKnife(QPointF a, QPointF b) {
@@ -1601,11 +1811,18 @@ void ShellWindow::applyToolToCanvas() {
 }
 
 void ShellWindow::newProject() {
+    if (!confirmDiscardOrSave()) {
+        return;
+    }
     auto created = project_ops::create_empty_project({});
     if (!created) {
         setNotice(tr("Création du projet impossible : %1").arg(fromUtf8(created.error().message)),
                   true);
         return;
+    }
+    cancelPendingDocumentLoad();
+    if (autosave_) {
+        autosave_->clear();
     }
     currentPath_.clear();
     documentOpen_ = true;
@@ -1978,6 +2195,10 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
     }
     out.push_back({"analysis.run", q(tr("Analyser le document (diagnostic)")), q(tr("Analyse")), "",
                    !session_.project().embroidery_objects.empty()});
+    out.push_back(
+        {"analysis.density",
+         q(densityActive_ ? tr("Masquer la carte de densité") : tr("Afficher la carte de densité")),
+         q(tr("Analyse")), "", densityActive_ || !session_.project().embroidery_objects.empty()});
     int n = 1;
     for (const auto w : kWorkspaces) {
         out.push_back({"workspace." + std::string(workspaceId(w)),
@@ -2037,6 +2258,8 @@ bool ShellWindow::runCommand(const QString& id) {
         } else if (id == QLatin1String("analysis.run")) {
             setWorkspace(Workspace::Optimize);
             runDiagnostics();
+        } else if (id == QLatin1String("analysis.density")) {
+            toggleDensity();
         } else if (id == QLatin1String("selection.all")) {
             selectAllObjects();
         } else if (id == QLatin1String("selection.clear")) {
