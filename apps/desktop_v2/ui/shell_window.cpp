@@ -422,13 +422,14 @@ void ShellWindow::buildMenus() {
     reducedMotionAction_->setCheckable(true);
     connect(reducedMotionAction_, &QAction::triggered, this, [this](bool reduced) {
         feedbackCue_->setReducedMotion(reduced);
-        canvas_->setReducedMotion(reduced);
         if (!stateDir_.empty()) {
             QSettings settings(QString::fromStdU16String((stateDir_ / "motion.ini").u16string()),
                                QSettings::IniFormat);
             settings.setValue(QStringLiteral("visual/reducedMotion"), reduced);
         }
     });
+    connect(reducedMotionAction_, &QAction::triggered, canvas_,
+            &PreviewCanvas::setReducedMotion);
 }
 
 void ShellWindow::buildWorkspaceBar() {
