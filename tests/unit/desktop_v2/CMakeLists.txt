@@ -29,6 +29,7 @@ add_executable(test_desktop_v2_core
     test_fabric_risk.cpp
     test_segmentation_preview.cpp
     test_snap.cpp
+    test_scenarios.cpp
     test_perf_budget.cpp
     test_density_service.cpp
     test_workflow_guide.cpp
