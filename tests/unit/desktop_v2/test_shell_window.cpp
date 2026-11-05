@@ -2089,15 +2089,21 @@ private slots:
         QVERIFY(controller->recolorSelected(newColor));
         QCOMPARE(w.session().undoNames().size(), depth + 1);
         QVERIFY(panel->regenerateEnabled());
-        QVERIFY(w.session().project().segmentation->find(openstitch::RegionId{regions.front().id})->rgb == newColor);
+        const auto* recolored =
+            w.session().project().segmentation->find(openstitch::RegionId{regions.front().id});
+        QVERIFY(recolored != nullptr);
+        QVERIFY(recolored->rgb == newColor);
         QVERIFY(w.session().undo());
-        QVERIFY(w.session().project().segmentation->find(openstitch::RegionId{regions.front().id})->rgb == regions.front().rgb);
+        const auto* restored =
+            w.session().project().segmentation->find(openstitch::RegionId{regions.front().id});
+        QVERIFY(restored != nullptr);
+        QVERIFY(restored->rgb == regions.front().rgb);
 
         controller->selectRegion(regions.front().id);
-        const auto target = std::find_if(regions.begin(), regions.end(),
-                                         [&](const RegionInfo& r) {
-                                             return r.rgb != regions.front().rgb;
-                                         });
+        const auto otherColor = [&regions](const RegionInfo& r) {
+            return r.rgb != regions.front().rgb;
+        };
+        const auto target = std::find_if(regions.begin(), regions.end(), otherColor);
         QVERIFY(target != regions.end());
         QVERIFY(controller->mergeSelectedColorInto(target->id));
         QCOMPARE(w.session().undoNames().size(), depth + 1);
