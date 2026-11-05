@@ -3,9 +3,11 @@
 #include <QApplication>
 #include <QColor>
 #include <QFile>
+#include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
 #include <QScrollBar>
+#include <QTemporaryDir>
 #include <QTest>
 #include <QToolBar>
 #include <QTreeWidget>
@@ -58,6 +60,56 @@ private slots:
         QCOMPARE(w.activeToolId(), QString("select"));
         w.setWorkspace(Workspace::Design);
         QCOMPARE(rail->actions().size(), design);
+    }
+
+    void toolRailUsesDescriptiveNamesAndKeepsAllToolsInBothModes() {
+        ShellWindow w;
+        auto* rail = w.findChild<QToolBar*>("toolRail");
+        auto* toggle = w.findChild<QAction*>("action_view_compact_tools");
+        auto* status = w.findChild<QLabel*>("activeToolStatus");
+        QVERIFY(rail && toggle && status);
+        QCOMPARE(rail->toolButtonStyle(), Qt::ToolButtonTextBesideIcon);
+        const auto count = rail->actions().size();
+        QVERIFY(count > 5);
+        for (auto* action : rail->actions()) {
+            QVERIFY(!action->icon().isNull());
+            QVERIFY(action->text().length() > 1);
+            QVERIFY(!action->toolTip().isEmpty());
+        }
+        QCOMPARE(status->text(), QStringLiteral("Sélection"));
+        toggle->setChecked(true);
+        QVERIFY(w.compactToolRail());
+        QCOMPARE(rail->toolButtonStyle(), Qt::ToolButtonIconOnly);
+        QCOMPARE(rail->actions().size(), count);
+        w.setWorkspace(Workspace::Digitize);
+        QCOMPARE(rail->toolButtonStyle(), Qt::ToolButtonIconOnly);
+        QCOMPARE(w.activeToolId(), QStringLiteral("select"));
+        toggle->setChecked(false);
+        QCOMPARE(rail->toolButtonStyle(), Qt::ToolButtonTextBesideIcon);
+    }
+
+    void compactRailPreferenceSurvivesRestartWithoutChangingShortcuts() {
+        QTemporaryDir home;
+        QVERIFY(home.isValid());
+        const auto dir = fs::path(home.path().toStdU16String()) / "ui-state";
+        QVERIFY(!fs::exists(dir));
+        {
+            ShellWindow w;
+            w.setStateDirectory(dir);
+            w.setCompactToolRail(true);
+            auto* rail = w.findChild<QToolBar*>("toolRail");
+            QVERIFY(rail);
+            QVERIFY(!rail->actions().isEmpty());
+            QCOMPARE(rail->actions().front()->shortcut(), QKeySequence("V"));
+        }
+        QVERIFY(fs::exists(dir / "ui.ini"));
+        {
+            ShellWindow reopened;
+            reopened.setStateDirectory(dir);
+            QVERIFY(reopened.compactToolRail());
+            auto* rail = reopened.findChild<QToolBar*>("toolRail");
+            QCOMPARE(rail->toolButtonStyle(), Qt::ToolButtonIconOnly);
+        }
     }
 
     void unmigratedToolsAreVisibleButDisabledWithAReason() {

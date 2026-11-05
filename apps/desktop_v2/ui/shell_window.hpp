@@ -139,6 +139,8 @@ public:
     bool runActionWith(const QString& id, const Values& values);
     void newProject(); // projet vierge à cadre par défaut : point de départ du dessin
 
+    void setCompactToolRail(bool compact);
+    [[nodiscard]] bool compactToolRail() const { return compactTools_; }
     void setWorkspace(Workspace workspace);
     [[nodiscard]] Workspace workspace() const { return workspace_; }
     void waitForIdle(); // bloque jusqu'à la fin des tâches et livre leurs résultats (tests)
@@ -213,6 +215,8 @@ private:
     PreviewCanvas* canvas_{nullptr};
     QToolBar* workspaceBar_{nullptr};
     QToolBar* toolRail_{nullptr};
+    QAction* compactToolsAction_{nullptr};
+    bool compactTools_{false};
     QActionGroup* workspaceGroup_{nullptr};
     QActionGroup* toolGroup_{nullptr};
     std::vector<QAction*> workspaceActions_;
@@ -220,6 +224,7 @@ private:
     QTreeWidget* objectTree_{nullptr};
     QLabel* summary_{nullptr};
     QLabel* notice_{nullptr};
+    QLabel* activeToolStatus_{nullptr};
     QProgressBar* progress_{nullptr};
     QToolButton* cancelButton_{nullptr};
     QAction* undoAction_{nullptr};
