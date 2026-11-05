@@ -17,6 +17,7 @@
 #include "action_catalog.hpp"
 #include "arrange_batch.hpp"
 #include "command_catalog.hpp"
+#include "density_service.hpp"
 #include "diagnostics_service.hpp"
 #include "digitize_pipeline.hpp"
 #include "document_services.hpp"
@@ -35,6 +36,7 @@
 #include "workspace_state.hpp"
 
 class QAction;
+class QCloseEvent;
 class QActionGroup;
 class QComboBox;
 class QDockWidget;
@@ -139,6 +141,8 @@ public:
     bool runActionWith(const QString& id, const Values& values);
     void newProject(); // projet vierge à cadre par défaut : point de départ du dessin
 
+    void setCompactToolRail(bool compact);
+    [[nodiscard]] bool compactToolRail() const { return compactTools_; }
     void setWorkspace(Workspace workspace);
     [[nodiscard]] Workspace workspace() const { return workspace_; }
     void waitForIdle(); // bloque jusqu'à la fin des tâches et livre leurs résultats (tests)
@@ -154,13 +158,26 @@ public:
     [[nodiscard]] DiagnosticsPanel* diagnostics() const { return diagnostics_; }
     [[nodiscard]] CalquePanel* calquePanel() const { return calques_; }
     [[nodiscard]] ThreadPanel* threadPanel() const { return threads_; }
+    // Carte de densité (surimpression) : affichée, et zones sur-denses de la dernière analyse.
+    [[nodiscard]] bool densityShown() const;
+    [[nodiscard]] bool densityActive() const { return densityActive_; }
+    [[nodiscard]] const std::vector<DensityHotspotInfo>& densityHotspots() const {
+        return densityHotspots_;
+    }
     // Repère mm <-> pixels et index de sélection de l'aperçu affiché (tests, diagnostics).
     [[nodiscard]] const PreviewImage& previewFrame() const { return frame_; }
     // Un point (pixels de l'image d'aperçu) qui appartient à l'objet : pour piloter le canevas en
     // test.
     [[nodiscard]] std::optional<QPointF> objectCentrePx(std::uint64_t id) const;
 
+protected:
+    void closeEvent(QCloseEvent* event) override;
+
 private:
+    bool confirmDiscardOrSave();
+    bool saveCurrentProject();
+    void cancelPendingDocumentLoad();
+    void refreshWindowTitle();
     void buildMenus();
     void buildWorkspaceBar();
     void buildToolRail();
@@ -180,6 +197,10 @@ private:
     void onCanvasRect(QRectF scenePx, Qt::KeyboardModifiers modifiers);
     void applyToolToCanvas();
     void updateSourceOverlay();
+    void toggleDensity();
+    void requestDensity();
+    void applyDensity(const DensityOverlay& overlay);
+    void hideDensity();
     void updatePointMarkers();
     [[nodiscard]] std::optional<std::uint64_t> pointTarget() const;
     const image::Image* ensureProcessed();
@@ -213,6 +234,8 @@ private:
     PreviewCanvas* canvas_{nullptr};
     QToolBar* workspaceBar_{nullptr};
     QToolBar* toolRail_{nullptr};
+    QAction* compactToolsAction_{nullptr};
+    bool compactTools_{false};
     QActionGroup* workspaceGroup_{nullptr};
     QActionGroup* toolGroup_{nullptr};
     std::vector<QAction*> workspaceActions_;
@@ -220,6 +243,7 @@ private:
     QTreeWidget* objectTree_{nullptr};
     QLabel* summary_{nullptr};
     QLabel* notice_{nullptr};
+    QLabel* activeToolStatus_{nullptr};
     QProgressBar* progress_{nullptr};
     QToolButton* cancelButton_{nullptr};
     QAction* undoAction_{nullptr};
@@ -262,7 +286,13 @@ private:
     SelectionModel::Token selectionToken_{0};
     bool syncingTree_{false};
     TaskId previewTask_{0};
+    TaskId documentLoadTask_{0};
+    std::uint64_t loadGeneration_{0};
     std::uint64_t previewRevision_{0};
+    bool densityActive_{false};
+    std::uint64_t densityRevision_{0}; // révision de la carte affichée ; 0 = aucune
+    std::uint64_t densityTask_{0};
+    std::vector<DensityHotspotInfo> densityHotspots_;
     bool previewShown_{false};
     bool documentOpen_{false}; // un projet est ouvert (même vide) : l'aperçu montre son cadre
     std::filesystem::path currentPath_;
