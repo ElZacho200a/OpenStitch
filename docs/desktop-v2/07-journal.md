@@ -433,3 +433,7 @@ encore le desktop principal.
 - Courbe de transition du fondu : cinq courbes (mêmes formules que le moteur, testées monotones de 0 à 1), commandes « Courbe du fondu : … », résumé de transition qui nomme la courbe.
 - Compagnon : bouton « Copier la commande de connexion (Claude Code) » (`claude mcp add openstitch -- <chemin>/mcp/openstitch-mcp --live`, chemin de l'installateur, repli sur le dossier de l'exécutable).
 - **Correctif CI MSVC** : `QPointer<ImportDialog>` sur un type incomplet cassait la cible `openstitch_v2` (main.cpp) alors que les tests compilaient. Leçon : construire AUSSI l'exécutable avant de pousser ; c'est désormais fait à chaque lot.
+
+## 2026-11-05 — Session 1 (suite 40) : retour visuel réel et correctifs d'interface
+
+- **Le retour visuel est possible** : lancer `openstitch_v2 --demo-shapes --screenshot out.png` avec `QT_QPA_PLATFORM=windows` (plateforme native) donne une vraie capture avec polices, thème et fils cousus ; la plateforme `offscreen` des tests, elle, n'a pas de police (d'où les carrés des captures précédentes, que j'avais acceptés sans chercher). Première capture réelle : libellés du rail tronqués (« Recadr…tangle »), largeurs irrégulières, onglets des panneaux de droite écrasés (« C… »). Corrigés : noms courts dans le rail (nom complet en infobulle et dans la barre d'état), largeur régulière, onglets jamais tronqués (défilement). Captures avant/après dans `captures/v2-avant-rail-onglets.png` et `v2-apres-rail-onglets.png`.

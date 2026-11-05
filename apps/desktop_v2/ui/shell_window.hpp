@@ -267,6 +267,7 @@ private:
     void onCanvasRect(QRectF scenePx, Qt::KeyboardModifiers modifiers);
     void applyToolToCanvas();
     void updateSourceOverlay();
+    void polishDockTabs();
     void updatePointMarkers();
     [[nodiscard]] std::optional<std::uint64_t> pointTarget() const;
     const image::Image* ensureProcessed();

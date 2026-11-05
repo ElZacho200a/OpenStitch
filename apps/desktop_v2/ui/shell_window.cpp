@@ -31,6 +31,7 @@
 #include <QSpinBox>
 #include <QStackedWidget>
 #include <QStatusBar>
+#include <QTabBar>
 #include <QTextBrowser>
 #include <QTimer>
 #include <QToolBar>
@@ -623,6 +624,7 @@ void ShellWindow::buildInspector() {
     });
     connect(companionPanel_, &CompanionPanel::undoRequested, this, [this] { session_.undo(); });
     docDock_->raise();
+    polishDockTabs();
     connect(diagnostics_, &DiagnosticsPanel::analyseRequested, this, &ShellWindow::runDiagnostics);
     connect(diagnostics_, &DiagnosticsPanel::findingActivated, this,
             &ShellWindow::onFindingActivated);
@@ -822,9 +824,31 @@ void ShellWindow::rebuildToolRail() {
         const QString label = fromUtf8(tool->label);
         // Les libellés sont visibles en mode étendu, et les pictogrammes restent présents
         // en mode compact. Les raccourcis sont des commandes, jamais les seuls noms d'outils.
+        // Nom court dans le rail (le nom complet reste dans l'infobulle et la palette de
+        // commandes).
+        static const std::pair<const char*, const char*> kShort[] = {
+            {"crop", "Recadrer"},
+            {"draw.polygon-regular", "Polyg. régulier"},
+            {"draw.bezier", "Plume"},
+            {"draw.freeform", "Crayon"},
+            {"warp-brush", "Déformation"},
+            {"node.edit", "Nœuds"},
+            {"fade.axis", "Axe du fondu"},
+            {"stitch.points", "Points"},
+            {"click-to-stitch", "Clic-broder"},
+            {"detail-brush", "Zones détail"},
+            {"fill.direction-guide", "Guide direction"},
+            {"fill.break-line", "Ligne rupture"}};
+        QString railLabel = label;
+        for (const auto& [id, text] : kShort) {
+            if (tool->id == id) {
+                railLabel = QString::fromUtf8(text);
+            }
+        }
         auto* a = new QAction(toolIcon(tool->id, toolRail_->palette().color(QPalette::ButtonText)),
-                              label, toolGroup_);
+                              railLabel, toolGroup_);
         a->setCheckable(true);
+        a->setProperty("fullLabel", label);
         a->setData(fromUtf8(tool->id));
         a->setEnabled(implemented);
         QString tip = tool->shortcut.empty()
@@ -839,6 +863,11 @@ void ShellWindow::rebuildToolRail() {
         toolRail_->addAction(a);
         if (auto* button = toolRail_->widgetForAction(a)) {
             button->setAccessibleName(label);
+            if (!compactTools_) {
+                // Colonne régulière : tous les boutons ont la même largeur (le rail fait 180 px).
+                button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+                button->setMinimumWidth(164);
+            }
         }
         if (fromUtf8(tool->id) == activeTool_ && implemented) {
             a->setChecked(true);
@@ -846,7 +875,7 @@ void ShellWindow::rebuildToolRail() {
         }
         connect(a, &QAction::triggered, this, [this, a] {
             activeTool_ = a->data().toString();
-            activeToolStatus_->setText(a->text());
+            activeToolStatus_->setText(a->property("fullLabel").toString());
             applyToolToCanvas();
         });
     }
@@ -1963,6 +1992,15 @@ const std::optional<FabricRisk>& ShellWindow::fabricRisk() const {
 
 int ShellWindow::nodeHandleCount() const {
     return nodes_ ? nodes_->handleCount() : 0;
+}
+
+void ShellWindow::polishDockTabs() {
+    // Les onglets des panneaux de droite (Document, Diagnostic, Calques, Fils, Optimisation,
+    // Compagnon) ne sont jamais tronqués en « C… » : ils défilent si la place manque.
+    for (auto* bar : findChildren<QTabBar*>()) {
+        bar->setElideMode(Qt::ElideNone);
+        bar->setUsesScrollButtons(true);
+    }
 }
 
 int ShellWindow::tangentHandleCount() const {
