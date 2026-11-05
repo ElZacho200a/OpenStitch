@@ -2060,6 +2060,53 @@ private slots:
         QVERIFY(fadeAxisView(w.session().project(), id)->curve == FadeCurve::Steep);
     }
 
+    void regionToolRecolorsAndMergesWholeColorClasses() {
+        ShellWindow w;
+        w.resize(1400, 900);
+        w.show();
+        openstitch::project_ops::DigitizeSettings settings;
+        settings.max_colors = 5;
+        w.openImage(tentabrode(), 60.0, settings);
+        w.waitForIdle();
+        QVERIFY(w.runCommand("tool.region.edit"));
+        auto* panel = w.regionPanel();
+        auto* controller = w.regionController();
+        QVERIFY(panel != nullptr && controller != nullptr);
+        const auto regions = listRegions(w.session().project());
+        QVERIFY(regions.size() >= 2);
+        controller->selectRegion(regions.front().id);
+        auto* recolor = panel->findChild<QPushButton*>("regionRecolor");
+        auto* mergeColors = panel->findChild<QPushButton*>("regionMergeColors");
+        QVERIFY(recolor != nullptr && recolor->isEnabled());
+        QVERIFY(mergeColors != nullptr && mergeColors->isEnabled());
+
+        auto newColor = std::array<std::uint8_t, 3>{31, 71, 137};
+        if (newColor == regions.front().rgb) {
+            newColor = {137, 71, 31};
+        }
+        const auto depth = w.session().undoNames().size();
+        QVERIFY(controller->recolorSelected(newColor));
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QVERIFY(panel->regenerateEnabled());
+        QCOMPARE(w.session().project().segmentation->find(RegionId{regions.front().id})->rgb,
+                 newColor);
+        QVERIFY(w.session().undo());
+        QCOMPARE(w.session().project().segmentation->find(RegionId{regions.front().id})->rgb,
+                 regions.front().rgb);
+
+        controller->selectRegion(regions.front().id);
+        const auto target = std::find_if(regions.begin(), regions.end(),
+                                         [&](const RegionInfo& r) {
+                                             return r.rgb != regions.front().rgb;
+                                         });
+        QVERIFY(target != regions.end());
+        QVERIFY(controller->mergeSelectedColorInto(target->id));
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        const auto merged = listRegions(w.session().project());
+        QVERIFY(std::none_of(merged.begin(), merged.end(),
+                             [&](const RegionInfo& r) { return r.rgb == regions.front().rgb; }));
+    }
+
     void regionToolDeletesMergesAndRegeneratesTheObjects() {
         ShellWindow w;
         w.resize(1400, 900);
