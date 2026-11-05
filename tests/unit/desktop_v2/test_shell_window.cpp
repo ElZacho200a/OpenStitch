@@ -1,13 +1,18 @@
 ﻿// SPDX-License-Identifier: Apache-2.0
+#include <QAbstractButton>
 #include <QAction>
 #include <QApplication>
 #include <QColor>
+#include <QDoubleSpinBox>
 #include <QFile>
+#include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMessageBox>
 #include <QScrollBar>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTimer>
 #include <QToolBar>
 #include <QTreeWidget>
 #include <QWheelEvent>
@@ -126,6 +131,56 @@ private slots:
         QCOMPARE(rail->actions().size(), design);
     }
 
+    void toolRailUsesDescriptiveNamesAndKeepsAllToolsInBothModes() {
+        ShellWindow w;
+        auto* rail = w.findChild<QToolBar*>("toolRail");
+        auto* toggle = w.findChild<QAction*>("action_view_compact_tools");
+        auto* status = w.findChild<QLabel*>("activeToolStatus");
+        QVERIFY(rail && toggle && status);
+        QCOMPARE(rail->toolButtonStyle(), Qt::ToolButtonTextBesideIcon);
+        const auto count = rail->actions().size();
+        QVERIFY(count > 5);
+        for (auto* action : rail->actions()) {
+            QVERIFY(!action->icon().isNull());
+            QVERIFY(action->text().length() > 1);
+            QVERIFY(!action->toolTip().isEmpty());
+        }
+        QCOMPARE(status->text(), QStringLiteral("Sélection"));
+        toggle->setChecked(true);
+        QVERIFY(w.compactToolRail());
+        QCOMPARE(rail->toolButtonStyle(), Qt::ToolButtonIconOnly);
+        QCOMPARE(rail->actions().size(), count);
+        w.setWorkspace(Workspace::Digitize);
+        QCOMPARE(rail->toolButtonStyle(), Qt::ToolButtonIconOnly);
+        QCOMPARE(w.activeToolId(), QStringLiteral("select"));
+        toggle->setChecked(false);
+        QCOMPARE(rail->toolButtonStyle(), Qt::ToolButtonTextBesideIcon);
+    }
+
+    void compactRailPreferenceSurvivesRestartWithoutChangingShortcuts() {
+        QTemporaryDir home;
+        QVERIFY(home.isValid());
+        const auto dir = fs::path(home.path().toStdU16String()) / "ui-state";
+        QVERIFY(!fs::exists(dir));
+        {
+            ShellWindow w;
+            w.setStateDirectory(dir);
+            w.setCompactToolRail(true);
+            auto* rail = w.findChild<QToolBar*>("toolRail");
+            QVERIFY(rail);
+            QVERIFY(!rail->actions().isEmpty());
+            QCOMPARE(rail->actions().front()->shortcut(), QKeySequence("V"));
+        }
+        QVERIFY(fs::exists(dir / "ui.ini"));
+        {
+            ShellWindow reopened;
+            reopened.setStateDirectory(dir);
+            QVERIFY(reopened.compactToolRail());
+            auto* rail = reopened.findChild<QToolBar*>("toolRail");
+            QCOMPARE(rail->toolButtonStyle(), Qt::ToolButtonIconOnly);
+        }
+    }
+
     void unmigratedToolsAreVisibleButDisabledWithAReason() {
         ShellWindow w;
         auto* rail = w.findChild<QToolBar*>("toolRail");
@@ -141,6 +196,68 @@ private slots:
         }
         QCOMPARE(enabled, 9); // …, Pipette, Couteau, Zones de détail
         QVERIFY(disabled > 0);
+    }
+
+    void modifiedDocumentCanCancelNewProjectAndClose() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 20, 20), "Rectangle").committed);
+        const auto revision = w.session().revision();
+        QVERIFY(w.session().dirty());
+        QVERIFY(w.isWindowModified());
+
+        int dialogs = 0;
+        const auto cancelPrompt = [&] {
+            auto* dialog = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+            if (dialog != nullptr) {
+                ++dialogs;
+                dialog->done(QMessageBox::Cancel);
+            }
+        };
+        QTimer::singleShot(0, &w, cancelPrompt);
+        w.newProject();
+        QCOMPARE(w.session().revision(), revision);
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(1));
+
+        QTimer::singleShot(0, &w, cancelPrompt);
+        QVERIFY(!w.close());
+        QVERIFY(w.isVisible());
+        QCOMPARE(dialogs, 2);
+
+        QTimer::singleShot(0, &w, [&] {
+            auto* dialog = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+            if (dialog != nullptr) {
+                dialog->button(QMessageBox::Discard)->click();
+            }
+        });
+        QVERIFY(w.close());
+    }
+
+    void discardReplacesTheDocumentAndKeepsUndoConsistent() {
+        ShellWindow w;
+        w.newProject();
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 20, 20), "Rectangle").committed);
+        QTimer::singleShot(0, &w, [&] {
+            auto* dialog = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+            if (dialog != nullptr) {
+                dialog->button(QMessageBox::Discard)->click();
+            }
+        });
+        w.newProject();
+        QVERIFY(w.session().project().embroidery_objects.empty());
+        QVERIFY(!w.session().canUndo());
+        QVERIFY(w.session().dirty());
+    }
+
+    void laterImageOpenWinsOverAnEarlierRequest() {
+        ShellWindow w;
+        w.openImage(tentabrode(), 300.0);
+        w.openImage(tentabrode(), 120.0);
+        w.waitForIdle();
+        QVERIFY(!w.session().project().embroidery_objects.empty());
+        const double height = w.session().project().canvas.height.value / 1000.0;
+        QVERIFY2(height < 150.0, "Le résultat d'un ancien chargement a écrasé le dernier.");
     }
 
     void imageToDstEndToEnd() {
@@ -804,6 +921,49 @@ private slots:
         QVERIFY(panel->paramKeys().isEmpty()); // sélection de types mixtes
     }
 
+    void rapidInspectorNumericChangesMakeOneUndoStep() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        const auto added = w.session().applyBatch(batchAddRect({0, 0}, 20, 20), "Rectangle");
+        const auto id = *createdObjectId(added.report);
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        auto* spin = w.inspector()->findChild<QDoubleSpinBox*>("param_row_spacing_mm");
+        QVERIFY(spin != nullptr);
+        const auto beforeUndo = w.session().undoNames().size();
+        const auto beforeRevision = w.session().revision();
+        spin->setValue(0.65);
+        spin->setValue(0.70);
+        spin->setValue(0.75);
+        QCOMPARE(w.session().revision(), beforeRevision);
+        QTRY_COMPARE_WITH_TIMEOUT(w.session().revision(), beforeRevision + 1, 1500);
+        QCOMPARE(w.session().undoNames().size(), beforeUndo + 1);
+        const auto value =
+            readParam(w.session().project().embroidery_objects.front(), "row_spacing_mm");
+        QVERIFY(value.has_value());
+        QVERIFY(qAbs(*value - 0.75) < 0.01);
+        QVERIFY(w.session().undo());
+        QCOMPARE(w.session().undoNames().size(), beforeUndo);
+    }
+
+    void pendingInspectorNumericEditIsDiscardedWhenSelectionChanges() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        const auto a =
+            *createdObjectId(w.session().applyBatch(batchAddRect({-20, 0}, 10, 10), "A").report);
+        const auto b =
+            *createdObjectId(w.session().applyBatch(batchAddRect({20, 0}, 10, 10), "B").report);
+        w.session().selection().replace({{TargetKind::EmbroideryObject, a}});
+        auto* spin = w.inspector()->findChild<QDoubleSpinBox*>("param_row_spacing_mm");
+        QVERIFY(spin != nullptr);
+        const auto beforeRevision = w.session().revision();
+        spin->setValue(0.85);
+        w.session().selection().replace({{TargetKind::EmbroideryObject, b}});
+        QTest::qWait(330);
+        QCOMPARE(w.session().revision(), beforeRevision);
+    }
+
     void everyActionDialogYieldsValuesTheCatalogAccepts() {
         ShellWindow w;
         for (const auto& def : actionCatalog()) {
@@ -1074,6 +1234,33 @@ private slots:
         QVERIFY(!panel->removeCurrent()); // le dernier calque reste
         QVERIFY(w.session().undo());
         QCOMPARE(panel->rowCount(), 2);
+    }
+
+    void densityMapOverlaysThePreviewAndFollowsTheDocument() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 20, 10), "Rectangle").committed);
+        w.waitForIdle();
+        QVERIFY(w.previewShown());
+        QVERIFY(!w.densityShown());
+
+        QVERIFY(w.runCommand("analysis.density"));
+        w.waitForIdle();
+        QVERIFY(w.densityActive());
+        QVERIFY(w.densityShown());
+        QVERIFY(w.canvas()->hasDensityOverlay());
+        const auto revision = w.session().revision();
+        QCOMPARE(w.session().revision(), revision); // analyse = lecture seule
+
+        // Une modification recalcule la carte sans l'intervention de l'utilisateur.
+        QVERIFY(w.session().applyBatch(batchAddRect({40, 0}, 10, 10), "Autre").committed);
+        w.waitForIdle();
+        QVERIFY(w.densityShown());
+
+        QVERIFY(w.runCommand("analysis.density")); // second appel : masque
+        QVERIFY(!w.densityActive());
+        QVERIFY(!w.densityShown());
     }
 
     void threadPanelListsThreadsOrderAndColorways() {
@@ -1610,6 +1797,56 @@ private slots:
         w.waitForIdle();
         QVERIFY(countPreviews() - before <= 2);
         QVERIFY(w.previewShown());
+    }
+
+    void canvasTrackpadZoomAndKeyboardNavigationRemainBounded() {
+        ShellWindow w;
+        w.show();
+        w.openImage(tentabrode(), 80.0);
+        w.waitForIdle();
+        auto* canvas = w.canvas();
+        const double initial = canvas->zoom();
+        const QPoint at = canvas->viewport()->rect().center();
+        const QPointF local(at);
+        const QPointF global(canvas->viewport()->mapToGlobal(at));
+        const auto buttons = Qt::NoButton;
+        const auto modifiers = Qt::NoModifier;
+        const auto phase = Qt::NoScrollPhase;
+        QWheelEvent fine(local, global, QPoint(0, 24), QPoint(), buttons, modifiers, phase, false);
+        QApplication::sendEvent(canvas->viewport(), &fine);
+        QVERIFY(canvas->zoom() > initial); // trackpad : pixelDelta sans angleDelta
+        const double afterTrackpad = canvas->zoom();
+        QTest::keyClick(canvas, Qt::Key_Plus);
+        QVERIFY(canvas->zoom() > afterTrackpad);
+        QTest::keyClick(canvas, Qt::Key_Minus);
+        QVERIFY(canvas->zoom() < afterTrackpad * 1.26);
+        QWheelEvent huge(QPointF(at), QPointF(canvas->viewport()->mapToGlobal(at)),
+                         QPoint(0, 50000), QPoint(), Qt::NoButton, Qt::NoModifier,
+                         Qt::NoScrollPhase, false);
+        QApplication::sendEvent(canvas->viewport(), &huge);
+        QVERIFY(canvas->zoom() <= 32.0 + 1e-6);
+        QTest::keyClick(canvas, Qt::Key_F);
+        QVERIFY(qAbs(canvas->zoom() - initial) < 1e-6);
+    }
+
+    void shiftFFramesSelectedObjectWithoutChangingTheProject() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        const auto r = w.session().applyBatch(batchAddRect({0, 0}, 8, 8), "Petit carré");
+        QVERIFY(r.committed);
+        w.waitForIdle();
+        auto& objects = w.session().project().embroidery_objects;
+        QVERIFY(!objects.empty());
+        const auto id = objects.front().id.value;
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        const auto revision = w.session().revision();
+        const double whole = w.canvas()->zoom();
+        QTest::keyClick(w.canvas(), Qt::Key_F, Qt::ShiftModifier);
+        QVERIFY(w.canvas()->zoom() > whole);
+        QCOMPARE(w.session().revision(), revision); // zoom = affichage uniquement
+        QTest::keyClick(w.canvas(), Qt::Key_F);
+        QVERIFY(qAbs(w.canvas()->zoom() - whole) < 1e-6);
     }
 
     void spaceTemporarilyPansWithoutInterruptingPolygonDrawing() {
