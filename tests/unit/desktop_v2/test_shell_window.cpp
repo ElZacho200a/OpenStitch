@@ -23,6 +23,7 @@
 #include "preview_canvas.hpp"
 #include "satin_column.hpp"
 #include "shell_window.hpp"
+#include "studio_theme.hpp"
 #include "source_image_tools.hpp"
 #include "thread_panel.hpp"
 #include <array>
@@ -39,6 +40,24 @@ fs::path tentabrode() {
 class ShellWindowTest : public QObject {
     Q_OBJECT
 private slots:
+    void studioThemeUsesAccessibleFocusAndPreservesModeSwitching() {
+        const auto dark = studioColors(StudioScheme::Dark);
+        const auto light = studioColors(StudioScheme::Light);
+        QVERIFY(dark.background != light.background);
+        QVERIFY(dark.accent != light.accent);
+        QVERIFY(studioStyleSheet(StudioScheme::Dark).contains(dark.accent));
+        QVERIFY(studioStyleSheet(StudioScheme::Light).contains(light.accent));
+        QVERIFY(studioStyleSheet(StudioScheme::Dark).contains("QToolButton:focus"));
+        ShellWindow w;
+        w.setThemeMode("dark");
+        QCOMPARE(w.themeMode(), QString("dark"));
+        QVERIFY(qApp->styleSheet().contains(dark.background));
+        w.setThemeMode("light");
+        QVERIFY(qApp->styleSheet().contains(light.background));
+        w.setThemeMode("system");
+        QCOMPARE(w.themeMode(), QString("system"));
+    }
+
     void emptyShellHasNoObjectsAndNoPreview() {
         ShellWindow w;
         QVERIFY(w.session().project().embroidery_objects.empty());
