@@ -59,6 +59,28 @@ private slots:
         QVERIFY(!cue->animating());
     }
 
+    void selectionFeedbackIsTransientAndNeverChangesTheProject() {
+        ShellWindow w;
+        w.newProject();
+        const auto created = w.session().applyBatch(batchAddRect({0, 0}, 20, 20), "Rectangle");
+        const auto id = *createdObjectId(created.report);
+        w.waitForIdle();
+        const auto revision = w.session().revision();
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        QCOMPARE(w.canvas()->selectionBoxCount(), 1);
+        QVERIFY(w.canvas()->selectionFeedbackActive());
+        auto* reduce = w.findChild<QAction*>("reduceMotion");
+        QVERIFY(reduce != nullptr);
+        reduce->trigger();
+        QVERIFY(w.canvas()->reducedMotion());
+        QVERIFY(!w.canvas()->selectionFeedbackActive());
+        QCOMPARE(w.session().revision(), revision);
+        w.session().selection().clear();
+        QCOMPARE(w.canvas()->selectionBoxCount(), 0);
+        w.canvas()->clearImage();
+        QVERIFY(!w.canvas()->selectionFeedbackActive());
+    }
+
     void reducedMotionPreferenceIsReusedOnRelaunch() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
