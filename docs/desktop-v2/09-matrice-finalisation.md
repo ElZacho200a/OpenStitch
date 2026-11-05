@@ -31,7 +31,9 @@ automatisé qui l'exerce. Une ligne ne passe à ✅ que si le test existe et pas
 | D | Optimisation des parcours avec mesures avant/après | ✅ | ✅ | 🟡 appliquée à la numérisation | ⬜ | 🟡 | pilotage et prévisualisation à faire |
 | D | Carte de densité | ✅ | ⬜ | ✅ | — | ✅ | #265 |
 | D | Simulation de couture | ✅ | — | ✅ | — | ✅ | vitesse réglable, sons ⬜ |
-| E | Compagnon Claude / MCP | ✅ serveur `openstitch-mcp --live` (tube nommé) | ✅ | ⬜ | — | ⬜ | V1 : `companion_dock`, `live_server`. V2 : aucun lien live ni panneau ; à construire sur `DocumentSession::previewBatch/applyBatch` |
+| E | Pont live : un agent MCP modifie le document OUVERT (approbation obligatoire, une étape d'annulation, refus si le document a changé, session close au remplacement) | ✅ `LiveBridge` | ✅ `openstitch-mcp --live` | ✅ dock « Compagnon IA » + commande `companion.toggle` | — | ✅ | `core/live_companion` (Catch2 `[companion]`, 5 cas) + `ui/live_server` ; QTest bout en bout sur une vraie socket locale. Désactivé par défaut |
+| E | Boîte d'approbation avec rendu avant/après, opérations, mesures et réserves | ✅ (`ApprovalRequest`) | ✅ | ✅ `askAgentApproval` | — | 🟡 réponse imposée en test, rendu des images non vérifié | |
+| E | Chat intégré à V2 (envoyer un message à Claude depuis l'application) | 🟡 V1 : `claude_backend`, `claude_code_process_backend` | — | ⬜ | — | ⬜ | **non fait** : l'agent se branche aujourd'hui via un client MCP externe ; aucun faux dialogue n'a été ajouté |
 | F | Identité visuelle « Atelier » | — | — | 🟡 | — | 🟡 | #262 ouverte : bloque les tests (cf. journal) ; #263 micro-interactions |
 | G | Benchmarks 1 / 100 / 500 / 1 000 objets | — | — | ⬜ | — | ⬜ | aucune mesure à ce jour : à produire avant toute affirmation de performance |
 

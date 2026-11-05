@@ -363,3 +363,9 @@ encore le desktop principal.
 
 - Retour utilisateur : « le parcours n'est pas clair ». Ajout d'un écran d'accueil (ouvrir une image ou un projet, projet vierge, projets récents, explication des quatre étapes) affiché tant qu'aucun projet n'est ouvert.
 - `core/workflow_guide` : bandeau Importer › Retoucher › Contrôler › Exporter calculé depuis l'état du document (objets, analyse à jour, erreurs, export à jour) avec un bouton « étape suivante » ; une modification rouvre l'étape de contrôle. Catch2 `[guide]`, QTest `theWelcomePageExplainsTheJourneyAndTheGuideFollowsTheDocument`.
+
+## 2026-11-05 — Session 1 (suite 24) : finalisation V2, tranche 3 (compagnon IA)
+
+- Constat : la PR #252 avait été fusionnée à son premier commit ; l'écran d'accueil et le parcours guidé n'étaient pas dans main. Réintégrés dans cette branche (commit empty de l'installateur ignoré : déjà présent).
+- Pont live pour la V2 : `DocumentSession::liveBridge()` lie le pont au projet ET à la pile d'annulation de l'utilisateur (un seul modèle documentaire, un seul historique) ; `core/live_companion` (journal des demandes, passerelle d'approbation, notification de l'interface après chaque modification d'agent) ; `ui/live_server` (socket locale accessible à l'utilisateur seul, jeton aléatoire, fichier de découverte) ; `ui/companion_panel` (dock « Compagnon IA » : état, mode d'emploi, journal appliqué/refusé, annulation) et boîte d'approbation avant/après. Désactivé au démarrage ; la désactivation invalide les calculs d'agent en cours.
+- Tests : Catch2 `[companion]` (approbation → une étape annulable avec l'historique de l'utilisateur ; refus → document inchangé ; dry-run sans approbation ; remplacement du document → session périmée ; pont fermé) et QTest `agentChangesTheOpenProjectThroughTheLiveBridgeAfterApproval` (vraie socket : mauvais jeton, refus, accord, annulation, désactivation).

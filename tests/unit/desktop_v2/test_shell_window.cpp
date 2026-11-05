@@ -7,6 +7,7 @@
 #include <QFile>
 #include <QLabel>
 #include <QListWidget>
+#include <QLocalSocket>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -20,10 +21,12 @@
 #include <QTreeWidget>
 #include <QWheelEvent>
 #include <filesystem>
+#include <nlohmann/json.hpp>
 
 #include "action_dialog.hpp"
 #include "calque_panel.hpp"
 #include "command_palette.hpp"
+#include "companion_panel.hpp"
 #include "diagnostics_panel.hpp"
 #include "inspector_model.hpp"
 #include "inspector_panel.hpp"
@@ -1271,6 +1274,88 @@ private slots:
         for (std::size_t i = 0; i < 4; ++i) {
             QVERIFY(std::abs(restored->nodes[i].pos.x - before->nodes[i].pos.x) < 0.01);
         }
+    }
+
+    void agentChangesTheOpenProjectThroughTheLiveBridgeAfterApproval() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 20, 10), "Rectangle").committed);
+        w.waitForIdle();
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        const auto before = w.session().project().embroidery_objects.front().rgb;
+
+        w.setLiveDirectory(std::filesystem::path(dir.path().toStdU16String()));
+        int asked = 0;
+        bool answer = true;
+        w.setApprovalOverride([&](const openstitch::mcp::ApprovalRequest&) {
+            ++asked;
+            return answer;
+        });
+        QVERIFY(!w.liveBridgeEnabled()); // jamais activé sans l'utilisateur
+        QVERIFY(w.runCommand("companion.toggle"));
+        QVERIFY(w.liveBridgeEnabled());
+        QVERIFY(w.companionPanel()->active());
+
+        QLocalSocket socket;
+        socket.connectToServer(w.liveEndpoint());
+        QTRY_VERIFY_WITH_TIMEOUT(socket.state() == QLocalSocket::ConnectedState, 5000);
+
+        const auto send = [&](const std::string& token, const nlohmann::json& args) {
+            nlohmann::json request = {{"v", 1},
+                                      {"id", 1},
+                                      {"token", token},
+                                      {"op", "call"},
+                                      {"tool", "project_apply"},
+                                      {"args", args}};
+            QByteArray line = QByteArray::fromStdString(request.dump());
+            line.append(char(10));
+            socket.write(line);
+            socket.flush();
+        };
+        const nlohmann::json batch = {
+            {"operations", {{{"op", "set_color"}, {"object", id}, {"rgb", "#FF0000"}}}},
+            {"dry_run", false}};
+
+        // Mauvais jeton : refusé, rien ne change.
+        send("faux-jeton", batch);
+        QTRY_VERIFY_WITH_TIMEOUT(socket.canReadLine(), 15000);
+        const auto bad = nlohmann::json::parse(socket.readLine().toStdString());
+        QVERIFY(!bad["ok"].get<bool>());
+        QCOMPARE(asked, 0);
+        QCOMPARE(w.session().project().embroidery_objects.front().rgb, before);
+
+        // Refus de l'utilisateur : le document reste identique.
+        answer = false;
+        send(w.liveToken(), batch);
+        QTRY_VERIFY_WITH_TIMEOUT(socket.canReadLine(), 15000);
+        const auto refused = nlohmann::json::parse(socket.readLine().toStdString());
+        QVERIFY(refused["result"]["isError"].get<bool>());
+        QCOMPARE(w.session().project().embroidery_objects.front().rgb, before);
+
+        // Accord : appliqué, en UNE étape de l'historique de l'utilisateur.
+        answer = true;
+        const auto depth = w.session().undoNames().size();
+        send(w.liveToken(), batch);
+        QTRY_VERIFY_WITH_TIMEOUT(socket.canReadLine(), 15000);
+        const auto ok = nlohmann::json::parse(socket.readLine().toStdString());
+        QVERIFY(!ok["result"]["isError"].get<bool>());
+        const std::array<std::uint8_t, 3> red{255, 0, 0};
+        QCOMPARE(w.session().project().embroidery_objects.front().rgb, red);
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        w.waitForIdle();
+        QVERIFY(w.companionPanel()->eventCount() >= 2); // le journal montre refus et application
+
+        // L'utilisateur annule la modification de l'agent, comme n'importe laquelle des siennes.
+        QVERIFY(w.session().undo());
+        QCOMPARE(w.session().project().embroidery_objects.front().rgb, before);
+
+        // Désactivation : le point d'accès disparaît et un nouvel appel est impossible.
+        QVERIFY(w.runCommand("companion.toggle"));
+        QVERIFY(!w.liveBridgeEnabled());
+        QVERIFY(w.liveEndpoint().isEmpty());
     }
 
     void nodeToolEditsSatinRailsAndShowsTheRungs() {

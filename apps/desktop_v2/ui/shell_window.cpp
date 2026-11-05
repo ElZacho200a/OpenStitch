@@ -45,9 +45,11 @@
 #include "action_dialog.hpp"
 #include "calque_panel.hpp"
 #include "command_palette.hpp"
+#include "companion_panel.hpp"
 #include "diagnostics_panel.hpp"
 #include "inspector_model.hpp"
 #include "inspector_panel.hpp"
+#include "live_server.hpp"
 #include "object_labels.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/project_ops/factory.hpp"
@@ -198,6 +200,10 @@ ShellWindow::~ShellWindow() {
     // on annule les tâches avant que la session (membre) soit détruite.
     pump_->stop();
     previewDebounce_->stop();
+    liveServer_.reset(); // plus aucun agent ne peut atteindre le document
+    if (companion_) {
+        companion_->close();
+    }
     if (autosave_ && !session_.dirty()) {
         autosave_->clear(); // sortie propre : rien à récupérer au prochain démarrage
     }
@@ -530,6 +536,20 @@ void ShellWindow::buildInspector() {
     tabifyDockWidget(calqueDock, threadDock);
     connect(threads_, &ThreadPanel::refused, this,
             [this](const QString& message) { setNotice(message, true); });
+    auto* companionDock = new QDockWidget(tr("Compagnon IA"), this);
+    companionDock->setObjectName(QStringLiteral("companionDock"));
+    companionPanel_ = new CompanionPanel(companionDock);
+    companionDock->setWidget(companionPanel_);
+    addDockWidget(Qt::RightDockWidgetArea, companionDock);
+    tabifyDockWidget(calqueDock, companionDock);
+    connect(companionPanel_, &CompanionPanel::toggleRequested, this, [this](bool enable) {
+        QString error;
+        if (!setLiveBridgeEnabled(enable, &error)) {
+            companionPanel_->setError(error);
+            setNotice(tr("Compagnon IA : %1").arg(error), true);
+        }
+    });
+    connect(companionPanel_, &CompanionPanel::undoRequested, this, [this] { session_.undo(); });
     docDock_->raise();
     connect(diagnostics_, &DiagnosticsPanel::analyseRequested, this, &ShellWindow::runDiagnostics);
     connect(diagnostics_, &DiagnosticsPanel::findingActivated, this,
@@ -887,7 +907,69 @@ bool ShellWindow::runGuideNext() {
     return false;
 }
 
+bool ShellWindow::setLiveBridgeEnabled(bool on, QString* error) {
+    if (!on) {
+        if (liveServer_) {
+            // Invalide aussi les calculs d'agent déjà en cours : après la désactivation, plus
+            // rien ne peut être appliqué, même une demande déjà approuvée à l'écran.
+            session_.liveBridge().reset();
+            liveServer_.reset();
+        }
+        companionPanel_->setActive(false, {});
+        setNotice(tr("Compagnon IA : pont désactivé."), false);
+        return true;
+    }
+    if (liveServer_) {
+        return true;
+    }
+    if (!companion_) {
+        companion_ = std::make_unique<LiveCompanion>(
+            session_,
+            [this](const mcp::ApprovalRequest& request) {
+                return approvalOverride_ ? approvalOverride_(request)
+                                         : askAgentApproval(this, request);
+            },
+            [this] {
+                return currentPath_.empty() ? std::string("(sans titre)")
+                                            : currentPath_.filename().string();
+            });
+        companion_->setOnChanged([this] {
+            companionPanel_->setEvents(companion_->events());
+            companionPanel_->setCanUndo(session_.canUndo(), fromUtf8(session_.undoName()));
+        });
+    }
+    auto server = std::make_unique<LiveServer>(companion_->service(), this);
+    QString why;
+    const auto dir = liveDir_.empty() ? mcp::live_directory() : liveDir_;
+    if (!server->start(dir, &why)) {
+        if (error != nullptr) {
+            *error = why;
+        }
+        return false;
+    }
+    liveServer_ = std::move(server);
+    companionPanel_->setActive(true, liveServer_->endpoint());
+    companionPanel_->setCanUndo(session_.canUndo(), fromUtf8(session_.undoName()));
+    setNotice(tr("Compagnon IA : pont activé. Chaque modification demandera votre accord."), false);
+    return true;
+}
+
+bool ShellWindow::liveBridgeEnabled() const {
+    return liveServer_ != nullptr && liveServer_->running();
+}
+
+QString ShellWindow::liveEndpoint() const {
+    return liveServer_ ? liveServer_->endpoint() : QString();
+}
+
+std::string ShellWindow::liveToken() const {
+    return liveServer_ ? liveServer_->token() : std::string();
+}
+
 void ShellWindow::onDocumentChanged(ChangeKind) {
+    if (companionPanel_ != nullptr) {
+        companionPanel_->setCanUndo(session_.canUndo(), fromUtf8(session_.undoName()));
+    }
     refreshWindowTitle();
     rebuildObjectList();
     refreshActionStates();
@@ -2454,6 +2536,10 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
                        q(tr("Supprimer le préréglage « %1 »").arg(fromUtf8(name))),
                        q(tr("Préréglages")), "", true});
     }
+    out.push_back({"companion.toggle",
+                   q(liveBridgeEnabled() ? tr("Désactiver le pont du compagnon IA")
+                                         : tr("Activer le pont du compagnon IA")),
+                   q(tr("Compagnon IA")), "", true});
     out.push_back({"analysis.run", q(tr("Analyser le document (diagnostic)")), q(tr("Analyse")), "",
                    !session_.project().embroidery_objects.empty()});
     out.push_back(
@@ -2516,6 +2602,13 @@ bool ShellWindow::runCommand(const QString& id) {
             applyPresetIndex(id.mid(13).toInt());
         } else if (id.startsWith(QLatin1String("preset.remove."))) {
             removePresetIndex(id.mid(14).toInt());
+        } else if (id == QLatin1String("companion.toggle")) {
+            QString error;
+            if (!setLiveBridgeEnabled(!liveBridgeEnabled(), &error)) {
+                companionPanel_->setError(error);
+                setNotice(tr("Compagnon IA : %1").arg(error), true);
+                return false;
+            }
         } else if (id == QLatin1String("analysis.run")) {
             setWorkspace(Workspace::Optimize);
             runDiagnostics();

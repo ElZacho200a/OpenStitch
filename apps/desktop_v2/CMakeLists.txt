@@ -52,7 +52,7 @@ target_link_libraries(openstitch_desktop_v2_core
 if(NOT OPENSTITCH_BUILD_DESKTOP)
     return()
 endif()
-find_package(Qt6 COMPONENTS Widgets QUIET)
+find_package(Qt6 COMPONENTS Widgets Network QUIET)
 if(NOT Qt6_FOUND)
     return()
 endif()
@@ -68,6 +68,10 @@ add_library(openstitch_desktop_v2_ui STATIC
     ui/calque_panel.cpp
     ui/calque_panel.hpp
     ui/thread_panel.cpp
+    ui/companion_panel.cpp
+    ui/companion_panel.hpp
+    ui/live_server.cpp
+    ui/live_server.hpp
     ui/thread_panel.hpp
     ui/welcome_page.cpp
     ui/welcome_page.hpp
@@ -83,7 +87,7 @@ add_library(openstitch_desktop_v2_ui STATIC
 add_library(openstitch::desktop_v2_ui ALIAS openstitch_desktop_v2_ui)
 target_include_directories(openstitch_desktop_v2_ui PUBLIC ui)
 target_link_libraries(openstitch_desktop_v2_ui
-    PUBLIC Qt6::Widgets openstitch::desktop_v2_core openstitch::project_io
+    PUBLIC Qt6::Widgets Qt6::Network openstitch::desktop_v2_core openstitch::project_io
     PRIVATE openstitch::warnings)
 
 add_executable(openstitch_v2 WIN32 ui/main.cpp)

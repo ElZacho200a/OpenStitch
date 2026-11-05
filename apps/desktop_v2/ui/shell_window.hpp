@@ -10,6 +10,7 @@
 #include <QPointF>
 #include <QRectF>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -24,6 +25,7 @@
 #include "document_session.hpp"
 #include "edit_batch.hpp"
 #include "image_prep.hpp"
+#include "live_companion.hpp"
 #include "node_edit.hpp"
 #include "point_edit.hpp"
 #include "preview_service.hpp"
@@ -64,6 +66,8 @@ class InspectorPanel;
 class DiagnosticsPanel;
 class CalquePanel;
 class ThreadPanel;
+class CompanionPanel;
+class LiveServer;
 
 class ShellWindow : public QMainWindow {
     Q_OBJECT
@@ -176,6 +180,22 @@ public:
     [[nodiscard]] NextAction guideNext() const { return guide_.next; }
     bool runGuideNext(); // vrai si une action a été lancée
     [[nodiscard]] ThreadPanel* threadPanel() const { return threads_; }
+
+    // --- Compagnon IA : pont « projet vivant » (un agent MCP modifie CE document) -------------
+    // Désactivé au démarrage ; activé par l'utilisateur seul. Chaque modification d'agent exige
+    // son approbation et forme UNE étape de l'historique d'annulation de l'utilisateur.
+    bool setLiveBridgeEnabled(bool on, QString* error = nullptr);
+    [[nodiscard]] bool liveBridgeEnabled() const;
+    [[nodiscard]] QString liveEndpoint() const;
+    [[nodiscard]] std::string liveToken() const;
+    [[nodiscard]] CompanionPanel* companionPanel() const { return companionPanel_; }
+    [[nodiscard]] LiveCompanion* companion() const { return companion_.get(); }
+    // Dossier du fichier de découverte (défaut : dossier utilisateur de `libs/mcp`) et réponse
+    // d'approbation imposée (tests headless) : sans elle, une boîte de dialogue est affichée.
+    void setLiveDirectory(const std::filesystem::path& dir) { liveDir_ = dir; }
+    void setApprovalOverride(std::function<bool(const mcp::ApprovalRequest&)> fn) {
+        approvalOverride_ = std::move(fn);
+    }
     // Carte de densité (surimpression) : affichée, et zones sur-denses de la dernière analyse.
     [[nodiscard]] bool densityShown() const;
     [[nodiscard]] bool densityActive() const { return densityActive_; }
@@ -315,6 +335,11 @@ private:
     void buildCentral();
     void updateGuide();
     ThreadPanel* threads_{nullptr};
+    CompanionPanel* companionPanel_{nullptr};
+    std::unique_ptr<LiveCompanion> companion_;
+    std::unique_ptr<LiveServer> liveServer_;
+    std::filesystem::path liveDir_;
+    std::function<bool(const mcp::ApprovalRequest&)> approvalOverride_;
     QMenu* presetMenu_{nullptr};
     QDockWidget* docDock_{nullptr};
     QDockWidget* diagDock_{nullptr};
