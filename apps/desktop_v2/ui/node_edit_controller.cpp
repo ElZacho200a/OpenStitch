@@ -51,6 +51,7 @@ void NodeEditController::connectCanvas() {
     });
     connect(&host_.canvas, &PreviewCanvas::nodeDragCancelled, this, [this] {
         segmentDrag_.reset();
+        tangentDrag_.reset();
         host_.canvas.setNodeOutline({}, true);
         host_.notice(tr("Déplacement de nœuds annulé."), false);
     });
@@ -170,22 +171,62 @@ void NodeEditController::refresh() {
     }
     nodeObject_ = *target;
     nodeView_ = std::move(*view);
+    redrawNodeHandles();
+}
+
+QPointF NodeEditController::tangentPx(int index) const {
+    if (index < 0 || index >= static_cast<int>(shownTangents_.size())) {
+        return {};
+    }
+    const auto& p = shownTangents_[static_cast<std::size_t>(index)].pos;
+    return {host_.frame.mmToPxX(p.x), host_.frame.mmToPxY(-p.y)};
+}
+
+void NodeEditController::redrawNodeHandles() {
+    const auto px = [this](PointMm p) {
+        return QPointF(host_.frame.mmToPxX(p.x), host_.frame.mmToPxY(-p.y));
+    };
     QVector<QPointF> pts;
     pts.reserve(static_cast<qsizetype>(nodeView_.nodes.size()));
     for (std::size_t i = 0; i < nodeView_.nodes.size(); ++i) {
         pts.push_back(handlePx(static_cast<int>(i)));
     }
-    host_.canvas.setNodeHandles(pts, QVector<int>(nodeSel_.begin(), nodeSel_.end()));
-    QVector<QLineF> rungs;
-    for (const auto& [a, b] : nodeView_.rungs) {
-        rungs.push_back(QLineF(host_.frame.mmToPxX(a.x), host_.frame.mmToPxY(-a.y),
-                               host_.frame.mmToPxX(b.x), host_.frame.mmToPxY(-b.y)));
+    // Les poignées de tangente n'apparaissent que pour les nœuds choisis (pas de forêt de points).
+    const int tangentStart = static_cast<int>(pts.size());
+    shownTangents_.clear();
+    QVector<QLineF> guides;
+    for (const auto& t : nodeView_.tangents) {
+        for (const int i : nodeSel_) {
+            if (nodeView_.nodes[static_cast<std::size_t>(i)].ref == t.node) {
+                shownTangents_.push_back(t);
+                pts.push_back(px(t.pos));
+                guides.push_back(QLineF(px(t.anchor), px(t.pos)));
+                break;
+            }
+        }
     }
-    host_.canvas.setNodeGuides(rungs);
+    host_.canvas.setNodeHandles(pts, QVector<int>(nodeSel_.begin(), nodeSel_.end()),
+                                shownTangents_.empty() ? -1 : tangentStart);
+    for (const auto& [a, b] : nodeView_.rungs) {
+        guides.push_back(QLineF(px(a), px(b)));
+    }
+    host_.canvas.setNodeGuides(guides);
 }
 
 void NodeEditController::onNodePressed(int index, Qt::KeyboardModifiers modifiers) {
     segmentDrag_.reset();
+    tangentDrag_.reset();
+    if (!fadeView_ && index >= static_cast<int>(nodeView_.nodes.size())) {
+        const auto t = static_cast<std::size_t>(index) - nodeView_.nodes.size();
+        if (t < shownTangents_.size()) {
+            tangentDrag_ = t; // poignée de tangente saisie : le glisser la déplace
+            host_.notice(
+                tr("Poignée de tangente : tirez pour courber (un nœud lisse garde ses deux "
+                   "poignées alignées)."),
+                false);
+        }
+        return;
+    }
     if (fadeView_) {
         fadeHandle_ = index;
         static const char* const names[] = {"début de la transition", "fin de la transition",
@@ -220,11 +261,7 @@ void NodeEditController::onNodePressed(int index, Qt::KeyboardModifiers modifier
     } else if (inSel == nodeSel_.end()) {
         nodeSel_ = {index}; // sur un nœud déjà choisi, on garde le groupe pour le glisser
     }
-    QVector<QPointF> pts;
-    for (std::size_t i = 0; i < nodeView_.nodes.size(); ++i) {
-        pts.push_back(handlePx(static_cast<int>(i)));
-    }
-    host_.canvas.setNodeHandles(pts, QVector<int>(nodeSel_.begin(), nodeSel_.end()));
+    redrawNodeHandles();
     QString message = tr("%n nœud(s) sélectionné(s). Glissez pour déplacer, double-cliquez un "
                          "segment pour insérer un nœud.",
                          "", static_cast<int>(nodeSel_.size()));
@@ -235,6 +272,25 @@ void NodeEditController::onNodePressed(int index, Qt::KeyboardModifiers modifier
 }
 
 void NodeEditController::onNodeDragMoved(QPointF deltaPx) {
+    if (tangentDrag_ && host_.frame.px_per_mm > 0.0) {
+        const auto& t = shownTangents_[*tangentDrag_];
+        const PointMm target{t.pos.x + deltaPx.x() / host_.frame.px_per_mm,
+                             t.pos.y - deltaPx.y() / host_.frame.px_per_mm};
+        const auto preview =
+            previewTangentDrag(host_.session.project(), nodeObject_, t.node, t.isOut, target);
+        const auto& outlines = preview ? *preview : nodeView_.outlines;
+        QVector<QVector<QPointF>> polylines;
+        for (const auto& line : outlines) {
+            QVector<QPointF> px;
+            px.reserve(static_cast<qsizetype>(line.size()));
+            for (const auto& p : line) {
+                px.push_back({host_.frame.mmToPxX(p.x), host_.frame.mmToPxY(-p.y)});
+            }
+            polylines.push_back(std::move(px));
+        }
+        host_.canvas.setNodeOutline(polylines, preview.has_value());
+        return;
+    }
     if (segmentDrag_ && host_.frame.px_per_mm > 0.0) {
         const PointMm delta{deltaPx.x() / host_.frame.px_per_mm,
                             -deltaPx.y() / host_.frame.px_per_mm};
@@ -308,6 +364,23 @@ void NodeEditController::onNodeDragMoved(QPointF deltaPx) {
 }
 
 void NodeEditController::onNodeDragFinished(QPointF deltaPx) {
+    if (tangentDrag_) {
+        const auto t = shownTangents_[*tangentDrag_];
+        tangentDrag_.reset();
+        host_.canvas.setNodeOutline({}, true);
+        if (host_.frame.px_per_mm <= 0.0) {
+            return;
+        }
+        const PointMm target{t.pos.x + deltaPx.x() / host_.frame.px_per_mm,
+                             t.pos.y - deltaPx.y() / host_.frame.px_per_mm};
+        const auto r = moveTangent(host_.session, nodeObject_, t.node, t.isOut, target);
+        host_.notice(r.ok ? tr("Poignée déplacée.") : tr("Nœuds : %1").arg(fromUtf8(r.message)),
+                     !r.ok);
+        if (!r.ok) {
+            refresh();
+        }
+        return;
+    }
     if (segmentDrag_) {
         const auto hit = *segmentDrag_;
         segmentDrag_.reset();

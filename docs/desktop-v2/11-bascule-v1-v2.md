@@ -20,8 +20,8 @@ dit honnêtement ce qui bloque, ce qui est prêt et comment le vérifier.
 ## Bloquant avant bascule (non fait)
 
 - [ ] Correction de segmentation APRÈS numérisation (fusion / suppression / recoloration de régions, nettoyage des îlots, régénération des objets). Les commandes du moteur existent, l'interface non.
-- [ ] Poignées de tangentes visibles et déplaçables après création. La Plume, le Crayon et la suppression de nœuds sont faits.
-- [ ] Édition des barreaux et tangentes des rails de satin ; diagnostic des croisements de rails.
+- [x] Plume, Crayon, suppression de nœuds, poignées de tangentes Bézier (contours et rails de satin).
+- [ ] Édition des barreaux des rails de satin ; diagnostic des croisements de rails.
 - [ ] Comparaison nominal ↔ prédit de la compensation de tirage et assistant d'étalonnage sur pièce-test.
 - [ ] Options machine avancées d'export (départ, coupes, arrêts), bibliothèque de cadres.
 - [ ] Segmentation IA / SAM (hors priorité produit ; état de disponibilité à afficher honnêtement).

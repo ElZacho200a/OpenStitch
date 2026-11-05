@@ -54,12 +54,16 @@ public:
     [[nodiscard]] int handleCount() const;
     [[nodiscard]] int selectedCount() const { return static_cast<int>(nodeSel_.size()); }
     [[nodiscard]] QPointF handlePx(int index) const;
+    // Poignées de tangente affichées (celles des nœuds choisis) : nombre et position en pixels.
+    [[nodiscard]] int tangentCount() const { return static_cast<int>(shownTangents_.size()); }
+    [[nodiscard]] QPointF tangentPx(int index) const;
 
 private:
     void onNodePressed(int index, Qt::KeyboardModifiers modifiers);
     void onNodeDragMoved(QPointF deltaPx);
     void onNodeDragFinished(QPointF deltaPx);
     void onNodeInsert(QPointF scenePx);
+    void redrawNodeHandles(); // nœuds + poignées de tangente des nœuds choisis + repères
 
     Host host_;
     NodeView nodeView_;
@@ -67,6 +71,8 @@ private:
     std::optional<FadeAxisView> fadeView_;  // outil « fade.axis » : axe du fondu sélectionné
     std::uint64_t fadeObject_{0};
     int fadeHandle_{-1};
+    std::vector<TangentHandle> shownTangents_; // poignées affichées (nœuds choisis seulement)
+    std::optional<std::size_t> tangentDrag_;   // poignée en cours de glisser (indice ci-dessus)
     std::vector<int> nodeSel_; // indices dans nodeView_.nodes (tous dans le même contour)
     std::uint64_t nodeObject_{0};
 };

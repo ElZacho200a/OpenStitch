@@ -498,7 +498,8 @@ void PreviewCanvas::setDensityOverlay(const QImage& image, const QRectF& rectPx)
     densityItem_->setAcceptedMouseButtons(Qt::NoButton); // ne gêne ni la sélection ni les outils
 }
 
-void PreviewCanvas::setNodeHandles(const QVector<QPointF>& scenePx, const QVector<int>& selected) {
+void PreviewCanvas::setNodeHandles(const QVector<QPointF>& scenePx, const QVector<int>& selected,
+                                   int tangentStart) {
     for (QGraphicsItem* it : nodeItems_) {
         scene_->removeItem(it);
         delete it;
@@ -512,16 +513,21 @@ void PreviewCanvas::setNodeHandles(const QVector<QPointF>& scenePx, const QVecto
     nodeItems_.reserve(scenePx.size());
     for (int i = 0; i < scenePx.size(); ++i) {
         const bool sel = selected.contains(i);
-        const double r = sel ? 5.0 : 4.0;
-        auto* square = scene_->addRect(
-            -r, -r, 2 * r, 2 * r,
-            cosmeticPen(sel ? QColor(169, 45, 102) : QColor(40, 44, 52), Qt::SolidLine, 1),
-            QBrush(sel ? QColor(169, 45, 102) : QColor(255, 255, 255)));
-        square->setPos(scenePx[i]);
-        square->setZValue(sel ? 18 : 17);
-        square->setFlag(QGraphicsItem::ItemIgnoresTransformations, true);
-        square->setAcceptedMouseButtons(Qt::NoButton);
-        nodeItems_.push_back(square);
+        const bool tangent = tangentStart >= 0 && i >= tangentStart;
+        const double r = tangent ? 3.5 : (sel ? 5.0 : 4.0);
+        const QPen pen = cosmeticPen(sel || tangent ? QColor(169, 45, 102) : QColor(40, 44, 52),
+                                     Qt::SolidLine, 1);
+        const QBrush brush(sel ? QColor(169, 45, 102) : QColor(255, 255, 255));
+        QAbstractGraphicsShapeItem* shape =
+            tangent ? static_cast<QAbstractGraphicsShapeItem*>(
+                          scene_->addEllipse(-r, -r, 2 * r, 2 * r, pen, brush))
+                    : static_cast<QAbstractGraphicsShapeItem*>(
+                          scene_->addRect(-r, -r, 2 * r, 2 * r, pen, brush));
+        shape->setPos(scenePx[i]);
+        shape->setZValue(sel || tangent ? 18 : 17);
+        shape->setFlag(QGraphicsItem::ItemIgnoresTransformations, true);
+        shape->setAcceptedMouseButtons(Qt::NoButton);
+        nodeItems_.push_back(shape);
     }
 }
 

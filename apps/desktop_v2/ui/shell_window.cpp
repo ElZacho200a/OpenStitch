@@ -1965,6 +1965,14 @@ int ShellWindow::nodeHandleCount() const {
     return nodes_ ? nodes_->handleCount() : 0;
 }
 
+int ShellWindow::tangentHandleCount() const {
+    return nodes_ ? nodes_->tangentCount() : 0;
+}
+
+QPointF ShellWindow::tangentHandlePx(int index) const {
+    return nodes_ ? nodes_->tangentPx(index) : QPointF();
+}
+
 int ShellWindow::selectedNodeCount() const {
     return nodes_ ? nodes_->selectedCount() : 0;
 }

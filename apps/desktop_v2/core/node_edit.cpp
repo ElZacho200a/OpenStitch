@@ -75,6 +75,34 @@ constexpr double kMaxCoordMm = 1000.0;
     return set == 0 ? commands::SatinRailSide::RailA : commands::SatinRailSide::RailB;
 }
 
+// Nouvelles poignées d'un nœud quand sa poignée `isOut` passe à `rel` (relative, µm) : un nœud
+// Lisse garde la poignée opposée colinéaire, avec sa longueur (ou la même longueur si elle
+// n'existait pas).
+struct HandlePair {
+    std::optional<Vec2um> in;
+    std::optional<Vec2um> out;
+};
+
+[[nodiscard]] HandlePair handlesAfter(const geometry::PathNode& n, bool isOut, Vec2um rel) {
+    HandlePair h{n.tan_in, n.tan_out};
+    (isOut ? h.out : h.in) = rel;
+    if (n.type == geometry::NodeType::Smooth) {
+        const auto& other = isOut ? n.tan_in : n.tan_out;
+        const double len =
+            std::hypot(static_cast<double>(rel.x.value), static_cast<double>(rel.y.value));
+        if (len > 0.0) {
+            const double otherLen = other ? std::hypot(static_cast<double>(other->x.value),
+                                                       static_cast<double>(other->y.value))
+                                          : len;
+            const Vec2um mirrored{
+                Micrometers{static_cast<std::int32_t>(std::lround(-rel.x.value / len * otherLen))},
+                Micrometers{static_cast<std::int32_t>(std::lround(-rel.y.value / len * otherLen))}};
+            (isOut ? h.in : h.out) = mirrored;
+        }
+    }
+    return h;
+}
+
 [[nodiscard]] bool withinBounds(PointMm d) {
     return std::abs(d.x) <= kMaxCoordMm && std::abs(d.y) <= kMaxCoordMm;
 }
@@ -97,6 +125,14 @@ Result<NodeView> nodeView(const document::Project& project, std::uint64_t object
                                       node.type == geometry::NodeType::Smooth,
                                       node.tan_in.has_value() || node.tan_out.has_value(),
                                       !rail.closed});
+                for (const bool isOut : {false, true}) {
+                    const auto& tan = isOut ? node.tan_out : node.tan_in;
+                    if (tan) {
+                        const Vec2um abs{Micrometers{node.pos.x.value + tan->x.value},
+                                         Micrometers{node.pos.y.value + tan->y.value}};
+                        view.tangents.push_back({{side, 0, n}, isOut, toMm(abs), toMm(node.pos)});
+                    }
+                }
             }
         }
         bool first = true;
@@ -130,6 +166,14 @@ Result<NodeView> nodeView(const document::Project& project, std::uint64_t object
                                       node.type == geometry::NodeType::Smooth,
                                       node.tan_in.has_value() || node.tan_out.has_value(),
                                       !path.closed});
+                for (const bool isOut : {false, true}) {
+                    const auto& tan = isOut ? node.tan_out : node.tan_in;
+                    if (tan) {
+                        const Vec2um abs{Micrometers{node.pos.x.value + tan->x.value},
+                                         Micrometers{node.pos.y.value + tan->y.value}};
+                        view.tangents.push_back({{s, p, n}, isOut, toMm(abs), toMm(node.pos)});
+                    }
+                }
             }
         }
     }
@@ -404,6 +448,113 @@ ServiceResult smoothContours(DocumentSession& session,
         return {false, made.error.empty() ? "Lissage impossible." : made.error};
     }
     session.execute(std::move(made.command));
+    return {true, {}};
+}
+
+std::optional<std::vector<std::vector<PointMm>>>
+previewTangentDrag(const document::Project& project, std::uint64_t objectId, const NodeRef& node,
+                   bool isOut, PointMm toMm) {
+    if (!withinBounds(toMm)) {
+        return std::nullopt;
+    }
+    if (const auto* satin = satinOf(project, objectId); satin != nullptr) {
+        if (node.set > 1) {
+            return std::nullopt;
+        }
+        geometry::Path rails[2] = {satin->rail_a, satin->rail_b};
+        auto& rail = rails[node.set];
+        if (node.node >= rail.nodes.size()) {
+            return std::nullopt;
+        }
+        auto& n = rail.nodes[node.node];
+        const Vec2um rel{Micrometers{toUm(toMm).x.value - n.pos.x.value},
+                         Micrometers{toUm(toMm).y.value - n.pos.y.value}};
+        const auto h = handlesAfter(n, isOut, rel);
+        n.tan_in = h.in;
+        n.tan_out = h.out;
+        return std::vector<std::vector<PointMm>>{outline(rails[0]), outline(rails[1])};
+    }
+    const auto* vector = sourceOf(project, objectId);
+    if (vector == nullptr || node.set >= vector->paths.size()) {
+        return std::nullopt;
+    }
+    std::vector<geometry::PathSet> sets = vector->paths;
+    auto& set = sets[node.set];
+    auto* path = node.path == 0
+                     ? &set.outer
+                     : (node.path - 1 < set.holes.size() ? &set.holes[node.path - 1] : nullptr);
+    if (path == nullptr || node.node >= path->nodes.size()) {
+        return std::nullopt;
+    }
+    auto& n = path->nodes[node.node];
+    const Vec2um rel{Micrometers{toUm(toMm).x.value - n.pos.x.value},
+                     Micrometers{toUm(toMm).y.value - n.pos.y.value}};
+    const auto h = handlesAfter(n, isOut, rel);
+    n.tan_in = h.in;
+    n.tan_out = h.out;
+    std::vector<std::vector<PointMm>> out;
+    for (const auto& s : sets) {
+        out.push_back(outline(s.outer));
+        for (const auto& hole : s.holes) {
+            out.push_back(outline(hole));
+        }
+    }
+    return out;
+}
+
+ServiceResult moveTangent(DocumentSession& session, std::uint64_t objectId, const NodeRef& node,
+                          bool isOut, PointMm toMm) {
+    if (!withinBounds(toMm)) {
+        return {false, "Poignée hors de la zone de travail."};
+    }
+    auto composite = std::make_unique<commands::CompositeCommand>("Déplacer une poignée Bézier");
+    if (const auto* satin = satinOf(session.project(), objectId); satin != nullptr) {
+        if (node.set > 1 || node.node >= railOf(*satin, node.set).nodes.size()) {
+            return {false, "Nœud inconnu."};
+        }
+        const auto& n = railOf(*satin, node.set).nodes[node.node];
+        const Vec2um rel{Micrometers{toUm(toMm).x.value - n.pos.x.value},
+                         Micrometers{toUm(toMm).y.value - n.pos.y.value}};
+        const auto h = handlesAfter(n, isOut, rel);
+        if (h.in != n.tan_in) {
+            composite->add(std::make_unique<commands::MoveSatinRailHandleCommand>(
+                ObjectId{objectId}, sideOf(node.set), node.node, false, n.tan_in, h.in));
+        }
+        if (h.out != n.tan_out) {
+            composite->add(std::make_unique<commands::MoveSatinRailHandleCommand>(
+                ObjectId{objectId}, sideOf(node.set), node.node, true, n.tan_out, h.out));
+        }
+    } else {
+        const auto* vector = sourceOf(session.project(), objectId);
+        if (vector == nullptr || node.set >= vector->paths.size()) {
+            return {false, "Cet objet n'a pas de contour éditable."};
+        }
+        const auto& set = vector->paths[node.set];
+        const geometry::Path* path =
+            node.path == 0
+                ? &set.outer
+                : (node.path - 1 < set.holes.size() ? &set.holes[node.path - 1] : nullptr);
+        if (path == nullptr || node.node >= path->nodes.size()) {
+            return {false, "Nœud inconnu."};
+        }
+        const auto& n = path->nodes[node.node];
+        const Vec2um rel{Micrometers{toUm(toMm).x.value - n.pos.x.value},
+                         Micrometers{toUm(toMm).y.value - n.pos.y.value}};
+        const auto h = handlesAfter(n, isOut, rel);
+        const document::NodeRef ref{node.set, node.path, node.node};
+        if (h.in != n.tan_in) {
+            composite->add(std::make_unique<commands::SetNodeHandleCommand>(vector->id, ref, false,
+                                                                            n.tan_in, h.in));
+        }
+        if (h.out != n.tan_out) {
+            composite->add(std::make_unique<commands::SetNodeHandleCommand>(vector->id, ref, true,
+                                                                            n.tan_out, h.out));
+        }
+    }
+    if (composite->empty()) {
+        return {true, {}}; // la poignée n'a pas bougé : aucun pas d'annulation inutile
+    }
+    session.execute(std::move(composite));
     return {true, {}};
 }
 

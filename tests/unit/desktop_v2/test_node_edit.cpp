@@ -343,3 +343,98 @@ TEST_CASE("deleting is refused below three nodes, for nothing, and on satin rail
     REQUIRE(made.ok);
     CHECK_FALSE(deleteNodes(s, made.objectId, {NodeRef{0, 0, 1}}).ok);
 }
+
+TEST_CASE("curved nodes expose their tangent handles in absolute positions",
+          "[desktop_v2][nodes][tangent]") {
+    OctagonFixture f;
+    const auto flat = nodeView(f.session.project(), f.id);
+    REQUIRE(flat.has_value());
+    CHECK(flat->tangents.empty()); // un polygone n'a pas de poignée
+    REQUIRE(convertToCurves(f.session, {f.id}).ok);
+    const auto view = nodeView(f.session.project(), f.id);
+    REQUIRE(view.has_value());
+    REQUIRE_FALSE(view->tangents.empty());
+    for (const auto& t : view->tangents) {
+        CHECK(std::hypot(t.pos.x - t.anchor.x, t.pos.y - t.anchor.y) > 0.1);
+    }
+}
+
+TEST_CASE(
+    "dragging a handle bends the curve, keeps the node, is one undo step and mirrors smooth nodes",
+    "[desktop_v2][nodes][tangent]") {
+    OctagonFixture f;
+    REQUIRE(convertToCurves(f.session, {f.id}).ok);
+    const auto view = nodeView(f.session.project(), f.id);
+    REQUIRE(view.has_value());
+    const auto handle = view->tangents.front();
+    const PointMm target{handle.pos.x + 4.0, handle.pos.y + 3.0};
+
+    const auto revision = f.session.revision();
+    const auto preview =
+        previewTangentDrag(f.session.project(), f.id, handle.node, handle.isOut, target);
+    REQUIRE(preview.has_value());
+    CHECK(f.session.revision() == revision); // l'aperçu n'écrit rien
+
+    const auto depth = f.session.undoNames().size();
+    REQUIRE(moveTangent(f.session, f.id, handle.node, handle.isOut, target).ok);
+    CHECK(f.session.undoNames().size() == depth + 1); // poignée + miroir = un seul pas
+    const auto after = nodeView(f.session.project(), f.id);
+    REQUIRE(after.has_value());
+    // Le nœud n'a pas bougé…
+    for (std::size_t i = 0; i < view->nodes.size(); ++i) {
+        CHECK(std::abs(after->nodes[i].pos.x - view->nodes[i].pos.x) < 0.001);
+        CHECK(std::abs(after->nodes[i].pos.y - view->nodes[i].pos.y) < 0.001);
+    }
+    // …sa poignée est à la nouvelle place…
+    bool movedFound = false;
+    for (const auto& t : after->tangents) {
+        if (t.node == handle.node && t.isOut == handle.isOut) {
+            movedFound = true;
+            CHECK(std::abs(t.pos.x - target.x) < 0.01);
+            CHECK(std::abs(t.pos.y - target.y) < 0.01);
+        }
+    }
+    CHECK(movedFound);
+    // …et la poignée opposée d'un nœud lisse est restée colinéaire.
+    const TangentHandle* opposite = nullptr;
+    const TangentHandle* moved = nullptr;
+    for (const auto& t : after->tangents) {
+        if (t.node == handle.node) {
+            (t.isOut == handle.isOut ? moved : opposite) = &t;
+        }
+    }
+    if (opposite != nullptr && moved != nullptr) {
+        const double ax = moved->pos.x - moved->anchor.x;
+        const double ay = moved->pos.y - moved->anchor.y;
+        const double bx = opposite->pos.x - opposite->anchor.x;
+        const double by = opposite->pos.y - opposite->anchor.y;
+        CHECK(std::abs(ax * by - ay * bx) < 0.05 * std::hypot(ax, ay) * std::hypot(bx, by));
+    }
+    f.session.undo();
+    const auto undone = nodeView(f.session.project(), f.id);
+    REQUIRE(undone.has_value());
+    REQUIRE(undone->tangents.size() == view->tangents.size());
+    for (std::size_t i = 0; i < view->tangents.size(); ++i) {
+        CHECK(std::abs(undone->tangents[i].pos.x - view->tangents[i].pos.x) < 0.001);
+    }
+}
+
+TEST_CASE("a satin rail handle can be dragged too, and an out-of-range handle is refused",
+          "[desktop_v2][nodes][tangent]") {
+    auto s = emptySession();
+    const auto made =
+        createSatinColumn(s, {{{0, 0}, {0, 4}}, {{10, 0}, {10, 4}}, {{20, 0}, {20, 4}}});
+    REQUIRE(made.ok);
+    const auto view = nodeView(s.project(), made.objectId);
+    REQUIRE(view.has_value());
+    CHECK(view->tangents.empty()); // rails droits au départ : pas de poignée à afficher
+    // Dragging a handle on a node without tangents creates one (clean curve from a straight rail).
+    const auto depth = s.undoNames().size();
+    REQUIRE(moveTangent(s, made.objectId, NodeRef{0, 0, 1}, true, {10.0, 3.0}).ok);
+    CHECK(s.undoNames().size() == depth + 1);
+    const auto after = nodeView(s.project(), made.objectId);
+    REQUIRE(after.has_value());
+    CHECK_FALSE(after->tangents.empty());
+    CHECK_FALSE(moveTangent(s, made.objectId, NodeRef{0, 0, 1}, true, {5000.0, 0.0}).ok);
+    CHECK(s.undoNames().size() == depth + 1);
+}

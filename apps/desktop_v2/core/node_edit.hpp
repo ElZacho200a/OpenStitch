@@ -36,11 +36,22 @@ struct NodeHandle {
     bool open{false};   // le chemin ne se referme pas (rail de satin) : pas de segment de retour
 };
 
+// Poignée de tangente d'un nœud courbe (position ABSOLUE, mm modèle) et nœud dont elle part.
+struct TangentHandle {
+    NodeRef node;
+    bool isOut{false};
+    PointMm pos;
+    PointMm anchor;
+};
+
 struct NodeView {
     std::uint64_t vectorId{0};
     std::vector<NodeHandle> nodes;
     // Contours aplatis (courbes comprises), un par chemin, en mm modèle : tracé de l'aperçu.
     std::vector<std::vector<PointMm>> outlines;
+    // Poignées de tangente de tous les nœuds courbes (l'interface n'affiche que celles des nœuds
+    // choisis).
+    std::vector<TangentHandle> tangents;
     // Colonne satin : `ref.set` vaut 0 pour le rail A et 1 pour le rail B (`ref.path` = 0).
     bool satin{false};
     std::vector<std::pair<PointMm, PointMm>> rungs; // barreaux (rail A, rail B), mm modèle
@@ -94,6 +105,17 @@ previewSegmentReshape(const document::Project& project, std::uint64_t objectId,
 ServiceResult convertToCurves(DocumentSession& session,
                               const std::vector<std::uint64_t>& objectIds);
 ServiceResult smoothContours(DocumentSession& session, const std::vector<std::uint64_t>& objectIds);
+
+// Aperçu d'un glisser de poignée de tangente vers `toMm` (absolu) : contours aplatis, sans toucher
+// au document. Pour un nœud Lisse la poignée opposée reste colinéaire (longueur conservée).
+// `nullopt` si le nœud n'existe pas.
+[[nodiscard]] std::optional<std::vector<std::vector<PointMm>>>
+previewTangentDrag(const document::Project& project, std::uint64_t objectId, const NodeRef& node,
+                   bool isOut, PointMm toMm);
+
+// Valide le glisser en UNE commande annulable (contours et rails de satin).
+ServiceResult moveTangent(DocumentSession& session, std::uint64_t objectId, const NodeRef& node,
+                          bool isOut, PointMm toMm);
 
 // Supprime des nœuds du contour (même chemin ou non) en UNE commande annulable. Refus clairs : un
 // contour fermé garde au moins 3 nœuds, la suppression ne doit pas faire croiser le contour, les

@@ -114,7 +114,10 @@ public:
     [[nodiscard]] QVector<QPointF> polygonInProgress() const { return polyPts_; }
     [[nodiscard]] int penNodeCount() const { return static_cast<int>(penNodes_.size()); }
     // Poignées de nœuds (pixels de l'image) ; `selected` = indices mis en évidence.
-    void setNodeHandles(const QVector<QPointF>& scenePx, const QVector<int>& selected);
+    // Les poignées d'indice >= `tangentStart` (si >= 0) sont des poignées de tangente Bézier :
+    // dessinées en cercles, saisies comme les nœuds.
+    void setNodeHandles(const QVector<QPointF>& scenePx, const QVector<int>& selected,
+                        int tangentStart = -1);
     [[nodiscard]] int nodeHandleCount() const { return static_cast<int>(nodePts_.size()); }
     // Aperçu du contour pendant un glisser (polylignes en pixels de l'image) ; `valid` = false
     // quand le déplacement est refusé (tracé rouge pointillé). Liste vide = aucun aperçu.

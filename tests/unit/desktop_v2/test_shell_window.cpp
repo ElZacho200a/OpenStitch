@@ -1964,6 +1964,60 @@ private slots:
         QVERIFY(w.session().undo());
     }
 
+    void tangentHandlesAppearForChosenCurvedNodesAndBendTheCurve() {
+        ShellWindow w;
+        w.resize(1400, 900);
+        w.show();
+        w.newProject();
+        std::vector<PointMm> octagon;
+        for (int k = 0; k < 8; ++k) {
+            const double a = (22.5 + 45.0 * k) * 3.14159265358979323846 / 180.0;
+            octagon.push_back({10.0 * std::cos(a), 10.0 * std::sin(a)});
+        }
+        QVERIFY(w.session().applyBatch(batchAddPolygon(octagon), "Octogone").committed);
+        w.waitForIdle();
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        QVERIFY(w.runCommand("vector.curves"));
+        QVERIFY(w.runCommand("tool.node.edit"));
+        w.waitForIdle();
+        auto* canvas = w.canvas();
+        QCOMPARE(w.tangentHandleCount(), 0); // aucune poignée tant qu'aucun nœud n'est choisi
+
+        QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                          canvas->mapFromScene(w.nodeHandlePx(2)));
+        QCOMPARE(w.selectedNodeCount(), 1);
+        QCOMPARE(w.tangentHandleCount(), 2); // les deux poignées du nœud lisse choisi
+
+        const auto before = nodeView(w.session().project(), id);
+        QVERIFY(before.has_value());
+        const auto depth = w.session().undoNames().size();
+        const QPoint from = canvas->mapFromScene(w.tangentHandlePx(0));
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, from);
+        QTest::mouseMove(canvas->viewport(), from + QPoint(10, 10));
+        QTest::mouseMove(canvas->viewport(), from + QPoint(25, 20));
+        QVERIFY(canvas->hasNodeOutline()); // aperçu de la courbe pendant le glisser
+        QCOMPARE(w.session().undoNames().size(), depth);
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                            from + QPoint(25, 20));
+        w.waitForIdle();
+        QCOMPARE(w.session().undoNames().size(), depth + 1); // un geste = un pas d'annulation
+        const auto after = nodeView(w.session().project(), id);
+        QVERIFY(after.has_value());
+        QCOMPARE(after->nodes.size(), before->nodes.size());
+        for (std::size_t i = 0; i < before->nodes.size(); ++i) { // les nœuds n'ont pas bougé
+            QVERIFY(std::abs(after->nodes[i].pos.x - before->nodes[i].pos.x) < 0.01);
+        }
+        bool changed = false;
+        for (std::size_t i = 0; i < before->tangents.size(); ++i) {
+            changed = changed ||
+                      std::abs(after->tangents[i].pos.x - before->tangents[i].pos.x) > 0.3 ||
+                      std::abs(after->tangents[i].pos.y - before->tangents[i].pos.y) > 0.3;
+        }
+        QVERIFY2(changed, "au moins une poignée doit avoir bougé");
+        QVERIFY(w.session().undo());
+    }
+
     void nodeToolEditsSatinRailsAndShowsTheRungs() {
         ShellWindow w;
         w.show();

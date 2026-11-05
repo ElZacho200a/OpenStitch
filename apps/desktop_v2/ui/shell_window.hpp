@@ -148,6 +148,8 @@ public:
     [[nodiscard]] int selectedNodeCount() const;
     // Position de la poignée `index` dans le repère des pixels de l'aperçu (tests, accessibilité).
     [[nodiscard]] QPointF nodeHandlePx(int index) const;
+    [[nodiscard]] int tangentHandleCount() const;
+    [[nodiscard]] QPointF tangentHandlePx(int index) const;
 
     // Préréglages de points : enregistrés dans le projet (.osp), appliqués à la sélection.
     bool savePresetNamed(const QString& name); // réglages de l'objet principal de la sélection

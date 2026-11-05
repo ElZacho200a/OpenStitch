@@ -423,3 +423,7 @@ encore le desktop principal.
 
 - Inspecteur : champ de recherche (sans casse ni accents, sur le libellé et la clé du réglage) et case « Réglages avancés (N) » ; 13 réglages avancés ajoutés à la table `param_spec` avec les clés et plages du registre de champs du moteur, chacun relu (`readParam`) et testé. Les essentiels restent seuls visibles par défaut ; une recherche révèle les avancés qui correspondent. Niveau « expert » non traité.
 - Aussi : test d'identité octet pour octet du fichier machine après enregistrement et réouverture d'un projet numérisé et retouché (puis modification suivie d'une annulation).
+
+## 2026-11-05 — Session 1 (suite 38) : finalisation V2, tranche 17 (poignées de tangentes)
+
+- Les nœuds courbes exposent leurs poignées de tangente (positions absolues) ; l'interface n'affiche que celles des nœuds choisis (cercles + tige), pour ne pas noyer le canevas. Glisser une poignée : aperçu géométrique pur, validation en UNE commande composite (`SetNodeHandleCommand` / `MoveSatinRailHandleCommand`), nœud immobile, poignée opposée d'un nœud lisse gardée colinéaire avec sa longueur. Une poignée tirée sur un rail droit en crée une.
