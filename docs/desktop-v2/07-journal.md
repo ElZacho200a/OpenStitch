@@ -398,3 +398,7 @@ encore le desktop principal.
 ## 2026-11-05 — Session 1 (suite 31) : finalisation V2, tranche 10 (courbes)
 
 - Commandes « Convertir les contours en courbes » et « Lisser les contours » (une commande annulable pour toute la sélection) ; remodelage direct d'un segment : un appui sur le tracé (hors poignée) saisit le segment de la VRAIE courbe (abscisse sur la cubique, pas sur la corde), aperçu pendant le glisser, refus si le contour se croiserait, nœuds immobiles, un pas d'annulation. Un rectangle n'a que des coins francs (> 60°) : le refus « rien à convertir » est le comportement du moteur et reste affiché tel quel. Les tests utilisent un octogone.
+
+## 2026-11-05 — Session 1 (suite 32) : finalisation V2, tranche 11 (extraction de ShellWindow)
+
+- `ui/node_edit_controller` : l'état et la logique des gestes d'édition directe (poignées, sélection de nœuds, segment saisi, axe de fondu) quittent `ShellWindow` ; le contrôleur ne reçoit qu'un contexte (`Host` : session, canevas, repère, outil actif, cible, message) et passe par les services du cœur. `ui/analysis_overlays` : cartes de densité et de risque du tissu (tâches, révisions, recalcul). Extraction mécanique : aucune ligne de comportement modifiée, les tests existants servent de filet (92 QTest, 179 cas Catch2 verts). `core/` reste indépendant de Qt.

@@ -75,6 +75,10 @@ add_library(openstitch_desktop_v2_ui STATIC
     ui/calque_panel.cpp
     ui/calque_panel.hpp
     ui/thread_panel.cpp
+    ui/analysis_overlays.cpp
+    ui/analysis_overlays.hpp
+    ui/node_edit_controller.cpp
+    ui/node_edit_controller.hpp
     ui/import_dialog.cpp
     ui/import_dialog.hpp
     ui/optimize_panel.cpp

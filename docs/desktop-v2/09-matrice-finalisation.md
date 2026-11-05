@@ -11,7 +11,7 @@ automatisé qui l'exerce. Une ligne ne passe à ✅ que si le test existe et pas
 | Chantier | Capacité | Moteur | Ops | V2 | Direct | Testé | Preuve / remarque |
 |---|---|---|---|---|---|---|---|
 | A | Protection des documents (nouveau, ouvrir, quitter, récupération) | ✅ | — | ✅ | — | ✅ | #253 : confirmation Enregistrer/Ignorer/Annuler, chargements périmés ignorés |
-| A | Extraction de `ShellWindow` (≈ 3 000 lignes) | — | — | 🟡 | — | 🟡 | `core/` reste Qt-free ; l'UI reste concentrée dans `shell_window.cpp` : à découper |
+| A | Extraction de `ShellWindow` | — | — | 🟡 | — | ✅ (suites inchangées) | `NodeEditController` (nœuds, rails, segments, axe du fondu) et `AnalysisOverlays` (densité, plissement du tissu) extraits sans changer le comportement : `shell_window.cpp` 3 679 → 3 229 lignes, 92 QTest et 179 cas Catch2 inchangés. Restent à extraire : cycle de vie du document, aperçu/simulation, compagnon, optimisation, import |
 | B | Déplacement de nœuds au canevas (aperçu pendant le glisser, 1 pas d'annulation) | ✅ `TransformNodesCommand` | ⬜ | ✅ | ✅ | ✅ | `node_edit` + outil « Nœuds du contour » (B) ; Catch2 `[nodes]`, QTest `nodeToolDrags…` |
 | B | Insertion de nœud (double-clic sur un segment, subdivision exacte) | ✅ `InsertNodeCommand` | ⬜ | ✅ | ✅ | ✅ | idem |
 | B | Remodelage direct d'un segment de courbe au canevas (saisie sur le tracé, aperçu, refus si croisement, nœuds immobiles, 1 pas d'annulation) | ✅ `ReshapeSegmentCommand` | ⬜ | ✅ outil Nœuds | ✅ | ✅ | Catch2 `[curves]` (4 cas), QTest `curvesCanBeCreatedAndBent…` |

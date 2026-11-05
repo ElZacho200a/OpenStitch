@@ -75,6 +75,8 @@ class ThreadPanel;
 class CompanionPanel;
 class OptimizePanel;
 class ImportDialog;
+class NodeEditController;
+class AnalysisOverlays;
 class LiveServer;
 class FeedbackCue;
 
@@ -142,7 +144,7 @@ public:
 
     // --- Édition de nœuds (outil « node.edit », un seul objet sélectionné) ------------------
     [[nodiscard]] int nodeHandleCount() const;
-    [[nodiscard]] int selectedNodeCount() const { return static_cast<int>(nodeSel_.size()); }
+    [[nodiscard]] int selectedNodeCount() const;
     // Position de la poignée `index` dans le repère des pixels de l'aperçu (tests, accessibilité).
     [[nodiscard]] QPointF nodeHandlePx(int index) const;
 
@@ -211,10 +213,9 @@ public:
     [[nodiscard]] OptimizePanel* optimizePanel() const { return optimizePanel_; }
 
     // --- Risque de plissement et déformation prévue du tissu (estimation non calibrée) -------
-    void toggleFabricRisk();
-    [[nodiscard]] bool fabricRiskActive() const { return fabricActive_; }
+    [[nodiscard]] bool fabricRiskActive() const;
     [[nodiscard]] bool fabricRiskShown() const;
-    [[nodiscard]] const std::optional<FabricRisk>& fabricRisk() const { return fabricRisk_; }
+    [[nodiscard]] const std::optional<FabricRisk>& fabricRisk() const;
     void runOptimization(PathStrategy strategy, bool improve);
     bool acceptOptimization();
     void refuseOptimization();
@@ -227,10 +228,8 @@ public:
     }
     // Carte de densité (surimpression) : affichée, et zones sur-denses de la dernière analyse.
     [[nodiscard]] bool densityShown() const;
-    [[nodiscard]] bool densityActive() const { return densityActive_; }
-    [[nodiscard]] const std::vector<DensityHotspotInfo>& densityHotspots() const {
-        return densityHotspots_;
-    }
+    [[nodiscard]] bool densityActive() const;
+    [[nodiscard]] const std::vector<DensityHotspotInfo>& densityHotspots() const;
     // Repère mm <-> pixels et index de sélection de l'aperçu affiché (tests, diagnostics).
     [[nodiscard]] const PreviewImage& previewFrame() const { return frame_; }
     // Un point (pixels de l'image d'aperçu) qui appartient à l'objet : pour piloter le canevas en
@@ -264,16 +263,7 @@ private:
     void onCanvasRect(QRectF scenePx, Qt::KeyboardModifiers modifiers);
     void applyToolToCanvas();
     void updateSourceOverlay();
-    void toggleDensity();
-    void requestDensity();
-    void applyDensity(const DensityOverlay& overlay);
-    void hideDensity();
     void updatePointMarkers();
-    void updateNodeMarkers();
-    void onNodePressed(int index, Qt::KeyboardModifiers modifiers);
-    void onNodeDragMoved(QPointF deltaPx);
-    void onNodeDragFinished(QPointF deltaPx);
-    void onNodeInsert(QPointF scenePx);
     [[nodiscard]] std::optional<std::uint64_t> pointTarget() const;
     const image::Image* ensureProcessed();
     void onStroke(QVector<QPointF> scenePx, Qt::KeyboardModifiers modifiers);
@@ -333,13 +323,6 @@ private:
     std::vector<std::size_t> pointHandles_; // poignées -> indice dans pointView_.points
     std::uint64_t pointObject_{0};
     int pointSel_{-1};
-    NodeView nodeView_;
-    std::optional<SegmentHit> segmentDrag_; // segment de courbe en cours de remodelage
-    std::optional<FadeAxisView> fadeView_;  // outil « fade.axis » : axe du fondu sélectionné
-    std::uint64_t fadeObject_{0};
-    int fadeHandle_{-1};
-    std::vector<int> nodeSel_; // indices dans nodeView_.nodes (tous dans le même contour)
-    std::uint64_t nodeObject_{0};
     QSpinBox* tolSpin_{nullptr};
     QComboBox* kindCombo_{nullptr};
     image::Image processed_;
@@ -373,15 +356,11 @@ private:
     CompanionPanel* companionPanel_{nullptr};
     OptimizePanel* optimizePanel_{nullptr};
     QPointer<ImportDialog> importDialog_;
+    std::unique_ptr<NodeEditController> nodes_;
+    std::unique_ptr<AnalysisOverlays> overlays_;
     std::uint64_t importPreviewTask_{0};
     bool snapEnabled_{true};
     QPointF snapDelta(QPointF deltaPx);
-    bool fabricActive_{false};
-    std::uint64_t fabricTask_{0};
-    std::optional<FabricRisk> fabricRisk_;
-    void requestFabricRisk();
-    void applyFabricRisk(const FabricRisk& risk);
-    void hideFabricRisk();
     std::optional<PathProposal> proposal_;
     std::uint64_t optimizeTask_{0};
     std::unique_ptr<LiveCompanion> companion_;
@@ -400,10 +379,6 @@ private:
     TaskId documentLoadTask_{0};
     std::uint64_t loadGeneration_{0};
     std::uint64_t previewRevision_{0};
-    bool densityActive_{false};
-    std::uint64_t densityRevision_{0}; // révision de la carte affichée ; 0 = aucune
-    std::uint64_t densityTask_{0};
-    std::vector<DensityHotspotInfo> densityHotspots_;
     bool previewShown_{false};
     bool documentOpen_{false}; // un projet est ouvert (même vide) : l'aperçu montre son cadre
     std::filesystem::path currentPath_;

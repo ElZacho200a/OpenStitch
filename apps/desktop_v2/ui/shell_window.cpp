@@ -43,6 +43,7 @@
 #include "openstitch/commands/placement_ops.hpp"
 
 #include "action_dialog.hpp"
+#include "analysis_overlays.hpp"
 #include "calque_panel.hpp"
 #include "command_palette.hpp"
 #include "companion_panel.hpp"
@@ -52,6 +53,7 @@
 #include "inspector_model.hpp"
 #include "inspector_panel.hpp"
 #include "live_server.hpp"
+#include "node_edit_controller.hpp"
 #include "object_labels.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/project_ops/factory.hpp"
@@ -158,35 +160,17 @@ ShellWindow::ShellWindow(QWidget* parent)
         updateSelectionBoxes();
         updatePointMarkers();
     });
+    overlays_ = std::make_unique<AnalysisOverlays>(AnalysisOverlays::Host{
+        session_, *canvas_, frame_, tasks_,
+        [this](const QString& message, bool error) { setNotice(message, error); }});
+    nodes_ = std::make_unique<NodeEditController>(
+        NodeEditController::Host{
+            session_, *canvas_, frame_, [this] { return activeTool_; },
+            [this] { return documentOpen_; }, [this] { return pointTarget(); },
+            [this](const QString& message, bool error) { setNotice(message, error); }},
+        this);
+    nodes_->connectCanvas();
     connect(canvas_, &PreviewCanvas::clickedPx, this, &ShellWindow::onCanvasClick);
-    connect(canvas_, &PreviewCanvas::nodePressed, this, &ShellWindow::onNodePressed);
-    connect(canvas_, &PreviewCanvas::nodeDragMovedPx, this, &ShellWindow::onNodeDragMoved);
-    connect(canvas_, &PreviewCanvas::nodeDragFinishedPx, this, &ShellWindow::onNodeDragFinished);
-    canvas_->setSegmentHitTest([this](const QPointF& scenePx) {
-        if (activeTool_ != QStringLiteral("node.edit") || nodeObject_ == 0 ||
-            frame_.px_per_mm <= 0.0 || fadeView_) {
-            return false;
-        }
-        const PointMm at = screenToModel(frame_.pxToMmX(scenePx.x()), frame_.pxToMmY(scenePx.y()));
-        const double zoom = std::max(0.01, canvas_->transform().m11());
-        return curveSegmentAt(session_.project(), nodeObject_, at, 8.0 / (zoom * frame_.px_per_mm))
-            .has_value();
-    });
-    connect(canvas_, &PreviewCanvas::segmentPressed, this, [this](QPointF scenePx) {
-        const PointMm at = screenToModel(frame_.pxToMmX(scenePx.x()), frame_.pxToMmY(scenePx.y()));
-        const double zoom = std::max(0.01, canvas_->transform().m11());
-        segmentDrag_ =
-            curveSegmentAt(session_.project(), nodeObject_, at, 8.0 / (zoom * frame_.px_per_mm));
-        nodeSel_.clear();
-        setNotice(tr("Segment saisi : tirez pour courber le contour sans déplacer les nœuds."),
-                  false);
-    });
-    connect(canvas_, &PreviewCanvas::nodeDragCancelled, this, [this] {
-        segmentDrag_.reset();
-        canvas_->setNodeOutline({}, true);
-        setNotice(tr("Déplacement de nœuds annulé."), false);
-    });
-    connect(canvas_, &PreviewCanvas::nodeInsertRequestedPx, this, &ShellWindow::onNodeInsert);
     connect(canvas_, &PreviewCanvas::rectPx, this, &ShellWindow::onCanvasRect);
     connect(canvas_, &PreviewCanvas::boxDrawnPx, this, &ShellWindow::onBoxDrawn);
     connect(canvas_, &PreviewCanvas::measuredPx, this, &ShellWindow::onMeasured);
@@ -960,95 +944,6 @@ bool ShellWindow::runGuideNext() {
     }
     return false;
 }
-
-bool ShellWindow::fabricRiskShown() const {
-    return canvas_->hasFabricOverlay();
-}
-
-void ShellWindow::toggleFabricRisk() {
-    if (fabricActive_) {
-        hideFabricRisk();
-        setNotice(tr("Risque de plissement masqué."), false);
-        return;
-    }
-    if (session_.project().embroidery_objects.empty()) {
-        setNotice(tr("Rien à analyser : le document ne contient aucun objet brodé."), true);
-        return;
-    }
-    fabricActive_ = true;
-    requestFabricRisk();
-}
-
-void ShellWindow::hideFabricRisk() {
-    fabricActive_ = false;
-    fabricRisk_.reset();
-    if (fabricTask_ != 0) {
-        (void)tasks_.cancel(fabricTask_);
-        fabricTask_ = 0;
-    }
-    canvas_->setFabricOverlay(QImage(), QRectF());
-    canvas_->setFabricArrows({});
-}
-
-void ShellWindow::requestFabricRisk() {
-    if (fabricTask_ != 0) {
-        (void)tasks_.cancel(fabricTask_); // un résultat périmé n'est jamais livré
-    }
-    const auto snapshot = session_.snapshot();
-    const auto revision = session_.revision();
-    fabricTask_ = tasks_.submit<FabricRisk>(
-        tr("Déformation du tissu").toStdString(),
-        [snapshot, revision](const TaskContext& ctx) {
-            return runFabricRisk(snapshot, revision, ctx);
-        },
-        [this](Result<FabricRisk>&& r) {
-            fabricTask_ = 0;
-            if (!fabricActive_) {
-                return;
-            }
-            if (!r) {
-                fabricActive_ = false;
-                setNotice(tr("Analyse du tissu impossible : %1").arg(fromUtf8(r.error().message)),
-                          true);
-                return;
-            }
-            if (r->revision != session_.revision()) {
-                return; // le document a changé : un autre calcul est en route
-            }
-            applyFabricRisk(*r);
-        });
-}
-
-void ShellWindow::applyFabricRisk(const FabricRisk& risk) {
-    fabricRisk_ = risk;
-    if (frame_.px_per_mm <= 0.0) {
-        return; // pas d'aperçu : la carte sera posée au prochain aperçu
-    }
-    QImage image(risk.columns, risk.rows, QImage::Format_RGBA8888);
-    for (int y = 0; y < risk.rows; ++y) {
-        std::memcpy(image.scanLine(y),
-                    risk.rgba.data() + static_cast<std::size_t>(y) * risk.columns * 4,
-                    static_cast<std::size_t>(risk.columns) * 4);
-    }
-    const QRectF rect(
-        QPointF(frame_.mmToPxX(risk.minXmm), frame_.mmToPxY(-(risk.minYmm + risk.heightMm))),
-        QPointF(frame_.mmToPxX(risk.minXmm + risk.widthMm), frame_.mmToPxY(-risk.minYmm)));
-    canvas_->setFabricOverlay(image, rect);
-    // Flèches : le déplacement réel (< 1 mm) est invisible tel quel, il est amplifié ×20 et le
-    // message le dit : jamais une déformation présentée comme à l'échelle.
-    constexpr double kAmplify = 20.0;
-    QVector<QLineF> arrows;
-    for (const auto& a : risk.arrows) {
-        const QPointF from(frame_.mmToPxX(a.xMm), frame_.mmToPxY(-a.yMm));
-        const QPointF to(frame_.mmToPxX(a.xMm + a.dxMm * kAmplify),
-                         frame_.mmToPxY(-(a.yMm + a.dyMm * kAmplify)));
-        arrows.push_back(QLineF(from, to));
-    }
-    canvas_->setFabricArrows(arrows);
-    setNotice(fromUtf8(risk.verdict()) + tr(" Flèches amplifiées ×20."),
-              risk.maxWrinkleIndex >= 1.0);
-}
-
 void ShellWindow::runOptimization(PathStrategy strategy, bool improve) {
     if (session_.project().embroidery_objects.size() < 2) {
         optimizePanel_->showMessage(tr("Il faut au moins deux objets brodés pour optimiser."));
@@ -1164,9 +1059,7 @@ std::string ShellWindow::liveToken() const {
 }
 
 void ShellWindow::onDocumentChanged(ChangeKind kind) {
-    if (fabricActive_ && fabricRisk_ && fabricRisk_->revision != session_.revision()) {
-        requestFabricRisk(); // la carte affichée date d'avant la dernière modification
-    }
+    overlays_->onDocumentChanged();
     if (optimizePanel_ != nullptr) {
         optimizePanel_->setEnabledForDocument(session_.project().embroidery_objects.size() >= 2);
         if (proposal_ && proposal_->revision != session_.revision()) {
@@ -1312,9 +1205,7 @@ void ShellWindow::requestPreview() {
                 updatePointMarkers();
                 refreshSimulationBar();
                 updateSelectionBoxes();
-                if (densityActive_ && densityRevision_ != session_.revision()) {
-                    requestDensity(); // la carte affichée date d'avant la dernière modification
-                }
+                overlays_->onPreviewReady();
             }
         });
 }
@@ -1717,94 +1608,6 @@ void ShellWindow::runDiagnostics() {
                 r->errors > 0);
         });
 }
-
-void ShellWindow::toggleDensity() {
-    if (densityActive_) {
-        hideDensity();
-        setNotice(tr("Carte de densité masquée."), false);
-        return;
-    }
-    if (session_.project().embroidery_objects.empty()) {
-        setNotice(tr("Rien à analyser : le document ne contient aucun objet brodé."), true);
-        return;
-    }
-    densityActive_ = true;
-    requestDensity();
-}
-
-bool ShellWindow::densityShown() const {
-    return canvas_->hasDensityOverlay();
-}
-
-void ShellWindow::hideDensity() {
-    densityActive_ = false;
-    densityRevision_ = 0;
-    densityHotspots_.clear();
-    if (densityTask_ != 0) {
-        (void)tasks_.cancel(densityTask_);
-        densityTask_ = 0;
-    }
-    canvas_->setDensityOverlay(QImage(), QRectF());
-}
-
-void ShellWindow::requestDensity() {
-    if (densityTask_ != 0) {
-        (void)tasks_.cancel(densityTask_); // une carte périmée n'est jamais livrée
-    }
-    const auto snapshot = session_.snapshot();
-    const auto revision = session_.revision();
-    densityTask_ = tasks_.submit<DensityOverlay>(
-        tr("Carte de densité").toStdString(),
-        [snapshot, revision](const TaskContext& ctx) {
-            return run_density(snapshot, revision, ctx);
-        },
-        [this](Result<DensityOverlay>&& r) {
-            densityTask_ = 0;
-            if (!densityActive_) {
-                return;
-            }
-            if (!r) {
-                densityActive_ = false;
-                setNotice(tr("Carte de densité impossible : %1").arg(fromUtf8(r.error().message)),
-                          true);
-                return;
-            }
-            if (r->revision != session_.revision()) {
-                return; // le document a changé depuis : une autre carte est en route
-            }
-            applyDensity(*r);
-        });
-}
-
-void ShellWindow::applyDensity(const DensityOverlay& overlay) {
-    densityRevision_ = overlay.revision;
-    densityHotspots_ = overlay.hotspots;
-    if (frame_.px_per_mm <= 0.0) {
-        return; // pas d'aperçu : la carte sera posée au prochain aperçu
-    }
-    QImage image(overlay.columns, overlay.rows, QImage::Format_RGBA8888);
-    for (int y = 0; y < overlay.rows; ++y) {
-        std::memcpy(image.scanLine(y),
-                    overlay.rgba.data() + static_cast<std::size_t>(y) * overlay.columns * 4,
-                    static_cast<std::size_t>(overlay.columns) * 4);
-    }
-    // Repère modèle (Y vers le haut) -> pixels de l'aperçu (Y vers le bas).
-    const QRectF rect(
-        QPointF(frame_.mmToPxX(overlay.minXmm),
-                frame_.mmToPxY(-(overlay.minYmm + overlay.heightMm))),
-        QPointF(frame_.mmToPxX(overlay.minXmm + overlay.widthMm), frame_.mmToPxY(-overlay.minYmm)));
-    canvas_->setDensityOverlay(image, rect);
-    const auto zones = static_cast<int>(overlay.hotspots.size());
-    setNotice(zones == 0 ? tr("Densité maximale %1 piqûres/mm² : aucune zone sur-dense.")
-                               .arg(overlay.maxPenetrationsPerMm2, 0, 'f', 1)
-                         : tr("Densité maximale %1 piqûres/mm² : %2 zone(s) sur-dense(s) "
-                              "(seuil %3).")
-                               .arg(overlay.maxPenetrationsPerMm2, 0, 'f', 1)
-                               .arg(zones)
-                               .arg(overlay.thresholdPerMm2, 0, 'f', 1),
-              zones > 0);
-}
-
 void ShellWindow::onFindingActivated(const project_ops::Finding& finding) {
     std::vector<Target> targets;
     for (const auto id : finding.objects) {
@@ -2095,297 +1898,46 @@ std::optional<std::uint64_t> ShellWindow::pointTarget() const {
     return state.ids.front();
 }
 
-namespace {
-PointMm fadeHandleMm(const FadeAxisView& v, int index) {
-    switch (index) {
-    case 0:
-        return v.start;
-    case 1:
-        return v.end;
-    case 2:
-        return v.centre;
-    default:
-        return v.rotate;
-    }
+bool ShellWindow::densityActive() const {
+    return overlays_ && overlays_->densityActive();
 }
-} // namespace
+
+bool ShellWindow::densityShown() const {
+    return overlays_ && overlays_->densityShown();
+}
+
+const std::vector<DensityHotspotInfo>& ShellWindow::densityHotspots() const {
+    static const std::vector<DensityHotspotInfo> none;
+    return overlays_ ? overlays_->densityHotspots() : none;
+}
+
+bool ShellWindow::fabricRiskActive() const {
+    return overlays_ && overlays_->fabricActive();
+}
+
+bool ShellWindow::fabricRiskShown() const {
+    return overlays_ && overlays_->fabricShown();
+}
+
+const std::optional<FabricRisk>& ShellWindow::fabricRisk() const {
+    static const std::optional<FabricRisk> none;
+    return overlays_ ? overlays_->fabricRisk() : none;
+}
 
 int ShellWindow::nodeHandleCount() const {
-    return fadeView_ ? 4 : static_cast<int>(nodeView_.nodes.size());
+    return nodes_ ? nodes_->handleCount() : 0;
+}
+
+int ShellWindow::selectedNodeCount() const {
+    return nodes_ ? nodes_->selectedCount() : 0;
 }
 
 QPointF ShellWindow::nodeHandlePx(int index) const {
-    if (fadeView_) {
-        if (index < 0 || index > 3) {
-            return {};
-        }
-        const auto p = fadeHandleMm(*fadeView_, index);
-        return {frame_.mmToPxX(p.x), frame_.mmToPxY(-p.y)};
-    }
-    if (index < 0 || index >= static_cast<int>(nodeView_.nodes.size())) {
-        return {};
-    }
-    const auto& p = nodeView_.nodes[static_cast<std::size_t>(index)].pos;
-    return {frame_.mmToPxX(p.x), frame_.mmToPxY(-p.y)};
-}
-
-void ShellWindow::updateNodeMarkers() {
-    fadeView_.reset();
-    if (activeTool_ == QStringLiteral("fade.axis") && documentOpen_ && frame_.px_per_mm > 0.0) {
-        nodeView_ = {};
-        nodeSel_.clear();
-        canvas_->setNodeOutline({}, true);
-        const auto target = pointTarget();
-        if (target) {
-            fadeView_ = fadeAxisView(session_.project(), *target);
-        }
-        if (!fadeView_) {
-            canvas_->setNodeHandles({}, {});
-            canvas_->setNodeGuides({});
-            return;
-        }
-        fadeObject_ = *target;
-        QVector<QPointF> pts;
-        for (int i = 0; i < 4; ++i) {
-            pts.push_back(nodeHandlePx(i));
-        }
-        canvas_->setNodeHandles(pts, {});
-        const QPointF a = pts[0];
-        const QPointF b = pts[1];
-        canvas_->setNodeGuides({QLineF(a, b), QLineF(pts[2], pts[3])});
-        return;
-    }
-    const auto target =
-        activeTool_ == QStringLiteral("node.edit") && documentOpen_ ? pointTarget() : std::nullopt;
-    canvas_->setNodeOutline({}, true);
-    if (!target || frame_.px_per_mm <= 0.0) {
-        nodeView_ = {};
-        nodeSel_.clear();
-        nodeObject_ = 0;
-        canvas_->setNodeHandles({}, {});
-        canvas_->setNodeGuides({});
-        return;
-    }
-    auto view = nodeView(session_.project(), *target);
-    if (!view) {
-        nodeView_ = {};
-        nodeSel_.clear();
-        nodeObject_ = 0;
-        canvas_->setNodeHandles({}, {});
-        setNotice(fromUtf8(view.error().message), true);
-        return;
-    }
-    if (nodeObject_ != *target || view->nodes.size() != nodeView_.nodes.size()) {
-        nodeSel_.clear(); // autre objet ou contour modifié : l'ancienne sélection n'a plus de sens
-    }
-    nodeObject_ = *target;
-    nodeView_ = std::move(*view);
-    QVector<QPointF> pts;
-    pts.reserve(static_cast<qsizetype>(nodeView_.nodes.size()));
-    for (std::size_t i = 0; i < nodeView_.nodes.size(); ++i) {
-        pts.push_back(nodeHandlePx(static_cast<int>(i)));
-    }
-    canvas_->setNodeHandles(pts, QVector<int>(nodeSel_.begin(), nodeSel_.end()));
-    QVector<QLineF> rungs;
-    for (const auto& [a, b] : nodeView_.rungs) {
-        rungs.push_back(QLineF(frame_.mmToPxX(a.x), frame_.mmToPxY(-a.y), frame_.mmToPxX(b.x),
-                               frame_.mmToPxY(-b.y)));
-    }
-    canvas_->setNodeGuides(rungs);
-}
-
-void ShellWindow::onNodePressed(int index, Qt::KeyboardModifiers modifiers) {
-    segmentDrag_.reset();
-    if (fadeView_) {
-        fadeHandle_ = index;
-        static const char* const names[] = {"début de la transition", "fin de la transition",
-                                            "déplacement de l'axe", "rotation de l'axe"};
-        if (index >= 0 && index <= 3) {
-            setNotice(tr("Fondu : %1. Maj = extrémités symétriques. %2")
-                          .arg(QString::fromUtf8(names[index]), fromUtf8(fadeSummary(*fadeView_))),
-                      false);
-        }
-        return;
-    }
-    if (index < 0 || index >= static_cast<int>(nodeView_.nodes.size())) {
-        return;
-    }
-    const bool additive = modifiers & (Qt::ShiftModifier | Qt::ControlModifier);
-    const auto inSel = std::find(nodeSel_.begin(), nodeSel_.end(), index);
-    const auto sameChain = [&](int other) {
-        const auto& a = nodeView_.nodes[static_cast<std::size_t>(other)].ref;
-        const auto& b = nodeView_.nodes[static_cast<std::size_t>(index)].ref;
-        return a.set == b.set && a.path == b.path;
-    };
-    if (additive) {
-        if (inSel != nodeSel_.end()) {
-            nodeSel_.erase(inSel); // Maj/Ctrl + clic sur un nœud déjà choisi le retire
-        } else {
-            if (!nodeSel_.empty() && !sameChain(nodeSel_.front())) {
-                nodeSel_.clear(); // un déplacement groupé reste dans un seul contour
-            }
-            nodeSel_.push_back(index);
-        }
-    } else if (inSel == nodeSel_.end()) {
-        nodeSel_ = {index}; // sur un nœud déjà choisi, on garde le groupe pour le glisser
-    }
-    QVector<QPointF> pts;
-    for (std::size_t i = 0; i < nodeView_.nodes.size(); ++i) {
-        pts.push_back(nodeHandlePx(static_cast<int>(i)));
-    }
-    canvas_->setNodeHandles(pts, QVector<int>(nodeSel_.begin(), nodeSel_.end()));
-    QString message = tr("%n nœud(s) sélectionné(s). Glissez pour déplacer, double-cliquez un "
-                         "segment pour insérer un nœud.",
-                         "", static_cast<int>(nodeSel_.size()));
-    if (const auto width = satinWidthSummary(nodeView_); !width.empty()) {
-        message += QStringLiteral(" ") + fromUtf8(width) + QLatin1Char('.');
-    }
-    setNotice(message, false);
-}
-
-void ShellWindow::onNodeDragMoved(QPointF deltaPx) {
-    if (segmentDrag_ && frame_.px_per_mm > 0.0) {
-        const PointMm delta{deltaPx.x() / frame_.px_per_mm, -deltaPx.y() / frame_.px_per_mm};
-        const auto preview =
-            previewSegmentReshape(session_.project(), nodeObject_, *segmentDrag_, delta);
-        const auto& outlines = preview ? *preview : nodeView_.outlines;
-        QVector<QVector<QPointF>> polylines;
-        for (const auto& line : outlines) {
-            QVector<QPointF> px;
-            px.reserve(static_cast<qsizetype>(line.size()));
-            for (const auto& p : line) {
-                px.push_back({frame_.mmToPxX(p.x), frame_.mmToPxY(-p.y)});
-            }
-            polylines.push_back(std::move(px));
-        }
-        canvas_->setNodeOutline(polylines, preview.has_value());
-        setNotice(
-            preview ? tr("Courbure : %1 mm, %2 mm").arg(delta.x, 0, 'f', 1).arg(delta.y, 0, 'f', 1)
-                    : tr("Remodelage impossible : le contour se croiserait."),
-            !preview);
-        return;
-    }
-    if (fadeView_) {
-        if (fadeHandle_ < 0 || frame_.px_per_mm <= 0.0) {
-            return;
-        }
-        const QPointF at = nodeHandlePx(fadeHandle_) + deltaPx;
-        const PointMm pointer = screenToModel(frame_.pxToMmX(at.x()), frame_.pxToMmY(at.y()));
-        const bool symmetric = QGuiApplication::keyboardModifiers() & Qt::ShiftModifier;
-        const auto preview =
-            previewFadeDrag(session_.project(), fadeObject_, static_cast<FadeHandle>(fadeHandle_),
-                            pointer, symmetric);
-        QVector<QVector<QPointF>> lines;
-        const auto px = [&](PointMm p) {
-            return QPointF(frame_.mmToPxX(p.x), frame_.mmToPxY(-p.y));
-        };
-        const FadeAxisView& shown = preview ? *preview : *fadeView_;
-        lines.push_back({px(shown.start), px(shown.end)});
-        lines.push_back({px(shown.centre), px(shown.rotate)});
-        canvas_->setNodeOutline(lines, preview.has_value());
-        setNotice(preview ? fromUtf8(fadeSummary(shown))
-                          : tr("Déplacement impossible : l'axe deviendrait inutilisable."),
-                  !preview);
-        return;
-    }
-    if (nodeSel_.empty() || frame_.px_per_mm <= 0.0) {
-        return;
-    }
-    std::vector<NodeRef> refs;
-    for (const int i : nodeSel_) {
-        refs.push_back(nodeView_.nodes[static_cast<std::size_t>(i)].ref);
-    }
-    const PointMm delta{deltaPx.x() / frame_.px_per_mm, -deltaPx.y() / frame_.px_per_mm};
-    const auto preview = previewNodeMove(session_.project(), nodeObject_, refs, delta, false);
-    const auto& outlines = preview ? *preview : nodeView_.outlines;
-    QVector<QVector<QPointF>> polylines;
-    for (const auto& line : outlines) {
-        QVector<QPointF> px;
-        px.reserve(static_cast<qsizetype>(line.size()));
-        for (const auto& p : line) {
-            px.push_back({frame_.mmToPxX(p.x), frame_.mmToPxY(-p.y)});
-        }
-        polylines.push_back(std::move(px));
-    }
-    canvas_->setNodeOutline(polylines, preview.has_value());
-    setNotice(preview
-                  ? tr("Déplacement : %1 mm, %2 mm").arg(delta.x, 0, 'f', 1).arg(delta.y, 0, 'f', 1)
-                  : tr("Déplacement impossible : le contour se croiserait."),
-              !preview);
-}
-
-void ShellWindow::onNodeDragFinished(QPointF deltaPx) {
-    if (segmentDrag_) {
-        const auto hit = *segmentDrag_;
-        segmentDrag_.reset();
-        canvas_->setNodeOutline({}, true);
-        if (frame_.px_per_mm <= 0.0) {
-            return;
-        }
-        const PointMm delta{deltaPx.x() / frame_.px_per_mm, -deltaPx.y() / frame_.px_per_mm};
-        const auto r = reshapeSegment(session_, nodeObject_, hit, delta);
-        setNotice(r.ok ? tr("Segment courbé.") : tr("Nœuds : %1").arg(fromUtf8(r.message)), !r.ok);
-        if (!r.ok) {
-            updateNodeMarkers();
-        }
-        return;
-    }
-    if (fadeView_) {
-        canvas_->setNodeOutline({}, true);
-        if (fadeHandle_ < 0 || frame_.px_per_mm <= 0.0) {
-            return;
-        }
-        const QPointF at = nodeHandlePx(fadeHandle_) + deltaPx;
-        const PointMm pointer = screenToModel(frame_.pxToMmX(at.x()), frame_.pxToMmY(at.y()));
-        const bool symmetric = QGuiApplication::keyboardModifiers() & Qt::ShiftModifier;
-        const auto r = dragFadeHandle(session_, fadeObject_, static_cast<FadeHandle>(fadeHandle_),
-                                      pointer, symmetric);
-        fadeHandle_ = -1;
-        if (!r.ok) {
-            setNotice(tr("Fondu : %1").arg(fromUtf8(r.message)), true);
-            updateNodeMarkers(); // les poignées reviennent à leur place
-            return;
-        }
-        if (const auto view = fadeAxisView(session_.project(), fadeObject_)) {
-            setNotice(fromUtf8(fadeSummary(*view)), false);
-        }
-        return;
-    }
-    canvas_->setNodeOutline({}, true);
-    if (nodeSel_.empty() || frame_.px_per_mm <= 0.0) {
-        return;
-    }
-    std::vector<NodeRef> refs;
-    for (const int i : nodeSel_) {
-        refs.push_back(nodeView_.nodes[static_cast<std::size_t>(i)].ref);
-    }
-    const PointMm delta{deltaPx.x() / frame_.px_per_mm, -deltaPx.y() / frame_.px_per_mm};
-    const auto r = moveNodes(session_, nodeObject_, refs, delta, false);
-    if (!r.ok) {
-        setNotice(tr("Nœuds : %1").arg(fromUtf8(r.message)), true);
-        updateNodeMarkers(); // les poignées reviennent à leur place
-        return;
-    }
-    setNotice(tr("%n nœud(s) déplacé(s).", "", static_cast<int>(refs.size())), false);
-}
-
-void ShellWindow::onNodeInsert(QPointF scenePx) {
-    if (nodeView_.nodes.empty() || frame_.px_per_mm <= 0.0) {
-        return;
-    }
-    const PointMm at = screenToModel(frame_.pxToMmX(scenePx.x()), frame_.pxToMmY(scenePx.y()));
-    const double zoom = std::max(0.01, canvas_->transform().m11());
-    const auto hit = nearestSegment(nodeView_, at, 8.0 / (zoom * frame_.px_per_mm));
-    if (!hit) {
-        setNotice(tr("Double-cliquez sur un segment du contour pour insérer un nœud."), false);
-        return;
-    }
-    const auto r = insertNode(session_, nodeObject_, *hit);
-    setNotice(r.ok ? tr("Nœud inséré.") : tr("Nœuds : %1").arg(fromUtf8(r.message)), !r.ok);
+    return nodes_ ? nodes_->handlePx(index) : QPointF();
 }
 
 void ShellWindow::updatePointMarkers() {
-    updateNodeMarkers();
+    nodes_->refresh();
     const auto target = activeTool_ == QStringLiteral("stitch.points") && documentOpen_
                             ? pointTarget()
                             : std::nullopt;
@@ -2936,10 +2488,10 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
                        q(tr("Préréglages")), "", true});
     }
     out.push_back({"analysis.fabric",
-                   q(fabricActive_ ? tr("Masquer le risque de plissement du tissu")
-                                   : tr("Afficher le risque de plissement du tissu")),
+                   q(overlays_->fabricActive() ? tr("Masquer le risque de plissement du tissu")
+                                               : tr("Afficher le risque de plissement du tissu")),
                    q(tr("Analyse")), "",
-                   fabricActive_ || !session_.project().embroidery_objects.empty()});
+                   overlays_->fabricActive() || !session_.project().embroidery_objects.empty()});
     out.push_back({"vector.curves", q(tr("Convertir les contours en courbes")), q(tr("Contour")),
                    "", hasObjects});
     out.push_back(
@@ -2952,10 +2504,11 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
                    q(tr("Compagnon IA")), "", true});
     out.push_back({"analysis.run", q(tr("Analyser le document (diagnostic)")), q(tr("Analyse")), "",
                    !session_.project().embroidery_objects.empty()});
-    out.push_back(
-        {"analysis.density",
-         q(densityActive_ ? tr("Masquer la carte de densité") : tr("Afficher la carte de densité")),
-         q(tr("Analyse")), "", densityActive_ || !session_.project().embroidery_objects.empty()});
+    out.push_back({"analysis.density",
+                   q(overlays_->densityActive() ? tr("Masquer la carte de densité")
+                                                : tr("Afficher la carte de densité")),
+                   q(tr("Analyse")), "",
+                   overlays_->densityActive() || !session_.project().embroidery_objects.empty()});
     int n = 1;
     for (const auto w : kWorkspaces) {
         out.push_back({"workspace." + std::string(workspaceId(w)),
@@ -3013,7 +2566,7 @@ bool ShellWindow::runCommand(const QString& id) {
         } else if (id.startsWith(QLatin1String("preset.remove."))) {
             removePresetIndex(id.mid(14).toInt());
         } else if (id == QLatin1String("analysis.fabric")) {
-            toggleFabricRisk();
+            overlays_->toggleFabricRisk();
         } else if (id == QLatin1String("vector.curves") || id == QLatin1String("vector.smooth")) {
             const auto selected = inspect(session_.project(), session_.selection().targets());
             const auto r = id == QLatin1String("vector.curves")
@@ -3039,7 +2592,7 @@ bool ShellWindow::runCommand(const QString& id) {
             setWorkspace(Workspace::Optimize);
             runDiagnostics();
         } else if (id == QLatin1String("analysis.density")) {
-            toggleDensity();
+            overlays_->toggleDensity();
         } else if (id == QLatin1String("selection.all")) {
             selectAllObjects();
         } else if (id == QLatin1String("selection.clear")) {
@@ -3548,10 +3101,7 @@ void ShellWindow::onCanvasClick(QPointF scenePx, Qt::KeyboardModifiers modifiers
         frame_.px_per_mm > 0.0) {
         // Clic hors poignée : choisit l'objet sous le curseur (ses nœuds apparaissent) ou, sur le
         // fond, retire seulement la sélection de nœuds.
-        if (!nodeSel_.empty()) {
-            nodeSel_.clear();
-            updateNodeMarkers();
-        }
+        nodes_->clearSelection();
         if (const auto hit = pickAtPx(scenePx)) {
             session_.selection().replace({{TargetKind::EmbroideryObject, *hit}});
         }
