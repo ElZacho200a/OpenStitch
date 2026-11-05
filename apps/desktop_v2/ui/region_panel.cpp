@@ -8,6 +8,7 @@
 #include <QListWidget>
 #include <QPixmap>
 #include <QPushButton>
+#include <QScrollBar>
 #include <QSpinBox>
 #include <QVBoxLayout>
 
@@ -136,6 +137,8 @@ RegionPanel::RegionPanel(QWidget* parent) : QWidget(parent) {
 }
 
 void RegionPanel::setRegions(const std::vector<RegionInfo>& regions, std::uint64_t selected) {
+    const auto previousSelection = selected_;
+    const int scrollPosition = list_->verticalScrollBar()->value();
     selected_ = selected;
     const QSignalBlocker block(list_); // remplir la liste ne doit pas « choisir » une région
     list_->clear();
@@ -150,21 +153,36 @@ void RegionPanel::setRegions(const std::vector<RegionInfo>& regions, std::uint64
     if (row >= 0) {
         list_->setCurrentRow(row);
     }
+    // Recolorer ou régénérer rafraîchit la liste : ne pas perdre sa position de lecture.
+    // Une nouvelle sélection volontaire peut, elle, défiler jusqu'à l'objet choisi.
+    if (selected == previousSelection || selected == 0) {
+        list_->verticalScrollBar()->setValue(scrollPosition);
+    }
     updateButtons();
 }
 
 void RegionPanel::setNeighbours(const std::vector<RegionInfo>& neighbours) {
+    const auto previousTarget = neighbours_->currentData();
     neighbours_->clear();
     for (const auto& n : neighbours) {
         neighbours_->addItem(swatch(n.rgb), describe(n), static_cast<qulonglong>(n.id));
+    }
+    const int previousIndex = neighbours_->findData(previousTarget);
+    if (previousIndex >= 0) {
+        neighbours_->setCurrentIndex(previousIndex);
     }
     updateButtons();
 }
 
 void RegionPanel::setColorTargets(const std::vector<RegionInfo>& targets) {
+    const auto previousTarget = colorTargets_->currentData();
     colorTargets_->clear();
     for (const auto& t : targets) {
         colorTargets_->addItem(swatch(t.rgb), describe(t), static_cast<qulonglong>(t.id));
+    }
+    const int previousIndex = colorTargets_->findData(previousTarget);
+    if (previousIndex >= 0) {
+        colorTargets_->setCurrentIndex(previousIndex);
     }
     updateButtons();
 }
