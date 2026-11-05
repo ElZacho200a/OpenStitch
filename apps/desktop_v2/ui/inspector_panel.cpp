@@ -209,12 +209,11 @@ void InspectorPanel::rebuildParams(const InspectorState& state) {
                         applyParam(key, value);
                     }
                 };
-                connect(spin, &QSpinBox::valueChanged, spin,
-                        [this, spin, commitTimer](int v) {
-                            if (!refreshing_ && v > spin->minimum()) {
-                                commitTimer->start();
-                            }
-                        });
+                connect(spin, &QSpinBox::valueChanged, spin, [this, spin, commitTimer](int v) {
+                    if (!refreshing_ && v > spin->minimum()) {
+                        commitTimer->start();
+                    }
+                });
                 connect(commitTimer, &QTimer::timeout, spin, [this, key, spin] {
                     if (!refreshing_ && spin->value() > spin->minimum()) {
                         applyParam(key, spin->value());
