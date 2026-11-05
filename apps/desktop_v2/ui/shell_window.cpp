@@ -1107,9 +1107,9 @@ void ShellWindow::setStateDirectory(const std::filesystem::path& dir) {
     feedbackCue_->setReducedMotion(reduced);
     std::error_code ec;
     std::filesystem::create_directories(dir, ec);
-    QSettings settings(QString::fromStdU16String((dir / "ui.ini").u16string()),
-                       QSettings::IniFormat);
-    setCompactToolRail(settings.value(QStringLiteral("tools/compact"), false).toBool());
+    QSettings uiSettings(QString::fromStdU16String((dir / "ui.ini").u16string()),
+                         QSettings::IniFormat);
+    setCompactToolRail(uiSettings.value(QStringLiteral("tools/compact"), false).toBool());
     autosave_ = std::make_unique<AutosaveStore>(dir);
     recent_ = pruneMissingRecent(loadRecentList(dir / "recent.txt"));
     rebuildRecentMenu();
