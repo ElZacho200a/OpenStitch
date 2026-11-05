@@ -349,6 +349,7 @@ void PreviewCanvas::setReducedMotion(bool reduced) {
 bool PreviewCanvas::selectionFeedbackActive() const {
     return selectionFeedback_->state() == QAbstractAnimation::Running;
 }
+
 void PreviewCanvas::setHoopRect(const QRectF& rectPx) {
     if (hoopItem_ != nullptr) {
         scene_->removeItem(hoopItem_);
