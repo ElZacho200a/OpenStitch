@@ -6,6 +6,7 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QScrollBar>
+#include <QTemporaryDir>
 #include <QTest>
 #include <QToolBar>
 #include <QTreeWidget>
@@ -16,6 +17,7 @@
 #include "calque_panel.hpp"
 #include "command_palette.hpp"
 #include "diagnostics_panel.hpp"
+#include "feedback_cue.hpp"
 #include "inspector_model.hpp"
 #include "inspector_panel.hpp"
 #include "param_spec.hpp"
@@ -39,6 +41,48 @@ fs::path tentabrode() {
 class ShellWindowTest : public QObject {
     Q_OBJECT
 private slots:
+    void successfulEditsConfirmWithoutChangingDocumentHistory() {
+        ShellWindow w;
+        w.newProject();
+        auto* cue = w.findChild<FeedbackCue*>("feedbackCue");
+        QVERIFY(cue != nullptr);
+        const auto revision = w.session().revision();
+        const auto result = w.session().applyBatch(batchAddRect({0, 0}, 20, 20), "Rectangle");
+        QVERIFY(result.committed);
+        QCOMPARE(w.session().revision(), revision + 1);
+        QCOMPARE(cue->text(), QStringLiteral("✓"));
+        QVERIFY(!cue->toolTip().isEmpty());
+        cue->setReducedMotion(true);
+        QVERIFY(!cue->animating());
+        QVERIFY(w.session().canUndo());
+        QVERIFY(w.session().undo());
+        QVERIFY(!cue->animating());
+    }
+
+    void reducedMotionPreferenceIsReusedOnRelaunch() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const auto path = fs::path(dir.path().toStdU16String());
+        {
+            ShellWindow w;
+            w.setStateDirectory(path);
+            auto* action = w.findChild<QAction*>("reduceMotion");
+            auto* cue = w.findChild<FeedbackCue*>("feedbackCue");
+            QVERIFY(action != nullptr);
+            QVERIFY(cue != nullptr);
+            QVERIFY(!cue->reducedMotion());
+            action->trigger();
+            QVERIFY(action->isChecked());
+            QVERIFY(cue->reducedMotion());
+            cue->pulse();
+            QVERIFY(!cue->animating());
+        }
+        ShellWindow reopened;
+        reopened.setStateDirectory(path);
+        QVERIFY(reopened.findChild<FeedbackCue*>()->reducedMotion());
+        QVERIFY(reopened.findChild<QAction*>("reduceMotion")->isChecked());
+    }
+
     void emptyShellHasNoObjectsAndNoPreview() {
         ShellWindow w;
         QVERIFY(w.session().project().embroidery_objects.empty());
