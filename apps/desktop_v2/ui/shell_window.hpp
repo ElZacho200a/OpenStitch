@@ -37,6 +37,7 @@
 #include "production_sheet.hpp"
 #include "satin_column.hpp"
 #include "shape_batch.hpp"
+#include "snap.hpp"
 #include "source_image_tools.hpp"
 #include "task_manager.hpp"
 #include "tool_registry.hpp"
@@ -89,6 +90,10 @@ public:
                    const project_ops::DigitizeSettings& settings = {});
     // Ouvre la fenêtre d'import (réglages + segmentation en aperçu) puis numérise à la validation.
     void importImage(const std::filesystem::path& image);
+    // Magnétisme du déplacement d'objets (bords, centres, axe du motif) : actif par défaut,
+    // suspendu tant qu'Alt est maintenu.
+    void setSnapEnabled(bool on) { snapEnabled_ = on; }
+    [[nodiscard]] bool snapEnabled() const { return snapEnabled_; }
     [[nodiscard]] ImportDialog* importDialog() const { return importDialog_; }
     void openProject(const std::filesystem::path& osp);
     bool saveProject(const std::filesystem::path& osp);
@@ -368,6 +373,8 @@ private:
     OptimizePanel* optimizePanel_{nullptr};
     QPointer<ImportDialog> importDialog_;
     std::uint64_t importPreviewTask_{0};
+    bool snapEnabled_{true};
+    QPointF snapDelta(QPointF deltaPx);
     bool fabricActive_{false};
     std::uint64_t fabricTask_{0};
     std::optional<FabricRisk> fabricRisk_;

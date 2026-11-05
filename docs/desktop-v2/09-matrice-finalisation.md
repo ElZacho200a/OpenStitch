@@ -16,7 +16,8 @@ automatisé qui l'exerce. Une ligne ne passe à ✅ que si le test existe et pas
 | B | Insertion de nœud (double-clic sur un segment, subdivision exacte) | ✅ `InsertNodeCommand` | ⬜ | ✅ | ✅ | ✅ | idem |
 | B | Remodelage d'un segment (`ReshapeSegmentCommand`) | ✅ | ⬜ | 🟡 service `reshapeSegment` | ⬜ | ⬜ | service prêt, geste canevas à câbler |
 | B | Suppression de nœud, tangentes Bézier, plume, main levée | 🟡 (tangentes dans `PathNode`) | ⬜ | ⬜ | ⬜ | ⬜ | outils `draw.bezier` / `draw.freeform` déclarés mais non migrés |
-| B | Repères intelligents, magnétisme, cotes pendant le glisser | ⬜ | — | ⬜ | ⬜ | ⬜ | à faire |
+| B | Magnétisme des bords, centres et axe du motif pendant le déplacement d'objets (seuil 6 px de vue, Alt le suspend), repères d'alignement tracés, décalage annoncé en mm, valeur validée = valeur affichée | ✅ (calcul pur) | — | ✅ | ✅ | ✅ | `core/snap` (Catch2 `[snap]`, 7 cas), QTest `draggingAnObjectSnaps…` (vrai glisser à la souris : l'écart au voisin tombe à < 0,05 mm, contre > 0,2 mm sans magnétisme) |
+| B | Cotes entre objets (distances), angle de rotation affiché, magnétisme des nœuds et du redimensionnement | ⬜ | — | ⬜ | ⬜ | ⬜ | à faire : seul le déplacement d'objets est aimanté |
 | B | Navigation trackpad / zoom / pan | ✅ | — | ✅ | ✅ | ✅ | #257 |
 | C | Satin : création par colonne à deux rails | ✅ | ✅ | ✅ (outil `satin.column`) | 🟡 tracé, pas d'édition des rails | ✅ | `satin_column` |
 | C | Satin : rails éditables au canevas (déplacement de nœuds d'un rail en 1 pas d'annulation, insertion de nœud, barreaux dessinés, largeur aux barreaux avec avertissement « trop large ») | ✅ | 🟡 services `satin_column` | ✅ | ✅ | ✅ | outil Nœuds (B) ; Catch2 `[satin]`, QTest `nodeToolEditsSatinRails…` |

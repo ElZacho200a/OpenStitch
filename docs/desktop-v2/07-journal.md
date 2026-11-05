@@ -390,3 +390,7 @@ encore le desktop principal.
 ## 2026-11-05 — Session 1 (suite 29) : finalisation V2, tranche 8 (import avec segmentation en aperçu)
 
 - Constat : la V2 numérisait toujours avec les réglages par défaut (8 couleurs…), sans aucune interface de réglage. Nouvelle fenêtre d'import : hauteur, nombre de couleurs, plus petite région, lissage, fond, style ; l'image d'origine et la segmentation qui en résultera sont affichées côte à côte (`core/segmentation_preview`, même fonction que la numérisation, tâche annulable, résultat calculé pour d'autres réglages jamais affiché). La validation numérise avec ces réglages. `openImage` accepte désormais des `DigitizeSettings` ; l'option `--image` de la ligne de commande garde le comportement par défaut.
+
+## 2026-11-05 — Session 1 (suite 30) : finalisation V2, tranche 9 (magnétisme)
+
+- `core/snap` : accrochage des bords et du centre de la sélection sur les bords, centres des autres objets et l'axe du motif, avec repères d'alignement ; seuil de 6 pixels de vue converti en mm selon le zoom ; Alt suspend l'accrochage. Le canevas appelle le fournisseur pendant le glisser (retour visuel immédiat, repères roses en pointillé) et la valeur validée est celle qui était affichée (une seule commande de déplacement). Ne touche que le déplacement d'objets pour l'instant.

@@ -1614,6 +1614,54 @@ private slots:
         QVERIFY2(threads.size() <= 3, qPrintable(QString::number(threads.size())));
     }
 
+    void draggingAnObjectSnapsOntoANeighbourEdgeAndShowsAGuide() {
+        const auto drag = [](bool snap, double wantedMm) {
+            ShellWindow w;
+            w.show();
+            w.newProject();
+            const auto a = w.session().applyBatch(batchAddRect({0, 0}, 20, 20), "A");
+            const auto b = w.session().applyBatch(batchAddRect({50, 0}, 20, 20), "B");
+            if (!(a.committed && b.committed)) {
+                qFatal("setup");
+            }
+            w.waitForIdle();
+            w.setSnapEnabled(snap);
+            const auto idB = w.session().project().embroidery_objects[1].id.value;
+            const auto idA = w.session().project().embroidery_objects[0].id.value;
+            w.session().selection().replace({{TargetKind::EmbroideryObject, idB}});
+            w.waitForIdle();
+            const auto before = *w.previewFrame().hits->boundsOf(idB);
+            const auto neighbour = *w.previewFrame().hits->boundsOf(idA);
+            auto* canvas = w.canvas();
+            const double viewPerMm = w.previewFrame().px_per_mm * canvas->transform().m11();
+            const QPointF centrePx(w.previewFrame().mmToPxX((before.x0 + before.x1) / 2.0),
+                                   w.previewFrame().mmToPxY((before.y0 + before.y1) / 2.0));
+            const QPoint from = canvas->mapFromScene(centrePx);
+            const QPoint to = from + QPoint(qRound(wantedMm * viewPerMm), 0);
+            QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, from);
+            QTest::mouseMove(canvas->viewport(), from + (to - from) / 2);
+            QTest::mouseMove(canvas->viewport(), to);
+            const bool guide = canvas->hasSnapGuides();
+            QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, to);
+            w.waitForIdle();
+            const auto after = *w.previewFrame().hits->boundsOf(idB);
+            struct Out {
+                double moved;
+                double gap;
+                bool guide;
+            };
+            return Out{after.x0 - before.x0, after.x0 - neighbour.x1, guide};
+        };
+
+        // B est à 30 mm du bord droit de A : un glisser de -29,55 mm (0,45 mm trop court)…
+        const auto snapped = drag(true, -29.55);
+        QVERIFY2(std::abs(snapped.gap) < 0.05, qPrintable(QString::number(snapped.gap)));
+        QVERIFY(snapped.guide); // …s'accroche au bord de A et trace un repère
+        const auto free = drag(false, -29.55);
+        QVERIFY2(std::abs(free.gap) > 0.2, qPrintable(QString::number(free.gap)));
+        QVERIFY(!free.guide);
+    }
+
     void nodeToolEditsSatinRailsAndShowsTheRungs() {
         ShellWindow w;
         w.show();

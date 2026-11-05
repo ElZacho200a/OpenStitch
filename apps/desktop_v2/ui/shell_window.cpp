@@ -178,6 +178,7 @@ ShellWindow::ShellWindow(QWidget* parent)
     connect(canvas_, &PreviewCanvas::moveDraggedPx, this, &ShellWindow::onMoveDragged);
     connect(canvas_, &PreviewCanvas::scaleDraggedPx, this, &ShellWindow::onScaleDragged);
     canvas_->setMoveHitTest([this](const QPointF& p) { return pickAtPx(p).has_value(); });
+    canvas_->setMoveSnap([this](QPointF delta) { return snapDelta(delta); });
     connect(canvas_, &PreviewCanvas::polygonDrawnPx, this, &ShellWindow::onPolygonDrawn);
     applyToolToCanvas();
 
@@ -3380,6 +3381,72 @@ void ShellWindow::applyTransform(const std::string& batch, const QString& label)
                   true);
         updateSelectionBoxes();
     }
+}
+
+QPointF ShellWindow::snapDelta(QPointF deltaPx) {
+    canvas_->setSnapGuides({});
+    if (frame_.px_per_mm <= 0.0 || frame_.hits == nullptr) {
+        return deltaPx;
+    }
+    const auto selection = inspect(session_.project(), session_.selection().targets());
+    if (selection.ids.empty()) {
+        return deltaPx;
+    }
+    // Boîte d'un objet cousu en mm « modèle » (Y vers le haut), depuis l'index de sélection.
+    const auto boxOf = [&](std::uint64_t id) -> std::optional<SnapBox> {
+        const auto b = frame_.hits->boundsOf(id);
+        if (!b) {
+            return std::nullopt;
+        }
+        // Emprises de l'index en mm « écran » (Y vers le bas) -> mm « modèle » (Y vers le haut).
+        return SnapBox{b->x0, -b->y1, b->x1, -b->y0};
+    };
+    std::optional<SnapBox> moving;
+    for (const auto id : selection.ids) {
+        if (const auto b = boxOf(id)) {
+            moving = moving ? SnapBox{std::min(moving->x0, b->x0), std::min(moving->y0, b->y0),
+                                      std::max(moving->x1, b->x1), std::max(moving->y1, b->y1)}
+                            : *b;
+        }
+    }
+    if (!moving) {
+        return deltaPx;
+    }
+    std::vector<SnapBox> others;
+    for (const auto& object : session_.project().embroidery_objects) {
+        if (std::find(selection.ids.begin(), selection.ids.end(), object.id.value) !=
+            selection.ids.end()) {
+            continue;
+        }
+        if (const auto b = boxOf(object.id.value)) {
+            others.push_back(*b);
+        }
+    }
+    const bool altHeld = QGuiApplication::keyboardModifiers() & Qt::AltModifier;
+    // Seuil de 6 pixels de vue, converti en mm (zoom du canevas compris).
+    const double zoom = std::max(0.01, canvas_->transform().m11());
+    const double thresholdMm = (snapEnabled_ && !altHeld) ? 6.0 / (zoom * frame_.px_per_mm) : 0.0;
+    const PointMm requested{deltaPx.x() / frame_.px_per_mm, -deltaPx.y() / frame_.px_per_mm};
+    const auto snapped = snapMove(*moving, requested, others, thresholdMm, true);
+    QVector<QLineF> lines;
+    for (const auto& g : snapped.guides) {
+        if (g.vertical) {
+            lines.push_back(QLineF(frame_.mmToPxX(g.positionMm), frame_.mmToPxY(-g.fromMm),
+                                   frame_.mmToPxX(g.positionMm), frame_.mmToPxY(-g.toMm)));
+        } else {
+            lines.push_back(QLineF(frame_.mmToPxX(g.fromMm), frame_.mmToPxY(-g.positionMm),
+                                   frame_.mmToPxX(g.toMm), frame_.mmToPxY(-g.positionMm)));
+        }
+    }
+    canvas_->setSnapGuides(lines);
+    setNotice(tr("Déplacement : %1 mm, %2 mm%3")
+                  .arg(snapped.delta.x, 0, 'f', 1)
+                  .arg(snapped.delta.y, 0, 'f', 1)
+                  .arg(snapped.snappedX || snapped.snappedY
+                           ? tr("  (aimanté — Alt pour désactiver)")
+                           : QString()),
+              false);
+    return QPointF(snapped.delta.x * frame_.px_per_mm, -snapped.delta.y * frame_.px_per_mm);
 }
 
 void ShellWindow::onMoveDragged(QPointF deltaPx) {

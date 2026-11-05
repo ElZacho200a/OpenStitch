@@ -93,6 +93,12 @@ public:
     void setFabricOverlay(const QImage& image, const QRectF& rectPx);
     void setFabricArrows(const QVector<QLineF>& linesPx);
     [[nodiscard]] bool hasFabricOverlay() const { return fabricItem_ != nullptr; }
+    // Magnétisme du déplacement : reçoit le décalage brut (pixels de l'image) et rend le décalage
+    // à afficher et à valider. Vide = pas de magnétisme.
+    void setMoveSnap(std::function<QPointF(QPointF)> snap) { moveSnap_ = std::move(snap); }
+    // Repères d'alignement (pixels de l'image) tracés pendant un déplacement ; liste vide = aucun.
+    void setSnapGuides(const QVector<QLineF>& linesPx);
+    [[nodiscard]] bool hasSnapGuides() const { return snapGuides_ != nullptr; }
     [[nodiscard]] bool hasFabricArrows() const { return fabricArrows_ != nullptr; }
     // Poignées des points d'un objet (pixels de l'image) ; `selected` = indice mis en évidence, -1
     // = aucun. Liste vide = aucune poignée.
@@ -180,6 +186,8 @@ private:
     QGraphicsPixmapItem* detailItem_{nullptr};
     QGraphicsPixmapItem* densityItem_{nullptr};
     QGraphicsPixmapItem* fabricItem_{nullptr};
+    QGraphicsPathItem* snapGuides_{nullptr};
+    std::function<QPointF(QPointF)> moveSnap_;
     QGraphicsPathItem* fabricArrows_{nullptr};
     QVector<QGraphicsItem*> nodeItems_;
     QVector<QPointF> nodePts_;

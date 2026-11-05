@@ -87,6 +87,7 @@ void PreviewCanvas::clearImage() {
     densityItem_ = nullptr;
     fabricItem_ = nullptr;
     fabricArrows_ = nullptr;
+    snapGuides_ = nullptr;
     nodeItems_.clear();
     nodePts_.clear();
     nodeOutline_ = nullptr;
@@ -571,6 +572,25 @@ void PreviewCanvas::setFabricArrows(const QVector<QLineF>& linesPx) {
     fabricArrows_->setAcceptedMouseButtons(Qt::NoButton);
 }
 
+void PreviewCanvas::setSnapGuides(const QVector<QLineF>& linesPx) {
+    if (snapGuides_ != nullptr) {
+        scene_->removeItem(snapGuides_);
+        delete snapGuides_;
+        snapGuides_ = nullptr;
+    }
+    if (item_ == nullptr || linesPx.isEmpty()) {
+        return;
+    }
+    QPainterPath path;
+    for (const QLineF& line : linesPx) {
+        path.moveTo(line.p1());
+        path.lineTo(line.p2());
+    }
+    snapGuides_ = scene_->addPath(path, cosmeticPen(QColor(230, 40, 140), Qt::DashLine, 1));
+    snapGuides_->setZValue(19);
+    snapGuides_->setAcceptedMouseButtons(Qt::NoButton);
+}
+
 void PreviewCanvas::setNodeGuides(const QVector<QLineF>& linesPx) {
     if (nodeGuides_ != nullptr) {
         scene_->removeItem(nodeGuides_);
@@ -840,7 +860,11 @@ void PreviewCanvas::mouseMoveEvent(QMouseEvent* event) {
     }
     if (moving_) {
         if (selGroup_ != nullptr) {
-            selGroup_->setPos(mapToScene(event->pos()) - moveOrigin_); // retour visuel immédiat
+            QPointF delta = mapToScene(event->pos()) - moveOrigin_;
+            if (moveSnap_) {
+                delta = moveSnap_(delta); // magnétisme : le retour visuel montre l'accrochage
+            }
+            selGroup_->setPos(delta); // retour visuel immédiat
         }
         event->accept();
         return;
@@ -958,7 +982,11 @@ void PreviewCanvas::mouseReleaseEvent(QMouseEvent* event) {
     }
     if (moving_ && event->button() == Qt::LeftButton) {
         moving_ = false;
-        const QPointF delta = mapToScene(event->pos()) - moveOrigin_;
+        QPointF delta = mapToScene(event->pos()) - moveOrigin_;
+        if (moveSnap_ && !click) {
+            delta = moveSnap_(delta); // la valeur validée est celle qui était affichée
+        }
+        setSnapGuides({});
         if (selGroup_ != nullptr) {
             selGroup_->setPos(click ? QPointF() : delta); // un simple clic ne déplace rien
         }
