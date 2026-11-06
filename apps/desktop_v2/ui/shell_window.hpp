@@ -32,6 +32,7 @@
 #include "import_dialog.hpp"
 #include "live_companion.hpp"
 #include "node_edit.hpp"
+#include "openstitch/agent/agent.hpp"
 #include "path_optimizer.hpp"
 #include "pen_shape.hpp"
 #include "point_edit.hpp"
@@ -83,6 +84,9 @@ class RegionEditController;
 class RegionPanel;
 class AnalysisOverlays;
 class LiveServer;
+class ChatPanel;
+class CompanionBackend;
+class ClaudeCompanionBackend;
 class FeedbackCue;
 
 class ShellWindow : public QMainWindow {
@@ -217,6 +221,14 @@ public:
     [[nodiscard]] QString liveEndpoint() const;
     [[nodiscard]] std::string liveToken() const;
     [[nodiscard]] CompanionPanel* companionPanel() const { return companionPanel_; }
+    // Discussion avec l'agent : ouvre le panneau et branche le fournisseur (réel par défaut).
+    void openChat();
+    // Remplace le fournisseur (tests) ; nullptr revient au fournisseur réel au prochain openChat().
+    void setChatBackend(CompanionBackend* backend);
+    [[nodiscard]] ChatPanel* chatPanel() const { return chatPanel_; }
+    void showCompanionSettings();
+    // Le pont d'agent existe (sans serveur local) : requis par le chat, créé à la demande.
+    LiveCompanion& ensureCompanion();
 
     // --- Optimisation de l'ordre de couture, avec mesures avant / après ---------------------
     [[nodiscard]] OptimizePanel* optimizePanel() const { return optimizePanel_; }
@@ -370,6 +382,12 @@ private:
     void updateGuide();
     ThreadPanel* threads_{nullptr};
     CompanionPanel* companionPanel_{nullptr};
+    ChatPanel* chatPanel_{nullptr};
+    QDockWidget* chatDock_{nullptr};
+    CompanionBackend* chatBackend_{nullptr};         // injecté (tests) ou le fournisseur réel
+    ClaudeCompanionBackend* claudeBackend_{nullptr}; // créé à la demande, possédé par Qt (this)
+    std::unique_ptr<agent::ISecretStore> secretStore_;
+    agent::DiagnosticLog companionLog_;
     OptimizePanel* optimizePanel_{nullptr};
     QPointer<ImportDialog> importDialog_;
     std::unique_ptr<NodeEditController> nodes_;

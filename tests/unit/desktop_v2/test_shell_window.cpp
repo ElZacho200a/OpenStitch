@@ -2,6 +2,7 @@
 #include <QAbstractButton>
 #include <QAction>
 #include <QApplication>
+#include <QDockWidget>
 #include <QClipboard>
 #include <QColor>
 #include <QComboBox>
@@ -32,6 +33,7 @@
 #include "action_dialog.hpp"
 #include "calibration_dialog.hpp"
 #include "calque_panel.hpp"
+#include "chat_panel.hpp"
 #include "command_palette.hpp"
 #include "companion_panel.hpp"
 #include "diagnostics_panel.hpp"
@@ -69,9 +71,107 @@ fs::path tentabrode() {
 }
 } // namespace
 
+// Faux fournisseur : répond tout de suite, sans réseau ni clé. `ready` simule un fournisseur non
+// configuré ; `hold` garde la demande ouverte jusqu'à `finish()` (pour tester l'annulation).
+class FakeChatBackend final : public CompanionBackend {
+    Q_OBJECT
+public:
+    bool ready{true};
+    bool hold{false};
+    QStringList received;
+    int cancels{0};
+    [[nodiscard]] QString providerName() const override { return QStringLiteral("Faux agent"); }
+    [[nodiscard]] bool available() const override { return ready; }
+    void finish() { emit finished(); }
+public slots:
+    void send(const QString& text) override {
+        received << text;
+        emit assistantText(QStringLiteral("Reçu : ") + text);
+        CompanionToolCall call;
+        call.tool = QStringLiteral("project_inspect");
+        call.summary = QStringLiteral("1 objet");
+        emit toolCalled(call);
+        emit usage(120, 45);
+        if (!hold) {
+            emit finished();
+        }
+    }
+    void cancel() override {
+        ++cancels;
+        emit failed(QStringLiteral("Demande annulée."));
+        emit finished();
+    }
+    void decide(bool) override {}
+};
+
 class ShellWindowTest : public QObject {
     Q_OBJECT
 private slots:
+    void chatPanelTalksToTheProviderAndShowsToolsErrorsAndUsage() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        FakeChatBackend backend;
+        w.setChatBackend(&backend);
+        auto* chat = w.chatPanel();
+        QVERIFY(chat != nullptr);
+        QVERIFY(chat->statusText().contains("Faux agent"));
+        QVERIFY(!chat->submit("   ")); // vide : refusé
+        QVERIFY(chat->submit("Bonjour"));
+        QCOMPARE(backend.received, QStringList{"Bonjour"});
+        QVERIFY(!chat->busy()); // le faux backend a terminé
+        QVERIFY(chat->messageText(0).contains("Bonjour"));
+        QVERIFY(chat->messageText(1).contains("Reçu : Bonjour"));
+        QVERIFY(chat->messageText(2).contains("project_inspect"));
+        QVERIFY(chat->usageText().contains("120"));
+        // Annulation d'une demande en cours.
+        backend.hold = true;
+        QVERIFY(chat->submit("Longue demande"));
+        QVERIFY(chat->busy());
+        QVERIFY(!chat->submit("Deuxième")); // occupé : refusé
+        const int before = chat->messageCount();
+        backend.cancel();
+        QVERIFY(!chat->busy());
+        QVERIFY(chat->messageCount() > before);
+        QVERIFY(chat->messageText(chat->messageCount() - 1).contains("annulée"));
+        // Document remplacé : la conversation repart de zéro.
+        w.newProject();
+        QCOMPARE(chat->messageCount(), 0);
+        w.setChatBackend(nullptr);
+    }
+
+    void chatOpenCommandShowsTheDockWithTheRealProvider() {
+        ShellWindow w;
+        w.show();
+        QVERIFY(!w.runCommand("chat.open")); // aucun document ouvert
+        w.newProject();
+        QVERIFY(w.runCommand("chat.open"));
+        auto* dock = w.findChild<QDockWidget*>("chatDock");
+        QVERIFY(dock != nullptr);
+        QVERIFY(dock->isVisible());
+        QVERIFY(!w.chatPanel()->statusText().isEmpty());
+        QVERIFY(w.chatPanel()->messageCount() == 0);
+    }
+
+    void chatWithoutAConfiguredProviderExplainsAndRefusesToSend() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        FakeChatBackend backend;
+        backend.ready = false;
+        w.setChatBackend(&backend);
+        auto* chat = w.chatPanel();
+        QVERIFY(chat->statusText().contains("pas prêt"));
+        QVERIFY(!chat->submit("Bonjour"));
+        QVERIFY(backend.received.isEmpty());
+        bool asked = false;
+        QObject::connect(chat, &ChatPanel::configureRequested, [&asked] { asked = true; });
+        emit chat->configureRequested();
+        QVERIFY(asked);
+        w.setChatBackend(nullptr);
+        QVERIFY(chat->statusText().contains("Aucun fournisseur"));
+    }
+
     void successfulEditsConfirmWithoutChangingDocumentHistory() {
         ShellWindow w;
         w.newProject();

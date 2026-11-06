@@ -49,8 +49,11 @@
 #include "analysis_overlays.hpp"
 #include "calibration_dialog.hpp"
 #include "calque_panel.hpp"
+#include "chat_panel.hpp"
+#include "claude_backend.hpp"
 #include "command_palette.hpp"
 #include "companion_panel.hpp"
+#include "companion_settings_dialog.hpp"
 #include "diagnostics_panel.hpp"
 #include "export_options_dialog.hpp"
 #include "export_settings.hpp"
@@ -264,6 +267,14 @@ ShellWindow::~ShellWindow() {
     pump_->stop();
     previewDebounce_->stop();
     liveServer_.reset(); // plus aucun agent ne peut atteindre le document
+    if (claudeBackend_ != nullptr) {
+        // Avant le pont : une demande en cours ne doit plus pouvoir atteindre le document.
+        claudeBackend_->cancel();
+        chatPanel_->setBackend(nullptr);
+        delete claudeBackend_;
+        claudeBackend_ = nullptr;
+        chatBackend_ = nullptr;
+    }
     if (companion_) {
         companion_->close();
     }
@@ -683,6 +694,18 @@ void ShellWindow::buildInspector() {
         }
     });
     connect(companionPanel_, &CompanionPanel::undoRequested, this, [this] { session_.undo(); });
+    chatDock_ = new QDockWidget(tr("Discussion IA"), this);
+    chatDock_->setObjectName(QStringLiteral("chatDock"));
+    chatPanel_ = new ChatPanel(chatDock_);
+    chatDock_->setWidget(chatPanel_);
+    addDockWidget(Qt::RightDockWidgetArea, chatDock_);
+    tabifyDockWidget(calqueDock, chatDock_);
+    connect(chatPanel_, &ChatPanel::configureRequested, this, [this] { showCompanionSettings(); });
+    connect(chatPanel_, &ChatPanel::resetRequested, this, [this] {
+        if (claudeBackend_ != nullptr) {
+            claudeBackend_->resetConversation();
+        }
+    });
     docDock_->raise();
     polishDockTabs();
     connect(diagnostics_, &DiagnosticsPanel::analyseRequested, this, &ShellWindow::runDiagnostics);
@@ -1186,22 +1209,7 @@ bool ShellWindow::setLiveBridgeEnabled(bool on, QString* error) {
     if (liveServer_) {
         return true;
     }
-    if (!companion_) {
-        companion_ = std::make_unique<LiveCompanion>(
-            session_,
-            [this](const mcp::ApprovalRequest& request) {
-                return approvalOverride_ ? approvalOverride_(request)
-                                         : askAgentApproval(this, request);
-            },
-            [this] {
-                return currentPath_.empty() ? std::string("(sans titre)")
-                                            : currentPath_.filename().string();
-            });
-        companion_->setOnChanged([this] {
-            companionPanel_->setEvents(companion_->events());
-            companionPanel_->setCanUndo(session_.canUndo(), fromUtf8(session_.undoName()));
-        });
-    }
+    ensureCompanion();
     auto server = std::make_unique<LiveServer>(companion_->service(), this);
     QString why;
     const auto dir = liveDir_.empty() ? mcp::live_directory() : liveDir_;
@@ -1218,6 +1226,67 @@ bool ShellWindow::setLiveBridgeEnabled(bool on, QString* error) {
     return true;
 }
 
+LiveCompanion& ShellWindow::ensureCompanion() {
+    if (!companion_) {
+        companion_ = std::make_unique<LiveCompanion>(
+            session_,
+            [this](const mcp::ApprovalRequest& request) {
+                return approvalOverride_ ? approvalOverride_(request)
+                                         : askAgentApproval(this, request);
+            },
+            [this] {
+                return currentPath_.empty() ? std::string("(sans titre)")
+                                            : currentPath_.filename().string();
+            });
+        companion_->setOnChanged([this] {
+            companionPanel_->setEvents(companion_->events());
+            companionPanel_->setCanUndo(session_.canUndo(), fromUtf8(session_.undoName()));
+        });
+    }
+    return *companion_;
+}
+
+void ShellWindow::setChatBackend(CompanionBackend* backend) {
+    chatBackend_ = backend;
+    chatPanel_->setBackend(backend);
+}
+
+void ShellWindow::openChat() {
+    if (chatBackend_ == nullptr) {
+        // Fournisseur réel : une demande = une exécution de l'agent hors fil d'interface ; ses
+        // outils passent par le pont (accord et annulation) et jamais directement par le document.
+        auto& live = ensureCompanion();
+        if (!secretStore_) {
+            secretStore_ = makeSystemSecretStore();
+        }
+        if (claudeBackend_ == nullptr) {
+            claudeBackend_ = new ClaudeCompanionBackend(live.service(), *secretStore_, {}, this);
+            claudeBackend_->setDiagnostics(&companionLog_);
+            companionLog_.set_enabled(companion_settings::diagnosticsEnabled());
+            companionLog_.set_content_consent(companion_settings::diagnosticsEnabled() &&
+                                              companion_settings::diagnosticsContentConsent());
+        }
+        chatBackend_ = claudeBackend_;
+        chatPanel_->setBackend(chatBackend_);
+    }
+    chatDock_->show();
+    chatDock_->raise();
+}
+
+void ShellWindow::showCompanionSettings() {
+    if (!secretStore_) {
+        secretStore_ = makeSystemSecretStore();
+    }
+    CompanionSettingsDialog dialog(*secretStore_, companionLog_, this);
+    if (dialog.exec() == QDialog::Accepted) {
+        dialog.applyToSettings();
+        if (claudeBackend_ != nullptr) {
+            claudeBackend_->refresh();
+        }
+        chatPanel_->setBackend(chatBackend_); // relit l'état « prêt » du fournisseur
+    }
+}
+
 bool ShellWindow::liveBridgeEnabled() const {
     return liveServer_ != nullptr && liveServer_->running();
 }
@@ -1232,6 +1301,13 @@ std::string ShellWindow::liveToken() const {
 
 void ShellWindow::onDocumentChanged(ChangeKind kind) {
     overlays_->onDocumentChanged();
+    if (kind == ChangeKind::Replaced && chatPanel_ != nullptr) {
+        // Nouveau document : l'ancienne conversation parle d'un autre motif.
+        chatPanel_->clearConversation();
+        if (claudeBackend_ != nullptr) {
+            claudeBackend_->resetConversation();
+        }
+    }
     if (regions_) {
         if (kind == ChangeKind::Replaced) {
             regions_->onDocumentReplaced(); // nouveau document : ni région choisie ni correction en
@@ -2884,6 +2960,10 @@ bool ShellWindow::runCommand(const QString& id) {
             removePresetIndex(id.mid(14).toInt());
         } else if (id == QLatin1String("analysis.fabric")) {
             overlays_->toggleFabricRisk();
+        } else if (id == QLatin1String("chat.open")) {
+            openChat();
+        } else if (id == QLatin1String("companion.settings")) {
+            showCompanionSettings();
         } else if (id == QLatin1String("thread.palette")) {
             auto* dialog = new ThreadPaletteDialog(session_, this);
             dialog->setAttribute(Qt::WA_DeleteOnClose);

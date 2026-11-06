@@ -461,3 +461,9 @@ encore le desktop principal.
 - **Nuanciers** (`core/thread_palette_service`, `ThreadPaletteDialog`) : recherche, plus proches, assignation, mélange de deux fils. Le mélange est simulé en lumière linéaire sur les 12 fils les plus proches, par pas de 10 % ; il dit quand un fil seul fait aussi bien.
 - **Texte** : `text.add` reçoit les réglages typographiques du moteur ; `text.edit` (hors catalogue pour ne pas casser l'invariant « chaque action se construit avec des valeurs par défaut ») retrouve le texte propriétaire des lettres sélectionnées (`text_owner`) et ouvre le dialogue prérempli.
 - **Préférences** (`core/preferences`) : thème et densité. Constat : le thème choisi n'était jamais enregistré. Densité = mise à l'échelle des seules lignes `padding` de la feuille de style. Langue volontairement absente.
+
+## 2026-11-06 — Session 2 : lot 5, chat intégré
+
+- Constat : la V1 avait déjà tout le côté agent (`ClaudeCompanionBackend`, `LiveToolHost`, réglages, stockage de clé) mais dans `apps/desktop`, inutilisable depuis la V2 sans dépendre de l'autre application (et leurs en-têtes homonymes — `calque_panel.hpp`, `live_server.hpp`… — rendent un `include_directories` partagé dangereux). Choix : copie de 5 fichiers dans `apps/desktop_v2/ui` sous l'espace de noms `desktop_v2` (mêmes clés de réglage : la clé et l'activation déjà saisies en V1 sont reprises). Dette assumée : deux copies à faire converger quand la V1 sera retirée.
+- `ChatPanel` ne fait que des widgets ; le document n'est jamais modifié par le panneau : les outils de l'agent passent par `LiveCompanion` (approbation avant/après). `ensureCompanion()` crée le pont sans serveur local, le chat n'en a pas besoin.
+- Non fait : essai réel avec une clé, fournisseur « processus Claude Code », analyse sémantique automatique.

@@ -25,7 +25,7 @@ dit honnêtement ce qui bloque, ce qui est prêt et comment le vérifier.
 - [x] Comparaison nominal ↔ prédit de la compensation de tirage et assistant d'étalonnage sur pièce-test (commandes `analysis.pull`, `analysis.calibration`). Reste : adopter les coefficients ajustés dans le projet ; essai sur tissu réel.
 - [x] Options machine avancées d'export (départ, coupes, points d'arrêt) et bibliothèque de cadres (commandes `export.options`, `export.check`). Reste : enregistrer ses propres cadres.
 - [ ] Segmentation IA / SAM (hors priorité produit ; état de disponibilité à afficher honnêtement).
-- [ ] Chat intégré (aujourd'hui l'agent se branche via un client MCP externe).
+- [x] Chat intégré (dock « Discussion IA », commande `chat.open`) ; le client MCP externe reste possible. Reste : essai réel avec une clé API, fournisseur « processus Claude Code », analyse sémantique automatique de la V1.
 - [x] Nuanciers de fils et mélange (commande `thread.palette`), texte avancé et modification d'un texte (`text.add` étendu, `text.edit`), préférences (thème et densité d'interface, menu Affichage). Reste : choix de la langue (aucune infrastructure de traduction : un réglage de langue serait faux), texte sur chemin libre (`base: path`), glyphes édités individuellement.
 
 ## À mesurer / vérifier à la main avant bascule

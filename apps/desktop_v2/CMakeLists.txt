@@ -101,6 +101,13 @@ add_library(openstitch_desktop_v2_ui STATIC
     ui/thread_palette_dialog.hpp
     ui/calibration_dialog.cpp
     ui/calibration_dialog.hpp
+    ui/chat_panel.cpp
+    ui/chat_panel.hpp
+    ui/claude_backend.cpp
+    ui/claude_backend.hpp
+    ui/companion_backend.hpp
+    ui/companion_settings_dialog.cpp
+    ui/companion_settings_dialog.hpp
     ui/companion_panel.cpp
     ui/companion_panel.hpp
     ui/live_server.cpp
@@ -121,6 +128,7 @@ add_library(openstitch::desktop_v2_ui ALIAS openstitch_desktop_v2_ui)
 target_include_directories(openstitch_desktop_v2_ui PUBLIC ui)
 target_link_libraries(openstitch_desktop_v2_ui
     PUBLIC Qt6::Widgets Qt6::Network openstitch::desktop_v2_core openstitch::project_io
+           openstitch::agent
     PRIVATE openstitch::warnings)
 
 add_executable(openstitch_v2 WIN32 ui/main.cpp)
