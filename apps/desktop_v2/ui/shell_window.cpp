@@ -948,9 +948,8 @@ void ShellWindow::rebuildToolRail() {
             }
             menuAction->setToolTip(tip);
             menuAction->setStatusTip(tip);
-            connect(menuAction, &QAction::triggered, this, [this, id] {
-                (void)runCommand(QStringLiteral("tool.") + id);
-            });
+            const auto activate = [this, id] { (void)runCommand(QStringLiteral("tool.") + id); };
+            connect(menuAction, &QAction::triggered, this, activate);
         }
     }
     if (!activeStillThere) {
