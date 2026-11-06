@@ -510,3 +510,9 @@ encore le desktop principal.
 
 - Premier build Windows à exécuter toute la suite QTest de la V2 (118 passés, 3 échecs). Deux échecs : comptes d'outils codés en dur dans deux tests existants (14 outils actifs, 24 commandes) alors que j'avais ajouté un outil → 15 et 25. Troisième : le trait du pinceau ne produisait pas son pas d'annulation.
 - Cause probable (non confirmée par le journal, qui ne donne pas la raison du refus) : mon garde « refuser le trait si une région voisine serait entièrement effacée » refusait EN BLOC tout trait croisant un îlot. Défaut d'usage réel. Nouveau comportement : les régions voisines entièrement couvertes sont ÉPARGNÉES (leurs pixels ne sont pas repeints), le reste du trait est peint, et la notice le dit ; refus seulement si rien d'autre n'est peint. En gomme, effacer toute la région choisie reste refusé (« Supprimer » existe). Le test affiche désormais la notice si le trait échoue, pour ne plus deviner.
+
+## 2026-11-06 — Session 2 : première CI entièrement verte
+
+- Tête `ba61c49` de la PR #277 : `windows-msvc` (compilation MSVC, Catch2 et toute la suite QTest de la V2), `linux-core` et `format` passent. Les lignes « CI à confirmer » de la matrice sont remplacées par « CI verte ».
+- Bilan des défauts que la CI a trouvés (aucun n'a été vu en local, faute de Qt) : cinq défauts de mes propres tests (nominal nul, cadre par défaut déjà en place, référence sur temporaire, deux boîtes modales qui bloquaient 300 s) et trois VRAIS défauts d'usage : sélection après « Ajouter du texte » (qui grisait « Modifier le texte »), commandes du chat jamais enregistrées dans la palette, pinceau refusant tout trait croisant un îlot.
+- **Ce que « vert » ne dit pas** : rien n'a été vu à l'écran ; le fournisseur réel du chat n'est exercé par aucun test ; la recette Windows des cinq scénarios et le test des anciens `.osp` restent à faire (voir `11-bascule-v1-v2.md`).
