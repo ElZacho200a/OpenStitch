@@ -143,3 +143,13 @@ Les valeurs sont des **hypothèses de design à tester** sur Windows clair/sombr
 **Critères d'acceptation :** le bouton reste dans la barre supérieure ; chaque espace offre exactement ses outils ; « Régions » est accessible dans Conception ; les outils non migrés sont désactivés et expliqués ; changer d'outil ne modifie pas la révision du projet ; changement d'espace restaure « Sélection » si l'outil précédent est absent. Test : `allToolsMenuKeepsLowRailToolsAccessibleWithoutEditingTheDocument`.
 
 **À vérifier manuellement :** capture réelle Windows à 1024×520 et 1280×720 (clair/sombre), comportement des menus sous DPI 200 %, focus clavier et contraste. Aucune capture n'a été produite durant cet essai de l'agent.
+
+## Itération UX — Retouches de régions sans saut du panneau (2026-11-05)
+
+**Problème constaté dans le code :** `RegionPanel::setRegions()` vide puis repeuple la liste de régions à chaque `refresh()`, même pour une simple recoloration. Le défilement peut revenir en haut. `setNeighbours()` et `setColorTargets()` vident de même leurs listes, faisant perdre le choix de la cible avant une fusion.
+
+**User story** : en tant que personne corrigeant une image segmentée contenant de nombreuses régions, je veux garder ma position dans la liste et ma cible de fusion lorsque les propriétés se mettent à jour, afin de travailler en continu sans re-sélectionner constamment.
+
+**Correction** : la vue retient l'offset vertical lorsque la sélection logique n'a pas changé, ou a été supprimée. Les menus de voisins et de couleurs restaurent la cible par identifiant stable si elle existe encore, et reviennent à la première option uniquement si cette cible n'est plus valide. Une nouvelle sélection de région peut toujours défiler jusqu'à la région choisie. Les signaux émis pendant le remplissage de la liste restent bloqués : aucune commande ni révision documentaire superflue.
+
+**Test automatisé** : `regionPanelRetainsScrollAndMergeTargetsAcrossRefreshes` sous QtTest, avec 100 régions, une cible de fusion réordonnée et une cible supprimée. Recette visuelle réelle sur Windows encore à effectuer, aucune capture prétendument produite.

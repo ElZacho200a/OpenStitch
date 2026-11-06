@@ -4,6 +4,7 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QColor>
+#include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QFile>
 #include <QGuiApplication>
@@ -16,6 +17,7 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QScrollBar>
+#include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
@@ -2156,6 +2158,53 @@ private slots:
         const auto merged = listRegions(w.session().project());
         QVERIFY(std::none_of(merged.begin(), merged.end(),
                              [&](const RegionInfo& r) { return r.rgb == regions.front().rgb; }));
+    }
+
+    void regionPanelRetainsScrollAndMergeTargetsAcrossRefreshes() {
+        RegionPanel panel;
+        panel.resize(430, 300);
+        panel.show();
+        std::vector<RegionInfo> regions;
+        for (std::uint64_t id = 1; id <= 100; ++id) {
+            regions.push_back({id, {static_cast<std::uint8_t>(id), 35, 95}, 110 - id});
+        }
+        panel.setRegions(regions, regions[19].id);
+        auto* list = panel.findChild<QListWidget*>(QStringLiteral("regionList"));
+        QVERIFY(list != nullptr);
+        QCoreApplication::processEvents();
+        auto* scrollbar = list->verticalScrollBar();
+        QVERIFY(scrollbar->maximum() > 0);
+        scrollbar->setValue(std::min(25, scrollbar->maximum()));
+        const int originalPosition = scrollbar->value();
+        QSignalSpy selectionEvents(&panel, &RegionPanel::regionChosen);
+        QVERIFY(selectionEvents.isValid());
+
+        panel.setRegions(regions, regions[19].id);
+        QCOMPARE(scrollbar->value(), originalPosition);
+        QCOMPARE(selectionEvents.size(), 0);
+        QCOMPARE(panel.selectedRegion(), regions[19].id);
+
+        panel.setNeighbours({regions[1], regions[2], regions[3]});
+        auto* neighbours = panel.findChild<QComboBox*>(QStringLiteral("regionNeighbours"));
+        QVERIFY(neighbours != nullptr);
+        neighbours->setCurrentIndex(1);
+        const auto chosenNeighbour = neighbours->currentData();
+        panel.setNeighbours({regions[3], regions[2], regions[1]});
+        QCOMPARE(neighbours->currentData(), chosenNeighbour);
+        panel.setNeighbours({regions[1]});
+        const auto remainingNeighbour = static_cast<qulonglong>(regions[1].id);
+        QCOMPARE(neighbours->currentData().toULongLong(), remainingNeighbour);
+
+        panel.setColorTargets({regions[4], regions[5], regions[6]});
+        auto* colors = panel.findChild<QComboBox*>(QStringLiteral("regionColorTargets"));
+        QVERIFY(colors != nullptr);
+        colors->setCurrentIndex(2);
+        const auto chosenColor = colors->currentData();
+        panel.setColorTargets({regions[6], regions[4], regions[5]});
+        QCOMPARE(colors->currentData(), chosenColor);
+        panel.setColorTargets({regions[4]});
+        const auto remainingColor = static_cast<qulonglong>(regions[4].id);
+        QCOMPARE(colors->currentData().toULongLong(), remainingColor);
     }
 
     void regionToolDeletesMergesAndRegeneratesTheObjects() {
