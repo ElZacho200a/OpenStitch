@@ -839,6 +839,11 @@ void ShellWindow::setCompactToolRail(bool compact) {
 }
 
 void ShellWindow::setWorkspace(Workspace workspace) {
+    // Rechoisir l'espace courant ne doit ni reconstruire le rail (et perdre le focus),
+    // ni interrompre une interaction en cours. Le premier appel initialise le rail.
+    if (workspace_ == workspace && !toolRail_->actions().isEmpty()) {
+        return;
+    }
     workspace_ = workspace;
     for (auto* a : workspaceActions_) {
         a->setChecked(a->data().toInt() == static_cast<int>(workspace));

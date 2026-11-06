@@ -171,6 +171,25 @@ private slots:
         QCOMPARE(rail->actions().size(), design);
     }
 
+    void reselectingCurrentWorkspacePreservesActiveToolAndRailActions() {
+        ShellWindow w;
+        auto* rail = w.findChild<QToolBar*>(QStringLiteral("toolRail"));
+        auto* status = w.findChild<QLabel*>(QStringLiteral("activeToolStatus"));
+        QVERIFY(rail != nullptr);
+        QVERIFY(status != nullptr);
+        QVERIFY(w.runCommand(QStringLiteral("tool.region.edit")));
+        QCOMPARE(w.activeToolId(), QStringLiteral("region.edit"));
+        const auto actionsBefore = rail->actions();
+        QVERIFY(!actionsBefore.isEmpty());
+        const QString statusBefore = status->text();
+
+        // Recliquer sur Conception n'est pas un changement de contexte.
+        w.setWorkspace(Workspace::Design);
+        QCOMPARE(w.activeToolId(), QStringLiteral("region.edit"));
+        QCOMPARE(status->text(), statusBefore);
+        QCOMPARE(rail->actions(), actionsBefore);
+    }
+
     void switchingWorkspaceResetsTheActiveToolStatusAlongWithSelection() {
         ShellWindow w;
         auto* status = w.findChild<QLabel*>(QStringLiteral("activeToolStatus"));
