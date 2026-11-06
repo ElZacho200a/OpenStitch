@@ -492,7 +492,8 @@ private slots:
              {"satin.rung.insert", "satin.rung.remove", "satin.diagnose", "analysis.pull",
               "analysis.calibration", "export.options", "export.check", "thread.palette",
               "text.edit", "text.glyph", "text.glyph.reset", "chat.open", "companion.settings",
-              "tool.region.brush"}) {
+              "tool.region.brush", "node.smooth", "node.corner", "node.hole.remove",
+              "text.remove"}) {
             const bool listed = std::any_of(entries.begin(), entries.end(),
                                             [id](const auto& e) { return e.id == id; });
             QVERIFY2(listed, id);
@@ -2458,6 +2459,59 @@ private slots:
         QVERIFY(w.session().undo());
         w.waitForIdle();
         QCOMPARE(w.nodeHandleCount(), 8);
+    }
+
+    void nodeKindCommandsNeedChosenNodesAndAreUndoable() {
+        ShellWindow w;
+        w.resize(1400, 900);
+        w.show();
+        w.newProject();
+        std::vector<PointMm> octagon;
+        for (int k = 0; k < 8; ++k) {
+            const double a = (22.5 + 45.0 * k) * 3.14159265358979323846 / 180.0;
+            octagon.push_back({10.0 * std::cos(a), 10.0 * std::sin(a)});
+        }
+        QVERIFY(w.session().applyBatch(batchAddPolygon(octagon), "Octogone").committed);
+        w.waitForIdle();
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        QVERIFY(w.runCommand("tool.node.edit"));
+        w.waitForIdle();
+        // Aucun nœud choisi : les trois commandes sont indisponibles.
+        QVERIFY(!w.runCommand("node.smooth"));
+        QVERIFY(!w.runCommand("node.corner"));
+        QVERIFY(!w.runCommand("node.hole.remove"));
+
+        auto* canvas = w.canvas();
+        QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                          canvas->mapFromScene(w.nodeHandlePx(3)));
+        QCOMPARE(w.selectedNodeCount(), 1);
+        QVERIFY(!w.runCommand("node.hole.remove")); // ce nœud n'est pas dans un trou
+        const auto depth = w.session().undoNames().size();
+        QVERIFY(w.runCommand("node.smooth"));
+        w.waitForIdle();
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QVERIFY(w.lastNotice().contains("lisse"));
+        const auto reselect =
+            [&] { // la sélection survit-elle au rafraîchissement ? sinon on la refait
+                if (w.selectedNodeCount() == 0) {
+                    QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                                      canvas->mapFromScene(w.nodeHandlePx(3)));
+                }
+                QCOMPARE(w.selectedNodeCount(), 1);
+            };
+        reselect();
+        QVERIFY(!w.runCommand("node.smooth")); // déjà lisse : refusé, notice claire
+        QVERIFY(w.lastNotice().contains("déjà"));
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        reselect();
+        QVERIFY(w.runCommand("node.corner"));
+        w.waitForIdle();
+        QCOMPARE(w.session().undoNames().size(), depth + 2);
+        QVERIFY(w.session().undo());
+        QVERIFY(w.session().undo());
+        w.waitForIdle();
+        QCOMPARE(w.session().undoNames().size(), depth);
     }
 
     void pencilTurnsAHandDrawnLoopIntoASmoothShape() {

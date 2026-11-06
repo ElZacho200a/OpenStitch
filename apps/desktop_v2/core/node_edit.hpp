@@ -124,6 +124,26 @@ ServiceResult deleteNodes(DocumentSession& session, std::uint64_t objectId,
                           const std::vector<NodeRef>& nodes);
 
 // Tire le segment au point `hit.t` de `deltaMm` (remodelage d'un segment en UNE commande).
+// Type d'un nœud : « anguleux » (poignées indépendantes, angle franc possible) ou « lisse »
+// (poignées alignées).
+enum class NodeKind { Corner, Smooth };
+
+// Change le type des nœuds en UNE commande annulable (tous dans des contours de la même forme).
+// « Lisse » crée les poignées qui manquent (tangente de Catmull-Rom entre les voisins, ou
+// symétrique d'une poignée existante) : sans elles le changement serait invisible. Refus clair :
+// rien à changer, nœud inconnu, extrémité d'un tracé ouvert, rail de satin, ou contour qui se
+// croiserait.
+ServiceResult setNodeKind(DocumentSession& session, std::uint64_t objectId,
+                          const std::vector<NodeRef>& nodes, NodeKind kind);
+
+// Supprime le TROU auquel appartient le nœud `node` (`node.path` >= 1 : 0 est le contour
+// extérieur), en UNE commande annulable. Le contour extérieur et les autres trous restent.
+// Refus clair : nœud du contour extérieur, nœud inconnu, rail de satin.
+ServiceResult removeHoleOfNode(DocumentSession& session, std::uint64_t objectId,
+                               const NodeRef& node);
+// Nombre de trous de la forme source de l'objet (0 si elle n'en a pas ou n'existe pas).
+[[nodiscard]] std::size_t holeCount(const document::Project& project, std::uint64_t objectId);
+
 ServiceResult reshapeSegment(DocumentSession& session, std::uint64_t objectId,
                              const SegmentHit& hit, PointMm deltaMm);
 

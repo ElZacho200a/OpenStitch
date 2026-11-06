@@ -523,3 +523,11 @@ encore le desktop principal.
 - Guide de parcours réécrit sur l'état réel (obsolète, bloqué, avertissement, ignoré) ; régénération protégée (formes dessinées conservées, retouches comptées et confirmées) ; sept parcours de bout en bout en test.
 - **Captures réelles** (premières de la V2 avec police) : 28 images, 5 inspectées ; cinq défauts d'affichage trouvés et corrigés, trois restent (voir `14`).
 - Ce que ce journal ne dit pas encore : le résultat de la CI de GitHub pour ces lots ; il est ajouté après le premier push.
+
+## 2026-11-06 — Session 4 : parité moteur, édition vectorielle (type de nœud, trous, texte)
+
+- Demande : « tout ce que le moteur peut faire doit se retrouver dans le desktop ». Instrument : `scripts/engine_parity.py` + `15-parite-moteur.md` (51 opérations dont 12 non référencées par nom ; 86 commandes dont 29 utilisées par la V1 seulement). **Recherche de noms : elle surestime et sous-estime** ; seule une qualification à la main fait foi.
+- Branche repartie de `main` (PR #277 fusionnée par squash, contenu identique).
+- Livré : type de nœud (anguleux / lisse, poignées créées au besoin, refus si le contour se croise ou sur un rail de satin), suppression d'un trou précis, suppression d'un texte entier. Commandes `node.smooth`, `node.corner`, `node.hole.remove`, `text.remove`.
+- Choix : « lisse » sur un nœud sans poignée crée une tangente de Catmull-Rom (un sixième de la corde entre les voisins) ; avec une poignée, l'autre lui est opposée. Les extrémités d'un tracé ouvert ne se lissent pas (un seul voisin).
+- Non fait : rails de satin (le moteur a `SetSatinRailNodeTypeCommand`), formes prédéfinies, magnétisme des nœuds.
