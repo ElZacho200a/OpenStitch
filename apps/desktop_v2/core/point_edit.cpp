@@ -52,6 +52,13 @@ Result<Ctx> context(const document::Project& project, std::uint64_t objectId) {
     return Ctx{std::move(*view), id};
 }
 
+// Point de la passe supérieure, cousu OU saut : ce que `forced_type` et `trim_after` acceptent.
+bool isEditableIndex(const Ctx& c, std::size_t i) {
+    return i < c.view.raw.size() && c.view.raw[i].pass == stitch::StitchPass::TopStitch &&
+           (c.view.raw[i].type == stitch::CommandType::Stitch ||
+            c.view.raw[i].type == stitch::CommandType::Jump);
+}
+
 bool isMovableIndex(const Ctx& c, std::size_t i) {
     return i < c.view.raw.size() && c.view.raw[i].pass == stitch::StitchPass::TopStitch &&
            stitch_generation::is_movable_point(c.view.raw[i]);
@@ -91,6 +98,10 @@ Result<PointView> stitchPoints(const document::Project& project, std::uint64_t o
         if (ov != obj->overrides.end()) {
             p.edited = true;
             p.deleted = ov->deleted;
+            p.trimAfter = ov->trim_after;
+            if (ov->forced_type) {
+                p.jump = *ov->forced_type == document::StitchPointType::Jump;
+            }
             if (ov->moved_to) {
                 p.pos = {to_millimeters(ov->moved_to->x).value,
                          to_millimeters(ov->moved_to->y).value};
@@ -143,6 +154,48 @@ ServiceResult deleteStitchPoints(DocumentSession& session, std::uint64_t objectI
     session.execute(std::make_unique<commands::EditStitchPointsCommand>(
         commands::EditStitchPointsCommand::delete_points(c->id, indices, c->view.fingerprint,
                                                          c->view.point_count)));
+    return {true, {}};
+}
+
+ServiceResult setStitchPointsJump(DocumentSession& session, std::uint64_t objectId,
+                                  const std::vector<std::size_t>& indices, bool jump) {
+    if (indices.empty()) {
+        return refuse("Aucun point choisi.");
+    }
+    auto c = context(session.project(), objectId);
+    if (!c) {
+        return refuse(c.error().message + ". " + c.error().detail);
+    }
+    for (const std::size_t i : indices) {
+        if (!isEditableIndex(*c, i)) {
+            return refuse("Ce point ne peut pas changer de type.");
+        }
+    }
+    session.execute(std::make_unique<commands::EditStitchPointsCommand>(
+        commands::EditStitchPointsCommand::set_type(c->id, indices,
+                                                    jump ? document::StitchPointType::Jump
+                                                         : document::StitchPointType::Stitch,
+                                                    c->view.fingerprint, c->view.point_count)));
+    return {true, {}};
+}
+
+ServiceResult setStitchPointsTrim(DocumentSession& session, std::uint64_t objectId,
+                                  const std::vector<std::size_t>& indices, bool trim) {
+    if (indices.empty()) {
+        return refuse("Aucun point choisi.");
+    }
+    auto c = context(session.project(), objectId);
+    if (!c) {
+        return refuse(c.error().message + ". " + c.error().detail);
+    }
+    for (const std::size_t i : indices) {
+        if (!isEditableIndex(*c, i)) {
+            return refuse("On ne coupe le fil qu'après un point de la passe supérieure.");
+        }
+    }
+    session.execute(std::make_unique<commands::EditStitchPointsCommand>(
+        commands::EditStitchPointsCommand::set_trim(c->id, indices, trim, c->view.fingerprint,
+                                                    c->view.point_count)));
     return {true, {}};
 }
 

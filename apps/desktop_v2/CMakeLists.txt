@@ -46,6 +46,9 @@ add_library(openstitch_desktop_v2_core STATIC
     core/hoop_store.cpp
     core/thread_palette_service.cpp
     core/preferences.cpp
+    core/render_settings.cpp
+    core/file_io.cpp
+    core/direction_guides.cpp
     core/point_edit.cpp
     core/source_image_tools.cpp
 )
@@ -89,6 +92,8 @@ add_library(openstitch_desktop_v2_ui STATIC
     ui/node_edit_controller.cpp
     ui/node_edit_controller.hpp
     ui/region_panel.cpp
+    ui/render_quality_dialog.cpp
+    ui/render_quality_dialog.hpp
     ui/region_panel.hpp
     ui/region_edit_controller.cpp
     ui/region_edit_controller.hpp

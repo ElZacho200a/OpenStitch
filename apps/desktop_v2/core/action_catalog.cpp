@@ -217,6 +217,17 @@ std::vector<ActionDef> makeCatalog() {
     }
     {
         ActionDef a;
+        a.id = "file.import_dxf";
+        a.label = "Importer un DXF…";
+        a.group = "Fichier";
+        a.fields = {fileField("file", "Fichier DXF", "")};
+        a.build = [](const Values& v, const ActionContext&, std::string&) {
+            return wrap(R"({"op":"import_dxf","file":)" + quote(v.at("file")) + "}");
+        };
+        out.push_back(std::move(a));
+    }
+    {
+        ActionDef a;
         a.id = "text.add";
         a.label = "Ajouter du texte…";
         a.group = "Texte";

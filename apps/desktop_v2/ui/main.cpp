@@ -3,6 +3,7 @@
 #include <QCommandLineParser>
 #include <QMessageBox>
 #include <QStandardPaths>
+#include <QTemporaryDir>
 #include <filesystem>
 
 #include "openstitch/core/app_info.hpp"
@@ -45,12 +46,40 @@ int main(int argc, char** argv) {
                             QStringLiteral("Recette : active l'outil d'identifiant donné."),
                             QStringLiteral("id"));
     parser.addOption(tool);
+    QCommandLineOption size(QStringList{QStringLiteral("size")},
+                            QStringLiteral("Recette : taille de la fenêtre, LARGEURxHAUTEUR."),
+                            QStringLiteral("LxH"));
+    parser.addOption(size);
+    QCommandLineOption theme(QStringList{QStringLiteral("theme")},
+                             QStringLiteral("Recette : thème light, dark ou system."),
+                             QStringLiteral("mode"));
+    parser.addOption(theme);
+    QCommandLineOption workspace(
+        QStringList{QStringLiteral("workspace")},
+        QStringLiteral("Recette : espace design, digitize, zones, optimize ou produce."),
+        QStringLiteral("id"));
+    parser.addOption(workspace);
+    QCommandLineOption command(QStringList{QStringLiteral("command")},
+                               QStringLiteral("Recette : exécute une commande de la palette."),
+                               QStringLiteral("id"));
+    parser.addOption(command);
     parser.process(app);
 
     openstitch::desktop_v2::ShellWindow window;
+    if (parser.isSet(size)) {
+        const auto parts = parser.value(size).split(QLatin1Char('x'));
+        if (parts.size() == 2 && parts[0].toInt() > 0 && parts[1].toInt() > 0) {
+            window.resize(parts[0].toInt(), parts[1].toInt());
+        }
+    }
     window.show();
-    const auto stateDir = std::filesystem::path(
-        QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation).toStdU16String());
+    // Une capture ne doit jamais modifier les préférences ni la récupération de l'utilisateur.
+    QTemporaryDir recipeDir;
+    const auto stateDir = parser.isSet(shot) && recipeDir.isValid()
+                              ? std::filesystem::path(recipeDir.path().toStdU16String())
+                              : std::filesystem::path(QStandardPaths::writableLocation(
+                                                          QStandardPaths::AppLocalDataLocation)
+                                                          .toStdU16String());
     window.setStateDirectory(stateDir);
     if (window.hasRecovery() && parser.positionalArguments().isEmpty() && !parser.isSet(shot)) {
         const auto answer = QMessageBox::question(
@@ -82,6 +111,17 @@ int main(int argc, char** argv) {
         (void)session.applyBatch(batchAddEllipse({18, 12}, 26, 26), "Ellipse");
         (void)session.applyBatch(
             batchAddPolygon({{-30, -30}, {0, -12}, {30, -30}, {10, -8}, {-10, -8}}), "Polygone");
+    }
+    if (parser.isSet(theme)) {
+        window.setThemeMode(parser.value(theme));
+    }
+    if (parser.isSet(workspace)) {
+        window.waitForIdle();
+        (void)window.runCommand(QStringLiteral("workspace.") + parser.value(workspace));
+    }
+    if (parser.isSet(command)) {
+        window.waitForIdle();
+        (void)window.runCommand(parser.value(command));
     }
     if (parser.isSet(tool)) {
         window.waitForIdle();

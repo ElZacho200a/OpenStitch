@@ -5,6 +5,7 @@
 #include <QClipboard>
 #include <QColor>
 #include <QComboBox>
+#include <QDialog>
 #include <QDockWidget>
 #include <QDoubleSpinBox>
 #include <QFile>
@@ -27,6 +28,7 @@
 #include <QTreeWidget>
 #include <QWheelEvent>
 #include <filesystem>
+#include <map>
 #include <nlohmann/json.hpp>
 #include <set>
 
@@ -107,6 +109,341 @@ public slots:
 class ShellWindowTest : public QObject {
     Q_OBJECT
 private slots:
+    void switchingWorkspacesKeepsSelectionHistoryFocusAndLetsYouFixARegionFromProduction() {
+        ShellWindow w;
+        w.resize(1100, 800);
+        w.show();
+        openstitch::project_ops::DigitizeSettings settings;
+        settings.max_colors = 4;
+        w.openImage(tentabrode(), 60.0, settings);
+        w.waitForIdle();
+        const auto& objects = w.session().project().embroidery_objects;
+        QVERIFY(objects.size() >= 2);
+        const std::vector<Target> chosen{{TargetKind::EmbroideryObject, objects[0].id.value},
+                                         {TargetKind::EmbroideryObject, objects[1].id.value}};
+        w.session().selection().replace(chosen);
+        w.canvas()->setFocus();
+        const auto focus = w.focusWidget();
+        const auto depth = w.session().undoNames().size();
+        const auto revision = w.session().revision();
+        // Un tour complet des espaces : rien ne se perd en route.
+        for (const auto ws : {Workspace::Zones, Workspace::Digitize, Workspace::Optimize,
+                              Workspace::Produce, Workspace::Design}) {
+            w.setWorkspace(ws);
+            QCOMPARE(w.session().selection().targets(), chosen);
+            QCOMPARE(w.session().undoNames().size(), depth);
+            QCOMPARE(w.session().revision(), revision);
+            QCOMPARE(w.focusWidget(), focus);
+        }
+        // Depuis Production, on corrige une région puis on revient contrôler et exporter.
+        w.setWorkspace(Workspace::Produce);
+        QVERIFY(w.runCommand("tool.region.edit")); // bascule seule vers Zones, sans rien casser
+        QCOMPARE(w.workspace(), Workspace::Zones);
+        const auto regions = allRegionIds(w.session().project());
+        QVERIFY(regions.size() >= 3);
+        QVERIFY(w.regionController()->recolorSelected({1, 2, 3}) == false); // rien de choisi
+        w.regionController()->selectRegions({regions.front()});
+        QVERIFY(w.regionController()->recolorSelected({9, 8, 7}));
+        w.setWorkspace(Workspace::Produce);
+        QVERIFY(
+            w.regionController()->dirty()); // l'état de correction survit au changement d'espace
+        QVERIFY(w.session().undoNames().size() == depth + 1);
+        // Le guide dit la vérité : les objets ne suivent plus la segmentation.
+        QCOMPARE(w.guideNext(), NextAction::Regenerate);
+        QVERIFY(w.guide().steps[1].state == StepState::Stale);
+        w.setWorkspace(Workspace::Optimize);
+        QVERIFY(w.runCommand("analysis.run"));
+        w.waitForIdle();
+        QVERIFY(w.session().undo()); // l'historique est intact et réversible
+    }
+
+    void zoomCommandsGuidesAndShortcutsAreReachable() {
+        ShellWindow w;
+        w.resize(1100, 800);
+        w.show();
+        openstitch::project_ops::DigitizeSettings settings;
+        settings.max_colors = 4;
+        w.openImage(tentabrode(), 60.0, settings);
+        w.waitForIdle();
+        auto* canvas = w.canvas();
+        canvas->fitAll();
+        const double fitted = canvas->zoom();
+        QVERIFY(w.runCommand("view.zoom-in"));
+        QVERIFY(canvas->zoom() > fitted * 1.2);
+        QVERIFY(w.runCommand("view.zoom-out"));
+        QCOMPARE(canvas->zoom(), fitted);
+        QVERIFY(canvas->zoomHistoryDepth() >= 2);
+        QVERIFY(w.runCommand("view.zoom-in"));
+        QVERIFY(w.runCommand("view.zoom-previous"));
+        QCOMPARE(canvas->zoom(), fitted); // retour exact au zoom d'avant
+        // Taille réelle : 1 mm du motif = 1 mm à l'écran.
+        QVERIFY(w.runCommand("view.zoom-actual"));
+        const double expected = (canvas->logicalDpiX() / 25.4) / w.previewFrame().px_per_mm;
+        QVERIFY(qAbs(canvas->zoom() - expected) < 1e-9 * qMax(1.0, expected));
+        // Raccourcis déclarés dans la palette.
+        const auto entries = w.commandEntries();
+        const auto shortcut = [&](const char* id) {
+            for (const auto& e : entries) {
+                if (e.id == id) {
+                    return e.shortcut;
+                }
+            }
+            return std::string("absent");
+        };
+        QCOMPARE(shortcut("view.zoom-in"), std::string("Ctrl+="));
+        QCOMPARE(shortcut("view.zoom-actual"), std::string("Ctrl+0"));
+        QVERIFY(w.findChild<QMenu*>("zoomMenu") != nullptr);
+        // Guides : ajout, accrochage candidat, effacement.
+        QCOMPARE(w.guideCount(), 0);
+        QVERIFY(!w.runCommand("guide.clear")); // rien à effacer : indisponible
+        w.addGuide(true, 12.5);
+        w.addGuide(false, -4.0);
+        w.addGuide(true, 12.5); // doublon ignoré
+        QCOMPARE(w.guideCount(), 2);
+        QVERIFY(canvas->hasGuides());
+        QVERIFY(w.runCommand("guide.clear"));
+        QCOMPARE(w.guideCount(), 0);
+        QVERIFY(!canvas->hasGuides());
+    }
+
+    void regionSelectionIsMultipleSharedAndReachableByKeyboard() {
+        ShellWindow w;
+        w.show();
+        openstitch::project_ops::DigitizeSettings settings;
+        settings.max_colors = 5;
+        w.openImage(tentabrode(), 60.0, settings);
+        w.waitForIdle();
+        QVERIFY(w.runCommand("tool.region.edit"));
+        auto* controller = w.regionController();
+        auto* panel = w.regionPanel();
+        const auto all = allRegionIds(w.session().project());
+        QVERIFY(all.size() >= 4);
+
+        // Plusieurs régions dans le MODÈLE commun, la principale en dernier.
+        controller->selectRegions({all[0], all[1], all[2]});
+        QCOMPARE(controller->selection().size(), std::size_t{3});
+        QCOMPARE(controller->selected(), all[2]);
+        QCOMPARE(w.session().selection().targets().size(), std::size_t{3});
+        for (const auto& t : w.session().selection().targets()) {
+            QVERIFY(t.kind == TargetKind::Region);
+        }
+        QCOMPARE(panel->selectedCount(), 3);
+        auto* list = panel->findChild<QListWidget*>("regionList");
+        QCOMPARE(list->selectedItems().size(), 3);
+
+        // Une sélection posée AILLEURS (modèle commun) est reprise par l'outil.
+        w.session().selection().replace({{TargetKind::Region, all[3]}});
+        QCOMPARE(controller->selection(), std::vector<std::uint64_t>{all[3]});
+        w.session().selection().clear();
+        QVERIFY(controller->selection().empty());
+
+        // Boutons de choix rapide et commandes (palette / clavier).
+        controller->selectRegion(all[0]);
+        QVERIFY(w.runCommand("region.invert"));
+        QCOMPARE(controller->selection().size(), all.size() - 1);
+        QVERIFY(w.runCommand("selection.all")); // Ctrl+A avec l'outil Régions : les régions
+        QCOMPARE(controller->selection().size(), all.size());
+        QVERIFY(w.runCommand("selection.clear"));
+        QVERIFY(controller->selection().empty());
+        QVERIFY(!w.runCommand("region.merge")); // rien de choisi : refusée, sans effet
+
+        // Fusion de l'ensemble : une étape d'annulation, régénération proposée.
+        const auto depth = w.session().undoNames().size();
+        controller->selectRegions({all[1], all[2]});
+        QVERIFY(w.runCommand("region.merge"));
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QCOMPARE(allRegionIds(w.session().project()).size(), all.size() - 1);
+        QVERIFY(w.session().undo());
+        QCOMPARE(allRegionIds(w.session().project()).size(), all.size());
+
+        // Suppr retire les RÉGIONS choisies (pas les objets) ; Échap désélectionne.
+        const auto objectsBefore = w.session().project().embroidery_objects.size();
+        controller->selectRegions({all[2]});
+        QVERIFY(w.runCommand("edit.delete"));
+        QCOMPARE(w.session().project().embroidery_objects.size(), objectsBefore);
+        QCOMPARE(allRegionIds(w.session().project()).size(), all.size() - 1);
+        QVERIFY(w.session().undo());
+        controller->selectRegions({all[0]});
+        QTest::keyClick(&w, Qt::Key_Escape);
+        QVERIFY(controller->selection().empty());
+
+        // Lien région -> objets -> région.
+        controller->selectRegions({all[0]});
+        QVERIFY(w.runCommand("region.objects"));
+        QVERIFY(!w.session().selection().empty());
+        QVERIFY(w.session().selection().targets().front().kind == TargetKind::EmbroideryObject);
+        QVERIFY(controller->selection().empty()); // la sélection est unique
+        QVERIFY(w.runCommand("region.from-objects"));
+        QVERIFY(!controller->selection().empty());
+        QVERIFY(w.session().selection().targets().front().kind == TargetKind::Region);
+    }
+
+    void regionClicksUseCtrlAndShiftToExtendTheSelection() {
+        ShellWindow w;
+        w.resize(1200, 800);
+        w.show();
+        openstitch::project_ops::DigitizeSettings settings;
+        settings.max_colors = 5;
+        w.openImage(tentabrode(), 60.0, settings);
+        w.waitForIdle();
+        QVERIFY(w.runCommand("tool.region.edit"));
+        auto* controller = w.regionController();
+        const auto& f = w.previewFrame();
+        const auto& project = w.session().project();
+        const double mmPerPx = project.mm_per_px.value;
+        const double wMm = project.segmentation->width * mmPerPx;
+        const double hMm = project.segmentation->height * mmPerPx;
+        // Un pixel de scène par région (centre de son premier pixel trouvé).
+        std::map<std::uint64_t, QPointF> spot;
+        for (int y = 0; y < project.segmentation->height; y += 3) {
+            for (int x = 0; x < project.segmentation->width; x += 3) {
+                if (const auto id = regionAtPixel(project, x, y); id && !spot.count(*id)) {
+                    spot[*id] = QPointF(f.mmToPxX((x + 0.5) * mmPerPx - wMm / 2.0),
+                                        f.mmToPxY((y + 0.5) * mmPerPx - hMm / 2.0));
+                }
+            }
+        }
+        QVERIFY(spot.size() >= 3);
+        auto it = spot.begin();
+        const auto a = *it++;
+        const auto b = *it++;
+        const auto c = *it++;
+        QVERIFY(controller->onCanvasClick(a.second));
+        QCOMPARE(controller->selection(), std::vector<std::uint64_t>{a.first});
+        QVERIFY(controller->onCanvasClick(b.second, Qt::ControlModifier)); // ajoute
+        QCOMPARE(controller->selection().size(), std::size_t{2});
+        QVERIFY(controller->onCanvasClick(c.second, Qt::ShiftModifier)); // ajoute
+        QCOMPARE(controller->selection().size(), std::size_t{3});
+        QCOMPARE(controller->selected(), c.first);
+        QVERIFY(controller->onCanvasClick(b.second, Qt::ControlModifier)); // bascule : retire
+        QCOMPARE(controller->selection(), (std::vector<std::uint64_t>{a.first, c.first}));
+        QVERIFY(controller->onCanvasClick(a.second)); // sans modificateur : remplace
+        QCOMPARE(controller->selection(), std::vector<std::uint64_t>{a.first});
+    }
+
+    void renderQualityIsAdjustableSavedAndReachable() {
+        namespace fs = std::filesystem;
+        const fs::path dir = fs::temp_directory_path() / "os_v2_render_quality";
+        fs::remove_all(dir);
+        {
+            ShellWindow w;
+            w.setStateDirectory(dir);
+            w.show();
+            w.newProject();
+            QCOMPARE(w.renderSettings(), RenderSettings{});
+            // Menu Affichage > Qualité du rendu réaliste : un préréglage par entrée.
+            auto* menu = w.findChild<QMenu*>("renderMenu");
+            QVERIFY(menu != nullptr);
+            auto* photo = w.findChild<QAction*>("renderPreset_photo");
+            QVERIFY(photo != nullptr);
+            photo->trigger();
+            QCOMPARE(w.renderSettings(), *renderPreset("photo"));
+            QVERIFY(photo->isChecked());
+            // Palette et raccourci F4 : fenêtre de réglages détaillés.
+            bool listed = false;
+            for (const auto& e : w.commandEntries()) {
+                if (e.id == "view.render") {
+                    listed = true;
+                    QCOMPARE(e.shortcut, std::string("F4"));
+                }
+            }
+            QVERIFY(listed);
+            QVERIFY(w.runCommand("view.render"));
+            auto* dialog = w.findChild<QDialog*>("renderQualityDialog");
+            QVERIFY(dialog != nullptr && dialog->isVisible());
+            auto* resolution = dialog->findChild<QDoubleSpinBox*>("renderResolution");
+            QVERIFY(resolution != nullptr);
+            QCOMPARE(resolution->value(), 10.0);
+            resolution->setValue(4.5); // un réglage détaillé devient « personnalisé »
+            QCOMPARE(w.renderSettings().pxPerMm, 4.5);
+            QVERIFY(matchingRenderPreset(w.renderSettings()).empty());
+            QVERIFY(w.runCommand("render.preset.draft"));
+            QCOMPARE(w.renderSettings(), *renderPreset("draft"));
+            QCOMPARE(resolution->value(), 1.5); // la fenêtre suit
+            QVERIFY(w.runCommand("render.preset.high"));
+            w.waitForIdle();
+        }
+        {
+            ShellWindow reopened;
+            reopened.setStateDirectory(dir);
+            QCOMPARE(reopened.renderSettings(), *renderPreset("high"));
+            QVERIFY(reopened.findChild<QAction*>("renderPreset_high")->isChecked());
+        }
+        fs::remove_all(dir);
+    }
+
+    void eachWorkspaceShowsOnlyItsOwnPanelsAndKeepsSelectionAndHistory() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        const auto id =
+            *createdObjectId(w.session().applyBatch(batchAddRect({0, 0}, 20, 10), "R").report);
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        const auto visible = [&](const char* name) {
+            auto* d = w.findChild<QDockWidget*>(name);
+            return d != nullptr && d->isVisible();
+        };
+        w.setWorkspace(Workspace::Zones);
+        QVERIFY(visible("regionDock") && visible("documentDock"));
+        QVERIFY(!visible("calqueDock") && !visible("optimizeDock") && !visible("threadDock"));
+        w.setWorkspace(Workspace::Design);
+        QVERIFY(visible("calqueDock") && visible("documentDock"));
+        QVERIFY(!visible("regionDock") && !visible("optimizeDock") && !visible("diagnosticDock"));
+        w.setWorkspace(Workspace::Optimize);
+        QVERIFY(visible("optimizeDock") && visible("diagnosticDock"));
+        QVERIFY(!visible("regionDock") && !visible("calqueDock"));
+        // Aller-retour : rien ne se perd.
+        QCOMPARE(w.session().selection().targets().size(), std::size_t{1});
+        QVERIFY(w.session().canUndo());
+        // Affichage › Panneaux rouvre un panneau d'un autre espace sans changer d'espace.
+        auto* panels = w.findChild<QMenu*>("panelsMenu");
+        QVERIFY(panels != nullptr);
+        QVERIFY(panels->actions().size() >= 6);
+        w.findChild<QDockWidget*>("regionDock")->toggleViewAction()->trigger();
+        QVERIFY(visible("regionDock"));
+        QCOMPARE(w.workspace(), Workspace::Optimize);
+    }
+
+    void zonesAndShapesAreSeparateWorkspacesWithTheirOwnTools() {
+        ShellWindow w;
+        const auto& r = w.tools();
+        const auto has = [&](Workspace ws, const char* id) {
+            for (const auto* t : r.forWorkspace(ws)) {
+                if (t->id == id) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        // Zones : segmentation. Formes : vecteur. Aucun outil de région dans les Formes.
+        for (const char* id : {"region.edit", "region.brush", "detail-brush", "bucket"}) {
+            QVERIFY2(has(Workspace::Zones, id), id);
+            QVERIFY2(!has(Workspace::Design, id), id);
+        }
+        for (const char* id : {"node.edit", "draw.bezier", "draw.freeform", "draw.rectangle"}) {
+            QVERIFY2(has(Workspace::Design, id), id);
+            QVERIFY2(!has(Workspace::Zones, id), id);
+        }
+        QVERIFY(w.runCommand("workspace.zones"));
+        QCOMPARE(w.workspace(), Workspace::Zones);
+        QVERIFY(w.runCommand("tool.region.edit"));
+        QCOMPARE(w.workspace(), Workspace::Zones);
+    }
+
+    void everyCommandShortcutIsUniqueAndWorkspacesUseCtrlOneToFive() {
+        ShellWindow w;
+        std::map<std::string, std::string> seen;
+        for (const auto& e : w.commandEntries()) {
+            if (e.shortcut.empty() || e.id.rfind("tool.", 0) == 0) {
+                continue; // les outils ont leurs touches seules, vérifiées par le registre
+            }
+            const auto [it, fresh] = seen.emplace(e.shortcut, e.id);
+            QVERIFY2(fresh, (e.shortcut + " : " + it->second + " et " + e.id).c_str());
+        }
+        QVERIFY(seen.count("Ctrl+5") == 1 && seen["Ctrl+5"] == "workspace.produce");
+        QVERIFY(seen.count("F5") == 1 && seen.count("Ctrl+Shift+U") == 1);
+    }
+
     void chatPanelTalksToTheProviderAndShowsToolsErrorsAndUsage() {
         ShellWindow w;
         w.show();
@@ -321,8 +658,9 @@ private slots:
         QVERIFY(!actionsBefore.isEmpty());
         const QString statusBefore = status->text();
 
-        // Recliquer sur Conception n'est pas un changement de contexte.
-        w.setWorkspace(Workspace::Design);
+        // Recliquer sur l'espace courant (Zones, où vit l'outil) n'est pas un changement de
+        // contexte.
+        w.setWorkspace(Workspace::Zones);
         QCOMPARE(w.activeToolId(), QStringLiteral("region.edit"));
         QCOMPARE(status->text(), statusBefore);
         QCOMPARE(rail->actions(), actionsBefore);
@@ -384,7 +722,7 @@ private slots:
         QVERIFY(crossWorkspaceRegion->isEnabled());
         QCOMPARE(w.activeToolId(), QStringLiteral("select"));
         crossWorkspaceRegion->trigger();
-        QCOMPARE(w.workspace(), Workspace::Design);
+        QCOMPARE(w.workspace(), Workspace::Zones);
         QCOMPARE(w.activeToolId(), QStringLiteral("region.edit"));
         QCOMPARE(w.session().revision(), revision);
     }
@@ -478,7 +816,8 @@ private slots:
                 QVERIFY(a->toolTip().contains("pas encore migré"));
             }
         }
-        QCOMPARE(enabled, 15); // …, Pipette, Couteau, Zones de détail, Nœuds, Pinceau de frontière
+        QCOMPARE(enabled,
+                 12); // Formes : sans les outils de Zones (Régions, Pinceau de frontière, Détail)
         QVERIFY(disabled > 0);
     }
 
@@ -1289,7 +1628,8 @@ private slots:
                 continue;
             }
             const auto batch = buildAction(def, values, ctx, error);
-            QVERIFY2(!batch.empty() || def.id == "file.import_svg", def.id.c_str());
+            QVERIFY2(!batch.empty() || def.id == "file.import_svg" || def.id == "file.import_dxf",
+                     def.id.c_str());
             if (def.id == "file.import_svg") {
                 QVERIFY(error.find("obligatoire") != std::string::npos ||
                         error.find("introuvable") != std::string::npos);
@@ -2937,19 +3277,24 @@ private slots:
         QVERIFY(w.findChild<QWidget*>("guideStrip")->isVisible());
         QCOMPARE(w.guideCurrentStep(), 0);
         QVERIFY(w.guideHeadline().contains("vide"));
-        // Des objets : étape « Retoucher », le bouton principal contrôle le motif.
+        // Des objets : la phase « Contrôler » est à traiter, le bouton principal lance le contrôle.
         (void)w.session().applyBatch(batchAddRect({-10, 0}, 20, 10), "A");
         w.waitForIdle();
-        QCOMPARE(w.guideCurrentStep(), 1);
+        QCOMPARE(w.guideCurrentStep(), 2);
         QCOMPARE(w.guideNext(), NextAction::Analyse);
         QVERIFY(w.runGuideNext());
         w.waitForIdle();
-        // Analyse faite sans erreur : l'export est proposé ; une modification le retire.
-        QCOMPARE(w.guideNext(), NextAction::Export);
+        // Analyse sans erreur : ce n'est PAS une garantie machine, le contrôle machine est proposé
+        // ; une fois passé, l'export ; une modification rouvre le contrôle.
         QCOMPARE(w.guideCurrentStep(), 3);
+        QCOMPARE(w.guideNext(), NextAction::CheckMachine);
+        QVERIFY(w.runGuideNext());
+        w.waitForIdle();
+        QCOMPARE(w.guideNext(), NextAction::Export);
         (void)w.session().applyBatch(batchAddEllipse({15, 0}, 12, 12), "B");
         w.waitForIdle();
         QCOMPARE(w.guideNext(), NextAction::Analyse);
+        QVERIFY(w.guide().steps[2].state == StepState::Stale);
     }
 
     void hidingACalqueHidesItsObjectsFromThePreview() {

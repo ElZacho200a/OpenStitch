@@ -397,3 +397,142 @@ TEST_CASE("a brush stroke spares the small regions it would cover entirely",
     REQUIRE(d.session.undo());
     CHECK(d.session.project().segmentation->labels == labelsBefore);
 }
+
+TEST_CASE("region sets: same colour, neighbours, invert and whole-set edits are one undo step",
+          "[desktop_v2][regions][selection]") {
+    Digitized d;
+    const auto& project = d.session.project();
+    const auto all = allRegionIds(project);
+    REQUIRE(all.size() >= 3);
+
+    // Inverser : le complémentaire exact, sans doublon.
+    const std::vector<std::uint64_t> one{all.front()};
+    const auto inverse = invertRegionSet(project, one);
+    CHECK(inverse.size() == all.size() - 1);
+    CHECK(std::find(inverse.begin(), inverse.end(), all.front()) == inverse.end());
+    CHECK(invertRegionSet(project, all).empty());
+
+    // Même couleur : contient la région elle-même, et que des régions de cette couleur.
+    const auto same = sameColorRegions(project, all.front());
+    REQUIRE_FALSE(same.empty());
+    CHECK(std::find(same.begin(), same.end(), all.front()) != same.end());
+    const auto regions = listRegions(project);
+    for (const auto id : same) {
+        const auto it = std::find_if(regions.begin(), regions.end(),
+                                     [id](const RegionInfo& r) { return r.id == id; });
+        REQUIRE(it != regions.end());
+        CHECK(it->rgb == regions.front().rgb);
+    }
+    CHECK(sameColorRegions(project, 999999).empty());
+
+    // Voisines d'un ensemble : jamais l'ensemble lui-même.
+    const auto around = neighboursOfSet(project, one);
+    for (const auto id : around) {
+        CHECK(id != all.front());
+    }
+
+    // Fusion d'un ensemble : UNE étape d'annulation, la plus grande région survit.
+    const auto depth = d.session.undoNames().size();
+    const std::vector<std::uint64_t> trio{all[0], all[1], all[2]};
+    REQUIRE(mergeRegionSet(d.session, trio).ok);
+    CHECK(d.session.undoNames().size() == depth + 1);
+    const auto afterMerge = allRegionIds(d.session.project());
+    CHECK(afterMerge.size() == all.size() - 2);
+    CHECK(std::find(afterMerge.begin(), afterMerge.end(), all[0]) != afterMerge.end());
+    REQUIRE(d.session.undo());
+    CHECK(allRegionIds(d.session.project()) == all);
+
+    // Recolorer l'ensemble : une étape, annulable ; couleur déjà identique refusée.
+    const std::array<std::uint8_t, 3> blue{12, 34, 200};
+    REQUIRE(recolorRegionSet(d.session, trio, blue).ok);
+    CHECK(d.session.undoNames().size() == depth + 1);
+    for (const auto id : trio) {
+        CHECK(d.session.project().segmentation->find(RegionId{id})->rgb == blue);
+    }
+    CHECK_FALSE(recolorRegionSet(d.session, trio, blue).ok);
+    REQUIRE(d.session.undo());
+
+    // Supprimer l'ensemble : refusé s'il ne resterait rien.
+    CHECK_FALSE(deleteRegionSet(d.session, all).ok);
+    CHECK_FALSE(mergeRegionSet(d.session, one).ok); // une seule région : rien à fusionner
+    const std::vector<std::uint64_t> pair{all[1], all[2]};
+    REQUIRE(deleteRegionSet(d.session, pair).ok);
+    CHECK(d.session.undoNames().size() == depth + 1);
+    REQUIRE(d.session.undo());
+}
+
+TEST_CASE("regions and objects are linked in both directions", "[desktop_v2][regions][selection]") {
+    Digitized d;
+    const auto& project = d.session.project();
+    const auto regions = allRegionIds(project);
+    // Toutes les régions ensemble donnent tous les objets qui ont une région d'origine.
+    const auto objects = objectsOfRegions(project, regions);
+    CHECK_FALSE(objects.empty());
+    // Aller-retour : les régions des objets sont des régions vivantes.
+    const auto back = regionsOfObjects(project, objects);
+    REQUIRE_FALSE(back.empty());
+    for (const auto id : back) {
+        CHECK(std::find(regions.begin(), regions.end(), id) != regions.end());
+    }
+    // Les objets d'une seule région ne contiennent que des objets qui reviennent à cette région.
+    const auto mine = objectsOfRegions(project, {back.front()});
+    REQUIRE_FALSE(mine.empty());
+    for (const auto objectId : mine) {
+        CHECK(regionsOfObjects(project, {objectId}) == std::vector<std::uint64_t>{back.front()});
+    }
+    CHECK(objectsOfRegions(project, {}).empty());
+    CHECK(regionsOfObjects(project, {123456789}).empty());
+}
+
+TEST_CASE("palette reduction previews its result and is one undo step",
+          "[desktop_v2][regions][palette]") {
+    Digitized d;
+    const auto before = previewColorReduction(d.session.project(), 0, 0.0, true);
+    CHECK(before.colorsAfter == before.colorsBefore); // aucune limite : rien à réduire
+    const auto preview = previewColorReduction(d.session.project(), 2, 0.0, true);
+    REQUIRE(preview.colorsBefore >= 3);
+    CHECK(preview.colorsAfter <= 2);
+    CHECK(preview.colorsAfter < preview.colorsBefore);
+
+    const auto depth = d.session.undoNames().size();
+    const auto regionsBefore = allRegionIds(d.session.project()).size();
+    REQUIRE(reduceColors(d.session, 2, 0.0, true).ok);
+    CHECK(d.session.undoNames().size() == depth + 1);
+    CHECK(allRegionIds(d.session.project()).size() <= regionsBefore);
+    std::set<std::array<std::uint8_t, 3>> colours;
+    for (const auto& r : listRegions(d.session.project())) {
+        colours.insert(r.rgb);
+    }
+    CHECK(colours.size() <= 2);
+    CHECK_FALSE(reduceColors(d.session, 2, 0.0, true).ok); // déjà réduite : refus clair
+    REQUIRE(d.session.undo());
+    CHECK(allRegionIds(d.session.project()).size() == regionsBefore);
+}
+
+TEST_CASE("re-segmenting with other settings replaces the objects in one undo step",
+          "[desktop_v2][regions][resegment]") {
+    Digitized d;
+    const auto regionsBefore = allRegionIds(d.session.project()).size();
+    auto fewer = d.settings;
+    fewer.max_colors = 2;
+    const auto result = resegmentObjects(d.session.snapshot(), d.session.revision(), d.working,
+                                         fewer, TaskContext{});
+    REQUIRE(result.has_value());
+    REQUIRE(result->after != nullptr);
+    CHECK(result->after->segmentation->region_count() < regionsBefore);
+    const auto depth = d.session.undoNames().size();
+    REQUIRE(applyRegeneration(d.session, *result).ok);
+    CHECK(d.session.undoNames().size() == depth + 1);
+    CHECK(allRegionIds(d.session.project()).size() < regionsBefore);
+    REQUIRE(d.session.undo());
+    CHECK(allRegionIds(d.session.project()).size() == regionsBefore);
+
+    // Une image vide ou un document modifié entre-temps : refus, jamais d'écrasement.
+    CHECK_FALSE(resegmentObjects(d.session.snapshot(), d.session.revision(), image::Image{}, fewer,
+                                 TaskContext{})
+                    .has_value());
+    // Document modifié depuis le calcul : l'ancien résultat est refusé.
+    const auto stale = *result;
+    REQUIRE(recolorRegion(d.session, allRegionIds(d.session.project()).front(), {1, 2, 3}).ok);
+    CHECK_FALSE(applyRegeneration(d.session, stale).ok);
+}

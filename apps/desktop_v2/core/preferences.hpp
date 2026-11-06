@@ -13,6 +13,8 @@
 #include <string>
 #include <string_view>
 
+#include "render_settings.hpp"
+
 namespace openstitch::desktop_v2 {
 
 enum class UiDensity { Compact, Normal, Spacious };
@@ -20,6 +22,7 @@ enum class UiDensity { Compact, Normal, Spacious };
 struct Preferences {
     std::string theme{"system"}; // "system" | "light" | "dark"
     UiDensity density{UiDensity::Normal};
+    RenderSettings render; // qualité du rendu réaliste de l'aperçu
 
     bool operator==(const Preferences&) const = default;
 };

@@ -18,6 +18,7 @@
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/text_commands.hpp"
+#include "openstitch/formats/dxf.hpp"
 #include "openstitch/formats/svg_import.hpp"
 #include "openstitch/image/image.hpp"
 #include "openstitch/lettering/font.hpp"
@@ -167,6 +168,56 @@ OpStatus import_svg(OpContext& ctx) {
                               {"vector_ids", vectorIds},
                               {"shapes", created.size()},
                               {"warnings", warnings}});
+}
+
+// --- import_dxf ---------------------------------------------------------------------------
+
+OpStatus import_dxf(OpContext& ctx) {
+    const std::string file = ctx.args.at("file").get<std::string>();
+    std::array<std::uint8_t, 3> rgb{80, 120, 200}; // comme l'import DXF du bureau
+    if (ctx.args.contains("rgb")) {
+        const auto parsed = rgb_from_hex(ctx.args.at("rgb").get<std::string>());
+        if (!parsed) {
+            return out_of_range("rgb invalide", "format attendu : #RRGGBB");
+        }
+        rgb = *parsed;
+    }
+    const std::string prefix = ctx.args.value("name", std::string("Import DXF"));
+    if (prefix.empty() || prefix.size() > 128) {
+        return out_of_range("name : 1 à 128 caractères attendus");
+    }
+    std::error_code ec;
+    if (!fs::is_regular_file(fs::path(file), ec)) {
+        return OpStatus::failure(code::kIo, "fichier DXF introuvable : " + file,
+                                 "chemin relatif au dossier courant ou absolu");
+    }
+    auto paths = formats::read_dxf_file(fs::path(file));
+    if (!paths) {
+        return OpStatus::failure(code::kRefused, "DXF illisible : " + paths.error().message);
+    }
+    if (paths->empty()) {
+        return OpStatus::failure(code::kRefused, "le DXF ne contient aucun tracé importable");
+    }
+    if (paths->size() > 5000) {
+        return out_of_range("le DXF contient plus de 5000 tracés", "simplifiez le dessin");
+    }
+    std::vector<document::VectorObject> vectors;
+    json ids = json::array();
+    for (auto& path : *paths) {
+        document::VectorObject v;
+        v.id = ctx.project.object_ids.next();
+        v.name = prefix + " " + std::to_string(vectors.size() + 1);
+        v.rgb = rgb;
+        v.paths.push_back(geometry::PathSet{std::move(path), {}});
+        ids.push_back(v.id.value);
+        vectors.push_back(std::move(v));
+    }
+    const auto count = vectors.size();
+    ctx.stack.execute(
+        std::make_unique<commands::AddObjectBatchCommand>(
+            std::move(vectors), std::vector<document::EmbroideryObject>{}, "Importer un DXF"),
+        ctx.project);
+    return OpStatus::success({{"vector_ids", ids}, {"shapes", count}});
 }
 
 // --- lettrage -----------------------------------------------------------------------------
@@ -760,6 +811,17 @@ void register_import_ops(std::vector<OpSpec>& out) {
     svg.example = R"({"op":"import_svg","file":"dessin.svg","stitch_type":"auto","rgb":"#336699"})";
     svg.apply = import_svg;
     out.push_back(std::move(svg));
+    OpSpec dxf;
+    dxf.name = "import_dxf";
+    dxf.summary = "Importe les tracés d'un fichier DXF comme objets vectoriels éditables (sans "
+                  "points : numérisez-les ensuite). Annulable en une étape.";
+    dxf.args = {arg("file", "string", "fichier .dxf (polylignes, lignes, cercles, arcs)", true),
+                arg("rgb", "string", "couleur #RRGGBB des objets (défaut #5078C8)"),
+                arg("name", "string", "préfixe du nom des objets (défaut « Import DXF »)", false,
+                    {}, "1 à 128 caractères")};
+    dxf.example = R"({"op":"import_dxf","file":"plan.dxf"})";
+    dxf.apply = import_dxf;
+    out.push_back(std::move(dxf));
     out.push_back(op_add_text());
     out.push_back(op_set_text());
     out.push_back(op_remove_text());

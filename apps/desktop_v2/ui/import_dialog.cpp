@@ -60,6 +60,7 @@ ImportDialog::ImportDialog(const QString& imagePath, double defaultHeightMm, QWi
     }
 
     auto* form = new QFormLayout;
+    form_ = form;
     height_ = new QDoubleSpinBox(this);
     height_->setObjectName(QStringLiteral("importHeight"));
     height_->setRange(0.0, 2000.0);
@@ -118,6 +119,7 @@ ImportDialog::ImportDialog(const QString& imagePath, double defaultHeightMm, QWi
     auto* buttons = new QDialogButtonBox(this);
     auto* ok = buttons->addButton(tr("Numériser"), QDialogButtonBox::AcceptRole);
     ok->setObjectName(QStringLiteral("importAccept"));
+    accept_ = ok;
     ok->setDefault(true);
     buttons->addButton(tr("Annuler"), QDialogButtonBox::RejectRole);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
@@ -133,6 +135,33 @@ ImportDialog::ImportDialog(const QString& imagePath, double defaultHeightMm, QWi
         connect(spin, &QSpinBox::valueChanged, this, [this](int) { scheduleRequest(); });
     }
     scheduleRequest();
+}
+
+void ImportDialog::setResegmentMode(const QImage& source) {
+    resegment_ = true;
+    setWindowTitle(tr("Re-segmenter l'image"));
+    form_->setRowVisible(height_, false); // la taille du motif ne change pas
+    accept_->setText(tr("Appliquer"));
+    accept_->setToolTip(
+        tr("Remplace la segmentation et régénère les objets (annulable en une "
+           "étape). Vos corrections de régions et retouches d'objets sont perdues."));
+    if (!source.isNull()) {
+        source_->setPixmap(QPixmap::fromImage(source).scaled(kThumb, kThumb, Qt::KeepAspectRatio,
+                                                             Qt::SmoothTransformation));
+        sourceShown_ = true;
+    }
+}
+
+void ImportDialog::setSettings(const project_ops::DigitizeSettings& s) {
+    colors_->setValue(s.max_colors);
+    minRegion_->setValue(s.min_region_px);
+    smoothing_->setValue(s.smoothing_px);
+    if (const int i = background_->findData(s.skip_background); i >= 0) {
+        background_->setCurrentIndex(i);
+    }
+    if (const int i = mode_->findData(QString::fromStdString(s.mode)); i >= 0) {
+        mode_->setCurrentIndex(i);
+    }
 }
 
 void ImportDialog::scheduleRequest() {

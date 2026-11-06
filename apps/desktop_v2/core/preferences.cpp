@@ -71,7 +71,8 @@ std::string densityLabel(UiDensity density) {
 }
 
 std::string preferencesToText(const Preferences& p) {
-    return "theme=" + p.theme + "\ndensity=" + densityId(p.density) + "\n";
+    return "theme=" + p.theme + "\ndensity=" + densityId(p.density) + "\n" +
+           renderSettingsToText(p.render);
 }
 
 Preferences preferencesFromText(std::string_view text) {
@@ -91,6 +92,8 @@ Preferences preferencesFromText(std::string_view text) {
             if (const auto d = parseDensity(value)) {
                 out.density = *d;
             }
+        } else if (key.rfind("render.", 0) == 0) {
+            (void)renderSettingsApply(out.render, std::string_view(key).substr(7), value);
         }
     }
     return out;

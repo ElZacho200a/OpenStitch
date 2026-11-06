@@ -14,6 +14,7 @@
 #include <QRectF>
 #include <QVector>
 #include <functional>
+#include <vector>
 
 class QGraphicsItemGroup;
 class QGraphicsLineItem;
@@ -110,6 +111,8 @@ public:
     // Poignées des points d'un objet (pixels de l'image) ; `selected` = indice mis en évidence, -1
     // = aucun. Liste vide = aucune poignée.
     void setPointMarkers(const QVector<QPointF>& scenePx, int selected);
+    // Sélection multiple : tous les repères de `selected` sont mis en évidence.
+    void setPointMarkers(const QVector<QPointF>& scenePx, const QVector<int>& selected);
     [[nodiscard]] int pointMarkerCount() const { return static_cast<int>(pointItems_.size()); }
     // Cadre de broderie (pixels de l'image) ; rectangle nul = aucun.
     void setHoopRect(const QRectF& rectPx);
@@ -176,6 +179,19 @@ signals:
     // Double-clic en mode Nodes (insertion d'un nœud sous le curseur).
     void nodeInsertRequestedPx(QPointF scenePx);
 
+public:
+    // Zoom : facteur centré sur la vue, taille réelle (1 mm du motif = 1 mm à l'écran), retour au
+    // zoom précédent (historique des 20 derniers).
+    void zoomBy(double factor);
+    void zoomActualSize(double pxPerMm);
+    bool zoomPrevious();
+    [[nodiscard]] int zoomHistoryDepth() const { return static_cast<int>(zoomHistory_.size()); }
+    // Guides (repères posés par l'utilisateur) : traits verticaux (x) et horizontaux (y) en pixels
+    // de l'image, dans leur propre couleur ; indépendants de la grille.
+    void setGuideLines(const QVector<double>& xsPx, const QVector<double>& ysPx,
+                       const QRectF& imageRect, const QColor& color);
+    [[nodiscard]] bool hasGuides() const { return guideItem_ != nullptr; }
+
 public slots:
     void fitAll();
 
@@ -235,6 +251,9 @@ private:
     bool stroking_{false};
     bool sourceVisible_{true};
     QGraphicsPathItem* gridItem_{nullptr};
+    QGraphicsPathItem* guideItem_{nullptr};
+    std::vector<QTransform> zoomHistory_;
+    void rememberZoom();
     QGraphicsLineItem* measureLine_{nullptr};
     QGraphicsSimpleTextItem* measureText_{nullptr};
     QPointF measureFrom_;

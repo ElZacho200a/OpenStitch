@@ -102,6 +102,7 @@ void PreviewCanvas::clearImage() {
     strokePts_.clear();
     stroking_ = false;
     gridItem_ = nullptr;
+    guideItem_ = nullptr;
     measureLine_ = nullptr;
     measureText_ = nullptr;
     measuring_ = false;
@@ -120,8 +121,74 @@ void PreviewCanvas::fitAll() {
     if (item_ == nullptr) {
         return;
     }
+    rememberZoom();
     fitInView(item_, Qt::KeepAspectRatio);
     userZoomed_ = false;
+}
+
+void PreviewCanvas::rememberZoom() {
+    if (!zoomHistory_.empty() && zoomHistory_.back() == transform()) {
+        return;
+    }
+    zoomHistory_.push_back(transform());
+    if (zoomHistory_.size() > 20) {
+        zoomHistory_.erase(zoomHistory_.begin());
+    }
+}
+
+void PreviewCanvas::zoomBy(double factor) {
+    if (item_ == nullptr || !(factor > 0.0)) {
+        return;
+    }
+    rememberZoom();
+    const double actual = std::clamp(zoom() * factor, kMinCanvasZoom, kMaxCanvasZoom) / zoom();
+    scale(actual, actual);
+    userZoomed_ = true;
+}
+
+void PreviewCanvas::zoomActualSize(double pxPerMm) {
+    if (item_ == nullptr || !(pxPerMm > 0.0)) {
+        return;
+    }
+    // 1 mm du motif = 1 mm sur l'écran : pixels d'écran par mm / pixels d'image par mm.
+    const double screenPxPerMm = logicalDpiX() / 25.4;
+    const double target = std::clamp(screenPxPerMm / pxPerMm, kMinCanvasZoom, kMaxCanvasZoom);
+    rememberZoom();
+    scale(target / zoom(), target / zoom());
+    userZoomed_ = true;
+}
+
+bool PreviewCanvas::zoomPrevious() {
+    if (zoomHistory_.empty()) {
+        return false;
+    }
+    setTransform(zoomHistory_.back());
+    zoomHistory_.pop_back();
+    userZoomed_ = true;
+    return true;
+}
+
+void PreviewCanvas::setGuideLines(const QVector<double>& xsPx, const QVector<double>& ysPx,
+                                  const QRectF& imageRect, const QColor& color) {
+    if (guideItem_ != nullptr) {
+        scene_->removeItem(guideItem_);
+        delete guideItem_;
+        guideItem_ = nullptr;
+    }
+    if (item_ == nullptr || (xsPx.isEmpty() && ysPx.isEmpty())) {
+        return;
+    }
+    QPainterPath path;
+    for (const double x : xsPx) {
+        path.moveTo(x, imageRect.top());
+        path.lineTo(x, imageRect.bottom());
+    }
+    for (const double y : ysPx) {
+        path.moveTo(imageRect.left(), y);
+        path.lineTo(imageRect.right(), y);
+    }
+    guideItem_ = scene_->addPath(path, cosmeticPen(color, Qt::DashLine, 1));
+    guideItem_->setZValue(4.5);
 }
 
 void PreviewCanvas::fitSelection() {
@@ -431,6 +498,10 @@ void PreviewCanvas::setSourceImage(const QImage& image, const QRectF& rectPx) {
 }
 
 void PreviewCanvas::setPointMarkers(const QVector<QPointF>& scenePx, int selected) {
+    setPointMarkers(scenePx, selected < 0 ? QVector<int>{} : QVector<int>{selected});
+}
+
+void PreviewCanvas::setPointMarkers(const QVector<QPointF>& scenePx, const QVector<int>& selected) {
     for (QGraphicsItem* it : pointItems_) {
         scene_->removeItem(it);
         delete it;
@@ -441,7 +512,7 @@ void PreviewCanvas::setPointMarkers(const QVector<QPointF>& scenePx, int selecte
     }
     pointItems_.reserve(scenePx.size());
     for (int i = 0; i < scenePx.size(); ++i) {
-        const bool sel = i == selected;
+        const bool sel = selected.contains(i);
         const double r = sel ? 4.0 : 2.5;
         auto* dot = scene_->addEllipse(
             -r, -r, 2 * r, 2 * r,

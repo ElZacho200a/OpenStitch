@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "region_panel.hpp"
 
+#include <QAbstractItemView>
+#include <QCheckBox>
 #include <QComboBox>
+#include <QDoubleSpinBox>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QLabel>
@@ -11,6 +14,8 @@
 #include <QScrollBar>
 #include <QSpinBox>
 #include <QVBoxLayout>
+
+#include <algorithm>
 
 namespace openstitch::desktop_v2 {
 
@@ -37,8 +42,39 @@ RegionPanel::RegionPanel(QWidget* parent) : QWidget(parent) {
     status_->setWordWrap(true);
     column->addWidget(status_);
 
+    // Sélection : mêmes gestes que les listes usuelles (Ctrl+clic, Maj+clic) et boutons de choix
+    // rapide. Le canevas et cette liste partagent le MÊME ensemble (modèle de sélection commun).
+    auto* selRow = new QHBoxLayout;
+    all_ = new QPushButton(tr("Tout"), this);
+    all_->setObjectName(QStringLiteral("regionSelectAll"));
+    all_->setToolTip(tr("Sélectionne toutes les régions (Ctrl+A avec l'outil Régions)."));
+    sameColor_ = new QPushButton(tr("Même couleur"), this);
+    sameColor_->setObjectName(QStringLiteral("regionSelectSameColor"));
+    sameColor_->setToolTip(
+        tr("Sélectionne toutes les régions de la couleur de la région choisie."));
+    neighbourSel_ = new QPushButton(tr("Voisines"), this);
+    neighbourSel_->setObjectName(QStringLiteral("regionSelectNeighbours"));
+    neighbourSel_->setToolTip(tr("Sélectionne les régions qui touchent la sélection."));
+    invert_ = new QPushButton(tr("Inverser"), this);
+    invert_->setObjectName(QStringLiteral("regionInvert"));
+    invert_->setToolTip(tr("Sélectionne tout ce qui ne l'est pas (Ctrl+I)."));
+    clear_ = new QPushButton(tr("Aucune"), this);
+    clear_->setObjectName(QStringLiteral("regionSelectNone"));
+    clear_->setToolTip(tr("Désélectionne tout (Échap)."));
+    for (auto* b : {all_, sameColor_, neighbourSel_, invert_, clear_}) {
+        selRow->addWidget(b);
+    }
+    column->addLayout(selRow);
+    objects_ = new QPushButton(tr("Sélectionner les objets de ces régions"), this);
+    objects_->setObjectName(QStringLiteral("regionSelectObjects"));
+    objects_->setToolTip(tr("Passe à la sélection des objets de broderie issus de ces régions."));
+    column->addWidget(objects_);
+
     list_ = new QListWidget(this);
     list_->setObjectName(QStringLiteral("regionList"));
+    list_->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    list_->setAccessibleName(tr("Régions de la segmentation"));
+    list_->setMinimumHeight(150); // la liste ne doit jamais être écrasée par les boutons
     column->addWidget(list_, 1);
 
     delete_ = new QPushButton(tr("Supprimer la région"), this);
@@ -97,6 +133,40 @@ RegionPanel::RegionPanel(QWidget* parent) : QWidget(parent) {
     holesRow->addWidget(maxHolePixels_);
     column->addLayout(holesRow);
 
+    // Réduction de la palette : moins de teintes, régions voisines de même teinte réunies.
+    auto* paletteRow = new QHBoxLayout;
+    reduceColors_ = new QSpinBox(this);
+    reduceColors_->setObjectName(QStringLiteral("regionReduceColors"));
+    reduceColors_->setRange(0, 64);
+    reduceColors_->setSpecialValueText(tr("sans limite"));
+    reduceColors_->setValue(0);
+    reduceColors_->setToolTip(tr("Nombre maximum de couleurs conservées (0 = pas de limite)."));
+    reduceDistance_ = new QDoubleSpinBox(this);
+    reduceDistance_->setObjectName(QStringLiteral("regionReduceDistance"));
+    reduceDistance_->setRange(0.0, 60.0);
+    reduceDistance_->setSingleStep(1.0);
+    reduceDistance_->setDecimals(1);
+    reduceDistance_->setSpecialValueText(tr("aucune"));
+    reduceDistance_->setValue(0.0);
+    reduceDistance_->setToolTip(tr("Fusionne les teintes distantes d'au plus ce seuil (CIEDE2000, "
+                                   "0 = aucun seuil). Le plus gros aplat garde sa teinte exacte."));
+    paletteRow->addWidget(new QLabel(tr("Palette : couleurs max"), this));
+    paletteRow->addWidget(reduceColors_);
+    paletteRow->addWidget(new QLabel(tr("écart"), this));
+    paletteRow->addWidget(reduceDistance_);
+    column->addLayout(paletteRow);
+    reduceMerge_ = new QCheckBox(tr("Réunir aussi les régions voisines de même couleur"), this);
+    reduceMerge_->setObjectName(QStringLiteral("regionReduceMerge"));
+    reduceMerge_->setChecked(true);
+    column->addWidget(reduceMerge_);
+    reduceSummary_ = new QLabel(this);
+    reduceSummary_->setObjectName(QStringLiteral("regionReduceSummary"));
+    column->addWidget(reduceSummary_);
+    reduce_ = new QPushButton(tr("Réduire la palette"), this);
+    reduce_->setObjectName(QStringLiteral("regionReduce"));
+    reduce_->setToolTip(tr("Une étape d'annulation ; régénérez ensuite les objets."));
+    column->addWidget(reduce_);
+
     auto* brushRow = new QHBoxLayout;
     auto* brushLabel = new QLabel(tr("Pinceau de frontière (outil U) : rayon"), this);
     brushLabel->setToolTip(tr("Choisissez une région avec l'outil Régions (X), puis peignez avec "
@@ -122,12 +192,29 @@ RegionPanel::RegionPanel(QWidget* parent) : QWidget(parent) {
                                "annulable (Ctrl+Z)."));
     column->addWidget(regenerate_);
 
-    connect(list_, &QListWidget::currentItemChanged, this,
-            [this](QListWidgetItem* item, QListWidgetItem*) {
-                if (item != nullptr) {
-                    emit regionChosen(item->data(Qt::UserRole).toULongLong());
-                }
-            });
+    connect(list_, &QListWidget::itemSelectionChanged, this, [this] {
+        std::vector<std::uint64_t> ids;
+        for (auto* item : list_->selectedItems()) {
+            ids.push_back(item->data(Qt::UserRole).toULongLong());
+        }
+        // La région « principale » est la dernière touchée : la liste la donne par `currentItem`.
+        if (const auto* current = list_->currentItem();
+            current != nullptr && current->isSelected()) {
+            const auto id = current->data(Qt::UserRole).toULongLong();
+            std::erase(ids, id);
+            ids.push_back(id);
+        }
+        emit regionsChosen(ids);
+        if (ids.size() == 1) {
+            emit regionChosen(ids.front());
+        }
+    });
+    connect(all_, &QPushButton::clicked, this, &RegionPanel::selectAllRequested);
+    connect(sameColor_, &QPushButton::clicked, this, &RegionPanel::selectSameColorRequested);
+    connect(neighbourSel_, &QPushButton::clicked, this, &RegionPanel::selectNeighboursRequested);
+    connect(invert_, &QPushButton::clicked, this, &RegionPanel::invertRequested);
+    connect(clear_, &QPushButton::clicked, this, &RegionPanel::clearRequested);
+    connect(objects_, &QPushButton::clicked, this, &RegionPanel::selectObjectsRequested);
     connect(delete_, &QPushButton::clicked, this, &RegionPanel::deleteRequested);
     connect(merge_, &QPushButton::clicked, this, [this] {
         if (neighbours_->currentIndex() >= 0) {
@@ -147,11 +234,30 @@ RegionPanel::RegionPanel(QWidget* parent) : QWidget(parent) {
     connect(fillHoles_, &QPushButton::clicked, this,
             [this] { emit fillHolesRequested(maxHolePixels_->value()); });
     connect(regenerate_, &QPushButton::clicked, this, &RegionPanel::regenerateRequested);
+    const auto reduceChanged = [this] {
+        emit reduceParamsChanged(reduceColors_->value(), reduceDistance_->value(),
+                                 reduceMerge_->isChecked());
+    };
+    connect(reduceColors_, &QSpinBox::valueChanged, this, reduceChanged);
+    connect(reduceDistance_, &QDoubleSpinBox::valueChanged, this, reduceChanged);
+    connect(reduceMerge_, &QCheckBox::toggled, this, reduceChanged);
+    connect(reduce_, &QPushButton::clicked, this, [this] {
+        emit reduceRequested(reduceColors_->value(), reduceDistance_->value(),
+                             reduceMerge_->isChecked());
+    });
     setDirty(false);
     updateButtons();
 }
 
 void RegionPanel::setRegions(const std::vector<RegionInfo>& regions, std::uint64_t selected) {
+    setRegions(regions,
+               selected == 0 ? std::vector<std::uint64_t>{} : std::vector<std::uint64_t>{selected});
+}
+
+void RegionPanel::setRegions(const std::vector<RegionInfo>& regions,
+                             const std::vector<std::uint64_t>& selectedIds) {
+    const std::uint64_t selected = selectedIds.empty() ? 0 : selectedIds.back();
+    selectedCount_ = static_cast<int>(selectedIds.size());
     const auto previousSelection = selected_;
     const int scrollPosition = list_->verticalScrollBar()->value();
     selected_ = selected;
@@ -161,12 +267,15 @@ void RegionPanel::setRegions(const std::vector<RegionInfo>& regions, std::uint64
     for (const auto& r : regions) {
         auto* item = new QListWidgetItem(swatch(r.rgb), describe(r), list_);
         item->setData(Qt::UserRole, static_cast<qulonglong>(r.id));
+        if (std::find(selectedIds.begin(), selectedIds.end(), r.id) != selectedIds.end()) {
+            item->setSelected(true);
+        }
         if (r.id == selected) {
             row = list_->count() - 1;
         }
     }
     if (row >= 0) {
-        list_->setCurrentRow(row);
+        list_->setCurrentRow(row, QItemSelectionModel::NoUpdate); // sans toucher à la sélection
     }
     // Recolorer ou régénérer rafraîchit la liste : ne pas perdre sa position de lecture.
     // Une nouvelle sélection volontaire peut, elle, défiler jusqu'à l'objet choisi.
@@ -240,13 +349,30 @@ int RegionPanel::neighbourCount() const {
 
 void RegionPanel::updateButtons() {
     const bool has = selected_ != 0 && !busy_;
-    delete_->setEnabled(has && list_->count() > 1);
+    all_->setEnabled(!busy_ && list_->count() > 0);
+    invert_->setEnabled(!busy_ && list_->count() > 0);
+    sameColor_->setEnabled(has);
+    neighbourSel_->setEnabled(has);
+    clear_->setEnabled(selectedCount_ > 0);
+    objects_->setEnabled(has);
+    delete_->setEnabled(has && list_->count() > selectedCount_);
     merge_->setEnabled(has && neighbours_->count() > 0);
     recolor_->setEnabled(has);
     mergeColors_->setEnabled(has && colorTargets_->count() > 0);
     clean_->setEnabled(!busy_ && list_->count() > 0);
     fillHoles_->setEnabled(!busy_ && list_->count() > 0);
     regenerate_->setEnabled(dirty_ && !busy_);
+}
+
+void RegionPanel::setReducePreview(int before, int after) {
+    reduceSummary_->setText(after < before ? tr("%1 → %2 couleurs").arg(before).arg(after)
+                                           : tr("%1 couleurs : rien à réduire").arg(before));
+    reduce_->setEnabled(!busy_ && after < before);
+}
+
+void RegionPanel::requestReducePreview() {
+    emit reduceParamsChanged(reduceColors_->value(), reduceDistance_->value(),
+                             reduceMerge_->isChecked());
 }
 
 int RegionPanel::brushRadius() const {

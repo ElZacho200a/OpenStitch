@@ -40,6 +40,7 @@
 #include "preferences.hpp"
 #include "preview_service.hpp"
 #include "production_sheet.hpp"
+#include "render_settings.hpp"
 #include "satin_column.hpp"
 #include "shape_batch.hpp"
 #include "snap.hpp"
@@ -52,6 +53,7 @@
 
 class QAction;
 class QCloseEvent;
+class QKeyEvent;
 class QActionGroup;
 class QComboBox;
 class QDockWidget;
@@ -106,6 +108,12 @@ public:
     [[nodiscard]] bool snapEnabled() const { return snapEnabled_; }
     [[nodiscard]] ImportDialog* importDialog() const { return importDialog_; }
     void openProject(const std::filesystem::path& osp);
+    // Broderie machine (DST, PES, JEF, EXP… tout ce que le registre sait lire) : nouveau projet,
+    // design centré dans le cadre, une seule étape de départ. DXF : tracés ajoutés comme objets
+    // vectoriels (annulable) ; export : tous les contours vectoriels.
+    void importMachineDesign(const std::filesystem::path& file);
+    void importDxfFile(const std::filesystem::path& file);
+    void exportDxfFile(const std::filesystem::path& file);
     bool saveProject(const std::filesystem::path& osp);
     // Dossier d'état utilisateur : liste des récents + sauvegarde automatique (toutes les
     // 60 s si le document est modifié). Sans appel, rien n'est écrit (tests, mode recette).
@@ -148,6 +156,14 @@ public:
         return pointSel_;
     } // indice dans les poignées, -1 = aucun
     bool deleteSelectedPoint();
+    // Retouche de points en sélection multiple (Ctrl/Maj+clic, Ctrl+A, Échap).
+    [[nodiscard]] std::vector<std::size_t> selectedPointIndices() const;
+    void selectAllPoints();
+    void clearPointSelection();
+    bool restoreSelectedPoints();
+    bool setSelectedPointsJump(bool jump);
+    bool setSelectedPointsTrim(bool trim);
+    [[nodiscard]] int selectedPointCount() const { return static_cast<int>(pointSels_.size()); }
     bool discardPointEdits();
 
     // --- Édition de nœuds (outil « node.edit », un seul objet sélectionné) ------------------
@@ -164,10 +180,30 @@ public:
     bool removePresetIndex(int index);
 
     // --- Affichage, simulation, contexte -------------------------------------------------------
-    void setGridSpacing(double mm); // 0 = pas de grille
+    void setGridSpacing(double mm);
+    // Guides posés par l'utilisateur (repères de session, pas dans le document) : positions en mm
+    // « modèle » (Y vers le haut). Le déplacement d'objets s'y accroche comme à un bord d'objet.
+    void addGuide(bool vertical, double mm);
+    void askGuide(bool vertical);
+    void clearGuides();
+    void setGuideColor(const QColor& color);
+    [[nodiscard]] int guideCount() const {
+        return static_cast<int>(guidesX_.size() + guidesY_.size());
+    }
+    // Zoom (menu Affichage › Zoom, palette, clavier).
+    void zoomIn();
+    void zoomOut();
+    void zoomToSelection();
+    void zoomActual();
+    void zoomBack(); // 0 = pas de grille
     [[nodiscard]] double gridSpacing() const { return gridSpacingMm_; }
     void setThemeMode(const QString& mode); // "system" | "light" | "dark"
-    void setDensity(UiDensity density);     // marges de l'interface (préférence enregistrée)
+    // Qualité du rendu réaliste de l'aperçu (résolution, fil, tissu) : bornée, enregistrée dans les
+    // préférences, aperçu recalculé en tâche de fond (regroupé).
+    void setRenderSettings(const RenderSettings& settings);
+    [[nodiscard]] const RenderSettings& renderSettings() const { return render_; }
+    void showRenderQuality();
+    void setDensity(UiDensity density); // marges de l'interface (préférence enregistrée)
     [[nodiscard]] UiDensity density() const { return density_; }
     [[nodiscard]] QString themeMode() const { return themeMode_; }
     // Simulation de couture : `position` = nombre de commandes cousues ; >= total = tout. Marche
@@ -208,8 +244,16 @@ public:
     [[nodiscard]] bool welcomeVisible() const;
     [[nodiscard]] QString guideHeadline() const;
     [[nodiscard]] int guideCurrentStep() const { return guide_.currentIndex; }
+    [[nodiscard]] const Guide& guide() const { return guide_; }
+    // Remplace la boîte « écraser des retouches ? » (tests) ; sans crochet : boîte de dialogue.
+    void setConfirmHook(std::function<bool(const QString&)> hook) {
+        confirmHook_ = std::move(hook);
+    }
+    void setCheckSkipped(bool skipped);
+    [[nodiscard]] bool checkSkipped() const { return checkSkipped_; }
     [[nodiscard]] NextAction guideNext() const { return guide_.next; }
-    bool runGuideNext(); // vrai si une action a été lancée
+    bool runGuideNext();
+    bool runGuideAction(NextAction action); // vrai si une action a été lancée
     [[nodiscard]] ThreadPanel* threadPanel() const { return threads_; }
 
     // --- Compagnon IA : pont « projet vivant » (un agent MCP modifie CE document) -------------
@@ -261,6 +305,7 @@ public:
 
 protected:
     void closeEvent(QCloseEvent* event) override;
+    void keyPressEvent(QKeyEvent* event) override; // Échap : désélectionne les régions
 
 private:
     bool confirmDiscardOrSave();
@@ -273,6 +318,7 @@ private:
     void buildInspector();
     void buildStatusArea();
     void rebuildToolRail();
+    void applyWorkspaceDocks(Workspace workspace);
     void rebuildObjectList();
     void syncTreeFromSelection();
     void onSelectionChangedInTree();
@@ -282,6 +328,10 @@ private:
     void refreshActionStates();
     void refreshTaskStatus();
     void chooseAndOpen();
+    void chooseAndImportMachine();
+    void resegmentImage();
+    void chooseAndImportDxf();
+    void chooseAndExportDxf();
     void updateSelectionBoxes();
     void onCanvasRect(QRectF scenePx, Qt::KeyboardModifiers modifiers);
     void applyToolToCanvas();
@@ -332,6 +382,8 @@ private:
     QLabel* notice_{nullptr};
     FeedbackCue* feedbackCue_{nullptr};
     QAction* reducedMotionAction_{nullptr};
+    RenderSettings render_;
+    class RenderQualityDialog* renderDialog_{nullptr};
     QLabel* activeToolStatus_{nullptr};
     QProgressBar* progress_{nullptr};
     QToolButton* cancelButton_{nullptr};
@@ -348,6 +400,12 @@ private:
     std::vector<std::size_t> pointHandles_; // poignées -> indice dans pointView_.points
     std::uint64_t pointObject_{0};
     int pointSel_{-1};
+    std::vector<double> guidesX_;
+    std::vector<double> guidesY_;
+    QColor guideColor_{0, 170, 120};
+    void updateGuides();
+    void refreshThemedIcons();
+    std::vector<int> pointSels_; // poignées choisies (la principale, `pointSel_`, en fait partie)
     QSpinBox* tolSpin_{nullptr};
     QComboBox* kindCombo_{nullptr};
     image::Image processed_;
@@ -376,6 +434,12 @@ private:
     Guide guide_;
     std::optional<std::uint64_t> analysedRevision_;
     std::optional<std::uint64_t> exportedRevision_;
+    std::optional<std::uint64_t> machineCheckRevision_; // contrôle machine fait pour cette révision
+    int analysisWarnings_{0};
+    int machineBlockers_{0};
+    int machineWarnings_{0};
+    bool checkSkipped_{false}; // contrôle facultatif ignoré à la demande de l'utilisateur
+    std::function<bool(const QString&)> confirmHook_;
     int analysisErrors_{0};
     void buildCentral();
     void updateGuide();

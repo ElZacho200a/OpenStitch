@@ -41,6 +41,8 @@ struct SettableType {
     std::string_view label;
 };
 [[nodiscard]] const std::vector<SettableType>& settableStitchTypes();
+// Identifiant de la liste déroulante pour le type courant d'un objet (`stitchTypeId`).
+[[nodiscard]] std::string settableIdOf(std::string_view objectTypeId);
 
 // Lots JSON (`openstitch.batch/1`) ; chaîne vide si l'entrée est invalide (aucun objet, type
 // inconnu).
@@ -48,6 +50,13 @@ struct SettableType {
                                         const std::array<std::uint8_t, 3>& rgb);
 [[nodiscard]] std::string batchSetStitchType(const std::vector<std::uint64_t>& ids,
                                              std::string_view type);
+// Satin « comme un remplissage » : choisi dans la liste des types, il passe par l'opération
+// `auto_satin` (id `auto_satin`, celui de `stitchTypeId`). Comme dans la V1, plusieurs méthodes
+// sont essayées à la suite (squelette, balayage parallèle, axe médian, puis axe compact) : la
+// première qui construit des colonnes est retenue. `attempt` indexe `satinAttemptCount()`.
+[[nodiscard]] std::size_t satinAttemptCount();
+[[nodiscard]] std::string batchAutoSatin(const std::vector<std::uint64_t>& ids,
+                                         std::size_t attempt);
 [[nodiscard]] std::string batchSetVisible(const std::vector<std::uint64_t>& ids, bool visible);
 [[nodiscard]] std::string batchSetLocked(const std::vector<std::uint64_t>& ids, bool locked);
 

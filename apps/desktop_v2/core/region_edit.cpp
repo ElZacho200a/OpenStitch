@@ -11,6 +11,7 @@
 #include "openstitch/segmentation/color_merge.hpp"
 
 #include "document_session.hpp"
+#include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/replace_project_command.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
@@ -254,6 +255,231 @@ RegionMapImage renderRegionMap(const document::Project& project,
     return out;
 }
 
+RegionMapImage renderRegionMap(const document::Project& project,
+                               const std::vector<std::uint64_t>& highlights) {
+    RegionMapImage out;
+    const auto* seg = segmentationOf(project);
+    if (seg == nullptr) {
+        return out;
+    }
+    // Carte sans surbrillance, puis chaque pixel d'une région choisie est éclairci (comme
+    // `render_map` le fait pour une seule région).
+    auto map = segmentation::render_map(*seg, std::nullopt);
+    std::vector<std::uint64_t> sorted = highlights;
+    std::sort(sorted.begin(), sorted.end());
+    const std::size_t pixels =
+        std::min(seg->labels.size(), static_cast<std::size_t>(map.width) * map.height);
+    for (std::size_t i = 0; i < pixels; ++i) {
+        const auto label = static_cast<std::uint64_t>(seg->labels[i]);
+        if (label != 0 && std::binary_search(sorted.begin(), sorted.end(), label)) {
+            auto* px = map.rgba.data() + i * 4;
+            for (int c = 0; c < 3; ++c) {
+                px[c] = static_cast<std::uint8_t>(px[c] + (255 - px[c]) * 55 / 100);
+            }
+        }
+    }
+    out.width = map.width;
+    out.height = map.height;
+    out.rgba = map.rgba;
+    return out;
+}
+
+std::vector<std::uint64_t> allRegionIds(const document::Project& project) {
+    std::vector<std::uint64_t> out;
+    for (const auto& r : listRegions(project)) {
+        out.push_back(r.id);
+    }
+    return out;
+}
+
+std::vector<std::uint64_t> sameColorRegions(const document::Project& project, std::uint64_t id) {
+    std::vector<std::uint64_t> out;
+    const auto regions = listRegions(project);
+    const auto it = std::find_if(regions.begin(), regions.end(),
+                                 [id](const RegionInfo& r) { return r.id == id; });
+    if (it == regions.end()) {
+        return out;
+    }
+    for (const auto& r : regions) {
+        if (r.rgb == it->rgb) {
+            out.push_back(r.id);
+        }
+    }
+    return out;
+}
+
+std::vector<std::uint64_t> neighboursOfSet(const document::Project& project,
+                                           const std::vector<std::uint64_t>& ids) {
+    std::vector<std::uint64_t> out;
+    for (const auto id : ids) {
+        for (const auto n : neighbourRegions(project, id)) {
+            if (std::find(ids.begin(), ids.end(), n) == ids.end() &&
+                std::find(out.begin(), out.end(), n) == out.end()) {
+                out.push_back(n);
+            }
+        }
+    }
+    return out;
+}
+
+std::vector<std::uint64_t> invertRegionSet(const document::Project& project,
+                                           const std::vector<std::uint64_t>& ids) {
+    std::vector<std::uint64_t> out;
+    for (const auto id : allRegionIds(project)) {
+        if (std::find(ids.begin(), ids.end(), id) == ids.end()) {
+            out.push_back(id);
+        }
+    }
+    return out;
+}
+
+std::vector<std::uint64_t> objectsOfRegions(const document::Project& project,
+                                            const std::vector<std::uint64_t>& regionIds) {
+    std::vector<std::uint64_t> vectors;
+    for (const auto& v : project.vector_objects) {
+        if (v.source_region && std::find(regionIds.begin(), regionIds.end(),
+                                         v.source_region->value) != regionIds.end()) {
+            vectors.push_back(v.id.value);
+        }
+    }
+    std::vector<std::uint64_t> out;
+    for (const auto& e : project.embroidery_objects) {
+        if (std::find(vectors.begin(), vectors.end(), e.source_vector.value) != vectors.end()) {
+            out.push_back(e.id.value);
+        }
+    }
+    return out;
+}
+
+std::vector<std::uint64_t> regionsOfObjects(const document::Project& project,
+                                            const std::vector<std::uint64_t>& objectIds) {
+    std::vector<std::uint64_t> out;
+    for (const auto objectId : objectIds) {
+        const auto e =
+            std::find_if(project.embroidery_objects.begin(), project.embroidery_objects.end(),
+                         [objectId](const auto& o) { return o.id.value == objectId; });
+        if (e == project.embroidery_objects.end()) {
+            continue;
+        }
+        const auto v = std::find_if(project.vector_objects.begin(), project.vector_objects.end(),
+                                    [&](const auto& o) { return o.id == e->source_vector; });
+        if (v == project.vector_objects.end() || !v->source_region) {
+            continue;
+        }
+        const auto region = v->source_region->value;
+        if (std::find(out.begin(), out.end(), region) == out.end()) {
+            out.push_back(region);
+        }
+    }
+    return out;
+}
+
+namespace {
+// Identifiants vivants, sans doublon, dans l'ordre reçu.
+std::vector<std::uint64_t> liveRegions(const segmentation::Segmentation& seg,
+                                       const std::vector<std::uint64_t>& ids) {
+    std::vector<std::uint64_t> out;
+    for (const auto id : ids) {
+        if (seg.find(RegionId{id}) != nullptr &&
+            std::find(out.begin(), out.end(), id) == out.end()) {
+            out.push_back(id);
+        }
+    }
+    return out;
+}
+} // namespace
+
+ServiceResult mergeRegionSet(DocumentSession& session, const std::vector<std::uint64_t>& ids,
+                             std::optional<std::uint64_t> into) {
+    const auto* seg = segmentationOf(session.project());
+    if (seg == nullptr) {
+        return noSegmentation();
+    }
+    auto live = liveRegions(*seg, ids);
+    std::uint64_t target = 0;
+    if (into) {
+        if (seg->find(RegionId{*into}) == nullptr) {
+            return {false, "Région cible introuvable (déjà fusionnée ou supprimée)."};
+        }
+        target = *into;
+    } else {
+        if (live.size() < 2) {
+            return {false, "Choisissez au moins deux régions à fusionner."};
+        }
+        std::size_t best = 0;
+        for (const auto& r : listRegions(session.project())) {
+            if (std::find(live.begin(), live.end(), r.id) != live.end() && r.pixels >= best) {
+                if (r.pixels > best || target == 0) {
+                    target = r.id; // listRegions : plus grandes d'abord, id croissant à égalité
+                    best = r.pixels;
+                }
+            }
+        }
+    }
+    std::erase(live, target);
+    if (live.empty()) {
+        return {false, "Choisissez deux régions différentes."};
+    }
+    if (live.size() == 1) {
+        return mergeRegionInto(session, target, live.front());
+    }
+    auto group = std::make_unique<commands::CompositeCommand>(
+        "Fusionner " + std::to_string(live.size() + 1) + " régions");
+    for (const auto id : live) {
+        group->add(std::make_unique<commands::MergeRegionsCommand>(RegionId{target}, RegionId{id}));
+    }
+    session.execute(std::move(group));
+    return {true, {}};
+}
+
+ServiceResult deleteRegionSet(DocumentSession& session, const std::vector<std::uint64_t>& ids) {
+    const auto* seg = segmentationOf(session.project());
+    if (seg == nullptr) {
+        return noSegmentation();
+    }
+    const auto live = liveRegions(*seg, ids);
+    if (live.empty()) {
+        return {false, "Région introuvable (déjà fusionnée ou supprimée)."};
+    }
+    if (live.size() == 1) {
+        return deleteRegion(session, live.front());
+    }
+    if (seg->region_count() <= live.size()) {
+        return {false, "Il ne resterait aucune région : il n'y aurait rien à broder."};
+    }
+    auto group = std::make_unique<commands::CompositeCommand>(
+        "Supprimer " + std::to_string(live.size()) + " régions");
+    for (const auto id : live) {
+        group->add(std::make_unique<commands::RemoveRegionCommand>(RegionId{id}));
+    }
+    session.execute(std::move(group));
+    return {true, {}};
+}
+
+ServiceResult recolorRegionSet(DocumentSession& session, const std::vector<std::uint64_t>& ids,
+                               std::array<std::uint8_t, 3> rgb) {
+    const auto* seg = segmentationOf(session.project());
+    if (seg == nullptr) {
+        return noSegmentation();
+    }
+    const auto live = liveRegions(*seg, ids);
+    if (live.empty()) {
+        return {false, "Région introuvable (déjà fusionnée ou supprimée)."};
+    }
+    auto group = std::make_unique<commands::CompositeCommand>(
+        "Recolorer " + std::to_string(live.size()) + " régions");
+    for (const auto id : live) {
+        if (seg->find(RegionId{id})->rgb != rgb) {
+            group->add(std::make_unique<commands::RecolorRegionCommand>(RegionId{id}, rgb));
+        }
+    }
+    if (group->empty()) {
+        return {false, "Ces régions ont déjà cette couleur."};
+    }
+    session.execute(std::move(group));
+    return {true, {}};
+}
+
 ServiceResult mergeRegionInto(DocumentSession& session, std::uint64_t keep, std::uint64_t absorb) {
     const auto* seg = segmentationOf(session.project());
     if (seg == nullptr) {
@@ -475,6 +701,24 @@ Result<Regeneration> regenerateObjects(std::shared_ptr<const document::Project> 
     const bool skipLargest = settings.skip_background < 0 ? (candidate && candidate->recommended)
                                                           : (settings.skip_background != 0);
 
+    // Les objets SANS région d'origine (formes dessinées, SVG importé…) ne viennent pas de la
+    // segmentation : ils sont mis de côté puis remis, jamais effacés en silence.
+    std::vector<document::VectorObject> keptVectors;
+    std::vector<document::EmbroideryObject> keptEmbroideries;
+    for (auto& v : copy->vector_objects) {
+        if (!v.source_region) {
+            keptVectors.push_back(v);
+        }
+    }
+    for (auto& e : copy->embroidery_objects) {
+        const bool keep = std::any_of(keptVectors.begin(), keptVectors.end(),
+                                      [&](const auto& v) { return v.id == e.source_vector; });
+        if (keep) {
+            keptEmbroideries.push_back(e);
+        } else if (!e.overrides.empty()) {
+            ++out.lostRetouches;
+        }
+    }
     copy->vector_objects.clear();
     copy->embroidery_objects.clear();
     const project_ops::DigitizeSource source{&*copy->segmentation, &working, copy->mm_per_px};
@@ -491,12 +735,94 @@ Result<Regeneration> regenerateObjects(std::shared_ptr<const document::Project> 
     for (auto& e : produced->objects.embroideries) {
         copy->embroidery_objects.push_back(std::move(e));
     }
-    if (copy->embroidery_objects.empty()) {
+    if (copy->embroidery_objects.empty() && keptEmbroideries.empty()) {
         return fail(ErrorCategory::OperationImpossible, "Aucun objet de broderie généré",
                     "Les régions restantes sont trop petites ou ne forment que le fond.");
     }
+    out.preserved = keptEmbroideries.size();
+    for (auto& v : keptVectors) {
+        copy->vector_objects.push_back(std::move(v));
+    }
+    for (auto& e : keptEmbroideries) {
+        copy->embroidery_objects.push_back(std::move(e));
+    }
     out.objectsAfter = copy->embroidery_objects.size();
     out.after = std::move(copy);
+    return out;
+}
+
+Result<Regeneration> resegmentObjects(std::shared_ptr<const document::Project> project,
+                                      std::uint64_t revision, const image::Image& working,
+                                      const project_ops::DigitizeSettings& settings,
+                                      const TaskContext& task) {
+    if (!project) {
+        return fail(ErrorCategory::Internal, "Re-segmentation demandée sans projet");
+    }
+    if (working.empty()) {
+        return fail(ErrorCategory::OperationImpossible, "Image de travail introuvable",
+                    "Re-segmenter demande l'image numérisée : ouvrez l'image d'origine.");
+    }
+    if (task.cancelled()) {
+        return cancelled_error();
+    }
+    auto seg = segmentation::segment(working, {.max_colors = settings.max_colors,
+                                               .min_region_px = settings.min_region_px,
+                                               .smoothing_radius_px = settings.smoothing_px});
+    if (!seg) {
+        return fail(ErrorCategory::OperationImpossible,
+                    "Segmentation impossible : " + seg.error().message,
+                    "Essayez un autre nombre de couleurs.");
+    }
+    auto copy = std::make_shared<document::Project>(*project);
+    copy->segmentation = std::move(*seg);
+    auto regenerated = regenerateObjects(copy, revision, working, settings, task);
+    if (regenerated) {
+        regenerated->objectsBefore = project->embroidery_objects.size();
+    }
+    return regenerated;
+}
+
+ColorReductionPreview previewColorReduction(const document::Project& project, std::size_t maxColors,
+                                            double maxDistance, bool mergeAdjacent) {
+    ColorReductionPreview out;
+    const auto* seg = segmentationOf(project);
+    if (seg == nullptr) {
+        return out;
+    }
+    const auto plan = segmentation::plan_reduce_colors(*seg, maxColors, maxDistance, mergeAdjacent);
+    out.colorsBefore = plan.colors_before;
+    out.colorsAfter = plan.colors_after;
+    out.recolors = plan.recolors.size();
+    out.merges = plan.merges.size();
+    return out;
+}
+
+ServiceResult reduceColors(DocumentSession& session, std::size_t maxColors, double maxDistance,
+                           bool mergeAdjacent) {
+    const auto* seg = segmentationOf(session.project());
+    if (seg == nullptr) {
+        return noSegmentation();
+    }
+    auto plan = segmentation::plan_reduce_colors(*seg, maxColors, maxDistance, mergeAdjacent);
+    if (plan.empty()) {
+        return {false, "Aucune couleur à réduire avec ces réglages."};
+    }
+    session.execute(std::make_unique<commands::MergeColorsCommand>(std::move(plan)));
+    return {true, {}};
+}
+
+HandEdits countHandEdits(const document::Project& project) {
+    HandEdits out;
+    for (const auto& e : project.embroidery_objects) {
+        const auto v = std::find_if(project.vector_objects.begin(), project.vector_objects.end(),
+                                    [&](const auto& o) { return o.id == e.source_vector; });
+        const bool fromRegion = v != project.vector_objects.end() && v->source_region.has_value();
+        if (!fromRegion) {
+            ++out.handDrawnObjects;
+        } else if (!e.overrides.empty()) {
+            ++out.retouchedObjects;
+        }
+    }
     return out;
 }
 

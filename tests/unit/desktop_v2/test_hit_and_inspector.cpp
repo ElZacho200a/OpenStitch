@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <algorithm>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <filesystem>
@@ -174,8 +175,37 @@ TEST_CASE("inspector edits are one undo step each and use the shared batch path"
     CHECK(session.project().embroidery_objects[0].rgb == tentabrode80().embroidery_objects[0].rgb);
 }
 
+TEST_CASE("satin is a stitch type of the list like any fill, in one undo step",
+          "[desktop_v2][inspector][satin]") {
+    const auto& types = settableStitchTypes();
+    CHECK(std::ranges::any_of(types, [](const auto& t) { return t.id == "auto_satin"; }));
+    DocumentSession session;
+    session.replaceProject(document::Project(tentabrode80()), true);
+    // Au moins une région de l'image se convertit en satin ; l'annulation rend le type d'origine.
+    bool converted = false;
+    for (const auto& o : session.project().embroidery_objects) {
+        const std::uint64_t id = o.id.value;
+        const std::string before(
+            inspect(session.project(), {{TargetKind::EmbroideryObject, id}}).typeId.value);
+        for (std::size_t attempt = 0; attempt < satinAttemptCount() && !converted; ++attempt) {
+            converted = session.applyBatch(batchAutoSatin({id}, attempt), "Type : satin").committed;
+        }
+        if (converted) {
+            CHECK(inspect(session.project(), {{TargetKind::EmbroideryObject, id}}).typeId.value ==
+                  "auto_satin");
+            REQUIRE(session.undo());
+            CHECK(inspect(session.project(), {{TargetKind::EmbroideryObject, id}}).typeId.value ==
+                  before);
+            break;
+        }
+    }
+    CHECK(converted);
+    CHECK(batchAutoSatin({1}, satinAttemptCount()).empty());
+    CHECK(batchSetStitchType({1}, "auto_satin").find("auto_satin") != std::string::npos);
+}
+
 TEST_CASE("inspector batches refuse invalid input instead of guessing", "[desktop_v2][inspector]") {
-    CHECK(batchSetStitchType({1}, "satin").empty()); // le satin passe par auto_satin
+    CHECK(batchSetStitchType({1}, "satin").empty()); // « satin » seul n'existe pas : auto_satin
     CHECK(batchSetStitchType({1}, "nope\"}").empty());
     CHECK(batchSetColor({}, {1, 2, 3}).empty());
     CHECK(batchSetVisible({}, true).empty());

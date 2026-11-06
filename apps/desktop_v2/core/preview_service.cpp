@@ -14,6 +14,17 @@ namespace openstitch::desktop_v2 {
 Result<PreviewImage> render_preview(std::shared_ptr<const document::Project> project,
                                     std::uint64_t revision, double pxPerMm, const TaskContext& task,
                                     std::optional<std::size_t> upToCommand) {
+    RenderSettings settings;
+    settings.pxPerMm = pxPerMm;
+    return render_preview(std::move(project), revision, settings, task, upToCommand);
+}
+
+Result<PreviewImage> render_preview(std::shared_ptr<const document::Project> project,
+                                    std::uint64_t revision, const RenderSettings& rawSettings,
+                                    const TaskContext& task,
+                                    std::optional<std::size_t> upToCommand) {
+    const RenderSettings settings = clamped(rawSettings);
+    const double pxPerMm = settings.pxPerMm;
     if (!project) {
         return fail(ErrorCategory::Internal, "Aperçu demandé sans projet");
     }
@@ -58,7 +69,7 @@ Result<PreviewImage> render_preview(std::shared_ptr<const document::Project> pro
     const double hoopHalfW = project->canvas.width.value / 2000.0;
     const double hoopHalfH = project->canvas.height.value / 2000.0;
     stitch_render::RectMm region{-hoopHalfW, -hoopHalfH, hoopHalfW, hoopHalfH};
-    constexpr double kThreadMm = 0.35;
+    const double kThreadMm = settings.threadWidthMm;
     if (const stitch_render::RectMm bounds = stitch_render::segments_bounds(segments);
         !bounds.empty()) {
         if (region.empty()) {
@@ -88,10 +99,18 @@ Result<PreviewImage> render_preview(std::shared_ptr<const document::Project> pro
                            : segments;
     stitch_render::RenderParams params;
     params.thread_width_mm = kThreadMm;
-    params.fabric_rgb = {245, 243, 238}; // toile écrue, lisible en thèmes clair et sombre
+    params.relief = settings.relief;
+    params.sheen = settings.sheen;
+    params.twist = settings.twist;
+    params.shadow = settings.shadow;
+    params.fabric_rgb =
+        settings.fabricRgb; // défaut : toile écrue, lisible en thèmes clair et sombre
     params.fabric_opaque = true;
-    params.fabric_texture = stitch_render::FabricTexture::Plain;
-    params.quality = stitch_render::Quality::High;
+    params.fabric_texture = settings.fabricWeave ? stitch_render::FabricTexture::Weave
+                                                 : stitch_render::FabricTexture::Plain;
+    params.fabric_relief = settings.fabricRelief;
+    params.quality =
+        settings.highQuality ? stitch_render::Quality::High : stitch_render::Quality::Fast;
     const auto raster =
         stitch_render::render_threads(drawn, stitch_render::sanitized(params), view);
     image::Image img;
