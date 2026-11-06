@@ -537,8 +537,8 @@ std::uint64_t makeRing(DocumentSession& s) {
         R"({"schema":"openstitch.batch/1","operations":[{"op":"merge","objects":[)" +
         std::to_string(ids[0]) + "," + std::to_string(ids[1]) + R"(],"mode":"exclude"}]})";
     const auto r = s.applyBatch(merge, "Anneau");
-    INFO(r.report.outcomes.empty() ? std::string("pas de rapport")
-                                   : r.report.outcomes.back().message);
+    INFO((r.report.outcomes.empty() ? std::string("pas de rapport")
+                                    : r.report.outcomes.back().message));
     REQUIRE(r.committed);
     for (const auto& e : s.project().embroidery_objects) {
         if (holeCount(s.project(), e.id.value) > 0) {
