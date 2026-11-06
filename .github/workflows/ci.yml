@@ -93,15 +93,15 @@ jobs:
           # PR #164: le test_properties_panel échoue sous Windows sans sortie CTest.
           # Lancer directement les deux exécutables suspects et afficher le journal
           # QTest même en cas de code de sortie non nul (assertion ou crash).
-          foreach ($testName in @("test_properties_panel", "test_ui_action_workflows")) {
-            $exe = "build/msvc/tests/unit/desktop/Release/$testName.exe"
+          foreach ($testName in @("test_properties_panel", "test_ui_action_workflows", "test_desktop_v2_shell")) {
+            $exe = if ($testName -eq "test_desktop_v2_shell") { "build/msvc/tests/unit/desktop_v2/Release/$testName.exe" } else { "build/msvc/tests/unit/desktop/Release/$testName.exe" }
             foreach ($i in 1..2) {
               $log = "diag-$testName-$i.txt"
               & $exe -o "$log,txt"
               $code = $LASTEXITCODE
               "${testName} run ${i}: code de sortie $code (0x{0:X})" -f $code
               if (Test-Path $log) {
-                Get-Content $log -Tail 120
+                if ($testName -eq "test_desktop_v2_shell") { Get-Content $log | Select-String -Pattern "FAIL|Totals:|Finished testing|QFATAL" } else { Get-Content $log -Tail 120 }
               } else {
                 "Journal QTest absent: $log"
               }

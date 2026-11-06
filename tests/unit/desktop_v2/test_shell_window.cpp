@@ -252,12 +252,18 @@ private slots:
     }
 
     void toolRailUsesDescriptiveNamesAndKeepsAllToolsInBothModes() {
+        QTemporaryDir home;
+        QVERIFY(home.isValid());
         ShellWindow w;
+        w.setStateDirectory(fs::path(home.path().toStdU16String()) / "isolated-ui-state");
         auto* rail = w.findChild<QToolBar*>("toolRail");
         auto* toggle = w.findChild<QAction*>("action_view_compact_tools");
         auto* status = w.findChild<QLabel*>("activeToolStatus");
         QVERIFY(rail && toggle && status);
-        QCOMPARE(rail->toolButtonStyle(), Qt::ToolButtonTextBesideIcon);
+        // A fresh workspace starts canvas-first; expanded labels remain available on demand.
+        QVERIFY(w.compactToolRail());
+        QVERIFY(toggle->isChecked());
+        QCOMPARE(rail->toolButtonStyle(), Qt::ToolButtonIconOnly);
         const auto count = rail->actions().size();
         QVERIFY(count > 5);
         for (auto* action : rail->actions()) {
@@ -274,6 +280,26 @@ private slots:
         QCOMPARE(rail->toolButtonStyle(), Qt::ToolButtonIconOnly);
         QCOMPARE(w.activeToolId(), QStringLiteral("select"));
         toggle->setChecked(false);
+        QCOMPARE(rail->toolButtonStyle(), Qt::ToolButtonTextBesideIcon);
+    }
+
+    void newWorkspaceDefaultsToCanvasFirstCompactRail() {
+        QTemporaryDir home;
+        QVERIFY(home.isValid());
+        const auto dir = fs::path(home.path().toStdU16String()) / "fresh-ui-state";
+        ShellWindow w;
+        w.setStateDirectory(dir);
+        auto* rail = w.findChild<QToolBar*>("toolRail");
+        auto* toggle = w.findChild<QAction*>("action_view_compact_tools");
+        QVERIFY(rail != nullptr);
+        QVERIFY(toggle != nullptr);
+        QVERIFY(w.compactToolRail());
+        QVERIFY(toggle->isChecked());
+        QCOMPARE(rail->toolButtonStyle(), Qt::ToolButtonIconOnly);
+        QCOMPARE(rail->width(), 52);
+        w.setWorkspace(Workspace::Produce);
+        QCOMPARE(rail->toolButtonStyle(), Qt::ToolButtonIconOnly);
+        w.setCompactToolRail(false);
         QCOMPARE(rail->toolButtonStyle(), Qt::ToolButtonTextBesideIcon);
     }
 
