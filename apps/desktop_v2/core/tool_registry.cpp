@@ -15,6 +15,8 @@ std::string_view workspaceId(Workspace w) {
         return "optimize";
     case Workspace::Produce:
         return "produce";
+    case Workspace::Zones:
+        return "zones";
     }
     return "design";
 }
@@ -67,6 +69,7 @@ ToolRegistry ToolRegistry::builtin() {
     constexpr auto N = static_cast<std::uint8_t>(1U << 1); // Numérisation
     constexpr auto O = static_cast<std::uint8_t>(1U << 2); // Analyse et optimisation
     constexpr auto P = static_cast<std::uint8_t>(1U << 3); // Production
+    constexpr auto Z = static_cast<std::uint8_t>(1U << 4); // Zones (segmentation)
     ToolRegistry r;
     //          id                 libellé                          raccourci  espaces        geste
     //          outil historique
@@ -89,12 +92,13 @@ ToolRegistry ToolRegistry::builtin() {
         {"knife", "Couteau", "K", static_cast<std::uint8_t>(D | N), Gesture::TwoPointLine, "Cut"});
     r.add({"text", "Texte", "T", static_cast<std::uint8_t>(D | N), Gesture::Pick, "Text"});
     r.add({"measure", "Règle", "M", kAllWorkspaces, Gesture::TwoPointLine, "Measure"});
-    r.add({"eyedropper", "Pipette", "I", static_cast<std::uint8_t>(D | N | P), Gesture::Pick,
+    r.add({"eyedropper", "Pipette", "I", static_cast<std::uint8_t>(D | N | P | Z), Gesture::Pick,
            "Eyedropper"});
     r.add({"warp-brush", "Pinceau de déformation", "W", D, Gesture::Stroke, "Brush"});
-    r.add({"bucket", "Pot de peinture", "G", D, Gesture::Pick, "Bucket"});
-    r.add({"click-to-stitch", "Clic-pour-broder", "A", N, Gesture::Pick, "ClickToStitch"});
-    r.add({"detail-brush", "Zones de détail", "Q", D, Gesture::Stroke, "DetailBrush"});
+    r.add({"bucket", "Pot de peinture", "G", Z, Gesture::Pick, "Bucket"});
+    r.add({"click-to-stitch", "Clic-pour-broder", "A", static_cast<std::uint8_t>(N | Z),
+           Gesture::Pick, "ClickToStitch"});
+    r.add({"detail-brush", "Zones de détail", "Q", Z, Gesture::Stroke, "DetailBrush"});
     // Nouveau en V2 (pas d'équivalent dans l'ancien enum) : retouche point à point.
     // Édition directe des nœuds du contour (poignées, glisser, insertion par double-clic).
     r.add({"node.edit", "Nœuds du contour", "B", static_cast<std::uint8_t>(D | N), Gesture::Pick,
@@ -102,7 +106,9 @@ ToolRegistry ToolRegistry::builtin() {
     // Axe d'un fondu de deux fils : début et fin de la transition, déplacement, rotation.
     r.add({"fade.axis", "Axe du fondu", "L", static_cast<std::uint8_t>(D | N), Gesture::Pick, ""});
     // Correction de la segmentation après numérisation : choisir, supprimer, fusionner des régions.
-    r.add({"region.edit", "Régions", "X", static_cast<std::uint8_t>(D | N), Gesture::Pick, ""});
+    r.add({"region.edit", "Régions", "X", Z, Gesture::Pick, ""});
+    // Retouche d'une frontière de segmentation : peindre la région choisie (Ctrl = effacer).
+    r.add({"region.brush", "Pinceau de frontière", "U", Z, Gesture::Stroke, ""});
     r.add({"stitch.points", "Retouche de points", "J", static_cast<std::uint8_t>(N | O),
            Gesture::Pick, ""});
     (void)P;

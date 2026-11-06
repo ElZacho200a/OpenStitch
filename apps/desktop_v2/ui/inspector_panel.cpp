@@ -133,7 +133,7 @@ void InspectorPanel::refresh() {
     } else {
         title_->setText(state.count == 1 ? fromUtf8(state.name.value)
                                          : tr("%1 objets sélectionnés").arg(state.count));
-        const int typeIndex = type_->findData(fromUtf8(state.typeId.value));
+        const int typeIndex = type_->findData(fromUtf8(settableIdOf(state.typeId.value)));
         type_->setCurrentIndex(state.typeId.mixed || typeIndex < 0 ? 0 : typeIndex);
         if (state.rgb.mixed) {
             colour_->setText(tr("Plusieurs couleurs"));
@@ -446,6 +446,17 @@ bool InspectorPanel::applyColor(const QColor& color) {
 
 bool InspectorPanel::applyStitchType(const QString& typeId) {
     const auto state = inspect(session_.project(), session_.selection().targets());
+    if (typeId == QLatin1String("auto_satin") && !state.ids.empty()) {
+        // Comme un remplissage : la première méthode qui construit des colonnes est retenue ; un
+        // essai refusé laisse le document intact. Seul le dernier refus est annoncé.
+        const auto last = satinAttemptCount() - 1;
+        for (std::size_t attempt = 0; attempt < last; ++attempt) {
+            if (session_.applyBatch(batchAutoSatin(state.ids, attempt), "Type : satin").committed) {
+                return true;
+            }
+        }
+        return run(batchAutoSatin(state.ids, last), tr("Type : satin"));
+    }
     return run(batchSetStitchType(state.ids, typeId.toStdString()), tr("Type de points"));
 }
 

@@ -78,14 +78,14 @@ TEST_CASE("every legacy canvas tool has a V2 equivalent", "[desktop_v2][tools][p
         REQUIRE_FALSE(name.empty());
         CHECK(registry.findByLegacy(name) != nullptr);
     }
-    // + retouche de points, nœuds du contour et axe du fondu, propres à la V2
-    CHECK(registry.tools().size() == 24);
+    // + retouche de points, nœuds du contour, axe du fondu et pinceau de frontière, propres à la V2
+    CHECK(registry.tools().size() == 25);
 }
 
 TEST_CASE("workspaces always expose selection and pan", "[desktop_v2][tools]") {
     const auto registry = ToolRegistry::builtin();
-    for (const auto w :
-         {Workspace::Design, Workspace::Digitize, Workspace::Optimize, Workspace::Produce}) {
+    for (const auto w : {Workspace::Design, Workspace::Digitize, Workspace::Optimize,
+                         Workspace::Produce, Workspace::Zones}) {
         const auto tools = registry.forWorkspace(w);
         bool select = false;
         bool pan = false;

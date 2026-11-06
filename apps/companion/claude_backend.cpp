@@ -288,7 +288,7 @@ private:
 
 QString hintFor(const QString& code) {
     if (code == QLatin1String(agent::code::kAuth)) {
-        return QObject::tr(" Vérifiez la clé dans Aide ▸ Compagnon IA…");
+        return QObject::tr(" Vérifiez la clé dans les réglages du compagnon IA.");
     }
     if (code == QLatin1String(agent::code::kQuota)) {
         return QObject::tr(" Réessayez plus tard ou vérifiez votre quota chez le fournisseur.");

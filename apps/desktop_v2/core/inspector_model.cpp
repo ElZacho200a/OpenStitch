@@ -59,13 +59,30 @@ InspectorState inspect(const document::Project& project, const std::vector<Targe
 }
 
 const std::vector<SettableType>& settableStitchTypes() {
-    static const std::vector<SettableType> kTypes{{"running", "Contour"},
-                                                  {"tatami", "Tatami"},
-                                                  {"directional", "Directionnel"},
-                                                  {"spiral_fill", "Spirale"},
-                                                  {"cross_stitch", "Point de croix"},
-                                                  {"applique", "Appliqué"}};
+    static const std::vector<SettableType> kTypes{
+        {"running", "Contour"},           {"tatami", "Tatami"},
+        {"auto_satin", "Satin"},          {"directional", "Directionnel"},
+        {"contour_fill", "Concentrique"}, {"radial_fill", "Radial"},
+        {"spiral_fill", "Spirale"},       {"crosshatch_fill", "Croisé"},
+        {"motif_fill", "À motif"},        {"motif_run", "Motif le long du contour"},
+        {"blanket", "Boutonnière"},       {"cross_stitch", "Point de croix"},
+        {"applique", "Appliqué"}};
     return kTypes;
+}
+
+std::string settableIdOf(std::string_view objectTypeId) {
+    // `stitchTypeId` (étiquettes de l'objet) et les identifiants de `set_stitch_type` diffèrent
+    // pour trois remplissages : la liste déroulante doit retrouver le bon type courant.
+    if (objectTypeId == "radial") {
+        return "radial_fill";
+    }
+    if (objectTypeId == "spiral") {
+        return "spiral_fill";
+    }
+    if (objectTypeId == "crosshatch") {
+        return "crosshatch_fill";
+    }
+    return std::string(objectTypeId);
 }
 
 // `batchOf` remplace le marqueur « # » de `opTail` par l'identifiant : le marqueur n'apparaît dans
@@ -95,8 +112,33 @@ std::string batchSetStitchType(const std::vector<std::uint64_t>& ids, std::strin
     if (std::ranges::none_of(types, [&](const auto& t) { return t.id == type; })) {
         return {};
     }
+    if (type == "auto_satin") {
+        return batchAutoSatin(ids, 0);
+    }
     return batchOf(ids,
                    R"({"op":"set_stitch_type","object":#,"type":")" + std::string(type) + R"("})");
+}
+
+namespace {
+struct SatinAttempt {
+    const char* strategy;
+    bool compactAxis;
+};
+constexpr std::array<SatinAttempt, 4> kSatinAttempts{
+    {{"skeleton", false}, {"parallel_sweep", false}, {"medial_axis", false}, {"skeleton", true}}};
+} // namespace
+
+std::size_t satinAttemptCount() {
+    return kSatinAttempts.size();
+}
+
+std::string batchAutoSatin(const std::vector<std::uint64_t>& ids, std::size_t attempt) {
+    if (attempt >= kSatinAttempts.size()) {
+        return {};
+    }
+    const auto& a = kSatinAttempts[attempt];
+    return batchOf(ids, std::string(R"({"op":"auto_satin","object":#,"strategy":")") + a.strategy +
+                            R"(","compact_axis":)" + (a.compactAxis ? "true" : "false") + "}");
 }
 
 std::string batchSetVisible(const std::vector<std::uint64_t>& ids, bool visible) {

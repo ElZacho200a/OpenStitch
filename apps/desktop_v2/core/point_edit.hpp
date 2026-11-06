@@ -23,8 +23,9 @@ struct EditablePoint {
     PointMm pos;          // mm « modèle » (Y vers le haut), retouches appliquées
     bool movable{false}; // point cousu réel de la passe supérieure (un saut n'est pas déplaçable)
     bool jump{false};
-    bool deleted{false}; // supprimé par une retouche (position = celle générée)
-    bool edited{false};  // déplacé / retouché
+    bool deleted{false};   // supprimé par une retouche (position = celle générée)
+    bool edited{false};    // déplacé / retouché
+    bool trimAfter{false}; // un point d'arrêt (coupe du fil) suit ce point
 };
 
 struct PointView {
@@ -43,6 +44,12 @@ ServiceResult moveStitchPoints(DocumentSession& session, std::uint64_t objectId,
                                const std::vector<std::pair<std::size_t, PointMm>>& moves);
 ServiceResult deleteStitchPoints(DocumentSession& session, std::uint64_t objectId,
                                  const std::vector<std::size_t>& indices);
+// Force des points en SAUT (sans couture) ou les rend cousus ; pose / retire une COUPE du fil après
+// eux. Une commande annulable chacun ; mêmes refus que ci-dessus (objet périmé, indice inconnu).
+ServiceResult setStitchPointsJump(DocumentSession& session, std::uint64_t objectId,
+                                  const std::vector<std::size_t>& indices, bool jump);
+ServiceResult setStitchPointsTrim(DocumentSession& session, std::uint64_t objectId,
+                                  const std::vector<std::size_t>& indices, bool trim);
 // Rétablit le point généré d'origine (annule une suppression ou un déplacement).
 ServiceResult restoreStitchPoints(DocumentSession& session, std::uint64_t objectId,
                                   const std::vector<std::size_t>& indices);

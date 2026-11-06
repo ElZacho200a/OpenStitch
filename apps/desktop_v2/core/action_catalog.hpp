@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -73,5 +74,41 @@ struct ActionDef {
 
 [[nodiscard]] std::string buildAction(const ActionDef& action, Values values,
                                       const ActionContext& context, std::string& error);
+
+// --- Modification d'un texte existant (hors catalogue : elle exige un texte sélectionné) ---------
+// Identifiant de l'objet texte qui possède TOUTES les lettres sélectionnées ; nullopt si la
+// sélection est vide, mélange plusieurs textes ou contient autre chose que des lettres.
+[[nodiscard]] std::optional<std::uint64_t>
+selectedTextOwner(const document::Project& project, const std::vector<std::uint64_t>& objectIds);
+// Réglages actuels du texte, dans les champs de `textEditAction()`.
+[[nodiscard]] Values textEditValues(const document::Project& project, std::uint64_t textId);
+// Action « Modifier le texte » : mêmes champs typographiques que « Ajouter du texte », police et
+// position conservées ; `build` produit l'opération `set_text` pour le texte de la sélection.
+[[nodiscard]] const ActionDef& textEditAction();
+
+// --- Édition d'UNE lettre d'un texte (GlyphEdit du moteur : décalage, rotation, échelle, couleur)
+// --- Les lettres n'ont pas d'identifiant propre : le rang d'une lettre (espaces exclus, ordre de
+// lecture) se déduit de l'ordre des formes du texte, une lettre pouvant en produire plusieurs
+// (« Lettre A », « Lettre A (2) »). Si le compte ne tombe pas juste avec le texte (ligatures,
+// caractères combinés ou ambigus, écriture de droite à gauche), la commande REFUSE plutôt que de
+// modifier la mauvaise lettre.
+struct GlyphTarget {
+    bool ok{false};
+    std::string message; // refus en clair quand !ok
+    std::uint64_t textId{0};
+    std::uint32_t index{0};
+    std::string letter; // la lettre, pour l'affichage
+    bool hasEdit{false};
+};
+[[nodiscard]] GlyphTarget glyphTargetOf(const document::Project& project,
+                                        const std::vector<std::uint64_t>& objectIds);
+// Réglages actuels de la lettre (neutres si elle n'a jamais été retouchée).
+[[nodiscard]] Values glyphEditValues(const document::Project& project, const GlyphTarget& target);
+// Actions « Modifier la lettre » (champs ci-dessus) et « Rétablir la lettre » (sans champ).
+[[nodiscard]] const ActionDef& glyphEditAction();
+[[nodiscard]] const ActionDef& glyphResetAction();
+// Actions qui exigent un contexte (texte ou lettre sélectionnée) et restent hors catalogue :
+// `text.edit`, `text.glyph`, `text.glyph.reset`. nullptr si l'identifiant n'en est pas une.
+[[nodiscard]] const ActionDef* contextAction(const std::string& id);
 
 } // namespace openstitch::desktop_v2

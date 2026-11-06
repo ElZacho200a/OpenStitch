@@ -1388,12 +1388,19 @@ OpSpec op_set_stitch_type() {
     s.summary = "Change le type de points : running, tatami, directional, spiral_fill "
                 "(spirale d'Archimède centrable par set_params.center_mm) ou cross_stitch "
                 "(point de croix, grille réglable par set_params) ou applique "
-                "(placement, arrêt, maintien, arrêt, satin de couverture ; HP-SPEC-001). "
-                "Le satin passe par auto_satin.";
+                "(placement, arrêt, maintien, arrêt, satin de couverture ; HP-SPEC-001), "
+                "ainsi que blanket (boutonnière), contour_fill (concentrique), radial_fill, "
+                "crosshatch_fill (croisé), motif_run (motif le long du contour) et motif_fill "
+                "(remplissage à motif), réglages par défaut. Le satin passe par auto_satin.";
     s.args = {arg("object", "object_id", "objet de broderie", true),
               arg("type", "string",
-                  "running | tatami | directional | spiral_fill | cross_stitch | applique", true,
-                  {}, "running | tatami | directional | spiral_fill | cross_stitch | applique")};
+                  "running | tatami | directional | spiral_fill | cross_stitch | applique | "
+                  "blanket | contour_fill | radial_fill | crosshatch_fill | motif_run | "
+                  "motif_fill",
+                  true, {},
+                  "running | tatami | directional | spiral_fill | cross_stitch | applique | "
+                  "blanket | contour_fill | radial_fill | crosshatch_fill | motif_run | "
+                  "motif_fill")};
     s.example = R"({"op":"set_stitch_type","object":2,"type":"running"})";
     s.apply = guarded([](OpContext& ctx) {
         const auto& emb = need_emb(ctx, "object");
@@ -1403,12 +1410,16 @@ OpSpec op_set_stitch_type() {
             refuse(code::kRefused, "le type « " + type + " » n'est pas disponible ici",
                    "utilisez l'opération auto_satin");
         }
+        static const char* const kSimpleTypes[] = {"blanket",         "contour_fill", "radial_fill",
+                                                   "crosshatch_fill", "motif_run",    "motif_fill"};
+        const bool simple = std::find(std::begin(kSimpleTypes), std::end(kSimpleTypes), type) !=
+                            std::end(kSimpleTypes);
         if (type != "running" && type != "tatami" && type != "directional" &&
-            type != "spiral_fill" && type != "cross_stitch" && type != "applique") {
+            type != "spiral_fill" && type != "cross_stitch" && type != "applique" && !simple) {
             refuse(code::kOutOfRange, "type de points « " + type + " » inconnu",
                    "valeurs valides : running, tatami, directional, spiral_fill, cross_stitch, "
-                   "applique "
-                   "(satin : opération auto_satin)");
+                   "applique, blanket, contour_fill, radial_fill, crosshatch_fill, motif_run, "
+                   "motif_fill (satin : opération auto_satin)");
         }
         const std::string from = stitch_type_name(emb.params);
         if (from == type) {
@@ -1426,6 +1437,24 @@ OpSpec op_set_stitch_type() {
         } else if (type == "tatami") {
             params = document::TatamiParams{};
             label = "Type : tatami";
+        } else if (type == "blanket") {
+            params = document::BlanketStitchParams{};
+            label = "Type : boutonnière";
+        } else if (type == "contour_fill") {
+            params = document::ContourFillParams{};
+            label = "Type : remplissage concentrique";
+        } else if (type == "radial_fill") {
+            params = document::RadialFillParams{};
+            label = "Type : remplissage radial";
+        } else if (type == "crosshatch_fill") {
+            params = document::CrosshatchFillParams{};
+            label = "Type : remplissage croisé";
+        } else if (type == "motif_run") {
+            params = document::MotifRunParams{};
+            label = "Type : motif le long du contour";
+        } else if (type == "motif_fill") {
+            params = document::MotifFillParams{};
+            label = "Type : remplissage à motif";
         } else if (type == "applique") {
             const auto* source = ctx.project.findObject(emb.source_vector);
             if (source == nullptr || source->paths.empty()) {

@@ -443,3 +443,83 @@ encore le desktop principal.
 - Retour utilisateur : « plus la main sur la segmentation (supprimer / fusionner des régions) ». Nouvel outil **Régions** (X, menu Outils › Corriger la segmentation) : carte des régions à plat sur le motif, clic pour choisir, panneau dédié (liste, Supprimer, Fusionner dans, Nettoyer les îlots, Régénérer).
 - Cœur `region_edit` (sans Qt, 5 cas Catch2) ; contrôleur `region_edit_controller` ; chaque correction = une commande du moteur ; la régénération refait les objets depuis la segmentation corrigée en tâche, refusée si la révision a changé, **une seule étape d'annulation**.
 - Limite : la régénération remplace les objets (retouches manuelles perdues, annulable) ; recoloration de région, fusion de couleurs et frontières non faits.
+
+## 2026-11-06 — Session 2 : lot 1, barreaux de satin
+
+- Cœur `satin_column` : ajouter / insérer entre deux barreaux / déplacer / retirer un barreau (une commande annulable chacun, refus sans trace : extrémités confondues, hors limites, moins de deux barreaux), `widestRungGap` et `redundantRung` (choix déterministe), `diagnoseSatin` (croisements en entiers 64 bits, aucun flottant pour décider). IHM : commandes « Satin : … » dans la palette. Pas de glisser au canevas pour l'instant. Validation : syntaxe seule en local (pas de Qt ni vcpkg dans ce conteneur), tests lancés par la CI.
+
+## 2026-11-06 — Session 2 : lot 2, comparaison du tirage et étalonnage
+
+- `core/pull_calibration` : `PullCalibration` (pièce-test, tableau nominal / prédit / mesuré, CSV, saisie une à une, ajustement en grille, DST de la pièce) et `compareProjectPull` (séquence effective contre séquence simulée : déplacement moyen et maximal, emprise). Boîte `CalibrationDialog` (sans logique métier) et commandes `analysis.pull` / `analysis.calibration`. Choix assumé : l'ajustement n'est qu'une proposition ; le modèle n'est jamais déclaré calibré, et les coefficients ne sont pas écrits dans le projet.
+
+## 2026-11-06 — Session 2 : lot 3, options machine d'export
+
+- `core/export_settings` : lecture en mm des finitions du moteur, validation (bornes, point max > point min), UNE commande par groupe (machine, cadre, finitions) ; comparaison en µm pour ne laisser aucune trace quand rien ne change. Bibliothèque de 16 cadres et 6 profils de machine du moteur, `checkExport` sur la séquence effective (points hors zone brodable, champ de la machine, format accepté). Fenêtre `ExportOptionsDialog` sans logique métier ; commandes `export.options` et `export.check`.
+
+## 2026-11-06 — Session 2 : lot 4, fils, texte et préférences
+
+- **Nuanciers** (`core/thread_palette_service`, `ThreadPaletteDialog`) : recherche, plus proches, assignation, mélange de deux fils. Le mélange est simulé en lumière linéaire sur les 12 fils les plus proches, par pas de 10 % ; il dit quand un fil seul fait aussi bien.
+- **Texte** : `text.add` reçoit les réglages typographiques du moteur ; `text.edit` (hors catalogue pour ne pas casser l'invariant « chaque action se construit avec des valeurs par défaut ») retrouve le texte propriétaire des lettres sélectionnées (`text_owner`) et ouvre le dialogue prérempli.
+- **Préférences** (`core/preferences`) : thème et densité. Constat : le thème choisi n'était jamais enregistré. Densité = mise à l'échelle des seules lignes `padding` de la feuille de style. Langue volontairement absente.
+
+## 2026-11-06 — Session 2 : lot 5, chat intégré
+
+- Constat : la V1 avait déjà tout le côté agent (`ClaudeCompanionBackend`, `LiveToolHost`, réglages, stockage de clé) mais dans `apps/desktop`, inutilisable depuis la V2 sans dépendre de l'autre application (et leurs en-têtes homonymes — `calque_panel.hpp`, `live_server.hpp`… — rendent un `include_directories` partagé dangereux). Choix : copie de 5 fichiers dans `apps/desktop_v2/ui` sous l'espace de noms `desktop_v2` (mêmes clés de réglage : la clé et l'activation déjà saisies en V1 sont reprises). Dette assumée : deux copies à faire converger quand la V1 sera retirée.
+- `ChatPanel` ne fait que des widgets ; le document n'est jamais modifié par le panneau : les outils de l'agent passent par `LiveCompanion` (approbation avant/après). `ensureCompanion()` crée le pont sans serveur local, le chat n'en a pas besoin.
+- Non fait : essai réel avec une clé, fournisseur « processus Claude Code », analyse sémantique automatique.
+
+## 2026-11-06 — Session 2 : lot 6, pinceau de frontière
+
+- `paintRegionStroke` (cœur) : disques de rayon réglable le long du trait, pixels repeints et leurs anciennes étiquettes mémorisés (annulation exacte, comptes de pixels recalculés des deux côtés, ordre des étiquettes déterministe). Refuse d'effacer entièrement une région voisine (une région vide casserait la carte ; « Supprimer » existe pour cela). Outil `region.brush` (U) sur le geste « trait » du canevas ; la région se choisit avec l'outil Régions (X).
+- Choix : le pinceau ne touche que la carte d'étiquettes, jamais les objets : la régénération reste l'étape explicite (et annulable) déjà en place.
+- Non fait : segmentation IA (SAM), toujours hors priorité produit ; le moteur et la V1 la portent, la V2 n'affiche pas encore son état de disponibilité.
+
+## 2026-11-06 — Session 2 : « Mes cadres »
+
+- `core/hoop_store` : liste de cadres personnels (nom, forme, dimensions, rayon, marge) dans `hoops.txt` du dossier d'état, à côté des préférences ; un cadre = une ligne `nom;forme;l;h;rayon;marge`. Lecture tolérante (une ligne corrompue n'en cache pas une autre), écriture atomique, nom unique sans tenir compte de la casse, 50 cadres au plus, rien n'est promis si l'écriture échoue (la liste en mémoire revient à l'état précédent).
+- Choix : un cadre personnel porte SA marge, celle enregistrée ; le champ « marge » de la fenêtre ne s'applique qu'aux cadres de la bibliothèque. Les cadres personnels vivent hors document : ouvrir un projet sur une autre machine n'en a pas besoin, le cadre est déjà écrit dans le projet.
+
+## 2026-11-06 — Session 2 : fin de la duplication du compagnon V1 / V2
+
+- Les 5 fichiers du compagnon (fournisseur Claude, frontière `CompanionBackend`, réglages, boîte de dialogue) quittent `apps/desktop` et la copie de la V2 : ils vivent dans `apps/companion` (bibliothèque statique `openstitch_companion_backends`), liée par les deux bureaux. Déplacement par `git mv` : l'historique suit. Même espace de noms qu'avant (`openstitch::desktop`) pour ne pas toucher la vingtaine de fichiers de la V1 ; la V2 le ramène sous `desktop_v2` par des `using` dans un seul fichier (`ui/companion_shared.hpp`).
+- **Effet de bord utile** : le garde `check_companion_security` ne regardait que `apps/desktop/…` ; le chat, le pont et la copie V2 y échappaient. Il couvre maintenant `apps/companion`, le pont et le chat de la V2 (42 fichiers examinés, aucune violation).
+- Message d'erreur de clé rendu neutre (« réglages du compagnon IA »), car il citait un menu de la V1 qui n'existe pas en V2.
+- **À savoir** : `update_translations` (lupdate) ne scanne que les sources de `openstitch_desktop_widgets` ; les chaînes de la nouvelle bibliothèque n'y sont plus. Les traductions déjà présentes restent valides à l'exécution, mais la prochaine mise à jour des `.ts` les marquerait obsolètes tant que la bibliothèque n'est pas ajoutée aux sources de lupdate (option `SOURCE_TARGETS` de `qt_add_translations`, non essayée ici faute de Qt).
+
+## 2026-11-06 — Session 2 : sélection après « Ajouter du texte »
+
+- Trouvé par la CI Windows (QTest `textEditCommandNeedsAWholeTextAndRewritesItInOneStep`) : l'opération `add_text` rend l'identifiant de l'objet TEXTE, que la fenêtre sélectionnait comme s'il s'agissait d'un objet de broderie. Résultat réel, pas seulement un défaut de test : après avoir ajouté un texte, « Modifier le texte » restait grisé tant qu'on ne cliquait pas une lettre. La fenêtre sélectionne maintenant les lettres du texte créé ou modifié.
+
+## 2026-11-06 — Session 2 : édition d'une lettre
+
+- Les lettres n'ont pas d'identifiant propre : le rang d'une lettre (espaces exclus, ordre de lecture) est déduit de l'ordre des formes du texte, une lettre pouvant en produire plusieurs (« Lettre A », « Lettre A (2) »). **Garde-fou** : le nombre de lettres trouvées doit égaler celui du texte ; sinon (ligatures, accents combinants, écritures de droite à gauche, caractères invisibles, formes ajoutées ou retirées à la main) la commande refuse avec la raison au lieu de risquer de modifier la mauvaise lettre.
+- `set_text` remplace TOUTE la liste de retouches : on renvoie donc la liste complète avec la lettre changée (ou retirée si les réglages redeviennent neutres) ; les autres lettres gardent leurs retouches (testé).
+- Limite : l'édition régénère les lettres (nouveaux identifiants), la sélection redevient « toutes les lettres du texte » ; le glisser d'une lettre au canevas n'est pas fait.
+
+## 2026-11-06 — Session 2 : test du chat bloqué par une boîte modale
+
+- Trouvé par le build Windows : `chatPanelTalksToTheProvider…` appelait `newProject()` une seconde fois sur un document « modifié » ; la fenêtre ouvrait sa boîte « Modifications non enregistrées », que rien ne fermait, d'où 300 s puis un arrêt forcé qui empêchait aussi les autres QTest de la V2 de tourner. Défaut du test, pas du chat. Leçon : un test QTest qui remplace le document passe par `session().replaceProject(...)`, jamais par une commande qui peut demander confirmation.
+
+## 2026-11-06 — Session 2 : commandes du chat jamais enregistrées
+
+- Trouvé par le premier build Windows qui exécute la suite QTest de la V2 jusqu'au chat : `chat.open` et `companion.settings` étaient câblées dans `runCommand` mais **absentes de `commandEntries`**, donc inatteignables et désactivées. Cause : mon insertion du lot 5 visait une ligne que le formatage avait reflowée ; le remplacement n'a rien fait et aucune erreur ne l'a signalé. Vrai défaut fonctionnel, pas seulement de test.
+- Ajouts : les deux entrées ; un test (`everyCommandOfTheFinalisationIsListedInThePalette`) qui vérifie que toutes les commandes de cette PR sont listées, pour que l'oubli ne revienne pas.
+- Deuxième blocage de test, même famille que le premier : émettre `ChatPanel::configureRequested` dans une fenêtre ouvre la boîte de réglages (modale). Le test passe par un panneau isolé.
+
+## 2026-11-06 — Session 2 : pinceau de frontière, îlots épargnés
+
+- Premier build Windows à exécuter toute la suite QTest de la V2 (118 passés, 3 échecs). Deux échecs : comptes d'outils codés en dur dans deux tests existants (14 outils actifs, 24 commandes) alors que j'avais ajouté un outil → 15 et 25. Troisième : le trait du pinceau ne produisait pas son pas d'annulation.
+- Cause probable (non confirmée par le journal, qui ne donne pas la raison du refus) : mon garde « refuser le trait si une région voisine serait entièrement effacée » refusait EN BLOC tout trait croisant un îlot. Défaut d'usage réel. Nouveau comportement : les régions voisines entièrement couvertes sont ÉPARGNÉES (leurs pixels ne sont pas repeints), le reste du trait est peint, et la notice le dit ; refus seulement si rien d'autre n'est peint. En gomme, effacer toute la région choisie reste refusé (« Supprimer » existe). Le test affiche désormais la notice si le trait échoue, pour ne plus deviner.
+
+## 2026-11-06 — Session 2 : première CI entièrement verte
+
+- Tête `ba61c49` de la PR #277 : `windows-msvc` (compilation MSVC, Catch2 et toute la suite QTest de la V2), `linux-core` et `format` passent. Les lignes « CI à confirmer » de la matrice sont remplacées par « CI verte ».
+- Bilan des défauts que la CI a trouvés (aucun n'a été vu en local, faute de Qt) : cinq défauts de mes propres tests (nominal nul, cadre par défaut déjà en place, référence sur temporaire, deux boîtes modales qui bloquaient 300 s) et trois VRAIS défauts d'usage : sélection après « Ajouter du texte » (qui grisait « Modifier le texte »), commandes du chat jamais enregistrées dans la palette, pinceau refusant tout trait croisant un îlot.
+- **Ce que « vert » ne dit pas** : rien n'a été vu à l'écran ; le fournisseur réel du chat n'est exercé par aucun test ; la recette Windows des cinq scénarios et le test des anciens `.osp` restent à faire (voir `11-bascule-v1-v2.md`).
+
+## 2026-11-06 — Session 3 : rattrapage de la V1 et validation visuelle
+
+- Rattrapage (liste de `13-retards-v2-vs-v1.md`) : import machine + DXF, six types de remplissage, guides de direction et lignes de rupture, re-segmentation avec aperçu, réduction de palette, retouche de points multiple (saut, coupe, rétablir), zoom et guides de session, réglages du rendu réaliste, sélection de régions partagée (multiple, par couleur, voisines, lien région ↔ objets), espaces Formes / Zones avec panneaux dédiés, raccourcis (F3-F9, Ctrl+Maj+…, jamais Ctrl+Alt à cause d'AltGr).
+- Guide de parcours réécrit sur l'état réel (obsolète, bloqué, avertissement, ignoré) ; régénération protégée (formes dessinées conservées, retouches comptées et confirmées) ; sept parcours de bout en bout en test.
+- **Captures réelles** (premières de la V2 avec police) : 28 images, 5 inspectées ; cinq défauts d'affichage trouvés et corrigés, trois restent (voir `14`).
+- Ce que ce journal ne dit pas encore : le résultat de la CI de GitHub pour ces lots ; il est ajouté après le premier push.

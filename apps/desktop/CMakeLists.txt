@@ -65,11 +65,6 @@ add_library(openstitch_desktop_widgets STATIC
     companion_launcher.hpp
     claude_code_process_backend.cpp
     claude_code_process_backend.hpp
-    companion_backend.hpp
-    claude_backend.cpp
-    claude_backend.hpp
-    companion_settings_dialog.cpp
-    companion_settings_dialog.hpp
     main_window_preferences.cpp
     general_preferences_dialog.cpp
     general_preferences_dialog.hpp
@@ -246,6 +241,7 @@ target_link_libraries(openstitch_desktop_widgets
            openstitch::stitch_analysis openstitch::optimization openstitch::autodigitize
            openstitch::auto_satin openstitch::segmentation openstitch::lettering
            openstitch::ai_segmentation openstitch::project_ops openstitch::mcp openstitch::agent
+           openstitch::companion_backends
     PRIVATE openstitch::warnings
 )
 

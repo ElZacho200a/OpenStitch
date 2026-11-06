@@ -5,6 +5,8 @@
 #include <QClipboard>
 #include <QColor>
 #include <QComboBox>
+#include <QDialog>
+#include <QDockWidget>
 #include <QDoubleSpinBox>
 #include <QFile>
 #include <QGuiApplication>
@@ -26,15 +28,20 @@
 #include <QTreeWidget>
 #include <QWheelEvent>
 #include <filesystem>
+#include <map>
 #include <nlohmann/json.hpp>
 #include <set>
 
 #include "action_dialog.hpp"
+#include "calibration_dialog.hpp"
 #include "calque_panel.hpp"
+#include "chat_panel.hpp"
 #include "command_palette.hpp"
 #include "companion_panel.hpp"
 #include "diagnostics_panel.hpp"
 #include "digitize_pipeline.hpp"
+#include "export_options_dialog.hpp"
+#include "export_settings.hpp"
 #include "fade_service.hpp"
 #include "feedback_cue.hpp"
 #include "import_dialog.hpp"
@@ -51,6 +58,7 @@
 #include "shell_window.hpp"
 #include "source_image_tools.hpp"
 #include "studio_theme.hpp"
+#include "thread_palette_dialog.hpp"
 #include "thread_panel.hpp"
 #include "transform_batch.hpp"
 #include <algorithm>
@@ -65,9 +73,476 @@ fs::path tentabrode() {
 }
 } // namespace
 
+// Faux fournisseur : répond tout de suite, sans réseau ni clé. `ready` simule un fournisseur non
+// configuré ; `hold` garde la demande ouverte jusqu'à `finish()` (pour tester l'annulation).
+class FakeChatBackend final : public CompanionBackend {
+    Q_OBJECT
+public:
+    bool ready{true};
+    bool hold{false};
+    QStringList received;
+    int cancels{0};
+    [[nodiscard]] QString providerName() const override { return QStringLiteral("Faux agent"); }
+    [[nodiscard]] bool available() const override { return ready; }
+    void finish() { emit finished(); }
+public slots:
+    void send(const QString& text) override {
+        received << text;
+        emit assistantText(QStringLiteral("Reçu : ") + text);
+        CompanionToolCall call;
+        call.tool = QStringLiteral("project_inspect");
+        call.summary = QStringLiteral("1 objet");
+        emit toolCalled(call);
+        emit usage(120, 45);
+        if (!hold) {
+            emit finished();
+        }
+    }
+    void cancel() override {
+        ++cancels;
+        emit failed(QStringLiteral("Demande annulée."));
+        emit finished();
+    }
+    void decide(bool) override {}
+};
+
 class ShellWindowTest : public QObject {
     Q_OBJECT
 private slots:
+    void switchingWorkspacesKeepsSelectionHistoryFocusAndLetsYouFixARegionFromProduction() {
+        ShellWindow w;
+        w.resize(1100, 800);
+        w.show();
+        openstitch::project_ops::DigitizeSettings settings;
+        settings.max_colors = 4;
+        w.openImage(tentabrode(), 60.0, settings);
+        w.waitForIdle();
+        const auto& objects = w.session().project().embroidery_objects;
+        QVERIFY(objects.size() >= 2);
+        const std::vector<Target> chosen{{TargetKind::EmbroideryObject, objects[0].id.value},
+                                         {TargetKind::EmbroideryObject, objects[1].id.value}};
+        w.session().selection().replace(chosen);
+        w.canvas()->setFocus();
+        const auto focus = w.focusWidget();
+        const auto depth = w.session().undoNames().size();
+        const auto revision = w.session().revision();
+        // Un tour complet des espaces : rien ne se perd en route.
+        for (const auto ws : {Workspace::Zones, Workspace::Digitize, Workspace::Optimize,
+                              Workspace::Produce, Workspace::Design}) {
+            w.setWorkspace(ws);
+            QCOMPARE(w.session().selection().targets(), chosen);
+            QCOMPARE(w.session().undoNames().size(), depth);
+            QCOMPARE(w.session().revision(), revision);
+            QCOMPARE(w.focusWidget(), focus);
+        }
+        // Depuis Production, on corrige une région puis on revient contrôler et exporter.
+        w.setWorkspace(Workspace::Produce);
+        QVERIFY(w.runCommand("tool.region.edit")); // bascule seule vers Zones, sans rien casser
+        QCOMPARE(w.workspace(), Workspace::Zones);
+        const auto regions = allRegionIds(w.session().project());
+        QVERIFY(regions.size() >= 3);
+        QVERIFY(w.regionController()->recolorSelected({1, 2, 3}) == false); // rien de choisi
+        w.regionController()->selectRegions({regions.front()});
+        QVERIFY(w.regionController()->recolorSelected({9, 8, 7}));
+        w.setWorkspace(Workspace::Produce);
+        QVERIFY(
+            w.regionController()->dirty()); // l'état de correction survit au changement d'espace
+        QVERIFY(w.session().undoNames().size() == depth + 1);
+        // Le guide dit la vérité : les objets ne suivent plus la segmentation.
+        QCOMPARE(w.guideNext(), NextAction::Regenerate);
+        QVERIFY(w.guide().steps[1].state == StepState::Stale);
+        w.setWorkspace(Workspace::Optimize);
+        QVERIFY(w.runCommand("analysis.run"));
+        w.waitForIdle();
+        QVERIFY(w.session().undo()); // l'historique est intact et réversible
+    }
+
+    void zoomCommandsGuidesAndShortcutsAreReachable() {
+        ShellWindow w;
+        w.resize(1100, 800);
+        w.show();
+        openstitch::project_ops::DigitizeSettings settings;
+        settings.max_colors = 4;
+        w.openImage(tentabrode(), 60.0, settings);
+        w.waitForIdle();
+        auto* canvas = w.canvas();
+        canvas->fitAll();
+        const double fitted = canvas->zoom();
+        QVERIFY(w.runCommand("view.zoom-in"));
+        QVERIFY(canvas->zoom() > fitted * 1.2);
+        QVERIFY(w.runCommand("view.zoom-out"));
+        QCOMPARE(canvas->zoom(), fitted);
+        QVERIFY(canvas->zoomHistoryDepth() >= 2);
+        QVERIFY(w.runCommand("view.zoom-in"));
+        QVERIFY(w.runCommand("view.zoom-previous"));
+        QCOMPARE(canvas->zoom(), fitted); // retour exact au zoom d'avant
+        // Taille réelle : 1 mm du motif = 1 mm à l'écran.
+        QVERIFY(w.runCommand("view.zoom-actual"));
+        const double expected = (canvas->logicalDpiX() / 25.4) / w.previewFrame().px_per_mm;
+        QVERIFY(qAbs(canvas->zoom() - expected) < 1e-9 * qMax(1.0, expected));
+        // Raccourcis déclarés dans la palette.
+        const auto entries = w.commandEntries();
+        const auto shortcut = [&](const char* id) {
+            for (const auto& e : entries) {
+                if (e.id == id) {
+                    return e.shortcut;
+                }
+            }
+            return std::string("absent");
+        };
+        QCOMPARE(shortcut("view.zoom-in"), std::string("Ctrl+="));
+        QCOMPARE(shortcut("view.zoom-actual"), std::string("Ctrl+0"));
+        QVERIFY(w.findChild<QMenu*>("zoomMenu") != nullptr);
+        // Guides : ajout, accrochage candidat, effacement.
+        QCOMPARE(w.guideCount(), 0);
+        QVERIFY(!w.runCommand("guide.clear")); // rien à effacer : indisponible
+        w.addGuide(true, 12.5);
+        w.addGuide(false, -4.0);
+        w.addGuide(true, 12.5); // doublon ignoré
+        QCOMPARE(w.guideCount(), 2);
+        QVERIFY(canvas->hasGuides());
+        QVERIFY(w.runCommand("guide.clear"));
+        QCOMPARE(w.guideCount(), 0);
+        QVERIFY(!canvas->hasGuides());
+    }
+
+    void regionSelectionIsMultipleSharedAndReachableByKeyboard() {
+        ShellWindow w;
+        w.show();
+        openstitch::project_ops::DigitizeSettings settings;
+        settings.max_colors = 5;
+        w.openImage(tentabrode(), 60.0, settings);
+        w.waitForIdle();
+        QVERIFY(w.runCommand("tool.region.edit"));
+        auto* controller = w.regionController();
+        auto* panel = w.regionPanel();
+        const auto all = allRegionIds(w.session().project());
+        QVERIFY(all.size() >= 4);
+
+        // Plusieurs régions dans le MODÈLE commun, la principale en dernier.
+        controller->selectRegions({all[0], all[1], all[2]});
+        QCOMPARE(controller->selection().size(), std::size_t{3});
+        QCOMPARE(controller->selected(), all[2]);
+        QCOMPARE(w.session().selection().targets().size(), std::size_t{3});
+        for (const auto& t : w.session().selection().targets()) {
+            QVERIFY(t.kind == TargetKind::Region);
+        }
+        QCOMPARE(panel->selectedCount(), 3);
+        auto* list = panel->findChild<QListWidget*>("regionList");
+        QCOMPARE(list->selectedItems().size(), 3);
+
+        // Une sélection posée AILLEURS (modèle commun) est reprise par l'outil.
+        w.session().selection().replace({{TargetKind::Region, all[3]}});
+        QCOMPARE(controller->selection(), std::vector<std::uint64_t>{all[3]});
+        w.session().selection().clear();
+        QVERIFY(controller->selection().empty());
+
+        // Boutons de choix rapide et commandes (palette / clavier).
+        controller->selectRegion(all[0]);
+        QVERIFY(w.runCommand("region.invert"));
+        QCOMPARE(controller->selection().size(), all.size() - 1);
+        QVERIFY(w.runCommand("selection.all")); // Ctrl+A avec l'outil Régions : les régions
+        QCOMPARE(controller->selection().size(), all.size());
+        QVERIFY(w.runCommand("selection.clear"));
+        QVERIFY(controller->selection().empty());
+        QVERIFY(!w.runCommand("region.merge")); // rien de choisi : refusée, sans effet
+
+        // Fusion de l'ensemble : une étape d'annulation, régénération proposée.
+        const auto depth = w.session().undoNames().size();
+        controller->selectRegions({all[1], all[2]});
+        QVERIFY(w.runCommand("region.merge"));
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QCOMPARE(allRegionIds(w.session().project()).size(), all.size() - 1);
+        QVERIFY(w.session().undo());
+        QCOMPARE(allRegionIds(w.session().project()).size(), all.size());
+
+        // Suppr retire les RÉGIONS choisies (pas les objets) ; Échap désélectionne.
+        const auto objectsBefore = w.session().project().embroidery_objects.size();
+        controller->selectRegions({all[2]});
+        QVERIFY(w.runCommand("edit.delete"));
+        QCOMPARE(w.session().project().embroidery_objects.size(), objectsBefore);
+        QCOMPARE(allRegionIds(w.session().project()).size(), all.size() - 1);
+        QVERIFY(w.session().undo());
+        controller->selectRegions({all[0]});
+        QTest::keyClick(&w, Qt::Key_Escape);
+        QVERIFY(controller->selection().empty());
+
+        // Lien région -> objets -> région.
+        controller->selectRegions({all[0]});
+        QVERIFY(w.runCommand("region.objects"));
+        QVERIFY(!w.session().selection().empty());
+        QVERIFY(w.session().selection().targets().front().kind == TargetKind::EmbroideryObject);
+        QVERIFY(controller->selection().empty()); // la sélection est unique
+        QVERIFY(w.runCommand("region.from-objects"));
+        QVERIFY(!controller->selection().empty());
+        QVERIFY(w.session().selection().targets().front().kind == TargetKind::Region);
+    }
+
+    void regionClicksUseCtrlAndShiftToExtendTheSelection() {
+        ShellWindow w;
+        w.resize(1200, 800);
+        w.show();
+        openstitch::project_ops::DigitizeSettings settings;
+        settings.max_colors = 5;
+        w.openImage(tentabrode(), 60.0, settings);
+        w.waitForIdle();
+        QVERIFY(w.runCommand("tool.region.edit"));
+        auto* controller = w.regionController();
+        const auto& f = w.previewFrame();
+        const auto& project = w.session().project();
+        const double mmPerPx = project.mm_per_px.value;
+        const double wMm = project.segmentation->width * mmPerPx;
+        const double hMm = project.segmentation->height * mmPerPx;
+        // Un pixel de scène par région (centre de son premier pixel trouvé).
+        std::map<std::uint64_t, QPointF> spot;
+        for (int y = 0; y < project.segmentation->height; y += 3) {
+            for (int x = 0; x < project.segmentation->width; x += 3) {
+                if (const auto id = regionAtPixel(project, x, y); id && !spot.count(*id)) {
+                    spot[*id] = QPointF(f.mmToPxX((x + 0.5) * mmPerPx - wMm / 2.0),
+                                        f.mmToPxY((y + 0.5) * mmPerPx - hMm / 2.0));
+                }
+            }
+        }
+        QVERIFY(spot.size() >= 3);
+        auto it = spot.begin();
+        const auto a = *it++;
+        const auto b = *it++;
+        const auto c = *it++;
+        QVERIFY(controller->onCanvasClick(a.second));
+        QCOMPARE(controller->selection(), std::vector<std::uint64_t>{a.first});
+        QVERIFY(controller->onCanvasClick(b.second, Qt::ControlModifier)); // ajoute
+        QCOMPARE(controller->selection().size(), std::size_t{2});
+        QVERIFY(controller->onCanvasClick(c.second, Qt::ShiftModifier)); // ajoute
+        QCOMPARE(controller->selection().size(), std::size_t{3});
+        QCOMPARE(controller->selected(), c.first);
+        QVERIFY(controller->onCanvasClick(b.second, Qt::ControlModifier)); // bascule : retire
+        QCOMPARE(controller->selection(), (std::vector<std::uint64_t>{a.first, c.first}));
+        QVERIFY(controller->onCanvasClick(a.second)); // sans modificateur : remplace
+        QCOMPARE(controller->selection(), std::vector<std::uint64_t>{a.first});
+    }
+
+    void renderQualityIsAdjustableSavedAndReachable() {
+        namespace fs = std::filesystem;
+        const fs::path dir = fs::temp_directory_path() / "os_v2_render_quality";
+        fs::remove_all(dir);
+        {
+            ShellWindow w;
+            w.setStateDirectory(dir);
+            w.show();
+            w.newProject();
+            QCOMPARE(w.renderSettings(), RenderSettings{});
+            // Menu Affichage > Qualité du rendu réaliste : un préréglage par entrée.
+            auto* menu = w.findChild<QMenu*>("renderMenu");
+            QVERIFY(menu != nullptr);
+            auto* photo = w.findChild<QAction*>("renderPreset_photo");
+            QVERIFY(photo != nullptr);
+            photo->trigger();
+            QCOMPARE(w.renderSettings(), *renderPreset("photo"));
+            QVERIFY(photo->isChecked());
+            // Palette et raccourci F4 : fenêtre de réglages détaillés.
+            bool listed = false;
+            for (const auto& e : w.commandEntries()) {
+                if (e.id == "view.render") {
+                    listed = true;
+                    QCOMPARE(e.shortcut, std::string("F4"));
+                }
+            }
+            QVERIFY(listed);
+            QVERIFY(w.runCommand("view.render"));
+            auto* dialog = w.findChild<QDialog*>("renderQualityDialog");
+            QVERIFY(dialog != nullptr && dialog->isVisible());
+            auto* resolution = dialog->findChild<QDoubleSpinBox*>("renderResolution");
+            QVERIFY(resolution != nullptr);
+            QCOMPARE(resolution->value(), 10.0);
+            resolution->setValue(4.5); // un réglage détaillé devient « personnalisé »
+            QCOMPARE(w.renderSettings().pxPerMm, 4.5);
+            QVERIFY(matchingRenderPreset(w.renderSettings()).empty());
+            QVERIFY(w.runCommand("render.preset.draft"));
+            QCOMPARE(w.renderSettings(), *renderPreset("draft"));
+            QCOMPARE(resolution->value(), 1.5); // la fenêtre suit
+            QVERIFY(w.runCommand("render.preset.high"));
+            w.waitForIdle();
+        }
+        {
+            ShellWindow reopened;
+            reopened.setStateDirectory(dir);
+            QCOMPARE(reopened.renderSettings(), *renderPreset("high"));
+            QVERIFY(reopened.findChild<QAction*>("renderPreset_high")->isChecked());
+        }
+        fs::remove_all(dir);
+    }
+
+    void eachWorkspaceShowsOnlyItsOwnPanelsAndKeepsSelectionAndHistory() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        const auto id =
+            *createdObjectId(w.session().applyBatch(batchAddRect({0, 0}, 20, 10), "R").report);
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        const auto visible = [&](const char* name) {
+            auto* d = w.findChild<QDockWidget*>(name);
+            return d != nullptr && d->isVisible();
+        };
+        w.setWorkspace(Workspace::Zones);
+        QVERIFY(visible("regionDock") && visible("documentDock"));
+        QVERIFY(!visible("calqueDock") && !visible("optimizeDock") && !visible("threadDock"));
+        w.setWorkspace(Workspace::Design);
+        QVERIFY(visible("calqueDock") && visible("documentDock"));
+        QVERIFY(!visible("regionDock") && !visible("optimizeDock") && !visible("diagnosticDock"));
+        w.setWorkspace(Workspace::Optimize);
+        QVERIFY(visible("optimizeDock") && visible("diagnosticDock"));
+        QVERIFY(!visible("regionDock") && !visible("calqueDock"));
+        // Aller-retour : rien ne se perd.
+        QCOMPARE(w.session().selection().targets().size(), std::size_t{1});
+        QVERIFY(w.session().canUndo());
+        // Affichage › Panneaux rouvre un panneau d'un autre espace sans changer d'espace.
+        auto* panels = w.findChild<QMenu*>("panelsMenu");
+        QVERIFY(panels != nullptr);
+        QVERIFY(panels->actions().size() >= 6);
+        w.findChild<QDockWidget*>("regionDock")->toggleViewAction()->trigger();
+        QVERIFY(visible("regionDock"));
+        QCOMPARE(w.workspace(), Workspace::Optimize);
+    }
+
+    void zonesAndShapesAreSeparateWorkspacesWithTheirOwnTools() {
+        ShellWindow w;
+        const auto& r = w.tools();
+        const auto has = [&](Workspace ws, const char* id) {
+            for (const auto* t : r.forWorkspace(ws)) {
+                if (t->id == id) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        // Zones : segmentation. Formes : vecteur. Aucun outil de région dans les Formes.
+        for (const char* id : {"region.edit", "region.brush", "detail-brush", "bucket"}) {
+            QVERIFY2(has(Workspace::Zones, id), id);
+            QVERIFY2(!has(Workspace::Design, id), id);
+        }
+        for (const char* id : {"node.edit", "draw.bezier", "draw.freeform", "draw.rectangle"}) {
+            QVERIFY2(has(Workspace::Design, id), id);
+            QVERIFY2(!has(Workspace::Zones, id), id);
+        }
+        QVERIFY(w.runCommand("workspace.zones"));
+        QCOMPARE(w.workspace(), Workspace::Zones);
+        QVERIFY(w.runCommand("tool.region.edit"));
+        QCOMPARE(w.workspace(), Workspace::Zones);
+    }
+
+    void everyCommandShortcutIsUniqueAndWorkspacesUseCtrlOneToFive() {
+        ShellWindow w;
+        std::map<std::string, std::string> seen;
+        for (const auto& e : w.commandEntries()) {
+            if (e.shortcut.empty() || e.id.rfind("tool.", 0) == 0) {
+                continue; // les outils ont leurs touches seules, vérifiées par le registre
+            }
+            const auto [it, fresh] = seen.emplace(e.shortcut, e.id);
+            QVERIFY2(fresh, (e.shortcut + " : " + it->second + " et " + e.id).c_str());
+        }
+        QVERIFY(seen.count("Ctrl+5") == 1 && seen["Ctrl+5"] == "workspace.produce");
+        QVERIFY(seen.count("F5") == 1 && seen.count("Ctrl+Shift+U") == 1);
+    }
+
+    void chatPanelTalksToTheProviderAndShowsToolsErrorsAndUsage() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        FakeChatBackend backend;
+        w.setChatBackend(&backend);
+        auto* chat = w.chatPanel();
+        QVERIFY(chat != nullptr);
+        QVERIFY(chat->statusText().contains("Faux agent"));
+        QVERIFY(!chat->submit("   ")); // vide : refusé
+        QVERIFY(chat->submit("Bonjour"));
+        QCOMPARE(backend.received, QStringList{"Bonjour"});
+        QVERIFY(!chat->busy()); // le faux backend a terminé
+        QVERIFY(chat->messageText(0).contains("Bonjour"));
+        QVERIFY(chat->messageText(1).contains("Reçu : Bonjour"));
+        QVERIFY(chat->messageText(2).contains("project_inspect"));
+        QVERIFY(chat->usageText().contains("120"));
+        // Annulation d'une demande en cours.
+        backend.hold = true;
+        QVERIFY(chat->submit("Longue demande"));
+        QVERIFY(chat->busy());
+        QVERIFY(!chat->submit("Deuxième")); // occupé : refusé
+        const int before = chat->messageCount();
+        backend.cancel();
+        QVERIFY(!chat->busy());
+        QVERIFY(chat->messageCount() > before);
+        QVERIFY(chat->messageText(chat->messageCount() - 1).contains("annulée"));
+        // Document remplacé : la conversation repart de zéro. (Pas de `newProject()` ici : le
+        // document est « modifié » et la fenêtre demanderait « Enregistrer ? » dans une boîte
+        // modale que personne ne fermerait.)
+        auto fresh = openstitch::project_ops::create_empty_project({});
+        QVERIFY(fresh.has_value());
+        w.session().replaceProject(std::move(*fresh), true);
+        QCOMPARE(chat->messageCount(), 0);
+        w.setChatBackend(nullptr);
+    }
+
+    void everyCommandOfTheFinalisationIsListedInThePalette() {
+        // Garde : une commande câblée dans `runCommand` mais absente de `commandEntries` est
+        // inatteignable (le test du chat l'a révélé : l'insertion visait une ligne reformatée).
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        const auto entries = w.commandEntries();
+        for (const char* id :
+             {"satin.rung.insert", "satin.rung.remove", "satin.diagnose", "analysis.pull",
+              "analysis.calibration", "export.options", "export.check", "thread.palette",
+              "text.edit", "text.glyph", "text.glyph.reset", "chat.open", "companion.settings",
+              "tool.region.brush"}) {
+            const bool listed = std::any_of(entries.begin(), entries.end(),
+                                            [id](const auto& e) { return e.id == id; });
+            QVERIFY2(listed, id);
+        }
+    }
+
+    void chatOpenCommandShowsTheDockWithTheRealProvider() {
+        ShellWindow w;
+        w.show();
+        QVERIFY(!w.runCommand("chat.open")); // aucun document ouvert
+        const auto entries = w.commandEntries();
+        const auto listed = [&entries](const char* id) {
+            return std::any_of(entries.begin(), entries.end(),
+                               [id](const auto& e) { return e.id == id; });
+        };
+        QVERIFY(listed("chat.open"));
+        QVERIFY(listed("companion.settings"));
+        w.newProject();
+        QVERIFY(w.runCommand("chat.open"));
+        auto* dock = w.findChild<QDockWidget*>("chatDock");
+        QVERIFY(dock != nullptr);
+        QVERIFY(dock->isVisible());
+        QVERIFY(!w.chatPanel()->statusText().isEmpty());
+        QVERIFY(w.chatPanel()->messageCount() == 0);
+    }
+
+    void chatWithoutAConfiguredProviderExplainsAndRefusesToSend() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        FakeChatBackend backend;
+        backend.ready = false;
+        w.setChatBackend(&backend);
+        auto* chat = w.chatPanel();
+        QVERIFY(chat->statusText().contains("pas prêt"));
+        QVERIFY(!chat->submit("Bonjour"));
+        QVERIFY(backend.received.isEmpty());
+        // Le signal `configureRequested` de CE panneau ouvre la boîte de réglages (modale) : on ne
+        // l'émet pas ici, elle bloquerait le test. Un panneau isolé, sans fenêtre, le vérifie.
+        {
+            ChatPanel alone;
+            bool asked = false;
+            QObject::connect(&alone, &ChatPanel::configureRequested, [&asked] { asked = true; });
+            emit alone.configureRequested();
+            QVERIFY(asked);
+        }
+        w.setChatBackend(nullptr);
+        QVERIFY(chat->statusText().contains("Aucun fournisseur"));
+    }
+
     void successfulEditsConfirmWithoutChangingDocumentHistory() {
         ShellWindow w;
         w.newProject();
@@ -183,8 +658,9 @@ private slots:
         QVERIFY(!actionsBefore.isEmpty());
         const QString statusBefore = status->text();
 
-        // Recliquer sur Conception n'est pas un changement de contexte.
-        w.setWorkspace(Workspace::Design);
+        // Recliquer sur l'espace courant (Zones, où vit l'outil) n'est pas un changement de
+        // contexte.
+        w.setWorkspace(Workspace::Zones);
         QCOMPARE(w.activeToolId(), QStringLiteral("region.edit"));
         QCOMPARE(status->text(), statusBefore);
         QCOMPARE(rail->actions(), actionsBefore);
@@ -269,7 +745,7 @@ private slots:
         QVERIFY(crossWorkspaceRegion->isEnabled());
         QCOMPARE(w.activeToolId(), QStringLiteral("select"));
         crossWorkspaceRegion->trigger();
-        QCOMPARE(w.workspace(), Workspace::Design);
+        QCOMPARE(w.workspace(), Workspace::Zones);
         QCOMPARE(w.activeToolId(), QStringLiteral("region.edit"));
         QCOMPARE(w.session().revision(), revision);
     }
@@ -363,7 +839,8 @@ private slots:
                 QVERIFY(a->toolTip().contains("pas encore migré"));
             }
         }
-        QCOMPARE(enabled, 14); // …, Pipette, Couteau, Zones de détail, Nœuds
+        QCOMPARE(enabled,
+                 12); // Formes : sans les outils de Zones (Régions, Pinceau de frontière, Détail)
         QVERIFY(disabled > 0);
     }
 
@@ -646,12 +1123,12 @@ private slots:
             return false;
         };
         QVERIFY(has("file.open") && has("edit.undo") && has("workspace.produce"));
-        // Les 22 outils du registre sont tous atteignables par la palette.
+        // Les 25 outils du registre sont tous atteignables par la palette.
         int tools = 0;
         for (const auto& e : entries) {
             tools += e.id.rfind("tool.", 0) == 0 ? 1 : 0;
         }
-        QCOMPARE(tools, 24);
+        QCOMPARE(tools, 25);
         // Un outil non migré est listé mais refusé, sans effet de bord.
         QVERIFY(!w.runCommand("tool.bucket"));
         QCOMPARE(w.activeToolId(), QString("select"));
@@ -1174,7 +1651,8 @@ private slots:
                 continue;
             }
             const auto batch = buildAction(def, values, ctx, error);
-            QVERIFY2(!batch.empty() || def.id == "file.import_svg", def.id.c_str());
+            QVERIFY2(!batch.empty() || def.id == "file.import_svg" || def.id == "file.import_dxf",
+                     def.id.c_str());
             if (def.id == "file.import_svg") {
                 QVERIFY(error.find("obligatoire") != std::string::npos ||
                         error.find("introuvable") != std::string::npos);
@@ -2193,6 +2671,311 @@ private slots:
         QVERIFY(fadeAxisView(w.session().project(), id)->curve == FadeCurve::Steep);
     }
 
+    void myHoopsAreSavedReloadedAppliedAndRemoved() {
+        const auto dir = std::filesystem::temp_directory_path() / "openstitch_v2_my_hoops";
+        std::filesystem::remove_all(dir);
+        const auto file = dir / "hoops.txt";
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(applyHoop(w.session(), "round-100", 4.0).ok);
+        {
+            ExportOptionsDialog dialog(w.session(), file);
+            const int libraryOnly = dialog.hoopCount();
+            QCOMPARE(dialog.userHoopCount(), 0);
+            QVERIFY(!dialog.saveCurrentHoopAs("  ").isEmpty());  // nom vide : refus clair
+            QVERIFY(!dialog.saveCurrentHoopAs("a;b").isEmpty()); // « ; » interdit
+            QVERIFY(dialog.saveCurrentHoopAs("Rond atelier").isEmpty());
+            QCOMPARE(dialog.userHoopCount(), 1);
+            QCOMPARE(dialog.hoopCount(), libraryOnly + 1);
+            QVERIFY(std::filesystem::exists(file));
+            QVERIFY(!dialog.removeUserHoopNamed("inconnu").isEmpty());
+        }
+        // Un autre cadre est appliqué, puis « Mes cadres » le ramène en une étape d'annulation.
+        QVERIFY(applyHoop(w.session(), "rect-130x180", 0.0).ok);
+        QCOMPARE(w.session().project().canvas.width.value, 130'000);
+        {
+            ExportOptionsDialog dialog(w.session(), file); // relu depuis le fichier
+            QCOMPARE(dialog.userHoopCount(), 1);
+            dialog.chooseHoop("user:Rond atelier", 0.0);
+            const auto depth = w.session().undoNames().size();
+            QVERIFY(dialog.apply().isEmpty());
+            QCOMPARE(w.session().undoNames().size(), depth + 1);
+            QCOMPARE(w.session().project().canvas.width.value, 100'000);
+            QCOMPARE(w.session().project().canvas.margin.value, 4'000);
+            QVERIFY(w.session().project().canvas.shape == openstitch::document::HoopShape::Ellipse);
+            QVERIFY(dialog.removeUserHoopNamed("rond ATELIER")
+                        .isEmpty()); // sans tenir compte de la casse
+            QCOMPARE(dialog.userHoopCount(), 0);
+        }
+        {
+            ExportOptionsDialog dialog(w.session(), file);
+            QCOMPARE(dialog.userHoopCount(), 0); // la suppression est bien écrite
+        }
+        {
+            ExportOptionsDialog noStore(w.session()); // sans dossier de préférences : refus clair
+            QVERIFY(!noStore.saveCurrentHoopAs("X").isEmpty());
+        }
+        std::filesystem::remove_all(dir);
+    }
+
+    void threadPaletteDialogAssignsChartThreadsInOneUndoStep() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(!w.runCommand("thread.palette")); // aucun fil
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 40, 20), "Rectangle").committed);
+        w.waitForIdle();
+        QVERIFY(w.runCommand("thread.palette"));
+        auto* dialog = w.findChild<ThreadPaletteDialog*>();
+        QVERIFY(dialog != nullptr);
+        QVERIFY(dialog->chartCount() >= 2);
+        QVERIFY(dialog->threadRowCount() > 0);
+        QVERIFY(dialog->nearestText().contains("Plus proches"));
+        QVERIFY(dialog->blendText().contains("Mélange"));
+        QVERIFY(!dialog->assignSelected().isEmpty()); // aucun fil choisi : refus en clair
+        const auto depth = w.session().undoNames().size();
+        dialog->selectThreadRow(1);
+        QVERIFY(dialog->assignSelected().isEmpty());
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        const auto& obj = w.session().project().embroidery_objects.front();
+        QVERIFY(obj.thread.has_value());
+        QVERIFY(dialog->assignNearest().isEmpty());
+        QCOMPARE(w.session().undoNames().size(), depth + 2);
+        dialog->setSearch("zzzz-no-thread-has-this");
+        QCOMPARE(dialog->threadRowCount(), 0);
+        dialog->close();
+    }
+
+    void densityAndThemeArePersistedAndRestored() {
+        const auto dir = std::filesystem::temp_directory_path() / "openstitch_v2_prefs_shell";
+        std::filesystem::remove_all(dir);
+        {
+            ShellWindow w;
+            w.setStateDirectory(dir);
+            QCOMPARE(w.density(), UiDensity::Normal);
+            const QString normal = qApp->styleSheet();
+            w.setDensity(UiDensity::Spacious);
+            w.setThemeMode("dark");
+            QVERIFY(qApp->styleSheet() != normal); // marges plus grandes : feuille différente
+            QVERIFY(w.findChild<QAction*>("density_spacious")->isChecked());
+            QVERIFY(w.findChild<QAction*>("theme_dark")->isChecked());
+        }
+        {
+            ShellWindow w;
+            w.setStateDirectory(dir);
+            QCOMPARE(w.density(), UiDensity::Spacious);
+            QCOMPARE(w.themeMode(), QString("dark"));
+            QVERIFY(w.findChild<QAction*>("density_spacious")->isChecked());
+            w.setDensity(UiDensity::Compact);
+            QVERIFY(qApp->styleSheet().contains("padding:"));
+        }
+        // Une feuille à l'échelle 1 reste celle d'origine ; hors bornes, l'échelle est bornée.
+        QCOMPARE(studioStyleSheet(StudioScheme::Light, 1.0), studioStyleSheet(StudioScheme::Light));
+        QVERIFY(studioStyleSheet(StudioScheme::Light, 1.3) !=
+                studioStyleSheet(StudioScheme::Light));
+        QCOMPARE(studioStyleSheet(StudioScheme::Light, 99.0),
+                 studioStyleSheet(StudioScheme::Light, 2.0));
+        std::filesystem::remove_all(dir);
+    }
+
+    void textEditCommandNeedsAWholeTextAndRewritesItInOneStep() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(!w.runCommand("text.edit")); // rien de sélectionné
+        QVERIFY(w.runActionWith("text.add", {{"text", "Ab"},
+                                             {"letter_spacing_mm", "1"},
+                                             {"font_file", OPENSTITCH_FONTS_DIR "/VeraBd.ttf"}}));
+        w.waitForIdle();
+        QCOMPARE(w.session().project().text_objects.size(), size_t{1});
+        QVERIFY(w.runCommand("text.edit")); // les lettres créées sont sélectionnées
+        const auto depth = w.session().undoNames().size();
+        QVERIFY(w.runActionWith("text.edit", {{"text", "Abc"}, {"letter_spacing_mm", "2"}}));
+        w.waitForIdle();
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QCOMPARE(QString::fromStdString(w.session().project().text_objects.front().text),
+                 QString("Abc"));
+        QCOMPARE(w.session().project().text_objects.front().letter_spacing.value, 2'000);
+        QVERIFY(w.session().undo());
+        QCOMPARE(QString::fromStdString(w.session().project().text_objects.front().text),
+                 QString("Ab"));
+    }
+
+    void letterCommandsNeedOneLetterAndEditItInOneUndoStep() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(!w.runCommand("text.glyph")); // rien de sélectionné
+        QVERIFY(w.runActionWith(
+            "text.add", {{"text", "Ab"}, {"font_file", OPENSTITCH_FONTS_DIR "/VeraBd.ttf"}}));
+        w.waitForIdle();
+        // Après l'ajout, TOUTES les lettres sont sélectionnées : deux lettres, donc refus clair.
+        QVERIFY(!w.runCommand("text.glyph"));
+        std::uint64_t a = 0;
+        for (const auto& e : w.session().project().embroidery_objects) {
+            if (e.name == "Lettre A") {
+                a = e.id.value;
+            }
+        }
+        QVERIFY(a != 0);
+        w.session().selection().replace({{TargetKind::EmbroideryObject, a}});
+        QVERIFY(w.runCommand("text.glyph"));        // ouvre le dialogue
+        QVERIFY(!w.runCommand("text.glyph.reset")); // jamais retouchée : indisponible
+        const auto depth = w.session().undoNames().size();
+        QVERIFY(w.runActionWith("text.glyph", {{"dx_mm", "3"}, {"scale", "1.2"}}));
+        w.waitForIdle();
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QCOMPARE(w.session().project().text_objects.front().glyph_edits.size(), size_t{1});
+        // Les lettres du texte sont de nouveau sélectionnées : choisir « A » pour rétablir.
+        a = 0;
+        for (const auto& e : w.session().project().embroidery_objects) {
+            if (e.name == "Lettre A") {
+                a = e.id.value;
+            }
+        }
+        w.session().selection().replace({{TargetKind::EmbroideryObject, a}});
+        QVERIFY(w.runCommand("text.glyph.reset"));
+        w.waitForIdle();
+        QVERIFY(w.session().project().text_objects.front().glyph_edits.empty());
+        QVERIFY(w.session().undo());
+        QCOMPARE(w.session().project().text_objects.front().glyph_edits.size(), size_t{1});
+    }
+
+    void machineOptionsDialogChangesHoopMachineAndTrimsInUndoableSteps() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(!w.runCommand("export.check")); // rien à contrôler
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 40, 20), "Rectangle").committed);
+        w.waitForIdle();
+        QVERIFY(w.runCommand("export.check"));
+        QVERIFY(w.lastNotice().contains("points cousus"));
+        QVERIFY(w.runCommand("export.options"));
+        auto* dialog = w.findChild<ExportOptionsDialog*>();
+        QVERIFY(dialog != nullptr);
+        QVERIFY(dialog->hoopCount() >= 10);
+        QVERIFY(dialog->machineCount() >= 4);
+        const auto depth = w.session().undoNames().size();
+        dialog->chooseMachine("generic-single-130x180");
+        dialog->chooseHoop("round-100", 4.0);
+        dialog->setTrimThresholdMm(6.0);
+        dialog->setLockKind(2);
+        dialog->setDesignStart(true, -15.0, -5.0);
+        QVERIFY(dialog->apply().isEmpty());
+        QCOMPARE(w.session().undoNames().size(), depth + 3); // machine, cadre, finitions
+        QCOMPARE(QString::fromStdString(w.session().project().machine_id),
+                 QString("generic-single-130x180"));
+        QCOMPARE(QString::fromStdString(currentHoopId(w.session().project())),
+                 QString("round-100"));
+        QCOMPARE(exportOptionsOf(w.session().project()).lockKind, LockKind::Triangle);
+        QVERIFY(exportOptionsOf(w.session().project()).designStart.has_value());
+        QVERIFY(dialog->apply().isEmpty()); // rien ne change : aucune trace de plus
+        QCOMPARE(w.session().undoNames().size(), depth + 3);
+        QVERIFY(dialog->checkText().contains("cousus"));
+        dialog->close();
+    }
+
+    void pullComparisonAndCalibrationAssistantAreReachable() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(!w.runCommand("analysis.pull")); // rien à comparer
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 40, 20), "Rectangle").committed);
+        w.waitForIdle();
+        QVERIFY(w.runCommand("analysis.pull"));
+        QVERIFY(w.lastNotice().contains("NON calibrée"));
+        QVERIFY(w.runCommand("analysis.calibration"));
+        auto* dialog = w.findChild<CalibrationDialog*>();
+        QVERIFY(dialog != nullptr);
+        QVERIFY(dialog->rowCount() >= 6);
+        QVERIFY(dialog->comparisonText().contains("Tissu"));
+        QVERIFY(dialog->fitText().contains("insuffisantes"));
+        // Mesures = ce que prédit un autre tissu : l'ajustement devient possible, mais le modèle
+        // n'est jamais déclaré calibré.
+        PullCalibration other("linen");
+        for (const auto& r : other.rows()) {
+            QVERIFY(other.setMeasure(r.id, r.predictedMm));
+        }
+        QCOMPARE(dialog->loadMeasurementsCsv(QString::fromStdString(other.csv())),
+                 static_cast<int>(other.rows().size()));
+        QVERIFY(dialog->fitText().contains("non calibré"));
+        QVERIFY(!dialog->setMeasure("no-such-metric", 5.0));
+        dialog->close();
+    }
+
+    void satinRungCommandsEditAndDiagnoseTheSelectedColumn() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 40, 20), "Rectangle").committed);
+        w.waitForIdle();
+        const auto rectId = w.session().project().embroidery_objects.front().id.value;
+        w.session().selection().replace({{TargetKind::EmbroideryObject, rectId}});
+        QVERIFY(!w.runCommand("satin.rung.insert")); // pas une colonne satin
+        const auto made = createSatinColumn(
+            w.session(), {{{50, 0}, {50, 4}}, {{51, 0}, {51, 4}}, {{60, 0}, {60, 4}}});
+        QVERIFY(made.ok);
+        w.waitForIdle();
+        w.session().selection().replace({{TargetKind::EmbroideryObject, made.objectId}});
+        const auto depth = w.session().undoNames().size();
+        QVERIFY(w.runCommand("satin.rung.insert"));
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QCOMPARE(satinRungCount(w.session().project(), made.objectId), 4);
+        QVERIFY(w.runCommand("satin.rung.remove"));
+        QCOMPARE(satinRungCount(w.session().project(), made.objectId), 3);
+        QVERIFY(w.runCommand("satin.diagnose"));
+        QVERIFY(w.lastNotice().contains("saine"));
+        QVERIFY(w.session().undo());
+        QCOMPARE(satinRungCount(w.session().project(), made.objectId), 4);
+    }
+
+    void boundaryBrushNeedsAChosenRegionThenRepaintsAlongTheStroke() {
+        ShellWindow w;
+        w.resize(1400, 900);
+        w.show();
+        openstitch::project_ops::DigitizeSettings settings;
+        settings.max_colors = 5;
+        w.openImage(tentabrode(), 60.0, settings);
+        w.waitForIdle();
+        QVERIFY(w.runCommand("tool.region.brush"));
+        QCOMPARE(w.activeToolId(), QStringLiteral("region.brush"));
+        auto* canvas = w.canvas();
+        QCOMPARE(canvas->mode(), PreviewCanvas::Mode::Stroke);
+        auto* panel = w.regionPanel();
+        auto* controller = w.regionController();
+        QVERIFY(panel != nullptr && controller != nullptr);
+        panel->setBrushRadius(30);
+        QCOMPARE(panel->brushRadius(), 30);
+
+        const auto drag = [&] {
+            const QRect view = canvas->viewport()->rect();
+            const QPoint a = view.center() - QPoint(view.width() / 3, view.height() / 3);
+            const QPoint b = view.center() + QPoint(view.width() / 3, view.height() / 3);
+            QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, a);
+            for (int i = 1; i <= 20; ++i) {
+                QTest::mouseMove(canvas->viewport(), a + (b - a) * i / 20);
+            }
+            QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, b);
+        };
+        const auto depth = w.session().undoNames().size();
+        drag(); // aucune région choisie : refus clair, rien dans l'historique
+        QCOMPARE(w.session().undoNames().size(), depth);
+        QVERIFY(w.lastNotice().contains("choisissez d'abord"));
+
+        const auto regions = listRegions(w.session().project());
+        QVERIFY(regions.size() >= 3);
+        controller->selectRegion(regions.front().id);
+        const auto labelsBefore = w.session().project().segmentation->labels;
+        drag();
+        QVERIFY2(w.session().undoNames().size() == depth + 1, // un trait = un pas d'annulation
+                 qPrintable(w.lastNotice()));
+        QVERIFY(w.session().project().segmentation->labels != labelsBefore);
+        QVERIFY(panel->regenerateEnabled()); // la correction attend la régénération
+        QVERIFY(w.session().undo());
+        QVERIFY(w.session().project().segmentation->labels == labelsBefore);
+    }
+
     void regionToolRecolorsAndMergesWholeColorClasses() {
         ShellWindow w;
         w.resize(1400, 900);
@@ -2517,19 +3300,24 @@ private slots:
         QVERIFY(w.findChild<QWidget*>("guideStrip")->isVisible());
         QCOMPARE(w.guideCurrentStep(), 0);
         QVERIFY(w.guideHeadline().contains("vide"));
-        // Des objets : étape « Retoucher », le bouton principal contrôle le motif.
+        // Des objets : la phase « Contrôler » est à traiter, le bouton principal lance le contrôle.
         (void)w.session().applyBatch(batchAddRect({-10, 0}, 20, 10), "A");
         w.waitForIdle();
-        QCOMPARE(w.guideCurrentStep(), 1);
+        QCOMPARE(w.guideCurrentStep(), 2);
         QCOMPARE(w.guideNext(), NextAction::Analyse);
         QVERIFY(w.runGuideNext());
         w.waitForIdle();
-        // Analyse faite sans erreur : l'export est proposé ; une modification le retire.
-        QCOMPARE(w.guideNext(), NextAction::Export);
+        // Analyse sans erreur : ce n'est PAS une garantie machine, le contrôle machine est proposé
+        // ; une fois passé, l'export ; une modification rouvre le contrôle.
         QCOMPARE(w.guideCurrentStep(), 3);
+        QCOMPARE(w.guideNext(), NextAction::CheckMachine);
+        QVERIFY(w.runGuideNext());
+        w.waitForIdle();
+        QCOMPARE(w.guideNext(), NextAction::Export);
         (void)w.session().applyBatch(batchAddEllipse({15, 0}, 12, 12), "B");
         w.waitForIdle();
         QCOMPARE(w.guideNext(), NextAction::Analyse);
+        QVERIFY(w.guide().steps[2].state == StepState::Stale);
     }
 
     void hidingACalqueHidesItsObjectsFromThePreview() {

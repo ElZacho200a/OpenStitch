@@ -9,6 +9,9 @@
 #include "segmentation_preview.hpp"
 
 class QComboBox;
+class QFormLayout;
+class QImage;
+class QPushButton;
 class QDoubleSpinBox;
 class QLabel;
 class QSpinBox;
@@ -31,6 +34,12 @@ public:
     [[nodiscard]] double heightMm() const;
     [[nodiscard]] project_ops::DigitizeSettings settings() const;
     [[nodiscard]] segmentation::SegmentationOptions segmentationOptions() const;
+
+    // Mode « re-segmenter » : même fenêtre sur l'image DÉJÀ numérisée du projet ouvert. La hauteur
+    // n'a plus de sens, le bouton devient « Appliquer » et `source` remplace l'image d'origine.
+    void setResegmentMode(const QImage& source);
+    void setSettings(const project_ops::DigitizeSettings& settings);
+    [[nodiscard]] bool resegmentMode() const { return resegment_; }
 
     void setPreview(const SegmentationPreview& preview);
     void setPreviewError(const QString& message);
@@ -62,6 +71,9 @@ private:
     QWidget* palette_{nullptr};
     QTimer* debounce_{nullptr};
     bool previewShown_{false};
+    bool resegment_{false};
+    QFormLayout* form_{nullptr};
+    QPushButton* accept_{nullptr};
     bool sourceShown_{false};
     int paletteCount_{0};
 };

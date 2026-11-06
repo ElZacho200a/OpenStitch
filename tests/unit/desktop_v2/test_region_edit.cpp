@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <set>
 
@@ -252,4 +254,285 @@ TEST_CASE("a regeneration computed for an older document is refused", "[desktop_
     CHECK_FALSE(r.ok);
     CHECK_FALSE(r.message.empty());
     CHECK(d.session.undoNames().size() == depth);
+}
+
+TEST_CASE("a brush stroke moves a boundary in one undo step and undoes exactly",
+          "[desktop_v2][regions][brush]") {
+    Digitized d;
+    const auto regions = listRegions(d.session.project());
+    REQUIRE(regions.size() >= 3);
+    const auto painted = regions.front().id; // la plus grande : elle gagne
+    // Une région voisine et l'un de ses pixels.
+    const auto neighbours = neighbourRegions(d.session.project(), painted);
+    REQUIRE_FALSE(neighbours.empty());
+    const auto other = neighbours.front();
+    const auto& seg = *d.session.project().segmentation;
+    std::size_t at = 0;
+    for (std::size_t i = 0; i < seg.labels.size(); ++i) {
+        if (seg.labels[i] == other) {
+            at = i;
+            break;
+        }
+    }
+    const double cx = static_cast<double>(at % static_cast<std::size_t>(seg.width)) + 0.5;
+    const double cy = static_cast<double>(at / static_cast<std::size_t>(seg.width)) + 0.5;
+    const auto pixelsOf = [&](std::uint64_t id) {
+        for (const auto& r : listRegions(d.session.project())) {
+            if (r.id == id) {
+                return r.pixels;
+            }
+        }
+        return std::size_t{0};
+    };
+    const auto labelsBefore = seg.labels;
+    const auto paintedBefore = pixelsOf(painted);
+    const auto otherBefore = pixelsOf(other);
+    const auto depth = d.session.undoNames().size();
+
+    REQUIRE(paintRegionStroke(d.session, painted, {{cx, cy}}, 2.0, false).ok);
+    CHECK(d.session.undoNames().size() == depth + 1);
+    CHECK(regionAtPixel(d.session.project(), static_cast<int>(cx), static_cast<int>(cy)) ==
+          painted);
+    const auto gained = pixelsOf(painted) - paintedBefore;
+    CHECK(gained > 0);
+    // Les comptes restent cohérents avec la carte d'étiquettes.
+    std::size_t counted = 0;
+    for (const auto label : d.session.project().segmentation->labels) {
+        counted += label == painted ? 1 : 0;
+    }
+    CHECK(counted == pixelsOf(painted));
+    CHECK(pixelsOf(other) <= otherBefore);
+
+    REQUIRE(d.session.undo());
+    CHECK(d.session.project().segmentation->labels == labelsBefore);
+    CHECK(pixelsOf(painted) == paintedBefore);
+    CHECK(pixelsOf(other) == otherBefore);
+    REQUIRE(d.session.redo());
+    CHECK(pixelsOf(painted) == paintedBefore + gained);
+}
+
+TEST_CASE("the brush eraser only clears the chosen region and refuses useless strokes",
+          "[desktop_v2][regions][brush]") {
+    Digitized d;
+    const auto regions = listRegions(d.session.project());
+    REQUIRE(regions.size() >= 3);
+    const auto chosen = regions.front().id;
+    const auto& seg = *d.session.project().segmentation;
+    std::size_t inside = 0;
+    for (std::size_t i = 0; i < seg.labels.size(); ++i) {
+        if (seg.labels[i] == chosen) {
+            inside = i;
+            break;
+        }
+    }
+    const double cx = static_cast<double>(inside % static_cast<std::size_t>(seg.width)) + 0.5;
+    const double cy = static_cast<double>(inside / static_cast<std::size_t>(seg.width)) + 0.5;
+    const auto depth = d.session.undoNames().size();
+
+    // Peindre là où la région est déjà : rien à faire, aucune trace.
+    CHECK_FALSE(paintRegionStroke(d.session, chosen, {{cx, cy}}, 0.5, false).ok);
+    CHECK_FALSE(paintRegionStroke(d.session, 999999, {{cx, cy}}, 3.0, false).ok); // région inconnue
+    CHECK_FALSE(
+        paintRegionStroke(d.session, chosen, {{cx, cy}}, 0.1, false).ok); // rayon trop petit
+    CHECK_FALSE(paintRegionStroke(d.session, chosen, {{cx, cy}}, 500.0, false).ok); // trop grand
+    CHECK_FALSE(paintRegionStroke(d.session, chosen, {}, 3.0, false).ok);           // trait vide
+    CHECK_FALSE(paintRegionStroke(d.session, chosen, {{std::nan(""), 0.0}}, 3.0, false).ok);
+    CHECK(d.session.undoNames().size() == depth);
+
+    const auto before = seg.labels;
+    REQUIRE(paintRegionStroke(d.session, chosen, {{cx, cy}}, 2.0, true).ok); // gomme
+    const auto& after = d.session.project().segmentation->labels;
+    CHECK(after[inside] == 0u);
+    std::size_t changed = 0;
+    for (std::size_t i = 0; i < after.size(); ++i) {
+        if (after[i] != before[i]) {
+            ++changed;
+            CHECK(before[i] == chosen); // seuls les pixels de la région choisie ont bougé
+        }
+    }
+    CHECK(changed > 0);
+    REQUIRE(d.session.undo());
+    CHECK(d.session.project().segmentation->labels == before);
+}
+
+TEST_CASE("a brush stroke spares the small regions it would cover entirely",
+          "[desktop_v2][regions][brush]") {
+    Digitized d;
+    const auto before = listRegions(d.session.project());
+    REQUIRE(before.size() >= 3);
+    const auto chosen = before.front().id;
+    const auto& seg = *d.session.project().segmentation;
+    std::size_t inside = 0;
+    for (std::size_t i = 0; i < seg.labels.size(); ++i) {
+        if (seg.labels[i] == chosen) {
+            inside = i;
+            break;
+        }
+    }
+    const double cx = static_cast<double>(inside % static_cast<std::size_t>(seg.width)) + 0.5;
+    const double cy = static_cast<double>(inside / static_cast<std::size_t>(seg.width)) + 0.5;
+    const auto labelsBefore = seg.labels;
+    const auto depth = d.session.undoNames().size();
+
+    // Un très gros pinceau couvre entièrement les petites régions voisines : elles sont épargnées.
+    const auto r = paintRegionStroke(d.session, chosen, {{cx, cy}}, 200.0, false);
+    if (!r.ok) { // tout est déjà dans la région choisie ou protégé : refus sans trace
+        CHECK(d.session.undoNames().size() == depth);
+        return;
+    }
+    CHECK(d.session.undoNames().size() == depth + 1);
+    const auto after = listRegions(d.session.project());
+    CHECK(after.size() == before.size()); // aucune région n'a disparu
+    for (const auto& region : after) {
+        CHECK(region.pixels > 0);
+    }
+    std::size_t counted = 0;
+    for (const auto label : d.session.project().segmentation->labels) {
+        counted += label == chosen ? 1 : 0;
+    }
+    const auto it = std::find_if(after.begin(), after.end(),
+                                 [&](const RegionInfo& x) { return x.id == chosen; });
+    REQUIRE(it != after.end());
+    CHECK(it->pixels == counted); // comptes cohérents avec la carte d'étiquettes
+    REQUIRE(d.session.undo());
+    CHECK(d.session.project().segmentation->labels == labelsBefore);
+}
+
+TEST_CASE("region sets: same colour, neighbours, invert and whole-set edits are one undo step",
+          "[desktop_v2][regions][selection]") {
+    Digitized d;
+    const auto& project = d.session.project();
+    const auto all = allRegionIds(project);
+    REQUIRE(all.size() >= 3);
+
+    // Inverser : le complémentaire exact, sans doublon.
+    const std::vector<std::uint64_t> one{all.front()};
+    const auto inverse = invertRegionSet(project, one);
+    CHECK(inverse.size() == all.size() - 1);
+    CHECK(std::find(inverse.begin(), inverse.end(), all.front()) == inverse.end());
+    CHECK(invertRegionSet(project, all).empty());
+
+    // Même couleur : contient la région elle-même, et que des régions de cette couleur.
+    const auto same = sameColorRegions(project, all.front());
+    REQUIRE_FALSE(same.empty());
+    CHECK(std::find(same.begin(), same.end(), all.front()) != same.end());
+    const auto regions = listRegions(project);
+    for (const auto id : same) {
+        const auto it = std::find_if(regions.begin(), regions.end(),
+                                     [id](const RegionInfo& r) { return r.id == id; });
+        REQUIRE(it != regions.end());
+        CHECK(it->rgb == regions.front().rgb);
+    }
+    CHECK(sameColorRegions(project, 999999).empty());
+
+    // Voisines d'un ensemble : jamais l'ensemble lui-même.
+    const auto around = neighboursOfSet(project, one);
+    for (const auto id : around) {
+        CHECK(id != all.front());
+    }
+
+    // Fusion d'un ensemble : UNE étape d'annulation, la plus grande région survit.
+    const auto depth = d.session.undoNames().size();
+    const std::vector<std::uint64_t> trio{all[0], all[1], all[2]};
+    REQUIRE(mergeRegionSet(d.session, trio).ok);
+    CHECK(d.session.undoNames().size() == depth + 1);
+    const auto afterMerge = allRegionIds(d.session.project());
+    CHECK(afterMerge.size() == all.size() - 2);
+    CHECK(std::find(afterMerge.begin(), afterMerge.end(), all[0]) != afterMerge.end());
+    REQUIRE(d.session.undo());
+    CHECK(allRegionIds(d.session.project()) == all);
+
+    // Recolorer l'ensemble : une étape, annulable ; couleur déjà identique refusée.
+    const std::array<std::uint8_t, 3> blue{12, 34, 200};
+    REQUIRE(recolorRegionSet(d.session, trio, blue).ok);
+    CHECK(d.session.undoNames().size() == depth + 1);
+    for (const auto id : trio) {
+        CHECK(d.session.project().segmentation->find(RegionId{id})->rgb == blue);
+    }
+    CHECK_FALSE(recolorRegionSet(d.session, trio, blue).ok);
+    REQUIRE(d.session.undo());
+
+    // Supprimer l'ensemble : refusé s'il ne resterait rien.
+    CHECK_FALSE(deleteRegionSet(d.session, all).ok);
+    CHECK_FALSE(mergeRegionSet(d.session, one).ok); // une seule région : rien à fusionner
+    const std::vector<std::uint64_t> pair{all[1], all[2]};
+    REQUIRE(deleteRegionSet(d.session, pair).ok);
+    CHECK(d.session.undoNames().size() == depth + 1);
+    REQUIRE(d.session.undo());
+}
+
+TEST_CASE("regions and objects are linked in both directions", "[desktop_v2][regions][selection]") {
+    Digitized d;
+    const auto& project = d.session.project();
+    const auto regions = allRegionIds(project);
+    // Toutes les régions ensemble donnent tous les objets qui ont une région d'origine.
+    const auto objects = objectsOfRegions(project, regions);
+    CHECK_FALSE(objects.empty());
+    // Aller-retour : les régions des objets sont des régions vivantes.
+    const auto back = regionsOfObjects(project, objects);
+    REQUIRE_FALSE(back.empty());
+    for (const auto id : back) {
+        CHECK(std::find(regions.begin(), regions.end(), id) != regions.end());
+    }
+    // Les objets d'une seule région ne contiennent que des objets qui reviennent à cette région.
+    const auto mine = objectsOfRegions(project, {back.front()});
+    REQUIRE_FALSE(mine.empty());
+    for (const auto objectId : mine) {
+        CHECK(regionsOfObjects(project, {objectId}) == std::vector<std::uint64_t>{back.front()});
+    }
+    CHECK(objectsOfRegions(project, {}).empty());
+    CHECK(regionsOfObjects(project, {123456789}).empty());
+}
+
+TEST_CASE("palette reduction previews its result and is one undo step",
+          "[desktop_v2][regions][palette]") {
+    Digitized d;
+    const auto before = previewColorReduction(d.session.project(), 0, 0.0, true);
+    CHECK(before.colorsAfter == before.colorsBefore); // aucune limite : rien à réduire
+    const auto preview = previewColorReduction(d.session.project(), 2, 0.0, true);
+    REQUIRE(preview.colorsBefore >= 3);
+    CHECK(preview.colorsAfter <= 2);
+    CHECK(preview.colorsAfter < preview.colorsBefore);
+
+    const auto depth = d.session.undoNames().size();
+    const auto regionsBefore = allRegionIds(d.session.project()).size();
+    REQUIRE(reduceColors(d.session, 2, 0.0, true).ok);
+    CHECK(d.session.undoNames().size() == depth + 1);
+    CHECK(allRegionIds(d.session.project()).size() <= regionsBefore);
+    std::set<std::array<std::uint8_t, 3>> colours;
+    for (const auto& r : listRegions(d.session.project())) {
+        colours.insert(r.rgb);
+    }
+    CHECK(colours.size() <= 2);
+    CHECK_FALSE(reduceColors(d.session, 2, 0.0, true).ok); // déjà réduite : refus clair
+    REQUIRE(d.session.undo());
+    CHECK(allRegionIds(d.session.project()).size() == regionsBefore);
+}
+
+TEST_CASE("re-segmenting with other settings replaces the objects in one undo step",
+          "[desktop_v2][regions][resegment]") {
+    Digitized d;
+    const auto regionsBefore = allRegionIds(d.session.project()).size();
+    auto fewer = d.settings;
+    fewer.max_colors = 2;
+    const auto result = resegmentObjects(d.session.snapshot(), d.session.revision(), d.working,
+                                         fewer, TaskContext{});
+    REQUIRE(result.has_value());
+    REQUIRE(result->after != nullptr);
+    CHECK(result->after->segmentation->region_count() < regionsBefore);
+    const auto depth = d.session.undoNames().size();
+    REQUIRE(applyRegeneration(d.session, *result).ok);
+    CHECK(d.session.undoNames().size() == depth + 1);
+    CHECK(allRegionIds(d.session.project()).size() < regionsBefore);
+    REQUIRE(d.session.undo());
+    CHECK(allRegionIds(d.session.project()).size() == regionsBefore);
+
+    // Une image vide ou un document modifié entre-temps : refus, jamais d'écrasement.
+    CHECK_FALSE(resegmentObjects(d.session.snapshot(), d.session.revision(), image::Image{}, fewer,
+                                 TaskContext{})
+                    .has_value());
+    // Document modifié depuis le calcul : l'ancien résultat est refusé.
+    const auto stale = *result;
+    REQUIRE(recolorRegion(d.session, allRegionIds(d.session.project()).front(), {1, 2, 3}).ok);
+    CHECK_FALSE(applyRegeneration(d.session, stale).ok);
 }

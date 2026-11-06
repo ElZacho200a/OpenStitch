@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <numbers>
 
 #include "fade_service.hpp"
 #include "openstitch/document/machine_profile.hpp"
@@ -125,6 +126,39 @@ FieldDef fileField(std::string key, std::string label, std::string def) {
     return f;
 }
 
+// Réglages typographiques communs à « Ajouter du texte » et « Modifier le texte » : mêmes champs,
+// mêmes bornes que les arguments des opérations `add_text` / `set_text` du moteur.
+std::vector<FieldDef> textStyleFields() {
+    return {
+        numberField("letter_spacing_mm", "Espacement des lettres", -20, 50, "0", "mm"),
+        numberField("word_spacing_mm", "Espacement des mots", -20, 100, "0", "mm"),
+        numberField("line_spacing", "Interligne (× hauteur de capitale)", 0.5, 5, "1.5"),
+        boolField("kerning", "Crénage de la police", true),
+        numberField("density_mm", "Densité (écart des traversées)", 0.2, 2, "0.4", "mm"),
+        numberField("max_satin_width_mm", "Largeur satin maximale", 1, 20, "6", "mm"),
+        choiceField("base", "Base du texte",
+                    {{"line", "Ligne droite"}, {"arc", "Arc de cercle"}, {"circle", "Cercle"}}),
+        numberField("base_radius_mm", "Rayon de l'arc ou du cercle", 1, 1000, "50", "mm"),
+        boolField("base_inside", "Texte en dessous (sommets vers le centre)", false),
+        choiceField("letter_connector", "Entre les lettres",
+                    {{"inherit", "Règle générale"}, {"trim", "Couper"}, {"no_trim", "Sans coupe"}}),
+        choiceField(
+            "word_connector", "Entre les mots",
+            {{"inherit", "Règle générale"}, {"trim", "Couper"}, {"no_trim", "Sans coupe"}})};
+}
+
+std::string textStyleJson(const Values& v) {
+    return R"(,"letter_spacing_mm":)" + num(number(v, "letter_spacing_mm")) +
+           R"(,"word_spacing_mm":)" + num(number(v, "word_spacing_mm")) + R"(,"line_spacing":)" +
+           num(number(v, "line_spacing")) + R"(,"kerning":)" +
+           (flag(v, "kerning") ? "true" : "false") + R"(,"density_mm":)" +
+           num(number(v, "density_mm")) + R"(,"max_satin_width_mm":)" +
+           num(number(v, "max_satin_width_mm")) + R"(,"base":")" + v.at("base") +
+           R"(","base_radius_mm":)" + num(number(v, "base_radius_mm")) + R"(,"base_inside":)" +
+           (flag(v, "base_inside") ? "true" : "false") + R"(,"letter_connector":")" +
+           v.at("letter_connector") + R"(","word_connector":")" + v.at("word_connector") + "\"";
+}
+
 std::string envVar(const char* name) {
 #ifdef _MSC_VER
     char* value = nullptr;
@@ -183,6 +217,17 @@ std::vector<ActionDef> makeCatalog() {
     }
     {
         ActionDef a;
+        a.id = "file.import_dxf";
+        a.label = "Importer un DXF…";
+        a.group = "Fichier";
+        a.fields = {fileField("file", "Fichier DXF", "")};
+        a.build = [](const Values& v, const ActionContext&, std::string&) {
+            return wrap(R"({"op":"import_dxf","file":)" + quote(v.at("file")) + "}");
+        };
+        out.push_back(std::move(a));
+    }
+    {
+        ActionDef a;
         a.id = "text.add";
         a.label = "Ajouter du texte…";
         a.group = "Texte";
@@ -198,12 +243,15 @@ std::vector<ActionDef> makeCatalog() {
                         {{"center", "Centré"}, {"left", "À gauche"}, {"right", "À droite"}}),
             numberField("rotation_deg", "Rotation", -360, 360, "0", "°"),
             fileField("font_file", "Police (TTF / OTF)", defaultFont())};
+        for (auto& f : textStyleFields()) {
+            a.fields.push_back(std::move(f));
+        }
         a.build = [](const Values& v, const ActionContext&, std::string&) {
             return wrap(R"({"op":"add_text","text":)" + quote(v.at("text")) +
                         R"(,"cap_height_mm":)" + num(number(v, "cap_height_mm")) + R"(,"fill":")" +
                         v.at("fill") + R"(","align":")" + v.at("align") + R"(","rotation_deg":)" +
                         num(number(v, "rotation_deg")) + R"(,"font_file":)" +
-                        quote(v.at("font_file")) + "}");
+                        quote(v.at("font_file")) + textStyleJson(v) + "}");
         };
         out.push_back(std::move(a));
     }
@@ -632,6 +680,433 @@ std::string buildAction(const ActionDef& action, Values values, const ActionCont
         error = "Action impossible avec les valeurs données.";
     }
     return batch;
+}
+
+std::optional<std::uint64_t> selectedTextOwner(const document::Project& project,
+                                               const std::vector<std::uint64_t>& objectIds) {
+    std::optional<std::uint64_t> owner;
+    for (const auto id : objectIds) {
+        const auto* emb = project.findEmbroidery(ObjectId{id});
+        if (emb == nullptr) {
+            return std::nullopt;
+        }
+        const auto* vec = project.findObject(emb->source_vector);
+        if (vec == nullptr || !vec->text_owner || project.findText(*vec->text_owner) == nullptr) {
+            return std::nullopt;
+        }
+        if (owner && *owner != vec->text_owner->value) {
+            return std::nullopt;
+        }
+        owner = vec->text_owner->value;
+    }
+    return owner;
+}
+
+Values textEditValues(const document::Project& project, std::uint64_t textId) {
+    Values v;
+    const auto* t = project.findText(ObjectId{textId});
+    if (t == nullptr) {
+        return v;
+    }
+    const auto mm = [](Micrometers um) { return num(to_millimeters(um).value); };
+    v["text"] = t->text;
+    v["cap_height_mm"] = mm(t->cap_height);
+    v["letter_spacing_mm"] = mm(t->letter_spacing);
+    v["word_spacing_mm"] = mm(t->word_spacing);
+    v["line_spacing"] = num(t->line_spacing);
+    v["kerning"] = t->kerning ? "1" : "0";
+    v["density_mm"] = mm(t->density);
+    v["max_satin_width_mm"] = mm(t->max_satin_width);
+    v["rotation_deg"] = num(t->rotation.radians * 180.0 / std::numbers::pi);
+    switch (t->align) {
+    case document::TextAlign::Center:
+        v["align"] = "center";
+        break;
+    case document::TextAlign::Right:
+        v["align"] = "right";
+        break;
+    default:
+        v["align"] = "left";
+        break;
+    }
+    switch (t->fill) {
+    case document::TextFill::Satin:
+        v["fill"] = "satin";
+        break;
+    case document::TextFill::Tatami:
+        v["fill"] = "tatami";
+        break;
+    case document::TextFill::Contour:
+        v["fill"] = "contour";
+        break;
+    default:
+        v["fill"] = "auto";
+        break;
+    }
+    switch (t->base.kind) {
+    case document::TextBaseKind::Arc:
+        v["base"] = "arc";
+        break;
+    case document::TextBaseKind::Circle:
+        v["base"] = "circle";
+        break;
+    default:
+        v["base"] = "line"; // Path n'a pas de champ ici : repli sur la ligne, voir la doc
+        break;
+    }
+    v["base_radius_mm"] = mm(t->base.radius);
+    v["base_inside"] = t->base.inside ? "1" : "0";
+    const auto connector = [](document::ConnectorMode m) -> std::string {
+        switch (m) {
+        case document::ConnectorMode::AlwaysTrim:
+            return "trim";
+        case document::ConnectorMode::NeverTrim:
+            return "no_trim";
+        default:
+            return "inherit";
+        }
+    };
+    v["letter_connector"] = connector(t->letter_connector);
+    v["word_connector"] = connector(t->word_connector);
+    return v;
+}
+
+const ActionDef& textEditAction() {
+    static const ActionDef def = [] {
+        ActionDef a;
+        a.id = "text.edit";
+        a.label = "Modifier le texte…";
+        a.group = "Texte";
+        a.needsSelection = true;
+        a.fields = {
+            textField("text", "Texte", "OpenStitch", true),
+            numberField("cap_height_mm", "Hauteur des capitales", 1, 500, "12", "mm"),
+            choiceField("fill", "Remplissage",
+                        {{"auto", "Automatique"},
+                         {"satin", "Satin"},
+                         {"tatami", "Tatami"},
+                         {"contour", "Contour"}}),
+            choiceField("align", "Alignement",
+                        {{"center", "Centré"}, {"left", "À gauche"}, {"right", "À droite"}}),
+            numberField("rotation_deg", "Rotation", -360, 360, "0", "°")};
+        for (auto& f : textStyleFields()) {
+            a.fields.push_back(std::move(f));
+        }
+        a.build = [](const Values& v, const ActionContext& c, std::string& error) {
+            const auto owner =
+                c.project != nullptr ? selectedTextOwner(*c.project, c.ids) : std::nullopt;
+            if (!owner) {
+                error = "Sélectionnez les lettres d'un seul texte.";
+                return std::string();
+            }
+            return wrap(R"({"op":"set_text","text_object":)" + std::to_string(*owner) +
+                        R"(,"text":)" + quote(v.at("text")) + R"(,"cap_height_mm":)" +
+                        num(number(v, "cap_height_mm")) + R"(,"fill":")" + v.at("fill") +
+                        R"(","align":")" + v.at("align") + R"(","rotation_deg":)" +
+                        num(number(v, "rotation_deg")) + textStyleJson(v) + "}");
+        };
+        return a;
+    }();
+    return def;
+}
+
+namespace {
+
+// Lettres du texte dans l'ordre des formes : une forme dont le nom finit par « (n) » prolonge la
+// lettre précédente. Rend le rang de chaque forme (par identifiant de forme).
+struct LetterRanks {
+    std::vector<std::pair<std::uint64_t, std::uint32_t>> byVector; // (forme, rang)
+    std::vector<std::string> letters;                              // rang -> lettre affichée
+};
+
+LetterRanks letterRanks(const document::Project& project, std::uint64_t textId) {
+    LetterRanks out;
+    for (const auto& vec : project.vector_objects) {
+        if (!vec.text_owner || vec.text_owner->value != textId) {
+            continue;
+        }
+        const auto& name = vec.name;
+        bool continuation = false;
+        if (name.size() > 4 && name.back() == ')') {
+            const auto open = name.rfind(" (");
+            continuation = open != std::string::npos && open + 3 < name.size() &&
+                           std::all_of(name.begin() + static_cast<std::ptrdiff_t>(open) + 2,
+                                       name.end() - 1, [](char c) { return c >= '0' && c <= '9'; });
+        }
+        if (!continuation || out.letters.empty()) {
+            std::string letter = name.rfind("Lettre ", 0) == 0 ? name.substr(7) : name;
+            out.letters.push_back(std::move(letter));
+        }
+        out.byVector.emplace_back(vec.id.value, static_cast<std::uint32_t>(out.letters.size() - 1));
+    }
+    return out;
+}
+
+// Nombre de lettres attendues (espaces exclus) ; faux si le texte sort du cas simple.
+bool countExpectedLetters(const std::string& text, std::size_t& count) {
+    count = 0;
+    for (std::size_t i = 0; i < text.size();) {
+        const auto c = static_cast<unsigned char>(text[i]);
+        std::size_t len = 1;
+        std::uint32_t cp = c;
+        if (c >= 0xF0) {
+            len = 4;
+            cp = c & 0x07U;
+        } else if (c >= 0xE0) {
+            len = 3;
+            cp = c & 0x0FU;
+        } else if (c >= 0xC0) {
+            len = 2;
+            cp = c & 0x1FU;
+        } else if (c >= 0x80) {
+            return false; // octet de continuation isolé : texte invalide
+        }
+        if (i + len > text.size()) {
+            return false;
+        }
+        for (std::size_t k = 1; k < len; ++k) {
+            cp = (cp << 6) | (static_cast<unsigned char>(text[i + k]) & 0x3FU);
+        }
+        i += len;
+        if (cp >= 0x0300 && cp <= 0x036F) {
+            return false; // accent combinant : le rang n'est plus celui des caractères
+        }
+        if (cp >= 0x0590 && cp <= 0x08FF) {
+            return false; // écritures de droite à gauche : ordre visuel différent
+        }
+        if (cp == 0x200B || cp == 0x200C || cp == 0x200D || cp == 0xFEFF) {
+            return false; // caractères invisibles
+        }
+        if (cp > 0x20 && cp != 0x7F && cp != 0xA0) {
+            ++count;
+        }
+    }
+    return true;
+}
+
+std::string hexOf(const std::array<std::uint8_t, 3>& c) {
+    char buf[8];
+    std::snprintf(buf, sizeof buf, "#%02x%02x%02x", c[0], c[1], c[2]);
+    return buf;
+}
+
+bool parseHex(const std::string& s, std::array<std::uint8_t, 3>& out) {
+    if (s.size() != 7 || s[0] != '#') {
+        return false;
+    }
+    for (std::size_t i = 1; i < 7; ++i) {
+        if (!std::isxdigit(static_cast<unsigned char>(s[i]))) {
+            return false;
+        }
+    }
+    for (std::size_t i = 0; i < 3; ++i) {
+        out[i] = static_cast<std::uint8_t>(std::stoi(s.substr(1 + 2 * i, 2), nullptr, 16));
+    }
+    return true;
+}
+
+// Retouches du texte, avec la lettre `index` remplacée par `edit` (ou retirée si `edit` est vide).
+std::string glyphBatch(const document::TextObject& text, std::uint32_t index,
+                       const std::optional<document::GlyphEdit>& edit) {
+    std::vector<document::GlyphEdit> edits;
+    for (const auto& e : text.glyph_edits) {
+        if (e.index != index) {
+            edits.push_back(e);
+        }
+    }
+    if (edit) {
+        edits.push_back(*edit);
+    }
+    std::sort(edits.begin(), edits.end(),
+              [](const auto& a, const auto& b) { return a.index < b.index; });
+    std::string list;
+    for (const auto& e : edits) {
+        list += std::string(list.empty() ? "" : ",") + R"({"index":)" + std::to_string(e.index) +
+                R"(,"dx_mm":)" + num(to_millimeters(e.dx).value) + R"(,"dy_mm":)" +
+                num(to_millimeters(e.dy).value) + R"(,"rotation_deg":)" +
+                num(e.rotation.radians * 180.0 / std::numbers::pi) + R"(,"scale":)" + num(e.scale) +
+                (e.rgb ? R"(,"rgb":")" + hexOf(*e.rgb) + "\"" : std::string()) + "}";
+    }
+    return wrap(R"({"op":"set_text","text_object":)" + std::to_string(text.id.value) +
+                R"(,"glyph_edits":[)" + list + "]}");
+}
+
+} // namespace
+
+GlyphTarget glyphTargetOf(const document::Project& project,
+                          const std::vector<std::uint64_t>& objectIds) {
+    GlyphTarget t;
+    const auto refuse = [&t](std::string why) {
+        t.ok = false;
+        t.message = std::move(why);
+        return t;
+    };
+    if (objectIds.empty()) {
+        return refuse("Sélectionnez une lettre d'un texte.");
+    }
+    std::optional<std::uint64_t> owner;
+    std::vector<std::uint64_t> vectors;
+    for (const auto id : objectIds) {
+        const auto* emb = project.findEmbroidery(ObjectId{id});
+        const auto* vec = emb != nullptr ? project.findObject(emb->source_vector) : nullptr;
+        if (vec == nullptr || !vec->text_owner || project.findText(*vec->text_owner) == nullptr) {
+            return refuse("Sélectionnez une lettre d'un texte.");
+        }
+        if (owner && *owner != vec->text_owner->value) {
+            return refuse("Sélectionnez les lettres d'un seul texte.");
+        }
+        owner = vec->text_owner->value;
+        vectors.push_back(vec->id.value);
+    }
+    const auto* text = project.findText(ObjectId{*owner});
+    std::size_t expected = 0;
+    if (!countExpectedLetters(text->text, expected)) {
+        return refuse("Ce texte contient des caractères particuliers (accents combinés, écriture "
+                      "de droite à gauche, caractères invisibles) : l'édition lettre par lettre "
+                      "n'est pas fiable, utilisez « Modifier le texte ».");
+    }
+    if (text->ligatures) {
+        return refuse("Les ligatures fusionnent des lettres : désactivez-les pour retoucher une "
+                      "lettre.");
+    }
+    const auto ranks = letterRanks(project, *owner);
+    if (ranks.letters.size() != expected) {
+        return refuse("Les formes du texte ne correspondent plus à ses lettres (formes "
+                      "supprimées ou ajoutées à la main) : régénérez le texte avec « Modifier le "
+                      "texte ».");
+    }
+    std::optional<std::uint32_t> rank;
+    for (const auto vecId : vectors) {
+        const auto it = std::find_if(ranks.byVector.begin(), ranks.byVector.end(),
+                                     [&](const auto& p) { return p.first == vecId; });
+        if (it == ranks.byVector.end()) {
+            return refuse("Lettre introuvable dans le texte.");
+        }
+        if (rank && *rank != it->second) {
+            return refuse("Sélectionnez les formes d'UNE seule lettre à la fois.");
+        }
+        rank = it->second;
+    }
+    t.ok = true;
+    t.textId = *owner;
+    t.index = *rank;
+    t.letter = ranks.letters[*rank];
+    t.hasEdit = std::any_of(text->glyph_edits.begin(), text->glyph_edits.end(),
+                            [&](const auto& e) { return e.index == *rank; });
+    return t;
+}
+
+Values glyphEditValues(const document::Project& project, const GlyphTarget& target) {
+    Values v{{"dx_mm", "0"}, {"dy_mm", "0"}, {"rotation_deg", "0"}, {"scale", "1"}, {"color", ""}};
+    const auto* text = project.findText(ObjectId{target.textId});
+    if (text == nullptr) {
+        return v;
+    }
+    for (const auto& e : text->glyph_edits) {
+        if (e.index == target.index) {
+            v["dx_mm"] = num(to_millimeters(e.dx).value);
+            v["dy_mm"] = num(to_millimeters(e.dy).value);
+            v["rotation_deg"] = num(e.rotation.radians * 180.0 / std::numbers::pi);
+            v["scale"] = num(e.scale);
+            v["color"] = e.rgb ? hexOf(*e.rgb) : "";
+        }
+    }
+    return v;
+}
+
+const ActionDef& glyphEditAction() {
+    static const ActionDef def = [] {
+        ActionDef a;
+        a.id = "text.glyph";
+        a.label = "Modifier la lettre sélectionnée…";
+        a.group = "Texte";
+        a.needsSelection = true;
+        a.fields = {numberField("dx_mm", "Décalage horizontal", -200, 200, "0", "mm"),
+                    numberField("dy_mm", "Décalage vertical", -200, 200, "0", "mm"),
+                    numberField("rotation_deg", "Rotation", -360, 360, "0", "°"),
+                    numberField("scale", "Échelle", 0.1, 10, "1"),
+                    textField("color", "Couleur (#RRGGBB, vide = celle du texte)", "", false)};
+        a.build = [](const Values& v, const ActionContext& c, std::string& error) {
+            const auto target =
+                c.project != nullptr ? glyphTargetOf(*c.project, c.ids) : GlyphTarget{};
+            if (!target.ok) {
+                error =
+                    target.message.empty() ? "Sélectionnez une lettre d'un texte." : target.message;
+                return std::string();
+            }
+            document::GlyphEdit edit;
+            edit.index = target.index;
+            edit.dx = to_micrometers(Millimeters{number(v, "dx_mm")});
+            edit.dy = to_micrometers(Millimeters{number(v, "dy_mm")});
+            edit.rotation = Angle{number(v, "rotation_deg") * std::numbers::pi / 180.0};
+            edit.scale = number(v, "scale");
+            const std::string color = v.at("color");
+            if (!color.empty()) {
+                std::array<std::uint8_t, 3> rgb{};
+                if (!parseHex(color, rgb)) {
+                    error = "Couleur : format #RRGGBB attendu (ou laisser vide).";
+                    return std::string();
+                }
+                edit.rgb = rgb;
+            }
+            const auto* text = c.project->findText(ObjectId{target.textId});
+            const bool neutral = edit.dx.value == 0 && edit.dy.value == 0 &&
+                                 std::fabs(edit.rotation.radians) < 1e-9 &&
+                                 std::fabs(edit.scale - 1.0) < 1e-9 && !edit.rgb;
+            const auto existing =
+                std::find_if(text->glyph_edits.begin(), text->glyph_edits.end(),
+                             [&](const auto& e) { return e.index == target.index; });
+            if (existing == text->glyph_edits.end() ? neutral : *existing == edit) {
+                error =
+                    "Aucun changement : la lettre « " + target.letter + " » a déjà ces réglages.";
+                return std::string();
+            }
+            return glyphBatch(*text, target.index,
+                              neutral ? std::nullopt : std::optional<document::GlyphEdit>{edit});
+        };
+        return a;
+    }();
+    return def;
+}
+
+const ActionDef& glyphResetAction() {
+    static const ActionDef def = [] {
+        ActionDef a;
+        a.id = "text.glyph.reset";
+        a.label = "Rétablir la lettre sélectionnée";
+        a.group = "Texte";
+        a.needsSelection = true;
+        a.build = [](const Values&, const ActionContext& c, std::string& error) {
+            const auto target =
+                c.project != nullptr ? glyphTargetOf(*c.project, c.ids) : GlyphTarget{};
+            if (!target.ok) {
+                error =
+                    target.message.empty() ? "Sélectionnez une lettre d'un texte." : target.message;
+                return std::string();
+            }
+            if (!target.hasEdit) {
+                error = "La lettre « " + target.letter + " » n'a pas été retouchée.";
+                return std::string();
+            }
+            return glyphBatch(*c.project->findText(ObjectId{target.textId}), target.index,
+                              std::nullopt);
+        };
+        return a;
+    }();
+    return def;
+}
+
+const ActionDef* contextAction(const std::string& id) {
+    if (id == "text.edit") {
+        return &textEditAction();
+    }
+    if (id == "text.glyph") {
+        return &glyphEditAction();
+    }
+    if (id == "text.glyph.reset") {
+        return &glyphResetAction();
+    }
+    return nullptr;
 }
 
 } // namespace openstitch::desktop_v2

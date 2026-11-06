@@ -15,6 +15,7 @@
 #include "openstitch/core/error.hpp"
 #include "openstitch/core/task_control.hpp"
 #include "openstitch/document/project.hpp"
+#include "render_settings.hpp"
 
 namespace openstitch::desktop_v2 {
 
@@ -43,6 +44,12 @@ struct PreviewImage {
 [[nodiscard]] Result<PreviewImage>
 render_preview(std::shared_ptr<const document::Project> project, std::uint64_t revision,
                double pxPerMm, const TaskContext& task,
+               std::optional<std::size_t> upToCommand = std::nullopt);
+
+// Même rendu avec les réglages de qualité de l'utilisateur (`settings.pxPerMm` fait foi).
+[[nodiscard]] Result<PreviewImage>
+render_preview(std::shared_ptr<const document::Project> project, std::uint64_t revision,
+               const RenderSettings& settings, const TaskContext& task,
                std::optional<std::size_t> upToCommand = std::nullopt);
 
 } // namespace openstitch::desktop_v2

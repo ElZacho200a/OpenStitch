@@ -1,11 +1,16 @@
 ﻿// SPDX-License-Identifier: Apache-2.0
 #include "shell_window.hpp"
+#include "direction_guides.hpp"
+#include "file_io.hpp"
+#include "render_quality_dialog.hpp"
 #include "studio_theme.hpp"
 
+#include <QAbstractButton>
 #include <QAction>
 #include <QActionGroup>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QColorDialog>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDockWidget>
@@ -15,6 +20,7 @@
 #include <QHeaderView>
 #include <QImage>
 #include <QInputDialog>
+#include <QKeyEvent>
 #include <QKeySequence>
 #include <QLabel>
 #include <QMenu>
@@ -42,15 +48,20 @@
 #include <algorithm>
 #include <cstring>
 #include <map>
+#include <utility>
 
 #include "openstitch/commands/placement_ops.hpp"
 
 #include "action_dialog.hpp"
 #include "analysis_overlays.hpp"
+#include "calibration_dialog.hpp"
 #include "calque_panel.hpp"
+#include "chat_panel.hpp"
 #include "command_palette.hpp"
 #include "companion_panel.hpp"
 #include "diagnostics_panel.hpp"
+#include "export_options_dialog.hpp"
+#include "export_settings.hpp"
 #include "feedback_cue.hpp"
 #include "import_dialog.hpp"
 #include "inspector_model.hpp"
@@ -63,9 +74,12 @@
 #include "optimize_panel.hpp"
 #include "preview_canvas.hpp"
 #include "preview_service.hpp"
+#include "pull_calibration.hpp"
 #include "region_edit_controller.hpp"
 #include "region_panel.hpp"
+#include "satin_column.hpp"
 #include "segmentation_preview.hpp"
+#include "thread_palette_dialog.hpp"
 #include "thread_panel.hpp"
 #include "tool_icon.hpp"
 #include "transform_batch.hpp"
@@ -83,7 +97,6 @@ namespace openstitch::desktop_v2 {
 namespace {
 
 constexpr int kIdRole = Qt::UserRole + 1;
-constexpr double kPreviewPxPerMm = 3.0;
 
 QString fromUtf8(const std::string& s) {
     return QString::fromUtf8(s.data(), static_cast<qsizetype>(s.size()));
@@ -95,16 +108,20 @@ bool isToolImplemented(const std::string& id) {
            id == "draw.polygon" || id == "measure" || id == "eyedropper" || id == "knife" ||
            id == "click-to-stitch" || id == "detail-brush" || id == "stitch.points" ||
            id == "satin.column" || id == "node.edit" || id == "fade.axis" || id == "draw.bezier" ||
-           id == "draw.freeform" || id == "region.edit";
+           id == "draw.freeform" || id == "region.edit" || id == "region.brush" ||
+           id == "fill.direction-guide" || id == "fill.break-line";
 }
 
-constexpr Workspace kWorkspaces[] = {Workspace::Design, Workspace::Digitize, Workspace::Optimize,
-                                     Workspace::Produce};
+// Ordre d'affichage ET des raccourcis Ctrl+1..5.
+constexpr Workspace kWorkspaces[] = {Workspace::Design, Workspace::Digitize, Workspace::Zones,
+                                     Workspace::Optimize, Workspace::Produce};
 
 QString workspaceLabel(Workspace w) {
     switch (w) {
     case Workspace::Design:
-        return QObject::tr("Conception");
+        return QObject::tr("Formes");
+    case Workspace::Zones:
+        return QObject::tr("Zones");
     case Workspace::Digitize:
         return QObject::tr("Numérisation");
     case Workspace::Optimize:
@@ -133,6 +150,43 @@ QString stitchTypeText(const document::EmbroideryObject& object) {
         return QObject::tr("Appliqué");
     return QString::fromUtf8(id.data(), static_cast<qsizetype>(id.size()));
 }
+
+// Raccourcis par défaut des commandes qui n'en avaient pas. Jamais de Ctrl+Alt (AltGr sur clavier
+// AZERTY tape des caractères) ; Ctrl+Maj+lettre ou touches de fonction, sans doublon (test).
+const std::pair<const char*, const char*> kCommandShortcuts[] = {
+    {"analysis.run", "F5"},
+    {"analysis.density", "F6"},
+    {"view.render", "F4"},
+    {"view.zoom-in", "Ctrl+="},
+    {"view.zoom-out", "Ctrl+-"},
+    {"view.zoom-actual", "Ctrl+0"},
+    {"view.zoom-selection", "Ctrl+9"},
+    {"view.zoom-previous", "Ctrl+Backspace"},
+    {"image.resegment", "F3"},
+    {"file.import-machine", "Ctrl+Shift+M"},
+    {"region.invert", "Ctrl+I"},
+    {"region.merge", "Ctrl+M"},
+    {"region.regenerate", "Ctrl+R"},
+    {"region.select-color", "Ctrl+Shift+O"},
+    {"region.select-neighbours", "Ctrl+Shift+N"},
+    {"region.objects", "Ctrl+Shift+V"},
+    {"region.recolor", "Ctrl+Shift+K"},
+    {"analysis.fabric", "F7"},
+    {"optimize.order", "F8"},
+    {"export.check", "F9"},
+    {"export.options", "Ctrl+Shift+E"},
+    {"thread.palette", "Ctrl+Shift+P"},
+    {"chat.open", "Ctrl+J"},
+    {"companion.toggle", "Ctrl+Shift+J"},
+    {"text.edit", "Ctrl+Shift+X"},
+    {"vector.curves", "Ctrl+Shift+B"},
+    {"vector.smooth", "Ctrl+Shift+L"},
+    {"satin.rung.insert", "Ctrl+Shift+I"},
+    {"satin.rung.remove", "Ctrl+Shift+R"},
+    {"satin.diagnose", "Ctrl+Shift+D"},
+    {"action.satin.auto", "Ctrl+Shift+U"},
+    {"action.fill.guides", "Ctrl+Shift+F"},
+};
 
 QKeySequence keyFor(const std::string& shortcut) {
     QString s = fromUtf8(shortcut);
@@ -171,7 +225,16 @@ ShellWindow::ShellWindow(QWidget* parent)
             session_, *canvas_, frame_, tasks_, [this] { return activeTool_; },
             [this](const QString& message, bool error) { setNotice(message, error); },
             [this]() -> const image::Image* { return ensureProcessed(); },
-            [this] { return lastDigitizeSettings_; }},
+            [this] { return lastDigitizeSettings_; },
+            [this](const QString& question) {
+                if (confirmHook_) {
+                    return confirmHook_(question);
+                }
+                return QMessageBox::question(this, tr("Remplacer des retouches ?"), question,
+                                             QMessageBox::Yes | QMessageBox::Cancel,
+                                             QMessageBox::Cancel) == QMessageBox::Yes;
+            },
+            [this] { updateGuide(); }},
         regionPanel_, this);
     overlays_ = std::make_unique<AnalysisOverlays>(AnalysisOverlays::Host{
         session_, *canvas_, frame_, tasks_,
@@ -242,6 +305,7 @@ ShellWindow::ShellWindow(QWidget* parent)
     pump_->start();
 
     setWorkspace(Workspace::Design);
+    refreshThemedIcons();
     setThemeMode(QStringLiteral("system"));
     connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this,
             [this](Qt::ColorScheme) {
@@ -258,6 +322,14 @@ ShellWindow::~ShellWindow() {
     pump_->stop();
     previewDebounce_->stop();
     liveServer_.reset(); // plus aucun agent ne peut atteindre le document
+    if (claudeBackend_ != nullptr) {
+        // Avant le pont : une demande en cours ne doit plus pouvoir atteindre le document.
+        claudeBackend_->cancel();
+        chatPanel_->setBackend(nullptr);
+        delete claudeBackend_;
+        claudeBackend_ = nullptr;
+        chatBackend_ = nullptr;
+    }
     if (companion_) {
         companion_->close();
     }
@@ -287,6 +359,12 @@ void ShellWindow::buildMenus() {
     auto* open = file->addAction(tr("&Ouvrir une image ou un projet…"));
     open->setShortcut(QKeySequence::Open);
     connect(open, &QAction::triggered, this, &ShellWindow::chooseAndOpen);
+    auto* importMachine = file->addAction(tr("&Importer une broderie machine…"));
+    importMachine->setObjectName(QStringLiteral("action_file_import_machine"));
+    connect(importMachine, &QAction::triggered, this, &ShellWindow::chooseAndImportMachine);
+    auto* importDxf = file->addAction(tr("Importer un &DXF…"));
+    importDxf->setObjectName(QStringLiteral("action_file_import_dxf"));
+    connect(importDxf, &QAction::triggered, this, &ShellWindow::chooseAndImportDxf);
     recentMenu_ = file->addMenu(tr("Fichiers &récents"));
     recentMenu_->setObjectName(QStringLiteral("menu_recent"));
     saveAction_ = file->addAction(tr("&Enregistrer"));
@@ -306,6 +384,9 @@ void ShellWindow::buildMenus() {
             exportDst(std::filesystem::path(path.toStdU16String()));
         }
     });
+    auto* exportDxfAction = file->addAction(tr("Exporter les contours en D&XF…"));
+    exportDxfAction->setObjectName(QStringLiteral("action_file_export_dxf"));
+    connect(exportDxfAction, &QAction::triggered, this, &ShellWindow::chooseAndExportDxf);
     auto* exportImageAction = file->addAction(tr("Exporter l'&image (PNG)…"));
     connect(exportImageAction, &QAction::triggered, this, [this] {
         const QString path = QFileDialog::getSaveFileName(this, tr("Exporter l'image"), QString(),
@@ -341,10 +422,26 @@ void ShellWindow::buildMenus() {
     edit->addSeparator();
     auto* all = edit->addAction(tr("Tout &sélectionner"));
     all->setShortcut(QKeySequence::SelectAll);
-    connect(all, &QAction::triggered, this, &ShellWindow::selectAllObjects);
+    connect(all, &QAction::triggered, this, [this] {
+        if (regions_ && regions_->active()) {
+            regions_->selectAll(); // avec l'outil Régions, Ctrl+A choisit les régions
+        } else if (activeTool_ == QStringLiteral("stitch.points")) {
+            selectAllPoints();
+        } else {
+            selectAllObjects();
+        }
+    });
     auto* none = edit->addAction(tr("&Désélectionner"));
     none->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+A")));
-    connect(none, &QAction::triggered, this, [this] { session_.selection().clear(); });
+    connect(none, &QAction::triggered, this, [this] {
+        if (regions_ && regions_->active()) {
+            regions_->clearSelection();
+        } else if (activeTool_ == QStringLiteral("stitch.points")) {
+            clearPointSelection();
+        } else {
+            session_.selection().clear();
+        }
+    });
     edit->addSeparator();
     const auto addEdit = [this](QMenu* menu, const QString& text, const char* id,
                                 const QKeySequence& key = QKeySequence()) {
@@ -388,6 +485,16 @@ void ShellWindow::buildMenus() {
     auto* palette = edit->addAction(tr("&Palette de commandes…"));
     palette->setShortcut(QKeySequence(QStringLiteral("Ctrl+K")));
     connect(palette, &QAction::triggered, this, &ShellWindow::showCommandPalette);
+    // Les commandes à raccourci par défaut sont atteignables au clavier même sans entrée de menu ;
+    // `runCommand` refuse (sans effet) quand la commande est indisponible.
+    for (const auto& [id, key] : kCommandShortcuts) {
+        auto* a = new QAction(this);
+        a->setShortcut(QKeySequence(QString::fromLatin1(key)));
+        a->setShortcutContext(Qt::WindowShortcut);
+        const QString commandId = QString::fromLatin1(id);
+        connect(a, &QAction::triggered, this, [this, commandId] { runCommand(commandId); });
+        addAction(a);
+    }
 
     auto* view = menuBar()->addMenu(tr("&Affichage"));
     // Menu « Outils » : une entrée par action du catalogue, groupées ; le dialogue de réglages est
@@ -456,6 +563,31 @@ void ShellWindow::buildMenus() {
     connect(presetMenu_, &QMenu::aboutToShow, this, &ShellWindow::rebuildPresetMenu);
     auto* fit = view->addAction(tr("&Ajuster à la fenêtre"));
     connect(fit, &QAction::triggered, canvas_, &PreviewCanvas::fitAll);
+    auto* zoomMenu = view->addMenu(tr("&Zoom"));
+    zoomMenu->setObjectName(QStringLiteral("zoomMenu"));
+    const auto zoomAction = [&](const QString& text, const char* name, auto slot) {
+        auto* a = zoomMenu->addAction(text);
+        a->setObjectName(QString::fromLatin1(name));
+        connect(a, &QAction::triggered, this, slot);
+    };
+    zoomAction(tr("Zoom &avant"), "zoom_in", [this] { zoomIn(); });
+    zoomAction(tr("Zoom a&rrière"), "zoom_out", [this] { zoomOut(); });
+    zoomAction(tr("Zoom sur la &sélection"), "zoom_selection", [this] { zoomToSelection(); });
+    zoomAction(tr("&Taille réelle (100 %)"), "zoom_actual", [this] { zoomActual(); });
+    zoomAction(tr("Zoom &précédent"), "zoom_previous", [this] { zoomBack(); });
+    auto* guideMenu = view->addMenu(tr("G&uides"));
+    guideMenu->setObjectName(QStringLiteral("guideMenu"));
+    const auto guideAction = [&](const QString& text, const char* name, auto slot) {
+        auto* a = guideMenu->addAction(text);
+        a->setObjectName(QString::fromLatin1(name));
+        connect(a, &QAction::triggered, this, slot);
+    };
+    guideAction(tr("Ajouter un guide &vertical…"), "guide_add_v", [this] { askGuide(true); });
+    guideAction(tr("Ajouter un guide &horizontal…"), "guide_add_h", [this] { askGuide(false); });
+    guideAction(tr("&Effacer les guides"), "guide_clear", [this] { clearGuides(); });
+    guideAction(tr("&Couleur des guides…"), "guide_colour", [this] {
+        setGuideColor(QColorDialog::getColor(guideColor_, this, tr("Couleur des guides")));
+    });
     auto* source = view->addAction(tr("&Image source"));
     source->setCheckable(true);
     source->setObjectName(QStringLiteral("action_view_source"));
@@ -488,12 +620,43 @@ void ShellWindow::buildMenus() {
          {std::pair{"system", tr("Système")}, std::pair{"light", tr("Clair")},
           std::pair{"dark", tr("Sombre")}}) {
         auto* t = themeMenu->addAction(label);
+        t->setObjectName(QStringLiteral("theme_") + QLatin1String(mode));
         t->setCheckable(true);
         t->setChecked(QLatin1String(mode) == QLatin1String("system"));
         themeGroup->addAction(t);
         connect(t, &QAction::triggered, this,
                 [this, mode] { setThemeMode(QString::fromLatin1(mode)); });
     }
+    auto* densityMenu = view->addMenu(tr("&Densité de l'interface"));
+    auto* densityGroup = new QActionGroup(this);
+    for (const auto d : {UiDensity::Compact, UiDensity::Normal, UiDensity::Spacious}) {
+        auto* a = densityMenu->addAction(fromUtf8(densityLabel(d)));
+        a->setObjectName(QStringLiteral("density_") + fromUtf8(densityId(d)));
+        a->setCheckable(true);
+        a->setChecked(d == UiDensity::Normal);
+        densityGroup->addAction(a);
+        connect(a, &QAction::triggered, this, [this, d] { setDensity(d); });
+    }
+    auto* renderMenu = view->addMenu(tr("&Qualité du rendu réaliste"));
+    renderMenu->setObjectName(QStringLiteral("renderMenu"));
+    auto* renderGroup = new QActionGroup(this);
+    for (const char* id : {"draft", "balanced", "high", "photo"}) {
+        const auto label = renderPresetLabel(id);
+        auto* a = renderMenu->addAction(fromUtf8(label));
+        a->setObjectName(QStringLiteral("renderPreset_") + QString::fromLatin1(id));
+        a->setCheckable(true);
+        renderGroup->addAction(a);
+        const std::string presetId = id;
+        connect(a, &QAction::triggered, this, [this, presetId] {
+            if (const auto p = renderPreset(presetId)) {
+                setRenderSettings(*p);
+            }
+        });
+    }
+    renderMenu->addSeparator();
+    auto* renderDetails = renderMenu->addAction(tr("Réglages détaillés…"));
+    renderDetails->setObjectName(QStringLiteral("renderDetails"));
+    connect(renderDetails, &QAction::triggered, this, [this] { showRenderQuality(); });
     reducedMotionAction_ = view->addAction(tr("Réduire les animations"));
     reducedMotionAction_->setObjectName(QStringLiteral("reduceMotion"));
     reducedMotionAction_->setToolTip(
@@ -517,8 +680,7 @@ void ShellWindow::buildWorkspaceBar() {
     workspaceGroup_ = new QActionGroup(this);
     workspaceGroup_->setExclusive(true);
     int n = 1;
-    for (const auto w :
-         {Workspace::Design, Workspace::Digitize, Workspace::Optimize, Workspace::Produce}) {
+    for (const auto w : kWorkspaces) {
         auto* a = workspaceBar_->addAction(workspaceLabel(w));
         a->setCheckable(true);
         a->setData(static_cast<int>(w));
@@ -533,6 +695,7 @@ void ShellWindow::buildWorkspaceBar() {
     allToolsButton->setObjectName(QStringLiteral("allToolsButton"));
     allToolsButton->setText(tr("Tous les outils"));
     allToolsButton->setIcon(toolIcon("select", palette().color(QPalette::ButtonText)));
+    allToolsButton->setIconSize(QSize(16, 16)); // même hauteur que les boutons d'espace
     allToolsButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     allToolsButton->setPopupMode(QToolButton::InstantPopup);
     allToolsButton->setToolTip(tr("Tous les outils, quel que soit l'espace actif"));
@@ -666,8 +829,30 @@ void ShellWindow::buildInspector() {
         }
     });
     connect(companionPanel_, &CompanionPanel::undoRequested, this, [this] { session_.undo(); });
+    chatDock_ = new QDockWidget(tr("Discussion IA"), this);
+    chatDock_->setObjectName(QStringLiteral("chatDock"));
+    chatPanel_ = new ChatPanel(chatDock_);
+    chatDock_->setWidget(chatPanel_);
+    addDockWidget(Qt::RightDockWidgetArea, chatDock_);
+    tabifyDockWidget(calqueDock, chatDock_);
+    connect(chatPanel_, &ChatPanel::configureRequested, this, [this] { showCompanionSettings(); });
+    connect(chatPanel_, &ChatPanel::resetRequested, this, [this] {
+        if (claudeBackend_ != nullptr) {
+            claudeBackend_->resetConversation();
+        }
+    });
     docDock_->raise();
     polishDockTabs();
+    // Affichage › Panneaux : rouvrir à la main n'importe quel panneau, quel que soit l'espace.
+    for (auto* action : menuBar()->actions()) {
+        if (action->menu() != nullptr && action->text() == tr("&Affichage")) {
+            auto* panels = action->menu()->addMenu(tr("&Panneaux"));
+            panels->setObjectName(QStringLiteral("panelsMenu"));
+            for (auto* panelDock : findChildren<QDockWidget*>()) {
+                panels->addAction(panelDock->toggleViewAction());
+            }
+        }
+    }
     connect(diagnostics_, &DiagnosticsPanel::analyseRequested, this, &ShellWindow::runDiagnostics);
     connect(diagnostics_, &DiagnosticsPanel::findingActivated, this,
             &ShellWindow::onFindingActivated);
@@ -839,6 +1024,47 @@ void ShellWindow::setCompactToolRail(bool compact) {
     }
 }
 
+// Chaque espace montre SES panneaux et masque ceux des autres : Formes (document, calques), Zones
+// (régions, document), Numérisation (document, fils), Optimisation (diagnostic, ordre), Production
+// (fils, document). Les panneaux IA restent où l'utilisateur les a mis. Affichage › Panneaux
+// rouvre n'importe lequel ; la sélection et l'historique ne bougent jamais.
+void ShellWindow::applyWorkspaceDocks(Workspace workspace) {
+    struct Layout {
+        Workspace workspace;
+        std::vector<const char*> docks; // le premier passe au premier plan
+    };
+    static const Layout kLayouts[] = {
+        {Workspace::Design, {"documentDock", "calqueDock"}},
+        {Workspace::Digitize, {"documentDock", "threadDock"}},
+        {Workspace::Zones, {"regionDock", "documentDock"}},
+        {Workspace::Optimize, {"diagnosticDock", "optimizeDock", "documentDock"}},
+        {Workspace::Produce, {"documentDock", "threadDock"}},
+    };
+    static const char* const kPrimary[] = {"documentDock",   "calqueDock",   "threadDock",
+                                           "diagnosticDock", "optimizeDock", "regionDock"};
+    const Layout* layout = nullptr;
+    for (const auto& l : kLayouts) {
+        if (l.workspace == workspace) {
+            layout = &l;
+        }
+    }
+    if (layout == nullptr) {
+        return;
+    }
+    const auto wanted = [&](const char* name) {
+        return std::ranges::any_of(layout->docks,
+                                   [&](const char* d) { return std::string_view(d) == name; });
+    };
+    for (const char* name : kPrimary) {
+        if (auto* dock = findChild<QDockWidget*>(QString::fromLatin1(name))) {
+            dock->setVisible(wanted(name));
+        }
+    }
+    if (auto* first = findChild<QDockWidget*>(QString::fromLatin1(layout->docks.front()))) {
+        first->raise();
+    }
+}
+
 void ShellWindow::setWorkspace(Workspace workspace) {
     // Rechoisir l'espace courant ne doit ni reconstruire le rail (et perdre le focus),
     // ni interrompre une interaction en cours. Le premier appel initialise le rail.
@@ -860,7 +1086,7 @@ void ShellWindow::setWorkspace(Workspace workspace) {
         a->setChecked(a->data().toInt() == static_cast<int>(workspace));
     }
     rebuildToolRail();
-    (workspace == Workspace::Optimize ? diagDock_ : docDock_)->raise();
+    applyWorkspaceDocks(workspace);
     simBar_->setVisible(workspace == Workspace::Produce);
     if (workspace != Workspace::Produce && simLimit_) {
         setSimulationPosition(simulationTotal()); // quitter Production termine la simulation
@@ -1042,6 +1268,15 @@ void ShellWindow::buildCentral() {
         openProject(std::filesystem::path(path.toStdU16String()));
     });
     connect(guideNext_, &QPushButton::clicked, this, [this] { runGuideNext(); });
+    guideSteps_->setTextInteractionFlags(Qt::LinksAccessibleByMouse |
+                                         Qt::LinksAccessibleByKeyboard);
+    connect(guideSteps_, &QLabel::linkActivated, this, [this](const QString& link) {
+        bool ok = false;
+        const int index = link.mid(5).toInt(&ok);
+        if (ok && index >= 0 && index < static_cast<int>(guide_.steps.size())) {
+            (void)runGuideAction(guide_.steps[static_cast<std::size_t>(index)].fix);
+        }
+    });
     updateGuide();
 }
 
@@ -1052,8 +1287,19 @@ void ShellWindow::updateGuide() {
     GuideInput in;
     in.documentOpen = documentOpen_;
     in.hasObjects = !session_.project().embroidery_objects.empty();
+    in.hasSegmentation = session_.project().segmentation.has_value();
+    in.segmentationDirty = regions_ != nullptr && regions_->dirty();
+    in.handEdits = countHandEdits(session_.project()).any();
+    in.analysedEver = analysedRevision_.has_value();
     in.analysedCurrent = analysedRevision_ && *analysedRevision_ == session_.revision();
     in.analysisErrors = in.analysedCurrent ? analysisErrors_ : 0;
+    in.analysisWarnings = in.analysedCurrent ? analysisWarnings_ : 0;
+    in.checkSkipped = checkSkipped_;
+    in.machineCheckedCurrent =
+        machineCheckRevision_ && *machineCheckRevision_ == session_.revision();
+    in.machineBlockers = in.machineCheckedCurrent ? machineBlockers_ : 0;
+    in.machineWarnings = in.machineCheckedCurrent ? machineWarnings_ : 0;
+    in.exportedEver = exportedRevision_.has_value();
     in.exportedCurrent = exportedRevision_ && *exportedRevision_ == session_.revision();
     guide_ = buildGuide(in);
 
@@ -1062,23 +1308,56 @@ void ShellWindow::updateGuide() {
     int n = 1;
     for (const auto& s : guide_.steps) {
         const QString title = fromUtf8(s.title);
+        const QString link =
+            QStringLiteral("<a style='text-decoration:none' href='step:%1'>%2</a>");
+        QString cell;
         switch (s.state) {
         case StepState::Done:
-            parts << QStringLiteral("<span style='color:%1'>✓ %2</span>").arg(dim.name(), title);
+            cell = QStringLiteral("<span style='color:%1'>✓ %2</span>").arg(dim.name(), title);
             break;
         case StepState::Current:
-            parts << QStringLiteral("<b>%1. %2</b>").arg(n).arg(title);
+            cell = QStringLiteral("<b>%1. %2</b>").arg(n).arg(title);
             break;
         case StepState::Todo:
-            parts << QStringLiteral("<span style='color:%1'>%2. %3</span>")
-                         .arg(dim.name())
-                         .arg(n)
-                         .arg(title);
+            cell = QStringLiteral("<span style='color:%1'>%2. %3</span>")
+                       .arg(dim.name())
+                       .arg(n)
+                       .arg(title);
+            break;
+        case StepState::Stale:
+            cell = QStringLiteral("<b style='color:#c77700'>⟳ %1 (obsolète)</b>").arg(title);
+            break;
+        case StepState::Blocked:
+            cell = QStringLiteral("<b style='color:#c0392b'>✖ %1 (erreur)</b>").arg(title);
+            break;
+        case StepState::Warning:
+            cell = QStringLiteral("<span style='color:#c77700'>⚠ %1</span>").arg(title);
+            break;
+        case StepState::Skipped:
+            cell = QStringLiteral("<span style='color:%1'>↷ %2 (ignoré)</span>")
+                       .arg(dim.name(), title);
             break;
         }
+        // Une phase qui a une action de retour (régénérer, relancer, voir les erreurs…) se clique.
+        parts << (s.fix != NextAction::None ? link.arg(n - 1).arg(cell) : cell);
         ++n;
     }
     guideSteps_->setText(parts.join(QStringLiteral("  ›  ")));
+    {
+        QStringList tips;
+        for (const auto& s : guide_.steps) {
+            tips << QStringLiteral("%1 — %2. %3")
+                        .arg(fromUtf8(s.title), fromUtf8(stepStateLabel(s.state)),
+                             fromUtf8(s.detail));
+        }
+        for (const auto& issue : guide_.issues) {
+            tips << QStringLiteral("%1 %2 (%3)")
+                        .arg(issue.blocking ? QStringLiteral("⛔") : QStringLiteral("•"),
+                             fromUtf8(issue.text), fromUtf8(issue.fixLabel));
+        }
+        guideSteps_->setToolTip(tips.join(QLatin1Char('\n')));
+        guideSteps_->setAccessibleDescription(tips.join(QStringLiteral(" ")));
+    }
     guideHeadline_->setText(fromUtf8(guide_.headline));
     guideNext_->setText(fromUtf8(guide_.nextLabel));
     guideNext_->setVisible(guide_.next != NextAction::None);
@@ -1100,14 +1379,28 @@ QString ShellWindow::guideHeadline() const {
     return guideHeadline_ != nullptr ? guideHeadline_->text() : QString();
 }
 
-bool ShellWindow::runGuideNext() {
-    switch (guide_.next) {
+bool ShellWindow::runGuideAction(NextAction action) {
+    switch (action) {
     case NextAction::OpenImage:
         return runCommand(QStringLiteral("file.open"));
+    case NextAction::Regenerate:
+        if (regions_ == nullptr || !session_.project().segmentation) {
+            return false;
+        }
+        regions_->regenerate(); // demande avant d'écraser des retouches
+        return true;
     case NextAction::Analyse:
         setWorkspace(Workspace::Optimize);
         runDiagnostics();
         return true;
+    case NextAction::ShowDiagnostics:
+        setWorkspace(Workspace::Optimize);
+        diagDock_->show();
+        diagDock_->raise();
+        return true;
+    case NextAction::CheckMachine:
+        setWorkspace(Workspace::Produce);
+        return runCommand(QStringLiteral("export.check"));
     case NextAction::Export:
         return runCommand(QStringLiteral("file.export"));
     case NextAction::None:
@@ -1115,6 +1408,19 @@ bool ShellWindow::runGuideNext() {
     }
     return false;
 }
+
+bool ShellWindow::runGuideNext() {
+    return runGuideAction(guide_.next);
+}
+
+void ShellWindow::setCheckSkipped(bool skipped) {
+    if (checkSkipped_ == skipped) {
+        return;
+    }
+    checkSkipped_ = skipped;
+    updateGuide();
+}
+
 void ShellWindow::runOptimization(PathStrategy strategy, bool improve) {
     if (session_.project().embroidery_objects.size() < 2) {
         optimizePanel_->showMessage(tr("Il faut au moins deux objets brodés pour optimiser."));
@@ -1185,22 +1491,7 @@ bool ShellWindow::setLiveBridgeEnabled(bool on, QString* error) {
     if (liveServer_) {
         return true;
     }
-    if (!companion_) {
-        companion_ = std::make_unique<LiveCompanion>(
-            session_,
-            [this](const mcp::ApprovalRequest& request) {
-                return approvalOverride_ ? approvalOverride_(request)
-                                         : askAgentApproval(this, request);
-            },
-            [this] {
-                return currentPath_.empty() ? std::string("(sans titre)")
-                                            : currentPath_.filename().string();
-            });
-        companion_->setOnChanged([this] {
-            companionPanel_->setEvents(companion_->events());
-            companionPanel_->setCanUndo(session_.canUndo(), fromUtf8(session_.undoName()));
-        });
-    }
+    ensureCompanion();
     auto server = std::make_unique<LiveServer>(companion_->service(), this);
     QString why;
     const auto dir = liveDir_.empty() ? mcp::live_directory() : liveDir_;
@@ -1217,6 +1508,67 @@ bool ShellWindow::setLiveBridgeEnabled(bool on, QString* error) {
     return true;
 }
 
+LiveCompanion& ShellWindow::ensureCompanion() {
+    if (!companion_) {
+        companion_ = std::make_unique<LiveCompanion>(
+            session_,
+            [this](const mcp::ApprovalRequest& request) {
+                return approvalOverride_ ? approvalOverride_(request)
+                                         : askAgentApproval(this, request);
+            },
+            [this] {
+                return currentPath_.empty() ? std::string("(sans titre)")
+                                            : currentPath_.filename().string();
+            });
+        companion_->setOnChanged([this] {
+            companionPanel_->setEvents(companion_->events());
+            companionPanel_->setCanUndo(session_.canUndo(), fromUtf8(session_.undoName()));
+        });
+    }
+    return *companion_;
+}
+
+void ShellWindow::setChatBackend(CompanionBackend* backend) {
+    chatBackend_ = backend;
+    chatPanel_->setBackend(backend);
+}
+
+void ShellWindow::openChat() {
+    if (chatBackend_ == nullptr) {
+        // Fournisseur réel : une demande = une exécution de l'agent hors fil d'interface ; ses
+        // outils passent par le pont (accord et annulation) et jamais directement par le document.
+        auto& live = ensureCompanion();
+        if (!secretStore_) {
+            secretStore_ = makeSystemSecretStore();
+        }
+        if (claudeBackend_ == nullptr) {
+            claudeBackend_ = new ClaudeCompanionBackend(live.service(), *secretStore_, {}, this);
+            claudeBackend_->setDiagnostics(&companionLog_);
+            companionLog_.set_enabled(companion_settings::diagnosticsEnabled());
+            companionLog_.set_content_consent(companion_settings::diagnosticsEnabled() &&
+                                              companion_settings::diagnosticsContentConsent());
+        }
+        chatBackend_ = claudeBackend_;
+        chatPanel_->setBackend(chatBackend_);
+    }
+    chatDock_->show();
+    chatDock_->raise();
+}
+
+void ShellWindow::showCompanionSettings() {
+    if (!secretStore_) {
+        secretStore_ = makeSystemSecretStore();
+    }
+    CompanionSettingsDialog dialog(*secretStore_, companionLog_, this);
+    if (dialog.exec() == QDialog::Accepted) {
+        dialog.applyToSettings();
+        if (claudeBackend_ != nullptr) {
+            claudeBackend_->refresh();
+        }
+        chatPanel_->setBackend(chatBackend_); // relit l'état « prêt » du fournisseur
+    }
+}
+
 bool ShellWindow::liveBridgeEnabled() const {
     return liveServer_ != nullptr && liveServer_->running();
 }
@@ -1231,6 +1583,13 @@ std::string ShellWindow::liveToken() const {
 
 void ShellWindow::onDocumentChanged(ChangeKind kind) {
     overlays_->onDocumentChanged();
+    if (kind == ChangeKind::Replaced && chatPanel_ != nullptr) {
+        // Nouveau document : l'ancienne conversation parle d'un autre motif.
+        chatPanel_->clearConversation();
+        if (claudeBackend_ != nullptr) {
+            claudeBackend_->resetConversation();
+        }
+    }
     if (regions_) {
         if (kind == ChangeKind::Replaced) {
             regions_->onDocumentReplaced(); // nouveau document : ni région choisie ni correction en
@@ -1355,10 +1714,11 @@ void ShellWindow::requestPreview() {
     const auto revision = session_.revision();
     previewRevision_ = revision;
     const auto limit = simLimit_; // simulation : nombre de commandes à dessiner
+    const RenderSettings quality = render_;
     previewTask_ = tasks_.submit<PreviewImage>(
         tr("Aperçu").toStdString(),
-        [snapshot, revision, limit](const TaskContext& ctx) {
-            return render_preview(snapshot, revision, kPreviewPxPerMm, ctx, limit);
+        [snapshot, revision, limit, quality](const TaskContext& ctx) {
+            return render_preview(snapshot, revision, quality, ctx, limit);
         },
         [this](Result<PreviewImage>&& r) {
             if (!r) {
@@ -1380,6 +1740,7 @@ void ShellWindow::requestPreview() {
                                             QPointF(frame_.mmToPxX(frame_.hoop_half_w_mm),
                                                     frame_.mmToPxY(frame_.hoop_half_h_mm))));
                 updateGrid();
+                updateGuides();
                 updateSourceOverlay();
                 updatePointMarkers();
                 refreshSimulationBar();
@@ -1438,6 +1799,22 @@ void ShellWindow::cancelPendingDocumentLoad() {
     }
 }
 
+void ShellWindow::keyPressEvent(QKeyEvent* event) {
+    if (event->key() == Qt::Key_Escape && regions_ && regions_->active() &&
+        !regions_->selection().empty()) {
+        regions_->clearSelection();
+        event->accept();
+        return;
+    }
+    if (event->key() == Qt::Key_Escape && activeTool_ == QStringLiteral("stitch.points") &&
+        pointSel_ >= 0) {
+        clearPointSelection();
+        event->accept();
+        return;
+    }
+    QMainWindow::keyPressEvent(event);
+}
+
 void ShellWindow::closeEvent(QCloseEvent* event) {
     if (!confirmDiscardOrSave()) {
         event->ignore();
@@ -1448,19 +1825,204 @@ void ShellWindow::closeEvent(QCloseEvent* event) {
 }
 
 void ShellWindow::chooseAndOpen() {
-    const QString path =
-        QFileDialog::getOpenFileName(this, tr("Ouvrir"), QString(),
-                                     tr("Images et projets (*.png *.jpg *.jpeg *.bmp *.tif *.tiff "
-                                        "*.osp);;Tous les fichiers (*)"));
+    QStringList machine;
+    for (const auto& pattern : readableMachineFormats().front().patterns) {
+        machine << fromUtf8(pattern);
+    }
+    const QString path = QFileDialog::getOpenFileName(
+        this, tr("Ouvrir"), QString(),
+        tr("Tout ce qui s'ouvre (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.osp %1 *.dxf);;"
+           "Images et projets (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.osp);;"
+           "Broderies machine (%1);;Dessin AutoCAD (*.dxf);;Tous les fichiers (*)")
+            .arg(machine.join(QLatin1Char(' '))));
     if (path.isEmpty()) {
         return;
     }
     const std::filesystem::path p(path.toStdU16String());
     if (path.endsWith(QStringLiteral(".osp"), Qt::CaseInsensitive)) {
         openProject(p);
+    } else if (isMachineDesignFile(p)) {
+        importMachineDesign(p);
+    } else if (path.endsWith(QStringLiteral(".dxf"), Qt::CaseInsensitive)) {
+        importDxfFile(p);
     } else {
         importImage(p);
     }
+}
+
+void ShellWindow::resegmentImage() {
+    const image::Image* working = documentOpen_ ? ensureProcessed() : nullptr;
+    if (working == nullptr || working->empty() || !session_.project().segmentation) {
+        setNotice(tr("Re-segmenter demande un projet numérisé depuis une image."), true);
+        return;
+    }
+    if (regions_ != nullptr && regions_->dirty()) {
+        setNotice(
+            tr("Régénérez d'abord les objets (ou annulez) : des corrections de régions sont en "
+               "attente."),
+            true);
+        return;
+    }
+    if (importDialog_ != nullptr) {
+        importDialog_->close();
+    }
+    auto* dialog = new ImportDialog(QString(), 0.0, this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    QImage preview(working->rgba.data(), working->width, working->height, working->width * 4,
+                   QImage::Format_RGBA8888);
+    dialog->setResegmentMode(preview.copy());
+    dialog->setSettings(lastDigitizeSettings_);
+    importDialog_ = dialog;
+    QPointer<ImportDialog> guard(dialog);
+    const image::Image image = *working; // copie : la tâche ne lit jamais l'état de l'interface
+    connect(dialog, &ImportDialog::previewRequested, this,
+            [this, guard, image](segmentation::SegmentationOptions options) {
+                if (importPreviewTask_ != 0) {
+                    (void)tasks_.cancel(importPreviewTask_);
+                }
+                importPreviewTask_ = tasks_.submit<SegmentationPreview>(
+                    tr("Aperçu de la segmentation").toStdString(),
+                    [image, options](const TaskContext& ctx) {
+                        return previewSegmentation(image, options, ctx);
+                    },
+                    [this, guard](Result<SegmentationPreview>&& r) {
+                        importPreviewTask_ = 0;
+                        if (guard == nullptr) {
+                            return;
+                        }
+                        if (!r) {
+                            guard->setPreviewError(fromUtf8(r.error().message));
+                            return;
+                        }
+                        guard->setPreview(*r);
+                    });
+            });
+    connect(dialog, &QDialog::accepted, this, [this, guard] {
+        if (guard == nullptr) {
+            return;
+        }
+        lastDigitizeSettings_ = guard->settings();
+        regions_->regenerate(true); // re-segmente avec ces réglages, puis régénère les objets
+    });
+    dialog->open();
+}
+
+void ShellWindow::chooseAndImportMachine() {
+    QStringList filters;
+    for (const auto& f : readableMachineFormats()) {
+        QStringList patterns;
+        for (const auto& p : f.patterns) {
+            patterns << fromUtf8(p);
+        }
+        filters << QStringLiteral("%1 (%2)").arg(fromUtf8(f.label),
+                                                 patterns.join(QLatin1Char(' ')));
+    }
+    const QString path = QFileDialog::getOpenFileName(
+        this, tr("Importer une broderie machine"), QString(), filters.join(QStringLiteral(";;")));
+    if (!path.isEmpty()) {
+        importMachineDesign(std::filesystem::path(path.toStdU16String()));
+    }
+}
+
+void ShellWindow::chooseAndImportDxf() {
+    const QString path = QFileDialog::getOpenFileName(this, tr("Importer un DXF"), QString(),
+                                                      tr("Dessin AutoCAD (*.dxf)"));
+    if (!path.isEmpty()) {
+        importDxfFile(std::filesystem::path(path.toStdU16String()));
+    }
+}
+
+void ShellWindow::chooseAndExportDxf() {
+    QString path = QFileDialog::getSaveFileName(this, tr("Exporter les contours en DXF"), QString(),
+                                                tr("Dessin AutoCAD (*.dxf)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    if (!path.endsWith(QStringLiteral(".dxf"), Qt::CaseInsensitive)) {
+        path += QStringLiteral(".dxf");
+    }
+    exportDxfFile(std::filesystem::path(path.toStdU16String()));
+}
+
+void ShellWindow::importMachineDesign(const std::filesystem::path& file) {
+    if (!confirmDiscardOrSave()) {
+        return;
+    }
+    cancelPendingDocumentLoad();
+    const auto generation = loadGeneration_;
+    const auto revision = session_.revision();
+    const QString name = QString::fromStdU16String(file.filename().u16string());
+    setNotice(tr("Import de %1…").arg(name), false);
+    documentLoadTask_ = tasks_.submit<document::Project>(
+        tr("Import").toStdString(), [file](const TaskContext&) { return loadMachineProject(file); },
+        [this, name, generation, revision](Result<document::Project>&& r) {
+            if (generation != loadGeneration_) {
+                return;
+            }
+            documentLoadTask_ = 0;
+            if (revision != session_.revision()) {
+                setNotice(tr("Document modifié pendant l'import : résultat ignoré."), true);
+                return;
+            }
+            if (!r) {
+                setNotice(tr("Import impossible : %1 (DST, PES, JEF, EXP… attendus)")
+                              .arg(fromUtf8(r.error().message)),
+                          true);
+                return;
+            }
+            currentPath_.clear(); // un design importé n'a pas encore de projet enregistré
+            session_.selection().clear();
+            documentOpen_ = true;
+            if (autosave_) {
+                autosave_->clear();
+            }
+            session_.replaceProject(std::move(*r), true);
+            setNotice(
+                tr("%1 importé comme broderie machine : à numériser ou à exporter.").arg(name),
+                false);
+        });
+}
+
+void ShellWindow::importDxfFile(const std::filesystem::path& file) {
+    if (!documentOpen_) {
+        newProject();
+        if (!documentOpen_) {
+            return; // « nouveau » annulé par l'utilisateur
+        }
+    }
+    const std::string path =
+        file.u8string().empty()
+            ? std::string()
+            : std::string(reinterpret_cast<const char*>(file.u8string().c_str()));
+    std::string escaped;
+    for (const char c : path) {
+        if (c == '"' || c == '\\') {
+            escaped.push_back('\\');
+        }
+        escaped.push_back(c);
+    }
+    const auto result = session_.applyBatch(
+        R"({"schema":"openstitch.batch/1","operations":[{"op":"import_dxf","file":")" + escaped +
+            R"("}]})",
+        tr("Importer un DXF").toStdString());
+    if (!result.committed) {
+        const auto& outcomes = result.report.outcomes;
+        setNotice(tr("Import DXF impossible : %1")
+                      .arg(outcomes.empty() ? tr("refusé") : fromUtf8(outcomes.back().message)),
+                  true);
+        return;
+    }
+    setNotice(tr("DXF importé : tracés ajoutés comme objets vectoriels (annulable)."), false);
+}
+
+void ShellWindow::exportDxfFile(const std::filesystem::path& file) {
+    std::size_t count = 0;
+    const auto r = exportVectorsToDxf(session_.project(), file, &count);
+    if (!r.ok) {
+        setNotice(tr("Export DXF impossible : %1").arg(fromUtf8(r.message)), true);
+        return;
+    }
+    setNotice(tr("%1 tracé(s) exporté(s) en DXF.").arg(count), false);
 }
 
 void ShellWindow::importImage(const std::filesystem::path& image) {
@@ -1623,6 +2185,15 @@ void ShellWindow::setStateDirectory(const std::filesystem::path& dir) {
     QSettings uiSettings(QString::fromStdU16String((dir / "ui.ini").u16string()),
                          QSettings::IniFormat);
     setCompactToolRail(uiSettings.value(QStringLiteral("tools/compact"), true).toBool());
+    {
+        // Préférences d'interface : thème et densité, relus sans jamais échouer. Appliquées avant
+        // de redessiner quoi que ce soit ; stateDir_ est déjà fixé (elles se réenregistrent).
+        const Preferences prefs = loadPreferences(dir / "preferences.txt");
+        density_ = prefs.density;
+        setThemeMode(QString::fromStdString(prefs.theme));
+        setDensity(prefs.density);
+        setRenderSettings(prefs.render);
+    }
     autosave_ = std::make_unique<AutosaveStore>(dir);
     recent_ = pruneMissingRecent(loadRecentList(dir / "recent.txt"));
     rebuildRecentMenu();
@@ -1781,6 +2352,7 @@ void ShellWindow::runDiagnostics() {
             diagnostics_->setResult(*r);
             analysedRevision_ = r->revision;
             analysisErrors_ = static_cast<int>(r->errors);
+            analysisWarnings_ = static_cast<int>(r->warnings);
             updateGuide();
             diagnostics_->setStale(r->revision != session_.revision());
             setNotice(
@@ -1809,6 +2381,81 @@ void ShellWindow::onFindingActivated(const project_ops::Finding& finding) {
 void ShellWindow::setGridSpacing(double mm) {
     gridSpacingMm_ = mm > 0.0 ? mm : 0.0;
     updateGrid();
+    updateGuides();
+}
+
+void ShellWindow::updateGuides() {
+    if (frame_.px_per_mm <= 0.0 || (guidesX_.empty() && guidesY_.empty())) {
+        canvas_->setGuideLines({}, {}, {}, guideColor_);
+        return;
+    }
+    QVector<double> xs;
+    QVector<double> ys;
+    for (const double mm : guidesX_) {
+        xs.push_back(frame_.mmToPxX(mm));
+    }
+    for (const double mm : guidesY_) {
+        ys.push_back(frame_.mmToPxY(-mm)); // mm modèle (Y vers le haut) -> pixels écran
+    }
+    canvas_->setGuideLines(xs, ys, QRectF(0, 0, frame_.width, frame_.height), guideColor_);
+}
+
+void ShellWindow::addGuide(bool vertical, double mm) {
+    if (!std::isfinite(mm) || std::fabs(mm) > 1000.0) {
+        return;
+    }
+    auto& list = vertical ? guidesX_ : guidesY_;
+    if (std::find(list.begin(), list.end(), mm) == list.end() && list.size() < 200) {
+        list.push_back(mm);
+    }
+    updateGuides();
+}
+
+void ShellWindow::askGuide(bool vertical) {
+    bool ok = false;
+    const double mm = QInputDialog::getDouble(
+        this, vertical ? tr("Guide vertical") : tr("Guide horizontal"),
+        vertical ? tr("Position X (mm, 0 = centre du motif) :")
+                 : tr("Position Y (mm, 0 = centre du motif, vers le haut) :"),
+        0.0, -1000.0, 1000.0, 2, &ok);
+    if (ok) {
+        addGuide(vertical, mm);
+    }
+}
+
+void ShellWindow::clearGuides() {
+    guidesX_.clear();
+    guidesY_.clear();
+    updateGuides();
+}
+
+void ShellWindow::setGuideColor(const QColor& color) {
+    if (color.isValid()) {
+        guideColor_ = color;
+        updateGuides();
+    }
+}
+
+void ShellWindow::zoomIn() {
+    canvas_->zoomBy(1.25);
+}
+
+void ShellWindow::zoomOut() {
+    canvas_->zoomBy(0.8);
+}
+
+void ShellWindow::zoomToSelection() {
+    canvas_->fitSelection();
+}
+
+void ShellWindow::zoomActual() {
+    canvas_->zoomActualSize(frame_.px_per_mm);
+}
+
+void ShellWindow::zoomBack() {
+    if (!canvas_->zoomPrevious()) {
+        setNotice(tr("Pas de zoom précédent."), false);
+    }
 }
 
 void ShellWindow::updateGrid() {
@@ -1820,6 +2467,45 @@ void ShellWindow::updateGrid() {
     QVector<double> xs(g.verticalPx.begin(), g.verticalPx.end());
     QVector<double> ys(g.horizontalPx.begin(), g.horizontalPx.end());
     canvas_->setGrid(xs, ys, QRectF(0, 0, frame_.width, frame_.height));
+}
+
+// Icônes dessinées à la main pour la couleur du thème COURANT : le bouton « Tous les outils » et
+// les boutons des panneaux (fermer, détacher) restaient à la couleur du thème de démarrage, donc
+// presque invisibles après un changement clair / sombre.
+void ShellWindow::refreshThemedIcons() {
+    const QColor ink = palette().color(QPalette::WindowText);
+    if (auto* all = findChild<QToolButton*>(QStringLiteral("allToolsButton"))) {
+        all->setIcon(toolIcon("select", palette().color(QPalette::ButtonText)));
+    }
+    const auto draw = [&](bool closeIcon) {
+        QPixmap pm(32, 32);
+        pm.fill(Qt::transparent);
+        QPainter p(&pm);
+        p.setRenderHint(QPainter::Antialiasing);
+        QPen pen(ink, 3.0, Qt::SolidLine, Qt::RoundCap);
+        p.setPen(pen);
+        if (closeIcon) {
+            p.drawLine(9, 9, 23, 23);
+            p.drawLine(23, 9, 9, 23);
+        } else {
+            p.drawRect(8, 12, 12, 12);
+            p.drawLine(12, 8, 24, 8);
+            p.drawLine(24, 8, 24, 20);
+        }
+        return QIcon(pm);
+    };
+    const QIcon closeIcon = draw(true);
+    const QIcon floatIcon = draw(false);
+    for (auto* dock : findChildren<QDockWidget*>()) {
+        if (auto* b =
+                dock->findChild<QAbstractButton*>(QStringLiteral("qt_dockwidget_closebutton"))) {
+            b->setIcon(closeIcon);
+        }
+        if (auto* b =
+                dock->findChild<QAbstractButton*>(QStringLiteral("qt_dockwidget_floatbutton"))) {
+            b->setIcon(floatIcon);
+        }
+    }
 }
 
 void ShellWindow::setThemeMode(const QString& mode) {
@@ -1834,8 +2520,68 @@ void ShellWindow::setThemeMode(const QString& mode) {
         scheme = Qt::ColorScheme::Dark;
     }
     QGuiApplication::styleHints()->setColorScheme(scheme);
-    applyStudioTheme(*qApp, themeMode_);
+    applyStudioTheme(*qApp, themeMode_, densityScale(density_));
     rebuildToolRail(); // régénère les icônes avec les couleurs du thème courant
+    refreshThemedIcons();
+    if (auto* a = findChild<QAction*>(QStringLiteral("theme_") + themeMode_)) {
+        a->setChecked(true);
+    }
+    savePreferencesNow();
+}
+
+void ShellWindow::setRenderSettings(const RenderSettings& settings) {
+    const RenderSettings next = clamped(settings);
+    const bool changed = !(next == render_);
+    render_ = next;
+    const auto id = matchingRenderPreset(render_);
+    for (const char* preset : {"draft", "balanced", "high", "photo"}) {
+        if (auto* a = findChild<QAction*>(QStringLiteral("renderPreset_") +
+                                          QString::fromLatin1(preset))) {
+            a->setChecked(id == preset);
+        }
+    }
+    if (renderDialog_ != nullptr) {
+        renderDialog_->setSettings(render_);
+    }
+    if (changed) {
+        savePreferencesNow();
+        if (documentOpen_ && previewDebounce_ != nullptr) {
+            previewDebounce_
+                ->start(); // aperçu regroupé : un seul recalcul pour une rafale de curseurs
+        }
+    }
+}
+
+void ShellWindow::showRenderQuality() {
+    if (renderDialog_ == nullptr) {
+        renderDialog_ = new RenderQualityDialog(this);
+        connect(renderDialog_, &RenderQualityDialog::settingsChanged, this,
+                [this](const RenderSettings& s) { setRenderSettings(s); });
+    }
+    renderDialog_->setSettings(render_);
+    renderDialog_->show();
+    renderDialog_->raise();
+    renderDialog_->activateWindow();
+}
+
+void ShellWindow::setDensity(UiDensity density) {
+    density_ = density;
+    applyStudioTheme(*qApp, themeMode_, densityScale(density_));
+    if (auto* a = findChild<QAction*>(QStringLiteral("density_") + fromUtf8(densityId(density)))) {
+        a->setChecked(true);
+    }
+    savePreferencesNow();
+}
+
+void ShellWindow::savePreferencesNow() {
+    if (stateDir_.empty()) {
+        return;
+    }
+    Preferences prefs;
+    prefs.theme = themeMode_.toStdString();
+    prefs.density = density_;
+    prefs.render = render_;
+    (void)savePreferences(stateDir_ / "preferences.txt", prefs);
 }
 
 void ShellWindow::onKnife(QPointF a, QPointF b) {
@@ -2145,6 +2891,7 @@ void ShellWindow::updatePointMarkers() {
     pointHandles_.clear();
     if (!target || frame_.px_per_mm <= 0.0) {
         pointSel_ = -1;
+        pointSels_.clear();
         pointObject_ = 0;
         pointView_ = {};
         canvas_->setPointMarkers({}, -1);
@@ -2152,6 +2899,7 @@ void ShellWindow::updatePointMarkers() {
     }
     if (pointObject_ != *target) {
         pointSel_ = -1;
+        pointSels_.clear();
     }
     pointObject_ = *target;
     auto view = stitchPoints(session_.project(), *target);
@@ -2175,22 +2923,105 @@ void ShellWindow::updatePointMarkers() {
     if (pointSel_ >= static_cast<int>(pts.size())) {
         pointSel_ = -1;
     }
-    canvas_->setPointMarkers(pts, pointSel_);
+    std::erase_if(pointSels_, [&](int h) { return h < 0 || h >= static_cast<int>(pts.size()); });
+    if (pointSel_ < 0) {
+        pointSels_.clear();
+    }
+    QVector<int> chosen;
+    for (const int h : pointSels_) {
+        chosen.push_back(h);
+    }
+    canvas_->setPointMarkers(pts, chosen);
+}
+
+std::vector<std::size_t> ShellWindow::selectedPointIndices() const {
+    std::vector<std::size_t> out;
+    for (const int h : pointSels_) {
+        if (h >= 0 && h < static_cast<int>(pointHandles_.size())) {
+            out.push_back(pointView_.points[pointHandles_[static_cast<std::size_t>(h)]].index);
+        }
+    }
+    return out;
+}
+
+void ShellWindow::selectAllPoints() {
+    if (pointHandles_.empty()) {
+        return;
+    }
+    pointSels_.clear();
+    for (std::size_t h = 0; h < pointHandles_.size(); ++h) {
+        pointSels_.push_back(static_cast<int>(h));
+    }
+    pointSel_ = pointSels_.back();
+    updatePointMarkers();
+    setNotice(tr("%1 points choisis.").arg(pointSels_.size()), false);
+}
+
+void ShellWindow::clearPointSelection() {
+    pointSel_ = -1;
+    pointSels_.clear();
+    updatePointMarkers();
 }
 
 bool ShellWindow::deleteSelectedPoint() {
-    if (pointSel_ < 0 || pointSel_ >= static_cast<int>(pointHandles_.size()) || !pointTarget()) {
+    const auto target = pointTarget();
+    const auto indices = selectedPointIndices();
+    if (!target || indices.empty()) {
         return false;
     }
-    const auto index = pointView_.points[pointHandles_[static_cast<std::size_t>(pointSel_)]].index;
-    const auto r = deleteStitchPoints(session_, *pointTarget(), {index});
+    const auto r = deleteStitchPoints(session_, *target, indices);
     if (!r.ok) {
         setNotice(tr("Retouche de points : %1").arg(fromUtf8(r.message)), true);
         return false;
     }
     pointSel_ = -1;
-    setNotice(tr("Point supprimé."), false);
+    pointSels_.clear();
+    setNotice(indices.size() > 1 ? tr("%1 points supprimés.").arg(indices.size())
+                                 : tr("Point supprimé."),
+              false);
     return true;
+}
+
+bool ShellWindow::restoreSelectedPoints() {
+    const auto target = pointTarget();
+    const auto indices = selectedPointIndices();
+    if (!target || indices.empty()) {
+        setNotice(tr("Choisissez d'abord des points."), false);
+        return false;
+    }
+    const auto r = restoreStitchPoints(session_, *target, indices);
+    setNotice(r.ok ? tr("Points rétablis.")
+                   : tr("Retouche de points : %1").arg(fromUtf8(r.message)),
+              !r.ok);
+    return r.ok;
+}
+
+bool ShellWindow::setSelectedPointsJump(bool jump) {
+    const auto target = pointTarget();
+    const auto indices = selectedPointIndices();
+    if (!target || indices.empty()) {
+        setNotice(tr("Choisissez d'abord des points."), false);
+        return false;
+    }
+    const auto r = setStitchPointsJump(session_, *target, indices, jump);
+    setNotice(r.ok ? (jump ? tr("Points passés en saut (sans couture).") : tr("Points cousus."))
+                   : tr("Retouche de points : %1").arg(fromUtf8(r.message)),
+              !r.ok);
+    return r.ok;
+}
+
+bool ShellWindow::setSelectedPointsTrim(bool trim) {
+    const auto target = pointTarget();
+    const auto indices = selectedPointIndices();
+    if (!target || indices.empty()) {
+        setNotice(tr("Choisissez d'abord des points."), false);
+        return false;
+    }
+    const auto r = setStitchPointsTrim(session_, *target, indices, trim);
+    setNotice(r.ok ? (trim ? tr("Fil coupé après ces points.") : tr("Coupe du fil retirée."))
+                   : tr("Retouche de points : %1").arg(fromUtf8(r.message)),
+              !r.ok);
+    return r.ok;
 }
 
 bool ShellWindow::discardPointEdits() {
@@ -2205,6 +3036,7 @@ bool ShellWindow::discardPointEdits() {
         return false;
     }
     pointSel_ = -1;
+    pointSels_.clear();
     setNotice(tr("Retouches effacées."), false);
     return true;
 }
@@ -2245,6 +3077,10 @@ void ShellWindow::updateSourceOverlay() {
 }
 
 void ShellWindow::onStroke(QVector<QPointF> scenePx, Qt::KeyboardModifiers modifiers) {
+    if (activeTool_ == QStringLiteral("region.brush") && regions_) {
+        (void)regions_->paintStroke(scenePx, modifiers & Qt::ControlModifier);
+        return;
+    }
     if (activeTool_ == QStringLiteral("draw.freeform") && frame_.px_per_mm > 0.0) {
         std::vector<PointMm> stroke;
         stroke.reserve(static_cast<std::size_t>(scenePx.size()));
@@ -2285,7 +3121,9 @@ void ShellWindow::onStroke(QVector<QPointF> scenePx, Qt::KeyboardModifiers modif
 void ShellWindow::applyToolToCanvas() {
     using Mode = PreviewCanvas::Mode;
     updatePointMarkers();
-    if (activeTool_ == QStringLiteral("region.edit") && regionPanel_ != nullptr) {
+    if ((activeTool_ == QStringLiteral("region.edit") ||
+         activeTool_ == QStringLiteral("region.brush")) &&
+        regionPanel_ != nullptr) {
         // L'outil « Régions » a besoin de son panneau : on le montre au premier plan.
         if (auto* dock = qobject_cast<QDockWidget*>(regionPanel_->parentWidget())) {
             dock->show();
@@ -2306,7 +3144,9 @@ void ShellWindow::applyToolToCanvas() {
                activeTool_ == QStringLiteral("draw.ellipse")) {
         canvas_->setMode(Mode::DrawBox);
     } else if (activeTool_ == QStringLiteral("draw.polygon") ||
-               activeTool_ == QStringLiteral("satin.column")) {
+               activeTool_ == QStringLiteral("satin.column") ||
+               activeTool_ == QStringLiteral("fill.direction-guide") ||
+               activeTool_ == QStringLiteral("fill.break-line")) {
         canvas_->setMode(Mode::DrawPolygon);
     } else if (activeTool_ == QStringLiteral("measure")) {
         canvas_->setMode(Mode::Measure);
@@ -2319,6 +3159,7 @@ void ShellWindow::applyToolToCanvas() {
                activeTool_ == QStringLiteral("region.edit")) {
         canvas_->setMode(Mode::Pick);
     } else if (activeTool_ == QStringLiteral("detail-brush") ||
+               activeTool_ == QStringLiteral("region.brush") ||
                activeTool_ == QStringLiteral("draw.freeform")) {
         canvas_->setMode(Mode::Stroke);
     } else if (activeTool_ == QStringLiteral("node.edit") ||
@@ -2420,6 +3261,25 @@ void ShellWindow::onPolygonDrawn(QVector<QPointF> scenePx) {
                   r.railsCross);
         return;
     }
+    if (activeTool_ == QStringLiteral("fill.direction-guide") ||
+        activeTool_ == QStringLiteral("fill.break-line")) {
+        // Guide de direction / ligne de rupture : tracés sur l'objet de broderie sélectionné. Le
+        // remplissage devient directionnel au premier tracé (une seule étape d'annulation).
+        const auto state = inspect(session_.project(), session_.selection().targets());
+        const bool isBreak = activeTool_ == QStringLiteral("fill.break-line");
+        if (state.ids.size() != 1) {
+            setNotice(tr("Sélectionnez UN objet de broderie, puis tracez son %1.")
+                          .arg(isBreak ? tr("ligne de rupture") : tr("guide de direction")),
+                      true);
+            return;
+        }
+        const auto r = addDirectionGuide(session_, state.ids.front(), points, isBreak);
+        setNotice(r.ok ? (isBreak ? tr("Ligne de rupture tracée : la forme est coupée en secteurs.")
+                                  : tr("Guide de direction tracé : le fil suit sa courbe."))
+                       : fromUtf8(r.message),
+                  !r.ok);
+        return;
+    }
     createShape(batchAddPolygon(points), tr("Polygone"));
 }
 
@@ -2447,6 +3307,11 @@ void ShellWindow::editSelection(const QString& command) {
     if (command == QLatin1String("edit.delete") && activeTool_ == QStringLiteral("stitch.points") &&
         pointSel_ >= 0) {
         deleteSelectedPoint();
+        return;
+    }
+    if (command == QLatin1String("edit.delete") && regions_ && regions_->active() &&
+        !regions_->selection().empty()) {
+        (void)regions_->deleteSelected(); // Suppr retire les RÉGIONS choisies, pas des objets
         return;
     }
     if (command == QLatin1String("edit.delete") && activeTool_ == QStringLiteral("node.edit") &&
@@ -2546,7 +3411,9 @@ void ShellWindow::nudgeSelection(int stepX, int stepUp, bool big) {
 }
 
 bool ShellWindow::runActionWith(const QString& id, const Values& values) {
-    const ActionDef* def = findAction(id.toStdString());
+    const ActionDef* def = contextAction(id.toStdString()) != nullptr
+                               ? contextAction(id.toStdString())
+                               : findAction(id.toStdString());
     if (def == nullptr) {
         return false;
     }
@@ -2592,7 +3459,18 @@ bool ShellWindow::runActionWith(const QString& id, const Values& values) {
     }
     std::vector<Target> created;
     for (const auto newId : createdObjectIds(result.report)) {
-        created.push_back({TargetKind::EmbroideryObject, newId});
+        if (session_.project().findText(ObjectId{newId}) != nullptr) {
+            // « Ajouter / modifier du texte » rend l'identifiant de l'objet TEXTE : on sélectionne
+            // ses lettres (objets de broderie), ce que l'on peut déplacer et rééditer.
+            for (const auto& emb : session_.project().embroidery_objects) {
+                const auto* vec = session_.project().findObject(emb.source_vector);
+                if (vec != nullptr && vec->text_owner && vec->text_owner->value == newId) {
+                    created.push_back({TargetKind::EmbroideryObject, emb.id.value});
+                }
+            }
+        } else {
+            created.push_back({TargetKind::EmbroideryObject, newId});
+        }
     }
     if (!created.empty()) {
         session_.selection().replace(std::move(created));
@@ -2602,7 +3480,11 @@ bool ShellWindow::runActionWith(const QString& id, const Values& values) {
 }
 
 void ShellWindow::runAction(const QString& id) {
-    const ActionDef* def = findAction(id.toStdString());
+    const bool editText = id == QLatin1String("text.edit");
+    const bool editGlyph = id == QLatin1String("text.glyph");
+    const ActionDef* def = contextAction(id.toStdString()) != nullptr
+                               ? contextAction(id.toStdString())
+                               : findAction(id.toStdString());
     if (def == nullptr) {
         return;
     }
@@ -2610,7 +3492,27 @@ void ShellWindow::runAction(const QString& id) {
         runActionWith(id, {});
         return;
     }
-    auto* dialog = new ActionDialog(*def, defaultValues(*def), this);
+    Values initial = defaultValues(*def);
+    if (editText) { // le dialogue s'ouvre sur les réglages ACTUELS du texte sélectionné
+        const auto state = inspect(session_.project(), session_.selection().targets());
+        if (const auto owner = selectedTextOwner(session_.project(), state.ids)) {
+            for (auto& [key, value] : textEditValues(session_.project(), *owner)) {
+                initial[key] = std::move(value);
+            }
+        }
+    }
+    if (editGlyph) { // le dialogue s'ouvre sur les réglages ACTUELS de la lettre sélectionnée
+        const auto state = inspect(session_.project(), session_.selection().targets());
+        const auto target = glyphTargetOf(session_.project(), state.ids);
+        if (!target.ok) {
+            setNotice(fromUtf8(target.message), true);
+            return;
+        }
+        for (auto& [key, value] : glyphEditValues(session_.project(), target)) {
+            initial[key] = std::move(value);
+        }
+    }
+    auto* dialog = new ActionDialog(*def, initial, this);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     connect(dialog, &QDialog::accepted, this,
             [this, id, dialog] { runActionWith(id, dialog->values()); });
@@ -2669,7 +3571,8 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
                           const char* key) {
         out.push_back({id, q(label), q(tr(group)), key, hasSel});
     };
-    edit("edit.delete", tr("Supprimer la sélection"), "Édition", "Suppr");
+    out.push_back({"edit.delete", q(tr("Supprimer la sélection")), q(tr("Édition")), "Suppr",
+                   hasSel || (regions_ && regions_->active() && !regions_->selection().empty())});
     edit("edit.duplicate", tr("Dupliquer la sélection"), "Édition", "Ctrl+D");
     edit("transform.rotate.cw", tr("Pivoter de 90° à droite"), "Transformer", "");
     edit("transform.rotate.ccw", tr("Pivoter de 90° à gauche"), "Transformer", "");
@@ -2725,6 +3628,33 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
                    q(tr("Analyse")), "",
                    overlays_->fabricActive() || !session_.project().embroidery_objects.empty()});
     {
+        const auto state = inspect(session_.project(), session_.selection().targets());
+        out.push_back({"text.edit", q(tr("Modifier le texte sélectionné…")), q(tr("Texte")), "",
+                       selectedTextOwner(session_.project(), state.ids).has_value()});
+    }
+    out.push_back(
+        {"thread.palette", q(tr("Nuanciers de fils et mélanges…")), q(tr("Fils")), "", hasObjects});
+    out.push_back(
+        {"chat.open", q(tr("Discuter avec l'agent IA")), q(tr("Compagnon")), "", documentOpen_});
+    out.push_back(
+        {"companion.settings", q(tr("Réglages du compagnon IA…")), q(tr("Compagnon")), "", true});
+    {
+        const auto state = inspect(session_.project(), session_.selection().targets());
+        const auto glyph = glyphTargetOf(session_.project(), state.ids);
+        out.push_back({"text.glyph", q(tr("Modifier la lettre sélectionnée…")), q(tr("Texte")), "",
+                       glyph.ok});
+        out.push_back({"text.glyph.reset", q(tr("Rétablir la lettre sélectionnée")), q(tr("Texte")),
+                       "", glyph.ok && glyph.hasEdit});
+    }
+    out.push_back({"export.options", q(tr("Options machine, cadre et coupes…")), q(tr("Fichier")),
+                   "", documentOpen_});
+    out.push_back({"export.check", q(tr("Contrôler le motif avant l'export")), q(tr("Fichier")), "",
+                   hasObjects});
+    out.push_back({"analysis.pull", q(tr("Comparer le motif nominal et le tirage prédit")),
+                   q(tr("Analyse")), "", hasObjects});
+    out.push_back({"analysis.calibration", q(tr("Étalonner le tirage sur une pièce-test…")),
+                   q(tr("Analyse")), "", true});
+    {
         // Courbe de transition d'un fondu : disponible quand un seul objet porte un fondu.
         const auto target = pointTarget();
         const bool hasFade = target && fadeAxisView(session_.project(), *target).has_value();
@@ -2739,6 +3669,18 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
                            q(tr("Fondu")), "", hasFade});
         }
     }
+    {
+        // Barreaux d'une colonne satin à rails : un seul objet sélectionné, de ce type.
+        const auto target = pointTarget();
+        const bool isSatin = target && satinRungCount(session_.project(), *target) >= 0;
+        out.push_back({"satin.rung.insert",
+                       q(tr("Satin : ajouter un barreau (au plus grand écart)")), q(tr("Satin")),
+                       "", isSatin});
+        out.push_back({"satin.rung.remove", q(tr("Satin : retirer le barreau le plus redondant")),
+                       q(tr("Satin")), "", isSatin});
+        out.push_back({"satin.diagnose", q(tr("Satin : diagnostiquer rails et barreaux")),
+                       q(tr("Satin")), "", isSatin});
+    }
     out.push_back({"vector.curves", q(tr("Convertir les contours en courbes")), q(tr("Contour")),
                    "", hasObjects});
     out.push_back(
@@ -2751,6 +3693,84 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
                    q(tr("Compagnon IA")), "", true});
     out.push_back({"analysis.run", q(tr("Analyser le document (diagnostic)")), q(tr("Analyse")), "",
                    !session_.project().embroidery_objects.empty()});
+    {
+        // Corrections de régions : atteignables au clavier et par la palette, actives avec l'outil
+        // Régions (X) / Pinceau (U) ; la sélection de régions est celle du modèle partagé.
+        const bool regionTool = regions_ && regions_->active();
+        const auto chosen = regions_ ? regions_->selection().size() : std::size_t{0};
+        const auto region = [&](const char* id, const QString& label, bool ok) {
+            out.push_back({id, q(label), q(tr("Régions")), "", regionTool && ok});
+        };
+        region("region.select-color", tr("Régions : sélectionner la même couleur"), chosen >= 1);
+        region("region.select-neighbours", tr("Régions : sélectionner les voisines"), chosen >= 1);
+        region("region.invert", tr("Régions : inverser la sélection"), regionTool);
+        region("region.merge", tr("Régions : fusionner la sélection"), chosen >= 2);
+        region("region.recolor", tr("Régions : recolorer la sélection…"), chosen >= 1);
+        region("region.regenerate", tr("Régions : régénérer les objets"),
+               regions_ && regions_->dirty());
+        region("region.objects", tr("Régions : sélectionner les objets de ces régions"),
+               chosen >= 1);
+        out.push_back(
+            {"region.from-objects", q(tr("Régions : régions des objets sélectionnés")),
+             q(tr("Régions")), "",
+             regionTool && inspect(session_.project(), session_.selection().targets()).count > 0});
+    }
+    {
+        const auto state = inspect(session_.project(), session_.selection().targets());
+        const bool one = state.ids.size() == 1;
+        const int guides = one ? directionGuideCount(session_.project(), state.ids.front()) : -1;
+        const int breaks = one ? breakLineCount(session_.project(), state.ids.front()) : -1;
+        out.push_back({"fill.guides.clear", q(tr("Effacer les guides de direction")),
+                       q(tr("Remplissage")), "", guides > 0});
+        out.push_back({"fill.breaks.clear", q(tr("Effacer les lignes de rupture")),
+                       q(tr("Remplissage")), "", breaks > 0});
+    }
+    {
+        const bool pointTool = activeTool_ == QStringLiteral("stitch.points");
+        const bool chosen = pointTool && pointSel_ >= 0;
+        const auto point = [&](const char* id, const QString& label, bool ok) {
+            out.push_back({id, q(label), q(tr("Points")), "", ok});
+        };
+        point("point.restore", tr("Points : rétablir les points choisis"), chosen);
+        point("point.jump", tr("Points : passer en saut (sans couture)"), chosen);
+        point("point.stitch", tr("Points : passer en point cousu"), chosen);
+        point("point.trim", tr("Points : couper le fil après"), chosen);
+        point("point.untrim", tr("Points : ne pas couper le fil après"), chosen);
+        point("point.select-all", tr("Points : tout choisir"), pointTool);
+    }
+    {
+        const bool imageShown = documentOpen_ && frame_.px_per_mm > 0.0;
+        const auto view = [&](const char* id, const QString& label, bool ok) {
+            out.push_back({id, q(label), q(tr("Affichage")), "", ok});
+        };
+        view("view.zoom-in", tr("Zoom avant"), imageShown);
+        view("view.zoom-out", tr("Zoom arrière"), imageShown);
+        view("view.zoom-selection", tr("Zoom sur la sélection"),
+             imageShown && !session_.selection().empty());
+        view("view.zoom-actual", tr("Taille réelle (100 %)"), imageShown);
+        view("view.zoom-previous", tr("Zoom précédent"), canvas_->zoomHistoryDepth() > 0);
+        view("guide.add-v", tr("Guide vertical…"), imageShown);
+        view("guide.add-h", tr("Guide horizontal…"), imageShown);
+        view("guide.clear", tr("Effacer les guides"), guideCount() > 0);
+    }
+    out.push_back({"guide.skip-check",
+                   q(checkSkipped_ ? tr("Parcours : reprendre le contrôle du motif")
+                                   : tr("Parcours : ignorer le contrôle du motif (facultatif)")),
+                   q(tr("Parcours")), "", documentOpen_});
+    out.push_back({"image.resegment", q(tr("Re-segmenter l'image…")), q(tr("Image")), "",
+                   documentOpen_ && session_.project().segmentation.has_value()});
+    out.push_back({"file.import-machine", q(tr("Importer une broderie machine…")), q(tr("Fichier")),
+                   "", true});
+    out.push_back({"file.import-dxf", q(tr("Importer un DXF…")), q(tr("Fichier")), "", true});
+    out.push_back({"file.export-dxf", q(tr("Exporter les contours en DXF…")), q(tr("Fichier")), "",
+                   !session_.project().vector_objects.empty()});
+    out.push_back(
+        {"view.render", q(tr("Qualité du rendu réaliste…")), q(tr("Affichage")), "", true});
+    for (const char* preset : {"draft", "balanced", "high", "photo"}) {
+        out.push_back({std::string("render.preset.") + preset,
+                       q(tr("Rendu réaliste : %1").arg(fromUtf8(renderPresetLabel(preset)))),
+                       q(tr("Affichage")), "", true});
+    }
     out.push_back({"analysis.density",
                    q(overlays_->densityActive() ? tr("Masquer la carte de densité")
                                                 : tr("Afficher la carte de densité")),
@@ -2768,6 +3788,16 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
         const bool ok = isToolImplemented(t.id);
         out.push_back({"tool." + t.id, t.label + (ok ? "" : q(tr(" — pas encore migré"))),
                        q(tr("Outil")), t.shortcut, ok});
+    }
+    for (auto& e : out) {
+        if (!e.shortcut.empty()) {
+            continue;
+        }
+        for (const auto& [id, key] : kCommandShortcuts) {
+            if (e.id == id) {
+                e.shortcut = key;
+            }
+        }
     }
     return out;
 }
@@ -2814,6 +3844,46 @@ bool ShellWindow::runCommand(const QString& id) {
             removePresetIndex(id.mid(14).toInt());
         } else if (id == QLatin1String("analysis.fabric")) {
             overlays_->toggleFabricRisk();
+        } else if (id == QLatin1String("chat.open")) {
+            openChat();
+        } else if (id == QLatin1String("companion.settings")) {
+            showCompanionSettings();
+        } else if (id == QLatin1String("thread.palette")) {
+            auto* dialog = new ThreadPaletteDialog(session_, this);
+            dialog->setAttribute(Qt::WA_DeleteOnClose);
+            dialog->show();
+        } else if (id == QLatin1String("text.edit") || id == QLatin1String("text.glyph")) {
+            runAction(id);
+        } else if (id == QLatin1String("text.glyph.reset")) {
+            (void)runActionWith(id, {});
+        } else if (id == QLatin1String("export.options")) {
+            auto* dialog = new ExportOptionsDialog(
+                session_, stateDir_.empty() ? std::filesystem::path{} : stateDir_ / "hoops.txt",
+                this);
+            dialog->setAttribute(Qt::WA_DeleteOnClose);
+            dialog->show();
+        } else if (id == QLatin1String("export.check")) {
+            const auto check = checkExport(session_.project());
+            setNotice(fromUtf8(check.summary()),
+                      !check.ok || !check.fitsHoop || !check.fitsMachineField);
+            if (!check.ok) {
+                return false;
+            }
+            machineCheckRevision_ = session_.revision();
+            machineBlockers_ = (check.fitsHoop ? 0 : 1) + (check.fitsMachineField ? 0 : 1) +
+                               (check.formatAccepted ? 0 : 1);
+            machineWarnings_ = 0;
+            updateGuide();
+        } else if (id == QLatin1String("analysis.pull")) {
+            const auto cmp = compareProjectPull(session_.project());
+            setNotice(fromUtf8(cmp.summary()), !cmp.ok);
+            if (!cmp.ok) {
+                return false;
+            }
+        } else if (id == QLatin1String("analysis.calibration")) {
+            auto* dialog = new CalibrationDialog(&session_.project(), this);
+            dialog->setAttribute(Qt::WA_DeleteOnClose);
+            dialog->show();
         } else if (id.startsWith(QLatin1String("fade.curve."))) {
             const auto target = pointTarget();
             if (!target) {
@@ -2837,6 +3907,34 @@ bool ShellWindow::runCommand(const QString& id) {
                               false);
                     break;
                 }
+            }
+        } else if (id.startsWith(QLatin1String("satin.rung.")) ||
+                   id == QLatin1String("satin.diagnose")) {
+            const auto target = pointTarget();
+            if (!target) {
+                setNotice(tr("Sélectionnez une seule colonne satin."), true);
+                return false;
+            }
+            if (id == QLatin1String("satin.diagnose")) {
+                const auto d = diagnoseSatin(session_.project(), *target);
+                setNotice(fromUtf8(satinDiagnosisSummary(d)), !d.clean());
+            } else {
+                const bool insert = id == QLatin1String("satin.rung.insert");
+                const auto index = insert ? widestRungGap(session_.project(), *target)
+                                          : redundantRung(session_.project(), *target);
+                if (!index) {
+                    setNotice(insert ? tr("Il faut au moins deux barreaux.")
+                                     : tr("Une colonne satin garde au moins deux barreaux."),
+                              true);
+                    return false;
+                }
+                const auto r = insert ? insertSatinRungBetween(session_, *target, *index)
+                                      : removeSatinRung(session_, *target, *index);
+                if (!r.ok) {
+                    setNotice(fromUtf8(r.message), true);
+                    return false;
+                }
+                setNotice(insert ? tr("Barreau ajouté.") : tr("Barreau retiré."), false);
             }
         } else if (id == QLatin1String("vector.curves") || id == QLatin1String("vector.smooth")) {
             const auto selected = inspect(session_.project(), session_.selection().targets());
@@ -2862,12 +3960,92 @@ bool ShellWindow::runCommand(const QString& id) {
         } else if (id == QLatin1String("analysis.run")) {
             setWorkspace(Workspace::Optimize);
             runDiagnostics();
+        } else if (id == QLatin1String("fill.guides.clear") ||
+                   id == QLatin1String("fill.breaks.clear")) {
+            const auto state = inspect(session_.project(), session_.selection().targets());
+            if (state.ids.size() == 1) {
+                const auto r = clearDirectionGuides(session_, state.ids.front(),
+                                                    id == QLatin1String("fill.breaks.clear"));
+                setNotice(r.ok ? tr("Effacé (annulable).") : fromUtf8(r.message), !r.ok);
+            }
+        } else if (id == QLatin1String("point.restore")) {
+            (void)restoreSelectedPoints();
+        } else if (id == QLatin1String("point.jump")) {
+            (void)setSelectedPointsJump(true);
+        } else if (id == QLatin1String("point.stitch")) {
+            (void)setSelectedPointsJump(false);
+        } else if (id == QLatin1String("point.trim")) {
+            (void)setSelectedPointsTrim(true);
+        } else if (id == QLatin1String("point.untrim")) {
+            (void)setSelectedPointsTrim(false);
+        } else if (id == QLatin1String("point.select-all")) {
+            selectAllPoints();
+        } else if (id == QLatin1String("view.zoom-in")) {
+            zoomIn();
+        } else if (id == QLatin1String("view.zoom-out")) {
+            zoomOut();
+        } else if (id == QLatin1String("view.zoom-selection")) {
+            zoomToSelection();
+        } else if (id == QLatin1String("view.zoom-actual")) {
+            zoomActual();
+        } else if (id == QLatin1String("view.zoom-previous")) {
+            zoomBack();
+        } else if (id == QLatin1String("guide.add-v")) {
+            askGuide(true);
+        } else if (id == QLatin1String("guide.add-h")) {
+            askGuide(false);
+        } else if (id == QLatin1String("guide.clear")) {
+            clearGuides();
+        } else if (id == QLatin1String("guide.skip-check")) {
+            setCheckSkipped(!checkSkipped_);
+        } else if (id == QLatin1String("image.resegment")) {
+            resegmentImage();
+        } else if (id == QLatin1String("file.import-machine")) {
+            chooseAndImportMachine();
+        } else if (id == QLatin1String("file.import-dxf")) {
+            chooseAndImportDxf();
+        } else if (id == QLatin1String("file.export-dxf")) {
+            chooseAndExportDxf();
+        } else if (id == QLatin1String("view.render")) {
+            showRenderQuality();
+        } else if (id.startsWith(QLatin1String("render.preset."))) {
+            if (const auto p = renderPreset(id.mid(14).toStdString())) {
+                setRenderSettings(*p);
+            }
         } else if (id == QLatin1String("analysis.density")) {
             overlays_->toggleDensity();
         } else if (id == QLatin1String("selection.all")) {
-            selectAllObjects();
+            if (regions_ && regions_->active()) {
+                regions_->selectAll(); // avec l'outil Régions, Ctrl+A choisit les régions
+            } else if (activeTool_ == QStringLiteral("stitch.points")) {
+                selectAllPoints(); // avec la retouche de points : les points de l'objet
+            } else {
+                selectAllObjects();
+            }
         } else if (id == QLatin1String("selection.clear")) {
-            session_.selection().clear();
+            if (regions_ && regions_->active()) {
+                regions_->clearSelection();
+            } else if (activeTool_ == QStringLiteral("stitch.points")) {
+                clearPointSelection();
+            } else {
+                session_.selection().clear();
+            }
+        } else if (id == QLatin1String("region.select-color")) {
+            regions_->selectSameColor();
+        } else if (id == QLatin1String("region.select-neighbours")) {
+            regions_->selectNeighbours();
+        } else if (id == QLatin1String("region.invert")) {
+            regions_->invertSelection();
+        } else if (id == QLatin1String("region.merge")) {
+            (void)regions_->mergeSelection();
+        } else if (id == QLatin1String("region.recolor")) {
+            regions_->requestRecolor();
+        } else if (id == QLatin1String("region.regenerate")) {
+            regions_->regenerate();
+        } else if (id == QLatin1String("region.objects")) {
+            (void)regions_->selectObjectsOfSelection();
+        } else if (id == QLatin1String("region.from-objects")) {
+            (void)regions_->selectRegionsOfSelectedObjects();
         } else if (id == QLatin1String("view.fit")) {
             canvas_->fitAll();
         } else if (id.startsWith(QLatin1String("workspace."))) {
@@ -3319,6 +4497,15 @@ QPointF ShellWindow::snapDelta(QPointF deltaPx) {
             others.push_back(*b);
         }
     }
+    // Les guides sont des cibles d'accrochage : un trait vertical n'a qu'un x, un horizontal qu'un
+    // y (l'autre coordonnée est reportée très loin pour ne jamais s'accrocher).
+    constexpr double kFar = 1.0e6;
+    for (const double x : guidesX_) {
+        others.push_back({x, kFar, x, kFar});
+    }
+    for (const double y : guidesY_) {
+        others.push_back({kFar, y, kFar, y});
+    }
     const bool altHeld = QGuiApplication::keyboardModifiers() & Qt::AltModifier;
     // Seuil de 6 pixels de vue, converti en mm (zoom du canevas compris).
     const double zoom = std::max(0.01, canvas_->transform().m11());
@@ -3367,7 +4554,7 @@ void ShellWindow::onScaleDragged(QPointF pivotPx, double factor) {
 }
 
 void ShellWindow::onCanvasClick(QPointF scenePx, Qt::KeyboardModifiers modifiers) {
-    if (regions_ && regions_->onCanvasClick(scenePx)) {
+    if (regions_ && regions_->onCanvasClick(scenePx, modifiers)) {
         return; // l'outil « Régions » a traité le clic
     }
     if ((activeTool_ == QStringLiteral("node.edit") ||
@@ -3405,12 +4592,34 @@ void ShellWindow::onCanvasClick(QPointF scenePx, Qt::KeyboardModifiers modifiers
             }
         }
         if (hit >= 0) {
-            pointSel_ = hit;
+            if (modifiers & Qt::ControlModifier) {
+                if (const auto it = std::find(pointSels_.begin(), pointSels_.end(), hit);
+                    it != pointSels_.end()) {
+                    pointSels_.erase(it);
+                    pointSel_ = pointSels_.empty() ? -1 : pointSels_.back();
+                } else {
+                    pointSels_.push_back(hit);
+                    pointSel_ = hit;
+                }
+            } else if ((modifiers & Qt::AltModifier) && pointSel_ >= 0) {
+                // Alt+clic : plage de points entre la poignée principale et celle-ci.
+                const int a = std::min(pointSel_, hit);
+                const int b = std::max(pointSel_, hit);
+                pointSels_.clear();
+                for (int h = a; h <= b; ++h) {
+                    pointSels_.push_back(h);
+                }
+                pointSel_ = hit;
+            } else {
+                pointSels_ = {hit};
+                pointSel_ = hit;
+            }
             updatePointMarkers();
             return;
         }
         if (pointSel_ < 0 || pointSel_ >= static_cast<int>(pointHandles_.size())) {
-            setNotice(tr("Cliquez d'abord sur un point à retoucher."), false);
+            setNotice(tr("Cliquez d'abord sur un point à retoucher (Ctrl+clic : en ajouter)."),
+                      false);
             return;
         }
         const auto& sel = pointView_.points[pointHandles_[static_cast<std::size_t>(pointSel_)]];

@@ -16,9 +16,11 @@ namespace openstitch::desktop_v2 {
 // Un espace de travail est un FILTRE d'attention sur le même document (même projet, même sélection,
 // même historique) : il choisit les panneaux et les outils mis en avant, il n'isole rien. Tout
 // outil reste atteignable depuis la palette de commandes dans n'importe quel espace.
-enum class Workspace : std::uint8_t { Design, Digitize, Optimize, Produce };
+// Zones = édition de la segmentation (régions, frontières, pot de peinture) ; Design = formes
+// vectorielles (contours, nœuds, courbes, texte).
+enum class Workspace : std::uint8_t { Design, Digitize, Optimize, Produce, Zones };
 
-inline constexpr std::uint8_t kAllWorkspaces = 0x0F;
+inline constexpr std::uint8_t kAllWorkspaces = 0x1F;
 [[nodiscard]] constexpr std::uint8_t workspaceBit(Workspace w) {
     return static_cast<std::uint8_t>(1U << static_cast<unsigned>(w));
 }

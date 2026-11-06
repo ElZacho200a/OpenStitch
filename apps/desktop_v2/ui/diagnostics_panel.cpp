@@ -31,6 +31,10 @@ DiagnosticsPanel::DiagnosticsPanel(QWidget* parent)
     layout->addWidget(summary_);
     layout->addWidget(list_, 1);
     connect(run_, &QPushButton::clicked, this, &DiagnosticsPanel::analyseRequested);
+    list_->setWordWrap(true); // un constat long se lit en entier, sans défilement horizontal
+    list_->setTextElideMode(Qt::ElideNone);
+    list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    list_->setResizeMode(QListView::Adjust);
     connect(list_, &QListWidget::itemActivated, this,
             [this](QListWidgetItem*) { activateRow(list_->currentRow()); });
     clear();

@@ -41,6 +41,14 @@ add_library(openstitch_desktop_v2_core STATIC
     core/image_prep.cpp
     core/production_sheet.cpp
     core/satin_column.cpp
+    core/pull_calibration.cpp
+    core/export_settings.cpp
+    core/hoop_store.cpp
+    core/thread_palette_service.cpp
+    core/preferences.cpp
+    core/render_settings.cpp
+    core/file_io.cpp
+    core/direction_guides.cpp
     core/point_edit.cpp
     core/source_image_tools.cpp
 )
@@ -84,6 +92,8 @@ add_library(openstitch_desktop_v2_ui STATIC
     ui/node_edit_controller.cpp
     ui/node_edit_controller.hpp
     ui/region_panel.cpp
+    ui/render_quality_dialog.cpp
+    ui/render_quality_dialog.hpp
     ui/region_panel.hpp
     ui/region_edit_controller.cpp
     ui/region_edit_controller.hpp
@@ -91,6 +101,14 @@ add_library(openstitch_desktop_v2_ui STATIC
     ui/import_dialog.hpp
     ui/optimize_panel.cpp
     ui/optimize_panel.hpp
+    ui/export_options_dialog.cpp
+    ui/export_options_dialog.hpp
+    ui/thread_palette_dialog.cpp
+    ui/thread_palette_dialog.hpp
+    ui/calibration_dialog.cpp
+    ui/calibration_dialog.hpp
+    ui/chat_panel.cpp
+    ui/chat_panel.hpp
     ui/companion_panel.cpp
     ui/companion_panel.hpp
     ui/live_server.cpp
@@ -111,6 +129,7 @@ add_library(openstitch::desktop_v2_ui ALIAS openstitch_desktop_v2_ui)
 target_include_directories(openstitch_desktop_v2_ui PUBLIC ui)
 target_link_libraries(openstitch_desktop_v2_ui
     PUBLIC Qt6::Widgets Qt6::Network openstitch::desktop_v2_core openstitch::project_io
+           openstitch::agent openstitch::companion_backends
     PRIVATE openstitch::warnings)
 
 add_executable(openstitch_v2 WIN32 ui/main.cpp)

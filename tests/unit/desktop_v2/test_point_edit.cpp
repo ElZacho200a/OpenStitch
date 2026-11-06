@@ -98,3 +98,55 @@ TEST_CASE("point edits refuse bad requests without stacking anything", "[desktop
     CHECK_FALSE(restoreStitchPoints(s, id, {999999}).ok);
     CHECK(s.undoNames().size() == depth);
 }
+
+TEST_CASE("several points can become jumps, get a trim, and be restored, one undo step each",
+          "[desktop_v2][points]") {
+    std::uint64_t id = 0;
+    auto s = sessionWithRect(id);
+    const auto v = stitchPoints(s.project(), id);
+    REQUIRE(v.has_value());
+    std::vector<std::size_t> picked;
+    for (const auto& p : v->points) {
+        if (p.movable && picked.size() < 3) {
+            picked.push_back(p.index);
+        }
+    }
+    REQUIRE(picked.size() == 3);
+
+    const auto depth = s.undoNames().size();
+    REQUIRE(setStitchPointsJump(s, id, picked, true).ok);
+    CHECK(s.undoNames().size() == depth + 1);
+    auto after = stitchPoints(s.project(), id);
+    REQUIRE(after.has_value());
+    for (const auto& p : after->points) {
+        if (std::find(picked.begin(), picked.end(), p.index) != picked.end()) {
+            CHECK(p.jump);
+            CHECK(p.edited);
+        }
+    }
+    CHECK(after->state == PointEditState::ManuallyEdited);
+
+    REQUIRE(setStitchPointsTrim(s, id, {picked[0]}, true).ok);
+    CHECK(s.undoNames().size() == depth + 2);
+    after = stitchPoints(s.project(), id);
+    REQUIRE(after.has_value());
+    const auto trimmed = std::find_if(after->points.begin(), after->points.end(),
+                                      [&](const EditablePoint& p) { return p.index == picked[0]; });
+    REQUIRE(trimmed != after->points.end());
+    CHECK(trimmed->trimAfter);
+
+    // Les points repassent cousus ; la coupe se retire ; l'ensemble s'annule.
+    REQUIRE(setStitchPointsJump(s, id, picked, false).ok);
+    REQUIRE(setStitchPointsTrim(s, id, {picked[0]}, false).ok);
+    while (s.undoNames().size() > depth) {
+        REQUIRE(s.undo());
+    }
+    after = stitchPoints(s.project(), id);
+    REQUIRE(after.has_value());
+    CHECK(after->state == PointEditState::Clean);
+
+    // Refus : liste vide, indice inconnu.
+    CHECK_FALSE(setStitchPointsJump(s, id, {}, true).ok);
+    CHECK_FALSE(setStitchPointsTrim(s, id, {9'999'999}, true).ok);
+    CHECK(s.undoNames().size() == depth);
+}

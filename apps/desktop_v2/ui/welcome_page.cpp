@@ -24,9 +24,11 @@ WelcomePage::WelcomePage(QWidget* parent) : QWidget(parent) {
     title->setTextFormat(Qt::RichText);
     layout->addWidget(title);
     auto* steps = new QLabel(tr("De l'image au fichier de broderie en quatre étapes :<br>"
-                                "<b>1. Importer</b> une image (la numérisation est automatique) · "
-                                "<b>2. Retoucher</b> les objets · <b>3. Contrôler</b> le motif · "
-                                "<b>4. Exporter</b> pour la machine."),
+                                "<b>1. Préparer</b> (image, couleurs, régions) · "
+                                "<b>2. Numériser</b> (objets et points) · "
+                                "<b>3. Contrôler</b> (diagnostic, simulation, ordre) · "
+                                "<b>4. Produire</b> (machine, cadre, export). Vous pouvez "
+                                "revenir en arrière à tout moment."),
                              column);
     steps->setWordWrap(true);
     steps->setTextFormat(Qt::RichText);

@@ -2,7 +2,8 @@
 #  - AUCUN port reseau ouvert par le pont ni l'agent : pas de serveur TCP/UDP/HTTP/WebSocket ;
 #  - AUCUNE execution de commande arbitraire depuis l'agent ou le pont : pas de QProcess,
 #    system(), popen(), CreateProcess, ShellExecute, exec* dans libs/agent, libs/mcp et les
-#    fichiers desktop du compagnon (live_server, companion_*, claude_backend) ;
+#    fichiers du compagnon : bureau V1 (live_server, companion_*), bibliothèque partagée
+#    `apps/companion` (fournisseur Claude, réglages) et bureau V2 (pont, discussion) ;
 #  - AUCUN secret ecrit dans QSettings (setValue avec une cle nommee key/secret/token).
 # Une exception volontaire se marque `security-ok: <raison>` sur la ligne ou la precedente.
 #
@@ -18,8 +19,12 @@ file(GLOB_RECURSE scoped
     "${SRC_DIR}/apps/mcp/*.cpp"
     "${SRC_DIR}/apps/desktop/live_server.*"
     "${SRC_DIR}/apps/desktop/companion_*"
-    "${SRC_DIR}/apps/desktop/claude_backend.*"
-    "${SRC_DIR}/apps/desktop/claude_code_process_backend.*")
+    "${SRC_DIR}/apps/desktop/claude_code_process_backend.*"
+    "${SRC_DIR}/apps/companion/*"
+    "${SRC_DIR}/apps/desktop_v2/ui/live_server.*"
+    "${SRC_DIR}/apps/desktop_v2/ui/companion_*"
+    "${SRC_DIR}/apps/desktop_v2/ui/chat_panel.*"
+    "${SRC_DIR}/apps/desktop_v2/core/live_companion.*")
 
 set(network_patterns "QTcpServer" "QUdpSocket" "QHttpServer" "QWebSocketServer" "QSslServer"
     "AF_INET" "INADDR_ANY" "SOCK_DGRAM" "WSAStartup")
