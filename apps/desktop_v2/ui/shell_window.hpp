@@ -21,6 +21,7 @@
 #include "arrange_batch.hpp"
 #include "command_catalog.hpp"
 #include "companion_shared.hpp"
+#include "context_commands.hpp"
 #include "density_service.hpp"
 #include "diagnostics_service.hpp"
 #include "digitize_pipeline.hpp"

@@ -2659,16 +2659,9 @@ void ShellWindow::refreshSimulationBar() {
 QMenu* ShellWindow::buildContextMenu() {
     auto* menu = new QMenu(this);
     menu->setObjectName(QStringLiteral("canvasContextMenu"));
-    static const char* const kPrefixes[] = {"edit.",         "transform.",    "order.",
-                                            "selection.",    "action.satin.", "action.fill.",
-                                            "preset.apply.", "preset.save"};
     std::string lastGroup;
     for (const auto& e : commandEntries()) {
-        bool wanted = false;
-        for (const char* p : kPrefixes) {
-            wanted = wanted || e.id.rfind(p, 0) == 0;
-        }
-        if (!wanted || !e.enabled || e.id == "edit.undo" || e.id == "edit.redo") {
+        if (!e.enabled || !commandBelongsTo(CommandSurface::ContextMenu, e.id)) {
             continue;
         }
         if (!lastGroup.empty() && e.group != lastGroup) {

@@ -74,6 +74,10 @@ puis de laisser chaque surface (barre flottante, menu radial, clic droit, menus)
    de points, orientation, guides de direction, convertir, décaler).
 3. L'ordre : barre flottante + tableau d'abord (proposition), puis menu radial, rail, champs, loupe.
 
+## Ce qui est fait
+
+- **Tableau contexte → commandes, première étape** : `core/context_commands.{hpp,cpp}` ; le clic droit de `buildContextMenu` le lit (`kPrefixes` supprimé). Les commandes `node.*`, `text.*`, `satin.rung.*`… sont donc au clic droit. Tests : `test_context_commands.cpp`, `contextMenuListsOnlyActiveSelectionCommands`.
+
 ## Ce qui n'est pas fait
 
-Rien de ce chapitre n'est implémenté dans l'application. La maquette n'est pas du Qt.
+La barre flottante et les autres idées ne sont pas implémentées (en attente des décisions ci-dessus). Le tableau n'a qu'une surface (`ContextMenu`) et pas encore de notion de contexte (texte, satin, outil Nœuds). La maquette n'est pas du Qt.

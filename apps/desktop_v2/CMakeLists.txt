@@ -15,6 +15,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/hit_index.cpp
     core/inspector_model.cpp
     core/command_catalog.cpp
+    core/context_commands.cpp
     core/shape_batch.cpp
     core/transform_batch.cpp
     core/edit_batch.cpp

@@ -1772,6 +1772,12 @@ private slots:
         QVERIFY(ids.contains("edit.delete"));
         QVERIFY(ids.contains("transform.rotate.cw"));
         QVERIFY(ids.contains("order.front"));
+        for (const auto& id : ids) { // le menu ne montre que ce que le tableau de contexte déclare
+            if (id.isEmpty()) {
+                continue; // séparateur
+            }
+            QVERIFY(commandBelongsTo(CommandSurface::ContextMenu, id.toStdString()));
+        }
         QVERIFY(!ids.contains("edit.undo")); // pas de redites du menu Édition
         // Une commande du menu agit comme le menu principal.
         for (auto* a : menu->actions()) {

@@ -536,3 +536,9 @@ encore le desktop principal.
 
 - Retour d'usage : la V2 paraît moins accessible que la V1 (opérations utiles « dans des menus déroulants »). Constat dans le code : le menu clic droit ne retient que quelques préfixes de commandes, et les commandes ajoutées pendant la finalisation ne sont accessibles que par la palette. Détail et décisions en attente : `16-ergonomie-gestes.md`.
 - Maquette interactive `maquettes/gestes.html` (barre flottante, menu radial, rail de bobines, champs à glisser, loupe), testée dans un navigateur sans erreur de console ; **non implémentée en Qt**.
+
+## 2026-11-06 — Session 5 : reprise de la PR 280, tableau contexte → commandes
+
+- Première compilation du lot de la PR 280 (Windows, MSVC, Qt 6.8.3) : une erreur de compilation trouvée et corrigée dans `test_node_edit.cpp` (macro `INFO` avec un ternaire). `test_desktop_v2_core` : 276 cas passent ; `test_desktop_v2_shell` : 131 cas passent.
+- Livré : `core/context_commands` (tableau unique « surface → commandes », sans Qt) ; le clic droit le lit au lieu de `kPrefixes`. `node.*`, `text.*`, `satin.rung.*`, `satin.diagnose`, `fill.guides.*`, `fill.breaks.*`, `arrange.*`, `point.*`, `optimize.order` y apparaissent désormais (grisés/masqués selon `enabled`).
+- Non fait : barre flottante, menu radial, rail de bobines, champs à glisser, loupe (décisions en attente, voir `16`). Rien n'a été vu à l'écran.
