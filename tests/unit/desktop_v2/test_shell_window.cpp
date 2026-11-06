@@ -194,8 +194,9 @@ private slots:
         QVERIFY(menu != nullptr);
         QVERIFY(chooser->isVisibleTo(&w));
         QCOMPARE(chooser->menu(), menu);
-        QCOMPARE(menu->actions().size(),
-                 static_cast<qsizetype>(w.tools().forWorkspace(Workspace::Design).size()));
+        const auto globalToolCount = menu->actions().size();
+        QVERIFY(globalToolCount >=
+                static_cast<qsizetype>(w.tools().forWorkspace(Workspace::Design).size()));
         const auto revision = w.session().revision();
 
         const auto findTool = [menu](const QString& id) -> QAction* {
@@ -220,11 +221,15 @@ private slots:
         QVERIFY(unavailable->toolTip().contains(QStringLiteral("pas encore migré")));
 
         w.setWorkspace(Workspace::Produce);
-        QCOMPARE(menu->actions().size(),
-                 static_cast<qsizetype>(w.tools().forWorkspace(Workspace::Produce).size()));
-        QVERIFY(findTool(QStringLiteral("region.edit")) == nullptr);
-        QVERIFY(findTool(QStringLiteral("select")) != nullptr);
+        QCOMPARE(menu->actions().size(), globalToolCount);
+        auto* crossWorkspaceRegion = findTool(QStringLiteral("region.edit"));
+        QVERIFY(crossWorkspaceRegion != nullptr);
+        QVERIFY(crossWorkspaceRegion->isEnabled());
         QCOMPARE(w.activeToolId(), QStringLiteral("select"));
+        crossWorkspaceRegion->trigger();
+        QCOMPARE(w.workspace(), Workspace::Design);
+        QCOMPARE(w.activeToolId(), QStringLiteral("region.edit"));
+        QCOMPARE(w.session().revision(), revision);
     }
 
     void toolRailUsesDescriptiveNamesAndKeepsAllToolsInBothModes() {
