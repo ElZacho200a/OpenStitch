@@ -867,17 +867,10 @@ void ShellWindow::setWorkspace(Workspace workspace) {
     }
     refreshWindowTitle();
     if (focusWasInRail) {
-        // Preserve focus across dock activation; do not steal it if the user has
-        // focused another control before this deferred callback executes.
-        QTimer::singleShot(0, canvas_, [this] {
-            QWidget* current = QApplication::focusWidget();
-            // Dock activation can move focus to a newly shown rail button.
-            // Restore the canvas unless the user has focused another editing panel.
-            if (current == nullptr || current == canvas_ || current == toolRail_ ||
-                toolRail_->isAncestorOf(current)) {
-                canvas_->setFocus(Qt::OtherFocusReason);
-            }
-        });
+        // Raising the dock can focus its first child after the old toolbar button
+        // was removed. Restore focus synchronously once all workspace UI changes
+        // are complete; do not steal focus when it originally belonged elsewhere.
+        canvas_->setFocus(Qt::OtherFocusReason);
     }
 }
 
