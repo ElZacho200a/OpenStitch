@@ -20,7 +20,7 @@
 #endif
 // clang-format on
 
-namespace openstitch::desktop_v2 {
+namespace openstitch::desktop {
 
 // --- Réglages ---------------------------------------------------------------------------------
 
@@ -288,8 +288,7 @@ private:
 
 QString hintFor(const QString& code) {
     if (code == QLatin1String(agent::code::kAuth)) {
-        return QObject::tr(
-            " Vérifiez la clé dans « Réglages du compagnon IA… » (palette de commandes).");
+        return QObject::tr(" Vérifiez la clé dans les réglages du compagnon IA.");
     }
     if (code == QLatin1String(agent::code::kQuota)) {
         return QObject::tr(" Réessayez plus tard ou vérifiez votre quota chez le fournisseur.");
@@ -467,4 +466,4 @@ void ClaudeCompanionBackend::send(const QString& userText) {
     });
 }
 
-} // namespace openstitch::desktop_v2
+} // namespace openstitch::desktop

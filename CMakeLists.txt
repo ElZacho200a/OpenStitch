@@ -53,6 +53,7 @@ add_subdirectory(libs/mcp)
 add_subdirectory(libs/agent)
 add_subdirectory(apps/cli)
 add_subdirectory(apps/mcp)
+add_subdirectory(apps/companion)
 add_subdirectory(apps/desktop_v2)
 
 if(OPENSTITCH_BUILD_DESKTOP)

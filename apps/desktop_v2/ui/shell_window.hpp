@@ -20,6 +20,7 @@
 #include "action_catalog.hpp"
 #include "arrange_batch.hpp"
 #include "command_catalog.hpp"
+#include "companion_shared.hpp"
 #include "density_service.hpp"
 #include "diagnostics_service.hpp"
 #include "digitize_pipeline.hpp"
@@ -85,8 +86,6 @@ class RegionPanel;
 class AnalysisOverlays;
 class LiveServer;
 class ChatPanel;
-class CompanionBackend;
-class ClaudeCompanionBackend;
 class FeedbackCue;
 
 class ShellWindow : public QMainWindow {

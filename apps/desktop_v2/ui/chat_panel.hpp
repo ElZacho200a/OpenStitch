@@ -10,7 +10,7 @@
 #include <QString>
 #include <QWidget>
 
-#include "companion_backend.hpp"
+#include "companion_shared.hpp"
 
 class QLabel;
 class QLineEdit;
