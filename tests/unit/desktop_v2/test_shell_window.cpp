@@ -44,6 +44,7 @@
 #include "export_settings.hpp"
 #include "fade_service.hpp"
 #include "feedback_cue.hpp"
+#include "floating_action_bar.hpp"
 #include "import_dialog.hpp"
 #include "inspector_model.hpp"
 #include "inspector_panel.hpp"
@@ -1787,6 +1788,28 @@ private slots:
         }
         QCOMPARE(w.session().project().embroidery_objects.size(), size_t(2));
         delete menu;
+    }
+
+    void floatingBarFollowsTheSelectionAndRunsCommands() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        auto* bar = w.findChild<FloatingActionBar*>("floatingActionBar");
+        QVERIFY(bar != nullptr);
+        QVERIFY(bar->isHidden()); // rien de sélectionné
+        const auto id =
+            *createdObjectId(w.session().applyBatch(batchAddRect({0, 0}, 20, 20), "R").report);
+        w.waitForIdle();
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        QVERIFY(bar->buttonCount() >= 3);
+        QVERIFY(!bar->isHidden());
+        auto* dup = bar->findChild<QToolButton*>("floatingAction_edit.duplicate");
+        QVERIFY(dup != nullptr);
+        dup->click();
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(2));
+        w.session().selection().clear();
+        QVERIFY(bar->isHidden());
     }
 
     void rightClickOnAnObjectSelectsItBeforeTheMenuOpens() {

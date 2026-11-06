@@ -79,6 +79,8 @@ add_library(openstitch_desktop_v2_ui STATIC
     ui/shell_window.hpp
     ui/feedback_cue.cpp
     ui/feedback_cue.hpp
+    ui/floating_action_bar.cpp
+    ui/floating_action_bar.hpp
     ui/studio_theme.cpp
     ui/studio_theme.hpp
     ui/preview_canvas.cpp

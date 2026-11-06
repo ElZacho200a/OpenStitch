@@ -542,3 +542,7 @@ encore le desktop principal.
 - Première compilation du lot de la PR 280 (Windows, MSVC, Qt 6.8.3) : une erreur de compilation trouvée et corrigée dans `test_node_edit.cpp` (macro `INFO` avec un ternaire). `test_desktop_v2_core` : 276 cas passent ; `test_desktop_v2_shell` : 131 cas passent.
 - Livré : `core/context_commands` (tableau unique « surface → commandes », sans Qt) ; le clic droit le lit au lieu de `kPrefixes`. `node.*`, `text.*`, `satin.rung.*`, `satin.diagnose`, `fill.guides.*`, `fill.breaks.*`, `arrange.*`, `point.*`, `optimize.order` y apparaissent désormais (grisés/masqués selon `enabled`).
 - Non fait : barre flottante, menu radial, rail de bobines, champs à glisser, loupe (décisions en attente, voir `16`). Rien n'a été vu à l'écran.
+
+## 2026-11-06 — Session 5 (suite) : barre flottante
+
+- Barre flottante contextuelle (objet, texte, satin, nœuds) lue dans le tableau du cœur ; vue à l'écran avec `openstitch_v2 --demo-shapes --select-objects 1 --screenshot` (plateforme `windows`) : `captures/barre-flottante.png`. Rien d'autre inspecté (thème clair, texte, satin, petit écran non vus).

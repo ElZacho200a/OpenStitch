@@ -90,6 +90,7 @@ class AnalysisOverlays;
 class LiveServer;
 class ChatPanel;
 class FeedbackCue;
+class FloatingActionBar;
 
 class ShellWindow : public QMainWindow {
     Q_OBJECT
@@ -306,6 +307,7 @@ public:
 
 protected:
     void closeEvent(QCloseEvent* event) override;
+    bool eventFilter(QObject* watched, QEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override; // Échap : désélectionne les régions
 
 private:
@@ -382,6 +384,7 @@ private:
     QLabel* summary_{nullptr};
     QLabel* notice_{nullptr};
     FeedbackCue* feedbackCue_{nullptr};
+    FloatingActionBar* floatingBar_{nullptr};
     QAction* reducedMotionAction_{nullptr};
     RenderSettings render_;
     class RenderQualityDialog* renderDialog_{nullptr};
@@ -444,6 +447,7 @@ private:
     int analysisErrors_{0};
     void buildCentral();
     void updateGuide();
+    void refreshFloatingBar();
     ThreadPanel* threads_{nullptr};
     CompanionPanel* companionPanel_{nullptr};
     ChatPanel* chatPanel_{nullptr};

@@ -2,6 +2,7 @@
 #include "shell_window.hpp"
 #include "direction_guides.hpp"
 #include "file_io.hpp"
+#include "floating_action_bar.hpp"
 #include "render_quality_dialog.hpp"
 #include "studio_theme.hpp"
 
@@ -205,6 +206,10 @@ ShellWindow::ShellWindow(QWidget* parent)
     canvas_ = new PreviewCanvas(this);
     canvas_->setObjectName(QStringLiteral("previewCanvas"));
     buildCentral();
+    floatingBar_ = new FloatingActionBar(canvas_->viewport());
+    canvas_->viewport()->installEventFilter(this);
+    connect(floatingBar_, &FloatingActionBar::chosen, this,
+            [this](const QString& id) { runCommand(id); });
 
     buildMenus();
     buildWorkspaceBar();
@@ -219,6 +224,7 @@ ShellWindow::ShellWindow(QWidget* parent)
         }
         updateSelectionBoxes();
         updatePointMarkers();
+        refreshFloatingBar();
     });
     regions_ = std::make_unique<RegionEditController>(
         RegionEditController::Host{
@@ -1280,6 +1286,47 @@ void ShellWindow::buildCentral() {
     updateGuide();
 }
 
+void ShellWindow::refreshFloatingBar() {
+    if (floatingBar_ == nullptr) {
+        return;
+    }
+    // Contextes actifs déduits de la sélection ; la liste des commandes vient du tableau du cœur.
+    std::vector<CommandContext> contexts;
+    const auto state = inspect(session_.project(), session_.selection().targets());
+    if (!state.ids.empty()) {
+        contexts.push_back(CommandContext::Object);
+    }
+    if (selectedTextOwner(session_.project(), state.ids).has_value()) {
+        contexts.push_back(CommandContext::Text);
+    }
+    if (const auto target = pointTarget();
+        target && satinRungCount(session_.project(), *target) >= 0) {
+        contexts.push_back(CommandContext::Satin);
+    }
+    if (nodes_ != nullptr && nodes_->selectedCount() > 0) {
+        contexts.push_back(CommandContext::Nodes);
+    }
+    const auto wanted = floatingBarCommands(contexts);
+    const auto all = commandEntries();
+    std::vector<CommandEntry> shown;
+    for (const auto id : wanted) {
+        for (const auto& e : all) {
+            if (e.id == id && e.enabled) {
+                shown.push_back(e);
+            }
+        }
+    }
+    floatingBar_->setEntries(shown);
+}
+
+bool ShellWindow::eventFilter(QObject* watched, QEvent* event) {
+    if (floatingBar_ != nullptr && event->type() == QEvent::Resize &&
+        watched == canvas_->viewport()) {
+        floatingBar_->reposition();
+    }
+    return QMainWindow::eventFilter(watched, event);
+}
+
 void ShellWindow::updateGuide() {
     if (guideSteps_ == nullptr) {
         return;
@@ -1632,6 +1679,7 @@ void ShellWindow::refreshActionStates() {
     saveAction_->setEnabled(documentOpen_);
     exportAction_->setEnabled(hasObjects);
     updateGuide();
+    refreshFloatingBar();
 }
 
 void ShellWindow::rebuildObjectList() {

@@ -78,6 +78,9 @@ puis de laisser chaque surface (barre flottante, menu radial, clic droit, menus)
 
 - **Tableau contexte → commandes, première étape** : `core/context_commands.{hpp,cpp}` ; le clic droit de `buildContextMenu` le lit (`kPrefixes` supprimé). Les commandes `node.*`, `text.*`, `satin.rung.*`… sont donc au clic droit. Tests : `test_context_commands.cpp`, `contextMenuListsOnlyActiveSelectionCommands`.
 
+- **Barre flottante** : `ui/floating_action_bar.*` ; contextes `Object`, `Text`, `Satin`, `Nodes` déclarés dans `core/context_commands` (`floatingBarCommands`), déduits de la sélection par `ShellWindow::refreshFloatingBar`. Fixée en haut et au centre du canevas (choix : ne jamais masquer l'objet sélectionné ; la suivre au plus près reste à juger). Ne montre que les commandes actives. Test : `floatingBarFollowsTheSelectionAndRunsCommands`. Capture réelle : `captures/barre-flottante.png`.
+- Limite : la barre ne se rafraîchit pas quand seuls des nœuds sont choisis sans changer la sélection d'objets.
+
 ## Ce qui n'est pas fait
 
-La barre flottante et les autres idées ne sont pas implémentées (en attente des décisions ci-dessus). Le tableau n'a qu'une surface (`ContextMenu`) et pas encore de notion de contexte (texte, satin, outil Nœuds). La maquette n'est pas du Qt.
+Le menu radial, le rail de bobines, les champs à glisser et la loupe ne sont pas implémentés (en attente des décisions ci-dessus). La maquette n'est pas du Qt.
