@@ -534,8 +534,8 @@ void ShellWindow::buildWorkspaceBar() {
     allToolsButton->setIcon(toolIcon("select", palette().color(QPalette::ButtonText)));
     allToolsButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     allToolsButton->setPopupMode(QToolButton::InstantPopup);
-    allToolsButton->setToolTip(tr("Tous les outils de cet espace, même si le rail est tronqué"));
-    allToolsButton->setAccessibleName(tr("Afficher tous les outils de l'espace courant"));
+    allToolsButton->setToolTip(tr("Tous les outils, quel que soit l'espace actif"));
+    allToolsButton->setAccessibleName(tr("Afficher tous les outils de broderie"));
     allToolsMenu_ = new QMenu(allToolsButton);
     allToolsMenu_->setObjectName(QStringLiteral("allToolsMenu"));
     allToolsButton->setMenu(allToolsMenu_);
@@ -903,15 +903,6 @@ void ShellWindow::rebuildToolRail() {
             a->setShortcut(keyFor(tool->shortcut));
         }
         a->setToolTip(tip);
-        auto* menuAction = allToolsMenu_->addAction(a->icon(), label);
-        menuAction->setObjectName(QStringLiteral("allTools_") + fromUtf8(tool->id));
-        menuAction->setData(a->data());
-        menuAction->setEnabled(implemented);
-        menuAction->setToolTip(tip);
-        menuAction->setStatusTip(tip);
-        connect(menuAction, &QAction::triggered, this, [this, id = fromUtf8(tool->id)] {
-            (void)runCommand(QStringLiteral("tool.") + id);
-        });
         toolRail_->addAction(a);
         if (auto* button = toolRail_->widgetForAction(a)) {
             button->setAccessibleName(label);
@@ -930,6 +921,36 @@ void ShellWindow::rebuildToolRail() {
             activeToolStatus_->setText(a->property("fullLabel").toString());
             applyToolToCanvas();
         });
+    }
+    // The rail stays contextual, but the menu is global: users can reach every
+    // migrated tool without first knowing which workspace contains it.
+    QSet<QString> menuToolIds;
+    for (const auto w : kWorkspaces) {
+        for (const auto* tool : registry_.forWorkspace(w)) {
+            const QString id = fromUtf8(tool->id);
+            if (menuToolIds.contains(id)) {
+                continue;
+            }
+            menuToolIds.insert(id);
+            const QString label = fromUtf8(tool->label);
+            const bool implemented = isToolImplemented(tool->id);
+            auto* menuAction = allToolsMenu_->addAction(
+                toolIcon(tool->id, toolRail_->palette().color(QPalette::ButtonText)), label);
+            menuAction->setObjectName(QStringLiteral("allTools_") + id);
+            menuAction->setData(id);
+            menuAction->setEnabled(implemented);
+            QString tip = tool->shortcut.empty()
+                              ? label
+                              : label + QStringLiteral(" (%1)").arg(fromUtf8(tool->shortcut));
+            if (!implemented) {
+                tip += tr(" — pas encore migré (docs/desktop-v2/02-inventaire-et-parite.md)");
+            }
+            menuAction->setToolTip(tip);
+            menuAction->setStatusTip(tip);
+            connect(menuAction, &QAction::triggered, this, [this, id] {
+                (void)runCommand(QStringLiteral("tool.") + id);
+            });
+        }
     }
     if (!activeStillThere) {
         activeTool_ = QStringLiteral("select");
