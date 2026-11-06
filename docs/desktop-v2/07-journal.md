@@ -485,3 +485,7 @@ encore le desktop principal.
 - **Effet de bord utile** : le garde `check_companion_security` ne regardait que `apps/desktop/…` ; le chat, le pont et la copie V2 y échappaient. Il couvre maintenant `apps/companion`, le pont et le chat de la V2 (42 fichiers examinés, aucune violation).
 - Message d'erreur de clé rendu neutre (« réglages du compagnon IA »), car il citait un menu de la V1 qui n'existe pas en V2.
 - **À savoir** : `update_translations` (lupdate) ne scanne que les sources de `openstitch_desktop_widgets` ; les chaînes de la nouvelle bibliothèque n'y sont plus. Les traductions déjà présentes restent valides à l'exécution, mais la prochaine mise à jour des `.ts` les marquerait obsolètes tant que la bibliothèque n'est pas ajoutée aux sources de lupdate (option `SOURCE_TARGETS` de `qt_add_translations`, non essayée ici faute de Qt).
+
+## 2026-11-06 — Session 2 : sélection après « Ajouter du texte »
+
+- Trouvé par la CI Windows (QTest `textEditCommandNeedsAWholeTextAndRewritesItInOneStep`) : l'opération `add_text` rend l'identifiant de l'objet TEXTE, que la fenêtre sélectionnait comme s'il s'agissait d'un objet de broderie. Résultat réel, pas seulement un défaut de test : après avoir ajouté un texte, « Modifier le texte » restait grisé tant qu'on ne cliquait pas une lettre. La fenêtre sélectionne maintenant les lettres du texte créé ou modifié.

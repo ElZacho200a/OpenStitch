@@ -2706,7 +2706,18 @@ bool ShellWindow::runActionWith(const QString& id, const Values& values) {
     }
     std::vector<Target> created;
     for (const auto newId : createdObjectIds(result.report)) {
-        created.push_back({TargetKind::EmbroideryObject, newId});
+        if (session_.project().findText(ObjectId{newId}) != nullptr) {
+            // « Ajouter / modifier du texte » rend l'identifiant de l'objet TEXTE : on sélectionne
+            // ses lettres (objets de broderie), ce que l'on peut déplacer et rééditer.
+            for (const auto& emb : session_.project().embroidery_objects) {
+                const auto* vec = session_.project().findObject(emb.source_vector);
+                if (vec != nullptr && vec->text_owner && vec->text_owner->value == newId) {
+                    created.push_back({TargetKind::EmbroideryObject, emb.id.value});
+                }
+            }
+        } else {
+            created.push_back({TargetKind::EmbroideryObject, newId});
+        }
     }
     if (!created.empty()) {
         session_.selection().replace(std::move(created));
