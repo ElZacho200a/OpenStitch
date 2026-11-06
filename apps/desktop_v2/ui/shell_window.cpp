@@ -2978,7 +2978,9 @@ bool ShellWindow::runCommand(const QString& id) {
         } else if (id == QLatin1String("text.edit")) {
             runAction(id);
         } else if (id == QLatin1String("export.options")) {
-            auto* dialog = new ExportOptionsDialog(session_, this);
+            auto* dialog = new ExportOptionsDialog(
+                session_, stateDir_.empty() ? std::filesystem::path{} : stateDir_ / "hoops.txt",
+                this);
             dialog->setAttribute(Qt::WA_DeleteOnClose);
             dialog->show();
         } else if (id == QLatin1String("export.check")) {

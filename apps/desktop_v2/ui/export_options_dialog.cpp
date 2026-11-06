@@ -3,13 +3,16 @@
 
 #include <algorithm>
 #include <optional>
+#include <utility>
 
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
+#include <QInputDialog>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QVBoxLayout>
@@ -33,8 +36,12 @@ QDoubleSpinBox* mmSpin(QWidget* parent, double lo, double hi, double step, int d
 }
 } // namespace
 
-ExportOptionsDialog::ExportOptionsDialog(DocumentSession& session, QWidget* parent)
-    : QDialog(parent), session_(session) {
+ExportOptionsDialog::ExportOptionsDialog(DocumentSession& session,
+                                         std::filesystem::path hoopStoreFile, QWidget* parent)
+    : QDialog(parent), session_(session), hoopStoreFile_(std::move(hoopStoreFile)) {
+    if (!hoopStoreFile_.empty()) {
+        userHoops_ = loadUserHoops(hoopStoreFile_);
+    }
     setObjectName("exportOptionsDialog");
     setWindowTitle(tr("Options machine"));
     auto* root = new QVBoxLayout(this);
@@ -51,11 +58,18 @@ ExportOptionsDialog::ExportOptionsDialog(DocumentSession& session, QWidget* pare
 
     hoop_ = new QComboBox(this);
     hoop_->setObjectName("exportHoop");
-    hoop_->addItem(tr("Personnalisé (inchangé)"), QString());
-    for (const auto& h : hoopChoices()) {
-        hoop_->addItem(fromUtf8(h.family) + " — " + fromUtf8(h.name), fromUtf8(h.id));
-    }
+    rebuildHoopChoices();
     form->addRow(tr("Cadre :"), hoop_);
+    auto* mine = new QHBoxLayout;
+    saveHoop_ = new QPushButton(tr("Enregistrer le cadre actuel…"), this);
+    saveHoop_->setObjectName("exportSaveHoop");
+    removeHoop_ = new QPushButton(tr("Supprimer ce cadre perso"), this);
+    removeHoop_->setObjectName("exportRemoveHoop");
+    saveHoop_->setEnabled(!hoopStoreFile_.empty());
+    removeHoop_->setEnabled(false);
+    mine->addWidget(saveHoop_);
+    mine->addWidget(removeHoop_);
+    form->addRow(QString(), mine);
     margin_ = mmSpin(this, 0.0, 100.0, 0.5, 1);
     form->addRow(tr("Marge de sécurité :"), margin_);
 
@@ -107,6 +121,27 @@ ExportOptionsDialog::ExportOptionsDialog(DocumentSession& session, QWidget* pare
     root->addWidget(feedback_);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Apply | QDialogButtonBox::Close, this);
+    connect(hoop_, &QComboBox::currentIndexChanged, this, [this] {
+        removeHoop_->setEnabled(hoop_->currentData().toString().startsWith(QLatin1String("user:")));
+    });
+    connect(saveHoop_, &QPushButton::clicked, this, [this] {
+        bool ok = false;
+        const QString name = QInputDialog::getText(this, tr("Mes cadres"), tr("Nom du cadre :"),
+                                                   QLineEdit::Normal, QString(), &ok);
+        if (ok) {
+            const QString refusal = saveCurrentHoopAs(name);
+            feedback_->setText(refusal.isEmpty() ? tr("Cadre « %1 » enregistré.").arg(name)
+                                                 : refusal);
+        }
+    });
+    connect(removeHoop_, &QPushButton::clicked, this, [this] {
+        const QString key = hoop_->currentData().toString();
+        if (key.startsWith(QLatin1String("user:"))) {
+            const QString refusal = removeUserHoopNamed(key.mid(5));
+            feedback_->setText(refusal.isEmpty() ? tr("Cadre supprimé de « Mes cadres ».")
+                                                 : refusal);
+        }
+    });
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::accept);
     connect(buttons->button(QDialogButtonBox::Apply), &QPushButton::clicked, this, [this] {
         const QString refusal = apply();
@@ -160,7 +195,12 @@ QString ExportOptionsDialog::apply() {
         }
     };
     note(applyMachine(session_, machine_->currentData().toString().toStdString()));
-    if (const QString hoopId = hoop_->currentData().toString(); !hoopId.isEmpty()) {
+    if (const QString hoopId = hoop_->currentData().toString();
+        hoopId.startsWith(QLatin1String("user:"))) {
+        if (const auto* mine = findUserHoop(userHoops_, hoopId.mid(5).toStdString())) {
+            note(applyUserHoop(session_, *mine)); // sa propre marge : celle enregistrée
+        }
+    } else if (!hoopId.isEmpty()) {
         note(applyHoop(session_, hoopId.toStdString(), margin_->value()));
     }
     ExportOptions o = exportOptionsOf(session_.project());
@@ -182,6 +222,60 @@ QString ExportOptionsDialog::apply() {
     note(setExportOptions(session_, o));
     refreshCheck();
     return problem;
+}
+
+void ExportOptionsDialog::rebuildHoopChoices() {
+    const QString keep = hoop_->currentData().toString();
+    hoop_->blockSignals(true);
+    hoop_->clear();
+    hoop_->addItem(tr("Personnalisé (inchangé)"), QString());
+    for (const auto& h : hoopChoices()) {
+        hoop_->addItem(fromUtf8(h.family) + " — " + fromUtf8(h.name), fromUtf8(h.id));
+    }
+    for (const auto& h : userHoops_) {
+        hoop_->addItem(tr("Mes cadres — %1").arg(fromUtf8(h.name)), "user:" + fromUtf8(h.name));
+    }
+    hoop_->setCurrentIndex(std::max(0, hoop_->findData(keep)));
+    hoop_->blockSignals(false);
+}
+
+bool ExportOptionsDialog::persistUserHoops() {
+    return hoopStoreFile_.empty() || saveUserHoops(hoopStoreFile_, userHoops_);
+}
+
+QString ExportOptionsDialog::saveCurrentHoopAs(const QString& name) {
+    if (hoopStoreFile_.empty()) {
+        return tr("Les cadres personnels ne sont pas disponibles (dossier de préférences absent).");
+    }
+    const QString trimmed = name.trimmed();
+    auto next = userHoops_;
+    const auto r =
+        addUserHoop(next, userHoopFromProject(session_.project(), trimmed.toStdString()));
+    if (!r.ok) {
+        return fromUtf8(r.message);
+    }
+    const auto previous = std::exchange(userHoops_, std::move(next));
+    if (!persistUserHoops()) {
+        userHoops_ = previous; // rien n'est promis si le fichier n'a pas pu être écrit
+        return tr("Écriture impossible : « Mes cadres » n'a pas été modifié.");
+    }
+    rebuildHoopChoices();
+    hoop_->setCurrentIndex(std::max(0, hoop_->findData("user:" + trimmed)));
+    return {};
+}
+
+QString ExportOptionsDialog::removeUserHoopNamed(const QString& name) {
+    auto next = userHoops_;
+    if (!removeUserHoop(next, name.toStdString())) {
+        return tr("Ce cadre n'est pas dans « Mes cadres ».");
+    }
+    const auto previous = std::exchange(userHoops_, std::move(next));
+    if (!persistUserHoops()) {
+        userHoops_ = previous;
+        return tr("Écriture impossible : « Mes cadres » n'a pas été modifié.");
+    }
+    rebuildHoopChoices();
+    return {};
 }
 
 void ExportOptionsDialog::chooseHoop(const QString& hoopId, double marginMm) {

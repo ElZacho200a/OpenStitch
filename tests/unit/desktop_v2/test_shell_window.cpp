@@ -2274,6 +2274,54 @@ private slots:
         QVERIFY(fadeAxisView(w.session().project(), id)->curve == FadeCurve::Steep);
     }
 
+    void myHoopsAreSavedReloadedAppliedAndRemoved() {
+        const auto dir = std::filesystem::temp_directory_path() / "openstitch_v2_my_hoops";
+        std::filesystem::remove_all(dir);
+        const auto file = dir / "hoops.txt";
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(applyHoop(w.session(), "round-100", 4.0).ok);
+        {
+            ExportOptionsDialog dialog(w.session(), file);
+            const int libraryOnly = dialog.hoopCount();
+            QCOMPARE(dialog.userHoopCount(), 0);
+            QVERIFY(!dialog.saveCurrentHoopAs("  ").isEmpty());  // nom vide : refus clair
+            QVERIFY(!dialog.saveCurrentHoopAs("a;b").isEmpty()); // « ; » interdit
+            QVERIFY(dialog.saveCurrentHoopAs("Rond atelier").isEmpty());
+            QCOMPARE(dialog.userHoopCount(), 1);
+            QCOMPARE(dialog.hoopCount(), libraryOnly + 1);
+            QVERIFY(std::filesystem::exists(file));
+            QVERIFY(!dialog.removeUserHoopNamed("inconnu").isEmpty());
+        }
+        // Un autre cadre est appliqué, puis « Mes cadres » le ramène en une étape d'annulation.
+        QVERIFY(applyHoop(w.session(), "rect-130x180", 0.0).ok);
+        QCOMPARE(w.session().project().canvas.width.value, 130'000);
+        {
+            ExportOptionsDialog dialog(w.session(), file); // relu depuis le fichier
+            QCOMPARE(dialog.userHoopCount(), 1);
+            dialog.chooseHoop("user:Rond atelier", 0.0);
+            const auto depth = w.session().undoNames().size();
+            QVERIFY(dialog.apply().isEmpty());
+            QCOMPARE(w.session().undoNames().size(), depth + 1);
+            QCOMPARE(w.session().project().canvas.width.value, 100'000);
+            QCOMPARE(w.session().project().canvas.margin.value, 4'000);
+            QVERIFY(w.session().project().canvas.shape == openstitch::document::HoopShape::Ellipse);
+            QVERIFY(dialog.removeUserHoopNamed("rond ATELIER")
+                        .isEmpty()); // sans tenir compte de la casse
+            QCOMPARE(dialog.userHoopCount(), 0);
+        }
+        {
+            ExportOptionsDialog dialog(w.session(), file);
+            QCOMPARE(dialog.userHoopCount(), 0); // la suppression est bien écrite
+        }
+        {
+            ExportOptionsDialog noStore(w.session()); // sans dossier de préférences : refus clair
+            QVERIFY(!noStore.saveCurrentHoopAs("X").isEmpty());
+        }
+        std::filesystem::remove_all(dir);
+    }
+
     void threadPaletteDialogAssignsChartThreadsInOneUndoStep() {
         ShellWindow w;
         w.show();

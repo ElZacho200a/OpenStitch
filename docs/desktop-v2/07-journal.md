@@ -473,3 +473,8 @@ encore le desktop principal.
 - `paintRegionStroke` (cœur) : disques de rayon réglable le long du trait, pixels repeints et leurs anciennes étiquettes mémorisés (annulation exacte, comptes de pixels recalculés des deux côtés, ordre des étiquettes déterministe). Refuse d'effacer entièrement une région voisine (une région vide casserait la carte ; « Supprimer » existe pour cela). Outil `region.brush` (U) sur le geste « trait » du canevas ; la région se choisit avec l'outil Régions (X).
 - Choix : le pinceau ne touche que la carte d'étiquettes, jamais les objets : la régénération reste l'étape explicite (et annulable) déjà en place.
 - Non fait : segmentation IA (SAM), toujours hors priorité produit ; le moteur et la V1 la portent, la V2 n'affiche pas encore son état de disponibilité.
+
+## 2026-11-06 — Session 2 : « Mes cadres »
+
+- `core/hoop_store` : liste de cadres personnels (nom, forme, dimensions, rayon, marge) dans `hoops.txt` du dossier d'état, à côté des préférences ; un cadre = une ligne `nom;forme;l;h;rayon;marge`. Lecture tolérante (une ligne corrompue n'en cache pas une autre), écriture atomique, nom unique sans tenir compte de la casse, 50 cadres au plus, rien n'est promis si l'écriture échoue (la liste en mémoire revient à l'état précédent).
+- Choix : un cadre personnel porte SA marge, celle enregistrée ; le champ « marge » de la fenêtre ne s'applique qu'aux cadres de la bibliothèque. Les cadres personnels vivent hors document : ouvrir un projet sur une autre machine n'en a pas besoin, le cadre est déjà écrit dans le projet.
