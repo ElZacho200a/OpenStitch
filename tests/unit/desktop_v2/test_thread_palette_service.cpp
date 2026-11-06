@@ -49,7 +49,7 @@ TEST_CASE("charts are listed and threads are found by name or reference", "[desk
 
 TEST_CASE("nearest threads are sorted by distance and an exact colour is distance zero",
           "[desktop_v2][palette]") {
-    const auto& chart = chartInfos().front();
+    const auto chart = chartInfos().front(); // copie : chartInfos() renvoie un temporaire
     const auto sample = searchThreads(chart.id, "", 1).front();
     const auto near = nearestThreads(sample.rgb, chart.id, 6);
     REQUIRE(near.size() == 6);
@@ -69,7 +69,7 @@ TEST_CASE("assigning a chart thread recolours every object of the thread in one 
     REQUIRE(s.applyBatch(batchAddRect({40, 0}, 20, 10), "B").committed);
     const auto entries = threadEntries(s.project());
     REQUIRE_FALSE(entries.empty());
-    const auto& chart = chartInfos().front();
+    const auto chart = chartInfos().front(); // copie : chartInfos() renvoie un temporaire
     const auto pick = searchThreads(chart.id, "", 3).back();
     const auto depth = s.undoNames().size();
     REQUIRE(assignChartThread(s, 0, chart.id, pick.code).ok);
@@ -107,8 +107,8 @@ TEST_CASE("blending two colours mixes in linear light and clamps the ratio",
 
 TEST_CASE("a blend suggestion is deterministic and never claims to beat a better single thread",
           "[desktop_v2][palette]") {
-    const auto& chart = chartInfos().front();
-    const Rgb target{123, 77, 201}; // une couleur quelconque
+    const auto chart = chartInfos().front(); // copie : chartInfos() renvoie un temporaire
+    const Rgb target{123, 77, 201};          // une couleur quelconque
     const auto a = suggestBlend(target, chart.id);
     const auto b = suggestBlend(target, chart.id);
     REQUIRE(a.has_value());
