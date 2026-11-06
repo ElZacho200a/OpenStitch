@@ -67,6 +67,7 @@ private:
     bool panMode_{false};
     bool spaceDown_{false};
     bool dragging_{false};
+    bool fitPending_{true};
     QPointF lastMouse_;
 };
 

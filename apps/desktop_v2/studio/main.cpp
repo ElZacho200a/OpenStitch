@@ -29,6 +29,9 @@ int main(int argc, char** argv) {
     parser.addOption({QStringLiteral("software"), QStringLiteral("Rendu CPU Qt Quick explicite")});
     parser.addOption({QStringLiteral("screenshot"),
                       QStringLiteral("Capture réelle Qt, puis quitte"), QStringLiteral("png")});
+    parser.addOption({QStringLiteral("select-object"),
+                      QStringLiteral("Sélection initiale par identifiant (recette reproductible)"),
+                      QStringLiteral("id")});
     parser.process(app);
     if (parser.isSet(QStringLiteral("software"))) {
         QQuickWindow::setSceneGraphBackend(QStringLiteral("software"));
@@ -48,6 +51,14 @@ int main(int argc, char** argv) {
     auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().first());
     if (!window) {
         return 2;
+    }
+    if (parser.isSet(QStringLiteral("select-object"))) {
+        const auto id = parser.value(QStringLiteral("select-object"));
+        QObject::connect(&controller, &StudioController::loadFinished, &app, [&, id](bool success) {
+            if (success) {
+                controller.selectObject(id);
+            }
+        });
     }
     if (!parser.positionalArguments().isEmpty()) {
         controller.openProject(QUrl::fromLocalFile(parser.positionalArguments().first()));
@@ -80,6 +91,10 @@ int main(int argc, char** argv) {
                 window->update();
                 return;
             }
+            qInfo("Studio capture: logical=%dx%d image=%dx%d DPR=%.2f backend=%s", window->width(),
+                  window->height(), screenshot.width(), screenshot.height(),
+                  window->effectiveDevicePixelRatio(),
+                  canvas ? qPrintable(canvas->backendName()) : "none");
             app.exit(screenshot.save(output) ? 0 : 4);
         });
         capture.start();

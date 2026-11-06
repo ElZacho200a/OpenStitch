@@ -121,24 +121,30 @@ si une plateforme cible exige des API privées fragiles, ou si l'accessibilité/
 le remplacement du front Widgets. Comparer alors une autre implémentation du contrat de canevas,
 sans réécrire le moteur ni la session.
 
-### Première mesure, portée de l'acceptation expérimentale
+### Mesures du prototype, portée de l'acceptation expérimentale
 
-Le [rapport du 2026-11-06](../desktop-v2/18-studio-benchmarks.md#résultats-et-critères) et ses
-[données brutes](../desktop-v2/benchmarks/2026-11-06/README.md) proviennent d'une exécution native
+Le [rapport du 2026-11-07](../desktop-v2/18-studio-benchmarks.md#résultats-et-critères) et ses
+[données brutes finales MSAA 4×](../desktop-v2/benchmarks/2026-11-07-msaa4/README.md) proviennent d'une exécution native
 Release Qt 6.8.3 / Windows 11 25H2 : Ryzen 7 7700X, RTX 5060 Ti réellement sélectionnée par
-D3D11, écran 59,997 Hz et DPR 1,5. Les cinq scènes atteignent environ 60 swaps/s ; les buffers
+D3D11 avec 4 échantillons MSAA, écran 59,997 Hz et DPR 1,5. Les cinq scènes approchent la
+fréquence de l'écran (59,85 à 60,00 swaps/s) ; les buffers
 de points sont construits une fois, avec un compteur inchangé après les gestes de caméra.
 
-Le p95 local varie de 16,657 à 16,734 ms : **la cible stricte < 16,7 ms n'est pas uniformément
-validée**, notamment sur Tentabrode. Les p95 d'intervalle de trame vont de 16,791 à 16,839 ms.
-La première frame Quick arrive en 287 à 466 ms après installation ; la mémoire résidente du
+Le p95 local varie de 16,749 à 18,888 ms : **la cible stricte < 16,7 ms n'est validée sur aucune
+scène dans cette passe**, y compris Tentabrode (16,829 ms). Les p95 d'intervalle de trame vont
+de 16,914 à 19,388 ms. La première frame Quick arrive en 260 à 398 ms après installation ; la mémoire résidente du
 processus Quick est supérieure à celle du cas Widgets dans cette passe. Les mesures Widgets
-sont des fins de peinture CPU (p95 1,549 à 2,070 ms), sans mesure de leur présentation à l'écran.
+sont des fins de peinture CPU (p95 1,562 à 2,165 ms), sans mesure de leur présentation à l'écran.
 Elles ne démontrent donc aucune supériorité globale d'un front. Temps GPU, mémoire GPU,
 fréquences élevées, autres plateformes et répétabilité entre passes restent non mesurés.
+Un essai OpenGL 4.6 NVIDIA à 100k points et MSAA 4× fonctionne également (120 frames après
+20 gestes de chauffe : 59,98 swaps/s, p95 trame 17,283 ms, p95 local 17,221 ms). Son protocole
+plus court ne permet pas de comparer statistiquement les backends. La première passe MSAA 1×
+est conservée séparément ; une passe par configuration ne permet pas d'imputer leurs écarts
+au seul MSAA.
 
-Le prototype justifie l'exploration et le maintien de la cible expérimentale ; cette première
-mesure ne valide pas le retrait de Widgets, la généralisation multiplateforme ou la parité du
+Le prototype justifie l'exploration et le maintien de la cible expérimentale ; ces mesures
+ne valident pas le retrait de Widgets, la généralisation multiplateforme ou la parité du
 shell. Les critères ci-dessus continuent de s'appliquer.
 
 ## Références techniques

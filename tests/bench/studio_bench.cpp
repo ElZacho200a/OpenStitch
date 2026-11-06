@@ -10,6 +10,7 @@
 #include <QPaintEvent>
 #include <QQuickWindow>
 #include <QSGRendererInterface>
+#include <QScopeGuard>
 #include <QScreen>
 #include <QSurfaceFormat>
 #include <QSysInfo>
@@ -227,6 +228,18 @@ QJsonObject run(const Options& options, const QString& name,
             QTimer::singleShot(0, &loop, [&] { requestFrame(); });
         }
     };
+    const auto cleanup = qScopeGuard([&] {
+        QObject::disconnect(swapConnection);
+        // Stop the render thread before captured state dies, including on error/timeout.
+        if (quick) {
+            quick->hide();
+            quick.reset();
+        }
+        if (widgets) {
+            widgets->painted = {};
+            widgets->hide();
+        }
+    });
     if (options.backend == "quick") {
         quick = std::make_unique<QQuickWindow>();
         auto format = quick->format();
@@ -305,11 +318,22 @@ QJsonObject run(const Options& options, const QString& name,
         result["completion_signal"] = "PreviewCanvas::paintEvent returned (CPU paint only)";
     }
     loop.exec();
-    QObject::disconnect(swapConnection);
     if (timedOut || intervals.empty()) {
         throw std::runtime_error(
             "No completed native frames before timeout; do not use offscreen FPS");
     }
+    if (quick && quick->rendererInterface()->graphicsApi() == QSGRendererInterface::Null) {
+        throw std::runtime_error("The null RHI backend cannot measure a displayed canvas");
+    }
+    QScreen* actualScreen = quick ? quick->screen() : widgets->screen();
+    result["window_screen"] = actualScreen ? actualScreen->name() : QString();
+    result["window_screen_refresh_hz"] =
+        actualScreen ? QJsonValue(actualScreen->refreshRate()) : QJsonValue(QJsonValue::Null);
+    result["window_device_pixel_ratio"] =
+        quick ? quick->effectiveDevicePixelRatio() : widgets->devicePixelRatioF();
+    result["viewport_logical_px"] =
+        quick ? QJsonArray{gpu->width(), gpu->height()}
+              : QJsonArray{widgets->viewport()->width(), widgets->viewport()->height()};
     double elapsed = 0;
     for (double value : intervals) {
         elapsed += value;
@@ -334,14 +358,6 @@ QJsonObject run(const Options& options, const QString& name,
     result["process_peak_working_set_mb"] = workingSetMb(true);
     result["gpu_memory_bytes"] = QJsonValue::Null;
     result["gpu_execution_ms"] = QJsonValue::Null;
-    if (quick) {
-        quick->hide();
-        quick.reset(); // stop the render thread while all captured benchmark state is alive
-    }
-    if (widgets) {
-        widgets->painted = {};
-        widgets->hide();
-    }
     std::fprintf(stderr, "%s / %s: %.2f completions/s, median %.3f ms, p95 %.3f ms\n",
                  qPrintable(options.backend), qPrintable(name), result["completion_fps"].toDouble(),
                  percentile(intervals, 0.5), percentile(intervals, 0.95));

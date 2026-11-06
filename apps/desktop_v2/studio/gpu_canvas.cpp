@@ -52,7 +52,10 @@ void GpuCanvas::setController(StudioController* controller) {
         disconnect(controller_, nullptr, this, nullptr);
     }
     controller_ = controller;
+    fitPending_ = true;
     if (controller_) {
+        connect(controller_, &StudioController::documentReplaced, this,
+                [this] { fitPending_ = true; });
         connect(controller_, &StudioController::sceneChanged, this,
                 [this] { setScene(controller_->scene()); });
         connect(controller_, &StudioController::selectionChanged, this,
@@ -76,9 +79,8 @@ void GpuCanvas::setScene(std::shared_ptr<const StudioSceneSnapshot> scene) {
     if (scene_ == scene) {
         return;
     }
-    const bool first = !scene_;
     scene_ = std::move(scene);
-    if (first && scene_) {
+    if (fitPending_ && scene_) {
         fitDesign();
     }
     update();
@@ -103,11 +105,12 @@ void GpuCanvas::setPanMode(bool value) {
 }
 
 void GpuCanvas::fitDesign() {
-    if (!scene_) {
+    if (!scene_ || width() <= 0 || height() <= 0) {
         return;
     }
     camera_.setViewport(width(), height());
     camera_.fit(scene_->bounds);
+    fitPending_ = false;
     viewUpdated();
 }
 
@@ -129,7 +132,11 @@ void GpuCanvas::viewUpdated() {
 void GpuCanvas::geometryChange(const QRectF& next, const QRectF& previous) {
     QQuickItem::geometryChange(next, previous);
     camera_.setViewport(next.width(), next.height());
-    viewUpdated();
+    if (fitPending_ && scene_ && next.width() > 0 && next.height() > 0) {
+        fitDesign();
+    } else {
+        viewUpdated();
+    }
 }
 
 QSGNode* GpuCanvas::updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData*) {

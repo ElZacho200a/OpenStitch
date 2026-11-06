@@ -59,6 +59,8 @@ Commande ciblée pour diagnostic :
 | `cpu_scene_*_bytes`, `cached_image_bytes` | Tailles de stockage connues de l'instantané/image ; ne couvrent pas la totalité de Qt, du projet et des caches moteur. |
 | `process_working_set_mb`, `process_peak_working_set_mb` | Mémoire résidente/pic du processus Windows, après les frames. Le banc conserve aussi des données de contrôle ; aucune attribution VRAM n'est déduite de ces chiffres. |
 | `gpu_memory_bytes`, `gpu_execution_ms` | `null` : aucune mesure portable de mémoire VRAM ou timer GPU implémentée. |
+| `viewport_logical_px`, `window_device_pixel_ratio`, `window_screen` | Métadonnées de la fenêtre réellement utilisée par chaque cas, pour contrôler l'équivalence entre fronts. |
+| `msaa_samples_requested` | Nombre demandé par le banc Quick ; le nombre réellement obtenu est vérifié dans le journal Qt, pas déduit de cette demande. |
 
 Les médianes/p95 utilisent le rang supérieur (`ceil(p × N)`) sur les échantillons triés. Les
 données brutes sont incluses ; conserver aussi la variance entre au moins trois exécutions avant
@@ -79,13 +81,17 @@ mesure du backend logiciel doit être étiquetée CPU et ne peut pas valider la 
 
 ## Résultats et critères
 
-Mesuré le **2026-11-06**, une passe de dix processus Release : Qt 6.8.3, Windows 11 25H2,
+Passe finale mesurée le **2026-11-07 en Europe/Paris** (23:09 UTC le 2026-11-06 dans les JSON),
+dix processus Release : Qt 6.8.3, Windows 11 25H2,
 AMD Ryzen 7 7700X, NVIDIA GeForce RTX 5060 Ti (pilote Windows 32.0.16.1088). Le journal
 `QSG_INFO` confirme D3D11 et cette carte sélectionnée, avec la boucle de rendu threadée.
-Cette **première passe à un échantillon MSAA** est à distinguer de toute passe ultérieure à 4× MSAA.
+Le rendu Quick obtient **4 échantillons MSAA**, comme le shell livré.
 Écran Samsung U28E590 annoncé à **59,997 Hz**, DPR **1,5** ; 1280 × 800 pixels logiques
-correspondent à 1920 × 1200 pixels physiques. Les backend/render loop/DPR n'étaient pas forcés
-par les variables d'environnement du script. [Données brutes, métadonnées et journal](benchmarks/2026-11-06/README.md).
+correspondent à 1920 × 1200 pixels physiques. Ces métadonnées sont vérifiées pour la fenêtre de
+chaque cas des deux fronts. Les backend/render loop/DPR n'étaient pas forcés par les variables
+d'environnement du script. [Données brutes, métadonnées et journal](benchmarks/2026-11-07-msaa4/README.md).
+La [première passe MSAA 1×](benchmarks/2026-11-06/README.md) reste disponible séparément ; une
+seule passe par configuration ne permet pas d'attribuer leurs écarts au seul MSAA.
 
 Le projet Tentabrode généré contient **138 objets, 43 670 commandes Stitch et 43 660 segments
 visibles**. Le paramètre 300 mm concerne l'image source ; l'emprise effectivement cousue est
@@ -100,18 +106,20 @@ temps d'exécution du GPU. Durées en millisecondes.
 
 | Scène | Cadence swap (Hz) | Trame médiane | Trame p95 | Interaction médiane | Interaction p95 | Constructions des points avant → après |
 |---|---:|---:|---:|---:|---:|---:|
-| 1 000 | 60,00 | 16,667 | 16,829 | 16,478 | 16,692 | 1 → 1 |
-| 10 000 | 60,00 | 16,662 | 16,791 | 16,478 | 16,657 | 1 → 1 |
-| 50 000 | 59,99 | 16,666 | 16,839 | 16,471 | 16,713 | 1 → 1 |
-| 100 000 | 60,00 | 16,668 | 16,817 | 16,491 | 16,681 | 1 → 1 |
-| Tentabrode | 60,00 | 16,665 | 16,832 | 16,547 | **16,734** | 1 → 1 |
+| 1 000 | 59,85 | 16,657 | 17,808 | 16,515 | 17,506 | 1 → 1 |
+| 10 000 | 59,85 | 16,653 | 19,388 | 16,554 | 18,888 | 1 → 1 |
+| 50 000 | 60,00 | 16,680 | 16,914 | 16,528 | 16,749 | 1 → 1 |
+| 100 000 | 60,00 | 16,660 | 17,028 | 16,521 | 16,808 | 1 → 1 |
+| Tentabrode | 60,00 | 16,663 | 17,018 | 16,488 | **16,829** | 1 → 1 |
 
-La cadence observée atteint la fréquence de cet écran sur les cinq scènes. La cible stricte
-**p95 local < 16,7 ms n'est pas atteinte uniformément** : 50k et Tentabrode dépassent le seuil,
-de 0,013 et 0,034 ms dans cette passe. Tous les p95 d'intervalle de trame dépassent également
-16,7 ms. Les compteurs restent à une construction malgré les 270 gestes de caméra : le buffer
-de points est réutilisé. Ces résultats n'établissent ni une marge à 120/144 Hz, ni une cadence
-avec édition lourde ou sélection massive. Il faut répéter la passe avant une décision de bascule.
+La cadence moyenne approche celle de l'écran (59,85 à 60,00 Hz), avec de la variabilité dans les
+intervalles. La cible stricte **p95 local < 16,7 ms n'est atteinte sur aucune des cinq scènes**
+dans cette passe ; les p95 vont de 16,749 à 18,888 ms. Tous les p95 d'intervalle de trame dépassent
+également 16,7 ms (16,914 à 19,388 ms). Les variations ne sont pas monotones avec la taille de
+scène : une passe ne permet pas d'en attribuer la cause. Les compteurs restent à une construction
+malgré les 270 gestes de caméra : le buffer de points est réutilisé. Ces résultats n'établissent
+ni une marge à 120/144 Hz, ni une cadence avec édition lourde ou sélection massive. Il faut
+répéter la passe et profiler les écarts avant une décision de bascule.
 
 ### Peinture du canevas Widgets
 
@@ -120,11 +128,11 @@ présentés à l'écran** et ne doivent pas être divisées par les valeurs Quic
 
 | Scène | Peintures CPU/s | Intervalle médian (ms) | Intervalle p95 (ms) | Interaction médiane (ms) | Interaction p95 (ms) |
 |---|---:|---:|---:|---:|---:|
-| 1 000 | 732,91 | 1,294 | 1,808 | 0,647 | 1,012 |
-| 10 000 | 764,69 | 1,210 | 1,801 | 0,603 | 0,889 |
-| 50 000 | 812,87 | 1,156 | 1,667 | 0,566 | 0,877 |
-| 100 000 | 851,90 | 1,077 | 1,549 | 0,544 | 0,786 |
-| Tentabrode | 743,94 | 1,259 | 2,070 | 0,627 | 1,132 |
+| 1 000 | 781,75 | 1,179 | 2,046 | 0,573 | 1,121 |
+| 10 000 | 772,85 | 1,179 | 2,165 | 0,588 | 0,993 |
+| 50 000 | 858,66 | 1,080 | 1,562 | 0,541 | 0,801 |
+| 100 000 | 838,16 | 1,082 | 1,686 | 0,545 | 0,878 |
+| Tentabrode | 899,58 | 1,015 | 1,694 | 0,477 | 0,795 |
 
 Le canevas Widgets déplace une image réaliste déjà calculée. Ces temps CPU courts confirment
 qu'il n'est pas nécessaire de recalculer les fils pour pan/zoom dans cette architecture non plus.
@@ -139,18 +147,18 @@ la création de fenêtre et la première peinture/swap, après les calculs de pr
 
 | Scène | Front | Charger | Scène CPU | Ressources QSG CPU | Raster réaliste + PNG | Première |
 |---|---|---:|---:|---:|---:|---:|
-| 1 000 | Quick | 0,027 | 0,329 | 0,035 | — | 311,611 |
-| 1 000 | Widgets | 0,185 | 3,383 | — | 38,016 | 266,358 |
-| 10 000 | Quick | 0,160 | 2,900 | 0,371 | — | 466,343 |
-| 10 000 | Widgets | 0,112 | 2,026 | — | 38,703 | 143,610 |
-| 50 000 | Quick | 0,551 | 8,132 | 0,923 | — | 307,135 |
-| 50 000 | Widgets | 0,475 | 9,513 | — | 59,270 | 136,588 |
-| 100 000 | Quick | 0,881 | 18,087 | 1,730 | — | 286,756 |
-| 100 000 | Widgets | 0,881 | 23,069 | — | 104,067 | 131,518 |
-| Tentabrode | Quick | 65,163 | 46,268 | 0,649 | — | 303,276 |
-| Tentabrode | Widgets | 73,180 | 50,315 | — | 71,148 | 194,141 |
+| 1 000 | Quick | 0,022 | 0,342 | 0,030 | — | 397,983 |
+| 1 000 | Widgets | 0,024 | 0,290 | — | 27,451 | 127,678 |
+| 10 000 | Quick | 0,153 | 2,771 | 0,270 | — | 313,915 |
+| 10 000 | Widgets | 0,108 | 2,120 | — | 28,736 | 126,815 |
+| 50 000 | Quick | 0,550 | 9,666 | 1,627 | — | 290,723 |
+| 50 000 | Widgets | 0,564 | 8,623 | — | 62,750 | 130,008 |
+| 100 000 | Quick | 0,934 | 19,185 | 1,645 | — | 260,103 |
+| 100 000 | Widgets | 1,163 | 21,412 | — | 118,732 | 128,300 |
+| Tentabrode | Quick | 60,462 | 35,787 | 0,800 | — | 264,376 |
+| Tentabrode | Widgets | 55,876 | 34,789 | — | 68,872 | 133,201 |
 
-Le temps de première frame Quick est ici de 287 à 466 ms, supérieur à l'objectif local
+Le temps de première frame Quick est ici de 260 à 398 ms, supérieur à l'objectif local
 d'interaction ; ce coût de démarrage doit être suivi séparément. Les scènes CPU et le rendu
 réaliste n'offrent pas la même qualité visuelle. La scène CPU construite aussi dans le cas
 Widgets sert au contrôle d'équivalence du banc ; le shell Widgets normal n'en a pas besoin.
@@ -165,16 +173,34 @@ les données de contrôle du banc : elle ne mesure pas seulement le renderer.
 
 | Scène | Scène segments + sommets | Image Widgets | Quick résident / pic | Widgets résident / pic |
 |---|---:|---:|---:|---:|
-| 1 000 | 0,099 | 0,061 | 60,63 / 60,63 | 45,82 / 45,82 |
-| 10 000 | 0,992 | 0,415 | 65,56 / 66,22 | 49,03 / 49,03 |
-| 50 000 | 4,959 | 1,880 | 91,72 / 96,03 | 60,90 / 64,12 |
-| 100 000 | 9,918 | 3,660 | 122,86 / 132,79 | 75,21 / 100,24 |
-| Tentabrode | 4,330 | 2,202 | 102,45 / 106,23 | 72,94 / 73,73 |
+| 1 000 | 0,099 | 0,061 | 65,56 / 66,14 | 45,67 / 45,67 |
+| 10 000 | 0,992 | 0,415 | 66,58 / 67,06 | 46,88 / 46,88 |
+| 50 000 | 4,959 | 1,880 | 92,09 / 96,39 | 60,64 / 65,02 |
+| 100 000 | 9,918 | 3,660 | 113,82 / 123,63 | 75,04 / 100,16 |
+| Tentabrode | 4,330 | 2,202 | 98,79 / 102,49 | 73,83 / 76,02 |
 
 Dans cette passe, le processus Quick consomme davantage de mémoire résidente que le processus
 Widgets. Aucune consommation GPU ni durée d'exécution GPU n'est disponible ; ces champs restent
 `null` dans les données. Aucun chiffre de capture offscreen n'est utilisé comme mesure GPU.
 **L'absence de résultat sur une autre plateforme ou un autre backend n'est pas une réussite implicite.**
+
+### Essai matériel OpenGL supplémentaire
+
+Le même binaire et la même scène 100k ont aussi fonctionné sous **OpenGL 4.6 NVIDIA**, MSAA 4×,
+sur la RTX 5060 Ti. Les dimensions, l'écran et le DPR restent identiques. Cet essai utilise
+**120 frames après 20 gestes de chauffe**, au lieu de 240/30 en D3D11 ; il n'est pas inclus
+dans les statistiques de la passe principale.
+
+| Backend / scène | Échantillons / chauffe | Swap (Hz) | Trame médiane / p95 (ms) | Interaction médiane / p95 (ms) | Constructions |
+|---|---:|---:|---:|---:|---:|
+| OpenGL 4.6 / 100 000 | 120 / 20 | 59,98 | 16,667 / 17,283 | 16,533 / 17,221 | 1 → 1 |
+
+Chargement synthétique : 0,834 ms ; scène CPU : 15,528 ms ; ressources QSG CPU : 1,629 ms ;
+première frame : 245,148 ms. Mémoire résidente/pic du processus : **259,77 / 266,02 MiB**.
+Les [données et le journal OpenGL](benchmarks/2026-11-07-msaa4/README.md) confirment le renderer
+matériel et le MSAA réellement obtenu. Le seuil local p95 < 16,7 ms n'est pas atteint ici non
+plus. Un seul essai avec un autre nombre d'échantillons ne démontre ni une supériorité de backend,
+ni une parité de mémoire ; Vulkan, Metal et les autres plateformes restent non validés.
 
 Le prototype est validé fonctionnellement quand il charge une vraie broderie, garde le document
 inchangé et manipule sa caméra/sélection. La cible de performance est évaluée séparément : 60 FPS

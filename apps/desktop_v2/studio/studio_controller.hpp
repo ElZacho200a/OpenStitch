@@ -45,6 +45,7 @@ public:
 signals:
     void changed();
     void sceneChanged();
+    void documentReplaced();
     void selectionChanged();
     void loadFinished(bool success);
 

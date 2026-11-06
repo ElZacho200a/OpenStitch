@@ -604,7 +604,9 @@ Window {
                             color: window.selectedCount > 0 ? Theme.foreground : Theme.faint
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.bodySize
-                            wrapMode: Text.WrapAnywhere
+                            wrapMode: Text.Wrap
+                            maximumLineCount: window.height < 760 ? 8 : 12
+                            elide: Text.ElideRight
                             lineHeight: 1.35
                         }
                         Text {

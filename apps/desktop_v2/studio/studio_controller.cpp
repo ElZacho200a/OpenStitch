@@ -15,9 +15,12 @@ namespace openstitch::desktop_v2::studio {
 
 StudioController::StudioController(DocumentSession& session, QObject* parent)
     : QObject(parent), session_(session) {
-    documentToken_ = session_.subscribe([this](ChangeKind) {
+    documentToken_ = session_.subscribe([this](ChangeKind kind) {
         if (scene_ && scene_->revision == session_.revision()) {
             return; // markSaved changes no render data.
+        }
+        if (kind == ChangeKind::Replaced) {
+            emit documentReplaced();
         }
         scene_.reset();
         emit sceneChanged();

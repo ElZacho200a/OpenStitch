@@ -5,8 +5,8 @@ Une passe Release, Qt 6.8.3, Windows 11 25H2, AMD Ryzen 7 7700X ; écran Samsung
 Le [journal d'adaptateur](adapters.txt) confirme le backend D3D11, la boucle de rendu threadée
 et **NVIDIA GeForce RTX 5060 Ti** sélectionnée. Le pilote déclaré par Windows est 32.0.16.1088.
 L'iGPU AMD et le pilote logiciel Microsoft sont seulement énumérés, ils ne sont pas sélectionnés.
-Cette première passe utilise un échantillon MSAA ; une nouvelle passe après activation de 4× MSAA
-doit être distinguée de ces données.
+Cette première passe utilise un échantillon MSAA. La [passe finale à 4× MSAA du 2026-11-07](../2026-11-07-msaa4/README.md)
+est conservée séparément ; une passe par configuration ne suffit pas à isoler l'effet du MSAA.
 
 Chaque cas est un processus séparé, avec 30 gestes de chauffe puis 240 échantillons. Le banc ne
 mesure que le canevas. Les limites et les tables se trouvent dans le [rapport](../../18-studio-benchmarks.md).

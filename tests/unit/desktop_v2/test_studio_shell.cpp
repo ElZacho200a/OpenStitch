@@ -242,7 +242,19 @@ void StudioShellTest::prepopulatedSessionAndFailedGeometry() {
     canvas.setController(&controller);
     QTRY_VERIFY_WITH_TIMEOUT(!controller.busy() && canvas.scene() != nullptr, 15'000);
     QVERIFY(controller.scene() == canvas.scene());
-    const auto previousScene = controller.scene();
+    // A controller can finish before QML assigns the item's anchor/layout dimensions.
+    canvas.setWidth(800);
+    canvas.setHeight(600);
+    QVERIFY(std::abs(canvas.zoom() - 5.2) < 1e-9);
+    auto previousScene = controller.scene();
+    canvas.panBy(23, -7);
+    const auto offset = canvas.camera().offset();
+    const auto scale = canvas.zoom();
+    session.notifyExternalChange();
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.busy() && canvas.scene() != previousScene, 15'000);
+    QVERIFY(canvas.camera().offset() == offset);
+    QCOMPARE(canvas.zoom(), scale);
+    previousScene = controller.scene();
     QSignalSpy loaded(&controller, &StudioController::loadFinished);
     auto broken = studioFixture();
     broken.vector_objects.clear(); // source geometry missing: build must fail, never show old data
