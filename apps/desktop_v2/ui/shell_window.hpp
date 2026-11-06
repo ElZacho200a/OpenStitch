@@ -35,6 +35,7 @@
 #include "path_optimizer.hpp"
 #include "pen_shape.hpp"
 #include "point_edit.hpp"
+#include "preferences.hpp"
 #include "preview_service.hpp"
 #include "production_sheet.hpp"
 #include "satin_column.hpp"
@@ -163,6 +164,8 @@ public:
     void setGridSpacing(double mm); // 0 = pas de grille
     [[nodiscard]] double gridSpacing() const { return gridSpacingMm_; }
     void setThemeMode(const QString& mode); // "system" | "light" | "dark"
+    void setDensity(UiDensity density);     // marges de l'interface (préférence enregistrée)
+    [[nodiscard]] UiDensity density() const { return density_; }
     [[nodiscard]] QString themeMode() const { return themeMode_; }
     // Simulation de couture : `position` = nombre de commandes cousues ; >= total = tout. Marche
     // seulement avec un aperçu affiché (le total vient de la séquence complète).
@@ -349,6 +352,8 @@ private:
     std::optional<std::size_t> simLimit_;
     double gridSpacingMm_{0.0};
     QString themeMode_{QStringLiteral("system")};
+    UiDensity density_{UiDensity::Normal};
+    void savePreferencesNow();
     DiagnosticsPanel* diagnostics_{nullptr};
     CalquePanel* calques_{nullptr};
     WelcomePage* welcome_{nullptr};

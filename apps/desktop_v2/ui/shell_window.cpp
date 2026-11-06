@@ -71,6 +71,7 @@
 #include "region_panel.hpp"
 #include "satin_column.hpp"
 #include "segmentation_preview.hpp"
+#include "thread_palette_dialog.hpp"
 #include "thread_panel.hpp"
 #include "tool_icon.hpp"
 #include "transform_batch.hpp"
@@ -493,11 +494,22 @@ void ShellWindow::buildMenus() {
          {std::pair{"system", tr("Système")}, std::pair{"light", tr("Clair")},
           std::pair{"dark", tr("Sombre")}}) {
         auto* t = themeMenu->addAction(label);
+        t->setObjectName(QStringLiteral("theme_") + QLatin1String(mode));
         t->setCheckable(true);
         t->setChecked(QLatin1String(mode) == QLatin1String("system"));
         themeGroup->addAction(t);
         connect(t, &QAction::triggered, this,
                 [this, mode] { setThemeMode(QString::fromLatin1(mode)); });
+    }
+    auto* densityMenu = view->addMenu(tr("&Densité de l'interface"));
+    auto* densityGroup = new QActionGroup(this);
+    for (const auto d : {UiDensity::Compact, UiDensity::Normal, UiDensity::Spacious}) {
+        auto* a = densityMenu->addAction(fromUtf8(densityLabel(d)));
+        a->setObjectName(QStringLiteral("density_") + fromUtf8(densityId(d)));
+        a->setCheckable(true);
+        a->setChecked(d == UiDensity::Normal);
+        densityGroup->addAction(a);
+        connect(a, &QAction::triggered, this, [this, d] { setDensity(d); });
     }
     reducedMotionAction_ = view->addAction(tr("Réduire les animations"));
     reducedMotionAction_->setObjectName(QStringLiteral("reduceMotion"));
@@ -1612,6 +1624,14 @@ void ShellWindow::setStateDirectory(const std::filesystem::path& dir) {
     QSettings uiSettings(QString::fromStdU16String((dir / "ui.ini").u16string()),
                          QSettings::IniFormat);
     setCompactToolRail(uiSettings.value(QStringLiteral("tools/compact"), true).toBool());
+    {
+        // Préférences d'interface : thème et densité, relus sans jamais échouer. Appliquées avant
+        // de redessiner quoi que ce soit ; stateDir_ est déjà fixé (elles se réenregistrent).
+        const Preferences prefs = loadPreferences(dir / "preferences.txt");
+        density_ = prefs.density;
+        setThemeMode(QString::fromStdString(prefs.theme));
+        setDensity(prefs.density);
+    }
     autosave_ = std::make_unique<AutosaveStore>(dir);
     recent_ = pruneMissingRecent(loadRecentList(dir / "recent.txt"));
     rebuildRecentMenu();
@@ -1823,8 +1843,31 @@ void ShellWindow::setThemeMode(const QString& mode) {
         scheme = Qt::ColorScheme::Dark;
     }
     QGuiApplication::styleHints()->setColorScheme(scheme);
-    applyStudioTheme(*qApp, themeMode_);
+    applyStudioTheme(*qApp, themeMode_, densityScale(density_));
     rebuildToolRail(); // régénère les icônes avec les couleurs du thème courant
+    if (auto* a = findChild<QAction*>(QStringLiteral("theme_") + themeMode_)) {
+        a->setChecked(true);
+    }
+    savePreferencesNow();
+}
+
+void ShellWindow::setDensity(UiDensity density) {
+    density_ = density;
+    applyStudioTheme(*qApp, themeMode_, densityScale(density_));
+    if (auto* a = findChild<QAction*>(QStringLiteral("density_") + fromUtf8(densityId(density)))) {
+        a->setChecked(true);
+    }
+    savePreferencesNow();
+}
+
+void ShellWindow::savePreferencesNow() {
+    if (stateDir_.empty()) {
+        return;
+    }
+    Preferences prefs;
+    prefs.theme = themeMode_.toStdString();
+    prefs.density = density_;
+    (void)savePreferences(stateDir_ / "preferences.txt", prefs);
 }
 
 void ShellWindow::onKnife(QPointF a, QPointF b) {
@@ -2535,7 +2578,8 @@ void ShellWindow::nudgeSelection(int stepX, int stepUp, bool big) {
 }
 
 bool ShellWindow::runActionWith(const QString& id, const Values& values) {
-    const ActionDef* def = findAction(id.toStdString());
+    const ActionDef* def =
+        id == QLatin1String("text.edit") ? &textEditAction() : findAction(id.toStdString());
     if (def == nullptr) {
         return false;
     }
@@ -2591,7 +2635,8 @@ bool ShellWindow::runActionWith(const QString& id, const Values& values) {
 }
 
 void ShellWindow::runAction(const QString& id) {
-    const ActionDef* def = findAction(id.toStdString());
+    const bool editText = id == QLatin1String("text.edit");
+    const ActionDef* def = editText ? &textEditAction() : findAction(id.toStdString());
     if (def == nullptr) {
         return;
     }
@@ -2599,7 +2644,16 @@ void ShellWindow::runAction(const QString& id) {
         runActionWith(id, {});
         return;
     }
-    auto* dialog = new ActionDialog(*def, defaultValues(*def), this);
+    Values initial = defaultValues(*def);
+    if (editText) { // le dialogue s'ouvre sur les réglages ACTUELS du texte sélectionné
+        const auto state = inspect(session_.project(), session_.selection().targets());
+        if (const auto owner = selectedTextOwner(session_.project(), state.ids)) {
+            for (auto& [key, value] : textEditValues(session_.project(), *owner)) {
+                initial[key] = std::move(value);
+            }
+        }
+    }
+    auto* dialog = new ActionDialog(*def, initial, this);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     connect(dialog, &QDialog::accepted, this,
             [this, id, dialog] { runActionWith(id, dialog->values()); });
@@ -2713,6 +2767,13 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
                                                : tr("Afficher le risque de plissement du tissu")),
                    q(tr("Analyse")), "",
                    overlays_->fabricActive() || !session_.project().embroidery_objects.empty()});
+    {
+        const auto state = inspect(session_.project(), session_.selection().targets());
+        out.push_back({"text.edit", q(tr("Modifier le texte sélectionné…")), q(tr("Texte")), "",
+                       selectedTextOwner(session_.project(), state.ids).has_value()});
+    }
+    out.push_back(
+        {"thread.palette", q(tr("Nuanciers de fils et mélanges…")), q(tr("Fils")), "", hasObjects});
     out.push_back({"export.options", q(tr("Options machine, cadre et coupes…")), q(tr("Fichier")),
                    "", documentOpen_});
     out.push_back({"export.check", q(tr("Contrôler le motif avant l'export")), q(tr("Fichier")), "",
@@ -2823,6 +2884,12 @@ bool ShellWindow::runCommand(const QString& id) {
             removePresetIndex(id.mid(14).toInt());
         } else if (id == QLatin1String("analysis.fabric")) {
             overlays_->toggleFabricRisk();
+        } else if (id == QLatin1String("thread.palette")) {
+            auto* dialog = new ThreadPaletteDialog(session_, this);
+            dialog->setAttribute(Qt::WA_DeleteOnClose);
+            dialog->show();
+        } else if (id == QLatin1String("text.edit")) {
+            runAction(id);
         } else if (id == QLatin1String("export.options")) {
             auto* dialog = new ExportOptionsDialog(session_, this);
             dialog->setAttribute(Qt::WA_DeleteOnClose);

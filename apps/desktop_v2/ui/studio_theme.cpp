@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "studio_theme.hpp"
 
+#include <algorithm>
+#include <cmath>
+
+#include <QRegularExpression>
+
 #include <QApplication>
 #include <QGuiApplication>
 #include <QPalette>
@@ -32,7 +37,7 @@ StudioColors studioColors(StudioScheme scheme) {
     return colors;
 }
 
-QString studioStyleSheet(StudioScheme scheme) {
+QString studioStyleSheet(StudioScheme scheme, double paddingScale) {
     const auto c = studioColors(scheme);
     // A single style for native Qt widgets. The stitched canvas and real thread RGB swatches
     // remain untouched; all interactions continue through their existing widgets and actions.
@@ -151,10 +156,40 @@ QLabel {
     css.replace(QStringLiteral("%MUTED%"), c.muted);
     css.replace(QStringLiteral("%ACCENT%"), c.accent);
     css.replace(QStringLiteral("%ACCENT_SOFT%"), c.accentSoft);
+    const double scale = std::clamp(std::isfinite(paddingScale) ? paddingScale : 1.0, 0.5, 2.0);
+    if (scale != 1.0) {
+        // Seules les lignes « padding: … ; » sont touchées : chaque valeur en px est mise à
+        // l'échelle.
+        static const QRegularExpression paddingLine(QStringLiteral("padding:([^;]*);"));
+        static const QRegularExpression pixels(QStringLiteral("(\\d+)px"));
+        QString out;
+        qsizetype last = 0;
+        auto lines = paddingLine.globalMatch(css);
+        while (lines.hasNext()) {
+            const auto line = lines.next();
+            out += css.mid(last, line.capturedStart() - last);
+            QString values = line.captured(1);
+            QString scaled;
+            qsizetype from = 0;
+            auto numbers = pixels.globalMatch(values);
+            while (numbers.hasNext()) {
+                const auto n = numbers.next();
+                scaled += values.mid(from, n.capturedStart() - from);
+                scaled += QString::number(std::max(1, qRound(n.captured(1).toInt() * scale))) +
+                          QStringLiteral("px");
+                from = n.capturedEnd();
+            }
+            scaled += values.mid(from);
+            out += QStringLiteral("padding:") + scaled + QStringLiteral(";");
+            last = line.capturedEnd();
+        }
+        out += css.mid(last);
+        css = out;
+    }
     return css;
 }
 
-void applyStudioTheme(QApplication& app, const QString& mode) {
+void applyStudioTheme(QApplication& app, const QString& mode, double paddingScale) {
     StudioScheme scheme = StudioScheme::Light;
     if (mode == QLatin1String("dark")) {
         scheme = StudioScheme::Dark;
@@ -166,7 +201,7 @@ void applyStudioTheme(QApplication& app, const QString& mode) {
             scheme = StudioScheme::Dark;
         }
     }
-    app.setStyleSheet(studioStyleSheet(scheme));
+    app.setStyleSheet(studioStyleSheet(scheme, paddingScale));
 }
 
 } // namespace openstitch::desktop_v2

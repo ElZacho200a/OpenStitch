@@ -24,8 +24,10 @@ struct StudioColors {
 };
 
 [[nodiscard]] StudioColors studioColors(StudioScheme scheme);
-[[nodiscard]] QString studioStyleSheet(StudioScheme scheme);
+// `paddingScale` multiplie les marges intérieures (propriétés `padding`) de la feuille de style :
+// c'est la « densité d'interface » (1,0 = historique). Bornée à [0,5 ; 2].
+[[nodiscard]] QString studioStyleSheet(StudioScheme scheme, double paddingScale = 1.0);
 // mode: "system", "light", "dark". Follows Qt's current color scheme in system mode.
-void applyStudioTheme(QApplication& app, const QString& mode);
+void applyStudioTheme(QApplication& app, const QString& mode, double paddingScale = 1.0);
 
 } // namespace openstitch::desktop_v2

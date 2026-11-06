@@ -54,6 +54,7 @@
 #include "shell_window.hpp"
 #include "source_image_tools.hpp"
 #include "studio_theme.hpp"
+#include "thread_palette_dialog.hpp"
 #include "thread_panel.hpp"
 #include "transform_batch.hpp"
 #include <algorithm>
@@ -2171,6 +2172,89 @@ private slots:
         QVERIFY(fadeAxisView(w.session().project(), id)->curve == FadeCurve::EaseIn);
         QVERIFY(w.session().undo());
         QVERIFY(fadeAxisView(w.session().project(), id)->curve == FadeCurve::Steep);
+    }
+
+    void threadPaletteDialogAssignsChartThreadsInOneUndoStep() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(!w.runCommand("thread.palette")); // aucun fil
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 40, 20), "Rectangle").committed);
+        w.waitForIdle();
+        QVERIFY(w.runCommand("thread.palette"));
+        auto* dialog = w.findChild<ThreadPaletteDialog*>();
+        QVERIFY(dialog != nullptr);
+        QVERIFY(dialog->chartCount() >= 2);
+        QVERIFY(dialog->threadRowCount() > 0);
+        QVERIFY(dialog->nearestText().contains("Plus proches"));
+        QVERIFY(dialog->blendText().contains("Mélange"));
+        QVERIFY(!dialog->assignSelected().isEmpty()); // aucun fil choisi : refus en clair
+        const auto depth = w.session().undoNames().size();
+        dialog->selectThreadRow(1);
+        QVERIFY(dialog->assignSelected().isEmpty());
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        const auto& obj = w.session().project().embroidery_objects.front();
+        QVERIFY(obj.thread.has_value());
+        QVERIFY(dialog->assignNearest().isEmpty());
+        QCOMPARE(w.session().undoNames().size(), depth + 2);
+        dialog->setSearch("zzzz-no-thread-has-this");
+        QCOMPARE(dialog->threadRowCount(), 0);
+        dialog->close();
+    }
+
+    void densityAndThemeArePersistedAndRestored() {
+        const auto dir = std::filesystem::temp_directory_path() / "openstitch_v2_prefs_shell";
+        std::filesystem::remove_all(dir);
+        {
+            ShellWindow w;
+            w.setStateDirectory(dir);
+            QCOMPARE(w.density(), UiDensity::Normal);
+            const QString normal = qApp->styleSheet();
+            w.setDensity(UiDensity::Spacious);
+            w.setThemeMode("dark");
+            QVERIFY(qApp->styleSheet() != normal); // marges plus grandes : feuille différente
+            QVERIFY(w.findChild<QAction*>("density_spacious")->isChecked());
+            QVERIFY(w.findChild<QAction*>("theme_dark")->isChecked());
+        }
+        {
+            ShellWindow w;
+            w.setStateDirectory(dir);
+            QCOMPARE(w.density(), UiDensity::Spacious);
+            QCOMPARE(w.themeMode(), QString("dark"));
+            QVERIFY(w.findChild<QAction*>("density_spacious")->isChecked());
+            w.setDensity(UiDensity::Compact);
+            QVERIFY(qApp->styleSheet().contains("padding:"));
+        }
+        // Une feuille à l'échelle 1 reste celle d'origine ; hors bornes, l'échelle est bornée.
+        QCOMPARE(studioStyleSheet(StudioScheme::Light, 1.0), studioStyleSheet(StudioScheme::Light));
+        QVERIFY(studioStyleSheet(StudioScheme::Light, 1.3) !=
+                studioStyleSheet(StudioScheme::Light));
+        QCOMPARE(studioStyleSheet(StudioScheme::Light, 99.0),
+                 studioStyleSheet(StudioScheme::Light, 2.0));
+        std::filesystem::remove_all(dir);
+    }
+
+    void textEditCommandNeedsAWholeTextAndRewritesItInOneStep() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(!w.runCommand("text.edit")); // rien de sélectionné
+        QVERIFY(w.runActionWith("text.add", {{"text", "Ab"},
+                                             {"letter_spacing_mm", "1"},
+                                             {"font_file", OPENSTITCH_FONTS_DIR "/VeraBd.ttf"}}));
+        w.waitForIdle();
+        QCOMPARE(w.session().project().text_objects.size(), size_t{1});
+        QVERIFY(w.runCommand("text.edit")); // les lettres créées sont sélectionnées
+        const auto depth = w.session().undoNames().size();
+        QVERIFY(w.runActionWith("text.edit", {{"text", "Abc"}, {"letter_spacing_mm", "2"}}));
+        w.waitForIdle();
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QCOMPARE(QString::fromStdString(w.session().project().text_objects.front().text),
+                 QString("Abc"));
+        QCOMPARE(w.session().project().text_objects.front().letter_spacing.value, 2'000);
+        QVERIFY(w.session().undo());
+        QCOMPARE(QString::fromStdString(w.session().project().text_objects.front().text),
+                 QString("Ab"));
     }
 
     void machineOptionsDialogChangesHoopMachineAndTrimsInUndoableSteps() {

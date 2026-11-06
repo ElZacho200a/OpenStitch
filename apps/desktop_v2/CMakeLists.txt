@@ -43,6 +43,8 @@ add_library(openstitch_desktop_v2_core STATIC
     core/satin_column.cpp
     core/pull_calibration.cpp
     core/export_settings.cpp
+    core/thread_palette_service.cpp
+    core/preferences.cpp
     core/point_edit.cpp
     core/source_image_tools.cpp
 )
@@ -95,6 +97,8 @@ add_library(openstitch_desktop_v2_ui STATIC
     ui/optimize_panel.hpp
     ui/export_options_dialog.cpp
     ui/export_options_dialog.hpp
+    ui/thread_palette_dialog.cpp
+    ui/thread_palette_dialog.hpp
     ui/calibration_dialog.cpp
     ui/calibration_dialog.hpp
     ui/companion_panel.cpp

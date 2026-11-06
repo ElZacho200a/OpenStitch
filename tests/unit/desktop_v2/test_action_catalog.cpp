@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <filesystem>
 #include <fstream>
@@ -10,6 +11,7 @@
 #include "inspector_model.hpp"
 #include "object_labels.hpp"
 #include "openstitch/project_ops/factory.hpp"
+#include "shape_batch.hpp"
 
 using namespace openstitch;
 using namespace openstitch::desktop_v2;
@@ -238,4 +240,79 @@ TEST_CASE("order, connector and palette actions are accepted by the engine",
     CHECK(run(s, "image.reduce_colors", {{"max_colors", "3"}}).committed);
     // Les trois premières ont été empilées une à une, annulables dans l'ordre inverse.
     CHECK(s.undoNames().size() >= 4);
+}
+
+TEST_CASE("advanced text settings reach the text object and the edit action rewrites it",
+          "[desktop_v2][actions][text]") {
+    auto s = blank();
+    const auto r = run(s, "text.add",
+                       {{"text", "Hello"},
+                        {"cap_height_mm", "15"},
+                        {"letter_spacing_mm", "1.5"},
+                        {"word_spacing_mm", "3"},
+                        {"line_spacing", "2"},
+                        {"kerning", "0"},
+                        {"base", "arc"},
+                        {"base_radius_mm", "40"},
+                        {"font_file", fontFile()}});
+    REQUIRE(r.committed);
+    REQUIRE(s.project().text_objects.size() == 1);
+    const auto& t = s.project().text_objects.front();
+    CHECK(t.letter_spacing.value == 1'500);
+    CHECK(t.word_spacing.value == 3'000);
+    CHECK(t.line_spacing == Catch::Approx(2.0));
+    CHECK_FALSE(t.kerning);
+    CHECK(t.base.kind == document::TextBaseKind::Arc);
+    CHECK(t.base.radius.value == 40'000);
+
+    // Les lettres sélectionnées désignent leur texte ; le dialogue s'ouvre sur ses réglages.
+    std::vector<std::uint64_t> letters;
+    for (const auto& e : s.project().embroidery_objects) {
+        letters.push_back(e.id.value);
+    }
+    REQUIRE_FALSE(letters.empty());
+    const auto owner = selectedTextOwner(s.project(), letters);
+    REQUIRE(owner.has_value());
+    const auto values = textEditValues(s.project(), *owner);
+    CHECK(values.at("base") == "arc");
+    CHECK(values.at("kerning") == "0");
+    CHECK(values.at("text") == "Hello");
+
+    auto changed = values;
+    changed["text"] = "Salut";
+    changed["base"] = "line";
+    changed["letter_spacing_mm"] = "0";
+    ActionContext ctx;
+    ctx.ids = letters;
+    ctx.project = &s.project();
+    std::string error;
+    const auto& edit = textEditAction();
+    const auto batch = buildAction(edit, changed, ctx, error);
+    INFO(error);
+    REQUIRE_FALSE(batch.empty());
+    const auto depth = s.undoNames().size();
+    REQUIRE(s.applyBatch(batch, edit.label).committed);
+    CHECK(s.undoNames().size() == depth + 1);
+    REQUIRE(s.project().text_objects.size() == 1);
+    CHECK(s.project().text_objects.front().text == "Salut");
+    CHECK(s.project().text_objects.front().base.kind == document::TextBaseKind::Line);
+    CHECK(s.project().text_objects.front().letter_spacing.value == 0);
+    REQUIRE(s.undo());
+    CHECK(s.project().text_objects.front().text == "Hello");
+}
+
+TEST_CASE("text edit refuses a selection that is not exactly one text",
+          "[desktop_v2][actions][text]") {
+    auto s = blank();
+    REQUIRE(s.applyBatch(batchAddRect({0, 0}, 20, 10), "Rect").committed);
+    std::vector<std::uint64_t> ids{s.project().embroidery_objects.front().id.value};
+    CHECK_FALSE(selectedTextOwner(s.project(), ids).has_value());
+    CHECK_FALSE(selectedTextOwner(s.project(), {}).has_value());
+    CHECK_FALSE(selectedTextOwner(s.project(), {987654}).has_value());
+    ActionContext ctx;
+    ctx.ids = ids;
+    ctx.project = &s.project();
+    std::string error;
+    CHECK(buildAction(textEditAction(), {{"text", "x"}}, ctx, error).empty());
+    CHECK(error.find("Sélectionnez") != std::string::npos);
 }

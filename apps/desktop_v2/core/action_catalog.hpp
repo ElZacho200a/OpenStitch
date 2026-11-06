@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -73,5 +74,16 @@ struct ActionDef {
 
 [[nodiscard]] std::string buildAction(const ActionDef& action, Values values,
                                       const ActionContext& context, std::string& error);
+
+// --- Modification d'un texte existant (hors catalogue : elle exige un texte sélectionné) ---------
+// Identifiant de l'objet texte qui possède TOUTES les lettres sélectionnées ; nullopt si la
+// sélection est vide, mélange plusieurs textes ou contient autre chose que des lettres.
+[[nodiscard]] std::optional<std::uint64_t>
+selectedTextOwner(const document::Project& project, const std::vector<std::uint64_t>& objectIds);
+// Réglages actuels du texte, dans les champs de `textEditAction()`.
+[[nodiscard]] Values textEditValues(const document::Project& project, std::uint64_t textId);
+// Action « Modifier le texte » : mêmes champs typographiques que « Ajouter du texte », police et
+// position conservées ; `build` produit l'opération `set_text` pour le texte de la sélection.
+[[nodiscard]] const ActionDef& textEditAction();
 
 } // namespace openstitch::desktop_v2

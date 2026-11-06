@@ -455,3 +455,9 @@ encore le desktop principal.
 ## 2026-11-06 — Session 2 : lot 3, options machine d'export
 
 - `core/export_settings` : lecture en mm des finitions du moteur, validation (bornes, point max > point min), UNE commande par groupe (machine, cadre, finitions) ; comparaison en µm pour ne laisser aucune trace quand rien ne change. Bibliothèque de 16 cadres et 6 profils de machine du moteur, `checkExport` sur la séquence effective (points hors zone brodable, champ de la machine, format accepté). Fenêtre `ExportOptionsDialog` sans logique métier ; commandes `export.options` et `export.check`.
+
+## 2026-11-06 — Session 2 : lot 4, fils, texte et préférences
+
+- **Nuanciers** (`core/thread_palette_service`, `ThreadPaletteDialog`) : recherche, plus proches, assignation, mélange de deux fils. Le mélange est simulé en lumière linéaire sur les 12 fils les plus proches, par pas de 10 % ; il dit quand un fil seul fait aussi bien.
+- **Texte** : `text.add` reçoit les réglages typographiques du moteur ; `text.edit` (hors catalogue pour ne pas casser l'invariant « chaque action se construit avec des valeurs par défaut ») retrouve le texte propriétaire des lettres sélectionnées (`text_owner`) et ouvre le dialogue prérempli.
+- **Préférences** (`core/preferences`) : thème et densité. Constat : le thème choisi n'était jamais enregistré. Densité = mise à l'échelle des seules lignes `padding` de la feuille de style. Langue volontairement absente.

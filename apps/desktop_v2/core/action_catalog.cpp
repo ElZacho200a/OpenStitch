@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <numbers>
 
 #include "fade_service.hpp"
 #include "openstitch/document/machine_profile.hpp"
@@ -125,6 +126,39 @@ FieldDef fileField(std::string key, std::string label, std::string def) {
     return f;
 }
 
+// Réglages typographiques communs à « Ajouter du texte » et « Modifier le texte » : mêmes champs,
+// mêmes bornes que les arguments des opérations `add_text` / `set_text` du moteur.
+std::vector<FieldDef> textStyleFields() {
+    return {
+        numberField("letter_spacing_mm", "Espacement des lettres", -20, 50, "0", "mm"),
+        numberField("word_spacing_mm", "Espacement des mots", -20, 100, "0", "mm"),
+        numberField("line_spacing", "Interligne (× hauteur de capitale)", 0.5, 5, "1.5"),
+        boolField("kerning", "Crénage de la police", true),
+        numberField("density_mm", "Densité (écart des traversées)", 0.2, 2, "0.4", "mm"),
+        numberField("max_satin_width_mm", "Largeur satin maximale", 1, 20, "6", "mm"),
+        choiceField("base", "Base du texte",
+                    {{"line", "Ligne droite"}, {"arc", "Arc de cercle"}, {"circle", "Cercle"}}),
+        numberField("base_radius_mm", "Rayon de l'arc ou du cercle", 1, 1000, "50", "mm"),
+        boolField("base_inside", "Texte en dessous (sommets vers le centre)", false),
+        choiceField("letter_connector", "Entre les lettres",
+                    {{"inherit", "Règle générale"}, {"trim", "Couper"}, {"no_trim", "Sans coupe"}}),
+        choiceField(
+            "word_connector", "Entre les mots",
+            {{"inherit", "Règle générale"}, {"trim", "Couper"}, {"no_trim", "Sans coupe"}})};
+}
+
+std::string textStyleJson(const Values& v) {
+    return R"(,"letter_spacing_mm":)" + num(number(v, "letter_spacing_mm")) +
+           R"(,"word_spacing_mm":)" + num(number(v, "word_spacing_mm")) + R"(,"line_spacing":)" +
+           num(number(v, "line_spacing")) + R"(,"kerning":)" +
+           (flag(v, "kerning") ? "true" : "false") + R"(,"density_mm":)" +
+           num(number(v, "density_mm")) + R"(,"max_satin_width_mm":)" +
+           num(number(v, "max_satin_width_mm")) + R"(,"base":")" + v.at("base") +
+           R"(","base_radius_mm":)" + num(number(v, "base_radius_mm")) + R"(,"base_inside":)" +
+           (flag(v, "base_inside") ? "true" : "false") + R"(,"letter_connector":")" +
+           v.at("letter_connector") + R"(","word_connector":")" + v.at("word_connector") + "\"";
+}
+
 std::string envVar(const char* name) {
 #ifdef _MSC_VER
     char* value = nullptr;
@@ -198,12 +232,15 @@ std::vector<ActionDef> makeCatalog() {
                         {{"center", "Centré"}, {"left", "À gauche"}, {"right", "À droite"}}),
             numberField("rotation_deg", "Rotation", -360, 360, "0", "°"),
             fileField("font_file", "Police (TTF / OTF)", defaultFont())};
+        for (auto& f : textStyleFields()) {
+            a.fields.push_back(std::move(f));
+        }
         a.build = [](const Values& v, const ActionContext&, std::string&) {
             return wrap(R"({"op":"add_text","text":)" + quote(v.at("text")) +
                         R"(,"cap_height_mm":)" + num(number(v, "cap_height_mm")) + R"(,"fill":")" +
                         v.at("fill") + R"(","align":")" + v.at("align") + R"(","rotation_deg":)" +
                         num(number(v, "rotation_deg")) + R"(,"font_file":)" +
-                        quote(v.at("font_file")) + "}");
+                        quote(v.at("font_file")) + textStyleJson(v) + "}");
         };
         out.push_back(std::move(a));
     }
@@ -632,6 +669,134 @@ std::string buildAction(const ActionDef& action, Values values, const ActionCont
         error = "Action impossible avec les valeurs données.";
     }
     return batch;
+}
+
+std::optional<std::uint64_t> selectedTextOwner(const document::Project& project,
+                                               const std::vector<std::uint64_t>& objectIds) {
+    std::optional<std::uint64_t> owner;
+    for (const auto id : objectIds) {
+        const auto* emb = project.findEmbroidery(ObjectId{id});
+        if (emb == nullptr) {
+            return std::nullopt;
+        }
+        const auto* vec = project.findObject(emb->source_vector);
+        if (vec == nullptr || !vec->text_owner || project.findText(*vec->text_owner) == nullptr) {
+            return std::nullopt;
+        }
+        if (owner && *owner != vec->text_owner->value) {
+            return std::nullopt;
+        }
+        owner = vec->text_owner->value;
+    }
+    return owner;
+}
+
+Values textEditValues(const document::Project& project, std::uint64_t textId) {
+    Values v;
+    const auto* t = project.findText(ObjectId{textId});
+    if (t == nullptr) {
+        return v;
+    }
+    const auto mm = [](Micrometers um) { return num(to_millimeters(um).value); };
+    v["text"] = t->text;
+    v["cap_height_mm"] = mm(t->cap_height);
+    v["letter_spacing_mm"] = mm(t->letter_spacing);
+    v["word_spacing_mm"] = mm(t->word_spacing);
+    v["line_spacing"] = num(t->line_spacing);
+    v["kerning"] = t->kerning ? "1" : "0";
+    v["density_mm"] = mm(t->density);
+    v["max_satin_width_mm"] = mm(t->max_satin_width);
+    v["rotation_deg"] = num(t->rotation.radians * 180.0 / std::numbers::pi);
+    switch (t->align) {
+    case document::TextAlign::Center:
+        v["align"] = "center";
+        break;
+    case document::TextAlign::Right:
+        v["align"] = "right";
+        break;
+    default:
+        v["align"] = "left";
+        break;
+    }
+    switch (t->fill) {
+    case document::TextFill::Satin:
+        v["fill"] = "satin";
+        break;
+    case document::TextFill::Tatami:
+        v["fill"] = "tatami";
+        break;
+    case document::TextFill::Contour:
+        v["fill"] = "contour";
+        break;
+    default:
+        v["fill"] = "auto";
+        break;
+    }
+    switch (t->base.kind) {
+    case document::TextBaseKind::Arc:
+        v["base"] = "arc";
+        break;
+    case document::TextBaseKind::Circle:
+        v["base"] = "circle";
+        break;
+    default:
+        v["base"] = "line"; // Path n'a pas de champ ici : repli sur la ligne, voir la doc
+        break;
+    }
+    v["base_radius_mm"] = mm(t->base.radius);
+    v["base_inside"] = t->base.inside ? "1" : "0";
+    const auto connector = [](document::ConnectorMode m) -> std::string {
+        switch (m) {
+        case document::ConnectorMode::AlwaysTrim:
+            return "trim";
+        case document::ConnectorMode::NeverTrim:
+            return "no_trim";
+        default:
+            return "inherit";
+        }
+    };
+    v["letter_connector"] = connector(t->letter_connector);
+    v["word_connector"] = connector(t->word_connector);
+    return v;
+}
+
+const ActionDef& textEditAction() {
+    static const ActionDef def = [] {
+        ActionDef a;
+        a.id = "text.edit";
+        a.label = "Modifier le texte…";
+        a.group = "Texte";
+        a.needsSelection = true;
+        a.fields = {
+            textField("text", "Texte", "OpenStitch", true),
+            numberField("cap_height_mm", "Hauteur des capitales", 1, 500, "12", "mm"),
+            choiceField("fill", "Remplissage",
+                        {{"auto", "Automatique"},
+                         {"satin", "Satin"},
+                         {"tatami", "Tatami"},
+                         {"contour", "Contour"}}),
+            choiceField("align", "Alignement",
+                        {{"center", "Centré"}, {"left", "À gauche"}, {"right", "À droite"}}),
+            numberField("rotation_deg", "Rotation", -360, 360, "0", "°")};
+        for (auto& f : textStyleFields()) {
+            a.fields.push_back(std::move(f));
+        }
+        a.build = [](const Values& v, const ActionContext& c, std::string& error) {
+            const auto owner =
+                c.project != nullptr ? selectedTextOwner(*c.project, c.ids) : std::nullopt;
+            if (!owner) {
+                error = "Sélectionnez les lettres d'un seul texte.";
+                return std::string();
+            }
+            return wrap(R"({"op":"set_text","text_object":)" + std::to_string(*owner) +
+                        R"(,"text":)" + quote(v.at("text")) + R"(,"cap_height_mm":)" +
+                        num(number(v, "cap_height_mm")) + R"(,"fill":")" + v.at("fill") +
+                        R"(","align":")" + v.at("align") + R"(","rotation_deg":)" +
+                        num(number(v, "rotation_deg")) + textStyleJson(v) + "}");
+        };
+        return a;
+    }();
+    return def;
 }
 
 } // namespace openstitch::desktop_v2
