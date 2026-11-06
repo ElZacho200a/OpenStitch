@@ -109,6 +109,41 @@ public slots:
 class ShellWindowTest : public QObject {
     Q_OBJECT
 private slots:
+    void simulationNavigationJumpsByPointObjectAndColour() {
+        ShellWindow w;
+        w.resize(1100, 800);
+        w.show();
+        QVERIFY(!w.runCommand("sim.end")); // pas de document
+        openstitch::project_ops::DigitizeSettings settings;
+        settings.max_colors = 4;
+        w.openImage(tentabrode(), 50.0, settings);
+        w.waitForIdle();
+        const int total = w.simulationTotal();
+        QVERIFY(total > 100);
+        w.setSimulationPosition(0);
+        QVERIFY(w.runCommand("sim.next-point"));
+        QCOMPARE(w.simulationPosition(), 1);
+        QVERIFY(w.runCommand("sim.prev-point"));
+        QCOMPARE(w.simulationPosition(), 0);
+        QVERIFY(w.runCommand("sim.next-object"));
+        const int firstObject = w.simulationPosition();
+        QVERIFY(firstObject > 0 && firstObject < total);
+        QVERIFY(w.runCommand("sim.next-colour"));
+        QVERIFY(w.simulationPosition() > 0);
+        QVERIFY(w.runCommand("sim.prev-object"));
+        QVERIFY(w.simulationPosition() < total);
+        QVERIFY(w.runCommand("sim.end"));
+        QCOMPARE(w.simulationPosition(), total);
+        QVERIFY(w.runCommand("sim.prev-colour"));
+        QVERIFY(w.simulationPosition() < total);
+        // Les boutons de la barre de simulation existent et suivent les mêmes commandes.
+        for (const char* name :
+             {"sim.prev-colour", "sim.prev-object", "sim.prev-point", "sim.next-point",
+              "sim.next-object", "sim.next-colour", "sim.end"}) {
+            QVERIFY2(w.findChild<QAction*>(QString::fromLatin1(name)) != nullptr, name);
+        }
+    }
+
     void saveAsAndExportAgainAreReachableAndRefuseWithoutContext() {
         ShellWindow w;
         w.show();

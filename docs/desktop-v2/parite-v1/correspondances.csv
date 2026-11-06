@@ -40,7 +40,7 @@ eb7dd01d,fait,vector.curves,,Convertir en courbes
 b9441c56,fait,auto_satin,type Tatami de l'inspecteur,Convertir les satins auto en tatami
 2c87f32d,absent,,à traiter,Convertir les vecteurs en broderie
 ca67b4fd,fait,Couleur des guides,libellé retrouvé dans la V2,Couleur des guides
-b24bb78f,absent,,à traiter,Couleur ⏭
+b24bb78f,fait,sim.next-colour,,Couleur ⏭
 f9db85df,fait,Couper le fil après,libellé retrouvé dans la V2,Couper le fil après
 0b59bc57,partiel,settableStitchTypes,,Créer un objet de point de contour
 c97c7aae,partiel,settableStitchTypes,,Créer un remplissage tatami
@@ -101,7 +101,7 @@ aee88642,fait,Ne pas couper le fil après,libellé retrouvé dans la V2,Ne pas c
 5421aa74,fait,regionClean,,Nettoyer les petits îlots
 c3d0caab,fait,Nouveau projet,libellé retrouvé dans la V2,Nouveau projet
 00cdb915,fait,Numériser,dialogue d'import,Numérisation automatique
-c492f162,absent,,à traiter,Objet ⏭
+c492f162,fait,sim.next-object,,Objet ⏭
 23cd9405,fait,Options de génération,libellé retrouvé dans la V2,Options de génération
 7040619f,fait,Orientation,libellé retrouvé dans la V2,Orientation
 2f542cd3,absent,,à traiter,Orientation du remplissage
@@ -116,7 +116,7 @@ f590671c,fait,Passer en point cousu,libellé retrouvé dans la V2,Passer en poin
 c3bcc666,absent,,à traiter,Pinceau : rayon plus petit
 b8d2a1ce,fait,fade.axis,,Poignées du dégradé
 050fad01,partiel,settableStitchTypes,type Contour de l'inspecteur,Point de contour
-7e4bb52e,absent,,à traiter,Point ▶
+7e4bb52e,fait,sim.next-point,,Point ▶
 031c45f1,fait,companion.toggle,,Pont IA local (MCP)
 de5eef73,partiel,density_,thème et densité seulement,Préférences générales
 f30520d3,partiel,companion.settings,,Préférences — Intelligence artificielle
@@ -180,11 +180,11 @@ fc519974,absent,,à traiter,Éditer seulement les bords du satin
 1b954c88,absent,,à traiter,Éditer seulement les repères d'orientation du satin
 5b0f567d,fait,analysis.density,,Épaisseurs de fil (densité)
 fb5f812c,absent,,à traiter,Étalonner le zoom 100 %
-a766d0d5,absent,,à traiter,⏮ Couleur
-669c1398,absent,,à traiter,⏮ Objet
-bf476973,absent,,à traiter,⏹ Fin
+a766d0d5,fait,sim.prev-colour,,⏮ Couleur
+669c1398,fait,sim.prev-object,,⏮ Objet
+bf476973,fait,sim.end,,⏹ Fin
 f271218c,partiel,Lecture,curseur et lecture,▶ Lecture
-328035a0,absent,,à traiter,◀ Point
+328035a0,fait,sim.prev-point,,◀ Point
 83393a9a,partiel,calqueAdd,calque = couche,+ Couche
 613e0ed8,absent,,à traiter,Abandonner les retouches
 abf0f4bd,fait,Activer,libellé retrouvé dans la V2,Activer

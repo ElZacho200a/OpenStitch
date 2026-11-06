@@ -4,6 +4,7 @@
 #include "display_filters.hpp"
 #include "file_io.hpp"
 #include "render_quality_dialog.hpp"
+#include "simulation_nav.hpp"
 #include "studio_theme.hpp"
 
 #include <QAbstractButton>
@@ -939,6 +940,20 @@ void ShellWindow::buildStatusArea() {
     simBar_->addWidget(simLabel_);
     auto* play = simBar_->addAction(tr("Lecture"));
     play->setCheckable(true);
+    const auto nav = [&](const QString& text, const QString& tip, const char* id) {
+        auto* a = simBar_->addAction(text);
+        a->setObjectName(QString::fromLatin1(id));
+        a->setToolTip(tip);
+        connect(a, &QAction::triggered, this,
+                [this, id] { (void)simulationJump(QString::fromLatin1(id)); });
+    };
+    nav(tr("⏮ Couleur"), tr("Début de la couleur précédente"), "sim.prev-colour");
+    nav(tr("⏮ Objet"), tr("Début de l'objet précédent"), "sim.prev-object");
+    nav(tr("◀ Point"), tr("Un point en arrière"), "sim.prev-point");
+    nav(tr("Point ▶"), tr("Un point en avant"), "sim.next-point");
+    nav(tr("Objet ⏭"), tr("Début de l'objet suivant"), "sim.next-object");
+    nav(tr("Couleur ⏭"), tr("Début de la couleur suivante"), "sim.next-colour");
+    nav(tr("⏹ Fin"), tr("Aller à la fin de la séquence"), "sim.end");
     simTimer_ = new QTimer(this);
     simTimer_->setInterval(120);
     connect(simSlider_, &QSlider::valueChanged, this, [this](int v) { setSimulationPosition(v); });
@@ -2672,6 +2687,44 @@ int ShellWindow::simulationPosition() const {
     return simLimit_ ? static_cast<int>(*simLimit_) : simulationTotal();
 }
 
+bool ShellWindow::simulationJump(const QString& id) {
+    const int total = simulationTotal();
+    if (!documentOpen_ || total <= 0) {
+        return false;
+    }
+    if (!simMarks_ || simMarksRevision_ != session_.revision()) {
+        auto marks = simulationMarks(session_.project());
+        if (!marks) {
+            setNotice(tr("Simulation : %1").arg(fromUtf8(marks.error().message)), true);
+            return false;
+        }
+        simMarks_ = std::move(*marks);
+        simMarksRevision_ = session_.revision();
+    }
+    const auto here = static_cast<std::size_t>(simulationPosition());
+    const auto end = static_cast<std::size_t>(total);
+    std::size_t target = here;
+    if (id == QLatin1String("sim.prev-colour")) {
+        target = previousMark(simMarks_->colours, here);
+    } else if (id == QLatin1String("sim.prev-object")) {
+        target = previousMark(simMarks_->objects, here);
+    } else if (id == QLatin1String("sim.prev-point")) {
+        target = here > 0 ? here - 1 : 0;
+    } else if (id == QLatin1String("sim.next-point")) {
+        target = std::min(here + 1, end);
+    } else if (id == QLatin1String("sim.next-object")) {
+        target = nextMark(simMarks_->objects, here, end);
+    } else if (id == QLatin1String("sim.next-colour")) {
+        target = nextMark(simMarks_->colours, here, end);
+    } else if (id == QLatin1String("sim.end")) {
+        target = end;
+    } else {
+        return false;
+    }
+    setSimulationPosition(static_cast<int>(target));
+    return true;
+}
+
 void ShellWindow::setSimulationPosition(int position) {
     const int total = simulationTotal();
     if (total <= 0) {
@@ -3809,6 +3862,17 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
                        q(tr("Affichage")), "Ctrl+Shift+H",
                        hiddenObjectCount(session_.project()) > 0});
     }
+    for (const auto& [simId, simLabel] :
+         {std::pair{"sim.prev-colour", tr("Simulation : couleur précédente")},
+          std::pair{"sim.prev-object", tr("Simulation : objet précédent")},
+          std::pair{"sim.prev-point", tr("Simulation : un point en arrière")},
+          std::pair{"sim.next-point", tr("Simulation : un point en avant")},
+          std::pair{"sim.next-object", tr("Simulation : objet suivant")},
+          std::pair{"sim.next-colour", tr("Simulation : couleur suivante")},
+          std::pair{"sim.end", tr("Simulation : aller à la fin")}}) {
+        out.push_back(
+            {simId, q(simLabel), q(tr("Simulation")), "", documentOpen_ && simulationTotal() > 0});
+    }
     out.push_back({"file.save-as", q(tr("Enregistrer le projet sous…")), q(tr("Fichier")),
                    "Ctrl+Shift+S", documentOpen_});
     out.push_back({"file.export-again", q(tr("Exporter de nouveau (derniers réglages)")),
@@ -4077,6 +4141,8 @@ bool ShellWindow::runCommand(const QString& id) {
             if (!r.ok) {
                 return false;
             }
+        } else if (id.startsWith(QLatin1String("sim."))) {
+            return simulationJump(id);
         } else if (id == QLatin1String("file.save-as")) {
             (void)saveProjectAs();
         } else if (id == QLatin1String("file.export-again")) {

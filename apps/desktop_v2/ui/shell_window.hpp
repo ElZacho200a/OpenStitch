@@ -43,6 +43,7 @@
 #include "render_settings.hpp"
 #include "satin_column.hpp"
 #include "shape_batch.hpp"
+#include "simulation_nav.hpp"
 #include "snap.hpp"
 #include "source_image_tools.hpp"
 #include "task_manager.hpp"
@@ -215,6 +216,9 @@ public:
     void setSimulationPosition(int position);
     [[nodiscard]] int simulationPosition() const;
     [[nodiscard]] int simulationTotal() const;
+    // Navigation de la simulation : sim.prev-colour | sim.prev-object | sim.prev-point |
+    // sim.next-point | sim.next-object | sim.next-colour | sim.end. Faux sans séquence.
+    bool simulationJump(const QString& id);
     [[nodiscard]] bool simulating() const { return simLimit_.has_value(); }
     // Menu contextuel du canevas : commandes de sélection actives (appartient à la fenêtre).
     [[nodiscard]] QMenu* buildContextMenu();
@@ -350,6 +354,8 @@ private:
     void onKnife(QPointF a, QPointF b);
     void updateGrid();
     void refreshSimulationBar();
+    std::optional<SimulationMarks> simMarks_;
+    std::uint64_t simMarksRevision_{0};
     void runDiagnostics();
     void onFindingActivated(const project_ops::Finding& finding);
     [[nodiscard]] PointMm selectionCentreModel() const;
