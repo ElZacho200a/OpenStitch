@@ -64,7 +64,7 @@ df9178a2,absent,,à traiter,Envoyer un rapport de plantage
 a9055127,fait,file.export-again,,Exporter avec les derniers réglages
 31b462db,fait,file.export-dxf,,Exporter en DXF
 09cc3851,partiel,Exporter l'image,"PNG seulement, pas de JPEG","Exporter l'image (PNG, JPEG)"
-00565df7,absent,,à traiter,Exporter la liste des fils (CSV)
+00565df7,fait,file.export-threads,,Exporter la liste des fils (CSV)
 692834e4,absent,,à traiter,Exporter le contour de découpe
 4922cbdc,partiel,Exporter l'image,PNG sans les réglages dédiés du dialogue V1,Exporter le rendu réaliste (PNG)
 129c1178,absent,,à traiter,Exporter un DST compensé du décalage
@@ -72,7 +72,7 @@ a9055127,fait,file.export-again,,Exporter avec les derniers réglages
 d0850557,fait,Fiche de production,libellé retrouvé dans la V2,Fiche de production
 aba3cc8d,absent,,à traiter,Fidélité à l'image
 4132716d,fait,fade.create,,Fondu de couleurs à deux fils
-90b818d1,absent,,à traiter,Format d'import des nuanciers
+90b818d1,fait,action_file_chart_format,,Format d'import des nuanciers
 69547042,partiel,regionMerge,cible choisie dans une liste,Fusionner avec… (cliquer la région cible)
 30fe85c6,fait,regionMerge,,Fusionner dans la voisine principale
 7bf6f210,fait,Fusionner la sélection,libellé retrouvé dans la V2,Fusionner la sélection
@@ -85,7 +85,7 @@ aea2d95e,fait,Guides de direction,libellé retrouvé dans la V2,Guides de direct
 fa129d91,fait,fill.guides,,Générer un guide depuis la forme
 807cf843,fait,Image,libellé retrouvé dans la V2,Image
 69632007,fait,Importer un DXF,libellé retrouvé dans la V2,Importer un DXF
-45ec0da3,absent,,à traiter,"Importer un nuancier (CSV, JSON)"
+45ec0da3,fait,file.import-chart,,"Importer un nuancier (CSV, JSON)"
 7c94f4bb,fait,Importer une broderie machine,libellé retrouvé dans la V2,Importer une broderie machine
 c4719a5d,fait,file.import_svg,,Importer une image ou un SVG
 025327d7,absent,,à traiter,Insérer un design
@@ -212,14 +212,14 @@ f893cf14,absent,,à traiter,Couleur de cette couche
 fdbcceb1,partiel,thread.palette,fil par fil,Couleurs libres → fil le plus proche
 6dfe2a2f,absent,,à traiter,Créer le satin de bordure
 786a853b,fait,hoops.txt,Mes cadres,Enregistrer ce cadre
-8854fa60,absent,,à traiter,Exporter la liste des fils (CSV)
+8854fa60,fait,file.export-threads,,Exporter la liste des fils (CSV)
 6c667c5a,fait,Fermer,libellé retrouvé dans la V2,Fermer
 4881b0aa,absent,,à traiter,Figer l'ordre
 75d84458,partiel,thread.palette,,Fils les plus proches de la sélection
 874e1166,fait,regionMergeColors,,Fusionner dans la teinte active
 28bea29d,fait,Fusionner la sélection,libellé retrouvé dans la V2,Fusionner la sélection
 5ea5889c,partiel,fill.guides,par objet sélectionné,Guides automatiques pour tous
-1ebf6e41,absent,,à traiter,"Importer un nuancier (CSV, JSON)"
+1ebf6e41,fait,file.import-chart,,"Importer un nuancier (CSV, JSON)"
 f38a9ef0,fait,Importer une broderie machine,libellé retrouvé dans la V2,Importer une broderie machine
 11c2d635,absent,,à traiter,Inverser le sens du fondu
 a8e5be69,fait,Modifier le texte,libellé retrouvé dans la V2,Modifier le texte
@@ -237,7 +237,7 @@ fc50bae4,fait,fade.axis,,Poignées sur le canevas
 5ecf2aa4,absent,,à traiter,Poser ce guide sur toutes les formes
 d6c060d0,absent,,à traiter,Proposer les couleurs depuis l'image
 a8d2bcf8,partiel,thread.palette,nuanciers intégrés seulement,Remplacer ce fil par celui du catalogue
-71f07976,absent,,à traiter,Retirer ce nuancier importé
+71f07976,fait,file.remove-chart,,Retirer ce nuancier importé
 3a357c6c,absent,,à traiter,Retirer de mes fils
 6f0cec00,partiel,fill.guides.clear,par objet,Retirer guides et ruptures de tous
 29ed788a,partiel,fill.guides.clear,par objet,Retirer les guides de toutes

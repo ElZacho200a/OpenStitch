@@ -337,6 +337,9 @@ private:
     void refreshTaskStatus();
     void chooseAndOpen();
     void chooseAndImportMachine();
+    void chooseAndImportChart();
+    void chooseAndExportThreads();
+    void removeImportedChart();
     void resegmentImage();
     void chooseAndImportDxf();
     void chooseAndExportDxf();

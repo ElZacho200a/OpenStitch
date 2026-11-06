@@ -6,6 +6,7 @@
 #include "render_quality_dialog.hpp"
 #include "simulation_nav.hpp"
 #include "studio_theme.hpp"
+#include "thread_palette_service.hpp"
 
 #include <QAbstractButton>
 #include <QAction>
@@ -395,6 +396,29 @@ void ShellWindow::buildMenus() {
     exportAgainAction->setObjectName(QStringLiteral("action_file_export_again"));
     exportAgainAction->setShortcut(QKeySequence(QStringLiteral("F10")));
     connect(exportAgainAction, &QAction::triggered, this, [this] { (void)exportAgain(); });
+    auto* exportThreadsAction = file->addAction(tr("Exporter la liste des &fils (CSV)…"));
+    exportThreadsAction->setObjectName(QStringLiteral("action_file_export_threads"));
+    connect(exportThreadsAction, &QAction::triggered, this, &ShellWindow::chooseAndExportThreads);
+    auto* importChartAction = file->addAction(tr("Importer un &nuancier de fils (CSV, JSON)…"));
+    importChartAction->setObjectName(QStringLiteral("action_file_import_chart"));
+    connect(importChartAction, &QAction::triggered, this, &ShellWindow::chooseAndImportChart);
+    auto* chartFormatAction = file->addAction(tr("Format d'import des nuanciers…"));
+    chartFormatAction->setObjectName(QStringLiteral("action_file_chart_format"));
+    connect(chartFormatAction, &QAction::triggered, this, [this] {
+        QMessageBox::information(
+            this, tr("Format d'import des nuanciers"),
+            tr("<p>Les cartes de fils des marques ne sont pas fournies avec OpenStitch : importez "
+               "les vôtres.</p><p><b>CSV</b> (UTF-8, séparateur « , » ou « ; », en-tête "
+               "obligatoire) "
+               ":<br><code>code,name,hex</code> ou <code>code,name,r,g,b</code><br>colonnes "
+               "facultatives : <code>brand</code>, <code>range</code>.</p><p><b>JSON</b> :<br>"
+               "<code>{\"name\":\"Mes fils\",\"threads\":[{\"code\":\"1001\",\"name\":"
+               "\"Rouge\",\"rgb\":\"#C8102E\"}]}</code></p><p>Le nom du fichier (CSV) ou « name » "
+               "(JSON) donne le nom du nuancier ; les codes doivent être uniques.</p>"));
+    });
+    auto* removeChartAction = file->addAction(tr("Retirer un nuancier importé…"));
+    removeChartAction->setObjectName(QStringLiteral("action_file_remove_chart"));
+    connect(removeChartAction, &QAction::triggered, this, &ShellWindow::removeImportedChart);
     auto* exportDxfAction = file->addAction(tr("Exporter les contours en D&XF…"));
     exportDxfAction->setObjectName(QStringLiteral("action_file_export_dxf"));
     connect(exportDxfAction, &QAction::triggered, this, &ShellWindow::chooseAndExportDxf);
@@ -1958,6 +1982,72 @@ void ShellWindow::resegmentImage() {
     dialog->open();
 }
 
+void ShellWindow::chooseAndImportChart() {
+    const QString path =
+        QFileDialog::getOpenFileName(this, tr("Importer un nuancier de fils"), QString(),
+                                     tr("Nuanciers (*.csv *.json);;Tous les fichiers (*)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    const auto dir = stateDir_.empty()
+                         ? std::filesystem::temp_directory_path() / "openstitch_charts"
+                         : stateDir_ / "thread_charts";
+    const auto r = importThreadChart(std::filesystem::path(path.toStdU16String()), dir);
+    if (!r) {
+        setNotice(tr("Import du nuancier impossible : %1 %2")
+                      .arg(fromUtf8(r.error().message), fromUtf8(r.error().detail)),
+                  true);
+        return;
+    }
+    setNotice(tr("Nuancier « %1 » importé : %2 fils (retrouvé au prochain démarrage).")
+                  .arg(fromUtf8(r->name))
+                  .arg(r->count),
+              false);
+}
+
+void ShellWindow::removeImportedChart() {
+    QStringList names;
+    std::vector<std::string> ids;
+    for (const auto& c : chartInfos()) {
+        if (c.user) {
+            names << fromUtf8(c.name);
+            ids.push_back(c.id);
+        }
+    }
+    if (names.isEmpty()) {
+        setNotice(tr("Aucun nuancier importé à retirer."), false);
+        return;
+    }
+    bool ok = false;
+    const QString pick = QInputDialog::getItem(this, tr("Retirer un nuancier importé"),
+                                               tr("Nuancier à retirer :"), names, 0, false, &ok);
+    if (ok) {
+        const auto dir = stateDir_.empty()
+                             ? std::filesystem::temp_directory_path() / "openstitch_charts"
+                             : stateDir_ / "thread_charts";
+        const bool removed =
+            removeUserChart(ids[static_cast<std::size_t>(names.indexOf(pick))], dir);
+        setNotice(removed ? tr("Nuancier retiré.") : tr("Nuancier introuvable."), !removed);
+    }
+}
+
+void ShellWindow::chooseAndExportThreads() {
+    if (!documentOpen_) {
+        return;
+    }
+    const QString path =
+        QFileDialog::getSaveFileName(this, tr("Exporter la liste des fils"),
+                                     QStringLiteral("fils.csv"), tr("Fichier CSV (*.csv)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    std::size_t rows = 0;
+    const auto r = exportThreadListCsv(session_.project(),
+                                       std::filesystem::path(path.toStdU16String()), &rows);
+    setNotice(r.ok ? tr("Liste des fils exportée (%1 fils).").arg(rows) : fromUtf8(r.message),
+              !r.ok);
+}
+
 void ShellWindow::chooseAndImportMachine() {
     QStringList filters;
     for (const auto& f : readableMachineFormats()) {
@@ -2245,6 +2335,7 @@ void ShellWindow::setStateDirectory(const std::filesystem::path& dir) {
         setDensity(prefs.density);
         setRenderSettings(prefs.render);
     }
+    (void)loadUserCharts(dir / "thread_charts");
     autosave_ = std::make_unique<AutosaveStore>(dir);
     recent_ = pruneMissingRecent(loadRecentList(dir / "recent.txt"));
     rebuildRecentMenu();
@@ -3873,6 +3964,13 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
         out.push_back(
             {simId, q(simLabel), q(tr("Simulation")), "", documentOpen_ && simulationTotal() > 0});
     }
+    out.push_back({"file.export-threads", q(tr("Exporter la liste des fils (CSV)…")),
+                   q(tr("Fichier")), "",
+                   documentOpen_ && !session_.project().embroidery_objects.empty()});
+    out.push_back({"file.import-chart", q(tr("Importer un nuancier de fils (CSV, JSON)…")),
+                   q(tr("Fils")), "", true});
+    out.push_back({"file.remove-chart", q(tr("Retirer un nuancier importé…")), q(tr("Fils")), "",
+                   std::ranges::any_of(chartInfos(), [](const auto& c) { return c.user; })});
     out.push_back({"file.save-as", q(tr("Enregistrer le projet sous…")), q(tr("Fichier")),
                    "Ctrl+Shift+S", documentOpen_});
     out.push_back({"file.export-again", q(tr("Exporter de nouveau (derniers réglages)")),
@@ -4143,6 +4241,12 @@ bool ShellWindow::runCommand(const QString& id) {
             }
         } else if (id.startsWith(QLatin1String("sim."))) {
             return simulationJump(id);
+        } else if (id == QLatin1String("file.export-threads")) {
+            chooseAndExportThreads();
+        } else if (id == QLatin1String("file.import-chart")) {
+            chooseAndImportChart();
+        } else if (id == QLatin1String("file.remove-chart")) {
+            removeImportedChart();
         } else if (id == QLatin1String("file.save-as")) {
             (void)saveProjectAs();
         } else if (id == QLatin1String("file.export-again")) {
