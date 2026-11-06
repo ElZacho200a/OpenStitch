@@ -450,6 +450,8 @@ private:
     void buildCentral();
     void updateGuide();
     void refreshFloatingBar();
+    void showRadialMenu();
+    [[nodiscard]] std::vector<CommandEntry> contextEntries() const;
     ThreadPanel* threads_{nullptr};
     CompanionPanel* companionPanel_{nullptr};
     ChatPanel* chatPanel_{nullptr};

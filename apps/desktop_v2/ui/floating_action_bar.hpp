@@ -15,6 +15,10 @@ class QHBoxLayout;
 
 namespace openstitch::desktop_v2 {
 
+// Libelle court d'une commande pour les surfaces compactes (barre flottante, menu radial) ;
+// a defaut, le libelle complet.
+[[nodiscard]] QString commandShortLabel(const std::string& id, const QString& full);
+
 class FloatingActionBar : public QFrame {
     Q_OBJECT
 public:

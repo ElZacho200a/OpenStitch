@@ -7,10 +7,8 @@
 
 namespace openstitch::desktop_v2 {
 
-namespace {
-
 // Libellés courts pour la barre ; le libellé complet reste dans l'infobulle.
-QString shortLabel(const std::string& id, const QString& full) {
+QString commandShortLabel(const std::string& id, const QString& full) {
     static const QHash<QString, QString> kShort = {
         {"edit.duplicate", QObject::tr("Dupliquer")},
         {"transform.rotate.cw", QObject::tr("Pivoter 90°")},
@@ -28,8 +26,6 @@ QString shortLabel(const std::string& id, const QString& full) {
     };
     return kShort.value(QString::fromStdString(id), full);
 }
-
-} // namespace
 
 FloatingActionBar::FloatingActionBar(QWidget* parent) : QFrame(parent) {
     setObjectName(QStringLiteral("floatingActionBar"));
@@ -52,7 +48,7 @@ void FloatingActionBar::setEntries(const std::vector<CommandEntry>& entries) {
         const QString label = QString::fromStdString(e.label);
         auto* b = new QToolButton(this);
         b->setObjectName(QStringLiteral("floatingAction_") + id);
-        b->setText(shortLabel(e.id, label));
+        b->setText(commandShortLabel(e.id, label));
         b->setToolTip(e.shortcut.empty()
                           ? label
                           : label + QStringLiteral(" (") + QString::fromStdString(e.shortcut) +

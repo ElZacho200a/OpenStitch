@@ -53,6 +53,7 @@
 #include "param_spec.hpp"
 #include "point_edit.hpp"
 #include "preview_canvas.hpp"
+#include "radial_menu_widget.hpp"
 #include "region_edit.hpp"
 #include "region_edit_controller.hpp"
 #include "region_panel.hpp"
@@ -1856,6 +1857,48 @@ private slots:
         w.waitForIdle();
         rail->refreshNow();
         QCOMPARE(rail->spoolId(0), first);
+    }
+
+    void radialMenuOffersSelectionCommandsWithMouseAndKeyboardAlternatives() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        QVERIFY(!w.runCommand("radial.open")); // rien de sélectionné : commande grisée
+        const auto id =
+            *createdObjectId(w.session().applyBatch(batchAddRect({0, 0}, 20, 20), "R").report);
+        w.waitForIdle();
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        QVERIFY(w.runCommand("radial.open"));
+        const auto visibleRadial = [&w]() -> RadialMenuWidget* {
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            for (auto* r : w.findChildren<RadialMenuWidget*>("radialMenu")) {
+                if (r->isVisible()) {
+                    return r;
+                }
+            }
+            return nullptr;
+        };
+        auto* radial = visibleRadial();
+        QVERIFY(radial != nullptr);
+        QVERIFY(radial->isVisible());
+        QVERIFY(radial->sectorCount() >= 3 && radial->sectorCount() <= 8);
+        // Touche 1 : première commande du contexte « objet » (dupliquer).
+        QTest::keyClick(radial, Qt::Key_1);
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(2));
+        // Échap ferme sans rien faire.
+        QVERIFY(w.runCommand("radial.open"));
+        radial = visibleRadial();
+        QVERIFY(radial != nullptr);
+        QTest::keyClick(radial, Qt::Key_Escape);
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(2));
+        // Souris : survol par secteur puis activation (le secteur 0 est dupliquer).
+        QVERIFY(w.runCommand("radial.open"));
+        radial = visibleRadial();
+        QVERIFY(radial != nullptr);
+        QTest::mouseMove(radial, radial->sectorCentre(0));
+        QTest::mouseClick(radial, Qt::LeftButton, Qt::NoModifier, radial->sectorCentre(0));
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(3));
     }
 
     void floatingBarFollowsTheSelectionAndRunsCommands() {

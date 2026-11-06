@@ -554,3 +554,7 @@ encore le desktop principal.
 ## 2026-11-06 — Session 5 (suite 3) : champs à glisser
 
 - Les libellés des réglages numériques de l'inspecteur se glissent horizontalement (Maj grossier, Ctrl fin). Pure fonction testée (`scrubbedValue`) + filtre d'événements ; le champ garde la saisie et le regroupement de l'annulation. Pas de capture : le geste n'est pas visible sur une image fixe ; test QTest avec événements synthétiques.
+
+## 2026-11-06 — Session 5 (suite 4) : menu radial
+
+- Menu radial (F2) : huit secteurs au plus, mêmes commandes que la barre flottante, clavier 1-8 / flèches / Entrée / Échap. Piège de test : un widget `WA_DeleteOnClose` fermé reste trouvable par `findChild` jusqu'à la suppression différée (plantage dans QTest) : le test prend le menu visible. Un premier rendu coupait « Premier plan » (zone de texte trop basse) : corrigé après capture. Option `--command radial.open` ajoutée à la capture. Vu à l'écran : `captures/menu-radial.png` (thème sombre).

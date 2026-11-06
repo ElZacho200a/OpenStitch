@@ -18,6 +18,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/context_commands.cpp
     core/spool_rail.cpp
     core/scrub.cpp
+    core/radial_menu.cpp
     core/shape_batch.cpp
     core/transform_batch.cpp
     core/edit_batch.cpp
@@ -87,6 +88,8 @@ add_library(openstitch_desktop_v2_ui STATIC
     ui/spool_rail_widget.hpp
     ui/scrub_filter.cpp
     ui/scrub_filter.hpp
+    ui/radial_menu_widget.cpp
+    ui/radial_menu_widget.hpp
     ui/studio_theme.cpp
     ui/studio_theme.hpp
     ui/preview_canvas.cpp

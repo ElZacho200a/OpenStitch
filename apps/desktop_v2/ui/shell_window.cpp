@@ -3,6 +3,7 @@
 #include "direction_guides.hpp"
 #include "file_io.hpp"
 #include "floating_action_bar.hpp"
+#include "radial_menu_widget.hpp"
 #include "render_quality_dialog.hpp"
 #include "spool_rail_widget.hpp"
 #include "studio_theme.hpp"
@@ -179,6 +180,7 @@ const std::pair<const char*, const char*> kCommandShortcuts[] = {
     {"export.options", "Ctrl+Shift+E"},
     {"thread.palette", "Ctrl+Shift+P"},
     {"chat.open", "Ctrl+J"},
+    {"radial.open", "F2"},
     {"companion.toggle", "Ctrl+Shift+J"},
     {"text.edit", "Ctrl+Shift+X"},
     {"vector.curves", "Ctrl+Shift+B"},
@@ -1300,10 +1302,7 @@ void ShellWindow::buildCentral() {
     updateGuide();
 }
 
-void ShellWindow::refreshFloatingBar() {
-    if (floatingBar_ == nullptr) {
-        return;
-    }
+std::vector<CommandEntry> ShellWindow::contextEntries() const {
     // Contextes actifs déduits de la sélection ; la liste des commandes vient du tableau du cœur.
     std::vector<CommandContext> contexts;
     const auto state = inspect(session_.project(), session_.selection().targets());
@@ -1330,7 +1329,32 @@ void ShellWindow::refreshFloatingBar() {
             }
         }
     }
-    floatingBar_->setEntries(shown);
+    return shown;
+}
+
+void ShellWindow::refreshFloatingBar() {
+    if (floatingBar_ == nullptr) {
+        return;
+    }
+    floatingBar_->setEntries(contextEntries());
+}
+
+void ShellWindow::showRadialMenu() {
+    const auto entries = contextEntries();
+    if (entries.empty()) {
+        setNotice(tr("Menu radial : rien de sélectionné, donc aucune action à proposer."), false);
+        return;
+    }
+    auto* radial = new RadialMenuWidget(this);
+    radial->setAttribute(Qt::WA_DeleteOnClose);
+    radial->setEntries(entries);
+    connect(radial, &RadialMenuWidget::chosen, this, [this](const QString& id) { runCommand(id); });
+    const QPoint cursor = QCursor::pos();
+    const QPoint centre =
+        canvas_->viewport()->rect().contains(canvas_->viewport()->mapFromGlobal(cursor))
+            ? cursor
+            : canvas_->viewport()->mapToGlobal(canvas_->viewport()->rect().center());
+    radial->popupAt(centre);
 }
 
 bool ShellWindow::eventFilter(QObject* watched, QEvent* event) {
@@ -3694,6 +3718,8 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
     }
     out.push_back(
         {"thread.palette", q(tr("Nuanciers de fils et mélanges…")), q(tr("Fils")), "", hasObjects});
+    out.push_back({"radial.open", q(tr("Menu radial des actions de la sélection")),
+                   q(tr("Affichage")), "F2", hasSel});
     out.push_back(
         {"chat.open", q(tr("Discuter avec l'agent IA")), q(tr("Compagnon")), "", documentOpen_});
     out.push_back(
@@ -3924,6 +3950,8 @@ bool ShellWindow::runCommand(const QString& id) {
                                                                               : NodeKind::Corner);
         } else if (id == QLatin1String("node.hole.remove")) {
             return nodes_->removeSelectedHole();
+        } else if (id == QLatin1String("radial.open")) {
+            showRadialMenu();
         } else if (id == QLatin1String("chat.open")) {
             openChat();
         } else if (id == QLatin1String("companion.settings")) {
