@@ -2,7 +2,10 @@
 #include "shell_window.hpp"
 #include "direction_guides.hpp"
 #include "file_io.hpp"
+#include "floating_action_bar.hpp"
+#include "radial_menu_widget.hpp"
 #include "render_quality_dialog.hpp"
+#include "spool_rail_widget.hpp"
 #include "studio_theme.hpp"
 
 #include <QAbstractButton>
@@ -177,6 +180,7 @@ const std::pair<const char*, const char*> kCommandShortcuts[] = {
     {"export.options", "Ctrl+Shift+E"},
     {"thread.palette", "Ctrl+Shift+P"},
     {"chat.open", "Ctrl+J"},
+    {"radial.open", "F2"},
     {"companion.toggle", "Ctrl+Shift+J"},
     {"text.edit", "Ctrl+Shift+X"},
     {"vector.curves", "Ctrl+Shift+B"},
@@ -205,6 +209,10 @@ ShellWindow::ShellWindow(QWidget* parent)
     canvas_ = new PreviewCanvas(this);
     canvas_->setObjectName(QStringLiteral("previewCanvas"));
     buildCentral();
+    floatingBar_ = new FloatingActionBar(canvas_->viewport());
+    canvas_->viewport()->installEventFilter(this);
+    connect(floatingBar_, &FloatingActionBar::chosen, this,
+            [this](const QString& id) { runCommand(id); });
 
     buildMenus();
     buildWorkspaceBar();
@@ -219,6 +227,7 @@ ShellWindow::ShellWindow(QWidget* parent)
         }
         updateSelectionBoxes();
         updatePointMarkers();
+        refreshFloatingBar();
     });
     regions_ = std::make_unique<RegionEditController>(
         RegionEditController::Host{
@@ -345,6 +354,8 @@ ShellWindow::~ShellWindow() {
     calques_ = nullptr;
     delete threads_;
     threads_ = nullptr;
+    delete spoolRail_;
+    spoolRail_ = nullptr;
     session_.unsubscribe(sessionToken_);
     session_.selection().unsubscribe(selectionToken_);
 }
@@ -796,6 +807,17 @@ void ShellWindow::buildInspector() {
     addDockWidget(Qt::RightDockWidgetArea, threadDock);
     tabifyDockWidget(calqueDock, threadDock);
     connect(threads_, &ThreadPanel::refused, this,
+            [this](const QString& message) { setNotice(message, true); });
+    auto* railDock = new QDockWidget(tr("Bobines"), this);
+    railDock->setObjectName(QStringLiteral("spoolRailDock"));
+    spoolRail_ = new SpoolRailWidget(session_, railDock);
+    railDock->setWidget(spoolRail_);
+    addDockWidget(Qt::BottomDockWidgetArea, railDock);
+    connect(spoolRail_, &SpoolRailWidget::summaryChanged, railDock, [railDock](const QString& s) {
+        railDock->setWindowTitle(QObject::tr("Bobines — %1").arg(s));
+    });
+    railDock->setWindowTitle(tr("Bobines — %1").arg(spoolRail_->summaryText()));
+    connect(spoolRail_, &SpoolRailWidget::refused, this,
             [this](const QString& message) { setNotice(message, true); });
     auto* optimizeDock = new QDockWidget(tr("Optimisation"), this);
     optimizeDock->setObjectName(QStringLiteral("optimizeDock"));
@@ -1280,6 +1302,69 @@ void ShellWindow::buildCentral() {
     updateGuide();
 }
 
+std::vector<CommandEntry> ShellWindow::contextEntries() const {
+    // Contextes actifs déduits de la sélection ; la liste des commandes vient du tableau du cœur.
+    std::vector<CommandContext> contexts;
+    const auto state = inspect(session_.project(), session_.selection().targets());
+    if (!state.ids.empty()) {
+        contexts.push_back(CommandContext::Object);
+    }
+    if (selectedTextOwner(session_.project(), state.ids).has_value()) {
+        contexts.push_back(CommandContext::Text);
+    }
+    if (const auto target = pointTarget();
+        target && satinRungCount(session_.project(), *target) >= 0) {
+        contexts.push_back(CommandContext::Satin);
+    }
+    if (nodes_ != nullptr && nodes_->selectedCount() > 0) {
+        contexts.push_back(CommandContext::Nodes);
+    }
+    const auto wanted = floatingBarCommands(contexts);
+    const auto all = commandEntries();
+    std::vector<CommandEntry> shown;
+    for (const auto id : wanted) {
+        for (const auto& e : all) {
+            if (e.id == id && e.enabled) {
+                shown.push_back(e);
+            }
+        }
+    }
+    return shown;
+}
+
+void ShellWindow::refreshFloatingBar() {
+    if (floatingBar_ == nullptr) {
+        return;
+    }
+    floatingBar_->setEntries(contextEntries());
+}
+
+void ShellWindow::showRadialMenu() {
+    const auto entries = contextEntries();
+    if (entries.empty()) {
+        setNotice(tr("Menu radial : rien de sélectionné, donc aucune action à proposer."), false);
+        return;
+    }
+    auto* radial = new RadialMenuWidget(this);
+    radial->setAttribute(Qt::WA_DeleteOnClose);
+    radial->setEntries(entries);
+    connect(radial, &RadialMenuWidget::chosen, this, [this](const QString& id) { runCommand(id); });
+    const QPoint cursor = QCursor::pos();
+    const QPoint centre =
+        canvas_->viewport()->rect().contains(canvas_->viewport()->mapFromGlobal(cursor))
+            ? cursor
+            : canvas_->viewport()->mapToGlobal(canvas_->viewport()->rect().center());
+    radial->popupAt(centre);
+}
+
+bool ShellWindow::eventFilter(QObject* watched, QEvent* event) {
+    if (floatingBar_ != nullptr && event->type() == QEvent::Resize &&
+        watched == canvas_->viewport()) {
+        floatingBar_->reposition();
+    }
+    return QMainWindow::eventFilter(watched, event);
+}
+
 void ShellWindow::updateGuide() {
     if (guideSteps_ == nullptr) {
         return;
@@ -1632,6 +1717,7 @@ void ShellWindow::refreshActionStates() {
     saveAction_->setEnabled(documentOpen_);
     exportAction_->setEnabled(hasObjects);
     updateGuide();
+    refreshFloatingBar();
 }
 
 void ShellWindow::rebuildObjectList() {
@@ -2659,16 +2745,9 @@ void ShellWindow::refreshSimulationBar() {
 QMenu* ShellWindow::buildContextMenu() {
     auto* menu = new QMenu(this);
     menu->setObjectName(QStringLiteral("canvasContextMenu"));
-    static const char* const kPrefixes[] = {"edit.",         "transform.",    "order.",
-                                            "selection.",    "action.satin.", "action.fill.",
-                                            "preset.apply.", "preset.save"};
     std::string lastGroup;
     for (const auto& e : commandEntries()) {
-        bool wanted = false;
-        for (const char* p : kPrefixes) {
-            wanted = wanted || e.id.rfind(p, 0) == 0;
-        }
-        if (!wanted || !e.enabled || e.id == "edit.undo" || e.id == "edit.redo") {
+        if (!e.enabled || !commandBelongsTo(CommandSurface::ContextMenu, e.id)) {
             continue;
         }
         if (!lastGroup.empty() && e.group != lastGroup) {
@@ -3639,6 +3718,8 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
     }
     out.push_back(
         {"thread.palette", q(tr("Nuanciers de fils et mélanges…")), q(tr("Fils")), "", hasObjects});
+    out.push_back({"radial.open", q(tr("Menu radial des actions de la sélection")),
+                   q(tr("Affichage")), "F2", hasSel});
     out.push_back(
         {"chat.open", q(tr("Discuter avec l'agent IA")), q(tr("Compagnon")), "", documentOpen_});
     out.push_back(
@@ -3869,6 +3950,8 @@ bool ShellWindow::runCommand(const QString& id) {
                                                                               : NodeKind::Corner);
         } else if (id == QLatin1String("node.hole.remove")) {
             return nodes_->removeSelectedHole();
+        } else if (id == QLatin1String("radial.open")) {
+            showRadialMenu();
         } else if (id == QLatin1String("chat.open")) {
             openChat();
         } else if (id == QLatin1String("companion.settings")) {
