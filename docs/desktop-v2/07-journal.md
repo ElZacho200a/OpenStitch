@@ -531,3 +531,8 @@ encore le desktop principal.
 - Livré : type de nœud (anguleux / lisse, poignées créées au besoin, refus si le contour se croise ou sur un rail de satin), suppression d'un trou précis, suppression d'un texte entier. Commandes `node.smooth`, `node.corner`, `node.hole.remove`, `text.remove`.
 - Choix : « lisse » sur un nœud sans poignée crée une tangente de Catmull-Rom (un sixième de la corde entre les voisins) ; avec une poignée, l'autre lui est opposée. Les extrémités d'un tracé ouvert ne se lissent pas (un seul voisin).
 - Non fait : rails de satin (le moteur a `SetSatinRailNodeTypeCommand`), formes prédéfinies, magnétisme des nœuds.
+
+## 2026-11-06 — Session 4 (suite) : maquette d'ergonomie
+
+- Retour d'usage : la V2 paraît moins accessible que la V1 (opérations utiles « dans des menus déroulants »). Constat dans le code : le menu clic droit ne retient que quelques préfixes de commandes, et les commandes ajoutées pendant la finalisation ne sont accessibles que par la palette. Détail et décisions en attente : `16-ergonomie-gestes.md`.
+- Maquette interactive `maquettes/gestes.html` (barre flottante, menu radial, rail de bobines, champs à glisser, loupe), testée dans un navigateur sans erreur de console ; **non implémentée en Qt**.
