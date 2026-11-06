@@ -66,10 +66,12 @@ jobs:
           if (-not $exe) { throw 'openstitch_v2.exe not found in Release build' }
           foreach ($size in @('1280x720', '1920x1080')) {
             $output = Join-Path (Resolve-Path dist/v2-screenshots) "openstitch-v2-$size.png"
-            & $exe.FullName --new --demo-shapes --screenshot "$output" --screenshot-size $size
-            # WIN32 GUI executables may leave $LASTEXITCODE unset under PowerShell.
-            # Validate the actual PNG output instead of treating null as failure.
-            if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "V2 screenshot failed for $size (exit $LASTEXITCODE)" }
+            # WIN32 GUI executables launch asynchronously with PowerShell's call operator.
+            # Wait for the actual process before checking the screenshot and its exit code.
+            $process = Start-Process -FilePath $exe.FullName -ArgumentList @(
+              '--new', '--demo-shapes', '--screenshot', $output, '--screenshot-size', $size
+            ) -Wait -PassThru -NoNewWindow
+            if ($process.ExitCode -ne 0) { throw "V2 screenshot failed for $size (exit $($process.ExitCode))" }
             if (-not (Test-Path $output)) { throw "Missing screenshot: $output" }
             if ((Get-Item $output).Length -lt 1024) { throw "Screenshot unexpectedly small: $output" }
           }
