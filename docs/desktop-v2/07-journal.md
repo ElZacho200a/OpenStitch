@@ -516,3 +516,10 @@ encore le desktop principal.
 - Tête `ba61c49` de la PR #277 : `windows-msvc` (compilation MSVC, Catch2 et toute la suite QTest de la V2), `linux-core` et `format` passent. Les lignes « CI à confirmer » de la matrice sont remplacées par « CI verte ».
 - Bilan des défauts que la CI a trouvés (aucun n'a été vu en local, faute de Qt) : cinq défauts de mes propres tests (nominal nul, cadre par défaut déjà en place, référence sur temporaire, deux boîtes modales qui bloquaient 300 s) et trois VRAIS défauts d'usage : sélection après « Ajouter du texte » (qui grisait « Modifier le texte »), commandes du chat jamais enregistrées dans la palette, pinceau refusant tout trait croisant un îlot.
 - **Ce que « vert » ne dit pas** : rien n'a été vu à l'écran ; le fournisseur réel du chat n'est exercé par aucun test ; la recette Windows des cinq scénarios et le test des anciens `.osp` restent à faire (voir `11-bascule-v1-v2.md`).
+
+## 2026-11-06 — Session 3 : rattrapage de la V1 et validation visuelle
+
+- Rattrapage (liste de `13-retards-v2-vs-v1.md`) : import machine + DXF, six types de remplissage, guides de direction et lignes de rupture, re-segmentation avec aperçu, réduction de palette, retouche de points multiple (saut, coupe, rétablir), zoom et guides de session, réglages du rendu réaliste, sélection de régions partagée (multiple, par couleur, voisines, lien région ↔ objets), espaces Formes / Zones avec panneaux dédiés, raccourcis (F3-F9, Ctrl+Maj+…, jamais Ctrl+Alt à cause d'AltGr).
+- Guide de parcours réécrit sur l'état réel (obsolète, bloqué, avertissement, ignoré) ; régénération protégée (formes dessinées conservées, retouches comptées et confirmées) ; sept parcours de bout en bout en test.
+- **Captures réelles** (premières de la V2 avec police) : 28 images, 5 inspectées ; cinq défauts d'affichage trouvés et corrigés, trois restent (voir `14`).
+- Ce que ce journal ne dit pas encore : le résultat de la CI de GitHub pour ces lots ; il est ajouté après le premier push.
