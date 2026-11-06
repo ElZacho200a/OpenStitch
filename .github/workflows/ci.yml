@@ -67,8 +67,11 @@ jobs:
           foreach ($size in @('1280x720', '1920x1080')) {
             $output = Join-Path (Resolve-Path dist/v2-screenshots) "openstitch-v2-$size.png"
             & $exe.FullName --new --demo-shapes --screenshot "$output" --screenshot-size $size
-            if ($LASTEXITCODE -ne 0) { throw "V2 screenshot failed for $size (exit $LASTEXITCODE)" }
+            # WIN32 GUI executables may leave $LASTEXITCODE unset under PowerShell.
+            # Validate the actual PNG output instead of treating null as failure.
+            if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "V2 screenshot failed for $size (exit $LASTEXITCODE)" }
             if (-not (Test-Path $output)) { throw "Missing screenshot: $output" }
+            if ((Get-Item $output).Length -lt 1024) { throw "Screenshot unexpectedly small: $output" }
           }
 
       - name: Upload Desktop V2 screenshots
