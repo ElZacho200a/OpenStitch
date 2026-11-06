@@ -68,6 +68,7 @@ private slots:
     void softwareResourcesRecreateFromTheSameSnapshot();
     void prepopulatedSessionAndFailedGeometry();
     void controllerDisconnectionClearsTheCanvas();
+    void openMoveUndoSaveReopenJourney();
 };
 
 void StudioShellTest::initTestCase() {
@@ -265,6 +266,63 @@ void StudioShellTest::prepopulatedSessionAndFailedGeometry() {
     QVERIFY(controller.scene() == nullptr);
     QVERIFY(canvas.scene() == nullptr);
     QVERIFY(previousScene != nullptr); // old immutable snapshot can safely outlive GPU resources
+}
+
+void StudioShellTest::openMoveUndoSaveReopenJourney() {
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto dir = std::filesystem::path(directory.path().toStdWString());
+    const auto original = dir / "origin.osp";
+    QVERIFY(project_io::save_project(original, studioFixture()).has_value());
+
+    DocumentSession session;
+    StudioController controller(session);
+    controller.openProject(QUrl::fromLocalFile(QString::fromStdWString(original.wstring())));
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.busy() && controller.scene() != nullptr, 15'000);
+    QVERIFY(!controller.dirty());
+    QVERIFY(!controller.canUndo());
+    QVERIFY(!controller.moveSelection(5, 0)); // nothing selected
+
+    controller.selectObject(QString::number(firstId));
+    const auto boundsBefore =
+        session.project().vector_objects.front().paths.front().outer.nodes.front();
+    QVERIFY(controller.moveSelection(5, 2));
+    QVERIFY(controller.dirty());
+    QVERIFY(controller.canUndo());
+    QCOMPARE(controller.undoLabel(), QStringLiteral("Déplacer"));
+    const auto moved = session.project().vector_objects.front().paths.front().outer.nodes.front();
+    QVERIFY(moved.pos.x.value != boundsBefore.pos.x.value);
+
+    controller.undo();
+    QVERIFY(!controller.dirty());
+    QVERIFY(controller.canRedo());
+    QCOMPARE(session.project().vector_objects.front().paths.front().outer.nodes.front().pos.x.value,
+             boundsBefore.pos.x.value);
+    controller.redo();
+    QVERIFY(controller.dirty());
+
+    // After Open the path is known; Save As switches to a copy, clears dirty, keeps the history.
+    QVERIFY(controller.hasPath());
+    const auto copy = dir / "copy.osp";
+    QVERIFY(controller.saveProjectAs(QUrl::fromLocalFile(QString::fromStdWString(copy.wstring()))));
+    QVERIFY(!controller.dirty());
+    QVERIFY(controller.canUndo());
+    QVERIFY(controller.saveProject());
+
+    // Reopen in a fresh session: the move survived.
+    DocumentSession reopened;
+    StudioController second(reopened);
+    second.openProject(QUrl::fromLocalFile(QString::fromStdWString(copy.wstring())));
+    QTRY_VERIFY_WITH_TIMEOUT(!second.busy() && second.scene() != nullptr, 15'000);
+    QCOMPARE(
+        reopened.project().vector_objects.front().paths.front().outer.nodes.front().pos.x.value,
+        moved.pos.x.value);
+
+    controller.newProject();
+    QVERIFY(!controller.dirty());
+    QVERIFY(session.project().embroidery_objects.empty());
+    QVERIFY(!controller.hasPath());
+    QVERIFY(!controller.saveProject()); // no path: refused until Save As
 }
 
 QTEST_MAIN(StudioShellTest)

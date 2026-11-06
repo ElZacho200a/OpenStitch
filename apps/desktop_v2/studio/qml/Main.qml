@@ -17,7 +17,7 @@ Window {
     minimumHeight: 640
     visible: true
     color: Theme.background
-    title: studio.title + " — OpenStitch Studio"
+    title: (studio.dirty ? "• " : "") + studio.title + " — OpenStitch Studio"
 
     property int workspaceIndex: 1
     readonly property var workspaces: [
@@ -57,6 +57,37 @@ Window {
         onAccepted: studio.openProject(selectedFile)
     }
 
+    function saveProject() {
+        if (studio.hasPath())
+            studio.saveProject()
+        else
+            saveDialog.open()
+    }
+
+    FileDialog {
+        id: saveDialog
+        title: qsTr("Enregistrer le projet")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "osp"
+        nameFilters: [qsTr("Projet OpenStitch (*.osp)")]
+        onAccepted: studio.saveProjectAs(selectedFile)
+    }
+
+    Shortcut { sequence: "Ctrl+N"; enabled: !studio.busy; onActivated: studio.newProject() }
+    Shortcut { sequence: "Ctrl+S"; enabled: !studio.busy; onActivated: window.saveProject() }
+    Shortcut { sequence: "Ctrl+Shift+S"; enabled: !studio.busy; onActivated: saveDialog.open() }
+    Shortcut { sequence: "Ctrl+Z"; enabled: studio.canUndo; onActivated: studio.undo() }
+    Shortcut { sequence: "Ctrl+Y"; enabled: studio.canRedo; onActivated: studio.redo() }
+    Shortcut { sequence: "Ctrl+Shift+Z"; enabled: studio.canRedo; onActivated: studio.redo() }
+    // Arrow keys nudge the selection by 1 mm (Shift: 5 mm); Y is up in model space.
+    Shortcut { sequence: "Left"; enabled: studio.hasSelection; onActivated: studio.moveSelection(-1, 0) }
+    Shortcut { sequence: "Right"; enabled: studio.hasSelection; onActivated: studio.moveSelection(1, 0) }
+    Shortcut { sequence: "Up"; enabled: studio.hasSelection; onActivated: studio.moveSelection(0, 1) }
+    Shortcut { sequence: "Down"; enabled: studio.hasSelection; onActivated: studio.moveSelection(0, -1) }
+    Shortcut { sequence: "Shift+Left"; enabled: studio.hasSelection; onActivated: studio.moveSelection(-5, 0) }
+    Shortcut { sequence: "Shift+Right"; enabled: studio.hasSelection; onActivated: studio.moveSelection(5, 0) }
+    Shortcut { sequence: "Shift+Up"; enabled: studio.hasSelection; onActivated: studio.moveSelection(0, 5) }
+    Shortcut { sequence: "Shift+Down"; enabled: studio.hasSelection; onActivated: studio.moveSelection(0, -5) }
     Shortcut { sequence: "Ctrl+O"; enabled: !studio.busy; onActivated: window.openProject() }
     Shortcut { sequence: "F"; onActivated: canvas.fitDesign() }
     Shortcut { sequence: studio.selectionTool.shortcut; onActivated: canvas.panMode = false }
@@ -145,6 +176,36 @@ Window {
                 Item { Layout.fillWidth: true; Layout.minimumWidth: 10 }
 
                 StudioButton {
+                    objectName: "undoButton"
+                    text: qsTr("Annuler")
+                    iconName: "undo"
+                    tooltip: studio.canUndo ? qsTr("Annuler : %1").arg(studio.undoLabel) : qsTr("Rien à annuler")
+                    shortcutLabel: "Ctrl+Z"
+                    enabled: studio.canUndo
+                    onClicked: studio.undo()
+                }
+
+                StudioButton {
+                    objectName: "redoButton"
+                    text: qsTr("Rétablir")
+                    iconName: "redo"
+                    tooltip: studio.canRedo ? qsTr("Rétablir : %1").arg(studio.redoLabel) : qsTr("Rien à rétablir")
+                    shortcutLabel: "Ctrl+Y"
+                    enabled: studio.canRedo
+                    onClicked: studio.redo()
+                }
+
+                StudioButton {
+                    objectName: "saveProjectButton"
+                    text: qsTr("Enregistrer")
+                    iconName: "save"
+                    tooltip: qsTr("Enregistrer le projet (Ctrl+Maj+S : sous…)")
+                    shortcutLabel: "Ctrl+S"
+                    enabled: !studio.busy
+                    onClicked: window.saveProject()
+                }
+
+                StudioButton {
                     objectName: "openProjectButton"
                     text: qsTr("Ouvrir")
                     iconName: "open"
@@ -186,7 +247,7 @@ Window {
                 }
                 Rectangle { implicitWidth: 1; implicitHeight: 14; color: Theme.border; Layout.leftMargin: 8; Layout.rightMargin: 8 }
                 Text {
-                    text: qsTr("Prototype · lecture seule")
+                    text: studio.dirty ? qsTr("Modifié") : qsTr("Enregistré")
                     color: Theme.muted
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.smallSize

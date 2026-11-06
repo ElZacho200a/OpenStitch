@@ -23,6 +23,12 @@ class StudioController : public QObject {
     Q_PROPERTY(QVariantList objects READ objects NOTIFY changed)
     Q_PROPERTY(QString selectionInfo READ selectionInfo NOTIFY changed)
     Q_PROPERTY(int commandCount READ commandCount NOTIFY changed)
+    Q_PROPERTY(bool dirty READ dirty NOTIFY changed)
+    Q_PROPERTY(bool canUndo READ canUndo NOTIFY changed)
+    Q_PROPERTY(bool canRedo READ canRedo NOTIFY changed)
+    Q_PROPERTY(QString undoLabel READ undoLabel NOTIFY changed)
+    Q_PROPERTY(QString redoLabel READ redoLabel NOTIFY changed)
+    Q_PROPERTY(bool hasSelection READ hasSelection NOTIFY changed)
     Q_PROPERTY(QVariantMap selectionTool READ selectionTool CONSTANT)
     Q_PROPERTY(QVariantMap panTool READ panTool CONSTANT)
 public:
@@ -38,6 +44,21 @@ public:
     [[nodiscard]] int commandCount() const;
     [[nodiscard]] QVariantMap selectionTool() const { return toolInfo("select"); }
     [[nodiscard]] QVariantMap panTool() const { return toolInfo("pan"); }
+    [[nodiscard]] bool dirty() const { return session_.dirty(); }
+    [[nodiscard]] bool canUndo() const { return session_.canUndo(); }
+    [[nodiscard]] bool canRedo() const { return session_.canRedo(); }
+    [[nodiscard]] QString undoLabel() const;
+    [[nodiscard]] QString redoLabel() const;
+    [[nodiscard]] bool hasSelection() const { return !session_.selection().targets().empty(); }
+    Q_INVOKABLE void newProject();
+    // Both return true when the project was written; the status line carries the reason otherwise.
+    Q_INVOKABLE bool saveProject();
+    Q_INVOKABLE bool saveProjectAs(const QUrl& url);
+    Q_INVOKABLE [[nodiscard]] bool hasPath() const { return !path_.isEmpty(); }
+    Q_INVOKABLE void undo();
+    Q_INVOKABLE void redo();
+    // Moves the selected embroidery objects by a model-space offset in mm (one undo step).
+    Q_INVOKABLE bool moveSelection(double dxMm, double dyMm);
     Q_INVOKABLE void openProject(const QUrl& url);
     Q_INVOKABLE void selectObject(const QString& id, bool toggle = false);
     Q_INVOKABLE void clearSelection();
@@ -51,6 +72,7 @@ signals:
 
 private:
     void rebuildScene();
+    bool writeProject(const QString& path);
     [[nodiscard]] QVariantMap toolInfo(std::string_view id) const;
     DocumentSession& session_;
     const ToolRegistry tools_{ToolRegistry::builtin()};
@@ -59,6 +81,7 @@ private:
     std::shared_ptr<const StudioSceneSnapshot> scene_;
     QString title_{QStringLiteral("Sans projet")};
     QString status_{QStringLiteral("Ouvrez un projet .osp pour explorer sa broderie")};
+    QString path_;
     bool busy_{false};
     std::uint64_t request_{0};
     QTimer pump_;

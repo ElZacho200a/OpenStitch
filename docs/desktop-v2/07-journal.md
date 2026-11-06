@@ -542,3 +542,4 @@ encore le desktop principal.
   géométrie et les commandes restent testables sans Qt/GPU. Le shell de visualisation ne prétend
   pas encore à la parité d'édition, enregistrement, exports ou compagnon. Les fichiers/branches des
   PR ouvertes sont conservés et les nouveaux documents utilisent 17/18 pour éviter leur chevauchement.
+- Lot 1 Studio (ouvrir/enregistrer/undo/déplacer) : voir [19](19-studio-matrice-migration.md).
