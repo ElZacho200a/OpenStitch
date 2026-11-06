@@ -1,0 +1,695 @@
+// SPDX-License-Identifier: Apache-2.0
+pragma ComponentBehavior: Bound
+import QtQuick
+import QtQuick.Window
+import QtQuick.Controls as Controls
+import QtQuick.Layouts
+import QtQuick.Dialogs
+import OpenStitch.Studio 1.0
+import "."
+
+Window {
+    id: window
+    objectName: "studioWindow"
+    width: 1440
+    height: 900
+    minimumWidth: 1000
+    minimumHeight: 640
+    visible: true
+    color: Theme.background
+    title: studio.title + " — OpenStitch Studio"
+
+    property int workspaceIndex: 1
+    readonly property var workspaces: [
+        { name: qsTr("Préparer"), label: qsTr("COMPOSITION"),
+          title: qsTr("Repérer les éléments du document"),
+          detail: qsTr("Ouvrez un projet .osp et parcourez ses objets. Les couleurs affichées sont celles des fils du projet.") },
+        { name: qsTr("Numériser"), label: qsTr("STRUCTURE DES POINTS"),
+          title: qsTr("Observer la broderie, fil par fil"),
+          detail: qsTr("Les segments proviennent du moteur OpenStitch. Sélectionnez un objet dans la vue ou dans la liste.") },
+        { name: qsTr("Contrôler"), label: qsTr("INSPECTION VISUELLE"),
+          title: qsTr("Examiner les segments et la sélection"),
+          detail: qsTr("Le contour framboise indique la sélection. Zoomez pour observer la structure, sans modifier le document.") },
+        { name: qsTr("Produire"), label: qsTr("DOCUMENT SOURCE"),
+          title: qsTr("Relire le motif avant production"),
+          detail: qsTr("Ce prototype consulte les projets existants. Pour exporter ou simuler la couture, utilisez encore Desktop V2.") }
+    ]
+    readonly property var workspace: workspaces[workspaceIndex]
+    readonly property var objectEntries: studio.objects
+    readonly property int selectedCount: {
+        var count = 0
+        for (var i = 0; i < objectEntries.length; ++i)
+            if (objectEntries[i].selected)
+                ++count
+        return count
+    }
+
+    function openProject() {
+        if (!studio.busy)
+            projectDialog.open()
+    }
+
+    FileDialog {
+        id: projectDialog
+        title: qsTr("Ouvrir un projet OpenStitch")
+        fileMode: FileDialog.OpenFile
+        nameFilters: [qsTr("Projet OpenStitch (*.osp)")]
+        onAccepted: studio.openProject(selectedFile)
+    }
+
+    Shortcut { sequence: "Ctrl+O"; enabled: !studio.busy; onActivated: window.openProject() }
+    Shortcut { sequence: "F"; onActivated: canvas.fitDesign() }
+    Shortcut { sequence: studio.selectionTool.shortcut; onActivated: canvas.panMode = false }
+    Shortcut { sequence: studio.panTool.shortcut; onActivated: canvas.panMode = true }
+    Shortcut { sequence: "Escape"; onActivated: studio.clearSelection() }
+    Shortcut { sequence: "Ctrl+1"; onActivated: window.workspaceIndex = 0 }
+    Shortcut { sequence: "Ctrl+2"; onActivated: window.workspaceIndex = 1 }
+    Shortcut { sequence: "Ctrl+3"; onActivated: window.workspaceIndex = 2 }
+    Shortcut { sequence: "Ctrl+4"; onActivated: window.workspaceIndex = 3 }
+
+    ColumnLayout {
+        anchors.fill: parent
+        spacing: 0
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 66
+            color: Theme.panel
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 18
+                anchors.rightMargin: 18
+                spacing: 12
+
+                StudioIcon { name: "needle"; color: Theme.accent; implicitWidth: 28; implicitHeight: 28 }
+                ColumnLayout {
+                    spacing: 1
+                    Text {
+                        text: "OpenStitch"
+                        color: Theme.foreground
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 18
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        text: "STUDIO"
+                        color: Theme.faint
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 9
+                        font.letterSpacing: 2.4
+                    }
+                }
+
+                Item { Layout.fillWidth: true; Layout.minimumWidth: 10 }
+
+                RowLayout {
+                    spacing: 3
+                    Repeater {
+                        model: window.workspaces
+                        delegate: Controls.AbstractButton {
+                            id: workspaceButton
+                            required property int index
+                            required property var modelData
+                            readonly property bool active: window.workspaceIndex === index
+                            Layout.preferredHeight: 38
+                            Layout.preferredWidth: window.width < 1180 ? 96 : 113
+                            hoverEnabled: true
+                            focusPolicy: Qt.StrongFocus
+                            Accessible.name: modelData.name
+                            Accessible.description: qsTr("Contexte du même document. Raccourci Ctrl+") + (index + 1)
+                            onClicked: window.workspaceIndex = index
+                            background: Rectangle {
+                                color: workspaceButton.active ? Theme.accentSoft
+                                       : workspaceButton.hovered ? Theme.raised : "transparent"
+                                radius: Theme.radius
+                                border.width: workspaceButton.activeFocus ? 1 : 0
+                                border.color: Theme.accent
+                            }
+                            contentItem: Text {
+                                text: workspaceButton.modelData.name
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                                color: workspaceButton.active ? Theme.accent : Theme.muted
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.bodySize
+                                font.weight: workspaceButton.active ? Font.DemiBold : Font.Normal
+                            }
+                            Controls.ToolTip.visible: hovered
+                            Controls.ToolTip.text: modelData.name + "  ·  Ctrl+" + (index + 1)
+                            Controls.ToolTip.delay: 600
+                        }
+                    }
+                }
+
+                Item { Layout.fillWidth: true; Layout.minimumWidth: 10 }
+
+                StudioButton {
+                    objectName: "openProjectButton"
+                    text: qsTr("Ouvrir")
+                    iconName: "open"
+                    tooltip: qsTr("Ouvrir un projet .osp")
+                    shortcutLabel: "Ctrl+O"
+                    enabled: !studio.busy
+                    onClicked: window.openProject()
+                }
+            }
+        }
+
+        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 42
+            color: Theme.surface
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 18
+                anchors.rightMargin: 18
+                spacing: 10
+                StudioIcon { name: "layers"; implicitWidth: 16; implicitHeight: 16; color: Theme.faint }
+                Text {
+                    Layout.fillWidth: true
+                    text: studio.title
+                    elide: Text.ElideMiddle
+                    color: Theme.foreground
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.bodySize
+                }
+                Text {
+                    text: qsTr("UN DOCUMENT · QUATRE CONTEXTES")
+                    visible: window.width >= 1160
+                    color: Theme.faint
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 9
+                    font.letterSpacing: 1.1
+                }
+                Rectangle { implicitWidth: 1; implicitHeight: 14; color: Theme.border; Layout.leftMargin: 8; Layout.rightMargin: 8 }
+                Text {
+                    text: qsTr("Prototype · lecture seule")
+                    color: Theme.muted
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.smallSize
+                }
+            }
+        }
+
+        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            spacing: 0
+
+            Rectangle {
+                Layout.preferredWidth: Theme.railWidth
+                Layout.fillHeight: true
+                color: Theme.panel
+                ColumnLayout {
+                    anchors.top: parent.top
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.topMargin: 12
+                    spacing: 6
+                    StudioButton {
+                        objectName: "selectToolButton"
+                        iconName: "select"
+                        tooltip: studio.selectionTool.label
+                        shortcutLabel: studio.selectionTool.shortcut
+                        quiet: true
+                        active: !canvas.panMode
+                        onClicked: canvas.panMode = false
+                    }
+                    StudioButton {
+                        objectName: "panToolButton"
+                        iconName: "pan"
+                        tooltip: studio.panTool.label
+                        shortcutLabel: studio.panTool.shortcut
+                        quiet: true
+                        active: canvas.panMode
+                        onClicked: canvas.panMode = true
+                    }
+                    Rectangle {
+                        Layout.alignment: Qt.AlignHCenter
+                        Layout.topMargin: 4
+                        Layout.bottomMargin: 4
+                        implicitWidth: 24
+                        implicitHeight: 1
+                        color: Theme.divider
+                    }
+                    StudioButton {
+                        objectName: "fitToolButton"
+                        iconName: "fit"
+                        tooltip: qsTr("Ajuster le motif à la fenêtre")
+                        shortcutLabel: "F"
+                        quiet: true
+                        onClicked: canvas.fitDesign()
+                    }
+                }
+                Text {
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 16
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "mm"
+                    color: Theme.faint
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 10
+                }
+            }
+
+            Rectangle { Layout.preferredWidth: 1; Layout.fillHeight: true; color: Theme.divider }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: 0
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 43
+                    color: Theme.background
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 20
+                        anchors.rightMargin: 20
+                        SectionLabel { text: window.workspace.label }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: qsTr("Segments de broderie")
+                            color: Theme.faint
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.smallSize
+                        }
+                    }
+                }
+
+                Item {
+                    id: viewport
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+
+                    GpuCanvas {
+                        id: canvas
+                        objectName: "studioCanvas"
+                        anchors.fill: parent
+                        controller: studio
+                        focus: true
+                    }
+
+                    ColumnLayout {
+                        anchors.centerIn: parent
+                        width: Math.min(400, parent.width - 64)
+                        spacing: 16
+                        visible: studio.commandCount === 0 && !studio.busy
+
+                        StudioIcon {
+                            name: "needle"
+                            implicitWidth: 46
+                            implicitHeight: 46
+                            color: Theme.accent
+                            Layout.alignment: Qt.AlignHCenter
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Votre prochain fil commence ici.")
+                            color: Theme.foreground
+                            horizontalAlignment: Text.AlignHCenter
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 23
+                            wrapMode: Text.WordWrap
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Ouvrez une broderie OpenStitch pour explorer\nsa structure sur le canevas du Studio.")
+                            color: Theme.muted
+                            horizontalAlignment: Text.AlignHCenter
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 13
+                            lineHeight: 1.4
+                            wrapMode: Text.WordWrap
+                        }
+                        StudioButton {
+                            Layout.alignment: Qt.AlignHCenter
+                            Layout.topMargin: 7
+                            emphasized: true
+                            iconName: "open"
+                            text: qsTr("Ouvrir un projet .osp")
+                            tooltip: qsTr("Ouvrir un projet OpenStitch existant")
+                            onClicked: window.openProject()
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: loadingRow.implicitWidth + 36
+                        height: 54
+                        radius: Theme.radius
+                        color: Theme.surface
+                        border.color: Theme.border
+                        visible: studio.busy
+                        RowLayout {
+                            id: loadingRow
+                            anchors.centerIn: parent
+                            spacing: 14
+                            Controls.BusyIndicator {
+                                implicitWidth: 26
+                                implicitHeight: 26
+                                running: studio.busy
+                                palette.dark: Theme.accent
+                            }
+                            Text {
+                                text: qsTr("Chargement du projet…")
+                                color: Theme.foreground
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.bodySize
+                            }
+                            StudioButton {
+                                text: qsTr("Annuler")
+                                tooltip: qsTr("Annuler le chargement")
+                                quiet: true
+                                onClicked: studio.cancel()
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.bottom: parent.bottom
+                        anchors.margins: 18
+                        width: viewControls.implicitWidth + 8
+                        height: 40
+                        radius: Theme.radius
+                        color: Theme.panel
+                        border.color: Theme.divider
+                        RowLayout {
+                            id: viewControls
+                            anchors.centerIn: parent
+                            spacing: 0
+                            StudioButton {
+                                iconName: "minus"
+                                quiet: true
+                                implicitHeight: 32
+                                tooltip: qsTr("Réduire la vue")
+                                onClicked: canvas.zoomAt(0.8, canvas.width / 2, canvas.height / 2)
+                            }
+                            Text {
+                                Layout.minimumWidth: 72
+                                horizontalAlignment: Text.AlignHCenter
+                                text: canvas.zoom.toFixed(2) + " px/mm"
+                                color: Theme.muted
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.smallSize
+                            }
+                            StudioButton {
+                                iconName: "plus"
+                                quiet: true
+                                implicitHeight: 32
+                                tooltip: qsTr("Agrandir la vue")
+                                onClicked: canvas.zoomAt(1.25, canvas.width / 2, canvas.height / 2)
+                            }
+                            Rectangle { implicitWidth: 1; implicitHeight: 16; color: Theme.divider; Layout.leftMargin: 4; Layout.rightMargin: 4 }
+                            StudioButton {
+                                text: qsTr("Ajuster")
+                                quiet: true
+                                implicitHeight: 32
+                                tooltip: qsTr("Ajuster le motif à la fenêtre")
+                                shortcutLabel: "F"
+                                onClicked: canvas.fitDesign()
+                            }
+                        }
+                    }
+
+                    Text {
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        anchors.rightMargin: 20
+                        anchors.bottomMargin: 29
+                        visible: viewport.width >= 670
+                        text: canvas.panMode ? qsTr("Glisser pour déplacer · Molette pour zoomer")
+                                             : qsTr("Clic pour sélectionner · Molette pour zoomer")
+                        color: Theme.faint
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.smallSize
+                    }
+                }
+            }
+
+            Rectangle { Layout.preferredWidth: 1; Layout.fillHeight: true; color: Theme.divider }
+
+            Rectangle {
+                Layout.preferredWidth: window.width < 1180 ? 250 : Theme.inspectorWidth
+                Layout.fillHeight: true
+                color: Theme.panel
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    spacing: 0
+
+                    Item {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 48
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 18
+                            anchors.rightMargin: 18
+                            Text {
+                                text: qsTr("Objets")
+                                color: Theme.foreground
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.headingSize
+                                font.weight: Font.DemiBold
+                            }
+                            Item { Layout.fillWidth: true }
+                            Text {
+                                text: window.objectEntries.length
+                                color: Theme.faint
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.bodySize
+                            }
+                        }
+                    }
+
+                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
+
+                    ListView {
+                        id: objectList
+                        objectName: "objectList"
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        Layout.minimumHeight: 100
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        model: window.objectEntries
+                        spacing: 1
+                        topMargin: 7
+                        bottomMargin: 7
+                        Controls.ScrollBar.vertical: Controls.ScrollBar { }
+
+                        delegate: Controls.ItemDelegate {
+                            id: objectRow
+                            required property var modelData
+                            required property int index
+                            width: objectList.width
+                            height: Theme.rowHeight
+                            leftPadding: 18
+                            rightPadding: 18
+                            hoverEnabled: true
+                            focusPolicy: Qt.StrongFocus
+                            Accessible.name: modelData.label
+                            Accessible.description: modelData.type
+                            Accessible.selected: modelData.selected
+                            onClicked: studio.selectObject(modelData.id, false)
+
+                            background: Rectangle {
+                                color: objectRow.modelData.selected ? Theme.accentSoft
+                                       : objectRow.hovered ? Theme.raised : "transparent"
+                                Rectangle {
+                                    width: 2
+                                    anchors.left: parent.left
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
+                                    color: Theme.accent
+                                    visible: objectRow.modelData.selected
+                                }
+                                border.width: objectRow.activeFocus ? 1 : 0
+                                border.color: Theme.accent
+                            }
+
+                            contentItem: RowLayout {
+                                spacing: 10
+                                Rectangle {
+                                    implicitWidth: 12
+                                    implicitHeight: 12
+                                    radius: 3
+                                    color: objectRow.modelData.color
+                                    border.width: 1
+                                    border.color: "#66858d9e"
+                                    opacity: objectRow.modelData.visible ? 1 : 0.4
+                                }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: objectRow.modelData.label
+                                        color: objectRow.modelData.selected ? Theme.foreground : Theme.muted
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: Theme.bodySize
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: objectRow.modelData.type
+                                              + (objectRow.modelData.visible ? "" : qsTr(" · masqué"))
+                                        color: Theme.faint
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: 9
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                acceptedButtons: Qt.LeftButton
+                                onClicked: function(mouse) {
+                                    objectRow.forceActiveFocus()
+                                    studio.selectObject(objectRow.modelData.id,
+                                                        Boolean(mouse.modifiers & Qt.ControlModifier))
+                                }
+                            }
+                            Controls.ToolTip.visible: hovered
+                            Controls.ToolTip.delay: 700
+                            Controls.ToolTip.text: modelData.label + "\n" + modelData.id
+                        }
+
+                        Text {
+                            anchors.centerIn: parent
+                            width: parent.width - 36
+                            visible: objectList.count === 0
+                            text: studio.commandCount > 0 ? qsTr("Aucun objet source\ndans ce projet.")
+                                                          : qsTr("Les objets du projet\napparaîtront ici.")
+                            color: Theme.faint
+                            horizontalAlignment: Text.AlignHCenter
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.bodySize
+                            lineHeight: 1.4
+                        }
+                    }
+
+                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.margins: 18
+                        spacing: 11
+                        RowLayout {
+                            Layout.fillWidth: true
+                            SectionLabel { text: qsTr("SÉLECTION") }
+                            Item { Layout.fillWidth: true }
+                            StudioButton {
+                                visible: window.selectedCount > 0
+                                iconName: "close"
+                                tooltip: qsTr("Effacer la sélection")
+                                shortcutLabel: qsTr("Échap")
+                                quiet: true
+                                implicitWidth: 24
+                                implicitHeight: 24
+                                onClicked: studio.clearSelection()
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: window.selectedCount > 0 ? studio.selectionInfo
+                                                           : qsTr("Cliquez sur un fil ou choisissez un objet dans la liste.")
+                            color: window.selectedCount > 0 ? Theme.foreground : Theme.faint
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.bodySize
+                            wrapMode: Text.WrapAnywhere
+                            lineHeight: 1.35
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Ctrl + clic pour une sélection multiple")
+                            color: Theme.faint
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+
+                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.margins: 18
+                        spacing: 9
+                        SectionLabel { text: window.workspace.name.toUpperCase() }
+                        Text {
+                            Layout.fillWidth: true
+                            text: window.workspace.title
+                            color: Theme.foreground
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.bodySize
+                            wrapMode: Text.WordWrap
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            visible: window.height >= 760
+                            text: window.workspace.detail
+                            color: Theme.faint
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.smallSize
+                            wrapMode: Text.WordWrap
+                            lineHeight: 1.4
+                        }
+                    }
+                }
+            }
+        }
+
+        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 30
+            color: Theme.surface
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 12
+                Text {
+                    Layout.fillWidth: true
+                    text: studio.status
+                    elide: Text.ElideRight
+                    color: Theme.muted
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.smallSize
+                    Accessible.role: Accessible.StaticText
+                    Accessible.name: text
+                }
+                Text {
+                    text: studio.commandCount.toLocaleString(Qt.locale(), "f", 0) + qsTr(" commandes")
+                    color: Theme.faint
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.smallSize
+                }
+                Rectangle { implicitWidth: 1; implicitHeight: 12; color: Theme.border }
+                Text {
+                    objectName: "renderBackendLabel"
+                    text: canvas.backendName
+                    color: Theme.muted
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.smallSize
+                }
+                Text {
+                    visible: window.width >= 1180
+                    text: qsTr("Géométrie · ") + canvas.geometryBuildCount
+                    color: Theme.faint
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.smallSize
+                }
+            }
+        }
+    }
+}

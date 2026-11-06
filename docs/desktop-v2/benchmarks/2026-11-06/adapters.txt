@@ -1,0 +1,60 @@
+Extraits QSG_INFO=1 de la passe native du 2026-11-06.
+Les adresses de fenêtres/QRhi sont supprimées ; les lignes liées au backend et à l'adaptateur sont conservées.
+Source Qt : https://doc.qt.io/qt-6.8/qtquick-visualcanvas-scenegraph.html
+
+qt.scenegraph.general: threaded render loop
+qt.scenegraph.general: Animation Driver: using vsync: 16.67 ms
+qt.scenegraph.general: Animation Driver: using vsync: 16.67 ms
+qt.scenegraph.general: Creating QRhi with backend D3D11
+  Prefer software device: 0
+qt.rhi.general: Adapter 0: 'NVIDIA GeForce RTX 5060 Ti' (vendor 0x10DE device 0x2D04 flags 0x0)
+qt.rhi.general:   using this adapter
+qt.rhi.general: Adapter 1: 'AMD Radeon(TM) Graphics' (vendor 0x1002 device 0x164E flags 0x0)
+qt.rhi.general: Adapter 2: 'Microsoft Basic Render Driver' (vendor 0x1414 device 0x8C flags 0x2)
+quick / 1000: 60.00 completions/s, median 16.667 ms, p95 16.829 ms
+qt.scenegraph.general: threaded render loop
+qt.scenegraph.general: Animation Driver: using vsync: 16.67 ms
+qt.scenegraph.general: Animation Driver: using vsync: 16.67 ms
+qt.scenegraph.general: Creating QRhi with backend D3D11
+  Prefer software device: 0
+qt.rhi.general: Adapter 0: 'NVIDIA GeForce RTX 5060 Ti' (vendor 0x10DE device 0x2D04 flags 0x0)
+qt.rhi.general:   using this adapter
+qt.rhi.general: Adapter 1: 'AMD Radeon(TM) Graphics' (vendor 0x1002 device 0x164E flags 0x0)
+qt.rhi.general: Adapter 2: 'Microsoft Basic Render Driver' (vendor 0x1414 device 0x8C flags 0x2)
+quick / 10000: 60.00 completions/s, median 16.662 ms, p95 16.791 ms
+qt.scenegraph.general: threaded render loop
+qt.scenegraph.general: Animation Driver: using vsync: 16.67 ms
+qt.scenegraph.general: Animation Driver: using vsync: 16.67 ms
+qt.scenegraph.general: Creating QRhi with backend D3D11
+  Prefer software device: 0
+qt.rhi.general: Adapter 0: 'NVIDIA GeForce RTX 5060 Ti' (vendor 0x10DE device 0x2D04 flags 0x0)
+qt.rhi.general:   using this adapter
+qt.rhi.general: Adapter 1: 'AMD Radeon(TM) Graphics' (vendor 0x1002 device 0x164E flags 0x0)
+qt.rhi.general: Adapter 2: 'Microsoft Basic Render Driver' (vendor 0x1414 device 0x8C flags 0x2)
+quick / 50000: 59.99 completions/s, median 16.666 ms, p95 16.839 ms
+qt.scenegraph.general: threaded render loop
+qt.scenegraph.general: Animation Driver: using vsync: 16.67 ms
+qt.scenegraph.general: Animation Driver: using vsync: 16.67 ms
+qt.scenegraph.general: Creating QRhi with backend D3D11
+  Prefer software device: 0
+qt.rhi.general: Adapter 0: 'NVIDIA GeForce RTX 5060 Ti' (vendor 0x10DE device 0x2D04 flags 0x0)
+qt.rhi.general:   using this adapter
+qt.rhi.general: Adapter 1: 'AMD Radeon(TM) Graphics' (vendor 0x1002 device 0x164E flags 0x0)
+qt.rhi.general: Adapter 2: 'Microsoft Basic Render Driver' (vendor 0x1414 device 0x8C flags 0x2)
+quick / 100000: 60.00 completions/s, median 16.668 ms, p95 16.817 ms
+qt.scenegraph.general: threaded render loop
+qt.scenegraph.general: Animation Driver: using vsync: 16.67 ms
+qt.scenegraph.general: Animation Driver: using vsync: 16.67 ms
+qt.scenegraph.general: Creating QRhi with backend D3D11
+  Prefer software device: 0
+qt.rhi.general: Adapter 0: 'NVIDIA GeForce RTX 5060 Ti' (vendor 0x10DE device 0x2D04 flags 0x0)
+qt.rhi.general:   using this adapter
+qt.rhi.general: Adapter 1: 'AMD Radeon(TM) Graphics' (vendor 0x1002 device 0x164E flags 0x0)
+qt.rhi.general: Adapter 2: 'Microsoft Basic Render Driver' (vendor 0x1414 device 0x8C flags 0x2)
+quick / real: 60.00 completions/s, median 16.665 ms, p95 16.832 ms
+
+qt.scenegraph.general: MSAA sample count for the swapchain is 1. Alpha channel requested = no.
+qt.scenegraph.general: MSAA sample count for the swapchain is 1. Alpha channel requested = no.
+qt.scenegraph.general: MSAA sample count for the swapchain is 1. Alpha channel requested = no.
+qt.scenegraph.general: MSAA sample count for the swapchain is 1. Alpha channel requested = no.
+qt.scenegraph.general: MSAA sample count for the swapchain is 1. Alpha channel requested = no.

@@ -52,6 +52,7 @@ jobs:
             build/msvc/apps/desktop/Release/
             build/msvc/apps/cli/Release/
             build/msvc/apps/mcp/Release/
+            build/msvc/apps/desktop_v2/studio/Release/
 
       - name: Capture Desktop V2 screenshots (offscreen)
         shell: pwsh
@@ -84,6 +85,36 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
           path: dist/v2-screenshots/*.png
+
+      - name: Build and capture experimental Qt Quick Studio
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PATH = "$env:QT_ROOT_DIR/bin;$env:PATH"
+          $env:QT_QPA_PLATFORM = 'offscreen'
+          $env:QT_QUICK_BACKEND = 'software'
+          $env:QT_QPA_FONTDIR = Join-Path $PWD 'resources/fonts'
+          $env:QT_QPA_PLATFORM_PLUGIN_PATH = Join-Path $env:QT_ROOT_DIR 'plugins/platforms'
+          cmake --build --preset msvc-release --target openstitch_v2_studio test_desktop_v2_studio_shell openstitch-studio-bench
+          if ($LASTEXITCODE -ne 0) { throw 'Studio build failed' }
+          New-Item -ItemType Directory -Force -Path dist/studio-screenshots | Out-Null
+          & build/msvc/tests/bench/Release/openstitch-studio-bench.exe --generate-project dist/studio-screenshots/tentabrode-300mm.osp --image tests/fixtures/tentabrode.png --height-mm 300
+          if ($LASTEXITCODE -ne 0) { throw 'Studio real-project fixture generation failed' }
+          $output = Join-Path (Resolve-Path dist/studio-screenshots) 'studio-software.png'
+          $project = Join-Path (Resolve-Path dist/studio-screenshots) 'tentabrode-300mm.osp'
+          $process = Start-Process -FilePath build/msvc/apps/desktop_v2/studio/Release/openstitch_v2_studio.exe -ArgumentList @(
+            "`"$project`"", '--software', '--screenshot', "`"$output`""
+          ) -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0 -or -not (Test-Path $output)) { throw 'Studio screenshot failed' }
+
+      - name: Upload actual Qt Studio screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openstitch-studio-screenshots-windows
+          if-no-files-found: warn
+          retention-days: 30
+          path: dist/studio-screenshots/*.png
 
       - name: Test (Release)
         run: ctest --preset msvc-release

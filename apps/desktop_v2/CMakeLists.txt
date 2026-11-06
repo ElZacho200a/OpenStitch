@@ -51,6 +51,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/direction_guides.cpp
     core/point_edit.cpp
     core/source_image_tools.cpp
+    core/studio_scene.cpp
 )
 add_library(openstitch::desktop_v2_core ALIAS openstitch_desktop_v2_core)
 target_include_directories(openstitch_desktop_v2_core PUBLIC core)
@@ -66,6 +67,9 @@ target_link_libraries(openstitch_desktop_v2_core
 # Interface Qt Widgets. Désactivée avec OPENSTITCH_BUILD_DESKTOP=OFF (CI linux-core) ou sans Qt6.
 if(NOT OPENSTITCH_BUILD_DESKTOP)
     return()
+endif()
+if(OPENSTITCH_BUILD_STUDIO)
+    add_subdirectory(studio)
 endif()
 find_package(Qt6 COMPONENTS Widgets Network QUIET)
 if(NOT Qt6_FOUND)

@@ -1,0 +1,185 @@
+# 18 — Mesurer le canevas Studio et la V2 Widgets
+
+Le banc `openstitch-studio-bench` utilise une **fenêtre native visible de 1280 × 800 pixels
+logiques**, pas un rendu Qt offscreen. Il est exclu de CTest et du build par défaut. Les cibles
+de 60 FPS et de p95 local < 16,7 ms sont des critères à mesurer sur une machine de référence.
+
+## Scènes et protocole reproductible
+
+Les quatre scènes synthétiques sont de vrais projets C++ avec un objet point droit en serpentin,
+pas des objets QML par point. `effective_sequence` génère respectivement 1 000, 10 000, 50 000 et
+100 000 commandes Stitch ; le banc vérifie ces comptes. Les positions sont des µm entiers avec
+un pas de 1 mm, et les finitions sont désactivées pour garder un compte exact. Le nombre de
+segments visibles est rapporté séparément du nombre de commandes machine.
+
+La cinquième scène est un `.osp` réel, par défaut Tentabrode à 300 mm de haut. Le mode de génération
+du banc réutilise `run_digitize` et `project_io::save_project` existants ; la résolution d'import
+est `dpi = H × 25,4 / 300` pour une image source de hauteur `H` pixels. L'emprise réellement cousue
+peut être légèrement plus petite après suppression du fond. Générer le projet :
+
+```powershell
+cmake --build --preset msvc-release --target openstitch-studio-bench
+$env:PATH = "$env:QT_ROOT\bin;$env:PATH"
+.\build\msvc\tests\bench\Release\openstitch-studio-bench.exe --generate-project build\tentabrode-300mm.osp --image tests\fixtures\tentabrode.png --height-mm 300
+.\scripts\performance\benchmark_studio.ps1 -Project build\tentabrode-300mm.osp
+```
+
+Le script exécute les dix cas (5 scènes × 2 fronts) dans des processus séparés pour isoler les
+caches et mémoires des scènes précédentes. Il conserve les échantillons JSON, les empreintes
+SHA256 du projet et du binaire, les versions Qt/OS, l'inventaire CPU/GPU/pilotes, l'écran/DPR et
+le backend obtenu. Il vérifie que les deux fronts reçoivent le même compte de points et la même
+empreinte des segments (géométrie et couleurs). L'inventaire des GPU Windows ne prouve pas quel
+adaptateur Qt a choisi.
+
+Chaque cas laisse passer une première frame puis 30 gestes de chauffe, suivis de 240 gestes
+mesurés. Un geste translate de 2/0,5 pixels logiques et alterne un facteur de zoom de 1,002 et
+son inverse, au centre. Le sens du pan s'inverse tous les 30 gestes. Le geste suivant est demandé
+après la fin du précédent. Les fenêtres doivent rester dégagées, sur le même écran, avec le même
+DPR et la même politique d'alimentation ; ne pas exécuter les deux fronts simultanément.
+
+Commande ciblée pour diagnostic :
+
+```powershell
+.\build\msvc\tests\bench\Release\openstitch-studio-bench.exe build\tentabrode-300mm.osp --backend quick --scene 100000 --frames 240 --warmup 30 --json build\quick-100k.json
+```
+
+## Ce que les chiffres signifient
+
+| Champ | Limite de mesure |
+|---|---|
+| `completion_fps` / `frame_interval_ms` Quick | Cadence des `QQuickWindow::frameSwapped` consécutifs, horodatés sur le thread de rendu. Inclut la régulation de présentation de Qt/pilote. Ce n'est pas un temps d'exécution GPU. |
+| `completion_fps` / `frame_interval_ms` Widgets | Cadence de fin de `PreviewCanvas::paintEvent`, côté CPU. Une valeur supérieure à la fréquence écran n'est **pas** un FPS affiché ; le compositeur peut regrouper plusieurs peintures. |
+| `local_interaction_to_completion_ms` | Temps entre l'appel C++ de caméra et la fin swap/peinture correspondante. Exclut le périphérique et la file d'événements d'entrée de l'OS ; ce n'est pas une latence photon à l'écran. |
+| `load_ms` | Chargement du `.osp` ou construction du projet synthétique, avant l'installation. Le cache disque de l'OS n'est pas purgé. |
+| `scene_build_ms` | Calcul de la séquence effective, segments, emprises et sommets CPU. Le même instantané est construit dans les deux cas pour contrôler leur équivalence. Ce surcoût de validation n'est pas requis par le shell Widgets normal. |
+| `preview_raster_ms` | Widgets seulement : `render_preview` à 3 px/mm puis décodage PNG, avec finitions/qualité réaliste existantes. Ce produit visuel diffère des segments plats Quick. |
+| `install_to_first_completion_ms` | Installation, création de fenêtre/ressources et première frame. Ce n'est pas le temps isolé d'upload ni celui des seuls buffers GPU. |
+| `qsg_resource_creation_cpu_ms` | Temps CPU d'allocation/remplissage des géométries QSG, diagnostic du canevas. Exclut le transfert réel dans le pilote et l'exécution GPU. |
+| `initial_geometry_build_count`, `geometry_build_count` | Compteurs avant/après les gestes, attendus égaux après l'installation ; ils vérifient l'invalidation du canevas. Ils ne mesurent pas les allocations internes du pilote. |
+| `cpu_scene_*_bytes`, `cached_image_bytes` | Tailles de stockage connues de l'instantané/image ; ne couvrent pas la totalité de Qt, du projet et des caches moteur. |
+| `process_working_set_mb`, `process_peak_working_set_mb` | Mémoire résidente/pic du processus Windows, après les frames. Le banc conserve aussi des données de contrôle ; aucune attribution VRAM n'est déduite de ces chiffres. |
+| `gpu_memory_bytes`, `gpu_execution_ms` | `null` : aucune mesure portable de mémoire VRAM ou timer GPU implémentée. |
+
+Les médianes/p95 utilisent le rang supérieur (`ceil(p × N)`) sur les échantillons triés. Les
+données brutes sont incluses ; conserver aussi la variance entre au moins trois exécutions avant
+une décision de remplacement. La fenêtre du banc ne contient que le canevas : la fluidité de la
+liste, des panneaux et des calculs lourds du shell exige une recette distincte.
+
+La comparaison porte sur **le même projet et les mêmes gestes**, avec deux stratégies de rendu
+réelles : géométrie colorée GPU contre image réaliste précalculée. Leur qualité visuelle, leurs
+marges de cadrage et leur limite de mesure diffèrent. Les chiffres ne justifient pas un facteur
+de supériorité globale de Qt Quick ; un rapport doit présenter ces différences avant d'en tirer
+une conclusion. Le FPS Widgets présenté par l'écran reste indisponible sans instrumentation du
+compositeur (par exemple une capture de présentation externe), et ne doit pas être inventé.
+
+Le champ `software_backend` distingue le repli Qt Quick CPU d'un backend RHI. Une API RHI comme
+D3D11 ne prouve pas, à elle seule, l'usage d'un GPU physique (un pilote peut utiliser WARP).
+Conserver le journal `QSG_INFO=1` pour identifier l'adaptateur effectivement initialisé. Une
+mesure du backend logiciel doit être étiquetée CPU et ne peut pas valider la cible GPU.
+
+## Résultats et critères
+
+Mesuré le **2026-11-06**, une passe de dix processus Release : Qt 6.8.3, Windows 11 25H2,
+AMD Ryzen 7 7700X, NVIDIA GeForce RTX 5060 Ti (pilote Windows 32.0.16.1088). Le journal
+`QSG_INFO` confirme D3D11 et cette carte sélectionnée, avec la boucle de rendu threadée.
+Cette **première passe à un échantillon MSAA** est à distinguer de toute passe ultérieure à 4× MSAA.
+Écran Samsung U28E590 annoncé à **59,997 Hz**, DPR **1,5** ; 1280 × 800 pixels logiques
+correspondent à 1920 × 1200 pixels physiques. Les backend/render loop/DPR n'étaient pas forcés
+par les variables d'environnement du script. [Données brutes, métadonnées et journal](benchmarks/2026-11-06/README.md).
+
+Le projet Tentabrode généré contient **138 objets, 43 670 commandes Stitch et 43 660 segments
+visibles**. Le paramètre 300 mm concerne l'image source ; l'emprise effectivement cousue est
+**230,202 × 276,870 mm** après suppression du fond. Les quatre scènes synthétiques comptent
+respectivement 999, 9 999, 49 999 et 99 999 segments visibles. Les empreintes des segments et les
+comptes de points sont identiques entre les deux fronts pour les cinq scènes.
+
+### Cadence et interaction Quick
+
+Ces valeurs sont des intervalles `frameSwapped`, régulés par l'écran ; elles ne donnent pas le
+temps d'exécution du GPU. Durées en millisecondes.
+
+| Scène | Cadence swap (Hz) | Trame médiane | Trame p95 | Interaction médiane | Interaction p95 | Constructions des points avant → après |
+|---|---:|---:|---:|---:|---:|---:|
+| 1 000 | 60,00 | 16,667 | 16,829 | 16,478 | 16,692 | 1 → 1 |
+| 10 000 | 60,00 | 16,662 | 16,791 | 16,478 | 16,657 | 1 → 1 |
+| 50 000 | 59,99 | 16,666 | 16,839 | 16,471 | 16,713 | 1 → 1 |
+| 100 000 | 60,00 | 16,668 | 16,817 | 16,491 | 16,681 | 1 → 1 |
+| Tentabrode | 60,00 | 16,665 | 16,832 | 16,547 | **16,734** | 1 → 1 |
+
+La cadence observée atteint la fréquence de cet écran sur les cinq scènes. La cible stricte
+**p95 local < 16,7 ms n'est pas atteinte uniformément** : 50k et Tentabrode dépassent le seuil,
+de 0,013 et 0,034 ms dans cette passe. Tous les p95 d'intervalle de trame dépassent également
+16,7 ms. Les compteurs restent à une construction malgré les 270 gestes de caméra : le buffer
+de points est réutilisé. Ces résultats n'établissent ni une marge à 120/144 Hz, ni une cadence
+avec édition lourde ou sélection massive. Il faut répéter la passe avant une décision de bascule.
+
+### Peinture du canevas Widgets
+
+La fin de `paintEvent` est mesurée côté CPU. Les cadences ci-dessous ne sont **pas des FPS
+présentés à l'écran** et ne doivent pas être divisées par les valeurs Quick pour calculer un gain.
+
+| Scène | Peintures CPU/s | Intervalle médian (ms) | Intervalle p95 (ms) | Interaction médiane (ms) | Interaction p95 (ms) |
+|---|---:|---:|---:|---:|---:|
+| 1 000 | 732,91 | 1,294 | 1,808 | 0,647 | 1,012 |
+| 10 000 | 764,69 | 1,210 | 1,801 | 0,603 | 0,889 |
+| 50 000 | 812,87 | 1,156 | 1,667 | 0,566 | 0,877 |
+| 100 000 | 851,90 | 1,077 | 1,549 | 0,544 | 0,786 |
+| Tentabrode | 743,94 | 1,259 | 2,070 | 0,627 | 1,132 |
+
+Le canevas Widgets déplace une image réaliste déjà calculée. Ces temps CPU courts confirment
+qu'il n'est pas nécessaire de recalculer les fils pour pan/zoom dans cette architecture non plus.
+Le FPS réellement présenté et la latence de présentation Widgets restent **non mesurés**.
+
+### Chargement et création des ressources
+
+Durées d'une exécution par cas, en millisecondes ; ce ne sont pas des distributions. « Charger »
+est la fabrication du projet pour les scènes synthétiques et la lecture OSP pour Tentabrode.
+La colonne QSG exclut les transferts/exécutions du pilote. « Première » inclut l'installation,
+la création de fenêtre et la première peinture/swap, après les calculs de préparation.
+
+| Scène | Front | Charger | Scène CPU | Ressources QSG CPU | Raster réaliste + PNG | Première |
+|---|---|---:|---:|---:|---:|---:|
+| 1 000 | Quick | 0,027 | 0,329 | 0,035 | — | 311,611 |
+| 1 000 | Widgets | 0,185 | 3,383 | — | 38,016 | 266,358 |
+| 10 000 | Quick | 0,160 | 2,900 | 0,371 | — | 466,343 |
+| 10 000 | Widgets | 0,112 | 2,026 | — | 38,703 | 143,610 |
+| 50 000 | Quick | 0,551 | 8,132 | 0,923 | — | 307,135 |
+| 50 000 | Widgets | 0,475 | 9,513 | — | 59,270 | 136,588 |
+| 100 000 | Quick | 0,881 | 18,087 | 1,730 | — | 286,756 |
+| 100 000 | Widgets | 0,881 | 23,069 | — | 104,067 | 131,518 |
+| Tentabrode | Quick | 65,163 | 46,268 | 0,649 | — | 303,276 |
+| Tentabrode | Widgets | 73,180 | 50,315 | — | 71,148 | 194,141 |
+
+Le temps de première frame Quick est ici de 287 à 466 ms, supérieur à l'objectif local
+d'interaction ; ce coût de démarrage doit être suivi séparément. Les scènes CPU et le rendu
+réaliste n'offrent pas la même qualité visuelle. La scène CPU construite aussi dans le cas
+Widgets sert au contrôle d'équivalence du banc ; le shell Widgets normal n'en a pas besoin.
+Le cache disque de l'OS n'a pas été purgé et aucune variance entre processus n'est estimée.
+Ces calculs synchrones du banc ne décrivent pas le threading du shell, qui les place en tâche.
+
+### Mémoire CPU observée
+
+Valeurs en MiB (2^20 octets). La taille connue de scène additionne segments et sommets ; elle
+est identique dans les deux cas. La mémoire résidente/pic inclut Qt, le projet, les caches et
+les données de contrôle du banc : elle ne mesure pas seulement le renderer.
+
+| Scène | Scène segments + sommets | Image Widgets | Quick résident / pic | Widgets résident / pic |
+|---|---:|---:|---:|---:|
+| 1 000 | 0,099 | 0,061 | 60,63 / 60,63 | 45,82 / 45,82 |
+| 10 000 | 0,992 | 0,415 | 65,56 / 66,22 | 49,03 / 49,03 |
+| 50 000 | 4,959 | 1,880 | 91,72 / 96,03 | 60,90 / 64,12 |
+| 100 000 | 9,918 | 3,660 | 122,86 / 132,79 | 75,21 / 100,24 |
+| Tentabrode | 4,330 | 2,202 | 102,45 / 106,23 | 72,94 / 73,73 |
+
+Dans cette passe, le processus Quick consomme davantage de mémoire résidente que le processus
+Widgets. Aucune consommation GPU ni durée d'exécution GPU n'est disponible ; ces champs restent
+`null` dans les données. Aucun chiffre de capture offscreen n'est utilisé comme mesure GPU.
+**L'absence de résultat sur une autre plateforme ou un autre backend n'est pas une réussite implicite.**
+
+Le prototype est validé fonctionnellement quand il charge une vraie broderie, garde le document
+inchangé et manipule sa caméra/sélection. La cible de performance est évaluée séparément : 60 FPS
+sur des scènes représentatives, p95 local visé à 16,7 ms, aucun recalcul des points ou des buffers
+pendant les gestes. Le protocole de repli est décrit dans [l'architecture](17-studio-gpu.md).
+
+Références : [QQuickWindow::frameSwapped](https://doc.qt.io/qt-6.8/qquickwindow.html#frameSwapped),
+[rétention des géométries du renderer Qt Quick](https://doc.qt.io/qt-6.8/qtquick-visualcanvas-scenegraph-renderer.html).

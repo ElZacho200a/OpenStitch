@@ -523,3 +523,22 @@ encore le desktop principal.
 - Guide de parcours réécrit sur l'état réel (obsolète, bloqué, avertissement, ignoré) ; régénération protégée (formes dessinées conservées, retouches comptées et confirmées) ; sept parcours de bout en bout en test.
 - **Captures réelles** (premières de la V2 avec police) : 28 images, 5 inspectées ; cinq défauts d'affichage trouvés et corrigés, trois restent (voir `14`).
 - Ce que ce journal ne dit pas encore : le résultat de la CI de GitHub pour ces lots ; il est ajouté après le premier push.
+
+## 2026-11-06 — Fondations OpenStitch Studio Qt Quick / GPU
+
+- Audit des modèles V2, canevas Widgets, services de rendu, CMake/tests/CI et PR ouvertes (#236,
+  #279, #280) avant la bascule. Nouvelle [ADR 0005](../adr/0005-studio-qtquick-gpu.md) ; les
+  contrats de session, de sélection et de commandes de l'ADR 0004 sont conservés.
+- Cible expérimentale `openstitch_v2_studio`, shell QML graphite/framboise, chargement `.osp` en
+  tâche, scène immuable issue de `effective_sequence`, géométries QSG groupées, caméra et
+  sélection C++ communes. Les espaces filtrent le contexte d'un seul document. Le repli explicite
+  `--software` peint les segments CPU dans une texture de viewport ; Widgets conserve ses outils.
+- [Architecture et migration](17-studio-gpu.md), [banc natif reproductible](18-studio-benchmarks.md)
+  (1k/10k/50k/100k et Tentabrode 300 mm), génération de fixture par `run_digitize`, mesures de
+  cadence swap Quick / peinture CPU Widgets distinctes. Aucun gain de vitesse supposé ; mémoire
+  GPU et latence physique d'entrée restent indisponibles. Les résultats d'exécution sont ajoutés
+  après compilation et mesure, puis la CI est vérifiée après push.
+- Tests ciblés : caméra, sélection, géométrie/invalidation et invariants document/DST ; la
+  géométrie et les commandes restent testables sans Qt/GPU. Le shell de visualisation ne prétend
+  pas encore à la parité d'édition, enregistrement, exports ou compagnon. Les fichiers/branches des
+  PR ouvertes sont conservés et les nouveaux documents utilisent 17/18 pour éviter leur chevauchement.
