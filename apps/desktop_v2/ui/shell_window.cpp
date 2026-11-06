@@ -1,6 +1,7 @@
 ﻿// SPDX-License-Identifier: Apache-2.0
 #include "shell_window.hpp"
 #include "direction_guides.hpp"
+#include "display_filters.hpp"
 #include "file_io.hpp"
 #include "render_quality_dialog.hpp"
 #include "studio_theme.hpp"
@@ -157,6 +158,7 @@ const std::pair<const char*, const char*> kCommandShortcuts[] = {
     {"analysis.run", "F5"},
     {"analysis.density", "F6"},
     {"view.render", "F4"},
+    {"view.show-all", "Ctrl+Shift+H"},
     {"view.zoom-in", "Ctrl+="},
     {"view.zoom-out", "Ctrl+-"},
     {"view.zoom-actual", "Ctrl+0"},
@@ -2694,9 +2696,9 @@ void ShellWindow::refreshSimulationBar() {
 QMenu* ShellWindow::buildContextMenu() {
     auto* menu = new QMenu(this);
     menu->setObjectName(QStringLiteral("canvasContextMenu"));
-    static const char* const kPrefixes[] = {"edit.",         "transform.",    "order.",
-                                            "selection.",    "action.satin.", "action.fill.",
-                                            "preset.apply.", "preset.save"};
+    static const char* const kPrefixes[] = {
+        "view.only-", "view.show-all", "edit.",        "transform.",    "order.",
+        "selection.", "action.satin.", "action.fill.", "preset.apply.", "preset.save"};
     std::string lastGroup;
     for (const auto& e : commandEntries()) {
         bool wanted = false;
@@ -3794,6 +3796,19 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
                    q(tr("Parcours")), "", documentOpen_});
     out.push_back({"image.resegment", q(tr("Re-segmenter l'image…")), q(tr("Image")), "",
                    documentOpen_ && session_.project().segmentation.has_value()});
+    {
+        // Filtres d'affichage : visibilité des objets (jamais de suppression), une étape chacun.
+        const auto sel = inspect(session_.project(), session_.selection().targets());
+        const bool one = !sel.ids.empty();
+        out.push_back({"view.only-colour", q(tr("Afficher uniquement la couleur de la sélection")),
+                       q(tr("Affichage")), "", one && !sel.rgb.mixed});
+        out.push_back({"view.only-type",
+                       q(tr("Afficher uniquement le type de points de la sélection")),
+                       q(tr("Affichage")), "", one && !sel.typeId.mixed});
+        out.push_back({"view.show-all", q(tr("Tout afficher (retirer les filtres)")),
+                       q(tr("Affichage")), "Ctrl+Shift+H",
+                       hiddenObjectCount(session_.project()) > 0});
+    }
     out.push_back({"file.save-as", q(tr("Enregistrer le projet sous…")), q(tr("Fichier")),
                    "Ctrl+Shift+S", documentOpen_});
     out.push_back({"file.export-again", q(tr("Exporter de nouveau (derniers réglages)")),
@@ -4039,6 +4054,29 @@ bool ShellWindow::runCommand(const QString& id) {
             setCheckSkipped(!checkSkipped_);
         } else if (id == QLatin1String("image.resegment")) {
             resegmentImage();
+        } else if (id == QLatin1String("view.only-colour") ||
+                   id == QLatin1String("view.only-type") || id == QLatin1String("view.show-all")) {
+            const auto sel = inspect(session_.project(), session_.selection().targets());
+            ServiceResult r{false, {}};
+            if (id == QLatin1String("view.show-all")) {
+                r = showAllObjects(session_);
+            } else if (sel.ids.empty()) {
+                r = {false, "Sélectionnez d'abord un objet."};
+            } else if (id == QLatin1String("view.only-colour")) {
+                r = sel.rgb.mixed
+                        ? ServiceResult{false, "Les objets choisis n'ont pas la même couleur."}
+                        : showOnlyColour(session_, sel.rgb.value);
+            } else {
+                r = sel.typeId.mixed
+                        ? ServiceResult{false, "Les objets choisis n'ont pas le même type."}
+                        : showOnlyType(session_, sel.typeId.value);
+            }
+            setNotice(r.ok ? tr("Affichage modifié (annulable). « Tout afficher » le rétablit.")
+                           : fromUtf8(r.message),
+                      !r.ok);
+            if (!r.ok) {
+                return false;
+            }
         } else if (id == QLatin1String("file.save-as")) {
             (void)saveProjectAs();
         } else if (id == QLatin1String("file.export-again")) {

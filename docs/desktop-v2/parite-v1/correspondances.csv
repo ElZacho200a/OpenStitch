@@ -9,9 +9,9 @@ c6b9c9e3,fait,Activer,libellé retrouvé dans la V2,Activer
 190ac0bb,fait,region.edit,carte des régions de l'outil Régions,Afficher la carte des régions
 eeb30959,partiel,gridMenu,"menu Grille (aucune, 5, 10, 20 mm)",Afficher la grille
 b4e5b433,partiel,guide.add-v,"guides toujours visibles, pas de bascule",Afficher les guides
-ea59b0be,absent,,à traiter,Afficher uniquement ce type
-302da3e8,absent,,à traiter,Afficher uniquement ce type de points
-1d273e7e,absent,,à traiter,Afficher uniquement cette couleur
+ea59b0be,fait,view.only-type,,Afficher uniquement ce type
+302da3e8,fait,view.only-type,,Afficher uniquement ce type de points
+1d273e7e,fait,view.only-colour,,Afficher uniquement cette couleur
 59c34276,absent,,à traiter,Aide sur l'outil ou le panneau actif
 c150e52b,fait,Ajouter un guide horizontal,libellé retrouvé dans la V2,Ajouter un guide horizontal
 73172bc2,absent,,à traiter,Ajouter un guide satin
@@ -160,8 +160,8 @@ d9267bc5,fait,deleteSelectedPoint,,Supprimer les points sélectionnés
 76e1b404,fait,Sélectionner les voisines,libellé retrouvé dans la V2,Sélectionner les voisines
 149d5727,fait,point.select-all,,Sélectionner tous les points
 6374ea03,fait,canvas.set,,Taille du cadre
-153dd793,absent,,à traiter,Tout afficher
-e46589b0,absent,,à traiter,Tout afficher (filtres)
+153dd793,fait,view.show-all,,Tout afficher
+e46589b0,fait,view.show-all,,Tout afficher (filtres)
 f4632624,fait,Tout sélectionner,libellé retrouvé dans la V2,Tout sélectionner
 84b7b6f9,fait,Tracer un guide de direction,libellé retrouvé dans la V2,Tracer un guide de direction
 755c06fc,fait,Tracer une ligne de rupture,libellé retrouvé dans la V2,Tracer une ligne de rupture
@@ -250,7 +250,7 @@ f7de65cb,fait,Supprimer,libellé retrouvé dans la V2,Supprimer
 ba349540,partiel,threadSelect,"par fil, pas par bloc",Sélectionner les objets du bloc
 67a04f5b,absent,,à traiter,Séquencer par couleur (fusionner les blocs de même fil)
 e51f01aa,exclu,,Décision du 2026-11-06 (propriétaire du projet) : la segmentation par IA (SAM 2) est hors périmètre de la V2 ; la V1 reste la référence pour cet usage.,Tester la configuration
-522a6e56,absent,,à traiter,Tout afficher
+522a6e56,fait,view.show-all,,Tout afficher
 628f1213,absent,,à traiter,Tout effacer
 65e52cd5,fait,Voir,libellé retrouvé dans la V2,Voir
 a8ae886b,fait,analysis.density,,Voir la carte de densité
@@ -381,7 +381,7 @@ ffcf580f,exclu,,Décision du 2026-11-06 (propriétaire du projet) : la segmentat
 ac8b4905,fait,regionReduceColors,réduction de palette du panneau Régions,Couleurs de segmentation
 9bad0b86,fait,Document,libellé retrouvé dans la V2,Document
 a0dd4113,fait,Fils,libellé retrouvé dans la V2,Fils
-841be1a4,absent,,à traiter,Filtres d'affichage
+841be1a4,fait,view.show-all,commandes de filtre dans la palette et le menu contextuel,Filtres d'affichage
 799ba08e,fait,Historique,libellé retrouvé dans la V2,Historique
 1164c4f2,fait,Ordre de couture,libellé retrouvé dans la V2,Ordre de couture
 86fa735c,fait,Propriétés,libellé retrouvé dans la V2,Propriétés
