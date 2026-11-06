@@ -58,6 +58,7 @@
 #include "satin_column.hpp"
 #include "shell_window.hpp"
 #include "source_image_tools.hpp"
+#include "spool_rail_widget.hpp"
 #include "studio_theme.hpp"
 #include "thread_palette_dialog.hpp"
 #include "thread_panel.hpp"
@@ -1788,6 +1789,41 @@ private slots:
         }
         QCOMPARE(w.session().project().embroidery_objects.size(), size_t(2));
         delete menu;
+    }
+
+    void spoolRailReordersByMoveAndKeyboardAndSelectsOnClick() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        auto* rail = w.findChild<SpoolRailWidget*>("spoolRail");
+        QVERIFY(rail != nullptr);
+        QCOMPARE(rail->count(), 0);
+        for (const double x : {-30.0, 0.0, 30.0}) {
+            w.session().applyBatch(batchAddRect({x, 0}, 10, 10), "R");
+        }
+        w.waitForIdle();
+        rail->refreshNow();
+        QCOMPARE(rail->count(), 3);
+        QVERIFY(rail->summaryText().startsWith("3 bobines"));
+        const auto first = rail->spoolId(0);
+        QVERIFY(rail->moveSpoolTo(0, 2)); // équivalent d'un glisser-déposer
+        rail->refreshNow();
+        QCOMPARE(rail->spoolId(2), first);
+        QVERIFY(!rail->moveSpoolTo(2, 2));
+        rail->setCurrentRow(2);
+        QTest::keyClick(rail, Qt::Key_Left, Qt::AltModifier); // alternative clavier
+        rail->refreshNow();
+        QCOMPARE(rail->spoolId(1), first);
+        // Un clic sélectionne l'objet dans le document.
+        const auto id = rail->spoolId(0);
+        Q_EMIT rail->itemClicked(rail->item(0));
+        QVERIFY(w.session().selection().contains({TargetKind::EmbroideryObject, id}));
+        w.session().undo();
+        w.session().undo();
+        w.waitForIdle();
+        rail->refreshNow();
+        QCOMPARE(rail->spoolId(0), first);
     }
 
     void floatingBarFollowsTheSelectionAndRunsCommands() {

@@ -79,8 +79,10 @@ puis de laisser chaque surface (barre flottante, menu radial, clic droit, menus)
 - **Tableau contexte → commandes, première étape** : `core/context_commands.{hpp,cpp}` ; le clic droit de `buildContextMenu` le lit (`kPrefixes` supprimé). Les commandes `node.*`, `text.*`, `satin.rung.*`… sont donc au clic droit. Tests : `test_context_commands.cpp`, `contextMenuListsOnlyActiveSelectionCommands`.
 
 - **Barre flottante** : `ui/floating_action_bar.*` ; contextes `Object`, `Text`, `Satin`, `Nodes` déclarés dans `core/context_commands` (`floatingBarCommands`), déduits de la sélection par `ShellWindow::refreshFloatingBar`. Fixée en haut et au centre du canevas (choix : ne jamais masquer l'objet sélectionné ; la suivre au plus près reste à juger). Ne montre que les commandes actives. Test : `floatingBarFollowsTheSelectionAndRunsCommands`. Capture réelle : `captures/barre-flottante.png`.
+- **Rail de bobines** : `core/spool_rail.*` (une bobine par objet de broderie dans l'ordre de couture, « changement de fil » = couleur différente de la précédente, `moveSpool` = `moveInOrder`, une commande annulable, refus si l'ordre des calques est cassé) ; `ui/spool_rail_widget.*` dans un dock du bas « Bobines — N bobines · M changements de fil ». Clic = sélection ; glisser-déposer ou Alt+flèches = réordonner ; rafraîchissement regroupé (un par tour de boucle). Tests : `test_spool_rail.cpp`, `spoolRailReordersByMoveAndKeyboardAndSelectsOnClick`. Capture réelle : `captures/rail-bobines.png`.
+- Limites : le glisser-déposer lui-même n'est pas simulé par un test (la méthode `moveSpoolTo` qu'il appelle l'est) ; une bobine = un objet (pas de regroupement par couleur) ; le dock réduit le canevas d'environ 90 px (il est fermable).
 - Limite : la barre ne se rafraîchit pas quand seuls des nœuds sont choisis sans changer la sélection d'objets.
 
 ## Ce qui n'est pas fait
 
-Le menu radial, le rail de bobines, les champs à glisser et la loupe ne sont pas implémentés (en attente des décisions ci-dessus). La maquette n'est pas du Qt.
+Le menu radial, les champs à glisser et la loupe ne sont pas implémentés (en attente des décisions ci-dessus). La maquette n'est pas du Qt.

@@ -91,6 +91,7 @@ class LiveServer;
 class ChatPanel;
 class FeedbackCue;
 class FloatingActionBar;
+class SpoolRailWidget;
 
 class ShellWindow : public QMainWindow {
     Q_OBJECT
@@ -385,6 +386,7 @@ private:
     QLabel* notice_{nullptr};
     FeedbackCue* feedbackCue_{nullptr};
     FloatingActionBar* floatingBar_{nullptr};
+    SpoolRailWidget* spoolRail_{nullptr};
     QAction* reducedMotionAction_{nullptr};
     RenderSettings render_;
     class RenderQualityDialog* renderDialog_{nullptr};

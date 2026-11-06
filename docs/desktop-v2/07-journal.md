@@ -546,3 +546,7 @@ encore le desktop principal.
 ## 2026-11-06 — Session 5 (suite) : barre flottante
 
 - Barre flottante contextuelle (objet, texte, satin, nœuds) lue dans le tableau du cœur ; vue à l'écran avec `openstitch_v2 --demo-shapes --select-objects 1 --screenshot` (plateforme `windows`) : `captures/barre-flottante.png`. Rien d'autre inspecté (thème clair, texte, satin, petit écran non vus).
+
+## 2026-11-06 — Session 5 (suite 2) : rail de bobines
+
+- Rail de bobines (dock du bas) : ordre de couture en rangée, changements de fil comptés, glisser ou Alt+flèches pour réordonner. Un plantage trouvé en route : le rail doit être détruit avant la session (comme les autres panneaux), sinon `unsubscribe` sur une session détruite ; et un rafraîchissement par modification faisait dépasser 300 s à un test existant (icônes recréées) : rafraîchissement regroupé et icônes en cache. Vu à l'écran : `captures/rail-bobines.png` (thème sombre seulement).

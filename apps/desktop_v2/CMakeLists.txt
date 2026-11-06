@@ -16,6 +16,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/inspector_model.cpp
     core/command_catalog.cpp
     core/context_commands.cpp
+    core/spool_rail.cpp
     core/shape_batch.cpp
     core/transform_batch.cpp
     core/edit_batch.cpp
@@ -81,6 +82,8 @@ add_library(openstitch_desktop_v2_ui STATIC
     ui/feedback_cue.hpp
     ui/floating_action_bar.cpp
     ui/floating_action_bar.hpp
+    ui/spool_rail_widget.cpp
+    ui/spool_rail_widget.hpp
     ui/studio_theme.cpp
     ui/studio_theme.hpp
     ui/preview_canvas.cpp

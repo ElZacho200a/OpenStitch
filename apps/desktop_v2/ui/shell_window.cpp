@@ -4,6 +4,7 @@
 #include "file_io.hpp"
 #include "floating_action_bar.hpp"
 #include "render_quality_dialog.hpp"
+#include "spool_rail_widget.hpp"
 #include "studio_theme.hpp"
 
 #include <QAbstractButton>
@@ -351,6 +352,8 @@ ShellWindow::~ShellWindow() {
     calques_ = nullptr;
     delete threads_;
     threads_ = nullptr;
+    delete spoolRail_;
+    spoolRail_ = nullptr;
     session_.unsubscribe(sessionToken_);
     session_.selection().unsubscribe(selectionToken_);
 }
@@ -802,6 +805,17 @@ void ShellWindow::buildInspector() {
     addDockWidget(Qt::RightDockWidgetArea, threadDock);
     tabifyDockWidget(calqueDock, threadDock);
     connect(threads_, &ThreadPanel::refused, this,
+            [this](const QString& message) { setNotice(message, true); });
+    auto* railDock = new QDockWidget(tr("Bobines"), this);
+    railDock->setObjectName(QStringLiteral("spoolRailDock"));
+    spoolRail_ = new SpoolRailWidget(session_, railDock);
+    railDock->setWidget(spoolRail_);
+    addDockWidget(Qt::BottomDockWidgetArea, railDock);
+    connect(spoolRail_, &SpoolRailWidget::summaryChanged, railDock, [railDock](const QString& s) {
+        railDock->setWindowTitle(QObject::tr("Bobines — %1").arg(s));
+    });
+    railDock->setWindowTitle(tr("Bobines — %1").arg(spoolRail_->summaryText()));
+    connect(spoolRail_, &SpoolRailWidget::refused, this,
             [this](const QString& message) { setNotice(message, true); });
     auto* optimizeDock = new QDockWidget(tr("Optimisation"), this);
     optimizeDock->setObjectName(QStringLiteral("optimizeDock"));
