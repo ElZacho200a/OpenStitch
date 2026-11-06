@@ -1,0 +1,445 @@
+id,type,libelle_v1,source_v1
+226c1fd7,action,(aucun préréglage),main_window_stitch_presets.cpp
+c6534d24,action,(sélectionnez un objet de broderie pour assigner),main_window_eyedropper.cpp
+9268b9a3,action,100 % (taille réelle),main_window.cpp
+c7233a7c,action,Abandonner les retouches,main_window_toolbars.cpp
+b4151a04,action,Accrochage des nœuds au glisser,main_window.cpp
+fc27db70,action,Accrocher à la grille,main_window_vector_edit.cpp
+c6b9c9e3,action,Activer,main_window_realistic.cpp
+190ac0bb,action,Afficher la carte des régions,main_window.cpp
+eeb30959,action,Afficher la grille,main_window_view_display.cpp
+b4e5b433,action,Afficher les guides,main_window_view_display.cpp
+ea59b0be,action,Afficher uniquement ce type,main_window_order_filter.cpp
+302da3e8,action,Afficher uniquement ce type de points,main_window_context_menu.cpp
+1d273e7e,action,Afficher uniquement cette couleur,main_window_context_menu.cpp
+59c34276,action,Aide sur l'outil ou le panneau actif,main_window_help_menu.cpp
+c150e52b,action,Ajouter un guide horizontal,main_window_view_display.cpp
+73172bc2,action,Ajouter un guide satin,main_window.cpp
+e00cf219,action,Ajouter un guide vertical,main_window_view_display.cpp
+ae274b96,action,Ajouter une couche,document_panel.cpp
+01d2f694,action,Ajuster au canevas,main_window.cpp
+9caa2191,action,Analyser le motif,main_window_analysis.cpp
+03188bb4,action,Aperçu avant impression,main_window_production.cpp
+b1262cc9,action,Aperçu avec tirage du tissu,main_window_pull_preview.cpp
+7f049f34,action,Aperçu en direct pendant la saisie,main_window_view_display.cpp
+fb2fcca7,action,Appliquer « %1 »,main_window_stitch_presets.cpp
+e9721f42,action,Broderie (points),main_window.cpp
+785ca2ea,action,Cadre : %1 × %2 mm,main_window_toolbars.cpp
+b3a67437,action,Carte d'épaisseur,main_window_density.cpp
+f942b9ce,action,Carte de densité,main_window_density.cpp
+167defbb,action,Carte de tirage du tissu,main_window_pull_preview.cpp
+1900e943,action,Centre automatique,main_window_fill_center.cpp
+26ac8a5a,action,Centrer la vue sur le problème,main_window_analysis.cpp
+8e1363c4,action,Coloris et tissu,main_window_colorways.cpp
+133ffb33,action,Compagnon IA,main_window_help_menu.cpp
+5517fa2b,action,Contour autour de la sélection,main_window_vector_edit.cpp
+b4f352c6,action,Convertir en appliqué,main_window_applique.cpp
+eb7dd01d,action,Convertir en courbes,main_window_vector_tools.cpp
+84f88da1,action,Convertir en remplissage concentrique,main_window_context_menu.cpp
+18d015e9,action,Convertir en satin automatiquement,main_window.cpp
+b9441c56,action,Convertir les satins auto en tatami,main_window.cpp
+2c87f32d,action,Convertir les vecteurs en broderie,main_window.cpp
+ca67b4fd,action,Couleur des guides,main_window_view_display.cpp
+b24bb78f,action,Couleur ⏭,main_window_simulation.cpp
+f9db85df,action,Couper le fil après,main_window_point_edit.cpp
+0b59bc57,action,Créer un objet de point de contour,main_window.cpp
+c97c7aae,action,Créer un remplissage tatami,main_window.cpp
+67fc3ea3,action,Créer un satin automatique,main_window.cpp
+1e5cd1fe,action,Diagnostic des défauts connus,main_window_analysis.cpp
+9ba57c94,action,Dupliquer,main_window_context_menu.cpp
+42245f06,action,Dupliquer la couche,document_panel.cpp
+54f0a20a,action,Dupliquer la forme,main_window.cpp
+b8d50ff8,action,Déboguer : afficher toutes les données,main_window_context_menu.cpp
+522356b3,action,Décalage entre couleurs,main_window_analysis.cpp
+3e57366b,action,Décaler,main_window_context_menu.cpp
+d44d8b2a,action,Décaler la forme,main_window.cpp
+a6809735,action,Déformation prévue du tissu,main_window_analysis.cpp
+eab12005,action,Déplacer la sélection ici,calque_panel.cpp
+694f85ac,action,Effacer les guides,main_window_view_display.cpp
+2a2bef85,action,Effacer toutes les zones de détail,main_window_detail_zones.cpp
+579f3c4f,action,Enregistrer le projet,main_window.cpp
+1e0aaea5,action,Enregistrer le projet sous,main_window.cpp
+5aaa0b5f,action,Enregistrer les réglages de la sélection,main_window_stitch_presets.cpp
+df9178a2,action,Envoyer un rapport de plantage,main_window_crash_report.cpp
+a9055127,action,Exporter avec les derniers réglages,main_window.cpp
+31b462db,action,Exporter en DXF,main_window.cpp
+09cc3851,action,"Exporter l'image (PNG, JPEG)",main_window_export_image.cpp
+00565df7,action,Exporter la liste des fils (CSV),main_window_threads.cpp
+692834e4,action,Exporter le contour de découpe,main_window_applique.cpp
+4922cbdc,action,Exporter le rendu réaliste (PNG),main_window_production.cpp
+129c1178,action,Exporter un DST compensé du décalage,main_window_analysis.cpp
+08ee1b58,action,Exporter une broderie machine,main_window.cpp
+d0850557,action,Fiche de production,main_window_production.cpp
+aba3cc8d,action,Fidélité à l'image,main_window_analysis.cpp
+4132716d,action,Fondu de couleurs à deux fils,main_window_directional.cpp
+90b818d1,action,Format d'import des nuanciers,main_window_threads.cpp
+69547042,action,Fusionner avec… (cliquer la région cible),main_window.cpp
+30fe85c6,action,Fusionner dans la voisine principale,main_window.cpp
+7bf6f210,action,Fusionner la sélection,main_window.cpp
+3055c3e1,action,Fusionner les couleurs,main_window.cpp
+10082583,action,Gabarit de placement 1:1,main_window_production.cpp
+de9ab6e1,action,Generer un guide depuis la forme,main_window_context_menu.cpp
+d0300f93,action,Gestes souris et clavier,main_window_help_menu.cpp
+80d5551a,action,Guide de prise en main,main_window_help_menu.cpp
+aea2d95e,action,Guides de direction,main_window_context_menu.cpp
+fa129d91,action,Générer un guide depuis la forme,main_window_directional.cpp
+807cf843,action,Image,main_window.cpp
+69632007,action,Importer un DXF,main_window.cpp
+45ec0da3,action,"Importer un nuancier (CSV, JSON)",main_window_threads.cpp
+7c94f4bb,action,Importer une broderie machine,main_window.cpp
+c4719a5d,action,Importer une image ou un SVG,main_window.cpp
+025327d7,action,Insérer un design,main_window.cpp
+f97b2ddf,action,Lisser,main_window_vector_tools.cpp
+337b1cac,action,Luminosité/contraste,main_window.cpp
+4a09b823,action,Machine,main_window.cpp
+2a299c02,action,Manuel d'utilisation,main_window_help_menu.cpp
+3b625aed,action,Masquer les panneaux,main_window.cpp
+9891d57a,action,Mode portable (une seule colonne),main_window.cpp
+b2e5796b,action,Modifier la colonne satin (rails + guides),main_window.cpp
+2e6cc34f,action,Modifier le texte,main_window_lettering.cpp
+aee88642,action,Ne pas couper le fil après,main_window_point_edit.cpp
+5421aa74,action,Nettoyer les petits îlots,main_window.cpp
+c3d0caab,action,Nouveau projet,main_window.cpp
+00cdb915,action,Numérisation automatique,main_window.cpp
+c492f162,action,Objet ⏭,simulation_nav_bar.cpp
+23cd9405,action,Options de génération,main_window.cpp
+7040619f,action,Orientation,main_window_toolbars.cpp
+2f542cd3,action,Orientation du remplissage,main_window.cpp
+90f155ac,action,Ouvrir,main_window.cpp
+6835033c,action,Ouvrir Claude Code,main_window_help_menu.cpp
+9f0deb8b,action,Ouvrir un projet,main_window.cpp
+435dc9ab,action,Paramètres,main_window.cpp
+369536e7,action,Pas de la grille,main_window_vector_edit.cpp
+f590671c,action,Passer en point cousu,main_window_point_edit.cpp
+66d86e8a,action,Passer en saut (sans couture),main_window_point_edit.cpp
+8ce04bb9,action,Pinceau : rayon plus grand,main_window_brush.cpp
+c3bcc666,action,Pinceau : rayon plus petit,main_window_brush.cpp
+b8d2a1ce,action,Poignées du dégradé,main_window_gradient.cpp
+050fad01,action,Point de contour,main_window.cpp
+7e4bb52e,action,Point ▶,simulation_nav_bar.cpp
+031c45f1,action,Pont IA local (MCP),main_window_help_menu.cpp
+de5eef73,action,Préférences générales,main_window.cpp
+f30520d3,action,Préférences — Intelligence artificielle,main_window.cpp
+354afdc7,action,Quantifier les couleurs,main_window.cpp
+a4c1ad2b,action,Quitter,main_window.cpp
+35393cc9,action,Recadrer l'image (glisser un cadre),main_window.cpp
+b4dc4f3a,action,Rechercher une commande,main_window.cpp
+b2f5a579,action,Recolorer,main_window_regions.cpp
+d39e212d,action,Recolorer la sélection,main_window.cpp
+b5106cf2,action,Remplissage tatami,main_window.cpp
+8b3e385a,action,Renommer,calque_panel.cpp
+a0622ecf,action,Restaurer la disposition précédente,main_window_ux.cpp
+b0c51442,action,Restaurer les points sélectionnés,main_window_point_edit.cpp
+ae44ff48,action,Risque de tirage du tissu,main_window_analysis.cpp
+bf228390,action,Risque tissu,main_window_fabric_risk.cpp
+34422f89,action,Réduire / fusionner les fils,main_window_colorways.cpp
+333e240e,action,Région précédente,main_window.cpp
+5bbcc28e,action,Région suivante,main_window.cpp
+37a5693a,action,Réglages,main_window_realistic.cpp
+ea169d9f,action,Réglages de la grille,main_window_view_display.cpp
+8fff58b4,action,Réglages du pinceau,main_window_brush.cpp
+5f547908,action,Réinitialiser la disposition,main_window.cpp
+251cbea8,action,Rétablir,main_window.cpp
+7eff11f4,action,Rétablir la couleur d'origine,main_window.cpp
+8233c055,action,Satin automatique,main_window.cpp
+3d2be7f4,action,Sauts à vide de l'ordre,main_window_order_jumps.cpp
+de43aedf,action,Segmenter l'image,main_window.cpp
+0d67e9bf,action,Statistiques,main_window.cpp
+65b6e4d4,action,Supprimer,main_window_regions.cpp
+03a7c253,action,Supprimer %1 objets,main_window_context_menu.cpp
+16449d1d,action,Supprimer ce point,main_window_directional.cpp
+6623e722,action,Supprimer la sélection,main_window.cpp
+d6e27fc4,action,Supprimer le calque,calque_panel.cpp
+980fefff,action,Supprimer le guide,main_window_satin_auto.cpp
+69e76bc8,action,Supprimer le guide satin sélectionné,main_window.cpp
+5a001324,action,Supprimer le nœud,main_window_render.cpp
+cc56cc1b,action,Supprimer le texte,main_window_lettering.cpp
+d9267bc5,action,Supprimer les points sélectionnés,main_window_point_edit.cpp
+0e876999,action,Sélectionner l'objet,main_window_analysis.cpp
+5626577a,action,Sélectionner la même couleur,main_window.cpp
+76e1b404,action,Sélectionner les voisines,main_window.cpp
+149d5727,action,Sélectionner tous les points,main_window_point_edit.cpp
+6374ea03,action,Taille du cadre,main_window.cpp
+153dd793,action,Tout afficher,main_window_order_filter.cpp
+e46589b0,action,Tout afficher (filtres),main_window_context_menu.cpp
+f4632624,action,Tout sélectionner,main_window.cpp
+84b7b6f9,action,Tracer un guide de direction,main_window_directional.cpp
+755c06fc,action,Tracer une ligne de rupture,main_window_directional.cpp
+e73f5b09,action,Transition douce des nœuds voisins,main_window_node_select.cpp
+8a282d1d,action,Tutoriel : de l'image à la broderie,main_window_help_menu.cpp
+a361cdd3,action,Vecteurs,main_window.cpp
+9e19be32,action,Vectoriser la sélection,main_window.cpp
+7dcd5e07,action,Vider la liste des récents,main_window.cpp
+f7987bf9,action,Zoom arrière,main_window.cpp
+d0ccab12,action,Zoom avant,main_window.cpp
+174df2f7,action,Zoom précédent,main_window.cpp
+1b1d8969,action,Zoom rectangle,main_window_view_display.cpp
+609d7d45,action,Zoom sur la sélection,main_window.cpp
+dcdb3679,action,À propos,main_window_help_menu.cpp
+fc519974,action,Éditer seulement les bords du satin,main_window.cpp
+1b954c88,action,Éditer seulement les repères d'orientation du satin,main_window.cpp
+5b0f567d,action,Épaisseurs de fil (densité),main_window_analysis.cpp
+fb5f812c,action,Étalonner le zoom 100 %,main_window_view_display.cpp
+a766d0d5,action,⏮ Couleur,main_window_simulation.cpp
+669c1398,action,⏮ Objet,simulation_nav_bar.cpp
+bf476973,action,⏹ Fin,main_window_simulation.cpp
+f271218c,action,▶ Lecture,main_window_simulation.cpp
+328035a0,action,◀ Point,simulation_nav_bar.cpp
+83393a9a,bouton,+ Couche,document_panel.cpp
+613e0ed8,bouton,Abandonner les retouches,properties_panel.cpp
+abf0f4bd,bouton,Activer,colorway_dialog.cpp
+9579fe3b,bouton,Actualiser l’aperçu,color_blend_dialog.cpp
+9ef91727,bouton,Afficher le détail,ai_segmentation_dialog.cpp
+1e47d13b,bouton,Ajouter un fil personnel,thread_panel.cpp
+c7a6d63e,bouton,Ajuster au cadre,import_dialog.cpp
+ccd029ae,bouton,Analyser,ai_segmentation_dialog.cpp
+4c8120e4,bouton,Annuler l'analyse,ai_segmentation_dialog.cpp
+0324ae46,bouton,Annuler l'aperçu,segmentation_colors_panel.cpp
+8ba6da96,bouton,Appliquer,segmentation_colors_panel.cpp
+e7b4c06a,bouton,"Assistant (aperçu, proposition depuis l'image)",gradient_fill_panel.cpp
+691c4acf,bouton,Autre tirage,properties_panel.cpp
+e4077c4b,bouton,Calculer,main_window_analysis.cpp
+58796fc5,bouton,Choisir,color_blend_dialog.cpp
+42cd1ade,bouton,Choisir dans les nuanciers,gradient_fill_panel.cpp
+fe930327,bouton,Comparer les méthodes,main_window_satin_auto.cpp
+97060113,bouton,Convertir en remplissage concentrique,properties_panel.cpp
+86359fc6,bouton,Convertir en remplissage directionnel,properties_panel.cpp
+42954eca,bouton,Corriger,main_window_analysis.cpp
+1b524844,bouton,Corriger tout ce qui est sûr,main_window_analysis.cpp
+12510a3a,bouton,Couleur,colorway_dialog.cpp
+f84eae7b,bouton,Couleur : %1 (cliquer pour changer),properties_panel.cpp
+f893cf14,bouton,Couleur de cette couche,properties_panel.cpp
+fdbcceb1,bouton,Couleurs libres → fil le plus proche,thread_panel.cpp
+6dfe2a2f,bouton,Créer le satin de bordure,properties_panel.cpp
+786a853b,bouton,Enregistrer ce cadre,main_window_files.cpp
+8854fa60,bouton,Exporter la liste des fils (CSV),thread_panel.cpp
+6c667c5a,bouton,Fermer,help_manual.cpp
+4881b0aa,bouton,Figer l'ordre,main_window_order_filter.cpp
+75d84458,bouton,Fils les plus proches de la sélection,thread_panel.cpp
+874e1166,bouton,Fusionner dans la teinte active,segmentation_colors_panel.cpp
+28bea29d,bouton,Fusionner la sélection,ai_segmentation_dialog.cpp
+5ea5889c,bouton,Guides automatiques pour tous,properties_panel.cpp
+1ebf6e41,bouton,"Importer un nuancier (CSV, JSON)",thread_panel.cpp
+f38a9ef0,bouton,Importer une broderie machine,empty_state_widget.cpp
+11c2d635,bouton,Inverser le sens du fondu,color_blend_dialog.cpp
+a8e5be69,bouton,Modifier le texte,properties_panel.cpp
+71dc358c,bouton,Nouveau (copie du courant),colorway_dialog.cpp
+5cda87d0,bouton,Optimiser l'ordre,main_window_order_filter.cpp
+3bda7e57,bouton,Ouvrir le dossier,main_window_files.cpp
+9c53cfd1,bouton,Ouvrir les préférences,ai_segmentation_dialog.cpp
+8f650f08,bouton,Ouvrir un projet,empty_state_widget.cpp
+237f3d36,bouton,Ouvrir une image ou un SVG,empty_state_widget.cpp
+249c0de8,bouton,Parcourir,ai_preferences_dialog.cpp
+3dcea6a1,bouton,Peindre les zones de détail,segmentation_dialog.cpp
+5c1da94d,bouton,Pivoter,main_window_files.cpp
+219aa56f,bouton,Placer un guide sur le canevas,properties_panel.cpp
+fc50bae4,bouton,Poignées sur le canevas,gradient_fill_panel.cpp
+5ecf2aa4,bouton,Poser ce guide sur toutes les formes,properties_panel.cpp
+d6c060d0,bouton,Proposer les couleurs depuis l'image,color_blend_dialog.cpp
+a8d2bcf8,bouton,Remplacer ce fil par celui du catalogue,thread_panel.cpp
+71f07976,bouton,Retirer ce nuancier importé,thread_panel.cpp
+3a357c6c,bouton,Retirer de mes fils,thread_panel.cpp
+6f0cec00,bouton,Retirer guides et ruptures de tous,properties_panel.cpp
+29ed788a,bouton,Retirer les guides de toutes,properties_panel.cpp
+0ebc96b6,bouton,Réappliquer les retouches,properties_panel.cpp
+c56a6143,bouton,Réduire,thread_panel.cpp
+ea48b8bd,bouton,Sonder les backends,ai_preferences_dialog.cpp
+f7de65cb,bouton,Supprimer,colorway_dialog.cpp
+9e718d2b,bouton,Supprimer le guide,properties_panel.cpp
+64625b92,bouton,Sélectionner les objets de ce fil,thread_panel.cpp
+ba349540,bouton,Sélectionner les objets du bloc,thread_panel.cpp
+67a04f5b,bouton,Séquencer par couleur (fusionner les blocs de même fil),thread_panel.cpp
+e51f01aa,bouton,Tester la configuration,ai_preferences_dialog.cpp
+522a6e56,bouton,Tout afficher,main_window_order_filter.cpp
+628f1213,bouton,Tout effacer,main_window_detail_zones.cpp
+65e52cd5,bouton,Voir,main_window_workflow.cpp
+a8ae886b,bouton,Voir la carte de densité,gradient_fill_panel.cpp
+580a6bce,bouton,Voir les points réels,gradient_fill_panel.cpp
+c821931c,bouton,Éditer les guides,properties_panel.cpp
+2e1136ae,bouton,↑ Monter,main_window_order_filter.cpp
+dba3d228,bouton,↓ Descendre,main_window_order_filter.cpp
+146fe6d3,bouton,⇄ Inverser,gradient_fill_panel.cpp
+d2b89407,bouton,▲ Monter,thread_panel.cpp
+325c9237,bouton,▲ Passer dessous,thread_panel.cpp
+e1ae3eac,bouton,▼ Descendre,thread_panel.cpp
+e9918519,bouton,▼ Passer dessus,thread_panel.cpp
+f28889ba,case,Accepter aussi une surface déjà cousue du même fil,machine_export_dialog.cpp
+6b06d4a3,case,Accrocher les nœuds aux sommets des autres objets au glisser,settings_dialog.cpp
+e7e778d4,case,Activer la segmentation par IA (SAM 2),ai_preferences_dialog.cpp
+370e284b,case,Activer le rendu réaliste des points,realistic_render_dialog.cpp
+4789f8fc,case,Afficher la carte sur le canevas,main_window_fabric_risk.cpp
+56dd6a80,case,Afficher la grille,grid_settings_dialog.cpp
+f3c139b0,case,Afficher le tissu (fond opaque),realistic_render_dialog.cpp
+f6bdf6f6,case,Affiner (2-opt / Or-opt),order_list_widget.cpp
+44642518,case,Alterner (miroir un sur deux),properties_panel.cpp
+a3bed34d,case,Angle absolu (repère du dessin),properties_panel.cpp
+2b66fac6,case,Angle des fils automatique,main_window_satin_auto.cpp
+12815a11,case,Anneaux en satin,main_window_create.cpp
+223c1e22,case,Aperçu sur l'image,segmentation_dialog.cpp
+f019d797,case,"Arrêts machine (poser le tissu, couper)",properties_panel.cpp
+65fd5bf3,case,Aspect fait main,properties_panel.cpp
+d2463e2c,case,Bloc uni (sans tissu visible),main_window_create.cpp
+6dd1c5d4,case,Centre automatique,properties_panel.cpp
+40de0b13,case,Comparer avant / après l'optimisation,main_window_order_jumps.cpp
+063f27c8,case,Conserver les fichiers de diagnostic,ai_preferences_dialog.cpp
+dfb2d55c,case,Conserver les proportions,import_dialog.cpp
+db72ebd1,case,Contour cousu par-dessus,properties_panel.cpp
+297b5c26,case,Contourner aussi les trous,main_window_vector_edit.cpp
+be52127f,case,Couleur du thème,grid_settings_dialog.cpp
+46fdf51f,case,Couper avant chaque changement de fil,generation_options_dialog.cpp
+64455486,case,Croix complète,properties_panel.cpp
+abec11cd,case,Crénage de la police,text_dialog.cpp
+81b23d37,case,Dans un objet : relier la sous-couche au remplissage sans couper le fil,machine_export_dialog.cpp
+ec1b8e2e,case,"Densité excessive, au-delà de",main_window_density.cpp
+3d3ea99b,case,Diviser chaque forme retenue par couleur,ai_segmentation_dialog.cpp
+ea65d971,case,Découper les points trop longs,generation_options_dialog.cpp
+0e474c43,case,Dégradé de densité,properties_panel.cpp
+11df031b,case,Entre les objets : relier sans couper le fil si le trajet sera recouvert,machine_export_dialog.cpp
+14a6a35a,case,Entrée/sortie automatiques des objets,generation_options_dialog.cpp
+43d3b43f,case,Espacement automatique selon la largeur,properties_panel.cpp
+3a552654,case,"Finitions automatiques (coupes, points d'arrêt, points courts)",generation_options_dialog.cpp
+c37dbd3d,case,Fond de tissu opaque,export_image_dialog.cpp
+eb932cc3,case,Fractionner les traversées longues (> 7 mm),main_window_satin_auto.cpp
+213d5af7,case,Fusionner aussi les régions voisines de même couleur,segmentation_colors_panel.cpp
+8fd5f3dc,case,Fusionner les points trop courts,generation_options_dialog.cpp
+e181a7ab,case,Gomme,main_window_detail_zones.cpp
+5674752c,case,Ignorer la plus grande région (probablement le fond),ai_segmentation_dialog.cpp
+e368f34e,case,Inverser les tons,main_window_create.cpp
+df6f4ad1,case,Je possède ce fil,thread_panel.cpp
+1a41ec3c,case,Liaison en spirale,properties_panel.cpp
+e47033c8,case,Liaisons cousues cachées,properties_panel.cpp
+1e94712b,case,"Ligatures (ff, fi, fl, ffi, ffl)",text_dialog.cpp
+623246f4,case,Limiter la recherche du fil le plus proche à mes fils,thread_panel.cpp
+41c3b1d2,case,Optimiser les trajets (réglage de ce fichier : moins de coupes et de sauts),machine_export_dialog.cpp
+246e3e21,case,Orientation paysage,placement_template_dialog.cpp
+300900db,case,Parcourir tous les fils (au lieu des plus proches),main_window_gradient.cpp
+737daa31,case,Pas automatique (adapté au zoom),grid_settings_dialog.cpp
+b319c11f,case,Rangées décalées,properties_panel.cpp
+e42a170e,case,Remplissage qui suit le mouvement,main_window_create.cpp
+c20a2392,case,Retirer les points cachés,properties_panel.cpp
+ba15f6b4,case,"Réordonner aussi les zones d'une même couleur (avancé, modifie davantage l'ordre)",machine_export_dialog.cpp
+8cb42af7,case,"Satin automatique (bandes étroites, petits disques)",main_window_create.cpp
+29de353d,case,Sauts à vide sur le canevas,main_window_order_jumps.cpp
+82cbed86,case,Sens horaire,properties_panel.cpp
+58d7bdcb,case,Seulement le fond extérieur (garder le blanc enfermé dans le motif),main_window_create.cpp
+ae657807,case,Seulement les vrais objets,main_window_create.cpp
+6157f7db,case,Sous-couche : réordonner les passes pour réduire les sauts (invisible),machine_export_dialog.cpp
+a67720e9,case,Sous-couche centrale,main_window_satin_auto.cpp
+9183cbb5,case,Sous-couche de bord,properties_panel.cpp
+c791d168,case,Sous-couche de contour,properties_panel.cpp
+15ed49ee,case,Sous-couche en zigzag,properties_panel.cpp
+a9e979c7,case,Sous-couche parallèle,properties_panel.cpp
+b6a80b99,case,Sous-couche perpendiculaire,properties_panel.cpp
+d664e9fb,case,Sous-couche zigzag,properties_panel.cpp
+f0eeb068,case,Texte en dessous (sommets vers le centre),text_advanced_panel.cpp
+e83895af,case,Traits sombres cousus par-dessus,main_window_create.cpp
+31e80c01,case,"Trop de coupes, au-delà de",main_window_density.cpp
+7dadce88,case,Écrire aussi le fichier de couleurs à côté,machine_export_dialog.cpp
+19e2c522,case,Écrire les changements de couleur,machine_export_dialog.cpp
+ab829014,case,Écrire les coupes de fil (réglage de ce fichier),machine_export_dialog.cpp
+41976bc1,dialogue,Ajouter un fil personnel,thread_panel.cpp
+d06da014,dialogue,Aperçu avant impression - fiche de production,production_dialog.cpp
+308f4162,dialogue,Cadre de broderie,main_window_files.cpp
+531ea643,dialogue,Centre de rotation,main_window_rotation.cpp
+5750c9de,dialogue,Choisir une référence de fil,main_window_gradient.cpp
+65d01889,dialogue,Coloris et tissu,colorway_dialog.cpp
+4c7db5cd,dialogue,Combler les vides du bloc,main_window_shapes.cpp
+b2820172,dialogue,Compagnon IA,companion_dock.cpp
+7d4ca866,dialogue,Comparer les méthodes de satin,main_window_satin_auto.cpp
+dcaa0480,dialogue,Contour autour de la sélection,main_window_vector_edit.cpp
+60c07a7c,dialogue,Données de débogage — objet %1,main_window_debug.cpp
+c7e19585,dialogue,Exporter l'image,export_image_dialog.cpp
+775bc85b,dialogue,Exporter une broderie machine,machine_export_dialog.cpp
+5aae42a1,dialogue,Fiche de production,production_dialog.cpp
+004e668f,dialogue,Gabarit de placement 1:1,placement_template_dialog.cpp
+de2f043a,dialogue,Gestes souris et clavier,help_dialogs.cpp
+aca41aaf,dialogue,Guide de prise en main,help_dialogs.cpp
+8aeebbf2,dialogue,Importer une image,import_dialog.cpp
+9ae947b0,dialogue,Imprimer la fiche de production,production_dialog.cpp
+412ad05d,dialogue,Luminosité et contraste,brightness_dialog.cpp
+4959ff8d,dialogue,Machine de broderie,machine_dialog.cpp
+65160629,dialogue,Manuel d'utilisation,help_manual.cpp
+cd99057f,dialogue,Nettoyer les petits îlots,main_window_regions.cpp
+b1452aff,dialogue,Numérisation automatique,main_window_create.cpp
+f057c31c,dialogue,Objet de point de contour,main_window_create.cpp
+f2daca5b,dialogue,Options de génération (réglages du projet),generation_options_dialog.cpp
+e6a15184,dialogue,Paramètres,settings_dialog.cpp
+3a4ee332,dialogue,Préférences générales,general_preferences_dialog.cpp
+c0dbf1e6,dialogue,Préférences — Intelligence artificielle,ai_preferences_dialog.cpp
+e8fcd3c4,dialogue,Quantifier les couleurs,main_window_workflow.cpp
+a815ced8,dialogue,Rapport de plantage,main_window_crash_report.cpp
+ea529ff7,dialogue,Rechercher une commande,command_palette_dialog.cpp
+7a51550a,dialogue,Remplissage tatami,main_window_create.cpp
+f15b33c8,dialogue,Rendu réaliste,realistic_render_dialog.cpp
+1b7523c1,dialogue,Réduire / fusionner les fils,thread_merge_dialog.cpp
+749748bf,dialogue,Réglages de la grille,grid_settings_dialog.cpp
+38a816ae,dialogue,Satin,main_window_satin_auto.cpp
+ffcf580f,dialogue,Segmenter avec l'IA,ai_segmentation_dialog.cpp
+4669e436,dialogue,Segmenter l'image,segmentation_dialog.cpp
+5febcd89,dialogue,Vectorisation,main_window_workflow.cpp
+3baea5a4,dock,Analyse,main_window_analysis.cpp
+ac8b4905,dock,Couleurs de segmentation,main_window_colors.cpp
+9bad0b86,dock,Document,main_window_panels.cpp
+a0dd4113,dock,Fils,main_window_threads.cpp
+841be1a4,dock,Filtres d'affichage,main_window_order_filter.cpp
+799ba08e,dock,Historique,main_window_editing.cpp
+1164c4f2,dock,Ordre de couture,main_window_order_filter.cpp
+86fa735c,dock,Propriétés,main_window_panels.cpp
+3c08b8cc,dock,Workflow,main_window_panels.cpp
+3de2eda8,menu,Affichage,main_window.cpp
+7fd6fced,menu,Aide,main_window_help_menu.cpp
+ea8a9f5a,menu,Aligner la sélection,main_window_editing.cpp
+b73c432d,menu,Aligner sur,main_window_arrange.cpp
+71984e11,menu,Analyse,main_window_analysis.cpp
+101b9704,menu,Broderie,main_window.cpp
+54ae0825,menu,Convertir le type,main_window_arrange.cpp
+8fec2068,menu,Créer avec réglages,main_window.cpp
+a68f2f07,menu,Densité,main_window.cpp
+80f317b6,menu,Design entier,main_window_objects.cpp
+4a22b69f,menu,Espaces de travail,main_window_ux.cpp
+18dac096,menu,Fichier,main_window.cpp
+fcfaf94f,menu,Fils,main_window_threads.cpp
+943cef6b,menu,Forme,main_window_shapes.cpp
+18202d51,menu,Formes prédéfinies,main_window_vector_tools.cpp
+433d10e7,menu,Fusionner dans,main_window_regions.cpp
+3a29a683,menu,Grille et guides,main_window_view_display.cpp
+343f9eae,menu,Image,main_window.cpp
+7449b5b4,menu,Navigation,main_window_help_menu.cpp
+6fbcb11d,menu,Panneaux,main_window.cpp
+eb49cec2,menu,Passes de couture,main_window_view_display.cpp
+644f52dc,menu,Plans d'affichage,main_window.cpp
+b909b547,menu,Préréglages de points,main_window_stitch_presets.cpp
+e019429a,menu,Rappeler une sélection,main_window_selection_tools.cpp
+d1ff1ac3,menu,Rendu réaliste,main_window_realistic.cpp
+6ef7ae22,menu,Retrouver,main_window_selection_tools.cpp
+bfb1ac5d,menu,Récents,main_window.cpp
+39d632d3,menu,Réglages fins du satin,main_window.cpp
+46096614,menu,Segmentation,main_window.cpp
+20265051,menu,Supprimer un préréglage,main_window_stitch_presets.cpp
+5d90ed77,menu,Sélection,main_window_context_menu.cpp
+90c9c047,menu,Texte,main_window_lettering.cpp
+1bfbf007,menu,Thème,main_window.cpp
+365e2a98,menu,Transformer,main_window_objects.cpp
+50f2be55,menu,Type de points,main_window_context_menu.cpp
+e5696c12,menu,Type de points (tous),main_window_context_menu.cpp
+aabe1c93,menu,Édition,main_window.cpp
+4b6cfb58,outil,Brush,tools.hpp
+7e011329,outil,Bucket,tools.hpp
+336b6213,outil,ClickToStitch,tools.hpp
+e22edfe6,outil,Cut,tools.hpp
+e3db2548,outil,DetailBrush,tools.hpp
+a8ddefdf,outil,DrawBezier,tools.hpp
+cf819ee7,outil,DrawBreakLine,tools.hpp
+31cf34dd,outil,DrawDirectionGuide,tools.hpp
+b8cd428a,outil,DrawEllipse,tools.hpp
+c5d6568a,outil,DrawFreeform,tools.hpp
+79f92460,outil,DrawPolygon,tools.hpp
+b5f01e17,outil,DrawPolygonRegular,tools.hpp
+0134085f,outil,DrawRectangle,tools.hpp
+9f2384e1,outil,DrawSatinColumn,tools.hpp
+b1c7b9f7,outil,Eyedropper,tools.hpp
+26b7b101,outil,Measure,tools.hpp
+d29364dd,outil,Pan,tools.hpp
+f67ff16e,outil,Rect,tools.hpp
+7937b507,outil,Select,tools.hpp
+c8de119f,outil,Text,tools.hpp

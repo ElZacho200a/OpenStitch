@@ -109,6 +109,29 @@ public slots:
 class ShellWindowTest : public QObject {
     Q_OBJECT
 private slots:
+    void saveAsAndExportAgainAreReachableAndRefuseWithoutContext() {
+        ShellWindow w;
+        w.show();
+        const auto enabled = [&](const char* id) {
+            for (const auto& e : w.commandEntries()) {
+                if (e.id == id) {
+                    return e.enabled;
+                }
+            }
+            return false;
+        };
+        QVERIFY(!enabled("file.save-as")); // pas de document
+        QVERIFY(!w.runCommand("file.export-again"));
+        w.newProject();
+        QVERIFY(enabled("file.save-as"));
+        QVERIFY(!enabled("file.export-again")); // rien n'a encore été exporté
+        QVERIFY(!w.exportAgain());
+        QVERIFY(w.lastNotice().contains("Aucun export"));
+        QVERIFY(w.findChild<QAction*>("action_file_save_as") != nullptr);
+        QCOMPARE(w.findChild<QAction*>("action_file_save_as")->shortcut(),
+                 QKeySequence(QStringLiteral("Ctrl+Shift+S")));
+    }
+
     void switchingWorkspacesKeepsSelectionHistoryFocusAndLetsYouFixARegionFromProduction() {
         ShellWindow w;
         w.resize(1100, 800);

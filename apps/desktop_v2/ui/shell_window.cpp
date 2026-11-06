@@ -370,6 +370,10 @@ void ShellWindow::buildMenus() {
     saveAction_ = file->addAction(tr("&Enregistrer"));
     saveAction_->setShortcut(QKeySequence::Save);
     connect(saveAction_, &QAction::triggered, this, [this] { (void)saveCurrentProject(); });
+    auto* saveAs = file->addAction(tr("Enregistrer &sous…"));
+    saveAs->setObjectName(QStringLiteral("action_file_save_as"));
+    saveAs->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+S")));
+    connect(saveAs, &QAction::triggered, this, [this] { (void)saveProjectAs(); });
     exportAction_ = file->addAction(tr("E&xporter pour la machine…"));
     exportAction_->setShortcut(QKeySequence(QStringLiteral("Ctrl+E")));
     connect(exportAction_, &QAction::triggered, this, [this] {
@@ -384,6 +388,10 @@ void ShellWindow::buildMenus() {
             exportDst(std::filesystem::path(path.toStdU16String()));
         }
     });
+    auto* exportAgainAction = file->addAction(tr("Exporter de nouveau (derniers réglages)"));
+    exportAgainAction->setObjectName(QStringLiteral("action_file_export_again"));
+    exportAgainAction->setShortcut(QKeySequence(QStringLiteral("F10")));
+    connect(exportAgainAction, &QAction::triggered, this, [this] { (void)exportAgain(); });
     auto* exportDxfAction = file->addAction(tr("Exporter les contours en D&XF…"));
     exportDxfAction->setObjectName(QStringLiteral("action_file_export_dxf"));
     connect(exportDxfAction, &QAction::triggered, this, &ShellWindow::chooseAndExportDxf);
@@ -1776,6 +1784,32 @@ bool ShellWindow::saveCurrentProject() {
     return !path.isEmpty() && saveProject(std::filesystem::path(path.toStdU16String()));
 }
 
+bool ShellWindow::saveProjectAs() {
+    if (!documentOpen_) {
+        return false;
+    }
+    QString path = QFileDialog::getSaveFileName(
+        this, tr("Enregistrer le projet sous"),
+        currentPath_.empty() ? QString() : QString::fromStdU16String(currentPath_.u16string()),
+        tr("Projet OpenStitch (*.osp)"));
+    if (path.isEmpty()) {
+        return false;
+    }
+    if (!path.endsWith(QStringLiteral(".osp"), Qt::CaseInsensitive)) {
+        path += QStringLiteral(".osp");
+    }
+    return saveProject(std::filesystem::path(path.toStdU16String()));
+}
+
+bool ShellWindow::exportAgain() {
+    if (!documentOpen_ || lastExportPath_.empty()) {
+        setNotice(tr("Aucun export précédent : utilisez « Exporter pour la machine »."), true);
+        return false;
+    }
+    exportDst(lastExportPath_);
+    return true;
+}
+
 bool ShellWindow::confirmDiscardOrSave() {
     if (!documentOpen_ || !session_.dirty()) {
         return true;
@@ -2279,6 +2313,7 @@ void ShellWindow::rebuildHistoryMenu() {
 }
 
 void ShellWindow::exportDst(const std::filesystem::path& dst) {
+    lastExportPath_ = dst;
     const auto snapshot = session_.snapshot();
     const auto exportRevision = session_.revision();
     setNotice(tr("Export DST en cours…"), false);
@@ -3759,6 +3794,10 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
                    q(tr("Parcours")), "", documentOpen_});
     out.push_back({"image.resegment", q(tr("Re-segmenter l'image…")), q(tr("Image")), "",
                    documentOpen_ && session_.project().segmentation.has_value()});
+    out.push_back({"file.save-as", q(tr("Enregistrer le projet sous…")), q(tr("Fichier")),
+                   "Ctrl+Shift+S", documentOpen_});
+    out.push_back({"file.export-again", q(tr("Exporter de nouveau (derniers réglages)")),
+                   q(tr("Fichier")), "F10", documentOpen_ && !lastExportPath_.empty()});
     out.push_back({"file.import-machine", q(tr("Importer une broderie machine…")), q(tr("Fichier")),
                    "", true});
     out.push_back({"file.import-dxf", q(tr("Importer un DXF…")), q(tr("Fichier")), "", true});
@@ -4000,6 +4039,10 @@ bool ShellWindow::runCommand(const QString& id) {
             setCheckSkipped(!checkSkipped_);
         } else if (id == QLatin1String("image.resegment")) {
             resegmentImage();
+        } else if (id == QLatin1String("file.save-as")) {
+            (void)saveProjectAs();
+        } else if (id == QLatin1String("file.export-again")) {
+            (void)exportAgain();
         } else if (id == QLatin1String("file.import-machine")) {
             chooseAndImportMachine();
         } else if (id == QLatin1String("file.import-dxf")) {

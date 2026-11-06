@@ -108,6 +108,10 @@ public:
     [[nodiscard]] bool snapEnabled() const { return snapEnabled_; }
     [[nodiscard]] ImportDialog* importDialog() const { return importDialog_; }
     void openProject(const std::filesystem::path& osp);
+    // « Enregistrer sous » : demande toujours un chemin (extension .osp) ; le projet courant prend
+    // ce chemin. `exportAgain` : réécrit le dernier fichier machine avec les mêmes réglages.
+    bool saveProjectAs();
+    bool exportAgain();
     // Broderie machine (DST, PES, JEF, EXP… tout ce que le registre sait lire) : nouveau projet,
     // design centré dans le cadre, une seule étape de départ. DXF : tracés ajoutés comme objets
     // vectoriels (annulable) ; export : tous les contours vectoriels.
@@ -434,6 +438,7 @@ private:
     Guide guide_;
     std::optional<std::uint64_t> analysedRevision_;
     std::optional<std::uint64_t> exportedRevision_;
+    std::filesystem::path lastExportPath_;
     std::optional<std::uint64_t> machineCheckRevision_; // contrôle machine fait pour cette révision
     int analysisWarnings_{0};
     int machineBlockers_{0};
