@@ -233,7 +233,10 @@ private slots:
         auto* toggle = w.findChild<QAction*>("action_view_compact_tools");
         auto* status = w.findChild<QLabel*>("activeToolStatus");
         QVERIFY(rail && toggle && status);
-        QCOMPARE(rail->toolButtonStyle(), Qt::ToolButtonTextBesideIcon);
+        // A fresh workspace starts canvas-first; expanded labels remain available on demand.
+        QVERIFY(w.compactToolRail());
+        QVERIFY(toggle->isChecked());
+        QCOMPARE(rail->toolButtonStyle(), Qt::ToolButtonIconOnly);
         const auto count = rail->actions().size();
         QVERIFY(count > 5);
         for (auto* action : rail->actions()) {
