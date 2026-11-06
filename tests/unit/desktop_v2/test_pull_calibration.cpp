@@ -17,12 +17,19 @@ TEST_CASE("the calibration table lists nominal and predicted distances for every
     PullCalibration cal;
     const auto rows = cal.rows();
     REQUIRE(rows.size() >= 6);
+    bool anyPositive = false;
     for (const auto& r : rows) {
         CHECK_FALSE(r.id.empty());
-        CHECK(r.nominalMm > 0.0);
-        CHECK(r.predictedMm > 0.0);
+        // Les métriques d'ordre de couture mesurent un jour entre deux points qui peuvent
+        // coïncider : un nominal de 0 est valide, jamais un nombre négatif ou non fini.
+        CHECK(std::isfinite(r.nominalMm));
+        CHECK(std::isfinite(r.predictedMm));
+        CHECK(r.nominalMm >= 0.0);
+        CHECK(r.predictedMm >= 0.0);
         CHECK_FALSE(r.hasMeasure);
+        anyPositive = anyPositive || (r.nominalMm > 0.0 && r.predictedMm > 0.0);
     }
+    CHECK(anyPositive);
     CHECK(cal.measuredCount() == 0);
     CHECK(cal.rmsMm() == 0.0);
     CHECK_FALSE(cal.testSequence().empty());
