@@ -228,7 +228,10 @@ private slots:
     }
 
     void toolRailUsesDescriptiveNamesAndKeepsAllToolsInBothModes() {
+        QTemporaryDir home;
+        QVERIFY(home.isValid());
         ShellWindow w;
+        w.setStateDirectory(fs::path(home.path().toStdU16String()) / "isolated-ui-state");
         auto* rail = w.findChild<QToolBar*>("toolRail");
         auto* toggle = w.findChild<QAction*>("action_view_compact_tools");
         auto* status = w.findChild<QLabel*>("activeToolStatus");
