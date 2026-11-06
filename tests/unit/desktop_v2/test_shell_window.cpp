@@ -2170,6 +2170,32 @@ private slots:
         QVERIFY(fadeAxisView(w.session().project(), id)->curve == FadeCurve::Steep);
     }
 
+    void satinRungCommandsEditAndDiagnoseTheSelectedColumn() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 40, 20), "Rectangle").committed);
+        w.waitForIdle();
+        const auto rectId = w.session().project().embroidery_objects.front().id.value;
+        w.session().selection().replace({{TargetKind::EmbroideryObject, rectId}});
+        QVERIFY(!w.runCommand("satin.rung.insert")); // pas une colonne satin
+        const auto made = createSatinColumn(
+            w.session(), {{{50, 0}, {50, 4}}, {{51, 0}, {51, 4}}, {{60, 0}, {60, 4}}});
+        QVERIFY(made.ok);
+        w.waitForIdle();
+        w.session().selection().replace({{TargetKind::EmbroideryObject, made.objectId}});
+        const auto depth = w.session().undoNames().size();
+        QVERIFY(w.runCommand("satin.rung.insert"));
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QCOMPARE(satinRungCount(w.session().project(), made.objectId), 4);
+        QVERIFY(w.runCommand("satin.rung.remove"));
+        QCOMPARE(satinRungCount(w.session().project(), made.objectId), 3);
+        QVERIFY(w.runCommand("satin.diagnose"));
+        QVERIFY(w.lastNotice().contains("saine"));
+        QVERIFY(w.session().undo());
+        QCOMPARE(satinRungCount(w.session().project(), made.objectId), 4);
+    }
+
     void regionToolRecolorsAndMergesWholeColorClasses() {
         ShellWindow w;
         w.resize(1400, 900);

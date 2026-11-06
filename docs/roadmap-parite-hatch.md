@@ -4569,6 +4569,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-06 | Claude (desktop V2, satin) | Édition des barreaux d'une colonne satin à rails (ajouter, déplacer, retirer, une commande annulable chacun) et diagnostic des croisements de rails, des barreaux en nœud papillon et des barreaux trop larges ; commandes `satin.rung.*` et `satin.diagnose` de l'IHM V2. Non validé à l'écran. |
 | 2026-11-04 | Claude (lot P1-lourds) | HP-QA-002 ◐ (journal, minidump, rapport de plantage), HP-SPEC-001 ☑ (appliqué + contour de découpe). |
 | 2026-11-04 | Claude (lot P1-QA-001) | HP-QA-001 ☑ : découpage de `main_window.cpp` en 15 fichiers par responsabilité, sans changement de comportement. |
 | 2026-11-03 | Claude (lot P1-MOTEUR/FMT) | HP-STI-033 ☑ (tirage radial/spirale/echo/motif/crosshatch), HP-FMT-027 ☑ (VP3 Trim déplacé). HP-STI-018.a (PR de plan requise) et HP-ENG-009 (dépend de 018) non traités. |

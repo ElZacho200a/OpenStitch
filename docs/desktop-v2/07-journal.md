@@ -443,3 +443,7 @@ encore le desktop principal.
 - Retour utilisateur : « plus la main sur la segmentation (supprimer / fusionner des régions) ». Nouvel outil **Régions** (X, menu Outils › Corriger la segmentation) : carte des régions à plat sur le motif, clic pour choisir, panneau dédié (liste, Supprimer, Fusionner dans, Nettoyer les îlots, Régénérer).
 - Cœur `region_edit` (sans Qt, 5 cas Catch2) ; contrôleur `region_edit_controller` ; chaque correction = une commande du moteur ; la régénération refait les objets depuis la segmentation corrigée en tâche, refusée si la révision a changé, **une seule étape d'annulation**.
 - Limite : la régénération remplace les objets (retouches manuelles perdues, annulable) ; recoloration de région, fusion de couleurs et frontières non faits.
+
+## 2026-11-06 — Session 2 : lot 1, barreaux de satin
+
+- Cœur `satin_column` : ajouter / insérer entre deux barreaux / déplacer / retirer un barreau (une commande annulable chacun, refus sans trace : extrémités confondues, hors limites, moins de deux barreaux), `widestRungGap` et `redundantRung` (choix déterministe), `diagnoseSatin` (croisements en entiers 64 bits, aucun flottant pour décider). IHM : commandes « Satin : … » dans la palette. Pas de glisser au canevas pour l'instant. Validation : syntaxe seule en local (pas de Qt ni vcpkg dans ce conteneur), tests lancés par la CI.

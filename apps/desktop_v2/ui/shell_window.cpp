@@ -65,6 +65,7 @@
 #include "preview_service.hpp"
 #include "region_edit_controller.hpp"
 #include "region_panel.hpp"
+#include "satin_column.hpp"
 #include "segmentation_preview.hpp"
 #include "thread_panel.hpp"
 #include "tool_icon.hpp"
@@ -2723,6 +2724,18 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
                            q(tr("Fondu")), "", hasFade});
         }
     }
+    {
+        // Barreaux d'une colonne satin à rails : un seul objet sélectionné, de ce type.
+        const auto target = pointTarget();
+        const bool isSatin = target && satinRungCount(session_.project(), *target) >= 0;
+        out.push_back({"satin.rung.insert",
+                       q(tr("Satin : ajouter un barreau (au plus grand écart)")), q(tr("Satin")),
+                       "", isSatin});
+        out.push_back({"satin.rung.remove", q(tr("Satin : retirer le barreau le plus redondant")),
+                       q(tr("Satin")), "", isSatin});
+        out.push_back({"satin.diagnose", q(tr("Satin : diagnostiquer rails et barreaux")),
+                       q(tr("Satin")), "", isSatin});
+    }
     out.push_back({"vector.curves", q(tr("Convertir les contours en courbes")), q(tr("Contour")),
                    "", hasObjects});
     out.push_back(
@@ -2821,6 +2834,34 @@ bool ShellWindow::runCommand(const QString& id) {
                               false);
                     break;
                 }
+            }
+        } else if (id.startsWith(QLatin1String("satin.rung.")) ||
+                   id == QLatin1String("satin.diagnose")) {
+            const auto target = pointTarget();
+            if (!target) {
+                setNotice(tr("Sélectionnez une seule colonne satin."), true);
+                return false;
+            }
+            if (id == QLatin1String("satin.diagnose")) {
+                const auto d = diagnoseSatin(session_.project(), *target);
+                setNotice(fromUtf8(satinDiagnosisSummary(d)), !d.clean());
+            } else {
+                const bool insert = id == QLatin1String("satin.rung.insert");
+                const auto index = insert ? widestRungGap(session_.project(), *target)
+                                          : redundantRung(session_.project(), *target);
+                if (!index) {
+                    setNotice(insert ? tr("Il faut au moins deux barreaux.")
+                                     : tr("Une colonne satin garde au moins deux barreaux."),
+                              true);
+                    return false;
+                }
+                const auto r = insert ? insertSatinRungBetween(session_, *target, *index)
+                                      : removeSatinRung(session_, *target, *index);
+                if (!r.ok) {
+                    setNotice(fromUtf8(r.message), true);
+                    return false;
+                }
+                setNotice(insert ? tr("Barreau ajouté.") : tr("Barreau retiré."), false);
             }
         } else if (id == QLatin1String("vector.curves") || id == QLatin1String("vector.smooth")) {
             const auto selected = inspect(session_.project(), session_.selection().targets());

@@ -21,7 +21,7 @@ dit honnêtement ce qui bloque, ce qui est prêt et comment le vérifier.
 
 - [x] Correction de segmentation APRÈS numérisation : outil « Régions » (X, menu Outils) : choisir une région au clic ou dans la liste, la supprimer, la fusionner dans une voisine, nettoyer les îlots, régénérer les objets (une étape d'annulation). Reste non fait : recoloration d'une région, fusion de couleurs, retouche des frontières.
 - [x] Plume, Crayon, suppression de nœuds, poignées de tangentes Bézier (contours et rails de satin).
-- [ ] Édition des barreaux des rails de satin ; diagnostic des croisements de rails.
+- [x] Édition des barreaux des rails de satin (commandes) ; diagnostic des croisements de rails. Reste : glisser un barreau au canevas.
 - [ ] Comparaison nominal ↔ prédit de la compensation de tirage et assistant d'étalonnage sur pièce-test.
 - [ ] Options machine avancées d'export (départ, coupes, arrêts), bibliothèque de cadres.
 - [ ] Segmentation IA / SAM (hors priorité produit ; état de disponibilité à afficher honnêtement).
