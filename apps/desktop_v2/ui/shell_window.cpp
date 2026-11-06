@@ -937,6 +937,14 @@ void ShellWindow::rebuildToolRail() {
             a->setChecked(a->data().toString() == activeTool_);
         }
     }
+    // A workspace switch may fall back to Selection without triggering an action.
+    // Keep the persistent status label in sync with the actual active tool.
+    for (auto* a : toolGroup_->actions()) {
+        if (a->data().toString() == activeTool_) {
+            activeToolStatus_->setText(a->property("fullLabel").toString());
+            break;
+        }
+    }
     if (const auto* tool = registry_.find(activeTool_.toStdString())) {
         activeToolStatus_->setText(fromUtf8(tool->label));
     }

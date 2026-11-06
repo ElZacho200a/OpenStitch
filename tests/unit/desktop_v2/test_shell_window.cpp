@@ -171,6 +171,19 @@ private slots:
         QCOMPARE(rail->actions().size(), design);
     }
 
+    void switchingWorkspaceResetsTheActiveToolStatusAlongWithSelection() {
+        ShellWindow w;
+        auto* status = w.findChild<QLabel*>(QStringLiteral("activeToolStatus"));
+        QVERIFY(status != nullptr);
+        QVERIFY(w.runCommand("tool.region.edit"));
+        QCOMPARE(w.activeToolId(), QStringLiteral("region.edit"));
+        QVERIFY(status->text().contains(QStringLiteral("Régions")));
+
+        w.setWorkspace(Workspace::Produce);
+        QCOMPARE(w.activeToolId(), QStringLiteral("select"));
+        QCOMPARE(status->text(), QStringLiteral("Sélection"));
+    }
+
     void allToolsMenuKeepsLowRailToolsAccessibleWithoutEditingTheDocument() {
         ShellWindow w;
         w.resize(1024, 520);
