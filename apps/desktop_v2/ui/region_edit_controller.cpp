@@ -305,10 +305,13 @@ bool RegionEditController::paintStroke(const QVector<QPointF>& scenePx, bool era
     }
     dirty_ = true;
     refresh();
-    host_.notice(erase ? QObject::tr("Région effacée au pinceau. Régénérez les objets pour "
-                                     "appliquer.")
-                       : QObject::tr("Frontière retouchée. Régénérez les objets pour appliquer."),
-                 false);
+    QString note = erase ? QObject::tr("Région effacée au pinceau. Régénérez les objets pour "
+                                       "appliquer.")
+                         : QObject::tr("Frontière retouchée. Régénérez les objets pour appliquer.");
+    if (!result.message.empty()) {
+        note += QStringLiteral(" ") + fromUtf8(result.message);
+    }
+    host_.notice(note, false);
     return true;
 }
 

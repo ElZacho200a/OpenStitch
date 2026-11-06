@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <set>
@@ -352,4 +353,47 @@ TEST_CASE("the brush eraser only clears the chosen region and refuses useless st
     CHECK(changed > 0);
     REQUIRE(d.session.undo());
     CHECK(d.session.project().segmentation->labels == before);
+}
+
+TEST_CASE("a brush stroke spares the small regions it would cover entirely",
+          "[desktop_v2][regions][brush]") {
+    Digitized d;
+    const auto before = listRegions(d.session.project());
+    REQUIRE(before.size() >= 3);
+    const auto chosen = before.front().id;
+    const auto& seg = *d.session.project().segmentation;
+    std::size_t inside = 0;
+    for (std::size_t i = 0; i < seg.labels.size(); ++i) {
+        if (seg.labels[i] == chosen) {
+            inside = i;
+            break;
+        }
+    }
+    const double cx = static_cast<double>(inside % static_cast<std::size_t>(seg.width)) + 0.5;
+    const double cy = static_cast<double>(inside / static_cast<std::size_t>(seg.width)) + 0.5;
+    const auto labelsBefore = seg.labels;
+    const auto depth = d.session.undoNames().size();
+
+    // Un très gros pinceau couvre entièrement les petites régions voisines : elles sont épargnées.
+    const auto r = paintRegionStroke(d.session, chosen, {{cx, cy}}, 200.0, false);
+    if (!r.ok) { // tout est déjà dans la région choisie ou protégé : refus sans trace
+        CHECK(d.session.undoNames().size() == depth);
+        return;
+    }
+    CHECK(d.session.undoNames().size() == depth + 1);
+    const auto after = listRegions(d.session.project());
+    CHECK(after.size() == before.size()); // aucune région n'a disparu
+    for (const auto& region : after) {
+        CHECK(region.pixels > 0);
+    }
+    std::size_t counted = 0;
+    for (const auto label : d.session.project().segmentation->labels) {
+        counted += label == chosen ? 1 : 0;
+    }
+    const auto it = std::find_if(after.begin(), after.end(),
+                                 [&](const RegionInfo& x) { return x.id == chosen; });
+    REQUIRE(it != after.end());
+    CHECK(it->pixels == counted); // comptes cohérents avec la carte d'étiquettes
+    REQUIRE(d.session.undo());
+    CHECK(d.session.project().segmentation->labels == labelsBefore);
 }

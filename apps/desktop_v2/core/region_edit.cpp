@@ -395,21 +395,44 @@ ServiceResult paintRegionStroke(DocumentSession& session, std::uint64_t regionId
         return {false, erase ? "Rien à effacer : le trait ne touche pas cette région."
                              : "Rien à peindre : le trait est déjà entièrement dans cette région."};
     }
-    // Une région voisine ne doit pas disparaître en silence (une région vide casserait la carte).
+    // Une région ne doit pas disparaître en silence (une région vide casserait la carte). En mode
+    // peinture, une région voisine ENTIÈREMENT couverte par le trait est épargnée (ses pixels ne
+    // sont pas repeints) : un trait qui croise le moindre îlot ne doit pas être refusé en bloc.
+    // « Supprimer » retire une région volontairement.
     std::map<std::uint32_t, std::size_t> lost;
     for (const auto& p : pixels) {
         if (p.before != 0) {
             ++lost[p.before];
         }
     }
+    std::vector<std::uint32_t> spared;
     for (const auto& [other, count] : lost) {
         if (const auto* region = seg->find(RegionId{other});
             region != nullptr && count >= region->pixel_count) {
-            return {false, "Le trait effacerait entièrement une région : utilisez « Supprimer »."};
+            spared.push_back(other);
+        }
+    }
+    if (!spared.empty()) {
+        if (erase) {
+            return {false,
+                    "Le trait effacerait entièrement cette région : utilisez « Supprimer »."};
+        }
+        std::erase_if(pixels, [&spared](const PaintedPixel& p) {
+            return std::find(spared.begin(), spared.end(), p.before) != spared.end();
+        });
+        if (pixels.empty()) {
+            return {false,
+                    "Le trait ne couvre que de petites régions entières, laissées intactes : "
+                    "utilisez « Supprimer » pour les retirer."};
         }
     }
     session.execute(std::make_unique<PaintRegionCommand>(label, std::move(pixels), erase));
-    return {true, {}};
+    if (spared.empty()) {
+        return {true, {}};
+    }
+    return {true, std::to_string(spared.size()) +
+                      " petite(s) région(s) entièrement couverte(s) laissée(s) intacte(s) "
+                      "(« Supprimer » les retire)."};
 }
 
 ServiceResult cleanSmallIslands(DocumentSession& session, std::size_t minPixels) {

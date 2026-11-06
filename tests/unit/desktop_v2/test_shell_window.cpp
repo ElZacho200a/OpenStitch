@@ -478,7 +478,7 @@ private slots:
                 QVERIFY(a->toolTip().contains("pas encore migré"));
             }
         }
-        QCOMPARE(enabled, 14); // …, Pipette, Couteau, Zones de détail, Nœuds
+        QCOMPARE(enabled, 15); // …, Pipette, Couteau, Zones de détail, Nœuds, Pinceau de frontière
         QVERIFY(disabled > 0);
     }
 
@@ -761,12 +761,12 @@ private slots:
             return false;
         };
         QVERIFY(has("file.open") && has("edit.undo") && has("workspace.produce"));
-        // Les 22 outils du registre sont tous atteignables par la palette.
+        // Les 25 outils du registre sont tous atteignables par la palette.
         int tools = 0;
         for (const auto& e : entries) {
             tools += e.id.rfind("tool.", 0) == 0 ? 1 : 0;
         }
-        QCOMPARE(tools, 24);
+        QCOMPARE(tools, 25);
         // Un outil non migré est listé mais refusé, sans effet de bord.
         QVERIFY(!w.runCommand("tool.bucket"));
         QCOMPARE(w.activeToolId(), QString("select"));
@@ -2605,7 +2605,8 @@ private slots:
         controller->selectRegion(regions.front().id);
         const auto labelsBefore = w.session().project().segmentation->labels;
         drag();
-        QCOMPARE(w.session().undoNames().size(), depth + 1); // un trait = un pas d'annulation
+        QVERIFY2(w.session().undoNames().size() == depth + 1, // un trait = un pas d'annulation
+                 qPrintable(w.lastNotice()));
         QVERIFY(w.session().project().segmentation->labels != labelsBefore);
         QVERIFY(panel->regenerateEnabled()); // la correction attend la régénération
         QVERIFY(w.session().undo());
