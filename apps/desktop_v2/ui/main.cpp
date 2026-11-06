@@ -30,6 +30,10 @@ int main(int argc, char** argv) {
                             QStringLiteral("Enregistre une capture PNG puis quitte."),
                             QStringLiteral("png"));
     parser.addOption(shot);
+    QCommandLineOption shotSize(QStringList{QStringLiteral("screenshot-size")},
+                                QStringLiteral("Dimensions de la capture (largeur x hauteur)."),
+                                QStringLiteral("WxH"), QStringLiteral("1280x720"));
+    parser.addOption(shotSize);
     QCommandLineOption select(QStringList{QStringLiteral("select-objects")},
                               QStringLiteral("Recette : sélectionne les N premiers objets."),
                               QStringLiteral("n"), QStringLiteral("0"));
@@ -48,6 +52,20 @@ int main(int argc, char** argv) {
     parser.process(app);
 
     openstitch::desktop_v2::ShellWindow window;
+    if (parser.isSet(shot)) {
+        const QStringList dimensions = parser.value(shotSize).split(QLatin1Char('x'));
+        if (dimensions.size() != 2) {
+            return 2;
+        }
+        bool widthOk = false;
+        bool heightOk = false;
+        const int width = dimensions[0].toInt(&widthOk);
+        const int heightPx = dimensions[1].toInt(&heightOk);
+        if (!widthOk || !heightOk || width < 640 || heightPx < 480) {
+            return 2;
+        }
+        window.resize(width, heightPx);
+    }
     window.show();
     const auto stateDir = std::filesystem::path(
         QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation).toStdU16String());
@@ -97,8 +115,7 @@ int main(int argc, char** argv) {
                               objects[static_cast<std::size_t>(i)].id.value});
         }
         window.session().selection().replace(std::move(picked));
-        window.grab().save(parser.value(shot));
-        return 0;
+        return window.grab().save(parser.value(shot)) ? 0 : 1;
     }
     return app.exec();
 }
