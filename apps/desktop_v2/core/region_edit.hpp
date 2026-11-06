@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "document_services.hpp"
@@ -61,6 +62,15 @@ ServiceResult recolorRegion(DocumentSession& session, std::uint64_t id,
 // Les régions adjacentes de couleur identique sont réunies en une commande annulable.
 ServiceResult mergeRegionColors(DocumentSession& session, std::uint64_t source,
                                 std::uint64_t target);
+// Retouche d'une frontière au pinceau : peint la région `regionId` sur tous les pixels à moins de
+// `radiusPx` d'un des centres (pixels de l'image de travail), quel que soit ce qui s'y trouvait
+// (région voisine ou fond). `erase` : rend au fond les seuls pixels de cette région. Refus : région
+// inconnue, rayon hors [0,5 ; 200], centre non fini, rien ne change, ou une région voisine serait
+// entièrement effacée (utiliser « Supprimer »). UNE commande annulable ; ni les objets ni les
+// couleurs ne sont touchés (la régénération les refera).
+ServiceResult paintRegionStroke(DocumentSession& session, std::uint64_t regionId,
+                                const std::vector<std::pair<double, double>>& centresPx,
+                                double radiusPx, bool erase);
 // Fusionne chaque région de moins de `minPixels` dans sa voisine de couleur la plus proche.
 ServiceResult cleanSmallIslands(DocumentSession& session, std::size_t minPixels);
 // Rebouche uniquement les composants transparents enclavés de taille <= maxPixels.

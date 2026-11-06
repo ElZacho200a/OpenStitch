@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
 #include <filesystem>
 #include <set>
 
@@ -252,4 +253,103 @@ TEST_CASE("a regeneration computed for an older document is refused", "[desktop_
     CHECK_FALSE(r.ok);
     CHECK_FALSE(r.message.empty());
     CHECK(d.session.undoNames().size() == depth);
+}
+
+TEST_CASE("a brush stroke moves a boundary in one undo step and undoes exactly",
+          "[desktop_v2][regions][brush]") {
+    Digitized d;
+    const auto regions = listRegions(d.session.project());
+    REQUIRE(regions.size() >= 3);
+    const auto painted = regions.front().id; // la plus grande : elle gagne
+    // Une région voisine et l'un de ses pixels.
+    const auto neighbours = neighbourRegions(d.session.project(), painted);
+    REQUIRE_FALSE(neighbours.empty());
+    const auto other = neighbours.front();
+    const auto& seg = *d.session.project().segmentation;
+    std::size_t at = 0;
+    for (std::size_t i = 0; i < seg.labels.size(); ++i) {
+        if (seg.labels[i] == other) {
+            at = i;
+            break;
+        }
+    }
+    const double cx = static_cast<double>(at % static_cast<std::size_t>(seg.width)) + 0.5;
+    const double cy = static_cast<double>(at / static_cast<std::size_t>(seg.width)) + 0.5;
+    const auto pixelsOf = [&](std::uint64_t id) {
+        for (const auto& r : listRegions(d.session.project())) {
+            if (r.id == id) {
+                return r.pixels;
+            }
+        }
+        return std::size_t{0};
+    };
+    const auto labelsBefore = seg.labels;
+    const auto paintedBefore = pixelsOf(painted);
+    const auto otherBefore = pixelsOf(other);
+    const auto depth = d.session.undoNames().size();
+
+    REQUIRE(paintRegionStroke(d.session, painted, {{cx, cy}}, 2.0, false).ok);
+    CHECK(d.session.undoNames().size() == depth + 1);
+    CHECK(regionAtPixel(d.session.project(), static_cast<int>(cx), static_cast<int>(cy)) ==
+          painted);
+    const auto gained = pixelsOf(painted) - paintedBefore;
+    CHECK(gained > 0);
+    // Les comptes restent cohérents avec la carte d'étiquettes.
+    std::size_t counted = 0;
+    for (const auto label : d.session.project().segmentation->labels) {
+        counted += label == painted ? 1 : 0;
+    }
+    CHECK(counted == pixelsOf(painted));
+    CHECK(pixelsOf(other) <= otherBefore);
+
+    REQUIRE(d.session.undo());
+    CHECK(d.session.project().segmentation->labels == labelsBefore);
+    CHECK(pixelsOf(painted) == paintedBefore);
+    CHECK(pixelsOf(other) == otherBefore);
+    REQUIRE(d.session.redo());
+    CHECK(pixelsOf(painted) == paintedBefore + gained);
+}
+
+TEST_CASE("the brush eraser only clears the chosen region and refuses useless strokes",
+          "[desktop_v2][regions][brush]") {
+    Digitized d;
+    const auto regions = listRegions(d.session.project());
+    REQUIRE(regions.size() >= 3);
+    const auto chosen = regions.front().id;
+    const auto& seg = *d.session.project().segmentation;
+    std::size_t inside = 0;
+    for (std::size_t i = 0; i < seg.labels.size(); ++i) {
+        if (seg.labels[i] == chosen) {
+            inside = i;
+            break;
+        }
+    }
+    const double cx = static_cast<double>(inside % static_cast<std::size_t>(seg.width)) + 0.5;
+    const double cy = static_cast<double>(inside / static_cast<std::size_t>(seg.width)) + 0.5;
+    const auto depth = d.session.undoNames().size();
+
+    // Peindre là où la région est déjà : rien à faire, aucune trace.
+    CHECK_FALSE(paintRegionStroke(d.session, chosen, {{cx, cy}}, 0.5, false).ok);
+    CHECK_FALSE(paintRegionStroke(d.session, 999999, {{cx, cy}}, 3.0, false).ok); // région inconnue
+    CHECK_FALSE(
+        paintRegionStroke(d.session, chosen, {{cx, cy}}, 0.1, false).ok); // rayon trop petit
+    CHECK_FALSE(paintRegionStroke(d.session, chosen, {{cx, cy}}, 500.0, false).ok); // trop grand
+    CHECK_FALSE(paintRegionStroke(d.session, chosen, {}, 3.0, false).ok);           // trait vide
+    CHECK_FALSE(paintRegionStroke(d.session, chosen, {{std::nan(""), 0.0}}, 3.0, false).ok);
+    CHECK(d.session.undoNames().size() == depth);
+
+    const auto before = seg.labels;
+    REQUIRE(paintRegionStroke(d.session, chosen, {{cx, cy}}, 2.0, true).ok); // gomme
+    const auto& after = d.session.project().segmentation->labels;
+    CHECK(after[inside] == 0u);
+    std::size_t changed = 0;
+    for (std::size_t i = 0; i < after.size(); ++i) {
+        if (after[i] != before[i]) {
+            ++changed;
+            CHECK(before[i] == chosen); // seuls les pixels de la région choisie ont bougé
+        }
+    }
+    CHECK(changed > 0);
+    REQUIRE(d.session.undo());
+    CHECK(d.session.project().segmentation->labels == before);
 }

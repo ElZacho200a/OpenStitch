@@ -36,6 +36,8 @@ public:
     [[nodiscard]] bool regenerateEnabled() const;
     [[nodiscard]] QString message() const;
     [[nodiscard]] int neighbourCount() const;
+    [[nodiscard]] int brushRadius() const;
+    void setBrushRadius(int pixels);
 
 signals:
     void regionChosen(std::uint64_t id);
@@ -46,6 +48,7 @@ signals:
     void recolorRequested();
     void mergeColorsRequested(std::uint64_t targetRegion);
     void regenerateRequested();
+    void brushRadiusChanged(int pixels); // rayon du pinceau de frontière (outil « Pinceau »)
 
 private:
     void updateButtons();
@@ -61,6 +64,7 @@ private:
     QPushButton* clean_{nullptr};
     QSpinBox* maxHolePixels_{nullptr};
     QPushButton* fillHoles_{nullptr};
+    QSpinBox* brushRadius_{nullptr};
     QPushButton* regenerate_{nullptr};
     QLabel* banner_{nullptr};
     QLabel* status_{nullptr};

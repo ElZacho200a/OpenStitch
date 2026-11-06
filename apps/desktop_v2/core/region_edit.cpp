@@ -3,8 +3,10 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <limits>
 #include <map>
+#include <memory>
 
 #include "openstitch/segmentation/color_merge.hpp"
 
@@ -118,6 +120,67 @@ public:
 
 private:
     std::vector<HoleFix> holes_;
+};
+
+// Pixels repeints par le pinceau, avec leur ancienne étiquette ; les comptes de pixels des régions
+// touchées sont recalculés à l'application et à l'annulation (ordre des étiquettes : déterministe).
+struct PaintedPixel {
+    std::uint32_t index{0};
+    std::uint32_t before{0};
+};
+
+class PaintRegionCommand final : public commands::ICommand {
+public:
+    PaintRegionCommand(std::uint32_t target, std::vector<PaintedPixel> pixels, bool erase)
+        : target_(target), pixels_(std::move(pixels)), erase_(erase) {
+        for (const auto& p : pixels_) {
+            if (p.before != 0) {
+                ++lost_[p.before];
+            }
+        }
+    }
+
+    void apply(document::Project& project) override {
+        auto& seg = *project.segmentation;
+        const std::uint32_t to = erase_ ? 0 : target_;
+        for (const auto& p : pixels_) {
+            seg.labels[p.index] = to;
+        }
+        adjust(seg, +1);
+    }
+    void revert(document::Project& project) override {
+        auto& seg = *project.segmentation;
+        for (const auto& p : pixels_) {
+            seg.labels[p.index] = p.before;
+        }
+        adjust(seg, -1);
+    }
+    [[nodiscard]] std::string name() const override {
+        return erase_ ? "Effacer au pinceau (région)" : "Peindre une région au pinceau";
+    }
+
+private:
+    // sign = +1 : application (la cible gagne tous les pixels repeints, les anciennes régions les
+    // perdent) ; -1 : l'inverse exact. En mode gomme, `lost_` ne compte que la cible elle-même.
+    void adjust(segmentation::Segmentation& seg, int sign) const {
+        for (const auto& [label, count] : lost_) {
+            if (auto* region = seg.find(RegionId{label})) {
+                region->pixel_count =
+                    sign > 0 ? region->pixel_count - count : region->pixel_count + count;
+            }
+        }
+        if (!erase_) {
+            if (auto* region = seg.find(RegionId{target_})) {
+                region->pixel_count = sign > 0 ? region->pixel_count + pixels_.size()
+                                               : region->pixel_count - pixels_.size();
+            }
+        }
+    }
+
+    std::uint32_t target_;
+    std::vector<PaintedPixel> pixels_;
+    bool erase_;
+    std::map<std::uint32_t, std::size_t> lost_;
 };
 
 ServiceResult noSegmentation() {
@@ -275,6 +338,77 @@ ServiceResult fillSmallHoles(DocumentSession& session, std::size_t maxPixels) {
         return {false, "Aucun petit trou fermé : le fond extérieur reste intact."};
     }
     session.execute(std::make_unique<FillSmallHolesCommand>(std::move(plan)));
+    return {true, {}};
+}
+
+ServiceResult paintRegionStroke(DocumentSession& session, std::uint64_t regionId,
+                                const std::vector<std::pair<double, double>>& centresPx,
+                                double radiusPx, bool erase) {
+    const auto* seg = segmentationOf(session.project());
+    if (seg == nullptr) {
+        return noSegmentation();
+    }
+    const RegionId target{regionId};
+    if (!target.valid() || seg->find(target) == nullptr) {
+        return {false, "Choisissez d'abord la région à peindre (outil Régions)."};
+    }
+    if (!std::isfinite(radiusPx) || radiusPx < 0.5 || radiusPx > 200.0) {
+        return {false, "Rayon du pinceau : entre 0,5 et 200 pixels."};
+    }
+    if (centresPx.empty()) {
+        return {false, "Le trait est vide."};
+    }
+    const std::uint32_t label = static_cast<std::uint32_t>(regionId);
+    const double r2 = radiusPx * radiusPx;
+    const int reach = static_cast<int>(std::ceil(radiusPx));
+    std::vector<bool> seen(seg->labels.size(), false);
+    std::vector<PaintedPixel> pixels;
+    for (const auto& [cx, cy] : centresPx) {
+        if (!std::isfinite(cx) || !std::isfinite(cy)) {
+            return {false, "Position de pinceau invalide."};
+        }
+        const int x0 = static_cast<int>(std::floor(cx)) - reach;
+        const int y0 = static_cast<int>(std::floor(cy)) - reach;
+        for (int y = std::max(0, y0); y <= std::min(seg->height - 1, y0 + 2 * reach); ++y) {
+            for (int x = std::max(0, x0); x <= std::min(seg->width - 1, x0 + 2 * reach); ++x) {
+                const double dx = (x + 0.5) - cx;
+                const double dy = (y + 0.5) - cy;
+                if (dx * dx + dy * dy > r2) {
+                    continue;
+                }
+                const auto index =
+                    static_cast<std::size_t>(y) * static_cast<std::size_t>(seg->width) +
+                    static_cast<std::size_t>(x);
+                if (seen[index]) {
+                    continue;
+                }
+                seen[index] = true;
+                const std::uint32_t before = seg->labels[index];
+                const bool change = erase ? before == label : before != label;
+                if (change) {
+                    pixels.push_back({static_cast<std::uint32_t>(index), before});
+                }
+            }
+        }
+    }
+    if (pixels.empty()) {
+        return {false, erase ? "Rien à effacer : le trait ne touche pas cette région."
+                             : "Rien à peindre : le trait est déjà entièrement dans cette région."};
+    }
+    // Une région voisine ne doit pas disparaître en silence (une région vide casserait la carte).
+    std::map<std::uint32_t, std::size_t> lost;
+    for (const auto& p : pixels) {
+        if (p.before != 0) {
+            ++lost[p.before];
+        }
+    }
+    for (const auto& [other, count] : lost) {
+        if (const auto* region = seg->find(RegionId{other});
+            region != nullptr && count >= region->pixel_count) {
+            return {false, "Le trait effacerait entièrement une région : utilisez « Supprimer »."};
+        }
+    }
+    session.execute(std::make_unique<PaintRegionCommand>(label, std::move(pixels), erase));
     return {true, {}};
 }
 

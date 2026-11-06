@@ -467,3 +467,9 @@ encore le desktop principal.
 - Constat : la V1 avait déjà tout le côté agent (`ClaudeCompanionBackend`, `LiveToolHost`, réglages, stockage de clé) mais dans `apps/desktop`, inutilisable depuis la V2 sans dépendre de l'autre application (et leurs en-têtes homonymes — `calque_panel.hpp`, `live_server.hpp`… — rendent un `include_directories` partagé dangereux). Choix : copie de 5 fichiers dans `apps/desktop_v2/ui` sous l'espace de noms `desktop_v2` (mêmes clés de réglage : la clé et l'activation déjà saisies en V1 sont reprises). Dette assumée : deux copies à faire converger quand la V1 sera retirée.
 - `ChatPanel` ne fait que des widgets ; le document n'est jamais modifié par le panneau : les outils de l'agent passent par `LiveCompanion` (approbation avant/après). `ensureCompanion()` crée le pont sans serveur local, le chat n'en a pas besoin.
 - Non fait : essai réel avec une clé, fournisseur « processus Claude Code », analyse sémantique automatique.
+
+## 2026-11-06 — Session 2 : lot 6, pinceau de frontière
+
+- `paintRegionStroke` (cœur) : disques de rayon réglable le long du trait, pixels repeints et leurs anciennes étiquettes mémorisés (annulation exacte, comptes de pixels recalculés des deux côtés, ordre des étiquettes déterministe). Refuse d'effacer entièrement une région voisine (une région vide casserait la carte ; « Supprimer » existe pour cela). Outil `region.brush` (U) sur le geste « trait » du canevas ; la région se choisit avec l'outil Régions (X).
+- Choix : le pinceau ne touche que la carte d'étiquettes, jamais les objets : la régénération reste l'étape explicite (et annulable) déjà en place.
+- Non fait : segmentation IA (SAM), toujours hors priorité produit ; le moteur et la V1 la portent, la V2 n'affiche pas encore son état de disponibilité.

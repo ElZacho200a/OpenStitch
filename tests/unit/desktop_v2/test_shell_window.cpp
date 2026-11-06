@@ -2,10 +2,10 @@
 #include <QAbstractButton>
 #include <QAction>
 #include <QApplication>
-#include <QDockWidget>
 #include <QClipboard>
 #include <QColor>
 #include <QComboBox>
+#include <QDockWidget>
 #include <QDoubleSpinBox>
 #include <QFile>
 #include <QGuiApplication>
@@ -2443,6 +2443,51 @@ private slots:
         QVERIFY(w.lastNotice().contains("saine"));
         QVERIFY(w.session().undo());
         QCOMPARE(satinRungCount(w.session().project(), made.objectId), 4);
+    }
+
+    void boundaryBrushNeedsAChosenRegionThenRepaintsAlongTheStroke() {
+        ShellWindow w;
+        w.resize(1400, 900);
+        w.show();
+        openstitch::project_ops::DigitizeSettings settings;
+        settings.max_colors = 5;
+        w.openImage(tentabrode(), 60.0, settings);
+        w.waitForIdle();
+        QVERIFY(w.runCommand("tool.region.brush"));
+        QCOMPARE(w.activeToolId(), QStringLiteral("region.brush"));
+        auto* canvas = w.canvas();
+        QCOMPARE(canvas->mode(), PreviewCanvas::Mode::Stroke);
+        auto* panel = w.regionPanel();
+        auto* controller = w.regionController();
+        QVERIFY(panel != nullptr && controller != nullptr);
+        panel->setBrushRadius(30);
+        QCOMPARE(panel->brushRadius(), 30);
+
+        const auto drag = [&] {
+            const QRect view = canvas->viewport()->rect();
+            const QPoint a = view.center() - QPoint(view.width() / 3, view.height() / 3);
+            const QPoint b = view.center() + QPoint(view.width() / 3, view.height() / 3);
+            QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, a);
+            for (int i = 1; i <= 20; ++i) {
+                QTest::mouseMove(canvas->viewport(), a + (b - a) * i / 20);
+            }
+            QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, b);
+        };
+        const auto depth = w.session().undoNames().size();
+        drag(); // aucune région choisie : refus clair, rien dans l'historique
+        QCOMPARE(w.session().undoNames().size(), depth);
+        QVERIFY(w.lastNotice().contains("choisissez d'abord"));
+
+        const auto regions = listRegions(w.session().project());
+        QVERIFY(regions.size() >= 3);
+        controller->selectRegion(regions.front().id);
+        const auto labelsBefore = w.session().project().segmentation->labels;
+        drag();
+        QCOMPARE(w.session().undoNames().size(), depth + 1); // un trait = un pas d'annulation
+        QVERIFY(w.session().project().segmentation->labels != labelsBefore);
+        QVERIFY(panel->regenerateEnabled()); // la correction attend la régénération
+        QVERIFY(w.session().undo());
+        QVERIFY(w.session().project().segmentation->labels == labelsBefore);
     }
 
     void regionToolRecolorsAndMergesWholeColorClasses() {

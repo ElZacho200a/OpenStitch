@@ -12,6 +12,7 @@
 #include <QObject>
 #include <QPointF>
 #include <QString>
+#include <QVector>
 
 #include "document_session.hpp"
 #include "openstitch/image/image.hpp"
@@ -53,6 +54,10 @@ public:
     bool mergeSelectedInto(std::uint64_t target);
     bool cleanIslands(int minPixels);
     bool fillHoles(int maxPixels);
+    // Outil « Pinceau de frontière » : peint (ou, avec `erase`, efface) la région choisie le long
+    // du trait, en pixels de l'aperçu. Faux et message si aucune région n'est choisie ou si c'est
+    // refusé.
+    bool paintStroke(const QVector<QPointF>& scenePx, bool erase);
     bool recolorSelected(std::array<std::uint8_t, 3> color);
     bool mergeSelectedColorInto(std::uint64_t target);
     void regenerate();

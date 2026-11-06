@@ -104,7 +104,7 @@ bool isToolImplemented(const std::string& id) {
            id == "draw.polygon" || id == "measure" || id == "eyedropper" || id == "knife" ||
            id == "click-to-stitch" || id == "detail-brush" || id == "stitch.points" ||
            id == "satin.column" || id == "node.edit" || id == "fade.axis" || id == "draw.bezier" ||
-           id == "draw.freeform" || id == "region.edit";
+           id == "draw.freeform" || id == "region.edit" || id == "region.brush";
 }
 
 constexpr Workspace kWorkspaces[] = {Workspace::Design, Workspace::Digitize, Workspace::Optimize,
@@ -2353,6 +2353,10 @@ void ShellWindow::updateSourceOverlay() {
 }
 
 void ShellWindow::onStroke(QVector<QPointF> scenePx, Qt::KeyboardModifiers modifiers) {
+    if (activeTool_ == QStringLiteral("region.brush") && regions_) {
+        (void)regions_->paintStroke(scenePx, modifiers & Qt::ControlModifier);
+        return;
+    }
     if (activeTool_ == QStringLiteral("draw.freeform") && frame_.px_per_mm > 0.0) {
         std::vector<PointMm> stroke;
         stroke.reserve(static_cast<std::size_t>(scenePx.size()));
@@ -2393,7 +2397,9 @@ void ShellWindow::onStroke(QVector<QPointF> scenePx, Qt::KeyboardModifiers modif
 void ShellWindow::applyToolToCanvas() {
     using Mode = PreviewCanvas::Mode;
     updatePointMarkers();
-    if (activeTool_ == QStringLiteral("region.edit") && regionPanel_ != nullptr) {
+    if ((activeTool_ == QStringLiteral("region.edit") ||
+         activeTool_ == QStringLiteral("region.brush")) &&
+        regionPanel_ != nullptr) {
         // L'outil « Régions » a besoin de son panneau : on le montre au premier plan.
         if (auto* dock = qobject_cast<QDockWidget*>(regionPanel_->parentWidget())) {
             dock->show();
@@ -2427,6 +2433,7 @@ void ShellWindow::applyToolToCanvas() {
                activeTool_ == QStringLiteral("region.edit")) {
         canvas_->setMode(Mode::Pick);
     } else if (activeTool_ == QStringLiteral("detail-brush") ||
+               activeTool_ == QStringLiteral("region.brush") ||
                activeTool_ == QStringLiteral("draw.freeform")) {
         canvas_->setMode(Mode::Stroke);
     } else if (activeTool_ == QStringLiteral("node.edit") ||

@@ -56,7 +56,8 @@ RegionEditController::RegionEditController(Host host, RegionPanel* panel, QObjec
 }
 
 bool RegionEditController::active() const {
-    return host_.activeTool() == QStringLiteral("region.edit");
+    const QString tool = host_.activeTool();
+    return tool == QStringLiteral("region.edit") || tool == QStringLiteral("region.brush");
 }
 
 void RegionEditController::refresh() {
@@ -270,6 +271,44 @@ bool RegionEditController::fillHoles(int maxPixels) {
     dirty_ = true;
     refresh();
     host_.notice(QObject::tr("Trous rebouchés. Régénérez les objets pour appliquer."), false);
+    return true;
+}
+
+bool RegionEditController::paintStroke(const QVector<QPointF>& scenePx, bool erase) {
+    if (host_.activeTool() != QStringLiteral("region.brush") || host_.frame.px_per_mm <= 0.0) {
+        return false;
+    }
+    const auto& project = host_.session.project();
+    if (!project.segmentation) {
+        host_.notice(QObject::tr("Ce projet n'a pas de segmentation."), true);
+        return false;
+    }
+    if (selected_ == 0) {
+        host_.notice(
+            QObject::tr("Pinceau : choisissez d'abord une région avec l'outil Régions (X)."), true);
+        return false;
+    }
+    const double mmPerPx = project.mm_per_px.value;
+    const double wMm = project.segmentation->width * mmPerPx;
+    const double hMm = project.segmentation->height * mmPerPx;
+    std::vector<std::pair<double, double>> centres;
+    centres.reserve(static_cast<std::size_t>(scenePx.size()));
+    for (const QPointF& p : scenePx) {
+        centres.emplace_back((host_.frame.pxToMmX(p.x()) + wMm / 2.0) / mmPerPx,
+                             (host_.frame.pxToMmY(p.y()) + hMm / 2.0) / mmPerPx);
+    }
+    const auto result =
+        paintRegionStroke(host_.session, selected_, centres, panel_->brushRadius(), erase);
+    if (!result.ok) {
+        host_.notice(QObject::tr("Pinceau : %1").arg(fromUtf8(result.message)), true);
+        return false;
+    }
+    dirty_ = true;
+    refresh();
+    host_.notice(erase ? QObject::tr("Région effacée au pinceau. Régénérez les objets pour "
+                                     "appliquer.")
+                       : QObject::tr("Frontière retouchée. Régénérez les objets pour appliquer."),
+                 false);
     return true;
 }
 

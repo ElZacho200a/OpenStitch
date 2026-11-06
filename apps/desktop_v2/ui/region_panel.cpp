@@ -97,6 +97,19 @@ RegionPanel::RegionPanel(QWidget* parent) : QWidget(parent) {
     holesRow->addWidget(maxHolePixels_);
     column->addLayout(holesRow);
 
+    auto* brushRow = new QHBoxLayout;
+    auto* brushLabel = new QLabel(tr("Pinceau de frontière (outil U) : rayon"), this);
+    brushLabel->setToolTip(tr("Choisissez une région avec l'outil Régions (X), puis peignez avec "
+                              "l'outil Pinceau de frontière (U) ; Ctrl efface la région."));
+    brushRadius_ = new QSpinBox(this);
+    brushRadius_->setObjectName(QStringLiteral("regionBrushRadius"));
+    brushRadius_->setRange(1, 200);
+    brushRadius_->setValue(6);
+    brushRadius_->setSuffix(tr(" px"));
+    brushRow->addWidget(brushLabel, 1);
+    brushRow->addWidget(brushRadius_);
+    column->addLayout(brushRow);
+
     banner_ = new QLabel(this);
     banner_->setObjectName(QStringLiteral("regionBanner"));
     banner_->setWordWrap(true);
@@ -129,6 +142,8 @@ RegionPanel::RegionPanel(QWidget* parent) : QWidget(parent) {
     });
     connect(clean_, &QPushButton::clicked, this,
             [this] { emit cleanRequested(minPixels_->value()); });
+    connect(brushRadius_, &QSpinBox::valueChanged, this,
+            [this](int px) { emit brushRadiusChanged(px); });
     connect(fillHoles_, &QPushButton::clicked, this,
             [this] { emit fillHolesRequested(maxHolePixels_->value()); });
     connect(regenerate_, &QPushButton::clicked, this, &RegionPanel::regenerateRequested);
@@ -232,6 +247,14 @@ void RegionPanel::updateButtons() {
     clean_->setEnabled(!busy_ && list_->count() > 0);
     fillHoles_->setEnabled(!busy_ && list_->count() > 0);
     regenerate_->setEnabled(dirty_ && !busy_);
+}
+
+int RegionPanel::brushRadius() const {
+    return brushRadius_->value();
+}
+
+void RegionPanel::setBrushRadius(int pixels) {
+    brushRadius_->setValue(pixels);
 }
 
 } // namespace openstitch::desktop_v2
