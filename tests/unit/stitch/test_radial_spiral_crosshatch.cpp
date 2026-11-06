@@ -168,6 +168,50 @@ TEST_CASE("spiral fill: holes are skipped and the clockwise flag mirrors the pat
     CHECK(fill_spiral(square_with_hole(), p) == cw); // deterministe
 }
 
+// Les liaisons cousues du nouveau routeur doivent rester dans la région : une
+// forme en U ne doit jamais être traversée par un faux raccord, même si deux
+// morceaux de la spirale sont spatialement proches à travers le vide.
+TEST_CASE("spiral fill: fragment routing never stitches across a concavity") {
+    std::vector<Vec2um> points;
+    points.push_back(um(-35, -25));
+    points.push_back(um(35, -25));
+    points.push_back(um(35, 25));
+    points.push_back(um(25, 25));
+    points.push_back(um(25, -10));
+    points.push_back(um(-25, -10));
+    points.push_back(um(-25, 25));
+    points.push_back(um(-35, 25));
+    const geometry::PathSet u{polygon(points), {}};
+    document::SpiralFillParams p;
+    p.center = um(0, 0);
+    p.row_spacing = Micrometers{400};
+    p.inset = Micrometers{0};
+    const auto stitches = fill_spiral(u, p);
+    REQUIRE(stitches.size() > 100);
+    CHECK(fill_spiral(u, p) == stitches); // routage déterministe
+    const RegionSegmentTester inside(u);
+    std::size_t jumps = 0;
+    for (std::size_t i = 1; i < stitches.size(); ++i) {
+        if (stitches[i].jump) {
+            ++jumps;
+        } else {
+            const Vec2um from = stitches[i - 1].pos;
+            const Vec2um to = stitches[i].pos;
+            CHECK(inside.stays_inside(from, to, Micrometers{25}));
+            CHECK(dist_um(stitches[i - 1], stitches[i]) <= 3'000.0 + 1.0);
+        }
+    }
+    CHECK(jumps > 0); // les traversées de l'espace vide restent des sauts
+}
+
+TEST_CASE("spiral fill: a 25 um edge tolerance is not a shortcut through blank fabric") {
+    const RegionSegmentTester box(square(20));
+    const Vec2um inner = um(1, 10);
+    CHECK_FALSE(box.stays_inside(um(-0.01, 10), inner));
+    CHECK(box.stays_inside(um(-0.01, 10), inner, Micrometers{25}));
+    CHECK_FALSE(box.stays_inside(um(-1, 10), inner, Micrometers{25}));
+}
+
 TEST_CASE("crosshatch fill: layers add up and stay in the region") {
     document::CrosshatchFillParams two;
     two.layers = 2;

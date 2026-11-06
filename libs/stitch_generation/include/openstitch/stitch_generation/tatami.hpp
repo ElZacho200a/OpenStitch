@@ -82,6 +82,9 @@ public:
     RegionSegmentTester& operator=(const RegionSegmentTester&) = delete;
 
     [[nodiscard]] bool stays_inside(Vec2um a, Vec2um b) const;
+    // Tolérance de frontière en µm : corrige l'arrondi d'un point rogné au bord,
+    // sans autoriser un raccourci à travers un véritable trou.
+    [[nodiscard]] bool stays_inside(Vec2um a, Vec2um b, Micrometers edge_tolerance) const;
 
 private:
     struct Impl;
