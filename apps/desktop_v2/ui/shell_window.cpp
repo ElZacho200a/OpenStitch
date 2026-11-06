@@ -850,6 +850,11 @@ void ShellWindow::setWorkspace(Workspace workspace) {
     QWidget* focused = QApplication::focusWidget();
     const bool focusWasInRail =
         focused != nullptr && (focused == toolRail_ || toolRail_->isAncestorOf(focused));
+    // Move focus before removing toolbar actions: deleting the focused tool button
+    // otherwise lets Qt choose an arbitrary successor during deferred destruction.
+    if (focusWasInRail) {
+        canvas_->setFocus(Qt::OtherFocusReason);
+    }
     workspace_ = workspace;
     for (auto* a : workspaceActions_) {
         a->setChecked(a->data().toInt() == static_cast<int>(workspace));
@@ -862,10 +867,13 @@ void ShellWindow::setWorkspace(Workspace workspace) {
     }
     refreshWindowTitle();
     if (focusWasInRail) {
-        // Dock activation and toolbar layout can steal focus after a synchronous setFocus().
-        // Restore it after the workspace transition has finished, without disturbing
-        // focus owned by other panels when the switch was initiated elsewhere.
-        QTimer::singleShot(0, canvas_, [this] { canvas_->setFocus(Qt::OtherFocusReason); });
+        // Preserve focus across dock activation; do not steal it if the user has
+        // focused another control before this deferred callback executes.
+        QTimer::singleShot(0, canvas_, [this] {
+            if (QApplication::focusWidget() == nullptr) {
+                canvas_->setFocus(Qt::OtherFocusReason);
+            }
+        });
     }
 }
 
