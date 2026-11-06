@@ -1096,6 +1096,27 @@ const ActionDef& glyphResetAction() {
     return def;
 }
 
+const ActionDef& textRemoveAction() {
+    static const ActionDef def = [] {
+        ActionDef a;
+        a.id = "text.remove";
+        a.label = "Supprimer le texte";
+        a.group = "Texte";
+        a.needsSelection = true;
+        a.build = [](const Values&, const ActionContext& c, std::string& error) {
+            const auto owner =
+                c.project != nullptr ? selectedTextOwner(*c.project, c.ids) : std::nullopt;
+            if (!owner) {
+                error = "Sélectionnez les lettres d'un seul texte.";
+                return std::string();
+            }
+            return wrap(R"({"op":"remove_text","text_object":)" + std::to_string(*owner) + "}");
+        };
+        return a;
+    }();
+    return def;
+}
+
 const ActionDef* contextAction(const std::string& id) {
     if (id == "text.edit") {
         return &textEditAction();
@@ -1105,6 +1126,9 @@ const ActionDef* contextAction(const std::string& id) {
     }
     if (id == "text.glyph.reset") {
         return &glyphResetAction();
+    }
+    if (id == "text.remove") {
+        return &textRemoveAction();
     }
     return nullptr;
 }

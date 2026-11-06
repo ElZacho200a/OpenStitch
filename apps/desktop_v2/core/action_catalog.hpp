@@ -107,8 +107,12 @@ struct GlyphTarget {
 // Actions « Modifier la lettre » (champs ci-dessus) et « Rétablir la lettre » (sans champ).
 [[nodiscard]] const ActionDef& glyphEditAction();
 [[nodiscard]] const ActionDef& glyphResetAction();
+// Action « Supprimer le texte » : retire l'objet texte de la sélection avec TOUTES ses lettres
+// (formes et broderies), en une étape d'annulation.
+[[nodiscard]] const ActionDef& textRemoveAction();
 // Actions qui exigent un contexte (texte ou lettre sélectionnée) et restent hors catalogue :
-// `text.edit`, `text.glyph`, `text.glyph.reset`. nullptr si l'identifiant n'en est pas une.
+// `text.edit`, `text.glyph`, `text.glyph.reset`, `text.remove`. nullptr si l'identifiant n'en est
+// pas une.
 [[nodiscard]] const ActionDef* contextAction(const std::string& id);
 
 } // namespace openstitch::desktop_v2
