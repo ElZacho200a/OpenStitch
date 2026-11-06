@@ -495,3 +495,7 @@ encore le desktop principal.
 - Les lettres n'ont pas d'identifiant propre : le rang d'une lettre (espaces exclus, ordre de lecture) est déduit de l'ordre des formes du texte, une lettre pouvant en produire plusieurs (« Lettre A », « Lettre A (2) »). **Garde-fou** : le nombre de lettres trouvées doit égaler celui du texte ; sinon (ligatures, accents combinants, écritures de droite à gauche, caractères invisibles, formes ajoutées ou retirées à la main) la commande refuse avec la raison au lieu de risquer de modifier la mauvaise lettre.
 - `set_text` remplace TOUTE la liste de retouches : on renvoie donc la liste complète avec la lettre changée (ou retirée si les réglages redeviennent neutres) ; les autres lettres gardent leurs retouches (testé).
 - Limite : l'édition régénère les lettres (nouveaux identifiants), la sélection redevient « toutes les lettres du texte » ; le glisser d'une lettre au canevas n'est pas fait.
+
+## 2026-11-06 — Session 2 : test du chat bloqué par une boîte modale
+
+- Trouvé par le build Windows : `chatPanelTalksToTheProvider…` appelait `newProject()` une seconde fois sur un document « modifié » ; la fenêtre ouvrait sa boîte « Modifications non enregistrées », que rien ne fermait, d'où 300 s puis un arrêt forcé qui empêchait aussi les autres QTest de la V2 de tourner. Défaut du test, pas du chat. Leçon : un test QTest qui remplace le document passe par `session().replaceProject(...)`, jamais par une commande qui peut demander confirmation.

@@ -134,8 +134,12 @@ private slots:
         QVERIFY(!chat->busy());
         QVERIFY(chat->messageCount() > before);
         QVERIFY(chat->messageText(chat->messageCount() - 1).contains("annulée"));
-        // Document remplacé : la conversation repart de zéro.
-        w.newProject();
+        // Document remplacé : la conversation repart de zéro. (Pas de `newProject()` ici : le
+        // document est « modifié » et la fenêtre demanderait « Enregistrer ? » dans une boîte
+        // modale que personne ne fermerait.)
+        auto fresh = openstitch::project_ops::create_empty_project({});
+        QVERIFY(fresh.has_value());
+        w.session().replaceProject(std::move(*fresh), true);
         QCOMPARE(chat->messageCount(), 0);
         w.setChatBackend(nullptr);
     }
