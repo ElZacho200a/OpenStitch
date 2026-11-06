@@ -23,7 +23,7 @@ dit honnêtement ce qui bloque, ce qui est prêt et comment le vérifier.
 - [x] Plume, Crayon, suppression de nœuds, poignées de tangentes Bézier (contours et rails de satin).
 - [x] Édition des barreaux des rails de satin (commandes) ; diagnostic des croisements de rails. Reste : glisser un barreau au canevas.
 - [x] Comparaison nominal ↔ prédit de la compensation de tirage et assistant d'étalonnage sur pièce-test (commandes `analysis.pull`, `analysis.calibration`). Reste : adopter les coefficients ajustés dans le projet ; essai sur tissu réel.
-- [ ] Options machine avancées d'export (départ, coupes, arrêts), bibliothèque de cadres.
+- [x] Options machine avancées d'export (départ, coupes, points d'arrêt) et bibliothèque de cadres (commandes `export.options`, `export.check`). Reste : enregistrer ses propres cadres.
 - [ ] Segmentation IA / SAM (hors priorité produit ; état de disponibilité à afficher honnêtement).
 - [ ] Chat intégré (aujourd'hui l'agent se branche via un client MCP externe).
 - [ ] Palette de nuanciers / mélange de fils, texte avancé, préférences (langue, densité d'interface).

@@ -451,3 +451,7 @@ encore le desktop principal.
 ## 2026-11-06 — Session 2 : lot 2, comparaison du tirage et étalonnage
 
 - `core/pull_calibration` : `PullCalibration` (pièce-test, tableau nominal / prédit / mesuré, CSV, saisie une à une, ajustement en grille, DST de la pièce) et `compareProjectPull` (séquence effective contre séquence simulée : déplacement moyen et maximal, emprise). Boîte `CalibrationDialog` (sans logique métier) et commandes `analysis.pull` / `analysis.calibration`. Choix assumé : l'ajustement n'est qu'une proposition ; le modèle n'est jamais déclaré calibré, et les coefficients ne sont pas écrits dans le projet.
+
+## 2026-11-06 — Session 2 : lot 3, options machine d'export
+
+- `core/export_settings` : lecture en mm des finitions du moteur, validation (bornes, point max > point min), UNE commande par groupe (machine, cadre, finitions) ; comparaison en µm pour ne laisser aucune trace quand rien ne change. Bibliothèque de 16 cadres et 6 profils de machine du moteur, `checkExport` sur la séquence effective (points hors zone brodable, champ de la machine, format accepté). Fenêtre `ExportOptionsDialog` sans logique métier ; commandes `export.options` et `export.check`.

@@ -4569,6 +4569,7 @@ ouvrant le lot (§0.1).
 
 | Date | Qui | Changement |
 |---|---|---|
+| 2026-11-06 | Claude (desktop V2, export) | Fenêtre « Options machine » de l'IHM V2 : profil de machine, bibliothèque de cadres génériques avec marge, coupes, points d'arrêt, points courts/longs, départ et arrivée, entrées/sorties automatiques ; contrôle avant export (points hors cadre, champ et format de la machine). S'appuie sur `SequenceFinishing`, `Canvas`, `machine_id` du moteur. Pas d'enregistrement de cadres personnels ; non validé sur machine. |
 | 2026-11-06 | Claude (desktop V2, tirage) | Comparaison nominal ↔ prédit du motif ouvert (déplacement moyen/maximal, emprise) et assistant d'étalonnage sur pièce-test (tableau nominal/prédit/mesuré, CSV, DST de la pièce, proposition d'ajustement) dans l'IHM V2, sur les services existants de `stitch_generation`. Le modèle reste « non calibré » ; non validé sur machine ni tissu. |
 | 2026-11-06 | Claude (desktop V2, satin) | Édition des barreaux d'une colonne satin à rails (ajouter, déplacer, retirer, une commande annulable chacun) et diagnostic des croisements de rails, des barreaux en nœud papillon et des barreaux trop larges ; commandes `satin.rung.*` et `satin.diagnose` de l'IHM V2. Non validé à l'écran. |
 | 2026-11-04 | Claude (lot P1-lourds) | HP-QA-002 ◐ (journal, minidump, rapport de plantage), HP-SPEC-001 ☑ (appliqué + contour de découpe). |

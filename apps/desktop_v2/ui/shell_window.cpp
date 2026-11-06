@@ -52,6 +52,8 @@
 #include "command_palette.hpp"
 #include "companion_panel.hpp"
 #include "diagnostics_panel.hpp"
+#include "export_options_dialog.hpp"
+#include "export_settings.hpp"
 #include "feedback_cue.hpp"
 #include "import_dialog.hpp"
 #include "inspector_model.hpp"
@@ -2711,6 +2713,10 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
                                                : tr("Afficher le risque de plissement du tissu")),
                    q(tr("Analyse")), "",
                    overlays_->fabricActive() || !session_.project().embroidery_objects.empty()});
+    out.push_back({"export.options", q(tr("Options machine, cadre et coupes…")), q(tr("Fichier")),
+                   "", documentOpen_});
+    out.push_back({"export.check", q(tr("Contrôler le motif avant l'export")), q(tr("Fichier")), "",
+                   hasObjects});
     out.push_back({"analysis.pull", q(tr("Comparer le motif nominal et le tirage prédit")),
                    q(tr("Analyse")), "", hasObjects});
     out.push_back({"analysis.calibration", q(tr("Étalonner le tirage sur une pièce-test…")),
@@ -2817,6 +2823,17 @@ bool ShellWindow::runCommand(const QString& id) {
             removePresetIndex(id.mid(14).toInt());
         } else if (id == QLatin1String("analysis.fabric")) {
             overlays_->toggleFabricRisk();
+        } else if (id == QLatin1String("export.options")) {
+            auto* dialog = new ExportOptionsDialog(session_, this);
+            dialog->setAttribute(Qt::WA_DeleteOnClose);
+            dialog->show();
+        } else if (id == QLatin1String("export.check")) {
+            const auto check = checkExport(session_.project());
+            setNotice(fromUtf8(check.summary()),
+                      !check.ok || !check.fitsHoop || !check.fitsMachineField);
+            if (!check.ok) {
+                return false;
+            }
         } else if (id == QLatin1String("analysis.pull")) {
             const auto cmp = compareProjectPull(session_.project());
             setNotice(fromUtf8(cmp.summary()), !cmp.ok);

@@ -36,6 +36,8 @@
 #include "companion_panel.hpp"
 #include "diagnostics_panel.hpp"
 #include "digitize_pipeline.hpp"
+#include "export_options_dialog.hpp"
+#include "export_settings.hpp"
 #include "fade_service.hpp"
 #include "feedback_cue.hpp"
 #include "import_dialog.hpp"
@@ -2169,6 +2171,40 @@ private slots:
         QVERIFY(fadeAxisView(w.session().project(), id)->curve == FadeCurve::EaseIn);
         QVERIFY(w.session().undo());
         QVERIFY(fadeAxisView(w.session().project(), id)->curve == FadeCurve::Steep);
+    }
+
+    void machineOptionsDialogChangesHoopMachineAndTrimsInUndoableSteps() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(!w.runCommand("export.check")); // rien à contrôler
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 40, 20), "Rectangle").committed);
+        w.waitForIdle();
+        QVERIFY(w.runCommand("export.check"));
+        QVERIFY(w.lastNotice().contains("points cousus"));
+        QVERIFY(w.runCommand("export.options"));
+        auto* dialog = w.findChild<ExportOptionsDialog*>();
+        QVERIFY(dialog != nullptr);
+        QVERIFY(dialog->hoopCount() >= 10);
+        QVERIFY(dialog->machineCount() >= 4);
+        const auto depth = w.session().undoNames().size();
+        dialog->chooseMachine("generic-single-130x180");
+        dialog->chooseHoop("round-100", 4.0);
+        dialog->setTrimThresholdMm(6.0);
+        dialog->setLockKind(2);
+        dialog->setDesignStart(true, -15.0, -5.0);
+        QVERIFY(dialog->apply().isEmpty());
+        QCOMPARE(w.session().undoNames().size(), depth + 3); // machine, cadre, finitions
+        QCOMPARE(QString::fromStdString(w.session().project().machine_id),
+                 QString("generic-single-130x180"));
+        QCOMPARE(QString::fromStdString(currentHoopId(w.session().project())),
+                 QString("round-100"));
+        QCOMPARE(exportOptionsOf(w.session().project()).lockKind, LockKind::Triangle);
+        QVERIFY(exportOptionsOf(w.session().project()).designStart.has_value());
+        QVERIFY(dialog->apply().isEmpty()); // rien ne change : aucune trace de plus
+        QCOMPARE(w.session().undoNames().size(), depth + 3);
+        QVERIFY(dialog->checkText().contains("cousus"));
+        dialog->close();
     }
 
     void pullComparisonAndCalibrationAssistantAreReachable() {
