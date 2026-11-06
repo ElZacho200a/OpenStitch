@@ -16,6 +16,7 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QScrollBar>
@@ -44,6 +45,7 @@
 #include "export_settings.hpp"
 #include "fade_service.hpp"
 #include "feedback_cue.hpp"
+#include "floating_action_bar.hpp"
 #include "import_dialog.hpp"
 #include "inspector_model.hpp"
 #include "inspector_panel.hpp"
@@ -51,12 +53,14 @@
 #include "param_spec.hpp"
 #include "point_edit.hpp"
 #include "preview_canvas.hpp"
+#include "radial_menu_widget.hpp"
 #include "region_edit.hpp"
 #include "region_edit_controller.hpp"
 #include "region_panel.hpp"
 #include "satin_column.hpp"
 #include "shell_window.hpp"
 #include "source_image_tools.hpp"
+#include "spool_rail_widget.hpp"
 #include "studio_theme.hpp"
 #include "thread_palette_dialog.hpp"
 #include "thread_panel.hpp"
@@ -492,7 +496,8 @@ private slots:
              {"satin.rung.insert", "satin.rung.remove", "satin.diagnose", "analysis.pull",
               "analysis.calibration", "export.options", "export.check", "thread.palette",
               "text.edit", "text.glyph", "text.glyph.reset", "chat.open", "companion.settings",
-              "tool.region.brush"}) {
+              "tool.region.brush", "node.smooth", "node.corner", "node.hole.remove",
+              "text.remove"}) {
             const bool listed = std::any_of(entries.begin(), entries.end(),
                                             [id](const auto& e) { return e.id == id; });
             QVERIFY2(listed, id);
@@ -1619,6 +1624,37 @@ private slots:
         QCOMPARE(w.session().undoNames().size(), beforeUndo);
     }
 
+    void draggingAParameterLabelChangesItsValueAsOneUndoStep() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        const auto id = *createdObjectId(
+            w.session().applyBatch(batchAddRect({0, 0}, 20, 20), "Rectangle").report);
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        auto* spin = w.inspector()->findChild<QDoubleSpinBox*>("param_row_spacing_mm");
+        QVERIFY(spin != nullptr);
+        QLabel* label = nullptr;
+        for (auto* l : w.inspector()->findChildren<QLabel*>()) {
+            if (l->buddy() == spin) {
+                label = l;
+            }
+        }
+        QVERIFY(label != nullptr);
+        const double before = spin->value();
+        const auto undoBefore = w.session().undoNames().size();
+        QTest::mousePress(label, Qt::LeftButton, Qt::NoModifier, QPoint(5, 5));
+        QMouseEvent move(QEvent::MouseMove, QPointF(5 + 30, 5), QPointF(5 + 30, 5), Qt::NoButton,
+                         Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(label, &move); // 30 px = 5 pas
+        QTest::mouseRelease(label, Qt::LeftButton, Qt::NoModifier, QPoint(35, 5));
+        QVERIFY(qAbs(spin->value() - (before + 5 * spin->singleStep())) < 1e-6);
+        QTRY_COMPARE_WITH_TIMEOUT(w.session().undoNames().size(), undoBefore + 1, 1500);
+        const auto stored =
+            readParam(w.session().project().embroidery_objects.front(), "row_spacing_mm");
+        QVERIFY(stored.has_value());
+        QVERIFY(qAbs(*stored - spin->value()) < 0.01);
+    }
+
     void pendingInspectorNumericEditIsDiscardedWhenSelectionChanges() {
         ShellWindow w;
         w.show();
@@ -1771,6 +1807,12 @@ private slots:
         QVERIFY(ids.contains("edit.delete"));
         QVERIFY(ids.contains("transform.rotate.cw"));
         QVERIFY(ids.contains("order.front"));
+        for (const auto& id : ids) { // le menu ne montre que ce que le tableau de contexte déclare
+            if (id.isEmpty()) {
+                continue; // séparateur
+            }
+            QVERIFY(commandBelongsTo(CommandSurface::ContextMenu, id.toStdString()));
+        }
         QVERIFY(!ids.contains("edit.undo")); // pas de redites du menu Édition
         // Une commande du menu agit comme le menu principal.
         for (auto* a : menu->actions()) {
@@ -1780,6 +1822,105 @@ private slots:
         }
         QCOMPARE(w.session().project().embroidery_objects.size(), size_t(2));
         delete menu;
+    }
+
+    void spoolRailReordersByMoveAndKeyboardAndSelectsOnClick() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        auto* rail = w.findChild<SpoolRailWidget*>("spoolRail");
+        QVERIFY(rail != nullptr);
+        QCOMPARE(rail->count(), 0);
+        for (const double x : {-30.0, 0.0, 30.0}) {
+            w.session().applyBatch(batchAddRect({x, 0}, 10, 10), "R");
+        }
+        w.waitForIdle();
+        rail->refreshNow();
+        QCOMPARE(rail->count(), 3);
+        QVERIFY(rail->summaryText().startsWith("3 bobines"));
+        const auto first = rail->spoolId(0);
+        QVERIFY(rail->moveSpoolTo(0, 2)); // équivalent d'un glisser-déposer
+        rail->refreshNow();
+        QCOMPARE(rail->spoolId(2), first);
+        QVERIFY(!rail->moveSpoolTo(2, 2));
+        rail->setCurrentRow(2);
+        QTest::keyClick(rail, Qt::Key_Left, Qt::AltModifier); // alternative clavier
+        rail->refreshNow();
+        QCOMPARE(rail->spoolId(1), first);
+        // Un clic sélectionne l'objet dans le document.
+        const auto id = rail->spoolId(0);
+        Q_EMIT rail->itemClicked(rail->item(0));
+        QVERIFY(w.session().selection().contains({TargetKind::EmbroideryObject, id}));
+        w.session().undo();
+        w.session().undo();
+        w.waitForIdle();
+        rail->refreshNow();
+        QCOMPARE(rail->spoolId(0), first);
+    }
+
+    void radialMenuOffersSelectionCommandsWithMouseAndKeyboardAlternatives() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        QVERIFY(!w.runCommand("radial.open")); // rien de sélectionné : commande grisée
+        const auto id =
+            *createdObjectId(w.session().applyBatch(batchAddRect({0, 0}, 20, 20), "R").report);
+        w.waitForIdle();
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        QVERIFY(w.runCommand("radial.open"));
+        const auto visibleRadial = [&w]() -> RadialMenuWidget* {
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            for (auto* r : w.findChildren<RadialMenuWidget*>("radialMenu")) {
+                if (r->isVisible()) {
+                    return r;
+                }
+            }
+            return nullptr;
+        };
+        auto* radial = visibleRadial();
+        QVERIFY(radial != nullptr);
+        QVERIFY(radial->isVisible());
+        QVERIFY(radial->sectorCount() >= 3 && radial->sectorCount() <= 8);
+        // Touche 1 : première commande du contexte « objet » (dupliquer).
+        QTest::keyClick(radial, Qt::Key_1);
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(2));
+        // Échap ferme sans rien faire.
+        QVERIFY(w.runCommand("radial.open"));
+        radial = visibleRadial();
+        QVERIFY(radial != nullptr);
+        QTest::keyClick(radial, Qt::Key_Escape);
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(2));
+        // Souris : survol par secteur puis activation (le secteur 0 est dupliquer).
+        QVERIFY(w.runCommand("radial.open"));
+        radial = visibleRadial();
+        QVERIFY(radial != nullptr);
+        QTest::mouseMove(radial, radial->sectorCentre(0));
+        QTest::mouseClick(radial, Qt::LeftButton, Qt::NoModifier, radial->sectorCentre(0));
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(3));
+    }
+
+    void floatingBarFollowsTheSelectionAndRunsCommands() {
+        ShellWindow w;
+        w.show();
+        w.runCommand("file.new");
+        w.waitForIdle();
+        auto* bar = w.findChild<FloatingActionBar*>("floatingActionBar");
+        QVERIFY(bar != nullptr);
+        QVERIFY(bar->isHidden()); // rien de sélectionné
+        const auto id =
+            *createdObjectId(w.session().applyBatch(batchAddRect({0, 0}, 20, 20), "R").report);
+        w.waitForIdle();
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        QVERIFY(bar->buttonCount() >= 3);
+        QVERIFY(!bar->isHidden());
+        auto* dup = bar->findChild<QToolButton*>("floatingAction_edit.duplicate");
+        QVERIFY(dup != nullptr);
+        dup->click();
+        QCOMPARE(w.session().project().embroidery_objects.size(), size_t(2));
+        w.session().selection().clear();
+        QVERIFY(bar->isHidden());
     }
 
     void rightClickOnAnObjectSelectsItBeforeTheMenuOpens() {
@@ -2458,6 +2599,59 @@ private slots:
         QVERIFY(w.session().undo());
         w.waitForIdle();
         QCOMPARE(w.nodeHandleCount(), 8);
+    }
+
+    void nodeKindCommandsNeedChosenNodesAndAreUndoable() {
+        ShellWindow w;
+        w.resize(1400, 900);
+        w.show();
+        w.newProject();
+        std::vector<PointMm> octagon;
+        for (int k = 0; k < 8; ++k) {
+            const double a = (22.5 + 45.0 * k) * 3.14159265358979323846 / 180.0;
+            octagon.push_back({10.0 * std::cos(a), 10.0 * std::sin(a)});
+        }
+        QVERIFY(w.session().applyBatch(batchAddPolygon(octagon), "Octogone").committed);
+        w.waitForIdle();
+        const auto id = w.session().project().embroidery_objects.front().id.value;
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        QVERIFY(w.runCommand("tool.node.edit"));
+        w.waitForIdle();
+        // Aucun nœud choisi : les trois commandes sont indisponibles.
+        QVERIFY(!w.runCommand("node.smooth"));
+        QVERIFY(!w.runCommand("node.corner"));
+        QVERIFY(!w.runCommand("node.hole.remove"));
+
+        auto* canvas = w.canvas();
+        QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                          canvas->mapFromScene(w.nodeHandlePx(3)));
+        QCOMPARE(w.selectedNodeCount(), 1);
+        QVERIFY(!w.runCommand("node.hole.remove")); // ce nœud n'est pas dans un trou
+        const auto depth = w.session().undoNames().size();
+        QVERIFY(w.runCommand("node.smooth"));
+        w.waitForIdle();
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QVERIFY(w.lastNotice().contains("lisse"));
+        const auto reselect =
+            [&] { // la sélection survit-elle au rafraîchissement ? sinon on la refait
+                if (w.selectedNodeCount() == 0) {
+                    QTest::mouseClick(canvas->viewport(), Qt::LeftButton, Qt::NoModifier,
+                                      canvas->mapFromScene(w.nodeHandlePx(3)));
+                }
+                QCOMPARE(w.selectedNodeCount(), 1);
+            };
+        reselect();
+        QVERIFY(!w.runCommand("node.smooth")); // déjà lisse : refusé, notice claire
+        QVERIFY(w.lastNotice().contains("déjà"));
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        reselect();
+        QVERIFY(w.runCommand("node.corner"));
+        w.waitForIdle();
+        QCOMPARE(w.session().undoNames().size(), depth + 2);
+        QVERIFY(w.session().undo());
+        QVERIFY(w.session().undo());
+        w.waitForIdle();
+        QCOMPARE(w.session().undoNames().size(), depth);
     }
 
     void pencilTurnsAHandDrawnLoopIntoASmoothShape() {

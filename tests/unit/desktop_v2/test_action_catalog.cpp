@@ -442,3 +442,35 @@ TEST_CASE("letter edits refuse what is not exactly one editable letter",
     CHECK(contextAction("text.edit") != nullptr);
     CHECK(contextAction("canvas.set") == nullptr);
 }
+
+TEST_CASE("a whole text is removed with all its letters in one undo step",
+          "[desktop_v2][actions][text]") {
+    auto s = blank();
+    REQUIRE(run(s, "text.add", {{"text", "Ok"}, {"font_file", fontFile()}}).committed);
+    REQUIRE(s.project().text_objects.size() == 1);
+    const auto letters = s.project().embroidery_objects.size();
+    REQUIRE(letters >= 2);
+    std::vector<std::uint64_t> ids;
+    for (const auto& e : s.project().embroidery_objects) {
+        ids.push_back(e.id.value);
+    }
+    std::string error;
+    const auto batch = buildGlyph(s, textRemoveAction(), {}, ids, error);
+    INFO(error);
+    REQUIRE_FALSE(batch.empty());
+    const auto depth = s.undoNames().size();
+    REQUIRE(s.applyBatch(batch, "Supprimer le texte").committed);
+    CHECK(s.undoNames().size() == depth + 1);
+    CHECK(s.project().text_objects.empty());
+    CHECK(s.project().embroidery_objects.empty()); // aucune lettre orpheline
+    REQUIRE(s.undo());
+    CHECK(s.project().text_objects.size() == 1);
+    CHECK(s.project().embroidery_objects.size() == letters);
+
+    // Pas un texte : refusé en clair.
+    REQUIRE(s.applyBatch(batchAddRect({0, 0}, 20, 10), "Rect").committed);
+    std::vector<std::uint64_t> rect{s.project().embroidery_objects.back().id.value};
+    CHECK(buildGlyph(s, textRemoveAction(), {}, rect, error).empty());
+    CHECK(error.find("Sélectionnez") != std::string::npos);
+    CHECK(contextAction("text.remove") != nullptr);
+}

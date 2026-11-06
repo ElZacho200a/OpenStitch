@@ -158,6 +158,13 @@ int main(int argc, char** argv) {
                               objects[static_cast<std::size_t>(i)].id.value});
         }
         window.session().selection().replace(std::move(picked));
+        // Le menu radial est une fenetre a part : on la capture a cote (« <fichier>.radial.png »).
+        if (parser.value(command) == QLatin1String("radial.open") &&
+            window.runCommand(QStringLiteral("radial.open"))) {
+            if (auto* radial = window.findChild<QWidget*>(QStringLiteral("radialMenu"))) {
+                (void)radial->grab().save(parser.value(shot) + QStringLiteral(".radial.png"));
+            }
+        }
         return window.grab().save(parser.value(shot)) ? 0 : 1;
     }
     return app.exec();
