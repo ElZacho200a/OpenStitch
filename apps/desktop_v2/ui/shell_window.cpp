@@ -2659,8 +2659,9 @@ void ShellWindow::nudgeSelection(int stepX, int stepUp, bool big) {
 }
 
 bool ShellWindow::runActionWith(const QString& id, const Values& values) {
-    const ActionDef* def =
-        id == QLatin1String("text.edit") ? &textEditAction() : findAction(id.toStdString());
+    const ActionDef* def = contextAction(id.toStdString()) != nullptr
+                               ? contextAction(id.toStdString())
+                               : findAction(id.toStdString());
     if (def == nullptr) {
         return false;
     }
@@ -2728,7 +2729,10 @@ bool ShellWindow::runActionWith(const QString& id, const Values& values) {
 
 void ShellWindow::runAction(const QString& id) {
     const bool editText = id == QLatin1String("text.edit");
-    const ActionDef* def = editText ? &textEditAction() : findAction(id.toStdString());
+    const bool editGlyph = id == QLatin1String("text.glyph");
+    const ActionDef* def = contextAction(id.toStdString()) != nullptr
+                               ? contextAction(id.toStdString())
+                               : findAction(id.toStdString());
     if (def == nullptr) {
         return;
     }
@@ -2743,6 +2747,17 @@ void ShellWindow::runAction(const QString& id) {
             for (auto& [key, value] : textEditValues(session_.project(), *owner)) {
                 initial[key] = std::move(value);
             }
+        }
+    }
+    if (editGlyph) { // le dialogue s'ouvre sur les réglages ACTUELS de la lettre sélectionnée
+        const auto state = inspect(session_.project(), session_.selection().targets());
+        const auto target = glyphTargetOf(session_.project(), state.ids);
+        if (!target.ok) {
+            setNotice(fromUtf8(target.message), true);
+            return;
+        }
+        for (auto& [key, value] : glyphEditValues(session_.project(), target)) {
+            initial[key] = std::move(value);
         }
     }
     auto* dialog = new ActionDialog(*def, initial, this);
@@ -2866,6 +2881,14 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
     }
     out.push_back(
         {"thread.palette", q(tr("Nuanciers de fils et mélanges…")), q(tr("Fils")), "", hasObjects});
+    {
+        const auto state = inspect(session_.project(), session_.selection().targets());
+        const auto glyph = glyphTargetOf(session_.project(), state.ids);
+        out.push_back({"text.glyph", q(tr("Modifier la lettre sélectionnée…")), q(tr("Texte")), "",
+                       glyph.ok});
+        out.push_back({"text.glyph.reset", q(tr("Rétablir la lettre sélectionnée")), q(tr("Texte")),
+                       "", glyph.ok && glyph.hasEdit});
+    }
     out.push_back({"export.options", q(tr("Options machine, cadre et coupes…")), q(tr("Fichier")),
                    "", documentOpen_});
     out.push_back({"export.check", q(tr("Contrôler le motif avant l'export")), q(tr("Fichier")), "",
@@ -2984,8 +3007,10 @@ bool ShellWindow::runCommand(const QString& id) {
             auto* dialog = new ThreadPaletteDialog(session_, this);
             dialog->setAttribute(Qt::WA_DeleteOnClose);
             dialog->show();
-        } else if (id == QLatin1String("text.edit")) {
+        } else if (id == QLatin1String("text.edit") || id == QLatin1String("text.glyph")) {
             runAction(id);
+        } else if (id == QLatin1String("text.glyph.reset")) {
+            (void)runActionWith(id, {});
         } else if (id == QLatin1String("export.options")) {
             auto* dialog = new ExportOptionsDialog(
                 session_, stateDir_.empty() ? std::filesystem::path{} : stateDir_ / "hoops.txt",

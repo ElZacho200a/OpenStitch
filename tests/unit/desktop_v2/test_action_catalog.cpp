@@ -316,3 +316,129 @@ TEST_CASE("text edit refuses a selection that is not exactly one text",
     CHECK(buildAction(textEditAction(), {{"text", "x"}}, ctx, error).empty());
     CHECK(error.find("Sélectionnez") != std::string::npos);
 }
+
+namespace {
+std::uint64_t letterObject(const DocumentSession& s, const std::string& name) {
+    for (const auto& e : s.project().embroidery_objects) {
+        if (e.name == name) {
+            return e.id.value;
+        }
+    }
+    return 0;
+}
+
+std::string buildGlyph(DocumentSession& s, const ActionDef& action, Values values,
+                       const std::vector<std::uint64_t>& ids, std::string& error) {
+    ActionContext ctx;
+    ctx.ids = ids;
+    ctx.project = &s.project();
+    return buildAction(action, std::move(values), ctx, error);
+}
+} // namespace
+
+TEST_CASE("one letter can be moved, recoloured and reset without touching the others",
+          "[desktop_v2][actions][text][glyph]") {
+    auto s = blank();
+    REQUIRE(run(s, "text.add", {{"text", "Hi there"}, {"font_file", fontFile()}}).committed);
+    const auto t = letterObject(s, "Lettre t");
+    const auto h = letterObject(s, "Lettre H");
+    REQUIRE(t != 0);
+    REQUIRE(h != 0);
+
+    const auto target = glyphTargetOf(s.project(), {t});
+    REQUIRE(target.ok);
+    CHECK(target.index == 2); // H i _ t : les espaces ne comptent pas
+    CHECK(target.letter == "t");
+    CHECK_FALSE(target.hasEdit);
+    CHECK(glyphTargetOf(s.project(), {h}).index == 0);
+    const auto neutral = glyphEditValues(s.project(), target);
+    CHECK(neutral.at("scale") == "1");
+    CHECK(neutral.at("color").empty());
+
+    // Première retouche : décalage et couleur de « t ».
+    std::string error;
+    auto values = neutral;
+    values["dx_mm"] = "2";
+    values["color"] = "#ff0000";
+    auto batch = buildGlyph(s, glyphEditAction(), values, {t}, error);
+    INFO(error);
+    REQUIRE_FALSE(batch.empty());
+    const auto depth = s.undoNames().size();
+    REQUIRE(s.applyBatch(batch, "Modifier la lettre").committed);
+    CHECK(s.undoNames().size() == depth + 1);
+    const auto* text = &s.project().text_objects.front();
+    REQUIRE(text->glyph_edits.size() == 1);
+    CHECK(text->glyph_edits[0].index == 2);
+    CHECK(text->glyph_edits[0].dx.value == 2'000);
+    REQUIRE(text->glyph_edits[0].rgb.has_value());
+    CHECK((*text->glyph_edits[0].rgb)[0] == 255);
+
+    // Deuxième retouche sur « H » : la première est conservée (la liste est renvoyée en entier).
+    const auto h2 = letterObject(s, "Lettre H");
+    const auto hTarget = glyphTargetOf(s.project(), {h2});
+    REQUIRE(hTarget.ok);
+    auto hv = glyphEditValues(s.project(), hTarget);
+    hv["rotation_deg"] = "15";
+    hv["scale"] = "1.5";
+    batch = buildGlyph(s, glyphEditAction(), hv, {h2}, error);
+    REQUIRE_FALSE(batch.empty());
+    REQUIRE(s.applyBatch(batch, "Modifier la lettre").committed);
+    text = &s.project().text_objects.front();
+    REQUIRE(text->glyph_edits.size() == 2);
+    CHECK(text->glyph_edits[0].index == 0);
+    CHECK(text->glyph_edits[0].scale == Catch::Approx(1.5));
+    CHECK(text->glyph_edits[1].index == 2);
+    CHECK(text->glyph_edits[1].dx.value == 2'000); // intacte
+
+    // Rétablir « H » : seule la retouche de « t » reste.
+    const auto h3 = letterObject(s, "Lettre H");
+    REQUIRE(glyphTargetOf(s.project(), {h3}).hasEdit);
+    batch = buildGlyph(s, glyphResetAction(), {}, {h3}, error);
+    REQUIRE_FALSE(batch.empty());
+    REQUIRE(s.applyBatch(batch, "Rétablir la lettre").committed);
+    text = &s.project().text_objects.front();
+    REQUIRE(text->glyph_edits.size() == 1);
+    CHECK(text->glyph_edits[0].index == 2);
+    REQUIRE(s.undo());
+    CHECK(s.project().text_objects.front().glyph_edits.size() == 2);
+}
+
+TEST_CASE("letter edits refuse what is not exactly one editable letter",
+          "[desktop_v2][actions][text][glyph]") {
+    auto s = blank();
+    REQUIRE(s.applyBatch(batchAddRect({0, 0}, 20, 10), "Rect").committed);
+    const auto rect = s.project().embroidery_objects.front().id.value;
+    CHECK_FALSE(glyphTargetOf(s.project(), {rect}).ok); // pas une lettre
+    CHECK_FALSE(glyphTargetOf(s.project(), {}).ok);
+    CHECK_FALSE(glyphTargetOf(s.project(), {987654}).ok);
+
+    REQUIRE(run(s, "text.add", {{"text", "AB"}, {"font_file", fontFile()}}).committed);
+    const auto a = letterObject(s, "Lettre A");
+    const auto b = letterObject(s, "Lettre B");
+    REQUIRE(a != 0);
+    REQUIRE(b != 0);
+    const auto two = glyphTargetOf(s.project(), {a, b});
+    CHECK_FALSE(two.ok); // deux lettres différentes
+    CHECK(two.message.find("UNE seule lettre") != std::string::npos);
+    CHECK_FALSE(glyphTargetOf(s.project(), {rect, a}).ok); // un texte et une forme
+
+    std::string error;
+    const auto target = glyphTargetOf(s.project(), {a});
+    REQUIRE(target.ok);
+    // Aucun changement : refusé sans toucher à l'historique.
+    CHECK(
+        buildGlyph(s, glyphEditAction(), glyphEditValues(s.project(), target), {a}, error).empty());
+    CHECK(error.find("Aucun changement") != std::string::npos);
+    auto bad = glyphEditValues(s.project(), target);
+    bad["dx_mm"] = "3";
+    bad["color"] = "rouge";
+    CHECK(buildGlyph(s, glyphEditAction(), bad, {a}, error).empty());
+    CHECK(error.find("#RRGGBB") != std::string::npos);
+    // Rétablir une lettre jamais retouchée.
+    CHECK(buildGlyph(s, glyphResetAction(), {}, {a}, error).empty());
+    CHECK(error.find("pas été retouchée") != std::string::npos);
+    CHECK(contextAction("text.glyph") != nullptr);
+    CHECK(contextAction("text.glyph.reset") != nullptr);
+    CHECK(contextAction("text.edit") != nullptr);
+    CHECK(contextAction("canvas.set") == nullptr);
+}

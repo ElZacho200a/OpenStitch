@@ -26,7 +26,7 @@ dit honnêtement ce qui bloque, ce qui est prêt et comment le vérifier.
 - [x] Options machine avancées d'export (départ, coupes, points d'arrêt) et bibliothèque de cadres (commandes `export.options`, `export.check`). « Mes cadres » (enregistrer, appliquer, supprimer ses propres cadres) est fait.
 - [ ] Segmentation IA / SAM (hors priorité produit ; état de disponibilité à afficher honnêtement).
 - [x] Chat intégré (dock « Discussion IA », commande `chat.open`) ; le client MCP externe reste possible. Reste : essai réel avec une clé API, fournisseur « processus Claude Code », analyse sémantique automatique de la V1.
-- [x] Nuanciers de fils et mélange (commande `thread.palette`), texte avancé et modification d'un texte (`text.add` étendu, `text.edit`), préférences (thème et densité d'interface, menu Affichage). Reste : choix de la langue (aucune infrastructure de traduction : un réglage de langue serait faux), texte sur chemin libre (`base: path`), glyphes édités individuellement.
+- [x] Nuanciers de fils et mélange (commande `thread.palette`), texte avancé et modification d'un texte (`text.add` étendu, `text.edit`), préférences (thème et densité d'interface, menu Affichage). Reste : choix de la langue (aucune infrastructure de traduction : un réglage de langue serait faux), texte sur chemin libre (`base: path`). L'édition lettre par lettre (`text.glyph`) est faite.
 
 ## À mesurer / vérifier à la main avant bascule
 

@@ -2405,6 +2405,46 @@ private slots:
                  QString("Ab"));
     }
 
+    void letterCommandsNeedOneLetterAndEditItInOneUndoStep() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(!w.runCommand("text.glyph")); // rien de sélectionné
+        QVERIFY(w.runActionWith(
+            "text.add", {{"text", "Ab"}, {"font_file", OPENSTITCH_FONTS_DIR "/VeraBd.ttf"}}));
+        w.waitForIdle();
+        // Après l'ajout, TOUTES les lettres sont sélectionnées : deux lettres, donc refus clair.
+        QVERIFY(!w.runCommand("text.glyph"));
+        std::uint64_t a = 0;
+        for (const auto& e : w.session().project().embroidery_objects) {
+            if (e.name == "Lettre A") {
+                a = e.id.value;
+            }
+        }
+        QVERIFY(a != 0);
+        w.session().selection().replace({{TargetKind::EmbroideryObject, a}});
+        QVERIFY(w.runCommand("text.glyph"));        // ouvre le dialogue
+        QVERIFY(!w.runCommand("text.glyph.reset")); // jamais retouchée : indisponible
+        const auto depth = w.session().undoNames().size();
+        QVERIFY(w.runActionWith("text.glyph", {{"dx_mm", "3"}, {"scale", "1.2"}}));
+        w.waitForIdle();
+        QCOMPARE(w.session().undoNames().size(), depth + 1);
+        QCOMPARE(w.session().project().text_objects.front().glyph_edits.size(), size_t{1});
+        // Les lettres du texte sont de nouveau sélectionnées : choisir « A » pour rétablir.
+        a = 0;
+        for (const auto& e : w.session().project().embroidery_objects) {
+            if (e.name == "Lettre A") {
+                a = e.id.value;
+            }
+        }
+        w.session().selection().replace({{TargetKind::EmbroideryObject, a}});
+        QVERIFY(w.runCommand("text.glyph.reset"));
+        w.waitForIdle();
+        QVERIFY(w.session().project().text_objects.front().glyph_edits.empty());
+        QVERIFY(w.session().undo());
+        QCOMPARE(w.session().project().text_objects.front().glyph_edits.size(), size_t{1});
+    }
+
     void machineOptionsDialogChangesHoopMachineAndTrimsInUndoableSteps() {
         ShellWindow w;
         w.show();
