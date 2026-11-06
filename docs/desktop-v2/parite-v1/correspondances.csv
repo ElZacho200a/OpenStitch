@@ -7,7 +7,7 @@ b4151a04,absent,,à traiter,Accrochage des nœuds au glisser
 fc27db70,absent,,à traiter,Accrocher à la grille
 c6b9c9e3,fait,Activer,libellé retrouvé dans la V2,Activer
 190ac0bb,fait,region.edit,carte des régions de l'outil Régions,Afficher la carte des régions
-eeb30959,absent,,à traiter,Afficher la grille
+eeb30959,partiel,gridMenu,"menu Grille (aucune, 5, 10, 20 mm)",Afficher la grille
 b4e5b433,partiel,guide.add-v,"guides toujours visibles, pas de bascule",Afficher les guides
 ea59b0be,absent,,à traiter,Afficher uniquement ce type
 302da3e8,absent,,à traiter,Afficher uniquement ce type de points
@@ -16,7 +16,7 @@ ea59b0be,absent,,à traiter,Afficher uniquement ce type
 c150e52b,fait,Ajouter un guide horizontal,libellé retrouvé dans la V2,Ajouter un guide horizontal
 73172bc2,absent,,à traiter,Ajouter un guide satin
 e00cf219,fait,Ajouter un guide vertical,libellé retrouvé dans la V2,Ajouter un guide vertical
-ae274b96,absent,,à traiter,Ajouter une couche
+ae274b96,partiel,calqueAdd,calque = couche,Ajouter une couche
 01d2f694,fait,Ajuster à la fenêtre,,Ajuster au canevas
 9caa2191,fait,analysis.run,,Analyser le motif
 03188bb4,absent,,à traiter,Aperçu avant impression
@@ -33,17 +33,17 @@ f942b9ce,fait,Carte de densité,libellé retrouvé dans la V2,Carte de densité
 8e1363c4,partiel,activateCurrentColorway,coloris ; tissu non,Coloris et tissu
 133ffb33,fait,Compagnon IA,libellé retrouvé dans la V2,Compagnon IA
 5517fa2b,absent,,à traiter,Contour autour de la sélection
-b4f352c6,absent,,à traiter,Convertir en appliqué
-eb7dd01d,absent,,à traiter,Convertir en courbes
-84f88da1,absent,,à traiter,Convertir en remplissage concentrique
+b4f352c6,partiel,applique,type Appliqué de l'inspecteur,Convertir en appliqué
+eb7dd01d,fait,vector.curves,,Convertir en courbes
+84f88da1,fait,contour_fill,,Convertir en remplissage concentrique
 18d015e9,fait,satin.auto,,Convertir en satin automatiquement
 b9441c56,fait,auto_satin,type Tatami de l'inspecteur,Convertir les satins auto en tatami
 2c87f32d,absent,,à traiter,Convertir les vecteurs en broderie
 ca67b4fd,fait,Couleur des guides,libellé retrouvé dans la V2,Couleur des guides
 b24bb78f,absent,,à traiter,Couleur ⏭
 f9db85df,fait,Couper le fil après,libellé retrouvé dans la V2,Couper le fil après
-0b59bc57,absent,,à traiter,Créer un objet de point de contour
-c97c7aae,absent,,à traiter,Créer un remplissage tatami
+0b59bc57,partiel,settableStitchTypes,,Créer un objet de point de contour
+c97c7aae,partiel,settableStitchTypes,,Créer un remplissage tatami
 67fc3ea3,fait,satin.auto,,Créer un satin automatique
 1e5cd1fe,partiel,run_diagnostics,diagnostic V2 ; liste de défauts connus de la V1 non reprise telle quelle,Diagnostic des défauts connus
 9ba57c94,fait,Dupliquer,libellé retrouvé dans la V2,Dupliquer
@@ -54,7 +54,7 @@ b8d50ff8,absent,,à traiter,Déboguer : afficher toutes les données
 3e57366b,absent,,à traiter,Décaler
 d44d8b2a,absent,,à traiter,Décaler la forme
 a6809735,fait,Déformation prévue du tissu,libellé retrouvé dans la V2,Déformation prévue du tissu
-eab12005,absent,,à traiter,Déplacer la sélection ici
+eab12005,fait,calqueHere,,Déplacer la sélection ici
 694f85ac,fait,Effacer les guides,libellé retrouvé dans la V2,Effacer les guides
 2a2bef85,absent,,à traiter,Effacer toutes les zones de détail
 579f3c4f,fait,Enregistrer le projet,libellé retrouvé dans la V2,Enregistrer le projet
@@ -73,13 +73,13 @@ d0850557,fait,Fiche de production,libellé retrouvé dans la V2,Fiche de product
 aba3cc8d,absent,,à traiter,Fidélité à l'image
 4132716d,fait,fade.create,,Fondu de couleurs à deux fils
 90b818d1,absent,,à traiter,Format d'import des nuanciers
-69547042,absent,,à traiter,Fusionner avec… (cliquer la région cible)
+69547042,partiel,regionMerge,cible choisie dans une liste,Fusionner avec… (cliquer la région cible)
 30fe85c6,fait,regionMerge,,Fusionner dans la voisine principale
 7bf6f210,fait,Fusionner la sélection,libellé retrouvé dans la V2,Fusionner la sélection
 3055c3e1,fait,Fusionner les couleurs,libellé retrouvé dans la V2,Fusionner les couleurs
 10082583,absent,,à traiter,Gabarit de placement 1:1
 de9ab6e1,fait,fill.guides,,Generer un guide depuis la forme
-d0300f93,absent,,à traiter,Gestes souris et clavier
+d0300f93,partiel,Raccourcis et commandes,,Gestes souris et clavier
 80d5551a,absent,,à traiter,Guide de prise en main
 aea2d95e,fait,Guides de direction,libellé retrouvé dans la V2,Guides de direction
 fa129d91,fait,fill.guides,,Générer un guide depuis la forme
@@ -90,76 +90,76 @@ fa129d91,fait,fill.guides,,Générer un guide depuis la forme
 c4719a5d,fait,file.import_svg,,Importer une image ou un SVG
 025327d7,absent,,à traiter,Insérer un design
 f97b2ddf,fait,Lisser,libellé retrouvé dans la V2,Lisser
-337b1cac,absent,,à traiter,Luminosité/contraste
+337b1cac,fait,Luminosité et contraste,,Luminosité/contraste
 4a09b823,fait,Machine,libellé retrouvé dans la V2,Machine
 2a299c02,absent,,à traiter,Manuel d'utilisation
-3b625aed,absent,,à traiter,Masquer les panneaux
+3b625aed,partiel,panelsMenu,"Affichage › Panneaux, un panneau à la fois",Masquer les panneaux
 9891d57a,absent,,à traiter,Mode portable (une seule colonne)
 b2e5796b,absent,,à traiter,Modifier la colonne satin (rails + guides)
 2e6cc34f,fait,Modifier le texte,libellé retrouvé dans la V2,Modifier le texte
 aee88642,fait,Ne pas couper le fil après,libellé retrouvé dans la V2,Ne pas couper le fil après
 5421aa74,fait,regionClean,,Nettoyer les petits îlots
 c3d0caab,fait,Nouveau projet,libellé retrouvé dans la V2,Nouveau projet
-00cdb915,absent,,à traiter,Numérisation automatique
+00cdb915,fait,Numériser,dialogue d'import,Numérisation automatique
 c492f162,absent,,à traiter,Objet ⏭
 23cd9405,fait,Options de génération,libellé retrouvé dans la V2,Options de génération
 7040619f,fait,Orientation,libellé retrouvé dans la V2,Orientation
 2f542cd3,absent,,à traiter,Orientation du remplissage
 90f155ac,fait,Ouvrir,libellé retrouvé dans la V2,Ouvrir
-6835033c,absent,,à traiter,Ouvrir Claude Code
-9f0deb8b,absent,,à traiter,Ouvrir un projet
+6835033c,partiel,chat.open,le chat intégré remplace le lancement de Claude Code,Ouvrir Claude Code
+9f0deb8b,fait,Ouvrir une image ou un projet,,Ouvrir un projet
 435dc9ab,fait,Paramètres,libellé retrouvé dans la V2,Paramètres
-369536e7,absent,,à traiter,Pas de la grille
+369536e7,partiel,gridMenu,pas fixes seulement,Pas de la grille
 f590671c,fait,Passer en point cousu,libellé retrouvé dans la V2,Passer en point cousu
 66d86e8a,fait,Passer en saut (sans couture),libellé retrouvé dans la V2,Passer en saut (sans couture)
 8ce04bb9,absent,,à traiter,Pinceau : rayon plus grand
 c3bcc666,absent,,à traiter,Pinceau : rayon plus petit
 b8d2a1ce,fait,fade.axis,,Poignées du dégradé
-050fad01,absent,,à traiter,Point de contour
+050fad01,partiel,settableStitchTypes,type Contour de l'inspecteur,Point de contour
 7e4bb52e,absent,,à traiter,Point ▶
-031c45f1,absent,,à traiter,Pont IA local (MCP)
+031c45f1,fait,companion.toggle,,Pont IA local (MCP)
 de5eef73,partiel,density_,thème et densité seulement,Préférences générales
-f30520d3,absent,,à traiter,Préférences — Intelligence artificielle
+f30520d3,partiel,companion.settings,,Préférences — Intelligence artificielle
 354afdc7,partiel,regionReduceColors,réduction de palette ; quantification d'image absente,Quantifier les couleurs
 a4c1ad2b,fait,Quitter,libellé retrouvé dans la V2,Quitter
-35393cc9,absent,,à traiter,Recadrer l'image (glisser un cadre)
+35393cc9,partiel,Recadrer,"recadrage par dialogue, pas au glisser",Recadrer l'image (glisser un cadre)
 b4dc4f3a,fait,Rechercher une commande,libellé retrouvé dans la V2,Rechercher une commande
 b2f5a579,fait,Recolorer,libellé retrouvé dans la V2,Recolorer
 d39e212d,fait,Recolorer la sélection,libellé retrouvé dans la V2,Recolorer la sélection
-b5106cf2,absent,,à traiter,Remplissage tatami
+b5106cf2,partiel,settableStitchTypes,type Tatami de l'inspecteur,Remplissage tatami
 8b3e385a,fait,Renommer,libellé retrouvé dans la V2,Renommer
 a0622ecf,absent,,à traiter,Restaurer la disposition précédente
 b0c51442,fait,point.restore,,Restaurer les points sélectionnés
 ae44ff48,fait,analysis.fabric,,Risque de tirage du tissu
 bf228390,fait,analysis.fabric,,Risque tissu
-34422f89,absent,,à traiter,Réduire / fusionner les fils
+34422f89,partiel,mergeThreads,fusion fil à fil ; réduction globale par palette de régions,Réduire / fusionner les fils
 333e240e,absent,,à traiter,Région précédente
 5bbcc28e,absent,,à traiter,Région suivante
 37a5693a,fait,Réglages,libellé retrouvé dans la V2,Réglages
-ea169d9f,absent,,à traiter,Réglages de la grille
-8fff58b4,absent,,à traiter,Réglages du pinceau
+ea169d9f,partiel,gridMenu,pas fixes seulement,Réglages de la grille
+8fff58b4,partiel,regionBrushRadius,,Réglages du pinceau
 5f547908,absent,,à traiter,Réinitialiser la disposition
 251cbea8,fait,Rétablir,libellé retrouvé dans la V2,Rétablir
 7eff11f4,absent,,à traiter,Rétablir la couleur d'origine
 8233c055,fait,Satin automatique,libellé retrouvé dans la V2,Satin automatique
 3d2be7f4,absent,,à traiter,Sauts à vide de l'ordre
 de43aedf,fait,Segmenter l'image,libellé retrouvé dans la V2,Segmenter l'image
-0d67e9bf,absent,,à traiter,Statistiques
+0d67e9bf,partiel,summary_,résumé en barre d'état,Statistiques
 65b6e4d4,fait,Supprimer,libellé retrouvé dans la V2,Supprimer
 03a7c253,absent,,à traiter,Supprimer %1 objets
 16449d1d,absent,,à traiter,Supprimer ce point
 6623e722,fait,Supprimer la sélection,libellé retrouvé dans la V2,Supprimer la sélection
-d6e27fc4,absent,,à traiter,Supprimer le calque
+d6e27fc4,fait,calqueRemove,,Supprimer le calque
 980fefff,absent,,à traiter,Supprimer le guide
 69e76bc8,absent,,à traiter,Supprimer le guide satin sélectionné
-5a001324,absent,,à traiter,Supprimer le nœud
+5a001324,fait,deleteSelected,,Supprimer le nœud
 cc56cc1b,absent,,à traiter,Supprimer le texte
 d9267bc5,fait,deleteSelectedPoint,,Supprimer les points sélectionnés
 0e876999,fait,onFindingActivated,clic sur un constat du diagnostic,Sélectionner l'objet
 5626577a,fait,Sélectionner la même couleur,libellé retrouvé dans la V2,Sélectionner la même couleur
 76e1b404,fait,Sélectionner les voisines,libellé retrouvé dans la V2,Sélectionner les voisines
 149d5727,fait,point.select-all,,Sélectionner tous les points
-6374ea03,absent,,à traiter,Taille du cadre
+6374ea03,fait,canvas.set,,Taille du cadre
 153dd793,absent,,à traiter,Tout afficher
 e46589b0,absent,,à traiter,Tout afficher (filtres)
 f4632624,fait,Tout sélectionner,libellé retrouvé dans la V2,Tout sélectionner
@@ -183,9 +183,9 @@ fb5f812c,absent,,à traiter,Étalonner le zoom 100 %
 a766d0d5,absent,,à traiter,⏮ Couleur
 669c1398,absent,,à traiter,⏮ Objet
 bf476973,absent,,à traiter,⏹ Fin
-f271218c,absent,,à traiter,▶ Lecture
+f271218c,partiel,Lecture,curseur et lecture,▶ Lecture
 328035a0,absent,,à traiter,◀ Point
-83393a9a,absent,,à traiter,+ Couche
+83393a9a,partiel,calqueAdd,calque = couche,+ Couche
 613e0ed8,absent,,à traiter,Abandonner les retouches
 abf0f4bd,fait,Activer,libellé retrouvé dans la V2,Activer
 9579fe3b,absent,,à traiter,Actualiser l’aperçu
@@ -200,25 +200,25 @@ e7b4c06a,absent,,à traiter,"Assistant (aperçu, proposition depuis l'image)"
 691c4acf,absent,,à traiter,Autre tirage
 e4077c4b,fait,Calculer,libellé retrouvé dans la V2,Calculer
 58796fc5,fait,Choisir,libellé retrouvé dans la V2,Choisir
-42cd1ade,absent,,à traiter,Choisir dans les nuanciers
+42cd1ade,partiel,thread.palette,,Choisir dans les nuanciers
 fe930327,absent,,à traiter,Comparer les méthodes
-97060113,absent,,à traiter,Convertir en remplissage concentrique
-86359fc6,absent,,à traiter,Convertir en remplissage directionnel
+97060113,fait,contour_fill,,Convertir en remplissage concentrique
+86359fc6,fait,directional,,Convertir en remplissage directionnel
 42954eca,fait,Corriger,libellé retrouvé dans la V2,Corriger
 1b524844,absent,,à traiter,Corriger tout ce qui est sûr
 12510a3a,fait,Couleur,libellé retrouvé dans la V2,Couleur
 f84eae7b,absent,,à traiter,Couleur : %1 (cliquer pour changer)
 f893cf14,absent,,à traiter,Couleur de cette couche
-fdbcceb1,absent,,à traiter,Couleurs libres → fil le plus proche
+fdbcceb1,partiel,thread.palette,fil par fil,Couleurs libres → fil le plus proche
 6dfe2a2f,absent,,à traiter,Créer le satin de bordure
 786a853b,fait,hoops.txt,Mes cadres,Enregistrer ce cadre
 8854fa60,absent,,à traiter,Exporter la liste des fils (CSV)
 6c667c5a,fait,Fermer,libellé retrouvé dans la V2,Fermer
 4881b0aa,absent,,à traiter,Figer l'ordre
-75d84458,absent,,à traiter,Fils les plus proches de la sélection
+75d84458,partiel,thread.palette,,Fils les plus proches de la sélection
 874e1166,fait,regionMergeColors,,Fusionner dans la teinte active
 28bea29d,fait,Fusionner la sélection,libellé retrouvé dans la V2,Fusionner la sélection
-5ea5889c,absent,,à traiter,Guides automatiques pour tous
+5ea5889c,partiel,fill.guides,par objet sélectionné,Guides automatiques pour tous
 1ebf6e41,absent,,à traiter,"Importer un nuancier (CSV, JSON)"
 f38a9ef0,fait,Importer une broderie machine,libellé retrouvé dans la V2,Importer une broderie machine
 11c2d635,absent,,à traiter,Inverser le sens du fondu
@@ -227,48 +227,48 @@ a8e5be69,fait,Modifier le texte,libellé retrouvé dans la V2,Modifier le texte
 5cda87d0,fait,Optimiser l'ordre,libellé retrouvé dans la V2,Optimiser l'ordre
 3bda7e57,absent,,à traiter,Ouvrir le dossier
 9c53cfd1,exclu,,Décision du 2026-11-06 (propriétaire du projet) : la segmentation par IA (SAM 2) est hors périmètre de la V2 ; la V1 reste la référence pour cet usage.,Ouvrir les préférences
-8f650f08,absent,,à traiter,Ouvrir un projet
-237f3d36,absent,,à traiter,Ouvrir une image ou un SVG
+8f650f08,fait,Ouvrir une image ou un projet,,Ouvrir un projet
+237f3d36,fait,Ouvrir une image ou un projet,SVG par l'action « Importer un SVG »,Ouvrir une image ou un SVG
 249c0de8,fait,Parcourir,libellé retrouvé dans la V2,Parcourir
 3dcea6a1,absent,,à traiter,Peindre les zones de détail
 5c1da94d,fait,Pivoter,libellé retrouvé dans la V2,Pivoter
-219aa56f,absent,,à traiter,Placer un guide sur le canevas
-fc50bae4,absent,,à traiter,Poignées sur le canevas
+219aa56f,fait,fill.direction-guide,,Placer un guide sur le canevas
+fc50bae4,fait,fade.axis,,Poignées sur le canevas
 5ecf2aa4,absent,,à traiter,Poser ce guide sur toutes les formes
 d6c060d0,absent,,à traiter,Proposer les couleurs depuis l'image
-a8d2bcf8,absent,,à traiter,Remplacer ce fil par celui du catalogue
+a8d2bcf8,partiel,thread.palette,nuanciers intégrés seulement,Remplacer ce fil par celui du catalogue
 71f07976,absent,,à traiter,Retirer ce nuancier importé
 3a357c6c,absent,,à traiter,Retirer de mes fils
-6f0cec00,absent,,à traiter,Retirer guides et ruptures de tous
-29ed788a,absent,,à traiter,Retirer les guides de toutes
+6f0cec00,partiel,fill.guides.clear,par objet,Retirer guides et ruptures de tous
+29ed788a,partiel,fill.guides.clear,par objet,Retirer les guides de toutes
 0ebc96b6,absent,,à traiter,Réappliquer les retouches
 c56a6143,fait,Réduire,libellé retrouvé dans la V2,Réduire
 ea48b8bd,exclu,,Décision du 2026-11-06 (propriétaire du projet) : la segmentation par IA (SAM 2) est hors périmètre de la V2 ; la V1 reste la référence pour cet usage.,Sonder les backends
 f7de65cb,fait,Supprimer,libellé retrouvé dans la V2,Supprimer
 9e718d2b,absent,,à traiter,Supprimer le guide
-64625b92,absent,,à traiter,Sélectionner les objets de ce fil
-ba349540,absent,,à traiter,Sélectionner les objets du bloc
+64625b92,fait,threadSelect,,Sélectionner les objets de ce fil
+ba349540,partiel,threadSelect,"par fil, pas par bloc",Sélectionner les objets du bloc
 67a04f5b,absent,,à traiter,Séquencer par couleur (fusionner les blocs de même fil)
 e51f01aa,exclu,,Décision du 2026-11-06 (propriétaire du projet) : la segmentation par IA (SAM 2) est hors périmètre de la V2 ; la V1 reste la référence pour cet usage.,Tester la configuration
 522a6e56,absent,,à traiter,Tout afficher
 628f1213,absent,,à traiter,Tout effacer
 65e52cd5,fait,Voir,libellé retrouvé dans la V2,Voir
-a8ae886b,absent,,à traiter,Voir la carte de densité
+a8ae886b,fait,analysis.density,,Voir la carte de densité
 580a6bce,absent,,à traiter,Voir les points réels
-c821931c,absent,,à traiter,Éditer les guides
-2e1136ae,absent,,à traiter,↑ Monter
-dba3d228,absent,,à traiter,↓ Descendre
+c821931c,partiel,fill.direction-guide,,Éditer les guides
+2e1136ae,partiel,orderEarlier,,↑ Monter
+dba3d228,partiel,orderLater,,↓ Descendre
 146fe6d3,absent,,à traiter,⇄ Inverser
-d2b89407,absent,,à traiter,▲ Monter
-325c9237,absent,,à traiter,▲ Passer dessous
-e1ae3eac,absent,,à traiter,▼ Descendre
-e9918519,absent,,à traiter,▼ Passer dessus
+d2b89407,partiel,orderEarlier,,▲ Monter
+325c9237,partiel,calqueDown,,▲ Passer dessous
+e1ae3eac,partiel,orderLater,,▼ Descendre
+e9918519,partiel,calqueUp,,▼ Passer dessus
 f28889ba,absent,,à traiter,Accepter aussi une surface déjà cousue du même fil
 6b06d4a3,absent,,à traiter,Accrocher les nœuds aux sommets des autres objets au glisser
 e7e778d4,exclu,,Décision du 2026-11-06 (propriétaire du projet) : la segmentation par IA (SAM 2) est hors périmètre de la V2 ; la V1 reste la référence pour cet usage.,Activer la segmentation par IA (SAM 2)
-370e284b,absent,,à traiter,Activer le rendu réaliste des points
-4789f8fc,absent,,à traiter,Afficher la carte sur le canevas
-56dd6a80,absent,,à traiter,Afficher la grille
+370e284b,fait,view.render,,Activer le rendu réaliste des points
+4789f8fc,fait,analysis.fabric,,Afficher la carte sur le canevas
+56dd6a80,partiel,gridMenu,"menu Grille (aucune, 5, 10, 20 mm)",Afficher la grille
 f3c139b0,absent,,à traiter,Afficher le tissu (fond opaque)
 f6bdf6f6,absent,,à traiter,Affiner (2-opt / Or-opt)
 44642518,absent,,à traiter,Alterner (miroir un sur deux)
@@ -298,9 +298,9 @@ ea65d971,fait,Découper les points trop longs,libellé retrouvé dans la V2,Déc
 14a6a35a,absent,,à traiter,Entrée/sortie automatiques des objets
 43d3b43f,absent,,à traiter,Espacement automatique selon la largeur
 3a552654,absent,,à traiter,"Finitions automatiques (coupes, points d'arrêt, points courts)"
-c37dbd3d,absent,,à traiter,Fond de tissu opaque
+c37dbd3d,partiel,fabricRgb,"tissu toujours opaque, couleur réglable",Fond de tissu opaque
 eb932cc3,absent,,à traiter,Fractionner les traversées longues (> 7 mm)
-213d5af7,absent,,à traiter,Fusionner aussi les régions voisines de même couleur
+213d5af7,fait,regionReduceMerge,,Fusionner aussi les régions voisines de même couleur
 8fd5f3dc,fait,Fusionner les points trop courts,libellé retrouvé dans la V2,Fusionner les points trop courts
 e181a7ab,fait,Gomme,libellé retrouvé dans la V2,Gomme
 5674752c,exclu,,Décision du 2026-11-06 (propriétaire du projet) : la segmentation par IA (SAM 2) est hors périmètre de la V2 ; la V1 reste la référence pour cet usage.,Ignorer la plus grande région (probablement le fond)
@@ -341,7 +341,7 @@ ab829014,absent,,à traiter,Écrire les coupes de fil (réglage de ce fichier)
 d06da014,partiel,action_file_production_sheet,export PDF sans aperçu,Aperçu avant impression - fiche de production
 308f4162,fait,Cadre de broderie,libellé retrouvé dans la V2,Cadre de broderie
 531ea643,absent,,à traiter,Centre de rotation
-5750c9de,absent,,à traiter,Choisir une référence de fil
+5750c9de,partiel,thread.palette,,Choisir une référence de fil
 65d01889,partiel,activateCurrentColorway,coloris ; tissu non,Coloris et tissu
 4c7db5cd,absent,,à traiter,Combler les vides du bloc
 b2820172,fait,Compagnon IA,libellé retrouvé dans la V2,Compagnon IA
@@ -352,7 +352,7 @@ c7e19585,fait,Exporter l'image,libellé retrouvé dans la V2,Exporter l'image
 775bc85b,fait,Exporter pour la machine,,Exporter une broderie machine
 5aae42a1,fait,Fiche de production,libellé retrouvé dans la V2,Fiche de production
 004e668f,absent,,à traiter,Gabarit de placement 1:1
-de2f043a,absent,,à traiter,Gestes souris et clavier
+de2f043a,partiel,Raccourcis et commandes,,Gestes souris et clavier
 aca41aaf,absent,,à traiter,Guide de prise en main
 8aeebbf2,fait,Importer une image,libellé retrouvé dans la V2,Importer une image
 9ae947b0,partiel,action_file_production_sheet,export PDF,Imprimer la fiche de production
@@ -360,8 +360,8 @@ aca41aaf,absent,,à traiter,Guide de prise en main
 4959ff8d,fait,machine.set,,Machine de broderie
 65160629,absent,,à traiter,Manuel d'utilisation
 cd99057f,fait,regionClean,,Nettoyer les petits îlots
-b1452aff,absent,,à traiter,Numérisation automatique
-f057c31c,absent,,à traiter,Objet de point de contour
+b1452aff,fait,Numériser,dialogue d'import,Numérisation automatique
+f057c31c,partiel,settableStitchTypes,,Objet de point de contour
 f2daca5b,partiel,export.options,options machine ; réglages de génération du projet partiels,Options de génération (réglages du projet)
 e6a15184,fait,Paramètres,libellé retrouvé dans la V2,Paramètres
 3a4ee332,partiel,density_,thème et densité seulement,Préférences générales
@@ -369,10 +369,10 @@ c0dbf1e6,exclu,,Décision du 2026-11-06 (propriétaire du projet) : la segmentat
 e8fcd3c4,partiel,regionReduceColors,réduction de palette ; quantification d'image absente,Quantifier les couleurs
 a815ced8,absent,,,Rapport de plantage
 ea529ff7,fait,Rechercher une commande,libellé retrouvé dans la V2,Rechercher une commande
-7a51550a,absent,,à traiter,Remplissage tatami
+7a51550a,partiel,settableStitchTypes,type Tatami de l'inspecteur,Remplissage tatami
 f15b33c8,fait,Rendu réaliste,libellé retrouvé dans la V2,Rendu réaliste
-1b7523c1,absent,,à traiter,Réduire / fusionner les fils
-749748bf,absent,,à traiter,Réglages de la grille
+1b7523c1,partiel,mergeThreads,fusion fil à fil ; réduction globale par palette de régions,Réduire / fusionner les fils
+749748bf,partiel,gridMenu,pas fixes seulement,Réglages de la grille
 38a816ae,fait,Satin,libellé retrouvé dans la V2,Satin
 ffcf580f,exclu,,Décision du 2026-11-06 (propriétaire du projet) : la segmentation par IA (SAM 2) est hors périmètre de la V2 ; la V1 reste la référence pour cet usage.,Segmenter avec l'IA
 4669e436,fait,Segmenter l'image,libellé retrouvé dans la V2,Segmenter l'image
@@ -393,7 +393,7 @@ b73c432d,absent,,à traiter,Aligner sur
 71984e11,fait,Analyse,libellé retrouvé dans la V2,Analyse
 101b9704,fait,Broderie,libellé retrouvé dans la V2,Broderie
 54ae0825,absent,,à traiter,Convertir le type
-8fec2068,absent,,à traiter,Créer avec réglages
+8fec2068,partiel,settableStitchTypes,,Créer avec réglages
 a68f2f07,fait,Densité,libellé retrouvé dans la V2,Densité
 80f317b6,absent,,à traiter,Design entier
 4a22b69f,fait,Espaces de travail,libellé retrouvé dans la V2,Espaces de travail
@@ -421,7 +421,7 @@ bfb1ac5d,fait,Récents,libellé retrouvé dans la V2,Récents
 1bfbf007,fait,Thème,libellé retrouvé dans la V2,Thème
 365e2a98,fait,Transformer,libellé retrouvé dans la V2,Transformer
 50f2be55,fait,Type de points,libellé retrouvé dans la V2,Type de points
-e5696c12,absent,,à traiter,Type de points (tous)
+e5696c12,fait,settableStitchTypes,tous les types de la liste,Type de points (tous)
 aabe1c93,fait,Édition,libellé retrouvé dans la V2,Édition
 4b6cfb58,fait,Brush,libellé retrouvé dans la V2,Brush
 7e011329,fait,Bucket,libellé retrouvé dans la V2,Bucket
