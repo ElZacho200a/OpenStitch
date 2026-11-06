@@ -253,6 +253,26 @@ private slots:
         QCOMPARE(rail->toolButtonStyle(), Qt::ToolButtonTextBesideIcon);
     }
 
+    void newWorkspaceDefaultsToCanvasFirstCompactRail() {
+        QTemporaryDir home;
+        QVERIFY(home.isValid());
+        const auto dir = fs::path(home.path().toStdU16String()) / "fresh-ui-state";
+        ShellWindow w;
+        w.setStateDirectory(dir);
+        auto* rail = w.findChild<QToolBar*>("toolRail");
+        auto* toggle = w.findChild<QAction*>("action_view_compact_tools");
+        QVERIFY(rail != nullptr);
+        QVERIFY(toggle != nullptr);
+        QVERIFY(w.compactToolRail());
+        QVERIFY(toggle->isChecked());
+        QCOMPARE(rail->toolButtonStyle(), Qt::ToolButtonIconOnly);
+        QCOMPARE(rail->width(), 52);
+        w.setWorkspace(Workspace::Produce);
+        QCOMPARE(rail->toolButtonStyle(), Qt::ToolButtonIconOnly);
+        w.setCompactToolRail(false);
+        QCOMPARE(rail->toolButtonStyle(), Qt::ToolButtonTextBesideIcon);
+    }
+
     void compactRailPreferenceSurvivesRestartWithoutChangingShortcuts() {
         QTemporaryDir home;
         QVERIFY(home.isValid());
