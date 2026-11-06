@@ -2881,6 +2881,10 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
     }
     out.push_back(
         {"thread.palette", q(tr("Nuanciers de fils et mélanges…")), q(tr("Fils")), "", hasObjects});
+    out.push_back(
+        {"chat.open", q(tr("Discuter avec l'agent IA")), q(tr("Compagnon")), "", documentOpen_});
+    out.push_back(
+        {"companion.settings", q(tr("Réglages du compagnon IA…")), q(tr("Compagnon")), "", true});
     {
         const auto state = inspect(session_.project(), session_.selection().targets());
         const auto glyph = glyphTargetOf(session_.project(), state.ids);

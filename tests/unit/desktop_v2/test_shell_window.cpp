@@ -144,10 +144,35 @@ private slots:
         w.setChatBackend(nullptr);
     }
 
+    void everyCommandOfTheFinalisationIsListedInThePalette() {
+        // Garde : une commande câblée dans `runCommand` mais absente de `commandEntries` est
+        // inatteignable (le test du chat l'a révélé : l'insertion visait une ligne reformatée).
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        const auto entries = w.commandEntries();
+        for (const char* id :
+             {"satin.rung.insert", "satin.rung.remove", "satin.diagnose", "analysis.pull",
+              "analysis.calibration", "export.options", "export.check", "thread.palette",
+              "text.edit", "text.glyph", "text.glyph.reset", "chat.open", "companion.settings",
+              "tool.region.brush"}) {
+            const bool listed = std::any_of(entries.begin(), entries.end(),
+                                            [id](const auto& e) { return e.id == id; });
+            QVERIFY2(listed, id);
+        }
+    }
+
     void chatOpenCommandShowsTheDockWithTheRealProvider() {
         ShellWindow w;
         w.show();
         QVERIFY(!w.runCommand("chat.open")); // aucun document ouvert
+        const auto entries = w.commandEntries();
+        const auto listed = [&entries](const char* id) {
+            return std::any_of(entries.begin(), entries.end(),
+                               [id](const auto& e) { return e.id == id; });
+        };
+        QVERIFY(listed("chat.open"));
+        QVERIFY(listed("companion.settings"));
         w.newProject();
         QVERIFY(w.runCommand("chat.open"));
         auto* dock = w.findChild<QDockWidget*>("chatDock");
@@ -168,10 +193,15 @@ private slots:
         QVERIFY(chat->statusText().contains("pas prêt"));
         QVERIFY(!chat->submit("Bonjour"));
         QVERIFY(backend.received.isEmpty());
-        bool asked = false;
-        QObject::connect(chat, &ChatPanel::configureRequested, [&asked] { asked = true; });
-        emit chat->configureRequested();
-        QVERIFY(asked);
+        // Le signal `configureRequested` de CE panneau ouvre la boîte de réglages (modale) : on ne
+        // l'émet pas ici, elle bloquerait le test. Un panneau isolé, sans fenêtre, le vérifie.
+        {
+            ChatPanel alone;
+            bool asked = false;
+            QObject::connect(&alone, &ChatPanel::configureRequested, [&asked] { asked = true; });
+            emit alone.configureRequested();
+            QVERIFY(asked);
+        }
         w.setChatBackend(nullptr);
         QVERIFY(chat->statusText().contains("Aucun fournisseur"));
     }

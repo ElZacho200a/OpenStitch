@@ -499,3 +499,9 @@ encore le desktop principal.
 ## 2026-11-06 — Session 2 : test du chat bloqué par une boîte modale
 
 - Trouvé par le build Windows : `chatPanelTalksToTheProvider…` appelait `newProject()` une seconde fois sur un document « modifié » ; la fenêtre ouvrait sa boîte « Modifications non enregistrées », que rien ne fermait, d'où 300 s puis un arrêt forcé qui empêchait aussi les autres QTest de la V2 de tourner. Défaut du test, pas du chat. Leçon : un test QTest qui remplace le document passe par `session().replaceProject(...)`, jamais par une commande qui peut demander confirmation.
+
+## 2026-11-06 — Session 2 : commandes du chat jamais enregistrées
+
+- Trouvé par le premier build Windows qui exécute la suite QTest de la V2 jusqu'au chat : `chat.open` et `companion.settings` étaient câblées dans `runCommand` mais **absentes de `commandEntries`**, donc inatteignables et désactivées. Cause : mon insertion du lot 5 visait une ligne que le formatage avait reflowée ; le remplacement n'a rien fait et aucune erreur ne l'a signalé. Vrai défaut fonctionnel, pas seulement de test.
+- Ajouts : les deux entrées ; un test (`everyCommandOfTheFinalisationIsListedInThePalette`) qui vérifie que toutes les commandes de cette PR sont listées, pour que l'oubli ne revienne pas.
+- Deuxième blocage de test, même famille que le premier : émettre `ChatPanel::configureRequested` dans une fenêtre ouvre la boîte de réglages (modale). Le test passe par un panneau isolé.
