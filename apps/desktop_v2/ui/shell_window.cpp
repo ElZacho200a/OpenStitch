@@ -565,8 +565,8 @@ void ShellWindow::buildToolRail() {
     toolRail_->setOrientation(Qt::Vertical);
     toolRail_->setMovable(false);
     toolRail_->setIconSize(QSize(20, 20));
-    toolRail_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    toolRail_->setFixedWidth(180);
+    toolRail_->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    toolRail_->setFixedWidth(52);
     addToolBar(Qt::LeftToolBarArea, toolRail_);
     toolGroup_ = new QActionGroup(this);
     toolGroup_->setExclusive(true);
@@ -1580,7 +1580,7 @@ void ShellWindow::setStateDirectory(const std::filesystem::path& dir) {
     std::filesystem::create_directories(dir, ec);
     QSettings uiSettings(QString::fromStdU16String((dir / "ui.ini").u16string()),
                          QSettings::IniFormat);
-    setCompactToolRail(uiSettings.value(QStringLiteral("tools/compact"), false).toBool());
+    setCompactToolRail(uiSettings.value(QStringLiteral("tools/compact"), true).toBool());
     autosave_ = std::make_unique<AutosaveStore>(dir);
     recent_ = pruneMissingRecent(loadRecentList(dir / "recent.txt"));
     rebuildRecentMenu();
