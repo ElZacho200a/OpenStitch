@@ -855,15 +855,18 @@ void ShellWindow::setWorkspace(Workspace workspace) {
         a->setChecked(a->data().toInt() == static_cast<int>(workspace));
     }
     rebuildToolRail();
-    if (focusWasInRail) {
-        canvas_->setFocus(Qt::OtherFocusReason);
-    }
     (workspace == Workspace::Optimize ? diagDock_ : docDock_)->raise();
     simBar_->setVisible(workspace == Workspace::Produce);
     if (workspace != Workspace::Produce && simLimit_) {
         setSimulationPosition(simulationTotal()); // quitter Production termine la simulation
     }
     refreshWindowTitle();
+    if (focusWasInRail) {
+        // Dock activation and toolbar layout can steal focus after a synchronous setFocus().
+        // Restore it after the workspace transition has finished, without disturbing
+        // focus owned by other panels when the switch was initiated elsewhere.
+        QTimer::singleShot(0, canvas_, [this] { canvas_->setFocus(Qt::OtherFocusReason); });
+    }
 }
 
 void ShellWindow::rebuildToolRail() {
