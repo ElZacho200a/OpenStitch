@@ -30,6 +30,7 @@
 #include <set>
 
 #include "action_dialog.hpp"
+#include "calibration_dialog.hpp"
 #include "calque_panel.hpp"
 #include "command_palette.hpp"
 #include "companion_panel.hpp"
@@ -2168,6 +2169,34 @@ private slots:
         QVERIFY(fadeAxisView(w.session().project(), id)->curve == FadeCurve::EaseIn);
         QVERIFY(w.session().undo());
         QVERIFY(fadeAxisView(w.session().project(), id)->curve == FadeCurve::Steep);
+    }
+
+    void pullComparisonAndCalibrationAssistantAreReachable() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        QVERIFY(!w.runCommand("analysis.pull")); // rien à comparer
+        QVERIFY(w.session().applyBatch(batchAddRect({0, 0}, 40, 20), "Rectangle").committed);
+        w.waitForIdle();
+        QVERIFY(w.runCommand("analysis.pull"));
+        QVERIFY(w.lastNotice().contains("NON calibrée"));
+        QVERIFY(w.runCommand("analysis.calibration"));
+        auto* dialog = w.findChild<CalibrationDialog*>();
+        QVERIFY(dialog != nullptr);
+        QVERIFY(dialog->rowCount() >= 6);
+        QVERIFY(dialog->comparisonText().contains("Tissu"));
+        QVERIFY(dialog->fitText().contains("insuffisantes"));
+        // Mesures = ce que prédit un autre tissu : l'ajustement devient possible, mais le modèle
+        // n'est jamais déclaré calibré.
+        PullCalibration other("linen");
+        for (const auto& r : other.rows()) {
+            QVERIFY(other.setMeasure(r.id, r.predictedMm));
+        }
+        QCOMPARE(dialog->loadMeasurementsCsv(QString::fromStdString(other.csv())),
+                 static_cast<int>(other.rows().size()));
+        QVERIFY(dialog->fitText().contains("non calibré"));
+        QVERIFY(!dialog->setMeasure("no-such-metric", 5.0));
+        dialog->close();
     }
 
     void satinRungCommandsEditAndDiagnoseTheSelectedColumn() {

@@ -47,6 +47,7 @@
 
 #include "action_dialog.hpp"
 #include "analysis_overlays.hpp"
+#include "calibration_dialog.hpp"
 #include "calque_panel.hpp"
 #include "command_palette.hpp"
 #include "companion_panel.hpp"
@@ -63,6 +64,7 @@
 #include "optimize_panel.hpp"
 #include "preview_canvas.hpp"
 #include "preview_service.hpp"
+#include "pull_calibration.hpp"
 #include "region_edit_controller.hpp"
 #include "region_panel.hpp"
 #include "satin_column.hpp"
@@ -2709,6 +2711,10 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
                                                : tr("Afficher le risque de plissement du tissu")),
                    q(tr("Analyse")), "",
                    overlays_->fabricActive() || !session_.project().embroidery_objects.empty()});
+    out.push_back({"analysis.pull", q(tr("Comparer le motif nominal et le tirage prédit")),
+                   q(tr("Analyse")), "", hasObjects});
+    out.push_back({"analysis.calibration", q(tr("Étalonner le tirage sur une pièce-test…")),
+                   q(tr("Analyse")), "", true});
     {
         // Courbe de transition d'un fondu : disponible quand un seul objet porte un fondu.
         const auto target = pointTarget();
@@ -2811,6 +2817,16 @@ bool ShellWindow::runCommand(const QString& id) {
             removePresetIndex(id.mid(14).toInt());
         } else if (id == QLatin1String("analysis.fabric")) {
             overlays_->toggleFabricRisk();
+        } else if (id == QLatin1String("analysis.pull")) {
+            const auto cmp = compareProjectPull(session_.project());
+            setNotice(fromUtf8(cmp.summary()), !cmp.ok);
+            if (!cmp.ok) {
+                return false;
+            }
+        } else if (id == QLatin1String("analysis.calibration")) {
+            auto* dialog = new CalibrationDialog(&session_.project(), this);
+            dialog->setAttribute(Qt::WA_DeleteOnClose);
+            dialog->show();
         } else if (id.startsWith(QLatin1String("fade.curve."))) {
             const auto target = pointTarget();
             if (!target) {

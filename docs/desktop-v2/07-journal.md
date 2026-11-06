@@ -447,3 +447,7 @@ encore le desktop principal.
 ## 2026-11-06 — Session 2 : lot 1, barreaux de satin
 
 - Cœur `satin_column` : ajouter / insérer entre deux barreaux / déplacer / retirer un barreau (une commande annulable chacun, refus sans trace : extrémités confondues, hors limites, moins de deux barreaux), `widestRungGap` et `redundantRung` (choix déterministe), `diagnoseSatin` (croisements en entiers 64 bits, aucun flottant pour décider). IHM : commandes « Satin : … » dans la palette. Pas de glisser au canevas pour l'instant. Validation : syntaxe seule en local (pas de Qt ni vcpkg dans ce conteneur), tests lancés par la CI.
+
+## 2026-11-06 — Session 2 : lot 2, comparaison du tirage et étalonnage
+
+- `core/pull_calibration` : `PullCalibration` (pièce-test, tableau nominal / prédit / mesuré, CSV, saisie une à une, ajustement en grille, DST de la pièce) et `compareProjectPull` (séquence effective contre séquence simulée : déplacement moyen et maximal, emprise). Boîte `CalibrationDialog` (sans logique métier) et commandes `analysis.pull` / `analysis.calibration`. Choix assumé : l'ajustement n'est qu'une proposition ; le modèle n'est jamais déclaré calibré, et les coefficients ne sont pas écrits dans le projet.

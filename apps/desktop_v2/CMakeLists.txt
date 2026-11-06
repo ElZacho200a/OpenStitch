@@ -41,6 +41,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/image_prep.cpp
     core/production_sheet.cpp
     core/satin_column.cpp
+    core/pull_calibration.cpp
     core/point_edit.cpp
     core/source_image_tools.cpp
 )
@@ -91,6 +92,8 @@ add_library(openstitch_desktop_v2_ui STATIC
     ui/import_dialog.hpp
     ui/optimize_panel.cpp
     ui/optimize_panel.hpp
+    ui/calibration_dialog.cpp
+    ui/calibration_dialog.hpp
     ui/companion_panel.cpp
     ui/companion_panel.hpp
     ui/live_server.cpp
