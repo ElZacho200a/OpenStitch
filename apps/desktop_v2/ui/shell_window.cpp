@@ -1071,6 +1071,16 @@ void ShellWindow::setWorkspace(Workspace workspace) {
     if (workspace_ == workspace && !toolRail_->actions().isEmpty()) {
         return;
     }
+    // Rebuilding the rail deletes its tool buttons. If one held keyboard focus,
+    // return focus to the permanent canvas instead of leaving it on a deleted widget.
+    QWidget* focused = QApplication::focusWidget();
+    const bool focusWasInRail =
+        focused != nullptr && (focused == toolRail_ || toolRail_->isAncestorOf(focused));
+    // Move focus before removing toolbar actions: deleting the focused tool button
+    // otherwise lets Qt choose an arbitrary successor during deferred destruction.
+    if (focusWasInRail) {
+        canvas_->setFocus(Qt::OtherFocusReason);
+    }
     workspace_ = workspace;
     for (auto* a : workspaceActions_) {
         a->setChecked(a->data().toInt() == static_cast<int>(workspace));
@@ -1082,6 +1092,12 @@ void ShellWindow::setWorkspace(Workspace workspace) {
         setSimulationPosition(simulationTotal()); // quitter Production termine la simulation
     }
     refreshWindowTitle();
+    if (focusWasInRail) {
+        // Raising the dock can focus its first child after the old toolbar button
+        // was removed. Restore focus synchronously once all workspace UI changes
+        // are complete; do not steal focus when it originally belonged elsewhere.
+        canvas_->setFocus(Qt::OtherFocusReason);
+    }
 }
 
 void ShellWindow::rebuildToolRail() {

@@ -666,6 +666,29 @@ private slots:
         QCOMPARE(rail->actions(), actionsBefore);
     }
 
+    void switchingWorkspaceReturnsFocusToCanvasWhenRailButtonIsReplaced() {
+        ShellWindow w;
+        // The empty shell displays the welcome page, not the canvas. A hidden
+        // widget cannot receive keyboard focus, so exercise the editor state.
+        w.newProject();
+        w.show();
+        QCoreApplication::processEvents();
+        auto* rail = w.findChild<QToolBar*>(QStringLiteral("toolRail"));
+        auto* canvas = w.findChild<QWidget*>(QStringLiteral("previewCanvas"));
+        QVERIFY(rail != nullptr);
+        QVERIFY(canvas != nullptr);
+        QVERIFY(canvas->isVisible());
+        QVERIFY(!rail->actions().isEmpty());
+        auto* button = rail->widgetForAction(rail->actions().first());
+        QVERIFY(button != nullptr);
+        button->setFocus(Qt::OtherFocusReason);
+        QTRY_VERIFY(button->hasFocus());
+
+        w.setWorkspace(Workspace::Produce);
+        QTRY_VERIFY(canvas->hasFocus());
+        QCOMPARE(w.activeToolId(), QStringLiteral("select"));
+    }
+
     void switchingWorkspaceResetsTheActiveToolStatusAlongWithSelection() {
         ShellWindow w;
         auto* status = w.findChild<QLabel*>(QStringLiteral("activeToolStatus"));
