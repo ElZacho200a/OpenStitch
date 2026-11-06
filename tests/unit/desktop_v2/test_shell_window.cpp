@@ -16,6 +16,7 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QScrollBar>
@@ -1620,6 +1621,37 @@ private slots:
         QVERIFY(qAbs(*value - 0.75) < 0.01);
         QVERIFY(w.session().undo());
         QCOMPARE(w.session().undoNames().size(), beforeUndo);
+    }
+
+    void draggingAParameterLabelChangesItsValueAsOneUndoStep() {
+        ShellWindow w;
+        w.show();
+        w.newProject();
+        const auto id = *createdObjectId(
+            w.session().applyBatch(batchAddRect({0, 0}, 20, 20), "Rectangle").report);
+        w.session().selection().replace({{TargetKind::EmbroideryObject, id}});
+        auto* spin = w.inspector()->findChild<QDoubleSpinBox*>("param_row_spacing_mm");
+        QVERIFY(spin != nullptr);
+        QLabel* label = nullptr;
+        for (auto* l : w.inspector()->findChildren<QLabel*>()) {
+            if (l->buddy() == spin) {
+                label = l;
+            }
+        }
+        QVERIFY(label != nullptr);
+        const double before = spin->value();
+        const auto undoBefore = w.session().undoNames().size();
+        QTest::mousePress(label, Qt::LeftButton, Qt::NoModifier, QPoint(5, 5));
+        QMouseEvent move(QEvent::MouseMove, QPointF(5 + 30, 5), QPointF(5 + 30, 5), Qt::NoButton,
+                         Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(label, &move); // 30 px = 5 pas
+        QTest::mouseRelease(label, Qt::LeftButton, Qt::NoModifier, QPoint(35, 5));
+        QVERIFY(qAbs(spin->value() - (before + 5 * spin->singleStep())) < 1e-6);
+        QTRY_COMPARE_WITH_TIMEOUT(w.session().undoNames().size(), undoBefore + 1, 1500);
+        const auto stored =
+            readParam(w.session().project().embroidery_objects.front(), "row_spacing_mm");
+        QVERIFY(stored.has_value());
+        QVERIFY(qAbs(*stored - spin->value()) < 0.01);
     }
 
     void pendingInspectorNumericEditIsDiscardedWhenSelectionChanges() {

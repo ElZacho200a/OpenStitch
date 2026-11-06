@@ -550,3 +550,7 @@ encore le desktop principal.
 ## 2026-11-06 — Session 5 (suite 2) : rail de bobines
 
 - Rail de bobines (dock du bas) : ordre de couture en rangée, changements de fil comptés, glisser ou Alt+flèches pour réordonner. Un plantage trouvé en route : le rail doit être détruit avant la session (comme les autres panneaux), sinon `unsubscribe` sur une session détruite ; et un rafraîchissement par modification faisait dépasser 300 s à un test existant (icônes recréées) : rafraîchissement regroupé et icônes en cache. Vu à l'écran : `captures/rail-bobines.png` (thème sombre seulement).
+
+## 2026-11-06 — Session 5 (suite 3) : champs à glisser
+
+- Les libellés des réglages numériques de l'inspecteur se glissent horizontalement (Maj grossier, Ctrl fin). Pure fonction testée (`scrubbedValue`) + filtre d'événements ; le champ garde la saisie et le regroupement de l'annulation. Pas de capture : le geste n'est pas visible sur une image fixe ; test QTest avec événements synthétiques.

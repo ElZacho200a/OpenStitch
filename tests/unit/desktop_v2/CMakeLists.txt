@@ -9,6 +9,7 @@ add_executable(test_desktop_v2_core
     test_command_catalog.cpp
     test_context_commands.cpp
     test_spool_rail.cpp
+    test_scrub.cpp
     test_shape_batch.cpp
     test_transform_batch.cpp
     test_edit_batch.cpp
