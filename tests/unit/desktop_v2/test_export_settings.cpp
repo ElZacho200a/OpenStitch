@@ -123,7 +123,8 @@ TEST_CASE("the pre-export check reports points outside the hoop and machine mism
           "[desktop_v2][export]") {
     auto s = newSession();
     CHECK_FALSE(checkExport(s.project()).ok); // rien à contrôler
-    REQUIRE(applyHoop(s, "rect-100x100", 0.0).ok);
+    // Le cadre par défaut est déjà 100 x 100 (refusé comme inchangé) : on en prend un autre.
+    REQUIRE(applyHoop(s, "rect-130x180", 0.0).ok);
     REQUIRE(s.applyBatch(batchAddRect({0, 0}, 40, 20), "Rectangle").committed);
     const auto fits = checkExport(s.project(), "dst");
     REQUIRE(fits.ok);
