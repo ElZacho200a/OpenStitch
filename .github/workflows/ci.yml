@@ -101,7 +101,7 @@ jobs:
               $code = $LASTEXITCODE
               "${testName} run ${i}: code de sortie $code (0x{0:X})" -f $code
               if (Test-Path $log) {
-                if ($testName -eq "test_desktop_v2_shell") { Get-Content $log | Select-String -Pattern "FAIL|Totals:|Finished testing|QFATAL|QWARN" | Select-Object -First 100 } else { Get-Content $log -Tail 120 }
+                if ($testName -eq "test_desktop_v2_shell") { Get-Content $log | Select-String -Pattern "FAIL|Totals:|Finished testing|QFATAL" } else { Get-Content $log -Tail 120 }
               } else {
                 "Journal QTest absent: $log"
               }
