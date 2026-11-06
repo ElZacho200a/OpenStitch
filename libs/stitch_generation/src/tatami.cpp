@@ -952,12 +952,16 @@ RegionSegmentTester::RegionSegmentTester(RegionSegmentTester&&) noexcept = defau
 RegionSegmentTester& RegionSegmentTester::operator=(RegionSegmentTester&&) noexcept = default;
 
 bool RegionSegmentTester::stays_inside(Vec2um a, Vec2um b) const {
+    return stays_inside(a, b, Micrometers{0});
+}
+
+bool RegionSegmentTester::stays_inside(Vec2um a, Vec2um b, Micrometers edge_tolerance) const {
     if (impl_ == nullptr) {
         return false; // aucun polygone exploitable (cf. segment_stays_in_region)
     }
     const PointD pa{static_cast<double>(a.x.value), static_cast<double>(a.y.value)};
     const PointD pb{static_cast<double>(b.x.value), static_cast<double>(b.y.value)};
-    return !connector_invalid(impl_->index, pa, pb);
+    return !connector_invalid(impl_->index, pa, pb, std::max(0.0, double(edge_tolerance.value)));
 }
 
 struct HiddenRouter::Impl {
