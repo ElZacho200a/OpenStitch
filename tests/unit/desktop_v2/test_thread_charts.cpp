@@ -105,10 +105,13 @@ TEST_CASE("the thread list exports to CSV with one row per thread", "[desktop_v2
     std::size_t rows = 0;
     REQUIRE(exportThreadListCsv(out->project, file, &rows).ok);
     CHECK(rows >= 2);
-    std::ifstream in(file, std::ios::binary);
-    std::stringstream text;
-    text << in.rdbuf();
-    const auto csv = text.str();
+    std::string csv;
+    {
+        std::ifstream in(file, std::ios::binary);
+        std::stringstream text;
+        text << in.rdbuf();
+        csv = text.str();
+    } // fichier refermé avant de le supprimer (Windows refuse sinon)
     CHECK(csv.rfind("ordre;marque;nuancier;reference;nom;couleur;objets;points;longueur_mm;duree_s",
                     0) == 0);
     std::size_t lines = 0;
