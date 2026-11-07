@@ -271,15 +271,15 @@ e7e778d4,case,Activer la segmentation par IA (SAM 2),ai_preferences_dialog.cpp,e
 56dd6a80,case,Afficher la grille,grid_settings_dialog.cpp,partiel,gridMenu,SERVICE_ONLY,,,
 f3c139b0,case,Afficher le tissu (fond opaque),realistic_render_dialog.cpp,absent,,ABSENT,,,
 f6bdf6f6,case,Affiner (2-opt / Or-opt),order_list_widget.cpp,absent,,ABSENT,,,
-44642518,case,Alterner (miroir un sur deux),properties_panel.cpp,absent,,ABSENT,,,
-a3bed34d,case,Angle absolu (repère du dessin),properties_panel.cpp,absent,,ABSENT,,,
+44642518,case,Alterner (miroir un sur deux),properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam,ParamField.qml switch_alternate
+a3bed34d,case,Angle absolu (repère du dessin),properties_panel.cpp,absent,,ABSENT,,,guide d'auto-satin absolu : champ imbrique de guides (liste editee sur le canevas)
 2b66fac6,case,Angle des fils automatique,main_window_satin_auto.cpp,absent,,ABSENT,,,
 12815a11,case,Anneaux en satin,main_window_create.cpp,absent,,ABSENT,,,
 223c1e22,case,Aperçu sur l'image,segmentation_dialog.cpp,absent,,UI_PARTIAL,apercu dans le panneau Preparer (pas en surimpression du canevas),ImageController::previewSegmentation,SegmentationSection.qml
 f019d797,case,"Arrêts machine (poser le tissu, couper)",properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(applique.stops),ParamField.qml switch
-65fd5bf3,case,Aspect fait main,properties_panel.cpp,absent,,ABSENT,,,
+65fd5bf3,case,Aspect fait main,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam,ParamField.qml switch_handmade
 d2463e2c,case,Bloc uni (sans tissu visible),main_window_create.cpp,absent,,ABSENT,,,
-6dd1c5d4,case,Centre automatique,properties_panel.cpp,absent,,ABSENT,,,
+6dd1c5d4,case,Centre automatique,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setPoint/clearParam,ParamField.qml clear_center_mm
 40de0b13,case,Comparer avant / après l'optimisation,main_window_order_jumps.cpp,absent,,ABSENT,,,
 063f27c8,case,Conserver les fichiers de diagnostic,ai_preferences_dialog.cpp,exclu,,BLOCKED,,,
 dfb2d55c,case,Conserver les proportions,import_dialog.cpp,absent,,ABSENT,,,
@@ -293,10 +293,10 @@ abec11cd,case,Crénage de la police,text_dialog.cpp,fait,Crénage de la police,S
 ec1b8e2e,case,"Densité excessive, au-delà de",main_window_density.cpp,absent,,ABSENT,,,
 3d3ea99b,case,Diviser chaque forme retenue par couleur,ai_segmentation_dialog.cpp,exclu,,ABSENT,,,
 ea65d971,case,Découper les points trop longs,generation_options_dialog.cpp,fait,Découper les points trop longs,SERVICE_ONLY,,,
-0e474c43,case,Dégradé de densité,properties_panel.cpp,fait,Dégradé de densité,SERVICE_ONLY,,,
+0e474c43,case,Dégradé de densité,properties_panel.cpp,fait,Dégradé de densité,UI_PARTIAL,StudioInspectorTest::listsAndPointsEditEndToEnd,InspectorController::clearParam,ParamField.qml count_density_gradient (lecture et effacement ; creation sur le canevas)
 11df031b,case,Entre les objets : relier sans couper le fil si le trajet sera recouvert,machine_export_dialog.cpp,absent,,FUNCTIONAL_UNTESTED,,FileController::setExportOptions(autoJoin),FilePanel.qml exportDialog
 14a6a35a,case,Entrée/sortie automatiques des objets,generation_options_dialog.cpp,absent,,ABSENT,,,
-43d3b43f,case,Espacement automatique selon la largeur,properties_panel.cpp,absent,,ABSENT,,,
+43d3b43f,case,Espacement automatique selon la largeur,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam,ParamField.qml switch_auto_spacing
 3a552654,case,"Finitions automatiques (coupes, points d'arrêt, points courts)",generation_options_dialog.cpp,absent,,ABSENT,,,
 c37dbd3d,case,Fond de tissu opaque,export_image_dialog.cpp,partiel,fabricRgb,ABSENT,,,
 eb932cc3,case,Fractionner les traversées longues (> 7 mm),main_window_satin_auto.cpp,absent,,ABSENT,,,
@@ -306,7 +306,7 @@ e181a7ab,case,Gomme,main_window_detail_zones.cpp,fait,Gomme,SERVICE_ONLY,,,
 5674752c,case,Ignorer la plus grande région (probablement le fond),ai_segmentation_dialog.cpp,exclu,,ABSENT,,,
 e368f34e,case,Inverser les tons,main_window_create.cpp,absent,,ABSENT,,,
 df6f4ad1,case,Je possède ce fil,thread_panel.cpp,absent,,ABSENT,,,
-1a41ec3c,case,Liaison en spirale,properties_panel.cpp,absent,,ABSENT,,,
+1a41ec3c,case,Liaison en spirale,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam,ParamField.qml switch_spiral
 e47033c8,case,Liaisons cousues cachées,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(tatami.hidden_underpath),ParamField.qml switch
 1e94712b,case,"Ligatures (ff, fi, fl, ffi, ffl)",text_dialog.cpp,absent,,ABSENT,,,
 623246f4,case,Limiter la recherche du fil le plus proche à mes fils,thread_panel.cpp,absent,,ABSENT,,,
@@ -329,7 +329,7 @@ a67720e9,case,Sous-couche centrale,main_window_satin_auto.cpp,fait,Sous-couche c
 c791d168,case,Sous-couche de contour,properties_panel.cpp,fait,Sous-couche de contour,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(tatami.underlay_edge),ParamField.qml switch
 15ed49ee,case,Sous-couche en zigzag,properties_panel.cpp,fait,Sous-couche en zigzag,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(tatami.underlay_zigzag),ParamField.qml switch
 a9e979c7,case,Sous-couche parallèle,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(tatami.underlay_parallel),ParamField.qml switch
-b6a80b99,case,Sous-couche perpendiculaire,properties_panel.cpp,absent,,ABSENT,,,
+b6a80b99,case,Sous-couche perpendiculaire,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam,ParamField.qml switch_underlay_parallel
 d664e9fb,case,Sous-couche zigzag,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(directional.underlay_zigzag),ParamField.qml switch
 f0eeb068,case,Texte en dessous (sommets vers le centre),text_advanced_panel.cpp,fait,Texte en dessous (sommets vers le centre),SERVICE_ONLY,,,
 e83895af,case,Traits sombres cousus par-dessus,main_window_create.cpp,absent,,ABSENT,,,
