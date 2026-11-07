@@ -1,0 +1,24 @@
+id,statut,preuve,controleur,composant
+f9db85df,TESTED,StudioDigitizeTest::pointEditJourney,PointEditController::setTrim,PointEditPanel.qml pointTrim
+aee88642,TESTED,StudioDigitizeTest::pointEditJourney,PointEditController::setTrim(false),PointEditPanel.qml pointNoTrim
+f590671c,TESTED,StudioDigitizeTest::pointEditJourney,PointEditController::setJump(false),PointEditPanel.qml pointToStitch
+66d86e8a,TESTED,StudioDigitizeTest::mainQmlHostsDigitizePanels,PointEditController::setJump(true),PointEditPanel.qml pointToJump
+b0c51442,TESTED,StudioDigitizeTest::pointEditJourney,PointEditController::restoreSelected,PointEditPanel.qml pointRestore
+d9267bc5,TESTED,StudioDigitizeTest::pointEditJourney,PointEditController::deleteSelected,PointEditPanel.qml pointDelete
+149d5727,TESTED,StudioDigitizeTest::mainQmlHostsDigitizePanels,PointEditController::selectAllPoints,PointEditPanel.qml pointSelectAll
+c7233a7c,TESTED,StudioDigitizeTest::pointEditJourney,PointEditController::discardEdits,PointEditPanel.qml pointDiscard
+613e0ed8,TESTED,StudioDigitizeTest::mainQmlHostsDigitizePanels,PointEditController::discardEdits,PointEditPanel.qml pointDiscard
+4132716d,TESTED,StudioDigitizeTest::fadeJourney,FadeController::create,FadePanel.qml fadeCreate
+9f2384e1,UI_PARTIAL,StudioDigitizeTest::satinColumnJourney,SatinController::createFromRungs,SatinPanel.qml (creation par barreaux testee ; geste de trace au canevas absent)
+b2e5796b,UI_PARTIAL,StudioDigitizeTest::satinColumnJourney,SatinController::moveRailNode,SatinPanel.qml noeud de rail (poignees de rail au canevas absentes)
+38a816ae,UI_PARTIAL,StudioDigitizeTest::satinColumnJourney,SatinController::diagnosis,SatinPanel.qml satinDiagnosis
+84b7b6f9,UI_PARTIAL,StudioDigitizeTest::directionGuidesJourney,SatinController::addGuide,SatinPanel.qml (trace au canevas absent)
+755c06fc,UI_PARTIAL,StudioDigitizeTest::directionGuidesJourney,SatinController::addGuide(break),SatinPanel.qml (trace au canevas absent)
+31cf34dd,UI_PARTIAL,StudioDigitizeTest::directionGuidesJourney,SatinController::addGuide,SatinPanel.qml (outil de trace au canevas absent)
+aea2d95e,UI_PARTIAL,StudioDigitizeTest::directionGuidesJourney,SatinController::addGuide,SatinPanel.qml
+9e718d2b,UI_PARTIAL,StudioDigitizeTest::directionGuidesJourney,SatinController::clearGuides,SatinPanel.qml guidesClear (efface tous les guides de l'objet)
+67fc3ea3,TESTED,StudioDigitizeTest::autoSatinThroughTheActionPalette,ActionController::run(satin.auto),ActionPalette.qml
+8233c055,TESTED,StudioDigitizeTest::autoSatinThroughTheActionPalette,ActionController::run(satin.auto),ActionPalette.qml
+18d015e9,TESTED,StudioDigitizeTest::autoSatinThroughTheActionPalette,ActionController::run(satin.auto),ActionPalette.qml
+90c9c047,TESTED,StudioDigitizeTest::textLetteringJourney,ActionController::run(text.add/text.edit/text.remove),ActionPalette.qml
+c8de119f,UI_PARTIAL,StudioDigitizeTest::textLetteringJourney,ActionController::run(text.add),ActionPalette.qml (outil Texte au canevas absent)
