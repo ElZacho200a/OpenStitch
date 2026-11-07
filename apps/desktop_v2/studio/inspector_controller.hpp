@@ -33,6 +33,8 @@ class InspectorController : public QObject {
     Q_PROPERTY(QVariantList sections READ sections NOTIFY changed)
     Q_PROPERTY(int totalFieldCount READ totalFieldCount NOTIFY changed)
     Q_PROPERTY(int hiddenAdvancedCount READ hiddenAdvancedCount NOTIFY changed)
+    Q_PROPERTY(int hiddenExpertCount READ hiddenExpertCount NOTIFY changed)
+    Q_PROPERTY(bool showExpert READ showExpert WRITE setShowExpert NOTIFY changed)
     Q_PROPERTY(QString query READ query WRITE setQuery NOTIFY changed)
     Q_PROPERTY(bool showAdvanced READ showAdvanced WRITE setShowAdvanced NOTIFY changed)
     Q_PROPERTY(bool allPresets READ allPresets WRITE setAllPresets NOTIFY changed)
@@ -62,6 +64,10 @@ public:
     // Every field of the type (ignoring level / search) and how many are hidden by the level.
     [[nodiscard]] int totalFieldCount() const;
     [[nodiscard]] int hiddenAdvancedCount() const;
+    [[nodiscard]] int hiddenExpertCount() const;
+    // Expert level: also shows the expert fields (seeds, thresholds, points, guide lists).
+    [[nodiscard]] bool showExpert() const { return showExpert_; }
+    void setShowExpert(bool show);
     [[nodiscard]] QString query() const { return query_; }
     void setQuery(const QString& query);
     [[nodiscard]] bool showAdvanced() const { return showAdvanced_; }
@@ -78,6 +84,10 @@ public:
     Q_INVOKABLE QString setParam(const QString& key, double value);
     // Typed entry: accepts "0,35" and "0.35"; text that is not a number is refused, not guessed.
     Q_INVOKABLE QString setParamText(const QString& key, const QString& text);
+    // Optional point [x, y] in mm (entry / exit / centre) and clearing of an optional setting or a
+    // list (guides, break lines, rungs, gradient, sweep angle): one undo step.
+    Q_INVOKABLE QString setPoint(const QString& key, double xMm, double yMm);
+    Q_INVOKABLE QString clearParam(const QString& key);
     Q_INVOKABLE QString resetParam(const QString& key);
     Q_INVOKABLE QString resetAll();
     // Conversion of the selected objects to another stitch type (one undo step).
@@ -102,6 +112,8 @@ private:
     QString applyPairs(const Selection& selection,
                        const std::vector<std::pair<std::string, double>>& pairs,
                        const QString& label, const std::string& mergeKey);
+    QString commitBatches(const Selection& selection, const std::vector<std::string>& batches,
+                          const QString& label, const std::string& mergeKey);
     void bump();
     QString finish(const QString& refusal, const QString& success = {});
     DocumentSession& session_;
@@ -109,6 +121,7 @@ private:
     SelectionModel::Token selectionToken_{};
     QString query_;
     bool showAdvanced_{false};
+    bool showExpert_{false};
     bool allPresets_{false};
     QString message_;
     bool ok_{true};
