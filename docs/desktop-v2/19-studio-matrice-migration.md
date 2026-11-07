@@ -30,3 +30,12 @@ Statut : ✅ migré et testé · 🟡 partiel · ⬜ à faire. Inventaire foncti
 - « Enregistrer » après « Ouvrir » écrit dans le fichier d'origine sans confirmation ; aucune
   sauvegarde automatique ni récupération dans Studio (le shell Widgets les garde).
 - Fichiers non `.osp` (DST, SVG…) : pas encore ouvrables dans Studio.
+
+## Matrice par fonction (générée)
+`python scripts/parity/build_studio_matrix.py` produit `parite-studio/matrice-studio.csv` : les 444
+fonctions de l'inventaire V1 automatisé (#279) × l'état V2 Widgets × un statut Studio normalisé
+(`ABSENT … VALIDATED`). Les statuts Studio se saisissent dans `parite-studio/statuts-studio.csv`
+(id, statut, preuve, contrôleur, composant) ; seul `VALIDATED` compte pour la DoD
+(`--dod` échoue tant qu'une ligne ne l'est pas). Les 11 fonctions « exclues » en V2 sont `BLOCKED` :
+toute exclusion définitive attend l'accord du propriétaire. La matrice ne couvre que l'inventaire V1 :
+les capacités V2-only et les paramètres du moteur sont à ajouter (voir ci-dessous).
