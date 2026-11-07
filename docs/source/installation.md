@@ -31,7 +31,7 @@ démarrez *OpenStitch Studio* depuis le menu Démarrer.
 
 **Avec un ZIP** : **décompressez tout le ZIP** (clic droit → *Extraire tout* ; ne
 lancez pas l'exécutable depuis l'aperçu de l'archive), puis lancez
-`desktop\Release\openstitch.exe`. Le dossier contient les DLL et les plugins Qt
+`desktop_v2\studio\Release\openstitch.exe` (Studio ; la V1 optionnelle est `desktop\Release\openstitch-v1.exe`). Le dossier contient les DLL et les plugins Qt
 dont l'application a besoin : **ne déplacez pas `openstitch.exe` seul**. L'outil
 en ligne de commande `openstitch-cli.exe` est dans `cli\Release\` (voir
 [Ligne de commande](cli.md)).
@@ -197,7 +197,7 @@ ctest --preset msvc-debug
 
 Les exécutables produits :
 
-- `build\msvc\apps\desktop\Debug\openstitch.exe` — application graphique ;
+- `build\msvc\apps\desktop_v2\studio\Debug\openstitch.exe` — application graphique ;
 - `build\msvc\apps\cli\Debug\openstitch-cli.exe` — outil en ligne de commande.
 
 Avertissement : au **premier** `cmake --preset msvc`, vcpkg compile OpenCV et

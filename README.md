@@ -20,7 +20,7 @@ Détails, emplacement des préférences et de la sauvegarde automatique, désins
 
 **Builds bêta** : dès que la compilation Windows réussit, les workflows CI et Release déposent un ZIP
 `openstitch-beta-windows-x64` dans **Actions → exécution concernée → Artifacts** (conservé 30 jours, même si les
-tests échouent ensuite). Décompressez **tout** le ZIP et lancez `desktop/Release/openstitch.exe` (les DLL et plugins
+tests échouent ensuite). Décompressez **tout** le ZIP et lancez `desktop_v2/studio/Release/openstitch.exe` (Studio, l'application par défaut ; l'ancienne V1 Widgets est `openstitch-v1.exe`, compilée avec `-DOPENSTITCH_BUILD_LEGACY_V1=ON`) (les DLL et plugins
 voisins sont nécessaires). Ces builds ne sont pas forcément validés par les tests.
 
 **CLI Linux x86-64 sans compilation** : pour installer automatiquement la version publiée,

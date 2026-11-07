@@ -102,7 +102,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Studio real-project fixture generation failed' }
           $output = Join-Path (Resolve-Path dist/studio-screenshots) 'studio-software.png'
           $project = Join-Path (Resolve-Path dist/studio-screenshots) 'tentabrode-300mm.osp'
-          $process = Start-Process -FilePath build/msvc/apps/desktop_v2/studio/Release/openstitch_v2_studio.exe -ArgumentList @(
+          $process = Start-Process -FilePath build/msvc/apps/desktop_v2/studio/Release/openstitch.exe -ArgumentList @(
             "`"$project`"", '--software', '--screenshot', "`"$output`""
           ) -Wait -PassThru -WindowStyle Hidden
           if ($process.ExitCode -ne 0 -or -not (Test-Path $output)) { throw 'Studio screenshot failed' }

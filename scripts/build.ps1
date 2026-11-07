@@ -296,7 +296,7 @@ foreach ($cfg in $configs) {
 # devoir comparer manuellement des horodatages dans l'explorateur.
 Write-Host "== Executables desktop produits ==" -ForegroundColor Cyan
 foreach ($cfg in $configs) {
-    $exePath = "build\msvc\apps\desktop\$cfg\openstitch.exe"
+    $exePath = "build\msvc\apps\desktop_v2\studio\$cfg\openstitch.exe"
     if (Test-Path $exePath) {
         $item = Get-Item $exePath
         Write-Host "  $exePath  (modifie le $($item.LastWriteTime))" -ForegroundColor Gray
