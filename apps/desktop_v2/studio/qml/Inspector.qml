@@ -127,6 +127,17 @@ Item {
                 onToggled: root.ctl.showAdvanced = checked
             }
 
+            Controls.Switch {
+                objectName: "expertSwitch"
+                text: qsTr("Niveau expert") + (root.ctl && root.ctl.hiddenExpertCount > 0
+                                               ? " (" + root.ctl.hiddenExpertCount + ")" : "")
+                checked: root.ctl ? root.ctl.showExpert : false
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+                palette.windowText: Theme.foreground
+                onToggled: root.ctl.showExpert = checked
+            }
+
             Text {
                 Layout.fillWidth: true
                 visible: root.ctl && root.ctl.typeMixed

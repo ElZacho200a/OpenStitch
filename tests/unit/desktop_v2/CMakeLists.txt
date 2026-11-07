@@ -17,6 +17,7 @@ add_executable(test_desktop_v2_core
     test_diagnostics.cpp
     test_export_formats.cpp
     test_param_spec.cpp
+    test_param_completeness.cpp
     test_action_catalog.cpp
     test_view_tools.cpp
     test_document_services.cpp
