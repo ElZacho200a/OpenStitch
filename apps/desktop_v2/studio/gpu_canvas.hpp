@@ -98,6 +98,11 @@ public:
     [[nodiscard]] QVariantMap layers() const;
     void setLayers(const QVariantMap& layers);
     [[nodiscard]] const CanvasLayers& layerFlags() const { return layers_; }
+    // Données immuables de la couche « regions » (publiées par l'espace Segmentation).
+    void setRegionLayer(std::shared_ptr<const RegionLayerData> data);
+    [[nodiscard]] const std::shared_ptr<const RegionLayerData>& regionLayer() const {
+        return regionLayer_;
+    }
     // État de vue transmissible entre espaces : {centerX, centerY} en mm de SCÈNE (Y vers le
     // bas) et {zoom} en px/mm. restoreViewState() est différé jusqu'à ce que le canevas ait une
     // taille et supprime l'ajustement automatique initial.
@@ -172,6 +177,7 @@ private:
     QRectF rubberBand_;
     StudioCamera camera_;
     CanvasLayers layers_;
+    std::shared_ptr<const RegionLayerData> regionLayer_;
     bool viewPending_{false};
     double pendingZoom_{1.0}, pendingX_{0.0}, pendingY_{0.0};
     void applyPendingView();
