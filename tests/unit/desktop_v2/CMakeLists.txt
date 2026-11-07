@@ -106,6 +106,14 @@ file(GLOB studio_all_qml CONFIGURE_DEPENDS "${studio_test_qml_root}/qml/*.qml")
                 "${studio_test_qml_root}/qml/qmldir")
         add_test(NAME test_desktop_v2_studio_inspector COMMAND test_desktop_v2_studio_inspector -o -,txt)
         add_test(NAME test_desktop_v2_studio_shell COMMAND test_desktop_v2_studio_shell -o -,txt)
+        # Design system guard rails: WCAG contrast of the Theme tokens + QML lint (no GUI needed).
+        add_executable(test_desktop_v2_studio_design test_studio_design.cpp)
+        target_link_libraries(test_desktop_v2_studio_design PRIVATE Qt6::Test openstitch::warnings)
+        target_compile_definitions(test_desktop_v2_studio_design PRIVATE
+            OPENSTITCH_STUDIO_QML_DIR="${studio_test_qml_root}/qml")
+        add_test(NAME test_desktop_v2_studio_design COMMAND test_desktop_v2_studio_design -o -,txt)
+        set_tests_properties(test_desktop_v2_studio_design PROPERTIES
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
         get_filename_component(studio_test_qml_imports "${Qt6_DIR}/../../../qml" ABSOLUTE)
         set_tests_properties(test_desktop_v2_studio_shell test_desktop_v2_studio_inspector PROPERTIES
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_test_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"

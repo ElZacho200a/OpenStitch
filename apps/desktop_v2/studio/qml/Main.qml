@@ -17,6 +17,26 @@ Window {
     minimumHeight: 640
     visible: true
     color: Theme.background
+    // Safety net: a Qt control that is not a Studio* component still inherits a dark, readable
+    // palette (never the white Basic defaults). The font counterpart is applied in main.cpp.
+    palette.window: Theme.background
+    palette.windowText: Theme.foreground
+    palette.base: Theme.raised
+    palette.alternateBase: Theme.surface
+    palette.text: Theme.foreground
+    palette.placeholderText: Theme.faint
+    palette.button: Theme.raised
+    palette.buttonText: Theme.foreground
+    palette.light: Theme.hover
+    palette.midlight: Theme.hover
+    palette.mid: Theme.border
+    palette.dark: Theme.divider
+    palette.shadow: Theme.background
+    palette.highlight: Theme.accent
+    palette.highlightedText: Theme.accentInk
+    palette.link: Theme.info
+    palette.toolTipBase: Theme.raised
+    palette.toolTipText: Theme.foreground
     title: (studio.dirty ? "• " : "") + studio.title + " — OpenStitch Studio"
 
     readonly property var editController: editor
@@ -35,7 +55,7 @@ Window {
           detail: qsTr("Le contour framboise indique la sélection. Zoomez pour observer la structure, sans modifier le document.") },
         { name: qsTr("Produire"), label: qsTr("DOCUMENT SOURCE"),
           title: qsTr("Relire le motif avant production"),
-          detail: qsTr("Ce prototype consulte les projets existants. Pour exporter ou simuler la couture, utilisez encore Desktop V2.") }
+          detail: qsTr("Le Studio ouvre, édite et exporte : réglez les fils et le cadre, simulez la couture, puis exportez le DST depuis le panneau Fichier.") }
     ]
     readonly property var workspace: workspaces[workspaceIndex]
     readonly property var objectEntries: studio.objects
@@ -313,9 +333,7 @@ Window {
                                 font.pixelSize: Theme.bodySize
                                 font.weight: workspaceButton.active ? Font.DemiBold : Font.Normal
                             }
-                            Controls.ToolTip.visible: hovered
-                            Controls.ToolTip.text: modelData.name + "  ·  Ctrl+" + (index + 1)
-                            Controls.ToolTip.delay: 600
+                            StudioToolTip { text: modelData.name + "  ·  Ctrl+" + (index + 1) }
                         }
                     }
                 }
@@ -396,14 +414,6 @@ Window {
                     color: Theme.foreground
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.bodySize
-                }
-                Text {
-                    text: qsTr("UN DOCUMENT · QUATRE CONTEXTES")
-                    visible: window.width >= 1400
-                    color: Theme.faint
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.captionSize
-                    font.letterSpacing: 1.1
                 }
                 Rectangle { implicitWidth: 1; implicitHeight: 14; color: Theme.border; Layout.leftMargin: 8; Layout.rightMargin: 8 }
                 Text {
@@ -914,9 +924,7 @@ Window {
                                                         Boolean(mouse.modifiers & Qt.ControlModifier))
                                 }
                             }
-                            Controls.ToolTip.visible: hovered
-                            Controls.ToolTip.delay: 700
-                            Controls.ToolTip.text: modelData.label + "\n" + modelData.id
+                            StudioToolTip { delay: 700; text: modelData.label + "\n" + modelData.id }
                         }
 
                         Text {

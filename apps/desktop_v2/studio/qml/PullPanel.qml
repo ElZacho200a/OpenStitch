@@ -32,7 +32,7 @@ Rectangle {
                 font.family: Theme.fontFamily
                 text: panel.ready ? panel.controller.limits : ""
             }
-            Controls.ComboBox {
+            StudioComboBox {
                 objectName: "pullMode"
                 Layout.fillWidth: true
                 model: panel.ready ? panel.controller.modes : []
@@ -40,7 +40,7 @@ Rectangle {
                 enabled: panel.ready && panel.controller.mode >= 0
                 onActivated: function(i) { panel.controller.setMode(i) }
             }
-            Controls.ComboBox {
+            StudioComboBox {
                 objectName: "pullFabric"
                 Layout.fillWidth: true
                 model: panel.ready ? panel.controller.fabrics : []
@@ -77,7 +77,7 @@ Rectangle {
                 objectName: "pullMessage"
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
-                color: panel.ready && !panel.controller.lastOk ? "#e06060" : Theme.faint
+                color: panel.ready && !panel.controller.lastOk ? Theme.error : Theme.faint
                 font.family: Theme.fontFamily
                 text: panel.ready ? panel.controller.message : ""
             }

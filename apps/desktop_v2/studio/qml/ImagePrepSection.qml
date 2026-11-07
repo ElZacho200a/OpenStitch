@@ -79,7 +79,7 @@ ColumnLayout {
     }
 
     SectionLabel { text: qsTr("TRAITEMENT") }
-    Controls.ComboBox {
+    StudioComboBox {
         id: kindBox
         objectName: "prepKind"
         Layout.fillWidth: true
@@ -99,7 +99,7 @@ ColumnLayout {
                 text: parent.modelData.label
                 color: Theme.foreground; font.pixelSize: Theme.bodySize; font.family: Theme.fontFamily
             }
-            Controls.Slider {
+            StudioSlider {
                 objectName: "prepField_" + parent.modelData.key
                 Layout.fillWidth: true
                 from: parent.modelData.min

@@ -50,13 +50,13 @@ ColumnLayout {
         Layout.fillWidth: true
         columnSpacing: 8
         Text { text: qsTr("Couleurs maximum"); color: Theme.foreground; font.pixelSize: Theme.bodySize; font.family: Theme.fontFamily; Layout.fillWidth: true }
-        Controls.SpinBox { objectName: "segMaxColors"; from: 2; to: 64; value: section.maxColors; editable: true
+        StudioSpinBox { objectName: "segMaxColors"; from: 2; to: 64; value: section.maxColors; editable: true
             onValueModified: section.maxColors = value }
         Text { text: qsTr("Taille minimale (px)"); color: Theme.foreground; font.pixelSize: Theme.bodySize; font.family: Theme.fontFamily; Layout.fillWidth: true }
-        Controls.SpinBox { objectName: "segMinRegion"; from: 1; to: 100000; value: section.minRegionPx; editable: true
+        StudioSpinBox { objectName: "segMinRegion"; from: 1; to: 100000; value: section.minRegionPx; editable: true
             onValueModified: section.minRegionPx = value }
         Text { text: qsTr("Lissage (px)"); color: Theme.foreground; font.pixelSize: Theme.bodySize; font.family: Theme.fontFamily; Layout.fillWidth: true }
-        Controls.SpinBox { objectName: "segSmoothing"; from: 0; to: 10; value: section.smoothing; editable: true
+        StudioSpinBox { objectName: "segSmoothing"; from: 0; to: 10; value: section.smoothing; editable: true
             onValueModified: section.smoothing = value }
     }
     RowLayout {

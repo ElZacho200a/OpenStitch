@@ -96,7 +96,7 @@ ColumnLayout {
                 onClicked: regionTools.tool = modelData.id
             }
         }
-        Controls.SpinBox {
+        StudioSpinBox {
             objectName: "regionBrushRadius"
             from: 1; to: 200; value: regionTools.brushRadius; editable: true
             visible: regionTools.tool !== "select"
@@ -151,12 +151,12 @@ ColumnLayout {
     SectionLabel { text: qsTr("RETOUCHES") }
     RowLayout {
         Layout.fillWidth: true
-        Controls.TextField {
+        StudioTextField {
             id: colorField
             objectName: "regionColorField"
             Layout.fillWidth: true
             placeholderText: "#rrggbb"
-            text: "#cc3344"
+            text: "#cc3344" // lint-ok: default thread colour (document data)
         }
         StudioButton {
             objectName: "regionRecolor"
@@ -176,19 +176,19 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         Text { text: qsTr("Îlots ≤"); color: Theme.foreground; font.pixelSize: Theme.bodySize; font.family: Theme.fontFamily }
-        Controls.SpinBox { objectName: "regionIslandPx"; from: 1; to: 100000; value: section.islandPx; editable: true; onValueModified: section.islandPx = value }
+        StudioSpinBox { objectName: "regionIslandPx"; from: 1; to: 100000; value: section.islandPx; editable: true; onValueModified: section.islandPx = value }
         StudioButton { objectName: "regionCleanIslands"; text: qsTr("Nettoyer"); enabled: regionTools.hasSegmentation; onClicked: regionTools.cleanIslands(section.islandPx) }
     }
     RowLayout {
         Layout.fillWidth: true
         Text { text: qsTr("Trous ≤"); color: Theme.foreground; font.pixelSize: Theme.bodySize; font.family: Theme.fontFamily }
-        Controls.SpinBox { objectName: "regionHolePx"; from: 1; to: 100000; value: section.holePx; editable: true; onValueModified: section.holePx = value }
+        StudioSpinBox { objectName: "regionHolePx"; from: 1; to: 100000; value: section.holePx; editable: true; onValueModified: section.holePx = value }
         StudioButton { objectName: "regionFillHoles"; text: qsTr("Reboucher"); enabled: regionTools.hasSegmentation; onClicked: regionTools.fillHoles(section.holePx) }
     }
     RowLayout {
         Layout.fillWidth: true
         Text { text: qsTr("Palette ≤"); color: Theme.foreground; font.pixelSize: Theme.bodySize; font.family: Theme.fontFamily }
-        Controls.SpinBox { objectName: "regionPaletteColors"; from: 1; to: 64; value: section.paletteColors; editable: true; onValueModified: section.paletteColors = value }
+        StudioSpinBox { objectName: "regionPaletteColors"; from: 1; to: 64; value: section.paletteColors; editable: true; onValueModified: section.paletteColors = value }
         StudioButton { objectName: "regionReducePalette"; text: qsTr("Réduire"); enabled: regionTools.hasSegmentation
             onClicked: regionTools.reducePalette(section.paletteColors, 60, true) }
     }

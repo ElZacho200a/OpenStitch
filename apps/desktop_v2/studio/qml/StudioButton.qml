@@ -31,7 +31,7 @@ Controls.AbstractButton {
                : button.hovered ? Theme.hover
                : button.quiet ? "transparent" : Theme.raised
         border.width: button.activeFocus || (!button.quiet && !button.emphasized) ? 1 : 0
-        border.color: button.activeFocus ? Theme.accent : Theme.border
+        border.color: button.activeFocus ? Theme.accent : Theme.outline
         opacity: button.enabled ? 1 : 0.55
         Behavior on color { ColorAnimation { duration: Theme.animationMs; easing.type: Easing.OutCubic } }
     }
@@ -71,7 +71,5 @@ Controls.AbstractButton {
         }
     }
 
-    Controls.ToolTip.visible: hovered && tooltip.length > 0
-    Controls.ToolTip.text: tooltip + (shortcutLabel.length > 0 ? "  ·  " + shortcutLabel : "")
-    Controls.ToolTip.delay: 600
+    StudioToolTip { text: button.tooltip.length > 0 ? button.tooltip + (button.shortcutLabel.length > 0 ? "  ·  " + button.shortcutLabel : "") : "" }
 }

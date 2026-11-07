@@ -42,13 +42,13 @@ ColumnLayout {
         visible: panel.toolCtl && panel.toolCtl.activeTool === "draw.polygon-regular"
         spacing: 6
         Text { text: qsTr("Côtés"); color: Theme.muted; font.pixelSize: Theme.smallSize }
-        Controls.SpinBox {
+        StudioSpinBox {
             objectName: "sidesSpin"
             from: 3; to: 64
             value: panel.toolCtl ? panel.toolCtl.sides : 6
             onValueModified: panel.toolCtl.sides = value
         }
-        Controls.CheckBox {
+        StudioCheckBox {
             objectName: "starCheck"
             text: qsTr("Étoile")
             checked: panel.toolCtl ? panel.toolCtl.star : false
@@ -60,25 +60,24 @@ ColumnLayout {
     Flow {
         Layout.fillWidth: true
         spacing: 6
-        Controls.CheckBox {
+        StudioCheckBox {
             objectName: "snapVerticesCheck"
             text: qsTr("Sommets")
             checked: panel.toolCtl ? panel.toolCtl.snapVertices : false
             onToggled: panel.toolCtl.snapVertices = checked
         }
-        Controls.CheckBox {
+        StudioCheckBox {
             objectName: "snapGridCheck"
             text: qsTr("Grille")
             checked: panel.toolCtl ? panel.toolCtl.snapGrid : false
             onToggled: panel.toolCtl.snapGrid = checked
         }
-        Controls.SpinBox {
+        StudioSpinBox {
             objectName: "snapRadiusSpin"
             from: 2; to: 40
             value: panel.toolCtl ? panel.toolCtl.snapRadiusPx : 8
             onValueModified: panel.toolCtl.snapRadiusPx = value
-            Controls.ToolTip.visible: hovered
-            Controls.ToolTip.text: qsTr("Rayon d'accrochage (px)")
+            StudioToolTip { text: qsTr("Rayon d'accrochage (px)") }
         }
     }
 

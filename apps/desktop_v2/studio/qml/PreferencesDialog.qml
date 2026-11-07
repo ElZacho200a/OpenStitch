@@ -86,7 +86,7 @@ Controls.Popup {
                     }
                 }
             }
-            Controls.CheckBox {
+            StudioCheckBox {
                 objectName: "reducedMotionCheck"
                 text: qsTr("Réduire les animations")
                 checked: dialog.hasPrefs && prefs.reducedMotion
@@ -111,7 +111,7 @@ Controls.Popup {
             }
 
             SectionLabel { text: qsTr("COMPAGNON IA") }
-            Controls.CheckBox {
+            StudioCheckBox {
                 objectName: "companionDisabledCheck"
                 text: qsTr("Désactiver entièrement le compagnon (pont et fournisseur)")
                 checked: dialog.hasCompanion && companion.fullyDisabled
@@ -127,7 +127,7 @@ Controls.Popup {
                     verticalAlignment: Text.AlignVCenter
                 }
             }
-            Controls.CheckBox {
+            StudioCheckBox {
                 objectName: "providerEnabledCheck"
                 text: qsTr("Utiliser le fournisseur Claude (messages envoyés à api.anthropic.com)")
                 checked: dialog.hasCompanion && companion.providerEnabled
@@ -145,7 +145,7 @@ Controls.Popup {
             }
             RowLayout {
                 Text { text: qsTr("Modèle"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.bodySize; Layout.preferredWidth: 90 }
-                Controls.TextField {
+                StudioTextField {
                     objectName: "modelField"
                     Layout.fillWidth: true
                     text: dialog.hasCompanion ? companion.model : ""
@@ -155,7 +155,7 @@ Controls.Popup {
             }
             RowLayout {
                 Text { text: qsTr("Clé API"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.bodySize; Layout.preferredWidth: 90 }
-                Controls.TextField {
+                StudioTextField {
                     id: keyField
                     objectName: "apiKeyField"
                     Layout.fillWidth: true

@@ -148,27 +148,27 @@ Item {
                         Flow {
                             Layout.fillWidth: true
                             spacing: 2
-                            Controls.CheckBox { objectName: "layerStitchesBox"; text: qsTr("Points"); checked: view.layerStitches; onToggled: view.layerStitches = checked; palette.windowText: Theme.foreground }
-                            Controls.CheckBox { objectName: "layerJumpsBox"; text: qsTr("Sauts"); checked: view.layerJumps; onToggled: view.layerJumps = checked; palette.windowText: Theme.foreground }
-                            Controls.CheckBox { objectName: "layerHoopBox"; text: qsTr("Cadre"); checked: view.layerHoop; onToggled: view.layerHoop = checked; palette.windowText: Theme.foreground }
-                            Controls.CheckBox { objectName: "layerDensityBox"; text: qsTr("Densité"); checked: view.layerDensity; onToggled: view.layerDensity = checked; palette.windowText: Theme.foreground }
-                            Controls.CheckBox { objectName: "layerRiskBox"; text: qsTr("Risque tissu"); checked: view.layerRisk; onToggled: view.layerRisk = checked; palette.windowText: Theme.foreground }
+                            StudioCheckBox { objectName: "layerStitchesBox"; text: qsTr("Points"); checked: view.layerStitches; onToggled: view.layerStitches = checked; palette.windowText: Theme.foreground }
+                            StudioCheckBox { objectName: "layerJumpsBox"; text: qsTr("Sauts"); checked: view.layerJumps; onToggled: view.layerJumps = checked; palette.windowText: Theme.foreground }
+                            StudioCheckBox { objectName: "layerHoopBox"; text: qsTr("Cadre"); checked: view.layerHoop; onToggled: view.layerHoop = checked; palette.windowText: Theme.foreground }
+                            StudioCheckBox { objectName: "layerDensityBox"; text: qsTr("Densité"); checked: view.layerDensity; onToggled: view.layerDensity = checked; palette.windowText: Theme.foreground }
+                            StudioCheckBox { objectName: "layerRiskBox"; text: qsTr("Risque tissu"); checked: view.layerRisk; onToggled: view.layerRisk = checked; palette.windowText: Theme.foreground }
                         }
                         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.divider }
                         SectionLabel { text: qsTr("GRILLE, GUIDES, RÈGLES") }
                         Flow {
                             Layout.fillWidth: true
                             spacing: 2
-                            Controls.CheckBox { objectName: "gridBox"; text: qsTr("Grille"); checked: view.gridVisible; onToggled: view.gridVisible = checked; palette.windowText: Theme.foreground }
-                            Controls.CheckBox { objectName: "guidesBox"; text: qsTr("Guides"); checked: view.guidesVisible; onToggled: view.guidesVisible = checked; palette.windowText: Theme.foreground }
-                            Controls.CheckBox { objectName: "rulersBox"; text: qsTr("Règles"); checked: view.rulersVisible; onToggled: view.rulersVisible = checked; palette.windowText: Theme.foreground }
+                            StudioCheckBox { objectName: "gridBox"; text: qsTr("Grille"); checked: view.gridVisible; onToggled: view.gridVisible = checked; palette.windowText: Theme.foreground }
+                            StudioCheckBox { objectName: "guidesBox"; text: qsTr("Guides"); checked: view.guidesVisible; onToggled: view.guidesVisible = checked; palette.windowText: Theme.foreground }
+                            StudioCheckBox { objectName: "rulersBox"; text: qsTr("Règles"); checked: view.rulersVisible; onToggled: view.rulersVisible = checked; palette.windowText: Theme.foreground }
                         }
                         RowLayout {
                             Layout.fillWidth: true
                             Text { text: qsTr("Pas (mm)"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
-                            Controls.TextField { id: stepField; objectName: "gridStepField"; implicitWidth: 70; text: view.gridStepMm; onEditingFinished: view.gridStepMm = parseFloat(text) }
+                            StudioTextField { id: stepField; objectName: "gridStepField"; implicitWidth: 70; text: view.gridStepMm; onEditingFinished: view.gridStepMm = parseFloat(text) }
                             Text { text: qsTr("Guide (mm)"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
-                            Controls.TextField { id: guideField; objectName: "guideField"; implicitWidth: 70; text: "0" }
+                            StudioTextField { id: guideField; objectName: "guideField"; implicitWidth: 70; text: "0" }
                         }
                         Flow {
                             Layout.fillWidth: true
@@ -189,7 +189,7 @@ Item {
                         }
                         RowLayout {
                             Layout.fillWidth: true
-                            Controls.TextField { id: calibField; objectName: "calibrateField"; implicitWidth: 70; placeholderText: qsTr("mm réels") }
+                            StudioTextField { id: calibField; objectName: "calibrateField"; implicitWidth: 70; placeholderText: qsTr("mm réels") }
                             StudioButton { objectName: "calibrateButton"; text: qsTr("Étalonner le 100 % sur 100 mm"); onClicked: view.calibrateZoom100(parseFloat(calibField.text), 100) }
                         }
                         Text {

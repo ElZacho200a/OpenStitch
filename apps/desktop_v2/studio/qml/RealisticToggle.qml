@@ -11,7 +11,7 @@ ColumnLayout {
     spacing: 6
     readonly property bool ready: typeof view !== "undefined" && typeof analysis !== "undefined"
 
-    Controls.CheckBox {
+    StudioCheckBox {
         objectName: "realisticCheck"
         enabled: root.ready
         text: qsTr("Rendu réaliste") + "  (Ctrl+Shift+T)"

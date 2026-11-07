@@ -268,7 +268,7 @@ Controls.Popup {
 
         RowLayout {
             Layout.fillWidth: true
-            Controls.TextField {
+            StudioTextField {
                 id: input
                 objectName: "companionInput"
                 Layout.fillWidth: true

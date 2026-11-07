@@ -313,7 +313,7 @@ Item {
             rowSpacing: 8
             Layout.fillWidth: true
             Label { text: qsTr("Hauteur du motif (mm)") }
-            Controls.SpinBox {
+            StudioSpinBox {
                 objectName: "importHeight"
                 from: 5; to: 1000
                 value: panel.importValues.heightMm || 100
@@ -321,7 +321,7 @@ Item {
                 onValueModified: panel.importValues.heightMm = value
             }
             Label { text: qsTr("Nombre de couleurs") }
-            Controls.SpinBox {
+            StudioSpinBox {
                 objectName: "importColors"
                 from: 2; to: 32
                 value: panel.importValues.maxColors || 8
@@ -329,20 +329,20 @@ Item {
                 onValueModified: panel.importValues.maxColors = value
             }
             Label { text: qsTr("Lissage (px)") }
-            Controls.SpinBox {
+            StudioSpinBox {
                 from: 0; to: 20
                 value: panel.importValues.smoothingPx === undefined ? 3 : panel.importValues.smoothingPx
                 editable: true
                 onValueModified: panel.importValues.smoothingPx = value
             }
             Label { text: qsTr("Mode") }
-            Controls.ComboBox {
+            StudioComboBox {
                 model: [{ t: qsTr("Formes remplies"), v: "shapes" }, { t: qsTr("Contours"), v: "contours" }, { t: qsTr("Pointillé"), v: "stipple" }]
                 textRole: "t"
                 onActivated: panel.importValues.mode = model[currentIndex].v
             }
             Label { text: qsTr("Fond") }
-            Controls.ComboBox {
+            StudioComboBox {
                 model: [{ t: qsTr("Automatique"), v: -1 }, { t: qsTr("Ne pas retirer"), v: 0 }, { t: qsTr("Retirer cette couleur"), v: 1 }, { t: qsTr("Retirer à l'extérieur seulement"), v: 2 }]
                 textRole: "t"
                 onActivated: panel.importValues.skipBackground = model[currentIndex].v
@@ -368,34 +368,34 @@ Item {
         heading: qsTr("Exporter pour la machine")
         property var formats: panel.ctl ? panel.ctl.machineFormats : []
         property string format: formats.length > 0 ? formats[0].extension : "dst"
-        Controls.ComboBox {
+        StudioComboBox {
             objectName: "exportFormat"
             Layout.fillWidth: true
             model: exportDialog.formats
             textRole: "label"
             onActivated: exportDialog.format = exportDialog.formats[currentIndex].extension
         }
-        Controls.CheckBox {
+        StudioCheckBox {
             text: qsTr("Écrire les coupes de fil")
             checked: panel.exportValues.finishingEnabled === true
             onToggled: panel.exportValues.finishingEnabled = checked
         }
-        Controls.CheckBox {
+        StudioCheckBox {
             text: qsTr("Couper avant chaque changement de couleur")
             checked: panel.exportValues.trimBeforeColorChange === true
             onToggled: panel.exportValues.trimBeforeColorChange = checked
         }
-        Controls.CheckBox {
+        StudioCheckBox {
             text: qsTr("Supprimer les points trop courts")
             checked: panel.exportValues.filterShortStitches === true
             onToggled: panel.exportValues.filterShortStitches = checked
         }
-        Controls.CheckBox {
+        StudioCheckBox {
             text: qsTr("Découper les points trop longs")
             checked: panel.exportValues.splitLongStitches === true
             onToggled: panel.exportValues.splitLongStitches = checked
         }
-        Controls.CheckBox {
+        StudioCheckBox {
             text: qsTr("Relier sans couper quand le trajet sera recouvert")
             checked: panel.exportValues.autoJoin === true
             onToggled: panel.exportValues.autoJoin = checked
@@ -429,7 +429,7 @@ Item {
         heading: qsTr("Cadre et machine")
         property string hoopId: ""
         property real margin: 0
-        Controls.ComboBox {
+        StudioComboBox {
             Layout.fillWidth: true
             model: panel.ctl ? panel.ctl.hoops : []
             textRole: "name"
@@ -437,14 +437,14 @@ Item {
         }
         RowLayout {
             Label { text: qsTr("Marge de sécurité (mm)"); Layout.fillWidth: true }
-            Controls.SpinBox { from: 0; to: 50; value: 0; editable: true; onValueModified: hoopDialog.margin = value }
+            StudioSpinBox { from: 0; to: 50; value: 0; editable: true; onValueModified: hoopDialog.margin = value }
             StudioButton {
                 text: qsTr("Appliquer")
                 enabled: hoopDialog.hoopId.length > 0
                 onClicked: panel.ctl.applyHoop(hoopDialog.hoopId, hoopDialog.margin)
             }
         }
-        Controls.ComboBox {
+        StudioComboBox {
             Layout.fillWidth: true
             model: panel.ctl ? panel.ctl.machines : []
             textRole: "name"
@@ -460,7 +460,7 @@ Item {
             }
         }
         RowLayout {
-            Controls.TextField { id: hoopName; Layout.fillWidth: true; placeholderText: qsTr("Nom du cadre actuel") }
+            StudioTextField { id: hoopName; Layout.fillWidth: true; placeholderText: qsTr("Nom du cadre actuel") }
             StudioButton { text: qsTr("Enregistrer ce cadre"); enabled: hoopName.text.length > 0; onClicked: { if (panel.ctl.saveCurrentHoopAs(hoopName.text) === "") hoopName.text = "" } }
         }
         StudioButton { Layout.alignment: Qt.AlignRight; text: qsTr("Fermer"); onClicked: hoopDialog.close() }

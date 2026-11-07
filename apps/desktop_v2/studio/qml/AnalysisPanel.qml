@@ -92,8 +92,8 @@ Rectangle {
             SectionLabel { text: qsTr("OPTIMISER L'ORDRE") }
             RowLayout {
                 Layout.fillWidth: true
-                Controls.ComboBox { id: strategyBox; objectName: "strategyBox"; Layout.fillWidth: true; model: panel.controller.strategies }
-                Controls.CheckBox { id: improveBox; text: qsTr("Affiner"); palette.windowText: Theme.muted }
+                StudioComboBox { id: strategyBox; objectName: "strategyBox"; Layout.fillWidth: true; model: panel.controller.strategies }
+                StudioCheckBox { id: improveBox; text: qsTr("Affiner"); palette.windowText: Theme.muted }
                 StudioButton { objectName: "proposeButton"; text: qsTr("Calculer"); onClicked: panel.controller.proposeOrder(strategyBox.currentIndex, improveBox.checked) }
             }
             Repeater {
@@ -115,12 +115,12 @@ Rectangle {
             SectionLabel { text: qsTr("CADRE ET MACHINE") }
             RowLayout {
                 Layout.fillWidth: true
-                Controls.ComboBox { id: hoopBox; objectName: "hoopBox"; Layout.fillWidth: true; model: panel.controller.libraryHoops; textRole: "name" }
+                StudioComboBox { id: hoopBox; objectName: "hoopBox"; Layout.fillWidth: true; model: panel.controller.libraryHoops; textRole: "name" }
                 StudioButton { objectName: "applyHoopButton"; text: qsTr("Appliquer"); onClicked: panel.controller.applyLibraryHoop(panel.controller.libraryHoops[hoopBox.currentIndex].id, 0) }
             }
             RowLayout {
                 Layout.fillWidth: true
-                Controls.ComboBox {
+                StudioComboBox {
                     id: machineBox
                     objectName: "machineBox"
                     Layout.fillWidth: true
@@ -144,7 +144,7 @@ Rectangle {
             }
             RowLayout {
                 Layout.fillWidth: true
-                Controls.TextField { id: hoopName; objectName: "hoopNameField"; Layout.fillWidth: true; placeholderText: qsTr("Nom du cadre actuel") }
+                StudioTextField { id: hoopName; objectName: "hoopNameField"; Layout.fillWidth: true; placeholderText: qsTr("Nom du cadre actuel") }
                 StudioButton { objectName: "saveHoopButton"; text: qsTr("Enregistrer"); onClicked: { if (panel.controller.saveCurrentHoopAs(hoopName.text)) hoopName.text = "" } }
             }
 

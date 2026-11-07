@@ -21,12 +21,12 @@ Rectangle {
         SectionLabel { text: qsTr("APPLIQUÉ") }
         StudioButton { objectName: "appliqueConvert"; text: qsTr("Convertir en appliqué"); enabled: panel.ready && panel.controller.canConvert; onClicked: panel.controller.convert() }
         StudioButton { objectName: "appliqueExport"; text: qsTr("Exporter le contour de découpe…"); enabled: panel.ready && panel.controller.appliqueCount > 0; onClicked: panel.controller.exportCut(exportPath.text) }
-        Controls.TextField { id: exportPath; objectName: "appliqueExportPath"; Layout.fillWidth: true; placeholderText: qsTr("découpe.svg ou .dxf") }
+        StudioTextField { id: exportPath; objectName: "appliqueExportPath"; Layout.fillWidth: true; placeholderText: qsTr("découpe.svg ou .dxf") }
         Text {
             objectName: "appliqueMessage"
             Layout.fillWidth: true
             wrapMode: Text.Wrap
-            color: panel.ready && !panel.controller.lastOk ? "#e06060" : Theme.faint
+            color: panel.ready && !panel.controller.lastOk ? Theme.error : Theme.faint
             font.family: Theme.fontFamily
             text: panel.ready ? panel.controller.message : ""
         }

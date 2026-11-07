@@ -35,9 +35,9 @@ Rectangle {
             }
             RowLayout {
                 Text { text: qsTr("Fil du dessus (#rrggbb)"); color: Theme.foreground; font.family: Theme.fontFamily }
-                Controls.TextField { id: colorField; objectName: "fadeColorField"; text: "#c81e1e"; Layout.preferredWidth: 90 }
+                StudioTextField { id: colorField; objectName: "fadeColorField"; text: "#c81e1e"; Layout.preferredWidth: 90 } // lint-ok: default thread colour (document data)
             }
-            Controls.CheckBox { id: complementary; objectName: "fadeComplementary"; text: qsTr("Rampes de densité complémentaires"); checked: true }
+            StudioCheckBox { id: complementary; objectName: "fadeComplementary"; text: qsTr("Rampes de densité complémentaires"); checked: true }
             Flow {
                 Layout.fillWidth: true
                 spacing: 4
@@ -68,9 +68,9 @@ Rectangle {
             SectionLabel { text: qsTr("AXE (mm) : poignées début, fin, déplacement, rotation") }
             RowLayout {
                 enabled: panel.ready && panel.controller.hasFade
-                Controls.ComboBox { id: handle; objectName: "fadeHandle"; model: [qsTr("Début"), qsTr("Fin"), qsTr("Déplacer"), qsTr("Rotation")] }
-                Controls.TextField { id: hx; objectName: "fadeHandleX"; Layout.preferredWidth: 64; placeholderText: "x" }
-                Controls.TextField { id: hy; objectName: "fadeHandleY"; Layout.preferredWidth: 64; placeholderText: "y" }
+                StudioComboBox { id: handle; objectName: "fadeHandle"; model: [qsTr("Début"), qsTr("Fin"), qsTr("Déplacer"), qsTr("Rotation")] }
+                StudioTextField { id: hx; objectName: "fadeHandleX"; Layout.preferredWidth: 64; placeholderText: "x" }
+                StudioTextField { id: hy; objectName: "fadeHandleY"; Layout.preferredWidth: 64; placeholderText: "y" }
                 StudioButton { objectName: "fadeHandleApply"; text: qsTr("Appliquer")
                     onClicked: panel.controller.commitHandle(handle.currentIndex, parseFloat(hx.text), parseFloat(hy.text), false) }
             }

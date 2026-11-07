@@ -54,7 +54,7 @@ ColumnLayout {
         visible: root.f.kind === "number" || root.f.kind === "integer" ||
                  (root.f.kind === "optional" && root.f.isSet === true)
         spacing: 8
-        Controls.Slider {
+        StudioSlider {
             id: slider
             objectName: "slider_" + root.fieldKey
             Layout.fillWidth: true
@@ -67,7 +67,7 @@ ColumnLayout {
             Accessible.name: root.f.label
             onMoved: root.commit(root.ctl.setParam(root.fieldKey, value))
         }
-        Controls.TextField {
+        StudioTextField {
             id: entry
             objectName: "entry_" + root.fieldKey
             Layout.preferredWidth: 64
@@ -97,7 +97,7 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         visible: root.f.kind === "optional"
-        Controls.Switch {
+        StudioSwitch {
             objectName: "auto_" + root.fieldKey
             checked: root.f.isSet === true
             text: checked ? qsTr("Fixé") : qsTr("Automatique")
@@ -120,7 +120,7 @@ ColumnLayout {
             font.family: Theme.fontFamily
             font.pixelSize: Theme.smallSize
         }
-        Controls.TextField {
+        StudioTextField {
             id: pointX
             objectName: "pointx_" + root.fieldKey
             Layout.fillWidth: true
@@ -140,7 +140,7 @@ ColumnLayout {
             font.family: Theme.fontFamily
             font.pixelSize: Theme.smallSize
         }
-        Controls.TextField {
+        StudioTextField {
             id: pointY
             objectName: "pointy_" + root.fieldKey
             Layout.fillWidth: true
@@ -202,7 +202,7 @@ ColumnLayout {
         root.commit(root.ctl.setPoint(root.fieldKey, x, y));
     }
 
-    Controls.Switch {
+    StudioSwitch {
         id: toggle
         objectName: "switch_" + root.fieldKey
         visible: root.f.kind === "bool"
@@ -215,7 +215,7 @@ ColumnLayout {
         onToggled: root.commit(root.ctl.setParam(root.fieldKey, checked ? 1 : 0))
     }
 
-    Controls.ComboBox {
+    StudioComboBox {
         id: combo
         objectName: "combo_" + root.fieldKey
         Layout.fillWidth: true

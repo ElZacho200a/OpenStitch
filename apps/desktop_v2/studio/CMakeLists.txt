@@ -41,6 +41,9 @@ target_link_libraries(openstitch_studio_ui PUBLIC openstitch::desktop_v2_core
 
 set(studio_qml_files
     qml/Main.qml qml/Theme.qml qml/StudioButton.qml qml/StudioIcon.qml
+    qml/StudioLabel.qml qml/StudioPanel.qml qml/StudioToolTip.qml qml/StudioTextField.qml
+    qml/StudioCheckBox.qml qml/StudioSwitch.qml qml/StudioSlider.qml qml/StudioSpinBox.qml
+    qml/StudioComboBox.qml
     qml/SectionLabel.qml qml/ActionPalette.qml qml/ObjectTree.qml qml/LayerPanel.qml
     qml/CanvasContextMenu.qml qml/TransformHandles.qml qml/EditBar.qml qml/FilePanel.qml
     qml/Inspector.qml qml/ParamField.qml qml/ParamSection.qml

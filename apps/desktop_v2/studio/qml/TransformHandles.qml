@@ -57,7 +57,7 @@ Item {
             y: Math.min(modelData.y1, modelData.y2)
             width: Math.max(1, Math.abs(modelData.x2 - modelData.x1))
             height: Math.max(1, Math.abs(modelData.y2 - modelData.y1))
-            color: "#5ad2ff"
+            color: Theme.info
         }
     }
 
