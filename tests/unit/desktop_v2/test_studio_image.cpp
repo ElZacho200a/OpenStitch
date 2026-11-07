@@ -80,7 +80,7 @@ struct Rig {
     RegionController regions{studio, images};
     Rig() {
         session.replaceProject(digitizedProject(writeTestImage(dir.path())), true);
-        QTRY_VERIFY_WITH_TIMEOUT(!studio.busy() && images.width() > 0, 20'000);
+        QTRY_VERIFY_WITH_TIMEOUT(!studio.busy() && images.imageWidth() > 0, 20'000);
     }
 };
 
