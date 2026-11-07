@@ -105,6 +105,9 @@ public:
     Q_INVOKABLE bool setLayerLocked(const QString& id, bool locked);
     Q_INVOKABLE bool moveLayer(const QString& id, int direction);
     Q_INVOKABLE bool moveSelectionToLayer(const QString& id);
+    // Glisser-déposer de l'arbre : déplace toute la sélection si `objectId` en fait partie, sinon
+    // cet objet seul (la sélection ne change pas pendant le geste : l'arbre n'est pas reconstruit).
+    Q_INVOKABLE bool moveObjectToLayer(const QString& objectId, const QString& layerId);
 signals:
     void treeChanged();
     void messageChanged();

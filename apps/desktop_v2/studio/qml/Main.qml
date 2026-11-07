@@ -114,6 +114,7 @@ Window {
     Shortcut { sequence: "Home"; enabled: studio.hasSelection; onActivated: editor.stack("back") }
     Shortcut { sequence: "E"; enabled: studio.hasSelection; onActivated: editor.eyedropper = !editor.eyedropper }
     property bool treeMode: false
+    property bool editOpen: false
     Shortcut { sequence: "Ctrl+1"; onActivated: window.workspaceIndex = 0 }
     Shortcut { sequence: "Ctrl+2"; onActivated: window.workspaceIndex = 1 }
     Shortcut { sequence: "Ctrl+3"; onActivated: window.workspaceIndex = 2 }
@@ -610,6 +611,14 @@ Window {
                             active: window.treeMode
                             onClicked: window.treeMode = true
                         }
+                        StudioButton {
+                            objectName: "editOpenButton"
+                            text: qsTr("Édition")
+                            implicitHeight: 26
+                            active: window.editOpen
+                            tooltip: qsTr("Afficher les actions d'édition de la sélection")
+                            onClicked: window.editOpen = !window.editOpen
+                        }
                     }
 
                     LayerPanel {
@@ -777,6 +786,7 @@ Window {
                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
 
                     EditBar {
+                        visible: window.editOpen
                         Layout.fillWidth: true
                         Layout.margins: 12
                     }

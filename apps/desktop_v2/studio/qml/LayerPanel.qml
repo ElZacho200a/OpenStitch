@@ -43,7 +43,7 @@ ColumnLayout {
         }
         StudioButton {
             objectName: "layerUpButton"
-            text: "▲"
+            text: qsTr("Monter")
             implicitHeight: 28
             enabled: panel.layerId.length > 0
             tooltip: qsTr("Monter le calque")
@@ -51,7 +51,7 @@ ColumnLayout {
         }
         StudioButton {
             objectName: "layerDownButton"
-            text: "▼"
+            text: qsTr("Descendre")
             implicitHeight: 28
             enabled: panel.layerId.length > 0
             tooltip: qsTr("Descendre le calque")
@@ -67,7 +67,7 @@ ColumnLayout {
         }
     }
 
-    TextField {
+    Controls.TextField {
         id: renameField
         objectName: "layerRenameField"
         Layout.fillWidth: true
@@ -75,6 +75,8 @@ ColumnLayout {
         Layout.rightMargin: 10
         visible: false
         placeholderText: qsTr("Nouveau nom du calque")
+        color: Theme.foreground
+        font.pixelSize: Theme.bodySize
         onAccepted: { editor.renameLayer(panel.layerId, text); visible = false }
         Keys.onEscapePressed: visible = false
     }
@@ -84,11 +86,5 @@ ColumnLayout {
         Layout.fillWidth: true
         Layout.fillHeight: true
         Layout.minimumHeight: 120
-    }
-
-    component TextField: Controls.TextField {
-        color: Theme.foreground
-        font.pixelSize: Theme.bodySize
-        background: Rectangle { color: Theme.raised; border.color: Theme.border; radius: Theme.radius }
     }
 }

@@ -553,6 +553,9 @@ void StudioEditTest::layersTreeAndObjectEditing() {
     QCOMPARE(rows.front().toMap().value(QStringLiteral("label")).toString(),
              QStringLiteral("Dessus"));
     // Le même arbre est affiché par le QML (mode « Arbre et calques »).
+    rig.window->resize(1440,
+                       1300); // les sept lignes tiennent sans défilement : mise en page stable
+    QTRY_COMPARE(rig.window->height(), 1300);
     auto* treeButton = rig.window->findChild<QQuickItem*>(QStringLiteral("treeModeButton"));
     QVERIFY(treeButton);
     QTest::mouseClick(
@@ -562,6 +565,36 @@ void StudioEditTest::layersTreeAndObjectEditing() {
     auto* list = rig.window->findChild<QQuickItem*>(QStringLiteral("objectTreeList"));
     QVERIFY(list);
     QTRY_COMPARE(list->property("count").toInt(), 7);
+
+    // Glisser-déposer à la souris : la ligne d'un objet déposée sur une ligne de calque l'y
+    // déplace.
+    {
+        QQuickItem *objectRow = nullptr, *layerRow = nullptr;
+        for (int i = 0; i < 7; ++i) {
+            QQuickItem* item = nullptr;
+            QTRY_VERIFY(QMetaObject::invokeMethod(list, "itemAtIndex",
+                                                  Q_RETURN_ARG(QQuickItem*, item), Q_ARG(int, i)) &&
+                        item);
+            const auto kind = item->property("modelData").toMap().value(QStringLiteral("kind"));
+            const auto id = item->property("modelData").toMap().value(QStringLiteral("id"));
+            if (kind == QStringLiteral("object") && id == QString::number(kLone)) {
+                objectRow = item;
+            } else if (kind == QStringLiteral("layer") && id == QStringLiteral("202")) {
+                layerRow = item;
+            }
+        }
+        QVERIFY(objectRow && layerRow);
+        const auto from = objectRow->mapToScene(QPointF(40, objectRow->height() / 2)).toPoint();
+        const auto to = layerRow->mapToScene(QPointF(40, layerRow->height() / 2)).toPoint();
+        const auto stepsBeforeDrop = steps(rig);
+        QVERIFY(objectRow->y() + objectRow->height() / 2 < list->height()); // ligne visible
+        dragMouse(rig.window, from, to);
+        QTRY_COMPARE(shapeOf(rig.session.project(), kLone).calque.value, std::uint64_t{202});
+        QCOMPARE(steps(rig), stepsBeforeDrop + 1);
+        QVERIFY(rig.session.undo());
+        QCOMPARE(shapeOf(rig.session.project(), kLone).calque.value, std::uint64_t{201});
+        settle(rig);
+    }
 
     // Calques : créer, renommer, déplacer, masquer, verrouiller, supprimer (une étape chacun).
     QVERIFY(rig.editor.addLayer(QStringLiteral("Nouveau")));
