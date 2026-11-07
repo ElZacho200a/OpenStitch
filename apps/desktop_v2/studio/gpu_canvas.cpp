@@ -339,6 +339,14 @@ void GpuCanvas::setOverlays(std::shared_ptr<const CanvasOverlays> overlays) {
     update();
 }
 
+void GpuCanvas::setSourceImage(SourceImageView view) {
+    if (view == sourceImage_) {
+        return;
+    }
+    sourceImage_ = std::move(view);
+    update();
+}
+
 void GpuCanvas::setZoomRectMode(bool value) {
     if (value == zoomRectMode_) {
         return;
@@ -591,7 +599,8 @@ QSGNode* GpuCanvas::updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData*) {
                             window()->effectiveDevicePixelRatio(),
                             overlays_,
                             overlayRevision_,
-                            layers_};
+                            layers_,
+                            layers_.sourceImage ? sourceImage_ : SourceImageView{}};
     const auto result = backend.synchronize(oldNode, state, *window());
     // Render thread must never write QObject properties or read the live document. Queue
     // diagnostics.

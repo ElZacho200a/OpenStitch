@@ -12,6 +12,10 @@ ColumnLayout {
     objectName: "imagePrepSection"
     spacing: 8
 
+    // L'espace Image montre l'avant/après sur son canevas et sa propre pile d'opérations : il
+    // masque les miniatures et l'historique de ce panneau (valeurs par défaut = historique).
+    property bool showThumbnails: true
+    property bool showHistory: true
     property int currentIndex: 0
     readonly property var entry: imageTools.prepCatalog[currentIndex]
     property var values: ({})
@@ -31,8 +35,9 @@ ColumnLayout {
     Component.onCompleted: resetValues()
     onCurrentIndexChanged: resetValues()
 
-    SectionLabel { text: qsTr("AVANT / APRÈS") }
+    SectionLabel { text: qsTr("AVANT / APRÈS"); visible: section.showThumbnails }
     RowLayout {
+        visible: section.showThumbnails
         Layout.fillWidth: true
         Layout.preferredHeight: 120
         spacing: 6
@@ -69,6 +74,7 @@ ColumnLayout {
     }
     Text {
         objectName: "prepSizeLabel"
+        visible: section.showThumbnails
         Layout.fillWidth: true
         text: imageTools.hasImage
               ? qsTr("Image de travail : %1 × %2 px — %3 traitement(s)")
@@ -141,9 +147,9 @@ ColumnLayout {
         }
     }
 
-    SectionLabel { text: qsTr("HISTORIQUE DES TRAITEMENTS") }
+    SectionLabel { text: qsTr("HISTORIQUE DES TRAITEMENTS"); visible: section.showHistory }
     Repeater {
-        model: imageTools.ops
+        model: section.showHistory ? imageTools.ops : []
         delegate: Text {
             required property string modelData
             required property int index
@@ -154,7 +160,7 @@ ColumnLayout {
         }
     }
     Text {
-        visible: imageTools.ops.length === 0
+        visible: section.showHistory && imageTools.ops.length === 0
         text: qsTr("Aucun traitement : l'image d'origine est utilisée telle quelle.")
         color: Theme.faint; font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
         wrapMode: Text.WordWrap

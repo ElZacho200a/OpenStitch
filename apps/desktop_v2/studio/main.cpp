@@ -24,6 +24,7 @@
 #include "gpu_canvas.hpp"
 #include "help_controller.hpp"
 #include "image_controller.hpp"
+#include "image_space_controller.hpp"
 #include "inspector_controller.hpp"
 #include "point_edit_controller.hpp"
 #include "preferences_controller.hpp"
@@ -100,6 +101,7 @@ int main(int argc, char** argv) {
     AnalysisController analysis(controller, view, configDir);
     ImageController imageTools(controller);
     RegionController regionTools(controller, imageTools);
+    ImageSpaceController imageSpace(controller, imageTools);
     SatinController satin(controller);
     FadeController fade(controller);
     PointEditController pointEdit(controller);
@@ -131,6 +133,7 @@ int main(int argc, char** argv) {
     engine.rootContext()->setContextProperty(QStringLiteral("threads"), &threads);
     engine.rootContext()->setContextProperty(QStringLiteral("analysis"), &analysis);
     engine.rootContext()->setContextProperty(QStringLiteral("imageTools"), &imageTools);
+    engine.rootContext()->setContextProperty(QStringLiteral("imageSpace"), &imageSpace);
     engine.rootContext()->setContextProperty(QStringLiteral("regionTools"), &regionTools);
     engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
     if (engine.rootObjects().isEmpty()) {

@@ -9,6 +9,7 @@
 #include <memory>
 #include <vector>
 
+#include "layers/source_image_layer.hpp"
 #include "realistic_scene.hpp"
 #include "selection_model.hpp"
 #include "studio_camera.hpp"
@@ -77,6 +78,7 @@ struct CanvasRenderState {
     std::shared_ptr<const CanvasOverlays> overlays;
     std::uint64_t overlayRevision{0};
     CanvasLayers layers;
+    SourceImageView sourceImage; // couche « sourceImage » (espace Image), vide sinon
 };
 
 struct CanvasRenderResult {
