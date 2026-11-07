@@ -302,10 +302,22 @@ void StudioCompanionTest::canvasRegainsKeyboardFocusAfterClick() {
     QCOMPARE(rig.session.undoNames().size(), base + 2);
     QVERIFY(rig.window->activeFocusItem() == rig.canvas);
     // Un changement d'espace ne laisse pas le focus sur un contrôle masqué.
+    // Chaque espace instancie SON canevas (un seul à la fois) : on clique celui de l'espace actif.
     for (int space = 0; space < 4; ++space) {
         QVERIFY(rig.actions.runCommand(QStringLiteral("cmd.workspace.%1").arg(space)).isEmpty());
-        QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, node.x, node.y));
-        QVERIFY(rig.window->activeFocusItem() == rig.canvas);
+        QTRY_COMPARE(rig.window->findChildren<GpuCanvas*>().size(), 1);
+        auto* active = rig.window->findChild<GpuCanvas*>();
+        QVERIFY(active);
+        QTRY_VERIFY(active->width() > 0 && active->height() > 0);
+        if (space == 3) {
+            rig.canvas = active; // l'espace Points est de retour : son canevas est neuf
+            QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, node.x, node.y));
+        } else {
+            QTest::mouseClick(
+                rig.window, Qt::LeftButton, {},
+                active->mapToScene(QPointF(active->width() / 2, active->height() / 2)).toPoint());
+        }
+        QVERIFY(rig.window->activeFocusItem() == active);
     }
     // Une fenêtre modale fermée ne laisse pas le focus sur l'un de ses boutons masqués.
     QVERIFY(rig.actions.runCommand(QStringLiteral("cmd.help.about")).isEmpty());
@@ -335,7 +347,8 @@ void StudioCompanionTest::paletteListsCommandsWithoutAccentsAndStates() {
     // Sans accents, insensible à la casse, mots multiples.
     QVERIFY(!find(QStringLiteral("selectionner tout"), QStringLiteral("cmd.select.all")).isEmpty());
     QVERIFY(!find(QStringLiteral("PREFERENCES"), QStringLiteral("cmd.prefs.open")).isEmpty());
-    QVERIFY(!find(QStringLiteral("espace numeriser"), QStringLiteral("cmd.workspace.1")).isEmpty());
+    QVERIFY(
+        !find(QStringLiteral("espace segmentation"), QStringLiteral("cmd.workspace.1")).isEmpty());
     // Catalogue d'actions ET commandes dans la même liste ; outils inclus.
     const auto all = rig.actions.searchAll({});
     QVERIFY(all.size() > rig.actions.search({}).size());

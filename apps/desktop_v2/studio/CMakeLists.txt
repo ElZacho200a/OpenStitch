@@ -24,6 +24,7 @@ add_library(openstitch_studio_ui STATIC
     point_edit_controller.cpp point_edit_controller.hpp
     tool_controller.cpp tool_controller.hpp
     vector_controller.cpp vector_controller.hpp
+    workspace_controller.cpp workspace_controller.hpp
     companion_controller.cpp companion_controller.hpp
     preferences_controller.cpp preferences_controller.hpp
     help_controller.cpp help_controller.hpp
@@ -43,7 +44,10 @@ set(studio_qml_files
     qml/PreparePanel.qml qml/ImagePrepSection.qml qml/SegmentationSection.qml
     qml/RegionTools.qml qml/AiSection.qml qml/CompanionPanel.qml qml/PreferencesDialog.qml
     qml/HelpDialog.qml qml/ShortcutsSheet.qml
-    qml/SatinPanel.qml qml/FadePanel.qml qml/PointEditPanel.qml qml/DigitizeHub.qml qml/ToolRail.qml qml/ToolOptions.qml qml/ToolOverlay.qml qml/qmldir)
+    qml/SatinPanel.qml qml/FadePanel.qml qml/PointEditPanel.qml qml/DigitizeHub.qml qml/ToolRail.qml qml/ToolOptions.qml qml/ToolOverlay.qml qml/qmldir
+    qml/spaces/SpaceHost.qml qml/spaces/ImageSpace.qml qml/spaces/SegmentationSpace.qml
+    qml/spaces/VectorSpace.qml qml/spaces/PointsSpace.qml)
+# Les sous-composants d'un espace (qml/spaces/<x>/...) s'ajoutent ICI, une ligne par fichier.
 
 add_executable(openstitch_v2_studio WIN32 main.cpp)
 target_link_libraries(openstitch_v2_studio PRIVATE openstitch::studio_ui openstitch::warnings)

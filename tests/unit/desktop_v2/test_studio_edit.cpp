@@ -104,7 +104,10 @@ QQuickItem* deepItem(QQuickItem* root, const QString& name) {
 void dragMouse(QQuickWindow* window, QPoint from, QPoint to, Qt::KeyboardModifiers mods = {}) {
     QTest::mousePress(window, Qt::LeftButton, mods, from);
     for (int step = 1; step <= 6; ++step) {
-        QTest::mouseMove(window, from + (to - from) * step / 6);
+        // Les modificateurs tenus pendant le geste accompagnent aussi les déplacements (Maj =
+        // rotation par pas de 15 degres, jugee a chaque deplacement).
+        QTest::mouseEvent(QTest::MouseMove, window, Qt::NoButton, mods,
+                          from + (to - from) * step / 6);
     }
     QTest::mouseRelease(window, Qt::LeftButton, mods, to);
 }

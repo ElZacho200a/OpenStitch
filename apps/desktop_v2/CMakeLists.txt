@@ -39,6 +39,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/document_services.cpp
     core/thread_plan.cpp
     core/workflow_guide.cpp
+    core/stage_status.cpp
     core/fade_service.cpp
     core/workspace_state.cpp
     core/arrange_batch.cpp

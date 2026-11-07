@@ -49,6 +49,19 @@ struct CanvasOverlays {
 
 // Render-thread input, copied during Qt Quick's synchronization phase while GUI is blocked.
 // No QObject, live DocumentSession or worker-owned mutable data crosses this boundary.
+// Couches d'affichage d'un canevas (HP V0 « espaces ») : chaque espace choisit ce que SON canevas
+// dessine. Seules « stitches » et « selectionOverlays » sont réalisées aujourd'hui ; sourceImage,
+// regions et vectors sont les POINTS D'ACCROCHE que les espaces Image / Segmentation / Vecteurs
+// rempliront dans le moteur de rendu (rien n'est dessiné pour elles tant qu'ils ne l'ont pas fait).
+struct CanvasLayers {
+    bool sourceImage{false};
+    bool regions{false};
+    bool vectors{false};
+    bool stitches{true};
+    bool selectionOverlays{true};
+    bool operator==(const CanvasLayers&) const = default;
+};
+
 struct CanvasRenderState {
     std::shared_ptr<const StudioSceneSnapshot> scene;
     StudioCamera camera;
@@ -58,6 +71,7 @@ struct CanvasRenderState {
     double devicePixelRatio{1};
     std::shared_ptr<const CanvasOverlays> overlays;
     std::uint64_t overlayRevision{0};
+    CanvasLayers layers;
 };
 
 struct CanvasRenderResult {
