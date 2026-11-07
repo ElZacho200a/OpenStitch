@@ -14,6 +14,7 @@
 
 #include "action_controller.hpp"
 #include "analysis_controller.hpp"
+#include "compare_controller.hpp"
 #include "edit_controller.hpp"
 #include "fade_controller.hpp"
 #include "file_controller.hpp"
@@ -74,6 +75,7 @@ int main(int argc, char** argv) {
     AnalysisController analysis(controller, view, configDir);
     ImageController imageTools(controller);
     RegionController regionTools(controller, imageTools);
+    CompareController compare(controller, view, imageTools);
     SatinController satin(controller);
     FadeController fade(controller);
     PointEditController pointEdit(controller);
@@ -94,6 +96,7 @@ int main(int argc, char** argv) {
     engine.rootContext()->setContextProperty(QStringLiteral("analysis"), &analysis);
     engine.rootContext()->setContextProperty(QStringLiteral("imageTools"), &imageTools);
     engine.rootContext()->setContextProperty(QStringLiteral("regionTools"), &regionTools);
+    engine.rootContext()->setContextProperty(QStringLiteral("compare"), &compare);
     engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
     if (engine.rootObjects().isEmpty()) {
         return 2;

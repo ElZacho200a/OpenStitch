@@ -209,3 +209,21 @@ if(TARGET openstitch::studio_ui)
             ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
     endif()
 endif()
+
+# CX12: real QML, engine, document-space comparison and retained overlays.
+if(TARGET openstitch::studio_ui AND Qt6Test_FOUND)
+    add_executable(test_desktop_v2_studio_compare test_studio_compare.cpp)
+    target_link_libraries(test_desktop_v2_studio_compare PRIVATE openstitch::studio_ui Qt6::Test openstitch::warnings)
+    qt_add_resources(test_desktop_v2_studio_compare studio_compare_qml PREFIX "/studio"
+        BASE "${studio_test_qml_root}" FILES ${studio_all_qml} "${studio_test_qml_root}/qml/qmldir")
+    add_test(NAME test_desktop_v2_studio_compare COMMAND test_desktop_v2_studio_compare -o -,txt)
+    if(WIN32)
+        add_test(NAME test_desktop_v2_studio_compare_warp COMMAND test_desktop_v2_studio_compare -o -,txt)
+        set_tests_properties(test_desktop_v2_studio_compare_warp PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=windows;QSG_RHI_BACKEND=d3d11;QSG_RHI_PREFER_SOFTWARE_RENDERER=1;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_test_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+    endif()
+    set_tests_properties(test_desktop_v2_studio_compare PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_test_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+endif()

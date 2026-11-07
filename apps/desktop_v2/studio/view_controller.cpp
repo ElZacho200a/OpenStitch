@@ -312,6 +312,13 @@ void ViewController::setMarkers(std::vector<OverlayMarker> markers) {
     publish();
 }
 
+void ViewController::setComparison(std::shared_ptr<const ComparisonLayers> layers,
+                                   ComparisonDisplay display) {
+    comparison_ = std::move(layers);
+    comparisonDisplay_ = display;
+    publish();
+}
+
 // --- Zoom ------------------------------------------------------------------------------------
 
 void ViewController::zoomRectangle() {
@@ -664,6 +671,8 @@ void ViewController::publish() {
         return;
     }
     auto overlays = std::make_shared<CanvasOverlays>();
+    overlays->comparison = comparison_;
+    overlays->comparisonDisplay = comparisonDisplay_;
     // The realistic raster replaces the flat stitches while it is on; the canvas keeps its
     // geometry untouched so switching back is instantaneous.
     const auto realistic = images_.find(QStringLiteral("realistic"));

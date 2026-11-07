@@ -5,6 +5,7 @@
 #include <QImage>
 #include <QPainter>
 #include <QQuickWindow>
+#include <QSGClipNode>
 #include <QSGGeometryNode>
 #include <QSGOpacityNode>
 #include <QSGSimpleTextureNode>
@@ -15,6 +16,12 @@
 #include <limits>
 
 namespace openstitch::desktop_v2::studio {
+QRectF comparisonSourceClip(const ComparisonLayers& layers, const ComparisonDisplay& display) {
+    const auto& image = layers.source;
+    return {image.x0, image.y0,
+            image.widthMm * (display.curtain ? std::clamp(display.position, 0.0, 1.0) : 1.0),
+            image.heightMm};
+}
 namespace {
 using Vertices = std::vector<StudioVertex>;
 
@@ -160,6 +167,80 @@ struct StitchBatches {
     }
 };
 
+// Retained CX12 resources: settings and camera only change node state, never textures/vertices.
+struct CompareNodes {
+    QSGTransformNode* world = new QSGTransformNode;
+    QSGOpacityNode* source = new QSGOpacityNode;
+    QSGClipNode* clip = new QSGClipNode;
+    QSGOpacityNode* segmentation = new QSGOpacityNode;
+    QSGOpacityNode* vectors = new QSGOpacityNode;
+    QSGOpacityNode* order = new QSGOpacityNode;
+    std::shared_ptr<const ComparisonLayers> data;
+    CompareNodes() {
+        source->appendChildNode(clip);
+        clip->setIsRectangular(true);
+        world->appendChildNode(source);
+        world->appendChildNode(segmentation);
+        world->appendChildNode(vectors);
+        world->appendChildNode(order);
+    }
+};
+void appendCompareLines(QSGNode& parent, const std::vector<OverlayJump>& lines, QColor color) {
+    Vertices vertices;
+    for (const auto& line : lines) {
+        const double dx = line.bx - line.ax, dy = line.by - line.ay;
+        const double length = std::hypot(dx, dy);
+        if (length <= 0)
+            continue;
+        const double nx = -dy / length * 0.08, ny = dx / length * 0.08;
+        const auto v = [&](double x, double y) {
+            return StudioVertex{static_cast<float>(x),
+                                static_cast<float>(y),
+                                static_cast<std::uint8_t>(color.red()),
+                                static_cast<std::uint8_t>(color.green()),
+                                static_cast<std::uint8_t>(color.blue()),
+                                255};
+        };
+        vertices.insert(vertices.end(),
+                        {v(line.ax + nx, line.ay + ny), v(line.ax - nx, line.ay - ny),
+                         v(line.bx + nx, line.by + ny), v(line.bx + nx, line.by + ny),
+                         v(line.ax - nx, line.ay - ny), v(line.bx - nx, line.by - ny)});
+    }
+    appendGeometry(parent, vertices);
+}
+void synchronizeComparison(CompareNodes& nodes, const CanvasOverlays& overlays,
+                           QQuickWindow& window) {
+    if (nodes.data != overlays.comparison) {
+        nodes.data = overlays.comparison;
+        clearChildren(*nodes.clip);
+        clearChildren(*nodes.segmentation);
+        clearChildren(*nodes.vectors);
+        clearChildren(*nodes.order);
+        if (nodes.data) {
+            const auto texture = [&window](QSGNode& parent, const OverlayImage& image) {
+                if (image.image.isNull())
+                    return;
+                auto* node = new QSGSimpleTextureNode;
+                node->setOwnsTexture(true);
+                node->setTexture(window.createTextureFromImage(image.image));
+                node->setRect(QRectF(image.x0, image.y0, image.widthMm, image.heightMm));
+                parent.appendChildNode(node);
+            };
+            texture(*nodes.clip, nodes.data->source);
+            texture(*nodes.segmentation, nodes.data->segmentation);
+            appendCompareLines(*nodes.vectors, nodes.data->vectors, QColor(0, 170, 230));
+            appendCompareLines(*nodes.order, nodes.data->order, QColor(240, 170, 30));
+        }
+    }
+    const auto& display = overlays.comparisonDisplay;
+    nodes.source->setOpacity(display.source ? display.opacity : 0);
+    nodes.segmentation->setOpacity(display.segmentation ? display.opacity : 0);
+    nodes.vectors->setOpacity(display.vectors ? display.opacity : 0);
+    nodes.order->setOpacity(display.order ? display.opacity : 0);
+    if (nodes.data)
+        nodes.clip->setClipRect(comparisonSourceClip(*nodes.data, display));
+}
+
 struct GeometryRoot : QSGNode {
     StudioResourceState resources;
     QSGTransformNode* world = new QSGTransformNode;
@@ -167,12 +248,14 @@ struct GeometryRoot : QSGNode {
     StitchBatches stitches;
     QSGTransformNode* layers = new QSGTransformNode;
     QSGNode* overlay = new QSGNode;
+    CompareNodes comparison;
     std::uint64_t overlayRevision{std::numeric_limits<std::uint64_t>::max()};
     GeometryRoot() {
         world->appendChildNode(frame);
         world->appendChildNode(stitches.all);
         appendChildNode(world);
         appendChildNode(layers);
+        appendChildNode(comparison.world);
         appendChildNode(overlay);
     }
 };
@@ -205,6 +288,7 @@ public:
         const bool overlayDirty = root->overlayRevision != state.overlayRevision;
         const CanvasOverlays defaults;
         const CanvasOverlays& overlays = state.overlays ? *state.overlays : defaults;
+        synchronizeComparison(root->comparison, overlays, window);
         double elapsed = 0;
         if (dirty.geometry) {
             QElapsedTimer timer;
@@ -255,6 +339,7 @@ public:
             matrix.scale(static_cast<float>(state.camera.scale()));
             root->world->setMatrix(matrix);
             root->layers->setMatrix(matrix);
+            root->comparison.world->setMatrix(matrix);
         }
         if (dirty.selection || dirty.camera || dirty.geometry || overlayDirty) {
             clearChildren(*root->overlay);
@@ -340,6 +425,35 @@ public:
                     painter.drawImage(QRectF(layer.x0, layer.y0, layer.widthMm, layer.heightMm),
                                       layer.image);
                 }
+            }
+            if (overlays.comparison) {
+                const auto& layers = *overlays.comparison;
+                const auto& display = overlays.comparisonDisplay;
+                painter.save();
+                painter.setOpacity(display.opacity);
+                if (display.source && !layers.source.image.isNull()) {
+                    painter.save();
+                    painter.setClipRect(comparisonSourceClip(layers, display));
+                    const auto& layer = layers.source;
+                    painter.drawImage(QRectF(layer.x0, layer.y0, layer.widthMm, layer.heightMm),
+                                      layer.image);
+                    painter.restore();
+                }
+                if (display.segmentation && !layers.segmentation.image.isNull()) {
+                    const auto& layer = layers.segmentation;
+                    painter.drawImage(QRectF(layer.x0, layer.y0, layer.widthMm, layer.heightMm),
+                                      layer.image);
+                }
+                const auto lines = [&painter](const std::vector<OverlayJump>& data, QColor color) {
+                    painter.setPen(QPen(color, 0.16));
+                    for (const auto& line : data)
+                        painter.drawLine(QPointF(line.ax, line.ay), QPointF(line.bx, line.by));
+                };
+                if (display.vectors)
+                    lines(layers.vectors, QColor(0, 170, 230));
+                if (display.order)
+                    lines(layers.order, QColor(240, 170, 30));
+                painter.restore();
             }
             painter.resetTransform();
             const double vw = size.width();

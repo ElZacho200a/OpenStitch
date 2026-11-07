@@ -7,7 +7,6 @@ cd99057f,TESTED,StudioImageTest::preparePanelDrivesTheWholeJourney (regionCleanI
 8ba6da96,TESTED,StudioImageTest::preparePanelDrivesTheWholeJourney (segApplyButton via QML),ImageController::applySegmentation,SegmentationSection.qml
 874e1166,SERVICE_ONLY,StudioImageTest::regionEditingIsUndoableAndMarksObjectsStale (controleur seul; pas de bouton QML),RegionController::mergeColorInto,
 213d5af7,UI_PARTIAL,fusion des voisines de meme couleur appliquee en dur (pas de case a cocher),RegionController::reducePalette,RegionTools.qml
-223c1e22,UI_PARTIAL,apercu dans le panneau Preparer (pas en surimpression du canevas),ImageController::previewSegmentation,SegmentationSection.qml
 3dcea6a1,ABSENT,,,
 ffcf580f,UI_PARTIAL,StudioImageTest::aiStatusFallsBackExplicitly (sonde des backends + repli classique explicite; pas d'analyse),ImageController::refreshAiBackends,AiSection.qml
 ccd029ae,ABSENT,,,

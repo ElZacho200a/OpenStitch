@@ -4,6 +4,7 @@
 #include <QColor>
 #include <QImage>
 #include <QMatrix4x4>
+#include <QRectF>
 #include <QSizeF>
 #include <limits>
 #include <memory>
@@ -32,6 +33,17 @@ struct OverlayMarker {
 struct OverlayJump {
     double ax{0}, ay{0}, bx{0}, by{0};
 };
+// CX12: immutable document-space display data, independent from camera and display settings.
+struct ComparisonLayers {
+    OverlayImage source, segmentation;
+    std::vector<OverlayJump> vectors, order;
+};
+struct ComparisonDisplay {
+    bool source{false}, segmentation{false}, vectors{false}, order{false}, curtain{false};
+    double opacity{1.0}, position{0.5};
+};
+[[nodiscard]] QRectF comparisonSourceClip(const ComparisonLayers& layers,
+                                          const ComparisonDisplay& display);
 struct CanvasOverlays {
     static constexpr std::size_t all = std::numeric_limits<std::size_t>::max();
     bool showStitches{true};
@@ -43,7 +55,9 @@ struct CanvasOverlays {
     std::vector<double> guidesY; // horizontal guides, scene y
     std::vector<OverlayImage> images;
     std::vector<OverlayMarker> markers;
-    std::vector<OverlayJump> jumps;   // drawn when non-empty
+    std::vector<OverlayJump> jumps; // drawn when non-empty
+    std::shared_ptr<const ComparisonLayers> comparison;
+    ComparisonDisplay comparisonDisplay;
     std::size_t visibleSegments{all}; // simulation: first N segments of the scene
 };
 

@@ -1,0 +1,3 @@
+id,statut,preuve,controleur,composant
+644f52dc,TESTED,StudioCompareTest vraie QML - Debug logiciel + D3D11 natif confirme 2/2; Release et suite complete en attente,CompareController,ComparePanel.qml
+223c1e22,TESTED,StudioCompareTest vrai apercu segmentation et octets DST immuables - deux backends Debug; Release en attente,CompareController / ImageController,ComparePanel.qml / CanvasOverlays

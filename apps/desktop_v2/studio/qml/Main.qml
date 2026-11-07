@@ -436,6 +436,8 @@ Window {
                         canvasItem: canvas
                     }
 
+                    ComparePanel { anchors.fill: parent }
+
                     PreparePanel {
                         objectName: "preparePanel"
                         anchors.fill: parent

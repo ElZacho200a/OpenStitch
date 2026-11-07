@@ -100,6 +100,8 @@ public:
     // --- Hooks for the analysis adapter -------------------------------------------------------
     void setAnalysisImage(const QString& key, std::optional<OverlayImage> image);
     void setMarkers(std::vector<OverlayMarker> markers);
+    // CX12: only publishes display state; immutable resources are built by CompareController.
+    void setComparison(std::shared_ptr<const ComparisonLayers> layers, ComparisonDisplay display);
     [[nodiscard]] StudioController& studio() const { return studio_; }
     [[nodiscard]] GpuCanvas* canvas() const { return canvas_; }
 
@@ -169,6 +171,8 @@ private:
     double pxPerMm100_{96.0 / 25.4};
     std::map<QString, OverlayImage> images_;
     std::vector<OverlayMarker> markers_;
+    std::shared_ptr<const ComparisonLayers> comparison_;
+    ComparisonDisplay comparisonDisplay_;
     // Simulation
     std::shared_ptr<const SimData> sim_;
     std::uint64_t simRevision_{0};

@@ -275,7 +275,7 @@ f6bdf6f6,case,Affiner (2-opt / Or-opt),order_list_widget.cpp,absent,,ABSENT,,,
 a3bed34d,case,Angle absolu (repère du dessin),properties_panel.cpp,absent,,ABSENT,,,
 2b66fac6,case,Angle des fils automatique,main_window_satin_auto.cpp,absent,,ABSENT,,,
 12815a11,case,Anneaux en satin,main_window_create.cpp,absent,,ABSENT,,,
-223c1e22,case,Aperçu sur l'image,segmentation_dialog.cpp,absent,,UI_PARTIAL,apercu dans le panneau Preparer (pas en surimpression du canevas),ImageController::previewSegmentation,SegmentationSection.qml
+223c1e22,case,Aperçu sur l'image,segmentation_dialog.cpp,absent,,TESTED,StudioCompareTest vrai apercu segmentation et octets DST immuables - deux backends Debug; Release en attente,CompareController / ImageController,ComparePanel.qml / CanvasOverlays
 f019d797,case,"Arrêts machine (poser le tissu, couper)",properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(applique.stops),ParamField.qml switch
 65fd5bf3,case,Aspect fait main,properties_panel.cpp,absent,,ABSENT,,,
 d2463e2c,case,Bloc uni (sans tissu visible),main_window_create.cpp,absent,,ABSENT,,,
@@ -407,7 +407,7 @@ fcfaf94f,menu,Fils,main_window_threads.cpp,fait,Fils,SERVICE_ONLY,,,
 7449b5b4,menu,Navigation,main_window_help_menu.cpp,fait,Navigation,SERVICE_ONLY,,,
 6fbcb11d,menu,Panneaux,main_window.cpp,fait,Panneaux,SERVICE_ONLY,,,
 eb49cec2,menu,Passes de couture,main_window_view_display.cpp,absent,,ABSENT,,,
-644f52dc,menu,Plans d'affichage,main_window.cpp,absent,,ABSENT,,,
+644f52dc,menu,Plans d'affichage,main_window.cpp,absent,,TESTED,StudioCompareTest vraie QML - Debug logiciel + D3D11 natif confirme 2/2; Release et suite complete en attente,CompareController,ComparePanel.qml
 b909b547,menu,Préréglages de points,main_window_stitch_presets.cpp,fait,Préréglages de points,TESTED,StudioInspectorTest::presetsLifecycle,InspectorController::savePreset/applyPreset/renamePreset,Inspector.qml section PRESETS
 e019429a,menu,Rappeler une sélection,main_window_selection_tools.cpp,absent,,FUNCTIONAL_UNTESTED,StudioEditTest::savedSelectionsAreRecalled (controleur seul),EditController::recallSelection,EditBar Rappeler
 d1ff1ac3,menu,Rendu réaliste,main_window_realistic.cpp,fait,Rendu réaliste,SERVICE_ONLY,,,
