@@ -44,6 +44,7 @@ Item {
             Shortcut { sequence: "Shift+F"; onActivated: view.zoomSelection() }
             Shortcut { sequence: "Alt+Left"; onActivated: view.zoomPreviousView() }
             Shortcut { sequence: "Ctrl+L"; onActivated: view.simActive ? view.stopSimulation() : view.startSimulation() }
+            Shortcut { sequence: "Ctrl+Shift+T"; onActivated: view.toggleRealistic() }
 
             // Rulers (model mm, Y up). At most ~60 labels, rebuilt on view change only.
             Rectangle { visible: view.rulersVisible; anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; height: 18; color: Theme.panel; opacity: 0.9
@@ -72,6 +73,7 @@ Item {
                 anchors.right: parent.right
                 anchors.margins: 10
                 spacing: 4
+                StudioButton { objectName: "realisticButton2"; text: qsTr("Réaliste"); shortcutLabel: "Ctrl+Shift+T"; tooltip: qsTr("Rendu réaliste (fils en relief, ombre, tissu)"); checkable: true; checked: view.realistic; onClicked: view.toggleRealistic() }
                 StudioButton { objectName: "viewPanelButton"; text: qsTr("Vue"); checkable: true; checked: hub.openPanel === "view"; onClicked: hub.toggle("view") }
                 StudioButton { objectName: "threadsPanelButton"; text: qsTr("Fils"); checkable: true; checked: hub.openPanel === "threads"; onClicked: hub.toggle("threads") }
                 StudioButton { objectName: "analysisPanelButton"; text: qsTr("Analyse"); checkable: true; checked: hub.openPanel === "analysis"; onClicked: hub.toggle("analysis") }
@@ -140,6 +142,8 @@ Item {
                             }
                         }
                         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.divider }
+                        SectionLabel { text: qsTr("RENDU RÉALISTE") }
+                        RealisticToggle { objectName: "realisticPanelToggle"; Layout.fillWidth: true }
                         SectionLabel { text: qsTr("CALQUES D'AFFICHAGE") }
                         Flow {
                             Layout.fillWidth: true

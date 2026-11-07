@@ -132,8 +132,45 @@ void ViewController::attachCanvas(QObject* canvas) {
     canvas_ = qobject_cast<GpuCanvas*>(canvas);
     if (canvas_) {
         connect(canvas_, &GpuCanvas::destroyed, this, [this] { canvas_.clear(); });
+        connect(canvas_, &GpuCanvas::diagnosticsChanged, this, [this] {
+            // Le backend n'est connu qu'après le premier rendu : republier si le chemin bascule.
+            if (realistic_ && realisticOnGpu() != lastRealisticGpu_) {
+                lastRealisticGpu_ = realisticOnGpu();
+                publish();
+            }
+            emit realisticModeChanged();
+        });
     }
     publish();
+}
+
+void ViewController::setRealistic(bool value) {
+    if (realistic_ == value) {
+        return;
+    }
+    realistic_ = value;
+    publish(); // GPU : le calque est masqué / affiché, rien n'est recalculé si la scène est la même
+    emit realisticChanged();
+    emit realisticModeChanged();
+}
+
+QString ViewController::realisticMode() const {
+    if (!realistic_) {
+        return {};
+    }
+    return realisticOnGpu() ? QStringLiteral("Réaliste · GPU")
+                            : QStringLiteral("Réaliste · CPU (repli)");
+}
+
+void ViewController::setRealisticStyle(const RenderSettings& settings) {
+    const auto style = realisticStyleFrom(settings);
+    if (style == realisticStyle_) {
+        return;
+    }
+    realisticStyle_ = style;
+    if (realistic_) {
+        publish();
+    }
 }
 
 void ViewController::say(const QString& text) {
@@ -383,6 +420,9 @@ void ViewController::onSceneChanged() {
         return;
     }
     rebuildSimData();
+    if (realistic_ && !realisticOnGpu()) {
+        emit realisticRefreshRequested();
+    }
 }
 
 void ViewController::rebuildSimData() {
@@ -696,6 +736,8 @@ void ViewController::publish() {
         overlays->jumps = sim_->jumps;
     }
     overlays->visibleSegments = simActive_ ? segmentsAt(position_) : CanvasOverlays::all;
+    overlays->realistic = realistic_ && realisticOnGpu();
+    overlays->realisticStyle = realisticStyle_;
     canvas_->setOverlays(std::move(overlays));
 }
 

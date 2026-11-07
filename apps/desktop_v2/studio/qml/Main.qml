@@ -900,6 +900,14 @@ Window {
                     font.pixelSize: Theme.smallSize
                 }
                 Text {
+                    objectName: "realisticModeStatus"
+                    visible: typeof view !== "undefined" && view.realistic
+                    text: typeof view !== "undefined" ? view.realisticMode : ""
+                    color: Theme.accent
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.smallSize
+                }
+                Text {
                     visible: window.width >= 1180
                     text: qsTr("Géométrie · ") + canvas.geometryBuildCount
                     color: Theme.faint

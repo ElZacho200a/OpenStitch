@@ -1,0 +1,7 @@
+id,statut,preuve,controleur,composant
+d1ff1ac3,TESTED,StudioRealisticTest::toggleKeepsDocumentUntouchedAndFallsBackToCpuInSoftware,ViewController::realistic,ViewPanel.qml bouton Réaliste + Ctrl+Shift+T + RealisticToggle.qml
+c6b9c9e3,TESTED,StudioRealisticTest::toggleKeepsDocumentUntouchedAndFallsBackToCpuInSoftware,ViewController::toggleRealistic,Main.qml indicateur d'etat realisticModeStatus
+f15b33c8,FUNCTIONAL_UNTESTED,,AnalysisController::applyRenderPreset,RealisticToggle.qml préréglages de qualité (le dialogue complet reste dans le panneau Analyse)
+37a5693a,FUNCTIONAL_UNTESTED,,AnalysisController::setRenderSetting,AnalysisPanel.qml réglages de rendu (le style GPU suit via ViewController::setRealisticStyle)
+370e284b,TESTED,StudioRealisticTest::gpuPathBuildsOncePerRevisionAndMatchesCpuReference,GpuCanvas::realisticActive,canvas_renderer.cpp RealisticLayer (calque GPU des fils)
+f3c139b0,UI_PARTIAL,StudioRealisticTest::shadowSpriteAndFabricTile,RealisticStyle::fabricRgb,canvas_renderer.cpp tissu tuilé (couleur et armure suivent les réglages ; pas de case dédiée)

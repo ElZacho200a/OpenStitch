@@ -40,6 +40,10 @@ class GpuCanvas : public QQuickItem {
     Q_PROPERTY(QString backendName READ backendName NOTIFY diagnosticsChanged)
     Q_PROPERTY(int geometryBuildCount READ geometryBuildCount NOTIFY diagnosticsChanged)
     Q_PROPERTY(double resourceCreationMs READ resourceCreationMs NOTIFY diagnosticsChanged)
+    // Famille K : rendu réaliste GPU (diagnostics lus côté GUI, jamais écrits au rendu).
+    Q_PROPERTY(bool rhiBackend READ rhiBackend NOTIFY diagnosticsChanged)
+    Q_PROPERTY(bool realisticActive READ realisticActive NOTIFY diagnosticsChanged)
+    Q_PROPERTY(int realisticBuildCount READ realisticBuildCount NOTIFY diagnosticsChanged)
 public:
     explicit GpuCanvas(QQuickItem* parent = nullptr);
     [[nodiscard]] StudioController* controller() const { return controller_; }
@@ -74,6 +78,11 @@ public:
     [[nodiscard]] QString backendName() const { return backendName_; }
     [[nodiscard]] int geometryBuildCount() const { return geometryBuildCount_; }
     [[nodiscard]] double resourceCreationMs() const { return resourceCreationMs_; }
+    // Vrai quand le backend Qt Quick est RHI (le rendu réaliste GPU est alors disponible).
+    [[nodiscard]] bool rhiBackend() const;
+    [[nodiscard]] bool realisticActive() const { return realisticActive_; }
+    [[nodiscard]] int realisticBuildCount() const { return realisticBuildCount_; }
+    [[nodiscard]] double realisticBuildMs() const { return realisticBuildMs_; }
     [[nodiscard]] const StudioCamera& camera() const { return camera_; }
     Q_INVOKABLE void fitDesign();
     // Annule le geste en cours (glisser, poignée, rectangle) ; faux s'il n'y en avait pas.
@@ -144,6 +153,9 @@ private:
     QString backendName_{QStringLiteral("Initialisation du rendu…")};
     int geometryBuildCount_{0};
     double resourceCreationMs_{0};
+    int realisticBuildCount_{0};
+    double realisticBuildMs_{0};
+    bool realisticActive_{false};
     bool panMode_{false};
     bool spaceDown_{false};
     bool fitPending_{true};
