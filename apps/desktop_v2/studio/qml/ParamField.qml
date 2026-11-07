@@ -73,7 +73,7 @@ ColumnLayout {
             Layout.preferredWidth: 64
             text: root.f.text
             horizontalAlignment: TextInput.AlignRight
-            color: root.error.length > 0 ? "#ff8a8a" : Theme.foreground
+            color: root.error.length > 0 ? Theme.error : Theme.foreground
             font.family: Theme.fontFamily
             font.pixelSize: Theme.smallSize
             selectByMouse: true
@@ -82,7 +82,7 @@ ColumnLayout {
                 radius: 3
                 color: Theme.raised
                 border.width: 1
-                border.color: root.error.length > 0 ? "#ff8a8a" : entry.activeFocus ? Theme.accent : Theme.border
+                border.color: root.error.length > 0 ? Theme.error : entry.activeFocus ? Theme.accent : Theme.border
             }
             onEditingFinished: {
                 const result = root.ctl.setParamText(root.fieldKey, text);
@@ -235,7 +235,7 @@ ColumnLayout {
         visible: root.error.length > 0
         objectName: "error_" + root.fieldKey
         text: root.error
-        color: "#ff8a8a"
+        color: Theme.error
         wrapMode: Text.WordWrap
         font.family: Theme.fontFamily
         font.pixelSize: Theme.captionSize

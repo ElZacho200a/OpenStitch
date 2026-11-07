@@ -480,7 +480,7 @@ Item {
         height: 40
         radius: Theme.radius
         color: Theme.surface
-        border.color: panel.ctl && panel.ctl.messageIsError ? "#d96b6b" : Theme.border
+        border.color: panel.ctl && panel.ctl.messageIsError ? Theme.error : Theme.border
         RowLayout {
             id: toastRow
             anchors.centerIn: parent
@@ -488,7 +488,7 @@ Item {
             Text {
                 objectName: "fileToastText"
                 text: panel.ctl ? (panel.ctl.busy ? panel.ctl.busyLabel + "…" : panel.ctl.message) : ""
-                color: panel.ctl && panel.ctl.messageIsError ? "#f0a0a0" : Theme.foreground
+                color: panel.ctl && panel.ctl.messageIsError ? Theme.error : Theme.foreground
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.bodySize
                 elide: Text.ElideRight
