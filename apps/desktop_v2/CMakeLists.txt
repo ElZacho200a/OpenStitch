@@ -84,6 +84,15 @@ if(NOT Qt6_FOUND)
 endif()
 
 set(CMAKE_AUTOMOC ON)
+# Serveur de session live (sans widgets) : partagé par l'interface Widgets et par Studio. Une seule
+# définition de `LiveServer` dans le programme (deux copies compilées font échouer l'édition de liens
+# des exécutables qui lient les deux interfaces, comme openstitch-studio-bench).
+add_library(openstitch_desktop_v2_live_server STATIC ui/live_server.cpp ui/live_server.hpp)
+add_library(openstitch::desktop_v2_live_server ALIAS openstitch_desktop_v2_live_server)
+target_include_directories(openstitch_desktop_v2_live_server PUBLIC ui)
+target_link_libraries(openstitch_desktop_v2_live_server
+    PUBLIC Qt6::Core Qt6::Network openstitch::agent openstitch::companion_backends
+    PRIVATE openstitch::warnings)
 add_library(openstitch_desktop_v2_ui STATIC
     ui/shell_window.cpp
     ui/shell_window.hpp
@@ -130,8 +139,6 @@ add_library(openstitch_desktop_v2_ui STATIC
     ui/chat_panel.hpp
     ui/companion_panel.cpp
     ui/companion_panel.hpp
-    ui/live_server.cpp
-    ui/live_server.hpp
     ui/thread_panel.hpp
     ui/welcome_page.cpp
     ui/welcome_page.hpp
@@ -148,7 +155,7 @@ add_library(openstitch::desktop_v2_ui ALIAS openstitch_desktop_v2_ui)
 target_include_directories(openstitch_desktop_v2_ui PUBLIC ui)
 target_link_libraries(openstitch_desktop_v2_ui
     PUBLIC Qt6::Widgets Qt6::Network openstitch::desktop_v2_core openstitch::project_io
-           openstitch::agent openstitch::companion_backends
+           openstitch::agent openstitch::companion_backends openstitch::desktop_v2_live_server
     PRIVATE openstitch::warnings)
 
 add_executable(openstitch_v2 WIN32 ui/main.cpp)

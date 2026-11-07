@@ -298,6 +298,39 @@ if(TARGET openstitch::studio_ui)
 endif()
 
 # Studio V01 espace « Image » (vrai Main.qml, vraie image, vraie couche sourceImage).
+# Espace « Segmentation » (V01) : vrai Main.qml + SegmentationSpace, QTest headless.
+# Espace Vectorisation (V01) : vrai Main.qml, vrai projet, couche vectors, lien amont, mise a jour.
+if(TARGET openstitch::studio_ui)
+    find_package(Qt6 COMPONENTS Test QUIET)
+    if(Qt6Test_FOUND)
+        set(CMAKE_AUTOMOC ON)
+        add_executable(test_desktop_v2_studio_space_segmentation test_studio_space_segmentation.cpp)
+        target_link_libraries(test_desktop_v2_studio_space_segmentation
+            PRIVATE openstitch::studio_ui Qt6::Test openstitch::warnings)
+        qt_add_resources(test_desktop_v2_studio_space_segmentation studio_space_segmentation_qml
+            PREFIX "/studio" BASE "${studio_test_qml_root}" FILES ${studio_all_qml}
+                "${studio_test_qml_root}/qml/qmldir")
+        add_test(NAME test_desktop_v2_studio_space_segmentation
+            COMMAND test_desktop_v2_studio_space_segmentation -o -,txt)
+        get_filename_component(studio_space_segmentation_qml_imports "${Qt6_DIR}/../../../qml" ABSOLUTE)
+        set_tests_properties(test_desktop_v2_studio_space_segmentation PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_space_segmentation_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+        add_executable(test_desktop_v2_studio_space_vector test_studio_space_vector.cpp)
+        target_link_libraries(test_desktop_v2_studio_space_vector
+            PRIVATE openstitch::studio_ui Qt6::Test openstitch::warnings)
+        qt_add_resources(test_desktop_v2_studio_space_vector studio_space_vector_qml PREFIX "/studio"
+            BASE "${studio_test_qml_root}" FILES ${studio_all_qml}
+                "${studio_test_qml_root}/qml/qmldir")
+        add_test(NAME test_desktop_v2_studio_space_vector COMMAND test_desktop_v2_studio_space_vector -o -,txt)
+        get_filename_component(studio_space_vector_qml_imports "${Qt6_DIR}/../../../qml" ABSOLUTE)
+        set_tests_properties(test_desktop_v2_studio_space_vector PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_space_vector_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+    endif()
+endif()
+
+# Studio V01 espace Image : voir ci-dessus.
 if(TARGET openstitch::studio_ui)
     find_package(Qt6 COMPONENTS Test QUIET)
     if(Qt6Test_FOUND)
