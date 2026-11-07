@@ -1,4 +1,4 @@
-﻿id,statut,preuve,controleur,composant
+id,statut,preuve,controleur,composant
 d1ff1ac3,TESTED,StudioRealisticTest::toggleKeepsDocumentUntouchedAndFallsBackToCpuInSoftware,ViewController::realistic,ViewPanel.qml bouton RÃ©aliste + Ctrl+Shift+T + RealisticToggle.qml
 c6b9c9e3,TESTED,StudioRealisticTest::toggleKeepsDocumentUntouchedAndFallsBackToCpuInSoftware,ViewController::toggleRealistic,Main.qml indicateur d'etat realisticModeStatus
 f15b33c8,FUNCTIONAL_UNTESTED,,AnalysisController::applyRenderPreset,RealisticToggle.qml prÃ©rÃ©glages de qualitÃ© (le dialogue complet reste dans le panneau Analyse)
