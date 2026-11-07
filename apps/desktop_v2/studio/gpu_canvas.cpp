@@ -466,6 +466,11 @@ QVariantMap GpuCanvas::layers() const {
             {QStringLiteral("selectionOverlays"), layers_.selectionOverlays}};
 }
 
+void GpuCanvas::setRegionLayer(std::shared_ptr<const RegionLayerData> data) {
+    regionLayer_ = std::move(data);
+    update();
+}
+
 void GpuCanvas::setLayers(const QVariantMap& layers) {
     CanvasLayers next = layers_;
     const auto read = [&](const char* key, bool& flag) {
@@ -591,7 +596,8 @@ QSGNode* GpuCanvas::updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData*) {
                             window()->effectiveDevicePixelRatio(),
                             overlays_,
                             overlayRevision_,
-                            layers_};
+                            layers_,
+                            regionLayer_};
     const auto result = backend.synchronize(oldNode, state, *window());
     // Render thread must never write QObject properties or read the live document. Queue
     // diagnostics.
