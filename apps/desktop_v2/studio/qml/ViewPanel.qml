@@ -62,7 +62,7 @@ Item {
                 y: hub.canvasItem ? hub.canvasItem.rubberBand.y : 0
                 width: hub.canvasItem ? hub.canvasItem.rubberBand.width : 0
                 height: hub.canvasItem ? hub.canvasItem.rubberBand.height : 0
-                color: "#22f08cb7"
+                color: Qt.alpha(Theme.accent, 0.13)
                 border.color: Theme.accent
             }
 

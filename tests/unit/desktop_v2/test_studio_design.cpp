@@ -57,7 +57,7 @@ QMap<QString, QStringList> readTokens() {
     QMap<QString, QStringList> tokens;
     const auto theme = readFile(QStringLiteral(OPENSTITCH_STUDIO_QML_DIR "/Theme.qml"));
     static const QRegularExpression re(QStringLiteral(
-        R"(property color (\w+): light \? "(#[0-9a-fA-F]{6})" : "(#[0-9a-fA-F]{6})")"));
+        "property color (\\w+): light \\? \"(#[0-9a-fA-F]{6})\" : \"(#[0-9a-fA-F]{6})\""));
     auto it = re.globalMatch(theme);
     while (it.hasNext()) {
         const auto m = it.next();
@@ -142,16 +142,16 @@ private slots:
     //  - a line carrying `lint-ok:` is exempt from the hex rule (document data such as a default
     //    thread colour typed in a field, which is not an interface colour).
     void qmlUsesOnlyThemedControlsAndTokens() {
-        static const QRegularExpression unstyled(QStringLiteral(
-            R"((?<![\w])(?:Controls\.)?(CheckBox|TextField|SpinBox|ComboBox|Slider|)"
-            R"(TextArea|Switch|RadioButton|Button|TextEdit|Dial|RangeSlider)\s*\{)"));
-        static const QRegularExpression bareLabel(QStringLiteral(R"((?<![\w.])Label\s*\{)"));
+        static const QRegularExpression unstyled(
+            QStringLiteral("(?<![\\w])(?:Controls\\.)?(CheckBox|TextField|SpinBox|ComboBox|Slider|"
+                           "TextArea|Switch|RadioButton|Button|TextEdit|Dial|RangeSlider)\\s*\\{"));
+        static const QRegularExpression bareLabel(QStringLiteral("(?<![\\w.])Label\\s*\\{"));
         static const QRegularExpression attachedTip(
-            QStringLiteral(R"(Controls\.ToolTip\.(visible|text|delay))"));
-        static const QRegularExpression hex(QStringLiteral(R"(["']#[0-9a-fA-F]{3,8}["'])"));
+            QStringLiteral("Controls\\.ToolTip\\.(visible|text|delay)"));
+        static const QRegularExpression hex(QStringLiteral("[\"']#[0-9a-fA-F]{3,8}[\"']"));
         static const QRegularExpression pixel(
-            QStringLiteral(R"(font\.(pixelSize|pointSize)\s*:\s*\d)"));
-        static const QRegularExpression comment(QStringLiteral(R"(//.*$)"));
+            QStringLiteral("font\\.(pixelSize|pointSize)\\s*:\\s*\\d"));
+        static const QRegularExpression comment(QStringLiteral("//.*$"));
 
         QStringList violations;
         int scanned = 0;

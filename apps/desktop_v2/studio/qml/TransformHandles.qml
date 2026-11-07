@@ -19,7 +19,7 @@ Item {
         y: canvas ? canvas.marquee.y : 0
         width: canvas ? canvas.marquee.width : 0
         height: canvas ? canvas.marquee.height : 0
-        color: "#22f08cb7"
+        color: Qt.alpha(Theme.accent, 0.13)
         border.color: Theme.accent
         border.width: 1
     }
@@ -44,7 +44,7 @@ Item {
         y: canvas ? canvas.ghostRect.y : 0
         width: canvas ? canvas.ghostRect.width : 0
         height: canvas ? canvas.ghostRect.height : 0
-        color: "#18f08cb7"
+        color: Qt.alpha(Theme.accent, 0.09)
         border.color: Theme.accent
         border.width: 1
     }

@@ -111,7 +111,7 @@ Item {
                     radius: 3
                     color: row.isObject ? row.modelData.color : "transparent"
                     border.width: 1
-                    border.color: "#66858d9e"
+                    border.color: Qt.alpha(Theme.faint, 0.4)
                     opacity: row.isObject && row.modelData.visible ? 1 : 0.4
                 }
                 Text {
