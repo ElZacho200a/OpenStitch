@@ -156,7 +156,8 @@ if(TARGET openstitch::studio_ui AND Qt6Test_FOUND)
     target_link_libraries(test_desktop_v2_studio_detail PRIVATE openstitch::studio_ui Qt6::Test
         openstitch::warnings)
     qt_add_resources(test_desktop_v2_studio_detail studio_detail_qml PREFIX "/studio"
-        BASE "${studio_test_qml_root}" FILES ${studio_all_qml})
+        BASE "${studio_test_qml_root}" FILES ${studio_all_qml}
+            "${studio_test_qml_root}/qml/qmldir")
     add_test(NAME test_desktop_v2_studio_detail COMMAND test_desktop_v2_studio_detail -o -,txt)
     set_tests_properties(test_desktop_v2_studio_detail PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_test_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"

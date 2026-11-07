@@ -1,7 +1,7 @@
 id,statut,preuve,controleur,composant
-2a2bef85,FUNCTIONAL_UNTESTED,Parcours QML et tests écrits; exécution en attente,DetailController,DetailTools.qml
-3dcea6a1,FUNCTIONAL_UNTESTED,Pinceau au vrai canevas; tests écrits en attente,DetailController,DetailTools.qml
-628f1213,FUNCTIONAL_UNTESTED,Effacement annulable; tests écrits en attente,DetailController,DetailTools.qml
-e181a7ab,FUNCTIONAL_UNTESTED,Gomme au vrai canevas; tests écrits en attente,DetailController,DetailTools.qml
-e3db2548,FUNCTIONAL_UNTESTED,Aperçu immuable et commande par geste; tests écrits en attente,DetailController,DetailTools.qml
-336b6213,FUNCTIONAL_UNTESTED,Création et régénération ciblée avec confirmation; tests écrits en attente,DetailController,DetailTools.qml
+2a2bef85,TESTED,StudioDetailTest via vraie QML (Debug verifie; Release a executer),DetailController,DetailTools.qml
+3dcea6a1,TESTED,StudioDetailTest via vraie QML (Debug verifie; Release a executer),DetailController,DetailTools.qml
+628f1213,TESTED,StudioDetailTest via vraie QML (Debug verifie; Release a executer),DetailController,DetailTools.qml
+e181a7ab,TESTED,StudioDetailTest via vraie QML (Debug verifie; Release a executer),DetailController,DetailTools.qml
+e3db2548,TESTED,StudioDetailTest via vraie QML (Debug verifie; Release a executer),DetailController,DetailTools.qml
+336b6213,TESTED,StudioDetailTest via vraie QML (Debug verifie; Release a executer),DetailController,DetailTools.qml

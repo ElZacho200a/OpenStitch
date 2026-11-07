@@ -56,7 +56,7 @@ d44d8b2a,action,Décaler la forme,main_window.cpp,absent,,ABSENT,,,
 a6809735,action,Déformation prévue du tissu,main_window_analysis.cpp,fait,Déformation prévue du tissu,FUNCTIONAL_UNTESTED,,AnalysisController::computeFabricRisk,ViewPanel.qml / GpuCanvas overlay image
 eab12005,action,Déplacer la sélection ici,calque_panel.cpp,fait,calqueHere,FUNCTIONAL_UNTESTED,StudioEditTest::layersTreeAndObjectEditing (controleur seul),EditController::moveSelectionToLayer,LayerPanel layerMoveHereButton / ObjectTree glisser-deposer
 694f85ac,action,Effacer les guides,main_window_view_display.cpp,fait,Effacer les guides,FUNCTIONAL_UNTESTED,StudioViewTest::gridGuidesAndLayersPersist,ViewController::clearGuides,ViewPanel.qml / GpuCanvas overlay guides
-2a2bef85,action,Effacer toutes les zones de détail,main_window_detail_zones.cpp,absent,,ABSENT,,,
+2a2bef85,action,Effacer toutes les zones de détail,main_window_detail_zones.cpp,absent,,TESTED,StudioDetailTest via vraie QML (Debug verifie; Release a executer),DetailController,DetailTools.qml
 579f3c4f,action,Enregistrer le projet,main_window.cpp,fait,Enregistrer le projet,TESTED,StudioShellTest::openMoveUndoSaveReopenJourney,StudioController::saveProject,Main.qml saveProjectButton
 1e0aaea5,action,Enregistrer le projet sous,main_window.cpp,fait,file.save-as,TESTED,StudioShellTest::openMoveUndoSaveReopenJourney,StudioController::saveProjectAs,Main.qml Ctrl+Maj+S
 5aaa0b5f,action,Enregistrer les réglages de la sélection,main_window_stitch_presets.cpp,fait,preset.save,TESTED,StudioInspectorTest::presetsLifecycle,InspectorController::savePreset,Inspector.qml savePreset
@@ -230,7 +230,7 @@ a8e5be69,bouton,Modifier le texte,properties_panel.cpp,fait,Modifier le texte,FU
 8f650f08,bouton,Ouvrir un projet,empty_state_widget.cpp,fait,Ouvrir une image ou un projet,FUNCTIONAL_UNTESTED,,FileController::openPath,Main.qml bouton Ouvrir un projet
 237f3d36,bouton,Ouvrir une image ou un SVG,empty_state_widget.cpp,fait,Ouvrir une image ou un projet,FUNCTIONAL_UNTESTED,,FileController::imageImportRequested,Main.qml welcomeImportImage + FilePanel importOptions
 249c0de8,bouton,Parcourir,ai_preferences_dialog.cpp,fait,Parcourir,SERVICE_ONLY,,,
-3dcea6a1,bouton,Peindre les zones de détail,segmentation_dialog.cpp,absent,,ABSENT,,,
+3dcea6a1,bouton,Peindre les zones de détail,segmentation_dialog.cpp,absent,,TESTED,StudioDetailTest via vraie QML (Debug verifie; Release a executer),DetailController,DetailTools.qml
 5c1da94d,bouton,Pivoter,main_window_files.cpp,fait,Pivoter,ABSENT,,,
 219aa56f,bouton,Placer un guide sur le canevas,properties_panel.cpp,fait,fill.direction-guide,SERVICE_ONLY,,,
 fc50bae4,bouton,Poignées sur le canevas,gradient_fill_panel.cpp,fait,fade.axis,SERVICE_ONLY,,,
@@ -251,7 +251,7 @@ ba349540,bouton,Sélectionner les objets du bloc,thread_panel.cpp,partiel,thread
 67a04f5b,bouton,Séquencer par couleur (fusionner les blocs de même fil),thread_panel.cpp,absent,,ABSENT,,,
 e51f01aa,bouton,Tester la configuration,ai_preferences_dialog.cpp,exclu,,BLOCKED,,,
 522a6e56,bouton,Tout afficher,main_window_order_filter.cpp,fait,view.show-all,SERVICE_ONLY,,,
-628f1213,bouton,Tout effacer,main_window_detail_zones.cpp,absent,,ABSENT,,,
+628f1213,bouton,Tout effacer,main_window_detail_zones.cpp,absent,,TESTED,StudioDetailTest via vraie QML (Debug verifie; Release a executer),DetailController,DetailTools.qml
 65e52cd5,bouton,Voir,main_window_workflow.cpp,fait,Voir,SERVICE_ONLY,,,
 a8ae886b,bouton,Voir la carte de densité,gradient_fill_panel.cpp,fait,analysis.density,SERVICE_ONLY,,,
 580a6bce,bouton,Voir les points réels,gradient_fill_panel.cpp,absent,,ABSENT,,,
@@ -302,7 +302,7 @@ c37dbd3d,case,Fond de tissu opaque,export_image_dialog.cpp,partiel,fabricRgb,ABS
 eb932cc3,case,Fractionner les traversées longues (> 7 mm),main_window_satin_auto.cpp,absent,,ABSENT,,,
 213d5af7,case,Fusionner aussi les régions voisines de même couleur,segmentation_colors_panel.cpp,fait,regionReduceMerge,UI_PARTIAL,fusion des voisines de meme couleur appliquee en dur (pas de case a cocher),RegionController::reducePalette,RegionTools.qml
 8fd5f3dc,case,Fusionner les points trop courts,generation_options_dialog.cpp,fait,Fusionner les points trop courts,SERVICE_ONLY,,,
-e181a7ab,case,Gomme,main_window_detail_zones.cpp,fait,Gomme,SERVICE_ONLY,,,
+e181a7ab,case,Gomme,main_window_detail_zones.cpp,fait,Gomme,TESTED,StudioDetailTest via vraie QML (Debug verifie; Release a executer),DetailController,DetailTools.qml
 5674752c,case,Ignorer la plus grande région (probablement le fond),ai_segmentation_dialog.cpp,exclu,,ABSENT,,,
 e368f34e,case,Inverser les tons,main_window_create.cpp,absent,,ABSENT,,,
 df6f4ad1,case,Je possède ce fil,thread_panel.cpp,absent,,ABSENT,,,
@@ -425,9 +425,9 @@ e5696c12,menu,Type de points (tous),main_window_context_menu.cpp,fait,settableSt
 aabe1c93,menu,Édition,main_window.cpp,fait,Édition,SERVICE_ONLY,,,
 4b6cfb58,outil,Brush,tools.hpp,fait,Brush,SERVICE_ONLY,,,
 7e011329,outil,Bucket,tools.hpp,fait,Bucket,SERVICE_ONLY,,,
-336b6213,outil,ClickToStitch,tools.hpp,fait,ClickToStitch,SERVICE_ONLY,,,
+336b6213,outil,ClickToStitch,tools.hpp,fait,ClickToStitch,TESTED,StudioDetailTest via vraie QML (Debug verifie; Release a executer),DetailController,DetailTools.qml
 e22edfe6,outil,Cut,tools.hpp,fait,Cut,TESTED,StudioToolsTest::knifeAndBooleans,ToolController::release (knife ; batchSplit),ToolRail tool_knife
-e3db2548,outil,DetailBrush,tools.hpp,fait,DetailBrush,SERVICE_ONLY,,,
+e3db2548,outil,DetailBrush,tools.hpp,fait,DetailBrush,TESTED,StudioDetailTest via vraie QML (Debug verifie; Release a executer),DetailController,DetailTools.qml
 a8ddefdf,outil,DrawBezier,tools.hpp,fait,DrawBezier,TESTED,StudioToolsTest::penBezierAndFreehand,ToolController::finish (draw.bezier ; createPenShape),ToolRail tool_draw.bezier + ToolOverlay
 cf819ee7,outil,DrawBreakLine,tools.hpp,fait,DrawBreakLine,SERVICE_ONLY,,,
 31cf34dd,outil,DrawDirectionGuide,tools.hpp,fait,DrawDirectionGuide,UI_PARTIAL,StudioDigitizeTest::directionGuidesJourney,SatinController::addGuide,SatinPanel.qml (outil de trace au canevas absent)

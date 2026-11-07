@@ -49,11 +49,11 @@ document::Project sourceProject(const QString& path) {
     for (unsigned i = 0; i < 2; ++i) {
         document::VectorObject vector;
         vector.id = ObjectId{11u + i};
-        geometry::Path path;
-        path.closed = false;
+        geometry::Path anchorPath;
+        anchorPath.closed = false;
         const auto y = Micrometers{i == 0 ? -30'000 : 30'000};
-        path.nodes = {{{Micrometers{-30'000}, y}}, {{Micrometers{30'000}, y}}};
-        vector.paths.push_back({path, {}});
+        anchorPath.nodes = {{{Micrometers{-30'000}, y}}, {{Micrometers{30'000}, y}}};
+        vector.paths.push_back({anchorPath, {}});
         project.vector_objects.push_back(vector);
         document::EmbroideryObject object;
         object.id = ObjectId{101u + i};
@@ -95,8 +95,8 @@ struct Rig {
     EditController editor{studio};
     DetailController detail{studio};
     ToolController tools{studio};
-    QQmlApplicationEngine engine;
     QStringList warnings;
+    QQmlApplicationEngine engine;
     QQuickWindow* window{nullptr};
     GpuCanvas* canvas{nullptr};
 };
