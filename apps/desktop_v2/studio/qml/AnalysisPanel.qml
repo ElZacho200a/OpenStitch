@@ -41,7 +41,7 @@ Rectangle {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 text: panel.controller.diagnosticsSummary
-                color: panel.controller.diagnosticsStale ? "#e0b060" : Theme.muted
+                color: panel.controller.diagnosticsStale ? Theme.warning : Theme.muted
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallSize
             }
@@ -68,7 +68,7 @@ Rectangle {
                         wrapMode: Text.WordWrap
                         text: "[" + finding.modelData.severity + "] " + finding.modelData.message
                               + (finding.modelData.suggestion.length > 0 ? "\n→ " + finding.modelData.suggestion : "")
-                        color: finding.modelData.severity === "error" ? "#e88" : finding.modelData.severity === "warning" ? "#e0b060" : Theme.muted
+                        color: finding.modelData.severity === "error" ? Theme.error : finding.modelData.severity === "warning" ? Theme.warning : Theme.muted
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.smallSize
                     }
@@ -103,7 +103,7 @@ Rectangle {
             Text {
                 visible: panel.controller.proposalStale
                 text: qsTr("Proposition périmée : le motif a changé, recalculez.")
-                color: "#e0b060"; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
+                color: Theme.warning; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
             }
             RowLayout {
                 visible: panel.controller.proposalReady
@@ -173,7 +173,7 @@ Rectangle {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 text: panel.controller.message
-                color: panel.controller.lastOk ? Theme.success : "#e88"
+                color: panel.controller.lastOk ? Theme.success : Theme.error
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallSize
             }

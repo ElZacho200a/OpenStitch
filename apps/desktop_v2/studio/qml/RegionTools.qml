@@ -265,7 +265,7 @@ ColumnLayout {
         visible: regionTools.message.length > 0
         text: regionTools.message
         wrapMode: Text.WordWrap
-        color: regionTools.messageIsError ? "#ff8a8a" : Theme.success
+        color: regionTools.messageIsError ? Theme.error : Theme.success
         font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
     }
 }
