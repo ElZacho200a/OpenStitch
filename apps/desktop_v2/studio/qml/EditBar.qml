@@ -19,7 +19,7 @@ ColumnLayout {
         implicitHeight: 26
         implicitWidth: Math.max(30, implicitContentWidth + 14)
     }
-    component Num: Controls.TextField {
+    component Num: StudioTextField {
         implicitWidth: 52
         implicitHeight: 26
         color: Theme.foreground

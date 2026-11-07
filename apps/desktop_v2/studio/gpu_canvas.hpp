@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "canvas_renderer.hpp"
+#include "digitize_gestures.hpp"
 #include "edit_controller.hpp"
 #include "studio_camera.hpp"
 #include "studio_controller.hpp"
@@ -33,6 +34,10 @@ class GpuCanvas : public QQuickItem {
     // rendu en px canevas : [{kind, pts:[x0,y0,x1,y1,...]}], quelques éléments seulement.
     Q_PROPERTY(ToolController* tools READ tools WRITE setTools NOTIFY toolsChanged)
     Q_PROPERTY(QVariantList toolOverlay READ toolOverlay NOTIFY overlayChanged)
+    // Famille I : gestes de numérisation (points, fondu, satin, guides). Poignées et nuage de
+    // points en px canevas, élagués à la fenêtre ; jamais un objet QML par point.
+    Q_PROPERTY(DigitizeGestures* digitize READ digitize WRITE setDigitize NOTIFY digitizeChanged)
+    Q_PROPERTY(QVariantList handlesOverlay READ handlesOverlay NOTIFY overlayChanged)
     Q_PROPERTY(double zoom READ zoom NOTIFY viewChanged)
     Q_PROPERTY(bool zoomRectMode READ zoomRectMode WRITE setZoomRectMode NOTIFY zoomRectModeChanged)
     Q_PROPERTY(QRectF rubberBand READ rubberBand NOTIFY rubberBandChanged)
@@ -43,6 +48,10 @@ class GpuCanvas : public QQuickItem {
     // Les clés absentes gardent leur valeur ; défaut : stitches et selectionOverlays seulement.
     Q_PROPERTY(QVariantMap layers READ layers WRITE setLayers NOTIFY layersChanged)
     Q_PROPERTY(double resourceCreationMs READ resourceCreationMs NOTIFY diagnosticsChanged)
+    // Famille K : rendu réaliste GPU (diagnostics lus côté GUI, jamais écrits au rendu).
+    Q_PROPERTY(bool rhiBackend READ rhiBackend NOTIFY diagnosticsChanged)
+    Q_PROPERTY(bool realisticActive READ realisticActive NOTIFY diagnosticsChanged)
+    Q_PROPERTY(int realisticBuildCount READ realisticBuildCount NOTIFY diagnosticsChanged)
 public:
     explicit GpuCanvas(QQuickItem* parent = nullptr);
     [[nodiscard]] StudioController* controller() const { return controller_; }
@@ -62,6 +71,9 @@ public:
     [[nodiscard]] ToolController* tools() const { return tools_; }
     void setTools(ToolController* tools);
     [[nodiscard]] QVariantList toolOverlay() const;
+    [[nodiscard]] DigitizeGestures* digitize() const { return digitize_; }
+    void setDigitize(DigitizeGestures* digitize);
+    [[nodiscard]] QVariantList handlesOverlay() const;
     [[nodiscard]] double zoom() const { return camera_.scale(); }
     [[nodiscard]] bool zoomRectMode() const { return zoomRectMode_; }
     void setZoomRectMode(bool value);
@@ -77,6 +89,11 @@ public:
     [[nodiscard]] QString backendName() const { return backendName_; }
     [[nodiscard]] int geometryBuildCount() const { return geometryBuildCount_; }
     [[nodiscard]] double resourceCreationMs() const { return resourceCreationMs_; }
+    // Vrai quand le backend Qt Quick est RHI (le rendu réaliste GPU est alors disponible).
+    [[nodiscard]] bool rhiBackend() const;
+    [[nodiscard]] bool realisticActive() const { return realisticActive_; }
+    [[nodiscard]] int realisticBuildCount() const { return realisticBuildCount_; }
+    [[nodiscard]] double realisticBuildMs() const { return realisticBuildMs_; }
     [[nodiscard]] const StudioCamera& camera() const { return camera_; }
     [[nodiscard]] QVariantMap layers() const;
     void setLayers(const QVariantMap& layers);
@@ -112,6 +129,7 @@ signals:
     void editorChanged();
     void toolsChanged();
     void layersChanged();
+    void digitizeChanged();
     void overlayChanged();
     // Clic droit : position canevas et identifiant de l'objet touché (vide = fond).
     void contextMenuRequested(double x, double y, const QString& objectId);
@@ -130,7 +148,7 @@ protected:
     void hoverMoveEvent(QHoverEvent* event) override;
 
 private:
-    enum class Gesture { None, Pan, Marquee, Move, Handle, ZoomRect, Tool };
+    enum class Gesture { None, Pan, Marquee, Move, Handle, ZoomRect, Tool, Digitize };
     // 0..7 : NO N NE E SE S SO O ; 8 : rotation ; -1 : aucune.
     [[nodiscard]] int handleAt(const QPointF& p) const;
     [[nodiscard]] QPointF handlePoint(int handle, const QRectF& box) const;
@@ -160,12 +178,16 @@ private:
     QString backendName_{QStringLiteral("Initialisation du rendu…")};
     int geometryBuildCount_{0};
     double resourceCreationMs_{0};
+    int realisticBuildCount_{0};
+    double realisticBuildMs_{0};
+    bool realisticActive_{false};
     bool panMode_{false};
     bool spaceDown_{false};
     bool fitPending_{true};
     QPointF lastMouse_;
     EditController* editor_{nullptr};
     ToolController* tools_{nullptr};
+    DigitizeGestures* digitize_{nullptr};
     Gesture gesture_{Gesture::None};
     bool gestureActive_{false}; // seuil de 3 px franchi
     QPointF pressPos_;

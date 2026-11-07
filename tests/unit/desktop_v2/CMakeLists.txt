@@ -17,6 +17,7 @@ add_executable(test_desktop_v2_core
     test_diagnostics.cpp
     test_export_formats.cpp
     test_param_spec.cpp
+    test_param_completeness.cpp
     test_action_catalog.cpp
     test_view_tools.cpp
     test_document_services.cpp
@@ -106,6 +107,14 @@ file(GLOB_RECURSE studio_all_qml CONFIGURE_DEPENDS "${studio_test_qml_root}/qml/
                 "${studio_test_qml_root}/qml/qmldir")
         add_test(NAME test_desktop_v2_studio_inspector COMMAND test_desktop_v2_studio_inspector -o -,txt)
         add_test(NAME test_desktop_v2_studio_shell COMMAND test_desktop_v2_studio_shell -o -,txt)
+        # Design system guard rails: WCAG contrast of the Theme tokens + QML lint (no GUI needed).
+        add_executable(test_desktop_v2_studio_design test_studio_design.cpp)
+        target_link_libraries(test_desktop_v2_studio_design PRIVATE Qt6::Test openstitch::warnings)
+        target_compile_definitions(test_desktop_v2_studio_design PRIVATE
+            OPENSTITCH_STUDIO_QML_DIR="${studio_test_qml_root}/qml")
+        add_test(NAME test_desktop_v2_studio_design COMMAND test_desktop_v2_studio_design -o -,txt)
+        set_tests_properties(test_desktop_v2_studio_design PROPERTIES
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
         get_filename_component(studio_test_qml_imports "${Qt6_DIR}/../../../qml" ABSOLUTE)
         set_tests_properties(test_desktop_v2_studio_shell test_desktop_v2_studio_inspector PROPERTIES
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_test_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
@@ -203,6 +212,19 @@ if(TARGET openstitch::studio_ui)
         qt_add_resources(test_desktop_v2_studio_digitize studio_digitize_qml PREFIX "/studio"
             BASE "${studio_test_qml_root}" FILES ${studio_all_qml}
                 "${studio_test_qml_root}/qml/qmldir")
+        # Famille I : gestes de numerisation au canevas, tirage, applique (souris QTest, vrai moteur).
+        add_executable(test_desktop_v2_studio_digitize2 test_studio_digitize2.cpp)
+        target_link_libraries(test_desktop_v2_studio_digitize2
+            PRIVATE openstitch::studio_ui openstitch::project_ops openstitch::stitch_generation
+                    openstitch::formats Qt6::Test openstitch::warnings)
+        qt_add_resources(test_desktop_v2_studio_digitize2 studio_digitize2_qml PREFIX "/studio"
+            BASE "${studio_test_qml_root}" FILES ${studio_all_qml}
+                "${studio_test_qml_root}/qml/qmldir")
+        add_test(NAME test_desktop_v2_studio_digitize2 COMMAND test_desktop_v2_studio_digitize2 -o -,txt)
+        get_filename_component(studio_digitize2_qml_imports "${Qt6_DIR}/../../../qml" ABSOLUTE)
+        set_tests_properties(test_desktop_v2_studio_digitize2 PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_digitize2_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
         add_test(NAME test_desktop_v2_studio_digitize COMMAND test_desktop_v2_studio_digitize -o -,txt)
         get_filename_component(studio_digitize_qml_imports "${Qt6_DIR}/../../../qml" ABSOLUTE)
         set_tests_properties(test_desktop_v2_studio_digitize PROPERTIES
@@ -212,6 +234,9 @@ if(TARGET openstitch::studio_ui)
 endif()
 
 # Studio famille H : compagnon IA (faux fournisseur), palette, preferences, aide, focus clavier.
+# Famille K : rendu réaliste accéléré par le GPU. Le test de logique (runs, textures, cache,
+# invalidation, repli) tourne en backend logiciel ; le test du chemin RHI (WARP sous Windows)
+# se saute proprement quand le backend n'est pas RHI.
 if(TARGET openstitch::studio_ui)
     find_package(Qt6 COMPONENTS Test QUIET)
     if(Qt6Test_FOUND)
@@ -227,6 +252,29 @@ if(TARGET openstitch::studio_ui)
         set_tests_properties(test_desktop_v2_studio_companion PROPERTIES
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_companion_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
             ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+        add_executable(test_desktop_v2_studio_realistic test_studio_realistic.cpp)
+        target_link_libraries(test_desktop_v2_studio_realistic
+            PRIVATE openstitch::studio_ui Qt6::Test openstitch::warnings)
+        qt_add_resources(test_desktop_v2_studio_realistic studio_realistic_qml PREFIX "/studio"
+            BASE "${studio_test_qml_root}" FILES ${studio_all_qml}
+                "${studio_test_qml_root}/qml/qmldir")
+        add_test(NAME test_desktop_v2_studio_realistic
+            COMMAND test_desktop_v2_studio_realistic -o -,txt)
+        get_filename_component(studio_realistic_qml_imports "${Qt6_DIR}/../../../qml" ABSOLUTE)
+        set_tests_properties(test_desktop_v2_studio_realistic PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_realistic_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+        # Chemin RHI réel (Direct3D 11, adaptateur logiciel WARP) : poste local Windows seulement.
+        # En CI (variable CI), la même fonction se saute dans le test ci-dessus.
+        if(WIN32 AND NOT DEFINED ENV{CI})
+            add_test(NAME test_desktop_v2_studio_realistic_gpu
+                COMMAND test_desktop_v2_studio_realistic
+                    gpuPathBuildsOncePerRevisionAndMatchesCpuReference -o -,txt)
+            set_tests_properties(test_desktop_v2_studio_realistic_gpu PROPERTIES
+                ENVIRONMENT "OPENSTITCH_RHI_TEST=1;QT_QPA_PLATFORM=windows;QSG_RHI_BACKEND=d3d11;QSG_RHI_PREFER_SOFTWARE_RENDERER=1;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_realistic_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
+                ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+                WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+        endif()
     endif()
 endif()
 

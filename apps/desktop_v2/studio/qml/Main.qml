@@ -18,6 +18,26 @@ Window {
     minimumHeight: 640
     visible: true
     color: Theme.background
+    // Safety net: a Qt control that is not a Studio* component still inherits a dark, readable
+    // palette (never the white Basic defaults). The font counterpart is applied in main.cpp.
+    palette.window: Theme.background
+    palette.windowText: Theme.foreground
+    palette.base: Theme.raised
+    palette.alternateBase: Theme.surface
+    palette.text: Theme.foreground
+    palette.placeholderText: Theme.faint
+    palette.button: Theme.raised
+    palette.buttonText: Theme.foreground
+    palette.light: Theme.hover
+    palette.midlight: Theme.hover
+    palette.mid: Theme.border
+    palette.dark: Theme.divider
+    palette.shadow: Theme.background
+    palette.highlight: Theme.accent
+    palette.highlightedText: Theme.accentInk
+    palette.link: Theme.info
+    palette.toolTipBase: Theme.raised
+    palette.toolTipText: Theme.foreground
     title: (studio.dirty ? "• " : "") + studio.title + " — OpenStitch Studio"
 
     readonly property var editController: editor
@@ -255,8 +275,8 @@ Window {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 18
-                anchors.rightMargin: 18
+                anchors.leftMargin: Theme.panelPadding
+                anchors.rightMargin: Theme.panelPadding
                 spacing: 12
 
                 StudioIcon { name: "needle"; color: Theme.accent; implicitWidth: 28; implicitHeight: 28 }
@@ -266,15 +286,15 @@ Window {
                         text: "OpenStitch"
                         color: Theme.foreground
                         font.family: Theme.fontFamily
-                        font.pixelSize: 18
+                        font.pixelSize: Theme.brandSize
                         font.weight: Font.DemiBold
                     }
                     Text {
                         text: "STUDIO"
                         color: Theme.faint
                         font.family: Theme.fontFamily
-                        font.pixelSize: 9
-                        font.letterSpacing: 2.4
+                        font.pixelSize: Theme.captionSize
+                        font.letterSpacing: 1.6
                     }
                 }
 
@@ -288,6 +308,7 @@ Window {
                     iconName: "undo"
                     tooltip: studio.canUndo ? qsTr("Annuler : %1").arg(studio.undoLabel) : qsTr("Rien à annuler")
                     shortcutLabel: "Ctrl+Z"
+                    showShortcutLabel: window.width >= 1400
                     enabled: studio.canUndo
                     onClicked: studio.undo()
                 }
@@ -298,6 +319,7 @@ Window {
                     iconName: "redo"
                     tooltip: studio.canRedo ? qsTr("Rétablir : %1").arg(studio.redoLabel) : qsTr("Rien à rétablir")
                     shortcutLabel: "Ctrl+Y"
+                    showShortcutLabel: window.width >= 1400
                     enabled: studio.canRedo
                     onClicked: studio.redo()
                 }
@@ -317,6 +339,7 @@ Window {
                     iconName: "save"
                     tooltip: qsTr("Enregistrer le projet (Ctrl+Maj+S : sous…)")
                     shortcutLabel: "Ctrl+S"
+                    showShortcutLabel: window.width >= 1400
                     enabled: !studio.busy
                     onClicked: window.saveProject()
                 }
@@ -327,6 +350,7 @@ Window {
                     iconName: "open"
                     tooltip: qsTr("Ouvrir un projet .osp")
                     shortcutLabel: "Ctrl+O"
+                    showShortcutLabel: window.width >= 1400
                     enabled: !studio.busy
                     onClicked: window.openProject()
                 }
@@ -341,8 +365,8 @@ Window {
             color: Theme.surface
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 18
-                anchors.rightMargin: 18
+                anchors.leftMargin: Theme.panelPadding
+                anchors.rightMargin: Theme.panelPadding
                 spacing: 10
                 StudioIcon { name: "layers"; implicitWidth: 16; implicitHeight: 16; color: Theme.faint }
                 Text {
@@ -352,14 +376,6 @@ Window {
                     color: Theme.foreground
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.bodySize
-                }
-                Text {
-                    text: qsTr("UN DOCUMENT · QUATRE ESPACES")
-                    visible: window.width >= 1160
-                    color: Theme.faint
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 9
-                    font.letterSpacing: 1.1
                 }
                 Rectangle { implicitWidth: 1; implicitHeight: 14; color: Theme.border; Layout.leftMargin: 8; Layout.rightMargin: 8 }
                 Text {
@@ -447,7 +463,15 @@ Window {
                 Text {
                     objectName: "renderBackendLabel"
                     text: canvas ? canvas.backendName : ""
-                    color: Theme.muted
+                    color: Theme.info
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.smallSize
+                }
+                Text {
+                    objectName: "realisticModeStatus"
+                    visible: typeof view !== "undefined" && view.realistic
+                    text: typeof view !== "undefined" ? view.realisticMode : ""
+                    color: Theme.accent
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.smallSize
                 }

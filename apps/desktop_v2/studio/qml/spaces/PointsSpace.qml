@@ -16,6 +16,7 @@ Item {
     property bool active: false
     readonly property var canvas: spaceCanvas
     readonly property var editorController: editor
+    readonly property var digitizeController: typeof digitizer !== "undefined" ? digitizer : null
     readonly property var toolController: typeof tools !== "undefined" ? tools : null
     readonly property int selectedCount: {
         var count = 0
@@ -32,7 +33,6 @@ Item {
     RowLayout {
         anchors.fill: parent
         spacing: 0
-
 
         Rectangle {
             Layout.preferredWidth: Theme.railWidth
@@ -95,7 +95,7 @@ Item {
                 text: "mm"
                 color: Theme.faint
                 font.family: Theme.fontFamily
-                font.pixelSize: 10
+                font.pixelSize: Theme.captionSize
             }
         }
 
@@ -138,12 +138,19 @@ Item {
                     controller: studio
                     editor: root.editorController
                     tools: root.toolController
+                    digitize: root.digitizeController
                     focus: true
                     onContextMenuRequested: function(x, y, objectId) { contextMenu.openAt(x, y) }
                 }
 
                 ToolOverlay {
                     objectName: "toolOverlay"
+                    anchors.fill: parent
+                    gpu: spaceCanvas
+                }
+
+                HandlesOverlay {
+                    objectName: "handlesOverlay"
                     anchors.fill: parent
                     gpu: spaceCanvas
                 }
@@ -185,7 +192,7 @@ Item {
                         color: Theme.foreground
                         horizontalAlignment: Text.AlignHCenter
                         font.family: Theme.fontFamily
-                        font.pixelSize: 23
+                        font.pixelSize: Theme.heroSize
                         wrapMode: Text.WordWrap
                     }
                     Text {
@@ -194,7 +201,7 @@ Item {
                         color: Theme.muted
                         horizontalAlignment: Text.AlignHCenter
                         font.family: Theme.fontFamily
-                        font.pixelSize: 13
+                        font.pixelSize: Theme.bodySize
                         lineHeight: 1.4
                         wrapMode: Text.WordWrap
                     }
@@ -334,8 +341,8 @@ Item {
                     Layout.preferredHeight: 48
                     RowLayout {
                         anchors.fill: parent
-                        anchors.leftMargin: 18
-                        anchors.rightMargin: 18
+                        anchors.leftMargin: Theme.panelPadding
+                        anchors.rightMargin: Theme.panelPadding
                         Text {
                             text: qsTr("Objets")
                             color: Theme.foreground
@@ -444,7 +451,7 @@ Item {
                                 radius: 3
                                 color: objectRow.modelData.color
                                 border.width: 1
-                                border.color: "#66858d9e"
+                                border.color: Qt.alpha(Theme.faint, 0.4)
                                 opacity: objectRow.modelData.visible ? 1 : 0.4
                             }
                             ColumnLayout {
@@ -464,7 +471,7 @@ Item {
                                           + (objectRow.modelData.visible ? "" : qsTr(" · masqué"))
                                     color: Theme.faint
                                     font.family: Theme.fontFamily
-                                    font.pixelSize: 9
+                                    font.pixelSize: Theme.captionSize
                                     elide: Text.ElideRight
                                 }
                             }
@@ -478,9 +485,7 @@ Item {
                                                     Boolean(mouse.modifiers & Qt.ControlModifier))
                             }
                         }
-                        Controls.ToolTip.visible: hovered
-                        Controls.ToolTip.delay: 700
-                        Controls.ToolTip.text: modelData.label + "\n" + modelData.id
+                        StudioToolTip { delay: 700; text: modelData.label + "\n" + modelData.id }
                     }
 
                     Text {
@@ -501,7 +506,7 @@ Item {
 
                 ColumnLayout {
                     Layout.fillWidth: true
-                    Layout.margins: 18
+                    Layout.margins: Theme.panelPadding
                     spacing: 11
                     RowLayout {
                         Layout.fillWidth: true
@@ -535,7 +540,7 @@ Item {
                         text: qsTr("Ctrl + clic pour une sélection multiple")
                         color: Theme.faint
                         font.family: Theme.fontFamily
-                        font.pixelSize: 10
+                        font.pixelSize: Theme.captionSize
                         wrapMode: Text.WordWrap
                     }
                 }
@@ -563,7 +568,7 @@ Item {
 
                 ColumnLayout {
                     Layout.fillWidth: true
-                    Layout.margins: 18
+                    Layout.margins: Theme.panelPadding
                     spacing: 9
                     SectionLabel { text: qsTr("POINTS") }
                     Text {

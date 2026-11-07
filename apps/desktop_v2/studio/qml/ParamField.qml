@@ -51,9 +51,10 @@ ColumnLayout {
     // Numbers and integers: slider for dragging + exact typed entry.
     RowLayout {
         Layout.fillWidth: true
-        visible: root.f.kind === "number" || root.f.kind === "integer"
+        visible: root.f.kind === "number" || root.f.kind === "integer" ||
+                 (root.f.kind === "optional" && root.f.isSet === true)
         spacing: 8
-        Controls.Slider {
+        StudioSlider {
             id: slider
             objectName: "slider_" + root.fieldKey
             Layout.fillWidth: true
@@ -66,13 +67,13 @@ ColumnLayout {
             Accessible.name: root.f.label
             onMoved: root.commit(root.ctl.setParam(root.fieldKey, value))
         }
-        Controls.TextField {
+        StudioTextField {
             id: entry
             objectName: "entry_" + root.fieldKey
             Layout.preferredWidth: 64
             text: root.f.text
             horizontalAlignment: TextInput.AlignRight
-            color: root.error.length > 0 ? "#ff8a8a" : Theme.foreground
+            color: root.error.length > 0 ? Theme.error : Theme.foreground
             font.family: Theme.fontFamily
             font.pixelSize: Theme.smallSize
             selectByMouse: true
@@ -81,7 +82,7 @@ ColumnLayout {
                 radius: 3
                 color: Theme.raised
                 border.width: 1
-                border.color: root.error.length > 0 ? "#ff8a8a" : entry.activeFocus ? Theme.accent : Theme.border
+                border.color: root.error.length > 0 ? Theme.error : entry.activeFocus ? Theme.accent : Theme.border
             }
             onEditingFinished: {
                 const result = root.ctl.setParamText(root.fieldKey, text);
@@ -92,7 +93,116 @@ ColumnLayout {
         }
     }
 
-    Controls.Switch {
+    // Optional number (sweep angle): a switch « automatic / fixed » above the usual slider.
+    RowLayout {
+        Layout.fillWidth: true
+        visible: root.f.kind === "optional"
+        StudioSwitch {
+            objectName: "auto_" + root.fieldKey
+            checked: root.f.isSet === true
+            text: checked ? qsTr("Fixé") : qsTr("Automatique")
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.smallSize
+            palette.windowText: Theme.foreground
+            onToggled: root.commit(checked ? root.ctl.setParam(root.fieldKey, root.f.value)
+                                           : root.ctl.clearParam(root.fieldKey))
+        }
+    }
+
+    // Optional point [x, y] in mm (entry / exit / centre): two exact entries and a clear button.
+    RowLayout {
+        Layout.fillWidth: true
+        visible: root.f.kind === "point"
+        spacing: 6
+        Text {
+            text: "X"
+            color: Theme.muted
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.smallSize
+        }
+        StudioTextField {
+            id: pointX
+            objectName: "pointx_" + root.fieldKey
+            Layout.fillWidth: true
+            text: root.f.isSet ? Number(root.f.pointX).toString() : ""
+            placeholderText: qsTr("auto")
+            horizontalAlignment: TextInput.AlignRight
+            color: Theme.foreground
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.smallSize
+            selectByMouse: true
+            Accessible.name: root.f.label + " X"
+            onEditingFinished: pointApply()
+        }
+        Text {
+            text: "Y"
+            color: Theme.muted
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.smallSize
+        }
+        StudioTextField {
+            id: pointY
+            objectName: "pointy_" + root.fieldKey
+            Layout.fillWidth: true
+            text: root.f.isSet ? Number(root.f.pointY).toString() : ""
+            placeholderText: qsTr("auto")
+            horizontalAlignment: TextInput.AlignRight
+            color: Theme.foreground
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.smallSize
+            selectByMouse: true
+            Accessible.name: root.f.label + " Y"
+            onEditingFinished: pointApply()
+        }
+        StudioButton {
+            objectName: "clear_" + root.fieldKey
+            visible: root.f.isSet === true
+            iconName: "undo"
+            tooltip: qsTr("Effacer le point (automatique)")
+            quiet: true
+            implicitWidth: 22
+            implicitHeight: 22
+            onClicked: root.commit(root.ctl.clearParam(root.fieldKey))
+        }
+    }
+
+    // Collections edited on the canvas (guides, break lines, rungs, gradient): count + clear.
+    RowLayout {
+        Layout.fillWidth: true
+        visible: root.f.kind === "list"
+        Text {
+            Layout.fillWidth: true
+            objectName: "count_" + root.fieldKey
+            text: root.f.max === 1 ? (root.f.isSet ? qsTr("Défini") : qsTr("Aucun"))
+                                   : qsTr("%1 élément(s)").arg(Math.round(root.f.value))
+            color: Theme.foreground
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.smallSize
+        }
+        StudioButton {
+            objectName: "clear_" + root.fieldKey
+            visible: root.f.isSet === true
+            iconName: "undo"
+            tooltip: qsTr("Tout effacer")
+            quiet: true
+            implicitWidth: 22
+            implicitHeight: 22
+            onClicked: root.commit(root.ctl.clearParam(root.fieldKey))
+        }
+    }
+
+    function pointApply() {
+        const x = Number(pointX.text.replace(",", "."));
+        const y = Number(pointY.text.replace(",", "."));
+        if (pointX.text.trim() === "" || pointY.text.trim() === "" || isNaN(x) || isNaN(y)) {
+            if (pointX.text.trim() !== "" || pointY.text.trim() !== "")
+                root.commit(qsTr("Indiquez X et Y en millimètres."));
+            return;
+        }
+        root.commit(root.ctl.setPoint(root.fieldKey, x, y));
+    }
+
+    StudioSwitch {
         id: toggle
         objectName: "switch_" + root.fieldKey
         visible: root.f.kind === "bool"
@@ -105,7 +215,7 @@ ColumnLayout {
         onToggled: root.commit(root.ctl.setParam(root.fieldKey, checked ? 1 : 0))
     }
 
-    Controls.ComboBox {
+    StudioComboBox {
         id: combo
         objectName: "combo_" + root.fieldKey
         Layout.fillWidth: true
@@ -125,7 +235,7 @@ ColumnLayout {
         visible: root.error.length > 0
         objectName: "error_" + root.fieldKey
         text: root.error
-        color: "#ff8a8a"
+        color: Theme.error
         wrapMode: Text.WordWrap
         font.family: Theme.fontFamily
         font.pixelSize: Theme.captionSize

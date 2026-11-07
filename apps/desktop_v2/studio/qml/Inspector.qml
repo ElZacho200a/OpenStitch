@@ -60,7 +60,7 @@ Item {
             }
 
             // Conversion of the stitch type (applies to the whole selection).
-            Controls.ComboBox {
+            StudioComboBox {
                 id: typeBox
                 objectName: "typeBox"
                 Layout.fillWidth: true
@@ -86,7 +86,7 @@ Item {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
-                Controls.TextField {
+                StudioTextField {
                     id: search
                     objectName: "paramSearch"
                     Layout.fillWidth: true
@@ -116,7 +116,7 @@ Item {
                 }
             }
 
-            Controls.Switch {
+            StudioSwitch {
                 objectName: "advancedSwitch"
                 text: qsTr("Réglages avancés") + (root.ctl && root.ctl.hiddenAdvancedCount > 0
                                                   ? " (" + root.ctl.hiddenAdvancedCount + ")" : "")
@@ -125,6 +125,17 @@ Item {
                 font.pixelSize: Theme.smallSize
                 palette.windowText: Theme.foreground
                 onToggled: root.ctl.showAdvanced = checked
+            }
+
+            StudioSwitch {
+                objectName: "expertSwitch"
+                text: qsTr("Niveau expert") + (root.ctl && root.ctl.hiddenExpertCount > 0
+                                               ? " (" + root.ctl.hiddenExpertCount + ")" : "")
+                checked: root.ctl ? root.ctl.showExpert : false
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+                palette.windowText: Theme.foreground
+                onToggled: root.ctl.showExpert = checked
             }
 
             Text {
@@ -163,7 +174,7 @@ Item {
                 objectName: "inspectorMessage"
                 visible: text.length > 0
                 text: root.ctl ? root.ctl.message : ""
-                color: root.ctl && root.ctl.messageOk ? Theme.success : "#ff8a8a"
+                color: root.ctl && root.ctl.messageOk ? Theme.success : Theme.error
                 wrapMode: Text.WordWrap
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallSize
@@ -176,7 +187,7 @@ Item {
                 Layout.fillWidth: true
                 SectionLabel { text: qsTr("PRÉRÉGLAGES") }
                 Item { Layout.fillWidth: true }
-                Controls.CheckBox {
+                StudioCheckBox {
                     objectName: "allPresets"
                     text: qsTr("Tous les types")
                     checked: root.ctl ? root.ctl.allPresets : false
@@ -189,7 +200,7 @@ Item {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
-                Controls.TextField {
+                StudioTextField {
                     id: presetName
                     objectName: "presetName"
                     Layout.fillWidth: true
@@ -243,18 +254,15 @@ Item {
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.smallSize
                     }
-                    Controls.Button {
+                    StudioButton {
                         objectName: "applyPreset_" + modelData.index
                         text: qsTr("Appliquer")
-                        font.pixelSize: Theme.captionSize
                         onClicked: root.ctl.applyPreset(modelData.index)
                     }
-                    Controls.Button {
+                    StudioButton {
                         objectName: "renamePreset_" + modelData.index
                         text: qsTr("Renommer")
-                        font.pixelSize: Theme.captionSize
-                        Controls.ToolTip.visible: hovered
-                        Controls.ToolTip.text: qsTr("Renomme avec le nom saisi ci-dessus")
+                        tooltip: qsTr("Renomme avec le nom saisi ci-dessus")
                         onClicked: {
                             if (root.ctl.renamePreset(modelData.index, presetName.text) === "")
                                 presetName.text = "";

@@ -14,6 +14,8 @@ add_library(openstitch_studio_ui STATIC
     inspector_controller.cpp inspector_controller.hpp
     gpu_canvas.cpp gpu_canvas.hpp
     canvas_renderer.cpp canvas_renderer.hpp
+    realistic_scene.cpp realistic_scene.hpp
+    thread_textures.cpp thread_textures.hpp
     view_controller.cpp view_controller.hpp
     analysis_controller.cpp analysis_controller.hpp
     thread_controller.cpp thread_controller.hpp
@@ -28,6 +30,9 @@ add_library(openstitch_studio_ui STATIC
     companion_controller.cpp companion_controller.hpp
     preferences_controller.cpp preferences_controller.hpp
     help_controller.cpp help_controller.hpp
+    digitize_gestures.cpp digitize_gestures.hpp
+    pull_controller.cpp pull_controller.hpp
+    applique_controller.cpp applique_controller.hpp
     ../ui/live_server.cpp ../ui/live_server.hpp)
 add_library(openstitch::studio_ui ALIAS openstitch_studio_ui)
 target_include_directories(openstitch_studio_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -37,6 +42,9 @@ target_link_libraries(openstitch_studio_ui PUBLIC openstitch::desktop_v2_core
 
 set(studio_qml_files
     qml/Main.qml qml/Theme.qml qml/StudioButton.qml qml/StudioIcon.qml
+    qml/StudioLabel.qml qml/StudioPanel.qml qml/StudioToolTip.qml qml/StudioTextField.qml
+    qml/StudioCheckBox.qml qml/StudioSwitch.qml qml/StudioSlider.qml qml/StudioSpinBox.qml
+    qml/StudioComboBox.qml
     qml/SectionLabel.qml qml/ActionPalette.qml qml/ObjectTree.qml qml/LayerPanel.qml
     qml/CanvasContextMenu.qml qml/TransformHandles.qml qml/EditBar.qml qml/FilePanel.qml
     qml/Inspector.qml qml/ParamField.qml qml/ParamSection.qml
@@ -44,7 +52,7 @@ set(studio_qml_files
     qml/PreparePanel.qml qml/ImagePrepSection.qml qml/SegmentationSection.qml
     qml/RegionTools.qml qml/AiSection.qml qml/CompanionPanel.qml qml/PreferencesDialog.qml
     qml/HelpDialog.qml qml/ShortcutsSheet.qml
-    qml/SatinPanel.qml qml/FadePanel.qml qml/PointEditPanel.qml qml/DigitizeHub.qml qml/ToolRail.qml qml/ToolOptions.qml qml/ToolOverlay.qml qml/qmldir
+    qml/SatinPanel.qml qml/FadePanel.qml qml/PointEditPanel.qml qml/DigitizeHub.qml qml/ToolRail.qml qml/ToolOptions.qml qml/ToolOverlay.qml qml/RealisticToggle.qml qml/HandlesOverlay.qml qml/PullPanel.qml qml/AppliquePanel.qml qml/qmldir
     qml/spaces/SpaceHost.qml qml/spaces/ImageSpace.qml qml/spaces/SegmentationSpace.qml
     qml/spaces/VectorSpace.qml qml/spaces/PointsSpace.qml)
 # Les sous-composants d'un espace (qml/spaces/<x>/...) s'ajoutent ICI, une ligne par fichier.

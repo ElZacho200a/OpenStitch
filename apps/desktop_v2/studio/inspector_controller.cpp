@@ -53,6 +53,20 @@ std::optional<document::StitchParams> defaultParamsOf(std::string_view typeId) {
         return StitchParams{CrossStitchParams{}};
     if (typeId == "applique")
         return StitchParams{AppliqueParams{}};
+    if (typeId == "auto_satin")
+        return StitchParams{AutoSatinParams{}};
+    if (typeId == "blanket")
+        return StitchParams{BlanketStitchParams{}};
+    if (typeId == "contour_fill")
+        return StitchParams{ContourFillParams{}};
+    if (typeId == "motif_run")
+        return StitchParams{MotifRunParams{}};
+    if (typeId == "motif_fill")
+        return StitchParams{MotifFillParams{}};
+    if (typeId == "radial")
+        return StitchParams{RadialFillParams{}};
+    if (typeId == "crosshatch")
+        return StitchParams{CrosshatchFillParams{}};
     return std::nullopt;
 }
 
@@ -76,19 +90,39 @@ const char* kindName(ParamKind kind) {
         return "bool";
     case ParamKind::Choice:
         return "choice";
+    case ParamKind::Point:
+        return "point";
+    case ParamKind::OptionalNumber:
+        return "optional";
+    case ParamKind::List:
+        return "list";
     }
     return "number";
 }
 
 QString sectionOf(const ParamSpec& spec) {
-    const std::string_view key = spec.key;
-    if (key.find("underlay") != std::string_view::npos || key == "hidden_underpath") {
-        return QStringLiteral("Sous-couche");
+    return u8(paramGroup(spec));
+}
+
+const char* levelName(ParamLevel level) {
+    switch (level) {
+    case ParamLevel::Essential:
+        return "essential";
+    case ParamLevel::Advanced:
+        return "advanced";
+    case ParamLevel::Expert:
+        return "expert";
     }
-    if (key.find("pull") != std::string_view::npos) {
-        return QStringLiteral("Compensation de tirage");
+    return "essential";
+}
+
+std::optional<ParamSpec> specOf(std::string_view typeId, std::string_view key) {
+    for (const auto& spec : allParamSpecs(typeId)) {
+        if (spec.key == key) {
+            return spec;
+        }
     }
-    return QStringLiteral("Points");
+    return std::nullopt;
 }
 
 QString formatValue(const ParamSpec& spec, double value) {
@@ -102,6 +136,11 @@ QString formatValue(const ParamSpec& spec, double value) {
         const auto index = static_cast<std::size_t>(std::llround(value));
         return index < options.size() ? u8(options[index].second) : QString::number(value);
     }
+    case ParamKind::List:
+        return QString::number(static_cast<long long>(std::llround(value)));
+    case ParamKind::Point:
+        return value >= 0.5 ? QStringLiteral("Défini") : QStringLiteral("Automatique");
+    case ParamKind::OptionalNumber:
     case ParamKind::Number:
         break;
     }
@@ -142,7 +181,7 @@ QVariantMap InspectorController::field(const QString& key) const {
     if (s.ids.empty() || s.typeMixed) {
         return {};
     }
-    for (const auto& spec : paramSpecs(s.typeId)) {
+    for (const auto& spec : allParamSpecs(s.typeId)) {
         if (u8(spec.key) == key) {
             return fieldMap(s, spec);
         }
@@ -200,11 +239,22 @@ QVariantMap InspectorController::fieldMap(const Selection& s, const ParamSpec& s
     bool mixed = false;
     double value = 0.0;
     bool first = true;
+    bool anySet = false;
+    double pointX = 0.0;
+    double pointY = 0.0;
     for (const auto id : s.ids) {
         const auto* object = findObject(session_.project(), id);
         const auto v = object ? readParam(*object, spec.key) : std::nullopt;
         if (!v) {
             continue;
+        }
+        const bool set = paramIsSet(*object, spec.key);
+        if (set && !anySet) {
+            anySet = true;
+            if (const auto pt = readPointMm(*object, spec.key)) {
+                pointX = pt->first;
+                pointY = pt->second;
+            }
         }
         if (first) {
             value = *v;
@@ -214,6 +264,10 @@ QVariantMap InspectorController::fieldMap(const Selection& s, const ParamSpec& s
         }
     }
     const auto def = defaultOf(s.typeId, spec.key).value_or(value);
+    const bool optionalKind = spec.kind == ParamKind::Point ||
+                              spec.kind == ParamKind::OptionalNumber ||
+                              spec.kind == ParamKind::List;
+    const bool atDefault = optionalKind ? !anySet : !mixed && std::abs(value - def) <= kEps;
     QVariantList choices;
     if (spec.kind == ParamKind::Choice) {
         int index = 0;
@@ -229,14 +283,21 @@ QVariantMap InspectorController::fieldMap(const Selection& s, const ParamSpec& s
             {QStringLiteral("max"), spec.max},
             {QStringLiteral("step"), spec.step},
             {QStringLiteral("unit"), u8(spec.unit)},
-            {QStringLiteral("level"), paramLevel(spec) == ParamLevel::Essential
-                                          ? QStringLiteral("essential")
-                                          : QStringLiteral("advanced")},
+            {QStringLiteral("level"), QString::fromLatin1(levelName(paramLevel(spec)))},
             {QStringLiteral("section"), sectionOf(spec)},
             {QStringLiteral("value"), value},
-            {QStringLiteral("text"), mixed ? QStringLiteral("—") : formatValue(spec, value)},
+            {QStringLiteral("text"),
+             mixed ? QStringLiteral("—")
+             : spec.kind == ParamKind::Point
+                 ? (anySet ? QStringLiteral("%1 ; %2 mm").arg(pointX).arg(pointY)
+                           : QStringLiteral("Automatique"))
+             : spec.kind == ParamKind::OptionalNumber && !anySet ? QStringLiteral("Automatique")
+                                                                 : formatValue(spec, value)},
             {QStringLiteral("mixed"), mixed},
-            {QStringLiteral("isDefault"), !mixed && std::abs(value - def) <= kEps},
+            {QStringLiteral("isDefault"), atDefault},
+            {QStringLiteral("isSet"), anySet},
+            {QStringLiteral("pointX"), pointX},
+            {QStringLiteral("pointY"), pointY},
             {QStringLiteral("defaultValue"), def},
             {QStringLiteral("defaultText"), formatValue(spec, def)},
             {QStringLiteral("choices"), choices}};
@@ -248,11 +309,13 @@ std::vector<ParamSpec> InspectorController::visibleSpecs(const Selection& s) con
         return out;
     }
     const std::string needle = query_.toStdString();
-    for (const auto& spec : paramSpecs(s.typeId)) {
+    for (const auto& spec : allParamSpecs(s.typeId)) {
         // A search looks through every level; without search the level toggle decides.
-        const bool visible = needle.empty()
-                                 ? (showAdvanced_ || paramLevel(spec) == ParamLevel::Essential)
-                                 : paramMatches(spec, needle);
+        const auto level = paramLevel(spec);
+        const bool byLevel = level == ParamLevel::Essential ||
+                             (level == ParamLevel::Advanced && (showAdvanced_ || showExpert_)) ||
+                             (level == ParamLevel::Expert && showExpert_);
+        const bool visible = needle.empty() ? byLevel : paramMatches(spec, needle);
         if (visible) {
             out.push_back(spec);
         }
@@ -293,17 +356,34 @@ QVariantList InspectorController::sections() const {
 
 int InspectorController::totalFieldCount() const {
     const auto s = selection();
-    return s.ids.empty() || s.typeMixed ? 0 : static_cast<int>(paramSpecs(s.typeId).size());
+    return s.ids.empty() || s.typeMixed ? 0 : static_cast<int>(allParamSpecs(s.typeId).size());
 }
 
 int InspectorController::hiddenAdvancedCount() const {
     const auto s = selection();
-    if (s.ids.empty() || s.typeMixed || showAdvanced_ || !query_.isEmpty()) {
+    if (s.ids.empty() || s.typeMixed || showAdvanced_ || showExpert_ || !query_.isEmpty()) {
         return 0;
     }
-    const auto specs = paramSpecs(s.typeId);
+    const auto specs = allParamSpecs(s.typeId);
     return static_cast<int>(std::ranges::count_if(
         specs, [](const auto& spec) { return paramLevel(spec) == ParamLevel::Advanced; }));
+}
+
+int InspectorController::hiddenExpertCount() const {
+    const auto s = selection();
+    if (s.ids.empty() || s.typeMixed || showExpert_ || !query_.isEmpty()) {
+        return 0;
+    }
+    const auto specs = allParamSpecs(s.typeId);
+    return static_cast<int>(std::ranges::count_if(
+        specs, [](const auto& spec) { return paramLevel(spec) == ParamLevel::Expert; }));
+}
+
+void InspectorController::setShowExpert(bool show) {
+    if (show != showExpert_) {
+        showExpert_ = show;
+        bump();
+    }
 }
 
 void InspectorController::setQuery(const QString& query) {
@@ -365,11 +445,9 @@ QString InspectorController::applyPairs(const Selection& s,
         return QStringLiteral(
             "La sélection mélange plusieurs types de points : convertissez-la d'abord.");
     }
-    // Every value is validated and applied on a COPY with the same operation as Claude and the
-    // CLI (`set_params`); the live document only receives the final result, in one command.
-    document::Project scratch = session_.project();
+    std::vector<std::string> batches;
     for (const auto& [key, value] : pairs) {
-        const auto specs = paramSpecs(s.typeId);
+        const auto specs = allParamSpecs(s.typeId);
         const auto it = std::ranges::find_if(specs, [&](const auto& sp) { return sp.key == key; });
         if (it == specs.end()) {
             return u8("Réglage inconnu pour ce type de points : " + key);
@@ -384,16 +462,32 @@ QString InspectorController::applyPairs(const Selection& s,
                               .arg(formatValue(*it, value), unit, formatValue(*it, it->min),
                                    formatValue(*it, it->max));
         }
-        if (it->kind != ParamKind::Number && std::abs(value - std::round(value)) > kEps) {
+        if (it->kind != ParamKind::Number && it->kind != ParamKind::OptionalNumber &&
+            std::abs(value - std::round(value)) > kEps) {
             return name + QStringLiteral(" : une valeur entière est attendue.");
+        }
+        if (it->kind == ParamKind::Point || it->kind == ParamKind::List) {
+            return name + QStringLiteral(" : ce réglage se modifie par son propre éditeur.");
         }
         const auto json = batchSetParam(s.ids, s.typeId, key, value);
         if (json.empty()) {
             return name + QStringLiteral(" : valeur refusée.");
         }
+        batches.push_back(json);
+    }
+    return commitBatches(s, batches, label, mergeKey);
+}
+
+QString InspectorController::commitBatches(const Selection& s,
+                                           const std::vector<std::string>& batches,
+                                           const QString& label, const std::string& mergeKey) {
+    // Every batch is applied on a COPY with the same operation as Claude and the CLI
+    // (`set_params`); the live document only receives the final result, in one command.
+    document::Project scratch = session_.project();
+    for (const auto& json : batches) {
         const auto report = project_ops::apply_batch(scratch, json);
         if (!report.ok || !report.applied) {
-            return name + QStringLiteral(" : ") + refusalOf(report);
+            return refusalOf(report);
         }
     }
     auto composite = std::make_unique<commands::CompositeCommand>(label.toStdString());
@@ -403,14 +497,14 @@ QString InspectorController::applyPairs(const Selection& s,
         if (before == nullptr || after == nullptr || before->params == after->params) {
             continue;
         }
-        composite->add(std::make_unique<commands::SetStitchParamsCommand>(
-            ObjectId{id}, after->params, pairs.size() == 1 ? pairs.front().first : std::string{}));
+        composite->add(std::make_unique<commands::SetStitchParamsCommand>(ObjectId{id},
+                                                                          after->params, mergeKey));
     }
     if (composite->empty()) {
         return {}; // already at that value: nothing to record
     }
     std::string key;
-    if (pairs.size() == 1) {
+    if (!mergeKey.empty()) {
         key = "inspector:" + mergeKey;
         for (const auto id : s.ids) {
             key += ":" + std::to_string(id);
@@ -423,7 +517,7 @@ QString InspectorController::applyPairs(const Selection& s,
 
 QString InspectorController::setParam(const QString& key, double value) {
     const auto s = selection();
-    const auto specs = paramSpecs(s.typeId);
+    const auto specs = allParamSpecs(s.typeId);
     const auto it =
         std::ranges::find_if(specs, [&](const auto& sp) { return sp.key == key.toStdString(); });
     const QString label = it == specs.end() ? key : u8(it->label);
@@ -434,7 +528,7 @@ QString InspectorController::setParam(const QString& key, double value) {
 
 QString InspectorController::setParamText(const QString& key, const QString& text) {
     const auto s = selection();
-    const auto specs = paramSpecs(s.typeId);
+    const auto specs = allParamSpecs(s.typeId);
     const auto it =
         std::ranges::find_if(specs, [&](const auto& sp) { return sp.key == key.toStdString(); });
     QString cleaned = text.trimmed();
@@ -451,16 +545,58 @@ QString InspectorController::setParamText(const QString& key, const QString& tex
     return setParam(key, value);
 }
 
+QString InspectorController::setPoint(const QString& key, double xMm, double yMm) {
+    const auto s = selection();
+    if (s.ids.empty() || s.typeMixed) {
+        return finish(QStringLiteral("Sélectionnez des objets d'un même type de points."));
+    }
+    const auto spec = specOf(s.typeId, key.toStdString());
+    if (!spec || spec->kind != ParamKind::Point) {
+        return finish(QStringLiteral("Ce réglage n'est pas un point."));
+    }
+    const auto json = batchSetPoint(s.ids, s.typeId, key.toStdString(), xMm, yMm);
+    if (json.empty()) {
+        return finish(u8(std::string(spec->label)) +
+                      QStringLiteral(" : coordonnées refusées (entre -5000 et 5000 mm)."));
+    }
+    const QString label = u8(spec->label);
+    return finish(
+        commitBatches(s, {json}, QStringLiteral("Modifier : ") + label, key.toStdString()),
+        label + QStringLiteral(" modifié"));
+}
+
+QString InspectorController::clearParam(const QString& key) {
+    const auto s = selection();
+    if (s.ids.empty() || s.typeMixed) {
+        return finish(QStringLiteral("Sélectionnez des objets d'un même type de points."));
+    }
+    const auto spec = specOf(s.typeId, key.toStdString());
+    if (!spec) {
+        return finish(QStringLiteral("Réglage inconnu pour ce type de points."));
+    }
+    const auto json = batchClearParam(s.ids, s.typeId, key.toStdString());
+    if (json.empty()) {
+        return finish(QStringLiteral("Ce réglage ne s'efface pas."));
+    }
+    const QString label = u8(spec->label);
+    return finish(commitBatches(s, {json}, QStringLiteral("Effacer : ") + label, {}),
+                  label + QStringLiteral(" effacé"));
+}
+
 QString InspectorController::resetParam(const QString& key) {
     const auto s = selection();
+    const auto spec = specOf(s.typeId, key.toStdString());
+    if (spec && !isScalarKind(spec->kind) && spec->kind != ParamKind::OptionalNumber) {
+        return clearParam(key); // a point / a list goes back to « absent » / empty
+    }
+    if (spec && spec->kind == ParamKind::OptionalNumber) {
+        return clearParam(key);
+    }
     const auto def = defaultOf(s.typeId, key.toStdString());
     if (!def) {
         return finish(QStringLiteral("Aucune valeur par défaut pour ce réglage."));
     }
-    const auto specs = paramSpecs(s.typeId);
-    const auto it =
-        std::ranges::find_if(specs, [&](const auto& sp) { return sp.key == key.toStdString(); });
-    const QString label = it == specs.end() ? key : u8(it->label);
+    const QString label = spec ? u8(spec->label) : key;
     return finish(applyPairs(s, {{key.toStdString(), *def}},
                              QStringLiteral("Réinitialiser : ") + label, key.toStdString()),
                   label + QStringLiteral(" réinitialisé"));
@@ -468,17 +604,27 @@ QString InspectorController::resetParam(const QString& key) {
 
 QString InspectorController::resetAll() {
     const auto s = selection();
-    std::vector<std::pair<std::string, double>> pairs;
-    for (const auto& spec : paramSpecs(s.typeId)) {
-        if (const auto def = defaultOf(s.typeId, spec.key)) {
-            pairs.emplace_back(std::string(spec.key), *def);
+    if (s.ids.empty() || s.typeMixed) {
+        return finish(QStringLiteral("Sélectionnez des objets d'un même type de points."));
+    }
+    std::vector<std::string> batches;
+    for (const auto& spec : allParamSpecs(s.typeId)) {
+        if (isScalarKind(spec.kind)) {
+            if (const auto def = defaultOf(s.typeId, spec.key)) {
+                batches.push_back(batchSetParam(s.ids, s.typeId, spec.key, *def));
+            }
+        } else if (spec.kind != ParamKind::List) {
+            // Guides, break lines and rungs are authored on the canvas: never wiped by a reset.
+            batches.push_back(batchClearParam(s.ids, s.typeId, spec.key));
         }
     }
-    if (pairs.empty()) {
+    std::erase_if(batches, [](const std::string& b) { return b.empty(); });
+    if (batches.empty()) {
         return finish(QStringLiteral("Ce type de points n'a pas de réglages à réinitialiser."));
     }
-    return finish(applyPairs(s, pairs, QStringLiteral("Réinitialiser les réglages de points"), {}),
-                  QStringLiteral("Réglages réinitialisés"));
+    return finish(
+        commitBatches(s, batches, QStringLiteral("Réinitialiser les réglages de points"), {}),
+        QStringLiteral("Réglages réinitialisés"));
 }
 
 QString InspectorController::setStitchType(const QString& id) {
@@ -549,10 +695,18 @@ QString InspectorController::renamePreset(int index, const QString& name) {
     if (std::ranges::any_of(list, [&](const auto& p) { return p.name == clean; })) {
         return finish(QStringLiteral("Un préréglage porte déjà ce nom."));
     }
-    // One undo step: save under the new name (appended), then drop the old entry.
+    // One undo step, ORDER PRESERVED: the entries from `index` on are removed (last first), then
+    // re-saved in their original order with the new name at the renamed slot.
+    const auto first = static_cast<std::size_t>(index);
     auto composite = std::make_unique<commands::CompositeCommand>("Renommer le préréglage");
-    composite->add(std::make_unique<commands::SaveStitchPresetCommand>(clean, old.params));
-    composite->add(std::make_unique<commands::RemoveStitchPresetCommand>(index));
+    for (std::size_t i = list.size(); i > first; --i) {
+        composite->add(
+            std::make_unique<commands::RemoveStitchPresetCommand>(static_cast<int>(i - 1)));
+    }
+    for (std::size_t i = first; i < list.size(); ++i) {
+        composite->add(std::make_unique<commands::SaveStitchPresetCommand>(
+            i == first ? clean : list[i].name, list[i].params));
+    }
     session_.execute(std::move(composite));
     return finish({}, QStringLiteral("Préréglage renommé"));
 }

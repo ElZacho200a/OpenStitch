@@ -48,10 +48,10 @@ Rectangle {
             SectionLabel { text: qsTr("NŒUD D'UN RAIL (mm)") }
             RowLayout {
                 enabled: panel.ready && panel.controller.isSatin
-                Controls.ComboBox { id: side; objectName: "satinSide"; model: ["A", "B"] }
-                Controls.SpinBox { id: node; objectName: "satinNode"; from: 0; to: 999 }
-                Controls.TextField { id: nx; objectName: "satinNodeX"; Layout.preferredWidth: 56; placeholderText: "x" }
-                Controls.TextField { id: ny; objectName: "satinNodeY"; Layout.preferredWidth: 56; placeholderText: "y" }
+                StudioComboBox { id: side; objectName: "satinSide"; model: ["A", "B"] }
+                StudioSpinBox { id: node; objectName: "satinNode"; from: 0; to: 999 }
+                StudioTextField { id: nx; objectName: "satinNodeX"; Layout.preferredWidth: 56; placeholderText: "x" }
+                StudioTextField { id: ny; objectName: "satinNodeY"; Layout.preferredWidth: 56; placeholderText: "y" }
                 StudioButton { objectName: "satinMoveNode"; text: qsTr("Déplacer")
                     onClicked: panel.controller.moveRailNode(side.currentText, node.value, parseFloat(nx.text), parseFloat(ny.text)) }
             }

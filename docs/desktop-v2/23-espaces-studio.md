@@ -59,6 +59,25 @@ Item {
 - Le **préparateur historique** (`PreparePanel` : image, segmentation, régions, IA) est hébergé dans
   `ImageSpace.qml` en attendant que les agents Image et Segmentation le répartissent.
 
+### Système de design (D1) : obligatoire dans les espaces
+
+`test_studio_design` parcourt TOUT `qml/**.qml` (sous-dossiers `spaces/` compris) et échoue sur :
+
+- un contrôle Qt non habillé (`CheckBox`, `TextField`, `SpinBox`, `ComboBox`, `Slider`, `Switch`,
+  `Button`, `TextArea`, …) : utiliser `StudioCheckBox`, `StudioTextField`, `StudioSpinBox`,
+  `StudioComboBox`, `StudioSlider`, `StudioSwitch`, `StudioButton`, `StudioLabel`, `StudioPanel` ;
+- l'attaché `Controls.ToolTip.*` : un enfant `StudioToolTip { text: "…" }` ;
+- une couleur en dur (`"#rrggbb"`) ou un `font.pixelSize: <nombre>` : jetons de `Theme.qml`
+  (`Theme.accent`, `Theme.warning`, `Theme.error`, `Theme.bodySize`, `Theme.captionSize`,
+  `Theme.panelPadding`, `Theme.controlHeight`, …). Exception documentée : `lint-ok:` en commentaire
+  sur la ligne pour une donnée de document (ex. couleur d'un fil).
+- Chaque nouveau composant `Studio*` doit être déclaré dans `qml/qmldir`.
+
+Transversal dans `Main.qml` (jamais dans un espace) : palette de fenêtre, palette de commandes,
+préférences, aide, compagnon, barre d'état (indicateur de rendu GPU/CPU, « Réaliste · GPU/CPU »).
+Spécifique au centre historique et donc dans `PointsSpace.qml` : gestes de numérisation (famille I :
+`digitize: root.digitizeController`, `HandlesOverlay`), `DigitizeHub`, `ViewPanel` (bascule réaliste).
+
 ### Sous-composants et CMake
 
 Les sous-composants vont dans `qml/spaces/<x>/…` (minuscule) et se déclarent dans

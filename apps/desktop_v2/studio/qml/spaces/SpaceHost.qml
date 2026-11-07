@@ -37,8 +37,8 @@ Item {
     function stateColor(state) {
         switch (state) {
         case "upToDate": return Theme.success
-        case "stale": return Theme.light ? "#8a5a00" : "#e3b04b"
-        case "blocked": return Theme.light ? "#a32a2a" : "#e57373"
+        case "stale": return Theme.warning
+        case "blocked": return Theme.error
         default: return Theme.faint
         }
     }
@@ -133,10 +133,11 @@ Item {
                                 font.weight: tab.current ? Font.DemiBold : Font.Normal
                             }
                         }
-                        Controls.ToolTip.visible: hovered
-                        Controls.ToolTip.delay: 500
-                        Controls.ToolTip.text: modelData.label + " (" + host.stateLabel(modelData.state) + ") · "
-                                               + modelData.detail + "  ·  " + modelData.shortcut
+                        StudioToolTip {
+                            delay: 500
+                            text: tab.modelData.label + " (" + host.stateLabel(tab.modelData.state) + ") · "
+                                  + tab.modelData.detail + "  ·  " + tab.modelData.shortcut
+                        }
                     }
                 }
                 Item { Layout.fillWidth: true }
@@ -145,7 +146,7 @@ Item {
                     text: qsTr("UN DOCUMENT · QUATRE ESPACES LIÉS")
                     color: Theme.faint
                     font.family: Theme.fontFamily
-                    font.pixelSize: 9
+                    font.pixelSize: Theme.captionSize
                     font.letterSpacing: 1.1
                 }
             }

@@ -161,6 +161,13 @@ bool FadeController::commitHandle(int handle, double xMm, double yMm, bool symme
                   QStringLiteral("Axe du fondu modifié."));
 }
 
+bool FadeController::reverse() {
+    if (id_ == 0 || !settings_) {
+        return refuse(QStringLiteral("Aucun fondu à inverser."));
+    }
+    return report(reverseFade(studio_.session(), id_), QStringLiteral("Sens du fondu inversé."));
+}
+
 bool FadeController::setCurve(int curve) {
     if (id_ == 0 || curve < 0 || curve > static_cast<int>(FadeCurve::EaseOut)) {
         return refuse(QStringLiteral("Courbe inconnue ou aucun fondu."));

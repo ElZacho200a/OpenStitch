@@ -80,7 +80,7 @@ Rectangle {
                     text: shown ? qsTr("Masquer ce fil") : qsTr("Afficher ce fil")
                     onClicked: panel.controller.setThreadVisible(panel.current, !shown)
                 }
-                Controls.ComboBox {
+                StudioComboBox {
                     id: mergeBox
                     objectName: "threadMergeBox"
                     implicitWidth: 170
@@ -92,7 +92,7 @@ Rectangle {
                         panel.current = -1
                     }
                 }
-                Controls.TextField { id: recolorField; objectName: "threadRecolorField"; implicitWidth: 90; placeholderText: "#rrggbb" }
+                StudioTextField { id: recolorField; objectName: "threadRecolorField"; implicitWidth: 90; placeholderText: "#rrggbb" }
                 StudioButton { objectName: "threadRecolorButton"; text: qsTr("Recolorer"); onClicked: panel.controller.recolorThread(panel.current, recolorField.text) }
             }
             StudioButton { text: qsTr("Exporter la liste (CSV)"); onClicked: exportDialog.open() }
@@ -101,7 +101,7 @@ Rectangle {
             SectionLabel { text: qsTr("NUANCIERS") }
             RowLayout {
                 Layout.fillWidth: true
-                Controls.ComboBox {
+                StudioComboBox {
                     id: chartBox
                     objectName: "chartBox"
                     Layout.fillWidth: true
@@ -119,7 +119,7 @@ Rectangle {
             }
             RowLayout {
                 Layout.fillWidth: true
-                Controls.TextField {
+                StudioTextField {
                     id: searchField
                     objectName: "chartSearchField"
                     Layout.fillWidth: true
@@ -173,7 +173,7 @@ Rectangle {
             }
             RowLayout {
                 Layout.fillWidth: true
-                Controls.TextField { id: colorwayName; objectName: "colorwayNameField"; Layout.fillWidth: true; placeholderText: qsTr("Nom du nouveau coloris") }
+                StudioTextField { id: colorwayName; objectName: "colorwayNameField"; Layout.fillWidth: true; placeholderText: qsTr("Nom du nouveau coloris") }
                 StudioButton { objectName: "colorwayAddButton"; text: qsTr("Créer"); onClicked: { if (panel.controller.addColorway(colorwayName.text)) colorwayName.text = "" } }
             }
 
@@ -196,7 +196,7 @@ Rectangle {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 text: panel.controller ? panel.controller.message : ""
-                color: panel.controller && !panel.controller.lastOk ? "#e88" : Theme.success
+                color: panel.controller && !panel.controller.lastOk ? Theme.error : Theme.success
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallSize
             }

@@ -15,7 +15,9 @@
 
 #include "action_controller.hpp"
 #include "analysis_controller.hpp"
+#include "applique_controller.hpp"
 #include "companion_controller.hpp"
+#include "digitize_gestures.hpp"
 #include "edit_controller.hpp"
 #include "fade_controller.hpp"
 #include "file_controller.hpp"
@@ -25,6 +27,7 @@
 #include "inspector_controller.hpp"
 #include "point_edit_controller.hpp"
 #include "preferences_controller.hpp"
+#include "pull_controller.hpp"
 #include "region_controller.hpp"
 #include "satin_controller.hpp"
 #include "studio_controller.hpp"
@@ -54,7 +57,26 @@ int main(int argc, char** argv) {
     parser.addOption({QStringLiteral("select-object"),
                       QStringLiteral("Sélection initiale par identifiant (recette reproductible)"),
                       QStringLiteral("id")});
+    parser.addOption(
+        {QStringLiteral("open-panels"),
+         QStringLiteral("Recette : ouvre ces panneaux avant --screenshot (liste séparée par des "
+                        "virgules : vue, fils, analyse, satin, fondu, points, tirage, applique, "
+                        "inspecteur ; un seul panneau à la fois par groupe, le dernier gagne)"),
+         QStringLiteral("liste")});
     parser.process(app);
+    {
+        // Default font of every Qt control (Theme.fontFamily / Theme.bodySize): a control that is
+        // not a Studio* component must still use the Studio type face, never the Qt default.
+        QFont base(
+#ifdef Q_OS_WIN
+            QStringLiteral("Segoe UI Variable")
+#else
+            QStringLiteral("sans-serif")
+#endif
+        );
+        base.setPixelSize(12);
+        QGuiApplication::setFont(base);
+    }
     if (parser.isSet(QStringLiteral("software"))) {
         QQuickWindow::setSceneGraphBackend(QStringLiteral("software"));
     }
@@ -84,7 +106,13 @@ int main(int argc, char** argv) {
     PreferencesController prefs(configDir);
     HelpController help;
     CompanionController companion(controller);
+    DigitizeGestures digitizer(controller, pointEdit, fade, satin);
+    PullController pull(controller, &inspector);
+    AppliqueController applique(controller, inspector);
     QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("digitizer"), &digitizer);
+    engine.rootContext()->setContextProperty(QStringLiteral("pull"), &pull);
+    engine.rootContext()->setContextProperty(QStringLiteral("applique"), &applique);
     engine.addImageProvider(QStringLiteral("prepare"), imageTools.createProvider());
     engine.rootContext()->setContextProperty(QStringLiteral("satin"), &satin);
     engine.rootContext()->setContextProperty(QStringLiteral("fade"), &fade);
@@ -111,6 +139,32 @@ int main(int argc, char** argv) {
     auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().first());
     if (!window) {
         return 2;
+    }
+    if (parser.isSet(QStringLiteral("open-panels"))) {
+        const auto names =
+            parser.value(QStringLiteral("open-panels")).split(QLatin1Char(','), Qt::SkipEmptyParts);
+        auto* viewHub = window->findChild<QObject*>(QStringLiteral("viewHub"));
+        auto* digitizeHub = window->findChild<QObject*>(QStringLiteral("digitizeHub"));
+        for (const auto& raw : names) {
+            const auto name = raw.trimmed().toLower();
+            if (name == QStringLiteral("vue") && viewHub) {
+                viewHub->setProperty("openPanel", QStringLiteral("view"));
+            } else if (name == QStringLiteral("fils") && viewHub) {
+                viewHub->setProperty("openPanel", QStringLiteral("threads"));
+            } else if (name == QStringLiteral("analyse") && viewHub) {
+                viewHub->setProperty("openPanel", QStringLiteral("analysis"));
+            } else if (digitizeHub &&
+                       (name == QStringLiteral("satin") || name == QStringLiteral("points") ||
+                        name == QStringLiteral("applique"))) {
+                digitizeHub->setProperty("openPanel", name);
+            } else if (digitizeHub && name == QStringLiteral("fondu")) {
+                digitizeHub->setProperty("openPanel", QStringLiteral("fade"));
+            } else if (digitizeHub && name == QStringLiteral("tirage")) {
+                digitizeHub->setProperty("openPanel", QStringLiteral("pull"));
+            } else if (name == QStringLiteral("inspecteur")) {
+                window->setProperty("editOpen", true);
+            }
+        }
     }
     if (parser.isSet(QStringLiteral("select-object"))) {
         const auto id = parser.value(QStringLiteral("select-object"));

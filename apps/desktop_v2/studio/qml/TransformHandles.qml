@@ -19,7 +19,7 @@ Item {
         y: canvas ? canvas.marquee.y : 0
         width: canvas ? canvas.marquee.width : 0
         height: canvas ? canvas.marquee.height : 0
-        color: "#22f08cb7"
+        color: Qt.alpha(Theme.accent, 0.13)
         border.color: Theme.accent
         border.width: 1
     }
@@ -44,7 +44,7 @@ Item {
         y: canvas ? canvas.ghostRect.y : 0
         width: canvas ? canvas.ghostRect.width : 0
         height: canvas ? canvas.ghostRect.height : 0
-        color: "#18f08cb7"
+        color: Qt.alpha(Theme.accent, 0.09)
         border.color: Theme.accent
         border.width: 1
     }
@@ -57,7 +57,7 @@ Item {
             y: Math.min(modelData.y1, modelData.y2)
             width: Math.max(1, Math.abs(modelData.x2 - modelData.x1))
             height: Math.max(1, Math.abs(modelData.y2 - modelData.y1))
-            color: "#5ad2ff"
+            color: Theme.info
         }
     }
 

@@ -58,6 +58,20 @@ document::StitchParams defaultsOf(const std::string& type) {
         return CrossStitchParams{};
     if (type == "applique")
         return AppliqueParams{};
+    if (type == "auto_satin")
+        return AutoSatinParams{};
+    if (type == "blanket")
+        return BlanketStitchParams{};
+    if (type == "contour_fill")
+        return ContourFillParams{};
+    if (type == "motif_run")
+        return MotifRunParams{};
+    if (type == "motif_fill")
+        return MotifFillParams{};
+    if (type == "radial")
+        return RadialFillParams{};
+    if (type == "crosshatch")
+        return CrosshatchFillParams{};
     return TatamiParams{};
 }
 
@@ -115,6 +129,10 @@ double otherValue(const ParamSpec& spec, double current) {
     }
     case ParamKind::Integer:
         return std::abs(current - spec.min) > 0.5 ? spec.min : spec.max;
+    case ParamKind::Point:
+    case ParamKind::List:
+        return current; // edited by their own editors (see the point / list tests)
+    case ParamKind::OptionalNumber:
     case ParamKind::Number:
         break;
     }
@@ -129,6 +147,8 @@ class StudioInspectorTest : public QObject {
 private slots:
     void initTestCase();
     void everySpecFieldIsExposedAndEditable();
+    void listsAndPointsEditEndToEnd();
+    void everyTypePersistsAndKeepsTheMachineOutput();
     void refusalsNeverCorrectSilently();
     void burstOfEditsIsOneUndoStep();
     void mixedValuesAndMultiEdit();
@@ -146,68 +166,129 @@ void StudioInspectorTest::initTestCase() {
     QQuickWindow::setSceneGraphBackend(QStringLiteral("software"));
 }
 
+// Installs the parameters of `type` on a fresh rectangle (the satin and auto-satin without rails or
+// guides get their default parameters directly).
+static std::uint64_t objectOfType(DocumentSession& session, const std::string& type) {
+    auto created = project_ops::create_empty_project({});
+    session.replaceProject(std::move(*created), true);
+    const auto id = addRect(session);
+    if (id != 0 && type != "tatami") {
+        session.execute(
+            std::make_unique<commands::SetStitchParamsCommand>(ObjectId{id}, defaultsOf(type)));
+    }
+    select(session, {id});
+    return id;
+}
+
 void StudioInspectorTest::everySpecFieldIsExposedAndEditable() {
     int specFields = 0;
     int exposed = 0;
     std::set<std::string> typesWithSpecs;
     for (const auto& type : kAllTypes) {
         DocumentSession session;
-        auto created = project_ops::create_empty_project({});
-        QVERIFY(created.has_value());
-        session.replaceProject(std::move(*created), true);
-        const auto id = addRect(session);
+        const auto id = objectOfType(session, type);
         QVERIFY(id != 0);
-        if (type == "auto_satin") {
-            continue; // `AutoSatinParams` has no table (reported in the CSV note)
-        }
-        if (type != "tatami") {
-            const auto settable = settableIdOf(type);
-            if (type == "satin") {
-                // Manual satin columns have no rail here: install the params directly.
-                session.execute(std::make_unique<commands::SetStitchParamsCommand>(
-                    ObjectId{id}, defaultsOf(type)));
-            } else {
-                QVERIFY2(session.applyBatch(batchSetStitchType({id}, settable), "Type").committed,
-                         type.c_str());
-            }
-        }
-        if (type == "auto_satin") {
-            continue; // `AutoSatinParams` has no table (reported, see the CSV note)
-        }
-        select(session, {id});
         StudioController studio(session);
         InspectorController inspector(studio);
         inspector.setShowAdvanced(true);
+        inspector.setShowExpert(true);
         QCOMPARE(inspector.typeId().toStdString(), std::string(stitchTypeId(object(session, id))));
-        const auto specs = paramSpecs(stitchTypeId(object(session, id)));
-        if (specs.empty()) {
-            QCOMPARE(inspector.fields().size(), 0);
-            QCOMPARE(inspector.totalFieldCount(), 0);
-            continue;
-        }
+        const auto specs = allParamSpecs(stitchTypeId(object(session, id)));
+        QVERIFY2(!specs.empty(), type.c_str());
         typesWithSpecs.insert(type);
         QCOMPARE(inspector.fields().size(), static_cast<int>(specs.size()));
+        QCOMPARE(inspector.hiddenExpertCount(), 0);
         for (const auto& spec : specs) {
             ++specFields;
             const auto key = QString::fromUtf8(spec.key.data(), static_cast<int>(spec.key.size()));
+            const QString where = QString::fromStdString(type) + "." + key;
             const auto field = fieldOf(inspector, key);
-            QVERIFY2(!field.isEmpty(), qPrintable(QString::fromStdString(type) + "." + key));
+            QVERIFY2(!field.isEmpty(), qPrintable(where));
             ++exposed;
+            const auto depth = session.undoNames().size();
+            if (spec.kind == ParamKind::Point) {
+                QVERIFY2(!field.value(QStringLiteral("isSet")).toBool(), qPrintable(where));
+                const auto refusal = inspector.setPoint(key, 12.5, -3.25);
+                QVERIFY2(refusal.isEmpty(), qPrintable(where + ": " + refusal));
+                QCOMPARE(session.undoNames().size(), depth + 1);
+                const auto pt = readPointMm(object(session, id), spec.key);
+                QVERIFY2(pt.has_value(), qPrintable(where));
+                QVERIFY(std::abs(pt->first - 12.5) < 1e-6 && std::abs(pt->second + 3.25) < 1e-6);
+                QVERIFY(!inspector.setPoint(key, 9999.0, 0.0).isEmpty()); // out of range: refused
+                QVERIFY(inspector.clearParam(key).isEmpty());
+                QVERIFY2(!readPointMm(object(session, id), spec.key).has_value(),
+                         qPrintable(where));
+                QVERIFY(session.undo());
+                QVERIFY(readPointMm(object(session, id), spec.key).has_value());
+                QVERIFY(session.undo());
+                continue;
+            }
+            if (spec.kind == ParamKind::List) {
+                QCOMPARE(field.value(QStringLiteral("kind")).toString(), QStringLiteral("list"));
+                QVERIFY(inspector.clearParam(key).isEmpty()); // already empty: no undo entry
+                QCOMPARE(session.undoNames().size(), depth);
+                continue;
+            }
             const auto before = *readParam(object(session, id), spec.key);
             const double target = otherValue(spec, before);
-            const auto depth = session.undoNames().size();
             const auto refusal = inspector.setParam(key, target);
-            QVERIFY2(refusal.isEmpty(), qPrintable(key + ": " + refusal));
+            QVERIFY2(refusal.isEmpty(), qPrintable(where + ": " + refusal));
             QCOMPARE(session.undoNames().size(), depth + 1);
             const auto after = *readParam(object(session, id), spec.key);
-            QVERIFY2(std::abs(after - target) < 0.01 + spec.step * 0.01,
-                     qPrintable(QString::fromStdString(type) + "." + key));
+            QVERIFY2(std::abs(after - target) < 0.01 + spec.step * 0.01, qPrintable(where));
             QCOMPARE(fieldOf(inspector, key).value(QStringLiteral("value")).toDouble(), after);
+            if (spec.kind == ParamKind::OptionalNumber) {
+                QVERIFY(paramIsSet(object(session, id), spec.key));
+                QVERIFY(inspector.clearParam(key).isEmpty());
+                QVERIFY2(!paramIsSet(object(session, id), spec.key), qPrintable(where));
+            }
         }
     }
-    QVERIFY(specFields >= 60); // the table lists 75 rows over 7 types today
+    QVERIFY(specFields == 176); // the complete table lists every engine setting of the 14 types
     QCOMPARE(exposed, specFields);
-    QCOMPARE(typesWithSpecs.size(), static_cast<std::size_t>(7));
+    QCOMPARE(typesWithSpecs.size(), static_cast<std::size_t>(14));
+}
+
+void StudioInspectorTest::listsAndPointsEditEndToEnd() {
+    DocumentSession session;
+    const auto id = objectOfType(session, "directional");
+    StudioController studio(session);
+    InspectorController inspector(studio);
+    inspector.setShowExpert(true);
+    // Two guides and a gradient installed by the engine operation (as the canvas tool does).
+    const std::string ops =
+        R"({"schema":"openstitch.batch/1","operations":[{"op":"set_params","object":)" +
+        std::to_string(id) +
+        R"(,"params":{"guides":[[[0,0],[10,5]],[[0,2],[10,7]]],"density_gradient":)"
+        R"({"from_mm":[0,0],"to_mm":[10,0],"spacing_from_mm":0.4,"spacing_to_mm":0.8}}}]})";
+    QVERIFY(session.applyBatch(ops, "Guides").committed);
+    QCOMPARE(fieldOf(inspector, QStringLiteral("guides")).value("value").toInt(), 2);
+    QVERIFY(fieldOf(inspector, QStringLiteral("density_gradient")).value("isSet").toBool());
+    const auto withGuides = dstOf(session);
+    const auto depth = session.undoNames().size();
+    QVERIFY(inspector.clearParam(QStringLiteral("guides")).isEmpty());
+    QCOMPARE(session.undoNames().size(), depth + 1);
+    QCOMPARE(fieldOf(inspector, QStringLiteral("guides")).value("value").toInt(), 0);
+    // A reset-all never wipes canvas-authored lists (guides stay, the gradient too).
+    QVERIFY(session.undo());
+    QVERIFY(inspector.resetAll().isEmpty());
+    QCOMPARE(fieldOf(inspector, QStringLiteral("guides")).value("value").toInt(), 2);
+    QVERIFY(dstOf(session) == withGuides); // the undo restores the machine output byte for byte
+    QVERIFY(inspector.clearParam(QStringLiteral("density_gradient")).isEmpty());
+    QVERIFY(!fieldOf(inspector, QStringLiteral("density_gradient")).value("isSet").toBool());
+    // The sweep angle of an auto-satin is an optional number: automatic until fixed.
+    DocumentSession autoSession;
+    const auto autoId = objectOfType(autoSession, "auto_satin");
+    StudioController autoStudio(autoSession);
+    InspectorController autoInspector(autoStudio);
+    autoInspector.setShowExpert(true);
+    auto sweep = fieldOf(autoInspector, QStringLiteral("sweep_angle_deg"));
+    QVERIFY(!sweep.value("isSet").toBool());
+    QCOMPARE(sweep.value("text").toString(), QStringLiteral("Automatique"));
+    QVERIFY(autoInspector.setParam(QStringLiteral("sweep_angle_deg"), 35).isEmpty());
+    QVERIFY(paramIsSet(object(autoSession, autoId), "sweep_angle_deg"));
+    QVERIFY(autoInspector.resetParam(QStringLiteral("sweep_angle_deg")).isEmpty());
+    QVERIFY(!paramIsSet(object(autoSession, autoId), "sweep_angle_deg"));
 }
 
 void StudioInspectorTest::refusalsNeverCorrectSilently() {
@@ -342,7 +423,7 @@ void StudioInspectorTest::stitchTypeConversion() {
     QCOMPARE(inspector.typeId(), QStringLiteral("directional"));
     QVERIFY(inspector.setStitchType(QStringLiteral("contour_fill")).isEmpty());
     QCOMPARE(inspector.typeId(), QStringLiteral("contour_fill"));
-    QCOMPARE(inspector.fields().size(), 0); // concentric: no table yet (reported)
+    QVERIFY(inspector.fields().size() > 0); // concentric: its table is complete since family J
 }
 
 void StudioInspectorTest::searchAndLevels() {
@@ -357,8 +438,20 @@ void StudioInspectorTest::searchAndLevels() {
     QVERIFY(inspector.hiddenAdvancedCount() > 0);
     QVERIFY(fieldOf(inspector, QStringLiteral("stagger")).isEmpty());
     inspector.setShowAdvanced(true);
-    QCOMPARE(inspector.fields().size(), inspector.totalFieldCount());
+    QVERIFY(inspector.hiddenExpertCount() > 0); // the expert fields wait for the expert level
+    QCOMPARE(inspector.fields().size(),
+             inspector.totalFieldCount() - inspector.hiddenExpertCount());
     QVERIFY(inspector.fields().size() > essentials);
+    QVERIFY(fieldOf(inspector, QStringLiteral("entry_point_mm")).isEmpty());
+    inspector.setShowExpert(true);
+    QCOMPARE(inspector.fields().size(), inspector.totalFieldCount());
+    QVERIFY(!fieldOf(inspector, QStringLiteral("entry_point_mm")).isEmpty());
+    // A search reaches an expert field without switching level.
+    inspector.setShowExpert(false);
+    inspector.setShowAdvanced(false);
+    inspector.setQuery(QStringLiteral("depart du remplissage"));
+    QCOMPARE(inspector.fields().size(), 1);
+    inspector.setQuery({});
     inspector.setShowAdvanced(false);
     inspector.setQuery(QStringLiteral("quinconce")); // an advanced field found by its label
     QCOMPARE(inspector.fields().size(), 1);
@@ -420,6 +513,57 @@ void StudioInspectorTest::persistsInTheOspFile() {
     QCOMPARE(*readParam(reloaded, "underlay_zigzag"), 1.0);
 }
 
+void StudioInspectorTest::everyTypePersistsAndKeepsTheMachineOutput() {
+    for (const auto& type : kAllTypes) {
+        DocumentSession session;
+        const auto id = objectOfType(session, type);
+        StudioController studio(session);
+        InspectorController inspector(studio);
+        inspector.setShowAdvanced(true);
+        inspector.setShowExpert(true);
+        const auto specs = allParamSpecs(stitchTypeId(object(session, id)));
+        // Identical parameters: no undo entry, byte-identical machine output.
+        const auto baseline = dstOf(session);
+        const auto depth = session.undoNames().size();
+        for (const auto& spec : specs) {
+            if (!isScalarKind(spec.kind)) {
+                continue;
+            }
+            const auto key = QString::fromUtf8(spec.key.data(), static_cast<int>(spec.key.size()));
+            const auto current = *readParam(object(session, id), spec.key);
+            QVERIFY2(inspector.setParam(key, current).isEmpty(),
+                     qPrintable(QString::fromStdString(type) + "." + key));
+        }
+        QCOMPARE(session.undoNames().size(), depth);
+        QVERIFY2(dstOf(session) == baseline, type.c_str());
+        // Every field changed, then the file saved and reloaded: the values come back.
+        std::vector<std::pair<std::string, double>> expected;
+        for (const auto& spec : specs) {
+            if (spec.kind == ParamKind::Point || spec.kind == ParamKind::List) {
+                continue;
+            }
+            const auto key = QString::fromUtf8(spec.key.data(), static_cast<int>(spec.key.size()));
+            const double target = otherValue(spec, *readParam(object(session, id), spec.key));
+            QVERIFY2(inspector.setParam(key, target).isEmpty(),
+                     qPrintable(QString::fromStdString(type) + "." + key));
+            expected.emplace_back(std::string(spec.key), *readParam(object(session, id), spec.key));
+        }
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const auto path = std::filesystem::path(dir.path().toStdWString()) / "every.osp";
+        QVERIFY(project_io::save_project(path, session.project()).has_value());
+        const auto loaded = project_io::load_project(path);
+        QVERIFY(loaded.has_value());
+        const auto& reloaded = loaded->embroidery_objects.front();
+        QVERIFY(reloaded.params == object(session, id).params);
+        for (const auto& [key, value] : expected) {
+            const auto v = readParam(reloaded, key);
+            QVERIFY2(v.has_value() && std::abs(*v - value) < 1e-6,
+                     qPrintable(QString::fromStdString(type + "." + key)));
+        }
+    }
+}
+
 void StudioInspectorTest::presetsLifecycle() {
     DocumentSession session;
     auto created = project_ops::create_empty_project({});
@@ -451,11 +595,16 @@ void StudioInspectorTest::presetsLifecycle() {
     QVERIFY(inspector.renamePreset(0, QStringLiteral("Dense 2")).isEmpty());
     QCOMPARE(session.undoNames().size(), depth + 1);
     QCOMPARE(session.project().stitch_presets.size(), static_cast<std::size_t>(2));
-    QCOMPARE(QString::fromStdString(session.project().stitch_presets.back().name),
+    // The renamed preset keeps its slot (no reordering): « Dense 2 » first, « Other » second.
+    QCOMPARE(QString::fromStdString(session.project().stitch_presets.front().name),
              QStringLiteral("Dense 2"));
+    QCOMPARE(QString::fromStdString(session.project().stitch_presets.back().name),
+             QStringLiteral("Other"));
     QVERIFY(session.undo());
     QCOMPARE(QString::fromStdString(session.project().stitch_presets.front().name),
              QStringLiteral("Dense"));
+    QCOMPARE(QString::fromStdString(session.project().stitch_presets.back().name),
+             QStringLiteral("Other"));
     QVERIFY(inspector.removePreset(0).isEmpty());
     QCOMPARE(session.project().stitch_presets.size(), static_cast<std::size_t>(1));
     QVERIFY(!inspector.removePreset(7).isEmpty());

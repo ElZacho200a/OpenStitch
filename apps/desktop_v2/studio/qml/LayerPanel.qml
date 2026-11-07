@@ -67,7 +67,7 @@ ColumnLayout {
         }
     }
 
-    Controls.TextField {
+    StudioTextField {
         id: renameField
         objectName: "layerRenameField"
         Layout.fillWidth: true

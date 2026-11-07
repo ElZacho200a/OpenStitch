@@ -40,7 +40,7 @@ Controls.Popup {
             }
             StudioButton { id: closeButton; objectName: "shortcutsClose"; text: qsTr("Fermer"); onClicked: sheet.close() }
         }
-        Controls.TextField {
+        StudioTextField {
             id: filter
             objectName: "shortcutsFilter"
             Layout.fillWidth: true

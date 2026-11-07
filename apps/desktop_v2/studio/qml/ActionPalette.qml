@@ -101,7 +101,7 @@ Controls.Popup {
         spacing: 8
 
         // ---- List mode ----
-        Controls.TextField {
+        StudioTextField {
             id: search
             objectName: "actionSearch"
             visible: palette.currentId === ""
@@ -246,7 +246,7 @@ Controls.Popup {
 
     Component {
         id: textField
-        Controls.TextField {
+        StudioTextField {
             text: palette.formModel[field.key] !== undefined ? palette.formModel[field.key] : ""
             inputMethodHints: field.kind === "number" || field.kind === "integer"
                               ? Qt.ImhFormattedNumbersOnly : Qt.ImhNone
@@ -258,7 +258,7 @@ Controls.Popup {
     }
     Component {
         id: boolField
-        Controls.CheckBox {
+        StudioCheckBox {
             checked: palette.formModel[field.key] === "1"
             Accessible.name: field.label
             onToggled: palette.setValue(field.key, checked ? "1" : "0")
@@ -266,7 +266,7 @@ Controls.Popup {
     }
     Component {
         id: choiceField
-        Controls.ComboBox {
+        StudioComboBox {
             model: field.choices
             textRole: "label"
             valueRole: "value"
@@ -282,7 +282,7 @@ Controls.Popup {
     Component {
         id: fileField
         RowLayout {
-            Controls.TextField {
+            StudioTextField {
                 Layout.fillWidth: true
                 text: palette.formModel[field.key] !== undefined ? palette.formModel[field.key] : ""
                 Accessible.name: field.label

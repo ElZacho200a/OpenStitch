@@ -38,7 +38,7 @@ Rectangle {
             StudioButton { objectName: "simToEnd"; text: qsTr("⏹ Fin"); quiet: true; tooltip: qsTr("Aller à la fin"); onClicked: bar.controller.toEnd() }
             Item { Layout.fillWidth: true }
             Text { text: qsTr("Vitesse"); color: Theme.muted; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize }
-            Controls.ComboBox {
+            StudioComboBox {
                 objectName: "simSpeedBox"
                 implicitWidth: 78
                 model: [1, 5, 20, 60, 200]
@@ -50,7 +50,7 @@ Rectangle {
         }
         RowLayout {
             spacing: 10
-            Controls.Slider {
+            StudioSlider {
                 id: slider
                 objectName: "simSlider"
                 Layout.fillWidth: true

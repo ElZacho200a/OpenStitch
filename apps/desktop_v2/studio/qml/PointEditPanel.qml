@@ -60,8 +60,8 @@ Rectangle {
             }
             SectionLabel { text: qsTr("DÉPLACER LA SÉLECTION (mm)") }
             RowLayout {
-                Controls.TextField { id: dx; objectName: "pointMoveDx"; text: "0.5"; Layout.preferredWidth: 70; inputMethodHints: Qt.ImhFormattedNumbersOnly }
-                Controls.TextField { id: dy; objectName: "pointMoveDy"; text: "0"; Layout.preferredWidth: 70; inputMethodHints: Qt.ImhFormattedNumbersOnly }
+                StudioTextField { id: dx; objectName: "pointMoveDx"; text: "0.5"; Layout.preferredWidth: 70; inputMethodHints: Qt.ImhFormattedNumbersOnly }
+                StudioTextField { id: dy; objectName: "pointMoveDy"; text: "0"; Layout.preferredWidth: 70; inputMethodHints: Qt.ImhFormattedNumbersOnly }
                 StudioButton { objectName: "pointMove"; text: qsTr("Déplacer"); enabled: panel.ready && panel.controller.selectedCount > 0
                     onClicked: panel.controller.moveSelected(parseFloat(dx.text), parseFloat(dy.text)) }
             }

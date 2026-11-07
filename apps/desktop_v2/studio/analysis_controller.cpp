@@ -73,6 +73,23 @@ AnalysisController::AnalysisController(StudioController& studio, ViewController&
         render_ = loadPreferences(prefsFile_).render;
     }
     lastRevision_ = studio_.session().revision();
+    view_.setRealisticStyle(render_);
+    // Bascule « Rendu réaliste » : sur GPU le canevas fait tout (rien à calculer ici) ; en repli
+    // logiciel, la bascule déclenche / retire l'image de référence CPU.
+    connect(&view_, &ViewController::realisticChanged, this, [this] {
+        if (!view_.realistic()) {
+            if (realisticReady()) {
+                clearRealistic();
+            }
+        } else if (!view_.realisticOnGpu() && !realisticReady()) {
+            computeRealistic();
+        }
+    });
+    connect(&view_, &ViewController::realisticRefreshRequested, this, [this] {
+        if (view_.realistic() && !view_.realisticOnGpu()) {
+            computeRealistic();
+        }
+    });
     connect(&studio_, &StudioController::changed, this, &AnalysisController::onDocumentChanged);
     pump_.setInterval(8);
     connect(&pump_, &QTimer::timeout, this, [this] { tasks_.pump(); });
@@ -706,6 +723,7 @@ bool AnalysisController::setRenderSetting(const QString& key, const QString& val
         return false;
     }
     render_ = clamped(next);
+    view_.setRealisticStyle(render_);
     savePreferencesFile();
     emit renderChanged();
     return true;
@@ -718,6 +736,7 @@ bool AnalysisController::applyRenderPreset(const QString& id) {
         return false;
     }
     render_ = *preset;
+    view_.setRealisticStyle(render_);
     savePreferencesFile();
     emit renderChanged();
     say(true,

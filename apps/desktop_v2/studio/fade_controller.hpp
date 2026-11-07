@@ -61,6 +61,8 @@ public:
     Q_INVOKABLE QVariantMap previewHandle(int handle, double xMm, double yMm, bool symmetric) const;
     Q_INVOKABLE bool commitHandle(int handle, double xMm, double yMm, bool symmetric);
     Q_INVOKABLE bool setCurve(int curve);
+    // Inverse le sens du fondu (début <-> fin) : une étape d'annulation.
+    Q_INVOKABLE bool reverse();
 signals:
     void changed();
     void messageChanged();

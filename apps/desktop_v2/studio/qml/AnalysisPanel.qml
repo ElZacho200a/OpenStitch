@@ -41,7 +41,7 @@ Rectangle {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 text: panel.controller.diagnosticsSummary
-                color: panel.controller.diagnosticsStale ? "#e0b060" : Theme.muted
+                color: panel.controller.diagnosticsStale ? Theme.warning : Theme.muted
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallSize
             }
@@ -68,7 +68,7 @@ Rectangle {
                         wrapMode: Text.WordWrap
                         text: "[" + finding.modelData.severity + "] " + finding.modelData.message
                               + (finding.modelData.suggestion.length > 0 ? "\n→ " + finding.modelData.suggestion : "")
-                        color: finding.modelData.severity === "error" ? "#e88" : finding.modelData.severity === "warning" ? "#e0b060" : Theme.muted
+                        color: finding.modelData.severity === "error" ? Theme.error : finding.modelData.severity === "warning" ? Theme.warning : Theme.muted
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.smallSize
                     }
@@ -92,8 +92,8 @@ Rectangle {
             SectionLabel { text: qsTr("OPTIMISER L'ORDRE") }
             RowLayout {
                 Layout.fillWidth: true
-                Controls.ComboBox { id: strategyBox; objectName: "strategyBox"; Layout.fillWidth: true; model: panel.controller.strategies }
-                Controls.CheckBox { id: improveBox; text: qsTr("Affiner"); palette.windowText: Theme.muted }
+                StudioComboBox { id: strategyBox; objectName: "strategyBox"; Layout.fillWidth: true; model: panel.controller.strategies }
+                StudioCheckBox { id: improveBox; text: qsTr("Affiner"); palette.windowText: Theme.muted }
                 StudioButton { objectName: "proposeButton"; text: qsTr("Calculer"); onClicked: panel.controller.proposeOrder(strategyBox.currentIndex, improveBox.checked) }
             }
             Repeater {
@@ -103,7 +103,7 @@ Rectangle {
             Text {
                 visible: panel.controller.proposalStale
                 text: qsTr("Proposition périmée : le motif a changé, recalculez.")
-                color: "#e0b060"; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
+                color: Theme.warning; font.family: Theme.fontFamily; font.pixelSize: Theme.smallSize
             }
             RowLayout {
                 visible: panel.controller.proposalReady
@@ -115,12 +115,12 @@ Rectangle {
             SectionLabel { text: qsTr("CADRE ET MACHINE") }
             RowLayout {
                 Layout.fillWidth: true
-                Controls.ComboBox { id: hoopBox; objectName: "hoopBox"; Layout.fillWidth: true; model: panel.controller.libraryHoops; textRole: "name" }
+                StudioComboBox { id: hoopBox; objectName: "hoopBox"; Layout.fillWidth: true; model: panel.controller.libraryHoops; textRole: "name" }
                 StudioButton { objectName: "applyHoopButton"; text: qsTr("Appliquer"); onClicked: panel.controller.applyLibraryHoop(panel.controller.libraryHoops[hoopBox.currentIndex].id, 0) }
             }
             RowLayout {
                 Layout.fillWidth: true
-                Controls.ComboBox {
+                StudioComboBox {
                     id: machineBox
                     objectName: "machineBox"
                     Layout.fillWidth: true
@@ -144,7 +144,7 @@ Rectangle {
             }
             RowLayout {
                 Layout.fillWidth: true
-                Controls.TextField { id: hoopName; objectName: "hoopNameField"; Layout.fillWidth: true; placeholderText: qsTr("Nom du cadre actuel") }
+                StudioTextField { id: hoopName; objectName: "hoopNameField"; Layout.fillWidth: true; placeholderText: qsTr("Nom du cadre actuel") }
                 StudioButton { objectName: "saveHoopButton"; text: qsTr("Enregistrer"); onClicked: { if (panel.controller.saveCurrentHoopAs(hoopName.text)) hoopName.text = "" } }
             }
 
@@ -164,7 +164,7 @@ Rectangle {
                 }
             }
             RowLayout {
-                StudioButton { objectName: "realisticButton"; text: qsTr("Afficher le rendu"); onClicked: panel.controller.computeRealistic() }
+                StudioButton { objectName: "realisticButton"; text: qsTr("Rendu de référence (CPU) / Exporter le rendu"); tooltip: qsTr("Calcule l'image de référence avec le moteur CPU ; le rendu réaliste interactif se bascule dans la barre au-dessus du canevas"); onClicked: panel.controller.computeRealistic() }
                 StudioButton { text: qsTr("Revenir aux points"); quiet: true; visible: panel.controller.realisticReady; onClicked: panel.controller.clearRealistic() }
             }
 
@@ -173,7 +173,7 @@ Rectangle {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 text: panel.controller.message
-                color: panel.controller.lastOk ? Theme.success : "#e88"
+                color: panel.controller.lastOk ? Theme.success : Theme.error
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallSize
             }
