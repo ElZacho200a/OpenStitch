@@ -1,6 +1,6 @@
 id,type,libelle_v1,source_v1,statut_v2_widgets,preuve_v2,statut_studio,preuve_studio,controleur,composant
 226c1fd7,action,(aucun préréglage),main_window_stitch_presets.cpp,absent,,ABSENT,,,
-c6534d24,action,(sélectionnez un objet de broderie pour assigner),main_window_eyedropper.cpp,absent,,ABSENT,,,
+c6534d24,action,(sélectionnez un objet de broderie pour assigner),main_window_eyedropper.cpp,absent,,TESTED,StudioEditTest::contextMenuAndEyedropper,EditController::applyColorFrom,GpuCanvas pipette + EditBar pipetteButton
 9268b9a3,action,100 % (taille réelle),main_window.cpp,fait,view.zoom-actual,SERVICE_ONLY,,,
 c7233a7c,action,Abandonner les retouches,main_window_toolbars.cpp,absent,,ABSENT,,,
 b4151a04,action,Accrochage des nœuds au glisser,main_window.cpp,absent,,ABSENT,,,
@@ -46,7 +46,7 @@ f9db85df,action,Couper le fil après,main_window_point_edit.cpp,fait,Couper le f
 c97c7aae,action,Créer un remplissage tatami,main_window.cpp,partiel,settableStitchTypes,SERVICE_ONLY,,,
 67fc3ea3,action,Créer un satin automatique,main_window.cpp,fait,satin.auto,SERVICE_ONLY,,,
 1e5cd1fe,action,Diagnostic des défauts connus,main_window_analysis.cpp,partiel,run_diagnostics,SERVICE_ONLY,,,
-9ba57c94,action,Dupliquer,main_window_context_menu.cpp,fait,Dupliquer,SERVICE_ONLY,,,
+9ba57c94,action,Dupliquer,main_window_context_menu.cpp,fait,Dupliquer,TESTED,StudioEditTest::shortcutsReachTheEditor,EditController::duplicate,Main.qml Ctrl+D / CanvasContextMenu / EditBar
 42245f06,action,Dupliquer la couche,document_panel.cpp,absent,,ABSENT,,,
 54f0a20a,action,Dupliquer la forme,main_window.cpp,fait,edit.duplicate,SERVICE_ONLY,,,
 b8d50ff8,action,Déboguer : afficher toutes les données,main_window_context_menu.cpp,absent,,ABSENT,,,
@@ -54,7 +54,7 @@ b8d50ff8,action,Déboguer : afficher toutes les données,main_window_context_men
 3e57366b,action,Décaler,main_window_context_menu.cpp,absent,,ABSENT,,,
 d44d8b2a,action,Décaler la forme,main_window.cpp,absent,,ABSENT,,,
 a6809735,action,Déformation prévue du tissu,main_window_analysis.cpp,fait,Déformation prévue du tissu,SERVICE_ONLY,,,
-eab12005,action,Déplacer la sélection ici,calque_panel.cpp,fait,calqueHere,SERVICE_ONLY,,,
+eab12005,action,Déplacer la sélection ici,calque_panel.cpp,fait,calqueHere,FUNCTIONAL_UNTESTED,StudioEditTest::layersTreeAndObjectEditing (controleur seul),EditController::moveSelectionToLayer,LayerPanel layerMoveHereButton / ObjectTree glisser-deposer
 694f85ac,action,Effacer les guides,main_window_view_display.cpp,fait,Effacer les guides,SERVICE_ONLY,,,
 2a2bef85,action,Effacer toutes les zones de détail,main_window_detail_zones.cpp,absent,,ABSENT,,,
 579f3c4f,action,Enregistrer le projet,main_window.cpp,fait,Enregistrer le projet,TESTED,StudioShellTest::openMoveUndoSaveReopenJourney,StudioController::saveProject,Main.qml saveProjectButton
@@ -127,7 +127,7 @@ b4dc4f3a,action,Rechercher une commande,main_window.cpp,fait,Rechercher une comm
 b2f5a579,action,Recolorer,main_window_regions.cpp,fait,Recolorer,SERVICE_ONLY,,,
 d39e212d,action,Recolorer la sélection,main_window.cpp,fait,Recolorer la sélection,SERVICE_ONLY,,,
 b5106cf2,action,Remplissage tatami,main_window.cpp,partiel,settableStitchTypes,SERVICE_ONLY,,,
-8b3e385a,action,Renommer,calque_panel.cpp,fait,Renommer,SERVICE_ONLY,,,
+8b3e385a,action,Renommer,calque_panel.cpp,fait,Renommer,FUNCTIONAL_UNTESTED,StudioEditTest::layersTreeAndObjectEditing (controleur seul),EditController::renameLayer/renameObject,ObjectTree double-clic / LayerPanel
 a0622ecf,action,Restaurer la disposition précédente,main_window_ux.cpp,absent,,ABSENT,,,
 b0c51442,action,Restaurer les points sélectionnés,main_window_point_edit.cpp,fait,point.restore,SERVICE_ONLY,,,
 ae44ff48,action,Risque de tirage du tissu,main_window_analysis.cpp,fait,analysis.fabric,SERVICE_ONLY,,,
@@ -146,23 +146,23 @@ ea169d9f,action,Réglages de la grille,main_window_view_display.cpp,partiel,grid
 de43aedf,action,Segmenter l'image,main_window.cpp,fait,Segmenter l'image,FUNCTIONAL_UNTESTED,,ActionController::run(image.segment),ActionPalette.qml
 0d67e9bf,action,Statistiques,main_window.cpp,partiel,summary_,SERVICE_ONLY,,,
 65b6e4d4,action,Supprimer,main_window_regions.cpp,fait,Supprimer,SERVICE_ONLY,,,
-03a7c253,action,Supprimer %1 objets,main_window_context_menu.cpp,absent,,ABSENT,,,
+03a7c253,action,Supprimer %1 objets,main_window_context_menu.cpp,absent,,TESTED,StudioEditTest::contextMenuAndEyedropper,EditController::deleteSelection,CanvasContextMenu contextDelete
 16449d1d,action,Supprimer ce point,main_window_directional.cpp,absent,,ABSENT,,,
-6623e722,action,Supprimer la sélection,main_window.cpp,fait,Supprimer la sélection,SERVICE_ONLY,,,
-d6e27fc4,action,Supprimer le calque,calque_panel.cpp,fait,calqueRemove,SERVICE_ONLY,,,
+6623e722,action,Supprimer la sélection,main_window.cpp,fait,Supprimer la sélection,TESTED,StudioEditTest::shortcutsReachTheEditor,EditController::deleteSelection,Main.qml Suppr / EditBar deleteButton
+d6e27fc4,action,Supprimer le calque,calque_panel.cpp,fait,calqueRemove,FUNCTIONAL_UNTESTED,StudioEditTest::layersTreeAndObjectEditing (controleur seul),EditController::removeLayer,LayerPanel layerRemoveButton
 980fefff,action,Supprimer le guide,main_window_satin_auto.cpp,absent,,ABSENT,,,
 69e76bc8,action,Supprimer le guide satin sélectionné,main_window.cpp,absent,,ABSENT,,,
 5a001324,action,Supprimer le nœud,main_window_render.cpp,fait,deleteSelected,SERVICE_ONLY,,,
 cc56cc1b,action,Supprimer le texte,main_window_lettering.cpp,absent,,FUNCTIONAL_UNTESTED,,ActionController::run(text.remove),ActionPalette.qml
 d9267bc5,action,Supprimer les points sélectionnés,main_window_point_edit.cpp,fait,deleteSelectedPoint,SERVICE_ONLY,,,
 0e876999,action,Sélectionner l'objet,main_window_analysis.cpp,fait,onFindingActivated,SERVICE_ONLY,,,
-5626577a,action,Sélectionner la même couleur,main_window.cpp,fait,Sélectionner la même couleur,SERVICE_ONLY,,,
-76e1b404,action,Sélectionner les voisines,main_window.cpp,fait,Sélectionner les voisines,SERVICE_ONLY,,,
+5626577a,action,Sélectionner la même couleur,main_window.cpp,fait,Sélectionner la même couleur,FUNCTIONAL_UNTESTED,StudioEditTest::selectionCommandsOnRealObjects (controleur seul),EditController::selectSameColor,EditBar sameColorButton / CanvasContextMenu
+76e1b404,action,Sélectionner les voisines,main_window.cpp,fait,Sélectionner les voisines,FUNCTIONAL_UNTESTED,StudioEditTest::selectionCommandsOnRealObjects (controleur seul),EditController::selectNeighbors,EditBar neighborsButton / CanvasContextMenu
 149d5727,action,Sélectionner tous les points,main_window_point_edit.cpp,fait,point.select-all,SERVICE_ONLY,,,
 6374ea03,action,Taille du cadre,main_window.cpp,fait,canvas.set,SERVICE_ONLY,,,
 153dd793,action,Tout afficher,main_window_order_filter.cpp,fait,view.show-all,SERVICE_ONLY,,,
 e46589b0,action,Tout afficher (filtres),main_window_context_menu.cpp,fait,view.show-all,SERVICE_ONLY,,,
-f4632624,action,Tout sélectionner,main_window.cpp,fait,Tout sélectionner,SERVICE_ONLY,,,
+f4632624,action,Tout sélectionner,main_window.cpp,fait,Tout sélectionner,TESTED,StudioEditTest::shortcutsReachTheEditor,EditController::selectAll,Main.qml Ctrl+A / EditBar selectAllButton
 84b7b6f9,action,Tracer un guide de direction,main_window_directional.cpp,fait,Tracer un guide de direction,SERVICE_ONLY,,,
 755c06fc,action,Tracer une ligne de rupture,main_window_directional.cpp,fait,Tracer une ligne de rupture,SERVICE_ONLY,,,
 e73f5b09,action,Transition douce des nœuds voisins,main_window_node_select.cpp,absent,,ABSENT,,,
@@ -388,7 +388,7 @@ a0dd4113,dock,Fils,main_window_threads.cpp,fait,Fils,SERVICE_ONLY,,,
 3c08b8cc,dock,Workflow,main_window_panels.cpp,fait,Workflow,SERVICE_ONLY,,,
 3de2eda8,menu,Affichage,main_window.cpp,fait,Affichage,SERVICE_ONLY,,,
 7fd6fced,menu,Aide,main_window_help_menu.cpp,fait,Aide,SERVICE_ONLY,,,
-ea8a9f5a,menu,Aligner la sélection,main_window_editing.cpp,absent,,ABSENT,,,
+ea8a9f5a,menu,Aligner la sélection,main_window_editing.cpp,absent,,FUNCTIONAL_UNTESTED,StudioEditTest::alignDistributeStackGroup (controleur seul),EditController::align/distribute,EditBar Aligner / CanvasContextMenu
 b73c432d,menu,Aligner sur,main_window_arrange.cpp,absent,,ABSENT,,,
 71984e11,menu,Analyse,main_window_analysis.cpp,fait,Analyse,SERVICE_ONLY,,,
 101b9704,menu,Broderie,main_window.cpp,fait,Broderie,SERVICE_ONLY,,,
@@ -409,19 +409,19 @@ fcfaf94f,menu,Fils,main_window_threads.cpp,fait,Fils,SERVICE_ONLY,,,
 eb49cec2,menu,Passes de couture,main_window_view_display.cpp,absent,,ABSENT,,,
 644f52dc,menu,Plans d'affichage,main_window.cpp,absent,,ABSENT,,,
 b909b547,menu,Préréglages de points,main_window_stitch_presets.cpp,fait,Préréglages de points,SERVICE_ONLY,,,
-e019429a,menu,Rappeler une sélection,main_window_selection_tools.cpp,absent,,ABSENT,,,
+e019429a,menu,Rappeler une sélection,main_window_selection_tools.cpp,absent,,FUNCTIONAL_UNTESTED,StudioEditTest::savedSelectionsAreRecalled (controleur seul),EditController::recallSelection,EditBar Rappeler
 d1ff1ac3,menu,Rendu réaliste,main_window_realistic.cpp,fait,Rendu réaliste,SERVICE_ONLY,,,
 6ef7ae22,menu,Retrouver,main_window_selection_tools.cpp,fait,Retrouver,SERVICE_ONLY,,,
 bfb1ac5d,menu,Récents,main_window.cpp,fait,Récents,SERVICE_ONLY,,,
 39d632d3,menu,Réglages fins du satin,main_window.cpp,absent,,ABSENT,,,
 46096614,menu,Segmentation,main_window.cpp,fait,Segmentation,SERVICE_ONLY,,,
 20265051,menu,Supprimer un préréglage,main_window_stitch_presets.cpp,fait,preset.remove,SERVICE_ONLY,,,
-5d90ed77,menu,Sélection,main_window_context_menu.cpp,fait,Sélection,SERVICE_ONLY,,,
+5d90ed77,menu,Sélection,main_window_context_menu.cpp,fait,Sélection,FUNCTIONAL_UNTESTED,StudioEditTest::selectionCommandsOnRealObjects (controleur seul),EditController::selectAll/selectRect/selectByLayer,CanvasContextMenu Selection + GpuCanvas rectangle
 90c9c047,menu,Texte,main_window_lettering.cpp,fait,Texte,SERVICE_ONLY,,,
 1bfbf007,menu,Thème,main_window.cpp,fait,Thème,SERVICE_ONLY,,,
 365e2a98,menu,Transformer,main_window_objects.cpp,fait,Transformer,SERVICE_ONLY,,,
-50f2be55,menu,Type de points,main_window_context_menu.cpp,fait,Type de points,SERVICE_ONLY,,,
-e5696c12,menu,Type de points (tous),main_window_context_menu.cpp,fait,settableStitchTypes,SERVICE_ONLY,,,
+50f2be55,menu,Type de points,main_window_context_menu.cpp,fait,Type de points,FUNCTIONAL_UNTESTED,StudioEditTest::selectionCommandsOnRealObjects (controleur seul),EditController::selectByType,CanvasContextMenu Type de points
+e5696c12,menu,Type de points (tous),main_window_context_menu.cpp,fait,settableStitchTypes,FUNCTIONAL_UNTESTED,StudioEditTest::selectionCommandsOnRealObjects (controleur seul),EditController::selectByType,EditBar Type
 aabe1c93,menu,Édition,main_window.cpp,fait,Édition,SERVICE_ONLY,,,
 4b6cfb58,outil,Brush,tools.hpp,fait,Brush,SERVICE_ONLY,,,
 7e011329,outil,Bucket,tools.hpp,fait,Bucket,SERVICE_ONLY,,,

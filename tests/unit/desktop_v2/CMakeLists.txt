@@ -100,10 +100,31 @@ if(TARGET openstitch::studio_ui)
                 "${studio_test_qml_root}/qml/StudioIcon.qml"
                 "${studio_test_qml_root}/qml/SectionLabel.qml"
 "${studio_test_qml_root}/qml/ActionPalette.qml"
+                "${studio_test_qml_root}/qml/ObjectTree.qml"
+                "${studio_test_qml_root}/qml/LayerPanel.qml"
+                "${studio_test_qml_root}/qml/CanvasContextMenu.qml"
+                "${studio_test_qml_root}/qml/TransformHandles.qml"
+                "${studio_test_qml_root}/qml/EditBar.qml"
                 "${studio_test_qml_root}/qml/qmldir")
         add_test(NAME test_desktop_v2_studio_shell COMMAND test_desktop_v2_studio_shell -o -,txt)
         get_filename_component(studio_test_qml_imports "${Qt6_DIR}/../../../qml" ABSOLUTE)
         set_tests_properties(test_desktop_v2_studio_shell PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_test_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+        # Famille « sélection / transformations / calques » : même shell QML, parcours de l'éditeur.
+        add_executable(test_desktop_v2_studio_edit test_studio_edit.cpp)
+        target_link_libraries(test_desktop_v2_studio_edit
+            PRIVATE openstitch::studio_ui Qt6::Test openstitch::warnings)
+        set(studio_edit_qml_files "")
+        foreach(qml Main Theme StudioButton StudioIcon SectionLabel ActionPalette ObjectTree
+                    LayerPanel CanvasContextMenu TransformHandles EditBar)
+            list(APPEND studio_edit_qml_files "${studio_test_qml_root}/qml/${qml}.qml")
+        endforeach()
+        qt_add_resources(test_desktop_v2_studio_edit studio_edit_qml PREFIX "/studio"
+            BASE "${studio_test_qml_root}" FILES ${studio_edit_qml_files}
+                "${studio_test_qml_root}/qml/qmldir")
+        add_test(NAME test_desktop_v2_studio_edit COMMAND test_desktop_v2_studio_edit -o -,txt)
+        set_tests_properties(test_desktop_v2_studio_edit PROPERTIES
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_test_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
             ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
     endif()
