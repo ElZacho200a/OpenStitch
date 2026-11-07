@@ -5,6 +5,14 @@ OpenStitch Studio : application Windows libre de numérisation de broderie machi
 l'IHM seulement, Apache-2.0. Documentation : `docs/source/*.md` (un chapitre par
 sujet) ; garde-fous : `GUARDRAILS.md`.
 
+## Coordination Notion — obligatoire pour tout travail autonome
+
+Le [Project HQ Notion](https://app.notion.com/p/411bb207e2da818686c3f8d6db4991d5) et ses bases existantes pilotent les priorités, réservations, dépendances et validations. GitHub reste la source de vérité du code, des PR et de la CI. Lire `AGENTS.md`, `docs/agents/notion-protocol.md` et le skill `openstitch-notion` pour « continue », « prochaine tâche », audit d'avancement ou délégation. **Au début de chaque nouvelle session, récupérer les skills Notion activés via `notion-get-enabled-skills` (ou outil équivalent) quand disponible.**
+
+Avant tout nouveau lot autonome : inspecter les tâches existantes, propriétaires, baux, PR et CI, puis réserver un périmètre disjoint avec relire-après-écriture. Les baux Notion sont souples et non atomiques ; toute concurrence exige un arbitrage par un orchestrateur unique. Pour une demande ciblée, la consigne de l'utilisateur reste prioritaire ; annoncer les limitations si Notion manque.
+
+**Validation :** ne jamais déduire « Validé » du seul merge : critères, commit main, tests/CI, revue indépendante et recette Studio/physique selon le cas. Une PR en cours reste « En PR ». Ne pas annoncer une réussite sans preuve. Les règles locales de non-merge de ce fichier restent en vigueur.
+
 ## Invariants (violation = reset)
 
 - **Couches** strictes et acycliques : `apps/{desktop,cli} → libs/* → libs/core`. Seul
@@ -52,7 +60,7 @@ fichiers modifiés seulement.
 
 Chargés à la demande selon leur description : `openstitch-docs`, `-build-test`,
 `-stitch-param`, `-cli-debug`, `-bugfix`, `-commit`, `-performance`, `-digitize`,
-`-multi-agent`, `-roadmap`, `-token-efficiency`. Règles qui s'appliquent même sans les charger :
+`-multi-agent`, `-roadmap`, `-token-efficiency`, `-notion`. Règles qui s'appliquent même sans les charger :
 
 - **Chaque commit met à jour `docs/roadmap-parite-hatch.md`** (statut, nouveaux manques,
   journal §28) ou écrit « roadmap : aucune entrée concernée » dans le message.
