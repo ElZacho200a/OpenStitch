@@ -257,10 +257,8 @@ void StudioToolsTest::toolRailMatchesRegistry() {
     QCOMPARE(rig.tools.activeTool(), QStringLiteral("node.edit"));
     QTest::keyClick(rig.window, Qt::Key_K);
     QCOMPARE(rig.tools.activeTool(), QStringLiteral("knife"));
-    rig.tools.setActiveTool(
-        QStringLiteral("bucket")); // pas encore disponible : refus, pas de changement
-    QCOMPARE(rig.tools.activeTool(), QStringLiteral("knife"));
-    QVERIFY(rig.tools.message().contains(QStringLiteral("pas encore")));
+    rig.tools.setActiveTool(QStringLiteral("bucket"));
+    QCOMPARE(rig.tools.activeTool(), QStringLiteral("bucket"));
     QVERIFY(!rig.tools.hint().isEmpty());
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
 }
