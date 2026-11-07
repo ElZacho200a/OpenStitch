@@ -195,10 +195,11 @@ private slots:
                                  5'000);
         // Pan / zoom ne reconstruisent aucune donnée d'image.
         const auto dataRevision = canvas->sourceImage().dataRevision;
+        const int layerRevision = imageSpace.layerRevision();
         canvas->panBy(15, 10);
         canvas->zoomAt(1.2, 100, 100);
         QCOMPARE(canvas->sourceImage().dataRevision, dataRevision);
-        QCOMPARE(imageSpace.layerRevision(), 1);
+        QCOMPARE(imageSpace.layerRevision(), layerRevision);
         press(window, QStringLiteral("imageFit"));
 
         // --- 2. une opération d'image : aperçu non destructif puis application ----------------
