@@ -164,6 +164,14 @@ int main(int argc, char** argv) {
                 digitizeHub->setProperty("openPanel", QStringLiteral("fade"));
             } else if (digitizeHub && name == QStringLiteral("tirage")) {
                 digitizeHub->setProperty("openPanel", QStringLiteral("pull"));
+            } else if (name == QStringLiteral("espace-image")) {
+                for (auto* child : window->findChildren<QObject*>()) {
+                    if (QByteArray(child->metaObject()->className())
+                            .contains("WorkspaceController")) {
+                        child->setProperty("current", QStringLiteral("image"));
+                        break;
+                    }
+                }
             } else if (name == QStringLiteral("inspecteur")) {
                 window->setProperty("editOpen", true);
             }
@@ -209,7 +217,7 @@ int main(int argc, char** argv) {
             // grabWindow also renders a hidden native window. Prime once so resource
             // diagnostics and the native DPR/viewport have synchronized before saving.
             if (!capturePrimed ||
-                (controller.scene() && (!canvas || canvas->geometryBuildCount() == 0))) {
+                (controller.scene() && canvas && canvas->geometryBuildCount() == 0)) {
                 capturePrimed = true;
                 window->update();
                 return;
