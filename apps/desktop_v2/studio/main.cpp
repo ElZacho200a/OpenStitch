@@ -25,17 +25,22 @@
 #include "help_controller.hpp"
 #include "history_controller.hpp"
 #include "image_controller.hpp"
+#include "image_space_controller.hpp"
 #include "inspector_controller.hpp"
 #include "point_edit_controller.hpp"
+#include "points_space_controller.hpp"
 #include "preferences_controller.hpp"
 #include "pull_controller.hpp"
 #include "region_controller.hpp"
 #include "satin_controller.hpp"
+#include "segmentation_space_controller.hpp"
 #include "studio_controller.hpp"
 #include "thread_controller.hpp"
 #include "tool_controller.hpp"
 #include "vector_controller.hpp"
+#include "vector_space_controller.hpp"
 #include "view_controller.hpp"
+#include "workspace_controller.hpp"
 
 using namespace openstitch::desktop_v2;
 using namespace openstitch::desktop_v2::studio;
@@ -55,6 +60,10 @@ int main(int argc, char** argv) {
     parser.addOption({QStringLiteral("software"), QStringLiteral("Rendu CPU Qt Quick explicite")});
     parser.addOption({QStringLiteral("screenshot"),
                       QStringLiteral("Capture réelle Qt, puis quitte"), QStringLiteral("png")});
+    parser.addOption(
+        {QStringLiteral("open-space"),
+         QStringLiteral("Recette : ouvre cet espace (image, segmentation, vector, points)"),
+         QStringLiteral("espace")});
     parser.addOption({QStringLiteral("select-object"),
                       QStringLiteral("Sélection initiale par identifiant (recette reproductible)"),
                       QStringLiteral("id")});
@@ -102,6 +111,8 @@ int main(int argc, char** argv) {
     AnalysisController analysis(controller, view, configDir);
     ImageController imageTools(controller);
     RegionController regionTools(controller, imageTools);
+    ImageSpaceController imageSpace(controller, imageTools);
+    SegmentationSpaceController segmentationSpace(controller, imageTools, regionTools);
     SatinController satin(controller);
     FadeController fade(controller);
     PointEditController pointEdit(controller);
@@ -111,7 +122,10 @@ int main(int argc, char** argv) {
     DigitizeGestures digitizer(controller, pointEdit, fade, satin);
     PullController pull(controller, &inspector);
     AppliqueController applique(controller, inspector);
+    PointsSpaceController pointsSpace(controller);
+    VectorSpaceController vectorStage(controller);
     QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("pointsSpace"), &pointsSpace);
     engine.rootContext()->setContextProperty(QStringLiteral("digitizer"), &digitizer);
     engine.rootContext()->setContextProperty(QStringLiteral("pull"), &pull);
     engine.rootContext()->setContextProperty(QStringLiteral("applique"), &applique);
@@ -130,11 +144,15 @@ int main(int argc, char** argv) {
     engine.rootContext()->setContextProperty(QStringLiteral("inspector"), &inspector);
     engine.rootContext()->setContextProperty(QStringLiteral("tools"), &tools);
     engine.rootContext()->setContextProperty(QStringLiteral("vectors"), &vectors);
+    engine.rootContext()->setContextProperty(QStringLiteral("vectorStage"), &vectorStage);
     engine.rootContext()->setContextProperty(QStringLiteral("view"), &view);
     engine.rootContext()->setContextProperty(QStringLiteral("threads"), &threads);
     engine.rootContext()->setContextProperty(QStringLiteral("analysis"), &analysis);
     engine.rootContext()->setContextProperty(QStringLiteral("imageTools"), &imageTools);
+    engine.rootContext()->setContextProperty(QStringLiteral("imageSpace"), &imageSpace);
     engine.rootContext()->setContextProperty(QStringLiteral("regionTools"), &regionTools);
+    engine.rootContext()->setContextProperty(QStringLiteral("segmentationSpace"),
+                                             &segmentationSpace);
     engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
     if (engine.rootObjects().isEmpty()) {
         return 2;
@@ -150,7 +168,14 @@ int main(int argc, char** argv) {
         auto* digitizeHub = window->findChild<QObject*>(QStringLiteral("digitizeHub"));
         for (const auto& raw : names) {
             const auto name = raw.trimmed().toLower();
-            if (name == QStringLiteral("vue") && viewHub) {
+            // Ouverture directe d'un espace (recette / capture) : « espace-segmentation », ...
+            if (name.startsWith(QStringLiteral("espace-"))) {
+                if (auto* workspace = window->findChild<WorkspaceController*>()) {
+                    workspace->setCurrent(name.mid(7));
+                    viewHub = window->findChild<QObject*>(QStringLiteral("viewHub"));
+                    digitizeHub = window->findChild<QObject*>(QStringLiteral("digitizeHub"));
+                }
+            } else if (name == QStringLiteral("vue") && viewHub) {
                 viewHub->setProperty("openPanel", QStringLiteral("view"));
             } else if (name == QStringLiteral("fils") && viewHub) {
                 viewHub->setProperty("openPanel", QStringLiteral("threads"));
@@ -164,9 +189,22 @@ int main(int argc, char** argv) {
                 digitizeHub->setProperty("openPanel", QStringLiteral("fade"));
             } else if (digitizeHub && name == QStringLiteral("tirage")) {
                 digitizeHub->setProperty("openPanel", QStringLiteral("pull"));
+            } else if (name == QStringLiteral("espace-image")) {
+                for (auto* child : window->findChildren<QObject*>()) {
+                    if (QByteArray(child->metaObject()->className())
+                            .contains("WorkspaceController")) {
+                        child->setProperty("current", QStringLiteral("image"));
+                        break;
+                    }
+                }
             } else if (name == QStringLiteral("inspecteur")) {
                 window->setProperty("editOpen", true);
             }
+        }
+    }
+    if (parser.isSet(QStringLiteral("open-space"))) {
+        if (auto* workspace = window->findChild<WorkspaceController*>()) {
+            workspace->setCurrent(parser.value(QStringLiteral("open-space")));
         }
     }
     if (parser.isSet(QStringLiteral("select-object"))) {
@@ -198,6 +236,9 @@ int main(int argc, char** argv) {
         capture.setInterval(50);
         QObject::connect(&capture, &QTimer::timeout, &app, [&, output] {
             auto* canvas = window->findChild<GpuCanvas*>(QStringLiteral("studioCanvas"));
+            if (!canvas) {
+                canvas = window->findChild<GpuCanvas*>(); // canevas de l'espace courant
+            }
             if (controller.busy()) {
                 return;
             }
@@ -208,8 +249,11 @@ int main(int argc, char** argv) {
             }
             // grabWindow also renders a hidden native window. Prime once so resource
             // diagnostics and the native DPR/viewport have synchronized before saving.
-            if (!capturePrimed ||
-                (controller.scene() && (!canvas || canvas->geometryBuildCount() == 0))) {
+            // The stitch-geometry wait only applies when this canvas draws stitches: the Image,
+            // Segmentation and Vector spaces never build it, which used to hang the capture.
+            const bool waitsForStitches =
+                canvas && canvas->layerFlags().stitches && canvas->geometryBuildCount() == 0;
+            if (!capturePrimed || (controller.scene() && waitsForStitches)) {
                 capturePrimed = true;
                 window->update();
                 return;

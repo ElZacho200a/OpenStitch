@@ -13,6 +13,9 @@ Item {
     property var canvasItem
     // "", "view", "threads", "analysis"
     property string openPanel: ""
+    // Faux : l'espace hôte (« Points ») porte lui-même les boutons de cette barre et n'ouvre
+    // qu'UN panneau latéral à la fois. Vrai : usage historique des autres espaces.
+    property bool toolbarVisible: true
     readonly property bool ready: loader.status === Loader.Ready
 
     function toggle(name) { openPanel = openPanel === name ? "" : name }
@@ -67,17 +70,20 @@ Item {
             }
 
             // Compact toolbar: the canvas keeps the space, panels open on demand.
-            Row {
+            Loader {
+              active: hub.toolbarVisible
+              anchors.top: parent.top
+              anchors.right: parent.right
+              anchors.margins: 10
+              sourceComponent: Row {
                 objectName: "viewToolbar"
-                anchors.top: parent.top
-                anchors.right: parent.right
-                anchors.margins: 10
                 spacing: 4
                 StudioButton { objectName: "realisticButton2"; text: qsTr("Réaliste"); shortcutLabel: "Ctrl+Shift+T"; tooltip: qsTr("Rendu réaliste (fils en relief, ombre, tissu)"); checkable: true; checked: view.realistic; onClicked: view.toggleRealistic() }
                 StudioButton { objectName: "viewPanelButton"; text: qsTr("Vue"); checkable: true; checked: hub.openPanel === "view"; onClicked: hub.toggle("view") }
                 StudioButton { objectName: "threadsPanelButton"; text: qsTr("Fils"); checkable: true; checked: hub.openPanel === "threads"; onClicked: hub.toggle("threads") }
                 StudioButton { objectName: "analysisPanelButton"; text: qsTr("Analyse"); checkable: true; checked: hub.openPanel === "analysis"; onClicked: hub.toggle("analysis") }
                 StudioButton { objectName: "simulationButton"; text: qsTr("Simulation"); shortcutLabel: "Ctrl+L"; checkable: true; checked: view.simActive; enabled: view.simReady; onClicked: view.simActive ? view.stopSimulation() : view.startSimulation() }
+              }
             }
 
             Rectangle {
@@ -86,9 +92,9 @@ Item {
                 visible: hub.openPanel !== ""
                 anchors.top: parent.top
                 anchors.right: parent.right
-                anchors.topMargin: 54
-                anchors.rightMargin: 10
-                anchors.bottomMargin: 70
+                anchors.topMargin: hub.toolbarVisible ? 54 : 12
+                anchors.rightMargin: hub.toolbarVisible ? 10 : 12
+                anchors.bottomMargin: hub.toolbarVisible ? 70 : 12
                 anchors.bottom: parent.bottom
                 width: Math.min(340, parent.width - 40)
                 radius: Theme.radius

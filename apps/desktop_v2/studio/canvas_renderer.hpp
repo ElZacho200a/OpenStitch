@@ -9,6 +9,7 @@
 #include <memory>
 #include <vector>
 
+#include "layers/source_image_layer.hpp"
 #include "realistic_scene.hpp"
 #include "selection_model.hpp"
 #include "studio_camera.hpp"
@@ -18,6 +19,8 @@ class QQuickWindow;
 class QSGNode;
 
 namespace openstitch::desktop_v2::studio {
+
+struct RegionLayerData; // couche « regions » (layers/region_layer.hpp), immuable
 
 // Display-only layers drawn over the immutable scene (grid, guides, analysis maps, markers,
 // simulation cursor). Immutable once published: a change publishes a new instance and bumps the
@@ -54,6 +57,19 @@ struct CanvasOverlays {
 
 // Render-thread input, copied during Qt Quick's synchronization phase while GUI is blocked.
 // No QObject, live DocumentSession or worker-owned mutable data crosses this boundary.
+// Couches d'affichage d'un canevas (HP V0 « espaces ») : chaque espace choisit ce que SON canevas
+// dessine. Seules « stitches » et « selectionOverlays » sont réalisées aujourd'hui ; sourceImage,
+// regions et vectors sont les POINTS D'ACCROCHE que les espaces Image / Segmentation / Vecteurs
+// rempliront dans le moteur de rendu (rien n'est dessiné pour elles tant qu'ils ne l'ont pas fait).
+struct CanvasLayers {
+    bool sourceImage{false};
+    bool regions{false};
+    bool vectors{false};
+    bool stitches{true};
+    bool selectionOverlays{true};
+    bool operator==(const CanvasLayers&) const = default;
+};
+
 struct CanvasRenderState {
     std::shared_ptr<const StudioSceneSnapshot> scene;
     StudioCamera camera;
@@ -63,6 +79,12 @@ struct CanvasRenderState {
     double devicePixelRatio{1};
     std::shared_ptr<const CanvasOverlays> overlays;
     std::uint64_t overlayRevision{0};
+    CanvasLayers layers;
+    SourceImageView sourceImage; // couche « sourceImage » (espace Image), vide sinon
+    // Couche « regions » (espace Segmentation) : données immuables publiées par révision.
+    std::shared_ptr<const RegionLayerData> regions;
+    // Couche « vectors » : image des formes (mm scène), dessinée sous les points (espace Vecto).
+    std::shared_ptr<const OverlayImage> vectorImage;
 };
 
 struct CanvasRenderResult {

@@ -1,0 +1,12 @@
+id,statut,preuve,controleur,composant
+190ac0bb,TESTED,StudioSpaceSegmentationTest::regionsAreDrawnOnTheCanvas (couche regions rendue par le backend logiciel; pan/zoom sans reconstruction),SegmentationSpaceController::refresh/RegionLayerNode,SegmentationSpace.qml + layers/region_layer.cpp
+5421aa74,TESTED,StudioSpaceSegmentationTest::panelsDriveSegmentationRegionsAndAi (regionCleanIslands via QML dans l'espace),RegionController::cleanIslands,segmentation/SegmentationPanels.qml (RegionTools)
+ac8b4905,UI_PARTIAL,StudioSpaceSegmentationTest::clickSelectsRegionsAndSyncsTheList (selection canevas <-> liste; pas de dock dedie de couleurs),RegionController::selectRegion/SegmentationSpaceController::pickAt,RegionTools.qml (liste des regions)
+46096614,UI_PARTIAL,StudioSpaceSegmentationTest::stagePublishedAndDownstreamUpdate (segmenter + mettre a jour les formes depuis l'espace; pas de menu),SegmentationSpaceController::segmentImage/updateShapes,RegionLayerControls.qml
+354afdc7,UI_PARTIAL,reduction de palette de RegionTools (pas de test QML dans l'espace),RegionController::reducePalette,RegionTools.qml
+333e240e,ABSENT,,,
+5bbcc28e,ABSENT,,,
+2a2bef85,ABSENT,,,
+628f1213,ABSENT,,,
+e181a7ab,ABSENT,,,
+e3db2548,ABSENT,,,
