@@ -404,6 +404,11 @@ Window {
                         canvasItem: canvas
                     }
 
+                    PreparePanel {
+                        objectName: "preparePanel"
+                        anchors.fill: parent
+                    }
+
                     ColumnLayout {
                         anchors.centerIn: parent
                         width: Math.min(400, parent.width - 64)
