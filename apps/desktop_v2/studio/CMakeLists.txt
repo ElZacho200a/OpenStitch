@@ -16,10 +16,13 @@ add_library(openstitch_studio_ui STATIC
     canvas_renderer.cpp canvas_renderer.hpp
     view_controller.cpp view_controller.hpp
     analysis_controller.cpp analysis_controller.hpp
-    thread_controller.cpp thread_controller.hpp)
+    thread_controller.cpp thread_controller.hpp
+    image_controller.cpp image_controller.hpp
+    region_controller.cpp region_controller.hpp)
 add_library(openstitch::studio_ui ALIAS openstitch_studio_ui)
 target_include_directories(openstitch_studio_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(openstitch_studio_ui PUBLIC openstitch::desktop_v2_core Qt6::Quick
+target_link_libraries(openstitch_studio_ui PUBLIC openstitch::desktop_v2_core
+    openstitch::ai_segmentation Qt6::Quick
     Qt6::QuickControls2 PRIVATE openstitch::warnings)
 
 set(studio_qml_files
@@ -27,7 +30,9 @@ set(studio_qml_files
     qml/SectionLabel.qml qml/ActionPalette.qml qml/ObjectTree.qml qml/LayerPanel.qml
     qml/CanvasContextMenu.qml qml/TransformHandles.qml qml/EditBar.qml qml/FilePanel.qml
     qml/Inspector.qml qml/ParamField.qml qml/ParamSection.qml
-    qml/ViewPanel.qml qml/SimulationBar.qml qml/AnalysisPanel.qml qml/ThreadPanel.qml qml/qmldir)
+    qml/ViewPanel.qml qml/SimulationBar.qml qml/AnalysisPanel.qml qml/ThreadPanel.qml
+    qml/PreparePanel.qml qml/ImagePrepSection.qml qml/SegmentationSection.qml
+    qml/RegionTools.qml qml/AiSection.qml qml/qmldir)
 
 add_executable(openstitch_v2_studio WIN32 main.cpp)
 target_link_libraries(openstitch_v2_studio PRIVATE openstitch::studio_ui openstitch::warnings)

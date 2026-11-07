@@ -17,7 +17,9 @@
 #include "edit_controller.hpp"
 #include "file_controller.hpp"
 #include "gpu_canvas.hpp"
+#include "image_controller.hpp"
 #include "inspector_controller.hpp"
+#include "region_controller.hpp"
 #include "studio_controller.hpp"
 #include "thread_controller.hpp"
 #include "view_controller.hpp"
@@ -63,7 +65,10 @@ int main(int argc, char** argv) {
     ViewController view(controller, configDir);
     ThreadController threads(controller, configDir);
     AnalysisController analysis(controller, view, configDir);
+    ImageController imageTools(controller);
+    RegionController regionTools(controller, imageTools);
     QQmlApplicationEngine engine;
+    engine.addImageProvider(QStringLiteral("prepare"), imageTools.createProvider());
     engine.rootContext()->setContextProperty(QStringLiteral("editor"), &editor);
     engine.rootContext()->setContextProperty(QStringLiteral("studio"), &controller);
     engine.rootContext()->setContextProperty(QStringLiteral("actions"), &actions);
@@ -72,6 +77,8 @@ int main(int argc, char** argv) {
     engine.rootContext()->setContextProperty(QStringLiteral("view"), &view);
     engine.rootContext()->setContextProperty(QStringLiteral("threads"), &threads);
     engine.rootContext()->setContextProperty(QStringLiteral("analysis"), &analysis);
+    engine.rootContext()->setContextProperty(QStringLiteral("imageTools"), &imageTools);
+    engine.rootContext()->setContextProperty(QStringLiteral("regionTools"), &regionTools);
     engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
     if (engine.rootObjects().isEmpty()) {
         return 2;
