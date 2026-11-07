@@ -10,7 +10,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(OPENSTITCH_BUILD_DESKTOP "Build the Qt desktop application" ON)
-option(OPENSTITCH_BUILD_STUDIO "Build the experimental Qt Quick Studio (requires desktop)" ON)
+option(OPENSTITCH_BUILD_STUDIO "Build OpenStitch Studio, the default Qt Quick application (openstitch.exe)" ON)
+option(OPENSTITCH_BUILD_LEGACY_V1 "Also build the legacy Qt Widgets V1 application (apps/desktop, openstitch-v1.exe)" OFF)
 option(OPENSTITCH_BUILD_TESTS "Build unit tests" ON)
 
 # Cible d'interface portant les options de warnings communes.
@@ -57,7 +58,7 @@ add_subdirectory(apps/mcp)
 add_subdirectory(apps/companion)
 add_subdirectory(apps/desktop_v2)
 
-if(OPENSTITCH_BUILD_DESKTOP)
+if(OPENSTITCH_BUILD_DESKTOP AND OPENSTITCH_BUILD_LEGACY_V1)
     add_subdirectory(apps/desktop)
 endif()
 
