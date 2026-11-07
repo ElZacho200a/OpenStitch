@@ -108,3 +108,18 @@ if(TARGET openstitch::studio_ui)
             ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
     endif()
 endif()
+
+# Studio view / analysis / thread adapters (QTest headless, real documents, no QML needed).
+if(TARGET openstitch::studio_ui)
+    find_package(Qt6 COMPONENTS Test QUIET)
+    if(Qt6Test_FOUND)
+        set(CMAKE_AUTOMOC ON)
+        add_executable(test_desktop_v2_studio_view test_studio_view.cpp)
+        target_link_libraries(test_desktop_v2_studio_view
+            PRIVATE openstitch::studio_ui Qt6::Test openstitch::warnings)
+        add_test(NAME test_desktop_v2_studio_view COMMAND test_desktop_v2_studio_view -o -,txt)
+        set_tests_properties(test_desktop_v2_studio_view PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+    endif()
+endif()

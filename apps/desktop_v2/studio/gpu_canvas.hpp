@@ -3,9 +3,12 @@
 
 #include <QPointF>
 #include <QQuickItem>
+#include <QRectF>
+#include <QVariantList>
 #include <memory>
 #include <vector>
 
+#include "canvas_renderer.hpp"
 #include "studio_camera.hpp"
 #include "studio_controller.hpp"
 
@@ -17,6 +20,9 @@ class GpuCanvas : public QQuickItem {
         StudioController* controller READ controller WRITE setController NOTIFY controllerChanged)
     Q_PROPERTY(bool panMode READ panMode WRITE setPanMode NOTIFY panModeChanged)
     Q_PROPERTY(double zoom READ zoom NOTIFY viewChanged)
+    Q_PROPERTY(bool zoomRectMode READ zoomRectMode WRITE setZoomRectMode NOTIFY zoomRectModeChanged)
+    Q_PROPERTY(QRectF rubberBand READ rubberBand NOTIFY rubberBandChanged)
+    Q_PROPERTY(bool canZoomPrevious READ canZoomPrevious NOTIFY viewChanged)
     Q_PROPERTY(QString backendName READ backendName NOTIFY diagnosticsChanged)
     Q_PROPERTY(int geometryBuildCount READ geometryBuildCount NOTIFY diagnosticsChanged)
     Q_PROPERTY(double resourceCreationMs READ resourceCreationMs NOTIFY diagnosticsChanged)
@@ -30,6 +36,17 @@ public:
     [[nodiscard]] bool panMode() const { return panMode_; }
     void setPanMode(bool value);
     [[nodiscard]] double zoom() const { return camera_.scale(); }
+    [[nodiscard]] bool zoomRectMode() const { return zoomRectMode_; }
+    void setZoomRectMode(bool value);
+    [[nodiscard]] QRectF rubberBand() const { return rubberBand_; }
+    [[nodiscard]] bool canZoomPrevious() const { return !viewHistory_.empty(); }
+    // Display-only layers (grid, guides, maps, markers, simulation cursor). One new immutable
+    // instance per change; stitch geometry is never rebuilt for it.
+    void setOverlays(std::shared_ptr<const CanvasOverlays> overlays);
+    [[nodiscard]] const std::shared_ptr<const CanvasOverlays>& overlays() const {
+        return overlays_;
+    }
+    [[nodiscard]] std::uint64_t overlayRevision() const { return overlayRevision_; }
     [[nodiscard]] QString backendName() const { return backendName_; }
     [[nodiscard]] int geometryBuildCount() const { return geometryBuildCount_; }
     [[nodiscard]] double resourceCreationMs() const { return resourceCreationMs_; }
@@ -37,10 +54,23 @@ public:
     Q_INVOKABLE void fitDesign();
     Q_INVOKABLE void panBy(double dx, double dy);
     Q_INVOKABLE void zoomAt(double factor, double x, double y);
+    // Zoom helpers; each one that jumps the view records the previous view for zoomPrevious().
+    // Rectangle in SCENE mm (Y down).
+    Q_INVOKABLE void zoomToSceneRect(double x0, double y0, double x1, double y1);
+    Q_INVOKABLE bool zoomToSelection();
+    // Absolute scale in px/mm, anchored on the viewport centre (100 % = physical size).
+    Q_INVOKABLE void zoomToScale(double pxPerMm);
+    Q_INVOKABLE bool zoomPrevious();
+    // Centre the viewport on a SCENE point without changing the scale.
+    Q_INVOKABLE void centerOnScene(double x, double y);
+    // [{pos, label}] along one viewport axis, in logical px, for QML rulers (<= 60).
+    Q_INVOKABLE [[nodiscard]] QVariantList rulerTicks(bool horizontal) const;
 signals:
     void controllerChanged();
     void panModeChanged();
     void viewChanged();
+    void zoomRectModeChanged();
+    void rubberBandChanged();
     void diagnosticsChanged();
 
 protected:
@@ -56,10 +86,22 @@ protected:
 
 private:
     void viewUpdated();
+    void rememberView();
+    void restoreView(double scale, ScenePoint offset);
     StudioController* controller_{nullptr};
     std::shared_ptr<const StudioSceneSnapshot> scene_;
     std::vector<Target> selection_;
     std::uint64_t selectionRevision_{0};
+    std::shared_ptr<const CanvasOverlays> overlays_;
+    std::uint64_t overlayRevision_{0};
+    struct SavedView {
+        double scale;
+        ScenePoint offset;
+    };
+    std::vector<SavedView> viewHistory_;
+    bool zoomRectMode_{false};
+    bool rubberActive_{false};
+    QRectF rubberBand_;
     StudioCamera camera_;
     QString backendName_{QStringLiteral("Initialisation du rendu…")};
     int geometryBuildCount_{0};

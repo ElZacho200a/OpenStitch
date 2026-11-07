@@ -1,0 +1,39 @@
+id,statut,preuve,controleur,composant
+eeb30959,UI_PARTIAL,,ViewController::setGridVisible,GpuCanvas overlay grille (ViewPanel non câblé dans Main.qml)
+ea169d9f,UI_PARTIAL,StudioViewTest::gridGuidesAndLayersPersist,ViewController::setGridStepMm,persistance studio-view.txt
+b4e5b433,UI_PARTIAL,,ViewController::setGuidesVisible,GpuCanvas overlay guides
+c150e52b,UI_PARTIAL,StudioViewTest::gridGuidesAndLayersPersist,ViewController::addGuide(vertical),GpuCanvas overlay guides
+e00cf219,UI_PARTIAL,StudioViewTest::gridGuidesAndLayersPersist,ViewController::addGuide(horizontal),GpuCanvas overlay guides
+694f85ac,UI_PARTIAL,StudioViewTest::gridGuidesAndLayersPersist,ViewController::clearGuides,GpuCanvas overlay guides
+ca67b4fd,UI_PARTIAL,,ViewController::setGuideColor,GpuCanvas overlay guides
+1b1d8969,UI_PARTIAL,,ViewController::zoomRectangle,GpuCanvas::zoomRectMode rubberBand
+fb5f812c,UI_PARTIAL,StudioViewTest::zoomCommandsAndCalibration,ViewController::calibrateZoom100,GpuCanvas::zoomToScale
+a766d0d5,UI_PARTIAL,StudioViewTest::simulationNavigatesTheEffectiveSequence,ViewController::previousColour,SimulationBar.qml (non câblé dans Main.qml)
+b24bb78f,UI_PARTIAL,StudioViewTest::simulationNavigatesTheEffectiveSequence,ViewController::nextColour,SimulationBar.qml (non câblé dans Main.qml)
+669c1398,UI_PARTIAL,StudioViewTest::simulationNavigatesTheEffectiveSequence,ViewController::previousObject,SimulationBar.qml (non câblé dans Main.qml)
+c492f162,UI_PARTIAL,StudioViewTest::simulationNavigatesTheEffectiveSequence,ViewController::nextObject,SimulationBar.qml (non câblé dans Main.qml)
+328035a0,UI_PARTIAL,StudioViewTest::simulationNavigatesTheEffectiveSequence,ViewController::step(-1),SimulationBar.qml (non câblé dans Main.qml)
+7e4bb52e,UI_PARTIAL,StudioViewTest::simulationNavigatesTheEffectiveSequence,ViewController::step(1),SimulationBar.qml (non câblé dans Main.qml)
+bf476973,UI_PARTIAL,StudioViewTest::simulationNavigatesTheEffectiveSequence,ViewController::toEnd,SimulationBar.qml (non câblé dans Main.qml)
+f271218c,UI_PARTIAL,StudioViewTest::simulationNavigatesTheEffectiveSequence,ViewController::play/advance,SimulationBar.qml (non câblé dans Main.qml)
+9caa2191,UI_PARTIAL,StudioViewTest::diagnosticsDensityRiskAndOptimisation,AnalysisController::runDiagnostics,AnalysisPanel.qml (non câblé dans Main.qml)
+26ac8a5a,UI_PARTIAL,,AnalysisController::centerOnFinding,AnalysisPanel.qml (non câblé dans Main.qml)
+1e5cd1fe,UI_PARTIAL,StudioViewTest::diagnosticsDensityRiskAndOptimisation,AnalysisController::runDiagnostics,AnalysisPanel.qml (non câblé dans Main.qml)
+5b0f567d,UI_PARTIAL,,AnalysisController::computeDensity,GpuCanvas overlay image
+ae44ff48,UI_PARTIAL,,AnalysisController::computeFabricRisk,GpuCanvas overlay image
+a6809735,UI_PARTIAL,,AnalysisController::computeFabricRisk,GpuCanvas overlay image
+0e876999,UI_PARTIAL,,AnalysisController::selectFindingObjects,AnalysisPanel.qml
+64625b92,UI_PARTIAL,StudioViewTest::threadPlanColorwaysAndSewingOrder,ThreadController::selectThreadObjects,ThreadPanel.qml (non câblé dans Main.qml)
+12510a3a,UI_PARTIAL,StudioViewTest::threadPlanColorwaysAndSewingOrder,ThreadController::recolorThread,ThreadPanel.qml (non câblé dans Main.qml)
+71dc358c,UI_PARTIAL,StudioViewTest::threadPlanColorwaysAndSewingOrder,ThreadController::addColorway,ThreadPanel.qml (non câblé dans Main.qml)
+abf0f4bd,UI_PARTIAL,,ThreadController::activateColorway,ThreadPanel.qml
+f7de65cb,UI_PARTIAL,,ThreadController::removeColorway,ThreadPanel.qml
+8854fa60,UI_PARTIAL,StudioViewTest::threadPlanColorwaysAndSewingOrder,ThreadController::exportThreadList,ThreadPanel.qml (non câblé dans Main.qml)
+75d84458,UI_PARTIAL,,ThreadController::nearestToSelection,ThreadPanel.qml
+a8d2bcf8,UI_PARTIAL,StudioViewTest::threadPlanColorwaysAndSewingOrder,ThreadController::assignChartThread,ThreadPanel.qml (non câblé dans Main.qml)
+fdbcceb1,UI_PARTIAL,,ThreadController::snapFreeColours,ThreadPanel.qml
+1ebf6e41,UI_PARTIAL,,ThreadController::importChart,ThreadPanel.qml
+71f07976,UI_PARTIAL,,ThreadController::removeChart,ThreadPanel.qml
+d2b89407,UI_PARTIAL,StudioViewTest::threadPlanColorwaysAndSewingOrder,ThreadController::moveInOrder,ThreadPanel.qml (non câblé dans Main.qml)
+e1ae3eac,UI_PARTIAL,StudioViewTest::threadPlanColorwaysAndSewingOrder,ThreadController::moveInOrder,ThreadPanel.qml (non câblé dans Main.qml)
+4959ff8d,UI_PARTIAL,StudioViewTest::hoopsAndMachine,AnalysisController::setMachine,AnalysisPanel.qml (non câblé dans Main.qml)

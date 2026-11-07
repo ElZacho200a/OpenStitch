@@ -10,7 +10,10 @@ add_library(openstitch_studio_ui STATIC
     studio_controller.cpp studio_controller.hpp
     action_controller.cpp action_controller.hpp
     gpu_canvas.cpp gpu_canvas.hpp
-    canvas_renderer.cpp canvas_renderer.hpp)
+    canvas_renderer.cpp canvas_renderer.hpp
+    view_controller.cpp view_controller.hpp
+    analysis_controller.cpp analysis_controller.hpp
+    thread_controller.cpp thread_controller.hpp)
 add_library(openstitch::studio_ui ALIAS openstitch_studio_ui)
 target_include_directories(openstitch_studio_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(openstitch_studio_ui PUBLIC openstitch::desktop_v2_core Qt6::Quick
@@ -18,7 +21,8 @@ target_link_libraries(openstitch_studio_ui PUBLIC openstitch::desktop_v2_core Qt
 
 set(studio_qml_files
     qml/Main.qml qml/Theme.qml qml/StudioButton.qml qml/StudioIcon.qml
-    qml/SectionLabel.qml qml/ActionPalette.qml qml/qmldir)
+    qml/SectionLabel.qml qml/ActionPalette.qml
+    qml/SimulationBar.qml qml/AnalysisPanel.qml qml/ThreadPanel.qml qml/qmldir)
 
 add_executable(openstitch_v2_studio WIN32 main.cpp)
 target_link_libraries(openstitch_v2_studio PRIVATE openstitch::studio_ui openstitch::warnings)

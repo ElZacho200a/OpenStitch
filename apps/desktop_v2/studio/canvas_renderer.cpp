@@ -6,11 +6,13 @@
 #include <QPainter>
 #include <QQuickWindow>
 #include <QSGGeometryNode>
+#include <QSGOpacityNode>
 #include <QSGSimpleTextureNode>
 #include <QSGTransformNode>
 #include <QSGVertexColorMaterial>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace openstitch::desktop_v2::studio {
 namespace {
@@ -66,35 +68,185 @@ void clearChildren(QSGNode& node) {
     }
 }
 
+// Premultiplied translucent quad for grid/guide lines (vertex colour material is premultiplied).
+void translucentRectangle(Vertices& out, double x0, double y0, double x1, double y1, QColor color,
+                          int alpha) {
+    const auto mul = [alpha](int c) { return static_cast<std::uint8_t>(c * alpha / 255); };
+    const auto vertex = [&](double x, double y) {
+        return StudioVertex{static_cast<float>(x), static_cast<float>(y),
+                            mul(color.red()),      mul(color.green()),
+                            mul(color.blue()),     static_cast<std::uint8_t>(alpha)};
+    };
+    out.insert(out.end(), {vertex(x0, y0), vertex(x1, y0), vertex(x0, y1), vertex(x0, y1),
+                           vertex(x1, y0), vertex(x1, y1)});
+}
+
+// Grid step shown on screen: the requested step, widened by powers of five while lines would
+// be closer than 7 px (never thousands of quads when zoomed out).
+double effectiveGridStep(double stepMm, double scale) {
+    double step = std::max(0.1, stepMm);
+    while (step * scale < 7.0 && step < 1e6) {
+        step *= 5.0;
+    }
+    return step;
+}
+
+void appendScreenOverlays(Vertices& out, const CanvasOverlays& overlays,
+                          const CanvasRenderState& state) {
+    const auto& camera = state.camera;
+    const double w = state.viewport.width();
+    const double h = state.viewport.height();
+    if (overlays.grid) {
+        const double step = effectiveGridStep(overlays.gridStepMm, camera.scale());
+        const auto lo = camera.screenToWorld({0, 0});
+        const auto hi = camera.screenToWorld({w, h});
+        const QColor line(130, 136, 150);
+        for (double x = std::ceil(lo.x / step) * step; x <= hi.x; x += step) {
+            const double sx = camera.worldToScreen({x, 0}).x;
+            const bool major = std::fmod(std::abs(std::round(x / step)), 5.0) == 0.0;
+            translucentRectangle(out, sx - 0.5, 0, sx + 0.5, h, line, major ? 90 : 45);
+        }
+        for (double y = std::ceil(lo.y / step) * step; y <= hi.y; y += step) {
+            const double sy = camera.worldToScreen({0, y}).y;
+            const bool major = std::fmod(std::abs(std::round(y / step)), 5.0) == 0.0;
+            translucentRectangle(out, 0, sy - 0.5, w, sy + 0.5, line, major ? 90 : 45);
+        }
+    }
+    for (const double gx : overlays.guidesX) {
+        const double sx = camera.worldToScreen({gx, 0}).x;
+        translucentRectangle(out, sx - 0.5, 0, sx + 0.5, h, overlays.guideColor, 220);
+    }
+    for (const double gy : overlays.guidesY) {
+        const double sy = camera.worldToScreen({0, gy}).y;
+        translucentRectangle(out, 0, sy - 0.5, w, sy + 0.5, overlays.guideColor, 220);
+    }
+    for (const auto& jump : overlays.jumps) {
+        const auto a = camera.worldToScreen({jump.ax, jump.ay});
+        const auto b = camera.worldToScreen({jump.bx, jump.by});
+        const double dx = b.x - a.x;
+        const double dy = b.y - a.y;
+        const double len = std::hypot(dx, dy);
+        if (len < 0.5) {
+            continue;
+        }
+        const double nx = -dy / len * 0.5;
+        const double ny = dx / len * 0.5;
+        const auto v = [&](double x, double y) {
+            return StudioVertex{static_cast<float>(x), static_cast<float>(y), 188, 125, 31, 200};
+        };
+        out.insert(out.end(),
+                   {v(a.x + nx, a.y + ny), v(a.x - nx, a.y - ny), v(b.x + nx, b.y + ny),
+                    v(b.x + nx, b.y + ny), v(a.x - nx, a.y - ny), v(b.x - nx, b.y - ny)});
+    }
+    for (const auto& marker : overlays.markers) {
+        const auto p = camera.worldToScreen({marker.x, marker.y});
+        border(out, {p.x - 9, p.y - 9, p.x + 9, p.y + 9}, 2.0, marker.color);
+        rectangle(out, p.x - 1, p.y - 1, p.x + 1, p.y + 1, marker.color);
+    }
+}
+
+constexpr std::size_t kBatchVertices = 60'000; // multiple of six: batches end on whole segments
+
+// Stitch vertices in bounded batches, each wrapped so the simulation cursor can hide whole
+// batches (opacity 0) and draw only the cursor batch's prefix as a small "tail" node.
+struct StitchBatches {
+    QSGNode* group = new QSGNode;
+    QSGOpacityNode* all = new QSGOpacityNode;
+    QSGNode* tail = new QSGNode;
+    std::vector<QSGOpacityNode*> batches;
+    StitchBatches() {
+        all->appendChildNode(group);
+        all->appendChildNode(tail);
+    }
+};
+
 struct GeometryRoot : QSGNode {
     StudioResourceState resources;
     QSGTransformNode* world = new QSGTransformNode;
+    QSGOpacityNode* frame = new QSGOpacityNode;
+    StitchBatches stitches;
+    QSGTransformNode* layers = new QSGTransformNode;
     QSGNode* overlay = new QSGNode;
+    std::uint64_t overlayRevision{std::numeric_limits<std::uint64_t>::max()};
     GeometryRoot() {
+        world->appendChildNode(frame);
+        world->appendChildNode(stitches.all);
         appendChildNode(world);
+        appendChildNode(layers);
         appendChildNode(overlay);
     }
 };
 
+void applySimulation(GeometryRoot& root, const Vertices& vertices, std::size_t visibleSegments) {
+    auto& st = root.stitches;
+    clearChildren(*st.tail);
+    const std::size_t shown = visibleSegments == CanvasOverlays::all
+                                  ? vertices.size()
+                                  : std::min(vertices.size(), visibleSegments * 6);
+    for (std::size_t i = 0; i < st.batches.size(); ++i) {
+        const std::size_t begin = i * kBatchVertices;
+        const bool full = begin + kBatchVertices <= shown;
+        st.batches[i]->setOpacity(full ? 1.0 : 0.0);
+        if (!full && begin < shown) {
+            const Vertices prefix(vertices.begin() + static_cast<std::ptrdiff_t>(begin),
+                                  vertices.begin() + static_cast<std::ptrdiff_t>(shown));
+            appendGeometry(*st.tail, prefix);
+        }
+    }
+}
+
 class GeometryBackend final : public CanvasRenderBackend {
 public:
     CanvasRenderResult synchronize(QSGNode* previous, const CanvasRenderState& state,
-                                   QQuickWindow&) const override {
+                                   QQuickWindow& window) const override {
         auto* root = previous ? static_cast<GeometryRoot*>(previous) : new GeometryRoot;
         const auto dirty =
             root->resources.observe(state.scene, state.selectionRevision, state.camera.revision());
+        const bool overlayDirty = root->overlayRevision != state.overlayRevision;
+        const CanvasOverlays defaults;
+        const CanvasOverlays& overlays = state.overlays ? *state.overlays : defaults;
         double elapsed = 0;
         if (dirty.geometry) {
             QElapsedTimer timer;
             timer.start();
-            clearChildren(*root->world);
+            clearChildren(*root->frame);
+            clearChildren(*root->stitches.group);
+            root->stitches.batches.clear();
             if (state.scene) {
                 Vertices frame;
                 border(frame, state.scene->hoop, 0.25, QColor(92, 96, 106));
-                appendGeometry(*root->world, frame);
-                appendGeometry(*root->world, state.scene->vertices);
+                appendGeometry(*root->frame, frame);
+                const auto& vertices = state.scene->vertices;
+                for (std::size_t first = 0; first < vertices.size(); first += kBatchVertices) {
+                    const auto count = std::min(kBatchVertices, vertices.size() - first);
+                    auto* wrapper = new QSGOpacityNode;
+                    const Vertices part(vertices.begin() + static_cast<std::ptrdiff_t>(first),
+                                        vertices.begin() +
+                                            static_cast<std::ptrdiff_t>(first + count));
+                    appendGeometry(*wrapper, part);
+                    root->stitches.group->appendChildNode(wrapper);
+                    root->stitches.batches.push_back(wrapper);
+                }
             }
             elapsed = static_cast<double>(timer.nsecsElapsed()) / 1e6;
+        }
+        if (dirty.geometry || overlayDirty) {
+            root->frame->setOpacity(overlays.showHoop ? 1.0 : 0.0);
+            root->stitches.all->setOpacity(overlays.showStitches ? 1.0 : 0.0);
+            if (state.scene) {
+                applySimulation(*root, state.scene->vertices, overlays.visibleSegments);
+            }
+            clearChildren(*root->layers);
+            for (const auto& layer : overlays.images) {
+                if (layer.image.isNull() || layer.widthMm <= 0 || layer.heightMm <= 0) {
+                    continue;
+                }
+                auto* node = new QSGSimpleTextureNode;
+                node->setOwnsTexture(true);
+                node->setTexture(window.createTextureFromImage(layer.image));
+                node->setRect(QRectF(layer.x0, layer.y0, layer.widthMm, layer.heightMm));
+                root->layers->appendChildNode(node);
+            }
         }
         if (dirty.camera || dirty.geometry) {
             QMatrix4x4 matrix;
@@ -102,12 +254,13 @@ public:
             matrix.translate(static_cast<float>(offset.x), static_cast<float>(offset.y));
             matrix.scale(static_cast<float>(state.camera.scale()));
             root->world->setMatrix(matrix);
+            root->layers->setMatrix(matrix);
         }
-        if (dirty.selection || dirty.camera || dirty.geometry) {
+        if (dirty.selection || dirty.camera || dirty.geometry || overlayDirty) {
             clearChildren(*root->overlay);
+            Vertices screen;
+            appendScreenOverlays(screen, overlays, state);
             if (state.scene && !state.selection.empty()) {
-                Vertices boxes;
-                boxes.reserve(state.selection.size() * 24);
                 for (const auto& target : state.selection) {
                     if (target.kind != TargetKind::EmbroideryObject) {
                         continue;
@@ -115,13 +268,14 @@ public:
                     if (const auto bounds = state.scene->boundsOf(target.id)) {
                         const auto a = state.camera.worldToScreen({bounds->x0, bounds->y0});
                         const auto b = state.camera.worldToScreen({bounds->x1, bounds->y1});
-                        border(boxes, {a.x - 4, a.y - 4, b.x + 4, b.y + 4}, 1.5,
+                        border(screen, {a.x - 4, a.y - 4, b.x + 4, b.y + 4}, 1.5,
                                QColor(229, 99, 137));
                     }
                 }
-                appendGeometry(*root->overlay, boxes);
             }
+            appendGeometry(*root->overlay, screen);
         }
+        root->overlayRevision = state.overlayRevision;
         return {root, dirty.geometry && state.scene != nullptr, elapsed};
     }
 };
@@ -130,6 +284,7 @@ struct SoftwareRoot : QSGSimpleTextureNode {
     StudioResourceState resources;
     QSizeF viewport;
     double dpr{0};
+    std::uint64_t overlayRevision{std::numeric_limits<std::uint64_t>::max()};
     SoftwareRoot() { setOwnsTexture(true); }
 };
 
@@ -141,7 +296,8 @@ public:
         const auto dirty =
             root->resources.observe(state.scene, state.selectionRevision, state.camera.revision());
         if (!dirty.geometry && !dirty.camera && !dirty.selection &&
-            root->viewport == state.viewport && root->dpr == state.devicePixelRatio) {
+            root->overlayRevision == state.overlayRevision && root->viewport == state.viewport &&
+            root->dpr == state.devicePixelRatio) {
             return {root, false, 0};
         }
         QElapsedTimer timer;
@@ -159,20 +315,69 @@ public:
         const auto offset = state.camera.offset();
         painter.translate(offset.x, offset.y);
         painter.scale(state.camera.scale(), state.camera.scale());
+        const CanvasOverlays defaults;
+        const CanvasOverlays& overlays = state.overlays ? *state.overlays : defaults;
         if (state.scene) {
             const auto& h = state.scene->hoop;
-            painter.setPen(QPen(QColor(92, 96, 106), 0.25));
-            painter.drawRect(QRectF(h.x0, h.y0, h.width(), h.height()));
+            if (overlays.showHoop) {
+                painter.setPen(QPen(QColor(92, 96, 106), 0.25));
+                painter.drawRect(QRectF(h.x0, h.y0, h.width(), h.height()));
+            }
             QPen pen;
             pen.setWidthF(state.scene->threadWidthMm);
             pen.setCapStyle(Qt::FlatCap);
-            for (const auto& segment : state.scene->segments) {
-                const auto& s = segment.thread;
+            const auto shown = overlays.showStitches ? std::min(state.scene->segments.size(),
+                                                                overlays.visibleSegments)
+                                                     : std::size_t{0};
+            for (std::size_t i = 0; i < shown; ++i) {
+                const auto& s = state.scene->segments[i].thread;
                 pen.setColor(QColor(s.rgb[0], s.rgb[1], s.rgb[2]));
                 painter.setPen(pen);
                 painter.drawLine(QPointF(s.ax, s.ay), QPointF(s.bx, s.by));
             }
+            for (const auto& layer : overlays.images) {
+                if (!layer.image.isNull()) {
+                    painter.drawImage(QRectF(layer.x0, layer.y0, layer.widthMm, layer.heightMm),
+                                      layer.image);
+                }
+            }
             painter.resetTransform();
+            const double vw = size.width();
+            const double vh = size.height();
+            if (overlays.grid) {
+                const double step = effectiveGridStep(overlays.gridStepMm, state.camera.scale());
+                const auto lo = state.camera.screenToWorld({0, 0});
+                const auto hi = state.camera.screenToWorld({vw, vh});
+                painter.setPen(QPen(QColor(130, 136, 150, 70), 1.0));
+                for (double x = std::ceil(lo.x / step) * step; x <= hi.x; x += step) {
+                    const double sx = state.camera.worldToScreen({x, 0}).x;
+                    painter.drawLine(QPointF(sx, 0), QPointF(sx, vh));
+                }
+                for (double y = std::ceil(lo.y / step) * step; y <= hi.y; y += step) {
+                    const double sy = state.camera.worldToScreen({0, y}).y;
+                    painter.drawLine(QPointF(0, sy), QPointF(vw, sy));
+                }
+            }
+            painter.setPen(QPen(overlays.guideColor, 1.0));
+            for (const double gx : overlays.guidesX) {
+                const double sx = state.camera.worldToScreen({gx, 0}).x;
+                painter.drawLine(QPointF(sx, 0), QPointF(sx, vh));
+            }
+            for (const double gy : overlays.guidesY) {
+                const double sy = state.camera.worldToScreen({0, gy}).y;
+                painter.drawLine(QPointF(0, sy), QPointF(vw, sy));
+            }
+            painter.setPen(QPen(QColor(188, 125, 31, 200), 1.0));
+            for (const auto& jump : overlays.jumps) {
+                const auto a = state.camera.worldToScreen({jump.ax, jump.ay});
+                const auto b = state.camera.worldToScreen({jump.bx, jump.by});
+                painter.drawLine(QPointF(a.x, a.y), QPointF(b.x, b.y));
+            }
+            for (const auto& marker : overlays.markers) {
+                const auto p = state.camera.worldToScreen({marker.x, marker.y});
+                painter.setPen(QPen(marker.color, 2.0));
+                painter.drawRect(QRectF(p.x - 9, p.y - 9, 18, 18));
+            }
             painter.setPen(QPen(QColor(229, 99, 137), 1.5));
             for (const auto& target : state.selection) {
                 if (target.kind != TargetKind::EmbroideryObject) {
@@ -190,6 +395,7 @@ public:
         root->setRect(QRectF(QPointF(0, 0), size));
         root->viewport = size;
         root->dpr = state.devicePixelRatio;
+        root->overlayRevision = state.overlayRevision;
         return {root, dirty.geometry && state.scene != nullptr,
                 static_cast<double>(timer.nsecsElapsed()) / 1e6};
     }

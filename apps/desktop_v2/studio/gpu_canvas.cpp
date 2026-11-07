@@ -54,8 +54,10 @@ void GpuCanvas::setController(StudioController* controller) {
     controller_ = controller;
     fitPending_ = true;
     if (controller_) {
-        connect(controller_, &StudioController::documentReplaced, this,
-                [this] { fitPending_ = true; });
+        connect(controller_, &StudioController::documentReplaced, this, [this] {
+            fitPending_ = true;
+            viewHistory_.clear();
+        });
         connect(controller_, &StudioController::sceneChanged, this,
                 [this] { setScene(controller_->scene()); });
         connect(controller_, &StudioController::selectionChanged, this,
@@ -104,10 +106,136 @@ void GpuCanvas::setPanMode(bool value) {
     emit panModeChanged();
 }
 
+void GpuCanvas::setOverlays(std::shared_ptr<const CanvasOverlays> overlays) {
+    overlays_ = std::move(overlays);
+    ++overlayRevision_;
+    update();
+}
+
+void GpuCanvas::setZoomRectMode(bool value) {
+    if (value == zoomRectMode_) {
+        return;
+    }
+    zoomRectMode_ = value;
+    rubberActive_ = false;
+    if (!rubberBand_.isNull()) {
+        rubberBand_ = {};
+        emit rubberBandChanged();
+    }
+    setCursor(value ? Qt::CrossCursor : (panMode_ ? Qt::OpenHandCursor : Qt::ArrowCursor));
+    emit zoomRectModeChanged();
+}
+
+void GpuCanvas::rememberView() {
+    if (fitPending_) {
+        return; // the initial automatic fit has no meaningful "previous" view
+    }
+    viewHistory_.push_back({camera_.scale(), camera_.offset()});
+    if (viewHistory_.size() > 32) {
+        viewHistory_.erase(viewHistory_.begin());
+    }
+}
+
+void GpuCanvas::restoreView(double scale, ScenePoint offset) {
+    camera_.zoomAt(scale / camera_.scale(), {0, 0});
+    const auto now = camera_.offset();
+    camera_.pan(offset.x - now.x, offset.y - now.y);
+    viewUpdated();
+}
+
+void GpuCanvas::zoomToSceneRect(double x0, double y0, double x1, double y1) {
+    if (width() <= 0 || height() <= 0) {
+        return;
+    }
+    rememberView();
+    camera_.setViewport(width(), height());
+    camera_.fit({std::min(x0, x1), std::min(y0, y1), std::max(x0, x1), std::max(y0, y1)}, 24.0);
+    fitPending_ = false;
+    viewUpdated();
+}
+
+bool GpuCanvas::zoomToSelection() {
+    if (!scene_) {
+        return false;
+    }
+    std::optional<stitch_render::RectMm> box;
+    for (const auto& target : selection_) {
+        if (target.kind != TargetKind::EmbroideryObject) {
+            continue;
+        }
+        if (const auto b = scene_->boundsOf(target.id)) {
+            box = box ? stitch_render::RectMm{std::min(box->x0, b->x0), std::min(box->y0, b->y0),
+                                              std::max(box->x1, b->x1), std::max(box->y1, b->y1)}
+                      : *b;
+        }
+    }
+    if (!box) {
+        return false;
+    }
+    zoomToSceneRect(box->x0, box->y0, box->x1, box->y1);
+    return true;
+}
+
+void GpuCanvas::zoomToScale(double pxPerMm) {
+    if (!std::isfinite(pxPerMm) || pxPerMm <= 0) {
+        return;
+    }
+    rememberView();
+    camera_.zoomAt(pxPerMm / camera_.scale(), {width() / 2.0, height() / 2.0});
+    fitPending_ = false;
+    viewUpdated();
+}
+
+bool GpuCanvas::zoomPrevious() {
+    if (viewHistory_.empty()) {
+        return false;
+    }
+    const auto saved = viewHistory_.back();
+    viewHistory_.pop_back();
+    restoreView(saved.scale, saved.offset);
+    return true;
+}
+
+void GpuCanvas::centerOnScene(double x, double y) {
+    const auto p = camera_.worldToScreen({x, y});
+    panBy(width() / 2.0 - p.x, height() / 2.0 - p.y);
+}
+
+QVariantList GpuCanvas::rulerTicks(bool horizontal) const {
+    QVariantList ticks;
+    const double length = horizontal ? width() : height();
+    if (length <= 0 || camera_.scale() <= 0) {
+        return ticks;
+    }
+    // 1-2-5 step giving labels at least ~60 px apart.
+    const double wanted = 60.0 / camera_.scale();
+    const double decade = std::pow(10.0, std::floor(std::log10(wanted)));
+    double step = decade * 10.0;
+    for (const double m : {1.0, 2.0, 5.0, 10.0}) {
+        if (decade * m >= wanted) {
+            step = decade * m;
+            break;
+        }
+    }
+    const auto lo = camera_.screenToWorld({0, 0});
+    const auto hi = camera_.screenToWorld({width(), height()});
+    const double from = horizontal ? lo.x : lo.y;
+    const double to = horizontal ? hi.x : hi.y;
+    for (double v = std::ceil(from / step) * step; v <= to && ticks.size() < 60; v += step) {
+        const auto s = camera_.worldToScreen({horizontal ? v : 0, horizontal ? 0 : v});
+        // Labels in model mm: X right, Y UP (scene Y is down).
+        const double label = horizontal ? v : -v;
+        ticks.push_back(QVariantMap{{QStringLiteral("pos"), horizontal ? s.x : s.y},
+                                    {QStringLiteral("label"), QString::number(label, 'g', 6)}});
+    }
+    return ticks;
+}
+
 void GpuCanvas::fitDesign() {
     if (!scene_ || width() <= 0 || height() <= 0) {
         return;
     }
+    rememberView();
     camera_.setViewport(width(), height());
     camera_.fit(scene_->bounds);
     fitPending_ = false;
@@ -152,7 +280,9 @@ QSGNode* GpuCanvas::updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData*) {
                             selection_,
                             selectionRevision_,
                             QSizeF(width(), height()),
-                            window()->effectiveDevicePixelRatio()};
+                            window()->effectiveDevicePixelRatio(),
+                            overlays_,
+                            overlayRevision_};
     const auto result = backend.synchronize(oldNode, state, *window());
     // Render thread must never write QObject properties or read the live document. Queue
     // diagnostics.
@@ -185,7 +315,11 @@ void GpuCanvas::mousePressEvent(QMouseEvent* event) {
     forceActiveFocus();
     lastMouse_ = event->position();
     dragging_ = event->button() == Qt::MiddleButton || panMode_ || spaceDown_;
-    if (dragging_) {
+    if (zoomRectMode_ && !dragging_ && event->button() == Qt::LeftButton) {
+        rubberActive_ = true;
+        rubberBand_ = QRectF(lastMouse_, QSizeF(0, 0));
+        emit rubberBandChanged();
+    } else if (dragging_) {
         setCursor(Qt::ClosedHandCursor);
     } else if (controller_ && scene_ && event->button() == Qt::LeftButton) {
         const auto p = camera_.screenToWorld({lastMouse_.x(), lastMouse_.y()});
@@ -200,7 +334,10 @@ void GpuCanvas::mousePressEvent(QMouseEvent* event) {
 }
 
 void GpuCanvas::mouseMoveEvent(QMouseEvent* event) {
-    if (dragging_) {
+    if (rubberActive_) {
+        rubberBand_ = QRectF(lastMouse_, event->position()).normalized();
+        emit rubberBandChanged();
+    } else if (dragging_) {
         const auto delta = event->position() - lastMouse_;
         panBy(delta.x(), delta.y());
         lastMouse_ = event->position();
@@ -209,6 +346,18 @@ void GpuCanvas::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void GpuCanvas::mouseReleaseEvent(QMouseEvent* event) {
+    if (rubberActive_) {
+        rubberActive_ = false;
+        const QRectF band = rubberBand_;
+        rubberBand_ = {};
+        emit rubberBandChanged();
+        if (band.width() >= 4 && band.height() >= 4) {
+            const auto a = camera_.screenToWorld({band.left(), band.top()});
+            const auto b = camera_.screenToWorld({band.right(), band.bottom()});
+            zoomToSceneRect(a.x, a.y, b.x, b.y);
+        }
+        setZoomRectMode(false); // one-shot, like the V1 tool
+    }
     dragging_ = false;
     setCursor(panMode_ || spaceDown_ ? Qt::OpenHandCursor : Qt::ArrowCursor);
     event->accept();
