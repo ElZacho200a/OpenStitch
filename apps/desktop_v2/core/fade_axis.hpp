@@ -55,6 +55,10 @@ struct FadeAxisView {
 ServiceResult dragFadeHandle(DocumentSession& session, std::uint64_t objectId, FadeHandle handle,
                              PointMm pointer, bool symmetric);
 
+// Inverse le sens du fondu (début <-> fin, écarts échangés) en UNE commande annulable ; refus si
+// l'objet ne porte pas de fondu.
+ServiceResult reverseFade(DocumentSession& session, std::uint64_t objectId);
+
 // Change la courbe de transition en UNE commande annulable ; refus si l'objet ne porte pas de
 // fondu.
 ServiceResult setFadeCurve(DocumentSession& session, std::uint64_t objectId, FadeCurve curve);

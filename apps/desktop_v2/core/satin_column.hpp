@@ -34,6 +34,10 @@ SatinCreateResult createSatinColumn(DocumentSession& session,
 [[nodiscard]] int railNodeCount(const document::Project& project, std::uint64_t objectId,
                                 RailSide side);
 
+// Nœuds du rail en mm modèle (lecture seule, pour poser des poignées) ; vide si pas un satin.
+[[nodiscard]] std::vector<PointMm> satinRailNodes(const document::Project& project,
+                                                  std::uint64_t objectId, RailSide side);
+
 ServiceResult moveSatinRailNode(DocumentSession& session, std::uint64_t objectId, RailSide side,
                                 std::size_t node, PointMm to);
 // Insère un nœud au paramètre t (0..1, exclu) du segment `segment`.

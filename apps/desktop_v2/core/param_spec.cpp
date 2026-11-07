@@ -126,6 +126,9 @@ const std::vector<ParamSpec>& table() {
         {"applique", "cover_density_mm", "Densité de la couverture", K::Number, 0.2, 1.5, 0.05,
          "mm"},
         {"applique", "stops", "Arrêts machine", K::Bool, 0, 1, 1, ""},
+        {"applique", "tack", "Point de maintien", K::Choice, 0, 2, 1, "", kTack},
+        {"applique", "cut_offset_mm", "Décalage du contour de découpe", K::Number, -5.0, 5.0, 0.25,
+         "mm"},
     };
     return kTable;
 }

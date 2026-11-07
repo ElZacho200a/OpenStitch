@@ -21,6 +21,7 @@ Window {
 
     readonly property var editController: editor
     readonly property var toolController: typeof tools !== "undefined" ? tools : null
+    readonly property var digitizeController: typeof digitizer !== "undefined" ? digitizer : null
     property int workspaceIndex: 1
     readonly property var workspaces: [
         { name: qsTr("Préparer"), label: qsTr("COMPOSITION"),
@@ -557,12 +558,19 @@ Window {
                         controller: studio
                         editor: window.editController
                         tools: window.toolController
+                        digitize: window.digitizeController
                         focus: true
                         onContextMenuRequested: function(x, y, objectId) { contextMenu.openAt(x, y) }
                     }
 
                     ToolOverlay {
                         objectName: "toolOverlay"
+                        anchors.fill: parent
+                        gpu: canvas
+                    }
+
+                    HandlesOverlay {
+                        objectName: "handlesOverlay"
                         anchors.fill: parent
                         gpu: canvas
                     }

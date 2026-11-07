@@ -140,6 +140,17 @@ int railNodeCount(const document::Project& project, std::uint64_t objectId, Rail
     return satin == nullptr ? -1 : static_cast<int>(railOf(*satin, side).nodes.size());
 }
 
+std::vector<PointMm> satinRailNodes(const document::Project& project, std::uint64_t objectId,
+                                    RailSide side) {
+    std::vector<PointMm> out;
+    if (const auto* satin = satinOf(project, objectId); satin != nullptr) {
+        for (const auto& node : railOf(*satin, side).nodes) {
+            out.push_back(toMmPoint(node.pos));
+        }
+    }
+    return out;
+}
+
 ServiceResult moveSatinRailNode(DocumentSession& session, std::uint64_t objectId, RailSide side,
                                 std::size_t node, PointMm to) {
     const auto* satin = satinOf(session.project(), objectId);

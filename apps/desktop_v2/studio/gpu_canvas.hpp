@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "canvas_renderer.hpp"
+#include "digitize_gestures.hpp"
 #include "edit_controller.hpp"
 #include "studio_camera.hpp"
 #include "studio_controller.hpp"
@@ -33,6 +34,10 @@ class GpuCanvas : public QQuickItem {
     // rendu en px canevas : [{kind, pts:[x0,y0,x1,y1,...]}], quelques éléments seulement.
     Q_PROPERTY(ToolController* tools READ tools WRITE setTools NOTIFY toolsChanged)
     Q_PROPERTY(QVariantList toolOverlay READ toolOverlay NOTIFY overlayChanged)
+    // Famille I : gestes de numérisation (points, fondu, satin, guides). Poignées et nuage de
+    // points en px canevas, élagués à la fenêtre ; jamais un objet QML par point.
+    Q_PROPERTY(DigitizeGestures* digitize READ digitize WRITE setDigitize NOTIFY digitizeChanged)
+    Q_PROPERTY(QVariantList handlesOverlay READ handlesOverlay NOTIFY overlayChanged)
     Q_PROPERTY(double zoom READ zoom NOTIFY viewChanged)
     Q_PROPERTY(bool zoomRectMode READ zoomRectMode WRITE setZoomRectMode NOTIFY zoomRectModeChanged)
     Q_PROPERTY(QRectF rubberBand READ rubberBand NOTIFY rubberBandChanged)
@@ -63,6 +68,9 @@ public:
     [[nodiscard]] ToolController* tools() const { return tools_; }
     void setTools(ToolController* tools);
     [[nodiscard]] QVariantList toolOverlay() const;
+    [[nodiscard]] DigitizeGestures* digitize() const { return digitize_; }
+    void setDigitize(DigitizeGestures* digitize);
+    [[nodiscard]] QVariantList handlesOverlay() const;
     [[nodiscard]] double zoom() const { return camera_.scale(); }
     [[nodiscard]] bool zoomRectMode() const { return zoomRectMode_; }
     void setZoomRectMode(bool value);
@@ -109,6 +117,7 @@ signals:
     void diagnosticsChanged();
     void editorChanged();
     void toolsChanged();
+    void digitizeChanged();
     void overlayChanged();
     // Clic droit : position canevas et identifiant de l'objet touché (vide = fond).
     void contextMenuRequested(double x, double y, const QString& objectId);
@@ -127,7 +136,7 @@ protected:
     void hoverMoveEvent(QHoverEvent* event) override;
 
 private:
-    enum class Gesture { None, Pan, Marquee, Move, Handle, ZoomRect, Tool };
+    enum class Gesture { None, Pan, Marquee, Move, Handle, ZoomRect, Tool, Digitize };
     // 0..7 : NO N NE E SE S SO O ; 8 : rotation ; -1 : aucune.
     [[nodiscard]] int handleAt(const QPointF& p) const;
     [[nodiscard]] QPointF handlePoint(int handle, const QRectF& box) const;
@@ -162,6 +171,7 @@ private:
     QPointF lastMouse_;
     EditController* editor_{nullptr};
     ToolController* tools_{nullptr};
+    DigitizeGestures* digitize_{nullptr};
     Gesture gesture_{Gesture::None};
     bool gestureActive_{false}; // seuil de 3 px franchi
     QPointF pressPos_;

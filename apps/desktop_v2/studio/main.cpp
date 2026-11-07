@@ -16,6 +16,8 @@
 #include "action_controller.hpp"
 #include "analysis_controller.hpp"
 #include "companion_controller.hpp"
+#include "applique_controller.hpp"
+#include "digitize_gestures.hpp"
 #include "edit_controller.hpp"
 #include "fade_controller.hpp"
 #include "file_controller.hpp"
@@ -25,6 +27,7 @@
 #include "inspector_controller.hpp"
 #include "point_edit_controller.hpp"
 #include "preferences_controller.hpp"
+#include "pull_controller.hpp"
 #include "region_controller.hpp"
 #include "satin_controller.hpp"
 #include "studio_controller.hpp"
@@ -84,7 +87,13 @@ int main(int argc, char** argv) {
     PreferencesController prefs(configDir);
     HelpController help;
     CompanionController companion(controller);
+    DigitizeGestures digitizer(controller, pointEdit, fade, satin);
+    PullController pull(controller, &inspector);
+    AppliqueController applique(controller, inspector);
     QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("digitizer"), &digitizer);
+    engine.rootContext()->setContextProperty(QStringLiteral("pull"), &pull);
+    engine.rootContext()->setContextProperty(QStringLiteral("applique"), &applique);
     engine.addImageProvider(QStringLiteral("prepare"), imageTools.createProvider());
     engine.rootContext()->setContextProperty(QStringLiteral("satin"), &satin);
     engine.rootContext()->setContextProperty(QStringLiteral("fade"), &fade);

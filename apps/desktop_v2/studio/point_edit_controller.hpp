@@ -52,6 +52,11 @@ public:
     Q_INVOKABLE [[nodiscard]] QVariantList pointsIn(double x0, double y0, double x1, double y1,
                                                     int limit) const;
 
+    // Lecture seule pour les gestes du canevas (aucune copie, aucune mutation).
+    [[nodiscard]] const PointView& view() const { return view_; }
+    [[nodiscard]] const std::set<std::size_t>& selection() const { return selected_; }
+    // Sélection par rectangle (mm modèle) ; `additive` conserve la sélection actuelle.
+    Q_INVOKABLE int selectRect(double x0, double y0, double x1, double y1, bool additive);
     Q_INVOKABLE bool selectPoint(int index, bool additive);
     Q_INVOKABLE bool selectRange(int fromIndex, int toIndex);
     Q_INVOKABLE int selectAllPoints();
