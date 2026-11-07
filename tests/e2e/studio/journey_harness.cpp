@@ -6,8 +6,12 @@
 
 namespace openstitch::desktop_v2::studio::e2e {
 
-Harness::Harness(const QString& configDir)
-    : files(studio, &actions, configDir.isEmpty() ? directory.path() : configDir) {
+Harness::Harness(const QString& configDir,
+                 desktop::ClaudeCompanionBackend::ProviderFactory providerFactory)
+    : files(studio, &actions, configDir.isEmpty() ? directory.path() : configDir),
+      companion(studio,
+                {std::filesystem::path(directory.filePath(QStringLiteral("live")).toStdWString()),
+                 &secrets, std::move(providerFactory)}) {
     QObject::connect(&engine, &QQmlApplicationEngine::warnings,
                      [this](const QList<QQmlError>& errors) {
                          for (const auto& error : errors) {
@@ -20,6 +24,9 @@ Harness::Harness(const QString& configDir)
         {"vectors", &vectors},   {"view", &view},           {"threads", &threads},
         {"analysis", &analysis}, {"imageTools", &images},   {"regionTools", &regions},
         {"satin", &satin},       {"fade", &fade},           {"pointEdit", &points}};
+    engine.rootContext()->setContextProperty(QStringLiteral("prefs"), &prefs);
+    engine.rootContext()->setContextProperty(QStringLiteral("help"), &help);
+    engine.rootContext()->setContextProperty(QStringLiteral("companion"), &companion);
     for (const auto& [name, object] : contexts) {
         engine.rootContext()->setContextProperty(QString::fromLatin1(name), object);
     }
@@ -103,9 +110,13 @@ bool Harness::type(const char* name, const QString& text) {
     if (!click(name)) {
         return false;
     }
-    QGuiApplication::clipboard()->setText(text);
     key(Qt::Key_A, Qt::ControlModifier);
-    key(Qt::Key_V, Qt::ControlModifier);
+    auto* focus = window->activeFocusItem();
+    if (!focus)
+        return false;
+    QInputMethodEvent input;
+    input.setCommitString(text);
+    QCoreApplication::sendEvent(focus, &input);
     key(Qt::Key_Return);
     return true;
 }
