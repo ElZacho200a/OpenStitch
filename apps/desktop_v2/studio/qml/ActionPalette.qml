@@ -32,12 +32,25 @@ Controls.Popup {
         error = ""
         open()
         search.text = ""
+        results.model = actions.searchAll("") // fresh enabled states even if the text was empty
         search.forceActiveFocus()
     }
 
     function choose(entry) {
-        if (!entry.enabled)
+        if (!entry.enabled) {
+            error = entry.label + (entry.reason ? " : " + entry.reason : "")
             return
+        }
+        if (entry.kind === "command") {
+            // Same path as the buttons and shortcuts: the window's dispatcher runs it.
+            close()
+            const why = actions.runCommand(entry.id)
+            if (why !== "") {
+                open()
+                error = why
+            }
+            return
+        }
         if (!entry.hasFields) {
             const refusal = actions.run(entry.id, {})
             if (refusal === "")
@@ -95,7 +108,7 @@ Controls.Popup {
             Layout.fillWidth: true
             placeholderText: qsTr("Rechercher une action (Ctrl+K)")
             Accessible.name: qsTr("Rechercher une action")
-            onTextChanged: results.model = actions.search(text)
+            onTextChanged: results.model = actions.searchAll(text)
             onAccepted: {
                 if (results.count > 0)
                     palette.choose(results.model[0])
@@ -110,7 +123,7 @@ Controls.Popup {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            model: actions.search("")
+            model: actions.searchAll("")
             section.property: "group"
             section.delegate: Text {
                 text: section
@@ -130,11 +143,19 @@ Controls.Popup {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.left: parent.left
                     anchors.leftMargin: 8
-                    text: modelData.label + (modelData.needsSelection && !modelData.enabled
-                                             ? qsTr("  · sélection requise") : "")
+                    text: modelData.label + (!modelData.enabled && modelData.reason ? "  · " + modelData.reason : "")
                     color: Theme.foreground
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.bodySize
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.right: parent.right
+                    anchors.rightMargin: 8
+                    text: modelData.shortcut || ""
+                    color: Theme.faint
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.smallSize
                 }
                 MouseArea {
                     id: hit
@@ -143,7 +164,8 @@ Controls.Popup {
                     onClicked: palette.choose(modelData)
                 }
                 Accessible.role: Accessible.Button
-                Accessible.name: modelData.label
+                Accessible.name: modelData.label + (modelData.enabled ? "" : qsTr(" (indisponible : ") + modelData.reason + ")")
+                Accessible.description: modelData.shortcut || ""
             }
         }
 

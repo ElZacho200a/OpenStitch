@@ -1,6 +1,6 @@
 # Experimental Qt Quick shell; core and the Widgets executable remain independently buildable.
-find_package(Qt6 6.8 COMPONENTS Quick QuickControls2 Qml QUIET)
-if(NOT TARGET Qt6::Quick OR NOT TARGET Qt6::QuickControls2)
+find_package(Qt6 6.8 COMPONENTS Quick QuickControls2 Qml Network QUIET)
+if(NOT TARGET Qt6::Quick OR NOT TARGET Qt6::QuickControls2 OR NOT TARGET Qt6::Network OR NOT TARGET openstitch::companion_backends)
     message(STATUS "OpenStitch Studio disabled: Qt 6.8 Quick / QuickControls2 not available")
     return()
 endif()
@@ -23,11 +23,15 @@ add_library(openstitch_studio_ui STATIC
     fade_controller.cpp fade_controller.hpp
     point_edit_controller.cpp point_edit_controller.hpp
     tool_controller.cpp tool_controller.hpp
-    vector_controller.cpp vector_controller.hpp)
+    vector_controller.cpp vector_controller.hpp
+    companion_controller.cpp companion_controller.hpp
+    preferences_controller.cpp preferences_controller.hpp
+    help_controller.cpp help_controller.hpp
+    ../ui/live_server.cpp ../ui/live_server.hpp)
 add_library(openstitch::studio_ui ALIAS openstitch_studio_ui)
 target_include_directories(openstitch_studio_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(openstitch_studio_ui PUBLIC openstitch::desktop_v2_core
-    openstitch::ai_segmentation Qt6::Quick
+    openstitch::ai_segmentation openstitch::companion_backends Qt6::Network Qt6::Quick
     Qt6::QuickControls2 PRIVATE openstitch::warnings)
 
 set(studio_qml_files
@@ -37,7 +41,8 @@ set(studio_qml_files
     qml/Inspector.qml qml/ParamField.qml qml/ParamSection.qml
     qml/ViewPanel.qml qml/SimulationBar.qml qml/AnalysisPanel.qml qml/ThreadPanel.qml
     qml/PreparePanel.qml qml/ImagePrepSection.qml qml/SegmentationSection.qml
-    qml/RegionTools.qml qml/AiSection.qml 
+    qml/RegionTools.qml qml/AiSection.qml qml/CompanionPanel.qml qml/PreferencesDialog.qml
+    qml/HelpDialog.qml qml/ShortcutsSheet.qml
     qml/SatinPanel.qml qml/FadePanel.qml qml/PointEditPanel.qml qml/DigitizeHub.qml qml/ToolRail.qml qml/ToolOptions.qml qml/ToolOverlay.qml qml/qmldir)
 
 add_executable(openstitch_v2_studio WIN32 main.cpp)

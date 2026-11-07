@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "action_controller.hpp"
 
+#include <QHash>
+
 #include <algorithm>
 
 #include "command_catalog.hpp"
 #include "edit_batch.hpp"
+#include "tool_registry.hpp"
 
 namespace openstitch::desktop_v2::studio {
 
@@ -31,6 +34,61 @@ QString kindName(FieldKind kind) {
     return QStringLiteral("text");
 }
 } // namespace
+
+const std::vector<StudioCommand>& studioCommands() {
+    static const std::vector<StudioCommand> table = [] {
+        std::vector<StudioCommand> out = {
+            {"cmd.file.new", "Nouveau projet", "Fichier", "Ctrl+N", "idle"},
+            {"cmd.file.open", "Ouvrir un projet…", "Fichier", "Ctrl+O", "idle"},
+            {"cmd.file.save", "Enregistrer", "Fichier", "Ctrl+S", "idle"},
+            {"cmd.file.save-as", "Enregistrer sous…", "Fichier", "Ctrl+Shift+S", "idle"},
+            {"cmd.file.import-image", "Importer une image ou un SVG…", "Fichier", "", "idle"},
+            {"cmd.file.import-machine", "Importer une broderie machine…", "Fichier", "", "idle"},
+            {"cmd.edit.undo", "Annuler", "Édition", "Ctrl+Z", "undo"},
+            {"cmd.edit.redo", "Rétablir", "Édition", "Ctrl+Y", "redo"},
+            {"cmd.edit.duplicate", "Dupliquer la sélection", "Édition", "Ctrl+D", "selection"},
+            {"cmd.edit.delete", "Supprimer la sélection", "Édition", "Suppr", "selection"},
+            {"cmd.edit.group", "Grouper la sélection", "Édition", "Ctrl+G", "multi"},
+            {"cmd.edit.ungroup", "Dissocier le groupe", "Édition", "Ctrl+Shift+G", "selection"},
+            {"cmd.edit.rotate-cw", "Pivoter de 90° (horaire)", "Édition", "Ctrl+R", "selection"},
+            {"cmd.edit.rotate-ccw", "Pivoter de 90° (anti-horaire)", "Édition", "Ctrl+Shift+R",
+             "selection"},
+            {"cmd.edit.mirror-h", "Miroir horizontal", "Édition", "Ctrl+Shift+H", "selection"},
+            {"cmd.edit.mirror-v", "Miroir vertical", "Édition", "Ctrl+Shift+V", "selection"},
+            {"cmd.edit.eyedropper", "Pipette de couleur", "Édition", "I", "selection"},
+            {"cmd.select.all", "Tout sélectionner", "Sélection", "Ctrl+A", ""},
+            {"cmd.select.invert", "Inverser la sélection", "Sélection", "Ctrl+I", ""},
+            {"cmd.select.clear", "Effacer la sélection", "Sélection", "Échap", "selection"},
+            {"cmd.arrange.forward", "Avancer d'un plan", "Ordre", "PgUp", "selection"},
+            {"cmd.arrange.backward", "Reculer d'un plan", "Ordre", "PgDown", "selection"},
+            {"cmd.arrange.front", "Premier plan", "Ordre", "Fin", "selection"},
+            {"cmd.arrange.back", "Arrière-plan", "Ordre", "Début", "selection"},
+            {"cmd.workspace.0", "Espace : Préparer", "Espace", "Ctrl+1", ""},
+            {"cmd.workspace.1", "Espace : Numériser", "Espace", "Ctrl+2", ""},
+            {"cmd.workspace.2", "Espace : Contrôler", "Espace", "Ctrl+3", ""},
+            {"cmd.workspace.3", "Espace : Produire", "Espace", "Ctrl+4", ""},
+            {"cmd.view.fit", "Ajuster le motif à la fenêtre", "Vue", "F", ""},
+            {"cmd.view.zoom-in", "Zoom avant", "Vue", "", ""},
+            {"cmd.view.zoom-out", "Zoom arrière", "Vue", "", ""},
+            {"cmd.view.zoom-selection", "Zoom sur la sélection", "Vue", "", "selection"},
+            {"cmd.prefs.open", "Préférences…", "Application", "Ctrl+,", ""},
+            {"cmd.companion.open", "Compagnon IA", "Application", "Ctrl+J", ""},
+            {"cmd.companion.toggle", "Compagnon IA : activer ou couper le pont", "Application",
+             "Ctrl+Shift+J", ""},
+            {"cmd.help.shortcuts", "Raccourcis clavier et gestes", "Aide", "F1", ""},
+            {"cmd.help.guide", "Guide de prise en main", "Aide", "", ""},
+            {"cmd.help.tool", "Aide sur l'outil actif", "Aide", "Shift+F1", ""},
+            {"cmd.help.about", "À propos d'OpenStitch Studio", "Aide", "", ""},
+        };
+        const auto registry = ToolRegistry::builtin();
+        for (const auto& tool : registry.tools()) {
+            out.push_back(
+                {"cmd.tool." + tool.id, "Outil : " + tool.label, "Outil", tool.shortcut, ""});
+        }
+        return out;
+    }();
+    return table;
+}
 
 ActionController::ActionController(StudioController& studio, QObject* parent)
     : QObject(parent), studio_(studio) {
@@ -102,6 +160,93 @@ QVariantList ActionController::search(const QString& query) const {
                         {QStringLiteral("enabled"), !def.needsSelection || hasSelection}});
     }
     return list;
+}
+
+QString ActionController::commandReason(const StudioCommand& command) const {
+    if (command.needs == "idle" && studio_.busy()) {
+        return QStringLiteral("opération en cours");
+    }
+    if (command.needs == "undo" && !studio_.canUndo()) {
+        return QStringLiteral("rien à annuler");
+    }
+    if (command.needs == "redo" && !studio_.canRedo()) {
+        return QStringLiteral("rien à rétablir");
+    }
+    if (command.needs == "selection" && !studio_.hasSelection()) {
+        return QStringLiteral("sélection requise");
+    }
+    if (command.needs == "multi") {
+        int selected = 0;
+        for (const auto& entry : studio_.objects()) {
+            selected += entry.toMap().value(QStringLiteral("selected")).toBool() ? 1 : 0;
+        }
+        if (selected < 2) {
+            return QStringLiteral("deux objets au moins");
+        }
+    }
+    return {};
+}
+
+QVariantList ActionController::commands() const {
+    QVariantList list;
+    for (const auto& command : studioCommands()) {
+        const auto reason = commandReason(command);
+        list.push_back(QVariantMap{{QStringLiteral("id"), qs(command.id)},
+                                   {QStringLiteral("label"), qs(command.label)},
+                                   {QStringLiteral("group"), qs(command.group)},
+                                   {QStringLiteral("shortcut"), qs(command.shortcut)},
+                                   {QStringLiteral("kind"), QStringLiteral("command")},
+                                   {QStringLiteral("enabled"), reason.isEmpty()},
+                                   {QStringLiteral("reason"), reason},
+                                   {QStringLiteral("needsSelection"), command.needs == "selection"},
+                                   {QStringLiteral("hasFields"), false}});
+    }
+    return list;
+}
+
+QVariantList ActionController::searchAll(const QString& query) const {
+    // Un seul filtre pour tout : celui du catalogue de commandes (mots multiples, sans accents).
+    std::vector<CommandEntry> entries;
+    QHash<QString, QVariantMap> byId;
+    const auto add = [&](QVariantMap map) {
+        const auto key = map.value(QStringLiteral("id")).toString();
+        entries.push_back({key.toStdString(),
+                           map.value(QStringLiteral("label")).toString().toStdString(),
+                           map.value(QStringLiteral("group")).toString().toStdString(),
+                           map.value(QStringLiteral("shortcut")).toString().toStdString(),
+                           map.value(QStringLiteral("enabled")).toBool()});
+        byId.insert(key, std::move(map));
+    };
+    for (const auto& item : search({})) {
+        auto map = item.toMap();
+        map[QStringLiteral("kind")] = QStringLiteral("action");
+        map[QStringLiteral("shortcut")] = QString();
+        map[QStringLiteral("reason")] = map.value(QStringLiteral("enabled")).toBool()
+                                            ? QString()
+                                            : QStringLiteral("sélection requise");
+        add(std::move(map));
+    }
+    for (const auto& item : commands()) {
+        add(item.toMap());
+    }
+    QVariantList list;
+    for (const auto* entry : filterCommands(entries, query.toStdString())) {
+        list.push_back(byId.value(qs(entry->id)));
+    }
+    return list;
+}
+
+QString ActionController::runCommand(const QString& id) {
+    const auto& table = studioCommands();
+    const auto found = std::ranges::find(table, id.toStdString(), &StudioCommand::id);
+    if (found == table.end()) {
+        return QStringLiteral("Commande inconnue");
+    }
+    if (const auto reason = commandReason(*found); !reason.isEmpty()) {
+        return qs(found->label) + QStringLiteral(" : ") + reason;
+    }
+    emit commandRequested(id);
+    return {};
 }
 
 QVariantList ActionController::fields(const QString& id) const {

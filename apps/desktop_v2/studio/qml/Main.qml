@@ -76,9 +76,120 @@ Window {
     }
 
     FilePanel { id: filePanel }
-    onClosing: function (close) { if (!filePanel.requestQuit()) close.accepted = false }
+    onClosing: function (close) {
+        if (!filePanel.requestQuit())
+            close.accepted = false
+        else
+            window.persistSession()
+    }
     ActionPalette { id: palette }
+    CompanionPanel { id: companionPanel }
+    PreferencesDialog { id: prefsDialog }
+    ShortcutsSheet { id: shortcutsSheet }
+    HelpDialog { id: helpDialog }
+
+    // Interface preferences (theme, density, reduced motion) drive the Theme singleton.
+    readonly property bool hasPrefs: typeof prefs !== "undefined" && prefs !== null
+    Binding { target: Theme; property: "mode"; value: window.hasPrefs ? prefs.effectiveTheme : "dark" }
+    Binding { target: Theme; property: "densityScale"; value: window.hasPrefs ? prefs.densityScale : 1.0 }
+    Binding { target: Theme; property: "reducedMotion"; value: window.hasPrefs ? prefs.reducedMotion : false }
+
+    // Session restore: workspace and panels now, zoom once a document has been framed; the file
+    // itself is reopened by the application at launch (main.cpp).
+    function persistSession() {
+        if (!hasPrefs)
+            return
+        const file = studio.hasPath() && typeof files !== "undefined" && files.recent.length > 0 ? files.recent[0].path : ""
+        prefs.rememberSession({ file: file, workspace: workspaceIndex, editOpen: editOpen,
+                                treeMode: treeMode, zoom: canvas.zoom })
+    }
+    onWorkspaceIndexChanged: persistSession()
+    onEditOpenChanged: persistSession()
+    onTreeModeChanged: persistSession()
+    Component.onCompleted: {
+        if (!hasPrefs)
+            return
+        const s = prefs.session
+        if (s.workspace !== undefined && Number(s.workspace) >= 0 && Number(s.workspace) < workspaces.length)
+            workspaceIndex = Number(s.workspace)
+        editOpen = s.editOpen === "1"
+        treeMode = s.treeMode === "1"
+    }
+
+    function deleteSelection() {
+        if (toolController !== null && toolController.selectedNodeCount > 0)
+            toolController.deleteSelectedNodes()
+        else
+            editor.deleteSelection()
+    }
+
+    // The ONE dispatcher behind the palette (and any menu): shortcuts and buttons call the same
+    // functions, so every path has the same effect, enabled state and undo step.
+    function dispatch(id) {
+        if (id.indexOf("cmd.tool.") === 0) {
+            if (toolController)
+                toolController.activeTool = id.substring(9)
+            return
+        }
+        if (id.indexOf("cmd.workspace.") === 0) {
+            workspaceIndex = parseInt(id.substring(14))
+            return
+        }
+        switch (id) {
+        case "cmd.file.new": filePanel.requestNew(); break
+        case "cmd.file.open": openProject(); break
+        case "cmd.file.save": saveProject(); break
+        case "cmd.file.save-as": saveDialog.open(); break
+        case "cmd.file.import-image": filePanel.importImageDialog(); break
+        case "cmd.file.import-machine": filePanel.importMachineDialog(); break
+        case "cmd.edit.undo": studio.undo(); break
+        case "cmd.edit.redo": studio.redo(); break
+        case "cmd.edit.duplicate": editor.duplicate(5); break
+        case "cmd.edit.delete": deleteSelection(); break
+        case "cmd.edit.group": editor.group(""); break
+        case "cmd.edit.ungroup": editor.ungroup(); break
+        case "cmd.edit.rotate-cw": editor.rotate90(true); break
+        case "cmd.edit.rotate-ccw": editor.rotate90(false); break
+        case "cmd.edit.mirror-h": editor.mirror(true); break
+        case "cmd.edit.mirror-v": editor.mirror(false); break
+        case "cmd.edit.eyedropper": editor.eyedropper = !editor.eyedropper; break
+        case "cmd.select.all": editor.selectAll(); break
+        case "cmd.select.invert": editor.invertSelection(); break
+        case "cmd.select.clear": studio.clearSelection(); break
+        case "cmd.arrange.forward": editor.stack("forward"); break
+        case "cmd.arrange.backward": editor.stack("backward"); break
+        case "cmd.arrange.front": editor.stack("front"); break
+        case "cmd.arrange.back": editor.stack("back"); break
+        case "cmd.view.fit": canvas.fitDesign(); break
+        case "cmd.view.zoom-in": canvas.zoomAt(1.25, canvas.width / 2, canvas.height / 2); break
+        case "cmd.view.zoom-out": canvas.zoomAt(0.8, canvas.width / 2, canvas.height / 2); break
+        case "cmd.view.zoom-selection": canvas.zoomToSelection(); break
+        case "cmd.prefs.open": prefsDialog.openDialog(); break
+        case "cmd.companion.open": companionPanel.openPanel(); break
+        case "cmd.companion.toggle":
+            if (typeof companion !== "undefined")
+                companion.setBridgeEnabled(!companion.bridgeActive)
+            break
+        case "cmd.help.shortcuts": shortcutsSheet.openSheet(); break
+        case "cmd.help.guide": helpDialog.show("guide"); break
+        case "cmd.help.tool": helpDialog.show("tool", typeof help !== "undefined" && toolController
+                                              ? help.toolHelp(toolController.activeTool, toolController.hint) : ""); break
+        case "cmd.help.about": helpDialog.show("about"); break
+        }
+        // Keyboard control returns to the canvas, except when a dialog just took it.
+        if (id.indexOf("cmd.prefs") !== 0 && id.indexOf("cmd.companion") !== 0 && id.indexOf("cmd.help") !== 0)
+            canvas.forceActiveFocus()
+    }
+    Connections {
+        target: actions
+        function onCommandRequested(id) { window.dispatch(id) }
+    }
+
     Shortcut { sequence: "Ctrl+K"; onActivated: palette.openList() }
+    Shortcut { sequence: "Ctrl+J"; onActivated: companionPanel.openPanel() }
+    Shortcut { sequence: "Ctrl+,"; onActivated: prefsDialog.openDialog() }
+    Shortcut { sequence: "F1"; onActivated: shortcutsSheet.openSheet() }
+    Shortcut { sequence: "Shift+F1"; onActivated: window.dispatch("cmd.help.tool") }
     Shortcut { sequence: "Ctrl+N"; enabled: !studio.busy; onActivated: filePanel.requestNew() }
     Shortcut { sequence: "Ctrl+S"; enabled: !studio.busy; onActivated: window.saveProject() }
     Shortcut { sequence: "Ctrl+Shift+S"; enabled: !studio.busy; onActivated: saveDialog.open() }
@@ -105,12 +216,7 @@ Window {
     Shortcut {
         sequence: "Delete"
         enabled: studio.hasSelection || (toolController !== null && toolController.selectedNodeCount > 0)
-        onActivated: {
-            if (toolController !== null && toolController.selectedNodeCount > 0)
-                toolController.deleteSelectedNodes()
-            else
-                editor.deleteSelection()
-        }
+        onActivated: window.deleteSelection()
     }
     Shortcut { sequence: "Ctrl+D"; enabled: studio.hasSelection; onActivated: editor.duplicate(5) }
     Shortcut { sequence: "Ctrl+G"; enabled: editor.selectedCount > 1; onActivated: editor.group("") }
@@ -293,6 +399,42 @@ Window {
                     color: Theme.muted
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.smallSize
+                }
+                StudioButton {
+                    objectName: "paletteButton"
+                    text: qsTr("Commandes")
+                    quiet: true
+                    implicitHeight: 28
+                    tooltip: qsTr("Palette de commandes")
+                    shortcutLabel: "Ctrl+K"
+                    onClicked: palette.openList()
+                }
+                StudioButton {
+                    objectName: "companionButton"
+                    text: qsTr("IA")
+                    quiet: true
+                    implicitHeight: 28
+                    tooltip: qsTr("Compagnon IA : discussion, pont MCP, propositions")
+                    shortcutLabel: "Ctrl+J"
+                    onClicked: companionPanel.openPanel()
+                }
+                StudioButton {
+                    objectName: "prefsButton"
+                    text: qsTr("Préférences")
+                    quiet: true
+                    implicitHeight: 28
+                    tooltip: qsTr("Préférences : thème, densité, animations, compagnon IA")
+                    shortcutLabel: "Ctrl+,"
+                    onClicked: prefsDialog.openDialog()
+                }
+                StudioButton {
+                    objectName: "helpButton"
+                    text: qsTr("Aide")
+                    quiet: true
+                    implicitHeight: 28
+                    tooltip: qsTr("Raccourcis, guide de prise en main, À propos")
+                    shortcutLabel: "F1"
+                    onClicked: shortcutsSheet.openSheet()
                 }
             }
         }

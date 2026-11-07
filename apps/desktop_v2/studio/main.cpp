@@ -9,18 +9,22 @@
 #include <QTimer>
 
 #include <QDir>
+#include <QFileInfo>
 #include <QStandardPaths>
 #include <filesystem>
 
 #include "action_controller.hpp"
 #include "analysis_controller.hpp"
+#include "companion_controller.hpp"
 #include "edit_controller.hpp"
 #include "fade_controller.hpp"
 #include "file_controller.hpp"
 #include "gpu_canvas.hpp"
+#include "help_controller.hpp"
 #include "image_controller.hpp"
 #include "inspector_controller.hpp"
 #include "point_edit_controller.hpp"
+#include "preferences_controller.hpp"
 #include "region_controller.hpp"
 #include "satin_controller.hpp"
 #include "studio_controller.hpp"
@@ -77,10 +81,16 @@ int main(int argc, char** argv) {
     SatinController satin(controller);
     FadeController fade(controller);
     PointEditController pointEdit(controller);
+    PreferencesController prefs(configDir);
+    HelpController help;
+    CompanionController companion(controller);
     QQmlApplicationEngine engine;
     engine.addImageProvider(QStringLiteral("prepare"), imageTools.createProvider());
     engine.rootContext()->setContextProperty(QStringLiteral("satin"), &satin);
     engine.rootContext()->setContextProperty(QStringLiteral("fade"), &fade);
+    engine.rootContext()->setContextProperty(QStringLiteral("prefs"), &prefs);
+    engine.rootContext()->setContextProperty(QStringLiteral("help"), &help);
+    engine.rootContext()->setContextProperty(QStringLiteral("companion"), &companion);
     engine.rootContext()->setContextProperty(QStringLiteral("pointEdit"), &pointEdit);
     engine.rootContext()->setContextProperty(QStringLiteral("editor"), &editor);
     engine.rootContext()->setContextProperty(QStringLiteral("studio"), &controller);
@@ -112,6 +122,12 @@ int main(int argc, char** argv) {
     }
     if (!parser.positionalArguments().isEmpty()) {
         files.openPath(QDir::current().absoluteFilePath(parser.positionalArguments().first()));
+    } else if (!parser.isSet(QStringLiteral("screenshot"))) {
+        // Session restore: reopen the file left open at the last quit, if it still exists.
+        const auto last = prefs.session().value(QStringLiteral("file")).toString();
+        if (!last.isEmpty() && QFileInfo::exists(last)) {
+            files.openPath(last);
+        }
     }
     QTimer capture;
     bool capturePrimed = false;
