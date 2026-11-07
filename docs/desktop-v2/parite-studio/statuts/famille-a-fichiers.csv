@@ -1,36 +1,36 @@
 id,statut,preuve,controleur,composant
-a4c1ad2b,FUNCTIONAL_UNTESTED,,FileController::requestQuit,Main.qml onClosing + FilePanel guardDialog
-bfb1ac5d,FUNCTIONAL_UNTESTED,,FileController::recent/requestOpenRecent,FilePanel.qml fileMenu
-7dcd5e07,FUNCTIONAL_UNTESTED,,FileController::clearRecent,FilePanel.qml clearRecentEntry
+a4c1ad2b,FUNCTIONAL_UNTESTED,StudioFilesTest::unsavedGuardNewOpenAndQuit,FileController::requestQuit,Main.qml onClosing + FilePanel guardDialog
+bfb1ac5d,TESTED,StudioFilesTest::recentFilesPersistPruneAndReopen,FileController::recent/requestOpenRecent,FilePanel.qml fileMenu
+7dcd5e07,TESTED,StudioFilesTest::recentFilesPersistPruneAndReopen,FileController::clearRecent,FilePanel.qml clearRecentEntry
 8f650f08,FUNCTIONAL_UNTESTED,,FileController::openPath,Main.qml bouton Ouvrir un projet
 237f3d36,FUNCTIONAL_UNTESTED,,FileController::imageImportRequested,Main.qml welcomeImportImage + FilePanel importOptions
 f38a9ef0,FUNCTIONAL_UNTESTED,,FileController::openPath(machine),Main.qml welcomeImportMachine
-c4719a5d,FUNCTIONAL_UNTESTED,,FileController::importImage/importVector,FilePanel.qml menu Importer
-7c94f4bb,FUNCTIONAL_UNTESTED,,FileController::openPath(machine),FilePanel.qml menu Importer
-8aeebbf2,FUNCTIONAL_UNTESTED,,FileController::importImage,FilePanel.qml importOptions
+c4719a5d,TESTED,StudioFilesTest::imageAndVectorImports,FileController::importImage/importVector,FilePanel.qml menu Importer
+7c94f4bb,TESTED,StudioFilesTest::machineExportImportRoundTrip,FileController::openPath(machine),FilePanel.qml menu Importer
+8aeebbf2,TESTED,StudioFilesTest::imageAndVectorImports,FileController::importImage,FilePanel.qml importOptions
 c7a6d63e,ABSENT,,,
 dfb2d55c,ABSENT,,,
-08ee1b58,FUNCTIONAL_UNTESTED,,FileController::exportMachine,FilePanel.qml exportDialog
-775bc85b,FUNCTIONAL_UNTESTED,,FileController::exportMachine/setExportOptions,FilePanel.qml exportDialog
-a9055127,FUNCTIONAL_UNTESTED,,FileController::exportAgain,FilePanel.qml exportAgainEntry F10
-31b462db,FUNCTIONAL_UNTESTED,,FileController::exportDxf,FilePanel.qml menu Exporter
-09cc3851,FUNCTIONAL_UNTESTED,,FileController::exportImage,FilePanel.qml menu Exporter
-4922cbdc,FUNCTIONAL_UNTESTED,,FileController::exportImage,FilePanel.qml menu Exporter
+08ee1b58,TESTED,StudioFilesTest::machineExportImportRoundTrip,FileController::exportMachine,FilePanel.qml exportDialog
+775bc85b,FUNCTIONAL_UNTESTED,StudioFilesTest::exportOptionsAreOneUndoStepAndRefusedWhenInvalid,FileController::exportMachine/setExportOptions,FilePanel.qml exportDialog
+a9055127,TESTED,StudioFilesTest::exportsAreDeterministicAndRepeatable,FileController::exportAgain,FilePanel.qml exportAgainEntry F10
+31b462db,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportDxf,FilePanel.qml menu Exporter
+09cc3851,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportImage,FilePanel.qml menu Exporter
+4922cbdc,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportImage,FilePanel.qml menu Exporter
 c7e19585,UI_PARTIAL,,FileController::exportImage,résolution fixe 6 px/mm sans dialogue d'options
-00565df7,FUNCTIONAL_UNTESTED,,FileController::exportThreadList,FilePanel.qml menu Exporter
-8854fa60,FUNCTIONAL_UNTESTED,,FileController::exportThreadList,FilePanel.qml menu Exporter
-d0850557,FUNCTIONAL_UNTESTED,,FileController::exportProductionSheet,FilePanel.qml menu Exporter
+00565df7,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportThreadList,FilePanel.qml menu Exporter
+8854fa60,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportThreadList,FilePanel.qml menu Exporter
+d0850557,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportProductionSheet,FilePanel.qml menu Exporter
 5aae42a1,UI_PARTIAL,,FileController::exportProductionSheet,pas d'aperçu ni d'impression
-10082583,FUNCTIONAL_UNTESTED,,FileController::exportPlacementTemplate,FilePanel.qml menu Exporter
+10082583,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportPlacementTemplate,FilePanel.qml menu Exporter
 004e668f,UI_PARTIAL,,FileController::exportPlacementTemplate,papier A4 fixe côté QML
 d06da014,ABSENT,,,
 9ae947b0,ABSENT,,,
-786a853b,FUNCTIONAL_UNTESTED,,FileController::saveCurrentHoopAs,FilePanel.qml hoopDialog
-6374ea03,FUNCTIONAL_UNTESTED,,FileController::applyHoop/applyCustomHoop,FilePanel.qml hoopDialog
+786a853b,TESTED,StudioFilesTest::hoopMachineAndUserHoops,FileController::saveCurrentHoopAs,FilePanel.qml hoopDialog
+6374ea03,TESTED,StudioFilesTest::hoopMachineAndUserHoops,FileController::applyHoop/applyCustomHoop,FilePanel.qml hoopDialog
 3bda7e57,FUNCTIONAL_UNTESTED,,FileController::revealFolder,FilePanel.qml menu Projet
 5c1da94d,ABSENT,,,
 19e2c522,ABSENT,,,
-ab829014,FUNCTIONAL_UNTESTED,,FileController::setExportOptions,FilePanel.qml exportDialog
+ab829014,FUNCTIONAL_UNTESTED,StudioFilesTest::exportOptionsAreOneUndoStepAndRefusedWhenInvalid,FileController::setExportOptions,FilePanel.qml exportDialog
 11df031b,FUNCTIONAL_UNTESTED,,FileController::setExportOptions(autoJoin),FilePanel.qml exportDialog
 41c3b1d2,ABSENT,,,
 81b23d37,ABSENT,,,

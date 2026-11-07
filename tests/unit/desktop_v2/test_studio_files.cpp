@@ -226,7 +226,7 @@ void StudioFilesTest::guardSaveWithAndWithoutPath() {
     rig.makeDirty();
     rig.files->requestNew();
     rig.files->resolveGuard(QStringLiteral("save"));
-    rig.files->guardSaveAs(url(dir, "absent/dossier/x.osp"));
+    rig.files->guardSaveAs(url(dir, "a.osp/dossier/x.osp"));
     QVERIFY(rig.files->messageIsError());
     QVERIFY(rig.studio.dirty());
     QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{2});
@@ -354,7 +354,7 @@ void StudioFilesTest::machineExportImportRoundTrip() {
     QVERIFY(!second.studio.hasPath());
     QVERIFY(!second.studio.dirty());
     // Une erreur d'écriture est rapportée, jamais silencieuse.
-    rig.files->exportMachine(url(dir, "absent/x.dst"));
+    rig.files->exportMachine(url(dir, "sortie.dst/x.dst"));
     QVERIFY(rig.waitIdle());
     QVERIFY(rig.files->messageIsError());
     // Un format inconnu est refusé avant tout calcul.

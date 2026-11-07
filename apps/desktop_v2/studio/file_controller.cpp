@@ -275,7 +275,7 @@ void FileController::setBusy(bool busy, const QString& label) {
 }
 
 bool FileController::ensureCanStartTask() {
-    if (busy_ || studio_.busy()) {
+    if (busy_) {
         setMessage(QStringLiteral("Une opération est déjà en cours : patientez ou annulez-la."),
                    true);
         return false;

@@ -468,6 +468,7 @@ Item {
 
     // --- Retour d'état ------------------------------------------------------------------------
     Rectangle {
+        id: toast
         objectName: "fileToast"
         z: 50
         property bool shown: false
@@ -503,12 +504,12 @@ Item {
         Connections {
             target: panel.ctl
             ignoreUnknownSignals: true
-            function onMessageChanged() { toastTimer.restart(); parent.shown = true }
+            function onMessageChanged() { toastTimer.restart(); toast.shown = true }
         }
         Timer {
             id: toastTimer
             interval: 8000
-            onTriggered: parent.shown = false
+            onTriggered: toast.shown = false
         }
     }
 }
