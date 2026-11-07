@@ -11,7 +11,6 @@ c4719a5d,TESTED,StudioFilesTest::imageAndVectorImports,FileController::importIma
 c7a6d63e,ABSENT,,,
 dfb2d55c,ABSENT,,,
 08ee1b58,TESTED,StudioFilesTest::machineExportImportRoundTrip,FileController::exportMachine,FilePanel.qml exportDialog
-775bc85b,FUNCTIONAL_UNTESTED,StudioFilesTest::exportOptionsAreOneUndoStepAndRefusedWhenInvalid,FileController::exportMachine/setExportOptions,FilePanel.qml exportDialog
 a9055127,TESTED,StudioFilesTest::exportsAreDeterministicAndRepeatable,FileController::exportAgain,FilePanel.qml exportAgainEntry F10
 31b462db,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportDxf,FilePanel.qml menu Exporter
 09cc3851,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportImage,FilePanel.qml menu Exporter
@@ -29,15 +28,4 @@ d06da014,ABSENT,,,
 6374ea03,TESTED,StudioFilesTest::hoopMachineAndUserHoops,FileController::applyHoop/applyCustomHoop,FilePanel.qml hoopDialog
 3bda7e57,FUNCTIONAL_UNTESTED,,FileController::revealFolder,FilePanel.qml menu Projet
 5c1da94d,ABSENT,,,
-19e2c522,ABSENT,,,
-ab829014,FUNCTIONAL_UNTESTED,StudioFilesTest::exportOptionsAreOneUndoStepAndRefusedWhenInvalid,FileController::setExportOptions,FilePanel.qml exportDialog
-11df031b,FUNCTIONAL_UNTESTED,,FileController::setExportOptions(autoJoin),FilePanel.qml exportDialog
-41c3b1d2,ABSENT,,,
-81b23d37,ABSENT,,,
-ba15f6b4,ABSENT,,,
-6157f7db,ABSENT,,,
-f28889ba,ABSENT,,,
-7dadce88,ABSENT,,,
 c37dbd3d,ABSENT,,,
-129c1178,ABSENT,,,
-692834e4,ABSENT,,,

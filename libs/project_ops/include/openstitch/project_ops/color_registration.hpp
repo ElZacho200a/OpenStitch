@@ -53,5 +53,11 @@ struct ColorRegistrationReport {
 [[nodiscard]] Result<ColorRegistrationReport>
 predict_color_registration(const document::Project& project,
                            const ColorRegistrationOptions& options = {});
+// Même solveur pour une séquence effective déjà préparée (options de trajets à l'export).
+// Évite de rejouer les retouches/finitions ou la compensation de tirage une seconde fois.
+[[nodiscard]] Result<ColorRegistrationReport>
+predict_color_registration_sequence(const document::Project& project,
+                                    const stitch::StitchSequence& sequence,
+                                    const ColorRegistrationOptions& options = {});
 
 } // namespace openstitch::project_ops

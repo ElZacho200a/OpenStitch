@@ -22,6 +22,7 @@
 namespace openstitch::desktop_v2::studio {
 
 class ActionController;
+class ExportController;
 
 // Famille A « Fichiers, imports, exports » : adaptateur Qt au-dessus des services de
 // `desktop_v2/core` (file_io, export_settings, production_sheet, hoop_store, workspace_state,
@@ -45,6 +46,9 @@ class FileController : public QObject {
     Q_PROPERTY(QVariantList machines READ machines CONSTANT)
     Q_PROPERTY(QVariantList userHoops READ userHoops NOTIFY userHoopsChanged)
 public:
+    // CX06 : délégation facultative, conservant les consommateurs historiques/tests sans contexte.
+    void setExportDelegate(ExportController* controller) { exportDelegate_ = controller; }
+    void recordMachineExport(const QUrl& url);
     // `stateDir` : dossier des préférences hors document (récents, sauvegarde automatique, cadres
     // personnels). Vide : rien n'est persisté (tests, mode sans état).
     FileController(StudioController& studio, ActionController* actions,
@@ -137,6 +141,7 @@ signals:
     void imageImportRequested(const QString& path);
 
 private:
+    ExportController* exportDelegate_{nullptr};
     void setMessage(const QString& text, bool error = false);
     void setBusy(bool busy, const QString& label = {});
     // Exécute `action` tout de suite (document propre) ou après la réponse de la boîte.

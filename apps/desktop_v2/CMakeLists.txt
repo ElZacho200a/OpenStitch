@@ -47,6 +47,7 @@ add_library(openstitch_desktop_v2_core STATIC
     core/satin_column.cpp
     core/pull_calibration.cpp
     core/export_settings.cpp
+    core/advanced_export.cpp
     core/hoop_store.cpp
     core/thread_palette_service.cpp
     core/preferences.cpp

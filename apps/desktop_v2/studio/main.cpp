@@ -19,6 +19,7 @@
 #include "companion_controller.hpp"
 #include "digitize_gestures.hpp"
 #include "edit_controller.hpp"
+#include "export_controller.hpp"
 #include "fade_controller.hpp"
 #include "file_controller.hpp"
 #include "gpu_canvas.hpp"
@@ -71,6 +72,7 @@ int main(int argc, char** argv) {
     EditController editor(controller);
     FileController files(controller, &actions,
                          QStandardPaths::writableLocation(QStandardPaths::AppDataLocation));
+    ExportController machineExport(controller, files);
     InspectorController inspector(controller);
     ToolController tools(controller);
     VectorController vectors(controller);
@@ -105,6 +107,7 @@ int main(int argc, char** argv) {
     engine.rootContext()->setContextProperty(QStringLiteral("studio"), &controller);
     engine.rootContext()->setContextProperty(QStringLiteral("actions"), &actions);
     engine.rootContext()->setContextProperty(QStringLiteral("files"), &files);
+    engine.rootContext()->setContextProperty(QStringLiteral("machineExport"), &machineExport);
     engine.rootContext()->setContextProperty(QStringLiteral("inspector"), &inspector);
     engine.rootContext()->setContextProperty(QStringLiteral("tools"), &tools);
     engine.rootContext()->setContextProperty(QStringLiteral("vectors"), &vectors);

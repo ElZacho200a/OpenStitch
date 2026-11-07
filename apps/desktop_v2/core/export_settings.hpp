@@ -93,5 +93,9 @@ struct ExportCheck {
 // `format` : identifiant de format (« dst », « pes »…) ou vide. Lecture seule, séquence EFFECTIVE.
 [[nodiscard]] ExportCheck checkExport(const document::Project& project,
                                       const std::string& format = {});
+// Même contrôle sur la séquence réellement destinée au fichier (optimisation/compensation).
+[[nodiscard]] ExportCheck checkExportSequence(const document::Project& project,
+                                              const stitch::StitchSequence& sequence,
+                                              const std::string& format = {});
 
 } // namespace openstitch::desktop_v2

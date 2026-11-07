@@ -26,7 +26,7 @@ Item {
     function openUrl(url) { if (ctl) ctl.openUrl(url); else studio.openProject(url) }
     function requestQuit() { return ctl ? ctl.requestQuit() : true }
     function openMenu() { menu.open() }
-    function openExportDialog() { if (ctl) { exportValues = ctl.exportOptions(); exportDialog.open() } }
+    function openExportDialog() { if (typeof machineExport !== "undefined") machineExport.openDialog(); else if (ctl) { exportValues = ctl.exportOptions(); exportDialog.open() } }
     function openHoopDialog() { if (ctl) hoopDialog.open() }
     function importImageDialog() { imageDialog.open() }
     function importVectorDialog() { vectorDialog.open() }

@@ -40,6 +40,16 @@ std::string fixed(double v, int digits = 2) {
 Result<ColorRegistrationReport>
 predict_color_registration(const document::Project& project,
                            const ColorRegistrationOptions& options) {
+    auto sequence = stitch_generation::effective_sequence(project);
+    if (!sequence)
+        return std::unexpected(sequence.error());
+    return predict_color_registration_sequence(project, *sequence, options);
+}
+
+Result<ColorRegistrationReport>
+predict_color_registration_sequence(const document::Project& project,
+                                    const stitch::StitchSequence& sequence,
+                                    const ColorRegistrationOptions& options) {
     if (!std::isfinite(options.cell_mm) || options.cell_mm < 0.2 || options.cell_mm > 10.0 ||
         options.max_cells_per_side < 8 || options.max_cells_per_side > 256 ||
         !std::isfinite(options.margin_mm) || options.margin_mm < 0.0 || options.margin_mm > 200.0 ||
@@ -59,11 +69,6 @@ predict_color_registration(const document::Project& project,
                                      "repérage des couleurs : aucun objet visible a analyser",
                                      {}});
     }
-    auto sequence = stitch_generation::effective_sequence(project);
-    if (!sequence) {
-        return std::unexpected(sequence.error());
-    }
-
     const std::string material =
         options.material.empty() ? project.fabric.material : options.material;
     const std::string stabilizer =
@@ -89,7 +94,7 @@ predict_color_registration(const document::Project& project,
         domain = {{{-hw}, {-hh}}, {{hw}, {hh}}};
     } else {
         domain = stitch_analysis::domain_around_stitches(
-            *sequence, to_micrometers(Millimeters{options.margin_mm}));
+            sequence, to_micrometers(Millimeters{options.margin_mm}));
     }
     const Micrometers cell = to_micrometers(Millimeters{options.cell_mm});
     if (domain.max.x.value <= domain.min.x.value || domain.max.y.value <= domain.min.y.value) {
@@ -99,7 +104,7 @@ predict_color_registration(const document::Project& project,
     }
 
     ColorRegistrationReport report;
-    report.registration = stitch_analysis::measure_registration(*sequence, sheet, reg, domain, cell,
+    report.registration = stitch_analysis::measure_registration(sequence, sheet, reg, domain, cell,
                                                                 options.max_cells_per_side);
     const stitch_analysis::SheetRegistration& r = report.registration;
     if (r.empty()) {
@@ -109,7 +114,7 @@ predict_color_registration(const document::Project& project,
     }
     stitch_analysis::RegistrationCompensation comp;
     if (options.compensate) {
-        comp = stitch_analysis::compensate_registration(*sequence, sheet, reg, domain, cell,
+        comp = stitch_analysis::compensate_registration(sequence, sheet, reg, domain, cell,
                                                         options.strength, options.iterations,
                                                         options.max_cells_per_side);
         report.compensated = comp.sequence;

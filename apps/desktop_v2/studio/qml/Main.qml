@@ -77,6 +77,7 @@ Window {
     }
 
     FilePanel { id: filePanel }
+    ExportDialog { controller: typeof machineExport !== "undefined" ? machineExport : null; fileController: typeof files !== "undefined" ? files : null }
     onClosing: function (close) {
         if (!filePanel.requestQuit())
             close.accepted = false

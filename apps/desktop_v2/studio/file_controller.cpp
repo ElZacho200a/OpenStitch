@@ -16,6 +16,7 @@
 
 #include "action_controller.hpp"
 #include "digitize_pipeline.hpp"
+#include "export_controller.hpp"
 #include "export_settings.hpp"
 #include "file_io.hpp"
 #include "openstitch/formats/svg.hpp"
@@ -725,6 +726,10 @@ QString FileController::exportCheck(const QString& formatExtension) const {
 }
 
 void FileController::exportMachine(const QUrl& url, const QVariantMap& options) {
+    if (exportDelegate_) {
+        exportDelegate_->exportMachine(url, options);
+        return;
+    }
     auto path = pathOf(url);
     if (path.empty()) {
         setMessage(QStringLiteral("Choisissez un fichier local."), true);
@@ -777,12 +782,15 @@ void FileController::runMachineExport(const std::filesystem::path& path) {
     runJob<MachineOutcome>(
         QStringLiteral("Export %1").arg(name),
         [snapshot, path, extension](const TaskContext& task) -> Result<MachineOutcome> {
+            const auto check = checkExport(*snapshot, extension);
+            if (!check.ok || !check.fitsHoop || !check.fitsMachineField || !check.formatAccepted) {
+                return fail(ErrorCategory::OperationImpossible, check.summary());
+            }
             auto stats = export_project_file(snapshot, path, task);
             if (!stats) {
                 return std::unexpected(stats.error());
             }
             MachineOutcome out{*stats, {}};
-            const auto check = checkExport(*snapshot, extension);
             if (check.ok && (!check.fitsHoop || !check.fitsMachineField || !check.formatAccepted)) {
                 out.warning = check.summary();
             }
@@ -802,6 +810,10 @@ void FileController::runMachineExport(const std::filesystem::path& path) {
 }
 
 void FileController::exportAgain() {
+    if (exportDelegate_) {
+        exportDelegate_->exportAgain();
+        return;
+    }
     if (lastExport_.empty()) {
         setMessage(QStringLiteral("Aucun export précédent : utilisez « Exporter pour la "
                                   "machine »."),
@@ -809,6 +821,11 @@ void FileController::exportAgain() {
         return;
     }
     runMachineExport(lastExport_);
+}
+
+void FileController::recordMachineExport(const QUrl& url) {
+    lastExport_ = std::filesystem::path(url.toLocalFile().toStdWString());
+    emit exportChanged();
 }
 
 void FileController::exportThreadList(const QUrl& url) {

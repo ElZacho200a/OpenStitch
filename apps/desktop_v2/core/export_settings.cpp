@@ -298,9 +298,15 @@ ExportCheck checkExport(const document::Project& project, const std::string& for
         out.message = seq.error().message;
         return out;
     }
+    return checkExportSequence(project, *seq, format);
+}
+
+ExportCheck checkExportSequence(const document::Project& project,
+                                const stitch::StitchSequence& sequence, const std::string& format) {
+    ExportCheck out;
     bool first = true;
     std::int32_t x0 = 0, x1 = 0, y0 = 0, y1 = 0;
-    for (const auto& c : seq->commands) {
+    for (const auto& c : sequence.commands) {
         if (c.type != stitch::CommandType::Stitch) {
             continue;
         }
