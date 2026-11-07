@@ -1,0 +1,11 @@
+id,statut,preuve,controleur,composant
+3baea5a4,TESTED,StudioSpacePointsTest::noFloatingToolbarsAndOneSidePanel (analysisPanelButton),AnalysisController,PointsPanelBar.qml analysisPanelButton + ViewPanel.qml
+841be1a4,TESTED,StudioSpacePointsTest::noFloatingToolbarsAndOneSidePanel (viewPanelButton),ViewController,PointsPanelBar.qml viewPanelButton + ViewPanel.qml viewSettings
+a0dd4113,FUNCTIONAL_UNTESTED,,ThreadController,PointsPanelBar.qml threadsPanelButton + ThreadPanel.qml
+86fa735c,TESTED,StudioSpacePointsTest::everyPointTypeIsInTheSelector,InspectorController::types / setStitchType,PointsSpace.qml inspecteur contextuel + Inspector.qml typeBox
+cf819ee7,FUNCTIONAL_UNTESTED,,ToolController (fill.break-line),PointsToolRail.qml tool_fill.break-line
+b1c7b9f7,FUNCTIONAL_UNTESTED,,ToolController (eyedropper),PointsToolRail.qml tool_eyedropper
+26b7b101,FUNCTIONAL_UNTESTED,,ToolController (measure),PointsToolRail.qml tool_measure
+336b6213,FUNCTIONAL_UNTESTED,,ToolController (click-to-stitch),PointsToolRail.qml tool_click-to-stitch
+7937b507,FUNCTIONAL_UNTESTED,,ToolController (select),PointsToolRail.qml selectToolButton
+d29364dd,FUNCTIONAL_UNTESTED,,GpuCanvas::panMode,PointsToolRail.qml panToolButton

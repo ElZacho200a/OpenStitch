@@ -37,6 +37,7 @@ add_library(openstitch_studio_ui STATIC
     applique_controller.cpp applique_controller.hpp
     image_space_controller.cpp image_space_controller.hpp
     layers/source_image_layer.cpp layers/source_image_layer.hpp
+    points_space_controller.cpp points_space_controller.hpp
     segmentation_space_controller.cpp segmentation_space_controller.hpp
     layers/region_layer.cpp layers/region_layer.hpp)
 add_library(openstitch::studio_ui ALIAS openstitch_studio_ui)
@@ -66,6 +67,9 @@ list(APPEND studio_qml_files qml/spaces/vector/VectorShapePanel.qml)
 list(APPEND studio_qml_files qml/spaces/image/ImageOpStack.qml qml/spaces/image/CompareCurtain.qml
     qml/spaces/image/CropOverlay.qml)
 list(APPEND studio_qml_files qml/spaces/segmentation/SegmentationPanels.qml qml/spaces/segmentation/RegionLayerControls.qml)
+list(APPEND studio_qml_files
+    qml/spaces/points/PointsToolRail.qml qml/spaces/points/PointsPanelBar.qml
+    qml/spaces/points/PointsOptionsBar.qml qml/spaces/points/PointsObjectsPanel.qml)
 
 add_executable(openstitch_v2_studio WIN32 main.cpp)
 target_link_libraries(openstitch_v2_studio PRIVATE openstitch::studio_ui openstitch::warnings)
