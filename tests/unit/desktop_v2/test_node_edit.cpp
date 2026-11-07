@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <cmath>
@@ -437,4 +438,158 @@ TEST_CASE("a satin rail handle can be dragged too, and an out-of-range handle is
     CHECK_FALSE(after->tangents.empty());
     CHECK_FALSE(moveTangent(s, made.objectId, NodeRef{0, 0, 1}, true, {5000.0, 0.0}).ok);
     CHECK(s.undoNames().size() == depth + 1);
+}
+
+namespace {
+const document::VectorObject* sourceVector(const DocumentSession& s, std::uint64_t embroideryId) {
+    const auto* emb = s.project().findEmbroidery(ObjectId{embroideryId});
+    return emb != nullptr ? s.project().findObject(emb->source_vector) : nullptr;
+}
+} // namespace
+
+TEST_CASE("a corner node becomes smooth with handles, then a corner again, in one undo step each",
+          "[desktop_v2][nodes][kind]") {
+    Fixture f;
+    const auto view = nodeView(f.session.project(), f.id);
+    REQUIRE(view.has_value());
+    const auto* corner = topRight(*view);
+    REQUIRE(corner != nullptr);
+    CHECK_FALSE(corner->smooth);
+    CHECK_FALSE(corner->curved);
+    const auto before = sourceVector(f.session, f.id)->paths;
+    const auto depth = f.session.undoNames().size();
+
+    REQUIRE(setNodeKind(f.session, f.id, {corner->ref}, NodeKind::Smooth).ok);
+    CHECK(f.session.undoNames().size() == depth + 1);
+    const auto smooth = nodeView(f.session.project(), f.id);
+    REQUIRE(smooth.has_value());
+    const auto* now = topRight(*smooth);
+    REQUIRE(now != nullptr);
+    CHECK(now->smooth);
+    CHECK(now->curved); // les poignées ont été créées : le changement se voit
+    CHECK(now->pos.x == Catch::Approx(corner->pos.x)); // le nœud n'a pas bougé
+    CHECK(now->pos.y == Catch::Approx(corner->pos.y));
+
+    // Déjà lisse : refusé sans trace.
+    CHECK_FALSE(setNodeKind(f.session, f.id, {corner->ref}, NodeKind::Smooth).ok);
+    CHECK(f.session.undoNames().size() == depth + 1);
+
+    // Retour à « anguleux » : le type change, les poignées restent (on peut les tirer seules).
+    REQUIRE(setNodeKind(f.session, f.id, {corner->ref}, NodeKind::Corner).ok);
+    CHECK(f.session.undoNames().size() == depth + 2);
+    const auto back = nodeView(f.session.project(), f.id);
+    CHECK_FALSE(topRight(*back)->smooth);
+    CHECK(topRight(*back)->curved);
+    CHECK_FALSE(setNodeKind(f.session, f.id, {corner->ref}, NodeKind::Corner).ok);
+
+    REQUIRE(f.session.undo());
+    REQUIRE(f.session.undo());
+    CHECK(sourceVector(f.session, f.id)->paths == before); // annulation exacte
+}
+
+TEST_CASE("every node of a rectangle can be smoothed at once without crossing itself",
+          "[desktop_v2][nodes][kind]") {
+    Fixture f;
+    const auto view = nodeView(f.session.project(), f.id);
+    REQUIRE(view.has_value());
+    std::vector<NodeRef> all;
+    for (const auto& n : view->nodes) {
+        all.push_back(n.ref);
+    }
+    const auto depth = f.session.undoNames().size();
+    REQUIRE(setNodeKind(f.session, f.id, all, NodeKind::Smooth).ok);
+    CHECK(f.session.undoNames().size() == depth + 1); // un seul pas pour les quatre nœuds
+    const auto after = nodeView(f.session.project(), f.id);
+    for (const auto& n : after->nodes) {
+        CHECK(n.smooth);
+        CHECK(n.curved);
+    }
+}
+
+TEST_CASE("changing a node type refuses nonsense without stacking anything",
+          "[desktop_v2][nodes][kind]") {
+    Fixture f;
+    const auto depth = f.session.undoNames().size();
+    CHECK_FALSE(setNodeKind(f.session, f.id, {}, NodeKind::Smooth).ok); // aucun nœud
+    CHECK_FALSE(setNodeKind(f.session, f.id, {NodeRef{0, 0, 99}}, NodeKind::Smooth).ok);
+    CHECK_FALSE(setNodeKind(f.session, f.id, {NodeRef{7, 0, 0}}, NodeKind::Corner).ok);
+    CHECK_FALSE(setNodeKind(f.session, 987654, {NodeRef{0, 0, 0}}, NodeKind::Smooth).ok);
+    const auto satin = createSatinColumn(f.session, {{{-10, 0}, {-10, 4}}, {{10, 0}, {10, 4}}});
+    REQUIRE(satin.ok);
+    const auto railDepth = f.session.undoNames().size();
+    CHECK_FALSE(setNodeKind(f.session, satin.objectId, {NodeRef{0, 0, 0}}, NodeKind::Smooth).ok);
+    CHECK(f.session.undoNames().size() == railDepth);
+    CHECK(depth + 1 == railDepth); // seule la création du satin a laissé une trace
+}
+
+namespace {
+// Anneau : grand rectangle moins un petit rectangle intérieur (OU exclusif) = un contour et un
+// trou.
+std::uint64_t makeRing(DocumentSession& s) {
+    REQUIRE(s.applyBatch(batchAddRect({0, 0}, 30, 20), "Grand").committed);
+    REQUIRE(s.applyBatch(batchAddRect({0, 0}, 10, 6), "Petit").committed);
+    std::vector<std::uint64_t> ids;
+    for (const auto& e : s.project().embroidery_objects) {
+        ids.push_back(e.id.value);
+    }
+    REQUIRE(ids.size() >= 2);
+    const std::string merge =
+        R"({"schema":"openstitch.batch/1","operations":[{"op":"merge","objects":[)" +
+        std::to_string(ids[0]) + "," + std::to_string(ids[1]) + R"(],"mode":"exclude"}]})";
+    const auto r = s.applyBatch(merge, "Anneau");
+    INFO((r.report.outcomes.empty() ? std::string("pas de rapport")
+                                    : r.report.outcomes.back().message));
+    REQUIRE(r.committed);
+    for (const auto& e : s.project().embroidery_objects) {
+        if (holeCount(s.project(), e.id.value) > 0) {
+            return e.id.value;
+        }
+    }
+    FAIL("l'anneau n'a pas de trou");
+    return 0;
+}
+} // namespace
+
+TEST_CASE("one chosen hole can be removed in one undo step and the outline stays",
+          "[desktop_v2][nodes][holes]") {
+    DocumentSession s;
+    auto created = project_ops::create_empty_project({});
+    REQUIRE(created.has_value());
+    s.replaceProject(std::move(*created), true);
+    const auto ring = makeRing(s);
+    REQUIRE(holeCount(s.project(), ring) == 1);
+    const auto view = nodeView(s.project(), ring);
+    REQUIRE(view.has_value());
+    const NodeHandle* inHole = nullptr;
+    const NodeHandle* outer = nullptr;
+    for (const auto& n : view->nodes) {
+        (n.ref.path > 0 ? inHole : outer) = &n;
+    }
+    REQUIRE(inHole != nullptr);
+    REQUIRE(outer != nullptr);
+    const auto outerNodes = [&] {
+        std::size_t count = 0;
+        for (const auto& n : nodeView(s.project(), ring)->nodes) {
+            count += n.ref.path == 0 ? 1 : 0;
+        }
+        return count;
+    };
+    const auto outerBefore = outerNodes();
+    const auto depth = s.undoNames().size();
+
+    // Un nœud du contour extérieur ne désigne aucun trou : refus clair.
+    const auto refused = removeHoleOfNode(s, ring, outer->ref);
+    CHECK_FALSE(refused.ok);
+    CHECK(refused.message.find("extérieur") != std::string::npos);
+    CHECK_FALSE(removeHoleOfNode(s, ring, NodeRef{0, 9, 0}).ok);
+    CHECK_FALSE(removeHoleOfNode(s, ring, NodeRef{9, 1, 0}).ok);
+    CHECK(s.undoNames().size() == depth);
+
+    REQUIRE(removeHoleOfNode(s, ring, inHole->ref).ok);
+    CHECK(s.undoNames().size() == depth + 1);
+    CHECK(holeCount(s.project(), ring) == 0);
+    CHECK(outerNodes() == outerBefore); // le contour extérieur est intact
+    REQUIRE(s.undo());
+    CHECK(holeCount(s.project(), ring) == 1);
+    CHECK(holeCount(s.project(), 987654) == 0);
 }

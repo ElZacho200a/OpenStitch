@@ -610,6 +610,174 @@ ServiceResult deleteNodes(DocumentSession& session, std::uint64_t objectId,
     return {true, {}};
 }
 
+namespace {
+// Tangente (relative au nœud) rendue symétrique de `other` : même longueur, sens opposé.
+Vec2um opposite(Vec2um other) {
+    return {Micrometers{-other.x.value}, Micrometers{-other.y.value}};
+}
+
+// Poignées d'un nœud rendu lisse. `prev` et `next` : voisins dans le contour. Renvoie les deux
+// poignées (entrée, sortie) ; une poignée existante est conservée et l'autre lui est opposée.
+std::pair<Vec2um, Vec2um> smoothHandles(const geometry::PathNode& node, Vec2um prev, Vec2um next) {
+    if (node.tan_out && node.tan_in) {
+        // Les deux existent : on aligne l'entrée sur la sortie en gardant la longueur de l'entrée.
+        const double lenOut = length_um(*node.tan_out);
+        const double lenIn = length_um(*node.tan_in);
+        if (lenOut < 1.0) {
+            return {*node.tan_in, opposite(*node.tan_in)};
+        }
+        const double k = lenIn / lenOut;
+        return {
+            Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(-node.tan_out->x.value * k))},
+                   Micrometers{static_cast<std::int32_t>(std::lround(-node.tan_out->y.value * k))}},
+            *node.tan_out};
+    }
+    if (node.tan_out) {
+        return {opposite(*node.tan_out), *node.tan_out};
+    }
+    if (node.tan_in) {
+        return {*node.tan_in, opposite(*node.tan_in)};
+    }
+    // Aucune poignée : tangente de Catmull-Rom, un sixième de la corde entre les voisins.
+    const Vec2um out{Micrometers{(next.x.value - prev.x.value) / 6},
+                     Micrometers{(next.y.value - prev.y.value) / 6}};
+    return {opposite(out), out};
+}
+} // namespace
+
+ServiceResult setNodeKind(DocumentSession& session, std::uint64_t objectId,
+                          const std::vector<NodeRef>& nodes, NodeKind kind) {
+    if (satinOf(session.project(), objectId) != nullptr) {
+        return {false, "Le type des nœuds d'un rail de satin ne se change pas ici."};
+    }
+    const auto* vector = sourceOf(session.project(), objectId);
+    if (vector == nullptr) {
+        return {false, "Cet objet n'a pas de contour éditable."};
+    }
+    if (nodes.empty()) {
+        return {false, "Sélectionnez d'abord les nœuds à modifier."};
+    }
+    auto unique = nodes;
+    std::sort(unique.begin(), unique.end(), [](const NodeRef& a, const NodeRef& b) {
+        return std::tie(a.set, a.path, a.node) < std::tie(b.set, b.path, b.node);
+    });
+    unique.erase(std::unique(unique.begin(), unique.end()), unique.end());
+
+    const auto target =
+        kind == NodeKind::Smooth ? geometry::NodeType::Smooth : geometry::NodeType::Corner;
+    std::vector<geometry::PathSet> sets = vector->paths; // simulation sur une copie
+    auto composite = std::make_unique<commands::CompositeCommand>(
+        kind == NodeKind::Smooth
+            ? (unique.size() == 1 ? "Rendre un nœud lisse" : "Rendre des nœuds lisses")
+            : (unique.size() == 1 ? "Rendre un nœud anguleux" : "Rendre des nœuds anguleux"));
+    bool skippedEnd = false;
+    for (const auto& n : unique) {
+        if (n.set >= sets.size()) {
+            return {false, "Nœud inconnu."};
+        }
+        auto& set = sets[n.set];
+        auto* path = n.path == 0
+                         ? &set.outer
+                         : (n.path - 1 < set.holes.size() ? &set.holes[n.path - 1] : nullptr);
+        if (path == nullptr || n.node >= path->nodes.size()) {
+            return {false, "Nœud inconnu."};
+        }
+        auto& node = path->nodes[n.node];
+        const document::NodeRef ref{n.set, n.path, n.node};
+        if (kind == NodeKind::Corner) {
+            if (node.type == target) {
+                continue;
+            }
+            node.type = target;
+            composite->add(std::make_unique<commands::SetNodeTypeCommand>(vector->id, ref, target));
+            continue;
+        }
+        const std::size_t count = path->nodes.size();
+        const bool endpoint = !path->closed && (n.node == 0 || n.node + 1 == count);
+        if (endpoint) {
+            skippedEnd = true; // une extrémité n'a qu'un voisin : rien à lisser
+            continue;
+        }
+        const Vec2um prev = path->nodes[(n.node + count - 1) % count].pos;
+        const Vec2um next = path->nodes[(n.node + 1) % count].pos;
+        const auto [tIn, tOut] = smoothHandles(node, prev, next);
+        const bool same = node.type == target && node.tan_in && node.tan_out &&
+                          *node.tan_in == tIn && *node.tan_out == tOut;
+        if (same) {
+            continue;
+        }
+        if (!node.tan_in || *node.tan_in != tIn) {
+            composite->add(std::make_unique<commands::SetNodeHandleCommand>(vector->id, ref, false,
+                                                                            node.tan_in, tIn));
+        }
+        if (!node.tan_out || *node.tan_out != tOut) {
+            composite->add(std::make_unique<commands::SetNodeHandleCommand>(vector->id, ref, true,
+                                                                            node.tan_out, tOut));
+        }
+        if (node.type != target) {
+            composite->add(std::make_unique<commands::SetNodeTypeCommand>(vector->id, ref, target));
+        }
+        node.tan_in = tIn;
+        node.tan_out = tOut;
+        node.type = target;
+    }
+    if (composite->empty()) {
+        if (skippedEnd) {
+            return {false,
+                    "Une extrémité de tracé ouvert n'a qu'un voisin : elle ne se lisse pas."};
+        }
+        return {false, kind == NodeKind::Smooth ? "Ces nœuds sont déjà lisses."
+                                                : "Ces nœuds sont déjà anguleux."};
+    }
+    for (std::size_t s = 0; s < sets.size(); ++s) {
+        if (geometry::path_set_has_crossings(sets[s], kCrossingTolerance) &&
+            !geometry::path_set_has_crossings(vector->paths[s], kCrossingTolerance)) {
+            return {false, "Ce changement ferait croiser le contour."};
+        }
+    }
+    session.execute(std::move(composite));
+    return {true, {}};
+}
+
+std::size_t holeCount(const document::Project& project, std::uint64_t objectId) {
+    const auto* vector = sourceOf(project, objectId);
+    if (vector == nullptr) {
+        return 0;
+    }
+    std::size_t count = 0;
+    for (const auto& set : vector->paths) {
+        count += set.holes.size();
+    }
+    return count;
+}
+
+ServiceResult removeHoleOfNode(DocumentSession& session, std::uint64_t objectId,
+                               const NodeRef& node) {
+    if (satinOf(session.project(), objectId) != nullptr) {
+        return {false, "Une colonne satin n'a pas de trou."};
+    }
+    const auto* vector = sourceOf(session.project(), objectId);
+    if (vector == nullptr) {
+        return {false, "Cet objet n'a pas de contour éditable."};
+    }
+    if (node.set >= vector->paths.size()) {
+        return {false, "Nœud inconnu."};
+    }
+    if (node.path == 0) {
+        return {false, "Ce nœud appartient au contour extérieur, pas à un trou : choisissez un "
+                       "nœud du trou à supprimer."};
+    }
+    if (node.path - 1 >= vector->paths[node.set].holes.size()) {
+        return {false, "Nœud inconnu."};
+    }
+    std::vector<geometry::PathSet> sets = vector->paths;
+    auto& holes = sets[node.set].holes;
+    holes.erase(holes.begin() + static_cast<std::ptrdiff_t>(node.path - 1));
+    session.execute(std::make_unique<commands::SetVectorPathsCommand>(vector->id, std::move(sets),
+                                                                      "Supprimer un trou"));
+    return {true, {}};
+}
+
 ServiceResult reshapeSegment(DocumentSession& session, std::uint64_t objectId,
                              const SegmentHit& hit, PointMm deltaMm) {
     const auto* vector = sourceOf(session.project(), objectId);

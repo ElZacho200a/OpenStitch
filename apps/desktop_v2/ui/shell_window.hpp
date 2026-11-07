@@ -21,6 +21,7 @@
 #include "arrange_batch.hpp"
 #include "command_catalog.hpp"
 #include "companion_shared.hpp"
+#include "context_commands.hpp"
 #include "density_service.hpp"
 #include "diagnostics_service.hpp"
 #include "digitize_pipeline.hpp"
@@ -89,6 +90,8 @@ class AnalysisOverlays;
 class LiveServer;
 class ChatPanel;
 class FeedbackCue;
+class FloatingActionBar;
+class SpoolRailWidget;
 
 class ShellWindow : public QMainWindow {
     Q_OBJECT
@@ -305,6 +308,7 @@ public:
 
 protected:
     void closeEvent(QCloseEvent* event) override;
+    bool eventFilter(QObject* watched, QEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override; // Échap : désélectionne les régions
 
 private:
@@ -381,6 +385,8 @@ private:
     QLabel* summary_{nullptr};
     QLabel* notice_{nullptr};
     FeedbackCue* feedbackCue_{nullptr};
+    FloatingActionBar* floatingBar_{nullptr};
+    SpoolRailWidget* spoolRail_{nullptr};
     QAction* reducedMotionAction_{nullptr};
     RenderSettings render_;
     class RenderQualityDialog* renderDialog_{nullptr};
@@ -443,6 +449,9 @@ private:
     int analysisErrors_{0};
     void buildCentral();
     void updateGuide();
+    void refreshFloatingBar();
+    void showRadialMenu();
+    [[nodiscard]] std::vector<CommandEntry> contextEntries() const;
     ThreadPanel* threads_{nullptr};
     CompanionPanel* companionPanel_{nullptr};
     ChatPanel* chatPanel_{nullptr};

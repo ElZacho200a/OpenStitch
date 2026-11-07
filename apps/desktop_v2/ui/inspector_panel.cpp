@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "inspector_panel.hpp"
+#include "scrub_filter.hpp"
 
 #include <QCheckBox>
 #include <QColorDialog>
@@ -332,6 +333,18 @@ void InspectorPanel::rebuildParams(const InspectorState& state) {
             editor->setObjectName(QStringLiteral("param_") + key);
             editor->setAccessibleName(label);
             paramsForm_->addRow(label, editor);
+            if (auto* labelWidget = paramsForm_->labelForField(editor)) {
+                if (auto* ispin = qobject_cast<QSpinBox*>(editor)) {
+                    new ScrubFilter(labelWidget,
+                                    {[ispin] { return static_cast<double>(ispin->value()); },
+                                     [ispin](double v) { ispin->setValue(static_cast<int>(v)); },
+                                     1.0, spec.min, spec.max});
+                } else if (auto* dspin = qobject_cast<QDoubleSpinBox*>(editor)) {
+                    new ScrubFilter(labelWidget, {[dspin] { return dspin->value(); },
+                                                  [dspin](double v) { dspin->setValue(v); },
+                                                  spec.step, spec.min, spec.max});
+                }
+            }
             paramKeys_ << key;
             paramLabels_ << label;
             paramAdvanced_.push_back(paramLevel(spec) == ParamLevel::Advanced);

@@ -542,3 +542,38 @@ encore le desktop principal.
   géométrie et les commandes restent testables sans Qt/GPU. Le shell de visualisation ne prétend
   pas encore à la parité d'édition, enregistrement, exports ou compagnon. Les fichiers/branches des
   PR ouvertes sont conservés et les nouveaux documents utilisent 17/18 pour éviter leur chevauchement.
+
+## 2026-11-06 — Session 4 : parité moteur, édition vectorielle (type de nœud, trous, texte)
+
+- Demande : « tout ce que le moteur peut faire doit se retrouver dans le desktop ». Instrument : `scripts/engine_parity.py` + `15-parite-moteur.md` (51 opérations dont 12 non référencées par nom ; 86 commandes dont 29 utilisées par la V1 seulement). **Recherche de noms : elle surestime et sous-estime** ; seule une qualification à la main fait foi.
+- Branche repartie de `main` (PR #277 fusionnée par squash, contenu identique).
+- Livré : type de nœud (anguleux / lisse, poignées créées au besoin, refus si le contour se croise ou sur un rail de satin), suppression d'un trou précis, suppression d'un texte entier. Commandes `node.smooth`, `node.corner`, `node.hole.remove`, `text.remove`.
+- Choix : « lisse » sur un nœud sans poignée crée une tangente de Catmull-Rom (un sixième de la corde entre les voisins) ; avec une poignée, l'autre lui est opposée. Les extrémités d'un tracé ouvert ne se lissent pas (un seul voisin).
+- Non fait : rails de satin (le moteur a `SetSatinRailNodeTypeCommand`), formes prédéfinies, magnétisme des nœuds.
+
+## 2026-11-06 — Session 4 (suite) : maquette d'ergonomie
+
+- Retour d'usage : la V2 paraît moins accessible que la V1 (opérations utiles « dans des menus déroulants »). Constat dans le code : le menu clic droit ne retient que quelques préfixes de commandes, et les commandes ajoutées pendant la finalisation ne sont accessibles que par la palette. Détail et décisions en attente : `16-ergonomie-gestes.md`.
+- Maquette interactive `maquettes/gestes.html` (barre flottante, menu radial, rail de bobines, champs à glisser, loupe), testée dans un navigateur sans erreur de console ; **non implémentée en Qt**.
+
+## 2026-11-06 — Session 5 : reprise de la PR 280, tableau contexte → commandes
+
+- Première compilation du lot de la PR 280 (Windows, MSVC, Qt 6.8.3) : une erreur de compilation trouvée et corrigée dans `test_node_edit.cpp` (macro `INFO` avec un ternaire). `test_desktop_v2_core` : 276 cas passent ; `test_desktop_v2_shell` : 131 cas passent.
+- Livré : `core/context_commands` (tableau unique « surface → commandes », sans Qt) ; le clic droit le lit au lieu de `kPrefixes`. `node.*`, `text.*`, `satin.rung.*`, `satin.diagnose`, `fill.guides.*`, `fill.breaks.*`, `arrange.*`, `point.*`, `optimize.order` y apparaissent désormais (grisés/masqués selon `enabled`).
+- Non fait : barre flottante, menu radial, rail de bobines, champs à glisser, loupe (décisions en attente, voir `16`). Rien n'a été vu à l'écran.
+
+## 2026-11-06 — Session 5 (suite) : barre flottante
+
+- Barre flottante contextuelle (objet, texte, satin, nœuds) lue dans le tableau du cœur ; vue à l'écran avec `openstitch_v2 --demo-shapes --select-objects 1 --screenshot` (plateforme `windows`) : `captures/barre-flottante.png`. Rien d'autre inspecté (thème clair, texte, satin, petit écran non vus).
+
+## 2026-11-06 — Session 5 (suite 2) : rail de bobines
+
+- Rail de bobines (dock du bas) : ordre de couture en rangée, changements de fil comptés, glisser ou Alt+flèches pour réordonner. Un plantage trouvé en route : le rail doit être détruit avant la session (comme les autres panneaux), sinon `unsubscribe` sur une session détruite ; et un rafraîchissement par modification faisait dépasser 300 s à un test existant (icônes recréées) : rafraîchissement regroupé et icônes en cache. Vu à l'écran : `captures/rail-bobines.png` (thème sombre seulement).
+
+## 2026-11-06 — Session 5 (suite 3) : champs à glisser
+
+- Les libellés des réglages numériques de l'inspecteur se glissent horizontalement (Maj grossier, Ctrl fin). Pure fonction testée (`scrubbedValue`) + filtre d'événements ; le champ garde la saisie et le regroupement de l'annulation. Pas de capture : le geste n'est pas visible sur une image fixe ; test QTest avec événements synthétiques.
+
+## 2026-11-06 — Session 5 (suite 4) : menu radial
+
+- Menu radial (F2) : huit secteurs au plus, mêmes commandes que la barre flottante, clavier 1-8 / flèches / Entrée / Échap. Piège de test : un widget `WA_DeleteOnClose` fermé reste trouvable par `findChild` jusqu'à la suppression différée (plantage dans QTest) : le test prend le menu visible. Un premier rendu coupait « Premier plan » (zone de texte trop basse) : corrigé après capture. Option `--command radial.open` ajoutée à la capture. Vu à l'écran : `captures/menu-radial.png` (thème sombre).
