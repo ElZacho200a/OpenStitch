@@ -15,6 +15,7 @@
 #include "edit_controller.hpp"
 #include "file_controller.hpp"
 #include "gpu_canvas.hpp"
+#include "inspector_controller.hpp"
 #include "studio_controller.hpp"
 
 using namespace openstitch::desktop_v2;
@@ -52,11 +53,13 @@ int main(int argc, char** argv) {
     EditController editor(controller);
     FileController files(controller, &actions,
                          QStandardPaths::writableLocation(QStandardPaths::AppDataLocation));
+    InspectorController inspector(controller);
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("editor"), &editor);
     engine.rootContext()->setContextProperty(QStringLiteral("studio"), &controller);
     engine.rootContext()->setContextProperty(QStringLiteral("actions"), &actions);
     engine.rootContext()->setContextProperty(QStringLiteral("files"), &files);
+    engine.rootContext()->setContextProperty(QStringLiteral("inspector"), &inspector);
     engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
     if (engine.rootObjects().isEmpty()) {
         return 2;

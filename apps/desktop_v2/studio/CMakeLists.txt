@@ -11,6 +11,7 @@ add_library(openstitch_studio_ui STATIC
     action_controller.cpp action_controller.hpp
     edit_controller.cpp edit_controller.hpp
     file_controller.cpp file_controller.hpp
+    inspector_controller.cpp inspector_controller.hpp
     gpu_canvas.cpp gpu_canvas.hpp
     canvas_renderer.cpp canvas_renderer.hpp)
 add_library(openstitch::studio_ui ALIAS openstitch_studio_ui)
@@ -22,7 +23,7 @@ set(studio_qml_files
     qml/Main.qml qml/Theme.qml qml/StudioButton.qml qml/StudioIcon.qml
     qml/SectionLabel.qml qml/ActionPalette.qml qml/ObjectTree.qml qml/LayerPanel.qml
     qml/CanvasContextMenu.qml qml/TransformHandles.qml qml/EditBar.qml qml/FilePanel.qml
-    qml/qmldir)
+    qml/Inspector.qml qml/ParamField.qml qml/ParamSection.qml qml/qmldir)
 
 add_executable(openstitch_v2_studio WIN32 main.cpp)
 target_link_libraries(openstitch_v2_studio PRIVATE openstitch::studio_ui openstitch::warnings)

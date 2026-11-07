@@ -763,6 +763,11 @@ Window {
                         }
                     }
 
+                    Inspector {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: active ? Math.min(implicitHeight + 24, window.height * 0.5) : 0
+                    }
+
                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
 
                     EditBar {

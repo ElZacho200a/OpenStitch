@@ -92,24 +92,21 @@ if(TARGET openstitch::studio_ui)
         target_link_libraries(test_desktop_v2_studio_shell
             PRIVATE openstitch::studio_ui Qt6::Test openstitch::warnings)
         set(studio_test_qml_root "${PROJECT_SOURCE_DIR}/apps/desktop_v2/studio")
+# Main.qml instantiates every panel: each Studio test executable embeds all of them.
+file(GLOB studio_all_qml CONFIGURE_DEPENDS "${studio_test_qml_root}/qml/*.qml")
         qt_add_resources(test_desktop_v2_studio_shell studio_test_qml PREFIX "/studio"
-            BASE "${studio_test_qml_root}" FILES
-                "${studio_test_qml_root}/qml/Main.qml"
-                "${studio_test_qml_root}/qml/Theme.qml"
-                "${studio_test_qml_root}/qml/StudioButton.qml"
-                "${studio_test_qml_root}/qml/StudioIcon.qml"
-                "${studio_test_qml_root}/qml/SectionLabel.qml"
-"${studio_test_qml_root}/qml/ActionPalette.qml"
-                "${studio_test_qml_root}/qml/ObjectTree.qml"
-                "${studio_test_qml_root}/qml/LayerPanel.qml"
-                "${studio_test_qml_root}/qml/CanvasContextMenu.qml"
-                "${studio_test_qml_root}/qml/TransformHandles.qml"
-                "${studio_test_qml_root}/qml/EditBar.qml"
-                "${studio_test_qml_root}/qml/FilePanel.qml"
+            BASE "${studio_test_qml_root}" FILES ${studio_all_qml}
                 "${studio_test_qml_root}/qml/qmldir")
+        add_executable(test_desktop_v2_studio_inspector test_studio_inspector.cpp)
+        target_link_libraries(test_desktop_v2_studio_inspector
+            PRIVATE openstitch::studio_ui Qt6::Test openstitch::warnings)
+        qt_add_resources(test_desktop_v2_studio_inspector studio_inspector_qml PREFIX "/studio"
+            BASE "${studio_test_qml_root}" FILES ${studio_all_qml}
+                "${studio_test_qml_root}/qml/qmldir")
+        add_test(NAME test_desktop_v2_studio_inspector COMMAND test_desktop_v2_studio_inspector -o -,txt)
         add_test(NAME test_desktop_v2_studio_shell COMMAND test_desktop_v2_studio_shell -o -,txt)
         get_filename_component(studio_test_qml_imports "${Qt6_DIR}/../../../qml" ABSOLUTE)
-        set_tests_properties(test_desktop_v2_studio_shell PROPERTIES
+        set_tests_properties(test_desktop_v2_studio_shell test_desktop_v2_studio_inspector PROPERTIES
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_test_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
             ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
         # Famille « sélection / transformations / calques » : même shell QML, parcours de l'éditeur.
@@ -122,7 +119,7 @@ if(TARGET openstitch::studio_ui)
             list(APPEND studio_edit_qml_files "${studio_test_qml_root}/qml/${qml}.qml")
         endforeach()
         qt_add_resources(test_desktop_v2_studio_edit studio_edit_qml PREFIX "/studio"
-            BASE "${studio_test_qml_root}" FILES ${studio_edit_qml_files}
+            BASE "${studio_test_qml_root}" FILES ${studio_all_qml}
                 "${studio_test_qml_root}/qml/qmldir")
         add_test(NAME test_desktop_v2_studio_edit COMMAND test_desktop_v2_studio_edit -o -,txt)
         set_tests_properties(test_desktop_v2_studio_edit PROPERTIES
@@ -133,19 +130,7 @@ if(TARGET openstitch::studio_ui)
         target_link_libraries(test_desktop_v2_studio_files
             PRIVATE openstitch::studio_ui Qt6::Test openstitch::warnings)
         qt_add_resources(test_desktop_v2_studio_files studio_files_qml PREFIX "/studio"
-            BASE "${studio_test_qml_root}" FILES
-                "${studio_test_qml_root}/qml/Main.qml"
-                "${studio_test_qml_root}/qml/Theme.qml"
-                "${studio_test_qml_root}/qml/StudioButton.qml"
-                "${studio_test_qml_root}/qml/StudioIcon.qml"
-                "${studio_test_qml_root}/qml/SectionLabel.qml"
-                "${studio_test_qml_root}/qml/ActionPalette.qml"
-                "${studio_test_qml_root}/qml/FilePanel.qml"
-                "${studio_test_qml_root}/qml/ObjectTree.qml"
-                "${studio_test_qml_root}/qml/LayerPanel.qml"
-                "${studio_test_qml_root}/qml/CanvasContextMenu.qml"
-                "${studio_test_qml_root}/qml/TransformHandles.qml"
-                "${studio_test_qml_root}/qml/EditBar.qml"
+            BASE "${studio_test_qml_root}" FILES ${studio_all_qml}
                 "${studio_test_qml_root}/qml/qmldir")
         add_test(NAME test_desktop_v2_studio_files COMMAND test_desktop_v2_studio_files -o -,txt)
         set_tests_properties(test_desktop_v2_studio_files PROPERTIES
