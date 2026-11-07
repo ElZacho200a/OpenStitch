@@ -1,0 +1,19 @@
+id,statut,preuve,controleur,composant
+226c1fd7,FUNCTIONAL_UNTESTED,,InspectorController::presets,Inspector.qml noPreset
+fb2fcca7,TESTED,StudioInspectorTest::presetsLifecycle,InspectorController::applyPreset,Inspector.qml applyPreset_N
+5aaa0b5f,TESTED,StudioInspectorTest::presetsLifecycle,InspectorController::savePreset,Inspector.qml savePreset
+b909b547,TESTED,StudioInspectorTest::presetsLifecycle,InspectorController::savePreset/applyPreset/renamePreset,Inspector.qml section PRESETS
+20265051,TESTED,StudioInspectorTest::presetsLifecycle,InspectorController::removePreset,Inspector.qml removePreset_N
+f019d797,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(applique.stops),ParamField.qml switch
+64455486,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(cross_stitch.full_cross),ParamField.qml switch
+82cbed86,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(spiral.clockwise),ParamField.qml switch
+9183cbb5,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(satin.underlay_edge),ParamField.qml switch
+c791d168,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(tatami.underlay_edge),ParamField.qml switch
+15ed49ee,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(tatami.underlay_zigzag),ParamField.qml switch
+d664e9fb,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(directional.underlay_zigzag),ParamField.qml switch
+a9e979c7,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(tatami.underlay_parallel),ParamField.qml switch
+e47033c8,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(tatami.hidden_underpath),ParamField.qml switch
+db72ebd1,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(tatami.edge_outline),ParamField.qml switch
+b319c11f,UI_PARTIAL,,InspectorController::setParam(tatami.stagger entier 1..8),ParamField.qml slider (case booleenne motif_fill absente de param_spec)
+97060113,TESTED,StudioInspectorTest::stitchTypeConversion,InspectorController::setStitchType(contour_fill),Inspector.qml typeBox
+86359fc6,TESTED,StudioInspectorTest::stitchTypeConversion,InspectorController::setStitchType(directional),Inspector.qml typeBox

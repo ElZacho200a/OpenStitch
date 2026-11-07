@@ -44,6 +44,7 @@
 #include "render_settings.hpp"
 #include "satin_column.hpp"
 #include "shape_batch.hpp"
+#include "simulation_nav.hpp"
 #include "snap.hpp"
 #include "source_image_tools.hpp"
 #include "task_manager.hpp"
@@ -111,6 +112,10 @@ public:
     [[nodiscard]] bool snapEnabled() const { return snapEnabled_; }
     [[nodiscard]] ImportDialog* importDialog() const { return importDialog_; }
     void openProject(const std::filesystem::path& osp);
+    // « Enregistrer sous » : demande toujours un chemin (extension .osp) ; le projet courant prend
+    // ce chemin. `exportAgain` : réécrit le dernier fichier machine avec les mêmes réglages.
+    bool saveProjectAs();
+    bool exportAgain();
     // Broderie machine (DST, PES, JEF, EXP… tout ce que le registre sait lire) : nouveau projet,
     // design centré dans le cadre, une seule étape de départ. DXF : tracés ajoutés comme objets
     // vectoriels (annulable) ; export : tous les contours vectoriels.
@@ -214,6 +219,9 @@ public:
     void setSimulationPosition(int position);
     [[nodiscard]] int simulationPosition() const;
     [[nodiscard]] int simulationTotal() const;
+    // Navigation de la simulation : sim.prev-colour | sim.prev-object | sim.prev-point |
+    // sim.next-point | sim.next-object | sim.next-colour | sim.end. Faux sans séquence.
+    bool simulationJump(const QString& id);
     [[nodiscard]] bool simulating() const { return simLimit_.has_value(); }
     // Menu contextuel du canevas : commandes de sélection actives (appartient à la fenêtre).
     [[nodiscard]] QMenu* buildContextMenu();
@@ -333,6 +341,9 @@ private:
     void refreshTaskStatus();
     void chooseAndOpen();
     void chooseAndImportMachine();
+    void chooseAndImportChart();
+    void chooseAndExportThreads();
+    void removeImportedChart();
     void resegmentImage();
     void chooseAndImportDxf();
     void chooseAndExportDxf();
@@ -350,6 +361,8 @@ private:
     void onKnife(QPointF a, QPointF b);
     void updateGrid();
     void refreshSimulationBar();
+    std::optional<SimulationMarks> simMarks_;
+    std::uint64_t simMarksRevision_{0};
     void runDiagnostics();
     void onFindingActivated(const project_ops::Finding& finding);
     [[nodiscard]] PointMm selectionCentreModel() const;
@@ -440,6 +453,7 @@ private:
     Guide guide_;
     std::optional<std::uint64_t> analysedRevision_;
     std::optional<std::uint64_t> exportedRevision_;
+    std::filesystem::path lastExportPath_;
     std::optional<std::uint64_t> machineCheckRevision_; // contrôle machine fait pour cette révision
     int analysisWarnings_{0};
     int machineBlockers_{0};

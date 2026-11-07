@@ -1,0 +1,445 @@
+id,type,libelle_v1,source_v1,statut_v2_widgets,preuve_v2,statut_studio,preuve_studio,controleur,composant
+226c1fd7,action,(aucun préréglage),main_window_stitch_presets.cpp,absent,,FUNCTIONAL_UNTESTED,,InspectorController::presets,Inspector.qml noPreset
+c6534d24,action,(sélectionnez un objet de broderie pour assigner),main_window_eyedropper.cpp,absent,,TESTED,StudioEditTest::contextMenuAndEyedropper,EditController::applyColorFrom,GpuCanvas pipette + EditBar pipetteButton
+9268b9a3,action,100 % (taille réelle),main_window.cpp,fait,view.zoom-actual,SERVICE_ONLY,,,
+c7233a7c,action,Abandonner les retouches,main_window_toolbars.cpp,absent,,TESTED,StudioDigitizeTest::pointEditJourney,PointEditController::discardEdits,PointEditPanel.qml pointDiscard
+b4151a04,action,Accrochage des nœuds au glisser,main_window.cpp,absent,,ABSENT,,,
+fc27db70,action,Accrocher à la grille,main_window_vector_edit.cpp,absent,,TESTED,StudioToolsTest::snappingIsConfigurable,ToolController::snapped (grille),ToolOptions snapGridCheck
+c6b9c9e3,action,Activer,main_window_realistic.cpp,fait,Activer,TESTED,StudioRealisticTest::toggleKeepsDocumentUntouchedAndFallsBackToCpuInSoftware,ViewController::toggleRealistic,Main.qml indicateur d'etat realisticModeStatus
+190ac0bb,action,Afficher la carte des régions,main_window.cpp,fait,region.edit,SERVICE_ONLY,,,
+eeb30959,action,Afficher la grille,main_window_view_display.cpp,partiel,gridMenu,TESTED,StudioViewTest::mainQmlHostsEveryPanel,ViewController::setGridVisible,ViewPanel.qml / GpuCanvas overlay grille
+b4e5b433,action,Afficher les guides,main_window_view_display.cpp,partiel,guide.add-v,FUNCTIONAL_UNTESTED,,ViewController::setGuidesVisible,ViewPanel.qml / GpuCanvas overlay guides
+ea59b0be,action,Afficher uniquement ce type,main_window_order_filter.cpp,fait,view.only-type,SERVICE_ONLY,,,
+302da3e8,action,Afficher uniquement ce type de points,main_window_context_menu.cpp,fait,view.only-type,SERVICE_ONLY,,,
+1d273e7e,action,Afficher uniquement cette couleur,main_window_context_menu.cpp,fait,view.only-colour,SERVICE_ONLY,,,
+59c34276,action,Aide sur l'outil ou le panneau actif,main_window_help_menu.cpp,absent,,FUNCTIONAL_UNTESTED,HelpController::toolHelp teste ; dialogue non pilote,HelpController::toolHelp,HelpDialog.qml helpTool
+c150e52b,action,Ajouter un guide horizontal,main_window_view_display.cpp,fait,Ajouter un guide horizontal,TESTED,StudioViewTest::mainQmlHostsEveryPanel,ViewController::addGuide(vertical),ViewPanel.qml / GpuCanvas overlay guides
+73172bc2,action,Ajouter un guide satin,main_window.cpp,absent,,TESTED,StudioDigitize2Test::guideStrokeByMouse,DigitizeGestures::release(guide),HandlesOverlay.qml + DigitizeHub.qml gesture_guide
+e00cf219,action,Ajouter un guide vertical,main_window_view_display.cpp,fait,Ajouter un guide vertical,FUNCTIONAL_UNTESTED,StudioViewTest::gridGuidesAndLayersPersist,ViewController::addGuide(horizontal),ViewPanel.qml / GpuCanvas overlay guides
+ae274b96,action,Ajouter une couche,document_panel.cpp,partiel,calqueAdd,SERVICE_ONLY,,,
+01d2f694,action,Ajuster au canevas,main_window.cpp,fait,Ajuster à la fenêtre,FUNCTIONAL_UNTESTED,,GpuCanvas::fitDesign,Main.qml touche F
+9caa2191,action,Analyser le motif,main_window_analysis.cpp,fait,analysis.run,TESTED,StudioViewTest::mainQmlHostsEveryPanel,AnalysisController::runDiagnostics,AnalysisPanel.qml
+03188bb4,action,Aperçu avant impression,main_window_production.cpp,absent,,ABSENT,,,
+b1262cc9,action,Aperçu avec tirage du tissu,main_window_pull_preview.cpp,partiel,analysis.pull,UI_PARTIAL,StudioDigitize2Test::pullAndCalibration,PullController::compare,PullPanel.qml pullCompare (pas de surimpression sur le canevas)
+7f049f34,action,Aperçu en direct pendant la saisie,main_window_view_display.cpp,absent,,ABSENT,,,
+fb2fcca7,action,Appliquer « %1 »,main_window_stitch_presets.cpp,absent,,TESTED,StudioInspectorTest::presetsLifecycle,InspectorController::applyPreset,Inspector.qml applyPreset_N
+e9721f42,action,Broderie (points),main_window.cpp,absent,,ABSENT,,,
+785ca2ea,action,Cadre : %1 × %2 mm,main_window_toolbars.cpp,fait,canvas.set,SERVICE_ONLY,,,
+b3a67437,action,Carte d'épaisseur,main_window_density.cpp,fait,analysis.density,SERVICE_ONLY,,,
+f942b9ce,action,Carte de densité,main_window_density.cpp,fait,Carte de densité,SERVICE_ONLY,,,
+167defbb,action,Carte de tirage du tissu,main_window_pull_preview.cpp,partiel,analysis.fabric,UI_PARTIAL,StudioDigitize2Test::pullAndCalibration,PullController::compare + predictRegistration,PullPanel.qml (carte de tirage affichee par la famille D)
+1900e943,action,Centre automatique,main_window_fill_center.cpp,absent,,ABSENT,,,
+26ac8a5a,action,Centrer la vue sur le problème,main_window_analysis.cpp,absent,,FUNCTIONAL_UNTESTED,,AnalysisController::centerOnFinding,AnalysisPanel.qml
+8e1363c4,action,Coloris et tissu,main_window_colorways.cpp,partiel,activateCurrentColorway,SERVICE_ONLY,,,
+133ffb33,action,Compagnon IA,main_window_help_menu.cpp,fait,Compagnon IA,TESTED,StudioCompanionTest::companionPanelAndDialogsOpenFromQml,ActionController::runCommand(cmd.companion.open),CompanionPanel.qml
+5517fa2b,action,Contour autour de la sélection,main_window_vector_edit.cpp,absent,,ABSENT,,,
+b4f352c6,action,Convertir en appliqué,main_window_applique.cpp,partiel,applique,TESTED,StudioDigitize2Test::appliqueConvertAndCut,AppliqueController::convert,AppliquePanel.qml appliqueConvert
+eb7dd01d,action,Convertir en courbes,main_window_vector_tools.cpp,fait,vector.curves,SERVICE_ONLY,,,
+84f88da1,action,Convertir en remplissage concentrique,main_window_context_menu.cpp,fait,contour_fill,SERVICE_ONLY,,,
+18d015e9,action,Convertir en satin automatiquement,main_window.cpp,fait,satin.auto,TESTED,StudioDigitizeTest::autoSatinThroughTheActionPalette,ActionController::run(satin.auto),ActionPalette.qml
+b9441c56,action,Convertir les satins auto en tatami,main_window.cpp,fait,auto_satin,SERVICE_ONLY,,,
+2c87f32d,action,Convertir les vecteurs en broderie,main_window.cpp,absent,,ABSENT,,,
+ca67b4fd,action,Couleur des guides,main_window_view_display.cpp,fait,Couleur des guides,FUNCTIONAL_UNTESTED,,ViewController::setGuideColor,ViewPanel.qml / GpuCanvas overlay guides
+b24bb78f,action,Couleur ⏭,main_window_simulation.cpp,fait,sim.next-colour,FUNCTIONAL_UNTESTED,StudioViewTest::simulationNavigatesTheEffectiveSequence,ViewController::nextColour,SimulationBar.qml
+f9db85df,action,Couper le fil après,main_window_point_edit.cpp,fait,Couper le fil après,TESTED,StudioDigitizeTest::pointEditJourney,PointEditController::setTrim,PointEditPanel.qml pointTrim
+0b59bc57,action,Créer un objet de point de contour,main_window.cpp,partiel,settableStitchTypes,SERVICE_ONLY,,,
+c97c7aae,action,Créer un remplissage tatami,main_window.cpp,partiel,settableStitchTypes,SERVICE_ONLY,,,
+67fc3ea3,action,Créer un satin automatique,main_window.cpp,fait,satin.auto,TESTED,StudioDigitizeTest::autoSatinThroughTheActionPalette,ActionController::run(satin.auto),ActionPalette.qml
+1e5cd1fe,action,Diagnostic des défauts connus,main_window_analysis.cpp,partiel,run_diagnostics,TESTED,StudioViewTest::mainQmlHostsEveryPanel,AnalysisController::runDiagnostics,AnalysisPanel.qml
+9ba57c94,action,Dupliquer,main_window_context_menu.cpp,fait,Dupliquer,TESTED,StudioEditTest::shortcutsReachTheEditor,EditController::duplicate,Main.qml Ctrl+D / CanvasContextMenu / EditBar
+42245f06,action,Dupliquer la couche,document_panel.cpp,absent,,ABSENT,,,
+54f0a20a,action,Dupliquer la forme,main_window.cpp,fait,edit.duplicate,SERVICE_ONLY,,,
+b8d50ff8,action,Déboguer : afficher toutes les données,main_window_context_menu.cpp,absent,,ABSENT,,,
+522356b3,action,Décalage entre couleurs,main_window_analysis.cpp,absent,,ABSENT,,,
+3e57366b,action,Décaler,main_window_context_menu.cpp,absent,,ABSENT,,,
+d44d8b2a,action,Décaler la forme,main_window.cpp,absent,,ABSENT,,,
+a6809735,action,Déformation prévue du tissu,main_window_analysis.cpp,fait,Déformation prévue du tissu,FUNCTIONAL_UNTESTED,,AnalysisController::computeFabricRisk,ViewPanel.qml / GpuCanvas overlay image
+eab12005,action,Déplacer la sélection ici,calque_panel.cpp,fait,calqueHere,FUNCTIONAL_UNTESTED,StudioEditTest::layersTreeAndObjectEditing (controleur seul),EditController::moveSelectionToLayer,LayerPanel layerMoveHereButton / ObjectTree glisser-deposer
+694f85ac,action,Effacer les guides,main_window_view_display.cpp,fait,Effacer les guides,FUNCTIONAL_UNTESTED,StudioViewTest::gridGuidesAndLayersPersist,ViewController::clearGuides,ViewPanel.qml / GpuCanvas overlay guides
+2a2bef85,action,Effacer toutes les zones de détail,main_window_detail_zones.cpp,absent,,ABSENT,,,
+579f3c4f,action,Enregistrer le projet,main_window.cpp,fait,Enregistrer le projet,TESTED,StudioShellTest::openMoveUndoSaveReopenJourney,StudioController::saveProject,Main.qml saveProjectButton
+1e0aaea5,action,Enregistrer le projet sous,main_window.cpp,fait,file.save-as,TESTED,StudioShellTest::openMoveUndoSaveReopenJourney,StudioController::saveProjectAs,Main.qml Ctrl+Maj+S
+5aaa0b5f,action,Enregistrer les réglages de la sélection,main_window_stitch_presets.cpp,fait,preset.save,TESTED,StudioInspectorTest::presetsLifecycle,InspectorController::savePreset,Inspector.qml savePreset
+df9178a2,action,Envoyer un rapport de plantage,main_window_crash_report.cpp,absent,,ABSENT,,,
+a9055127,action,Exporter avec les derniers réglages,main_window.cpp,fait,file.export-again,TESTED,StudioFilesTest::exportsAreDeterministicAndRepeatable,FileController::exportAgain,FilePanel.qml exportAgainEntry F10
+31b462db,action,Exporter en DXF,main_window.cpp,fait,file.export-dxf,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportDxf,FilePanel.qml menu Exporter
+09cc3851,action,"Exporter l'image (PNG, JPEG)",main_window_export_image.cpp,partiel,Exporter l'image,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportImage,FilePanel.qml menu Exporter
+00565df7,action,Exporter la liste des fils (CSV),main_window_threads.cpp,fait,file.export-threads,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportThreadList,FilePanel.qml menu Exporter
+692834e4,action,Exporter le contour de découpe,main_window_applique.cpp,absent,,ABSENT,,,
+4922cbdc,action,Exporter le rendu réaliste (PNG),main_window_production.cpp,partiel,Exporter l'image,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportImage,FilePanel.qml menu Exporter
+129c1178,action,Exporter un DST compensé du décalage,main_window_analysis.cpp,absent,,ABSENT,,,
+08ee1b58,action,Exporter une broderie machine,main_window.cpp,fait,Exporter pour la machine,TESTED,StudioFilesTest::machineExportImportRoundTrip,FileController::exportMachine,FilePanel.qml exportDialog
+d0850557,action,Fiche de production,main_window_production.cpp,fait,Fiche de production,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportProductionSheet,FilePanel.qml menu Exporter
+aba3cc8d,action,Fidélité à l'image,main_window_analysis.cpp,absent,,ABSENT,,,
+4132716d,action,Fondu de couleurs à deux fils,main_window_directional.cpp,fait,fade.create,TESTED,StudioDigitizeTest::fadeJourney,FadeController::create,FadePanel.qml fadeCreate
+90b818d1,action,Format d'import des nuanciers,main_window_threads.cpp,fait,action_file_chart_format,SERVICE_ONLY,,,
+69547042,action,Fusionner avec… (cliquer la région cible),main_window.cpp,partiel,regionMerge,SERVICE_ONLY,,,
+30fe85c6,action,Fusionner dans la voisine principale,main_window.cpp,fait,regionMerge,SERVICE_ONLY,,,
+7bf6f210,action,Fusionner la sélection,main_window.cpp,fait,Fusionner la sélection,SERVICE_ONLY,,,
+3055c3e1,action,Fusionner les couleurs,main_window.cpp,fait,Fusionner les couleurs,SERVICE_ONLY,,,
+10082583,action,Gabarit de placement 1:1,main_window_production.cpp,absent,,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportPlacementTemplate,FilePanel.qml menu Exporter
+de9ab6e1,action,Generer un guide depuis la forme,main_window_context_menu.cpp,fait,fill.guides,SERVICE_ONLY,,,
+d0300f93,action,Gestes souris et clavier,main_window_help_menu.cpp,partiel,Raccourcis et commandes,TESTED,StudioCompanionTest::helpIsGeneratedFromDefinitions,HelpController::shortcuts/gestures,ShortcutsSheet.qml
+80d5551a,action,Guide de prise en main,main_window_help_menu.cpp,absent,,FUNCTIONAL_UNTESTED,HelpController::guide teste ; affichage du dialogue non pilote,HelpController::guide,HelpDialog.qml helpGuide
+aea2d95e,action,Guides de direction,main_window_context_menu.cpp,fait,Guides de direction,UI_PARTIAL,StudioDigitizeTest::directionGuidesJourney,SatinController::addGuide,SatinPanel.qml
+fa129d91,action,Générer un guide depuis la forme,main_window_directional.cpp,fait,fill.guides,SERVICE_ONLY,,,
+807cf843,action,Image,main_window.cpp,fait,Image,SERVICE_ONLY,,,
+69632007,action,Importer un DXF,main_window.cpp,fait,Importer un DXF,FUNCTIONAL_UNTESTED,,ActionController::run(file.import_dxf),ActionPalette.qml
+45ec0da3,action,"Importer un nuancier (CSV, JSON)",main_window_threads.cpp,fait,file.import-chart,SERVICE_ONLY,,,
+7c94f4bb,action,Importer une broderie machine,main_window.cpp,fait,Importer une broderie machine,TESTED,StudioFilesTest::machineExportImportRoundTrip,FileController::openPath(machine),FilePanel.qml menu Importer
+c4719a5d,action,Importer une image ou un SVG,main_window.cpp,fait,file.import_svg,TESTED,StudioFilesTest::imageAndVectorImports,FileController::importImage/importVector,FilePanel.qml menu Importer
+025327d7,action,Insérer un design,main_window.cpp,absent,,ABSENT,,,
+f97b2ddf,action,Lisser,main_window_vector_tools.cpp,fait,Lisser,SERVICE_ONLY,,,
+337b1cac,action,Luminosité/contraste,main_window.cpp,fait,Luminosité et contraste,SERVICE_ONLY,,,
+4a09b823,action,Machine,main_window.cpp,fait,Machine,FUNCTIONAL_UNTESTED,,ActionController::run(machine.set),ActionPalette.qml
+2a299c02,action,Manuel d'utilisation,main_window_help_menu.cpp,absent,,ABSENT,,,
+3b625aed,action,Masquer les panneaux,main_window.cpp,partiel,panelsMenu,SERVICE_ONLY,,,
+9891d57a,action,Mode portable (une seule colonne),main_window.cpp,absent,,ABSENT,,,
+b2e5796b,action,Modifier la colonne satin (rails + guides),main_window.cpp,absent,,UI_PARTIAL,StudioDigitizeTest::satinColumnJourney,SatinController::moveRailNode,SatinPanel.qml noeud de rail (poignees de rail au canevas absentes)
+2e6cc34f,action,Modifier le texte,main_window_lettering.cpp,fait,Modifier le texte,FUNCTIONAL_UNTESTED,,ActionController::run(text.edit),ActionPalette.qml
+aee88642,action,Ne pas couper le fil après,main_window_point_edit.cpp,fait,Ne pas couper le fil après,TESTED,StudioDigitizeTest::pointEditJourney,PointEditController::setTrim(false),PointEditPanel.qml pointNoTrim
+5421aa74,action,Nettoyer les petits îlots,main_window.cpp,fait,regionClean,SERVICE_ONLY,,,
+c3d0caab,action,Nouveau projet,main_window.cpp,fait,Nouveau projet,TESTED,StudioShellTest::openMoveUndoSaveReopenJourney,StudioController::newProject,Main.qml Ctrl+N
+00cdb915,action,Numérisation automatique,main_window.cpp,fait,Numériser,SERVICE_ONLY,,,
+c492f162,action,Objet ⏭,simulation_nav_bar.cpp,fait,sim.next-object,FUNCTIONAL_UNTESTED,StudioViewTest::simulationNavigatesTheEffectiveSequence,ViewController::nextObject,SimulationBar.qml
+23cd9405,action,Options de génération,main_window.cpp,fait,Options de génération,SERVICE_ONLY,,,
+7040619f,action,Orientation,main_window_toolbars.cpp,fait,Orientation,SERVICE_ONLY,,,
+2f542cd3,action,Orientation du remplissage,main_window.cpp,absent,,ABSENT,,,
+90f155ac,action,Ouvrir,main_window.cpp,fait,Ouvrir,TESTED,StudioShellTest::realProjectSelectionAndViewInteractions,StudioController::openProject,Main.qml openProjectButton
+6835033c,action,Ouvrir Claude Code,main_window_help_menu.cpp,partiel,chat.open,UI_PARTIAL,StudioCompanionTest::bridgeFollowsTheOpenDocument (pont + commande copiee ; pas de lancement de terminal),CompanionController::prepareClaudeCode,CompanionPanel.qml companionOpenClaudeCode
+9f0deb8b,action,Ouvrir un projet,main_window.cpp,fait,Ouvrir une image ou un projet,TESTED,StudioShellTest::realProjectSelectionAndViewInteractions,StudioController::openProject,Main.qml Ctrl+O
+435dc9ab,action,Paramètres,main_window.cpp,fait,Paramètres,SERVICE_ONLY,,,
+369536e7,action,Pas de la grille,main_window_vector_edit.cpp,partiel,gridMenu,SERVICE_ONLY,,,
+f590671c,action,Passer en point cousu,main_window_point_edit.cpp,fait,Passer en point cousu,TESTED,StudioDigitizeTest::pointEditJourney,PointEditController::setJump(false),PointEditPanel.qml pointToStitch
+66d86e8a,action,Passer en saut (sans couture),main_window_point_edit.cpp,fait,Passer en saut (sans couture),TESTED,StudioDigitizeTest::mainQmlHostsDigitizePanels,PointEditController::setJump(true),PointEditPanel.qml pointToJump
+8ce04bb9,action,Pinceau : rayon plus grand,main_window_brush.cpp,absent,,ABSENT,,,
+c3bcc666,action,Pinceau : rayon plus petit,main_window_brush.cpp,absent,,ABSENT,,,
+b8d2a1ce,action,Poignées du dégradé,main_window_gradient.cpp,fait,fade.axis,SERVICE_ONLY,,,
+050fad01,action,Point de contour,main_window.cpp,partiel,settableStitchTypes,SERVICE_ONLY,,,
+7e4bb52e,action,Point ▶,simulation_nav_bar.cpp,fait,sim.next-point,TESTED,StudioViewTest::mainQmlHostsEveryPanel,ViewController::step(1),SimulationBar.qml
+031c45f1,action,Pont IA local (MCP),main_window_help_menu.cpp,fait,companion.toggle,TESTED,StudioCompanionTest::bridgeFollowsTheOpenDocument,CompanionController::setBridgeEnabled,CompanionPanel.qml companionBridgeToggle
+de5eef73,action,Préférences générales,main_window.cpp,partiel,density_,SERVICE_ONLY,,,
+f30520d3,action,Préférences — Intelligence artificielle,main_window.cpp,partiel,companion.settings,SERVICE_ONLY,,,
+354afdc7,action,Quantifier les couleurs,main_window.cpp,partiel,regionReduceColors,SERVICE_ONLY,,,
+a4c1ad2b,action,Quitter,main_window.cpp,fait,Quitter,FUNCTIONAL_UNTESTED,StudioFilesTest::unsavedGuardNewOpenAndQuit,FileController::requestQuit,Main.qml onClosing + FilePanel guardDialog
+35393cc9,action,Recadrer l'image (glisser un cadre),main_window.cpp,partiel,Recadrer,SERVICE_ONLY,,,
+b4dc4f3a,action,Rechercher une commande,main_window.cpp,fait,Rechercher une commande,SERVICE_ONLY,,,
+b2f5a579,action,Recolorer,main_window_regions.cpp,fait,Recolorer,TESTED,StudioImageTest::preparePanelDrivesTheWholeJourney (regionRecolor via QML),RegionController::recolorSelected,RegionTools.qml
+d39e212d,action,Recolorer la sélection,main_window.cpp,fait,Recolorer la sélection,SERVICE_ONLY,,,
+b5106cf2,action,Remplissage tatami,main_window.cpp,partiel,settableStitchTypes,SERVICE_ONLY,,,
+8b3e385a,action,Renommer,calque_panel.cpp,fait,Renommer,FUNCTIONAL_UNTESTED,StudioEditTest::layersTreeAndObjectEditing (controleur seul),EditController::renameLayer/renameObject,ObjectTree double-clic / LayerPanel
+a0622ecf,action,Restaurer la disposition précédente,main_window_ux.cpp,absent,,ABSENT,,,
+b0c51442,action,Restaurer les points sélectionnés,main_window_point_edit.cpp,fait,point.restore,TESTED,StudioDigitizeTest::pointEditJourney,PointEditController::restoreSelected,PointEditPanel.qml pointRestore
+ae44ff48,action,Risque de tirage du tissu,main_window_analysis.cpp,fait,analysis.fabric,FUNCTIONAL_UNTESTED,,AnalysisController::computeFabricRisk,ViewPanel.qml / GpuCanvas overlay image
+bf228390,action,Risque tissu,main_window_fabric_risk.cpp,fait,analysis.fabric,SERVICE_ONLY,,,
+34422f89,action,Réduire / fusionner les fils,main_window_colorways.cpp,partiel,mergeThreads,SERVICE_ONLY,,,
+333e240e,action,Région précédente,main_window.cpp,absent,,ABSENT,,,
+5bbcc28e,action,Région suivante,main_window.cpp,absent,,ABSENT,,,
+37a5693a,action,Réglages,main_window_realistic.cpp,fait,Réglages,FUNCTIONAL_UNTESTED,,AnalysisController::setRenderSetting,AnalysisPanel.qml rÃ©glages de rendu (le style GPU suit via ViewController::setRealisticStyle)
+ea169d9f,action,Réglages de la grille,main_window_view_display.cpp,partiel,gridMenu,FUNCTIONAL_UNTESTED,StudioViewTest::gridGuidesAndLayersPersist,ViewController::setGridStepMm,ViewPanel.qml / persistance studio-view.txt
+8fff58b4,action,Réglages du pinceau,main_window_brush.cpp,partiel,regionBrushRadius,SERVICE_ONLY,,,
+5f547908,action,Réinitialiser la disposition,main_window.cpp,absent,,ABSENT,,,
+251cbea8,action,Rétablir,main_window.cpp,fait,Rétablir,TESTED,StudioShellTest::openMoveUndoSaveReopenJourney,StudioController::redo,Main.qml redoButton
+7eff11f4,action,Rétablir la couleur d'origine,main_window.cpp,absent,,ABSENT,,,
+8233c055,action,Satin automatique,main_window.cpp,fait,Satin automatique,TESTED,StudioDigitizeTest::autoSatinThroughTheActionPalette,ActionController::run(satin.auto),ActionPalette.qml
+3d2be7f4,action,Sauts à vide de l'ordre,main_window_order_jumps.cpp,absent,,ABSENT,,,
+de43aedf,action,Segmenter l'image,main_window.cpp,fait,Segmenter l'image,FUNCTIONAL_UNTESTED,,ActionController::run(image.segment),ActionPalette.qml
+0d67e9bf,action,Statistiques,main_window.cpp,partiel,summary_,SERVICE_ONLY,,,
+65b6e4d4,action,Supprimer,main_window_regions.cpp,fait,Supprimer,TESTED,StudioImageTest::preparePanelDrivesTheWholeJourney (regionDelete via QML),RegionController::deleteSelected,RegionTools.qml
+03a7c253,action,Supprimer %1 objets,main_window_context_menu.cpp,absent,,TESTED,StudioEditTest::contextMenuAndEyedropper,EditController::deleteSelection,CanvasContextMenu contextDelete
+16449d1d,action,Supprimer ce point,main_window_directional.cpp,absent,,ABSENT,,,
+6623e722,action,Supprimer la sélection,main_window.cpp,fait,Supprimer la sélection,TESTED,StudioEditTest::shortcutsReachTheEditor,EditController::deleteSelection,Main.qml Suppr / EditBar deleteButton
+d6e27fc4,action,Supprimer le calque,calque_panel.cpp,fait,calqueRemove,FUNCTIONAL_UNTESTED,StudioEditTest::layersTreeAndObjectEditing (controleur seul),EditController::removeLayer,LayerPanel layerRemoveButton
+980fefff,action,Supprimer le guide,main_window_satin_auto.cpp,absent,,ABSENT,,,
+69e76bc8,action,Supprimer le guide satin sélectionné,main_window.cpp,absent,,ABSENT,,,
+5a001324,action,Supprimer le nœud,main_window_render.cpp,fait,deleteSelected,TESTED,StudioToolsTest::nodeEditByMouse,ToolController::deleteSelectedNodes,ToolOptions nodeDeleteButton + touche Suppr du canevas
+cc56cc1b,action,Supprimer le texte,main_window_lettering.cpp,absent,,FUNCTIONAL_UNTESTED,,ActionController::run(text.remove),ActionPalette.qml
+d9267bc5,action,Supprimer les points sélectionnés,main_window_point_edit.cpp,fait,deleteSelectedPoint,TESTED,StudioDigitizeTest::pointEditJourney,PointEditController::deleteSelected,PointEditPanel.qml pointDelete
+0e876999,action,Sélectionner l'objet,main_window_analysis.cpp,fait,onFindingActivated,FUNCTIONAL_UNTESTED,,AnalysisController::selectFindingObjects,AnalysisPanel.qml
+5626577a,action,Sélectionner la même couleur,main_window.cpp,fait,Sélectionner la même couleur,FUNCTIONAL_UNTESTED,StudioEditTest::selectionCommandsOnRealObjects (controleur seul),EditController::selectSameColor,EditBar sameColorButton / CanvasContextMenu
+76e1b404,action,Sélectionner les voisines,main_window.cpp,fait,Sélectionner les voisines,FUNCTIONAL_UNTESTED,StudioEditTest::selectionCommandsOnRealObjects (controleur seul),EditController::selectNeighbors,EditBar neighborsButton / CanvasContextMenu
+149d5727,action,Sélectionner tous les points,main_window_point_edit.cpp,fait,point.select-all,TESTED,StudioDigitizeTest::mainQmlHostsDigitizePanels,PointEditController::selectAllPoints,PointEditPanel.qml pointSelectAll
+6374ea03,action,Taille du cadre,main_window.cpp,fait,canvas.set,TESTED,StudioFilesTest::hoopMachineAndUserHoops,FileController::applyHoop/applyCustomHoop,FilePanel.qml hoopDialog
+153dd793,action,Tout afficher,main_window_order_filter.cpp,fait,view.show-all,SERVICE_ONLY,,,
+e46589b0,action,Tout afficher (filtres),main_window_context_menu.cpp,fait,view.show-all,SERVICE_ONLY,,,
+f4632624,action,Tout sélectionner,main_window.cpp,fait,Tout sélectionner,TESTED,StudioEditTest::shortcutsReachTheEditor,EditController::selectAll,Main.qml Ctrl+A / EditBar selectAllButton
+84b7b6f9,action,Tracer un guide de direction,main_window_directional.cpp,fait,Tracer un guide de direction,UI_PARTIAL,StudioDigitizeTest::directionGuidesJourney,SatinController::addGuide,SatinPanel.qml (trace au canevas absent)
+755c06fc,action,Tracer une ligne de rupture,main_window_directional.cpp,fait,Tracer une ligne de rupture,UI_PARTIAL,StudioDigitizeTest::directionGuidesJourney,SatinController::addGuide(break),SatinPanel.qml (trace au canevas absent)
+e73f5b09,action,Transition douce des nœuds voisins,main_window_node_select.cpp,absent,,ABSENT,,,
+8a282d1d,action,Tutoriel : de l'image à la broderie,main_window_help_menu.cpp,absent,,ABSENT,,,
+a361cdd3,action,Vecteurs,main_window.cpp,absent,,ABSENT,,,
+9e19be32,action,Vectoriser la sélection,main_window.cpp,absent,,ABSENT,,,
+7dcd5e07,action,Vider la liste des récents,main_window.cpp,absent,,TESTED,StudioFilesTest::recentFilesPersistPruneAndReopen,FileController::clearRecent,FilePanel.qml clearRecentEntry
+f7987bf9,action,Zoom arrière,main_window.cpp,fait,Zoom arrière,SERVICE_ONLY,,,
+d0ccab12,action,Zoom avant,main_window.cpp,fait,Zoom avant,SERVICE_ONLY,,,
+174df2f7,action,Zoom précédent,main_window.cpp,fait,Zoom précédent,SERVICE_ONLY,,,
+1b1d8969,action,Zoom rectangle,main_window_view_display.cpp,absent,,TESTED,StudioViewTest::mainQmlHostsEveryPanel,ViewController::zoomRectangle,ViewPanel.qml / GpuCanvas::zoomRectMode rubberBand
+609d7d45,action,Zoom sur la sélection,main_window.cpp,fait,Zoom sur la sélection,SERVICE_ONLY,,,
+dcdb3679,action,À propos,main_window_help_menu.cpp,fait,À propos,FUNCTIONAL_UNTESTED,HelpController::aboutText teste ; dialogue ouvert sans verification du contenu,HelpController::aboutText,HelpDialog.qml helpAbout
+fc519974,action,Éditer seulement les bords du satin,main_window.cpp,absent,,ABSENT,,,
+1b954c88,action,Éditer seulement les repères d'orientation du satin,main_window.cpp,absent,,ABSENT,,,
+5b0f567d,action,Épaisseurs de fil (densité),main_window_analysis.cpp,fait,analysis.density,FUNCTIONAL_UNTESTED,,AnalysisController::computeDensity,ViewPanel.qml / GpuCanvas overlay image
+fb5f812c,action,Étalonner le zoom 100 %,main_window_view_display.cpp,absent,,FUNCTIONAL_UNTESTED,StudioViewTest::zoomCommandsAndCalibration,ViewController::calibrateZoom100,ViewPanel.qml / GpuCanvas::zoomToScale
+a766d0d5,action,⏮ Couleur,main_window_simulation.cpp,fait,sim.prev-colour,FUNCTIONAL_UNTESTED,StudioViewTest::simulationNavigatesTheEffectiveSequence,ViewController::previousColour,SimulationBar.qml
+669c1398,action,⏮ Objet,simulation_nav_bar.cpp,fait,sim.prev-object,FUNCTIONAL_UNTESTED,StudioViewTest::simulationNavigatesTheEffectiveSequence,ViewController::previousObject,SimulationBar.qml
+bf476973,action,⏹ Fin,main_window_simulation.cpp,fait,sim.end,TESTED,StudioViewTest::mainQmlHostsEveryPanel,ViewController::toEnd,SimulationBar.qml
+f271218c,action,▶ Lecture,main_window_simulation.cpp,partiel,Lecture,TESTED,StudioViewTest::mainQmlHostsEveryPanel,ViewController::play/advance,SimulationBar.qml
+328035a0,action,◀ Point,simulation_nav_bar.cpp,fait,sim.prev-point,FUNCTIONAL_UNTESTED,StudioViewTest::simulationNavigatesTheEffectiveSequence,ViewController::step(-1),SimulationBar.qml
+83393a9a,bouton,+ Couche,document_panel.cpp,partiel,calqueAdd,SERVICE_ONLY,,,
+613e0ed8,bouton,Abandonner les retouches,properties_panel.cpp,absent,,TESTED,StudioDigitizeTest::mainQmlHostsDigitizePanels,PointEditController::discardEdits,PointEditPanel.qml pointDiscard
+abf0f4bd,bouton,Activer,colorway_dialog.cpp,fait,Activer,FUNCTIONAL_UNTESTED,,ThreadController::activateColorway,ThreadPanel.qml
+9579fe3b,bouton,Actualiser l’aperçu,color_blend_dialog.cpp,absent,,ABSENT,,,
+9ef91727,bouton,Afficher le détail,ai_segmentation_dialog.cpp,exclu,,ABSENT,,,
+1e47d13b,bouton,Ajouter un fil personnel,thread_panel.cpp,absent,,ABSENT,,,
+c7a6d63e,bouton,Ajuster au cadre,import_dialog.cpp,absent,,ABSENT,,,
+ccd029ae,bouton,Analyser,ai_segmentation_dialog.cpp,fait,Analyser,ABSENT,,,
+4c8120e4,bouton,Annuler l'analyse,ai_segmentation_dialog.cpp,exclu,,ABSENT,,,
+0324ae46,bouton,Annuler l'aperçu,segmentation_colors_panel.cpp,absent,,TESTED,StudioImageTest::preparePanelDrivesTheWholeJourney (segCancelButton via QML),ImageController::cancelSegmentationPreview,SegmentationSection.qml
+8ba6da96,bouton,Appliquer,segmentation_colors_panel.cpp,fait,Appliquer,TESTED,StudioImageTest::preparePanelDrivesTheWholeJourney (segApplyButton via QML),ImageController::applySegmentation,SegmentationSection.qml
+e7b4c06a,bouton,"Assistant (aperçu, proposition depuis l'image)",gradient_fill_panel.cpp,absent,,ABSENT,,,
+691c4acf,bouton,Autre tirage,properties_panel.cpp,absent,,ABSENT,,,
+e4077c4b,bouton,Calculer,main_window_analysis.cpp,fait,Calculer,SERVICE_ONLY,,,
+58796fc5,bouton,Choisir,color_blend_dialog.cpp,fait,Choisir,SERVICE_ONLY,,,
+42cd1ade,bouton,Choisir dans les nuanciers,gradient_fill_panel.cpp,partiel,thread.palette,SERVICE_ONLY,,,
+fe930327,bouton,Comparer les méthodes,main_window_satin_auto.cpp,absent,,ABSENT,,,
+97060113,bouton,Convertir en remplissage concentrique,properties_panel.cpp,fait,contour_fill,TESTED,StudioInspectorTest::stitchTypeConversion,InspectorController::setStitchType(contour_fill),Inspector.qml typeBox
+86359fc6,bouton,Convertir en remplissage directionnel,properties_panel.cpp,fait,directional,TESTED,StudioInspectorTest::stitchTypeConversion,InspectorController::setStitchType(directional),Inspector.qml typeBox
+42954eca,bouton,Corriger,main_window_analysis.cpp,fait,Corriger,SERVICE_ONLY,,,
+1b524844,bouton,Corriger tout ce qui est sûr,main_window_analysis.cpp,absent,,ABSENT,,,
+12510a3a,bouton,Couleur,colorway_dialog.cpp,fait,Couleur,FUNCTIONAL_UNTESTED,StudioViewTest::threadPlanColorwaysAndSewingOrder,ThreadController::recolorThread,ThreadPanel.qml
+f84eae7b,bouton,Couleur : %1 (cliquer pour changer),properties_panel.cpp,absent,,ABSENT,,,
+f893cf14,bouton,Couleur de cette couche,properties_panel.cpp,absent,,ABSENT,,,
+fdbcceb1,bouton,Couleurs libres → fil le plus proche,thread_panel.cpp,partiel,thread.palette,FUNCTIONAL_UNTESTED,,ThreadController::snapFreeColours,ThreadPanel.qml
+6dfe2a2f,bouton,Créer le satin de bordure,properties_panel.cpp,absent,,ABSENT,,,
+786a853b,bouton,Enregistrer ce cadre,main_window_files.cpp,fait,hoops.txt,TESTED,StudioFilesTest::hoopMachineAndUserHoops,FileController::saveCurrentHoopAs,FilePanel.qml hoopDialog
+8854fa60,bouton,Exporter la liste des fils (CSV),thread_panel.cpp,fait,file.export-threads,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportThreadList,FilePanel.qml menu Exporter
+6c667c5a,bouton,Fermer,help_manual.cpp,fait,Fermer,ABSENT,,,
+4881b0aa,bouton,Figer l'ordre,main_window_order_filter.cpp,absent,,ABSENT,,,
+75d84458,bouton,Fils les plus proches de la sélection,thread_panel.cpp,partiel,thread.palette,FUNCTIONAL_UNTESTED,,ThreadController::nearestToSelection,ThreadPanel.qml
+874e1166,bouton,Fusionner dans la teinte active,segmentation_colors_panel.cpp,fait,regionMergeColors,SERVICE_ONLY,StudioImageTest::regionEditingIsUndoableAndMarksObjectsStale (controleur seul; pas de bouton QML),RegionController::mergeColorInto,
+28bea29d,bouton,Fusionner la sélection,ai_segmentation_dialog.cpp,fait,Fusionner la sélection,ABSENT,,,
+5ea5889c,bouton,Guides automatiques pour tous,properties_panel.cpp,partiel,fill.guides,SERVICE_ONLY,,,
+1ebf6e41,bouton,"Importer un nuancier (CSV, JSON)",thread_panel.cpp,fait,file.import-chart,FUNCTIONAL_UNTESTED,,ThreadController::importChart,ThreadPanel.qml
+f38a9ef0,bouton,Importer une broderie machine,empty_state_widget.cpp,fait,Importer une broderie machine,FUNCTIONAL_UNTESTED,,FileController::openPath(machine),Main.qml welcomeImportMachine
+11c2d635,bouton,Inverser le sens du fondu,color_blend_dialog.cpp,absent,,UI_PARTIAL,StudioDigitize2Test::fadeHandlesByMouse,FadeController::reverse (une etape annulable testee),(bouton d'inversion absent du FadePanel)
+a8e5be69,bouton,Modifier le texte,properties_panel.cpp,fait,Modifier le texte,FUNCTIONAL_UNTESTED,,ActionController::run(text.edit),ActionPalette.qml
+71dc358c,bouton,Nouveau (copie du courant),colorway_dialog.cpp,partiel,activateCurrentColorway,TESTED,StudioViewTest::mainQmlHostsEveryPanel,ThreadController::addColorway,ThreadPanel.qml
+5cda87d0,bouton,Optimiser l'ordre,main_window_order_filter.cpp,fait,Optimiser l'ordre,SERVICE_ONLY,,,
+3bda7e57,bouton,Ouvrir le dossier,main_window_files.cpp,absent,,FUNCTIONAL_UNTESTED,,FileController::revealFolder,FilePanel.qml menu Projet
+9c53cfd1,bouton,Ouvrir les préférences,ai_segmentation_dialog.cpp,exclu,,ABSENT,,,
+8f650f08,bouton,Ouvrir un projet,empty_state_widget.cpp,fait,Ouvrir une image ou un projet,FUNCTIONAL_UNTESTED,,FileController::openPath,Main.qml bouton Ouvrir un projet
+237f3d36,bouton,Ouvrir une image ou un SVG,empty_state_widget.cpp,fait,Ouvrir une image ou un projet,FUNCTIONAL_UNTESTED,,FileController::imageImportRequested,Main.qml welcomeImportImage + FilePanel importOptions
+249c0de8,bouton,Parcourir,ai_preferences_dialog.cpp,fait,Parcourir,ABSENT,,,
+3dcea6a1,bouton,Peindre les zones de détail,segmentation_dialog.cpp,absent,,ABSENT,,,
+5c1da94d,bouton,Pivoter,main_window_files.cpp,fait,Pivoter,ABSENT,,,
+219aa56f,bouton,Placer un guide sur le canevas,properties_panel.cpp,fait,fill.direction-guide,TESTED,StudioDigitize2Test::guideStrokeByMouse,DigitizeGestures::release(guide/break),HandlesOverlay.qml + DigitizeHub.qml gesture_guide/gesture_break
+fc50bae4,bouton,Poignées sur le canevas,gradient_fill_panel.cpp,fait,fade.axis,TESTED,StudioDigitize2Test::fadeHandlesByMouse,DigitizeGestures::release(fade)+FadeController::commitHandle,HandlesOverlay.qml + DigitizeHub.qml gesture_fade
+5ecf2aa4,bouton,Poser ce guide sur toutes les formes,properties_panel.cpp,absent,,ABSENT,,,
+d6c060d0,bouton,Proposer les couleurs depuis l'image,color_blend_dialog.cpp,absent,,ABSENT,,,
+a8d2bcf8,bouton,Remplacer ce fil par celui du catalogue,thread_panel.cpp,partiel,thread.palette,FUNCTIONAL_UNTESTED,StudioViewTest::threadPlanColorwaysAndSewingOrder,ThreadController::assignChartThread,ThreadPanel.qml
+71f07976,bouton,Retirer ce nuancier importé,thread_panel.cpp,fait,file.remove-chart,FUNCTIONAL_UNTESTED,,ThreadController::removeChart,ThreadPanel.qml
+3a357c6c,bouton,Retirer de mes fils,thread_panel.cpp,absent,,ABSENT,,,
+6f0cec00,bouton,Retirer guides et ruptures de tous,properties_panel.cpp,partiel,fill.guides.clear,SERVICE_ONLY,,,
+29ed788a,bouton,Retirer les guides de toutes,properties_panel.cpp,partiel,fill.guides.clear,SERVICE_ONLY,,,
+0ebc96b6,bouton,Réappliquer les retouches,properties_panel.cpp,absent,,BLOCKED,aucune capture des parametres d'avant modification dans Studio (V1 : MainWindow::noteOverridesInvalidated),PointEditController,(service absent)
+c56a6143,bouton,Réduire,thread_panel.cpp,fait,Réduire,SERVICE_ONLY,,,
+ea48b8bd,bouton,Sonder les backends,ai_preferences_dialog.cpp,exclu,,ABSENT,,,
+f7de65cb,bouton,Supprimer,colorway_dialog.cpp,fait,Supprimer,FUNCTIONAL_UNTESTED,,ThreadController::removeColorway,ThreadPanel.qml
+9e718d2b,bouton,Supprimer le guide,properties_panel.cpp,absent,,UI_PARTIAL,StudioDigitizeTest::directionGuidesJourney,SatinController::clearGuides,SatinPanel.qml guidesClear (efface tous les guides de l'objet)
+64625b92,bouton,Sélectionner les objets de ce fil,thread_panel.cpp,fait,threadSelect,FUNCTIONAL_UNTESTED,StudioViewTest::threadPlanColorwaysAndSewingOrder,ThreadController::selectThreadObjects,ThreadPanel.qml
+ba349540,bouton,Sélectionner les objets du bloc,thread_panel.cpp,partiel,threadSelect,SERVICE_ONLY,,,
+67a04f5b,bouton,Séquencer par couleur (fusionner les blocs de même fil),thread_panel.cpp,absent,,ABSENT,,,
+e51f01aa,bouton,Tester la configuration,ai_preferences_dialog.cpp,exclu,,ABSENT,,,
+522a6e56,bouton,Tout afficher,main_window_order_filter.cpp,fait,view.show-all,SERVICE_ONLY,,,
+628f1213,bouton,Tout effacer,main_window_detail_zones.cpp,absent,,ABSENT,,,
+65e52cd5,bouton,Voir,main_window_workflow.cpp,fait,Voir,SERVICE_ONLY,,,
+a8ae886b,bouton,Voir la carte de densité,gradient_fill_panel.cpp,fait,analysis.density,SERVICE_ONLY,,,
+580a6bce,bouton,Voir les points réels,gradient_fill_panel.cpp,absent,,ABSENT,,,
+c821931c,bouton,Éditer les guides,properties_panel.cpp,partiel,fill.direction-guide,SERVICE_ONLY,,,
+2e1136ae,bouton,↑ Monter,main_window_order_filter.cpp,partiel,orderEarlier,SERVICE_ONLY,,,
+dba3d228,bouton,↓ Descendre,main_window_order_filter.cpp,partiel,orderLater,SERVICE_ONLY,,,
+146fe6d3,bouton,⇄ Inverser,gradient_fill_panel.cpp,absent,,ABSENT,,,
+d2b89407,bouton,▲ Monter,thread_panel.cpp,partiel,orderEarlier,FUNCTIONAL_UNTESTED,StudioViewTest::threadPlanColorwaysAndSewingOrder,ThreadController::moveInOrder,ThreadPanel.qml
+325c9237,bouton,▲ Passer dessous,thread_panel.cpp,partiel,calqueDown,SERVICE_ONLY,,,
+e1ae3eac,bouton,▼ Descendre,thread_panel.cpp,partiel,orderLater,TESTED,StudioViewTest::mainQmlHostsEveryPanel,ThreadController::moveInOrder,ThreadPanel.qml
+e9918519,bouton,▼ Passer dessus,thread_panel.cpp,partiel,calqueUp,SERVICE_ONLY,,,
+f28889ba,case,Accepter aussi une surface déjà cousue du même fil,machine_export_dialog.cpp,absent,,ABSENT,,,
+6b06d4a3,case,Accrocher les nœuds aux sommets des autres objets au glisser,settings_dialog.cpp,absent,,TESTED,StudioToolsTest::snappingIsConfigurable,ToolController::snapped (sommets),ToolOptions snapVerticesCheck/snapRadiusSpin
+e7e778d4,case,Activer la segmentation par IA (SAM 2),ai_preferences_dialog.cpp,exclu,,ABSENT,,,
+370e284b,case,Activer le rendu réaliste des points,realistic_render_dialog.cpp,fait,view.render,TESTED,StudioRealisticTest::gpuPathBuildsOncePerRevisionAndMatchesCpuReference,GpuCanvas::realisticActive,canvas_renderer.cpp RealisticLayer (calque GPU des fils)
+4789f8fc,case,Afficher la carte sur le canevas,main_window_fabric_risk.cpp,fait,analysis.fabric,SERVICE_ONLY,,,
+56dd6a80,case,Afficher la grille,grid_settings_dialog.cpp,partiel,gridMenu,SERVICE_ONLY,,,
+f3c139b0,case,Afficher le tissu (fond opaque),realistic_render_dialog.cpp,absent,,UI_PARTIAL,StudioRealisticTest::shadowSpriteAndFabricTile,RealisticStyle::fabricRgb,canvas_renderer.cpp tissu tuilÃ© (couleur et armure suivent les rÃ©glages ; pas de case dÃ©diÃ©e)
+f6bdf6f6,case,Affiner (2-opt / Or-opt),order_list_widget.cpp,absent,,ABSENT,,,
+44642518,case,Alterner (miroir un sur deux),properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam,ParamField.qml switch_alternate
+a3bed34d,case,Angle absolu (repère du dessin),properties_panel.cpp,absent,,ABSENT,,,guide d'auto-satin absolu : champ imbrique de guides (liste editee sur le canevas)
+2b66fac6,case,Angle des fils automatique,main_window_satin_auto.cpp,absent,,ABSENT,,,
+12815a11,case,Anneaux en satin,main_window_create.cpp,absent,,ABSENT,,,
+223c1e22,case,Aperçu sur l'image,segmentation_dialog.cpp,absent,,UI_PARTIAL,apercu dans le panneau Preparer (pas en surimpression du canevas),ImageController::previewSegmentation,SegmentationSection.qml
+f019d797,case,"Arrêts machine (poser le tissu, couper)",properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(applique.stops),ParamField.qml switch
+65fd5bf3,case,Aspect fait main,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam,ParamField.qml switch_handmade
+d2463e2c,case,Bloc uni (sans tissu visible),main_window_create.cpp,absent,,ABSENT,,,
+6dd1c5d4,case,Centre automatique,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setPoint/clearParam,ParamField.qml clear_center_mm
+40de0b13,case,Comparer avant / après l'optimisation,main_window_order_jumps.cpp,absent,,ABSENT,,,
+063f27c8,case,Conserver les fichiers de diagnostic,ai_preferences_dialog.cpp,exclu,,ABSENT,,,
+dfb2d55c,case,Conserver les proportions,import_dialog.cpp,absent,,ABSENT,,,
+db72ebd1,case,Contour cousu par-dessus,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(tatami.edge_outline),ParamField.qml switch
+297b5c26,case,Contourner aussi les trous,main_window_vector_edit.cpp,absent,,ABSENT,,,
+be52127f,case,Couleur du thème,grid_settings_dialog.cpp,fait,Couleur du thème,SERVICE_ONLY,,,
+46fdf51f,case,Couper avant chaque changement de fil,generation_options_dialog.cpp,fait,Couper avant chaque changement de fil,SERVICE_ONLY,,,
+64455486,case,Croix complète,properties_panel.cpp,fait,Croix complète,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(cross_stitch.full_cross),ParamField.qml switch
+abec11cd,case,Crénage de la police,text_dialog.cpp,fait,Crénage de la police,SERVICE_ONLY,,,
+81b23d37,case,Dans un objet : relier la sous-couche au remplissage sans couper le fil,machine_export_dialog.cpp,absent,,ABSENT,,,
+ec1b8e2e,case,"Densité excessive, au-delà de",main_window_density.cpp,absent,,ABSENT,,,
+3d3ea99b,case,Diviser chaque forme retenue par couleur,ai_segmentation_dialog.cpp,exclu,,ABSENT,,,
+ea65d971,case,Découper les points trop longs,generation_options_dialog.cpp,fait,Découper les points trop longs,SERVICE_ONLY,,,
+0e474c43,case,Dégradé de densité,properties_panel.cpp,fait,Dégradé de densité,UI_PARTIAL,StudioInspectorTest::listsAndPointsEditEndToEnd,InspectorController::clearParam,ParamField.qml count_density_gradient (lecture et effacement ; creation sur le canevas)
+11df031b,case,Entre les objets : relier sans couper le fil si le trajet sera recouvert,machine_export_dialog.cpp,absent,,FUNCTIONAL_UNTESTED,,FileController::setExportOptions(autoJoin),FilePanel.qml exportDialog
+14a6a35a,case,Entrée/sortie automatiques des objets,generation_options_dialog.cpp,absent,,ABSENT,,,
+43d3b43f,case,Espacement automatique selon la largeur,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam,ParamField.qml switch_auto_spacing
+3a552654,case,"Finitions automatiques (coupes, points d'arrêt, points courts)",generation_options_dialog.cpp,absent,,ABSENT,,,
+c37dbd3d,case,Fond de tissu opaque,export_image_dialog.cpp,partiel,fabricRgb,ABSENT,,,
+eb932cc3,case,Fractionner les traversées longues (> 7 mm),main_window_satin_auto.cpp,absent,,ABSENT,,,
+213d5af7,case,Fusionner aussi les régions voisines de même couleur,segmentation_colors_panel.cpp,fait,regionReduceMerge,UI_PARTIAL,fusion des voisines de meme couleur appliquee en dur (pas de case a cocher),RegionController::reducePalette,RegionTools.qml
+8fd5f3dc,case,Fusionner les points trop courts,generation_options_dialog.cpp,fait,Fusionner les points trop courts,SERVICE_ONLY,,,
+e181a7ab,case,Gomme,main_window_detail_zones.cpp,fait,Gomme,SERVICE_ONLY,,,
+5674752c,case,Ignorer la plus grande région (probablement le fond),ai_segmentation_dialog.cpp,exclu,,ABSENT,,,
+e368f34e,case,Inverser les tons,main_window_create.cpp,absent,,ABSENT,,,
+df6f4ad1,case,Je possède ce fil,thread_panel.cpp,absent,,ABSENT,,,
+1a41ec3c,case,Liaison en spirale,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam,ParamField.qml switch_spiral
+e47033c8,case,Liaisons cousues cachées,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(tatami.hidden_underpath),ParamField.qml switch
+1e94712b,case,"Ligatures (ff, fi, fl, ffi, ffl)",text_dialog.cpp,absent,,ABSENT,,,
+623246f4,case,Limiter la recherche du fil le plus proche à mes fils,thread_panel.cpp,absent,,ABSENT,,,
+41c3b1d2,case,Optimiser les trajets (réglage de ce fichier : moins de coupes et de sauts),machine_export_dialog.cpp,absent,,ABSENT,,,
+246e3e21,case,Orientation paysage,placement_template_dialog.cpp,absent,,ABSENT,,,
+300900db,case,Parcourir tous les fils (au lieu des plus proches),main_window_gradient.cpp,absent,,ABSENT,,,
+737daa31,case,Pas automatique (adapté au zoom),grid_settings_dialog.cpp,absent,,ABSENT,,,
+b319c11f,case,Rangées décalées,properties_panel.cpp,absent,,UI_PARTIAL,,InspectorController::setParam(tatami.stagger entier 1..8),ParamField.qml slider (case booleenne motif_fill absente de param_spec)
+e42a170e,case,Remplissage qui suit le mouvement,main_window_create.cpp,absent,,ABSENT,,,
+c20a2392,case,Retirer les points cachés,properties_panel.cpp,absent,,ABSENT,,,
+ba15f6b4,case,"Réordonner aussi les zones d'une même couleur (avancé, modifie davantage l'ordre)",machine_export_dialog.cpp,absent,,ABSENT,,,
+8cb42af7,case,"Satin automatique (bandes étroites, petits disques)",main_window_create.cpp,absent,,ABSENT,,,
+29de353d,case,Sauts à vide sur le canevas,main_window_order_jumps.cpp,absent,,ABSENT,,,
+82cbed86,case,Sens horaire,properties_panel.cpp,fait,Sens horaire,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(spiral.clockwise),ParamField.qml switch
+58d7bdcb,case,Seulement le fond extérieur (garder le blanc enfermé dans le motif),main_window_create.cpp,absent,,ABSENT,,,
+ae657807,case,Seulement les vrais objets,main_window_create.cpp,absent,,ABSENT,,,
+6157f7db,case,Sous-couche : réordonner les passes pour réduire les sauts (invisible),machine_export_dialog.cpp,absent,,ABSENT,,,
+a67720e9,case,Sous-couche centrale,main_window_satin_auto.cpp,fait,Sous-couche centrale,SERVICE_ONLY,,,
+9183cbb5,case,Sous-couche de bord,properties_panel.cpp,fait,Sous-couche de bord,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(satin.underlay_edge),ParamField.qml switch
+c791d168,case,Sous-couche de contour,properties_panel.cpp,fait,Sous-couche de contour,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(tatami.underlay_edge),ParamField.qml switch
+15ed49ee,case,Sous-couche en zigzag,properties_panel.cpp,fait,Sous-couche en zigzag,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(tatami.underlay_zigzag),ParamField.qml switch
+a9e979c7,case,Sous-couche parallèle,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(tatami.underlay_parallel),ParamField.qml switch
+b6a80b99,case,Sous-couche perpendiculaire,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam,ParamField.qml switch_underlay_parallel
+d664e9fb,case,Sous-couche zigzag,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(directional.underlay_zigzag),ParamField.qml switch
+f0eeb068,case,Texte en dessous (sommets vers le centre),text_advanced_panel.cpp,fait,Texte en dessous (sommets vers le centre),SERVICE_ONLY,,,
+e83895af,case,Traits sombres cousus par-dessus,main_window_create.cpp,absent,,ABSENT,,,
+31e80c01,case,"Trop de coupes, au-delà de",main_window_density.cpp,absent,,ABSENT,,,
+7dadce88,case,Écrire aussi le fichier de couleurs à côté,machine_export_dialog.cpp,absent,,ABSENT,,,
+19e2c522,case,Écrire les changements de couleur,machine_export_dialog.cpp,absent,,ABSENT,,,
+ab829014,case,Écrire les coupes de fil (réglage de ce fichier),machine_export_dialog.cpp,absent,,FUNCTIONAL_UNTESTED,StudioFilesTest::exportOptionsAreOneUndoStepAndRefusedWhenInvalid,FileController::setExportOptions,FilePanel.qml exportDialog
+41976bc1,dialogue,Ajouter un fil personnel,thread_panel.cpp,absent,,ABSENT,,,
+d06da014,dialogue,Aperçu avant impression - fiche de production,production_dialog.cpp,partiel,action_file_production_sheet,ABSENT,,,
+308f4162,dialogue,Cadre de broderie,main_window_files.cpp,fait,Cadre de broderie,TESTED,StudioShellTest::actionCatalogIsFullyReachable,ActionController::run(canvas.set),ActionPalette.qml
+531ea643,dialogue,Centre de rotation,main_window_rotation.cpp,absent,,ABSENT,,,
+5750c9de,dialogue,Choisir une référence de fil,main_window_gradient.cpp,partiel,thread.palette,SERVICE_ONLY,,,
+65d01889,dialogue,Coloris et tissu,colorway_dialog.cpp,partiel,activateCurrentColorway,SERVICE_ONLY,,,
+4c7db5cd,dialogue,Combler les vides du bloc,main_window_shapes.cpp,absent,,ABSENT,,,
+b2820172,dialogue,Compagnon IA,companion_dock.cpp,fait,Compagnon IA,TESTED,StudioCompanionTest::companionApproveIsOneUndoStep,CompanionController::send/approve/undoLast,CompanionPanel.qml companionProposal
+7d4ca866,dialogue,Comparer les méthodes de satin,main_window_satin_auto.cpp,absent,,ABSENT,,,
+dcaa0480,dialogue,Contour autour de la sélection,main_window_vector_edit.cpp,absent,,ABSENT,,,
+60c07a7c,dialogue,Données de débogage — objet %1,main_window_debug.cpp,absent,,ABSENT,,,
+c7e19585,dialogue,Exporter l'image,export_image_dialog.cpp,fait,Exporter l'image,UI_PARTIAL,,FileController::exportImage,résolution fixe 6 px/mm sans dialogue d'options
+775bc85b,dialogue,Exporter une broderie machine,machine_export_dialog.cpp,fait,Exporter pour la machine,FUNCTIONAL_UNTESTED,StudioFilesTest::exportOptionsAreOneUndoStepAndRefusedWhenInvalid,FileController::exportMachine/setExportOptions,FilePanel.qml exportDialog
+5aae42a1,dialogue,Fiche de production,production_dialog.cpp,fait,Fiche de production,UI_PARTIAL,,FileController::exportProductionSheet,pas d'aperçu ni d'impression
+004e668f,dialogue,Gabarit de placement 1:1,placement_template_dialog.cpp,absent,,UI_PARTIAL,,FileController::exportPlacementTemplate,papier A4 fixe côté QML
+de2f043a,dialogue,Gestes souris et clavier,help_dialogs.cpp,partiel,Raccourcis et commandes,TESTED,StudioCompanionTest::companionPanelAndDialogsOpenFromQml,HelpController::shortcuts,ShortcutsSheet.qml shortcutsSheet
+aca41aaf,dialogue,Guide de prise en main,help_dialogs.cpp,absent,,FUNCTIONAL_UNTESTED,HelpController::guide teste ; affichage du dialogue non pilote,HelpController::guide,HelpDialog.qml
+8aeebbf2,dialogue,Importer une image,import_dialog.cpp,fait,Importer une image,TESTED,StudioFilesTest::imageAndVectorImports,FileController::importImage,FilePanel.qml importOptions
+9ae947b0,dialogue,Imprimer la fiche de production,production_dialog.cpp,partiel,action_file_production_sheet,ABSENT,,,
+412ad05d,dialogue,Luminosité et contraste,brightness_dialog.cpp,fait,Luminosité et contraste,SERVICE_ONLY,,,
+4959ff8d,dialogue,Machine de broderie,machine_dialog.cpp,fait,machine.set,FUNCTIONAL_UNTESTED,StudioViewTest::hoopsAndMachine,AnalysisController::setMachine,AnalysisPanel.qml
+65160629,dialogue,Manuel d'utilisation,help_manual.cpp,absent,,ABSENT,,,
+cd99057f,dialogue,Nettoyer les petits îlots,main_window_regions.cpp,fait,regionClean,TESTED,StudioImageTest::preparePanelDrivesTheWholeJourney (regionCleanIslands via QML),RegionController::cleanIslands,RegionTools.qml
+b1452aff,dialogue,Numérisation automatique,main_window_create.cpp,fait,Numériser,SERVICE_ONLY,,,
+f057c31c,dialogue,Objet de point de contour,main_window_create.cpp,partiel,settableStitchTypes,SERVICE_ONLY,,,
+f2daca5b,dialogue,Options de génération (réglages du projet),generation_options_dialog.cpp,partiel,export.options,SERVICE_ONLY,,,
+e6a15184,dialogue,Paramètres,settings_dialog.cpp,fait,Paramètres,SERVICE_ONLY,,,
+3a4ee332,dialogue,Préférences générales,general_preferences_dialog.cpp,partiel,density_,TESTED,StudioCompanionTest::preferencesPersistAndRestore,PreferencesController,PreferencesDialog.qml
+c0dbf1e6,dialogue,Préférences — Intelligence artificielle,ai_preferences_dialog.cpp,exclu,,FUNCTIONAL_UNTESTED,StudioCompanionTest::keyIsOnlyInTheSecretStore (controleur ; formulaire non pilote),CompanionController::setApiKey/setModel/setProviderEnabled,PreferencesDialog.qml apiKeyField
+e8fcd3c4,dialogue,Quantifier les couleurs,main_window_workflow.cpp,partiel,regionReduceColors,SERVICE_ONLY,,,
+a815ced8,dialogue,Rapport de plantage,main_window_crash_report.cpp,absent,,ABSENT,,,
+ea529ff7,dialogue,Rechercher une commande,command_palette_dialog.cpp,fait,Rechercher une commande,TESTED,StudioCompanionTest::paletteCommandsRunThroughTheWindowDispatcher,ActionController::searchAll/runCommand,ActionPalette.qml
+7a51550a,dialogue,Remplissage tatami,main_window_create.cpp,partiel,settableStitchTypes,SERVICE_ONLY,,,
+f15b33c8,dialogue,Rendu réaliste,realistic_render_dialog.cpp,fait,Rendu réaliste,FUNCTIONAL_UNTESTED,,AnalysisController::applyRenderPreset,RealisticToggle.qml prÃ©rÃ©glages de qualitÃ© (le dialogue complet reste dans le panneau Analyse)
+1b7523c1,dialogue,Réduire / fusionner les fils,thread_merge_dialog.cpp,partiel,mergeThreads,SERVICE_ONLY,,,
+749748bf,dialogue,Réglages de la grille,grid_settings_dialog.cpp,partiel,gridMenu,SERVICE_ONLY,,,
+38a816ae,dialogue,Satin,main_window_satin_auto.cpp,fait,Satin,UI_PARTIAL,StudioDigitizeTest::satinColumnJourney,SatinController::diagnosis,SatinPanel.qml satinDiagnosis
+ffcf580f,dialogue,Segmenter avec l'IA,ai_segmentation_dialog.cpp,exclu,,UI_PARTIAL,StudioImageTest::aiStatusFallsBackExplicitly (sonde des backends + repli classique explicite; pas d'analyse),ImageController::refreshAiBackends,AiSection.qml
+4669e436,dialogue,Segmenter l'image,segmentation_dialog.cpp,fait,Segmenter l'image,FUNCTIONAL_UNTESTED,,ActionController::run(image.segment),ActionPalette.qml
+5febcd89,dialogue,Vectorisation,main_window_workflow.cpp,fait,Vectorisation,SERVICE_ONLY,,,
+3baea5a4,dock,Analyse,main_window_analysis.cpp,fait,Analyse,SERVICE_ONLY,,,
+ac8b4905,dock,Couleurs de segmentation,main_window_colors.cpp,fait,regionReduceColors,SERVICE_ONLY,,,
+9bad0b86,dock,Document,main_window_panels.cpp,fait,Document,SERVICE_ONLY,,,
+a0dd4113,dock,Fils,main_window_threads.cpp,fait,Fils,SERVICE_ONLY,,,
+841be1a4,dock,Filtres d'affichage,main_window_order_filter.cpp,fait,view.show-all,SERVICE_ONLY,,,
+799ba08e,dock,Historique,main_window_editing.cpp,fait,Historique,TESTED,Apres rebase Debug Studio20/20 + core302cas + commands236cas; Release17/17 avant rebase seulement; nouvelle Release interrompue sur demande du proprietaire,HistoryController / DocumentSession::navigateHistory,HistoryPanel.qml
+1164c4f2,dock,Ordre de couture,main_window_order_filter.cpp,fait,Ordre de couture,SERVICE_ONLY,,,
+86fa735c,dock,Propriétés,main_window_panels.cpp,fait,Propriétés,SERVICE_ONLY,,,
+3c08b8cc,dock,Workflow,main_window_panels.cpp,fait,Workflow,SERVICE_ONLY,,,
+3de2eda8,menu,Affichage,main_window.cpp,fait,Affichage,SERVICE_ONLY,,,
+7fd6fced,menu,Aide,main_window_help_menu.cpp,fait,Aide,UI_PARTIAL,boutons Aide / IA / Preferences / Commandes dans la barre du document (pas de menu),Main.qml dispatch,Main.qml helpButton
+ea8a9f5a,menu,Aligner la sélection,main_window_editing.cpp,absent,,FUNCTIONAL_UNTESTED,StudioEditTest::alignDistributeStackGroup (controleur seul),EditController::align/distribute,EditBar Aligner / CanvasContextMenu
+b73c432d,menu,Aligner sur,main_window_arrange.cpp,absent,,ABSENT,,,
+71984e11,menu,Analyse,main_window_analysis.cpp,fait,Analyse,SERVICE_ONLY,,,
+101b9704,menu,Broderie,main_window.cpp,fait,Broderie,SERVICE_ONLY,,,
+54ae0825,menu,Convertir le type,main_window_arrange.cpp,absent,,ABSENT,,,
+8fec2068,menu,Créer avec réglages,main_window.cpp,partiel,settableStitchTypes,SERVICE_ONLY,,,
+a68f2f07,menu,Densité,main_window.cpp,fait,Densité,SERVICE_ONLY,,,
+80f317b6,menu,Design entier,main_window_objects.cpp,absent,,ABSENT,,,
+4a22b69f,menu,Espaces de travail,main_window_ux.cpp,fait,Espaces de travail,SERVICE_ONLY,,,
+18dac096,menu,Fichier,main_window.cpp,fait,Fichier,SERVICE_ONLY,,,
+fcfaf94f,menu,Fils,main_window_threads.cpp,fait,Fils,SERVICE_ONLY,,,
+943cef6b,menu,Forme,main_window_shapes.cpp,fait,Forme,SERVICE_ONLY,,,
+18202d51,menu,Formes prédéfinies,main_window_vector_tools.cpp,absent,,UI_PARTIAL,StudioToolsTest::polygonAndRegularShapes (etoile seulement),ToolController::setStar,ToolOptions starCheck (autres formes predefinies absentes)
+433d10e7,menu,Fusionner dans,main_window_regions.cpp,fait,Fusionner dans,TESTED,StudioImageTest::preparePanelDrivesTheWholeJourney (regionMergeNeighbour via QML),RegionController::mergeWithNeighbour,RegionTools.qml
+3a29a683,menu,Grille et guides,main_window_view_display.cpp,absent,,ABSENT,,,
+343f9eae,menu,Image,main_window.cpp,fait,Image,SERVICE_ONLY,,,
+7449b5b4,menu,Navigation,main_window_help_menu.cpp,fait,Navigation,SERVICE_ONLY,,,
+6fbcb11d,menu,Panneaux,main_window.cpp,fait,Panneaux,SERVICE_ONLY,,,
+eb49cec2,menu,Passes de couture,main_window_view_display.cpp,absent,,ABSENT,,,
+644f52dc,menu,Plans d'affichage,main_window.cpp,absent,,ABSENT,,,
+b909b547,menu,Préréglages de points,main_window_stitch_presets.cpp,fait,Préréglages de points,TESTED,StudioInspectorTest::presetsLifecycle,InspectorController::savePreset/applyPreset/renamePreset,Inspector.qml section PRESETS
+e019429a,menu,Rappeler une sélection,main_window_selection_tools.cpp,absent,,FUNCTIONAL_UNTESTED,StudioEditTest::savedSelectionsAreRecalled (controleur seul),EditController::recallSelection,EditBar Rappeler
+d1ff1ac3,menu,Rendu réaliste,main_window_realistic.cpp,fait,Rendu réaliste,TESTED,StudioRealisticTest::toggleKeepsDocumentUntouchedAndFallsBackToCpuInSoftware,ViewController::realistic,ViewPanel.qml bouton RÃ©aliste + Ctrl+Shift+T + RealisticToggle.qml
+6ef7ae22,menu,Retrouver,main_window_selection_tools.cpp,fait,Retrouver,SERVICE_ONLY,,,
+bfb1ac5d,menu,Récents,main_window.cpp,fait,Récents,TESTED,StudioFilesTest::recentFilesPersistPruneAndReopen,FileController::recent/requestOpenRecent,FilePanel.qml fileMenu
+39d632d3,menu,Réglages fins du satin,main_window.cpp,absent,,ABSENT,,,
+46096614,menu,Segmentation,main_window.cpp,fait,Segmentation,SERVICE_ONLY,,,
+20265051,menu,Supprimer un préréglage,main_window_stitch_presets.cpp,fait,preset.remove,TESTED,StudioInspectorTest::presetsLifecycle,InspectorController::removePreset,Inspector.qml removePreset_N
+5d90ed77,menu,Sélection,main_window_context_menu.cpp,fait,Sélection,FUNCTIONAL_UNTESTED,StudioEditTest::selectionCommandsOnRealObjects (controleur seul),EditController::selectAll/selectRect/selectByLayer,CanvasContextMenu Selection + GpuCanvas rectangle
+90c9c047,menu,Texte,main_window_lettering.cpp,fait,Texte,TESTED,StudioDigitizeTest::textLetteringJourney,ActionController::run(text.add/text.edit/text.remove),ActionPalette.qml
+1bfbf007,menu,Thème,main_window.cpp,fait,Thème,SERVICE_ONLY,,,
+365e2a98,menu,Transformer,main_window_objects.cpp,fait,Transformer,SERVICE_ONLY,,,
+50f2be55,menu,Type de points,main_window_context_menu.cpp,fait,Type de points,FUNCTIONAL_UNTESTED,StudioEditTest::selectionCommandsOnRealObjects (controleur seul),EditController::selectByType,CanvasContextMenu Type de points
+e5696c12,menu,Type de points (tous),main_window_context_menu.cpp,fait,settableStitchTypes,FUNCTIONAL_UNTESTED,StudioEditTest::selectionCommandsOnRealObjects (controleur seul),EditController::selectByType,EditBar Type
+aabe1c93,menu,Édition,main_window.cpp,fait,Édition,SERVICE_ONLY,,,
+4b6cfb58,outil,Brush,tools.hpp,fait,Brush,SERVICE_ONLY,,,
+7e011329,outil,Bucket,tools.hpp,fait,Bucket,SERVICE_ONLY,,,
+336b6213,outil,ClickToStitch,tools.hpp,fait,ClickToStitch,SERVICE_ONLY,,,
+e22edfe6,outil,Cut,tools.hpp,fait,Cut,TESTED,StudioToolsTest::knifeAndBooleans,ToolController::release (knife ; batchSplit),ToolRail tool_knife
+e3db2548,outil,DetailBrush,tools.hpp,fait,DetailBrush,SERVICE_ONLY,,,
+a8ddefdf,outil,DrawBezier,tools.hpp,fait,DrawBezier,TESTED,StudioToolsTest::penBezierAndFreehand,ToolController::finish (draw.bezier ; createPenShape),ToolRail tool_draw.bezier + ToolOverlay
+cf819ee7,outil,DrawBreakLine,tools.hpp,fait,DrawBreakLine,SERVICE_ONLY,,,
+31cf34dd,outil,DrawDirectionGuide,tools.hpp,fait,DrawDirectionGuide,UI_PARTIAL,StudioDigitizeTest::directionGuidesJourney,SatinController::addGuide,SatinPanel.qml (outil de trace au canevas absent)
+b8cd428a,outil,DrawEllipse,tools.hpp,fait,DrawEllipse,TESTED,StudioToolsTest::basicShapesByMouse,ToolController::press/release (draw.ellipse),ToolRail tool_draw.ellipse + GpuCanvas Gesture::Tool
+c5d6568a,outil,DrawFreeform,tools.hpp,fait,DrawFreeform,TESTED,StudioToolsTest::penBezierAndFreehand,ToolController::release (draw.freeform ; createFreehandShape),ToolRail tool_draw.freeform
+79f92460,outil,DrawPolygon,tools.hpp,fait,DrawPolygon,TESTED,StudioToolsTest::polygonAndRegularShapes,ToolController::finish (draw.polygon),ToolRail tool_draw.polygon + ToolOverlay
+b5f01e17,outil,DrawPolygonRegular,tools.hpp,fait,DrawPolygonRegular,TESTED,StudioToolsTest::polygonAndRegularShapes,ToolController::commitBox (draw.polygon-regular + etoile),ToolRail tool_draw.polygon-regular + ToolOptions sidesSpin/starCheck
+0134085f,outil,DrawRectangle,tools.hpp,fait,DrawRectangle,TESTED,StudioToolsTest::basicShapesByMouse,ToolController::press/release (draw.rectangle),ToolRail tool_draw.rectangle + GpuCanvas Gesture::Tool
+9f2384e1,outil,DrawSatinColumn,tools.hpp,fait,DrawSatinColumn,UI_PARTIAL,StudioDigitizeTest::satinColumnJourney,SatinController::createFromRungs,SatinPanel.qml (creation par barreaux testee ; geste de trace au canevas absent)
+b1c7b9f7,outil,Eyedropper,tools.hpp,fait,Eyedropper,SERVICE_ONLY,,,
+26b7b101,outil,Measure,tools.hpp,fait,Measure,SERVICE_ONLY,,,
+d29364dd,outil,Pan,tools.hpp,fait,Pan,SERVICE_ONLY,,,
+f67ff16e,outil,Rect,tools.hpp,fait,Rect,SERVICE_ONLY,,,
+7937b507,outil,Select,tools.hpp,fait,Select,SERVICE_ONLY,,,
+c8de119f,outil,Text,tools.hpp,fait,Text,UI_PARTIAL,StudioDigitizeTest::textLetteringJourney,ActionController::run(text.add),ActionPalette.qml (outil Texte au canevas absent)

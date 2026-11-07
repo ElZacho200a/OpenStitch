@@ -1,0 +1,15 @@
+singleton Theme 1.0 Theme.qml
+ActionPalette 1.0 ActionPalette.qml
+FilePanel 1.0 FilePanel.qml
+Inspector 1.0 Inspector.qml
+ParamField 1.0 ParamField.qml
+ParamSection 1.0 ParamSection.qml
+StudioLabel 1.0 StudioLabel.qml
+StudioPanel 1.0 StudioPanel.qml
+StudioToolTip 1.0 StudioToolTip.qml
+StudioTextField 1.0 StudioTextField.qml
+StudioCheckBox 1.0 StudioCheckBox.qml
+StudioSwitch 1.0 StudioSwitch.qml
+StudioSlider 1.0 StudioSlider.qml
+StudioSpinBox 1.0 StudioSpinBox.qml
+StudioComboBox 1.0 StudioComboBox.qml

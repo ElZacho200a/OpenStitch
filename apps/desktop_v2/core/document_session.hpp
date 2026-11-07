@@ -44,6 +44,11 @@ public:
     [[nodiscard]] std::string undoName() const { return undo_.undoName(); }
     [[nodiscard]] std::string redoName() const { return undo_.redoName(); }
     [[nodiscard]] std::vector<std::string> undoNames() const { return undo_.undoNames(); }
+    [[nodiscard]] std::vector<std::string> redoNames() const { return undo_.redoNames(); }
+    // CX11: positions belong to the one command stack, never to the monotonic revision.
+    [[nodiscard]] std::size_t historyPosition() const { return undo_.position(); }
+    [[nodiscard]] std::size_t historySize() const { return undo_.historySize(); }
+    [[nodiscard]] long long savedHistoryPosition() const { return undo_.cleanPosition(); }
 
     // --- Sélection (source de vérité unique, élaguée après chaque changement) -----------------
     [[nodiscard]] SelectionModel& selection() { return selection_; }
@@ -61,6 +66,9 @@ public:
     void execute(std::unique_ptr<commands::ICommand> command);
     bool undo();
     bool redo();
+    // Jump within the existing history. Reject invalid positions before touching the project;
+    // notify/prune once at the final state, so observers never rebuild intermediate geometry.
+    bool navigateHistory(std::size_t position);
 
     struct BatchResult {
         project_ops::BatchReport report;

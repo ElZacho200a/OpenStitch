@@ -81,6 +81,24 @@ bool DocumentSession::redo() {
     return true;
 }
 
+bool DocumentSession::navigateHistory(std::size_t position) {
+    if (position > undo_.historySize()) {
+        return false;
+    }
+    const auto previous = undo_.position();
+    if (position == previous) {
+        return true;
+    }
+    while (undo_.position() > position) {
+        undo_.undo(project_);
+    }
+    while (undo_.position() < position) {
+        undo_.redo(project_);
+    }
+    changed(position < previous ? ChangeKind::Undone : ChangeKind::Redone);
+    return true;
+}
+
 DocumentSession::BatchResult DocumentSession::previewBatch(std::string_view batchJson) const {
     document::Project scratch = project_;
     project_ops::BatchOptions options;

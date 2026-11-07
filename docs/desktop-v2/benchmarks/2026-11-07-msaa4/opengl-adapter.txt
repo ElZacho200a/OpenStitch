@@ -1,0 +1,13 @@
+Extraits QSG_INFO natifs, passe du 2026-11-07 Europe/Paris (UTC : 2026-11-06 au soir).
+Adresses de ressources et chemins locaux omis ; lignes backend/adaptateur/MSAA conservées.
+Source Qt : https://doc.qt.io/qt-6.8/qtquick-visualcanvas-scenegraph.html
+
+qt.scenegraph.general: threaded render loop
+qt.scenegraph.general: Animation Driver: using vsync: 16.67 ms
+qt.scenegraph.general: Animation Driver: using vsync: 16.67 ms
+qt.scenegraph.general: Creating QRhi with backend OpenGL
+  Prefer software device: 0
+qt.rhi.general: Created OpenGL context QSurfaceFormat(version 4.6, options QFlags<QSurfaceFormat::FormatOption>(DeprecatedFunctions), depthBufferSize 24, redBufferSize 8, greenBufferSize 8, blueBufferSize 8, alphaBufferSize 8, stencilBufferSize 8, samples 4, swapBehavior QSurfaceFormat::DoubleBuffer, swapInterval 1, colorSpace QColorSpace(QColorSpace::SRgb, QColorSpace::Primaries::SRgb, QColorSpace::TransferFunction::SRgb), profile  QSurfaceFormat::CompatibilityProfile)
+qt.rhi.general: OpenGL VENDOR: NVIDIA Corporation RENDERER: NVIDIA GeForce RTX 5060 Ti/PCIe/SSE2 VERSION: 4.6.0 NVIDIA 610.88
+qt.scenegraph.general: MSAA sample count for the swapchain is 4. Alpha channel requested = no.
+quick / 100000: 59.98 completions/s, median 16.667 ms, p95 17.283 ms

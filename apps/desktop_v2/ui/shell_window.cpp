@@ -1,12 +1,15 @@
 ﻿// SPDX-License-Identifier: Apache-2.0
 #include "shell_window.hpp"
 #include "direction_guides.hpp"
+#include "display_filters.hpp"
 #include "file_io.hpp"
 #include "floating_action_bar.hpp"
 #include "radial_menu_widget.hpp"
 #include "render_quality_dialog.hpp"
+#include "simulation_nav.hpp"
 #include "spool_rail_widget.hpp"
 #include "studio_theme.hpp"
+#include "thread_palette_service.hpp"
 
 #include <QAbstractButton>
 #include <QAction>
@@ -160,6 +163,7 @@ const std::pair<const char*, const char*> kCommandShortcuts[] = {
     {"analysis.run", "F5"},
     {"analysis.density", "F6"},
     {"view.render", "F4"},
+    {"view.show-all", "Ctrl+Shift+H"},
     {"view.zoom-in", "Ctrl+="},
     {"view.zoom-out", "Ctrl+-"},
     {"view.zoom-actual", "Ctrl+0"},
@@ -381,6 +385,10 @@ void ShellWindow::buildMenus() {
     saveAction_ = file->addAction(tr("&Enregistrer"));
     saveAction_->setShortcut(QKeySequence::Save);
     connect(saveAction_, &QAction::triggered, this, [this] { (void)saveCurrentProject(); });
+    auto* saveAs = file->addAction(tr("Enregistrer &sous…"));
+    saveAs->setObjectName(QStringLiteral("action_file_save_as"));
+    saveAs->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+S")));
+    connect(saveAs, &QAction::triggered, this, [this] { (void)saveProjectAs(); });
     exportAction_ = file->addAction(tr("E&xporter pour la machine…"));
     exportAction_->setShortcut(QKeySequence(QStringLiteral("Ctrl+E")));
     connect(exportAction_, &QAction::triggered, this, [this] {
@@ -395,6 +403,33 @@ void ShellWindow::buildMenus() {
             exportDst(std::filesystem::path(path.toStdU16String()));
         }
     });
+    auto* exportAgainAction = file->addAction(tr("Exporter de nouveau (derniers réglages)"));
+    exportAgainAction->setObjectName(QStringLiteral("action_file_export_again"));
+    exportAgainAction->setShortcut(QKeySequence(QStringLiteral("F10")));
+    connect(exportAgainAction, &QAction::triggered, this, [this] { (void)exportAgain(); });
+    auto* exportThreadsAction = file->addAction(tr("Exporter la liste des &fils (CSV)…"));
+    exportThreadsAction->setObjectName(QStringLiteral("action_file_export_threads"));
+    connect(exportThreadsAction, &QAction::triggered, this, &ShellWindow::chooseAndExportThreads);
+    auto* importChartAction = file->addAction(tr("Importer un &nuancier de fils (CSV, JSON)…"));
+    importChartAction->setObjectName(QStringLiteral("action_file_import_chart"));
+    connect(importChartAction, &QAction::triggered, this, &ShellWindow::chooseAndImportChart);
+    auto* chartFormatAction = file->addAction(tr("Format d'import des nuanciers…"));
+    chartFormatAction->setObjectName(QStringLiteral("action_file_chart_format"));
+    connect(chartFormatAction, &QAction::triggered, this, [this] {
+        QMessageBox::information(
+            this, tr("Format d'import des nuanciers"),
+            tr("<p>Les cartes de fils des marques ne sont pas fournies avec OpenStitch : importez "
+               "les vôtres.</p><p><b>CSV</b> (UTF-8, séparateur « , » ou « ; », en-tête "
+               "obligatoire) "
+               ":<br><code>code,name,hex</code> ou <code>code,name,r,g,b</code><br>colonnes "
+               "facultatives : <code>brand</code>, <code>range</code>.</p><p><b>JSON</b> :<br>"
+               "<code>{\"name\":\"Mes fils\",\"threads\":[{\"code\":\"1001\",\"name\":"
+               "\"Rouge\",\"rgb\":\"#C8102E\"}]}</code></p><p>Le nom du fichier (CSV) ou « name » "
+               "(JSON) donne le nom du nuancier ; les codes doivent être uniques.</p>"));
+    });
+    auto* removeChartAction = file->addAction(tr("Retirer un nuancier importé…"));
+    removeChartAction->setObjectName(QStringLiteral("action_file_remove_chart"));
+    connect(removeChartAction, &QAction::triggered, this, &ShellWindow::removeImportedChart);
     auto* exportDxfAction = file->addAction(tr("Exporter les contours en D&XF…"));
     exportDxfAction->setObjectName(QStringLiteral("action_file_export_dxf"));
     connect(exportDxfAction, &QAction::triggered, this, &ShellWindow::chooseAndExportDxf);
@@ -951,6 +986,20 @@ void ShellWindow::buildStatusArea() {
     simBar_->addWidget(simLabel_);
     auto* play = simBar_->addAction(tr("Lecture"));
     play->setCheckable(true);
+    const auto nav = [&](const QString& text, const QString& tip, const char* id) {
+        auto* a = simBar_->addAction(text);
+        a->setObjectName(QString::fromLatin1(id));
+        a->setToolTip(tip);
+        connect(a, &QAction::triggered, this,
+                [this, id] { (void)simulationJump(QString::fromLatin1(id)); });
+    };
+    nav(tr("⏮ Couleur"), tr("Début de la couleur précédente"), "sim.prev-colour");
+    nav(tr("⏮ Objet"), tr("Début de l'objet précédent"), "sim.prev-object");
+    nav(tr("◀ Point"), tr("Un point en arrière"), "sim.prev-point");
+    nav(tr("Point ▶"), tr("Un point en avant"), "sim.next-point");
+    nav(tr("Objet ⏭"), tr("Début de l'objet suivant"), "sim.next-object");
+    nav(tr("Couleur ⏭"), tr("Début de la couleur suivante"), "sim.next-colour");
+    nav(tr("⏹ Fin"), tr("Aller à la fin de la séquence"), "sim.end");
     simTimer_ = new QTimer(this);
     simTimer_->setInterval(120);
     connect(simSlider_, &QSlider::valueChanged, this, [this](int v) { setSimulationPosition(v); });
@@ -1862,6 +1911,32 @@ bool ShellWindow::saveCurrentProject() {
     return !path.isEmpty() && saveProject(std::filesystem::path(path.toStdU16String()));
 }
 
+bool ShellWindow::saveProjectAs() {
+    if (!documentOpen_) {
+        return false;
+    }
+    QString path = QFileDialog::getSaveFileName(
+        this, tr("Enregistrer le projet sous"),
+        currentPath_.empty() ? QString() : QString::fromStdU16String(currentPath_.u16string()),
+        tr("Projet OpenStitch (*.osp)"));
+    if (path.isEmpty()) {
+        return false;
+    }
+    if (!path.endsWith(QStringLiteral(".osp"), Qt::CaseInsensitive)) {
+        path += QStringLiteral(".osp");
+    }
+    return saveProject(std::filesystem::path(path.toStdU16String()));
+}
+
+bool ShellWindow::exportAgain() {
+    if (!documentOpen_ || lastExportPath_.empty()) {
+        setNotice(tr("Aucun export précédent : utilisez « Exporter pour la machine »."), true);
+        return false;
+    }
+    exportDst(lastExportPath_);
+    return true;
+}
+
 bool ShellWindow::confirmDiscardOrSave() {
     if (!documentOpen_ || !session_.dirty()) {
         return true;
@@ -1991,6 +2066,72 @@ void ShellWindow::resegmentImage() {
         regions_->regenerate(true); // re-segmente avec ces réglages, puis régénère les objets
     });
     dialog->open();
+}
+
+void ShellWindow::chooseAndImportChart() {
+    const QString path =
+        QFileDialog::getOpenFileName(this, tr("Importer un nuancier de fils"), QString(),
+                                     tr("Nuanciers (*.csv *.json);;Tous les fichiers (*)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    const auto dir = stateDir_.empty()
+                         ? std::filesystem::temp_directory_path() / "openstitch_charts"
+                         : stateDir_ / "thread_charts";
+    const auto r = importThreadChart(std::filesystem::path(path.toStdU16String()), dir);
+    if (!r) {
+        setNotice(tr("Import du nuancier impossible : %1 %2")
+                      .arg(fromUtf8(r.error().message), fromUtf8(r.error().detail)),
+                  true);
+        return;
+    }
+    setNotice(tr("Nuancier « %1 » importé : %2 fils (retrouvé au prochain démarrage).")
+                  .arg(fromUtf8(r->name))
+                  .arg(r->count),
+              false);
+}
+
+void ShellWindow::removeImportedChart() {
+    QStringList names;
+    std::vector<std::string> ids;
+    for (const auto& c : chartInfos()) {
+        if (c.user) {
+            names << fromUtf8(c.name);
+            ids.push_back(c.id);
+        }
+    }
+    if (names.isEmpty()) {
+        setNotice(tr("Aucun nuancier importé à retirer."), false);
+        return;
+    }
+    bool ok = false;
+    const QString pick = QInputDialog::getItem(this, tr("Retirer un nuancier importé"),
+                                               tr("Nuancier à retirer :"), names, 0, false, &ok);
+    if (ok) {
+        const auto dir = stateDir_.empty()
+                             ? std::filesystem::temp_directory_path() / "openstitch_charts"
+                             : stateDir_ / "thread_charts";
+        const bool removed =
+            removeUserChart(ids[static_cast<std::size_t>(names.indexOf(pick))], dir);
+        setNotice(removed ? tr("Nuancier retiré.") : tr("Nuancier introuvable."), !removed);
+    }
+}
+
+void ShellWindow::chooseAndExportThreads() {
+    if (!documentOpen_) {
+        return;
+    }
+    const QString path =
+        QFileDialog::getSaveFileName(this, tr("Exporter la liste des fils"),
+                                     QStringLiteral("fils.csv"), tr("Fichier CSV (*.csv)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    std::size_t rows = 0;
+    const auto r = exportThreadListCsv(session_.project(),
+                                       std::filesystem::path(path.toStdU16String()), &rows);
+    setNotice(r.ok ? tr("Liste des fils exportée (%1 fils).").arg(rows) : fromUtf8(r.message),
+              !r.ok);
 }
 
 void ShellWindow::chooseAndImportMachine() {
@@ -2280,6 +2421,7 @@ void ShellWindow::setStateDirectory(const std::filesystem::path& dir) {
         setDensity(prefs.density);
         setRenderSettings(prefs.render);
     }
+    (void)loadUserCharts(dir / "thread_charts");
     autosave_ = std::make_unique<AutosaveStore>(dir);
     recent_ = pruneMissingRecent(loadRecentList(dir / "recent.txt"));
     rebuildRecentMenu();
@@ -2365,6 +2507,7 @@ void ShellWindow::rebuildHistoryMenu() {
 }
 
 void ShellWindow::exportDst(const std::filesystem::path& dst) {
+    lastExportPath_ = dst;
     const auto snapshot = session_.snapshot();
     const auto exportRevision = session_.revision();
     setNotice(tr("Export DST en cours…"), false);
@@ -2719,6 +2862,44 @@ int ShellWindow::simulationTotal() const {
 
 int ShellWindow::simulationPosition() const {
     return simLimit_ ? static_cast<int>(*simLimit_) : simulationTotal();
+}
+
+bool ShellWindow::simulationJump(const QString& id) {
+    const int total = simulationTotal();
+    if (!documentOpen_ || total <= 0) {
+        return false;
+    }
+    if (!simMarks_ || simMarksRevision_ != session_.revision()) {
+        auto marks = simulationMarks(session_.project());
+        if (!marks) {
+            setNotice(tr("Simulation : %1").arg(fromUtf8(marks.error().message)), true);
+            return false;
+        }
+        simMarks_ = std::move(*marks);
+        simMarksRevision_ = session_.revision();
+    }
+    const auto here = static_cast<std::size_t>(simulationPosition());
+    const auto end = static_cast<std::size_t>(total);
+    std::size_t target = here;
+    if (id == QLatin1String("sim.prev-colour")) {
+        target = previousMark(simMarks_->colours, here);
+    } else if (id == QLatin1String("sim.prev-object")) {
+        target = previousMark(simMarks_->objects, here);
+    } else if (id == QLatin1String("sim.prev-point")) {
+        target = here > 0 ? here - 1 : 0;
+    } else if (id == QLatin1String("sim.next-point")) {
+        target = std::min(here + 1, end);
+    } else if (id == QLatin1String("sim.next-object")) {
+        target = nextMark(simMarks_->objects, here, end);
+    } else if (id == QLatin1String("sim.next-colour")) {
+        target = nextMark(simMarks_->colours, here, end);
+    } else if (id == QLatin1String("sim.end")) {
+        target = end;
+    } else {
+        return false;
+    }
+    setSimulationPosition(static_cast<int>(target));
+    return true;
 }
 
 void ShellWindow::setSimulationPosition(int position) {
@@ -3860,6 +4041,41 @@ std::vector<CommandEntry> ShellWindow::commandEntries() const {
                    q(tr("Parcours")), "", documentOpen_});
     out.push_back({"image.resegment", q(tr("Re-segmenter l'image…")), q(tr("Image")), "",
                    documentOpen_ && session_.project().segmentation.has_value()});
+    {
+        // Filtres d'affichage : visibilité des objets (jamais de suppression), une étape chacun.
+        const auto sel = inspect(session_.project(), session_.selection().targets());
+        const bool one = !sel.ids.empty();
+        out.push_back({"view.only-colour", q(tr("Afficher uniquement la couleur de la sélection")),
+                       q(tr("Affichage")), "", one && !sel.rgb.mixed});
+        out.push_back({"view.only-type",
+                       q(tr("Afficher uniquement le type de points de la sélection")),
+                       q(tr("Affichage")), "", one && !sel.typeId.mixed});
+        out.push_back({"view.show-all", q(tr("Tout afficher (retirer les filtres)")),
+                       q(tr("Affichage")), "Ctrl+Shift+H",
+                       hiddenObjectCount(session_.project()) > 0});
+    }
+    for (const auto& [simId, simLabel] :
+         {std::pair{"sim.prev-colour", tr("Simulation : couleur précédente")},
+          std::pair{"sim.prev-object", tr("Simulation : objet précédent")},
+          std::pair{"sim.prev-point", tr("Simulation : un point en arrière")},
+          std::pair{"sim.next-point", tr("Simulation : un point en avant")},
+          std::pair{"sim.next-object", tr("Simulation : objet suivant")},
+          std::pair{"sim.next-colour", tr("Simulation : couleur suivante")},
+          std::pair{"sim.end", tr("Simulation : aller à la fin")}}) {
+        out.push_back(
+            {simId, q(simLabel), q(tr("Simulation")), "", documentOpen_ && simulationTotal() > 0});
+    }
+    out.push_back({"file.export-threads", q(tr("Exporter la liste des fils (CSV)…")),
+                   q(tr("Fichier")), "",
+                   documentOpen_ && !session_.project().embroidery_objects.empty()});
+    out.push_back({"file.import-chart", q(tr("Importer un nuancier de fils (CSV, JSON)…")),
+                   q(tr("Fils")), "", true});
+    out.push_back({"file.remove-chart", q(tr("Retirer un nuancier importé…")), q(tr("Fils")), "",
+                   std::ranges::any_of(chartInfos(), [](const auto& c) { return c.user; })});
+    out.push_back({"file.save-as", q(tr("Enregistrer le projet sous…")), q(tr("Fichier")),
+                   "Ctrl+Shift+S", documentOpen_});
+    out.push_back({"file.export-again", q(tr("Exporter de nouveau (derniers réglages)")),
+                   q(tr("Fichier")), "F10", documentOpen_ && !lastExportPath_.empty()});
     out.push_back({"file.import-machine", q(tr("Importer une broderie machine…")), q(tr("Fichier")),
                    "", true});
     out.push_back({"file.import-dxf", q(tr("Importer un DXF…")), q(tr("Fichier")), "", true});
@@ -4108,6 +4324,41 @@ bool ShellWindow::runCommand(const QString& id) {
             setCheckSkipped(!checkSkipped_);
         } else if (id == QLatin1String("image.resegment")) {
             resegmentImage();
+        } else if (id == QLatin1String("view.only-colour") ||
+                   id == QLatin1String("view.only-type") || id == QLatin1String("view.show-all")) {
+            const auto sel = inspect(session_.project(), session_.selection().targets());
+            ServiceResult r{false, {}};
+            if (id == QLatin1String("view.show-all")) {
+                r = showAllObjects(session_);
+            } else if (sel.ids.empty()) {
+                r = {false, "Sélectionnez d'abord un objet."};
+            } else if (id == QLatin1String("view.only-colour")) {
+                r = sel.rgb.mixed
+                        ? ServiceResult{false, "Les objets choisis n'ont pas la même couleur."}
+                        : showOnlyColour(session_, sel.rgb.value);
+            } else {
+                r = sel.typeId.mixed
+                        ? ServiceResult{false, "Les objets choisis n'ont pas le même type."}
+                        : showOnlyType(session_, sel.typeId.value);
+            }
+            setNotice(r.ok ? tr("Affichage modifié (annulable). « Tout afficher » le rétablit.")
+                           : fromUtf8(r.message),
+                      !r.ok);
+            if (!r.ok) {
+                return false;
+            }
+        } else if (id.startsWith(QLatin1String("sim."))) {
+            return simulationJump(id);
+        } else if (id == QLatin1String("file.export-threads")) {
+            chooseAndExportThreads();
+        } else if (id == QLatin1String("file.import-chart")) {
+            chooseAndImportChart();
+        } else if (id == QLatin1String("file.remove-chart")) {
+            removeImportedChart();
+        } else if (id == QLatin1String("file.save-as")) {
+            (void)saveProjectAs();
+        } else if (id == QLatin1String("file.export-again")) {
+            (void)exportAgain();
         } else if (id == QLatin1String("file.import-machine")) {
             chooseAndImportMachine();
         } else if (id == QLatin1String("file.import-dxf")) {

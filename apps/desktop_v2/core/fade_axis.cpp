@@ -169,6 +169,22 @@ ServiceResult dragFadeHandle(DocumentSession& session, std::uint64_t objectId, F
     return {true, {}};
 }
 
+ServiceResult reverseFade(DocumentSession& session, std::uint64_t objectId) {
+    auto spec = project_ops::describe_gradient_fill(session.project(), ObjectId{objectId});
+    if (!spec) {
+        return {false, "Cet objet ne porte pas de fondu."};
+    }
+    std::swap(spec->gradient.from, spec->gradient.to);
+    std::swap(spec->gradient.spacing_from, spec->gradient.spacing_to);
+    auto command =
+        project_ops::make_edit_gradient_fill_command(session.project(), ObjectId{objectId}, *spec);
+    if (!command) {
+        return {false, command.error().message};
+    }
+    session.execute(std::move(*command));
+    return {true, {}};
+}
+
 std::string fadeCurveLabel(FadeCurve curve) {
     switch (curve) {
     case FadeCurve::Linear:

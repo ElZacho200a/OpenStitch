@@ -1,0 +1,25 @@
+{
+  "project_sha256": "CC295B34A2C56828CE4D20D36C3D289C5FDA0A522810929013F3471561C59C37",
+  "executable_sha256": "A65BE972E76CFBFCF10ED7653F4B4A427AF2952D1444D4E49EEC5D16E0FC36F8",
+  "qsg_rhi_backend_requested": null,
+  "qsg_render_loop_requested": null,
+  "qt_scale_factor_requested": null,
+  "frames": 240,
+  "warmup": 30,
+  "cpu": [
+    {
+      "Name": "AMD Ryzen 7 7700X 8-Core Processor             "
+    }
+  ],
+  "video_controllers": [
+    {
+      "Name": "AMD Radeon(TM) Graphics",
+      "DriverVersion": "32.0.21030.2001"
+    },
+    {
+      "Name": "NVIDIA GeForce RTX 5060 Ti",
+      "DriverVersion": "32.0.16.1088"
+    }
+  ],
+  "note": "GPU controller inventory does not prove which adapter Qt used. Quick frameSwapped and Widgets paintEvent use different completion boundaries."
+}

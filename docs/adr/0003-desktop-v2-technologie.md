@@ -1,6 +1,9 @@
 # ADR 0003 — Technologie de Desktop V2 : Qt Widgets, architecture à deux couches
 
-Statut : **accepté, avec conditions de révision explicites** (2026-11-04). Voir aussi `docs/desktop-v2/03-architecture.md`.
+Statut : **révisé par l'[ADR 0005 — Studio Qt Quick / GPU](0005-studio-qtquick-gpu.md)**
+(2026-11-06) pour le shell cible. Qt Widgets reste le front de compatibilité pendant la transition.
+Le texte ci-dessous conserve le contexte et les preuves de la décision initiale du 2026-11-04.
+Voir aussi `docs/desktop-v2/03-architecture.md`.
 
 ## Contexte
 

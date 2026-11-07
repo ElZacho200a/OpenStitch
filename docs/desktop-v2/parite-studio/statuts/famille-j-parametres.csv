@@ -1,0 +1,9 @@
+id,statut,preuve,controleur,composant
+44642518,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam,ParamField.qml switch_alternate
+65fd5bf3,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam,ParamField.qml switch_handmade
+6dd1c5d4,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setPoint/clearParam,ParamField.qml clear_center_mm
+0e474c43,UI_PARTIAL,StudioInspectorTest::listsAndPointsEditEndToEnd,InspectorController::clearParam,ParamField.qml count_density_gradient (lecture et effacement ; creation sur le canevas)
+43d3b43f,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam,ParamField.qml switch_auto_spacing
+1a41ec3c,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam,ParamField.qml switch_spiral
+b6a80b99,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam,ParamField.qml switch_underlay_parallel
+a3bed34d,ABSENT,,,guide d'auto-satin absolu : champ imbrique de guides (liste editee sur le canevas)

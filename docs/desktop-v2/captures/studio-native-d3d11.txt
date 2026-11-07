@@ -1,0 +1,12 @@
+Extraits du journal QSG_INFO de la capture Qt native, objet 52 sélectionné.
+Les adresses de ressources sont supprimées. Source Qt : https://doc.qt.io/qt-6.8/qtquick-visualcanvas-scenegraph.html
+
+qt.scenegraph.general: threaded render loop
+qt.scenegraph.general: Creating QRhi with backend D3D11
+  Prefer software device: 0
+qt.rhi.general: Adapter 0: 'NVIDIA GeForce RTX 5060 Ti' (vendor 0x10DE device 0x2D04 flags 0x0)
+qt.rhi.general:   using this adapter
+qt.rhi.general: Adapter 1: 'AMD Radeon(TM) Graphics' (vendor 0x1002 device 0x164E flags 0x0)
+qt.rhi.general: Adapter 2: 'Microsoft Basic Render Driver' (vendor 0x1414 device 0x8C flags 0x2)
+qt.scenegraph.general: MSAA sample count for the swapchain is 4. Alpha channel requested = no.
+Studio capture: logical=1440x900 image=2160x1350 DPR=1.50 backend=RHI ? Direct3D 11 / Qt RHI

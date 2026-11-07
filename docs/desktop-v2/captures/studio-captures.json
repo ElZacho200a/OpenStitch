@@ -1,0 +1,37 @@
+{
+  "source": "Actual Qt Quick native application; no generated mockup",
+  "project": "tentabrode-300mm.osp",
+  "selected_object": "52",
+  "qt": "6.8.3",
+  "logical_window_px": [
+    1440,
+    900
+  ],
+  "device_pixel_ratio": 1.5,
+  "captures": [
+    {
+      "file": "studio-tentabrode-300mm-d3d11.png",
+      "image_px": [
+        2160,
+        1350
+      ],
+      "sha256": "4729377D78B48B26F4B3F6FA3F9775F76B2E44A1731F113C97BA6B692E48713F",
+      "file_modified_utc": "2026-11-06T23:07:38.3370340Z",
+      "backend": "D3D11 / NVIDIA GeForce RTX 5060 Ti",
+      "msaa_samples": 4,
+      "arguments": "tentabrode-300mm.osp --select-object 52 --screenshot studio-native.png"
+    },
+    {
+      "file": "studio-tentabrode-300mm-software.png",
+      "image_px": [
+        2160,
+        1350
+      ],
+      "sha256": "252FF9E57FC0B8CB46CB6E2866C83C7899FFA3950E29AEE30303F9ACCF926C70",
+      "file_modified_utc": "2026-11-06T23:07:40.4332042Z",
+      "backend": "Qt Quick software / QPainter",
+      "msaa_samples": null,
+      "arguments": "tentabrode-300mm.osp --select-object 52 --software --screenshot studio-software.png"
+    }
+  ]
+}

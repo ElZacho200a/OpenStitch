@@ -10,6 +10,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(OPENSTITCH_BUILD_DESKTOP "Build the Qt desktop application" ON)
+option(OPENSTITCH_BUILD_STUDIO "Build the experimental Qt Quick Studio (requires desktop)" ON)
 option(OPENSTITCH_BUILD_TESTS "Build unit tests" ON)
 
 # Cible d'interface portant les options de warnings communes.

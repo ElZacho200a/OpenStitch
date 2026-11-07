@@ -4,6 +4,12 @@ Espace documentaire de la refonte du desktop. **Source de vérité de l'avanceme
 (état réel, pas les intentions). À chaque reprise de session : lire le journal, `git log`, les PR ouvertes
 (`gh pr list`), puis la matrice de parité.
 
+**Nouvelle cible expérimentale : `openstitch_v2_studio`** (2026-11-06). Le shell Qt Quick et le
+canevas GPU chargent un `.osp` réel, avec pan/zoom ancré et sélection partagée. `--software`
+permet le repli CPU du canevas ; `openstitch_v2` conserve l'ensemble des outils existants.
+[Architecture, lancement et migration](17-studio-gpu.md) · [Benchmarks](18-studio-benchmarks.md) ·
+[ADR 0005](../adr/0005-studio-qtquick-gpu.md). La parité et 60 FPS restent des critères à vérifier.
+
 ## Ce qui existe aujourd'hui (mesuré, pas promis)
 
 `apps/desktop_v2/` : un nouveau desktop **coexistant** avec `apps/desktop` (qui reste le desktop principal
@@ -13,14 +19,16 @@ jusqu'à la parité démontrée). Il contient :
 |---|---|---|---|
 | `core/` session documentaire, sélection unique, gestionnaire de tâches, registre d'outils/espaces, chaîne image → DST, aperçu | `apps/desktop_v2/core/` | oui (compile en CI `linux-core`) | `tests/unit/desktop_v2/` (Catch2) |
 | `ui/` fenêtre « Application Shell », canevas d'aperçu, arbre documentaire, rail d'outils, barre d'état | `apps/desktop_v2/ui/` | non (Qt Widgets) | `test_desktop_v2_shell` (QTest headless) |
+| `studio/` shell QML, pont de session, canevas Scene Graph / repli CPU | `apps/desktop_v2/studio/` | non (Qt Quick optionnel) ; scène/caméra dans `core/` sans Qt | tests de scène/caméra et intégration Qt ; banc natif séparé |
 
 Chaîne verticale **réelle** (vrais moteurs, vrai document) : ouvrir une image → numériser (tâche annulable) →
 aperçu réaliste → arbre d'objets synchronisé avec la sélection → renommer / masquer (lot `project_ops`, une étape
 d'annulation) → exporter un DST. Capture : [`captures/shell-tentabrode-300mm.png`](captures/shell-tentabrode-300mm.png).
 
-**Ce qui n'existe PAS encore** : tout le reste de la matrice de parité (voir [`02`](02-inventaire-et-parite.md)) —
-dessin vectoriel, édition de satin, fondus, tirage prédictif, simulation, nuancier, compagnon Claude, etc.
-Desktop V2 n'est **pas** utilisable comme desktop principal : le critère de réussite n° 12 de la mission n'est pas atteint.
+Cette chaîne décrit le premier socle V2 ; les ajouts d'édition, satin, fils, compagnon et autres
+outils ultérieurs sont détaillés dans le [journal](07-journal.md) et la [matrice](02-inventaire-et-parite.md).
+Le shell Studio expérimental ne porte pas encore ces outils. Sa disponibilité ne vaut pas une
+validation de la parité ni une bascule du desktop principal.
 
 ## Documents
 
@@ -33,7 +41,9 @@ Desktop V2 n'est **pas** utilisable comme desktop principal : le critère de ré
 | 05 | [Parcours utilisateurs](05-parcours.md) | les 12 parcours, interaction cible, état |
 | 06 | [Plan de migration et de tests](06-plan-migration-tests.md) | chaîne de PR, indicateurs UX, scénarios de recette |
 | 07 | [Journal d'avancement](07-journal.md) | état réel, preuves, problèmes ouverts |
-| ADR | [0003 techno](../adr/0003-desktop-v2-technologie.md), [0004 architecture](../adr/0004-desktop-v2-architecture.md) | décisions et conditions de révision |
+| 17 | [Studio GPU](17-studio-gpu.md) | audit, contrats C++/QML, rendu, repli et migration |
+| 18 | [Banc Studio](18-studio-benchmarks.md) | scènes identiques, métriques, données brutes et limites |
+| ADR | [0003 techno historique](../adr/0003-desktop-v2-technologie.md), [0004 modèles](../adr/0004-desktop-v2-architecture.md), [0005 Studio](../adr/0005-studio-qtquick-gpu.md) | décisions et conditions de révision |
 
 ## Construire et lancer
 
