@@ -1,0 +1,8 @@
+id,statut,preuve,controleur,composant
+1e47d13b,TESTED,StudioThreads2Test::realQmlOwnsThreadsImportsChartsAndAddsPersonalStock - vraie saisie QML Debug - Release en attente,ThreadInventoryController,ThreadInventory.qml
+41976bc1,TESTED,StudioThreads2Test - ajout QML et persistance apres reouverture du controleur Debug - Release en attente,ThreadInventoryController,ThreadInventory.qml
+df6f4ad1,TESTED,StudioThreads2Test - vraie case QML et fichier de stock Debug - Release en attente,ThreadInventoryController,ThreadInventory.qml
+1ebf6e41,TESTED,StudioThreads2Test - import CSV reel via controleur et refus invalide Debug - dialogue fichier non automatise - Release en attente,ThreadInventoryController / ThreadController,ThreadInventory.qml
+71f07976,TESTED,StudioThreads2Test - bouton QML de retrait et conservation de possession Debug - Release en attente,ThreadInventoryController / ThreadController,ThreadInventory.qml
+8e1363c4,UI_PARTIAL,apercu et activation de variantes testes par vraie QML en Debug - parite complete Coloris et tissu non revendiquee,ThreadInventoryController,ThreadInventory.qml
+65d01889,UI_PARTIAL,variantes de coloris et OSP testes Debug - dialogue V1 Coloris et tissu plus large que CX10,ThreadInventoryController,ThreadInventory.qml

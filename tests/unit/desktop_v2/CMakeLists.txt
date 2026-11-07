@@ -107,6 +107,14 @@ file(GLOB studio_all_qml CONFIGURE_DEPENDS "${studio_test_qml_root}/qml/*.qml")
         add_test(NAME test_desktop_v2_studio_inspector COMMAND test_desktop_v2_studio_inspector -o -,txt)
         add_test(NAME test_desktop_v2_studio_shell COMMAND test_desktop_v2_studio_shell -o -,txt)
         get_filename_component(studio_test_qml_imports "${Qt6_DIR}/../../../qml" ABSOLUTE)
+        add_executable(test_desktop_v2_studio_threads2 test_studio_threads2.cpp)
+        target_link_libraries(test_desktop_v2_studio_threads2 PRIVATE openstitch::studio_ui Qt6::Test openstitch::warnings)
+        qt_add_resources(test_desktop_v2_studio_threads2 studio_threads2_qml PREFIX "/studio"
+            BASE "${studio_test_qml_root}" FILES ${studio_all_qml} "${studio_test_qml_root}/qml/qmldir")
+        add_test(NAME test_desktop_v2_studio_threads2 COMMAND test_desktop_v2_studio_threads2 -o -,txt)
+        set_tests_properties(test_desktop_v2_studio_threads2 PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_test_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
         set_tests_properties(test_desktop_v2_studio_shell test_desktop_v2_studio_inspector PROPERTIES
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_test_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
             ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")

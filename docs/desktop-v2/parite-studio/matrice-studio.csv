@@ -30,7 +30,7 @@ f942b9ce,action,Carte de densité,main_window_density.cpp,fait,Carte de densité
 167defbb,action,Carte de tirage du tissu,main_window_pull_preview.cpp,partiel,analysis.fabric,UI_PARTIAL,StudioDigitize2Test::pullAndCalibration,PullController::compare + predictRegistration,PullPanel.qml (carte de tirage affichee par la famille D)
 1900e943,action,Centre automatique,main_window_fill_center.cpp,absent,,ABSENT,,,
 26ac8a5a,action,Centrer la vue sur le problème,main_window_analysis.cpp,absent,,FUNCTIONAL_UNTESTED,,AnalysisController::centerOnFinding,AnalysisPanel.qml
-8e1363c4,action,Coloris et tissu,main_window_colorways.cpp,partiel,activateCurrentColorway,SERVICE_ONLY,,,
+8e1363c4,action,Coloris et tissu,main_window_colorways.cpp,partiel,activateCurrentColorway,UI_PARTIAL,apercu et activation de variantes testes par vraie QML en Debug - parite complete Coloris et tissu non revendiquee,ThreadInventoryController,ThreadInventory.qml
 133ffb33,action,Compagnon IA,main_window_help_menu.cpp,fait,Compagnon IA,TESTED,StudioCompanionTest::companionPanelAndDialogsOpenFromQml,ActionController::runCommand(cmd.companion.open),CompanionPanel.qml
 5517fa2b,action,Contour autour de la sélection,main_window_vector_edit.cpp,absent,,ABSENT,,,
 b4f352c6,action,Convertir en appliqué,main_window_applique.cpp,partiel,applique,TESTED,StudioDigitize2Test::appliqueConvertAndCut,AppliqueController::convert,AppliquePanel.qml appliqueConvert
@@ -190,7 +190,7 @@ f271218c,action,▶ Lecture,main_window_simulation.cpp,partiel,Lecture,TESTED,St
 abf0f4bd,bouton,Activer,colorway_dialog.cpp,fait,Activer,FUNCTIONAL_UNTESTED,,ThreadController::activateColorway,ThreadPanel.qml
 9579fe3b,bouton,Actualiser l’aperçu,color_blend_dialog.cpp,absent,,ABSENT,,,
 9ef91727,bouton,Afficher le détail,ai_segmentation_dialog.cpp,exclu,,ABSENT,,,
-1e47d13b,bouton,Ajouter un fil personnel,thread_panel.cpp,absent,,ABSENT,,,
+1e47d13b,bouton,Ajouter un fil personnel,thread_panel.cpp,absent,,TESTED,StudioThreads2Test::realQmlOwnsThreadsImportsChartsAndAddsPersonalStock - vraie saisie QML Debug - Release en attente,ThreadInventoryController,ThreadInventory.qml
 c7a6d63e,bouton,Ajuster au cadre,import_dialog.cpp,absent,,ABSENT,,,
 ccd029ae,bouton,Analyser,ai_segmentation_dialog.cpp,fait,Analyser,ABSENT,,,
 4c8120e4,bouton,Annuler l'analyse,ai_segmentation_dialog.cpp,exclu,,ABSENT,,,
@@ -219,7 +219,7 @@ fdbcceb1,bouton,Couleurs libres → fil le plus proche,thread_panel.cpp,partiel,
 874e1166,bouton,Fusionner dans la teinte active,segmentation_colors_panel.cpp,fait,regionMergeColors,SERVICE_ONLY,StudioImageTest::regionEditingIsUndoableAndMarksObjectsStale (controleur seul; pas de bouton QML),RegionController::mergeColorInto,
 28bea29d,bouton,Fusionner la sélection,ai_segmentation_dialog.cpp,fait,Fusionner la sélection,ABSENT,,,
 5ea5889c,bouton,Guides automatiques pour tous,properties_panel.cpp,partiel,fill.guides,SERVICE_ONLY,,,
-1ebf6e41,bouton,"Importer un nuancier (CSV, JSON)",thread_panel.cpp,fait,file.import-chart,FUNCTIONAL_UNTESTED,,ThreadController::importChart,ThreadPanel.qml
+1ebf6e41,bouton,"Importer un nuancier (CSV, JSON)",thread_panel.cpp,fait,file.import-chart,TESTED,StudioThreads2Test - import CSV reel via controleur et refus invalide Debug - dialogue fichier non automatise - Release en attente,ThreadInventoryController / ThreadController,ThreadInventory.qml
 f38a9ef0,bouton,Importer une broderie machine,empty_state_widget.cpp,fait,Importer une broderie machine,FUNCTIONAL_UNTESTED,,FileController::openPath(machine),Main.qml welcomeImportMachine
 11c2d635,bouton,Inverser le sens du fondu,color_blend_dialog.cpp,absent,,UI_PARTIAL,StudioDigitize2Test::fadeHandlesByMouse,FadeController::reverse (une etape annulable testee),(bouton d'inversion absent du FadePanel)
 a8e5be69,bouton,Modifier le texte,properties_panel.cpp,fait,Modifier le texte,FUNCTIONAL_UNTESTED,,ActionController::run(text.edit),ActionPalette.qml
@@ -237,7 +237,7 @@ fc50bae4,bouton,Poignées sur le canevas,gradient_fill_panel.cpp,fait,fade.axis,
 5ecf2aa4,bouton,Poser ce guide sur toutes les formes,properties_panel.cpp,absent,,ABSENT,,,
 d6c060d0,bouton,Proposer les couleurs depuis l'image,color_blend_dialog.cpp,absent,,ABSENT,,,
 a8d2bcf8,bouton,Remplacer ce fil par celui du catalogue,thread_panel.cpp,partiel,thread.palette,FUNCTIONAL_UNTESTED,StudioViewTest::threadPlanColorwaysAndSewingOrder,ThreadController::assignChartThread,ThreadPanel.qml
-71f07976,bouton,Retirer ce nuancier importé,thread_panel.cpp,fait,file.remove-chart,FUNCTIONAL_UNTESTED,,ThreadController::removeChart,ThreadPanel.qml
+71f07976,bouton,Retirer ce nuancier importé,thread_panel.cpp,fait,file.remove-chart,TESTED,StudioThreads2Test - bouton QML de retrait et conservation de possession Debug - Release en attente,ThreadInventoryController / ThreadController,ThreadInventory.qml
 3a357c6c,bouton,Retirer de mes fils,thread_panel.cpp,absent,,ABSENT,,,
 6f0cec00,bouton,Retirer guides et ruptures de tous,properties_panel.cpp,partiel,fill.guides.clear,SERVICE_ONLY,,,
 29ed788a,bouton,Retirer les guides de toutes,properties_panel.cpp,partiel,fill.guides.clear,SERVICE_ONLY,,,
@@ -305,7 +305,7 @@ eb932cc3,case,Fractionner les traversées longues (> 7 mm),main_window_satin_aut
 e181a7ab,case,Gomme,main_window_detail_zones.cpp,fait,Gomme,SERVICE_ONLY,,,
 5674752c,case,Ignorer la plus grande région (probablement le fond),ai_segmentation_dialog.cpp,exclu,,ABSENT,,,
 e368f34e,case,Inverser les tons,main_window_create.cpp,absent,,ABSENT,,,
-df6f4ad1,case,Je possède ce fil,thread_panel.cpp,absent,,ABSENT,,,
+df6f4ad1,case,Je possède ce fil,thread_panel.cpp,absent,,TESTED,StudioThreads2Test - vraie case QML et fichier de stock Debug - Release en attente,ThreadInventoryController,ThreadInventory.qml
 1a41ec3c,case,Liaison en spirale,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam,ParamField.qml switch_spiral
 e47033c8,case,Liaisons cousues cachées,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(tatami.hidden_underpath),ParamField.qml switch
 1e94712b,case,"Ligatures (ff, fi, fl, ffi, ffl)",text_dialog.cpp,absent,,ABSENT,,,
@@ -337,12 +337,12 @@ e83895af,case,Traits sombres cousus par-dessus,main_window_create.cpp,absent,,AB
 7dadce88,case,Écrire aussi le fichier de couleurs à côté,machine_export_dialog.cpp,absent,,ABSENT,,,
 19e2c522,case,Écrire les changements de couleur,machine_export_dialog.cpp,absent,,ABSENT,,,
 ab829014,case,Écrire les coupes de fil (réglage de ce fichier),machine_export_dialog.cpp,absent,,FUNCTIONAL_UNTESTED,StudioFilesTest::exportOptionsAreOneUndoStepAndRefusedWhenInvalid,FileController::setExportOptions,FilePanel.qml exportDialog
-41976bc1,dialogue,Ajouter un fil personnel,thread_panel.cpp,absent,,ABSENT,,,
+41976bc1,dialogue,Ajouter un fil personnel,thread_panel.cpp,absent,,TESTED,StudioThreads2Test - ajout QML et persistance apres reouverture du controleur Debug - Release en attente,ThreadInventoryController,ThreadInventory.qml
 d06da014,dialogue,Aperçu avant impression - fiche de production,production_dialog.cpp,partiel,action_file_production_sheet,ABSENT,,,
 308f4162,dialogue,Cadre de broderie,main_window_files.cpp,fait,Cadre de broderie,TESTED,StudioShellTest::actionCatalogIsFullyReachable,ActionController::run(canvas.set),ActionPalette.qml
 531ea643,dialogue,Centre de rotation,main_window_rotation.cpp,absent,,ABSENT,,,
 5750c9de,dialogue,Choisir une référence de fil,main_window_gradient.cpp,partiel,thread.palette,SERVICE_ONLY,,,
-65d01889,dialogue,Coloris et tissu,colorway_dialog.cpp,partiel,activateCurrentColorway,SERVICE_ONLY,,,
+65d01889,dialogue,Coloris et tissu,colorway_dialog.cpp,partiel,activateCurrentColorway,UI_PARTIAL,variantes de coloris et OSP testes Debug - dialogue V1 Coloris et tissu plus large que CX10,ThreadInventoryController,ThreadInventory.qml
 4c7db5cd,dialogue,Combler les vides du bloc,main_window_shapes.cpp,absent,,ABSENT,,,
 b2820172,dialogue,Compagnon IA,companion_dock.cpp,fait,Compagnon IA,TESTED,StudioCompanionTest::companionApproveIsOneUndoStep,CompanionController::send/approve/undoLast,CompanionPanel.qml companionProposal
 7d4ca866,dialogue,Comparer les méthodes de satin,main_window_satin_auto.cpp,absent,,ABSENT,,,

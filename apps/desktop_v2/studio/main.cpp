@@ -32,6 +32,7 @@
 #include "satin_controller.hpp"
 #include "studio_controller.hpp"
 #include "thread_controller.hpp"
+#include "thread_inventory_controller.hpp"
 #include "tool_controller.hpp"
 #include "vector_controller.hpp"
 #include "view_controller.hpp"
@@ -78,6 +79,7 @@ int main(int argc, char** argv) {
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation).toStdWString());
     ViewController view(controller, configDir);
     ThreadController threads(controller, configDir);
+    ThreadInventoryController threadInventory(controller, threads, configDir);
     AnalysisController analysis(controller, view, configDir);
     ImageController imageTools(controller);
     RegionController regionTools(controller, imageTools);
@@ -110,6 +112,7 @@ int main(int argc, char** argv) {
     engine.rootContext()->setContextProperty(QStringLiteral("vectors"), &vectors);
     engine.rootContext()->setContextProperty(QStringLiteral("view"), &view);
     engine.rootContext()->setContextProperty(QStringLiteral("threads"), &threads);
+    engine.rootContext()->setContextProperty(QStringLiteral("threadInventory"), &threadInventory);
     engine.rootContext()->setContextProperty(QStringLiteral("analysis"), &analysis);
     engine.rootContext()->setContextProperty(QStringLiteral("imageTools"), &imageTools);
     engine.rootContext()->setContextProperty(QStringLiteral("regionTools"), &regionTools);

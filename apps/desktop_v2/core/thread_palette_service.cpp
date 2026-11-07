@@ -5,8 +5,11 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <sstream>
 
+#include "openstitch/commands/colorway_commands.hpp"
 #include "openstitch/commands/thread_commands.hpp"
+#include "openstitch/core/atomic_file.hpp"
 #include <fstream>
 
 #include "openstitch/project_io/thread_chart_io.hpp"
@@ -17,6 +20,60 @@
 namespace openstitch::desktop_v2 {
 
 namespace tp = openstitch::thread_palette;
+
+Result<tp::ThreadStock> loadThreadStock(const std::filesystem::path& file) {
+    std::error_code error;
+    if (!std::filesystem::exists(file, error)) {
+        if (error)
+            return fail(ErrorCategory::OperationImpossible, "Lecture du stock impossible",
+                        error.message());
+        return tp::ThreadStock{};
+    }
+    const auto size = std::filesystem::file_size(file, error);
+    if (error || size > 8 * 1024 * 1024) {
+        return fail(ErrorCategory::InvalidFile, "Stock de fils illisible ou trop volumineux");
+    }
+    std::ifstream input(file, std::ios::binary);
+    if (!input)
+        return fail(ErrorCategory::OperationImpossible, "Ouverture du stock impossible");
+    std::ostringstream data;
+    data << input.rdbuf();
+    if (input.bad())
+        return fail(ErrorCategory::OperationImpossible, "Lecture du stock interrompue");
+    return tp::stock_from_json(data.str());
+}
+
+Result<void> saveThreadStock(const std::filesystem::path& file, const tp::ThreadStock& stock) {
+    const auto json = tp::stock_to_json(stock);
+    if (json.size() > 8 * 1024 * 1024) {
+        return fail(ErrorCategory::UserInput, "Stock de fils trop volumineux");
+    }
+    std::error_code error;
+    if (file.has_parent_path())
+        std::filesystem::create_directories(file.parent_path(), error);
+    if (error)
+        return fail(ErrorCategory::OperationImpossible, "Dossier du stock inaccessible",
+                    error.message());
+    return write_file_atomic(file, std::string_view(json));
+}
+
+Result<ThreadColorComparison> compareThreadColors(Rgb a, Rgb b, double ratioB) {
+    if (!std::isfinite(ratioB) || ratioB < 0 || ratioB > 1) {
+        return fail(ErrorCategory::UserInput, "Part du second fil : entre 0 et 100 %");
+    }
+    return ThreadColorComparison{blendRgb(a, b, ratioB),
+                                 tp::ciede2000(tp::to_cielab(a), tp::to_cielab(b))};
+}
+
+Result<document::Project> colorwayPreviewProject(const document::Project& project, int index) {
+    if (index < 0 || static_cast<std::size_t>(index) >= project.colorways.size()) {
+        return fail(ErrorCategory::UserInput, "Ce coloris n'existe pas");
+    }
+    auto copy = project;
+    commands::SetActiveColorwayCommand command(index);
+    command.apply(copy);
+    return copy;
+}
 
 namespace {
 std::string lower(std::string s) {
@@ -87,6 +144,20 @@ std::vector<ChartInfo> chartInfos() {
             {chart.chart_id, chart.display_name, chart.source_note, chart.threads.size(), true});
     }
     return out;
+}
+
+std::vector<ThreadChoice> stockChoices(const tp::ThreadStock& stock) {
+    std::vector<ThreadChoice> result;
+    for (const auto& key : stock.owned_keys()) {
+        if (const auto thread = findAnyThread(key.chart_id, key.code)) {
+            result.push_back(choiceOf(*thread, 0));
+        } else {
+            result.push_back({key.chart_id, key.code, "Nuancier indisponible", {}, {0, 0, 0}, 0});
+        }
+    }
+    for (const auto& thread : stock.personal_threads())
+        result.push_back(choiceOf(thread, 0));
+    return result;
 }
 
 Result<ChartInfo> importThreadChart(const std::filesystem::path& file,

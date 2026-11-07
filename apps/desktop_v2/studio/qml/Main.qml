@@ -602,6 +602,8 @@ Window {
                         anchors.fill: parent
                     }
 
+                    ThreadInventory { anchors.fill: parent }
+
                     ColumnLayout {
                         anchors.centerIn: parent
                         width: Math.min(400, parent.width - 64)

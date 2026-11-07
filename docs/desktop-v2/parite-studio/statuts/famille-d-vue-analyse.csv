@@ -31,8 +31,6 @@ f7de65cb,FUNCTIONAL_UNTESTED,,ThreadController::removeColorway,ThreadPanel.qml
 75d84458,FUNCTIONAL_UNTESTED,,ThreadController::nearestToSelection,ThreadPanel.qml
 a8d2bcf8,FUNCTIONAL_UNTESTED,StudioViewTest::threadPlanColorwaysAndSewingOrder,ThreadController::assignChartThread,ThreadPanel.qml
 fdbcceb1,FUNCTIONAL_UNTESTED,,ThreadController::snapFreeColours,ThreadPanel.qml
-1ebf6e41,FUNCTIONAL_UNTESTED,,ThreadController::importChart,ThreadPanel.qml
-71f07976,FUNCTIONAL_UNTESTED,,ThreadController::removeChart,ThreadPanel.qml
 d2b89407,FUNCTIONAL_UNTESTED,StudioViewTest::threadPlanColorwaysAndSewingOrder,ThreadController::moveInOrder,ThreadPanel.qml
 e1ae3eac,TESTED,StudioViewTest::mainQmlHostsEveryPanel,ThreadController::moveInOrder,ThreadPanel.qml
 4959ff8d,FUNCTIONAL_UNTESTED,StudioViewTest::hoopsAndMachine,AnalysisController::setMachine,AnalysisPanel.qml

@@ -18,6 +18,7 @@
 
 #include "document_services.hpp"
 #include "openstitch/core/error.hpp"
+#include "openstitch/thread_palette/thread_stock.hpp"
 
 namespace openstitch::desktop_v2 {
 
@@ -86,5 +87,22 @@ struct BlendSuggestion {
 // `betterThanSingle()`.
 [[nodiscard]] std::optional<BlendSuggestion> suggestBlend(Rgb target, const std::string& chartId,
                                                           std::size_t candidates = 12);
+
+// CX10: profile inventory, independent of OSP/document history. A failed write leaves the
+// previous file intact; callers install the new in-memory value only after success.
+[[nodiscard]] Result<thread_palette::ThreadStock>
+loadThreadStock(const std::filesystem::path& file);
+[[nodiscard]] Result<void> saveThreadStock(const std::filesystem::path& file,
+                                           const thread_palette::ThreadStock& stock);
+[[nodiscard]] std::vector<ThreadChoice> stockChoices(const thread_palette::ThreadStock& stock);
+
+struct ThreadColorComparison {
+    Rgb mixed{};
+    double difference{0}; // CIEDE2000 between the two input colors
+};
+[[nodiscard]] Result<ThreadColorComparison> compareThreadColors(Rgb a, Rgb b, double ratioB);
+// Apply the existing colorway command to an isolated copy, never to the live session.
+[[nodiscard]] Result<document::Project> colorwayPreviewProject(const document::Project& project,
+                                                               int index);
 
 } // namespace openstitch::desktop_v2

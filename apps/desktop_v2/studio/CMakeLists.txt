@@ -19,6 +19,7 @@ add_library(openstitch_studio_ui STATIC
     view_controller.cpp view_controller.hpp
     analysis_controller.cpp analysis_controller.hpp
     thread_controller.cpp thread_controller.hpp
+    thread_inventory_controller.cpp thread_inventory_controller.hpp
     image_controller.cpp image_controller.hpp
     region_controller.cpp region_controller.hpp
     satin_controller.cpp satin_controller.hpp
@@ -40,7 +41,7 @@ target_link_libraries(openstitch_studio_ui PUBLIC openstitch::desktop_v2_core
     Qt6::QuickControls2 PRIVATE openstitch::warnings)
 
 set(studio_qml_files
-    qml/Main.qml qml/Theme.qml qml/StudioButton.qml qml/StudioIcon.qml
+    qml/Main.qml qml/ThreadInventory.qml qml/Theme.qml qml/StudioButton.qml qml/StudioIcon.qml
     qml/SectionLabel.qml qml/ActionPalette.qml qml/ObjectTree.qml qml/LayerPanel.qml
     qml/CanvasContextMenu.qml qml/TransformHandles.qml qml/EditBar.qml qml/FilePanel.qml
     qml/Inspector.qml qml/ParamField.qml qml/ParamSection.qml
