@@ -80,7 +80,7 @@ struct Rig {
     DocumentSession session;
     StudioController studio{session};
     ActionController actions{studio};
-EditController editor{studio};
+    EditController editor{studio};
     std::unique_ptr<FileController> files;
     QQmlApplicationEngine engine;
     QQuickWindow* window{nullptr};
