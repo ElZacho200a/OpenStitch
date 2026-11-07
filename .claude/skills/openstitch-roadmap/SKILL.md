@@ -1,7 +1,13 @@
 ---
 name: openstitch-roadmap
-description: Roadmap de parité avec Hatch Embroidery (docs/roadmap-parite-hatch.md) à suivre quand Claude est piloté sans consigne précise sur OpenStitch. À utiliser dès que l'utilisateur dit « continue », « fais la suite », « avance », « prochaine tâche », « qu'est-ce qu'il reste à faire », « travaille en autonomie », lance un /loop ou une routine sans tâche précise, demande ce qui manque par rapport à Hatch. Ne pas l'utiliser pour enchaîner de sa propre initiative après une mission ciblée.
+description: Roadmap technique de parité Hatch (docs/roadmap-parite-hatch.md), à croiser obligatoirement avec la roadmap Notion en mode autonome sur OpenStitch. À utiliser dès que l'utilisateur dit « continue », « fais la suite », « avance », « prochaine tâche », « qu'est-ce qu'il reste à faire », « travaille en autonomie », lance un /loop ou une routine sans tâche précise, demande ce qui manque par rapport à Hatch. Ne pas l'utiliser pour enchaîner de sa propre initiative après une mission ciblée.
 ---
+
+# Priorité Notion pour les missions autonomes
+
+**Depuis l'adoption du Project HQ Notion**, ce skill n'est plus un sélecteur autonome unique. Pour « continue OpenStitch » et toute tâche non ciblée, **commencer par** `openstitch-notion` et `docs/agents/notion-protocol.md`. Chercher la tâche canonique et les réservations dans Notion ; réconcilier ensuite ce fichier technique, qui reste une source de contraintes et d'idées de parité Hatch, mais **ne peut pas contredire un chantier Notion déjà en cours**. Reprendre d'abord les PR engagées et la transition Studio.
+
+Si l'accès Notion ou les baux ne sont pas vérifiables, ne pas choisir un nouveau lot autonome à partir du présent document seul. Ne pas marquer la parité Studio « Validé » parce que le backend existe. Les descriptions de lot et de tests ci-dessous restent applicables à la réalisation technique quand la tâche est autorisée.
 
 # Suivre la roadmap de parité Hatch
 
