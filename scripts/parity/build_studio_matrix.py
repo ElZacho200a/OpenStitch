@@ -2,7 +2,7 @@
 """Matrice de migration Studio : inventaire V1 (automatisé) x correspondances V2 Widgets x statuts Studio.
 
 Sorties : docs/desktop-v2/parite-studio/matrice-studio.csv (générée, ne pas éditer à la main).
-Entrées éditables : parite-studio/statuts-studio.csv (id, statut, preuve, controleur, composant).
+Entrées éditables : parite-studio/statuts/*.csv (id, statut, preuve, controleur, composant).
 Statuts : ABSENT SERVICE_ONLY UI_PARTIAL FUNCTIONAL_UNTESTED TESTED VALIDATED BLOCKED.
 Défaut : SERVICE_ONLY si V2 Widgets est « fait/partiel » (le service existe, pas l'UI Studio), sinon ABSENT ; BLOCKED si exclu en V2 (décision du propriétaire requise).
 `--dod` : code 1 tant qu'une ligne n'est pas VALIDATED (ou exclue avec justification en V2).
@@ -23,7 +23,12 @@ def rows(path):
 def main():
     inv = rows(P / "inventaire-v1.csv")
     v2 = {r["id"]: r for r in rows(P / "correspondances.csv")}
-    ov = {r["id"]: r for r in rows(S / "statuts-studio.csv")}
+    ov = {}
+    for f in sorted((S / "statuts").glob("*.csv")):  # un fichier par famille : pas de conflit de fusion
+        for r in rows(f):
+            if r["id"] in ov and ov[r["id"]] != r:
+                sys.exit(f"{f.name}: id {r['id']} déjà défini dans une autre famille")
+            ov[r["id"]] = r
     unknown = [i for i in ov if i not in {r["id"] for r in inv}]
     bad = [i for i, r in ov.items() if r["statut"] not in STATUTS]
     if unknown or bad:

@@ -34,7 +34,7 @@ Statut : ✅ migré et testé · 🟡 partiel · ⬜ à faire. Inventaire foncti
 ## Matrice par fonction (générée)
 `python scripts/parity/build_studio_matrix.py` produit `parite-studio/matrice-studio.csv` : les 444
 fonctions de l'inventaire V1 automatisé (#279) × l'état V2 Widgets × un statut Studio normalisé
-(`ABSENT … VALIDATED`). Les statuts Studio se saisissent dans `parite-studio/statuts-studio.csv`
+(`ABSENT … VALIDATED`). Les statuts Studio se saisissent dans `parite-studio/statuts/<famille>.csv`
 (id, statut, preuve, contrôleur, composant) ; seul `VALIDATED` compte pour la DoD
 (`--dod` échoue tant qu'une ligne ne l'est pas). Les 11 fonctions « exclues » en V2 sont `BLOCKED` :
 toute exclusion définitive attend l'accord du propriétaire. La matrice ne couvre que l'inventaire V1 :

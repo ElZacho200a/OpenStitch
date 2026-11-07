@@ -8,6 +8,7 @@
 #include <QSurfaceFormat>
 #include <QTimer>
 
+#include "action_controller.hpp"
 #include "gpu_canvas.hpp"
 #include "studio_controller.hpp"
 
@@ -42,8 +43,10 @@ int main(int argc, char** argv) {
                                                  QStringLiteral("Provided by the application"));
     DocumentSession session;
     StudioController controller(session);
+    ActionController actions(controller);
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("studio"), &controller);
+    engine.rootContext()->setContextProperty(QStringLiteral("actions"), &actions);
     engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
     if (engine.rootObjects().isEmpty()) {
         return 2;

@@ -15,6 +15,8 @@
 #include <filesystem>
 #include <memory>
 
+#include "action_catalog.hpp"
+#include "action_controller.hpp"
 #include "gpu_canvas.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/project_io/project_io.hpp"
@@ -69,6 +71,7 @@ private slots:
     void prepopulatedSessionAndFailedGeometry();
     void controllerDisconnectionClearsTheCanvas();
     void openMoveUndoSaveReopenJourney();
+    void actionCatalogIsFullyReachable();
 };
 
 void StudioShellTest::initTestCase() {
@@ -93,6 +96,7 @@ void StudioShellTest::realProjectSelectionAndViewInteractions() {
 
     DocumentSession session;
     StudioController controller(session);
+    ActionController actions(controller);
     QQmlApplicationEngine engine;
     QStringList qmlWarnings;
     connect(&engine, &QQmlApplicationEngine::warnings, this, [&](const QList<QQmlError>& errors) {
@@ -101,6 +105,7 @@ void StudioShellTest::realProjectSelectionAndViewInteractions() {
         }
     });
     engine.rootContext()->setContextProperty(QStringLiteral("studio"), &controller);
+    engine.rootContext()->setContextProperty(QStringLiteral("actions"), &actions);
     engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
     QVERIFY2(!engine.rootObjects().isEmpty(), qPrintable(qmlWarnings.join('\n')));
     auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().front());
@@ -323,6 +328,39 @@ void StudioShellTest::openMoveUndoSaveReopenJourney() {
     QVERIFY(session.project().embroidery_objects.empty());
     QVERIFY(!controller.hasPath());
     QVERIFY(!controller.saveProject()); // no path: refused until Save As
+}
+
+void StudioShellTest::actionCatalogIsFullyReachable() {
+    DocumentSession session;
+    StudioController controller(session);
+    ActionController actions(controller);
+    const auto all = actions.search({});
+    QCOMPARE(static_cast<std::size_t>(all.size()), actionCatalog().size());
+    for (const auto& def : actionCatalog()) {
+        QCOMPARE(static_cast<std::size_t>(actions.fields(QString::fromStdString(def.id)).size()),
+                 def.fields.size());
+    }
+    QVERIFY(actions.search(QStringLiteral("cadre")).size() >= 1); // accent/case-insensitive filter
+    QVERIFY(actions.search(QStringLiteral("zzzz-inconnu")).isEmpty());
+    QVERIFY(!actions.run(QStringLiteral("nope"), {}).isEmpty());
+
+    // A selection-free engine action runs through the shared batch path, is undoable and persists.
+    const auto before = session.project().canvas;
+    const auto refusal = actions.run(QStringLiteral("canvas.set"),
+                                     {{QStringLiteral("width_mm"), QStringLiteral("123")},
+                                      {QStringLiteral("height_mm"), QStringLiteral("77")}});
+    QVERIFY2(refusal.isEmpty(), qPrintable(refusal));
+    QVERIFY(actions.lastOk());
+    QVERIFY(controller.canUndo());
+    QVERIFY(session.project().canvas != before);
+    // Invalid values are refused, never silently corrected.
+    QVERIFY(!actions
+                 .run(QStringLiteral("canvas.set"),
+                      {{QStringLiteral("width_mm"), QStringLiteral("-5")}})
+                 .isEmpty());
+    QVERIFY(!actions.lastOk());
+    controller.undo();
+    QVERIFY(session.project().canvas == before);
 }
 
 QTEST_MAIN(StudioShellTest)

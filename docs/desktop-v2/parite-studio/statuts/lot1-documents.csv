@@ -6,3 +6,11 @@ c3d0caab,TESTED,StudioShellTest::openMoveUndoSaveReopenJourney,StudioController:
 1e0aaea5,TESTED,StudioShellTest::openMoveUndoSaveReopenJourney,StudioController::saveProjectAs,Main.qml Ctrl+Maj+S
 251cbea8,TESTED,StudioShellTest::openMoveUndoSaveReopenJourney,StudioController::redo,Main.qml redoButton
 01d2f694,FUNCTIONAL_UNTESTED,,GpuCanvas::fitDesign,Main.qml touche F
+69632007,FUNCTIONAL_UNTESTED,,ActionController::run(file.import_dxf),ActionPalette.qml
+4a09b823,FUNCTIONAL_UNTESTED,,ActionController::run(machine.set),ActionPalette.qml
+2e6cc34f,FUNCTIONAL_UNTESTED,,ActionController::run(text.edit),ActionPalette.qml
+de43aedf,FUNCTIONAL_UNTESTED,,ActionController::run(image.segment),ActionPalette.qml
+cc56cc1b,FUNCTIONAL_UNTESTED,,ActionController::run(text.remove),ActionPalette.qml
+a8e5be69,FUNCTIONAL_UNTESTED,,ActionController::run(text.edit),ActionPalette.qml
+308f4162,TESTED,StudioShellTest::actionCatalogIsFullyReachable,ActionController::run(canvas.set),ActionPalette.qml
+4669e436,FUNCTIONAL_UNTESTED,,ActionController::run(image.segment),ActionPalette.qml

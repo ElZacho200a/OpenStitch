@@ -73,6 +73,8 @@ Window {
         onAccepted: studio.saveProjectAs(selectedFile)
     }
 
+    ActionPalette { id: palette }
+    Shortcut { sequence: "Ctrl+K"; onActivated: palette.openList() }
     Shortcut { sequence: "Ctrl+N"; enabled: !studio.busy; onActivated: studio.newProject() }
     Shortcut { sequence: "Ctrl+S"; enabled: !studio.busy; onActivated: window.saveProject() }
     Shortcut { sequence: "Ctrl+Shift+S"; enabled: !studio.busy; onActivated: saveDialog.open() }

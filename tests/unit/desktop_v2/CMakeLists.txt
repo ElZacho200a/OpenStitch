@@ -99,6 +99,7 @@ if(TARGET openstitch::studio_ui)
                 "${studio_test_qml_root}/qml/StudioButton.qml"
                 "${studio_test_qml_root}/qml/StudioIcon.qml"
                 "${studio_test_qml_root}/qml/SectionLabel.qml"
+"${studio_test_qml_root}/qml/ActionPalette.qml"
                 "${studio_test_qml_root}/qml/qmldir")
         add_test(NAME test_desktop_v2_studio_shell COMMAND test_desktop_v2_studio_shell -o -,txt)
         get_filename_component(studio_test_qml_imports "${Qt6_DIR}/../../../qml" ABSOLUTE)

@@ -84,19 +84,19 @@ d0300f93,action,Gestes souris et clavier,main_window_help_menu.cpp,partiel,Racco
 aea2d95e,action,Guides de direction,main_window_context_menu.cpp,fait,Guides de direction,SERVICE_ONLY,,,
 fa129d91,action,Générer un guide depuis la forme,main_window_directional.cpp,fait,fill.guides,SERVICE_ONLY,,,
 807cf843,action,Image,main_window.cpp,fait,Image,SERVICE_ONLY,,,
-69632007,action,Importer un DXF,main_window.cpp,fait,Importer un DXF,SERVICE_ONLY,,,
+69632007,action,Importer un DXF,main_window.cpp,fait,Importer un DXF,FUNCTIONAL_UNTESTED,,ActionController::run(file.import_dxf),ActionPalette.qml
 45ec0da3,action,"Importer un nuancier (CSV, JSON)",main_window_threads.cpp,fait,file.import-chart,SERVICE_ONLY,,,
 7c94f4bb,action,Importer une broderie machine,main_window.cpp,fait,Importer une broderie machine,SERVICE_ONLY,,,
 c4719a5d,action,Importer une image ou un SVG,main_window.cpp,fait,file.import_svg,SERVICE_ONLY,,,
 025327d7,action,Insérer un design,main_window.cpp,absent,,ABSENT,,,
 f97b2ddf,action,Lisser,main_window_vector_tools.cpp,fait,Lisser,SERVICE_ONLY,,,
 337b1cac,action,Luminosité/contraste,main_window.cpp,fait,Luminosité et contraste,SERVICE_ONLY,,,
-4a09b823,action,Machine,main_window.cpp,fait,Machine,SERVICE_ONLY,,,
+4a09b823,action,Machine,main_window.cpp,fait,Machine,FUNCTIONAL_UNTESTED,,ActionController::run(machine.set),ActionPalette.qml
 2a299c02,action,Manuel d'utilisation,main_window_help_menu.cpp,absent,,ABSENT,,,
 3b625aed,action,Masquer les panneaux,main_window.cpp,partiel,panelsMenu,SERVICE_ONLY,,,
 9891d57a,action,Mode portable (une seule colonne),main_window.cpp,absent,,ABSENT,,,
 b2e5796b,action,Modifier la colonne satin (rails + guides),main_window.cpp,absent,,ABSENT,,,
-2e6cc34f,action,Modifier le texte,main_window_lettering.cpp,fait,Modifier le texte,SERVICE_ONLY,,,
+2e6cc34f,action,Modifier le texte,main_window_lettering.cpp,fait,Modifier le texte,FUNCTIONAL_UNTESTED,,ActionController::run(text.edit),ActionPalette.qml
 aee88642,action,Ne pas couper le fil après,main_window_point_edit.cpp,fait,Ne pas couper le fil après,SERVICE_ONLY,,,
 5421aa74,action,Nettoyer les petits îlots,main_window.cpp,fait,regionClean,SERVICE_ONLY,,,
 c3d0caab,action,Nouveau projet,main_window.cpp,fait,Nouveau projet,TESTED,StudioShellTest::openMoveUndoSaveReopenJourney,StudioController::newProject,Main.qml Ctrl+N
@@ -143,7 +143,7 @@ ea169d9f,action,Réglages de la grille,main_window_view_display.cpp,partiel,grid
 7eff11f4,action,Rétablir la couleur d'origine,main_window.cpp,absent,,ABSENT,,,
 8233c055,action,Satin automatique,main_window.cpp,fait,Satin automatique,SERVICE_ONLY,,,
 3d2be7f4,action,Sauts à vide de l'ordre,main_window_order_jumps.cpp,absent,,ABSENT,,,
-de43aedf,action,Segmenter l'image,main_window.cpp,fait,Segmenter l'image,SERVICE_ONLY,,,
+de43aedf,action,Segmenter l'image,main_window.cpp,fait,Segmenter l'image,FUNCTIONAL_UNTESTED,,ActionController::run(image.segment),ActionPalette.qml
 0d67e9bf,action,Statistiques,main_window.cpp,partiel,summary_,SERVICE_ONLY,,,
 65b6e4d4,action,Supprimer,main_window_regions.cpp,fait,Supprimer,SERVICE_ONLY,,,
 03a7c253,action,Supprimer %1 objets,main_window_context_menu.cpp,absent,,ABSENT,,,
@@ -153,7 +153,7 @@ d6e27fc4,action,Supprimer le calque,calque_panel.cpp,fait,calqueRemove,SERVICE_O
 980fefff,action,Supprimer le guide,main_window_satin_auto.cpp,absent,,ABSENT,,,
 69e76bc8,action,Supprimer le guide satin sélectionné,main_window.cpp,absent,,ABSENT,,,
 5a001324,action,Supprimer le nœud,main_window_render.cpp,fait,deleteSelected,SERVICE_ONLY,,,
-cc56cc1b,action,Supprimer le texte,main_window_lettering.cpp,absent,,ABSENT,,,
+cc56cc1b,action,Supprimer le texte,main_window_lettering.cpp,absent,,FUNCTIONAL_UNTESTED,,ActionController::run(text.remove),ActionPalette.qml
 d9267bc5,action,Supprimer les points sélectionnés,main_window_point_edit.cpp,fait,deleteSelectedPoint,SERVICE_ONLY,,,
 0e876999,action,Sélectionner l'objet,main_window_analysis.cpp,fait,onFindingActivated,SERVICE_ONLY,,,
 5626577a,action,Sélectionner la même couleur,main_window.cpp,fait,Sélectionner la même couleur,SERVICE_ONLY,,,
@@ -222,7 +222,7 @@ fdbcceb1,bouton,Couleurs libres → fil le plus proche,thread_panel.cpp,partiel,
 1ebf6e41,bouton,"Importer un nuancier (CSV, JSON)",thread_panel.cpp,fait,file.import-chart,SERVICE_ONLY,,,
 f38a9ef0,bouton,Importer une broderie machine,empty_state_widget.cpp,fait,Importer une broderie machine,SERVICE_ONLY,,,
 11c2d635,bouton,Inverser le sens du fondu,color_blend_dialog.cpp,absent,,ABSENT,,,
-a8e5be69,bouton,Modifier le texte,properties_panel.cpp,fait,Modifier le texte,SERVICE_ONLY,,,
+a8e5be69,bouton,Modifier le texte,properties_panel.cpp,fait,Modifier le texte,FUNCTIONAL_UNTESTED,,ActionController::run(text.edit),ActionPalette.qml
 71dc358c,bouton,Nouveau (copie du courant),colorway_dialog.cpp,partiel,activateCurrentColorway,SERVICE_ONLY,,,
 5cda87d0,bouton,Optimiser l'ordre,main_window_order_filter.cpp,fait,Optimiser l'ordre,SERVICE_ONLY,,,
 3bda7e57,bouton,Ouvrir le dossier,main_window_files.cpp,absent,,ABSENT,,,
@@ -339,7 +339,7 @@ e83895af,case,Traits sombres cousus par-dessus,main_window_create.cpp,absent,,AB
 ab829014,case,Écrire les coupes de fil (réglage de ce fichier),machine_export_dialog.cpp,absent,,ABSENT,,,
 41976bc1,dialogue,Ajouter un fil personnel,thread_panel.cpp,absent,,ABSENT,,,
 d06da014,dialogue,Aperçu avant impression - fiche de production,production_dialog.cpp,partiel,action_file_production_sheet,SERVICE_ONLY,,,
-308f4162,dialogue,Cadre de broderie,main_window_files.cpp,fait,Cadre de broderie,SERVICE_ONLY,,,
+308f4162,dialogue,Cadre de broderie,main_window_files.cpp,fait,Cadre de broderie,TESTED,StudioShellTest::actionCatalogIsFullyReachable,ActionController::run(canvas.set),ActionPalette.qml
 531ea643,dialogue,Centre de rotation,main_window_rotation.cpp,absent,,ABSENT,,,
 5750c9de,dialogue,Choisir une référence de fil,main_window_gradient.cpp,partiel,thread.palette,SERVICE_ONLY,,,
 65d01889,dialogue,Coloris et tissu,colorway_dialog.cpp,partiel,activateCurrentColorway,SERVICE_ONLY,,,
@@ -375,7 +375,7 @@ f15b33c8,dialogue,Rendu réaliste,realistic_render_dialog.cpp,fait,Rendu réalis
 749748bf,dialogue,Réglages de la grille,grid_settings_dialog.cpp,partiel,gridMenu,SERVICE_ONLY,,,
 38a816ae,dialogue,Satin,main_window_satin_auto.cpp,fait,Satin,SERVICE_ONLY,,,
 ffcf580f,dialogue,Segmenter avec l'IA,ai_segmentation_dialog.cpp,exclu,,BLOCKED,,,
-4669e436,dialogue,Segmenter l'image,segmentation_dialog.cpp,fait,Segmenter l'image,SERVICE_ONLY,,,
+4669e436,dialogue,Segmenter l'image,segmentation_dialog.cpp,fait,Segmenter l'image,FUNCTIONAL_UNTESTED,,ActionController::run(image.segment),ActionPalette.qml
 5febcd89,dialogue,Vectorisation,main_window_workflow.cpp,fait,Vectorisation,SERVICE_ONLY,,,
 3baea5a4,dock,Analyse,main_window_analysis.cpp,fait,Analyse,SERVICE_ONLY,,,
 ac8b4905,dock,Couleurs de segmentation,main_window_colors.cpp,fait,regionReduceColors,SERVICE_ONLY,,,
