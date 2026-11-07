@@ -17,6 +17,7 @@
 
 #include "action_catalog.hpp"
 #include "action_controller.hpp"
+#include "edit_controller.hpp"
 #include "gpu_canvas.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/project_io/project_io.hpp"
@@ -97,6 +98,7 @@ void StudioShellTest::realProjectSelectionAndViewInteractions() {
     DocumentSession session;
     StudioController controller(session);
     ActionController actions(controller);
+    EditController editor(controller);
     QQmlApplicationEngine engine;
     QStringList qmlWarnings;
     connect(&engine, &QQmlApplicationEngine::warnings, this, [&](const QList<QQmlError>& errors) {
@@ -106,6 +108,7 @@ void StudioShellTest::realProjectSelectionAndViewInteractions() {
     });
     engine.rootContext()->setContextProperty(QStringLiteral("studio"), &controller);
     engine.rootContext()->setContextProperty(QStringLiteral("actions"), &actions);
+    engine.rootContext()->setContextProperty(QStringLiteral("editor"), &editor);
     engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
     QVERIFY2(!engine.rootObjects().isEmpty(), qPrintable(qmlWarnings.join('\n')));
     auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().front());

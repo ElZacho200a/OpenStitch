@@ -8,9 +8,19 @@
 #include <QSurfaceFormat>
 #include <QTimer>
 
+#include <QDir>
+#include <QStandardPaths>
+#include <filesystem>
+
 #include "action_controller.hpp"
+#include "analysis_controller.hpp"
+#include "edit_controller.hpp"
+#include "file_controller.hpp"
 #include "gpu_canvas.hpp"
+#include "inspector_controller.hpp"
 #include "studio_controller.hpp"
+#include "thread_controller.hpp"
+#include "view_controller.hpp"
 
 using namespace openstitch::desktop_v2;
 using namespace openstitch::desktop_v2::studio;
@@ -44,9 +54,24 @@ int main(int argc, char** argv) {
     DocumentSession session;
     StudioController controller(session);
     ActionController actions(controller);
+    EditController editor(controller);
+    FileController files(controller, &actions,
+                         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation));
+    InspectorController inspector(controller);
+    const std::filesystem::path configDir(
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation).toStdWString());
+    ViewController view(controller, configDir);
+    ThreadController threads(controller, configDir);
+    AnalysisController analysis(controller, view, configDir);
     QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("editor"), &editor);
     engine.rootContext()->setContextProperty(QStringLiteral("studio"), &controller);
     engine.rootContext()->setContextProperty(QStringLiteral("actions"), &actions);
+    engine.rootContext()->setContextProperty(QStringLiteral("files"), &files);
+    engine.rootContext()->setContextProperty(QStringLiteral("inspector"), &inspector);
+    engine.rootContext()->setContextProperty(QStringLiteral("view"), &view);
+    engine.rootContext()->setContextProperty(QStringLiteral("threads"), &threads);
+    engine.rootContext()->setContextProperty(QStringLiteral("analysis"), &analysis);
     engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
     if (engine.rootObjects().isEmpty()) {
         return 2;
@@ -64,7 +89,7 @@ int main(int argc, char** argv) {
         });
     }
     if (!parser.positionalArguments().isEmpty()) {
-        controller.openProject(QUrl::fromLocalFile(parser.positionalArguments().first()));
+        files.openPath(QDir::current().absoluteFilePath(parser.positionalArguments().first()));
     }
     QTimer capture;
     bool capturePrimed = false;

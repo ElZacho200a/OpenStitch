@@ -19,6 +19,7 @@ Window {
     color: Theme.background
     title: (studio.dirty ? "• " : "") + studio.title + " — OpenStitch Studio"
 
+    readonly property var editController: editor
     property int workspaceIndex: 1
     readonly property var workspaces: [
         { name: qsTr("Préparer"), label: qsTr("COMPOSITION"),
@@ -46,7 +47,7 @@ Window {
 
     function openProject() {
         if (!studio.busy)
-            projectDialog.open()
+            filePanel.requestOpen()
     }
 
     FileDialog {
@@ -54,7 +55,7 @@ Window {
         title: qsTr("Ouvrir un projet OpenStitch")
         fileMode: FileDialog.OpenFile
         nameFilters: [qsTr("Projet OpenStitch (*.osp)")]
-        onAccepted: studio.openProject(selectedFile)
+        onAccepted: filePanel.openUrl(selectedFile)
     }
 
     function saveProject() {
@@ -73,9 +74,11 @@ Window {
         onAccepted: studio.saveProjectAs(selectedFile)
     }
 
+    FilePanel { id: filePanel }
+    onClosing: function (close) { if (!filePanel.requestQuit()) close.accepted = false }
     ActionPalette { id: palette }
     Shortcut { sequence: "Ctrl+K"; onActivated: palette.openList() }
-    Shortcut { sequence: "Ctrl+N"; enabled: !studio.busy; onActivated: studio.newProject() }
+    Shortcut { sequence: "Ctrl+N"; enabled: !studio.busy; onActivated: filePanel.requestNew() }
     Shortcut { sequence: "Ctrl+S"; enabled: !studio.busy; onActivated: window.saveProject() }
     Shortcut { sequence: "Ctrl+Shift+S"; enabled: !studio.busy; onActivated: saveDialog.open() }
     Shortcut { sequence: "Ctrl+Z"; enabled: studio.canUndo; onActivated: studio.undo() }
@@ -94,7 +97,23 @@ Window {
     Shortcut { sequence: "F"; onActivated: canvas.fitDesign() }
     Shortcut { sequence: studio.selectionTool.shortcut; onActivated: canvas.panMode = false }
     Shortcut { sequence: studio.panTool.shortcut; onActivated: canvas.panMode = true }
-    Shortcut { sequence: "Escape"; onActivated: studio.clearSelection() }
+    Shortcut { sequence: "Escape"; onActivated: { editor.eyedropper = false; if (!canvas.cancelGesture()) studio.clearSelection() } }
+    Shortcut { sequence: "Ctrl+A"; onActivated: editor.selectAll() }
+    Shortcut { sequence: "Ctrl+I"; onActivated: editor.invertSelection() }
+    Shortcut { sequence: "Delete"; enabled: studio.hasSelection; onActivated: editor.deleteSelection() }
+    Shortcut { sequence: "Ctrl+D"; enabled: studio.hasSelection; onActivated: editor.duplicate(5) }
+    Shortcut { sequence: "Ctrl+G"; enabled: editor.selectedCount > 1; onActivated: editor.group("") }
+    Shortcut { sequence: "Ctrl+Shift+G"; enabled: studio.hasSelection; onActivated: editor.ungroup() }
+    Shortcut { sequence: "R"; enabled: studio.hasSelection; onActivated: editor.rotate90(true) }
+    Shortcut { sequence: "Shift+R"; enabled: studio.hasSelection; onActivated: editor.rotate90(false) }
+    Shortcut { sequence: "Ctrl+Shift+H"; enabled: studio.hasSelection; onActivated: editor.mirror(true) }
+    Shortcut { sequence: "Ctrl+Shift+V"; enabled: studio.hasSelection; onActivated: editor.mirror(false) }
+    Shortcut { sequence: "PgUp"; enabled: studio.hasSelection; onActivated: editor.stack("forward") }
+    Shortcut { sequence: "PgDown"; enabled: studio.hasSelection; onActivated: editor.stack("backward") }
+    Shortcut { sequence: "End"; enabled: studio.hasSelection; onActivated: editor.stack("front") }
+    Shortcut { sequence: "Home"; enabled: studio.hasSelection; onActivated: editor.stack("back") }
+    Shortcut { sequence: "E"; enabled: studio.hasSelection; onActivated: editor.eyedropper = !editor.eyedropper }
+    property bool treeMode: false
     Shortcut { sequence: "Ctrl+1"; onActivated: window.workspaceIndex = 0 }
     Shortcut { sequence: "Ctrl+2"; onActivated: window.workspaceIndex = 1 }
     Shortcut { sequence: "Ctrl+3"; onActivated: window.workspaceIndex = 2 }
@@ -195,6 +214,15 @@ Window {
                     shortcutLabel: "Ctrl+Y"
                     enabled: studio.canRedo
                     onClicked: studio.redo()
+                }
+
+                StudioButton {
+                    objectName: "fileMenuButton"
+                    text: qsTr("Fichier")
+                    iconName: "open"
+                    tooltip: qsTr("Récents, imports et exports")
+                    enabled: !studio.busy
+                    onClicked: filePanel.openMenu()
                 }
 
                 StudioButton {
@@ -356,7 +384,23 @@ Window {
                         objectName: "studioCanvas"
                         anchors.fill: parent
                         controller: studio
+                        editor: window.editController
                         focus: true
+                        onContextMenuRequested: function(x, y, objectId) { contextMenu.openAt(x, y) }
+                    }
+
+                    TransformHandles {
+                        objectName: "transformHandles"
+                        anchors.fill: parent
+                        canvas: canvas
+                    }
+
+                    CanvasContextMenu { id: contextMenu }
+
+                    ViewPanel {
+                        objectName: "viewHub"
+                        anchors.fill: parent
+                        canvasItem: canvas
                     }
 
                     ColumnLayout {
@@ -399,6 +443,20 @@ Window {
                             text: qsTr("Ouvrir un projet .osp")
                             tooltip: qsTr("Ouvrir un projet OpenStitch existant")
                             onClicked: window.openProject()
+                        }
+                        RowLayout {
+                            Layout.alignment: Qt.AlignHCenter
+                            spacing: 8
+                            StudioButton {
+                                objectName: "welcomeImportImage"
+                                text: qsTr("Importer une image ou un SVG")
+                                onClicked: filePanel.importImageDialog()
+                            }
+                            StudioButton {
+                                objectName: "welcomeImportMachine"
+                                text: qsTr("Importer une broderie machine")
+                                onClicked: filePanel.importMachineDialog()
+                            }
                         }
                     }
 
@@ -534,9 +592,38 @@ Window {
 
                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
 
+                    Row {
+                        Layout.fillWidth: true
+                        Layout.margins: 6
+                        spacing: 4
+                        StudioButton {
+                            objectName: "listModeButton"
+                            text: qsTr("Liste")
+                            implicitHeight: 26
+                            active: !window.treeMode
+                            onClicked: window.treeMode = false
+                        }
+                        StudioButton {
+                            objectName: "treeModeButton"
+                            text: qsTr("Arbre et calques")
+                            implicitHeight: 26
+                            active: window.treeMode
+                            onClicked: window.treeMode = true
+                        }
+                    }
+
+                    LayerPanel {
+                        objectName: "layerPanel"
+                        visible: window.treeMode
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        Layout.minimumHeight: 100
+                    }
+
                     ListView {
                         id: objectList
                         objectName: "objectList"
+                        visible: !window.treeMode
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         Layout.minimumHeight: 100
@@ -680,6 +767,18 @@ Window {
                             font.pixelSize: 10
                             wrapMode: Text.WordWrap
                         }
+                    }
+
+                    Inspector {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: active ? Math.min(implicitHeight + 24, window.height * 0.5) : 0
+                    }
+
+                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
+
+                    EditBar {
+                        Layout.fillWidth: true
+                        Layout.margins: 12
                     }
 
                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }

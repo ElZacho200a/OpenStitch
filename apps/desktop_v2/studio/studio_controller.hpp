@@ -55,6 +55,12 @@ public:
     Q_INVOKABLE bool saveProject();
     Q_INVOKABLE bool saveProjectAs(const QUrl& url);
     Q_INVOKABLE [[nodiscard]] bool hasPath() const { return !path_.isEmpty(); }
+    // Famille A (FileController) : chemin du projet courant et installation d'un projet venu d'un
+    // import / d'une récupération, avec le même état (titre, chemin, historique vierge) qu'une
+    // ouverture. `clean` : le document est considéré comme enregistré.
+    [[nodiscard]] QString path() const { return path_; }
+    void adoptProject(document::Project project, const QString& path, const QString& title,
+                      bool clean);
     Q_INVOKABLE void undo();
     Q_INVOKABLE void redo();
     // Moves the selected embroidery objects by a model-space offset in mm (one undo step).

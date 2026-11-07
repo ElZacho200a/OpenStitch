@@ -15,3 +15,14 @@
   segmentation, numérisation via `digitize_pipeline`/TaskManager, annulation, sauvegarde), puis souris
   (sélection rectangle, glisser-déplacer), inspecteur piloté par `param_spec`.
 - Propriété des fichiers : Lead = CMake, matrice, CI ; Core = `apps/desktop_v2/core/` ; Studio = `apps/desktop_v2/studio/`.
+
+## Mise à jour — vague 1 multi-agent (familles A fichiers, B édition, C inspecteur, D vue/analyse)
+- Branches d'agents (poussées, sans PR) : `claude/studio-fam-a-fichiers` (a7eb47b), `-b-edition` (0d8df54),
+  `-c-inspecteur` (4a2dab4) ; D (`-d-vue`) en cours. A+B+C fusionnées dans la branche locale de #283,
+  PAS encore poussées : `test_desktop_v2_studio_edit` plante par intermittence (segfault, même
+  adresse) — B diagnostique ; ne pousser qu'après 10 exécutions consécutives vertes.
+- Chaque exécutable de test Studio embarque tous les QML par glob (`studio_all_qml`).
+- Limites connues : param_spec ne couvre pas tout le moteur (types contour_fill, radial, crosshatch,
+  motif, blanket, auto_satin ; champs handmade, seed, density_gradient, center_mm, pull_*, caps…) :
+  étendre param_spec avant de prétendre à la parité de l'inspecteur.
+- Prochaine vague : images/segmentation, outils vectoriels, satin/fondu/compensation, production, compagnon.

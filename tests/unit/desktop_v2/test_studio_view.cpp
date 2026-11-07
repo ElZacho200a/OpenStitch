@@ -1,4 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <QGuiApplication>
+#include <QQmlApplicationEngine>
+#include <QQmlContext>
+#include <QQmlError>
+#include <QQuickItem>
+#include <QQuickStyle>
+#include <QQuickWindow>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QtTest/QtTest>
@@ -6,8 +13,12 @@
 #include <array>
 #include <filesystem>
 
+#include "action_controller.hpp"
 #include "analysis_controller.hpp"
+#include "edit_controller.hpp"
+#include "file_controller.hpp"
 #include "gpu_canvas.hpp"
+#include "inspector_controller.hpp"
 #include "studio_controller.hpp"
 #include "thread_controller.hpp"
 #include "view_controller.hpp"
@@ -79,6 +90,8 @@ private slots:
     void threadPlanColorwaysAndSewingOrder();
     void diagnosticsDensityRiskAndOptimisation();
     void hoopsAndMachine();
+    void initTestCase();
+    void mainQmlHostsEveryPanel();
 };
 
 void StudioViewTest::displayFiltersAreOneUndoStep() {
@@ -296,6 +309,153 @@ void StudioViewTest::hoopsAndMachine() {
     QVERIFY(!rig.analysis.setRenderSetting(QStringLiteral("relief"), QStringLiteral("abc")));
     QVERIFY(rig.analysis.applyRenderPreset(QStringLiteral("draft")));
     QVERIFY(!rig.analysis.applyRenderPreset(QStringLiteral("nope")));
+}
+
+void StudioViewTest::initTestCase() {
+    QQuickStyle::setStyle(QStringLiteral("Basic"));
+    QQuickWindow::setSceneGraphBackend(QStringLiteral("software"));
+    qmlRegisterType<GpuCanvas>("OpenStitch.Studio", 1, 0, "GpuCanvas");
+    qmlRegisterUncreatableType<StudioController>("OpenStitch.Studio", 1, 0, "StudioController",
+                                                 QStringLiteral("Provided by the application"));
+}
+
+namespace {
+// Repeater delegates are not QObject children of the window: walk the visual tree.
+QQuickItem* findVisual(QQuickItem* item, const QString& name) {
+    if (item->objectName() == name) {
+        return item;
+    }
+    for (auto* child : item->childItems()) {
+        if (auto* found = findVisual(child, name)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+QQuickItem* named(QQuickWindow* window, const char* name) {
+    return findVisual(window->contentItem(), QString::fromLatin1(name));
+}
+// AbstractButton::click() runs the real onClicked handler even when the button is scrolled
+// out of its Flickable (a mouse click there would land elsewhere).
+bool press(QQuickWindow* window, const char* name) {
+    auto* item = named(window, name);
+    return item && item->isEnabled() && QMetaObject::invokeMethod(item, "click");
+}
+} // namespace
+
+void StudioViewTest::mainQmlHostsEveryPanel() {
+    DocumentSession session;
+    StudioController studio(session);
+    ActionController actions(studio);
+    EditController editor(studio);
+    QTemporaryDir dir;
+    const auto cfg = std::filesystem::path(dir.path().toStdWString());
+    FileController files(studio, &actions, dir.path());
+    InspectorController inspector(studio);
+    ViewController view(studio, cfg);
+    ThreadController threads(studio, cfg);
+    AnalysisController analysis(studio, view, cfg);
+    QQmlApplicationEngine engine;
+    QStringList warnings;
+    connect(&engine, &QQmlApplicationEngine::warnings, this, [&](const QList<QQmlError>& errors) {
+        for (const auto& e : errors) {
+            warnings.push_back(e.toString());
+        }
+    });
+    auto* ctx = engine.rootContext();
+    ctx->setContextProperty(QStringLiteral("studio"), &studio);
+    ctx->setContextProperty(QStringLiteral("actions"), &actions);
+    ctx->setContextProperty(QStringLiteral("editor"), &editor);
+    ctx->setContextProperty(QStringLiteral("files"), &files);
+    ctx->setContextProperty(QStringLiteral("inspector"), &inspector);
+    ctx->setContextProperty(QStringLiteral("view"), &view);
+    ctx->setContextProperty(QStringLiteral("threads"), &threads);
+    ctx->setContextProperty(QStringLiteral("analysis"), &analysis);
+    engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
+    QVERIFY2(!engine.rootObjects().isEmpty(), qPrintable(warnings.join('\n')));
+    auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().front());
+    QVERIFY(window);
+    session.replaceProject(fixture(), true);
+    QTRY_VERIFY_WITH_TIMEOUT(!studio.busy() && studio.scene() != nullptr, 15'000);
+    QTRY_VERIFY_WITH_TIMEOUT(view.simReady(), 15'000);
+    auto* hub = named(window, "viewHub");
+    QVERIFY(hub);
+    QTRY_VERIFY(hub->property("ready").toBool());
+    auto* canvas = window->findChild<GpuCanvas*>(QStringLiteral("studioCanvas"));
+    QVERIFY(canvas);
+    QVERIFY(canvas->overlays() != nullptr); // attachCanvas published the first overlays
+
+    // Panel "Vue": filters, grid, guides, zoom.
+    QVERIFY(press(window, "viewPanelButton"));
+    QCOMPARE(hub->property("openPanel").toString(), QStringLiteral("view"));
+    studio.selectObject(QString::number(firstId));
+    QTRY_VERIFY(named(window, "onlySelectedColourButton")->isEnabled());
+    QVERIFY(press(window, "onlySelectedColourButton"));
+    QCOMPARE(view.hiddenCount(), 1);
+    QTRY_VERIFY(named(window, "showAllButton")->isEnabled());
+    QVERIFY(press(window, "showAllButton"));
+    QCOMPARE(view.hiddenCount(), 0);
+    QVERIFY(press(window, "gridBox"));
+    QVERIFY(view.gridVisible());
+    QVERIFY(canvas->overlays()->grid);
+    QVERIFY(press(window, "rulersBox"));
+    QVERIFY(view.rulersVisible());
+    QVERIFY(press(window, "addVGuideButton"));
+    QCOMPARE(view.guides().size(), 1);
+    QCOMPARE(canvas->overlays()->guidesX.size(), std::size_t{1});
+    QVERIFY(press(window, "zoom100Button"));
+    QVERIFY(std::abs(canvas->zoom() - view.pixelsPerMmAt100()) < 1e-6);
+
+    // Zoom rectangle through the real canvas gesture (one-shot rubber band).
+    canvas->fitDesign();
+    const double fitted = canvas->zoom();
+    QVERIFY(press(window, "zoomRectButton"));
+    QVERIFY(canvas->zoomRectMode());
+    const auto origin = canvas->mapToScene(QPointF(0, 0)).toPoint();
+    QTest::mousePress(window, Qt::LeftButton, Qt::NoModifier, origin + QPoint(300, 200));
+    QTest::mouseMove(window, origin + QPoint(350, 240));
+    QVERIFY(canvas->rubberBand().width() > 0);
+    QTest::mouseRelease(window, Qt::LeftButton, Qt::NoModifier, origin + QPoint(400, 280));
+    QVERIFY(canvas->zoom() > fitted);
+    QVERIFY(!canvas->zoomRectMode());
+
+    // Panel "Fils".
+    QVERIFY(press(window, "threadsPanelButton"));
+    QCOMPARE(hub->property("openPanel").toString(), QStringLiteral("threads"));
+    QTRY_VERIFY(named(window, "threadRow0") != nullptr);
+    named(window, "colorwayNameField")->setProperty("text", QStringLiteral("Printemps"));
+    QVERIFY(press(window, "colorwayAddButton"));
+    QVERIFY(!threads.colorways().isEmpty());
+    QVERIFY(press(window, "orderDown0"));
+    QCOMPARE(threads.sewingOrder().first().toMap().value("id").toString(),
+             QString::number(secondId));
+
+    // Panel "Analyse".
+    QVERIFY(press(window, "analysisPanelButton"));
+    QCOMPARE(hub->property("openPanel").toString(), QStringLiteral("analysis"));
+    QVERIFY(press(window, "diagnoseButton"));
+    QTRY_VERIFY_WITH_TIMEOUT(analysis.diagnosticsReady(), 15'000);
+    QVERIFY(press(window, "proposeButton"));
+    QTRY_VERIFY_WITH_TIMEOUT(analysis.proposalReady(), 15'000);
+    QVERIFY(press(window, "checkHoopButton"));
+    QVERIFY(!analysis.message().isEmpty());
+
+    // Simulation bar.
+    QTRY_VERIFY(named(window, "simulationButton")->isEnabled());
+    QVERIFY(press(window, "simulationButton"));
+    QVERIFY(view.simActive());
+    QTRY_VERIFY(named(window, "simNextStitch") != nullptr);
+    QVERIFY(press(window, "simNextStitch"));
+    QCOMPARE(view.simPosition(), 1);
+    QVERIFY(press(window, "simPlayButton"));
+    QVERIFY(view.playing());
+    view.advance(600'000);
+    QCOMPARE(view.simPosition(), view.simTotal());
+    QVERIFY(press(window, "simToEnd"));
+    QVERIFY(press(window, "simClose"));
+    QVERIFY(!view.simActive());
+
+    QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
 }
 
 QTEST_MAIN(StudioViewTest)

@@ -1,2 +1,6 @@
 singleton Theme 1.0 Theme.qml
 ActionPalette 1.0 ActionPalette.qml
+FilePanel 1.0 FilePanel.qml
+Inspector 1.0 Inspector.qml
+ParamField 1.0 ParamField.qml
+ParamSection 1.0 ParamSection.qml
