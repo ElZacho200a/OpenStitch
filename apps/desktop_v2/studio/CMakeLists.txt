@@ -31,12 +31,12 @@ add_library(openstitch_studio_ui STATIC
     help_controller.cpp help_controller.hpp
     digitize_gestures.cpp digitize_gestures.hpp
     pull_controller.cpp pull_controller.hpp
-    applique_controller.cpp applique_controller.hpp
-    ../ui/live_server.cpp ../ui/live_server.hpp)
+    applique_controller.cpp applique_controller.hpp)
 add_library(openstitch::studio_ui ALIAS openstitch_studio_ui)
 target_include_directories(openstitch_studio_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(openstitch_studio_ui PUBLIC openstitch::desktop_v2_core
-    openstitch::ai_segmentation openstitch::companion_backends Qt6::Network Qt6::Quick
+    openstitch::ai_segmentation openstitch::companion_backends
+    openstitch::desktop_v2_live_server Qt6::Network Qt6::Quick
     Qt6::QuickControls2 PRIVATE openstitch::warnings)
 
 set(studio_qml_files
