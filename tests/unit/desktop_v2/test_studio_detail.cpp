@@ -9,6 +9,7 @@
 #include <QQuickWindow>
 #include <QTemporaryDir>
 #include <QTest>
+#include <algorithm>
 #include <filesystem>
 
 #include "action_controller.hpp"
@@ -225,6 +226,12 @@ private slots:
         QVERIFY(clickedDst != originalDst);
         QVERIFY(clicked->findEmbroidery(ObjectId{101}));
         QVERIFY(clicked->findEmbroidery(ObjectId{102}));
+        for (const auto id : {ObjectId{101}, ObjectId{102}}) {
+            const auto originalView = stitch_generation::edit_view(*before, id);
+            const auto clickedView = stitch_generation::edit_view(*clicked, id);
+            QVERIFY(originalView && clickedView);
+            QCOMPARE(originalView->fingerprint, clickedView->fingerprint);
+        }
         DocumentSession reference;
         reference.replaceProject(*before, true);
         // Même coordonnées effectivement reçues (arrondi pixel QTest) et même service pur.

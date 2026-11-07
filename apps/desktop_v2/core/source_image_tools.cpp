@@ -129,6 +129,9 @@ ServiceResult paintDetail(DocumentSession& session, const image::Image& processe
     }
     std::vector<std::pair<int, int>> pixels;
     for (const auto& [x, y] : centres) {
+        if (!std::isfinite(x) || !std::isfinite(y)) {
+            return refuse("Coordonnées du trait invalides.");
+        }
         if (const auto p = pixelUnder(processed, mmPerPx, x, y)) {
             pixels.emplace_back(p->x, p->y);
         }

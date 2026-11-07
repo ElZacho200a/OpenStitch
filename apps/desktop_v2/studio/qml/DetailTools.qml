@@ -121,14 +121,16 @@ Item {
                 checked: root.ctl ? root.ctl.replaceSelected : false
                 onToggled: root.ctl.replaceSelected = checked
             }
-            RowLayout {
+            ColumnLayout {
                 visible: root.ctl && root.ctl.confirmationPending
                 StudioButton {
+                    Layout.fillWidth: true
                     objectName: "detailConfirmReplace"
                     text: qsTr("Supprimer les retouches")
                     onClicked: root.ctl.confirmReplacement(true)
                 }
                 StudioButton {
+                    Layout.fillWidth: true
                     objectName: "detailCancelReplace"
                     text: qsTr("Annuler")
                     onClicked: root.ctl.confirmReplacement(false)

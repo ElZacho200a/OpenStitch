@@ -38,6 +38,8 @@ enum class ClickKind { Auto, Fill, Satin, Contour };
 // Zone de couleur connexe autour du point (tolérance CIELAB 0..100, comblement des trous isolés)
 // -> vectorisation -> objet brodé. Retourne l'identifiant de l'objet brodé créé, ou le refus du
 // moteur en clair (zone vide, trop petite…).
+// replaceObject : remplace cette seule broderie (les autres restent intactes), dans la même
+// commande. Refus si elle porte des retouches et discardRetouches n'a pas été confirmé.
 struct ClickResult {
     bool ok{false};
     std::string message;
