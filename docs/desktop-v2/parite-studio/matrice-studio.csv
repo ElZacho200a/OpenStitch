@@ -2,7 +2,7 @@ id,type,libelle_v1,source_v1,statut_v2_widgets,preuve_v2,statut_studio,preuve_st
 226c1fd7,action,(aucun préréglage),main_window_stitch_presets.cpp,absent,,FUNCTIONAL_UNTESTED,,InspectorController::presets,Inspector.qml noPreset
 c6534d24,action,(sélectionnez un objet de broderie pour assigner),main_window_eyedropper.cpp,absent,,TESTED,StudioEditTest::contextMenuAndEyedropper,EditController::applyColorFrom,GpuCanvas pipette + EditBar pipetteButton
 9268b9a3,action,100 % (taille réelle),main_window.cpp,fait,view.zoom-actual,SERVICE_ONLY,,,
-c7233a7c,action,Abandonner les retouches,main_window_toolbars.cpp,absent,,ABSENT,,,
+c7233a7c,action,Abandonner les retouches,main_window_toolbars.cpp,absent,,TESTED,StudioDigitizeTest::pointEditJourney,PointEditController::discardEdits,PointEditPanel.qml pointDiscard
 b4151a04,action,Accrochage des nœuds au glisser,main_window.cpp,absent,,ABSENT,,,
 fc27db70,action,Accrocher à la grille,main_window_vector_edit.cpp,absent,,ABSENT,,,
 c6b9c9e3,action,Activer,main_window_realistic.cpp,fait,Activer,SERVICE_ONLY,,,
@@ -36,15 +36,15 @@ f942b9ce,action,Carte de densité,main_window_density.cpp,fait,Carte de densité
 b4f352c6,action,Convertir en appliqué,main_window_applique.cpp,partiel,applique,SERVICE_ONLY,,,
 eb7dd01d,action,Convertir en courbes,main_window_vector_tools.cpp,fait,vector.curves,SERVICE_ONLY,,,
 84f88da1,action,Convertir en remplissage concentrique,main_window_context_menu.cpp,fait,contour_fill,SERVICE_ONLY,,,
-18d015e9,action,Convertir en satin automatiquement,main_window.cpp,fait,satin.auto,SERVICE_ONLY,,,
+18d015e9,action,Convertir en satin automatiquement,main_window.cpp,fait,satin.auto,TESTED,StudioDigitizeTest::autoSatinThroughTheActionPalette,ActionController::run(satin.auto),ActionPalette.qml
 b9441c56,action,Convertir les satins auto en tatami,main_window.cpp,fait,auto_satin,SERVICE_ONLY,,,
 2c87f32d,action,Convertir les vecteurs en broderie,main_window.cpp,absent,,ABSENT,,,
 ca67b4fd,action,Couleur des guides,main_window_view_display.cpp,fait,Couleur des guides,FUNCTIONAL_UNTESTED,,ViewController::setGuideColor,ViewPanel.qml / GpuCanvas overlay guides
 b24bb78f,action,Couleur ⏭,main_window_simulation.cpp,fait,sim.next-colour,FUNCTIONAL_UNTESTED,StudioViewTest::simulationNavigatesTheEffectiveSequence,ViewController::nextColour,SimulationBar.qml
-f9db85df,action,Couper le fil après,main_window_point_edit.cpp,fait,Couper le fil après,SERVICE_ONLY,,,
+f9db85df,action,Couper le fil après,main_window_point_edit.cpp,fait,Couper le fil après,TESTED,StudioDigitizeTest::pointEditJourney,PointEditController::setTrim,PointEditPanel.qml pointTrim
 0b59bc57,action,Créer un objet de point de contour,main_window.cpp,partiel,settableStitchTypes,SERVICE_ONLY,,,
 c97c7aae,action,Créer un remplissage tatami,main_window.cpp,partiel,settableStitchTypes,SERVICE_ONLY,,,
-67fc3ea3,action,Créer un satin automatique,main_window.cpp,fait,satin.auto,SERVICE_ONLY,,,
+67fc3ea3,action,Créer un satin automatique,main_window.cpp,fait,satin.auto,TESTED,StudioDigitizeTest::autoSatinThroughTheActionPalette,ActionController::run(satin.auto),ActionPalette.qml
 1e5cd1fe,action,Diagnostic des défauts connus,main_window_analysis.cpp,partiel,run_diagnostics,TESTED,StudioViewTest::mainQmlHostsEveryPanel,AnalysisController::runDiagnostics,AnalysisPanel.qml
 9ba57c94,action,Dupliquer,main_window_context_menu.cpp,fait,Dupliquer,TESTED,StudioEditTest::shortcutsReachTheEditor,EditController::duplicate,Main.qml Ctrl+D / CanvasContextMenu / EditBar
 42245f06,action,Dupliquer la couche,document_panel.cpp,absent,,ABSENT,,,
@@ -71,7 +71,7 @@ a9055127,action,Exporter avec les derniers réglages,main_window.cpp,fait,file.e
 08ee1b58,action,Exporter une broderie machine,main_window.cpp,fait,Exporter pour la machine,TESTED,StudioFilesTest::machineExportImportRoundTrip,FileController::exportMachine,FilePanel.qml exportDialog
 d0850557,action,Fiche de production,main_window_production.cpp,fait,Fiche de production,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportProductionSheet,FilePanel.qml menu Exporter
 aba3cc8d,action,Fidélité à l'image,main_window_analysis.cpp,absent,,ABSENT,,,
-4132716d,action,Fondu de couleurs à deux fils,main_window_directional.cpp,fait,fade.create,SERVICE_ONLY,,,
+4132716d,action,Fondu de couleurs à deux fils,main_window_directional.cpp,fait,fade.create,TESTED,StudioDigitizeTest::fadeJourney,FadeController::create,FadePanel.qml fadeCreate
 90b818d1,action,Format d'import des nuanciers,main_window_threads.cpp,fait,action_file_chart_format,SERVICE_ONLY,,,
 69547042,action,Fusionner avec… (cliquer la région cible),main_window.cpp,partiel,regionMerge,SERVICE_ONLY,,,
 30fe85c6,action,Fusionner dans la voisine principale,main_window.cpp,fait,regionMerge,SERVICE_ONLY,,,
@@ -81,7 +81,7 @@ aba3cc8d,action,Fidélité à l'image,main_window_analysis.cpp,absent,,ABSENT,,,
 de9ab6e1,action,Generer un guide depuis la forme,main_window_context_menu.cpp,fait,fill.guides,SERVICE_ONLY,,,
 d0300f93,action,Gestes souris et clavier,main_window_help_menu.cpp,partiel,Raccourcis et commandes,SERVICE_ONLY,,,
 80d5551a,action,Guide de prise en main,main_window_help_menu.cpp,absent,,ABSENT,,,
-aea2d95e,action,Guides de direction,main_window_context_menu.cpp,fait,Guides de direction,SERVICE_ONLY,,,
+aea2d95e,action,Guides de direction,main_window_context_menu.cpp,fait,Guides de direction,UI_PARTIAL,StudioDigitizeTest::directionGuidesJourney,SatinController::addGuide,SatinPanel.qml
 fa129d91,action,Générer un guide depuis la forme,main_window_directional.cpp,fait,fill.guides,SERVICE_ONLY,,,
 807cf843,action,Image,main_window.cpp,fait,Image,SERVICE_ONLY,,,
 69632007,action,Importer un DXF,main_window.cpp,fait,Importer un DXF,FUNCTIONAL_UNTESTED,,ActionController::run(file.import_dxf),ActionPalette.qml
@@ -95,9 +95,9 @@ f97b2ddf,action,Lisser,main_window_vector_tools.cpp,fait,Lisser,SERVICE_ONLY,,,
 2a299c02,action,Manuel d'utilisation,main_window_help_menu.cpp,absent,,ABSENT,,,
 3b625aed,action,Masquer les panneaux,main_window.cpp,partiel,panelsMenu,SERVICE_ONLY,,,
 9891d57a,action,Mode portable (une seule colonne),main_window.cpp,absent,,ABSENT,,,
-b2e5796b,action,Modifier la colonne satin (rails + guides),main_window.cpp,absent,,ABSENT,,,
+b2e5796b,action,Modifier la colonne satin (rails + guides),main_window.cpp,absent,,UI_PARTIAL,StudioDigitizeTest::satinColumnJourney,SatinController::moveRailNode,SatinPanel.qml noeud de rail (poignees de rail au canevas absentes)
 2e6cc34f,action,Modifier le texte,main_window_lettering.cpp,fait,Modifier le texte,FUNCTIONAL_UNTESTED,,ActionController::run(text.edit),ActionPalette.qml
-aee88642,action,Ne pas couper le fil après,main_window_point_edit.cpp,fait,Ne pas couper le fil après,SERVICE_ONLY,,,
+aee88642,action,Ne pas couper le fil après,main_window_point_edit.cpp,fait,Ne pas couper le fil après,TESTED,StudioDigitizeTest::pointEditJourney,PointEditController::setTrim(false),PointEditPanel.qml pointNoTrim
 5421aa74,action,Nettoyer les petits îlots,main_window.cpp,fait,regionClean,SERVICE_ONLY,,,
 c3d0caab,action,Nouveau projet,main_window.cpp,fait,Nouveau projet,TESTED,StudioShellTest::openMoveUndoSaveReopenJourney,StudioController::newProject,Main.qml Ctrl+N
 00cdb915,action,Numérisation automatique,main_window.cpp,fait,Numériser,SERVICE_ONLY,,,
@@ -110,8 +110,8 @@ c492f162,action,Objet ⏭,simulation_nav_bar.cpp,fait,sim.next-object,FUNCTIONAL
 9f0deb8b,action,Ouvrir un projet,main_window.cpp,fait,Ouvrir une image ou un projet,TESTED,StudioShellTest::realProjectSelectionAndViewInteractions,StudioController::openProject,Main.qml Ctrl+O
 435dc9ab,action,Paramètres,main_window.cpp,fait,Paramètres,SERVICE_ONLY,,,
 369536e7,action,Pas de la grille,main_window_vector_edit.cpp,partiel,gridMenu,SERVICE_ONLY,,,
-f590671c,action,Passer en point cousu,main_window_point_edit.cpp,fait,Passer en point cousu,SERVICE_ONLY,,,
-66d86e8a,action,Passer en saut (sans couture),main_window_point_edit.cpp,fait,Passer en saut (sans couture),SERVICE_ONLY,,,
+f590671c,action,Passer en point cousu,main_window_point_edit.cpp,fait,Passer en point cousu,TESTED,StudioDigitizeTest::pointEditJourney,PointEditController::setJump(false),PointEditPanel.qml pointToStitch
+66d86e8a,action,Passer en saut (sans couture),main_window_point_edit.cpp,fait,Passer en saut (sans couture),TESTED,StudioDigitizeTest::mainQmlHostsDigitizePanels,PointEditController::setJump(true),PointEditPanel.qml pointToJump
 8ce04bb9,action,Pinceau : rayon plus grand,main_window_brush.cpp,absent,,ABSENT,,,
 c3bcc666,action,Pinceau : rayon plus petit,main_window_brush.cpp,absent,,ABSENT,,,
 b8d2a1ce,action,Poignées du dégradé,main_window_gradient.cpp,fait,fade.axis,SERVICE_ONLY,,,
@@ -129,7 +129,7 @@ d39e212d,action,Recolorer la sélection,main_window.cpp,fait,Recolorer la sélec
 b5106cf2,action,Remplissage tatami,main_window.cpp,partiel,settableStitchTypes,SERVICE_ONLY,,,
 8b3e385a,action,Renommer,calque_panel.cpp,fait,Renommer,FUNCTIONAL_UNTESTED,StudioEditTest::layersTreeAndObjectEditing (controleur seul),EditController::renameLayer/renameObject,ObjectTree double-clic / LayerPanel
 a0622ecf,action,Restaurer la disposition précédente,main_window_ux.cpp,absent,,ABSENT,,,
-b0c51442,action,Restaurer les points sélectionnés,main_window_point_edit.cpp,fait,point.restore,SERVICE_ONLY,,,
+b0c51442,action,Restaurer les points sélectionnés,main_window_point_edit.cpp,fait,point.restore,TESTED,StudioDigitizeTest::pointEditJourney,PointEditController::restoreSelected,PointEditPanel.qml pointRestore
 ae44ff48,action,Risque de tirage du tissu,main_window_analysis.cpp,fait,analysis.fabric,FUNCTIONAL_UNTESTED,,AnalysisController::computeFabricRisk,ViewPanel.qml / GpuCanvas overlay image
 bf228390,action,Risque tissu,main_window_fabric_risk.cpp,fait,analysis.fabric,SERVICE_ONLY,,,
 34422f89,action,Réduire / fusionner les fils,main_window_colorways.cpp,partiel,mergeThreads,SERVICE_ONLY,,,
@@ -141,7 +141,7 @@ ea169d9f,action,Réglages de la grille,main_window_view_display.cpp,partiel,grid
 5f547908,action,Réinitialiser la disposition,main_window.cpp,absent,,ABSENT,,,
 251cbea8,action,Rétablir,main_window.cpp,fait,Rétablir,TESTED,StudioShellTest::openMoveUndoSaveReopenJourney,StudioController::redo,Main.qml redoButton
 7eff11f4,action,Rétablir la couleur d'origine,main_window.cpp,absent,,ABSENT,,,
-8233c055,action,Satin automatique,main_window.cpp,fait,Satin automatique,SERVICE_ONLY,,,
+8233c055,action,Satin automatique,main_window.cpp,fait,Satin automatique,TESTED,StudioDigitizeTest::autoSatinThroughTheActionPalette,ActionController::run(satin.auto),ActionPalette.qml
 3d2be7f4,action,Sauts à vide de l'ordre,main_window_order_jumps.cpp,absent,,ABSENT,,,
 de43aedf,action,Segmenter l'image,main_window.cpp,fait,Segmenter l'image,FUNCTIONAL_UNTESTED,,ActionController::run(image.segment),ActionPalette.qml
 0d67e9bf,action,Statistiques,main_window.cpp,partiel,summary_,SERVICE_ONLY,,,
@@ -154,17 +154,17 @@ d6e27fc4,action,Supprimer le calque,calque_panel.cpp,fait,calqueRemove,FUNCTIONA
 69e76bc8,action,Supprimer le guide satin sélectionné,main_window.cpp,absent,,ABSENT,,,
 5a001324,action,Supprimer le nœud,main_window_render.cpp,fait,deleteSelected,SERVICE_ONLY,,,
 cc56cc1b,action,Supprimer le texte,main_window_lettering.cpp,absent,,FUNCTIONAL_UNTESTED,,ActionController::run(text.remove),ActionPalette.qml
-d9267bc5,action,Supprimer les points sélectionnés,main_window_point_edit.cpp,fait,deleteSelectedPoint,SERVICE_ONLY,,,
+d9267bc5,action,Supprimer les points sélectionnés,main_window_point_edit.cpp,fait,deleteSelectedPoint,TESTED,StudioDigitizeTest::pointEditJourney,PointEditController::deleteSelected,PointEditPanel.qml pointDelete
 0e876999,action,Sélectionner l'objet,main_window_analysis.cpp,fait,onFindingActivated,FUNCTIONAL_UNTESTED,,AnalysisController::selectFindingObjects,AnalysisPanel.qml
 5626577a,action,Sélectionner la même couleur,main_window.cpp,fait,Sélectionner la même couleur,FUNCTIONAL_UNTESTED,StudioEditTest::selectionCommandsOnRealObjects (controleur seul),EditController::selectSameColor,EditBar sameColorButton / CanvasContextMenu
 76e1b404,action,Sélectionner les voisines,main_window.cpp,fait,Sélectionner les voisines,FUNCTIONAL_UNTESTED,StudioEditTest::selectionCommandsOnRealObjects (controleur seul),EditController::selectNeighbors,EditBar neighborsButton / CanvasContextMenu
-149d5727,action,Sélectionner tous les points,main_window_point_edit.cpp,fait,point.select-all,SERVICE_ONLY,,,
+149d5727,action,Sélectionner tous les points,main_window_point_edit.cpp,fait,point.select-all,TESTED,StudioDigitizeTest::mainQmlHostsDigitizePanels,PointEditController::selectAllPoints,PointEditPanel.qml pointSelectAll
 6374ea03,action,Taille du cadre,main_window.cpp,fait,canvas.set,TESTED,StudioFilesTest::hoopMachineAndUserHoops,FileController::applyHoop/applyCustomHoop,FilePanel.qml hoopDialog
 153dd793,action,Tout afficher,main_window_order_filter.cpp,fait,view.show-all,SERVICE_ONLY,,,
 e46589b0,action,Tout afficher (filtres),main_window_context_menu.cpp,fait,view.show-all,SERVICE_ONLY,,,
 f4632624,action,Tout sélectionner,main_window.cpp,fait,Tout sélectionner,TESTED,StudioEditTest::shortcutsReachTheEditor,EditController::selectAll,Main.qml Ctrl+A / EditBar selectAllButton
-84b7b6f9,action,Tracer un guide de direction,main_window_directional.cpp,fait,Tracer un guide de direction,SERVICE_ONLY,,,
-755c06fc,action,Tracer une ligne de rupture,main_window_directional.cpp,fait,Tracer une ligne de rupture,SERVICE_ONLY,,,
+84b7b6f9,action,Tracer un guide de direction,main_window_directional.cpp,fait,Tracer un guide de direction,UI_PARTIAL,StudioDigitizeTest::directionGuidesJourney,SatinController::addGuide,SatinPanel.qml (trace au canevas absent)
+755c06fc,action,Tracer une ligne de rupture,main_window_directional.cpp,fait,Tracer une ligne de rupture,UI_PARTIAL,StudioDigitizeTest::directionGuidesJourney,SatinController::addGuide(break),SatinPanel.qml (trace au canevas absent)
 e73f5b09,action,Transition douce des nœuds voisins,main_window_node_select.cpp,absent,,ABSENT,,,
 8a282d1d,action,Tutoriel : de l'image à la broderie,main_window_help_menu.cpp,absent,,ABSENT,,,
 a361cdd3,action,Vecteurs,main_window.cpp,absent,,ABSENT,,,
@@ -186,7 +186,7 @@ bf476973,action,⏹ Fin,main_window_simulation.cpp,fait,sim.end,TESTED,StudioVie
 f271218c,action,▶ Lecture,main_window_simulation.cpp,partiel,Lecture,TESTED,StudioViewTest::mainQmlHostsEveryPanel,ViewController::play/advance,SimulationBar.qml
 328035a0,action,◀ Point,simulation_nav_bar.cpp,fait,sim.prev-point,FUNCTIONAL_UNTESTED,StudioViewTest::simulationNavigatesTheEffectiveSequence,ViewController::step(-1),SimulationBar.qml
 83393a9a,bouton,+ Couche,document_panel.cpp,partiel,calqueAdd,SERVICE_ONLY,,,
-613e0ed8,bouton,Abandonner les retouches,properties_panel.cpp,absent,,ABSENT,,,
+613e0ed8,bouton,Abandonner les retouches,properties_panel.cpp,absent,,TESTED,StudioDigitizeTest::mainQmlHostsDigitizePanels,PointEditController::discardEdits,PointEditPanel.qml pointDiscard
 abf0f4bd,bouton,Activer,colorway_dialog.cpp,fait,Activer,FUNCTIONAL_UNTESTED,,ThreadController::activateColorway,ThreadPanel.qml
 9579fe3b,bouton,Actualiser l’aperçu,color_blend_dialog.cpp,absent,,ABSENT,,,
 9ef91727,bouton,Afficher le détail,ai_segmentation_dialog.cpp,exclu,,ABSENT,,,
@@ -245,7 +245,7 @@ a8d2bcf8,bouton,Remplacer ce fil par celui du catalogue,thread_panel.cpp,partiel
 c56a6143,bouton,Réduire,thread_panel.cpp,fait,Réduire,SERVICE_ONLY,,,
 ea48b8bd,bouton,Sonder les backends,ai_preferences_dialog.cpp,exclu,,BLOCKED,,,
 f7de65cb,bouton,Supprimer,colorway_dialog.cpp,fait,Supprimer,FUNCTIONAL_UNTESTED,,ThreadController::removeColorway,ThreadPanel.qml
-9e718d2b,bouton,Supprimer le guide,properties_panel.cpp,absent,,ABSENT,,,
+9e718d2b,bouton,Supprimer le guide,properties_panel.cpp,absent,,UI_PARTIAL,StudioDigitizeTest::directionGuidesJourney,SatinController::clearGuides,SatinPanel.qml guidesClear (efface tous les guides de l'objet)
 64625b92,bouton,Sélectionner les objets de ce fil,thread_panel.cpp,fait,threadSelect,FUNCTIONAL_UNTESTED,StudioViewTest::threadPlanColorwaysAndSewingOrder,ThreadController::selectThreadObjects,ThreadPanel.qml
 ba349540,bouton,Sélectionner les objets du bloc,thread_panel.cpp,partiel,threadSelect,SERVICE_ONLY,,,
 67a04f5b,bouton,Séquencer par couleur (fusionner les blocs de même fil),thread_panel.cpp,absent,,ABSENT,,,
@@ -373,7 +373,7 @@ ea529ff7,dialogue,Rechercher une commande,command_palette_dialog.cpp,fait,Recher
 f15b33c8,dialogue,Rendu réaliste,realistic_render_dialog.cpp,fait,Rendu réaliste,SERVICE_ONLY,,,
 1b7523c1,dialogue,Réduire / fusionner les fils,thread_merge_dialog.cpp,partiel,mergeThreads,SERVICE_ONLY,,,
 749748bf,dialogue,Réglages de la grille,grid_settings_dialog.cpp,partiel,gridMenu,SERVICE_ONLY,,,
-38a816ae,dialogue,Satin,main_window_satin_auto.cpp,fait,Satin,SERVICE_ONLY,,,
+38a816ae,dialogue,Satin,main_window_satin_auto.cpp,fait,Satin,UI_PARTIAL,StudioDigitizeTest::satinColumnJourney,SatinController::diagnosis,SatinPanel.qml satinDiagnosis
 ffcf580f,dialogue,Segmenter avec l'IA,ai_segmentation_dialog.cpp,exclu,,UI_PARTIAL,StudioImageTest::aiStatusFallsBackExplicitly (sonde des backends + repli classique explicite; pas d'analyse),ImageController::refreshAiBackends,AiSection.qml
 4669e436,dialogue,Segmenter l'image,segmentation_dialog.cpp,fait,Segmenter l'image,FUNCTIONAL_UNTESTED,,ActionController::run(image.segment),ActionPalette.qml
 5febcd89,dialogue,Vectorisation,main_window_workflow.cpp,fait,Vectorisation,SERVICE_ONLY,,,
@@ -417,7 +417,7 @@ bfb1ac5d,menu,Récents,main_window.cpp,fait,Récents,TESTED,StudioFilesTest::rec
 46096614,menu,Segmentation,main_window.cpp,fait,Segmentation,SERVICE_ONLY,,,
 20265051,menu,Supprimer un préréglage,main_window_stitch_presets.cpp,fait,preset.remove,TESTED,StudioInspectorTest::presetsLifecycle,InspectorController::removePreset,Inspector.qml removePreset_N
 5d90ed77,menu,Sélection,main_window_context_menu.cpp,fait,Sélection,FUNCTIONAL_UNTESTED,StudioEditTest::selectionCommandsOnRealObjects (controleur seul),EditController::selectAll/selectRect/selectByLayer,CanvasContextMenu Selection + GpuCanvas rectangle
-90c9c047,menu,Texte,main_window_lettering.cpp,fait,Texte,SERVICE_ONLY,,,
+90c9c047,menu,Texte,main_window_lettering.cpp,fait,Texte,TESTED,StudioDigitizeTest::textLetteringJourney,ActionController::run(text.add/text.edit/text.remove),ActionPalette.qml
 1bfbf007,menu,Thème,main_window.cpp,fait,Thème,SERVICE_ONLY,,,
 365e2a98,menu,Transformer,main_window_objects.cpp,fait,Transformer,SERVICE_ONLY,,,
 50f2be55,menu,Type de points,main_window_context_menu.cpp,fait,Type de points,FUNCTIONAL_UNTESTED,StudioEditTest::selectionCommandsOnRealObjects (controleur seul),EditController::selectByType,CanvasContextMenu Type de points
@@ -430,16 +430,16 @@ e22edfe6,outil,Cut,tools.hpp,fait,Cut,SERVICE_ONLY,,,
 e3db2548,outil,DetailBrush,tools.hpp,fait,DetailBrush,SERVICE_ONLY,,,
 a8ddefdf,outil,DrawBezier,tools.hpp,fait,DrawBezier,SERVICE_ONLY,,,
 cf819ee7,outil,DrawBreakLine,tools.hpp,fait,DrawBreakLine,SERVICE_ONLY,,,
-31cf34dd,outil,DrawDirectionGuide,tools.hpp,fait,DrawDirectionGuide,SERVICE_ONLY,,,
+31cf34dd,outil,DrawDirectionGuide,tools.hpp,fait,DrawDirectionGuide,UI_PARTIAL,StudioDigitizeTest::directionGuidesJourney,SatinController::addGuide,SatinPanel.qml (outil de trace au canevas absent)
 b8cd428a,outil,DrawEllipse,tools.hpp,fait,DrawEllipse,SERVICE_ONLY,,,
 c5d6568a,outil,DrawFreeform,tools.hpp,fait,DrawFreeform,SERVICE_ONLY,,,
 79f92460,outil,DrawPolygon,tools.hpp,fait,DrawPolygon,SERVICE_ONLY,,,
 b5f01e17,outil,DrawPolygonRegular,tools.hpp,fait,DrawPolygonRegular,SERVICE_ONLY,,,
 0134085f,outil,DrawRectangle,tools.hpp,fait,DrawRectangle,SERVICE_ONLY,,,
-9f2384e1,outil,DrawSatinColumn,tools.hpp,fait,DrawSatinColumn,SERVICE_ONLY,,,
+9f2384e1,outil,DrawSatinColumn,tools.hpp,fait,DrawSatinColumn,UI_PARTIAL,StudioDigitizeTest::satinColumnJourney,SatinController::createFromRungs,SatinPanel.qml (creation par barreaux testee ; geste de trace au canevas absent)
 b1c7b9f7,outil,Eyedropper,tools.hpp,fait,Eyedropper,SERVICE_ONLY,,,
 26b7b101,outil,Measure,tools.hpp,fait,Measure,SERVICE_ONLY,,,
 d29364dd,outil,Pan,tools.hpp,fait,Pan,SERVICE_ONLY,,,
 f67ff16e,outil,Rect,tools.hpp,fait,Rect,SERVICE_ONLY,,,
 7937b507,outil,Select,tools.hpp,fait,Select,SERVICE_ONLY,,,
-c8de119f,outil,Text,tools.hpp,fait,Text,SERVICE_ONLY,,,
+c8de119f,outil,Text,tools.hpp,fait,Text,UI_PARTIAL,StudioDigitizeTest::textLetteringJourney,ActionController::run(text.add),ActionPalette.qml (outil Texte au canevas absent)

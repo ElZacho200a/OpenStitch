@@ -18,7 +18,10 @@ add_library(openstitch_studio_ui STATIC
     analysis_controller.cpp analysis_controller.hpp
     thread_controller.cpp thread_controller.hpp
     image_controller.cpp image_controller.hpp
-    region_controller.cpp region_controller.hpp)
+    region_controller.cpp region_controller.hpp
+    satin_controller.cpp satin_controller.hpp
+    fade_controller.cpp fade_controller.hpp
+    point_edit_controller.cpp point_edit_controller.hpp)
 add_library(openstitch::studio_ui ALIAS openstitch_studio_ui)
 target_include_directories(openstitch_studio_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(openstitch_studio_ui PUBLIC openstitch::desktop_v2_core
@@ -32,7 +35,8 @@ set(studio_qml_files
     qml/Inspector.qml qml/ParamField.qml qml/ParamSection.qml
     qml/ViewPanel.qml qml/SimulationBar.qml qml/AnalysisPanel.qml qml/ThreadPanel.qml
     qml/PreparePanel.qml qml/ImagePrepSection.qml qml/SegmentationSection.qml
-    qml/RegionTools.qml qml/AiSection.qml qml/qmldir)
+    qml/RegionTools.qml qml/AiSection.qml 
+    qml/SatinPanel.qml qml/FadePanel.qml qml/PointEditPanel.qml qml/DigitizeHub.qml qml/qmldir)
 
 add_executable(openstitch_v2_studio WIN32 main.cpp)
 target_link_libraries(openstitch_v2_studio PRIVATE openstitch::studio_ui openstitch::warnings)

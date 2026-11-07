@@ -398,6 +398,10 @@ Window {
 
                     CanvasContextMenu { id: contextMenu }
 
+                    DigitizeHub {
+                        anchors.fill: parent
+                    }
+
                     ViewPanel {
                         objectName: "viewHub"
                         anchors.fill: parent

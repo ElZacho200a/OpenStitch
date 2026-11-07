@@ -15,11 +15,14 @@
 #include "action_controller.hpp"
 #include "analysis_controller.hpp"
 #include "edit_controller.hpp"
+#include "fade_controller.hpp"
 #include "file_controller.hpp"
 #include "gpu_canvas.hpp"
 #include "image_controller.hpp"
 #include "inspector_controller.hpp"
 #include "region_controller.hpp"
+#include "point_edit_controller.hpp"
+#include "satin_controller.hpp"
 #include "studio_controller.hpp"
 #include "thread_controller.hpp"
 #include "view_controller.hpp"
@@ -67,8 +70,14 @@ int main(int argc, char** argv) {
     AnalysisController analysis(controller, view, configDir);
     ImageController imageTools(controller);
     RegionController regionTools(controller, imageTools);
+    SatinController satin(controller);
+    FadeController fade(controller);
+    PointEditController pointEdit(controller);
     QQmlApplicationEngine engine;
     engine.addImageProvider(QStringLiteral("prepare"), imageTools.createProvider());
+    engine.rootContext()->setContextProperty(QStringLiteral("satin"), &satin);
+    engine.rootContext()->setContextProperty(QStringLiteral("fade"), &fade);
+    engine.rootContext()->setContextProperty(QStringLiteral("pointEdit"), &pointEdit);
     engine.rootContext()->setContextProperty(QStringLiteral("editor"), &editor);
     engine.rootContext()->setContextProperty(QStringLiteral("studio"), &controller);
     engine.rootContext()->setContextProperty(QStringLiteral("actions"), &actions);
