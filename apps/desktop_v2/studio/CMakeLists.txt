@@ -27,6 +27,8 @@ add_library(openstitch_studio_ui STATIC
     tool_controller.cpp tool_controller.hpp
     vector_controller.cpp vector_controller.hpp
     workspace_controller.cpp workspace_controller.hpp
+    vector_space_controller.cpp vector_space_controller.hpp
+    layers/vector_layer.cpp layers/vector_layer.hpp
     companion_controller.cpp companion_controller.hpp
     preferences_controller.cpp preferences_controller.hpp
     help_controller.cpp help_controller.hpp
@@ -57,6 +59,7 @@ set(studio_qml_files
     qml/SatinPanel.qml qml/FadePanel.qml qml/PointEditPanel.qml qml/DigitizeHub.qml qml/ToolRail.qml qml/ToolOptions.qml qml/ToolOverlay.qml qml/RealisticToggle.qml qml/HandlesOverlay.qml qml/PullPanel.qml qml/AppliquePanel.qml qml/qmldir
     qml/spaces/SpaceHost.qml qml/spaces/ImageSpace.qml qml/spaces/SegmentationSpace.qml
     qml/spaces/VectorSpace.qml qml/spaces/PointsSpace.qml)
+list(APPEND studio_qml_files qml/spaces/vector/VectorShapePanel.qml)
 # Les sous-composants d'un espace (qml/spaces/<x>/...) s'ajoutent ICI, une ligne par fichier.
 list(APPEND studio_qml_files qml/spaces/segmentation/SegmentationPanels.qml qml/spaces/segmentation/RegionLayerControls.qml)
 

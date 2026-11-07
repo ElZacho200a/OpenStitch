@@ -471,6 +471,14 @@ public:
                 applySimulation(*root, state.scene->vertices, overlays.visibleSegments);
             }
             clearChildren(*root->layers);
+            if (state.vectorImage && !state.vectorImage->image.isNull()) {
+                const auto& v = *state.vectorImage;
+                auto* node = new QSGSimpleTextureNode;
+                node->setOwnsTexture(true);
+                node->setTexture(window.createTextureFromImage(v.image));
+                node->setRect(QRectF(v.x0, v.y0, v.widthMm, v.heightMm));
+                root->layers->appendChildNode(node);
+            }
             for (const auto& layer : overlays.images) {
                 if (layer.image.isNull() || layer.widthMm <= 0 || layer.heightMm <= 0) {
                     continue;
@@ -593,6 +601,10 @@ public:
         root->regions = state.layers.regions ? state.regions : nullptr;
         const CanvasOverlays defaults;
         const CanvasOverlays& overlays = state.overlays ? *state.overlays : defaults;
+        if (state.vectorImage && !state.vectorImage->image.isNull()) {
+            const auto& v = *state.vectorImage;
+            painter.drawImage(QRectF(v.x0, v.y0, v.widthMm, v.heightMm), v.image);
+        }
         if (state.scene) {
             const auto& h = state.scene->hoop;
             if (overlays.showHoop) {

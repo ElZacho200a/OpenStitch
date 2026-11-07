@@ -339,6 +339,12 @@ void GpuCanvas::setOverlays(std::shared_ptr<const CanvasOverlays> overlays) {
     update();
 }
 
+void GpuCanvas::setVectorLayer(std::shared_ptr<const OverlayImage> image) {
+    vectorImage_ = std::move(image);
+    ++overlayRevision_; // même chemin que les autres calques d'image : une révision, un rendu
+    update();
+}
+
 void GpuCanvas::setZoomRectMode(bool value) {
     if (value == zoomRectMode_) {
         return;
@@ -597,7 +603,8 @@ QSGNode* GpuCanvas::updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData*) {
                             overlays_,
                             overlayRevision_,
                             layers_,
-                            regionLayer_};
+                            regionLayer_,
+                            layers_.vectors ? vectorImage_ : nullptr};
     const auto result = backend.synchronize(oldNode, state, *window());
     // Render thread must never write QObject properties or read the live document. Queue
     // diagnostics.
@@ -680,6 +687,12 @@ void GpuCanvas::mousePressEvent(QMouseEvent* event) {
             gesture_ = Gesture::Tool;
             gestureActive_ = true;
         }
+    } else if (vectorPicker_ && layers_.vectors && !layers_.stitches &&
+               event->button() == Qt::LeftButton) {
+        // Espace Vectorisation : le clic choisit une FORME (couche vectors), pas un objet de
+        // points.
+        const auto p = camera_.screenToWorld({lastMouse_.x(), lastMouse_.y()});
+        vectorPicker_(p.x, p.y, 5.0 / camera_.scale(), ctrl);
     } else if (controller_ && scene_ && event->button() == Qt::LeftButton) {
         const auto p = camera_.screenToWorld({lastMouse_.x(), lastMouse_.y()});
         const auto hit = scene_->pick(p.x, p.y, 5.0 / camera_.scale());

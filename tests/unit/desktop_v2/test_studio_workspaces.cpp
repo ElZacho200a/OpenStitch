@@ -168,7 +168,7 @@ private slots:
         rig.workspace->setCurrent(QStringLiteral("vector"));
         QVERIFY(!onlyCanvas(rig)->layers().value("stitches").toBool());
         QVERIFY(onlyCanvas(rig)->layers().value("vectors").toBool());
-        QVERIFY(rig.window->findChild<QObject*>(QStringLiteral("spaceUnderConstruction")));
+        QVERIFY(rig.window->findChild<QObject*>(QStringLiteral("vectorSpace")));
         // Le canevas des points garde la couche des points par défaut.
         rig.workspace->setCurrent(QStringLiteral("points"));
         QVERIFY(onlyCanvas(rig)->layers().value("stitches").toBool());

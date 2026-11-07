@@ -81,6 +81,8 @@ struct CanvasRenderState {
     CanvasLayers layers;
     // Couche « regions » (espace Segmentation) : données immuables publiées par révision.
     std::shared_ptr<const RegionLayerData> regions;
+    // Couche « vectors » : image des formes (mm scène), dessinée sous les points (espace Vecto).
+    std::shared_ptr<const OverlayImage> vectorImage;
 };
 
 struct CanvasRenderResult {

@@ -35,6 +35,7 @@
 #include "thread_controller.hpp"
 #include "tool_controller.hpp"
 #include "vector_controller.hpp"
+#include "vector_space_controller.hpp"
 #include "view_controller.hpp"
 #include "workspace_controller.hpp"
 
@@ -56,6 +57,10 @@ int main(int argc, char** argv) {
     parser.addOption({QStringLiteral("software"), QStringLiteral("Rendu CPU Qt Quick explicite")});
     parser.addOption({QStringLiteral("screenshot"),
                       QStringLiteral("Capture réelle Qt, puis quitte"), QStringLiteral("png")});
+    parser.addOption(
+        {QStringLiteral("open-space"),
+         QStringLiteral("Recette : ouvre cet espace (image, segmentation, vector, points)"),
+         QStringLiteral("espace")});
     parser.addOption({QStringLiteral("select-object"),
                       QStringLiteral("Sélection initiale par identifiant (recette reproductible)"),
                       QStringLiteral("id")});
@@ -112,6 +117,7 @@ int main(int argc, char** argv) {
     DigitizeGestures digitizer(controller, pointEdit, fade, satin);
     PullController pull(controller, &inspector);
     AppliqueController applique(controller, inspector);
+    VectorSpaceController vectorStage(controller);
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("digitizer"), &digitizer);
     engine.rootContext()->setContextProperty(QStringLiteral("pull"), &pull);
@@ -130,6 +136,7 @@ int main(int argc, char** argv) {
     engine.rootContext()->setContextProperty(QStringLiteral("inspector"), &inspector);
     engine.rootContext()->setContextProperty(QStringLiteral("tools"), &tools);
     engine.rootContext()->setContextProperty(QStringLiteral("vectors"), &vectors);
+    engine.rootContext()->setContextProperty(QStringLiteral("vectorStage"), &vectorStage);
     engine.rootContext()->setContextProperty(QStringLiteral("view"), &view);
     engine.rootContext()->setContextProperty(QStringLiteral("threads"), &threads);
     engine.rootContext()->setContextProperty(QStringLiteral("analysis"), &analysis);
@@ -178,6 +185,11 @@ int main(int argc, char** argv) {
             }
         }
     }
+    if (parser.isSet(QStringLiteral("open-space"))) {
+        if (auto* workspace = window->findChild<WorkspaceController*>()) {
+            workspace->setCurrent(parser.value(QStringLiteral("open-space")));
+        }
+    }
     if (parser.isSet(QStringLiteral("select-object"))) {
         const auto id = parser.value(QStringLiteral("select-object"));
         QObject::connect(&controller, &StudioController::loadFinished, &app, [&, id](bool success) {
@@ -221,7 +233,7 @@ int main(int argc, char** argv) {
             // grabWindow also renders a hidden native window. Prime once so resource
             // diagnostics and the native DPR/viewport have synchronized before saving.
             if (!capturePrimed ||
-                (controller.scene() && (!canvas || canvas->geometryBuildCount() == 0))) {
+                (controller.scene() && canvas && canvas->geometryBuildCount() == 0)) {
                 capturePrimed = true;
                 window->update();
                 return;
