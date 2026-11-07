@@ -33,6 +33,7 @@ add_library(openstitch_studio_ui STATIC
     digitize_gestures.cpp digitize_gestures.hpp
     pull_controller.cpp pull_controller.hpp
     applique_controller.cpp applique_controller.hpp
+    points_space_controller.cpp points_space_controller.hpp
     ../ui/live_server.cpp ../ui/live_server.hpp)
 add_library(openstitch::studio_ui ALIAS openstitch_studio_ui)
 target_include_directories(openstitch_studio_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -56,6 +57,9 @@ set(studio_qml_files
     qml/spaces/SpaceHost.qml qml/spaces/ImageSpace.qml qml/spaces/SegmentationSpace.qml
     qml/spaces/VectorSpace.qml qml/spaces/PointsSpace.qml)
 # Les sous-composants d'un espace (qml/spaces/<x>/...) s'ajoutent ICI, une ligne par fichier.
+list(APPEND studio_qml_files
+    qml/spaces/points/PointsToolRail.qml qml/spaces/points/PointsPanelBar.qml
+    qml/spaces/points/PointsOptionsBar.qml qml/spaces/points/PointsObjectsPanel.qml)
 
 add_executable(openstitch_v2_studio WIN32 main.cpp)
 target_link_libraries(openstitch_v2_studio PRIVATE openstitch::studio_ui openstitch::warnings)

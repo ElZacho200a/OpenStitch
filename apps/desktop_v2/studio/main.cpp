@@ -26,6 +26,7 @@
 #include "image_controller.hpp"
 #include "inspector_controller.hpp"
 #include "point_edit_controller.hpp"
+#include "points_space_controller.hpp"
 #include "preferences_controller.hpp"
 #include "pull_controller.hpp"
 #include "region_controller.hpp"
@@ -109,7 +110,9 @@ int main(int argc, char** argv) {
     DigitizeGestures digitizer(controller, pointEdit, fade, satin);
     PullController pull(controller, &inspector);
     AppliqueController applique(controller, inspector);
+    PointsSpaceController pointsSpace(controller);
     QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("pointsSpace"), &pointsSpace);
     engine.rootContext()->setContextProperty(QStringLiteral("digitizer"), &digitizer);
     engine.rootContext()->setContextProperty(QStringLiteral("pull"), &pull);
     engine.rootContext()->setContextProperty(QStringLiteral("applique"), &applique);
