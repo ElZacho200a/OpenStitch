@@ -37,6 +37,12 @@ int main(int argc, char** argv) {
     format.setSamples(4);
     QSurfaceFormat::setDefaultFormat(format);
     QGuiApplication app(argc, argv);
+    // Installed lettering fonts are independent of the current working directory.
+    const auto bundledFonts =
+        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/fonts"));
+    if (qEnvironmentVariableIsEmpty("OPENSTITCH_FONTS_DIR") && QDir(bundledFonts).exists()) {
+        qputenv("OPENSTITCH_FONTS_DIR", bundledFonts.toUtf8());
+    }
     QCoreApplication::setApplicationName(QStringLiteral("OpenStitch Studio"));
     QCoreApplication::setApplicationVersion(QStringLiteral("0.1 experimental"));
     QCommandLineParser parser;

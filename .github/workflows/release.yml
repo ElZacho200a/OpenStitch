@@ -69,8 +69,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           path: |
-            build/msvc/apps/desktop/Release/
-            build/msvc/apps/desktop_v2/Release/openstitch_v2.exe
+            build/msvc/apps/desktop_v2/studio/Release/
             build/msvc/apps/cli/Release/
             build/msvc/apps/mcp/Release/
 
@@ -78,6 +77,27 @@ jobs:
       # ne se publie jamais sur un build dont les tests échouent.
       - name: Test (Release)
         run: ctest --preset msvc-release
+
+      - name: Package and smoke-test Studio (clean Qt environment)
+        shell: pwsh
+        run: |
+          cmake --build --preset msvc-release --target openstitch-studio-bench
+          if ($LASTEXITCODE -ne 0) { throw 'Studio fixture generator build failed' }
+          New-Item -ItemType Directory -Path dist/studio-fixtures -Force | Out-Null
+          & build/msvc/tests/bench/Release/openstitch-studio-bench.exe --generate-project dist/studio-fixtures/tentabrode-300mm.osp --image tests/fixtures/tentabrode.png --height-mm 300
+          if ($LASTEXITCODE -ne 0) { throw 'Real Studio fixture generation failed' }
+          ./packaging/windows/package-studio.ps1 -BinaryDir build/msvc/apps/desktop_v2/studio/Release -OutputDir dist/windows-studio -QtRoot $env:QT_ROOT_DIR
+          $verify = Join-Path $env:RUNNER_TEMP 'openstitch-studio-release-smoke'
+          Expand-Archive -LiteralPath dist/windows-studio/openstitch-studio-windows-x64.zip -DestinationPath $verify
+          ./tests/packaging/smoke-studio.ps1 -BundleDir "$verify/openstitch-studio-windows-x64" -Project dist/studio-fixtures/tentabrode-300mm.osp -OutputDir dist/studio-smoke
+
+      - name: Upload Studio packaging evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-packaging-smoke
+          if-no-files-found: warn
+          path: dist/studio-smoke/
 
       - name: Package and smoke-test Windows MCP
         shell: pwsh
@@ -135,12 +155,14 @@ jobs:
           $tag = $env:RELEASE_TAG
           $mcpZip = "dist/windows-mcp/openstitch-mcp-windows-x64.zip"
           $mcpSha = "dist/windows-mcp/openstitch-mcp-windows-x64.zip.sha256"
+          $studioZip = "dist/windows-studio/openstitch-studio-windows-x64.zip"
+          $studioSha = "$studioZip.sha256"
           gh release view $tag --repo "${{ github.repository }}" *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag $installer.FullName $mcpZip $mcpSha --repo "${{ github.repository }}" --clobber
+            gh release upload $tag $installer.FullName $mcpZip $mcpSha $studioZip $studioSha --repo "${{ github.repository }}" --clobber
           } else {
             $prerelease = if ($tag -match '-') { "--prerelease" } else { "" }
-            gh release create $tag $installer.FullName $mcpZip $mcpSha `
+            gh release create $tag $installer.FullName $mcpZip $mcpSha $studioZip $studioSha `
               --repo "${{ github.repository }}" `
               --title $tag `
               --generate-notes `

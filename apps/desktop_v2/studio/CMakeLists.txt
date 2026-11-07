@@ -50,3 +50,7 @@ if(WIN32 AND TARGET Qt6::windeployqt)
             --qmldir "${CMAKE_CURRENT_SOURCE_DIR}/qml" "$<TARGET_FILE:openstitch_v2_studio>"
         COMMENT "Deploy Qt Quick Studio runtime and QML imports")
 endif()
+
+# Distribute Studio under its existing executable name; Widgets remains a separate target.
+install(TARGETS openstitch_v2_studio RUNTIME DESTINATION . COMPONENT Studio)
+install(DIRECTORY "${PROJECT_SOURCE_DIR}/resources/fonts" DESTINATION resources COMPONENT Studio)
