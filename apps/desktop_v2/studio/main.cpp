@@ -246,8 +246,11 @@ int main(int argc, char** argv) {
             }
             // grabWindow also renders a hidden native window. Prime once so resource
             // diagnostics and the native DPR/viewport have synchronized before saving.
-            if (!capturePrimed ||
-                (controller.scene() && canvas && canvas->geometryBuildCount() == 0)) {
+            // The stitch-geometry wait only applies when this canvas draws stitches: the Image,
+            // Segmentation and Vector spaces never build it, which used to hang the capture.
+            const bool waitsForStitches =
+                canvas && canvas->layerFlags().stitches && canvas->geometryBuildCount() == 0;
+            if (!capturePrimed || (controller.scene() && waitsForStitches)) {
                 capturePrimed = true;
                 window->update();
                 return;
