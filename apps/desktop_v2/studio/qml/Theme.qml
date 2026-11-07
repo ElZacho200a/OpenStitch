@@ -44,7 +44,7 @@ QtObject {
     readonly property int brandSize: 20
     readonly property int heroSize: 22
     readonly property int panelPadding: 18
-    readonly property int railWidth: 56
+    readonly property int railWidth: 76
     readonly property int inspectorWidth: 294
     readonly property int controlHeight: Math.round(38 * densityScale)
     readonly property int rowHeight: Math.round(42 * densityScale)
