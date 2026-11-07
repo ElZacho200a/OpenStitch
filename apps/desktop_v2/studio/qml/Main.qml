@@ -180,6 +180,13 @@ Window {
         if (id.indexOf("cmd.prefs") !== 0 && id.indexOf("cmd.companion") !== 0 && id.indexOf("cmd.help") !== 0)
             canvas.forceActiveFocus()
     }
+    // Keyboard invariant: the focus never rests on an item the user cannot see (a button of a
+    // collapsed panel or of a closed popup). When it does, the canvas takes it back.
+    onActiveFocusItemChanged: {
+        const item = window.activeFocusItem
+        if (item !== null && item !== canvas && !item.visible)
+            Qt.callLater(function () { if (window.activeFocusItem && !window.activeFocusItem.visible) canvas.forceActiveFocus() })
+    }
     Connections {
         target: actions
         function onCommandRequested(id) { window.dispatch(id) }

@@ -307,6 +307,17 @@ void StudioCompanionTest::canvasRegainsKeyboardFocusAfterClick() {
         QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, node.x, node.y));
         QVERIFY(rig.window->activeFocusItem() == rig.canvas);
     }
+    // Une fenêtre modale fermée ne laisse pas le focus sur l'un de ses boutons masqués.
+    QVERIFY(rig.actions.runCommand(QStringLiteral("cmd.help.about")).isEmpty());
+    auto* help = rig.window->findChild<QObject*>(QStringLiteral("helpDialog"));
+    QVERIFY(help);
+    QTRY_VERIFY(help->property("visible").toBool());
+    QTest::keyClick(rig.window, Qt::Key_Escape);
+    QTRY_VERIFY(!help->property("visible").toBool());
+    QTRY_VERIFY(rig.window->activeFocusItem() == nullptr ||
+                rig.window->activeFocusItem()->isVisible());
+    QTest::mouseClick(rig.window, Qt::LeftButton, {}, at(rig, node.x, node.y));
+    QVERIFY(rig.window->activeFocusItem() == rig.canvas);
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
 }
 
