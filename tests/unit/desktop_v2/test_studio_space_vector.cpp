@@ -18,6 +18,7 @@
 #include "edit_controller.hpp"
 #include "gpu_canvas.hpp"
 #include "openstitch/commands/project_commands.hpp"
+#include "openstitch/project_io/project_io.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 #include "studio_controller.hpp"
 #include "tool_controller.hpp"
@@ -324,6 +325,15 @@ private slots:
         QCOMPARE(steps(rig), undoBefore + 1);
         QVERIFY(rig.session.undo());
         QCOMPARE(rig.session.project().embroidery_objects.size(), std::size_t{0});
+    }
+
+    // Recette : ecrit le projet de l'espace pour la capture (OPENSTITCH_VECTOR_SAMPLE=chemin.osp).
+    void writeSampleForCapture() {
+        const auto path = qEnvironmentVariable("OPENSTITCH_VECTOR_SAMPLE");
+        if (path.isEmpty()) {
+            QSKIP("recette seulement");
+        }
+        QVERIFY(project_io::save_project(path.toStdWString(), shapesProject()).has_value());
     }
 
     void emptyDocumentPublishesTheEmptyState() {

@@ -36,6 +36,7 @@
 #include "vector_controller.hpp"
 #include "vector_space_controller.hpp"
 #include "view_controller.hpp"
+#include "workspace_controller.hpp"
 
 using namespace openstitch::desktop_v2;
 using namespace openstitch::desktop_v2::studio;
@@ -55,6 +56,10 @@ int main(int argc, char** argv) {
     parser.addOption({QStringLiteral("software"), QStringLiteral("Rendu CPU Qt Quick explicite")});
     parser.addOption({QStringLiteral("screenshot"),
                       QStringLiteral("Capture réelle Qt, puis quitte"), QStringLiteral("png")});
+    parser.addOption(
+        {QStringLiteral("open-space"),
+         QStringLiteral("Recette : ouvre cet espace (image, segmentation, vector, points)"),
+         QStringLiteral("espace")});
     parser.addOption({QStringLiteral("select-object"),
                       QStringLiteral("Sélection initiale par identifiant (recette reproductible)"),
                       QStringLiteral("id")});
@@ -167,6 +172,11 @@ int main(int argc, char** argv) {
             } else if (name == QStringLiteral("inspecteur")) {
                 window->setProperty("editOpen", true);
             }
+        }
+    }
+    if (parser.isSet(QStringLiteral("open-space"))) {
+        if (auto* workspace = window->findChild<WorkspaceController*>()) {
+            workspace->setCurrent(parser.value(QStringLiteral("open-space")));
         }
     }
     if (parser.isSet(QStringLiteral("select-object"))) {
