@@ -46,7 +46,7 @@ class ViewController : public QObject {
     Q_PROPERTY(bool realistic READ realistic WRITE setRealistic NOTIFY realisticChanged)
     Q_PROPERTY(bool realisticOnGpu READ realisticOnGpu NOTIFY realisticModeChanged)
     Q_PROPERTY(QString realisticMode READ realisticMode NOTIFY realisticModeChanged)
-    Q_PROPERTY(double pixelsPerMmAt100READ pixelsPerMmAt100 NOTIFY displayChanged)
+    Q_PROPERTY(double pixelsPerMmAt100 READ pixelsPerMmAt100 NOTIFY displayChanged)
     Q_PROPERTY(bool simActive READ simActive NOTIFY simChanged)
     Q_PROPERTY(bool simReady READ simReady NOTIFY simChanged)
     Q_PROPERTY(bool playing READ playing NOTIFY simChanged)

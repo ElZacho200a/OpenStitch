@@ -256,8 +256,10 @@ QImage toImage(const PixelImage& pixels) {
 }
 
 QSGTexture* makeTexture(QQuickWindow& window, const PixelImage& pixels) {
-    return window.createTextureFromImage(toImage(pixels), QQuickWindow::TextureHasAlphaChannel |
-                                                              QQuickWindow::TextureHasMipmaps);
+    QQuickWindow::CreateTextureOptions options;
+    options.setFlag(QQuickWindow::TextureHasAlphaChannel);
+    options.setFlag(QQuickWindow::TextureHasMipmaps);
+    return window.createTextureFromImage(toImage(pixels), options);
 }
 
 QSGGeometryNode* texturedNode(const RealisticVertex* src, std::size_t count,

@@ -221,7 +221,7 @@ void StudioRealisticTest::spriteCacheIsPerColourAndInvalidatedByStyle() {
     for (int i = 0; i < 5; ++i) {
         QCOMPARE(&cache.sprite(red), first); // même objet, rien de régénéré
     }
-    cache.sprite(blue);
+    (void)cache.sprite(blue);
     QCOMPARE(cache.generatedCount(), std::size_t{2});
     QCOMPARE(cache.size(), std::size_t{2});
     // Un réglage qui n'affecte pas le fil (tissu, ombre) ne régénère rien.
@@ -229,13 +229,13 @@ void StudioRealisticTest::spriteCacheIsPerColourAndInvalidatedByStyle() {
     other.fabricRgb = {1, 2, 3};
     other.shadow = 0.9;
     QVERIFY(!cache.setStyle(other));
-    cache.sprite(red);
+    (void)cache.sprite(red);
     QCOMPARE(cache.generatedCount(), std::size_t{2});
     // La brillance change l'éclairage : le cache est vidé puis régénéré une fois par couleur.
     other.sheen = 0.1;
     QVERIFY(cache.setStyle(other));
     QCOMPARE(cache.size(), std::size_t{0});
-    cache.sprite(red);
+    (void)cache.sprite(red);
     QCOMPARE(cache.generatedCount(), std::size_t{3});
     QCOMPARE(cache.sprite(red).width, kSpriteCellWidth * kOrientationBins);
     QCOMPARE(cache.sprite(red).height, kSpriteHeight);
