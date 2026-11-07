@@ -15,8 +15,8 @@
 
 #include "action_controller.hpp"
 #include "analysis_controller.hpp"
-#include "companion_controller.hpp"
 #include "applique_controller.hpp"
+#include "companion_controller.hpp"
 #include "digitize_gestures.hpp"
 #include "edit_controller.hpp"
 #include "fade_controller.hpp"

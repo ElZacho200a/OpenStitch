@@ -464,9 +464,10 @@ void StudioRealisticTest::gpuPathBuildsOncePerRevisionAndMatchesCpuReference() {
         static_cast<double>(cpuInk.pixels) / (cpu->px_per_mm * cpu->px_per_mm);
     qInfo() << "ink area mm2 gpu/cpu:" << gpuAreaMm2 << cpuAreaMm2 << "mean rgb gpu:" << gpuInk.r
             << gpuInk.g << gpuInk.b << "cpu:" << cpuInk.r << cpuInk.g << cpuInk.b;
-    // Tolérances documentées (docs/desktop-v2/19-rendu-realiste-gpu.md) : l'aire d'encre entre 0,25 et 2,5 fois la
-    // référence (mesuré 0,36 sur WARP : fil de 0,35 mm très fin, seuil d'encre strict) (bouts, ombre portée et anticrénelage diffèrent), la couleur moyenne à
-    // 70 niveaux par canal près.
+    // Tolérances documentées (docs/desktop-v2/19-rendu-realiste-gpu.md) : l'aire d'encre entre 0,25
+    // et 2,5 fois la référence (mesuré 0,36 sur WARP : fil de 0,35 mm très fin, seuil d'encre
+    // strict) (bouts, ombre portée et anticrénelage diffèrent), la couleur moyenne à 70 niveaux par
+    // canal près.
     const double ratio = gpuAreaMm2 / cpuAreaMm2;
     QVERIFY2(ratio > 0.25 && ratio < 2.5, qPrintable(QString::number(ratio)));
     QVERIFY(std::abs(gpuInk.r - cpuInk.r) < 70);
