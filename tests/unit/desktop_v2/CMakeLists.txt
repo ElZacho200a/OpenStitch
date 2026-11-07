@@ -136,6 +136,17 @@ file(GLOB studio_all_qml CONFIGURE_DEPENDS "${studio_test_qml_root}/qml/*.qml")
         set_tests_properties(test_desktop_v2_studio_files PROPERTIES
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_test_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
             ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+        # Famille F : outils de dessin et d'édition vectorielle (vrai canevas, souris QTest, vrai moteur).
+        add_executable(test_desktop_v2_studio_tools test_studio_tools.cpp)
+        target_link_libraries(test_desktop_v2_studio_tools
+            PRIVATE openstitch::studio_ui Qt6::Test openstitch::warnings)
+        qt_add_resources(test_desktop_v2_studio_tools studio_tools_qml PREFIX "/studio"
+            BASE "${studio_test_qml_root}" FILES ${studio_all_qml}
+                "${studio_test_qml_root}/qml/qmldir")
+        add_test(NAME test_desktop_v2_studio_tools COMMAND test_desktop_v2_studio_tools -o -,txt)
+        set_tests_properties(test_desktop_v2_studio_tools PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_test_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
     endif()
 endif()
 

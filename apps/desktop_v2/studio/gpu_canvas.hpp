@@ -12,6 +12,7 @@
 #include "edit_controller.hpp"
 #include "studio_camera.hpp"
 #include "studio_controller.hpp"
+#include "tool_controller.hpp"
 
 namespace openstitch::desktop_v2::studio {
 
@@ -28,6 +29,10 @@ class GpuCanvas : public QQuickItem {
     Q_PROPERTY(QRectF ghostRect READ ghostRect NOTIFY overlayChanged)
     Q_PROPERTY(QVariantList guideLines READ guideLines NOTIFY overlayChanged)
     Q_PROPERTY(QString gestureInfo READ gestureInfo NOTIFY overlayChanged)
+    // Famille F : outils de dessin et d'édition vectorielle. L'aperçu (polylignes, points) est
+    // rendu en px canevas : [{kind, pts:[x0,y0,x1,y1,...]}], quelques éléments seulement.
+    Q_PROPERTY(ToolController* tools READ tools WRITE setTools NOTIFY toolsChanged)
+    Q_PROPERTY(QVariantList toolOverlay READ toolOverlay NOTIFY overlayChanged)
     Q_PROPERTY(double zoom READ zoom NOTIFY viewChanged)
     Q_PROPERTY(bool zoomRectMode READ zoomRectMode WRITE setZoomRectMode NOTIFY zoomRectModeChanged)
     Q_PROPERTY(QRectF rubberBand READ rubberBand NOTIFY rubberBandChanged)
@@ -50,7 +55,10 @@ public:
     [[nodiscard]] QRectF selectionRect() const;
     [[nodiscard]] QRectF ghostRect() const { return ghost_; }
     [[nodiscard]] QVariantList guideLines() const { return guides_; }
-    [[nodiscard]] QString gestureInfo() const { return gestureInfo_; }
+    [[nodiscard]] QString gestureInfo() const;
+    [[nodiscard]] ToolController* tools() const { return tools_; }
+    void setTools(ToolController* tools);
+    [[nodiscard]] QVariantList toolOverlay() const;
     [[nodiscard]] double zoom() const { return camera_.scale(); }
     [[nodiscard]] bool zoomRectMode() const { return zoomRectMode_; }
     void setZoomRectMode(bool value);
@@ -91,6 +99,7 @@ signals:
     void rubberBandChanged();
     void diagnosticsChanged();
     void editorChanged();
+    void toolsChanged();
     void overlayChanged();
     // Clic droit : position canevas et identifiant de l'objet touché (vide = fond).
     void contextMenuRequested(double x, double y, const QString& objectId);
@@ -102,13 +111,14 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void keyReleaseEvent(QKeyEvent* event) override;
     void focusOutEvent(QFocusEvent* event) override;
     void hoverMoveEvent(QHoverEvent* event) override;
 
 private:
-    enum class Gesture { None, Pan, Marquee, Move, Handle, ZoomRect };
+    enum class Gesture { None, Pan, Marquee, Move, Handle, ZoomRect, Tool };
     // 0..7 : NO N NE E SE S SO O ; 8 : rotation ; -1 : aucune.
     [[nodiscard]] int handleAt(const QPointF& p) const;
     [[nodiscard]] QPointF handlePoint(int handle, const QRectF& box) const;
@@ -139,6 +149,7 @@ private:
     bool fitPending_{true};
     QPointF lastMouse_;
     EditController* editor_{nullptr};
+    ToolController* tools_{nullptr};
     Gesture gesture_{Gesture::None};
     bool gestureActive_{false}; // seuil de 3 px franchi
     QPointF pressPos_;

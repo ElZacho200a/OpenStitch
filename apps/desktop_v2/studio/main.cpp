@@ -25,6 +25,8 @@
 #include "satin_controller.hpp"
 #include "studio_controller.hpp"
 #include "thread_controller.hpp"
+#include "tool_controller.hpp"
+#include "vector_controller.hpp"
 #include "view_controller.hpp"
 
 using namespace openstitch::desktop_v2;
@@ -63,6 +65,8 @@ int main(int argc, char** argv) {
     FileController files(controller, &actions,
                          QStandardPaths::writableLocation(QStandardPaths::AppDataLocation));
     InspectorController inspector(controller);
+    ToolController tools(controller);
+    VectorController vectors(controller);
     const std::filesystem::path configDir(
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation).toStdWString());
     ViewController view(controller, configDir);
@@ -83,6 +87,8 @@ int main(int argc, char** argv) {
     engine.rootContext()->setContextProperty(QStringLiteral("actions"), &actions);
     engine.rootContext()->setContextProperty(QStringLiteral("files"), &files);
     engine.rootContext()->setContextProperty(QStringLiteral("inspector"), &inspector);
+    engine.rootContext()->setContextProperty(QStringLiteral("tools"), &tools);
+    engine.rootContext()->setContextProperty(QStringLiteral("vectors"), &vectors);
     engine.rootContext()->setContextProperty(QStringLiteral("view"), &view);
     engine.rootContext()->setContextProperty(QStringLiteral("threads"), &threads);
     engine.rootContext()->setContextProperty(QStringLiteral("analysis"), &analysis);

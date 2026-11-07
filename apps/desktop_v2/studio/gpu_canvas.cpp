@@ -170,12 +170,64 @@ void GpuCanvas::resetGesture() {
 }
 
 bool GpuCanvas::cancelGesture() {
+    const bool toolBusy = tools_ && tools_->cancel();
+    if (toolBusy) {
+        gesture_ = Gesture::None;
+        gestureActive_ = false;
+        emit overlayChanged();
+    }
     const bool busy =
         gesture_ == Gesture::Move || gesture_ == Gesture::Handle || gesture_ == Gesture::Marquee;
     if (busy) {
         resetGesture();
     }
-    return busy;
+    return busy || toolBusy;
+}
+
+QString GpuCanvas::gestureInfo() const {
+    return tools_ && !tools_->info().isEmpty() ? tools_->info() : gestureInfo_;
+}
+
+void GpuCanvas::setTools(ToolController* tools) {
+    if (tools_ == tools) {
+        return;
+    }
+    if (tools_) {
+        disconnect(tools_, nullptr, this, nullptr);
+    }
+    tools_ = tools;
+    if (tools_) {
+        connect(tools_, &ToolController::overlayChanged, this, &GpuCanvas::overlayChanged);
+        connect(tools_, &ToolController::activeToolChanged, this, [this] {
+            setCursor(tools_ && tools_->capturesMouse() ? Qt::CrossCursor : Qt::ArrowCursor);
+            emit overlayChanged();
+        });
+        connect(tools_, &QObject::destroyed, this, [this] {
+            tools_ = nullptr;
+            emit toolsChanged();
+        });
+    }
+    emit toolsChanged();
+    emit overlayChanged();
+}
+
+QVariantList GpuCanvas::toolOverlay() const {
+    static const char* const kKinds[] = {"line", "closed", "point", "selected", "tangent", "ghost"};
+    QVariantList out;
+    if (!tools_) {
+        return out;
+    }
+    for (const auto& item : tools_->overlay()) {
+        QVariantList pts;
+        for (const auto& p : item.points) {
+            const auto s = camera_.worldToScreen(p);
+            pts << s.x << s.y;
+        }
+        out.push_back(QVariantMap{
+            {QStringLiteral("kind"), QString::fromLatin1(kKinds[static_cast<int>(item.kind)])},
+            {QStringLiteral("pts"), pts}});
+    }
+    return out;
 }
 
 void GpuCanvas::setScene(std::shared_ptr<const StudioSceneSnapshot> scene) {
@@ -447,6 +499,12 @@ void GpuCanvas::mousePressEvent(QMouseEvent* event) {
     if (panning) {
         gesture_ = Gesture::Pan;
         setCursor(Qt::ClosedHandCursor);
+    } else if (tools_ && tools_->capturesMouse() && event->button() == Qt::LeftButton) {
+        const auto p = camera_.screenToWorld({lastMouse_.x(), lastMouse_.y()});
+        if (tools_->press(p.x, p.y, camera_.scale(), event->modifiers())) {
+            gesture_ = Gesture::Tool;
+            gestureActive_ = true;
+        }
     } else if (controller_ && scene_ && event->button() == Qt::LeftButton) {
         const auto p = camera_.screenToWorld({lastMouse_.x(), lastMouse_.y()});
         const auto hit = scene_->pick(p.x, p.y, 5.0 / camera_.scale());
@@ -491,6 +549,11 @@ void GpuCanvas::mouseMoveEvent(QMouseEvent* event) {
     } else if (gesture_ == Gesture::ZoomRect) {
         rubberBand_ = QRectF(pressPos_, pos).normalized();
         emit rubberBandChanged();
+    } else if (gesture_ == Gesture::Tool) {
+        if (tools_) {
+            const auto p = camera_.screenToWorld({pos.x(), pos.y()});
+            tools_->move(p.x, p.y, event->modifiers());
+        }
     } else if (gesture_ != Gesture::None) {
         const auto travel = pos - pressPos_;
         if (!gestureActive_ && std::abs(travel.x()) + std::abs(travel.y()) < 3.0) {
@@ -584,6 +647,17 @@ void GpuCanvas::mouseReleaseEvent(QMouseEvent* event) {
         event->accept();
         return;
     }
+    if (gesture_ == Gesture::Tool) {
+        gesture_ = Gesture::None;
+        gestureActive_ = false;
+        if (tools_) {
+            const auto p = camera_.screenToWorld({event->position().x(), event->position().y()});
+            tools_->release(p.x, p.y, event->modifiers());
+        }
+        emit overlayChanged();
+        event->accept();
+        return;
+    }
     const auto gesture = gesture_;
     const bool active = gestureActive_;
     const bool ctrl = event->modifiers().testFlag(Qt::ControlModifier);
@@ -629,8 +703,33 @@ void GpuCanvas::mouseReleaseEvent(QMouseEvent* event) {
     event->accept();
 }
 
+void GpuCanvas::mouseDoubleClickEvent(QMouseEvent* event) {
+    if (tools_ && tools_->capturesMouse() && event->button() == Qt::LeftButton) {
+        const auto p = camera_.screenToWorld({event->position().x(), event->position().y()});
+        tools_->doubleClick(p.x, p.y, camera_.scale());
+        // Les outils qui ne se terminent pas au double-clic reçoivent aussi l'appui : deux gestes
+        // rapprochés au même endroit ne doivent pas perdre le second.
+        const auto tool = tools_->activeTool();
+        if (tool != QLatin1String("draw.polygon") && tool != QLatin1String("draw.bezier")) {
+            mousePressEvent(event);
+            return;
+        }
+        event->accept();
+        return;
+    }
+    QQuickItem::mouseDoubleClickEvent(event);
+}
+
 void GpuCanvas::hoverMoveEvent(QHoverEvent* event) {
     if (gesture_ != Gesture::None || panMode_ || spaceDown_) {
+        return;
+    }
+    if (tools_ && tools_->capturesMouse()) {
+        setCursor(Qt::CrossCursor);
+        if (tools_->busy()) {
+            const auto p = camera_.screenToWorld({event->position().x(), event->position().y()});
+            tools_->move(p.x, p.y, event->modifiers());
+        }
         return;
     }
     static constexpr Qt::CursorShape shapes[] = {
@@ -642,6 +741,10 @@ void GpuCanvas::hoverMoveEvent(QHoverEvent* event) {
 }
 
 void GpuCanvas::keyPressEvent(QKeyEvent* event) {
+    if (tools_ && event->key() != Qt::Key_Space && tools_->keyPress(event->key())) {
+        event->accept();
+        return;
+    }
     if (event->key() == Qt::Key_Space && !event->isAutoRepeat()) {
         spaceDown_ = true;
         setCursor(Qt::OpenHandCursor);

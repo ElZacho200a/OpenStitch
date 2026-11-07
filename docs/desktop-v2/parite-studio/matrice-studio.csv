@@ -4,7 +4,7 @@ c6534d24,action,(sélectionnez un objet de broderie pour assigner),main_window_e
 9268b9a3,action,100 % (taille réelle),main_window.cpp,fait,view.zoom-actual,SERVICE_ONLY,,,
 c7233a7c,action,Abandonner les retouches,main_window_toolbars.cpp,absent,,TESTED,StudioDigitizeTest::pointEditJourney,PointEditController::discardEdits,PointEditPanel.qml pointDiscard
 b4151a04,action,Accrochage des nœuds au glisser,main_window.cpp,absent,,ABSENT,,,
-fc27db70,action,Accrocher à la grille,main_window_vector_edit.cpp,absent,,ABSENT,,,
+fc27db70,action,Accrocher à la grille,main_window_vector_edit.cpp,absent,,TESTED,StudioToolsTest::snappingIsConfigurable,ToolController::snapped (grille),ToolOptions snapGridCheck
 c6b9c9e3,action,Activer,main_window_realistic.cpp,fait,Activer,SERVICE_ONLY,,,
 190ac0bb,action,Afficher la carte des régions,main_window.cpp,fait,region.edit,SERVICE_ONLY,,,
 eeb30959,action,Afficher la grille,main_window_view_display.cpp,partiel,gridMenu,TESTED,StudioViewTest::mainQmlHostsEveryPanel,ViewController::setGridVisible,ViewPanel.qml / GpuCanvas overlay grille
@@ -152,7 +152,7 @@ de43aedf,action,Segmenter l'image,main_window.cpp,fait,Segmenter l'image,FUNCTIO
 d6e27fc4,action,Supprimer le calque,calque_panel.cpp,fait,calqueRemove,FUNCTIONAL_UNTESTED,StudioEditTest::layersTreeAndObjectEditing (controleur seul),EditController::removeLayer,LayerPanel layerRemoveButton
 980fefff,action,Supprimer le guide,main_window_satin_auto.cpp,absent,,ABSENT,,,
 69e76bc8,action,Supprimer le guide satin sélectionné,main_window.cpp,absent,,ABSENT,,,
-5a001324,action,Supprimer le nœud,main_window_render.cpp,fait,deleteSelected,SERVICE_ONLY,,,
+5a001324,action,Supprimer le nœud,main_window_render.cpp,fait,deleteSelected,TESTED,StudioToolsTest::nodeEditByMouse,ToolController::deleteSelectedNodes,ToolOptions nodeDeleteButton + touche Suppr du canevas
 cc56cc1b,action,Supprimer le texte,main_window_lettering.cpp,absent,,FUNCTIONAL_UNTESTED,,ActionController::run(text.remove),ActionPalette.qml
 d9267bc5,action,Supprimer les points sélectionnés,main_window_point_edit.cpp,fait,deleteSelectedPoint,TESTED,StudioDigitizeTest::pointEditJourney,PointEditController::deleteSelected,PointEditPanel.qml pointDelete
 0e876999,action,Sélectionner l'objet,main_window_analysis.cpp,fait,onFindingActivated,FUNCTIONAL_UNTESTED,,AnalysisController::selectFindingObjects,AnalysisPanel.qml
@@ -264,7 +264,7 @@ d2b89407,bouton,▲ Monter,thread_panel.cpp,partiel,orderEarlier,FUNCTIONAL_UNTE
 e1ae3eac,bouton,▼ Descendre,thread_panel.cpp,partiel,orderLater,TESTED,StudioViewTest::mainQmlHostsEveryPanel,ThreadController::moveInOrder,ThreadPanel.qml
 e9918519,bouton,▼ Passer dessus,thread_panel.cpp,partiel,calqueUp,SERVICE_ONLY,,,
 f28889ba,case,Accepter aussi une surface déjà cousue du même fil,machine_export_dialog.cpp,absent,,ABSENT,,,
-6b06d4a3,case,Accrocher les nœuds aux sommets des autres objets au glisser,settings_dialog.cpp,absent,,ABSENT,,,
+6b06d4a3,case,Accrocher les nœuds aux sommets des autres objets au glisser,settings_dialog.cpp,absent,,TESTED,StudioToolsTest::snappingIsConfigurable,ToolController::snapped (sommets),ToolOptions snapVerticesCheck/snapRadiusSpin
 e7e778d4,case,Activer la segmentation par IA (SAM 2),ai_preferences_dialog.cpp,exclu,,BLOCKED,,,
 370e284b,case,Activer le rendu réaliste des points,realistic_render_dialog.cpp,fait,view.render,SERVICE_ONLY,,,
 4789f8fc,case,Afficher la carte sur le canevas,main_window_fabric_risk.cpp,fait,analysis.fabric,SERVICE_ONLY,,,
@@ -400,7 +400,7 @@ a68f2f07,menu,Densité,main_window.cpp,fait,Densité,SERVICE_ONLY,,,
 18dac096,menu,Fichier,main_window.cpp,fait,Fichier,SERVICE_ONLY,,,
 fcfaf94f,menu,Fils,main_window_threads.cpp,fait,Fils,SERVICE_ONLY,,,
 943cef6b,menu,Forme,main_window_shapes.cpp,fait,Forme,SERVICE_ONLY,,,
-18202d51,menu,Formes prédéfinies,main_window_vector_tools.cpp,absent,,ABSENT,,,
+18202d51,menu,Formes prédéfinies,main_window_vector_tools.cpp,absent,,UI_PARTIAL,StudioToolsTest::polygonAndRegularShapes (etoile seulement),ToolController::setStar,ToolOptions starCheck (autres formes predefinies absentes)
 433d10e7,menu,Fusionner dans,main_window_regions.cpp,fait,Fusionner dans,TESTED,StudioImageTest::preparePanelDrivesTheWholeJourney (regionMergeNeighbour via QML),RegionController::mergeWithNeighbour,RegionTools.qml
 3a29a683,menu,Grille et guides,main_window_view_display.cpp,absent,,ABSENT,,,
 343f9eae,menu,Image,main_window.cpp,fait,Image,SERVICE_ONLY,,,
@@ -426,16 +426,16 @@ aabe1c93,menu,Édition,main_window.cpp,fait,Édition,SERVICE_ONLY,,,
 4b6cfb58,outil,Brush,tools.hpp,fait,Brush,SERVICE_ONLY,,,
 7e011329,outil,Bucket,tools.hpp,fait,Bucket,SERVICE_ONLY,,,
 336b6213,outil,ClickToStitch,tools.hpp,fait,ClickToStitch,SERVICE_ONLY,,,
-e22edfe6,outil,Cut,tools.hpp,fait,Cut,SERVICE_ONLY,,,
+e22edfe6,outil,Cut,tools.hpp,fait,Cut,TESTED,StudioToolsTest::knifeAndBooleans,ToolController::release (knife ; batchSplit),ToolRail tool_knife
 e3db2548,outil,DetailBrush,tools.hpp,fait,DetailBrush,SERVICE_ONLY,,,
-a8ddefdf,outil,DrawBezier,tools.hpp,fait,DrawBezier,SERVICE_ONLY,,,
+a8ddefdf,outil,DrawBezier,tools.hpp,fait,DrawBezier,TESTED,StudioToolsTest::penBezierAndFreehand,ToolController::finish (draw.bezier ; createPenShape),ToolRail tool_draw.bezier + ToolOverlay
 cf819ee7,outil,DrawBreakLine,tools.hpp,fait,DrawBreakLine,SERVICE_ONLY,,,
 31cf34dd,outil,DrawDirectionGuide,tools.hpp,fait,DrawDirectionGuide,UI_PARTIAL,StudioDigitizeTest::directionGuidesJourney,SatinController::addGuide,SatinPanel.qml (outil de trace au canevas absent)
-b8cd428a,outil,DrawEllipse,tools.hpp,fait,DrawEllipse,SERVICE_ONLY,,,
-c5d6568a,outil,DrawFreeform,tools.hpp,fait,DrawFreeform,SERVICE_ONLY,,,
-79f92460,outil,DrawPolygon,tools.hpp,fait,DrawPolygon,SERVICE_ONLY,,,
-b5f01e17,outil,DrawPolygonRegular,tools.hpp,fait,DrawPolygonRegular,SERVICE_ONLY,,,
-0134085f,outil,DrawRectangle,tools.hpp,fait,DrawRectangle,SERVICE_ONLY,,,
+b8cd428a,outil,DrawEllipse,tools.hpp,fait,DrawEllipse,TESTED,StudioToolsTest::basicShapesByMouse,ToolController::press/release (draw.ellipse),ToolRail tool_draw.ellipse + GpuCanvas Gesture::Tool
+c5d6568a,outil,DrawFreeform,tools.hpp,fait,DrawFreeform,TESTED,StudioToolsTest::penBezierAndFreehand,ToolController::release (draw.freeform ; createFreehandShape),ToolRail tool_draw.freeform
+79f92460,outil,DrawPolygon,tools.hpp,fait,DrawPolygon,TESTED,StudioToolsTest::polygonAndRegularShapes,ToolController::finish (draw.polygon),ToolRail tool_draw.polygon + ToolOverlay
+b5f01e17,outil,DrawPolygonRegular,tools.hpp,fait,DrawPolygonRegular,TESTED,StudioToolsTest::polygonAndRegularShapes,ToolController::commitBox (draw.polygon-regular + etoile),ToolRail tool_draw.polygon-regular + ToolOptions sidesSpin/starCheck
+0134085f,outil,DrawRectangle,tools.hpp,fait,DrawRectangle,TESTED,StudioToolsTest::basicShapesByMouse,ToolController::press/release (draw.rectangle),ToolRail tool_draw.rectangle + GpuCanvas Gesture::Tool
 9f2384e1,outil,DrawSatinColumn,tools.hpp,fait,DrawSatinColumn,UI_PARTIAL,StudioDigitizeTest::satinColumnJourney,SatinController::createFromRungs,SatinPanel.qml (creation par barreaux testee ; geste de trace au canevas absent)
 b1c7b9f7,outil,Eyedropper,tools.hpp,fait,Eyedropper,SERVICE_ONLY,,,
 26b7b101,outil,Measure,tools.hpp,fait,Measure,SERVICE_ONLY,,,

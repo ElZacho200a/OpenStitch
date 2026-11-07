@@ -20,6 +20,7 @@ Window {
     title: (studio.dirty ? "• " : "") + studio.title + " — OpenStitch Studio"
 
     readonly property var editController: editor
+    readonly property var toolController: typeof tools !== "undefined" ? tools : null
     property int workspaceIndex: 1
     readonly property var workspaces: [
         { name: qsTr("Préparer"), label: qsTr("COMPOSITION"),
@@ -100,19 +101,19 @@ Window {
     Shortcut { sequence: "Escape"; onActivated: { editor.eyedropper = false; if (!canvas.cancelGesture()) studio.clearSelection() } }
     Shortcut { sequence: "Ctrl+A"; onActivated: editor.selectAll() }
     Shortcut { sequence: "Ctrl+I"; onActivated: editor.invertSelection() }
-    Shortcut { sequence: "Delete"; enabled: studio.hasSelection; onActivated: editor.deleteSelection() }
+    Shortcut { sequence: "Delete"; enabled: studio.hasSelection && !(toolController && toolController.selectedNodeCount > 0); onActivated: editor.deleteSelection() }
     Shortcut { sequence: "Ctrl+D"; enabled: studio.hasSelection; onActivated: editor.duplicate(5) }
     Shortcut { sequence: "Ctrl+G"; enabled: editor.selectedCount > 1; onActivated: editor.group("") }
     Shortcut { sequence: "Ctrl+Shift+G"; enabled: studio.hasSelection; onActivated: editor.ungroup() }
-    Shortcut { sequence: "R"; enabled: studio.hasSelection; onActivated: editor.rotate90(true) }
-    Shortcut { sequence: "Shift+R"; enabled: studio.hasSelection; onActivated: editor.rotate90(false) }
+    Shortcut { sequence: "Ctrl+R"; enabled: studio.hasSelection; onActivated: editor.rotate90(true) }
+    Shortcut { sequence: "Ctrl+Shift+R"; enabled: studio.hasSelection; onActivated: editor.rotate90(false) }
     Shortcut { sequence: "Ctrl+Shift+H"; enabled: studio.hasSelection; onActivated: editor.mirror(true) }
     Shortcut { sequence: "Ctrl+Shift+V"; enabled: studio.hasSelection; onActivated: editor.mirror(false) }
     Shortcut { sequence: "PgUp"; enabled: studio.hasSelection; onActivated: editor.stack("forward") }
     Shortcut { sequence: "PgDown"; enabled: studio.hasSelection; onActivated: editor.stack("backward") }
     Shortcut { sequence: "End"; enabled: studio.hasSelection; onActivated: editor.stack("front") }
     Shortcut { sequence: "Home"; enabled: studio.hasSelection; onActivated: editor.stack("back") }
-    Shortcut { sequence: "E"; enabled: studio.hasSelection; onActivated: editor.eyedropper = !editor.eyedropper }
+    Shortcut { sequence: "I"; enabled: studio.hasSelection; onActivated: editor.eyedropper = !editor.eyedropper }
     property bool treeMode: false
     property bool editOpen: false
     Shortcut { sequence: "Ctrl+1"; onActivated: window.workspaceIndex = 0 }
@@ -309,7 +310,7 @@ Window {
                         shortcutLabel: studio.selectionTool.shortcut
                         quiet: true
                         active: !canvas.panMode
-                        onClicked: canvas.panMode = false
+                        onClicked: { canvas.panMode = false; if (window.toolController) window.toolController.activeTool = "select" }
                     }
                     StudioButton {
                         objectName: "panToolButton"
@@ -318,9 +319,19 @@ Window {
                         shortcutLabel: studio.panTool.shortcut
                         quiet: true
                         active: canvas.panMode
-                        onClicked: canvas.panMode = true
+                        onClicked: { canvas.panMode = true; if (window.toolController) window.toolController.activeTool = "select" }
                     }
                     Rectangle {
+                        Layout.alignment: Qt.AlignHCenter
+                        Layout.topMargin: 4
+                        Layout.bottomMargin: 4
+                        implicitWidth: 24
+                        implicitHeight: 1
+                        color: Theme.divider
+                    }
+                    ToolRail { Layout.alignment: Qt.AlignHCenter }
+                    Rectangle {
+                        visible: window.toolController !== null
                         Layout.alignment: Qt.AlignHCenter
                         Layout.topMargin: 4
                         Layout.bottomMargin: 4
@@ -386,8 +397,15 @@ Window {
                         anchors.fill: parent
                         controller: studio
                         editor: window.editController
+                        tools: window.toolController
                         focus: true
                         onContextMenuRequested: function(x, y, objectId) { contextMenu.openAt(x, y) }
+                    }
+
+                    ToolOverlay {
+                        objectName: "toolOverlay"
+                        anchors.fill: parent
+                        gpu: canvas
                     }
 
                     TransformHandles {
@@ -796,6 +814,12 @@ Window {
 
                     EditBar {
                         visible: window.editOpen
+                        Layout.fillWidth: true
+                        Layout.margins: 12
+                    }
+
+                    ToolOptions {
+                        visible: window.toolController !== null && window.editOpen
                         Layout.fillWidth: true
                         Layout.margins: 12
                     }
