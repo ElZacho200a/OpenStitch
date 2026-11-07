@@ -61,15 +61,15 @@ eab12005,action,Déplacer la sélection ici,calque_panel.cpp,fait,calqueHere,FUN
 1e0aaea5,action,Enregistrer le projet sous,main_window.cpp,fait,file.save-as,TESTED,StudioShellTest::openMoveUndoSaveReopenJourney,StudioController::saveProjectAs,Main.qml Ctrl+Maj+S
 5aaa0b5f,action,Enregistrer les réglages de la sélection,main_window_stitch_presets.cpp,fait,preset.save,SERVICE_ONLY,,,
 df9178a2,action,Envoyer un rapport de plantage,main_window_crash_report.cpp,absent,,ABSENT,,,
-a9055127,action,Exporter avec les derniers réglages,main_window.cpp,fait,file.export-again,SERVICE_ONLY,,,
-31b462db,action,Exporter en DXF,main_window.cpp,fait,file.export-dxf,SERVICE_ONLY,,,
-09cc3851,action,"Exporter l'image (PNG, JPEG)",main_window_export_image.cpp,partiel,Exporter l'image,SERVICE_ONLY,,,
-00565df7,action,Exporter la liste des fils (CSV),main_window_threads.cpp,fait,file.export-threads,SERVICE_ONLY,,,
+a9055127,action,Exporter avec les derniers réglages,main_window.cpp,fait,file.export-again,TESTED,StudioFilesTest::exportsAreDeterministicAndRepeatable,FileController::exportAgain,FilePanel.qml exportAgainEntry F10
+31b462db,action,Exporter en DXF,main_window.cpp,fait,file.export-dxf,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportDxf,FilePanel.qml menu Exporter
+09cc3851,action,"Exporter l'image (PNG, JPEG)",main_window_export_image.cpp,partiel,Exporter l'image,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportImage,FilePanel.qml menu Exporter
+00565df7,action,Exporter la liste des fils (CSV),main_window_threads.cpp,fait,file.export-threads,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportThreadList,FilePanel.qml menu Exporter
 692834e4,action,Exporter le contour de découpe,main_window_applique.cpp,absent,,ABSENT,,,
-4922cbdc,action,Exporter le rendu réaliste (PNG),main_window_production.cpp,partiel,Exporter l'image,SERVICE_ONLY,,,
+4922cbdc,action,Exporter le rendu réaliste (PNG),main_window_production.cpp,partiel,Exporter l'image,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportImage,FilePanel.qml menu Exporter
 129c1178,action,Exporter un DST compensé du décalage,main_window_analysis.cpp,absent,,ABSENT,,,
-08ee1b58,action,Exporter une broderie machine,main_window.cpp,fait,Exporter pour la machine,SERVICE_ONLY,,,
-d0850557,action,Fiche de production,main_window_production.cpp,fait,Fiche de production,SERVICE_ONLY,,,
+08ee1b58,action,Exporter une broderie machine,main_window.cpp,fait,Exporter pour la machine,TESTED,StudioFilesTest::machineExportImportRoundTrip,FileController::exportMachine,FilePanel.qml exportDialog
+d0850557,action,Fiche de production,main_window_production.cpp,fait,Fiche de production,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportProductionSheet,FilePanel.qml menu Exporter
 aba3cc8d,action,Fidélité à l'image,main_window_analysis.cpp,absent,,ABSENT,,,
 4132716d,action,Fondu de couleurs à deux fils,main_window_directional.cpp,fait,fade.create,SERVICE_ONLY,,,
 90b818d1,action,Format d'import des nuanciers,main_window_threads.cpp,fait,action_file_chart_format,SERVICE_ONLY,,,
@@ -77,7 +77,7 @@ aba3cc8d,action,Fidélité à l'image,main_window_analysis.cpp,absent,,ABSENT,,,
 30fe85c6,action,Fusionner dans la voisine principale,main_window.cpp,fait,regionMerge,SERVICE_ONLY,,,
 7bf6f210,action,Fusionner la sélection,main_window.cpp,fait,Fusionner la sélection,SERVICE_ONLY,,,
 3055c3e1,action,Fusionner les couleurs,main_window.cpp,fait,Fusionner les couleurs,SERVICE_ONLY,,,
-10082583,action,Gabarit de placement 1:1,main_window_production.cpp,absent,,ABSENT,,,
+10082583,action,Gabarit de placement 1:1,main_window_production.cpp,absent,,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportPlacementTemplate,FilePanel.qml menu Exporter
 de9ab6e1,action,Generer un guide depuis la forme,main_window_context_menu.cpp,fait,fill.guides,SERVICE_ONLY,,,
 d0300f93,action,Gestes souris et clavier,main_window_help_menu.cpp,partiel,Raccourcis et commandes,SERVICE_ONLY,,,
 80d5551a,action,Guide de prise en main,main_window_help_menu.cpp,absent,,ABSENT,,,
@@ -86,8 +86,8 @@ fa129d91,action,Générer un guide depuis la forme,main_window_directional.cpp,f
 807cf843,action,Image,main_window.cpp,fait,Image,SERVICE_ONLY,,,
 69632007,action,Importer un DXF,main_window.cpp,fait,Importer un DXF,FUNCTIONAL_UNTESTED,,ActionController::run(file.import_dxf),ActionPalette.qml
 45ec0da3,action,"Importer un nuancier (CSV, JSON)",main_window_threads.cpp,fait,file.import-chart,SERVICE_ONLY,,,
-7c94f4bb,action,Importer une broderie machine,main_window.cpp,fait,Importer une broderie machine,SERVICE_ONLY,,,
-c4719a5d,action,Importer une image ou un SVG,main_window.cpp,fait,file.import_svg,SERVICE_ONLY,,,
+7c94f4bb,action,Importer une broderie machine,main_window.cpp,fait,Importer une broderie machine,TESTED,StudioFilesTest::machineExportImportRoundTrip,FileController::openPath(machine),FilePanel.qml menu Importer
+c4719a5d,action,Importer une image ou un SVG,main_window.cpp,fait,file.import_svg,TESTED,StudioFilesTest::imageAndVectorImports,FileController::importImage/importVector,FilePanel.qml menu Importer
 025327d7,action,Insérer un design,main_window.cpp,absent,,ABSENT,,,
 f97b2ddf,action,Lisser,main_window_vector_tools.cpp,fait,Lisser,SERVICE_ONLY,,,
 337b1cac,action,Luminosité/contraste,main_window.cpp,fait,Luminosité et contraste,SERVICE_ONLY,,,
@@ -121,7 +121,7 @@ b8d2a1ce,action,Poignées du dégradé,main_window_gradient.cpp,fait,fade.axis,S
 de5eef73,action,Préférences générales,main_window.cpp,partiel,density_,SERVICE_ONLY,,,
 f30520d3,action,Préférences — Intelligence artificielle,main_window.cpp,partiel,companion.settings,SERVICE_ONLY,,,
 354afdc7,action,Quantifier les couleurs,main_window.cpp,partiel,regionReduceColors,SERVICE_ONLY,,,
-a4c1ad2b,action,Quitter,main_window.cpp,fait,Quitter,SERVICE_ONLY,,,
+a4c1ad2b,action,Quitter,main_window.cpp,fait,Quitter,FUNCTIONAL_UNTESTED,StudioFilesTest::unsavedGuardNewOpenAndQuit,FileController::requestQuit,Main.qml onClosing + FilePanel guardDialog
 35393cc9,action,Recadrer l'image (glisser un cadre),main_window.cpp,partiel,Recadrer,SERVICE_ONLY,,,
 b4dc4f3a,action,Rechercher une commande,main_window.cpp,fait,Rechercher une commande,SERVICE_ONLY,,,
 b2f5a579,action,Recolorer,main_window_regions.cpp,fait,Recolorer,SERVICE_ONLY,,,
@@ -159,7 +159,7 @@ d9267bc5,action,Supprimer les points sélectionnés,main_window_point_edit.cpp,f
 5626577a,action,Sélectionner la même couleur,main_window.cpp,fait,Sélectionner la même couleur,FUNCTIONAL_UNTESTED,StudioEditTest::selectionCommandsOnRealObjects (controleur seul),EditController::selectSameColor,EditBar sameColorButton / CanvasContextMenu
 76e1b404,action,Sélectionner les voisines,main_window.cpp,fait,Sélectionner les voisines,FUNCTIONAL_UNTESTED,StudioEditTest::selectionCommandsOnRealObjects (controleur seul),EditController::selectNeighbors,EditBar neighborsButton / CanvasContextMenu
 149d5727,action,Sélectionner tous les points,main_window_point_edit.cpp,fait,point.select-all,SERVICE_ONLY,,,
-6374ea03,action,Taille du cadre,main_window.cpp,fait,canvas.set,SERVICE_ONLY,,,
+6374ea03,action,Taille du cadre,main_window.cpp,fait,canvas.set,TESTED,StudioFilesTest::hoopMachineAndUserHoops,FileController::applyHoop/applyCustomHoop,FilePanel.qml hoopDialog
 153dd793,action,Tout afficher,main_window_order_filter.cpp,fait,view.show-all,SERVICE_ONLY,,,
 e46589b0,action,Tout afficher (filtres),main_window_context_menu.cpp,fait,view.show-all,SERVICE_ONLY,,,
 f4632624,action,Tout sélectionner,main_window.cpp,fait,Tout sélectionner,TESTED,StudioEditTest::shortcutsReachTheEditor,EditController::selectAll,Main.qml Ctrl+A / EditBar selectAllButton
@@ -169,7 +169,7 @@ e73f5b09,action,Transition douce des nœuds voisins,main_window_node_select.cpp,
 8a282d1d,action,Tutoriel : de l'image à la broderie,main_window_help_menu.cpp,absent,,ABSENT,,,
 a361cdd3,action,Vecteurs,main_window.cpp,absent,,ABSENT,,,
 9e19be32,action,Vectoriser la sélection,main_window.cpp,absent,,ABSENT,,,
-7dcd5e07,action,Vider la liste des récents,main_window.cpp,absent,,ABSENT,,,
+7dcd5e07,action,Vider la liste des récents,main_window.cpp,absent,,TESTED,StudioFilesTest::recentFilesPersistPruneAndReopen,FileController::clearRecent,FilePanel.qml clearRecentEntry
 f7987bf9,action,Zoom arrière,main_window.cpp,fait,Zoom arrière,SERVICE_ONLY,,,
 d0ccab12,action,Zoom avant,main_window.cpp,fait,Zoom avant,SERVICE_ONLY,,,
 174df2f7,action,Zoom précédent,main_window.cpp,fait,Zoom précédent,SERVICE_ONLY,,,
@@ -211,8 +211,8 @@ f84eae7b,bouton,Couleur : %1 (cliquer pour changer),properties_panel.cpp,absent,
 f893cf14,bouton,Couleur de cette couche,properties_panel.cpp,absent,,ABSENT,,,
 fdbcceb1,bouton,Couleurs libres → fil le plus proche,thread_panel.cpp,partiel,thread.palette,SERVICE_ONLY,,,
 6dfe2a2f,bouton,Créer le satin de bordure,properties_panel.cpp,absent,,ABSENT,,,
-786a853b,bouton,Enregistrer ce cadre,main_window_files.cpp,fait,hoops.txt,SERVICE_ONLY,,,
-8854fa60,bouton,Exporter la liste des fils (CSV),thread_panel.cpp,fait,file.export-threads,SERVICE_ONLY,,,
+786a853b,bouton,Enregistrer ce cadre,main_window_files.cpp,fait,hoops.txt,TESTED,StudioFilesTest::hoopMachineAndUserHoops,FileController::saveCurrentHoopAs,FilePanel.qml hoopDialog
+8854fa60,bouton,Exporter la liste des fils (CSV),thread_panel.cpp,fait,file.export-threads,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportThreadList,FilePanel.qml menu Exporter
 6c667c5a,bouton,Fermer,help_manual.cpp,fait,Fermer,SERVICE_ONLY,,,
 4881b0aa,bouton,Figer l'ordre,main_window_order_filter.cpp,absent,,ABSENT,,,
 75d84458,bouton,Fils les plus proches de la sélection,thread_panel.cpp,partiel,thread.palette,SERVICE_ONLY,,,
@@ -220,18 +220,18 @@ fdbcceb1,bouton,Couleurs libres → fil le plus proche,thread_panel.cpp,partiel,
 28bea29d,bouton,Fusionner la sélection,ai_segmentation_dialog.cpp,fait,Fusionner la sélection,SERVICE_ONLY,,,
 5ea5889c,bouton,Guides automatiques pour tous,properties_panel.cpp,partiel,fill.guides,SERVICE_ONLY,,,
 1ebf6e41,bouton,"Importer un nuancier (CSV, JSON)",thread_panel.cpp,fait,file.import-chart,SERVICE_ONLY,,,
-f38a9ef0,bouton,Importer une broderie machine,empty_state_widget.cpp,fait,Importer une broderie machine,SERVICE_ONLY,,,
+f38a9ef0,bouton,Importer une broderie machine,empty_state_widget.cpp,fait,Importer une broderie machine,FUNCTIONAL_UNTESTED,,FileController::openPath(machine),Main.qml welcomeImportMachine
 11c2d635,bouton,Inverser le sens du fondu,color_blend_dialog.cpp,absent,,ABSENT,,,
 a8e5be69,bouton,Modifier le texte,properties_panel.cpp,fait,Modifier le texte,FUNCTIONAL_UNTESTED,,ActionController::run(text.edit),ActionPalette.qml
 71dc358c,bouton,Nouveau (copie du courant),colorway_dialog.cpp,partiel,activateCurrentColorway,SERVICE_ONLY,,,
 5cda87d0,bouton,Optimiser l'ordre,main_window_order_filter.cpp,fait,Optimiser l'ordre,SERVICE_ONLY,,,
-3bda7e57,bouton,Ouvrir le dossier,main_window_files.cpp,absent,,ABSENT,,,
+3bda7e57,bouton,Ouvrir le dossier,main_window_files.cpp,absent,,FUNCTIONAL_UNTESTED,,FileController::revealFolder,FilePanel.qml menu Projet
 9c53cfd1,bouton,Ouvrir les préférences,ai_segmentation_dialog.cpp,exclu,,BLOCKED,,,
-8f650f08,bouton,Ouvrir un projet,empty_state_widget.cpp,fait,Ouvrir une image ou un projet,SERVICE_ONLY,,,
-237f3d36,bouton,Ouvrir une image ou un SVG,empty_state_widget.cpp,fait,Ouvrir une image ou un projet,SERVICE_ONLY,,,
+8f650f08,bouton,Ouvrir un projet,empty_state_widget.cpp,fait,Ouvrir une image ou un projet,FUNCTIONAL_UNTESTED,,FileController::openPath,Main.qml bouton Ouvrir un projet
+237f3d36,bouton,Ouvrir une image ou un SVG,empty_state_widget.cpp,fait,Ouvrir une image ou un projet,FUNCTIONAL_UNTESTED,,FileController::imageImportRequested,Main.qml welcomeImportImage + FilePanel importOptions
 249c0de8,bouton,Parcourir,ai_preferences_dialog.cpp,fait,Parcourir,SERVICE_ONLY,,,
 3dcea6a1,bouton,Peindre les zones de détail,segmentation_dialog.cpp,absent,,ABSENT,,,
-5c1da94d,bouton,Pivoter,main_window_files.cpp,fait,Pivoter,SERVICE_ONLY,,,
+5c1da94d,bouton,Pivoter,main_window_files.cpp,fait,Pivoter,ABSENT,,,
 219aa56f,bouton,Placer un guide sur le canevas,properties_panel.cpp,fait,fill.direction-guide,SERVICE_ONLY,,,
 fc50bae4,bouton,Poignées sur le canevas,gradient_fill_panel.cpp,fait,fade.axis,SERVICE_ONLY,,,
 5ecf2aa4,bouton,Poser ce guide sur toutes les formes,properties_panel.cpp,absent,,ABSENT,,,
@@ -294,11 +294,11 @@ ec1b8e2e,case,"Densité excessive, au-delà de",main_window_density.cpp,absent,,
 3d3ea99b,case,Diviser chaque forme retenue par couleur,ai_segmentation_dialog.cpp,exclu,,BLOCKED,,,
 ea65d971,case,Découper les points trop longs,generation_options_dialog.cpp,fait,Découper les points trop longs,SERVICE_ONLY,,,
 0e474c43,case,Dégradé de densité,properties_panel.cpp,fait,Dégradé de densité,SERVICE_ONLY,,,
-11df031b,case,Entre les objets : relier sans couper le fil si le trajet sera recouvert,machine_export_dialog.cpp,absent,,ABSENT,,,
+11df031b,case,Entre les objets : relier sans couper le fil si le trajet sera recouvert,machine_export_dialog.cpp,absent,,FUNCTIONAL_UNTESTED,,FileController::setExportOptions(autoJoin),FilePanel.qml exportDialog
 14a6a35a,case,Entrée/sortie automatiques des objets,generation_options_dialog.cpp,absent,,ABSENT,,,
 43d3b43f,case,Espacement automatique selon la largeur,properties_panel.cpp,absent,,ABSENT,,,
 3a552654,case,"Finitions automatiques (coupes, points d'arrêt, points courts)",generation_options_dialog.cpp,absent,,ABSENT,,,
-c37dbd3d,case,Fond de tissu opaque,export_image_dialog.cpp,partiel,fabricRgb,SERVICE_ONLY,,,
+c37dbd3d,case,Fond de tissu opaque,export_image_dialog.cpp,partiel,fabricRgb,ABSENT,,,
 eb932cc3,case,Fractionner les traversées longues (> 7 mm),main_window_satin_auto.cpp,absent,,ABSENT,,,
 213d5af7,case,Fusionner aussi les régions voisines de même couleur,segmentation_colors_panel.cpp,fait,regionReduceMerge,SERVICE_ONLY,,,
 8fd5f3dc,case,Fusionner les points trop courts,generation_options_dialog.cpp,fait,Fusionner les points trop courts,SERVICE_ONLY,,,
@@ -336,9 +336,9 @@ e83895af,case,Traits sombres cousus par-dessus,main_window_create.cpp,absent,,AB
 31e80c01,case,"Trop de coupes, au-delà de",main_window_density.cpp,absent,,ABSENT,,,
 7dadce88,case,Écrire aussi le fichier de couleurs à côté,machine_export_dialog.cpp,absent,,ABSENT,,,
 19e2c522,case,Écrire les changements de couleur,machine_export_dialog.cpp,absent,,ABSENT,,,
-ab829014,case,Écrire les coupes de fil (réglage de ce fichier),machine_export_dialog.cpp,absent,,ABSENT,,,
+ab829014,case,Écrire les coupes de fil (réglage de ce fichier),machine_export_dialog.cpp,absent,,FUNCTIONAL_UNTESTED,StudioFilesTest::exportOptionsAreOneUndoStepAndRefusedWhenInvalid,FileController::setExportOptions,FilePanel.qml exportDialog
 41976bc1,dialogue,Ajouter un fil personnel,thread_panel.cpp,absent,,ABSENT,,,
-d06da014,dialogue,Aperçu avant impression - fiche de production,production_dialog.cpp,partiel,action_file_production_sheet,SERVICE_ONLY,,,
+d06da014,dialogue,Aperçu avant impression - fiche de production,production_dialog.cpp,partiel,action_file_production_sheet,ABSENT,,,
 308f4162,dialogue,Cadre de broderie,main_window_files.cpp,fait,Cadre de broderie,TESTED,StudioShellTest::actionCatalogIsFullyReachable,ActionController::run(canvas.set),ActionPalette.qml
 531ea643,dialogue,Centre de rotation,main_window_rotation.cpp,absent,,ABSENT,,,
 5750c9de,dialogue,Choisir une référence de fil,main_window_gradient.cpp,partiel,thread.palette,SERVICE_ONLY,,,
@@ -348,14 +348,14 @@ b2820172,dialogue,Compagnon IA,companion_dock.cpp,fait,Compagnon IA,SERVICE_ONLY
 7d4ca866,dialogue,Comparer les méthodes de satin,main_window_satin_auto.cpp,absent,,ABSENT,,,
 dcaa0480,dialogue,Contour autour de la sélection,main_window_vector_edit.cpp,absent,,ABSENT,,,
 60c07a7c,dialogue,Données de débogage — objet %1,main_window_debug.cpp,absent,,ABSENT,,,
-c7e19585,dialogue,Exporter l'image,export_image_dialog.cpp,fait,Exporter l'image,SERVICE_ONLY,,,
-775bc85b,dialogue,Exporter une broderie machine,machine_export_dialog.cpp,fait,Exporter pour la machine,SERVICE_ONLY,,,
-5aae42a1,dialogue,Fiche de production,production_dialog.cpp,fait,Fiche de production,SERVICE_ONLY,,,
-004e668f,dialogue,Gabarit de placement 1:1,placement_template_dialog.cpp,absent,,ABSENT,,,
+c7e19585,dialogue,Exporter l'image,export_image_dialog.cpp,fait,Exporter l'image,UI_PARTIAL,,FileController::exportImage,résolution fixe 6 px/mm sans dialogue d'options
+775bc85b,dialogue,Exporter une broderie machine,machine_export_dialog.cpp,fait,Exporter pour la machine,FUNCTIONAL_UNTESTED,StudioFilesTest::exportOptionsAreOneUndoStepAndRefusedWhenInvalid,FileController::exportMachine/setExportOptions,FilePanel.qml exportDialog
+5aae42a1,dialogue,Fiche de production,production_dialog.cpp,fait,Fiche de production,UI_PARTIAL,,FileController::exportProductionSheet,pas d'aperçu ni d'impression
+004e668f,dialogue,Gabarit de placement 1:1,placement_template_dialog.cpp,absent,,UI_PARTIAL,,FileController::exportPlacementTemplate,papier A4 fixe côté QML
 de2f043a,dialogue,Gestes souris et clavier,help_dialogs.cpp,partiel,Raccourcis et commandes,SERVICE_ONLY,,,
 aca41aaf,dialogue,Guide de prise en main,help_dialogs.cpp,absent,,ABSENT,,,
-8aeebbf2,dialogue,Importer une image,import_dialog.cpp,fait,Importer une image,SERVICE_ONLY,,,
-9ae947b0,dialogue,Imprimer la fiche de production,production_dialog.cpp,partiel,action_file_production_sheet,SERVICE_ONLY,,,
+8aeebbf2,dialogue,Importer une image,import_dialog.cpp,fait,Importer une image,TESTED,StudioFilesTest::imageAndVectorImports,FileController::importImage,FilePanel.qml importOptions
+9ae947b0,dialogue,Imprimer la fiche de production,production_dialog.cpp,partiel,action_file_production_sheet,ABSENT,,,
 412ad05d,dialogue,Luminosité et contraste,brightness_dialog.cpp,fait,Luminosité et contraste,SERVICE_ONLY,,,
 4959ff8d,dialogue,Machine de broderie,machine_dialog.cpp,fait,machine.set,SERVICE_ONLY,,,
 65160629,dialogue,Manuel d'utilisation,help_manual.cpp,absent,,ABSENT,,,
@@ -412,7 +412,7 @@ b909b547,menu,Préréglages de points,main_window_stitch_presets.cpp,fait,Prér�
 e019429a,menu,Rappeler une sélection,main_window_selection_tools.cpp,absent,,FUNCTIONAL_UNTESTED,StudioEditTest::savedSelectionsAreRecalled (controleur seul),EditController::recallSelection,EditBar Rappeler
 d1ff1ac3,menu,Rendu réaliste,main_window_realistic.cpp,fait,Rendu réaliste,SERVICE_ONLY,,,
 6ef7ae22,menu,Retrouver,main_window_selection_tools.cpp,fait,Retrouver,SERVICE_ONLY,,,
-bfb1ac5d,menu,Récents,main_window.cpp,fait,Récents,SERVICE_ONLY,,,
+bfb1ac5d,menu,Récents,main_window.cpp,fait,Récents,TESTED,StudioFilesTest::recentFilesPersistPruneAndReopen,FileController::recent/requestOpenRecent,FilePanel.qml fileMenu
 39d632d3,menu,Réglages fins du satin,main_window.cpp,absent,,ABSENT,,,
 46096614,menu,Segmentation,main_window.cpp,fait,Segmentation,SERVICE_ONLY,,,
 20265051,menu,Supprimer un préréglage,main_window_stitch_presets.cpp,fait,preset.remove,SERVICE_ONLY,,,

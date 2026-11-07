@@ -102,6 +102,17 @@ void StudioController::newProject() {
     emit changed();
 }
 
+void StudioController::adoptProject(document::Project project, const QString& path,
+                                    const QString& title, bool clean) {
+    tasks_.cancelAll();
+    ++request_;
+    busy_ = false;
+    path_ = path;
+    title_ = title.isEmpty() ? QStringLiteral("Sans projet") : title;
+    session_.replaceProject(std::move(project), clean);
+    emit changed();
+}
+
 bool StudioController::writeProject(const QString& path) {
     const auto saved =
         project_io::save_project(std::filesystem::path(path.toStdWString()), session_.project());

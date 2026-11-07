@@ -47,7 +47,7 @@ Window {
 
     function openProject() {
         if (!studio.busy)
-            projectDialog.open()
+            filePanel.requestOpen()
     }
 
     FileDialog {
@@ -55,7 +55,7 @@ Window {
         title: qsTr("Ouvrir un projet OpenStitch")
         fileMode: FileDialog.OpenFile
         nameFilters: [qsTr("Projet OpenStitch (*.osp)")]
-        onAccepted: studio.openProject(selectedFile)
+        onAccepted: filePanel.openUrl(selectedFile)
     }
 
     function saveProject() {
@@ -74,9 +74,11 @@ Window {
         onAccepted: studio.saveProjectAs(selectedFile)
     }
 
+    FilePanel { id: filePanel }
+    onClosing: function (close) { if (!filePanel.requestQuit()) close.accepted = false }
     ActionPalette { id: palette }
     Shortcut { sequence: "Ctrl+K"; onActivated: palette.openList() }
-    Shortcut { sequence: "Ctrl+N"; enabled: !studio.busy; onActivated: studio.newProject() }
+    Shortcut { sequence: "Ctrl+N"; enabled: !studio.busy; onActivated: filePanel.requestNew() }
     Shortcut { sequence: "Ctrl+S"; enabled: !studio.busy; onActivated: window.saveProject() }
     Shortcut { sequence: "Ctrl+Shift+S"; enabled: !studio.busy; onActivated: saveDialog.open() }
     Shortcut { sequence: "Ctrl+Z"; enabled: studio.canUndo; onActivated: studio.undo() }
@@ -212,6 +214,15 @@ Window {
                     shortcutLabel: "Ctrl+Y"
                     enabled: studio.canRedo
                     onClicked: studio.redo()
+                }
+
+                StudioButton {
+                    objectName: "fileMenuButton"
+                    text: qsTr("Fichier")
+                    iconName: "open"
+                    tooltip: qsTr("Récents, imports et exports")
+                    enabled: !studio.busy
+                    onClicked: filePanel.openMenu()
                 }
 
                 StudioButton {
@@ -426,6 +437,20 @@ Window {
                             text: qsTr("Ouvrir un projet .osp")
                             tooltip: qsTr("Ouvrir un projet OpenStitch existant")
                             onClicked: window.openProject()
+                        }
+                        RowLayout {
+                            Layout.alignment: Qt.AlignHCenter
+                            spacing: 8
+                            StudioButton {
+                                objectName: "welcomeImportImage"
+                                text: qsTr("Importer une image ou un SVG")
+                                onClicked: filePanel.importImageDialog()
+                            }
+                            StudioButton {
+                                objectName: "welcomeImportMachine"
+                                text: qsTr("Importer une broderie machine")
+                                onClicked: filePanel.importMachineDialog()
+                            }
                         }
                     }
 
