@@ -692,7 +692,7 @@ QVariantMap FileController::exportOptions() const {
             {QStringLiteral("autoJoin"), o.autoJoin}};
 }
 
-QString FileController::setExportOptions(const QVariantMap& v) {
+QString FileController::setExportOptions(const QVariantMap& v, bool allowUnchanged) {
     auto o = exportOptionsOf(studio_.session().project());
     const auto flag = [&](const char* key, bool& target) {
         if (v.contains(QLatin1String(key))) {
@@ -716,7 +716,7 @@ QString FileController::setExportOptions(const QVariantMap& v) {
         }
         o.lockKind = *kind;
     }
-    const auto result = desktop_v2::setExportOptions(studio_.session(), o);
+    const auto result = desktop_v2::setExportOptions(studio_.session(), o, allowUnchanged);
     return result.ok ? QString() : fromUtf8(result.message);
 }
 
@@ -739,8 +739,8 @@ void FileController::exportMachine(const QUrl& url, const QVariantMap& options) 
         QVariantMap settings = options;
         settings.remove(QStringLiteral("format"));
         if (!settings.isEmpty()) {
-            const auto refusal = setExportOptions(settings);
-            if (!refusal.isEmpty() && !refusal.startsWith(QLatin1String("Ces options sont déjà"))) {
+            const auto refusal = setExportOptions(settings, true);
+            if (!refusal.isEmpty()) {
                 setMessage(QStringLiteral("Réglages d'export refusés : %1").arg(refusal), true);
                 return;
             }

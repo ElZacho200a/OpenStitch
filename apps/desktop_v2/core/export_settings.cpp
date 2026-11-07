@@ -141,7 +141,8 @@ std::string validateExportOptions(const ExportOptions& o) {
     return {};
 }
 
-ServiceResult setExportOptions(DocumentSession& session, const ExportOptions& options) {
+ServiceResult setExportOptions(DocumentSession& session, const ExportOptions& options,
+                               bool allowUnchanged) {
     if (const auto why = validateExportOptions(options); !why.empty()) {
         return refuse(why);
     }
@@ -162,6 +163,8 @@ ServiceResult setExportOptions(DocumentSession& session, const ExportOptions& op
     f.design_end =
         options.designEnd ? std::optional<Vec2um>{toVec(*options.designEnd)} : std::nullopt;
     if (f == session.project().finishing) { // comparaison en µm : aucune dérive flottante
+        if (allowUnchanged)
+            return {true, {}};
         return refuse("Ces options sont déjà celles du projet.");
     }
     session.execute(std::make_unique<commands::SetFinishingCommand>(f));

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls as Controls
 import QtQuick.Dialogs
@@ -61,7 +62,11 @@ Controls.Dialog {
                 Layout.fillWidth: true
                 model: dialog.fileController ? dialog.fileController.machineFormats : []
                 textRole: "label"
-                onActivated: { dialog.format = model[currentIndex].extension; dialog.setValue("format", dialog.format) }
+                onActivated: {
+                    dialog.format = model[currentIndex].extension
+                    dialog.setValue("format", dialog.format)
+                    if (dialog.format !== "dst") dialog.setValue("compensate", false)
+                }
             }
             SectionLabel { text: qsTr("RÉGLAGES DU DOCUMENT — ANNULABLES") }
             Flag { option: "finishingEnabled"; text: qsTr("Appliquer les finitions") }
@@ -71,14 +76,14 @@ Controls.Dialog {
             Flag { option: "autoJoin"; text: qsTr("Relier les trajets cachés du document") }
             SectionLabel { text: qsTr("OPTIONS DU FICHIER") }
             Flag { objectName: "exportReduceTrims"; option: "reduceTrims"; text: qsTr("Optimiser les trajets pour réduire coupes et sauts") }
-            Flag { option: "betweenObjects"; enabled: dialog.values.reduceTrims; text: qsTr("Relier entre les objets si le trajet sera recouvert") }
-            Flag { option: "withinObject"; enabled: dialog.values.reduceTrims; text: qsTr("Relier sous-couche et remplissage dans un objet") }
-            Flag { option: "reorderUnderlay"; enabled: dialog.values.reduceTrims; text: qsTr("Réordonner les passes de sous-couche") }
-            Flag { option: "reorderRegions"; enabled: dialog.values.reduceTrims; text: qsTr("Réordonner les zones d'une même couleur") }
-            Flag { option: "sameColorSurface"; enabled: dialog.values.reduceTrims; text: qsTr("Accepter une surface déjà cousue du même fil") }
+            Flag { option: "betweenObjects"; enabled: dialog.values.reduceTrims === true; text: qsTr("Relier entre les objets si le trajet sera recouvert") }
+            Flag { option: "withinObject"; enabled: dialog.values.reduceTrims === true; text: qsTr("Relier sous-couche et remplissage dans un objet") }
+            Flag { option: "reorderUnderlay"; enabled: dialog.values.reduceTrims === true; text: qsTr("Réordonner les passes de sous-couche") }
+            Flag { option: "reorderRegions"; enabled: dialog.values.reduceTrims === true; text: qsTr("Réordonner les zones d'une même couleur (modifie leur ordre)") }
+            Flag { option: "sameColorSurface"; enabled: dialog.values.reduceTrims === true; text: qsTr("Accepter une surface déjà cousue du même fil") }
             RowLayout {
                 Controls.Label { text: qsTr("Pont maximal (mm)"); Layout.fillWidth: true }
-                Controls.SpinBox { from: 0; to: 100; value: dialog.values.maxBridgeMm || 20; editable: true; onValueModified: dialog.setValue("maxBridgeMm", value) }
+                Controls.SpinBox { from: 0; to: 100; value: dialog.values.maxBridgeMm !== undefined ? dialog.values.maxBridgeMm : 20; editable: true; onValueModified: dialog.setValue("maxBridgeMm", value) }
             }
             Flag { objectName: "exportCompanion"; option: "colorCompanion"; text: qsTr("Écrire un fichier de couleurs à côté (DST / EXP)") }
             Controls.ComboBox { model: ["CSV", "INF"]; onActivated: dialog.setValue("companionKind", currentIndex === 0 ? "csv" : "inf") }

@@ -37,8 +37,10 @@ struct ExportOptions {
 [[nodiscard]] ExportOptions exportOptionsOf(const document::Project& project);
 // Refus clair (message) si une valeur sort des bornes ; sinon chaîne vide.
 [[nodiscard]] std::string validateExportOptions(const ExportOptions& options);
-// UNE commande « Modifier les options de génération » ; refus si rien ne change.
-ServiceResult setExportOptions(DocumentSession& session, const ExportOptions& options);
+// UNE commande « Modifier les options de génération ». An export may accept unchanged valid
+// settings without creating an empty history step; interactive edits keep the historical refusal.
+ServiceResult setExportOptions(DocumentSession& session, const ExportOptions& options,
+                               bool allowUnchanged = false);
 
 [[nodiscard]] std::string lockKindLabel(LockKind kind);
 

@@ -99,7 +99,7 @@ public:
     // --- Exports ----------------------------------------------------------------------------
     Q_INVOKABLE [[nodiscard]] QVariantMap exportOptions() const;
     // Applique les réglages d'export au document (UNE commande annulable) ; "" ou refus lisible.
-    Q_INVOKABLE QString setExportOptions(const QVariantMap& values);
+    Q_INVOKABLE QString setExportOptions(const QVariantMap& values, bool allowUnchanged = false);
     Q_INVOKABLE [[nodiscard]] QString exportCheck(const QString& formatExtension) const;
     Q_INVOKABLE void exportMachine(const QUrl& url, const QVariantMap& options = {});
     Q_INVOKABLE void exportAgain();

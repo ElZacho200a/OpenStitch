@@ -65,9 +65,9 @@ a9055127,action,Exporter avec les derniers réglages,main_window.cpp,fait,file.e
 31b462db,action,Exporter en DXF,main_window.cpp,fait,file.export-dxf,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportDxf,FilePanel.qml menu Exporter
 09cc3851,action,"Exporter l'image (PNG, JPEG)",main_window_export_image.cpp,partiel,Exporter l'image,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportImage,FilePanel.qml menu Exporter
 00565df7,action,Exporter la liste des fils (CSV),main_window_threads.cpp,fait,file.export-threads,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportThreadList,FilePanel.qml menu Exporter
-692834e4,action,Exporter le contour de découpe,main_window_applique.cpp,absent,,ABSENT,,,
+692834e4,action,Exporter le contour de découpe,main_window_applique.cpp,absent,,TESTED,StudioExport2Test moteur et fichiers reels via controleur + QML reduceTrims - Debug 1/1 passe; Release et suite Studio complete a executer,ExportController,ExportDialog.qml
 4922cbdc,action,Exporter le rendu réaliste (PNG),main_window_production.cpp,partiel,Exporter l'image,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportImage,FilePanel.qml menu Exporter
-129c1178,action,Exporter un DST compensé du décalage,main_window_analysis.cpp,absent,,ABSENT,,,
+129c1178,action,Exporter un DST compensé du décalage,main_window_analysis.cpp,absent,,TESTED,StudioExport2Test moteur et fichiers reels via controleur + QML reduceTrims - Debug 1/1 passe; Release et suite Studio complete a executer,ExportController,ExportDialog.qml
 08ee1b58,action,Exporter une broderie machine,main_window.cpp,fait,Exporter pour la machine,TESTED,StudioFilesTest::machineExportImportRoundTrip,FileController::exportMachine,FilePanel.qml exportDialog
 d0850557,action,Fiche de production,main_window_production.cpp,fait,Fiche de production,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportProductionSheet,FilePanel.qml menu Exporter
 aba3cc8d,action,Fidélité à l'image,main_window_analysis.cpp,absent,,ABSENT,,,
@@ -263,7 +263,7 @@ d2b89407,bouton,▲ Monter,thread_panel.cpp,partiel,orderEarlier,FUNCTIONAL_UNTE
 325c9237,bouton,▲ Passer dessous,thread_panel.cpp,partiel,calqueDown,SERVICE_ONLY,,,
 e1ae3eac,bouton,▼ Descendre,thread_panel.cpp,partiel,orderLater,TESTED,StudioViewTest::mainQmlHostsEveryPanel,ThreadController::moveInOrder,ThreadPanel.qml
 e9918519,bouton,▼ Passer dessus,thread_panel.cpp,partiel,calqueUp,SERVICE_ONLY,,,
-f28889ba,case,Accepter aussi une surface déjà cousue du même fil,machine_export_dialog.cpp,absent,,ABSENT,,,
+f28889ba,case,Accepter aussi une surface déjà cousue du même fil,machine_export_dialog.cpp,absent,,TESTED,StudioExport2Test moteur et fichiers reels via controleur + QML reduceTrims - Debug 1/1 passe; Release et suite Studio complete a executer,ExportController,ExportDialog.qml
 6b06d4a3,case,Accrocher les nœuds aux sommets des autres objets au glisser,settings_dialog.cpp,absent,,TESTED,StudioToolsTest::snappingIsConfigurable,ToolController::snapped (sommets),ToolOptions snapVerticesCheck/snapRadiusSpin
 e7e778d4,case,Activer la segmentation par IA (SAM 2),ai_preferences_dialog.cpp,exclu,,ABSENT,,,
 370e284b,case,Activer le rendu réaliste des points,realistic_render_dialog.cpp,fait,view.render,TESTED,StudioRealisticTest::gpuPathBuildsOncePerRevisionAndMatchesCpuReference,GpuCanvas::realisticActive,canvas_renderer.cpp RealisticLayer (calque GPU des fils)
@@ -289,12 +289,12 @@ be52127f,case,Couleur du thème,grid_settings_dialog.cpp,fait,Couleur du thème,
 46fdf51f,case,Couper avant chaque changement de fil,generation_options_dialog.cpp,fait,Couper avant chaque changement de fil,SERVICE_ONLY,,,
 64455486,case,Croix complète,properties_panel.cpp,fait,Croix complète,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(cross_stitch.full_cross),ParamField.qml switch
 abec11cd,case,Crénage de la police,text_dialog.cpp,fait,Crénage de la police,SERVICE_ONLY,,,
-81b23d37,case,Dans un objet : relier la sous-couche au remplissage sans couper le fil,machine_export_dialog.cpp,absent,,ABSENT,,,
+81b23d37,case,Dans un objet : relier la sous-couche au remplissage sans couper le fil,machine_export_dialog.cpp,absent,,TESTED,StudioExport2Test moteur et fichiers reels via controleur + QML reduceTrims - Debug 1/1 passe; Release et suite Studio complete a executer,ExportController,ExportDialog.qml
 ec1b8e2e,case,"Densité excessive, au-delà de",main_window_density.cpp,absent,,ABSENT,,,
 3d3ea99b,case,Diviser chaque forme retenue par couleur,ai_segmentation_dialog.cpp,exclu,,ABSENT,,,
 ea65d971,case,Découper les points trop longs,generation_options_dialog.cpp,fait,Découper les points trop longs,SERVICE_ONLY,,,
 0e474c43,case,Dégradé de densité,properties_panel.cpp,fait,Dégradé de densité,UI_PARTIAL,StudioInspectorTest::listsAndPointsEditEndToEnd,InspectorController::clearParam,ParamField.qml count_density_gradient (lecture et effacement ; creation sur le canevas)
-11df031b,case,Entre les objets : relier sans couper le fil si le trajet sera recouvert,machine_export_dialog.cpp,absent,,FUNCTIONAL_UNTESTED,,FileController::setExportOptions(autoJoin),FilePanel.qml exportDialog
+11df031b,case,Entre les objets : relier sans couper le fil si le trajet sera recouvert,machine_export_dialog.cpp,absent,,TESTED,StudioExport2Test moteur et fichiers reels via controleur + QML reduceTrims - Debug 1/1 passe; Release et suite Studio complete a executer,ExportController,ExportDialog.qml
 14a6a35a,case,Entrée/sortie automatiques des objets,generation_options_dialog.cpp,absent,,ABSENT,,,
 43d3b43f,case,Espacement automatique selon la largeur,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam,ParamField.qml switch_auto_spacing
 3a552654,case,"Finitions automatiques (coupes, points d'arrêt, points courts)",generation_options_dialog.cpp,absent,,ABSENT,,,
@@ -310,20 +310,20 @@ df6f4ad1,case,Je possède ce fil,thread_panel.cpp,absent,,ABSENT,,,
 e47033c8,case,Liaisons cousues cachées,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(tatami.hidden_underpath),ParamField.qml switch
 1e94712b,case,"Ligatures (ff, fi, fl, ffi, ffl)",text_dialog.cpp,absent,,ABSENT,,,
 623246f4,case,Limiter la recherche du fil le plus proche à mes fils,thread_panel.cpp,absent,,ABSENT,,,
-41c3b1d2,case,Optimiser les trajets (réglage de ce fichier : moins de coupes et de sauts),machine_export_dialog.cpp,absent,,ABSENT,,,
+41c3b1d2,case,Optimiser les trajets (réglage de ce fichier : moins de coupes et de sauts),machine_export_dialog.cpp,absent,,TESTED,StudioExport2Test moteur et fichiers reels via controleur + QML reduceTrims - Debug 1/1 passe; Release et suite Studio complete a executer,ExportController,ExportDialog.qml
 246e3e21,case,Orientation paysage,placement_template_dialog.cpp,absent,,ABSENT,,,
 300900db,case,Parcourir tous les fils (au lieu des plus proches),main_window_gradient.cpp,absent,,ABSENT,,,
 737daa31,case,Pas automatique (adapté au zoom),grid_settings_dialog.cpp,absent,,ABSENT,,,
 b319c11f,case,Rangées décalées,properties_panel.cpp,absent,,UI_PARTIAL,,InspectorController::setParam(tatami.stagger entier 1..8),ParamField.qml slider (case booleenne motif_fill absente de param_spec)
 e42a170e,case,Remplissage qui suit le mouvement,main_window_create.cpp,absent,,ABSENT,,,
 c20a2392,case,Retirer les points cachés,properties_panel.cpp,absent,,ABSENT,,,
-ba15f6b4,case,"Réordonner aussi les zones d'une même couleur (avancé, modifie davantage l'ordre)",machine_export_dialog.cpp,absent,,ABSENT,,,
+ba15f6b4,case,"Réordonner aussi les zones d'une même couleur (avancé, modifie davantage l'ordre)",machine_export_dialog.cpp,absent,,TESTED,StudioExport2Test moteur et fichiers reels via controleur + QML reduceTrims - Debug 1/1 passe; Release et suite Studio complete a executer,ExportController,ExportDialog.qml
 8cb42af7,case,"Satin automatique (bandes étroites, petits disques)",main_window_create.cpp,absent,,ABSENT,,,
 29de353d,case,Sauts à vide sur le canevas,main_window_order_jumps.cpp,absent,,ABSENT,,,
 82cbed86,case,Sens horaire,properties_panel.cpp,fait,Sens horaire,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(spiral.clockwise),ParamField.qml switch
 58d7bdcb,case,Seulement le fond extérieur (garder le blanc enfermé dans le motif),main_window_create.cpp,absent,,ABSENT,,,
 ae657807,case,Seulement les vrais objets,main_window_create.cpp,absent,,ABSENT,,,
-6157f7db,case,Sous-couche : réordonner les passes pour réduire les sauts (invisible),machine_export_dialog.cpp,absent,,ABSENT,,,
+6157f7db,case,Sous-couche : réordonner les passes pour réduire les sauts (invisible),machine_export_dialog.cpp,absent,,TESTED,StudioExport2Test moteur et fichiers reels via controleur + QML reduceTrims - Debug 1/1 passe; Release et suite Studio complete a executer,ExportController,ExportDialog.qml
 a67720e9,case,Sous-couche centrale,main_window_satin_auto.cpp,fait,Sous-couche centrale,SERVICE_ONLY,,,
 9183cbb5,case,Sous-couche de bord,properties_panel.cpp,fait,Sous-couche de bord,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(satin.underlay_edge),ParamField.qml switch
 c791d168,case,Sous-couche de contour,properties_panel.cpp,fait,Sous-couche de contour,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(tatami.underlay_edge),ParamField.qml switch
@@ -334,9 +334,9 @@ d664e9fb,case,Sous-couche zigzag,properties_panel.cpp,absent,,TESTED,StudioInspe
 f0eeb068,case,Texte en dessous (sommets vers le centre),text_advanced_panel.cpp,fait,Texte en dessous (sommets vers le centre),SERVICE_ONLY,,,
 e83895af,case,Traits sombres cousus par-dessus,main_window_create.cpp,absent,,ABSENT,,,
 31e80c01,case,"Trop de coupes, au-delà de",main_window_density.cpp,absent,,ABSENT,,,
-7dadce88,case,Écrire aussi le fichier de couleurs à côté,machine_export_dialog.cpp,absent,,ABSENT,,,
-19e2c522,case,Écrire les changements de couleur,machine_export_dialog.cpp,absent,,ABSENT,,,
-ab829014,case,Écrire les coupes de fil (réglage de ce fichier),machine_export_dialog.cpp,absent,,FUNCTIONAL_UNTESTED,StudioFilesTest::exportOptionsAreOneUndoStepAndRefusedWhenInvalid,FileController::setExportOptions,FilePanel.qml exportDialog
+7dadce88,case,Écrire aussi le fichier de couleurs à côté,machine_export_dialog.cpp,absent,,TESTED,StudioExport2Test moteur et fichiers reels via controleur + QML reduceTrims - Debug 1/1 passe; Release et suite Studio complete a executer,ExportController,ExportDialog.qml
+19e2c522,case,Écrire les changements de couleur,machine_export_dialog.cpp,absent,,TESTED,StudioExport2Test moteur et fichiers reels via controleur + QML reduceTrims - Debug 1/1 passe; Release et suite Studio complete a executer,ExportController,ExportDialog.qml
+ab829014,case,Écrire les coupes de fil (réglage de ce fichier),machine_export_dialog.cpp,absent,,TESTED,StudioExport2Test moteur et fichiers reels via controleur + QML reduceTrims - Debug 1/1 passe; Release et suite Studio complete a executer,ExportController,ExportDialog.qml
 41976bc1,dialogue,Ajouter un fil personnel,thread_panel.cpp,absent,,ABSENT,,,
 d06da014,dialogue,Aperçu avant impression - fiche de production,production_dialog.cpp,partiel,action_file_production_sheet,ABSENT,,,
 308f4162,dialogue,Cadre de broderie,main_window_files.cpp,fait,Cadre de broderie,TESTED,StudioShellTest::actionCatalogIsFullyReachable,ActionController::run(canvas.set),ActionPalette.qml
@@ -349,7 +349,7 @@ b2820172,dialogue,Compagnon IA,companion_dock.cpp,fait,Compagnon IA,TESTED,Studi
 dcaa0480,dialogue,Contour autour de la sélection,main_window_vector_edit.cpp,absent,,ABSENT,,,
 60c07a7c,dialogue,Données de débogage — objet %1,main_window_debug.cpp,absent,,ABSENT,,,
 c7e19585,dialogue,Exporter l'image,export_image_dialog.cpp,fait,Exporter l'image,UI_PARTIAL,,FileController::exportImage,résolution fixe 6 px/mm sans dialogue d'options
-775bc85b,dialogue,Exporter une broderie machine,machine_export_dialog.cpp,fait,Exporter pour la machine,FUNCTIONAL_UNTESTED,StudioFilesTest::exportOptionsAreOneUndoStepAndRefusedWhenInvalid,FileController::exportMachine/setExportOptions,FilePanel.qml exportDialog
+775bc85b,dialogue,Exporter une broderie machine,machine_export_dialog.cpp,fait,Exporter pour la machine,TESTED,StudioExport2Test moteur et fichiers reels via controleur + QML reduceTrims - Debug 1/1 passe; Release et suite Studio complete a executer,ExportController,ExportDialog.qml
 5aae42a1,dialogue,Fiche de production,production_dialog.cpp,fait,Fiche de production,UI_PARTIAL,,FileController::exportProductionSheet,pas d'aperçu ni d'impression
 004e668f,dialogue,Gabarit de placement 1:1,placement_template_dialog.cpp,absent,,UI_PARTIAL,,FileController::exportPlacementTemplate,papier A4 fixe côté QML
 de2f043a,dialogue,Gestes souris et clavier,help_dialogs.cpp,partiel,Raccourcis et commandes,TESTED,StudioCompanionTest::companionPanelAndDialogsOpenFromQml,HelpController::shortcuts,ShortcutsSheet.qml shortcutsSheet

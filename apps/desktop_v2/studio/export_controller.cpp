@@ -106,8 +106,8 @@ void ExportController::exportMachine(const QUrl& url, const QVariantMap& values)
     request.machine.design_name = designName.empty() ? "OPENSTITCH" : designName.substr(0, 16);
     // Les paramètres de génération documentaires sont appliqués par le service historique,
     // en une seule commande ; les options propres au fichier ne modifient pas l'OSP.
-    const auto refusal = files_.setExportOptions(values);
-    if (!refusal.isEmpty() && !refusal.startsWith(QLatin1String("Ces options sont déjà"))) {
+    const auto refusal = files_.setExportOptions(values, true);
+    if (!refusal.isEmpty()) {
         say(false, refusal);
         return;
     }

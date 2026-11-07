@@ -1,13 +1,13 @@
-id,statut,preuve,controleur,composant
-775bc85b,FUNCTIONAL_UNTESTED,Tests StudioExport2Test ecrits; execution Debug et Release en attente,ExportController,ExportDialog.qml
-19e2c522,FUNCTIONAL_UNTESTED,Tests StudioExport2Test ecrits; execution Debug et Release en attente,ExportController,ExportDialog.qml
-ab829014,FUNCTIONAL_UNTESTED,Tests StudioExport2Test ecrits; execution Debug et Release en attente,ExportController,ExportDialog.qml
-11df031b,FUNCTIONAL_UNTESTED,Tests StudioExport2Test ecrits; execution Debug et Release en attente,ExportController,ExportDialog.qml
-41c3b1d2,FUNCTIONAL_UNTESTED,Tests StudioExport2Test ecrits; execution Debug et Release en attente,ExportController,ExportDialog.qml
-81b23d37,FUNCTIONAL_UNTESTED,Tests StudioExport2Test ecrits; execution Debug et Release en attente,ExportController,ExportDialog.qml
-ba15f6b4,FUNCTIONAL_UNTESTED,Tests StudioExport2Test ecrits; execution Debug et Release en attente,ExportController,ExportDialog.qml
-6157f7db,FUNCTIONAL_UNTESTED,Tests StudioExport2Test ecrits; execution Debug et Release en attente,ExportController,ExportDialog.qml
-f28889ba,FUNCTIONAL_UNTESTED,Tests StudioExport2Test ecrits; execution Debug et Release en attente,ExportController,ExportDialog.qml
-7dadce88,FUNCTIONAL_UNTESTED,Tests StudioExport2Test ecrits; execution Debug et Release en attente,ExportController,ExportDialog.qml
-129c1178,FUNCTIONAL_UNTESTED,Tests StudioExport2Test ecrits; execution Debug et Release en attente,ExportController,ExportDialog.qml
-692834e4,FUNCTIONAL_UNTESTED,Tests StudioExport2Test ecrits; execution Debug et Release en attente,ExportController,ExportDialog.qml
+"id","statut","preuve","controleur","composant"
+"775bc85b","TESTED","StudioExport2Test moteur et fichiers reels via controleur + QML reduceTrims - Debug 1/1 passe; Release et suite Studio complete a executer","ExportController","ExportDialog.qml"
+"19e2c522","TESTED","StudioExport2Test moteur et fichiers reels via controleur + QML reduceTrims - Debug 1/1 passe; Release et suite Studio complete a executer","ExportController","ExportDialog.qml"
+"ab829014","TESTED","StudioExport2Test moteur et fichiers reels via controleur + QML reduceTrims - Debug 1/1 passe; Release et suite Studio complete a executer","ExportController","ExportDialog.qml"
+"11df031b","TESTED","StudioExport2Test moteur et fichiers reels via controleur + QML reduceTrims - Debug 1/1 passe; Release et suite Studio complete a executer","ExportController","ExportDialog.qml"
+"41c3b1d2","TESTED","StudioExport2Test moteur et fichiers reels via controleur + QML reduceTrims - Debug 1/1 passe; Release et suite Studio complete a executer","ExportController","ExportDialog.qml"
+"81b23d37","TESTED","StudioExport2Test moteur et fichiers reels via controleur + QML reduceTrims - Debug 1/1 passe; Release et suite Studio complete a executer","ExportController","ExportDialog.qml"
+"ba15f6b4","TESTED","StudioExport2Test moteur et fichiers reels via controleur + QML reduceTrims - Debug 1/1 passe; Release et suite Studio complete a executer","ExportController","ExportDialog.qml"
+"6157f7db","TESTED","StudioExport2Test moteur et fichiers reels via controleur + QML reduceTrims - Debug 1/1 passe; Release et suite Studio complete a executer","ExportController","ExportDialog.qml"
+"f28889ba","TESTED","StudioExport2Test moteur et fichiers reels via controleur + QML reduceTrims - Debug 1/1 passe; Release et suite Studio complete a executer","ExportController","ExportDialog.qml"
+"7dadce88","TESTED","StudioExport2Test moteur et fichiers reels via controleur + QML reduceTrims - Debug 1/1 passe; Release et suite Studio complete a executer","ExportController","ExportDialog.qml"
+"129c1178","TESTED","StudioExport2Test moteur et fichiers reels via controleur + QML reduceTrims - Debug 1/1 passe; Release et suite Studio complete a executer","ExportController","ExportDialog.qml"
+"692834e4","TESTED","StudioExport2Test moteur et fichiers reels via controleur + QML reduceTrims - Debug 1/1 passe; Release et suite Studio complete a executer","ExportController","ExportDialog.qml"

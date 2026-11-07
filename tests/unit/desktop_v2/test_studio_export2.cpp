@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <QFile>
 #include <QGuiApplication>
+#include <QJSValue>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickItem>
@@ -8,6 +9,7 @@
 #include <QQuickWindow>
 #include <QTemporaryDir>
 #include <QtTest/QtTest>
+#include <algorithm>
 
 #include "action_controller.hpp"
 #include "edit_controller.hpp"
@@ -15,6 +17,7 @@
 #include "export_settings.hpp"
 #include "gpu_canvas.hpp"
 #include "openstitch/formats/dst.hpp"
+#include "openstitch/formats/format_registry.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/project_ops/applique_cut.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
@@ -58,6 +61,11 @@ QByteArray read(const QString& path) {
 std::filesystem::path pathOf(const QString& path) {
     return std::filesystem::path(path.toStdWString());
 }
+QVariantMap qmlValues(QObject* object) {
+    const auto value = object->property("values");
+    return value.canConvert<QJSValue>() ? value.value<QJSValue>().toVariant().toMap()
+                                        : value.toMap();
+}
 struct Rig {
     DocumentSession session;
     StudioController studio{session};
@@ -65,8 +73,12 @@ struct Rig {
     EditController editor{studio};
     FileController files{studio, &actions};
     ExportController exports{studio, files};
+    bool setProject(document::Project project) {
+        session.replaceProject(std::move(project), true);
+        return QTest::qWaitFor([this] { return !studio.busy(); }, 30'000);
+    }
     bool idle() {
-        return QTest::qWaitFor([this] { return !exports.busy(); }, 30'000);
+        return QTest::qWaitFor([this] { return !exports.busy() && !studio.busy(); }, 30'000);
     }
 };
 } // namespace
@@ -82,6 +94,7 @@ private slots:
                                                      "context");
     }
     void codecsAndRouteOptionsMatchProductionBytes();
+    void routeOptionsUseGeneratedUnderlay();
     void compensatedDstMatchesSolverAndDocumentIsUnchanged();
     void incompatibleExportPreservesExistingFile();
     void generationOptionsUndoAndPersist();
@@ -93,7 +106,9 @@ void StudioExport2Test::codecsAndRouteOptionsMatchProductionBytes() {
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
     Rig rig;
-    rig.session.replaceProject(fixture(true), true); // vrais arrêts d'appliqué, fils distincts
+    auto project = fixture(true); // vrais arrêts d'appliqué, fils distincts
+    project.finishing.enabled = true;
+    QVERIFY(rig.setProject(std::move(project)));
     const auto revision = rig.session.revision();
     for (const auto* format : {"dst", "pes", "jef", "exp", "vp3"}) {
         for (int mode = 0; mode < 3; ++mode) {
@@ -148,10 +163,51 @@ void StudioExport2Test::codecsAndRouteOptionsMatchProductionBytes() {
     QVERIFY(rig.exports.lastOk());
 }
 
+void StudioExport2Test::routeOptionsUseGeneratedUnderlay() {
+    QTemporaryDir dir;
+    Rig rig;
+    auto project = fixture();
+    project.finishing.enabled = true;
+    for (auto& object : project.embroidery_objects) {
+        object.rgb = {200, 30, 30};
+        auto& params = std::get<document::TatamiParams>(object.params);
+        params.underlay_edge = true;
+        params.underlay_parallel = true;
+    }
+    QVERIFY(rig.setProject(std::move(project)));
+    const auto plain = project_io::export_sequence(rig.session.project());
+    QVERIFY(plain.has_value());
+    project_io::ExportOptimizations routes;
+    routes.reduce_trims = true;
+    routes.hidden_travel.enabled = true;
+    routes.hidden_travel.reorder_underlay = true;
+    routes.hidden_travel.max_bridge_length = Micrometers{20'000};
+    const auto optimized = project_io::export_sequence(rig.session.project(), routes);
+    QVERIFY(optimized.has_value());
+    QVERIFY(std::any_of(
+        optimized->sequence.commands.begin(), optimized->sequence.commands.end(),
+        [](const auto& command) { return command.pass == stitch::StitchPass::Underlay; }));
+    auto values = rig.exports.options();
+    values["reduceTrims"] = true;
+    rig.exports.exportMachine(QUrl::fromLocalFile(dir.filePath("underlay.dst")), values);
+    QVERIFY(rig.idle());
+    QVERIFY2(rig.exports.lastOk(), qPrintable(rig.exports.message()));
+    formats::MachineExportOptions machine;
+    machine.design_name = "UNDERLAY";
+    const auto* dstFormat = formats::find_format_for_extension("dst");
+    QVERIFY(dstFormat && dstFormat->encode_ex);
+    const auto expected = dstFormat->encode_ex(optimized->sequence, machine);
+    QVERIFY(expected.has_value());
+    QCOMPARE(read(dir.filePath("underlay.dst")),
+             QByteArray(reinterpret_cast<const char*>(expected->data()),
+                        static_cast<qsizetype>(expected->size())));
+    QVERIFY(!rig.session.canUndo());
+}
+
 void StudioExport2Test::compensatedDstMatchesSolverAndDocumentIsUnchanged() {
     QTemporaryDir dir;
     Rig rig;
-    rig.session.replaceProject(fixture(), true);
+    QVERIFY(rig.setProject(fixture()));
     const auto before = stitch_generation::effective_sequence(rig.session.project());
     QVERIFY(before.has_value());
     auto values = rig.exports.options();
@@ -166,7 +222,13 @@ void StudioExport2Test::compensatedDstMatchesSolverAndDocumentIsUnchanged() {
     options.strength = 0.75;
     const auto expected = project_ops::predict_color_registration(rig.session.project(), options);
     QVERIFY(expected.has_value());
-    const auto& bytes = expected->compensated_dst;
+    formats::MachineExportOptions machine;
+    machine.design_name = "COMPENSATED";
+    const auto* dstFormat = formats::find_format_for_extension("dst");
+    QVERIFY(dstFormat && dstFormat->encode_ex);
+    const auto encoded = dstFormat->encode_ex(expected->compensated, machine);
+    QVERIFY(encoded);
+    const auto& bytes = *encoded;
     QCOMPARE(read(file), QByteArray(reinterpret_cast<const char*>(bytes.data()),
                                     static_cast<qsizetype>(bytes.size())));
     const auto after = stitch_generation::effective_sequence(rig.session.project());
@@ -186,7 +248,7 @@ void StudioExport2Test::incompatibleExportPreservesExistingFile() {
     auto p = fixture();
     p.canvas.width = Micrometers{2'000};
     p.canvas.height = Micrometers{2'000};
-    rig.session.replaceProject(std::move(p), true);
+    QVERIFY(rig.setProject(std::move(p)));
     rig.exports.exportMachine(QUrl::fromLocalFile(file));
     QVERIFY(rig.idle());
     QVERIFY(!rig.exports.lastOk());
@@ -201,7 +263,7 @@ void StudioExport2Test::incompatibleExportPreservesExistingFile() {
     for (const auto& choice : choices) {
         machine.machine_id = choice.id;
         if (!checkExport(machine, "vp3").formatAccepted) {
-            rig.session.replaceProject(machine, true);
+            QVERIFY(rig.setProject(machine));
             rig.exports.exportMachine(QUrl::fromLocalFile(dir.filePath("refused.vp3")));
             QVERIFY(rig.idle());
             QVERIFY(!rig.exports.lastOk());
@@ -218,7 +280,7 @@ void StudioExport2Test::incompatibleExportPreservesExistingFile() {
 void StudioExport2Test::generationOptionsUndoAndPersist() {
     QTemporaryDir dir;
     Rig rig;
-    rig.session.replaceProject(fixture(), true);
+    QVERIFY(rig.setProject(fixture()));
     const auto before = rig.session.project().finishing;
     const auto sequence = stitch_generation::effective_sequence(rig.session.project());
     QVERIFY(sequence.has_value());
@@ -249,7 +311,7 @@ void StudioExport2Test::generationOptionsUndoAndPersist() {
 void StudioExport2Test::appliqueContoursMatchProduction() {
     QTemporaryDir dir;
     Rig rig;
-    rig.session.replaceProject(fixture(true), true);
+    QVERIFY(rig.setProject(fixture(true)));
     for (const auto* format : {"svg", "dxf"}) {
         const auto file = dir.filePath(QStringLiteral("cut.%1").arg(format));
         rig.exports.exportAppliqueCut(QUrl::fromLocalFile(file));
@@ -266,7 +328,7 @@ void StudioExport2Test::appliqueContoursMatchProduction() {
 
 void StudioExport2Test::realQmlOpensAndChangesExportOptions() {
     Rig rig;
-    rig.session.replaceProject(fixture(), true);
+    QVERIFY(rig.setProject(fixture()));
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("studio", &rig.studio);
     engine.rootContext()->setContextProperty("actions", &rig.actions);
@@ -277,18 +339,20 @@ void StudioExport2Test::realQmlOpensAndChangesExportOptions() {
     QVERIFY(!engine.rootObjects().isEmpty());
     auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().front());
     QVERIFY(window);
+    QVERIFY(QTest::qWaitForWindowExposed(window));
     rig.exports.openDialog();
     auto* dialog = window->findChild<QObject*>("advancedExportDialog");
     QVERIFY(dialog);
     QTRY_VERIFY(dialog->property("visible").toBool());
+    QTRY_VERIFY(dialog->property("opened").toBool());
     auto* check = window->findChild<QQuickItem*>("exportReduceTrims");
     QVERIFY(check);
+    QTRY_VERIFY(check->width() > 0 && check->height() > 0);
     const auto center = check->mapToScene(QPointF(check->width() / 2, check->height() / 2));
     QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, center.toPoint());
-    QTRY_VERIFY(dialog->property("values").toMap().value("reduceTrims").toBool());
+    QTRY_VERIFY(qmlValues(dialog).value("reduceTrims").toBool());
     QTemporaryDir dir;
-    rig.exports.exportMachine(QUrl::fromLocalFile(dir.filePath("qml.dst")),
-                              dialog->property("values").toMap());
+    rig.exports.exportMachine(QUrl::fromLocalFile(dir.filePath("qml.dst")), qmlValues(dialog));
     QVERIFY(rig.idle());
     QVERIFY2(rig.exports.lastOk(), qPrintable(rig.exports.message()));
     QVERIFY(!read(dir.filePath("qml.dst")).isEmpty());
