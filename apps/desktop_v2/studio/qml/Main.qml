@@ -101,7 +101,17 @@ Window {
     Shortcut { sequence: "Escape"; onActivated: { editor.eyedropper = false; if (!canvas.cancelGesture()) studio.clearSelection() } }
     Shortcut { sequence: "Ctrl+A"; onActivated: editor.selectAll() }
     Shortcut { sequence: "Ctrl+I"; onActivated: editor.invertSelection() }
-    Shortcut { sequence: "Delete"; enabled: studio.hasSelection && !(toolController && toolController.selectedNodeCount > 0); onActivated: editor.deleteSelection() }
+    // One focus-independent handler: selected path nodes first, otherwise the selected objects.
+    Shortcut {
+        sequence: "Delete"
+        enabled: studio.hasSelection || (toolController !== null && toolController.selectedNodeCount > 0)
+        onActivated: {
+            if (toolController !== null && toolController.selectedNodeCount > 0)
+                toolController.deleteSelectedNodes()
+            else
+                editor.deleteSelection()
+        }
+    }
     Shortcut { sequence: "Ctrl+D"; enabled: studio.hasSelection; onActivated: editor.duplicate(5) }
     Shortcut { sequence: "Ctrl+G"; enabled: editor.selectedCount > 1; onActivated: editor.group("") }
     Shortcut { sequence: "Ctrl+Shift+G"; enabled: studio.hasSelection; onActivated: editor.ungroup() }
