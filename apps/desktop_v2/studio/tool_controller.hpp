@@ -15,11 +15,13 @@
 #include <optional>
 #include <vector>
 
+#include "bucket_tool.hpp"
 #include "node_edit.hpp"
 #include "pen_shape.hpp"
 #include "studio_camera.hpp"
 #include "studio_controller.hpp"
 #include "tool_registry.hpp"
+#include "warp_tool.hpp"
 
 namespace openstitch::desktop_v2::studio {
 
@@ -46,6 +48,7 @@ class ToolController : public QObject {
     Q_PROPERTY(bool snapVertices READ snapVertices WRITE setSnapVertices NOTIFY optionsChanged)
     Q_PROPERTY(int snapRadiusPx READ snapRadiusPx WRITE setSnapRadiusPx NOTIFY optionsChanged)
     Q_PROPERTY(int selectedNodeCount READ selectedNodeCount NOTIFY overlayChanged)
+    Q_PROPERTY(QObject* warp READ warp CONSTANT)
 
 public:
     explicit ToolController(StudioController& studio, QObject* parent = nullptr);
@@ -73,6 +76,7 @@ public:
     [[nodiscard]] int snapRadiusPx() const { return snapRadiusPx_; }
     void setSnapRadiusPx(int value);
     [[nodiscard]] int selectedNodeCount() const { return static_cast<int>(nodeSel_.size()); }
+    QObject* warp() { return &warp_; }
 
     // --- Événements du canevas (mm scène, échelle en px/mm)
     // ---------------------------------------
@@ -124,6 +128,8 @@ private:
     [[nodiscard]] static ScenePoint toScene(PointMm p) { return {p.x, -p.y}; }
 
     StudioController& studio_;
+    WarpTool warp_;
+    BucketTool bucket_;
     ToolRegistry registry_;
     QString tool_{QStringLiteral("select")};
     QString hint_;

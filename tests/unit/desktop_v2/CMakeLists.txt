@@ -12,6 +12,8 @@ add_executable(test_desktop_v2_core
     test_scrub.cpp
     test_radial_menu.cpp
     test_shape_batch.cpp
+    test_warp_brush.cpp
+    test_paint_bucket.cpp
     test_transform_batch.cpp
     test_edit_batch.cpp
     test_diagnostics.cpp
@@ -83,6 +85,8 @@ if(TARGET openstitch::desktop_v2_ui)
             ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
     endif()
 endif()
+
+
 
 # Qt Quick integration uses the real QML shell and the explicit CPU fallback in CI.
 if(TARGET openstitch::studio_ui)
@@ -228,4 +232,19 @@ if(TARGET openstitch::studio_ui)
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_companion_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
             ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
     endif()
+endif()
+
+# CX03: real mouse gestures, immutable worker previews, OSP and DST checks.
+if(TARGET openstitch::studio_ui AND Qt6Test_FOUND)
+    add_executable(test_desktop_v2_studio_warp_bucket test_studio_warp_bucket.cpp)
+    target_link_libraries(test_desktop_v2_studio_warp_bucket PRIVATE openstitch::studio_ui Qt6::Test openstitch::warnings)
+    file(GLOB cx03_qml "${PROJECT_SOURCE_DIR}/apps/desktop_v2/studio/qml/*.qml")
+    qt_add_resources(test_desktop_v2_studio_warp_bucket studio_warp_bucket_qml PREFIX "/studio"
+        BASE "${PROJECT_SOURCE_DIR}/apps/desktop_v2/studio" FILES ${cx03_qml}
+        "${PROJECT_SOURCE_DIR}/apps/desktop_v2/studio/qml/qmldir")
+    add_test(NAME test_desktop_v2_studio_warp_bucket COMMAND test_desktop_v2_studio_warp_bucket -o -,txt)
+    get_filename_component(cx03_imports "${Qt6_DIR}/../../../qml" ABSOLUTE)
+    set_tests_properties(test_desktop_v2_studio_warp_bucket PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${cx03_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 endif()

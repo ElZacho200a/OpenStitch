@@ -7,6 +7,7 @@
 #include <numbers>
 
 #include "edit_batch.hpp"
+#include "openstitch/geometry/polyline.hpp"
 #include "pen_shape.hpp"
 #include "shape_batch.hpp"
 
@@ -26,6 +27,7 @@ constexpr ToolSpec kSpecs[] = {
     {"draw.polygon", "⬠", "Formes"},   {"draw.polygon-regular", "⬡", "Formes"},
     {"draw.bezier", "✒", "Tracés"},    {"draw.freeform", "✎", "Tracés"},
     {"node.edit", "◇", "Édition"},     {"knife", "✂", "Édition"},
+    {"warp-brush", "≈", "Édition"},    {"bucket", "▣", "Édition"},
 };
 
 constexpr double kTwoPi = 2.0 * std::numbers::pi;
@@ -50,7 +52,12 @@ std::vector<PointMm> sampleBezier(PointMm p0, PointMm c1, PointMm c2, PointMm p1
 } // namespace
 
 ToolController::ToolController(StudioController& studio, QObject* parent)
-    : QObject(parent), studio_(studio), registry_(ToolRegistry::builtin()) {
+    : QObject(parent), studio_(studio), warp_(studio), bucket_(studio),
+      registry_(ToolRegistry::builtin()) {
+    connect(&warp_, &WarpTool::changed, this, &ToolController::rebuild);
+    connect(&bucket_, &BucketTool::changed, this, &ToolController::rebuild);
+    connect(&warp_, &WarpTool::message, this, &ToolController::inform);
+    connect(&bucket_, &BucketTool::message, this, &ToolController::inform);
     connect(&studio_, &StudioController::selectionChanged, this, [this] {
         if (tool_ == QStringLiteral("node.edit")) {
             refreshNodeView();
@@ -87,7 +94,8 @@ bool ToolController::capturesMouse() const {
 }
 
 bool ToolController::busy() const {
-    return drag_ != Drag::None || !polyPoints_.empty() || !penNodes_.empty();
+    return warp_.active() || bucket_.active() || drag_ != Drag::None || !polyPoints_.empty() ||
+           !penNodes_.empty();
 }
 
 void ToolController::setActiveTool(const QString& id) {
@@ -112,7 +120,14 @@ void ToolController::setActiveTool(const QString& id) {
 
 void ToolController::setHint() {
     QString text;
-    if (tool_ == QStringLiteral("draw.rectangle") || tool_ == QStringLiteral("draw.ellipse")) {
+    if (tool_ == QStringLiteral("warp-brush")) {
+        text = QStringLiteral("Sélectionnez UNE forme ; glisser : pousser, Maj : lisser, [ ] : "
+                              "rayon. Échap : annuler.");
+    } else if (tool_ == QStringLiteral("bucket")) {
+        text = QStringLiteral(
+            "Appuyer dans un vide fermé : aperçu ; relâcher : créer une forme. Échap : annuler.");
+    } else if (tool_ == QStringLiteral("draw.rectangle") ||
+               tool_ == QStringLiteral("draw.ellipse")) {
         text = QStringLiteral(
             "Glisser pour tracer. Maj : carré / cercle. Alt : depuis le centre. Échap : annuler.");
     } else if (tool_ == QStringLiteral("draw.polygon")) {
@@ -236,6 +251,8 @@ PointMm ToolController::snapped(PointMm p, bool allowGrid) const {
 }
 
 void ToolController::reset() {
+    warp_.cancel();
+    bucket_.cancel();
     drag_ = Drag::None;
     stroke_.clear();
     penNodes_.clear();
@@ -373,6 +390,10 @@ bool ToolController::press(double x, double y, double pxPerMm, Qt::KeyboardModif
     }
     mods_ = mods;
     const PointMm raw = toModel(x, y);
+    if (tool_ == QStringLiteral("warp-brush"))
+        return warp_.begin(raw);
+    if (tool_ == QStringLiteral("bucket"))
+        return bucket_.begin(raw);
     const bool nodeTool = tool_ == QStringLiteral("node.edit");
     const PointMm p = nodeTool ? raw : snapped(raw);
     current_ = p;
@@ -469,6 +490,12 @@ void ToolController::move(double x, double y, Qt::KeyboardModifiers mods) {
     if (!capturesMouse()) {
         return;
     }
+    if (tool_ == QStringLiteral("warp-brush")) {
+        warp_.move(toModel(x, y), mods.testFlag(Qt::ShiftModifier));
+        return;
+    }
+    if (tool_ == QStringLiteral("bucket"))
+        return;
     const bool nodeTool = tool_ == QStringLiteral("node.edit");
     const PointMm raw = toModel(x, y);
     current_ = nodeTool ? raw : snapped(raw);
@@ -506,6 +533,14 @@ void ToolController::move(double x, double y, Qt::KeyboardModifiers mods) {
 }
 
 void ToolController::release(double x, double y, Qt::KeyboardModifiers mods) {
+    if (tool_ == QStringLiteral("warp-brush")) {
+        warp_.end(toModel(x, y), mods.testFlag(Qt::ShiftModifier));
+        return;
+    }
+    if (tool_ == QStringLiteral("bucket")) {
+        bucket_.end();
+        return;
+    }
     if (!capturesMouse() || drag_ == Drag::None) {
         if (drag_ == Drag::None && penDragging_) {
             penDragging_ = false;
@@ -681,6 +716,11 @@ bool ToolController::keyPress(int key) {
     if (key == Qt::Key_Escape) {
         return cancel();
     }
+    if (tool_ == QStringLiteral("warp-brush") &&
+        (key == Qt::Key_BracketLeft || key == Qt::Key_BracketRight)) {
+        warp_.setRadiusMm(warp_.radiusMm() * (key == Qt::Key_BracketLeft ? 0.8 : 1.25));
+        return true;
+    }
     if (key == Qt::Key_Return || key == Qt::Key_Enter) {
         return finish();
     }
@@ -757,6 +797,20 @@ QString ToolController::cursorName() const {
 
 void ToolController::rebuild() {
     overlay_.clear();
+    const auto& extra = tool_ == QStringLiteral("warp-brush") ? warp_.preview() : bucket_.preview();
+    for (const auto& set : extra) {
+        auto addPath = [this](const geometry::Path& path) {
+            ToolOverlayItem item;
+            item.kind = path.closed ? ToolOverlayItem::Kind::Ghost : ToolOverlayItem::Kind::Line;
+            for (const auto& point : geometry::flatten(path, Micrometers{100}).points)
+                item.points.push_back({point.x.value / 1000.0, -point.y.value / 1000.0});
+            if (!item.points.empty())
+                overlay_.push_back(std::move(item));
+        };
+        addPath(set.outer);
+        for (const auto& hole : set.holes)
+            addPath(hole);
+    }
     auto line = [&](ToolOverlayItem::Kind kind, const std::vector<PointMm>& pts) {
         ToolOverlayItem item;
         item.kind = kind;

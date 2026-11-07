@@ -20,6 +20,8 @@ add_library(openstitch_desktop_v2_core STATIC
     core/scrub.cpp
     core/radial_menu.cpp
     core/shape_batch.cpp
+    core/warp_brush.cpp
+    core/paint_bucket.cpp
     core/transform_batch.cpp
     core/edit_batch.cpp
     core/diagnostics_service.cpp

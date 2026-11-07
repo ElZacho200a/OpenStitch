@@ -57,6 +57,29 @@ ColumnLayout {
     }
 
     SectionLabel { text: qsTr("ACCROCHAGE") }
+    ColumnLayout {
+        visible: panel.toolCtl && panel.toolCtl.activeTool === "warp-brush"
+        Layout.fillWidth: true
+        Text { text: qsTr("Rayon du pinceau (mm)"); color: Theme.muted }
+        Controls.SpinBox {
+            objectName: "warpRadius"
+            from: 5; to: 600; stepSize: 5
+            value: panel.toolCtl ? Math.round(panel.toolCtl.warp.radiusMm * 10) : 50
+            textFromValue: function(value, locale) { return Number(value / 10).toLocaleString(locale, 'f', 1) }
+            valueFromText: function(text, locale) { return Math.round(Number.fromLocaleString(locale, text) * 10) }
+            editable: true
+            Accessible.name: qsTr("Rayon du pinceau en millimètres")
+            onValueModified: panel.toolCtl.warp.radiusMm = value / 10
+        }
+        Text { text: qsTr("Intensité (%)"); color: Theme.muted }
+        Controls.SpinBox {
+            objectName: "warpStrength"
+            from: 5; to: 100; value: panel.toolCtl ? Math.round(panel.toolCtl.warp.strength * 100) : 60
+            editable: true
+            Accessible.name: qsTr("Intensité du pinceau en pourcentage")
+            onValueModified: panel.toolCtl.warp.strength = value / 100
+        }
+    }
     Flow {
         Layout.fillWidth: true
         spacing: 6

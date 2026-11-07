@@ -23,6 +23,8 @@ add_library(openstitch_studio_ui STATIC
     fade_controller.cpp fade_controller.hpp
     point_edit_controller.cpp point_edit_controller.hpp
     tool_controller.cpp tool_controller.hpp
+    warp_tool.cpp warp_tool.hpp
+    bucket_tool.cpp bucket_tool.hpp
     vector_controller.cpp vector_controller.hpp
     companion_controller.cpp companion_controller.hpp
     preferences_controller.cpp preferences_controller.hpp
