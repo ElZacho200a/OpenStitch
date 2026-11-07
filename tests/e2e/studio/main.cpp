@@ -2,6 +2,8 @@
 #include "journey_harness.hpp"
 
 #include <QQuickStyle>
+#include <QSettings>
+#include <QStandardPaths>
 #include <cstdlib>
 
 using namespace openstitch::desktop_v2::studio;
@@ -11,6 +13,11 @@ int main(int argc, char** argv) {
     QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
     QGuiApplication app(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("OpenStitch E2E"));
+    QCoreApplication::setOrganizationName(QStringLiteral("OpenStitchE2ETests"));
+    QStandardPaths::setTestModeEnabled(true);
+    QTemporaryDir settingsDirectory;
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDirectory.path());
     QQuickStyle::setStyle(QStringLiteral("Basic"));
     qmlRegisterType<GpuCanvas>("OpenStitch.Studio", 1, 0, "GpuCanvas");
     qmlRegisterUncreatableType<StudioController>("OpenStitch.Studio", 1, 0, "StudioController",

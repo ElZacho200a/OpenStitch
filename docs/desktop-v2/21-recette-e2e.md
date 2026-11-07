@@ -2,7 +2,8 @@
 
 ## CX13 — parcours 1 à 12
 
-Base de préparation : `origin/claude/studio-lot1-parcours-edition`, commit `15942b0`.
+Base de préparation : `origin/claude/studio-lot1-parcours-edition`, initialement `15942b0`,
+puis reprise sur `06780ae` qui ajoute le compagnon H et les corrections de focus.
 Cette recette utilise la vraie `Main.qml`, ses contrôleurs de production et le vrai moteur.
 Les actions testées entrent par des événements souris/clavier QTest. Les API cœur servent
 uniquement à préparer certaines fixtures et à vérifier les résultats. Le sélecteur de fichier
@@ -48,7 +49,7 @@ exécution et publication de la provenance correspondante.
 
 ## CX14 — parcours 13 à 23
 
-Préparation sur `15942b0`, branche `codex/studio-cx14-e2e-b`. Aucun résultat d'exécution
+Préparation sur `06780ae`, branche `codex/studio-cx14-e2e-b`. Aucun résultat d'exécution
 n'est revendiqué avant compilation et tests Debug/Release.
 
 | Parcours | Vérification préparée | Limite connue sur la base |
@@ -58,7 +59,7 @@ n'est revendiqué avant compilation et tests Debug/Release.
 | 15 | Recoloration, coloris et recherche de nuancier | À exécuter ; stock personnel CX10 indépendant |
 | 16 | Défilement point/couleur/fin et sortie de simulation, octets invariants | À exécuter |
 | 17 | Ouverture des contraintes d'export | BLOCKED : contrôle avant écriture dépend de CX06 non intégrée |
-| 18 | Surface de proposition et validation du compagnon | BLOCKED : adaptateur compagnon H absent de cette base ; aucun remplacement par appel core |
+| 18 | Proposition MCP réelle, aperçus avant/après, approbation souris, OSP/DST et undo | À exécuter sur H ; seul le fournisseur de langage externe est scripté hors réseau |
 | 19 | Archives de schéma 1 à 9, édition de rail QML, sauvegarde temporaire et source immuable | Fixtures de compatibilité synthétiques documentées, pas des fichiers historiques d'utilisateurs |
 | 20 | Processus enfant qui sauvegarde puis appelle _Exit sans destructeurs ; nouveau processus documentaire et récupération QML | Le même autosave de production est appelé explicitement ; délai périodique non mesuré |
 | 21 | Vrai rendu logiciel, même snapshot après zoom ; variante CTest D3D11 WARP | La variante WARP peut être BLOCKED si D3D11 indisponible |

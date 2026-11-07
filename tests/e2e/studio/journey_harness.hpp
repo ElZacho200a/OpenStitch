@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
-#include <QClipboard>
 #include <QGuiApplication>
+#include <QInputMethodEvent>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlError>
@@ -18,11 +18,13 @@
 
 #include "action_controller.hpp"
 #include "analysis_controller.hpp"
+#include "companion_controller.hpp"
 #include "digitize_pipeline.hpp"
 #include "edit_controller.hpp"
 #include "fade_controller.hpp"
 #include "file_controller.hpp"
 #include "gpu_canvas.hpp"
+#include "help_controller.hpp"
 #include "image_controller.hpp"
 #include "inspector_controller.hpp"
 #include "openstitch/formats/dst.hpp"
@@ -30,6 +32,7 @@
 #include "openstitch/project_ops/factory.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "point_edit_controller.hpp"
+#include "preferences_controller.hpp"
 #include "region_controller.hpp"
 #include "satin_controller.hpp"
 #include "shape_batch.hpp"
@@ -75,12 +78,17 @@ public:
     SatinController satin{studio};
     FadeController fade{studio};
     PointEditController points{studio};
+    agent::MemorySecretStore secrets;
+    PreferencesController prefs{std::filesystem::path(directory.path().toStdWString())};
+    HelpController help;
+    CompanionController companion;
     QStringList warnings;
     QQmlApplicationEngine engine;
     QQuickWindow* window{};
     GpuCanvas* canvas{};
 
-    explicit Harness(const QString& configDir = {});
+    explicit Harness(const QString& configDir = {},
+                     desktop::ClaudeCompanionBackend::ProviderFactory providerFactory = {});
     [[nodiscard]] bool ready() const;
     [[nodiscard]] bool settle(int timeout = 30000);
     [[nodiscard]] QQuickItem* item(const char* name) const;

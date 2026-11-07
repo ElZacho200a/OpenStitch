@@ -23,3 +23,11 @@ foreach(journey_file IN LISTS studio_e2e_sources)
         ENVIRONMENT "STUDIO_E2E_JOURNEY=${journey_code};QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_e2e_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 endforeach()
+
+if(WIN32 AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/journey_21_fallback.cpp")
+    add_test(NAME studio_e2e_journey_21_warp COMMAND test_studio_e2e -o -,txt)
+    set_tests_properties(studio_e2e_journey_21_warp PROPERTIES
+        LABELS "studio;e2e;gpu" TIMEOUT 180
+        ENVIRONMENT "STUDIO_E2E_JOURNEY=21;STUDIO_E2E_WARP=1;QT_QPA_PLATFORM=windows;QT_QUICK_BACKEND=rhi;QSG_RHI_BACKEND=d3d11;QSG_RHI_PREFER_SOFTWARE_RENDERER=1;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_e2e_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+endif()
