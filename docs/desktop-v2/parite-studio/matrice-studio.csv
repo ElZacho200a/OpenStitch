@@ -1,5 +1,5 @@
 id,type,libelle_v1,source_v1,statut_v2_widgets,preuve_v2,statut_studio,preuve_studio,controleur,composant
-226c1fd7,action,(aucun préréglage),main_window_stitch_presets.cpp,absent,,ABSENT,,,
+226c1fd7,action,(aucun préréglage),main_window_stitch_presets.cpp,absent,,FUNCTIONAL_UNTESTED,,InspectorController::presets,Inspector.qml noPreset
 c6534d24,action,(sélectionnez un objet de broderie pour assigner),main_window_eyedropper.cpp,absent,,TESTED,StudioEditTest::contextMenuAndEyedropper,EditController::applyColorFrom,GpuCanvas pipette + EditBar pipetteButton
 9268b9a3,action,100 % (taille réelle),main_window.cpp,fait,view.zoom-actual,SERVICE_ONLY,,,
 c7233a7c,action,Abandonner les retouches,main_window_toolbars.cpp,absent,,ABSENT,,,
@@ -22,7 +22,7 @@ ae274b96,action,Ajouter une couche,document_panel.cpp,partiel,calqueAdd,SERVICE_
 03188bb4,action,Aperçu avant impression,main_window_production.cpp,absent,,ABSENT,,,
 b1262cc9,action,Aperçu avec tirage du tissu,main_window_pull_preview.cpp,partiel,analysis.pull,SERVICE_ONLY,,,
 7f049f34,action,Aperçu en direct pendant la saisie,main_window_view_display.cpp,absent,,ABSENT,,,
-fb2fcca7,action,Appliquer « %1 »,main_window_stitch_presets.cpp,absent,,ABSENT,,,
+fb2fcca7,action,Appliquer « %1 »,main_window_stitch_presets.cpp,absent,,TESTED,StudioInspectorTest::presetsLifecycle,InspectorController::applyPreset,Inspector.qml applyPreset_N
 e9721f42,action,Broderie (points),main_window.cpp,absent,,ABSENT,,,
 785ca2ea,action,Cadre : %1 × %2 mm,main_window_toolbars.cpp,fait,canvas.set,SERVICE_ONLY,,,
 b3a67437,action,Carte d'épaisseur,main_window_density.cpp,fait,analysis.density,SERVICE_ONLY,,,
@@ -59,7 +59,7 @@ eab12005,action,Déplacer la sélection ici,calque_panel.cpp,fait,calqueHere,FUN
 2a2bef85,action,Effacer toutes les zones de détail,main_window_detail_zones.cpp,absent,,ABSENT,,,
 579f3c4f,action,Enregistrer le projet,main_window.cpp,fait,Enregistrer le projet,TESTED,StudioShellTest::openMoveUndoSaveReopenJourney,StudioController::saveProject,Main.qml saveProjectButton
 1e0aaea5,action,Enregistrer le projet sous,main_window.cpp,fait,file.save-as,TESTED,StudioShellTest::openMoveUndoSaveReopenJourney,StudioController::saveProjectAs,Main.qml Ctrl+Maj+S
-5aaa0b5f,action,Enregistrer les réglages de la sélection,main_window_stitch_presets.cpp,fait,preset.save,SERVICE_ONLY,,,
+5aaa0b5f,action,Enregistrer les réglages de la sélection,main_window_stitch_presets.cpp,fait,preset.save,TESTED,StudioInspectorTest::presetsLifecycle,InspectorController::savePreset,Inspector.qml savePreset
 df9178a2,action,Envoyer un rapport de plantage,main_window_crash_report.cpp,absent,,ABSENT,,,
 a9055127,action,Exporter avec les derniers réglages,main_window.cpp,fait,file.export-again,TESTED,StudioFilesTest::exportsAreDeterministicAndRepeatable,FileController::exportAgain,FilePanel.qml exportAgainEntry F10
 31b462db,action,Exporter en DXF,main_window.cpp,fait,file.export-dxf,TESTED,StudioFilesTest::documentExportsWriteRealFiles,FileController::exportDxf,FilePanel.qml menu Exporter
@@ -202,8 +202,8 @@ e4077c4b,bouton,Calculer,main_window_analysis.cpp,fait,Calculer,SERVICE_ONLY,,,
 58796fc5,bouton,Choisir,color_blend_dialog.cpp,fait,Choisir,SERVICE_ONLY,,,
 42cd1ade,bouton,Choisir dans les nuanciers,gradient_fill_panel.cpp,partiel,thread.palette,SERVICE_ONLY,,,
 fe930327,bouton,Comparer les méthodes,main_window_satin_auto.cpp,absent,,ABSENT,,,
-97060113,bouton,Convertir en remplissage concentrique,properties_panel.cpp,fait,contour_fill,SERVICE_ONLY,,,
-86359fc6,bouton,Convertir en remplissage directionnel,properties_panel.cpp,fait,directional,SERVICE_ONLY,,,
+97060113,bouton,Convertir en remplissage concentrique,properties_panel.cpp,fait,contour_fill,TESTED,StudioInspectorTest::stitchTypeConversion,InspectorController::setStitchType(contour_fill),Inspector.qml typeBox
+86359fc6,bouton,Convertir en remplissage directionnel,properties_panel.cpp,fait,directional,TESTED,StudioInspectorTest::stitchTypeConversion,InspectorController::setStitchType(directional),Inspector.qml typeBox
 42954eca,bouton,Corriger,main_window_analysis.cpp,fait,Corriger,SERVICE_ONLY,,,
 1b524844,bouton,Corriger tout ce qui est sûr,main_window_analysis.cpp,absent,,ABSENT,,,
 12510a3a,bouton,Couleur,colorway_dialog.cpp,fait,Couleur,SERVICE_ONLY,,,
@@ -276,18 +276,18 @@ a3bed34d,case,Angle absolu (repère du dessin),properties_panel.cpp,absent,,ABSE
 2b66fac6,case,Angle des fils automatique,main_window_satin_auto.cpp,absent,,ABSENT,,,
 12815a11,case,Anneaux en satin,main_window_create.cpp,absent,,ABSENT,,,
 223c1e22,case,Aperçu sur l'image,segmentation_dialog.cpp,absent,,ABSENT,,,
-f019d797,case,"Arrêts machine (poser le tissu, couper)",properties_panel.cpp,absent,,ABSENT,,,
+f019d797,case,"Arrêts machine (poser le tissu, couper)",properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(applique.stops),ParamField.qml switch
 65fd5bf3,case,Aspect fait main,properties_panel.cpp,absent,,ABSENT,,,
 d2463e2c,case,Bloc uni (sans tissu visible),main_window_create.cpp,absent,,ABSENT,,,
 6dd1c5d4,case,Centre automatique,properties_panel.cpp,absent,,ABSENT,,,
 40de0b13,case,Comparer avant / après l'optimisation,main_window_order_jumps.cpp,absent,,ABSENT,,,
 063f27c8,case,Conserver les fichiers de diagnostic,ai_preferences_dialog.cpp,exclu,,BLOCKED,,,
 dfb2d55c,case,Conserver les proportions,import_dialog.cpp,absent,,ABSENT,,,
-db72ebd1,case,Contour cousu par-dessus,properties_panel.cpp,absent,,ABSENT,,,
+db72ebd1,case,Contour cousu par-dessus,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(tatami.edge_outline),ParamField.qml switch
 297b5c26,case,Contourner aussi les trous,main_window_vector_edit.cpp,absent,,ABSENT,,,
 be52127f,case,Couleur du thème,grid_settings_dialog.cpp,fait,Couleur du thème,SERVICE_ONLY,,,
 46fdf51f,case,Couper avant chaque changement de fil,generation_options_dialog.cpp,fait,Couper avant chaque changement de fil,SERVICE_ONLY,,,
-64455486,case,Croix complète,properties_panel.cpp,fait,Croix complète,SERVICE_ONLY,,,
+64455486,case,Croix complète,properties_panel.cpp,fait,Croix complète,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(cross_stitch.full_cross),ParamField.qml switch
 abec11cd,case,Crénage de la police,text_dialog.cpp,fait,Crénage de la police,SERVICE_ONLY,,,
 81b23d37,case,Dans un objet : relier la sous-couche au remplissage sans couper le fil,machine_export_dialog.cpp,absent,,ABSENT,,,
 ec1b8e2e,case,"Densité excessive, au-delà de",main_window_density.cpp,absent,,ABSENT,,,
@@ -307,30 +307,30 @@ e181a7ab,case,Gomme,main_window_detail_zones.cpp,fait,Gomme,SERVICE_ONLY,,,
 e368f34e,case,Inverser les tons,main_window_create.cpp,absent,,ABSENT,,,
 df6f4ad1,case,Je possède ce fil,thread_panel.cpp,absent,,ABSENT,,,
 1a41ec3c,case,Liaison en spirale,properties_panel.cpp,absent,,ABSENT,,,
-e47033c8,case,Liaisons cousues cachées,properties_panel.cpp,absent,,ABSENT,,,
+e47033c8,case,Liaisons cousues cachées,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(tatami.hidden_underpath),ParamField.qml switch
 1e94712b,case,"Ligatures (ff, fi, fl, ffi, ffl)",text_dialog.cpp,absent,,ABSENT,,,
 623246f4,case,Limiter la recherche du fil le plus proche à mes fils,thread_panel.cpp,absent,,ABSENT,,,
 41c3b1d2,case,Optimiser les trajets (réglage de ce fichier : moins de coupes et de sauts),machine_export_dialog.cpp,absent,,ABSENT,,,
 246e3e21,case,Orientation paysage,placement_template_dialog.cpp,absent,,ABSENT,,,
 300900db,case,Parcourir tous les fils (au lieu des plus proches),main_window_gradient.cpp,absent,,ABSENT,,,
 737daa31,case,Pas automatique (adapté au zoom),grid_settings_dialog.cpp,absent,,ABSENT,,,
-b319c11f,case,Rangées décalées,properties_panel.cpp,absent,,ABSENT,,,
+b319c11f,case,Rangées décalées,properties_panel.cpp,absent,,UI_PARTIAL,,InspectorController::setParam(tatami.stagger entier 1..8),ParamField.qml slider (case booleenne motif_fill absente de param_spec)
 e42a170e,case,Remplissage qui suit le mouvement,main_window_create.cpp,absent,,ABSENT,,,
 c20a2392,case,Retirer les points cachés,properties_panel.cpp,absent,,ABSENT,,,
 ba15f6b4,case,"Réordonner aussi les zones d'une même couleur (avancé, modifie davantage l'ordre)",machine_export_dialog.cpp,absent,,ABSENT,,,
 8cb42af7,case,"Satin automatique (bandes étroites, petits disques)",main_window_create.cpp,absent,,ABSENT,,,
 29de353d,case,Sauts à vide sur le canevas,main_window_order_jumps.cpp,absent,,ABSENT,,,
-82cbed86,case,Sens horaire,properties_panel.cpp,fait,Sens horaire,SERVICE_ONLY,,,
+82cbed86,case,Sens horaire,properties_panel.cpp,fait,Sens horaire,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(spiral.clockwise),ParamField.qml switch
 58d7bdcb,case,Seulement le fond extérieur (garder le blanc enfermé dans le motif),main_window_create.cpp,absent,,ABSENT,,,
 ae657807,case,Seulement les vrais objets,main_window_create.cpp,absent,,ABSENT,,,
 6157f7db,case,Sous-couche : réordonner les passes pour réduire les sauts (invisible),machine_export_dialog.cpp,absent,,ABSENT,,,
 a67720e9,case,Sous-couche centrale,main_window_satin_auto.cpp,fait,Sous-couche centrale,SERVICE_ONLY,,,
-9183cbb5,case,Sous-couche de bord,properties_panel.cpp,fait,Sous-couche de bord,SERVICE_ONLY,,,
-c791d168,case,Sous-couche de contour,properties_panel.cpp,fait,Sous-couche de contour,SERVICE_ONLY,,,
-15ed49ee,case,Sous-couche en zigzag,properties_panel.cpp,fait,Sous-couche en zigzag,SERVICE_ONLY,,,
-a9e979c7,case,Sous-couche parallèle,properties_panel.cpp,absent,,ABSENT,,,
+9183cbb5,case,Sous-couche de bord,properties_panel.cpp,fait,Sous-couche de bord,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(satin.underlay_edge),ParamField.qml switch
+c791d168,case,Sous-couche de contour,properties_panel.cpp,fait,Sous-couche de contour,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(tatami.underlay_edge),ParamField.qml switch
+15ed49ee,case,Sous-couche en zigzag,properties_panel.cpp,fait,Sous-couche en zigzag,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(tatami.underlay_zigzag),ParamField.qml switch
+a9e979c7,case,Sous-couche parallèle,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(tatami.underlay_parallel),ParamField.qml switch
 b6a80b99,case,Sous-couche perpendiculaire,properties_panel.cpp,absent,,ABSENT,,,
-d664e9fb,case,Sous-couche zigzag,properties_panel.cpp,absent,,ABSENT,,,
+d664e9fb,case,Sous-couche zigzag,properties_panel.cpp,absent,,TESTED,StudioInspectorTest::everySpecFieldIsExposedAndEditable,InspectorController::setParam(directional.underlay_zigzag),ParamField.qml switch
 f0eeb068,case,Texte en dessous (sommets vers le centre),text_advanced_panel.cpp,fait,Texte en dessous (sommets vers le centre),SERVICE_ONLY,,,
 e83895af,case,Traits sombres cousus par-dessus,main_window_create.cpp,absent,,ABSENT,,,
 31e80c01,case,"Trop de coupes, au-delà de",main_window_density.cpp,absent,,ABSENT,,,
@@ -408,14 +408,14 @@ fcfaf94f,menu,Fils,main_window_threads.cpp,fait,Fils,SERVICE_ONLY,,,
 6fbcb11d,menu,Panneaux,main_window.cpp,fait,Panneaux,SERVICE_ONLY,,,
 eb49cec2,menu,Passes de couture,main_window_view_display.cpp,absent,,ABSENT,,,
 644f52dc,menu,Plans d'affichage,main_window.cpp,absent,,ABSENT,,,
-b909b547,menu,Préréglages de points,main_window_stitch_presets.cpp,fait,Préréglages de points,SERVICE_ONLY,,,
+b909b547,menu,Préréglages de points,main_window_stitch_presets.cpp,fait,Préréglages de points,TESTED,StudioInspectorTest::presetsLifecycle,InspectorController::savePreset/applyPreset/renamePreset,Inspector.qml section PRESETS
 e019429a,menu,Rappeler une sélection,main_window_selection_tools.cpp,absent,,FUNCTIONAL_UNTESTED,StudioEditTest::savedSelectionsAreRecalled (controleur seul),EditController::recallSelection,EditBar Rappeler
 d1ff1ac3,menu,Rendu réaliste,main_window_realistic.cpp,fait,Rendu réaliste,SERVICE_ONLY,,,
 6ef7ae22,menu,Retrouver,main_window_selection_tools.cpp,fait,Retrouver,SERVICE_ONLY,,,
 bfb1ac5d,menu,Récents,main_window.cpp,fait,Récents,TESTED,StudioFilesTest::recentFilesPersistPruneAndReopen,FileController::recent/requestOpenRecent,FilePanel.qml fileMenu
 39d632d3,menu,Réglages fins du satin,main_window.cpp,absent,,ABSENT,,,
 46096614,menu,Segmentation,main_window.cpp,fait,Segmentation,SERVICE_ONLY,,,
-20265051,menu,Supprimer un préréglage,main_window_stitch_presets.cpp,fait,preset.remove,SERVICE_ONLY,,,
+20265051,menu,Supprimer un préréglage,main_window_stitch_presets.cpp,fait,preset.remove,TESTED,StudioInspectorTest::presetsLifecycle,InspectorController::removePreset,Inspector.qml removePreset_N
 5d90ed77,menu,Sélection,main_window_context_menu.cpp,fait,Sélection,FUNCTIONAL_UNTESTED,StudioEditTest::selectionCommandsOnRealObjects (controleur seul),EditController::selectAll/selectRect/selectByLayer,CanvasContextMenu Selection + GpuCanvas rectangle
 90c9c047,menu,Texte,main_window_lettering.cpp,fait,Texte,SERVICE_ONLY,,,
 1bfbf007,menu,Thème,main_window.cpp,fait,Thème,SERVICE_ONLY,,,
