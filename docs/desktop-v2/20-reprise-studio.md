@@ -26,3 +26,19 @@
   motif, blanket, auto_satin ; champs handmade, seed, density_gradient, center_mm, pull_*, caps…) :
   étendre param_spec avant de prétendre à la parité de l'inspecteur.
 - Prochaine vague : images/segmentation, outils vectoriels, satin/fondu/compensation, production, compagnon.
+
+## Mise à jour — vagues 1 et 2 intégrées (A fichiers, B édition, C inspecteur, D vue/analyse, E images, F vectoriel, G numérisation)
+- Tout est fusionné dans `claude/studio-lot1-parcours-edition` (PR #283, tête 78478f7 au moment de l'écriture) ;
+  8 exécutables de test Studio verts en Debug (shell, edit, files, inspector, view, image, digitize, tools).
+  Le crash intermittent de `test_desktop_v2_studio_edit` (attaché QML `Drag` dans ObjectTree) est corrigé : n'utiliser
+  PAS `Drag` dans le QML Studio.
+- Matrice : 444 fonctions V1 → 84 TESTED, 54 FUNCTIONAL_UNTESTED, 17 UI_PARTIAL, 154 SERVICE_ONLY, 130 ABSENT,
+  5 BLOCKED, 0 VALIDATED. TESTED = test de contrôleur (parfois via la vraie QML) ; aucun test de recette complète.
+- Reste à faire (par priorité) : (1) gestes canevas pour satin/fondu (poignées de rails, d'axe) et outils
+  pinceau de déformation / pot de peinture / formes prédéfinies / contour de découpe ; (2) sous-couches,
+  compensation de tirage + calibration, appliqué, décalage entre couleurs ; (3) SAM (client dans apps/desktop,
+  à extraire) ; (4) étendre param_spec (types contour_fill, radial, crosshatch, motif, blanket, auto_satin ; champs
+  handmade, seed, density_gradient, center_mm, pull_*, caps…) ; (5) compagnon Claude/MCP, palette, préférences,
+  accessibilité, aide ; (6) options d'export V1 avancées, aperçu/impression ; (7) recette bout en bout (24 parcours),
+  Release + mesures FPS, packaging Windows propre, bascule (Studio = exécutable par défaut, retrait Widgets).
+- Aucune capture réelle inspectée, aucun test en Release, pas de test sur installation propre.
