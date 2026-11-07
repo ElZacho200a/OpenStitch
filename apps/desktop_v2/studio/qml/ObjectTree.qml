@@ -6,11 +6,14 @@ import "."
 
 // Arbre documentaire : calques (du dessus au fond) > groupes > objets, dans l'ordre de couture.
 // Pure présentation : toute action appelle l'EditController (`editor`) ou le StudioController.
+// Glisser-déposer : glisser une ligne d'objet sur une ligne de calque déplace la sélection.
 Item {
     id: root
     objectName: "objectTree"
     property string currentLayer: ""
-    readonly property alias count: view.count
+    property bool dragActive: false
+    property string dragLabel: ""
+    property point dragPos: Qt.point(0, 0)
 
     ListView {
         id: view
@@ -40,20 +43,6 @@ Item {
                        : area.containsMouse ? Theme.hover : "transparent"
                 border.width: row.isLayer && root.currentLayer === row.modelData.id ? 1 : 0
                 border.color: Theme.accent
-                Rectangle {
-                    visible: drop.containsDrag
-                    anchors.fill: parent
-                    color: "transparent"
-                    border.width: 2
-                    border.color: Theme.accent
-                }
-            }
-
-            DropArea {
-                id: drop
-                anchors.fill: parent
-                keys: row.isLayer ? ["object"] : []
-                onDropped: editor.moveSelectionToLayer(row.modelData.id)
             }
 
             MouseArea {
@@ -61,10 +50,29 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 acceptedButtons: Qt.LeftButton
-                drag.target: row.isObject ? dragGhost : null
-                onPressed: {
-                    if (row.isObject && !row.modelData.selected)
-                        studio.selectObject(row.modelData.id, false)
+                preventStealing: true // le défilement de la liste ne doit pas voler le glisser
+                onCanceled: root.dragActive = false
+                property point pressPoint: Qt.point(0, 0)
+                onPressed: function(mouse) {
+                    pressPoint = Qt.point(mouse.x, mouse.y)
+                }
+                onPositionChanged: function(mouse) {
+                    if (!pressed || !row.isObject)
+                        return
+                    if (Math.abs(mouse.x - pressPoint.x) + Math.abs(mouse.y - pressPoint.y) > 8) {
+                        root.dragActive = true
+                        root.dragLabel = row.modelData.label
+                        root.dragPos = mapToItem(root, mouse.x, mouse.y)
+                    }
+                }
+                onReleased: function(mouse) {
+                    if (!root.dragActive)
+                        return
+                    root.dragActive = false
+                    const p = mapToItem(view.contentItem, mouse.x, mouse.y)
+                    const target = view.itemAt(p.x, p.y)
+                    if (target && target.isLayer)
+                        editor.moveObjectToLayer(row.modelData.id, target.modelData.id)
                 }
                 onClicked: function(mouse) {
                     if (row.isObject) {
@@ -77,32 +85,11 @@ Item {
                         editor.selectByLayer(row.modelData.id)
                     }
                 }
-                onDoubleClicked: if (row.isObject || row.isLayer) { row.renaming = true; nameEdit.forceActiveFocus() }
-                onReleased: dragGhost.Drag.drop()
-            }
-
-            // Fantôme de glisser-déposer : suit la souris, retourne à sa place au relâchement.
-            Rectangle {
-                id: dragGhost
-                width: 120
-                height: 22
-                radius: 3
-                visible: Drag.active
-                color: Theme.accentSoft
-                border.color: Theme.accent
-                z: 10
-                Drag.active: area.drag.active
-                Drag.keys: ["object"]
-                Drag.hotSpot.x: 10
-                Drag.hotSpot.y: 10
-                onVisibleChanged: if (!visible) { x = 0; y = 0 }
-                Text {
-                    anchors.centerIn: parent
-                    text: row.modelData.label
-                    color: Theme.foreground
-                    font.pixelSize: Theme.smallSize
-                    elide: Text.ElideRight
-                    width: parent.width - 8
+                onDoubleClicked: {
+                    if (row.isObject || row.isLayer) {
+                        row.renaming = true
+                        nameEdit.forceActiveFocus()
+                    }
                 }
             }
 
@@ -130,7 +117,7 @@ Item {
                 Text {
                     Layout.fillWidth: true
                     visible: !row.renaming
-                    text: row.modelData.label + (row.isObject && row.modelData.locked ? "  🔒" : "")
+                    text: row.modelData.label + (row.isObject && row.modelData.locked ? "  (verrouillé)" : "")
                     color: row.isObject && row.modelData.selected ? Theme.foreground : Theme.muted
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.bodySize
@@ -158,31 +145,56 @@ Item {
                 }
                 Text {
                     visible: row.isObject || row.isLayer
-                    text: row.modelData.visible ? "👁" : "—"
+                    text: row.modelData.visible ? "Voir" : "Caché"
                     color: row.modelData.visible ? Theme.muted : Theme.faint
-                    font.pixelSize: Theme.bodySize
+                    font.pixelSize: Theme.smallSize
                     MouseArea {
                         anchors.fill: parent
                         anchors.margins: -4
-                        onClicked: row.isLayer
-                                   ? editor.setLayerVisible(row.modelData.id, !row.modelData.visible)
-                                   : editor.setObjectVisible(row.modelData.id, !row.modelData.visible)
+                        onClicked: {
+                            if (row.isLayer)
+                                editor.setLayerVisible(row.modelData.id, !row.modelData.visible)
+                            else
+                                editor.setObjectVisible(row.modelData.id, !row.modelData.visible)
+                        }
                     }
                 }
                 Text {
-                    visible: row.isLayer || row.isObject
-                    text: row.modelData.locked ? "🔒" : "🔓"
+                    visible: row.isObject || row.isLayer
+                    text: row.modelData.locked ? "Verr." : "Libre"
                     color: row.modelData.locked ? Theme.accent : Theme.faint
-                    font.pixelSize: Theme.bodySize
+                    font.pixelSize: Theme.smallSize
                     MouseArea {
                         anchors.fill: parent
                         anchors.margins: -4
-                        onClicked: row.isLayer
-                                   ? editor.setLayerLocked(row.modelData.id, !row.modelData.locked)
-                                   : editor.setObjectLocked(row.modelData.id, !row.modelData.locked)
+                        onClicked: {
+                            if (row.isLayer)
+                                editor.setLayerLocked(row.modelData.id, !row.modelData.locked)
+                            else
+                                editor.setObjectLocked(row.modelData.id, !row.modelData.locked)
+                        }
                     }
                 }
             }
+        }
+    }
+
+    // Étiquette qui suit la souris pendant un glisser-déposer.
+    Rectangle {
+        visible: root.dragActive
+        x: root.dragPos.x + 8
+        y: root.dragPos.y + 8
+        width: dragText.implicitWidth + 12
+        height: 22
+        radius: 3
+        color: Theme.accentSoft
+        border.color: Theme.accent
+        Text {
+            id: dragText
+            anchors.centerIn: parent
+            text: root.dragLabel
+            color: Theme.foreground
+            font.pixelSize: Theme.smallSize
         }
     }
 }

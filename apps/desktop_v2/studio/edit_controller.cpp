@@ -721,6 +721,22 @@ bool EditController::moveSelectionToLayer(const QString& id) {
     return r.ok;
 }
 
+bool EditController::moveObjectToLayer(const QString& objectId, const QString& layerId) {
+    const auto object = parseId(objectId);
+    if (!object || !studio_.session().exists({TargetKind::EmbroideryObject, *object})) {
+        return refuse(QStringLiteral("Objet inconnu"));
+    }
+    if (studio_.session().selection().contains({TargetKind::EmbroideryObject, *object})) {
+        return moveSelectionToLayer(layerId);
+    }
+    const auto value = parseId(layerId);
+    const auto r =
+        value ? openstitch::desktop_v2::moveObjectsToCalque(studio_.session(), {*object}, *value)
+              : ServiceResult{false, "Calque inconnu"};
+    say(r.ok ? QStringLiteral("Objet déplacé vers le calque") : QString::fromStdString(r.message));
+    return r.ok;
+}
+
 QVariantList EditController::layers() const {
     QVariantList list;
     const auto& project = studio_.session().project();
