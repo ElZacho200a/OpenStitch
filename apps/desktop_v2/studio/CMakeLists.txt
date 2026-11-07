@@ -23,6 +23,9 @@ add_library(openstitch_studio_ui STATIC
     fade_controller.cpp fade_controller.hpp
     point_edit_controller.cpp point_edit_controller.hpp
     tool_controller.cpp tool_controller.hpp
+    digitize_gestures.cpp digitize_gestures.hpp
+    pull_controller.cpp pull_controller.hpp
+    applique_controller.cpp applique_controller.hpp
     vector_controller.cpp vector_controller.hpp)
 add_library(openstitch::studio_ui ALIAS openstitch_studio_ui)
 target_include_directories(openstitch_studio_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -38,6 +41,7 @@ set(studio_qml_files
     qml/ViewPanel.qml qml/SimulationBar.qml qml/AnalysisPanel.qml qml/ThreadPanel.qml
     qml/PreparePanel.qml qml/ImagePrepSection.qml qml/SegmentationSection.qml
     qml/RegionTools.qml qml/AiSection.qml 
+    qml/HandlesOverlay.qml qml/PullPanel.qml qml/AppliquePanel.qml
     qml/SatinPanel.qml qml/FadePanel.qml qml/PointEditPanel.qml qml/DigitizeHub.qml qml/ToolRail.qml qml/ToolOptions.qml qml/ToolOverlay.qml qml/qmldir)
 
 add_executable(openstitch_v2_studio WIN32 main.cpp)

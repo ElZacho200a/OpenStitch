@@ -17,6 +17,7 @@ using K = ParamKind;
 constexpr std::string_view kPull =
     "manual|Manuelle;auto|Automatique;adaptive|Adaptative;predicted|Prédictive";
 constexpr std::string_view kUnderlay = "manual|Manuelle;auto|Automatique";
+constexpr std::string_view kTack = "straight|Point droit;zigzag|Zigzag;blanket|Feston";
 
 // type, clé, libellé, nature, min, max, pas, unité[, options]
 const std::vector<ParamSpec>& table() {
@@ -106,6 +107,9 @@ const std::vector<ParamSpec>& table() {
         {"applique", "cover_density_mm", "Densité de la couverture", K::Number, 0.2, 1.5, 0.05,
          "mm"},
         {"applique", "stops", "Arrêts machine", K::Bool, 0, 1, 1, ""},
+        {"applique", "tack", "Point de maintien", K::Choice, 0, 2, 1, "", kTack},
+        {"applique", "cut_offset_mm", "Décalage du contour de découpe", K::Number, -5.0, 5.0, 0.25,
+         "mm"},
     };
     return kTable;
 }
@@ -326,6 +330,10 @@ std::optional<double> readParam(const document::EmbroideryObject& o, std::string
             return mm(ap->cover_density);
         if (key == "stops")
             return b2d(ap->stops);
+        if (key == "tack")
+            return static_cast<double>(ap->tack);
+        if (key == "cut_offset_mm")
+            return mm(ap->cut_offset);
     }
     return std::nullopt;
 }

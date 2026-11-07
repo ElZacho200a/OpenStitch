@@ -163,6 +163,21 @@ bool PointEditController::selectPoint(int index, bool additive) {
     return true;
 }
 
+int PointEditController::selectRect(double x0, double y0, double x1, double y1, bool additive) {
+    const double lx = std::min(x0, x1), hx = std::max(x0, x1);
+    const double ly = std::min(y0, y1), hy = std::max(y0, y1);
+    if (!additive) {
+        selected_.clear();
+    }
+    for (const auto& p : view_.points) {
+        if (p.pos.x >= lx && p.pos.x <= hx && p.pos.y >= ly && p.pos.y <= hy) {
+            selected_.insert(p.index);
+        }
+    }
+    emit changed();
+    return static_cast<int>(selected_.size());
+}
+
 bool PointEditController::selectRange(int fromIndex, int toIndex) {
     const auto lo = std::min(fromIndex, toIndex);
     const auto hi = std::max(fromIndex, toIndex);

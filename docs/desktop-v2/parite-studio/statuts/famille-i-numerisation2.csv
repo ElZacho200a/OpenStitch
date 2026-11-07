@@ -1,0 +1,9 @@
+id,statut,preuve,controleur,composant
+73172bc2,TESTED,StudioDigitize2Test::guideStrokeByMouse,DigitizeGestures::release(guide),HandlesOverlay.qml + DigitizeHub.qml gesture_guide
+219aa56f,TESTED,StudioDigitize2Test::guideStrokeByMouse,DigitizeGestures::release(guide/break),HandlesOverlay.qml + DigitizeHub.qml gesture_guide/gesture_break
+fc50bae4,TESTED,StudioDigitize2Test::fadeHandlesByMouse,DigitizeGestures::release(fade)+FadeController::commitHandle,HandlesOverlay.qml + DigitizeHub.qml gesture_fade
+11c2d635,UI_PARTIAL,StudioDigitize2Test::fadeHandlesByMouse,FadeController::reverse (une etape annulable testee),(bouton d'inversion absent du FadePanel)
+0ebc96b6,BLOCKED,aucune capture des parametres d'avant modification dans Studio (V1 : MainWindow::noteOverridesInvalidated),PointEditController,(service absent)
+b1262cc9,UI_PARTIAL,StudioDigitize2Test::pullAndCalibration,PullController::compare,PullPanel.qml pullCompare (pas de surimpression sur le canevas)
+167defbb,UI_PARTIAL,StudioDigitize2Test::pullAndCalibration,PullController::compare + predictRegistration,PullPanel.qml (carte de tirage affichee par la famille D)
+b4f352c6,TESTED,StudioDigitize2Test::appliqueConvertAndCut,AppliqueController::convert,AppliquePanel.qml appliqueConvert

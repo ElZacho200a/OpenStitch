@@ -202,6 +202,19 @@ if(TARGET openstitch::studio_ui)
         qt_add_resources(test_desktop_v2_studio_digitize studio_digitize_qml PREFIX "/studio"
             BASE "${studio_test_qml_root}" FILES ${studio_all_qml}
                 "${studio_test_qml_root}/qml/qmldir")
+        # Famille I : gestes de numerisation au canevas, tirage, applique (souris QTest, vrai moteur).
+        add_executable(test_desktop_v2_studio_digitize2 test_studio_digitize2.cpp)
+        target_link_libraries(test_desktop_v2_studio_digitize2
+            PRIVATE openstitch::studio_ui openstitch::project_ops openstitch::stitch_generation
+                    openstitch::formats Qt6::Test openstitch::warnings)
+        qt_add_resources(test_desktop_v2_studio_digitize2 studio_digitize2_qml PREFIX "/studio"
+            BASE "${studio_test_qml_root}" FILES ${studio_all_qml}
+                "${studio_test_qml_root}/qml/qmldir")
+        add_test(NAME test_desktop_v2_studio_digitize2 COMMAND test_desktop_v2_studio_digitize2 -o -,txt)
+        get_filename_component(studio_digitize2_qml_imports "${Qt6_DIR}/../../../qml" ABSOLUTE)
+        set_tests_properties(test_desktop_v2_studio_digitize2 PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;QML_IMPORT_PATH=${studio_digitize2_qml_imports};QT_QPA_FONTDIR=${PROJECT_SOURCE_DIR}/resources/fonts"
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
         add_test(NAME test_desktop_v2_studio_digitize COMMAND test_desktop_v2_studio_digitize -o -,txt)
         get_filename_component(studio_digitize_qml_imports "${Qt6_DIR}/../../../qml" ABSOLUTE)
         set_tests_properties(test_desktop_v2_studio_digitize PROPERTIES

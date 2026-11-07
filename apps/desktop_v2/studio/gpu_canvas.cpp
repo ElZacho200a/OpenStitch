@@ -170,7 +170,12 @@ void GpuCanvas::resetGesture() {
 }
 
 bool GpuCanvas::cancelGesture() {
-    const bool toolBusy = tools_ && tools_->cancel();
+    const bool digitizeBusy = digitize_ && digitize_->cancel();
+    if (digitizeBusy && gesture_ == Gesture::Digitize) {
+        gesture_ = Gesture::None;
+        gestureActive_ = false;
+    }
+    const bool toolBusy = (tools_ && tools_->cancel()) || digitizeBusy;
     if (toolBusy) {
         gesture_ = Gesture::None;
         gestureActive_ = false;
@@ -185,7 +190,76 @@ bool GpuCanvas::cancelGesture() {
 }
 
 QString GpuCanvas::gestureInfo() const {
+    if (digitize_ && !digitize_->info().isEmpty()) {
+        return digitize_->info();
+    }
     return tools_ && !tools_->info().isEmpty() ? tools_->info() : gestureInfo_;
+}
+
+void GpuCanvas::setDigitize(DigitizeGestures* digitize) {
+    if (digitize_ == digitize) {
+        return;
+    }
+    if (digitize_) {
+        disconnect(digitize_, nullptr, this, nullptr);
+    }
+    digitize_ = digitize;
+    if (digitize_) {
+        connect(digitize_, &DigitizeGestures::overlayChanged, this, &GpuCanvas::overlayChanged);
+        connect(digitize_, &DigitizeGestures::modeChanged, this, [this] {
+            setCursor(digitize_ && digitize_->capturesMouse() ? Qt::CrossCursor : Qt::ArrowCursor);
+            emit overlayChanged();
+        });
+        connect(digitize_, &QObject::destroyed, this, [this] {
+            digitize_ = nullptr;
+            emit digitizeChanged();
+        });
+    }
+    emit digitizeChanged();
+    emit overlayChanged();
+}
+
+QVariantList GpuCanvas::handlesOverlay() const {
+    static const char* const kKinds[] = {"line",   "closed", "dots", "selected",
+                                         "handle", "active", "ghost"};
+    constexpr int kMaxDots = 8000;
+    QVariantList out;
+    if (!digitize_ || !digitize_->capturesMouse()) {
+        return out;
+    }
+    // Fenêtre visible en mm scène : les points hors champ ne sont jamais convertis ni dessinés.
+    const auto a = camera_.screenToWorld({0.0, 0.0});
+    const auto b = camera_.screenToWorld({width(), height()});
+    const double x0 = std::min(a.x, b.x) - 1.0, x1 = std::max(a.x, b.x) + 1.0;
+    const double y0 = std::min(a.y, b.y) - 1.0, y1 = std::max(a.y, b.y) + 1.0;
+    const auto append = [&](const HandleItem& item) {
+        const bool cloud =
+            item.kind == HandleItem::Kind::Dots || item.kind == HandleItem::Kind::Selected;
+        QVariantList pts;
+        int kept = 0;
+        for (const auto& p : item.points) {
+            if (cloud && (p.x < x0 || p.x > x1 || p.y < y0 || p.y > y1)) {
+                continue;
+            }
+            if (cloud && ++kept > kMaxDots) {
+                break;
+            }
+            const auto s = camera_.worldToScreen(p);
+            pts << s.x << s.y;
+        }
+        if (!pts.isEmpty()) {
+            out.push_back(QVariantMap{
+                {QStringLiteral("kind"), QString::fromLatin1(kKinds[static_cast<int>(item.kind)])},
+                {QStringLiteral("pts"), pts}});
+        }
+    };
+    for (const auto& item : digitize_->staticItems()) {
+        append(item);
+    }
+    for (const auto& item : digitize_->dynamicItems()) {
+        append(item);
+    }
+    return out;
 }
 
 void GpuCanvas::setTools(ToolController* tools) {
@@ -499,6 +573,12 @@ void GpuCanvas::mousePressEvent(QMouseEvent* event) {
     if (panning) {
         gesture_ = Gesture::Pan;
         setCursor(Qt::ClosedHandCursor);
+    } else if (digitize_ && digitize_->capturesMouse() && event->button() == Qt::LeftButton) {
+        const auto p = camera_.screenToWorld({lastMouse_.x(), lastMouse_.y()});
+        if (digitize_->press(p.x, p.y, camera_.scale(), event->modifiers())) {
+            gesture_ = Gesture::Digitize;
+            gestureActive_ = true;
+        }
     } else if (tools_ && tools_->capturesMouse() && event->button() == Qt::LeftButton) {
         const auto p = camera_.screenToWorld({lastMouse_.x(), lastMouse_.y()});
         if (tools_->press(p.x, p.y, camera_.scale(), event->modifiers())) {
@@ -553,6 +633,11 @@ void GpuCanvas::mouseMoveEvent(QMouseEvent* event) {
         if (tools_) {
             const auto p = camera_.screenToWorld({pos.x(), pos.y()});
             tools_->move(p.x, p.y, event->modifiers());
+        }
+    } else if (gesture_ == Gesture::Digitize) {
+        if (digitize_) {
+            const auto p = camera_.screenToWorld({pos.x(), pos.y()});
+            digitize_->move(p.x, p.y, event->modifiers());
         }
     } else if (gesture_ != Gesture::None) {
         const auto travel = pos - pressPos_;
@@ -658,6 +743,17 @@ void GpuCanvas::mouseReleaseEvent(QMouseEvent* event) {
         event->accept();
         return;
     }
+    if (gesture_ == Gesture::Digitize) {
+        gesture_ = Gesture::None;
+        gestureActive_ = false;
+        if (digitize_) {
+            const auto p = camera_.screenToWorld({event->position().x(), event->position().y()});
+            digitize_->release(p.x, p.y, event->modifiers());
+        }
+        emit overlayChanged();
+        event->accept();
+        return;
+    }
     const auto gesture = gesture_;
     const bool active = gestureActive_;
     const bool ctrl = event->modifiers().testFlag(Qt::ControlModifier);
@@ -724,6 +820,10 @@ void GpuCanvas::hoverMoveEvent(QHoverEvent* event) {
     if (gesture_ != Gesture::None || panMode_ || spaceDown_) {
         return;
     }
+    if (digitize_ && digitize_->capturesMouse()) {
+        setCursor(Qt::CrossCursor);
+        return;
+    }
     if (tools_ && tools_->capturesMouse()) {
         setCursor(Qt::CrossCursor);
         if (tools_->busy()) {
@@ -741,6 +841,10 @@ void GpuCanvas::hoverMoveEvent(QHoverEvent* event) {
 }
 
 void GpuCanvas::keyPressEvent(QKeyEvent* event) {
+    if (digitize_ && event->key() != Qt::Key_Space && digitize_->keyPress(event->key())) {
+        event->accept();
+        return;
+    }
     if (tools_ && event->key() != Qt::Key_Space && tools_->keyPress(event->key())) {
         event->accept();
         return;
