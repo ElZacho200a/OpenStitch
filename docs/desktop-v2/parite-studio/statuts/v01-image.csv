@@ -1,0 +1,4 @@
+id,statut,preuve,controleur,composant
+337b1cac,TESTED,StudioSpaceImageTest::imageSpaceJourneyOnRealMainQml (grayscale/flip_h appliques puis annules; avant/apres rendus sur le canevas),ImageController::applyPrep,ImageSpace.qml + ImagePrepSection.qml
+412ad05d,UI_PARTIAL,StudioImageTest::imageSpaceDrivesThePrepJourney (curseurs luminosite/contraste via QML; pas de dialogue modal),ImageController::applyPrep,ImagePrepSection.qml
+35393cc9,TESTED,StudioSpaceImageTest::imageSpaceJourneyOnRealMainQml (cadre a poignees sur le canevas puis cropApply en une etape annulable),ImageSpaceController::applyCrop,CropOverlay.qml

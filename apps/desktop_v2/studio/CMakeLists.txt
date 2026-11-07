@@ -35,6 +35,8 @@ add_library(openstitch_studio_ui STATIC
     digitize_gestures.cpp digitize_gestures.hpp
     pull_controller.cpp pull_controller.hpp
     applique_controller.cpp applique_controller.hpp
+    image_space_controller.cpp image_space_controller.hpp
+    layers/source_image_layer.cpp layers/source_image_layer.hpp
     segmentation_space_controller.cpp segmentation_space_controller.hpp
     layers/region_layer.cpp layers/region_layer.hpp)
 add_library(openstitch::studio_ui ALIAS openstitch_studio_ui)
@@ -61,6 +63,8 @@ set(studio_qml_files
     qml/spaces/VectorSpace.qml qml/spaces/PointsSpace.qml)
 list(APPEND studio_qml_files qml/spaces/vector/VectorShapePanel.qml)
 # Les sous-composants d'un espace (qml/spaces/<x>/...) s'ajoutent ICI, une ligne par fichier.
+list(APPEND studio_qml_files qml/spaces/image/ImageOpStack.qml qml/spaces/image/CompareCurtain.qml
+    qml/spaces/image/CropOverlay.qml)
 list(APPEND studio_qml_files qml/spaces/segmentation/SegmentationPanels.qml qml/spaces/segmentation/RegionLayerControls.qml)
 
 add_executable(openstitch_v2_studio WIN32 main.cpp)

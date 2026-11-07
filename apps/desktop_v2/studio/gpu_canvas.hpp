@@ -87,6 +87,10 @@ public:
         return overlays_;
     }
     [[nodiscard]] std::uint64_t overlayRevision() const { return overlayRevision_; }
+    // Couche « sourceImage » (espace Image) : image de travail positionnée en mm de scène. N'est
+    // dessinée que si `layers.sourceImage` est vrai ; ne touche ni la scène ni les points.
+    void setSourceImage(SourceImageView view);
+    [[nodiscard]] const SourceImageView& sourceImage() const { return sourceImage_; }
     [[nodiscard]] QString backendName() const { return backendName_; }
     [[nodiscard]] int geometryBuildCount() const { return geometryBuildCount_; }
     [[nodiscard]] double resourceCreationMs() const { return resourceCreationMs_; }
@@ -176,6 +180,7 @@ private:
     std::uint64_t selectionRevision_{0};
     std::shared_ptr<const CanvasOverlays> overlays_;
     std::uint64_t overlayRevision_{0};
+    SourceImageView sourceImage_;
     struct SavedView {
         double scale;
         ScenePoint offset;

@@ -24,6 +24,7 @@
 #include "gpu_canvas.hpp"
 #include "help_controller.hpp"
 #include "image_controller.hpp"
+#include "image_space_controller.hpp"
 #include "inspector_controller.hpp"
 #include "point_edit_controller.hpp"
 #include "preferences_controller.hpp"
@@ -107,6 +108,7 @@ int main(int argc, char** argv) {
     AnalysisController analysis(controller, view, configDir);
     ImageController imageTools(controller);
     RegionController regionTools(controller, imageTools);
+    ImageSpaceController imageSpace(controller, imageTools);
     SegmentationSpaceController segmentationSpace(controller, imageTools, regionTools);
     SatinController satin(controller);
     FadeController fade(controller);
@@ -141,6 +143,7 @@ int main(int argc, char** argv) {
     engine.rootContext()->setContextProperty(QStringLiteral("threads"), &threads);
     engine.rootContext()->setContextProperty(QStringLiteral("analysis"), &analysis);
     engine.rootContext()->setContextProperty(QStringLiteral("imageTools"), &imageTools);
+    engine.rootContext()->setContextProperty(QStringLiteral("imageSpace"), &imageSpace);
     engine.rootContext()->setContextProperty(QStringLiteral("regionTools"), &regionTools);
     engine.rootContext()->setContextProperty(QStringLiteral("segmentationSpace"),
                                              &segmentationSpace);
@@ -180,6 +183,14 @@ int main(int argc, char** argv) {
                 digitizeHub->setProperty("openPanel", QStringLiteral("fade"));
             } else if (digitizeHub && name == QStringLiteral("tirage")) {
                 digitizeHub->setProperty("openPanel", QStringLiteral("pull"));
+            } else if (name == QStringLiteral("espace-image")) {
+                for (auto* child : window->findChildren<QObject*>()) {
+                    if (QByteArray(child->metaObject()->className())
+                            .contains("WorkspaceController")) {
+                        child->setProperty("current", QStringLiteral("image"));
+                        break;
+                    }
+                }
             } else if (name == QStringLiteral("inspecteur")) {
                 window->setProperty("editOpen", true);
             }

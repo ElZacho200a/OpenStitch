@@ -339,6 +339,14 @@ void GpuCanvas::setOverlays(std::shared_ptr<const CanvasOverlays> overlays) {
     update();
 }
 
+void GpuCanvas::setSourceImage(SourceImageView view) {
+    if (view == sourceImage_) {
+        return;
+    }
+    sourceImage_ = std::move(view);
+    update();
+}
+
 void GpuCanvas::setVectorLayer(std::shared_ptr<const OverlayImage> image) {
     vectorImage_ = std::move(image);
     ++overlayRevision_; // même chemin que les autres calques d'image : une révision, un rendu
@@ -603,6 +611,7 @@ QSGNode* GpuCanvas::updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData*) {
                             overlays_,
                             overlayRevision_,
                             layers_,
+                            layers_.sourceImage ? sourceImage_ : SourceImageView{},
                             regionLayer_,
                             layers_.vectors ? vectorImage_ : nullptr};
     const auto result = backend.synchronize(oldNode, state, *window());

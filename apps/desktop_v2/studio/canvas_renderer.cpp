@@ -180,6 +180,7 @@ struct GeometryRoot : QSGNode {
     QSGTransformNode* world = new QSGTransformNode;
     QSGOpacityNode* frame = new QSGOpacityNode;
     StitchBatches stitches;
+    SourceImageNodes source; // couche « sourceImage » (layers/source_image_layer.*)
     QSGTransformNode* layers = new QSGTransformNode;
     QSGNode* overlay = new QSGNode;
     std::uint64_t overlayRevision{std::numeric_limits<std::uint64_t>::max()};
@@ -517,6 +518,7 @@ public:
             }
             appendGeometry(*root->overlay, screen);
         }
+        synchronizeSourceImage(*root, state, window);
         root->overlayRevision = state.overlayRevision;
         CanvasRenderResult result{root, dirty.geometry && state.scene != nullptr, elapsed};
         synchronizeRealistic(*root, state, overlays, window, dirty, overlayDirty, result);
@@ -524,6 +526,14 @@ public:
     }
 
 private:
+    // Couche « sourceImage » : textures reconstruites par révision d'image, jamais au pan/zoom.
+    static void synchronizeSourceImage(GeometryRoot& root, const CanvasRenderState& state,
+                                       QQuickWindow& window) {
+        if (state.sourceImage.data || root.source.textureBuilds() > 0) {
+            root.source.synchronize(*root.world, state.sourceImage, window);
+        }
+    }
+
     // Calque réaliste : reconstruit seulement si la scène ou le style change (jamais au
     // pan/zoom), masqué sans rien détruire quand la bascule est coupée.
     static void synchronizeRealistic(GeometryRoot& root, const CanvasRenderState& state,
@@ -566,6 +576,8 @@ struct SoftwareRoot : QSGSimpleTextureNode {
     double dpr{0};
     std::shared_ptr<const RegionLayerData> regions; // couche « regions » déjà rastérisée
     std::uint64_t overlayRevision{std::numeric_limits<std::uint64_t>::max()};
+    std::uint64_t sourceData{std::numeric_limits<std::uint64_t>::max()};
+    std::uint64_t sourceView{std::numeric_limits<std::uint64_t>::max()};
     SoftwareRoot() { setOwnsTexture(true); }
 };
 
@@ -579,6 +591,8 @@ public:
         if (!dirty.geometry && !dirty.camera && !dirty.selection &&
             root->regions == (state.layers.regions ? state.regions : nullptr) &&
             root->overlayRevision == state.overlayRevision && root->viewport == state.viewport &&
+            root->sourceData == state.sourceImage.dataRevision &&
+            root->sourceView == state.sourceImage.viewRevision &&
             root->dpr == state.devicePixelRatio) {
             return {root, false, 0};
         }
@@ -597,6 +611,7 @@ public:
         const auto offset = state.camera.offset();
         painter.translate(offset.x, offset.y);
         painter.scale(state.camera.scale(), state.camera.scale());
+        paintSourceImage(painter, state.sourceImage); // sous les régions et les formes
         paintRegionLayer(painter, state.layers.regions ? state.regions.get() : nullptr);
         root->regions = state.layers.regions ? state.regions : nullptr;
         const CanvasOverlays defaults;
@@ -684,6 +699,8 @@ public:
         root->viewport = size;
         root->dpr = state.devicePixelRatio;
         root->overlayRevision = state.overlayRevision;
+        root->sourceData = state.sourceImage.dataRevision;
+        root->sourceView = state.sourceImage.viewRevision;
         return {root, dirty.geometry && state.scene != nullptr,
                 static_cast<double>(timer.nsecsElapsed()) / 1e6};
     }
