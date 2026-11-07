@@ -50,6 +50,12 @@ public:
     void clearSelection();
     // Supprime les nœuds choisis (touche Suppr) ; faux si rien n'est choisi ou si c'est refusé.
     bool deleteSelected();
+    // Type des nœuds choisis (anguleux / lisse) et suppression du trou auquel ils appartiennent :
+    // chacun est UNE commande annulable ; faux et message si rien n'est choisi ou si c'est refusé.
+    bool setSelectedKind(NodeKind kind);
+    bool removeSelectedHole();
+    // Nœuds choisis dans un trou (utile pour griser « Supprimer le trou »).
+    [[nodiscard]] bool selectionIsInHole() const;
 
     [[nodiscard]] int handleCount() const;
     [[nodiscard]] int selectedCount() const { return static_cast<int>(nodeSel_.size()); }

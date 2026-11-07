@@ -77,6 +77,58 @@ bool NodeEditController::deleteSelected() {
     return true;
 }
 
+bool NodeEditController::setSelectedKind(NodeKind kind) {
+    if (nodeSel_.empty() || fadeView_) {
+        host_.notice(tr("Nœuds : choisissez d'abord un ou plusieurs nœuds (outil Nœuds, B)."),
+                     true);
+        return false;
+    }
+    std::vector<NodeRef> refs;
+    for (const int i : nodeSel_) {
+        refs.push_back(nodeView_.nodes[static_cast<std::size_t>(i)].ref);
+    }
+    const auto r = openstitch::desktop_v2::setNodeKind(host_.session, nodeObject_, refs, kind);
+    if (!r.ok) {
+        host_.notice(tr("Nœuds : %1").arg(fromUtf8(r.message)), true);
+        return false;
+    }
+    host_.notice(kind == NodeKind::Smooth ? tr("Nœud(s) rendu(s) lisse(s).")
+                                          : tr("Nœud(s) rendu(s) anguleux."),
+                 false);
+    return true;
+}
+
+bool NodeEditController::selectionIsInHole() const {
+    if (nodeSel_.empty() || fadeView_) {
+        return false;
+    }
+    return std::any_of(nodeSel_.begin(), nodeSel_.end(), [this](int i) {
+        return nodeView_.nodes[static_cast<std::size_t>(i)].ref.path > 0;
+    });
+}
+
+bool NodeEditController::removeSelectedHole() {
+    if (nodeSel_.empty() || fadeView_) {
+        host_.notice(tr("Trou : choisissez un nœud du trou à supprimer (outil Nœuds, B)."), true);
+        return false;
+    }
+    // Un seul trou à la fois : le premier nœud choisi qui appartient à un trou.
+    const auto it = std::find_if(nodeSel_.begin(), nodeSel_.end(), [this](int i) {
+        return nodeView_.nodes[static_cast<std::size_t>(i)].ref.path > 0;
+    });
+    const NodeRef ref =
+        nodeView_.nodes[static_cast<std::size_t>(it != nodeSel_.end() ? *it : nodeSel_.front())]
+            .ref;
+    const auto r = openstitch::desktop_v2::removeHoleOfNode(host_.session, nodeObject_, ref);
+    if (!r.ok) {
+        host_.notice(tr("Trou : %1").arg(fromUtf8(r.message)), true);
+        return false;
+    }
+    nodeSel_.clear();
+    host_.notice(tr("Trou supprimé."), false);
+    return true;
+}
+
 void NodeEditController::clearSelection() {
     if (!nodeSel_.empty()) {
         nodeSel_.clear();
