@@ -16,7 +16,7 @@ Rectangle {
     readonly property string stateName: spaceCtl ? spaceCtl.state : "empty"
     readonly property string hintText: {
         if (digitizeCtl && digitizeCtl.mode !== "")
-            return qsTr("Geste actif : cliquez sur le canevas ; Échap pour terminer.")
+            return digitizeCtl.hint !== "" ? digitizeCtl.hint : qsTr("Geste actif : cliquez sur le canevas ; Échap pour terminer.")
         if (toolCtl && toolCtl.hint !== "")
             return toolCtl.hint
         return qsTr("Cliquez sur un fil ou choisissez un objet dans la liste.")
@@ -31,41 +31,13 @@ Rectangle {
         spacing: 4
 
         Text {
-            visible: bar.digitizeCtl !== null && !bar.compact
-            text: qsTr("Gestes")
-            color: Theme.faint
+            objectName: "pointsMode"
+            text: bar.digitizeCtl && bar.digitizeCtl.mode !== "" ? qsTr("Geste : ") + bar.digitizeCtl.mode : qsTr("Sélection")
+            color: Theme.foreground
             font.family: Theme.fontFamily
             font.pixelSize: Theme.smallSize
-            Layout.rightMargin: 4
-        }
-        Repeater {
-            model: bar.digitizeCtl ? [["points", qsTr("Points"), "stitches", qsTr("Geste points : poser des points à la main")],
-                                      ["fade", qsTr("Fondu"), "fade", qsTr("Geste fondu : tracer l'axe d'un fondu")],
-                                      ["satin", qsTr("Satin"), "satin", qsTr("Geste satin : tracer une colonne satin")],
-                                      ["guide", qsTr("Guide"), "guide", qsTr("Guide de direction du remplissage")],
-                                      ["break", qsTr("Rupture"), "break", qsTr("Ligne de rupture du remplissage")],
-                                      ["rungs", qsTr("Barreaux"), "rungs", qsTr("Barreaux d'un satin")]] : []
-            delegate: StudioButton {
-                required property var modelData
-                objectName: "gesture_" + modelData[0]
-                quiet: true
-                checkable: true
-                iconName: modelData[2]
-                text: bar.compact ? "" : modelData[1]
-                tooltip: modelData[3]
-                implicitHeight: Theme.controlHeight - 4
-                checked: bar.digitizeCtl !== null && bar.digitizeCtl.mode === modelData[0]
-                onClicked: bar.digitizeCtl.mode = checked ? modelData[0] : ""
-            }
-        }
-
-        Rectangle {
-            visible: bar.digitizeCtl !== null
-            implicitWidth: 1
-            implicitHeight: 18
-            color: Theme.divider
-            Layout.leftMargin: 6
-            Layout.rightMargin: 6
+            font.weight: Font.DemiBold
+            Layout.rightMargin: 8
         }
 
         Text {

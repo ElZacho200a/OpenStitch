@@ -1,46 +1,34 @@
 // SPDX-License-Identifier: Apache-2.0
 import QtQuick
-import QtQml
 import QtQuick.Layouts
 import "../.."
 
 // Rail des OUTILS DE POINTS (l'espace « Points » ne porte plus les outils de dessin vectoriel) :
-// sélection et déplacement de la vue, outils de numérisation (satin, guides de direction, lignes
-// de rupture, axe du fondu, retouche de points, texte, pipette, règle), ajustement du motif.
-// Libellés, raccourcis et ordre viennent du ToolRegistry (`tools.tools`). Les raccourcis sont des
-// `Shortcut` QML indépendants du focus. Tolérant à l'absence du contexte `tools`.
+// sélection et déplacement de la vue, gestes de numérisation (points, fondu, satin, guide de
+// direction, ligne de rupture, barreaux), ajustement du motif. Les raccourcis sont des `Shortcut`
+// QML indépendants du focus. Tolérant à l'absence du contexte `digitizer`.
 ColumnLayout {
     id: rail
     objectName: "pointsToolRail"
     required property var canvas
     readonly property var toolCtl: typeof tools !== "undefined" ? tools : null
-    readonly property var groups: [
-        ["satin.column", "fill.direction-guide", "fill.break-line", "fade.axis"],
-        ["stitch.points", "click-to-stitch", "text", "eyedropper", "measure"]
+    readonly property var digitizeCtl: typeof digitizer !== "undefined" ? digitizer : null
+    // [mode, libellé, icône, infobulle, raccourci]
+    readonly property var gestures: [
+        ["points", qsTr("Points"), "stitches", qsTr("Geste points : poser des points à la main"), "J"],
+        ["satin", qsTr("Satin"), "satin", qsTr("Geste satin : tracer une colonne satin"), "S"],
+        ["rungs", qsTr("Barreaux"), "rungs", qsTr("Barreaux d'un satin"), ""],
+        ["fade", qsTr("Fondu"), "fade", qsTr("Geste fondu : tracer l'axe d'un fondu"), "L"],
+        ["guide", qsTr("Guide"), "guide", qsTr("Guide de direction du remplissage"), "D"],
+        ["break", qsTr("Rupture"), "break", qsTr("Ligne de rupture du remplissage"), "Shift+D"]
     ]
-    readonly property var icons: ({
-        "satin.column": "satin", "fill.direction-guide": "guide", "fill.break-line": "break",
-        "fade.axis": "fade", "stitch.points": "stitches", "click-to-stitch": "needle",
-        "text": "text", "eyedropper": "eyedropper", "measure": "measure"
-    })
     spacing: 6
 
-    function shortcutOf(text) { return text.replace("Maj+", "Shift+") }
-    function entriesOf(ids) {
-        const out = []
-        if (!toolCtl)
-            return out
-        const all = toolCtl.tools
-        for (let i = 0; i < ids.length; ++i)
-            for (let j = 0; j < all.length; ++j)
-                if (all[j].id === ids[i])
-                    out.push(all[j])
-        return out
-    }
-    function allEntries() { return entriesOf(groups[0]).concat(entriesOf(groups[1])) }
-    function pick(id) {
+    function toggleMode(mode) {
+        if (!digitizeCtl)
+            return
         canvas.panMode = false
-        toolCtl.activeTool = toolCtl.activeTool === id ? "select" : id
+        digitizeCtl.mode = digitizeCtl.mode === mode ? "" : mode
     }
 
     StudioButton {
@@ -49,8 +37,12 @@ ColumnLayout {
         tooltip: studio.selectionTool.label
         shortcutLabel: studio.selectionTool.shortcut
         quiet: true
-        active: !rail.canvas.panMode && (!rail.toolCtl || rail.toolCtl.activeTool === "select")
-        onClicked: { rail.canvas.panMode = false; if (rail.toolCtl) rail.toolCtl.activeTool = "select" }
+        active: !rail.canvas.panMode && (!rail.digitizeCtl || rail.digitizeCtl.mode === "")
+        onClicked: {
+            rail.canvas.panMode = false
+            if (rail.digitizeCtl) rail.digitizeCtl.mode = ""
+            if (rail.toolCtl) rail.toolCtl.activeTool = "select"
+        }
     }
     StudioButton {
         objectName: "panToolButton"
@@ -59,38 +51,35 @@ ColumnLayout {
         shortcutLabel: studio.panTool.shortcut
         quiet: true
         active: rail.canvas.panMode
-        onClicked: { rail.canvas.panMode = true; if (rail.toolCtl) rail.toolCtl.activeTool = "select" }
+        onClicked: {
+            rail.canvas.panMode = true
+            if (rail.digitizeCtl) rail.digitizeCtl.mode = ""
+            if (rail.toolCtl) rail.toolCtl.activeTool = "select"
+        }
     }
 
+    Rectangle {
+        visible: rail.digitizeCtl !== null
+        Layout.alignment: Qt.AlignHCenter
+        Layout.topMargin: 4
+        Layout.bottomMargin: 4
+        implicitWidth: 24
+        implicitHeight: 1
+        color: Theme.divider
+    }
     Repeater {
-        model: rail.groups
-        delegate: ColumnLayout {
-            id: group
+        model: rail.digitizeCtl ? rail.gestures : []
+        delegate: StudioButton {
             required property var modelData
+            objectName: "gesture_" + modelData[0]
+            iconName: modelData[2]
+            quiet: true
+            checkable: true
+            checked: rail.digitizeCtl !== null && rail.digitizeCtl.mode === modelData[0]
+            tooltip: modelData[3]
+            shortcutLabel: modelData[4]
             Layout.alignment: Qt.AlignHCenter
-            spacing: 6
-            visible: rail.toolCtl !== null
-            Rectangle {
-                Layout.alignment: Qt.AlignHCenter
-                Layout.topMargin: 4
-                Layout.bottomMargin: 4
-                implicitWidth: 24
-                implicitHeight: 1
-                color: Theme.divider
-            }
-            Repeater {
-                model: rail.entriesOf(group.modelData)
-                delegate: StudioButton {
-                    required property var modelData
-                    objectName: "tool_" + modelData.id
-                    iconName: rail.icons[modelData.id] || "select"
-                    quiet: true
-                    tooltip: modelData.label
-                    shortcutLabel: modelData.shortcut
-                    active: rail.toolCtl && rail.toolCtl.activeTool === modelData.id
-                    onClicked: rail.pick(modelData.id)
-                }
-            }
+            onClicked: rail.toggleMode(modelData[0])
         }
     }
 
@@ -111,13 +100,16 @@ ColumnLayout {
         onClicked: rail.canvas.fitDesign()
     }
 
-    Instantiator {
-        model: rail.toolCtl ? rail.allEntries() : []
-        delegate: Shortcut {
+    Repeater {
+        model: rail.digitizeCtl ? rail.gestures : []
+        delegate: Item {
+            id: holder
             required property var modelData
-            sequence: rail.shortcutOf(modelData.shortcut)
-            enabled: sequence !== ""
-            onActivated: rail.pick(modelData.id)
+            Shortcut {
+                sequence: holder.modelData[4]
+                enabled: sequence !== ""
+                onActivated: rail.toggleMode(holder.modelData[0])
+            }
         }
     }
 }

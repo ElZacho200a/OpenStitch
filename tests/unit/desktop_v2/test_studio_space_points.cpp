@@ -188,7 +188,7 @@ private slots:
         for (const auto& t : types) {
             ids << t.toMap().value(QStringLiteral("id")).toString();
         }
-        QVERIFY2(ids.contains(QStringLiteral("satin")), qPrintable(ids.join(',')));
+        QVERIFY2(ids.contains(QStringLiteral("auto_satin")), qPrintable(ids.join(',')));
         QVERIFY2(ids.contains(QStringLiteral("tatami")), qPrintable(ids.join(',')));
         auto* box = named(rig.window, "typeBox");
         QVERIFY(box);
@@ -196,7 +196,15 @@ private slots:
         QCOMPARE(box->property("count").toInt(), static_cast<int>(types.size()));
         // Chaque type du moteur est atteignable : le sélecteur le convertit en une étape.
         const auto depth = rig.session.undoNames().size();
-        rig.inspector.setStitchType(QStringLiteral("satin"));
+        QString other;
+        for (const auto& t : types) {
+            if (!t.toMap().value(QStringLiteral("current")).toBool()) {
+                other = t.toMap().value(QStringLiteral("id")).toString();
+                break;
+            }
+        }
+        QVERIFY(!other.isEmpty());
+        rig.inspector.setStitchType(other);
         QTRY_VERIFY(rig.session.undoNames().size() > depth);
     }
 
@@ -205,9 +213,8 @@ private slots:
         open(rig);
         QVERIFY(named(rig.window, "pointsToolRail"));
         for (const char* name :
-             {"tool_satin.column", "tool_fill.direction-guide", "tool_fill.break-line",
-              "tool_fade.axis", "tool_stitch.points", "tool_text", "selectToolButton",
-              "panToolButton", "fitToolButton"}) {
+             {"gesture_satin", "gesture_guide", "gesture_break", "gesture_fade", "gesture_points",
+              "gesture_rungs", "selectToolButton", "panToolButton", "fitToolButton"}) {
             QVERIFY2(named(rig.window, name), name);
         }
         // Les outils de dessin vectoriel quittent cet espace.
@@ -215,9 +222,10 @@ private slots:
                                  "tool_node.edit", "tool_knife"}) {
             QVERIFY2(!named(rig.window, name), name);
         }
-        QVERIFY(press(rig.window, "tool_satin.column"));
-        QCOMPARE(rig.tools.activeTool(), QStringLiteral("satin.column"));
-        QVERIFY(press(rig.window, "tool_satin.column"));
+        QVERIFY(press(rig.window, "gesture_guide"));
+        QCOMPARE(rig.digitizer.mode(), QStringLiteral("guide"));
+        QVERIFY(press(rig.window, "selectToolButton"));
+        QCOMPARE(rig.digitizer.mode(), QString());
         QCOMPARE(rig.tools.activeTool(), QStringLiteral("select"));
     }
 
