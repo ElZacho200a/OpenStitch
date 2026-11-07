@@ -28,6 +28,12 @@ Choix du modèle : par invocation (`model:` de l'appel Agent) > frontmatter de l
 session. Haiku : recherche, résumé, tri. Sonnet : tout développement borné. Opus : seulement
 si le raisonnement fin change le résultat, et le dire dans le prompt.
 
+## Coordination externe obligatoire avant la délégation
+
+Avant d'envoyer plusieurs agents travailler en parallèle : lire `openstitch-notion` et `docs/agents/notion-protocol.md`, vérifier les responsabilités et les baux actifs dans Notion, réserver le lot parent puis allouer à chaque agent un **périmètre de fichiers disjoint**. Les sous-agents d'une même session relèvent du lead, qui est l'unique écrivain Notion si cela évite les courses. Pour deux sessions indépendantes Claude/Codex/ChatGPT, le bail Notion n'étant pas atomique, ne pas promettre d'exclusivité : demander arbitrage à un orchestrateur unique en cas de concurrence.
+
+Chaque rapport d'agent comprend code Notion, HEAD, fichiers modifiés, tests réellement exécutés, risques et prochaine action. Seul le lead/intégrateur met à jour la fiche canonique et répartit les éventuels fichiers partagés. La revue finale doit être indépendante de l'implémenteur pour passer « Validé ».
+
 ## 2. Découper
 
 Une unité a : une **liste fermée de fichiers** (deux agents ne touchent jamais le même
