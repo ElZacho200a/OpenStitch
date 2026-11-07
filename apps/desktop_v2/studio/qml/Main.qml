@@ -430,6 +430,9 @@ Window {
             Layout.fillWidth: true
             Layout.fillHeight: true
             workspace: workspaceCtl
+
+            // L’historique du document survit au changement des quatre espaces.
+            HistoryPanel { anchors.fill: parent; z: 10 }
         }
 
         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }

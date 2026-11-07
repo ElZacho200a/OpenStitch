@@ -23,6 +23,7 @@
 #include "file_controller.hpp"
 #include "gpu_canvas.hpp"
 #include "help_controller.hpp"
+#include "history_controller.hpp"
 #include "image_controller.hpp"
 #include "image_space_controller.hpp"
 #include "inspector_controller.hpp"
@@ -95,6 +96,7 @@ int main(int argc, char** argv) {
                                                  QStringLiteral("Provided by the application"));
     DocumentSession session;
     StudioController controller(session);
+    HistoryController history(controller);
     ActionController actions(controller);
     EditController editor(controller);
     FileController files(controller, &actions,
@@ -136,6 +138,7 @@ int main(int argc, char** argv) {
     engine.rootContext()->setContextProperty(QStringLiteral("pointEdit"), &pointEdit);
     engine.rootContext()->setContextProperty(QStringLiteral("editor"), &editor);
     engine.rootContext()->setContextProperty(QStringLiteral("studio"), &controller);
+    engine.rootContext()->setContextProperty(QStringLiteral("history"), &history);
     engine.rootContext()->setContextProperty(QStringLiteral("actions"), &actions);
     engine.rootContext()->setContextProperty(QStringLiteral("files"), &files);
     engine.rootContext()->setContextProperty(QStringLiteral("inspector"), &inspector);

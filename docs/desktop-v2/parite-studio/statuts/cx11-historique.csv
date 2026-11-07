@@ -1,0 +1,2 @@
+id,statut,preuve,controleur,composant
+799ba08e,TESTED,Apres rebase Debug Studio20/20 + core302cas + commands236cas; Release17/17 avant rebase seulement; nouvelle Release interrompue sur demande du proprietaire,HistoryController / DocumentSession::navigateHistory,HistoryPanel.qml

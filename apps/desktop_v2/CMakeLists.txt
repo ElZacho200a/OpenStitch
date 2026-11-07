@@ -75,24 +75,33 @@ target_link_libraries(openstitch_desktop_v2_core
 if(NOT OPENSTITCH_BUILD_DESKTOP)
     return()
 endif()
+
+# Le pont MCP live est partagé par les interfaces Widgets et Qt Quick. Le compiler dans chaque
+# bibliothèque duplique son Q_OBJECT/MOC dès qu'un exécutable lie les deux interfaces (par exemple
+# openstitch-studio-bench), ce que MSVC refuse avec LNK2005/LNK1169.
+find_package(Qt6 COMPONENTS Network QUIET)
+if(NOT TARGET Qt6::Network)
+    return()
+endif()
+set(CMAKE_AUTOMOC ON)
+add_library(openstitch_desktop_v2_live STATIC
+    ui/live_server.cpp
+    ui/live_server.hpp
+)
+add_library(openstitch::desktop_v2_live ALIAS openstitch_desktop_v2_live)
+target_include_directories(openstitch_desktop_v2_live PUBLIC ui)
+target_link_libraries(openstitch_desktop_v2_live
+    PUBLIC Qt6::Network openstitch::mcp
+    PRIVATE openstitch::warnings)
+
 if(OPENSTITCH_BUILD_STUDIO)
     add_subdirectory(studio)
 endif()
-find_package(Qt6 COMPONENTS Widgets Network QUIET)
-if(NOT Qt6_FOUND)
+find_package(Qt6 COMPONENTS Widgets QUIET)
+if(NOT TARGET Qt6::Widgets)
     return()
 endif()
 
-set(CMAKE_AUTOMOC ON)
-# Serveur de session live (sans widgets) : partagé par l'interface Widgets et par Studio. Une seule
-# définition de `LiveServer` dans le programme (deux copies compilées font échouer l'édition de liens
-# des exécutables qui lient les deux interfaces, comme openstitch-studio-bench).
-add_library(openstitch_desktop_v2_live_server STATIC ui/live_server.cpp ui/live_server.hpp)
-add_library(openstitch::desktop_v2_live_server ALIAS openstitch_desktop_v2_live_server)
-target_include_directories(openstitch_desktop_v2_live_server PUBLIC ui)
-target_link_libraries(openstitch_desktop_v2_live_server
-    PUBLIC Qt6::Core Qt6::Network openstitch::agent openstitch::companion_backends
-    PRIVATE openstitch::warnings)
 add_library(openstitch_desktop_v2_ui STATIC
     ui/shell_window.cpp
     ui/shell_window.hpp
@@ -155,8 +164,8 @@ add_library(openstitch::desktop_v2_ui ALIAS openstitch_desktop_v2_ui)
 target_include_directories(openstitch_desktop_v2_ui PUBLIC ui)
 target_link_libraries(openstitch_desktop_v2_ui
     PUBLIC Qt6::Widgets Qt6::Network openstitch::desktop_v2_core openstitch::project_io
-           openstitch::agent openstitch::companion_backends openstitch::desktop_v2_live_server
-    PRIVATE openstitch::warnings)
+           openstitch::agent openstitch::companion_backends
+    PRIVATE openstitch::desktop_v2_live openstitch::warnings)
 
 add_executable(openstitch_v2 WIN32 ui/main.cpp)
 target_link_libraries(openstitch_v2 PRIVATE openstitch::desktop_v2_ui openstitch::warnings)
