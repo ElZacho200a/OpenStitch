@@ -174,7 +174,7 @@ Item {
                 objectName: "inspectorMessage"
                 visible: text.length > 0
                 text: root.ctl ? root.ctl.message : ""
-                color: root.ctl && root.ctl.messageOk ? Theme.success : "#ff8a8a"
+                color: root.ctl && root.ctl.messageOk ? Theme.success : Theme.error
                 wrapMode: Text.WordWrap
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallSize

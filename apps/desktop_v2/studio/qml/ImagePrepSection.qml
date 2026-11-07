@@ -166,7 +166,7 @@ ColumnLayout {
         visible: imageTools.message.length > 0
         text: imageTools.message
         wrapMode: Text.WordWrap
-        color: imageTools.messageIsError ? "#ff8a8a" : Theme.success
+        color: imageTools.messageIsError ? Theme.error : Theme.success
         font.pixelSize: Theme.smallSize; font.family: Theme.fontFamily
     }
 }

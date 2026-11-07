@@ -49,10 +49,10 @@ Item {
             // Rulers (model mm, Y up). At most ~60 labels, rebuilt on view change only.
             Rectangle { visible: view.rulersVisible; anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; height: 18; color: Theme.panel; opacity: 0.9
                 Repeater { model: inner.ticksH
-                    delegate: Text { required property var modelData; x: modelData.pos + 2; y: 2; text: modelData.label; color: Theme.faint; font.pixelSize: 9; font.family: Theme.fontFamily } } }
+                    delegate: Text { required property var modelData; x: modelData.pos + 2; y: 2; text: modelData.label; color: Theme.faint; font.pixelSize: Theme.captionSize; font.family: Theme.fontFamily } } }
             Rectangle { visible: view.rulersVisible; anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom; width: 34; color: Theme.panel; opacity: 0.9
                 Repeater { model: inner.ticksV
-                    delegate: Text { required property var modelData; y: modelData.pos + 2; x: 2; text: modelData.label; color: Theme.faint; font.pixelSize: 9; font.family: Theme.fontFamily } } }
+                    delegate: Text { required property var modelData; y: modelData.pos + 2; x: 2; text: modelData.label; color: Theme.faint; font.pixelSize: Theme.captionSize; font.family: Theme.fontFamily } } }
 
             // Zoom rectangle rubber band (state owned by the canvas gesture).
             Rectangle {

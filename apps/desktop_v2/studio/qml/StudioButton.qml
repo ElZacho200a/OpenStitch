@@ -11,12 +11,13 @@ Controls.AbstractButton {
     property bool emphasized: false
     property bool quiet: false
     property bool active: false
+    property bool showShortcutLabel: true
     property color contentColor: !enabled ? Theme.faint
                                        : emphasized ? Theme.accentInk
                                        : checked || active ? Theme.accent
                                        : Theme.foreground
-    implicitWidth: Math.max(36, content.implicitWidth + (text.length > 0 ? 22 : 16))
-    implicitHeight: 36
+    implicitWidth: Math.max(Theme.controlHeight, content.implicitWidth + (text.length > 0 ? 22 : 16))
+    implicitHeight: Theme.controlHeight
     hoverEnabled: true
     focusPolicy: Qt.StrongFocus
     Accessible.name: tooltip.length > 0 ? tooltip : text
@@ -24,7 +25,7 @@ Controls.AbstractButton {
 
     background: Rectangle {
         radius: Theme.radius
-        color: button.emphasized ? (button.down ? "#dc78a4" : Theme.accent)
+        color: button.emphasized ? (button.down ? Theme.accentPressed : Theme.accent)
                : button.checked || button.active ? Theme.accentSoft
                : button.down ? Theme.raised
                : button.hovered ? Theme.hover
@@ -32,6 +33,7 @@ Controls.AbstractButton {
         border.width: button.activeFocus || (!button.quiet && !button.emphasized) ? 1 : 0
         border.color: button.activeFocus ? Theme.accent : Theme.border
         opacity: button.enabled ? 1 : 0.55
+        Behavior on color { ColorAnimation { duration: Theme.animationMs; easing.type: Easing.OutCubic } }
     }
 
     contentItem: Item {
@@ -39,7 +41,7 @@ Controls.AbstractButton {
         implicitHeight: content.implicitHeight
         Row {
             id: content
-            spacing: 7
+            spacing: 8
             anchors.centerIn: parent
             StudioIcon {
                 name: button.iconName
@@ -55,11 +57,12 @@ Controls.AbstractButton {
                 color: button.contentColor
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.bodySize
+                font.weight: button.emphasized ? Font.DemiBold : Font.Normal
                 anchors.verticalCenter: parent.verticalCenter
             }
             Text {
                 text: button.shortcutLabel
-                visible: text.length > 0 && button.text.length > 0
+                visible: button.showShortcutLabel && text.length > 0 && button.text.length > 0
                 color: button.emphasized ? Theme.accentInk : Theme.faint
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallSize
