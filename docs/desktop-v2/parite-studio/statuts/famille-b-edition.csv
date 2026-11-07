@@ -1,0 +1,16 @@
+id,statut,preuve,controleur,composant
+f4632624,TESTED,StudioEditTest::shortcutsReachTheEditor,EditController::selectAll,Main.qml Ctrl+A / EditBar selectAllButton
+5626577a,FUNCTIONAL_UNTESTED,StudioEditTest::selectionCommandsOnRealObjects (controleur seul),EditController::selectSameColor,EditBar sameColorButton / CanvasContextMenu
+76e1b404,FUNCTIONAL_UNTESTED,StudioEditTest::selectionCommandsOnRealObjects (controleur seul),EditController::selectNeighbors,EditBar neighborsButton / CanvasContextMenu
+5d90ed77,FUNCTIONAL_UNTESTED,StudioEditTest::selectionCommandsOnRealObjects (controleur seul),EditController::selectAll/selectRect/selectByLayer,CanvasContextMenu Selection + GpuCanvas rectangle
+e019429a,FUNCTIONAL_UNTESTED,StudioEditTest::savedSelectionsAreRecalled (controleur seul),EditController::recallSelection,EditBar Rappeler
+50f2be55,FUNCTIONAL_UNTESTED,StudioEditTest::selectionCommandsOnRealObjects (controleur seul),EditController::selectByType,CanvasContextMenu Type de points
+e5696c12,FUNCTIONAL_UNTESTED,StudioEditTest::selectionCommandsOnRealObjects (controleur seul),EditController::selectByType,EditBar Type
+9ba57c94,TESTED,StudioEditTest::shortcutsReachTheEditor,EditController::duplicate,Main.qml Ctrl+D / CanvasContextMenu / EditBar
+6623e722,TESTED,StudioEditTest::shortcutsReachTheEditor,EditController::deleteSelection,Main.qml Suppr / EditBar deleteButton
+03a7c253,TESTED,StudioEditTest::contextMenuAndEyedropper,EditController::deleteSelection,CanvasContextMenu contextDelete
+ea8a9f5a,FUNCTIONAL_UNTESTED,StudioEditTest::alignDistributeStackGroup (controleur seul),EditController::align/distribute,EditBar Aligner / CanvasContextMenu
+c6534d24,TESTED,StudioEditTest::contextMenuAndEyedropper,EditController::applyColorFrom,GpuCanvas pipette + EditBar pipetteButton
+8b3e385a,FUNCTIONAL_UNTESTED,StudioEditTest::layersTreeAndObjectEditing (controleur seul),EditController::renameLayer/renameObject,ObjectTree double-clic / LayerPanel
+d6e27fc4,FUNCTIONAL_UNTESTED,StudioEditTest::layersTreeAndObjectEditing (controleur seul),EditController::removeLayer,LayerPanel layerRemoveButton
+eab12005,FUNCTIONAL_UNTESTED,StudioEditTest::layersTreeAndObjectEditing (controleur seul),EditController::moveSelectionToLayer,LayerPanel layerMoveHereButton / ObjectTree glisser-deposer

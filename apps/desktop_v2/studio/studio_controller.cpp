@@ -10,6 +10,7 @@
 #include "inspector_model.hpp"
 #include "object_labels.hpp"
 #include "openstitch/project_io/project_io.hpp"
+#include "transform_batch.hpp"
 
 namespace openstitch::desktop_v2::studio {
 
@@ -17,7 +18,8 @@ StudioController::StudioController(DocumentSession& session, QObject* parent)
     : QObject(parent), session_(session) {
     documentToken_ = session_.subscribe([this](ChangeKind kind) {
         if (scene_ && scene_->revision == session_.revision()) {
-            return; // markSaved changes no render data.
+            emit changed(); // markSaved changes no render data, only the dirty flag.
+            return;
         }
         if (kind == ChangeKind::Replaced) {
             emit documentReplaced();
@@ -84,8 +86,112 @@ void StudioController::openProject(const QUrl& url) {
                 return;
             }
             title_ = QFileInfo(path).fileName();
+            path_ = path;
             session_.replaceProject(std::move(*result), true);
         });
+}
+
+void StudioController::newProject() {
+    tasks_.cancelAll();
+    ++request_;
+    busy_ = false;
+    path_.clear();
+    title_ = QStringLiteral("Sans projet");
+    status_ = QStringLiteral("Nouveau projet");
+    session_.replaceProject(document::Project{}, true);
+    emit changed();
+}
+
+void StudioController::adoptProject(document::Project project, const QString& path,
+                                    const QString& title, bool clean) {
+    tasks_.cancelAll();
+    ++request_;
+    busy_ = false;
+    path_ = path;
+    title_ = title.isEmpty() ? QStringLiteral("Sans projet") : title;
+    session_.replaceProject(std::move(project), clean);
+    emit changed();
+}
+
+bool StudioController::writeProject(const QString& path) {
+    const auto saved =
+        project_io::save_project(std::filesystem::path(path.toStdWString()), session_.project());
+    if (!saved) {
+        status_ = QStringLiteral("Enregistrement impossible : %1")
+                      .arg(QString::fromStdString(saved.error().message));
+        emit changed();
+        return false;
+    }
+    path_ = path;
+    title_ = QFileInfo(path).fileName();
+    status_ = QStringLiteral("Projet enregistré");
+    session_.markSaved(); // notifies; the listener emits changed().
+    emit changed();
+    return true;
+}
+
+bool StudioController::saveProject() {
+    if (path_.isEmpty()) {
+        status_ = QStringLiteral("Choisissez un fichier avec Enregistrer sous");
+        emit changed();
+        return false;
+    }
+    return writeProject(path_);
+}
+
+bool StudioController::saveProjectAs(const QUrl& url) {
+    if (!url.isLocalFile()) {
+        status_ = QStringLiteral("Choisissez un fichier .osp local");
+        emit changed();
+        return false;
+    }
+    QString path = url.toLocalFile();
+    if (QFileInfo(path).suffix().isEmpty()) {
+        path += QStringLiteral(".osp");
+    }
+    return writeProject(path);
+}
+
+QString StudioController::undoLabel() const {
+    return QString::fromStdString(session_.undoName());
+}
+
+QString StudioController::redoLabel() const {
+    return QString::fromStdString(session_.redoName());
+}
+
+void StudioController::undo() {
+    if (session_.undo()) {
+        status_ = QStringLiteral("Annulé");
+        emit changed();
+    }
+}
+
+void StudioController::redo() {
+    if (session_.redo()) {
+        status_ = QStringLiteral("Rétabli");
+        emit changed();
+    }
+}
+
+bool StudioController::moveSelection(double dxMm, double dyMm) {
+    std::vector<std::uint64_t> ids;
+    for (const auto& target : session_.selection().targets()) {
+        if (target.kind == TargetKind::EmbroideryObject) {
+            ids.push_back(target.id);
+        }
+    }
+    const auto batch = batchTranslate(ids, dxMm, dyMm);
+    if (batch.empty()) {
+        return false; // nothing selected, zero or out-of-range offset
+    }
+    const auto result = session_.applyBatch(batch, "Déplacer");
+    if (!result.committed) {
+        status_ = QStringLiteral("Déplacement refusé");
+        emit changed();
+        return false;
+    }
+    return true;
 }
 
 void StudioController::rebuildScene() {
@@ -116,8 +222,8 @@ void StudioController::rebuildScene() {
                 return;
             }
             scene_ = std::move(*result);
-            status_ = QStringLiteral("%1 segments · coordonnées en mm · projet en lecture seule")
-                          .arg(scene_->segments.size());
+            status_ =
+                QStringLiteral("%1 segments · coordonnées en mm").arg(scene_->segments.size());
             emit sceneChanged();
             emit changed();
             emit loadFinished(true);

@@ -17,8 +17,31 @@ Window {
     minimumHeight: 640
     visible: true
     color: Theme.background
-    title: studio.title + " — OpenStitch Studio"
+    // Safety net: a Qt control that is not a Studio* component still inherits a dark, readable
+    // palette (never the white Basic defaults). The font counterpart is applied in main.cpp.
+    palette.window: Theme.background
+    palette.windowText: Theme.foreground
+    palette.base: Theme.raised
+    palette.alternateBase: Theme.surface
+    palette.text: Theme.foreground
+    palette.placeholderText: Theme.faint
+    palette.button: Theme.raised
+    palette.buttonText: Theme.foreground
+    palette.light: Theme.hover
+    palette.midlight: Theme.hover
+    palette.mid: Theme.border
+    palette.dark: Theme.divider
+    palette.shadow: Theme.background
+    palette.highlight: Theme.accent
+    palette.highlightedText: Theme.accentInk
+    palette.link: Theme.info
+    palette.toolTipBase: Theme.raised
+    palette.toolTipText: Theme.foreground
+    title: (studio.dirty ? "• " : "") + studio.title + " — OpenStitch Studio"
 
+    readonly property var editController: editor
+    readonly property var toolController: typeof tools !== "undefined" ? tools : null
+    readonly property var digitizeController: typeof digitizer !== "undefined" ? digitizer : null
     property int workspaceIndex: 1
     readonly property var workspaces: [
         { name: qsTr("Préparer"), label: qsTr("COMPOSITION"),
@@ -32,7 +55,7 @@ Window {
           detail: qsTr("Le contour framboise indique la sélection. Zoomez pour observer la structure, sans modifier le document.") },
         { name: qsTr("Produire"), label: qsTr("DOCUMENT SOURCE"),
           title: qsTr("Relire le motif avant production"),
-          detail: qsTr("Ce prototype consulte les projets existants. Pour exporter ou simuler la couture, utilisez encore Desktop V2.") }
+          detail: qsTr("Le Studio ouvre, édite et exporte : réglez les fils et le cadre, simulez la couture, puis exportez le DST depuis le panneau Fichier.") }
     ]
     readonly property var workspace: workspaces[workspaceIndex]
     readonly property var objectEntries: studio.objects
@@ -46,7 +69,7 @@ Window {
 
     function openProject() {
         if (!studio.busy)
-            projectDialog.open()
+            filePanel.requestOpen()
     }
 
     FileDialog {
@@ -54,14 +77,189 @@ Window {
         title: qsTr("Ouvrir un projet OpenStitch")
         fileMode: FileDialog.OpenFile
         nameFilters: [qsTr("Projet OpenStitch (*.osp)")]
-        onAccepted: studio.openProject(selectedFile)
+        onAccepted: filePanel.openUrl(selectedFile)
     }
 
+    function saveProject() {
+        if (studio.hasPath())
+            studio.saveProject()
+        else
+            saveDialog.open()
+    }
+
+    FileDialog {
+        id: saveDialog
+        title: qsTr("Enregistrer le projet")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "osp"
+        nameFilters: [qsTr("Projet OpenStitch (*.osp)")]
+        onAccepted: studio.saveProjectAs(selectedFile)
+    }
+
+    FilePanel { id: filePanel }
+    onClosing: function (close) {
+        if (!filePanel.requestQuit())
+            close.accepted = false
+        else
+            window.persistSession()
+    }
+    ActionPalette { id: palette }
+    CompanionPanel { id: companionPanel }
+    PreferencesDialog { id: prefsDialog }
+    ShortcutsSheet { id: shortcutsSheet }
+    HelpDialog { id: helpDialog }
+
+    // Interface preferences (theme, density, reduced motion) drive the Theme singleton.
+    readonly property bool hasPrefs: typeof prefs !== "undefined" && prefs !== null
+    Binding { target: Theme; property: "mode"; value: window.hasPrefs ? prefs.effectiveTheme : "dark" }
+    Binding { target: Theme; property: "densityScale"; value: window.hasPrefs ? prefs.densityScale : 1.0 }
+    Binding { target: Theme; property: "reducedMotion"; value: window.hasPrefs ? prefs.reducedMotion : false }
+
+    // Session restore: workspace and panels now, zoom once a document has been framed; the file
+    // itself is reopened by the application at launch (main.cpp).
+    function persistSession() {
+        if (!hasPrefs)
+            return
+        const file = studio.hasPath() && typeof files !== "undefined" && files.recent.length > 0 ? files.recent[0].path : ""
+        prefs.rememberSession({ file: file, workspace: workspaceIndex, editOpen: editOpen,
+                                treeMode: treeMode, zoom: canvas.zoom })
+    }
+    onWorkspaceIndexChanged: persistSession()
+    onEditOpenChanged: persistSession()
+    onTreeModeChanged: persistSession()
+    Component.onCompleted: {
+        if (!hasPrefs)
+            return
+        const s = prefs.session
+        if (s.workspace !== undefined && Number(s.workspace) >= 0 && Number(s.workspace) < workspaces.length)
+            workspaceIndex = Number(s.workspace)
+        editOpen = s.editOpen === "1"
+        treeMode = s.treeMode === "1"
+    }
+
+    function deleteSelection() {
+        if (toolController !== null && toolController.selectedNodeCount > 0)
+            toolController.deleteSelectedNodes()
+        else
+            editor.deleteSelection()
+    }
+
+    // The ONE dispatcher behind the palette (and any menu): shortcuts and buttons call the same
+    // functions, so every path has the same effect, enabled state and undo step.
+    function dispatch(id) {
+        if (id.indexOf("cmd.tool.") === 0) {
+            if (toolController)
+                toolController.activeTool = id.substring(9)
+            return
+        }
+        if (id.indexOf("cmd.workspace.") === 0) {
+            workspaceIndex = parseInt(id.substring(14))
+            return
+        }
+        switch (id) {
+        case "cmd.file.new": filePanel.requestNew(); break
+        case "cmd.file.open": openProject(); break
+        case "cmd.file.save": saveProject(); break
+        case "cmd.file.save-as": saveDialog.open(); break
+        case "cmd.file.import-image": filePanel.importImageDialog(); break
+        case "cmd.file.import-machine": filePanel.importMachineDialog(); break
+        case "cmd.edit.undo": studio.undo(); break
+        case "cmd.edit.redo": studio.redo(); break
+        case "cmd.edit.duplicate": editor.duplicate(5); break
+        case "cmd.edit.delete": deleteSelection(); break
+        case "cmd.edit.group": editor.group(""); break
+        case "cmd.edit.ungroup": editor.ungroup(); break
+        case "cmd.edit.rotate-cw": editor.rotate90(true); break
+        case "cmd.edit.rotate-ccw": editor.rotate90(false); break
+        case "cmd.edit.mirror-h": editor.mirror(true); break
+        case "cmd.edit.mirror-v": editor.mirror(false); break
+        case "cmd.edit.eyedropper": editor.eyedropper = !editor.eyedropper; break
+        case "cmd.select.all": editor.selectAll(); break
+        case "cmd.select.invert": editor.invertSelection(); break
+        case "cmd.select.clear": studio.clearSelection(); break
+        case "cmd.arrange.forward": editor.stack("forward"); break
+        case "cmd.arrange.backward": editor.stack("backward"); break
+        case "cmd.arrange.front": editor.stack("front"); break
+        case "cmd.arrange.back": editor.stack("back"); break
+        case "cmd.view.fit": canvas.fitDesign(); break
+        case "cmd.view.zoom-in": canvas.zoomAt(1.25, canvas.width / 2, canvas.height / 2); break
+        case "cmd.view.zoom-out": canvas.zoomAt(0.8, canvas.width / 2, canvas.height / 2); break
+        case "cmd.view.zoom-selection": canvas.zoomToSelection(); break
+        case "cmd.prefs.open": prefsDialog.openDialog(); break
+        case "cmd.companion.open": companionPanel.openPanel(); break
+        case "cmd.companion.toggle":
+            if (typeof companion !== "undefined")
+                companion.setBridgeEnabled(!companion.bridgeActive)
+            break
+        case "cmd.help.shortcuts": shortcutsSheet.openSheet(); break
+        case "cmd.help.guide": helpDialog.show("guide"); break
+        case "cmd.help.tool": helpDialog.show("tool", typeof help !== "undefined" && toolController
+                                              ? help.toolHelp(toolController.activeTool, toolController.hint) : ""); break
+        case "cmd.help.about": helpDialog.show("about"); break
+        }
+        // Keyboard control returns to the canvas, except when a dialog just took it.
+        if (id.indexOf("cmd.prefs") !== 0 && id.indexOf("cmd.companion") !== 0 && id.indexOf("cmd.help") !== 0)
+            canvas.forceActiveFocus()
+    }
+    // Keyboard invariant: the focus never rests on an item the user cannot see (a button of a
+    // collapsed panel or of a closed popup). When it does, the canvas takes it back.
+    onActiveFocusItemChanged: {
+        const item = window.activeFocusItem
+        if (item !== null && item !== canvas && !item.visible)
+            Qt.callLater(function () { if (window.activeFocusItem && !window.activeFocusItem.visible) canvas.forceActiveFocus() })
+    }
+    Connections {
+        target: actions
+        function onCommandRequested(id) { window.dispatch(id) }
+    }
+
+    Shortcut { sequence: "Ctrl+K"; onActivated: palette.openList() }
+    Shortcut { sequence: "Ctrl+J"; onActivated: companionPanel.openPanel() }
+    Shortcut { sequence: "Ctrl+,"; onActivated: prefsDialog.openDialog() }
+    Shortcut { sequence: "F1"; onActivated: shortcutsSheet.openSheet() }
+    Shortcut { sequence: "Shift+F1"; onActivated: window.dispatch("cmd.help.tool") }
+    Shortcut { sequence: "Ctrl+N"; enabled: !studio.busy; onActivated: filePanel.requestNew() }
+    Shortcut { sequence: "Ctrl+S"; enabled: !studio.busy; onActivated: window.saveProject() }
+    Shortcut { sequence: "Ctrl+Shift+S"; enabled: !studio.busy; onActivated: saveDialog.open() }
+    Shortcut { sequence: "Ctrl+Z"; enabled: studio.canUndo; onActivated: studio.undo() }
+    Shortcut { sequence: "Ctrl+Y"; enabled: studio.canRedo; onActivated: studio.redo() }
+    Shortcut { sequence: "Ctrl+Shift+Z"; enabled: studio.canRedo; onActivated: studio.redo() }
+    // Arrow keys nudge the selection by 1 mm (Shift: 5 mm); Y is up in model space.
+    Shortcut { sequence: "Left"; enabled: studio.hasSelection; onActivated: studio.moveSelection(-1, 0) }
+    Shortcut { sequence: "Right"; enabled: studio.hasSelection; onActivated: studio.moveSelection(1, 0) }
+    Shortcut { sequence: "Up"; enabled: studio.hasSelection; onActivated: studio.moveSelection(0, 1) }
+    Shortcut { sequence: "Down"; enabled: studio.hasSelection; onActivated: studio.moveSelection(0, -1) }
+    Shortcut { sequence: "Shift+Left"; enabled: studio.hasSelection; onActivated: studio.moveSelection(-5, 0) }
+    Shortcut { sequence: "Shift+Right"; enabled: studio.hasSelection; onActivated: studio.moveSelection(5, 0) }
+    Shortcut { sequence: "Shift+Up"; enabled: studio.hasSelection; onActivated: studio.moveSelection(0, 5) }
+    Shortcut { sequence: "Shift+Down"; enabled: studio.hasSelection; onActivated: studio.moveSelection(0, -5) }
     Shortcut { sequence: "Ctrl+O"; enabled: !studio.busy; onActivated: window.openProject() }
     Shortcut { sequence: "F"; onActivated: canvas.fitDesign() }
     Shortcut { sequence: studio.selectionTool.shortcut; onActivated: canvas.panMode = false }
     Shortcut { sequence: studio.panTool.shortcut; onActivated: canvas.panMode = true }
-    Shortcut { sequence: "Escape"; onActivated: studio.clearSelection() }
+    Shortcut { sequence: "Escape"; onActivated: { editor.eyedropper = false; if (!canvas.cancelGesture()) studio.clearSelection() } }
+    Shortcut { sequence: "Ctrl+A"; onActivated: editor.selectAll() }
+    Shortcut { sequence: "Ctrl+I"; onActivated: editor.invertSelection() }
+    // One focus-independent handler: selected path nodes first, otherwise the selected objects.
+    Shortcut {
+        sequence: "Delete"
+        enabled: studio.hasSelection || (toolController !== null && toolController.selectedNodeCount > 0)
+        onActivated: window.deleteSelection()
+    }
+    Shortcut { sequence: "Ctrl+D"; enabled: studio.hasSelection; onActivated: editor.duplicate(5) }
+    Shortcut { sequence: "Ctrl+G"; enabled: editor.selectedCount > 1; onActivated: editor.group("") }
+    Shortcut { sequence: "Ctrl+Shift+G"; enabled: studio.hasSelection; onActivated: editor.ungroup() }
+    Shortcut { sequence: "Ctrl+R"; enabled: studio.hasSelection; onActivated: editor.rotate90(true) }
+    Shortcut { sequence: "Ctrl+Shift+R"; enabled: studio.hasSelection; onActivated: editor.rotate90(false) }
+    Shortcut { sequence: "Ctrl+Shift+H"; enabled: studio.hasSelection; onActivated: editor.mirror(true) }
+    Shortcut { sequence: "Ctrl+Shift+V"; enabled: studio.hasSelection; onActivated: editor.mirror(false) }
+    Shortcut { sequence: "PgUp"; enabled: studio.hasSelection; onActivated: editor.stack("forward") }
+    Shortcut { sequence: "PgDown"; enabled: studio.hasSelection; onActivated: editor.stack("backward") }
+    Shortcut { sequence: "End"; enabled: studio.hasSelection; onActivated: editor.stack("front") }
+    Shortcut { sequence: "Home"; enabled: studio.hasSelection; onActivated: editor.stack("back") }
+    Shortcut { sequence: "I"; enabled: studio.hasSelection; onActivated: editor.eyedropper = !editor.eyedropper }
+    property bool treeMode: false
+    property bool editOpen: false
     Shortcut { sequence: "Ctrl+1"; onActivated: window.workspaceIndex = 0 }
     Shortcut { sequence: "Ctrl+2"; onActivated: window.workspaceIndex = 1 }
     Shortcut { sequence: "Ctrl+3"; onActivated: window.workspaceIndex = 2 }
@@ -78,8 +276,8 @@ Window {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 18
-                anchors.rightMargin: 18
+                anchors.leftMargin: Theme.panelPadding
+                anchors.rightMargin: Theme.panelPadding
                 spacing: 12
 
                 StudioIcon { name: "needle"; color: Theme.accent; implicitWidth: 28; implicitHeight: 28 }
@@ -89,15 +287,15 @@ Window {
                         text: "OpenStitch"
                         color: Theme.foreground
                         font.family: Theme.fontFamily
-                        font.pixelSize: 18
+                        font.pixelSize: Theme.brandSize
                         font.weight: Font.DemiBold
                     }
                     Text {
                         text: "STUDIO"
                         color: Theme.faint
                         font.family: Theme.fontFamily
-                        font.pixelSize: 9
-                        font.letterSpacing: 2.4
+                        font.pixelSize: Theme.captionSize
+                        font.letterSpacing: 1.6
                     }
                 }
 
@@ -112,7 +310,7 @@ Window {
                             required property int index
                             required property var modelData
                             readonly property bool active: window.workspaceIndex === index
-                            Layout.preferredHeight: 38
+                            Layout.preferredHeight: Theme.controlHeight
                             Layout.preferredWidth: window.width < 1180 ? 96 : 113
                             hoverEnabled: true
                             focusPolicy: Qt.StrongFocus
@@ -135,9 +333,7 @@ Window {
                                 font.pixelSize: Theme.bodySize
                                 font.weight: workspaceButton.active ? Font.DemiBold : Font.Normal
                             }
-                            Controls.ToolTip.visible: hovered
-                            Controls.ToolTip.text: modelData.name + "  ·  Ctrl+" + (index + 1)
-                            Controls.ToolTip.delay: 600
+                            StudioToolTip { text: modelData.name + "  ·  Ctrl+" + (index + 1) }
                         }
                     }
                 }
@@ -145,11 +341,54 @@ Window {
                 Item { Layout.fillWidth: true; Layout.minimumWidth: 10 }
 
                 StudioButton {
+                    objectName: "undoButton"
+                    text: qsTr("Annuler")
+                    iconName: "undo"
+                    tooltip: studio.canUndo ? qsTr("Annuler : %1").arg(studio.undoLabel) : qsTr("Rien à annuler")
+                    shortcutLabel: "Ctrl+Z"
+                    showShortcutLabel: window.width >= 1400
+                    enabled: studio.canUndo
+                    onClicked: studio.undo()
+                }
+
+                StudioButton {
+                    objectName: "redoButton"
+                    text: qsTr("Rétablir")
+                    iconName: "redo"
+                    tooltip: studio.canRedo ? qsTr("Rétablir : %1").arg(studio.redoLabel) : qsTr("Rien à rétablir")
+                    shortcutLabel: "Ctrl+Y"
+                    showShortcutLabel: window.width >= 1400
+                    enabled: studio.canRedo
+                    onClicked: studio.redo()
+                }
+
+                StudioButton {
+                    objectName: "fileMenuButton"
+                    text: qsTr("Fichier")
+                    iconName: "open"
+                    tooltip: qsTr("Récents, imports et exports")
+                    enabled: !studio.busy
+                    onClicked: filePanel.openMenu()
+                }
+
+                StudioButton {
+                    objectName: "saveProjectButton"
+                    text: qsTr("Enregistrer")
+                    iconName: "save"
+                    tooltip: qsTr("Enregistrer le projet (Ctrl+Maj+S : sous…)")
+                    shortcutLabel: "Ctrl+S"
+                    showShortcutLabel: window.width >= 1400
+                    enabled: !studio.busy
+                    onClicked: window.saveProject()
+                }
+
+                StudioButton {
                     objectName: "openProjectButton"
                     text: qsTr("Ouvrir")
                     iconName: "open"
                     tooltip: qsTr("Ouvrir un projet .osp")
                     shortcutLabel: "Ctrl+O"
+                    showShortcutLabel: window.width >= 1400
                     enabled: !studio.busy
                     onClicked: window.openProject()
                 }
@@ -164,8 +403,8 @@ Window {
             color: Theme.surface
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 18
-                anchors.rightMargin: 18
+                anchors.leftMargin: Theme.panelPadding
+                anchors.rightMargin: Theme.panelPadding
                 spacing: 10
                 StudioIcon { name: "layers"; implicitWidth: 16; implicitHeight: 16; color: Theme.faint }
                 Text {
@@ -176,20 +415,48 @@ Window {
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.bodySize
                 }
-                Text {
-                    text: qsTr("UN DOCUMENT · QUATRE CONTEXTES")
-                    visible: window.width >= 1160
-                    color: Theme.faint
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 9
-                    font.letterSpacing: 1.1
-                }
                 Rectangle { implicitWidth: 1; implicitHeight: 14; color: Theme.border; Layout.leftMargin: 8; Layout.rightMargin: 8 }
                 Text {
-                    text: qsTr("Prototype · lecture seule")
+                    text: studio.dirty ? qsTr("Modifié") : qsTr("Enregistré")
                     color: Theme.muted
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.smallSize
+                }
+                StudioButton {
+                    objectName: "paletteButton"
+                    text: qsTr("Commandes")
+                    quiet: true
+                    implicitHeight: 28
+                    tooltip: qsTr("Palette de commandes")
+                    shortcutLabel: "Ctrl+K"
+                    onClicked: palette.openList()
+                }
+                StudioButton {
+                    objectName: "companionButton"
+                    text: qsTr("IA")
+                    quiet: true
+                    implicitHeight: 28
+                    tooltip: qsTr("Compagnon IA : discussion, pont MCP, propositions")
+                    shortcutLabel: "Ctrl+J"
+                    onClicked: companionPanel.openPanel()
+                }
+                StudioButton {
+                    objectName: "prefsButton"
+                    text: qsTr("Préférences")
+                    quiet: true
+                    implicitHeight: 28
+                    tooltip: qsTr("Préférences : thème, densité, animations, compagnon IA")
+                    shortcutLabel: "Ctrl+,"
+                    onClicked: prefsDialog.openDialog()
+                }
+                StudioButton {
+                    objectName: "helpButton"
+                    text: qsTr("Aide")
+                    quiet: true
+                    implicitHeight: 28
+                    tooltip: qsTr("Raccourcis, guide de prise en main, À propos")
+                    shortcutLabel: "F1"
+                    onClicked: shortcutsSheet.openSheet()
                 }
             }
         }
@@ -217,7 +484,7 @@ Window {
                         shortcutLabel: studio.selectionTool.shortcut
                         quiet: true
                         active: !canvas.panMode
-                        onClicked: canvas.panMode = false
+                        onClicked: { canvas.panMode = false; if (window.toolController) window.toolController.activeTool = "select" }
                     }
                     StudioButton {
                         objectName: "panToolButton"
@@ -226,9 +493,19 @@ Window {
                         shortcutLabel: studio.panTool.shortcut
                         quiet: true
                         active: canvas.panMode
-                        onClicked: canvas.panMode = true
+                        onClicked: { canvas.panMode = true; if (window.toolController) window.toolController.activeTool = "select" }
                     }
                     Rectangle {
+                        Layout.alignment: Qt.AlignHCenter
+                        Layout.topMargin: 4
+                        Layout.bottomMargin: 4
+                        implicitWidth: 24
+                        implicitHeight: 1
+                        color: Theme.divider
+                    }
+                    ToolRail { Layout.alignment: Qt.AlignHCenter }
+                    Rectangle {
+                        visible: window.toolController !== null
                         Layout.alignment: Qt.AlignHCenter
                         Layout.topMargin: 4
                         Layout.bottomMargin: 4
@@ -252,7 +529,7 @@ Window {
                     text: "mm"
                     color: Theme.faint
                     font.family: Theme.fontFamily
-                    font.pixelSize: 10
+                    font.pixelSize: Theme.captionSize
                 }
             }
 
@@ -293,7 +570,46 @@ Window {
                         objectName: "studioCanvas"
                         anchors.fill: parent
                         controller: studio
+                        editor: window.editController
+                        tools: window.toolController
+                        digitize: window.digitizeController
                         focus: true
+                        onContextMenuRequested: function(x, y, objectId) { contextMenu.openAt(x, y) }
+                    }
+
+                    ToolOverlay {
+                        objectName: "toolOverlay"
+                        anchors.fill: parent
+                        gpu: canvas
+                    }
+
+                    HandlesOverlay {
+                        objectName: "handlesOverlay"
+                        anchors.fill: parent
+                        gpu: canvas
+                    }
+
+                    TransformHandles {
+                        objectName: "transformHandles"
+                        anchors.fill: parent
+                        canvas: canvas
+                    }
+
+                    CanvasContextMenu { id: contextMenu }
+
+                    DigitizeHub {
+                        anchors.fill: parent
+                    }
+
+                    ViewPanel {
+                        objectName: "viewHub"
+                        anchors.fill: parent
+                        canvasItem: canvas
+                    }
+
+                    PreparePanel {
+                        objectName: "preparePanel"
+                        anchors.fill: parent
                     }
 
                     ColumnLayout {
@@ -315,7 +631,7 @@ Window {
                             color: Theme.foreground
                             horizontalAlignment: Text.AlignHCenter
                             font.family: Theme.fontFamily
-                            font.pixelSize: 23
+                            font.pixelSize: Theme.heroSize
                             wrapMode: Text.WordWrap
                         }
                         Text {
@@ -324,7 +640,7 @@ Window {
                             color: Theme.muted
                             horizontalAlignment: Text.AlignHCenter
                             font.family: Theme.fontFamily
-                            font.pixelSize: 13
+                            font.pixelSize: Theme.bodySize
                             lineHeight: 1.4
                             wrapMode: Text.WordWrap
                         }
@@ -336,6 +652,20 @@ Window {
                             text: qsTr("Ouvrir un projet .osp")
                             tooltip: qsTr("Ouvrir un projet OpenStitch existant")
                             onClicked: window.openProject()
+                        }
+                        RowLayout {
+                            Layout.alignment: Qt.AlignHCenter
+                            spacing: 8
+                            StudioButton {
+                                objectName: "welcomeImportImage"
+                                text: qsTr("Importer une image ou un SVG")
+                                onClicked: filePanel.importImageDialog()
+                            }
+                            StudioButton {
+                                objectName: "welcomeImportMachine"
+                                text: qsTr("Importer une broderie machine")
+                                onClicked: filePanel.importMachineDialog()
+                            }
                         }
                     }
 
@@ -450,8 +780,8 @@ Window {
                         Layout.preferredHeight: 48
                         RowLayout {
                             anchors.fill: parent
-                            anchors.leftMargin: 18
-                            anchors.rightMargin: 18
+                            anchors.leftMargin: Theme.panelPadding
+                            anchors.rightMargin: Theme.panelPadding
                             Text {
                                 text: qsTr("Objets")
                                 color: Theme.foreground
@@ -471,9 +801,46 @@ Window {
 
                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
 
+                    Row {
+                        Layout.fillWidth: true
+                        Layout.margins: 6
+                        spacing: 4
+                        StudioButton {
+                            objectName: "listModeButton"
+                            text: qsTr("Liste")
+                            implicitHeight: 26
+                            active: !window.treeMode
+                            onClicked: window.treeMode = false
+                        }
+                        StudioButton {
+                            objectName: "treeModeButton"
+                            text: qsTr("Arbre et calques")
+                            implicitHeight: 26
+                            active: window.treeMode
+                            onClicked: window.treeMode = true
+                        }
+                        StudioButton {
+                            objectName: "editOpenButton"
+                            text: qsTr("Édition")
+                            implicitHeight: 26
+                            active: window.editOpen
+                            tooltip: qsTr("Afficher les actions d'édition de la sélection")
+                            onClicked: window.editOpen = !window.editOpen
+                        }
+                    }
+
+                    LayerPanel {
+                        objectName: "layerPanel"
+                        visible: window.treeMode
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        Layout.minimumHeight: 100
+                    }
+
                     ListView {
                         id: objectList
                         objectName: "objectList"
+                        visible: !window.treeMode
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         Layout.minimumHeight: 100
@@ -523,7 +890,7 @@ Window {
                                     radius: 3
                                     color: objectRow.modelData.color
                                     border.width: 1
-                                    border.color: "#66858d9e"
+                                    border.color: Qt.alpha(Theme.faint, 0.4)
                                     opacity: objectRow.modelData.visible ? 1 : 0.4
                                 }
                                 ColumnLayout {
@@ -543,7 +910,7 @@ Window {
                                               + (objectRow.modelData.visible ? "" : qsTr(" · masqué"))
                                         color: Theme.faint
                                         font.family: Theme.fontFamily
-                                        font.pixelSize: 9
+                                        font.pixelSize: Theme.captionSize
                                         elide: Text.ElideRight
                                     }
                                 }
@@ -557,9 +924,7 @@ Window {
                                                         Boolean(mouse.modifiers & Qt.ControlModifier))
                                 }
                             }
-                            Controls.ToolTip.visible: hovered
-                            Controls.ToolTip.delay: 700
-                            Controls.ToolTip.text: modelData.label + "\n" + modelData.id
+                            StudioToolTip { delay: 700; text: modelData.label + "\n" + modelData.id }
                         }
 
                         Text {
@@ -580,7 +945,7 @@ Window {
 
                     ColumnLayout {
                         Layout.fillWidth: true
-                        Layout.margins: 18
+                        Layout.margins: Theme.panelPadding
                         spacing: 11
                         RowLayout {
                             Layout.fillWidth: true
@@ -614,16 +979,35 @@ Window {
                             text: qsTr("Ctrl + clic pour une sélection multiple")
                             color: Theme.faint
                             font.family: Theme.fontFamily
-                            font.pixelSize: 10
+                            font.pixelSize: Theme.captionSize
                             wrapMode: Text.WordWrap
                         }
+                    }
+
+                    Inspector {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: active ? Math.min(implicitHeight + 24, window.height * 0.5) : 0
+                    }
+
+                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
+
+                    EditBar {
+                        visible: window.editOpen
+                        Layout.fillWidth: true
+                        Layout.margins: 12
+                    }
+
+                    ToolOptions {
+                        visible: window.toolController !== null && window.editOpen
+                        Layout.fillWidth: true
+                        Layout.margins: 12
                     }
 
                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
 
                     ColumnLayout {
                         Layout.fillWidth: true
-                        Layout.margins: 18
+                        Layout.margins: Theme.panelPadding
                         spacing: 9
                         SectionLabel { text: window.workspace.name.toUpperCase() }
                         Text {
@@ -680,7 +1064,15 @@ Window {
                 Text {
                     objectName: "renderBackendLabel"
                     text: canvas.backendName
-                    color: Theme.muted
+                    color: Theme.info
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.smallSize
+                }
+                Text {
+                    objectName: "realisticModeStatus"
+                    visible: typeof view !== "undefined" && view.realistic
+                    text: typeof view !== "undefined" ? view.realisticMode : ""
+                    color: Theme.accent
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.smallSize
                 }

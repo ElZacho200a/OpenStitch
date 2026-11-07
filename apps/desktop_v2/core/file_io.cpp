@@ -8,7 +8,12 @@
 #include "openstitch/document/imported_design.hpp"
 #include "openstitch/formats/dxf.hpp"
 #include "openstitch/formats/format_registry.hpp"
+#include <fstream>
+
 #include "openstitch/project_io/machine_file.hpp"
+#include "openstitch/stitch_analysis/thread_usage.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
+#include "openstitch/thread_palette/thread_library.hpp"
 
 namespace openstitch::desktop_v2 {
 
@@ -73,6 +78,29 @@ ServiceResult exportVectorsToDxf(const document::Project& project,
     }
     if (count != nullptr) {
         *count = paths.size();
+    }
+    return {true, {}};
+}
+
+ServiceResult exportThreadListCsv(const document::Project& project,
+                                  const std::filesystem::path& file, std::size_t* rows) {
+    const auto sequence = stitch_generation::effective_sequence(project);
+    if (!sequence) {
+        return {false, "Aucun point généré : " + sequence.error().message};
+    }
+    if (sequence->commands.empty()) {
+        return {false, "Aucun point généré : rien à exporter."};
+    }
+    const auto library = thread_palette::ThreadLibrary::with_builtin();
+    const auto usage = stitch_analysis::thread_usage(project, *sequence, &library);
+    const std::string csv = stitch_analysis::thread_usage_csv(usage);
+    std::ofstream out(file, std::ios::binary | std::ios::trunc);
+    out.write(csv.data(), static_cast<std::streamsize>(csv.size()));
+    if (!out) {
+        return {false, "Impossible d'écrire le fichier : " + file.string()};
+    }
+    if (rows != nullptr) {
+        *rows = usage.size();
     }
     return {true, {}};
 }

@@ -15,6 +15,9 @@
 #include <filesystem>
 #include <memory>
 
+#include "action_catalog.hpp"
+#include "action_controller.hpp"
+#include "edit_controller.hpp"
 #include "gpu_canvas.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/project_io/project_io.hpp"
@@ -68,6 +71,8 @@ private slots:
     void softwareResourcesRecreateFromTheSameSnapshot();
     void prepopulatedSessionAndFailedGeometry();
     void controllerDisconnectionClearsTheCanvas();
+    void openMoveUndoSaveReopenJourney();
+    void actionCatalogIsFullyReachable();
 };
 
 void StudioShellTest::initTestCase() {
@@ -92,6 +97,8 @@ void StudioShellTest::realProjectSelectionAndViewInteractions() {
 
     DocumentSession session;
     StudioController controller(session);
+    ActionController actions(controller);
+    EditController editor(controller);
     QQmlApplicationEngine engine;
     QStringList qmlWarnings;
     connect(&engine, &QQmlApplicationEngine::warnings, this, [&](const QList<QQmlError>& errors) {
@@ -100,6 +107,8 @@ void StudioShellTest::realProjectSelectionAndViewInteractions() {
         }
     });
     engine.rootContext()->setContextProperty(QStringLiteral("studio"), &controller);
+    engine.rootContext()->setContextProperty(QStringLiteral("actions"), &actions);
+    engine.rootContext()->setContextProperty(QStringLiteral("editor"), &editor);
     engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
     QVERIFY2(!engine.rootObjects().isEmpty(), qPrintable(qmlWarnings.join('\n')));
     auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().front());
@@ -265,6 +274,96 @@ void StudioShellTest::prepopulatedSessionAndFailedGeometry() {
     QVERIFY(controller.scene() == nullptr);
     QVERIFY(canvas.scene() == nullptr);
     QVERIFY(previousScene != nullptr); // old immutable snapshot can safely outlive GPU resources
+}
+
+void StudioShellTest::openMoveUndoSaveReopenJourney() {
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto dir = std::filesystem::path(directory.path().toStdWString());
+    const auto original = dir / "origin.osp";
+    QVERIFY(project_io::save_project(original, studioFixture()).has_value());
+
+    DocumentSession session;
+    StudioController controller(session);
+    controller.openProject(QUrl::fromLocalFile(QString::fromStdWString(original.wstring())));
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.busy() && controller.scene() != nullptr, 15'000);
+    QVERIFY(!controller.dirty());
+    QVERIFY(!controller.canUndo());
+    QVERIFY(!controller.moveSelection(5, 0)); // nothing selected
+
+    controller.selectObject(QString::number(firstId));
+    const auto boundsBefore =
+        session.project().vector_objects.front().paths.front().outer.nodes.front();
+    QVERIFY(controller.moveSelection(5, 2));
+    QVERIFY(controller.dirty());
+    QVERIFY(controller.canUndo());
+    QCOMPARE(controller.undoLabel(), QStringLiteral("Déplacer"));
+    const auto moved = session.project().vector_objects.front().paths.front().outer.nodes.front();
+    QVERIFY(moved.pos.x.value != boundsBefore.pos.x.value);
+
+    controller.undo();
+    QVERIFY(!controller.dirty());
+    QVERIFY(controller.canRedo());
+    QCOMPARE(session.project().vector_objects.front().paths.front().outer.nodes.front().pos.x.value,
+             boundsBefore.pos.x.value);
+    controller.redo();
+    QVERIFY(controller.dirty());
+
+    // After Open the path is known; Save As switches to a copy, clears dirty, keeps the history.
+    QVERIFY(controller.hasPath());
+    const auto copy = dir / "copy.osp";
+    QVERIFY(controller.saveProjectAs(QUrl::fromLocalFile(QString::fromStdWString(copy.wstring()))));
+    QVERIFY(!controller.dirty());
+    QVERIFY(controller.canUndo());
+    QVERIFY(controller.saveProject());
+
+    // Reopen in a fresh session: the move survived.
+    DocumentSession reopened;
+    StudioController second(reopened);
+    second.openProject(QUrl::fromLocalFile(QString::fromStdWString(copy.wstring())));
+    QTRY_VERIFY_WITH_TIMEOUT(!second.busy() && second.scene() != nullptr, 15'000);
+    QCOMPARE(
+        reopened.project().vector_objects.front().paths.front().outer.nodes.front().pos.x.value,
+        moved.pos.x.value);
+
+    controller.newProject();
+    QVERIFY(!controller.dirty());
+    QVERIFY(session.project().embroidery_objects.empty());
+    QVERIFY(!controller.hasPath());
+    QVERIFY(!controller.saveProject()); // no path: refused until Save As
+}
+
+void StudioShellTest::actionCatalogIsFullyReachable() {
+    DocumentSession session;
+    StudioController controller(session);
+    ActionController actions(controller);
+    const auto all = actions.search({});
+    QCOMPARE(static_cast<std::size_t>(all.size()), actionCatalog().size());
+    for (const auto& def : actionCatalog()) {
+        QCOMPARE(static_cast<std::size_t>(actions.fields(QString::fromStdString(def.id)).size()),
+                 def.fields.size());
+    }
+    QVERIFY(actions.search(QStringLiteral("cadre")).size() >= 1); // accent/case-insensitive filter
+    QVERIFY(actions.search(QStringLiteral("zzzz-inconnu")).isEmpty());
+    QVERIFY(!actions.run(QStringLiteral("nope"), {}).isEmpty());
+
+    // A selection-free engine action runs through the shared batch path, is undoable and persists.
+    const auto before = session.project().canvas;
+    const auto refusal = actions.run(QStringLiteral("canvas.set"),
+                                     {{QStringLiteral("width_mm"), QStringLiteral("123")},
+                                      {QStringLiteral("height_mm"), QStringLiteral("77")}});
+    QVERIFY2(refusal.isEmpty(), qPrintable(refusal));
+    QVERIFY(actions.lastOk());
+    QVERIFY(controller.canUndo());
+    QVERIFY(session.project().canvas != before);
+    // Invalid values are refused, never silently corrected.
+    QVERIFY(!actions
+                 .run(QStringLiteral("canvas.set"),
+                      {{QStringLiteral("width_mm"), QStringLiteral("-5")}})
+                 .isEmpty());
+    QVERIFY(!actions.lastOk());
+    controller.undo();
+    QVERIFY(session.project().canvas == before);
 }
 
 QTEST_MAIN(StudioShellTest)
