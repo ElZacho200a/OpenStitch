@@ -5,6 +5,7 @@
 #include <QQuickItem>
 #include <QRectF>
 #include <QVariantList>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -44,6 +45,9 @@ class GpuCanvas : public QQuickItem {
     Q_PROPERTY(bool canZoomPrevious READ canZoomPrevious NOTIFY viewChanged)
     Q_PROPERTY(QString backendName READ backendName NOTIFY diagnosticsChanged)
     Q_PROPERTY(int geometryBuildCount READ geometryBuildCount NOTIFY diagnosticsChanged)
+    // Couches d'affichage {sourceImage, regions, vectors, stitches, selectionOverlays} (booléens).
+    // Les clés absentes gardent leur valeur ; défaut : stitches et selectionOverlays seulement.
+    Q_PROPERTY(QVariantMap layers READ layers WRITE setLayers NOTIFY layersChanged)
     Q_PROPERTY(double resourceCreationMs READ resourceCreationMs NOTIFY diagnosticsChanged)
     // Famille K : rendu réaliste GPU (diagnostics lus côté GUI, jamais écrits au rendu).
     Q_PROPERTY(bool rhiBackend READ rhiBackend NOTIFY diagnosticsChanged)
@@ -83,6 +87,10 @@ public:
         return overlays_;
     }
     [[nodiscard]] std::uint64_t overlayRevision() const { return overlayRevision_; }
+    // Couche « sourceImage » (espace Image) : image de travail positionnée en mm de scène. N'est
+    // dessinée que si `layers.sourceImage` est vrai ; ne touche ni la scène ni les points.
+    void setSourceImage(SourceImageView view);
+    [[nodiscard]] const SourceImageView& sourceImage() const { return sourceImage_; }
     [[nodiscard]] QString backendName() const { return backendName_; }
     [[nodiscard]] int geometryBuildCount() const { return geometryBuildCount_; }
     [[nodiscard]] double resourceCreationMs() const { return resourceCreationMs_; }
@@ -92,6 +100,27 @@ public:
     [[nodiscard]] int realisticBuildCount() const { return realisticBuildCount_; }
     [[nodiscard]] double realisticBuildMs() const { return realisticBuildMs_; }
     [[nodiscard]] const StudioCamera& camera() const { return camera_; }
+    [[nodiscard]] QVariantMap layers() const;
+    void setLayers(const QVariantMap& layers);
+    [[nodiscard]] const CanvasLayers& layerFlags() const { return layers_; }
+    // Données immuables de la couche « regions » (publiées par l'espace Segmentation).
+    void setRegionLayer(std::shared_ptr<const RegionLayerData> data);
+    [[nodiscard]] const std::shared_ptr<const RegionLayerData>& regionLayer() const {
+        return regionLayer_;
+    }
+    // Couche « vectors » (espace Vectorisation) : image immuable des formes, publiée par
+    // VectorSpaceController ; `picker` reçoit (x, y, tolérance mm, ctrl) pour un clic au canevas.
+    using VectorPicker = std::function<void(double, double, double, bool)>;
+    void setVectorLayer(std::shared_ptr<const OverlayImage> image);
+    void setVectorPicker(VectorPicker picker) { vectorPicker_ = std::move(picker); }
+    [[nodiscard]] const std::shared_ptr<const OverlayImage>& vectorImage() const {
+        return vectorImage_;
+    }
+    // État de vue transmissible entre espaces : {centerX, centerY} en mm de SCÈNE (Y vers le
+    // bas) et {zoom} en px/mm. restoreViewState() est différé jusqu'à ce que le canevas ait une
+    // taille et supprime l'ajustement automatique initial.
+    Q_INVOKABLE [[nodiscard]] QVariantMap viewState() const;
+    Q_INVOKABLE void restoreViewState(const QVariantMap& state);
     Q_INVOKABLE void fitDesign();
     // Annule le geste en cours (glisser, poignée, rectangle) ; faux s'il n'y en avait pas.
     Q_INVOKABLE bool cancelGesture();
@@ -117,6 +146,7 @@ signals:
     void diagnosticsChanged();
     void editorChanged();
     void toolsChanged();
+    void layersChanged();
     void digitizeChanged();
     void overlayChanged();
     // Clic droit : position canevas et identifiant de l'objet touché (vide = fond).
@@ -150,6 +180,7 @@ private:
     std::uint64_t selectionRevision_{0};
     std::shared_ptr<const CanvasOverlays> overlays_;
     std::uint64_t overlayRevision_{0};
+    SourceImageView sourceImage_;
     struct SavedView {
         double scale;
         ScenePoint offset;
@@ -159,6 +190,13 @@ private:
     bool rubberActive_{false};
     QRectF rubberBand_;
     StudioCamera camera_;
+    CanvasLayers layers_;
+    std::shared_ptr<const RegionLayerData> regionLayer_;
+    std::shared_ptr<const OverlayImage> vectorImage_;
+    VectorPicker vectorPicker_;
+    bool viewPending_{false};
+    double pendingZoom_{1.0}, pendingX_{0.0}, pendingY_{0.0};
+    void applyPendingView();
     QString backendName_{QStringLiteral("Initialisation du rendu…")};
     int geometryBuildCount_{0};
     double resourceCreationMs_{0};

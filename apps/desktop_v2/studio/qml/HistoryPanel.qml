@@ -18,7 +18,7 @@ Item {
                 anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.leftMargin: 44
-                anchors.topMargin: 56
+                anchors.topMargin: 84
                 text: qsTr("Historique")
                 active: hub.opened
                 tooltip: qsTr("Afficher les étapes du document")

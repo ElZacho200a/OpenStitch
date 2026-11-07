@@ -130,11 +130,12 @@ private slots:
         QVERIFY(QTest::qWaitForWindowExposed(window));
         auto* toggle = visual(window->contentItem(), QStringLiteral("historyToggle"));
         QVERIFY(toggle);
-        auto* viewToolbar = visual(window->contentItem(), QStringLiteral("viewToolbar"));
-        QVERIFY(viewToolbar);
-        QTRY_VERIFY(viewToolbar->width() > 0);
+        // Le nouvel hôte utilise des onglets (SpaceHost) au lieu de l’ancienne barre.
+        auto* spaceTabs = visual(window->contentItem(), QStringLiteral("spaceTabs"));
+        QVERIFY(spaceTabs);
+        QTRY_VERIFY(spaceTabs->width() > 0);
         QVERIFY(!toggle->mapRectToScene(toggle->boundingRect())
-                     .intersects(viewToolbar->mapRectToScene(viewToolbar->boundingRect())));
+                     .intersects(spaceTabs->mapRectToScene(spaceTabs->boundingRect())));
         QTest::mouseClick(
             window, Qt::LeftButton, {},
             toggle->mapToScene(QPointF(toggle->width() / 2, toggle->height() / 2)).toPoint());
