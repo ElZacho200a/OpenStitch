@@ -44,6 +44,9 @@ class GpuCanvas : public QQuickItem {
     Q_PROPERTY(bool canZoomPrevious READ canZoomPrevious NOTIFY viewChanged)
     Q_PROPERTY(QString backendName READ backendName NOTIFY diagnosticsChanged)
     Q_PROPERTY(int geometryBuildCount READ geometryBuildCount NOTIFY diagnosticsChanged)
+    // Couches d'affichage {sourceImage, regions, vectors, stitches, selectionOverlays} (booléens).
+    // Les clés absentes gardent leur valeur ; défaut : stitches et selectionOverlays seulement.
+    Q_PROPERTY(QVariantMap layers READ layers WRITE setLayers NOTIFY layersChanged)
     Q_PROPERTY(double resourceCreationMs READ resourceCreationMs NOTIFY diagnosticsChanged)
     // Famille K : rendu réaliste GPU (diagnostics lus côté GUI, jamais écrits au rendu).
     Q_PROPERTY(bool rhiBackend READ rhiBackend NOTIFY diagnosticsChanged)
@@ -92,6 +95,14 @@ public:
     [[nodiscard]] int realisticBuildCount() const { return realisticBuildCount_; }
     [[nodiscard]] double realisticBuildMs() const { return realisticBuildMs_; }
     [[nodiscard]] const StudioCamera& camera() const { return camera_; }
+    [[nodiscard]] QVariantMap layers() const;
+    void setLayers(const QVariantMap& layers);
+    [[nodiscard]] const CanvasLayers& layerFlags() const { return layers_; }
+    // État de vue transmissible entre espaces : {centerX, centerY} en mm de SCÈNE (Y vers le
+    // bas) et {zoom} en px/mm. restoreViewState() est différé jusqu'à ce que le canevas ait une
+    // taille et supprime l'ajustement automatique initial.
+    Q_INVOKABLE [[nodiscard]] QVariantMap viewState() const;
+    Q_INVOKABLE void restoreViewState(const QVariantMap& state);
     Q_INVOKABLE void fitDesign();
     // Annule le geste en cours (glisser, poignée, rectangle) ; faux s'il n'y en avait pas.
     Q_INVOKABLE bool cancelGesture();
@@ -117,6 +128,7 @@ signals:
     void diagnosticsChanged();
     void editorChanged();
     void toolsChanged();
+    void layersChanged();
     void digitizeChanged();
     void overlayChanged();
     // Clic droit : position canevas et identifiant de l'objet touché (vide = fond).
@@ -159,6 +171,10 @@ private:
     bool rubberActive_{false};
     QRectF rubberBand_;
     StudioCamera camera_;
+    CanvasLayers layers_;
+    bool viewPending_{false};
+    double pendingZoom_{1.0}, pendingX_{0.0}, pendingY_{0.0};
+    void applyPendingView();
     QString backendName_{QStringLiteral("Initialisation du rendu…")};
     int geometryBuildCount_{0};
     double resourceCreationMs_{0};

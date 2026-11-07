@@ -458,6 +458,75 @@ QVariantList GpuCanvas::rulerTicks(bool horizontal) const {
     return ticks;
 }
 
+QVariantMap GpuCanvas::layers() const {
+    return {{QStringLiteral("sourceImage"), layers_.sourceImage},
+            {QStringLiteral("regions"), layers_.regions},
+            {QStringLiteral("vectors"), layers_.vectors},
+            {QStringLiteral("stitches"), layers_.stitches},
+            {QStringLiteral("selectionOverlays"), layers_.selectionOverlays}};
+}
+
+void GpuCanvas::setLayers(const QVariantMap& layers) {
+    CanvasLayers next = layers_;
+    const auto read = [&](const char* key, bool& flag) {
+        const auto it = layers.constFind(QString::fromLatin1(key));
+        if (it != layers.constEnd()) {
+            flag = it->toBool();
+        }
+    };
+    read("sourceImage", next.sourceImage);
+    read("regions", next.regions);
+    read("vectors", next.vectors);
+    read("stitches", next.stitches);
+    read("selectionOverlays", next.selectionOverlays);
+    if (next == layers_) {
+        return;
+    }
+    layers_ = next;
+    update();
+    emit layersChanged();
+    emit overlayChanged();
+}
+
+QVariantMap GpuCanvas::viewState() const {
+    if (viewPending_) {
+        return {{QStringLiteral("centerX"), pendingX_},
+                {QStringLiteral("centerY"), pendingY_},
+                {QStringLiteral("zoom"), pendingZoom_}};
+    }
+    const auto centre = camera_.screenToWorld({width() / 2.0, height() / 2.0});
+    return {{QStringLiteral("centerX"), centre.x},
+            {QStringLiteral("centerY"), centre.y},
+            {QStringLiteral("zoom"), camera_.scale()}};
+}
+
+void GpuCanvas::restoreViewState(const QVariantMap& state) {
+    const double zoom = state.value(QStringLiteral("zoom")).toDouble();
+    const double x = state.value(QStringLiteral("centerX")).toDouble();
+    const double y = state.value(QStringLiteral("centerY")).toDouble();
+    if (!std::isfinite(zoom) || zoom <= 0 || !std::isfinite(x) || !std::isfinite(y)) {
+        return;
+    }
+    pendingZoom_ = zoom;
+    pendingX_ = x;
+    pendingY_ = y;
+    viewPending_ = true;
+    fitPending_ = false;
+    applyPendingView();
+}
+
+void GpuCanvas::applyPendingView() {
+    if (!viewPending_ || width() <= 0 || height() <= 0) {
+        return;
+    }
+    viewPending_ = false;
+    camera_.setViewport(width(), height());
+    camera_.zoomAt(pendingZoom_ / camera_.scale(), {width() / 2.0, height() / 2.0});
+    const auto p = camera_.worldToScreen({pendingX_, pendingY_});
+    camera_.pan(width() / 2.0 - p.x, height() / 2.0 - p.y);
+    viewUpdated();
+}
+
 void GpuCanvas::fitDesign() {
     if (!scene_ || width() <= 0 || height() <= 0) {
         return;
@@ -488,7 +557,9 @@ void GpuCanvas::viewUpdated() {
 void GpuCanvas::geometryChange(const QRectF& next, const QRectF& previous) {
     QQuickItem::geometryChange(next, previous);
     camera_.setViewport(next.width(), next.height());
-    if (fitPending_ && scene_ && next.width() > 0 && next.height() > 0) {
+    if (viewPending_) {
+        applyPendingView();
+    } else if (fitPending_ && scene_ && next.width() > 0 && next.height() > 0) {
         fitDesign();
     } else {
         viewUpdated();
@@ -512,14 +583,15 @@ QSGNode* GpuCanvas::updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData*) {
     const auto api = window()->rendererInterface()->graphicsApi();
     const auto& backend =
         api == QSGRendererInterface::Software ? softwareBackend() : sceneGraphBackend();
-    CanvasRenderState state{scene_,
+    CanvasRenderState state{layers_.stitches ? scene_ : nullptr,
                             camera_,
-                            selection_,
+                            layers_.selectionOverlays ? selection_ : std::vector<Target>{},
                             selectionRevision_,
                             QSizeF(width(), height()),
                             window()->effectiveDevicePixelRatio(),
                             overlays_,
-                            overlayRevision_};
+                            overlayRevision_,
+                            layers_};
     const auto result = backend.synchronize(oldNode, state, *window());
     // Render thread must never write QObject properties or read the live document. Queue
     // diagnostics.
@@ -903,3 +975,12 @@ void GpuCanvas::focusOutEvent(QFocusEvent* event) {
 }
 
 } // namespace openstitch::desktop_v2::studio
+
+#include "workspace_controller.hpp"
+#include <QCoreApplication>
+
+// Enregistre WorkspaceController au démarrage de QCoreApplication (hôte et tests de la coque).
+static void registerStudioWorkspaceTypes() {
+    openstitch::desktop_v2::studio::registerWorkspaceTypes();
+}
+Q_COREAPP_STARTUP_FUNCTION(registerStudioWorkspaceTypes)
