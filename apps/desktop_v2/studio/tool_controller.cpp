@@ -6,6 +6,7 @@
 #include <cmath>
 #include <numbers>
 
+#include "detail_controller.hpp"
 #include "edit_batch.hpp"
 #include "pen_shape.hpp"
 #include "shape_batch.hpp"
@@ -26,7 +27,14 @@ constexpr ToolSpec kSpecs[] = {
     {"draw.polygon", "⬠", "Formes"},   {"draw.polygon-regular", "⬡", "Formes"},
     {"draw.bezier", "✒", "Tracés"},    {"draw.freeform", "✎", "Tracés"},
     {"node.edit", "◇", "Édition"},     {"knife", "✂", "Édition"},
+    {"detail-brush", "◉", "Image"},    {"detail-erase", "◌", "Image"},
+    {"click-to-stitch", "⊕", "Image"},
 };
+
+bool detailTool(const QString& tool) {
+    return tool == QLatin1String("detail-brush") || tool == QLatin1String("detail-erase") ||
+           tool == QLatin1String("click-to-stitch");
+}
 
 constexpr double kTwoPi = 2.0 * std::numbers::pi;
 
@@ -69,6 +77,9 @@ ToolController::ToolController(StudioController& studio, QObject* parent)
 QVariantList ToolController::tools() const {
     QVariantList out;
     for (const auto& spec : kSpecs) {
+        if (!details_ && detailTool(QString::fromLatin1(spec.id))) {
+            continue;
+        }
         const auto* d = registry_.find(spec.id);
         if (!d) {
             continue;
@@ -87,7 +98,17 @@ bool ToolController::capturesMouse() const {
 }
 
 bool ToolController::busy() const {
-    return drag_ != Drag::None || !polyPoints_.empty() || !penNodes_.empty();
+    return (details_ &&
+            (details_->gestureActive() || details_->busy() || details_->confirmationPending())) ||
+           drag_ != Drag::None || !polyPoints_.empty() || !penNodes_.empty();
+}
+
+void ToolController::setDetailController(DetailController* controller) {
+    details_ = controller;
+    if (details_) {
+        connect(details_, &DetailController::changed, this, &ToolController::overlayChanged);
+        connect(details_, &QObject::destroyed, this, [this] { details_ = nullptr; });
+    }
 }
 
 void ToolController::setActiveTool(const QString& id) {
@@ -101,6 +122,10 @@ void ToolController::setActiveTool(const QString& id) {
         refuse(QStringLiteral("Outil inconnu ou pas encore disponible dans Studio : %1").arg(id));
         return;
     }
+    if (detailTool(id) && !details_) {
+        refuse(QStringLiteral("Outils image indisponibles."));
+        return;
+    }
     reset();
     tool_ = id;
     nodeSel_.clear();
@@ -112,7 +137,11 @@ void ToolController::setActiveTool(const QString& id) {
 
 void ToolController::setHint() {
     QString text;
-    if (tool_ == QStringLiteral("draw.rectangle") || tool_ == QStringLiteral("draw.ellipse")) {
+    if (detailTool(tool_)) {
+        text = QStringLiteral("Image source : peindre / gommer les détails ou cliquer une zone à "
+                              "broder. Échap annule le geste ; options dans le panneau Détail.");
+    } else if (tool_ == QStringLiteral("draw.rectangle") ||
+               tool_ == QStringLiteral("draw.ellipse")) {
         text = QStringLiteral(
             "Glisser pour tracer. Maj : carré / cercle. Alt : depuis le centre. Échap : annuler.");
     } else if (tool_ == QStringLiteral("draw.polygon")) {
@@ -236,6 +265,9 @@ PointMm ToolController::snapped(PointMm p, bool allowGrid) const {
 }
 
 void ToolController::reset() {
+    if (details_) {
+        details_->cancel();
+    }
     drag_ = Drag::None;
     stroke_.clear();
     penNodes_.clear();
@@ -368,6 +400,9 @@ bool ToolController::commitBox(PointMm a, PointMm b, Qt::KeyboardModifiers mods)
 
 bool ToolController::press(double x, double y, double pxPerMm, Qt::KeyboardModifiers mods) {
     scale_ = pxPerMm;
+    if (details_ && detailTool(tool_)) {
+        return details_->press(tool_, x, y);
+    }
     if (!capturesMouse()) {
         return false;
     }
@@ -466,6 +501,10 @@ bool ToolController::press(double x, double y, double pxPerMm, Qt::KeyboardModif
 }
 
 void ToolController::move(double x, double y, Qt::KeyboardModifiers mods) {
+    if (details_ && detailTool(tool_)) {
+        details_->move(x, y);
+        return;
+    }
     if (!capturesMouse()) {
         return;
     }
@@ -506,6 +545,10 @@ void ToolController::move(double x, double y, Qt::KeyboardModifiers mods) {
 }
 
 void ToolController::release(double x, double y, Qt::KeyboardModifiers mods) {
+    if (details_ && detailTool(tool_)) {
+        details_->release(x, y);
+        return;
+    }
     if (!capturesMouse() || drag_ == Drag::None) {
         if (drag_ == Drag::None && penDragging_) {
             penDragging_ = false;

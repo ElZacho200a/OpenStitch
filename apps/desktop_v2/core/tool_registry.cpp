@@ -99,6 +99,7 @@ ToolRegistry ToolRegistry::builtin() {
     r.add({"click-to-stitch", "Clic-pour-broder", "A", static_cast<std::uint8_t>(N | Z),
            Gesture::Pick, "ClickToStitch"});
     r.add({"detail-brush", "Zones de détail", "Q", Z, Gesture::Stroke, "DetailBrush"});
+    r.add({"detail-erase", "Gomme de détail", "", Z, Gesture::Stroke, "DetailBrush"});
     // Nouveau en V2 (pas d'équivalent dans l'ancien enum) : retouche point à point.
     // Édition directe des nœuds du contour (poignées, glisser, insertion par double-clic).
     r.add({"node.edit", "Nœuds du contour", "B", static_cast<std::uint8_t>(D | N), Gesture::Pick,

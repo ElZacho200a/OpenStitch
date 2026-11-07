@@ -14,6 +14,7 @@
 
 #include "action_controller.hpp"
 #include "analysis_controller.hpp"
+#include "detail_controller.hpp"
 #include "edit_controller.hpp"
 #include "fade_controller.hpp"
 #include "file_controller.hpp"
@@ -66,6 +67,8 @@ int main(int argc, char** argv) {
                          QStandardPaths::writableLocation(QStandardPaths::AppDataLocation));
     InspectorController inspector(controller);
     ToolController tools(controller);
+    DetailController detailTools(controller);
+    tools.setDetailController(&detailTools);
     VectorController vectors(controller);
     const std::filesystem::path configDir(
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation).toStdWString());
@@ -88,6 +91,7 @@ int main(int argc, char** argv) {
     engine.rootContext()->setContextProperty(QStringLiteral("files"), &files);
     engine.rootContext()->setContextProperty(QStringLiteral("inspector"), &inspector);
     engine.rootContext()->setContextProperty(QStringLiteral("tools"), &tools);
+    engine.rootContext()->setContextProperty(QStringLiteral("detailTools"), &detailTools);
     engine.rootContext()->setContextProperty(QStringLiteral("vectors"), &vectors);
     engine.rootContext()->setContextProperty(QStringLiteral("view"), &view);
     engine.rootContext()->setContextProperty(QStringLiteral("threads"), &threads);

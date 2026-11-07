@@ -418,6 +418,8 @@ Window {
                         gpu: canvas
                     }
 
+                    DetailTools { anchors.fill: parent; canvasItem: canvas }
+
                     TransformHandles {
                         objectName: "transformHandles"
                         anchors.fill: parent

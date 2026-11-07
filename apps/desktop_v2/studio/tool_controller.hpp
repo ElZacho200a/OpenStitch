@@ -23,6 +23,8 @@
 
 namespace openstitch::desktop_v2::studio {
 
+class DetailController;
+
 // Un élément de surcouche d'aperçu (mm scène). Peu d'éléments, jamais un par point de couture.
 struct ToolOverlayItem {
     enum class Kind { Line, Closed, Point, Selected, Tangent, Ghost };
@@ -49,6 +51,7 @@ class ToolController : public QObject {
 
 public:
     explicit ToolController(StudioController& studio, QObject* parent = nullptr);
+    void setDetailController(DetailController* controller);
 
     [[nodiscard]] QString activeTool() const { return tool_; }
     void setActiveTool(const QString& id);
@@ -124,6 +127,7 @@ private:
     [[nodiscard]] static ScenePoint toScene(PointMm p) { return {p.x, -p.y}; }
 
     StudioController& studio_;
+    DetailController* details_{nullptr};
     ToolRegistry registry_;
     QString tool_{QStringLiteral("select")};
     QString hint_;

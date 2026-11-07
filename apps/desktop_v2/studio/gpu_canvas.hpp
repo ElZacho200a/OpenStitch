@@ -89,6 +89,11 @@ public:
     Q_INVOKABLE bool zoomPrevious();
     // Centre the viewport on a SCENE point without changing the scale.
     Q_INVOKABLE void centerOnScene(double x, double y);
+    // Frontière de coordonnées pour les rares surcouches raster d'image source.
+    Q_INVOKABLE QPointF sceneToCanvas(double x, double y) const {
+        const auto p = camera_.worldToScreen({x, y});
+        return {p.x, p.y};
+    }
     // [{pos, label}] along one viewport axis, in logical px, for QML rulers (<= 60).
     Q_INVOKABLE [[nodiscard]] QVariantList rulerTicks(bool horizontal) const;
 signals:

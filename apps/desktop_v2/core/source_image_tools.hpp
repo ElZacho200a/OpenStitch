@@ -44,7 +44,9 @@ struct ClickResult {
     std::uint64_t objectId{0};
 };
 ClickResult clickToStitch(DocumentSession& session, const image::Image& processed, double xScreenMm,
-                          double yScreenMm, int tolerance, ClickKind kind);
+                          double yScreenMm, int tolerance, ClickKind kind,
+                          std::optional<std::uint64_t> replaceObject = std::nullopt,
+                          bool discardRetouches = false);
 
 // Zones de détail : peint (ou gomme) un disque de rayon `radiusMm` en chaque centre (mm « écran »),
 // UN trait = UNE commande.
@@ -52,6 +54,10 @@ ServiceResult paintDetail(DocumentSession& session, const image::Image& processe
                           const std::vector<std::pair<double, double>>& centresMm, double radiusMm,
                           bool erase);
 ServiceResult clearDetail(DocumentSession& session);
+// Même moteur de masque sur une copie, pour l'aperçu immuable avant validation du geste.
+[[nodiscard]] Result<segmentation::DetailMask>
+previewDetail(const document::Project& project, const image::Image& processed,
+              const std::vector<std::pair<double, double>>& centresMm, double radiusMm, bool erase);
 // Valeur du masque (0..255) sous un point ; 0 si pas de masque ou hors image.
 [[nodiscard]] int detailWeightAt(const document::Project& project, const image::Image& processed,
                                  double xScreenMm, double yScreenMm);

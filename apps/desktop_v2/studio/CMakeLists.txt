@@ -18,6 +18,7 @@ add_library(openstitch_studio_ui STATIC
     analysis_controller.cpp analysis_controller.hpp
     thread_controller.cpp thread_controller.hpp
     image_controller.cpp image_controller.hpp
+    detail_controller.cpp detail_controller.hpp
     region_controller.cpp region_controller.hpp
     satin_controller.cpp satin_controller.hpp
     fade_controller.cpp fade_controller.hpp
@@ -37,7 +38,7 @@ set(studio_qml_files
     qml/Inspector.qml qml/ParamField.qml qml/ParamSection.qml
     qml/ViewPanel.qml qml/SimulationBar.qml qml/AnalysisPanel.qml qml/ThreadPanel.qml
     qml/PreparePanel.qml qml/ImagePrepSection.qml qml/SegmentationSection.qml
-    qml/RegionTools.qml qml/AiSection.qml 
+    qml/RegionTools.qml qml/AiSection.qml qml/DetailTools.qml
     qml/SatinPanel.qml qml/FadePanel.qml qml/PointEditPanel.qml qml/DigitizeHub.qml qml/ToolRail.qml qml/ToolOptions.qml qml/ToolOverlay.qml qml/qmldir)
 
 add_executable(openstitch_v2_studio WIN32 main.cpp)
