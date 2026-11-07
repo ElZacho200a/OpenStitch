@@ -8,7 +8,11 @@
 #include <QSurfaceFormat>
 #include <QTimer>
 
+#include <QDir>
+#include <QStandardPaths>
+
 #include "action_controller.hpp"
+#include "file_controller.hpp"
 #include "gpu_canvas.hpp"
 #include "studio_controller.hpp"
 
@@ -44,9 +48,12 @@ int main(int argc, char** argv) {
     DocumentSession session;
     StudioController controller(session);
     ActionController actions(controller);
+    FileController files(controller, &actions,
+                         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation));
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("studio"), &controller);
     engine.rootContext()->setContextProperty(QStringLiteral("actions"), &actions);
+    engine.rootContext()->setContextProperty(QStringLiteral("files"), &files);
     engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
     if (engine.rootObjects().isEmpty()) {
         return 2;
@@ -64,7 +71,7 @@ int main(int argc, char** argv) {
         });
     }
     if (!parser.positionalArguments().isEmpty()) {
-        controller.openProject(QUrl::fromLocalFile(parser.positionalArguments().first()));
+        files.openPath(QDir::current().absoluteFilePath(parser.positionalArguments().first()));
     }
     QTimer capture;
     bool capturePrimed = false;
