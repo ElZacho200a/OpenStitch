@@ -26,6 +26,7 @@
 #include "studio_controller.hpp"
 #include "thread_controller.hpp"
 #include "view_controller.hpp"
+#include "workspace_controller.hpp"
 
 using namespace openstitch;
 using namespace openstitch::desktop_v2;
@@ -356,6 +357,11 @@ void StudioImageTest::preparePanelDrivesTheWholeJourney() {
     session.replaceProject(digitizedProject(writeTestImage(dir.path())), true);
     QTRY_VERIFY_WITH_TIMEOUT(!studio.busy() && images.imageWidth() > 0, 20'000);
 
+    // Le préparateur vit dans l'espace Image (un seul espace est instancié à la fois).
+    auto* workspace = window->findChild<WorkspaceController*>();
+    QVERIFY(workspace);
+    workspace->setCurrent(QStringLiteral("image"));
+    QTRY_VERIFY_WITH_TIMEOUT(named(window, "preparePanel") != nullptr, 5'000);
     auto* hub = named(window, "preparePanel");
     QVERIFY(hub);
     QVERIFY(press(window, "prepareToggle"));

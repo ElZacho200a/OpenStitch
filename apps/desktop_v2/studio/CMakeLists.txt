@@ -26,17 +26,22 @@ add_library(openstitch_studio_ui STATIC
     point_edit_controller.cpp point_edit_controller.hpp
     tool_controller.cpp tool_controller.hpp
     vector_controller.cpp vector_controller.hpp
+    workspace_controller.cpp workspace_controller.hpp
+    vector_space_controller.cpp vector_space_controller.hpp
+    layers/vector_layer.cpp layers/vector_layer.hpp
     companion_controller.cpp companion_controller.hpp
     preferences_controller.cpp preferences_controller.hpp
     help_controller.cpp help_controller.hpp
     digitize_gestures.cpp digitize_gestures.hpp
     pull_controller.cpp pull_controller.hpp
     applique_controller.cpp applique_controller.hpp
-    ../ui/live_server.cpp ../ui/live_server.hpp)
+    segmentation_space_controller.cpp segmentation_space_controller.hpp
+    layers/region_layer.cpp layers/region_layer.hpp)
 add_library(openstitch::studio_ui ALIAS openstitch_studio_ui)
 target_include_directories(openstitch_studio_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(openstitch_studio_ui PUBLIC openstitch::desktop_v2_core
-    openstitch::ai_segmentation openstitch::companion_backends Qt6::Network Qt6::Quick
+    openstitch::ai_segmentation openstitch::companion_backends
+    openstitch::desktop_v2_live_server Qt6::Network Qt6::Quick
     Qt6::QuickControls2 PRIVATE openstitch::warnings)
 
 set(studio_qml_files
@@ -51,7 +56,12 @@ set(studio_qml_files
     qml/PreparePanel.qml qml/ImagePrepSection.qml qml/SegmentationSection.qml
     qml/RegionTools.qml qml/AiSection.qml qml/CompanionPanel.qml qml/PreferencesDialog.qml
     qml/HelpDialog.qml qml/ShortcutsSheet.qml
-    qml/SatinPanel.qml qml/FadePanel.qml qml/PointEditPanel.qml qml/DigitizeHub.qml qml/ToolRail.qml qml/ToolOptions.qml qml/ToolOverlay.qml qml/RealisticToggle.qml qml/HandlesOverlay.qml qml/PullPanel.qml qml/AppliquePanel.qml qml/qmldir)
+    qml/SatinPanel.qml qml/FadePanel.qml qml/PointEditPanel.qml qml/DigitizeHub.qml qml/ToolRail.qml qml/ToolOptions.qml qml/ToolOverlay.qml qml/RealisticToggle.qml qml/HandlesOverlay.qml qml/PullPanel.qml qml/AppliquePanel.qml qml/qmldir
+    qml/spaces/SpaceHost.qml qml/spaces/ImageSpace.qml qml/spaces/SegmentationSpace.qml
+    qml/spaces/VectorSpace.qml qml/spaces/PointsSpace.qml)
+list(APPEND studio_qml_files qml/spaces/vector/VectorShapePanel.qml)
+# Les sous-composants d'un espace (qml/spaces/<x>/...) s'ajoutent ICI, une ligne par fichier.
+list(APPEND studio_qml_files qml/spaces/segmentation/SegmentationPanels.qml qml/spaces/segmentation/RegionLayerControls.qml)
 
 add_executable(openstitch_v2_studio WIN32 main.cpp)
 target_link_libraries(openstitch_v2_studio PRIVATE openstitch::studio_ui openstitch::warnings)
