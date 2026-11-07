@@ -612,6 +612,8 @@ Window {
                         anchors.fill: parent
                     }
 
+                    HistoryPanel { anchors.fill: parent }
+
                     ColumnLayout {
                         anchors.centerIn: parent
                         width: Math.min(400, parent.width - 64)

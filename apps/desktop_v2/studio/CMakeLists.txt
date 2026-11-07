@@ -8,6 +8,7 @@ endif()
 set(CMAKE_AUTOMOC ON)
 add_library(openstitch_studio_ui STATIC
     studio_controller.cpp studio_controller.hpp
+    history_controller.cpp history_controller.hpp
     action_controller.cpp action_controller.hpp
     edit_controller.cpp edit_controller.hpp
     file_controller.cpp file_controller.hpp
@@ -40,7 +41,7 @@ target_link_libraries(openstitch_studio_ui PUBLIC openstitch::desktop_v2_core
     Qt6::QuickControls2 PRIVATE openstitch::warnings)
 
 set(studio_qml_files
-    qml/Main.qml qml/Theme.qml qml/StudioButton.qml qml/StudioIcon.qml
+    qml/Main.qml qml/HistoryPanel.qml qml/Theme.qml qml/StudioButton.qml qml/StudioIcon.qml
     qml/StudioLabel.qml qml/StudioPanel.qml qml/StudioToolTip.qml qml/StudioTextField.qml
     qml/StudioCheckBox.qml qml/StudioSwitch.qml qml/StudioSlider.qml qml/StudioSpinBox.qml
     qml/StudioComboBox.qml
