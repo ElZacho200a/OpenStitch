@@ -1,0 +1,530 @@
+// SPDX-License-Identifier: Apache-2.0
+#include <QGuiApplication>
+#include <QQmlComponent>
+#include <QQmlContext>
+#include <QQmlEngine>
+#include <QQuickItem>
+#include <QQuickStyle>
+#include <QQuickWindow>
+#include <QTemporaryDir>
+#include <QtTest/QtTest>
+
+#include <cmath>
+#include <filesystem>
+#include <memory>
+#include <set>
+
+#include "inspector_controller.hpp"
+#include "inspector_model.hpp"
+#include "object_labels.hpp"
+#include "openstitch/commands/project_commands.hpp"
+#include "openstitch/formats/dst.hpp"
+#include "openstitch/project_io/project_io.hpp"
+#include "openstitch/project_ops/factory.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
+#include "param_spec.hpp"
+#include "shape_batch.hpp"
+#include "studio_controller.hpp"
+
+using namespace openstitch;
+using namespace openstitch::desktop_v2;
+using namespace openstitch::desktop_v2::studio;
+
+namespace {
+
+// Same ids and order as `stitchTypeId` (document::StitchParams alternatives).
+const std::vector<std::string> kAllTypes{"running",      "tatami",  "satin",        "directional",
+                                         "auto_satin",   "blanket", "contour_fill", "motif_run",
+                                         "motif_fill",   "radial",  "spiral",       "crosshatch",
+                                         "cross_stitch", "applique"};
+
+std::uint64_t addRect(DocumentSession& session, double cx = 0, double cy = 0, double w = 20,
+                      double h = 10) {
+    const auto r = session.applyBatch(batchAddRect({cx, cy}, w, h), "Rectangle");
+    return r.committed ? createdObjectId(r.report).value_or(0) : 0;
+}
+
+document::StitchParams defaultsOf(const std::string& type) {
+    using namespace document;
+    if (type == "running")
+        return RunningStitchParams{};
+    if (type == "directional")
+        return DirectionalFillParams{};
+    if (type == "satin")
+        return SatinParams{};
+    if (type == "spiral")
+        return SpiralFillParams{};
+    if (type == "cross_stitch")
+        return CrossStitchParams{};
+    if (type == "applique")
+        return AppliqueParams{};
+    return TatamiParams{};
+}
+
+void select(DocumentSession& session, std::vector<std::uint64_t> ids) {
+    std::vector<Target> targets;
+    for (const auto id : ids) {
+        targets.push_back({TargetKind::EmbroideryObject, id});
+    }
+    session.selection().replace(std::move(targets));
+}
+
+const document::EmbroideryObject& object(const DocumentSession& session, std::uint64_t id) {
+    return *session.project().findEmbroidery(ObjectId{id});
+}
+
+std::vector<std::uint8_t> dstOf(const DocumentSession& session) {
+    const auto sequence = stitch_generation::effective_sequence(session.project());
+    if (!sequence) {
+        return {};
+    }
+    const auto bytes = formats::encode_dst(*sequence);
+    return bytes ? *bytes : std::vector<std::uint8_t>{};
+}
+
+// Delegates of a Repeater are not QObject children of the inspector: walk the visual tree.
+QQuickItem* findItem(QQuickItem* root, const QString& name) {
+    if (root->objectName() == name) {
+        return root;
+    }
+    for (auto* child : root->childItems()) {
+        if (auto* found = findItem(child, name)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+QVariantMap fieldOf(InspectorController& inspector, const QString& key) {
+    for (const auto& f : inspector.fields()) {
+        if (f.toMap().value(QStringLiteral("key")).toString() == key) {
+            return f.toMap();
+        }
+    }
+    return {};
+}
+
+// A value different from the current one and inside the spec range.
+double otherValue(const ParamSpec& spec, double current) {
+    switch (spec.kind) {
+    case ParamKind::Bool:
+        return current >= 0.5 ? 0.0 : 1.0;
+    case ParamKind::Choice: {
+        const auto n = static_cast<double>(paramOptions(spec).size());
+        return std::fmod(std::round(current) + 1.0, n);
+    }
+    case ParamKind::Integer:
+        return std::abs(current - spec.min) > 0.5 ? spec.min : spec.max;
+    case ParamKind::Number:
+        break;
+    }
+    const double mid = spec.min + (spec.max - spec.min) * 0.5;
+    return std::abs(current - mid) > spec.step ? mid : spec.min + (spec.max - spec.min) * 0.25;
+}
+
+} // namespace
+
+class StudioInspectorTest : public QObject {
+    Q_OBJECT
+private slots:
+    void initTestCase();
+    void everySpecFieldIsExposedAndEditable();
+    void refusalsNeverCorrectSilently();
+    void burstOfEditsIsOneUndoStep();
+    void mixedValuesAndMultiEdit();
+    void resetToDefaults();
+    void stitchTypeConversion();
+    void searchAndLevels();
+    void machineOutputIsByteIdentical();
+    void persistsInTheOspFile();
+    void presetsLifecycle();
+    void qmlInspectorEditsThroughTheController();
+};
+
+void StudioInspectorTest::initTestCase() {
+    QQuickStyle::setStyle(QStringLiteral("Basic"));
+    QQuickWindow::setSceneGraphBackend(QStringLiteral("software"));
+}
+
+void StudioInspectorTest::everySpecFieldIsExposedAndEditable() {
+    int specFields = 0;
+    int exposed = 0;
+    std::set<std::string> typesWithSpecs;
+    for (const auto& type : kAllTypes) {
+        DocumentSession session;
+        auto created = project_ops::create_empty_project({});
+        QVERIFY(created.has_value());
+        session.replaceProject(std::move(*created), true);
+        const auto id = addRect(session);
+        QVERIFY(id != 0);
+        if (type == "auto_satin") {
+            continue; // `AutoSatinParams` has no table (reported in the CSV note)
+        }
+        if (type != "tatami") {
+            const auto settable = settableIdOf(type);
+            if (type == "satin") {
+                // Manual satin columns have no rail here: install the params directly.
+                session.execute(std::make_unique<commands::SetStitchParamsCommand>(
+                    ObjectId{id}, defaultsOf(type)));
+            } else {
+                QVERIFY2(session.applyBatch(batchSetStitchType({id}, settable), "Type").committed,
+                         type.c_str());
+            }
+        }
+        if (type == "auto_satin") {
+            continue; // `AutoSatinParams` has no table (reported, see the CSV note)
+        }
+        select(session, {id});
+        StudioController studio(session);
+        InspectorController inspector(studio);
+        inspector.setShowAdvanced(true);
+        QCOMPARE(inspector.typeId().toStdString(), std::string(stitchTypeId(object(session, id))));
+        const auto specs = paramSpecs(stitchTypeId(object(session, id)));
+        if (specs.empty()) {
+            QCOMPARE(inspector.fields().size(), 0);
+            QCOMPARE(inspector.totalFieldCount(), 0);
+            continue;
+        }
+        typesWithSpecs.insert(type);
+        QCOMPARE(inspector.fields().size(), static_cast<int>(specs.size()));
+        for (const auto& spec : specs) {
+            ++specFields;
+            const auto key = QString::fromUtf8(spec.key.data(), static_cast<int>(spec.key.size()));
+            const auto field = fieldOf(inspector, key);
+            QVERIFY2(!field.isEmpty(), qPrintable(QString::fromStdString(type) + "." + key));
+            ++exposed;
+            const auto before = *readParam(object(session, id), spec.key);
+            const double target = otherValue(spec, before);
+            const auto depth = session.undoNames().size();
+            const auto refusal = inspector.setParam(key, target);
+            QVERIFY2(refusal.isEmpty(), qPrintable(key + ": " + refusal));
+            QCOMPARE(session.undoNames().size(), depth + 1);
+            const auto after = *readParam(object(session, id), spec.key);
+            QVERIFY2(std::abs(after - target) < 0.01 + spec.step * 0.01,
+                     qPrintable(QString::fromStdString(type) + "." + key));
+            QCOMPARE(fieldOf(inspector, key).value(QStringLiteral("value")).toDouble(), after);
+        }
+    }
+    QVERIFY(specFields >= 60); // the table lists 75 rows over 7 types today
+    QCOMPARE(exposed, specFields);
+    QCOMPARE(typesWithSpecs.size(), static_cast<std::size_t>(7));
+}
+
+void StudioInspectorTest::refusalsNeverCorrectSilently() {
+    DocumentSession session;
+    auto created = project_ops::create_empty_project({});
+    session.replaceProject(std::move(*created), true);
+    const auto id = addRect(session);
+    select(session, {id});
+    StudioController studio(session);
+    InspectorController inspector(studio);
+    const auto revision = session.revision();
+    const auto before = *readParam(object(session, id), "row_spacing_mm");
+    auto refusal = inspector.setParam(QStringLiteral("row_spacing_mm"), 9.0);
+    QVERIFY(refusal.contains(QStringLiteral("hors plage")));
+    QVERIFY(!inspector.messageOk());
+    refusal = inspector.setParamText(QStringLiteral("row_spacing_mm"), QStringLiteral("abc"));
+    QVERIFY(refusal.contains(QStringLiteral("pas un nombre")));
+    refusal = inspector.setParam(QStringLiteral("stagger"), 2.5);
+    QVERIFY(refusal.contains(QStringLiteral("entière")));
+    refusal = inspector.setParam(QStringLiteral("no_such_field"), 1.0);
+    QVERIFY(!refusal.isEmpty());
+    refusal = inspector.setParam(QStringLiteral("row_spacing_mm"), std::nan(""));
+    QVERIFY(!refusal.isEmpty());
+    QCOMPARE(session.revision(), revision); // nothing was applied, nothing clamped
+    QCOMPARE(*readParam(object(session, id), "row_spacing_mm"), before);
+    // Decimal comma and unit suffix are accepted as typed.
+    QVERIFY(inspector.setParamText(QStringLiteral("row_spacing_mm"), QStringLiteral("0,35 mm"))
+                .isEmpty());
+    QVERIFY(std::abs(*readParam(object(session, id), "row_spacing_mm") - 0.35) < 1e-6);
+}
+
+void StudioInspectorTest::burstOfEditsIsOneUndoStep() {
+    DocumentSession session;
+    auto created = project_ops::create_empty_project({});
+    session.replaceProject(std::move(*created), true);
+    const auto id = addRect(session);
+    select(session, {id});
+    StudioController studio(session);
+    InspectorController inspector(studio);
+    const auto original = *readParam(object(session, id), "row_spacing_mm");
+    const auto depth = session.undoNames().size();
+    for (const double v : {0.30, 0.31, 0.32, 0.33, 0.34, 0.35}) { // a slider drag
+        QVERIFY(inspector.setParam(QStringLiteral("row_spacing_mm"), v).isEmpty());
+    }
+    QCOMPARE(session.undoNames().size(), depth + 1);
+    QVERIFY(std::abs(*readParam(object(session, id), "row_spacing_mm") - 0.35) < 1e-6);
+    QVERIFY(session.undo());
+    QCOMPARE(*readParam(object(session, id), "row_spacing_mm"), original);
+    QVERIFY(session.redo());
+    QVERIFY(std::abs(*readParam(object(session, id), "row_spacing_mm") - 0.35) < 1e-6);
+}
+
+void StudioInspectorTest::mixedValuesAndMultiEdit() {
+    DocumentSession session;
+    auto created = project_ops::create_empty_project({});
+    session.replaceProject(std::move(*created), true);
+    const auto a = addRect(session, 0, 0);
+    const auto b = addRect(session, 40, 0);
+    select(session, {a});
+    StudioController studio(session);
+    InspectorController inspector(studio);
+    QVERIFY(inspector.setParam(QStringLiteral("row_spacing_mm"), 0.5).isEmpty());
+    select(session, {a, b});
+    QCOMPARE(inspector.count(), 2);
+    auto field = fieldOf(inspector, QStringLiteral("row_spacing_mm"));
+    QVERIFY(field.value(QStringLiteral("mixed")).toBool());
+    QCOMPARE(field.value(QStringLiteral("text")).toString(), QStringLiteral("—"));
+    QVERIFY(
+        !fieldOf(inspector, QStringLiteral("inset_mm")).value(QStringLiteral("mixed")).toBool());
+    const auto depth = session.undoNames().size();
+    QVERIFY(inspector.setParam(QStringLiteral("row_spacing_mm"), 0.7).isEmpty());
+    QCOMPARE(session.undoNames().size(), depth + 1); // one step for both objects
+    QVERIFY(std::abs(*readParam(object(session, a), "row_spacing_mm") - 0.7) < 1e-6);
+    QVERIFY(std::abs(*readParam(object(session, b), "row_spacing_mm") - 0.7) < 1e-6);
+    QVERIFY(!fieldOf(inspector, QStringLiteral("row_spacing_mm"))
+                 .value(QStringLiteral("mixed"))
+                 .toBool());
+    QVERIFY(session.undo());
+    QVERIFY(std::abs(*readParam(object(session, a), "row_spacing_mm") - 0.5) < 1e-6);
+    QVERIFY(std::abs(*readParam(object(session, b), "row_spacing_mm") - 0.7) > 0.05); // original
+    // A selection mixing types shows no fields and refuses an edit.
+    QVERIFY(session.applyBatch(batchSetStitchType({b}, "running"), "Type").committed);
+    QVERIFY(inspector.typeMixed());
+    QCOMPARE(inspector.fields().size(), 0);
+    QVERIFY(!inspector.setParam(QStringLiteral("row_spacing_mm"), 0.4).isEmpty());
+}
+
+void StudioInspectorTest::resetToDefaults() {
+    DocumentSession session;
+    auto created = project_ops::create_empty_project({});
+    session.replaceProject(std::move(*created), true);
+    const auto id = addRect(session);
+    select(session, {id});
+    StudioController studio(session);
+    InspectorController inspector(studio);
+    inspector.setShowAdvanced(true);
+    const document::TatamiParams defaults;
+    QVERIFY(inspector.setParam(QStringLiteral("angle_deg"), 45).isEmpty());
+    QVERIFY(inspector.setParam(QStringLiteral("stagger"), 3).isEmpty());
+    QVERIFY(!fieldOf(inspector, QStringLiteral("angle_deg"))
+                 .value(QStringLiteral("isDefault"))
+                 .toBool());
+    QVERIFY(inspector.resetParam(QStringLiteral("angle_deg")).isEmpty());
+    QVERIFY(fieldOf(inspector, QStringLiteral("angle_deg"))
+                .value(QStringLiteral("isDefault"))
+                .toBool());
+    QVERIFY(inspector.resetAll().isEmpty());
+    const auto& tatami = std::get<document::TatamiParams>(object(session, id).params);
+    QVERIFY(tatami == defaults);
+}
+
+void StudioInspectorTest::stitchTypeConversion() {
+    DocumentSession session;
+    auto created = project_ops::create_empty_project({});
+    session.replaceProject(std::move(*created), true);
+    const auto id = addRect(session);
+    select(session, {id});
+    StudioController studio(session);
+    InspectorController inspector(studio);
+    QCOMPARE(inspector.typeId(), QStringLiteral("tatami"));
+    const auto depth = session.undoNames().size();
+    QVERIFY(inspector.setStitchType(QStringLiteral("running")).isEmpty());
+    QCOMPARE(inspector.typeId(), QStringLiteral("running"));
+    QCOMPARE(session.undoNames().size(), depth + 1);
+    QVERIFY(fieldOf(inspector, QStringLiteral("stitch_length_mm")).contains(QStringLiteral("key")));
+    QVERIFY(session.undo());
+    QCOMPARE(inspector.typeId(), QStringLiteral("tatami"));
+    QVERIFY(!inspector.setStitchType(QStringLiteral("no_such_type")).isEmpty());
+    QVERIFY(inspector.setStitchType(QStringLiteral("spiral_fill")).isEmpty());
+    QCOMPARE(inspector.typeId(), QStringLiteral("spiral"));
+    QVERIFY(inspector.setStitchType(QStringLiteral("directional")).isEmpty());
+    QCOMPARE(inspector.typeId(), QStringLiteral("directional"));
+    QVERIFY(inspector.setStitchType(QStringLiteral("contour_fill")).isEmpty());
+    QCOMPARE(inspector.typeId(), QStringLiteral("contour_fill"));
+    QCOMPARE(inspector.fields().size(), 0); // concentric: no table yet (reported)
+}
+
+void StudioInspectorTest::searchAndLevels() {
+    DocumentSession session;
+    auto created = project_ops::create_empty_project({});
+    session.replaceProject(std::move(*created), true);
+    const auto id = addRect(session);
+    select(session, {id});
+    StudioController studio(session);
+    InspectorController inspector(studio);
+    const int essentials = inspector.fields().size();
+    QVERIFY(inspector.hiddenAdvancedCount() > 0);
+    QVERIFY(fieldOf(inspector, QStringLiteral("stagger")).isEmpty());
+    inspector.setShowAdvanced(true);
+    QCOMPARE(inspector.fields().size(), inspector.totalFieldCount());
+    QVERIFY(inspector.fields().size() > essentials);
+    inspector.setShowAdvanced(false);
+    inspector.setQuery(QStringLiteral("quinconce")); // an advanced field found by its label
+    QCOMPARE(inspector.fields().size(), 1);
+    inspector.setQuery(QStringLiteral("ECART")); // accent- and case-insensitive
+    QVERIFY(!fieldOf(inspector, QStringLiteral("row_spacing_mm")).isEmpty());
+    inspector.setQuery(QStringLiteral("zzzz"));
+    QCOMPARE(inspector.fields().size(), 0);
+}
+
+void StudioInspectorTest::machineOutputIsByteIdentical() {
+    DocumentSession session;
+    auto created = project_ops::create_empty_project({});
+    session.replaceProject(std::move(*created), true);
+    const auto id = addRect(session, 0, 0, 24, 14);
+    select(session, {id});
+    StudioController studio(session);
+    InspectorController inspector(studio);
+    const auto baseline = dstOf(session);
+    QVERIFY(!baseline.empty());
+    // Same value: no undo entry, same bytes.
+    const auto current = *readParam(object(session, id), "row_spacing_mm");
+    const auto depth = session.undoNames().size();
+    QVERIFY(inspector.setParam(QStringLiteral("row_spacing_mm"), current).isEmpty());
+    QCOMPARE(session.undoNames().size(), depth);
+    QVERIFY(dstOf(session) == baseline);
+    // A real change alters the machine output; coming back restores it byte for byte.
+    QVERIFY(inspector.setParam(QStringLiteral("row_spacing_mm"), 0.9).isEmpty());
+    QVERIFY(dstOf(session) != baseline);
+    QVERIFY(inspector.resetParam(QStringLiteral("row_spacing_mm")).isEmpty());
+    QVERIFY(dstOf(session) == baseline);
+    QVERIFY(inspector.setParam(QStringLiteral("angle_deg"), 33).isEmpty());
+    QVERIFY(dstOf(session) != baseline);
+    QVERIFY(session.undo());
+    QVERIFY(dstOf(session) == baseline);
+}
+
+void StudioInspectorTest::persistsInTheOspFile() {
+    DocumentSession session;
+    auto created = project_ops::create_empty_project({});
+    session.replaceProject(std::move(*created), true);
+    const auto id = addRect(session);
+    select(session, {id});
+    StudioController studio(session);
+    InspectorController inspector(studio);
+    inspector.setShowAdvanced(true);
+    QVERIFY(inspector.setParam(QStringLiteral("row_spacing_mm"), 0.55).isEmpty());
+    QVERIFY(inspector.setParam(QStringLiteral("pull_mode"), 2).isEmpty());
+    QVERIFY(inspector.setParam(QStringLiteral("underlay_zigzag"), 1).isEmpty());
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const auto path = std::filesystem::path(dir.path().toStdWString()) / "inspector.osp";
+    const auto saved = project_io::save_project(path, session.project());
+    QVERIFY(saved.has_value());
+    const auto loaded = project_io::load_project(path);
+    QVERIFY(loaded.has_value());
+    const auto& reloaded = loaded->embroidery_objects.front();
+    QVERIFY(std::abs(*readParam(reloaded, "row_spacing_mm") - 0.55) < 1e-6);
+    QCOMPARE(*readParam(reloaded, "pull_mode"), 2.0);
+    QCOMPARE(*readParam(reloaded, "underlay_zigzag"), 1.0);
+}
+
+void StudioInspectorTest::presetsLifecycle() {
+    DocumentSession session;
+    auto created = project_ops::create_empty_project({});
+    session.replaceProject(std::move(*created), true);
+    const auto a = addRect(session, 0, 0);
+    const auto b = addRect(session, 40, 0);
+    select(session, {a});
+    StudioController studio(session);
+    InspectorController inspector(studio);
+    QVERIFY(inspector.setParam(QStringLiteral("row_spacing_mm"), 0.6).isEmpty());
+    QVERIFY(!inspector.savePreset(QStringLiteral("  ")).isEmpty()); // empty name refused
+    QVERIFY(inspector.savePreset(QStringLiteral("Dense")).isEmpty());
+    QCOMPARE(inspector.presets().size(), 1);
+    select(session, {b});
+    QVERIFY(inspector.applyPreset(0).isEmpty());
+    QVERIFY(std::abs(*readParam(object(session, b), "row_spacing_mm") - 0.6) < 1e-6);
+    QVERIFY(session.undo()); // applying is one undo step
+    QVERIFY(std::abs(*readParam(object(session, b), "row_spacing_mm") - 0.6) > 0.05);
+    // By type: a preset of another type is listed only with "all types".
+    QVERIFY(inspector.setStitchType(QStringLiteral("running")).isEmpty());
+    QCOMPARE(inspector.presets().size(), 0);
+    inspector.setAllPresets(true);
+    QCOMPARE(inspector.presets().size(), 1);
+    QVERIFY(!inspector.presets().front().toMap().value(QStringLiteral("matches")).toBool());
+    // Rename = one undo step, duplicate names are refused.
+    QVERIFY(inspector.savePreset(QStringLiteral("Other")).isEmpty());
+    QVERIFY(!inspector.renamePreset(0, QStringLiteral("Other")).isEmpty());
+    const auto depth = session.undoNames().size();
+    QVERIFY(inspector.renamePreset(0, QStringLiteral("Dense 2")).isEmpty());
+    QCOMPARE(session.undoNames().size(), depth + 1);
+    QCOMPARE(session.project().stitch_presets.size(), static_cast<std::size_t>(2));
+    QCOMPARE(QString::fromStdString(session.project().stitch_presets.back().name),
+             QStringLiteral("Dense 2"));
+    QVERIFY(session.undo());
+    QCOMPARE(QString::fromStdString(session.project().stitch_presets.front().name),
+             QStringLiteral("Dense"));
+    QVERIFY(inspector.removePreset(0).isEmpty());
+    QCOMPARE(session.project().stitch_presets.size(), static_cast<std::size_t>(1));
+    QVERIFY(!inspector.removePreset(7).isEmpty());
+}
+
+void StudioInspectorTest::qmlInspectorEditsThroughTheController() {
+    DocumentSession session;
+    auto created = project_ops::create_empty_project({});
+    session.replaceProject(std::move(*created), true);
+    const auto id = addRect(session);
+    StudioController studio(session);
+    InspectorController inspector(studio);
+    QQmlEngine engine;
+    QStringList qmlWarnings;
+    connect(&engine, &QQmlEngine::warnings, this, [&](const QList<QQmlError>& errors) {
+        for (const auto& e : errors) {
+            qmlWarnings.push_back(e.toString());
+        }
+    });
+    engine.rootContext()->setContextProperty(QStringLiteral("inspector"), &inspector);
+    QQmlComponent component(&engine, QUrl(QStringLiteral("qrc:/studio/qml/Inspector.qml")));
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    QQuickWindow window;
+    window.resize(320, 900);
+    std::unique_ptr<QObject> created_item(component.create());
+    QVERIFY2(created_item != nullptr, qPrintable(component.errorString()));
+    auto* root = qobject_cast<QQuickItem*>(created_item.get());
+    QVERIFY(root != nullptr);
+    root->setParentItem(window.contentItem());
+    root->setSize({320, 900});
+    QVERIFY(!root->isVisible()); // nothing selected: the inspector stays out of the way
+    select(session, {id});
+    QTRY_VERIFY(root->isVisible());
+    const auto find = [&](const char* name) { return findItem(root, QString::fromLatin1(name)); };
+    QTRY_VERIFY2(find("entry_row_spacing_mm") != nullptr,
+                 qPrintable(qmlWarnings.join(QLatin1Char(10))));
+    auto* entry = find("entry_row_spacing_mm");
+    // Typed refusal: the text stays, the message appears, the document is untouched.
+    const auto revision = session.revision();
+    entry->setProperty("text", QStringLiteral("9"));
+    QMetaObject::invokeMethod(entry, "editingFinished");
+    auto* error = find("error_row_spacing_mm");
+    QVERIFY(error != nullptr);
+    QVERIFY(error->isVisible());
+    QCOMPARE(session.revision(), revision);
+    QCOMPARE(entry->property("text").toString(), QStringLiteral("9"));
+    // Accepted entry (decimal comma) goes through the controller.
+    entry->setProperty("text", QStringLiteral("0,45"));
+    QMetaObject::invokeMethod(entry, "editingFinished");
+    QVERIFY(std::abs(*readParam(object(session, id), "row_spacing_mm") - 0.45) < 1e-6);
+    QTRY_VERIFY(!error->isVisible());
+    // Switch, combo, search and advanced toggle are the controller's own state.
+    auto* toggle = find("switch_underlay_edge");
+    QVERIFY(toggle != nullptr);
+    const auto before = *readParam(object(session, id), "underlay_edge");
+    toggle->setProperty("checked", before < 0.5); // what a click does, then the user signal
+    QMetaObject::invokeMethod(toggle, "toggled");
+    QVERIFY(*readParam(object(session, id), "underlay_edge") != before);
+    auto* combo = find("combo_pull_mode");
+    QVERIFY(combo != nullptr);
+    QCOMPARE(find("advancedSwitch") != nullptr, true);
+    inspector.setShowAdvanced(true);
+    QTRY_VERIFY(find("param_stagger") != nullptr);
+    auto* reset = find("reset_row_spacing_mm");
+    QVERIFY(reset != nullptr);
+    QMetaObject::invokeMethod(reset, "clicked");
+    QTRY_VERIFY(std::abs(*readParam(object(session, id), "row_spacing_mm") -
+                         document::TatamiParams{}.row_spacing.value / 1000.0) < 1e-6);
+}
+
+QTEST_MAIN(StudioInspectorTest)
+#include "test_studio_inspector.moc"

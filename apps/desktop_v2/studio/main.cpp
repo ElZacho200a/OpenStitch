@@ -10,6 +10,7 @@
 
 #include "action_controller.hpp"
 #include "gpu_canvas.hpp"
+#include "inspector_controller.hpp"
 #include "studio_controller.hpp"
 
 using namespace openstitch::desktop_v2;
@@ -44,9 +45,11 @@ int main(int argc, char** argv) {
     DocumentSession session;
     StudioController controller(session);
     ActionController actions(controller);
+    InspectorController inspector(controller);
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("studio"), &controller);
     engine.rootContext()->setContextProperty(QStringLiteral("actions"), &actions);
+    engine.rootContext()->setContextProperty(QStringLiteral("inspector"), &inspector);
     engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
     if (engine.rootObjects().isEmpty()) {
         return 2;
