@@ -382,7 +382,7 @@ ac8b4905,dock,Couleurs de segmentation,main_window_colors.cpp,fait,regionReduceC
 9bad0b86,dock,Document,main_window_panels.cpp,fait,Document,SERVICE_ONLY,,,
 a0dd4113,dock,Fils,main_window_threads.cpp,fait,Fils,SERVICE_ONLY,,,
 841be1a4,dock,Filtres d'affichage,main_window_order_filter.cpp,fait,view.show-all,SERVICE_ONLY,,,
-799ba08e,dock,Historique,main_window_editing.cpp,fait,Historique,SERVICE_ONLY,,,
+799ba08e,dock,Historique,main_window_editing.cpp,fait,Historique,TESTED,Apres rebase Debug Studio20/20 + core302cas + commands236cas; Release17/17 avant rebase seulement; nouvelle Release interrompue sur demande du proprietaire,HistoryController / DocumentSession::navigateHistory,HistoryPanel.qml
 1164c4f2,dock,Ordre de couture,main_window_order_filter.cpp,fait,Ordre de couture,SERVICE_ONLY,,,
 86fa735c,dock,Propriétés,main_window_panels.cpp,fait,Propriétés,SERVICE_ONLY,,,
 3c08b8cc,dock,Workflow,main_window_panels.cpp,fait,Workflow,SERVICE_ONLY,,,

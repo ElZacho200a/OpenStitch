@@ -69,6 +69,10 @@ public:
     // rétablissement (du prochain à rétablir au plus lointain) : panneau Historique.
     [[nodiscard]] std::vector<std::string> undoNames() const;
     [[nodiscard]] std::vector<std::string> redoNames() const;
+    // Read-only history positions; -1 means the saved state is no longer reachable.
+    [[nodiscard]] std::size_t position() const { return undo_.size(); }
+    [[nodiscard]] std::size_t historySize() const { return undo_.size() + redo_.size(); }
+    [[nodiscard]] long long cleanPosition() const { return cleanIndex_; }
 
 private:
     void trimToDepth();

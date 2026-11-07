@@ -8,6 +8,7 @@ endif()
 set(CMAKE_AUTOMOC ON)
 add_library(openstitch_studio_ui STATIC
     studio_controller.cpp studio_controller.hpp
+    history_controller.cpp history_controller.hpp
     action_controller.cpp action_controller.hpp
     edit_controller.cpp edit_controller.hpp
     file_controller.cpp file_controller.hpp
@@ -31,16 +32,15 @@ add_library(openstitch_studio_ui STATIC
     help_controller.cpp help_controller.hpp
     digitize_gestures.cpp digitize_gestures.hpp
     pull_controller.cpp pull_controller.hpp
-    applique_controller.cpp applique_controller.hpp
-    ../ui/live_server.cpp ../ui/live_server.hpp)
+    applique_controller.cpp applique_controller.hpp)
 add_library(openstitch::studio_ui ALIAS openstitch_studio_ui)
 target_include_directories(openstitch_studio_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(openstitch_studio_ui PUBLIC openstitch::desktop_v2_core
     openstitch::ai_segmentation openstitch::companion_backends Qt6::Network Qt6::Quick
-    Qt6::QuickControls2 PRIVATE openstitch::warnings)
+    Qt6::QuickControls2 PRIVATE openstitch::desktop_v2_live openstitch::warnings)
 
 set(studio_qml_files
-    qml/Main.qml qml/Theme.qml qml/StudioButton.qml qml/StudioIcon.qml
+    qml/Main.qml qml/HistoryPanel.qml qml/Theme.qml qml/StudioButton.qml qml/StudioIcon.qml
     qml/StudioLabel.qml qml/StudioPanel.qml qml/StudioToolTip.qml qml/StudioTextField.qml
     qml/StudioCheckBox.qml qml/StudioSwitch.qml qml/StudioSlider.qml qml/StudioSpinBox.qml
     qml/StudioComboBox.qml
