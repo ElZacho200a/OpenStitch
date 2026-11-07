@@ -421,6 +421,15 @@ void GpuCanvas::geometryChange(const QRectF& next, const QRectF& previous) {
     }
 }
 
+bool GpuCanvas::rhiBackend() const {
+    if (window() == nullptr || window()->rendererInterface() == nullptr) {
+        return false;
+    }
+    const auto api = window()->rendererInterface()->graphicsApi();
+    return api != QSGRendererInterface::Software && api != QSGRendererInterface::Unknown &&
+           api != QSGRendererInterface::Null;
+}
+
 QSGNode* GpuCanvas::updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData*) {
     if (!window()) {
         delete oldNode;
@@ -441,15 +450,23 @@ QSGNode* GpuCanvas::updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData*) {
     // Render thread must never write QObject properties or read the live document. Queue
     // diagnostics.
     const auto name = apiName(api);
-    if (result.geometryCreated || name != backendName_) {
+    if (result.geometryCreated || result.realisticBuilt || name != backendName_ ||
+        result.realisticActive != realisticActive_) {
         QMetaObject::invokeMethod(
             this,
-            [this, name, created = result.geometryCreated, ms = result.resourceMs] {
+            [this, name, created = result.geometryCreated, ms = result.resourceMs,
+             realBuilt = result.realisticBuilt, realMs = result.realisticMs,
+             realActive = result.realisticActive] {
                 backendName_ = name;
                 if (created) {
                     ++geometryBuildCount_;
                     resourceCreationMs_ = ms;
                 }
+                if (realBuilt) {
+                    ++realisticBuildCount_;
+                    realisticBuildMs_ = realMs;
+                }
+                realisticActive_ = realActive;
                 emit diagnosticsChanged();
             },
             Qt::QueuedConnection);

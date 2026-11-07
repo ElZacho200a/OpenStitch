@@ -9,6 +9,7 @@
 #include <memory>
 #include <vector>
 
+#include "realistic_scene.hpp"
 #include "selection_model.hpp"
 #include "studio_camera.hpp"
 #include "studio_scene.hpp"
@@ -45,6 +46,10 @@ struct CanvasOverlays {
     std::vector<OverlayMarker> markers;
     std::vector<OverlayJump> jumps;   // drawn when non-empty
     std::size_t visibleSegments{all}; // simulation: first N segments of the scene
+    // Rendu réaliste accéléré (chemin RHI uniquement ; le backend logiciel l'ignore et garde le
+    // raster CPU de référence). Vue seule : ne change ni le document ni les points.
+    bool realistic{false};
+    RealisticStyle realisticStyle;
 };
 
 // Render-thread input, copied during Qt Quick's synchronization phase while GUI is blocked.
@@ -64,6 +69,9 @@ struct CanvasRenderResult {
     QSGNode* node{nullptr};
     bool geometryCreated{false};
     double resourceMs{0}; // CPU time allocating/filling QSG resources; excludes driver upload.
+    bool realisticBuilt{false};  // la géométrie réaliste vient d'être (re)construite
+    double realisticMs{0};       // temps CPU de cette construction (hors envoi au pilote)
+    bool realisticActive{false}; // le chemin réaliste GPU est affiché
 };
 
 // Backend boundary for future thread materials / QRhi integration. Qt owns node destruction

@@ -164,7 +164,7 @@ Rectangle {
                 }
             }
             RowLayout {
-                StudioButton { objectName: "realisticButton"; text: qsTr("Afficher le rendu"); onClicked: panel.controller.computeRealistic() }
+                StudioButton { objectName: "realisticButton"; text: qsTr("Rendu de référence (CPU) / Exporter le rendu"); tooltip: qsTr("Calcule l'image de référence avec le moteur CPU ; le rendu réaliste interactif se bascule dans la barre au-dessus du canevas"); onClicked: panel.controller.computeRealistic() }
                 StudioButton { text: qsTr("Revenir aux points"); quiet: true; visible: panel.controller.realisticReady; onClicked: panel.controller.clearRealistic() }
             }
 

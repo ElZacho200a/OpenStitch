@@ -7,12 +7,20 @@
 #include <QQuickWindow>
 #include <QSGGeometryNode>
 #include <QSGOpacityNode>
+#include <QSGOpaqueTextureMaterial>
 #include <QSGSimpleTextureNode>
+#include <QSGTexture>
+#include <QSGTextureMaterial>
 #include <QSGTransformNode>
 #include <QSGVertexColorMaterial>
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <map>
+#include <memory>
+#include <span>
+
+#include "thread_textures.hpp"
 
 namespace openstitch::desktop_v2::studio {
 namespace {
@@ -160,8 +168,11 @@ struct StitchBatches {
     }
 };
 
+struct RealisticLayer;
+
 struct GeometryRoot : QSGNode {
     StudioResourceState resources;
+    RealisticLayer* realistic = nullptr; // créé à la première activation, enfant de `world`
     QSGTransformNode* world = new QSGTransformNode;
     QSGOpacityNode* frame = new QSGOpacityNode;
     StitchBatches stitches;
@@ -193,6 +204,208 @@ void applySimulation(GeometryRoot& root, const Vertices& vertices, std::size_t v
             appendGeometry(*st.tail, prefix);
         }
     }
+}
+
+// --- Rendu réaliste GPU --------------------------------------------------------------------
+// Couture pour brancher plus tard des shaders (module qtshadertools) sans toucher au reste :
+// aujourd'hui, uniquement les matériaux de texture standard de Qt Quick.
+class ThreadMaterialProvider {
+public:
+    virtual ~ThreadMaterialProvider() = default;
+    [[nodiscard]] virtual QSGMaterial* threadMaterial(QSGTexture& sprite) const = 0;
+    [[nodiscard]] virtual QSGMaterial* shadowMaterial(QSGTexture& shadow) const = 0;
+    [[nodiscard]] virtual QSGMaterial* fabricMaterial(QSGTexture& tile) const = 0;
+};
+
+class StandardTextureMaterials final : public ThreadMaterialProvider {
+public:
+    QSGMaterial* threadMaterial(QSGTexture& sprite) const override { return blended(sprite); }
+    QSGMaterial* shadowMaterial(QSGTexture& shadow) const override { return blended(shadow); }
+    QSGMaterial* fabricMaterial(QSGTexture& tile) const override {
+        tile.setFiltering(QSGTexture::Linear);
+        tile.setMipmapFiltering(QSGTexture::Linear);
+        tile.setHorizontalWrapMode(QSGTexture::Repeat);
+        tile.setVerticalWrapMode(QSGTexture::Repeat);
+        auto* material = new QSGOpaqueTextureMaterial;
+        material->setTexture(&tile);
+        material->setFiltering(QSGTexture::Linear);
+        material->setMipmapFiltering(QSGTexture::Linear);
+        material->setHorizontalWrapMode(QSGTexture::Repeat);
+        material->setVerticalWrapMode(QSGTexture::Repeat);
+        return material;
+    }
+
+private:
+    static QSGMaterial* blended(QSGTexture& texture) {
+        texture.setFiltering(QSGTexture::Linear);
+        texture.setMipmapFiltering(QSGTexture::Linear);
+        texture.setHorizontalWrapMode(QSGTexture::ClampToEdge);
+        texture.setVerticalWrapMode(QSGTexture::ClampToEdge);
+        auto* material = new QSGTextureMaterial;
+        material->setTexture(&texture);
+        material->setFiltering(QSGTexture::Linear);
+        material->setMipmapFiltering(QSGTexture::Linear);
+        return material;
+    }
+};
+
+QImage toImage(const PixelImage& pixels) {
+    return QImage(pixels.rgba.data(), pixels.width, pixels.height, pixels.width * 4,
+                  QImage::Format_RGBA8888_Premultiplied)
+        .copy(); // détache des octets de la source
+}
+
+QSGTexture* makeTexture(QQuickWindow& window, const PixelImage& pixels) {
+    QQuickWindow::CreateTextureOptions options;
+    options.setFlag(QQuickWindow::TextureHasAlphaChannel);
+    options.setFlag(QQuickWindow::TextureHasMipmaps);
+    return window.createTextureFromImage(toImage(pixels), options);
+}
+
+QSGGeometryNode* texturedNode(const RealisticVertex* src, std::size_t count,
+                              QSGMaterial* material) {
+    auto* geometry =
+        new QSGGeometry(QSGGeometry::defaultAttributes_TexturedPoint2D(), static_cast<int>(count));
+    geometry->setDrawingMode(QSGGeometry::DrawTriangles);
+    geometry->setVertexDataPattern(QSGGeometry::StaticPattern);
+    static_assert(sizeof(QSGGeometry::TexturedPoint2D) == sizeof(RealisticVertex));
+    std::copy_n(src, count, static_cast<RealisticVertex*>(geometry->vertexData()));
+    auto* node = new QSGGeometryNode;
+    node->setGeometry(geometry);
+    node->setFlag(QSGNode::OwnsGeometry);
+    node->setMaterial(material);
+    node->setFlag(QSGNode::OwnsMaterial);
+    return node;
+}
+
+// Calque réaliste : tissu, puis tranches de runs dans l'ordre de couture (ombre portée puis
+// fil), puis une « queue » pour le curseur de simulation. Toutes les ressources GPU (textures)
+// sont détenues ici, donc détruites avec le scene graph.
+struct RealisticLayer : QSGOpacityNode {
+    QSGNode* fabric = new QSGNode;
+    QSGNode* group = new QSGNode;
+    QSGNode* tail = new QSGNode;
+    std::vector<QSGOpacityNode*> chunkNodes;
+    std::vector<RealisticRun> runs;
+    std::vector<RealisticChunk> chunks;
+    ThreadSpriteCache cache;
+    std::map<std::uint32_t, std::unique_ptr<QSGTexture>> spriteTextures; // clé = couleur
+    std::unique_ptr<QSGTexture> shadowTexture;
+    std::unique_ptr<QSGTexture> fabricTexture;
+    std::shared_ptr<const StudioSceneSnapshot> builtScene;
+    RealisticStyle builtStyle;
+    std::size_t shownSegments{std::numeric_limits<std::size_t>::max()};
+    bool built{false};
+    RealisticLayer() {
+        appendChildNode(fabric);
+        appendChildNode(group);
+        appendChildNode(tail);
+    }
+    QSGTexture& spriteTexture(QQuickWindow& window, std::array<std::uint8_t, 3> rgb) {
+        const std::uint32_t key = (static_cast<std::uint32_t>(rgb[0]) << 16) |
+                                  (static_cast<std::uint32_t>(rgb[1]) << 8) | rgb[2];
+        auto it = spriteTextures.find(key);
+        if (it == spriteTextures.end()) {
+            it = spriteTextures
+                     .emplace(key,
+                              std::unique_ptr<QSGTexture>(makeTexture(window, cache.sprite(rgb))))
+                     .first;
+        }
+        return *it->second;
+    }
+};
+
+// (Re)construit tout le calque : tissu + tranches. Appelé seulement quand la scène ou le style
+// change, jamais au pan/zoom.
+void buildRealistic(RealisticLayer& layer,
+                    const std::shared_ptr<const StudioSceneSnapshot>& scenePtr,
+                    const RealisticStyle& style, QQuickWindow& window,
+                    const ThreadMaterialProvider& materials) {
+    const auto& scene = *scenePtr;
+    clearChildren(*layer.fabric);
+    clearChildren(*layer.group);
+    clearChildren(*layer.tail);
+    layer.chunkNodes.clear();
+    layer.spriteTextures.clear();
+    layer.cache.setStyle(style);
+    layer.shadowTexture.reset(makeTexture(window, generateShadowSprite(style)));
+    layer.fabricTexture.reset(makeTexture(window, generateFabricTile(style)));
+
+    const auto& b = scene.bounds;
+    const auto x0 = static_cast<float>(b.x0);
+    const auto y0 = static_cast<float>(b.y0);
+    const auto x1 = static_cast<float>(b.x1);
+    const auto y1 = static_cast<float>(b.y1);
+    const auto tx = static_cast<float>(b.width() / kFabricTileMm);
+    const auto ty = static_cast<float>(b.height() / kFabricTileMm);
+    const RealisticVertex quad[6] = {{x0, y0, 0, 0},  {x1, y0, tx, 0}, {x0, y1, 0, ty},
+                                     {x0, y1, 0, ty}, {x1, y0, tx, 0}, {x1, y1, tx, ty}};
+    layer.fabric->appendChildNode(
+        texturedNode(quad, 6, materials.fabricMaterial(*layer.fabricTexture)));
+
+    layer.runs = buildRealisticRuns(scene.segments);
+    layer.chunks = buildRealisticChunks(layer.runs);
+    std::vector<RealisticVertex> scratch;
+    for (const auto& chunk : layer.chunks) {
+        const std::span<const StudioSegment> part(scene.segments.data() + chunk.first, chunk.count);
+        scratch.resize(chunk.count * kVerticesPerSegment);
+        auto* wrapper = new QSGOpacityNode;
+        if (style.shadow > 0.0) {
+            writeShadowQuads(part, style, scratch.data());
+            wrapper->appendChildNode(texturedNode(scratch.data(), scratch.size(),
+                                                  materials.shadowMaterial(*layer.shadowTexture)));
+        }
+        writeThreadQuads(part, style, scratch.data());
+        auto& sprite = layer.spriteTexture(window, layer.runs[chunk.run].rgb);
+        wrapper->appendChildNode(
+            texturedNode(scratch.data(), scratch.size(), materials.threadMaterial(sprite)));
+        layer.group->appendChildNode(wrapper);
+        layer.chunkNodes.push_back(wrapper);
+    }
+    layer.builtScene = scenePtr;
+    layer.builtStyle = style;
+    layer.shownSegments = std::numeric_limits<std::size_t>::max() - 1; // force la mise à jour
+    layer.built = true;
+}
+
+// Simulation : tranches entières visibles ou non ; la tranche du curseur est redessinée en
+// préfixe dans la queue.
+void applyRealisticSimulation(RealisticLayer& layer, const StudioSceneSnapshot& scene,
+                              const RealisticStyle& style, std::size_t visibleSegments,
+                              QQuickWindow& window, const ThreadMaterialProvider& materials) {
+    const std::size_t total = scene.segments.size();
+    const std::size_t shown =
+        visibleSegments == CanvasOverlays::all ? total : std::min(total, visibleSegments);
+    if (layer.shownSegments == shown) {
+        return;
+    }
+    layer.shownSegments = shown;
+    clearChildren(*layer.tail);
+    for (std::size_t i = 0; i < layer.chunks.size(); ++i) {
+        const auto& chunk = layer.chunks[i];
+        const bool full = chunk.first + chunk.count <= shown;
+        layer.chunkNodes[i]->setOpacity(full ? 1.0 : 0.0);
+        if (!full && chunk.first < shown) {
+            const std::size_t count = shown - chunk.first;
+            const std::span<const StudioSegment> part(scene.segments.data() + chunk.first, count);
+            std::vector<RealisticVertex> scratch(count * kVerticesPerSegment);
+            if (style.shadow > 0.0) {
+                writeShadowQuads(part, style, scratch.data());
+                layer.tail->appendChildNode(
+                    texturedNode(scratch.data(), scratch.size(),
+                                 materials.shadowMaterial(*layer.shadowTexture)));
+            }
+            writeThreadQuads(part, style, scratch.data());
+            auto& sprite = layer.spriteTexture(window, layer.runs[chunk.run].rgb);
+            layer.tail->appendChildNode(
+                texturedNode(scratch.data(), scratch.size(), materials.threadMaterial(sprite)));
+        }
+    }
+}
+
+const ThreadMaterialProvider& materialProvider() {
+    static const StandardTextureMaterials provider;
+    return provider;
 }
 
 class GeometryBackend final : public CanvasRenderBackend {
@@ -276,7 +489,45 @@ public:
             appendGeometry(*root->overlay, screen);
         }
         root->overlayRevision = state.overlayRevision;
-        return {root, dirty.geometry && state.scene != nullptr, elapsed};
+        CanvasRenderResult result{root, dirty.geometry && state.scene != nullptr, elapsed};
+        synchronizeRealistic(*root, state, overlays, window, dirty, overlayDirty, result);
+        return result;
+    }
+
+private:
+    // Calque réaliste : reconstruit seulement si la scène ou le style change (jamais au
+    // pan/zoom), masqué sans rien détruire quand la bascule est coupée.
+    static void synchronizeRealistic(GeometryRoot& root, const CanvasRenderState& state,
+                                     const CanvasOverlays& overlays, QQuickWindow& window,
+                                     const StudioInvalidation& dirty, bool overlayDirty,
+                                     CanvasRenderResult& result) {
+        const bool want = overlays.realistic && state.scene != nullptr;
+        if (!want && root.realistic == nullptr) {
+            return;
+        }
+        if (want && root.realistic == nullptr) {
+            root.realistic = new RealisticLayer;
+            root.realistic->setOpacity(0.0);
+            root.world->insertChildNodeAfter(root.realistic, root.frame);
+        }
+        auto& layer = *root.realistic;
+        if (want && (!layer.built || layer.builtScene != state.scene ||
+                     !(layer.builtStyle == overlays.realisticStyle))) {
+            QElapsedTimer timer;
+            timer.start();
+            buildRealistic(layer, state.scene, overlays.realisticStyle, window, materialProvider());
+            result.realisticBuilt = true;
+            result.realisticMs = static_cast<double>(timer.nsecsElapsed()) / 1e6;
+        }
+        if (want && (result.realisticBuilt || dirty.geometry || overlayDirty)) {
+            applyRealisticSimulation(layer, *state.scene, overlays.realisticStyle,
+                                     overlays.visibleSegments, window, materialProvider());
+        }
+        layer.setOpacity(want && overlays.showStitches ? 1.0 : 0.0);
+        if (want) {
+            root.stitches.all->setOpacity(0.0); // le calque réaliste remplace les points plats
+        }
+        result.realisticActive = want && overlays.showStitches;
     }
 };
 

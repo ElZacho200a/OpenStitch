@@ -41,6 +41,11 @@ class ViewController : public QObject {
     Q_PROPERTY(bool layerHoop READ layerHoop WRITE setLayerHoop NOTIFY displayChanged)
     Q_PROPERTY(bool layerDensity READ layerDensity WRITE setLayerDensity NOTIFY displayChanged)
     Q_PROPERTY(bool layerRisk READ layerRisk WRITE setLayerRisk NOTIFY displayChanged)
+    // Famille K : rendu réaliste (vue seule). GPU quand le backend est RHI, sinon repli sur le
+    // raster CPU de référence (AnalysisController::computeRealistic).
+    Q_PROPERTY(bool realistic READ realistic WRITE setRealistic NOTIFY realisticChanged)
+    Q_PROPERTY(bool realisticOnGpu READ realisticOnGpu NOTIFY realisticModeChanged)
+    Q_PROPERTY(QString realisticMode READ realisticMode NOTIFY realisticModeChanged)
     Q_PROPERTY(double pixelsPerMmAt100 READ pixelsPerMmAt100 NOTIFY displayChanged)
     Q_PROPERTY(bool simActive READ simActive NOTIFY simChanged)
     Q_PROPERTY(bool simReady READ simReady NOTIFY simChanged)
@@ -97,6 +102,19 @@ public:
     // Advances the playback by `milliseconds` of wall time (the timer calls it; tests drive it).
     Q_INVOKABLE void advance(int milliseconds);
 
+    // --- Realistic view (famille K) -----------------------------------------------------------
+    Q_INVOKABLE void toggleRealistic() { setRealistic(!realistic_); }
+    [[nodiscard]] bool realistic() const { return realistic_; }
+    void setRealistic(bool value);
+    // Chemin effectif : vrai si le canevas tourne sur RHI (le rendu réaliste est alors du GPU).
+    [[nodiscard]] bool realisticOnGpu() const { return canvas_ && canvas_->rhiBackend(); }
+    // "" (désactivé), "Réaliste · GPU" ou "Réaliste · CPU (repli)".
+    [[nodiscard]] QString realisticMode() const;
+    // Réglages de qualité (venus d'AnalysisController) : republie, ne reconstruit la géométrie
+    // réaliste que si le style change réellement.
+    void setRealisticStyle(const RenderSettings& settings);
+    [[nodiscard]] const RealisticStyle& realisticStyle() const { return realisticStyle_; }
+
     // --- Hooks for the analysis adapter -------------------------------------------------------
     void setAnalysisImage(const QString& key, std::optional<OverlayImage> image);
     void setMarkers(std::vector<OverlayMarker> markers);
@@ -142,6 +160,10 @@ signals:
     void displayChanged();
     void simChanged();
     void messageChanged();
+    void realisticChanged();     // bascule demandée par l'utilisateur
+    void realisticModeChanged(); // chemin effectif (GPU / CPU) connu ou modifié
+    // Repli CPU actif et motif modifié : l'image de référence est à recalculer.
+    void realisticRefreshRequested();
 
 private:
     struct SimData; // effective sequence prefix data, built on a worker per scene
@@ -166,6 +188,9 @@ private:
     QColor guideColor_{0, 170, 220};
     bool layerStitches_{true}, layerJumps_{false}, layerHoop_{true}, layerDensity_{true},
         layerRisk_{true};
+    bool realistic_{false};
+    bool lastRealisticGpu_{false};
+    RealisticStyle realisticStyle_;
     double pxPerMm100_{96.0 / 25.4};
     std::map<QString, OverlayImage> images_;
     std::vector<OverlayMarker> markers_;

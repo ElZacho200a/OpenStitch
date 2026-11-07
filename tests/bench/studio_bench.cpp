@@ -23,6 +23,7 @@
 #include <cstdio>
 #include <functional>
 #include <memory>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -33,7 +34,9 @@
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "preview_canvas.hpp"
 #include "preview_service.hpp"
+#include "realistic_scene.hpp"
 #include "studio_scene.hpp"
+#include "thread_textures.hpp"
 
 #ifdef _WIN32
 #define NOMINMAX
@@ -145,6 +148,7 @@ struct Options {
     double heightMm{300.0};
     int frames{240};
     int warmup{30};
+    bool realistic{false}; // famille K : calque réaliste GPU (backend quick seulement)
 };
 
 // Each request waits for one completed paint/swap before the next camera gesture. Input latency
@@ -184,6 +188,35 @@ QJsonObject run(const Options& options, const QString& name,
     }
     result["segments_hash"] =
         QString::number(stitch_render::hash_segments(threads), 16); // equality across backends
+
+    // Famille K : temps CPU de construction de la géométrie réaliste (runs, tranches, quadrilatères
+    // du fil et de l'ombre, sprites par couleur), mesuré hors fenêtre ; aucun envoi au GPU.
+    {
+        const auto start = Clock::now();
+        const studio::RealisticStyle style;
+        const auto runs = studio::buildRealisticRuns(snapshot->segments);
+        const auto chunks = studio::buildRealisticChunks(runs);
+        std::vector<studio::RealisticVertex> scratch;
+        std::size_t vertexCount = 0;
+        for (const auto& chunk : chunks) {
+            const std::span<const StudioSegment> part(snapshot->segments.data() + chunk.first,
+                                                      chunk.count);
+            scratch.resize(chunk.count * studio::kVerticesPerSegment);
+            studio::writeShadowQuads(part, style, scratch.data());
+            studio::writeThreadQuads(part, style, scratch.data());
+            vertexCount += 2 * scratch.size();
+        }
+        studio::ThreadSpriteCache cache;
+        cache.setStyle(style);
+        for (const auto& run : runs) {
+            (void)cache.sprite(run.rgb);
+        }
+        result["realistic_cpu_geometry_ms"] = ms(start, Clock::now());
+        result["realistic_runs"] = double(runs.size());
+        result["realistic_chunks"] = double(chunks.size());
+        result["realistic_vertex_bytes"] = double(vertexCount * sizeof(studio::RealisticVertex));
+        result["realistic_sprites_generated"] = double(cache.generatedCount());
+    }
 
     QEventLoop loop;
     QTimer timeout;
@@ -272,6 +305,11 @@ QJsonObject run(const Options& options, const QString& name,
         installedAt = Clock::now();
         pending.store(true);
         gpu->setScene(snapshot);
+        if (options.realistic) {
+            auto overlays = std::make_shared<studio::CanvasOverlays>();
+            overlays->realistic = true;
+            gpu->setOverlays(overlays);
+        }
         gpu->fitDesign();
         quick->show();
         result["completion_signal"] = "QQuickWindow::frameSwapped (render-thread timestamp)";
@@ -354,6 +392,11 @@ QJsonObject run(const Options& options, const QString& name,
         gpu ? QJsonValue(double(firstBuildCount)) : QJsonValue(QJsonValue::Null);
     result["qsg_resource_creation_cpu_ms"] =
         gpu ? QJsonValue(gpu->resourceCreationMs()) : QJsonValue(QJsonValue::Null);
+    result["realistic"] = options.realistic;
+    result["realistic_build_count"] =
+        gpu ? QJsonValue(double(gpu->realisticBuildCount())) : QJsonValue(QJsonValue::Null);
+    result["realistic_build_cpu_ms"] =
+        gpu ? QJsonValue(gpu->realisticBuildMs()) : QJsonValue(QJsonValue::Null);
     result["process_working_set_mb"] = workingSetMb(false);
     result["process_peak_working_set_mb"] = workingSetMb(true);
     result["gpu_memory_bytes"] = QJsonValue::Null;
@@ -382,6 +425,8 @@ int main(int argc, char** argv) {
             options.frames = args[++i].toInt();
         } else if (arg == "--warmup" && i + 1 < args.size()) {
             options.warmup = args[++i].toInt();
+        } else if (arg == "--realistic") {
+            options.realistic = true;
         } else if (arg == "--generate-project" && i + 1 < args.size()) {
             options.generateProject = args[++i];
         } else if (arg == "--image" && i + 1 < args.size()) {
