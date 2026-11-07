@@ -53,6 +53,8 @@ add_library(openstitch_desktop_v2_core STATIC
     core/render_settings.cpp
     core/file_io.cpp
     core/direction_guides.cpp
+    core/display_filters.cpp
+    core/simulation_nav.cpp
     core/point_edit.cpp
     core/source_image_tools.cpp
     core/studio_scene.cpp

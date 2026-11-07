@@ -31,3 +31,12 @@ add_test(NAME check_selection_guard_selftest
             -DFIXTURES=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/selection_guard
             -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_selection_guard_selftest.cmake)
+
+# Garde de parite V1 -> V2 : chaque fonction de la V1 (inventaire genere depuis apps/desktop) a un
+# statut dans docs/desktop-v2/parite-v1/correspondances.csv, chaque preuve existe dans la V2, et le
+# nombre de fonctions absentes ne peut que baisser -- voir scripts/parity/check_parity.py.
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_FOUND)
+    add_test(NAME check_v1_parity
+        COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/parity/check_parity.py)
+endif()

@@ -49,6 +49,9 @@ add_executable(test_desktop_v2_core
     test_file_io.cpp
     test_direction_guides.cpp
     test_journeys.cpp
+    test_display_filters.cpp
+    test_simulation_nav.cpp
+    test_thread_charts.cpp
     test_point_edit.cpp
     test_source_image_tools.cpp
     test_studio_scene.cpp

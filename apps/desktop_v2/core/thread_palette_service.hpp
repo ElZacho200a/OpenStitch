@@ -11,11 +11,13 @@
 
 #include <array>
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "document_services.hpp"
+#include "openstitch/core/error.hpp"
 
 namespace openstitch::desktop_v2 {
 
@@ -26,6 +28,7 @@ struct ChartInfo {
     std::string name;
     std::string source;
     std::size_t count{0};
+    bool user{false}; // nuancier importé par l'utilisateur (retirable)
 };
 
 struct ThreadChoice {
@@ -38,6 +41,18 @@ struct ThreadChoice {
 };
 
 [[nodiscard]] std::vector<ChartInfo> chartInfos();
+
+// --- Nuanciers de l'utilisateur (les cartes de marques ne sont pas fournies : on charge les
+// siennes) --- Lit un `.csv` ou `.json` (formats de `project_io::thread_chart_io`), le copie dans
+// `directory` (créé au besoin) pour le retrouver au prochain démarrage, et l'ajoute aux nuanciers.
+// Refus clair : fichier illisible, ligne invalide (numéro cité), identifiant déjà pris par un
+// nuancier intégré ou importé (jamais de remplacement silencieux).
+[[nodiscard]] Result<ChartInfo> importThreadChart(const std::filesystem::path& file,
+                                                  const std::filesystem::path& directory);
+// Relit les nuanciers copiés dans `directory` ; renvoie les messages des fichiers refusés.
+std::vector<std::string> loadUserCharts(const std::filesystem::path& directory);
+// Retire un nuancier IMPORTÉ (et sa copie dans `directory`) ; faux pour un intégré ou un inconnu.
+bool removeUserChart(const std::string& chartId, const std::filesystem::path& directory);
 // Fils d'un nuancier dont le nom ou la référence contient `query` (sans casse), dans l'ordre du
 // nuancier, au plus `limit`. `query` vide : les premiers fils. Nuancier inconnu : vide.
 [[nodiscard]] std::vector<ThreadChoice>

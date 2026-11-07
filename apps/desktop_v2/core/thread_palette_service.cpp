@@ -7,6 +7,9 @@
 #include <cstdio>
 
 #include "openstitch/commands/thread_commands.hpp"
+#include <fstream>
+
+#include "openstitch/project_io/thread_chart_io.hpp"
 #include "openstitch/thread_palette/catalog.hpp"
 #include "openstitch/thread_palette/color_distance.hpp"
 #include "thread_plan.hpp"
@@ -37,6 +40,35 @@ std::uint8_t fromLinear(double l) {
     return static_cast<std::uint8_t>(std::lround(std::clamp(c, 0.0, 1.0) * 255.0));
 }
 
+// Nuanciers importés par l'utilisateur, dans l'ordre d'import (jamais de conteneur non ordonné).
+std::vector<tp::ThreadChart>& userCharts() {
+    static std::vector<tp::ThreadChart> charts;
+    return charts;
+}
+
+const tp::ThreadChart* findAnyChart(const std::string& id) {
+    if (const auto* builtin = tp::find_chart(id)) {
+        return builtin;
+    }
+    for (const auto& chart : userCharts()) {
+        if (chart.chart_id == id) {
+            return &chart;
+        }
+    }
+    return nullptr;
+}
+
+std::optional<tp::Thread> findAnyThread(const std::string& chartId, const std::string& code) {
+    if (const auto* chart = findAnyChart(chartId)) {
+        for (const auto& t : chart->threads) {
+            if (t.key.code == code) {
+                return t;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
 std::string hex(Rgb c) {
     char buffer[8];
     std::snprintf(buffer, sizeof buffer, "#%02x%02x%02x", c[0], c[1], c[2]);
@@ -48,15 +80,84 @@ std::vector<ChartInfo> chartInfos() {
     std::vector<ChartInfo> out;
     for (const auto& chart : tp::all_charts()) {
         out.push_back(
-            {chart.chart_id, chart.display_name, chart.source_note, chart.threads.size()});
+            {chart.chart_id, chart.display_name, chart.source_note, chart.threads.size(), false});
+    }
+    for (const auto& chart : userCharts()) {
+        out.push_back(
+            {chart.chart_id, chart.display_name, chart.source_note, chart.threads.size(), true});
     }
     return out;
+}
+
+Result<ChartInfo> importThreadChart(const std::filesystem::path& file,
+                                    const std::filesystem::path& directory) {
+    auto chart = project_io::read_thread_chart_file(file);
+    if (!chart) {
+        return std::unexpected(chart.error());
+    }
+    if (findAnyChart(chart->chart_id) != nullptr) {
+        return fail(ErrorCategory::UserInput,
+                    "Un nuancier « " + chart->display_name + " » existe déjà",
+                    "Retirez-le d'abord, ou renommez le fichier.");
+    }
+    std::error_code ec;
+    std::filesystem::create_directories(directory, ec);
+    const auto target = directory / (chart->chart_id + file.extension().string());
+    std::filesystem::copy_file(file, target, std::filesystem::copy_options::overwrite_existing, ec);
+    if (ec) {
+        return fail(ErrorCategory::OperationImpossible,
+                    "Copie du nuancier impossible : " + ec.message());
+    }
+    ChartInfo info{chart->chart_id, chart->display_name, chart->source_note, chart->threads.size(),
+                   true};
+    userCharts().push_back(std::move(*chart));
+    return info;
+}
+
+std::vector<std::string> loadUserCharts(const std::filesystem::path& directory) {
+    std::vector<std::string> problems;
+    std::error_code ec;
+    if (!std::filesystem::is_directory(directory, ec)) {
+        return problems;
+    }
+    std::vector<std::filesystem::path> files;
+    for (const auto& entry : std::filesystem::directory_iterator(directory, ec)) {
+        const auto ext = lower(entry.path().extension().string());
+        if (entry.is_regular_file() && (ext == ".csv" || ext == ".json")) {
+            files.push_back(entry.path());
+        }
+    }
+    std::sort(files.begin(), files.end()); // ordre stable d'un démarrage à l'autre
+    for (const auto& f : files) {
+        auto chart = project_io::read_thread_chart_file(f);
+        if (!chart) {
+            problems.push_back(f.filename().string() + " : " + chart.error().message);
+        } else if (findAnyChart(chart->chart_id) == nullptr) {
+            userCharts().push_back(std::move(*chart));
+        }
+    }
+    return problems;
+}
+
+bool removeUserChart(const std::string& chartId, const std::filesystem::path& directory) {
+    auto& charts = userCharts();
+    const auto it = std::find_if(charts.begin(), charts.end(),
+                                 [&](const tp::ThreadChart& c) { return c.chart_id == chartId; });
+    if (it == charts.end()) {
+        return false;
+    }
+    charts.erase(it);
+    std::error_code ec;
+    for (const char* ext : {".csv", ".json"}) {
+        std::filesystem::remove(directory / (chartId + ext), ec);
+    }
+    return true;
 }
 
 std::vector<ThreadChoice> searchThreads(const std::string& chartId, const std::string& query,
                                         std::size_t limit) {
     std::vector<ThreadChoice> out;
-    const auto* chart = tp::find_chart(chartId);
+    const auto* chart = findAnyChart(chartId);
     if (chart == nullptr) {
         return out;
     }
@@ -75,12 +176,12 @@ std::vector<ThreadChoice> searchThreads(const std::string& chartId, const std::s
 
 std::vector<ThreadChoice> nearestThreads(Rgb rgb, const std::string& chartId, std::size_t topN) {
     std::vector<ThreadChoice> out;
-    const auto* chart = tp::find_chart(chartId);
+    const auto* chart = findAnyChart(chartId);
     if (chart == nullptr || topN == 0) {
         return out;
     }
     for (const auto& match : tp::nearest_threads(rgb, *chart, topN)) {
-        if (const auto thread = tp::find_by_code(match.key.chart_id, match.key.code)) {
+        if (const auto thread = findAnyThread(match.key.chart_id, match.key.code)) {
             out.push_back(choiceOf(*thread, match.distance));
         }
     }
@@ -93,7 +194,7 @@ ServiceResult assignChartThread(DocumentSession& session, std::size_t entry,
     if (entry >= entries.size()) {
         return {false, "Choisissez un fil existant du plan de fils."};
     }
-    const auto thread = tp::find_by_code(chartId, code);
+    const auto thread = findAnyThread(chartId, code);
     if (!thread) {
         return {false, "Fil inconnu dans ce nuancier."};
     }

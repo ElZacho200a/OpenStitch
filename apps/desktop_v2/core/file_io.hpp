@@ -35,4 +35,11 @@ struct FileFilter {
 ServiceResult exportVectorsToDxf(const document::Project& project,
                                  const std::filesystem::path& file, std::size_t* count = nullptr);
 
+// Liste des fils du motif en CSV (UTF-8, séparateur « ; », une ligne par fil, dans l'ordre de
+// première couture) :
+// ordre;marque;nuancier;reference;nom;couleur;objets;points;longueur_mm;duree_s. Refus clair s'il
+// n'y a aucun point ou si le fichier ne s'écrit pas. `rows` : nombre de fils écrits.
+ServiceResult exportThreadListCsv(const document::Project& project,
+                                  const std::filesystem::path& file, std::size_t* rows = nullptr);
+
 } // namespace openstitch::desktop_v2
