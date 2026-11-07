@@ -148,12 +148,6 @@ Item {
                     onContextMenuRequested: function(x, y, objectId) { contextMenu.openAt(x, y) }
                 }
 
-                ToolOverlay {
-                    objectName: "toolOverlay"
-                    anchors.fill: parent
-                    gpu: spaceCanvas
-                }
-
                 HandlesOverlay {
                     objectName: "handlesOverlay"
                     anchors.fill: parent

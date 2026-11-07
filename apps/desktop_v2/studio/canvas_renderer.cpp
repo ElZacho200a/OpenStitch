@@ -20,6 +20,7 @@
 #include <memory>
 #include <span>
 
+#include "layers/region_layer.hpp"
 #include "thread_textures.hpp"
 
 namespace openstitch::desktop_v2::studio {
@@ -172,6 +173,9 @@ struct RealisticLayer;
 
 struct GeometryRoot : QSGNode {
     StudioResourceState resources;
+    // Couche « regions » (sous les points) : sa matrice suit la caméra, ses textures la révision.
+    RegionLayerNode* regions = new RegionLayerNode;
+    std::uint64_t regionsCameraRevision{std::numeric_limits<std::uint64_t>::max()};
     RealisticLayer* realistic = nullptr; // créé à la première activation, enfant de `world`
     QSGTransformNode* world = new QSGTransformNode;
     QSGOpacityNode* frame = new QSGOpacityNode;
@@ -180,6 +184,7 @@ struct GeometryRoot : QSGNode {
     QSGNode* overlay = new QSGNode;
     std::uint64_t overlayRevision{std::numeric_limits<std::uint64_t>::max()};
     GeometryRoot() {
+        appendChildNode(regions);
         world->appendChildNode(frame);
         world->appendChildNode(stitches.all);
         appendChildNode(world);
@@ -408,6 +413,21 @@ const ThreadMaterialProvider& materialProvider() {
     return provider;
 }
 
+// Crochet de la couche « regions » : une mise à jour par synchronisation, textures recréées
+// seulement quand la révision publiée change, matrice recalculée quand la caméra bouge.
+void syncRegionLayer(GeometryRoot& root, const CanvasRenderState& state, QQuickWindow& window) {
+    const RegionLayerData* data = state.layers.regions ? state.regions.get() : nullptr;
+    root.regions->update(data, window);
+    if (root.regionsCameraRevision != state.camera.revision()) {
+        QMatrix4x4 matrix;
+        const auto offset = state.camera.offset();
+        matrix.translate(static_cast<float>(offset.x), static_cast<float>(offset.y));
+        matrix.scale(static_cast<float>(state.camera.scale()));
+        root.regions->setMatrix(matrix);
+        root.regionsCameraRevision = state.camera.revision();
+    }
+}
+
 class GeometryBackend final : public CanvasRenderBackend {
 public:
     CanvasRenderResult synchronize(QSGNode* previous, const CanvasRenderState& state,
@@ -418,6 +438,7 @@ public:
         const bool overlayDirty = root->overlayRevision != state.overlayRevision;
         const CanvasOverlays defaults;
         const CanvasOverlays& overlays = state.overlays ? *state.overlays : defaults;
+        syncRegionLayer(*root, state, window);
         double elapsed = 0;
         if (dirty.geometry) {
             QElapsedTimer timer;
@@ -450,6 +471,14 @@ public:
                 applySimulation(*root, state.scene->vertices, overlays.visibleSegments);
             }
             clearChildren(*root->layers);
+            if (state.vectorImage && !state.vectorImage->image.isNull()) {
+                const auto& v = *state.vectorImage;
+                auto* node = new QSGSimpleTextureNode;
+                node->setOwnsTexture(true);
+                node->setTexture(window.createTextureFromImage(v.image));
+                node->setRect(QRectF(v.x0, v.y0, v.widthMm, v.heightMm));
+                root->layers->appendChildNode(node);
+            }
             for (const auto& layer : overlays.images) {
                 if (layer.image.isNull() || layer.widthMm <= 0 || layer.heightMm <= 0) {
                     continue;
@@ -535,6 +564,7 @@ struct SoftwareRoot : QSGSimpleTextureNode {
     StudioResourceState resources;
     QSizeF viewport;
     double dpr{0};
+    std::shared_ptr<const RegionLayerData> regions; // couche « regions » déjà rastérisée
     std::uint64_t overlayRevision{std::numeric_limits<std::uint64_t>::max()};
     SoftwareRoot() { setOwnsTexture(true); }
 };
@@ -547,6 +577,7 @@ public:
         const auto dirty =
             root->resources.observe(state.scene, state.selectionRevision, state.camera.revision());
         if (!dirty.geometry && !dirty.camera && !dirty.selection &&
+            root->regions == (state.layers.regions ? state.regions : nullptr) &&
             root->overlayRevision == state.overlayRevision && root->viewport == state.viewport &&
             root->dpr == state.devicePixelRatio) {
             return {root, false, 0};
@@ -566,8 +597,14 @@ public:
         const auto offset = state.camera.offset();
         painter.translate(offset.x, offset.y);
         painter.scale(state.camera.scale(), state.camera.scale());
+        paintRegionLayer(painter, state.layers.regions ? state.regions.get() : nullptr);
+        root->regions = state.layers.regions ? state.regions : nullptr;
         const CanvasOverlays defaults;
         const CanvasOverlays& overlays = state.overlays ? *state.overlays : defaults;
+        if (state.vectorImage && !state.vectorImage->image.isNull()) {
+            const auto& v = *state.vectorImage;
+            painter.drawImage(QRectF(v.x0, v.y0, v.widthMm, v.heightMm), v.image);
+        }
         if (state.scene) {
             const auto& h = state.scene->hoop;
             if (overlays.showHoop) {

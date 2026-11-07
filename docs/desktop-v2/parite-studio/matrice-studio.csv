@@ -6,7 +6,7 @@ c7233a7c,action,Abandonner les retouches,main_window_toolbars.cpp,absent,,TESTED
 b4151a04,action,Accrochage des nœuds au glisser,main_window.cpp,absent,,ABSENT,,,
 fc27db70,action,Accrocher à la grille,main_window_vector_edit.cpp,absent,,TESTED,StudioToolsTest::snappingIsConfigurable,ToolController::snapped (grille),ToolOptions snapGridCheck
 c6b9c9e3,action,Activer,main_window_realistic.cpp,fait,Activer,TESTED,StudioRealisticTest::toggleKeepsDocumentUntouchedAndFallsBackToCpuInSoftware,ViewController::toggleRealistic,Main.qml indicateur d'etat realisticModeStatus
-190ac0bb,action,Afficher la carte des régions,main_window.cpp,fait,region.edit,SERVICE_ONLY,,,
+190ac0bb,action,Afficher la carte des régions,main_window.cpp,fait,region.edit,TESTED,StudioSpaceSegmentationTest::regionsAreDrawnOnTheCanvas (couche regions rendue par le backend logiciel; pan/zoom sans reconstruction),SegmentationSpaceController::refresh/RegionLayerNode,SegmentationSpace.qml + layers/region_layer.cpp
 eeb30959,action,Afficher la grille,main_window_view_display.cpp,partiel,gridMenu,TESTED,StudioViewTest::mainQmlHostsEveryPanel,ViewController::setGridVisible,ViewPanel.qml / GpuCanvas overlay grille
 b4e5b433,action,Afficher les guides,main_window_view_display.cpp,partiel,guide.add-v,FUNCTIONAL_UNTESTED,,ViewController::setGuidesVisible,ViewPanel.qml / GpuCanvas overlay guides
 ea59b0be,action,Afficher uniquement ce type,main_window_order_filter.cpp,fait,view.only-type,SERVICE_ONLY,,,
@@ -98,7 +98,7 @@ f97b2ddf,action,Lisser,main_window_vector_tools.cpp,fait,Lisser,SERVICE_ONLY,,,
 b2e5796b,action,Modifier la colonne satin (rails + guides),main_window.cpp,absent,,UI_PARTIAL,StudioDigitizeTest::satinColumnJourney,SatinController::moveRailNode,SatinPanel.qml noeud de rail (poignees de rail au canevas absentes)
 2e6cc34f,action,Modifier le texte,main_window_lettering.cpp,fait,Modifier le texte,FUNCTIONAL_UNTESTED,,ActionController::run(text.edit),ActionPalette.qml
 aee88642,action,Ne pas couper le fil après,main_window_point_edit.cpp,fait,Ne pas couper le fil après,TESTED,StudioDigitizeTest::pointEditJourney,PointEditController::setTrim(false),PointEditPanel.qml pointNoTrim
-5421aa74,action,Nettoyer les petits îlots,main_window.cpp,fait,regionClean,SERVICE_ONLY,,,
+5421aa74,action,Nettoyer les petits îlots,main_window.cpp,fait,regionClean,TESTED,StudioSpaceSegmentationTest::panelsDriveSegmentationRegionsAndAi (regionCleanIslands via QML dans l'espace),RegionController::cleanIslands,segmentation/SegmentationPanels.qml (RegionTools)
 c3d0caab,action,Nouveau projet,main_window.cpp,fait,Nouveau projet,TESTED,StudioShellTest::openMoveUndoSaveReopenJourney,StudioController::newProject,Main.qml Ctrl+N
 00cdb915,action,Numérisation automatique,main_window.cpp,fait,Numériser,SERVICE_ONLY,,,
 c492f162,action,Objet ⏭,simulation_nav_bar.cpp,fait,sim.next-object,FUNCTIONAL_UNTESTED,StudioViewTest::simulationNavigatesTheEffectiveSequence,ViewController::nextObject,SimulationBar.qml
@@ -120,7 +120,7 @@ b8d2a1ce,action,Poignées du dégradé,main_window_gradient.cpp,fait,fade.axis,S
 031c45f1,action,Pont IA local (MCP),main_window_help_menu.cpp,fait,companion.toggle,TESTED,StudioCompanionTest::bridgeFollowsTheOpenDocument,CompanionController::setBridgeEnabled,CompanionPanel.qml companionBridgeToggle
 de5eef73,action,Préférences générales,main_window.cpp,partiel,density_,SERVICE_ONLY,,,
 f30520d3,action,Préférences — Intelligence artificielle,main_window.cpp,partiel,companion.settings,SERVICE_ONLY,,,
-354afdc7,action,Quantifier les couleurs,main_window.cpp,partiel,regionReduceColors,SERVICE_ONLY,,,
+354afdc7,action,Quantifier les couleurs,main_window.cpp,partiel,regionReduceColors,UI_PARTIAL,reduction de palette de RegionTools (pas de test QML dans l'espace),RegionController::reducePalette,RegionTools.qml
 a4c1ad2b,action,Quitter,main_window.cpp,fait,Quitter,FUNCTIONAL_UNTESTED,StudioFilesTest::unsavedGuardNewOpenAndQuit,FileController::requestQuit,Main.qml onClosing + FilePanel guardDialog
 35393cc9,action,Recadrer l'image (glisser un cadre),main_window.cpp,partiel,Recadrer,SERVICE_ONLY,,,
 b4dc4f3a,action,Rechercher une commande,main_window.cpp,fait,Rechercher une commande,SERVICE_ONLY,,,
@@ -302,7 +302,7 @@ c37dbd3d,case,Fond de tissu opaque,export_image_dialog.cpp,partiel,fabricRgb,ABS
 eb932cc3,case,Fractionner les traversées longues (> 7 mm),main_window_satin_auto.cpp,absent,,ABSENT,,,
 213d5af7,case,Fusionner aussi les régions voisines de même couleur,segmentation_colors_panel.cpp,fait,regionReduceMerge,UI_PARTIAL,fusion des voisines de meme couleur appliquee en dur (pas de case a cocher),RegionController::reducePalette,RegionTools.qml
 8fd5f3dc,case,Fusionner les points trop courts,generation_options_dialog.cpp,fait,Fusionner les points trop courts,SERVICE_ONLY,,,
-e181a7ab,case,Gomme,main_window_detail_zones.cpp,fait,Gomme,SERVICE_ONLY,,,
+e181a7ab,case,Gomme,main_window_detail_zones.cpp,fait,Gomme,ABSENT,,,
 5674752c,case,Ignorer la plus grande région (probablement le fond),ai_segmentation_dialog.cpp,exclu,,ABSENT,,,
 e368f34e,case,Inverser les tons,main_window_create.cpp,absent,,ABSENT,,,
 df6f4ad1,case,Je possède ce fil,thread_panel.cpp,absent,,ABSENT,,,
@@ -378,7 +378,7 @@ ffcf580f,dialogue,Segmenter avec l'IA,ai_segmentation_dialog.cpp,exclu,,UI_PARTI
 4669e436,dialogue,Segmenter l'image,segmentation_dialog.cpp,fait,Segmenter l'image,FUNCTIONAL_UNTESTED,,ActionController::run(image.segment),ActionPalette.qml
 5febcd89,dialogue,Vectorisation,main_window_workflow.cpp,fait,Vectorisation,SERVICE_ONLY,,,
 3baea5a4,dock,Analyse,main_window_analysis.cpp,fait,Analyse,SERVICE_ONLY,,,
-ac8b4905,dock,Couleurs de segmentation,main_window_colors.cpp,fait,regionReduceColors,SERVICE_ONLY,,,
+ac8b4905,dock,Couleurs de segmentation,main_window_colors.cpp,fait,regionReduceColors,UI_PARTIAL,StudioSpaceSegmentationTest::clickSelectsRegionsAndSyncsTheList (selection canevas <-> liste; pas de dock dedie de couleurs),RegionController::selectRegion/SegmentationSpaceController::pickAt,RegionTools.qml (liste des regions)
 9bad0b86,dock,Document,main_window_panels.cpp,fait,Document,SERVICE_ONLY,,,
 a0dd4113,dock,Fils,main_window_threads.cpp,fait,Fils,SERVICE_ONLY,,,
 841be1a4,dock,Filtres d'affichage,main_window_order_filter.cpp,fait,view.show-all,SERVICE_ONLY,,,
@@ -414,7 +414,7 @@ d1ff1ac3,menu,Rendu réaliste,main_window_realistic.cpp,fait,Rendu réaliste,TES
 6ef7ae22,menu,Retrouver,main_window_selection_tools.cpp,fait,Retrouver,SERVICE_ONLY,,,
 bfb1ac5d,menu,Récents,main_window.cpp,fait,Récents,TESTED,StudioFilesTest::recentFilesPersistPruneAndReopen,FileController::recent/requestOpenRecent,FilePanel.qml fileMenu
 39d632d3,menu,Réglages fins du satin,main_window.cpp,absent,,ABSENT,,,
-46096614,menu,Segmentation,main_window.cpp,fait,Segmentation,SERVICE_ONLY,,,
+46096614,menu,Segmentation,main_window.cpp,fait,Segmentation,UI_PARTIAL,StudioSpaceSegmentationTest::stagePublishedAndDownstreamUpdate (segmenter + mettre a jour les formes depuis l'espace; pas de menu),SegmentationSpaceController::segmentImage/updateShapes,RegionLayerControls.qml
 20265051,menu,Supprimer un préréglage,main_window_stitch_presets.cpp,fait,preset.remove,TESTED,StudioInspectorTest::presetsLifecycle,InspectorController::removePreset,Inspector.qml removePreset_N
 5d90ed77,menu,Sélection,main_window_context_menu.cpp,fait,Sélection,FUNCTIONAL_UNTESTED,StudioEditTest::selectionCommandsOnRealObjects (controleur seul),EditController::selectAll/selectRect/selectByLayer,CanvasContextMenu Selection + GpuCanvas rectangle
 90c9c047,menu,Texte,main_window_lettering.cpp,fait,Texte,TESTED,StudioDigitizeTest::textLetteringJourney,ActionController::run(text.add/text.edit/text.remove),ActionPalette.qml
@@ -427,7 +427,7 @@ aabe1c93,menu,Édition,main_window.cpp,fait,Édition,SERVICE_ONLY,,,
 7e011329,outil,Bucket,tools.hpp,fait,Bucket,SERVICE_ONLY,,,
 336b6213,outil,ClickToStitch,tools.hpp,fait,ClickToStitch,SERVICE_ONLY,,,
 e22edfe6,outil,Cut,tools.hpp,fait,Cut,TESTED,StudioToolsTest::knifeAndBooleans,ToolController::release (knife ; batchSplit),ToolRail tool_knife
-e3db2548,outil,DetailBrush,tools.hpp,fait,DetailBrush,SERVICE_ONLY,,,
+e3db2548,outil,DetailBrush,tools.hpp,fait,DetailBrush,ABSENT,,,
 a8ddefdf,outil,DrawBezier,tools.hpp,fait,DrawBezier,TESTED,StudioToolsTest::penBezierAndFreehand,ToolController::finish (draw.bezier ; createPenShape),ToolRail tool_draw.bezier + ToolOverlay
 cf819ee7,outil,DrawBreakLine,tools.hpp,fait,DrawBreakLine,SERVICE_ONLY,,,
 31cf34dd,outil,DrawDirectionGuide,tools.hpp,fait,DrawDirectionGuide,UI_PARTIAL,StudioDigitizeTest::directionGuidesJourney,SatinController::addGuide,SatinPanel.qml (outil de trace au canevas absent)

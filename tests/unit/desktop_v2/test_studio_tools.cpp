@@ -23,6 +23,8 @@
 #include "tool_controller.hpp"
 #include "tool_registry.hpp"
 #include "vector_controller.hpp"
+#include "vector_space_controller.hpp"
+#include "workspace_controller.hpp"
 
 using namespace openstitch;
 using namespace openstitch::desktop_v2;
@@ -108,6 +110,7 @@ struct Rig {
     EditController editor{controller};
     ToolController tools{controller};
     VectorController vectors{controller};
+    VectorSpaceController stage{controller};
     QQmlApplicationEngine engine;
     QStringList warnings;
     QQuickWindow* window{nullptr};
@@ -186,15 +189,24 @@ void StudioToolsTest::open(Rig& rig) {
     ctx->setContextProperty(QStringLiteral("editor"), &rig.editor);
     ctx->setContextProperty(QStringLiteral("tools"), &rig.tools);
     ctx->setContextProperty(QStringLiteral("vectors"), &rig.vectors);
+    ctx->setContextProperty(QStringLiteral("vectorStage"), &rig.stage);
     rig.engine.load(QUrl(QStringLiteral("qrc:/studio/qml/Main.qml")));
     QVERIFY2(!rig.engine.rootObjects().isEmpty(), qPrintable(rig.warnings.join('\n')));
     rig.window = qobject_cast<QQuickWindow*>(rig.engine.rootObjects().front());
     QVERIFY(rig.window);
-    rig.canvas = rig.window->findChild<GpuCanvas*>(QStringLiteral("studioCanvas"));
+    // Les outils de dessin vivent dans l'espace Vecteurs (docs/desktop-v2/23-espaces-studio.md).
+    auto* workspace = rig.window->findChild<WorkspaceController*>();
+    QVERIFY(workspace);
+    workspace->setCurrent(QStringLiteral("vector"));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        rig.window->findChild<GpuCanvas*>(QStringLiteral("vectorCanvas")) != nullptr, 5'000);
+    rig.canvas = rig.window->findChild<GpuCanvas*>(QStringLiteral("vectorCanvas"));
     QVERIFY(rig.canvas);
     rig.session.replaceProject(anchorProject(), true);
     settle(rig);
-    QTRY_VERIFY_WITH_TIMEOUT(rig.canvas->geometryBuildCount() > 0, 10'000);
+    // Le canevas de l'espace Vecteurs ne construit pas de points : prêt = formes publiées.
+    QTRY_VERIFY_WITH_TIMEOUT(rig.canvas->vectorImage() != nullptr && rig.canvas->width() > 0,
+                             10'000);
     rig.tools.setSnapVertices(false);
 }
 

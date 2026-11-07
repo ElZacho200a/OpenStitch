@@ -5,15 +5,12 @@ import QtQuick.Controls as Controls
 import QtQuick.Layouts
 import OpenStitch.Studio 1.0
 import ".."
+import "segmentation"
 
-// Espace « Segmentation » : COQUE de la charpente V0. Fichier POSSÉDÉ par l'agent de l'espace
-// (docs/desktop-v2/23-espaces-studio.md) ; il ne lit/écrit que les contrôleurs de contexte
-// (studio, editor, tools, ...) et publie l'état de SON étape par `workspace.setStageStatus`.
-//
-// POINT D'EXTENSION segmentation : paramètres de segmentation, régions, fusion/scission, masque de détail. Publier « stale » quand des régions sont corrigées sans répercussion sur les formes (workspace.segmentationDirty est alimenté par regionTools.stale).
-// Contrat : racine `Item { required property var workspace; property bool active }`, propriété
-// `canvas` (le GpuCanvas de l'espace, sauvegardé/restauré par SpaceHost), sous-composants dans
-// `qml/spaces/segmentation/` (à déclarer dans studio/CMakeLists.txt, ligne d'ajout).
+// Espace « Segmentation » (docs/desktop-v2/23-espaces-studio.md) : les régions de la segmentation
+// colorées sur l'image (couche « regions » du canevas), sélection au clic synchronisée avec la
+// liste, panneaux existants (segmentation, régions, IA), état d'étape publié à l'hôte.
+// Aucune logique métier ici : segmentationSpace (adaptateur), regionTools, imageTools.
 Item {
     id: root
     objectName: "segmentationSpace"
@@ -21,27 +18,67 @@ Item {
     property bool active: false
     readonly property string spaceId: "segmentation"
     readonly property var canvas: spaceCanvas
+    readonly property var seg: typeof segmentationSpace !== "undefined" ? segmentationSpace : null
+    readonly property bool hasTools: typeof imageTools !== "undefined" && typeof regionTools !== "undefined"
+    property bool showSource: true
 
-    // Couches dessinées par CE canevas (GpuCanvas.layers) ; « stitches » éteint tant que l'espace
-    // n'a pas de contenu propre.
-    readonly property var canvasLayers: ({ regions: true, stitches: false, selectionOverlays: false })
+    // Couches dessinées par CE canevas : image dessous (réalisée par l'espace Image), régions.
+    readonly property var canvasLayers: ({ sourceImage: root.showSource, regions: true,
+                                           stitches: false, selectionOverlays: false })
 
     // --- état publié et action « mettre à jour » du bandeau -----------------------------------
-    // Exemple : workspace.setStageStatus(spaceId, "upToDate", qsTr("12 formes"));
-    //           workspace.setStageAction(spaceId, qsTr("Resegmenter"), true);
+    function publish() {
+        if (!root.workspace || !root.seg) {
+            return
+        }
+        if (root.seg.stageState.length > 0) {
+            root.workspace.setStageStatus(root.spaceId, root.seg.stageState, root.seg.stageDetail)
+        } else {
+            root.workspace.clearStageStatus(root.spaceId)
+        }
+        root.workspace.setStageAction(root.spaceId, qsTr("Segmenter l'image"), root.seg.canSegment)
+    }
+    function segmentNow() {
+        if (root.seg) {
+            root.seg.segmentImage(panelLoader.item ? panelLoader.item.segmentationOptions : ({}))
+        }
+    }
+    Component.onCompleted: {
+        if (root.seg) {
+            root.seg.attach(spaceCanvas)
+        }
+        root.publish()
+    }
+    // L'espace démonté ne publie plus : le calcul de base de l'hôte reprend.
+    Component.onDestruction: {
+        if (root.seg) {
+            root.seg.detach()
+        }
+        if (root.workspace) {
+            root.workspace.clearStageStatus(root.spaceId)
+            root.workspace.setStageAction(root.spaceId, "", false)
+        }
+    }
+    Connections {
+        target: root.seg
+        function onStageChanged() { root.publish() }
+    }
     Connections {
         target: root.workspace
         // L'espace courant exécute la mise à jour de SON étape (une seule étape d'annulation).
         function onUpdateRequested(id) {
             if (id === root.spaceId) {
-                // TODO(agent d'espace segmentation) : régénérer cette étape depuis l'amont.
+                root.segmentNow()
             }
         }
     }
 
     Item {
         id: viewport
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.right: panelLoader.active ? panelLoader.left : parent.right
         clip: true
 
         GpuCanvas {
@@ -54,25 +91,97 @@ Item {
             layers: root.canvasLayers
             focus: true
         }
+
+        // Clic : sélection de la région sous le curseur (Ctrl = multi-sélection) ; pinceau / gomme
+        // des régions quand l'outil de RegionController l'est. Les autres boutons (déplacement,
+        // molette) restent au canevas.
+        MouseArea {
+            id: pick
+            objectName: "segmentationPickArea"
+            anchors.fill: parent
+            acceptedButtons: Qt.LeftButton
+            enabled: root.seg !== null
+            property var stroke: []
+            readonly property bool painting: root.hasTools && regionTools.tool !== "select"
+            function scenePoint(mx, my) {
+                const v = spaceCanvas.viewState()
+                return Qt.point(v.centerX + (mx - width / 2) / v.zoom,
+                                v.centerY + (my - height / 2) / v.zoom)
+            }
+            onPressed: function(mouse) {
+                const p = pick.scenePoint(mouse.x, mouse.y)
+                if (pick.painting) {
+                    const px = root.seg.pixelAt(p.x, p.y)
+                    pick.stroke = px.valid ? [{ x: px.x, y: px.y }] : []
+                } else {
+                    root.seg.pickAt(p.x, p.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
+                }
+            }
+            onPositionChanged: function(mouse) {
+                if (pick.painting && pick.pressed) {
+                    const p = pick.scenePoint(mouse.x, mouse.y)
+                    const px = root.seg.pixelAt(p.x, p.y)
+                    if (px.valid) {
+                        const pts = pick.stroke
+                        pts.push({ x: px.x, y: px.y })
+                        pick.stroke = pts
+                    }
+                }
+            }
+            onReleased: {
+                if (pick.painting && pick.stroke.length > 0) {
+                    regionTools.paintStroke(pick.stroke, regionTools.tool === "erase")
+                }
+                pick.stroke = []
+            }
+        }
+
         Rectangle {
-            objectName: "spaceUnderConstruction"
+            objectName: "segmentationEmpty"
             anchors.centerIn: parent
-            width: Math.min(420, parent.width - 64)
-            height: message.implicitHeight + 36
+            visible: root.seg !== null && !root.seg.hasSegmentation
+            width: Math.min(380, parent.width - 64)
+            height: emptyColumn.implicitHeight + 36
             radius: Theme.radius
             color: Theme.surface
             border.color: Theme.border
-            Text {
-                id: message
+            ColumnLayout {
+                id: emptyColumn
                 anchors.centerIn: parent
                 width: parent.width - 36
-                text: qsTr("Espace « Segmentation » en construction.\nLes régions de la segmentation s'afficheront ici.")
-                color: Theme.muted
-                horizontalAlignment: Text.AlignHCenter
-                wrapMode: Text.WordWrap
-                lineHeight: 1.35
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.bodySize
+                spacing: 10
+                Text {
+                    Layout.fillWidth: true
+                    text: qsTr("Pas encore de segmentation.\nSegmentez l'image pour découper ses couleurs en régions.")
+                    color: Theme.muted
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    lineHeight: 1.35
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.bodySize
+                }
+                StudioButton {
+                    objectName: "segmentEmptyButton"
+                    Layout.alignment: Qt.AlignHCenter
+                    text: qsTr("Segmenter l'image")
+                    emphasized: true
+                    enabled: root.seg !== null && root.seg.canSegment
+                    onClicked: root.segmentNow()
+                }
+            }
+        }
+
+        Loader {
+            id: controlsLoader
+            anchors.left: parent.left
+            anchors.bottom: parent.bottom
+            anchors.margins: 12
+            active: root.seg !== null
+            sourceComponent: RegionLayerControls {
+                seg: root.seg
+                showSource: root.showSource
+                onShowSourceChanged: root.showSource = showSource
+                onSegmentRequested: root.segmentNow()
             }
         }
 
@@ -81,6 +190,17 @@ Item {
             anchors.fill: parent
             canvasItem: spaceCanvas
         }
+    }
+
+    Loader {
+        id: panelLoader
+        objectName: "segmentationPanelsLoader"
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: 340
+        active: root.hasTools
+        sourceComponent: SegmentationPanels {}
     }
 
     readonly property var editorController: editor
