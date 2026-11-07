@@ -5,6 +5,7 @@
 #include <QQuickItem>
 #include <QRectF>
 #include <QVariantList>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -98,6 +99,14 @@ public:
     [[nodiscard]] QVariantMap layers() const;
     void setLayers(const QVariantMap& layers);
     [[nodiscard]] const CanvasLayers& layerFlags() const { return layers_; }
+    // Couche « vectors » (espace Vectorisation) : image immuable des formes, publiée par
+    // VectorSpaceController ; `picker` reçoit (x, y, tolérance mm, ctrl) pour un clic au canevas.
+    using VectorPicker = std::function<void(double, double, double, bool)>;
+    void setVectorLayer(std::shared_ptr<const OverlayImage> image);
+    void setVectorPicker(VectorPicker picker) { vectorPicker_ = std::move(picker); }
+    [[nodiscard]] const std::shared_ptr<const OverlayImage>& vectorImage() const {
+        return vectorImage_;
+    }
     // État de vue transmissible entre espaces : {centerX, centerY} en mm de SCÈNE (Y vers le
     // bas) et {zoom} en px/mm. restoreViewState() est différé jusqu'à ce que le canevas ait une
     // taille et supprime l'ajustement automatique initial.
@@ -172,6 +181,8 @@ private:
     QRectF rubberBand_;
     StudioCamera camera_;
     CanvasLayers layers_;
+    std::shared_ptr<const OverlayImage> vectorImage_;
+    VectorPicker vectorPicker_;
     bool viewPending_{false};
     double pendingZoom_{1.0}, pendingX_{0.0}, pendingY_{0.0};
     void applyPendingView();

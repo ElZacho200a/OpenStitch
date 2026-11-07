@@ -77,6 +77,8 @@ struct CanvasRenderState {
     std::shared_ptr<const CanvasOverlays> overlays;
     std::uint64_t overlayRevision{0};
     CanvasLayers layers;
+    // Couche « vectors » : image des formes (mm scène), dessinée sous les points (espace Vecto).
+    std::shared_ptr<const OverlayImage> vectorImage;
 };
 
 struct CanvasRenderResult {
