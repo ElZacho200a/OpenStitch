@@ -577,3 +577,21 @@ encore le desktop principal.
 ## 2026-11-06 — Session 5 (suite 4) : menu radial
 
 - Menu radial (F2) : huit secteurs au plus, mêmes commandes que la barre flottante, clavier 1-8 / flèches / Entrée / Échap. Piège de test : un widget `WA_DeleteOnClose` fermé reste trouvable par `findChild` jusqu'à la suppression différée (plantage dans QTest) : le test prend le menu visible. Un premier rendu coupait « Premier plan » (zone de texte trop basse) : corrigé après capture. Option `--command radial.open` ajoutée à la capture. Vu à l'écran : `captures/menu-radial.png` (thème sombre).
+
+## 2026-11-07 — Studio : validation native et intégration de main
+
+- Sur `1372589`, builds complets MSVC Debug et Release réussis ; **2 579 / 2 579 tests**
+  dans chaque configuration. Quatre échecs CLI du premier passage Release provenaient du
+  décodage UTF-8 en CP850 par le CMake local ; relance complète réussie avec console UTF-8,
+  sans changer les assertions. [Recette et périmètre](17-studio-gpu.md#validation-locale-confirmée).
+- Cœur V2 effectivement compilé avec recherche Qt désactivée ; clang-format 18 vérifié sur
+  les 1 229 fichiers C++ puis les derniers correctifs. Captures Qt natives D3D11 et CPU au
+  DPR 1,5, sélection commune canevas/liste. Le Studio a aussi été lancé avec Tentabrode.
+- [Mesures MSAA 4×](18-studio-benchmarks.md) : environ 60 swaps/s jusqu'à 100k points,
+  géométrie construite une fois après 270 gestes. La cible stricte p95 local < 16,7 ms reste
+  non atteinte ; aucune supériorité globale sur Widgets n'est déduite. Essai OpenGL séparé.
+- Intégration de `main` `8c200e0` dans la branche de la PR #282 : conflits d'ajouts dans ce
+  journal et la roadmap résolus en conservant les deux historiques ; listes CMake vérifiées
+  comme l'union des deux parents. Après intégration : cinq cibles V2/Studio reconstruites,
+  **293 cas / 7 620 assertions** du cœur et les **deux shells QTest** réussis. CI GitHub suivie
+  séparément ; le prototype reste expérimental et la PR reste ouverte.

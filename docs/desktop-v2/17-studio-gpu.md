@@ -118,6 +118,41 @@ Les cas `studio ...` de `test_desktop_v2_core` utilisent Catch2 sans Qt ;
 d'intégration. Ce test n'est pas une preuve de performances GPU. Le protocole natif est dans
 [le banc Studio](18-studio-benchmarks.md).
 
+### Validation locale confirmée
+
+Les suites complètes ci-dessous portent sur le code Studio `1372589`, avant l'intégration
+ultérieure de `main` pour résoudre les conflits de la PR #282.
+
+| Vérification | Résultat |
+|---|---|
+| Build Release complet `ALL_BUILD` et benchmark | **Réussi** |
+| Cibles finales Release `openstitch_v2_studio`, `test_desktop_v2_studio_shell`, `openstitch-studio-bench` | **Réussies** |
+| Suite CTest Release complète | **2 579 / 2 579 réussis**, 551,21 s ; journal local `build/qrun-logs/ctest-all-release-utf8.log` |
+| `openstitch_desktop_v2_core` avec recherche de Qt désactivée | **Build réellement exécuté et réussi** ; aucune dépendance Quick pour ce cœur |
+| clang-format 18 | **1 229 fichiers du dépôt contrôlés**, puis derniers fichiers C++ modifiés revérifiés avec succès |
+| Build et suite Debug complets | **Réussis**, 2 579 / 2 579 tests ; 1 861,42 s ; journal local `build/qrun-logs/ctest-all-debug-utf8.log` |
+| Après intégration de `main` `8c200e0` | Cinq cibles V2/Studio reconstruites ; cœur V2 **293 cas / 7 620 assertions** ; shells V2 et Studio **2 / 2 réussis** |
+
+Le premier passage Release avait quatre échecs dans des tests CLI inchangés (2 575 / 2 579).
+Avec CMake 4.4.0-rc3, leurs scripts autonomes `execute_process` utilisaient le comportement
+`AUTO` de CMP0176 non défini : la sortie UTF-8 était interprétée via la page de code console
+CP850. La relance complète passe après passage de la console en UTF-8, sans modification du
+moteur, des tests ou de leurs attentes :
+
+```powershell
+chcp.com 65001 | Out-Null
+[Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Text.UTF8Encoding]::new($false)
+.\scripts\qrun.ps1 ctest-all-release-utf8 ctest --preset msvc-release
+```
+
+L'aide locale `cmake --help-policy CMP0176` décrit cette compatibilité : `OLD` utilise `AUTO`,
+`NEW` préfère UTF-8. Ce diagnostic concerne l'environnement de test local ; il ne constitue
+pas une validation de la CI GitHub, dont le résultat est suivi séparément.
+
+### Backends et captures réelles
+
 Le diagnostic donne l'API obtenue et le nombre de constructions de géométrie. Pour comparer
 un autre backend supporté par Qt/pilote, définir par exemple `QSG_RHI_BACKEND=opengl` avant le
 lancement, puis vérifier le diagnostic. Ce réglage n'est pas une garantie de compatibilité.
