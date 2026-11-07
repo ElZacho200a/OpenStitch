@@ -143,9 +143,10 @@ private:
         rig.workspace->setCurrent(QStringLiteral("vector"));
         QTRY_VERIFY_WITH_TIMEOUT(
             rig.window->findChild<QObject*>(QStringLiteral("vectorSpace")) != nullptr, 5'000);
-        rig.canvas = rig.window->findChild<GpuCanvas*>();
+        QTRY_VERIFY_WITH_TIMEOUT(
+            rig.window->findChild<GpuCanvas*>(QStringLiteral("vectorCanvas")) != nullptr, 5'000);
+        rig.canvas = rig.window->findChild<GpuCanvas*>(QStringLiteral("vectorCanvas"));
         QVERIFY(rig.canvas);
-        QCOMPARE(rig.canvas->objectName(), QStringLiteral("vectorCanvas"));
         QTRY_VERIFY_WITH_TIMEOUT(rig.canvas->width() > 0 && rig.canvas->height() > 0, 5'000);
         rig.canvas->zoomToScale(40.0);
         rig.canvas->centerOnScene(0.0, 0.0);
