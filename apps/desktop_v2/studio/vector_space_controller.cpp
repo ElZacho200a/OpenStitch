@@ -135,8 +135,8 @@ void VectorSpaceController::refresh() {
     bool changed = false;
     // Une retouche de segmentation ne modifie PAS les vecteurs déjà produits.
     // On garde le layer et son image raster, même si la révision du document avance.
-    const bool geometryDirty = builtRevision_ != session.revision() &&
-                               session.lastChangeAffectsEmbroidery();
+    const bool newRevision = builtRevision_ != session.revision();
+    const bool geometryDirty = newRevision && session.lastChangeAffectsEmbroidery();
     if (!layer_ || geometryDirty || builtSelected_ != selected) {
         layer_ = VectorLayer::build(session.project(), selected);
         builtSelected_ = selected;
