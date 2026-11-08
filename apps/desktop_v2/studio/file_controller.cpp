@@ -793,14 +793,36 @@ void FileController::runMachineExport(const std::filesystem::path& path, bool co
         return e;
     }();
     if (!confirmed) {
-        const auto check = checkExport(*snapshot, extension);
-        if (check.ok && (!check.fitsHoop || !check.fitsMachineField || !check.formatAccepted)) {
-            pendingExport_ = path;
-            pendingExportRevision_ = studio_.session().revision();
-            setMessage(QStringLiteral("Export à confirmer : le motif présente des limites."));
-            emit exportConfirmationRequested(fromUtf8(check.summary()));
-            return;
-        }
+        const auto revision = studio_.session().revision();
+        // checkExport generates the effective stitch sequence: keep it off the UI thread.
+        runJob<ExportCheck>(
+            QStringLiteral("Vérification des limites d'export"),
+            [snapshot, extension](const TaskContext&) -> Result<ExportCheck> {
+                return checkExport(*snapshot, extension);
+            },
+            [this, path, revision](ExportCheck&& check) {
+                if (revision != studio_.session().revision()) {
+                    setMessage(QStringLiteral("Le motif a changé pendant la vérification : "
+                                              "relancez l'export."),
+                               true);
+                    return;
+                }
+                if (!check.ok) {
+                    setMessage(QStringLiteral("Export impossible : %1").arg(fromUtf8(check.message)),
+                               true);
+                    return;
+                }
+                if (!check.fitsHoop || !check.fitsMachineField || !check.formatAccepted) {
+                    pendingExport_ = path;
+                    pendingExportRevision_ = revision;
+                    setMessage(QStringLiteral("Export à confirmer : le motif présente des limites."));
+                    emit exportConfirmationRequested(fromUtf8(check.summary()));
+                    return;
+                }
+                runMachineExport(path, true);
+            },
+            QStringLiteral("Vérification d'export impossible : "));
+        return;
     }
     pendingExport_.reset();
     const QString name = fromPath(path.filename());
