@@ -487,6 +487,9 @@ void RegionController::regenerate(bool resegment, bool confirmed, const QVariant
                 kept +=
                     QStringLiteral(" %1 objet(s) retouché(s) remplacé(s).").arg(r->lostRetouches);
             }
+            if (r->reused > 0) {
+                kept += QStringLiteral(" %1 objet(s) inchangé(s) réutilisé(s).").arg(r->reused);
+            }
             setMessage(QStringLiteral("Objets régénérés : %1 → %2. Annulable (Ctrl+Z).")
                                .arg(r->objectsBefore)
                                .arg(r->objectsAfter) +
