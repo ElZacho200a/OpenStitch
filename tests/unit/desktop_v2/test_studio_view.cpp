@@ -90,6 +90,7 @@ private slots:
     void gridGuidesAndLayersPersist();
     void simulationNavigatesTheEffectiveSequence();
     void simulationPrefixMatchesReferenceAtEveryPosition();
+    void metadataBatchDoesNotRebuildStitches();
     void threadPlanColorwaysAndSewingOrder();
     void diagnosticsDensityRiskAndOptimisation();
     void hoopsAndMachine();
@@ -230,6 +231,37 @@ void StudioViewTest::simulationPrefixMatchesReferenceAtEveryPosition() {
         }
         QCOMPARE(rig.canvas.overlays()->visibleSegments, reference);
     }
+}
+
+void StudioViewTest::metadataBatchDoesNotRebuildStitches() {
+    Rig rig;
+    const auto initial = rig.studio.scene();
+    QSignalSpy scenes(&rig.studio, &StudioController::sceneChanged);
+    const auto id = std::to_string(firstId);
+    const std::string start = R"({"schema":"openstitch.batch/1","operations":[{)";
+    const std::string end = "}]}";
+    const std::string rename =
+        start + R"("op":"rename","object":)" + id + R"(,"name":"Updated name")" + end;
+    const auto renamed = rig.session.applyBatch(rename, "Rename");
+    QVERIFY(renamed.committed);
+    QVERIFY(!rig.session.lastChangeAffectsEmbroidery());
+    QVERIFY(rig.studio.scene() == initial);
+    QCOMPARE(scenes.count(), 0);
+    QVERIFY(rig.session.undo());
+    QVERIFY(rig.studio.scene() == initial);
+    QVERIFY(rig.session.redo());
+    QVERIFY(rig.studio.scene() == initial);
+    QCOMPARE(scenes.count(), 0);
+
+    // A real change to the stitched result must still invalidate the scene.
+    const std::string hide =
+        start + R"("op":"set_visible","object":)" + id + R"(,"visible":false)" + end;
+    const auto hidden = rig.session.applyBatch(hide, "Hide");
+    QVERIFY(hidden.committed);
+    QVERIFY(rig.session.lastChangeAffectsEmbroidery());
+    QVERIFY(scenes.count() > 0);
+    QTRY_VERIFY_WITH_TIMEOUT(!rig.studio.busy() && rig.studio.scene(), 15'000);
+    QVERIFY(rig.studio.scene() != initial);
 }
 
 void StudioViewTest::threadPlanColorwaysAndSewingOrder() {
