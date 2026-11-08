@@ -151,6 +151,36 @@ TEST_CASE("regenerating objects follows the corrected regions and is one undo st
     CHECK(d.session.project().embroidery_objects.size() == objectsBefore);
 }
 
+TEST_CASE("regeneration keeps IDs for source regions with unchanged generated geometry",
+          "[desktop_v2][regions][cache]") {
+    Digitized d;
+    // Normalize through the regeneration pipeline once; doing the same regeneration again
+    // must keep every existing generated object intact rather than allocating fresh IDs.
+    const auto baseline = regenerateObjects(d.session.snapshot(), d.session.revision(), d.working,
+                                            d.settings, TaskContext{});
+    REQUIRE(baseline.has_value());
+    DocumentSession session;
+    session.replaceProject(*baseline->after, true);
+    const auto before = session.snapshot();
+    REQUIRE_FALSE(before->embroidery_objects.empty());
+    const auto repeated = regenerateObjects(before, session.revision(), d.working, d.settings,
+                                            TaskContext{});
+    REQUIRE(repeated.has_value());
+    CHECK(repeated->objectsAfter == repeated->objectsBefore);
+    CHECK(repeated->reused == before->embroidery_objects.size());
+    REQUIRE(repeated->after);
+    for (const auto& previous : before->embroidery_objects) {
+        const auto& newer = repeated->after->embroidery_objects;
+        const auto found = std::find_if(newer.begin(), newer.end(), [&](const auto& object) {
+            return object.id == previous.id;
+        });
+        REQUIRE(found != newer.end());
+        CHECK(found->source_vector == previous.source_vector);
+        CHECK(found->params == previous.params);
+        CHECK(found->overrides == previous.overrides);
+    }
+}
+
 TEST_CASE("recoloring a region is undoable and rejects unchanged or missing colors",
           "[desktop_v2][regions]") {
     Digitized d;
