@@ -1,0 +1,6 @@
+id,statut,preuve,controleur,composant
+943cef6b,UI_PARTIAL,ShapeGallery expose les outils courants mais les six formes speciales de la V1 manquent; QTest ajoute non execute,ToolController,ShapeGallery.qml
+5517fa2b,ABSENT,Action Contour autour de la selection non migree,aucun,aucun
+dcaa0480,ABSENT,Dialogue de parametres de contour non migre,aucun,aucun
+0b59bc57,ABSENT,Creation directe de point de contour non migree,aucun,aucun
+f057c31c,ABSENT,Dialogue de creation directe de contour non migre,aucun,aucun
