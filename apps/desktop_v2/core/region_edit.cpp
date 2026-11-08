@@ -7,6 +7,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <set>
 
 #include "openstitch/segmentation/color_merge.hpp"
 
@@ -730,6 +731,69 @@ Result<Regeneration> regenerateObjects(std::shared_ptr<const document::Project> 
     }
     if (task.cancelled()) {
         return cancelled_error();
+    }
+
+    // Rebuilding the whole segmentation must not throw away the per-object stitch cache
+    // for unchanged regions. Match the newly digitized vector paths against the old source
+    // region, then restore the original IDs only for equal geometry and stitch parameters.
+    // This is conservative: changed regions, settings or new regions receive new IDs.
+    // Keeping the original embroidery IDs allows generate_sequence's chunk cache to hit.
+    std::map<std::uint64_t, std::vector<const document::VectorObject*>> oldVectorsByRegion;
+    std::map<std::uint64_t, std::vector<const document::EmbroideryObject*>> oldThreadsByVector;
+    for (const auto& vector : project->vector_objects) {
+        if (vector.source_region) {
+            oldVectorsByRegion[vector.source_region->value].push_back(&vector);
+        }
+    }
+    for (const auto& object : project->embroidery_objects) {
+        oldThreadsByVector[object.source_vector.value].push_back(&object);
+    }
+    std::map<std::uint64_t, ObjectId> vectorIdRemap;
+    std::set<std::uint64_t> matchedVectors;
+    std::set<std::uint64_t> matchedThreads;
+    for (auto& vector : produced->objects.vectors) {
+        if (!vector.source_region) {
+            continue;
+        }
+        const auto previous = oldVectorsByRegion.find(vector.source_region->value);
+        if (previous == oldVectorsByRegion.end()) {
+            continue;
+        }
+        for (const auto* old : previous->second) {
+            if (matchedVectors.contains(old->id.value) || old->paths != vector.paths ||
+                old->rgb != vector.rgb) {
+                continue;
+            }
+            const auto newId = vector.id.value;
+            vectorIdRemap.emplace(newId, old->id);
+            matchedVectors.insert(old->id.value);
+            vector = *old;
+            break;
+        }
+    }
+    for (auto& object : produced->objects.embroideries) {
+        const auto source = vectorIdRemap.find(object.source_vector.value);
+        if (source == vectorIdRemap.end()) {
+            continue;
+        }
+        object.source_vector = source->second;
+        const auto previous = oldThreadsByVector.find(source->second.value);
+        if (previous == oldThreadsByVector.end()) {
+            continue;
+        }
+        for (const auto* old : previous->second) {
+            if (matchedThreads.contains(old->id.value) || old->params != object.params ||
+                old->rgb != object.rgb) {
+                continue;
+            }
+            object = *old;
+            matchedThreads.insert(old->id.value);
+            ++out.reused;
+            if (!old->overrides.empty()) {
+                --out.lostRetouches;
+            }
+            break;
+        }
     }
     for (auto& v : produced->objects.vectors) {
         copy->vector_objects.push_back(std::move(v));
