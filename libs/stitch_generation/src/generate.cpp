@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/stitch_generation/generate.hpp"
 
+#include "openstitch/core/pipeline_profile.hpp"
+
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -1163,8 +1165,10 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                 if constexpr (std::is_same_v<T, document::RunningStitchParams>) {
                     generate_running(chunk, *unit.source, object, params);
                 } else if constexpr (std::is_same_v<T, document::TatamiParams>) {
+                    const pipeline_profile::Scope profile(pipeline_profile::Stage::Tatami);
                     generate_tatami(chunk, *unit.source, object, params);
                 } else if constexpr (std::is_same_v<T, document::DirectionalFillParams>) {
+                    const pipeline_profile::Scope profile(pipeline_profile::Stage::Directional);
                     generate_directional(chunk, *unit.source, object, params);
                 } else if constexpr (std::is_same_v<T, document::BlanketStitchParams>) {
                     // HP-STI-003 : blanket / zigzag le long de chaque contour de la source.
@@ -1189,6 +1193,7 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                 } else if constexpr (std::is_same_v<T, document::MotifFillParams>) {
                     generate_simple_fill(chunk, *unit.source, object, params, fill_motif);
                 } else if constexpr (std::is_same_v<T, document::RadialFillParams>) {
+                    const pipeline_profile::Scope profile(pipeline_profile::Stage::Radial);
                     generate_simple_fill(chunk, *unit.source, object, params, fill_radial);
                 } else if constexpr (std::is_same_v<T, document::SpiralFillParams>) {
                     generate_simple_fill(chunk, *unit.source, object, params, fill_spiral);

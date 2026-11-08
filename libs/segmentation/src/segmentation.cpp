@@ -1,6 +1,8 @@
 ﻿// SPDX-License-Identifier: Apache-2.0
 #include "openstitch/segmentation/segmentation.hpp"
+
 #include "openstitch/core/parallel.hpp"
+#include "openstitch/core/pipeline_profile.hpp"
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
@@ -275,6 +277,9 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
                     }
                 }
                 if (radius > 0) {
+                    const auto bytes = classMask.total() * classMask.elemSize();
+                    const pipeline_profile::Scope profile(pipeline_profile::Stage::MaskSmoothing,
+                                                          bytes, bytes, 1);
                     cv::boxFilter(classMask, density[classIndex], CV_32F, cv::Size(ksize, ksize),
                                   cv::Point(-1, -1), false);
                 } else {
@@ -637,7 +642,12 @@ std::vector<char> thin_part_mask(const Segmentation& seg, int min_width_px,
             }
         }
         cv::Mat opened;
-        cv::morphologyEx(mask, opened, cv::MORPH_OPEN, kernel);
+        {
+            const auto bytes = mask.total();
+            const pipeline_profile::Scope profile(pipeline_profile::Stage::Morphology,
+                                                  bytes + kernel.total(), bytes, 1);
+            cv::morphologyEx(mask, opened, cv::MORPH_OPEN, kernel);
+        }
         for (int y = 0; y < roi.height; ++y) {
             for (int x = 0; x < roi.width; ++x) {
                 if (mask.at<std::uint8_t>(y, x) != 0 && opened.at<std::uint8_t>(y, x) == 0) {
@@ -754,7 +764,12 @@ std::vector<char> dark_thin_mask(const image::Image& img, double max_lightness, 
     const cv::Mat kernel =
         cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(min_width_px, min_width_px));
     cv::Mat opened;
-    cv::morphologyEx(dark, opened, cv::MORPH_OPEN, kernel);
+    {
+        const auto bytes = dark.total();
+        const pipeline_profile::Scope profile(pipeline_profile::Stage::Morphology,
+                                              bytes + kernel.total(), bytes, 1);
+        cv::morphologyEx(dark, opened, cv::MORPH_OPEN, kernel);
+    }
     std::vector<char> mask(static_cast<std::size_t>(w) * h, 0);
     std::uint64_t sum[3] = {0, 0, 0};
     std::uint64_t count = 0;
