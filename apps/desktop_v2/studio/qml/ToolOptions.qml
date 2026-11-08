@@ -38,6 +38,9 @@ ColumnLayout {
         visible: text !== ""
     }
 
+    // CX04 : galerie des formes de la V1, branchée sur le contrôleur de dessin existant.
+    ShapeGallery { Layout.fillWidth: true; toolCtl: panel.toolCtl }
+
     RowLayout {
         visible: panel.toolCtl && panel.toolCtl.activeTool === "draw.polygon-regular"
         spacing: 6
