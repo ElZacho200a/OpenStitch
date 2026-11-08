@@ -16,9 +16,18 @@ namespace openstitch::desktop_v2::studio {
 
 StudioController::StudioController(DocumentSession& session, QObject* parent)
     : QObject(parent), session_(session) {
+    lastNotifiedRevision_ = session_.revision();
     documentToken_ = session_.subscribe([this](ChangeKind kind) {
-        if (scene_ && scene_->revision == session_.revision()) {
-            emit changed(); // markSaved changes no render data, only the dirty flag.
+        // markSaved only changes the dirty flag. A segmentation edit changes the document
+        // revision but leaves the already generated stitch geometry valid.
+        if (lastNotifiedRevision_ == session_.revision()) {
+            emit changed();
+            return;
+        }
+        lastNotifiedRevision_ = session_.revision();
+        if (scene_ && kind != ChangeKind::Replaced &&
+            !session_.lastChangeAffectsEmbroidery()) {
+            emit changed();
             return;
         }
         if (kind == ChangeKind::Replaced) {

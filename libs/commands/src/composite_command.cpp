@@ -2,6 +2,7 @@
 #include "openstitch/commands/composite_command.hpp"
 
 #include <utility>
+#include <algorithm>
 
 namespace openstitch::commands {
 
@@ -30,6 +31,11 @@ void CompositeCommand::apply(document::Project& project) {
         }
         throw;
     }
+}
+
+bool CompositeCommand::affectsEmbroidery() const {
+    return std::any_of(commands_.begin(), commands_.end(),
+                       [](const auto& command) { return command->affectsEmbroidery(); });
 }
 
 bool CompositeCommand::mergeWith(const ICommand& newer) {

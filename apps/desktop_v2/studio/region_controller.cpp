@@ -144,7 +144,7 @@ void RegionController::refresh() {
         return std::find(ids.begin(), ids.end(), id) == ids.end();
     });
     if (project.segmentation) {
-        const auto map = renderRegionMap(project, selected_);
+        const auto map = renderRegionMap(project, std::vector<std::uint64_t>{});
         images_.images()->set(
             QStringLiteral("regions"),
             QImage(map.rgba.data(), map.width, map.height, map.width * 4, QImage::Format_RGBA8888)
@@ -152,6 +152,7 @@ void RegionController::refresh() {
     } else {
         images_.images()->set(QStringLiteral("regions"), {});
     }
+    ++mapRevision_;
     emit regionsChanged();
     if (before != selected_.size()) {
         emit selectionChanged();
@@ -162,9 +163,8 @@ void RegionController::refresh() {
 
 void RegionController::selectRegion(double id, const QString& mode) {
     const auto region = idOf(id);
-    const auto& project = studio_.session().project();
-    const auto ids = allRegionIds(project);
-    if (std::find(ids.begin(), ids.end(), region) == ids.end()) {
+    const auto& seg = studio_.session().project().segmentation;
+    if (!seg || region == 0 || !seg->find(RegionId{region})) {
         return;
     }
     const auto found = std::find(selected_.begin(), selected_.end(), region);
@@ -179,9 +179,12 @@ void RegionController::selectRegion(double id, const QString& mode) {
             selected_.push_back(region);
         }
     } else {
+        if (selected_.size() == 1 && selected_.front() == region)
+            return;
         selected_.assign(1, region);
     }
-    scheduleRefresh();
+    // La sélection ne change pas les données de segmentation : le canevas se charge du
+    // surlignage, sans reconstruire la miniature RGBA ni la liste complète.
     emit selectionChanged();
 }
 
@@ -210,7 +213,6 @@ void RegionController::selectSameColor() {
         }
     }
     selected_ = std::move(all);
-    scheduleRefresh();
     emit selectionChanged();
 }
 
@@ -219,25 +221,23 @@ void RegionController::selectNeighbours() {
         return;
     }
     selected_ = neighboursOfSet(studio_.session().project(), selected_);
-    scheduleRefresh();
     emit selectionChanged();
 }
 
 void RegionController::invertSelection() {
     selected_ = invertRegionSet(studio_.session().project(), selected_);
-    scheduleRefresh();
     emit selectionChanged();
 }
 
 void RegionController::selectAll() {
     selected_ = allRegionIds(studio_.session().project());
-    scheduleRefresh();
     emit selectionChanged();
 }
 
 void RegionController::clearSelection() {
+    if (selected_.empty())
+        return;
     selected_.clear();
-    scheduleRefresh();
     emit selectionChanged();
 }
 

@@ -9,6 +9,7 @@ import "."
 ColumnLayout {
     id: rail
     objectName: "toolRail"
+    property bool workspaceActive: true
     readonly property var toolCtl: typeof tools !== "undefined" ? tools : null
     visible: toolCtl !== null
     spacing: 6
@@ -34,7 +35,7 @@ ColumnLayout {
         delegate: Shortcut {
             required property var modelData
             sequence: rail.shortcutOf(modelData.shortcut)
-            enabled: sequence !== ""
+            enabled: rail.workspaceActive && sequence !== ""
             onActivated: rail.toolCtl.activeTool = rail.toolCtl.activeTool === modelData.id ? "select" : modelData.id
         }
     }

@@ -118,7 +118,9 @@ struct Rig {
         auto* item = named(name);
         return item && item->isEnabled() && QMetaObject::invokeMethod(item, "click");
     }
-    GpuCanvas* canvas() const { return window->findChild<GpuCanvas*>(); }
+    GpuCanvas* canvas() const {
+        return window->findChild<GpuCanvas*>(QStringLiteral("segmentationCanvas"));
+    }
     QVariantMap stage() const { return workspace->space(QStringLiteral("segmentation")); }
     // Position (coordonnées fenêtre) du pixel (px, py) de l'image de travail.
     QPointF windowPos(int px, int py) const {
@@ -271,6 +273,35 @@ private slots:
         QTRY_VERIFY(!rig.canvas()->regionLayer()->highlight.isNull());
         QCOMPARE(rig.space.selectedCount(), 1);
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
+    void selectionAndRecolorDoNotRegenerateStitches() {
+        Rig rig;
+        open(rig);
+        const auto scene = rig.studio.scene();
+        QVERIFY(scene);
+        const auto mapRevision = rig.regions.mapRevision();
+        const int fillRebuilds = rig.space.fillRebuilds();
+        const int highlightRebuilds = rig.space.highlightRebuilds();
+
+        // A simple click updates the lightweight selection overlay, not the region data.
+        rig.regions.selectAtPixel(20, 20);
+        QTRY_COMPARE(rig.regions.selectedCount(), 1);
+        QTRY_VERIFY(rig.space.highlightRebuilds() > highlightRebuilds);
+        QCOMPARE(rig.regions.mapRevision(), mapRevision);
+        QCOMPARE(rig.space.fillRebuilds(), fillRebuilds);
+        QCOMPARE(rig.studio.scene(), scene);
+
+        // Recoloring changes the segmented source only. The generated stitch scene
+        // must remain available until an explicit downstream regeneration.
+        QCOMPARE(rig.regions.recolorSelected(QStringLiteral("#00aa55")), QString());
+        QTRY_VERIFY(rig.regions.mapRevision() > mapRevision);
+        QCOMPARE(rig.studio.scene(), scene);
+        QVERIFY(rig.session.undo());
+        QCOMPARE(rig.studio.scene(), scene);
+        QVERIFY(rig.session.redo());
+        QCOMPARE(rig.studio.scene(), scene);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\\n')));
     }
 
     // --- état publié et mise à jour de l'aval ----------------------------------------------

@@ -62,6 +62,7 @@ void DocumentSession::execute(std::unique_ptr<commands::ICommand> command) {
         return;
     }
     undo_.execute(std::move(command), project_);
+    lastChangeAffectsEmbroidery_ = undo_.lastChangeAffectsEmbroidery();
     changed(ChangeKind::Edited);
 }
 
@@ -69,6 +70,7 @@ bool DocumentSession::undo() {
     if (!undo_.undo(project_)) {
         return false;
     }
+    lastChangeAffectsEmbroidery_ = undo_.lastChangeAffectsEmbroidery();
     changed(ChangeKind::Undone);
     return true;
 }
@@ -77,6 +79,7 @@ bool DocumentSession::redo() {
     if (!undo_.redo(project_)) {
         return false;
     }
+    lastChangeAffectsEmbroidery_ = undo_.lastChangeAffectsEmbroidery();
     changed(ChangeKind::Redone);
     return true;
 }
@@ -89,12 +92,16 @@ bool DocumentSession::navigateHistory(std::size_t position) {
     if (position == previous) {
         return true;
     }
+    bool affectsEmbroidery = false;
     while (undo_.position() > position) {
         undo_.undo(project_);
+        affectsEmbroidery |= undo_.lastChangeAffectsEmbroidery();
     }
     while (undo_.position() < position) {
         undo_.redo(project_);
+        affectsEmbroidery |= undo_.lastChangeAffectsEmbroidery();
     }
+    lastChangeAffectsEmbroidery_ = affectsEmbroidery;
     changed(position < previous ? ChangeKind::Undone : ChangeKind::Redone);
     return true;
 }
@@ -133,6 +140,7 @@ void DocumentSession::replaceProject(document::Project project, bool clean) {
     if (bridge_) {
         bridge_->reset(); // nouvelle session pour l'agent : l'ancienne est close
     }
+    lastChangeAffectsEmbroidery_ = true;
     changed(ChangeKind::Replaced);
 }
 

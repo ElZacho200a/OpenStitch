@@ -129,7 +129,14 @@ void ViewController::save() const {
 }
 
 void ViewController::attachCanvas(QObject* canvas) {
-    canvas_ = qobject_cast<GpuCanvas*>(canvas);
+    auto* next = qobject_cast<GpuCanvas*>(canvas);
+    if (canvas_ == next) {
+        return;
+    }
+    if (canvas_) {
+        disconnect(canvas_, nullptr, this, nullptr);
+    }
+    canvas_ = next;
     if (canvas_) {
         connect(canvas_, &GpuCanvas::destroyed, this, [this] { canvas_.clear(); });
         connect(canvas_, &GpuCanvas::diagnosticsChanged, this, [this] {

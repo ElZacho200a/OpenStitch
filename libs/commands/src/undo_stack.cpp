@@ -4,6 +4,7 @@
 namespace openstitch::commands {
 
 void UndoStack::execute(std::unique_ptr<ICommand> command, document::Project& project) {
+    lastChangeAffectsEmbroidery_ = command->affectsEmbroidery();
     command->apply(project);
     ++version_;
     if (cleanIndex_ > static_cast<long long>(undo_.size())) {
@@ -50,6 +51,7 @@ bool UndoStack::undo(document::Project& project) {
     if (undo_.empty()) {
         return false;
     }
+    lastChangeAffectsEmbroidery_ = undo_.back()->affectsEmbroidery();
     undo_.back()->revert(project);
     ++version_;
     redo_.push_back(std::move(undo_.back()));
@@ -62,6 +64,7 @@ bool UndoStack::redo(document::Project& project) {
     if (redo_.empty()) {
         return false;
     }
+    lastChangeAffectsEmbroidery_ = redo_.back()->affectsEmbroidery();
     redo_.back()->apply(project);
     ++version_;
     undo_.push_back(std::move(redo_.back()));

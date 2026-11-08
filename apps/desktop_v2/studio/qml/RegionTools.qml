@@ -46,7 +46,7 @@ ColumnLayout {
             anchors.margins: 2
             fillMode: Image.PreserveAspectFit
             cache: false
-            source: regionTools.hasSegmentation ? "image://prepare/regions?rev=" + imageTools.imageRevision + "_" + regionTools.regions.length + "_" + regionTools.selectedCount : ""
+            source: regionTools.hasSegmentation ? "image://prepare/regions?rev=" + regionTools.mapRevision : ""
             // Pixel de l'image de travail sous un point de la zone.
             function pixelAt(px, py) {
                 var sx = paintedWidth / Math.max(1, sourceSize.width)
