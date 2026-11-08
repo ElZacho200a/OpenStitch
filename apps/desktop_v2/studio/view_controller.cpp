@@ -19,6 +19,7 @@ struct ViewController::SimData {
     bool imported{false};
     std::vector<OverlayJump> jumps;
     std::vector<std::uint32_t> stitchesBefore; // size = commands + 1
+    std::vector<std::uint32_t> segmentsBefore; // visible segments prefix, size = commands + 1
     std::uint64_t revision{0};
 };
 
@@ -465,11 +466,42 @@ void ViewController::rebuildSimData() {
             }
             const auto& commands = data->sequence.commands;
             data->stitchesBefore.reserve(commands.size() + 1);
+            data->segmentsBefore.reserve(commands.size() + 1);
             std::uint32_t stitches = 0;
+            std::uint32_t segments = 0;
+            bool hasPos = false;
+            float lastX = 0.0F;
+            float lastY = 0.0F;
+            std::uint64_t lastSource = 0;
             for (std::size_t i = 0; i < commands.size(); ++i) {
                 data->stitchesBefore.push_back(stitches);
-                if (commands[i].type == stitch::CommandType::Stitch) {
+                data->segmentsBefore.push_back(segments);
+                const auto& cmd = commands[i];
+                const bool sews = cmd.type == stitch::CommandType::Stitch;
+                const bool jumps = cmd.type == stitch::CommandType::Jump;
+                if (sews) {
                     ++stitches;
+                }
+                if (!sews && !jumps) {
+                    hasPos = false;
+                } else {
+                    // Reproduit exactement les règles de build_thread_segments : même
+                    // source, mêmes conversions float mm, saut/coupe/couleur qui rompt
+                    // la continuité. Le coût est payé UNE fois sur le worker.
+                    const float x = static_cast<float>(
+                        static_cast<double>(cmd.pos.x.value) / 1000.0);
+                    const float y = static_cast<float>(
+                        -static_cast<double>(cmd.pos.y.value) / 1000.0);
+                    const auto source = cmd.source.value;
+                    if (sews && hasPos && lastSource == source &&
+                        (x != lastX || y != lastY) &&
+                        (data->visible.contains(source) || (source == 0 && data->imported))) {
+                        ++segments;
+                    }
+                    lastX = x;
+                    lastY = y;
+                    lastSource = source;
+                    hasPos = true;
                 }
                 if (commands[i].type == stitch::CommandType::Jump && i > 0 &&
                     data->jumps.size() < kMaxJumpLines) {
@@ -483,6 +515,7 @@ void ViewController::rebuildSimData() {
                 }
             }
             data->stitchesBefore.push_back(stitches);
+            data->segmentsBefore.push_back(segments);
             return std::shared_ptr<const SimData>(std::move(data));
         },
         [this, revision](Result<std::shared_ptr<const SimData>>&& result) {
@@ -505,19 +538,9 @@ std::size_t ViewController::segmentsAt(std::size_t position) const {
     if (!sim_ || position >= sim_->sequence.commands.size()) {
         return CanvasOverlays::all;
     }
-    if (position == 0) {
-        return 0;
-    }
-    const auto& data = *sim_;
-    const auto segments = stitch_render::build_thread_segments(
-        data.sequence, position - 1,
-        [&data](ObjectId source) -> std::optional<std::array<std::uint8_t, 3>> {
-            if (data.visible.contains(source.value) || (source.value == 0 && data.imported)) {
-                return std::array<std::uint8_t, 3>{0, 0, 0};
-            }
-            return std::nullopt;
-        });
-    return segments.size();
+    // O(1) pendant la lecture et le scrub ; auparavant O(position) et allocation
+    // d'une liste complète de segments à chaque frame de 33 ms.
+    return sim_->segmentsBefore[position];
 }
 
 void ViewController::goTo(std::size_t position) {
