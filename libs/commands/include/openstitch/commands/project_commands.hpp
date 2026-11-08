@@ -154,6 +154,7 @@ public:
         seg.find(keep_)->pixel_count -= changed_.size();
     }
     [[nodiscard]] std::string name() const override { return "Fusionner des régions"; }
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
 
 private:
     RegionId keep_;
@@ -187,6 +188,7 @@ public:
         }
     }
     [[nodiscard]] std::string name() const override { return "Supprimer une région"; }
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
 
 private:
     RegionId id_;
@@ -230,6 +232,7 @@ public:
         seg.region_slots = slots_;
     }
     [[nodiscard]] std::string name() const override { return "Nettoyer les îlots"; }
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
     // Nombre de régions fusionnées par le dernier `apply`.
     [[nodiscard]] std::size_t merges() const { return merges_; }
 
@@ -274,6 +277,7 @@ public:
         seg.region_slots = slots_;
     }
     [[nodiscard]] std::string name() const override { return "Fusionner des couleurs"; }
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
     // Faux si le plan ne correspondait pas à la segmentation (région introuvable) au dernier
     // `apply`.
     [[nodiscard]] bool applied() const { return applied_; }
@@ -301,6 +305,7 @@ public:
             segmentation::recolor_region(*project.segmentation, id_, oldRgb_);
     }
     [[nodiscard]] std::string name() const override { return "Recolorer une région"; }
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
 
 private:
     RegionId id_;
