@@ -11,12 +11,16 @@ Item {
     id: hub
     objectName: "viewHub"
     property var canvasItem
+    // Les espaces restent en mémoire : leurs Shortcut doivent être désactivés hors écran.
+    property bool active: true
     // "", "view", "threads", "analysis"
     property string openPanel: ""
     // Faux : l'espace hôte (« Points ») porte lui-même les boutons de cette barre et n'ouvre
     // qu'UN panneau latéral à la fois. Vrai : usage historique des autres espaces.
     property bool toolbarVisible: true
     readonly property bool ready: loader.status === Loader.Ready
+
+    onActiveChanged: { if (active && ready && canvasItem && typeof view !== "undefined") view.attachCanvas(canvasItem) }
 
     function toggle(name) { openPanel = openPanel === name ? "" : name }
 
@@ -35,19 +39,19 @@ Item {
                 ticksV = hub.canvasItem.rulerTicks(false)
             }
             Component.onCompleted: {
-                view.attachCanvas(hub.canvasItem)
+                if (hub.active) view.attachCanvas(hub.canvasItem)
                 refreshTicks()
             }
             Connections { target: hub.canvasItem; function onViewChanged() { inner.refreshTicks() } }
             Connections { target: view; function onDisplayChanged() { inner.refreshTicks() } }
 
-            Shortcut { sequence: "G"; onActivated: view.gridVisible = !view.gridVisible }
-            Shortcut { sequence: "Z"; onActivated: view.zoomRectangle() }
-            Shortcut { sequence: "1"; onActivated: view.zoomActualSize() }
-            Shortcut { sequence: "Shift+F"; onActivated: view.zoomSelection() }
-            Shortcut { sequence: "Alt+Left"; onActivated: view.zoomPreviousView() }
-            Shortcut { sequence: "Ctrl+L"; onActivated: view.simActive ? view.stopSimulation() : view.startSimulation() }
-            Shortcut { sequence: "Ctrl+Shift+T"; onActivated: view.toggleRealistic() }
+            Shortcut { sequence: "G"; enabled: hub.active; onActivated: view.gridVisible = !view.gridVisible }
+            Shortcut { sequence: "Z"; enabled: hub.active; onActivated: view.zoomRectangle() }
+            Shortcut { sequence: "1"; enabled: hub.active; onActivated: view.zoomActualSize() }
+            Shortcut { sequence: "Shift+F"; enabled: hub.active; onActivated: view.zoomSelection() }
+            Shortcut { sequence: "Alt+Left"; enabled: hub.active; onActivated: view.zoomPreviousView() }
+            Shortcut { sequence: "Ctrl+L"; enabled: hub.active; onActivated: view.simActive ? view.stopSimulation() : view.startSimulation() }
+            Shortcut { sequence: "Ctrl+Shift+T"; enabled: hub.active; onActivated: view.toggleRealistic() }
 
             // Rulers (model mm, Y up). At most ~60 labels, rebuilt on view change only.
             Rectangle { visible: view.rulersVisible; anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; height: 18; color: Theme.panel; opacity: 0.9

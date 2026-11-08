@@ -17,6 +17,22 @@
       }
     },
     {
+      "name": "msvc-relwithdebinfo",
+      "displayName": "MSVC RelWithDebInfo (optimisation modérée + symboles)",
+      "binaryDir": "${sourceDir}/build/msvc-relwithdebinfo",
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "$env{QT_ROOT}",
+        "OPENSTITCH_BUILD_LEGACY_V1": "ON",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
       "name": "linux-core",
       "displayName": "Linux (coeur + CLI uniquement, sans Qt)",
       "generator": "Unix Makefiles",
@@ -36,6 +52,7 @@
   "buildPresets": [
     { "name": "msvc-debug", "configurePreset": "msvc", "configuration": "Debug" },
     { "name": "msvc-release", "configurePreset": "msvc", "configuration": "Release" },
+    { "name": "msvc-release-relwithdebinfo", "configurePreset": "msvc-relwithdebinfo", "configuration": "RelWithDebInfo" },
     { "name": "linux-core", "configurePreset": "linux-core" }
   ],
   "testPresets": [

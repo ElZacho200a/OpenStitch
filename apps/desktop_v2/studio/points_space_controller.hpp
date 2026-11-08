@@ -10,6 +10,7 @@
 #include <QObject>
 #include <QString>
 #include <QVariantMap>
+#include <cstdint>
 
 #include "studio_controller.hpp"
 
@@ -49,6 +50,8 @@ private:
     void refresh();
 
     StudioController& studio_;
+    std::uint64_t observedRevision_{0};
+    std::uint64_t lastSeenRevision_{~0ULL};
     int objectCount_{0};
     int orphanCount_{0};
     QString state_{QStringLiteral("empty")};

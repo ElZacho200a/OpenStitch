@@ -98,6 +98,8 @@ public:
     Q_INVOKABLE QString setExportOptions(const QVariantMap& values);
     Q_INVOKABLE [[nodiscard]] QString exportCheck(const QString& formatExtension) const;
     Q_INVOKABLE void exportMachine(const QUrl& url, const QVariantMap& options = {});
+    // Explicit acknowledgement is required when the design exceeds a hoop/machine limit.
+    Q_INVOKABLE void confirmMachineExport(bool proceed);
     Q_INVOKABLE void exportAgain();
     Q_INVOKABLE void exportThreadList(const QUrl& url);
     Q_INVOKABLE void exportDxf(const QUrl& url);
@@ -129,6 +131,7 @@ signals:
     void guardChanged();
     void recoveryChanged();
     void exportChanged();
+    void exportConfirmationRequested(const QString& warning);
     void userHoopsChanged();
     // QML doit ouvrir « Enregistrer sous » pour poursuivre (document sans fichier).
     void saveAsRequested();
@@ -152,7 +155,7 @@ private:
     template <typename T>
     void runJob(const QString& label, std::function<Result<T>(const TaskContext&)> work,
                 std::function<void(T&&)> onOk, const QString& errorPrefix);
-    void runMachineExport(const std::filesystem::path& path);
+    void runMachineExport(const std::filesystem::path& path, bool confirmed = false);
     [[nodiscard]] std::filesystem::path pathOf(const QUrl& url,
                                                const char* defaultSuffix = nullptr) const;
 
@@ -175,6 +178,8 @@ private:
     bool recoveryPending_{false};
     bool wasDirty_{false};
     std::filesystem::path lastExport_;
+    std::optional<std::filesystem::path> pendingExport_;
+    std::uint64_t pendingExportRevision_{0};
     std::uint64_t loadGeneration_{0};
     TaskId currentTask_{0};
     // Détruit avant les membres ci-dessus : ses rappels les utilisent.

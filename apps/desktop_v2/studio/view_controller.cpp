@@ -13,12 +13,13 @@ namespace openstitch::desktop_v2::studio {
 
 struct ViewController::SimData {
     std::shared_ptr<const document::Project> project;
-    stitch::StitchSequence sequence;
+    std::shared_ptr<const stitch::StitchSequence> sequence;
     SimulationMarks marks;
     std::set<std::uint64_t> visible;
     bool imported{false};
     std::vector<OverlayJump> jumps;
     std::vector<std::uint32_t> stitchesBefore; // size = commands + 1
+    std::vector<std::uint32_t> segmentsBefore; // visible segments prefix, size = commands + 1
     std::uint64_t revision{0};
 };
 
@@ -129,7 +130,14 @@ void ViewController::save() const {
 }
 
 void ViewController::attachCanvas(QObject* canvas) {
-    canvas_ = qobject_cast<GpuCanvas*>(canvas);
+    auto* next = qobject_cast<GpuCanvas*>(canvas);
+    if (canvas_ == next) {
+        return;
+    }
+    if (canvas_) {
+        disconnect(canvas_, nullptr, this, nullptr);
+    }
+    canvas_ = next;
     if (canvas_) {
         connect(canvas_, &GpuCanvas::destroyed, this, [this] { canvas_.clear(); });
         connect(canvas_, &GpuCanvas::diagnosticsChanged, this, [this] {
@@ -435,10 +443,17 @@ void ViewController::rebuildSimData() {
     const auto project = scene->project;
     tasks_.submit<std::shared_ptr<const SimData>>(
         "studio.simulation",
-        [project, revision](const TaskContext& task) -> Result<std::shared_ptr<const SimData>> {
-            auto sequence = stitch_generation::effective_sequence(*project, task);
+        [project, revision, cachedSequence = scene->effectiveSequence](const TaskContext& task)
+            -> Result<std::shared_ptr<const SimData>> {
+            // Reuse the sequence used to build the scene. Empty scenes without stitches
+            // retain the original fallback behaviour.
+            auto sequence = cachedSequence;
             if (!sequence) {
-                return std::unexpected(sequence.error());
+                auto generated = stitch_generation::effective_sequence(*project, task);
+                if (!generated) {
+                    return std::unexpected(generated.error());
+                }
+                sequence = std::make_shared<const stitch::StitchSequence>(std::move(*generated));
             }
             auto data = std::make_shared<SimData>();
             data->project = project;
@@ -449,20 +464,45 @@ void ViewController::rebuildSimData() {
                     data->visible.insert(object.id.value);
                 }
             }
-            data->sequence = std::move(*sequence);
-            auto marks = simulationMarks(*project);
-            if (marks) {
-                data->marks = std::move(*marks);
-            } else {
-                data->marks.total = data->sequence.commands.size();
-            }
-            const auto& commands = data->sequence.commands;
+            data->sequence = std::move(sequence);
+            data->marks = simulationMarks(*data->sequence);
+            const auto& commands = data->sequence->commands;
             data->stitchesBefore.reserve(commands.size() + 1);
+            data->segmentsBefore.reserve(commands.size() + 1);
             std::uint32_t stitches = 0;
+            std::uint32_t segments = 0;
+            bool hasPos = false;
+            float lastX = 0.0F;
+            float lastY = 0.0F;
+            std::uint64_t lastSource = 0;
             for (std::size_t i = 0; i < commands.size(); ++i) {
                 data->stitchesBefore.push_back(stitches);
-                if (commands[i].type == stitch::CommandType::Stitch) {
+                data->segmentsBefore.push_back(segments);
+                const auto& cmd = commands[i];
+                const bool sews = cmd.type == stitch::CommandType::Stitch;
+                const bool jumps = cmd.type == stitch::CommandType::Jump;
+                if (sews) {
                     ++stitches;
+                }
+                if (!sews && !jumps) {
+                    hasPos = false;
+                } else {
+                    // Reproduit exactement les règles de build_thread_segments : même
+                    // source, mêmes conversions float mm, saut/coupe/couleur qui rompt
+                    // la continuité. Le coût est payé UNE fois sur le worker.
+                    const float x = static_cast<float>(cmd.pos.x.value / 1000.0);
+                    const float y = static_cast<float>(-cmd.pos.y.value / 1000.0);
+                    const auto source = cmd.source.value;
+                    const bool moved = x != lastX || y != lastY;
+                    const bool visible =
+                        data->visible.contains(source) || (source == 0 && data->imported);
+                    if (sews && hasPos && lastSource == source && moved && visible) {
+                        ++segments;
+                    }
+                    lastX = x;
+                    lastY = y;
+                    lastSource = source;
+                    hasPos = true;
                 }
                 if (commands[i].type == stitch::CommandType::Jump && i > 0 &&
                     data->jumps.size() < kMaxJumpLines) {
@@ -476,6 +516,7 @@ void ViewController::rebuildSimData() {
                 }
             }
             data->stitchesBefore.push_back(stitches);
+            data->segmentsBefore.push_back(segments);
             return std::shared_ptr<const SimData>(std::move(data));
         },
         [this, revision](Result<std::shared_ptr<const SimData>>&& result) {
@@ -484,40 +525,30 @@ void ViewController::rebuildSimData() {
                 return;
             }
             sim_ = std::move(*result);
-            position_ = std::min<std::size_t>(position_, sim_->sequence.commands.size());
+            position_ = std::min<std::size_t>(position_, sim_->sequence->commands.size());
             publish();
             emit simChanged();
         });
 }
 
 int ViewController::simTotal() const {
-    return sim_ ? static_cast<int>(sim_->sequence.commands.size()) : 0;
+    return sim_ ? static_cast<int>(sim_->sequence->commands.size()) : 0;
 }
 
 std::size_t ViewController::segmentsAt(std::size_t position) const {
-    if (!sim_ || position >= sim_->sequence.commands.size()) {
+    if (!sim_ || position >= sim_->sequence->commands.size()) {
         return CanvasOverlays::all;
     }
-    if (position == 0) {
-        return 0;
-    }
-    const auto& data = *sim_;
-    const auto segments = stitch_render::build_thread_segments(
-        data.sequence, position - 1,
-        [&data](ObjectId source) -> std::optional<std::array<std::uint8_t, 3>> {
-            if (data.visible.contains(source.value) || (source.value == 0 && data.imported)) {
-                return std::array<std::uint8_t, 3>{0, 0, 0};
-            }
-            return std::nullopt;
-        });
-    return segments.size();
+    // O(1) pendant la lecture et le scrub ; auparavant O(position) et allocation
+    // d'une liste complète de segments à chaque frame de 33 ms.
+    return sim_->segmentsBefore[position];
 }
 
 void ViewController::goTo(std::size_t position) {
     if (!sim_) {
         return;
     }
-    position = std::min(position, sim_->sequence.commands.size());
+    position = std::min(position, sim_->sequence->commands.size());
     if (position == position_ && simActive_) {
         return;
     }
@@ -542,7 +573,7 @@ void ViewController::startSimulation() {
 void ViewController::stopSimulation() {
     pause();
     simActive_ = false;
-    position_ = sim_ ? sim_->sequence.commands.size() : 0;
+    position_ = sim_ ? sim_->sequence->commands.size() : 0;
     publish();
     emit simChanged();
 }
@@ -551,7 +582,7 @@ void ViewController::play() {
     if (!sim_) {
         return;
     }
-    if (!simActive_ || position_ >= sim_->sequence.commands.size()) {
+    if (!simActive_ || position_ >= sim_->sequence->commands.size()) {
         position_ = 0;
         simActive_ = true;
     }
@@ -577,7 +608,7 @@ void ViewController::advance(int milliseconds) {
     carry_ += spm_ / 60.0 * speed_ * milliseconds / 1000.0;
     const auto whole = static_cast<std::size_t>(carry_);
     carry_ -= static_cast<double>(whole);
-    const auto total = sim_->sequence.commands.size();
+    const auto total = sim_->sequence->commands.size();
     const auto next = std::min(total, position_ + std::max<std::size_t>(1, whole));
     position_ = next;
     if (next >= total) {
@@ -594,9 +625,9 @@ void ViewController::step(int delta) {
     }
     pause();
     const auto current =
-        static_cast<std::int64_t>(simActive_ ? position_ : sim_->sequence.commands.size());
+        static_cast<std::int64_t>(simActive_ ? position_ : sim_->sequence->commands.size());
     const auto target = std::clamp<std::int64_t>(
-        current + delta, 0, static_cast<std::int64_t>(sim_->sequence.commands.size()));
+        current + delta, 0, static_cast<std::int64_t>(sim_->sequence->commands.size()));
     simActive_ = false; // force goTo to publish even at the same position
     goTo(static_cast<std::size_t>(target));
 }
@@ -681,7 +712,7 @@ QString ViewController::simTimeText() const {
     if (!sim_) {
         return QStringLiteral("–");
     }
-    const auto at = simActive_ ? position_ : sim_->sequence.commands.size();
+    const auto at = simActive_ ? position_ : sim_->sequence->commands.size();
     return QStringLiteral("%1 / %2 points")
         .arg(sim_->stitchesBefore[at])
         .arg(sim_->stitchesBefore.back());
@@ -691,7 +722,7 @@ QString ViewController::simEstimate() const {
     if (!sim_) {
         return {};
     }
-    const auto at = simActive_ ? position_ : sim_->sequence.commands.size();
+    const auto at = simActive_ ? position_ : sim_->sequence->commands.size();
     const double perStitch = 60.0 / spm_;
     return QStringLiteral("%1 / %2 à %3 points/min (hors changements de fil)")
         .arg(clock(sim_->stitchesBefore[at] * perStitch))

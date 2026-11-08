@@ -11,6 +11,7 @@
 #include "document_session.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
+#include "simulation_nav.hpp"
 #include "studio_camera.hpp"
 #include "studio_scene.hpp"
 
@@ -113,6 +114,16 @@ TEST_CASE("studio preserves sewing order thread colours and full 64 bit object i
     const auto& scene = **built;
     CHECK(scene.project == project);
     CHECK(scene.revision == 42);
+    REQUIRE(scene.effectiveSequence);
+    const auto effective = stitch_generation::effective_sequence(*project);
+    REQUIRE(effective.has_value());
+    CHECK(scene.effectiveSequence->commands == effective->commands);
+    const auto cachedMarks = simulationMarks(*scene.effectiveSequence);
+    const auto regeneratedMarks = simulationMarks(*project);
+    REQUIRE(regeneratedMarks.has_value());
+    CHECK(cachedMarks.objects == regeneratedMarks->objects);
+    CHECK(cachedMarks.colours == regeneratedMarks->colours);
+    CHECK(cachedMarks.total == regeneratedMarks->total);
     REQUIRE_FALSE(scene.segments.empty());
     CHECK(scene.vertices.size() == scene.segments.size() * 6);
     CHECK(scene.objectBounds.size() == 2);
@@ -243,10 +254,12 @@ TEST_CASE("studio resource invalidation separates geometry selection camera and 
     const auto first = build_studio_scene(project, 1, {});
     REQUIRE(first.has_value());
     StudioResourceState resources;
+    CHECK(resources.observe(nullptr, 1, 1).geometry);
+    CHECK_FALSE(resources.observe(nullptr, 1, 1).geometry);
     auto changed = resources.observe(*first, 1, 1);
     CHECK(changed.geometry);
     CHECK(changed.selection);
-    CHECK(changed.camera);
+    CHECK_FALSE(changed.camera);
     changed = resources.observe(*first, 1, 1);
     CHECK_FALSE(changed.geometry);
     CHECK_FALSE(changed.selection);

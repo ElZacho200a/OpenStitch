@@ -53,6 +53,7 @@ Item {
     // que lorsque l'amont (les formes) est sain : sinon le bandeau de l'amont garde la main.
     property string publishedKey: ""
     function publishStage() {
+        if (!root.active) return
         if (!root.spaceController) {
             root.workspace.clearStageStatus("points")
             return
@@ -76,20 +77,24 @@ Item {
         target: root.workspace
         function onSpacesChanged() { root.publishStage() }
     }
-    Component.onCompleted: {
+    function activate() {
+        root.publishedKey = ""
         root.publishStage()
-        // Caméra propre à l'espace, restituée après la restitution de l'hôte.
+        // La caméra propre à cet espace prime sur la vue partagée lors d'un retour.
         if (root.spaceController && Object.keys(root.spaceController.camera).length > 0)
             Qt.callLater(function() {
-                if (root.spaceController && root.canvas)
+                if (root.active && root.spaceController && root.canvas)
                     root.canvas.restoreViewState(root.spaceController.camera)
             })
     }
-    Component.onDestruction: {
+    function deactivate() {
         if (root.spaceController && root.canvas)
             root.spaceController.rememberCamera(root.canvas.viewState())
         root.workspace.clearStageStatus("points")
     }
+    onActiveChanged: { if (active) activate(); else deactivate() }
+    Component.onCompleted: { if (active) activate() }
+    Component.onDestruction: deactivate()
 
     RowLayout {
         anchors.fill: parent
@@ -100,6 +105,7 @@ Item {
             Layout.fillHeight: true
             color: Theme.panel
             PointsToolRail {
+                workspaceActive: root.active
                 anchors.top: parent.top
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.topMargin: 12
@@ -170,6 +176,9 @@ Item {
                 }
 
                 ViewPanel {
+
+
+                    active: root.active
                     id: viewHub
                     objectName: "viewHub"
                     anchors.fill: parent

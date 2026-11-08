@@ -8,32 +8,21 @@ Item {
     id: hub
     objectName: "historyHub"
     property bool opened: false
+    readonly property bool available: typeof history !== "undefined" && history !== null
     Loader {
         anchors.fill: parent
         active: typeof history !== "undefined" && history !== null
         sourceComponent: Item {
-            StudioButton {
-                id: toggle
-                objectName: "historyToggle"
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.leftMargin: 44
-                anchors.topMargin: 84
-                text: qsTr("Historique")
-                active: hub.opened
-                tooltip: qsTr("Afficher les étapes du document")
-                onClicked: {
-                    hub.opened = !hub.opened
-                    if (!hub.opened) forceActiveFocus()
-                }
-            }
             Rectangle {
                 visible: hub.opened
-                anchors.top: toggle.bottom
-                anchors.left: toggle.left
-                anchors.topMargin: 6
+                // Le bouton « Historique » vit dans la barre du haut (Main.qml) : ce volet
+                // s'ancre au canevas sans marges magiques qui chevauchaient les rails d'outils.
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.topMargin: 8
+                anchors.leftMargin: 8
                 width: Math.min(310, parent.width - 36)
-                height: Math.min(360, parent.height - 90)
+                height: Math.min(360, parent.height - 24)
                 color: Theme.panel
                 border.color: Theme.border
                 radius: Theme.radius

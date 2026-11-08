@@ -4,8 +4,10 @@
 // un .osp anterieur (rectangle, sans machine) se relit a l'identique.
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstdint>
 #include <filesystem>
 
+#include "json_serialize.hpp"
 #include "openstitch/project_io/project_io.hpp"
 
 using namespace openstitch;
@@ -55,4 +57,30 @@ TEST_CASE("hoop persistence: a plain rectangle without machine reads back unchan
     CHECK(loaded->canvas.corner_radius.value == 0);
     CHECK(loaded->machine_id.empty());
     fs::remove(path);
+}
+
+TEST_CASE("hoop persistence: invalid canvas dimensions and overflow are rejected",
+          "[project_io][robustness]") {
+    const auto valid = project_io::detail::project_to_json(base_project());
+    const auto reject = [&valid](const char* field, const nlohmann::json& value) {
+        auto malformed = valid;
+        malformed["canvas"][field] = value;
+        CHECK_FALSE(project_io::detail::project_from_json(malformed).has_value());
+    };
+
+    reject("width", -5'000);
+    reject("height", 0);
+    reject("width", std::int64_t{2'147'483'648LL});
+    reject("height", std::uint64_t{4'294'967'295ULL});
+    reject("width", "100000");
+    reject("margin", -1);
+    reject("cornerRadius", -1);
+
+    // Backward compatibility: old OSP documents without a canvas retain the default.
+    auto legacy = valid;
+    legacy.erase("canvas");
+    const auto loaded = project_io::detail::project_from_json(legacy);
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->canvas.width.value == 100'000);
+    CHECK(loaded->canvas.height.value == 100'000);
 }

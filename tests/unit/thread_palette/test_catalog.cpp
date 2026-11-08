@@ -29,6 +29,14 @@ TEST_CASE("every ThreadChart has a non-empty source_note") {
     }
 }
 
+TEST_CASE("demo manufacturer charts have unmistakable public labels") {
+    for (const ThreadChart& chart : all_charts()) {
+        if (chart.source_note.starts_with("DONNEES PLACEHOLDER")) {
+            CHECK(chart.display_name.find("DEMO") != std::string::npos);
+        }
+    }
+}
+
 TEST_CASE("find_chart resolves a known chart_id") {
     const ThreadChart* chart = find_chart("madeira_polyneon");
     REQUIRE(chart != nullptr);

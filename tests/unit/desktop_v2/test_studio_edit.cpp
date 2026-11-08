@@ -4,6 +4,7 @@
 // puis réouverture. Aucun mock du moteur.
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
+#include <QQmlComponent>
 #include <QQmlContext>
 #include <QQuickItem>
 #include <QQuickStyle>
@@ -165,6 +166,7 @@ private slots:
     void layersTreeAndObjectEditing();
     void contextMenuAndEyedropper();
     void shortcutsReachTheEditor();
+    void focusedFieldOwnsArrowKeysDeleteAndEscape();
 };
 
 void StudioEditTest::initTestCase() {
@@ -717,6 +719,48 @@ void StudioEditTest::shortcutsReachTheEditor() {
     QTest::keyClick(rig.window, Qt::Key_Z, Qt::ControlModifier);
     QTRY_COMPARE(steps(rig), base);
     QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+}
+
+void StudioEditTest::focusedFieldOwnsArrowKeysDeleteAndEscape() {
+    // QA-STUDIO-001 KEY-008/KEY-010/CTL-018/019: with a field focused, the global canvas
+    // shortcuts (nudge, delete, clear selection) must not fire behind it.
+    Rig rig;
+    open(rig);
+    select(rig, {kRed1});
+    settle(rig);
+    QQmlComponent component(&rig.engine);
+    component.setData(R"qml(
+        import QtQuick
+        TextInput { objectName: "qaField"; width: 80; height: 20 }
+    )qml",
+                      QUrl());
+    auto* field = qobject_cast<QQuickItem*>(component.create());
+    QVERIFY2(field, qPrintable(component.errorString()));
+    field->setParentItem(rig.window->contentItem());
+    field->forceActiveFocus();
+    QTRY_VERIFY(rig.window->activeFocusItem() == field);
+
+    const auto revision = rig.session.revision();
+    const auto count = rig.session.project().embroidery_objects.size();
+    for (const auto key : {Qt::Key_Up, Qt::Key_Down, Qt::Key_Left, Qt::Key_Right, Qt::Key_Home,
+                           Qt::Key_End, Qt::Key_PageUp, Qt::Key_PageDown, Qt::Key_Delete}) {
+        QTest::keyClick(rig.window, key);
+        QTest::keyClick(rig.window, key, Qt::ShiftModifier);
+    }
+    QTest::qWait(100);
+    QCOMPARE(rig.session.revision(), revision);
+    QCOMPARE(rig.session.project().embroidery_objects.size(), count);
+    QCOMPARE(selected(rig), (std::vector<std::uint64_t>{kRed1}));
+
+    QTest::keyClick(rig.window, Qt::Key_Escape); // leaves the field, keeps the selection
+    QTest::qWait(100);
+    QCOMPARE(selected(rig), (std::vector<std::uint64_t>{kRed1}));
+    QVERIFY(rig.window->activeFocusItem() != field);
+
+    QTest::keyClick(rig.window, Qt::Key_Up); // focus released: the nudge works again
+    QTRY_VERIFY(rig.session.revision() > revision);
+    delete field;
+    QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join(QLatin1Char('\n'))));
 }
 
 QTEST_MAIN(StudioEditTest)

@@ -182,10 +182,15 @@ void SegmentationSpaceController::refresh() {
     const auto& session = studio_.session();
     const auto& project = session.project();
     bool fillChanged = false;
-    const auto revision = session.revision();
+    // La revision globale change aussi pour les objets et leurs paramètres.
+    // La miniature versionnée suit uniquement les mutations de segmentation.
+    const auto revision = static_cast<std::uint64_t>(regions_.mapRevision());
     if (revision != seenRevision_ || contours_ != fillContours_) {
         const auto fp = segmentationFingerprint(project);
         if (fp != fingerprint_ || contours_ != fillContours_) {
+            if (fp != fingerprint_) {
+                bounds_ = buildRegionBounds(project);
+            }
             fingerprint_ = fp;
             fillContours_ = contours_;
             fill_ = fp != 0 ? buildRegionFill(project, contours_) : QImage{};
@@ -203,16 +208,31 @@ void SegmentationSpaceController::refresh() {
     bool highlightChanged = false;
     if (fillChanged || selection != shownSelection_) {
         shownSelection_ = selection;
-        highlight_ = buildRegionHighlight(project, selection);
+        auto highlight = buildRegionHighlight(project, selection, bounds_);
+        highlight_ = std::move(highlight.image);
+        highlightBoundsPx_ = highlight.boundsPx;
         ++highlightRevision_;
         ++highlightRebuilds_;
         highlightChanged = true;
     }
-    if (fillChanged || highlightChanged || !layer_ || layer_->opacity != opacity_) {
+    const QRectF fillRectMm = regionLayerRect(project);
+    QRectF highlightRectMm;
+    if (project.segmentation && highlightBoundsPx_.isValid()) {
+        const auto& seg = *project.segmentation;
+        const double mm = project.mm_per_px.value;
+        const double x = (highlightBoundsPx_.x() - seg.width / 2.0) * mm;
+        const double y = (highlightBoundsPx_.y() - seg.height / 2.0) * mm;
+        const double w = highlightBoundsPx_.width() * mm;
+        const double h = highlightBoundsPx_.height() * mm;
+        highlightRectMm = QRectF(x, y, w, h);
+    }
+    if (fillChanged || highlightChanged || !layer_ || layer_->opacity != opacity_ ||
+        layer_->rectMm != fillRectMm || layer_->highlightRectMm != highlightRectMm) {
         auto data = std::make_shared<RegionLayerData>();
         data->fill = fill_;
         data->highlight = highlight_;
-        data->rectMm = regionLayerRect(project);
+        data->rectMm = fillRectMm;
+        data->highlightRectMm = highlightRectMm;
         data->opacity = opacity_;
         data->fillRevision = fillRevision_;
         data->highlightRevision = highlightRevision_;

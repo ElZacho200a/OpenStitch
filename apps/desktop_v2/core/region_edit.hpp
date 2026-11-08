@@ -118,6 +118,7 @@ struct Regeneration {
     std::size_t objectsAfter{0};
     std::uint64_t revision{0}; // révision du document sur laquelle c'est calculé
     std::size_t preserved{0};  // objets dessinés à la main, CONSERVÉS tels quels
+    std::size_t reused{0};     // objets numérisés inchangés : ID et points en cache conservés
     std::size_t lostRetouches{
         0}; // objets issus de régions dont des retouches de points sont remplacées
 };

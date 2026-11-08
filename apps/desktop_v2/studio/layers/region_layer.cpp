@@ -40,6 +40,33 @@ QSGSimpleTextureNode* textureNode(QQuickWindow& window, const QImage& image, con
 
 } // namespace
 
+std::vector<RegionPixelBounds> buildRegionBounds(const document::Project& project) {
+    if (!project.segmentation) {
+        return {};
+    }
+    const auto& seg = *project.segmentation;
+    const auto w = static_cast<std::size_t>(std::max(0, seg.width));
+    const auto h = static_cast<std::size_t>(std::max(0, seg.height));
+    std::vector<RegionPixelBounds> bounds(seg.region_slots.size() + 1);
+    if (w == 0 || h == 0 || seg.labels.size() < w * h) {
+        return bounds;
+    }
+    for (std::size_t y = 0; y < h; ++y) {
+        for (std::size_t x = 0; x < w; ++x) {
+            const auto label = seg.labels[y * w + x];
+            if (label == 0 || label >= bounds.size() || !seg.region_slots[label - 1]) {
+                continue;
+            }
+            auto& box = bounds[label];
+            box.left = std::min(box.left, static_cast<int>(x));
+            box.right = std::max(box.right, static_cast<int>(x));
+            box.top = std::min(box.top, static_cast<int>(y));
+            box.bottom = std::max(box.bottom, static_cast<int>(y));
+        }
+    }
+    return bounds;
+}
+
 std::uint64_t segmentationFingerprint(const document::Project& project) {
     if (!project.segmentation) {
         return 0;
@@ -122,8 +149,9 @@ QImage buildRegionFill(const document::Project& project, bool contours) {
     return image;
 }
 
-QImage buildRegionHighlight(const document::Project& project,
-                            const std::vector<std::uint64_t>& selected) {
+RegionHighlight buildRegionHighlight(const document::Project& project,
+                                     const std::vector<std::uint64_t>& selected,
+                                     const std::vector<RegionPixelBounds>& bounds) {
     if (!project.segmentation || selected.empty()) {
         return {};
     }
@@ -133,33 +161,46 @@ QImage buildRegionHighlight(const document::Project& project,
     if (w == 0 || h == 0 || seg.labels.size() < w * h) {
         return {};
     }
+
+    QRect roi;
+    for (const auto id : selected) {
+        if (id == 0 || id >= bounds.size() || !bounds[id].valid()) {
+            continue;
+        }
+        const auto& box = bounds[id];
+        const QRect region(QPoint(box.left, box.top), QPoint(box.right, box.bottom));
+        roi = roi.isValid() ? roi.united(region) : region;
+    }
+    if (!roi.isValid()) {
+        return {};
+    }
+
     std::vector<std::uint64_t> ids = selected;
     std::sort(ids.begin(), ids.end());
     const auto isSelected = [&](std::uint32_t label) {
         return label != 0 &&
                std::binary_search(ids.begin(), ids.end(), static_cast<std::uint64_t>(label));
     };
-    QImage image(seg.width, seg.height, QImage::Format_ARGB32_Premultiplied);
+    // Le voile est limité au rectangle des régions retenues. Les contours
+    // utilisent quand même les voisins globaux, pour être identiques au rendu plein cadre.
+    QImage image(roi.width(), roi.height(), QImage::Format_ARGB32_Premultiplied);
     image.fill(Qt::transparent);
     const QRgb veil = premul(255, 255, 255, 80);
     const QRgb line = premul(255, 196, 0, 255);
-    bool any = false;
-    for (std::size_t y = 0; y < h; ++y) {
-        auto* row = reinterpret_cast<QRgb*>(image.scanLine(static_cast<int>(y)));
-        for (std::size_t x = 0; x < w; ++x) {
-            if (!isSelected(seg.labels[y * w + x])) {
+    for (int y = roi.top(); y <= roi.bottom(); ++y) {
+        auto* row = reinterpret_cast<QRgb*>(image.scanLine(y - roi.top()));
+        for (int x = roi.left(); x <= roi.right(); ++x) {
+            const auto i = static_cast<std::size_t>(y) * w + static_cast<std::size_t>(x);
+            if (!isSelected(seg.labels[i])) {
                 continue;
             }
-            any = true;
-            const bool edge = x == 0 || y == 0 || x + 1 == w || y + 1 == h ||
-                              !isSelected(seg.labels[y * w + x - 1]) ||
-                              !isSelected(seg.labels[y * w + x + 1]) ||
-                              !isSelected(seg.labels[(y - 1) * w + x]) ||
-                              !isSelected(seg.labels[(y + 1) * w + x]);
-            row[x] = edge ? line : veil;
+            const bool edge = x == 0 || y == 0 || x + 1 == seg.width || y + 1 == seg.height ||
+                              !isSelected(seg.labels[i - 1]) || !isSelected(seg.labels[i + 1]) ||
+                              !isSelected(seg.labels[i - w]) || !isSelected(seg.labels[i + w]);
+            row[x - roi.left()] = edge ? line : veil;
         }
     }
-    return any ? image : QImage{};
+    return {std::move(image), roi};
 }
 
 RegionLayerNode::RegionLayerNode()
@@ -179,9 +220,11 @@ void RegionLayerNode::update(const RegionLayerData* data, QQuickWindow& window) 
         hasFill_ = hasHighlight_ = false;
         fillRevision_ = highlightRevision_ = 0;
         displayedRect_ = {};
+        displayedHighlightRect_ = {};
         return;
     }
     const bool rectChanged = displayedRect_ != data->rectMm;
+    const bool highlightRectChanged = displayedHighlightRect_ != data->highlightRectMm;
     if (!hasFill_ || fillRevision_ != data->fillRevision) {
         clearChildren(*fillOpacity_);
         fillOpacity_->appendChildNode(textureNode(window, data->fill, data->rectMm));
@@ -199,13 +242,16 @@ void RegionLayerNode::update(const RegionLayerData* data, QQuickWindow& window) 
         hasHighlight_ = false;
     } else if (!hasHighlight_ || highlightRevision_ != data->highlightRevision) {
         clearChildren(*highlightOpacity_);
-        highlightOpacity_->appendChildNode(textureNode(window, data->highlight, data->rectMm));
+        auto* high = textureNode(window, data->highlight, data->highlightRectMm);
+        highlightOpacity_->appendChildNode(high);
         highlightRevision_ = data->highlightRevision;
         hasHighlight_ = true;
-    } else if (rectChanged) {
-        static_cast<QSGSimpleTextureNode*>(highlightOpacity_->firstChild())->setRect(data->rectMm);
+    } else if (highlightRectChanged) {
+        static_cast<QSGSimpleTextureNode*>(highlightOpacity_->firstChild())
+            ->setRect(data->highlightRectMm);
     }
     displayedRect_ = data->rectMm;
+    displayedHighlightRect_ = data->highlightRectMm;
     fillOpacity_->setOpacity(std::clamp(data->opacity, 0.0, 1.0));
     highlightOpacity_->setOpacity(1.0);
 }
@@ -220,7 +266,7 @@ void paintRegionLayer(QPainter& painter, const RegionLayerData* data) {
     painter.drawImage(data->rectMm, data->fill);
     if (!data->highlight.isNull()) {
         painter.setOpacity(1.0);
-        painter.drawImage(data->rectMm, data->highlight);
+        painter.drawImage(data->highlightRectMm, data->highlight);
     }
     painter.restore();
 }

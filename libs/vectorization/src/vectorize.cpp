@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/vectorization/vectorize.hpp"
+
 #include "openstitch/core/parallel.hpp"
+#include "openstitch/core/pipeline_profile.hpp"
 
 #include <atomic>
 #include <opencv2/core.hpp>
@@ -75,6 +77,7 @@ Result<std::vector<geometry::PathSet>> vectorize_impl(const segmentation::Segmen
                                                       RegionId id, const VectorizeOptions& options,
                                                       const TaskContext& task,
                                                       const RegionPixelIndex* index) {
+    const pipeline_profile::Scope profile(pipeline_profile::Stage::Vectorize);
     if (task.cancelled()) {
         return cancelled_error();
     }

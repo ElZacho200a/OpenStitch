@@ -38,6 +38,11 @@ public:
     // une tâche d'arrière-plan (jamais le projet vivant).
     [[nodiscard]] std::shared_ptr<const document::Project> snapshot() const;
     [[nodiscard]] std::uint64_t revision() const { return revision_; }
+    // Scope of the most recent document mutation, including undo/redo.
+    [[nodiscard]] bool lastChangeAffectsEmbroidery() const { return lastChangeAffectsEmbroidery_; }
+    [[nodiscard]] bool lastChangeAffectsSegmentation() const {
+        return lastChangeAffectsSegmentation_;
+    }
     [[nodiscard]] bool dirty() const { return !undo_.isClean(); }
     [[nodiscard]] bool canUndo() const { return undo_.canUndo(); }
     [[nodiscard]] bool canRedo() const { return undo_.canRedo(); }
@@ -89,7 +94,11 @@ public:
     [[nodiscard]] project_ops::LiveBridge& liveBridge();
     // À appeler après une modification installée par le pont : révision, sélection et abonnés
     // suivent comme pour un Annuler / Rétablir.
-    void notifyExternalChange() { changed(ChangeKind::Edited); }
+    void notifyExternalChange() {
+        lastChangeAffectsEmbroidery_ = true; // External agents can mutate any field.
+        lastChangeAffectsSegmentation_ = true;
+        changed(ChangeKind::Edited);
+    }
     void markSaved() {
         undo_.markClean();
         notify(ChangeKind::Edited);
@@ -107,6 +116,8 @@ private:
     commands::UndoStack undo_;
     SelectionModel selection_;
     std::uint64_t revision_{1};
+    bool lastChangeAffectsEmbroidery_{true};
+    bool lastChangeAffectsSegmentation_{true};
     mutable std::shared_ptr<const document::Project> cachedSnapshot_;
     mutable std::uint64_t cachedRevision_{0};
     std::vector<std::pair<Token, Listener>> listeners_;

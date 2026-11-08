@@ -17,17 +17,23 @@ namespace openstitch::commands {
 class ReplaceProjectCommand final : public ICommand {
 public:
     ReplaceProjectCommand(std::string name, std::shared_ptr<const document::Project> before,
-                          std::shared_ptr<const document::Project> after)
-        : name_(std::move(name)), before_(std::move(before)), after_(std::move(after)) {}
+                          std::shared_ptr<const document::Project> after,
+                          bool affectsEmbroidery = true, bool affectsSegmentation = true)
+        : name_(std::move(name)), before_(std::move(before)), after_(std::move(after)),
+          affectsEmbroidery_(affectsEmbroidery), affectsSegmentation_(affectsSegmentation) {}
 
     void apply(document::Project& project) override { project = *after_; }
     void revert(document::Project& project) override { project = *before_; }
     [[nodiscard]] std::string name() const override { return name_; }
+    [[nodiscard]] bool affectsEmbroidery() const override { return affectsEmbroidery_; }
+    [[nodiscard]] bool affectsSegmentation() const override { return affectsSegmentation_; }
 
 private:
     std::string name_;
     std::shared_ptr<const document::Project> before_;
     std::shared_ptr<const document::Project> after_;
+    bool affectsEmbroidery_{true};
+    bool affectsSegmentation_{true};
 };
 
 } // namespace openstitch::commands

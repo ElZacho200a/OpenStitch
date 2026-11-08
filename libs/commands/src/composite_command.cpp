@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/commands/composite_command.hpp"
 
+#include <algorithm>
 #include <utility>
 
 namespace openstitch::commands {
@@ -30,6 +31,16 @@ void CompositeCommand::apply(document::Project& project) {
         }
         throw;
     }
+}
+
+bool CompositeCommand::affectsEmbroidery() const {
+    return std::any_of(commands_.begin(), commands_.end(),
+                       [](const auto& command) { return command->affectsEmbroidery(); });
+}
+
+bool CompositeCommand::affectsSegmentation() const {
+    return std::any_of(commands_.begin(), commands_.end(),
+                       [](const auto& command) { return command->affectsSegmentation(); });
 }
 
 bool CompositeCommand::mergeWith(const ICommand& newer) {

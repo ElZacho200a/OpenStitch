@@ -349,13 +349,17 @@ private slots:
             QStringLiteral("upToDate"), 3'000);
         QCOMPARE(rig.workspace->space(QStringLiteral("vector")).value("actionLabel").toString(),
                  QStringLiteral("Mettre à jour depuis la segmentation"));
-        // Correction de région : fusion de la région 2 dans la 1 (la forme de la 2 devient
-        // orpheline).
+        // Correction source : le rendu de la forme reste en cache tant que
+        // l'utilisateur n'applique pas explicitement la revectorisation.
+        const int initialBuilds = rig.stage.layerBuildCount();
+        const auto* initialImage = rig.canvas->vectorImage();
         rig.session.execute(
             std::make_unique<commands::MergeRegionsCommand>(RegionId{1}, RegionId{2}));
         QTRY_COMPARE_WITH_TIMEOUT(
             rig.workspace->space(QStringLiteral("vector")).value("state").toString(),
             QStringLiteral("stale"), 3'000);
+        QCOMPARE(rig.stage.layerBuildCount(), initialBuilds);
+        QVERIFY(rig.canvas->vectorImage() == initialImage);
         const auto plan = rig.stage.updatePlan();
         QCOMPARE(plan.value("replace").toInt(), 1);
         QCOMPARE(plan.value("orphan").toInt(), 1);

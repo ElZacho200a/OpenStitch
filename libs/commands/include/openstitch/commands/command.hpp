@@ -18,6 +18,13 @@ public:
     virtual void revert(document::Project& project) = 0;
     [[nodiscard]] virtual std::string name() const = 0;
 
+    // Most commands may change the effective stitch sequence. Commands that only
+    // edit source segmentation may opt out: their stitches remain unchanged
+    // until the user explicitly regenerates downstream objects.
+    [[nodiscard]] virtual bool affectsEmbroidery() const { return true; }
+    // Segmentation is another independent source domain. Conservative by default.
+    [[nodiscard]] virtual bool affectsSegmentation() const { return true; }
+
     // Fusion d'annulation (coalescence) : une rafale de modifications du même
     // champ du même objet (molette d'un spinbox, flèches du clavier) ne doit
     // former qu'UN pas d'annulation. Deux commandes sont fusionnables si leur

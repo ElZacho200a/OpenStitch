@@ -11,6 +11,14 @@
 #include "openstitch/stitch_generation/adaptive_pull.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
 
+#ifdef OPENSTITCH_EXPERIMENTAL_TATAMI_SCAN
+#include <atomic>
+#include <new>
+#include <utility>
+
+#include "openstitch/stitch_generation/experimental_tatami_scan.hpp"
+#endif
+
 namespace openstitch::stitch_generation {
 
 namespace {
@@ -42,6 +50,56 @@ void scan_polygon(const std::vector<PointD>& poly, double scanY, std::vector<dou
         }
     }
 }
+
+#ifdef OPENSTITCH_EXPERIMENTAL_TATAMI_SCAN
+std::atomic<const experimental::TatamiScan*> activeScan{nullptr};
+
+std::optional<experimental::TatamiRows>
+prepare_scan_batch(const experimental::TatamiScan& backend,
+                   const std::vector<std::vector<PointD>>& polys, double minY, double maxY,
+                   double spacing) {
+    std::vector<double> rows;
+    for (double y = minY + spacing / 2.0; y < maxY; y += spacing) {
+        if (rows.size() == 8192) {
+            return std::nullopt;
+        }
+        rows.push_back(y);
+    }
+    std::vector<experimental::TatamiEdge> edges;
+    for (const auto& poly : polys) {
+        if (poly.size() > 65'535 - edges.size()) {
+            return std::nullopt;
+        }
+        for (std::size_t i = 0; i < poly.size(); ++i) {
+            const auto& a = poly[i];
+            const auto& b = poly[(i + 1) % poly.size()];
+            edges.push_back({a.x, a.y, b.x, b.y});
+        }
+    }
+    auto result = backend.batch(rows, edges);
+    if (!result || result->size() != rows.size()) {
+        return std::nullopt;
+    }
+    return result;
+}
+
+std::optional<experimental::TatamiRows> scan_batch(const std::vector<std::vector<PointD>>& polys,
+                                                   double minY, double maxY, double spacing) {
+    const auto* backend = activeScan.load(std::memory_order_acquire);
+    if (backend == nullptr) {
+        return std::nullopt;
+    }
+    try {
+        if (auto result = prepare_scan_batch(*backend, polys, minY, maxY, spacing)) {
+            return result;
+        }
+    } catch (const std::bad_alloc&) {
+        // The experimental buffers can fail independently of the CPU scan.
+    }
+    backend->rejected();
+    return std::nullopt;
+}
+#endif
 
 Vec2um to_um(PointD p) {
     return Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(p.x))},
@@ -285,6 +343,12 @@ constexpr double kLinkEdgeTol = 150.0;
 
 } // namespace
 
+#ifdef OPENSTITCH_EXPERIMENTAL_TATAMI_SCAN
+const experimental::TatamiScan* experimental::set_tatami_scan(const TatamiScan* scan) noexcept {
+    return activeScan.exchange(scan, std::memory_order_acq_rel);
+}
+#endif
+
 std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
                                     const document::TatamiParams& params) {
     std::vector<FillStitch> out;
@@ -348,11 +412,21 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
     };
     std::vector<Segment> segs;
     std::map<int, std::vector<int>> byRow;
+#ifdef OPENSTITCH_EXPERIMENTAL_TATAMI_SCAN
+    auto batch = scan_batch(polys, minY, maxY, spacing);
+#endif
     int rowIndex = 0;
     for (double y = minY + spacing / 2.0; y < maxY; y += spacing, ++rowIndex) {
         std::vector<double> xs;
-        for (const auto& poly : polys) {
-            scan_polygon(poly, y, xs);
+#ifdef OPENSTITCH_EXPERIMENTAL_TATAMI_SCAN
+        if (batch) {
+            xs = std::move((*batch)[static_cast<std::size_t>(rowIndex)]);
+        } else
+#endif
+        {
+            for (const auto& poly : polys) {
+                scan_polygon(poly, y, xs);
+            }
         }
         // total-order-ok: cle (h, indice) ou (rangee, borne, indice) totale
         std::sort(xs.begin(), xs.end());

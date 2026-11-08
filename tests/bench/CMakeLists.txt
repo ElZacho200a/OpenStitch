@@ -12,6 +12,16 @@ if(WIN32)
     target_link_libraries(openstitch-bench PRIVATE psapi)
 endif()
 
+# Mesures opt-in du parcours CLI complet, hors CTest et sans Qt (R01-01).
+find_package(nlohmann_json CONFIG REQUIRED)
+add_executable(openstitch-profile-engine EXCLUDE_FROM_ALL profile_engine.cpp)
+target_link_libraries(openstitch-profile-engine
+    PRIVATE openstitch::project_ops openstitch::autodigitize openstitch::stitch_render
+            nlohmann_json::nlohmann_json openstitch::warnings)
+if(WIN32)
+    target_link_libraries(openstitch-profile-engine PRIVATE psapi)
+endif()
+
 # Banc de réactivité de l'interface (headless), seulement si le desktop est
 # construit. Lancer avec le PATH Qt, p. ex. :
 #   $env:PATH = "$env:QT_ROOT\bin;$env:PATH"
