@@ -54,11 +54,19 @@ RegionController::RegionController(StudioController& studio, ImageController& im
     refreshTimer_.setInterval(0);
     connect(&refreshTimer_, &QTimer::timeout, this, [this] { refresh(); });
     token_ = studio_.session().subscribe([this](ChangeKind kind) {
+        const auto& session = studio_.session();
+        const auto revision = session.revision();
         if (kind == ChangeKind::Replaced) {
             selected_.clear();
             setStale(false);
         }
-        scheduleRefresh();
+        if (revision == observedDocumentRevision_) {
+            return; // sauvegarde ou signal de statut sans mutation
+        }
+        observedDocumentRevision_ = revision;
+        if (kind == ChangeKind::Replaced || session.lastChangeAffectsSegmentation()) {
+            scheduleRefresh();
+        }
     });
     connect(&images_, &ImageController::prepApplied, this,
             [this] { setStale(true, QStringLiteral("l'image a été retraitée")); });

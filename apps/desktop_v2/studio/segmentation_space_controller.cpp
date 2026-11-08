@@ -182,7 +182,9 @@ void SegmentationSpaceController::refresh() {
     const auto& session = studio_.session();
     const auto& project = session.project();
     bool fillChanged = false;
-    const auto revision = session.revision();
+    // La revision globale change aussi pour les objets et leurs paramètres.
+    // La miniature versionnée suit uniquement les mutations de segmentation.
+    const auto revision = static_cast<std::uint64_t>(regions_.mapRevision());
     if (revision != seenRevision_ || contours_ != fillContours_) {
         const auto fp = segmentationFingerprint(project);
         if (fp != fingerprint_ || contours_ != fillContours_) {

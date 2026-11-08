@@ -118,6 +118,7 @@ private:
     QTimer refreshTimer_;
     QVariantList regions_;
     int mapRevision_{0};
+    std::uint64_t observedDocumentRevision_{0};
     std::vector<std::uint64_t> selected_;
     bool stale_{false};
     QString staleReason_;

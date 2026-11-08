@@ -59,8 +59,6 @@ void DocumentSession::execute(std::unique_ptr<commands::ICommand> command) {
     undo_.execute(std::move(command), project_);
     lastChangeAffectsEmbroidery_ = undo_.lastChangeAffectsEmbroidery();
     lastChangeAffectsSegmentation_ = undo_.lastChangeAffectsSegmentation();
-    lastChangeAffectsSegmentation_ = undo_.lastChangeAffectsSegmentation();
-    lastChangeAffectsSegmentation_ = undo_.lastChangeAffectsSegmentation();
     changed(ChangeKind::Edited);
 }
 
@@ -69,6 +67,7 @@ bool DocumentSession::undo() {
         return false;
     }
     lastChangeAffectsEmbroidery_ = undo_.lastChangeAffectsEmbroidery();
+    lastChangeAffectsSegmentation_ = undo_.lastChangeAffectsSegmentation();
     changed(ChangeKind::Undone);
     return true;
 }
@@ -78,6 +77,7 @@ bool DocumentSession::redo() {
         return false;
     }
     lastChangeAffectsEmbroidery_ = undo_.lastChangeAffectsEmbroidery();
+    lastChangeAffectsSegmentation_ = undo_.lastChangeAffectsSegmentation();
     changed(ChangeKind::Redone);
     return true;
 }
@@ -96,11 +96,11 @@ bool DocumentSession::navigateHistory(std::size_t position) {
         undo_.undo(project_);
         affectsEmbroidery |= undo_.lastChangeAffectsEmbroidery();
         affectsSegmentation |= undo_.lastChangeAffectsSegmentation();
-        affectsSegmentation |= undo_.lastChangeAffectsSegmentation();
     }
     while (undo_.position() < position) {
         undo_.redo(project_);
         affectsEmbroidery |= undo_.lastChangeAffectsEmbroidery();
+        affectsSegmentation |= undo_.lastChangeAffectsSegmentation();
     }
     lastChangeAffectsEmbroidery_ = affectsEmbroidery;
     lastChangeAffectsSegmentation_ = affectsSegmentation;
