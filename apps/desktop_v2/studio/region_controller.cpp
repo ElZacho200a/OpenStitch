@@ -144,7 +144,7 @@ void RegionController::refresh() {
         return std::find(ids.begin(), ids.end(), id) == ids.end();
     });
     if (project.segmentation) {
-        const auto map = renderRegionMap(project, selected_);
+        const auto map = renderRegionMap(project, std::vector<std::uint64_t>{});
         images_.images()->set(
             QStringLiteral("regions"),
             QImage(map.rgba.data(), map.width, map.height, map.width * 4, QImage::Format_RGBA8888)
@@ -152,6 +152,7 @@ void RegionController::refresh() {
     } else {
         images_.images()->set(QStringLiteral("regions"), {});
     }
+    ++mapRevision_;
     emit regionsChanged();
     if (before != selected_.size()) {
         emit selectionChanged();
@@ -181,7 +182,8 @@ void RegionController::selectRegion(double id, const QString& mode) {
     } else {
         selected_.assign(1, region);
     }
-    scheduleRefresh();
+    // La sélection ne change pas les données de segmentation : le canevas se charge du
+    // surlignage, sans reconstruire la miniature RGBA ni la liste complète.
     emit selectionChanged();
 }
 
