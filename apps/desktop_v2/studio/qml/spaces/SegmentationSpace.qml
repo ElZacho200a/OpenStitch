@@ -28,7 +28,7 @@ Item {
 
     // --- état publié et action « mettre à jour » du bandeau -----------------------------------
     function publish() {
-        if (!root.workspace || !root.seg) {
+        if (!root.active || !root.workspace || !root.seg) {
             return
         }
         if (root.seg.stageState.length > 0) {
@@ -43,22 +43,20 @@ Item {
             root.seg.segmentImage(panelLoader.item ? panelLoader.item.segmentationOptions : ({}))
         }
     }
-    Component.onCompleted: {
-        if (root.seg) {
-            root.seg.attach(spaceCanvas)
-        }
+    function activate() {
+        if (root.seg) root.seg.attach(spaceCanvas)
         root.publish()
     }
-    // L'espace démonté ne publie plus : le calcul de base de l'hôte reprend.
-    Component.onDestruction: {
-        if (root.seg) {
-            root.seg.detach()
-        }
+    function deactivate() {
+        if (root.seg) root.seg.detach()
         if (root.workspace) {
             root.workspace.clearStageStatus(root.spaceId)
             root.workspace.setStageAction(root.spaceId, "", false)
         }
     }
+    onActiveChanged: { if (active) activate(); else deactivate() }
+    Component.onCompleted: { if (active) activate() }
+    Component.onDestruction: deactivate()
     Connections {
         target: root.seg
         function onStageChanged() { root.publish() }
@@ -67,7 +65,7 @@ Item {
         target: root.workspace
         // L'espace courant exécute la mise à jour de SON étape (une seule étape d'annulation).
         function onUpdateRequested(id) {
-            if (id === root.spaceId) {
+            if (root.active && id === root.spaceId) {
                 root.segmentNow()
             }
         }
