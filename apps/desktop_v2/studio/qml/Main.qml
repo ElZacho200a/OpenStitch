@@ -325,6 +325,16 @@ Window {
                 }
 
                 StudioButton {
+                    objectName: "historyToggle"
+                    text: qsTr("Historique")
+                    iconName: "undo"
+                    visible: historyHub.available
+                    active: historyHub.opened
+                    tooltip: qsTr("Afficher les étapes du document")
+                    onClicked: historyHub.opened = !historyHub.opened
+                }
+
+                StudioButton {
                     objectName: "fileMenuButton"
                     text: qsTr("Fichier")
                     iconName: "open"
@@ -432,7 +442,7 @@ Window {
             workspace: workspaceCtl
 
             // L’historique du document survit au changement des quatre espaces.
-            HistoryPanel { anchors.fill: parent; z: 10 }
+            HistoryPanel { id: historyHub; anchors.fill: parent; z: 10 }
         }
 
         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
