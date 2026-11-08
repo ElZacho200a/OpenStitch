@@ -118,7 +118,9 @@ struct Rig {
         auto* item = named(name);
         return item && item->isEnabled() && QMetaObject::invokeMethod(item, "click");
     }
-    GpuCanvas* canvas() const { return window->findChild<GpuCanvas*>(); }
+    GpuCanvas* canvas() const {
+        return window->findChild<GpuCanvas*>(QStringLiteral("segmentationCanvas"));
+    }
     QVariantMap stage() const { return workspace->space(QStringLiteral("segmentation")); }
     // Position (coordonnées fenêtre) du pixel (px, py) de l'image de travail.
     QPointF windowPos(int px, int py) const {
