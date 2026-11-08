@@ -433,6 +433,22 @@ void StudioViewTest::mainQmlHostsEveryPanel() {
     // Panel "Analyse".
     QVERIFY(press(window, "analysisPanelButton"));
     QCOMPARE(hub->property("openPanel").toString(), QStringLiteral("analysis"));
+    // HOOP-001: the template selector must not pretend that the first library
+    // hoop (50x50) is the current 100x100 project hoop.
+    auto* activeHoop = named(window, "currentHoopSummary");
+    auto* hoopSelector = named(window, "hoopBox");
+    auto* applyHoop = named(window, "applyHoopButton");
+    QVERIFY(activeHoop);
+    QVERIFY(hoopSelector);
+    QVERIFY(applyHoop);
+    QTRY_VERIFY(activeHoop->property("text").toString().contains(QStringLiteral("100")));
+    QCOMPARE(hoopSelector->property("currentIndex").toInt(), -1);
+    QVERIFY(!applyHoop->isEnabled());
+    QVERIFY(hoopSelector->setProperty("currentIndex", 0));
+    QTRY_VERIFY(applyHoop->isEnabled());
+    QVERIFY(press(window, "applyHoopButton"));
+    QTRY_VERIFY(activeHoop->property("text").toString().contains(QStringLiteral("50")));
+
     QVERIFY(press(window, "diagnoseButton"));
     QTRY_VERIFY_WITH_TIMEOUT(analysis.diagnosticsReady(), 15'000);
     QVERIFY(press(window, "proposeButton"));
