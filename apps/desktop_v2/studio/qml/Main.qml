@@ -217,6 +217,15 @@ Window {
         function onCommandRequested(id) { window.dispatch(id) }
     }
 
+    // QA-STUDIO-001 KEY-010/CTL-018/019: an editable field, spin box, slider or combo that has
+    // the focus owns the arrow / Delete / Home / End / Escape keys; the global canvas shortcuts
+    // (nudge, delete, restack) must not fire behind it.
+    readonly property bool keyboardOwnedByControl: {
+        const item = window.activeFocusItem
+        return !!item && (item.cursorPosition !== undefined || item.stepSize !== undefined ||
+                          item.popup !== undefined)
+    }
+
     Shortcut { sequence: "Ctrl+K"; onActivated: palette.openList() }
     Shortcut { sequence: "Ctrl+J"; onActivated: companionPanel.openPanel() }
     Shortcut { sequence: "Ctrl+,"; onActivated: prefsDialog.openDialog() }
@@ -229,25 +238,34 @@ Window {
     Shortcut { sequence: "Ctrl+Y"; enabled: studio.canRedo; onActivated: studio.redo() }
     Shortcut { sequence: "Ctrl+Shift+Z"; enabled: studio.canRedo; onActivated: studio.redo() }
     // Arrow keys nudge the selection by 1 mm (Shift: 5 mm); Y is up in model space.
-    Shortcut { sequence: "Left"; enabled: studio.hasSelection; onActivated: studio.moveSelection(-1, 0) }
-    Shortcut { sequence: "Right"; enabled: studio.hasSelection; onActivated: studio.moveSelection(1, 0) }
-    Shortcut { sequence: "Up"; enabled: studio.hasSelection; onActivated: studio.moveSelection(0, 1) }
-    Shortcut { sequence: "Down"; enabled: studio.hasSelection; onActivated: studio.moveSelection(0, -1) }
-    Shortcut { sequence: "Shift+Left"; enabled: studio.hasSelection; onActivated: studio.moveSelection(-5, 0) }
-    Shortcut { sequence: "Shift+Right"; enabled: studio.hasSelection; onActivated: studio.moveSelection(5, 0) }
-    Shortcut { sequence: "Shift+Up"; enabled: studio.hasSelection; onActivated: studio.moveSelection(0, 5) }
-    Shortcut { sequence: "Shift+Down"; enabled: studio.hasSelection; onActivated: studio.moveSelection(0, -5) }
+    Shortcut { sequence: "Left"; enabled: studio.hasSelection && !window.keyboardOwnedByControl; onActivated: studio.moveSelection(-1, 0) }
+    Shortcut { sequence: "Right"; enabled: studio.hasSelection && !window.keyboardOwnedByControl; onActivated: studio.moveSelection(1, 0) }
+    Shortcut { sequence: "Up"; enabled: studio.hasSelection && !window.keyboardOwnedByControl; onActivated: studio.moveSelection(0, 1) }
+    Shortcut { sequence: "Down"; enabled: studio.hasSelection && !window.keyboardOwnedByControl; onActivated: studio.moveSelection(0, -1) }
+    Shortcut { sequence: "Shift+Left"; enabled: studio.hasSelection && !window.keyboardOwnedByControl; onActivated: studio.moveSelection(-5, 0) }
+    Shortcut { sequence: "Shift+Right"; enabled: studio.hasSelection && !window.keyboardOwnedByControl; onActivated: studio.moveSelection(5, 0) }
+    Shortcut { sequence: "Shift+Up"; enabled: studio.hasSelection && !window.keyboardOwnedByControl; onActivated: studio.moveSelection(0, 5) }
+    Shortcut { sequence: "Shift+Down"; enabled: studio.hasSelection && !window.keyboardOwnedByControl; onActivated: studio.moveSelection(0, -5) }
     Shortcut { sequence: "Ctrl+O"; enabled: !studio.busy; onActivated: window.openProject() }
     Shortcut { sequence: "F"; onActivated: { if (canvas) canvas.fitDesign() } }
     Shortcut { sequence: studio.selectionTool.shortcut; onActivated: { if (canvas) canvas.panMode = false } }
     Shortcut { sequence: studio.panTool.shortcut; onActivated: { if (canvas) canvas.panMode = true } }
-    Shortcut { sequence: "Escape"; onActivated: { editor.eyedropper = false; if (!canvas || !canvas.cancelGesture()) studio.clearSelection() } }
+    // Escape inside a field only leaves the field; it must not silently drop the selection.
+    Shortcut {
+        sequence: "Escape"
+        onActivated: {
+            if (window.keyboardOwnedByControl) { window.activeFocusItem.focus = false; return }
+            editor.eyedropper = false
+            if (!canvas || !canvas.cancelGesture()) studio.clearSelection()
+        }
+    }
     Shortcut { sequence: "Ctrl+A"; onActivated: editor.selectAll() }
     Shortcut { sequence: "Ctrl+I"; onActivated: editor.invertSelection() }
     // One focus-independent handler: selected path nodes first, otherwise the selected objects.
     Shortcut {
         sequence: "Delete"
-        enabled: studio.hasSelection || (toolController !== null && toolController.selectedNodeCount > 0)
+        enabled: !window.keyboardOwnedByControl &&
+                 (studio.hasSelection || (toolController !== null && toolController.selectedNodeCount > 0))
         onActivated: window.deleteSelection()
     }
     Shortcut { sequence: "Ctrl+D"; enabled: studio.hasSelection; onActivated: editor.duplicate(5) }
@@ -257,10 +275,10 @@ Window {
     Shortcut { sequence: "Ctrl+Shift+R"; enabled: studio.hasSelection; onActivated: editor.rotate90(false) }
     Shortcut { sequence: "Ctrl+Shift+H"; enabled: studio.hasSelection; onActivated: editor.mirror(true) }
     Shortcut { sequence: "Ctrl+Shift+V"; enabled: studio.hasSelection; onActivated: editor.mirror(false) }
-    Shortcut { sequence: "PgUp"; enabled: studio.hasSelection; onActivated: editor.stack("forward") }
-    Shortcut { sequence: "PgDown"; enabled: studio.hasSelection; onActivated: editor.stack("backward") }
-    Shortcut { sequence: "End"; enabled: studio.hasSelection; onActivated: editor.stack("front") }
-    Shortcut { sequence: "Home"; enabled: studio.hasSelection; onActivated: editor.stack("back") }
+    Shortcut { sequence: "PgUp"; enabled: studio.hasSelection && !window.keyboardOwnedByControl; onActivated: editor.stack("forward") }
+    Shortcut { sequence: "PgDown"; enabled: studio.hasSelection && !window.keyboardOwnedByControl; onActivated: editor.stack("backward") }
+    Shortcut { sequence: "End"; enabled: studio.hasSelection && !window.keyboardOwnedByControl; onActivated: editor.stack("front") }
+    Shortcut { sequence: "Home"; enabled: studio.hasSelection && !window.keyboardOwnedByControl; onActivated: editor.stack("back") }
     Shortcut { sequence: "I"; enabled: studio.hasSelection; onActivated: editor.eyedropper = !editor.eyedropper }
     // Ctrl+1..4 (changement d'espace) : Shortcut de SpaceHost.
 
