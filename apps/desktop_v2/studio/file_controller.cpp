@@ -761,7 +761,22 @@ void FileController::exportMachine(const QUrl& url, const QVariantMap& options) 
     runMachineExport(path);
 }
 
-void FileController::runMachineExport(const std::filesystem::path& path) {
+void FileController::confirmMachineExport(bool proceed) {
+    if (!pendingExport_) {
+        return;
+    }
+    const auto path = *pendingExport_;
+    const auto revision = pendingExportRevision_;
+    pendingExport_.reset();
+    if (!proceed) {
+        setMessage(QStringLiteral("Export annulé."));
+        return;
+    }
+    // Do not let approval for an old revision bypass checks on a modified design.
+    runMachineExport(path, studio_.session().revision() == revision);
+}
+
+void FileController::runMachineExport(const std::filesystem::path& path, bool confirmed) {
     const auto snapshot = studio_.session().snapshot();
     const std::string extension = [&] {
         auto e = path.extension().string();
@@ -772,6 +787,17 @@ void FileController::runMachineExport(const std::filesystem::path& path) {
                                [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         return e;
     }();
+    if (!confirmed) {
+        const auto check = checkExport(*snapshot, extension);
+        if (check.ok && (!check.fitsHoop || !check.fitsMachineField || !check.formatAccepted)) {
+            pendingExport_ = path;
+            pendingExportRevision_ = studio_.session().revision();
+            setMessage(QStringLiteral("Export à confirmer : le motif présente des limites."));
+            emit exportConfirmationRequested(fromUtf8(check.summary()));
+            return;
+        }
+    }
+    pendingExport_.reset();
     const QString name = fromPath(path.filename());
     setMessage(QStringLiteral("Export de %1 en cours…").arg(name));
     runJob<MachineOutcome>(
