@@ -31,8 +31,44 @@ jobs:
         shell: pwsh
         run: |
           git clone https://github.com/microsoft/vcpkg.git "$env:RUNNER_TEMP/vcpkg"
-          & "$env:RUNNER_TEMP/vcpkg/bootstrap-vcpkg.bat" -disableMetrics
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to clone vcpkg' }
+          # GitHub release assets intermittently return 502/504. Retry only the download,
+          # never the build or the tests, and fail if the tool is still unavailable.
+          $ready = $false
+          for ($attempt = 1; $attempt -le 5; $attempt++) {
+            try {
+              & "$env:RUNNER_TEMP/vcpkg/bootstrap-vcpkg.bat" -disableMetrics
+              if ($LASTEXITCODE -eq 0 -and (Test-Path "$env:RUNNER_TEMP/vcpkg/vcpkg.exe")) {
+                $ready = $true
+                break
+              }
+            } catch {
+              Write-Warning "vcpkg bootstrap attempt $attempt failed: $_"
+            }
+            if ($attempt -lt 5) { Start-Sleep -Seconds (10 * $attempt) }
+          }
+          if (-not $ready) { throw 'vcpkg bootstrap failed after 5 attempts' }
           "VCPKG_ROOT=$env:RUNNER_TEMP/vcpkg" | Out-File -Append -FilePath $env:GITHUB_ENV
+
+      - name: Prefetch Boost CMake from official codeload (best effort)
+        shell: pwsh
+        run: |
+          $downloads = Join-Path $env:RUNNER_TEMP 'vcpkg/downloads'
+          New-Item -ItemType Directory -Force -Path $downloads | Out-Null
+          $target = Join-Path $downloads 'boostorg-cmake-boost-1.91.0.tar.gz'
+          $partial = "$target.part"
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            try {
+              Invoke-WebRequest -Uri 'https://codeload.github.com/boostorg/cmake/tar.gz/refs/tags/boost-1.91.0' -OutFile $partial -TimeoutSec 90
+              Move-Item -Force $partial $target
+              break
+            } catch {
+              Remove-Item -ErrorAction SilentlyContinue $partial
+              Write-Warning "Boost archive prefetch attempt $attempt failed: $_"
+              if ($attempt -lt 3) { Start-Sleep -Seconds (10 * $attempt) }
+            }
+          }
+          # vcpkg independently verifies the archive's SHA512 before using it.
 
       - name: Configure and build Release
         shell: pwsh
@@ -191,6 +227,21 @@ jobs:
           git clone https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/vcpkg"
           "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
           echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+
+      - name: Prefetch Boost CMake from official codeload (best effort)
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/vcpkg/downloads"
+          target="$RUNNER_TEMP/vcpkg/downloads/boostorg-cmake-boost-1.91.0.tar.gz"
+          if curl --fail --location --retry 5 --retry-all-errors --max-time 90 \
+            --output "$target.part" \
+            'https://codeload.github.com/boostorg/cmake/tar.gz/refs/tags/boost-1.91.0'; then
+            mv "$target.part" "$target"
+          else
+            rm -f "$target.part"
+            echo '::warning::Boost archive prefetch failed; vcpkg will try the original URL'
+          fi
+          # vcpkg verifies the SHA512 hash itself; this does not bypass integrity checks.
 
       - name: System dependencies (OpenCV via vcpkg)
         run: sudo apt-get update && sudo apt-get install -y nasm
