@@ -84,7 +84,8 @@ Item {
             objectName: "imageToolbar"
             x: 12
             y: 12
-            width: toolRow.implicitWidth + 16
+            width: Math.min(parent.width - 24, toolRow.implicitWidth + 16)
+            clip: true
             height: Theme.controlHeight + 12
             radius: Theme.radius
             color: Theme.panel
@@ -92,7 +93,9 @@ Item {
             visible: root.hasImage
             RowLayout {
                 id: toolRow
-                anchors.centerIn: parent
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: parent.left
+                anchors.leftMargin: 8
                 spacing: 4
                 Repeater {
                     model: [
@@ -173,7 +176,7 @@ Item {
             anchors.top: parent.top
             anchors.bottom: parent.bottom
             anchors.topMargin: 100
-            width: 340
+            width: Math.min(340, Math.max(180, parent.width * 0.38))
             color: Theme.panel
             border.color: Theme.border
             Controls.ScrollView {
@@ -182,7 +185,7 @@ Item {
                 contentWidth: availableWidth
                 clip: true
                 ColumnLayout {
-                    width: sidePanel.width - 28
+                    width: Math.max(0, sidePanel.width - 28)
                     spacing: 10
                     Loader {
                         Layout.fillWidth: true
