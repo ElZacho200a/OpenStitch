@@ -38,6 +38,11 @@ bool CompositeCommand::affectsEmbroidery() const {
                        [](const auto& command) { return command->affectsEmbroidery(); });
 }
 
+bool CompositeCommand::affectsSegmentation() const {
+    return std::any_of(commands_.begin(), commands_.end(),
+                       [](const auto& command) { return command->affectsSegmentation(); });
+}
+
 bool CompositeCommand::mergeWith(const ICommand& newer) {
     const auto* other = dynamic_cast<const CompositeCommand*>(&newer);
     if (other == nullptr || mergeKey_.empty() || other->mergeKey_ != mergeKey_ ||

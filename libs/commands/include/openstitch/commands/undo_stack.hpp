@@ -33,6 +33,9 @@ public:
     // de retour en arrière.
     [[nodiscard]] std::uint64_t version() const { return version_; }
     [[nodiscard]] bool lastChangeAffectsEmbroidery() const { return lastChangeAffectsEmbroidery_; }
+    [[nodiscard]] bool lastChangeAffectsSegmentation() const {
+        return lastChangeAffectsSegmentation_;
+    }
 
     // Marqueur « document propre » (état enregistré). markClean() mémorise la
     // position courante ; isClean() reste vrai après undo+redo qui y reviennent
@@ -83,6 +86,7 @@ private:
     std::chrono::steady_clock::time_point lastExecute_{};
     bool mergeable_{false};
     bool lastChangeAffectsEmbroidery_{true};
+    bool lastChangeAffectsSegmentation_{true};
     std::vector<std::unique_ptr<ICommand>> undo_;
     std::vector<std::unique_ptr<ICommand>> redo_;
     // Taille de undo_ à l'état propre ; -1 = état propre inatteignable.

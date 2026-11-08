@@ -39,6 +39,7 @@ public:
     void revert(document::Project& project) override;
     [[nodiscard]] std::string name() const override { return name_; }
     [[nodiscard]] bool affectsEmbroidery() const override;
+    [[nodiscard]] bool affectsSegmentation() const override;
 
     // Fusion d'annulation opt-in (cf. ICommand::mergeKey) : deux composites de
     // même clé et de même taille fusionnent sous-commande par sous-commande,
