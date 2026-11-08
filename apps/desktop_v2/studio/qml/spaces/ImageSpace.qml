@@ -162,6 +162,9 @@ Item {
         }
 
         ViewPanel {
+
+
+            active: root.active
             objectName: "viewHub"
             anchors.fill: parent
             canvasItem: spaceCanvas
