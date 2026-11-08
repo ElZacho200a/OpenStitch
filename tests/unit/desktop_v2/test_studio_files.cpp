@@ -189,8 +189,9 @@ void StudioFilesTest::fileMenuStaysReachableInAShortWindow() {
     auto* menu = rig.window->findChild<QObject*>(QStringLiteral("fileMenu"));
     QVERIFY(button);
     QVERIFY(menu);
-    QTest::mouseClick(rig.window, Qt::LeftButton, Qt::NoModifier,
-                      button->mapToScene(QPointF(button->width() / 2, button->height() / 2)).toPoint());
+    QTest::mouseClick(
+        rig.window, Qt::LeftButton, Qt::NoModifier,
+        button->mapToScene(QPointF(button->width() / 2, button->height() / 2)).toPoint());
     QTRY_VERIFY_WITH_TIMEOUT(menu->property("visible").toBool(), 3'000);
     QTest::qWait(100);
     const double top = menu->property("y").toDouble();
