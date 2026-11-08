@@ -221,7 +221,12 @@ void StudioFilesTest::comboPopupOpensAboveAtWindowBottom() {
 
     auto* list = popup->property("contentItem").value<QQuickItem*>();
     QVERIFY(list);
-    // The item is displayed above the field, and it must remain physically clickable.
+    // ComboBox opens the list scrolled to its current selection (index 4 here).
+    // Explicitly scroll to the first delegate before clicking it: a fixed click
+    // near the top otherwise selects whichever item happens to be visible there.
+    QVERIFY(QMetaObject::invokeMethod(list, "positionViewAtBeginning"));
+    QTRY_VERIFY_WITH_TIMEOUT(qAbs(list->property("contentY").toDouble()) < 1.0, 3'000);
+    // The first item must remain physically clickable even when the popup flips above.
     QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier,
                       list->mapToScene(QPointF(24.0, 14.0)).toPoint());
     QTRY_COMPARE_WITH_TIMEOUT(combo->property("currentIndex").toInt(), 0, 3'000);
