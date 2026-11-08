@@ -12,12 +12,16 @@ Result<SimulationMarks> simulationMarks(const document::Project& project) {
     if (!sequence) {
         return std::unexpected(sequence.error());
     }
+    return simulationMarks(*sequence);
+}
+
+SimulationMarks simulationMarks(const stitch::StitchSequence& sequence) {
     SimulationMarks marks;
-    marks.total = sequence->commands.size();
+    marks.total = sequence.commands.size();
     ObjectId current{};
     bool first = true;
-    for (std::size_t i = 0; i < sequence->commands.size(); ++i) {
-        const auto& c = sequence->commands[i];
+    for (std::size_t i = 0; i < sequence.commands.size(); ++i) {
+        const auto& c = sequence.commands[i];
         if (c.type == stitch::CommandType::ColorChange) {
             marks.colours.push_back(i + 1);
             continue;
