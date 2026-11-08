@@ -3,6 +3,7 @@
 
 #include <QFile>
 #include <QSaveFile>
+#include <algorithm>
 
 #include "openstitch/project_ops/color_registration.hpp"
 
@@ -188,11 +189,21 @@ bool PullController::compare() {
     return c.ok;
 }
 
+bool PullController::registrationStale() const {
+    return registrationRevision_ && *registrationRevision_ != studio_.session().revision();
+}
+
+bool PullController::canExportCompensated() const {
+    return !compensatedDst_.empty() && !registrationStale();
+}
+
 void PullController::predictRegistration(double strength) {
     if (busy_) {
         return;
     }
+    strength = std::clamp(strength, 0.0, 1.0);
     const auto snapshot = studio_.session().snapshot();
+    const auto revision = studio_.session().revision();
     busy_ = true;
     emit changed();
     project_ops::ColorRegistrationOptions options;
@@ -203,10 +214,12 @@ void PullController::predictRegistration(double strength) {
         [snapshot, options](const TaskContext&) {
             return project_ops::predict_color_registration(*snapshot, options);
         },
-        [this](Result<project_ops::ColorRegistrationReport>&& result) {
+        [this, revision](Result<project_ops::ColorRegistrationReport>&& result) {
             busy_ = false;
             if (!result) {
                 registration_ = {};
+                compensatedDst_.clear();
+                registrationRevision_.reset();
                 say(false, q(result.error().message));
             } else {
                 registration_ = {
@@ -214,6 +227,7 @@ void PullController::predictRegistration(double strength) {
                     {QStringLiteral("compensated"), !result->compensated.commands.empty()},
                     {QStringLiteral("dstBytes"), static_cast<int>(result->compensated_dst.size())}};
                 compensatedDst_ = std::move(result->compensated_dst);
+                registrationRevision_ = revision;
                 say(true, QStringLiteral("Décalage entre couleurs prédit (estimation non "
                                          "calibrée)."));
             }
@@ -222,6 +236,11 @@ void PullController::predictRegistration(double strength) {
 }
 
 bool PullController::exportCompensatedDst(const QString& path) {
+    if (registrationStale()) {
+        say(false, QStringLiteral("Le motif a changé depuis la prédiction : relancez-la avant "
+                                  "d'exporter."));
+        return false;
+    }
     if (compensatedDst_.empty()) {
         say(false, QStringLiteral("Aucune séquence compensée : lancez une prédiction avec "
                                   "contre-compensation."));

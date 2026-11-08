@@ -24,7 +24,7 @@ Controls.ComboBox {
         text: control.textRole ? (Array.isArray(control.model) ? modelData[control.textRole]
                                                                : model[control.textRole])
                                : modelData
-        width: control.width
+        width: control.popup.availableWidth
         height: Math.max(28, Math.round(Theme.controlHeight * 0.75))
         highlighted: control.highlightedIndex === index
         padding: 8
@@ -77,10 +77,31 @@ Controls.ComboBox {
     }
 
     popup: Controls.Popup {
-        y: control.height + 2
-        width: control.width
-        implicitHeight: Math.min(contentItem.implicitHeight + 2, 320)
+        id: dropdown
+        // Position in window coordinates, not inside a clipped inspector/Flickable.
+        // The popup must remain readable and clickable close to any window edge.
+        parent: Controls.Overlay.overlay
+        readonly property real edgeMargin: 8
+        readonly property point fieldOrigin: parent ? control.mapToItem(parent, 0, 0) : Qt.point(0, 0)
+        x: parent ? Math.max(edgeMargin,
+                             Math.min(fieldOrigin.x, parent.width - width - edgeMargin)) : 0
+        y: {
+            if (!parent)
+                return control.height + 2
+            const below = fieldOrigin.y + control.height + 2
+            const above = fieldOrigin.y - height - 2
+            if (below + height <= parent.height - edgeMargin)
+                return below
+            if (above >= edgeMargin)
+                return above
+            return Math.max(edgeMargin, Math.min(below, parent.height - height - edgeMargin))
+        }
+        width: parent ? Math.min(Math.max(control.width, 220),
+                                  Math.max(1, parent.width - 2 * edgeMargin)) : control.width
+        implicitHeight: Math.min(contentItem.implicitHeight + 2, 320,
+                                  parent ? Math.max(32, parent.height - 2 * edgeMargin) : 320)
         padding: 1
+        closePolicy: Controls.Popup.CloseOnEscape | Controls.Popup.CloseOnPressOutside
         contentItem: ListView {
             clip: true
             implicitHeight: contentHeight

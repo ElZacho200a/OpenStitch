@@ -96,9 +96,15 @@ Item {
     }
 
     component Entry: StudioButton {
+        id: entry
         Layout.fillWidth: true
         quiet: true
-        onClicked: menu.close()
+        // Keep closing independent of each entry's own onClicked action. An inherited
+        // handler alone is fragile when the caller supplies another handler.
+        Connections {
+            target: entry
+            function onClicked() { menu.close() }
+        }
     }
 
     component Label: Text {
@@ -199,7 +205,7 @@ Item {
         background: Rectangle { color: Theme.panel; radius: Theme.radius; border.color: Theme.border }
         contentItem: ColumnLayout {
             spacing: 2
-            Entry { text: qsTr("Nouveau"); shortcutLabel: "Ctrl+N"; onClicked: panel.requestNew() }
+            Entry { objectName: "newFileMenuEntry"; text: qsTr("Nouveau"); shortcutLabel: "Ctrl+N"; onClicked: panel.requestNew() }
             Entry { text: qsTr("Ouvrir…"); shortcutLabel: "Ctrl+O"; onClicked: panel.requestOpen() }
             SectionLabel { text: qsTr("RÉCENTS"); visible: panel.ctl && panel.ctl.recent.length > 0 }
             Repeater {

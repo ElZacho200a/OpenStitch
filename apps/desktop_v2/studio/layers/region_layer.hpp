@@ -55,6 +55,7 @@ private:
     QSGOpacityNode* highlightOpacity_;
     std::uint64_t fillRevision_{0};
     std::uint64_t highlightRevision_{0};
+    QRectF displayedRect_;
     bool hasFill_{false};
     bool hasHighlight_{false};
 };
