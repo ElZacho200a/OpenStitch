@@ -38,7 +38,17 @@ jobs:
         shell: pwsh
         run: |
           $env:QT_ROOT = $env:QT_ROOT_DIR
-          ./scripts/build.ps1 -SkipBootstrap -Configuration Release
+          # vcpkg downloads can fail transiently (GitHub archive HTTP 503/504).
+          # Retry the complete configure/build command; never skip compilation or tests.
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            ./scripts/build.ps1 -SkipBootstrap -Configuration Release
+            if ($LASTEXITCODE -eq 0) { break }
+            if ($attempt -eq 3) {
+              throw "Windows Release build failed after 3 attempts (exit $LASTEXITCODE)"
+            }
+            Write-Warning "Release build attempt $attempt failed; retrying after transient dependency download outage..."
+            Start-Sleep -Seconds 20
+          }
 
       # Disponible des la compilation, meme si les tests suivants echouent (build Release seul).
       # La publication stable reste conditionnee au succes de tous les jobs.
