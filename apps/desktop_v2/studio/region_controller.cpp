@@ -163,9 +163,8 @@ void RegionController::refresh() {
 
 void RegionController::selectRegion(double id, const QString& mode) {
     const auto region = idOf(id);
-    const auto& project = studio_.session().project();
-    const auto ids = allRegionIds(project);
-    if (std::find(ids.begin(), ids.end(), region) == ids.end()) {
+    const auto& seg = studio_.session().project().segmentation;
+    if (!seg || region == 0 || !seg->find(RegionId{region})) {
         return;
     }
     const auto found = std::find(selected_.begin(), selected_.end(), region);
@@ -180,6 +179,8 @@ void RegionController::selectRegion(double id, const QString& mode) {
             selected_.push_back(region);
         }
     } else {
+        if (selected_.size() == 1 && selected_.front() == region)
+            return;
         selected_.assign(1, region);
     }
     // La sélection ne change pas les données de segmentation : le canevas se charge du
@@ -212,7 +213,6 @@ void RegionController::selectSameColor() {
         }
     }
     selected_ = std::move(all);
-    scheduleRefresh();
     emit selectionChanged();
 }
 
@@ -221,25 +221,23 @@ void RegionController::selectNeighbours() {
         return;
     }
     selected_ = neighboursOfSet(studio_.session().project(), selected_);
-    scheduleRefresh();
     emit selectionChanged();
 }
 
 void RegionController::invertSelection() {
     selected_ = invertRegionSet(studio_.session().project(), selected_);
-    scheduleRefresh();
     emit selectionChanged();
 }
 
 void RegionController::selectAll() {
     selected_ = allRegionIds(studio_.session().project());
-    scheduleRefresh();
     emit selectionChanged();
 }
 
 void RegionController::clearSelection() {
+    if (selected_.empty())
+        return;
     selected_.clear();
-    scheduleRefresh();
     emit selectionChanged();
 }
 
