@@ -773,7 +773,12 @@ void FileController::confirmMachineExport(bool proceed) {
         return;
     }
     // Do not let approval for an old revision bypass checks on a modified design.
-    runMachineExport(path, studio_.session().revision() == revision);
+    if (studio_.session().revision() != revision) {
+        setMessage(QStringLiteral("Le motif a changé : relancez l'export pour vérifier les limites."),
+                   true);
+        return;
+    }
+    runMachineExport(path, true);
 }
 
 void FileController::runMachineExport(const std::filesystem::path& path, bool confirmed) {
