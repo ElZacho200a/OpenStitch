@@ -245,19 +245,36 @@ Item {
 
                 // A single inspector surface: layer management and editing actions no
                 // longer compete for vertical space or obscure the object tree.
-                Controls.TabBar {
+                Rectangle {
                     id: vectorInspectorTabs
                     objectName: "vectorInspectorTabs"
+                    property int currentIndex: 0
                     Layout.fillWidth: true
-                    currentIndex: 0
-                    background: Rectangle { color: Theme.panel }
-                    Controls.TabButton {
-                        text: qsTr("Calques")
-                        Accessible.name: qsTr("Afficher les calques et les objets")
-                    }
-                    Controls.TabButton {
-                        text: qsTr("Édition")
-                        Accessible.name: qsTr("Afficher les opérations de sélection et d'édition")
+                    Layout.preferredHeight: Theme.controlHeight + 12
+                    color: Theme.panel
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        spacing: 6
+                        StudioButton {
+                            objectName: "vectorLayersTab"
+                            Layout.fillWidth: true
+                            text: qsTr("Calques")
+                            tooltip: qsTr("Afficher les calques et les objets")
+                            checkable: true
+                            checked: vectorInspectorTabs.currentIndex === 0
+                            onClicked: vectorInspectorTabs.currentIndex = 0
+                        }
+                        StudioButton {
+                            objectName: "vectorEditTab"
+                            Layout.fillWidth: true
+                            text: qsTr("Édition")
+                            tooltip: qsTr("Afficher les opérations de sélection et d'édition")
+                            checkable: true
+                            checked: vectorInspectorTabs.currentIndex === 1
+                            onClicked: vectorInspectorTabs.currentIndex = 1
+                        }
                     }
                 }
                 StackLayout {
