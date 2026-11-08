@@ -34,6 +34,10 @@ class PullController : public QObject {
     Q_PROPERTY(QVariantMap fit READ fit NOTIFY changed)
     Q_PROPERTY(QVariantMap comparison READ comparison NOTIFY changed)
     Q_PROPERTY(QVariantMap registration READ registration NOTIFY changed)
+    // Le décalage prédit décrit UNE révision : après toute modification il est périmé et le DST
+    // compensé n'est plus exportable.
+    Q_PROPERTY(bool registrationStale READ registrationStale NOTIFY changed)
+    Q_PROPERTY(bool canExportCompensated READ canExportCompensated NOTIFY changed)
     Q_PROPERTY(QString limits READ limits CONSTANT)
     Q_PROPERTY(bool busy READ busy NOTIFY changed)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
@@ -55,6 +59,8 @@ public:
     [[nodiscard]] QVariantMap fit() const;
     [[nodiscard]] QVariantMap comparison() const { return comparison_; }
     [[nodiscard]] QVariantMap registration() const { return registration_; }
+    [[nodiscard]] bool registrationStale() const;
+    [[nodiscard]] bool canExportCompensated() const;
     [[nodiscard]] QString limits() const;
     [[nodiscard]] bool busy() const { return busy_; }
     [[nodiscard]] QString message() const { return message_; }
@@ -92,6 +98,7 @@ private:
     QVariantMap comparison_;
     QVariantMap registration_;
     std::vector<std::uint8_t> compensatedDst_;
+    std::optional<std::uint64_t> registrationRevision_;
     bool busy_{false};
     QString message_;
     bool ok_{true};
