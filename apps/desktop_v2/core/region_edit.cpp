@@ -117,6 +117,7 @@ public:
             seg.find(hole.target)->pixel_count -= hole.pixels.size();
         }
     }
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
     [[nodiscard]] std::string name() const override { return "Boucher les petits trous"; }
 
 private:
@@ -156,6 +157,7 @@ public:
         }
         adjust(seg, -1);
     }
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
     [[nodiscard]] std::string name() const override {
         return erase_ ? "Effacer au pinceau (région)" : "Peindre une région au pinceau";
     }
