@@ -116,17 +116,19 @@ private:
                                      15'000);
         }
     }
-    // Le seul canevas instancié (échoue s'il y en a deux).
+    // Les canevas déjà visités sont mis en cache, mais UN SEUL reste visible.
     GpuCanvas* onlyCanvas(Rig& rig) {
-        GpuCanvas* found = nullptr;
-        [&] {
-            QTRY_COMPARE_WITH_TIMEOUT(rig.window->findChildren<GpuCanvas*>().size(), 1, 5'000);
-        }();
-        const auto all = rig.window->findChildren<GpuCanvas*>();
-        if (all.size() == 1) {
-            found = all.front();
-        }
-        return found;
+        const auto visible = [&] {
+            QList<GpuCanvas*> out;
+            for (auto* canvas : rig.window->findChildren<GpuCanvas*>()) {
+                if (canvas->isVisible())
+                    out.push_back(canvas);
+            }
+            return out;
+        };
+        [&] { QTRY_COMPARE_WITH_TIMEOUT(visible().size(), 1, 5'000); }();
+        const auto all = visible();
+        return all.size() == 1 ? all.front() : nullptr;
     }
     QVariantMap spaceMap(Rig& rig, const QString& id) { return rig.workspace->space(id); }
 
@@ -141,7 +143,7 @@ private slots:
                                                    QStringLiteral("Provided by the application"));
     }
 
-    void fourSpacesAndOneCanvasAtATime() {
+    void fourSpacesAndOneVisibleCanvas() {
         Rig rig;
         open(rig);
         const auto spaces = rig.workspace->spaces();
@@ -155,6 +157,7 @@ private slots:
         QCOMPARE(rig.workspace->current(), QStringLiteral("points")); // comportement historique
         QVERIFY(onlyCanvas(rig));
         QCOMPARE(onlyCanvas(rig)->objectName(), QStringLiteral("studioCanvas"));
+        GpuCanvas* initialPoints = onlyCanvas(rig);
         for (const auto& id : {QStringLiteral("image"), QStringLiteral("segmentation"),
                                QStringLiteral("vector"), QStringLiteral("points")}) {
             rig.workspace->setCurrent(id);
@@ -164,6 +167,10 @@ private slots:
                     id == QStringLiteral("points"));
         }
         QVERIFY(rig.window->findChild<QObject*>(QStringLiteral("pointsSpace")));
+        // Les quatre scènes visitées sont gardées en mémoire, mais une seule est visible.
+        QCOMPARE(rig.window->findChildren<GpuCanvas*>().size(), 4);
+        rig.workspace->setCurrent(QStringLiteral("points"));
+        QCOMPARE(onlyCanvas(rig), initialPoints);
         // Le canevas de l'espace Vecteurs est vide de points (couche « stitches » éteinte).
         rig.workspace->setCurrent(QStringLiteral("vector"));
         QVERIFY(!onlyCanvas(rig)->layers().value("stitches").toBool());

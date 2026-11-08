@@ -17,7 +17,7 @@ namespace openstitch::thread_palette::detail {
 ThreadChart make_isacord_40_chart() {
     ThreadChart chart;
     chart.chart_id = "isacord_40";
-    chart.display_name = "Isacord 40";
+    chart.display_name = "Isacord 40 (DEMO - couleurs fictives)";
     chart.source_note = "DONNEES PLACEHOLDER -- a remplacer par le nuancier officiel transcrit "
                         "depuis https://www.isacord.com (fiche couleurs Isacord 40), voir "
                         "plan specs/plans/thread-palette-implementation.md section 4. Aucune "

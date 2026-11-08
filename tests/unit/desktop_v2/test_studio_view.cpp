@@ -19,6 +19,8 @@
 #include "file_controller.hpp"
 #include "gpu_canvas.hpp"
 #include "inspector_controller.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
+#include "openstitch/stitch_render/segments.hpp"
 #include "studio_controller.hpp"
 #include "thread_controller.hpp"
 #include "view_controller.hpp"
@@ -87,6 +89,8 @@ private slots:
     void zoomCommandsAndCalibration();
     void gridGuidesAndLayersPersist();
     void simulationNavigatesTheEffectiveSequence();
+    void simulationPrefixMatchesReferenceAtEveryPosition();
+    void metadataBatchDoesNotRebuildStitches();
     void threadPlanColorwaysAndSewingOrder();
     void diagnosticsDensityRiskAndOptimisation();
     void hoopsAndMachine();
@@ -207,6 +211,57 @@ void StudioViewTest::simulationNavigatesTheEffectiveSequence() {
     QCOMPARE(rig.canvas.overlays()->visibleSegments, CanvasOverlays::all);
     rig.view.setMachineSpm(50); // refused
     QCOMPARE(rig.view.machineSpm(), 800);
+}
+
+void StudioViewTest::simulationPrefixMatchesReferenceAtEveryPosition() {
+    Rig rig;
+    const auto& project = *rig.studio.scene()->project;
+    const auto sequence = stitch_generation::effective_sequence(project, TaskContext{});
+    QVERIFY(sequence.has_value());
+    QCOMPARE(rig.view.simTotal(), static_cast<int>(sequence->commands.size()));
+    rig.view.startSimulation();
+    for (std::size_t i = 0; i < sequence->commands.size(); ++i) {
+        rig.view.setSimPosition(static_cast<int>(i));
+        std::size_t reference = 0;
+        if (i > 0) {
+            const auto color = [](ObjectId) -> std::optional<std::array<std::uint8_t, 3>> {
+                return std::array<std::uint8_t, 3>{0, 0, 0};
+            };
+            reference = stitch_render::build_thread_segments(*sequence, i - 1, color).size();
+        }
+        QCOMPARE(rig.canvas.overlays()->visibleSegments, reference);
+    }
+}
+
+void StudioViewTest::metadataBatchDoesNotRebuildStitches() {
+    Rig rig;
+    const auto initial = rig.studio.scene();
+    QSignalSpy scenes(&rig.studio, &StudioController::sceneChanged);
+    const auto id = std::to_string(firstId);
+    const std::string start = R"({"schema":"openstitch.batch/1","operations":[{)";
+    const std::string end = "}]}";
+    const std::string rename =
+        start + R"("op":"rename","object":)" + id + R"(,"name":"Updated name")" + end;
+    const auto renamed = rig.session.applyBatch(rename, "Rename");
+    QVERIFY(renamed.committed);
+    QVERIFY(!rig.session.lastChangeAffectsEmbroidery());
+    QVERIFY(rig.studio.scene() == initial);
+    QCOMPARE(scenes.count(), 0);
+    QVERIFY(rig.session.undo());
+    QVERIFY(rig.studio.scene() == initial);
+    QVERIFY(rig.session.redo());
+    QVERIFY(rig.studio.scene() == initial);
+    QCOMPARE(scenes.count(), 0);
+
+    // A real change to the stitched result must still invalidate the scene.
+    const std::string hide =
+        start + R"("op":"set_visible","object":)" + id + R"(,"visible":false)" + end;
+    const auto hidden = rig.session.applyBatch(hide, "Hide");
+    QVERIFY(hidden.committed);
+    QVERIFY(rig.session.lastChangeAffectsEmbroidery());
+    QVERIFY(scenes.count() > 0);
+    QTRY_VERIFY_WITH_TIMEOUT(!rig.studio.busy() && rig.studio.scene(), 15'000);
+    QVERIFY(rig.studio.scene() != initial);
 }
 
 void StudioViewTest::threadPlanColorwaysAndSewingOrder() {
@@ -422,6 +477,11 @@ void StudioViewTest::mainQmlHostsEveryPanel() {
     // Panel "Fils".
     QVERIFY(press(window, "threadsPanelButton"));
     QCOMPARE(hub->property("openPanel").toString(), QStringLiteral("threads"));
+    // THR-003: fictional manufacturer charts must not be presented as production palettes.
+    auto* demoWarning = named(window, "demoChartWarning");
+    QVERIFY(demoWarning);
+    QTRY_VERIFY(demoWarning->isVisible());
+    QVERIFY(demoWarning->property("text").toString().contains(QStringLiteral("fictifs")));
     QTRY_VERIFY(named(window, "threadRow0") != nullptr);
     named(window, "colorwayNameField")->setProperty("text", QStringLiteral("Printemps"));
     QVERIFY(press(window, "colorwayAddButton"));
@@ -433,6 +493,22 @@ void StudioViewTest::mainQmlHostsEveryPanel() {
     // Panel "Analyse".
     QVERIFY(press(window, "analysisPanelButton"));
     QCOMPARE(hub->property("openPanel").toString(), QStringLiteral("analysis"));
+    // HOOP-001: the template selector must not pretend that the first library
+    // hoop (50x50) is the current 100x100 project hoop.
+    auto* activeHoop = named(window, "currentHoopSummary");
+    auto* hoopSelector = named(window, "hoopBox");
+    auto* applyHoop = named(window, "applyHoopButton");
+    QVERIFY(activeHoop);
+    QVERIFY(hoopSelector);
+    QVERIFY(applyHoop);
+    QTRY_VERIFY(activeHoop->property("text").toString().contains(QStringLiteral("100")));
+    QCOMPARE(hoopSelector->property("currentIndex").toInt(), -1);
+    QVERIFY(!applyHoop->isEnabled());
+    QVERIFY(hoopSelector->setProperty("currentIndex", 0));
+    QTRY_VERIFY(applyHoop->isEnabled());
+    QVERIFY(press(window, "applyHoopButton"));
+    QTRY_VERIFY(activeHoop->property("text").toString().contains(QStringLiteral("50")));
+
     QVERIFY(press(window, "diagnoseButton"));
     QTRY_VERIFY_WITH_TIMEOUT(analysis.diagnosticsReady(), 15'000);
     QVERIFY(press(window, "proposeButton"));

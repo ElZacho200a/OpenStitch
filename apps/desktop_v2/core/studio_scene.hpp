@@ -13,6 +13,7 @@
 
 #include "openstitch/core/task_control.hpp"
 #include "openstitch/document/project.hpp"
+#include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_render/segments.hpp"
 
 namespace openstitch::desktop_v2 {
@@ -40,6 +41,8 @@ struct StudioSegment {
 
 struct StudioSceneSnapshot {
     std::shared_ptr<const document::Project> project;
+    // One immutable effective sequence shared by scene rendering and simulation.
+    std::shared_ptr<const stitch::StitchSequence> effectiveSequence;
     std::uint64_t revision{0};
     std::size_t commandCount{0};
     double threadWidthMm{0.22};

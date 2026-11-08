@@ -46,13 +46,17 @@ ColumnLayout {
             anchors.margins: 2
             fillMode: Image.PreserveAspectFit
             cache: false
-            source: regionTools.hasSegmentation ? "image://prepare/regions?rev=" + imageTools.imageRevision + "_" + regionTools.regions.length + "_" + regionTools.selectedCount : ""
+            source: regionTools.hasSegmentation ? "image://prepare/regions?rev=" + regionTools.mapRevision : ""
             // Pixel de l'image de travail sous un point de la zone.
             function pixelAt(px, py) {
-                var sx = paintedWidth / Math.max(1, sourceSize.width)
+                // La miniature est bornée à 512 px : les clics restent exprimés
+                // dans les coordonnées de la vraie segmentation.
                 var ox = (width - paintedWidth) / 2
                 var oy = (height - paintedHeight) / 2
-                return { x: Math.floor((px - ox) / sx), y: Math.floor((py - oy) / sx) }
+                return {
+                    x: Math.floor((px - ox) / Math.max(1, paintedWidth) * regionTools.mapWidth),
+                    y: Math.floor((py - oy) / Math.max(1, paintedHeight) * regionTools.mapHeight)
+                }
             }
         }
         MouseArea {

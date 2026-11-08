@@ -32,12 +32,7 @@ bool DocumentSession::exists(const Target& target) const {
         if (!project_.segmentation) {
             return false;
         }
-        for (const RegionId r : segmentation::all_regions(*project_.segmentation)) {
-            if (r.value == target.id) {
-                return true;
-            }
-        }
-        return false;
+        return project_.segmentation->find(RegionId{target.id}) != nullptr;
     }
     return false;
 }
@@ -62,6 +57,8 @@ void DocumentSession::execute(std::unique_ptr<commands::ICommand> command) {
         return;
     }
     undo_.execute(std::move(command), project_);
+    lastChangeAffectsEmbroidery_ = undo_.lastChangeAffectsEmbroidery();
+    lastChangeAffectsSegmentation_ = undo_.lastChangeAffectsSegmentation();
     changed(ChangeKind::Edited);
 }
 
@@ -69,6 +66,8 @@ bool DocumentSession::undo() {
     if (!undo_.undo(project_)) {
         return false;
     }
+    lastChangeAffectsEmbroidery_ = undo_.lastChangeAffectsEmbroidery();
+    lastChangeAffectsSegmentation_ = undo_.lastChangeAffectsSegmentation();
     changed(ChangeKind::Undone);
     return true;
 }
@@ -77,6 +76,8 @@ bool DocumentSession::redo() {
     if (!undo_.redo(project_)) {
         return false;
     }
+    lastChangeAffectsEmbroidery_ = undo_.lastChangeAffectsEmbroidery();
+    lastChangeAffectsSegmentation_ = undo_.lastChangeAffectsSegmentation();
     changed(ChangeKind::Redone);
     return true;
 }
@@ -89,12 +90,20 @@ bool DocumentSession::navigateHistory(std::size_t position) {
     if (position == previous) {
         return true;
     }
+    bool affectsEmbroidery = false;
+    bool affectsSegmentation = false;
     while (undo_.position() > position) {
         undo_.undo(project_);
+        affectsEmbroidery |= undo_.lastChangeAffectsEmbroidery();
+        affectsSegmentation |= undo_.lastChangeAffectsSegmentation();
     }
     while (undo_.position() < position) {
         undo_.redo(project_);
+        affectsEmbroidery |= undo_.lastChangeAffectsEmbroidery();
+        affectsSegmentation |= undo_.lastChangeAffectsSegmentation();
     }
+    lastChangeAffectsEmbroidery_ = affectsEmbroidery;
+    lastChangeAffectsSegmentation_ = affectsSegmentation;
     changed(position < previous ? ChangeKind::Undone : ChangeKind::Redone);
     return true;
 }
@@ -116,8 +125,97 @@ DocumentSession::BatchResult DocumentSession::applyBatch(std::string_view batchJ
         return result;
     }
     auto after = std::make_shared<const document::Project>(std::move(work));
-    execute(std::make_unique<commands::ReplaceProjectCommand>(label, std::move(before),
-                                                              std::move(after)));
+    // Les opérations strictement en amont ou de métadonnées ne touchent pas aux
+    // points déjà générés. Un lot mixte contenant une opération inconnue reste
+    // conservateur : il invalide la géométrie.
+    const auto changesStitches = [](const std::string& op) {
+        if (op == "rename") {
+            return false;
+        }
+        if (op == "set_locked") {
+            return false;
+        }
+        if (op == "set_semantic") {
+            return false;
+        }
+        if (op == "set_source_image") {
+            return false;
+        }
+        if (op == "image_denoise") {
+            return false;
+        }
+        if (op == "segment_image") {
+            return false;
+        }
+        if (op == "seg_merge_colors") {
+            return false;
+        }
+        if (op == "seg_reduce_colors") {
+            return false;
+        }
+        if (op == "seg_clean_islands") {
+            return false;
+        }
+        if (op == "seg_merge_regions") {
+            return false;
+        }
+        if (op == "seg_remove_region") {
+            return false;
+        }
+        if (op == "seg_recolor_region") {
+            return false;
+        }
+        return true;
+    };
+    bool affectsStitches = false;
+    for (const auto& outcome : result.report.outcomes) {
+        if (!outcome.ok || changesStitches(outcome.op)) {
+            affectsStitches = true;
+            break;
+        }
+    }
+    // Only explicitly known non-segmentation operations can skip refreshing
+    // the region map. Unknown/mixed batches remain conservative.
+    const auto changesSegmentation = [](const std::string& op) {
+        if (op == "rename" || op == "set_locked" || op == "set_semantic") {
+            return false;
+        }
+        if (op == "set_color" || op == "set_visible" || op == "set_join") {
+            return false;
+        }
+        if (op == "set_connector" || op == "set_stitch_type") {
+            return false;
+        }
+        if (op == "set_params" || op == "set_order" || op == "optimize_order") {
+            return false;
+        }
+        if (op == "set_machine" || op == "set_finishing" || op == "set_canvas") {
+            return false;
+        }
+        if (op == "discard_overrides" || op == "set_design_points") {
+            return false;
+        }
+        if (op == "translate" || op == "rotate" || op == "scale") {
+            return false;
+        }
+        if (op == "mirror" || op == "duplicate_object" || op == "add_shape") {
+            return false;
+        }
+        if (op == "remove_object" || op == "directional_guides") {
+            return false;
+        }
+        return true;
+    };
+    bool affectsSegmentation = false;
+    for (const auto& outcome : result.report.outcomes) {
+        if (!outcome.ok || changesSegmentation(outcome.op)) {
+            affectsSegmentation = true;
+            break;
+        }
+    }
+    auto replacement = std::make_unique<commands::ReplaceProjectCommand>(
+        label, std::move(before), std::move(after), affectsStitches, affectsSegmentation);
+    execute(std::move(replacement));
     result.committed = true;
     return result;
 }
@@ -133,6 +231,8 @@ void DocumentSession::replaceProject(document::Project project, bool clean) {
     if (bridge_) {
         bridge_->reset(); // nouvelle session pour l'agent : l'ancienne est close
     }
+    lastChangeAffectsEmbroidery_ = true;
+    lastChangeAffectsSegmentation_ = true;
     changed(ChangeKind::Replaced);
 }
 

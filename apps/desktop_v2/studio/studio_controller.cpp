@@ -16,9 +16,17 @@ namespace openstitch::desktop_v2::studio {
 
 StudioController::StudioController(DocumentSession& session, QObject* parent)
     : QObject(parent), session_(session) {
+    lastNotifiedRevision_ = session_.revision();
     documentToken_ = session_.subscribe([this](ChangeKind kind) {
-        if (scene_ && scene_->revision == session_.revision()) {
-            emit changed(); // markSaved changes no render data, only the dirty flag.
+        // markSaved only changes the dirty flag. A segmentation edit changes the document
+        // revision but leaves the already generated stitch geometry valid.
+        if (lastNotifiedRevision_ == session_.revision()) {
+            emit changed();
+            return;
+        }
+        lastNotifiedRevision_ = session_.revision();
+        if (kind != ChangeKind::Replaced && !session_.lastChangeAffectsEmbroidery()) {
+            emit changed();
             return;
         }
         if (kind == ChangeKind::Replaced) {
@@ -207,8 +215,10 @@ void StudioController::rebuildScene() {
         [snapshot, revision](const TaskContext& task) {
             return build_studio_scene(snapshot, revision, task);
         },
-        [this, request, revision](Result<std::shared_ptr<const StudioSceneSnapshot>>&& result) {
-            if (request != request_ || revision != session_.revision()) {
+        [this, request](Result<std::shared_ptr<const StudioSceneSnapshot>>&& result) {
+            // Un changement de segmentation entre-temps ne rend PAS cette géométrie
+            // périmée. Seule une mutation des points relance et remplace la requête.
+            if (request != request_) {
                 return;
             }
             busy_ = false;

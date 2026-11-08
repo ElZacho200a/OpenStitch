@@ -117,6 +117,19 @@ Rectangle {
                     onClicked: panel.controller.removeChart(panel.chartId)
                 }
             }
+            Text {
+                objectName: "demoChartWarning"
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                visible: panel.controller && chartBox.currentIndex >= 0
+                         && chartBox.currentIndex < panel.controller.charts.length
+                         && panel.controller.charts[chartBox.currentIndex].source.indexOf("DONNEES PLACEHOLDER") === 0
+                text: qsTr("Nuancier de démonstration : noms, références et couleurs fictifs. "
+                           + "Ne pas l'utiliser pour choisir des fils réels ; importez un nuancier vérifié.")
+                color: Theme.warning
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallSize
+            }
             RowLayout {
                 Layout.fillWidth: true
                 StudioTextField {

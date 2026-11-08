@@ -761,7 +761,26 @@ void FileController::exportMachine(const QUrl& url, const QVariantMap& options) 
     runMachineExport(path);
 }
 
-void FileController::runMachineExport(const std::filesystem::path& path) {
+void FileController::confirmMachineExport(bool proceed) {
+    if (!pendingExport_) {
+        return;
+    }
+    const auto path = *pendingExport_;
+    const auto revision = pendingExportRevision_;
+    pendingExport_.reset();
+    if (!proceed) {
+        setMessage(QStringLiteral("Export annulé."));
+        return;
+    }
+    // Do not let approval for an old revision bypass checks on a modified design.
+    if (studio_.session().revision() != revision) {
+        setMessage(QStringLiteral("Le motif a changé : relancez l'export."), true);
+        return;
+    }
+    runMachineExport(path, true);
+}
+
+void FileController::runMachineExport(const std::filesystem::path& path, bool confirmed) {
     const auto snapshot = studio_.session().snapshot();
     const std::string extension = [&] {
         auto e = path.extension().string();
@@ -772,6 +791,39 @@ void FileController::runMachineExport(const std::filesystem::path& path) {
                                [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         return e;
     }();
+    if (!confirmed) {
+        const auto revision = studio_.session().revision();
+        // checkExport generates the effective stitch sequence: keep it off the UI thread.
+        runJob<ExportCheck>(
+            QStringLiteral("Vérification des limites d'export"),
+            [snapshot, extension](const TaskContext&) -> Result<ExportCheck> {
+                return checkExport(*snapshot, extension);
+            },
+            [this, path, revision](ExportCheck&& check) {
+                if (revision != studio_.session().revision()) {
+                    setMessage(QStringLiteral("Le motif a changé pendant la vérification : "
+                                              "relancez l'export."),
+                               true);
+                    return;
+                }
+                if (!check.ok) {
+                    const QString reason = fromUtf8(check.message);
+                    setMessage(QStringLiteral("Export impossible : %1").arg(reason), true);
+                    return;
+                }
+                if (!check.fitsHoop || !check.fitsMachineField || !check.formatAccepted) {
+                    pendingExport_ = path;
+                    pendingExportRevision_ = revision;
+                    setMessage(QStringLiteral("Export à confirmer : limites dépassées."));
+                    emit exportConfirmationRequested(fromUtf8(check.summary()));
+                    return;
+                }
+                runMachineExport(path, true);
+            },
+            QStringLiteral("Vérification d'export impossible : "));
+        return;
+    }
+    pendingExport_.reset();
     const QString name = fromPath(path.filename());
     setMessage(QStringLiteral("Export de %1 en cours…").arg(name));
     runJob<MachineOutcome>(

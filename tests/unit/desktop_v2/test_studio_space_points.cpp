@@ -329,7 +329,7 @@ private slots:
         QTRY_VERIFY(!rig.pointsSpace.camera().isEmpty());
         const auto kept = rig.pointsSpace.camera();
         rig.workspace->setCurrent(QStringLiteral("points"));
-        QTRY_COMPARE(rig.window->findChildren<GpuCanvas*>().size(), 1);
+        QTRY_VERIFY(rig.window->findChild<GpuCanvas*>(QStringLiteral("studioCanvas")) == canvas);
         QVERIFY(!rig.pointsSpace.camera().isEmpty());
         QCOMPARE(rig.pointsSpace.camera().value(QStringLiteral("zoom")).toDouble() > 0.0, true);
         QVERIFY(kept.contains(QStringLiteral("zoom")));

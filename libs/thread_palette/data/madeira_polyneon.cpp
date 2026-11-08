@@ -17,7 +17,7 @@ namespace openstitch::thread_palette::detail {
 ThreadChart make_madeira_polyneon_chart() {
     ThreadChart chart;
     chart.chart_id = "madeira_polyneon";
-    chart.display_name = "Madeira Polyneon 40";
+    chart.display_name = "Madeira Polyneon 40 (DEMO - couleurs fictives)";
     chart.source_note = "DONNEES PLACEHOLDER -- a remplacer par le nuancier officiel transcrit "
                         "depuis https://www.madeira.co.uk (fiche couleurs Polyneon 40), voir "
                         "plan specs/plans/thread-palette-implementation.md section 4. Aucune "

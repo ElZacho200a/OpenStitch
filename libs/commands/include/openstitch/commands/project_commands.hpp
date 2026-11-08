@@ -39,6 +39,8 @@ public:
     }
     [[nodiscard]] std::string name() const override { return image::op_name(op_); }
 
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
+
 private:
     image::ImageOp op_;
     std::optional<segmentation::Segmentation> stashedSegmentation_;
@@ -67,6 +69,8 @@ public:
         previous_.reset();
     }
     [[nodiscard]] std::string name() const override { return "Segmenter l'image"; }
+
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
 
 private:
     std::optional<segmentation::Segmentation> next_;
@@ -105,6 +109,8 @@ public:
         return erase_ ? "Effacer une zone de détail" : "Peindre une zone de détail";
     }
 
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
+
 private:
     int width_;
     int height_;
@@ -128,6 +134,8 @@ public:
         previous_ = {};
     }
     [[nodiscard]] std::string name() const override { return "Effacer les zones de détail"; }
+
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
 
 private:
     segmentation::DetailMask previous_;
@@ -154,6 +162,7 @@ public:
         seg.find(keep_)->pixel_count -= changed_.size();
     }
     [[nodiscard]] std::string name() const override { return "Fusionner des régions"; }
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
 
 private:
     RegionId keep_;
@@ -187,6 +196,7 @@ public:
         }
     }
     [[nodiscard]] std::string name() const override { return "Supprimer une région"; }
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
 
 private:
     RegionId id_;
@@ -230,6 +240,7 @@ public:
         seg.region_slots = slots_;
     }
     [[nodiscard]] std::string name() const override { return "Nettoyer les îlots"; }
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
     // Nombre de régions fusionnées par le dernier `apply`.
     [[nodiscard]] std::size_t merges() const { return merges_; }
 
@@ -274,6 +285,7 @@ public:
         seg.region_slots = slots_;
     }
     [[nodiscard]] std::string name() const override { return "Fusionner des couleurs"; }
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
     // Faux si le plan ne correspondait pas à la segmentation (région introuvable) au dernier
     // `apply`.
     [[nodiscard]] bool applied() const { return applied_; }
@@ -301,6 +313,7 @@ public:
             segmentation::recolor_region(*project.segmentation, id_, oldRgb_);
     }
     [[nodiscard]] std::string name() const override { return "Recolorer une région"; }
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
 
 private:
     RegionId id_;
@@ -328,6 +341,7 @@ public:
     }
     void revert(document::Project& project) override { project.vector_objects.pop_back(); }
     [[nodiscard]] std::string name() const override { return "Ajouter un objet vectoriel"; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     document::VectorObject object_;
@@ -346,6 +360,7 @@ public:
     }
     void revert(document::Project& project) override { project.embroidery_objects.pop_back(); }
     [[nodiscard]] std::string name() const override { return "Ajouter un objet de broderie"; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     document::EmbroideryObject object_;
@@ -380,6 +395,7 @@ public:
         applied_ = false;
     }
     [[nodiscard]] std::string name() const override { return "Supprimer l'objet de broderie"; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId id_;
@@ -423,6 +439,7 @@ public:
         applied_ = false;
     }
     [[nodiscard]] std::string name() const override { return "Ajouter une couche"; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId base_id_;
@@ -501,6 +518,7 @@ public:
         applied_ = false;
     }
     [[nodiscard]] std::string name() const override { return "Supprimer l'objet vectoriel"; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId id_;
@@ -530,6 +548,7 @@ public:
         }
     }
     [[nodiscard]] std::string name() const override { return label_; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId object_;
@@ -570,6 +589,7 @@ public:
     // Les champs X et Y d'un inspecteur ne doivent pas fusionner entre eux.
     // Champ vide : comportement historique des flèches (déplacements libres).
     void setMergeField(std::string field) { mergeField_ = std::move(field); }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     void shift(document::Project& project, Vec2um delta) const {
@@ -734,6 +754,7 @@ public:
         }
     }
     [[nodiscard]] std::string name() const override { return "Redimensionner la forme"; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     [[nodiscard]] static std::int32_t clampToInt32(double v) {
@@ -799,6 +820,7 @@ public:
     void apply(document::Project& project) override { setPos(project, newPos_); }
     void revert(document::Project& project) override { setPos(project, oldPos_); }
     [[nodiscard]] std::string name() const override { return "Déplacer un nœud"; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     void setPos(document::Project& project, Vec2um pos) {
@@ -830,6 +852,7 @@ public:
     void apply(document::Project& project) override { setHandle(project, newHandle_); }
     void revert(document::Project& project) override { setHandle(project, oldHandle_); }
     [[nodiscard]] std::string name() const override { return "Déplacer une poignée Bézier"; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     void setHandle(document::Project& project, std::optional<Vec2um> handle) {
@@ -872,6 +895,7 @@ public:
         }
     }
     [[nodiscard]] std::string name() const override { return "Changer le type de nœud"; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId object_;
@@ -923,6 +947,7 @@ public:
         removedApplied_ = false;
     }
     [[nodiscard]] std::string name() const override { return "Supprimer un nœud"; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId object_;
@@ -962,6 +987,7 @@ public:
         project.embroidery_objects.resize(project.embroidery_objects.size() - embroideries_.size());
     }
     [[nodiscard]] std::string name() const override { return label_; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     std::vector<document::VectorObject> vectors_;
@@ -985,6 +1011,7 @@ public:
     }
     void revert(document::Project& project) override { reorder(project, oldOrder_); }
     [[nodiscard]] std::string name() const override { return "Réordonner la couture"; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     static void reorder(document::Project& project, const std::vector<ObjectId>& order) {
@@ -1024,6 +1051,9 @@ public:
         return locked_ ? "Figer l'ordre de l'objet" : "Libérer l'ordre de l'objet";
     }
 
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
+
 private:
     ObjectId id_;
     bool locked_;
@@ -1048,6 +1078,7 @@ public:
         }
     }
     [[nodiscard]] std::string name() const override { return "Entrée/sortie automatiques"; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId id_;
@@ -1074,6 +1105,7 @@ public:
         }
     }
     [[nodiscard]] std::string name() const override { return "Connecteur après l'objet"; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId id_;
@@ -1115,6 +1147,7 @@ public:
         margin_ = other->margin_;
         return true;
     }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId id_;
@@ -1144,6 +1177,7 @@ public:
     [[nodiscard]] std::string name() const override {
         return visible_ ? "Afficher l'objet" : "Masquer l'objet";
     }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId id_;
@@ -1170,6 +1204,9 @@ public:
     }
     [[nodiscard]] std::string name() const override { return "Mémoire sémantique"; }
 
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
+
 private:
     ObjectId id_;
     std::optional<document::SemanticAnnotation> next_;
@@ -1193,6 +1230,9 @@ public:
         }
     }
     [[nodiscard]] std::string name() const override { return "Renommer l'objet"; }
+
+    [[nodiscard]] bool affectsEmbroidery() const override { return false; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId id_;
@@ -1227,6 +1267,7 @@ public:
         previous_.clear();
     }
     [[nodiscard]] std::string name() const override { return "Convertir en tatami"; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     std::vector<ObjectId> targets_;
@@ -1261,6 +1302,7 @@ public:
         }
     }
     [[nodiscard]] std::string name() const override { return label_; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId id_;
@@ -1370,6 +1412,7 @@ public:
         applied_ = false;
     }
     [[nodiscard]] std::string name() const override { return label_; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId anyMemberId_;
@@ -1394,6 +1437,7 @@ public:
     }
     void revert(document::Project& project) override { project.canvas = previous_; }
     [[nodiscard]] std::string name() const override { return "Modifier la taille du cadre"; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     document::Canvas canvas_;
@@ -1437,6 +1481,7 @@ public:
         params_ = other->params_; // `previous_` reste l'état d'avant la première
         return true;
     }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId id_;
@@ -1470,6 +1515,7 @@ public:
     [[nodiscard]] std::string name() const override {
         return "Modifier l'orientation du remplissage";
     }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId id_;
@@ -1510,6 +1556,7 @@ public:
         }
     }
     [[nodiscard]] std::string name() const override { return label_; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId id_;
@@ -1564,6 +1611,7 @@ public:
         return true;
     }
     void setMergeTag(std::string tag) { mergeTag_ = std::move(tag); }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId id_;
@@ -1714,6 +1762,7 @@ public:
         detail::end_stitch_edit(project, id_, base_index_, ctx_);
     }
     [[nodiscard]] std::string name() const override { return "Déplacer un point"; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId id_;
@@ -1744,6 +1793,7 @@ public:
         detail::end_stitch_edit(project, id_, base_index_, ctx_);
     }
     [[nodiscard]] std::string name() const override { return "Changer le type de point"; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId id_;
@@ -1809,6 +1859,7 @@ public:
         detail::end_stitch_edit(project, id_, base_index_, ctx_);
     }
     [[nodiscard]] std::string name() const override { return "Modifier la coupe de fil"; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId id_;
@@ -1845,6 +1896,7 @@ public:
         }
     }
     [[nodiscard]] std::string name() const override { return "Abandonner les retouches"; }
+    [[nodiscard]] bool affectsSegmentation() const override { return false; }
 
 private:
     ObjectId id_;

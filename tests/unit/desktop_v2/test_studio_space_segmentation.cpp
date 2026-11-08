@@ -16,6 +16,7 @@
 #include <QTemporaryDir>
 #include <QtTest/QtTest>
 
+#include <cmath>
 #include <filesystem>
 #include <memory>
 
@@ -91,6 +92,24 @@ QQuickItem* findVisual(QQuickItem* item, const QString& name) {
     return nullptr;
 }
 
+int highlightAlphaAt(const RegionLayerData& layer, int x, int y) {
+    if (layer.highlight.isNull() || layer.highlightRectMm.isEmpty() || layer.rectMm.isEmpty()) {
+        return 0;
+    }
+    const double mm = layer.rectMm.width() / layer.fill.width();
+    const double dx = (layer.highlightRectMm.left() - layer.rectMm.left()) / mm;
+    const double dy = (layer.highlightRectMm.top() - layer.rectMm.top()) / mm;
+    const int ox = static_cast<int>(std::lround(dx));
+    const int oy = static_cast<int>(std::lround(dy));
+    const int localX = x - ox;
+    const int localY = y - oy;
+    if (localX < 0 || localY < 0 || localX >= layer.highlight.width() ||
+        localY >= layer.highlight.height()) {
+        return 0;
+    }
+    return layer.highlight.pixelColor(localX, localY).alpha();
+}
+
 struct Rig {
     DocumentSession session;
     StudioController studio{session};
@@ -118,7 +137,9 @@ struct Rig {
         auto* item = named(name);
         return item && item->isEnabled() && QMetaObject::invokeMethod(item, "click");
     }
-    GpuCanvas* canvas() const { return window->findChild<GpuCanvas*>(); }
+    GpuCanvas* canvas() const {
+        return window->findChild<GpuCanvas*>(QStringLiteral("segmentationCanvas"));
+    }
     QVariantMap stage() const { return workspace->space(QStringLiteral("segmentation")); }
     // Position (coordonnées fenêtre) du pixel (px, py) de l'image de travail.
     QPointF windowPos(int px, int py) const {
@@ -247,13 +268,16 @@ private slots:
         QCOMPARE(static_cast<std::uint64_t>(first),
                  regionAtPixel(rig.session.project(), 20, 20).value());
         QTRY_VERIFY(rig.canvas()->regionLayer()->highlight.isNull() == false);
-        QCOMPARE(rig.canvas()->regionLayer()->highlight.pixelColor(20, 20).alpha() > 0, true);
-        QCOMPARE(rig.canvas()->regionLayer()->highlight.pixelColor(120, 90).alpha(), 0);
+        QCOMPARE(highlightAlphaAt(*rig.canvas()->regionLayer(), 20, 20) > 0, true);
+        QCOMPARE(highlightAlphaAt(*rig.canvas()->regionLayer(), 120, 90), 0);
+        // Le masque ne doit plus mesurer toute l'image pour une petite région.
+        QVERIFY(rig.canvas()->regionLayer()->highlight.width() <
+                rig.session.project().segmentation->width);
         // Ctrl : ajoute une deuxième région (multi-sélection) ; Ctrl sur la même la retire.
         QTest::mouseClick(rig.window, Qt::LeftButton, Qt::ControlModifier,
                           rig.windowPos(120, 90).toPoint());
         QTRY_COMPARE(rig.regions.selectedCount(), 2);
-        QTRY_COMPARE(rig.canvas()->regionLayer()->highlight.pixelColor(120, 90).alpha() > 0, true);
+        QTRY_VERIFY(highlightAlphaAt(*rig.canvas()->regionLayer(), 120, 90) > 0);
         QTest::mouseClick(rig.window, Qt::LeftButton, Qt::ControlModifier,
                           rig.windowPos(120, 90).toPoint());
         QTRY_COMPARE(rig.regions.selectedCount(), 1);
@@ -271,6 +295,37 @@ private slots:
         QTRY_VERIFY(!rig.canvas()->regionLayer()->highlight.isNull());
         QCOMPARE(rig.space.selectedCount(), 1);
         QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\n')));
+    }
+
+    void selectionAndRecolorDoNotRegenerateStitches() {
+        Rig rig;
+        open(rig);
+        const auto scene = rig.studio.scene();
+        QVERIFY(scene);
+        const auto mapRevision = rig.regions.mapRevision();
+        const int fillRebuilds = rig.space.fillRebuilds();
+        const int highlightRebuilds = rig.space.highlightRebuilds();
+        QSignalSpy geometry(&rig.studio, &StudioController::sceneChanged);
+
+        // A simple click updates the lightweight selection overlay, not the region data.
+        rig.regions.selectAtPixel(20, 20);
+        QTRY_COMPARE(rig.regions.selectedCount(), 1);
+        QTRY_VERIFY(rig.space.highlightRebuilds() > highlightRebuilds);
+        QCOMPARE(rig.regions.mapRevision(), mapRevision);
+        QCOMPARE(rig.space.fillRebuilds(), fillRebuilds);
+        QVERIFY(rig.studio.scene() == scene);
+
+        // Recoloring changes the segmented source only. The generated stitch scene
+        // must remain available until an explicit downstream regeneration.
+        QCOMPARE(rig.regions.recolorSelected(QStringLiteral("#00aa55")), QString());
+        QTRY_VERIFY(rig.regions.mapRevision() > mapRevision);
+        QVERIFY(rig.studio.scene() == scene);
+        QVERIFY(rig.session.undo());
+        QVERIFY(rig.studio.scene() == scene);
+        QVERIFY(rig.session.redo());
+        QVERIFY(rig.studio.scene() == scene);
+        QCOMPARE(geometry.count(), 0);
+        QVERIFY2(rig.warnings.isEmpty(), qPrintable(rig.warnings.join('\\n')));
     }
 
     // --- état publié et mise à jour de l'aval ----------------------------------------------

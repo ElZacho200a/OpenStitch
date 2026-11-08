@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "image_controller.hpp"
+#include "layers/region_layer.hpp"
 #include "region_controller.hpp"
 #include "studio_controller.hpp"
 
@@ -106,6 +107,8 @@ private:
     std::vector<std::uint64_t> shownSelection_;
     QImage fill_;
     QImage highlight_;
+    QRect highlightBoundsPx_;
+    std::vector<RegionPixelBounds> bounds_;
     std::shared_ptr<const RegionLayerData> layer_;
     int fillRebuilds_{0};
     int highlightRebuilds_{0};

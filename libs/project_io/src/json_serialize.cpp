@@ -1102,6 +1102,17 @@ Result<std::int32_t> strict_int32(const json& j, const char* field) {
                 std::string("Retouche invalide : coordonnée non entière (") + field + ")");
 }
 
+Result<std::int32_t> canvas_int32(const json& canvas, const char* field, std::int32_t fallback) {
+    if (!canvas.contains(field)) {
+        return fallback;
+    }
+    const auto parsed = strict_int32(canvas.at(field), field);
+    if (!parsed) {
+        return fail(ErrorCategory::InvalidFile, std::string("Cadre invalide : ") + field);
+    }
+    return *parsed;
+}
+
 Result<std::size_t> strict_index(const json& j) {
     // Verifie explicitement la borne avant cast : sur une plateforme ou
     // size_t < uint64_t (32 bits), un index JSON valide en uint64 pourrait
@@ -1717,14 +1728,36 @@ Result<document::Project> project_from_json(const json& j) {
         // Cadre : optionnel (les projets antérieurs n'en avaient pas -> 100x100).
         if (j.contains("canvas")) {
             const auto& c = j.at("canvas");
-            project.canvas.width = Micrometers{c.value("width", 100'000)};
-            project.canvas.height = Micrometers{c.value("height", 100'000)};
-            project.canvas.margin = Micrometers{c.value("margin", 0)};
+            // QA-STUDIO-001 ROB-006: never narrow unchecked JSON numbers to int32_t.
+            // A forged canvas must not load and subsequently export as a valid DST.
+
+            const auto width = canvas_int32(c, "width", 100'000);
+            if (!width) {
+                return std::unexpected(width.error());
+            }
+            const auto height = canvas_int32(c, "height", 100'000);
+            if (!height) {
+                return std::unexpected(height.error());
+            }
+            const auto margin = canvas_int32(c, "margin", 0);
+            if (!margin) {
+                return std::unexpected(margin.error());
+            }
+            const auto radius = canvas_int32(c, "cornerRadius", 0);
+            if (!radius) {
+                return std::unexpected(radius.error());
+            }
+            if (*width <= 0 || *height <= 0 || *margin < 0 || *radius < 0) {
+                return fail(ErrorCategory::InvalidFile, "Cadre invalide : dimensions ou marges");
+            }
+            project.canvas.width = Micrometers{*width};
+            project.canvas.height = Micrometers{*height};
+            project.canvas.margin = Micrometers{*margin};
             const std::string shape = c.value("shape", std::string("rectangle"));
             project.canvas.shape = shape == "ellipse"   ? document::HoopShape::Ellipse
                                    : shape == "rounded" ? document::HoopShape::RoundedRectangle
                                                         : document::HoopShape::Rectangle;
-            project.canvas.corner_radius = Micrometers{c.value("cornerRadius", 0)};
+            project.canvas.corner_radius = Micrometers{*radius};
         }
         project.machine_id = j.value("machine", std::string());
 

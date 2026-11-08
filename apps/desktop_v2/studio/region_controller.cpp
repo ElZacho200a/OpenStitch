@@ -4,6 +4,7 @@
 #include <QColor>
 #include <QImage>
 #include <algorithm>
+#include <cmath>
 
 #include "source_image_tools.hpp"
 
@@ -53,11 +54,19 @@ RegionController::RegionController(StudioController& studio, ImageController& im
     refreshTimer_.setInterval(0);
     connect(&refreshTimer_, &QTimer::timeout, this, [this] { refresh(); });
     token_ = studio_.session().subscribe([this](ChangeKind kind) {
+        const auto& session = studio_.session();
+        const auto revision = session.revision();
         if (kind == ChangeKind::Replaced) {
             selected_.clear();
             setStale(false);
         }
-        scheduleRefresh();
+        if (revision == observedDocumentRevision_) {
+            return; // sauvegarde ou signal de statut sans mutation
+        }
+        observedDocumentRevision_ = revision;
+        if (kind == ChangeKind::Replaced || session.lastChangeAffectsSegmentation()) {
+            scheduleRefresh();
+        }
     });
     connect(&images_, &ImageController::prepApplied, this,
             [this] { setStale(true, QStringLiteral("l'image a été retraitée")); });
@@ -70,6 +79,16 @@ RegionController::~RegionController() {
     pump_.stop();
     tasks_.cancelAll();
     studio_.session().unsubscribe(token_);
+}
+
+int RegionController::mapWidth() const {
+    const auto& seg = studio_.session().project().segmentation;
+    return seg ? seg->width : 0;
+}
+
+int RegionController::mapHeight() const {
+    const auto& seg = studio_.session().project().segmentation;
+    return seg ? seg->height : 0;
 }
 
 bool RegionController::hasSegmentation() const {
@@ -138,20 +157,53 @@ void RegionController::refresh() {
                         {QStringLiteral("pixels"), static_cast<qulonglong>(info.pixels)}});
     }
     // Élague la sélection : une région fusionnée ou supprimée n'existe plus.
-    const auto ids = allRegionIds(project);
     const auto before = selected_.size();
     std::erase_if(selected_, [&](std::uint64_t id) {
-        return std::find(ids.begin(), ids.end(), id) == ids.end();
+        return !project.segmentation || !project.segmentation->find(RegionId{id});
     });
-    if (project.segmentation) {
-        const auto map = renderRegionMap(project, selected_);
-        images_.images()->set(
-            QStringLiteral("regions"),
-            QImage(map.rgba.data(), map.width, map.height, map.width * 4, QImage::Format_RGBA8888)
-                .copy());
+    if (project.segmentation && project.segmentation->width > 0 &&
+        project.segmentation->height > 0) {
+        const auto& seg = *project.segmentation;
+        // Le panneau n'affiche que 170 px de haut : ne jamais générer une
+        // seconde carte RGBA plein format pour sa miniature.
+        constexpr int maxSide = 512;
+        const auto maxDim = std::max(seg.width, seg.height);
+        const double factor = std::min(1.0, static_cast<double>(maxSide) / maxDim);
+        const int thumbW = std::max(1, static_cast<int>(std::lround(seg.width * factor)));
+        const int thumbH = std::max(1, static_cast<int>(std::lround(seg.height * factor)));
+        QImage preview(thumbW, thumbH, QImage::Format_RGBA8888);
+        preview.fill(Qt::transparent);
+        const auto w = static_cast<std::size_t>(seg.width);
+        for (int y = 0; y < thumbH; ++y) {
+            const double yRatio = (y + 0.5) / thumbH;
+            const int sy = std::min(seg.height - 1, static_cast<int>(yRatio * seg.height));
+            auto* line = preview.scanLine(y);
+            for (int x = 0; x < thumbW; ++x) {
+                const double xRatio = (x + 0.5) / thumbW;
+                const int sx = std::min(seg.width - 1, static_cast<int>(xRatio * seg.width));
+                const auto idx = static_cast<std::size_t>(sy) * w + sx;
+                if (idx >= seg.labels.size()) {
+                    continue;
+                }
+                const auto label = seg.labels[idx];
+                if (label == 0 || label > seg.region_slots.size()) {
+                    continue;
+                }
+                if (!seg.region_slots[label - 1]) {
+                    continue;
+                }
+                const auto& rgb = seg.region_slots[label - 1]->rgb;
+                line[x * 4] = rgb[0];
+                line[x * 4 + 1] = rgb[1];
+                line[x * 4 + 2] = rgb[2];
+                line[x * 4 + 3] = 255;
+            }
+        }
+        images_.images()->set(QStringLiteral("regions"), std::move(preview));
     } else {
         images_.images()->set(QStringLiteral("regions"), {});
     }
+    ++mapRevision_;
     emit regionsChanged();
     if (before != selected_.size()) {
         emit selectionChanged();
@@ -162,9 +214,8 @@ void RegionController::refresh() {
 
 void RegionController::selectRegion(double id, const QString& mode) {
     const auto region = idOf(id);
-    const auto& project = studio_.session().project();
-    const auto ids = allRegionIds(project);
-    if (std::find(ids.begin(), ids.end(), region) == ids.end()) {
+    const auto& seg = studio_.session().project().segmentation;
+    if (!seg || region == 0 || !seg->find(RegionId{region})) {
         return;
     }
     const auto found = std::find(selected_.begin(), selected_.end(), region);
@@ -179,9 +230,12 @@ void RegionController::selectRegion(double id, const QString& mode) {
             selected_.push_back(region);
         }
     } else {
+        if (selected_.size() == 1 && selected_.front() == region)
+            return;
         selected_.assign(1, region);
     }
-    scheduleRefresh();
+    // La sélection ne change pas les données de segmentation : le canevas se charge du
+    // surlignage, sans reconstruire la miniature RGBA ni la liste complète.
     emit selectionChanged();
 }
 
@@ -210,7 +264,6 @@ void RegionController::selectSameColor() {
         }
     }
     selected_ = std::move(all);
-    scheduleRefresh();
     emit selectionChanged();
 }
 
@@ -219,25 +272,23 @@ void RegionController::selectNeighbours() {
         return;
     }
     selected_ = neighboursOfSet(studio_.session().project(), selected_);
-    scheduleRefresh();
     emit selectionChanged();
 }
 
 void RegionController::invertSelection() {
     selected_ = invertRegionSet(studio_.session().project(), selected_);
-    scheduleRefresh();
     emit selectionChanged();
 }
 
 void RegionController::selectAll() {
     selected_ = allRegionIds(studio_.session().project());
-    scheduleRefresh();
     emit selectionChanged();
 }
 
 void RegionController::clearSelection() {
+    if (selected_.empty())
+        return;
     selected_.clear();
-    scheduleRefresh();
     emit selectionChanged();
 }
 
@@ -435,6 +486,9 @@ void RegionController::regenerate(bool resegment, bool confirmed, const QVariant
             if (r->lostRetouches > 0) {
                 kept +=
                     QStringLiteral(" %1 objet(s) retouché(s) remplacé(s).").arg(r->lostRetouches);
+            }
+            if (r->reused > 0) {
+                kept += QStringLiteral(" %1 objet(s) inchangé(s) réutilisé(s).").arg(r->reused);
             }
             setMessage(QStringLiteral("Objets régénérés : %1 → %2. Annulable (Ctrl+Z).")
                                .arg(r->objectsBefore)

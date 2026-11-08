@@ -7,7 +7,7 @@ import ".."
 
 // Hôte des QUATRE ESPACES (image, segmentation, vector, points). FICHIER PARTAGÉ : seul le Lead le
 // modifie (docs/desktop-v2/23-espaces-studio.md).
-//  - UN SEUL espace est instancié à la fois (Loader) : une seule instance de canevas GPU ;
+//  - espaces créés à la première visite puis conservés (états UI et canevas réutilisés) ;
 //  - barre d'onglets avec pastille d'état, raccourcis Ctrl+1..4 indépendants du focus ;
 //  - bandeau sous la barre : état de l'étape AMONT de l'espace courant + bouton d'action fourni par
 //    l'espace (`workspace.setStageAction`) ;
@@ -18,8 +18,11 @@ Item {
     objectName: "spaceHost"
     required property var workspace
     // Racine de l'espace actif (contrat : `canvas`, `active`) et son canevas.
-    readonly property Item space: loader.item as Item
-    readonly property var canvas: loader.item ? loader.item.canvas : null
+    readonly property var space: internal.loadedId === "image" ? imageLoader.item
+                                  : internal.loadedId === "segmentation" ? segmentationLoader.item
+                                  : internal.loadedId === "vector" ? vectorLoader.item
+                                  : internal.loadedId === "points" ? pointsLoader.item : null
+    readonly property var canvas: space ? space.canvas : null
     readonly property string loadedId: internal.loadedId
 
     readonly property var sources: ({
@@ -32,6 +35,10 @@ Item {
     QtObject {
         id: internal
         property string loadedId: ""
+        property bool visitedImage: false
+        property bool visitedSegmentation: false
+        property bool visitedVector: false
+        property bool visitedPoints: false
     }
 
     function stateColor(state) {
@@ -51,14 +58,39 @@ Item {
         }
     }
 
-    // Sauvegarde la vue de l'espace sortant, charge l'entrant, restaure sa vue.
+    // Le changement d'espace ne détruit plus le QML ni le canevas : les textures/états
+    // pourront être réutilisés. Seul l'espace visible doit rester actif et attaché.
+    function activateSpace(id, item) {
+        if (!item || internal.loadedId !== id || item.active)
+            return
+        const saved = workspace.view
+        if (item.canvas && saved.zoom !== undefined)
+            item.canvas.restoreViewState(saved)
+        item.active = true
+        // ViewPanel attache la première fois ; les visites suivantes doivent réattacher
+        // le contrôleur de vue au canevas actif, pas au dernier canevas créé.
+        if (item.canvas && typeof view !== "undefined" && view !== null)
+            view.attachCanvas(item.canvas)
+        if (item.canvas)
+            item.canvas.forceActiveFocus()
+    }
+
     function switchTo(id) {
         if (!sources[id] || id === internal.loadedId)
             return
-        if (loader.item && loader.item.canvas && internal.loadedId !== "")
-            workspace.saveView(loader.item.canvas.viewState())
-        loader.setSource(sources[id], { "workspace": host.workspace })
+        const outgoing = host.space
+        if (outgoing && outgoing.canvas)
+            workspace.saveView(outgoing.canvas.viewState())
+        if (outgoing)
+            outgoing.active = false
         internal.loadedId = id
+        switch (id) {
+        case "image": internal.visitedImage = true; break
+        case "segmentation": internal.visitedSegmentation = true; break
+        case "vector": internal.visitedVector = true; break
+        case "points": internal.visitedPoints = true; break
+        }
+        activateSpace(id, host.space)
     }
 
     Connections {
@@ -196,21 +228,47 @@ Item {
             }
         }
 
-        // --- espace actif ------------------------------------------------------------------
-        Loader {
-            id: loader
-            objectName: "spaceLoader"
+        // --- espaces chargés à la demande, mais pas détruits à chaque navigation --------------
+        // Loader.active ne repasse jamais à false : Qt Quick conserve les instances.
+        // Les espaces non visibles ne reçoivent ni souris ni focus et sont désactivés via active.
+        Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            asynchronous: false
-            onLoaded: {
-                const item = loader.item
-                if (!item)
-                    return
-                const view = host.workspace.view
-                if (item.canvas && view.zoom !== undefined)
-                    item.canvas.restoreViewState(view)
-                item.active = true
+            Loader {
+                id: imageLoader
+                anchors.fill: parent
+                active: internal.visitedImage
+                visible: internal.loadedId === "image"
+                asynchronous: false
+                sourceComponent: ImageSpace { workspace: host.workspace }
+                onLoaded: host.activateSpace("image", item)
+            }
+            Loader {
+                id: segmentationLoader
+                anchors.fill: parent
+                active: internal.visitedSegmentation
+                visible: internal.loadedId === "segmentation"
+                asynchronous: false
+                sourceComponent: SegmentationSpace { workspace: host.workspace }
+                onLoaded: host.activateSpace("segmentation", item)
+            }
+            Loader {
+                id: vectorLoader
+                anchors.fill: parent
+                active: internal.visitedVector
+                visible: internal.loadedId === "vector"
+                asynchronous: false
+                sourceComponent: VectorSpace { workspace: host.workspace }
+                onLoaded: host.activateSpace("vector", item)
+            }
+            Loader {
+                id: pointsLoader
+                anchors.fill: parent
+                active: internal.visitedPoints
+                visible: internal.loadedId === "points"
+                asynchronous: false
+                sourceComponent: PointsSpace { workspace: host.workspace }
+                onLoaded: host.activateSpace("points", item)
             }
         }
     }
