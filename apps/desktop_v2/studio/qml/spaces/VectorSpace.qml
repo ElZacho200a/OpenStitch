@@ -242,42 +242,60 @@ Item {
                     }
                 }
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
-                LayerPanel {
-                    objectName: "layerPanel"
+
+                // A single inspector surface: layer management and editing actions no
+                // longer compete for vertical space or obscure the object tree.
+                Controls.TabBar {
+                    id: vectorInspectorTabs
+                    objectName: "vectorInspectorTabs"
+                    Layout.fillWidth: true
+                    currentIndex: 0
+                    background: Rectangle { color: Theme.panel }
+                    Controls.TabButton {
+                        text: qsTr("Calques")
+                        Accessible.name: qsTr("Afficher les calques et les objets")
+                    }
+                    Controls.TabButton {
+                        text: qsTr("Édition")
+                        Accessible.name: qsTr("Afficher les opérations de sélection et d'édition")
+                    }
+                }
+                StackLayout {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.minimumHeight: 100
-                }
-                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
-                // Keep the layer tree usable while the many editing actions scroll in their
-                // own bounded area. Without this viewport, the ColumnLayout's implicit
-                // heights can exceed the inspector and overlap the layer rows.
-                Controls.ScrollView {
-                    id: vectorActionsScroll
-                    objectName: "vectorActionsScroll"
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 260
-                    Layout.minimumHeight: 100
-                    Layout.maximumHeight: 320
-                    clip: true
-                    contentWidth: availableWidth
-                    Controls.ScrollBar.horizontal.policy: Controls.ScrollBar.AlwaysOff
+                    currentIndex: vectorInspectorTabs.currentIndex
 
-                    ColumnLayout {
-                        width: vectorActionsScroll.availableWidth
-                        spacing: 8
-                        EditBar {
-                            Layout.fillWidth: true
-                            Layout.leftMargin: 12
-                            Layout.rightMargin: 12
-                            Layout.topMargin: 12
-                        }
-                        ToolOptions {
-                            visible: root.toolController !== null
-                            Layout.fillWidth: true
-                            Layout.leftMargin: 12
-                            Layout.rightMargin: 12
-                            Layout.bottomMargin: 12
+                    LayerPanel {
+                        objectName: "layerPanel"
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                    }
+                    Controls.ScrollView {
+                        id: vectorActionsScroll
+                        objectName: "vectorActionsScroll"
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        clip: true
+                        contentWidth: availableWidth
+                        Controls.ScrollBar.horizontal.policy: Controls.ScrollBar.AlwaysOff
+
+                        ColumnLayout {
+                            width: vectorActionsScroll.availableWidth
+                            spacing: 8
+                            EditBar {
+                                Layout.fillWidth: true
+                                Layout.leftMargin: 12
+                                Layout.rightMargin: 12
+                                Layout.topMargin: 12
+                            }
+                            ToolOptions {
+                                visible: root.toolController !== null
+                                Layout.fillWidth: true
+                                Layout.leftMargin: 12
+                                Layout.rightMargin: 12
+                                Layout.bottomMargin: 12
+                            }
                         }
                     }
                 }
