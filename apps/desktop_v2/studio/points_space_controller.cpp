@@ -10,9 +10,21 @@ namespace openstitch::desktop_v2::studio {
 
 PointsSpaceController::PointsSpaceController(StudioController& studio, QObject* parent)
     : QObject(parent), studio_(studio) {
-    connect(&studio_, &StudioController::changed, this, &PointsSpaceController::refresh);
+    // Selection, hover, task progress and status updates also emit StudioController::changed.
+    // They must not rescan every embroidery object or rebuild the QML sources map.
+    // A document revision is the cheap invalidation key; scene replacement is handled
+    // separately by the same revision-changing document notification.
+    connect(&studio_, &StudioController::changed, this, [this] {
+        const auto revision = studio_.session().revision();
+        if (revision == observedRevision_) {
+            return;
+        }
+        observedRevision_ = revision;
+        refresh();
+    });
     connect(&studio_, &StudioController::documentReplaced, this,
             &PointsSpaceController::clearCamera);
+    observedRevision_ = studio_.session().revision();
     refresh();
 }
 
